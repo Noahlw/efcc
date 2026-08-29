@@ -443,6 +443,7 @@ describe("PermissionEditorPanel", () => {
               status: 409,
               code: "ROLE_POLICY_CONFLICT",
               requestId: "conflict",
+              data: { authoritativeRevision: 11 },
             },
             { status: 409 }
           )
@@ -458,6 +459,7 @@ describe("PermissionEditorPanel", () => {
     await userEvent.click(screen.getByRole("button", { name: "確認儲存" }));
 
     expect(await screen.findByText(/權限政策已有更新/u)).toBeInTheDocument();
+    expect(await screen.findByText("最新政策版本：11")).toBeInTheDocument();
     expect(mocks.announce).not.toHaveBeenCalledWith(
       "權限政策已有更新；草稿未被覆寫。請先查看最新版本，再選擇重新開始。"
     );

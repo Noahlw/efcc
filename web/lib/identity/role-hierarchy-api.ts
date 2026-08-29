@@ -125,7 +125,7 @@ export function updateRoleDefinitionGrants(
     changes: readonly PermissionGrantChange[];
   },
   idempotencyKey?: string
-): Promise<RoleDefinitionDetailView & { idempotent: boolean }> {
+): Promise<RoleDefinitionDetailView> {
   return roleFetch(
     `/api/v1/identity/role-definitions/${encodeURIComponent(roleDefinitionId)}/grants`,
     "PATCH",

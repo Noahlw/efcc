@@ -534,17 +534,19 @@ export const PermissionEditorPanel = () => {
         error.problem.code === "ROLE_POLICY_CONFLICT"
       ) {
         setSaveState("conflict");
-        const extension = error.problem as typeof error.problem & {
-          currentRevision?: unknown;
-        };
-        const revision = extension.currentRevision;
-        setConflictRevision(typeof revision === "number" ? revision : null);
+        const revision =
+          typeof error.problem.data?.authoritativeRevision === "number"
+            ? error.problem.data.authoritativeRevision
+            : null;
+        setConflictRevision(revision);
         try {
           const latest = await getRoleDefinitionDetail(
             detail.roleDefinition.roleDefinitionId
           );
           setDetailOverride(latest);
-          setConflictRevision(latest.revision);
+          if (revision === null) {
+            setConflictRevision(latest.revision);
+          }
         } catch {
           // Keep the dirty draft visible if authoritative recovery is unavailable.
         }

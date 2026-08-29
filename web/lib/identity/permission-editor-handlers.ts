@@ -1,3 +1,4 @@
+import { isCapability } from "./capability-catalog";
 /**
  * #485 — cookie-only Worker handlers for Role Definition permissions.
  *
@@ -15,7 +16,12 @@ import {
   loadRoleDefinitionDetail,
   updateRoleDefinitionGrants,
 } from "./permission-editor";
-import type { PermissionGrantChange } from "./permission-editor";
+import type {
+  PermissionGrantChange,
+  RoleDefinitionMutationResult,
+} from "./permission-editor";
+import { requireActor, roleProblem, roleSuccess } from "./role-handlers";
+import type { RoleEnv } from "./role-handlers";
 import {
   RoleAdminProtectedError,
   RoleArchivedError,
@@ -26,13 +32,6 @@ import {
   RoleScopeMismatchError,
   RoleTargetNotFoundError,
 } from "./role-hierarchy";
-import {
-  requireActor,
-  roleProblem,
-  roleSuccess,
-} from "./role-handlers";
-import type { RoleEnv } from "./role-handlers";
-import { isCapability } from "./capability-catalog";
 
 type GrantsBody = {
   base_revision?: unknown;
@@ -43,15 +42,27 @@ function hasOnlyKeys(value: object, allowed: readonly string[]): boolean {
   return Object.keys(value).every((key) => allowed.includes(key));
 }
 
+function requestIdForError(error: unknown, fallback: string): string {
+  if (
+    typeof error === "object" &&
+    error !== null &&
+    "requestId" in error &&
+    typeof error.requestId === "string"
+  ) {
+    return error.requestId;
+  }
+  return fallback;
+}
 
 function mapPermissionError(error: unknown, requestId: string): Response {
+  const responseRequestId = requestIdForError(error, requestId);
   if (error instanceof RoleCapabilityDeniedError) {
     return roleProblem(
       403,
       "ROLE_FORBIDDEN",
       "Forbidden",
       "您沒有權限檢視或編輯此身份組權限。",
-      requestId
+      responseRequestId
     );
   }
   if (error instanceof RoleHighestProtectedError) {
@@ -60,7 +71,7 @@ function mapPermissionError(error: unknown, requestId: string): Response {
       "ROLE_HIGHEST_PROTECTED",
       "Forbidden",
       "不可編輯自己或更高順位的身份組。",
-      requestId
+      responseRequestId
     );
   }
   if (error instanceof RoleAdminProtectedError) {
@@ -69,7 +80,7 @@ function mapPermissionError(error: unknown, requestId: string): Response {
       "ROLE_ADMIN_PROTECTED",
       "Forbidden",
       "系統管理員身份不可修改權限。",
-      requestId
+      responseRequestId
     );
   }
   if (error instanceof RoleBaselineProtectedError) {
@@ -78,7 +89,7 @@ function mapPermissionError(error: unknown, requestId: string): Response {
       "ROLE_BASELINE_PROTECTED",
       "Forbidden",
       "會友基礎身份不可修改權限。",
-      requestId
+      responseRequestId
     );
   }
   if (error instanceof RoleScopeMismatchError) {
@@ -87,7 +98,7 @@ function mapPermissionError(error: unknown, requestId: string): Response {
       "ROLE_SCOPE_MISMATCH",
       "Forbidden",
       "身份組超出你的可管理範圍。",
-      requestId
+      responseRequestId
     );
   }
   if (error instanceof RoleRevisionConflictError) {
@@ -96,8 +107,8 @@ function mapPermissionError(error: unknown, requestId: string): Response {
       "ROLE_POLICY_CONFLICT",
       "Conflict",
       "身份組政策已有更新，請重新載入後再試。",
-      requestId,
-      { currentRevision: error.currentRevision }
+      responseRequestId,
+      { data: { authoritativeRevision: error.currentRevision } }
     );
   }
   if (error instanceof RoleIdempotencyConflictError) {
@@ -106,7 +117,7 @@ function mapPermissionError(error: unknown, requestId: string): Response {
       "ROLE_IDEMPOTENCY_REUSE",
       "Conflict",
       "相同請求鍵已用於另一項變更；請重新提交。",
-      requestId
+      responseRequestId
     );
   }
   if (error instanceof RoleArchivedError) {
@@ -115,16 +126,16 @@ function mapPermissionError(error: unknown, requestId: string): Response {
       "ROLE_ARCHIVED",
       "Conflict",
       "已停用的身份組不可修改權限。",
-      requestId
+      responseRequestId
     );
   }
   if (error instanceof RoleCapabilityCatalogError) {
     return roleProblem(
       422,
-      "ROLE_INVALID_TARGET",
-      "Validation failed",
+      "ROLE_NOT_FOUND",
+      "Not found",
       "指定的權限不在受控目錄內。",
-      requestId
+      responseRequestId
     );
   }
   if (error instanceof RoleInvalidTargetError) {
@@ -133,7 +144,7 @@ function mapPermissionError(error: unknown, requestId: string): Response {
       "ROLE_INVALID_TARGET",
       "Validation failed",
       "必須提供有效的身份組。",
-      requestId
+      responseRequestId
     );
   }
   if (error instanceof RoleTargetNotFoundError) {
@@ -142,7 +153,7 @@ function mapPermissionError(error: unknown, requestId: string): Response {
       "ROLE_NOT_FOUND",
       "Not found",
       "找不到指定的身份組。",
-      requestId
+      responseRequestId
     );
   }
   return roleProblem(
@@ -150,7 +161,7 @@ function mapPermissionError(error: unknown, requestId: string): Response {
     "INTERNAL_ERROR",
     "Internal error",
     "伺服器未能完成此操作，請稍後再試。",
-    requestId
+    responseRequestId
   );
 }
 
@@ -262,17 +273,19 @@ export async function handleUpdateRoleDefinitionGrants(
   }
   try {
     const changes = body.changes as PermissionGrantChange[];
-    const result = await updateRoleDefinitionGrants(env.DB, {
-      actor_user_id: auth.account.user_id,
-      role_definition_id: roleDefinitionId,
-      base_revision: body.base_revision,
-      idempotency_key: idempotencyKey,
-      changes,
-      now: new Date().toISOString(),
-      audit_id: crypto.randomUUID(),
-      correlation_id: requestId,
-    });
-    return roleSuccess(200, result, requestId);
+    const result: RoleDefinitionMutationResult =
+      await updateRoleDefinitionGrants(env.DB, {
+        actor_user_id: auth.account.user_id,
+        role_definition_id: roleDefinitionId,
+        base_revision: body.base_revision,
+        idempotency_key: idempotencyKey,
+        changes,
+        now: new Date().toISOString(),
+        audit_id: crypto.randomUUID(),
+        correlation_id: requestId,
+      });
+    const { responseRequestId, idempotent: _idempotent, ...data } = result;
+    return roleSuccess(200, data, responseRequestId ?? requestId);
   } catch (error) {
     return mapPermissionError(error, requestId);
   }

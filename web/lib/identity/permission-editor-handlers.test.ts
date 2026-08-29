@@ -152,11 +152,13 @@ describe("#485 Permission Editor Worker seam", () => {
     assert.equal(first.headers.get("X-Request-Id"), firstBody.requestId);
     const firstData = firstBody.data as {
       revision: number;
-      idempotent: boolean;
       permissions: readonly { capability: string; value: boolean }[];
     };
     assert.equal(firstData.revision, before + 1);
-    assert.equal(firstData.idempotent, false);
+    assert.equal("idempotent" in firstData, false);
+    assert.equal("responseRequestId" in firstData, false);
+    const firstRequestId = firstBody.requestId;
+    assert.equal(typeof firstRequestId, "string");
 
     const audit = await testDb()
       .prepare(
@@ -189,12 +191,13 @@ describe("#485 Permission Editor Worker seam", () => {
     assert.equal(replay.status, 200);
     const replayBody = await bodyOf(replay);
     assert.equal(replay.headers.get("X-Request-Id"), replayBody.requestId);
+    assert.equal(replayBody.requestId, firstRequestId);
     const replayData = replayBody.data as {
-      idempotent: boolean;
       revision: number;
       permissions: readonly { capability: string; value: boolean }[];
     };
-    assert.equal(replayData.idempotent, true);
+    assert.equal("idempotent" in replayData, false);
+    assert.equal("responseRequestId" in replayData, false);
     assert.equal(replayData.revision, firstData.revision);
     assert.equal(
       replayData.permissions.find(
@@ -212,7 +215,7 @@ describe("#485 Permission Editor Worker seam", () => {
     assert.equal(auditCount?.count, 2);
   });
 
-  test("stale PATCH returns the authoritative revision and Member is forbidden", async () => {
+  test("stale PATCH returns nested authoritative revision and Member is forbidden", async () => {
     const current = await currentRevision();
     const stale = await worker.fetch(
       request(`/api/v1/identity/role-definitions/${STAFF_ROLE}/grants`, {
@@ -232,7 +235,18 @@ describe("#485 Permission Editor Worker seam", () => {
     assert.equal(stale.status, 409);
     const staleBody = await bodyOf(stale);
     assert.equal(staleBody.code, "ROLE_POLICY_CONFLICT");
-    assert.equal(staleBody.currentRevision, current);
+    assert.ok(
+      staleBody.data &&
+        typeof staleBody.data === "object" &&
+        "authoritativeRevision" in staleBody.data
+    );
+    const staleData = staleBody.data;
+    assert.equal(
+      typeof staleData === "object" && staleData !== null
+        ? staleData.authoritativeRevision
+        : undefined,
+      current
+    );
     assert.equal(stale.headers.get("X-Request-Id"), staleBody.requestId);
     const staleReplay = await worker.fetch(
       request(`/api/v1/identity/role-definitions/${STAFF_ROLE}/grants`, {
@@ -252,7 +266,19 @@ describe("#485 Permission Editor Worker seam", () => {
     assert.equal(staleReplay.status, 409);
     const staleReplayBody = await bodyOf(staleReplay);
     assert.equal(staleReplayBody.code, "ROLE_POLICY_CONFLICT");
-    assert.equal(staleReplayBody.currentRevision, current);
+    assert.ok(
+      staleReplayBody.data &&
+        typeof staleReplayBody.data === "object" &&
+        "authoritativeRevision" in staleReplayBody.data
+    );
+    const staleReplayData = staleReplayBody.data;
+    assert.equal(
+      typeof staleReplayData === "object" && staleReplayData !== null
+        ? staleReplayData.authoritativeRevision
+        : undefined,
+      current
+    );
+    assert.equal(staleReplayBody.requestId, staleBody.requestId);
     const staleAudits = await testDb()
       .prepare(
         `SELECT COUNT(*) AS count FROM role_audit_events
@@ -285,5 +311,86 @@ describe("#485 Permission Editor Worker seam", () => {
       forbidden.headers.get("X-Request-Id"),
       forbiddenBody.requestId
     );
+  });
+  test("closed capabilities map to ROLE_NOT_FOUND while malformed changes stay invalid targets", async () => {
+    const current = await currentRevision();
+    const response = await worker.fetch(
+      request(
+        `/api/v1/identity/role-definitions/${PROGRAM_LEADER_ROLE}/grants`,
+        {
+          method: "PATCH",
+          headers: {
+            Cookie: `${ACCESS_COOKIE_NAME}=${adminCookie}`,
+            "Content-Type": "application/json",
+            "Idempotency-Key": "permission-editor-handler-closed",
+          },
+          body: {
+            base_revision: current,
+            changes: [{ capability: "closed.capability", value: true }],
+          },
+        }
+      ),
+      testEnv()
+    );
+    assert.equal(response.status, 422);
+    const body = await bodyOf(response);
+    assert.equal(body.code, "ROLE_NOT_FOUND");
+    assert.equal(response.headers.get("X-Request-Id"), body.requestId);
+
+    const malformed = await worker.fetch(
+      request(
+        `/api/v1/identity/role-definitions/${PROGRAM_LEADER_ROLE}/grants`,
+        {
+          method: "PATCH",
+          headers: {
+            Cookie: `${ACCESS_COOKIE_NAME}=${adminCookie}`,
+            "Content-Type": "application/json",
+            "Idempotency-Key": "permission-editor-handler-malformed",
+          },
+          body: {
+            base_revision: current,
+            changes: [{ capability: "role.read" }],
+          },
+        }
+      ),
+      testEnv()
+    );
+    assert.equal(malformed.status, 422);
+    const malformedBody = await bodyOf(malformed);
+    assert.equal(malformedBody.code, "ROLE_INVALID_TARGET");
+  });
+
+  test("protected denial replay preserves the original request identity", async () => {
+    const current = await currentRevision();
+    const path = `/api/v1/identity/role-definitions/${"018f3b8a-0000-7000-8000-000000000a01"}/grants`;
+    const init = {
+      method: "PATCH",
+      headers: {
+        Cookie: `${ACCESS_COOKIE_NAME}=${adminCookie}`,
+        "Content-Type": "application/json",
+        "Idempotency-Key": "permission-editor-handler-denial-replay",
+      },
+      body: {
+        base_revision: current,
+        changes: [{ capability: "role.read", value: false }],
+      },
+    };
+    const first = await worker.fetch(request(path, init), testEnv());
+    assert.equal(first.status, 403);
+    const firstBody = await bodyOf(first);
+    assert.equal(firstBody.code, "ROLE_ADMIN_PROTECTED");
+    const replay = await worker.fetch(request(path, init), testEnv());
+    assert.equal(replay.status, 403);
+    const replayBody = await bodyOf(replay);
+    assert.equal(replayBody.code, "ROLE_ADMIN_PROTECTED");
+    assert.equal(replayBody.requestId, firstBody.requestId);
+    const audits = await testDb()
+      .prepare(
+        `SELECT COUNT(*) AS count FROM role_audit_events
+          WHERE entity_id = ? AND outcome = 'DENIED'`
+      )
+      .bind("018f3b8a-0000-7000-8000-000000000a01")
+      .first<{ count: number }>();
+    assert.equal(audits?.count, 1);
   });
 });

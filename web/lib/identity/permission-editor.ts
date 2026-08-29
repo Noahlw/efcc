@@ -11,8 +11,8 @@ import type { Capability, CapabilityMetadata } from "./capability-catalog";
 import {
   applyRoleMutation,
   readCurrentRevision,
-  recordRoleDenial,
   reserveRoleMutationConflict,
+  reserveRoleMutationDenial,
   reserveRoleMutationNoop,
   RoleCapabilityCatalogError,
   RoleIdempotencyConflictError,
@@ -21,6 +21,7 @@ import {
 import {
   loadActorRoles,
   resolveActorCapabilities,
+  ROLE_HIERARCHY_ACTION,
   RoleAdminProtectedError,
   RoleArchivedError,
   RoleBaselineProtectedError,
@@ -30,7 +31,10 @@ import {
   RoleScopeMismatchError,
   RoleTargetNotFoundError,
 } from "./role-hierarchy";
-import type { RoleHierarchyDefinition } from "./role-hierarchy";
+import type {
+  RoleHierarchyActionAffordance,
+  RoleHierarchyDefinition,
+} from "./role-hierarchy";
 import { PROTECTED_STABLE_KEYS, ROLE_CATEGORY_KEY } from "./types";
 import type { RoleAuditOutcome, RoleScopeKind } from "./types";
 
@@ -81,6 +85,12 @@ export interface UpdateRoleDefinitionGrantsInput {
   now: string;
   audit_id: string;
   correlation_id: string;
+}
+
+export interface RoleDefinitionMutationResult extends RoleDefinitionDetailView {
+  idempotent: boolean;
+  /** Internal transport identity; handlers strip it from public data. */
+  responseRequestId?: string;
 }
 
 interface RoleDefinitionRecord {
@@ -311,11 +321,84 @@ function lockReasonFor(
   }
   return null;
 }
+interface RoleActionProjection {
+  actions: RoleHierarchyActionAffordance[];
+  reorderActions: RoleHierarchyActionAffordance[];
+}
+
+function projectRoleActions(
+  target: RoleDefinitionRecord,
+  actorRoles: Awaited<ReturnType<typeof loadActorRoles>>,
+  capabilities: Readonly<Record<string, boolean>>
+): RoleActionProjection {
+  const highest = actorRoles[0];
+  const lowerThanHighest =
+    highest !== undefined &&
+    target.position > highest.position &&
+    highest.role_definition_id !== target.role_definition_id;
+  const inScope = withinActorScope(actorRoles, target);
+  const canRename =
+    capabilities["role.name.write"] === true &&
+    (target.is_protected === 0 ||
+      target.stable_key === PROTECTED_STABLE_KEYS.STAFF) &&
+    target.is_archived === 0 &&
+    lowerThanHighest &&
+    inScope;
+  const canRescope =
+    capabilities["role.scope.write"] === true &&
+    (highest?.stable_key === PROTECTED_STABLE_KEYS.ADMIN ||
+      highest?.stable_key === PROTECTED_STABLE_KEYS.STAFF) &&
+    target.is_protected === 0 &&
+    target.stable_key !== PROTECTED_STABLE_KEYS.ADMIN &&
+    target.stable_key !== PROTECTED_STABLE_KEYS.MEMBER &&
+    target.is_archived === 0 &&
+    lowerThanHighest &&
+    inScope;
+  const canReadPermissions =
+    capabilities["role.permissions.read"] === true &&
+    target.is_protected === 0 &&
+    target.stable_key !== PROTECTED_STABLE_KEYS.ADMIN &&
+    target.stable_key !== PROTECTED_STABLE_KEYS.MEMBER &&
+    target.is_archived === 0 &&
+    lowerThanHighest &&
+    inScope;
+  const canReorder =
+    capabilities["role.reorder"] === true &&
+    target.is_archived === 0 &&
+    lowerThanHighest &&
+    inScope;
+  const actions: RoleHierarchyActionAffordance[] = [];
+  if (canRename) {
+    actions.push({
+      action: ROLE_HIERARCHY_ACTION.RENAME,
+      label: "重新命名",
+    });
+  }
+  if (canRescope) {
+    actions.push({
+      action: ROLE_HIERARCHY_ACTION.SCOPE,
+      label: "編輯適用範圍",
+    });
+  }
+  if (canReadPermissions) {
+    actions.push({
+      action: ROLE_HIERARCHY_ACTION.PERMISSIONS,
+      label: "編輯權限",
+    });
+  }
+  return {
+    actions,
+    reorderActions: canReorder
+      ? [{ action: ROLE_HIERARCHY_ACTION.REORDER, label: "調整順序" }]
+      : [],
+  };
+}
 
 function toRoleDefinition(
   target: RoleDefinitionRecord,
   counts: CountRecord,
-  scopeName: string | null
+  scopeName: string | null,
+  actionProjection: RoleActionProjection
 ): RoleHierarchyDefinition {
   return {
     roleDefinitionId: target.role_definition_id,
@@ -330,8 +413,8 @@ function toRoleDefinition(
     isArchived: target.is_archived === 1,
     assignmentCount: counts.assignments,
     grantCount: counts.grants,
-    actions: [],
-    reorderActions: [],
+    actions: actionProjection.actions,
+    reorderActions: actionProjection.reorderActions,
   };
 }
 
@@ -373,22 +456,56 @@ function projectTerminalDetail(
   };
 }
 
-function parseStoredDetail(
+interface StoredRoleResponse {
+  requestId?: string;
+  data: RoleDefinitionDetailView;
+}
+
+function isRoleDefinitionDetail(
+  value: unknown
+): value is RoleDefinitionDetailView {
+  if (typeof value !== "object" || value === null) {
+    return false;
+  }
+  if (!("roleDefinition" in value) || !("permissions" in value)) {
+    return false;
+  }
+  return (
+    typeof value.roleDefinition === "object" &&
+    value.roleDefinition !== null &&
+    Array.isArray(value.permissions) &&
+    "revision" in value &&
+    typeof value.revision === "number"
+  );
+}
+
+function parseStoredResponse(
   resultJson: string | null
-): RoleDefinitionDetailView | null {
+): StoredRoleResponse | null {
   if (!resultJson) {
     return null;
   }
   try {
-    const parsed = JSON.parse(resultJson) as Partial<RoleDefinitionDetailView>;
-    return parsed.roleDefinition &&
-      Array.isArray(parsed.permissions) &&
-      typeof parsed.revision === "number"
-      ? (parsed as RoleDefinitionDetailView)
-      : null;
+    const parsed: unknown = JSON.parse(resultJson);
+    if (isRoleDefinitionDetail(parsed)) {
+      return { data: parsed };
+    }
+    if (
+      typeof parsed === "object" &&
+      parsed !== null &&
+      "data" in parsed &&
+      isRoleDefinitionDetail(parsed.data)
+    ) {
+      const requestId =
+        "requestId" in parsed && typeof parsed.requestId === "string"
+          ? parsed.requestId
+          : undefined;
+      return { requestId, data: parsed.data };
+    }
   } catch {
-    return null;
+    // Pre-0023 rows may contain a legacy projection or malformed data.
   }
+  return null;
 }
 
 export function canonicalPermissionFingerprint(input: {
@@ -485,8 +602,14 @@ export async function loadRoleDefinitionDetail(
       lockReason,
     } satisfies RoleDefinitionPermission;
   });
+  const actionProjection = projectRoleActions(target, actorRoles, capabilities);
   return {
-    roleDefinition: toRoleDefinition(target, counts, scopeName),
+    roleDefinition: toRoleDefinition(
+      target,
+      counts,
+      scopeName,
+      actionProjection
+    ),
     permissions,
     assignedAccounts,
     revision,
@@ -498,26 +621,128 @@ export async function loadRoleDefinitionDetail(
   };
 }
 
+function permissionErrorCode(error: Error): string {
+  if (error instanceof RoleCapabilityCatalogError) {
+    return "ROLE_NOT_FOUND";
+  }
+  if (error instanceof RoleAdminProtectedError) {
+    return "ROLE_ADMIN_PROTECTED";
+  }
+  if (error instanceof RoleBaselineProtectedError) {
+    return "ROLE_BASELINE_PROTECTED";
+  }
+  if (error instanceof RoleArchivedError) {
+    return "ROLE_ARCHIVED";
+  }
+  if (error instanceof RoleHighestProtectedError) {
+    return "ROLE_HIGHEST_PROTECTED";
+  }
+  if (error instanceof RoleScopeMismatchError) {
+    return "ROLE_SCOPE_MISMATCH";
+  }
+  if (error instanceof RoleInvalidTargetError) {
+    return "ROLE_INVALID_TARGET";
+  }
+  return "ROLE_FORBIDDEN";
+}
+
+interface StoredPermissionError {
+  errorCode: string;
+  requestId?: string;
+  capability?: string;
+}
+
+function parseStoredPermissionError(
+  resultJson: string | null
+): StoredPermissionError | null {
+  if (!resultJson) {
+    return null;
+  }
+  try {
+    const parsed: unknown = JSON.parse(resultJson);
+    if (
+      typeof parsed !== "object" ||
+      parsed === null ||
+      !("errorCode" in parsed) ||
+      typeof parsed.errorCode !== "string"
+    ) {
+      return null;
+    }
+    const requestId =
+      "requestId" in parsed && typeof parsed.requestId === "string"
+        ? parsed.requestId
+        : undefined;
+    const capability =
+      "capability" in parsed && typeof parsed.capability === "string"
+        ? parsed.capability
+        : undefined;
+    return { errorCode: parsed.errorCode, requestId, capability };
+  } catch {
+    return null;
+  }
+}
+
+function replayPermissionError(resultJson: string | null): Error | null {
+  const stored = parseStoredPermissionError(resultJson);
+  if (!stored) {
+    return null;
+  }
+  const error =
+    stored.errorCode === "ROLE_NOT_FOUND"
+      ? new RoleCapabilityCatalogError(stored.capability ?? "")
+      : stored.errorCode === "ROLE_ADMIN_PROTECTED"
+        ? new RoleAdminProtectedError()
+        : stored.errorCode === "ROLE_BASELINE_PROTECTED"
+          ? new RoleBaselineProtectedError()
+          : stored.errorCode === "ROLE_ARCHIVED"
+            ? new RoleArchivedError()
+            : stored.errorCode === "ROLE_HIGHEST_PROTECTED"
+              ? new RoleHighestProtectedError()
+              : stored.errorCode === "ROLE_SCOPE_MISMATCH"
+                ? new RoleScopeMismatchError()
+                : stored.errorCode === "ROLE_INVALID_TARGET"
+                  ? new RoleInvalidTargetError()
+                  : new RoleCapabilityDeniedError();
+  if (stored.requestId) {
+    Object.assign(error, { requestId: stored.requestId });
+  }
+  return error;
+}
+
 async function recordPermissionOutcome(
   db: D1Database,
   input: UpdateRoleDefinitionGrantsInput,
   changes: readonly { capability: string; value: boolean }[],
   reason: string,
-  outcome: Exclude<RoleAuditOutcome, "SUCCESS" | "DUPLICATE">
+  outcome: Extract<RoleAuditOutcome, "DENIED" | "REJECTED">,
+  requestFingerprint: string,
+  capability?: string
 ): Promise<void> {
-  await recordRoleDenial(db, {
-    audit_id: input.audit_id,
-    inserted_at: input.now,
-    actor_user_id: input.actor_user_id,
-    action: "ROLE_DEFINITION_POLICY_UPDATE",
-    entity_type: "role_definition",
-    entity_id: input.role_definition_id,
-    old_value_json: null,
-    new_value_json: JSON.stringify(changes),
-    reason,
-    outcome,
-    correlation_id: input.correlation_id,
-  });
+  await reserveRoleMutationDenial(
+    db,
+    {
+      idempotency_key: input.idempotency_key,
+      request_fingerprint: requestFingerprint,
+      actor_user_id: input.actor_user_id,
+      base_revision: input.base_revision,
+      now: input.now,
+      audit_id: input.audit_id,
+      correlation_id: input.correlation_id,
+      desired: [],
+      audit_summary: {
+        action: "ROLE_DEFINITION_POLICY_UPDATE",
+        entity_type: "role_definition",
+        entity_id: input.role_definition_id,
+        old_value_json: null,
+        new_value_json: JSON.stringify(changes),
+      },
+    },
+    {
+      errorCode: reason,
+      auditOutcome: outcome,
+      capability,
+    }
+  );
 }
 
 /**
@@ -528,7 +753,7 @@ async function recordPermissionOutcome(
 export async function updateRoleDefinitionGrants(
   db: D1Database,
   input: UpdateRoleDefinitionGrantsInput
-): Promise<RoleDefinitionDetailView & { idempotent: boolean }> {
+): Promise<RoleDefinitionMutationResult> {
   if (!input.role_definition_id) {
     throw new RoleInvalidTargetError();
   }
@@ -537,86 +762,60 @@ export async function updateRoleDefinitionGrants(
     throw new RoleTargetNotFoundError();
   }
 
-  const rawChanges = input.changes as readonly {
-    capability: unknown;
-    value: unknown;
-  }[];
-  const normalized = new Map<string, boolean>();
-  for (const change of rawChanges) {
-    if (
-      typeof change !== "object" ||
-      change === null ||
-      typeof change.capability !== "string" ||
-      !isCapability(change.capability) ||
-      typeof change.value !== "boolean"
-    ) {
-      const error = new RoleCapabilityCatalogError(
-        typeof change?.capability === "string" ? change.capability : ""
-      );
-      await recordPermissionOutcome(
-        db,
-        input,
-        [],
-        "ROLE_INVALID_TARGET",
-        "REJECTED"
-      );
-      throw error;
-    }
-    const previous = normalized.get(change.capability);
-    if (previous !== undefined && previous !== change.value) {
-      const error = new RoleCapabilityCatalogError(change.capability);
-      await recordPermissionOutcome(
-        db,
-        input,
-        [],
-        "ROLE_INVALID_TARGET",
-        "REJECTED"
-      );
-      throw error;
-    }
-    normalized.set(change.capability, change.value);
+  if (!Array.isArray(input.changes)) {
+    throw new RoleInvalidTargetError();
   }
-  const requestedChanges = [...normalized.entries()].map(
-    ([capability, value]) => ({ capability: capability as Capability, value })
-  );
+  const rawChanges: readonly unknown[] = input.changes;
+  const fingerprintChanges = rawChanges.map((change) => {
+    if (typeof change !== "object" || change === null) {
+      return { capability: "", value: false };
+    }
+    const capability =
+      "capability" in change && typeof change.capability === "string"
+        ? change.capability
+        : "";
+    const value =
+      "value" in change && typeof change.value === "boolean"
+        ? change.value
+        : false;
+    return { capability, value };
+  });
   const fingerprint = canonicalPermissionFingerprint({
     actor_user_id: input.actor_user_id,
     role_definition_id: input.role_definition_id,
     base_revision: input.base_revision,
-    changes: requestedChanges,
+    changes: fingerprintChanges,
   });
-  const reject = async (
-    error: Error,
-    outcome: Exclude<RoleAuditOutcome, "SUCCESS" | "DUPLICATE"> = "DENIED"
-  ): Promise<never> => {
-    await recordPermissionOutcome(
-      db,
-      input,
-      requestedChanges,
-      error.message.split(":", 1)[0] ?? error.name,
-      outcome
-    );
-    throw error;
-  };
 
-  // Replays are resolved from the terminal ledger before current authority
-  // checks. This is required for response-loss recovery after permissions
-  // have since changed, and the stored projection is the original response.
+  // Replays are resolved before current authority checks. A response-loss
+  // retry therefore replays the original terminal result even if the actor's
+  // assignments or grants changed after the first request.
   const existing = await readMutation(db, input.idempotency_key);
   if (existing) {
     if (
       existing.actor_user_id !== input.actor_user_id ||
       existing.request_fingerprint !== fingerprint
     ) {
-      return reject(new RoleIdempotencyConflictError(), "REJECTED");
+      // A changed actor/key/fingerprint is rejected without a new audit.
+      throw new RoleIdempotencyConflictError();
+    }
+    if (existing.outcome === "DENIED") {
+      throw (
+        replayPermissionError(existing.result_json) ??
+        new RoleCapabilityDeniedError()
+      );
     }
     if (existing.outcome === "SUCCESS") {
-      const stored = parseStoredDetail(existing.result_json);
+      const stored = parseStoredResponse(existing.result_json);
       if (stored) {
-        return { ...stored, idempotent: true };
+        return {
+          ...stored.data,
+          idempotent: true,
+          responseRequestId: stored.requestId,
+        };
       }
-      // Rows written before 0023 have no projection; re-read them explicitly
-      // rather than treating a missing result as an empty response.
+      // Explicit pre-0023 fallback: old terminal rows have no response
+      // envelope, so only those rows re-read the current detail.
       const detail = await loadRoleDefinitionDetail(
         db,
         input.actor_user_id,
@@ -625,13 +824,96 @@ export async function updateRoleDefinitionGrants(
       return { ...detail, idempotent: true };
     }
     if (existing.outcome === "CONFLICT") {
+      const storedError = parseStoredPermissionError(existing.result_json);
       throw new RoleRevisionConflictError(
         existing.resulting_revision ?? (await readCurrentRevision(db)),
         true,
-        true
+        true,
+        storedError?.requestId
       );
     }
   }
+
+  const normalized = new Map<string, boolean>();
+  for (const change of rawChanges) {
+    if (typeof change !== "object" || change === null) {
+      const error = new RoleInvalidTargetError();
+      await recordPermissionOutcome(
+        db,
+        input,
+        fingerprintChanges,
+        permissionErrorCode(error),
+        "REJECTED",
+        fingerprint
+      );
+      throw error;
+    }
+    const capability =
+      "capability" in change && typeof change.capability === "string"
+        ? change.capability
+        : null;
+    const value =
+      "value" in change && typeof change.value === "boolean"
+        ? change.value
+        : null;
+    if (capability === null || value === null) {
+      const error = new RoleInvalidTargetError();
+      await recordPermissionOutcome(
+        db,
+        input,
+        fingerprintChanges,
+        permissionErrorCode(error),
+        "REJECTED",
+        fingerprint
+      );
+      throw error;
+    }
+    if (!isCapability(capability)) {
+      const error = new RoleCapabilityCatalogError(capability);
+      await recordPermissionOutcome(
+        db,
+        input,
+        fingerprintChanges,
+        permissionErrorCode(error),
+        "REJECTED",
+        fingerprint,
+        capability
+      );
+      throw error;
+    }
+    const previous = normalized.get(capability);
+    if (previous !== undefined && previous !== value) {
+      const error = new RoleInvalidTargetError();
+      await recordPermissionOutcome(
+        db,
+        input,
+        fingerprintChanges,
+        permissionErrorCode(error),
+        "REJECTED",
+        fingerprint
+      );
+      throw error;
+    }
+    normalized.set(capability, value);
+  }
+  const requestedChanges = [...normalized.entries()].map(
+    ([capability, value]) => ({ capability: capability as Capability, value })
+  );
+  const reject = async (
+    error: Error,
+    outcome: Extract<RoleAuditOutcome, "DENIED" | "REJECTED"> = "DENIED"
+  ): Promise<never> => {
+    await recordPermissionOutcome(
+      db,
+      input,
+      requestedChanges,
+      permissionErrorCode(error),
+      outcome,
+      fingerprint,
+      error instanceof RoleCapabilityCatalogError ? error.capability : undefined
+    );
+    throw error;
+  };
 
   let detail: RoleDefinitionDetailView;
   try {
@@ -649,17 +931,15 @@ export async function updateRoleDefinitionGrants(
         db,
         input,
         requestedChanges,
-        error.message.split(":", 1)[0] ?? error.name,
-        "DENIED"
+        permissionErrorCode(error),
+        "DENIED",
+        fingerprint
       );
     }
     throw error;
   }
   const actorRoles = await loadActorRoles(db, input.actor_user_id);
   const highest = actorRoles[0];
-  if (!detail.caller.canWrite) {
-    return reject(new RoleCapabilityDeniedError());
-  }
   if (target.stable_key === PROTECTED_STABLE_KEYS.ADMIN) {
     return reject(new RoleAdminProtectedError());
   }
@@ -674,6 +954,9 @@ export async function updateRoleDefinitionGrants(
   }
   if (!withinActorScope(actorRoles, target)) {
     return reject(new RoleScopeMismatchError());
+  }
+  if (!detail.caller.canWrite) {
+    return reject(new RoleCapabilityDeniedError());
   }
   for (const change of requestedChanges) {
     const permission = detail.permissions.find(
@@ -704,15 +987,19 @@ export async function updateRoleDefinitionGrants(
       },
     });
     if (conflict.outcome === "CONFLICT") {
+      const storedError = parseStoredPermissionError(conflict.result_json);
       throw new RoleRevisionConflictError(
         conflict.resulting_revision,
         conflict.idempotent,
-        true
+        true,
+        storedError?.requestId ?? input.correlation_id
       );
     }
+    const stored = parseStoredResponse(conflict.result_json);
     return {
-      ...(parseStoredDetail(conflict.result_json) ?? detail),
+      ...(stored?.data ?? detail),
       idempotent: conflict.idempotent,
+      responseRequestId: stored?.requestId,
     };
   }
 
@@ -752,63 +1039,67 @@ export async function updateRoleDefinitionGrants(
     ),
     new_value_json: JSON.stringify(actualChanges),
   };
+  const resultJson = JSON.stringify({
+    requestId: input.correlation_id,
+    data: projectedDetail,
+  });
 
-  try {
-    const result =
-      actualChanges.length === 0
-        ? await reserveRoleMutationNoop(db, {
-            idempotency_key: input.idempotency_key,
-            request_fingerprint: fingerprint,
-            actor_user_id: input.actor_user_id,
-            base_revision: input.base_revision,
-            now: input.now,
-            audit_id: input.audit_id,
-            correlation_id: input.correlation_id,
-            desired: [],
-            result_json: JSON.stringify(projectedDetail),
-            audit_summary: auditSummary,
-          })
-        : await applyRoleMutation(db, {
-            idempotency_key: input.idempotency_key,
-            request_fingerprint: fingerprint,
-            actor_user_id: input.actor_user_id,
-            base_revision: input.base_revision,
-            now: input.now,
-            audit_id: input.audit_id,
-            correlation_id: input.correlation_id,
-            desired: actualChanges.map((change) => ({
-              kind: change.value
-                ? ("add_grant" as const)
-                : ("remove_grant" as const),
-              role_definition_id: input.role_definition_id,
-              capability: change.capability,
-            })),
-            result_json: JSON.stringify(projectedDetail),
-            audit_summary: auditSummary,
-          });
-    if (result.outcome === "CONFLICT") {
-      throw new RoleRevisionConflictError(
-        result.resulting_revision,
-        result.idempotent,
-        true
-      );
-    }
-    const resultDetail =
-      parseStoredDetail(result.result_json) ??
-      (result.idempotent
-        ? await loadRoleDefinitionDetail(
-            db,
-            input.actor_user_id,
-            input.role_definition_id
-          )
-        : projectedDetail);
-    return { ...resultDetail, idempotent: result.idempotent };
-  } catch (error) {
-    if (error instanceof RoleIdempotencyConflictError) {
-      return reject(error, "REJECTED");
-    }
-    throw error;
+  const result =
+    actualChanges.length === 0
+      ? await reserveRoleMutationNoop(db, {
+          idempotency_key: input.idempotency_key,
+          request_fingerprint: fingerprint,
+          actor_user_id: input.actor_user_id,
+          base_revision: input.base_revision,
+          now: input.now,
+          audit_id: input.audit_id,
+          correlation_id: input.correlation_id,
+          desired: [],
+          result_json: resultJson,
+          audit_summary: auditSummary,
+        })
+      : await applyRoleMutation(db, {
+          idempotency_key: input.idempotency_key,
+          request_fingerprint: fingerprint,
+          actor_user_id: input.actor_user_id,
+          base_revision: input.base_revision,
+          now: input.now,
+          audit_id: input.audit_id,
+          correlation_id: input.correlation_id,
+          desired: actualChanges.map((change) => ({
+            kind: change.value
+              ? ("add_grant" as const)
+              : ("remove_grant" as const),
+            role_definition_id: input.role_definition_id,
+            capability: change.capability,
+          })),
+          result_json: resultJson,
+          audit_summary: auditSummary,
+        });
+  if (result.outcome === "CONFLICT") {
+    const storedError = parseStoredPermissionError(result.result_json);
+    throw new RoleRevisionConflictError(
+      result.resulting_revision,
+      result.idempotent,
+      true,
+      storedError?.requestId ?? input.correlation_id
+    );
   }
+  const stored = parseStoredResponse(result.result_json);
+  let resultDetail = stored?.data;
+  if (!resultDetail && result.idempotent) {
+    // Explicit pre-0023 fallback for terminal rows without result_json.
+    resultDetail = await loadRoleDefinitionDetail(
+      db,
+      input.actor_user_id,
+      input.role_definition_id
+    );
+  }
+  return {
+    ...(resultDetail ?? projectedDetail),
+    idempotent: result.idempotent,
+    responseRequestId: stored?.requestId ?? input.correlation_id,
+  };
 }
 
 export const __test = {

@@ -143,16 +143,19 @@ export class RoleRevisionConflictError extends Error {
   readonly currentRevision: number;
   readonly reusedKey: boolean;
   readonly auditWritten: boolean;
+  readonly requestId?: string;
   constructor(
     currentRevision: number,
     reusedKey: boolean,
-    auditWritten = false
+    auditWritten = false,
+    requestId?: string
   ) {
     super("ROLE_REVISION_CONFLICT: stale base revision");
     this.name = "RoleRevisionConflictError";
     this.currentRevision = currentRevision;
     this.reusedKey = reusedKey;
     this.auditWritten = auditWritten;
+    this.requestId = requestId;
   }
 }
 
@@ -163,6 +166,12 @@ export class RoleCapabilityCatalogError extends Error {
     this.name = "RoleCapabilityCatalogError";
     this.capability = capability;
   }
+}
+
+export interface RoleMutationDenialOptions {
+  errorCode: string;
+  auditOutcome: "DENIED" | "REJECTED";
+  capability?: string;
 }
 
 interface RoleMutationRecord {
@@ -248,7 +257,7 @@ function mutationResult(
   created: boolean,
   fallbackRevision: number
 ): RoleMutationResult {
-  if (record.outcome === "PENDING" || record.outcome === "DENIED") {
+  if (record.outcome === "PENDING") {
     throw new Error("role mutation did not reach a terminal state");
   }
   return {
@@ -258,6 +267,26 @@ function mutationResult(
     created,
     result_json: record.result_json,
   };
+}
+
+function storedRequestId(resultJson: string | null): string | undefined {
+  if (!resultJson) {
+    return undefined;
+  }
+  try {
+    const parsed: unknown = JSON.parse(resultJson);
+    if (
+      typeof parsed === "object" &&
+      parsed !== null &&
+      "requestId" in parsed &&
+      typeof parsed.requestId === "string"
+    ) {
+      return parsed.requestId;
+    }
+  } catch {
+    // Pre-0023 rows may contain a legacy projection or malformed data.
+  }
+  return undefined;
 }
 
 /**
@@ -369,7 +398,8 @@ export async function reserveRoleMutationConflict(
       throw new RoleRevisionConflictError(
         existing.resulting_revision ?? input.base_revision,
         true,
-        true
+        true,
+        storedRequestId(existing.result_json)
       );
     }
   }
@@ -391,13 +421,17 @@ export async function reserveRoleMutationConflict(
             applied, audit_written, created_at, completed_at)
          VALUES (?, ?, ?, ?, 'CONFLICT',
                  (SELECT revision FROM role_policy_revisions WHERE id = 1),
-                 NULL, 0, 1, ?, ?)`
+                 ?, 0, 1, ?, ?)`
       )
       .bind(
         input.idempotency_key,
         input.request_fingerprint,
         input.actor_user_id,
         input.base_revision,
+        JSON.stringify({
+          errorCode: "ROLE_POLICY_CONFLICT",
+          requestId: input.correlation_id ?? null,
+        }),
         input.now,
         input.now
       ),
@@ -447,6 +481,107 @@ export async function reserveRoleMutationConflict(
     (results[0]?.meta?.changes ?? 0) === 0,
     (results[0]?.meta?.changes ?? 0) > 0,
     currentRevision
+  );
+}
+
+/**
+ * Reserve an authorization/validation denial as one terminal idempotency
+ * result. The ledger outcome stays DENIED while the audit outcome preserves
+ * whether the request was denied by authority or rejected by validation.
+ * Replays return the stored terminal metadata and never append another audit.
+ */
+export async function reserveRoleMutationDenial(
+  db: D1Database,
+  input: RoleMutationInput,
+  options: RoleMutationDenialOptions
+): Promise<RoleMutationResult> {
+  const existing = await findMutation(db, input.idempotency_key);
+  if (existing) {
+    if (
+      existing.actor_user_id !== input.actor_user_id ||
+      existing.request_fingerprint !== input.request_fingerprint
+    ) {
+      throw new RoleIdempotencyConflictError();
+    }
+    if (existing.outcome === "SUCCESS" || existing.outcome === "DENIED") {
+      return mutationResult(existing, true, false, input.base_revision);
+    }
+    if (existing.outcome === "CONFLICT") {
+      return mutationResult(existing, true, false, input.base_revision);
+    }
+  }
+
+  const resultJson = JSON.stringify({
+    errorCode: options.errorCode,
+    requestId: input.correlation_id ?? null,
+    ...(options.capability === undefined
+      ? {}
+      : { capability: options.capability }),
+  });
+  const results = await db.batch([
+    db
+      .prepare(
+        `INSERT OR IGNORE INTO role_policy_mutations
+           (idempotency_key, request_fingerprint, actor_user_id,
+            base_revision, outcome, resulting_revision, result_json,
+            applied, audit_written, created_at, completed_at)
+         VALUES (?, ?, ?, ?, 'DENIED',
+                 (SELECT revision FROM role_policy_revisions WHERE id = 1),
+                 ?, 0, 1, ?, ?)`
+      )
+      .bind(
+        input.idempotency_key,
+        input.request_fingerprint,
+        input.actor_user_id,
+        input.base_revision,
+        resultJson,
+        input.now,
+        input.now
+      ),
+    db
+      .prepare(
+        `INSERT INTO role_audit_events
+           (audit_id, inserted_at, actor_user_id, action, entity_type,
+            entity_id, old_value_json, new_value_json, reason, outcome,
+            correlation_id)
+         SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+           FROM role_policy_mutations m
+          WHERE m.idempotency_key = ?
+            AND m.request_fingerprint = ?
+            AND m.actor_user_id = ?
+            AND m.outcome = 'DENIED'
+            AND changes() > 0`
+      )
+      .bind(
+        input.audit_id,
+        input.now,
+        input.actor_user_id,
+        input.audit_summary.action,
+        input.audit_summary.entity_type,
+        input.audit_summary.entity_id,
+        input.audit_summary.old_value_json ?? null,
+        input.audit_summary.new_value_json ?? null,
+        options.errorCode,
+        options.auditOutcome,
+        input.correlation_id ?? null,
+        input.idempotency_key,
+        input.request_fingerprint,
+        input.actor_user_id
+      ),
+  ]);
+  const record = await findMutation(db, input.idempotency_key);
+  if (
+    !record ||
+    record.actor_user_id !== input.actor_user_id ||
+    record.request_fingerprint !== input.request_fingerprint
+  ) {
+    throw new RoleIdempotencyConflictError();
+  }
+  return mutationResult(
+    record,
+    (results[0]?.meta?.changes ?? 0) === 0,
+    (results[0]?.meta?.changes ?? 0) > 0,
+    input.base_revision
   );
 }
 

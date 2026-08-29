@@ -16,6 +16,7 @@ export {
   applyRoleMutation,
   reserveRoleMutationNoop,
   reserveRoleMutationConflict,
+  reserveRoleMutationDenial,
   recordRoleDenial,
   readCurrentRevision,
   RoleIdempotencyConflictError,
@@ -27,6 +28,7 @@ export type {
   RoleMutationInput,
   RoleMutationResult,
   RoleDesiredChange,
+  RoleMutationDenialOptions,
 } from "./mutations";
 
 export {
@@ -108,6 +110,7 @@ export {
 } from "./permission-editor";
 export type {
   RoleDefinitionDetailView,
+  RoleDefinitionMutationResult,
   RoleDefinitionPermission,
   RoleDefinitionAssignedAccount,
   PermissionGrantChange,

@@ -46,6 +46,11 @@ export interface ProblemDetails {
   code?: string;
   /** RFC 9457 extension member - direct access without URI parsing. */
   requestId?: string;
+  /** RFC 9457 extension member carrying authoritative conflict data. */
+  data?: {
+    authoritativeRevision?: number;
+    [key: string]: unknown;
+  };
 }
 
 /**
@@ -184,9 +189,7 @@ async function authFetch<T>(
       method,
       headers: {
         "Content-Type": "application/json",
-        ...(opts.mutating
-          ? { "Idempotency-Key": crypto.randomUUID() }
-          : {}),
+        ...(opts.mutating ? { "Idempotency-Key": crypto.randomUUID() } : {}),
       },
       ...(body === undefined ? {} : { body: JSON.stringify(body) }),
       // Bounded timeout per AGENTS.md Production Resilience.
@@ -242,10 +245,15 @@ export function authLogin(
   username: string,
   password: string
 ): Promise<LoginResult> {
-  return authFetch<LoginResult>("/api/v1/auth/login", "POST", {
-    username,
-    password,
-  }, { mutating: true });
+  return authFetch<LoginResult>(
+    "/api/v1/auth/login",
+    "POST",
+    {
+      username,
+      password,
+    },
+    { mutating: true }
+  );
 }
 
 /** POST /api/v1/auth/upgrade — replaces a verified legacy credential. */
@@ -254,21 +262,23 @@ export function authUpgrade(
   legacyPin: string,
   newCredential: string
 ): Promise<{ user: PublicUser }> {
-  return authFetch<{ user: PublicUser }>("/api/v1/auth/upgrade", "POST", {
-    username,
-    legacyPin,
-    newCredential,
-  }, { mutating: true });
+  return authFetch<{ user: PublicUser }>(
+    "/api/v1/auth/upgrade",
+    "POST",
+    {
+      username,
+      legacyPin,
+      newCredential,
+    },
+    { mutating: true }
+  );
 }
 
 /** POST /api/v1/auth/refresh — rotates the refresh cookie, mints a fresh access. */
 export function authRefresh(): Promise<void> {
-  return authFetch<void>(
-    "/api/v1/auth/refresh",
-    "POST",
-    undefined,
-    { mutating: true }
-  );
+  return authFetch<void>("/api/v1/auth/refresh", "POST", undefined, {
+    mutating: true,
+  });
 }
 
 /**
@@ -277,12 +287,9 @@ export function authRefresh(): Promise<void> {
  * as best-effort (local session is cleared regardless).
  */
 export function authLogout(): Promise<void> {
-  return authFetch<void>(
-    "/api/v1/auth/logout",
-    "POST",
-    undefined,
-    { mutating: true }
-  );
+  return authFetch<void>("/api/v1/auth/logout", "POST", undefined, {
+    mutating: true,
+  });
 }
 
 /**
