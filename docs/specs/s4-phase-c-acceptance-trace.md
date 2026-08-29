@@ -1668,3 +1668,103 @@ The earlier `## #486 corrected focused evidence — 2026-08-29` section at `ffb2
 `C-486-M1` keyboard-only and `C-486-M2` screen-reader review remain **MANUAL — unclaimed**, as do reduced-motion, forced-colors, 200% zoom/text-spacing, real-device dock/safe-area, remote-CI, and production-promotion checks. No manual accessibility, WCAG, screenshot, image, or pixel-diff claim is made. The historical #485 Permission Editor Cloudflare-pool `EvalError: Code generation from strings disallowed for this context` remains external/separate; it is not part of this #486 run, and no unsafe-eval bypass was used.
 
 Only `docs/specs/s4-phase-c-acceptance-trace.md` is changed by this append. No source, test, migration, schema, fixture, geometry config, deployment, external database, or **#487 path** changed. This child remains stopped before Phase D. The doc-only evidence commit SHA is returned with delivery.
+## #486 final post-cache/recovery revalidation — 2026-08-30
+
+**Evidence scope:** fresh focused revalidation of the corrected #486 Account Access and identity-lifecycle implementation at exact coordinator HEAD `b6fbe45bebdba8fcb8c97e1fd44cb5adc556801c` (`fix(identity): close final account access findings`). The child was created from that exact commit, not from coordinator working-tree changes. This is one evidence-only append; every earlier trace row and evidence section remains unchanged.
+
+### Authority reread before checks
+
+Before running Context7 or any validation command, I reread implementation ticket `issue://486`, parent `issue://475`, authoritative Specs `docs/specs/091-stackable-identity-backend.md` and `docs/specs/092-discord-identity-design-system-adoption.md`, approved `local://s4-phase-c-identity-integration-plan.md`, the full current `docs/specs/s4-phase-c-acceptance-trace.md`, ADR `docs/adr/0042-discord-like-stackable-role-model.md`, ADR `docs/adr/0043-owned-civic-design-system-governance.md`, and full prior reports `agent://ReviewAdd486` and `agent://ReviewLast486`. The implementation and both spec tickets were read before validation.
+
+### Provenance and exact runtimes
+
+- **Fresh child:** `/Users/noah.wong/Desktop/code/EFCC-dev/.worktrees/s4-c-486-final-cache-revalidation`, branch `evidence/s4-c-486-final-cache-revalidation`, created from exact coordinator HEAD `b6fbe45b`.
+- **Coordinator reference:** `/Users/noah.wong/Desktop/code/EFCC-dev/.worktrees/s4-phase-c`, branch `feat/s4-c-stackable-identity-integration`, exact HEAD `b6fbe45bebdba8fcb8c97e1fd44cb5adc556801c`.
+- **Observed runtime:** Node `v22.18.0`; pnpm `11.7.0`; Vitest `4.1.10`; Wrangler `4.127.1`; Playwright `1.62.1`; TypeScript `5.9.3`; `@cloudflare/vitest-pool-workers` `0.20.1`; direct web Miniflare package `5.20260828.0-alpha`; pinned Chrome for Testing `151.0.7922.34` (Playwright Chromium revision `v1234`).
+
+### Required Context7 CLI library and docs lookups
+
+The required lookups used the Context7 CLI (`npx --yes ctx7@latest`), not MCP Context7, before validation:
+
+- `/radix-ui/primitives` — `Switch Root renders button with data-state`: `role="switch"`, `aria-checked`, `disabled`/`data-disabled`, `data-state`, and click/`onCheckedChange` behavior.
+- `/joe-bell/cva` — `Component composition pattern`, `Implement component variants with cva`, and `Validate Types at Compile-Time`: base classes, variants/defaults/compound variants, composition, and type-safe props.
+- `/microsoft/playwright` — `Locator.boundingBox([options])` and `Page.setViewportSize`: viewport-relative CSS-pixel rectangles and explicit CSS-pixel viewport sizing.
+- `/cloudflare/workers-sdk` — `D1 batch transactions with prepared statements` and `D1 prepared statements + db.batch() user-facing pattern`: prepared `bind()` statements collected into an atomic `db.batch()` call.
+- `/llmstxt/developers_cloudflare_d1_llms-full_txt` — `D1Database::batch()` and `Batch D1 Statements`: prepared statements execute sequentially within one transaction/batch.
+
+### Focused checks and exact current results
+
+#### Worker identity Account Access, handlers, schema, and role hierarchy
+
+```text
+$ pnpm --dir web exec vitest run --config vitest.config.ts lib/identity/account-access.test.ts lib/identity/account-access-handlers.test.ts lib/identity/d1-schema.test.ts lib/identity/role-hierarchy.test.ts
+
+Test Files  4 passed (4)
+Tests       90 passed (90)
+exit 0
+```
+
+**PASS — 90/90 assertions.** This disposable local D1 run covered eligible Active/non-Admin filtering, safe/private-field projection, mixed-scope privacy, automatic baseline access, atomic multi-identity assignment, invalid-batch rollback, active duplicate no-op/replay, immutable revoke/re-add history, archive/restore without assignment recreation, effective-access provenance, authorization before target disclosure, response-loss replay, complete duplicate and authoritative assignment summaries, audit reasons/correlation and `DENIED` outcomes, protected-schema constraints, and changed-intent idempotency rejection. No remote, Apps Script, Google Sheets, Cloudflare production, or other external database write was made.
+
+#### Account Access/API/directory/DirectoryFrame/role-hierarchy/Department/Programs components
+
+```text
+$ pnpm --dir web exec vitest run --config vitest.components.config.ts lib/account-access-panel.test.tsx lib/account-access-api.test.ts lib/account-directory-panel.test.tsx lib/directory-frame.test.tsx lib/identity/role-hierarchy-panel.test.tsx lib/programs/department-settings-panel.test.tsx lib/programs/programs-leaders-panel.test.tsx
+
+Test Files  7 passed (7)
+Tests       93 passed (93)
+exit 0
+```
+
+**PASS — 93/93 assertions.** The required direct component run covered Account Access scope groups, role-first and account-first links, zero-assignment role entry, server-authorized picker output, atomic add/revoke review, authoritative revoke-preview refresh, lifecycle impact review, canonical URLs, route-state reset, DirectoryFrame retry/focus recovery, one visible live-region owner, persistent retry idempotency keys, concrete scope/history labels, Account Directory behavior, Role Hierarchy behavior, and affected Department Settings / Programs Leaders states.
+
+#### Worker/web TypeScript
+
+```text
+$ pnpm --dir web exec tsc --noEmit -p tsconfig.worker.json && pnpm --dir web exec tsc --noEmit -p tsconfig.json
+(no output)
+exit 0
+```
+
+**PASS —** both requested TypeScript projects exited 0.
+
+#### Web production build and route count
+
+```text
+$ pnpm --dir web build
+✓ Compiled successfully
+✓ Generating static pages using 9 workers (18/18)
+○ (Static) prerendered as static content
+exit 0
+```
+
+**PASS — 18 static routes.** The emitted visible route table contained `/`, `/_not-found`, `/events`, `/guest-check-in`, `/home`, `/management`, `/messages`, `/notices`, `/permissions`, `/profile`, `/profile/settings`, `/programs`, `/prototype`, `/register`, `/registrations`, and `/scanner`. Existing workspace-root/multiple-lockfile, no-cache, telemetry, and `NO_COLOR`/`FORCE_COLOR` notices did not fail the build.
+
+#### Shared W7 numeric geometry
+
+```text
+$ pnpm test:role-hierarchy-geometry
+$ playwright test --config=tests/e2e/role-hierarchy-geometry.config.ts
+Running 49 tests using 1 worker
+49 passed (33.0s)
+exit 0
+```
+
+**PASS — 49/49 numeric tests.** The shared config matched Account Access, Permission Editor, and Role Hierarchy geometry at W7 `320, 390, 600, 799, 800, 1024, 1440` CSS px. Account Access contributed 14/14 tests; the total was 14 Permission Editor + 14 Account Access + 21 Role Hierarchy. Numeric checks covered containment/no horizontal overflow, 44px app-facing Button/Switch targets, phone-dock clearance, the 84px phone reserve, the fixed-to-sticky `799px`/`800px` transition, and the Account Access add-review surface. No screenshot, image snapshot, or pixel-diff test was used.
+
+### Final correction coverage
+
+- **Actor-specific no-store GETs:** `accountFetch` applies `cache: "no-store"` to every GET, and `roleFetch` applies the same policy to role-hierarchy GETs. `account-access-api.test.ts` directly asserts the account search GET and role-hierarchy GET request options, while the shared transport covers account detail, lifecycle preview, and all other Account Access GETs.
+- **All Account Access auth-expiry deep-link branches:** component tests cover initial account load, identity-first hierarchy load, eligible-account search, revoke preview, lifecycle preview, add mutation, revoke mutation, lifecycle mutation, and lifecycle refresh. Each remembers the exact pathname/query/hash through the shared deep-link seam before replacing the route with `/`. Account Directory list/detail auth-expiry tests cover the adjacent directory entry path.
+- **Complete duplicate audit summaries:** Worker tests `records complete state for duplicate assignment audits` and `records complete authoritative assignment summaries` compare complete authoritative assignment-ID sets in both `old_value_json` and `new_value_json`, including assignments hidden from a scoped returned projection. Authorized duplicate no-ops retain `DUPLICATE`; unauthorized duplicate/absent-revoke attempts retain canonical `ROLE_FORBIDDEN` with `DENIED`; invalid input remains `REJECTED`.
+- **Archived-role restore deduplication:** the component test `renders one restore action per archived role definition` supplies repeated revoked history and asserts exactly one restore action. Worker coverage also confirms an active Role Definition with revoked history is not offered as restorable, while archive/restore preserves grants/history and recreates no assignment.
+- **Account Directory Back focus:** `account-directory-panel.test.tsx` test `restores focus to the Account Access source action on Back` asserts the originating `查看帳戶權限與身份組` control is focused after returning to the directory route.
+- **Prior #486 contracts:** the current runs continue to cover eligible Active/non-Admin/self/protected target rules, atomic one-account multi-identity add, whole-batch invalid rollback, duplicate no-op and replay, revoke/history/re-add, lost/retained Effective Permission grouped by Global/Department/Program with grant provenance, archive revocation, restore with preserved history/grants but no assignment recreation, exact request/body/envelope/`X-Request-Id`/correlation and actor-bound idempotency semantics, privacy-safe projections, and identity-first/account-first navigation.
+
+### Historical-count distinction, manual gates, upstream separation, and scope
+
+The earlier `## #486 corrected focused evidence — 2026-08-29` section at `ffb2999acfbda35a62cb2fed37202f785927a79e` remains **historical** and reported 77/77 Worker assertions and 62/62 component assertions. The earlier `## #486 final corrected revalidation — 2026-08-30` section at `32829092668e16a5c46a92f13e6c0354450de0a9` remains **historical** and reported 84/84 Worker assertions and 71/71 component assertions. The earlier `## #486 final revalidation — 2026-08-30` section at `69cc1f0d4f9bc8bce8f9cef48814fbd0e14f6d0c` remains **historical** and reported 86/86 Worker assertions and 74/74 component assertions. The earlier `## #486 post-additional-correction revalidation — 2026-08-30` section at `6e854fd671c16701642e5b114545d18396470a51` remains **historical** and reported 89/89 Worker assertions and 78/78 component assertions. None of those historical counts is reused for this current `b6fbe45b` result; the current component count includes the explicitly required `directory-frame.test.tsx`.
+
+`C-486-M1` keyboard-only and `C-486-M2` screen-reader review remain **MANUAL — unclaimed**, as do reduced-motion, forced-colors, 200% zoom/text-spacing, real-device dock/safe-area, remote-CI, and production-promotion checks. No manual accessibility, WCAG, screenshot, image, or pixel-diff claim is made. The historical #485 Permission Editor Cloudflare-pool `EvalError: Code generation from strings disallowed for this context` remains external/separate; it is not part of this #486 run, and no unsafe-eval bypass was used.
+
+Only `docs/specs/s4-phase-c-acceptance-trace.md` is changed by this append. No source, test, migration, schema, fixture, geometry config, deployment, external database, or **#487 path** changed. This child remains stopped before Phase D.
