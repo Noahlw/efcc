@@ -605,6 +605,81 @@ describe("#486 Account Access domain", () => {
       .first<{ count: number }>();
     expect(audits?.count).toBe(1);
   });
+  test("records complete state for duplicate assignment audits", async () => {
+    const beforeRows = await testDb()
+      .prepare(
+        "SELECT role_definition_id FROM role_assignments WHERE account_user_id = ? AND revoked_at IS NULL"
+      )
+      .bind(MIXED_SCOPE_TARGET)
+      .all<{ role_definition_id: string }>();
+    const beforeIds = (beforeRows.results ?? []).map(
+      (row) => row.role_definition_id
+    );
+    const revision = await testDb()
+      .prepare("SELECT revision FROM role_policy_revisions WHERE id = 1")
+      .first<{ revision: number }>();
+    const duplicateGrant = await mutateAccountAssignments(testDb(), {
+      actor_user_id: SCOPED_ACTOR,
+      account_user_id: MIXED_SCOPE_TARGET,
+      base_revision: revision?.revision ?? 1,
+      role_definition_ids: [LOWER_DEPARTMENT_ROLE],
+      idempotency_key: "account-access-red-duplicate-complete-grant",
+      now: "2026-08-29T00:07:30.000Z",
+      audit_id: "account-access-red-duplicate-complete-grant-audit",
+      correlation_id: "account-access-red-duplicate-complete-grant-correlation",
+    });
+    expect(duplicateGrant.duplicateRoleDefinitionIds).toEqual([
+      LOWER_DEPARTMENT_ROLE,
+    ]);
+    const grantAudit = await testDb()
+      .prepare(
+        "SELECT old_value_json, new_value_json, reason FROM role_audit_events WHERE audit_id = ?"
+      )
+      .bind("account-access-red-duplicate-complete-grant-audit")
+      .first<{
+        old_value_json: string;
+        new_value_json: string;
+        reason: string;
+      }>();
+    expect(new Set(JSON.parse(grantAudit?.old_value_json ?? "[]"))).toEqual(
+      new Set(beforeIds)
+    );
+    expect(new Set(JSON.parse(grantAudit?.new_value_json ?? "[]"))).toEqual(
+      new Set(beforeIds)
+    );
+    expect(grantAudit?.reason).toContain("ROLE_ASSIGNMENT_DUPLICATE");
+    const duplicateRevoke = await revokeAccountAssignments(testDb(), {
+      actor_user_id: SCOPED_ACTOR,
+      account_user_id: MIXED_SCOPE_TARGET,
+      base_revision: duplicateGrant.revision,
+      role_definition_ids: [GRANTABLE_DEPARTMENT_ROLE],
+      idempotency_key: "account-access-red-duplicate-complete-revoke",
+      now: "2026-08-29T00:07:35.000Z",
+      audit_id: "account-access-red-duplicate-complete-revoke-audit",
+      correlation_id:
+        "account-access-red-duplicate-complete-revoke-correlation",
+    });
+    expect(duplicateRevoke.duplicateRoleDefinitionIds).toEqual([
+      GRANTABLE_DEPARTMENT_ROLE,
+    ]);
+    const revokeAudit = await testDb()
+      .prepare(
+        "SELECT old_value_json, new_value_json, reason FROM role_audit_events WHERE audit_id = ?"
+      )
+      .bind("account-access-red-duplicate-complete-revoke-audit")
+      .first<{
+        old_value_json: string;
+        new_value_json: string;
+        reason: string;
+      }>();
+    expect(new Set(JSON.parse(revokeAudit?.old_value_json ?? "[]"))).toEqual(
+      new Set(beforeIds)
+    );
+    expect(new Set(JSON.parse(revokeAudit?.new_value_json ?? "[]"))).toEqual(
+      new Set(beforeIds)
+    );
+    expect(revokeAudit?.reason).toContain("ROLE_ASSIGNMENT_DUPLICATE");
+  });
 
   test("rejects an invalid identity before changing any assignment", async () => {
     const before = await testDb()

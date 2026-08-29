@@ -150,6 +150,25 @@ function buildAccountsHref({
   }
   return `/management?${params.toString()}`;
 }
+function accountAccessReturnHref(
+  href: string,
+  accountUserId: string
+): string {
+  try {
+    const candidate = new URL(href, "https://efcc.internal");
+    if (
+      candidate.pathname !== "/management" ||
+      candidate.searchParams.get("module") !== "accounts"
+    ) {
+      return href;
+    }
+    candidate.searchParams.set("account", accountUserId);
+    candidate.searchParams.set("returnFocus", "account-access");
+    return `${candidate.pathname}${candidate.search}${candidate.hash}`;
+  } catch {
+    return href;
+  }
+}
 
 function accountErrorMessage(error: unknown): string {
   if (!(error instanceof RpcError)) {
@@ -340,6 +359,9 @@ export const AccountDirectoryPanel = () => {
   const stateRef = useRef<HTMLElement>(null);
   const resultsRef = useRef<HTMLElement>(null);
   const detailRef = useRef<HTMLElement>(null);
+  const accessReturnFocusRef = useRef<HTMLButtonElement>(null);
+  const restoreAccessFocus =
+    searchParams.get("returnFocus") === "account-access";
   const [query, setQuery] = useState(searchParams.get("q") ?? "");
   const [role, setRole] = useState<AccountDirectoryMember["role"] | "">(
     parseRole(searchParams.get("role"))
@@ -467,6 +489,10 @@ export const AccountDirectoryPanel = () => {
       current = false;
     };
   }, [detailRetryKey, router, selectedId]);
+  useEffect(() => {
+    if (!restoreAccessFocus || detailState.kind !== "ready") return;
+    accessReturnFocusRef.current?.focus();
+  }, [detailState.kind, restoreAccessFocus]);
 
   const updateUrl = (next: AccountUrlState) => {
     window.history.replaceState(null, "", buildAccountsHref(next));
@@ -705,9 +731,10 @@ export const AccountDirectoryPanel = () => {
                 className="mt-4 min-h-11 w-full bg-[var(--accent)] font-extrabold text-white hover:bg-[var(--accent-deep)]"
                 onClick={() =>
                   router.push(
-                    `/management?module=accounts&account=${encodeURIComponent(selected.userId)}&view=access&return=${encodeURIComponent(returnHref)}`
+                    `/management?module=accounts&account=${encodeURIComponent(selected.userId)}&view=access&return=${encodeURIComponent(accountAccessReturnHref(returnHref, selected.userId))}`
                   )
                 }
+                ref={accessReturnFocusRef}
                 type="button"
               >
                 查看帳戶權限與身份組

@@ -138,6 +138,8 @@ describe(AccountDirectoryPanel, () => {
     expect(mocks.router.push).toHaveBeenCalledWith(
       expect.stringContaining("module=accounts&account=AD-001&view=access")
     );
+    const href = mocks.router.push.mock.calls[0]?.[0] ?? "";
+    expect(href).toContain("returnFocus%3Daccount-access");
   });
 
   test("opens with a populated Account page before search", async () => {
@@ -470,5 +472,29 @@ describe(AccountDirectoryPanel, () => {
     expect(mocks.rememberDeepLink).toHaveBeenCalledWith(
       "/management?module=accounts&account=AD-001"
     );
+  });
+  test("restores focus to the Account Access source action on Back", async () => {
+    mocks.searchParams = new URLSearchParams(
+      "module=accounts&account=AD-001&returnFocus=account-access"
+    );
+    window.history.replaceState(
+      {},
+      "",
+      "/management?module=accounts&account=AD-001&returnFocus=account-access"
+    );
+    server.use(
+      http.get("/api/v1/programs/accounts", () => response()),
+      http.get("/api/v1/programs/accounts/AD-001", () =>
+        HttpResponse.json({
+          requestId: "rid-account-detail",
+          data: ROWS[0],
+        })
+      )
+    );
+    render(<AccountDirectoryPanel />);
+    const accessLink = await screen.findByRole("button", {
+      name: "查看帳戶權限與身份組",
+    });
+    await waitFor(() => expect(document.activeElement).toBe(accessLink));
   });
 });

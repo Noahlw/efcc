@@ -1366,6 +1366,7 @@ async function duplicateResult(
   fingerprint: string,
   view: AccountAccessView,
   duplicateRoleDefinitionIds: string[],
+  activeRoleDefinitionIds: readonly string[],
   auditAction: "ROLE_ASSIGNMENT_GRANT" | "ROLE_ASSIGNMENT_REVOKE"
 ): Promise<AccountAccessMutationResult> {
   const resultJson = JSON.stringify({
@@ -1388,7 +1389,8 @@ async function duplicateResult(
         entity_type: "account",
         entity_id: input.account_user_id,
         reason: "ROLE_ASSIGNMENT_DUPLICATE",
-        new_value_json: JSON.stringify({ duplicateRoleDefinitionIds }),
+        old_value_json: JSON.stringify(activeRoleDefinitionIds),
+        new_value_json: JSON.stringify(activeRoleDefinitionIds),
       },
     },
     {
@@ -1729,6 +1731,7 @@ export async function mutateAccountAssignments(
       fingerprint,
       viewBefore,
       duplicates,
+      activeRows.map((assignment) => assignment.role_definition_id),
       "ROLE_ASSIGNMENT_GRANT"
     );
   }
@@ -1968,6 +1971,7 @@ export async function revokeAccountAssignments(
       fingerprint,
       before,
       noops,
+      activeRows.map((assignment) => assignment.role_definition_id),
       "ROLE_ASSIGNMENT_REVOKE"
     );
   }

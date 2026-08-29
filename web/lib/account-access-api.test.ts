@@ -8,6 +8,7 @@ import {
   searchEligibleAccounts,
   updateRoleDefinitionLifecycle,
 } from "@/lib/identity/account-access-api";
+import { getRoleHierarchy } from "@/lib/identity/role-hierarchy-api";
 
 const fetchMock = vi.fn<typeof fetch>();
 
@@ -37,7 +38,11 @@ describe("Account Access API", () => {
     await searchEligibleAccounts("staff", { offset: 2, limit: 10 });
     expect(fetchMock).toHaveBeenCalledWith(
       "/api/v1/identity/accounts?q=staff&offset=2&limit=10",
-      expect.objectContaining({ method: "GET", headers: {} })
+      expect.objectContaining({
+        method: "GET",
+        headers: {},
+        cache: "no-store",
+      })
     );
 
     fetchMock.mockImplementation(
@@ -63,10 +68,15 @@ describe("Account Access API", () => {
       "key-c"
     );
     await getRoleDefinitionLifecyclePreview("role-a", "archive");
+    await getRoleHierarchy();
     expect(fetchMock.mock.calls[5]?.[0]).toBe(
       "/api/v1/identity/role-definitions/role-a/lifecycle?action=archive"
     );
     const calls = fetchMock.mock.calls;
+    expect(calls[6]?.[1]).toMatchObject({
+      method: "GET",
+      cache: "no-store",
+    });
     expect(calls[1]?.[0]).toBe(
       "/api/v1/identity/accounts/user%2Ftarget/assignments"
     );

@@ -342,6 +342,14 @@ export const AccountAccessPanel = () => {
   const isCurrentRoute = (expectedKey: string, expectedGeneration: number) =>
     routeKeyRef.current === expectedKey &&
     routeGenerationRef.current === expectedGeneration;
+  const redirectToSignIn = () => {
+    rememberDeepLink(
+      `${window.location.pathname}${window.location.search}${window.location.hash}`
+    );
+    router.replace("/");
+  };
+  const isAuthRequired = (error: unknown): boolean =>
+    error instanceof RpcError && error.problem.code === "AUTH_REQUIRED";
   const mutationIntentRef = useRef<string | null>(null);
   const [view, setView] = useState<AccountAccessView | null>(null);
   const [hierarchy, setHierarchy] = useState<RoleHierarchyView | null>(null);
@@ -414,14 +422,8 @@ export const AccountAccessPanel = () => {
         code: error instanceof RpcError ? (error.problem.code ?? null) : null,
       }),
       announceLoading: "正在載入帳戶權限…",
-      isAuthRequired: (error) =>
-        error instanceof RpcError && error.problem.code === "AUTH_REQUIRED",
-      onAuthRequired: () => {
-        rememberDeepLink(
-          `${window.location.pathname}${window.location.search}${window.location.hash}`
-        );
-        router.replace("/");
-      },
+      isAuthRequired,
+      onAuthRequired: redirectToSignIn,
       focusTarget: "[data-account-access-state]",
     },
     [accountUserId, router]
@@ -510,14 +512,8 @@ export const AccountAccessPanel = () => {
           current &&
           isCurrentRoute(requestRouteKey, requestRouteGeneration)
         ) {
-          if (
-            error instanceof RpcError &&
-            error.problem.code === "AUTH_REQUIRED"
-          ) {
-            rememberDeepLink(
-              `${window.location.pathname}${window.location.search}${window.location.hash}`
-            );
-            router.replace("/");
+          if (isAuthRequired(error)) {
+            redirectToSignIn();
             return;
           }
           setHierarchy(null);
@@ -574,11 +570,15 @@ export const AccountAccessPanel = () => {
             setEligibleAccounts(result.accounts);
           }
         })
-        .catch(() => {
+        .catch((error) => {
           if (
             current &&
             isCurrentRoute(requestRouteKey, requestRouteGeneration)
           ) {
+            if (isAuthRequired(error)) {
+              redirectToSignIn();
+              return;
+            }
             setCandidateCount(0);
             setEligibleAccounts([]);
           }
@@ -626,10 +626,17 @@ export const AccountAccessPanel = () => {
     view?.activeAssignments.filter((assignment) =>
       archiveRoleDefinitionIds.includes(assignment.roleDefinitionId)
     ) ?? [];
-  const lifecycleHistory =
-    view?.revokedAssignments.filter((assignment) =>
-      restoreRoleDefinitionIds.includes(assignment.roleDefinitionId)
-    ) ?? [];
+  const lifecycleHistory = view
+    ? [
+        ...new Map(
+          view.revokedAssignments
+            .filter((assignment) =>
+              restoreRoleDefinitionIds.includes(assignment.roleDefinitionId)
+            )
+            .map((assignment) => [assignment.roleDefinitionId, assignment])
+        ).values(),
+      ]
+    : [];
   useEffect(() => {
     if (!accountUserId || !roleDefinitionId || !view?.actions.assign) return;
     if (
@@ -665,6 +672,10 @@ export const AccountAccessPanel = () => {
           requestId === lifecyclePreviewRequestRef.current &&
           isCurrentRoute(requestRouteKey, requestRouteGeneration)
         ) {
+          if (isAuthRequired(error)) {
+            redirectToSignIn();
+            return;
+          }
           setLifecyclePreviewError(errorMessage(error));
         }
       })
@@ -729,6 +740,10 @@ export const AccountAccessPanel = () => {
       });
     } catch (error) {
       if (!isCurrentRoute(requestRouteKey, requestRouteGeneration)) return;
+      if (isAuthRequired(error)) {
+        redirectToSignIn();
+        return;
+      }
       if (!preservesMutationKey(error)) {
         resetMutationKey();
       }
@@ -778,6 +793,10 @@ export const AccountAccessPanel = () => {
           requestId === revokePreviewRequestRef.current &&
           isCurrentRoute(requestRouteKey, requestRouteGeneration)
         ) {
+          if (isAuthRequired(error)) {
+            redirectToSignIn();
+            return;
+          }
           setRevokePreviewError(errorMessage(error));
         }
       })
@@ -833,6 +852,10 @@ export const AccountAccessPanel = () => {
       });
     } catch (error) {
       if (!isCurrentRoute(requestRouteKey, requestRouteGeneration)) return;
+      if (isAuthRequired(error)) {
+        redirectToSignIn();
+        return;
+      }
       if (!preservesMutationKey(error)) {
         resetMutationKey();
       }
@@ -889,11 +912,8 @@ export const AccountAccessPanel = () => {
       ) {
         return;
       }
-      if (error instanceof RpcError && error.problem.code === "AUTH_REQUIRED") {
-        rememberDeepLink(
-          `${window.location.pathname}${window.location.search}${window.location.hash}`
-        );
-        router.replace("/");
+      if (isAuthRequired(error)) {
+        redirectToSignIn();
         return;
       }
       setRefreshError(errorMessage(error));
@@ -933,6 +953,10 @@ export const AccountAccessPanel = () => {
       );
     } catch (error) {
       if (!isCurrentRoute(requestRouteKey, requestRouteGeneration)) return;
+      if (isAuthRequired(error)) {
+        redirectToSignIn();
+        return;
+      }
       if (!preservesMutationKey(error)) {
         resetMutationKey();
       }

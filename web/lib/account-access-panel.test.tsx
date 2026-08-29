@@ -48,6 +48,14 @@ function deferred<T>() {
   });
   return { promise, resolve };
 }
+function authRequired(): RpcError {
+  return new RpcError({
+    status: 401,
+    code: "AUTH_REQUIRED",
+    title: "Unauthorized",
+    detail: "Session expired",
+  });
+}
 
 const view: AccountAccessView = {
   account: {
@@ -342,6 +350,46 @@ describe("AccountAccessPanel", () => {
     ).toBeTruthy();
     expect(screen.getByText("身份組乙")).toBeTruthy();
     expect(screen.getAllByText("Global").length).toBeGreaterThan(0);
+  });
+  test("renders one restore action per archived role definition", async () => {
+    mocks.getAccountAccess.mockResolvedValue({
+      ...view,
+      revokedAssignments: [
+        {
+          assignmentId: "revoked-role-a-1",
+          roleDefinitionId: "role-a",
+          label: "身份組甲",
+          scopeKind: "Global",
+          scopeId: null,
+          scopeLabel: null,
+          position: 4,
+          state: "REVOKED",
+          grantedAt: "2026-08-28T00:00:00.000Z",
+          revokedAt: "2026-08-29T00:00:00.000Z",
+        },
+        {
+          assignmentId: "revoked-role-a-2",
+          roleDefinitionId: "role-a",
+          label: "身份組甲",
+          scopeKind: "Global",
+          scopeId: null,
+          scopeLabel: null,
+          position: 4,
+          state: "REVOKED",
+          grantedAt: "2026-08-27T00:00:00.000Z",
+          revokedAt: "2026-08-28T00:00:00.000Z",
+        },
+      ],
+      actions: {
+        ...view.actions,
+        restore: true,
+        restoreRoleDefinitionIds: ["role-a"],
+      },
+    });
+    render(<AccountAccessPanel />);
+    expect(
+      await screen.findAllByRole("button", { name: "恢復 身份組甲" })
+    ).toHaveLength(1);
   });
   test("reviews and submits multiple identities atomically", async () => {
     const user = userEvent.setup();
@@ -1035,5 +1083,177 @@ describe("AccountAccessPanel", () => {
     expect(
       screen.queryByText("目前沒有生效指派或有效權限會受影響。")
     ).toBeNull();
+  });
+  test("redirects through the deep-link seam when eligible-account search expires", async () => {
+    const user = userEvent.setup();
+    window.history.replaceState(
+      {},
+      "",
+      "/management?module=accounts&account=target&view=access#search"
+    );
+    mocks.searchEligibleAccounts.mockRejectedValue(authRequired());
+    render(<AccountAccessPanel />);
+    await user.type(
+      await screen.findByRole("searchbox", { name: "搜尋可用帳戶" }),
+      "Other"
+    );
+    await waitFor(() =>
+      expect(mocks.router.replace).toHaveBeenCalledWith("/")
+    );
+    expect(mocks.rememberDeepLink).toHaveBeenCalledWith(
+      "/management?module=accounts&account=target&view=access#search"
+    );
+  });
+
+  test("redirects through the deep-link seam when revoke preview expires", async () => {
+    const user = userEvent.setup();
+    window.history.replaceState(
+      {},
+      "",
+      "/management?module=accounts&account=target&view=access#revoke"
+    );
+    mocks.getAccountAccess
+      .mockResolvedValueOnce(revokeView)
+      .mockRejectedValueOnce(authRequired());
+    render(<AccountAccessPanel />);
+    await user.click(
+      await screen.findByRole("button", { name: "撤銷 課程協調者" })
+    );
+    await waitFor(() =>
+      expect(mocks.router.replace).toHaveBeenCalledWith("/")
+    );
+    expect(mocks.rememberDeepLink).toHaveBeenCalledWith(
+      "/management?module=accounts&account=target&view=access#revoke"
+    );
+  });
+
+  test("redirects through the deep-link seam when lifecycle preview expires", async () => {
+    const user = userEvent.setup();
+    window.history.replaceState(
+      {},
+      "",
+      "/management?module=accounts&account=target&view=access#lifecycle"
+    );
+    mocks.getAccountAccess.mockResolvedValue(lifecycleView);
+    mocks.getRoleDefinitionLifecyclePreview.mockRejectedValue(authRequired());
+    render(<AccountAccessPanel />);
+    await user.click(
+      await screen.findByRole("button", { name: "停用 身份組甲" })
+    );
+    await waitFor(() =>
+      expect(mocks.router.replace).toHaveBeenCalledWith("/")
+    );
+    expect(mocks.rememberDeepLink).toHaveBeenCalledWith(
+      "/management?module=accounts&account=target&view=access#lifecycle"
+    );
+  });
+  test("redirects through the deep-link seam when add mutation expires", async () => {
+    const user = userEvent.setup();
+    window.history.replaceState(
+      {},
+      "",
+      "/management?module=accounts&account=target&view=access#add"
+    );
+    mocks.mutateAccountAssignments.mockRejectedValue(authRequired());
+    render(<AccountAccessPanel />);
+    await user.click(
+      await screen.findByRole("switch", { name: "新增 課程協調者" })
+    );
+    await user.click(screen.getByRole("button", { name: "檢視新增 (1)" }));
+    await user.click(
+      screen.getByRole("button", { name: "確認一次新增" })
+    );
+    await waitFor(() =>
+      expect(mocks.router.replace).toHaveBeenCalledWith("/")
+    );
+    expect(mocks.rememberDeepLink).toHaveBeenCalledWith(
+      "/management?module=accounts&account=target&view=access#add"
+    );
+  });
+
+  test("redirects through the deep-link seam when revoke mutation expires", async () => {
+    const user = userEvent.setup();
+    window.history.replaceState(
+      {},
+      "",
+      "/management?module=accounts&account=target&view=access#revoke-mutation"
+    );
+    mocks.getAccountAccess
+      .mockResolvedValueOnce(revokeView)
+      .mockResolvedValueOnce(revokeView);
+    mocks.revokeAccountAssignments.mockRejectedValue(authRequired());
+    render(<AccountAccessPanel />);
+    await user.click(
+      await screen.findByRole("button", { name: "撤銷 課程協調者" })
+    );
+    await waitFor(() =>
+      expect(mocks.getAccountAccess).toHaveBeenCalledTimes(2)
+    );
+    await user.click(screen.getByRole("button", { name: "確認撤銷" }));
+    await waitFor(() =>
+      expect(mocks.router.replace).toHaveBeenCalledWith("/")
+    );
+    expect(mocks.rememberDeepLink).toHaveBeenCalledWith(
+      "/management?module=accounts&account=target&view=access#revoke-mutation"
+    );
+  });
+
+  test("redirects through the deep-link seam when lifecycle mutation expires", async () => {
+    const user = userEvent.setup();
+    window.history.replaceState(
+      {},
+      "",
+      "/management?module=accounts&account=target&view=access#lifecycle-mutation"
+    );
+    mocks.getAccountAccess.mockResolvedValue(lifecycleView);
+    mocks.updateRoleDefinitionLifecycle.mockRejectedValue(authRequired());
+    render(<AccountAccessPanel />);
+    await user.click(
+      await screen.findByRole("button", { name: "停用 身份組甲" })
+    );
+    await screen.findByRole("heading", { name: "確認停用身份組？" });
+    await user.click(screen.getByRole("button", { name: "確認" }));
+    await waitFor(() =>
+      expect(mocks.router.replace).toHaveBeenCalledWith("/")
+    );
+    expect(mocks.rememberDeepLink).toHaveBeenCalledWith(
+      "/management?module=accounts&account=target&view=access#lifecycle-mutation"
+    );
+  });
+
+  test("redirects through the deep-link seam when lifecycle refresh expires", async () => {
+    const user = userEvent.setup();
+    window.history.replaceState(
+      {},
+      "",
+      "/management?module=accounts&account=target&view=access#refresh"
+    );
+    mocks.getAccountAccess
+      .mockResolvedValueOnce(lifecycleView)
+      .mockRejectedValueOnce(authRequired());
+    mocks.updateRoleDefinitionLifecycle.mockResolvedValue({
+      roleDefinitionId: "role-a",
+      action: "archive",
+      isArchived: true,
+      revision: 4,
+      affectedAccountUserIds: ["target"],
+      impact: [],
+      idempotent: false,
+    });
+    render(<AccountAccessPanel />);
+    await user.click(
+      await screen.findByRole("button", { name: "停用 身份組甲" })
+    );
+    await screen.findByRole("heading", { name: "確認停用身份組？" });
+    await user.click(screen.getByRole("button", { name: "確認" }));
+    await waitFor(() =>
+      expect(mocks.updateRoleDefinitionLifecycle).toHaveBeenCalledTimes(1)
+    );
+    await waitFor(() =>
+      expect(mocks.router.replace).toHaveBeenCalledWith("/")
+    );
+    expect(mocks.rememberDeepLink).toHaveBeenCalledWith(
+      "/management?module=accounts&account=target&view=access#refresh"
+    );
   });
 });

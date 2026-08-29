@@ -41,6 +41,7 @@ async function roleFetch<T>(
           : { "Idempotency-Key": idempotencyKey ?? crypto.randomUUID() }),
       },
       ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+      ...(method === "GET" ? { cache: "no-store" } : {}),
       signal: AbortSignal.timeout(30_000),
     });
   } catch {
