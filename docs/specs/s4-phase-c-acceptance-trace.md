@@ -888,3 +888,199 @@ The shared config `tests/e2e/role-hierarchy-geometry.config.ts:10-29` matched bo
 - Only `docs/specs/s4-phase-c-acceptance-trace.md` is changed by this append. No focused test/config correction was needed; the corrected Permission Editor geometry test is already matched by the single shared `role-hierarchy-geometry.config.ts`.
 - No correction worker was launched, no production/schema/migration/seed/fixture file was edited, and no Apps Script, Google Sheets, Cloudflare production, or external database write was made.
 - The final correction commit remains `894d7993e8ca24741f951842aaca3773aa793dea`; the integrated head before this evidence remains `957c837d5015ddf0cefdde8e27ddaef15ffce69c`. Phase C remains stopped before Phase D.
+
+## #486 final focused evidence — 2026-08-29
+
+**Evidence scope:** final focused validation of the integrated #486 Account Access and identity-lifecycle implementation. This is an evidence-only append. No production source, schema, migration, seed, fixture, test, geometry config, deployment, screenshot, snapshot, or pixel-diff file was changed.
+
+### Provenance and exact runtimes
+
+- **Worktree:** `/Users/noah.wong/Desktop/code/EFCC-dev/.worktrees/s4-phase-c`
+- **Branch:** `feat/s4-c-stackable-identity-integration`
+- **Base SHA:** `c75c99e84d699d2d1eac44f07d4e013ead4c12a5`
+- **#486 implementation SHA:** `8e066dc7f791249e79696c331372d919ce188833`
+- **Integrated head under test:** `69762b8368913ef63c521d08f430478779a05f71`
+- **Evidence commit:** this trace-only append; its resulting SHA is returned with delivery because a commit cannot contain its own SHA.
+
+The exact runtime/version command was run before the focused checks:
+
+```text
+$ node --version && pnpm --version && pnpm --dir web exec vitest --version && pnpm --dir web exec wrangler --version && pnpm exec playwright --version && pnpm --dir web exec tsc --version && pnpm --dir web why miniflare --depth 5 && "$HOME/Library/Caches/ms-playwright/chromium-1234/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing" --version
+v22.18.0
+11.7.0
+vitest/4.1.10 darwin-arm64 node-v22.18.0
+4.127.1
+Version 1.62.1
+Version 5.9.3
+miniflare@5.20260730.0-alpha
+├─┬ @cloudflare/vitest-pool-workers@0.20.1
+│ └── web@0.1.0 (devDependencies)
+└─┬ wrangler@4.118.0
+  └── @cloudflare/vitest-pool-workers@0.20.1 [deduped]
+
+miniflare@5.20260828.0-alpha
+└── wrangler@4.127.1
+    └── web@0.1.0 (devDependencies)
+
+Found 2 versions of miniflare
+Google Chrome for Testing 151.0.7922.34
+```
+
+The direct web dependency is Miniflare `5.20260828.0-alpha`; the older `5.20260730.0-alpha` is a transitive dependency reported by the exact query. The pinned Chromium is Playwright revision `v1234`.
+
+### Required Context7 CLI library and docs lookup
+
+These lookups ran before validation and were used for the source audit:
+
+```text
+$ npx --yes ctx7@latest library radix-ui "Switch Root checked onCheckedChange disabled keyboard semantics"
+Selected authoritative result: /radix-ui/primitives
+$ npx --yes ctx7@latest docs /radix-ui/primitives "Switch Root checked onCheckedChange disabled role keyboard behavior"
+Switch.Root renders a button with role="switch", aria-checked, disabled/data-disabled state, and onCheckedChange.
+
+$ npx --yes ctx7@latest library class-variance-authority "CVA variants composition type-safe class names"
+Selected authoritative result: /joe-bell/cva
+$ npx --yes ctx7@latest docs /joe-bell/cva "type-safe cva variants composition class variance authority"
+CVA documents type-safe cva variants and composed variant props.
+
+$ npx --yes ctx7@latest library playwright "viewport CSS pixels locator boundingBox webServer"
+Selected authoritative result: /microsoft/playwright
+$ npx --yes ctx7@latest docs /microsoft/playwright "Locator boundingBox viewport CSS pixels and test viewport webServer"
+Locator.boundingBox returns the matching element rectangle relative to the main-frame viewport in pixels.
+
+$ npx --yes ctx7@latest library "Cloudflare Workers" "D1Database batch transaction prepared statements"
+Selected authoritative result: /cloudflare/workers-sdk
+$ npx --yes ctx7@latest docs /cloudflare/workers-sdk "D1Database batch prepared statements transaction atomic"
+D1 batch transactions use prepared statements collected into an array and passed to db.batch().
+```
+
+The initial unquoted multiword Cloudflare resolver invocation was rejected by the CLI argument parser; the quoted invocation above is the successful lookup used. Context7 confirms the local Radix Switch semantics, CVA variant composition, Playwright CSS-pixel bounding boxes/viewports, and Cloudflare D1 prepared-statement batch pattern.
+
+### #486 source and contract audit
+
+The required authority material was re-read before validation: issue #486, issue #475, Spec 091, Spec 092, ADR-0042, ADR-0043, the approved `local://s4-phase-c-identity-integration-plan.md`, and the full current acceptance trace. The following integrated-head seams were then inspected:
+
+- `web/lib/identity/account-access.ts` owns the safe `AccountAccessView`, active/revoked assignment projections, assignment history, `Global`/`Department`/`Program` effective-access groups, grant provenance, revision, and server-projected actions. `assertEligibleAccount` enforces Active/non-Admin/non-self targets; `assertRoleManageable` enforces protected Admin/baseline, archived, highest-position, exact-scope, and capability guards.
+- `mutateAccountAssignments` validates every requested identity before staging any write, de-duplicates active assignments, creates a fresh `crypto.randomUUID()` assignment ID for each addition, and sends the batch through `applyRoleMutation`. `revokeAccountAssignments` stages immutable revocation history and computes lost/retained impact. `mutateRoleDefinitionLifecycle` computes archive impact and sends `archive_role_definition`/`restore_role_definition` through the same mutation kernel; restore does not stage assignments.
+- `replayIfTerminal`, `deny`, `duplicateResult`, and the mutation-kernel reservations bind actor, canonical request fingerprint, idempotency key, revision, request/correlation ID, terminal result, and audit outcome. The implementation preserves the original terminal projection for replay.
+- `web/lib/identity/account-access-handlers.ts` uses cookie-only `requireActor`, strict JSON/body validation, required actor-bound `Idempotency-Key`, `{ requestId, data }` success envelopes, RFC 9457 Problem Details, and `X-Request-Id`/correlation mapping. `web/lib/identity/account-access-api.ts` URL-encodes path IDs, sends the exact assignment/lifecycle bodies, and does not send an `Authorization` header.
+- `web/worker.ts:1083-1176` dispatches `GET /api/v1/identity/accounts`, account assignment GET/POST/revoke, and lifecycle POST routes behind the identity cookie/auth guard.
+- `web/app/management/account-access-panel.tsx` consumes `DirectoryFrame`, the shared async resource, Account Access API methods, and local `Button`, `Input`, `Switch`, `Sheet`, `Dialog`, and `AlertDialog` primitives. It uses `cva` for panel variants and `cn` for composed classes; assignment review, revoke impact, scope groups, provenance, history, lifecycle copy, retry/error/focus state, and safe Back are route-local.
+- `web/app/management/directory-frame.tsx` remains a domain-neutral responsive frame with list/detail/state slots, retry/detail focus refs, pagination hooks, `min-[800px]` composition, and no Account Access query vocabulary.
+- Entry links converge on the canonical `module=accounts&account=<opaque id>&view=access` route: Account Directory (`account-directory-panel.tsx:708`), Role Hierarchy identity-first detail (`role-hierarchy-panel.tsx:1262`), Department Settings (`programs/department-settings-panel.tsx:385`), and Programs Leaders (`programs/programs-leaders-panel.tsx:177`). Department/Programs keep their surrounding task context; no new navigation section was added.
+- `web/components/ui/button.tsx` is the local shadcn/CVA/`cn` Button and `web/components/ui/switch.tsx` is the local Radix Switch wrapper composed with `cn`. The Account Access panel applies `min-h-11 min-w-11` to assignment Switches.
+
+### Focused commands and exact results
+
+#### Worker/domain/D1
+
+```text
+$ pnpm --dir web exec vitest run --config vitest.config.ts lib/identity/account-access.test.ts lib/identity/account-access-handlers.test.ts lib/identity/d1-schema.test.ts lib/identity/role-hierarchy.test.ts
+
+ Test Files  4 passed (4)
+      Tests  73 passed (73)
+   Start at  21:06:49
+   Duration  3.23s (transform 278ms, setup 0ms, import 871ms, tests 1.21s, environment 0ms)
+```
+
+**Result: exit 0; 73/73 assertions passed.** This is the direct Worker/domain/D1 evidence run. It used disposable local D1 test bootstrap/seed paths only; no remote, Apps Script, Google Sheets, Cloudflare production, or other external database write was made.
+
+#### Account Access, Account Directory, and Role Hierarchy components
+
+```text
+$ pnpm --dir web exec vitest run --config vitest.components.config.ts lib/account-access-panel.test.tsx lib/account-access-api.test.ts lib/account-directory-panel.test.tsx lib/identity/role-hierarchy-panel.test.tsx
+
+ Test Files  4 passed (4)
+      Tests  39 passed (39)
+   Start at  21:07:07
+   Duration  3.48s (transform 873ms, setup 662ms, import 1.53s, tests 3.48s, environment 2.19s)
+```
+
+**Result: exit 0; 39/39 assertions passed.** The direct client evidence covers selected-account rendering, scope-group headings, assignment review, canonical Account Access navigation from Account Directory and Role Hierarchy, API path/body/idempotency-key encoding, Account Directory Back/deep-link behavior, and existing Role Hierarchy URL/focus/live-region contracts.
+
+#### Directly affected Department/Programs convergence tests
+
+```text
+$ pnpm --dir web exec vitest run --config vitest.components.config.ts lib/programs/department-settings-panel.test.tsx lib/programs/programs-leaders-panel.test.tsx
+
+ Test Files  2 passed (2)
+      Tests  18 passed (18)
+   Start at  21:07:15
+   Duration  1.45s (transform 421ms, setup 159ms, import 785ms, tests 837ms, environment 694ms)
+```
+
+**Result: exit 0; 18/18 assertions passed.** These suites directly exercise the affected Department Settings and Programs Leaders surfaces and their existing loading, scope, mutation, error, and member/operator states. Their current assertions do not themselves prove the Account Access link destination; the destination was source-audited at the exact links above.
+
+#### Worker/web TypeScript configs
+
+```text
+$ pnpm --dir web exec tsc --noEmit -p tsconfig.worker.json && pnpm --dir web exec tsc --noEmit -p tsconfig.json
+(no output)
+```
+
+**Result: exit 0.** Both requested Worker and web TypeScript configs passed.
+
+#### Web production build
+
+```text
+$ pnpm --dir web build
+▲ Next.js 16.2.12 (Turbopack)
+✓ Compiled successfully
+  Finished TypeScript in 4.7s ...
+✓ Generating static pages using 9 workers (18/18) in 189ms
+...
+○  (Static)  prerendered as static content
+```
+
+**Result: exit 0; 18 static routes prerendered.** Next emitted the existing workspace-root/multiple-lockfile warning and no-cache warning; neither failed the build.
+
+#### Shared W7 numeric geometry
+
+```text
+$ pnpm test:role-hierarchy-geometry
+$ playwright test --config=tests/e2e/role-hierarchy-geometry.config.ts
+Running 49 tests using 1 worker
+...
+49 passed (26.3s)
+```
+
+The single shared `tests/e2e/role-hierarchy-geometry.config.ts` matched `role-hierarchy-geometry.test.ts`, `permission-editor-geometry.test.ts`, and `account-access-geometry.test.ts` at every required width: `320, 390, 600, 799, 800, 1024, 1440` CSS px. Account Access contributed 2 scenarios per width, **14/14 Account Access geometry tests passed**; Permission Editor contributed 14 and Role Hierarchy 21, for **49/49 total**. Direct numeric checks covered no horizontal overflow, in-bounds main/content/action rectangles, rendered Button heights, Switch width/height `>=44px`, phone dock clearance, `84px` phone bottom reserve, and the fixed-to-sticky dock transition at `799px`/`800px`. The add-review Sheet stayed within the viewport at all W7 widths. No screenshot, image snapshot, or pixel-diff test was used. The geometry harness stubs browser API responses and is not an authenticated end-to-end journey.
+
+### Safe/private-data audit
+
+**PASS — Account Access projection is privacy-safe for the exercised contract.** The account-access SQL selects only `user_id`, `name`, `username`, and `account_status`; the eligible-account query requires `Active`, excludes the actor, excludes active Admin assignments, and emits only safe identity IDs/labels/scope labels. `AccountAccessPanel` renders the safe account projection, assignment IDs/timestamps, scope-grouped capability metadata, and source labels; it does not read or return credential, token, phone, attendance, or pastoral fields. The domain test asserts no `credential_hash`/`phone` fields in search results and no `credential_hash`/`phone` strings in the Account Access projection; the handler test asserts the safe response does not contain `credential`, `phone`, `attendance`, or `pastoral`. This is source/test evidence for the Account Access surface, not a claim about unrelated Account Directory detail fields.
+
+### Assignment, revoke/re-add, lifecycle, idempotency, and audit outcomes
+
+- **Assignment batch — PASS (directly exercised):** the Worker/domain test adds Department and Program identities to one account in one `mutateAccountAssignments` call, returns `idempotent: false`, and projects both scope groups. The handler test adds through the canonical route and verifies the request ID/envelope.
+- **Active duplicate — PASS (directly exercised):** an already-active identity is reported in `duplicateRoleDefinitionIds`, creates no second active assignment, and replaying the same actor/key/fingerprint returns `idempotent: true` with exactly one audit row for the duplicate-key sequence.
+- **Invalid batch rollback — PASS (directly exercised for an unknown identity):** a batch containing one valid identity and `unknown-role-definition` rejects before any assignment-count change. The complete Pending/Suspended/Inactive/Admin/self/out-of-scope/above-highest matrix was not run in this focused command.
+- **Revoke and re-add — PASS (directly exercised):** revoke removes the identity from active projection and retains it in revoked history; re-add gets a fresh `assignmentId` while the prior revoked event remains. The handler test also verifies explicit revoke route envelopes. A same-key revoke replay was not separately exercised.
+- **Archive and restore — PASS (directly exercised for state/history):** archive returns `isArchived: true`, removes the live assignment from the Account Access projection, and writes a correlated `ROLE_DEFINITION_ARCHIVE` `SUCCESS` audit in the domain test; restore returns `isArchived: false` and does not recreate the assignment. The handler test verifies revision-bound archive/restore success envelopes and matching `X-Request-Id`. A post-archive assignment rejection and exact terminal idempotency-row audit count were not separately exercised.
+- **Successful response-loss replay — PASS (directly exercised):** replay returns the original revision and active-assignment projection rather than a newly recomputed response. The mutation-kernel source audit and D1 suite cover terminal reservations; no broader authenticated response-loss journey is claimed.
+
+### C-486-01..07 focused mapping
+
+| Row | Directly exercised result | Acceptance status |
+| --- | --- | --- |
+| C-486-01 | **PASS — focused behavior:** eligible Active/non-Admin search, safe account/detail projection, no private fields, canonical Account Directory entry, and Account Access candidate navigation were exercised. | **PARTIAL —** the full live identity-detail/shared-projection journey and every self-target/private-data fixture combination were not separately run. |
+| C-486-02 | **PASS —** one-account multi-identity add, Department/Program projection, active duplicate no-op, and duplicate replay behavior were exercised through the domain seam; the handler add envelope also passed. | **PASS for the directly exercised contract.** No multi-account bulk behavior was added or claimed. |
+| C-486-03 | **PASS — focused behavior:** one invalid unknown identity rejected the batch with no assignment-count change; strict empty-body/empty-list validation also ran at the handler seam. | **PARTIAL —** Pending/Suspended/Inactive/Admin/self/out-of-scope/above-highest cases were not all directly exercised in this run. |
+| C-486-04 | **PASS —** revoke-to-history and fresh re-add assignment event were exercised, including preservation of the revoked row; duplicate replay no-second-audit was directly exercised for the active-duplicate path. | **PARTIAL —** same-key revoke replay and every normalized audit/replay variant were not separately exercised. |
+| C-486-05 | **PASS — focused behavior:** effective-access scope buckets, baseline presence, grant source shape in the domain projection, and revoke lost/retained impact copy in the component were exercised. | **PARTIAL —** complete provenance assertions across all scopes and archive-impact UI grouping were not separately exercised. |
+| C-486-06 | **PASS — focused behavior:** archive/revoked-state/restore/no-reassignment and lifecycle request-ID envelopes were exercised; the archive audit action/outcome/correlation was asserted. | **PARTIAL —** post-archive assignment rejection, preserved-grant assertion, and exact lifecycle idempotency replay/audit counts were not separately exercised. |
+| C-486-07 | **PASS — focused behavior:** Account Directory and Role Hierarchy canonical access links, Account Access component states, and 14 Account Access numeric geometry scenarios passed at all W7 widths. | **PARTIAL —** no authenticated browser journey proved focus restoration, reload/history, or every Department/Programs link; human focus/feedback and AT gates remain manual. |
+
+No unrun authenticated journey, full private-data matrix, formal WCAG conformance, or manual accessibility outcome is converted into PASS.
+
+### Manual gates and infrastructure classification
+
+- `C-486-M1` keyboard-only review of both identity-first and account-first entry links at 320/1440, focus order/visibility, target size, Back/history, and dock clearance: **MANUAL — unclaimed**.
+- `C-486-M2` screen-reader review of Effective Permission scope groups, grant provenance, archive impact, and revoke/re-add announcements: **MANUAL — unclaimed**.
+- Reduced-motion, forced-colors, 200% zoom/text-spacing, real-device dock/safe-area, remote-CI, and production-promotion gates remain **MANUAL — unclaimed**. No WCAG 2.2 AA certification is claimed.
+- All focused commands in this section exited 0. The only infrastructure warnings observed were the existing Next workspace-root/multiple-lockfile warning, no-cache warning, and Playwright `NO_COLOR`/`FORCE_COLOR` notices; none changed a product result or was classified as a failure.
+
+### Evidence-only scope
+
+- Only `docs/specs/s4-phase-c-acceptance-trace.md` is changed by this append. The base `c75c99e84d699d2d1eac44f07d4e013ead4c12a5`, #486 implementation `8e066dc7f791249e79696c331372d919ce188833`, and integrated head `69762b8368913ef63c521d08f430478779a05f71` are recorded exactly above.
+- No correction worker was launched; no source/schema/migration/seed/fixture/test/config file was edited; no production or external database write was made. The branch remains stopped before Phase D.
