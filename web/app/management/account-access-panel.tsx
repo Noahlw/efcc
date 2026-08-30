@@ -71,6 +71,21 @@ const panelVariants = cva(
   }
 );
 
+const statusVariants = cva(
+  "m-0 mt-3 wrap-anywhere rounded-[var(--radius-sm)] border p-3",
+  {
+    variants: {
+      kind: {
+        success:
+          "border-[var(--success-border)] bg-[var(--success-surface)]",
+        error: "border-[var(--error-border)] bg-[var(--error-surface)]",
+        conflict: "border-[var(--error-border)] bg-[var(--error-surface)]",
+      },
+    },
+    defaultVariants: { kind: "error" },
+  }
+);
+
 const cardClass =
   "min-w-0 rounded-[var(--radius-md)] border border-[var(--line)] bg-[var(--surface-raised)] p-[var(--space-4)]";
 const stateClass =
@@ -1448,12 +1463,7 @@ export const AccountAccessPanel = () => {
               {status && (
                 <p
                   aria-live="polite"
-                  className={cn(
-                    "m-0 mt-3 wrap-anywhere rounded-[var(--radius-sm)] border p-3",
-                    status.kind === "success"
-                      ? "border-[var(--success-border)] bg-[var(--success-surface)]"
-                      : "border-[var(--error-border)] bg-[var(--error-surface)]"
-                  )}
+                  className={cn(statusVariants({ kind: status.kind }))}
                   role={status.kind === "success" ? "status" : "alert"}
                 >
                   {status.message}

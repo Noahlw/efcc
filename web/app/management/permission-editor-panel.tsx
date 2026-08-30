@@ -100,8 +100,12 @@ const permissionRowVariants = cva(
         clean: "border-border",
         changed: "border-primary bg-primary/5",
       },
+      disabled: {
+        true: "opacity-70",
+        false: "",
+      },
     },
-    defaultVariants: { state: "clean" },
+    defaultVariants: { state: "clean", disabled: false },
   }
 );
 
@@ -735,8 +739,8 @@ export const PermissionEditorPanel = () => {
                           className={cn(
                             permissionRowVariants({
                               state: changed ? "changed" : "clean",
-                            }),
-                            disabled && "opacity-70"
+                              disabled,
+                            })
                           )}
                           data-capability={permission.capability}
                           key={permission.capability}
