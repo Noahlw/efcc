@@ -1768,3 +1768,203 @@ The earlier `## #486 corrected focused evidence — 2026-08-29` section at `ffb2
 `C-486-M1` keyboard-only and `C-486-M2` screen-reader review remain **MANUAL — unclaimed**, as do reduced-motion, forced-colors, 200% zoom/text-spacing, real-device dock/safe-area, remote-CI, and production-promotion checks. No manual accessibility, WCAG, screenshot, image, or pixel-diff claim is made. The historical #485 Permission Editor Cloudflare-pool `EvalError: Code generation from strings disallowed for this context` remains external/separate; it is not part of this #486 run, and no unsafe-eval bypass was used.
 
 Only `docs/specs/s4-phase-c-acceptance-trace.md` is changed by this append. No source, test, migration, schema, fixture, geometry config, deployment, external database, or **#487 path** changed. This child remains stopped before Phase D.
+## #487 focused evidence — current head `4f1c7572`
+
+**Evidence scope:** fresh focused evidence for #487 at coordinator HEAD
+`4f1c7572b3296f29ea41aa321e1f259ff58f01ae`
+(`test(#487): cover normalized authority cutover`). The child was created
+from that exact coordinator commit as
+`.worktrees/s4-c-487-evidence-authority` on branch
+`evidence/s4-c-487-authority`; the coordinator worktree remained untouched.
+This is a documentation-only append. No source, test, schema, migration,
+seed, fixture, config, deployment, or #488/#489/Phase D path was changed.
+
+### Authority reread before checks
+**Ordering disclosure:** The authority reread and Context7 CLI commands did run
+before the first validation commands, but the explicit authority/Context7 report
+was emitted after those two commands in the session transcript. The
+`normalized-authority-c487.test.ts` BLOCKED result and `sections.test.ts` 5/5
+result are retained as out-of-order evidence; no subsequent claim relies on
+that report sequencing, and both results remain classified exactly as observed.
+
+
+Before Context7 or validation, I reread implementation ticket `issue://487`,
+parent ticket `issue://475`, authoritative Specs
+`docs/specs/091-stackable-identity-backend.md` and
+`docs/specs/092-discord-identity-design-system-adoption.md`, approved
+`local://s4-phase-c-identity-integration-plan.md` including Task 4 and its
+exact obsolete-caller audit, the full current
+`docs/specs/s4-phase-c-acceptance-trace.md`, ADRs
+`docs/adr/0042-discord-like-stackable-role-model.md` and
+`docs/adr/0043-owned-civic-design-system-governance.md`, the Phase B trace
+`docs/specs/s4-phase-b-acceptance-trace.md`, Phase B evidence
+`docs/qa/2026-08-28-s4-phase-b-foundation.md`, and
+`agent://TestAuthority487`. The test worker report independently records the
+same implementation/spec reread set and the prior #487 test commit.
+
+### Runtime and required Context7 CLI lookup
+
+Observed runtime: Node `v22.18.0`, pnpm `11.7.0`, Vitest `4.1.10`,
+Wrangler `4.127.1`, Playwright `1.62.1`, TypeScript `5.9.3`, direct web
+Miniflare `5.20260828.0-alpha` (the dependency graph also reports transitive
+`5.20260730.0-alpha` under Wrangler `4.118.0` and
+`@cloudflare/vitest-pool-workers@0.20.1`), and pinned Chrome for Testing
+`151.0.7922.34` (Playwright Chromium revision `v1234`).
+
+The required lookups used the Context7 CLI (`npx --yes ctx7@latest`), not MCP
+Context7, before validation:
+
+- `/cloudflare/workers-sdk` — `D1 batch transactions with prepared
+  statements`, `D1 prepared statements + db.batch() user-facing pattern`,
+  and `D1 binding, prepared statements, and query methods`: prepared
+  `bind()` statements are collected into an atomic `db.batch()`.
+- `/vitest-dev/vitest` — `Run Vitest with Specific File` and
+  `expect(actual, message?)` / `expect.requireAssertions`: specific-file
+  execution and explicit assertion APIs.
+- `/microsoft/playwright` — `Locator.boundingBox([options])` and
+  `Page.setViewportSize`: viewport-relative CSS-pixel rectangles and explicit
+  CSS-pixel viewport sizing.
+
+### Focused checks and exact results
+
+| Check | Exact command / result |
+| --- | --- |
+| New normalized-authority Worker seam | `pnpm --dir web exec vitest run --config vitest.config.ts lib/auth/normalized-authority-c487.test.ts` — **exit 1, BLOCKED before assertions**; Cloudflare-pool startup raised `EvalError: Code generation from strings disallowed for this context`; `Test Files no tests`, `Tests no tests`, `Errors 1`, product assertions `0`. No unsafe-eval bypass. |
+| Capability-driven sections component seam | `pnpm --dir web exec vitest run --config vitest.components.config.ts lib/sections.test.ts` — **exit 0**, 1 file, 5 tests passed. |
+| Identity schema/seeds/hierarchy/handlers | `pnpm verify:identity` — **exit 0**, 4 files, 88 tests passed. This includes normalized seed invariants, protected anchors, preflight stale-schema/manual-reset detection, D1 constraints, and role-handler HTTP contracts. |
+| Normalized identity resolver regression | `pnpm --dir web exec vitest run --config vitest.config.ts lib/identity/normalized-authority.test.ts` — **exit 1, BLOCKED before assertions** with the same external Cloudflare-pool `EvalError`; `Test Files no tests`, `Tests no tests`, `Errors 1`. |
+| Programs Worker/domain seams | `pnpm --dir web exec vitest run --config vitest.config.ts lib/programs/programs.test.ts lib/programs/capabilities.test.ts lib/programs/account-directory.test.ts lib/programs/member-directory.test.ts lib/programs/hub-directory.test.ts` — **exit 0**, 5 files, 145 tests passed. |
+| Attendance Worker seam | `pnpm --dir web exec vitest run --config vitest.config.ts lib/attendance-worker.test.ts` — **exit 0**, 1 file, 42 tests passed. |
+| Auth Worker seam | `pnpm --dir web exec vitest run --config vitest.config.ts worker.auth.test.ts` — **exit 0**, 1 file, 47 tests passed. |
+| Home/CMS Worker seams | `pnpm --dir web exec vitest run --config vitest.config.ts lib/home-worker.test.ts lib/home-cms-worker.test.ts` — **exit 0**, 2 files, 21 tests passed. |
+| Bootstrap/management/directory components | Focused component invocation covering sections, Home, Management Hub, Account/Member Directory panels, app/profile settings, shell, Programs management boundary, and Event detail — **exit 0**, 10 files, 185 tests passed. |
+| Programs components | Focused Programs component invocation across Events, enrollment, picker, boundary, directories, forms/settings, workspace, notifications, and participant surfaces — **exit 0**, 14 files, 204 tests passed. |
+| Attendance/scanner components | Focused attendance/scanner component invocation — **exit 0**, 8 files, 76 tests passed. |
+| Worker/web TypeScript | `pnpm --dir web exec tsc --noEmit -p tsconfig.worker.json && pnpm --dir web exec tsc --noEmit -p tsconfig.json` — **exit 0**, no output. |
+| Web build | `pnpm --dir web build` — **exit 0**; Next generated `18/18` static pages. The emitted route table contained 16 visible routes: `/`, `/_not-found`, `/events`, `/guest-check-in`, `/home`, `/management`, `/messages`, `/notices`, `/permissions`, `/profile`, `/profile/settings`, `/programs`, `/prototype`, `/register`, `/registrations`, `/scanner`. Existing workspace-root/multiple-lockfile, no-cache, telemetry, and color notices did not fail the build. |
+| W7 numeric geometry | `pnpm test:role-hierarchy-geometry` — **exit 0**, 49 tests passed, comprising 14 Account Access + 14 Permission Editor + 21 Role Hierarchy scenarios across `320, 390, 600, 799, 800, 1024, 1440` CSS px. Numeric evidence only; no screenshots, image snapshots, or pixel diffs. |
+
+The component commands behind the grouped results were:
+
+```text
+$ pnpm --dir web exec vitest run --config vitest.components.config.ts \
+    lib/sections.test.ts lib/home.test.tsx lib/management-hub.test.tsx \
+    lib/account-directory-panel.test.tsx lib/member-directory-panel.test.tsx \
+    lib/programs/programs-management-boundary.test.tsx \
+    lib/programs/event-detail.test.tsx lib/shell/authenticated-shell.test.tsx \
+    lib/account-settings.test.tsx lib/app.test.tsx
+Test Files  10 passed (10); Tests 185 passed (185)
+
+$ pnpm --dir web exec vitest run --config vitest.components.config.ts \
+    lib/programs/programs-events-panel.test.tsx \
+    lib/programs/programs-enrollment-panel.test.tsx \
+    lib/programs/member-picker.test.tsx lib/programs/programs-boundary.test.tsx \
+    lib/programs/participant-directory.test.tsx \
+    lib/programs/management-directory.test.tsx lib/programs/program-form.test.tsx \
+    lib/programs/program-settings.test.tsx lib/programs/program-workspace.test.tsx \
+    lib/programs/programs-management-boundary.test.tsx \
+    lib/programs/event-detail.test.tsx lib/programs/programs-notifications.test.tsx \
+    lib/programs/participant-program-detail.test.tsx \
+    lib/programs/participant-enrollment.test.tsx
+Test Files  14 passed (14); Tests 204 passed (204)
+
+$ pnpm --dir web exec vitest run --config vitest.components.config.ts \
+    lib/attendance-panel.test.tsx lib/attendance-operator-panel.test.tsx \
+    lib/attendance-roster.test.tsx lib/self-check-in-panel.test.tsx \
+    lib/use-qr-camera.test.tsx lib/assisted-scanner-panel.test.tsx \
+    lib/scanner-boundary.test.tsx lib/scanner-intent.test.ts
+Test Files  8 passed (8); Tests 76 passed (76)
+```
+
+### Fresh local D1 migration, seed, and query proof
+
+`pnpm --dir web exec wrangler d1 migrations apply efcc-identity --local`
+applied all 25 versioned migrations successfully to the fresh child-local
+D1. `pnpm db:seed:disposable` then completed its 6 seed commands
+successfully. Queries against that same local database returned:
+
+- `d1_migrations`: **25** applied migrations.
+- E2E disposable accounts: **5**; seeded role definitions: **5**;
+  normalized role grants: **39**; active disposable assignments: **4**.
+- Role order/protection: `admin` position `0`, protected; `staff` position
+  `1`; Department identity position `10` with its exact Department scope;
+  Program identity position `20` with its exact Program scope; `member`
+  position `999`, protected.
+- The normalized table inventory contained all 7 expected identity tables
+  (`role_categories`, `role_definitions`, `role_definition_grants`,
+  `role_assignments`, `role_policy_revisions`, `role_policy_mutations`,
+  `role_audit_events`); the legacy-table query returned **0 rows** for
+  `role_capabilities`, `department_managers`, `program_leaders`,
+  `permission_policy_state`, and `permission_policy_mutations`.
+- `verify:identity` directly passed the preflight test that flags any retired
+  authority table and never auto-drops it, plus seed idempotency/protected
+  baseline assertions. No remote, Apps Script, Google Sheets, Cloudflare
+  production, or other external database was written.
+
+### Exact obsolete-token/symbol audit
+
+The direct clean-tree search for
+`role_capabilities|department_managers|program_leaders|permission_policy_state|permission_policy_mutations`
+was scoped to `web/lib`, `web/app`, `web/worker.ts`, `web/migrations`, and
+`tests`. No executable production authority hit remains. The only allowed
+legacy-token exceptions are:
+
+- `web/lib/identity/preflight.ts:16-21` — explicit stale-table names used by
+  manual-reset detection;
+- `web/lib/identity/d1-schema.test.ts:146-172` — stale-schema/no-auto-drop
+  test;
+- `web/lib/auth/normalized-authority-c487.test.ts:756-830` —
+  stale-schema/route-absence test (not executed because of the external pool
+  startup failure).
+
+The secondary search for `RolePolicyStore`, `hasActiveManagementGrant`,
+`ctx.actorRole`, `sectionsForRole`, `stableNavigationSections`,
+`ROLE_CAPABILITY_DEFAULTS`, `PermissionPolicy*`, `DepartmentManager*`, and
+`ProgramLeader*` returned **no matches** in those executable scopes. The
+full-tree search also found only historical/planning references in Specs
+079/080/087/091 and this acceptance trace. Remaining `account.role` values
+are credential/import or display projections; directory filters and authority
+queries use normalized role-definition/assignment records, and no
+`accounts.role` SQL authority read was found.
+
+Separate retired-route search found the allowed route-absence assertions in
+`web/lib/identity/normalized-authority.test.ts:170-174`, but also found a
+residual executable test fixture in
+`tests/e2e/s4-management-hardening.test.ts:819-853` that still intercepts
+`/api/v1/programs/account-permissions` for old Permission loading/error
+states. This is not a preflight/manual-reset or route-absence exception;
+because evidence workers may not edit tests, it remains an explicit
+`C-487-06` blocker.
+
+### C-487-01..07 status matrix
+
+| Row | Current status | Exact evidence and remaining gap |
+| --- | --- | --- |
+| C-487-01 | **BLOCKED** | Sections component projection passed 5/5 and bootstrap-adjacent components passed, but the new normalized-authority Worker test reached 0 assertions; no `/api/v1/auth/me` persona matrix or Worker privacy-safe projection result is claimed. |
+| C-487-02 | **BLOCKED** | Programs Worker/domain 145/145 and Programs components 204/204 passed; the dedicated Staff/DM/PL/custom exact-scope/cross-scope C-487 Worker matrix remained blocked before assertions. |
+| C-487-03 | **BLOCKED** | Attendance Worker 42/42 and attendance/scanner components 76/76 passed; the dedicated normalized scope/auth-expiry C-487 Worker matrix and local authenticated route smoke were not executed. |
+| C-487-04 | **BLOCKED** | Auth Worker 47/47, Home/CMS Worker 21/21, management/bootstrap components 185/185, and directory/Programs seams passed; the dedicated C-487 management/tamper matrix remained blocked before assertions. |
+| C-487-05 | **PARTIAL — direct D1/preflight subset** | All 25 migrations applied, normalized seed/query invariants and zero legacy tables were proven, and identity schema/seed tests passed 88/88 including stale-table preflight/manual-reset behavior. The dedicated c487 Worker test remains externally blocked; its Admin all-on/bootstrap assertion is not counted, so this criterion is not complete. |
+| C-487-06 | **BLOCKED** | Production executable legacy-token hits are zero and secondary obsolete symbols are absent, but the residual old-route test fixture at `tests/e2e/s4-management-hardening.test.ts:819-853` is unclassified by the allowed exceptions; old-route HTTP smoke was also blocked. |
+| C-487-07 | **BLOCKED** | W7 numeric geometry passed 49/49 across all required widths; full local authenticated Programs/live UI journeys were not run because the supervised local Worker could not start, so no full-journey or CI/manual parity claim is made. |
+
+### External Worker limitation, manual gates, and scope
+
+The new normalized-authority Worker test is explicitly **BLOCKED before
+assertions (0 tests)** by the external Cloudflare-pool/Vite
+`EvalError: Code generation from strings disallowed for this context`.
+No unsafe-eval bypass was used. A separate supervised local Wrangler route
+smoke also failed before readiness: the `pnpm` launch resolved Node
+`v20.19.0` and logged `ERR_UNKNOWN_BUILTIN_MODULE: node:sqlite`; the direct
+Wrangler attempt then logged `Missing entry-point to Worker script or to
+assets directory` from the repository root. No further Worker retries were
+made, and no old-route HTTP result is claimed.
+
+`C-487-M1`, `C-487-M2`, `C-487-M3`, and `C-487-M4` remain **MANUAL —
+unclaimed**, including reduced-motion, forced-colors, zoom/text-spacing,
+real-device dock/safe-area, remote-CI, and production-promotion gates. No
+manual accessibility, WCAG, screenshot, image, or pixel-diff claim is made.
+
+Only `docs/specs/s4-phase-c-acceptance-trace.md` is changed by this append.
+The child was clean before the append; no source/test/config/migration/schema/
+fixture or **#487 path** was edited. The branch remains stopped before Phase D.
