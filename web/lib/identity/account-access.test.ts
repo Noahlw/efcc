@@ -1425,4 +1425,149 @@ describe("#486 Account Access domain", () => {
       })
     ).rejects.toThrow("ROLE_SCOPE_MISMATCH");
   });
+  test("records changed-key reuse as rejected audit without mutation for grant, revoke, and lifecycle", async () => {
+    const grantBefore = await loadAccountAccess(testDb(), ADMIN, STAFF);
+    const grantInput = {
+      actor_user_id: ADMIN,
+      account_user_id: STAFF,
+      base_revision: grantBefore.revision,
+      role_definition_ids: [LOWER_DEPARTMENT_ROLE],
+      idempotency_key: "account-access-red-reuse-grant",
+      now: "2026-08-29T00:13:00.000Z",
+      audit_id: "account-access-red-reuse-grant-audit",
+      correlation_id: "account-access-red-reuse-grant-correlation",
+    };
+    const granted = await mutateAccountAssignments(testDb(), grantInput);
+    await expect(
+      mutateAccountAssignments(testDb(), {
+        ...grantInput,
+        role_definition_ids: [PROGRAM_ROLE],
+        audit_id: "account-access-red-reuse-grant-rejected-audit",
+        correlation_id: "account-access-red-reuse-grant-rejected-correlation",
+      })
+    ).rejects.toThrow("ROLE_IDEMPOTENCY_REUSE");
+    const afterGrantReuse = await loadAccountAccess(testDb(), ADMIN, STAFF);
+    expect(afterGrantReuse.revision).toBe(granted.revision);
+    expect(
+      afterGrantReuse.activeAssignments.filter(
+        (assignment) => assignment.roleDefinitionId === LOWER_DEPARTMENT_ROLE
+      )
+    ).toHaveLength(1);
+
+    const grantReuseAudit = await testDb()
+      .prepare(
+        `SELECT action, outcome, reason, correlation_id
+           FROM role_audit_events WHERE audit_id = ?`
+      )
+      .bind("account-access-red-reuse-grant-rejected-audit")
+      .first<{
+        action: string;
+        outcome: string;
+        reason: string;
+        correlation_id: string;
+      }>();
+    expect(grantReuseAudit).toEqual({
+      action: "ROLE_ASSIGNMENT_GRANT",
+      outcome: "REJECTED",
+      reason: "ROLE_IDEMPOTENCY_REUSE",
+      correlation_id: "account-access-red-reuse-grant-rejected-correlation",
+    });
+
+    const revokeInput = {
+      actor_user_id: ADMIN,
+      account_user_id: STAFF,
+      base_revision: granted.revision,
+      role_definition_ids: [LOWER_DEPARTMENT_ROLE],
+      idempotency_key: "account-access-red-reuse-revoke",
+      now: "2026-08-29T00:13:01.000Z",
+      audit_id: "account-access-red-reuse-revoke-audit",
+      correlation_id: "account-access-red-reuse-revoke-correlation",
+    };
+    const revoked = await revokeAccountAssignments(testDb(), revokeInput);
+    await expect(
+      revokeAccountAssignments(testDb(), {
+        ...revokeInput,
+        role_definition_ids: [PROGRAM_ROLE],
+        audit_id: "account-access-red-reuse-revoke-rejected-audit",
+        correlation_id: "account-access-red-reuse-revoke-rejected-correlation",
+      })
+    ).rejects.toThrow("ROLE_IDEMPOTENCY_REUSE");
+    const afterRevokeReuse = await loadAccountAccess(testDb(), ADMIN, STAFF);
+    expect(afterRevokeReuse.revision).toBe(revoked.revision);
+    expect(
+      afterRevokeReuse.activeAssignments.some(
+        (assignment) => assignment.roleDefinitionId === LOWER_DEPARTMENT_ROLE
+      )
+    ).toBe(false);
+    const revokeReuseAudit = await testDb()
+      .prepare(
+        `SELECT action, outcome, reason, correlation_id
+           FROM role_audit_events WHERE audit_id = ?`
+      )
+      .bind("account-access-red-reuse-revoke-rejected-audit")
+      .first<{
+        action: string;
+        outcome: string;
+        reason: string;
+        correlation_id: string;
+      }>();
+    expect(revokeReuseAudit).toEqual({
+      action: "ROLE_ASSIGNMENT_REVOKE",
+      outcome: "REJECTED",
+      reason: "ROLE_IDEMPOTENCY_REUSE",
+      correlation_id: "account-access-red-reuse-revoke-rejected-correlation",
+    });
+
+    const lifecycleBefore = await loadAccountAccess(testDb(), ADMIN, STAFF);
+    const lifecycleInput = {
+      actor_user_id: ADMIN,
+      role_definition_id: DEPARTMENT_ROLE,
+      action: "archive" as const,
+      base_revision: lifecycleBefore.revision,
+      idempotency_key: "account-access-red-reuse-lifecycle",
+      now: "2026-08-29T00:13:02.000Z",
+      audit_id: "account-access-red-reuse-lifecycle-audit",
+      correlation_id: "account-access-red-reuse-lifecycle-correlation",
+    };
+    const archived = await mutateRoleDefinitionLifecycle(
+      testDb(),
+      lifecycleInput
+    );
+    expect(archived.isArchived).toBe(true);
+    await expect(
+      mutateRoleDefinitionLifecycle(testDb(), {
+        ...lifecycleInput,
+        action: "restore",
+        audit_id: "account-access-red-reuse-lifecycle-rejected-audit",
+        correlation_id:
+          "account-access-red-reuse-lifecycle-rejected-correlation",
+      })
+    ).rejects.toThrow("ROLE_IDEMPOTENCY_REUSE");
+    const lifecycleRow = await testDb()
+      .prepare(
+        `SELECT is_archived FROM role_definitions
+          WHERE role_definition_id = ?`
+      )
+      .bind(DEPARTMENT_ROLE)
+      .first<{ is_archived: number }>();
+    expect(lifecycleRow?.is_archived).toBe(1);
+    const lifecycleReuseAudit = await testDb()
+      .prepare(
+        `SELECT action, outcome, reason, correlation_id
+           FROM role_audit_events WHERE audit_id = ?`
+      )
+      .bind("account-access-red-reuse-lifecycle-rejected-audit")
+      .first<{
+        action: string;
+        outcome: string;
+        reason: string;
+        correlation_id: string;
+      }>();
+    expect(lifecycleReuseAudit).toEqual({
+      action: "ROLE_DEFINITION_RESTORE",
+      outcome: "REJECTED",
+      reason: "ROLE_IDEMPOTENCY_REUSE",
+      correlation_id: "account-access-red-reuse-lifecycle-rejected-correlation",
+    });
+  });
 });

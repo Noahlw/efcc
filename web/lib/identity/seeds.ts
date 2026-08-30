@@ -225,6 +225,16 @@ async function seedRoleGrants(
   roleDefinitionId: string,
   capabilities: readonly Capability[]
 ): Promise<void> {
+  const role = await db
+    .prepare(
+      `SELECT is_archived FROM role_definitions
+        WHERE role_definition_id = ?`
+    )
+    .bind(roleDefinitionId)
+    .first<{ is_archived: number }>();
+  if (!role || role.is_archived === 1) {
+    return;
+  }
   for (const capability of capabilities) {
     await db
       .prepare(
@@ -245,6 +255,42 @@ function assignmentIdFor(
   const roleTail = roleDefinitionId.slice(-14);
   const accountSegment = accountUserId.replace(/^E2E_DISPOSABLE_/, "");
   return `${roleTail}-${accountSegment}`;
+}
+async function seedAssignmentId(
+  db: D1Database,
+  roleDefinitionId: string,
+  accountUserId: string
+): Promise<string | null> {
+  const role = await db
+    .prepare(
+      `SELECT is_archived FROM role_definitions
+        WHERE role_definition_id = ?`
+    )
+    .bind(roleDefinitionId)
+    .first<{ is_archived: number }>();
+  if (!role || role.is_archived === 1) {
+    return null;
+  }
+  const active = await db
+    .prepare(
+      `SELECT assignment_id FROM role_assignments
+        WHERE account_user_id = ? AND role_definition_id = ?
+          AND revoked_at IS NULL`
+    )
+    .bind(accountUserId, roleDefinitionId)
+    .first<{ assignment_id: string }>();
+  if (active) {
+    return null;
+  }
+  const stableId = assignmentIdFor(roleDefinitionId, accountUserId);
+  const terminal = await db
+    .prepare(
+      `SELECT assignment_id FROM role_assignments
+        WHERE assignment_id = ?`
+    )
+    .bind(stableId)
+    .first<{ assignment_id: string }>();
+  return terminal ? `${stableId}-${crypto.randomUUID()}` : stableId;
 }
 
 export interface SeedResult {
@@ -446,7 +492,14 @@ export async function seedDisposableIdentity(
   ];
 
   for (const assignment of activeAssignments) {
-    const id = assignmentIdFor(assignment.roleDefinitionId, assignment.account);
+    const id = await seedAssignmentId(
+      db,
+      assignment.roleDefinitionId,
+      assignment.account
+    );
+    if (!id) {
+      continue;
+    }
     await db
       .prepare(
         `INSERT OR IGNORE INTO role_assignments
@@ -456,7 +509,7 @@ export async function seedDisposableIdentity(
          SELECT ?, ?, ?, ?, ?, rd.scope_kind, rd.scope_id,
                 NULL, NULL, NULL
            FROM role_definitions rd
-          WHERE rd.role_definition_id = ?`
+          WHERE rd.role_definition_id = ? AND rd.is_archived = 0`
       )
       .bind(
         id,

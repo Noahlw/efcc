@@ -566,6 +566,49 @@ describe("#485 Permission Editor domain seam", () => {
       }),
       (error: unknown) => error instanceof RoleIdempotencyConflictError
     );
+    const reuseAudits = await testDb()
+      .prepare(
+        `SELECT audit_id, action, outcome, reason, correlation_id
+           FROM role_audit_events
+          WHERE audit_id IN (?, ?)
+          ORDER BY audit_id`
+      )
+      .bind(
+        "permission-editor-audit-no-op-reuse",
+        "permission-editor-audit-reuse"
+      )
+      .all<{
+        audit_id: string;
+        action: string;
+        outcome: string;
+        reason: string;
+        correlation_id: string;
+      }>();
+    assert.deepEqual(
+      reuseAudits.results?.map((row) => [
+        row.audit_id,
+        row.action,
+        row.outcome,
+        row.reason,
+        row.correlation_id,
+      ]),
+      [
+        [
+          "permission-editor-audit-no-op-reuse",
+          "ROLE_DEFINITION_POLICY_UPDATE",
+          "REJECTED",
+          "ROLE_IDEMPOTENCY_REUSE",
+          "permission-editor-correlation-no-op-reuse",
+        ],
+        [
+          "permission-editor-audit-reuse",
+          "ROLE_DEFINITION_POLICY_UPDATE",
+          "REJECTED",
+          "ROLE_IDEMPOTENCY_REUSE",
+          "permission-editor-correlation-reuse",
+        ],
+      ]
+    );
     assert.equal(await revision(), noOpBefore);
   });
 

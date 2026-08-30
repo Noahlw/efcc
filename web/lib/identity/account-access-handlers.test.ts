@@ -394,4 +394,185 @@ describe("#486 Account Access handlers", () => {
     expect(restoreBody.requestId).toBe(restore.headers.get("X-Request-Id"));
     expect(restoreBody.data.isArchived).toBe(false);
   });
+  test("replays original request IDs for success, denied, and conflict terminals", async () => {
+    const adminHeaders = {
+      Cookie: `${ACCESS_COOKIE_NAME}=${adminCookie}`,
+      "Content-Type": "application/json",
+    };
+    const successBody = {
+      base_revision: await revision(),
+      role_definition_ids: [DEPARTMENT_ROLE],
+    };
+    const success = await worker.fetch(
+      request(`/api/v1/identity/accounts/${STAFF}/assignments`, {
+        method: "POST",
+        headers: {
+          ...adminHeaders,
+          "Idempotency-Key": "account-access-handler-replay-success",
+        },
+        body: successBody,
+      }),
+      testEnv()
+    );
+    expect(success.status).toBe(200);
+    const successJson = (await success.json()) as {
+      requestId: string;
+      data: unknown;
+    };
+    const successReplay = await worker.fetch(
+      request(`/api/v1/identity/accounts/${STAFF}/assignments`, {
+        method: "POST",
+        headers: {
+          ...adminHeaders,
+          "Idempotency-Key": "account-access-handler-replay-success",
+        },
+        body: successBody,
+      }),
+      testEnv()
+    );
+    expect(successReplay.status).toBe(200);
+    const successReplayJson = (await successReplay.json()) as {
+      requestId: string;
+      data: unknown;
+    };
+    expect(successReplayJson.requestId).toBe(successJson.requestId);
+    expect(successReplayJson.requestId).toBe(
+      success.headers.get("X-Request-Id")
+    );
+    const successAudits = await testDb()
+      .prepare(
+        `SELECT COUNT(*) AS count FROM role_audit_events
+          WHERE correlation_id IN (?, ?)`
+      )
+      .bind(successJson.requestId, successReplayJson.requestId)
+      .first<{ count: number }>();
+    expect(successAudits?.count).toBe(1);
+
+    const memberHeaders = {
+      Cookie: `${ACCESS_COOKIE_NAME}=${memberCookie}`,
+      "Content-Type": "application/json",
+    };
+    const deniedBody = {
+      base_revision: await revision(),
+      role_definition_ids: [PROGRAM_ROLE],
+    };
+    const denied = await worker.fetch(
+      request(`/api/v1/identity/accounts/${STAFF}/assignments`, {
+        method: "POST",
+        headers: {
+          ...memberHeaders,
+          "Idempotency-Key": "account-access-handler-replay-denied",
+        },
+        body: deniedBody,
+      }),
+      testEnv()
+    );
+    expect(denied.status).toBe(403);
+    const deniedJson = await problem(denied);
+    const deniedReplay = await worker.fetch(
+      request(`/api/v1/identity/accounts/${STAFF}/assignments`, {
+        method: "POST",
+        headers: {
+          ...memberHeaders,
+          "Idempotency-Key": "account-access-handler-replay-denied",
+        },
+        body: deniedBody,
+      }),
+      testEnv()
+    );
+    expect(deniedReplay.status).toBe(403);
+    const deniedReplayJson = await problem(deniedReplay);
+    expect(deniedReplayJson.requestId).toBe(deniedJson.requestId);
+    expect(deniedReplay.headers.get("X-Request-Id")).toBe(
+      denied.headers.get("X-Request-Id")
+    );
+
+    const conflictBody = {
+      base_revision: (await revision()) - 1,
+      role_definition_ids: [PROGRAM_ROLE],
+    };
+    const conflict = await worker.fetch(
+      request(`/api/v1/identity/accounts/${STAFF}/assignments`, {
+        method: "POST",
+        headers: {
+          ...adminHeaders,
+          "Idempotency-Key": "account-access-handler-replay-conflict",
+        },
+        body: conflictBody,
+      }),
+      testEnv()
+    );
+    expect(conflict.status).toBe(409);
+    const conflictJson = await problem(conflict);
+    const conflictReplay = await worker.fetch(
+      request(`/api/v1/identity/accounts/${STAFF}/assignments`, {
+        method: "POST",
+        headers: {
+          ...adminHeaders,
+          "Idempotency-Key": "account-access-handler-replay-conflict",
+        },
+        body: conflictBody,
+      }),
+      testEnv()
+    );
+    expect(conflictReplay.status).toBe(409);
+    const conflictReplayJson = await problem(conflictReplay);
+    expect(conflictReplayJson.requestId).toBe(conflictJson.requestId);
+    expect(conflictReplay.headers.get("X-Request-Id")).toBe(
+      conflict.headers.get("X-Request-Id")
+    );
+    const lifecycleBody = {
+      action: "archive",
+      base_revision: await revision(),
+      reason: "replay envelope",
+    };
+    const lifecycle = await worker.fetch(
+      request(`/api/v1/identity/role-definitions/${PROGRAM_ROLE}/lifecycle`, {
+        method: "POST",
+        headers: {
+          ...adminHeaders,
+          "Idempotency-Key": "account-access-handler-replay-lifecycle",
+        },
+        body: lifecycleBody,
+      }),
+      testEnv()
+    );
+    expect(lifecycle.status).toBe(200);
+    const lifecycleJson = (await lifecycle.json()) as {
+      requestId: string;
+      data: unknown;
+    };
+    const lifecycleReplay = await worker.fetch(
+      request(`/api/v1/identity/role-definitions/${PROGRAM_ROLE}/lifecycle`, {
+        method: "POST",
+        headers: {
+          ...adminHeaders,
+          "Idempotency-Key": "account-access-handler-replay-lifecycle",
+        },
+        body: lifecycleBody,
+      }),
+      testEnv()
+    );
+    expect(lifecycleReplay.status).toBe(200);
+    const lifecycleReplayJson = (await lifecycleReplay.json()) as {
+      requestId: string;
+      data: unknown;
+    };
+    expect(lifecycleReplayJson.requestId).toBe(lifecycleJson.requestId);
+    expect(lifecycleReplay.headers.get("X-Request-Id")).toBe(
+      lifecycle.headers.get("X-Request-Id")
+    );
+    const restore = await worker.fetch(
+      request(`/api/v1/identity/role-definitions/${PROGRAM_ROLE}/lifecycle`, {
+        method: "POST",
+        headers: {
+          ...adminHeaders,
+          "Idempotency-Key": "account-access-handler-replay-lifecycle-restore",
+        },
+        body: { action: "restore", base_revision: await revision() },
+      }),
+      testEnv()
+    );
+    expect(restore.status).toBe(200);
+  });
 });

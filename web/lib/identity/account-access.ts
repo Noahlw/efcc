@@ -7,6 +7,7 @@ import {
   applyRoleMutation,
   reserveRoleMutationConflict,
   reserveRoleMutationDenial,
+  recordRoleDenial,
   readCurrentRevision,
   RoleIdempotencyConflictError,
   RoleRevisionConflictError,
@@ -123,6 +124,8 @@ export interface AccountAccessMutationResult extends AccountAccessView {
   idempotent: boolean;
   duplicateRoleDefinitionIds: string[];
   impact?: AccountAccessImpact;
+  /** Internal transport identity; handlers strip it from public data. */
+  responseRequestId?: string;
 }
 
 export interface AccountAccessMutationInput {
@@ -160,6 +163,8 @@ export interface RoleDefinitionLifecycleResult {
     retained: EffectiveAccessGroups;
   }>;
   idempotent: boolean;
+  /** Internal transport identity; handlers strip it from public data. */
+  responseRequestId?: string;
 }
 
 export type RoleDefinitionLifecyclePreview = Omit<
@@ -1279,19 +1284,45 @@ async function readMutation(
   );
 }
 
-function parseEnvelope<T>(resultJson: string | null): T | null {
+interface ParsedTerminalEnvelope<T> {
+  value: T;
+  requestId?: string;
+}
+
+function parseStoredEnvelope<T>(
+  resultJson: string | null
+): ParsedTerminalEnvelope<T> | null {
   if (!resultJson) {
     return null;
   }
   try {
     const parsed: unknown = JSON.parse(resultJson);
-    if (typeof parsed === "object" && parsed !== null && "data" in parsed) {
-      return parsed.data as T;
+    if (typeof parsed !== "object" || parsed === null) {
+      return { value: parsed as T };
     }
-    return parsed as T;
+    const requestId =
+      "requestId" in parsed && typeof parsed.requestId === "string"
+        ? parsed.requestId
+        : undefined;
+    const value = "data" in parsed ? parsed.data : parsed;
+    return { value: value as T, requestId };
   } catch {
     return null;
   }
+}
+
+function requestIdFromResult(resultJson: string | null): string | undefined {
+  return parseStoredEnvelope<unknown>(resultJson)?.requestId;
+}
+
+function withRequestId<T extends Error>(
+  error: T,
+  requestId: string | undefined
+): T {
+  if (requestId) {
+    Object.assign(error, { requestId });
+  }
+  return error;
 }
 
 function errorForCode(code: string): Error {
@@ -1309,14 +1340,41 @@ function errorForCode(code: string): Error {
   return new RoleCapabilityDeniedError();
 }
 
+interface ReplayInput {
+  idempotency_key: string;
+  actor_user_id: string;
+  request_fingerprint: string;
+  now: string;
+  audit_id: string;
+  correlation_id: string;
+  audit_action: string;
+  entity_type: string;
+  entity_id: string;
+}
+
+async function recordIdempotencyReuse(
+  db: D1Database,
+  input: ReplayInput
+): Promise<void> {
+  await recordRoleDenial(db, {
+    audit_id: input.audit_id,
+    inserted_at: input.now,
+    actor_user_id: input.actor_user_id,
+    action: input.audit_action,
+    entity_type: input.entity_type,
+    entity_id: input.entity_id,
+    old_value_json: null,
+    new_value_json: null,
+    reason: "ROLE_IDEMPOTENCY_REUSE",
+    outcome: "REJECTED",
+    correlation_id: input.correlation_id,
+  });
+}
+
 async function replayIfTerminal<T>(
   db: D1Database,
-  input: {
-    idempotency_key: string;
-    actor_user_id: string;
-    request_fingerprint: string;
-  }
-): Promise<{ value: T; idempotent: true } | null> {
+  input: ReplayInput
+): Promise<{ value: T; idempotent: true; responseRequestId?: string } | null> {
   const existing = await readMutation(db, input.idempotency_key);
   if (!existing) {
     return null;
@@ -1325,23 +1383,30 @@ async function replayIfTerminal<T>(
     existing.actor_user_id !== input.actor_user_id ||
     existing.request_fingerprint !== input.request_fingerprint
   ) {
+    await recordIdempotencyReuse(db, input);
     throw new RoleIdempotencyConflictError();
   }
   if (existing.outcome === "CONFLICT") {
     throw new RoleRevisionConflictError(
       existing.resulting_revision ?? (await readCurrentRevision(db)),
       true,
-      true
+      true,
+      requestIdFromResult(existing.result_json)
     );
   }
   if (existing.outcome === "DENIED") {
-    const parsed = parseEnvelope<unknown>(existing.result_json);
+    const stored = parseStoredEnvelope<unknown>(existing.result_json);
+    const parsed = stored?.value;
     if (
       typeof parsed === "object" &&
       parsed !== null &&
       "duplicateRoleDefinitionIds" in parsed
     ) {
-      return { value: parsed as T, idempotent: true };
+      return {
+        value: parsed as T,
+        idempotent: true,
+        responseRequestId: stored?.requestId,
+      };
     }
     const errorCode =
       typeof parsed === "object" &&
@@ -1350,14 +1415,18 @@ async function replayIfTerminal<T>(
       typeof parsed.errorCode === "string"
         ? parsed.errorCode
         : "ROLE_FORBIDDEN";
-    throw errorForCode(errorCode);
+    throw withRequestId(errorForCode(errorCode), stored?.requestId);
   }
   if (existing.outcome === "SUCCESS") {
-    const value = parseEnvelope<T>(existing.result_json);
-    if (value === null) {
+    const stored = parseStoredEnvelope<T>(existing.result_json);
+    if (stored === null) {
       return null;
     }
-    return { value, idempotent: true };
+    return {
+      value: stored.value,
+      idempotent: true,
+      responseRequestId: stored.requestId,
+    };
   }
   return null;
 }
@@ -1369,7 +1438,8 @@ async function rethrowReservedDenial(
   if (!stored || stored.outcome !== "DENIED") {
     return;
   }
-  const parsed = parseEnvelope<unknown>(stored.result_json);
+  const parsedEnvelope = parseStoredEnvelope<unknown>(stored.result_json);
+  const parsed = parsedEnvelope?.value;
   const errorCode =
     typeof parsed === "object" &&
     parsed !== null &&
@@ -1377,7 +1447,7 @@ async function rethrowReservedDenial(
     typeof parsed.errorCode === "string"
       ? parsed.errorCode
       : "ROLE_FORBIDDEN";
-  throw errorForCode(errorCode);
+  throw withRequestId(errorForCode(errorCode), parsedEnvelope?.requestId);
 }
 
 function auditOutcomeFor(errorCode: string): "DENIED" | "REJECTED" {
@@ -1474,11 +1544,15 @@ async function duplicateResult(
     }
   );
   if (result.idempotent) {
-    const replay = parseEnvelope<AccountAccessMutationResult>(
+    const replay = parseStoredEnvelope<AccountAccessMutationResult>(
       result.result_json
     );
     if (replay) {
-      return { ...replay, idempotent: true };
+      return {
+        ...replay.value,
+        idempotent: true,
+        responseRequestId: replay.requestId,
+      };
     }
   }
   return { ...view, idempotent: false, duplicateRoleDefinitionIds };
@@ -1637,9 +1711,19 @@ export async function mutateAccountAssignments(
     idempotency_key: input.idempotency_key,
     actor_user_id: input.actor_user_id,
     request_fingerprint: fingerprint,
+    now: input.now,
+    audit_id: input.audit_id,
+    correlation_id: input.correlation_id,
+    audit_action: "ROLE_ASSIGNMENT_GRANT",
+    entity_type: "account",
+    entity_id: input.account_user_id,
   });
   if (replay) {
-    return { ...replay.value, idempotent: true };
+    return {
+      ...replay.value,
+      idempotent: true,
+      responseRequestId: replay.responseRequestId,
+    };
   }
   if (roleIds.length === 0) {
     return deny(
@@ -1796,11 +1880,15 @@ export async function mutateAccountAssignments(
       throw error;
     }
     if (conflict.outcome === "SUCCESS") {
-      const stored = parseEnvelope<AccountAccessMutationResult>(
+      const stored = parseStoredEnvelope<AccountAccessMutationResult>(
         conflict.result_json
       );
       if (stored) {
-        return { ...stored, idempotent: true };
+        return {
+          ...stored.value,
+          idempotent: true,
+          responseRequestId: stored.requestId,
+        };
       }
     }
     if (conflict.outcome === "DENIED") {
@@ -1808,8 +1896,9 @@ export async function mutateAccountAssignments(
     }
     throw new RoleRevisionConflictError(
       conflict.resulting_revision,
-      false,
-      true
+      conflict.idempotent,
+      true,
+      requestIdFromResult(conflict.result_json)
     );
   }
   const viewBefore = await readProjection(
@@ -1869,11 +1958,15 @@ export async function mutateAccountAssignments(
     },
   });
   if (mutation.idempotent) {
-    const stored = parseEnvelope<AccountAccessMutationResult>(
+    const stored = parseStoredEnvelope<AccountAccessMutationResult>(
       mutation.result_json
     );
     if (stored) {
-      return { ...stored, idempotent: true };
+      return {
+        ...stored.value,
+        idempotent: true,
+        responseRequestId: stored.requestId,
+      };
     }
   }
   const view = await loadAccountAccess(
@@ -1898,9 +1991,19 @@ export async function revokeAccountAssignments(
     idempotency_key: input.idempotency_key,
     actor_user_id: input.actor_user_id,
     request_fingerprint: fingerprint,
+    now: input.now,
+    audit_id: input.audit_id,
+    correlation_id: input.correlation_id,
+    audit_action: "ROLE_ASSIGNMENT_REVOKE",
+    entity_type: "account",
+    entity_id: input.account_user_id,
   });
   if (replay) {
-    return { ...replay.value, idempotent: true };
+    return {
+      ...replay.value,
+      idempotent: true,
+      responseRequestId: replay.responseRequestId,
+    };
   }
   if (roleIds.length === 0) {
     return deny(
@@ -2055,11 +2158,15 @@ export async function revokeAccountAssignments(
       throw error;
     }
     if (conflict.outcome === "SUCCESS") {
-      const stored = parseEnvelope<AccountAccessMutationResult>(
+      const stored = parseStoredEnvelope<AccountAccessMutationResult>(
         conflict.result_json
       );
       if (stored) {
-        return { ...stored, idempotent: true };
+        return {
+          ...stored.value,
+          idempotent: true,
+          responseRequestId: stored.requestId,
+        };
       }
     }
     if (conflict.outcome === "DENIED") {
@@ -2067,8 +2174,9 @@ export async function revokeAccountAssignments(
     }
     throw new RoleRevisionConflictError(
       conflict.resulting_revision,
-      false,
-      true
+      conflict.idempotent,
+      true,
+      requestIdFromResult(conflict.result_json)
     );
   }
   const before = await readProjection(
@@ -2145,11 +2253,15 @@ export async function revokeAccountAssignments(
     },
   });
   if (mutation.idempotent) {
-    const stored = parseEnvelope<AccountAccessMutationResult>(
+    const stored = parseStoredEnvelope<AccountAccessMutationResult>(
       mutation.result_json
     );
     if (stored) {
-      return { ...stored, idempotent: true };
+      return {
+        ...stored.value,
+        idempotent: true,
+        responseRequestId: stored.requestId,
+      };
     }
   }
   const view = await loadAccountAccess(
@@ -2300,9 +2412,22 @@ export async function mutateRoleDefinitionLifecycle(
     idempotency_key: input.idempotency_key,
     actor_user_id: input.actor_user_id,
     request_fingerprint: fingerprint,
+    now: input.now,
+    audit_id: input.audit_id,
+    correlation_id: input.correlation_id,
+    audit_action:
+      input.action === "archive"
+        ? "ROLE_DEFINITION_ARCHIVE"
+        : "ROLE_DEFINITION_RESTORE",
+    entity_type: "role_definition",
+    entity_id: input.role_definition_id,
   });
   if (replay) {
-    return { ...replay.value, idempotent: true };
+    return {
+      ...replay.value,
+      idempotent: true,
+      responseRequestId: replay.responseRequestId,
+    };
   }
   let actorRoles: Awaited<ReturnType<typeof loadActorRoles>>;
   try {
@@ -2427,11 +2552,15 @@ export async function mutateRoleDefinitionLifecycle(
       throw error;
     }
     if (conflict.outcome === "SUCCESS") {
-      const stored = parseEnvelope<RoleDefinitionLifecycleResult>(
+      const stored = parseStoredEnvelope<RoleDefinitionLifecycleResult>(
         conflict.result_json
       );
       if (stored) {
-        return { ...stored, idempotent: true };
+        return {
+          ...stored.value,
+          idempotent: true,
+          responseRequestId: stored.requestId,
+        };
       }
     }
     if (conflict.outcome === "DENIED") {
@@ -2439,8 +2568,9 @@ export async function mutateRoleDefinitionLifecycle(
     }
     throw new RoleRevisionConflictError(
       conflict.resulting_revision,
-      false,
-      true
+      conflict.idempotent,
+      true,
+      requestIdFromResult(conflict.result_json)
     );
   }
   const activeAssignments = await db
@@ -2513,11 +2643,15 @@ export async function mutateRoleDefinitionLifecycle(
     },
   });
   if (mutation.idempotent) {
-    const stored = parseEnvelope<RoleDefinitionLifecycleResult>(
+    const stored = parseStoredEnvelope<RoleDefinitionLifecycleResult>(
       mutation.result_json
     );
     if (stored) {
-      return { ...stored, idempotent: true };
+      return {
+        ...stored.value,
+        idempotent: true,
+        responseRequestId: stored.requestId,
+      };
     }
   }
   return lifecycle;

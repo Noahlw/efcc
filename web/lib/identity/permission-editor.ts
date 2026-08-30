@@ -11,6 +11,7 @@ import type { Capability, CapabilityMetadata } from "./capability-catalog";
 import {
   applyRoleMutation,
   readCurrentRevision,
+  recordRoleDenial,
   reserveRoleMutationConflict,
   reserveRoleMutationDenial,
   reserveRoleMutationNoop,
@@ -814,7 +815,19 @@ export async function updateRoleDefinitionGrants(
       existing.actor_user_id !== input.actor_user_id ||
       existing.request_fingerprint !== fingerprint
     ) {
-      // A changed actor/key/fingerprint is rejected without a new audit.
+      await recordRoleDenial(db, {
+        audit_id: input.audit_id,
+        inserted_at: input.now,
+        actor_user_id: input.actor_user_id,
+        action: "ROLE_DEFINITION_POLICY_UPDATE",
+        entity_type: "role_definition",
+        entity_id: input.role_definition_id,
+        old_value_json: null,
+        new_value_json: null,
+        reason: "ROLE_IDEMPOTENCY_REUSE",
+        outcome: "REJECTED",
+        correlation_id: input.correlation_id,
+      });
       throw new RoleIdempotencyConflictError();
     }
     if (existing.outcome === "DENIED") {

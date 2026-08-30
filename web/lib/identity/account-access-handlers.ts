@@ -48,13 +48,28 @@ type LifecycleBody = {
 function hasOnlyKeys(value: object, allowed: readonly string[]): boolean {
   return Object.keys(value).every((key) => allowed.includes(key));
 }
+function requestIdForError(error: unknown, fallback: string): string {
+  if (
+    typeof error === "object" &&
+    error !== null &&
+    "requestId" in error &&
+    typeof error.requestId === "string"
+  ) {
+    return error.requestId;
+  }
+  return fallback;
+}
 
 function idempotencyKeyFor(request: Request): string | null {
   const key = request.headers.get("Idempotency-Key")?.trim() ?? "";
   return key.length > 0 && key.length <= 200 ? key : null;
 }
 
-function mapAccountAccessError(error: unknown, requestId: string): Response {
+function mapAccountAccessError(
+  error: unknown,
+  fallbackRequestId: string
+): Response {
+  const requestId = requestIdForError(error, fallbackRequestId);
   if (error instanceof RoleCapabilityDeniedError) {
     return roleProblem(
       403,
@@ -379,7 +394,8 @@ export async function handleMutateAccountAssignments(
         idempotencyKey
       )
     );
-    return roleSuccess(200, data, requestId);
+    const { responseRequestId, idempotent: _idempotent, ...publicData } = data;
+    return roleSuccess(200, publicData, responseRequestId ?? requestId);
   } catch (error) {
     return mapAccountAccessError(error, requestId);
   }
@@ -433,7 +449,8 @@ export async function handleRevokeAccountAssignments(
         idempotencyKey
       )
     );
-    return roleSuccess(200, data, requestId);
+    const { responseRequestId, idempotent: _idempotent, ...publicData } = data;
+    return roleSuccess(200, publicData, responseRequestId ?? requestId);
   } catch (error) {
     return mapAccountAccessError(error, requestId);
   }
@@ -515,7 +532,8 @@ export async function handleRoleDefinitionLifecycle(
         audit_id: crypto.randomUUID(),
         correlation_id: requestId,
       });
-    return roleSuccess(200, data, requestId);
+    const { responseRequestId, idempotent: _idempotent, ...publicData } = data;
+    return roleSuccess(200, publicData, responseRequestId ?? requestId);
   } catch (error) {
     return mapAccountAccessError(error, requestId);
   }
