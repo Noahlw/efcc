@@ -2538,3 +2538,143 @@ The removed-route search found exactly the three route strings in `web/lib/ident
 - No manual keyboard/AT, reduced-motion, forced-colors, zoom/text-spacing, real-device, remote-CI, production-promotion, WCAG, screenshot, image, or pixel-diff claim is made.
 
 Only `docs/specs/s4-phase-c-acceptance-trace.md` is changed by this append. The child was clean before the append; no source/test/config/migration/schema/fixture or `#487` path was edited. The Phase C branch remains stopped before Phase D.
+## #487 final authority correction revalidation — current cb7d303d
+
+**Evidence scope:** Fresh isolated child `/Users/noah.wong/Desktop/code/EFCC-dev/.worktrees/s4-c-487-evidence-latest` on branch `feat/s4-c-487-evidence-latest`, created from and verified at coordinator HEAD `cb7d303dc87ff36bb3b16fc75d2f3bbf6f210d85` (`feat/s4-c-stackable-identity-integration`). This is a documentation-only append after the final #487 authority correction. No source, test, configuration, migration, schema, fixture, #488/#489, Phase D, deployment, or production-data path was changed.
+
+### Authority reread before checks
+
+Before the first validation command, I reread implementation ticket `issue://487`, parent ticket `issue://475`, authoritative Specs `docs/specs/091-stackable-identity-backend.md` and `docs/specs/092-discord-identity-design-system-adoption.md`, the approved `local://s4-phase-c-identity-integration-plan.md` including Task 4 and the verbatim exact obsolete-caller audit, the full current `docs/specs/s4-phase-c-acceptance-trace.md` (2,539 lines; all historical sections and the prior current section), ADRs `docs/adr/0042-discord-like-stackable-role-model.md` and `docs/adr/0043-owned-civic-design-system-governance.md`, the Phase B trace `docs/specs/s4-phase-b-acceptance-trace.md`, and Phase B evidence `docs/qa/2026-08-28-s4-phase-b-foundation.md`.
+
+The prior #487 reports reread were `agent://ReviewAuthority487`, `agent://ReviewCorrected487` (including its schema-invalid structured payload and complete transcript), `agent://FixAuthority487Review`, `agent://EvidenceCorrected487`, `agent://EvidenceFinalAuthority487`, `agent://TestAuthority487`, `agent://FixLegacyPermissionTest`, `agent://FixManagerFixture487`, and current `agent://FixFinalAuthority487`. The additional historical reports `agent://EvidenceAuthority487` and `agent://EvidenceAuthority487B` were also reread. No prior `READY` or historical PASS was promoted without checking the current child.
+
+### Required Context7 CLI library and documentation lookup
+
+The required lookups used `npx --yes ctx7@latest` before validation, not MCP Context7:
+
+- Cloudflare Workers/D1: `npx --yes ctx7@latest library "Cloudflare Workers" "D1Database prepared statements batch transactions schema migrations"` selected `/cloudflare/workers-sdk`; docs selected `D1 batch transactions with prepared statements`, `D1 prepared statements + db.batch() user-facing pattern`, and `D1 binding, prepared statements, and query methods`.
+- Vitest: `npx --yes ctx7@latest library vitest "run specific file expect requireAssertions async assertions"` selected `/vitest-dev/vitest`; docs selected `Run Vitest with Specific File`, `expect(actual, message?)`, `Async/Await with .resolves and .rejects`, and `expect.requireAssertions`.
+- Playwright: `npx --yes ctx7@latest library playwright "viewport CSS pixels locator boundingBox route navigation webServer"` selected `/microsoft/playwright`; docs selected `Page.setViewportSize` and `Locator.boundingBox([options])`.
+- Next Link: `npx --yes ctx7@latest library "Next.js" "App Router Link href URL object query parameters navigation"` selected `/vercel/next.js`; docs selected `Pass URL object to Link href in App Router`.
+- Radix/CVA: library lookup selected `/radix-ui/primitives` and `/joe-bell/cva`; Radix docs selected `Switch Root renders button with data-state` and `Primitive asChild Dispatch (button → Slot)`, while CVA docs selected `Implement component variants with cva` and `VariantProps Type`.
+
+### Provenance and runtime
+
+- Coordinator reference: `.worktrees/s4-phase-c`, branch `feat/s4-c-stackable-identity-integration`, exact HEAD `cb7d303dc87ff36bb3b16fc75d2f3bbf6f210d85`.
+- Fresh child: `/Users/noah.wong/Desktop/code/EFCC-dev/.worktrees/s4-c-487-evidence-latest`, exact HEAD `cb7d303dc87ff36bb3b16fc75d2f3bbf6f210d85`; the child was clean before this append.
+- Node `v22.18.0`; pnpm `11.7.0`; web Vitest `4.1.10`; Wrangler `4.127.1`; web TypeScript `5.9.3`; Playwright `1.62.1`; pinned Chromium `151.0.7922.34` / revision `v1234`.
+- The supervised `pnpm --dir web dev:local` attempt resolved process-manager Node `v20.19.0` and failed with `ERR_UNKNOWN_BUILTIN_MODULE: node:sqlite`. Direct Node `v22.18.0` Wrangler was used only with disposable local D1 and a process-only test secret variable for local smoke/E2E.
+
+### Fresh focused Worker/domain checks
+
+| Check | Exact current result |
+| --- | --- |
+| `pnpm verify:identity` | **PASS — 4 files, 93/93** |
+| `pnpm --dir web exec vitest run --config vitest.config.ts lib/auth/normalized-authority-c487.test.ts` | **BLOCKED before assertions — exit 1; Test Files no tests, Tests no tests, Errors 1; external `@cloudflare/vitest-pool-workers`/Vite `EvalError: Code generation from strings disallowed for this context`; product assertions 0** |
+| `pnpm --dir web exec vitest run --config vitest.config.ts lib/identity/normalized-authority.test.ts` | **BLOCKED before assertions — exit 1; same external EvalError; product assertions 0** |
+| `pnpm --dir web exec vitest run --config vitest.config.ts lib/identity/permission-editor.test.ts lib/identity/permission-editor-handlers.test.ts` | **BLOCKED before assertions — exit 1; Test Files no tests, Tests no tests, Errors 2; same external EvalError; product assertions 0** |
+| Account Access/lifecycle: `lib/identity/account-access.test.ts lib/identity/account-access-handlers.test.ts` | **PASS — 2 files, 36/36** |
+| Historical Program-scope assignment: `lib/identity/account-access-history.test.ts` | **PASS — 1 file, 1/1** on isolated disposable Worker D1 |
+| Programs: `lib/programs/programs.test.ts lib/programs/capabilities.test.ts lib/programs/account-directory.test.ts lib/programs/member-directory.test.ts lib/programs/hub-directory.test.ts` | **PASS — 5 files, 146/146** |
+| Attendance: `lib/attendance-worker.test.ts` | **PASS — 1 file, 43/43** |
+| Auth: `worker.auth.test.ts` | **PASS — 1 file, 47/47** |
+| Home/CMS: `lib/home-worker.test.ts lib/home-cms-worker.test.ts` | **PASS — 2 files, 21/21** |
+
+The three pool-blocked runs were kept separate from the passing identity/domain checks and from the #485 pool classification. No unsafe-eval bypass, source workaround, test suppression, or assertion weakening was used.
+
+### Fresh focused component checks
+
+| Surface group | Exact current result |
+| --- | --- |
+| Sections, Account Access/API, Directory/DirectoryFrame, Account/Member Directory, Role Hierarchy | **PASS — 7 files, 94/94** |
+| Programs Workspace, Events, Participants, Notifications, Settings, Department, and related management modules | **PASS — 15 files, 210/210**; jsdom emitted only `Not implemented: navigation to another Document` |
+| Attendance/scanner/operator/roster/self-check-in | **PASS — 8 files, 76/76**; jsdom emitted only `Not implemented: Window's scrollTo() method` notices |
+| Home/CMS | **PASS — 2 files, 22/22** |
+| Management actions, redirects, and hub | **PASS — 3 files, 26/26** |
+| Permission Editor | **PASS — 1 file, 8/8** |
+
+### Fresh TypeScript, build, and numeric geometry checks
+
+| Check | Exact current result |
+| --- | --- |
+| `pnpm typecheck` | **PASS — root and `tests/e2e` TypeScript** |
+| `pnpm --dir web typecheck` | **PASS — web and Worker TypeScript** |
+| `pnpm --dir web build` | **PASS — 18/18 generated static pages; 16 visible route rows**: `/`, `/_not-found`, `/events`, `/guest-check-in`, `/home`, `/management`, `/messages`, `/notices`, `/permissions`, `/profile`, `/profile/settings`, `/programs`, `/prototype`, `/register`, `/registrations`, `/scanner` |
+| `pnpm test:role-hierarchy-geometry` | **PASS — 49/49 numeric tests** across `320, 390, 600, 799, 800, 1024, 1440` CSS px (Account Access 14, Permission Editor 14, Role Hierarchy 21) |
+| `pnpm test:shell-responsive` | **PASS — 92 passed, 1 skipped; exit 0** |
+| `pnpm test:shell-geometry` | **PASS — 28/28** |
+
+These are numeric CSS-pixel checks only. No screenshot, image snapshot, pixel-diff, manual accessibility, or WCAG conformance claim is made.
+
+### Red/fix coverage
+
+The current HEAD includes the final correction worker's red/fix coverage. Before those fixes, the added regression cases failed for Program-parent scope during same-Department reorder, comma-containing opaque account IDs, revoked assignment history resolving its original Program scope, and scoped Management Hub discoverability. Current focused coverage passed for:
+
+- correlated Program parent Department resolution in same-Department reorder, with cross-Department denial retained;
+- JSON-preserved opaque account IDs in hierarchy assignment projections;
+- immutable revoked assignment scope snapshots and parent-Department authorization filtering (`account-access-history.test.ts`, 1/1);
+- scoped Hub permission/read/assign/revoke projection and Account Access/Permission Editor destinations;
+- live-ui normalized identity copy, current permission title/lead/list labels, and Member Directory heading contracts;
+- bounded assignment ID validation, preflight required-column detection, Member Directory scope redaction, attendance filter-before-limit, and terminal reservation replay.
+
+The dedicated normalized C-487 Worker cases remain unavailable because the pool failed before assertions; these passing correction regressions do not promote the blocked rows to full PASS.
+
+### Fresh disposable D1 migrations, seeds, and normalized queries
+
+- The required default local commands succeeded before the long E2E runs: `pnpm --dir web exec wrangler d1 migrations apply efcc-identity --local` applied **25 migrations**; `pnpm db:seed:disposable` completed **6/6** commands; `pnpm db:seed:local` completed **19 + 11 + 6** commands; and `DEMO_TARGET_URL=http://127.0.0.1:8797 pnpm db:seed:demo` completed with the four demo Programs, 13 recurring events, module-gate fixture, participant notices, and Home content.
+- After the long E2E mutation history, a later attempt to run `pnpm db:seed:local` against the already-mutated shared default local D1 failed at `role_assignments: terminal assignment rows are immutable: SQLITE_CONSTRAINT (extended: SQLITE_CONSTRAINT_TRIGGER)`. This is recorded rather than presented as a clean reset.
+- Fresh temporary D1 proof used Wrangler `--persist-to /tmp/efcc-c487-final-d1-20260830`: **25 migrations** applied; disposable seed **6/6**; query returned **5 accounts, 5 Role Definitions, 39 grants, 4 active assignments**; exactly the seven normalized identity tables (`role_assignments`, `role_audit_events`, `role_categories`, `role_definition_grants`, `role_definitions`, `role_policy_mutations`, `role_policy_revisions`); **zero** rows for all five legacy tables; protected order `admin=0`, `member=999`; exact Department/Program scopes; `role_policy_mutations.result_json`; and `role_assignments.scope_kind/scope_id`.
+- A separate fresh temporary D1 with generated dev-account and disposable seeds was used for the clean Member Directory run below. No remote, Apps Script, Google Sheets, Cloudflare production, or other external database was written.
+
+### Local Worker HTTP smoke
+
+With the direct Node 22 Wrangler process and disposable local D1, cookie login plus `/api/v1/auth/me` returned `200` for the three dev fixtures:
+
+- Admin: `systemRole=Admin`, safe `系統管理員` Global identity, sections `home,programs,scanner,management,profile,events`, navigation `home,programs,scanner,management,profile`, 24 true capabilities.
+- Staff: `systemRole=Staff`, safe `同工` Global identity, the same normalized management/event sections and navigation, 22 true capabilities.
+- Member: `systemRole=null`, no identity summary, sections/navigation `home,programs,scanner,notices,profile`, automatic baseline capability count 1.
+
+The Admin request to `/api/v1/programs/accounts` returned `200`; the Member request returned `403 FORBIDDEN`. Authenticated requests to `/api/v1/programs/account-permissions`, `/api/v1/programs/<program>/leaders`, and `/api/v1/programs/departments/<department>/managers` each returned `404 NOT_FOUND` with RFC Problem Details and matching request correlation.
+
+### Full Programs, live-ui, and Member Directory E2E
+
+- `PROGRAMS_TARGET_URL=http://127.0.0.1:8797 pnpm exec playwright test --config=tests/e2e/programs-d1.config.ts` was run twice against cleanly reseeded local fixtures. Attempt 1 scheduled **195** tests and ended **175 passed, 17 failed, 2 flaky, 1 did not run**. Attempt 2 scheduled **195** and ended **114 passed, 79 failed, 1 flaky, 1 did not run**. In both attempts the explicit Node 22 Wrangler Worker died during the long run with an external Miniflare/Wrangler `ProxyController` error; the later failures were `ERR_CONNECTION_REFUSED` cascades. No full Programs PASS is claimed.
+- After a clean reset/reseed, `AUTH_UI_TARGET_URL=http://127.0.0.1:8797 pnpm exec playwright test --config=tests/e2e/live-ui.config.ts` scheduled **28** and completed **28/28 passed** at phone `375x667` and desktop `1280x720`.
+- The first Member Directory attempt on the already-mutated shared D1 failed on both original and retry runs at `tests/e2e/member-directory.test.ts:299`, missing `getByRole('button', { name: 'E2E Staff', exact: true })`; it is not used as clean-fixture evidence. A fresh temporary D1 with complete generated dev + disposable seeds and `--live-reload=false` Worker was then used: `PROGRAMS_TARGET_URL=http://127.0.0.1:8798 pnpm exec playwright test --config=tests/e2e/member-directory.config.ts` completed **1/1 passed** on desktop.
+
+### Exact obsolete-token, symbol, filename, and route audit
+
+The direct clean-tree search over executable `web/lib`, `web/app`, `web/worker.ts`, `web/migrations`, and `tests` scopes found only these primary legacy-token references:
+
+- `web/lib/identity/preflight.ts:17-21` — the explicit five-name legacy table list for read-only stale-schema detection and manual reset instructions.
+- `web/lib/identity/d1-schema.test.ts:185-211` — stale-schema/no-auto-drop test setup and cleanup.
+- `web/lib/auth/normalized-authority-c487.test.ts:817-892` — fresh-schema absence and stale-schema/no-auto-drop test setup and cleanup.
+
+The same search returned **no matches** for `RolePolicyStore`, `hasActiveManagementGrant`, `ctx.actorRole`, `sectionsForRole`, `stableNavigationSections`, `ROLE_CAPABILITY_DEFAULTS`, `PermissionPolicy*`, `DepartmentManager*`, `ProgramLeader*`, `assignDepartmentManager`, `revokeDepartmentManager`, `assignProgramLeader`, or `revokeProgramLeader`.
+
+The removed-route search found only `web/lib/identity/normalized-authority.test.ts:170-176`, explicit `404`/`NOT_FOUND` assertions for the three removed paths. `tests/e2e/programs-d1.test.ts:5-6` contains only a historical comment naming the former Leaders manager scenario; it is not a route call. The legacy-named migration files are retired `SELECT 1` histories, not DDL/seed writers. The supplementary `accounts.role` hits are compatibility/import fields, fixture/tamper-test setup, or UI role-filter input mapped to normalized `role_definitions.stable_key`; no authority decision reads `accounts.role`.
+
+### C-487-01..07 current status matrix
+
+| Row | Current status | Exact current evidence and remaining gap |
+| --- | --- | --- |
+| C-487-01 | **BLOCKED** | Direct normalized HTTP smoke passed for Admin/Staff/Member (`auth/me` 200) with capability-driven sections/navigation and safe projections; identity verification passed **93/93**; component sections passed in the 94/94 group. The dedicated `normalized-authority-c487.test.ts` and `normalized-authority.test.ts` stopped before assertions (`0`), so DM/PL, custom, and tamper persona proof is incomplete. |
+| C-487-02 | **BLOCKED** | Programs Worker/domain **146/146**, Programs/Department components **210/210**, and correction regressions passed. Both full local Programs runs died in the external Worker process (`175/195` then `114/195` completed before connection-refused cascades), so the complete exact-scope/cross-scope/equal-higher/Member matrix is not claimed. |
+| C-487-03 | **BLOCKED** | Attendance Worker **43/43** and attendance/scanner components **76/76** passed; normalized attendance corrections passed in the available domain tests. The dedicated normalized scope/auth-expiry Worker seam was blocked before assertions, and full Programs E2E was externally interrupted. |
+| C-487-04 | **BLOCKED** | Auth Worker **47/47**, Home/CMS Worker **21/21**, management components **26/26**, and local HTTP smoke (Admin 200, Member 403, removed routes 404) passed. The dedicated normalized management/tamper Worker seam was blocked before assertions; no complete management acceptance claim is made despite live-ui **28/28**. |
+| C-487-05 | **PARTIAL — direct D1/preflight subset** | Fresh temporary D1 proved 25 migrations, normalized seed counts, seven identity tables, zero legacy tables, protected order/scopes, and required columns; default `db:seed:disposable`/`db:seed:local`/`db:seed:demo` commands had successful runs. The post-E2E shared-D1 reset hit the immutable terminal-assignment trigger, and dedicated Admin-all-on bootstrap assertions were blocked before Worker assertions. |
+| C-487-06 | **PASS — executable audit and route absence** | Primary legacy tokens have only the three allowed preflight/stale-schema test locations; secondary authority symbols and old writers are absent; authenticated smoke returned `404 NOT_FOUND` for account-permissions, Leader, and Manager routes. |
+| C-487-07 | **BLOCKED** | Identity W7 **49/49**, shell responsive **92 passed/1 skipped**, shell geometry **28/28**, live-ui **28/28**, and clean Member Directory **1/1** passed. Full Programs D1 remained externally interrupted in both runs; no remote-CI parity claim is made. |
+
+### External blockers, manual owners, and scope
+
+- The normalized-authority, normalized-identity, and #485 Permission Editor Worker files remain **BLOCKED before assertions** by the external Cloudflare-pool/Vite `EvalError: Code generation from strings disallowed for this context`; product assertions are **0** for each blocked run. No unsafe-eval bypass, source workaround, or test suppression was used.
+- The supervised `pnpm --dir web dev:local` path remains blocked by process-manager Node `v20.19.0` / `ERR_UNKNOWN_BUILTIN_MODULE: node:sqlite`. Direct Node `v22.18.0` Wrangler was local-only and used disposable D1.
+- Full Programs D1 E2E remains blocked by the external Miniflare/Wrangler `ProxyController` process death and connection-refused cascades; the exact partial counts above are retained. The clean live-ui and clean temporary-D1 Member Directory results are separate and are not used to imply a full Programs PASS.
+- `C-487-M1` Accessibility owner — keyboard-only and screen-reader review of Permission Editor, Account Access, bootstrap/management, plus reduced-motion, forced-colors, 200% zoom, and text-spacing — **MANUAL, unclaimed**.
+- `C-487-M2` Device QA owner — iOS/Android real-device dock and safe-area behavior at 320/390 — **MANUAL, unclaimed**.
+- `C-487-M3` CI owner — remote-CI parity — **MANUAL, unclaimed**.
+- `C-487-M4` Release owner — production-promotion dry-run — **MANUAL, unclaimed**.
+- No manual keyboard/AT, WCAG, reduced-motion, forced-colors, zoom/text-spacing, real-device, remote-CI, production-promotion, screenshot, image, or pixel-diff claim is made.
+
+Only `docs/specs/s4-phase-c-acceptance-trace.md` is changed by this append. No source, test, configuration, migration, schema, fixture, `#487` path, `#488/#489`, Phase D, deployment, or external database file was edited. The child remains stopped before Phase D.
