@@ -3660,3 +3660,158 @@ Only `docs/specs/s4-phase-c-acceptance-trace.md` is changed by this append.
 No tracked source, test, configuration, migration, schema, fixture,
 `#487` implementation path, `#488/#489`, Phase D, deployment, or external
 database file was edited. The child remains stopped before Phase D.
+## #487 final test-correction revalidation — current `e2c1e919`
+
+**Evidence scope:** Fresh isolated child
+`/Users/noah.wong/Desktop/code/EFCC-dev/.worktrees/s4-c-487-final-current`
+on branch `evidence/s4-c-487-final-current`, created from and verified at the
+coordinator's exact HEAD `e2c1e919380efbef8dd3865116087d2e2981c852`
+(`feat/s4-c-stackable-identity-integration`). This section is
+documentation-only and records the corrected Member attendance expectation
+plus the current focused results. No tracked source, test, configuration,
+migration, schema, fixture, deployment, `#488/#489`, Phase D, remote,
+production-data, or external-database path was changed.
+
+### Authority reread before checks
+
+Before validation I explicitly reread implementation ticket `issue://487`,
+parent ticket `issue://475`, Specs `docs/specs/091-stackable-identity-backend.md`
+and `docs/specs/092-discord-identity-design-system-adoption.md`, the approved
+`local://s4-phase-c-identity-integration-plan.md` including Task 4 and the
+verbatim exact obsolete-caller audit, the complete current
+`docs/specs/s4-phase-c-acceptance-trace.md` (all **3,661** pre-append lines and
+all historical sections), ADRs
+`docs/adr/0042-discord-like-stackable-role-model.md` and
+`docs/adr/0043-owned-civic-design-system-governance.md`, the complete Phase B
+trace `docs/specs/s4-phase-b-acceptance-trace.md`, and Phase B evidence
+`docs/qa/2026-08-28-s4-phase-b-foundation.md`.
+
+The prior #487 report set reread before checks was
+`agent://ReviewTerminal487`, `agent://FixAttendanceAnchors487`,
+`agent://FixC487AttendanceTest`, `agent://FixScopedPermissionTest`,
+`agent://EvidenceReplayReset487`, `agent://EvidenceAnchor487Final`,
+`agent://ReviewTree487`, `agent://ReviewFinalAuthority`,
+`agent://FixAuthorityReplaySeed`, `agent://FixAliasesAndReset487`, and
+`agent://FixFinalAuthority487`. The implementation and parent/spec tickets
+were read before validation.
+
+### Runtime and required Context7 CLI lookups
+
+Observed runtime was Node `v22.18.0`, pnpm `11.7.0`, web Vitest `4.1.10`,
+Wrangler `4.127.1`, Playwright CLI `1.62.1`, root TypeScript `7.0.2`, and web
+TypeScript `5.9.3`. All required lookups were attempted before validation with
+the Context7 CLI (`npx --yes ctx7@latest`), not MCP Context7. Every one of the
+12 commands exited `1` with the exact result:
+
+```text
+✖ Monthly quota exceeded. Create a free API key at https://context7.com/dashboard for more requests.
+```
+
+The attempted commands covered Cloudflare/D1 (`library "Cloudflare Workers"` /
+`docs /cloudflare/workers-sdk`), Vitest (`library vitest` /
+`docs /vitest-dev/vitest`), Playwright (`library playwright` /
+`docs /microsoft/playwright`), Next.js (`library "Next.js"` /
+`docs /vercel/next.js`), Radix UI (`library "Radix UI"` /
+`docs /radix-ui/primitives`), and CVA (`library "class-variance-authority"` /
+`docs /joe-bell/cva`). The previously selected authoritative IDs/sections
+remain as recorded prior evidence (`/cloudflare/workers-sdk` D1 batch/
+prepared statements, `/vitest-dev/vitest` specific-file runs and assertion
+counts, `/microsoft/playwright` `Locator.boundingBox`/`Page.setViewportSize`,
+`/vercel/next.js` App Router Link URL objects, `/radix-ui/primitives` Switch
+role/aria-checked/keyboard and Primitive asChild/Slot, `/joe-bell/cva`
+variants/`VariantProps`), not represented as fresh successful requests in this
+child.
+
+### Corrected Member attendance expectation
+
+`web/lib/auth/normalized-authority-c487.test.ts:649-650` now asserts
+`await problem(memberEvents, 403, "ROLE_FORBIDDEN")` for the Member operator
+chooser request, replacing the stale `200` empty-list expectation, matching
+C-487-03's named `ROLE_FORBIDDEN` outcome. This is the one-line test
+correction at HEAD; no production source changed.
+
+### Current focused Worker/domain results
+
+| Check | Exact current result |
+| --- | --- |
+| `pnpm verify:identity` | **PASS — 4 files, 94/94** |
+| Dedicated #487 Worker `lib/auth/normalized-authority-c487.test.ts` (with corrected Member 403) | **BLOCKED before assertions — exit 1; Test Files no tests, Tests no tests, Errors 1; external `@cloudflare/vitest-pool-workers`/Vite `EvalError: Code generation from strings disallowed for this context`; product assertions 0** |
+| Normalized identity `lib/identity/normalized-authority.test.ts` | **BLOCKED before assertions — exit 1; same external EvalError; product assertions 0** |
+| Permission Editor Worker pair `lib/identity/permission-editor.test.ts`, `permission-editor-handlers.test.ts` | **BLOCKED before assertions — exit 1; Errors 2; same external EvalError; product assertions 0** |
+| Account Access/replay/history | **PASS — 3 files, 39/39** |
+| Programs Worker/domain | **PASS — 5 files, 146/146** |
+| Attendance Worker `lib/attendance-worker.test.ts` | **PASS — 1 file, 45/45** (includes the explicit unauthorized-member, out-of-scope operator, empty-result, active PL scope, active DM scope, filter-before-limit, and revoked-grant cases) |
+| Hierarchy `lib/identity/role-hierarchy.test.ts` | **PASS — 1 file, 42/42** (protected anchors, scoped redaction, same-department Program sibling reorder with cross-scope rejection, opaque comma IDs) |
+| Auth Worker `worker.auth.test.ts` | **PASS — 1 file, 47/47** |
+| Home/CMS Worker | **PASS — 2 files, 21/21** |
+| D1 schema/preflight `lib/identity/d1-schema.test.ts` | **PASS — 1 file, 25/25** |
+| Seeds/handlers | **PASS — 2 files, 27/27** (re-seed with revoked history and archived-role handling) |
+| Alias regression `lib/account-access-api.test.ts` | **PASS — 1 file, 2/2** |
+| Reset SQL regression `tests/e2e/seed-dev-accounts.test.ts` | **PASS — 1 file, 1/1** |
+
+The three pool-blocked invocations remain classified as external
+pre-discovery failures; no unsafe-eval bypass, source workaround, test
+suppression, assertion weakening, or pool/config change was used.
+
+### Current focused component results
+
+| Surface group | Exact current result |
+| --- | --- |
+| Sections, Account Access/API, Directory/DirectoryFrame, Account/Member Directory, Role Hierarchy | **PASS — 7 files, 95/95** |
+| Programs Workspace, Events, Participants, Notifications, Settings, Department, and related management modules | **PASS — 15 files, 210/210**; jsdom emitted only `Not implemented: navigation to another Document` |
+| Attendance/scanner/operator/roster/self-check-in | **PASS — 8 files, 76/76**; jsdom emitted only `Not implemented: Window's scrollTo() method` notices |
+| Home/CMS | **PASS — 2 files, 22/22** |
+| Management actions, redirects, and hub | **PASS — 3 files, 26/26** |
+| Permission Editor | **PASS — 1 file, 8/8** |
+
+### Current TypeScript, build, and numeric geometry results
+
+| Check | Exact current result |
+| --- | --- |
+| Root/E2E/Worker/web TypeScript | `pnpm typecheck && pnpm exec tsc --noEmit -p tests/e2e/tsconfig.json && pnpm --dir web exec tsc --noEmit -p tsconfig.worker.json && pnpm --dir web exec tsc --noEmit -p tsconfig.json` — **PASS, exit 0, no diagnostics** |
+| Web production build | `pnpm --dir web build` — **PASS; 18/18 static pages; 16 visible route rows** |
+| W7 identity geometry | `pnpm test:role-hierarchy-geometry` — **PASS, 49/49 numeric tests** across `320, 390, 600, 799, 800, 1024, 1440` CSS px |
+| Shell responsive geometry | `pnpm test:shell-responsive` — **PASS, 92 passed, 1 skipped, exit 0** |
+
+These are numeric CSS-pixel checks from the pinned local Chromium harness. No
+screenshot, image snapshot, pixel-diff, manual accessibility, or WCAG
+conformance claim is made. The repository-wide test, formatter, linter, and
+`pnpm check` suites were not run; full Programs/live-ui E2E was not rerun in
+this child (existing exact `07928aed`/`b2e30044` evidence retained).
+
+### C-487-01..07 current status matrix
+
+| Row | Current status | Exact current evidence and remaining gap |
+| --- | --- | --- |
+| C-487-01 | **BLOCKED** | Bootstrap HTTP smoke passed historically with capability-driven sections/navigation; identity verification **94/94** and identity/access/directory components **95/95** pass currently. Dedicated normalized #487 and normalized-identity Worker seams still stop before assertions (`0`), so DM/PL/custom/tamper persona proof remains incomplete. |
+| C-487-02 | **BLOCKED** | Programs Worker/domain **146/146** and Programs components **210/210** pass currently. The dedicated normalized exact-scope/equal-higher/Member Worker seam still has `0` assertions; full Programs E2E interruption history is retained without a pass claim. |
+| C-487-03 | **BLOCKED** | Attendance Worker **45/45** (corrected Member `403 ROLE_FORBIDDEN` expectation now present at `normalized-authority-c487.test.ts:650`) and attendance/scanner components **76/76** pass currently. The dedicated normalized scope/auth-expiry Worker seam still stops before assertions (`0`); the corrected one-line expectation is unexecuted in this environment. |
+| C-487-04 | **BLOCKED** | Auth Worker **47/47**, Home/CMS Worker **21/21**, management components **26/26** pass currently; historical direct smoke returned Admin `200`, Member `403 FORBIDDEN`, removed routes `404 NOT_FOUND`. The dedicated normalized management/tamper Worker seam still stops before assertions (`0`). |
+| C-487-05 | **PARTIAL — direct D1/preflight/reset/archive subset** | Current D1 schema **25/25**, seeds/handlers **27/27**, and reset regression **1/1** pass; historical fresh 25-migration/seed/reset proofs retained. The dedicated Admin-all-on/bootstrap Worker assertion remains blocked before assertions. |
+| C-487-06 | **PASS — executable audit, aliases, and route absence** | Historical full tracked audit (22 allowed primary executable lines, 0 secondary executable lines, 3 explicit route-absence assertions) retained; alias regression **2/2** passes currently; authenticated smoke returned `404 NOT_FOUND` for removed routes. |
+| C-487-07 | **BLOCKED** | W7 identity geometry **49/49**, shell responsive **92 passed/1 skipped**, and web build **18/18** pass currently; live-ui **28/28** and Member Directory **1/1** retained from the exact `07928aed` child. Full Programs E2E remains interrupted historically; remote-CI parity is not claimed. |
+
+### External blockers, manual owners, and scope
+
+- The normalized #487 Worker, normalized identity Worker, and #485 Permission
+  Editor Worker runs remain **BLOCKED before assertions** by the external
+  Cloudflare-pool/Vite `EvalError: Code generation from strings disallowed
+  for this context`; product assertions are **0** for each blocked run,
+  including the corrected Member 403 expectation at
+  `web/lib/auth/normalized-authority-c487.test.ts:650`. No unsafe-eval
+  bypass, source workaround, test suppression, or assertion weakening was
+  used.
+- Full Programs D1 E2E and live-ui were not rerun in this child; the exact
+  `07928aed`/`b2e30044` evidence is retained without new pass claims.
+- `C-487-M1` (keyboard/screen-reader/reduced-motion/forced-colors/zoom/text-
+  spacing), `C-487-M2` (iOS/Android device dock/safe-area), `C-487-M3`
+  (remote-CI parity), and `C-487-M4` (production-promotion dry-run) remain
+  **MANUAL, unclaimed**.
+- No manual keyboard/AT, WCAG, reduced-motion, forced-colors, zoom/text-
+  spacing, real-device, remote-CI, production-promotion, screenshot, image,
+  or pixel-diff claim is made.
+
+Only `docs/specs/s4-phase-c-acceptance-trace.md` is changed by this append.
+No tracked source, test, configuration, migration, schema, fixture,
+`#487` implementation path, `#488/#489`, Phase D, deployment, or external
+database file was edited. The child remains stopped before Phase D.
