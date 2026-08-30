@@ -689,10 +689,15 @@ export const EventDetail = ({
         ) : (
           <ul className={styles.ruleList}>
             {leaders.map((leader: ProgramIdentityAssignment) => (
-              <li key={leader.user_id} className={styles.ruleRow}>
+              <li
+                key={`${leader.user_id}:${leader.role_definition_id}`}
+                className={styles.ruleRow}
+                aria-label={`${leader.user_name ?? leader.username ?? leader.user_id}，身份組：${leader.label}`}
+              >
                 <span>
                   {leader.user_name ?? leader.username ?? leader.user_id}
                 </span>
+                <span>{leader.label}</span>
               </li>
             ))}
           </ul>

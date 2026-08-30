@@ -62,6 +62,20 @@ const detailFixture = (
       user_name: "陳大文",
       username: "taiwan",
     },
+    {
+      program_id: "program-1",
+      user_id: "U001",
+      role_definition_id: "role-2",
+      label: "另一個課程身份組",
+      scope_kind: "Program",
+      scope_id: "program-1",
+      granted_by: "U000",
+      granted_at: "2026-01-02T00:00:00.000Z",
+      revoked_by: null,
+      revoked_at: null,
+      user_name: "陳大文",
+      username: "taiwan",
+    },
   ],
   participant_summary: { active_enrollments: 3, checked_in: 2 },
   ...overrides,
@@ -95,7 +109,20 @@ describe("EVT-01 event detail", () => {
     expect(
       screen.getByText(COPY.programs.eventCheckedIn.replace("{count}", "2"))
     ).toBeInTheDocument();
-    expect(screen.getByText("陳大文")).toBeInTheDocument();
+    expect(screen.getAllByText("陳大文")).toHaveLength(2);
+    expect(screen.getByText("課程管理身份組")).toBeInTheDocument();
+    expect(screen.getByText("另一個課程身份組")).toBeInTheDocument();
+    expect(screen.getAllByRole("listitem")).toHaveLength(2);
+    expect(
+      screen.getByRole("listitem", {
+        name: "陳大文，身份組：課程管理身份組",
+      })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("listitem", {
+        name: "陳大文，身份組：另一個課程身份組",
+      })
+    ).toBeInTheDocument();
     expect(mocks.getEvent).toHaveBeenCalledWith("program-1", "event-1");
   });
 
