@@ -488,7 +488,7 @@ test.describe("S4 Management hardening integration gate", () => {
 
     const suffix = uniqueSuffix();
     const namePrefix = `S4 Page ${suffix}`;
-    const usernamePrefix = `e2e-s4-page-${suffix}`;
+    const usernamePrefix = `E2E_s4-page-${suffix}`;
     const registrations: RegistrationRef[] = [];
     for (let index = 0; index < 51; index += 1) {
       registrations.push(
@@ -690,17 +690,17 @@ test.describe("S4 Management hardening integration gate", () => {
     const first = await registerPending(
       page,
       `S4 Approval First ${suffix}`,
-      `e2e-s4-approval-first-${suffix}`
+      `E2E_s4-approval-first-${suffix}`
     );
     const second = await registerPending(
       page,
       `S4 Approval Second ${suffix}`,
-      `e2e-s4-approval-second-${suffix}`
+      `E2E_s4-approval-second-${suffix}`
     );
     const processed = await registerPending(
       page,
       `S4 Approval Processed ${suffix}`,
-      `e2e-s4-approval-processed-${suffix}`
+      `E2E_s4-approval-processed-${suffix}`
     );
     await approveBatch(page, [processed.requestId]);
 
@@ -1008,7 +1008,7 @@ test.describe("S4 Management hardening integration gate", () => {
     const approval = await registerPending(
       page,
       `S4 ${suffix}`,
-      `e2e-s4-${suffix}`
+      `E2E_s4-${suffix}`
     );
     await page.goto("/management?module=approvals");
     await expect(
