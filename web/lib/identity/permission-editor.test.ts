@@ -256,6 +256,35 @@ describe("#485 Permission Editor domain seam", () => {
     const memberCapabilities = await resolveActorCapabilities(testDb(), MEMBER);
     assert.equal(memberCapabilities["program.enroll"], true);
   });
+  test("scoped permission readers can inspect protected anchors with locked detail", async () => {
+    for (const roleDefinitionId of [ADMIN_ROLE, STAFF_ROLE, MEMBER_ROLE]) {
+      const detail = await loadRoleDefinitionDetail(
+        testDb(),
+        DEPARTMENT_MANAGER,
+        roleDefinitionId
+      );
+      assert.equal(detail.caller.canRead, true);
+      assert.equal(detail.caller.canWrite, false);
+      assert.equal(detail.roleDefinition.scopeKind, "Global");
+      assert.equal(detail.roleDefinition.scopeId, null);
+      assert.ok(
+        detail.permissions.every(
+          (permission) => permission.locked && !permission.editable
+        )
+      );
+      if (roleDefinitionId === ADMIN_ROLE) {
+        assert.ok(detail.permissions.every((permission) => permission.value));
+      }
+      if (roleDefinitionId === MEMBER_ROLE) {
+        assert.equal(
+          detail.permissions.find(
+            (permission) => permission.capability === "program.enroll"
+          )?.value,
+          true
+        );
+      }
+    }
+  });
   test("resolves global and exact scoped grants without widening", async () => {
     const inside = await resolveActorCapabilities(
       testDb(),

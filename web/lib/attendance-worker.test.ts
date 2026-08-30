@@ -1256,17 +1256,128 @@ describe("attendance Worker routes", () => {
     }
   });
 
-  test("operator event chooser is empty for a member without a leader grant", async () => {
+  test("operator chooser and scanner deny a member without operator capability", async () => {
     const member = await accessCookieFor("att-member", "att-member-password");
-    const response = await worker.fetch(
+    const chooser = await worker.fetch(
+      request("/api/v1/attendance/events", {
+        headers: { Cookie: `${ACCESS_COOKIE_NAME}=${member}` },
+      }),
+      testEnv()
+    );
+    assert.strictEqual(chooser.status, 403);
+    const chooserBody = await json(chooser);
+    assert.strictEqual(chooserBody.code, "ROLE_FORBIDDEN");
+    assert.strictEqual(
+      chooser.headers.get("X-Request-Id"),
+      chooserBody.requestId
+    );
+
+    const scanner = await worker.fetch(
       request("/api/v1/attendance/scanner-events", {
         headers: { Cookie: `${ACCESS_COOKIE_NAME}=${member}` },
       }),
       testEnv()
     );
-    assert.strictEqual(response.status, 200);
-    const body = await json(response);
-    assert.strictEqual((body.data as { events: unknown[] }).events.length, 0);
+    assert.strictEqual(scanner.status, 403);
+    const scannerBody = await json(scanner);
+    assert.strictEqual(scannerBody.code, "ROLE_FORBIDDEN");
+    assert.strictEqual(
+      scanner.headers.get("X-Request-Id"),
+      scannerBody.requestId
+    );
+  });
+
+  test("operator chooser and scanner reject an operator whose scope is outside active Programs", async () => {
+    const member = await accessCookieFor("att-member", "att-member-password");
+    const assignmentId = "ATT-PROGRAM-OUT-OF-SCOPE-ASSIGNMENT";
+    const outsideProgram = "ATT-PROGRAM-OUT-OF-SCOPE";
+    await testDb()
+      .prepare(
+        "UPDATE role_definitions SET scope_id = ? WHERE role_definition_id = ?"
+      )
+      .bind(outsideProgram, PROGRAM_IDENTITY)
+      .run();
+    await assignIdentity(PROGRAM_IDENTITY, "ATT-MEMBER", assignmentId);
+    try {
+      for (const path of [
+        "/api/v1/attendance/events",
+        "/api/v1/attendance/scanner-events",
+      ]) {
+        const response = await worker.fetch(
+          request(path, {
+            headers: { Cookie: `${ACCESS_COOKIE_NAME}=${member}` },
+          }),
+          testEnv()
+        );
+        assert.strictEqual(response.status, 403);
+        const body = await json(response);
+        assert.strictEqual(body.code, "ROLE_SCOPE_MISMATCH");
+        assert.strictEqual(
+          response.headers.get("X-Request-Id"),
+          body.requestId
+        );
+      }
+    } finally {
+      await testDb()
+        .prepare("DELETE FROM role_assignments WHERE assignment_id = ?")
+        .bind(assignmentId)
+        .run();
+      await testDb()
+        .prepare(
+          "UPDATE role_definitions SET scope_id = ? WHERE role_definition_id = ?"
+        )
+        .bind(PROGRAM, PROGRAM_IDENTITY)
+        .run();
+    }
+  });
+
+  test("authorized operator receives an empty chooser and scanner result when no events exist", async () => {
+    const member = await accessCookieFor("att-member", "att-member-password");
+    const assignmentId = "ATT-PROGRAM-EMPTY-ASSIGNMENT";
+    await testDb()
+      .prepare(
+        "UPDATE role_definitions SET scope_id = ? WHERE role_definition_id = ?"
+      )
+      .bind(EMPTY_PROGRAM, PROGRAM_IDENTITY)
+      .run();
+    await assignIdentity(PROGRAM_IDENTITY, "ATT-MEMBER", assignmentId);
+    try {
+      for (const path of [
+        "/api/v1/attendance/events",
+        "/api/v1/attendance/scanner-events",
+      ]) {
+        const response = await worker.fetch(
+          request(path, {
+            headers: { Cookie: `${ACCESS_COOKIE_NAME}=${member}` },
+          }),
+          testEnv()
+        );
+        assert.strictEqual(response.status, 200);
+        const body = await json(response);
+        const data = body.data;
+        assert.ok(
+          data &&
+            typeof data === "object" &&
+            "events" in data &&
+            Array.isArray(data.events)
+        );
+        if (!data || typeof data !== "object" || !("events" in data)) {
+          throw new Error("expected events projection");
+        }
+        assert.strictEqual(data.events.length, 0);
+      }
+    } finally {
+      await testDb()
+        .prepare("DELETE FROM role_assignments WHERE assignment_id = ?")
+        .bind(assignmentId)
+        .run();
+      await testDb()
+        .prepare(
+          "UPDATE role_definitions SET scope_id = ? WHERE role_definition_id = ?"
+        )
+        .bind(PROGRAM, PROGRAM_IDENTITY)
+        .run();
+    }
   });
 
   test("operator chooser honors an active Program Leader scope", async () => {
@@ -1415,7 +1526,7 @@ describe("attendance Worker routes", () => {
     }
   });
 
-  test("scanner projection excludes revoked scoped grants", async () => {
+  test("scanner projection denies revoked scoped grants", async () => {
     const member = await accessCookieFor("att-member", "att-member-password");
     const revokedAt = new Date().toISOString();
     await assignIdentity(
@@ -1436,12 +1547,10 @@ describe("attendance Worker routes", () => {
       }),
       testEnv()
     );
-    assert.strictEqual(response.status, 200);
+    assert.strictEqual(response.status, 403);
     const body = await json(response);
-    const { data } = body;
-    assert.ok(data && typeof data === "object" && "events" in data);
-    assert.ok(Array.isArray(data.events));
-    assert.strictEqual(data.events.length, 0);
+    assert.strictEqual(body.code, "ROLE_FORBIDDEN");
+    assert.strictEqual(response.headers.get("X-Request-Id"), body.requestId);
   });
 
   test("guest entry that does not match the Event is rejected before check-in", async () => {

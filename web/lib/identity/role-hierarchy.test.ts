@@ -224,13 +224,30 @@ describe("#478 role hierarchy and rename contract", () => {
     // Technical capability keys never appear in the projection.
     expect(JSON.stringify(view)).not.toContain("department.manage");
   });
-  test("scoped role.read only exposes authorized definitions and safe categories", async () => {
+  test("scoped role.read preserves protected anchors and redacts unrelated definitions", async () => {
     const view = await loadRoleHierarchy(testDb(), PROGRAM_LEADER);
     expect(view.categories.map((category) => category.categoryKey)).toEqual([
       ROLE_CATEGORY_KEY.GLOBAL,
       ROLE_CATEGORY_KEY.DEPARTMENT,
       ROLE_CATEGORY_KEY.PROGRAM,
     ]);
+    const global = view.categories.find(
+      (category) => category.categoryKey === ROLE_CATEGORY_KEY.GLOBAL
+    );
+    expect(global).toBeDefined();
+    if (!global) {
+      throw new Error("missing Global category");
+    }
+    expect(
+      global.definitions.map((definition) => definition.roleDefinitionId)
+    ).toEqual([ADMIN_ROLE, STAFF_ROLE, MEMBER_ROLE]);
+    for (const definition of global.definitions) {
+      expect(definition.scopeKind).toBe(ROLE_CATEGORY_KEY.GLOBAL);
+      expect(definition.scopeId).toBeNull();
+      expect(definition.scopeLabel).toBeNull();
+      expect(definition.actions).toEqual([]);
+      expect(definition.reorderActions).toEqual([]);
+    }
     const definitions = view.categories.flatMap(
       (category) => category.definitions
     );

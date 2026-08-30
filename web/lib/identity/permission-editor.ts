@@ -154,12 +154,18 @@ function withinActorScope(
   actorRoles: Awaited<ReturnType<typeof loadActorRoles>>,
   target: Pick<
     RoleDefinitionRecord,
-    "scope_kind" | "scope_id" | "parent_department_id"
+    "stable_key" | "scope_kind" | "scope_id" | "parent_department_id"
   >
 ): boolean {
   const highest = actorRoles[0];
   if (!highest) {
     return false;
+  }
+  if (
+    target.scope_kind === ROLE_CATEGORY_KEY.GLOBAL &&
+    Object.values(PROTECTED_STABLE_KEYS).includes(target.stable_key)
+  ) {
+    return true;
   }
   if (highest.scope_kind === ROLE_CATEGORY_KEY.GLOBAL) {
     return true;
@@ -175,6 +181,25 @@ function withinActorScope(
     highest.scope_id !== null &&
     highest.scope_id === target.scope_id
   );
+}
+
+function capabilityScopeForActor(
+  actorRoles: Awaited<ReturnType<typeof loadActorRoles>>
+): { departmentId?: string; programId?: string } | null {
+  const highest = actorRoles[0];
+  if (!highest || highest.scope_kind === ROLE_CATEGORY_KEY.GLOBAL) {
+    return null;
+  }
+  if (
+    highest.scope_kind === ROLE_CATEGORY_KEY.DEPARTMENT &&
+    highest.scope_id
+  ) {
+    return { departmentId: highest.scope_id };
+  }
+  if (highest.scope_kind === ROLE_CATEGORY_KEY.PROGRAM && highest.scope_id) {
+    return { programId: highest.scope_id };
+  }
+  return null;
 }
 
 function scopeLabel(
@@ -558,15 +583,20 @@ export async function loadRoleDefinitionDetail(
   if (!target) {
     throw new RoleTargetNotFoundError();
   }
+  const actorRoles = await loadActorRoles(db, actorUserId);
+  const isProtectedAnchor =
+    target.scope_kind === ROLE_CATEGORY_KEY.GLOBAL &&
+    Object.values(PROTECTED_STABLE_KEYS).includes(target.stable_key);
   const capabilities = await resolveActorCapabilities(
     db,
     actorUserId,
-    capabilityScopeFor(target)
+    isProtectedAnchor
+      ? capabilityScopeForActor(actorRoles)
+      : capabilityScopeFor(target)
   );
   if (!capabilities["role.permissions.read"]) {
     throw new RoleCapabilityDeniedError();
   }
-  const actorRoles = await loadActorRoles(db, actorUserId);
   const highest = actorRoles[0];
   if (highest && !withinActorScope(actorRoles, target)) {
     throw new RoleScopeMismatchError();

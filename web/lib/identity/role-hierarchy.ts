@@ -759,14 +759,18 @@ export async function loadRoleHierarchy(
       })
     )
   );
-  // A scoped `role.read` grant authorizes only matching role scopes. Keep the
-  // category headings so the tree remains structurally safe, but do not emit
-  // labels, descriptions, grants, scope labels, or archive metadata for rows
-  // outside the actor's authorized Department/Program scopes.
-  const visibleDefinitions = (definitions.results ?? []).filter(
-    (row) =>
+  // Scoped readers may always see the code-owned global anchors so the
+  // hierarchy remains explainable. Their summaries are safe global metadata;
+  // unrelated scoped definitions still require target-scope `role.read`.
+  const visibleDefinitions = (definitions.results ?? []).filter((row) => {
+    const isProtectedAnchor =
+      row.category_key === ROLE_CATEGORY_KEY.GLOBAL &&
+      Object.values(PROTECTED_STABLE_KEYS).includes(row.stable_key);
+    return (
+      isProtectedAnchor ||
       permissionCapabilities.get(row.role_definition_id)?.["role.read"] === true
-  );
+    );
+  });
 
   const categoriesView: RoleHierarchyCategory[] = (
     categories.results ?? []

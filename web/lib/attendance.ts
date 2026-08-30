@@ -2,6 +2,7 @@ import { findAccountByUserId } from "./auth/accounts";
 import type { AccountRow } from "./auth/accounts";
 import { ACCESS_COOKIE_NAME } from "./auth/cookies";
 import { verifyAccessToken } from "./auth/sessions";
+import { loadActorRoles, resolveActorCapabilities } from "./identity/role-hierarchy";
 import { resolveProgramAccess } from "./programs/program-resolver";
 
 export type AttendanceMethod =
@@ -120,6 +121,8 @@ function requestId(): string {
 const PROBLEM_TITLES: Record<string, string> = {
   AUTH_REQUIRED: "Authentication required",
   FORBIDDEN: "Forbidden",
+  ROLE_FORBIDDEN: "Forbidden",
+  ROLE_SCOPE_MISMATCH: "Forbidden",
   VALIDATION: "Invalid request",
   NOT_FOUND: "Not found",
   CHECK_IN_NOT_FOUND: "Check-in event not found",
@@ -1176,10 +1179,24 @@ export async function handleSearchMembers(
   return json(200, { members: result.results ?? [] }, id);
 }
 /**
- * Resolve the operator's normalized Program scopes for bounded event lists.
- * Every caller shares this resolver-owned projection rather than duplicating
- * role/scope joins in SQL.
+ * Resolve active Programs the actor may manage through the normalized
+ * identity resolver. The caller uses the resulting IDs to distinguish an
+ * authorized empty projection from a forbidden or out-of-scope request.
  */
+async function resolveOperatorProgramIds(
+  db: D1Database,
+  actorUserId: string
+): Promise<string[]> {
+  const programRows = await db
+    .prepare(`SELECT program_id FROM programs WHERE lifecycle = 'Active'`)
+    .all<{ program_id: string }>();
+  return resolveAuthorizedProgramIds(
+    db,
+    actorUserId,
+    (programRows.results ?? []).map(({ program_id }) => program_id)
+  );
+}
+
 async function resolveAuthorizedProgramIds(
   db: D1Database,
   actorUserId: string,
@@ -1196,19 +1213,57 @@ async function resolveAuthorizedProgramIds(
   );
 }
 
-async function filterAuthorizedEvents(
+async function operatorListProblem(
   db: D1Database,
   actorUserId: string,
-  events: AttendanceEventSummary[]
-): Promise<AttendanceEventSummary[]> {
-  const authorized = new Set(
-    await resolveAuthorizedProgramIds(
+  authorizedProgramIds: readonly string[],
+  id: string
+): Promise<Response | null> {
+  if (authorizedProgramIds.length > 0) {
+    return null;
+  }
+  const [capabilities, globalCapabilities, actorRoles] = await Promise.all([
+    resolveActorCapabilities(db, actorUserId),
+    resolveActorCapabilities(db, actorUserId, null),
+    loadActorRoles(db, actorUserId),
+  ]);
+  if (globalCapabilities["program.manage"] === true) {
+    return null;
+  }
+  const highest = actorRoles[0];
+  if (capabilities["program.manage"] === true && highest?.scope_id) {
+    const scopedCapabilities = await resolveActorCapabilities(
       db,
       actorUserId,
-      events.map((event) => event.program_id)
-    )
-  );
-  return events.filter((event) => authorized.has(event.program_id));
+      highest.scope_kind === "Department"
+        ? { departmentId: highest.scope_id }
+        : { programId: highest.scope_id }
+    );
+    if (scopedCapabilities["program.manage"] === true) {
+      const scopeExists =
+        highest.scope_kind === "Department"
+          ? await db
+              .prepare("SELECT 1 FROM departments WHERE department_id = ?")
+              .bind(highest.scope_id)
+              .first()
+          : await db
+              .prepare("SELECT 1 FROM programs WHERE program_id = ?")
+              .bind(highest.scope_id)
+              .first();
+      if (scopeExists) {
+        return null;
+      }
+    }
+  }
+  const code =
+    capabilities["program.manage"] === true
+      ? "ROLE_SCOPE_MISMATCH"
+      : "ROLE_FORBIDDEN";
+  const detail =
+    code === "ROLE_SCOPE_MISMATCH"
+      ? "你沒有管理此範圍內的聚會簽到。"
+      : "你沒有管理聚會簽到的權限。";
+  return problem(403, code, detail, id);
 }
 
 /**
@@ -1225,16 +1280,18 @@ export async function handleListManageableEvents(
   if (current instanceof Response) {
     return current;
   }
-  const programRows = await env.DB.prepare(
-    `SELECT program_id FROM programs WHERE lifecycle = 'Active'`
-  ).all<{ program_id: string }>();
-  const authorizedProgramIds = await resolveAuthorizedProgramIds(
+  const authorizedProgramIds = await resolveOperatorProgramIds(
+    env.DB,
+    current.user_id
+  );
+  const accessProblem = await operatorListProblem(
     env.DB,
     current.user_id,
-    (programRows.results ?? []).map(({ program_id }) => program_id)
+    authorizedProgramIds,
+    id
   );
-  if (authorizedProgramIds.length === 0) {
-    return json(200, { events: [] }, id);
+  if (accessProblem) {
+    return accessProblem;
   }
   // Keep each IN-list below D1's variable ceiling while retaining all
   // authorized Programs before the final 50-event result limit.
@@ -1276,26 +1333,37 @@ export async function handleListScannerEvents(
     return current;
   }
   const now = new Date().toISOString();
-  const result = await env.DB.prepare(
-    `SELECT e.event_id, e.program_id, p.name AS program_name,
-            e.name, e.location, e.starts_at, e.ends_at,
-            e.check_in_window_opens_at, e.check_in_window_closes_at,
-            e.status, e.availability
-       FROM events e
-       JOIN programs p ON p.program_id = e.program_id
-      WHERE p.lifecycle = 'Active'
-        AND e.status = 'Active'
-        AND e.availability = 'Active'
-        AND julianday(e.check_in_window_opens_at) <= julianday(?)
-        AND julianday(e.check_in_window_closes_at) >= julianday(?)
-      ORDER BY e.starts_at DESC`
-  )
-    .bind(now, now)
-    .all<AttendanceEventSummary>();
-  const events = await filterAuthorizedEvents(
+  const [result, authorizedProgramIds] = await Promise.all([
+    env.DB.prepare(
+      `SELECT e.event_id, e.program_id, p.name AS program_name,
+              e.name, e.location, e.starts_at, e.ends_at,
+              e.check_in_window_opens_at, e.check_in_window_closes_at,
+              e.status, e.availability
+         FROM events e
+         JOIN programs p ON p.program_id = e.program_id
+        WHERE p.lifecycle = 'Active'
+          AND e.status = 'Active'
+          AND e.availability = 'Active'
+          AND julianday(e.check_in_window_opens_at) <= julianday(?)
+          AND julianday(e.check_in_window_closes_at) >= julianday(?)
+        ORDER BY e.starts_at DESC`
+    )
+      .bind(now, now)
+      .all<AttendanceEventSummary>(),
+    resolveOperatorProgramIds(env.DB, current.user_id),
+  ]);
+  const accessProblem = await operatorListProblem(
     env.DB,
     current.user_id,
-    result.results ?? []
+    authorizedProgramIds,
+    id
+  );
+  if (accessProblem) {
+    return accessProblem;
+  }
+  const authorizedProgramIdSet = new Set(authorizedProgramIds);
+  const events = (result.results ?? []).filter((event) =>
+    authorizedProgramIdSet.has(event.program_id)
   );
   return json(200, { events }, id);
 }
