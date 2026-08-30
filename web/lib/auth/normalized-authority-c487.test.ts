@@ -647,11 +647,7 @@ describe("#487 normalized authority Worker seams", () => {
     );
 
     const memberEvents = await withCookie("/api/v1/attendance/events", member);
-    expect(memberEvents.status).toBe(200);
-    const memberEventData = await envelope<{ events: { event_id: string }[] }>(
-      memberEvents
-    );
-    expect(memberEventData.events).toStrictEqual([]);
+    await problem(memberEvents, 403, "ROLE_FORBIDDEN");
 
     const plCheckIn = await withCookie(
       `/api/v1/attendance/events/${YOUTH_EVENT}/check-in`,
