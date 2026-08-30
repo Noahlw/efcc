@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 /**
  * EFCC dev-testing D1 seeder (PRG-05 #224).
  *
@@ -116,9 +117,30 @@ async function buildLegacyReset(now: number): Promise<string> {
 }
 function buildNormalizedIdentitySeed(now: number): string {
   const definitions = [
-    ["dev-role-admin", "admin", "系統管理員", "本機示範系統管理身份。", 0, 1],
-    ["dev-role-staff", "staff", "同工", "本機示範同工身份。", 1, 0],
-    ["dev-role-member", "member", "會友基礎", "本機示範參與者基礎。", 999, 1],
+    [
+      "018f3b8a-0000-7000-8000-000000000a01",
+      "admin",
+      "系統管理員",
+      "全教會唯一可改變授權政策、發佈首頁內容的身份。",
+      0,
+      1,
+    ],
+    [
+      "018f3b8a-0000-7000-8000-000000000a02",
+      "staff",
+      "同工",
+      "全教會同工，可管理部門、課程與指派負責人，但不可變更授權政策。",
+      1,
+      0,
+    ],
+    [
+      "018f3b8a-0000-7000-8000-000000000a03",
+      "member",
+      "會友基礎",
+      "每位正式會友皆持有的最低限度身份，僅含提交課程報名。",
+      999,
+      1,
+    ],
   ] as const;
   const statements = definitions.map(
     ([id, stableKey, label, description, position, protectedState]) =>
@@ -169,7 +191,7 @@ function buildNormalizedIdentitySeed(now: number): string {
       "  (role_definition_id, capability, granted_by, granted_at)",
       `SELECT role_definition_id, capability, NULL, ${now}`,
       "  FROM role_definitions CROSS JOIN catalog",
-      " WHERE role_definitions.stable_key = 'staff';",
+      " WHERE role_definitions.stable_key = 'staff' AND role_definitions.is_archived = 0;",
     ].join("\n")
   );
   statements.push(
@@ -177,15 +199,31 @@ function buildNormalizedIdentitySeed(now: number): string {
       "INSERT OR IGNORE INTO role_assignments",
       "  (assignment_id, account_user_id, role_definition_id, granted_by,",
       "   granted_at, scope_kind, scope_id)",
-      "SELECT 'dev-assignment-admin', 'U-E2E-ADMIN', role_definition_id,",
-      `  'U-E2E-ADMIN', ${now}, scope_kind, scope_id`,
-      "  FROM role_definitions WHERE stable_key = 'admin';",
+      `SELECT ${sqlLiteral(`dev-assignment-admin-${randomUUID()}`)}, 'U-E2E-ADMIN', rd.role_definition_id,`,
+      `  'U-E2E-ADMIN', ${now}, rd.scope_kind, rd.scope_id`,
+      "  FROM role_definitions AS rd",
+      " WHERE rd.stable_key = 'admin'",
+      "   AND rd.is_archived = 0",
+      "   AND NOT EXISTS (",
+      "     SELECT 1 FROM role_assignments AS current",
+      "      WHERE current.account_user_id = 'U-E2E-ADMIN'",
+      "        AND current.role_definition_id = rd.role_definition_id",
+      "        AND current.revoked_at IS NULL",
+      "   );",
       "INSERT OR IGNORE INTO role_assignments",
       "  (assignment_id, account_user_id, role_definition_id, granted_by,",
       "   granted_at, scope_kind, scope_id)",
-      "SELECT 'dev-assignment-staff', 'U-E2E-STAFF', role_definition_id,",
-      `  'U-E2E-ADMIN', ${now}, scope_kind, scope_id`,
-      "  FROM role_definitions WHERE stable_key = 'staff';",
+      `SELECT ${sqlLiteral(`dev-assignment-staff-${randomUUID()}`)}, 'U-E2E-STAFF', rd.role_definition_id,`,
+      `  'U-E2E-ADMIN', ${now}, rd.scope_kind, rd.scope_id`,
+      "  FROM role_definitions AS rd",
+      " WHERE rd.stable_key = 'staff'",
+      "   AND rd.is_archived = 0",
+      "   AND NOT EXISTS (",
+      "     SELECT 1 FROM role_assignments AS current",
+      "      WHERE current.account_user_id = 'U-E2E-STAFF'",
+      "        AND current.role_definition_id = rd.role_definition_id",
+      "        AND current.revoked_at IS NULL",
+      "   );",
     ].join("\n")
   );
   return statements.join("\n");
@@ -217,6 +255,8 @@ async function main(): Promise<void> {
     // programs, identity assignments, requests, enrollments, events,
     // registration requests). Delete children before parents (FKs are
     // ON DELETE RESTRICT); audit_events carries no FK and is left as history.
+    // Revoked assignments are immutable terminal history; only active fixture
+    // assignments are reset here.
     // GLOB treats the underscore in the E2E_ prefix literally; LIKE would
     // treat it as a single-character wildcard.
     const e2eProgramIds =
@@ -233,9 +273,9 @@ async function main(): Promise<void> {
         `DELETE FROM program_preview_plans WHERE program_id IN ${e2eProgramIds};`,
         `DELETE FROM program_schedule_exceptions WHERE rule_id IN (SELECT rule_id FROM program_schedule_rules WHERE program_id IN ${e2eProgramIds});`,
         `DELETE FROM program_schedule_rules WHERE program_id IN ${e2eProgramIds};`,
-        "DELETE FROM role_assignments WHERE account_user_id IN (SELECT user_id FROM accounts WHERE username GLOB 'E2E_*');",
-        `DELETE FROM role_assignments WHERE role_definition_id IN (SELECT role_definition_id FROM role_definitions WHERE scope_kind = 'Program' AND scope_id IN ${e2eProgramIds});`,
-        `DELETE FROM role_assignments WHERE role_definition_id IN (SELECT role_definition_id FROM role_definitions WHERE scope_kind = 'Department' AND scope_id IN (SELECT department_id FROM departments WHERE code GLOB 'E2E_*' OR name GLOB 'E2E_*'));`,
+        "DELETE FROM role_assignments WHERE account_user_id IN (SELECT user_id FROM accounts WHERE username GLOB 'E2E_*') AND revoked_at IS NULL;",
+        `DELETE FROM role_assignments WHERE role_definition_id IN (SELECT role_definition_id FROM role_definitions WHERE scope_kind = 'Program' AND scope_id IN ${e2eProgramIds}) AND revoked_at IS NULL;`,
+        `DELETE FROM role_assignments WHERE role_definition_id IN (SELECT role_definition_id FROM role_definitions WHERE scope_kind = 'Department' AND scope_id IN (SELECT department_id FROM departments WHERE code GLOB 'E2E_*' OR name GLOB 'E2E_*')) AND revoked_at IS NULL;`,
         `DELETE FROM attendances WHERE event_id IN (SELECT event_id FROM events WHERE program_id IN ${e2eProgramIds});`,
         `DELETE FROM events WHERE program_id IN ${e2eProgramIds};`,
         `DELETE FROM enrollments WHERE program_id IN ${e2eProgramIds};`,

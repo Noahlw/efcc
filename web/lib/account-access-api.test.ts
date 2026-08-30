@@ -1,5 +1,7 @@
 import { afterEach, describe, expect, test, vi } from "vitest";
 
+import * as accountAccessDomain from "@/lib/identity/account-access";
+import * as accountAccessApi from "@/lib/identity/account-access-api";
 import {
   getAccountAccess,
   getRoleDefinitionLifecyclePreview,
@@ -8,6 +10,7 @@ import {
   searchEligibleAccounts,
   updateRoleDefinitionLifecycle,
 } from "@/lib/identity/account-access-api";
+import * as accountAccessHandlers from "@/lib/identity/account-access-handlers";
 import { getRoleHierarchy } from "@/lib/identity/role-hierarchy-api";
 
 const fetchMock = vi.fn<typeof fetch>();
@@ -18,6 +21,26 @@ afterEach(() => {
 });
 
 describe("Account Access API", () => {
+  test("does not export obsolete compatibility aliases", () => {
+    expect(accountAccessApi).not.toHaveProperty("getEligibleAccounts");
+    expect(accountAccessApi).not.toHaveProperty("getAccountAssignments");
+    expect(accountAccessDomain).not.toHaveProperty(
+      "updateRoleDefinitionLifecycle"
+    );
+    expect(accountAccessHandlers).not.toHaveProperty(
+      "handleGetEligibleAccounts"
+    );
+    expect(accountAccessHandlers).not.toHaveProperty(
+      "handlePostRoleDefinitionLifecycle"
+    );
+    expect(accountAccessHandlers).not.toHaveProperty(
+      "handleGetAccountAssignments"
+    );
+    expect(accountAccessHandlers).not.toHaveProperty(
+      "handlePostAccountAssignments"
+    );
+    expect(accountAccessHandlers).not.toHaveProperty("handleLifecycle");
+  });
   test("keeps cookie-only transport and exact account route bodies", async () => {
     fetchMock.mockResolvedValue(
       new Response(

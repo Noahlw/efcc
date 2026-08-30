@@ -175,7 +175,5 @@ export function updateRoleDefinitionLifecycle(
     idempotencyKey
   );
 }
-export const getEligibleAccounts = searchEligibleAccounts;
-export const getAccountAssignments = getAccountAccess;
 
 export const __test = { accountFetch };

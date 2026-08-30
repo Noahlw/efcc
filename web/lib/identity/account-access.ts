@@ -2522,7 +2522,6 @@ export async function mutateRoleDefinitionLifecycle(
   }
   return lifecycle;
 }
-export const updateRoleDefinitionLifecycle = mutateRoleDefinitionLifecycle;
 
 export const __test = {
   canonicalAssignmentFingerprint,

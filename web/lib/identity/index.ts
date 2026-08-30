@@ -128,7 +128,6 @@ export {
   mutateAccountAssignments,
   revokeAccountAssignments,
   mutateRoleDefinitionLifecycle,
-  updateRoleDefinitionLifecycle,
   AccountTargetIneligibleError,
   AccountAdminProtectedError,
   AccountSelfProtectedError,

@@ -554,12 +554,6 @@ export async function handleGetRoleDefinitionLifecyclePreview(
     return mapAccountAccessError(error, requestId);
   }
 }
-export const handleGetEligibleAccounts = handleSearchEligibleAccounts;
-export const handlePostRoleDefinitionLifecycle = handleRoleDefinitionLifecycle;
-
-export const handleGetAccountAssignments = handleGetAccountAccess;
-export const handlePostAccountAssignments = handleMutateAccountAssignments;
-export const handleLifecycle = handleRoleDefinitionLifecycle;
 
 export const __test = {
   hasOnlyKeys,
