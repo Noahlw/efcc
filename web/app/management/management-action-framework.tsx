@@ -1,10 +1,20 @@
 "use client";
 import { cva } from "class-variance-authority";
 import type { VariantProps } from "class-variance-authority";
+import { XIcon } from "lucide-react";
 import Link from "next/link";
-import { useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import type { ComponentPropsWithoutRef, ReactNode, Ref } from "react";
 
+import { Button } from "@/components/ui/button";
+import {
+  Sheet,
+  SheetClose,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
 
 import { BackIcon } from "./settings-ui";
@@ -168,36 +178,66 @@ export const ManagementFilterSheet = ({
   onClose: () => void;
 }) => {
   const closeRef = useRef<HTMLButtonElement>(null);
-  const openerRef = useRef<HTMLElement | null>(null);
+  const openerRef = useRef<HTMLElement | null>(
+    typeof document === "undefined"
+      ? null
+      : document.activeElement instanceof HTMLElement
+        ? document.activeElement
+        : null
+  );
+  const restoreFocus = useCallback(() => {
+    const opener = openerRef.current;
+    if (opener?.isConnected) {
+      opener.focus();
+    }
+  }, []);
+
   useEffect(() => {
-    openerRef.current = document.activeElement as HTMLElement | null;
     closeRef.current?.focus();
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        onClose();
-      }
-    };
-    document.addEventListener("keydown", handleKeyDown);
-    return () => {
-      document.removeEventListener("keydown", handleKeyDown);
-      openerRef.current?.focus();
-    };
-  }, [onClose]);
+    return restoreFocus;
+  }, [restoreFocus]);
 
   return (
-    <div className={styles.backdrop} role="presentation">
-      <dialog aria-label={label} className={styles.sheet} open>
-        <button
-          aria-label={`關閉${label}`}
-          className={styles.close}
-          onClick={onClose}
-          ref={closeRef}
-          type="button"
-        >
-          ×
-        </button>
+    <Sheet
+      onOpenChange={(open) => {
+        if (!open) {
+          onClose();
+        }
+      }}
+      open
+    >
+      <SheetContent
+        aria-label={label}
+        className="max-h-[82dvh] w-full overflow-y-auto rounded-t-[18px] border border-[var(--line)] bg-[var(--surface-raised)] p-[1.2rem] pb-[calc(1rem+env(safe-area-inset-bottom,0px))] text-[var(--ink)] sm:inset-x-auto sm:top-1/2 sm:right-auto sm:bottom-auto sm:left-1/2 sm:h-auto sm:w-[min(640px,calc(100%-2rem))] sm:-translate-x-1/2 sm:-translate-y-1/2 sm:rounded-2xl"
+        onCloseAutoFocus={(event) => {
+          event.preventDefault();
+          restoreFocus();
+        }}
+        onOpenAutoFocus={(event) => {
+          event.preventDefault();
+          closeRef.current?.focus();
+        }}
+        side="bottom"
+        showCloseButton={false}
+      >
+        <SheetHeader className="sr-only p-0">
+          <SheetTitle>{label}</SheetTitle>
+          <SheetDescription>選擇篩選條件後套用。</SheetDescription>
+        </SheetHeader>
+        <SheetClose asChild>
+          <Button
+            aria-label={`關閉${label}`}
+            className="absolute top-2 right-2 size-11 rounded-full bg-[var(--surface)] text-[var(--ink)]"
+            ref={closeRef}
+            size="icon-sm"
+            type="button"
+            variant="ghost"
+          >
+            <XIcon aria-hidden="true" />
+          </Button>
+        </SheetClose>
         {children}
-      </dialog>
-    </div>
+      </SheetContent>
+    </Sheet>
   );
 };
