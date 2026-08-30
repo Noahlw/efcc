@@ -5,9 +5,9 @@
  *
  * The suite consumes the real Worker/D1 runtime through PROGRAMS_TARGET_URL.
  * It intentionally creates only disposable, uniquely prefixed E2E records;
- * the local seed/reset lifecycle owns cleanup. The role-first and persistent
- * approval assertions encode the frozen H-14–H-35 contract and should surface
- * an incomplete lower stack branch rather than silently weakening coverage.
+ * The role-first and persistent approval assertions encode the current
+ * normalized identity-management contract and should surface an incomplete
+ * lower stack branch rather than silently weakening coverage.
  */
 import path from "node:path";
 
@@ -19,10 +19,8 @@ import { DEV_ADMIN } from "./dev-fixtures";
 const LOGIN = "登入";
 const HUB_TITLE = "管理工作";
 const ACCOUNTS_TITLE = "帳戶名錄";
-const PERMISSIONS_TITLE = "帳戶與權限";
+const PERMISSIONS_TITLE = "權限管理";
 const APPROVALS_TITLE = "註冊審批";
-const BASELINE_LABEL = "會友基礎";
-const BASELINE_SUMMARY = "適用於所有生效帳戶 · 系統固定";
 const TARGET_URL = process.env.PROGRAMS_TARGET_URL;
 
 if (!TARGET_URL) {
@@ -597,7 +595,7 @@ test.describe("S4 Management hardening integration gate", () => {
     );
     expect(overflow).toBeLessThanOrEqual(1);
   });
-  test("Role list keeps Member Baseline fixed and drills into Permissions or Assigned Accounts", async ({
+  test("Role list exposes protected Member Baseline and drills directly into permissions", async ({
     page,
   }, testInfo) => {
     onlyProjects(testInfo, ["phone-390", "desktop-1024"]);
@@ -606,49 +604,81 @@ test.describe("S4 Management hardening integration gate", () => {
     await expect(
       page.getByRole("heading", { name: PERMISSIONS_TITLE })
     ).toBeVisible();
-    await expect(page.getByText(BASELINE_LABEL, { exact: true })).toBeVisible();
     await expect(
-      page.getByText(BASELINE_SUMMARY, { exact: true })
+      page.getByRole("heading", {
+        exact: true,
+        level: 2,
+        name: "身份組列表",
+      })
     ).toBeVisible();
-    await expect(page.getByRole("button", { name: /會友基礎/u })).toHaveCount(
-      0
-    );
+    const roleList = page.getByRole("list", {
+      exact: true,
+      name: "身份組列表",
+    });
+    await expect(roleList).toBeVisible();
+    await expect(
+      roleList.getByRole("button", { name: /^會友基礎/u })
+    ).toBeVisible();
 
     await captureEvidence(page, testInfo, "role-list-baseline");
-    const staffRole = page.getByRole("button", { name: /^同工/u });
-    expect(await staffRole.count()).toBeGreaterThan(0);
+    const staffRole = roleList.getByRole("button", { name: /^同工/u });
+    await expect(staffRole).toBeVisible();
     await staffRole.click();
-    await expect(page.getByRole("heading", { name: /同工/u })).toBeVisible();
-    await expect(page.getByText(/角色詳情|固定角色/u).first()).toBeVisible();
-
-    await captureEvidence(page, testInfo, "role-detail");
-    await clickNamed(page, /權限/u);
     await expect(
-      page.getByRole("heading", { name: /權限/u, level: 2 })
+      page.getByRole("heading", {
+        exact: true,
+        level: 2,
+        name: "同工",
+      })
     ).toBeVisible();
-    const permissionSearch = await searchInput(page, "搜尋權限");
-    await permissionSearch.fill("account.directory.read");
-    await expect(page.getByText("查看帳戶名錄", { exact: true })).toBeVisible();
-    await captureEvidence(page, testInfo, "role-permissions-search");
-    await clickNamed(page, /返回角色詳情/u);
-
-    await clickNamed(page, /已指派帳戶/u);
+    const detailSurface = page.getByRole("region", {
+      exact: true,
+      name: "權限編輯：同工",
+    });
+    await expect(detailSurface).toBeVisible();
+    await expect(
+      page.getByRole("button", { exact: true, name: "權限" })
+    ).toHaveCount(0);
+    await expect(
+      page.getByRole("link", { exact: true, name: "權限" })
+    ).toHaveCount(0);
     await expect(
       page.getByRole("heading", { name: /已指派帳戶/u })
-    ).toBeVisible();
-    await expect(page.getByText(/只供查看|唯讀/u).first()).toBeVisible();
-    await expect(
-      page.getByRole("button", { name: /新增|指派|移除/u })
     ).toHaveCount(0);
-    await captureEvidence(page, testInfo, "role-assigned-accounts-readonly");
-
-    await clickNamed(page, /返回角色詳情/u);
-    await clickNamed(page, /返回角色列表|返回角色/u);
     await expect(
-      page.getByText(BASELINE_SUMMARY, { exact: true })
+      page.getByRole("link", { name: /已指派帳戶/u })
+    ).toHaveCount(0);
+    await expect(
+      page.getByRole("button", { name: /已指派帳戶/u })
+    ).toHaveCount(0);
+    await captureEvidence(page, testInfo, "role-detail");
+    await captureEvidence(
+      page,
+      testInfo,
+      "role-detail-no-assigned-account-action"
+    );
+
+    const permissionSearch = await searchInput(page, "搜尋權限");
+    await permissionSearch.fill("account.directory.read");
+    await expect(
+      page.getByText("查看帳戶名錄", { exact: true })
+    ).toBeVisible();
+    await captureEvidence(page, testInfo, "role-permissions-search");
+
+    await page
+      .getByRole("link", { exact: true, name: "返回身份組列表" })
+      .click();
+    await expect(
+      page.getByRole("heading", {
+        exact: true,
+        level: 2,
+        name: "身份組列表",
+      })
+    ).toBeVisible();
+    await expect(
+      page.getByRole("list", { exact: true, name: "身份組列表" })
     ).toBeVisible();
   });
-
   test("approval Pending/Processed views preserve explicit selection lifecycle", async ({
     page,
   }, testInfo) => {
@@ -823,17 +853,19 @@ test.describe("S4 Management hardening integration gate", () => {
       await route.continue();
     });
     await page.goto("/management?module=permissions");
-    await expect(
-      page
-        .locator("section[aria-labelledby='permissions-title']")
-        .getByText("載入中…", {
-          exact: true,
-        })
-    ).toBeVisible();
+    const permissionLoadingState = page.locator(
+      "output#permission-editor-state"
+    );
+    await expect(permissionLoadingState).toBeVisible();
+    await expect(permissionLoadingState).toHaveText("正在載入權限…", {
+      exact: true,
+    });
     await expect.poll(() => permissionHierarchyRouteHit).toBe(true);
     await captureEvidence(page, testInfo, "permissions-loading");
     permissionLoadingGate.resolve();
-    await expect(page.getByRole("list", { name: "角色定義" })).toBeVisible();
+    await expect(
+      page.getByRole("list", { exact: true, name: "身份組列表" })
+    ).toBeVisible();
     await page.unroute("**/api/v1/identity/roles");
 
     let permissionErrorRouteHit = false;
@@ -1065,18 +1097,33 @@ test.describe("S4 Management hardening integration gate", () => {
     ).toBeVisible();
     const staffRole = page.getByRole("button", { name: /^同工/u }).first();
     await staffRole.click();
-    await clickNamed(page, /權限/u);
-    const toggles = page.locator("[data-editable='true'] [role='button']");
-    await toggles.first().click();
-    const review = page.locator("[class*='reviewPanel']").first();
-    await expect(review).toBeVisible();
-    expect(await horiz()).toBeLessThanOrEqual(1);
-    const isReviewCompact = vw < 1024;
-    const reviewPos = await review.evaluate(
-      (e) => getComputedStyle(e).position
+    await expect(
+      page.getByRole("heading", {
+        exact: true,
+        level: 2,
+        name: "同工",
+      })
+    ).toBeVisible();
+    const permissionSurface = page.locator(
+      '[data-slot="action-surface"][aria-label="權限編輯：同工"]'
     );
-    expect(reviewPos).toBe(isReviewCompact ? "static" : "sticky");
-    const saveBtn = review.getByRole("button", { name: /儲存/u }).first();
+    await expect(permissionSurface).toBeVisible();
+    const editableSwitch = page.locator(
+      '[data-capability="department.manage"] [role="switch"]'
+    );
+    await expect(editableSwitch).toBeVisible();
+    await expect(editableSwitch).toBeEnabled();
+    await editableSwitch.click();
+
+    const actionSurface = page.locator(
+      '[data-slot="action-surface"][aria-label="權限儲存操作"]'
+    );
+    await expect(actionSurface).toBeVisible();
+    const saveBtn = actionSurface.getByRole("button", {
+      exact: true,
+      name: "儲存變更",
+    });
+    await expect(saveBtn).toBeVisible();
     await page.evaluate(() => {
       const shell = document.querySelector<HTMLElement>(".shell-content");
       if (shell) {
@@ -1090,6 +1137,48 @@ test.describe("S4 Management hardening integration gate", () => {
     if (dockBox2 && saveBox && isCompact) {
       expect(saveBox.y + saveBox.height).toBeLessThanOrEqual(dockBox2.y + 1);
     }
+
+    await saveBtn.click();
+    const review = page.getByRole("dialog", {
+      exact: true,
+      name: "確認權限變更",
+    });
+    await expect(review).toBeVisible();
+    await expect(
+      review.getByRole("button", { exact: true, name: "確認儲存" })
+    ).toBeVisible();
+    const reviewBox = await review.boundingBox();
+    expect(reviewBox).not.toBeNull();
+    if (reviewBox) {
+      expect(reviewBox.left).toBeGreaterThanOrEqual(-1);
+      expect(reviewBox.top).toBeGreaterThanOrEqual(-1);
+      expect(reviewBox.right).toBeLessThanOrEqual(vw + 1);
+      expect(reviewBox.bottom).toBeLessThanOrEqual(
+        (page.viewportSize()?.height ?? 0) + 1
+      );
+    }
+    const reviewButtons = await review.getByRole("button").evaluateAll(
+      (elements) =>
+        elements.map((element) => {
+          const rect = element.getBoundingClientRect();
+          return {
+            height: rect.height,
+            right: rect.right,
+            width: rect.width,
+          };
+        })
+    );
+    for (const bounds of reviewButtons) {
+      expect(bounds.width).toBeGreaterThanOrEqual(44);
+      expect(bounds.height).toBeGreaterThanOrEqual(44);
+      expect(bounds.right).toBeLessThanOrEqual(vw + 1);
+    }
+    expect(await horiz()).toBeLessThanOrEqual(1);
+    await review
+      .getByRole("button", { exact: true, name: "返回編輯" })
+      .click();
+    await expect(review).toBeHidden();
+    await expect(saveBtn).toBeFocused();
 
     await captureEvidence(page, testInfo, "mobile-inflow-regression");
   });
