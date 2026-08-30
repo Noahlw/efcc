@@ -19,10 +19,15 @@ import { cn } from "@/lib/utils";
 
 import { BackIcon } from "./settings-ui";
 
-import styles from "./management-action-framework.module.css";
+const focusVisibleOutline =
+  "focus-visible:outline-[3px]! focus-visible:outline-[var(--focus)]! focus-visible:outline-offset-[3px]!";
+const actionSurfaceFocus =
+  "[&_:is(button,a,input,select,textarea):focus-visible]:outline-[3px]! [&_:is(button,a,input,select,textarea):focus-visible]:outline-[var(--focus)]! [&_:is(button,a,input,select,textarea):focus-visible]:outline-offset-[3px]!";
+const headerActionFocus =
+  "[&_:is(button,a):focus-visible]:outline-[3px]! [&_:is(button,a):focus-visible]:outline-[var(--focus)]! [&_:is(button,a):focus-visible]:outline-offset-[3px]!";
 
 export const actionSurfaceVariants = cva(
-  "relative isolate w-full min-w-0 rounded-xl border text-sm",
+  `static isolate grid w-full min-w-0 max-h-[min(48dvh,420px)] gap-[var(--space-3)] mt-[var(--space-4)] overflow-y-auto overscroll-contain rounded-[var(--radius-md)] border bg-[var(--surface-raised)] p-[var(--space-3)] pb-[calc(var(--space-3)+env(safe-area-inset-bottom,0px))] text-sm shadow-[var(--shadow-dock)] scroll-mb-[calc(84px+env(safe-area-inset-bottom,0px))] data-disabled:opacity-70 ${actionSurfaceFocus}`,
   {
     variants: {
       state: {
@@ -31,8 +36,8 @@ export const actionSurfaceVariants = cva(
         review: "border-ring",
         save: "border-primary",
         busy: "border-input",
-        failure: "border-destructive bg-destructive/10",
-        conflict: "border-destructive bg-destructive/10",
+        failure: "border-[var(--error-border)] bg-[var(--error-surface)]",
+        conflict: "border-[var(--error-border)] bg-[var(--error-surface)]",
       },
     },
     defaultVariants: {
@@ -71,10 +76,7 @@ export const ActionSurface = ({
       {...props}
       aria-busy={isBusy}
       aria-label={label}
-      className={cn(
-        actionSurfaceVariants({ state, className }),
-        styles.actionSurface
-      )}
+      className={cn(actionSurfaceVariants({ state, className }))}
       data-disabled={disabled || undefined}
       data-slot="action-surface"
       data-state={state}
@@ -127,19 +129,33 @@ export const ManagementPageHeader = ({
   titleRef?: Ref<HTMLHeadingElement>;
   onBackClick?: () => void;
 }) => (
-  <header className={styles.header}>
-    <Link className={styles.back} href={backHref} onClick={onBackClick}>
+  <header className="grid gap-[0.7rem]">
+    <Link
+      className={cn(
+        "inline-flex w-fit min-h-[44px] items-center gap-[0.3rem] text-[var(--ink-muted)] no-underline",
+        focusVisibleOutline
+      )}
+      href={backHref}
+      onClick={onBackClick}
+    >
       <BackIcon />
       <span>{backLabel}</span>
     </Link>
-    <div className={styles.titleRow}>
+    <div className="flex items-start justify-between gap-4">
       <div>
-        <h1 id={titleId} ref={titleRef} tabIndex={titleRef ? -1 : undefined}>
+        <h1
+          className="m-0 text-[clamp(1.75rem,5vw,2.35rem)] tracking-[-0.03em]"
+          id={titleId}
+          ref={titleRef}
+          tabIndex={titleRef ? -1 : undefined}
+        >
           {title}
         </h1>
-        <p>{lead}</p>
+        <p className="m-0 mt-[0.35rem] max-w-[65ch] text-[var(--ink-muted)] leading-[1.55]">
+          {lead}
+        </p>
       </div>
-      {action && <div className={styles.headerAction}>{action}</div>}
+      {action && <div className={cn("flex-none", headerActionFocus)}>{action}</div>}
     </div>
   </header>
 );
@@ -159,7 +175,7 @@ export const ManagementStickyActionBar = ({
 }) => (
   <ActionSurface
     busy={busy}
-    className={styles.stickyBar}
+    className="shell:fixed shell:right-4 shell:bottom-4 shell:left-auto shell:z-[25] shell:min-w-[360px]"
     disabled={disabled}
     label={label}
     state={state}
