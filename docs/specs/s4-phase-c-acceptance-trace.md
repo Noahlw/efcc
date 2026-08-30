@@ -4152,3 +4152,85 @@ failures:
 Only this acceptance trace is changed by this append. No remote or
 production database, Apps Script, Google Sheet, deployment, `#488/#489`, or
 Phase D path was touched. The local Worker was stopped after verification.
+
+## #487 final Phase C verification — current `189eb78b` — 2026-08-30
+
+### Required reread and documentation status
+
+All implementation and review delegations were instructed to reread tickets
+`#485`, `#486`, and `#487`, parent `#475`, Specs 091/092, this plan, and this
+trace before acting. They were also instructed to use Context7 CLI for
+unfamiliar APIs and report the exact result. The CLI returned:
+
+`✖ Monthly quota exceeded. Create a free API key at https://context7.com/dashboard for more requests.`
+
+No fresh documentation identifier or unsupported API claim is recorded.
+
+### Source and focused checks
+
+| Check | Exact result |
+| --- | --- |
+| `pnpm typecheck` | **PASS**, root and E2E TypeScript |
+| `pnpm --dir web typecheck` | **PASS**, web and Worker TypeScript |
+| `pnpm --dir web build` | **PASS**, 18/18 static routes generated |
+| `pnpm --dir web test:components` | **PASS**, 59 files, 690/690 |
+| `pnpm verify:identity` | **PASS**, 4 files, 94/94 |
+| `pnpm test` | **PASS**, 1 file, 38/38 |
+| Focused management identity components | **PASS**, 4 files, 62/62 |
+| `pnpm test:shell-responsive` | **PASS**, 92 passed, 1 intentional skip |
+| `pnpm test:shell-geometry` | **PASS**, 28/28 |
+| `pnpm test:role-hierarchy-geometry` | **PASS**, 49/49 across 320, 390, 600, 799, 800, 1024, and 1440 CSS px |
+| `pnpm check` | **FAIL**, repository-wide Ultracite baseline: 1,782 errors and 0 warnings |
+| `git diff --check` | **PASS**, no whitespace errors |
+
+Component output contained only existing jsdom `scrollTo()` and navigation
+notices. No component assertion failed.
+
+### Local disposable runtime and browser checks
+
+The prescribed `pnpm --dir web dev:local` launcher still fails under the
+supervised Node `v20.19.0` runtime with
+`ERR_UNKNOWN_BUILTIN_MODULE: node:sqlite`. A separate direct Node `v22.18.0`
+Wrangler process was started only on `http://127.0.0.1:8797`, with the auth
+secret supplied through Wrangler `--var`; it was stopped after verification.
+The local reset completed 20 D1 commands. The demo seed completed with four
+`E2E_DEMO_` Programs, 13 generated events, module-gate data, notices, and Home
+content.
+
+| Check | Exact result |
+| --- | --- |
+| `programs-d1.config.ts` | **PASS**, 195/195 with one worker after reset and demo seed |
+| `s4-management-hardening.config.ts` | **PASS**, 45 passed and 65 intentional `onlyProjects` skips; 110 scheduled, zero failures |
+| `live-ui.config.ts` | **PASS**, 28/28 across phone and desktop projects after a clean fixture reset |
+| `member-directory.config.ts` | **PASS**, 1/1; global Admin/Staff visibility, scoped Department Manager exclusion, and inline detail |
+
+The first live-ui attempt used the wrong environment variable and is not
+counted; the corrected `AUTH_UI_TARGET_URL=http://127.0.0.1:8797` invocation
+passed 28/28.
+
+### Aggregate Worker and remaining gates
+
+`pnpm --dir web test` exited 1 after 37 passing files and 555 passing
+assertions because four normalized Worker files aborted before assertions in
+the installed Cloudflare pool with
+`EvalError: Code generation from strings disallowed for this context`:
+
+- `web/lib/auth/normalized-authority-c487.test.ts`
+- `web/lib/identity/permission-editor.test.ts`
+- `web/lib/identity/permission-editor-handlers.test.ts`
+- `web/lib/identity/normalized-authority.test.ts`
+
+The upstream evaluator cause and the decision not to add unsafe-eval,
+`NODE_OPTIONS`, pool downgrades, or assertion suppression are recorded in
+`docs/qa/2026-08-29-s4-phase-c-vitest-pool-research.md`. Required QA evidence
+is recorded in `docs/qa/2026-08-29-s4-phase-c-foundation.md`.
+
+`C-487-M1` keyboard/screen-reader plus reduced-motion/forced-colors/
+zoom/text-spacing, `C-487-M2` real iOS/Android dock and safe-area,
+`C-487-M3` remote-CI parity, and `C-487-M4` production-promotion dry run
+remain **MANUAL, unclaimed**. No screenshot, pixel-diff, WCAG conformance,
+screen-reader, real-device, remote-CI, production-promotion, deployment,
+remote database, Apps Script, or Google Sheet claim is made.
+
+The local Worker was stopped after verification. No Phase D path or `#488/#489`
+was touched.
