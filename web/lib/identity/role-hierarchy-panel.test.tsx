@@ -255,7 +255,7 @@ describe(RoleHierarchyPanel, () => {
 
     expect(screen.getByRole("button", { name: "重新命名" })).toBeTruthy();
   });
-  test("H-03: renders the server-projected permissions action with the local Button", async () => {
+  test("H-03: renders the server-projected permissions action and preserves its route", async () => {
     const user = userEvent.setup();
     mocks.searchParams = new URLSearchParams(
       `module=roles&role=${MANAGER_ROLE}&view=detail`
@@ -266,7 +266,6 @@ describe(RoleHierarchyPanel, () => {
     const permissions = await screen.findByRole("button", {
       name: "編輯權限",
     });
-    expect(permissions).toHaveAttribute("data-slot", "button");
     await user.click(permissions);
     expect(mocks.router.push).toHaveBeenCalledWith(
       `/management?module=permissions&role=${MANAGER_ROLE}&view=permissions`
@@ -739,11 +738,17 @@ describe(RoleHierarchyPanel, () => {
       screen.getByRole("button", { name: /成人部門管理者 · 詳情/u })
     );
     await user.click(screen.getByRole("button", { name: "編輯適用範圍" }));
-    const scopeSelect = screen.getByLabelText("適用範圍");
-    expect(scopeSelect).toHaveValue(
-      "Department:018f3b8a-0000-7000-8000-000000000002"
+    const scopeSelect = screen.getByRole("combobox", {
+      name: "適用範圍",
+    });
+    expect(scopeSelect).toHaveTextContent("成區");
+    await user.click(scopeSelect);
+    expect(screen.getAllByRole("option")).toHaveLength(1);
+    expect(screen.getByRole("option", { name: "成區" })).toHaveAttribute(
+      "aria-selected",
+      "true"
     );
-    expect(within(scopeSelect).getAllByRole("option")).toHaveLength(1);
+    await user.keyboard("{Escape}");
     await user.click(screen.getByRole("button", { name: "儲存適用範圍" }));
     const body = scopeBody as Record<string, unknown>;
     expect(body.category_key).toBe("Department");

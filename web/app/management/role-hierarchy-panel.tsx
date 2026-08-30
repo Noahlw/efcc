@@ -1,9 +1,18 @@
 "use client";
 
+import { cva } from "class-variance-authority";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { RpcError } from "@/lib/api";
 import { COPY } from "@/lib/copy";
 import type {
@@ -22,10 +31,66 @@ import { announce } from "@/lib/live-region";
 import { rememberDeepLink } from "@/lib/session";
 import { cn } from "@/lib/utils";
 
-import { safeManagementReturnHref } from "./management-action-framework";
-import { SettingsBackLink } from "./settings-ui";
+import {
+  ManagementPageHeader,
+  safeManagementReturnHref,
+} from "./management-action-framework";
 
-import styles from "./role-hierarchy-panel.module.css";
+const roleButtonVariants = cva(
+  "grid min-h-16 w-full min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center justify-between gap-2.5 rounded-xl border bg-[var(--surface-raised)] px-2.5 py-2.5 text-left text-base font-normal whitespace-normal text-[var(--ink)] outline-none hover:border-[var(--focus)] focus-visible:border-[var(--focus)] focus-visible:ring-3 focus-visible:ring-[var(--focus)]/30",
+  {
+    variants: {
+      state: {
+        default: "border-[var(--line)]",
+      },
+    },
+    defaultVariants: { state: "default" },
+  }
+);
+
+const categoryToggleVariants = cva(
+  "min-h-11 w-full min-w-0 shrink justify-start gap-2 rounded-[var(--radius-sm)] border px-2 text-left text-base font-normal whitespace-normal text-[var(--ink)] hover:border-[var(--focus)] focus-visible:border-[var(--focus)] focus-visible:ring-3 focus-visible:ring-[var(--focus)]/30",
+  {
+    variants: {
+      expanded: {
+        true: "border-[var(--focus)]",
+        false: "border-[var(--line)]",
+      },
+    },
+    defaultVariants: { expanded: false },
+  }
+);
+
+const actionButtonVariants = cva(
+  "min-h-11 h-auto rounded-[var(--radius-sm)] px-4 py-2 text-base whitespace-normal",
+  {
+    variants: {
+      tone: {
+        primary: "font-extrabold",
+        secondary: "font-bold",
+      },
+    },
+    defaultVariants: { tone: "primary" },
+  }
+);
+
+const orderButtonVariants = cva(
+  "min-h-11 h-auto rounded-[var(--radius-sm)] px-3 py-2 text-sm font-bold whitespace-normal",
+  {
+    variants: {
+      state: {
+        enabled:
+          "border-[var(--line-strong)] bg-[var(--surface)] text-[var(--ink)]",
+        disabled:
+          "border-[var(--line-strong)] bg-[var(--surface)] text-[var(--ink)]",
+      },
+    },
+    defaultVariants: { state: "enabled" },
+  }
+);
+
+const fieldClass = "mt-3 grid min-w-0 gap-1.5";
+const fieldLabelClass = "text-[0.82rem] font-bold text-[var(--ink)]";
 
 const RENAME_LABEL = "重新命名";
 const SCOPE_EDIT_LABEL = "編輯適用範圍";
@@ -997,48 +1062,47 @@ export const RoleHierarchyPanel = () => {
     <section
       aria-busy={state.kind === "loading"}
       aria-labelledby="role-hierarchy-title"
-      className={styles.page}
+      className="mx-auto w-full min-w-0 max-w-[var(--width-container)] px-[clamp(1rem,4vw,2rem)] pt-6 pb-[calc(6rem+env(safe-area-inset-bottom,0px))] shell:px-[clamp(1.5rem,4vw,3rem)] shell:pt-8 shell:pb-32"
     >
-      <header className={styles.header}>
-        <SettingsBackLink href={returnHref} label="返回管理工作" />
-        <h1
-          className={styles.title}
-          id="role-hierarchy-title"
-          ref={listHeadingRef}
-          tabIndex={-1}
-        >
-          身份組
-        </h1>
-        <p className={styles.lead}>
-          按分類檢視身份組；重新命名只可套用於較低順位的身份組。
-        </p>
-      </header>
+      <ManagementPageHeader
+        backHref={returnHref}
+        backLabel="返回管理工作"
+        lead="按分類檢視身份組；重新命名只可套用於較低順位的身份組。"
+        title="身份組"
+        titleId="role-hierarchy-title"
+        titleRef={listHeadingRef}
+      />
 
       {state.kind === "loading" && (
-        <output aria-busy="true" tabIndex={-1}>
+        <output
+          aria-busy="true"
+          className="mt-4 block rounded-[var(--radius-md)] border border-[var(--line)] bg-[var(--surface-raised)] p-4 text-[var(--ink-muted)]"
+          tabIndex={-1}
+        >
           {COPY.permissions.loading}
         </output>
       )}
 
       {state.kind === "error" && (
         <section
-          className={styles.error}
+          className="mt-4 grid min-w-0 gap-2 rounded-[var(--radius-md)] border border-[var(--error-border)] bg-[var(--error-surface)] p-4"
           id="role-hierarchy-state"
           tabIndex={-1}
         >
-          <h2>{state.message}</h2>
-          <button
-            className={styles.retry}
+          <h2 className="m-0 text-base">{state.message}</h2>
+          <Button
+            className="min-h-11 w-fit px-4 font-extrabold"
             onClick={() => setRetryToken((token) => token + 1)}
             type="button"
           >
             {COPY.permissions.retry}
-          </button>
+          </Button>
         </section>
       )}
 
       {readyData && view === "list" && (
-        <div className={styles.categories}>
+        <div className="mt-5 grid gap-5 shell:items-start shell:grid-cols-[repeat(auto-fit,minmax(280px,1fr))]">
+
           {readyData.categories.map((category) => {
             const expanded = expandedCategories.has(category.categoryKey);
             const headingId = `role-category-${category.categoryKey}`;
@@ -1063,42 +1127,56 @@ export const RoleHierarchyPanel = () => {
             return (
               <section
                 aria-labelledby={headingId}
-                className={styles.category}
+                className="min-w-0"
                 key={category.categoryKey}
               >
-                <h2 className={styles.categoryTitle} id={headingId}>
-                  <button
+                <h2
+                  className="m-0 mb-2 flex min-w-0 items-baseline gap-2 text-[1.05rem]"
+                  id={headingId}
+                >
+                  <Button
                     aria-controls={`role-category-body-${category.categoryKey}`}
                     aria-expanded={expanded}
-                    className={styles.categoryToggle}
+                    className={cn(
+                      categoryToggleVariants({ expanded }),
+                      "min-w-0"
+                    )}
                     onClick={() => toggleCategory(category.categoryKey)}
+                    size="lg"
                     type="button"
+                    variant="outline"
                   >
-                    <span aria-hidden="true" className={styles.categoryMarker}>
+                    <span
+                      aria-hidden="true"
+                      className="w-5 shrink-0 text-center text-[var(--ink-muted)]"
+                    >
                       {expanded ? "▾" : "▸"}
                     </span>
-                    <span className={styles.categoryLabel}>
-                      {category.label}
-                    </span>
-                    <span className={styles.categoryCount}>
+                    <span className="min-w-0 flex-1">{category.label}</span>
+                    <span className="shrink-0 text-[0.78rem] font-bold text-[var(--ink-muted)]">
                       {category.childCount}
                     </span>
-                  </button>
+                  </Button>
                   {category.createOptions.length > 0 && (
-                    <button
-                      className={styles.categoryCreate}
+                    <Button
+                      className={cn(
+                        actionButtonVariants({ tone: "primary" }),
+                        "ml-2 shrink-0"
+                      )}
                       onClick={() => openCreate(category.categoryKey)}
+                      size="lg"
                       type="button"
+                      variant="default"
                     >
                       {CREATE_LABEL}
-                    </button>
+                    </Button>
                   )}
                 </h2>
                 {expanded && (
                   <ul
-                    className={styles.roleList}
-                    id={`role-category-body-${category.categoryKey}`}
                     aria-busy={reordering}
+                    className="m-0 grid min-w-0 list-none gap-2 p-0"
+                    id={`role-category-body-${category.categoryKey}`}
                   >
                     {orderedDefinitions.map((definition, index) => {
                       const canMoveUp = !reordering && index > 0;
@@ -1106,40 +1184,52 @@ export const RoleHierarchyPanel = () => {
                         !reordering && index < orderedDefinitions.length - 1;
                       return (
                         <li
-                          className={styles.roleRow}
+                          className="min-w-0"
                           key={definition.roleDefinitionId}
                         >
-                          <div className={styles.roleRowMain}>
-                            <button
+                          <div className="grid min-w-0 gap-2">
+                            <Button
                               aria-label={`${definition.label} · 詳情`}
-                              className={styles.roleButton}
+                              className={cn(
+                                roleButtonVariants({ state: "default" })
+                              )}
                               onClick={() => openDetail(definition)}
+                              size="lg"
                               type="button"
+                              variant="outline"
                             >
-                              <span className={styles.roleCopy}>
-                                <strong>{definition.label}</strong>
-                                <small>
+                              <span className="grid min-w-0 gap-0.5">
+                                <strong className="wrap-anywhere">
+                                  {definition.label}
+                                </strong>
+                                <small className="wrap-anywhere text-[0.74rem] text-[var(--ink-muted)]">
                                   {definition.scopeLabel ?? "全教會"} ·{" "}
                                   {definition.assignmentCount} 個已指派 ·{" "}
                                   {definition.grantCount} 項能力
-                                  {definition.isProtected ? " · 系統固定" : ""}
+                                  {definition.isProtected
+                                    ? " · 系統固定"
+                                    : ""}
                                 </small>
                               </span>
                               <span
                                 aria-hidden="true"
-                                className={styles.chevron}
+                                className="text-lg text-[var(--ink-muted)]"
                               >
                                 ›
                               </span>
-                            </button>
+                            </Button>
                             {definition.reorderActions.length > 0 && (
-                              <fieldset className={styles.orderControls}>
+                              <fieldset className="flex gap-2">
                                 <legend className="sr-only">
                                   {REORDER_GROUP_LABEL}
                                 </legend>
-                                <button
+                                <Button
                                   aria-label={`${CREATE_MOVE_UP} · ${definition.label}`}
-                                  className={styles.orderButton}
+                                  className={cn(
+                                    orderButtonVariants({
+                                      state: canMoveUp ? "enabled" : "disabled",
+                                    })
+                                  )}
                                   disabled={!canMoveUp}
                                   onClick={() =>
                                     moveSiblingByButton(
@@ -1148,13 +1238,21 @@ export const RoleHierarchyPanel = () => {
                                       "up"
                                     )
                                   }
+                                  size="sm"
                                   type="button"
+                                  variant="outline"
                                 >
                                   {CREATE_MOVE_UP}
-                                </button>
-                                <button
+                                </Button>
+                                <Button
                                   aria-label={`${CREATE_MOVE_DOWN} · ${definition.label}`}
-                                  className={styles.orderButton}
+                                  className={cn(
+                                    orderButtonVariants({
+                                      state: canMoveDown
+                                        ? "enabled"
+                                        : "disabled",
+                                    })
+                                  )}
                                   disabled={!canMoveDown}
                                   onClick={() =>
                                     moveSiblingByButton(
@@ -1163,10 +1261,12 @@ export const RoleHierarchyPanel = () => {
                                       "down"
                                     )
                                   }
+                                  size="sm"
                                   type="button"
+                                  variant="outline"
                                 >
                                   {CREATE_MOVE_DOWN}
-                                </button>
+                                </Button>
                               </fieldset>
                             )}
                           </div>
@@ -1184,62 +1284,108 @@ export const RoleHierarchyPanel = () => {
       {readyData && selected && view === "detail" && (
         <article
           aria-labelledby="role-hierarchy-detail-title"
-          className={styles.detail}
+          className="mt-4 min-w-0 rounded-[var(--radius-md)] border border-[var(--line)] bg-[var(--surface-raised)] p-4"
           ref={detailRef}
           tabIndex={-1}
         >
-          <button className={styles.back} onClick={goBack} type="button">
+          <Button
+            className="min-h-11 h-auto justify-start gap-1 px-2 py-2 text-base font-bold text-[var(--ink)] hover:bg-transparent hover:text-[var(--accent)]"
+            onClick={goBack}
+            size="lg"
+            type="button"
+            variant="ghost"
+          >
             <span aria-hidden="true">‹</span>
             {DETAIL_BACK_LABEL}
-          </button>
-          <h2 id="role-hierarchy-detail-title">{selected.label}</h2>
-          <p className={styles.detailLead}>{selected.description}</p>
-          <dl className={styles.facts}>
-            <div>
-              <dt>適用範圍</dt>
-              <dd>{selected.scopeLabel ?? "全教會"}</dd>
+          </Button>
+          <h2
+            className="m-0 mt-1 wrap-anywhere text-[1.35rem] font-extrabold leading-[1.35]"
+            id="role-hierarchy-detail-title"
+          >
+            {selected.label}
+          </h2>
+          <p className="m-0 mt-1.5 wrap-anywhere leading-6 text-[var(--ink-muted)]">
+            {selected.description}
+          </p>
+          <dl className="mt-4 grid min-w-0 grid-cols-2 border-t border-l border-[var(--line)]">
+            <div className="min-w-0 border-r border-b border-[var(--line)] p-3">
+              <dt className="text-xs font-bold text-[var(--ink-muted)]">
+                適用範圍
+              </dt>
+              <dd className="m-0 mt-1 wrap-anywhere font-bold">
+                {selected.scopeLabel ?? "全教會"}
+              </dd>
             </div>
-            <div>
-              <dt>順位</dt>
-              <dd>{selected.position + 1}</dd>
+            <div className="min-w-0 border-r border-b border-[var(--line)] p-3">
+              <dt className="text-xs font-bold text-[var(--ink-muted)]">
+                順位
+              </dt>
+              <dd className="m-0 mt-1 wrap-anywhere font-bold">
+                {selected.position + 1}
+              </dd>
             </div>
-            <div>
-              <dt>已指派帳戶</dt>
-              <dd>{selected.assignmentCount}</dd>
+            <div className="min-w-0 border-r border-b border-[var(--line)] p-3">
+              <dt className="text-xs font-bold text-[var(--ink-muted)]">
+                已指派帳戶
+              </dt>
+              <dd className="m-0 mt-1 wrap-anywhere font-bold">
+                {selected.assignmentCount}
+              </dd>
             </div>
-            <div>
-              <dt>能力</dt>
-              <dd>{selected.grantCount}</dd>
+            <div className="min-w-0 border-r border-b border-[var(--line)] p-3">
+              <dt className="text-xs font-bold text-[var(--ink-muted)]">
+                能力
+              </dt>
+              <dd className="m-0 mt-1 wrap-anywhere font-bold">
+                {selected.grantCount}
+              </dd>
             </div>
-            <div>
-              <dt>狀態</dt>
-              <dd>{selected.isProtected ? "系統固定" : "可變更"}</dd>
+            <div className="min-w-0 border-r border-b border-[var(--line)] p-3">
+              <dt className="text-xs font-bold text-[var(--ink-muted)]">
+                狀態
+              </dt>
+              <dd className="m-0 mt-1 wrap-anywhere font-bold">
+                {selected.isProtected ? "系統固定" : "可變更"}
+              </dd>
             </div>
           </dl>
           {selected.actions.some((action) => action.action === "rename") && (
-            <button
-              className={styles.renameButton}
+            <Button
+              className={cn(
+                actionButtonVariants({ tone: "primary" }),
+                "mt-4 w-fit"
+              )}
               onClick={() => openRename(selected)}
+              size="lg"
               type="button"
+              variant="default"
             >
               {RENAME_LABEL}
-            </button>
+            </Button>
           )}
           {selected.actions.some((action) => action.action === "scope") &&
             (selected.scopeOptions ?? []).length > 0 && (
-              <button
-                className={styles.renameButton}
+              <Button
+                className={cn(
+                  actionButtonVariants({ tone: "primary" }),
+                  "mt-4 w-fit"
+                )}
                 onClick={() => openScope(selected)}
+                size="lg"
                 type="button"
+                variant="default"
               >
                 {SCOPE_EDIT_LABEL}
-              </button>
+              </Button>
             )}
           {selected.actions.some(
             (action) => action.action === "permissions"
           ) && (
             <Button
-              className={cn(styles.renameButton, "min-h-11")}
+              className={cn(
+                actionButtonVariants({ tone: "primary" }),
+                "mt-4 w-fit"
+              )}
               onClick={() =>
                 router.push(
                   `/management?module=permissions&role=${encodeURIComponent(selected.roleDefinitionId)}&view=permissions`
@@ -1257,7 +1403,10 @@ export const RoleHierarchyPanel = () => {
               (selected.assignmentActions ?? []).length > 0 ||
               (selected.lifecycleActions ?? []).length > 0) && (
               <Button
-                className={cn(styles.renameButton, "min-h-11")}
+                className={cn(
+                  actionButtonVariants({ tone: "primary" }),
+                  "mt-4 w-fit"
+                )}
                 onClick={() => {
                   router.push(
                     `/management?module=accounts&roleDefinition=${encodeURIComponent(selected.roleDefinitionId)}&view=access&return=${encodeURIComponent(`/management?module=roles&role=${encodeURIComponent(selected.roleDefinitionId)}&view=detail`)}`
@@ -1265,7 +1414,7 @@ export const RoleHierarchyPanel = () => {
                 }}
                 size="lg"
                 type="button"
-                variant="outline"
+                variant="default"
               >
                 管理已指派帳戶
               </Button>
@@ -1273,82 +1422,113 @@ export const RoleHierarchyPanel = () => {
           {scopeState.kind !== "idle" && (
             <section
               aria-labelledby="role-hierarchy-scope-title"
-              className={styles.rename}
+              className="mt-4 min-w-0 rounded-[var(--radius-md)] border border-[var(--line)] bg-[var(--surface-raised)] p-4"
             >
-              <h3 id="role-hierarchy-scope-title">{SCOPE_EDIT_LABEL}</h3>
-              <label className={styles.field} htmlFor="role-scope-select">
-                <span className={styles.fieldLabel}>{CREATE_SCOPE_LABEL}</span>
-                <select
-                  className={styles.input}
+              <h3
+                className="m-0 wrap-anywhere text-[1.2rem] font-extrabold"
+                id="role-hierarchy-scope-title"
+              >
+                {SCOPE_EDIT_LABEL}
+              </h3>
+              <label className={fieldClass} htmlFor="role-scope-select">
+                <span className={fieldLabelClass}>{CREATE_SCOPE_LABEL}</span>
+                <Select
                   disabled={scopeState.kind === "submitting"}
-                  id="role-scope-select"
-                  onChange={(event) => {
-                    setScopeValue(event.target.value);
+                  onValueChange={(value) => {
+                    setScopeValue(value);
                     if (scopeState.kind !== "editing") {
                       setScopeState({ kind: "editing" });
                     }
                   }}
                   value={scopeValue}
                 >
-                  {(selected.scopeOptions ?? []).map((option) => (
-                    <option
-                      key={scopeOptionValue(option.scope_kind, option.scope_id)}
-                      value={scopeOptionValue(
+                  <SelectTrigger
+                    aria-label={CREATE_SCOPE_LABEL}
+                    className="min-h-12 w-full rounded-[var(--radius-sm)] border-[var(--line-strong)] bg-[var(--surface-raised)] px-3 text-base text-[var(--ink)] focus-visible:border-[var(--focus)] focus-visible:ring-3 focus-visible:ring-[var(--focus)]/30"
+                    id="role-scope-select"
+                  >
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {(selected.scopeOptions ?? []).map((option) => {
+                      const value = scopeOptionValue(
                         option.scope_kind,
                         option.scope_id
-                      )}
-                    >
-                      {option.scopeLabel}
-                    </option>
-                  ))}
-                </select>
+                      );
+                      return (
+                        <SelectItem key={value} value={value}>
+                          {option.scopeLabel}
+                        </SelectItem>
+                      );
+                    })}
+                  </SelectContent>
+                </Select>
               </label>
               {scopeState.kind === "invalid-scope" && (
-                <p className={styles.feedback}>
+                <p className="mt-2.5 text-sm text-[var(--error)]">
                   {CREATE_INVALID_SCOPE_MESSAGE}
                 </p>
               )}
               {scopeState.kind === "conflict" && (
-                <p className={styles.feedback}>{SCOPE_CONFLICT_MESSAGE}</p>
+                <p className="mt-2.5 text-sm text-[var(--error)]">
+                  {SCOPE_CONFLICT_MESSAGE}
+                </p>
               )}
               {scopeState.kind === "forbidden" && (
-                <p className={styles.feedback}>{FORBIDDEN_MESSAGE}</p>
+                <p className="mt-2.5 text-sm text-[var(--error)]">
+                  {FORBIDDEN_MESSAGE}
+                </p>
               )}
               {scopeState.kind === "archived" && (
-                <p className={styles.feedback}>{SCOPE_ARCHIVED_MESSAGE}</p>
+                <p className="mt-2.5 text-sm text-[var(--error)]">
+                  {SCOPE_ARCHIVED_MESSAGE}
+                </p>
               )}
               {scopeState.kind === "not-found" && (
-                <p className={styles.feedback}>{NOT_FOUND_MESSAGE}</p>
+                <p className="mt-2.5 text-sm text-[var(--error)]">
+                  {NOT_FOUND_MESSAGE}
+                </p>
               )}
               {scopeState.kind === "error" && (
-                <p className={styles.feedback}>{LOAD_ERROR_MESSAGE}</p>
+                <p className="mt-2.5 text-sm text-[var(--error)]">
+                  {LOAD_ERROR_MESSAGE}
+                </p>
               )}
               {scopeState.kind === "success" && (
-                <p className={styles.success}>{SCOPE_SUCCESS_MESSAGE}</p>
+                <p className="mt-2.5 text-sm font-bold text-[var(--success)]">
+                  {SCOPE_SUCCESS_MESSAGE}
+                </p>
               )}
-              <div className={styles.actions}>
-                <button
-                  className={styles.cancel}
+              <div className="mt-4 flex flex-wrap justify-end gap-2">
+                <Button
+                  className={cn(actionButtonVariants({ tone: "secondary" }))}
                   onClick={() => setScopeState({ kind: "idle" })}
+                  size="lg"
                   type="button"
+                  variant="outline"
                 >
                   {CANCEL_LABEL}
-                </button>
-                <button
-                  className={styles.save}
+                </Button>
+                <Button
+                  className={cn(actionButtonVariants({ tone: "primary" }))}
                   disabled={scopeState.kind === "submitting"}
                   onClick={() => void submitScope()}
+                  size="lg"
                   type="button"
+                  variant="default"
                 >
                   {scopeState.kind === "submitting"
                     ? SCOPE_SAVING_MESSAGE
                     : SCOPE_SAVE_LABEL}
-                </button>
+                </Button>
               </div>
             </section>
           )}
           {selected.isProtected && (
-            <p className={styles.protectedNote} role="note">
+            <p
+              className="mt-3 rounded-[var(--radius-sm)] border border-[var(--line)] bg-[var(--surface)] p-2.5 text-sm text-[var(--ink-muted)]"
+              role="note"
+            >
               受保護系統身份不可重新命名。
             </p>
           )}
@@ -1358,18 +1538,29 @@ export const RoleHierarchyPanel = () => {
       {readyData && selected && view === "rename" && (
         <section
           aria-labelledby="role-hierarchy-rename-title"
-          className={styles.rename}
+          className="mt-4 min-w-0 rounded-[var(--radius-md)] border border-[var(--line)] bg-[var(--surface-raised)] p-4"
         >
-          <button className={styles.back} onClick={goBack} type="button">
+          <Button
+            className="min-h-11 h-auto justify-start gap-1 px-2 py-2 text-base font-bold text-[var(--ink)] hover:bg-transparent hover:text-[var(--accent)]"
+            onClick={goBack}
+            size="lg"
+            type="button"
+            variant="ghost"
+          >
             <span aria-hidden="true">‹</span>
             {DETAIL_BACK_LABEL}
-          </button>
-          <h2 id="role-hierarchy-rename-title">重新命名身份組</h2>
-          <label className={styles.field} htmlFor="role-rename-input">
-            <span className={styles.fieldLabel}>新名稱</span>
-            <input
+          </Button>
+          <h2
+            className="m-0 mt-1 wrap-anywhere text-[1.35rem] font-extrabold leading-[1.35]"
+            id="role-hierarchy-rename-title"
+          >
+            重新命名身份組
+          </h2>
+          <label className={fieldClass} htmlFor="role-rename-input">
+            <span className={fieldLabelClass}>新名稱</span>
+            <Input
               autoComplete="off"
-              className={styles.input}
+              className="min-h-12 h-auto rounded-[var(--radius-sm)] border-[var(--line-strong)] bg-[var(--surface-raised)] px-3 py-2 text-base text-[var(--ink)] focus-visible:border-[var(--focus)] focus-visible:ring-3 focus-visible:ring-[var(--focus)]/30"
               id="role-rename-input"
               maxLength={60}
               onChange={(event) => {
@@ -1382,45 +1573,70 @@ export const RoleHierarchyPanel = () => {
                 }
               }}
               ref={renameInputRef}
+              type="text"
               value={renameValue}
             />
           </label>
           {renameState.kind === "invalid-name" && (
-            <p className={styles.feedback}>{INVALID_NAME_MESSAGE}</p>
+            <p className="mt-2.5 text-sm text-[var(--error)]">
+              {INVALID_NAME_MESSAGE}
+            </p>
           )}
           {renameState.kind === "name-conflict" && (
-            <p className={styles.feedback}>{NAME_CONFLICT_MESSAGE}</p>
+            <p className="mt-2.5 text-sm text-[var(--error)]">
+              {NAME_CONFLICT_MESSAGE}
+            </p>
           )}
           {renameState.kind === "archived" && (
-            <p className={styles.feedback}>{ARCHIVED_MESSAGE}</p>
+            <p className="mt-2.5 text-sm text-[var(--error)]">
+              {ARCHIVED_MESSAGE}
+            </p>
           )}
           {renameState.kind === "conflict" && (
-            <p className={styles.feedback}>{CONFLICT_MESSAGE}</p>
+            <p className="mt-2.5 text-sm text-[var(--error)]">
+              {CONFLICT_MESSAGE}
+            </p>
           )}
           {renameState.kind === "forbidden" && (
-            <p className={styles.feedback}>{FORBIDDEN_MESSAGE}</p>
+            <p className="mt-2.5 text-sm text-[var(--error)]">
+              {FORBIDDEN_MESSAGE}
+            </p>
           )}
           {renameState.kind === "not-found" && (
-            <p className={styles.feedback}>{NOT_FOUND_MESSAGE}</p>
+            <p className="mt-2.5 text-sm text-[var(--error)]">
+              {NOT_FOUND_MESSAGE}
+            </p>
           )}
           {renameState.kind === "error" && (
-            <p className={styles.feedback}>{LOAD_ERROR_MESSAGE}</p>
+            <p className="mt-2.5 text-sm text-[var(--error)]">
+              {LOAD_ERROR_MESSAGE}
+            </p>
           )}
           {renameState.kind === "success" && (
-            <p className={styles.success}>{SUCCESS_MESSAGE}</p>
+            <p className="mt-2.5 text-sm font-bold text-[var(--success)]">
+              {SUCCESS_MESSAGE}
+            </p>
           )}
-          <div className={styles.actions}>
-            <button className={styles.cancel} onClick={goBack} type="button">
+          <div className="mt-4 flex flex-wrap justify-end gap-2">
+            <Button
+              className={cn(actionButtonVariants({ tone: "secondary" }))}
+              onClick={goBack}
+              size="lg"
+              type="button"
+              variant="outline"
+            >
               {CANCEL_LABEL}
-            </button>
-            <button
-              className={styles.save}
+            </Button>
+            <Button
+              className={cn(actionButtonVariants({ tone: "primary" }))}
               disabled={renameState.kind === "submitting"}
               onClick={() => void submitRename()}
+              size="lg"
               type="button"
+              variant="default"
             >
               {renameState.kind === "submitting" ? "儲存中…" : SAVE_LABEL}
-            </button>
+            </Button>
           </div>
         </section>
       )}
@@ -1428,14 +1644,23 @@ export const RoleHierarchyPanel = () => {
       {orderConflict.kind === "pending" && (
         <section
           aria-labelledby="role-order-conflict-title"
-          className={styles.orderConflict}
+          className="mt-4 min-w-0 rounded-[var(--radius-md)] border border-[var(--error-border)] bg-[var(--error-surface)] p-4"
         >
-          <h2 id="role-order-conflict-title">{ORDER_CONFLICT_TITLE}</h2>
-          <p className={styles.orderConflictLead}>{ORDER_CONFLICT_INTRO}</p>
-          <div className={styles.orderConflictColumns}>
+          <h2
+            className="m-0 text-[1.2rem] font-extrabold"
+            id="role-order-conflict-title"
+          >
+            {ORDER_CONFLICT_TITLE}
+          </h2>
+          <p className="m-0 mt-1.5 wrap-anywhere leading-6 text-[var(--ink-muted)]">
+            {ORDER_CONFLICT_INTRO}
+          </p>
+          <div className="mt-3 grid gap-4 sm:grid-cols-2">
             <div>
-              <h3>{ORDER_CONFLICT_LOCAL}</h3>
-              <ol className={styles.orderConflictList}>
+              <h3 className="m-0 mb-1 text-sm font-extrabold">
+                {ORDER_CONFLICT_LOCAL}
+              </h3>
+              <ol className="m-0 pl-5 text-[var(--ink)]">
                 {orderConflict.localIds.map((roleDefinitionId) => {
                   const definition = readyData
                     ? definitionsInCategory(
@@ -1454,8 +1679,10 @@ export const RoleHierarchyPanel = () => {
               </ol>
             </div>
             <div>
-              <h3>{ORDER_CONFLICT_AUTHORITATIVE}</h3>
-              <ol className={styles.orderConflictList}>
+              <h3 className="m-0 mb-1 text-sm font-extrabold">
+                {ORDER_CONFLICT_AUTHORITATIVE}
+              </h3>
+              <ol className="m-0 pl-5 text-[var(--ink)]">
                 {orderConflict.authoritativeIds.map((roleDefinitionId) => {
                   const definition = readyData
                     ? definitionsInCategory(
@@ -1474,24 +1701,30 @@ export const RoleHierarchyPanel = () => {
               </ol>
             </div>
           </div>
-          <p className={styles.orderConflictHint}>{ORDER_CONFLICT_MESSAGE}</p>
-          <div className={styles.actions}>
-            <button
-              className={styles.cancel}
+          <p className="m-0 mt-3 wrap-anywhere text-sm text-[var(--ink-muted)]">
+            {ORDER_CONFLICT_MESSAGE}
+          </p>
+          <div className="mt-4 flex flex-wrap justify-end gap-2">
+            <Button
+              className={cn(actionButtonVariants({ tone: "secondary" }))}
               disabled={reorderingCategory !== null}
               onClick={() => void resolveOrderConflictKeepMine()}
+              size="lg"
               type="button"
+              variant="outline"
             >
               {CREATE_KEEP_MINE}
-            </button>
-            <button
-              className={styles.save}
+            </Button>
+            <Button
+              className={cn(actionButtonVariants({ tone: "primary" }))}
               disabled={reorderingCategory !== null}
               onClick={() => void resolveOrderConflictTakeLatest()}
+              size="lg"
               type="button"
+              variant="default"
             >
               {CREATE_TAKE_LATEST}
-            </button>
+            </Button>
           </div>
         </section>
       )}
@@ -1499,45 +1732,64 @@ export const RoleHierarchyPanel = () => {
       {readyData && createView && (
         <section
           aria-labelledby="role-hierarchy-create-title"
-          className={styles.rename}
+          className="mt-4 min-w-0 rounded-[var(--radius-md)] border border-[var(--line)] bg-[var(--surface-raised)] p-4"
         >
-          <button className={styles.back} onClick={closeCreate} type="button">
+          <Button
+            className="min-h-11 h-auto justify-start gap-1 px-2 py-2 text-base font-bold text-[var(--ink)] hover:bg-transparent hover:text-[var(--accent)]"
+            onClick={closeCreate}
+            size="lg"
+            type="button"
+            variant="ghost"
+          >
             <span aria-hidden="true">‹</span>
             {DETAIL_BACK_LABEL}
-          </button>
-          <h2 id="role-hierarchy-create-title">{CREATE_TITLE}</h2>
-          <label className={styles.field} htmlFor="role-create-scope">
-            <span className={styles.fieldLabel}>{CREATE_SCOPE_LABEL}</span>
-            <select
-              className={styles.input}
-              id="role-create-scope"
-              onChange={(event) =>
+          </Button>
+          <h2
+            className="m-0 mt-1 wrap-anywhere text-[1.35rem] font-extrabold leading-[1.35]"
+            id="role-hierarchy-create-title"
+          >
+            {CREATE_TITLE}
+          </h2>
+          <label className={fieldClass} htmlFor="role-create-scope">
+            <span className={fieldLabelClass}>{CREATE_SCOPE_LABEL}</span>
+            <Select
+              onValueChange={(value) =>
                 setCreateDraft((draft) => ({
                   ...draft,
-                  scopeOption: event.target.value,
+                  scopeOption: value,
                 }))
               }
               value={createDraft.scopeOption}
             >
-              {readyData.categories
-                .find(
-                  (category) => category.categoryKey === createDraft.categoryKey
-                )
-                ?.createOptions.map((option) => (
-                  <option
-                    key={option.scope_id ?? "global"}
-                    value={option.scope_id ?? "global"}
-                  >
-                    {option.scopeLabel}
-                  </option>
-                ))}
-            </select>
+              <SelectTrigger
+                aria-label={CREATE_SCOPE_LABEL}
+                className="min-h-12 w-full rounded-[var(--radius-sm)] border-[var(--line-strong)] bg-[var(--surface-raised)] px-3 text-base text-[var(--ink)] focus-visible:border-[var(--focus)] focus-visible:ring-3 focus-visible:ring-[var(--focus)]/30"
+                id="role-create-scope"
+              >
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {readyData.categories
+                  .find(
+                    (category) =>
+                      category.categoryKey === createDraft.categoryKey
+                  )
+                  ?.createOptions.map((option) => {
+                    const value = option.scope_id ?? "global";
+                    return (
+                      <SelectItem key={value} value={value}>
+                        {option.scopeLabel}
+                      </SelectItem>
+                    );
+                  })}
+              </SelectContent>
+            </Select>
           </label>
-          <label className={styles.field} htmlFor="role-create-name">
-            <span className={styles.fieldLabel}>{CREATE_NAME_LABEL}</span>
-            <input
+          <label className={fieldClass} htmlFor="role-create-name">
+            <span className={fieldLabelClass}>{CREATE_NAME_LABEL}</span>
+            <Input
               autoComplete="off"
-              className={styles.input}
+              className="min-h-12 h-auto rounded-[var(--radius-sm)] border-[var(--line-strong)] bg-[var(--surface-raised)] px-3 py-2 text-base text-[var(--ink)] focus-visible:border-[var(--focus)] focus-visible:ring-3 focus-visible:ring-[var(--focus)]/30"
               id="role-create-name"
               maxLength={60}
               onChange={(event) =>
@@ -1547,16 +1799,17 @@ export const RoleHierarchyPanel = () => {
                 }))
               }
               ref={createInputRef}
+              type="text"
               value={createDraft.label}
             />
           </label>
-          <label className={styles.field} htmlFor="role-create-description">
-            <span className={styles.fieldLabel}>
+          <label className={fieldClass} htmlFor="role-create-description">
+            <span className={fieldLabelClass}>
               {CREATE_DESCRIPTION_LABEL}
             </span>
-            <input
+            <Input
               autoComplete="off"
-              className={styles.input}
+              className="min-h-12 h-auto rounded-[var(--radius-sm)] border-[var(--line-strong)] bg-[var(--surface-raised)] px-3 py-2 text-base text-[var(--ink)] focus-visible:border-[var(--focus)] focus-visible:ring-3 focus-visible:ring-[var(--focus)]/30"
               id="role-create-description"
               onChange={(event) =>
                 setCreateDraft((draft) => ({
@@ -1564,45 +1817,62 @@ export const RoleHierarchyPanel = () => {
                   description: event.target.value,
                 }))
               }
+              type="text"
               value={createDraft.description}
             />
           </label>
           {createState.kind === "invalid-name" && (
-            <p className={styles.feedback}>{INVALID_NAME_MESSAGE}</p>
+            <p className="mt-2.5 text-sm text-[var(--error)]">
+              {INVALID_NAME_MESSAGE}
+            </p>
           )}
           {createState.kind === "invalid-scope" && (
-            <p className={styles.feedback}>{CREATE_INVALID_SCOPE_MESSAGE}</p>
+            <p className="mt-2.5 text-sm text-[var(--error)]">
+              {CREATE_INVALID_SCOPE_MESSAGE}
+            </p>
           )}
           {createState.kind === "name-conflict" && (
-            <p className={styles.feedback}>{NAME_CONFLICT_MESSAGE}</p>
+            <p className="mt-2.5 text-sm text-[var(--error)]">
+              {NAME_CONFLICT_MESSAGE}
+            </p>
           )}
           {createState.kind === "forbidden" && (
-            <p className={styles.feedback}>{CREATE_FORBIDDEN_MESSAGE}</p>
+            <p className="mt-2.5 text-sm text-[var(--error)]">
+              {CREATE_FORBIDDEN_MESSAGE}
+            </p>
           )}
           {createState.kind === "error" && (
-            <p className={styles.feedback}>{LOAD_ERROR_MESSAGE}</p>
+            <p className="mt-2.5 text-sm text-[var(--error)]">
+              {LOAD_ERROR_MESSAGE}
+            </p>
           )}
           {createState.kind === "success" && (
-            <p className={styles.success}>{CREATE_SUCCESS_MESSAGE}</p>
+            <p className="mt-2.5 text-sm font-bold text-[var(--success)]">
+              {CREATE_SUCCESS_MESSAGE}
+            </p>
           )}
-          <div className={styles.actions}>
-            <button
-              className={styles.cancel}
+          <div className="mt-4 flex flex-wrap justify-end gap-2">
+            <Button
+              className={cn(actionButtonVariants({ tone: "secondary" }))}
               onClick={closeCreate}
+              size="lg"
               type="button"
+              variant="outline"
             >
               {CANCEL_LABEL}
-            </button>
-            <button
-              className={styles.save}
+            </Button>
+            <Button
+              className={cn(actionButtonVariants({ tone: "primary" }))}
               disabled={createState.kind === "submitting"}
               onClick={() => void submitCreate()}
+              size="lg"
               type="button"
+              variant="default"
             >
               {createState.kind === "submitting"
                 ? CREATE_SAVING_LABEL
                 : CREATE_SAVE_LABEL}
-            </button>
+            </Button>
           </div>
         </section>
       )}
