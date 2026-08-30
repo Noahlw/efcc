@@ -4040,3 +4040,115 @@ The established Phase C QA file
 `docs/qa/2026-08-29-s4-phase-c-foundation.md` is absent at this HEAD, so no new
 QA file was created. Only this acceptance trace was appended; all historical
 trace sections remain unchanged. The child remains stopped before Phase D.
+
+## #487 final local verification — current `4d1f648b` — 2026-08-31
+
+**Evidence scope:** The coordinator tree
+`/Users/noah.wong/Desktop/code/EFCC-dev/.worktrees/s4-phase-c` on
+`feat/s4-c-stackable-identity-integration` was clean at `4d1f648b` before
+this append. The final source corrections enforce target-scoped `role.read`
+assignment summaries, global-only registration approval authorization, 44px
+management hit targets, deterministic review focus restoration, and local
+disposable registration cleanup. The final test corrections seed normalized
+Admin identities in legacy Worker fixtures, bound Member Directory searches,
+and preserve the normalized Permission Editor DOM contract.
+
+### Required reread and documentation status
+
+Before this verification pass, the implementation ticket `issue://487`, parent
+`issue://475`, Specs 091 and 092, the approved
+`local://s4-phase-c-identity-integration-plan.md`, the complete historical
+acceptance trace through line 4,042, ADRs 0040/0041/0042/0043, and the
+review/evidence reports for #485/#486/#487 were reread. Context7 CLI was
+attempted for the required Worker/D1, Vitest, Playwright, Next.js, Radix, and
+CVA references; every attempted lookup returned exit 1 with:
+
+```text
+✖ Monthly quota exceeded. Create a free API key at https://context7.com/dashboard for more requests.
+```
+
+No fresh documentation result or library identifier is claimed.
+
+### Source and focused test checks
+
+| Check | Exact result |
+| --- | --- |
+| `pnpm typecheck` | **PASS**, root and E2E TypeScript, exit 0 |
+| `pnpm --dir web typecheck` | **PASS**, web and Worker TypeScript, exit 0 |
+| `pnpm --dir web build` | **PASS**, 18/18 static pages and 16 visible route rows |
+| `pnpm verify:identity` | **PASS**, 4 files, 94/94 |
+| Repaired normalized Worker fixtures (`programs-250`, `notices-worker`, `registration-batch`) | **PASS**, 3 files, 23/23 |
+| `pnpm --dir web exec vitest run --config vitest.config.ts worker.auth.test.ts` | **PASS**, 1 file, 47/47 |
+| `pnpm --dir web exec vitest run --config vitest.config.ts lib/identity/role-hierarchy.test.ts` | **PASS**, 1 file, 42/42; includes role.read-only assignment summary and redaction |
+| `pnpm --dir web test:components` | **PASS**, 59 files, 688/688; jsdom emitted only existing `scrollTo`/navigation notices |
+| `pnpm test` | **PASS**, 1 file, 38/38 |
+| `pnpm test:role-hierarchy-geometry` | **PASS**, 49/49 across 320, 390, 600, 799, 800, 1024, and 1440 CSS px |
+| `pnpm test:shell-responsive` | **PASS**, 92 passed, 1 intentional skip |
+| `pnpm test:shell-geometry` | **PASS**, 28/28 |
+| `pnpm check` | **FAIL**, repository-wide pre-existing lint baseline findings; no new lint-clean claim is made |
+| `git diff --check` | **PASS**, no whitespace errors |
+
+The aggregate web Worker command
+`pnpm --dir web test` ran 37 passing test files with no assertion failures,
+but exited 1 after four normalized Worker files aborted before assertions in
+the Cloudflare pool with `EvalError: Code generation from strings disallowed
+for this context`: `lib/auth/normalized-authority-c487.test.ts`,
+`lib/identity/permission-editor.test.ts`,
+`lib/identity/permission-editor-handlers.test.ts`, and
+`lib/identity/normalized-authority.test.ts`. The blocked files contributed
+zero product assertions. Research
+`docs/qa/2026-08-29-s4-phase-c-vitest-pool-research.md` records the upstream
+Vite/workerd cause and the decision not to add unsafe-eval, `NODE_OPTIONS`,
+pool downgrades, or assertion suppression.
+
+### Local disposable runtime and end-to-end checks
+
+The prescribed `pnpm --dir web dev:local` attempt still fails before readiness
+under the supervised Node `v20.19.0` launcher with
+`ERR_UNKNOWN_BUILTIN_MODULE: node:sqlite`. No workaround or production
+endpoint was used. A separate direct Node `v22.18.0` Wrangler process was
+started only on `http://127.0.0.1:8797`; it reported local D1/assets/rate-limit
+bindings and readiness. The checked-in local reset applied 20 commands and
+the demo seed completed with four demo Programs, 13 generated events, module
+gate data, notices, and Home content. A post-reset D1 query returned
+`pending: 0` and `legacy_s4: 0` for the managed registration prefixes.
+
+All browser checks below used the loopback Worker and disposable local D1:
+
+| Check | Exact result |
+| --- | --- |
+| `programs-d1.config.ts` | **PASS**, 195/195 with one worker after clean reset/demo seed |
+| `s4-management-hardening.config.ts` | **PASS**, 45 passed and 65 intentional `onlyProjects` skips; 110 scheduled, zero failures |
+| `live-ui.config.ts` | **PASS**, 28/28 at phone and desktop projects |
+| `member-directory.config.ts` | **PASS**, 1/1; Admin/Staff global visibility, Department Manager scope exclusion, and inline read-only detail |
+| Representative management rerun (`phone-390`, `desktop-1024`) | **PASS**, 14/14 executed and 6 intentional skips |
+
+The final management run covers the normalized Permission Editor heading/list,
+loading output, direct role detail, Radix Switch review, bounded Sheet,
+control hit targets, restored focus, account-directory geometry, safe Back
+origins, and legacy route redirects. No screenshots, pixel diffs, WCAG
+conformance, screen-reader, real-device, remote-CI, or production-promotion
+claim is made.
+
+### Current acceptance status and remaining gates
+
+The corrected source and local automation now pass the reachable C-487
+authority, Programs, attendance, management, reset, identity, and UI
+contracts. The following remain explicit release gates rather than hidden
+failures:
+
+- Normalized Worker files cannot start in the installed
+  `@cloudflare/vitest-pool-workers`/Vite/workerd context, producing zero
+  assertions before product code executes.
+- The supervised `pnpm --dir web dev:local` launcher is unavailable under
+  Node 20; direct Node 22 Wrangler evidence is local-only and is not relabeled
+  as the supervised gate.
+- `C-487-M1` keyboard/screen-reader plus reduced-motion/forced-colors/
+  zoom/text-spacing, `C-487-M2` real iOS/Android dock and safe-area,
+  `C-487-M3` remote-CI parity, and `C-487-M4` production-promotion dry run
+  remain **MANUAL, unclaimed**. The user explicitly requested no production
+  action.
+
+Only this acceptance trace is changed by this append. No remote or
+production database, Apps Script, Google Sheet, deployment, `#488/#489`, or
+Phase D path was touched. The local Worker was stopped after verification.
