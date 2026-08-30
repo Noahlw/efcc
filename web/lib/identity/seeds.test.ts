@@ -17,6 +17,7 @@ import { beforeAll, describe, expect, test } from "vitest";
 
 import { applyMigrations, testDb } from "../auth/test-bootstrap";
 import { preflightDisposableSchema, seedDisposableIdentity } from "./index";
+import { resolveActorCapabilities } from "./role-hierarchy";
 
 const DISPOSABLE_DATABASE = "E2E_disposable-local";
 
@@ -142,12 +143,7 @@ describe("#476 disposable seed contract", () => {
     expect(pl?.scope_id).toBeTruthy();
   });
 
-  test("representative Active Accounts hold the documented baseline 會友基礎 assignment", async () => {
-    const memberRoleId = await readScalar<{ role_definition_id: string }>(
-      `SELECT role_definition_id FROM role_definitions WHERE stable_key = ?`,
-      "member"
-    );
-    expect(memberRoleId).toBeDefined();
+  test("representative Active Accounts receive automatic 會友基礎 access", async () => {
     const expected = [
       "E2E_DISPOSABLE_ADMIN",
       "E2E_DISPOSABLE_STAFF",
@@ -156,15 +152,8 @@ describe("#476 disposable seed contract", () => {
       "E2E_DISPOSABLE_MEMBER",
     ];
     for (const userId of expected) {
-      const row = await readScalar<{ c: number }>(
-        `SELECT COUNT(*) AS c FROM role_assignments
-          WHERE account_user_id = ? AND role_definition_id = ?
-            AND revoked_at IS NULL`,
-        userId,
-        memberRoleId?.role_definition_id ?? ""
-      );
-      expect(row).toBeDefined();
-      expect(row?.c).toBe(1);
+      const capabilities = await resolveActorCapabilities(testDb(), userId);
+      expect(capabilities["program.enroll"]).toBe(true);
     }
   });
 

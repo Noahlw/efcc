@@ -9,35 +9,6 @@
 import type { ProgramLifecycle } from "./workspace-store";
 
 // oxlint-disable-next-line eslint/max-classes-per-file
-export class PermissionPolicyRevisionConflictError extends Error {
-  readonly currentRevision: number;
-  readonly idempotent: boolean;
-
-  constructor(currentRevision: number, idempotent = false) {
-    super("Permission Policy has changed; reload the latest policy before saving.");
-    this.name = "PermissionPolicyRevisionConflictError";
-    this.currentRevision = currentRevision;
-    this.idempotent = idempotent;
-  }
-}
-
-// oxlint-disable-next-line eslint/max-classes-per-file
-export class PermissionPolicySafetyViolationError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = "PermissionPolicySafetyViolationError";
-  }
-}
-
-// oxlint-disable-next-line eslint/max-classes-per-file
-export class PermissionPolicyIdempotencyConflictError extends Error {
-  constructor() {
-    super("This Idempotency-Key was already used for a different policy change.");
-    this.name = "PermissionPolicyIdempotencyConflictError";
-  }
-}
-
-// oxlint-disable-next-line eslint/max-classes-per-file
 export class DuplicateDepartmentCodeError extends Error {
   constructor(code: string) {
     super(`A department with code '${code}' already exists.`);
@@ -146,9 +117,7 @@ export class DuplicateEventError extends Error {
 export class EventRescheduleBlockedError extends Error {
   readonly eventId: string;
   constructor(eventId: string) {
-    super(
-      `Event ${eventId} cannot be rescheduled: Attendance already exists.`
-    );
+    super(`Event ${eventId} cannot be rescheduled: Attendance already exists.`);
     this.name = "EventRescheduleBlockedError";
     this.eventId = eventId;
   }
@@ -236,63 +205,5 @@ export class RequestNotDecidableError extends Error {
   constructor(requestId: string) {
     super(`Enrollment request ${requestId} is not in a decidable state.`);
     this.name = "RequestNotDecidableError";
-  }
-}
-
-// oxlint-disable-next-line eslint/max-classes-per-file
-export class SelfDelegationError extends Error {
-  constructor(userId: string) {
-    super(`A user cannot grant Program Leader to themselves: ${userId}`);
-    this.name = "SelfDelegationError";
-  }
-}
-
-// oxlint-disable-next-line eslint/max-classes-per-file
-export class LeaderNotAssignedError extends Error {
-  constructor(programId: string, userId: string) {
-    super(`User ${userId} is not an active Program Leader of ${programId}.`);
-    this.name = "LeaderNotAssignedError";
-  }
-}
-
-// oxlint-disable-next-line eslint/max-classes-per-file
-export class LeaderAccountInactiveError extends Error {
-  constructor(userId: string, entity = "Program Leader") {
-    super(`Cannot assign ${userId} as ${entity}: account is not Active.`);
-    this.name = "LeaderAccountInactiveError";
-  }
-}
-
-// oxlint-disable-next-line eslint/max-classes-per-file
-export class DepartmentManagerNotAssignedError extends Error {
-  constructor(departmentId: string, userId: string) {
-    super(
-      `User ${userId} is not an active Department Manager of ${departmentId}.`
-    );
-    this.name = "DepartmentManagerNotAssignedError";
-  }
-}
-
-// oxlint-disable-next-line eslint/max-classes-per-file
-export class DepartmentManagerConflictError extends Error {
-  constructor(departmentId: string, userId: string) {
-    super(
-      `Department Manager change conflicted for ${departmentId}:${userId}.`
-    );
-    this.name = "DepartmentManagerConflictError";
-  }
-}
-// oxlint-disable-next-line eslint/max-classes-per-file
-export class ProgramLeaderConflictError extends Error {
-  constructor(programId: string, userId: string) {
-    super(`Program Leader change conflicted for ${programId}:${userId}.`);
-    this.name = "ProgramLeaderConflictError";
-  }
-}
-// oxlint-disable-next-line eslint/max-classes-per-file
-export class SelfDepartmentManagerError extends Error {
-  constructor(userId: string) {
-    super(`A user cannot grant Department Manager to themselves: ${userId}`);
-    this.name = "SelfDepartmentManagerError";
   }
 }

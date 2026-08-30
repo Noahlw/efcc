@@ -1,49 +1,22 @@
 -- Migration number: 0019  2026-08-27T00:00:00.000Z
--- #476 — Disposable pre-production D1 identity foundation (Spec 091 §§ 1–6, ADR-0042).
+-- #476 — Disposable pre-production D1 identity foundation (Spec 091 §§ 1–6,
+-- ADR-0042).
 --
--- This migration is purely additive: it creates the normalized disposable
--- pre-production schema alongside the existing fixed-role permission tables
--- (role_capabilities, permission_policy_state, permission_policy_mutations).
--- The obsolete tables are left in place so the existing Worker/D1 path
--- continues to function; the pre-production disposable D1 is the seam
--- where the new schema is intended to replace them.
+-- This migration creates the canonical normalized identity schema:
+--   * role_categories — fixed, non-assignable Role Categories.
+--   * role_definitions — Role Definitions with explicit scope and lifecycle.
+--   * role_definition_grants — closed capability grants.
+--   * role_assignments — Account-to-Role Definition assignments with history.
+--   * role_policy_revisions — singleton revision ledger.
+--   * role_policy_mutations — actor-bound idempotency ledger.
+--   * role_audit_events — immutable audit log.
 --
--- New tables (Spec 091 §§ 2–6):
+-- Seeds and runtime authority use these records exclusively. A read-only
+-- preflight rejects a database that still contains retired authority tables
+-- and prints the operator's manual reset command; this migration never drops
+-- data.
 --
---   * role_categories — fixed, non-assignable Role Categories
---     (Global, Department, Program) that group Role Definitions.
---   * role_definitions — normalized Role Definitions with explicit
---     scope_kind (Global, Department, Program) and scope_id, capability
---     grants, and an archive state. Admin and 會友基礎 are fixed protected
---     system identities; Staff is an assignable system identity whose
---     name/grants may be changed by an eligible higher actor.
---   * role_definition_grants — Role Definition → capability grants, closed
---     against the canonical capability catalog via CHECK.
---   * role_assignments — Account → Role Definition with grant/revoke
---     history; one active row per (account, role_definition) pair is
---     enforced by a partial UNIQUE index. Revocation is a new row, never
---     a delete, so the archive is preserved.
---   * role_policy_revisions — singleton revision ledger (one row at id=1)
---     that the mutation batch advances atomically with the role / grant /
---     assignment / audit writes.
---   * role_policy_mutations — durable idempotency ledger keyed by
---     (idempotency_key, request_fingerprint) so replays of the same payload
---     are idempotent and a key reused with a different payload is rejected.
---   * role_audit_events — immutable audit log for every privileged mutation
---     attempt (SUCCESS, DUPLICATE, CONFLICT, DENIED, FAILED). UPDATE / DELETE
---     are aborted at the schema level.
---
--- A pre-019 (legacy role_capabilities + permission_policy_state +
--- permission_policy_mutations) environment is detected by
--- preflightDisposableSchema() before any seed or mutation runs. The
--- preflight refuses to proceed, surfaces the explicit DROP TABLE commands
--- the operator must run by hand, and exits non-zero without issuing any
--- DROP of its own. The migration is the seam where the operator switches
--- a fresh disposable D1 onto the new schema; the preflight is the safety
--- net for cases where the migration cannot run (e.g. a non-disposable
--- database name is configured).
---
--- Conventions mirror migrations 0003 / 0017:
+-- Conventions:
 --   * All new tables use TEXT ISO-8601 UTC timestamps and STRICT mode.
 --   * Foreign keys are ON DELETE RESTRICT.
 --   * Every closed vocabulary is CHECK-constrained.

@@ -51,6 +51,10 @@ const detailFixture = (
     {
       program_id: "program-1",
       user_id: "U001",
+      role_definition_id: "role-1",
+      label: "課程管理身份組",
+      scope_kind: "Program",
+      scope_id: "program-1",
       granted_by: "U000",
       granted_at: "2026-01-01T00:00:00.000Z",
       revoked_by: null,

@@ -2,11 +2,11 @@ import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import type { ReadonlyURLSearchParams } from "next/navigation";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
-import ManagementPage from "@/app/management/page";
 import { ManagementHub } from "@/app/management/management-hub";
+import ManagementPage from "@/app/management/page";
 import type { Bootstrap, PublicUser } from "@/lib/api";
 import { COPY } from "@/lib/copy";
-import { sectionsForRole, stableNavigationSections } from "@/lib/sections";
+import { projectSections, projectNavigation } from "@/lib/sections";
 
 // Hub wire contract (087-01, locked): GET /api/v1/programs/hub returns
 // { requestId, data: { groups, entryCard } }; getManagementHub() unwraps to
@@ -85,7 +85,12 @@ interface HubData {
   entryCard: HubEntryCard | null;
 }
 
-const row = (key: string, label: string, description: string, href: string): HubRow => ({
+const row = (
+  key: string,
+  label: string,
+  description: string,
+  href: string
+): HubRow => ({
   key,
   label,
   description,
@@ -101,24 +106,54 @@ const ADMIN_HUB: HubData = {
       key: "members-and-permissions",
       label: COPY.management.groupMemberPermissions,
       rows: [
-        row("approvals", COPY.management.approvalsRow, COPY.management.approvalsRowHint, "/management?module=approvals"),
-        row("permissions", COPY.management.permissionsRow, COPY.management.permissionsRowHint, "/management?module=permissions"),
+        row(
+          "approvals",
+          COPY.management.approvalsRow,
+          COPY.management.approvalsRowHint,
+          "/management?module=approvals"
+        ),
+        row(
+          "permissions",
+          COPY.management.permissionsRow,
+          COPY.management.permissionsRowHint,
+          "/management?module=permissions"
+        ),
       ],
     },
     {
       key: "ministry-operations",
       label: COPY.management.groupOperations,
       rows: [
-        row("departments", COPY.management.departmentsRow, COPY.management.departmentsRowHint, "/management?module=departments"),
-        row("attendance", COPY.management.attendanceRow, COPY.management.attendanceRowHint, "/management?module=attendance"),
-        row("members", COPY.management.membersRow, COPY.management.membersRowHint, "/management?module=members"),
+        row(
+          "departments",
+          COPY.management.departmentsRow,
+          COPY.management.departmentsRowHint,
+          "/management?module=departments"
+        ),
+        row(
+          "attendance",
+          COPY.management.attendanceRow,
+          COPY.management.attendanceRowHint,
+          "/management?module=attendance"
+        ),
+        row(
+          "members",
+          COPY.management.membersRow,
+          COPY.management.membersRowHint,
+          "/management?module=members"
+        ),
       ],
     },
     {
       key: "content-and-system",
       label: COPY.management.groupContentSystem,
       rows: [
-        row("home-content", COPY.management.homeContentRow, COPY.management.homeContentRowHint, "/management?module=home-content"),
+        row(
+          "home-content",
+          COPY.management.homeContentRow,
+          COPY.management.homeContentRowHint,
+          "/management?module=home-content"
+        ),
       ],
     },
   ],
@@ -139,7 +174,12 @@ const NARROW_HUB: HubData = {
       key: "ministry-operations",
       label: COPY.management.groupOperations,
       rows: [
-        row("departments", COPY.management.departmentsRow, COPY.management.departmentsRowHint, "/management?module=departments"),
+        row(
+          "departments",
+          COPY.management.departmentsRow,
+          COPY.management.departmentsRowHint,
+          "/management?module=departments"
+        ),
       ],
     },
   ],
@@ -168,8 +208,8 @@ const STAFF_PROFILE: PublicUser = {
 
 const STAFF_BOOTSTRAP: Bootstrap = {
   profile: STAFF_PROFILE,
-  sections: sectionsForRole("Staff"),
-  navigation: stableNavigationSections("Staff"),
+  sections: projectSections({ "program.manage": true }),
+  navigation: projectNavigation({ "program.manage": true }),
 };
 
 const MEMBER_PROFILE: PublicUser = {
@@ -184,8 +224,8 @@ const MEMBER_PROFILE: PublicUser = {
 
 const MEMBER_BOOTSTRAP: Bootstrap = {
   profile: MEMBER_PROFILE,
-  sections: sectionsForRole("Member"),
-  navigation: stableNavigationSections("Member"),
+  sections: projectSections({ "program.enroll": true }),
+  navigation: projectNavigation({ "program.enroll": true }),
 };
 
 beforeEach(() => {
@@ -215,9 +255,14 @@ describe("ManagementHub component", () => {
     });
 
     expect(
-      screen.getByRole("heading", { level: 1, name: COPY.management.managementTitle })
+      screen.getByRole("heading", {
+        level: 1,
+        name: COPY.management.managementTitle,
+      })
     ).toBeInTheDocument();
-    expect(screen.getByText(COPY.management.managementLead)).toBeInTheDocument();
+    expect(
+      screen.getByText(COPY.management.managementLead)
+    ).toBeInTheDocument();
 
     const groupHeadings = screen
       .getAllByRole("heading", { level: 2 })
@@ -234,7 +279,9 @@ describe("ManagementHub component", () => {
     render(<ManagementHub />);
 
     await waitFor(() => {
-      expect(screen.getByText(COPY.management.approvalsRow)).toBeInTheDocument();
+      expect(
+        screen.getByText(COPY.management.approvalsRow)
+      ).toBeInTheDocument();
     });
 
     for (const [label, description] of ALL_ROWS.map((r) => [
@@ -251,11 +298,15 @@ describe("ManagementHub component", () => {
     render(<ManagementHub />);
 
     await waitFor(() => {
-      expect(screen.getByRole("link", { name: /註冊審批/u })).toBeInTheDocument();
+      expect(
+        screen.getByRole("link", { name: /註冊審批/u })
+      ).toBeInTheDocument();
     });
 
     for (const row of ALL_ROWS) {
-      const link = screen.getByRole("link", { name: new RegExp(row.label, "u") });
+      const link = screen.getByRole("link", {
+        name: new RegExp(row.label, "u"),
+      });
       expect(link).toHaveAttribute("href", row.href);
     }
   });
@@ -265,14 +316,18 @@ describe("ManagementHub component", () => {
     render(<ManagementHub />);
 
     await waitFor(() => {
-      expect(screen.getByText(COPY.management.anotherEntry)).toBeInTheDocument();
+      expect(
+        screen.getByText(COPY.management.anotherEntry)
+      ).toBeInTheDocument();
     });
 
     const cardLabel = screen.getByRole("link", {
       name: new RegExp(COPY.management.goCourseManagement, "u"),
     });
     expect(cardLabel).toHaveAttribute("href", "/programs?mode=management");
-    expect(screen.getByText(COPY.management.goCourseManagementHint)).toBeInTheDocument();
+    expect(
+      screen.getByText(COPY.management.goCourseManagementHint)
+    ).toBeInTheDocument();
 
     // Prototype placement: between 事工營運 and 內容與系統.
     const operations = screen.getByRole("heading", {
@@ -306,10 +361,10 @@ describe("ManagementHub component", () => {
     });
 
     // The granted row renders with its description.
+    expect(screen.getByRole("link", { name: /部門設定/u })).toBeInTheDocument();
     expect(
-      screen.getByRole("link", { name: /部門設定/u })
+      screen.getByText(COPY.management.departmentsRowHint)
     ).toBeInTheDocument();
-    expect(screen.getByText(COPY.management.departmentsRowHint)).toBeInTheDocument();
 
     // Every ungranted group heading and row is absent — never shown disabled.
     for (const absent of [
@@ -397,7 +452,9 @@ describe("ManagementHub component", () => {
 
       if (fixture.groups.length > 0) {
         await waitFor(() => {
-          expect(screen.getAllByRole("heading", { level: 2 }).length).toBeGreaterThan(0);
+          expect(
+            screen.getAllByRole("heading", { level: 2 }).length
+          ).toBeGreaterThan(0);
         });
       } else {
         await waitFor(() => {

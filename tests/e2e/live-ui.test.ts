@@ -146,7 +146,6 @@ const COPY = {
   permissionsLead: "按工作範圍檢視能力；管理員可先建立草稿，確認後一次儲存。",
   rolesSection: "角色定義",
   roleAdmin: "管理員",
-  roleDepartmentManager: "部門管理者",
   roleStaff: "同工",
 } as const;
 
@@ -538,7 +537,6 @@ test.describe("UI-04 Next frontend trace", () => {
         exact: true,
       })
     ).toBeVisible();
-    await expect(roleList.getByText(COPY.roleDepartmentManager)).toHaveCount(0);
     await page.getByRole("link", { name: COPY.settingsBackToHub }).click();
     await expect(page).toHaveURL(/management\?module=settings/u);
 

@@ -6,10 +6,7 @@ import { expect, test } from "@playwright/test";
 import type { Route } from "@playwright/test";
 
 import { COPY } from "../../web/lib/copy";
-import {
-  defaultSections,
-  stableNavigationSections,
-} from "../../web/lib/sections";
+import { defaultSections, projectNavigation } from "../../web/lib/sections";
 
 const AUTH_HINT_KEY = "efcc_auth_active";
 
@@ -48,7 +45,9 @@ function stubAuthFor(user: typeof MEMBER_USER) {
           data: {
             user,
             sections: defaultSections(),
-            navigation: stableNavigationSections(user.role),
+            navigation: projectNavigation({
+              "program.manage": user.role !== "Member",
+            }),
           },
         }),
       });
@@ -74,7 +73,9 @@ function stubAuthFor(user: typeof MEMBER_USER) {
 }
 
 test.describe("084-02: 5-slot navigation and shell contract", () => {
-  test("Member role receives 5-slot dock with Notices (not Management)", async ({ page }) => {
+  test("Member role receives 5-slot dock with Notices (not Management)", async ({
+    page,
+  }) => {
     await page.addInitScript(
       ({ key, value }: { key: string; value: string }) => {
         localStorage.setItem(key, value);
@@ -105,7 +106,9 @@ test.describe("084-02: 5-slot navigation and shell contract", () => {
     await expect(links.nth(4)).toHaveAttribute("href", "/profile");
   });
 
-  test("Staff role receives 5-slot dock with Management (not Notices)", async ({ page }) => {
+  test("Staff role receives 5-slot dock with Management (not Notices)", async ({
+    page,
+  }) => {
     await page.addInitScript(
       ({ key, value }: { key: string; value: string }) => {
         localStorage.setItem(key, value);
@@ -261,7 +264,9 @@ test.describe("089-S1: Reconciled shared shell, top bar, and Attention panel con
     ).toHaveCount(0);
   });
 
-  test("On /scanner, top bar is suppressed while dock/rail nav remains mounted", async ({ page }) => {
+  test("On /scanner, top bar is suppressed while dock/rail nav remains mounted", async ({
+    page,
+  }) => {
     await page.addInitScript(
       ({ key, value }: { key: string; value: string }) => {
         localStorage.setItem(key, value);

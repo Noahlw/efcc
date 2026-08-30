@@ -141,21 +141,18 @@ describe("#476 disposable D1 schema contract", () => {
     expect(tables).toContain("role_definitions");
   });
 
-  test("preflight flags a stale pre-019 schema and never auto-drops", async () => {
+  test("preflight flags any retired authority table, even with normalized tables present, and never auto-drops", async () => {
     const db = testDb();
-    const newTables = [
-      "role_categories",
-      "role_definitions",
-      "role_definition_grants",
-      "role_assignments",
-      "role_policy_revisions",
-      "role_policy_mutations",
-      "role_audit_events",
-    ];
-    const backup = `__backup_${Date.now()}`;
-    for (const table of newTables) {
+    const legacyTables = [
+      "role_capabilities",
+      "department_managers",
+      "program_leaders",
+      "permission_policy_state",
+      "permission_policy_mutations",
+    ] as const;
+    for (const table of legacyTables) {
       await db
-        .prepare(`ALTER TABLE ${table} RENAME TO ${backup}_${table}`)
+        .prepare(`CREATE TABLE IF NOT EXISTS ${table} (marker TEXT)`)
         .run();
     }
     try {
@@ -166,19 +163,13 @@ describe("#476 disposable D1 schema contract", () => {
       if (result.kind !== "stale-schema") {
         throw new Error("expected stale-schema outcome");
       }
-      const hasLegacy = result.legacyTables.some(
-        (t) =>
-          t === "role_capabilities" ||
-          t === "permission_policy_state" ||
-          t === "permission_policy_mutations"
-      );
-      expect(hasLegacy).toBeTruthy();
+      expect(result.legacyTables).toStrictEqual(legacyTables);
       expect(result.resetCommand).toContain("DROP TABLE IF EXISTS");
+      expect(result.resetCommand).toContain("department_managers");
+      expect(result.resetCommand).toContain("program_leaders");
     } finally {
-      for (const table of newTables) {
-        await db
-          .prepare(`ALTER TABLE ${backup}_${table} RENAME TO ${table}`)
-          .run();
+      for (const table of legacyTables) {
+        await db.prepare(`DROP TABLE IF EXISTS ${table}`).run();
       }
     }
   });

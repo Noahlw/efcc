@@ -36,6 +36,7 @@ export {
   loadActorRoles,
   resolveActorHighestPosition,
   resolveActorCapabilities,
+  loadBootstrapIdentity,
   renameRoleDefinition,
   createRoleDefinition,
   rescopeRoleDefinition,
@@ -68,6 +69,8 @@ export {
   __test as __hierarchyTest,
 } from "./role-hierarchy";
 export type {
+  BootstrapIdentity,
+  BootstrapIdentitySummary,
   RoleHierarchyView,
   RoleHierarchyCategory,
   RoleHierarchyDefinition,

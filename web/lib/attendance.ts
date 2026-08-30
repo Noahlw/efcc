@@ -2,6 +2,7 @@ import { findAccountByUserId } from "./auth/accounts";
 import type { AccountRow } from "./auth/accounts";
 import { ACCESS_COOKIE_NAME } from "./auth/cookies";
 import { verifyAccessToken } from "./auth/sessions";
+import { resolveProgramAccess } from "./programs/program-resolver";
 
 export type AttendanceMethod =
   | "self_qr_scan"
@@ -557,7 +558,6 @@ async function matchingEventStateById(
   return row ?? null;
 }
 
-
 export async function handleResolve(
   request: Request,
   env: AttendanceEnv
@@ -571,8 +571,7 @@ export async function handleResolve(
   // The scanner deep-link (?event=<id>) is an explicit pre-select and is
   // mutually exclusive with the credential-shaped params; otherwise the
   // caller is asking the server to resolve ambiguity it cannot.
-  const explicitCount =
-    [token, code, eventId].filter(Boolean).length;
+  const explicitCount = [token, code, eventId].filter(Boolean).length;
   if (explicitCount > 1) {
     return problem(422, "VALIDATION", "請提供課程 QR 或聚會代碼。", id);
   }
@@ -601,12 +600,7 @@ export async function handleResolve(
       ? currentActor.user_id
       : null;
 
-  const { events, latest } = await resolveLookup(
-    env.DB,
-    token,
-    code,
-    value
-  );
+  const { events, latest } = await resolveLookup(env.DB, token, code, value);
   if (events.length === 0) {
     return resolveNoEvents(env.DB, latest, memberUserId, id);
   }
@@ -861,23 +855,12 @@ async function permittedOperator(
   actorAccount: AccountRow,
   programId: string
 ): Promise<boolean> {
-  if (actorAccount.role === "Admin" || actorAccount.role === "Staff") {
-    return true;
-  }
-  const scopedGrant = await env.DB.prepare(
-    `SELECT 1
-       FROM program_leaders
-      WHERE program_id = ? AND user_id = ? AND revoked_at IS NULL
-     UNION ALL
-     SELECT 1
-       FROM department_managers dm
-       JOIN programs p ON p.department_id = dm.department_id
-      WHERE p.program_id = ? AND dm.user_id = ? AND dm.revoked_at IS NULL
-      LIMIT 1`
-  )
-    .bind(programId, actorAccount.user_id, programId, actorAccount.user_id)
-    .first();
-  return Boolean(scopedGrant);
+  const access = await resolveProgramAccess(
+    env.DB,
+    actorAccount.user_id,
+    programId
+  );
+  return access?.capabilities["program.manage"] === true;
 }
 
 /**
@@ -1193,9 +1176,30 @@ export async function handleSearchMembers(
   return json(200, { members: result.results ?? [] }, id);
 }
 /**
- * GET /api/v1/attendance/events — the legacy operator chooser.
- * It includes historical Events so the stable `/events` roster/void/correction
- * surface can still open closed or cancelled records.
+ * Resolve the operator's normalized Program scopes for a bounded event list.
+ */
+async function filterAuthorizedEvents(
+  db: D1Database,
+  actorUserId: string,
+  events: AttendanceEventSummary[]
+): Promise<AttendanceEventSummary[]> {
+  const authorized = new Set<string>();
+  const programIds = [...new Set(events.map((event) => event.program_id))];
+  await Promise.all(
+    programIds.map(async (programId) => {
+      const access = await resolveProgramAccess(db, actorUserId, programId);
+      if (access?.capabilities["program.manage"] === true) {
+        authorized.add(programId);
+      }
+    })
+  );
+  return events.filter((event) => authorized.has(event.program_id));
+}
+
+/**
+ * GET /api/v1/attendance/events — operator chooser.
+ * Historical events remain readable to an operator with exact normalized
+ * Program or Department scope.
  */
 export async function handleListManageableEvents(
   request: Request,
@@ -1214,34 +1218,20 @@ export async function handleListManageableEvents(
        FROM events e
        JOIN programs p ON p.program_id = e.program_id
       WHERE p.lifecycle = 'Active'
-        AND (
-          ? = 'Admin' OR ? = 'Staff'
-          OR EXISTS (
-            SELECT 1 FROM program_leaders pl
-             WHERE pl.program_id = p.program_id
-               AND pl.user_id = ?
-               AND pl.revoked_at IS NULL
-          )
-          OR EXISTS (
-            SELECT 1
-              FROM department_managers dm
-             WHERE dm.department_id = p.department_id
-               AND dm.user_id = ?
-               AND dm.revoked_at IS NULL
-          )
-        )
       ORDER BY e.starts_at DESC
-      LIMIT 50`
-  )
-    .bind(current.role, current.role, current.user_id, current.user_id)
-    .all<AttendanceEventSummary>();
-  return json(200, { events: result.results ?? [] }, id);
+      LIMIT 250`
+  ).all<AttendanceEventSummary>();
+  const events = await filterAuthorizedEvents(
+    env.DB,
+    current.user_id,
+    result.results ?? []
+  );
+  return json(200, { events: events.slice(0, 50) }, id);
 }
 
 /**
- * GET /api/v1/attendance/scanner-events — the Assisted Scanner projection.
- * Only open, active Events in the actor's server-authorized Program scope
- * reach the browser; check-in credentials are intentionally omitted.
+ * GET /api/v1/attendance/scanner-events — open Events in the actor's
+ * normalized Program/Department scope.
  */
 export async function handleListScannerEvents(
   request: Request,
@@ -1265,34 +1255,16 @@ export async function handleListScannerEvents(
         AND e.availability = 'Active'
         AND julianday(e.check_in_window_opens_at) <= julianday(?)
         AND julianday(e.check_in_window_closes_at) >= julianday(?)
-        AND (
-          ? = 'Admin' OR ? = 'Staff'
-          OR EXISTS (
-            SELECT 1 FROM program_leaders pl
-             WHERE pl.program_id = p.program_id
-               AND pl.user_id = ?
-               AND pl.revoked_at IS NULL
-          )
-          OR EXISTS (
-            SELECT 1
-              FROM department_managers dm
-             WHERE dm.department_id = p.department_id
-               AND dm.user_id = ?
-               AND dm.revoked_at IS NULL
-          )
-        )
       ORDER BY e.starts_at DESC`
   )
-    .bind(
-      now,
-      now,
-      current.role,
-      current.role,
-      current.user_id,
-      current.user_id
-    )
+    .bind(now, now)
     .all<AttendanceEventSummary>();
-  return json(200, { events: result.results ?? [] }, id);
+  const events = await filterAuthorizedEvents(
+    env.DB,
+    current.user_id,
+    result.results ?? []
+  );
+  return json(200, { events }, id);
 }
 
 export async function handleVoidAttendance(

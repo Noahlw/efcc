@@ -398,18 +398,11 @@ export const COPY = {
     decisionMade: "已處理申請。",
     loading: "載入中…",
   },
-  // Account Permissions real matrix (Spec 087 US 9-12 / ticket 087-03 #320).
-  // Admin/Staff-only read surface at /management?module=permissions: the
-  // server projects every elevated account (Admin / Staff-with-DM-grant /
-  // Staff) with name, role, and department context — never a client-side role
-  // branch — and Department Managers are denied server-side (403/FORBIDDEN).
-  // Role/scope/state tokens are the fixed reference vocabulary from the
-  // canonical prototype (onAccountPermissions); backToSettings deliberately
-  // mirrors settings.settingsBackToHub.
+  // Identity management and permission-editor copy. The Worker supplies the
+  // effective identity projection; this block owns labels and state copy only.
   permissions: {
     permissionsTitle: "帳戶與權限",
-    permissionsLead:
-      "按工作範圍檢視能力；管理員可先建立草稿，確認後一次儲存。",
+    permissionsLead: "按工作範圍檢視能力；管理員可先建立草稿，確認後一次儲存。",
     accountsSection: "管理員帳戶",
     rolesSection: "角色定義",
     accountName: "姓名",
@@ -417,8 +410,6 @@ export const COPY = {
     accountDepartment: "部門",
     roleAdmin: "管理員",
     roleAdminScope: "全部範圍",
-    roleDepartmentManager: "部門管理者",
-    roleDepartmentManagerScope: "所屬部門課程、聚會及出席",
     roleStaff: "同工",
     roleStaffScope: "部門範圍內協助工作",
     stateAssigned: "已設",
@@ -434,7 +425,8 @@ export const COPY = {
     policySynced: "目前顯示政策版本",
     policyAdminEditable: "管理員可編輯未鎖定的政策格。",
     policyStaffReadOnly: "同工只可查看，不能修改權限政策。",
-    policyReadOnlyNotice: "固定政策格不可修改；管理員可先建立草稿，再一次儲存。",
+    policyReadOnlyNotice:
+      "固定政策格不可修改；管理員可先建立草稿，再一次儲存。",
     policyEnabled: "已啟用",
     policyDisabled: "未啟用",
     policyLocked: "固定",
@@ -1043,20 +1035,7 @@ export const COPY = {
     departmentSettings: "部門設定",
     departmentDetails: "部門資料",
     saveDepartment: "儲存部門",
-    departmentManagers: "部門管理者",
-    noDepartmentManagers: "目前沒有部門管理者。",
-    assignManager: "指派部門管理者",
-    revokeManager: "撤銷部門管理者",
-    managerAssigned: "已指派部門管理者。",
-    managerRevoked: "已撤銷部門管理者。",
-    assignDepartmentManager: "指派部門管理者",
-    revokeDepartmentManager: "撤銷部門管理者",
-    confirmRevokeDepartmentManager: "確定要撤銷此部門管理者嗎？",
-    departmentManagerUserId: "選擇部門管理者",
-    departmentManagerUserIdPlaceholder: "輸入姓名或用戶名稱",
-    departmentManagerAssignedNotice: "已指派部門管理者。",
-    departmentManagerRevokedNotice: "已撤銷部門管理者。",
-    departmentScopeHint: "此設定只適用於目前部門，不會改變全域角色。",
+    departmentScopeHint: "此設定只適用於目前部門，不會改變其他部門範圍。",
     enable: "啟用",
     disable: "停用",
     expand: "展開",
@@ -1064,6 +1043,7 @@ export const COPY = {
     submit: "建立",
     submitting: "建立中…",
     withdrawing: "退出中…",
+    cancelRevoke: "取消",
     created: "已建立。",
     updated: "已更新。",
     loadError: "無法載入課程與活動資料，請稍後再試。",
@@ -1247,21 +1227,10 @@ export const COPY = {
     requestRejectedHint: "上次申請未獲接納；如課程仍開放，可重新申請。",
     requestWithdrawnHint: "你已撤回上次申請；如課程仍開放，可重新申請。",
     enrollmentCancelledHint: "這次報名已取消；如課程仍開放，可重新申請。",
-    leaders: "事工負責人",
-    noLeaders: "目前沒有事工負責人。",
-    assignLeader: "新增負責人",
-    revokeLeader: "移除負責人",
-    confirmRevokeLeader: "確定要移除此事工負責人嗎？",
-    confirmRevoke: "確定移除",
+    identityAssignments: "身份組指派",
+    noIdentityAssignments: "目前沒有已指派身份組。",
     enrollmentAccountInactive:
       "無法新增報名：此帳戶不存在或尚未啟用。請選取狀態為「啟用」的帳戶。",
-    cancelRevoke: "取消",
-    leaderUserId: "選擇會友",
-    leaderUserIdPlaceholder: "輸入姓名或用戶名稱",
-    leaderAssignedNotice: "已新增事工負責人。",
-    leaderRevokedNotice: "已移除事工負責人。",
-    leaderAccountInactive:
-      "無法新增：此帳戶尚未啟用。請選取狀態為「啟用」的帳戶。",
     enrollmentDuplicate: "此會友已報名此課程。",
     // EVT-01 (#251): event operational detail and independent availability.
     eventCreate: "新增聚會",
@@ -1322,7 +1291,6 @@ const ERROR_COPY_BY_CODE: Record<string, string> = {
   CONFLICT: COPY.error.conflict,
   STALE: COPY.programs.workspaceParticipantsStale,
   ENROLLMENT_ACCOUNT_INACTIVE: COPY.programs.enrollmentAccountInactive,
-  ACCOUNT_INACTIVE: COPY.programs.leaderAccountInactive,
   ENROLLMENT_DUPLICATE: COPY.programs.enrollmentDuplicate,
   EVENT_CANCELLED: COPY.attendance.eventCancelled,
   CHECK_IN_CLOSED: COPY.attendance.eventClosed,

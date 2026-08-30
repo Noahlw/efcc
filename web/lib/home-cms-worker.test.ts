@@ -45,6 +45,33 @@ async function accessCookie(
   assert.ok(cookie);
   return cookie.split(";")[0].slice(ACCESS_COOKIE_NAME.length + 1);
 }
+async function ensureAdminIdentity(): Promise<void> {
+  const now = new Date().toISOString();
+  await testDb()
+    .prepare(
+      `INSERT OR IGNORE INTO role_definitions
+        (role_definition_id, category_key, stable_key, label, description,
+         scope_kind, scope_id, position, is_protected, is_archived,
+         created_by, created_at, updated_by, updated_at)
+       VALUES ('CMS-ADMIN-IDENTITY', 'Global', 'admin', '系統管理員',
+               'CMS test administrator', 'Global', NULL, 0, 1, 0,
+               NULL, ?, NULL, ?)`
+    )
+    .bind(now, now)
+    .run();
+  await testDb()
+    .prepare(
+      `INSERT OR IGNORE INTO role_assignments
+        (assignment_id, account_user_id, role_definition_id, granted_by,
+         granted_at, scope_kind, scope_id)
+       SELECT 'CMS-ADMIN-ASSIGNMENT', 'CMS-ADMIN', role_definition_id,
+              'CMS-ADMIN', ?, scope_kind, scope_id
+         FROM role_definitions
+        WHERE role_definition_id = 'CMS-ADMIN-IDENTITY'`
+    )
+    .bind(now)
+    .run();
+}
 
 // oxlint-disable-next-line no-explicit-any
 async function json(response: Response): Promise<Record<string, any>> {
@@ -84,6 +111,7 @@ describe("Home Content CMS Worker routes", () => {
       ["CMS-ADMIN", "CMS Admin", "cms-admin", "1234", "Admin", "Active"],
       ["CMS-STAFF", "CMS Staff", "cms-staff", "1234", "Staff", "Active"],
     ]);
+    await ensureAdminIdentity();
     await completeCredentialUpgrade(testDb(), {
       userId: "CMS-ADMIN",
       legacyPin: "1234",

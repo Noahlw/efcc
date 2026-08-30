@@ -496,6 +496,9 @@ export async function resolveActorCapabilities(
   if (account?.account_status === "Active") {
     capabilities["program.enroll"] = true;
   }
+  if (account?.account_status !== "Active") {
+    return capabilities;
+  }
   if (roles.some((role) => role.stable_key === PROTECTED_STABLE_KEYS.ADMIN)) {
     for (const entry of CAPABILITY_CATALOG) {
       capabilities[entry.capability] = true;
@@ -503,41 +506,83 @@ export async function resolveActorCapabilities(
     return capabilities;
   }
 
-  const scopedFilter = scope?.departmentId
-    ? `AND (
-         (rd.scope_kind = 'Global' AND rd.scope_id IS NULL)
-         OR (rd.scope_kind = 'Department' AND rd.scope_id = ?)
-       )`
-    : scope?.programId
-      ? `AND (
-           (rd.scope_kind = 'Global' AND rd.scope_id IS NULL)
-           OR (rd.scope_kind = 'Program' AND rd.scope_id = ?)
-         )`
-      : scope === null
-        ? `AND rd.scope_kind = 'Global' AND rd.scope_id IS NULL`
-        : "";
-  const statement = db.prepare(
-    `SELECT DISTINCT rg.capability
-       FROM role_definition_grants rg
-       JOIN role_assignments ra
-         ON ra.role_definition_id = rg.role_definition_id
-       JOIN role_definitions rd
-         ON rd.role_definition_id = ra.role_definition_id
-      WHERE ra.account_user_id = ?
-        AND ra.revoked_at IS NULL
-        AND rd.is_archived = 0
-        ${scopedFilter}`
-  );
-  const grants =
-    scope?.departmentId || scope?.programId
-      ? await statement
-          .bind(actorUserId, scope.departmentId ?? scope.programId)
-          .all<{ capability: string }>()
-      : await statement.bind(actorUserId).all<{ capability: string }>();
+  let scopedFilter = "";
+  let scopeBinds: string[] = [];
+  if (scope?.programId) {
+    scopedFilter = `AND (
+      (rd.scope_kind = 'Global' AND rd.scope_id IS NULL)
+      OR (rd.scope_kind = 'Department' AND rd.scope_id = ?)
+      OR (rd.scope_kind = 'Program' AND rd.scope_id = ?)
+    )`;
+    scopeBinds = [scope.departmentId ?? "", scope.programId];
+  } else if (scope?.departmentId) {
+    scopedFilter = `AND (
+      (rd.scope_kind = 'Global' AND rd.scope_id IS NULL)
+      OR (rd.scope_kind = 'Department' AND rd.scope_id = ?)
+    )`;
+    scopeBinds = [scope.departmentId];
+  } else if (scope === null) {
+    scopedFilter = `AND rd.scope_kind = 'Global' AND rd.scope_id IS NULL`;
+  }
+  const grants = await db
+    .prepare(
+      `SELECT DISTINCT rg.capability
+         FROM role_definition_grants rg
+         JOIN role_assignments ra
+           ON ra.role_definition_id = rg.role_definition_id
+         JOIN role_definitions rd
+           ON rd.role_definition_id = ra.role_definition_id
+        WHERE ra.account_user_id = ?
+          AND ra.revoked_at IS NULL
+          AND rd.is_archived = 0
+          ${scopedFilter}`
+    )
+    .bind(actorUserId, ...scopeBinds)
+    .all<{ capability: string }>();
   for (const grant of grants.results ?? []) {
     capabilities[grant.capability] = true;
   }
   return capabilities;
+}
+
+export interface BootstrapIdentitySummary {
+  label: string;
+  scopeKind: RoleScopeKind;
+  scopeLabel: string | null;
+}
+
+export interface BootstrapIdentity {
+  systemRole: "Admin" | "Staff" | null;
+  identities: readonly BootstrapIdentitySummary[];
+  capabilities: Record<string, boolean>;
+}
+
+/** Load the privacy-safe identity projection used by the authenticated shell. */
+export async function loadBootstrapIdentity(
+  db: D1Database,
+  actorUserId: string
+): Promise<BootstrapIdentity> {
+  const roles = await loadActorRoles(db, actorUserId);
+  const names = await loadScopeNames(db);
+  const identities = roles
+    .filter((role) => role.stable_key !== PROTECTED_STABLE_KEYS.MEMBER)
+    .map((role) => ({
+      label: role.label,
+      scopeKind: role.scope_kind,
+      scopeLabel: scopeLabel(role.scope_kind, role.scope_id, names),
+    }));
+  const systemRole = roles.some(
+    (role) => role.stable_key === PROTECTED_STABLE_KEYS.ADMIN
+  )
+    ? "Admin"
+    : roles.some((role) => role.stable_key === PROTECTED_STABLE_KEYS.STAFF)
+      ? "Staff"
+      : null;
+  return {
+    systemRole,
+    identities,
+    capabilities: await resolveActorCapabilities(db, actorUserId),
+  };
 }
 
 /**

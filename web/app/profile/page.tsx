@@ -150,8 +150,22 @@ const ProfileContent = () => {
             </div>
             <div className={styles.detailRow}>
               <dt>{COPY.profile.role}</dt>
-              <dd>{profile.role}</dd>
+              <dd>{profile.systemRole ?? "會友"}</dd>
             </div>
+            {profile.identities && profile.identities.length > 0 && (
+              <div className={styles.detailRow}>
+                <dt>身份組</dt>
+                <dd>
+                  {profile.identities
+                    .map((identity) =>
+                      identity.scopeLabel
+                        ? `${identity.label}（${identity.scopeLabel}）`
+                        : identity.label
+                    )
+                    .join("、")}
+                </dd>
+              </div>
+            )}
             <div className={styles.detailRow}>
               <dt>{COPY.profile.status}</dt>
               <dd>{profile.status}</dd>

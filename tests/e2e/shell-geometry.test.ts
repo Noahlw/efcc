@@ -15,10 +15,7 @@ import { expect, test } from "@playwright/test";
 import type { Page, Route } from "@playwright/test";
 
 import { COPY } from "../../web/lib/copy";
-import {
-  defaultSections,
-  stableNavigationSections,
-} from "../../web/lib/sections";
+import { defaultSections, projectNavigation } from "../../web/lib/sections";
 
 const AUTH_HINT_KEY = "efcc_auth_active";
 
@@ -46,7 +43,7 @@ async function stubAuth(route: Route) {
         data: {
           user: PUBLIC_USER,
           sections: defaultSections(),
-          navigation: stableNavigationSections(PUBLIC_USER.role),
+          navigation: projectNavigation({ "home.publish": true }),
         },
       }),
     });

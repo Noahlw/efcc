@@ -22,6 +22,8 @@ const CLOSED_EVENT = "ATT-EVENT-CLOSED";
 const INACTIVE_EVENT = "ATT-EVENT-INACTIVE";
 const LONG_CODE_EVENT = "ATT-EVENT-LONGCODE";
 const BOUNDARY_EVENT = "ATT-EVENT-BOUNDARY";
+const PROGRAM_IDENTITY = "ATT-PROGRAM-IDENTITY";
+const DEPARTMENT_IDENTITY = "ATT-DEPARTMENT-IDENTITY";
 
 function testEnv(): Env {
   return {
@@ -59,6 +61,55 @@ async function accessCookieFor(
   return cookie.split(";")[0].slice(ACCESS_COOKIE_NAME.length + 1);
 }
 
+async function assignIdentity(
+  roleDefinitionId: string,
+  accountUserId: string,
+  assignmentId = crypto.randomUUID(),
+  revokedAt: string | null = null
+): Promise<void> {
+  const now = new Date().toISOString();
+  await testDb()
+    .prepare(
+      `INSERT OR IGNORE INTO role_assignments
+        (assignment_id, account_user_id, role_definition_id, granted_by,
+         granted_at, scope_kind, scope_id, revoked_by, revoked_at, revoke_reason)
+       SELECT ?, ?, role_definition_id, 'ATT-ADMIN', ?, scope_kind, scope_id,
+              CASE WHEN ? IS NULL THEN NULL ELSE 'ATT-ADMIN' END, ?, NULL
+         FROM role_definitions
+        WHERE role_definition_id = ?`
+    )
+    .bind(
+      assignmentId,
+      accountUserId,
+      now,
+      revokedAt,
+      revokedAt,
+      roleDefinitionId
+    )
+    .run();
+}
+
+async function ensureAdminIdentity(): Promise<void> {
+  const now = new Date().toISOString();
+  await testDb()
+    .prepare(
+      `INSERT OR IGNORE INTO role_definitions
+        (role_definition_id, category_key, stable_key, label, description,
+         scope_kind, scope_id, position, is_protected, is_archived,
+         created_by, created_at, updated_by, updated_at)
+       VALUES ('ATT-ADMIN-IDENTITY', 'Global', 'admin', '系統管理員',
+               'Attendance test administrator', 'Global', NULL, 0, 1, 0,
+               NULL, ?, NULL, ?)`
+    )
+    .bind(now, now)
+    .run();
+  await assignIdentity(
+    "ATT-ADMIN-IDENTITY",
+    "ATT-ADMIN",
+    "ATT-ADMIN-ASSIGNMENT"
+  );
+}
+
 async function json(response: Response): Promise<Record<string, unknown>> {
   return (await response.json()) as Record<string, unknown>;
 }
@@ -93,6 +144,7 @@ describe("attendance Worker routes", () => {
         "Deactivated",
       ],
     ]);
+    await ensureAdminIdentity();
     await completeCredentialUpgrade(testDb(), {
       userId: "ATT-ADMIN",
       legacyPin: "1234",
@@ -350,6 +402,56 @@ describe("attendance Worker routes", () => {
         now.toISOString()
       )
       .run();
+    await testDb().batch([
+      testDb()
+        .prepare(
+          `INSERT OR IGNORE INTO role_definitions
+            (role_definition_id, category_key, stable_key, label, description,
+             scope_kind, scope_id, position, is_protected, is_archived,
+             created_by, created_at, updated_by, updated_at)
+           VALUES (?, 'Program', ?, ?, ?, 'Program', ?, 30, 0, 0, NULL, ?, NULL, ?)`
+        )
+        .bind(
+          PROGRAM_IDENTITY,
+          "test.attendance.program",
+          "Attendance Program Operator",
+          "Attendance test operator",
+          PROGRAM,
+          new Date().toISOString(),
+          new Date().toISOString()
+        ),
+      testDb()
+        .prepare(
+          `INSERT OR IGNORE INTO role_definitions
+            (role_definition_id, category_key, stable_key, label, description,
+             scope_kind, scope_id, position, is_protected, is_archived,
+             created_by, created_at, updated_by, updated_at)
+           VALUES (?, 'Department', ?, ?, ?, 'Department', ?, 31, 0, 0, NULL, ?, NULL, ?)`
+        )
+        .bind(
+          DEPARTMENT_IDENTITY,
+          "test.attendance.department",
+          "Attendance Department Operator",
+          "Attendance test department operator",
+          "018f3b8a-0000-7000-8000-000000000001",
+          new Date().toISOString(),
+          new Date().toISOString()
+        ),
+      testDb()
+        .prepare(
+          `INSERT OR IGNORE INTO role_definition_grants
+            (role_definition_id, capability, granted_by, granted_at)
+           VALUES (?, 'program.manage', 'ATT-ADMIN', ?)`
+        )
+        .bind(PROGRAM_IDENTITY, new Date().toISOString()),
+      testDb()
+        .prepare(
+          `INSERT OR IGNORE INTO role_definition_grants
+            (role_definition_id, capability, granted_by, granted_at)
+           VALUES (?, 'program.manage', 'ATT-ADMIN', ?)`
+        )
+        .bind(DEPARTMENT_IDENTITY, new Date().toISOString()),
+    ]);
   });
 
   test("resolves both permanent Program QR token and Event manual code", async () => {
@@ -1083,10 +1185,7 @@ describe("attendance Worker routes", () => {
       (event) => event.event_id === EVENT
     );
     assert.ok(eventWithChooserDetails);
-    assert.strictEqual(
-      eventWithChooserDetails.program_name,
-      "Attendance Test"
-    );
+    assert.strictEqual(eventWithChooserDetails.program_name, "Attendance Test");
     assert.strictEqual(eventWithChooserDetails.name, "週六團契");
     assert.strictEqual(eventWithChooserDetails.location, "主堂");
     assert.ok(eventWithChooserDetails.starts_at);
@@ -1172,14 +1271,11 @@ describe("attendance Worker routes", () => {
 
   test("operator chooser honors an active Program Leader scope", async () => {
     const member = await accessCookieFor("att-member", "att-member-password");
-    await testDb()
-      .prepare(
-        `INSERT INTO program_leaders
-          (program_id, user_id, granted_by, granted_at)
-         VALUES (?, ?, ?, ?)`
-      )
-      .bind(PROGRAM, "ATT-MEMBER", "ATT-ADMIN", new Date().toISOString())
-      .run();
+    await assignIdentity(
+      PROGRAM_IDENTITY,
+      "ATT-MEMBER",
+      "ATT-PROGRAM-ACTIVE-ASSIGNMENT"
+    );
     try {
       const response = await worker.fetch(
         request("/api/v1/attendance/scanner-events", {
@@ -1204,29 +1300,19 @@ describe("attendance Worker routes", () => {
       );
     } finally {
       await testDb()
-        .prepare(
-          "DELETE FROM program_leaders WHERE program_id = ? AND user_id = ?"
-        )
-        .bind(PROGRAM, "ATT-MEMBER")
+        .prepare("DELETE FROM role_assignments WHERE assignment_id = ?")
+        .bind("ATT-PROGRAM-ACTIVE-ASSIGNMENT")
         .run();
     }
   });
 
   test("operator chooser honors an active Department Manager scope", async () => {
     const member = await accessCookieFor("att-member", "att-member-password");
-    await testDb()
-      .prepare(
-        `INSERT INTO department_managers
-          (department_id, user_id, granted_by, granted_at)
-         VALUES (?, ?, ?, ?)`
-      )
-      .bind(
-        "018f3b8a-0000-7000-8000-000000000001",
-        "ATT-MEMBER",
-        "ATT-ADMIN",
-        new Date().toISOString()
-      )
-      .run();
+    await assignIdentity(
+      DEPARTMENT_IDENTITY,
+      "ATT-MEMBER",
+      "ATT-DEPARTMENT-ACTIVE-ASSIGNMENT"
+    );
     try {
       const response = await worker.fetch(
         request("/api/v1/attendance/scanner-events", {
@@ -1251,10 +1337,8 @@ describe("attendance Worker routes", () => {
       );
     } finally {
       await testDb()
-        .prepare(
-          "DELETE FROM department_managers WHERE department_id = ? AND user_id = ?"
-        )
-        .bind("018f3b8a-0000-7000-8000-000000000001", "ATT-MEMBER")
+        .prepare("DELETE FROM role_assignments WHERE assignment_id = ?")
+        .bind("ATT-DEPARTMENT-ACTIVE-ASSIGNMENT")
         .run();
     }
   });
@@ -1262,63 +1346,30 @@ describe("attendance Worker routes", () => {
   test("scanner projection excludes revoked scoped grants", async () => {
     const member = await accessCookieFor("att-member", "att-member-password");
     const revokedAt = new Date().toISOString();
-    await testDb()
-      .prepare(
-        `INSERT INTO program_leaders
-          (program_id, user_id, granted_by, granted_at, revoked_by, revoked_at)
-         VALUES (?, ?, ?, ?, ?, ?)`
-      )
-      .bind(
-        PROGRAM,
-        "ATT-MEMBER",
-        "ATT-ADMIN",
-        revokedAt,
-        "ATT-ADMIN",
-        revokedAt
-      )
-      .run();
-    await testDb()
-      .prepare(
-        `INSERT INTO department_managers
-          (department_id, user_id, granted_by, granted_at, revoked_by, revoked_at)
-         VALUES (?, ?, ?, ?, ?, ?)`
-      )
-      .bind(
-        "018f3b8a-0000-7000-8000-000000000001",
-        "ATT-MEMBER",
-        "ATT-ADMIN",
-        revokedAt,
-        "ATT-ADMIN",
-        revokedAt
-      )
-      .run();
-    try {
-      const response = await worker.fetch(
-        request("/api/v1/attendance/scanner-events", {
-          headers: { Cookie: `${ACCESS_COOKIE_NAME}=${member}` },
-        }),
-        testEnv()
-      );
-      assert.strictEqual(response.status, 200);
-      const body = await json(response);
-      const { data } = body;
-      assert.ok(data && typeof data === "object" && "events" in data);
-      assert.ok(Array.isArray(data.events));
-      assert.strictEqual(data.events.length, 0);
-    } finally {
-      await testDb()
-        .prepare(
-          "DELETE FROM program_leaders WHERE program_id = ? AND user_id = ?"
-        )
-        .bind(PROGRAM, "ATT-MEMBER")
-        .run();
-      await testDb()
-        .prepare(
-          "DELETE FROM department_managers WHERE department_id = ? AND user_id = ?"
-        )
-        .bind("018f3b8a-0000-7000-8000-000000000001", "ATT-MEMBER")
-        .run();
-    }
+    await assignIdentity(
+      PROGRAM_IDENTITY,
+      "ATT-MEMBER",
+      "ATT-PROGRAM-REVOKED-ASSIGNMENT",
+      revokedAt
+    );
+    await assignIdentity(
+      DEPARTMENT_IDENTITY,
+      "ATT-MEMBER",
+      "ATT-DEPARTMENT-REVOKED-ASSIGNMENT",
+      revokedAt
+    );
+    const response = await worker.fetch(
+      request("/api/v1/attendance/scanner-events", {
+        headers: { Cookie: `${ACCESS_COOKIE_NAME}=${member}` },
+      }),
+      testEnv()
+    );
+    assert.strictEqual(response.status, 200);
+    const body = await json(response);
+    const { data } = body;
+    assert.ok(data && typeof data === "object" && "events" in data);
+    assert.ok(Array.isArray(data.events));
+    assert.strictEqual(data.events.length, 0);
   });
 
   test("guest entry that does not match the Event is rejected before check-in", async () => {
@@ -1830,16 +1881,13 @@ describe("attendance Worker routes", () => {
     const member = await accessCookieFor("att-member", "att-member-password");
     const attendanceId = "ATT-P2-GUEST-CROSS-SCOPE";
     const now = new Date().toISOString();
-    // Give member program leader scope for PROGRAM, so they are a genuine operator
-    // for PROGRAM but cross-scope / unauthorized for PROGRAM2 (ATT-P2-ACTIVE-CLOSED).
-    await testDb()
-      .prepare(
-        `INSERT INTO program_leaders
-          (program_id, user_id, granted_by, granted_at)
-         VALUES (?, ?, ?, ?)`
-      )
-      .bind(PROGRAM, "ATT-MEMBER", "ATT-ADMIN", now)
-      .run();
+    // Give the member one Program-scoped identity for PROGRAM so the
+    // cross-scope denial against PROGRAM2 is exercised.
+    await assignIdentity(
+      PROGRAM_IDENTITY,
+      "ATT-MEMBER",
+      "ATT-CROSS-SCOPE-ASSIGNMENT"
+    );
 
     await testDb()
       .prepare(
@@ -1901,10 +1949,8 @@ describe("attendance Worker routes", () => {
       assert.strictEqual(row?.status, "Active");
     } finally {
       await testDb()
-        .prepare(
-          "DELETE FROM program_leaders WHERE program_id = ? AND user_id = ?"
-        )
-        .bind(PROGRAM, "ATT-MEMBER")
+        .prepare("DELETE FROM role_assignments WHERE assignment_id = ?")
+        .bind("ATT-CROSS-SCOPE-ASSIGNMENT")
         .run();
       await testDb()
         .prepare("DELETE FROM attendances WHERE attendance_id = ?")
@@ -2080,8 +2126,14 @@ describe("attendance Worker routes", () => {
   });
 
   test("resolve contract: member enrollment determination (enrolled=true vs enrolled=false)", async () => {
-    const memberCookie = await accessCookieFor("att-member", "att-member-password");
-    const adminCookie = await accessCookieFor("att-admin", "att-admin-password");
+    const memberCookie = await accessCookieFor(
+      "att-member",
+      "att-member-password"
+    );
+    const adminCookie = await accessCookieFor(
+      "att-admin",
+      "att-admin-password"
+    );
 
     // ATT-MEMBER has active enrollment in PROGRAM
     const enrolledResp = await worker.fetch(
@@ -2119,9 +2171,12 @@ describe("attendance Worker routes", () => {
 
     // ATT-MEMBER is NOT enrolled in PROGRAM2 (which has ATTENDANCE-PROGRAM-TOKEN-2)
     const p2Resp = await worker.fetch(
-      request("/api/v1/attendance/resolve?program_token=ATTENDANCE-PROGRAM-TOKEN-2", {
-        headers: { Cookie: `${ACCESS_COOKIE_NAME}=${memberCookie}` },
-      }),
+      request(
+        "/api/v1/attendance/resolve?program_token=ATTENDANCE-PROGRAM-TOKEN-2",
+        {
+          headers: { Cookie: `${ACCESS_COOKIE_NAME}=${memberCookie}` },
+        }
+      ),
       testEnv()
     );
     assert.strictEqual(p2Resp.status, 200);
@@ -2253,5 +2308,5 @@ describe("attendance Worker routes", () => {
     assert.strictEqual(conflictResp.status, 422);
     const conflictBody = await json(conflictResp);
     assert.strictEqual(conflictBody.code, "VALIDATION");
-});
+  });
 });

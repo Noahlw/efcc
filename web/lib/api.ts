@@ -23,6 +23,16 @@ export interface LoginResult {
 }
 
 /**
+ * Privacy-safe identity summary returned by the Worker bootstrap projection.
+ * Scope labels are human-readable; stable IDs and credentials are omitted.
+ */
+export interface PublicIdentitySummary {
+  label: string;
+  scopeKind: "Global" | "Department" | "Program";
+  scopeLabel: string | null;
+}
+
+/**
  * Public user profile returned by GET /api/v1/auth/me from the access
  * cookie. No credential, token, or session identifier ever appears here.
  */
@@ -31,7 +41,11 @@ export interface PublicUser {
   name: string;
   username: string;
   phone: string;
+  /** Legacy display vocabulary; not used for authorization. */
   role: string;
+  systemRole?: "Admin" | "Staff" | null;
+  identities?: readonly PublicIdentitySummary[];
+  capabilities?: Record<string, boolean>;
   status: string;
   qrCodeString: string;
 }

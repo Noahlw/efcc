@@ -24,8 +24,9 @@
  * and return a Response. They are tested directly via the workerd runtime.
  */
 
-import { findAccountByUserId, findAccountByUsername } from "./accounts";
-import type { AccountRow } from "./accounts";
+import { loadBootstrapIdentity, resolveActorCapabilities } from "../identity";
+import { CAPABILITY } from "../programs/capabilities";
+import { projectNavigation, projectSections } from "../sections";
 import {
   AccountConflictError,
   AccountStatusError,
@@ -34,6 +35,8 @@ import {
   changeUsername,
 } from "./account-settings";
 import type { UsernameChangeResult } from "./account-settings";
+import { findAccountByUserId, findAccountByUsername } from "./accounts";
+import type { AccountRow } from "./accounts";
 import {
   ACCESS_COOKIE_NAME,
   REFRESH_COOKIE_NAME,
@@ -43,7 +46,6 @@ import {
   setAuthCookieHeaders,
 } from "./cookies";
 import { verifyCredential, hashCredential } from "./credentials";
-import { CAPABILITY } from "../programs/capabilities";
 import { LegacyUpgradeLockedError, adminUnlockLegacyUpgrade } from "./lockout";
 import {
   approveRegistration,
@@ -64,12 +66,18 @@ import {
   verifyAccessToken,
 } from "./sessions";
 import { completeCredentialUpgrade, verifyLegacyPinForLogin } from "./upgrade";
-import { hasActiveManagementGrant } from "./management-grants";
-import { sectionsForRole, stableNavigationSections } from "../sections";
 
 export interface AuthEnv {
   DB: D1Database;
   EFCC_ACCESS_TOKEN_SECRET: string;
+}
+
+/** Public user-facing profile shape (no secrets). */
+/** Privacy-safe normalized identity summary for bootstrap/profile display. */
+export interface PublicIdentitySummary {
+  label: string;
+  scopeKind: "Global" | "Department" | "Program";
+  scopeLabel: string | null;
 }
 
 /** Public user-facing profile shape (no secrets). */
@@ -78,31 +86,43 @@ export interface PublicUser {
   name: string;
   username: string;
   phone: string;
+  /** Compatibility display field; authority uses systemRole/capabilities. */
   role: string;
+  systemRole: "Admin" | "Staff" | null;
+  identities: readonly PublicIdentitySummary[];
+  capabilities: Record<string, boolean>;
   status: string;
   qrCodeString: string;
 }
 
-function secretFreeUser(account: {
-  user_id: string;
-  name: string;
-  username: string;
-  role: string;
-  account_status: string;
-  phone: string | null;
-  qr_code_string: string | null;
-}): PublicUser {
+function secretFreeUser(
+  account: {
+    user_id: string;
+    name: string;
+    username: string;
+    account_status: string;
+    phone: string | null;
+    qr_code_string: string | null;
+  },
+  identity: {
+    systemRole: "Admin" | "Staff" | null;
+    identities: readonly PublicIdentitySummary[];
+    capabilities: Record<string, boolean>;
+  }
+): PublicUser {
   return {
     userId: account.user_id,
     name: account.name,
     username: account.username,
     phone: account.phone ?? "",
-    role: account.role,
+    role: identity.systemRole ?? "Member",
+    systemRole: identity.systemRole,
+    identities: identity.identities,
+    capabilities: identity.capabilities,
     status: account.account_status,
     qrCodeString: account.qr_code_string ?? "",
   };
 }
-
 /**
  * RFC 9457 Problem Details error (ADR-0018 §5). `status` matches the outer
  * HTTP status; `requestId` is echoed in both the body and the X-Request-Id
@@ -264,9 +284,8 @@ async function resolveAuthenticatedAccount(
 }
 
 /**
- * Resolve the caller from the access cookie and require Admin or Staff
- * role (ADR-0025: Teacher is retired). Returns `{ caller }` on success, or
- * a Problem Details Response to return directly.
+ * Resolve the caller from the access cookie and require a seeded Admin or
+ * Staff identity. The account role column is not an authority source.
  */
 async function requireAdminOrStaff(
   request: Request,
@@ -277,12 +296,16 @@ async function requireAdminOrStaff(
   if (resolved instanceof Response) {
     return resolved;
   }
-  if (resolved.account.role !== "Admin" && resolved.account.role !== "Staff") {
+  const identity = await loadBootstrapIdentity(
+    env.DB,
+    resolved.account.user_id
+  );
+  if (identity.systemRole === null) {
     return problem(
       403,
       "FORBIDDEN",
       "Forbidden",
-      "Admin or Staff role required.",
+      "Admin or Staff identity required.",
       requestId
     );
   }
@@ -309,12 +332,11 @@ async function requireCapability(
       requestId
     );
   }
-  const granted = await env.DB.prepare(
-    "SELECT 1 FROM role_capabilities WHERE role = ? AND capability = ? LIMIT 1"
-  )
-    .bind(resolved.account.role, capability)
-    .first();
-  if (!granted) {
+  const capabilities = await resolveActorCapabilities(
+    env.DB,
+    resolved.account.user_id
+  );
+  if (capabilities[capability] !== true) {
     return problem(
       403,
       "FORBIDDEN",
@@ -681,13 +703,17 @@ export async function handleUpgrade(
       requestId
     );
   }
+  const identity = await loadBootstrapIdentity(env.DB, upgradedAccount.user_id);
   const bundle = await issueSession(env.DB, {
     userId: upgradedAccount.user_id,
     accessTokenSecret: env.EFCC_ACCESS_TOKEN_SECRET,
   });
   return authCookieJsonResponse(
     200,
-    { requestId, data: { user: secretFreeUser(upgradedAccount) } },
+    {
+      requestId,
+      data: { user: secretFreeUser(upgradedAccount, identity) },
+    },
     accessCookieHeader(bundle.accessToken),
     refreshCookieHeader(bundle.sessionId),
     requestId
@@ -801,27 +827,18 @@ export async function handleMe(
       requestId
     );
   }
-  // Only Members can gain `events` from a scoped grant (Staff/Admin already
-  // have it via role); skip the extra query for every other role so the
-  // highest-traffic auth route pays for this check only when it can change
-  // the answer.
-  const hasManagementGrant =
-    resolved.account.role === "Member"
-      ? await hasActiveManagementGrant(env.DB, resolved.account.user_id)
-      : false;
-  // The server emits a separate stable navigation projection. It is
-  // presentation metadata only; `sections` remains the authorization set.
+  const identity = await loadBootstrapIdentity(
+    env.DB,
+    resolved.account.user_id
+  );
   return jsonResponse(
     200,
     {
       requestId,
       data: {
-        user: secretFreeUser(resolved.account),
-        sections: sectionsForRole(resolved.account.role, hasManagementGrant),
-        navigation: stableNavigationSections(
-          resolved.account.role,
-          hasManagementGrant
-        ),
+        user: secretFreeUser(resolved.account, identity),
+        sections: projectSections(identity.capabilities),
+        navigation: projectNavigation(identity.capabilities),
       },
     },
     requestId
@@ -896,13 +913,7 @@ export async function handleChangeUsername(
       return problem(409, "CONFLICT", "Conflict", error.message, requestId);
     }
     if (error instanceof AccountStatusError) {
-      return problem(
-        403,
-        "FORBIDDEN",
-        "Forbidden",
-        error.message,
-        requestId
-      );
+      return problem(403, "FORBIDDEN", "Forbidden", error.message, requestId);
     }
     throw error;
   }
@@ -1025,13 +1036,7 @@ export async function handleChangePassword(
       );
     }
     if (error instanceof AccountStatusError) {
-      return problem(
-        403,
-        "FORBIDDEN",
-        "Forbidden",
-        error.message,
-        requestId
-      );
+      return problem(403, "FORBIDDEN", "Forbidden", error.message, requestId);
     }
     throw error;
   }
@@ -1275,7 +1280,8 @@ export async function handleApproveBatch(
 
   let requestIds: unknown;
   try {
-    requestIds = ((await request.json()) as { requestIds?: unknown }).requestIds;
+    requestIds = ((await request.json()) as { requestIds?: unknown })
+      .requestIds;
   } catch {
     return problem(
       422,
@@ -1290,7 +1296,8 @@ export async function handleApproveBatch(
     requestIds.length === 0 ||
     requestIds.length > 100 ||
     requestIds.some(
-      (value) => typeof value !== "string" || value.length === 0 || value.length > 128
+      (value) =>
+        typeof value !== "string" || value.length === 0 || value.length > 128
     ) ||
     new Set(requestIds).size !== requestIds.length
   ) {
@@ -1352,7 +1359,8 @@ export async function handleListRegistrations(
     return auth;
   }
 
-  const rawStatus = new URL(request.url).searchParams.get("status") ?? "Pending";
+  const rawStatus =
+    new URL(request.url).searchParams.get("status") ?? "Pending";
   if (rawStatus !== "Pending" && rawStatus !== "Processed") {
     return problem(
       422,

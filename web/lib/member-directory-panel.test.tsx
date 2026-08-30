@@ -1,10 +1,3 @@
-// 087-04 (#321) — component tests for the Member Directory panel
-// (Spec 087 US 13-15). MSW intercepts GET /api/v1/programs/members at the
-// same seam as lib/permissions-panel.test.tsx. Covers: live search renders
-// results; selecting a result shows the member detail (contact, role,
-// department memberships) inline with no separate commit step; and the
-// empty / loading / server-error (retry re-fetches) / forbidden states.
-import userEvent from "@testing-library/user-event";
 import {
   cleanup,
   render,
@@ -12,11 +5,27 @@ import {
   waitFor,
   within,
 } from "@testing-library/react";
+// 087-04 (#321) — component tests for the Member Directory panel
+// (Spec 087 US 13-15). MSW intercepts GET /api/v1/programs/members at the
+// same seam as lib/permissions-panel.test.tsx. Covers: live search renders
+// results; selecting a result shows the member detail (contact, role,
+// department memberships) inline with no separate commit step; and the
+// empty / loading / server-error (retry re-fetches) / forbidden states.
+import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { setupServer } from "msw/node";
-import { afterAll, afterEach, beforeAll, describe, expect, test, vi } from "vitest";
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  describe,
+  expect,
+  test,
+  vi,
+} from "vitest";
 
 import { MemberDirectoryPanel } from "@/app/management/member-directory-panel";
+
 import { COPY } from "./copy";
 
 const mocks = vi.hoisted(() => {
@@ -102,8 +111,7 @@ function liveSearchHandler() {
   return http.get("/api/v1/programs/members", ({ request }) => {
     const query = new URL(request.url).searchParams.get("q")?.trim() ?? "";
     const matched = MEMBER_ROWS.filter(
-      (member) =>
-        member.name.includes(query) || member.phone?.includes(query)
+      (member) => member.name.includes(query) || member.phone?.includes(query)
     );
     return membersResponse(matched);
   });
@@ -127,17 +135,16 @@ describe("MemberDirectoryPanel", () => {
     const search = screen.getByLabelText(MEMBERS.searchLabel);
     await user.type(search, "大文");
 
-    // Results render as buttons carrying name + role · department.
+    // Results render as buttons carrying normalized identity labels and
+    // department summaries.
     const danaRow = await screen.findByRole("button", { name: /陳大文/ });
-    expect(within(danaRow).getByText(/Member/)).toBeTruthy();
+    expect(within(danaRow).getByText(/會友基礎/)).toBeTruthy();
     expect(within(danaRow).getByText(/培育部/)).toBeTruthy();
     const evanRow = screen.getByRole("button", { name: /王大文/ });
     expect(within(evanRow).getByText(/Staff/)).toBeTruthy();
     expect(within(evanRow).getByText(/崇拜部/)).toBeTruthy();
     // No submit control exists — search is live on input.
-    expect(
-      screen.queryByRole("button", { name: /搜尋$/ })
-    ).toBeNull();
+    expect(screen.queryByRole("button", { name: /搜尋$/ })).toBeNull();
   });
 
   test("suppresses network search until two trimmed characters are present", async () => {
@@ -187,9 +194,7 @@ describe("MemberDirectoryPanel", () => {
     expect(danaRow).toHaveAttribute("aria-pressed", "true");
     await waitFor(() => expect(detailCard).toHaveFocus());
     // No commit step: no save/confirm/submit control, and no navigation.
-    expect(
-      screen.queryByRole("button", { name: /儲存|確認|提交/ })
-    ).toBeNull();
+    expect(screen.queryByRole("button", { name: /儲存|確認|提交/ })).toBeNull();
     expect(mocks.router.push).not.toHaveBeenCalled();
     // The directory search stays on the same surface (inline, not a screen).
     expect(screen.getByLabelText(MEMBERS.searchLabel)).toBeTruthy();
@@ -217,15 +222,11 @@ describe("MemberDirectoryPanel", () => {
 
   test("an empty result set renders the no-results state", async () => {
     const user = userEvent.setup();
-    server.use(
-      http.get("/api/v1/programs/members", () => membersResponse([]))
-    );
+    server.use(http.get("/api/v1/programs/members", () => membersResponse([])));
     render(<MemberDirectoryPanel />);
 
     await user.type(screen.getByLabelText(MEMBERS.searchLabel), "無人");
-    expect(
-      await screen.findByText(MEMBERS.noResults)
-    ).toBeTruthy();
+    expect(await screen.findByText(MEMBERS.noResults)).toBeTruthy();
     expect(screen.getByText(MEMBERS.emptyHint)).toBeTruthy();
   });
 
@@ -233,18 +234,18 @@ describe("MemberDirectoryPanel", () => {
     const user = userEvent.setup();
     let resolvePending: ((response: Response) => void) | undefined;
     server.use(
-      http.get("/api/v1/programs/members", () =>
-        new Promise<Response>((resolve) => {
-          resolvePending = resolve;
-        })
+      http.get(
+        "/api/v1/programs/members",
+        () =>
+          new Promise<Response>((resolve) => {
+            resolvePending = resolve;
+          })
       )
     );
     const { container } = render(<MemberDirectoryPanel />);
 
     await user.type(screen.getByLabelText(MEMBERS.searchLabel), "陳大");
-    expect(
-      container.querySelector('[aria-busy="true"]')
-    ).not.toBeNull();
+    expect(container.querySelector('[aria-busy="true"]')).not.toBeNull();
 
     resolvePending?.(membersResponse([MEMBER_ROWS[0]!]).clone());
     expect(await screen.findByRole("button", { name: /陳大文/ })).toBeTruthy();

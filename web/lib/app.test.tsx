@@ -44,8 +44,8 @@ import { RecoveryView } from "@/lib/recovery-view";
 import { REGISTRATION_COPY } from "@/lib/registration-copy";
 import {
   defaultSections,
-  sectionsForRole,
-  stableNavigationSections,
+  projectSections,
+  projectNavigation,
 } from "@/lib/sections";
 import { buildBootstrap, setAuthHint } from "@/lib/session";
 import { ShellHeader } from "@/lib/shell-header";
@@ -77,9 +77,9 @@ vi.mock(import("next/navigation"), () => ({
     ) as unknown as ReadonlyURLSearchParams,
 }));
 
-const MEMBER_SECTIONS = sectionsForRole("Member");
-const STAFF_SECTIONS = sectionsForRole("Staff");
-const NAVIGATION = stableNavigationSections("Member");
+const MEMBER_SECTIONS = projectSections({ "program.enroll": true });
+const STAFF_SECTIONS = projectSections({ "program.manage": true });
+const NAVIGATION = projectNavigation({ "program.enroll": true });
 
 const PUBLIC_USER: PublicUser = {
   userId: "U001",
@@ -109,8 +109,8 @@ const BOOTSTRAP: Bootstrap = {
   profile: PUBLIC_USER,
 };
 const ADMIN_BOOTSTRAP: Bootstrap = {
-  sections: sectionsForRole("Admin"),
-  navigation: stableNavigationSections("Admin"),
+  sections: projectSections({ "home.publish": true }),
+  navigation: projectNavigation({ "home.publish": true }),
   profile: ADMIN_USER,
 };
 
@@ -1176,7 +1176,9 @@ describe("Shell", () => {
       try {
         renderRestoredProfile();
         await screen.findAllByRole("button", { name: COPY.logout.submit });
-        await expect(screen.findByRole("link", { name: COPY.attendance.backToScan })).resolves.toHaveAttribute("href", "/scanner");
+        await expect(
+          screen.findByRole("link", { name: COPY.attendance.backToScan })
+        ).resolves.toHaveAttribute("href", "/scanner");
       } finally {
         window.history.replaceState({}, "", "/profile");
       }
@@ -1235,9 +1237,9 @@ describe("Shell", () => {
 
     test("renders the stable navigation projection for Member", () => {
       renderWithProvider(
-        sectionsForRole("Member"),
+        projectSections({ "program.enroll": true }),
         "/home",
-        stableNavigationSections("Member")
+        projectNavigation({ "program.enroll": true })
       );
       expect(
         [
@@ -1252,9 +1254,9 @@ describe("Shell", () => {
 
     test("renders the stable navigation projection for Staff with Management", () => {
       renderWithProvider(
-        sectionsForRole("Staff"),
+        projectSections({ "program.manage": true }),
         "/home",
-        stableNavigationSections("Staff")
+        projectNavigation({ "program.manage": true })
       );
       expect(
         [
@@ -1269,9 +1271,9 @@ describe("Shell", () => {
 
     test("highlights current route with aria-current", () => {
       renderWithProvider(
-        sectionsForRole("Member"),
+        projectSections({ "program.enroll": true }),
         "/programs",
-        stableNavigationSections("Member")
+        projectNavigation({ "program.enroll": true })
       );
       const [active] = screen.getAllByRole("link", {
         name: new RegExp(COPY.sections.programs, "u"),
@@ -1323,7 +1325,10 @@ describe("Shell", () => {
     test("renders forbidden view for an unpermitted (absent) section with a safe route back", () => {
       render(
         <AppProvider
-          bootstrap={{ ...BOOTSTRAP, sections: sectionsForRole("Member") }}
+          bootstrap={{
+            ...BOOTSTRAP,
+            sections: projectSections({ "program.enroll": true }),
+          }}
           onSignOut={() => {}}
         >
           <GuardedSection sectionKey="management">
@@ -1688,7 +1693,7 @@ describe("Shell", () => {
         ADMIN_USER,
       ];
       for (const user of roleUsers) {
-        withAuthRestore(user, sectionsForRole(user.role));
+        withAuthRestore(user, projectSections(user.capabilities ?? {}));
         setAuthHint();
         pathnameMock.mockReturnValue("/scanner");
         render(<ScannerPage />);

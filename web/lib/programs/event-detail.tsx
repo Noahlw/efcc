@@ -26,7 +26,7 @@ import type {
   EventDetail as EventDetailData,
   EventType,
   ProgramEvent,
-  ProgramLeader,
+  ProgramIdentityAssignment,
 } from "@/lib/programs/program-api";
 import {
   HK_UTC_OFFSET_MINUTES,
@@ -680,13 +680,15 @@ export const EventDetail = ({
 
       <div className={styles.workspaceSection}>
         <h4 className={styles.workspaceSubheading}>
-          {COPY.programs.eventDetailLeaders}
+          {COPY.programs.identityAssignments}
         </h4>
         {leaders.length === 0 ? (
-          <p className={styles.emptyLine}>{COPY.programs.noLeaders}</p>
+          <p className={styles.emptyLine}>
+            {COPY.programs.noIdentityAssignments}
+          </p>
         ) : (
           <ul className={styles.ruleList}>
-            {leaders.map((leader: ProgramLeader) => (
+            {leaders.map((leader: ProgramIdentityAssignment) => (
               <li key={leader.user_id} className={styles.ruleRow}>
                 <span>
                   {leader.user_name ?? leader.username ?? leader.user_id}

@@ -36,6 +36,7 @@ import { ACCESS_COOKIE_NAME, REFRESH_COOKIE_NAME } from "./lib/auth/cookies";
 import { handleLogout } from "./lib/auth/handlers";
 import { applyMigrations, testDb } from "./lib/auth/test-bootstrap";
 import { completeCredentialUpgrade } from "./lib/auth/upgrade";
+import { CAPABILITY_CATALOG } from "./lib/identity/capability-catalog";
 import worker from "./worker";
 import type { Env } from "./worker";
 
@@ -234,6 +235,76 @@ async function accessCookieFor(
   assert.strictEqual(res.status, 200, "login must succeed for fixture");
   return cookieValueFrom(readAuthCookiesFromResponse(res).access);
 }
+async function assignSystemIdentity(
+  stableKey: string,
+  accountUserId: string
+): Promise<void> {
+  const roleDefinitionId = `worker-auth-system-${stableKey}`;
+  const now = new Date().toISOString();
+  await testDb()
+    .prepare(
+      `INSERT OR IGNORE INTO role_definitions
+        (role_definition_id, category_key, stable_key, label, description,
+         scope_kind, scope_id, position, is_protected, is_archived,
+         created_by, created_at, updated_by, updated_at)
+       VALUES (?, 'Global', ?, ?, 'Auth Worker test identity',
+               'Global', NULL, ?, ?, 0, NULL, ?, NULL, ?)`
+    )
+    .bind(
+      roleDefinitionId,
+      stableKey,
+      stableKey === "admin" ? "系統管理員" : "同工",
+      stableKey === "admin" ? 0 : 1,
+      stableKey === "admin" ? 1 : 0,
+      now,
+      now
+    )
+    .run();
+  if (stableKey === "staff") {
+    await testDb().batch(
+      CAPABILITY_CATALOG.filter(
+        ({ capability }) =>
+          capability !== "account.permissions.write" &&
+          capability !== "home.publish"
+      ).map(({ capability }) =>
+        testDb()
+          .prepare(
+            `INSERT OR IGNORE INTO role_definition_grants
+              (role_definition_id, capability, granted_by, granted_at)
+             VALUES (?, ?, NULL, ?)`
+          )
+          .bind(roleDefinitionId, capability, now)
+      )
+    );
+  }
+  const role = await testDb()
+    .prepare(
+      "SELECT role_definition_id, scope_kind, scope_id FROM role_definitions WHERE stable_key = ?"
+    )
+    .bind(stableKey)
+    .first<{
+      role_definition_id: string;
+      scope_kind: string;
+      scope_id: string | null;
+    }>();
+  assert.ok(role, `missing normalized identity ${stableKey}`);
+  await testDb()
+    .prepare(
+      `INSERT OR IGNORE INTO role_assignments
+        (assignment_id, account_user_id, role_definition_id, granted_by,
+         granted_at, scope_kind, scope_id)
+       VALUES (?, ?, ?, 'U001', ?, ?, ?)`
+    )
+    .bind(
+      crypto.randomUUID(),
+      accountUserId,
+      role!.role_definition_id,
+      now,
+      role!.scope_kind,
+      role!.scope_id
+    )
+    .run();
+}
 
 beforeAll(async () => {
   await applyMigrations();
@@ -262,6 +333,8 @@ beforeAll(async () => {
     legacyPin: "9999",
     newCredential: "eve-secret",
   });
+  await assignSystemIdentity("admin", "U001");
+  await assignSystemIdentity("staff", "U005");
 });
 
 describe("AUTH-06: auth surface has no CORS / OPTIONS", () => {
@@ -517,6 +590,13 @@ describe("AUTH-06: login", () => {
       username: "alice",
       phone: "",
       role: "Admin",
+      systemRole: "Admin",
+      identities: [
+        { label: "系統管理員", scopeKind: "Global", scopeLabel: null },
+      ],
+      capabilities: Object.fromEntries(
+        CAPABILITY_CATALOG.map(({ capability }) => [capability, true])
+      ),
       status: "Active",
       qrCodeString: "",
     });
@@ -1152,9 +1232,47 @@ describe("AUTH-06: registrations approve/reject", () => {
 
   test("registration approval follows the capability policy, not the role label", async () => {
     const staffAccess = await accessCookieFor("eve", "eve-secret");
+    const staffIdentity = await testDb()
+      .prepare(
+        "SELECT role_definition_id FROM role_definitions WHERE stable_key = 'staff'"
+      )
+      .first<{ role_definition_id: string }>();
+    assert.ok(staffIdentity);
     await testDb()
       .prepare(
-        "DELETE FROM role_capabilities WHERE role = 'Staff' AND capability = 'registration.approval.manage'"
+        "DELETE FROM role_definition_grants WHERE role_definition_id = ? AND capability = 'registration.approval.manage'"
+      )
+      .bind(staffIdentity!.role_definition_id)
+      .run();
+    try {
+      const res = await worker.fetch(
+        authRequest("/api/v1/auth/registrations", {
+          method: "GET",
+          headers: {
+            Origin: HOST,
+            Cookie: `efcc_access=${staffAccess}`,
+          },
+        }),
+        testEnv()
+      );
+      assert.strictEqual(res.status, 403);
+      const body = await problemOf(res);
+      assert.strictEqual(body.code, "FORBIDDEN");
+    } finally {
+      await testDb()
+        .prepare(
+          "INSERT OR IGNORE INTO role_definition_grants (role_definition_id, capability, granted_by, granted_at) VALUES (?, 'registration.approval.manage', NULL, ?)"
+        )
+        .bind(staffIdentity!.role_definition_id, new Date().toISOString())
+        .run();
+    }
+  });
+
+  test("suspended Staff cannot use registration approval capability", async () => {
+    const staffAccess = await accessCookieFor("eve", "eve-secret");
+    await testDb()
+      .prepare(
+        "UPDATE accounts SET account_status = 'Suspended' WHERE user_id = 'U005'"
       )
       .run();
     try {
@@ -1174,34 +1292,8 @@ describe("AUTH-06: registrations approve/reject", () => {
     } finally {
       await testDb()
         .prepare(
-          "INSERT OR IGNORE INTO role_capabilities (role, capability, granted_by, granted_at) VALUES ('Staff', 'registration.approval.manage', NULL, '2026-08-25T00:00:00.000Z')"
+          "UPDATE accounts SET account_status = 'Active' WHERE user_id = 'U005'"
         )
-        .run();
-    }
-  });
-
-  test("suspended Staff cannot use registration approval capability", async () => {
-    const staffAccess = await accessCookieFor("eve", "eve-secret");
-    await testDb()
-      .prepare("UPDATE accounts SET account_status = 'Suspended' WHERE user_id = 'U005'")
-      .run();
-    try {
-      const res = await worker.fetch(
-        authRequest("/api/v1/auth/registrations", {
-          method: "GET",
-          headers: {
-            Origin: HOST,
-            Cookie: `efcc_access=${staffAccess}`,
-          },
-        }),
-        testEnv()
-      );
-      assert.strictEqual(res.status, 403);
-      const body = await problemOf(res);
-      assert.strictEqual(body.code, "FORBIDDEN");
-    } finally {
-      await testDb()
-        .prepare("UPDATE accounts SET account_status = 'Active' WHERE user_id = 'U005'")
         .run();
     }
   });

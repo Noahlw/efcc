@@ -97,9 +97,10 @@ async function createDepartment(
     data: { department: { department_id: string } };
   };
   const departmentId = body.data.department.department_id;
-  const moduleKeys = options.attendance === false
-    ? ["program_catalog"]
-    : ["program_catalog", "attendance"];
+  const moduleKeys =
+    options.attendance === false
+      ? ["program_catalog"]
+      : ["program_catalog", "attendance"];
   const moduleResponses = await Promise.all(
     moduleKeys.map((moduleKey) =>
       worker.fetch(
@@ -140,6 +141,112 @@ async function createProgram(
   );
   assert.strictEqual(response.status, 201);
 }
+async function assignDepartmentIdentity(
+  departmentId: string,
+  accountUserId: string
+): Promise<void> {
+  const roleDefinitionId = `hub-department-identity-${crypto.randomUUID()}`;
+  const now = new Date().toISOString();
+  await testDb().batch([
+    testDb()
+      .prepare(
+        `INSERT INTO role_definitions
+          (role_definition_id, category_key, stable_key, label, description,
+           scope_kind, scope_id, position, is_protected, is_archived,
+           created_by, created_at, updated_by, updated_at)
+         VALUES (?, 'Department', ?, 'Department Operator', 'Hub test identity',
+                 'Department', ?, 40, 0, 0, NULL, ?, NULL, ?)`
+      )
+      .bind(roleDefinitionId, roleDefinitionId, departmentId, now, now),
+    testDb()
+      .prepare(
+        `INSERT INTO role_definition_grants
+          (role_definition_id, capability, granted_by, granted_at)
+         VALUES (?, 'department.manage', 'U001', ?), (?, 'program.manage', 'U001', ?)`
+      )
+      .bind(roleDefinitionId, now, roleDefinitionId, now),
+    testDb()
+      .prepare(
+        `INSERT INTO role_assignments
+          (assignment_id, account_user_id, role_definition_id, granted_by,
+           granted_at, scope_kind, scope_id)
+         SELECT ?, ?, role_definition_id, 'U001', ?, scope_kind, scope_id
+           FROM role_definitions
+          WHERE role_definition_id = ?`
+      )
+      .bind(crypto.randomUUID(), accountUserId, now, roleDefinitionId),
+  ]);
+}
+async function assignSystemIdentity(
+  stableKey: string,
+  accountUserId: string,
+  protectedState: 0 | 1
+): Promise<void> {
+  const roleDefinitionId = `hub-system-${stableKey}`;
+  const now = new Date().toISOString();
+  await testDb()
+    .prepare(
+      `INSERT OR IGNORE INTO role_definitions
+        (role_definition_id, category_key, stable_key, label, description,
+         scope_kind, scope_id, position, is_protected, is_archived,
+         created_by, created_at, updated_by, updated_at)
+       VALUES (?, 'Global', ?, ?, 'Hub test identity', 'Global', NULL, ?, ?, 0,
+               NULL, ?, NULL, ?)`
+    )
+    .bind(
+      roleDefinitionId,
+      stableKey,
+      stableKey === "admin" ? "系統管理員" : "同工",
+      protectedState === 1 ? 0 : 1,
+      protectedState,
+      now,
+      now
+    )
+    .run();
+  if (stableKey === "staff") {
+    await testDb()
+      .prepare(
+        `INSERT OR IGNORE INTO role_definition_grants
+          (role_definition_id, capability, granted_by, granted_at)
+         VALUES (?, 'department.manage', NULL, ?),
+                (?, 'department.module.configure', NULL, ?),
+                (?, 'program.manage', NULL, ?),
+                (?, 'account.directory.read', NULL, ?),
+                (?, 'account.permissions.read', NULL, ?)`
+      )
+      .bind(
+        roleDefinitionId,
+        now,
+        roleDefinitionId,
+        now,
+        roleDefinitionId,
+        now,
+        roleDefinitionId,
+        now,
+        roleDefinitionId,
+        now
+      )
+      .run();
+    await testDb()
+      .prepare(
+        `INSERT OR IGNORE INTO role_definition_grants
+          (role_definition_id, capability, granted_by, granted_at)
+         VALUES (?, 'registration.approval.manage', NULL, ?)`
+      )
+      .bind(roleDefinitionId, now)
+      .run();
+  }
+  await testDb()
+    .prepare(
+      `INSERT OR IGNORE INTO role_assignments
+        (assignment_id, account_user_id, role_definition_id, granted_by,
+         granted_at, scope_kind, scope_id)
+       SELECT ?, ?, role_definition_id, 'U001', ?, scope_kind, scope_id
+         FROM role_definitions WHERE role_definition_id = ?`
+    )
+    .bind(crypto.randomUUID(), accountUserId, now, roleDefinitionId)
+    .run();
+}
 
 async function hubProjection(access: string): Promise<ManagementHubView> {
   const response = await worker.fetch(
@@ -147,10 +254,7 @@ async function hubProjection(access: string): Promise<ManagementHubView> {
     testEnv()
   );
   assert.strictEqual(response.status, 200);
-  assert.strictEqual(
-    response.headers.get("Content-Type"),
-    "application/json"
-  );
+  assert.strictEqual(response.headers.get("Content-Type"), "application/json");
   const body = (await response.json()) as {
     requestId: string;
     data: ManagementHubView;
@@ -181,7 +285,9 @@ function assertNoCareRow(view: ManagementHubView): void {
   }
   if (view.entryCard) {
     assert.ok(
-      !/care|關懷/u.test(`${view.entryCard.label}${view.entryCard.description}`),
+      !/care|關懷/u.test(
+        `${view.entryCard.label}${view.entryCard.description}`
+      ),
       "Care copy leaked into the entry card"
     );
   }
@@ -223,6 +329,8 @@ describe("HUB-01: Management Hub directory projection", () => {
         })
       )
     );
+    await assignSystemIdentity("admin", "U001", 1);
+    await assignSystemIdentity("staff", "U005", 0);
   });
 
   test("Admin sees the full projection: 3 fixed groups, 7 rows, entry card", async () => {
@@ -238,14 +346,11 @@ describe("HUB-01: Management Hub directory projection", () => {
       view.groups.map(({ key, label }) => ({ key, label })),
       EXPECTED_GROUP_ORDER
     );
-    assert.deepStrictEqual(
-      view.groups.map(rowKeys),
-      [
-        ["accounts", "approvals", "permissions"],
-        ["departments", "attendance", "members"],
-        ["home-content"],
-      ]
-    );
+    assert.deepStrictEqual(view.groups.map(rowKeys), [
+      ["accounts", "approvals", "permissions"],
+      ["departments", "attendance", "members"],
+      ["home-content"],
+    ]);
 
     const rows = allRows(view);
     assert.strictEqual(rows.length, 7);
@@ -332,13 +437,10 @@ describe("HUB-01: Management Hub directory projection", () => {
       view.groups.map(({ key, label }) => ({ key, label })),
       EXPECTED_GROUP_ORDER.slice(0, 2)
     );
-    assert.deepStrictEqual(
-      view.groups.map(rowKeys),
-      [
-        ["accounts", "approvals", "permissions"],
-        ["departments", "attendance", "members"],
-      ]
-    );
+    assert.deepStrictEqual(view.groups.map(rowKeys), [
+      ["accounts", "approvals", "permissions"],
+      ["departments", "attendance", "members"],
+    ]);
     assert.ok(view.entryCard, "Staff keeps the course-management entry card");
   });
 
@@ -349,14 +451,7 @@ describe("HUB-01: Management Hub directory projection", () => {
     const departmentId = await createDepartment(admin, `HUB-GRANT-${suffix}`);
     await createProgram(admin, departmentId, `Grant-${suffix}`);
 
-    const grant = await worker.fetch(
-      request(`/api/v1/programs/departments/${departmentId}/managers`, admin, {
-        method: "POST",
-        body: { user_id: "U003" },
-      }),
-      testEnv()
-    );
-    assert.strictEqual(grant.status, 200);
+    await assignDepartmentIdentity(departmentId, "U003");
 
     const view = await hubProjection(manager);
     assertNoCareRow(view);
@@ -385,14 +480,7 @@ describe("HUB-01: Management Hub directory projection", () => {
       attendance: false,
     });
     await createProgram(admin, departmentId, `NoAtt-${suffix}`);
-    const grant = await worker.fetch(
-      request(`/api/v1/programs/departments/${departmentId}/managers`, admin, {
-        method: "POST",
-        body: { user_id: "U007" },
-      }),
-      testEnv()
-    );
-    assert.strictEqual(grant.status, 200);
+    await assignDepartmentIdentity(departmentId, "U007");
 
     const view = await hubProjection(dora);
     assertNoCareRow(view);

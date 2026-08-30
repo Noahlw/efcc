@@ -6,7 +6,7 @@
  * fixed Department / Program categories (already created by migration 0019),
  * a representative scoped Department manager Role Definition, a
  * representative scoped Program leader Role Definition, and a small set of
- * Active accounts that hold the baseline 會友基礎 assignment.
+ * Active accounts that receive automatic baseline 會友基礎 access.
  *
  * Seeds are idempotent (every INSERT is OR IGNORE on a stable key) and run
  * through the disposable preflight before any write. A non-disposable or
@@ -16,6 +16,7 @@
  */
 /* oxlint-disable eslint/no-await-in-loop, eslint/no-inline-comments, eslint/require-unicode-regexp, typescript/array-type -- seeds are sequenced to honor the FK dependencies between role_definitions, role_definition_grants, role_assignments, and accounts. */
 import { importLegacyUsers } from "../auth/accounts";
+import { hashCredential } from "../auth/credentials";
 import { preflightDisposableSchema } from "./preflight";
 import type { DisposableDatabaseInfo } from "./preflight";
 import { isCapability, PROTECTED_STABLE_KEYS } from "./types";
@@ -56,9 +57,20 @@ const STAFF_ROLE_CAPABILITIES: readonly Capability[] = [
   "role.scope.write",
   "role.create",
   "role.delete",
+  "department.manage",
+  "department.publish",
+  "department.module.configure",
+  "department.manager.assign",
+  "program.manage",
+  "program.publish",
+  "program.enroll",
+  "program.leader.assign",
+  "account.permissions.read",
+  "account.directory.read",
+  "registration.approval.manage",
 ];
 
-const DEPARTMENT_MANAGER_ROLE_CAPABILITIES: readonly Capability[] = [
+const DEPARTMENT_SCOPE_ROLE_CAPABILITIES: readonly Capability[] = [
   "role.read",
   "role.assign",
   "role.revoke",
@@ -67,13 +79,13 @@ const DEPARTMENT_MANAGER_ROLE_CAPABILITIES: readonly Capability[] = [
   "role.permissions.write",
 ];
 
-const PROGRAM_LEADER_ROLE_CAPABILITIES: readonly Capability[] = [
+const PROGRAM_SCOPE_ROLE_CAPABILITIES: readonly Capability[] = [
   "role.read",
   "role.assign",
   "role.revoke",
 ];
 
-const DEPARTMENT_MANAGER_ADULT = {
+const ADULT_DEPARTMENT_IDENTITY = {
   role_definition_id: "018f3b8a-0000-7000-8000-100000000001",
   stable_key: "department.manager.adult",
   category_key: "Department" as const,
@@ -92,7 +104,7 @@ const DEPARTMENT_MANAGER_ADULT = {
   ] as readonly Capability[],
 };
 
-const PROGRAM_LEADER_YOUTH_BIBLE_STUDY = {
+const YOUTH_BIBLE_STUDY_IDENTITY = {
   role_definition_id: "018f3b8a-0000-7000-8000-100000000002",
   stable_key: "program.leader.youth-bible-study",
   category_key: "Program" as const,
@@ -146,7 +158,7 @@ const USERS_HEADER = [
   "Status",
 ];
 
-const PROGRAM_LEADER_PROGRAM = {
+const YOUTH_BIBLE_STUDY_PROGRAM = {
   program_id: "018f3b8a-0000-7000-8000-300000000001",
   department_id: "018f3b8a-0000-7000-8000-000000000001", // 青區
   name: "E2E_DISPOSABLE_青少年查經",
@@ -321,27 +333,27 @@ export async function seedDisposableIdentity(
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, 0, NULL, ?, NULL, ?)`
     )
     .bind(
-      DEPARTMENT_MANAGER_ADULT.role_definition_id,
-      DEPARTMENT_MANAGER_ADULT.category_key,
-      DEPARTMENT_MANAGER_ADULT.stable_key,
-      DEPARTMENT_MANAGER_ADULT.label,
-      DEPARTMENT_MANAGER_ADULT.description,
-      DEPARTMENT_MANAGER_ADULT.scope_kind,
-      DEPARTMENT_MANAGER_ADULT.scope_id,
-      DEPARTMENT_MANAGER_ADULT.position,
+      ADULT_DEPARTMENT_IDENTITY.role_definition_id,
+      ADULT_DEPARTMENT_IDENTITY.category_key,
+      ADULT_DEPARTMENT_IDENTITY.stable_key,
+      ADULT_DEPARTMENT_IDENTITY.label,
+      ADULT_DEPARTMENT_IDENTITY.description,
+      ADULT_DEPARTMENT_IDENTITY.scope_kind,
+      ADULT_DEPARTMENT_IDENTITY.scope_id,
+      ADULT_DEPARTMENT_IDENTITY.position,
       CREATED_AT,
       CREATED_AT
     )
     .run();
   await seedRoleGrants(
     db,
-    DEPARTMENT_MANAGER_ADULT.role_definition_id,
-    DEPARTMENT_MANAGER_ROLE_CAPABILITIES
+    ADULT_DEPARTMENT_IDENTITY.role_definition_id,
+    DEPARTMENT_SCOPE_ROLE_CAPABILITIES
   );
   await seedRoleGrants(
     db,
-    DEPARTMENT_MANAGER_ADULT.role_definition_id,
-    DEPARTMENT_MANAGER_ADULT.capabilities
+    ADULT_DEPARTMENT_IDENTITY.role_definition_id,
+    ADULT_DEPARTMENT_IDENTITY.capabilities
   );
 
   await db
@@ -354,9 +366,9 @@ export async function seedDisposableIdentity(
                0, NULL, ?, NULL, ?)`
     )
     .bind(
-      PROGRAM_LEADER_PROGRAM.program_id,
-      PROGRAM_LEADER_PROGRAM.department_id,
-      PROGRAM_LEADER_PROGRAM.name,
+      YOUTH_BIBLE_STUDY_PROGRAM.program_id,
+      YOUTH_BIBLE_STUDY_PROGRAM.department_id,
+      YOUTH_BIBLE_STUDY_PROGRAM.name,
       CREATED_AT,
       CREATED_AT
     )
@@ -371,42 +383,43 @@ export async function seedDisposableIdentity(
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, 0, NULL, ?, NULL, ?)`
     )
     .bind(
-      PROGRAM_LEADER_YOUTH_BIBLE_STUDY.role_definition_id,
-      PROGRAM_LEADER_YOUTH_BIBLE_STUDY.category_key,
-      PROGRAM_LEADER_YOUTH_BIBLE_STUDY.stable_key,
-      PROGRAM_LEADER_YOUTH_BIBLE_STUDY.label,
-      PROGRAM_LEADER_YOUTH_BIBLE_STUDY.description,
-      PROGRAM_LEADER_YOUTH_BIBLE_STUDY.scope_kind,
-      PROGRAM_LEADER_YOUTH_BIBLE_STUDY.scope_id,
-      PROGRAM_LEADER_YOUTH_BIBLE_STUDY.position,
+      YOUTH_BIBLE_STUDY_IDENTITY.role_definition_id,
+      YOUTH_BIBLE_STUDY_IDENTITY.category_key,
+      YOUTH_BIBLE_STUDY_IDENTITY.stable_key,
+      YOUTH_BIBLE_STUDY_IDENTITY.label,
+      YOUTH_BIBLE_STUDY_IDENTITY.description,
+      YOUTH_BIBLE_STUDY_IDENTITY.scope_kind,
+      YOUTH_BIBLE_STUDY_IDENTITY.scope_id,
+      YOUTH_BIBLE_STUDY_IDENTITY.position,
       CREATED_AT,
       CREATED_AT
     )
     .run();
   await seedRoleGrants(
     db,
-    PROGRAM_LEADER_YOUTH_BIBLE_STUDY.role_definition_id,
-    PROGRAM_LEADER_ROLE_CAPABILITIES
+    YOUTH_BIBLE_STUDY_IDENTITY.role_definition_id,
+    PROGRAM_SCOPE_ROLE_CAPABILITIES
   );
   await seedRoleGrants(
     db,
-    PROGRAM_LEADER_YOUTH_BIBLE_STUDY.role_definition_id,
-    PROGRAM_LEADER_YOUTH_BIBLE_STUDY.capabilities
+    YOUTH_BIBLE_STUDY_IDENTITY.role_definition_id,
+    YOUTH_BIBLE_STUDY_IDENTITY.capabilities
   );
 
   await importLegacyUsers(db, disposableRows());
+  const disposableCredentialHash = await hashCredential("0000");
   for (const account of Object.values(DISPOSABLE_ACCOUNTS)) {
     await db
       .prepare(
         `UPDATE accounts
             SET requires_upgrade = 0,
                 legacy_pin_hash = NULL,
-                credential_hash = 'pbkdf2:disposable:noop',
+                credential_hash = ?,
                 credential_kind = 'password',
                 credential_version = 2
           WHERE user_id = ?`
       )
-      .bind(account.user_id)
+      .bind(disposableCredentialHash, account.user_id)
       .run();
   }
 
@@ -419,44 +432,16 @@ export async function seedDisposableIdentity(
       roleDefinitionId: systemRoleIds.ADMIN,
     },
     {
-      account: DISPOSABLE_ACCOUNTS.ADMIN.user_id,
-      roleDefinitionId: systemRoleIds.MEMBER,
-    },
-    {
       account: DISPOSABLE_ACCOUNTS.STAFF.user_id,
       roleDefinitionId: systemRoleIds.STAFF,
     },
     {
-      account: DISPOSABLE_ACCOUNTS.STAFF.user_id,
-      roleDefinitionId: systemRoleIds.MEMBER,
-    },
-    {
       account: DISPOSABLE_ACCOUNTS.DEPARTMENT_MANAGER.user_id,
-      roleDefinitionId: systemRoleIds.STAFF,
-    },
-    {
-      account: DISPOSABLE_ACCOUNTS.DEPARTMENT_MANAGER.user_id,
-      roleDefinitionId: systemRoleIds.MEMBER,
-    },
-    {
-      account: DISPOSABLE_ACCOUNTS.DEPARTMENT_MANAGER.user_id,
-      roleDefinitionId: DEPARTMENT_MANAGER_ADULT.role_definition_id,
+      roleDefinitionId: ADULT_DEPARTMENT_IDENTITY.role_definition_id,
     },
     {
       account: DISPOSABLE_ACCOUNTS.PROGRAM_LEADER.user_id,
-      roleDefinitionId: systemRoleIds.STAFF,
-    },
-    {
-      account: DISPOSABLE_ACCOUNTS.PROGRAM_LEADER.user_id,
-      roleDefinitionId: systemRoleIds.MEMBER,
-    },
-    {
-      account: DISPOSABLE_ACCOUNTS.PROGRAM_LEADER.user_id,
-      roleDefinitionId: PROGRAM_LEADER_YOUTH_BIBLE_STUDY.role_definition_id,
-    },
-    {
-      account: DISPOSABLE_ACCOUNTS.MEMBER.user_id,
-      roleDefinitionId: systemRoleIds.MEMBER,
+      roleDefinitionId: YOUTH_BIBLE_STUDY_IDENTITY.role_definition_id,
     },
   ];
 
@@ -500,8 +485,8 @@ export async function seedDisposableIdentity(
       systemRoleIds.ADMIN,
       systemRoleIds.STAFF,
       systemRoleIds.MEMBER,
-      DEPARTMENT_MANAGER_ADULT.role_definition_id,
-      PROGRAM_LEADER_YOUTH_BIBLE_STUDY.role_definition_id,
+      ADULT_DEPARTMENT_IDENTITY.role_definition_id,
+      YOUTH_BIBLE_STUDY_IDENTITY.role_definition_id,
     ],
     grants: grantCount?.c ?? 0,
     assignments: assignmentCount?.c ?? 0,
@@ -510,9 +495,9 @@ export async function seedDisposableIdentity(
 
 export const __test = {
   SYSTEM_DEFINITIONS,
-  DEPARTMENT_MANAGER_ADULT,
-  PROGRAM_LEADER_YOUTH_BIBLE_STUDY,
-  PROGRAM_LEADER_PROGRAM,
+  ADULT_DEPARTMENT_IDENTITY,
+  YOUTH_BIBLE_STUDY_IDENTITY,
+  YOUTH_BIBLE_STUDY_PROGRAM,
   DISPOSABLE_ACCOUNTS,
   CREATED_AT,
   assignmentIdFor,

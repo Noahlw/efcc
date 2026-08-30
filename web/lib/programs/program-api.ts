@@ -109,79 +109,6 @@ export interface ManagementDirectory {
   departments: Department[];
   programs: ManagementProgram[];
 }
-export type AccountPermissionRoleKey = "admin" | "department-manager" | "staff";
-
-export interface AccountPermissionAccount {
-  userId: string;
-  name: string;
-  role: AccountPermissionRoleKey;
-  departments: Array<{
-    id: string;
-    name: string;
-  }>;
-}
-
-export interface AccountPermissionRole {
-  key: AccountPermissionRoleKey;
-  label: string;
-  scope: string;
-  assignmentState: "assigned" | "assignable";
-}
-
-export type PermissionPolicyRoleKey = "admin" | "staff" | "member";
-
-export interface AccountPermissionPolicyCell {
-  value: boolean;
-  applicable: boolean;
-  editable: boolean;
-  locked: boolean;
-  lockReason: string | null;
-}
-
-export interface AccountPermissionPolicyCapability {
-  key: string;
-  label: string;
-  description: string;
-  group: string;
-  roles: Record<PermissionPolicyRoleKey, AccountPermissionPolicyCell>;
-}
-
-export interface AccountPermissionPolicyActor {
-  role: "Admin" | "Staff" | "Member";
-  canRead: boolean;
-  canEdit: boolean;
-}
-
-export interface AccountPermissionPolicy {
-  revision: number;
-  actor: AccountPermissionPolicyActor;
-  capabilities: AccountPermissionPolicyCapability[];
-}
-
-export interface AccountPermissionsView {
-  accounts: AccountPermissionAccount[];
-  roles: AccountPermissionRole[];
-  policy: AccountPermissionPolicy;
-}
-
-export interface PermissionPolicyChange {
-  role: PermissionPolicyRoleKey;
-  capability: string;
-  value: boolean;
-}
-
-export interface AccountPermissionsMutation {
-  baseRevision: number;
-  changes: PermissionPolicyChange[];
-}
-
-export interface AccountPermissionsMutationView extends AccountPermissionsView {
-  mutation: {
-    outcome: "SUCCESS" | "DUPLICATE";
-    idempotent: boolean;
-    revision: number;
-  };
-}
 
 export interface ManagementCockpitNextEvent {
   event_id: string;
@@ -456,7 +383,7 @@ export interface ProgramEvent {
 }
 export interface EventDetail {
   event: ProgramEvent;
-  leaders: ProgramLeader[];
+  leaders: ProgramIdentityAssignment[];
   participant_summary: {
     active_enrollments: number;
     checked_in: number;
@@ -498,25 +425,20 @@ export interface EnrollmentSnapshot {
 }
 
 export type EnrollmentDecision = "Approved" | "Rejected";
-export interface ProgramLeader {
+
+export interface ProgramIdentityAssignment {
   program_id: string;
   user_id: string;
-  granted_by: string;
+  role_definition_id: string;
+  label: string;
+  scope_kind: "Global" | "Department" | "Program";
+  scope_id: string | null;
   granted_at: string;
-  revoked_by: string | null;
-  revoked_at: string | null;
   user_name?: string;
   username?: string;
-}
-export interface DepartmentManager {
-  department_id: string;
-  user_id: string;
-  granted_by: string;
-  granted_at: string;
-  revoked_by: string | null;
-  revoked_at: string | null;
-  user_name?: string;
-  username?: string;
+  granted_by?: string;
+  revoked_by?: string | null;
+  revoked_at?: string | null;
 }
 
 export interface MemberOption {
@@ -532,11 +454,21 @@ export interface MemberDirectoryDepartment {
   name: string;
 }
 
+export interface AccountIdentitySummary {
+  id: string;
+  label: string;
+  stableKey: string;
+  scopeKind: "Global" | "Department" | "Program";
+  scopeId: string | null;
+}
+
 export interface MemberDirectoryMember {
   userId: string;
   name: string;
   phone: string | null;
+  /** Derived from normalized identities for existing directory vocabulary. */
   role: MemberDirectoryRole;
+  identities: AccountIdentitySummary[];
   status: "Pending" | "Active" | "Suspended" | "Deactivated";
   departments: MemberDirectoryDepartment[];
 }
@@ -814,39 +746,6 @@ export function cancelEnrollment(
   );
 }
 
-/** GET /api/v1/programs/:programId/leaders */
-export function listProgramLeaders(
-  programId: string
-): Promise<{ leaders: ProgramLeader[] }> {
-  return programsFetch(`/api/v1/programs/${programId}/leaders`, "GET");
-}
-
-/** POST /api/v1/programs/:programId/leaders */
-export function assignProgramLeader(
-  programId: string,
-  userId: string
-): Promise<{ leader: ProgramLeader }> {
-  return programsFetch(
-    `/api/v1/programs/${programId}/leaders`,
-    "POST",
-    { user_id: userId },
-    { idempotencyKey: null }
-  );
-}
-
-/** POST /api/v1/programs/:programId/leaders/:userId/revoke */
-export function revokeProgramLeader(
-  programId: string,
-  userId: string
-): Promise<{ leader: ProgramLeader }> {
-  return programsFetch(
-    `/api/v1/programs/${programId}/leaders/${userId}/revoke`,
-    "POST",
-    {},
-    { idempotencyKey: null }
-  );
-}
-
 /** GET /api/v1/programs/departments */
 export function listDepartments(): Promise<{
   departments: Department[];
@@ -920,35 +819,6 @@ export function getManagementHub(): Promise<ManagementHubView> {
   return programsFetch("/api/v1/programs/hub", "GET", undefined, {
     cache: "no-store",
   });
-}
-
-/**
- * GET /api/v1/programs/account-permissions — Admin/Staff-only Account
- * Permissions matrix (087-03 #320). `no-store`: role changes must be
- * reflected on the next load.
- */
-export function getAccountPermissions(): Promise<AccountPermissionsView> {
-  return programsFetch(
-    "/api/v1/programs/account-permissions",
-    "GET",
-    undefined,
-    {
-      cache: "no-store",
-    }
-  );
-}
-
-/** POST /api/v1/programs/account-permissions — staged atomic policy change. */
-export function updateAccountPermissions(
-  input: AccountPermissionsMutation,
-  idempotencyKey?: string
-): Promise<AccountPermissionsMutationView> {
-  return programsFetch(
-    "/api/v1/programs/account-permissions",
-    "POST",
-    input,
-    { idempotencyKey }
-  );
 }
 
 // ponytail: in-memory catalog cache for F-C01 warming — no contract change,
@@ -1072,52 +942,6 @@ export function createProgram(
     `/api/v1/programs/departments/${encodeURIComponent(departmentId)}/programs`,
     "POST",
     input
-  );
-}
-/** GET /api/v1/programs/departments/:id/managers */
-export function listDepartmentManagers(departmentId: string): Promise<{
-  managers: DepartmentManager[];
-}> {
-  return programsFetch(
-    `/api/v1/programs/departments/${encodeURIComponent(departmentId)}/managers`,
-    "GET"
-  );
-}
-
-/** GET /api/v1/programs/departments/:id/member-options?q=... */
-export function searchDepartmentMemberOptions(
-  departmentId: string,
-  query: string
-): Promise<{ members: MemberOption[] }> {
-  return programsFetch(
-    `/api/v1/programs/departments/${encodeURIComponent(departmentId)}/member-options?q=${encodeURIComponent(query)}`,
-    "GET"
-  );
-}
-
-/** POST /api/v1/programs/departments/:id/managers */
-export function assignDepartmentManager(
-  departmentId: string,
-  userId: string
-): Promise<{ manager: DepartmentManager }> {
-  return programsFetch(
-    `/api/v1/programs/departments/${encodeURIComponent(departmentId)}/managers`,
-    "POST",
-    { user_id: userId },
-    { idempotencyKey: null }
-  );
-}
-
-/** POST /api/v1/programs/departments/:id/managers/:userId/revoke */
-export function revokeDepartmentManager(
-  departmentId: string,
-  userId: string
-): Promise<{ manager: DepartmentManager }> {
-  return programsFetch(
-    `/api/v1/programs/departments/${encodeURIComponent(departmentId)}/managers/${encodeURIComponent(userId)}/revoke`,
-    "POST",
-    {},
-    { idempotencyKey: null }
   );
 }
 

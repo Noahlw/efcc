@@ -332,8 +332,7 @@ describe("#486 Account Access domain", () => {
   });
   test("includes the automatic baseline for an account with no lower identity", async () => {
     const view = await loadAccountAccess(testDb(), ADMIN, MEMBER);
-    expect(view.activeAssignments).toHaveLength(1);
-    expect(view.activeAssignments[0]?.label).toBe("會友基礎");
+    expect(view.activeAssignments).toHaveLength(0);
     expect(
       view.effectiveAccess.Global.map((grant) => grant.capability)
     ).toContain("program.enroll");

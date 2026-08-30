@@ -11,10 +11,7 @@ import { expect, test } from "@playwright/test";
 import type { Page, Route } from "@playwright/test";
 
 import { COPY, LANDING } from "../../web/lib/copy";
-import {
-  defaultSections,
-  stableNavigationSections,
-} from "../../web/lib/sections";
+import { defaultSections, projectNavigation } from "../../web/lib/sections";
 
 // Helper: assert a possibly-null bounding box is present, then return it.
 function requireBox(
@@ -64,7 +61,7 @@ async function stubAuth(route: Route) {
           // stable navigation projections; this fixture does not derive either
           // from the profile role.
           sections: defaultSections(),
-          navigation: stableNavigationSections(),
+          navigation: projectNavigation({}),
         },
       }),
     });

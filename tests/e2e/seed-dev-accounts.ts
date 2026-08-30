@@ -114,6 +114,82 @@ async function buildLegacyReset(now: number): Promise<string> {
     `  updated_at = ${now} WHERE user_id = ${sqlLiteral(DEV_LEGACY.userId)};`,
   ].join("\n");
 }
+function buildNormalizedIdentitySeed(now: number): string {
+  const definitions = [
+    ["dev-role-admin", "admin", "系統管理員", "本機示範系統管理身份。", 0, 1],
+    ["dev-role-staff", "staff", "同工", "本機示範同工身份。", 1, 0],
+    ["dev-role-member", "member", "會友基礎", "本機示範參與者基礎。", 999, 1],
+  ] as const;
+  const statements = definitions.map(
+    ([id, stableKey, label, description, position, protectedState]) =>
+      [
+        "INSERT OR IGNORE INTO role_definitions (",
+        "  role_definition_id, category_key, stable_key, label, description,",
+        "  scope_kind, scope_id, position, is_protected, is_archived,",
+        "  created_by, created_at, updated_by, updated_at",
+        ") VALUES (",
+        `  ${sqlLiteral(id)}, 'Global', ${sqlLiteral(stableKey)}, ${sqlLiteral(label)}, ${sqlLiteral(description)},`,
+        `  'Global', NULL, ${position}, ${protectedState}, 0, NULL, ${now}, NULL, ${now}`,
+        ");",
+      ].join("\n")
+  );
+  statements.push(
+    [
+      "WITH catalog(capability) AS (",
+      "  VALUES",
+      ...[
+        "role.read",
+        "role.assign",
+        "role.revoke",
+        "role.reorder",
+        "role.name.write",
+        "role.permissions.read",
+        "role.permissions.write",
+        "role.scope.read",
+        "role.scope.write",
+        "role.create",
+        "role.delete",
+        "department.manage",
+        "department.publish",
+        "department.module.configure",
+        "department.manager.assign",
+        "program.manage",
+        "program.publish",
+        "program.enroll",
+        "program.leader.assign",
+        "account.permissions.read",
+        "account.directory.read",
+        "registration.approval.manage",
+      ].map(
+        (capability, index, values) =>
+          `    ('${capability}')${index === values.length - 1 ? "" : ","}`
+      ),
+      ")",
+      "INSERT OR IGNORE INTO role_definition_grants",
+      "  (role_definition_id, capability, granted_by, granted_at)",
+      `SELECT role_definition_id, capability, NULL, ${now}`,
+      "  FROM role_definitions CROSS JOIN catalog",
+      " WHERE role_definitions.stable_key = 'staff';",
+    ].join("\n")
+  );
+  statements.push(
+    [
+      "INSERT OR IGNORE INTO role_assignments",
+      "  (assignment_id, account_user_id, role_definition_id, granted_by,",
+      "   granted_at, scope_kind, scope_id)",
+      "SELECT 'dev-assignment-admin', 'U-E2E-ADMIN', role_definition_id,",
+      `  'U-E2E-ADMIN', ${now}, scope_kind, scope_id`,
+      "  FROM role_definitions WHERE stable_key = 'admin';",
+      "INSERT OR IGNORE INTO role_assignments",
+      "  (assignment_id, account_user_id, role_definition_id, granted_by,",
+      "   granted_at, scope_kind, scope_id)",
+      "SELECT 'dev-assignment-staff', 'U-E2E-STAFF', role_definition_id,",
+      `  'U-E2E-ADMIN', ${now}, scope_kind, scope_id`,
+      "  FROM role_definitions WHERE stable_key = 'staff';",
+    ].join("\n")
+  );
+  return statements.join("\n");
+}
 
 async function main(): Promise<void> {
   let reset = false;
@@ -138,11 +214,11 @@ async function main(): Promise<void> {
 
   if (reset) {
     // Standing dev-testing D1 accumulates E2E_ rows across runs (departments,
-    // programs, leaders, requests, enrollments, events, registration
-    // requests). Delete children before parents (FKs are ON DELETE RESTRICT);
-    // audit_events carries no FK and is left as history. GLOB treats the
-    // underscore in the E2E_ prefix literally; LIKE would treat it as a
-    // single-character wildcard.
+    // programs, identity assignments, requests, enrollments, events,
+    // registration requests). Delete children before parents (FKs are
+    // ON DELETE RESTRICT); audit_events carries no FK and is left as history.
+    // GLOB treats the underscore in the E2E_ prefix literally; LIKE would
+    // treat it as a single-character wildcard.
     const e2eProgramIds =
       "(SELECT p.program_id FROM programs AS p LEFT JOIN departments AS d ON d.department_id = p.department_id WHERE p.name GLOB 'E2E_*' OR d.code GLOB 'E2E_*' OR d.name GLOB 'E2E_*')";
     process.stdout.write(
@@ -151,24 +227,21 @@ async function main(): Promise<void> {
         "-- Includes registration requests (no FK, deleted last).",
         "-- Run before each suite run so consecutive runs stay green:",
         "--   pnpm exec wrangler d1 execute efcc-dev-testing --remote --file=<this output>",
-        // EVT-02 (#252): preview plans and generation runs reference
-        // programs/rules/events with ON DELETE RESTRICT, so they must be
-        // deleted before their parents (children first, mirroring the
-        // reset's FK ordering contract).
         `DELETE FROM program_generation_run_items WHERE run_id IN (SELECT run_id FROM program_generation_runs WHERE program_id IN ${e2eProgramIds});`,
         `DELETE FROM program_generation_runs WHERE program_id IN ${e2eProgramIds};`,
         `DELETE FROM program_preview_occurrences WHERE plan_id IN (SELECT plan_id FROM program_preview_plans WHERE program_id IN ${e2eProgramIds});`,
         `DELETE FROM program_preview_plans WHERE program_id IN ${e2eProgramIds};`,
         `DELETE FROM program_schedule_exceptions WHERE rule_id IN (SELECT rule_id FROM program_schedule_rules WHERE program_id IN ${e2eProgramIds});`,
         `DELETE FROM program_schedule_rules WHERE program_id IN ${e2eProgramIds};`,
+        "DELETE FROM role_assignments WHERE account_user_id IN (SELECT user_id FROM accounts WHERE username GLOB 'E2E_*');",
+        `DELETE FROM role_assignments WHERE role_definition_id IN (SELECT role_definition_id FROM role_definitions WHERE scope_kind = 'Program' AND scope_id IN ${e2eProgramIds});`,
+        `DELETE FROM role_assignments WHERE role_definition_id IN (SELECT role_definition_id FROM role_definitions WHERE scope_kind = 'Department' AND scope_id IN (SELECT department_id FROM departments WHERE code GLOB 'E2E_*' OR name GLOB 'E2E_*'));`,
         `DELETE FROM attendances WHERE event_id IN (SELECT event_id FROM events WHERE program_id IN ${e2eProgramIds});`,
         `DELETE FROM events WHERE program_id IN ${e2eProgramIds};`,
         `DELETE FROM enrollments WHERE program_id IN ${e2eProgramIds};`,
         `DELETE FROM enrollment_requests WHERE program_id IN ${e2eProgramIds};`,
-        `DELETE FROM program_leaders WHERE program_id IN ${e2eProgramIds};`,
         `DELETE FROM programs WHERE program_id IN ${e2eProgramIds};`,
         "DELETE FROM department_modules WHERE department_id IN (SELECT department_id FROM departments WHERE code GLOB 'E2E_*' OR name GLOB 'E2E_*');",
-        "DELETE FROM department_managers WHERE department_id IN (SELECT department_id FROM departments WHERE code GLOB 'E2E_*' OR name GLOB 'E2E_*');",
         "DELETE FROM departments WHERE code GLOB 'E2E_*' OR name GLOB 'E2E_*';",
         "DELETE FROM program_notification_reads WHERE user_id IN (SELECT user_id FROM accounts WHERE username GLOB 'E2E_*');",
         "DELETE FROM participant_notices WHERE member_user_id IN (SELECT user_id FROM accounts WHERE username GLOB 'E2E_*');",
@@ -183,6 +256,7 @@ async function main(): Promise<void> {
   const statements = await Promise.all([
     ...DEV_ACCOUNTS.map((account) => buildInsert(account, now)),
     buildLegacyInsert(now),
+    buildNormalizedIdentitySeed(now),
   ]);
   if (resetLegacy) {
     statements.unshift(await buildLegacyReset(now));

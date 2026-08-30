@@ -1,8 +1,8 @@
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
-import type { ReadonlyURLSearchParams } from "next/navigation";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { setupServer } from "msw/node";
+import type { ReadonlyURLSearchParams } from "next/navigation";
 import {
   afterAll,
   afterEach,
@@ -13,10 +13,10 @@ import {
   vi,
 } from "vitest";
 
-import HomePage, { HomeView } from '@/app/home/page';
-import type { HomeEvent, HomeProgram } from '@/app/home/page';
-import { AnnouncementDetail } from '@/lib/announcement-detail';
-import type { AnnouncementData } from '@/lib/announcement-detail';
+import HomePage, { HomeView } from "@/app/home/page";
+import type { HomeEvent, HomeProgram } from "@/app/home/page";
+import { AnnouncementDetail } from "@/lib/announcement-detail";
+import type { AnnouncementData } from "@/lib/announcement-detail";
 import type { Bootstrap, PublicUser } from "@/lib/api";
 import { AppProvider } from "@/lib/app-context";
 import { COPY } from "@/lib/copy";
@@ -24,7 +24,7 @@ import {
   clearAccessCache,
   clearCatalogCache,
 } from "@/lib/programs/program-api";
-import { defaultSections, stableNavigationSections } from "@/lib/sections";
+import { defaultSections, projectNavigation } from "@/lib/sections";
 
 const mocks = vi.hoisted(() => {
   const pushMock = vi.fn();
@@ -51,7 +51,7 @@ const mocks = vi.hoisted(() => {
 
 const { pushMock, replaceMock, pathnameMock, mockRouter } = mocks;
 
-vi.mock(import('next/navigation'), () => ({
+vi.mock(import("next/navigation"), () => ({
   useRouter: () => mockRouter,
   usePathname: () => pathnameMock(),
   useSearchParams: () => mocks.searchParamsMock(),
@@ -64,7 +64,7 @@ const sessionMocks = vi.hoisted(() => ({
   restoreBootstrapMock: vi.fn<() => Promise<Bootstrap>>(),
 }));
 
-vi.mock(import('@/lib/session'), () => ({
+vi.mock(import("@/lib/session"), () => ({
   clearAuthHint: sessionMocks.clearAuthHintMock,
   setAuthHint: sessionMocks.setAuthHintMock,
   hasAuthHint: sessionMocks.hasAuthHintMock,
@@ -86,7 +86,7 @@ const MEMBER_PROFILE: PublicUser = {
 const BOOTSTRAP: Bootstrap = {
   profile: MEMBER_PROFILE,
   sections: defaultSections(),
-  navigation: stableNavigationSections("Member"),
+  navigation: projectNavigation({ "program.enroll": true }),
 };
 
 const SAMPLE_EVENT: HomeEvent = {

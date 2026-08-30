@@ -84,6 +84,16 @@ function roleLabel(role: AccountDirectoryMember["role"]): string {
   }
   return COPY_ACCOUNT.member;
 }
+function identityText(
+  identities: AccountDirectoryMember["identities"] | undefined,
+  role: AccountDirectoryMember["role"]
+): string {
+  return identities && identities.length > 0
+    ? identities.map(({ label }) => label).join("、")
+    : role === "Member"
+      ? "會友基礎"
+      : roleLabel(role);
+}
 
 function statusLabel(status: AccountDirectoryMember["status"]): string {
   if (status === "Active") {
@@ -150,10 +160,7 @@ function buildAccountsHref({
   }
   return `/management?${params.toString()}`;
 }
-function accountAccessReturnHref(
-  href: string,
-  accountUserId: string
-): string {
+function accountAccessReturnHref(href: string, accountUserId: string): string {
   try {
     const candidate = new URL(href, "https://efcc.internal");
     if (
@@ -694,6 +701,14 @@ export const AccountDirectoryPanel = () => {
                 </div>
                 <div className="min-w-0 border-r border-b border-[var(--line)] p-3">
                   <dt className="text-xs font-bold text-[var(--ink-muted)]">
+                    身份組
+                  </dt>
+                  <dd className="m-0 mt-1 wrap-anywhere font-bold">
+                    {identityText(selected.identities, selected.role)}
+                  </dd>
+                </div>
+                <div className="min-w-0 border-r border-b border-[var(--line)] p-3">
+                  <dt className="text-xs font-bold text-[var(--ink-muted)]">
                     {COPY_ACCOUNT.status}
                   </dt>
                   <dd className="m-0 mt-1 wrap-anywhere font-bold">
@@ -980,10 +995,8 @@ export const AccountDirectoryPanel = () => {
                           <strong className="wrap-anywhere">
                             {account.name}
                           </strong>
-                          <small className="overflow-hidden text-ellipsis whitespace-nowrap text-[0.74rem] text-[var(--ink-muted)]">
-                            {account.username ?? COPY_ACCOUNT.unavailable} ·{" "}
-                            {roleLabel(account.role)}
-                          </small>
+                          {account.username ?? COPY_ACCOUNT.unavailable} ·{" "}
+                          {identityText(account.identities, account.role)}
                         </span>
                         <span
                           className={`min-h-[26px] rounded-full border px-2 py-1 text-[0.68rem] font-extrabold whitespace-nowrap ${statusClass(account.status)}`}

@@ -4,7 +4,6 @@ import { ACCESS_COOKIE_NAME } from "./auth/cookies";
 import { verifyAccessToken } from "./auth/sessions";
 import { CAPABILITY } from "./programs/capabilities";
 import { D1CapabilityAuthorizer } from "./programs/capability-authorizer";
-import { D1WorkspaceStore } from "./programs/d1-workspace-store";
 
 export interface HomeCmsEnv {
   DB: D1Database;
@@ -148,10 +147,8 @@ async function requireActor(
       requestId
     );
   }
-  const canPublish = await new D1CapabilityAuthorizer(
-    new D1WorkspaceStore(env.DB)
-  ).can(
-    { actorUserId: account.user_id, actorRole: account.role },
+  const canPublish = await new D1CapabilityAuthorizer(env.DB).can(
+    { actorUserId: account.user_id },
     CAPABILITY.HOME_PUBLISH,
     null
   );

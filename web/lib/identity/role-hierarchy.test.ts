@@ -371,7 +371,7 @@ describe("#478 role hierarchy and rename contract", () => {
   });
 
   test("H-09/H-14 projection: actions appear only strictly below the actor's own highest identity", async () => {
-    const view = await loadRoleHierarchy(testDb(), PROGRAM_LEADER);
+    const view = await loadRoleHierarchy(testDb(), STAFF);
     const global = view.categories.find(
       (category) => category.categoryKey === ROLE_CATEGORY_KEY.GLOBAL
     );
@@ -381,7 +381,7 @@ describe("#478 role hierarchy and rename contract", () => {
     const member = global?.definitions.find(
       (definition) => definition.roleDefinitionId === MEMBER_ROLE
     );
-    // PL's highest identity is Staff (position 1, Global scope): Staff and
+    // Staff's highest identity is Staff (position 1, Global scope): Staff and
     // the protected baseline are never actionable.
     expect(staff?.actions).toEqual([]);
     expect(member?.actions).toEqual([]);
@@ -391,8 +391,7 @@ describe("#478 role hierarchy and rename contract", () => {
     const manager = department?.definitions.find(
       (definition) => definition.roleDefinitionId === DEPARTMENT_MANAGER_ROLE
     );
-    // The fixture assigns PL the global Staff identity, so Staff's
-    // role-management grants are effective for lower definitions.
+    // Staff's role-management grants are effective for lower definitions.
     expect(staff?.isProtected).toBe(false);
     expect(manager?.actions.map((action) => action.action)).toEqual([
       "rename",

@@ -145,19 +145,95 @@ async function createProgram(
   return body.data.program.program_id;
 }
 
-async function assignManager(
-  access: string,
+async function assignDepartmentIdentity(
   departmentId: string,
   userId: string
 ): Promise<void> {
-  const response = await worker.fetch(
-    request(`/api/v1/programs/departments/${departmentId}/managers`, access, {
-      method: "POST",
-      body: { user_id: userId },
-    }),
-    testEnv()
-  );
-  assert.strictEqual(response.status, 200);
+  await testDb()
+    .prepare("DELETE FROM role_assignments WHERE account_user_id = ?")
+    .bind(userId)
+    .run();
+  const roleDefinitionId = `member-directory-department-${crypto.randomUUID()}`;
+  const now = new Date().toISOString();
+  await testDb().batch([
+    testDb()
+      .prepare(
+        `INSERT INTO role_definitions
+          (role_definition_id, category_key, stable_key, label, description,
+           scope_kind, scope_id, position, is_protected, is_archived,
+           created_by, created_at, updated_by, updated_at)
+         VALUES (?, 'Department', ?, 'Department Directory Operator',
+                 'Member directory test identity', 'Department', ?, 40, 0, 0,
+                 NULL, ?, NULL, ?)`
+      )
+      .bind(roleDefinitionId, roleDefinitionId, departmentId, now, now),
+    testDb()
+      .prepare(
+        `INSERT INTO role_definition_grants
+          (role_definition_id, capability, granted_by, granted_at)
+         VALUES (?, 'department.manage', 'A001', ?)`
+      )
+      .bind(roleDefinitionId, now),
+    testDb()
+      .prepare(
+        `INSERT INTO role_assignments
+          (assignment_id, account_user_id, role_definition_id, granted_by,
+           granted_at, scope_kind, scope_id)
+         SELECT ?, ?, role_definition_id, 'A001', ?, scope_kind, scope_id
+           FROM role_definitions WHERE role_definition_id = ?`
+      )
+      .bind(crypto.randomUUID(), userId, now, roleDefinitionId),
+  ]);
+}
+
+async function assignSystemIdentity(
+  stableKey: string,
+  accountUserId: string,
+  position: number,
+  protectedState: 0 | 1
+): Promise<void> {
+  const roleDefinitionId = `member-directory-system-${stableKey}`;
+  const now = new Date().toISOString();
+  await testDb()
+    .prepare(
+      `INSERT OR IGNORE INTO role_definitions
+        (role_definition_id, category_key, stable_key, label, description,
+         scope_kind, scope_id, position, is_protected, is_archived,
+         created_by, created_at, updated_by, updated_at)
+       VALUES (?, 'Global', ?, ?, 'Member directory test identity',
+               'Global', NULL, ?, ?, 0, NULL, ?, NULL, ?)`
+    )
+    .bind(
+      roleDefinitionId,
+      stableKey,
+      stableKey === "admin" ? "系統管理員" : "同工",
+      position,
+      protectedState,
+      now,
+      now
+    )
+    .run();
+  if (stableKey === "staff") {
+    await testDb()
+      .prepare(
+        `INSERT OR IGNORE INTO role_definition_grants
+          (role_definition_id, capability, granted_by, granted_at)
+         VALUES (?, 'department.manage', NULL, ?),
+                (?, 'account.directory.read', NULL, ?)`
+      )
+      .bind(roleDefinitionId, now, roleDefinitionId, now)
+      .run();
+  }
+  await testDb()
+    .prepare(
+      `INSERT OR IGNORE INTO role_assignments
+        (assignment_id, account_user_id, role_definition_id, granted_by,
+         granted_at, scope_kind, scope_id)
+       SELECT ?, ?, role_definition_id, 'A001', ?, scope_kind, scope_id
+         FROM role_definitions WHERE role_definition_id = ?`
+    )
+    .bind(crypto.randomUUID(), accountUserId, now, roleDefinitionId)
+    .run();
 }
 
 /** Seed one Active enrollment directly (existing D1 contract shape). */
@@ -183,10 +259,16 @@ interface MemberRow {
   name: string;
   phone: string | null;
   role: "Admin" | "Staff" | "Member";
+  identities: {
+    id: string;
+    label: string;
+    stableKey: string;
+    scopeKind: "Global" | "Department" | "Program";
+    scopeId: string | null;
+  }[];
   status: string;
   departments: Array<{ id: string; name: string }>;
 }
-
 interface MembersBody {
   requestId: string;
   data: { members: MemberRow[] };
@@ -257,13 +339,15 @@ describe("087-04: Member Directory search scope boundary", () => {
     staffAccess = await login("root-staff", "staff-secret");
     dmAccess = await login("md-member-dm", "dm-secret");
     plainMemberAccess = await login("md-plain", "plain-secret");
+    await assignSystemIdentity("admin", "A001", 1, 1);
+    await assignSystemIdentity("staff", "A002", 2, 0);
 
     const deptX = await createDepartment(adminAccess, "MDX", "培育部");
     const deptY = await createDepartment(adminAccess, "MDY", "崇拜部");
     deptXId = deptX.department_id;
     deptYId = deptY.department_id;
-    // A003 is Department Manager of 培育部 (Dept X) only.
-    await assignManager(adminAccess, deptXId, "A003");
+    // A003 is the scoped directory operator for 培育部 (Dept X) only.
+    await assignDepartmentIdentity(deptXId, "A003");
 
     programXId = await createProgram(adminAccess, deptXId, "門徒訓練");
     programYId = await createProgram(adminAccess, deptYId, "詩班練習");
@@ -284,7 +368,10 @@ describe("087-04: Member Directory search scope boundary", () => {
   test("query validation: missing/short q is 422 VALIDATION with correlation", async () => {
     for (const query of ["", "x"]) {
       const response = await worker.fetch(
-        request(`/api/v1/programs/members?q=${encodeURIComponent(query)}`, adminAccess),
+        request(
+          `/api/v1/programs/members?q=${encodeURIComponent(query)}`,
+          adminAccess
+        ),
         testEnv()
       );
       assert.strictEqual(response.status, 422);
@@ -301,7 +388,10 @@ describe("087-04: Member Directory search scope boundary", () => {
       };
       assert.strictEqual(body.code, "VALIDATION");
       assert.strictEqual(body.status, 422);
-      assert.strictEqual(body.detail, "Search requires at least two characters.");
+      assert.strictEqual(
+        body.detail,
+        "Search requires at least two characters."
+      );
       assert.strictEqual(body.requestId, response.headers.get("X-Request-Id"));
     }
   });
@@ -315,10 +405,13 @@ describe("087-04: Member Directory search scope boundary", () => {
     // Every Active account whose name/username/phone matches — enrolled or
     // not — except the Pending account (A008) and the two roles whose
     // usernames do not match this query (A001/A002).
-    assert.deepStrictEqual(
-      Object.keys(byUser).sort(),
-      ["A003", "A004", "A005", "A006", "A007"]
-    );
+    assert.deepStrictEqual(Object.keys(byUser).sort(), [
+      "A003",
+      "A004",
+      "A005",
+      "A006",
+      "A007",
+    ]);
     // Detail projection ships inside the search result: contact, role,
     // status, department memberships — no separate detail fetch needed.
     const dana = byUser["A005"];
@@ -327,6 +420,7 @@ describe("087-04: Member Directory search scope boundary", () => {
       name: "Dana X",
       phone: "9123 4567",
       role: "Member",
+      identities: [],
       status: "Active",
       departments: [
         { id: deptXId, name: "培育部" },
