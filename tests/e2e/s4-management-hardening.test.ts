@@ -816,13 +816,12 @@ test.describe("S4 Management hardening integration gate", () => {
     await page.unroute("**/api/v1/auth/registrations");
 
     const permissionLoadingGate = deferred();
-    await page.route(
-      "**/api/v1/programs/account-permissions",
-      async (route) => {
-        await permissionLoadingGate.promise;
-        await route.continue();
-      }
-    );
+    let permissionHierarchyRouteHit = false;
+    await page.route("**/api/v1/identity/roles", async (route) => {
+      permissionHierarchyRouteHit = true;
+      await permissionLoadingGate.promise;
+      await route.continue();
+    });
     await page.goto("/management?module=permissions");
     await expect(
       page
@@ -831,13 +830,16 @@ test.describe("S4 Management hardening integration gate", () => {
           exact: true,
         })
     ).toBeVisible();
+    await expect.poll(() => permissionHierarchyRouteHit).toBe(true);
     await captureEvidence(page, testInfo, "permissions-loading");
     permissionLoadingGate.resolve();
     await expect(page.getByRole("list", { name: "角色定義" })).toBeVisible();
-    await page.unroute("**/api/v1/programs/account-permissions");
+    await page.unroute("**/api/v1/identity/roles");
 
-    await page.route("**/api/v1/programs/account-permissions", (route) =>
-      route.fulfill({
+    let permissionErrorRouteHit = false;
+    await page.route("**/api/v1/identity/roles", (route) => {
+      permissionErrorRouteHit = true;
+      return route.fulfill({
         body: JSON.stringify({
           code: "UNAVAILABLE",
           detail: "系統暫時無法使用，請稍後再試。",
@@ -845,12 +847,13 @@ test.describe("S4 Management hardening integration gate", () => {
         }),
         contentType: "application/problem+json",
         status: 500,
-      })
-    );
+      });
+    });
     await page.goto("/management?module=permissions");
     await expect(page.getByRole("alert")).toBeVisible();
+    await expect.poll(() => permissionErrorRouteHit).toBe(true);
     await captureEvidence(page, testInfo, "permissions-error");
-    await page.unroute("**/api/v1/programs/account-permissions");
+    await page.unroute("**/api/v1/identity/roles");
 
     await page.route("**/api/v1/auth/registrations", (route) =>
       route.fulfill({
