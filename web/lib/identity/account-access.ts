@@ -1795,8 +1795,8 @@ export async function mutateAccountAssignments(
   const roles = await readRoles(db, roleIds);
   const byId = new Map(roles.map((role) => [role.role_definition_id, role]));
   const activeRows = await readAssignments(db, input.account_user_id, false);
-  const activeIds = new Set(
-    activeRows.map((assignment) => assignment.role_definition_id)
+  const activeByRole = new Map(
+    activeRows.map((assignment) => [assignment.role_definition_id, assignment])
   );
   const duplicates: string[] = [];
   const additions: StagedAdd[] = [];
@@ -1820,17 +1820,21 @@ export async function mutateAccountAssignments(
         eligibility.actorRoles,
         role
       );
+      const assignment = activeByRole.get(roleId);
       // Authorize every requested role before classifying an active duplicate.
-      // A no-op must not disclose the target projection to an unauthorized
-      // actor or bypass protected/archive/position/scope checks.
+      // Existing assignments use their immutable scope snapshot; a new
+      // assignment is authorized against the current Role Definition scope.
+      const authorizationRole = assignment
+        ? await roleAtAssignmentScope(db, assignment, role)
+        : role;
       await assertRoleManageable(
         db,
         input.actor_user_id,
         eligibility.actorRoles,
-        role,
+        authorizationRole,
         "role.assign"
       );
-      if (activeIds.has(roleId)) {
+      if (assignment) {
         duplicates.push(roleId);
         continue;
       }
