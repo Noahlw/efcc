@@ -56,4 +56,17 @@ describe("capability-driven section projection", () => {
     expect(isPermitted(sections, "home")).toBe(true);
     expect(getSection(sections, "management")?.key).toBe("management");
   });
+  test("one normalized management capability does not imply event access", () => {
+    const capabilities = { "home.publish": true };
+    expect(projectSections(capabilities).map(({ key }) => key)).toStrictEqual([
+      "home",
+      "programs",
+      "scanner",
+      "management",
+      "profile",
+    ]);
+    expect(projectNavigation(capabilities).map(({ key }) => key)).toStrictEqual(
+      ["home", "programs", "scanner", "management", "profile"]
+    );
+  });
 });
