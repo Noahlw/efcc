@@ -645,12 +645,12 @@ test.describe("S4 Management hardening integration gate", () => {
     await expect(
       page.getByRole("heading", { name: /已指派帳戶/u })
     ).toHaveCount(0);
-    await expect(
-      page.getByRole("link", { name: /已指派帳戶/u })
-    ).toHaveCount(0);
-    await expect(
-      page.getByRole("button", { name: /已指派帳戶/u })
-    ).toHaveCount(0);
+    await expect(page.getByRole("link", { name: /已指派帳戶/u })).toHaveCount(
+      0
+    );
+    await expect(page.getByRole("button", { name: /已指派帳戶/u })).toHaveCount(
+      0
+    );
     await captureEvidence(page, testInfo, "role-detail");
     await captureEvidence(
       page,
@@ -660,9 +660,7 @@ test.describe("S4 Management hardening integration gate", () => {
 
     const permissionSearch = await searchInput(page, "搜尋權限");
     await permissionSearch.fill("account.directory.read");
-    await expect(
-      page.getByText("查看帳戶名錄", { exact: true })
-    ).toBeVisible();
+    await expect(page.getByText("查看帳戶名錄", { exact: true })).toBeVisible();
     await captureEvidence(page, testInfo, "role-permissions-search");
 
     await page
@@ -857,9 +855,7 @@ test.describe("S4 Management hardening integration gate", () => {
       "output#permission-editor-state"
     );
     await expect(permissionLoadingState).toBeVisible();
-    await expect(permissionLoadingState).toHaveText("正在載入權限…", {
-      exact: true,
-    });
+    await expect(permissionLoadingState).toHaveText("正在載入權限…");
     await expect.poll(() => permissionHierarchyRouteHit).toBe(true);
     await captureEvidence(page, testInfo, "permissions-loading");
     permissionLoadingGate.resolve();
@@ -1150,15 +1146,16 @@ test.describe("S4 Management hardening integration gate", () => {
     const reviewBox = await review.boundingBox();
     expect(reviewBox).not.toBeNull();
     if (reviewBox) {
-      expect(reviewBox.left).toBeGreaterThanOrEqual(-1);
-      expect(reviewBox.top).toBeGreaterThanOrEqual(-1);
-      expect(reviewBox.right).toBeLessThanOrEqual(vw + 1);
-      expect(reviewBox.bottom).toBeLessThanOrEqual(
+      expect(reviewBox.x).toBeGreaterThanOrEqual(-1);
+      expect(reviewBox.y).toBeGreaterThanOrEqual(-1);
+      expect(reviewBox.x + reviewBox.width).toBeLessThanOrEqual(vw + 1);
+      expect(reviewBox.y + reviewBox.height).toBeLessThanOrEqual(
         (page.viewportSize()?.height ?? 0) + 1
       );
     }
-    const reviewButtons = await review.getByRole("button").evaluateAll(
-      (elements) =>
+    const reviewButtons = await review
+      .getByRole("button")
+      .evaluateAll((elements) =>
         elements.map((element) => {
           const rect = element.getBoundingClientRect();
           return {
@@ -1167,16 +1164,14 @@ test.describe("S4 Management hardening integration gate", () => {
             width: rect.width,
           };
         })
-    );
+      );
     for (const bounds of reviewButtons) {
       expect(bounds.width).toBeGreaterThanOrEqual(44);
       expect(bounds.height).toBeGreaterThanOrEqual(44);
       expect(bounds.right).toBeLessThanOrEqual(vw + 1);
     }
     expect(await horiz()).toBeLessThanOrEqual(1);
-    await review
-      .getByRole("button", { exact: true, name: "返回編輯" })
-      .click();
+    await review.getByRole("button", { exact: true, name: "返回編輯" }).click();
     await expect(review).toBeHidden();
     await expect(saveBtn).toBeFocused();
 
