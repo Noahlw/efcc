@@ -3340,3 +3340,323 @@ Only `docs/specs/s4-phase-c-acceptance-trace.md` is changed by this append.
 No source, test, configuration, migration, schema, fixture, `#487` path,
 `#488/#489`, Phase D, deployment, or external database file was edited. The
 child remains stopped before Phase D.
+
+## #487 final anchor/attendance revalidation — current `07928aed`
+
+**Evidence scope:** Fresh isolated child
+`/Users/noah.wong/Desktop/code/EFCC-dev/.worktrees/s4-c-487-final-evidence-07928`
+on branch `evidence/s4-c-487-final-evidence-07928`, created from and verified at
+the coordinator's exact HEAD
+`07928aedc2871cd1133c21801af07dcf1097c670`
+(`feat/s4-c-stackable-identity-integration`). The child was clean before this
+append. This section is documentation-only. No tracked source, test,
+configuration, migration, schema, fixture, deployment, `#488/#489`, Phase D,
+remote, production-data, or external-database path was changed.
+
+### Authority reread before checks
+
+Before the first validation command, I explicitly reread implementation ticket
+`issue://487`, parent ticket `issue://475`, Specs
+`docs/specs/091-stackable-identity-backend.md` and
+`docs/specs/092-discord-identity-design-system-adoption.md`, the approved
+`local://s4-phase-c-identity-integration-plan.md` including Task 4 and the
+verbatim exact obsolete-caller audit, the complete current
+`docs/specs/s4-phase-c-acceptance-trace.md` (all **3,341** pre-append lines and
+all historical sections), ADRs
+`docs/adr/0042-discord-like-stackable-role-model.md` and
+`docs/adr/0043-owned-civic-design-system-governance.md`, the complete Phase B
+trace `docs/specs/s4-phase-b-acceptance-trace.md`, and Phase B evidence
+`docs/qa/2026-08-28-s4-phase-b-foundation.md`.
+
+The prior #487 report set reread before checks was
+`agent://ReviewTerminal487`, `agent://FixAttendanceAnchors487`,
+`agent://ReviewTree487`, `agent://FixAuthorityReplaySeed`,
+`agent://EvidenceReplayReset487`, `agent://FixAliasesAndReset487`,
+`agent://FixFinalAuthority487`, `agent://ReviewFinalAuthority`,
+`agent://EvidenceAuditReset487`, `agent://EvidenceLatest487`,
+`agent://ReviewAuthority487`, `agent://FixAuthority487Review`,
+`agent://EvidenceAuthority487`, `agent://EvidenceAuthority487B`,
+`agent://EvidenceFinalAuthority487`, `agent://EvidenceCorrected487`,
+`agent://TestAuthority487`, `agent://FixLegacyPermissionTest`,
+`agent://FixManagerFixture487`, and `agent://ReviewCorrected487` including its
+schema-invalid structured payload and available transcript. The implementation
+and parent/spec tickets were read before validation.
+
+### Runtime and required Context7 CLI lookups
+
+Observed runtime was Node `v22.18.0`, pnpm `11.7.0`, web Vitest `4.1.10`,
+Wrangler `4.127.1`, Playwright CLI `1.62.1`, root TypeScript `7.0.2`, and web
+TypeScript `5.9.3`. All required lookups were attempted before validation with
+the Context7 CLI (`npx --yes ctx7@latest`), not MCP Context7. Every one of the
+12 commands exited `1` with the exact result:
+
+```text
+✖ Monthly quota exceeded. Create a free API key at https://context7.com/dashboard for more requests.
+```
+
+The attempted commands were:
+
+```text
+npx --yes ctx7@latest library "Cloudflare Workers" "D1Database prepared statements batch transactions schema migrations"
+npx --yes ctx7@latest docs /cloudflare/workers-sdk "D1Database prepare bind batch transaction atomic migrations PRAGMA table_info"
+npx --yes ctx7@latest library vitest "Run Vitest with Specific File expect requireAssertions async assertions"
+npx --yes ctx7@latest docs /vitest-dev/vitest "Run Vitest with Specific File expect(actual, message?) expect.requireAssertions async test assertions"
+npx --yes ctx7@latest library playwright "viewport CSS pixels locator boundingBox route navigation webServer"
+npx --yes ctx7@latest docs /microsoft/playwright "Locator.boundingBox CSS pixels Page.setViewportSize route navigation webServer"
+npx --yes ctx7@latest library "Next.js" "App Router Link href URL object query parameters navigation"
+npx --yes ctx7@latest docs /vercel/next.js "Pass URL object to Link in App Router query parameters navigation"
+npx --yes ctx7@latest library "Radix UI" "Switch Root asChild Slot accessible semantics"
+npx --yes ctx7@latest docs /radix-ui/primitives "Switch Root renders button role switch aria-checked data-state checked disabled keyboard Primitive asChild Slot composition"
+npx --yes ctx7@latest library "CVA class variance authority" "cva variants VariantProps compoundVariants"
+npx --yes ctx7@latest docs /joe-bell/cva "Implement component variants with cva VariantProps Type compoundVariants defaultVariants"
+```
+
+The previously selected authoritative IDs/sections are retained as prior
+evidence, not represented as fresh successful requests in this child:
+
+| Library | Prior authoritative ID and sections |
+| --- | --- |
+| Cloudflare/D1 | `/cloudflare/workers-sdk`: D1 batch transactions with prepared statements; D1 prepared statements plus `db.batch()`; D1 binding/prepared statements/query methods; artifacts `8767`, `8769` |
+| Vitest | `/vitest-dev/vitest`: Run Vitest with Specific File; `expect(actual, message?)`; `expect.requireAssertions`; async `resolves`/`rejects`; artifacts `8771`, `8773` |
+| Playwright | `/microsoft/playwright`: `Locator.boundingBox`; `Page.setViewportSize`; locator focus/press; route navigation and `test.webServer`; artifacts `8775`, `8777` |
+| Next.js | `/vercel/next.js`: App Router `Link` URL objects and query-parameter navigation; artifacts `8779`, `8781` |
+| Radix UI | `/radix-ui/primitives`: Switch role/`aria-checked`/disabled/keyboard/data-state; Primitive `asChild`/Slot and Checkbox accessibility; artifacts `8783`, `8786`, `8788` |
+| CVA | `/joe-bell/cva`: `cva`, variants, `VariantProps`, compound variants, and type-safe composition; artifact `8790` |
+
+### Fresh focused Worker/domain checks
+
+| Check | Exact current result |
+| --- | --- |
+| `pnpm verify:identity` | **PASS — 4 files, 94/94** |
+| Dedicated #487 Worker `lib/auth/normalized-authority-c487.test.ts` | **BLOCKED before assertions — exit 1; Test Files no tests, Tests no tests, Errors 1; external `@cloudflare/vitest-pool-workers`/Vite `EvalError: Code generation from strings disallowed for this context`; product assertions 0** |
+| Normalized identity `lib/identity/normalized-authority.test.ts` | **BLOCKED before assertions — exit 1; Test Files no tests, Tests no tests, Errors 1; same external EvalError; product assertions 0** |
+| Permission Editor Worker pair `lib/identity/permission-editor.test.ts` and `lib/identity/permission-editor-handlers.test.ts` | **BLOCKED before assertions — exit 1; Test Files no tests, Tests no tests, Errors 2; same external EvalError; product assertions 0** |
+| Account Access/replay/history `lib/identity/account-access.test.ts`, `account-access-handlers.test.ts`, `account-access-history.test.ts` | **PASS — 3 files, 39/39** |
+| Programs Worker/domain (`programs`, `capabilities`, account/member/hub directory) | **PASS — 5 files, 146/146** |
+| Attendance Worker `lib/attendance-worker.test.ts` | **PASS — 1 file, 45/45** |
+| Auth Worker `worker.auth.test.ts` | **PASS — 1 file, 47/47** |
+| Home/CMS Worker | **PASS — 2 files, 21/21** |
+| D1 schema/preflight `lib/identity/d1-schema.test.ts` | **PASS — 1 file, 25/25**; includes missing-column detection, retired-table rejection without auto-drop, protected anchors, immutable terminal history, idempotency, and archive audit |
+| Normalized seeds and role handlers | **PASS — 2 files, 27/27**; includes re-seeding with revoked history and archived-role handling |
+| Alias regression `lib/account-access-api.test.ts` | **PASS — 1 file, 2/2** |
+| Reset SQL regression `tests/e2e/seed-dev-accounts.test.ts` | **PASS — 1 file, 1/1**; fixture assignment deletes require `revoked_at IS NULL` |
+
+The three pool-blocked invocations are classified as external
+pre-discovery failures. No unsafe-eval bypass, source workaround, test
+suppression, assertion weakening, or pool/config change was used.
+
+### Anchor and denial coverage
+
+The current attendance run passed the explicit revalidation cases
+`operator chooser and scanner deny a member without operator capability`,
+`operator chooser and scanner reject an operator whose scope is outside active
+Programs`, `authorized operator receives an empty chooser and scanner result
+when no events exist`, `operator chooser honors an active Program Leader scope`,
+`operator chooser honors an active Department Manager scope`, `operator chooser
+filters authorization before applying result limit`, and `scanner projection
+denies revoked scoped grants`. The full file result was **45/45**.
+
+The current hierarchy run passed the protected-anchor and scoped-redaction cases
+`H-01/H-03: authorized read shows fixed categories, ordered summaries, anchors,
+scope, counts, protected state, and server-projected actions`, `scoped role.read
+preserves protected anchors and redacts unrelated definitions`, `Department
+role.reorder permits same-department Program siblings and rejects cross-scope
+targets`, and `preserves opaque assigned account IDs containing commas`. The
+full file result was **42/42**. `account-access-history.test.ts` additionally
+passed the immutable revoked-history/original-Department-scope case **1/1**.
+
+### Focused component checks
+
+| Surface group | Exact current result |
+| --- | --- |
+| Sections, Account Access/API, Directory/DirectoryFrame, Account/Member Directory, Role Hierarchy | **PASS — 7 files, 95/95** |
+| Programs Workspace, Events, Participants, Notifications, Settings, Department, and related management modules | **PASS — 15 files, 210/210**; jsdom emitted only `Not implemented: navigation to another Document` |
+| Attendance/scanner/operator/roster/self-check-in | **PASS — 8 files, 76/76**; jsdom emitted only `Not implemented: Window's scrollTo() method` notices |
+| Home/CMS | **PASS — 2 files, 22/22** |
+| Management actions, redirects, and hub | **PASS — 3 files, 26/26** |
+| Permission Editor | **PASS — 1 file, 8/8** |
+
+### TypeScript, build, and numeric geometry checks
+
+| Check | Exact current result |
+| --- | --- |
+| Root/E2E/Worker/web TypeScript | `pnpm typecheck && pnpm exec tsc --noEmit -p tests/e2e/tsconfig.json && pnpm --dir web exec tsc --noEmit -p tsconfig.worker.json && pnpm --dir web exec tsc --noEmit -p tsconfig.json` — **PASS, exit 0, no diagnostics** |
+| Web production build | `pnpm --dir web build` — **PASS; 18/18 static pages; 16 visible route rows** |
+| W7 identity geometry | `pnpm test:role-hierarchy-geometry` — **PASS, 49/49 numeric tests** across `320, 390, 600, 799, 800, 1024, 1440` CSS px: Account Access 14, Permission Editor 14, Role Hierarchy 21 |
+| Shell responsive geometry | `pnpm test:shell-responsive` — **PASS, 92 passed, 1 skipped, exit 0** |
+| Shell geometry | `pnpm test:shell-geometry` — **PASS, 28/28** |
+
+These are numeric CSS-pixel checks from the pinned local Chromium harness.
+No screenshot, image snapshot, pixel-diff, manual accessibility, or WCAG
+conformance claim is made. The repository-wide test, formatter, linter, and
+`pnpm check` suites were not run; this was the requested focused scope.
+
+### Fresh disposable D1 migrations, seeds, reset, and archive history
+
+`pnpm --dir web exec wrangler d1 migrations apply efcc-identity --local`
+applied all **25** versioned migrations. `pnpm db:seed:disposable` completed
+**6/6** commands. Five `pnpm db:seed:local` reset portions completed
+**19 + 11 + 6** commands each, including repeated resets after both full
+Programs attempts and after mutation history. One compound pre-retry command
+reported a later `db:seed:demo` fetch failure only because its Worker had
+already been stopped; the reset portion itself passed, and a standalone demo
+seed passed after the fresh Worker restarted. Standalone demo seeds also passed
+before the first Programs attempt and before the live-ui run.
+
+After the final reset, the local D1 query returned **19 accounts, 5 Role
+Definitions, 39 grants, 6 active assignments, 3 terminal assignments, 6 role
+audit rows, and 6 policy mutations**. The schema contained exactly the seven
+normalized identity tables
+`role_assignments`, `role_audit_events`, `role_categories`,
+`role_definition_grants`, `role_definitions`, `role_policy_mutations`, and
+`role_policy_revisions`; the five retired authority tables were absent. The
+required `role_policy_mutations.result_json` and
+`role_assignments.scope_kind`/`scope_id` columns were present. Protected
+positions/scopes remained `admin=0`, `staff=1`, Department `10` at
+`018f3b8a-0000-7000-8000-000000000002`, Program `20` at
+`018f3b8a-0000-7000-8000-300000000001`, and `member=999`. The active-pair
+query returned **0 duplicate active pairs**.
+
+The current local-only Node 22 Worker archive sequence used the Program role
+`018f3b8a-0000-7000-8000-100000000002` and `U-E2E-STAFF` on disposable D1:
+
+1. Admin login returned `200`; Account Access revision was `3` and the target
+   had no Program assignment.
+2. Atomic assignment returned `200`, revision `4`, and the target had the
+   Program assignment.
+3. Archive returned `200`, revision `5`, `isArchived=true`; afterward the target
+   had no active assignment and did have revoked history.
+4. A new assignment attempt returned `403 ROLE_ARCHIVED`.
+5. Restore returned `200`, revision `6`, `isArchived=false`; afterward the
+   target still had no active assignment and retained revoked history.
+
+Every sequence response had matching body/header request IDs. D1 showed
+`ROLE_DEFINITION_ARCHIVE` and `ROLE_DEFINITION_RESTORE` `SUCCESS` audit rows,
+and the terminal assignment retained its Program scope snapshot with
+`revoke_reason=role_archived`. No remote, Apps Script, Google Sheets,
+Cloudflare production, or other external database was written.
+
+### Local Worker HTTP smoke
+
+The required supervised `pnpm --dir web dev:local` attempt was made first
+through the process manager and exited before readiness because it resolved
+Node `v20.19.0` and raised
+`ERR_UNKNOWN_BUILTIN_MODULE: node:sqlite`. Direct `fnm exec --using
+v22.18.0 ... wrangler dev --local --port 8797` Workers were local-only and
+used disposable D1.
+
+The final clean direct Worker smoke returned matching body/header request IDs
+for every response:
+
+| Persona/request | Exact current result |
+| --- | --- |
+| Admin `/api/v1/auth/me` | `200`; `systemRole=Admin`; identity `系統管理員/Global`; sections `home,programs,scanner,management,profile,events`; navigation `home,programs,scanner,management,profile`; **24** true capabilities |
+| Staff `/api/v1/auth/me` | `200`; `systemRole=Staff`; identity `同工/Global`; same management/event sections and navigation; **22** true capabilities |
+| Member `/api/v1/auth/me` | `200`; `systemRole=null`; no identity summary; sections/navigation `home,programs,scanner,notices,profile`; **1** automatic baseline capability |
+| Admin `GET /api/v1/programs/accounts?q=E2E` | `200`, 19 rows |
+| Member `GET /api/v1/programs/accounts?q=E2E` | `403 FORBIDDEN` |
+| Removed account-permissions, Program Leader, and Department Manager routes | Each `404 NOT_FOUND` with RFC Problem Details |
+
+The removed paths exercised were
+`/api/v1/programs/account-permissions`,
+`/api/v1/programs/018f3b8a-0000-7000-8000-300000000001/leaders`, and
+`/api/v1/programs/departments/018f3b8a-0000-7000-8000-000000000001/managers`.
+
+### Full Programs, live-ui, and Member Directory E2E
+
+The full clean-fixture
+`PROGRAMS_TARGET_URL=http://127.0.0.1:8797 pnpm exec playwright test
+--config=tests/e2e/programs-d1.config.ts` was rerun twice with a fresh local
+Worker and disposable resets:
+
+- Attempt 1 scheduled **195** and ended **180 passed, 13 failed, 2 flaky**.
+  The direct Worker exited during the run; subsequent connection-refused
+  failures were infrastructure cascades. No full Programs pass is claimed.
+- Attempt 2 scheduled **195** and ended **47 passed, 145 failed, 3 did not
+  run**. It stopped when the direct Worker exited without an exit code at the
+  same long-run boundary, followed by `ERR_CONNECTION_REFUSED` cascades. No
+  full Programs pass is claimed.
+
+After a clean reset/reseed and a clean direct Worker,
+`AUTH_UI_TARGET_URL=http://127.0.0.1:8797 pnpm exec playwright test
+--config=tests/e2e/live-ui.config.ts` completed **28/28 passed** at phone
+`375x667` and desktop `1280x720`. The clean
+`PROGRAMS_TARGET_URL=http://127.0.0.1:8797 pnpm exec playwright test
+--config=tests/e2e/member-directory.config.ts --project=desktop` completed
+**1/1 passed**. These passing runs are separate from the interrupted full
+Programs runs.
+
+### Exact obsolete-token, symbol, alias, filename, and route audit
+
+The direct current tracked-tree audit covered **1,260** files. Primary retired
+table tokens totaled **95** lines across 8 files: **22 executable-scope lines**
+and **73 documentation/history lines**. All 22 executable lines were the
+explicit five-name `preflight.ts` stale-schema/manual-reset list plus
+stale-schema/no-auto-drop setup and cleanup in
+`web/lib/identity/d1-schema.test.ts` and
+`web/lib/auth/normalized-authority-c487.test.ts`; no production authority
+writer/read remained.
+
+The secondary retired-symbol scan totaled **110** lines across 9 files and
+**0 executable-scope lines** for `RolePolicyStore`,
+`hasActiveManagementGrant`, `ctx.actorRole`, `sectionsForRole`,
+`stableNavigationSections`, `ROLE_CAPABILITY_DEFAULTS`, `PermissionPolicy*`,
+`DepartmentManager*`, `ProgramLeader*`, or old Manager/Leader writer names.
+The removed-route scan totaled **38** lines across 9 files: **3 executable
+lines**, only `web/lib/identity/normalized-authority.test.ts:171-173`,
+the explicit `404`/`NOT_FOUND` assertions for the three removed paths.
+
+The alias scan's **33** lines across 5 files were either canonical
+`updateRoleDefinitionLifecycle` use or intentional negative assertions in
+`web/lib/account-access-api.test.ts`; no forbidden
+`getEligibleAccounts`, `getAccountAssignments`,
+`handleGetEligibleAccounts`, `handlePostRoleDefinitionLifecycle`,
+`handleGetAccountAssignments`, `handlePostAccountAssignments`, or
+`handleLifecycle` export remained. The three legacy-named migration files are
+retired `SELECT 1` histories, not DDL/seed writers. Retained `accounts.role`
+values are login/import/display compatibility data; no authority, navigation,
+scope, or directory SQL read uses that field.
+
+### C-487-01..07 current status matrix
+
+| Row | Current status | Exact current evidence and remaining gap |
+| --- | --- | --- |
+| C-487-01 | **BLOCKED** | Admin/Staff/Member bootstrap HTTP smoke passed with capability-driven sections/navigation and safe identity summaries; identity verification passed **94/94**, and identity/access/directory components passed **95/95**. Dedicated normalized #487 and normalized-identity Worker seams each stopped before assertions (`0`), so DM/PL/custom/tamper persona proof is incomplete. |
+| C-487-02 | **BLOCKED** | Programs Worker/domain passed **146/146** and Programs components passed **210/210**. Both clean full Programs E2E attempts were interrupted (`180/13/2` and `47/145/3`), and the dedicated normalized exact-scope/equal-higher/Member Worker seam had `0` assertions. |
+| C-487-03 | **BLOCKED** | Attendance Worker passed **45/45**, including unauthorized/no-event, scoped PL/DM, filter-before-limit, and revoked-grant cases; attendance/scanner components passed **76/76**. The dedicated normalized scope/auth-expiry Worker seam stopped before assertions (`0`), and full Programs E2E was interrupted. |
+| C-487-04 | **BLOCKED** | Auth Worker passed **47/47**, Home/CMS Worker **21/21**, management components **26/26**, and direct smoke returned Admin `200`, Member `403 FORBIDDEN`, and removed routes `404 NOT_FOUND`. The dedicated normalized management/tamper Worker seam stopped before assertions (`0`); no complete management acceptance claim is made. |
+| C-487-05 | **PARTIAL — direct D1/preflight/reset/archive subset** | Fresh 25-migration D1, disposable seed **6/6**, repeated local reset **19 + 11 + 6**, exact normalized-table/zero-retired-table query, required columns, protected order/scope, duplicate-pair check, immutable archive history, and `d1-schema` **25/25** passed. The dedicated Admin-all-on/bootstrap Worker assertion remains blocked before assertions. |
+| C-487-06 | **PASS — executable audit, aliases, and route absence** | Full current tracked audit has 22 allowed primary executable lines, 0 secondary executable lines, and only the three explicit route-absence assertions; alias regression passed **2/2**; authenticated smoke returned `404 NOT_FOUND` for account-permissions, Leader, and Manager routes. |
+| C-487-07 | **BLOCKED** | W7 identity geometry **49/49**, shell responsive **92 passed/1 skipped**, shell geometry **28/28**, live-ui **28/28**, and Member Directory **1/1** passed. Full Programs E2E remains interrupted on both reruns; remote-CI parity is not claimed. |
+
+### External blockers, manual owners, and scope
+
+- The normalized #487 Worker, normalized identity Worker, and #485 Permission
+  Editor Worker runs remain **BLOCKED before assertions** by the external
+  Cloudflare-pool/Vite `EvalError: Code generation from strings disallowed
+  for this context`; product assertions are **0** for each blocked run. No
+  unsafe-eval bypass, source workaround, test suppression, or assertion
+  weakening was used.
+- The required supervised `pnpm --dir web dev:local` path remains blocked
+  before readiness by process-manager Node `v20.19.0` /
+  `ERR_UNKNOWN_BUILTIN_MODULE: node:sqlite`. Direct Node 22 Wrangler was
+  local-only and used disposable D1.
+- Full Programs D1 E2E remains blocked by direct Worker process termination
+  followed by connection-refused cascades; the exact `180/13/2` and
+  `47/145/3` results above are retained without a pass claim.
+- `C-487-M1` Accessibility owner — keyboard-only and screen-reader review of
+  Permission Editor, Account Access, bootstrap/management, plus reduced-motion,
+  forced-colors, 200% zoom, and text-spacing — **MANUAL, unclaimed**.
+- `C-487-M2` Device QA owner — iOS/Android real-device dock and safe-area
+  behavior at 320/390 — **MANUAL, unclaimed**.
+- `C-487-M3` CI owner — remote-CI parity — **MANUAL, unclaimed**.
+- `C-487-M4` Release owner — production-promotion dry-run — **MANUAL,
+  unclaimed**.
+- No manual keyboard/AT, WCAG, reduced-motion, forced-colors, zoom/text-
+  spacing, real-device, remote-CI, production-promotion, screenshot, image,
+  or pixel-diff claim is made.
+
+Only `docs/specs/s4-phase-c-acceptance-trace.md` is changed by this append.
+No tracked source, test, configuration, migration, schema, fixture,
+`#487` implementation path, `#488/#489`, Phase D, deployment, or external
+database file was edited. The child remains stopped before Phase D.
