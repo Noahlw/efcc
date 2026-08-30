@@ -37,7 +37,7 @@ import {
 } from "./management-action-framework";
 
 const roleButtonVariants = cva(
-  "grid min-h-16 w-full min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center justify-between gap-2.5 rounded-xl border bg-[var(--surface-raised)] px-2.5 py-2.5 text-left text-base font-normal whitespace-normal text-[var(--ink)] outline-none hover:border-[var(--focus)] focus-visible:border-[var(--focus)] focus-visible:ring-3 focus-visible:ring-[var(--focus)]/30",
+  "grid min-h-16 w-full min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center justify-between gap-2.5 rounded-xl border bg-[var(--surface-raised)] px-2.5 py-2.5 text-left text-base font-normal whitespace-normal text-[var(--ink)] outline-none hover:border-[var(--focus)] hover:bg-[var(--surface-raised)] hover:text-[var(--ink)] focus-visible:border-[var(--focus)] focus-visible:ring-3 focus-visible:ring-[var(--focus)]/30",
   {
     variants: {
       state: {
@@ -49,7 +49,7 @@ const roleButtonVariants = cva(
 );
 
 const categoryToggleVariants = cva(
-  "min-h-11 w-full min-w-0 shrink justify-start gap-2 rounded-[var(--radius-sm)] border px-2 text-left text-base font-normal whitespace-normal text-[var(--ink)] hover:border-[var(--focus)] focus-visible:border-[var(--focus)] focus-visible:ring-3 focus-visible:ring-[var(--focus)]/30",
+  "min-h-11 w-full min-w-0 shrink justify-start gap-2 rounded-[var(--radius-sm)] border bg-[var(--surface)] px-2 text-left text-base font-normal whitespace-normal text-[var(--ink)] hover:border-[var(--focus)] hover:bg-[var(--surface)] hover:text-[var(--ink)] focus-visible:border-[var(--focus)] focus-visible:ring-3 focus-visible:ring-[var(--focus)]/30",
   {
     variants: {
       expanded: {
@@ -67,7 +67,8 @@ const actionButtonVariants = cva(
     variants: {
       tone: {
         primary: "font-extrabold",
-        secondary: "font-bold",
+        secondary:
+          "border-[var(--line-strong)] bg-[var(--surface-raised)] text-[var(--ink)] font-bold hover:bg-[var(--surface)] hover:text-[var(--ink)]",
       },
     },
     defaultVariants: { tone: "primary" },
@@ -1062,7 +1063,7 @@ export const RoleHierarchyPanel = () => {
     <section
       aria-busy={state.kind === "loading"}
       aria-labelledby="role-hierarchy-title"
-      className="mx-auto w-full min-w-0 max-w-[var(--width-container)] px-[clamp(1rem,4vw,2rem)] pt-6 pb-[calc(6rem+env(safe-area-inset-bottom,0px))] shell:px-[clamp(1.5rem,4vw,3rem)] shell:pt-8 shell:pb-32"
+      className="mx-auto w-full min-w-0 max-w-[var(--width-container)] px-[clamp(1rem,4vw,2rem)] pt-6 pb-[calc(6rem+env(safe-area-inset-bottom,0px))] shell:px-[clamp(1.5rem,4vw,3rem)] shell:pt-8 shell:pb-32 motion-reduce:transition-none motion-reduce:animate-none motion-reduce:[&_*]:transition-none motion-reduce:[&_*]:animate-none"
     >
       <ManagementPageHeader
         backHref={returnHref}
@@ -1102,7 +1103,6 @@ export const RoleHierarchyPanel = () => {
 
       {readyData && view === "list" && (
         <div className="mt-5 grid gap-5 shell:items-start shell:grid-cols-[repeat(auto-fit,minmax(280px,1fr))]">
-
           {readyData.categories.map((category) => {
             const expanded = expandedCategories.has(category.categoryKey);
             const headingId = `role-category-${category.categoryKey}`;
@@ -1206,9 +1206,7 @@ export const RoleHierarchyPanel = () => {
                                   {definition.scopeLabel ?? "全教會"} ·{" "}
                                   {definition.assignmentCount} 個已指派 ·{" "}
                                   {definition.grantCount} 項能力
-                                  {definition.isProtected
-                                    ? " · 系統固定"
-                                    : ""}
+                                  {definition.isProtected ? " · 系統固定" : ""}
                                 </small>
                               </span>
                               <span
@@ -1804,9 +1802,7 @@ export const RoleHierarchyPanel = () => {
             />
           </label>
           <label className={fieldClass} htmlFor="role-create-description">
-            <span className={fieldLabelClass}>
-              {CREATE_DESCRIPTION_LABEL}
-            </span>
+            <span className={fieldLabelClass}>{CREATE_DESCRIPTION_LABEL}</span>
             <Input
               autoComplete="off"
               className="min-h-12 h-auto rounded-[var(--radius-sm)] border-[var(--line-strong)] bg-[var(--surface-raised)] px-3 py-2 text-base text-[var(--ink)] focus-visible:border-[var(--focus)] focus-visible:ring-3 focus-visible:ring-[var(--focus)]/30"
