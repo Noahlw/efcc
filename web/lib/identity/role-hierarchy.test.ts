@@ -580,8 +580,7 @@ describe("#478 role hierarchy and rename contract", () => {
       );
       expect(
         program?.definitions.some(
-          (definition) =>
-            definition.roleDefinitionId === PROGRAM_LEADER_ROLE
+          (definition) => definition.roleDefinitionId === PROGRAM_LEADER_ROLE
         )
       ).toBe(false);
       expect(JSON.stringify(view)).not.toContain("青少年查經帶領");
@@ -2381,6 +2380,21 @@ describe("#479 role definition creation, scoped authority, and sibling order", (
       )
     ).rejects.toBeInstanceOf(RoleScopeMismatchError);
 
+    const staffAssignment = await readScalar<{
+      assignment_id: string;
+      granted_by: string;
+      granted_at: string;
+    }>(
+      `SELECT assignment_id, granted_by, granted_at
+         FROM role_assignments
+        WHERE account_user_id = ? AND role_definition_id = ?
+          AND revoked_at IS NULL`,
+      STAFF,
+      STAFF_ROLE
+    );
+    if (!staffAssignment) {
+      throw new Error("seeded Staff assignment is required for this fixture");
+    }
     await testDb()
       .prepare(
         `UPDATE role_definitions
@@ -2388,6 +2402,27 @@ describe("#479 role definition creation, scoped authority, and sibling order", (
           WHERE stable_key = 'staff'`
       )
       .bind("018f3b8a-0000-7000-8000-000000000002")
+      .run();
+    await testDb()
+      .prepare("DELETE FROM role_assignments WHERE assignment_id = ?")
+      .bind(staffAssignment.assignment_id)
+      .run();
+    await testDb()
+      .prepare(
+        `INSERT INTO role_assignments
+           (assignment_id, account_user_id, role_definition_id,
+            granted_by, granted_at, scope_kind, scope_id,
+            revoked_by, revoked_at, revoke_reason)
+         VALUES (?, ?, ?, ?, ?, 'Department', ?, NULL, NULL, NULL)`
+      )
+      .bind(
+        staffAssignment.assignment_id,
+        STAFF,
+        STAFF_ROLE,
+        staffAssignment.granted_by,
+        staffAssignment.granted_at,
+        "018f3b8a-0000-7000-8000-000000000002"
+      )
       .run();
     try {
       await expect(
@@ -2404,12 +2439,31 @@ describe("#479 role definition creation, scoped authority, and sibling order", (
       ).rejects.toBeInstanceOf(RoleScopeMismatchError);
     } finally {
       await testDb()
+        .prepare("DELETE FROM role_assignments WHERE assignment_id = ?")
+        .bind(staffAssignment.assignment_id)
+        .run();
+      await testDb()
         .prepare(
           `UPDATE role_definitions
-              SET scope_kind = 'Global', scope_id = ?
+              SET scope_kind = 'Global', scope_id = NULL
             WHERE stable_key = 'staff'`
         )
-        .bind(null)
+        .run();
+      await testDb()
+        .prepare(
+          `INSERT INTO role_assignments
+             (assignment_id, account_user_id, role_definition_id,
+              granted_by, granted_at, scope_kind, scope_id,
+              revoked_by, revoked_at, revoke_reason)
+           VALUES (?, ?, ?, ?, ?, 'Global', NULL, NULL, NULL, NULL)`
+        )
+        .bind(
+          staffAssignment.assignment_id,
+          STAFF,
+          STAFF_ROLE,
+          staffAssignment.granted_by,
+          staffAssignment.granted_at
+        )
         .run();
     }
 
