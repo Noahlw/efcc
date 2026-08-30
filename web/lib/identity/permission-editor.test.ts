@@ -306,7 +306,7 @@ describe("#485 Permission Editor domain seam", () => {
     assert.equal(inside["department.manage"], true);
     assert.equal(outside["department.manage"], undefined);
     assert.equal(program["department.manage"], undefined);
-    assert.equal(outside["role.permissions.read"], true);
+    assert.equal(outside["role.permissions.read"], undefined);
     assert.equal(outside["program.enroll"], true);
   });
 
