@@ -27,7 +27,7 @@ const headerActionFocus =
   "[&_:is(button,a):focus-visible]:outline-[3px]! [&_:is(button,a):focus-visible]:outline-[var(--focus)]! [&_:is(button,a):focus-visible]:outline-offset-[3px]!";
 
 export const actionSurfaceVariants = cva(
-  `static isolate grid w-full min-w-0 max-h-[min(48dvh,420px)] gap-[var(--space-3)] mt-[var(--space-4)] overflow-y-auto overscroll-contain rounded-[var(--radius-md)] border bg-[var(--surface-raised)] p-[var(--space-3)] pb-[calc(var(--space-3)+env(safe-area-inset-bottom,0px))] text-sm shadow-[var(--shadow-dock)] scroll-mb-[calc(84px+env(safe-area-inset-bottom,0px))] data-disabled:opacity-70 ${actionSurfaceFocus}`,
+  `static isolate grid min-h-11 w-full min-w-0 max-h-[min(48dvh,420px)] gap-[var(--space-3)] mt-[var(--space-4)] overflow-y-auto overscroll-contain rounded-[var(--radius-md)] border bg-[var(--surface-raised)] p-[var(--space-3)] pb-[calc(var(--space-3)+env(safe-area-inset-bottom,0px))] text-sm shadow-[var(--shadow-dock)] scroll-mb-[calc(84px+env(safe-area-inset-bottom,0px))] data-disabled:opacity-70 ${actionSurfaceFocus}`,
   {
     variants: {
       state: {
@@ -155,7 +155,9 @@ export const ManagementPageHeader = ({
           {lead}
         </p>
       </div>
-      {action && <div className={cn("flex-none", headerActionFocus)}>{action}</div>}
+      {action && (
+        <div className={cn("flex-none", headerActionFocus)}>{action}</div>
+      )}
     </div>
   </header>
 );
