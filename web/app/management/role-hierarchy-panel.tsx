@@ -76,7 +76,7 @@ const actionButtonVariants = cva(
 );
 
 const orderButtonVariants = cva(
-  "min-h-11 h-auto rounded-[var(--radius-sm)] px-3 py-2 text-sm font-bold whitespace-normal",
+  "min-h-11 min-w-11 h-auto rounded-[var(--radius-sm)] px-3 py-2 text-sm font-bold whitespace-normal",
   {
     variants: {
       state: {
