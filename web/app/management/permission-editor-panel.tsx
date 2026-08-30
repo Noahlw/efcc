@@ -280,6 +280,7 @@ export const PermissionEditorPanel = () => {
   const detailRoleRef = useRef<string | null>(null);
   const listHeadingRef = useRef<HTMLHeadingElement | null>(null);
   const detailHeadingRef = useRef<HTMLHeadingElement | null>(null);
+  const saveButtonRef = useRef<HTMLButtonElement | null>(null);
   const resource = useAsyncResource<LoadedData, PanelState>(
     async () => {
       const hierarchy = await getRoleHierarchy();
@@ -487,6 +488,11 @@ export const PermissionEditorPanel = () => {
       changes.length > 3 ||
       changes.some((change) => isHighRisk(change, detail.permissions));
     setReview(dedicated ? "dedicated" : "sheet");
+  };
+
+  const closeReview = () => {
+    setReview(null);
+    saveButtonRef.current?.focus();
   };
 
   const discardAndRestart = () => {
@@ -819,6 +825,7 @@ export const PermissionEditorPanel = () => {
                   changes.length === 0 || busy || saveState === "conflict"
                 }
                 onClick={openReview}
+                ref={saveButtonRef}
                 type="button"
               >
                 {busy ? SAVING : SAVE}
@@ -896,7 +903,7 @@ export const PermissionEditorPanel = () => {
 
       <Sheet
         open={review === "sheet"}
-        onOpenChange={(open) => !open && setReview(null)}
+        onOpenChange={(open) => !open && closeReview()}
       >
         <SheetContent
           className="max-h-[min(70dvh,32rem)] pb-[calc(5rem+env(safe-area-inset-bottom,0px))]"
@@ -913,14 +920,16 @@ export const PermissionEditorPanel = () => {
           </div>
           <SheetFooter>
             <Button
+              className="min-h-11"
               disabled={busy}
-              onClick={() => setReview(null)}
+              onClick={closeReview}
               type="button"
               variant="outline"
             >
               {REVIEW_CANCEL}
             </Button>
             <Button
+              className="min-h-11"
               disabled={busy}
               onClick={() => void submitChanges()}
               type="button"
@@ -933,7 +942,7 @@ export const PermissionEditorPanel = () => {
 
       <AlertDialog
         open={review === "dedicated"}
-        onOpenChange={(open) => !open && setReview(null)}
+        onOpenChange={(open) => !open && closeReview()}
       >
         <AlertDialogContent className="max-h-[min(80dvh,42rem)] overflow-y-auto pb-[calc(5rem+env(safe-area-inset-bottom,0px))]">
           <AlertDialogHeader>
@@ -944,7 +953,7 @@ export const PermissionEditorPanel = () => {
           </AlertDialogHeader>
           {detail && reviewChanges(changes, detail.permissions)}
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={busy} onClick={() => setReview(null)}>
+            <AlertDialogCancel disabled={busy} onClick={closeReview}>
               {REVIEW_CANCEL}
             </AlertDialogCancel>
             <AlertDialogAction

@@ -820,7 +820,7 @@ export const AccountDirectoryPanel = () => {
           aria-label={
             activeFilterCount > 0 ? `篩選 ${activeFilterCount}` : "篩選"
           }
-          className="min-h-12 border-[var(--line-strong)] bg-[var(--surface-raised)] px-4 font-extrabold text-[var(--ink)] hover:bg-[var(--surface)]"
+          className="min-h-12 min-w-11 border-[var(--line-strong)] bg-[var(--surface-raised)] px-4 font-extrabold text-[var(--ink)] hover:bg-[var(--surface)]"
           onClick={() => setFilterOpen(true)}
           type="button"
           variant="outline"
