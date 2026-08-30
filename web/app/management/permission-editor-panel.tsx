@@ -492,7 +492,6 @@ export const PermissionEditorPanel = () => {
 
   const closeReview = () => {
     setReview(null);
-    saveButtonRef.current?.focus();
   };
 
   const discardAndRestart = () => {
@@ -906,6 +905,10 @@ export const PermissionEditorPanel = () => {
         onOpenChange={(open) => !open && closeReview()}
       >
         <SheetContent
+          onCloseAutoFocus={(event) => {
+            event.preventDefault();
+            saveButtonRef.current?.focus();
+          }}
           className="max-h-[min(70dvh,32rem)] pb-[calc(5rem+env(safe-area-inset-bottom,0px))]"
           side="bottom"
         >
@@ -944,7 +947,13 @@ export const PermissionEditorPanel = () => {
         open={review === "dedicated"}
         onOpenChange={(open) => !open && closeReview()}
       >
-        <AlertDialogContent className="max-h-[min(80dvh,42rem)] overflow-y-auto pb-[calc(5rem+env(safe-area-inset-bottom,0px))]">
+        <AlertDialogContent
+          className="max-h-[min(80dvh,42rem)] overflow-y-auto pb-[calc(5rem+env(safe-area-inset-bottom,0px))]"
+          onCloseAutoFocus={(event) => {
+            event.preventDefault();
+            saveButtonRef.current?.focus();
+          }}
+        >
           <AlertDialogHeader>
             <AlertDialogTitle>{DEDICATED_REVIEW_TITLE}</AlertDialogTitle>
             <AlertDialogDescription>
