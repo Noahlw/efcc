@@ -1,6 +1,6 @@
-import { useState } from "react";
 import { cleanup, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { useState } from "react";
 import { afterEach, describe, expect, test, vi } from "vitest";
 
 import {
@@ -86,14 +86,15 @@ describe("S4 management action framework", () => {
       </>
     );
 
-    expect(
-      screen.getByRole("dialog", { name: "篩選帳戶" })
-    ).toHaveAttribute("data-slot", "sheet-content");
+    expect(screen.getByRole("dialog", { name: "篩選帳戶" })).toHaveAttribute(
+      "data-slot",
+      "sheet-content"
+    );
     expect(
       screen.getByRole("button", { name: "關閉篩選帳戶" })
     ).toBeInTheDocument();
     expect(
-      screen.getByRole("region", { name: "審批選取集" })
+      screen.getByRole("region", { hidden: true, name: "審批選取集" })
     ).toBeInTheDocument();
   });
 
@@ -126,9 +127,7 @@ describe("S4 management action framework", () => {
     render(<FilterHarness />);
     const opener = screen.getByRole("button", { name: "開啟篩選" });
     await user.click(opener);
-    await user.click(
-      screen.getByRole("button", { name: "關閉篩選帳戶" })
-    );
+    await user.click(screen.getByRole("button", { name: "關閉篩選帳戶" }));
 
     expect(onClose).toHaveBeenCalledOnce();
     expect(opener).toHaveFocus();

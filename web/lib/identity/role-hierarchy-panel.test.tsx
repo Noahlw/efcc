@@ -199,7 +199,17 @@ function hierarchyResponse(overrides: Partial<RoleHierarchyView> = {}) {
 }
 
 describe(RoleHierarchyPanel, () => {
-  beforeAll(() => server.listen({ onUnhandledRequest: "error" }));
+  beforeAll(() => {
+    if (!HTMLElement.prototype.hasPointerCapture) {
+      HTMLElement.prototype.hasPointerCapture = () => false;
+      HTMLElement.prototype.setPointerCapture = () => {};
+      HTMLElement.prototype.releasePointerCapture = () => {};
+    }
+    if (!HTMLElement.prototype.scrollIntoView) {
+      HTMLElement.prototype.scrollIntoView = () => {};
+    }
+    server.listen({ onUnhandledRequest: "error" });
+  });
   afterEach(() => {
     cleanup();
     server.resetHandlers();
