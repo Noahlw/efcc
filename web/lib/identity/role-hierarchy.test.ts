@@ -247,6 +247,215 @@ describe("#478 role hierarchy and rename contract", () => {
     expect(JSON.stringify(view)).not.toContain("成人部門管理者");
     expect(JSON.stringify(view)).not.toContain("成區");
   });
+  test("Department role.reorder permits same-department Program siblings and rejects cross-scope targets", async () => {
+    const departmentId = "018f3b8a-0000-7000-8000-000000000002";
+    const programId = "H487-REORDER-ADULT-PROGRAM";
+    const firstRoleId = "018f3b8a-0000-7000-8000-100000000487";
+    const secondRoleId = "018f3b8a-0000-7000-8000-100000000488";
+    await testDb().batch([
+      testDb()
+        .prepare(
+          `INSERT OR IGNORE INTO programs
+             (program_id, department_id, name, behavior_type, lifecycle,
+              discoverability, enrollment_mode, created_at, updated_at)
+           VALUES (?, ?, 'H487 reorder program', 'OneOff', 'Active',
+                   'Unlisted', 'MemberRequest', ?, ?)`
+        )
+        .bind(programId, departmentId, NOW, NOW),
+      testDb()
+        .prepare(
+          `INSERT OR IGNORE INTO role_definitions
+             (role_definition_id, category_key, stable_key, label, description,
+              scope_kind, scope_id, position, is_protected, is_archived,
+              created_by, created_at, updated_by, updated_at)
+           VALUES (?, 'Program', ?, ?, 'same-department reorder fixture',
+                   'Program', ?, ?, 0, 0, NULL, ?, NULL, ?)`
+        )
+        .bind(
+          firstRoleId,
+          firstRoleId,
+          "H487 reorder first",
+          programId,
+          30,
+          NOW,
+          NOW
+        ),
+      testDb()
+        .prepare(
+          `INSERT OR IGNORE INTO role_definitions
+             (role_definition_id, category_key, stable_key, label, description,
+              scope_kind, scope_id, position, is_protected, is_archived,
+              created_by, created_at, updated_by, updated_at)
+           VALUES (?, 'Program', ?, ?, 'same-department reorder fixture',
+                   'Program', ?, ?, 0, 0, NULL, ?, NULL, ?)`
+        )
+        .bind(
+          secondRoleId,
+          secondRoleId,
+          "H487 reorder second",
+          programId,
+          31,
+          NOW,
+          NOW
+        ),
+    ]);
+    try {
+      const beforeRows = await testDb()
+        .prepare(
+          `SELECT role_definition_id, position FROM role_definitions
+             WHERE role_definition_id IN (?, ?)`
+        )
+        .bind(firstRoleId, secondRoleId)
+        .all<{ role_definition_id: string; position: number }>();
+      const before = new Map(
+        (beforeRows.results ?? []).map((row) => [
+          row.role_definition_id,
+          row.position,
+        ])
+      );
+      const firstPosition = before.get(firstRoleId);
+      const secondPosition = before.get(secondRoleId);
+      if (firstPosition === undefined || secondPosition === undefined) {
+        throw new Error("missing same-department reorder fixtures");
+      }
+      const base = await readRevision();
+      const result = await reorderRoleDefinitions(testDb(), {
+        actor_user_id: DEPARTMENT_MANAGER,
+        idempotency_key: "h487-same-department-program-reorder",
+        base_revision: base,
+        category_key: "Program",
+        targets: [
+          { role_definition_id: firstRoleId, position: secondPosition },
+          { role_definition_id: secondRoleId, position: firstPosition },
+        ],
+        now: NOW,
+        audit_id: "018f3b8a-0000-7000-8000-aaaa00000487",
+        correlation_id: "corr-h487-same-department-program-reorder",
+      });
+      expect(result.revision).toBe(base + 1);
+      const afterRows = await testDb()
+        .prepare(
+          `SELECT role_definition_id, position FROM role_definitions
+             WHERE role_definition_id IN (?, ?)`
+        )
+        .bind(firstRoleId, secondRoleId)
+        .all<{ role_definition_id: string; position: number }>();
+      const after = new Map(
+        (afterRows.results ?? []).map((row) => [
+          row.role_definition_id,
+          row.position,
+        ])
+      );
+      expect(after.get(firstRoleId)).toBe(secondPosition);
+      expect(after.get(secondRoleId)).toBe(firstPosition);
+
+      const youth = await testDb()
+        .prepare(
+          `SELECT position FROM role_definitions
+             WHERE role_definition_id = ?`
+        )
+        .bind(PROGRAM_LEADER_ROLE)
+        .first<{ position: number }>();
+      const adult = await testDb()
+        .prepare(
+          `SELECT position FROM role_definitions
+             WHERE role_definition_id = ?`
+        )
+        .bind(firstRoleId)
+        .first<{ position: number }>();
+      if (youth === null || adult === null) {
+        throw new Error("missing cross-scope reorder fixtures");
+      }
+      const crossBase = await readRevision();
+      await expect(
+        reorderRoleDefinitions(testDb(), {
+          actor_user_id: DEPARTMENT_MANAGER,
+          idempotency_key: "h487-cross-department-program-reorder",
+          base_revision: crossBase,
+          category_key: "Program",
+          targets: [
+            { role_definition_id: firstRoleId, position: youth.position },
+            {
+              role_definition_id: PROGRAM_LEADER_ROLE,
+              position: adult.position,
+            },
+          ],
+          now: NOW,
+          audit_id: "018f3b8a-0000-7000-8000-aaaa00000488",
+          correlation_id: "corr-h487-cross-department-program-reorder",
+        })
+      ).rejects.toBeInstanceOf(RoleScopeMismatchError);
+      expect(await readRevision()).toBe(crossBase);
+    } finally {
+      await testDb()
+        .prepare(
+          `DELETE FROM role_definitions
+             WHERE role_definition_id IN (?, ?)`
+        )
+        .bind(firstRoleId, secondRoleId)
+        .run();
+      await testDb()
+        .prepare("DELETE FROM programs WHERE program_id = ?")
+        .bind(programId)
+        .run();
+    }
+  });
+
+  test("preserves opaque assigned account IDs containing commas", async () => {
+    const commaAccount = "E2E_DISPOSABLE_COMMA,ACCOUNT";
+    const assignmentId = "h487-comma-account-assignment";
+    await testDb().batch([
+      testDb()
+        .prepare(
+          `INSERT OR IGNORE INTO accounts
+             (user_id, name, username, username_normalized, credential_hash,
+              credential_kind, credential_version, account_status, role, phone,
+              qr_code_string, legacy_pin_hash, requires_upgrade, lock_level,
+              failed_attempts, locked_until, lock_since, created_at, updated_at)
+           VALUES (?, 'Comma Account', 'comma-account', 'comma-account', NULL,
+                   'password', 2, 'Active', 'Member', NULL, NULL, NULL, 0, 0,
+                   0, NULL, NULL, ?, ?)`
+        )
+        .bind(commaAccount, Date.parse(NOW), Date.parse(NOW)),
+      testDb()
+        .prepare(
+          `INSERT OR IGNORE INTO role_assignments
+             (assignment_id, account_user_id, role_definition_id,
+              granted_by, granted_at, scope_kind, scope_id,
+              revoked_by, revoked_at, revoke_reason)
+           SELECT ?, ?, rd.role_definition_id, ?, ?, rd.scope_kind, rd.scope_id,
+                  NULL, NULL, NULL
+             FROM role_definitions rd
+            WHERE rd.role_definition_id = ?`
+        )
+        .bind(assignmentId, commaAccount, ADMIN, NOW, DEPARTMENT_MANAGER_ROLE),
+    ]);
+    try {
+      const view = await loadRoleHierarchy(testDb(), ADMIN);
+      const manager = view.categories
+        .flatMap((category) => category.definitions)
+        .find(
+          (definition) =>
+            definition.roleDefinitionId === DEPARTMENT_MANAGER_ROLE
+        );
+      expect(manager?.assignedAccountUserIds).toEqual(
+        expect.arrayContaining(["E2E_DISPOSABLE_DM", commaAccount])
+      );
+      expect(manager?.assignedAccountUserIds).not.toContain(
+        "E2E_DISPOSABLE_COMMA"
+      );
+    } finally {
+      await testDb()
+        .prepare("DELETE FROM role_assignments WHERE assignment_id = ?")
+        .bind(assignmentId)
+        .run();
+      await testDb()
+        .prepare("DELETE FROM accounts WHERE user_id = ?")
+        .bind(commaAccount)
+        .run();
+    }
+  });
+
   test("Department authority includes same-department Program targets", async () => {
     const programId = "H487-ADULT-PROGRAM";
     await testDb()

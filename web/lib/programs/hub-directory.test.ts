@@ -248,6 +248,54 @@ async function assignSystemIdentity(
     .run();
 }
 
+interface ScopedRoleManagementFixture {
+  roleDefinitionId: string;
+  assignmentId: string;
+}
+
+async function assignScopedRoleManagementIdentity(
+  departmentId: string,
+  accountUserId: string,
+  capabilities: readonly string[]
+): Promise<ScopedRoleManagementFixture> {
+  const roleDefinitionId = `hub-role-management-${crypto.randomUUID()}`;
+  const assignmentId = crypto.randomUUID();
+  const now = new Date().toISOString();
+  const grants = capabilities.map((capability) =>
+    testDb()
+      .prepare(
+        `INSERT INTO role_definition_grants
+           (role_definition_id, capability, granted_by, granted_at)
+         VALUES (?, ?, 'U001', ?)`
+      )
+      .bind(roleDefinitionId, capability, now)
+  );
+  await testDb().batch([
+    testDb()
+      .prepare(
+        `INSERT INTO role_definitions
+          (role_definition_id, category_key, stable_key, label, description,
+           scope_kind, scope_id, position, is_protected, is_archived,
+           created_by, created_at, updated_by, updated_at)
+         VALUES (?, 'Department', ?, 'Scoped role manager', 'Hub role fixture',
+                 'Department', ?, 40, 0, 0, NULL, ?, NULL, ?)`
+      )
+      .bind(roleDefinitionId, roleDefinitionId, departmentId, now, now),
+    ...grants,
+    testDb()
+      .prepare(
+        `INSERT INTO role_assignments
+          (assignment_id, account_user_id, role_definition_id, granted_by,
+           granted_at, scope_kind, scope_id)
+         SELECT ?, ?, role_definition_id, 'U001', ?, scope_kind, scope_id
+           FROM role_definitions
+          WHERE role_definition_id = ?`
+      )
+      .bind(assignmentId, accountUserId, now, roleDefinitionId),
+  ]);
+  return { roleDefinitionId, assignmentId };
+}
+
 async function hubProjection(access: string): Promise<ManagementHubView> {
   const response = await worker.fetch(
     request("/api/v1/programs/hub", access),
@@ -504,5 +552,88 @@ describe("HUB-01: Management Hub directory projection", () => {
     assertNoCareRow(view);
     assert.deepStrictEqual(view.groups, []);
     assert.strictEqual(view.entryCard, null);
+  });
+  test("scoped role-management identities receive authorized hub destinations", async () => {
+    const admin = await login("alice", "alice-secret");
+    const manager = await login("carol", "carol-secret");
+    let permissionsDepartment: string | null = null;
+    let assignmentsDepartment: string | null = null;
+    let permissionFixture: ScopedRoleManagementFixture | null = null;
+    let assignmentFixture: ScopedRoleManagementFixture | null = null;
+    try {
+      permissionsDepartment = await createDepartment(
+        admin,
+        `HUB-SCOPED-PERM-${crypto.randomUUID().slice(0, 8)}`,
+        { attendance: false }
+      );
+      permissionFixture = await assignScopedRoleManagementIdentity(
+        permissionsDepartment,
+        "U003",
+        ["role.read", "role.permissions.read", "role.permissions.write"]
+      );
+      const permissionView = await hubProjection(manager);
+      const permissionRow = allRows(permissionView).find(
+        (row) => row.key === "permissions"
+      );
+      assert.ok(permissionRow);
+      assert.strictEqual(permissionRow.href, "/management?module=permissions");
+
+      assignmentsDepartment = await createDepartment(
+        admin,
+        `HUB-SCOPED-ASSIGN-${crypto.randomUUID().slice(0, 8)}`,
+        { attendance: false }
+      );
+      assignmentFixture = await assignScopedRoleManagementIdentity(
+        assignmentsDepartment,
+        "U007",
+        ["role.read", "role.assign", "role.revoke"]
+      );
+      const assignmentActor = await login("dora", "dora-secret");
+      const assignmentView = await hubProjection(assignmentActor);
+      const assignmentRow = allRows(assignmentView).find(
+        (row) => row.key === "permissions"
+      );
+      assert.ok(assignmentRow);
+      assert.strictEqual(
+        assignmentRow.href,
+        `/management?module=accounts&view=access&scopeKind=Department&scopeId=${encodeURIComponent(assignmentsDepartment)}`
+      );
+    } finally {
+      for (const fixture of [permissionFixture, assignmentFixture]) {
+        if (!fixture) {
+          continue;
+        }
+        await testDb()
+          .prepare("DELETE FROM role_assignments WHERE assignment_id = ?")
+          .bind(fixture.assignmentId)
+          .run();
+        await testDb()
+          .prepare(
+            "DELETE FROM role_definition_grants WHERE role_definition_id = ?"
+          )
+          .bind(fixture.roleDefinitionId)
+          .run();
+        await testDb()
+          .prepare("DELETE FROM role_definitions WHERE role_definition_id = ?")
+          .bind(fixture.roleDefinitionId)
+          .run();
+      }
+      for (const departmentId of [
+        permissionsDepartment,
+        assignmentsDepartment,
+      ]) {
+        if (!departmentId) {
+          continue;
+        }
+        await testDb()
+          .prepare("DELETE FROM department_modules WHERE department_id = ?")
+          .bind(departmentId)
+          .run();
+        await testDb()
+          .prepare("DELETE FROM departments WHERE department_id = ?")
+          .bind(departmentId)
+          .run();
+      }
+    }
   });
 });

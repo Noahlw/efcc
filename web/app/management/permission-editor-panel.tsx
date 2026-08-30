@@ -26,6 +26,7 @@ import {
 } from "@/components/ui/sheet";
 import { Switch } from "@/components/ui/switch";
 import { RpcError } from "@/lib/api";
+import { COPY } from "@/lib/copy";
 import type {
   PermissionGrantChange,
   RoleDefinitionDetailView,
@@ -49,10 +50,10 @@ import {
   safeManagementReturnHref,
 } from "./management-action-framework";
 
-const LIST_TITLE = "權限管理";
-const LIST_LEAD = "選擇一個身份組，查看及編輯其有效權限。";
+const LIST_TITLE = COPY.permissions.permissionsTitle;
+const LIST_LEAD = COPY.permissions.permissionsLead;
 const DETAIL_LEAD = "只顯示伺服器授權的權限；所有變更都會以政策版本保存。";
-const ROLE_LIST_LABEL = "身份組列表";
+const ROLE_LIST_LABEL = COPY.permissions.rolesSection;
 const SEARCH_LABEL = "搜尋權限";
 const SEARCH_PLACEHOLDER = "搜尋名稱、說明或權限代號";
 const BACK_TO_ROLES = "返回身份組列表";
@@ -64,7 +65,7 @@ const ERROR = "未能儲存權限；草稿仍保留，請稍後再試。";
 const CONFLICT =
   "權限政策已有更新；草稿未被覆寫。請先查看最新版本，再選擇重新開始。";
 const FORBIDDEN = "您沒有權限查看或編輯此身份組。";
-const LOAD_ERROR = "身份組資料暫時無法載入，請稍後再試。";
+const LOAD_ERROR = COPY.permissions.loadError;
 const REVIEW_TITLE = "確認權限變更";
 const DEDICATED_REVIEW_TITLE = "詳細檢視權限變更";
 const REVIEW_CONFIRM = "確認儲存";

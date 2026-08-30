@@ -1463,6 +1463,15 @@ export class DepartmentWorkspace {
         })
       )
     ).flat();
+    // Identity management is independent of product-module enablement. Load
+    // every Program scope so a scoped role manager always gets a real entry.
+    const allProgramRows = (
+      await Promise.all(
+        departments.map(({ department_id }) =>
+          this.store.listProgramAccessRows(department_id)
+        )
+      )
+    ).flat();
     const hasAttendanceScope = (
       await Promise.all(
         programRows.map(async ({ department_id, program_id }) => {
@@ -1502,6 +1511,58 @@ export class DepartmentWorkspace {
       null
     );
 
+    const scopedRoleManagement = await Promise.all(
+      [
+        ...departments.map(({ department_id }) => ({
+          scopeKind: "Department" as const,
+          scopeId: department_id,
+          scope: { departmentId: department_id },
+        })),
+        ...allProgramRows.map(({ department_id, program_id }) => ({
+          scopeKind: "Program" as const,
+          scopeId: program_id,
+          scope: { departmentId: department_id, programId: program_id },
+        })),
+      ].map(async ({ scopeKind, scopeId, scope }) => {
+        const [
+          roleRead,
+          roleAssign,
+          roleRevoke,
+          permissionRead,
+          permissionWrite,
+        ] = await Promise.all([
+          this.authorizer.can(ctx, CAPABILITY.ROLE_READ, scope),
+          this.authorizer.can(ctx, CAPABILITY.ROLE_ASSIGN, scope),
+          this.authorizer.can(ctx, CAPABILITY.ROLE_REVOKE, scope),
+          this.authorizer.can(ctx, "role.permissions.read", scope),
+          this.authorizer.can(ctx, "role.permissions.write", scope),
+        ]);
+        if (
+          !roleRead ||
+          (!roleAssign && !roleRevoke && !permissionRead && !permissionWrite)
+        ) {
+          return null;
+        }
+        return {
+          scopeKind,
+          scopeId,
+          canReadPermissions: permissionRead || permissionWrite,
+        };
+      })
+    );
+    const scopedPermissionDestination =
+      scopedRoleManagement.find(
+        (destination) => destination?.canReadPermissions === true
+      ) ??
+      scopedRoleManagement.find((destination) => destination !== null) ??
+      null;
+    const permissionsHref =
+      canReadIdentityAccess || scopedPermissionDestination?.canReadPermissions
+        ? "/management?module=permissions"
+        : scopedPermissionDestination
+          ? `/management?module=accounts&view=access&scopeKind=${scopedPermissionDestination.scopeKind}&scopeId=${encodeURIComponent(scopedPermissionDestination.scopeId)}`
+          : null;
+
     const granted = new Set<string>();
     if (canReadAccountDirectory) {
       granted.add("accounts");
@@ -1509,7 +1570,7 @@ export class DepartmentWorkspace {
     if (canManageRegistrationApprovals) {
       granted.add("approvals");
     }
-    if (canReadIdentityAccess) {
+    if (permissionsHref) {
       granted.add("permissions");
     }
     if (hasDepartmentManageScope) {
@@ -1526,7 +1587,13 @@ export class DepartmentWorkspace {
     const groups = MANAGEMENT_HUB_GROUPS.map((group) => ({
       key: group.key,
       label: group.label,
-      rows: group.rows.filter((row) => granted.has(row.key)),
+      rows: group.rows
+        .filter((row) => granted.has(row.key))
+        .map((row) =>
+          row.key === "permissions" && permissionsHref
+            ? { ...row, href: permissionsHref }
+            : row
+        ),
     })).filter((group) => group.rows.length > 0);
 
     // 另一個工作入口: any management capability (department scope OR program

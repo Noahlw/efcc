@@ -401,10 +401,10 @@ export const COPY = {
   // Identity management and permission-editor copy. The Worker supplies the
   // effective identity projection; this block owns labels and state copy only.
   permissions: {
-    permissionsTitle: "帳戶與權限",
-    permissionsLead: "按工作範圍檢視能力；管理員可先建立草稿，確認後一次儲存。",
+    permissionsTitle: "權限管理",
+    permissionsLead: "選擇一個身份組，查看及編輯其有效權限。",
     accountsSection: "管理員帳戶",
-    rolesSection: "角色定義",
+    rolesSection: "身份組列表",
     accountName: "姓名",
     accountRole: "角色",
     accountDepartment: "部門",
@@ -416,7 +416,7 @@ export const COPY = {
     stateAssignable: "可指派",
     backToSettings: "設定",
     loading: "載入中…",
-    loadError: "帳戶與權限暫時無法載入，請稍後再試。",
+    loadError: "身份組資料暫時無法載入，請稍後再試。",
     retry: "重試連接",
     forbidden: "您沒有權限執行此操作。",
     policyTitle: "權限政策",

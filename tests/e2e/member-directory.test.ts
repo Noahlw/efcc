@@ -4,7 +4,7 @@ import { expect, test } from "@playwright/test";
 import { DEV_ADMIN, DEV_MEMBER, DEV_STAFF } from "./dev-fixtures";
 
 const LOGIN = "登入";
-const PROGRAMS_TITLE = "課程與活動";
+const PROGRAMS_TITLE = "課程";
 const DIRECTORY_TITLE = "參與者";
 const SEARCH_LABEL = "搜尋會員";
 const DETAIL_TITLE = "參與者資料";

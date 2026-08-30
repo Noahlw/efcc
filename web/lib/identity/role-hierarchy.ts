@@ -414,6 +414,23 @@ interface CountRow {
   grants: number;
 }
 
+function parseAssignedAccountUserIds(
+  value: string | null | undefined
+): string[] {
+  if (!value) {
+    return [];
+  }
+  try {
+    const parsed: unknown = JSON.parse(value);
+    return Array.isArray(parsed) &&
+      parsed.every((entry): entry is string => typeof entry === "string")
+      ? parsed
+      : [];
+  } catch {
+    return [];
+  }
+}
+
 interface DepartmentRow {
   department_id: string;
   name: string;
@@ -693,7 +710,7 @@ export async function loadRoleHierarchy(
                   (SELECT COUNT(*) FROM role_assignments ra
                     WHERE ra.role_definition_id = rd.role_definition_id
                       AND ra.revoked_at IS NULL) AS assignments,
-                  (SELECT GROUP_CONCAT(ra.account_user_id)
+                  (SELECT json_group_array(ra.account_user_id)
                      FROM role_assignments ra
                     WHERE ra.role_definition_id = rd.role_definition_id
                       AND ra.revoked_at IS NULL) AS assignment_user_ids,
@@ -879,9 +896,7 @@ export async function loadRoleHierarchy(
             ? (countsForRole?.assignments ?? 0)
             : 0,
           assignedAccountUserIds: canReadAssignments
-            ? countsForRole?.assignment_user_ids
-              ? countsForRole.assignment_user_ids.split(",")
-              : []
+            ? parseAssignedAccountUserIds(countsForRole?.assignment_user_ids)
             : [],
           assignmentActions,
           grantCount: countsForRole?.grants ?? 0,
@@ -2281,8 +2296,14 @@ export async function reorderRoleDefinitions(
   const rows = await db
     .prepare(
       `SELECT role_definition_id, stable_key, label, description,
-              category_key, scope_kind, scope_id, position,
-              is_protected, is_archived
+              category_key, scope_kind, scope_id,
+              (
+                SELECT p.department_id
+                  FROM programs p
+                 WHERE p.program_id = role_definitions.scope_id
+                   AND role_definitions.scope_kind = 'Program'
+              ) AS parent_department_id,
+              position, is_protected, is_archived
          FROM role_definitions
         WHERE role_definition_id IN (?, ?)`
     )

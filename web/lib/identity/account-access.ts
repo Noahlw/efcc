@@ -700,6 +700,36 @@ function withinActorScope(
     highest.scope_id === role.scope_id
   );
 }
+async function roleAtAssignmentScope(
+  db: D1Database,
+  assignment: AssignmentRecord,
+  role: RoleRecord
+): Promise<RoleRecord> {
+  if (assignment.revoked_at === null) {
+    return role;
+  }
+  const scopedRole: RoleRecord = {
+    ...role,
+    scope_kind: assignment.scope_kind,
+    scope_id: assignment.scope_id,
+    parent_department_id: null,
+  };
+  if (
+    assignment.scope_kind !== ROLE_CATEGORY_KEY.PROGRAM ||
+    !assignment.scope_id
+  ) {
+    return scopedRole;
+  }
+  const program = await db
+    .prepare(`SELECT department_id FROM programs WHERE program_id = ?`)
+    .bind(assignment.scope_id)
+    .first<{ department_id: string }>();
+  return {
+    ...scopedRole,
+    parent_department_id: program?.department_id ?? null,
+  };
+}
+
 async function filterAuthorizedAssignments(
   db: D1Database,
   actorUserId: string,
@@ -717,14 +747,7 @@ async function filterAuthorizedAssignments(
       if (baselineRole(role)) {
         return assignment;
       }
-      const scopedRole =
-        assignment.revoked_at === null
-          ? role
-          : {
-              ...role,
-              scope_kind: assignment.scope_kind,
-              scope_id: assignment.scope_id,
-            };
+      const scopedRole = await roleAtAssignmentScope(db, assignment, role);
       if (!withinActorScope(actorRoles, scopedRole)) {
         return null;
       }

@@ -43,6 +43,7 @@
     "lib/identity/permission-editor.test.ts",
     "lib/identity/permission-editor-handlers.test.ts",
     "lib/identity/account-access.test.ts",
+    "lib/identity/account-access-history.test.ts",
     "lib/identity/account-access-handlers.test.ts",
     "lib/identity/normalized-authority.test.ts",
     "lib/permission-editor-panel.test.tsx",

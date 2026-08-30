@@ -141,10 +141,10 @@ const COPY = {
   timezoneLead: "聚會、報名及發佈時間均以香港時間顯示。",
   gmt8: "香港時間（GMT+8）",
   gmt8Value: "GMT+8",
-  // Phase B role-first Account & Permissions copy.
-  permissionsTitle: "帳戶與權限",
-  permissionsLead: "按工作範圍檢視能力；管理員可先建立草稿，確認後一次儲存。",
-  rolesSection: "角色定義",
+  // Normalized Permission Editor copy.
+  permissionsTitle: "權限管理",
+  permissionsLead: "選擇一個身份組，查看及編輯其有效權限。",
+  rolesSection: "身份組列表",
   roleAdmin: "管理員",
   roleStaff: "同工",
 } as const;
@@ -228,7 +228,7 @@ test.describe("UI-04 Next frontend trace", () => {
         exact: true,
       })
     ).toBeVisible();
-    await expect(page.getByText("管理員", { exact: true })).toBeVisible();
+    await expect(page.getByText("系統管理員", { exact: true })).toBeVisible();
     const qr = page.getByRole("img", { name: COPY.qrCode });
     await expect(qr).toBeVisible();
     await expect(qr).toHaveAttribute("aria-label", COPY.qrCode);
@@ -249,9 +249,15 @@ test.describe("UI-04 Next frontend trace", () => {
       required("PROGRAMS_STAFF_USERNAME", STAFF_USER),
       required("PROGRAMS_STAFF_CREDENTIAL", STAFF_CRED)
     );
-    await page.goto(appPath("/profile"));
     await expect(page.getByText(COPY.appFullName).first()).toBeVisible();
-    await expect(page.getByText("同工", { exact: true })).toBeVisible();
+    await page.goto(appPath("/profile"));
+    await page.getByText("帳戶資料", { exact: true }).click();
+    const profileDetails = page.getByRole("region", {
+      name: "帳戶資料",
+    });
+    await expect(
+      profileDetails.getByText("同工", { exact: true })
+    ).toBeVisible();
     for (const section of [
       COPY.homeSection,
       COPY.programsSection,
@@ -275,7 +281,11 @@ test.describe("UI-04 Next frontend trace", () => {
     );
     await page.goto(appPath("/profile"));
     await page.getByText("帳戶資料", { exact: true }).click();
-    await expect(page.getByText("Member", { exact: true })).toBeVisible();
+    await expect(
+      page
+        .getByRole("region", { name: "帳戶資料" })
+        .getByText("會友", { exact: true })
+    ).toBeVisible();
   });
 
   test("member shell keeps stable navigation and omits unauthorized sections", async ({
@@ -509,35 +519,25 @@ test.describe("UI-04 Next frontend trace", () => {
       page.getByRole("heading", { name: COPY.permissionsTitle })
     ).toBeVisible();
     await expect(page.getByText(COPY.permissionsLead)).toBeVisible();
-    // 帳戶與權限 uses the Phase B role-first projection. Assigned accounts
-    // open from a selected role; the initial view contains fixed roles only.
-    const rolesRegion = page.getByRole("region", {
+    const roleList = page.getByRole("list", {
       name: COPY.rolesSection,
     });
-    await expect(rolesRegion).toBeVisible();
-    const roleList = rolesRegion.getByRole("list", {
-      name: COPY.rolesSection,
-    });
-    await expect(roleList.locator("li")).toHaveCount(3);
-    await expect(
-      roleList.getByRole("button", {
-        name: `${COPY.roleAdmin} · 角色詳情`,
-        exact: true,
-      })
-    ).toBeVisible();
-    await expect(
-      roleList.getByRole("button", {
-        name: `${COPY.roleStaff} · 角色詳情`,
-        exact: true,
-      })
-    ).toBeVisible();
-    await expect(
-      roleList.getByRole("button", {
-        name: "會友 · 角色詳情",
-        exact: true,
-      })
-    ).toBeVisible();
-    await page.getByRole("link", { name: COPY.settingsBackToHub }).click();
+    await expect(roleList).toBeVisible();
+    await expect(roleList.getByRole("button")).toHaveCount(5);
+    for (const roleName of [
+      "系統管理員",
+      "同工",
+      "會友基礎",
+      "成人部門管理者",
+      "青少年查經帶領",
+    ]) {
+      await expect(
+        roleList.getByRole("button", {
+          name: new RegExp(roleName, "u"),
+        })
+      ).toBeVisible();
+    }
+    await page.getByRole("link", { name: COPY.settingsBack }).click();
     await expect(page).toHaveURL(/management\?module=settings/u);
 
     // 簽到設定: read-only method badges + fixed window durations, no forms.
