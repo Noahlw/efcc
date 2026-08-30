@@ -1,3 +1,4 @@
+import type { Page } from "@playwright/test";
 import { expect, test } from "@playwright/test";
 
 import { DEV_ADMIN, DEV_MEMBER, DEV_STAFF } from "./dev-fixtures";
@@ -12,6 +13,9 @@ const DETAIL_UNAVAILABLE = "未提供";
 const MEMBER_ROLE = "角色";
 const MEMBER_DEPARTMENTS = "部門";
 const BACK_TO_MANAGEMENT = "返回管理工作";
+const SEEDED_DEPARTMENT_ID = "018f3b8a-0000-7000-8000-000000000002";
+const SEEDED_DEPARTMENT_NAME = "成區";
+const SEEDED_DEPARTMENT_ROLE_ID = "018f3b8a-0000-7000-8000-100000000001";
 
 const configuredTarget = process.env.PROGRAMS_TARGET_URL;
 const localTarget =
@@ -43,7 +47,7 @@ function required(name: string, value: string | undefined): string {
   return value;
 }
 
-async function clearSession(page: import("@playwright/test").Page): Promise<void> {
+async function clearSession(page: Page): Promise<void> {
   await page.context().clearCookies();
   await page.evaluate(() => {
     localStorage.removeItem("efcc_auth_active");
@@ -51,7 +55,7 @@ async function clearSession(page: import("@playwright/test").Page): Promise<void
 }
 
 async function loginAs(
-  page: import("@playwright/test").Page,
+  page: Page,
   username: string,
   password: string
 ): Promise<void> {
@@ -72,26 +76,51 @@ interface ApiResult {
 }
 
 async function api(
-  page: import("@playwright/test").Page,
+  page: Page,
   path: string,
-  init: { method?: string; body?: unknown } = {}
+  init: {
+    method?: string;
+    body?: unknown;
+    headers?: Record<string, string>;
+  } = {}
 ): Promise<ApiResult> {
   return page.evaluate(
-    async ({ path: requestPath, method, body }) => {
+    async ({ path: requestPath, method, body, headers }) => {
       const response = await fetch(requestPath, {
         method,
-        headers:
-          body === undefined ? undefined : { "Content-Type": "application/json" },
+        headers: {
+          ...(body === undefined ? {} : { "Content-Type": "application/json" }),
+          ...(headers ?? {}),
+        },
         body: body === undefined ? undefined : JSON.stringify(body),
       });
       return { status: response.status, body: await response.json() };
     },
-    { path, method: init.method ?? "GET", body: init.body }
+    {
+      path,
+      method: init.method ?? "GET",
+      body: init.body,
+      headers: init.headers,
+    }
   );
 }
 
+async function enableDepartmentModules(
+  page: Page,
+  departmentId: string
+): Promise<void> {
+  for (const moduleKey of ["program_catalog", "events", "enrollment"]) {
+    const enabled = await api(
+      page,
+      `/api/v1/programs/departments/${departmentId}/modules/${moduleKey}/enable`,
+      { method: "POST" }
+    );
+    expect(enabled.status).toBe(200);
+  }
+}
+
 async function createDepartment(
-  page: import("@playwright/test").Page,
+  page: Page,
   code: string,
   name: string
 ): Promise<string> {
@@ -103,19 +132,13 @@ async function createDepartment(
   const department = created.body.data?.department as {
     department_id: string;
   };
-  for (const moduleKey of ["program_catalog", "events", "enrollment"]) {
-    const enabled = await api(
-      page,
-      `/api/v1/programs/departments/${department.department_id}/modules/${moduleKey}/enable`,
-      { method: "POST" }
-    );
-    expect(enabled.status).toBe(200);
-  }
+  await enableDepartmentModules(page, department.department_id);
+
   return department.department_id;
 }
 
 async function createProgram(
-  page: import("@playwright/test").Page,
+  page: Page,
   departmentId: string,
   name: string
 ): Promise<string> {
@@ -140,7 +163,7 @@ async function createProgram(
 }
 
 async function enroll(
-  page: import("@playwright/test").Page,
+  page: Page,
   programId: string,
   memberUserId: string
 ): Promise<void> {
@@ -151,30 +174,76 @@ async function enroll(
   expect(result.status).toBe(201);
 }
 
-async function grantManager(
-  page: import("@playwright/test").Page,
-  departmentId: string,
-  userId: string
-): Promise<void> {
+async function currentAssignmentRevision(
+  page: Page,
+  accountUserId: string
+): Promise<number> {
   const result = await api(
     page,
-    `/api/v1/programs/departments/${departmentId}/managers`,
-    { method: "POST", body: { user_id: userId } }
+    `/api/v1/identity/accounts/${encodeURIComponent(accountUserId)}/assignments`
   );
   expect(result.status).toBe(200);
+  const revision = result.body.data?.revision;
+  expect(typeof revision).toBe("number");
+  return revision as number;
 }
 
-async function revokeManager(
-  page: import("@playwright/test").Page,
-  departmentId: string,
-  userId: string
+async function assignDepartmentIdentity(
+  page: Page,
+  accountUserId: string,
+  suffix: string
 ): Promise<void> {
   const result = await api(
     page,
-    `/api/v1/programs/departments/${departmentId}/managers/${userId}/revoke`,
-    { method: "POST", body: {} }
+    `/api/v1/identity/accounts/${encodeURIComponent(accountUserId)}/assignments`,
+    {
+      method: "POST",
+      headers: { "Idempotency-Key": `member-directory-assign-${suffix}` },
+      body: {
+        base_revision: await currentAssignmentRevision(page, accountUserId),
+        role_definition_ids: [SEEDED_DEPARTMENT_ROLE_ID],
+      },
+    }
   );
-  expect([200, 404]).toContain(result.status);
+  expect(result.status).toBe(200);
+  expect(result.body.data?.activeAssignments).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({
+        roleDefinitionId: SEEDED_DEPARTMENT_ROLE_ID,
+        scopeKind: "Department",
+        scopeId: SEEDED_DEPARTMENT_ID,
+      }),
+    ])
+  );
+}
+
+async function revokeDepartmentIdentity(
+  page: Page,
+  accountUserId: string,
+  suffix: string
+): Promise<void> {
+  const result = await api(
+    page,
+    `/api/v1/identity/accounts/${encodeURIComponent(accountUserId)}/assignments/revoke`,
+    {
+      method: "POST",
+      headers: { "Idempotency-Key": `member-directory-revoke-${suffix}` },
+      body: {
+        base_revision: await currentAssignmentRevision(page, accountUserId),
+        role_definition_ids: [SEEDED_DEPARTMENT_ROLE_ID],
+      },
+    }
+  );
+  expect(result.status).toBe(200);
+  expect(
+    (
+      result.body.data?.activeAssignments as
+        | { roleDefinitionId?: unknown }[]
+        | undefined
+    )?.some(
+      (assignment) => assignment.roleDefinitionId === SEEDED_DEPARTMENT_ROLE_ID
+    )
+  ).toBe(false);
 }
 
 test.describe("087-04 Member Directory", () => {
@@ -188,16 +257,14 @@ test.describe("087-04 Member Directory", () => {
     );
 
     const suffix = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
-    const scopedDepartmentId = await createDepartment(
-      page,
-      `E2E_MD_X_${suffix}`,
-      `E2E_MD_培育部_${suffix}`
-    );
+    const scopedDepartmentId = SEEDED_DEPARTMENT_ID;
+    await enableDepartmentModules(page, scopedDepartmentId);
     const outsideDepartmentId = await createDepartment(
       page,
       `E2E_MD_Y_${suffix}`,
       `E2E_MD_崇拜部_${suffix}`
     );
+
     const scopedProgramId = await createProgram(
       page,
       scopedDepartmentId,
@@ -214,7 +281,7 @@ test.describe("087-04 Member Directory", () => {
     await enroll(page, scopedProgramId, DEV_ADMIN.userId);
     await enroll(page, scopedProgramId, DEV_MEMBER.userId);
     await enroll(page, outsideProgramId, DEV_STAFF.userId);
-    await grantManager(page, scopedDepartmentId, DEV_MEMBER.userId);
+    await assignDepartmentIdentity(page, DEV_MEMBER.userId, suffix);
 
     try {
       // Admin: church-wide search sees all three Active fixture accounts.
@@ -275,7 +342,9 @@ test.describe("087-04 Member Directory", () => {
 
       // Selecting a result renders contact/role/departments inline. There is
       // no save/confirm/submit commit action for this read-only detail.
-      await page.getByRole("button", { name: "E2E Admin", exact: true }).click();
+      await page
+        .getByRole("button", { name: "E2E Admin", exact: true })
+        .click();
       const detail = page.getByRole("article", { name: DETAIL_TITLE });
       await expect(detail).toBeVisible();
       await expect(
@@ -287,7 +356,7 @@ test.describe("087-04 Member Directory", () => {
       await expect(detail.getByText("Admin", { exact: true })).toBeVisible();
       await expect(detail.getByText(MEMBER_DEPARTMENTS)).toBeVisible();
       await expect(
-        detail.getByText(new RegExp(`E2E_MD_培育部_${suffix}`))
+        detail.getByText(SEEDED_DEPARTMENT_NAME, { exact: true })
       ).toBeVisible();
       await expect(
         page.getByRole("button", { name: /儲存|確認|提交/u })
@@ -303,7 +372,7 @@ test.describe("087-04 Member Directory", () => {
         required("PROGRAMS_ADMIN_USERNAME", ADMIN_USER),
         required("PROGRAMS_ADMIN_CREDENTIAL", ADMIN_CREDENTIAL)
       );
-      await revokeManager(page, scopedDepartmentId, DEV_MEMBER.userId);
+      await revokeDepartmentIdentity(page, DEV_MEMBER.userId, suffix);
       await clearSession(page);
     }
   });
