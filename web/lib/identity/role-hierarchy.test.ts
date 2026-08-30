@@ -509,7 +509,7 @@ describe("#478 role hierarchy and rename contract", () => {
     }
   });
 
-  test("does not expose assigned-account membership without assignment authority", async () => {
+  test("role.read-only access projects assignment summary without assign/revoke actions or out-of-scope definitions", async () => {
     const actor = "E2E_486_ROLE_READ_ONLY";
     const roleId = "018f3b8a-0000-7000-8000-100000000486";
     const assignmentId = "018f3b8a-0000-7000-8000-100000000486-a";
@@ -537,8 +537,9 @@ describe("#478 role hierarchy and rename contract", () => {
              (role_definition_id, category_key, stable_key, label, description,
               scope_kind, scope_id, position, is_protected, is_archived,
               created_by, created_at, updated_by, updated_at)
-           VALUES (?, 'Global', 'c486.role-read-only', '唯讀身份組',
-                   'role.read only fixture', 'Global', NULL, 40, 0, 0,
+           VALUES (?, 'Department', 'c486.role-read-only', '唯讀身份組',
+                   'role.read only fixture', 'Department',
+                   '018f3b8a-0000-7000-8000-000000000002', 5, 0, 0,
                    NULL, ?, NULL, ?)`
         )
         .bind(roleId, NOW, NOW),
@@ -555,7 +556,8 @@ describe("#478 role hierarchy and rename contract", () => {
              (assignment_id, account_user_id, role_definition_id,
               granted_by, granted_at, scope_kind, scope_id,
               revoked_by, revoked_at, revoke_reason)
-           VALUES (?, ?, ?, 'E2E_DISPOSABLE_ADMIN', ?, 'Global', NULL,
+           VALUES (?, ?, ?, 'E2E_DISPOSABLE_ADMIN', ?, 'Department',
+                   '018f3b8a-0000-7000-8000-000000000002',
                    NULL, NULL, NULL)`
         )
         .bind(assignmentId, actor, roleId, NOW),
@@ -568,9 +570,21 @@ describe("#478 role hierarchy and rename contract", () => {
       const manager = department?.definitions.find(
         (definition) => definition.roleDefinitionId === DEPARTMENT_MANAGER_ROLE
       );
-      expect(manager?.assignmentCount).toBe(0);
-      expect(manager?.assignedAccountUserIds).toEqual([]);
+      expect(manager).toBeDefined();
+      expect(manager?.assignmentCount).toBe(1);
+      expect(manager?.assignedAccountUserIds).toEqual(["E2E_DISPOSABLE_DM"]);
       expect(manager?.assignmentActions).toEqual([]);
+
+      const program = view.categories.find(
+        (category) => category.categoryKey === ROLE_CATEGORY_KEY.PROGRAM
+      );
+      expect(
+        program?.definitions.some(
+          (definition) =>
+            definition.roleDefinitionId === PROGRAM_LEADER_ROLE
+        )
+      ).toBe(false);
+      expect(JSON.stringify(view)).not.toContain("青少年查經帶領");
     } finally {
       await testDb()
         .prepare("DELETE FROM role_assignments WHERE assignment_id = ?")

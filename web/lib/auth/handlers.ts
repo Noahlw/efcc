@@ -332,9 +332,11 @@ async function requireCapability(
       requestId
     );
   }
+  // Registration approval is global; omitting null would union scoped grants.
   const capabilities = await resolveActorCapabilities(
     env.DB,
-    resolved.account.user_id
+    resolved.account.user_id,
+    null
   );
   if (capabilities[capability] !== true) {
     return problem(

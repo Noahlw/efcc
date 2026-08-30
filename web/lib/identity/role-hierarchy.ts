@@ -836,7 +836,9 @@ export async function loadRoleHierarchy(
         if (canRevoke) {
           assignmentActions.push({ action: "revoke", label: "撤銷" });
         }
-        const canReadAssignments = assignmentActions.length > 0;
+        const canReadAssignments =
+          permissionCapabilities.get(row.role_definition_id)?.["role.read"] ===
+          true;
         const canReadPermissions =
           permissionCapabilities.get(row.role_definition_id)?.[
             "role.permissions.read"

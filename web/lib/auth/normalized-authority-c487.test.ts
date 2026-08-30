@@ -24,6 +24,8 @@ const ADULT_EVENT = "C487-ADULT-EVENT";
 const CUSTOM_USER = "E2E_C487_CUSTOM";
 const TARGET_USER = "E2E_C487_TARGET";
 const CUSTOM_ROLE = "C487-CUSTOM-PROGRAM-ROLE";
+const PROGRAM_LEADER_ROLE =
+  "018f3b8a-0000-7000-8000-100000000002";
 const TARGET_REQUEST_PL = "C487-REQUEST-PL";
 const TARGET_REQUEST_MEMBER = "C487-REQUEST-MEMBER";
 const TARGET_REQUEST_CUSTOM = "C487-REQUEST-CUSTOM";
@@ -120,6 +122,40 @@ async function bootstrap(cookie: string): Promise<BootstrapData> {
   );
   expect(response.status).toBe(200);
   return envelope<BootstrapData>(response);
+}
+
+async function createPendingRegistration(
+  suffix: string,
+  name: string
+): Promise<string> {
+  const username = `c487-authority-${suffix}`;
+  const response = await worker.fetch(
+    request("/api/v1/auth/register", {
+      method: "POST",
+      headers: {
+        "Idempotency-Key": `c487-authority-register-${suffix}`,
+      },
+      body: JSON.stringify({
+        username,
+        password: `c487-authority-password-${suffix}`,
+        name,
+        phone: "9123 4000",
+      }),
+    }),
+    testEnv()
+  );
+  expect(response.status).toBe(200);
+  const row = await testDb()
+    .prepare(
+      "SELECT request_id FROM registration_requests WHERE username_normalized = ?"
+    )
+    .bind(username)
+    .first<{ request_id: string }>();
+  expect(row).toBeDefined();
+  if (!row) {
+    throw new Error("registration fixture was not created");
+  }
+  return row.request_id;
 }
 
 async function withCookie(
@@ -798,6 +834,171 @@ describe("#487 normalized authority Worker seams", () => {
       await testDb()
         .prepare("UPDATE accounts SET role = 'Staff' WHERE user_id = ?")
         .bind("E2E_DISPOSABLE_STAFF")
+        .run();
+    }
+  });
+
+  test("C-487-04 registration approval requires global scope", async () => {
+    const scopedCookie = await login("E2E_disposable_pl", "0000");
+    const globalCookie = await login("E2E_disposable_staff", "0000");
+    const suffix = crypto.randomUUID().slice(0, 8);
+    const [approveId, rejectId, batchId] = await Promise.all([
+      createPendingRegistration(`${suffix}-approve`, "C487 global approve"),
+      createPendingRegistration(`${suffix}-reject`, "C487 global reject"),
+      createPendingRegistration(`${suffix}-batch`, "C487 global batch"),
+    ]);
+    const db = testDb();
+    await db
+      .prepare(
+        `INSERT OR IGNORE INTO role_definition_grants
+           (role_definition_id, capability, granted_by, granted_at)
+         VALUES (?, 'registration.approval.manage', 'E2E_DISPOSABLE_ADMIN', ?)`
+      )
+      .bind(PROGRAM_LEADER_ROLE, new Date().toISOString())
+      .run();
+
+    try {
+      await problem(
+        await withCookie("/api/v1/auth/registrations", scopedCookie),
+        403,
+        "FORBIDDEN"
+      );
+      await problem(
+        await withCookie(
+          `/api/v1/auth/registrations/${approveId}`,
+          scopedCookie
+        ),
+        403,
+        "FORBIDDEN"
+      );
+      await problem(
+        await withCookie(
+          `/api/v1/auth/registrations/${approveId}/approve`,
+          scopedCookie,
+          {
+            method: "POST",
+            headers: { "Idempotency-Key": `c487-scoped-approve-${suffix}` },
+          }
+        ),
+        403,
+        "FORBIDDEN"
+      );
+      await problem(
+        await withCookie(
+          `/api/v1/auth/registrations/${rejectId}/reject`,
+          scopedCookie,
+          {
+            method: "POST",
+            headers: { "Idempotency-Key": `c487-scoped-reject-${suffix}` },
+            body: JSON.stringify({ decisionNote: "scoped denial" }),
+          }
+        ),
+        403,
+        "FORBIDDEN"
+      );
+      await problem(
+        await withCookie(
+          "/api/v1/auth/registrations/approve-batch",
+          scopedCookie,
+          {
+            method: "POST",
+            headers: { "Idempotency-Key": `c487-scoped-batch-${suffix}` },
+            body: JSON.stringify({ requestIds: [batchId] }),
+          }
+        ),
+        403,
+        "FORBIDDEN"
+      );
+
+      const stillPending = await db
+        .prepare(
+          `SELECT account_status
+             FROM registration_requests
+            WHERE request_id IN (?, ?, ?)`
+        )
+        .bind(approveId, rejectId, batchId)
+        .all<{ account_status: string }>();
+      expect(stillPending.results).toHaveLength(3);
+      expect(
+        stillPending.results?.every(
+          ({ account_status }) => account_status === "Pending"
+        )
+      ).toBe(true);
+
+      const queue = await withCookie(
+        "/api/v1/auth/registrations",
+        globalCookie
+      );
+      expect(queue.status).toBe(200);
+      const queueData = await envelope<{
+        registrations: { requestId: string }[];
+        status: string;
+      }>(queue);
+      expect(queueData.status).toBe("Pending");
+      expect(
+        queueData.registrations.some(
+          ({ requestId }) => requestId === approveId
+        )
+      ).toBe(true);
+
+      const detail = await withCookie(
+        `/api/v1/auth/registrations/${approveId}`,
+        globalCookie
+      );
+      expect(detail.status).toBe(200);
+      const detailData = await envelope<{
+        registration: { requestId: string };
+      }>(detail);
+      expect(detailData.registration.requestId).toBe(approveId);
+
+      const approved = await withCookie(
+        `/api/v1/auth/registrations/${approveId}/approve`,
+        globalCookie,
+        {
+          method: "POST",
+          headers: { "Idempotency-Key": `c487-global-approve-${suffix}` },
+        }
+      );
+      expect(approved.status).toBe(200);
+      expect(
+        (await envelope<{ accountStatus: string }>(approved)).accountStatus
+      ).toBe("active");
+
+      const rejected = await withCookie(
+        `/api/v1/auth/registrations/${rejectId}/reject`,
+        globalCookie,
+        {
+          method: "POST",
+          headers: { "Idempotency-Key": `c487-global-reject-${suffix}` },
+          body: JSON.stringify({ decisionNote: "global rejection" }),
+        }
+      );
+      expect(rejected.status).toBe(200);
+      expect(
+        (await envelope<{ accountStatus: string }>(rejected)).accountStatus
+      ).toBe("rejected");
+
+      const batch = await withCookie(
+        "/api/v1/auth/registrations/approve-batch",
+        globalCookie,
+        {
+          method: "POST",
+          headers: { "Idempotency-Key": `c487-global-batch-${suffix}` },
+          body: JSON.stringify({ requestIds: [batchId] }),
+        }
+      );
+      expect(batch.status).toBe(200);
+      expect(
+        await envelope<{ accountStatus: string; approvedCount: number }>(batch)
+      ).toEqual({ accountStatus: "active", approvedCount: 1 });
+    } finally {
+      await db
+        .prepare(
+          `DELETE FROM role_definition_grants
+            WHERE role_definition_id = ?
+              AND capability = 'registration.approval.manage'`
+        )
+        .bind(PROGRAM_LEADER_ROLE)
         .run();
     }
   });
