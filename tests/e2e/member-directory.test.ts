@@ -290,13 +290,29 @@ test.describe("087-04 Member Directory", () => {
         page.getByRole("heading", { name: DIRECTORY_TITLE })
       ).toBeVisible();
       const adminSearch = page.getByLabel(SEARCH_LABEL);
-      await adminSearch.fill("E2E");
+      const searchMembers = async (
+        search: typeof adminSearch,
+        term: string
+      ) => {
+        const response = page.waitForResponse((candidate) => {
+          const url = new URL(candidate.url());
+          return (
+            url.pathname === "/api/v1/programs/members" &&
+            url.searchParams.get("q") === term
+          );
+        });
+        await search.fill(term);
+        await response;
+      };
+      await searchMembers(adminSearch, "E2E Admin");
       await expect(
         page.getByRole("button", { name: "E2E Admin", exact: true })
       ).toBeVisible();
+      await searchMembers(adminSearch, "E2E Staff");
       await expect(
         page.getByRole("button", { name: "E2E Staff", exact: true })
       ).toBeVisible();
+      await searchMembers(adminSearch, "E2E Member");
       await expect(
         page.getByRole("button", { name: "E2E Member", exact: true })
       ).toBeVisible();
@@ -309,13 +325,16 @@ test.describe("087-04 Member Directory", () => {
         required("PROGRAMS_STAFF_CREDENTIAL", STAFF_CREDENTIAL)
       );
       await page.goto("/management?module=members");
-      await page.getByLabel(SEARCH_LABEL).fill("E2E");
+      const staffSearch = page.getByLabel(SEARCH_LABEL);
+      await searchMembers(staffSearch, "E2E Admin");
       await expect(
         page.getByRole("button", { name: "E2E Admin", exact: true })
       ).toBeVisible();
+      await searchMembers(staffSearch, "E2E Staff");
       await expect(
         page.getByRole("button", { name: "E2E Staff", exact: true })
       ).toBeVisible();
+      await searchMembers(staffSearch, "E2E Member");
       await expect(
         page.getByRole("button", { name: "E2E Member", exact: true })
       ).toBeVisible();
@@ -329,17 +348,21 @@ test.describe("087-04 Member Directory", () => {
         required("PROGRAMS_MEMBER_CREDENTIAL", MEMBER_CREDENTIAL)
       );
       await page.goto("/management?module=members");
-      await page.getByLabel(SEARCH_LABEL).fill("E2E");
+      const memberSearch = page.getByLabel(SEARCH_LABEL);
+      await searchMembers(memberSearch, "E2E Admin");
       await expect(
         page.getByRole("button", { name: "E2E Admin", exact: true })
       ).toBeVisible();
+      await searchMembers(memberSearch, "E2E Member");
       await expect(
         page.getByRole("button", { name: "E2E Member", exact: true })
       ).toBeVisible();
+      await searchMembers(memberSearch, "E2E Staff");
       await expect(
         page.getByRole("button", { name: "E2E Staff", exact: true })
       ).toHaveCount(0);
 
+      await searchMembers(memberSearch, "E2E Admin");
       // Selecting a result renders contact/role/departments inline. There is
       // no save/confirm/submit commit action for this read-only detail.
       await page
