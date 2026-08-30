@@ -54,6 +54,10 @@ export interface Department {
     publish: boolean;
     module_configure: boolean;
     manager_assign?: boolean;
+    /** Whether the caller may enter the scoped Account Access destination. */
+    role_read?: boolean;
+    role_assign?: boolean;
+    role_revoke?: boolean;
   };
 }
 
@@ -90,6 +94,10 @@ export interface Program {
     publish: boolean;
     enroll: boolean;
     leader_assign: boolean;
+    /** Whether the caller may enter the scoped Account Access destination. */
+    role_read?: boolean;
+    role_assign?: boolean;
+    role_revoke?: boolean;
   };
 }
 export type ManagementProgram = Omit<

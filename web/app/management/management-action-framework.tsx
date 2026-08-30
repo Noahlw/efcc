@@ -1,6 +1,6 @@
 "use client";
-import { cva } from 'class-variance-authority';
-import type { VariantProps } from 'class-variance-authority';
+import { cva } from "class-variance-authority";
+import type { VariantProps } from "class-variance-authority";
 import Link from "next/link";
 import { useEffect, useRef } from "react";
 import type { ComponentPropsWithoutRef, ReactNode, Ref } from "react";
@@ -83,13 +83,16 @@ export function safeManagementReturnHref(
   }
   try {
     const candidate = new URL(value, "https://efcc.internal");
+    const path = candidate.pathname;
     if (
-      candidate.pathname !== "/management" &&
-      !candidate.pathname.startsWith("/management/")
+      path !== "/management" &&
+      !path.startsWith("/management/") &&
+      path !== "/programs" &&
+      !path.startsWith("/programs/")
     ) {
       return fallback;
     }
-    return `${candidate.pathname}${candidate.search}${candidate.hash}`;
+    return `${path}${candidate.search}${candidate.hash}`;
   } catch {
     return fallback;
   }

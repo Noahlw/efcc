@@ -309,6 +309,92 @@ describe("AccountAccessPanel", () => {
       screen.getByRole("switch", { name: "新增 課程協調者" })
     ).toBeTruthy();
   });
+  test("preserves a validated Programs return when Back is pressed", async () => {
+    mocks.searchParams = new URLSearchParams(
+      "module=accounts&account=target&view=access&return=%2Fprograms%3Fmode%3Dmanagement%26program%3Dprogram-1%26task%3Dsettings"
+    );
+    render(<AccountAccessPanel />);
+    await screen.findByRole("heading", { name: "Target Account" });
+    await userEvent.click(screen.getByRole("button", { name: "‹ 返回" }));
+    expect(mocks.router.replace).toHaveBeenCalledWith(
+      "/programs?mode=management&program=program-1&task=settings"
+    );
+  });
+  test("opens a scoped identity picker before Account Access", async () => {
+    mocks.searchParams = new URLSearchParams(
+      "module=accounts&scopeKind=Program&scopeId=program-1&view=access&return=%2Fprograms%3Fmode%3Dmanagement%26program%3Dprogram-1%26task%3Dsettings"
+    );
+    mocks.getRoleHierarchy.mockResolvedValue({
+      ...hierarchy,
+      categories: [
+        {
+          ...hierarchy.categories[0],
+          definitions: [
+            {
+              ...hierarchy.categories[0]?.definitions[0],
+              roleDefinitionId: "program-role",
+              label: "課程負責人",
+              scopeKind: "Program",
+              scopeId: "program-1",
+              scopeLabel: "查經小組",
+              assignmentActions: [{ action: "assign", label: "指派" }],
+            },
+          ],
+        },
+      ],
+    });
+    render(<AccountAccessPanel />);
+    await screen.findByRole("heading", { name: "選擇身份組" });
+    await userEvent.click(screen.getByRole("button", { name: /課程負責人/u }));
+    expect(mocks.router.push).toHaveBeenCalledWith(
+      "/management?module=accounts&roleDefinition=program-role&view=access&return=%2Fprograms%3Fmode%3Dmanagement%26program%3Dprogram-1%26task%3Dsettings"
+    );
+  });
+  test("filters scoped identity picker to assignable roles", async () => {
+    mocks.searchParams = new URLSearchParams(
+      "module=accounts&scopeKind=Department&scopeId=dept-1&view=access&return=%2Fprograms%3Fmode%3Dmanagement%26department%3Ddept-1"
+    );
+    const base = hierarchy.categories[0]?.definitions[0];
+    if (!base) {
+      throw new Error("missing hierarchy fixture");
+    }
+    mocks.getRoleHierarchy.mockResolvedValue({
+      ...hierarchy,
+      categories: [
+        {
+          ...hierarchy.categories[0],
+          definitions: [
+            {
+              ...base,
+              roleDefinitionId: "role-unassignable",
+              label: "不可指派身份組",
+              scopeKind: "Program",
+              scopeId: "program-1",
+              scopeParentDepartmentId: "dept-1",
+              assignmentActions: [],
+            },
+            {
+              ...base,
+              roleDefinitionId: "role-assignable",
+              label: "可指派身份組",
+              scopeKind: "Program",
+              scopeId: "program-1",
+              scopeParentDepartmentId: "dept-1",
+              assignmentActions: [{ action: "assign", label: "指派" }],
+            },
+          ],
+        },
+      ],
+    });
+    render(<AccountAccessPanel />);
+    await screen.findByRole("heading", { name: "選擇身份組" });
+    expect(
+      screen.getByRole("button", { name: /可指派身份組/u })
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /不可指派身份組/u })
+    ).not.toBeInTheDocument();
+  });
   test("searches eligible accounts and navigates with canonical access URL", async () => {
     const user = userEvent.setup();
     mocks.searchEligibleAccounts.mockResolvedValue({
@@ -1097,9 +1183,7 @@ describe("AccountAccessPanel", () => {
       await screen.findByRole("searchbox", { name: "搜尋可用帳戶" }),
       "Other"
     );
-    await waitFor(() =>
-      expect(mocks.router.replace).toHaveBeenCalledWith("/")
-    );
+    await waitFor(() => expect(mocks.router.replace).toHaveBeenCalledWith("/"));
     expect(mocks.rememberDeepLink).toHaveBeenCalledWith(
       "/management?module=accounts&account=target&view=access#search"
     );
@@ -1119,9 +1203,7 @@ describe("AccountAccessPanel", () => {
     await user.click(
       await screen.findByRole("button", { name: "撤銷 課程協調者" })
     );
-    await waitFor(() =>
-      expect(mocks.router.replace).toHaveBeenCalledWith("/")
-    );
+    await waitFor(() => expect(mocks.router.replace).toHaveBeenCalledWith("/"));
     expect(mocks.rememberDeepLink).toHaveBeenCalledWith(
       "/management?module=accounts&account=target&view=access#revoke"
     );
@@ -1140,9 +1222,7 @@ describe("AccountAccessPanel", () => {
     await user.click(
       await screen.findByRole("button", { name: "停用 身份組甲" })
     );
-    await waitFor(() =>
-      expect(mocks.router.replace).toHaveBeenCalledWith("/")
-    );
+    await waitFor(() => expect(mocks.router.replace).toHaveBeenCalledWith("/"));
     expect(mocks.rememberDeepLink).toHaveBeenCalledWith(
       "/management?module=accounts&account=target&view=access#lifecycle"
     );
@@ -1160,12 +1240,8 @@ describe("AccountAccessPanel", () => {
       await screen.findByRole("switch", { name: "新增 課程協調者" })
     );
     await user.click(screen.getByRole("button", { name: "檢視新增 (1)" }));
-    await user.click(
-      screen.getByRole("button", { name: "確認一次新增" })
-    );
-    await waitFor(() =>
-      expect(mocks.router.replace).toHaveBeenCalledWith("/")
-    );
+    await user.click(screen.getByRole("button", { name: "確認一次新增" }));
+    await waitFor(() => expect(mocks.router.replace).toHaveBeenCalledWith("/"));
     expect(mocks.rememberDeepLink).toHaveBeenCalledWith(
       "/management?module=accounts&account=target&view=access#add"
     );
@@ -1190,9 +1266,7 @@ describe("AccountAccessPanel", () => {
       expect(mocks.getAccountAccess).toHaveBeenCalledTimes(2)
     );
     await user.click(screen.getByRole("button", { name: "確認撤銷" }));
-    await waitFor(() =>
-      expect(mocks.router.replace).toHaveBeenCalledWith("/")
-    );
+    await waitFor(() => expect(mocks.router.replace).toHaveBeenCalledWith("/"));
     expect(mocks.rememberDeepLink).toHaveBeenCalledWith(
       "/management?module=accounts&account=target&view=access#revoke-mutation"
     );
@@ -1213,9 +1287,7 @@ describe("AccountAccessPanel", () => {
     );
     await screen.findByRole("heading", { name: "確認停用身份組？" });
     await user.click(screen.getByRole("button", { name: "確認" }));
-    await waitFor(() =>
-      expect(mocks.router.replace).toHaveBeenCalledWith("/")
-    );
+    await waitFor(() => expect(mocks.router.replace).toHaveBeenCalledWith("/"));
     expect(mocks.rememberDeepLink).toHaveBeenCalledWith(
       "/management?module=accounts&account=target&view=access#lifecycle-mutation"
     );
@@ -1249,9 +1321,7 @@ describe("AccountAccessPanel", () => {
     await waitFor(() =>
       expect(mocks.updateRoleDefinitionLifecycle).toHaveBeenCalledTimes(1)
     );
-    await waitFor(() =>
-      expect(mocks.router.replace).toHaveBeenCalledWith("/")
-    );
+    await waitFor(() => expect(mocks.router.replace).toHaveBeenCalledWith("/"));
     expect(mocks.rememberDeepLink).toHaveBeenCalledWith(
       "/management?module=accounts&account=target&view=access#refresh"
     );

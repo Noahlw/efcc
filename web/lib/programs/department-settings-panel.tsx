@@ -296,29 +296,32 @@ export const DepartmentSettingsPanel = ({
                   </ul>
                 </section>
               )}
-              {department.capabilities.manager_assign && (
-                <section
-                  className="mt-4 grid gap-2"
-                  aria-labelledby={`${department.department_id}-identity-heading`}
-                >
-                  <h4
-                    id={`${department.department_id}-identity-heading`}
-                    className={styles.panelHeading}
+              {department.capabilities.manager_assign &&
+                department.capabilities.role_read === true &&
+                (department.capabilities.role_assign === true ||
+                  department.capabilities.role_revoke === true) && (
+                  <section
+                    className="mt-4 grid gap-2"
+                    aria-labelledby={`${department.department_id}-identity-heading`}
                   >
-                    身份組指派
-                  </h4>
-                  <p className={styles.fieldHint}>
-                    帳戶身份組指派及撤銷現由帳戶存取管理統一處理。
-                  </p>
-                  <Button asChild className="min-h-11 w-fit">
-                    <Link
-                      href={`/management?module=accounts&department=${encodeURIComponent(department.department_id)}&return=${encodeURIComponent(`/programs?department=${department.department_id}`)}`}
+                    <h4
+                      id={`${department.department_id}-identity-heading`}
+                      className={styles.panelHeading}
                     >
-                      管理帳戶身份組
-                    </Link>
-                  </Button>
-                </section>
-              )}
+                      身份組指派
+                    </h4>
+                    <p className={styles.fieldHint}>
+                      帳戶身份組指派及撤銷現由帳戶存取管理統一處理。
+                    </p>
+                    <Button asChild className="min-h-11 w-fit">
+                      <Link
+                        href={`/management?module=accounts&scopeKind=Department&scopeId=${encodeURIComponent(department.department_id)}&view=access&return=${encodeURIComponent(`/programs?mode=management&department=${department.department_id}`)}`}
+                      >
+                        管理帳戶身份組
+                      </Link>
+                    </Button>
+                  </section>
+                )}
             </>
           )}
         </>

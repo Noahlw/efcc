@@ -150,6 +150,32 @@ describe("#486 Account Access handlers", () => {
     expect(empty.status).toBe(422);
     expect((await problem(empty)).code).toBe("ROLE_INVALID_TARGET");
   });
+  test("rejects oversized assignment arrays with canonical validation", async () => {
+    const response = await worker.fetch(
+      request(`/api/v1/identity/accounts/${STAFF}/assignments`, {
+        method: "POST",
+        headers: {
+          Cookie: `${ACCESS_COOKIE_NAME}=${adminCookie}`,
+          "Content-Type": "application/json",
+          "Idempotency-Key": "account-access-handler-too-many-roles",
+        },
+        body: {
+          base_revision: await revision(),
+          role_definition_ids: Array.from(
+            { length: 51 },
+            (_, index) => `unknown-role-${index}`
+          ),
+        },
+      }),
+      testEnv()
+    );
+    expect(response.status).toBe(422);
+    const body = await problem(response);
+    expect(body.code).toBe("VALIDATION");
+    expect(body.detail).toBe(
+      "role_definition_ids must contain at most 50 identities。"
+    );
+  });
   test("commits add and explicit revoke on one account with one envelope each", async () => {
     const cookieHeaders = {
       Cookie: `${ACCESS_COOKIE_NAME}=${adminCookie}`,

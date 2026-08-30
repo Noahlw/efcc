@@ -101,6 +101,8 @@ interface RoleDefinitionRecord {
   category_key: "Global" | "Department" | "Program";
   scope_kind: RoleScopeKind;
   scope_id: string | null;
+  /** Parent Department ID for Program-scoped definitions. */
+  parent_department_id?: string | null;
   position: number;
   is_protected: number;
   is_archived: number;
@@ -149,7 +151,10 @@ function roleKind(
 
 function withinActorScope(
   actorRoles: Awaited<ReturnType<typeof loadActorRoles>>,
-  target: RoleDefinitionRecord
+  target: Pick<
+    RoleDefinitionRecord,
+    "scope_kind" | "scope_id" | "parent_department_id"
+  >
 ): boolean {
   const highest = actorRoles[0];
   if (!highest) {
@@ -157,6 +162,12 @@ function withinActorScope(
   }
   if (highest.scope_kind === ROLE_CATEGORY_KEY.GLOBAL) {
     return true;
+  }
+  if (
+    highest.scope_kind === ROLE_CATEGORY_KEY.DEPARTMENT &&
+    target.scope_kind === ROLE_CATEGORY_KEY.PROGRAM
+  ) {
+    return target.parent_department_id === highest.scope_id;
   }
   return (
     highest.scope_kind === target.scope_kind &&
@@ -204,11 +215,17 @@ async function findRoleDefinition(
 ): Promise<RoleDefinitionRecord | null> {
   return db
     .prepare(
-      `SELECT role_definition_id, stable_key, label, description,
-              category_key, scope_kind, scope_id, position,
-              is_protected, is_archived
-         FROM role_definitions
-        WHERE role_definition_id = ?`
+      `SELECT rd.role_definition_id, rd.stable_key, rd.label, rd.description,
+              rd.category_key, rd.scope_kind, rd.scope_id,
+              (
+                SELECT p.department_id
+                  FROM programs p
+                 WHERE p.program_id = rd.scope_id
+                   AND rd.scope_kind = 'Program'
+              ) AS parent_department_id,
+              rd.position, rd.is_protected, rd.is_archived
+         FROM role_definitions rd
+        WHERE rd.role_definition_id = ?`
     )
     .bind(roleDefinitionId)
     .first<RoleDefinitionRecord>();
@@ -407,6 +424,7 @@ function toRoleDefinition(
     kind: roleKind(target.category_key, target.stable_key),
     scopeKind: target.scope_kind,
     scopeId: target.scope_id,
+    scopeParentDepartmentId: target.parent_department_id ?? null,
     scopeLabel: scopeName,
     position: target.position,
     isProtected: target.is_protected === 1,

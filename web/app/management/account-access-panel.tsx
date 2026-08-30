@@ -56,6 +56,7 @@ import { rememberDeepLink } from "@/lib/session";
 import { cn } from "@/lib/utils";
 
 import { DirectoryFrame } from "./directory-frame";
+import { safeManagementReturnHref } from "./management-action-framework";
 
 const panelVariants = cva(
   "mx-auto grid min-w-0 w-full gap-[var(--space-4)] px-[var(--space-4)] pb-[var(--space-9)] pt-[var(--space-4)] text-[var(--ink)]",
@@ -83,9 +84,7 @@ const EMPTY_GROUPS: EffectiveAccessGroups = {
 };
 
 function returnHref(value: string | null): string {
-  return value?.startsWith("/management")
-    ? value
-    : "/management?module=accounts";
+  return safeManagementReturnHref(value, "/management?module=accounts");
 }
 
 function errorMessage(error: unknown): string {
@@ -324,14 +323,29 @@ export const AccountAccessPanel = () => {
   const accountUserId = searchParams.get("account");
   const roleDefinitionId = searchParams.get("roleDefinition");
   const viewParam = searchParams.get("view");
+  const scopeKindParam = searchParams.get("scopeKind");
+  const scopeIdParam = searchParams.get("scopeId");
   const roleFirst = !accountUserId && roleDefinitionId !== null;
+  const scopeFirst =
+    !accountUserId &&
+    roleDefinitionId === null &&
+    scopeIdParam !== null &&
+    scopeIdParam.length > 0 &&
+    (scopeKindParam === "Department" || scopeKindParam === "Program");
+  const identitySelection = roleFirst || scopeFirst;
   const stateRef = useRef<HTMLElement>(null);
   const detailRef = useRef<HTMLElement>(null);
   const mutationKeyRef = useRef<string | null>(null);
   const revokePreviewRequestRef = useRef(0);
   const lifecyclePreviewRequestRef = useRef(0);
   const lifecycleRefreshRequestRef = useRef(0);
-  const routeKey = JSON.stringify([accountUserId, roleDefinitionId, viewParam]);
+  const routeKey = JSON.stringify([
+    accountUserId,
+    roleDefinitionId,
+    scopeKindParam,
+    scopeIdParam,
+    viewParam,
+  ]);
   const routeKeyRef = useRef(routeKey);
   const routeGenerationRef = useRef(0);
   if (routeKeyRef.current !== routeKey) {
@@ -457,7 +471,13 @@ export const AccountAccessPanel = () => {
     setStatus(null);
     setRefreshError(null);
     setMutating(false);
-  }, [accountUserId, roleDefinitionId, viewParam]);
+  }, [
+    accountUserId,
+    roleDefinitionId,
+    scopeKindParam,
+    scopeIdParam,
+    viewParam,
+  ]);
   useEffect(() => {
     if (!accountUserId || viewParam !== "access") return;
     setView(null);
@@ -487,7 +507,7 @@ export const AccountAccessPanel = () => {
   }, [accountResource.state, router]);
 
   useEffect(() => {
-    if (!roleFirst || viewParam !== "access") {
+    if (!identitySelection || viewParam !== "access") {
       setHierarchyLoading(false);
       return;
     }
@@ -534,18 +554,26 @@ export const AccountAccessPanel = () => {
   }, [
     hierarchyRetryKey,
     roleDefinitionId,
-    roleFirst,
+    identitySelection,
+    scopeKindParam,
+    scopeIdParam,
     routeGeneration,
     routeKey,
     viewParam,
   ]);
   useEffect(() => {
-    if (!roleFirst || viewParam !== "access") return;
+    if (!identitySelection || viewParam !== "access") return;
     if (hierarchyLoading || (!hierarchy && !hierarchyError)) return;
     if (hierarchyError) {
       stateRef.current?.focus();
     }
-  }, [hierarchyError, hierarchyLoading, hierarchy, roleFirst, viewParam]);
+  }, [
+    hierarchyError,
+    hierarchyLoading,
+    hierarchy,
+    identitySelection,
+    viewParam,
+  ]);
 
   useEffect(() => {
     if ((!accountUserId && !roleFirst) || viewParam !== "access") return;
@@ -602,6 +630,20 @@ export const AccountAccessPanel = () => {
   const selectedRoles = assignableRoles.filter((role) =>
     selectedIds.includes(role.roleDefinitionId)
   );
+  const scopedDefinitions =
+    scopeFirst && scopeKindParam !== null && scopeIdParam !== null
+      ? (hierarchy?.categories
+          .flatMap((category) => category.definitions)
+          .filter(
+            (role) =>
+              ((role.scopeKind === scopeKindParam &&
+                role.scopeId === scopeIdParam) ||
+                (scopeKindParam === "Department" &&
+                  role.scopeKind === "Program" &&
+                  role.scopeParentDepartmentId === scopeIdParam)) &&
+              (role.assignmentActions?.length ?? 0) > 0
+          ) ?? [])
+      : [];
   const roleDefinition = hierarchy?.categories
     .flatMap((category) => category.definitions)
     .find((role) => role.roleDefinitionId === roleDefinitionId);
@@ -987,7 +1029,7 @@ export const AccountAccessPanel = () => {
     setHierarchyRetryKey((key) => key + 1);
   };
 
-  if ((!accountUserId && !roleDefinitionId) || viewParam !== "access") {
+  if ((!accountUserId && !identitySelection) || viewParam !== "access") {
     return (
       <section className={panelVariants({ mode: "safe" })}>
         <div
@@ -1019,7 +1061,7 @@ export const AccountAccessPanel = () => {
   const loadError =
     resourceState.kind === "error" ? resourceState.message : null;
   const roleLifecycleActions = roleDefinition?.lifecycleActions ?? [];
-  const roleFirstDetail = roleFirst ? (
+  const roleFirstDetail = identitySelection ? (
     hierarchyLoading || (!hierarchy && !hierarchyError) ? (
       <section
         className={stateClass}
@@ -1048,6 +1090,58 @@ export const AccountAccessPanel = () => {
         >
           重試身份組
         </Button>
+      </section>
+    ) : scopeFirst ? (
+      <section
+        className={stateClass}
+        data-account-access-state
+        ref={stateRef}
+        role="status"
+        tabIndex={-1}
+      >
+        <Button
+          className="mb-3 min-h-11 px-3"
+          onClick={goBack}
+          type="button"
+          variant="ghost"
+        >
+          ‹ 返回
+        </Button>
+        <h1 className="m-0 text-xl font-extrabold">選擇身份組</h1>
+        <p className="m-0">選擇此範圍內要管理的身份組。</p>
+        {scopedDefinitions.length === 0 ? (
+          <p className="m-0">目前沒有可管理的身份組。</p>
+        ) : (
+          <ul className="m-0 grid min-w-0 gap-2 p-0 [list-style:none]">
+            {scopedDefinitions.map((definition) => (
+              <li key={definition.roleDefinitionId}>
+                <Button
+                  className="min-h-11 w-full justify-start text-left"
+                  onClick={() => {
+                    const returnTo = safeManagementReturnHref(
+                      searchParams.get("return"),
+                      "/management?module=accounts"
+                    );
+                    router.push(
+                      `/management?module=accounts&roleDefinition=${encodeURIComponent(definition.roleDefinitionId)}&view=access&return=${encodeURIComponent(returnTo)}`
+                    );
+                  }}
+                  type="button"
+                  variant="outline"
+                >
+                  <span className="min-w-0">
+                    <strong className="block wrap-anywhere">
+                      {definition.label}
+                    </strong>
+                    <small className="block wrap-anywhere text-[var(--ink-muted)]">
+                      {definition.scopeLabel ?? "全教會"}
+                    </small>
+                  </span>
+                </Button>
+              </li>
+            ))}
+          </ul>
+        )}
       </section>
     ) : !roleDefinition ? (
       <section
@@ -1279,7 +1373,7 @@ export const AccountAccessPanel = () => {
       className="min-w-0"
       content="detail"
       detail={
-        roleFirst ? (
+        identitySelection ? (
           roleFirstDetail
         ) : loading ? (
           <output
@@ -1697,14 +1791,14 @@ export const AccountAccessPanel = () => {
       hasDetail
       search={null}
       selection={{
-        selectedId: roleFirst ? roleDefinitionId : accountUserId,
+        selectedId: identitySelection ? roleDefinitionId : accountUserId,
         onSelect: (selectedAccountUserId) =>
           router.push(
             `/management?module=accounts&account=${encodeURIComponent(selectedAccountUserId)}&view=access&return=${encodeURIComponent(returnHref(searchParams.get("return")))}`
           ),
       }}
       state={
-        roleFirst
+        identitySelection
           ? "ready"
           : loading
             ? "loading"
@@ -1717,8 +1811,8 @@ export const AccountAccessPanel = () => {
         stateRef,
         resultsRef: detailRef,
         detailRef,
-        detailKey: roleFirst
-          ? `${hierarchyRetryKey}:${hierarchy?.revision ?? "pending"}:${roleDefinitionId}`
+        detailKey: identitySelection
+          ? `${hierarchyRetryKey}:${hierarchy?.revision ?? "pending"}:${roleDefinitionId ?? `${scopeKindParam}:${scopeIdParam}`}`
           : accountResource.state.kind,
         retryKey,
       }}

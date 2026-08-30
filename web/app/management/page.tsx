@@ -25,8 +25,14 @@ const ManagementModule = () => {
 
   switch (module) {
     case "accounts": {
+      const scopedAccess =
+        searchParams.get("scopeId") !== null &&
+        (searchParams.get("scopeKind") === "Department" ||
+          searchParams.get("scopeKind") === "Program");
       return searchParams.get("view") === "access" &&
-        (searchParams.get("account") || searchParams.get("roleDefinition")) ? (
+        (searchParams.get("account") ||
+          searchParams.get("roleDefinition") ||
+          scopedAccess) ? (
         <AccountAccessPanel />
       ) : (
         <AccountDirectoryPanel />

@@ -280,6 +280,192 @@ async function ensureMixedScopeFixtures(): Promise<void> {
       ),
   ]);
 }
+interface RevisionRaceDatabase {
+  firstDb: D1Database;
+  secondDb: D1Database;
+  firstRevisionRead: Promise<void>;
+}
+
+interface RevisionRaceControl {
+  firstRevisionRead: Promise<void>;
+  releaseFirstRevisionRead: () => void;
+  firstBatchComplete: Promise<void>;
+  releaseFirstBatch: () => void;
+}
+
+function revisionRaceDatabase(db: D1Database): RevisionRaceDatabase {
+  let firstBatchReleased = false;
+  let releaseFirstRevisionRead!: () => void;
+  let releaseFirstBatch!: () => void;
+  const control: RevisionRaceControl = {
+    firstRevisionRead: new Promise<void>((resolve) => {
+      releaseFirstRevisionRead = resolve;
+    }),
+    releaseFirstRevisionRead: () => releaseFirstRevisionRead(),
+    firstBatchComplete: new Promise<void>((resolve) => {
+      releaseFirstBatch = resolve;
+    }),
+    releaseFirstBatch: () => releaseFirstBatch(),
+  };
+  const wrap = (owner: "first" | "second"): D1Database => {
+    const originalPrepare = db.prepare.bind(db);
+    const originalBatch = db.batch.bind(db);
+    const prepare = (sql: string): D1PreparedStatement => {
+      const statement = originalPrepare(sql);
+      if (!sql.includes("SELECT revision FROM role_policy_revisions")) {
+        return statement;
+      }
+      return new Proxy(statement, {
+        get(target, property, receiver) {
+          if (property !== "first") {
+            return Reflect.get(target, property, receiver);
+          }
+          const first = target.first.bind(target);
+          return async () => {
+            if (owner === "first") {
+              control.releaseFirstRevisionRead();
+            } else {
+              await control.firstBatchComplete;
+            }
+            return first();
+          };
+        },
+      }) as D1PreparedStatement;
+    };
+    const batch = async (
+      statements: D1PreparedStatement[]
+    ): Promise<D1Result<unknown>[]> => {
+      const result = await originalBatch(statements);
+      if (owner === "first" && !firstBatchReleased) {
+        firstBatchReleased = true;
+        control.releaseFirstBatch();
+      }
+      return result;
+    };
+    return new Proxy(db, {
+      get(target, property, receiver) {
+        if (property === "prepare") {
+          return prepare;
+        }
+        if (property === "batch") {
+          return batch;
+        }
+        const value = Reflect.get(target, property, receiver);
+        return typeof value === "function" ? value.bind(target) : value;
+      },
+    });
+  };
+  return {
+    firstDb: wrap("first"),
+    secondDb: wrap("second"),
+    firstRevisionRead: control.firstRevisionRead,
+  };
+}
+interface DeniedReservationInput {
+  idempotencyKey: string;
+  requestFingerprint: string;
+  actorUserId: string;
+  baseRevision: number;
+  errorCode: string;
+  action: string;
+  entityType: string;
+  entityId: string;
+  now: string;
+}
+
+function deniedReservationDatabase(
+  db: D1Database,
+  input: DeniedReservationInput
+): D1Database {
+  let injected = false;
+  const originalPrepare = db.prepare.bind(db);
+  const originalBatch = db.batch.bind(db);
+  const injectDeniedReservation = async (): Promise<void> => {
+    if (injected) {
+      return;
+    }
+    injected = true;
+    await originalBatch([
+      originalPrepare(
+        `INSERT INTO role_policy_mutations
+          (idempotency_key, request_fingerprint, actor_user_id, base_revision,
+           outcome, resulting_revision, result_json, applied, audit_written,
+           created_at, completed_at)
+         VALUES (?, ?, ?, ?, 'DENIED', ?, ?, 0, 1, ?, ?)`
+      ).bind(
+        input.idempotencyKey,
+        input.requestFingerprint,
+        input.actorUserId,
+        input.baseRevision,
+        input.baseRevision + 1,
+        JSON.stringify({
+          errorCode: input.errorCode,
+          requestId: "denied-reservation-race",
+        }),
+        input.now,
+        input.now
+      ),
+      originalPrepare(
+        "UPDATE role_policy_revisions SET revision = revision + 1 WHERE id = 1"
+      ),
+      originalPrepare(
+        `INSERT INTO role_audit_events
+          (audit_id, inserted_at, actor_user_id, action, entity_type, entity_id,
+           old_value_json, new_value_json, reason, outcome, correlation_id)
+         VALUES (?, ?, ?, ?, ?, ?, NULL, NULL, ?, 'DENIED', ?)`
+      ).bind(
+        `denied-reservation-race-${input.idempotencyKey}`,
+        input.now,
+        input.actorUserId,
+        input.action,
+        input.entityType,
+        input.entityId,
+        input.errorCode,
+        "denied-reservation-race"
+      ),
+    ]);
+  };
+  const wrapMutationStatement = (
+    statement: D1PreparedStatement
+  ): D1PreparedStatement =>
+    new Proxy(statement, {
+      get(target, property, receiver) {
+        if (property === "bind") {
+          const bind = target.bind.bind(target) as (
+            ...args: unknown[]
+          ) => D1PreparedStatement;
+          return (...args: unknown[]) => wrapMutationStatement(bind(...args));
+        }
+        if (property === "first") {
+          const first = target.first.bind(target);
+          return async () => {
+            const result = await first();
+            if (result === null) {
+              await injectDeniedReservation();
+            }
+            return result;
+          };
+        }
+        return Reflect.get(target, property, receiver);
+      },
+    }) as D1PreparedStatement;
+  const prepare = (sql: string): D1PreparedStatement => {
+    const statement = originalPrepare(sql);
+    return sql.includes("FROM role_policy_mutations") &&
+      sql.includes("idempotency_key = ?")
+      ? wrapMutationStatement(statement)
+      : statement;
+  };
+  return new Proxy(db, {
+    get(target, property, receiver) {
+      if (property === "prepare") {
+        return prepare;
+      }
+      const value = Reflect.get(target, property, receiver);
+      return typeof value === "function" ? value.bind(target) : value;
+    },
+  });
+}
 
 type AccountAccessViewWithAssignmentOptions = AccountAccessView & {
   assignableRoles: readonly { roleDefinitionId: string }[];
@@ -354,6 +540,68 @@ describe("#486 Account Access domain", () => {
     expect(view.effectiveAccess.Department.length).toBeGreaterThan(0);
     expect(view.effectiveAccess.Program).toHaveLength(0);
     expect(JSON.stringify(view)).not.toContain("青少年查經帶領");
+  });
+  test("Department actor can manage a same-department Program identity", async () => {
+    const programId = "ACCOUNT-ACCESS-ADULT-PROGRAM";
+    const roleId = "ACCOUNT-ACCESS-ADULT-PROGRAM-ROLE";
+    const now = "2026-08-29T00:02:00.000Z";
+    await testDb().batch([
+      testDb()
+        .prepare(
+          `INSERT OR IGNORE INTO programs
+            (program_id, department_id, name, behavior_type, lifecycle,
+             discoverability, enrollment_mode, created_at, updated_at)
+           VALUES (?, '018f3b8a-0000-7000-8000-000000000002',
+                   'Account Access 成人課程', 'OneOff', 'Active', 'Unlisted',
+                   'MemberRequest', ?, ?)`
+        )
+        .bind(programId, now, now),
+      testDb()
+        .prepare(
+          `INSERT OR IGNORE INTO role_definitions
+            (role_definition_id, category_key, stable_key, label, description,
+             scope_kind, scope_id, position, is_protected, is_archived,
+             created_by, created_at, updated_by, updated_at)
+           VALUES (?, 'Program', ?, '成人課程身份組', 'same-department Program fixture',
+                   'Program', ?, 30, 0, 0, NULL, ?, NULL, ?)`
+        )
+        .bind(roleId, roleId, programId, now, now),
+    ]);
+    const before = await loadAccountAccess(
+      testDb(),
+      SCOPED_ACTOR,
+      MIXED_SCOPE_TARGET
+    );
+    const granted = await mutateAccountAssignments(testDb(), {
+      actor_user_id: SCOPED_ACTOR,
+      account_user_id: MIXED_SCOPE_TARGET,
+      base_revision: before.revision,
+      role_definition_ids: [roleId],
+      idempotency_key: "account-access-red-scoped-program-grant",
+      now,
+      audit_id: "account-access-red-scoped-program-grant-audit",
+      correlation_id: "account-access-red-scoped-program-grant-correlation",
+    });
+    expect(
+      granted.activeAssignments.some(
+        (assignment) => assignment.roleDefinitionId === roleId
+      )
+    ).toBe(true);
+    const revoked = await revokeAccountAssignments(testDb(), {
+      actor_user_id: SCOPED_ACTOR,
+      account_user_id: MIXED_SCOPE_TARGET,
+      base_revision: granted.revision,
+      role_definition_ids: [roleId],
+      idempotency_key: "account-access-red-scoped-program-revoke",
+      now: "2026-08-29T00:02:01.000Z",
+      audit_id: "account-access-red-scoped-program-revoke-audit",
+      correlation_id: "account-access-red-scoped-program-revoke-correlation",
+    });
+    expect(
+      revoked.activeAssignments.some(
+        (assignment) => assignment.roleDefinitionId === roleId
+      )
+    ).toBe(false);
   });
 
   test("searches identity metadata within exact lower role scope", async () => {
@@ -1000,5 +1248,181 @@ describe("#486 Account Access domain", () => {
     expect(new Set(JSON.parse(revokeAudit?.new_value_json ?? "[]"))).toEqual(
       new Set(fullBefore)
     );
+  });
+  test("replays an assignment reservation that wins a revision race", async () => {
+    const before = await loadAccountAccess(testDb(), ADMIN, STAFF);
+    const input = {
+      actor_user_id: ADMIN,
+      account_user_id: STAFF,
+      base_revision: before.revision,
+      role_definition_ids: [GRANTABLE_DEPARTMENT_ROLE],
+      idempotency_key: "account-access-red-assignment-race",
+      now: "2026-08-29T00:09:00.000Z",
+      audit_id: "account-access-red-assignment-race-audit",
+      correlation_id: "account-access-red-assignment-race-correlation",
+    };
+    const race = revisionRaceDatabase(testDb());
+    const firstPromise = mutateAccountAssignments(race.firstDb, input);
+    await race.firstRevisionRead;
+    const secondPromise = mutateAccountAssignments(race.secondDb, {
+      ...input,
+      now: "2026-08-29T00:09:01.000Z",
+      audit_id: "account-access-red-assignment-race-audit-2",
+      correlation_id: "account-access-red-assignment-race-correlation-2",
+    });
+    const [first, second] = await Promise.all([firstPromise, secondPromise]);
+    expect(first.idempotent).toBe(false);
+    expect(second.idempotent).toBe(true);
+    expect(second.revision).toBe(first.revision);
+    expect(
+      second.activeAssignments.some(
+        (assignment) =>
+          assignment.roleDefinitionId === GRANTABLE_DEPARTMENT_ROLE
+      )
+    ).toBe(true);
+  });
+
+  test("replays a revoke reservation that wins a revision race", async () => {
+    const before = await loadAccountAccess(testDb(), ADMIN, STAFF);
+    const input = {
+      actor_user_id: ADMIN,
+      account_user_id: STAFF,
+      base_revision: before.revision,
+      role_definition_ids: [GRANTABLE_DEPARTMENT_ROLE],
+      idempotency_key: "account-access-red-revoke-race",
+      now: "2026-08-29T00:09:30.000Z",
+      audit_id: "account-access-red-revoke-race-audit",
+      correlation_id: "account-access-red-revoke-race-correlation",
+    };
+    const race = revisionRaceDatabase(testDb());
+    const firstPromise = revokeAccountAssignments(race.firstDb, input);
+    await race.firstRevisionRead;
+    const secondPromise = revokeAccountAssignments(race.secondDb, {
+      ...input,
+      now: "2026-08-29T00:09:31.000Z",
+      audit_id: "account-access-red-revoke-race-audit-2",
+      correlation_id: "account-access-red-revoke-race-correlation-2",
+    });
+    const [first, second] = await Promise.all([firstPromise, secondPromise]);
+    expect(first.idempotent).toBe(false);
+    expect(second.idempotent).toBe(true);
+    expect(second.revision).toBe(first.revision);
+    expect(
+      second.activeAssignments.some(
+        (assignment) =>
+          assignment.roleDefinitionId === GRANTABLE_DEPARTMENT_ROLE
+      )
+    ).toBe(false);
+  });
+
+  test("replays a lifecycle reservation that wins a revision race", async () => {
+    const before = await loadAccountAccess(testDb(), ADMIN, STAFF);
+    const input = {
+      actor_user_id: ADMIN,
+      role_definition_id: DELETE_ONLY_ROLE,
+      action: "archive" as const,
+      base_revision: before.revision,
+      idempotency_key: "account-access-red-lifecycle-race",
+      now: "2026-08-29T00:10:00.000Z",
+      audit_id: "account-access-red-lifecycle-race-audit",
+      correlation_id: "account-access-red-lifecycle-race-correlation",
+    };
+    const race = revisionRaceDatabase(testDb());
+    const firstPromise = mutateRoleDefinitionLifecycle(race.firstDb, input);
+    await race.firstRevisionRead;
+    const secondPromise = mutateRoleDefinitionLifecycle(race.secondDb, {
+      ...input,
+      now: "2026-08-29T00:10:01.000Z",
+      audit_id: "account-access-red-lifecycle-race-audit-2",
+      correlation_id: "account-access-red-lifecycle-race-correlation-2",
+    });
+    const [first, second] = await Promise.all([firstPromise, secondPromise]);
+    expect(first.idempotent).toBe(false);
+    expect(second.idempotent).toBe(true);
+    expect(second.revision).toBe(first.revision);
+    expect(second.isArchived).toBe(true);
+  });
+  test("replays a denied assignment reservation from a revision race", async () => {
+    const before = await loadAccountAccess(testDb(), ADMIN, STAFF);
+    const requestFingerprint = `assignment|grant|${ADMIN}|${STAFF}|${before.revision}|${GRANTABLE_DEPARTMENT_ROLE}`;
+    const db = deniedReservationDatabase(testDb(), {
+      idempotencyKey: "account-access-red-denied-assignment-race",
+      requestFingerprint,
+      actorUserId: ADMIN,
+      baseRevision: before.revision,
+      errorCode: "ROLE_SCOPE_MISMATCH",
+      action: "ROLE_ASSIGNMENT_GRANT",
+      entityType: "account",
+      entityId: STAFF,
+      now: "2026-08-29T00:11:00.000Z",
+    });
+    await expect(
+      mutateAccountAssignments(db, {
+        actor_user_id: ADMIN,
+        account_user_id: STAFF,
+        base_revision: before.revision,
+        role_definition_ids: [GRANTABLE_DEPARTMENT_ROLE],
+        idempotency_key: "account-access-red-denied-assignment-race",
+        now: "2026-08-29T00:11:00.000Z",
+        audit_id: "account-access-red-denied-assignment-race-audit",
+        correlation_id: "account-access-red-denied-assignment-race-correlation",
+      })
+    ).rejects.toThrow("ROLE_SCOPE_MISMATCH");
+  });
+
+  test("replays a denied revoke reservation from a revision race", async () => {
+    const before = await loadAccountAccess(testDb(), ADMIN, STAFF);
+    const requestFingerprint = `assignment|revoke|${ADMIN}|${STAFF}|${before.revision}|${PROGRAM_ROLE}`;
+    const db = deniedReservationDatabase(testDb(), {
+      idempotencyKey: "account-access-red-denied-revoke-race",
+      requestFingerprint,
+      actorUserId: ADMIN,
+      baseRevision: before.revision,
+      errorCode: "ROLE_SCOPE_MISMATCH",
+      action: "ROLE_ASSIGNMENT_REVOKE",
+      entityType: "account",
+      entityId: STAFF,
+      now: "2026-08-29T00:11:30.000Z",
+    });
+    await expect(
+      revokeAccountAssignments(db, {
+        actor_user_id: ADMIN,
+        account_user_id: STAFF,
+        base_revision: before.revision,
+        role_definition_ids: [PROGRAM_ROLE],
+        idempotency_key: "account-access-red-denied-revoke-race",
+        now: "2026-08-29T00:11:30.000Z",
+        audit_id: "account-access-red-denied-revoke-race-audit",
+        correlation_id: "account-access-red-denied-revoke-race-correlation",
+      })
+    ).rejects.toThrow("ROLE_SCOPE_MISMATCH");
+  });
+
+  test("replays a denied lifecycle reservation from a revision race", async () => {
+    const before = await loadAccountAccess(testDb(), ADMIN, STAFF);
+    const requestFingerprint = `lifecycle|archive|${ADMIN}|${PROGRAM_ROLE}|${before.revision}|`;
+    const db = deniedReservationDatabase(testDb(), {
+      idempotencyKey: "account-access-red-denied-lifecycle-race",
+      requestFingerprint,
+      actorUserId: ADMIN,
+      baseRevision: before.revision,
+      errorCode: "ROLE_SCOPE_MISMATCH",
+      action: "ROLE_DEFINITION_ARCHIVE",
+      entityType: "role_definition",
+      entityId: PROGRAM_ROLE,
+      now: "2026-08-29T00:12:00.000Z",
+    });
+    await expect(
+      mutateRoleDefinitionLifecycle(db, {
+        actor_user_id: ADMIN,
+        role_definition_id: PROGRAM_ROLE,
+        action: "archive",
+        base_revision: before.revision,
+        idempotency_key: "account-access-red-denied-lifecycle-race",
+        now: "2026-08-29T00:12:00.000Z",
+        audit_id: "account-access-red-denied-lifecycle-race-audit",
+        correlation_id: "account-access-red-denied-lifecycle-race-correlation",
+      })
+    ).rejects.toThrow("ROLE_SCOPE_MISMATCH");
   });
 });

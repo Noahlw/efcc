@@ -111,6 +111,10 @@ export interface ProgramCapabilities {
   publish: boolean;
   enroll: boolean;
   leader_assign: boolean;
+  /** Whether the caller may enter the scoped Account Access destination. */
+  role_read?: boolean;
+  role_assign?: boolean;
+  role_revoke?: boolean;
 }
 
 export type DepartmentView = DepartmentRow & {
@@ -2368,22 +2372,37 @@ export class DepartmentWorkspace {
     ctx: AuthorizationContext,
     row: DepartmentRow
   ): Promise<DepartmentView> {
-    const [manage, publish, moduleConfigure, managerAssign] = await Promise.all(
-      [
-        this.authorizer.can(ctx, CAPABILITY.DEPARTMENT_MANAGE, {
-          departmentId: row.department_id,
-        }),
-        this.authorizer.can(ctx, CAPABILITY.DEPARTMENT_PUBLISH, {
-          departmentId: row.department_id,
-        }),
-        this.authorizer.can(ctx, CAPABILITY.DEPARTMENT_MODULE_CONFIGURE, {
-          departmentId: row.department_id,
-        }),
-        this.authorizer.can(ctx, CAPABILITY.DEPARTMENT_MANAGER_ASSIGN, {
-          departmentId: row.department_id,
-        }),
-      ]
-    );
+    const [
+      manage,
+      publish,
+      moduleConfigure,
+      managerAssign,
+      roleRead,
+      roleAssign,
+      roleRevoke,
+    ] = await Promise.all([
+      this.authorizer.can(ctx, CAPABILITY.DEPARTMENT_MANAGE, {
+        departmentId: row.department_id,
+      }),
+      this.authorizer.can(ctx, CAPABILITY.DEPARTMENT_PUBLISH, {
+        departmentId: row.department_id,
+      }),
+      this.authorizer.can(ctx, CAPABILITY.DEPARTMENT_MODULE_CONFIGURE, {
+        departmentId: row.department_id,
+      }),
+      this.authorizer.can(ctx, CAPABILITY.DEPARTMENT_MANAGER_ASSIGN, {
+        departmentId: row.department_id,
+      }),
+      this.authorizer.can(ctx, CAPABILITY.ROLE_READ, {
+        departmentId: row.department_id,
+      }),
+      this.authorizer.can(ctx, CAPABILITY.ROLE_ASSIGN, {
+        departmentId: row.department_id,
+      }),
+      this.authorizer.can(ctx, CAPABILITY.ROLE_REVOKE, {
+        departmentId: row.department_id,
+      }),
+    ]);
     return {
       ...row,
       capabilities: {
@@ -2391,6 +2410,9 @@ export class DepartmentWorkspace {
         publish,
         module_configure: moduleConfigure,
         manager_assign: managerAssign,
+        role_read: roleRead,
+        role_assign: roleAssign,
+        role_revoke: roleRevoke,
       },
     };
   }
@@ -2403,17 +2425,31 @@ export class DepartmentWorkspace {
       departmentId: row.department_id,
       programId: row.program_id,
     };
-    const [manage, publish, enroll, leaderAssign] = await Promise.all([
+    const [
+      manage,
+      publish,
+      enroll,
+      leaderAssign,
+      roleRead,
+      roleAssign,
+      roleRevoke,
+    ] = await Promise.all([
       this.authorizer.can(ctx, CAPABILITY.PROGRAM_MANAGE, scope),
       this.authorizer.can(ctx, CAPABILITY.PROGRAM_PUBLISH, scope),
       this.authorizer.can(ctx, CAPABILITY.PROGRAM_ENROLL, scope),
       this.authorizer.can(ctx, CAPABILITY.PROGRAM_LEADER_ASSIGN, scope),
+      this.authorizer.can(ctx, CAPABILITY.ROLE_READ, scope),
+      this.authorizer.can(ctx, CAPABILITY.ROLE_ASSIGN, scope),
+      this.authorizer.can(ctx, CAPABILITY.ROLE_REVOKE, scope),
     ]);
     return {
       manage,
       publish,
       enroll,
       leader_assign: leaderAssign,
+      role_read: roleRead,
+      role_assign: roleAssign,
+      role_revoke: roleRevoke,
     };
   }
 

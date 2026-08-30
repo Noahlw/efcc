@@ -376,6 +376,24 @@ export class D1WorkspaceStore implements WorkspaceStore {
     const departmentPredicate = scoped
       ? `WHERE departments.department_id IN (${placeholders})`
       : "";
+    const identityScopePredicate = scoped
+      ? `AND (
+           identity_roles.scope_kind = 'Global'
+           OR (
+             identity_roles.scope_kind = 'Department'
+             AND identity_roles.scope_id = departments.department_id
+           )
+           OR (
+             identity_roles.scope_kind = 'Program'
+             AND EXISTS (
+               SELECT 1
+                 FROM programs identity_programs
+                WHERE identity_programs.program_id = identity_roles.scope_id
+                  AND identity_programs.department_id IN (${placeholders})
+             )
+           )
+         )`
+      : "";
     return this.db
       .prepare(
         `WITH matched_accounts AS (
@@ -439,12 +457,13 @@ export class D1WorkspaceStore implements WorkspaceStore {
            LEFT JOIN departments
              ON departments.department_id = programs.department_id
           LEFT JOIN role_assignments identity_assignments
-             ON identity_assignments.account_user_id = accounts.user_id
-            AND identity_assignments.revoked_at IS NULL
+            ON identity_assignments.account_user_id = accounts.user_id
+           AND identity_assignments.revoked_at IS NULL
           LEFT JOIN role_definitions identity_roles
-             ON identity_roles.role_definition_id =
-                identity_assignments.role_definition_id
-            AND identity_roles.is_archived = 0
+            ON identity_roles.role_definition_id =
+               identity_assignments.role_definition_id
+           AND identity_roles.is_archived = 0
+           ${identityScopePredicate}
           ${departmentPredicate}
           ORDER BY accounts.name ASC,
                    accounts.username ASC,
@@ -460,6 +479,7 @@ export class D1WorkspaceStore implements WorkspaceStore {
               pattern,
               ...departmentIds,
               normalizedLimit,
+              ...departmentIds,
               ...departmentIds,
             ]
           : [pattern, pattern, pattern, normalizedLimit])

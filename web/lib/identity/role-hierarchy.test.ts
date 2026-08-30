@@ -55,6 +55,7 @@ import {
   RoleCrossCategoryError,
   RoleScopeRequiredError,
   ROLE_NAME_MAX_LENGTH,
+  resolveActorCapabilities,
 } from "./index";
 import { ROLE_CATEGORY_KEY } from "./types";
 
@@ -222,6 +223,64 @@ describe("#478 role hierarchy and rename contract", () => {
     expect(manager.actions.map((action) => action.action)).toContain("rename");
     // Technical capability keys never appear in the projection.
     expect(JSON.stringify(view)).not.toContain("department.manage");
+  });
+  test("scoped role.read only exposes authorized definitions and safe categories", async () => {
+    const view = await loadRoleHierarchy(testDb(), PROGRAM_LEADER);
+    expect(view.categories.map((category) => category.categoryKey)).toEqual([
+      ROLE_CATEGORY_KEY.GLOBAL,
+      ROLE_CATEGORY_KEY.DEPARTMENT,
+      ROLE_CATEGORY_KEY.PROGRAM,
+    ]);
+    const definitions = view.categories.flatMap(
+      (category) => category.definitions
+    );
+    expect(
+      definitions.some(
+        (definition) => definition.roleDefinitionId === PROGRAM_LEADER_ROLE
+      )
+    ).toBe(true);
+    expect(
+      definitions.some(
+        (definition) => definition.roleDefinitionId === DEPARTMENT_MANAGER_ROLE
+      )
+    ).toBe(false);
+    expect(JSON.stringify(view)).not.toContain("成人部門管理者");
+    expect(JSON.stringify(view)).not.toContain("成區");
+  });
+  test("Department authority includes same-department Program targets", async () => {
+    const programId = "H487-ADULT-PROGRAM";
+    await testDb()
+      .prepare(
+        `INSERT OR IGNORE INTO programs
+          (program_id, department_id, name, behavior_type, lifecycle,
+           discoverability, enrollment_mode, created_at, updated_at)
+         VALUES (?, '018f3b8a-0000-7000-8000-000000000002',
+                 'H487 成人課程', 'OneOff', 'Active', 'Unlisted',
+                 'MemberRequest', ?, ?)`
+      )
+      .bind(programId, NOW, NOW)
+      .run();
+    try {
+      const inside = await resolveActorCapabilities(
+        testDb(),
+        DEPARTMENT_MANAGER,
+        { programId }
+      );
+      const outside = await resolveActorCapabilities(
+        testDb(),
+        DEPARTMENT_MANAGER,
+        { programId: "018f3b8a-0000-7000-8000-300000000001" }
+      );
+      expect(inside["program.manage"]).toBe(true);
+      expect(inside["role.assign"]).toBe(true);
+      expect(outside["program.manage"]).not.toBe(true);
+      expect(outside["role.assign"]).not.toBe(true);
+    } finally {
+      await testDb()
+        .prepare("DELETE FROM programs WHERE program_id = ?")
+        .bind(programId)
+        .run();
+    }
   });
 
   test("does not expose assigned-account membership without assignment authority", async () => {

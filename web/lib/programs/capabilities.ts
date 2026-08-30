@@ -23,6 +23,9 @@ export const CAPABILITY = {
   PROGRAM_PUBLISH: PROGRAM_CAPABILITY.PUBLISH,
   PROGRAM_ENROLL: PROGRAM_CAPABILITY.ENROLL,
   PROGRAM_LEADER_ASSIGN: PROGRAM_CAPABILITY.LEADER_ASSIGN,
+  ROLE_READ: "role.read",
+  ROLE_ASSIGN: "role.assign",
+  ROLE_REVOKE: "role.revoke",
   ACCOUNT_PERMISSIONS_READ: "account.permissions.read",
   ACCOUNT_DIRECTORY_READ: "account.directory.read",
   REGISTRATION_APPROVAL_MANAGE: "registration.approval.manage",
@@ -37,6 +40,10 @@ export interface DepartmentCapabilities {
   publish: boolean;
   module_configure: boolean;
   manager_assign?: boolean;
+  /** Whether the caller may enter the scoped Account Access destination. */
+  role_read?: boolean;
+  role_assign?: boolean;
+  role_revoke?: boolean;
 }
 
 /** A Department capability exposes its Programs in the management directory. */

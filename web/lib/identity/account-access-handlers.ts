@@ -37,6 +37,7 @@ type AssignmentsBody = {
   base_revision?: unknown;
   role_definition_ids?: unknown;
 };
+const MAX_ASSIGNMENT_ROLE_IDS = 50;
 
 type LifecycleBody = {
   action?: unknown;
@@ -218,6 +219,15 @@ async function parseAssignmentsBody(
       "VALIDATION",
       "Validation failed",
       "base_revision and role_definition_ids are required。",
+      requestId
+    );
+  }
+  if (roleDefinitionIds.length > MAX_ASSIGNMENT_ROLE_IDS) {
+    return roleProblem(
+      422,
+      "VALIDATION",
+      "Validation failed",
+      `role_definition_ids must contain at most ${MAX_ASSIGNMENT_ROLE_IDS} identities。`,
       requestId
     );
   }

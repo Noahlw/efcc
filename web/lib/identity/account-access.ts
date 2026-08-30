@@ -11,6 +11,7 @@ import {
   RoleIdempotencyConflictError,
   RoleRevisionConflictError,
 } from "./mutations";
+import type { RoleMutationResult } from "./mutations";
 import {
   loadActorRoles,
   resolveActorCapabilities,
@@ -181,6 +182,8 @@ interface RoleRecord {
   category_key: "Global" | "Department" | "Program";
   scope_kind: RoleScopeKind;
   scope_id: string | null;
+  /** Parent Department ID for Program-scoped definitions. */
+  parent_department_id?: string | null;
   position: number;
   is_protected: number;
   is_archived: number;
@@ -521,10 +524,16 @@ async function readRole(
   return (
     (await db
       .prepare(
-        `SELECT role_definition_id, stable_key, label, description,
-                category_key, scope_kind, scope_id, position,
-                is_protected, is_archived
-           FROM role_definitions WHERE role_definition_id = ?`
+        `SELECT rd.role_definition_id, rd.stable_key, rd.label, rd.description,
+                rd.category_key, rd.scope_kind, rd.scope_id,
+                (
+                  SELECT p.department_id
+                    FROM programs p
+                   WHERE p.program_id = rd.scope_id
+                     AND rd.scope_kind = 'Program'
+                ) AS parent_department_id,
+                rd.position, rd.is_protected, rd.is_archived
+           FROM role_definitions rd WHERE rd.role_definition_id = ?`
       )
       .bind(roleDefinitionId)
       .first<RoleRecord>()) ?? null
@@ -537,10 +546,16 @@ async function readRoleByStableKey(
   return (
     (await db
       .prepare(
-        `SELECT role_definition_id, stable_key, label, description,
-                category_key, scope_kind, scope_id, position,
-                is_protected, is_archived
-           FROM role_definitions WHERE stable_key = ?`
+        `SELECT rd.role_definition_id, rd.stable_key, rd.label, rd.description,
+                rd.category_key, rd.scope_kind, rd.scope_id,
+                (
+                  SELECT p.department_id
+                    FROM programs p
+                   WHERE p.program_id = rd.scope_id
+                     AND rd.scope_kind = 'Program'
+                ) AS parent_department_id,
+                rd.position, rd.is_protected, rd.is_archived
+           FROM role_definitions rd WHERE rd.stable_key = ?`
       )
       .bind(stableKey)
       .first<RoleRecord>()) ?? null
@@ -557,11 +572,17 @@ async function readRoles(
   const placeholders = roleDefinitionIds.map(() => "?").join(",");
   const rows = await db
     .prepare(
-      `SELECT role_definition_id, stable_key, label, description,
-              category_key, scope_kind, scope_id, position,
-              is_protected, is_archived
-         FROM role_definitions
-        WHERE role_definition_id IN (${placeholders})`
+      `SELECT rd.role_definition_id, rd.stable_key, rd.label, rd.description,
+              rd.category_key, rd.scope_kind, rd.scope_id,
+              (
+                SELECT p.department_id
+                  FROM programs p
+                 WHERE p.program_id = rd.scope_id
+                   AND rd.scope_kind = 'Program'
+              ) AS parent_department_id,
+              rd.position, rd.is_protected, rd.is_archived
+         FROM role_definitions rd
+        WHERE rd.role_definition_id IN (${placeholders})`
     )
     .bind(...roleDefinitionIds)
     .all<RoleRecord>();
@@ -571,10 +592,16 @@ async function readRoles(
 async function readAllRoles(db: D1Database): Promise<RoleRecord[]> {
   const rows = await db
     .prepare(
-      `SELECT role_definition_id, stable_key, label, description,
-              category_key, scope_kind, scope_id, position,
-              is_protected, is_archived
-         FROM role_definitions`
+      `SELECT rd.role_definition_id, rd.stable_key, rd.label, rd.description,
+              rd.category_key, rd.scope_kind, rd.scope_id,
+              (
+                SELECT p.department_id
+                  FROM programs p
+                 WHERE p.program_id = rd.scope_id
+                   AND rd.scope_kind = 'Program'
+              ) AS parent_department_id,
+              rd.position, rd.is_protected, rd.is_archived
+         FROM role_definitions rd`
     )
     .all<RoleRecord>();
   return rows.results ?? [];
@@ -652,7 +679,7 @@ type ActorScope = Pick<
 
 function withinActorScope(
   actorRoles: readonly ActorScope[],
-  role: Pick<RoleRecord, "scope_kind" | "scope_id">
+  role: Pick<RoleRecord, "scope_kind" | "scope_id" | "parent_department_id">
 ): boolean {
   const highest = actorRoles[0];
   if (!highest) {
@@ -660,6 +687,12 @@ function withinActorScope(
   }
   if (highest.scope_kind === ROLE_CATEGORY_KEY.GLOBAL) {
     return true;
+  }
+  if (
+    highest.scope_kind === ROLE_CATEGORY_KEY.DEPARTMENT &&
+    role.scope_kind === ROLE_CATEGORY_KEY.PROGRAM
+  ) {
+    return role.parent_department_id === highest.scope_id;
   }
   return (
     highest.scope_kind === role.scope_kind &&
@@ -1305,6 +1338,24 @@ async function replayIfTerminal<T>(
   }
   return null;
 }
+async function rethrowReservedDenial(
+  db: D1Database,
+  idempotencyKey: string
+): Promise<void> {
+  const stored = await readMutation(db, idempotencyKey);
+  if (!stored || stored.outcome !== "DENIED") {
+    return;
+  }
+  const parsed = parseEnvelope<unknown>(stored.result_json);
+  const errorCode =
+    typeof parsed === "object" &&
+    parsed !== null &&
+    "errorCode" in parsed &&
+    typeof parsed.errorCode === "string"
+      ? parsed.errorCode
+      : "ROLE_FORBIDDEN";
+  throw errorForCode(errorCode);
+}
 
 function auditOutcomeFor(errorCode: string): "DENIED" | "REJECTED" {
   switch (errorCode) {
@@ -1697,22 +1748,41 @@ export async function mutateAccountAssignments(
 
   const currentRevision = await readCurrentRevision(db);
   if (currentRevision !== input.base_revision) {
-    const conflict = await reserveRoleMutationConflict(db, {
-      idempotency_key: input.idempotency_key,
-      request_fingerprint: fingerprint,
-      actor_user_id: input.actor_user_id,
-      base_revision: input.base_revision,
-      now: input.now,
-      audit_id: input.audit_id,
-      correlation_id: input.correlation_id,
-      desired: [],
-      audit_summary: {
-        action: "ROLE_ASSIGNMENT_GRANT",
-        entity_type: "account",
-        entity_id: input.account_user_id,
-        reason: "ROLE_POLICY_CONFLICT",
-      },
-    });
+    let conflict: RoleMutationResult;
+    try {
+      conflict = await reserveRoleMutationConflict(db, {
+        idempotency_key: input.idempotency_key,
+        request_fingerprint: fingerprint,
+        actor_user_id: input.actor_user_id,
+        base_revision: input.base_revision,
+        now: input.now,
+        audit_id: input.audit_id,
+        correlation_id: input.correlation_id,
+        desired: [],
+        audit_summary: {
+          action: "ROLE_ASSIGNMENT_GRANT",
+          entity_type: "account",
+          entity_id: input.account_user_id,
+          reason: "ROLE_POLICY_CONFLICT",
+        },
+      });
+    } catch (error) {
+      if (error instanceof RoleRevisionConflictError) {
+        await rethrowReservedDenial(db, input.idempotency_key);
+      }
+      throw error;
+    }
+    if (conflict.outcome === "SUCCESS") {
+      const stored = parseEnvelope<AccountAccessMutationResult>(
+        conflict.result_json
+      );
+      if (stored) {
+        return { ...stored, idempotent: true };
+      }
+    }
+    if (conflict.outcome === "DENIED") {
+      await rethrowReservedDenial(db, input.idempotency_key);
+    }
     throw new RoleRevisionConflictError(
       conflict.resulting_revision,
       false,
@@ -1937,22 +2007,41 @@ export async function revokeAccountAssignments(
 
   const currentRevision = await readCurrentRevision(db);
   if (currentRevision !== input.base_revision) {
-    const conflict = await reserveRoleMutationConflict(db, {
-      idempotency_key: input.idempotency_key,
-      request_fingerprint: fingerprint,
-      actor_user_id: input.actor_user_id,
-      base_revision: input.base_revision,
-      now: input.now,
-      audit_id: input.audit_id,
-      correlation_id: input.correlation_id,
-      desired: [],
-      audit_summary: {
-        action: "ROLE_ASSIGNMENT_REVOKE",
-        entity_type: "account",
-        entity_id: input.account_user_id,
-        reason: "ROLE_POLICY_CONFLICT",
-      },
-    });
+    let conflict: RoleMutationResult;
+    try {
+      conflict = await reserveRoleMutationConflict(db, {
+        idempotency_key: input.idempotency_key,
+        request_fingerprint: fingerprint,
+        actor_user_id: input.actor_user_id,
+        base_revision: input.base_revision,
+        now: input.now,
+        audit_id: input.audit_id,
+        correlation_id: input.correlation_id,
+        desired: [],
+        audit_summary: {
+          action: "ROLE_ASSIGNMENT_REVOKE",
+          entity_type: "account",
+          entity_id: input.account_user_id,
+          reason: "ROLE_POLICY_CONFLICT",
+        },
+      });
+    } catch (error) {
+      if (error instanceof RoleRevisionConflictError) {
+        await rethrowReservedDenial(db, input.idempotency_key);
+      }
+      throw error;
+    }
+    if (conflict.outcome === "SUCCESS") {
+      const stored = parseEnvelope<AccountAccessMutationResult>(
+        conflict.result_json
+      );
+      if (stored) {
+        return { ...stored, idempotent: true };
+      }
+    }
+    if (conflict.outcome === "DENIED") {
+      await rethrowReservedDenial(db, input.idempotency_key);
+    }
     throw new RoleRevisionConflictError(
       conflict.resulting_revision,
       false,
@@ -2287,25 +2376,44 @@ export async function mutateRoleDefinitionLifecycle(
   }
   const currentRevision = await readCurrentRevision(db);
   if (currentRevision !== input.base_revision) {
-    const conflict = await reserveRoleMutationConflict(db, {
-      idempotency_key: input.idempotency_key,
-      request_fingerprint: fingerprint,
-      actor_user_id: input.actor_user_id,
-      base_revision: input.base_revision,
-      now: input.now,
-      audit_id: input.audit_id,
-      correlation_id: input.correlation_id,
-      desired: [],
-      audit_summary: {
-        action:
-          input.action === "archive"
-            ? "ROLE_DEFINITION_ARCHIVE"
-            : "ROLE_DEFINITION_RESTORE",
-        entity_type: "role_definition",
-        entity_id: role.role_definition_id,
-        reason: "ROLE_POLICY_CONFLICT",
-      },
-    });
+    let conflict: RoleMutationResult;
+    try {
+      conflict = await reserveRoleMutationConflict(db, {
+        idempotency_key: input.idempotency_key,
+        request_fingerprint: fingerprint,
+        actor_user_id: input.actor_user_id,
+        base_revision: input.base_revision,
+        now: input.now,
+        audit_id: input.audit_id,
+        correlation_id: input.correlation_id,
+        desired: [],
+        audit_summary: {
+          action:
+            input.action === "archive"
+              ? "ROLE_DEFINITION_ARCHIVE"
+              : "ROLE_DEFINITION_RESTORE",
+          entity_type: "role_definition",
+          entity_id: role.role_definition_id,
+          reason: "ROLE_POLICY_CONFLICT",
+        },
+      });
+    } catch (error) {
+      if (error instanceof RoleRevisionConflictError) {
+        await rethrowReservedDenial(db, input.idempotency_key);
+      }
+      throw error;
+    }
+    if (conflict.outcome === "SUCCESS") {
+      const stored = parseEnvelope<RoleDefinitionLifecycleResult>(
+        conflict.result_json
+      );
+      if (stored) {
+        return { ...stored, idempotent: true };
+      }
+    }
+    if (conflict.outcome === "DENIED") {
+      await rethrowReservedDenial(db, input.idempotency_key);
+    }
     throw new RoleRevisionConflictError(
       conflict.resulting_revision,
       false,

@@ -1,5 +1,5 @@
-import userEvent from "@testing-library/user-event";
 import { cleanup, render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, test } from "vitest";
 
 import {
@@ -30,6 +30,20 @@ describe("S4 management action framework", () => {
     expect(safeManagementReturnHref("/home", "/management")).toBe(
       "/management"
     );
+  });
+  test("accepts a validated Programs return URL", () => {
+    expect(
+      safeManagementReturnHref(
+        "/programs?program=program-1&task=settings",
+        "/management"
+      )
+    ).toBe("/programs?program=program-1&task=settings");
+    expect(
+      safeManagementReturnHref(
+        "/programs.evil?program=program-1",
+        "/management"
+      )
+    ).toBe("/management");
   });
 
   test("renders one consistent Back, title, lead, and contextual action", () => {

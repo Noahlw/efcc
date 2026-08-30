@@ -14,7 +14,11 @@ import { env } from "cloudflare:workers";
 import { beforeAll, describe, expect, test } from "vitest";
 
 import { applyMigrations, testDb } from "../auth/test-bootstrap";
-import { preflightDisposableSchema, seedDisposableIdentity } from "./index";
+import {
+  __preflightTest,
+  preflightDisposableSchema,
+  seedDisposableIdentity,
+} from "./index";
 import {
   applyRoleMutation,
   recordRoleDenial,
@@ -139,6 +143,41 @@ describe("#476 disposable D1 schema contract", () => {
     expect(result.message).toContain("efcc-identity-prod");
     const tables = await readAllTables();
     expect(tables).toContain("role_definitions");
+  });
+  test("preflight rejects missing Phase C columns before seed or mutation", async () => {
+    const tables = __preflightTest.REQUIRED_POST_019_TABLES.map((name) => ({
+      name,
+    }));
+    const db = {
+      prepare(sql: string) {
+        return {
+          all: async () => {
+            if (sql.includes("sqlite_master")) {
+              return { results: tables };
+            }
+            if (sql.includes("role_policy_mutations")) {
+              return { results: [{ name: "idempotency_key" }] };
+            }
+            if (sql.includes("role_assignments")) {
+              return { results: [{ name: "assignment_id" }] };
+            }
+            return { results: [] };
+          },
+        };
+      },
+    } as unknown as D1Database;
+    const result = await preflightDisposableSchema(db, {
+      databaseName: DISPOSABLE_DATABASE,
+    });
+    expect(result.kind).toBe("incomplete-schema");
+    if (result.kind !== "incomplete-schema") {
+      throw new Error("expected incomplete-schema result");
+    }
+    expect(result.missingColumns).toEqual([
+      "role_policy_mutations.result_json",
+      "role_assignments.scope_kind",
+      "role_assignments.scope_id",
+    ]);
   });
 
   test("preflight flags any retired authority table, even with normalized tables present, and never auto-drops", async () => {

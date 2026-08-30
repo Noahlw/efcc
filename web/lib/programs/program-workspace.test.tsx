@@ -444,9 +444,11 @@ describe(ProgramWorkspace, () => {
         name: new RegExp(COPY.programs.cockpitCourseFacts, "u"),
       })
     );
-    await expect(screen.findByRole("heading", {
+    await expect(
+      screen.findByRole("heading", {
         name: COPY.programs.cockpitCourseFacts,
-      })).resolves.toBeInTheDocument();
+      })
+    ).resolves.toBeInTheDocument();
 
     // Verify all 6 read-only fields
     expect(
@@ -475,9 +477,11 @@ describe(ProgramWorkspace, () => {
     await userEvent.click(
       screen.getByRole("button", { name: COPY.programs.backToOverview })
     );
-    await expect(screen.findByRole("heading", {
+    await expect(
+      screen.findByRole("heading", {
         name: COPY.programs.cockpitOperations,
-      })).resolves.toBeInTheDocument();
+      })
+    ).resolves.toBeInTheDocument();
   });
 
   test("renders Course Edit from Facts, validates non-empty fields, saves changes, and returns to Facts with updated values", async () => {
@@ -512,17 +516,21 @@ describe(ProgramWorkspace, () => {
         name: new RegExp(COPY.programs.cockpitCourseFacts, "u"),
       })
     );
-    await expect(screen.findByRole("heading", {
+    await expect(
+      screen.findByRole("heading", {
         name: COPY.programs.cockpitCourseFacts,
-      })).resolves.toBeInTheDocument();
+      })
+    ).resolves.toBeInTheDocument();
 
     // Open Course Edit
     await userEvent.click(
       screen.getByRole("button", { name: COPY.programs.cockpitEditProgram })
     );
-    await expect(screen.findByRole("heading", {
+    await expect(
+      screen.findByRole("heading", {
         name: COPY.programs.cockpitEditProgram,
-      })).resolves.toBeInTheDocument();
+      })
+    ).resolves.toBeInTheDocument();
 
     // Pre-filled values
     const nameInput = screen.getByRole("textbox", {
@@ -563,9 +571,11 @@ describe(ProgramWorkspace, () => {
     });
 
     // Success returns to Facts with updated values
-    await expect(screen.findByRole("heading", {
+    await expect(
+      screen.findByRole("heading", {
         name: COPY.programs.cockpitCourseFacts,
-      })).resolves.toBeInTheDocument();
+      })
+    ).resolves.toBeInTheDocument();
     expect(
       screen.getByRole("heading", { name: "門徒進階查經" })
     ).toBeInTheDocument();
@@ -596,9 +606,11 @@ describe(ProgramWorkspace, () => {
     await userEvent.click(
       screen.getByRole("button", { name: COPY.programs.cockpitEditProgram })
     );
-    await expect(screen.findByRole("heading", {
+    await expect(
+      screen.findByRole("heading", {
         name: COPY.programs.cockpitEditProgram,
-      })).resolves.toBeInTheDocument();
+      })
+    ).resolves.toBeInTheDocument();
 
     // Click back button returns to Facts view
     await userEvent.click(
@@ -609,9 +621,11 @@ describe(ProgramWorkspace, () => {
         ),
       })
     );
-    await expect(screen.findByRole("heading", {
+    await expect(
+      screen.findByRole("heading", {
         name: COPY.programs.cockpitCourseFacts,
-      })).resolves.toBeInTheDocument();
+      })
+    ).resolves.toBeInTheDocument();
   });
 
   test("handles Course Edit save API error gracefully", async () => {
@@ -652,7 +666,9 @@ describe(ProgramWorkspace, () => {
     );
 
     // Error is displayed and form remains with input intact
-    await expect(screen.findByText(COPY.error.serverError)).resolves.toBeInTheDocument();
+    await expect(
+      screen.findByText(COPY.error.serverError)
+    ).resolves.toBeInTheDocument();
     expect(
       screen.getByRole("textbox", { name: COPY.programs.editNameLabel })
     ).toHaveValue("新名稱");
@@ -787,6 +803,52 @@ describe(ProgramWorkspace, () => {
       screen.getByRole("heading", { name: COPY.programs.settingsAttendance })
     ).toBeInTheDocument();
   });
+  test("hides identity access without an authorized Account Directory destination", async () => {
+    mockWorkspace();
+    render(
+      <ProgramWorkspace
+        programId="program-1"
+        task="settings"
+        onBack={vi.fn()}
+        onTaskChange={vi.fn()}
+      />
+    );
+    await screen.findByRole("heading", {
+      name: COPY.programs.workspaceTaskSettings,
+    });
+    expect(
+      screen.queryByRole("link", { name: "管理帳戶身份組" })
+    ).not.toBeInTheDocument();
+  });
+  test("routes authorized Program identity access into scoped Account Access", async () => {
+    mocks.getManagementProgram.mockResolvedValue({
+      program: {
+        ...program,
+        capabilities: {
+          ...program.capabilities,
+          role_read: true,
+          role_assign: true,
+        },
+      },
+      department,
+      modules,
+    });
+    render(
+      <ProgramWorkspace
+        programId="program-1"
+        task="settings"
+        onBack={vi.fn()}
+        onTaskChange={vi.fn()}
+      />
+    );
+    const link = await screen.findByRole("link", {
+      name: "管理帳戶身份組",
+    });
+    expect(link).toHaveAttribute(
+      "href",
+      "/management?module=accounts&scopeKind=Program&scopeId=program-1&view=access&return=%2Fprograms%3Fmode%3Dmanagement%26program%3Dprogram-1%26task%3Dsettings"
+    );
+  });
 
   test("keeps global Notifications out of the program workspace", async () => {
     mockWorkspace();
@@ -851,9 +913,11 @@ describe("ENR-01 participants workspace", () => {
     await waitFor(() =>
       expect(mocks.listEnrollmentSnapshot).toHaveBeenCalledWith("program-1")
     );
-    await expect(screen.findByRole("tab", {
+    await expect(
+      screen.findByRole("tab", {
         name: `${COPY.programs.tabsPending} (1)`,
-      })).resolves.toBeInTheDocument();
+      })
+    ).resolves.toBeInTheDocument();
     expect(
       screen.getByRole("tab", {
         name: `${COPY.programs.tabsActive} (1)`,
@@ -879,10 +943,14 @@ describe("ENR-01 participants workspace", () => {
     await userEvent.click(
       screen.getByRole("button", { name: COPY.programs.approve })
     );
-    await expect(screen.findByText(COPY.programs.decisionMade)).resolves.toBeInTheDocument();
-    await expect(screen.findByRole("tab", {
+    await expect(
+      screen.findByText(COPY.programs.decisionMade)
+    ).resolves.toBeInTheDocument();
+    await expect(
+      screen.findByRole("tab", {
         name: `${COPY.programs.tabsActive} (2)`,
-      })).resolves.toBeInTheDocument();
+      })
+    ).resolves.toBeInTheDocument();
     await userEvent.click(
       screen.getByRole("tab", {
         name: `${COPY.programs.tabsActive} (2)`,
@@ -926,12 +994,16 @@ describe("ENR-01 participants workspace", () => {
     await userEvent.click(
       await screen.findByRole("button", { name: COPY.programs.reject })
     );
-    await expect(screen.findByText(COPY.programs.decisionMade)).resolves.toBeInTheDocument();
+    await expect(
+      screen.findByText(COPY.programs.decisionMade)
+    ).resolves.toBeInTheDocument();
     const historyTab = await screen.findByRole("tab", {
       name: `${COPY.programs.tabsHistory} (1)`,
     });
     await userEvent.click(historyTab);
-    await expect(screen.findByText(COPY.programs.requestRejected)).resolves.toBeInTheDocument();
+    await expect(
+      screen.findByText(COPY.programs.requestRejected)
+    ).resolves.toBeInTheDocument();
     expect(screen.getByText("名額已滿")).toBeInTheDocument();
   });
 
@@ -950,7 +1022,9 @@ describe("ENR-01 participants workspace", () => {
       />
     );
 
-    await expect(screen.findByText(COPY.programs.tabsEmpty.pending)).resolves.toBeInTheDocument();
+    await expect(
+      screen.findByText(COPY.programs.tabsEmpty.pending)
+    ).resolves.toBeInTheDocument();
     await userEvent.click(
       screen.getByRole("tab", { name: `${COPY.programs.tabsActive} (0)` })
     );
@@ -995,7 +1069,9 @@ describe("ENR-01 participants workspace", () => {
         1
       )
     );
-    await expect(screen.findByText(COPY.programs.workspaceParticipantsStale)).resolves.toBeInTheDocument();
+    await expect(
+      screen.findByText(COPY.programs.workspaceParticipantsStale)
+    ).resolves.toBeInTheDocument();
     expect(screen.getByText("陳同工")).toBeInTheDocument();
   });
 
@@ -1035,9 +1111,11 @@ describe("ENR-01 participants workspace", () => {
     await userEvent.click(
       screen.getByRole("button", { name: COPY.programs.assistedEnroll })
     );
-    await expect(screen.findByText(
+    await expect(
+      screen.findByText(
         `${COPY.programs.workspaceParticipantsConflict} ${COPY.programs.enrollmentDuplicate}`
-      )).resolves.toBeInTheDocument();
+      )
+    ).resolves.toBeInTheDocument();
     expect(
       screen.getByRole("tab", {
         name: `${COPY.programs.tabsPending} (1)`,
@@ -1118,7 +1196,9 @@ describe("ENR-01 participants workspace", () => {
     await userEvent.click(
       await screen.findByRole("button", { name: COPY.programs.approve })
     );
-    await expect(screen.findByText(COPY.programs.workspaceParticipantsRefreshFailed)).resolves.toBeInTheDocument();
+    await expect(
+      screen.findByText(COPY.programs.workspaceParticipantsRefreshFailed)
+    ).resolves.toBeInTheDocument();
     expect(
       screen.getByRole("tab", {
         name: `${COPY.programs.tabsPending} (1)`,
@@ -1190,7 +1270,9 @@ describe("ENR-01 participants workspace", () => {
       />
     );
 
-    await expect(screen.findByText(COPY.programs.assistedEnrollAck)).resolves.toBeInTheDocument();
+    await expect(
+      screen.findByText(COPY.programs.assistedEnrollAck)
+    ).resolves.toBeInTheDocument();
     const picker = screen.getByRole("combobox", {
       name: COPY.programs.memberId,
     });

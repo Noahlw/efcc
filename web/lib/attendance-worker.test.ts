@@ -1342,6 +1342,78 @@ describe("attendance Worker routes", () => {
         .run();
     }
   });
+  test("operator chooser filters authorization before applying result limit", async () => {
+    const member = await accessCookieFor("att-member", "att-member-password");
+    await assignIdentity(
+      PROGRAM_IDENTITY,
+      "ATT-MEMBER",
+      "ATT-PROGRAM-LIMIT-ASSIGNMENT"
+    );
+    await testDb()
+      .prepare(
+        `WITH RECURSIVE event_numbers(value) AS (
+           SELECT 1
+           UNION ALL
+           SELECT value + 1 FROM event_numbers WHERE value < 250
+         )
+         INSERT INTO events
+           (event_id, program_id, starts_at, ends_at, status, source,
+            manual_check_in_code, check_in_window_opens_at,
+            check_in_window_closes_at, created_at, updated_at)
+         SELECT
+           'ATT-LIMIT-' || value,
+           ?,
+           datetime('2030-01-01T00:00:00Z', printf('+%d minutes', value)),
+           datetime('2030-01-01T00:30:00Z', printf('+%d minutes', value)),
+           'Active',
+           'MANUAL',
+           'ATT-LIMIT-CODE-' || value,
+           datetime('2029-12-31T23:00:00Z', printf('+%d minutes', value)),
+           datetime('2030-01-01T01:00:00Z', printf('+%d minutes', value)),
+           datetime('2026-01-01T00:00:00Z'),
+           datetime('2026-01-01T00:00:00Z')
+         FROM event_numbers`
+      )
+      .bind(PROGRAM2)
+      .run();
+    try {
+      const response = await worker.fetch(
+        request("/api/v1/attendance/events", {
+          headers: { Cookie: `${ACCESS_COOKIE_NAME}=${member}` },
+        }),
+        testEnv()
+      );
+      assert.strictEqual(response.status, 200);
+      const body = await json(response);
+      const data = body.data;
+      assert.ok(
+        data &&
+          typeof data === "object" &&
+          "events" in data &&
+          Array.isArray(data.events)
+      );
+      if (!data || typeof data !== "object" || !("events" in data)) {
+        throw new Error("expected events projection");
+      }
+      const { events } = data;
+      assert.ok(
+        events.some((event) => {
+          if (!event || typeof event !== "object" || !("event_id" in event)) {
+            return false;
+          }
+          return event.event_id === EVENT;
+        })
+      );
+    } finally {
+      await testDb()
+        .prepare("DELETE FROM events WHERE event_id LIKE 'ATT-LIMIT-%'")
+        .run();
+      await testDb()
+        .prepare("DELETE FROM role_assignments WHERE assignment_id = ?")
+        .bind("ATT-PROGRAM-LIMIT-ASSIGNMENT")
+        .run();
+    }
+  });
 
   test("scanner projection excludes revoked scoped grants", async () => {
     const member = await accessCookieFor("att-member", "att-member-password");

@@ -141,6 +141,33 @@ describe(AccountDirectoryPanel, () => {
     const href = mocks.router.push.mock.calls[0]?.[0] ?? "";
     expect(href).toContain("returnFocus%3Daccount-access");
   });
+  test("preserves a Programs origin when entering Account Access", async () => {
+    const user = userEvent.setup();
+    mocks.searchParams = new URLSearchParams(
+      "module=accounts&return=%2Fprograms%3Fmode%3Dmanagement%26program%3Dprogram-1%26task%3Dsettings"
+    );
+    server.use(
+      http.get("/api/v1/programs/accounts", () => response()),
+      http.get("/api/v1/programs/accounts/AD-001", () =>
+        HttpResponse.json({
+          requestId: "rid-account-detail",
+          data: ROWS[0],
+        })
+      )
+    );
+    render(<AccountDirectoryPanel />);
+    const row = await screen.findByRole("button", { name: /陳大文/u });
+    await user.click(row);
+    await user.click(
+      await screen.findByRole("button", {
+        name: "查看帳戶權限與身份組",
+      })
+    );
+    const href = mocks.router.push.mock.calls[0]?.[0] ?? "";
+    expect(href).toContain(
+      "return=%2Fprograms%3Fmode%3Dmanagement%26program%3Dprogram-1%26task%3Dsettings"
+    );
+  });
 
   test("opens with a populated Account page before search", async () => {
     let requestedUrl = "";

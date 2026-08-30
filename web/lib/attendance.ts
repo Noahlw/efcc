@@ -1176,22 +1176,37 @@ export async function handleSearchMembers(
   return json(200, { members: result.results ?? [] }, id);
 }
 /**
- * Resolve the operator's normalized Program scopes for a bounded event list.
+ * Resolve the operator's normalized Program scopes for bounded event lists.
+ * Every caller shares this resolver-owned projection rather than duplicating
+ * role/scope joins in SQL.
  */
+async function resolveAuthorizedProgramIds(
+  db: D1Database,
+  actorUserId: string,
+  programIds: readonly string[]
+): Promise<string[]> {
+  const authorized = await Promise.all(
+    [...new Set(programIds)].map(async (programId) => {
+      const access = await resolveProgramAccess(db, actorUserId, programId);
+      return access?.capabilities["program.manage"] === true ? programId : null;
+    })
+  );
+  return authorized.filter(
+    (programId): programId is string => programId !== null
+  );
+}
+
 async function filterAuthorizedEvents(
   db: D1Database,
   actorUserId: string,
   events: AttendanceEventSummary[]
 ): Promise<AttendanceEventSummary[]> {
-  const authorized = new Set<string>();
-  const programIds = [...new Set(events.map((event) => event.program_id))];
-  await Promise.all(
-    programIds.map(async (programId) => {
-      const access = await resolveProgramAccess(db, actorUserId, programId);
-      if (access?.capabilities["program.manage"] === true) {
-        authorized.add(programId);
-      }
-    })
+  const authorized = new Set(
+    await resolveAuthorizedProgramIds(
+      db,
+      actorUserId,
+      events.map((event) => event.program_id)
+    )
   );
   return events.filter((event) => authorized.has(event.program_id));
 }
@@ -1210,22 +1225,40 @@ export async function handleListManageableEvents(
   if (current instanceof Response) {
     return current;
   }
-  const result = await env.DB.prepare(
-    `SELECT e.event_id, e.program_id, p.name AS program_name,
-            e.name, e.location, e.starts_at, e.ends_at,
-            e.check_in_window_opens_at, e.check_in_window_closes_at,
-            e.status, e.availability
-       FROM events e
-       JOIN programs p ON p.program_id = e.program_id
-      WHERE p.lifecycle = 'Active'
-      ORDER BY e.starts_at DESC
-      LIMIT 250`
-  ).all<AttendanceEventSummary>();
-  const events = await filterAuthorizedEvents(
+  const programRows = await env.DB.prepare(
+    `SELECT program_id FROM programs WHERE lifecycle = 'Active'`
+  ).all<{ program_id: string }>();
+  const authorizedProgramIds = await resolveAuthorizedProgramIds(
     env.DB,
     current.user_id,
-    result.results ?? []
+    (programRows.results ?? []).map(({ program_id }) => program_id)
   );
+  if (authorizedProgramIds.length === 0) {
+    return json(200, { events: [] }, id);
+  }
+  // Keep each IN-list below D1's variable ceiling while retaining all
+  // authorized Programs before the final 50-event result limit.
+  const events: AttendanceEventSummary[] = [];
+  for (let offset = 0; offset < authorizedProgramIds.length; offset += 80) {
+    const chunk = authorizedProgramIds.slice(offset, offset + 80);
+    const placeholders = chunk.map(() => "?").join(", ");
+    const result = await env.DB.prepare(
+      `SELECT e.event_id, e.program_id, p.name AS program_name,
+              e.name, e.location, e.starts_at, e.ends_at,
+              e.check_in_window_opens_at, e.check_in_window_closes_at,
+              e.status, e.availability
+         FROM events e
+         JOIN programs p ON p.program_id = e.program_id
+        WHERE p.lifecycle = 'Active'
+          AND p.program_id IN (${placeholders})
+        ORDER BY e.starts_at DESC
+        LIMIT 50`
+    )
+      .bind(...chunk)
+      .all<AttendanceEventSummary>();
+    events.push(...(result.results ?? []));
+  }
+  events.sort((left, right) => right.starts_at.localeCompare(left.starts_at));
   return json(200, { events: events.slice(0, 50) }, id);
 }
 

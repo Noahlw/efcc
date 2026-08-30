@@ -31,6 +31,14 @@ const REQUIRED_POST_019_TABLES = [
   "role_audit_events",
 ] as const;
 
+const REQUIRED_POST_019_COLUMNS = [
+  { table: "role_policy_mutations", column: "result_json" },
+  { table: "role_assignments", column: "scope_kind" },
+  { table: "role_assignments", column: "scope_id" },
+] as const;
+
+type RequiredPost019Column = (typeof REQUIRED_POST_019_COLUMNS)[number];
+
 export type PreflightOutcome =
   | { kind: "ok" }
   | {
@@ -51,6 +59,7 @@ export type PreflightOutcome =
       kind: "incomplete-schema";
       database: string;
       missingTables: readonly string[];
+      missingColumns: readonly string[];
       message: string;
     };
 
@@ -135,16 +144,39 @@ export async function preflightDisposableSchema(
   if (missing.length === REQUIRED_POST_019_TABLES.length) {
     return { kind: "ok" };
   }
-  if (missing.length > 0) {
+  const missingColumns = (
+    await Promise.all(
+      REQUIRED_POST_019_COLUMNS.filter(({ table }) => tables.has(table)).map(
+        async (requirement: RequiredPost019Column) => {
+          const columns = await db
+            .prepare(`PRAGMA table_info(${requirement.table})`)
+            .all<{ name: string }>();
+          return (columns.results ?? []).some(
+            ({ name }) => name === requirement.column
+          )
+            ? null
+            : `${requirement.table}.${requirement.column}`;
+        }
+      )
+    )
+  ).filter((column): column is string => column !== null);
+  if (missing.length > 0 || missingColumns.length > 0) {
+    const details = [
+      missing.length > 0 ? `missing tables: ${missing.join(", ")}` : null,
+      missingColumns.length > 0
+        ? `missing columns: ${missingColumns.join(", ")}`
+        : null,
+    ].filter((detail): detail is string => detail !== null);
     return {
       kind: "incomplete-schema",
       database,
       missingTables: missing,
+      missingColumns,
       message: [
-        `Disposable database "${database}" is partially migrated; missing tables: ${missing.join(
-          ", "
+        `Disposable database "${database}" is partially migrated; ${details.join(
+          "; "
         )}.`,
-        `Re-run \`pnpm db:migrate:local\` to bring the schema to 0019.`,
+        "Re-run the latest disposable identity migrations before seeding.",
       ].join("\n"),
     };
   }
@@ -156,6 +188,7 @@ export const __test = {
   DISPOSABLE_NAME_PREFIXES,
   LEGACY_PRE_019_TABLES,
   REQUIRED_POST_019_TABLES,
+  REQUIRED_POST_019_COLUMNS,
   isDisposableName,
   buildResetCommand,
 };

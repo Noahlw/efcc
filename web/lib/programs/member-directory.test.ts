@@ -185,6 +185,43 @@ async function assignDepartmentIdentity(
       .bind(crypto.randomUUID(), userId, now, roleDefinitionId),
   ]);
 }
+async function assignProgramIdentity(
+  programId: string,
+  userId: string
+): Promise<string> {
+  const roleDefinitionId = `member-directory-program-${crypto.randomUUID()}`;
+  const now = new Date().toISOString();
+  await testDb().batch([
+    testDb()
+      .prepare(
+        `INSERT INTO role_definitions
+          (role_definition_id, category_key, stable_key, label, description,
+           scope_kind, scope_id, position, is_protected, is_archived,
+           created_by, created_at, updated_by, updated_at)
+         VALUES (?, 'Program', ?, 'Same Department Program Identity',
+                 'Program identity privacy fixture', 'Program', ?, 40, 0, 0,
+                 NULL, ?, NULL, ?)`
+      )
+      .bind(roleDefinitionId, roleDefinitionId, programId, now, now),
+    testDb()
+      .prepare(
+        `INSERT INTO role_definition_grants
+          (role_definition_id, capability, granted_by, granted_at)
+         VALUES (?, 'program.manage', 'A001', ?)`
+      )
+      .bind(roleDefinitionId, now),
+    testDb()
+      .prepare(
+        `INSERT INTO role_assignments
+          (assignment_id, account_user_id, role_definition_id, granted_by,
+           granted_at, scope_kind, scope_id)
+         SELECT ?, ?, role_definition_id, 'A001', ?, scope_kind, scope_id
+           FROM role_definitions WHERE role_definition_id = ?`
+      )
+      .bind(crypto.randomUUID(), userId, now, roleDefinitionId),
+  ]);
+  return roleDefinitionId;
+}
 
 async function assignSystemIdentity(
   stableKey: string,
@@ -470,6 +507,16 @@ describe("087-04: Member Directory search scope boundary", () => {
   });
 
   test("Department Manager search is scoped to managed departments with explicit exclusion", async () => {
+    await assignDepartmentIdentity(deptYId, "A005");
+    const sameDepartmentProgram = await createProgram(
+      adminAccess,
+      deptXId,
+      "另一門徒課程"
+    );
+    const sameDepartmentIdentity = await assignProgramIdentity(
+      sameDepartmentProgram,
+      "A005"
+    );
     const { status, body } = await searchMembers(dmAccess, "md-");
     assert.strictEqual(status, 200);
     const byUser: Record<string, MemberRow> = Object.fromEntries(
@@ -481,6 +528,15 @@ describe("087-04: Member Directory search scope boundary", () => {
     assert.deepStrictEqual(Object.keys(byUser), ["A005"]);
     assert.deepStrictEqual(byUser["A005"]?.departments, [
       { id: deptXId, name: "培育部" },
+    ]);
+    assert.deepStrictEqual(byUser["A005"]?.identities, [
+      {
+        id: sameDepartmentIdentity,
+        label: "Same Department Program Identity",
+        stableKey: sameDepartmentIdentity,
+        scopeKind: "Program",
+        scopeId: sameDepartmentProgram,
+      },
     ]);
     // Explicit exclusions: Evan (enrolled only in 崇拜部), Fay (not
     // enrolled), the DM themselves (not enrolled), and Plain Member.

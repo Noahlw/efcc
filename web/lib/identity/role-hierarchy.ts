@@ -120,6 +120,8 @@ export interface RoleHierarchyDefinition {
   kind: "SYSTEM" | "GLOBAL" | "DEPARTMENT_SCOPED" | "PROGRAM_SCOPED";
   scopeKind: RoleScopeKind;
   scopeId: string | null;
+  /** Parent Department ID for Program-scoped identity context. */
+  scopeParentDepartmentId?: string | null;
   /** Human-readable scope label; null for Global identities. */
   scopeLabel: string | null;
   position: number;
@@ -391,6 +393,8 @@ interface RoleDefinitionRow {
   category_key: RoleCategoryKey;
   scope_kind: RoleScopeKind;
   scope_id: string | null;
+  /** Parent Department ID for Program-scoped definitions. */
+  parent_department_id?: string | null;
   position: number;
   is_protected: number;
   is_archived: number;
@@ -480,7 +484,8 @@ export async function loadActorRoles(
  * closed catalog capability; every Active Account receives the automatic
  * `program.enroll` baseline; all other capabilities are the union of grants
  * across active assignments whose declared scope is Global or exactly matches
- * the requested resource scope.
+ * the requested resource scope. A Program scope is resolved to its parent
+ * Department before filtering so Department authority applies to its Programs.
  */
 export async function resolveActorCapabilities(
   db: D1Database,
@@ -506,6 +511,12 @@ export async function resolveActorCapabilities(
     return capabilities;
   }
 
+  const parentDepartment = scope?.programId
+    ? await db
+        .prepare(`SELECT department_id FROM programs WHERE program_id = ?`)
+        .bind(scope.programId)
+        .first<{ department_id: string }>()
+    : null;
   let scopedFilter = "";
   let scopeBinds: string[] = [];
   if (scope?.programId) {
@@ -514,7 +525,10 @@ export async function resolveActorCapabilities(
       OR (rd.scope_kind = 'Department' AND rd.scope_id = ?)
       OR (rd.scope_kind = 'Program' AND rd.scope_id = ?)
     )`;
-    scopeBinds = [scope.departmentId ?? "", scope.programId];
+    scopeBinds = [
+      parentDepartment?.department_id ?? scope.departmentId ?? "",
+      scope.programId,
+    ];
   } else if (scope?.departmentId) {
     scopedFilter = `AND (
       (rd.scope_kind = 'Global' AND rd.scope_id IS NULL)
@@ -662,8 +676,14 @@ export async function loadRoleHierarchy(
       db
         .prepare(
           `SELECT role_definition_id, stable_key, label, description,
-                  category_key, scope_kind, scope_id, position,
-                  is_protected, is_archived
+                  category_key, scope_kind, scope_id,
+                  (
+                    SELECT p.department_id
+                      FROM programs p
+                     WHERE p.program_id = role_definitions.scope_id
+                       AND role_definitions.scope_kind = 'Program'
+                  ) AS parent_department_id,
+                  position, is_protected, is_archived
              FROM role_definitions ORDER BY position ASC`
         )
         .all<RoleDefinitionRow>(),
@@ -706,7 +726,6 @@ export async function loadRoleHierarchy(
       ? (actorRoles[0]?.position ?? Number.POSITIVE_INFINITY)
       : Number.POSITIVE_INFINITY;
   const projectedScopeOptions = scopeOptionsForActor(actorRoles, names);
-
   const permissionCapabilities = new Map(
     await Promise.all(
       (definitions.results ?? []).map(async (row) => {
@@ -723,11 +742,19 @@ export async function loadRoleHierarchy(
       })
     )
   );
+  // A scoped `role.read` grant authorizes only matching role scopes. Keep the
+  // category headings so the tree remains structurally safe, but do not emit
+  // labels, descriptions, grants, scope labels, or archive metadata for rows
+  // outside the actor's authorized Department/Program scopes.
+  const visibleDefinitions = (definitions.results ?? []).filter(
+    (row) =>
+      permissionCapabilities.get(row.role_definition_id)?.["role.read"] === true
+  );
 
   const categoriesView: RoleHierarchyCategory[] = (
     categories.results ?? []
   ).map((category) => {
-    const definitionsView = (definitions.results ?? [])
+    const definitionsView = visibleDefinitions
       .filter((row) => row.category_key === category.category_key)
       .map((row) => {
         const countsForRole = countById.get(row.role_definition_id);
@@ -842,6 +869,7 @@ export async function loadRoleHierarchy(
           description: row.description,
           kind: roleKind(row.category_key, row.stable_key),
           scopeKind: row.scope_kind,
+          scopeParentDepartmentId: row.parent_department_id ?? null,
           scopeId: row.scope_id,
           scopeLabel: scopeLabel(row.scope_kind, row.scope_id, names),
           position: row.position,
@@ -1086,17 +1114,22 @@ async function nextRolePosition(
   throw new RoleInvalidParentError();
 }
 
-/** Scope rule (Spec 091 §5.2): a scoped actor cannot manage outside scope. */
 /**
- * Scope rule (Spec 091 §4.5/§5.2): the HIGHEST assigned identity drives
- * role-management authority. A Global highest (Admin/Staff) manages any
- * lower definition church-wide; a scoped highest manages only lower
- * definitions with the identical Department/Program scope.
+ * Scope rule (Spec 091 §4.5/§5.2): a Department actor may manage a
+ * Program-scoped target when that Program belongs to the same Department;
+ * other scoped targets still require an exact scope match.
  */
 function isWithinActorScope(
   actorRoles: ActorRoleRow[],
   target: RoleDefinitionRow
 ): boolean {
+  const highest = actorRoles[0];
+  if (
+    highest?.scope_kind === ROLE_CATEGORY_KEY.DEPARTMENT &&
+    target.scope_kind === ROLE_CATEGORY_KEY.PROGRAM
+  ) {
+    return target.parent_department_id === highest.scope_id;
+  }
   return isWithinActorScopeValue(
     actorRoles,
     target.scope_kind,
@@ -1201,8 +1234,14 @@ async function findRoleDefinition(
   return db
     .prepare(
       `SELECT role_definition_id, stable_key, label, description,
-              category_key, scope_kind, scope_id, position,
-              is_protected, is_archived
+              category_key, scope_kind, scope_id,
+              (
+                SELECT p.department_id
+                  FROM programs p
+                 WHERE p.program_id = role_definitions.scope_id
+                   AND role_definitions.scope_kind = 'Program'
+              ) AS parent_department_id,
+              position, is_protected, is_archived
          FROM role_definitions WHERE role_definition_id = ?`
     )
     .bind(roleDefinitionId)

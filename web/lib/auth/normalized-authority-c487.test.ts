@@ -4,13 +4,13 @@ import { beforeAll, describe, expect, test } from "vitest";
 
 import worker from "../../worker";
 import type { Env } from "../../worker";
+import { preflightDisposableSchema, seedDisposableIdentity } from "../identity";
+import { resolveActorCapabilities } from "../identity/role-hierarchy";
 import { importLegacyUsers } from "./accounts";
 import { ACCESS_COOKIE_NAME } from "./cookies";
 import { signAccessToken } from "./sessions";
-import { completeCredentialUpgrade } from "./upgrade";
 import { applyMigrations, testDb } from "./test-bootstrap";
-import { preflightDisposableSchema, seedDisposableIdentity } from "../identity";
-import { resolveActorCapabilities } from "../identity/role-hierarchy";
+import { completeCredentialUpgrade } from "./upgrade";
 
 const HOST = "https://efcc.example";
 const SECRET = "test-access-token-secret";
@@ -142,8 +142,22 @@ async function withCookie(
 async function addFixtureAccounts(): Promise<void> {
   await importLegacyUsers(testDb(), [
     HEADER,
-    [CUSTOM_USER, "C487 Custom Operator", "c487-custom", "0000", "Member", "Active"],
-    [TARGET_USER, "C487 Target Member", "c487-target", "0001", "Member", "Active"],
+    [
+      CUSTOM_USER,
+      "C487 Custom Operator",
+      "c487-custom",
+      "0000",
+      "Member",
+      "Active",
+    ],
+    [
+      TARGET_USER,
+      "C487 Target Member",
+      "c487-target",
+      "0001",
+      "Member",
+      "Active",
+    ],
   ]);
   await completeCredentialUpgrade(testDb(), {
     userId: CUSTOM_USER,
@@ -186,7 +200,13 @@ async function addNormalizedFixtures(): Promise<void> {
          granted_at, scope_kind, scope_id)
        VALUES (?, ?, ?, 'E2E_DISPOSABLE_ADMIN', ?, 'Program', ?)`
     )
-    .bind(`${CUSTOM_ROLE}-assignment`, CUSTOM_USER, CUSTOM_ROLE, now, YOUTH_PROGRAM)
+    .bind(
+      `${CUSTOM_ROLE}-assignment`,
+      CUSTOM_USER,
+      CUSTOM_ROLE,
+      now,
+      YOUTH_PROGRAM
+    )
     .run();
 
   for (const departmentId of [YOUTH_DEPARTMENT, ADULT_DEPARTMENT]) {
@@ -277,7 +297,13 @@ async function addNormalizedFixtures(): Promise<void> {
          VALUES (?, ?, ?, NULL, 'Active', ?, NULL, NULL,
                  'E2E_DISPOSABLE_ADMIN', ?)`
       )
-      .bind(`C487-${suffix}-TARGET-ENROLLMENT`, programId, TARGET_USER, now, now)
+      .bind(
+        `C487-${suffix}-TARGET-ENROLLMENT`,
+        programId,
+        TARGET_USER,
+        now,
+        now
+      )
       .run();
   }
 
@@ -392,7 +418,14 @@ describe("#487 normalized authority Worker seams", () => {
     expect(admin.sections.map(({ key }) => key)).toContain("management");
     expect(admin.sections.map(({ key }) => key)).toContain("events");
 
-    for (const projection of [member, staff, department, program, custom, admin]) {
+    for (const projection of [
+      member,
+      staff,
+      department,
+      program,
+      custom,
+      admin,
+    ]) {
       const serialized = JSON.stringify(projection);
       expect(serialized).not.toContain("credential_hash");
       expect(serialized).not.toContain("legacy_pin_hash");
@@ -448,16 +481,16 @@ describe("#487 normalized authority Worker seams", () => {
 
     const capabilities = await Promise.all(
       Object.entries(cookies).map(async ([persona, cookie]) => {
-        const response = await withCookie(
-          "/api/v1/programs/access",
-          cookie
-        );
+        const response = await withCookie("/api/v1/programs/access", cookie);
         expect(response.status, persona).toBe(200);
-        return [persona, await envelope<{
-          hasManagementCapability: boolean;
-          departmentScopes: number;
-          programScopes: number;
-        }>(response)] as const;
+        return [
+          persona,
+          await envelope<{
+            hasManagementCapability: boolean;
+            departmentScopes: number;
+            programScopes: number;
+          }>(response),
+        ] as const;
       })
     );
     const accessByPersona = Object.fromEntries(capabilities);
@@ -469,6 +502,13 @@ describe("#487 normalized authority Worker seams", () => {
     expect(accessByPersona.dm.departmentScopes).toBeGreaterThan(0);
     expect(accessByPersona.pl.programScopes).toBeGreaterThan(0);
     expect(accessByPersona.custom.programScopes).toBeGreaterThan(0);
+    const departmentScopedProgramCapabilities = await resolveActorCapabilities(
+      testDb(),
+      "E2E_DISPOSABLE_DM",
+      { programId: ADULT_PROGRAM }
+    );
+    expect(departmentScopedProgramCapabilities["program.manage"]).toBe(true);
+    expect(departmentScopedProgramCapabilities["role.assign"]).toBe(true);
 
     for (const [persona, programId, expected] of [
       ["dm", ADULT_PROGRAM, 200],
@@ -480,8 +520,26 @@ describe("#487 normalized authority Worker seams", () => {
         cookies[persona]
       );
       expect(response.status, persona).toBe(expected);
-      const data = await envelope<{ program: { program_id: string } }>(response);
+      const data = await envelope<{
+        program: {
+          program_id: string;
+          capabilities: {
+            role_read?: boolean;
+            role_assign?: boolean;
+            role_revoke?: boolean;
+          };
+        };
+      }>(response);
       expect(data.program.program_id).toBe(programId);
+      if (persona === "dm" || persona === "pl") {
+        expect(data.program.capabilities.role_read).toBe(true);
+        expect(data.program.capabilities.role_assign).toBe(true);
+        expect(data.program.capabilities.role_revoke).toBe(true);
+      } else {
+        expect(data.program.capabilities.role_read).not.toBe(true);
+        expect(data.program.capabilities.role_assign).not.toBe(true);
+        expect(data.program.capabilities.role_revoke).not.toBe(true);
+      }
     }
 
     for (const [persona, programId] of [
@@ -576,7 +634,10 @@ describe("#487 normalized authority Worker seams", () => {
       YOUTH_EVENT
     );
 
-    const customEvents = await withCookie("/api/v1/attendance/scanner-events", custom);
+    const customEvents = await withCookie(
+      "/api/v1/attendance/scanner-events",
+      custom
+    );
     expect(customEvents.status).toBe(200);
     const customEventData = await envelope<{ events: { event_id: string }[] }>(
       customEvents
@@ -697,9 +758,9 @@ describe("#487 normalized authority Worker seams", () => {
     const accountData = await envelope<{
       accounts: { userId: string; role: string }[];
     }>(staffAccounts);
-    expect(accountData.accounts.some(({ userId }) => userId === CUSTOM_USER)).toBe(
-      true
-    );
+    expect(
+      accountData.accounts.some(({ userId }) => userId === CUSTOM_USER)
+    ).toBe(true);
 
     const memberAccounts = await withCookie(
       "/api/v1/programs/accounts?q=C487",
@@ -800,7 +861,9 @@ describe("#487 normalized authority Worker seams", () => {
       .all<{ assignment_id: string }>();
     expect(memberAssignments.results).toStrictEqual([]);
 
-    await db.prepare("CREATE TABLE IF NOT EXISTS C487_LEGACY_MARKER (marker TEXT)").run();
+    await db
+      .prepare("CREATE TABLE IF NOT EXISTS C487_LEGACY_MARKER (marker TEXT)")
+      .run();
     try {
       const stale = await preflightDisposableSchema(db, {
         databaseName: DATABASE,

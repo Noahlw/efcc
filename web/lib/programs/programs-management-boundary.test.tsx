@@ -185,6 +185,34 @@ describe("Programs management boundary", () => {
       })
     ).resolves.toBeInTheDocument();
   });
+  test("restores the selected Department context from a management return URL", async () => {
+    const otherDepartment = {
+      ...department,
+      department_id: "dept-2",
+      code: "D2",
+      name: "敬拜事工",
+    };
+    const otherProgram = {
+      ...program,
+      program_id: "program-2",
+      department_id: "dept-2",
+      name: "詩班練習",
+    };
+    mocks.getManagementDirectory.mockResolvedValue({
+      departments: [department, otherDepartment],
+      programs: [program, otherProgram],
+    });
+    window.history.replaceState(
+      {},
+      "",
+      "/programs?mode=management&department=dept-1"
+    );
+    render(<ProgramsBoundary />);
+    await screen.findByRole("button", { name: /青年事工.*部門設定/u });
+    expect(
+      screen.queryByRole("button", { name: /敬拜事工.*部門設定/u })
+    ).not.toBeInTheDocument();
+  });
   test("carries the next meeting event into the participants roster task", async () => {
     render(<ProgramsBoundary />);
 
