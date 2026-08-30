@@ -474,7 +474,7 @@ function roleKind(
   return "PROGRAM_SCOPED";
 }
 
-/** Load every role the actor holds (active assignments only, Spec 091 §4.5). */
+/** Load every role the actor holds using immutable assignment scopes (Spec 091 §4.5). */
 export async function loadActorRoles(
   db: D1Database,
   actorUserId: string
@@ -482,7 +482,7 @@ export async function loadActorRoles(
   const rows = await db
     .prepare(
       `SELECT rd.role_definition_id, rd.position, rd.is_protected,
-              rd.category_key, rd.scope_kind, rd.scope_id, rd.label,
+              rd.category_key, ra.scope_kind, ra.scope_id, rd.label,
               rd.stable_key
          FROM role_assignments ra
          JOIN role_definitions rd ON rd.role_definition_id = ra.role_definition_id
@@ -500,9 +500,10 @@ export async function loadActorRoles(
  * Effective capability resolution (Spec 091 §4.5/§6.1): Admin holds every
  * closed catalog capability; every Active Account receives the automatic
  * `program.enroll` baseline; all other capabilities are the union of grants
- * across active assignments whose declared scope is Global or exactly matches
- * the requested resource scope. A Program scope is resolved to its parent
- * Department before filtering so Department authority applies to its Programs.
+ * across active assignments whose immutable scope snapshot is Global or
+ * exactly matches the requested resource scope. A Program scope is resolved
+ * to its parent Department before filtering so Department authority applies to
+ * its Programs.
  */
 export async function resolveActorCapabilities(
   db: D1Database,
@@ -538,9 +539,9 @@ export async function resolveActorCapabilities(
   let scopeBinds: string[] = [];
   if (scope?.programId) {
     scopedFilter = `AND (
-      (rd.scope_kind = 'Global' AND rd.scope_id IS NULL)
-      OR (rd.scope_kind = 'Department' AND rd.scope_id = ?)
-      OR (rd.scope_kind = 'Program' AND rd.scope_id = ?)
+      (ra.scope_kind = 'Global' AND ra.scope_id IS NULL)
+      OR (ra.scope_kind = 'Department' AND ra.scope_id = ?)
+      OR (ra.scope_kind = 'Program' AND ra.scope_id = ?)
     )`;
     scopeBinds = [
       parentDepartment?.department_id ?? scope.departmentId ?? "",
@@ -548,12 +549,12 @@ export async function resolveActorCapabilities(
     ];
   } else if (scope?.departmentId) {
     scopedFilter = `AND (
-      (rd.scope_kind = 'Global' AND rd.scope_id IS NULL)
-      OR (rd.scope_kind = 'Department' AND rd.scope_id = ?)
+      (ra.scope_kind = 'Global' AND ra.scope_id IS NULL)
+      OR (ra.scope_kind = 'Department' AND ra.scope_id = ?)
     )`;
     scopeBinds = [scope.departmentId];
   } else if (scope === null) {
-    scopedFilter = `AND rd.scope_kind = 'Global' AND rd.scope_id IS NULL`;
+    scopedFilter = `AND ra.scope_kind = 'Global' AND ra.scope_id IS NULL`;
   }
   const grants = await db
     .prepare(

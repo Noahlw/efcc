@@ -2,8 +2,9 @@
 -- #486 — preserve the Role Definition scope at assignment time.
 --
 -- Assignment history must remain explainable after a Role Definition is
--- rescoped. These columns are immutable snapshots, not a second authority
--- source: current role metadata still controls present lifecycle decisions.
+-- rescoped. These columns are immutable snapshots and are authoritative for
+-- assignment display and authorization; current role metadata still controls
+-- identity labels, grants, position, and lifecycle decisions.
 
 ALTER TABLE role_assignments
   ADD COLUMN scope_kind TEXT NOT NULL DEFAULT 'Global'

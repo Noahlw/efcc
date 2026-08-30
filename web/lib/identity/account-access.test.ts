@@ -11,7 +11,12 @@ import {
 } from "./account-access";
 import type { AccountAccessView } from "./account-access";
 import { seedDisposableIdentity } from "./index";
-import { createRoleDefinition, rescopeRoleDefinition } from "./role-hierarchy";
+import {
+  createRoleDefinition,
+  loadBootstrapIdentity,
+  resolveActorCapabilities,
+  rescopeRoleDefinition,
+} from "./role-hierarchy";
 
 const ADMIN = "E2E_DISPOSABLE_ADMIN";
 const STAFF = "E2E_DISPOSABLE_STAFF";
@@ -23,6 +28,9 @@ const GRANTABLE_DEPARTMENT_ROLE = "018f3b8a-0000-7000-8000-100000000005";
 const DELETE_ONLY_ROLE = "018f3b8a-0000-7000-8000-100000000004";
 const BASELINE_ROLE = "018f3b8a-0000-7000-8000-000000000a03";
 const SCOPED_ACTOR = "E2E_ACCOUNT_ACCESS_SCOPED_ACTOR";
+const PROGRAM_ACTOR = "E2E_DISPOSABLE_PL";
+const ADULT_DEPARTMENT = "018f3b8a-0000-7000-8000-000000000002";
+const YOUTH_PROGRAM = "018f3b8a-0000-7000-8000-300000000001";
 const DELETE_ONLY_ACTOR = "E2E_ACCOUNT_ACCESS_DELETE_ONLY_ACTOR";
 const MIXED_SCOPE_TARGET = "E2E_ACCOUNT_ACCESS_MIXED_TARGET";
 const OUT_OF_SCOPE_TARGET = "E2E_ACCOUNT_ACCESS_OUT_OF_SCOPE_TARGET";
@@ -698,7 +706,7 @@ describe("#486 Account Access domain", () => {
     expect(audit?.outcome).toBe("DENIED");
   });
 
-  test("preserves assignment scope snapshot after role rescope and revoke history", async () => {
+  test("preserves assignment scope snapshots for display, capability, and re-add", async () => {
     const current = await testDb()
       .prepare("SELECT revision FROM role_policy_revisions WHERE id = 1")
       .first<{ revision: number }>();
@@ -710,14 +718,27 @@ describe("#486 Account Access domain", () => {
       label: "快照歷史測試身份組",
       description: "",
       scope_kind: "Program",
-      scope_id: "018f3b8a-0000-7000-8000-300000000001",
+      scope_id: YOUTH_PROGRAM,
       now: "2026-08-29T00:00:55.000Z",
       audit_id: "account-access-red-scope-snapshot-create-audit",
       correlation_id: "account-access-red-scope-snapshot-create-correlation",
     });
+    await testDb()
+      .prepare(
+        `INSERT OR IGNORE INTO role_definition_grants
+           (role_definition_id, capability, granted_by, granted_at)
+         VALUES (?, 'program.manage', ?, ?)`
+      )
+      .bind(
+        created.roleDefinitionId,
+        ADMIN,
+        "2026-08-29T00:00:56.000Z"
+      )
+      .run();
+
     const added = await mutateAccountAssignments(testDb(), {
       actor_user_id: ADMIN,
-      account_user_id: STAFF,
+      account_user_id: MEMBER,
       base_revision: created.revision,
       role_definition_ids: [created.roleDefinitionId],
       idempotency_key: "account-access-red-scope-snapshot-add",
@@ -725,6 +746,44 @@ describe("#486 Account Access domain", () => {
       audit_id: "account-access-red-scope-snapshot-add-audit",
       correlation_id: "account-access-red-scope-snapshot-add-correlation",
     });
+    const initial = added.activeAssignments.find(
+      (assignment) => assignment.roleDefinitionId === created.roleDefinitionId
+    );
+    expect(initial).toMatchObject({
+      scopeKind: "Program",
+      scopeId: YOUTH_PROGRAM,
+    });
+    expect(
+      added.effectiveAccess.Program.some(
+        (grant) =>
+          grant.capability === "program.manage" &&
+          grant.scopeId === YOUTH_PROGRAM &&
+          grant.sources.includes("快照歷史測試身份組")
+      )
+    ).toBe(true);
+    expect(
+      (await loadBootstrapIdentity(testDb(), MEMBER)).identities
+    ).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          label: "快照歷史測試身份組",
+          scopeKind: "Program",
+        }),
+      ])
+    );
+    const initialProgramCapabilities = await resolveActorCapabilities(
+      testDb(),
+      MEMBER,
+      { programId: YOUTH_PROGRAM }
+    );
+    expect(initialProgramCapabilities["program.manage"]).toBe(true);
+    const initialDepartmentCapabilities = await resolveActorCapabilities(
+      testDb(),
+      MEMBER,
+      { departmentId: ADULT_DEPARTMENT }
+    );
+    expect(initialDepartmentCapabilities["program.manage"]).not.toBe(true);
+
     const rescoped = await rescopeRoleDefinition(testDb(), {
       actor_user_id: ADMIN,
       idempotency_key: "account-access-red-scope-snapshot-rescope",
@@ -732,24 +791,92 @@ describe("#486 Account Access domain", () => {
       role_definition_id: created.roleDefinitionId,
       category_key: "Department",
       scope_kind: "Department",
-      scope_id: "018f3b8a-0000-7000-8000-000000000002",
+      scope_id: ADULT_DEPARTMENT,
       now: "2026-08-29T00:01:05.000Z",
       audit_id: "account-access-red-scope-snapshot-rescope-audit",
       correlation_id: "account-access-red-scope-snapshot-rescope-correlation",
     });
     expect(rescoped.scopeKind).toBe("Department");
-    const rescopeView = await loadAccountAccess(testDb(), ADMIN, STAFF);
+    const rescopeView = await loadAccountAccess(testDb(), ADMIN, MEMBER);
     const active = rescopeView.activeAssignments.find(
       (assignment) => assignment.roleDefinitionId === created.roleDefinitionId
     );
     expect(active).toMatchObject({
-      scopeKind: "Department",
-      scopeId: "018f3b8a-0000-7000-8000-000000000002",
+      scopeKind: "Program",
+      scopeId: YOUTH_PROGRAM,
     });
+    expect(
+      rescopeView.effectiveAccess.Program.some(
+        (grant) =>
+          grant.capability === "program.manage" &&
+          grant.scopeId === YOUTH_PROGRAM &&
+          grant.sources.includes("快照歷史測試身份組")
+      )
+    ).toBe(true);
+    expect(
+      rescopeView.effectiveAccess.Department.some(
+        (grant) => grant.capability === "program.manage"
+      )
+    ).toBe(false);
+    const activeProgramCapabilities = await resolveActorCapabilities(
+      testDb(),
+      MEMBER,
+      { programId: YOUTH_PROGRAM }
+    );
+    expect(activeProgramCapabilities["program.manage"]).toBe(true);
+    const activeDepartmentCapabilities = await resolveActorCapabilities(
+      testDb(),
+      MEMBER,
+      { departmentId: ADULT_DEPARTMENT }
+    );
+    expect(activeDepartmentCapabilities["program.manage"]).not.toBe(true);
+    expect(
+      (await loadBootstrapIdentity(testDb(), MEMBER)).identities
+    ).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          label: "快照歷史測試身份組",
+          scopeKind: "Program",
+        }),
+      ])
+    );
+
+    const scopedView = await loadAccountAccess(
+      testDb(),
+      PROGRAM_ACTOR,
+      MEMBER
+    );
+    expect(
+      scopedView.activeAssignments.some(
+        (assignment) =>
+          assignment.roleDefinitionId === created.roleDefinitionId &&
+          assignment.scopeKind === "Program" &&
+          assignment.scopeId === YOUTH_PROGRAM
+      )
+    ).toBe(true);
+    const candidateSearch = await searchEligibleAccounts(
+      testDb(),
+      PROGRAM_ACTOR,
+      "Disposable Member",
+      0,
+      20
+    );
+    const candidate = candidateSearch.accounts.find(
+      (account) => account.userId === MEMBER
+    );
+    expect(candidate?.identities).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          roleDefinitionId: created.roleDefinitionId,
+          label: "快照歷史測試身份組",
+          scopeLabel: "E2E_DISPOSABLE_青少年查經",
+        }),
+      ])
+    );
     const revoked = await revokeAccountAssignments(testDb(), {
-      actor_user_id: ADMIN,
-      account_user_id: STAFF,
-      base_revision: rescopeView.revision,
+      actor_user_id: PROGRAM_ACTOR,
+      account_user_id: MEMBER,
+      base_revision: scopedView.revision,
       role_definition_ids: [created.roleDefinitionId],
       idempotency_key: "account-access-red-scope-snapshot-revoke",
       now: "2026-08-29T00:01:10.000Z",
@@ -761,34 +888,67 @@ describe("#486 Account Access domain", () => {
     );
     expect(history).toMatchObject({
       scopeKind: "Program",
-      scopeId: "018f3b8a-0000-7000-8000-300000000001",
+      scopeId: YOUTH_PROGRAM,
     });
-    expect(revoked.actions.restoreRoleDefinitionIds).not.toContain(
-      created.roleDefinitionId
-    );
-    const duplicateRevoke = await revokeAccountAssignments(testDb(), {
+
+    const readded = await mutateAccountAssignments(testDb(), {
       actor_user_id: ADMIN,
-      account_user_id: STAFF,
+      account_user_id: MEMBER,
       base_revision: revoked.revision,
       role_definition_ids: [created.roleDefinitionId],
-      idempotency_key: "account-access-red-scope-snapshot-duplicate-revoke",
-      now: "2026-08-29T00:01:15.000Z",
-      audit_id: "account-access-red-scope-snapshot-duplicate-revoke-audit",
-      correlation_id:
-        "account-access-red-scope-snapshot-duplicate-revoke-correlation",
+      idempotency_key: "account-access-red-scope-snapshot-readd",
+      now: "2026-08-29T00:01:12.000Z",
+      audit_id: "account-access-red-scope-snapshot-readd-audit",
+      correlation_id: "account-access-red-scope-snapshot-readd-correlation",
     });
-    expect(duplicateRevoke.duplicateRoleDefinitionIds).toEqual([
-      created.roleDefinitionId,
-    ]);
-    const audit = await testDb()
-      .prepare(
-        "SELECT action, outcome FROM role_audit_events WHERE audit_id = ?"
+    const fresh = readded.activeAssignments.find(
+      (assignment) => assignment.roleDefinitionId === created.roleDefinitionId
+    );
+    expect(fresh?.assignmentId).not.toBe(initial?.assignmentId);
+    expect(fresh).toMatchObject({
+      scopeKind: "Department",
+      scopeId: ADULT_DEPARTMENT,
+    });
+    expect(
+      readded.effectiveAccess.Department.some(
+        (grant) =>
+          grant.capability === "program.manage" &&
+          grant.scopeId === ADULT_DEPARTMENT &&
+          grant.sources.includes("快照歷史測試身份組")
       )
-      .bind("account-access-red-scope-snapshot-duplicate-revoke-audit")
-      .first<{ action: string; outcome: string }>();
-    expect(audit).toEqual({
-      action: "ROLE_ASSIGNMENT_REVOKE",
-      outcome: "DUPLICATE",
+    ).toBe(true);
+    const postRescopeDepartmentCapabilities = await resolveActorCapabilities(
+      testDb(),
+      MEMBER,
+      { departmentId: ADULT_DEPARTMENT }
+    );
+    expect(postRescopeDepartmentCapabilities["program.manage"]).toBe(true);
+    const postRescopeProgramCapabilities = await resolveActorCapabilities(
+      testDb(),
+      MEMBER,
+      { programId: YOUTH_PROGRAM }
+    );
+    expect(postRescopeProgramCapabilities["program.manage"]).not.toBe(true);
+    expect(
+      (await loadBootstrapIdentity(testDb(), MEMBER)).identities
+    ).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          label: "快照歷史測試身份組",
+          scopeKind: "Department",
+        }),
+      ])
+    );
+
+    await revokeAccountAssignments(testDb(), {
+      actor_user_id: ADMIN,
+      account_user_id: MEMBER,
+      base_revision: readded.revision,
+      role_definition_ids: [created.roleDefinitionId],
+      idempotency_key: "account-access-red-scope-snapshot-cleanup",
+      now: "2026-08-29T00:01:15.000Z",
+      audit_id: "account-access-red-scope-snapshot-cleanup-audit",
+      correlation_id: "account-access-red-scope-snapshot-cleanup-correlation",
     });
   });
 

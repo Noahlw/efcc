@@ -318,14 +318,10 @@ function roleIdentity(
   role: RoleRecord,
   names: ScopeNames
 ): AccountAccessIdentity {
-  const snapshot = {
+  const scope = {
     scope_kind: assignment.scope_kind,
     scope_id: assignment.scope_id,
   };
-  const scope =
-    assignment.revoked_at === null
-      ? { scope_kind: role.scope_kind, scope_id: role.scope_id }
-      : snapshot;
   return {
     assignmentId: assignment.assignment_id,
     roleDefinitionId: role.role_definition_id,
@@ -366,14 +362,23 @@ function addGrant(
   capability: string,
   sourceRoleDefinitionId: string,
   sourceLabel: string,
-  names: ScopeNames
+  names: ScopeNames,
+  scope?: Pick<AssignmentRecord, "scope_kind" | "scope_id">
 ): void {
   const metadata = capabilityMetadata(capability);
   if (!metadata || !isCapability(capability)) {
     return;
   }
-  const bucket = groups[role.scope_kind];
-  const key = groupKey(role.scope_kind, role.scope_id, capability);
+  const effectiveScope = scope ?? {
+    scope_kind: role.scope_kind,
+    scope_id: role.scope_id,
+  };
+  const bucket = groups[effectiveScope.scope_kind];
+  const key = groupKey(
+    effectiveScope.scope_kind,
+    effectiveScope.scope_id,
+    capability
+  );
   const current = bucket.find(
     (grant) =>
       groupKey(grant.scopeKind, grant.scopeId, grant.capability) === key
@@ -394,9 +399,15 @@ function addGrant(
     group: metadata.group,
     risk: metadata.risk,
     scopeRequired: metadata.scopeRequired,
-    scopeKind: role.scope_kind,
-    scopeId: role.scope_id,
-    scopeLabel: scopeLabel(role, names),
+    scopeKind: effectiveScope.scope_kind,
+    scopeId: effectiveScope.scope_id,
+    scopeLabel: scopeLabel(
+      {
+        ...role,
+        ...effectiveScope,
+      },
+      names
+    ),
     sources: [sourceLabel],
     sourceRoleDefinitionIds: [sourceRoleDefinitionId],
   });
@@ -447,7 +458,8 @@ function resolveEffectiveAccess(
         capability,
         role.role_definition_id,
         role.label,
-        names
+        names,
+        assignment
       );
     }
   }
@@ -710,9 +722,6 @@ async function roleAtAssignmentScope(
   assignment: AssignmentRecord,
   role: RoleRecord
 ): Promise<RoleRecord> {
-  if (assignment.revoked_at === null) {
-    return role;
-  }
   const scopedRole: RoleRecord = {
     ...role,
     scope_kind: assignment.scope_kind,
@@ -1134,11 +1143,15 @@ async function readProjection(
           return null;
         }
         try {
+          const authorizationRole =
+            capability === "role.revoke"
+              ? await roleAtAssignmentScope(db, assignment, role)
+              : role;
           await assertRoleManageable(
             db,
             actorUserId,
             actorRoles,
-            role,
+            authorizationRole,
             capability,
             allowArchived
           );
@@ -1662,27 +1675,34 @@ export async function searchEligibleAccounts(
         userId: row.user_id,
         name: row.name,
         username: row.username,
-        identities: visibleAssignments
-          .map((assignment) => {
-            const role = rolesById.get(assignment.role_definition_id);
-            if (!role || adminRole(role) || baselineRole(role)) {
-              return null;
-            }
-            return {
-              roleDefinitionId: role.role_definition_id,
-              label: role.label,
-              scopeLabel: scopeLabel(role, names),
-            };
-          })
-          .filter(
-            (
-              identity
-            ): identity is {
-              roleDefinitionId: string;
-              label: string;
-              scopeLabel: string | null;
-            } => identity !== null
-          ),
+        identities: (
+          await Promise.all(
+            visibleAssignments.map(async (assignment) => {
+              const role = rolesById.get(assignment.role_definition_id);
+              if (!role || adminRole(role) || baselineRole(role)) {
+                return null;
+              }
+              const scopedRole = await roleAtAssignmentScope(
+                db,
+                assignment,
+                role
+              );
+              return {
+                roleDefinitionId: role.role_definition_id,
+                label: role.label,
+                scopeLabel: scopeLabel(scopedRole, names),
+              };
+            })
+          )
+        ).filter(
+          (
+            identity
+          ): identity is {
+            roleDefinitionId: string;
+            label: string;
+            scopeLabel: string | null;
+          } => identity !== null
+        ),
       };
     })
   );
@@ -2072,21 +2092,26 @@ export async function revokeAccountAssignments(
       if (!role) {
         throw new RoleTargetNotFoundError();
       }
+      const assignment = activeByRole.get(roleId);
       assertSelfTarget(
         input.actor_user_id,
         input.account_user_id,
         eligibility.actorRoles,
         role
       );
-      // An absent assignment is still an authorization-sensitive no-op.
+      // Assignment scope snapshots authorize revocation even after the Role
+      // Definition is rescoped. Missing assignments still authorize against
+      // the current Role Definition before returning a no-op.
+      const authorizationRole = assignment
+        ? await roleAtAssignmentScope(db, assignment, role)
+        : role;
       await assertRoleManageable(
         db,
         input.actor_user_id,
         eligibility.actorRoles,
-        role,
+        authorizationRole,
         "role.revoke"
       );
-      const assignment = activeByRole.get(roleId);
       if (!assignment) {
         noops.push(roleId);
         continue;

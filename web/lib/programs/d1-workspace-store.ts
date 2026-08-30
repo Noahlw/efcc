@@ -323,7 +323,7 @@ export class D1WorkspaceStore implements WorkspaceStore {
     }
     return this.db
       .prepare(
-        `SELECT DISTINCT rd.scope_id AS department_id
+        `SELECT DISTINCT ra.scope_id AS department_id
            FROM role_assignments ra
            JOIN role_definitions rd
              ON rd.role_definition_id = ra.role_definition_id
@@ -332,8 +332,8 @@ export class D1WorkspaceStore implements WorkspaceStore {
           WHERE ra.account_user_id = ?
             AND ra.revoked_at IS NULL
             AND rd.is_archived = 0
-            AND rd.scope_kind = 'Department'
-            AND rd.scope_id IS NOT NULL
+            AND ra.scope_kind = 'Department'
+            AND ra.scope_id IS NOT NULL
             AND rg.capability IN ('department.manage', 'department.manager.assign')`
       )
       .bind(userId)
@@ -378,17 +378,17 @@ export class D1WorkspaceStore implements WorkspaceStore {
       : "";
     const identityScopePredicate = scoped
       ? `AND (
-           identity_roles.scope_kind = 'Global'
+           identity_assignments.scope_kind = 'Global'
            OR (
-             identity_roles.scope_kind = 'Department'
-             AND identity_roles.scope_id = departments.department_id
+             identity_assignments.scope_kind = 'Department'
+             AND identity_assignments.scope_id = departments.department_id
            )
            OR (
-             identity_roles.scope_kind = 'Program'
+             identity_assignments.scope_kind = 'Program'
              AND EXISTS (
                SELECT 1
                  FROM programs identity_programs
-                WHERE identity_programs.program_id = identity_roles.scope_id
+                WHERE identity_programs.program_id = identity_assignments.scope_id
                   AND identity_programs.department_id IN (${placeholders})
              )
            )
@@ -445,8 +445,8 @@ export class D1WorkspaceStore implements WorkspaceStore {
                 identity_roles.role_definition_id AS identity_id,
                 identity_roles.label AS identity_label,
                 identity_roles.stable_key AS identity_stable_key,
-                identity_roles.scope_kind AS identity_scope_kind,
-                identity_roles.scope_id AS identity_scope_id
+                identity_assignments.scope_kind AS identity_scope_kind,
+                identity_assignments.scope_id AS identity_scope_id
            FROM matched_accounts
            JOIN accounts ON accounts.user_id = matched_accounts.user_id
            LEFT JOIN enrollments
@@ -640,8 +640,8 @@ export class D1WorkspaceStore implements WorkspaceStore {
                 identity_roles.role_definition_id AS identity_id,
                 identity_roles.label AS identity_label,
                 identity_roles.stable_key AS identity_stable_key,
-                identity_roles.scope_kind AS identity_scope_kind,
-                identity_roles.scope_id AS identity_scope_id
+                identity_assignments.scope_kind AS identity_scope_kind,
+                identity_assignments.scope_id AS identity_scope_id
            FROM matched_accounts
            JOIN accounts ON accounts.user_id = matched_accounts.user_id
            LEFT JOIN enrollments
@@ -851,8 +851,8 @@ export class D1WorkspaceStore implements WorkspaceStore {
                 identity_roles.role_definition_id AS identity_id,
                 identity_roles.label AS identity_label,
                 identity_roles.stable_key AS identity_stable_key,
-                identity_roles.scope_kind AS identity_scope_kind,
-                identity_roles.scope_id AS identity_scope_id
+                identity_assignments.scope_kind AS identity_scope_kind,
+                identity_assignments.scope_id AS identity_scope_id
            FROM accounts
            LEFT JOIN enrollments
              ON enrollments.member_user_id = accounts.user_id
@@ -2372,25 +2372,25 @@ export class D1WorkspaceStore implements WorkspaceStore {
                 ra.account_user_id AS user_id,
                 rd.role_definition_id,
                 rd.label,
-                rd.scope_kind,
-                rd.scope_id,
+                ra.scope_kind,
+                ra.scope_id,
                 ra.granted_at,
                 a.name AS user_name,
                 a.username
            FROM programs p
+           JOIN role_assignments ra
+             ON ra.revoked_at IS NULL
            JOIN role_definitions rd
-             ON (
-               (rd.scope_kind = 'Program' AND rd.scope_id = p.program_id)
-               OR (rd.scope_kind = 'Department' AND rd.scope_id = p.department_id)
-             )
+             ON rd.role_definition_id = ra.role_definition_id
            JOIN role_definition_grants rg
              ON rg.role_definition_id = rd.role_definition_id
             AND rg.capability IN ('program.manage', 'program.leader.assign')
-           JOIN role_assignments ra
-             ON ra.role_definition_id = rd.role_definition_id
-            AND ra.revoked_at IS NULL
            JOIN accounts a ON a.user_id = ra.account_user_id
           WHERE p.program_id = ? AND a.account_status = 'Active'
+            AND (
+              (ra.scope_kind = 'Program' AND ra.scope_id = p.program_id)
+              OR (ra.scope_kind = 'Department' AND ra.scope_id = p.department_id)
+            )
           ORDER BY ra.granted_at, a.name, a.user_id`
       )
       .bind(programId)

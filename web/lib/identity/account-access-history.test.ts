@@ -25,7 +25,7 @@ beforeAll(async () => {
 });
 
 describe("Account Access historical Program scope", () => {
-  test("keeps revoked history in its original Department after role rescope", async () => {
+  test("keeps revoked history in its original Program scope after role rescope", async () => {
     try {
       await testDb().batch([
         testDb()
@@ -173,11 +173,13 @@ describe("Account Access historical Program scope", () => {
         audit_id: "h487-history-revoke-audit",
         correlation_id: "h487-history-revoke-correlation",
       });
-      expect(
-        revoked.revokedAssignments.some(
-          (assignment) => assignment.roleDefinitionId === ROLE_ID
-        )
-      ).toBe(true);
+      const history = revoked.revokedAssignments.find(
+        (assignment) => assignment.roleDefinitionId === ROLE_ID
+      );
+      expect(history).toMatchObject({
+        scopeKind: "Program",
+        scopeId: OLD_PROGRAM_ID,
+      });
 
       const adultView = await loadAccountAccess(
         testDb(),
