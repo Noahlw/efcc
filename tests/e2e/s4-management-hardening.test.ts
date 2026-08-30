@@ -410,7 +410,7 @@ test.describe("S4 Management hardening integration gate", () => {
       page.getByRole("heading", { name: PERMISSIONS_TITLE })
     ).toBeVisible();
     await expect(
-      page.getByRole("link", { name: "設定", exact: true }).first()
+      page.getByRole("link", { name: "返回管理工作", exact: true }).first()
     ).toHaveAttribute("href", "/management?module=settings");
 
     await page.goto("/permissions");
@@ -562,7 +562,10 @@ test.describe("S4 Management hardening integration gate", () => {
         '[data-directory-detail] article[aria-labelledby="account-directory-detail-title"]'
       );
       await expect(detail).toBeFocused();
-      await expect(detail).toHaveCSS("position", "sticky");
+      await expect(page.locator("[data-directory-detail]")).toHaveCSS(
+        "position",
+        "sticky"
+      );
     }
     if (viewportWidth < 800) {
       const filter = page.getByRole("button", { name: /^篩選/u });
@@ -1143,8 +1146,18 @@ test.describe("S4 Management hardening integration gate", () => {
     await expect(
       review.getByRole("button", { exact: true, name: "確認儲存" })
     ).toBeVisible();
-    const reviewBox = await review.boundingBox();
-    expect(reviewBox).not.toBeNull();
+    const reviewContent = page.locator('[data-slot="sheet-content"]');
+    await expect(reviewContent).toBeVisible();
+    await page.waitForFunction(() => {
+      const sheet = document.querySelector<HTMLElement>(
+        '[data-slot="sheet-content"]'
+      );
+      return (
+        sheet !== null &&
+        sheet.getBoundingClientRect().bottom <= window.innerHeight + 1
+      );
+    });
+    const reviewBox = await reviewContent.boundingBox();
     if (reviewBox) {
       expect(reviewBox.x).toBeGreaterThanOrEqual(-1);
       expect(reviewBox.y).toBeGreaterThanOrEqual(-1);
