@@ -3815,3 +3815,228 @@ Only `docs/specs/s4-phase-c-acceptance-trace.md` is changed by this append.
 No tracked source, test, configuration, migration, schema, fixture,
 `#487` implementation path, `#488/#489`, Phase D, deployment, or external
 database file was edited. The child remains stopped before Phase D.
+## #487 post-fix focused evidence — current `127076bf` — 2026-08-31
+
+**Evidence scope:** Fresh isolated child
+`/Users/noah.wong/Desktop/code/EFCC-dev/.worktrees/s4-phase-c` on
+`feat/s4-c-stackable-identity-integration`, created from and verified at
+coordinator HEAD `127076bfcd2d42b4b9f6ff1d090961d75eb94c99`. The child was
+clean before this append. This section is documentation-only. No production
+source, test, configuration, migration, schema, fixture, deployment, remote,
+production-data, Apps Script, Google Sheets, non-disposable database, `#488/#489`,
+or Phase D path was changed.
+
+### Authority reread before checks
+
+Before validation I explicitly reread implementation ticket `issue://487`,
+parent ticket `issue://475`, Specs
+`docs/specs/091-stackable-identity-backend.md` and
+`docs/specs/092-discord-identity-design-system-adoption.md`,
+`local://s4-phase-c-identity-integration-plan.md` (including the Task 4
+obsolete-caller audit and evidence-owner instructions), the complete current
+`docs/specs/s4-phase-c-acceptance-trace.md` through all **3,817** pre-append
+lines, ADRs
+`docs/adr/0040-discord-derived-s4-management-interaction-authority.md`,
+`docs/adr/0041-atomic-registration-batch-approval.md`,
+`docs/adr/0042-discord-like-stackable-role-model.md`, and
+`docs/adr/0043-owned-civic-design-system-governance.md`, and the latest review
+report `agent://ReviewAuthorityFinal`.
+
+`ReviewAuthorityFinal` remained **BLOCKED/incorrect** at its reviewed
+coordinator HEAD. Its P1 findings were stale Permission Editor list/heading and
+role-first management E2E contracts; missing assignment summaries for
+`role.read`-only callers; global registration approval scope widening; required
+normalized Worker suites stopping before assertions; missing post-anchor full
+Programs E2E; the supervised Worker launch's Node 20 `node:sqlite` failure; and
+unclaimed manual M1–M4 gates. This rerun specifically measures the corrected
+role-read source path, the corrected global-approval source path where the
+Worker seam can start, and the migrated management E2E without converting
+unexecuted or manual gates into PASS.
+
+### Runtime and required Context7 CLI lookups
+
+Observed runtime was Node `v22.18.0`, pnpm `11.7.0`, web Vitest `4.1.10`,
+Wrangler `4.127.1`, Playwright CLI `1.62.1`, root TypeScript `7.0.2`, and web
+TypeScript `5.9.3`. All required lookups were attempted before validation with
+the Context7 CLI (`npx --yes ctx7@latest`), not MCP Context7. All **12**
+commands exited `1` with this exact quota output:
+
+```text
+✖ Monthly quota exceeded. Create a free API key at https://context7.com/dashboard for more requests.
+```
+
+The exact attempted commands were:
+
+```text
+npx --yes ctx7@latest library "Cloudflare Workers" "D1Database prepared statements batch transactions schema migrations"
+npx --yes ctx7@latest docs /cloudflare/workers-sdk "D1Database prepare bind batch transaction atomic migrations PRAGMA table_info"
+npx --yes ctx7@latest library vitest "Run Vitest with Specific File expect requireAssertions async assertions"
+npx --yes ctx7@latest docs /vitest-dev/vitest "Run Vitest with Specific File expect(actual, message?) expect.requireAssertions async test assertions"
+npx --yes ctx7@latest library playwright "viewport CSS pixels locator boundingBox route navigation webServer"
+npx --yes ctx7@latest docs /microsoft/playwright "Locator.boundingBox CSS pixels Page.setViewportSize route navigation webServer"
+npx --yes ctx7@latest library "Next.js" "App Router Link href URL object query parameters navigation"
+npx --yes ctx7@latest docs /vercel/next.js "Pass URL object to Link in App Router query parameters navigation"
+npx --yes ctx7@latest library "Radix UI" "Switch Root asChild Slot accessible semantics"
+npx --yes ctx7@latest docs /radix-ui/primitives "Switch Root renders button role switch aria-checked data-state checked disabled keyboard Primitive asChild Slot composition"
+npx --yes ctx7@latest library "CVA class variance authority" "cva variants VariantProps compoundVariants"
+npx --yes ctx7@latest docs /joe-bell/cva "Implement component variants with cva VariantProps Type compoundVariants defaultVariants"
+```
+
+Previously selected authoritative IDs/sections in historical evidence remain
+prior evidence only; no fresh Context7 success is claimed for this child.
+
+### Focused Worker/domain checks
+
+| Command / check | Exact current result |
+| --- | --- |
+| `pnpm --dir web exec vitest run --config vitest.config.ts lib/identity/role-hierarchy.test.ts lib/auth/normalized-authority-c487.test.ts` | **Exit 1.** `role-hierarchy.test.ts`: **1 file, 42/42 passed**. `normalized-authority-c487.test.ts`: Cloudflare-pool startup **before assertions**, one unhandled `EvalError: Code generation from strings disallowed for this context`; consolidated runner reported **1 passed file, 42 passed tests, 1 error**, and **0 product assertions** for the blocked file. |
+| `pnpm --dir web exec vitest run --config vitest.config.ts worker.auth.test.ts` | **PASS — exit 0, 1 file, 47/47**. This existing auth/registration handler seam covers registration queue, detail, single approve/reject, idempotent decisions, and authorization guards. |
+| Additional nearby `lib/auth/registration-batch.test.ts` included in the first combined focused invocation | **Exit 1 — 1 file, 6 tests; 1 passed, 5 failed**. The five failures reached assertions with actual `403` where the legacy batch fixture expected `200`/`422`; this is not counted as a C-487 PASS and is separate from the normalized `EvalError` startup failure. |
+
+The dedicated normalized test file contains the corrected C-487-01 bootstrap,
+C-487-02 Programs, C-487-03 attendance, C-487-04 management, and five-surface
+registration approval test (queue/detail/approve/reject/batch). That file did
+not reach any assertion in this environment. The passing hierarchy file does
+execute the corrected `role.read`-only contract: same-scope assignment count
+and opaque assigned account IDs are projected while assignment actions are
+empty, and unrelated scoped definitions are redacted.
+
+The normalized test failure is classified as an external
+`@cloudflare/vitest-pool-workers`/Vite pre-discovery infrastructure failure.
+No unsafe-eval bypass, source workaround, test suppression, assertion
+weakening, or pool/config change was used.
+
+### Focused component checks
+
+```text
+pnpm --dir web exec vitest run --config vitest.components.config.ts lib/permission-editor-panel.test.tsx lib/identity/role-hierarchy-panel.test.tsx lib/account-access-panel.test.tsx lib/management-hub.test.tsx lib/management-route-redirects.test.tsx lib/management-action-framework.test.tsx
+```
+
+**PASS — exit 0, 6 files, 89/89 tests.** This covers the Permission Editor,
+role hierarchy panel, Account Access identity picker/detail, management hub,
+safe management redirects, and shared management action framework. No
+manual accessibility or WCAG claim is made.
+
+### W7 identity geometry
+
+```text
+pnpm test:role-hierarchy-geometry
+```
+
+**PASS — exit 0, 49/49 numeric CSS-pixel tests** across configured
+`320, 390, 600, 799, 800, 1024, 1440` widths. The run exercised
+`account-access-geometry.test.ts`, `permission-editor-geometry.test.ts`, and
+`role-hierarchy-geometry.test.ts` through the existing
+`tests/e2e/role-hierarchy-geometry.config.ts`. No screenshot, image snapshot,
+pixel-diff, manual keyboard/AT, reduced-motion, forced-colors, zoom/text-spacing,
+real-device, or WCAG conformance claim is made.
+
+### Local Worker launch, disposable D1, and seed lifecycle
+
+The prescribed supervised launch was attempted first:
+
+```text
+pnpm --dir web dev:local
+```
+
+It exited before readiness because the supervised launcher resolved Node
+`v20.19.0`, with the exact warning and failure:
+
+```text
+warn: This version of pnpm requires at least Node.js v22.13
+warn: The current version of Node.js is v20.19.0
+Error [ERR_UNKNOWN_BUILTIN_MODULE]: No such built-in module: node:sqlite
+Node.js v20.19.0
+```
+
+No unsafe-eval or Node 20 workaround was used. A separate direct Node 22 local
+Worker was then started only on loopback:
+
+```text
+fnm exec --using v22.18.0 pnpm --dir web exec wrangler dev --local --ip 127.0.0.1 --port 8797 --var EFCC_ACCESS_TOKEN_SECRET:local-s4c-evidence-secret
+```
+
+Wrangler `4.127.1` reported local `env.DB`, local `env.RPC_RATE_LIMITER`,
+local `env.ASSETS`, and `Ready on http://127.0.0.1:8797`. The first
+secretless seed-demo probe correctly failed closed with
+`HTTP 503 ... AUTH_NOT_CONFIGURED`; after restarting with the disposable
+secret, `DEMO_TARGET_URL=http://127.0.0.1:8797 pnpm db:seed:demo` passed and
+reported the four demo Programs, 13 generated events, the module-gate
+department, notices, and demo Home content.
+
+Local D1 was migrated with `pnpm --dir web exec wrangler d1 migrations apply
+efcc-identity --local` (**25 migrations**). The checked-in
+`pnpm db:seed:local` script completed its **19 + 11 + 6** local commands, and
+the checked-in `pnpm db:seed:disposable` portion completed **6** commands.
+After the interrupted management run, the same checked-in local reset plus
+demo seed sequence completed again. No remote or production D1 was used.
+
+### Full targeted Programs D1 E2E
+
+The clean-fixture command was:
+
+```text
+PROGRAMS_TARGET_URL=http://127.0.0.1:8797 fnm exec --using v22.18.0 pnpm exec playwright test --config=tests/e2e/programs-d1.config.ts
+```
+
+The config scheduled **195 tests** with one worker and exited `1` after
+**4.3 minutes**: **192 passed, 1 failed, 2 flaky**. The exact unresolved
+results were:
+
+- `[desktop] tests/e2e/programs-d1.test.ts:2642` — MUI-01 workspace geometry:
+  `workspaceScrollWidth` expected `<= 263`, received `309`; the retry was
+  recorded as flaky.
+- `[desktop] tests/e2e/pui-05-home-origin.test.ts:586` — Home next-event:
+  `programId` was empty; the retry remained failed.
+- `[desktop] tests/e2e/pui-05-home-origin.test.ts:650` — Home Explore:
+  `getByTestId('explore-card')` was not found; the retry was recorded as flaky.
+
+No Worker death or connection-refused cascade was reported in this run. This
+is a measured partial result, not a `195/195` claim; the earlier full pass at
+an older commit remains historical and is not relabeled as current.
+
+### Normalized management hardening E2E
+
+After a checked-in local reset and demo seed, the all-project command was
+started as:
+
+```text
+PROGRAMS_TARGET_URL=http://127.0.0.1:8797 S4_E2E_OUTPUT_DIR=/tmp/s4c-management-hardening-127076bf S4_E2E_RESULTS_FILE=/tmp/s4c-management-hardening-127076bf-results.json fnm exec --using v22.18.0 pnpm exec playwright test --config=tests/e2e/s4-management-hardening.config.ts
+```
+
+The config scheduled **110 tests** across all **11 configured projects** with
+one worker. It produced no final result JSON and was interrupted through the
+background-job handle `bg_2` after the bounded run exceeded six minutes while
+the Worker-backed assertions made no complete progress. The observed partial
+output included an initial navigation failure and retry, skipped dependent
+tests, a failed management-landmark assertion and retry, one passing legacy
+redirect test, and a failed mobile action-surface assertion and retry. The
+runner was stopped cleanly; the verified process handle had no remaining PID.
+Because the run was interrupted, **no aggregate management pass/fail count or
+management readiness claim is made**. The migrated hardening E2E therefore
+remains an explicit blocker rather than being silently treated as historical
+evidence.
+
+The existing live UI and Member Directory configs were not started after the
+management runner interruption; no live-ui or Member Directory PASS is claimed
+in this section. Their earlier exact results remain historical only.
+
+### C-487 corrected-path status
+
+| Contract | Current evidence at `127076bf` | Status |
+| --- | --- | --- |
+| `role.read`-only hierarchy assignment counts/opaque IDs, no assign/revoke actions, out-of-scope redaction | `lib/identity/role-hierarchy.test.ts` | **PASS — 42/42** |
+| Five registration approval surfaces reject scoped-only `registration.approval.manage` and accept global Staff grant | Dedicated `lib/auth/normalized-authority-c487.test.ts` contains the contract, but Cloudflare-pool startup stopped before assertions | **BLOCKED — 0 assertions** |
+| Permission Editor normalized heading/list/loading/direct-detail/switch/Sheet contracts | Six-file component run and W7 geometry | **PASS — components 89/89; geometry 49/49** |
+| Programs/attendance/bootstrap/reset/legacy route behavior | Programs E2E **192/195**; auth handler **47/47**; normalized C-487 Worker **0 assertions**; local migrations/seeds pass | **PARTIAL/BLOCKED — no full C-487 readiness claim** |
+
+`C-487-M1` (keyboard/screen-reader/reduced-motion/forced-colors/zoom/
+text-spacing), `C-487-M2` (iOS/Android dock and safe-area), `C-487-M3`
+(remote-CI parity), and `C-487-M4` (production-promotion dry run) remain
+**MANUAL, unclaimed**. No manual accessibility, WCAG, real-device, remote-CI,
+production-promotion, screenshot, image, or pixel-diff claim is made.
+
+The established Phase C QA file
+`docs/qa/2026-08-29-s4-phase-c-foundation.md` is absent at this HEAD, so no new
+QA file was created. Only this acceptance trace was appended; all historical
+trace sections remain unchanged. The child remains stopped before Phase D.
