@@ -348,7 +348,7 @@ describe(RoleHierarchyPanel, () => {
     );
     render(<RoleHierarchyPanel />);
     await screen.findByRole("heading", { name: "成人部門管理者" });
-    expect(screen.queryByRole("button", { name: "管理已指派帳戶" })).toBeNull();
+    expect(screen.queryByRole("link", { name: "管理已指派帳戶" })).toBeNull();
   });
 
   test("role-delete-only identity gets the Account Access lifecycle entry", async () => {
