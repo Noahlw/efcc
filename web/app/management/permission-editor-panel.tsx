@@ -661,17 +661,17 @@ export const PermissionEditorPanel = () => {
           }
           busy={busy}
         >
-          <div className="grid gap-4 p-4">
-            <div className="grid gap-1">
+          <div className="grid min-w-0 gap-4 p-4">
+            <div className="grid min-w-0 gap-1">
               <h2
-                className="text-xl font-semibold"
+                className="min-w-0 wrap-anywhere text-xl font-semibold"
                 id="permission-editor-detail-title"
                 ref={detailHeadingRef}
                 tabIndex={-1}
               >
                 {detail.roleDefinition.label}
               </h2>
-              <p className="text-muted-foreground text-sm">
+              <p className="min-w-0 wrap-anywhere text-muted-foreground text-sm">
                 {detail.roleDefinition.description}
               </p>
             </div>

@@ -141,10 +141,10 @@ export const ManagementPageHeader = ({
       <BackIcon />
       <span>{backLabel}</span>
     </Link>
-    <div className="flex items-start justify-between gap-4">
-      <div>
+    <div className="flex min-w-0 items-start justify-between gap-4">
+      <div className="min-w-0">
         <h1
-          className="m-0 text-[clamp(1.75rem,5vw,2.35rem)] tracking-[-0.03em]"
+          className="m-0 wrap-anywhere text-[clamp(1.75rem,5vw,2.35rem)] tracking-[-0.03em]"
           id={titleId}
           ref={titleRef}
           tabIndex={titleRef ? -1 : undefined}

@@ -1080,6 +1080,10 @@ describe("AccountAccessPanel", () => {
     await user.click(screen.getByRole("button", { name: /查看歷史/ }));
     expect(screen.getAllByText(/成人部門/).length).toBeGreaterThan(0);
     await user.click(screen.getByRole("button", { name: "查看權限詳情" }));
+    expect(screen.getByRole("button", { name: "Close" })).toHaveClass(
+      "min-h-11",
+      "min-w-11"
+    );
     const ids = [...document.querySelectorAll("h3[id]")]
       .map((heading) => heading.id)
       .filter((id) => id.includes("account-access"));
