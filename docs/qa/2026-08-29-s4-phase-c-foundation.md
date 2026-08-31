@@ -8,7 +8,7 @@
 - Required specifications: `docs/specs/091-stackable-identity-backend.md` and `docs/specs/092-discord-identity-design-system-adoption.md`.
 - Plan: `local://s4-phase-c-identity-integration-plan.md`.
 - Acceptance trace: `docs/specs/s4-phase-c-acceptance-trace.md`.
-- Current local verification revision: `be4aff4f3a0c5ceca2edc7276e23a89f6fbaf912`.
+- Current local verification revision: `1ccbb0120eb9d5c288f3e385f7194b9cfd59853f`.
 - Phase B base: `c75c99e84d699d2d1eac44f07d4e013ead4c12a5` (`feat/s4-b-shared-modules-role-definitions`).
 - Authenticated browser target: `http://127.0.0.1:8797`, direct Node `v22.18.0` Wrangler process, disposable local D1 only.
 - No remote host, Cloudflare account, Apps Script, Google Sheet, production database, deployment, or Phase D path was used.
@@ -286,3 +286,33 @@ database, Apps Script, Google Sheet, deployment, merge, screenshot,
 pixel-diff, WCAG-conformance, screen-reader, real-device, remote-CI, or Phase D
 claim is made. Manual `C-485-M1/M2`, `C-486-M1/M2`, and `C-487-M1..M4` remain
 unclaimed.
+
+## Final hardening verification — source `1ccbb0120eb9d5c288f3e385f7194b9cfd59853f` — 2026-08-31
+
+The post-review hardening closes dynamic-label containment and schema edge
+cases. Identity list/action rows now override the local Button primitive's
+fixed height and `whitespace-nowrap` with `h-auto whitespace-normal` plus
+wrapped content. The disposable wrapper and in-process preflight normalize
+sqlite table names case-insensitively. Migration 0024 compares nullable scope
+snapshots with SQLite `IS NOT`, so the literal `<NULL>` sentinel cannot match
+SQL `NULL`.
+
+| Hardening check | Exact result |
+| --- | --- |
+| `pnpm typecheck` and `pnpm --dir web typecheck` | **PASS** |
+| `pnpm --dir web build` | **PASS**, 18/18 static routes |
+| `pnpm verify:identity` | **PASS**, 4 files, 98/98 |
+| `pnpm --dir web test:components` | **PASS**, 59 files, 692/692 |
+| `pnpm test` | **PASS**, 38/38 |
+| `pnpm test:role-hierarchy-geometry` | **PASS**, 49/49 |
+| `s4-management-hardening.config.ts` | **PASS**, 45 passed, 65 intentional `onlyProjects` skips, 110 scheduled |
+| Account Access self-target domain regression | **PASS**, 28/28; every actor-self target is rejected by the final `assertSelfTarget` guard, including lower roles |
+| Uppercase retired-table wrapper probe | **PASS**, `ROLE_CAPABILITIES` caused non-zero fail-closed preflight with the manual local DROP instruction; after dropping only the probe table, seed succeeded |
+| Sentinel scope snapshot regression | **PASS**, included in the 98/98 identity suite; a Global assignment with `scope_id = '<NULL>'` is rejected |
+| Full `pnpm --dir web test` | **INFRA-BLOCKED**, exit 1; 37 files and 561 assertions passed; the same four Cloudflare-pool startup files abort before assertions with the known `EvalError` |
+| Final Ultracite baseline | **FAIL**, 295 files, 1,823 diagnostics, 0 warnings, 557 rules; no new diagnostics on hardening lines |
+
+The final Worker was stopped after resetting disposable local D1 and confirming
+`pending: 0`, `legacy_s4: 0`. No screenshot, pixel-diff, WCAG-conformance,
+screen-reader, real-device, remote-CI, production-promotion, remote-D1,
+deployment, merge, Apps Script, Google Sheet, or Phase D claim is made.

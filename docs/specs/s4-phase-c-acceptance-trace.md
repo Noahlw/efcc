@@ -4474,3 +4474,38 @@ product assertions. `C-485-M1/M2`, `C-486-M1/M2`, and `C-487-M1..M4` remain
 `MANUAL — unclaimed`. No screenshot, pixel-diff, WCAG, screen-reader,
 real-device, remote-CI, production-promotion, remote-D1, deployment, merge,
 or Phase D claim is made.
+
+## Final hardening verification — source `1ccbb0120eb9d5c288f3e385f7194b9cfd59853f` — 2026-08-31
+
+The final hardening pass addressed the remaining review edge cases:
+
+- dynamic Permission Editor, Account Access, Account Directory, Member
+  Directory, and Role Hierarchy rows now use `h-auto whitespace-normal`,
+  `min-w-0`, and wrapped secondary content where long identity labels can
+  otherwise inherit the local Button primitive's `h-8`/`whitespace-nowrap`;
+- both disposable-table guards normalize sqlite table names case-insensitively;
+- migration 0024 uses SQLite `IS NOT` for nullable scope snapshot equality,
+  rejecting a literal `<NULL>` scope ID for a Global Role Definition; and
+- `assertSelfTarget` was rechecked: its final capability-denied throw makes
+  every actor-self grant/revoke target fail, including lower roles.
+
+| Hardening criterion | Status | Evidence |
+| --- | --- | --- |
+| C-485-01 through C-485-06 | **INFRA-BLOCKED** | No Permission Editor Worker test assertion is available because the four documented Cloudflare-pool files abort before assertions; component/geometry results remain as recorded above. |
+| C-486-01 through C-486-07 | **PASS** | Account Access domain/handler/component, self-target, scope, lifecycle, idempotency, and local browser evidence remains green. |
+| C-487-01 through C-487-07 | **PASS** | Normalized identity, route guard, case-insensitive seed preflight, sentinel scope trigger, Programs/management/local browser, and W7 evidence are green; only the separate normalized Worker test file is infrastructure-blocked. |
+| C-485-M1/M2, C-486-M1/M2, C-487-M1..M4 | **MANUAL — unclaimed** | No human keyboard, screen-reader, reduced-motion, forced-colors, zoom/text-spacing, real-device, remote-CI, or production-promotion review was performed. |
+
+At this source SHA: `pnpm verify:identity` passed 4 files/98 assertions;
+`pnpm --dir web test:components` passed 59 files/692 assertions;
+`pnpm test` passed 38/38; `pnpm test:role-hierarchy-geometry` passed 49/49;
+the local Management Hardening gate passed 45 with 65 intentional skips; and
+the final Ultracite baseline remained 1,823 diagnostics/0 warnings across 295
+files with no new hardening-line diagnostics. The uppercase wrapper probe and
+the authenticated reserved-route collision smoke both passed after local
+cleanup. Final registration residue is `pending: 0`, `legacy_s4: 0`, and the
+Worker is stopped.
+
+No screenshot, pixel-diff, WCAG-conformance, screen-reader, real-device,
+remote-CI, production-promotion, remote-D1, deployment, merge, Apps Script,
+Google Sheet, or Phase D claim is made.
