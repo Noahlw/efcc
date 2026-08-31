@@ -284,7 +284,7 @@ export async function handleUpdateRoleDefinitionGrants(
         audit_id: crypto.randomUUID(),
         correlation_id: requestId,
       });
-    const { responseRequestId, idempotent: _idempotent, ...data } = result;
+    const { responseRequestId, ...data } = result;
     return roleSuccess(200, data, responseRequestId ?? requestId);
   } catch (error) {
     return mapPermissionError(error, requestId);

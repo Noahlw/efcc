@@ -609,7 +609,10 @@ export const PermissionEditorPanel = () => {
                     <Link
                       href={`/management?module=permissions&role=${encodeURIComponent(definition.roleDefinitionId)}&view=permissions`}
                       onClick={() =>
-                        selectRole(definition.roleDefinitionId, definition.label)
+                        selectRole(
+                          definition.roleDefinitionId,
+                          definition.label
+                        )
                       }
                     >
                       <span className="grid gap-1 text-left">
@@ -718,6 +721,7 @@ export const PermissionEditorPanel = () => {
                 )}
                 {saveState === "conflict" && (
                   <Button
+                    className="min-h-11"
                     onClick={discardAndRestart}
                     type="button"
                     variant="outline"
@@ -835,6 +839,7 @@ export const PermissionEditorPanel = () => {
                   : `版本 ${detail.revision}`}
               </span>
               <Button
+                className="min-h-11"
                 disabled={
                   changes.length === 0 || busy || saveState === "conflict"
                 }
@@ -895,7 +900,12 @@ export const PermissionEditorPanel = () => {
           tabIndex={-1}
         >
           <p>{state.message}</p>
-          <Button onClick={retryLoad} type="button" variant="outline">
+          <Button
+            className="min-h-11"
+            onClick={retryLoad}
+            type="button"
+            variant="outline"
+          >
             重試連接
           </Button>
         </section>

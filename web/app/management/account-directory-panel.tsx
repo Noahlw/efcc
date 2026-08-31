@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 
@@ -366,7 +367,7 @@ export const AccountDirectoryPanel = () => {
   const stateRef = useRef<HTMLElement>(null);
   const resultsRef = useRef<HTMLElement>(null);
   const detailRef = useRef<HTMLElement>(null);
-  const accessReturnFocusRef = useRef<HTMLButtonElement>(null);
+  const accessReturnFocusRef = useRef<HTMLAnchorElement>(null);
   const restoreAccessFocus =
     searchParams.get("returnFocus") === "account-access";
   const [query, setQuery] = useState(searchParams.get("q") ?? "");
@@ -744,17 +745,16 @@ export const AccountDirectoryPanel = () => {
               </div>
               {selected.canOpenAccess && (
                 <Button
+                  asChild
                   className="mt-4 min-h-11 w-full font-extrabold"
                   variant="default"
-                  onClick={() =>
-                    router.push(
-                      `/management?module=accounts&account=${encodeURIComponent(selected.userId)}&view=access&return=${encodeURIComponent(accountAccessReturnHref(returnHref, selected.userId))}`
-                    )
-                  }
-                  ref={accessReturnFocusRef}
-                  type="button"
                 >
-                  查看帳戶權限與身份組
+                  <Link
+                    href={`/management?module=accounts&account=${encodeURIComponent(selected.userId)}&view=access&return=${encodeURIComponent(accountAccessReturnHref(returnHref, selected.userId))}`}
+                    ref={accessReturnFocusRef}
+                  >
+                    查看帳戶權限與身份組
+                  </Link>
                 </Button>
               )}
             </article>

@@ -134,15 +134,13 @@ describe(AccountDirectoryPanel, () => {
     await user.click(row);
     expect(row).toHaveAttribute("aria-pressed", "true");
     expect(window.location.search).toContain("account=AD-001");
-    const accessLink = await screen.findByRole("button", {
+    const accessLink = await screen.findByRole("link", {
       name: "查看帳戶權限與身份組",
     });
-    await user.click(accessLink);
-    expect(mocks.router.push).toHaveBeenCalledWith(
-      expect.stringContaining("module=accounts&account=AD-001&view=access")
+    expect(accessLink).toHaveAttribute(
+      "href",
+      "/management?module=accounts&account=AD-001&view=access&return=%2Fmanagement%3Fmodule%3Daccounts%26q%3D%25E5%25A4%25A7%25E6%2596%2587%26account%3DAD-001%26returnFocus%3Daccount-access"
     );
-    const href = mocks.router.push.mock.calls[0]?.[0] ?? "";
-    expect(href).toContain("returnFocus%3Daccount-access");
   });
   test("preserves a Programs origin when entering Account Access", async () => {
     const user = userEvent.setup();
@@ -161,14 +159,14 @@ describe(AccountDirectoryPanel, () => {
     render(<AccountDirectoryPanel />);
     const row = await screen.findByRole("button", { name: /陳大文/u });
     await user.click(row);
-    await user.click(
-      await screen.findByRole("button", {
-        name: "查看帳戶權限與身份組",
-      })
-    );
-    const href = mocks.router.push.mock.calls[0]?.[0] ?? "";
-    expect(href).toContain(
-      "return=%2Fprograms%3Fmode%3Dmanagement%26program%3Dprogram-1%26task%3Dsettings"
+    const accessLink = await screen.findByRole("link", {
+      name: "查看帳戶權限與身份組",
+    });
+    expect(accessLink).toHaveAttribute(
+      "href",
+      expect.stringContaining(
+        "return=%2Fprograms%3Fmode%3Dmanagement%26program%3Dprogram-1%26task%3Dsettings"
+      )
     );
   });
 
@@ -522,7 +520,7 @@ describe(AccountDirectoryPanel, () => {
       )
     );
     render(<AccountDirectoryPanel />);
-    const accessLink = await screen.findByRole("button", {
+    const accessLink = await screen.findByRole("link", {
       name: "查看帳戶權限與身份組",
     });
     await waitFor(() => expect(document.activeElement).toBe(accessLink));

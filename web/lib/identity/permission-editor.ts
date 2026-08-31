@@ -897,7 +897,16 @@ export async function updateRoleDefinitionGrants(
     input.actor_user_id
   );
   if (!actorCapabilities["role.permissions.read"]) {
-    throw new RoleCapabilityDeniedError();
+    const error = new RoleCapabilityDeniedError();
+    await recordPermissionOutcome(
+      db,
+      input,
+      fingerprintChanges,
+      permissionErrorCode(error),
+      "DENIED",
+      fingerprint
+    );
+    throw error;
   }
   const target = await findRoleDefinition(db, input.role_definition_id);
   if (!target) {

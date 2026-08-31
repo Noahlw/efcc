@@ -152,10 +152,11 @@ describe("#485 Permission Editor Worker seam", () => {
     assert.equal(first.headers.get("X-Request-Id"), firstBody.requestId);
     const firstData = firstBody.data as {
       revision: number;
+      idempotent: boolean;
       permissions: readonly { capability: string; value: boolean }[];
     };
     assert.equal(firstData.revision, before + 1);
-    assert.equal("idempotent" in firstData, false);
+    assert.equal(firstData.idempotent, false);
     assert.equal("responseRequestId" in firstData, false);
     const firstRequestId = firstBody.requestId;
     assert.equal(typeof firstRequestId, "string");
@@ -194,9 +195,10 @@ describe("#485 Permission Editor Worker seam", () => {
     assert.equal(replayBody.requestId, firstRequestId);
     const replayData = replayBody.data as {
       revision: number;
+      idempotent: boolean;
       permissions: readonly { capability: string; value: boolean }[];
     };
-    assert.equal("idempotent" in replayData, false);
+    assert.equal(replayData.idempotent, true);
     assert.equal("responseRequestId" in replayData, false);
     assert.equal(replayData.revision, firstData.revision);
     assert.equal(
