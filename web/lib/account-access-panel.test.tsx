@@ -1086,6 +1086,7 @@ describe("AccountAccessPanel", () => {
       "min-h-11",
       "min-w-11"
     );
+    expect(screen.getByRole("dialog")).toHaveClass("z-[var(--layer-overlay)]");
     const ids = [...document.querySelectorAll("h3[id]")]
       .map((heading) => heading.id)
       .filter((id) => id.includes("account-access"));
