@@ -743,7 +743,7 @@ export const AccountDirectoryPanel = () => {
                 </p>
               </div>
               <Button
-                className="mt-4 min-h-11 w-full font-extrabold hover:bg-[var(--accent-deep)]"
+                className="mt-4 min-h-11 w-full font-extrabold"
                 variant="default"
                 onClick={() =>
                   router.push(
