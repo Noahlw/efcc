@@ -2793,13 +2793,7 @@ describe("#479 role definition creation, scoped authority, and sibling order", (
                FROM role_definitions rd
               WHERE rd.role_definition_id = ?`
           )
-          .bind(
-            SUMMARY_OUTSIDE_ASSIGNMENT,
-            MEMBER,
-            ADMIN,
-            NOW,
-            SUMMARY_ROLE
-          ),
+          .bind(SUMMARY_OUTSIDE_ASSIGNMENT, MEMBER, ADMIN, NOW, SUMMARY_ROLE),
       ]);
 
       const rescoped = await rescopeRoleDefinition(testDb(), {
@@ -2828,13 +2822,7 @@ describe("#479 role definition creation, scoped authority, and sibling order", (
              FROM role_definitions rd
             WHERE rd.role_definition_id = ?`
         )
-        .bind(
-          SUMMARY_INSIDE_ASSIGNMENT,
-          STAFF,
-          ADMIN,
-          NOW,
-          SUMMARY_ROLE
-        )
+        .bind(SUMMARY_INSIDE_ASSIGNMENT, STAFF, ADMIN, NOW, SUMMARY_ROLE)
         .run();
 
       const scopedHierarchy = await loadRoleHierarchy(
@@ -2854,9 +2842,9 @@ describe("#479 role definition creation, scoped authority, and sibling order", (
         SUMMARY_ROLE
       );
       expect(scopedDetail.roleDefinition.assignmentCount).toBe(1);
-      expect(scopedDetail.assignedAccounts.map((account) => account.userId)).toEqual(
-        [STAFF]
-      );
+      expect(
+        scopedDetail.assignedAccounts.map((account) => account.userId)
+      ).toEqual([STAFF]);
 
       const adminHierarchy = await loadRoleHierarchy(testDb(), ADMIN);
       const adminDefinition = adminHierarchy.categories
@@ -2874,15 +2862,13 @@ describe("#479 role definition creation, scoped authority, and sibling order", (
         SUMMARY_ROLE
       );
       expect(adminDetail.roleDefinition.assignmentCount).toBe(2);
-      expect(adminDetail.assignedAccounts.map((account) => account.userId)).toEqual(
-        expect.arrayContaining([MEMBER, STAFF])
-      );
+      expect(
+        adminDetail.assignedAccounts.map((account) => account.userId)
+      ).toEqual(expect.arrayContaining([MEMBER, STAFF]));
       expect(adminDetail.assignedAccounts).toHaveLength(2);
     } finally {
       await testDb()
-        .prepare(
-          "DELETE FROM role_assignments WHERE assignment_id IN (?, ?)"
-        )
+        .prepare("DELETE FROM role_assignments WHERE assignment_id IN (?, ?)")
         .bind(SUMMARY_OUTSIDE_ASSIGNMENT, SUMMARY_INSIDE_ASSIGNMENT)
         .run();
       await testDb()
@@ -2938,7 +2924,7 @@ describe("#479 role definition creation, scoped authority, and sibling order", (
         position: 84,
       },
     ] as const;
-    const cleanupRoleIds = roleFixtures.map((role) => role.id);
+    const cleanupRoleIds: string[] = roleFixtures.map((role) => role.id);
     const staffGrants = await testDb()
       .prepare(
         `SELECT capability, granted_by, granted_at
@@ -3140,9 +3126,7 @@ describe("#479 role definition creation, scoped authority, and sibling order", (
       ).rejects.toBeInstanceOf(RoleCapabilityDeniedError);
 
       const adultFirstPosition = await positionFor("C487-ADULT-RENAME-ROLE");
-      const adultSecondPosition = await positionFor(
-        "C487-ADULT-REORDER-ROLE"
-      );
+      const adultSecondPosition = await positionFor("C487-ADULT-REORDER-ROLE");
       const reorderBase = await readRevision();
       const reordered = await reorderRoleDefinitions(
         testDb(),
@@ -3168,9 +3152,7 @@ describe("#479 role definition creation, scoped authority, and sibling order", (
       expect(reordered.revision).toBe(reorderBase + 1);
 
       const youthFirstPosition = await positionFor("C487-YOUTH-RENAME-ROLE");
-      const youthSecondPosition = await positionFor(
-        "C487-YOUTH-REORDER-ROLE"
-      );
+      const youthSecondPosition = await positionFor("C487-YOUTH-REORDER-ROLE");
       const unrelatedReorderBase = await readRevision();
       await expect(
         reorderRoleDefinitions(
@@ -3209,7 +3191,9 @@ describe("#479 role definition creation, scoped authority, and sibling order", (
               )
               .bind(roleDefinitionId),
             testDb()
-              .prepare("DELETE FROM role_definitions WHERE role_definition_id = ?")
+              .prepare(
+                "DELETE FROM role_definitions WHERE role_definition_id = ?"
+              )
               .bind(roleDefinitionId),
           ]),
           testDb()

@@ -467,10 +467,7 @@ export function assignmentScopeFilterForActor(
   if (highest.scope_kind === ROLE_CATEGORY_KEY.GLOBAL) {
     return { sql: "1 = 1", binds: [] };
   }
-  if (
-    highest.scope_kind === ROLE_CATEGORY_KEY.DEPARTMENT &&
-    highest.scope_id
-  ) {
+  if (highest.scope_kind === ROLE_CATEGORY_KEY.DEPARTMENT && highest.scope_id) {
     return {
       sql: `(
         (ra.scope_kind = 'Global' AND ra.scope_id IS NULL)
@@ -488,10 +485,7 @@ export function assignmentScopeFilterForActor(
       binds: [highest.scope_id, highest.scope_id],
     };
   }
-  if (
-    highest.scope_kind === ROLE_CATEGORY_KEY.PROGRAM &&
-    highest.scope_id
-  ) {
+  if (highest.scope_kind === ROLE_CATEGORY_KEY.PROGRAM && highest.scope_id) {
     return {
       sql: `(
         (ra.scope_kind = 'Global' AND ra.scope_id IS NULL)
@@ -502,7 +496,6 @@ export function assignmentScopeFilterForActor(
   }
   return { sql: "1 = 0", binds: [] };
 }
-
 
 function roleKind(
   categoryKey: RoleCategoryKey,
@@ -835,7 +828,9 @@ export async function loadRoleHierarchy(
       .map((row) => {
         const countsForRole = countById.get(row.role_definition_id);
         const canRename =
-          capabilities["role.name.write"] === true &&
+          permissionCapabilities.get(row.role_definition_id)?.[
+            "role.name.write"
+          ] === true &&
           // Staff is assignable and can be renamed by an eligible higher
           // actor holding role.name.write; only Admin and 會友基礎 are locked.
           (row.is_protected === 0 ||
@@ -845,7 +840,9 @@ export async function loadRoleHierarchy(
           actorRoles[0]?.role_definition_id !== row.role_definition_id &&
           isWithinActorScope(actorRoles, row);
         const canRescope =
-          capabilities["role.scope.write"] === true &&
+          permissionCapabilities.get(row.role_definition_id)?.[
+            "role.scope.write"
+          ] === true &&
           isEligibleRoleManager(actorRoles) &&
           row.is_protected === 0 &&
           row.stable_key !== PROTECTED_STABLE_KEYS.ADMIN &&
@@ -858,7 +855,9 @@ export async function loadRoleHierarchy(
         // in-scope sibling when the actor holds role.reorder. Protected
         // anchors are immutable even when the actor has global authority.
         const canReorder =
-          capabilities["role.reorder"] === true &&
+          permissionCapabilities.get(row.role_definition_id)?.[
+            "role.reorder"
+          ] === true &&
           row.is_protected === 0 &&
           row.stable_key !== PROTECTED_STABLE_KEYS.ADMIN &&
           row.stable_key !== PROTECTED_STABLE_KEYS.MEMBER &&
@@ -1280,13 +1279,9 @@ async function assertRenameEligible(
   actorUserId: string,
   target: RoleDefinitionRow
 ): Promise<void> {
-  // Spec 091 §10 order: capability first (ROLE_FORBIDDEN), then the
-  // protected Admin / 會友基礎 locks (H-08), then self/highest/scope.
-  const capabilities = await resolveActorCapabilities(
-    db,
-    actorUserId,
-    capabilityScopeFor(target)
-  );
+  // Resolve the operation capability broadly first so an actor who has the
+  // operation only in another scope receives ROLE_SCOPE_MISMATCH below.
+  const capabilities = await resolveActorCapabilities(db, actorUserId);
   if (!capabilities["role.name.write"]) {
     throw new RoleCapabilityDeniedError();
   }
@@ -1326,6 +1321,14 @@ async function assertRenameEligible(
   // H-10: scoped actors cannot manage targets outside their scope.
   if (!isWithinActorScope(actorRoles, target)) {
     throw new RoleScopeMismatchError();
+  }
+  const scopedCapabilities = await resolveActorCapabilities(
+    db,
+    actorUserId,
+    capabilityScopeFor(target)
+  );
+  if (!scopedCapabilities["role.name.write"]) {
+    throw new RoleCapabilityDeniedError();
   }
 }
 
@@ -1811,11 +1814,7 @@ export async function rescopeRoleDefinition(
     }
   }
 
-  const capabilities = await resolveActorCapabilities(
-    db,
-    input.actor_user_id,
-    capabilityScopeFor(target)
-  );
+  const capabilities = await resolveActorCapabilities(db, input.actor_user_id);
   if (!capabilities["role.scope.write"]) {
     return recordDenial(new RoleCapabilityDeniedError());
   }
@@ -1847,6 +1846,14 @@ export async function rescopeRoleDefinition(
   }
   if (!isWithinActorScope(actorRoles, target)) {
     return recordDenial(new RoleScopeMismatchError());
+  }
+  const scopedCapabilities = await resolveActorCapabilities(
+    db,
+    input.actor_user_id,
+    capabilityScopeFor(target)
+  );
+  if (!scopedCapabilities["role.scope.write"]) {
+    return recordDenial(new RoleCapabilityDeniedError());
   }
   // Staff has a global system assignment but its scope-edit contract is
   // intentionally scoped-only; Admin is the only actor that may choose Global.
@@ -2133,14 +2140,7 @@ export async function createRoleDefinition(
     return recordDenial(new RoleInvalidParentError(), "REJECTED");
   }
 
-  const capabilities = await resolveActorCapabilities(
-    db,
-    input.actor_user_id,
-    capabilityScopeFor({
-      scope_kind: input.scope_kind,
-      scope_id: input.scope_id,
-    })
-  );
+  const capabilities = await resolveActorCapabilities(db, input.actor_user_id);
   if (!capabilities["role.create"]) {
     return recordDenial(new RoleCapabilityDeniedError());
   }
@@ -2182,6 +2182,17 @@ export async function createRoleDefinition(
     if (!scopeExists) {
       return recordDenial(new RoleInvalidParentError(), "REJECTED");
     }
+  }
+  const scopedCapabilities = await resolveActorCapabilities(
+    db,
+    input.actor_user_id,
+    capabilityScopeFor({
+      scope_kind: input.scope_kind,
+      scope_id: input.scope_id,
+    })
+  );
+  if (!scopedCapabilities["role.create"]) {
+    return recordDenial(new RoleCapabilityDeniedError());
   }
 
   // Globally unique normalized name (B-479-03/B-479-04).
@@ -2444,20 +2455,8 @@ export async function reorderRoleDefinitions(
     }
   }
 
-  const capabilitiesByTarget = await Promise.all(
-    [firstRow, secondRow].map((row) =>
-      resolveActorCapabilities(
-        db,
-        input.actor_user_id,
-        capabilityScopeFor(row)
-      )
-    )
-  );
-  if (
-    capabilitiesByTarget.some(
-      (capabilities) => capabilities["role.reorder"] !== true
-    )
-  ) {
+  const capabilities = await resolveActorCapabilities(db, input.actor_user_id);
+  if (!capabilities["role.reorder"]) {
     return recordDenial(new RoleCapabilityDeniedError());
   }
   const actorRoles = await loadActorRoles(db, input.actor_user_id);
@@ -2477,6 +2476,18 @@ export async function reorderRoleDefinitions(
     if (!isWithinActorScope(actorRoles, row)) {
       return recordDenial(new RoleScopeMismatchError());
     }
+  }
+  const capabilitiesByTarget = await Promise.all(
+    [firstRow, secondRow].map((row) =>
+      resolveActorCapabilities(db, input.actor_user_id, capabilityScopeFor(row))
+    )
+  );
+  if (
+    capabilitiesByTarget.some(
+      (capabilities) => capabilities["role.reorder"] !== true
+    )
+  ) {
+    return recordDenial(new RoleCapabilityDeniedError());
   }
   const baseRevision = input.base_revision;
   const auditReason = `base=${baseRevision};new=${baseRevision + 1};idem=${input.idempotency_key}`;

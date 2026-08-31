@@ -193,10 +193,7 @@ function capabilityScopeForActor(
   if (!highest || highest.scope_kind === ROLE_CATEGORY_KEY.GLOBAL) {
     return null;
   }
-  if (
-    highest.scope_kind === ROLE_CATEGORY_KEY.DEPARTMENT &&
-    highest.scope_id
-  ) {
+  if (highest.scope_kind === ROLE_CATEGORY_KEY.DEPARTMENT && highest.scope_id) {
     return { departmentId: highest.scope_id };
   }
   if (highest.scope_kind === ROLE_CATEGORY_KEY.PROGRAM && highest.scope_id) {
@@ -276,11 +273,7 @@ async function readRoleCounts(
          (SELECT COUNT(*) FROM role_definition_grants
            WHERE role_definition_id = ?) AS grants`
     )
-    .bind(
-      roleDefinitionId,
-      ...assignmentScope.binds,
-      roleDefinitionId
-    )
+    .bind(roleDefinitionId, ...assignmentScope.binds, roleDefinitionId)
     .first<CountRecord>();
   return row ?? { assignments: 0, grants: 0 };
 }
@@ -479,7 +472,6 @@ function toRoleDefinition(
   };
 }
 
-
 function projectTerminalDetail(
   detail: RoleDefinitionDetailView,
   changes: readonly PermissionGrantChange[],
@@ -593,6 +585,14 @@ export async function loadRoleDefinitionDetail(
   const isProtectedAnchor =
     target.scope_kind === ROLE_CATEGORY_KEY.GLOBAL &&
     Object.values(PROTECTED_STABLE_KEYS).includes(target.stable_key);
+  const actorCapabilities = await resolveActorCapabilities(db, actorUserId);
+  if (!actorCapabilities["role.permissions.read"]) {
+    throw new RoleCapabilityDeniedError();
+  }
+  const highest = actorRoles[0];
+  if (highest && !withinActorScope(actorRoles, target)) {
+    throw new RoleScopeMismatchError();
+  }
   const capabilities = await resolveActorCapabilities(
     db,
     actorUserId,
@@ -602,10 +602,6 @@ export async function loadRoleDefinitionDetail(
   );
   if (!capabilities["role.permissions.read"]) {
     throw new RoleCapabilityDeniedError();
-  }
-  const highest = actorRoles[0];
-  if (highest && !withinActorScope(actorRoles, target)) {
-    throw new RoleScopeMismatchError();
   }
   const canWrite =
     capabilities["role.permissions.write"] === true &&
