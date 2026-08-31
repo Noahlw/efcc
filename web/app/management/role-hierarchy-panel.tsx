@@ -1687,7 +1687,10 @@ export const RoleHierarchyPanel = () => {
                       )
                     : undefined;
                   return (
-                    <li key={roleDefinitionId}>
+                    <li
+                      className="min-w-0 wrap-anywhere"
+                      key={roleDefinitionId}
+                    >
                       {definition?.label ?? roleDefinitionId}
                     </li>
                   );
@@ -1709,7 +1712,10 @@ export const RoleHierarchyPanel = () => {
                       )
                     : undefined;
                   return (
-                    <li key={roleDefinitionId}>
+                    <li
+                      className="min-w-0 wrap-anywhere"
+                      key={roleDefinitionId}
+                    >
                       {definition?.label ?? roleDefinitionId}
                     </li>
                   );

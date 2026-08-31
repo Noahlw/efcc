@@ -1950,7 +1950,7 @@ export const AccountAccessPanel = () => {
                     </Button>
                   </>
                 ) : revokeAssignment ? (
-                  <p className="m-0">
+                  <p className="m-0 wrap-anywhere">
                     {revokeAssignment.label} 的撤銷會保留歷史記錄。可能失去：
                     {impactText(revokeImpact.lost)}；保留：
                     {impactText(revokeImpact.retained)}。

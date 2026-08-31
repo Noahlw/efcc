@@ -538,6 +538,8 @@ describe("AccountAccessPanel", () => {
       screen.getByRole("heading", { name: "確認撤銷身份組？" })
     ).toBeTruthy();
     expect(screen.getByText(/可能失去/u)).toBeTruthy();
+    const revokeCopy = screen.getByText(/可能失去/u);
+    expect(revokeCopy.closest("p")).toHaveClass("wrap-anywhere");
     await user.click(screen.getByRole("button", { name: "確認撤銷" }));
     await waitFor(() =>
       expect(mocks.revokeAccountAssignments).toHaveBeenCalledWith(
