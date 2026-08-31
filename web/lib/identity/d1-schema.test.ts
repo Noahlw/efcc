@@ -363,6 +363,29 @@ describe("#476 disposable D1 schema contract", () => {
       scope_kind: "Department",
       scope_id: "018f3b8a-0000-7000-8000-000000000002",
     });
+    const activeMutations = [
+      ["assignment_id", "018f3b8a-0000-7000-8000-aaaa00000025"],
+      ["account_user_id", "E2E_DISPOSABLE_ADMIN"],
+      ["role_definition_id", "018f3b8a-0000-7000-8000-100000000002"],
+      ["granted_by", "E2E_DISPOSABLE_MEMBER"],
+      ["granted_at", "2026-08-29T00:02:00.000Z"],
+      ["revoked_by", "E2E_DISPOSABLE_MEMBER"],
+      ["revoke_reason", "active-rewrite"],
+    ] as const;
+    for (const [column, value] of activeMutations) {
+      await expectAbort(async () => {
+        await testDb()
+          .prepare(
+            `UPDATE role_assignments
+                SET ${column} = ?
+              WHERE account_user_id = 'E2E_DISPOSABLE_DM'
+                AND role_definition_id = '018f3b8a-0000-7000-8000-100000000001'
+                AND revoked_at IS NULL`
+          )
+          .bind(value)
+          .run();
+      }, "active assignment rows are immutable");
+    }
     await expectAbort(async () => {
       await testDb()
         .prepare(
@@ -401,6 +424,18 @@ describe("#476 disposable D1 schema contract", () => {
       )
       .bind(assignmentId)
       .run();
+    await expectAbort(
+      () =>
+        testDb()
+          .prepare(
+            `UPDATE role_assignments
+                SET revoked_at = '2026-08-29T00:02:00.000Z'
+              WHERE assignment_id = ?`
+          )
+          .bind(assignmentId)
+          .run(),
+      "terminal assignment rows are immutable"
+    );
 
     await expectAbort(
       () =>

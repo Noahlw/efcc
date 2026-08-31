@@ -463,12 +463,19 @@ describe("#478 role hierarchy and rename contract", () => {
           (definition) =>
             definition.roleDefinitionId === DEPARTMENT_MANAGER_ROLE
         );
-      expect(manager?.assignedAccountUserIds).toEqual(
-        expect.arrayContaining(["E2E_DISPOSABLE_DM", commaAccount])
-      );
-      expect(manager?.assignedAccountUserIds).not.toContain(
-        "E2E_DISPOSABLE_COMMA"
-      );
+      expect(
+        manager?.assignedAccounts?.map((account) => account.userId)
+      ).toEqual(expect.arrayContaining(["E2E_DISPOSABLE_DM", commaAccount]));
+      expect(
+        manager?.assignedAccounts?.map((account) => account.userId)
+      ).not.toContain("E2E_DISPOSABLE_COMMA");
+      expect(manager?.assignedAccounts).toContainEqual({
+        assignmentId,
+        userId: commaAccount,
+        name: "Comma Account",
+        username: "comma-account",
+        status: "Active",
+      });
     } finally {
       await testDb()
         .prepare("DELETE FROM role_assignments WHERE assignment_id = ?")
@@ -580,7 +587,9 @@ describe("#478 role hierarchy and rename contract", () => {
       );
       expect(manager).toBeDefined();
       expect(manager?.assignmentCount).toBe(1);
-      expect(manager?.assignedAccountUserIds).toEqual(["E2E_DISPOSABLE_DM"]);
+      expect(
+        manager?.assignedAccounts?.map((account) => account.userId)
+      ).toEqual(["E2E_DISPOSABLE_DM"]);
       expect(manager?.assignmentActions).toEqual([]);
 
       const program = view.categories.find(
@@ -2833,8 +2842,9 @@ describe("#479 role definition creation, scoped authority, and sibling order", (
         .flatMap((category) => category.definitions)
         .find((definition) => definition.roleDefinitionId === SUMMARY_ROLE);
       expect(scopedDefinition?.assignmentCount).toBe(1);
-      expect(scopedDefinition?.assignedAccountUserIds).toEqual([STAFF]);
-      expect(scopedDefinition?.assignedAccountUserIds).not.toContain(MEMBER);
+      expect(
+        scopedDefinition?.assignedAccounts?.map((account) => account.userId)
+      ).toEqual([STAFF]);
 
       const scopedDetail = await loadRoleDefinitionDetail(
         testDb(),
@@ -2851,10 +2861,10 @@ describe("#479 role definition creation, scoped authority, and sibling order", (
         .flatMap((category) => category.definitions)
         .find((definition) => definition.roleDefinitionId === SUMMARY_ROLE);
       expect(adminDefinition?.assignmentCount).toBe(2);
-      expect(adminDefinition?.assignedAccountUserIds).toHaveLength(2);
-      expect(adminDefinition?.assignedAccountUserIds).toEqual(
-        expect.arrayContaining([MEMBER, STAFF])
-      );
+      expect(adminDefinition?.assignedAccounts).toHaveLength(2);
+      expect(
+        adminDefinition?.assignedAccounts?.map((account) => account.userId)
+      ).toEqual(expect.arrayContaining([MEMBER, STAFF]));
 
       const adminDetail = await loadRoleDefinitionDetail(
         testDb(),

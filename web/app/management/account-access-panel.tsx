@@ -786,9 +786,8 @@ export const AccountAccessPanel = () => {
       if (!isCurrentRoute(requestRouteKey, requestRouteGeneration)) return;
       const duplicateLabels = result.duplicateRoleDefinitionIds.map(
         (roleId) =>
-          view.assignableRoles.find(
-            (role) => role.roleDefinitionId === roleId
-          )?.label ??
+          view.assignableRoles.find((role) => role.roleDefinitionId === roleId)
+            ?.label ??
           view.activeAssignments.find(
             (assignment) => assignment.roleDefinitionId === roleId
           )?.label ??
@@ -1251,26 +1250,33 @@ export const AccountAccessPanel = () => {
           >
             已指派帳戶
           </h2>
-          {(roleDefinition.assignedAccountUserIds ?? []).length === 0 ? (
+          {(roleDefinition.assignedAccounts ?? []).length === 0 ? (
             <p className="m-0 mt-3 text-sm text-[var(--ink-muted)]">
               目前沒有已指派帳戶。
             </p>
           ) : (
             <ul className="m-0 mt-3 grid min-w-0 gap-2 p-0 [list-style:none]">
-              {(roleDefinition.assignedAccountUserIds ?? []).map(
-                (assignedAccountUserId) => (
-                  <li key={assignedAccountUserId}>
+              {(roleDefinition.assignedAccounts ?? []).map(
+                (assignedAccount) => (
+                  <li key={assignedAccount.assignmentId}>
                     <Button
+                      asChild
                       className="min-h-11 w-full justify-start border border-[var(--line)] bg-[var(--surface)] text-left text-[var(--ink)]"
-                      onClick={() =>
-                        router.push(
-                          `/management?module=accounts&account=${encodeURIComponent(assignedAccountUserId)}&view=access&return=${encodeURIComponent(`/management?module=accounts&roleDefinition=${encodeURIComponent(roleDefinition.roleDefinitionId)}&view=access`)}`
-                        )
-                      }
-                      type="button"
                       variant="outline"
                     >
-                      {assignedAccountUserId}
+                      <Link
+                        href={`/management?module=accounts&account=${encodeURIComponent(assignedAccount.userId)}&view=access&return=${encodeURIComponent(`/management?module=accounts&roleDefinition=${encodeURIComponent(roleDefinition.roleDefinitionId)}&view=access`)}`}
+                      >
+                        <span className="min-w-0">
+                          <strong className="block wrap-anywhere">
+                            {assignedAccount.name}
+                          </strong>
+                          <small className="block wrap-anywhere text-[var(--ink-muted)]">
+                            {assignedAccount.username} ·{" "}
+                            {assignedAccount.userId}
+                          </small>
+                        </span>
+                      </Link>
                     </Button>
                   </li>
                 )

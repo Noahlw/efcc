@@ -112,6 +112,14 @@ export interface RoleReorderResult {
   idempotent: boolean;
 }
 
+/** Safe account summary for identity-first Account Access navigation. */
+export interface RoleHierarchyAssignedAccount {
+  assignmentId: string;
+  userId: string;
+  name: string;
+  username: string;
+  status: string;
+}
 /** One Role Definition summary inside the tree (H-01/H-03). */
 export interface RoleHierarchyDefinition {
   roleDefinitionId: string;
@@ -128,8 +136,7 @@ export interface RoleHierarchyDefinition {
   isProtected: boolean;
   isArchived: boolean;
   assignmentCount: number;
-  /** Opaque IDs for identity-first Account Access entry links. */
-  assignedAccountUserIds?: string[];
+  assignedAccounts?: RoleHierarchyAssignedAccount[];
   /** Server-authorized assignment actions for this definition. */
   assignmentActions?: RoleAssignmentActionAffordance[];
   /** Server-authorized archive/restore actions for Account Access. */
@@ -410,22 +417,45 @@ interface CategoryRow {
 interface CountRow {
   role_definition_id: string;
   assignments: number;
-  assignment_user_ids: string | null;
+  assignment_accounts: string | null;
   grants: number;
 }
 
-function parseAssignedAccountUserIds(
+function parseAssignedAccounts(
   value: string | null | undefined
-): string[] {
+): RoleHierarchyAssignedAccount[] {
   if (!value) {
     return [];
   }
   try {
     const parsed: unknown = JSON.parse(value);
-    return Array.isArray(parsed) &&
-      parsed.every((entry): entry is string => typeof entry === "string")
-      ? parsed
-      : [];
+    if (!Array.isArray(parsed)) {
+      return [];
+    }
+    return parsed.flatMap((entry) => {
+      if (typeof entry !== "object" || entry === null) {
+        return [];
+      }
+      const candidate = entry as Record<string, unknown>;
+      if (
+        typeof candidate.assignmentId !== "string" ||
+        typeof candidate.userId !== "string" ||
+        typeof candidate.name !== "string" ||
+        typeof candidate.username !== "string" ||
+        typeof candidate.status !== "string"
+      ) {
+        return [];
+      }
+      return [
+        {
+          assignmentId: candidate.assignmentId,
+          userId: candidate.userId,
+          name: candidate.name,
+          username: candidate.username,
+          status: candidate.status,
+        },
+      ];
+    });
   } catch {
     return [];
   }
@@ -757,11 +787,20 @@ export async function loadRoleHierarchy(
                   WHERE ra.role_definition_id = rd.role_definition_id
                     AND ra.revoked_at IS NULL
                     AND ${assignmentScope.sql}) AS assignments,
-                (SELECT json_group_array(ra.account_user_id)
+                (SELECT json_group_array(
+                          json_object(
+                            'assignmentId', ra.assignment_id,
+                            'userId', a.user_id,
+                            'name', a.name,
+                            'username', a.username,
+                            'status', a.account_status
+                          )
+                        )
                    FROM role_assignments ra
+                   JOIN accounts a ON a.user_id = ra.account_user_id
                   WHERE ra.role_definition_id = rd.role_definition_id
                     AND ra.revoked_at IS NULL
-                    AND ${assignmentScope.sql}) AS assignment_user_ids,
+                    AND ${assignmentScope.sql}) AS assignment_accounts,
                 (SELECT COUNT(*) FROM role_definition_grants rg
                   WHERE rg.role_definition_id = rd.role_definition_id) AS grants
            FROM role_definitions rd`
@@ -780,7 +819,7 @@ export async function loadRoleHierarchy(
       row.role_definition_id,
       {
         assignments: row.assignments,
-        assignment_user_ids: row.assignment_user_ids,
+        assignment_accounts: row.assignment_accounts,
         grants: row.grants,
       },
     ])
@@ -995,8 +1034,8 @@ export async function loadRoleHierarchy(
           assignmentCount: canReadAssignments
             ? (countsForRole?.assignments ?? 0)
             : 0,
-          assignedAccountUserIds: canReadAssignments
-            ? parseAssignedAccountUserIds(countsForRole?.assignment_user_ids)
+          assignedAccounts: canReadAssignments
+            ? parseAssignedAccounts(countsForRole?.assignment_accounts)
             : [],
           assignmentActions,
           grantCount: countsForRole?.grants ?? 0,

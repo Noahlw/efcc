@@ -577,18 +577,18 @@ export async function loadRoleDefinitionDetail(
   if (!roleDefinitionId) {
     throw new RoleInvalidTargetError();
   }
-  const target = await findRoleDefinition(db, roleDefinitionId);
-  if (!target) {
-    throw new RoleTargetNotFoundError();
-  }
   const actorRoles = await loadActorRoles(db, actorUserId);
-  const isProtectedAnchor =
-    target.scope_kind === ROLE_CATEGORY_KEY.GLOBAL &&
-    Object.values(PROTECTED_STABLE_KEYS).includes(target.stable_key);
   const actorCapabilities = await resolveActorCapabilities(db, actorUserId);
   if (!actorCapabilities["role.permissions.read"]) {
     throw new RoleCapabilityDeniedError();
   }
+  const target = await findRoleDefinition(db, roleDefinitionId);
+  if (!target) {
+    throw new RoleTargetNotFoundError();
+  }
+  const isProtectedAnchor =
+    target.scope_kind === ROLE_CATEGORY_KEY.GLOBAL &&
+    Object.values(PROTECTED_STABLE_KEYS).includes(target.stable_key);
   const highest = actorRoles[0];
   if (highest && !withinActorScope(actorRoles, target)) {
     throw new RoleScopeMismatchError();
@@ -808,10 +808,6 @@ export async function updateRoleDefinitionGrants(
   if (!input.role_definition_id) {
     throw new RoleInvalidTargetError();
   }
-  const target = await findRoleDefinition(db, input.role_definition_id);
-  if (!target) {
-    throw new RoleTargetNotFoundError();
-  }
 
   if (!Array.isArray(input.changes)) {
     throw new RoleInvalidTargetError();
@@ -895,6 +891,17 @@ export async function updateRoleDefinitionGrants(
         storedError?.requestId
       );
     }
+  }
+  const actorCapabilities = await resolveActorCapabilities(
+    db,
+    input.actor_user_id
+  );
+  if (!actorCapabilities["role.permissions.read"]) {
+    throw new RoleCapabilityDeniedError();
+  }
+  const target = await findRoleDefinition(db, input.role_definition_id);
+  if (!target) {
+    throw new RoleTargetNotFoundError();
   }
 
   const normalized = new Map<string, boolean>();

@@ -24,6 +24,7 @@ import {
 } from "./permission-editor";
 import {
   RoleCapabilityDeniedError,
+  RoleTargetNotFoundError,
   resolveActorCapabilities,
 } from "./role-hierarchy";
 const DISPOSABLE_DATABASE = "E2E_disposable-local";
@@ -284,6 +285,53 @@ describe("#485 Permission Editor domain seam", () => {
         );
       }
     }
+  });
+
+  test("hides role existence from unauthorized permission reads and writes", async () => {
+    const unknownRole = "opaque-permission-role-does-not-exist";
+    const roleTargets = [PROGRAM_LEADER_ROLE, unknownRole];
+
+    for (const roleDefinitionId of roleTargets) {
+      await assert.rejects(
+        loadRoleDefinitionDetail(testDb(), MEMBER, roleDefinitionId),
+        (error: unknown) => error instanceof RoleCapabilityDeniedError
+      );
+    }
+
+    const baseRevision = await revision();
+    for (const roleDefinitionId of roleTargets) {
+      await assert.rejects(
+        updateRoleDefinitionGrants(testDb(), {
+          actor_user_id: MEMBER,
+          role_definition_id: roleDefinitionId,
+          base_revision: baseRevision,
+          idempotency_key: `permission-target-privacy-${roleDefinitionId}`,
+          changes: [{ capability: "home.publish", value: true }],
+          now: NOW,
+          audit_id: `permission-target-privacy-${roleDefinitionId}-audit`,
+          correlation_id: `permission-target-privacy-${roleDefinitionId}-correlation`,
+        }),
+        (error: unknown) => error instanceof RoleCapabilityDeniedError
+      );
+    }
+
+    await assert.rejects(
+      loadRoleDefinitionDetail(testDb(), ADMIN, unknownRole),
+      (error: unknown) => error instanceof RoleTargetNotFoundError
+    );
+    await assert.rejects(
+      updateRoleDefinitionGrants(testDb(), {
+        actor_user_id: ADMIN,
+        role_definition_id: unknownRole,
+        base_revision: baseRevision,
+        idempotency_key: "permission-target-privacy-admin",
+        changes: [{ capability: "home.publish", value: true }],
+        now: NOW,
+        audit_id: "permission-target-privacy-admin-audit",
+        correlation_id: "permission-target-privacy-admin-correlation",
+      }),
+      (error: unknown) => error instanceof RoleTargetNotFoundError
+    );
   });
   test("resolves global and exact scoped grants without widening", async () => {
     const inside = await resolveActorCapabilities(

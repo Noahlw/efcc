@@ -144,7 +144,15 @@ const VIEW: RoleHierarchyView = {
           isProtected: false,
           isArchived: false,
           assignmentCount: 1,
-          assignedAccountUserIds: ["account-1"],
+          assignedAccounts: [
+            {
+              assignmentId: "assignment-account-1",
+              userId: "account-1",
+              name: "Account One",
+              username: "account-one",
+              status: "Active",
+            },
+          ],
           assignmentActions: [
             { action: "assign", label: "指派" },
             { action: "revoke", label: "撤銷" },

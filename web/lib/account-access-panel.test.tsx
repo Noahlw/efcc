@@ -642,7 +642,22 @@ describe("AccountAccessPanel", () => {
         ...category,
         definitions: category.definitions.map((definition) => ({
           ...definition,
-          assignedAccountUserIds: ["account-1", "account-2"],
+          assignedAccounts: [
+            {
+              assignmentId: "assignment-account-1",
+              userId: "account-1",
+              name: "Account One",
+              username: "account-one",
+              status: "Active",
+            },
+            {
+              assignmentId: "assignment-account-2",
+              userId: "account-2",
+              name: "Account Two",
+              username: "account-two",
+              status: "Active",
+            },
+          ],
         })),
       })),
     });
@@ -650,8 +665,20 @@ describe("AccountAccessPanel", () => {
     expect(
       await screen.findByRole("heading", { name: "課程協調者" })
     ).toBeTruthy();
-    expect(screen.getByRole("button", { name: "account-1" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "account-2" })).toBeTruthy();
+    const accountOne = screen.getByRole("link", { name: /Account One/u });
+    expect(accountOne).toHaveTextContent("Account One");
+    expect(accountOne).toHaveTextContent("account-one · account-1");
+    expect(accountOne).toHaveAttribute(
+      "href",
+      "/management?module=accounts&account=account-1&view=access&return=%2Fmanagement%3Fmodule%3Daccounts%26roleDefinition%3Drole-lower%26view%3Daccess"
+    );
+    const accountTwo = screen.getByRole("link", { name: /Account Two/u });
+    expect(accountTwo).toHaveTextContent("Account Two");
+    expect(accountTwo).toHaveTextContent("account-two · account-2");
+    expect(accountTwo).toHaveAttribute(
+      "href",
+      "/management?module=accounts&account=account-2&view=access&return=%2Fmanagement%3Fmodule%3Daccounts%26roleDefinition%3Drole-lower%26view%3Daccess"
+    );
   });
   test("clears account-scoped selection and dialogs when the route account changes", async () => {
     const user = userEvent.setup();
@@ -776,7 +803,7 @@ describe("AccountAccessPanel", () => {
           Object.assign(
             {
               ...definition,
-              assignedAccountUserIds: [],
+              assignedAccounts: [],
               lifecycleActions: [],
             },
             {
@@ -1155,7 +1182,15 @@ describe("AccountAccessPanel", () => {
         ...category,
         definitions: category.definitions.map((definition) => ({
           ...definition,
-          assignedAccountUserIds: ["account-1"],
+          assignedAccounts: [
+            {
+              assignmentId: "assignment-account-1",
+              userId: "account-1",
+              name: "Account One",
+              username: "account-one",
+              status: "Active",
+            },
+          ],
           lifecycleActions: [{ action: "archive", label: "停用" }],
         })),
       })),
