@@ -879,7 +879,7 @@ export const PermissionEditorPanel = () => {
       {state.kind === "loading" && (
         <output
           aria-busy="true"
-          className={stateSurfaceVariants({ kind: "loading" })}
+          className={cn(stateSurfaceVariants({ kind: "loading" }))}
           id="permission-editor-state"
           tabIndex={-1}
         >
@@ -888,7 +888,7 @@ export const PermissionEditorPanel = () => {
       )}
       {state.kind === "error" && (
         <section
-          className={stateSurfaceVariants({ kind: "error" })}
+          className={cn(stateSurfaceVariants({ kind: "error" }))}
           id="permission-editor-state"
           role="alert"
           tabIndex={-1}
@@ -901,7 +901,7 @@ export const PermissionEditorPanel = () => {
       )}
       {state.kind === "forbidden" && (
         <section
-          className={stateSurfaceVariants({ kind: "forbidden" })}
+          className={cn(stateSurfaceVariants({ kind: "forbidden" }))}
           id="permission-editor-state"
           role="alert"
           tabIndex={-1}

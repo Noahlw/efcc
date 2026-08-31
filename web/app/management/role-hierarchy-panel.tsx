@@ -1088,7 +1088,7 @@ export const RoleHierarchyPanel = () => {
       {state.kind === "loading" && (
         <output
           aria-busy="true"
-          className={stateSurfaceVariants({ kind: "loading" })}
+          className={cn(stateSurfaceVariants({ kind: "loading" }))}
           tabIndex={-1}
         >
           {COPY.permissions.loading}
@@ -1097,7 +1097,7 @@ export const RoleHierarchyPanel = () => {
 
       {state.kind === "error" && (
         <section
-          className={stateSurfaceVariants({ kind: "error" })}
+          className={cn(stateSurfaceVariants({ kind: "error" }))}
           id="role-hierarchy-state"
           tabIndex={-1}
         >
