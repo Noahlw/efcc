@@ -4326,3 +4326,34 @@ assertions. Manual `C-487-M1` through `C-487-M4` remain **unclaimed**. No
 remote or production resource, Apps Script, Google Sheet, deployment,
 screenshot, pixel-diff, WCAG, screen-reader, real-device, or Phase D path was
 touched.
+
+## #485–#487 final affordance verification — current `4773b63d` — 2026-08-31
+
+The identity-first Role Tree now renders the Account Access entry only when
+the server projects `role.assign` or `role.revoke` assignment actions. A
+read-only `role.read` viewer with assigned identities receives the summary but
+not a dead-end mutation link. The component regression preserves both that
+case and the zero-assignment assignment-action path.
+
+| Check | Exact result |
+| --- | --- |
+| `pnpm --dir web test:components` | **PASS**, 59 files, 691/691 |
+| `pnpm verify:identity` | **PASS**, 4 files, 95/95 |
+| `pnpm typecheck` | **PASS** |
+| `pnpm --dir web typecheck` | **PASS** |
+| `pnpm --dir web build` | **PASS**, 18/18 static routes generated |
+| `pnpm test:shell-responsive` | **PASS**, 92 passed, 1 intentional skip |
+| `pnpm test:shell-geometry` | **PASS**, 28/28 |
+| `pnpm test:role-hierarchy-geometry` | **PASS**, 49/49 |
+| `programs-d1.config.ts` | **PASS**, 195/195 after the 320px workspace tile correction |
+| `s4-management-hardening.config.ts` | **PASS**, 45 passed and 65 intentional `onlyProjects` skips; 110 scheduled |
+| `live-ui.config.ts` | **PASS**, 28/28 |
+| `member-directory.config.ts` | **PASS**, 1/1 |
+| Account Access and history tests | **PASS**, 2 files, 29/29 |
+| `pnpm --dir web test` | **BLOCKED**, 37 files and 556 assertions pass; 4 normalized Worker files abort before assertions with the known Cloudflare-pool/Vite EvalError |
+| `pnpm check` | **FAIL**, repository-wide Ultracite baseline: 1,813 errors and 0 warnings |
+
+All local browser checks used disposable D1 on loopback with direct Node 22
+Wrangler; the Worker was stopped after verification. Manual M1–M4 remain
+unclaimed. No remote/production, Apps Script, Sheet, deployment, screenshot,
+pixel-diff, WCAG, screen-reader, real-device, or Phase D claim is made.
