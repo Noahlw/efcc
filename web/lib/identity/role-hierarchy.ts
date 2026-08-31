@@ -442,7 +442,7 @@ interface ProgramRow {
 }
 
 /** Roles the actor holds in the disposable model, in global order. */
-interface ActorRoleRow {
+export interface ActorRoleRow {
   role_definition_id: string;
   position: number;
   is_protected: number;
@@ -452,6 +452,57 @@ interface ActorRoleRow {
   label: string;
   stable_key: string;
 }
+/**
+ * SQL predicate for assignment summaries visible to the actor's effective
+ * scope. Assignment scope snapshots are authoritative; current Role
+ * Definition metadata is intentionally not consulted here.
+ */
+export function assignmentScopeFilterForActor(
+  actorRoles: readonly Pick<ActorRoleRow, "scope_kind" | "scope_id">[]
+): { sql: string; binds: string[] } {
+  const highest = actorRoles[0];
+  if (!highest) {
+    return { sql: "1 = 0", binds: [] };
+  }
+  if (highest.scope_kind === ROLE_CATEGORY_KEY.GLOBAL) {
+    return { sql: "1 = 1", binds: [] };
+  }
+  if (
+    highest.scope_kind === ROLE_CATEGORY_KEY.DEPARTMENT &&
+    highest.scope_id
+  ) {
+    return {
+      sql: `(
+        (ra.scope_kind = 'Global' AND ra.scope_id IS NULL)
+        OR (ra.scope_kind = 'Department' AND ra.scope_id = ?)
+        OR (
+          ra.scope_kind = 'Program'
+          AND EXISTS (
+            SELECT 1
+              FROM programs snapshot_program
+             WHERE snapshot_program.program_id = ra.scope_id
+               AND snapshot_program.department_id = ?
+          )
+        )
+      )`,
+      binds: [highest.scope_id, highest.scope_id],
+    };
+  }
+  if (
+    highest.scope_kind === ROLE_CATEGORY_KEY.PROGRAM &&
+    highest.scope_id
+  ) {
+    return {
+      sql: `(
+        (ra.scope_kind = 'Global' AND ra.scope_id IS NULL)
+        OR (ra.scope_kind = 'Program' AND ra.scope_id = ?)
+      )`,
+      binds: [highest.scope_id],
+    };
+  }
+  return { sql: "1 = 0", binds: [] };
+}
+
 
 function roleKind(
   categoryKey: RoleCategoryKey,
@@ -683,48 +734,51 @@ export async function loadRoleHierarchy(
   if (!capabilities["role.read"]) {
     throw new RoleCapabilityDeniedError();
   }
-  const [categories, definitions, counts, revisionRow, actorRoles] =
-    await Promise.all([
-      db
-        .prepare(
-          `SELECT category_key, label, description, display_order
-             FROM role_categories ORDER BY display_order ASC`
-        )
-        .all<CategoryRow>(),
-      db
-        .prepare(
-          `SELECT role_definition_id, stable_key, label, description,
-                  category_key, scope_kind, scope_id,
-                  (
-                    SELECT p.department_id
-                      FROM programs p
-                     WHERE p.program_id = role_definitions.scope_id
-                       AND role_definitions.scope_kind = 'Program'
-                  ) AS parent_department_id,
-                  position, is_protected, is_archived
-             FROM role_definitions ORDER BY position ASC`
-        )
-        .all<RoleDefinitionRow>(),
-      db
-        .prepare(
-          `SELECT rd.role_definition_id,
-                  (SELECT COUNT(*) FROM role_assignments ra
-                    WHERE ra.role_definition_id = rd.role_definition_id
-                      AND ra.revoked_at IS NULL) AS assignments,
-                  (SELECT json_group_array(ra.account_user_id)
-                     FROM role_assignments ra
-                    WHERE ra.role_definition_id = rd.role_definition_id
-                      AND ra.revoked_at IS NULL) AS assignment_user_ids,
-                  (SELECT COUNT(*) FROM role_definition_grants rg
-                    WHERE rg.role_definition_id = rd.role_definition_id) AS grants
-             FROM role_definitions rd`
-        )
-        .all<CountRow>(),
-      db
-        .prepare(`SELECT revision FROM role_policy_revisions WHERE id = 1`)
-        .first<{ revision: number }>(),
-      loadActorRoles(db, actorUserId),
-    ]);
+  const actorRoles = await loadActorRoles(db, actorUserId);
+  const assignmentScope = assignmentScopeFilterForActor(actorRoles);
+  const [categories, definitions, counts, revisionRow] = await Promise.all([
+    db
+      .prepare(
+        `SELECT category_key, label, description, display_order
+           FROM role_categories ORDER BY display_order ASC`
+      )
+      .all<CategoryRow>(),
+    db
+      .prepare(
+        `SELECT role_definition_id, stable_key, label, description,
+                category_key, scope_kind, scope_id,
+                (
+                  SELECT p.department_id
+                    FROM programs p
+                   WHERE p.program_id = role_definitions.scope_id
+                     AND role_definitions.scope_kind = 'Program'
+                ) AS parent_department_id,
+                position, is_protected, is_archived
+           FROM role_definitions ORDER BY position ASC`
+      )
+      .all<RoleDefinitionRow>(),
+    db
+      .prepare(
+        `SELECT rd.role_definition_id,
+                (SELECT COUNT(*) FROM role_assignments ra
+                  WHERE ra.role_definition_id = rd.role_definition_id
+                    AND ra.revoked_at IS NULL
+                    AND ${assignmentScope.sql}) AS assignments,
+                (SELECT json_group_array(ra.account_user_id)
+                   FROM role_assignments ra
+                  WHERE ra.role_definition_id = rd.role_definition_id
+                    AND ra.revoked_at IS NULL
+                    AND ${assignmentScope.sql}) AS assignment_user_ids,
+                (SELECT COUNT(*) FROM role_definition_grants rg
+                  WHERE rg.role_definition_id = rd.role_definition_id) AS grants
+           FROM role_definitions rd`
+      )
+      .bind(...assignmentScope.binds, ...assignmentScope.binds)
+      .all<CountRow>(),
+    db
+      .prepare(`SELECT revision FROM role_policy_revisions WHERE id = 1`)
+      .first<{ revision: number }>(),
+  ]);
 
   const revision = revisionRow?.revision ?? 1;
   const names = await loadScopeNames(db);

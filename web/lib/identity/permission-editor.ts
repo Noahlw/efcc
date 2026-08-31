@@ -20,6 +20,7 @@ import {
   RoleRevisionConflictError,
 } from "./mutations";
 import {
+  assignmentScopeFilterForActor,
   loadActorRoles,
   resolveActorCapabilities,
   ROLE_HIERARCHY_ACTION,
@@ -33,6 +34,7 @@ import {
   RoleTargetNotFoundError,
 } from "./role-hierarchy";
 import type {
+  ActorRoleRow,
   RoleHierarchyActionAffordance,
   RoleHierarchyDefinition,
 } from "./role-hierarchy";
@@ -259,25 +261,35 @@ async function findRoleDefinition(
 
 async function readRoleCounts(
   db: D1Database,
-  roleDefinitionId: string
+  roleDefinitionId: string,
+  actorRoles: readonly ActorRoleRow[]
 ): Promise<CountRecord> {
+  const assignmentScope = assignmentScopeFilterForActor(actorRoles);
   const row = await db
     .prepare(
       `SELECT
-         (SELECT COUNT(*) FROM role_assignments
-           WHERE role_definition_id = ? AND revoked_at IS NULL) AS assignments,
+         (SELECT COUNT(*) FROM role_assignments ra
+           WHERE ra.role_definition_id = ?
+             AND ra.revoked_at IS NULL
+             AND ${assignmentScope.sql}) AS assignments,
          (SELECT COUNT(*) FROM role_definition_grants
            WHERE role_definition_id = ?) AS grants`
     )
-    .bind(roleDefinitionId, roleDefinitionId)
+    .bind(
+      roleDefinitionId,
+      ...assignmentScope.binds,
+      roleDefinitionId
+    )
     .first<CountRecord>();
   return row ?? { assignments: 0, grants: 0 };
 }
 
 async function readAssignedAccounts(
   db: D1Database,
-  roleDefinitionId: string
+  roleDefinitionId: string,
+  actorRoles: readonly ActorRoleRow[]
 ): Promise<RoleDefinitionAssignedAccount[]> {
+  const assignmentScope = assignmentScopeFilterForActor(actorRoles);
   const rows = await db
     .prepare(
       `SELECT ra.assignment_id, a.user_id, a.name, a.username,
@@ -285,9 +297,10 @@ async function readAssignedAccounts(
          FROM role_assignments ra
          JOIN accounts a ON a.user_id = ra.account_user_id
         WHERE ra.role_definition_id = ? AND ra.revoked_at IS NULL
+          AND ${assignmentScope.sql}
         ORDER BY a.name COLLATE NOCASE ASC, a.user_id ASC`
     )
-    .bind(roleDefinitionId)
+    .bind(roleDefinitionId, ...assignmentScope.binds)
     .all<AssignedAccountRecord>();
   return (rows.results ?? []).map((row) => ({
     assignmentId: row.assignment_id,
@@ -611,9 +624,9 @@ export async function loadRoleDefinitionDetail(
     highest.role_definition_id !== target.role_definition_id;
   const [counts, grants, assignedAccounts, revision, scopeName] =
     await Promise.all([
-      readRoleCounts(db, roleDefinitionId),
+      readRoleCounts(db, roleDefinitionId, actorRoles),
       readRoleGrants(db, roleDefinitionId),
-      readAssignedAccounts(db, roleDefinitionId),
+      readAssignedAccounts(db, roleDefinitionId, actorRoles),
       readCurrentRevision(db),
       readScopeLabel(db, target),
     ]);

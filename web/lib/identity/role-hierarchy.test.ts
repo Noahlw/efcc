@@ -29,6 +29,7 @@ import { applyMigrations, testDb } from "../auth/test-bootstrap";
 import {
   applyRoleMutation,
   loadRoleHierarchy,
+  loadRoleDefinitionDetail,
   preflightDisposableSchema,
   seedDisposableIdentity,
   recordRoleDenialForRename,
@@ -72,6 +73,11 @@ const STAFF_ROLE = "018f3b8a-0000-7000-8000-000000000a02";
 const MEMBER_ROLE = "018f3b8a-0000-7000-8000-000000000a03";
 const DEPARTMENT_MANAGER_ROLE = "018f3b8a-0000-7000-8000-100000000001"; // 成人部門管理者
 const PROGRAM_LEADER_ROLE = "018f3b8a-0000-7000-8000-100000000002"; // 青少年查經帶領
+const ADULT_DEPARTMENT = "018f3b8a-0000-7000-8000-000000000002";
+const YOUTH_PROGRAM = "018f3b8a-0000-7000-8000-300000000001";
+const SUMMARY_ROLE = "018f3b8a-0000-7000-8000-10000000c485";
+const SUMMARY_OUTSIDE_ASSIGNMENT = "summary-scope-outside";
+const SUMMARY_INSIDE_ASSIGNMENT = "summary-scope-inside";
 
 const NOW = "2026-08-28T00:00:00.000Z";
 
@@ -2757,6 +2763,129 @@ describe("#479 role definition creation, scoped authority, and sibling order", (
       await testDb()
         .prepare("DELETE FROM accounts WHERE user_id = ?")
         .bind(actor)
+        .run();
+    }
+  });
+  test("filters assignment summaries by immutable snapshot scope after rescope", async () => {
+    try {
+      await testDb().batch([
+        testDb()
+          .prepare(
+            `INSERT OR IGNORE INTO role_definitions
+               (role_definition_id, category_key, stable_key, label, description,
+                scope_kind, scope_id, position, is_protected, is_archived,
+                created_by, created_at, updated_by, updated_at)
+             VALUES (?, 'Program', 'c485.summary-scope', '快照摘要身份組',
+                     'assignment summary snapshot fixture', 'Program', ?, 30,
+                     0, 0, NULL, ?, NULL, ?)`
+          )
+          .bind(SUMMARY_ROLE, YOUTH_PROGRAM, NOW, NOW),
+        testDb()
+          .prepare(
+            `INSERT OR IGNORE INTO role_assignments
+               (assignment_id, account_user_id, role_definition_id,
+                granted_by, granted_at, scope_kind, scope_id,
+                revoked_by, revoked_at, revoke_reason)
+             SELECT ?, ?, rd.role_definition_id, ?, ?, rd.scope_kind, rd.scope_id,
+                    NULL, NULL, NULL
+               FROM role_definitions rd
+              WHERE rd.role_definition_id = ?`
+          )
+          .bind(
+            SUMMARY_OUTSIDE_ASSIGNMENT,
+            MEMBER,
+            ADMIN,
+            NOW,
+            SUMMARY_ROLE
+          ),
+      ]);
+
+      const rescoped = await rescopeRoleDefinition(testDb(), {
+        actor_user_id: ADMIN,
+        idempotency_key: "c485-summary-scope-rescope",
+        base_revision: await readRevision(),
+        role_definition_id: SUMMARY_ROLE,
+        category_key: "Department",
+        scope_kind: "Department",
+        scope_id: ADULT_DEPARTMENT,
+        now: NOW,
+        audit_id: "c485-summary-scope-rescope-audit",
+        correlation_id: "c485-summary-scope-rescope-correlation",
+      });
+      expect(rescoped.scopeKind).toBe("Department");
+      expect(rescoped.scopeId).toBe(ADULT_DEPARTMENT);
+
+      await testDb()
+        .prepare(
+          `INSERT OR IGNORE INTO role_assignments
+             (assignment_id, account_user_id, role_definition_id,
+              granted_by, granted_at, scope_kind, scope_id,
+              revoked_by, revoked_at, revoke_reason)
+           SELECT ?, ?, rd.role_definition_id, ?, ?, rd.scope_kind, rd.scope_id,
+                  NULL, NULL, NULL
+             FROM role_definitions rd
+            WHERE rd.role_definition_id = ?`
+        )
+        .bind(
+          SUMMARY_INSIDE_ASSIGNMENT,
+          STAFF,
+          ADMIN,
+          NOW,
+          SUMMARY_ROLE
+        )
+        .run();
+
+      const scopedHierarchy = await loadRoleHierarchy(
+        testDb(),
+        DEPARTMENT_MANAGER
+      );
+      const scopedDefinition = scopedHierarchy.categories
+        .flatMap((category) => category.definitions)
+        .find((definition) => definition.roleDefinitionId === SUMMARY_ROLE);
+      expect(scopedDefinition?.assignmentCount).toBe(1);
+      expect(scopedDefinition?.assignedAccountUserIds).toEqual([STAFF]);
+      expect(scopedDefinition?.assignedAccountUserIds).not.toContain(MEMBER);
+
+      const scopedDetail = await loadRoleDefinitionDetail(
+        testDb(),
+        DEPARTMENT_MANAGER,
+        SUMMARY_ROLE
+      );
+      expect(scopedDetail.roleDefinition.assignmentCount).toBe(1);
+      expect(scopedDetail.assignedAccounts.map((account) => account.userId)).toEqual(
+        [STAFF]
+      );
+
+      const adminHierarchy = await loadRoleHierarchy(testDb(), ADMIN);
+      const adminDefinition = adminHierarchy.categories
+        .flatMap((category) => category.definitions)
+        .find((definition) => definition.roleDefinitionId === SUMMARY_ROLE);
+      expect(adminDefinition?.assignmentCount).toBe(2);
+      expect(adminDefinition?.assignedAccountUserIds).toHaveLength(2);
+      expect(adminDefinition?.assignedAccountUserIds).toEqual(
+        expect.arrayContaining([MEMBER, STAFF])
+      );
+
+      const adminDetail = await loadRoleDefinitionDetail(
+        testDb(),
+        ADMIN,
+        SUMMARY_ROLE
+      );
+      expect(adminDetail.roleDefinition.assignmentCount).toBe(2);
+      expect(adminDetail.assignedAccounts.map((account) => account.userId)).toEqual(
+        expect.arrayContaining([MEMBER, STAFF])
+      );
+      expect(adminDetail.assignedAccounts).toHaveLength(2);
+    } finally {
+      await testDb()
+        .prepare(
+          "DELETE FROM role_assignments WHERE assignment_id IN (?, ?)"
+        )
+        .bind(SUMMARY_OUTSIDE_ASSIGNMENT, SUMMARY_INSIDE_ASSIGNMENT)
+        .run();
+      await testDb()
+        .prepare("DELETE FROM role_definitions WHERE role_definition_id = ?")
+        .bind(SUMMARY_ROLE)
         .run();
     }
   });
