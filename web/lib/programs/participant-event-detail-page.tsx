@@ -61,6 +61,11 @@ export const ParticipantEventDetailPage = ({
       eventId={eventId}
       canManage={false}
       origin={origin}
+      backHref={buildProgramsHref({
+        mode: "participant",
+        programId,
+        origin: origin ?? "programs",
+      })}
       onBack={handleBack}
       onAuthRequired={handleAuthRequired}
     />

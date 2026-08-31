@@ -31,6 +31,7 @@ import type {
 import { rememberDeepLink } from "@/lib/session";
 
 import { EventDetail } from "./event-detail";
+import { buildProgramsHref } from "./programs-intent";
 import type { ProgramsTask } from "./programs-intent";
 import { useAsyncResource } from "./use-async-resource";
 import { hasModule, redirectToLoginIfRequired } from "./workspace-context";
@@ -727,6 +728,11 @@ export const ProgramWorkspace = ({
           programId={programId}
           eventId={eventId}
           canManage={workspaceProgram.capabilities.manage}
+          backHref={buildProgramsHref({
+            mode: "management",
+            programId,
+            task: "events",
+          })}
           onAttentionRefresh={onAttentionRefresh}
           onBack={() => onEventChange?.(null)}
         />
