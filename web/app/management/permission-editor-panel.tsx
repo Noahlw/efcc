@@ -81,7 +81,7 @@ const HIGH_RISK_KEYS = new Set([
 ]);
 
 const roleButtonVariants = cva(
-  "flex min-h-14 w-full items-center justify-between gap-3 rounded-lg border bg-background px-4 py-3 text-left outline-none hover:bg-muted focus-visible:ring-3 focus-visible:ring-ring/50",
+  "flex h-auto min-h-14 w-full min-w-0 items-center justify-between gap-3 rounded-lg border bg-background px-4 py-3 text-left whitespace-normal outline-none hover:bg-muted focus-visible:ring-3 focus-visible:ring-ring/50",
   {
     variants: {
       state: {
@@ -615,9 +615,11 @@ export const PermissionEditorPanel = () => {
                         )
                       }
                     >
-                      <span className="grid gap-1 text-left">
-                        <strong>{definition.label}</strong>
-                        <span className="text-muted-foreground text-xs">
+                      <span className="grid min-w-0 gap-1 wrap-anywhere text-left">
+                        <strong className="wrap-anywhere">
+                          {definition.label}
+                        </strong>
+                        <span className="wrap-anywhere text-muted-foreground text-xs">
                           {definition.scopeLabel ?? "全教會"} ·{" "}
                           {definition.assignmentCount} 個已指派 ·{" "}
                           {definition.grantCount} 項能力

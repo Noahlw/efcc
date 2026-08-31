@@ -378,7 +378,7 @@ export const MemberDirectoryPanel = () => {
                       <Button
                         aria-label={member.name}
                         aria-pressed={selection.selectedId === member.userId}
-                        className="grid min-h-16 w-full min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-3 rounded-none border-0 bg-transparent px-4 py-3 text-left text-[var(--ink)] hover:bg-[var(--surface)] aria-pressed:bg-[var(--surface)]"
+                        className="grid h-auto min-h-16 w-full min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-3 rounded-none border-0 bg-transparent px-4 py-3 text-left whitespace-normal text-[var(--ink)] hover:bg-[var(--surface)] aria-pressed:bg-[var(--surface)]"
                         onClick={() => selection.onSelect(member.userId)}
                         type="button"
                         variant="ghost"
@@ -387,12 +387,14 @@ export const MemberDirectoryPanel = () => {
                           <span className="wrap-anywhere font-semibold leading-5">
                             {member.name}
                           </span>
-                          {identityText(member.identities, member.role)} ·{" "}
-                          {member.departments.length > 0
-                            ? member.departments
-                                .map((department) => department.name)
-                                .join("、")
-                            : MEMBERS.noDepartments}
+                          <span className="wrap-anywhere text-[var(--ink-muted)]">
+                            {identityText(member.identities, member.role)} ·{" "}
+                            {member.departments.length > 0
+                              ? member.departments
+                                  .map((department) => department.name)
+                                  .join("、")
+                              : MEMBERS.noDepartments}
+                          </span>
                         </span>
                         <svg
                           aria-hidden="true"

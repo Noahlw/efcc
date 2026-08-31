@@ -418,6 +418,31 @@ describe("#476 disposable D1 schema contract", () => {
     }, "scope snapshot is immutable");
   });
 
+  test("D1 rejects a sentinel scope ID for a Global assignment", async () => {
+    await expectAbort(async () => {
+      await testDb()
+        .prepare(
+          `INSERT INTO role_assignments
+             (assignment_id, account_user_id, role_definition_id,
+              granted_by, granted_at, scope_kind, scope_id,
+              revoked_by, revoked_at, revoke_reason)
+           VALUES (
+             's4-scope-null-sentinel',
+             'E2E_DISPOSABLE_MEMBER',
+             '018f3b8a-0000-7000-8000-000000000a02',
+             'E2E_DISPOSABLE_ADMIN',
+             '2026-08-31T00:00:00.000Z',
+             'Global',
+             '<NULL>',
+             NULL,
+             NULL,
+             NULL
+           )`
+        )
+        .run();
+    }, "scope snapshot must match Role Definition");
+  });
+
   test("D1 permits only one active-to-revoked transition and protects terminal history", async () => {
     const assignmentId = "018f3b8a-0000-7000-8000-aaaa00000024-terminal-guard";
     const roleId = "018f3b8a-0000-7000-8000-100000000001";

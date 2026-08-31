@@ -90,7 +90,7 @@ const cardClass =
   "min-w-0 rounded-[var(--radius-md)] border border-[var(--line)] bg-[var(--surface-raised)] p-[var(--space-4)]";
 const stateClass =
   "grid min-h-[180px] min-w-0 place-items-center gap-3 rounded-[var(--radius-md)] border border-[var(--line)] bg-[var(--surface-raised)] p-6 text-center text-[var(--ink-muted)]";
-const actionClass = "min-h-11 font-extrabold";
+const actionClass = "h-auto min-h-11 whitespace-normal font-extrabold";
 
 const EMPTY_GROUPS: EffectiveAccessGroups = {
   Global: [],
@@ -1261,7 +1261,7 @@ export const AccountAccessPanel = () => {
                   <li key={assignedAccount.assignmentId}>
                     <Button
                       asChild
-                      className="min-h-11 w-full justify-start border border-[var(--line)] bg-[var(--surface)] text-left text-[var(--ink)]"
+                      className="h-auto min-h-11 w-full justify-start border border-[var(--line)] bg-[var(--surface)] text-left whitespace-normal text-[var(--ink)]"
                       variant="outline"
                     >
                       <Link
@@ -1330,7 +1330,7 @@ export const AccountAccessPanel = () => {
                     <li className="min-w-0" key={candidate.userId}>
                       <Button
                         asChild
-                        className="min-h-11 w-full justify-start border border-[var(--line)] bg-[var(--surface)] text-left text-[var(--ink)]"
+                        className="h-auto min-h-11 w-full justify-start border border-[var(--line)] bg-[var(--surface)] text-left whitespace-normal text-[var(--ink)]"
                         variant="outline"
                       >
                         <Link
@@ -1612,7 +1612,7 @@ export const AccountAccessPanel = () => {
                       <li className="min-w-0" key={candidate.userId}>
                         <Button
                           asChild
-                          className="min-h-11 w-full justify-start border border-[var(--line)] bg-[var(--surface)] text-left text-[var(--ink)]"
+                          className="h-auto min-h-11 w-full justify-start border border-[var(--line)] bg-[var(--surface)] text-left whitespace-normal text-[var(--ink)]"
                           variant="outline"
                         >
                           <Link

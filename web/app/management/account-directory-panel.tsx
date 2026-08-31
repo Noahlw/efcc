@@ -986,7 +986,7 @@ export const AccountDirectoryPanel = () => {
                     <li key={account.userId} className="min-w-0">
                       <Button
                         aria-pressed={selection.selectedId === account.userId}
-                        className="grid min-h-[68px] w-full min-w-0 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 rounded-[var(--radius-md)] border border-[var(--line)] bg-[var(--surface-raised)] p-3 text-left text-[var(--ink)] hover:border-[var(--focus)] hover:shadow-[inset_3px_0_0_var(--focus)] aria-pressed:border-[var(--focus)] aria-pressed:shadow-[inset_3px_0_0_var(--focus)]"
+                        className="h-auto grid min-h-[68px] w-full min-w-0 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 rounded-[var(--radius-md)] border border-[var(--line)] bg-[var(--surface-raised)] p-3 text-left whitespace-normal text-[var(--ink)] hover:border-[var(--focus)] hover:shadow-[inset_3px_0_0_var(--focus)] aria-pressed:border-[var(--focus)] aria-pressed:shadow-[inset_3px_0_0_var(--focus)]"
                         onClick={() => selection.onSelect(account.userId)}
                         type="button"
                         variant="ghost"
@@ -994,7 +994,7 @@ export const AccountDirectoryPanel = () => {
                         <span className="grid size-10 shrink-0 place-items-center rounded-full border border-[var(--line)] bg-[var(--surface)] font-extrabold text-[var(--accent)]">
                           {initials(account.name)}
                         </span>
-                        <span className="grid min-w-0 gap-1">
+                        <span className="grid min-w-0 gap-1 wrap-anywhere">
                           <strong className="wrap-anywhere">
                             {account.name}
                           </strong>

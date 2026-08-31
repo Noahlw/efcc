@@ -32,8 +32,8 @@ WHEN EXISTS (
     FROM role_definitions rd
    WHERE rd.role_definition_id = NEW.role_definition_id
      AND (
-       NEW.scope_kind <> rd.scope_kind
-       OR COALESCE(NEW.scope_id, '<NULL>') <> COALESCE(rd.scope_id, '<NULL>')
+       NEW.scope_kind IS NOT rd.scope_kind
+       OR NEW.scope_id IS NOT rd.scope_id
      )
 )
 BEGIN
