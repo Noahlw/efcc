@@ -246,13 +246,13 @@ export const WorkspaceOverview = ({
         <div
           style={{
             display: "grid",
-            gridTemplateColumns: "1fr 1fr",
+            gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
             gap: "10px",
           }}
         >
           <Button
             type="button"
-            className={styles.directoryCard}
+            className={`${styles.directoryCard} min-w-0 whitespace-normal`}
             style={{ textAlign: "left", minHeight: "100px", padding: "16px" }}
             onClick={() => onTaskChange("events")}
           >
@@ -271,7 +271,7 @@ export const WorkspaceOverview = ({
           </Button>
           <Button
             type="button"
-            className={styles.directoryCard}
+            className={`${styles.directoryCard} min-w-0 whitespace-normal`}
             style={{ textAlign: "left", minHeight: "100px", padding: "16px" }}
             onClick={() => onTaskChange("participants")}
           >
