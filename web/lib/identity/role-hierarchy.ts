@@ -807,6 +807,42 @@ export async function loadRoleHierarchy(
       })
     )
   );
+  const createCapabilityScopes = new Set<string>();
+  if (capabilities["role.create"] === true) {
+    const createScopeTargets: {
+      scope_kind: RoleScopeKind;
+      scope_id: string;
+    }[] = [
+      ...[...names.departments.keys()].map((scopeId) => ({
+        scope_kind: ROLE_CATEGORY_KEY.DEPARTMENT,
+        scope_id: scopeId,
+      })),
+      ...[...names.programs.keys()].map((scopeId) => ({
+        scope_kind: ROLE_CATEGORY_KEY.PROGRAM,
+        scope_id: scopeId,
+      })),
+    ];
+    const resolvedCreateScopes = await Promise.all(
+      createScopeTargets.map(
+        async (target) =>
+          [
+            `${target.scope_kind}:${target.scope_id}`,
+            (
+              await resolveActorCapabilities(
+                db,
+                actorUserId,
+                capabilityScopeFor(target)
+              )
+            )["role.create"] === true,
+          ] as const
+      )
+    );
+    for (const [scopeKey, allowed] of resolvedCreateScopes) {
+      if (allowed) {
+        createCapabilityScopes.add(scopeKey);
+      }
+    }
+  }
   // Scoped readers may always see the code-owned global anchors so the
   // hierarchy remains explainable. Their summaries are safe global metadata;
   // unrelated scoped definitions still require target-scope `role.read`.
@@ -1004,6 +1040,11 @@ export async function loadRoleHierarchy(
       for (const scopeId of scopeIds) {
         if (
           !isWithinActorScopeValue(actorRoles, category.category_key, scopeId)
+        ) {
+          continue;
+        }
+        if (
+          !createCapabilityScopes.has(`${category.category_key}:${scopeId}`)
         ) {
           continue;
         }
