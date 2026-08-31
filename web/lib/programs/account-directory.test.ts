@@ -284,6 +284,7 @@ describe("S4-02: Account Directory contract", () => {
       body.data.accounts.map((account) => account.userId),
       ["AD002"]
     );
+    assert.strictEqual(body.data.accounts[0]?.canOpenAccess, false);
   });
   test("Member role filter includes accounts with automatic baseline access", async () => {
     const response = await worker.fetch(
