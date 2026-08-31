@@ -1349,7 +1349,6 @@ function errorForCode(code: string): Error {
   if (code === "ROLE_TARGET_INELIGIBLE")
     return new AccountTargetIneligibleError();
   if (code === "ROLE_INVALID_TARGET") return new RoleInvalidTargetError();
-  if (code === "ROLE_ADMIN_PROTECTED") return new AccountAdminProtectedError();
   return new RoleCapabilityDeniedError();
 }
 
