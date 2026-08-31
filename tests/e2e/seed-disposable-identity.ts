@@ -1,5 +1,4 @@
 import { execFileSync } from "node:child_process";
-import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const DATABASE = "efcc-identity";
@@ -31,7 +30,7 @@ function readTableNames(): Set<string> {
       "--command",
       "SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%';",
     ],
-    { encoding: "utf8" }
+    { encoding: "utf-8" }
   );
   const result = JSON.parse(output) as WranglerResult[];
   return new Set(
@@ -51,9 +50,8 @@ function main(): void {
         `Disposable seed refused: retired authority tables remain (${staleTables.join(", ")}). Manually confirm this is the disposable local DB, run ${resetCommand}, then rerun pnpm db:seed:disposable.`
       );
     }
-    const seedFile = resolve(
-      dirname(fileURLToPath(import.meta.url)),
-      "seed-disposable-identity.sql"
+    const seedFile = fileURLToPath(
+      new URL("seed-disposable-identity.sql", import.meta.url)
     );
     execFileSync(
       "pnpm",

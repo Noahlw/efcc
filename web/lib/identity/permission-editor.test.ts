@@ -291,29 +291,33 @@ describe("#485 Permission Editor domain seam", () => {
     const unknownRole = "opaque-permission-role-does-not-exist";
     const roleTargets = [PROGRAM_LEADER_ROLE, unknownRole];
 
-    for (const roleDefinitionId of roleTargets) {
-      await assert.rejects(
-        loadRoleDefinitionDetail(testDb(), MEMBER, roleDefinitionId),
-        (error: unknown) => error instanceof RoleCapabilityDeniedError
-      );
-    }
+    await Promise.all(
+      roleTargets.map(async (roleDefinitionId) => {
+        await assert.rejects(
+          loadRoleDefinitionDetail(testDb(), MEMBER, roleDefinitionId),
+          (error: unknown) => error instanceof RoleCapabilityDeniedError
+        );
+      })
+    );
 
     const baseRevision = await revision();
-    for (const roleDefinitionId of roleTargets) {
-      await assert.rejects(
-        updateRoleDefinitionGrants(testDb(), {
-          actor_user_id: MEMBER,
-          role_definition_id: roleDefinitionId,
-          base_revision: baseRevision,
-          idempotency_key: `permission-target-privacy-${roleDefinitionId}`,
-          changes: [{ capability: "home.publish", value: true }],
-          now: NOW,
-          audit_id: `permission-target-privacy-${roleDefinitionId}-audit`,
-          correlation_id: `permission-target-privacy-${roleDefinitionId}-correlation`,
-        }),
-        (error: unknown) => error instanceof RoleCapabilityDeniedError
-      );
-    }
+    await Promise.all(
+      roleTargets.map(async (roleDefinitionId) => {
+        await assert.rejects(
+          updateRoleDefinitionGrants(testDb(), {
+            actor_user_id: MEMBER,
+            role_definition_id: roleDefinitionId,
+            base_revision: baseRevision,
+            idempotency_key: `permission-target-privacy-${roleDefinitionId}`,
+            changes: [{ capability: "home.publish", value: true }],
+            now: NOW,
+            audit_id: `permission-target-privacy-${roleDefinitionId}-audit`,
+            correlation_id: `permission-target-privacy-${roleDefinitionId}-correlation`,
+          }),
+          (error: unknown) => error instanceof RoleCapabilityDeniedError
+        );
+      })
+    );
 
     await assert.rejects(
       loadRoleDefinitionDetail(testDb(), ADMIN, unknownRole),
@@ -333,6 +337,7 @@ describe("#485 Permission Editor domain seam", () => {
       (error: unknown) => error instanceof RoleTargetNotFoundError
     );
   });
+
   test("resolves global and exact scoped grants without widening", async () => {
     const inside = await resolveActorCapabilities(
       testDb(),

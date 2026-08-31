@@ -662,19 +662,15 @@ describe("AccountAccessPanel", () => {
       })),
     });
     render(<AccountAccessPanel />);
-    expect(
-      await screen.findByRole("heading", { name: "課程協調者" })
-    ).toBeTruthy();
+    await screen.findByRole("heading", { name: "課程協調者" });
     const accountOne = screen.getByRole("link", { name: /Account One/u });
-    expect(accountOne).toHaveTextContent("Account One");
-    expect(accountOne).toHaveTextContent("account-one · account-1");
+    expect(accountOne).toHaveTextContent(/Account Oneaccount-one · account-1/u);
     expect(accountOne).toHaveAttribute(
       "href",
       "/management?module=accounts&account=account-1&view=access&return=%2Fmanagement%3Fmodule%3Daccounts%26roleDefinition%3Drole-lower%26view%3Daccess"
     );
     const accountTwo = screen.getByRole("link", { name: /Account Two/u });
-    expect(accountTwo).toHaveTextContent("Account Two");
-    expect(accountTwo).toHaveTextContent("account-two · account-2");
+    expect(accountTwo).toHaveTextContent(/Account Twoaccount-two · account-2/u);
     expect(accountTwo).toHaveAttribute(
       "href",
       "/management?module=accounts&account=account-2&view=access&return=%2Fmanagement%3Fmodule%3Daccounts%26roleDefinition%3Drole-lower%26view%3Daccess"

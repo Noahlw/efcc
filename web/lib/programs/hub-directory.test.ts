@@ -662,6 +662,7 @@ describe("HUB-01: Management Hub directory projection", () => {
       }
     }
   });
+
   test("role-read-only identity receives the Role Tree destination", async () => {
     const admin = await login("alice", "alice-secret");
     const manager = await login("carol", "carol-secret");
@@ -711,6 +712,7 @@ describe("HUB-01: Management Hub directory projection", () => {
       }
     }
   });
+
   test("global role readers avoid permission dead ends", async () => {
     const roleReader = await login("carol", "carol-secret");
     const permissionReader = await login("dora", "dora-secret");
@@ -752,25 +754,28 @@ describe("HUB-01: Management Hub directory projection", () => {
         undefined
       );
     } finally {
-      for (const roleDefinitionId of [
-        roleReadDefinitionId,
-        permissionReadDefinitionId,
-      ]) {
-        await testDb()
-          .prepare("DELETE FROM role_assignments WHERE role_definition_id = ?")
-          .bind(roleDefinitionId)
-          .run();
-        await testDb()
-          .prepare(
-            "DELETE FROM role_definition_grants WHERE role_definition_id = ?"
-          )
-          .bind(roleDefinitionId)
-          .run();
-        await testDb()
-          .prepare("DELETE FROM role_definitions WHERE role_definition_id = ?")
-          .bind(roleDefinitionId)
-          .run();
-      }
+      await Promise.all(
+        [roleReadDefinitionId, permissionReadDefinitionId].map(
+          (roleDefinitionId) =>
+            testDb().batch([
+              testDb()
+                .prepare(
+                  "DELETE FROM role_assignments WHERE role_definition_id = ?"
+                )
+                .bind(roleDefinitionId),
+              testDb()
+                .prepare(
+                  "DELETE FROM role_definition_grants WHERE role_definition_id = ?"
+                )
+                .bind(roleDefinitionId),
+              testDb()
+                .prepare(
+                  "DELETE FROM role_definitions WHERE role_definition_id = ?"
+                )
+                .bind(roleDefinitionId),
+            ])
+        )
+      );
     }
   });
 });

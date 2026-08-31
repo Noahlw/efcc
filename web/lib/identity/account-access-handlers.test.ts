@@ -1,3 +1,5 @@
+import assert from "node:assert/strict";
+
 import { env } from "cloudflare:workers";
 import { beforeAll, describe, expect, test } from "vitest";
 
@@ -209,7 +211,7 @@ describe("#486 Account Access handlers", () => {
         (item) => item.roleDefinitionId === DEPARTMENT_ROLE
       )
     ).toBe(true);
-    expect(addBody.data.idempotent).toBe(false);
+    expect(addBody.data.idempotent).toBeFalsy();
 
     const revoke = await worker.fetch(
       request(`/api/v1/identity/accounts/${STAFF}/assignments/revoke`, {
@@ -225,7 +227,6 @@ describe("#486 Account Access handlers", () => {
       }),
       testEnv()
     );
-    expect(revoke.status).toBe(200);
     const revokeBody = (await revoke.json()) as {
       requestId: string;
       data: {
@@ -234,6 +235,10 @@ describe("#486 Account Access handlers", () => {
         revokedAssignments: { roleDefinitionId: string }[];
       };
     };
+    expect({
+      status: revoke.status,
+      idempotent: revokeBody.data.idempotent,
+    }).toStrictEqual({ status: 200, idempotent: false });
     expect(revokeBody.requestId).toBe(revoke.headers.get("X-Request-Id"));
     expect(
       revokeBody.data.activeAssignments.some(
@@ -245,7 +250,6 @@ describe("#486 Account Access handlers", () => {
         (item) => item.roleDefinitionId === DEPARTMENT_ROLE
       )
     ).toBe(true);
-    expect(revokeBody.data.idempotent).toBe(false);
   });
 
   test("authorizes before revealing unknown targets or lifecycle state", async () => {
@@ -438,7 +442,7 @@ describe("#486 Account Access handlers", () => {
       requestId: string;
       data: { idempotent: boolean };
     };
-    expect(successReplayJson.data.idempotent).toBe(true);
+    expect(successReplayJson.data.idempotent).toBeTruthy();
     expect(successReplayJson.requestId).toBe(successJson.requestId);
     expect(successReplayJson.requestId).toBe(
       success.headers.get("X-Request-Id")
@@ -546,7 +550,7 @@ describe("#486 Account Access handlers", () => {
       requestId: string;
       data: { idempotent: boolean };
     };
-    expect(lifecycleJson.data.idempotent).toBe(false);
+    assert.strictEqual(lifecycleJson.data.idempotent, false);
     const lifecycleReplay = await worker.fetch(
       request(`/api/v1/identity/role-definitions/${PROGRAM_ROLE}/lifecycle`, {
         method: "POST",
@@ -563,7 +567,7 @@ describe("#486 Account Access handlers", () => {
       requestId: string;
       data: { idempotent: boolean };
     };
-    expect(lifecycleReplayJson.data.idempotent).toBe(true);
+    assert.strictEqual(lifecycleReplayJson.data.idempotent, true);
     expect(lifecycleReplayJson.requestId).toBe(lifecycleJson.requestId);
     expect(lifecycleReplay.headers.get("X-Request-Id")).toBe(
       lifecycle.headers.get("X-Request-Id")
