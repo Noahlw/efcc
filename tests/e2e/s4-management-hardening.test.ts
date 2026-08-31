@@ -620,11 +620,11 @@ test.describe("S4 Management hardening integration gate", () => {
     });
     await expect(roleList).toBeVisible();
     await expect(
-      roleList.getByRole("button", { name: /^會友基礎/u })
+      roleList.getByRole("link", { name: /^會友基礎/u })
     ).toBeVisible();
 
     await captureEvidence(page, testInfo, "role-list-baseline");
-    const staffRole = roleList.getByRole("button", { name: /^同工/u });
+    const staffRole = roleList.getByRole("link", { name: /^同工/u });
     await expect(staffRole).toBeVisible();
     await staffRole.click();
     await expect(
@@ -1094,7 +1094,7 @@ test.describe("S4 Management hardening integration gate", () => {
     await expect(
       page.getByRole("heading", { name: PERMISSIONS_TITLE })
     ).toBeVisible();
-    const staffRole = page.getByRole("button", { name: /^同工/u }).first();
+    const staffRole = page.getByRole("link", { name: /^同工/u }).first();
     await staffRole.click();
     await expect(
       page.getByRole("heading", {
