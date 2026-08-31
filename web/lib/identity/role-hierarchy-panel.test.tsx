@@ -316,7 +316,7 @@ describe(RoleHierarchyPanel, () => {
     );
   });
 
-  test("role-read-only viewers do not get assignment management CTA", async () => {
+  test("viewers without assignment capability do not get Account Access CTA", async () => {
     const readOnlyView: RoleHierarchyView = {
       ...VIEW,
       caller: { userId: "u-reader", highestPosition: 10 },
@@ -327,7 +327,7 @@ describe(RoleHierarchyPanel, () => {
             ? {
                 ...definition,
                 assignmentActions: [],
-                lifecycleActions: [],
+                lifecycleActions: [{ action: "archive", label: "停用" }],
               }
             : definition
         ),
