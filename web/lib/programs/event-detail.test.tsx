@@ -95,6 +95,7 @@ describe("EVT-01 event detail", () => {
         eventId="event-1"
         canManage
         onBack={() => {}}
+        backHref="/programs"
       />
     );
     await expect(
@@ -135,11 +136,13 @@ describe("EVT-01 event detail", () => {
         eventId="event-1"
         canManage
         onBack={onBack}
+        backHref="/programs"
       />
     );
-    const back = await screen.findByRole("button", {
+    const back = await screen.findByRole("link", {
       name: COPY.programs.eventDetailBack,
     });
+    expect(back).toHaveAttribute("href", "/programs");
     await userEvent.click(back);
     expect(onBack).toHaveBeenCalledOnce();
   });
@@ -157,6 +160,7 @@ describe("EVT-01 event detail", () => {
         eventId="event-1"
         canManage
         onBack={() => {}}
+        backHref="/programs"
         onAttentionRefresh={onAttentionRefresh}
       />
     );
@@ -206,6 +210,7 @@ describe("EVT-01 event detail", () => {
         eventId="event-1"
         canManage
         onBack={() => {}}
+        backHref="/programs"
       />
     );
     await user.click(
@@ -245,6 +250,7 @@ describe("EVT-01 event detail", () => {
         eventId="event-1"
         canManage
         onBack={() => {}}
+        backHref="/programs"
       />
     );
     const deactivate = await screen.findByRole("button", {
@@ -306,6 +312,7 @@ describe("EVT-01 event detail", () => {
         eventId="event-1"
         canManage
         onBack={() => {}}
+        backHref="/programs"
       />
     );
 
@@ -350,6 +357,7 @@ describe("EVT-01 event detail", () => {
         eventId="event-1"
         canManage
         onBack={() => {}}
+        backHref="/programs"
       />
     );
     await user.click(
@@ -409,6 +417,7 @@ describe("EVT-01 event detail", () => {
         eventId="event-1"
         canManage
         onBack={() => {}}
+        backHref="/programs"
       />
     );
     await user.click(
@@ -449,6 +458,7 @@ describe("EVT-01 event detail", () => {
         eventId="event-1"
         canManage
         onBack={() => {}}
+        backHref="/programs"
       />
     );
     await expect(
@@ -482,6 +492,7 @@ describe("EVT-01 event detail", () => {
         eventId="event-1"
         canManage
         onBack={() => {}}
+        backHref="/programs"
       />
     );
     await user.click(
@@ -524,6 +535,7 @@ describe("EVT-01 event detail", () => {
         eventId="event-1"
         canManage
         onBack={() => {}}
+        backHref="/programs"
       />
     );
     await user.click(
@@ -601,6 +613,7 @@ describe("EVT-01 event detail", () => {
         eventId="event-1"
         canManage
         onBack={() => {}}
+        backHref="/programs"
       />
     );
     await user.click(
@@ -651,6 +664,7 @@ describe("EVT-01 event detail", () => {
         eventId="missing"
         canManage={false}
         onBack={() => {}}
+        backHref="/programs"
       />
     );
     await expect(
@@ -688,6 +702,7 @@ describe("EVT-01 event detail", () => {
         eventId="event-1"
         canManage={false}
         onBack={() => {}}
+        backHref="/programs"
       />
     );
     await screen.findByRole("heading", { name: "迎新聚會" });
@@ -713,6 +728,7 @@ describe("EVT-01 event detail", () => {
         eventId="event-1"
         canManage={false}
         onBack={() => {}}
+        backHref="/programs"
       />
     );
     await expect(
@@ -738,6 +754,7 @@ describe("EVT-01 event detail", () => {
         eventId="event-1"
         canManage={false}
         onBack={() => {}}
+        backHref="/programs"
       />
     );
 
@@ -815,6 +832,7 @@ describe("EVT-01 event detail", () => {
         eventId="event-1"
         canManage={false}
         onBack={() => {}}
+        backHref="/programs"
       />
     );
     await screen.findByRole("heading", { name: "迎新聚會" });
@@ -838,10 +856,11 @@ describe("EVT-01 event detail", () => {
         eventId="event-1"
         canManage={false}
         onBack={onBack}
+        backHref="/programs"
       />
     );
     await user.click(
-      await screen.findByRole("button", { name: COPY.programs.backToOrigin })
+      await screen.findByRole("link", { name: COPY.programs.backToOrigin })
     );
     expect(onBack).toHaveBeenCalledOnce();
   });
@@ -868,6 +887,7 @@ describe("EVT-01 event detail", () => {
         eventId="event-1"
         canManage
         onBack={() => {}}
+        backHref="/programs"
       />
     );
     await user.click(await screen.findByRole("button", { name: /編輯聚會/u }));
@@ -900,6 +920,7 @@ describe("EVT-01 event detail", () => {
         eventId="event-1"
         canManage
         onBack={() => {}}
+        backHref="/programs"
       />
     );
     await user.click(
@@ -937,6 +958,7 @@ describe("EVT-01 event detail", () => {
         eventId="event-1"
         canManage
         onBack={() => {}}
+        backHref="/programs"
       />
     );
     await user.click(
@@ -958,6 +980,7 @@ describe("EVT-01 event detail", () => {
         eventId="event-1"
         canManage
         onBack={() => {}}
+        backHref="/programs"
       />
     );
     await user.click(

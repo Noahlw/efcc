@@ -140,6 +140,8 @@ export const EventDetail = ({
   eventId,
   canManage,
   origin,
+  backHref,
+  backReplace,
   onBack,
   onAttentionRefresh,
   onAuthRequired,
@@ -148,7 +150,9 @@ export const EventDetail = ({
   eventId: string;
   canManage: boolean;
   origin?: ProgramsOrigin;
-  onBack: () => void;
+  backHref: string;
+  backReplace?: boolean;
+  onBack?: React.MouseEventHandler<HTMLAnchorElement>;
   /** NTF-01 (#256): keep shell attention counts fresh after a confirmed mutation. */
   onAttentionRefresh?: () => void;
   onAuthRequired?: () => void;
@@ -473,14 +477,15 @@ export const EventDetail = ({
         aria-labelledby="participant-event-title"
         aria-busy={busy}
       >
-        <Button
-          type="button"
+        <Link
           className={styles.programDetailBack}
           aria-label={COPY.programs.backToOrigin}
+          href={backHref}
+          replace={backReplace}
           onClick={onBack}
         >
           <EventFactIcon name="back" /> {COPY.programs.backToOrigin}
-        </Button>
+        </Link>
         <header className={styles.programDetailHeader}>
           {checkInOpen && (
             <Badge
@@ -555,13 +560,14 @@ export const EventDetail = ({
       aria-label={COPY.programs.eventDetailTitle}
       aria-busy={busy}
     >
-      <Button
-        type="button"
+      <Link
         className={styles.programDetailBack}
+        href={backHref}
+        replace={backReplace}
         onClick={onBack}
       >
         {COPY.programs.eventDetailBack}
-      </Button>
+      </Link>
       {notice !== null && (
         <output className={styles.panelNotice} aria-live="polite">
           <span>{notice}</span>
