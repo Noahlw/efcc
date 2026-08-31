@@ -104,6 +104,15 @@ const stateSurfaceVariants = cva("mt-4 rounded-[var(--radius-md)] border p-4", {
 const fieldClass = "mt-3 grid min-w-0 gap-1.5";
 const fieldLabelClass = "text-[0.82rem] font-bold text-[var(--ink)]";
 
+const feedbackVariants = cva("mt-2.5 text-sm", {
+  variants: {
+    tone: {
+      error: "text-[var(--error)]",
+      success: "font-bold text-[var(--success)]",
+    },
+  },
+});
+
 const RENAME_LABEL = "重新命名";
 const SCOPE_EDIT_LABEL = "編輯適用範圍";
 const DETAIL_BACK_LABEL = "返回身份組列表";
@@ -1472,37 +1481,37 @@ export const RoleHierarchyPanel = () => {
                 </Select>
               </label>
               {scopeState.kind === "invalid-scope" && (
-                <p className="mt-2.5 text-sm text-[var(--error)]">
+                <p className={cn(feedbackVariants({ tone: "error" }))}>
                   {CREATE_INVALID_SCOPE_MESSAGE}
                 </p>
               )}
               {scopeState.kind === "conflict" && (
-                <p className="mt-2.5 text-sm text-[var(--error)]">
+                <p className={cn(feedbackVariants({ tone: "error" }))}>
                   {SCOPE_CONFLICT_MESSAGE}
                 </p>
               )}
               {scopeState.kind === "forbidden" && (
-                <p className="mt-2.5 text-sm text-[var(--error)]">
+                <p className={cn(feedbackVariants({ tone: "error" }))}>
                   {FORBIDDEN_MESSAGE}
                 </p>
               )}
               {scopeState.kind === "archived" && (
-                <p className="mt-2.5 text-sm text-[var(--error)]">
+                <p className={cn(feedbackVariants({ tone: "error" }))}>
                   {SCOPE_ARCHIVED_MESSAGE}
                 </p>
               )}
               {scopeState.kind === "not-found" && (
-                <p className="mt-2.5 text-sm text-[var(--error)]">
+                <p className={cn(feedbackVariants({ tone: "error" }))}>
                   {NOT_FOUND_MESSAGE}
                 </p>
               )}
               {scopeState.kind === "error" && (
-                <p className="mt-2.5 text-sm text-[var(--error)]">
+                <p className={cn(feedbackVariants({ tone: "error" }))}>
                   {LOAD_ERROR_MESSAGE}
                 </p>
               )}
               {scopeState.kind === "success" && (
-                <p className="mt-2.5 text-sm font-bold text-[var(--success)]">
+                <p className={cn(feedbackVariants({ tone: "success" }))}>
                   {SCOPE_SUCCESS_MESSAGE}
                 </p>
               )}
@@ -1585,42 +1594,42 @@ export const RoleHierarchyPanel = () => {
             />
           </label>
           {renameState.kind === "invalid-name" && (
-            <p className="mt-2.5 text-sm text-[var(--error)]">
+            <p className={cn(feedbackVariants({ tone: "error" }))}>
               {INVALID_NAME_MESSAGE}
             </p>
           )}
           {renameState.kind === "name-conflict" && (
-            <p className="mt-2.5 text-sm text-[var(--error)]">
+            <p className={cn(feedbackVariants({ tone: "error" }))}>
               {NAME_CONFLICT_MESSAGE}
             </p>
           )}
           {renameState.kind === "archived" && (
-            <p className="mt-2.5 text-sm text-[var(--error)]">
+            <p className={cn(feedbackVariants({ tone: "error" }))}>
               {ARCHIVED_MESSAGE}
             </p>
           )}
           {renameState.kind === "conflict" && (
-            <p className="mt-2.5 text-sm text-[var(--error)]">
+            <p className={cn(feedbackVariants({ tone: "error" }))}>
               {CONFLICT_MESSAGE}
             </p>
           )}
           {renameState.kind === "forbidden" && (
-            <p className="mt-2.5 text-sm text-[var(--error)]">
+            <p className={cn(feedbackVariants({ tone: "error" }))}>
               {FORBIDDEN_MESSAGE}
             </p>
           )}
           {renameState.kind === "not-found" && (
-            <p className="mt-2.5 text-sm text-[var(--error)]">
+            <p className={cn(feedbackVariants({ tone: "error" }))}>
               {NOT_FOUND_MESSAGE}
             </p>
           )}
           {renameState.kind === "error" && (
-            <p className="mt-2.5 text-sm text-[var(--error)]">
+            <p className={cn(feedbackVariants({ tone: "error" }))}>
               {LOAD_ERROR_MESSAGE}
             </p>
           )}
           {renameState.kind === "success" && (
-            <p className="mt-2.5 text-sm font-bold text-[var(--success)]">
+            <p className={cn(feedbackVariants({ tone: "success" }))}>
               {SUCCESS_MESSAGE}
             </p>
           )}
@@ -1827,32 +1836,32 @@ export const RoleHierarchyPanel = () => {
             />
           </label>
           {createState.kind === "invalid-name" && (
-            <p className="mt-2.5 text-sm text-[var(--error)]">
+            <p className={cn(feedbackVariants({ tone: "error" }))}>
               {INVALID_NAME_MESSAGE}
             </p>
           )}
           {createState.kind === "invalid-scope" && (
-            <p className="mt-2.5 text-sm text-[var(--error)]">
+            <p className={cn(feedbackVariants({ tone: "error" }))}>
               {CREATE_INVALID_SCOPE_MESSAGE}
             </p>
           )}
           {createState.kind === "name-conflict" && (
-            <p className="mt-2.5 text-sm text-[var(--error)]">
+            <p className={cn(feedbackVariants({ tone: "error" }))}>
               {NAME_CONFLICT_MESSAGE}
             </p>
           )}
           {createState.kind === "forbidden" && (
-            <p className="mt-2.5 text-sm text-[var(--error)]">
+            <p className={cn(feedbackVariants({ tone: "error" }))}>
               {CREATE_FORBIDDEN_MESSAGE}
             </p>
           )}
           {createState.kind === "error" && (
-            <p className="mt-2.5 text-sm text-[var(--error)]">
+            <p className={cn(feedbackVariants({ tone: "error" }))}>
               {LOAD_ERROR_MESSAGE}
             </p>
           )}
           {createState.kind === "success" && (
-            <p className="mt-2.5 text-sm font-bold text-[var(--success)]">
+            <p className={cn(feedbackVariants({ tone: "success" }))}>
               {CREATE_SUCCESS_MESSAGE}
             </p>
           )}
