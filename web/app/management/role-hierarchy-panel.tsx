@@ -38,7 +38,7 @@ import {
 } from "./management-action-framework";
 
 const roleButtonVariants = cva(
-  "grid min-h-16 w-full min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center justify-between gap-2.5 rounded-xl border bg-[var(--surface-raised)] px-2.5 py-2.5 text-left text-base font-normal whitespace-normal text-[var(--ink)] outline-none hover:border-[var(--focus)] hover:bg-[var(--surface-raised)] hover:text-[var(--ink)] focus-visible:border-[var(--focus)] focus-visible:ring-3 focus-visible:ring-[var(--focus)]/30",
+  "grid h-auto min-h-16 w-full min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center justify-between gap-2.5 rounded-xl border bg-[var(--surface-raised)] px-2.5 py-2.5 text-left text-base font-normal whitespace-normal text-[var(--ink)] outline-none hover:border-[var(--focus)] hover:bg-[var(--surface-raised)] hover:text-[var(--ink)] focus-visible:border-[var(--focus)] focus-visible:ring-3 focus-visible:ring-[var(--focus)]/30",
   {
     variants: {
       state: {
