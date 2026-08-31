@@ -561,8 +561,10 @@ describe("HUB-01: Management Hub directory projection", () => {
     const manager = await login("carol", "carol-secret");
     let permissionsDepartment: string | null = null;
     let assignmentsDepartment: string | null = null;
+    let permissionOnlyDepartment: string | null = null;
     let permissionFixture: ScopedRoleManagementFixture | null = null;
     let assignmentFixture: ScopedRoleManagementFixture | null = null;
+    let permissionOnlyFixture: ScopedRoleManagementFixture | null = null;
     try {
       permissionsDepartment = await createDepartment(
         admin,
@@ -601,8 +603,28 @@ describe("HUB-01: Management Hub directory projection", () => {
         assignmentRow.href,
         `/management?module=accounts&view=access&scopeKind=Department&scopeId=${encodeURIComponent(assignmentsDepartment)}`
       );
+      permissionOnlyDepartment = await createDepartment(
+        admin,
+        `HUB-SCOPED-PERM-ONLY-${crypto.randomUUID().slice(0, 8)}`,
+        { attendance: false }
+      );
+      permissionOnlyFixture = await assignScopedRoleManagementIdentity(
+        permissionOnlyDepartment,
+        "U002",
+        ["role.permissions.read"]
+      );
+      const permissionOnlyActor = await login("bob", "bob-secret");
+      const permissionOnlyView = await hubProjection(permissionOnlyActor);
+      assert.strictEqual(
+        allRows(permissionOnlyView).find((row) => row.key === "permissions"),
+        undefined
+      );
     } finally {
-      for (const fixture of [permissionFixture, assignmentFixture]) {
+      for (const fixture of [
+        permissionFixture,
+        assignmentFixture,
+        permissionOnlyFixture,
+      ]) {
         if (!fixture) {
           continue;
         }
@@ -624,6 +646,7 @@ describe("HUB-01: Management Hub directory projection", () => {
       for (const departmentId of [
         permissionsDepartment,
         assignmentsDepartment,
+        permissionOnlyDepartment,
       ]) {
         if (!departmentId) {
           continue;
@@ -635,6 +658,117 @@ describe("HUB-01: Management Hub directory projection", () => {
         await testDb()
           .prepare("DELETE FROM departments WHERE department_id = ?")
           .bind(departmentId)
+          .run();
+      }
+    }
+  });
+  test("role-read-only identity receives the Role Tree destination", async () => {
+    const admin = await login("alice", "alice-secret");
+    const manager = await login("carol", "carol-secret");
+    let departmentId: string | null = null;
+    let fixture: ScopedRoleManagementFixture | null = null;
+    try {
+      departmentId = await createDepartment(
+        admin,
+        `HUB-SCOPED-READ-${crypto.randomUUID().slice(0, 8)}`,
+        { attendance: false }
+      );
+      fixture = await assignScopedRoleManagementIdentity(departmentId, "U003", [
+        "role.read",
+      ]);
+      const view = await hubProjection(manager);
+      const permissionsRow = allRows(view).find(
+        (row) => row.key === "permissions"
+      );
+      assert.ok(permissionsRow);
+      assert.strictEqual(permissionsRow.href, "/management?module=roles");
+    } finally {
+      if (fixture) {
+        await testDb()
+          .prepare("DELETE FROM role_assignments WHERE assignment_id = ?")
+          .bind(fixture.assignmentId)
+          .run();
+        await testDb()
+          .prepare(
+            "DELETE FROM role_definition_grants WHERE role_definition_id = ?"
+          )
+          .bind(fixture.roleDefinitionId)
+          .run();
+        await testDb()
+          .prepare("DELETE FROM role_definitions WHERE role_definition_id = ?")
+          .bind(fixture.roleDefinitionId)
+          .run();
+      }
+      if (departmentId) {
+        await testDb()
+          .prepare("DELETE FROM department_modules WHERE department_id = ?")
+          .bind(departmentId)
+          .run();
+        await testDb()
+          .prepare("DELETE FROM departments WHERE department_id = ?")
+          .bind(departmentId)
+          .run();
+      }
+    }
+  });
+  test("global role readers avoid permission dead ends", async () => {
+    const roleReader = await login("carol", "carol-secret");
+    const permissionReader = await login("dora", "dora-secret");
+    const roleReadStableKey = `global-role-read-${crypto.randomUUID()}`;
+    const permissionReadStableKey = `global-permission-read-${crypto.randomUUID()}`;
+    const roleReadDefinitionId = `hub-system-${roleReadStableKey}`;
+    const permissionReadDefinitionId = `hub-system-${permissionReadStableKey}`;
+    const now = new Date().toISOString();
+
+    await assignSystemIdentity(roleReadStableKey, "U003", 0);
+    await assignSystemIdentity(permissionReadStableKey, "U007", 0);
+    await testDb().batch([
+      testDb()
+        .prepare(
+          `INSERT INTO role_definition_grants
+             (role_definition_id, capability, granted_by, granted_at)
+           VALUES (?, 'role.read', 'U001', ?)`
+        )
+        .bind(roleReadDefinitionId, now),
+      testDb()
+        .prepare(
+          `INSERT INTO role_definition_grants
+             (role_definition_id, capability, granted_by, granted_at)
+           VALUES (?, 'role.permissions.read', 'U001', ?)`
+        )
+        .bind(permissionReadDefinitionId, now),
+    ]);
+
+    try {
+      const roleView = await hubProjection(roleReader);
+      assert.strictEqual(
+        allRows(roleView).find((row) => row.key === "permissions")?.href,
+        "/management?module=roles"
+      );
+
+      const permissionOnlyView = await hubProjection(permissionReader);
+      assert.strictEqual(
+        allRows(permissionOnlyView).find((row) => row.key === "permissions"),
+        undefined
+      );
+    } finally {
+      for (const roleDefinitionId of [
+        roleReadDefinitionId,
+        permissionReadDefinitionId,
+      ]) {
+        await testDb()
+          .prepare("DELETE FROM role_assignments WHERE role_definition_id = ?")
+          .bind(roleDefinitionId)
+          .run();
+        await testDb()
+          .prepare(
+            "DELETE FROM role_definition_grants WHERE role_definition_id = ?"
+          )
+          .bind(roleDefinitionId)
+          .run();
+        await testDb()
+          .prepare("DELETE FROM role_definitions WHERE role_definition_id = ?")
+          .bind(roleDefinitionId)
           .run();
       }
     }

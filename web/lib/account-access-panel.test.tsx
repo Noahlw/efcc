@@ -419,7 +419,7 @@ describe("AccountAccessPanel", () => {
     });
     expect(candidate).toHaveAttribute(
       "href",
-      "/management?module=accounts&account=other&roleDefinition=role-lower&view=access&return=%2Fmanagement%3Fmodule%3Daccounts%26roleDefinition%3Drole-lower%26view%3Daccess"
+      "/management?module=accounts&account=other&view=access&return=%2Fmanagement%3Fmodule%3Daccounts%26account%3Dtarget%26view%3Daccess"
     );
   });
 

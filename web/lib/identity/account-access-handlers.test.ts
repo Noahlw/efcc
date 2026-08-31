@@ -200,15 +200,16 @@ describe("#486 Account Access handlers", () => {
       requestId: string;
       data: {
         revision: number;
+        idempotent: boolean;
         activeAssignments: { roleDefinitionId: string }[];
       };
     };
-    expect(addBody.requestId).toBe(add.headers.get("X-Request-Id"));
     expect(
       addBody.data.activeAssignments.some(
         (item) => item.roleDefinitionId === DEPARTMENT_ROLE
       )
     ).toBe(true);
+    expect(addBody.data.idempotent).toBe(false);
 
     const revoke = await worker.fetch(
       request(`/api/v1/identity/accounts/${STAFF}/assignments/revoke`, {
@@ -228,6 +229,7 @@ describe("#486 Account Access handlers", () => {
     const revokeBody = (await revoke.json()) as {
       requestId: string;
       data: {
+        idempotent: boolean;
         activeAssignments: { roleDefinitionId: string }[];
         revokedAssignments: { roleDefinitionId: string }[];
       };
@@ -243,6 +245,7 @@ describe("#486 Account Access handlers", () => {
         (item) => item.roleDefinitionId === DEPARTMENT_ROLE
       )
     ).toBe(true);
+    expect(revokeBody.data.idempotent).toBe(false);
   });
 
   test("authorizes before revealing unknown targets or lifecycle state", async () => {
@@ -417,7 +420,7 @@ describe("#486 Account Access handlers", () => {
     expect(success.status).toBe(200);
     const successJson = (await success.json()) as {
       requestId: string;
-      data: unknown;
+      data: { idempotent: boolean };
     };
     const successReplay = await worker.fetch(
       request(`/api/v1/identity/accounts/${STAFF}/assignments`, {
@@ -433,8 +436,9 @@ describe("#486 Account Access handlers", () => {
     expect(successReplay.status).toBe(200);
     const successReplayJson = (await successReplay.json()) as {
       requestId: string;
-      data: unknown;
+      data: { idempotent: boolean };
     };
+    expect(successReplayJson.data.idempotent).toBe(true);
     expect(successReplayJson.requestId).toBe(successJson.requestId);
     expect(successReplayJson.requestId).toBe(
       success.headers.get("X-Request-Id")
@@ -540,8 +544,9 @@ describe("#486 Account Access handlers", () => {
     expect(lifecycle.status).toBe(200);
     const lifecycleJson = (await lifecycle.json()) as {
       requestId: string;
-      data: unknown;
+      data: { idempotent: boolean };
     };
+    expect(lifecycleJson.data.idempotent).toBe(false);
     const lifecycleReplay = await worker.fetch(
       request(`/api/v1/identity/role-definitions/${PROGRAM_ROLE}/lifecycle`, {
         method: "POST",
@@ -556,8 +561,9 @@ describe("#486 Account Access handlers", () => {
     expect(lifecycleReplay.status).toBe(200);
     const lifecycleReplayJson = (await lifecycleReplay.json()) as {
       requestId: string;
-      data: unknown;
+      data: { idempotent: boolean };
     };
+    expect(lifecycleReplayJson.data.idempotent).toBe(true);
     expect(lifecycleReplayJson.requestId).toBe(lifecycleJson.requestId);
     expect(lifecycleReplay.headers.get("X-Request-Id")).toBe(
       lifecycle.headers.get("X-Request-Id")

@@ -1524,6 +1524,11 @@ export class DepartmentWorkspace {
       CAPABILITY.ROLE_READ,
       null
     );
+    const canReadPermissionsGlobally = await this.authorizer.can(
+      ctx,
+      "role.permissions.read",
+      null
+    );
 
     const scopedRoleManagement = await Promise.all(
       [
@@ -1538,40 +1543,44 @@ export class DepartmentWorkspace {
           scope: { departmentId: department_id, programId: program_id },
         })),
       ].map(async ({ scopeKind, scopeId, scope }) => {
-        const [
-          roleRead,
-          roleAssign,
-          roleRevoke,
-          permissionRead,
-          permissionWrite,
-        ] = await Promise.all([
-          this.authorizer.can(ctx, CAPABILITY.ROLE_READ, scope),
-          this.authorizer.can(ctx, CAPABILITY.ROLE_ASSIGN, scope),
-          this.authorizer.can(ctx, CAPABILITY.ROLE_REVOKE, scope),
-          this.authorizer.can(ctx, "role.permissions.read", scope),
-          this.authorizer.can(ctx, "role.permissions.write", scope),
-        ]);
-        if (!roleRead || (!roleAssign && !roleRevoke && !permissionRead)) {
+        const [roleRead, roleAssign, roleRevoke, permissionRead] =
+          await Promise.all([
+            this.authorizer.can(ctx, CAPABILITY.ROLE_READ, scope),
+            this.authorizer.can(ctx, CAPABILITY.ROLE_ASSIGN, scope),
+            this.authorizer.can(ctx, CAPABILITY.ROLE_REVOKE, scope),
+            this.authorizer.can(ctx, "role.permissions.read", scope),
+          ]);
+        if (!roleRead) {
           return null;
         }
         return {
           scopeKind,
           scopeId,
           canReadPermissions: permissionRead,
+          canOpenAccess: roleAssign || roleRevoke,
         };
       })
     );
     const scopedPermissionDestination =
       scopedRoleManagement.find(
         (destination) => destination?.canReadPermissions === true
-      ) ??
-      scopedRoleManagement.find((destination) => destination !== null) ??
-      null;
-    const permissionsHref =
-      canReadRoleTree || scopedPermissionDestination?.canReadPermissions
-        ? "/management?module=permissions"
-        : scopedPermissionDestination
-          ? `/management?module=accounts&view=access&scopeKind=${scopedPermissionDestination.scopeKind}&scopeId=${encodeURIComponent(scopedPermissionDestination.scopeId)}`
+      ) ?? null;
+    const scopedAssignmentDestination =
+      scopedRoleManagement.find(
+        (destination) => destination?.canOpenAccess === true
+      ) ?? null;
+    const canReadScopedRoleTree = scopedRoleManagement.some(
+      (destination) => destination !== null
+    );
+    const canOpenPermissionEditor =
+      (canReadRoleTree && canReadPermissionsGlobally) ||
+      scopedPermissionDestination?.canReadPermissions === true;
+    const permissionsHref = canOpenPermissionEditor
+      ? "/management?module=permissions"
+      : scopedAssignmentDestination
+        ? `/management?module=accounts&view=access&scopeKind=${scopedAssignmentDestination.scopeKind}&scopeId=${encodeURIComponent(scopedAssignmentDestination.scopeId)}`
+        : canReadRoleTree || canReadScopedRoleTree
+          ? "/management?module=roles"
           : null;
 
     const granted = new Set<string>();

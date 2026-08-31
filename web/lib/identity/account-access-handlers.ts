@@ -394,7 +394,7 @@ export async function handleMutateAccountAssignments(
         idempotencyKey
       )
     );
-    const { responseRequestId, idempotent: _idempotent, ...publicData } = data;
+    const { responseRequestId, ...publicData } = data;
     return roleSuccess(200, publicData, responseRequestId ?? requestId);
   } catch (error) {
     return mapAccountAccessError(error, requestId);
@@ -449,7 +449,7 @@ export async function handleRevokeAccountAssignments(
         idempotencyKey
       )
     );
-    const { responseRequestId, idempotent: _idempotent, ...publicData } = data;
+    const { responseRequestId, ...publicData } = data;
     return roleSuccess(200, publicData, responseRequestId ?? requestId);
   } catch (error) {
     return mapAccountAccessError(error, requestId);
@@ -532,7 +532,7 @@ export async function handleRoleDefinitionLifecycle(
         audit_id: crypto.randomUUID(),
         correlation_id: requestId,
       });
-    const { responseRequestId, idempotent: _idempotent, ...publicData } = data;
+    const { responseRequestId, ...publicData } = data;
     return roleSuccess(200, publicData, responseRequestId ?? requestId);
   } catch (error) {
     return mapAccountAccessError(error, requestId);
