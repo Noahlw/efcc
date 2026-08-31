@@ -288,6 +288,7 @@ async function ensureMixedScopeFixtures(): Promise<void> {
       ),
   ]);
 }
+
 interface RevisionRaceDatabase {
   firstDb: D1Database;
   secondDb: D1Database;
@@ -818,6 +819,22 @@ describe("#486 Account Access domain", () => {
         (grant) => grant.capability === "program.manage"
       )
     ).toBe(false);
+    const scopedRescopeView = await loadAccountAccess(
+      testDb(),
+      SCOPED_ACTOR,
+      MEMBER
+    );
+    expect(
+      scopedRescopeView.activeAssignments.some(
+        (assignment) =>
+          assignment.roleDefinitionId === created.roleDefinitionId
+      )
+    ).toBe(false);
+    expect(
+      scopedRescopeView.assignableRoles.some(
+        (role) => role.roleDefinitionId === created.roleDefinitionId
+      )
+    ).toBe(false);
     const activeProgramCapabilities = await resolveActorCapabilities(
       testDb(),
       MEMBER,
@@ -854,6 +871,42 @@ describe("#486 Account Access domain", () => {
           assignment.scopeId === YOUTH_PROGRAM
       )
     ).toBe(true);
+    await testDb()
+      .prepare(
+        `INSERT OR IGNORE INTO role_definition_grants
+           (role_definition_id, capability, granted_by, granted_at)
+         VALUES (?, 'role.delete', ?, ?)`
+      )
+      .bind(DEPARTMENT_ROLE, ADMIN, FIXTURE_NOW)
+      .run();
+    try {
+      const lifecyclePreview = await getRoleDefinitionLifecyclePreview(
+        testDb(),
+        SCOPED_ACTOR,
+        created.roleDefinitionId,
+        "archive"
+      );
+      const lifecycleImpact = lifecyclePreview.impact.find(
+        (impact) => impact.accountUserId === MEMBER
+      );
+      expect(lifecycleImpact?.lost.Program).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            capability: "program.manage",
+            scopeId: YOUTH_PROGRAM,
+            sources: expect.arrayContaining(["快照歷史測試身份組"]),
+          }),
+        ])
+      );
+    } finally {
+      await testDb()
+        .prepare(
+          `DELETE FROM role_definition_grants
+            WHERE role_definition_id = ? AND capability = 'role.delete'`
+        )
+        .bind(DEPARTMENT_ROLE)
+        .run();
+    }
     const candidateSearch = await searchEligibleAccounts(
       testDb(),
       PROGRAM_ACTOR,

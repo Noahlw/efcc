@@ -238,6 +238,8 @@ interface ProjectionOptions {
   includeLifecycleImpacts?: boolean;
   /** Capability the projection must resolve for each managed assignment (defaults to assign-or-revoke). */
   manageCapability?: "role.assign" | "role.revoke" | "role.delete";
+  /** Internal lifecycle-impact projection; never returned as ordinary account data. */
+  includeAllAssignments?: boolean;
 }
 
 interface StoredMutation {
@@ -1044,24 +1046,27 @@ async function readProjection(
     rolesById.set("__member_baseline__", baseline);
   }
   const actorRoles = await loadActorRoles(db, actorUserId);
-  const [visibleActiveRows, visibleRevokedRows] = await Promise.all([
-    filterAuthorizedAssignments(
-      db,
-      actorUserId,
-      actorRoles,
-      activeRows,
-      rolesById,
-      options.manageCapability
-    ),
-    filterAuthorizedAssignments(
-      db,
-      actorUserId,
-      actorRoles,
-      revokedRows,
-      rolesById,
-      options.manageCapability
-    ),
-  ]);
+  const [visibleActiveRows, visibleRevokedRows] =
+    options.includeAllAssignments
+      ? [activeRows, revokedRows]
+      : await Promise.all([
+          filterAuthorizedAssignments(
+            db,
+            actorUserId,
+            actorRoles,
+            activeRows,
+            rolesById,
+            options.manageCapability
+          ),
+          filterAuthorizedAssignments(
+            db,
+            actorUserId,
+            actorRoles,
+            revokedRows,
+            rolesById,
+            options.manageCapability
+          ),
+        ]);
   const active = visibleActiveRows.filter(
     (assignment) =>
       !stagedRevokes.some(
@@ -1094,9 +1099,11 @@ async function readProjection(
   }
   const actorCapabilities = await resolveActorCapabilities(db, actorUserId);
   const canAssign = actorCapabilities["role.assign"] === true;
-  const activeRoleIds = new Set(
-    active.map((assignment) => assignment.role_definition_id)
-  );
+  // Active assignments hidden by actor scope still block duplicate choices.
+  const activeRoleIds = new Set([
+    ...activeRows.map((assignment) => assignment.role_definition_id),
+    ...stagedAdds.map((staged) => staged.role.role_definition_id),
+  ]);
   const assignableRoles = canAssign
     ? (
         await Promise.all(
@@ -2330,7 +2337,11 @@ async function lifecycleImpact(
       db,
       actorUserId,
       assignment.account_user_id,
-      { includeLifecycleImpacts: false, manageCapability: "role.delete" }
+      {
+        includeAllAssignments: true,
+        includeLifecycleImpacts: false,
+        manageCapability: "role.delete",
+      }
     );
     const role = await readRole(db, roleDefinitionId);
     if (!role) {
@@ -2341,6 +2352,7 @@ async function lifecycleImpact(
       actorUserId,
       assignment.account_user_id,
       {
+        includeAllAssignments: true,
         stagedRevokes: [
           {
             assignment,
