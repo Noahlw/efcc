@@ -8,7 +8,7 @@
 - Required specifications: `docs/specs/091-stackable-identity-backend.md` and `docs/specs/092-discord-identity-design-system-adoption.md`.
 - Plan: `local://s4-phase-c-identity-integration-plan.md`.
 - Acceptance trace: `docs/specs/s4-phase-c-acceptance-trace.md`.
-- Current local verification revision: `1ccbb0120eb9d5c288f3e385f7194b9cfd59853f`.
+- Current local verification revision: `de16607a9a3230d2fc7cd67b0267c7ace0a834d1`.
 - Phase B base: `c75c99e84d699d2d1eac44f07d4e013ead4c12a5` (`feat/s4-b-shared-modules-role-definitions`).
 - Authenticated browser target: `http://127.0.0.1:8797`, direct Node `v22.18.0` Wrangler process, disposable local D1 only.
 - No remote host, Cloudflare account, Apps Script, Google Sheet, production database, deployment, or Phase D path was used.
@@ -316,3 +316,24 @@ The final Worker was stopped after resetting disposable local D1 and confirming
 `pending: 0`, `legacy_s4: 0`. No screenshot, pixel-diff, WCAG-conformance,
 screen-reader, real-device, remote-CI, production-promotion, remote-D1,
 deployment, merge, Apps Script, Google Sheet, or Phase D claim is made.
+
+## Lifecycle-only CTA verification — source `de16607a9a3230d2fc7cd67b0267c7ace0a834d1` — 2026-08-31
+
+The final spec review found that a Role Hierarchy actor with only
+`role.delete` lifecycle authority could not reach the Account Access lifecycle
+controls. The identity-first CTA now appears when the server projects either
+assignment or lifecycle actions; a role-read-only viewer with neither still
+gets no CTA. The component regression covers both cases.
+
+| Correction check | Exact result |
+| --- | --- |
+| Role Hierarchy component regression | **PASS**, 21/21 |
+| `pnpm test:role-hierarchy-geometry` | **PASS**, 49/49 across W7 |
+| `pnpm --dir web typecheck` | **PASS** |
+| `git diff --check` | **PASS** before the correction commit |
+
+The correction is source-only UI routing with no new data writes. The prior
+local Worker, browser, seed, and infrastructure classifications remain
+unchanged. Manual accessibility/real-device/remote-CI/production-promotion
+rows remain unclaimed; no screenshot, pixel-diff, WCAG, screen-reader,
+deployment, merge, remote-D1, or Phase D claim is made.

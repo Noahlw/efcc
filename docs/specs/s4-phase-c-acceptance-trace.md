@@ -4509,3 +4509,23 @@ Worker is stopped.
 No screenshot, pixel-diff, WCAG-conformance, screen-reader, real-device,
 remote-CI, production-promotion, remote-D1, deployment, merge, Apps Script,
 Google Sheet, or Phase D claim is made.
+
+## Lifecycle-only CTA correction — source `de16607a9a3230d2fc7cd67b0267c7ace0a834d1` — 2026-08-31
+
+The final Spec review found that a Role Hierarchy actor with only lifecycle
+authority (`role.delete`) had no identity-first path to the Account Access
+lifecycle controls. The CTA condition now accepts either non-empty
+`assignmentActions` or non-empty `lifecycleActions`, while protected roles and
+viewers with neither remain hidden.
+
+| Correction | Status | Evidence |
+| --- | --- | --- |
+| Lifecycle-only Role Hierarchy CTA | **PASS** | `role-hierarchy-panel.test.tsx` passes 21/21, including lifecycle-only and no-action viewers. |
+| W7 containment after CTA change | **PASS** | `pnpm test:role-hierarchy-geometry` passes 49/49 at all W7 widths. |
+| Source type/build safety | **PASS** | `pnpm typecheck`, `pnpm --dir web typecheck`, and `pnpm --dir web build` pass; build emits 18 static routes. |
+| Remaining release status | **MANUAL / INFRA** | Permission Editor Worker tests remain Cloudflare-pool `EvalError` infrastructure-blocked; all M1/M2/M3/M4 rows remain `MANUAL — unclaimed`. |
+
+The source correction introduces no new data path or authority path. No
+screenshot, pixel-diff, WCAG-conformance, screen-reader, real-device,
+remote-CI, production-promotion, remote-D1, deployment, merge, Apps Script,
+Google Sheet, or Phase D claim is made.
