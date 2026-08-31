@@ -483,6 +483,7 @@ export interface MemberDirectoryMember {
 
 export interface AccountDirectoryMember extends MemberDirectoryMember {
   username: string | null;
+  canOpenAccess: boolean;
 }
 
 export interface AccountDirectorySummary {

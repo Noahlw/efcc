@@ -330,6 +330,7 @@ export interface ManagementMemberView {
 
 export interface AccountDirectoryMember extends ManagementMemberView {
   username: string | null;
+  canOpenAccess: boolean;
 }
 
 export interface AccountDirectoryView {
@@ -700,6 +701,19 @@ export class DepartmentWorkspace {
   constructor(store: WorkspaceStore, authorizer: CapabilityAuthorizer) {
     this.store = store;
     this.authorizer = authorizer;
+  }
+
+  private async canOpenAccountAccess(
+    ctx: AuthorizationContext
+  ): Promise<boolean> {
+    // An empty scope asks the normalized resolver whether the actor has this
+    // assignment capability in any declared scope; Account Access applies
+    // target eligibility and assignment-scope filtering afterward.
+    const [canAssign, canRevoke] = await Promise.all([
+      this.authorizer.can(ctx, CAPABILITY.ROLE_ASSIGN, {}),
+      this.authorizer.can(ctx, CAPABILITY.ROLE_REVOKE, {}),
+    ]);
+    return canAssign || canRevoke;
   }
 
   private async ensure(
@@ -1505,9 +1519,9 @@ export class DepartmentWorkspace {
       CAPABILITY.REGISTRATION_APPROVAL_MANAGE,
       null
     );
-    const canReadIdentityAccess = await this.authorizer.can(
+    const canReadRoleTree = await this.authorizer.can(
       ctx,
-      CAPABILITY.ACCOUNT_PERMISSIONS_READ,
+      CAPABILITY.ROLE_READ,
       null
     );
 
@@ -1537,16 +1551,13 @@ export class DepartmentWorkspace {
           this.authorizer.can(ctx, "role.permissions.read", scope),
           this.authorizer.can(ctx, "role.permissions.write", scope),
         ]);
-        if (
-          !roleRead ||
-          (!roleAssign && !roleRevoke && !permissionRead && !permissionWrite)
-        ) {
+        if (!roleRead || (!roleAssign && !roleRevoke && !permissionRead)) {
           return null;
         }
         return {
           scopeKind,
           scopeId,
-          canReadPermissions: permissionRead || permissionWrite,
+          canReadPermissions: permissionRead,
         };
       })
     );
@@ -1557,7 +1568,7 @@ export class DepartmentWorkspace {
       scopedRoleManagement.find((destination) => destination !== null) ??
       null;
     const permissionsHref =
-      canReadIdentityAccess || scopedPermissionDestination?.canReadPermissions
+      canReadRoleTree || scopedPermissionDestination?.canReadPermissions
         ? "/management?module=permissions"
         : scopedPermissionDestination
           ? `/management?module=accounts&view=access&scopeKind=${scopedPermissionDestination.scopeKind}&scopeId=${encodeURIComponent(scopedPermissionDestination.scopeId)}`
@@ -3846,9 +3857,10 @@ export class DepartmentWorkspace {
     offset = 0
   ): Promise<AccountDirectoryView> {
     await this.ensure(ctx, CAPABILITY.ACCOUNT_DIRECTORY_READ);
-    const [rows, summary] = await Promise.all([
+    const [rows, summary, canOpenAccountAccess] = await Promise.all([
       this.store.searchAccountDirectory(query, limit + 1, filters, offset),
       this.store.countAccountDirectory(query, filters),
+      this.canOpenAccountAccess(ctx),
     ]);
     const accounts = new Map<string, AccountDirectoryMember>();
     for (const row of rows) {
@@ -3862,6 +3874,10 @@ export class DepartmentWorkspace {
           role: row.role,
           identities: [],
           status: row.account_status,
+          canOpenAccess:
+            canOpenAccountAccess &&
+            row.account_status === "Active" &&
+            row.role !== "Admin",
           departments: [],
         };
         accounts.set(row.user_id, account);
@@ -3943,6 +3959,10 @@ export class DepartmentWorkspace {
       role: first.role,
       identities: [...identities.values()],
       status: first.account_status,
+      canOpenAccess:
+        (await this.canOpenAccountAccess(ctx)) &&
+        first.account_status === "Active" &&
+        first.role !== "Admin",
       departments: [...departments.values()],
     };
   }

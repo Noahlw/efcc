@@ -211,10 +211,13 @@ async function assignSystemIdentity(
          VALUES (?, 'department.manage', NULL, ?),
                 (?, 'department.module.configure', NULL, ?),
                 (?, 'program.manage', NULL, ?),
+                (?, 'role.read', NULL, ?),
                 (?, 'account.directory.read', NULL, ?),
                 (?, 'account.permissions.read', NULL, ?)`
       )
       .bind(
+        roleDefinitionId,
+        now,
         roleDefinitionId,
         now,
         roleDefinitionId,

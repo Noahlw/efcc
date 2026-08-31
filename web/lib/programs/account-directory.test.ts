@@ -115,6 +115,7 @@ interface AccountRow {
   role: string;
   status: string;
   departments: { id: string; name: string }[];
+  canOpenAccess: boolean;
 }
 
 interface AccountBody {
@@ -225,6 +226,12 @@ describe("S4-02: Account Directory contract", () => {
       body.data.accounts.some((account) => account.status === "Pending")
     );
     assert.strictEqual(body.data.accounts[0]?.username, "ad-admin");
+    assert.strictEqual(body.data.accounts[0]?.canOpenAccess, false);
+    assert.strictEqual(
+      body.data.accounts.find((account) => account.userId === "AD002")
+        ?.canOpenAccess,
+      true
+    );
 
     const detail = await worker.fetch(
       request("/api/v1/programs/accounts/AD004", adminAccess),
@@ -247,6 +254,7 @@ describe("S4-02: Account Directory contract", () => {
           scopeId: string | null;
         }[];
         departments: { id: string; name: string }[];
+        canOpenAccess: boolean;
       };
     };
     assert.deepStrictEqual(detailBody.data, {
@@ -257,6 +265,7 @@ describe("S4-02: Account Directory contract", () => {
       role: "Member",
       identities: [],
       status: "Pending",
+      canOpenAccess: false,
       departments: [],
     });
   });

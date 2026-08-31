@@ -742,19 +742,21 @@ export const AccountDirectoryPanel = () => {
                   {COPY_ACCOUNT.detailReadOnly}
                 </p>
               </div>
-              <Button
-                className="mt-4 min-h-11 w-full font-extrabold"
-                variant="default"
-                onClick={() =>
-                  router.push(
-                    `/management?module=accounts&account=${encodeURIComponent(selected.userId)}&view=access&return=${encodeURIComponent(accountAccessReturnHref(returnHref, selected.userId))}`
-                  )
-                }
-                ref={accessReturnFocusRef}
-                type="button"
-              >
-                查看帳戶權限與身份組
-              </Button>
+              {selected.canOpenAccess && (
+                <Button
+                  className="mt-4 min-h-11 w-full font-extrabold"
+                  variant="default"
+                  onClick={() =>
+                    router.push(
+                      `/management?module=accounts&account=${encodeURIComponent(selected.userId)}&view=access&return=${encodeURIComponent(accountAccessReturnHref(returnHref, selected.userId))}`
+                    )
+                  }
+                  ref={accessReturnFocusRef}
+                  type="button"
+                >
+                  查看帳戶權限與身份組
+                </Button>
+              )}
             </article>
           ) : null
         ) : null

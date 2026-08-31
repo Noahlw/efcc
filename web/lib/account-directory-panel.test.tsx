@@ -56,6 +56,7 @@ interface AccountRow {
   role: "Admin" | "Staff" | "Member";
   status: "Pending" | "Active" | "Suspended" | "Deactivated";
   departments: { id: string; name: string }[];
+  canOpenAccess: boolean;
 }
 
 const ROWS: AccountRow[] = [
@@ -67,6 +68,7 @@ const ROWS: AccountRow[] = [
     role: "Staff",
     status: "Active",
     departments: [{ id: "dept-grow", name: "培育部" }],
+    canOpenAccess: true,
   },
   {
     userId: "AD-002",
@@ -76,6 +78,7 @@ const ROWS: AccountRow[] = [
     role: "Member",
     status: "Pending",
     departments: [],
+    canOpenAccess: false,
   },
 ] as const;
 
