@@ -4529,3 +4529,22 @@ The source correction introduces no new data path or authority path. No
 screenshot, pixel-diff, WCAG-conformance, screen-reader, real-device,
 remote-CI, production-promotion, remote-D1, deployment, merge, Apps Script,
 Google Sheet, or Phase D claim is made.
+
+## Scope-first row wrapping correction — source `30079e6f257c17d95d1f1dc67bc6f91dfc29bce7` — 2026-08-31
+
+The final Standards review found one remaining dynamic identity-definition
+picker link that still inherited the local Button primitive's fixed height and
+nowrap behavior. The scope-first Account Access links now use
+`h-auto min-h-11 min-w-0 whitespace-normal`, matching the assigned-account and
+candidate-account links.
+
+| Correction | Status | Evidence |
+| --- | --- | --- |
+| Scope-first long-label containment | **PASS** | Account Access component navigation remains green and the link has explicit auto-height, minimum target size, minimum width, and normal wrapping. |
+| W7 geometry | **PASS** | `pnpm test:role-hierarchy-geometry` passes 49/49 at `320, 390, 600, 799, 800, 1024, 1440`. |
+| Release classification | **MANUAL / INFRA** | Manual rows remain unclaimed; Permission Editor Worker tests retain the documented Cloudflare-pool `EvalError`. |
+
+No new data or authority path was introduced. No screenshot, pixel-diff,
+WCAG-conformance, screen-reader, real-device, remote-CI,
+production-promotion, remote-D1, deployment, merge, Apps Script, Google Sheet,
+or Phase D claim is made.

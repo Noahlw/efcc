@@ -8,7 +8,7 @@
 - Required specifications: `docs/specs/091-stackable-identity-backend.md` and `docs/specs/092-discord-identity-design-system-adoption.md`.
 - Plan: `local://s4-phase-c-identity-integration-plan.md`.
 - Acceptance trace: `docs/specs/s4-phase-c-acceptance-trace.md`.
-- Current local verification revision: `de16607a9a3230d2fc7cd67b0267c7ace0a834d1`.
+- Current local verification revision: `30079e6f257c17d95d1f1dc67bc6f91dfc29bce7`.
 - Phase B base: `c75c99e84d699d2d1eac44f07d4e013ead4c12a5` (`feat/s4-b-shared-modules-role-definitions`).
 - Authenticated browser target: `http://127.0.0.1:8797`, direct Node `v22.18.0` Wrangler process, disposable local D1 only.
 - No remote host, Cloudflare account, Apps Script, Google Sheet, production database, deployment, or Phase D path was used.
@@ -337,3 +337,21 @@ local Worker, browser, seed, and infrastructure classifications remain
 unchanged. Manual accessibility/real-device/remote-CI/production-promotion
 rows remain unclaimed; no screenshot, pixel-diff, WCAG, screen-reader,
 deployment, merge, remote-D1, or Phase D claim is made.
+
+## Scope-first row wrapping verification — source `30079e6f257c17d95d1f1dc67bc6f91dfc29bce7` — 2026-08-31
+
+The final Standards review also covered the scope-first Account Access role
+picker. Its identity-definition links now override the local Button primitive
+with `h-auto min-h-11 min-w-0 whitespace-normal`, matching the assigned and
+candidate account links. This prevents long identity labels from inheriting
+the fixed-height/nowrap base.
+
+| Correction check | Exact result |
+| --- | --- |
+| Account Access component navigation | **PASS**, included in the component suite |
+| `pnpm test:role-hierarchy-geometry` | **PASS**, 49/49 |
+| Source status | **PASS**, clean source commit; no data or authority path changed |
+
+Manual M1–M4 rows remain unclaimed. No screenshot, pixel-diff, WCAG,
+screen-reader, real-device, remote-CI, production-promotion, deployment,
+merge, remote-D1, or Phase D claim is made.
