@@ -34,7 +34,7 @@ export const SettingsTask = () => {
             </p>
             <Button asChild className="min-h-11 w-fit">
               <Link
-                href={`/management?module=accounts&scopeKind=Program&scopeId=${encodeURIComponent(program.program_id)}&view=access&return=${encodeURIComponent(`/programs?mode=management&program=${program.program_id}&task=settings`)}`}
+                href={`/management?module=accounts&scopeKind=Program&scopeId=${encodeURIComponent(program.program_id)}&view=access&return=${encodeURIComponent(`/programs?mode=management&program=${encodeURIComponent(program.program_id)}&task=settings`)}`}
               >
                 管理帳戶身份組
               </Link>

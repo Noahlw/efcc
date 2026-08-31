@@ -315,7 +315,7 @@ export const DepartmentSettingsPanel = ({
                     </p>
                     <Button asChild className="min-h-11 w-fit">
                       <Link
-                        href={`/management?module=accounts&scopeKind=Department&scopeId=${encodeURIComponent(department.department_id)}&view=access&return=${encodeURIComponent(`/programs?mode=management&department=${department.department_id}`)}`}
+                        href={`/management?module=accounts&scopeKind=Department&scopeId=${encodeURIComponent(department.department_id)}&view=access&return=${encodeURIComponent(`/programs?mode=management&department=${encodeURIComponent(department.department_id)}`)}`}
                       >
                         管理帳戶身份組
                       </Link>

@@ -824,6 +824,7 @@ describe(ProgramWorkspace, () => {
     mocks.getManagementProgram.mockResolvedValue({
       program: {
         ...program,
+        program_id: "program&1",
         capabilities: {
           ...program.capabilities,
           role_read: true,
@@ -846,7 +847,7 @@ describe(ProgramWorkspace, () => {
     });
     expect(link).toHaveAttribute(
       "href",
-      "/management?module=accounts&scopeKind=Program&scopeId=program-1&view=access&return=%2Fprograms%3Fmode%3Dmanagement%26program%3Dprogram-1%26task%3Dsettings"
+      "/management?module=accounts&scopeKind=Program&scopeId=program%261&view=access&return=%2Fprograms%3Fmode%3Dmanagement%26program%3Dprogram%25261%26task%3Dsettings"
     );
   });
 

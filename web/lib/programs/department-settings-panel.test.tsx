@@ -19,7 +19,7 @@ vi.mock("./program-form", () => ({
 }));
 
 const department = {
-  department_id: "dept-1",
+  department_id: "dept&1",
   code: "YOUTH",
   name: "青年事工",
   description: "",
@@ -54,7 +54,7 @@ describe("DepartmentSettingsPanel identity access", () => {
     const link = await screen.findByRole("link", { name: "管理帳戶身份組" });
     expect(link).toHaveAttribute(
       "href",
-      "/management?module=accounts&scopeKind=Department&scopeId=dept-1&view=access&return=%2Fprograms%3Fmode%3Dmanagement%26department%3Ddept-1"
+      "/management?module=accounts&scopeKind=Department&scopeId=dept%261&view=access&return=%2Fprograms%3Fmode%3Dmanagement%26department%3Ddept%25261"
     );
   });
 

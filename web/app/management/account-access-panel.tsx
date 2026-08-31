@@ -1617,7 +1617,7 @@ export const AccountAccessPanel = () => {
                           variant="outline"
                         >
                           <Link
-                            href={`/management?module=accounts&account=${encodeURIComponent(candidate.userId)}&view=access&return=${encodeURIComponent(`/management?module=accounts&account=${accountUserId}&view=access`)}`}
+                            href={`/management?module=accounts&account=${encodeURIComponent(candidate.userId)}&view=access&return=${encodeURIComponent(`/management?module=accounts&account=${encodeURIComponent(accountUserId ?? "")}&view=access`)}`}
                           >
                             <span className="min-w-0">
                               <strong className="wrap-anywhere block">
