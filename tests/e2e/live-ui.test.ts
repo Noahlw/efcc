@@ -523,7 +523,7 @@ test.describe("UI-04 Next frontend trace", () => {
       name: COPY.rolesSection,
     });
     await expect(roleList).toBeVisible();
-    await expect(roleList.getByRole("button")).toHaveCount(5);
+    await expect(roleList.getByRole("link")).toHaveCount(5);
     for (const roleName of [
       "系統管理員",
       "同工",
@@ -532,7 +532,7 @@ test.describe("UI-04 Next frontend trace", () => {
       "青少年查經帶領",
     ]) {
       await expect(
-        roleList.getByRole("button", {
+        roleList.getByRole("link", {
           name: new RegExp(roleName, "u"),
         })
       ).toBeVisible();
