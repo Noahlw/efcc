@@ -855,9 +855,13 @@ export async function loadRoleHierarchy(
           actorRoles[0]?.role_definition_id !== row.role_definition_id &&
           isWithinActorScope(actorRoles, row);
         // B-479-07/B-479-08: the reorder affordance appears on every lower,
-        // in-scope sibling when the actor holds role.reorder.
+        // in-scope sibling when the actor holds role.reorder. Protected
+        // anchors are immutable even when the actor has global authority.
         const canReorder =
           capabilities["role.reorder"] === true &&
+          row.is_protected === 0 &&
+          row.stable_key !== PROTECTED_STABLE_KEYS.ADMIN &&
+          row.stable_key !== PROTECTED_STABLE_KEYS.MEMBER &&
           row.is_archived === 0 &&
           row.position > highestPosition &&
           actorRoles[0]?.role_definition_id !== row.role_definition_id &&
@@ -1051,6 +1055,24 @@ function isWithinActorScopeValue(
     highest.scope_id !== null &&
     highest.scope_id === scopeId
   );
+}
+/**
+ * Convert a Role Definition's explicit scope to the resource scope accepted
+ * by capability resolution. Global identities intentionally map to `null`,
+ * which asks for Global-only grants; omitted scope remains the any-scope
+ * projection used by navigation/bootstrap callers.
+ */
+export function capabilityScopeFor(target: {
+  scope_kind: RoleScopeKind;
+  scope_id: string | null;
+}): { departmentId?: string; programId?: string } | null {
+  if (target.scope_kind === ROLE_CATEGORY_KEY.DEPARTMENT && target.scope_id) {
+    return { departmentId: target.scope_id };
+  }
+  if (target.scope_kind === ROLE_CATEGORY_KEY.PROGRAM && target.scope_id) {
+    return { programId: target.scope_id };
+  }
+  return null;
 }
 
 /**
@@ -1260,7 +1282,11 @@ async function assertRenameEligible(
 ): Promise<void> {
   // Spec 091 §10 order: capability first (ROLE_FORBIDDEN), then the
   // protected Admin / 會友基礎 locks (H-08), then self/highest/scope.
-  const capabilities = await resolveActorCapabilities(db, actorUserId);
+  const capabilities = await resolveActorCapabilities(
+    db,
+    actorUserId,
+    capabilityScopeFor(target)
+  );
   if (!capabilities["role.name.write"]) {
     throw new RoleCapabilityDeniedError();
   }
@@ -1785,7 +1811,11 @@ export async function rescopeRoleDefinition(
     }
   }
 
-  const capabilities = await resolveActorCapabilities(db, input.actor_user_id);
+  const capabilities = await resolveActorCapabilities(
+    db,
+    input.actor_user_id,
+    capabilityScopeFor(target)
+  );
   if (!capabilities["role.scope.write"]) {
     return recordDenial(new RoleCapabilityDeniedError());
   }
@@ -2103,7 +2133,14 @@ export async function createRoleDefinition(
     return recordDenial(new RoleInvalidParentError(), "REJECTED");
   }
 
-  const capabilities = await resolveActorCapabilities(db, input.actor_user_id);
+  const capabilities = await resolveActorCapabilities(
+    db,
+    input.actor_user_id,
+    capabilityScopeFor({
+      scope_kind: input.scope_kind,
+      scope_id: input.scope_id,
+    })
+  );
   if (!capabilities["role.create"]) {
     return recordDenial(new RoleCapabilityDeniedError());
   }
@@ -2407,8 +2444,20 @@ export async function reorderRoleDefinitions(
     }
   }
 
-  const capabilities = await resolveActorCapabilities(db, input.actor_user_id);
-  if (!capabilities["role.reorder"]) {
+  const capabilitiesByTarget = await Promise.all(
+    [firstRow, secondRow].map((row) =>
+      resolveActorCapabilities(
+        db,
+        input.actor_user_id,
+        capabilityScopeFor(row)
+      )
+    )
+  );
+  if (
+    capabilitiesByTarget.some(
+      (capabilities) => capabilities["role.reorder"] !== true
+    )
+  ) {
     return recordDenial(new RoleCapabilityDeniedError());
   }
   const actorRoles = await loadActorRoles(db, input.actor_user_id);

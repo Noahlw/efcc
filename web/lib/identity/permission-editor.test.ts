@@ -754,6 +754,18 @@ describe("#485 Permission Editor domain seam", () => {
         (action) => action.action === "reorder"
       )
     ).toBe(true);
+    const adminDetail = await loadRoleDefinitionDetail(
+      testDb(),
+      ADMIN,
+      ADMIN_ROLE
+    );
+    expect(adminDetail.roleDefinition.reorderActions).toEqual([]);
+    const baselineDetail = await loadRoleDefinitionDetail(
+      testDb(),
+      ADMIN,
+      MEMBER_ROLE
+    );
+    expect(baselineDetail.roleDefinition.reorderActions).toEqual([]);
     await assert.rejects(
       loadRoleDefinitionDetail(testDb(), MEMBER, PROGRAM_LEADER_ROLE),
       (error: unknown) => error instanceof RoleCapabilityDeniedError

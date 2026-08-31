@@ -201,7 +201,9 @@ describe("#478 role hierarchy and rename contract", () => {
     expect(admin.isProtected).toBe(true);
     expect(member.isProtected).toBe(true);
     expect(admin.actions).toEqual([]);
+    expect(admin.reorderActions).toEqual([]);
     expect(member.actions).toEqual([]);
+    expect(member.reorderActions).toEqual([]);
     expect(staff.isProtected).toBe(false);
     expect(staff.actions.map((action) => action.action)).toContain("rename");
 
@@ -2887,6 +2889,353 @@ describe("#479 role definition creation, scoped authority, and sibling order", (
         .prepare("DELETE FROM role_definitions WHERE role_definition_id = ?")
         .bind(SUMMARY_ROLE)
         .run();
+    }
+  });
+  test("scoped management grants follow target scope even for global Staff", async () => {
+    const scopedProgram = "C487-SCOPED-GRANT-PROGRAM";
+    const scopedAssignment = "C487-SCOPED-GRANT-ASSIGNMENT";
+    const scopedGrantRole = "C487-SCOPED-GRANT-ROLE";
+    const managementCapabilities = [
+      "role.name.write",
+      "role.scope.write",
+      "role.create",
+      "role.reorder",
+    ] as const;
+    const roleFixtures = [
+      {
+        id: "C487-ADULT-RENAME-ROLE",
+        stableKey: "c487.adult.rename",
+        label: "C-487 成人改名目標",
+        scopeId: scopedProgram,
+        position: 80,
+      },
+      {
+        id: "C487-YOUTH-RENAME-ROLE",
+        stableKey: "c487.youth.rename",
+        label: "C-487 青年改名目標",
+        scopeId: YOUTH_PROGRAM,
+        position: 81,
+      },
+      {
+        id: "C487-ADULT-REORDER-ROLE",
+        stableKey: "c487.adult.reorder",
+        label: "C-487 成人排序目標",
+        scopeId: scopedProgram,
+        position: 82,
+      },
+      {
+        id: "C487-YOUTH-REORDER-ROLE",
+        stableKey: "c487.youth.reorder",
+        label: "C-487 青年排序目標",
+        scopeId: YOUTH_PROGRAM,
+        position: 83,
+      },
+      {
+        id: scopedGrantRole,
+        stableKey: "c487.scoped.management",
+        label: "C-487 範圍管理身份組",
+        scopeId: scopedProgram,
+        position: 84,
+      },
+    ] as const;
+    const cleanupRoleIds = roleFixtures.map((role) => role.id);
+    const staffGrants = await testDb()
+      .prepare(
+        `SELECT capability, granted_by, granted_at
+           FROM role_definition_grants
+          WHERE role_definition_id = ?
+            AND capability IN (?, ?, ?, ?)`
+      )
+      .bind(STAFF_ROLE, ...managementCapabilities)
+      .all<{
+        capability: string;
+        granted_by: string | null;
+        granted_at: string;
+      }>();
+    expect(
+      (staffGrants.results ?? []).map((grant) => grant.capability).sort()
+    ).toEqual([...managementCapabilities].sort());
+    const positionFor = async (roleDefinitionId: string): Promise<number> => {
+      const row = await readScalar<{ position: number }>(
+        `SELECT position FROM role_definitions
+           WHERE role_definition_id = ?`,
+        roleDefinitionId
+      );
+      if (!row) {
+        throw new Error(`missing scoped fixture position: ${roleDefinitionId}`);
+      }
+      return row.position;
+    };
+
+    try {
+      await testDb().batch([
+        testDb()
+          .prepare(
+            `INSERT OR IGNORE INTO programs
+               (program_id, department_id, name, behavior_type, lifecycle,
+                discoverability, enrollment_mode, created_at, updated_at)
+             VALUES (?, ?, 'C-487 scoped grant program', 'OneOff', 'Active',
+                     'Unlisted', 'MemberRequest', ?, ?)`
+          )
+          .bind(scopedProgram, ADULT_DEPARTMENT, NOW, NOW),
+        ...roleFixtures.map((role) =>
+          testDb()
+            .prepare(
+              `INSERT OR IGNORE INTO role_definitions
+                 (role_definition_id, category_key, stable_key, label,
+                  description, scope_kind, scope_id, position, is_protected,
+                  is_archived, created_by, created_at, updated_by, updated_at)
+               VALUES (?, 'Program', ?, ?, 'C-487 scoped management fixture',
+                       'Program', ?, ?, 0, 0, NULL, ?, NULL, ?)`
+            )
+            .bind(
+              role.id,
+              role.stableKey,
+              role.label,
+              role.scopeId,
+              role.position,
+              NOW,
+              NOW
+            )
+        ),
+      ]);
+      await testDb().batch([
+        ...managementCapabilities.map((capability) =>
+          testDb()
+            .prepare(
+              `INSERT INTO role_definition_grants
+                 (role_definition_id, capability, granted_by, granted_at)
+               VALUES (?, ?, ?, ?)`
+            )
+            .bind(scopedGrantRole, capability, ADMIN, NOW)
+        ),
+        testDb()
+          .prepare(
+            `INSERT INTO role_assignments
+               (assignment_id, account_user_id, role_definition_id,
+                granted_by, granted_at, scope_kind, scope_id,
+                revoked_by, revoked_at, revoke_reason)
+             VALUES (?, ?, ?, ?, ?, 'Program', ?, NULL, NULL, NULL)`
+          )
+          .bind(
+            scopedAssignment,
+            STAFF,
+            scopedGrantRole,
+            ADMIN,
+            NOW,
+            scopedProgram
+          ),
+        testDb()
+          .prepare(
+            `DELETE FROM role_definition_grants
+              WHERE role_definition_id = ?
+                AND capability IN (?, ?, ?, ?)`
+          )
+          .bind(STAFF_ROLE, ...managementCapabilities),
+      ]);
+
+      const anyScope = await resolveActorCapabilities(testDb(), STAFF);
+      const matchingScope = await resolveActorCapabilities(testDb(), STAFF, {
+        programId: scopedProgram,
+      });
+      const unrelatedScope = await resolveActorCapabilities(testDb(), STAFF, {
+        programId: YOUTH_PROGRAM,
+      });
+      for (const capability of managementCapabilities) {
+        expect(anyScope[capability]).toBe(true);
+        expect(matchingScope[capability]).toBe(true);
+        expect(unrelatedScope[capability]).not.toBe(true);
+      }
+
+      const renamed = await renameRoleDefinition(
+        testDb(),
+        renameInput({
+          actor_user_id: STAFF,
+          base_revision: await readRevision(),
+          role_definition_id: "C487-ADULT-RENAME-ROLE",
+          label: "C-487 成人改名後",
+          idempotency_key: "c487-scoped-rename-match",
+          audit_id: "c487-scoped-rename-match-audit",
+          correlation_id: "c487-scoped-rename-match-correlation",
+        })
+      );
+      expect(renamed.label).toBe("C-487 成人改名後");
+      await expect(
+        renameRoleDefinition(
+          testDb(),
+          renameInput({
+            actor_user_id: STAFF,
+            base_revision: await readRevision(),
+            role_definition_id: "C487-YOUTH-RENAME-ROLE",
+            label: "C-487 青年改名不應成功",
+            idempotency_key: "c487-scoped-rename-unrelated",
+            audit_id: "c487-scoped-rename-unrelated-audit",
+            correlation_id: "c487-scoped-rename-unrelated-correlation",
+          })
+        )
+      ).rejects.toBeInstanceOf(RoleCapabilityDeniedError);
+
+      const rescoped = await rescopeRoleDefinition(testDb(), {
+        actor_user_id: STAFF,
+        base_revision: await readRevision(),
+        role_definition_id: "C487-ADULT-REORDER-ROLE",
+        category_key: "Program",
+        scope_kind: "Program",
+        scope_id: scopedProgram,
+        idempotency_key: "c487-scoped-rescope-match",
+        now: NOW,
+        audit_id: "c487-scoped-rescope-match-audit",
+        correlation_id: "c487-scoped-rescope-match-correlation",
+      });
+      expect(rescoped.scopeKind).toBe("Program");
+      expect(rescoped.scopeId).toBe(scopedProgram);
+      await expect(
+        rescopeRoleDefinition(testDb(), {
+          actor_user_id: STAFF,
+          base_revision: await readRevision(),
+          role_definition_id: "C487-YOUTH-RENAME-ROLE",
+          category_key: "Program",
+          scope_kind: "Program",
+          scope_id: YOUTH_PROGRAM,
+          idempotency_key: "c487-scoped-rescope-unrelated",
+          now: NOW,
+          audit_id: "c487-scoped-rescope-unrelated-audit",
+          correlation_id: "c487-scoped-rescope-unrelated-correlation",
+        })
+      ).rejects.toBeInstanceOf(RoleCapabilityDeniedError);
+
+      const created = await createRoleDefinition(
+        testDb(),
+        createInput({
+          actor_user_id: STAFF,
+          base_revision: await readRevision(),
+          category_key: "Program",
+          label: "C-487 成人建立成功",
+          description: "C-487 matching scoped create",
+          scope_kind: "Program",
+          scope_id: scopedProgram,
+          idempotency_key: "c487-scoped-create-match",
+          audit_id: "c487-scoped-create-match-audit",
+          correlation_id: "c487-scoped-create-match-correlation",
+        })
+      );
+      cleanupRoleIds.push(created.roleDefinitionId);
+      expect(created.scopeId).toBe(scopedProgram);
+      await expect(
+        createRoleDefinition(
+          testDb(),
+          createInput({
+            actor_user_id: STAFF,
+            base_revision: await readRevision(),
+            category_key: "Program",
+            label: "C-487 青年建立不應成功",
+            description: "C-487 unrelated scoped create",
+            scope_kind: "Program",
+            scope_id: YOUTH_PROGRAM,
+            idempotency_key: "c487-scoped-create-unrelated",
+            audit_id: "c487-scoped-create-unrelated-audit",
+            correlation_id: "c487-scoped-create-unrelated-correlation",
+          })
+        )
+      ).rejects.toBeInstanceOf(RoleCapabilityDeniedError);
+
+      const adultFirstPosition = await positionFor("C487-ADULT-RENAME-ROLE");
+      const adultSecondPosition = await positionFor(
+        "C487-ADULT-REORDER-ROLE"
+      );
+      const reorderBase = await readRevision();
+      const reordered = await reorderRoleDefinitions(
+        testDb(),
+        reorderInput({
+          actor_user_id: STAFF,
+          base_revision: reorderBase,
+          category_key: "Program",
+          targets: [
+            {
+              role_definition_id: "C487-ADULT-RENAME-ROLE",
+              position: adultSecondPosition,
+            },
+            {
+              role_definition_id: "C487-ADULT-REORDER-ROLE",
+              position: adultFirstPosition,
+            },
+          ],
+          idempotency_key: "c487-scoped-reorder-match",
+          audit_id: "c487-scoped-reorder-match-audit",
+          correlation_id: "c487-scoped-reorder-match-correlation",
+        })
+      );
+      expect(reordered.revision).toBe(reorderBase + 1);
+
+      const youthFirstPosition = await positionFor("C487-YOUTH-RENAME-ROLE");
+      const youthSecondPosition = await positionFor(
+        "C487-YOUTH-REORDER-ROLE"
+      );
+      const unrelatedReorderBase = await readRevision();
+      await expect(
+        reorderRoleDefinitions(
+          testDb(),
+          reorderInput({
+            actor_user_id: STAFF,
+            base_revision: unrelatedReorderBase,
+            category_key: "Program",
+            targets: [
+              {
+                role_definition_id: "C487-YOUTH-RENAME-ROLE",
+                position: youthSecondPosition,
+              },
+              {
+                role_definition_id: "C487-YOUTH-REORDER-ROLE",
+                position: youthFirstPosition,
+              },
+            ],
+            idempotency_key: "c487-scoped-reorder-unrelated",
+            audit_id: "c487-scoped-reorder-unrelated-audit",
+            correlation_id: "c487-scoped-reorder-unrelated-correlation",
+          })
+        )
+      ).rejects.toBeInstanceOf(RoleCapabilityDeniedError);
+      expect(await readRevision()).toBe(unrelatedReorderBase);
+    } finally {
+      try {
+        await testDb().batch([
+          testDb()
+            .prepare("DELETE FROM role_assignments WHERE assignment_id = ?")
+            .bind(scopedAssignment),
+          ...cleanupRoleIds.flatMap((roleDefinitionId) => [
+            testDb()
+              .prepare(
+                "DELETE FROM role_definition_grants WHERE role_definition_id = ?"
+              )
+              .bind(roleDefinitionId),
+            testDb()
+              .prepare("DELETE FROM role_definitions WHERE role_definition_id = ?")
+              .bind(roleDefinitionId),
+          ]),
+          testDb()
+            .prepare("DELETE FROM programs WHERE program_id = ?")
+            .bind(scopedProgram),
+        ]);
+      } finally {
+        if ((staffGrants.results ?? []).length > 0) {
+          await testDb().batch(
+            (staffGrants.results ?? []).map((grant) =>
+              testDb()
+                .prepare(
+                  `INSERT OR IGNORE INTO role_definition_grants
+                     (role_definition_id, capability, granted_by, granted_at)
+                   VALUES (?, ?, ?, ?)`
+                )
+                .bind(
+                  STAFF_ROLE,
+                  grant.capability,
+                  grant.granted_by,
+                  grant.granted_at
+                )
+            )
+          );
+        }
+      }
     }
   });
 });

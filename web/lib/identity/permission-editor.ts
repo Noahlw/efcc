@@ -21,6 +21,7 @@ import {
 } from "./mutations";
 import {
   assignmentScopeFilterForActor,
+  capabilityScopeFor,
   loadActorRoles,
   resolveActorCapabilities,
   ROLE_HIERARCHY_ACTION,
@@ -420,6 +421,9 @@ function projectRoleActions(
     inScope;
   const canReorder =
     capabilities["role.reorder"] === true &&
+    target.is_protected === 0 &&
+    target.stable_key !== PROTECTED_STABLE_KEYS.ADMIN &&
+    target.stable_key !== PROTECTED_STABLE_KEYS.MEMBER &&
     target.is_archived === 0 &&
     lowerThanHighest &&
     inScope;
@@ -475,17 +479,6 @@ function toRoleDefinition(
   };
 }
 
-function capabilityScopeFor(
-  target: RoleDefinitionRecord
-): { departmentId?: string; programId?: string } | null {
-  if (target.scope_kind === ROLE_CATEGORY_KEY.DEPARTMENT && target.scope_id) {
-    return { departmentId: target.scope_id };
-  }
-  if (target.scope_kind === ROLE_CATEGORY_KEY.PROGRAM && target.scope_id) {
-    return { programId: target.scope_id };
-  }
-  return null;
-}
 
 function projectTerminalDetail(
   detail: RoleDefinitionDetailView,
