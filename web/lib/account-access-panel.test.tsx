@@ -399,7 +399,7 @@ describe("AccountAccessPanel", () => {
   test("searches eligible accounts and navigates with canonical access URL", async () => {
     const user = userEvent.setup();
     mocks.searchParams = new URLSearchParams(
-      "module=accounts&account=target&view=access&return=%2Fprograms%3Fmode%3Dmanagement%26program%3Dprogram-1%26task%3Dsettings"
+      "module=accounts&account=target&roleDefinition=role-lower&view=access&return=%2Fprograms%3Fmode%3Dmanagement%26program%3Dprogram-1%26task%3Dsettings"
     );
     mocks.searchEligibleAccounts.mockResolvedValue({
       accounts: [
@@ -421,10 +421,10 @@ describe("AccountAccessPanel", () => {
       name: /Other Account/,
     });
     const accountReturnHref =
-      "/management?module=accounts&account=target&view=access&return=%2Fprograms%3Fmode%3Dmanagement%26program%3Dprogram-1%26task%3Dsettings";
+      "/management?module=accounts&account=target&roleDefinition=role-lower&view=access&return=%2Fprograms%3Fmode%3Dmanagement%26program%3Dprogram-1%26task%3Dsettings";
     expect(candidate).toHaveAttribute(
       "href",
-      `/management?module=accounts&account=other&view=access&return=${encodeURIComponent(accountReturnHref)}`
+      `/management?module=accounts&account=other&roleDefinition=role-lower&view=access&return=${encodeURIComponent(accountReturnHref)}`
     );
   });
 

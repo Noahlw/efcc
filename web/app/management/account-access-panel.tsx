@@ -671,8 +671,12 @@ export const AccountAccessPanel = () => {
     `/management?module=accounts&roleDefinition=${encodeURIComponent(roleDefinitionId ?? "")}&view=access`,
     currentReturnHref
   );
+  const accountFirstRoleQuery =
+    roleDefinitionId === null
+      ? ""
+      : `&roleDefinition=${encodeURIComponent(roleDefinitionId)}`;
   const accountFirstReturnHref = withReturn(
-    `/management?module=accounts&account=${encodeURIComponent(accountUserId ?? "")}&view=access`,
+    `/management?module=accounts&account=${encodeURIComponent(accountUserId ?? "")}${accountFirstRoleQuery}&view=access`,
     currentReturnHref
   );
   const roleFirstAssignmentAllowed =
@@ -1636,7 +1640,7 @@ export const AccountAccessPanel = () => {
                         >
                           <Link
                             href={withReturn(
-                              `/management?module=accounts&account=${encodeURIComponent(candidate.userId)}&view=access`,
+                              `/management?module=accounts&account=${encodeURIComponent(candidate.userId)}${accountFirstRoleQuery}&view=access`,
                               accountFirstReturnHref
                             )}
                           >
