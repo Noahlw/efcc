@@ -4234,3 +4234,56 @@ remote database, Apps Script, or Google Sheet claim is made.
 
 The local Worker was stopped after verification. No Phase D path or `#488/#489`
 was touched.
+
+## #485–#487 final corrected verification — current `6c93b8d0` — 2026-08-31
+
+### Corrections since the preceding review
+
+- Active and revoked assignment projections now use immutable
+  `role_assignments.scope_kind/scope_id` snapshots for display and
+  authorization. Role Definition labels, grants, positions, and lifecycle
+  metadata remain current; new assignments still copy the current definition
+  scope. Programs directory scope predicates use the same assignment snapshot.
+- Management status and permission-row state classes now route through local
+  CVA variants and `cn`.
+- The Programs management workspace's two-column directory tiles now use
+  `minmax(0, 1fr)` tracks and `min-w-0 whitespace-normal` buttons, preserving
+  the 320px geometry contract.
+
+### Final source and test evidence
+
+| Check | Exact result |
+| --- | --- |
+| `pnpm typecheck` | **PASS**, root and E2E TypeScript |
+| `pnpm --dir web typecheck` | **PASS**, web and Worker TypeScript |
+| `pnpm --dir web build` | **PASS**, 18/18 static routes generated |
+| `pnpm --dir web test:components` | **PASS**, 59 files, 690/690 |
+| `pnpm verify:identity` | **PASS**, 4 files, 94/94 |
+| Account Access scope regressions | **PASS**, 2 files, 29/29 |
+| `pnpm test` | **PASS**, 1 file, 38/38 |
+| `pnpm test:shell-responsive` | **PASS**, 92 passed, 1 intentional skip |
+| `pnpm test:shell-geometry` | **PASS**, 28/28 |
+| `pnpm test:role-hierarchy-geometry` | **PASS**, 49/49 across 320, 390, 600, 799, 800, 1024, and 1440 CSS px |
+| `programs-d1.config.ts` | **PASS**, 195/195 after clean reset/demo seed |
+| `s4-management-hardening.config.ts` | **PASS**, 45 passed and 65 intentional `onlyProjects` skips; 110 scheduled |
+| `live-ui.config.ts` | **PASS**, 28/28 |
+| `member-directory.config.ts` | **PASS**, 1/1 |
+| Registration fixture hygiene query | **PASS**, `pending: 0`, `legacy_s4: 0` |
+| `git diff --check` | **PASS** |
+| `pnpm check` | **FAIL**, repository-wide Ultracite baseline: 1,813 errors and 0 warnings |
+
+The aggregate `pnpm --dir web test` invocation remains **BLOCKED** by the
+known environment failure: 37 files and 555 assertions passed, while four
+normalized Worker files abort before assertions with
+`EvalError: Code generation from strings disallowed for this context` in the
+installed Cloudflare pool/Vite evaluator. The research note records the
+upstream cause and rejected unsafe-eval, `NODE_OPTIONS`, downgrade, and
+suppression workarounds.
+
+All authenticated browser checks used disposable local D1 and the direct
+Node `v22.18.0` Wrangler process at `http://127.0.0.1:8797`; the Worker was
+stopped after verification. The supervised Node 20 `dev:local` launcher still
+fails with `ERR_UNKNOWN_BUILTIN_MODULE: node:sqlite` and is not relabeled as
+passed. `C-487-M1` through `C-487-M4` remain **MANUAL, unclaimed**. No
+production, remote, Apps Script, Google Sheet, deployment, screenshot,
+pixel-diff, WCAG, screen-reader, real-device, or Phase D claim is made.

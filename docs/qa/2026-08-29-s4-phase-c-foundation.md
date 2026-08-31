@@ -66,3 +66,42 @@ The first live-ui attempt used the wrong environment variable and was not counte
 - `C-487-M1` keyboard/screen-reader plus reduced-motion/forced-colors/zoom/text-spacing, `C-487-M2` real iOS/Android dock and safe-area, `C-487-M3` remote-CI parity, and `C-487-M4` production-promotion dry run remain **MANUAL, unclaimed**.
 - The direct Node 22 Worker evidence is loopback-only and is not relabeled as the supervised `dev:local` gate.
 - No screenshot, pixel-diff, WCAG conformance, screen-reader, real-device, remote-CI, production-promotion, or deployment claim is made.
+
+## Final corrected verification — current `6c93b8d0` — 2026-08-31
+
+The final corrections now include assignment-scope snapshots as the
+authoritative display/authorization scope for active and revoked assignments,
+scope-aware Programs directory projections, CVA-owned management state
+variants, and a 320px Programs workspace tile containment fix.
+
+| Check | Exact result |
+| --- | --- |
+| `pnpm typecheck` | **PASS** |
+| `pnpm --dir web typecheck` | **PASS** |
+| `pnpm --dir web build` | **PASS**, 18/18 static routes generated |
+| `pnpm --dir web test:components` | **PASS**, 59 files, 690/690 |
+| `pnpm verify:identity` | **PASS**, 4 files, 94/94 |
+| Account Access scope regressions | **PASS**, 2 files, 29/29; normalized-authority pool file remained blocked separately |
+| `pnpm test` | **PASS**, 1 file, 38/38 |
+| `pnpm test:shell-responsive` | **PASS**, 92 passed, 1 intentional skip |
+| `pnpm test:shell-geometry` | **PASS**, 28/28 |
+| `pnpm test:role-hierarchy-geometry` | **PASS**, 49/49 |
+| `programs-d1.config.ts` | **PASS**, 195/195 after clean reset/demo seed |
+| `s4-management-hardening.config.ts` | **PASS**, 45 passed and 65 intentional `onlyProjects` skips; 110 scheduled |
+| `live-ui.config.ts` | **PASS**, 28/28 |
+| `member-directory.config.ts` | **PASS**, 1/1 |
+| Registration fixture hygiene query | **PASS**, `pending: 0`, `legacy_s4: 0` |
+| `git diff --check` | **PASS** |
+| `pnpm check` | **FAIL**, repository-wide Ultracite baseline: 1,813 errors and 0 warnings |
+
+The final Programs run used the direct Node 22 Wrangler process on
+`http://127.0.0.1:8797` and one Playwright worker. The process was stopped
+after the local checks. The prescribed supervised Node 20 `dev:local` command
+remains unavailable because of `node:sqlite`; this direct loopback run is not
+relabeled as that gate.
+
+`pnpm --dir web test` still exits 1 after 37 passing files and 555 passing
+assertions because the four normalized Worker files abort before assertions
+with the known Cloudflare-pool/Vite `EvalError`. No assertion suppression or
+unsafe runtime workaround was added. The required manual M1–M4 gates remain
+unclaimed, and no remote or production resource was touched.
