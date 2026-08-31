@@ -398,6 +398,9 @@ describe("AccountAccessPanel", () => {
   });
   test("searches eligible accounts and navigates with canonical access URL", async () => {
     const user = userEvent.setup();
+    mocks.searchParams = new URLSearchParams(
+      "module=accounts&account=target&view=access&return=%2Fprograms%3Fmode%3Dmanagement%26program%3Dprogram-1%26task%3Dsettings"
+    );
     mocks.searchEligibleAccounts.mockResolvedValue({
       accounts: [
         {
@@ -417,9 +420,11 @@ describe("AccountAccessPanel", () => {
     const candidate = await screen.findByRole("link", {
       name: /Other Account/,
     });
+    const accountReturnHref =
+      "/management?module=accounts&account=target&view=access&return=%2Fprograms%3Fmode%3Dmanagement%26program%3Dprogram-1%26task%3Dsettings";
     expect(candidate).toHaveAttribute(
       "href",
-      "/management?module=accounts&account=other&view=access&return=%2Fmanagement%3Fmodule%3Daccounts%26account%3Dtarget%26view%3Daccess"
+      `/management?module=accounts&account=other&view=access&return=${encodeURIComponent(accountReturnHref)}`
     );
   });
 
@@ -634,7 +639,7 @@ describe("AccountAccessPanel", () => {
 
   test("opens an identity-first role entry with every assigned account", async () => {
     mocks.searchParams = new URLSearchParams(
-      "module=accounts&roleDefinition=role-lower&view=access"
+      "module=accounts&roleDefinition=role-lower&view=access&return=%2Fmanagement%3Fmodule%3Droles%26role%3Drole-lower%26view%3Ddetail"
     );
     mocks.getRoleHierarchy.mockResolvedValue({
       ...hierarchy,
@@ -665,15 +670,17 @@ describe("AccountAccessPanel", () => {
     await screen.findByRole("heading", { name: "課程協調者" });
     const accountOne = screen.getByRole("link", { name: /Account One/u });
     expect(accountOne).toHaveTextContent(/Account Oneaccount-one · account-1/u);
+    const roleFirstHref =
+      "/management?module=accounts&roleDefinition=role-lower&view=access&return=%2Fmanagement%3Fmodule%3Droles%26role%3Drole-lower%26view%3Ddetail";
     expect(accountOne).toHaveAttribute(
       "href",
-      "/management?module=accounts&account=account-1&view=access&return=%2Fmanagement%3Fmodule%3Daccounts%26roleDefinition%3Drole-lower%26view%3Daccess"
+      `/management?module=accounts&account=account-1&view=access&return=${encodeURIComponent(roleFirstHref)}`
     );
     const accountTwo = screen.getByRole("link", { name: /Account Two/u });
     expect(accountTwo).toHaveTextContent(/Account Twoaccount-two · account-2/u);
     expect(accountTwo).toHaveAttribute(
       "href",
-      "/management?module=accounts&account=account-2&view=access&return=%2Fmanagement%3Fmodule%3Daccounts%26roleDefinition%3Drole-lower%26view%3Daccess"
+      `/management?module=accounts&account=account-2&view=access&return=${encodeURIComponent(roleFirstHref)}`
     );
   });
   test("clears account-scoped selection and dialogs when the route account changes", async () => {
@@ -778,7 +785,7 @@ describe("AccountAccessPanel", () => {
   test("identity-first entry offers assignment for a zero-assignment role", async () => {
     const user = userEvent.setup();
     mocks.searchParams = new URLSearchParams(
-      "module=accounts&roleDefinition=role-lower&view=access"
+      "module=accounts&roleDefinition=role-lower&view=access&return=%2Fmanagement%3Fmodule%3Droles%26role%3Drole-lower%26view%3Ddetail"
     );
     mocks.searchEligibleAccounts.mockResolvedValue({
       accounts: [
@@ -818,9 +825,11 @@ describe("AccountAccessPanel", () => {
     const candidate = await screen.findByRole("link", {
       name: /Other Account/,
     });
+    const roleFirstHref =
+      "/management?module=accounts&roleDefinition=role-lower&view=access&return=%2Fmanagement%3Fmodule%3Droles%26role%3Drole-lower%26view%3Ddetail";
     expect(candidate).toHaveAttribute(
       "href",
-      "/management?module=accounts&account=other&roleDefinition=role-lower&view=access&return=%2Fmanagement%3Fmodule%3Daccounts%26roleDefinition%3Drole-lower%26view%3Daccess"
+      `/management?module=accounts&account=other&roleDefinition=role-lower&view=access&return=${encodeURIComponent(roleFirstHref)}`
     );
   });
 

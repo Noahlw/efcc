@@ -102,6 +102,9 @@ const EMPTY_GROUPS: EffectiveAccessGroups = {
 function returnHref(value: string | null): string {
   return safeManagementReturnHref(value, "/management?module=accounts");
 }
+function withReturn(path: string, returnTo: string): string {
+  return `${path}&return=${encodeURIComponent(returnTo)}`;
+}
 
 function errorMessage(error: unknown): string {
   if (error instanceof RpcError) {
@@ -663,6 +666,15 @@ export const AccountAccessPanel = () => {
   const roleDefinition = hierarchy?.categories
     .flatMap((category) => category.definitions)
     .find((role) => role.roleDefinitionId === roleDefinitionId);
+  const currentReturnHref = returnHref(searchParams.get("return"));
+  const roleFirstReturnHref = withReturn(
+    `/management?module=accounts&roleDefinition=${encodeURIComponent(roleDefinitionId ?? "")}&view=access`,
+    currentReturnHref
+  );
+  const accountFirstReturnHref = withReturn(
+    `/management?module=accounts&account=${encodeURIComponent(accountUserId ?? "")}&view=access`,
+    currentReturnHref
+  );
   const roleFirstAssignmentAllowed =
     roleDefinition?.assignmentActions?.some(
       (action) => action.action === "assign"
@@ -753,7 +765,7 @@ export const AccountAccessPanel = () => {
     routeKey,
   ]);
 
-  const goBack = () => router.replace(returnHref(searchParams.get("return")));
+  const goBack = () => router.replace(currentReturnHref);
 
   const toggleRole = (roleId: string, checked: boolean) => {
     resetMutationKey();
@@ -1266,7 +1278,10 @@ export const AccountAccessPanel = () => {
                       variant="outline"
                     >
                       <Link
-                        href={`/management?module=accounts&account=${encodeURIComponent(assignedAccount.userId)}&view=access&return=${encodeURIComponent(`/management?module=accounts&roleDefinition=${encodeURIComponent(roleDefinition.roleDefinitionId)}&view=access`)}`}
+                        href={withReturn(
+                          `/management?module=accounts&account=${encodeURIComponent(assignedAccount.userId)}&view=access`,
+                          roleFirstReturnHref
+                        )}
                       >
                         <span className="min-w-0">
                           <strong className="block wrap-anywhere">
@@ -1335,7 +1350,10 @@ export const AccountAccessPanel = () => {
                         variant="outline"
                       >
                         <Link
-                          href={`/management?module=accounts&account=${encodeURIComponent(candidate.userId)}&roleDefinition=${encodeURIComponent(roleDefinition.roleDefinitionId)}&view=access&return=${encodeURIComponent(`/management?module=accounts&roleDefinition=${encodeURIComponent(roleDefinition.roleDefinitionId)}&view=access`)}`}
+                          href={withReturn(
+                            `/management?module=accounts&account=${encodeURIComponent(candidate.userId)}&roleDefinition=${encodeURIComponent(roleDefinition.roleDefinitionId)}&view=access`,
+                            roleFirstReturnHref
+                          )}
                         >
                           <span className="min-w-0">
                             <strong className="wrap-anywhere block">
@@ -1617,7 +1635,10 @@ export const AccountAccessPanel = () => {
                           variant="outline"
                         >
                           <Link
-                            href={`/management?module=accounts&account=${encodeURIComponent(candidate.userId)}&view=access&return=${encodeURIComponent(`/management?module=accounts&account=${encodeURIComponent(accountUserId ?? "")}&view=access`)}`}
+                            href={withReturn(
+                              `/management?module=accounts&account=${encodeURIComponent(candidate.userId)}&view=access`,
+                              accountFirstReturnHref
+                            )}
                           >
                             <span className="min-w-0">
                               <strong className="wrap-anywhere block">
