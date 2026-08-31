@@ -743,7 +743,8 @@ export const AccountDirectoryPanel = () => {
                 </p>
               </div>
               <Button
-                className="mt-4 min-h-11 w-full bg-[var(--accent)] font-extrabold text-white hover:bg-[var(--accent-deep)]"
+                className="mt-4 min-h-11 w-full font-extrabold hover:bg-[var(--accent-deep)]"
+                variant="default"
                 onClick={() =>
                   router.push(
                     `/management?module=accounts&account=${encodeURIComponent(selected.userId)}&view=access&return=${encodeURIComponent(accountAccessReturnHref(returnHref, selected.userId))}`

@@ -76,8 +76,7 @@ const statusVariants = cva(
   {
     variants: {
       kind: {
-        success:
-          "border-[var(--success-border)] bg-[var(--success-surface)]",
+        success: "border-[var(--success-border)] bg-[var(--success-surface)]",
         error: "border-[var(--error-border)] bg-[var(--error-surface)]",
         conflict: "border-[var(--error-border)] bg-[var(--error-surface)]",
       },
@@ -1211,7 +1210,7 @@ export const AccountAccessPanel = () => {
           {status && (
             <p
               aria-live="polite"
-              className="m-0 mt-3 wrap-anywhere rounded-[var(--radius-sm)] border p-3"
+              className={cn(statusVariants({ kind: status.kind }))}
               role={status.kind === "success" ? "status" : "alert"}
             >
               {status.message}
