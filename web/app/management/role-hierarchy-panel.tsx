@@ -90,6 +90,17 @@ const orderButtonVariants = cva(
   }
 );
 
+const stateSurfaceVariants = cva("mt-4 rounded-[var(--radius-md)] border p-4", {
+  variants: {
+    kind: {
+      loading:
+        "block border-[var(--line)] bg-[var(--surface-raised)] text-[var(--ink-muted)]",
+      error:
+        "grid min-w-0 gap-2 border-[var(--error-border)] bg-[var(--error-surface)]",
+    },
+  },
+});
+
 const fieldClass = "mt-3 grid min-w-0 gap-1.5";
 const fieldLabelClass = "text-[0.82rem] font-bold text-[var(--ink)]";
 
@@ -1077,7 +1088,7 @@ export const RoleHierarchyPanel = () => {
       {state.kind === "loading" && (
         <output
           aria-busy="true"
-          className="mt-4 block rounded-[var(--radius-md)] border border-[var(--line)] bg-[var(--surface-raised)] p-4 text-[var(--ink-muted)]"
+          className={stateSurfaceVariants({ kind: "loading" })}
           tabIndex={-1}
         >
           {COPY.permissions.loading}
@@ -1086,7 +1097,7 @@ export const RoleHierarchyPanel = () => {
 
       {state.kind === "error" && (
         <section
-          className="mt-4 grid min-w-0 gap-2 rounded-[var(--radius-md)] border border-[var(--error-border)] bg-[var(--error-surface)] p-4"
+          className={stateSurfaceVariants({ kind: "error" })}
           id="role-hierarchy-state"
           tabIndex={-1}
         >

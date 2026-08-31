@@ -109,6 +109,16 @@ const permissionRowVariants = cva(
   }
 );
 
+const stateSurfaceVariants = cva("mt-6 rounded-lg border p-4", {
+  variants: {
+    kind: {
+      loading: "block border-border",
+      error: "grid gap-3 border-destructive bg-destructive/10",
+      forbidden: "border-destructive bg-destructive/10",
+    },
+  },
+});
+
 type Draft = Record<string, boolean>;
 type ReviewKind = "sheet" | "dedicated" | null;
 type SaveState =
@@ -869,7 +879,7 @@ export const PermissionEditorPanel = () => {
       {state.kind === "loading" && (
         <output
           aria-busy="true"
-          className="mt-6 block rounded-lg border border-border p-4"
+          className={stateSurfaceVariants({ kind: "loading" })}
           id="permission-editor-state"
           tabIndex={-1}
         >
@@ -878,7 +888,7 @@ export const PermissionEditorPanel = () => {
       )}
       {state.kind === "error" && (
         <section
-          className="mt-6 grid gap-3 rounded-lg border border-destructive bg-destructive/10 p-4"
+          className={stateSurfaceVariants({ kind: "error" })}
           id="permission-editor-state"
           role="alert"
           tabIndex={-1}
@@ -891,7 +901,7 @@ export const PermissionEditorPanel = () => {
       )}
       {state.kind === "forbidden" && (
         <section
-          className="mt-6 rounded-lg border border-destructive bg-destructive/10 p-4"
+          className={stateSurfaceVariants({ kind: "forbidden" })}
           id="permission-editor-state"
           role="alert"
           tabIndex={-1}
