@@ -1141,7 +1141,7 @@ export const AccountAccessPanel = () => {
               <li key={definition.roleDefinitionId}>
                 <Button
                   asChild
-                  className="min-h-11 w-full justify-start text-left"
+                  className="h-auto min-h-11 w-full min-w-0 justify-start text-left whitespace-normal"
                   variant="outline"
                 >
                   <Link
