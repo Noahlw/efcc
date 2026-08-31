@@ -154,15 +154,10 @@ function effectiveGrantCount(groups: EffectiveAccessGroups): number {
   );
 }
 
-function impactText(groups: EffectiveAccessGroups): string {
-  const count = effectiveGrantCount(groups);
-  return count === 0
-    ? "沒有直接受影響的有效權限。"
-    : `共 ${count} 項有效權限。`;
-}
 function revokeImpactFromAuthoritativeView(
   groups: EffectiveAccessGroups,
-  roleLabel: string
+  roleLabel: string,
+  roleDefinitionId: string
 ): { lost: EffectiveAccessGroups; retained: EffectiveAccessGroups } {
   const lost: EffectiveAccessGroups = {
     Global: [],
@@ -179,13 +174,20 @@ function revokeImpactFromAuthoritativeView(
       const sources = grant.sources.filter((source) => source !== roleLabel);
       const next = {
         ...grant,
-        sources,
+        sources: [...grant.sources],
         sourceRoleDefinitionIds: [...grant.sourceRoleDefinitionIds],
       };
       if (sources.length === 0) {
         lost[scope].push(next);
       } else {
-        retained[scope].push(next);
+        retained[scope].push({
+          ...next,
+          sources,
+          sourceRoleDefinitionIds: grant.sourceRoleDefinitionIds.filter(
+            (sourceRoleDefinitionId) =>
+              sourceRoleDefinitionId !== roleDefinitionId
+          ),
+        });
       }
     }
   }
@@ -242,6 +244,57 @@ const Group = ({
     )}
   </section>
 );
+const ImpactGroups = ({
+  lost,
+  retained,
+}: {
+  lost: EffectiveAccessGroups;
+  retained: EffectiveAccessGroups;
+}) => (
+  <div className="grid min-w-0 gap-3">
+    <p className="m-0 text-sm font-extrabold">
+      可能失去（{effectiveGrantCount(lost)} 項）
+    </p>
+    <div className="grid min-w-0 gap-3">
+      <Group
+        idPrefix="account-access-revoke-lost"
+        label="Global"
+        grants={lost.Global}
+      />
+      <Group
+        idPrefix="account-access-revoke-lost"
+        label="Department"
+        grants={lost.Department}
+      />
+      <Group
+        idPrefix="account-access-revoke-lost"
+        label="Program"
+        grants={lost.Program}
+      />
+    </div>
+    <p className="m-0 text-sm font-extrabold">
+      保留（{effectiveGrantCount(retained)} 項）
+    </p>
+    <div className="grid min-w-0 gap-3">
+      <Group
+        idPrefix="account-access-revoke-retained"
+        label="Global"
+        grants={retained.Global}
+      />
+      <Group
+        idPrefix="account-access-revoke-retained"
+        label="Department"
+        grants={retained.Department}
+      />
+      <Group
+        idPrefix="account-access-revoke-retained"
+        label="Program"
+        grants={retained.Program}
+      />
+    </div>
+  </div>
+);
+
 
 const LifecyclePreviewGroups = ({
   accountUserId,
@@ -691,7 +744,8 @@ export const AccountAccessPanel = () => {
     revokeAssignment && previewView
       ? revokeImpactFromAuthoritativeView(
           previewView.effectiveAccess,
-          revokeAssignment.label
+          revokeAssignment.label,
+          revokeAssignment.roleDefinitionId
         )
       : { lost: EMPTY_GROUPS, retained: EMPTY_GROUPS };
   const archiveRoleDefinitionIds = view?.actions.archiveRoleDefinitionIds ?? [];
@@ -1975,11 +2029,15 @@ export const AccountAccessPanel = () => {
                     </Button>
                   </>
                 ) : revokeAssignment ? (
-                  <p className="m-0 wrap-anywhere">
-                    {revokeAssignment.label} 的撤銷會保留歷史記錄。可能失去：
-                    {impactText(revokeImpact.lost)}；保留：
-                    {impactText(revokeImpact.retained)}。
-                  </p>
+                  <>
+                    <p className="m-0 wrap-anywhere">
+                      {revokeAssignment.label} 的撤銷會保留歷史記錄。
+                    </p>
+                    <ImpactGroups
+                      lost={revokeImpact.lost}
+                      retained={revokeImpact.retained}
+                    />
+                  </>
                 ) : (
                   <p className="m-0">請重新載入這項指派後再試。</p>
                 )}

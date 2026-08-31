@@ -1,4 +1,10 @@
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import {
+  cleanup,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
@@ -529,12 +535,24 @@ describe("AccountAccessPanel", () => {
 
   test("previews revoke impact and confirms an explicit revoke", async () => {
     const user = userEvent.setup();
-    mocks.getAccountAccess.mockResolvedValue(revokeView);
-    mocks.revokeAccountAssignments.mockResolvedValue({
-      ...view,
-      idempotent: false,
-      duplicateRoleDefinitionIds: [],
-    });
+    const impactView: AccountAccessView = {
+      ...revokeView,
+      effectiveAccess: {
+        ...revokeView.effectiveAccess,
+        Global: [
+          ...revokeView.effectiveAccess.Global,
+          {
+            ...revokeView.effectiveAccess.Global[0],
+            capability: "role.read",
+            label: "檢視身份組",
+            description: "查看身份組。",
+            sources: ["課程協調者"],
+            sourceRoleDefinitionIds: ["role-lower"],
+          },
+        ],
+      },
+    };
+    mocks.getAccountAccess.mockResolvedValue(impactView);
     render(<AccountAccessPanel />);
     await user.click(
       await screen.findByRole("button", { name: "撤銷 課程協調者" })
@@ -542,7 +560,15 @@ describe("AccountAccessPanel", () => {
     expect(
       screen.getByRole("heading", { name: "確認撤銷身份組？" })
     ).toBeTruthy();
-    expect(screen.getByText(/可能失去/u)).toBeTruthy();
+    const revokeDialog = screen.getByRole("alertdialog", {
+      name: "確認撤銷身份組？",
+    });
+    expect(within(revokeDialog).getByText("可能失去（1 項）")).toBeTruthy();
+    expect(within(revokeDialog).getByText("保留（1 項）")).toBeTruthy();
+    expect(
+      within(revokeDialog).getByText("來源：課程協調者")
+    ).toBeTruthy();
+    expect(within(revokeDialog).getByText("來源：會友基礎")).toBeTruthy();
     await user.click(screen.getByRole("button", { name: "確認撤銷" }));
     await waitFor(() =>
       expect(mocks.revokeAccountAssignments).toHaveBeenCalledWith(
