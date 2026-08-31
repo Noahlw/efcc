@@ -4571,3 +4571,61 @@ No authority or persistence path changed. No screenshot, pixel-diff,
 WCAG-conformance, screen-reader, real-device, remote-CI,
 production-promotion, remote-D1, deployment, merge, Apps Script, Google Sheet,
 or Phase D claim is made.
+
+## Final publication verification — source `b59d13d4f893281801cc4c31a033d4ca1cd7801f` — 2026-08-31
+
+The final source commit closes the remaining concrete review gap in
+`C-486-05`: revoke confirmation now renders lost and retained Effective
+Permission groups for Global, Department, and Program scopes, with grant
+descriptions, scope labels, and source provenance. The same source preserves
+validated outer return URLs through nested role/account navigation, carries the
+selected role context through account-first candidate links, and makes
+portalled Select items shrinkable and anywhere-wrappable.
+
+### Final criterion classification
+
+| Criterion | Status | Final evidence |
+| --- | --- | --- |
+| C-485-01 through C-485-06 | **INFRA-BLOCKED** | Component behavior, source audit, and W7 geometry pass; the four normalized Worker files still abort before product assertions in the installed Cloudflare pool with the documented Vite `EvalError`. |
+| C-485-M1/M2 | **MANUAL — unclaimed** | Keyboard/focus and screen-reader Switch/review verification was not performed. |
+| C-486-01 through C-486-07 | **PASS** | Account Access domain/handler/component coverage, explicit revoke impact/provenance regression, nested return URL regression, local browser journeys, member directory, and W7 geometry pass. |
+| C-486-M1/M2 | **MANUAL — unclaimed** | Human keyboard/focus/history and screen-reader Effective Permission review was not performed. |
+| C-487-01 through C-487-07 | **PASS** | Normalized identity/route/seed safety, Programs D1, Management Hardening, live UI, shell, identity geometry, and obsolete-caller audit pass; the separate normalized Worker test remains an infrastructure blocker only. |
+| C-487-M1/M2/M3/M4 | **MANUAL — unclaimed** | Reduced-motion/forced-colors/zoom/text-spacing, real-device, remote-CI, and production-promotion checks were not performed. |
+
+### Final command record
+
+| Command or check | Result |
+| --- | --- |
+| `pnpm typecheck` | **PASS**, root and E2E TypeScript |
+| `pnpm --dir web typecheck` | **PASS**, web and Worker TypeScript |
+| `pnpm --dir web build` | **PASS**, 18 static routes |
+| `pnpm test` | **PASS**, 38/38 |
+| `pnpm verify:identity` | **PASS**, 4 files/98 assertions |
+| `pnpm --dir web test:components` | **PASS**, 59 files/693 assertions |
+| `pnpm --dir web test` | **INFRA-BLOCKED**, 37 files/561 assertions passed; four normalized Worker files abort before assertions with the known Cloudflare-pool/Vite `EvalError` |
+| `pnpm test:shell-responsive` | **PASS**, 92 passed, 1 intentional skip |
+| `pnpm test:shell-geometry` | **PASS**, 28/28 |
+| `pnpm test:role-hierarchy-geometry` | **PASS**, 49/49 across W7 `320, 390, 600, 799, 800, 1024, 1440` |
+| `programs-d1.config.ts` | **PASS**, 195/195 |
+| `s4-management-hardening.config.ts` | **PASS**, 45 passed and 65 intentional `onlyProjects` skips; 110 scheduled |
+| `live-ui.config.ts` | **PASS**, 28/28 |
+| `member-directory.config.ts` | **PASS**, 1/1 |
+| Registration residue query | **PASS**, `pending: 0`, `legacy_s4: 0` |
+| Final Ultracite baseline | **BASELINE-FAILED**, exit 2; 295 files, 1,823 diagnostics, 0 warnings, 557 rules; zero diagnostics on Phase C changed lines |
+| `git diff --check` | **PASS** |
+| Standards review | **PASS**, exact HEAD `b59d13d4f893281801cc4c31a033d4ca1cd7801f`; P0=0, P1=0, P2=0, P3=0 |
+| Spec review | **PASS**, exact HEAD `b59d13d4f893281801cc4c31a033d4ca1cd7801f`; P0=0, P1=0, P2=0, P3=0 |
+
+The browser gates used a direct Node `v22.18.0` Wrangler process on loopback
+port 8797, the local-only auth secret, and disposable local D1. The prescribed
+Node 20 `pnpm dev:local` launcher remains infrastructure-blocked by
+`ERR_UNKNOWN_BUILTIN_MODULE: node:sqlite`; no workaround was relabeled as that
+gate. Context7 CLI remained quota-blocked with the documented
+`Monthly quota exceeded` response, so no unsupported documentation claim is
+made.
+
+No screenshot, pixel-diff, WCAG-conformance, screen-reader, real-device,
+remote-CI, production-promotion, remote-D1, deployment, merge, Apps Script,
+Google Sheet, or Phase D claim is made. Phase D tickets #488–#490 remain
+excluded.

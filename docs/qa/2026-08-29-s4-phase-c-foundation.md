@@ -8,7 +8,7 @@
 - Required specifications: `docs/specs/091-stackable-identity-backend.md` and `docs/specs/092-discord-identity-design-system-adoption.md`.
 - Plan: `local://s4-phase-c-identity-integration-plan.md`.
 - Acceptance trace: `docs/specs/s4-phase-c-acceptance-trace.md`.
-- Current local verification revision: `0fb16ff0a401f5e653640b68c9a81314f36cb997`.
+- Current local verification revision: `b59d13d4f893281801cc4c31a033d4ca1cd7801f`.
 - Phase B base: `c75c99e84d699d2d1eac44f07d4e013ead4c12a5` (`feat/s4-b-shared-modules-role-definitions`).
 - Authenticated browser target: `http://127.0.0.1:8797`, direct Node `v22.18.0` Wrangler process, disposable local D1 only.
 - No remote host, Cloudflare account, Apps Script, Google Sheet, production database, deployment, or Phase D path was used.
@@ -379,3 +379,44 @@ Manual M1–M4 rows remain unclaimed. No screenshot, pixel-diff,
 WCAG-conformance, screen-reader, real-device, remote-CI,
 production-promotion, remote-D1, deployment, merge, Apps Script, Google
 Sheet, or Phase D claim is made.
+
+## Final publication verification — source `b59d13d4f893281801cc4c31a033d4ca1cd7801f` — 2026-08-31
+
+The final review correction now renders revoke impact as explicit lost/retained
+Effective Permission groups across Global, Department, and Program scopes,
+retaining grant provenance for the revoked identity and retained sources. Nested
+identity/account navigation preserves the validated outer return and selected
+role context. The shared Select primitive keeps long scope labels shrinkable and
+wrappable while its portalled content uses the shared overlay layer.
+
+| Final check | Exact result |
+| --- | --- |
+| `pnpm typecheck` | **PASS**, root and E2E TypeScript |
+| `pnpm --dir web typecheck` | **PASS**, web and Worker TypeScript |
+| `pnpm --dir web build` | **PASS**, 18/18 static routes generated |
+| `pnpm test` | **PASS**, 1 file, 38/38 |
+| `pnpm verify:identity` | **PASS**, 4 files, 98/98 |
+| `pnpm --dir web test:components` | **PASS**, 59 files, 693/693 |
+| `pnpm --dir web test` | **INFRA-BLOCKED**, 37 files and 561 assertions passed; `normalized-authority-c487.test.ts`, `permission-editor.test.ts`, `permission-editor-handlers.test.ts`, and `normalized-authority.test.ts` abort before assertions with the known Cloudflare-pool/Vite `EvalError: Code generation from strings disallowed for this context` |
+| `pnpm test:shell-responsive` | **PASS**, 92 passed, 1 intentional skip |
+| `pnpm test:shell-geometry` | **PASS**, 28/28 |
+| `pnpm test:role-hierarchy-geometry` | **PASS**, 49/49 across W7 `320, 390, 600, 799, 800, 1024, 1440` CSS px |
+| `programs-d1.config.ts` | **PASS**, 195/195 after clean disposable reset/demo seed |
+| `s4-management-hardening.config.ts` | **PASS**, 45 passed and 65 intentional `onlyProjects` skips; 110 scheduled |
+| `live-ui.config.ts` | **PASS**, 28/28 across phone and desktop projects |
+| `member-directory.config.ts` | **PASS**, 1/1 |
+| Registration residue query | **PASS**, `pending: 0`, `legacy_s4: 0` |
+| Final Ultracite check | **BASELINE-FAILED**, exit 2; 295 files, 1,823 diagnostics, 0 warnings, 557 rules; zero diagnostics on Phase C changed lines and zero in `select.tsx` |
+| `git diff --check` | **PASS** |
+| Standards review | **PASS**, HEAD `b59d13d4`; P0=0, P1=0, P2=0, P3=0 |
+| Spec review | **PASS**, HEAD `b59d13d4`; P0=0, P1=0, P2=0, P3=0 |
+
+All authenticated browser checks used direct Node `v22.18.0` Wrangler on
+`http://127.0.0.1:8797`, the local-only test secret, and disposable local D1.
+The prescribed Node 20 `pnpm dev:local` launcher remains
+**INFRA-BLOCKED** by `ERR_UNKNOWN_BUILTIN_MODULE: node:sqlite`; the direct
+loopback process was stopped after the residue query. Manual
+`C-485-M1/M2`, `C-486-M1/M2`, and `C-487-M1..M4` remain **MANUAL — unclaimed**.
+No screenshot, pixel-diff, WCAG-conformance, screen-reader, real-device,
+remote-CI, production-promotion, remote-D1, deployment, Apps Script, Google
+Sheet, merge, or Phase D claim is made.
