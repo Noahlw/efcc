@@ -5,10 +5,10 @@
 ## Scope and references
 
 - Scope: #485 Permission Editor, #486 Account Access, and #487 normalized authority cutover, under parent #475.
-- Required specifications: `docs/specs/091-identity-stackable-rbac.md` and `docs/specs/092-s4-identity-implementation.md`.
-- Plan: `docs/omp-plans/2026-08-29-s4-phase-c-stackable-identity-integration.md`.
+- Required specifications: `docs/specs/091-stackable-identity-backend.md` and `docs/specs/092-discord-identity-design-system-adoption.md`.
+- Plan: `local://s4-phase-c-identity-integration-plan.md`.
 - Acceptance trace: `docs/specs/s4-phase-c-acceptance-trace.md`.
-- Current local verification revision: `189eb78bd282f7d90d8781a8c3841bb13c14972f`.
+- Current local verification revision: `5bf628de`.
 - Phase B base: `c75c99e84d699d2d1eac44f07d4e013ead4c12a5` (`feat/s4-b-shared-modules-role-definitions`).
 - Authenticated browser target: `http://127.0.0.1:8797`, direct Node `v22.18.0` Wrangler process, disposable local D1 only.
 - No remote host, Cloudflare account, Apps Script, Google Sheet, production database, deployment, or Phase D path was used.
