@@ -8,7 +8,7 @@
 - Required specifications: `docs/specs/091-stackable-identity-backend.md` and `docs/specs/092-discord-identity-design-system-adoption.md`.
 - Plan: `local://s4-phase-c-identity-integration-plan.md`.
 - Acceptance trace: `docs/specs/s4-phase-c-acceptance-trace.md`.
-- Current local verification revision: `5bf628de`.
+- Current local verification revision: `c0905b2e`.
 - Phase B base: `c75c99e84d699d2d1eac44f07d4e013ead4c12a5` (`feat/s4-b-shared-modules-role-definitions`).
 - Authenticated browser target: `http://127.0.0.1:8797`, direct Node `v22.18.0` Wrangler process, disposable local D1 only.
 - No remote host, Cloudflare account, Apps Script, Google Sheet, production database, deployment, or Phase D path was used.
@@ -105,3 +105,43 @@ assertions because the four normalized Worker files abort before assertions
 with the known Cloudflare-pool/Vite `EvalError`. No assertion suppression or
 unsafe runtime workaround was added. The required manual M1–M4 gates remain
 unclaimed, and no remote or production resource was touched.
+
+## Final summary-scope verification — current `c0905b2e` — 2026-08-31
+
+The final identity correction filters hierarchy assignment counts/IDs and
+Permission Editor assigned-account detail by immutable assignment scope before
+returning a scoped projection. The authoritative document paths are the
+repository Specs 091/092 above and the approved plan artifact
+`local://s4-phase-c-identity-integration-plan.md`.
+
+| Check | Exact result |
+| --- | --- |
+| `pnpm typecheck` | **PASS** |
+| `pnpm --dir web typecheck` | **PASS** |
+| `pnpm --dir web build` | **PASS**, 18/18 static routes generated |
+| `pnpm --dir web test:components` | **PASS**, 59 files, 690/690 |
+| Scoped-summary component subset | **PASS**, 5 files, 113/113 |
+| `pnpm verify:identity` | **PASS**, 4 files, 95/95 |
+| Account Access and history tests | **PASS**, 2 files, 29/29 |
+| `pnpm test` | **PASS**, 1 file, 38/38 |
+| `pnpm test:shell-responsive` | **PASS**, 92 passed, 1 intentional skip |
+| `pnpm test:shell-geometry` | **PASS**, 28/28 |
+| `pnpm test:role-hierarchy-geometry` | **PASS**, 49/49 |
+| `programs-d1.config.ts` | **PASS**, 195/195 after the workspace tile correction |
+| `s4-management-hardening.config.ts` | **PASS**, 45 passed and 65 intentional `onlyProjects` skips; 110 scheduled |
+| `live-ui.config.ts` | **PASS**, 28/28 |
+| `member-directory.config.ts` | **PASS**, 1/1 |
+| Local registration hygiene query | **PASS**, `pending: 0`, `legacy_s4: 0` |
+| `pnpm check` | **FAIL**, repository-wide Ultracite baseline: 1,813 errors and 0 warnings |
+
+The aggregate `pnpm --dir web test` remains an explicit environment blocker:
+37 files and 555 assertions pass, while four normalized Worker files abort
+before product assertions with the known Cloudflare-pool/Vite
+`EvalError: Code generation from strings disallowed for this context`.
+The direct Node 22 Wrangler run was loopback-only and stopped after checks;
+the supervised Node 20 `dev:local` launcher still fails on
+`ERR_UNKNOWN_BUILTIN_MODULE: node:sqlite`.
+
+Manual `C-487-M1` through `C-487-M4` remain unclaimed. No remote or production
+resource, Apps Script, Google Sheet, deployment, screenshot, pixel-diff,
+WCAG, screen-reader, real-device, or Phase D path was touched.

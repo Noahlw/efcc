@@ -4287,3 +4287,42 @@ fails with `ERR_UNKNOWN_BUILTIN_MODULE: node:sqlite` and is not relabeled as
 passed. `C-487-M1` through `C-487-M4` remain **MANUAL, unclaimed**. No
 production, remote, Apps Script, Google Sheet, deployment, screenshot,
 pixel-diff, WCAG, screen-reader, real-device, or Phase D claim is made.
+
+## #485–#487 final summary-scope verification — current `c0905b2e` — 2026-08-31
+
+The final review correction applies one shared immutable-assignment-scope
+predicate to Role Tree assignment counts/IDs and Permission Editor assigned
+accounts. A scoped caller now receives only Global, same-Department (including
+Program descendants), or same-Program assignment summaries; Admin/global
+callers retain the complete projection. The role definition remains the source
+for current label, grant, position, and lifecycle metadata. QA provenance now
+points to the repository Specs 091/092 and the approved local plan artifact.
+
+| Check | Exact result |
+| --- | --- |
+| `pnpm typecheck` | **PASS** |
+| `pnpm --dir web typecheck` | **PASS** |
+| `pnpm --dir web build` | **PASS**, 18/18 static routes generated |
+| `pnpm --dir web test:components` | **PASS**, 59 files, 690/690 |
+| Scoped-summary component subset | **PASS**, 5 files, 113/113 |
+| `pnpm verify:identity` | **PASS**, 4 files, 95/95 |
+| Account Access and history tests | **PASS**, 2 files, 29/29 |
+| `pnpm test` | **PASS**, 1 file, 38/38 |
+| `pnpm test:shell-responsive` | **PASS**, 92 passed, 1 intentional skip |
+| `pnpm test:shell-geometry` | **PASS**, 28/28 |
+| `pnpm test:role-hierarchy-geometry` | **PASS**, 49/49 |
+| `programs-d1.config.ts` | **PASS**, 195/195 after the workspace tile correction |
+| `s4-management-hardening.config.ts` | **PASS**, 45 passed and 65 intentional `onlyProjects` skips; 110 scheduled |
+| `live-ui.config.ts` | **PASS**, 28/28 |
+| `member-directory.config.ts` | **PASS**, 1/1 |
+| Local registration hygiene query | **PASS**, `pending: 0`, `legacy_s4: 0` |
+| `git diff --check` | **PASS** |
+| `pnpm check` | **FAIL**, repository-wide Ultracite baseline: 1,813 errors and 0 warnings |
+
+The aggregate `pnpm --dir web test` remains **BLOCKED** by four normalized
+Worker files aborting before assertions with the known Cloudflare-pool/Vite
+`EvalError`; the full command still recorded 37 passing files and 555 passing
+assertions. Manual `C-487-M1` through `C-487-M4` remain **unclaimed**. No
+remote or production resource, Apps Script, Google Sheet, deployment,
+screenshot, pixel-diff, WCAG, screen-reader, real-device, or Phase D path was
+touched.
