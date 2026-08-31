@@ -8,7 +8,7 @@
 - Required specifications: `docs/specs/091-stackable-identity-backend.md` and `docs/specs/092-discord-identity-design-system-adoption.md`.
 - Plan: `local://s4-phase-c-identity-integration-plan.md`.
 - Acceptance trace: `docs/specs/s4-phase-c-acceptance-trace.md`.
-- Current local verification revision: `f3cf4e1db292426d5ba4dc93a1dcadbe0f71c262`.
+- Current local verification revision: `be4aff4f3a0c5ceca2edc7276e23a89f6fbaf912`.
 - Phase B base: `c75c99e84d699d2d1eac44f07d4e013ead4c12a5` (`feat/s4-b-shared-modules-role-definitions`).
 - Authenticated browser target: `http://127.0.0.1:8797`, direct Node `v22.18.0` Wrangler process, disposable local D1 only.
 - No remote host, Cloudflare account, Apps Script, Google Sheet, production database, deployment, or Phase D path was used.
@@ -256,3 +256,33 @@ buttons. Those corrections are included in the source provenance above.
 pixel-diff, WCAG-conformance, screen-reader, real-device, remote-CI, Cloudflare
 promotion, Apps Script, Google Sheet, production-D1, deployment, merge, or
 Phase D claim.
+
+## Review correction verification — source `be4aff4f3a0c5ceca2edc7276e23a89f6fbaf912` — 2026-08-31
+
+The fresh two-axis review identified three concrete corrections: the Account
+Directory Account Access CTA needed real Link semantics; Permission Editor
+conflict, save, and retry controls needed `min-h-11`; and successful Permission
+Editor PATCH responses needed to expose `data.idempotent` while broad
+permission-read denial needed to reserve its denied audit/idempotency result.
+The review also identified a reserved-route collision risk, so the Worker now
+returns `404 NOT_FOUND` for `/api/v1/programs/account-permissions` before the
+generic program-ID route.
+
+| Correction check | Exact result |
+| --- | --- |
+| `pnpm typecheck` and `pnpm --dir web typecheck` | **PASS** |
+| `pnpm --dir web build` | **PASS**, 18/18 static routes |
+| `pnpm --dir web test:components` | **PASS**, 59 files, 692/692 |
+| Account Directory + Permission Editor component subset | **PASS**, 25/25 |
+| `pnpm test:role-hierarchy-geometry` | **PASS**, 49/49 |
+| `s4-management-hardening.config.ts` after correction | **PASS**, 45 passed, 65 intentional `onlyProjects` skips, 110 scheduled |
+| Authenticated retired-route collision smoke | **PASS**, local dev Admin login returned 200; with a disposable `programs.program_id = 'account-permissions'` row, the route returned `404` and `NOT_FOUND`; the probe row was deleted |
+| `normalized-authority.test.ts` route regression | **INFRA-BLOCKED**, exit 1 before assertions with the same Cloudflare-pool `EvalError`; no product assertion is claimed from that file |
+| Final Ultracite baseline | **FAIL**, 295 files, 1,823 diagnostics, 0 warnings, 557 rules; changed-line review-correction audit found zero new diagnostics |
+| Final registration residue after reset | **PASS**, `pending: 0`, `legacy_s4: 0`; the Worker was stopped |
+
+The correction source remains local/disposable only. No remote or production
+database, Apps Script, Google Sheet, deployment, merge, screenshot,
+pixel-diff, WCAG-conformance, screen-reader, real-device, remote-CI, or Phase D
+claim is made. Manual `C-485-M1/M2`, `C-486-M1/M2`, and `C-487-M1..M4` remain
+unclaimed.

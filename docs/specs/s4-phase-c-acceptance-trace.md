@@ -4430,3 +4430,47 @@ All evidence is local/disposable and CSS-pixel based. No screenshot,
 pixel-diff, WCAG-conformance, screen-reader, real-device, remote-CI,
 production-promotion, Apps Script, Google Sheet, remote-D1, deployment, merge,
 or Phase D claim is made.
+
+## Fresh-review correction verification — source `be4aff4f3a0c5ceca2edc7276e23a89f6fbaf912` — 2026-08-31
+
+The first complete two-axis review reported two concrete Standards P2s and
+one Spec blocker, plus a reserved-route collision risk. The correction source
+now:
+
+- renders the Account Directory → Account Access CTA with local `Button
+  asChild` + semantic `Link`, preserving the encoded return URL, `min-h-11`,
+  and focus-restoration ref;
+- applies `min-h-11` to Permission Editor conflict-recovery, save, and retry
+  controls;
+- exposes `data.idempotent` on successful Permission Editor PATCH responses
+  (`false` for the first terminal result, `true` for a same
+  actor/key/fingerprint replay) while keeping `responseRequestId` transport
+  only;
+- records broad `role.permissions.read` denials through the terminal
+  denial/audit reservation before returning `RoleCapabilityDeniedError`; and
+- reserves `/api/v1/programs/account-permissions` before the generic program
+  ID route, with a normalized-authority collision regression.
+
+| Correction verification | Result |
+| --- | --- |
+| `pnpm typecheck` and `pnpm --dir web typecheck` | **PASS** |
+| `pnpm --dir web build` | **PASS**, 18/18 static routes |
+| `pnpm --dir web test:components` | **PASS**, 59 files/692 assertions |
+| `pnpm test:role-hierarchy-geometry` | **PASS**, 49/49 |
+| `s4-management-hardening.config.ts` | **PASS**, 45 passed, 65 intentional skips, 110 scheduled |
+| Account Directory + Permission Editor component subset | **PASS**, 25/25 |
+| Authenticated retired-route collision smoke | **PASS**, local dev Admin login returned 200 and the reserved path returned `404 NOT_FOUND` even with a disposable `programs.program_id = 'account-permissions'` row; the row was deleted |
+| `normalized-authority.test.ts` collision regression | **INFRA-BLOCKED**, exit 1 before assertions with the known Cloudflare-pool `EvalError`; no product assertion is claimed from that file |
+| Final Ultracite baseline | **FAIL**, 295 files, 1,823 diagnostics, 0 warnings, 557 rules; no new diagnostics occurred on the correction lines |
+| Final disposable registration residue | **PASS**, `pending: 0`, `legacy_s4: 0`; the Worker was stopped |
+
+The earlier final source classification remains valid for the untouched
+criteria. The Cloudflare-pool blocker continues to affect
+`lib/auth/normalized-authority-c487.test.ts`,
+`lib/identity/permission-editor.test.ts`,
+`lib/identity/permission-editor-handlers.test.ts`, and
+`lib/identity/normalized-authority.test.ts`; the blocked tests reached zero
+product assertions. `C-485-M1/M2`, `C-486-M1/M2`, and `C-487-M1..M4` remain
+`MANUAL — unclaimed`. No screenshot, pixel-diff, WCAG, screen-reader,
+real-device, remote-CI, production-promotion, remote-D1, deployment, merge,
+or Phase D claim is made.
