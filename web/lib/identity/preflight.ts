@@ -119,7 +119,9 @@ export async function preflightDisposableSchema(
         WHERE type = 'table' AND name NOT LIKE 'sqlite_%'`
     )
     .all<TableNameRow>();
-  const tables = new Set((result.results ?? []).map((row) => row.name));
+  const tables = new Set(
+    (result.results ?? []).map((row) => row.name.toLowerCase())
+  );
 
   const legacyHits = LEGACY_PRE_019_TABLES.filter((table) => tables.has(table));
   if (legacyHits.length > 0) {

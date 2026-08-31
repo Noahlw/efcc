@@ -35,7 +35,7 @@ function readTableNames(): Set<string> {
   const result = JSON.parse(output) as WranglerResult[];
   return new Set(
     (result[0]?.results ?? [])
-      .map((row) => row.name)
+      .map((row) => row.name?.toLowerCase())
       .filter((name): name is string => typeof name === "string")
   );
 }

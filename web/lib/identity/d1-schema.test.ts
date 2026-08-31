@@ -213,6 +213,25 @@ describe("#476 disposable D1 schema contract", () => {
     }
   });
 
+  test("preflight matches retired table names case-insensitively", async () => {
+    const db = testDb();
+    await db
+      .prepare("CREATE TABLE IF NOT EXISTS ROLE_CAPABILITIES (marker TEXT)")
+      .run();
+    try {
+      const result = await preflightDisposableSchema(db, {
+        databaseName: DISPOSABLE_DATABASE,
+      });
+      expect(result.kind).toBe("stale-schema");
+      if (result.kind !== "stale-schema") {
+        throw new Error("expected stale-schema outcome");
+      }
+      expect(result.legacyTables).toContain("role_capabilities");
+    } finally {
+      await db.prepare("DROP TABLE IF EXISTS ROLE_CAPABILITIES").run();
+    }
+  });
+
   test("D1 keeps fixed Role Categories non-assignable and immutable", async () => {
     await expectAbort(async () => {
       await testDb()
