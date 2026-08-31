@@ -4548,3 +4548,26 @@ No new data or authority path was introduced. No screenshot, pixel-diff,
 WCAG-conformance, screen-reader, real-device, remote-CI,
 production-promotion, remote-D1, deployment, merge, Apps Script, Google Sheet,
 or Phase D claim is made.
+
+## Final dynamic-label and dialog containment — source `0fb16ff0a401f5e653640b68c9a81314f36cb997` — 2026-08-31
+
+The final Standards review checked dynamic role labels beyond the list rows.
+The Permission Editor detail heading/description and shared
+`ManagementPageHeader` now use `min-w-0`/`wrap-anywhere`; Account Access
+lifecycle actions use `h-auto min-h-11 min-w-0 max-w-full shrink
+whitespace-normal wrap-anywhere`; and the shared Dialog close Button has
+`min-h-11 min-w-11` despite its icon size variant.
+
+| Correction | Status | Evidence |
+| --- | --- | --- |
+| Dynamic Permission Editor detail/header containment | **PASS** | Component source and the Permission Editor component/geometry seams pass with wrapped labels. |
+| Account Access lifecycle action containment | **PASS** | Account Access component and W7 geometry seams pass with shrinkable, auto-height, anywhere-wrapping actions. |
+| Dialog close hit target | **PASS** | Account Access component test asserts `min-h-11` and `min-w-11` on the shared Dialog close control. |
+| Source and component checks | **PASS** | `pnpm typecheck`, `pnpm --dir web typecheck`, `pnpm --dir web build`, and `pnpm --dir web test:components` (59 files/693 assertions) pass. |
+| Geometry check | **PASS** | `pnpm test:role-hierarchy-geometry` passes 49/49 across W7. |
+| Remaining release classification | **MANUAL / INFRA** | Four Worker files remain blocked before assertions by the known Cloudflare-pool EvalError; manual rows remain unclaimed. |
+
+No authority or persistence path changed. No screenshot, pixel-diff,
+WCAG-conformance, screen-reader, real-device, remote-CI,
+production-promotion, remote-D1, deployment, merge, Apps Script, Google Sheet,
+or Phase D claim is made.

@@ -8,7 +8,7 @@
 - Required specifications: `docs/specs/091-stackable-identity-backend.md` and `docs/specs/092-discord-identity-design-system-adoption.md`.
 - Plan: `local://s4-phase-c-identity-integration-plan.md`.
 - Acceptance trace: `docs/specs/s4-phase-c-acceptance-trace.md`.
-- Current local verification revision: `30079e6f257c17d95d1f1dc67bc6f91dfc29bce7`.
+- Current local verification revision: `0fb16ff0a401f5e653640b68c9a81314f36cb997`.
 - Phase B base: `c75c99e84d699d2d1eac44f07d4e013ead4c12a5` (`feat/s4-b-shared-modules-role-definitions`).
 - Authenticated browser target: `http://127.0.0.1:8797`, direct Node `v22.18.0` Wrangler process, disposable local D1 only.
 - No remote host, Cloudflare account, Apps Script, Google Sheet, production database, deployment, or Phase D path was used.
@@ -355,3 +355,27 @@ the fixed-height/nowrap base.
 Manual M1–M4 rows remain unclaimed. No screenshot, pixel-diff, WCAG,
 screen-reader, real-device, remote-CI, production-promotion, deployment,
 merge, remote-D1, or Phase D claim is made.
+
+## Final dynamic-label and dialog containment — source `0fb16ff0a401f5e653640b68c9a81314f36cb997` — 2026-08-31
+
+The final Standards pass required the dynamic Permission Editor detail heading
+and description, Management Page Header title, Account Access lifecycle
+actions, and the shared Dialog close control to be covered by the same
+containment/target-size rules. The source now applies `min-w-0`,
+`wrap-anywhere`, `whitespace-normal`, `h-auto`, and `min-h-11`/`min-w-11` at
+those boundaries without changing authority or data flow.
+
+| Containment check | Exact result |
+| --- | --- |
+| `pnpm typecheck` and `pnpm --dir web typecheck` | **PASS** |
+| `pnpm --dir web build` | **PASS**, 18/18 static routes |
+| `pnpm --dir web test:components` | **PASS**, 59 files, 693/693 |
+| `pnpm test:role-hierarchy-geometry` | **PASS**, 49/49 across W7 |
+| Dynamic identity component subset | **PASS**, 4 files, 72/72 |
+| Full web classification | **INFRA-BLOCKED**, 37 files/561 assertions passed; four documented Cloudflare-pool files abort before assertions |
+| Ultracite baseline | **FAIL**, 295 files, 1,823 diagnostics, 0 warnings; no new diagnostics on containment lines |
+
+Manual M1–M4 rows remain unclaimed. No screenshot, pixel-diff,
+WCAG-conformance, screen-reader, real-device, remote-CI,
+production-promotion, remote-D1, deployment, merge, Apps Script, Google
+Sheet, or Phase D claim is made.
