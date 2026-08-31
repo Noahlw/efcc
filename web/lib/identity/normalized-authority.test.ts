@@ -183,4 +183,39 @@ describe("#487 normalized identity authority", () => {
       expect(body.code).toBe("NOT_FOUND");
     }
   });
+
+  test("reserved account-permissions route stays 404 on a program ID collision", async () => {
+    const now = new Date().toISOString();
+    await testDb()
+      .prepare(
+        `INSERT INTO programs
+           (program_id, department_id, name, description, category,
+            behavior_type, lifecycle, discoverability, enrollment_mode,
+            display_order, created_by, created_at, updated_by, updated_at)
+         VALUES ('account-permissions', ?, 'Reserved route collision', NULL,
+                 NULL, 'OneOff', 'Active', 'Listed', 'MemberRequest', 0,
+                 'E2E_DISPOSABLE_ADMIN', ?, 'E2E_DISPOSABLE_ADMIN', ?)`
+      )
+      .bind(DEPARTMENT, now, now)
+      .run();
+    try {
+      const cookie = await login("E2E_disposable_admin");
+      const response = await worker.fetch(
+        new Request(
+          "https://efcc.example/api/v1/programs/account-permissions",
+          { headers: { Cookie: `${ACCESS_COOKIE_NAME}=${cookie}` } }
+        ),
+        testEnv()
+      );
+      expect(response.status).toBe(404);
+      const body = (await response.json()) as { code: string };
+      expect(body.code).toBe("NOT_FOUND");
+    } finally {
+      await testDb()
+        .prepare(
+          "DELETE FROM programs WHERE program_id = 'account-permissions'"
+        )
+        .run();
+    }
+  });
 });
