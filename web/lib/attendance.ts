@@ -2,7 +2,10 @@ import { findAccountByUserId } from "./auth/accounts";
 import type { AccountRow } from "./auth/accounts";
 import { ACCESS_COOKIE_NAME } from "./auth/cookies";
 import { verifyAccessToken } from "./auth/sessions";
-import { loadActorRoles, resolveActorCapabilities } from "./identity/role-hierarchy";
+import {
+  loadActorRoles,
+  resolveActorCapabilities,
+} from "./identity/role-hierarchy";
 import { resolveProgramAccess } from "./programs/program-resolver";
 
 export type AttendanceMethod =
@@ -1333,25 +1336,10 @@ export async function handleListScannerEvents(
     return current;
   }
   const now = new Date().toISOString();
-  const [result, authorizedProgramIds] = await Promise.all([
-    env.DB.prepare(
-      `SELECT e.event_id, e.program_id, p.name AS program_name,
-              e.name, e.location, e.starts_at, e.ends_at,
-              e.check_in_window_opens_at, e.check_in_window_closes_at,
-              e.status, e.availability
-         FROM events e
-         JOIN programs p ON p.program_id = e.program_id
-        WHERE p.lifecycle = 'Active'
-          AND e.status = 'Active'
-          AND e.availability = 'Active'
-          AND julianday(e.check_in_window_opens_at) <= julianday(?)
-          AND julianday(e.check_in_window_closes_at) >= julianday(?)
-        ORDER BY e.starts_at DESC`
-    )
-      .bind(now, now)
-      .all<AttendanceEventSummary>(),
-    resolveOperatorProgramIds(env.DB, current.user_id),
-  ]);
+  const authorizedProgramIds = await resolveOperatorProgramIds(
+    env.DB,
+    current.user_id
+  );
   const accessProblem = await operatorListProblem(
     env.DB,
     current.user_id,
@@ -1361,11 +1349,32 @@ export async function handleListScannerEvents(
   if (accessProblem) {
     return accessProblem;
   }
-  const authorizedProgramIdSet = new Set(authorizedProgramIds);
-  const events = (result.results ?? []).filter((event) =>
-    authorizedProgramIdSet.has(event.program_id)
-  );
-  return json(200, { events }, id);
+  const events: AttendanceEventSummary[] = [];
+  for (let offset = 0; offset < authorizedProgramIds.length; offset += 80) {
+    const chunk = authorizedProgramIds.slice(offset, offset + 80);
+    const placeholders = chunk.map(() => "?").join(", ");
+    const result = await env.DB.prepare(
+      `SELECT e.event_id, e.program_id, p.name AS program_name,
+              e.name, e.location, e.starts_at, e.ends_at,
+              e.check_in_window_opens_at, e.check_in_window_closes_at,
+              e.status, e.availability
+         FROM events e
+         JOIN programs p ON p.program_id = e.program_id
+        WHERE p.lifecycle = 'Active'
+          AND p.program_id IN (${placeholders})
+          AND e.status = 'Active'
+          AND e.availability = 'Active'
+          AND julianday(e.check_in_window_opens_at) <= julianday(?)
+          AND julianday(e.check_in_window_closes_at) >= julianday(?)
+        ORDER BY e.starts_at DESC
+        LIMIT 50`
+    )
+      .bind(...chunk, now, now)
+      .all<AttendanceEventSummary>();
+    events.push(...(result.results ?? []));
+  }
+  events.sort((left, right) => right.starts_at.localeCompare(left.starts_at));
+  return json(200, { events: events.slice(0, 50) }, id);
 }
 
 export async function handleVoidAttendance(
