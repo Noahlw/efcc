@@ -4357,3 +4357,76 @@ All local browser checks used disposable D1 on loopback with direct Node 22
 Wrangler; the Worker was stopped after verification. Manual M1–M4 remain
 unclaimed. No remote/production, Apps Script, Sheet, deployment, screenshot,
 pixel-diff, WCAG, screen-reader, real-device, or Phase D claim is made.
+
+## Final pre-publication verification — source `f3cf4e1db292426d5ba4dc93a1dcadbe0f71c262` — 2026-08-31
+
+This section is the final source-SHA classification. `PASS` means the
+observable contract was exercised by the listed local seam. `INFRA-BLOCKED`
+means the required Worker test seam could not start; component or source
+evidence is not promoted to a Worker PASS. Manual rows remain
+`MANUAL — unclaimed`. No blanket READY status is assigned.
+
+**Source and environment:** branch
+`feat/s4-c-stackable-identity-integration`; accepted Phase B base and
+merge-base `c75c99e84d699d2d1eac44f07d4e013ead4c12a5`; Node `v22.18.0`; pnpm
+`11.7.0`; Vitest `4.1.10`; workspace Vite `5.4.21` (the Cloudflare-pool
+startup stack reports Vite `8.2.0`); Wrangler `4.127.1`; Playwright `1.62.1`;
+local Worker `http://127.0.0.1:8797` with
+`EFCC_ACCESS_TOKEN_SECRET=phase-c-local-only-secret`; disposable local D1 only.
+Every mutating browser suite was preceded by `db:seed:local` and
+`db:seed:demo`. The Worker was stopped after the final registration-residue
+query.
+
+### Final criterion status
+
+| Criterion | Status | Direct evidence at this source SHA |
+| --- | --- | --- |
+| C-485-01 | **INFRA-BLOCKED** | Component list/detail and safe URL behavior passed; the required Permission Editor Worker detail seam could not start because `permission-editor.test.ts` aborted at Cloudflare-pool startup before assertions. |
+| C-485-02 | **INFRA-BLOCKED** | Component Switch semantics and W7 numeric geometry passed; the Worker lock matrix and manual keyboard/AT review remain unavailable or unclaimed. |
+| C-485-03 | **INFRA-BLOCKED** | Component dirty-draft, Sheet review, retry-key, and conflict behavior passed; the Worker atomic grant/revision/audit path was blocked before assertions. |
+| C-485-04 | **INFRA-BLOCKED** | Component ordinary/high-risk review split and W7 geometry passed; exact Worker threshold/audit coverage was blocked before assertions. |
+| C-485-05 | **INFRA-BLOCKED** | `permission-editor-handlers.test.ts` and the Permission Editor domain seam both failed before assertions with the Cloudflare-pool EvalError; no HTTP/D1 grant PASS is claimed. |
+| C-485-06 | **INFRA-BLOCKED** | Component conflict/recovery behavior passed; Worker stale-revision, denial, protected-target, and idempotency-reuse assertions were blocked before assertions. |
+| C-485-M1 | **MANUAL — unclaimed** | Keyboard-only Permission Editor review at 320/1440, focus visibility, target size, dock clearance, and review surfaces. |
+| C-485-M2 | **MANUAL — unclaimed** | Screen-reader Switch, dirty/saving/success/error/conflict, and high-risk acknowledgement review. |
+| C-486-01 | **PASS** | Local Worker/domain, Account Access handler, Account Directory, Account Access component, Programs D1, and member-directory seams passed safe Active/non-Admin filtering, self suppression, and private-field exclusions. |
+| C-486-02 | **PASS** | Local account-access domain and handler tests passed multi-identity atomic add, duplicate IDs, fresh assignment behavior, and first/replayed idempotency (`false`/`true`). |
+| C-486-03 | **PASS** | Local account-access and handler seams passed invalid-batch rollback, self/target guards, and canonical error handling; the final browser and focused runs were clean. |
+| C-486-04 | **PASS** | Local domain/history and handler seams passed revoke history, fresh re-add, duplicate replay, and explicit revoke/lifecycle response envelopes. |
+| C-486-05 | **PASS** | Local Account Access component/domain seams passed scope-grouped Effective Permission, provenance, lost/retained impact, archive impact, and ordinary-read privacy projection. |
+| C-486-06 | **PASS** | Local lifecycle domain/handler and browser seams passed archive, bulk revoke, preserved grants/history, blocked assignment, restore, and first/replayed idempotency behavior. |
+| C-486-07 | **PASS** | Account Access, live UI, member directory, shell, and identity geometry runs passed canonical links, responsive containment, and W7 widths; manual focus/AT rows remain separate. |
+| C-486-M1 | **MANUAL — unclaimed** | Keyboard-only identity-first/account-first Account Access entry, Back/history, focus, target-size, and dock review. |
+| C-486-M2 | **MANUAL — unclaimed** | Screen-reader Effective Permission groups, provenance, archive impact, and revoke/re-add announcement review. |
+| C-487-01 | **PASS** | Programs D1/live UI local journeys and identity bootstrap checks passed normalized capability-derived sections/navigation and privacy-safe summaries; the separate normalized-authority Worker file is included in the documented pool blocker. |
+| C-487-02 | **PASS** | Programs D1 local Worker journeys passed normalized scope behavior across Programs management, directory, workspace, enrollment, and module actions. |
+| C-487-03 | **PASS** | Programs D1/local attendance journeys passed normalized Department/Program operator scope and member/out-of-scope denial behavior. |
+| C-487-04 | **PASS** | Programs D1, live UI, Account Directory, Management Hub, and focused Hub seams passed normalized management gates, including self/Admin/inactive access suppression and corrected role-link destinations. |
+| C-487-05 | **PASS** | `verify:identity` passed 4 files/96 assertions; migration 0025 active-assignment immutability passed; the disposable seed wrapper failed closed on a retired table, printed a manual local DROP command, wrote no seed row, then succeeded after only the probe table was manually removed. |
+| C-487-06 | **PASS** | The exact legacy-token audit found only preflight, seed-wrapper, and stale-schema-test references; no executable production authority path remains outside those guards. |
+| C-487-07 | **PASS** | Programs D1 195/195, management hardening 45/45 with 65 intentional skips, live UI 28/28, member directory 1/1, responsive 92 plus 1 intentional skip, shell geometry 28/28, and identity geometry 49/49 passed. |
+| C-487-M1 | **MANUAL — unclaimed** | Reduced-motion, forced-colors, 200% zoom, and text-spacing review across Permission Editor, Account Access, bootstrap, and management. |
+| C-487-M2 | **MANUAL — unclaimed** | Real iOS/Android dock and safe-area review at 320/390. |
+| C-487-M3 | **MANUAL — unclaimed** | Remote-CI verification; local evidence does not claim CI parity. |
+| C-487-M4 | **MANUAL — unclaimed** | Production-promotion dry run; no production, Apps Script, Sheets, or remote Cloudflare write was attempted. |
+
+### Final command and infrastructure record
+
+| Command or check | Result |
+| --- | --- |
+| `pnpm typecheck` | **PASS**, root and E2E TypeScript |
+| `pnpm --dir web typecheck` | **PASS**, web and Worker TypeScript |
+| `pnpm --dir web build` | **PASS**, 18 static routes |
+| `pnpm test` | **PASS**, 38/38 |
+| `pnpm verify:identity` | **PASS**, 4 files/96 assertions |
+| `pnpm --dir web test:components` | **PASS**, 59 files/692 assertions |
+| Focused identity/account/Hub/attendance runner | **PASS**, 6 files/107 assertions |
+| `pnpm --dir web test` | **INFRA-BLOCKED**, exit 1; 37 files/559 assertions passed; `lib/auth/normalized-authority-c487.test.ts`, `lib/identity/permission-editor.test.ts`, `lib/identity/permission-editor-handlers.test.ts`, and `lib/identity/normalized-authority.test.ts` aborted before assertions with `EvalError: Code generation from strings disallowed for this context` |
+| Final `pnpm check` baseline | **FAIL**, 295 files, 1,824 diagnostics, 0 warnings, 557 rules; zero diagnostics were introduced on Phase C added lines |
+| Context7 CLI | Quota response: `✖ Monthly quota exceeded. Create a free API key at https://context7.com/dashboard for more requests.` No fresh documentation claim is made. |
+| Prescribed `pnpm dev:local` launcher | **INFRA-BLOCKED**, Node 20 reports `ERR_UNKNOWN_BUILTIN_MODULE: node:sqlite`; direct Node 22 was used only for loopback verification |
+
+All evidence is local/disposable and CSS-pixel based. No screenshot,
+pixel-diff, WCAG-conformance, screen-reader, real-device, remote-CI,
+production-promotion, Apps Script, Google Sheet, remote-D1, deployment, merge,
+or Phase D claim is made.

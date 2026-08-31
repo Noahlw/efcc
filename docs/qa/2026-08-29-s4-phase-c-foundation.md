@@ -8,7 +8,7 @@
 - Required specifications: `docs/specs/091-stackable-identity-backend.md` and `docs/specs/092-discord-identity-design-system-adoption.md`.
 - Plan: `local://s4-phase-c-identity-integration-plan.md`.
 - Acceptance trace: `docs/specs/s4-phase-c-acceptance-trace.md`.
-- Current local verification revision: `4773b63d`.
+- Current local verification revision: `f3cf4e1db292426d5ba4dc93a1dcadbe0f71c262`.
 - Phase B base: `c75c99e84d699d2d1eac44f07d4e013ead4c12a5` (`feat/s4-b-shared-modules-role-definitions`).
 - Authenticated browser target: `http://127.0.0.1:8797`, direct Node `v22.18.0` Wrangler process, disposable local D1 only.
 - No remote host, Cloudflare account, Apps Script, Google Sheet, production database, deployment, or Phase D path was used.
@@ -176,3 +176,83 @@ All local browser checks used disposable D1 on loopback with direct Node 22
 Wrangler; the Worker was stopped after verification. Manual M1–M4 remain
 unclaimed. No remote/production, Apps Script, Sheet, deployment, screenshot,
 pixel-diff, WCAG, screen-reader, real-device, or Phase D claim is made.
+
+## Final pre-publication verification — source `f3cf4e1db292426d5ba4dc93a1dcadbe0f71c262` — 2026-08-31
+
+The final source tree was clean on branch
+`feat/s4-c-stackable-identity-integration`. The accepted Phase B merge-base
+remained `c75c99e84d699d2d1eac44f07d4e013ead4c12a5`. All authenticated browser
+checks below used the direct Node `v22.18.0` Wrangler process at
+`http://127.0.0.1:8797`, the `EFCC_ACCESS_TOKEN_SECRET=phase-c-local-only-secret`
+test secret, and disposable local D1 only. The Worker was stopped after the
+registration-residue query.
+
+### Source and focused verification
+
+| Check | Exact result |
+| --- | --- |
+| `pnpm typecheck` | **PASS**, root and E2E TypeScript |
+| `pnpm --dir web typecheck` | **PASS**, web and Worker TypeScript |
+| `pnpm --dir web build` | **PASS**, 18/18 static routes generated |
+| `pnpm test` | **PASS**, 1 file, 38/38 |
+| `pnpm verify:identity` | **PASS**, 4 files, 96/96 |
+| `pnpm --dir web test:components` | **PASS**, 59 files, 692/692 |
+| Focused identity/account/Hub/attendance runner | **PASS**, 6 files, 107/107 |
+| Focused Account Access handler + Hub runner | **PASS**, 2 files, 18/18 |
+| Account Access + Permission Editor component runner | **PASS**, 2 files, 45/45 |
+| `pnpm --dir web test` | **INFRA-BLOCKED**, exit 1; 37 files and 559 assertions passed; `lib/auth/normalized-authority-c487.test.ts`, `lib/identity/permission-editor.test.ts`, `lib/identity/permission-editor-handlers.test.ts`, and `lib/identity/normalized-authority.test.ts` aborted before assertions with `EvalError: Code generation from strings disallowed for this context` while starting the Cloudflare pool |
+| `pnpm check` / final `ultracite check --format json` | **BASELINE-FAILED**, exit 2; 295 files, 1,824 diagnostics, 0 warnings, 557 rules. The changed-line audit found zero diagnostics introduced by the Phase C patch; existing repository baseline diagnostics remain |
+| Retired-authority audit | **PASS**, hits are limited to `web/lib/identity/preflight.ts`, `tests/e2e/seed-disposable-identity.ts`, and explicit stale-schema tests; no executable legacy authority read/write exists outside those guards |
+
+The repository uses Vitest `4.1.10`, workspace Vite resolution `5.4.21`, the
+Cloudflare-pool startup stack reports Vite `8.2.0`, Wrangler `4.127.1`,
+Playwright `1.62.1`, pnpm `11.7.0`, and Node `22.18.0`. Context7 CLI was
+attempted for the shadcn/Radix API facts and returned exactly:
+
+`✖ Monthly quota exceeded. Create a free API key at https://context7.com/dashboard for more requests.`
+
+No fresh Context7 documentation claim is made. The prescribed Node 20
+`pnpm dev:local` launcher remains **INFRA-BLOCKED** by
+`ERR_UNKNOWN_BUILTIN_MODULE: node:sqlite`; the direct Node 22 loopback process
+was used only for local verification and is not the prescribed launcher.
+
+### Local disposable seed preflight
+
+The wrapper probe created only disposable local `role_capabilities`, measured
+five existing `role_definitions`, and ran `pnpm db:seed:disposable`. It exited
+1 before any seed write and printed the manual local-only reset command:
+
+`pnpm --dir web exec wrangler d1 execute efcc-identity --local --command "DROP TABLE IF EXISTS role_capabilities;"`
+
+The post-failure `role_definitions` count remained five. After manually
+dropping only that probe table, the wrapper succeeded. The full
+`pnpm db:seed:local` caller also succeeded. No remote flag, automatic DROP,
+runtime backfill, or alternate seed format was used.
+
+### Browser and geometry gates
+
+Each mutating suite was preceded by a disposable local reset and demo seed.
+The final outcomes were:
+
+| Gate | Exact result |
+| --- | --- |
+| `programs-d1.config.ts` | **PASS**, 195/195 |
+| `s4-management-hardening.config.ts` | **PASS**, 45 passed, 65 intentional `onlyProjects` skips, 110 scheduled |
+| `live-ui.config.ts` | **PASS**, 28/28 |
+| `member-directory.config.ts` | **PASS**, 1/1 |
+| `pnpm test:shell-responsive` | **PASS**, 92 passed, 1 intentional skip |
+| `pnpm test:shell-geometry` | **PASS**, 28/28 |
+| `pnpm test:role-hierarchy-geometry` | **PASS**, 49/49 across W7 `320, 390, 600, 799, 800, 1024, 1440` CSS px |
+| Registration residue query | **PASS**, `pending: 0`, `legacy_s4: 0` using `registration_requests.account_status` and the `e2e-s4-*` / `s4-*` username prefixes |
+
+The final hardening and live UI runs required two test-only selector
+corrections so semantic Role/Permission links are queried as links rather than
+buttons. Those corrections are included in the source provenance above.
+
+### Release-gap classification
+
+`C-485-M1`, `C-485-M2`, `C-486-M1`, `C-486-M2`, and `C-487-M1` through
+`C-487-M4` remain `MANUAL — unclaimed`. This evidence makes no screenshot,
+pixel-diff, WCAG-conformance, screen-reader, real-device, remote-CI, Cloudflare
+promotion, Apps Script, Google Sheet, production-D1, deployment, merge, or
+Phase D claim.
