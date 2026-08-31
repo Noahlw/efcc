@@ -145,6 +145,10 @@ const VIEW: RoleHierarchyView = {
           isArchived: false,
           assignmentCount: 1,
           assignedAccountUserIds: ["account-1"],
+          assignmentActions: [
+            { action: "assign", label: "指派" },
+            { action: "revoke", label: "撤銷" },
+          ],
           grantCount: 12,
           actions: [
             { action: "rename", label: "重新命名" },
@@ -163,6 +167,7 @@ const VIEW: RoleHierarchyView = {
           position: 11,
           isProtected: false,
           isArchived: false,
+          assignmentActions: [{ action: "assign", label: "指派" }],
           assignmentCount: 0,
           lifecycleActions: [{ action: "archive", label: "停用" }],
           grantCount: 0,
@@ -309,6 +314,34 @@ describe(RoleHierarchyPanel, () => {
     expect(mocks.router.push).toHaveBeenCalledWith(
       "/management?module=accounts&roleDefinition=018f3b8a-0000-7000-8000-1000000000bb&view=access&return=%2Fmanagement%3Fmodule%3Droles%26role%3D018f3b8a-0000-7000-8000-1000000000bb%26view%3Ddetail"
     );
+  });
+
+  test("role-read-only viewers do not get assignment management CTA", async () => {
+    const readOnlyView: RoleHierarchyView = {
+      ...VIEW,
+      caller: { userId: "u-reader", highestPosition: 10 },
+      categories: VIEW.categories.map((category) => ({
+        ...category,
+        definitions: category.definitions.map((definition) =>
+          definition.roleDefinitionId === MANAGER_ROLE
+            ? {
+                ...definition,
+                assignmentActions: [],
+                lifecycleActions: [],
+              }
+            : definition
+        ),
+      })),
+    };
+    mocks.searchParams = new URLSearchParams(
+      `module=roles&role=${MANAGER_ROLE}&view=detail`
+    );
+    server.use(
+      http.get("/api/v1/identity/roles", () => hierarchyResponse(readOnlyView))
+    );
+    render(<RoleHierarchyPanel />);
+    await screen.findByRole("heading", { name: "成人部門管理者" });
+    expect(screen.queryByRole("button", { name: "管理已指派帳戶" })).toBeNull();
   });
 
   test("H-18: a malformed role parameter falls back to the safe list", async () => {

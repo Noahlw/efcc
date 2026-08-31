@@ -1397,9 +1397,7 @@ export const RoleHierarchyPanel = () => {
             </Button>
           )}
           {!selected.isProtected &&
-            (selected.assignmentCount > 0 ||
-              (selected.assignmentActions ?? []).length > 0 ||
-              (selected.lifecycleActions ?? []).length > 0) && (
+            (selected.assignmentActions ?? []).length > 0 && (
               <Button
                 className={cn(
                   actionButtonVariants({ tone: "primary" }),
