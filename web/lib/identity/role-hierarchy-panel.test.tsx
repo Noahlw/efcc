@@ -323,10 +323,38 @@ describe(RoleHierarchyPanel, () => {
     );
   });
 
-  test("viewers without assignment capability do not get Account Access CTA", async () => {
+  test("viewers without assignment or lifecycle capability do not get Account Access CTA", async () => {
     const readOnlyView: RoleHierarchyView = {
       ...VIEW,
       caller: { userId: "u-reader", highestPosition: 10 },
+      categories: VIEW.categories.map((category) => ({
+        ...category,
+        definitions: category.definitions.map((definition) =>
+          definition.roleDefinitionId === MANAGER_ROLE
+            ? {
+                ...definition,
+                assignmentActions: [],
+                lifecycleActions: [],
+              }
+            : definition
+        ),
+      })),
+    };
+    mocks.searchParams = new URLSearchParams(
+      `module=roles&role=${MANAGER_ROLE}&view=detail`
+    );
+    server.use(
+      http.get("/api/v1/identity/roles", () => hierarchyResponse(readOnlyView))
+    );
+    render(<RoleHierarchyPanel />);
+    await screen.findByRole("heading", { name: "成人部門管理者" });
+    expect(screen.queryByRole("button", { name: "管理已指派帳戶" })).toBeNull();
+  });
+
+  test("role-delete-only identity gets the Account Access lifecycle entry", async () => {
+    const lifecycleOnlyView: RoleHierarchyView = {
+      ...VIEW,
+      caller: { userId: "u-lifecycle", highestPosition: 10 },
       categories: VIEW.categories.map((category) => ({
         ...category,
         definitions: category.definitions.map((definition) =>
@@ -344,11 +372,18 @@ describe(RoleHierarchyPanel, () => {
       `module=roles&role=${MANAGER_ROLE}&view=detail`
     );
     server.use(
-      http.get("/api/v1/identity/roles", () => hierarchyResponse(readOnlyView))
+      http.get("/api/v1/identity/roles", () =>
+        hierarchyResponse(lifecycleOnlyView)
+      )
     );
     render(<RoleHierarchyPanel />);
-    await screen.findByRole("heading", { name: "成人部門管理者" });
-    expect(screen.queryByRole("button", { name: "管理已指派帳戶" })).toBeNull();
+    const access = await screen.findByRole("link", {
+      name: "管理已指派帳戶",
+    });
+    expect(access).toHaveAttribute(
+      "href",
+      `/management?module=accounts&roleDefinition=${MANAGER_ROLE}&view=access&return=%2Fmanagement%3Fmodule%3Droles%26role%3D${MANAGER_ROLE}%26view%3Ddetail`
+    );
   });
 
   test("H-18: a malformed role parameter falls back to the safe list", async () => {
