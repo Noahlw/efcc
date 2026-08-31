@@ -115,6 +115,40 @@ beforeAll(async () => {
     legacyPin: "8888",
     newCredential: "batch-admin-secret",
   });
+  const db = testDb();
+  const now = new Date().toISOString();
+  await db.batch([
+    db
+      .prepare(
+        `INSERT OR IGNORE INTO role_definitions
+          (role_definition_id, category_key, stable_key, label, description,
+           scope_kind, scope_id, position, is_protected, is_archived,
+           created_by, created_at, updated_by, updated_at)
+         VALUES ('batch-registration-approval-role', 'Global',
+                 'batch-registration-approval', '批次審批身份組',
+                 'Global registration approval fixture',
+                 'Global', NULL, 1, 0, 0, NULL, ?, NULL, ?)`
+      )
+      .bind(now, now),
+    db
+      .prepare(
+        `INSERT OR IGNORE INTO role_definition_grants
+          (role_definition_id, capability, granted_by, granted_at)
+         VALUES ('batch-registration-approval-role',
+                 'registration.approval.manage', NULL, ?)`
+      )
+      .bind(now),
+    db
+      .prepare(
+        `INSERT OR IGNORE INTO role_assignments
+          (assignment_id, account_user_id, role_definition_id, granted_by,
+           granted_at, scope_kind, scope_id)
+         VALUES ('batch-registration-approval-assignment', 'BATCH-ADMIN',
+                 'batch-registration-approval-role', 'BATCH-ADMIN', ?,
+                 'Global', NULL)`
+      )
+      .bind(now),
+  ]);
   adminAccess = await accessCookieFor("batch-admin", "batch-admin-secret");
 });
 

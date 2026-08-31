@@ -23,9 +23,8 @@ import { importLegacyUsers } from "../auth/accounts";
 import { ACCESS_COOKIE_NAME } from "../auth/cookies";
 import { applyMigrations, testDb } from "../auth/test-bootstrap";
 import { completeCredentialUpgrade } from "../auth/upgrade";
-import { D1CapabilityAuthorizer } from "./capability-authorizer";
+import { CAPABILITY_CATALOG } from "../identity/capability-catalog";
 import { participantSelfCheckInAvailable } from "./department-workspace";
-import { D1WorkspaceStore } from "./d1-workspace-store";
 import { addWallDays, hkTodayWallDate, wallWeekday } from "./recurrence";
 
 const SECRET = "test-access-token-secret";
@@ -213,7 +212,130 @@ async function createProgram(
   };
   return result.data.program;
 }
+async function grantProgramIdentity(
+  programId: string,
+  accountUserId: string
+): Promise<string> {
+  const roleDefinitionId = `test-program-identity-${crypto.randomUUID()}`;
+  const now = new Date().toISOString();
+  await testDb().batch([
+    testDb()
+      .prepare(
+        `INSERT INTO role_definitions
+          (role_definition_id, category_key, stable_key, label, description,
+           scope_kind, scope_id, position, is_protected, is_archived,
+           created_by, created_at, updated_by, updated_at)
+         VALUES (?, 'Program', ?, 'Program Operator', 'Test identity',
+                 'Program', ?, 50, 0, 0, NULL, ?, NULL, ?)`
+      )
+      .bind(roleDefinitionId, roleDefinitionId, programId, now, now),
+    testDb()
+      .prepare(
+        `INSERT INTO role_definition_grants
+          (role_definition_id, capability, granted_by, granted_at)
+         VALUES (?, 'program.manage', 'U001', ?)`
+      )
+      .bind(roleDefinitionId, now),
+    testDb()
+      .prepare(
+        `INSERT INTO role_assignments
+          (assignment_id, account_user_id, role_definition_id, granted_by,
+           granted_at, scope_kind, scope_id)
+         SELECT ?, ?, role_definition_id, 'U001', ?, scope_kind, scope_id
+           FROM role_definitions
+          WHERE role_definition_id = ?`
+      )
+      .bind(crypto.randomUUID(), accountUserId, now, roleDefinitionId),
+  ]);
+  return roleDefinitionId;
+}
 
+async function revokeProgramIdentity(roleDefinitionId: string, userId: string) {
+  await testDb()
+    .prepare(
+      `UPDATE role_assignments
+          SET revoked_by = 'U001', revoked_at = ?
+        WHERE role_definition_id = ? AND account_user_id = ?
+          AND revoked_at IS NULL`
+    )
+    .bind(new Date().toISOString(), roleDefinitionId, userId)
+    .run();
+}
+
+async function assignSystemIdentity(
+  stableKey: string,
+  accountUserId: string
+): Promise<void> {
+  const roleDefinitionId = `programs-system-${stableKey}`;
+  const now = new Date().toISOString();
+  await testDb()
+    .prepare(
+      `INSERT OR IGNORE INTO role_definitions
+        (role_definition_id, category_key, stable_key, label, description,
+         scope_kind, scope_id, position, is_protected, is_archived,
+         created_by, created_at, updated_by, updated_at)
+       VALUES (?, 'Global', ?, ?, 'Programs test identity',
+               'Global', NULL, ?, ?, 0, NULL, ?, NULL, ?)`
+    )
+    .bind(
+      roleDefinitionId,
+      stableKey,
+      stableKey === "admin"
+        ? "系統管理員"
+        : stableKey === "member"
+          ? "會友基礎"
+          : "同工",
+      stableKey === "admin" ? 0 : stableKey === "staff" ? 1 : 999,
+      stableKey === "member" || stableKey === "admin" ? 1 : 0,
+      now,
+      now
+    )
+    .run();
+  if (stableKey === "staff") {
+    await testDb().batch(
+      CAPABILITY_CATALOG.filter(
+        ({ capability }) =>
+          capability !== "account.permissions.write" &&
+          capability !== "home.publish"
+      ).map(({ capability }) =>
+        testDb()
+          .prepare(
+            `INSERT OR IGNORE INTO role_definition_grants
+              (role_definition_id, capability, granted_by, granted_at)
+             VALUES (?, ?, NULL, ?)`
+          )
+          .bind(roleDefinitionId, capability, now)
+      )
+    );
+  }
+  const role = await testDb()
+    .prepare(
+      "SELECT role_definition_id, scope_kind, scope_id FROM role_definitions WHERE stable_key = ?"
+    )
+    .bind(stableKey)
+    .first<{
+      role_definition_id: string;
+      scope_kind: string;
+      scope_id: string | null;
+    }>();
+  assert.ok(role, `missing normalized identity ${stableKey}`);
+  await testDb()
+    .prepare(
+      `INSERT OR IGNORE INTO role_assignments
+        (assignment_id, account_user_id, role_definition_id, granted_by,
+         granted_at, scope_kind, scope_id)
+       VALUES (?, ?, ?, 'U001', ?, ?, ?)`
+    )
+    .bind(
+      crypto.randomUUID(),
+      accountUserId,
+      role!.role_definition_id,
+      now,
+      role!.scope_kind,
+      role!.scope_id
+    )
+    .run();
+}
 beforeAll(async () => {
   await applyMigrations();
   await importLegacyUsers(testDb(), [
@@ -238,6 +360,9 @@ beforeAll(async () => {
     legacyPin: "2468",
     newCredential: "staff-secret",
   });
+  await assignSystemIdentity("admin", "U001");
+  await assignSystemIdentity("member", "U002");
+  await assignSystemIdentity("staff", "U005");
 });
 
 describe("PRG-01: schema", () => {
@@ -251,11 +376,9 @@ describe("PRG-01: schema", () => {
       "events",
       "enrollment_requests",
       "enrollments",
-      "program_leaders",
       "program_notification_reads",
       "attendances",
       "audit_events",
-      "role_capabilities",
     ] as const;
     const rows = await Promise.all(
       tables.map((table) =>
@@ -373,19 +496,7 @@ describe("PRG-01: departments", () => {
     assert.strictEqual(adminBody.data.hasManagementCapability, true);
     assert.ok(adminBody.data.departmentScopes >= 1);
 
-    const grantLeader = await worker.fetch(
-      programsRequest(`/api/v1/programs/${program.program_id}/leaders`, {
-        method: "POST",
-        headers: {
-          Origin: HOST,
-          Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
-          "Content-Type": "application/json",
-        },
-        body: { user_id: "U002" },
-      }),
-      testEnv()
-    );
-    assert.strictEqual(grantLeader.status, 200);
+    await grantProgramIdentity(program.program_id, "U002");
 
     const leaderResponse = await worker.fetch(
       programsRequest("/api/v1/programs/access", {
@@ -681,19 +792,7 @@ describe("MUI-01: capability-aware management reads", () => {
       )
     );
 
-    const grantLeader = await worker.fetch(
-      programsRequest(`/api/v1/programs/${assigned.program_id}/leaders`, {
-        method: "POST",
-        headers: {
-          Origin: HOST,
-          "Content-Type": "application/json",
-          Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
-        },
-        body: { user_id: "U002" },
-      }),
-      testEnv()
-    );
-    assert.strictEqual(grantLeader.status, 200);
+    await grantProgramIdentity(assigned.program_id, "U002");
 
     const leaderResponse = await worker.fetch(
       programsRequest("/api/v1/programs/management-directory", {
@@ -850,20 +949,7 @@ describe("MUI-01: capability-aware management reads", () => {
     );
     assert.strictEqual(deniedCockpit.status, 404);
 
-    // Grant bob leader scope on this program
-    const grantLeader = await worker.fetch(
-      programsRequest(`/api/v1/programs/${program.program_id}/leaders`, {
-        method: "POST",
-        headers: {
-          Origin: HOST,
-          Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
-          "Content-Type": "application/json",
-        },
-        body: { user_id: "U002" },
-      }),
-      testEnv()
-    );
-    assert.strictEqual(grantLeader.status, 200);
+    await grantProgramIdentity(program.program_id, "U002");
 
     // 2. Initially no events -> next_event is null, counts 0
     const initialCockpit = await worker.fetch(
@@ -1060,10 +1146,6 @@ describe("MUI-01: capability-aware management reads", () => {
       .run();
     await testDb()
       .prepare("DELETE FROM events WHERE program_id = ?")
-      .bind(program.program_id)
-      .run();
-    await testDb()
-      .prepare("DELETE FROM program_leaders WHERE program_id = ?")
       .bind(program.program_id)
       .run();
     await testDb()
@@ -1380,12 +1462,7 @@ describe("NTF-01: management attention", () => {
         enrollment_mode: "MemberRequest",
       }
     );
-    const leaderGrant = await assignLeader(
-      adminAccess,
-      scopedProgram.program_id,
-      "U002"
-    );
-    assert.strictEqual(leaderGrant.status, 200);
+    await grantProgramIdentity(scopedProgram.program_id, "U002");
 
     const pending = await submitRequest(memberAccess, scopedProgram.program_id);
     const startsAt = new Date(Date.now() + 3 * 86_400_000);
@@ -1496,12 +1573,10 @@ describe("NTF-01: management attention", () => {
       discoverability: "Listed",
       enrollment_mode: "MemberRequest",
     });
-    const leaderGrant = await assignLeader(
-      adminAccess,
+    const roleDefinitionId = await grantProgramIdentity(
       program.program_id,
       "U002"
     );
-    assert.strictEqual(leaderGrant.status, 200);
 
     const startsAt = new Date(Date.now() + 4 * 86_400_000);
     const event = await createEventFor(adminAccess, program.program_id, {
@@ -1536,8 +1611,7 @@ describe("NTF-01: management attention", () => {
       "the granted leader must see the scoped program's actionable count"
     );
 
-    const revoke = await revokeLeader(adminAccess, program.program_id, "U002");
-    assert.strictEqual(revoke.status, 200);
+    await revokeProgramIdentity(roleDefinitionId, "U002");
 
     const afterRevoke = await attentionFor(leaderAccess);
     assert.strictEqual(
@@ -1626,7 +1700,6 @@ describe("PRG-01: programs", () => {
     );
     assert.strictEqual(createdBody.data.program.category, null);
   });
-
 
   test("program creation rejects invalid required settings", async () => {
     const adminAccess = await accessCookieFor("alice", "alice-secret");
@@ -4428,10 +4501,8 @@ describe("EVT-02: recurring preview and generation (#252)", () => {
       `DELETE FROM events WHERE program_id IN ${e2eProgramIds}`,
       `DELETE FROM enrollments WHERE program_id IN ${e2eProgramIds}`,
       `DELETE FROM enrollment_requests WHERE program_id IN ${e2eProgramIds}`,
-      `DELETE FROM program_leaders WHERE program_id IN ${e2eProgramIds}`,
       `DELETE FROM programs WHERE program_id IN ${e2eProgramIds}`,
       "DELETE FROM department_modules WHERE department_id IN (SELECT department_id FROM departments WHERE code GLOB 'E2E_*' OR name GLOB 'E2E_*')",
-      "DELETE FROM department_managers WHERE department_id IN (SELECT department_id FROM departments WHERE code GLOB 'E2E_*' OR name GLOB 'E2E_*')",
       "DELETE FROM departments WHERE code GLOB 'E2E_*' OR name GLOB 'E2E_*'",
       "DELETE FROM registration_requests WHERE username GLOB 'E2E_*'",
     ];
@@ -5044,7 +5115,10 @@ describe("EVT-01: event operations (#251)", () => {
     assert.strictEqual(memberResult.data.event.event_id, event.event_id);
     assert.strictEqual(memberResult.data.event.program_name.length > 0, true);
     assert.strictEqual(memberResult.data.leaders.length, 0);
-    assert.strictEqual(memberResult.data.participant_summary.active_enrollments, 0);
+    assert.strictEqual(
+      memberResult.data.participant_summary.active_enrollments,
+      0
+    );
     assert.strictEqual(memberResult.data.participant_summary.checked_in, 0);
     assert.strictEqual(memberResult.data.event.manual_check_in_code, null);
 
@@ -7240,593 +7314,6 @@ describe("PRG-03: enrollments", () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// PRG-04 (#200): Program Leader & delegation.
-// ---------------------------------------------------------------------------
-
-function assignLeader(
-  access: string,
-  programId: string,
-  userId: string
-): Promise<Response> {
-  return worker.fetch(
-    programsRequest(`/api/v1/programs/${programId}/leaders`, {
-      method: "POST",
-      headers: {
-        Origin: HOST,
-        Cookie: `${ACCESS_COOKIE_NAME}=${access}`,
-        "Content-Type": "application/json",
-      },
-      body: { user_id: userId },
-    }),
-    testEnv()
-  );
-}
-
-function revokeLeader(
-  access: string,
-  programId: string,
-  userId: string
-): Promise<Response> {
-  return worker.fetch(
-    programsRequest(`/api/v1/programs/${programId}/leaders/${userId}/revoke`, {
-      method: "POST",
-      headers: {
-        Origin: HOST,
-        Cookie: `${ACCESS_COOKIE_NAME}=${access}`,
-        "Content-Type": "application/json",
-      },
-      body: {},
-    }),
-    testEnv()
-  );
-}
-
-async function listLeadersFor(
-  access: string,
-  programId: string
-): Promise<{ user_id: string; revoked_at: string | null }[]> {
-  const res = await worker.fetch(
-    programsRequest(`/api/v1/programs/${programId}/leaders`, {
-      headers: {
-        Origin: HOST,
-        Cookie: `${ACCESS_COOKIE_NAME}=${access}`,
-      },
-    }),
-    testEnv()
-  );
-  assert.strictEqual(res.status, 200);
-  const body = (await assertCorrelated(res)) as {
-    data: { leaders: { user_id: string; revoked_at: string | null }[] };
-  };
-  return body.data.leaders;
-}
-
-async function countLeaderAudits(): Promise<number> {
-  const row = await testDb()
-    .prepare(
-      "SELECT COUNT(*) AS n FROM audit_events WHERE action IN ('PROGRAM_LEADER_GRANT', 'PROGRAM_LEADER_REVOKE')"
-    )
-    .first<{ n: number }>();
-  return row?.n ?? 0;
-}
-
-function getStoreFor(db: D1Database) {
-  return new D1WorkspaceStore(db);
-}
-
-describe("PRG-04: program leaders", () => {
-  let adminAccess = "";
-  let memberAccess = "";
-  let carolAccess = "";
-  let leaderDeptId = "";
-  let leaderProgramId = "";
-  let otherProgramId = "";
-
-  beforeAll(async () => {
-    adminAccess = await accessCookieFor("alice", "alice-secret");
-    memberAccess = await accessCookieFor("bob", "bob-secret");
-    carolAccess = await accessCookieFor("carol", "carol-secret");
-    const dept = await createDepartment(adminAccess, {
-      code: "PRG-04",
-      name: "Leader Test Department",
-    });
-    leaderDeptId = dept.department_id;
-    const program = await createProgram(adminAccess, leaderDeptId, {
-      name: "Leader Test Program",
-      behavior_type: "Recurring",
-      discoverability: "Listed",
-    });
-    leaderProgramId = program.program_id;
-    const other = await createProgram(adminAccess, leaderDeptId, {
-      name: "Leader Other Program",
-      behavior_type: "Recurring",
-      discoverability: "Listed",
-    });
-    otherProgramId = other.program_id;
-  });
-
-  test("AUTH-1 leader.assign capability is Admin/Staff only", async () => {
-    const rows = await testDb()
-      .prepare(
-        "SELECT role FROM role_capabilities WHERE capability = 'program.leader.assign'"
-      )
-      .all<{ role: string }>();
-    const roles = new Set((rows.results ?? []).map((r) => r.role));
-    assert.ok(roles.has("Admin"), "Admin must hold leader.assign");
-    assert.ok(roles.has("Staff"), "Staff must hold leader.assign");
-    assert.ok(!roles.has("Member"), "Member must not hold leader.assign");
-  });
-
-  test("DLG-1 staff assigns an active leader with grant audit", async () => {
-    const res = await assignLeader(adminAccess, leaderProgramId, "U002");
-    assert.strictEqual(res.status, 200);
-    const body = (await assertCorrelated(res)) as {
-      data: { leader: { user_id: string; revoked_at: string | null } };
-    };
-    assert.strictEqual(body.data.leader.user_id, "U002");
-    assert.strictEqual(body.data.leader.revoked_at, null);
-
-    const audit = await testDb()
-      .prepare(
-        `SELECT actor_user_id, entity_id, new_value_json, correlation_id
-         FROM audit_events WHERE action = 'PROGRAM_LEADER_GRANT'
-         ORDER BY inserted_at DESC LIMIT 1`
-      )
-      .first<{
-        actor_user_id: string;
-        entity_id: string;
-        new_value_json: string;
-        correlation_id: string;
-      }>();
-    assert.ok(audit, "grant audit row must exist");
-    assert.strictEqual(audit.actor_user_id, "U001");
-    assert.strictEqual(audit.entity_id, leaderProgramId);
-    assert.ok(audit.correlation_id, "correlation id must be present");
-    const value = JSON.parse(audit.new_value_json) as { user_id?: string };
-    assert.strictEqual(value.user_id, "U002");
-  });
-
-  test("DLG-2 re-assigning an active pair is idempotent (one active row)", async () => {
-    const res = await assignLeader(adminAccess, leaderProgramId, "U002");
-    assert.strictEqual(res.status, 200);
-    const leaders = await listLeadersFor(adminAccess, leaderProgramId);
-    const active = leaders.filter((l) => l.user_id === "U002");
-    assert.strictEqual(active.length, 1, "exactly one active U002 row");
-    const dupAudit = await testDb()
-      .prepare(
-        `SELECT outcome FROM audit_events
-         WHERE action = 'PROGRAM_LEADER_GRANT' AND outcome = 'DUPLICATE'
-         ORDER BY inserted_at DESC LIMIT 1`
-      )
-      .first<{ outcome: string }>();
-    assert.ok(dupAudit, "duplicate grant must be audited as DUPLICATE");
-  });
-
-  test("DLG-3 partial unique index forbids duplicate active pairs", async () => {
-    await assert.rejects(
-      testDb()
-        .prepare(
-          `INSERT INTO program_leaders (program_id, user_id, granted_by, granted_at)
-           VALUES (?, ?, 'U001', '2026-08-06T00:00:00Z')`
-        )
-        .bind(leaderProgramId, "U002")
-        .run(),
-      /UNIQUE constraint failed/u
-    );
-  });
-
-  test("DLG-4 revoke then re-assign reactivates the pair", async () => {
-    const revoke = await revokeLeader(adminAccess, leaderProgramId, "U002");
-    assert.strictEqual(revoke.status, 200);
-    const revokedBody = (await assertCorrelated(revoke)) as {
-      data: { leader: { revoked_at: string | null } };
-    };
-    assert.ok(revokedBody.data.leader.revoked_at, "revoked_at must be set");
-
-    const reAssign = await assignLeader(adminAccess, leaderProgramId, "U002");
-    assert.strictEqual(reAssign.status, 200);
-    const body = (await assertCorrelated(reAssign)) as {
-      data: { leader: { revoked_at: string | null } };
-    };
-    assert.strictEqual(body.data.leader.revoked_at, null);
-    const history = await testDb()
-      .prepare(
-        `SELECT user_id FROM program_leaders WHERE program_id = ? AND user_id = 'U002'`
-      )
-      .bind(leaderProgramId)
-      .all();
-    assert.strictEqual(
-      (history.results ?? []).length,
-      1,
-      "single persisted row"
-    );
-  });
-
-  test("DLG-5 unknown target user is rejected with no audit", async () => {
-    const before = await countLeaderAudits();
-    const res = await assignLeader(adminAccess, leaderProgramId, "ghost-user");
-    assert.strictEqual(res.status, 422);
-    const after = await countLeaderAudits();
-    assert.strictEqual(after, before, "no grant audit for unknown target");
-    const rows = await testDb()
-      .prepare("SELECT 1 FROM program_leaders WHERE user_id = 'ghost-user'")
-      .all();
-    assert.strictEqual((rows.results ?? []).length, 0);
-  });
-
-  test("DLG-4b revoke-on-revoked is a quiet 200 with a DUPLICATE audit row", async () => {
-    const revoke = await revokeLeader(adminAccess, leaderProgramId, "U002");
-    assert.strictEqual(revoke.status, 200);
-    const again = await revokeLeader(adminAccess, leaderProgramId, "U002");
-    assert.strictEqual(again.status, 200);
-    const body = (await assertCorrelated(again)) as {
-      data: { leader: { revoked_at: string | null } };
-    };
-    assert.ok(body.data.leader.revoked_at, "row stays revoked");
-    const audit = await testDb()
-      .prepare(
-        `SELECT outcome FROM audit_events
-         WHERE action = 'PROGRAM_LEADER_REVOKE' AND outcome = 'DUPLICATE'
-           AND entity_id = ?`
-      )
-      .bind(leaderProgramId)
-      .first<{ outcome: string }>();
-    assert.ok(audit, "revoke-revoked must write a DUPLICATE audit row");
-  });
-
-  test("DLG-1b Pending target account is rejected with 422 and a DENIED audit row", async () => {
-    const res = await assignLeader(adminAccess, leaderProgramId, "U004");
-    assert.strictEqual(res.status, 422);
-    const inactiveBody = await problemOf(res);
-    assert.strictEqual(inactiveBody.code, "ACCOUNT_INACTIVE");
-    const rows = await testDb()
-      .prepare("SELECT 1 FROM program_leaders WHERE user_id = 'U004'")
-      .all();
-    assert.strictEqual((rows.results ?? []).length, 0);
-    const audit = await testDb()
-      .prepare(
-        `SELECT outcome FROM audit_events
-         WHERE action = 'PROGRAM_LEADER_GRANT' AND outcome = 'DENIED'
-           AND entity_id = ?`
-      )
-      .bind(leaderProgramId)
-      .first<{ outcome: string }>();
-    assert.ok(audit, "inactive target must write a DENIED grant audit row");
-  });
-
-  test("DLG-6 unknown program does not leak existence (403)", async () => {
-    const res = await assignLeader(adminAccess, "no-such-program", "U002");
-    assert.strictEqual(res.status, 403);
-  });
-
-  test("DLG-7 member cannot assign leaders", async () => {
-    const res = await assignLeader(memberAccess, leaderProgramId, "U003");
-    assert.strictEqual(res.status, 403);
-    const rows = await testDb()
-      .prepare(
-        "SELECT 1 FROM program_leaders WHERE program_id = ? AND user_id = 'U003'"
-      )
-      .bind(leaderProgramId)
-      .all();
-    assert.strictEqual((rows.results ?? []).length, 0);
-  });
-
-  test("DLG-8 scoped program leader cannot assign (leadership never implies delegation)", async () => {
-    const grant = await assignLeader(adminAccess, leaderProgramId, "U003");
-    assert.strictEqual(grant.status, 200);
-    const res = await assignLeader(carolAccess, leaderProgramId, "U002");
-    assert.strictEqual(res.status, 403, "leader must not hold leader.assign");
-  });
-
-  test("DLG-9 caller cannot self-grant", async () => {
-    const res = await assignLeader(adminAccess, leaderProgramId, "U001");
-    assert.strictEqual(res.status, 403);
-  });
-
-  test("DLG-10 leader of A cannot delegate into B", async () => {
-    const res = await assignLeader(carolAccess, otherProgramId, "U002");
-    assert.strictEqual(res.status, 403);
-  });
-
-  test("DLG-11 revoke removes operational grants (leader loses manage)", async () => {
-    const grant = await assignLeader(adminAccess, leaderProgramId, "U003");
-    assert.strictEqual(grant.status, 200);
-    const revoke = await revokeLeader(adminAccess, leaderProgramId, "U003");
-    assert.strictEqual(revoke.status, 200);
-    const audit = await testDb()
-      .prepare(
-        `SELECT actor_user_id, new_value_json, correlation_id
-         FROM audit_events WHERE action = 'PROGRAM_LEADER_REVOKE'
-         ORDER BY inserted_at DESC LIMIT 1`
-      )
-      .first<{
-        actor_user_id: string;
-        new_value_json: string;
-        correlation_id: string;
-      }>();
-    assert.ok(audit, "revoke audit row must exist");
-    assert.strictEqual(audit.actor_user_id, "U001");
-    const value = JSON.parse(audit.new_value_json) as {
-      user_id?: string;
-      revoked_at?: string;
-    };
-    assert.strictEqual(value.user_id, "U003");
-    assert.ok(value.revoked_at, "revoked_at must be audited");
-
-    const rule = await worker.fetch(
-      programsRequest(`/api/v1/programs/${leaderProgramId}/schedule-rules`, {
-        method: "POST",
-        headers: {
-          Origin: HOST,
-          Cookie: `${ACCESS_COOKIE_NAME}=${carolAccess}`,
-          "Content-Type": "application/json",
-        },
-        body: {
-          recurrence: "WEEKLY",
-          day_of_week: 2,
-          month_day: null,
-          start_time: "19:30",
-          end_time: "21:00",
-        },
-      }),
-      testEnv()
-    );
-    assert.strictEqual(rule.status, 403, "revoked leader must lose manage");
-  });
-
-  test("DLG-12 revoking a user who was never a leader is 404 with a DENIED audit row", async () => {
-    const res = await revokeLeader(adminAccess, leaderProgramId, "U001");
-    assert.strictEqual(res.status, 404);
-    const audit = await testDb()
-      .prepare(
-        `SELECT outcome FROM audit_events
-         WHERE action = 'PROGRAM_LEADER_REVOKE' AND outcome = 'DENIED'
-           AND entity_id = ?`
-      )
-      .bind(leaderProgramId)
-      .first<{ outcome: string }>();
-    assert.ok(
-      audit,
-      "revoke of a never-assigned leader must write a DENIED audit row (ADR-0027)"
-    );
-  });
-
-  test("DLG-13 revoking an already-revoked pair is a quiet 200 that audits DUPLICATE", async () => {
-    const grant = await assignLeader(adminAccess, leaderProgramId, "U003");
-    assert.strictEqual(grant.status, 200);
-    const first = await revokeLeader(adminAccess, leaderProgramId, "U003");
-    assert.strictEqual(first.status, 200);
-    const second = await revokeLeader(adminAccess, leaderProgramId, "U003");
-    assert.strictEqual(second.status, 200);
-    const body = (await assertCorrelated(second)) as {
-      data: { leader: { revoked_at: string | null } };
-    };
-    assert.ok(body.data.leader.revoked_at, "row stays revoked");
-    const dup = await testDb()
-      .prepare(
-        `SELECT outcome FROM audit_events
-         WHERE action = 'PROGRAM_LEADER_REVOKE' AND outcome = 'DUPLICATE'
-           AND entity_id = ?`
-      )
-      .bind(leaderProgramId)
-      .first<{ outcome: string }>();
-    assert.ok(dup, "revoke-revoked writes a DUPLICATE audit row (ADR-0027)");
-  });
-
-  test("DLG-14 member and scoped leader cannot revoke", async () => {
-    const grant = await assignLeader(adminAccess, leaderProgramId, "U003");
-    assert.strictEqual(grant.status, 200);
-    const byMember = await revokeLeader(memberAccess, leaderProgramId, "U003");
-    assert.strictEqual(byMember.status, 403);
-    const byLeader = await revokeLeader(carolAccess, leaderProgramId, "U002");
-    assert.strictEqual(byLeader.status, 403);
-  });
-
-  test("DLG-15 revocation persists and audit rows are immutable", async () => {
-    const audit = await testDb()
-      .prepare(
-        `SELECT audit_id FROM audit_events WHERE action = 'PROGRAM_LEADER_REVOKE'
-         ORDER BY inserted_at DESC LIMIT 1`
-      )
-      .first<{ audit_id: string }>();
-    assert.ok(audit, "revoke audit row must exist");
-    await assert.rejects(
-      testDb()
-        .prepare("DELETE FROM audit_events WHERE audit_id = ?")
-        .bind(audit.audit_id)
-        .run(),
-      /audit_events is immutable/u
-    );
-  });
-
-  test("DLG-16 list returns active leaders only", async () => {
-    const leaders = await listLeadersFor(adminAccess, leaderProgramId);
-    for (const leader of leaders) {
-      assert.strictEqual(leader.revoked_at, null);
-    }
-  });
-
-  test("DLG-17 scoped leader can view their own program's leaders", async () => {
-    const grant = await assignLeader(adminAccess, leaderProgramId, "U003");
-    assert.strictEqual(grant.status, 200);
-    const leaders = await listLeadersFor(carolAccess, leaderProgramId);
-    assert.ok(leaders.length > 0);
-  });
-
-  test("scoped leader sees their own Unlisted Program with projected capabilities", async () => {
-    const own = await createProgram(adminAccess, leaderDeptId, {
-      name: "Leader Unlisted Program",
-      behavior_type: "Recurring",
-      discoverability: "Unlisted",
-    });
-    const other = await createProgram(adminAccess, leaderDeptId, {
-      name: "Other Unlisted Program",
-      behavior_type: "Recurring",
-      discoverability: "Unlisted",
-    });
-    const grant = await assignLeader(adminAccess, own.program_id, "U003");
-    assert.strictEqual(grant.status, 200);
-    const res = await worker.fetch(
-      programsRequest(`/api/v1/programs/departments/${leaderDeptId}/programs`, {
-        headers: {
-          Origin: HOST,
-          Cookie: `${ACCESS_COOKIE_NAME}=${carolAccess}`,
-        },
-      }),
-      testEnv()
-    );
-    assert.strictEqual(res.status, 200);
-    const body = (await assertCorrelated(res)) as {
-      data: {
-        programs: {
-          program_id: string;
-          name: string;
-          capabilities: { manage: boolean; publish: boolean };
-        }[];
-      };
-    };
-    const names = body.data.programs.map((program) => program.name);
-    assert.ok(names.includes(own.name));
-    assert.ok(!names.includes(other.name));
-    const ownView = body.data.programs.find(
-      (program) => program.program_id === own.program_id
-    );
-    assert.ok(ownView?.capabilities.manage);
-    assert.ok(ownView?.capabilities.publish);
-  });
-
-  test("DLG-18 member and cross-program leader are denied listing (404 masks)", async () => {
-    const undo = await revokeLeader(adminAccess, leaderProgramId, "U002");
-    assert.strictEqual(
-      undo.status,
-      200,
-      "teardown: U002 must not remain a leader"
-    );
-    const byMember = await worker.fetch(
-      programsRequest(`/api/v1/programs/${leaderProgramId}/leaders`, {
-        headers: {
-          Origin: HOST,
-          Cookie: `${ACCESS_COOKIE_NAME}=${memberAccess}`,
-        },
-      }),
-      testEnv()
-    );
-    assert.strictEqual(byMember.status, 404);
-    const byCrossLeader = await worker.fetch(
-      programsRequest(`/api/v1/programs/${otherProgramId}/leaders`, {
-        headers: {
-          Origin: HOST,
-          Cookie: `${ACCESS_COOKIE_NAME}=${carolAccess}`,
-        },
-      }),
-      testEnv()
-    );
-    assert.strictEqual(byCrossLeader.status, 404);
-  });
-
-  test("AUTH-2 leadership grants operational but never delegation capability", async () => {
-    const grant = await assignLeader(adminAccess, leaderProgramId, "U003");
-    assert.strictEqual(grant.status, 200);
-    const can = await new D1CapabilityAuthorizer(getStoreFor(testDb())).can(
-      { actorUserId: "U003", actorRole: "Member" },
-      "program.leader.assign" as never,
-      { programId: leaderProgramId }
-    );
-    assert.strictEqual(can, false, "leadership must not imply delegation");
-  });
-
-  test("AUTH-3 leader remains operational on their own program", async () => {
-    const grant = await assignLeader(adminAccess, leaderProgramId, "U003");
-    assert.strictEqual(grant.status, 200);
-    const rule = await worker.fetch(
-      programsRequest(`/api/v1/programs/${leaderProgramId}/schedule-rules`, {
-        method: "POST",
-        headers: {
-          Origin: HOST,
-          Cookie: `${ACCESS_COOKIE_NAME}=${carolAccess}`,
-          "Content-Type": "application/json",
-        },
-        body: {
-          recurrence: "WEEKLY",
-          day_of_week: 2,
-          month_day: null,
-          start_time: "19:30",
-          end_time: "21:00",
-        },
-      }),
-      testEnv()
-    );
-    assert.strictEqual(rule.status, 201, "leader must manage own program");
-  });
-
-  test("DLG-19 concurrent grants of a brand-new pair yield one SUCCESS and one CONFLICT", async () => {
-    const staffAccess = await accessCookieFor("staff", "staff-secret");
-    const fresh = await createProgram(adminAccess, leaderDeptId, {
-      name: "Leader Race Program",
-      behavior_type: "Recurring",
-      discoverability: "Listed",
-    });
-    const results = await Promise.all([
-      assignLeader(adminAccess, fresh.program_id, "U003"),
-      assignLeader(staffAccess, fresh.program_id, "U003"),
-    ]);
-    const statuses = results.map((result) => result.status).sort();
-    assert.deepStrictEqual(
-      statuses,
-      [200, 409],
-      "one concurrent grant wins, the other conflicts"
-    );
-    const active = await testDb()
-      .prepare(
-        `SELECT user_id FROM program_leaders
-         WHERE program_id = ? AND revoked_at IS NULL`
-      )
-      .bind(fresh.program_id)
-      .all<{ user_id: string }>();
-    assert.deepStrictEqual(
-      (active.results ?? []).map(({ user_id }) => user_id),
-      ["U003"],
-      "exactly one active leader row"
-    );
-    const outcomes = await testDb()
-      .prepare(
-        `SELECT DISTINCT outcome FROM audit_events
-         WHERE action = 'PROGRAM_LEADER_GRANT' AND entity_id = ?`
-      )
-      .bind(fresh.program_id)
-      .all<{ outcome: string }>();
-    const seen = new Set(
-      (outcomes.results ?? []).map(({ outcome }) => outcome)
-    );
-    assert.ok(seen.has("SUCCESS"), "winner audited SUCCESS");
-    assert.ok(seen.has("CONFLICT"), "loser audited CONFLICT");
-  });
-
-  test("AUD-2 no credential material enters leader audit records", async () => {
-    const rows = await testDb()
-      .prepare(
-        `SELECT old_value_json, new_value_json FROM audit_events
-         WHERE action IN ('PROGRAM_LEADER_GRANT', 'PROGRAM_LEADER_REVOKE')`
-      )
-      .all<{ old_value_json: string | null; new_value_json: string | null }>();
-    for (const row of rows.results ?? []) {
-      for (const json of [row.old_value_json, row.new_value_json]) {
-        if (json === null) {
-          continue;
-        }
-        const text = JSON.stringify(JSON.parse(json));
-        assert.ok(
-          !/password|credential_hash|legacy_pin_hash|access_token|session_token/iu.test(
-            text
-          ),
-          "no credential material in audit JSON"
-        );
-      }
-    }
-  });
-});
-
 describe("PUI-02: participant catalog", () => {
   const catalogRequest = (access: string) =>
     worker.fetch(
@@ -7995,8 +7482,7 @@ describe("PUI-02: participant catalog", () => {
     assert.ok(memberNames.includes("PUI-02 Listed"));
     assert.ok(!memberNames.includes("PUI-02 Unlisted"));
 
-    const grant = await assignLeader(adminAccess, unlisted.program_id, "U002");
-    assert.strictEqual(grant.status, 200);
+    await grantProgramIdentity(unlisted.program_id, "U002");
     const leaderBody = await catalogOf(memberAccess);
     const leaderEntry = leaderBody.data.catalog.find(
       (candidate) => candidate.department.department_id === dept.department_id

@@ -29,7 +29,6 @@ import type {
 } from "@/lib/programs/program-api";
 import { EnrollmentPanel } from "@/lib/programs/programs-enrollment-panel";
 import { EventsPanel } from "@/lib/programs/programs-events-panel";
-import { LeadersPanel } from "@/lib/programs/programs-leaders-panel";
 
 import styles from "@/app/programs/programs.module.css";
 
@@ -39,7 +38,7 @@ type View =
   | { kind: "error"; message: string };
 
 type ProgramFormValues = ProgramInput;
-type ProgramTask = "overview" | "edit" | "events" | "enrollment" | "leaders";
+type ProgramTask = "overview" | "edit" | "events" | "enrollment";
 
 const LIFECYCLE_LABEL: Record<Program["lifecycle"], string> = {
   Draft: COPY.programs.lifecycleDraft,
@@ -695,12 +694,6 @@ const ProgramsManager = () => {
                                         label: COPY.programs.programEnrollment,
                                         enabled: enrollmentEnabled,
                                       },
-                                      {
-                                        task: "leaders" as const,
-                                        label: COPY.programs.programLeaders,
-                                        enabled:
-                                          program.capabilities.leader_assign,
-                                      },
                                     ].map(({ task, label, enabled }) =>
                                       enabled ? (
                                         <Button
@@ -770,13 +763,6 @@ const ProgramsManager = () => {
                                         program={program}
                                         canManage={program.capabilities.manage}
                                         currentUserId={bootstrap.profile.userId}
-                                      />
-                                    )}
-                                  {activeTask === "leaders" &&
-                                    program.capabilities.leader_assign && (
-                                      <LeadersPanel
-                                        program={program}
-                                        canManage
                                       />
                                     )}
                                 </div>

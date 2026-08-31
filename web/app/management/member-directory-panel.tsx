@@ -14,8 +14,8 @@ import type { MemberDirectoryMember } from "@/lib/programs/program-api";
 import { useAsyncResource } from "@/lib/programs/use-async-resource";
 import { rememberDeepLink } from "@/lib/session";
 
-import { DirectoryFrame } from './directory-frame';
-import type { DirectoryFrameState } from './directory-frame';
+import { DirectoryFrame } from "./directory-frame";
+import type { DirectoryFrameState } from "./directory-frame";
 import { safeManagementReturnHref } from "./management-action-framework";
 
 const MIN_QUERY_LENGTH = 2;
@@ -67,6 +67,16 @@ function memberErrorMessage(error: unknown): string {
 
 function isAuthRequired(error: unknown): error is RpcError {
   return error instanceof RpcError && error.problem.code === "AUTH_REQUIRED";
+}
+function identityText(
+  identities: MemberDirectoryMember["identities"] | undefined,
+  role: MemberDirectoryMember["role"]
+): string {
+  return identities && identities.length > 0
+    ? identities.map(({ label }) => label).join("、")
+    : role === "Member"
+      ? "會友基礎"
+      : role;
 }
 
 function MemberLoadingState({
@@ -197,7 +207,7 @@ export const MemberDirectoryPanel = () => {
     [query, router]
   );
 
-  const {state} = memberResource;
+  const { state } = memberResource;
   const members = state.kind === "ready" ? state.members : [];
   const hasResults = members.length > 0;
   const frameState: DirectoryFrameState =
@@ -266,6 +276,12 @@ export const MemberDirectoryPanel = () => {
                 </dt>
                 <dd className="m-0 min-w-0 wrap-anywhere font-semibold text-[var(--ink)]">
                   {selected.role}
+                </dd>
+              </div>
+              <div className="grid min-w-0 grid-cols-[minmax(5rem,6rem)_minmax(0,1fr)] gap-3 text-sm leading-6 max-[479px]:grid-cols-[minmax(4.5rem,5.5rem)_minmax(0,1fr)]">
+                <dt className="text-[var(--ink-muted)]">身份組</dt>
+                <dd className="m-0 min-w-0 wrap-anywhere font-semibold text-[var(--ink)]">
+                  {identityText(selected.identities, selected.role)}
                 </dd>
               </div>
               <div className="grid min-w-0 grid-cols-[minmax(5rem,6rem)_minmax(0,1fr)] gap-3 text-sm leading-6 max-[479px]:grid-cols-[minmax(4.5rem,5.5rem)_minmax(0,1fr)]">
@@ -362,7 +378,7 @@ export const MemberDirectoryPanel = () => {
                       <Button
                         aria-label={member.name}
                         aria-pressed={selection.selectedId === member.userId}
-                        className="grid min-h-16 w-full min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-3 rounded-none border-0 bg-transparent px-4 py-3 text-left text-[var(--ink)] hover:bg-[var(--surface)] aria-pressed:bg-[var(--surface)]"
+                        className="grid h-auto min-h-16 w-full min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-3 rounded-none border-0 bg-transparent px-4 py-3 text-left whitespace-normal text-[var(--ink)] hover:bg-[var(--surface)] aria-pressed:bg-[var(--surface)]"
                         onClick={() => selection.onSelect(member.userId)}
                         type="button"
                         variant="ghost"
@@ -371,8 +387,8 @@ export const MemberDirectoryPanel = () => {
                           <span className="wrap-anywhere font-semibold leading-5">
                             {member.name}
                           </span>
-                          <span className="wrap-anywhere text-[0.84rem] leading-5 text-[var(--ink-muted)]">
-                            {member.role} ·{" "}
+                          <span className="wrap-anywhere text-[var(--ink-muted)]">
+                            {identityText(member.identities, member.role)} ·{" "}
                             {member.departments.length > 0
                               ? member.departments
                                   .map((department) => department.name)

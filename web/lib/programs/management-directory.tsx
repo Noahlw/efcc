@@ -139,11 +139,14 @@ const DepartmentSettingsLauncher = ({
 };
 export interface ManagementDirectoryProps {
   onOpenProgram: (programId: string, created?: boolean) => void;
+  /** Optional Department context restored from a safe return URL. */
+  departmentId?: string | null;
   /** Render only the scoped Departments administration surface. */
   departmentOnly?: boolean;
 }
 export const ManagementDirectory = ({
   onOpenProgram,
+  departmentId = null,
   departmentOnly = false,
 }: ManagementDirectoryProps) => {
   const router = useRouter();
@@ -208,10 +211,15 @@ export const ManagementDirectory = ({
       return [];
     }
     const needle = query.trim().toLocaleLowerCase();
+    const rows = departmentId
+      ? state.rows.filter(
+          ({ department }) => department.department_id === departmentId
+        )
+      : state.rows;
     if (!needle) {
-      return state.rows;
+      return rows;
     }
-    return state.rows.filter(({ program, department }) =>
+    return rows.filter(({ program, department }) =>
       [
         program.name,
         program.description,
@@ -222,10 +230,14 @@ export const ManagementDirectory = ({
         .filter((value): value is string => Boolean(value))
         .some((value) => value.toLocaleLowerCase().includes(needle))
     );
-  }, [query, state]);
+  }, [departmentId, query, state]);
   const scopedDepartments =
     state.kind === "ready"
-      ? state.departments.filter(hasDepartmentManagementScope)
+      ? state.departments.filter(
+          (department) =>
+            hasDepartmentManagementScope(department) &&
+            (!departmentId || department.department_id === departmentId)
+        )
       : [];
   return (
     <section aria-labelledby="programs-management-directory-title">

@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { Alert } from "@/components/ui/alert";
@@ -11,22 +12,16 @@ import { RpcError } from "@/lib/api";
 import { COPY, errorMessage } from "@/lib/copy";
 import { announce } from "@/lib/live-region";
 import {
-  assignDepartmentManager,
   getDepartment,
-  listDepartmentManagers,
-  revokeDepartmentManager,
-  searchDepartmentMemberOptions,
   setDepartmentModule,
   updateDepartment,
 } from "@/lib/programs/program-api";
 import type {
   Department,
   DepartmentDetail,
-  DepartmentManager,
   DepartmentModule,
 } from "@/lib/programs/program-api";
 
-import { MemberPicker } from "./member-picker";
 import { ProgramForm } from "./program-form";
 
 import styles from "@/app/programs/programs.module.css";
@@ -57,41 +52,27 @@ export const DepartmentSettingsPanel = ({
   onOpenProgram?: (programId: string, created?: boolean) => void;
 }) => {
   const [detail, setDetail] = useState<DepartmentDetail | null>(null);
-  const [managers, setManagers] = useState<DepartmentManager[] | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [creating, setCreating] = useState(false);
-  const [confirmingUserId, setConfirmingUserId] = useState<string | null>(null);
   const mounted = useRef(true);
-  const searchManagers = useCallback(
-    (query: string) =>
-      searchDepartmentMemberOptions(department.department_id, query),
-    [department.department_id]
-  );
 
   const load = useCallback(async () => {
     setDetail(null);
-    setManagers(null);
     setActionError(null);
     try {
-      const [nextDetail, nextManagers] = await Promise.all([
-        getDepartment(department.department_id),
-        department.capabilities.manager_assign
-          ? listDepartmentManagers(department.department_id)
-          : Promise.resolve({ managers: [] }),
-      ]);
+      const nextDetail = await getDepartment(department.department_id);
       if (!mounted.current) {
         return;
       }
       setDetail(nextDetail);
-      setManagers(nextManagers.managers);
     } catch (error) {
       if (mounted.current) {
         setActionError(errorMessage(error));
       }
     }
-  }, [department.capabilities.manager_assign, department.department_id]);
+  }, [department.department_id]);
 
   useEffect(() => {
     mounted.current = true;
@@ -148,27 +129,6 @@ export const DepartmentSettingsPanel = ({
     );
   };
 
-  const assignManager = (event: React.FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    const data = new FormData(event.currentTarget);
-    const userId = String(data.get("user_id") ?? "").trim();
-    if (!userId) {
-      return;
-    }
-    event.currentTarget.reset();
-    void runAction(
-      () => assignDepartmentManager(department.department_id, userId),
-      COPY.programs.departmentManagerAssignedNotice
-    );
-  };
-
-  const revokeManager = (userId: string) => {
-    setConfirmingUserId(null);
-    void runAction(
-      () => revokeDepartmentManager(department.department_id, userId),
-      COPY.programs.departmentManagerRevokedNotice
-    );
-  };
   const handleProgramSaved = (programId: string) => {
     if (onOpenProgram) {
       onOpenProgram(programId, true);
@@ -218,7 +178,7 @@ export const DepartmentSettingsPanel = ({
           {actionError}
         </Alert>
       )}
-      {detail === null || managers === null ? (
+      {detail === null ? (
         <div className="flex items-center gap-2">
           <p aria-live="polite">{COPY.nav.loading}</p>
           <Skeleton className="h-6 w-24" aria-hidden="true" />
@@ -336,90 +296,32 @@ export const DepartmentSettingsPanel = ({
                   </ul>
                 </section>
               )}
-
-              {department.capabilities.manager_assign && (
-                <section
-                  aria-labelledby={`${department.department_id}-managers-heading`}
-                >
-                  <h4
-                    id={`${department.department_id}-managers-heading`}
-                    className={styles.panelHeading}
+              {department.capabilities.manager_assign &&
+                department.capabilities.role_read === true &&
+                (department.capabilities.role_assign === true ||
+                  department.capabilities.role_revoke === true) && (
+                  <section
+                    className="mt-4 grid gap-2"
+                    aria-labelledby={`${department.department_id}-identity-heading`}
                   >
-                    {COPY.programs.departmentManagers}
-                  </h4>
-                  <form className={styles.ruleForm} onSubmit={assignManager}>
-                    <MemberPicker
-                      programId=""
-                      name="user_id"
-                      label={COPY.programs.departmentManagerUserId}
-                      placeholder={
-                        COPY.programs.departmentManagerUserIdPlaceholder
-                      }
-                      searchOptions={searchManagers}
-                    />
-                    <Button
-                      className={styles.actionButton}
-                      type="submit"
-                      disabled={busy}
+                    <h4
+                      id={`${department.department_id}-identity-heading`}
+                      className={styles.panelHeading}
                     >
-                      {COPY.programs.assignDepartmentManager}
+                      身份組指派
+                    </h4>
+                    <p className={styles.fieldHint}>
+                      帳戶身份組指派及撤銷現由帳戶存取管理統一處理。
+                    </p>
+                    <Button asChild className="min-h-11 w-fit">
+                      <Link
+                        href={`/management?module=accounts&scopeKind=Department&scopeId=${encodeURIComponent(department.department_id)}&view=access&return=${encodeURIComponent(`/programs?mode=management&department=${encodeURIComponent(department.department_id)}`)}`}
+                      >
+                        管理帳戶身份組
+                      </Link>
                     </Button>
-                  </form>
-                  <ul
-                    className={styles.eventList}
-                    aria-label={COPY.programs.departmentManagers}
-                  >
-                    {managers.length === 0 ? (
-                      <li className={styles.emptyLine}>
-                        {COPY.programs.noDepartmentManagers}
-                      </li>
-                    ) : (
-                      managers.map((manager) => (
-                        <li key={manager.user_id} className={styles.eventRow}>
-                          <span className={styles.eventDate}>
-                            {manager.user_name ?? manager.user_id}
-                            {manager.username ? ` (${manager.username})` : ""}
-                          </span>
-                          {confirmingUserId === manager.user_id ? (
-                            <div className={styles.confirmRow}>
-                              <span>
-                                {COPY.programs.confirmRevokeDepartmentManager}
-                              </span>
-                              <Button
-                                className={styles.dangerButton}
-                                type="button"
-                                disabled={busy}
-                                onClick={() => revokeManager(manager.user_id)}
-                              >
-                                {COPY.programs.confirmRevoke}
-                              </Button>
-                              <Button
-                                className={styles.toggle}
-                                type="button"
-                                disabled={busy}
-                                onClick={() => setConfirmingUserId(null)}
-                              >
-                                {COPY.programs.cancelRevoke}
-                              </Button>
-                            </div>
-                          ) : (
-                            <Button
-                              className={styles.actionButton}
-                              type="button"
-                              disabled={busy}
-                              onClick={() =>
-                                setConfirmingUserId(manager.user_id)
-                              }
-                            >
-                              {COPY.programs.revokeDepartmentManager}
-                            </Button>
-                          )}
-                        </li>
-                      ))
-                    )}
-                  </ul>
-                </section>
-              )}
+                  </section>
+                )}
             </>
           )}
         </>

@@ -132,18 +132,8 @@ DROP TABLE sessions_old;
 CREATE INDEX sessions_user_id_idx ON sessions(user_id);
 
 -- ---------------------------------------------------------------------------
--- 2. Authorization (§4)
+-- 2. Authorization is created by the normalized identity migration 0019.
 -- ---------------------------------------------------------------------------
-
-CREATE TABLE role_capabilities (
-  role          TEXT NOT NULL CHECK (role IN ('Admin','Staff','Member')),
-  capability    TEXT NOT NULL,
-  granted_by    TEXT,
-  granted_at    TEXT NOT NULL,
-  PRIMARY KEY (role, capability),
-  FOREIGN KEY (granted_by) REFERENCES accounts(user_id) ON DELETE RESTRICT
-) STRICT;
-
 -- ---------------------------------------------------------------------------
 -- 3. Department domain (§5)
 -- ---------------------------------------------------------------------------
@@ -305,25 +295,10 @@ CREATE UNIQUE INDEX enrollments_active_member_program_idx
 
 CREATE INDEX enrollments_member_idx ON enrollments(member_user_id);
 
-CREATE TABLE program_leaders (
-  program_id  TEXT NOT NULL,
-  user_id     TEXT NOT NULL,
-  granted_by  TEXT NOT NULL,
-  granted_at  TEXT NOT NULL,
-  revoked_by  TEXT,
-  revoked_at  TEXT,
-  PRIMARY KEY (program_id, user_id),
-  FOREIGN KEY (program_id) REFERENCES programs(program_id) ON DELETE RESTRICT,
-  FOREIGN KEY (user_id)     REFERENCES accounts(user_id)   ON DELETE RESTRICT,
-  FOREIGN KEY (granted_by)  REFERENCES accounts(user_id)   ON DELETE RESTRICT,
-  FOREIGN KEY (revoked_by)  REFERENCES accounts(user_id)   ON DELETE RESTRICT
-) STRICT;
 
-CREATE UNIQUE INDEX program_leaders_active_idx
-  ON program_leaders(program_id, user_id) WHERE revoked_at IS NULL;
-
-CREATE INDEX program_leaders_program_idx ON program_leaders(program_id);
-
+-- ---------------------------------------------------------------------------
+-- Identity assignments are created by the normalized identity migration.
+-- ---------------------------------------------------------------------------
 CREATE TABLE attendances (
   attendance_id  TEXT PRIMARY KEY,
   event_id       TEXT NOT NULL,
@@ -389,26 +364,11 @@ VALUES
   ('018f3b8a-0000-7000-8000-000000000002', '成區', '成區', '成人事工部門', 'PendingDevelopment', 1, NULL, '2026-08-06T00:00:00Z', NULL, '2026-08-06T00:00:00Z'),
   ('018f3b8a-0000-7000-8000-000000000003', '兒區', '兒區', '兒童事工部門', 'PendingDevelopment', 2, NULL, '2026-08-06T00:00:00Z', NULL, '2026-08-06T00:00:00Z');
 
--- ---------------------------------------------------------------------------
--- 9. Seed role policies and disabled module rows. The migration is the single
--- source of seeding; there is no runtime per-request seeding fan-out.
--- ---------------------------------------------------------------------------
 
-INSERT OR IGNORE INTO role_capabilities (role, capability, granted_by, granted_at) VALUES
-  ('Admin',  'department.manage',           NULL, '2026-08-06T00:00:00Z'),
-  ('Admin',  'department.publish',          NULL, '2026-08-06T00:00:00Z'),
-  ('Admin',  'department.module.configure', NULL, '2026-08-06T00:00:00Z'),
-  ('Admin',  'program.manage',              NULL, '2026-08-06T00:00:00Z'),
-  ('Admin',  'program.publish',             NULL, '2026-08-06T00:00:00Z'),
-  ('Admin',  'program.leader.assign',       NULL, '2026-08-06T00:00:00Z'),
-  ('Staff',  'department.manage',           NULL, '2026-08-06T00:00:00Z'),
-  ('Staff',  'department.publish',          NULL, '2026-08-06T00:00:00Z'),
-  ('Staff',  'department.module.configure', NULL, '2026-08-06T00:00:00Z'),
-  ('Staff',  'program.manage',              NULL, '2026-08-06T00:00:00Z'),
-  ('Staff',  'program.publish',             NULL, '2026-08-06T00:00:00Z'),
-  ('Staff',  'program.leader.assign',       NULL, '2026-08-06T00:00:00Z'),
-  ('Member', 'program.enroll',              NULL, '2026-08-06T00:00:00Z');
-
+-- ---------------------------------------------------------------------------
+-- 9. Seed disabled module rows. Normalized identity seeds run after migration
+-- 0019 so capability grants and assignments have their canonical schema.
+-- ---------------------------------------------------------------------------
 INSERT OR IGNORE INTO department_modules (department_id, module_key, enabled, enabled_by, enabled_at)
 SELECT d.department_id, m.module_key, 0, NULL, '2026-08-06T00:00:00Z'
   FROM departments d

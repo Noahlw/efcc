@@ -6,10 +6,7 @@ import { expect, test } from "@playwright/test";
 import type { Page, Route } from "@playwright/test";
 
 import { COPY } from "../../web/lib/copy";
-import {
-  defaultSections,
-  stableNavigationSections,
-} from "../../web/lib/sections";
+import { defaultSections, projectNavigation } from "../../web/lib/sections";
 
 const AUTH_HINT_KEY = "efcc_auth_active";
 
@@ -72,7 +69,9 @@ function stubAuthEndpoints(user: typeof MEMBER_USER) {
           data: {
             user,
             sections: defaultSections(),
-            navigation: stableNavigationSections(user.role),
+            navigation: projectNavigation({
+              "program.manage": user.role !== "Member",
+            }),
           },
         }),
       });

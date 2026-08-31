@@ -22,8 +22,9 @@
  * role, rejects an unknown capability key in role_definition_grants).
  */
 /* oxlint-disable eslint/max-classes-per-file, eslint/complexity, eslint/no-unused-vars, eslint/require-await, unicorn/no-lonely-if, unicorn/prefer-single-call -- the mutation batch is one D1 transaction; classes mirror the Worker error vocabulary. */
-import { isCapability } from "./types";
-import type { Capability, RoleAuditEventRow, RoleScopeKind } from "./types";
+import { isCapability } from "./capability-catalog";
+import type { Capability } from "./capability-catalog";
+import type { RoleAuditEventRow, RoleScopeKind } from "./types";
 
 /** Shape of the privileged mutation input the Worker sends to D1. */
 export interface RoleMutationInput {
@@ -36,6 +37,12 @@ export interface RoleMutationInput {
   /** Correlation/request ID copied to the immutable audit event. */
   correlation_id?: string | null;
   desired: readonly RoleDesiredChange[];
+  /**
+   * JSON response projection captured with the terminal ledger row. The
+   * permission editor supplies its authoritative post-change detail; other
+   * mutation domains leave this null.
+   */
+  result_json?: string | null;
   audit_summary: {
     action: string;
     entity_type: string;
@@ -61,6 +68,10 @@ export type RoleDesiredChange =
     }
   | {
       kind: "archive_role_definition";
+      role_definition_id: string;
+    }
+  | {
+      kind: "restore_role_definition";
       role_definition_id: string;
     }
   | {
@@ -96,6 +107,9 @@ export type RoleDesiredChange =
       assignment_id: string;
       account_user_id: string;
       role_definition_id: string;
+      /** Immutable scope snapshot captured from the Role Definition. */
+      scope_kind: RoleScopeKind;
+      scope_id: string | null;
     }
   | {
       kind: "revoke_assignment";
@@ -119,6 +133,8 @@ export interface RoleMutationResult {
   resulting_revision: number;
   idempotent: boolean;
   created: boolean;
+  /** The terminal response projection stored by the mutation, when any. */
+  result_json: string | null;
 }
 
 export class RoleIdempotencyConflictError extends Error {
@@ -134,16 +150,19 @@ export class RoleRevisionConflictError extends Error {
   readonly currentRevision: number;
   readonly reusedKey: boolean;
   readonly auditWritten: boolean;
+  readonly requestId?: string;
   constructor(
     currentRevision: number,
     reusedKey: boolean,
-    auditWritten = false
+    auditWritten = false,
+    requestId?: string
   ) {
     super("ROLE_REVISION_CONFLICT: stale base revision");
     this.name = "RoleRevisionConflictError";
     this.currentRevision = currentRevision;
     this.reusedKey = reusedKey;
     this.auditWritten = auditWritten;
+    this.requestId = requestId;
   }
 }
 
@@ -156,6 +175,13 @@ export class RoleCapabilityCatalogError extends Error {
   }
 }
 
+export interface RoleMutationDenialOptions {
+  errorCode: string;
+  auditOutcome: "DENIED" | "REJECTED" | "DUPLICATE";
+  capability?: string;
+  resultJson?: string | null;
+}
+
 interface RoleMutationRecord {
   idempotency_key: string;
   request_fingerprint: string;
@@ -163,6 +189,7 @@ interface RoleMutationRecord {
   base_revision: number;
   outcome: "PENDING" | "SUCCESS" | "CONFLICT" | "DENIED";
   resulting_revision: number | null;
+  result_json: string | null;
 }
 
 function gate(
@@ -210,7 +237,7 @@ async function findMutation(
   return db
     .prepare(
       `SELECT idempotency_key, request_fingerprint, actor_user_id,
-              base_revision, outcome, resulting_revision
+              base_revision, outcome, resulting_revision, result_json
          FROM role_policy_mutations
         WHERE idempotency_key = ?`
     )
@@ -231,6 +258,341 @@ export async function readCurrentRevision(db: D1Database): Promise<number> {
     throw new Error("role_policy_revisions singleton missing");
   }
   return row.revision;
+}
+function mutationResult(
+  record: RoleMutationRecord,
+  idempotent: boolean,
+  created: boolean,
+  fallbackRevision: number
+): RoleMutationResult {
+  if (record.outcome === "PENDING") {
+    throw new Error("role mutation did not reach a terminal state");
+  }
+  return {
+    outcome: record.outcome,
+    resulting_revision: record.resulting_revision ?? fallbackRevision,
+    idempotent,
+    created,
+    result_json: record.result_json,
+  };
+}
+
+function storedRequestId(resultJson: string | null): string | undefined {
+  if (!resultJson) {
+    return undefined;
+  }
+  try {
+    const parsed: unknown = JSON.parse(resultJson);
+    if (
+      typeof parsed === "object" &&
+      parsed !== null &&
+      "requestId" in parsed &&
+      typeof parsed.requestId === "string"
+    ) {
+      return parsed.requestId;
+    }
+  } catch {
+    // Pre-0023 rows may contain a legacy projection or malformed data.
+  }
+  return undefined;
+}
+
+/**
+ * Reserve a value-idempotent permission mutation as a terminal success. The
+ * reservation intentionally does not advance the policy revision or append
+ * an audit event, but it still binds the response projection to the actor,
+ * fingerprint, and key for response-loss recovery.
+ */
+export async function reserveRoleMutationNoop(
+  db: D1Database,
+  input: RoleMutationInput
+): Promise<RoleMutationResult> {
+  const existing = await findMutation(db, input.idempotency_key);
+  if (existing) {
+    if (
+      existing.actor_user_id !== input.actor_user_id ||
+      existing.request_fingerprint !== input.request_fingerprint
+    ) {
+      throw new RoleIdempotencyConflictError();
+    }
+    if (existing.outcome === "CONFLICT" || existing.outcome === "DENIED") {
+      throw new RoleRevisionConflictError(
+        existing.resulting_revision ?? input.base_revision,
+        true,
+        true
+      );
+    }
+    if (existing.outcome === "SUCCESS") {
+      return mutationResult(existing, true, false, input.base_revision);
+    }
+  }
+
+  const results = await db.batch([
+    db
+      .prepare(
+        `INSERT OR IGNORE INTO role_policy_mutations
+           (idempotency_key, request_fingerprint, actor_user_id,
+            base_revision, outcome, resulting_revision, result_json,
+            applied, audit_written, created_at, completed_at)
+         SELECT ?, ?, ?, ?, 'SUCCESS', ?, ?, 0, 0, ?, ?
+          WHERE EXISTS (
+            SELECT 1 FROM role_policy_revisions
+             WHERE id = 1 AND revision = ?
+          )`
+      )
+      .bind(
+        input.idempotency_key,
+        input.request_fingerprint,
+        input.actor_user_id,
+        input.base_revision,
+        input.base_revision,
+        input.result_json ?? null,
+        input.now,
+        input.now,
+        input.base_revision
+      ),
+  ]);
+  const record = await findMutation(db, input.idempotency_key);
+  if (!record && (results[0]?.meta?.changes ?? 0) === 0) {
+    const conflict = await reserveRoleMutationConflict(db, input);
+    if (conflict.outcome === "CONFLICT") {
+      throw new RoleRevisionConflictError(
+        conflict.resulting_revision,
+        conflict.idempotent,
+        true
+      );
+    }
+    return conflict;
+  }
+  if (
+    !record ||
+    record.actor_user_id !== input.actor_user_id ||
+    record.request_fingerprint !== input.request_fingerprint
+  ) {
+    throw new RoleIdempotencyConflictError();
+  }
+  return mutationResult(
+    record,
+    (results[0]?.meta?.changes ?? 0) === 0,
+    (results[0]?.meta?.changes ?? 0) > 0,
+    input.base_revision
+  );
+}
+
+/**
+ * Reserve one stale-revision conflict in the normalized kernel. The ledger
+ * row and its conflict audit are inserted atomically; replaying the same
+ * actor/key/fingerprint returns the recorded revision without another audit.
+ */
+export async function reserveRoleMutationConflict(
+  db: D1Database,
+  input: RoleMutationInput
+): Promise<RoleMutationResult> {
+  const existing = await findMutation(db, input.idempotency_key);
+  if (existing) {
+    if (
+      existing.actor_user_id !== input.actor_user_id ||
+      existing.request_fingerprint !== input.request_fingerprint
+    ) {
+      throw new RoleIdempotencyConflictError();
+    }
+    if (existing.outcome === "SUCCESS") {
+      return mutationResult(existing, true, false, input.base_revision);
+    }
+    if (existing.outcome === "CONFLICT") {
+      return mutationResult(existing, true, false, input.base_revision);
+    }
+    if (existing.outcome === "DENIED") {
+      throw new RoleRevisionConflictError(
+        existing.resulting_revision ?? input.base_revision,
+        true,
+        true,
+        storedRequestId(existing.result_json)
+      );
+    }
+  }
+
+  const currentRevision = await readCurrentRevision(db);
+  const conflictReason = input.audit_summary.reason?.startsWith(
+    "ROLE_POLICY_CONFLICT"
+  )
+    ? input.audit_summary.reason
+    : input.audit_summary.action === "ROLE_DEFINITION_REORDER"
+      ? `ROLE_ORDER_CONFLICT:current=${currentRevision}`
+      : `ROLE_REVISION_CONFLICT:current=${currentRevision}`;
+  const results = await db.batch([
+    db
+      .prepare(
+        `INSERT OR IGNORE INTO role_policy_mutations
+           (idempotency_key, request_fingerprint, actor_user_id,
+            base_revision, outcome, resulting_revision, result_json,
+            applied, audit_written, created_at, completed_at)
+         VALUES (?, ?, ?, ?, 'CONFLICT',
+                 (SELECT revision FROM role_policy_revisions WHERE id = 1),
+                 ?, 0, 1, ?, ?)`
+      )
+      .bind(
+        input.idempotency_key,
+        input.request_fingerprint,
+        input.actor_user_id,
+        input.base_revision,
+        JSON.stringify({
+          errorCode: "ROLE_POLICY_CONFLICT",
+          requestId: input.correlation_id ?? null,
+        }),
+        input.now,
+        input.now
+      ),
+    db
+      .prepare(
+        `INSERT INTO role_audit_events
+           (audit_id, inserted_at, actor_user_id, action, entity_type,
+            entity_id, old_value_json, new_value_json, reason, outcome,
+            correlation_id)
+         SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, 'CONFLICT', ?
+           FROM role_policy_mutations m
+          WHERE m.idempotency_key = ?
+            AND m.request_fingerprint = ?
+            AND m.actor_user_id = ?
+            AND m.outcome = 'CONFLICT'
+            AND changes() > 0`
+      )
+      .bind(
+        input.audit_id,
+        input.now,
+        input.actor_user_id,
+        input.audit_summary.action,
+        input.audit_summary.entity_type,
+        input.audit_summary.entity_id,
+        input.audit_summary.old_value_json ?? null,
+        input.audit_summary.new_value_json ?? null,
+        conflictReason,
+        input.correlation_id ?? null,
+        input.idempotency_key,
+        input.request_fingerprint,
+        input.actor_user_id
+      ),
+  ]);
+  const record = await findMutation(db, input.idempotency_key);
+  if (
+    !record ||
+    record.actor_user_id !== input.actor_user_id ||
+    record.request_fingerprint !== input.request_fingerprint
+  ) {
+    throw new RoleIdempotencyConflictError();
+  }
+  if (record.outcome !== "CONFLICT") {
+    return mutationResult(record, true, false, currentRevision);
+  }
+  return mutationResult(
+    record,
+    (results[0]?.meta?.changes ?? 0) === 0,
+    (results[0]?.meta?.changes ?? 0) > 0,
+    currentRevision
+  );
+}
+
+/**
+ * Reserve an authorization/validation denial as one terminal idempotency
+ * result. The ledger outcome stays DENIED while the audit outcome preserves
+ * whether the request was denied by authority or rejected by validation.
+ * Replays return the stored terminal metadata and never append another audit.
+ */
+export async function reserveRoleMutationDenial(
+  db: D1Database,
+  input: RoleMutationInput,
+  options: RoleMutationDenialOptions
+): Promise<RoleMutationResult> {
+  const existing = await findMutation(db, input.idempotency_key);
+  if (existing) {
+    if (
+      existing.actor_user_id !== input.actor_user_id ||
+      existing.request_fingerprint !== input.request_fingerprint
+    ) {
+      throw new RoleIdempotencyConflictError();
+    }
+    if (existing.outcome === "SUCCESS" || existing.outcome === "DENIED") {
+      return mutationResult(existing, true, false, input.base_revision);
+    }
+    if (existing.outcome === "CONFLICT") {
+      return mutationResult(existing, true, false, input.base_revision);
+    }
+  }
+
+  const resultJson =
+    options.resultJson ??
+    JSON.stringify({
+      errorCode: options.errorCode,
+      requestId: input.correlation_id ?? null,
+      ...(options.capability === undefined
+        ? {}
+        : { capability: options.capability }),
+    });
+  const results = await db.batch([
+    db
+      .prepare(
+        `INSERT OR IGNORE INTO role_policy_mutations
+           (idempotency_key, request_fingerprint, actor_user_id,
+            base_revision, outcome, resulting_revision, result_json,
+            applied, audit_written, created_at, completed_at)
+         VALUES (?, ?, ?, ?, 'DENIED',
+                 (SELECT revision FROM role_policy_revisions WHERE id = 1),
+                 ?, 0, 1, ?, ?)`
+      )
+      .bind(
+        input.idempotency_key,
+        input.request_fingerprint,
+        input.actor_user_id,
+        input.base_revision,
+        resultJson,
+        input.now,
+        input.now
+      ),
+    db
+      .prepare(
+        `INSERT INTO role_audit_events
+           (audit_id, inserted_at, actor_user_id, action, entity_type,
+            entity_id, old_value_json, new_value_json, reason, outcome,
+            correlation_id)
+         SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+           FROM role_policy_mutations m
+          WHERE m.idempotency_key = ?
+            AND m.request_fingerprint = ?
+            AND m.actor_user_id = ?
+            AND m.outcome = 'DENIED'
+            AND changes() > 0`
+      )
+      .bind(
+        input.audit_id,
+        input.now,
+        input.actor_user_id,
+        input.audit_summary.action,
+        input.audit_summary.entity_type,
+        input.audit_summary.entity_id,
+        input.audit_summary.old_value_json ?? null,
+        input.audit_summary.new_value_json ?? null,
+        options.errorCode,
+        options.auditOutcome,
+        input.correlation_id ?? null,
+        input.idempotency_key,
+        input.request_fingerprint,
+        input.actor_user_id
+      ),
+  ]);
+  const record = await findMutation(db, input.idempotency_key);
+  if (
+    !record ||
+    record.actor_user_id !== input.actor_user_id ||
+    record.request_fingerprint !== input.request_fingerprint
+  ) {
+    throw new RoleIdempotencyConflictError();
+  }
+  return mutationResult(
+    record,
+    (results[0]?.meta?.changes ?? 0) === 0,
+    (results[0]?.meta?.changes ?? 0) > 0,
+    input.base_revision
+  );
 }
 
 /**
@@ -285,13 +647,25 @@ export async function applyRoleMutation(
         resulting_revision: existing.resulting_revision ?? input.base_revision,
         idempotent: true,
         created: false,
+        result_json: existing.result_json,
       };
     }
   }
 
   const currentRevision = await readCurrentRevision(db);
   if (currentRevision !== input.base_revision) {
-    throw new RoleRevisionConflictError(currentRevision, false);
+    const conflict = await reserveRoleMutationConflict(db, input);
+    if (conflict.outcome === "CONFLICT") {
+      throw new RoleRevisionConflictError(
+        conflict.resulting_revision,
+        conflict.idempotent,
+        true
+      );
+    }
+    return conflict;
+  }
+  if (input.desired.length === 0) {
+    return reserveRoleMutationNoop(db, input);
   }
   // A single rename must prove that its guarded UPDATE changed a row before
   // the revision can advance. This closes the concurrent revision race:
@@ -401,6 +775,24 @@ export async function applyRoleMutation(
       );
       continue;
     }
+    if (change.kind === "restore_role_definition") {
+      statements.push(
+        db
+          .prepare(
+            `UPDATE role_definitions
+                SET is_archived = 0, updated_by = ?, updated_at = ?
+              WHERE role_definition_id = ? AND is_archived = 1
+                AND ${gateClause}`
+          )
+          .bind(
+            input.actor_user_id,
+            input.now,
+            change.role_definition_id,
+            ...bindGate(input)
+          )
+      );
+      continue;
+    }
     if (change.kind === "rename_role_definition") {
       // #478: the one complete rename mutation. Only label (and the audit
       // bookkeeping columns) are written; role_definition_id, position,
@@ -487,9 +879,12 @@ export async function applyRoleMutation(
           .prepare(
             `INSERT INTO role_assignments
                (assignment_id, account_user_id, role_definition_id,
-                granted_by, granted_at, revoked_by, revoked_at, revoke_reason)
-             SELECT ?, ?, ?, ?, ?, NULL, NULL, NULL
-              WHERE ${gateClause}`
+                granted_by, granted_at, scope_kind, scope_id,
+                revoked_by, revoked_at, revoke_reason)
+             SELECT ?, ?, ?, ?, ?, rd.scope_kind, rd.scope_id,
+                    NULL, NULL, NULL
+               FROM role_definitions rd
+              WHERE rd.role_definition_id = ? AND ${gateClause}`
           )
           .bind(
             change.assignment_id,
@@ -497,6 +892,7 @@ export async function applyRoleMutation(
             change.role_definition_id,
             input.actor_user_id,
             input.now,
+            change.role_definition_id,
             ...bindGate(input)
           )
       );
@@ -616,6 +1012,7 @@ export async function applyRoleMutation(
                 resulting_revision = (
                   SELECT revision FROM role_policy_revisions WHERE id = 1
                 ),
+                result_json = CASE WHEN applied = 1 THEN ? ELSE NULL END,
                 completed_at = ?
           WHERE idempotency_key = ?
             AND request_fingerprint = ?
@@ -623,6 +1020,7 @@ export async function applyRoleMutation(
             AND outcome = 'PENDING'`
       )
       .bind(
+        input.result_json ?? null,
         input.now,
         input.idempotency_key,
         input.request_fingerprint,
@@ -694,23 +1092,8 @@ export async function applyRoleMutation(
   // The batch's INSERT OR IGNORE is the authoritative claim on the
   // idempotency key: when another same-key batch won the PK (a concurrent
   // caller that passed preflight before this one), this batch's writes
-  // no-oped and the terminal row belongs to the winner. Report the
-  // authoritative result as a replay instead of a second SUCCESS.
   const claimed = (results[0]?.meta?.changes ?? 0) > 0;
-  if (!claimed) {
-    return {
-      outcome: record.outcome,
-      resulting_revision: record.resulting_revision ?? input.base_revision,
-      idempotent: true,
-      created: false,
-    };
-  }
-  return {
-    outcome: record.outcome,
-    resulting_revision: record.resulting_revision ?? input.base_revision,
-    idempotent: false,
-    created: true,
-  };
+  return mutationResult(record, !claimed, claimed, input.base_revision);
 }
 
 /**

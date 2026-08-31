@@ -1,31 +1,10 @@
 /**
- * EFCC D1 identity (Spec 091 §1) — pre-production disposable schema preflight.
+ * Disposable D1 schema preflight for the normalized identity cutover.
  *
- * The disposable pre-production schema replaces the obsolete fixed-role
- * permission tables (role_capabilities / permission_policy_state /
- * permission_policy_mutations). The preflight refuses to proceed against
- * any D1 binding whose name does not match the documented disposable
- * convention, surfaces the explicit DROP TABLE commands the operator must
- * run by hand, and never issues a DROP of its own.
- *
- * Two failure modes are explicitly handled:
- *
- *   1. Stale pre-019 schema: a legacy role_capabilities /
- *      permission_policy_state / permission_policy_mutations table is present
- *      and the disposable schema is missing. The preflight prints the
- *      exact `wrangler d1 execute ... --command "DROP TABLE IF EXISTS ..."`
- *      line the operator must run themselves and exits non-zero. No DROP is
- *      issued by the preflight.
- *   2. Unknown or non-disposable database name: a name that does not match
- *      the disposable prefix convention is treated as a production or
- *      shared-environment target. The preflight refuses to proceed and
- *      surfaces the name plus the required manual reset command.
- *
- * When the new schema (role_categories, role_definitions, ...) is present,
- * the preflight allows the seed and mutation paths to run even if some
- * legacy tables still co-exist; the operator is responsible for running the
- * manual reset on a clean disposable D1 before that D1 enters the
- * replacement cutover.
+ * The check is read-only. It refuses non-disposable databases and any
+ * database containing a retired authority table, even when normalized tables
+ * are also present. The result contains the exact manual reset command; this
+ * module never executes DROP.
  */
 
 const DISPOSABLE_NAME_PREFIXES = [
@@ -36,6 +15,8 @@ const DISPOSABLE_NAME_PREFIXES = [
 
 const LEGACY_PRE_019_TABLES = [
   "role_capabilities",
+  "department_managers",
+  "program_leaders",
   "permission_policy_state",
   "permission_policy_mutations",
 ] as const;
@@ -49,6 +30,14 @@ const REQUIRED_POST_019_TABLES = [
   "role_policy_mutations",
   "role_audit_events",
 ] as const;
+
+const REQUIRED_POST_019_COLUMNS = [
+  { table: "role_policy_mutations", column: "result_json" },
+  { table: "role_assignments", column: "scope_kind" },
+  { table: "role_assignments", column: "scope_id" },
+] as const;
+
+type RequiredPost019Column = (typeof REQUIRED_POST_019_COLUMNS)[number];
 
 export type PreflightOutcome =
   | { kind: "ok" }
@@ -70,6 +59,7 @@ export type PreflightOutcome =
       kind: "incomplete-schema";
       database: string;
       missingTables: readonly string[];
+      missingColumns: readonly string[];
       message: string;
     };
 
@@ -129,20 +119,19 @@ export async function preflightDisposableSchema(
         WHERE type = 'table' AND name NOT LIKE 'sqlite_%'`
     )
     .all<TableNameRow>();
-  const tables = new Set((result.results ?? []).map((row) => row.name));
+  const tables = new Set(
+    (result.results ?? []).map((row) => row.name.toLowerCase())
+  );
 
   const legacyHits = LEGACY_PRE_019_TABLES.filter((table) => tables.has(table));
-  const hasNewSchema = REQUIRED_POST_019_TABLES.every((table) =>
-    tables.has(table)
-  );
-  if (legacyHits.length > 0 && !hasNewSchema) {
+  if (legacyHits.length > 0) {
     return {
       kind: "stale-schema",
       database,
       legacyTables: legacyHits,
       resetCommand: buildResetCommand(database),
       message: [
-        `Detected stale pre-019 schema in "${database}" (legacy tables: ${legacyHits.join(
+        `Detected retired authority tables in "${database}" (tables: ${legacyHits.join(
           ", "
         )}).`,
         `The preflight does NOT auto-drop. Run the following command by hand, then re-run seeds:`,
@@ -157,16 +146,39 @@ export async function preflightDisposableSchema(
   if (missing.length === REQUIRED_POST_019_TABLES.length) {
     return { kind: "ok" };
   }
-  if (missing.length > 0) {
+  const missingColumns = (
+    await Promise.all(
+      REQUIRED_POST_019_COLUMNS.filter(({ table }) => tables.has(table)).map(
+        async (requirement: RequiredPost019Column) => {
+          const columns = await db
+            .prepare(`PRAGMA table_info(${requirement.table})`)
+            .all<{ name: string }>();
+          return (columns.results ?? []).some(
+            ({ name }) => name === requirement.column
+          )
+            ? null
+            : `${requirement.table}.${requirement.column}`;
+        }
+      )
+    )
+  ).filter((column): column is string => column !== null);
+  if (missing.length > 0 || missingColumns.length > 0) {
+    const details = [
+      missing.length > 0 ? `missing tables: ${missing.join(", ")}` : null,
+      missingColumns.length > 0
+        ? `missing columns: ${missingColumns.join(", ")}`
+        : null,
+    ].filter((detail): detail is string => detail !== null);
     return {
       kind: "incomplete-schema",
       database,
       missingTables: missing,
+      missingColumns,
       message: [
-        `Disposable database "${database}" is partially migrated; missing tables: ${missing.join(
-          ", "
+        `Disposable database "${database}" is partially migrated; ${details.join(
+          "; "
         )}.`,
-        `Re-run \`pnpm db:migrate:local\` to bring the schema to 0019.`,
+        "Re-run the latest disposable identity migrations before seeding.",
       ].join("\n"),
     };
   }
@@ -178,6 +190,7 @@ export const __test = {
   DISPOSABLE_NAME_PREFIXES,
   LEGACY_PRE_019_TABLES,
   REQUIRED_POST_019_TABLES,
+  REQUIRED_POST_019_COLUMNS,
   isDisposableName,
   buildResetCommand,
 };

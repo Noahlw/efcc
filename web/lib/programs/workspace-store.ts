@@ -128,23 +128,30 @@ export interface MemberOptionRow {
 
 /**
  * One flattened row of the Member Directory search (087-04 #321): an Active
- * account joined with one of its Active-enrollment departments (null
- * department columns when the account has no enrollment / none in scope).
+ * account joined with one of its Active-enrollment departments and one
+ * normalized identity assignment.
  */
 export interface ManagementMemberSearchRow {
   user_id: string;
   name: string;
   username: string;
   phone: string | null;
+  /** Derived from normalized system assignments, never accounts.role. */
   role: string;
   account_status: string;
   department_id: string | null;
   department_name: string | null;
+  identity_id: string | null;
+  identity_label: string | null;
+  identity_stable_key: string | null;
+  identity_scope_kind: "Global" | "Department" | "Program" | null;
+  identity_scope_id: string | null;
 }
 
 export interface AccountDirectorySearchFilters {
   department?: string;
   role?: "Admin" | "Staff" | "Member";
+  identityId?: string;
   status?: "Pending" | "Active" | "Suspended" | "Deactivated";
 }
 
@@ -465,69 +472,17 @@ export interface EnrollmentInput {
   created_at: string;
 }
 
-export interface ProgramLeaderRow {
+/** Normalized active identity assignment projected for an Event detail. */
+export interface ProgramIdentityAssignmentRow {
   program_id: string;
   user_id: string;
-  granted_by: string;
+  role_definition_id: string;
+  label: string;
+  scope_kind: "Global" | "Department" | "Program";
+  scope_id: string | null;
   granted_at: string;
-  revoked_by: string | null;
-  revoked_at: string | null;
   user_name?: string;
   username?: string;
-}
-
-export interface ProgramLeaderGrantInput {
-  program_id: string;
-  user_id: string;
-  granted_by: string;
-  granted_at: string;
-}
-
-export interface ProgramLeaderRevokeInput {
-  program_id: string;
-  user_id: string;
-  revoked_by: string;
-  revoked_at: string;
-}
-export interface DepartmentManagerRow {
-  department_id: string;
-  user_id: string;
-  granted_by: string;
-  granted_at: string;
-  revoked_by: string | null;
-  revoked_at: string | null;
-  user_name?: string;
-  username?: string;
-}
-
-export interface DepartmentManagerGrantInput {
-  department_id: string;
-  user_id: string;
-  granted_by: string;
-  granted_at: string;
-}
-
-export interface DepartmentManagerRevokeInput {
-  department_id: string;
-  user_id: string;
-  revoked_by: string;
-  revoked_at: string;
-}
-
-/**
- * One row of the Account Permissions projection (087-03 #320): an
- * admin-capable Admin/Staff account joined with one of its active Department
- * Manager grants. Accounts without a grant yield one row with null
- * department columns.
- */
-export interface ElevatedAccountRow {
-  user_id: string;
-  name: string;
-  role: "Admin" | "Staff" | "Member";
-  account_status: string;
-  department_id: string | null;
-  department_name: string | null;
-  display_order: number | null;
 }
 
 export interface AuditInput {
@@ -550,38 +505,6 @@ export type AuditOutcome =
   | "CONFLICT"
   | "DENIED"
   | "FAILED";
-
-export type PermissionPolicyGlobalRole = "Admin" | "Staff" | "Member";
-
-export interface PermissionPolicyDesiredValue {
-  role: PermissionPolicyGlobalRole;
-  capability: string;
-  value: boolean;
-}
-
-export interface PermissionPolicyMutationInput {
-  idempotency_key: string;
-  request_fingerprint: string;
-  actor_user_id: string;
-  base_revision: number;
-  desired: readonly PermissionPolicyDesiredValue[];
-  audit: AuditInput;
-}
-
-export interface PermissionPolicyMutationRecord {
-  idempotency_key: string;
-  request_fingerprint: string;
-  actor_user_id: string;
-  base_revision: number;
-  outcome: "PENDING" | "SUCCESS" | "CONFLICT";
-  resulting_revision: number | null;
-}
-
-export interface PermissionPolicyMutationResult {
-  outcome: "SUCCESS" | "CONFLICT";
-  resulting_revision: number;
-  created: boolean;
-}
 
 export interface WorkspaceStore {
   createDepartment: (input: DepartmentInput) => Promise<DepartmentRow>;
@@ -855,43 +778,10 @@ export interface WorkspaceStore {
     cancelledBy: string,
     cancelledAt: string
   ) => Promise<EnrollmentRow | null>;
-  findDepartmentManager: (
-    departmentId: string,
-    userId: string
-  ) => Promise<DepartmentManagerRow | null>;
-  listDepartmentManagers: (
-    departmentId: string
-  ) => Promise<DepartmentManagerRow[]>;
-  assignDepartmentManager: (
-    input: DepartmentManagerGrantInput
-  ) => Promise<DepartmentManagerRow>;
-  revokeDepartmentManager: (
-    input: DepartmentManagerRevokeInput
-  ) => Promise<DepartmentManagerRow | null>;
-  listElevatedAccounts: () => Promise<ElevatedAccountRow[]>;
-  listRoleCapabilities: () => Promise<
-    { role: string; capability: string }[]
-  >;
-  getPermissionPolicyRevision: () => Promise<number>;
-  findPermissionPolicyMutation: (
-    idempotencyKey: string
-  ) => Promise<PermissionPolicyMutationRecord | null>;
-  applyPermissionPolicyMutation: (
-    input: PermissionPolicyMutationInput
-  ) => Promise<PermissionPolicyMutationResult>;
-
-  findProgramLeader: (
-    programId: string,
-    userId: string
-  ) => Promise<ProgramLeaderRow | null>;
+  listProgramIdentityAssignments: (
+    programId: string
+  ) => Promise<ProgramIdentityAssignmentRow[]>;
   isAccountActive: (userId: string) => Promise<boolean>;
-  listProgramLeaders: (programId: string) => Promise<ProgramLeaderRow[]>;
-  assignProgramLeader: (
-    input: ProgramLeaderGrantInput
-  ) => Promise<ProgramLeaderRow>;
-  revokeProgramLeader: (
-    input: ProgramLeaderRevokeInput
-  ) => Promise<ProgramLeaderRow | null>;
 
   audit: (input: AuditInput) => Promise<void>;
 }

@@ -54,6 +54,58 @@ async function login(username: string, password: string): Promise<string> {
   assert.ok(cookie);
   return cookie.split(";")[0].slice(ACCESS_COOKIE_NAME.length + 1);
 }
+async function ensureIdentity(
+  stableKey: "admin" | "staff",
+  accountUserId: string
+): Promise<void> {
+  const roleDefinitionId = `account-directory-${stableKey}`;
+  const now = new Date().toISOString();
+  await testDb()
+    .prepare(
+      `INSERT OR IGNORE INTO role_definitions
+        (role_definition_id, category_key, stable_key, label, description,
+         scope_kind, scope_id, position, is_protected, is_archived,
+         created_by, created_at, updated_by, updated_at)
+       VALUES (?, 'Global', ?, ?, 'Account Directory test identity',
+               'Global', NULL, ?, ?, 0, NULL, ?, NULL, ?)`
+    )
+    .bind(
+      roleDefinitionId,
+      stableKey,
+      stableKey === "admin" ? "系統管理員" : "同工",
+      stableKey === "admin" ? 0 : 1,
+      stableKey === "admin" ? 1 : 0,
+      now,
+      now
+    )
+    .run();
+  if (stableKey === "staff") {
+    await testDb()
+      .prepare(
+        `INSERT OR IGNORE INTO role_definition_grants
+          (role_definition_id, capability, granted_by, granted_at)
+         VALUES (?, 'account.directory.read', NULL, ?)`
+      )
+      .bind(roleDefinitionId, now)
+      .run();
+  }
+  await testDb()
+    .prepare(
+      `INSERT OR IGNORE INTO role_assignments
+        (assignment_id, account_user_id, role_definition_id, granted_by,
+         granted_at, scope_kind, scope_id)
+       SELECT ?, ?, role_definition_id, 'AD001', ?, scope_kind, scope_id
+         FROM role_definitions
+        WHERE role_definition_id = ?`
+    )
+    .bind(
+      `account-directory-assignment-${stableKey}`,
+      accountUserId,
+      now,
+      roleDefinitionId
+    )
+    .run();
+}
 
 interface AccountRow {
   userId: string;
@@ -63,6 +115,7 @@ interface AccountRow {
   role: string;
   status: string;
   departments: { id: string; name: string }[];
+  canOpenAccess: boolean;
 }
 
 interface AccountBody {
@@ -93,6 +146,8 @@ describe("S4-02: Account Directory contract", () => {
       ["AD003", "Directory Member", "ad-member", "3333", "Member", "Active"],
       ["AD004", "Directory Pending", "ad-pending", "4444", "Member", "Pending"],
     ]);
+    await ensureIdentity("admin", "AD001");
+    await ensureIdentity("staff", "AD002");
     await Promise.all(
       (
         [
@@ -171,6 +226,12 @@ describe("S4-02: Account Directory contract", () => {
       body.data.accounts.some((account) => account.status === "Pending")
     );
     assert.strictEqual(body.data.accounts[0]?.username, "ad-admin");
+    assert.strictEqual(body.data.accounts[0]?.canOpenAccess, false);
+    assert.strictEqual(
+      body.data.accounts.find((account) => account.userId === "AD002")
+        ?.canOpenAccess,
+      true
+    );
 
     const detail = await worker.fetch(
       request("/api/v1/programs/accounts/AD004", adminAccess),
@@ -185,7 +246,15 @@ describe("S4-02: Account Directory contract", () => {
         phone: string | null;
         role: string;
         status: string;
+        identities: {
+          id: string;
+          label: string;
+          stableKey: string;
+          scopeKind: "Global" | "Department" | "Program";
+          scopeId: string | null;
+        }[];
         departments: { id: string; name: string }[];
+        canOpenAccess: boolean;
       };
     };
     assert.deepStrictEqual(detailBody.data, {
@@ -194,7 +263,9 @@ describe("S4-02: Account Directory contract", () => {
       username: "ad-pending",
       phone: null,
       role: "Member",
+      identities: [],
       status: "Pending",
+      canOpenAccess: false,
       departments: [],
     });
   });
@@ -212,6 +283,22 @@ describe("S4-02: Account Directory contract", () => {
     assert.deepStrictEqual(
       body.data.accounts.map((account) => account.userId),
       ["AD002"]
+    );
+    assert.strictEqual(body.data.accounts[0]?.canOpenAccess, false);
+  });
+  test("Member role filter includes accounts with automatic baseline access", async () => {
+    const response = await worker.fetch(
+      request(
+        "/api/v1/programs/accounts?q=Directory&role=Member&status=Active",
+        staffAccess
+      ),
+      testEnv()
+    );
+    assert.strictEqual(response.status, 200);
+    const body = (await response.json()) as AccountBody;
+    assert.deepStrictEqual(
+      body.data.accounts.map((account) => account.userId),
+      ["AD003"]
     );
   });
 

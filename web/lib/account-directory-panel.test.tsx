@@ -1,4 +1,10 @@
-import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
+import {
+  cleanup,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { setupServer } from "msw/node";
@@ -50,6 +56,7 @@ interface AccountRow {
   role: "Admin" | "Staff" | "Member";
   status: "Pending" | "Active" | "Suspended" | "Deactivated";
   departments: { id: string; name: string }[];
+  canOpenAccess: boolean;
 }
 
 const ROWS: AccountRow[] = [
@@ -61,6 +68,7 @@ const ROWS: AccountRow[] = [
     role: "Staff",
     status: "Active",
     departments: [{ id: "dept-grow", name: "培育部" }],
+    canOpenAccess: true,
   },
   {
     userId: "AD-002",
@@ -70,10 +78,14 @@ const ROWS: AccountRow[] = [
     role: "Member",
     status: "Pending",
     departments: [],
+    canOpenAccess: false,
   },
 ] as const;
 
-function response(accounts: AccountRow[] = ROWS, nextCursor: string | null = null) {
+function response(
+  accounts: AccountRow[] = ROWS,
+  nextCursor: string | null = null
+) {
   return HttpResponse.json({
     requestId: "rid-account-directory",
     data: {
@@ -122,6 +134,40 @@ describe(AccountDirectoryPanel, () => {
     await user.click(row);
     expect(row).toHaveAttribute("aria-pressed", "true");
     expect(window.location.search).toContain("account=AD-001");
+    const accessLink = await screen.findByRole("link", {
+      name: "查看帳戶權限與身份組",
+    });
+    expect(accessLink).toHaveAttribute(
+      "href",
+      "/management?module=accounts&account=AD-001&view=access&return=%2Fmanagement%3Fmodule%3Daccounts%26q%3D%25E5%25A4%25A7%25E6%2596%2587%26account%3DAD-001%26returnFocus%3Daccount-access"
+    );
+  });
+  test("preserves a Programs origin when entering Account Access", async () => {
+    const user = userEvent.setup();
+    mocks.searchParams = new URLSearchParams(
+      "module=accounts&return=%2Fprograms%3Fmode%3Dmanagement%26program%3Dprogram-1%26task%3Dsettings"
+    );
+    server.use(
+      http.get("/api/v1/programs/accounts", () => response()),
+      http.get("/api/v1/programs/accounts/AD-001", () =>
+        HttpResponse.json({
+          requestId: "rid-account-detail",
+          data: ROWS[0],
+        })
+      )
+    );
+    render(<AccountDirectoryPanel />);
+    const row = await screen.findByRole("button", { name: /陳大文/u });
+    await user.click(row);
+    const accessLink = await screen.findByRole("link", {
+      name: "查看帳戶權限與身份組",
+    });
+    expect(accessLink).toHaveAttribute(
+      "href",
+      expect.stringContaining(
+        "return=%2Fprograms%3Fmode%3Dmanagement%26program%3Dprogram-1%26task%3Dsettings"
+      )
+    );
   });
 
   test("opens with a populated Account page before search", async () => {
@@ -226,9 +272,7 @@ describe(AccountDirectoryPanel, () => {
   });
 
   test("loads a bookmarked Account Detail without a prior list search", async () => {
-    mocks.searchParams = new URLSearchParams(
-      "module=accounts&account=AD-001"
-    );
+    mocks.searchParams = new URLSearchParams("module=accounts&account=AD-001");
     server.use(
       http.get("/api/v1/programs/accounts", () => response([])),
       http.get("/api/v1/programs/accounts/AD-001", () =>
@@ -296,9 +340,7 @@ describe(AccountDirectoryPanel, () => {
   test("recovers an Account detail error through the selected detail slot", async () => {
     const user = userEvent.setup();
     let failed = true;
-    mocks.searchParams = new URLSearchParams(
-      "module=accounts&account=AD-001"
-    );
+    mocks.searchParams = new URLSearchParams("module=accounts&account=AD-001");
     server.use(
       http.get("/api/v1/programs/accounts", () => response([])),
       http.get("/api/v1/programs/accounts/AD-001", () => {
@@ -362,9 +404,10 @@ describe(AccountDirectoryPanel, () => {
     render(<AccountDirectoryPanel />);
 
     expect(screen.getByLabelText(ACCOUNTS.searchLabel)).toHaveValue("大文");
-    expect(
-      screen.getByRole("link", { name: ACCOUNTS.back })
-    ).toHaveAttribute("href", "/management?module=settings");
+    expect(screen.getByRole("link", { name: ACCOUNTS.back })).toHaveAttribute(
+      "href",
+      "/management?module=settings"
+    );
     expect(
       await screen.findByRole("heading", { name: ROWS[0].name })
     ).toBeInTheDocument();
@@ -376,9 +419,7 @@ describe(AccountDirectoryPanel, () => {
     );
     window.dispatchEvent(new PopStateEvent("popstate"));
     await waitFor(() =>
-      expect(
-        screen.queryByRole("heading", { name: ROWS[0].name })
-      ).toBeNull()
+      expect(screen.queryByRole("heading", { name: ROWS[0].name })).toBeNull()
     );
   });
 
@@ -397,9 +438,7 @@ describe(AccountDirectoryPanel, () => {
         );
         const page = manyRows.slice(start, start + pageSize);
         const nextCursor =
-          start + pageSize < manyRows.length
-            ? String(start + pageSize)
-            : null;
+          start + pageSize < manyRows.length ? String(start + pageSize) : null;
         return response(page, nextCursor);
       })
     );
@@ -418,9 +457,7 @@ describe(AccountDirectoryPanel, () => {
     expect(screen.getAllByRole("button", { name: /帳戶 \d{3}/u })).toHaveLength(
       manyRows.length
     );
-    expect(
-      screen.queryByRole("button", { name: "載入更多帳戶" })
-    ).toBeNull();
+    expect(screen.queryByRole("button", { name: "載入更多帳戶" })).toBeNull();
   });
   test("hands an AUTH_REQUIRED list load back through the deep-link seam", async () => {
     mocks.searchParams = new URLSearchParams(
@@ -445,9 +482,7 @@ describe(AccountDirectoryPanel, () => {
   });
 
   test("hands an AUTH_REQUIRED detail load back through the deep-link seam", async () => {
-    mocks.searchParams = new URLSearchParams(
-      "module=accounts&account=AD-001"
-    );
+    mocks.searchParams = new URLSearchParams("module=accounts&account=AD-001");
     window.history.replaceState(
       {},
       "",
@@ -465,5 +500,29 @@ describe(AccountDirectoryPanel, () => {
     expect(mocks.rememberDeepLink).toHaveBeenCalledWith(
       "/management?module=accounts&account=AD-001"
     );
+  });
+  test("restores focus to the Account Access source action on Back", async () => {
+    mocks.searchParams = new URLSearchParams(
+      "module=accounts&account=AD-001&returnFocus=account-access"
+    );
+    window.history.replaceState(
+      {},
+      "",
+      "/management?module=accounts&account=AD-001&returnFocus=account-access"
+    );
+    server.use(
+      http.get("/api/v1/programs/accounts", () => response()),
+      http.get("/api/v1/programs/accounts/AD-001", () =>
+        HttpResponse.json({
+          requestId: "rid-account-detail",
+          data: ROWS[0],
+        })
+      )
+    );
+    render(<AccountDirectoryPanel />);
+    const accessLink = await screen.findByRole("link", {
+      name: "查看帳戶權限與身份組",
+    });
+    await waitFor(() => expect(document.activeElement).toBe(accessLink));
   });
 });

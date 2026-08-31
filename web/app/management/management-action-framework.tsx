@@ -1,18 +1,33 @@
 "use client";
-import { cva } from 'class-variance-authority';
-import type { VariantProps } from 'class-variance-authority';
+import { cva } from "class-variance-authority";
+import type { VariantProps } from "class-variance-authority";
+import { XIcon } from "lucide-react";
 import Link from "next/link";
-import { useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import type { ComponentPropsWithoutRef, ReactNode, Ref } from "react";
 
+import { Button } from "@/components/ui/button";
+import {
+  Sheet,
+  SheetClose,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
 
 import { BackIcon } from "./settings-ui";
 
-import styles from "./management-action-framework.module.css";
+const focusVisibleOutline =
+  "focus-visible:outline-[3px]! focus-visible:outline-[var(--focus)]! focus-visible:outline-offset-[3px]!";
+const actionSurfaceFocus =
+  "[&_:is(button,a,input,select,textarea):focus-visible]:outline-[3px]! [&_:is(button,a,input,select,textarea):focus-visible]:outline-[var(--focus)]! [&_:is(button,a,input,select,textarea):focus-visible]:outline-offset-[3px]!";
+const headerActionFocus =
+  "[&_:is(button,a):focus-visible]:outline-[3px]! [&_:is(button,a):focus-visible]:outline-[var(--focus)]! [&_:is(button,a):focus-visible]:outline-offset-[3px]!";
 
 export const actionSurfaceVariants = cva(
-  "relative isolate w-full min-w-0 rounded-xl border text-sm",
+  `static isolate grid min-h-11 w-full min-w-0 max-h-[min(48dvh,420px)] gap-[var(--space-3)] mt-[var(--space-4)] overflow-y-auto overscroll-contain rounded-[var(--radius-md)] border bg-[var(--surface-raised)] p-[var(--space-3)] pb-[calc(var(--space-3)+env(safe-area-inset-bottom,0px))] text-sm shadow-[var(--shadow-dock)] scroll-mb-[calc(84px+env(safe-area-inset-bottom,0px))] data-disabled:opacity-70 ${actionSurfaceFocus}`,
   {
     variants: {
       state: {
@@ -21,8 +36,8 @@ export const actionSurfaceVariants = cva(
         review: "border-ring",
         save: "border-primary",
         busy: "border-input",
-        failure: "border-destructive bg-destructive/10",
-        conflict: "border-destructive bg-destructive/10",
+        failure: "border-[var(--error-border)] bg-[var(--error-surface)]",
+        conflict: "border-[var(--error-border)] bg-[var(--error-surface)]",
       },
     },
     defaultVariants: {
@@ -61,10 +76,7 @@ export const ActionSurface = ({
       {...props}
       aria-busy={isBusy}
       aria-label={label}
-      className={cn(
-        actionSurfaceVariants({ state, className }),
-        styles.actionSurface
-      )}
+      className={cn(actionSurfaceVariants({ state, className }))}
       data-disabled={disabled || undefined}
       data-slot="action-surface"
       data-state={state}
@@ -83,13 +95,16 @@ export function safeManagementReturnHref(
   }
   try {
     const candidate = new URL(value, "https://efcc.internal");
+    const path = candidate.pathname;
     if (
-      candidate.pathname !== "/management" &&
-      !candidate.pathname.startsWith("/management/")
+      path !== "/management" &&
+      !path.startsWith("/management/") &&
+      path !== "/programs" &&
+      !path.startsWith("/programs/")
     ) {
       return fallback;
     }
-    return `${candidate.pathname}${candidate.search}${candidate.hash}`;
+    return `${path}${candidate.search}${candidate.hash}`;
   } catch {
     return fallback;
   }
@@ -114,19 +129,35 @@ export const ManagementPageHeader = ({
   titleRef?: Ref<HTMLHeadingElement>;
   onBackClick?: () => void;
 }) => (
-  <header className={styles.header}>
-    <Link className={styles.back} href={backHref} onClick={onBackClick}>
+  <header className="grid gap-[0.7rem]">
+    <Link
+      className={cn(
+        "inline-flex w-fit min-h-[44px] items-center gap-[0.3rem] text-[var(--ink-muted)] no-underline",
+        focusVisibleOutline
+      )}
+      href={backHref}
+      onClick={onBackClick}
+    >
       <BackIcon />
       <span>{backLabel}</span>
     </Link>
-    <div className={styles.titleRow}>
-      <div>
-        <h1 id={titleId} ref={titleRef} tabIndex={titleRef ? -1 : undefined}>
+    <div className="flex min-w-0 items-start justify-between gap-4">
+      <div className="min-w-0">
+        <h1
+          className="m-0 wrap-anywhere text-[clamp(1.75rem,5vw,2.35rem)] tracking-[-0.03em]"
+          id={titleId}
+          ref={titleRef}
+          tabIndex={titleRef ? -1 : undefined}
+        >
           {title}
         </h1>
-        <p>{lead}</p>
+        <p className="m-0 mt-[0.35rem] max-w-[65ch] text-[var(--ink-muted)] leading-[1.55]">
+          {lead}
+        </p>
       </div>
-      {action && <div className={styles.headerAction}>{action}</div>}
+      {action && (
+        <div className={cn("flex-none", headerActionFocus)}>{action}</div>
+      )}
     </div>
   </header>
 );
@@ -146,7 +177,7 @@ export const ManagementStickyActionBar = ({
 }) => (
   <ActionSurface
     busy={busy}
-    className={styles.stickyBar}
+    className="shell:fixed shell:right-4 shell:bottom-4 shell:left-auto shell:z-[25] shell:min-w-[360px]"
     disabled={disabled}
     label={label}
     state={state}
@@ -165,36 +196,66 @@ export const ManagementFilterSheet = ({
   onClose: () => void;
 }) => {
   const closeRef = useRef<HTMLButtonElement>(null);
-  const openerRef = useRef<HTMLElement | null>(null);
+  const openerRef = useRef<HTMLElement | null>(
+    typeof document === "undefined"
+      ? null
+      : document.activeElement instanceof HTMLElement
+        ? document.activeElement
+        : null
+  );
+  const restoreFocus = useCallback(() => {
+    const opener = openerRef.current;
+    if (opener?.isConnected) {
+      opener.focus();
+    }
+  }, []);
+
   useEffect(() => {
-    openerRef.current = document.activeElement as HTMLElement | null;
     closeRef.current?.focus();
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        onClose();
-      }
-    };
-    document.addEventListener("keydown", handleKeyDown);
-    return () => {
-      document.removeEventListener("keydown", handleKeyDown);
-      openerRef.current?.focus();
-    };
-  }, [onClose]);
+    return restoreFocus;
+  }, [restoreFocus]);
 
   return (
-    <div className={styles.backdrop} role="presentation">
-      <dialog aria-label={label} className={styles.sheet} open>
-        <button
-          aria-label={`關閉${label}`}
-          className={styles.close}
-          onClick={onClose}
-          ref={closeRef}
-          type="button"
-        >
-          ×
-        </button>
+    <Sheet
+      onOpenChange={(open) => {
+        if (!open) {
+          onClose();
+        }
+      }}
+      open
+    >
+      <SheetContent
+        aria-label={label}
+        className="max-h-[82dvh] w-full overflow-y-auto rounded-t-[18px] border border-[var(--line)] bg-[var(--surface-raised)] p-[1.2rem] pb-[calc(1rem+env(safe-area-inset-bottom,0px))] text-[var(--ink)] sm:inset-x-auto sm:top-1/2 sm:right-auto sm:bottom-auto sm:left-1/2 sm:h-auto sm:w-[min(640px,calc(100%-2rem))] sm:-translate-x-1/2 sm:-translate-y-1/2 sm:rounded-2xl"
+        onCloseAutoFocus={(event) => {
+          event.preventDefault();
+          restoreFocus();
+        }}
+        onOpenAutoFocus={(event) => {
+          event.preventDefault();
+          closeRef.current?.focus();
+        }}
+        side="bottom"
+        showCloseButton={false}
+      >
+        <SheetHeader className="sr-only p-0">
+          <SheetTitle>{label}</SheetTitle>
+          <SheetDescription>選擇篩選條件後套用。</SheetDescription>
+        </SheetHeader>
+        <SheetClose asChild>
+          <Button
+            aria-label={`關閉${label}`}
+            className="absolute top-2 right-2 size-11 rounded-full bg-[var(--surface)] text-[var(--ink)]"
+            ref={closeRef}
+            size="icon-sm"
+            type="button"
+            variant="ghost"
+          >
+            <XIcon aria-hidden="true" />
+          </Button>
+        </SheetClose>
         {children}
-      </dialog>
-    </div>
+      </SheetContent>
+    </Sheet>
   );
 };

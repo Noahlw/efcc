@@ -1,6 +1,7 @@
-import userEvent from "@testing-library/user-event";
 import { cleanup, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, test } from "vitest";
+import userEvent from "@testing-library/user-event";
+import { useState } from "react";
+import { afterEach, describe, expect, test, vi } from "vitest";
 
 import {
   ActionSurface,
@@ -31,6 +32,20 @@ describe("S4 management action framework", () => {
       "/management"
     );
   });
+  test("accepts a validated Programs return URL", () => {
+    expect(
+      safeManagementReturnHref(
+        "/programs?program=program-1&task=settings",
+        "/management"
+      )
+    ).toBe("/programs?program=program-1&task=settings");
+    expect(
+      safeManagementReturnHref(
+        "/programs.evil?program=program-1",
+        "/management"
+      )
+    ).toBe("/management");
+  });
 
   test("renders one consistent Back, title, lead, and contextual action", () => {
     render(
@@ -56,7 +71,7 @@ describe("S4 management action framework", () => {
     ).toBeInTheDocument();
   });
 
-  test("exposes labelled filter-sheet and sticky-action regions", () => {
+  test("exposes labelled filter Sheet and sticky-action regions", () => {
     render(
       <>
         <ManagementFilterSheet label="篩選帳戶" onClose={() => {}}>
@@ -71,12 +86,86 @@ describe("S4 management action framework", () => {
       </>
     );
 
+    expect(screen.getByRole("dialog", { name: "篩選帳戶" })).toHaveAttribute(
+      "data-slot",
+      "sheet-content"
+    );
     expect(
-      screen.getByRole("dialog", { name: "篩選帳戶" })
+      screen.getByRole("button", { name: "關閉篩選帳戶" })
     ).toBeInTheDocument();
     expect(
-      screen.getByRole("region", { name: "審批選取集" })
+      screen.getByRole("region", { hidden: true, name: "審批選取集" })
     ).toBeInTheDocument();
+  });
+
+  test("returns focus to the opener after the explicit close action", async () => {
+    const user = userEvent.setup();
+    const onClose = vi.fn();
+
+    function FilterHarness() {
+      const [open, setOpen] = useState(false);
+      return (
+        <>
+          <button onClick={() => setOpen(true)} type="button">
+            開啟篩選
+          </button>
+          {open ? (
+            <ManagementFilterSheet
+              label="篩選帳戶"
+              onClose={() => {
+                onClose();
+                setOpen(false);
+              }}
+            >
+              <p>篩選內容</p>
+            </ManagementFilterSheet>
+          ) : null}
+        </>
+      );
+    }
+
+    render(<FilterHarness />);
+    const opener = screen.getByRole("button", { name: "開啟篩選" });
+    await user.click(opener);
+    await user.click(screen.getByRole("button", { name: "關閉篩選帳戶" }));
+
+    expect(onClose).toHaveBeenCalledOnce();
+    expect(opener).toHaveFocus();
+  });
+
+  test("closes through the Sheet Escape interaction and restores focus", async () => {
+    const user = userEvent.setup();
+    const onClose = vi.fn();
+
+    function FilterHarness() {
+      const [open, setOpen] = useState(false);
+      return (
+        <>
+          <button onClick={() => setOpen(true)} type="button">
+            開啟篩選
+          </button>
+          {open ? (
+            <ManagementFilterSheet
+              label="篩選帳戶"
+              onClose={() => {
+                onClose();
+                setOpen(false);
+              }}
+            >
+              <p>篩選內容</p>
+            </ManagementFilterSheet>
+          ) : null}
+        </>
+      );
+    }
+
+    render(<FilterHarness />);
+    const opener = screen.getByRole("button", { name: "開啟篩選" });
+    await user.click(opener);
+    await user.keyboard("{Escape}");
+
+    expect(onClose).toHaveBeenCalledOnce();
+    expect(opener).toHaveFocus();
   });
   test.each([
     "dirty",

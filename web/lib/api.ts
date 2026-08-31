@@ -23,6 +23,16 @@ export interface LoginResult {
 }
 
 /**
+ * Privacy-safe identity summary returned by the Worker bootstrap projection.
+ * Scope labels are human-readable; stable IDs and credentials are omitted.
+ */
+export interface PublicIdentitySummary {
+  label: string;
+  scopeKind: "Global" | "Department" | "Program";
+  scopeLabel: string | null;
+}
+
+/**
  * Public user profile returned by GET /api/v1/auth/me from the access
  * cookie. No credential, token, or session identifier ever appears here.
  */
@@ -31,7 +41,11 @@ export interface PublicUser {
   name: string;
   username: string;
   phone: string;
+  /** Legacy display vocabulary; not used for authorization. */
   role: string;
+  systemRole?: "Admin" | "Staff" | null;
+  identities?: readonly PublicIdentitySummary[];
+  capabilities?: Record<string, boolean>;
   status: string;
   qrCodeString: string;
 }
@@ -46,6 +60,11 @@ export interface ProblemDetails {
   code?: string;
   /** RFC 9457 extension member - direct access without URI parsing. */
   requestId?: string;
+  /** RFC 9457 extension member carrying authoritative conflict data. */
+  data?: {
+    authoritativeRevision?: number;
+    [key: string]: unknown;
+  };
 }
 
 /**
@@ -184,9 +203,7 @@ async function authFetch<T>(
       method,
       headers: {
         "Content-Type": "application/json",
-        ...(opts.mutating
-          ? { "Idempotency-Key": crypto.randomUUID() }
-          : {}),
+        ...(opts.mutating ? { "Idempotency-Key": crypto.randomUUID() } : {}),
       },
       ...(body === undefined ? {} : { body: JSON.stringify(body) }),
       // Bounded timeout per AGENTS.md Production Resilience.
@@ -242,10 +259,15 @@ export function authLogin(
   username: string,
   password: string
 ): Promise<LoginResult> {
-  return authFetch<LoginResult>("/api/v1/auth/login", "POST", {
-    username,
-    password,
-  }, { mutating: true });
+  return authFetch<LoginResult>(
+    "/api/v1/auth/login",
+    "POST",
+    {
+      username,
+      password,
+    },
+    { mutating: true }
+  );
 }
 
 /** POST /api/v1/auth/upgrade — replaces a verified legacy credential. */
@@ -254,21 +276,23 @@ export function authUpgrade(
   legacyPin: string,
   newCredential: string
 ): Promise<{ user: PublicUser }> {
-  return authFetch<{ user: PublicUser }>("/api/v1/auth/upgrade", "POST", {
-    username,
-    legacyPin,
-    newCredential,
-  }, { mutating: true });
+  return authFetch<{ user: PublicUser }>(
+    "/api/v1/auth/upgrade",
+    "POST",
+    {
+      username,
+      legacyPin,
+      newCredential,
+    },
+    { mutating: true }
+  );
 }
 
 /** POST /api/v1/auth/refresh — rotates the refresh cookie, mints a fresh access. */
 export function authRefresh(): Promise<void> {
-  return authFetch<void>(
-    "/api/v1/auth/refresh",
-    "POST",
-    undefined,
-    { mutating: true }
-  );
+  return authFetch<void>("/api/v1/auth/refresh", "POST", undefined, {
+    mutating: true,
+  });
 }
 
 /**
@@ -277,12 +301,9 @@ export function authRefresh(): Promise<void> {
  * as best-effort (local session is cleared regardless).
  */
 export function authLogout(): Promise<void> {
-  return authFetch<void>(
-    "/api/v1/auth/logout",
-    "POST",
-    undefined,
-    { mutating: true }
-  );
+  return authFetch<void>("/api/v1/auth/logout", "POST", undefined, {
+    mutating: true,
+  });
 }
 
 /**

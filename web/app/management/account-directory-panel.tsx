@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 
@@ -27,8 +28,8 @@ import type {
 import { useAsyncResource } from "@/lib/programs/use-async-resource";
 import { rememberDeepLink } from "@/lib/session";
 
-import { DirectoryFrame } from './directory-frame';
-import type { DirectoryFrameState } from './directory-frame';
+import { DirectoryFrame } from "./directory-frame";
+import type { DirectoryFrameState } from "./directory-frame";
 import {
   ManagementFilterSheet,
   safeManagementReturnHref,
@@ -83,6 +84,16 @@ function roleLabel(role: AccountDirectoryMember["role"]): string {
     return COPY_ACCOUNT.staff;
   }
   return COPY_ACCOUNT.member;
+}
+function identityText(
+  identities: AccountDirectoryMember["identities"] | undefined,
+  role: AccountDirectoryMember["role"]
+): string {
+  return identities && identities.length > 0
+    ? identities.map(({ label }) => label).join("、")
+    : role === "Member"
+      ? "會友基礎"
+      : roleLabel(role);
 }
 
 function statusLabel(status: AccountDirectoryMember["status"]): string {
@@ -149,6 +160,22 @@ function buildAccountsHref({
     params.set("department", department.trim());
   }
   return `/management?${params.toString()}`;
+}
+function accountAccessReturnHref(href: string, accountUserId: string): string {
+  try {
+    const candidate = new URL(href, "https://efcc.internal");
+    if (
+      candidate.pathname !== "/management" ||
+      candidate.searchParams.get("module") !== "accounts"
+    ) {
+      return href;
+    }
+    candidate.searchParams.set("account", accountUserId);
+    candidate.searchParams.set("returnFocus", "account-access");
+    return `${candidate.pathname}${candidate.search}${candidate.hash}`;
+  } catch {
+    return href;
+  }
 }
 
 function accountErrorMessage(error: unknown): string {
@@ -340,6 +367,9 @@ export const AccountDirectoryPanel = () => {
   const stateRef = useRef<HTMLElement>(null);
   const resultsRef = useRef<HTMLElement>(null);
   const detailRef = useRef<HTMLElement>(null);
+  const accessReturnFocusRef = useRef<HTMLAnchorElement>(null);
+  const restoreAccessFocus =
+    searchParams.get("returnFocus") === "account-access";
   const [query, setQuery] = useState(searchParams.get("q") ?? "");
   const [role, setRole] = useState<AccountDirectoryMember["role"] | "">(
     parseRole(searchParams.get("role"))
@@ -400,7 +430,7 @@ export const AccountDirectoryPanel = () => {
     [department, query, role, router, status]
   );
 
-  const {state} = listResource;
+  const { state } = listResource;
   const resourceView = state.kind === "ready" ? state.data : null;
   const accountView = appendedView ?? resourceView;
   const accounts = accountView?.accounts ?? [];
@@ -467,6 +497,10 @@ export const AccountDirectoryPanel = () => {
       current = false;
     };
   }, [detailRetryKey, router, selectedId]);
+  useEffect(() => {
+    if (!restoreAccessFocus || detailState.kind !== "ready") return;
+    accessReturnFocusRef.current?.focus();
+  }, [detailState.kind, restoreAccessFocus]);
 
   const updateUrl = (next: AccountUrlState) => {
     window.history.replaceState(null, "", buildAccountsHref(next));
@@ -668,6 +702,14 @@ export const AccountDirectoryPanel = () => {
                 </div>
                 <div className="min-w-0 border-r border-b border-[var(--line)] p-3">
                   <dt className="text-xs font-bold text-[var(--ink-muted)]">
+                    身份組
+                  </dt>
+                  <dd className="m-0 mt-1 wrap-anywhere font-bold">
+                    {identityText(selected.identities, selected.role)}
+                  </dd>
+                </div>
+                <div className="min-w-0 border-r border-b border-[var(--line)] p-3">
+                  <dt className="text-xs font-bold text-[var(--ink-muted)]">
                     {COPY_ACCOUNT.status}
                   </dt>
                   <dd className="m-0 mt-1 wrap-anywhere font-bold">
@@ -701,6 +743,20 @@ export const AccountDirectoryPanel = () => {
                   {COPY_ACCOUNT.detailReadOnly}
                 </p>
               </div>
+              {selected.canOpenAccess && (
+                <Button
+                  asChild
+                  className="mt-4 min-h-11 w-full font-extrabold"
+                  variant="default"
+                >
+                  <Link
+                    href={`/management?module=accounts&account=${encodeURIComponent(selected.userId)}&view=access&return=${encodeURIComponent(accountAccessReturnHref(returnHref, selected.userId))}`}
+                    ref={accessReturnFocusRef}
+                  >
+                    查看帳戶權限與身份組
+                  </Link>
+                </Button>
+              )}
             </article>
           ) : null
         ) : null
@@ -767,7 +823,7 @@ export const AccountDirectoryPanel = () => {
           aria-label={
             activeFilterCount > 0 ? `篩選 ${activeFilterCount}` : "篩選"
           }
-          className="min-h-12 border-[var(--line-strong)] bg-[var(--surface-raised)] px-4 font-extrabold text-[var(--ink)] hover:bg-[var(--surface)]"
+          className="min-h-12 min-w-11 border-[var(--line-strong)] bg-[var(--surface-raised)] px-4 font-extrabold text-[var(--ink)] hover:bg-[var(--surface)]"
           onClick={() => setFilterOpen(true)}
           type="button"
           variant="outline"
@@ -930,7 +986,7 @@ export const AccountDirectoryPanel = () => {
                     <li key={account.userId} className="min-w-0">
                       <Button
                         aria-pressed={selection.selectedId === account.userId}
-                        className="grid min-h-[68px] w-full min-w-0 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 rounded-[var(--radius-md)] border border-[var(--line)] bg-[var(--surface-raised)] p-3 text-left text-[var(--ink)] hover:border-[var(--focus)] hover:shadow-[inset_3px_0_0_var(--focus)] aria-pressed:border-[var(--focus)] aria-pressed:shadow-[inset_3px_0_0_var(--focus)]"
+                        className="h-auto grid min-h-[68px] w-full min-w-0 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 rounded-[var(--radius-md)] border border-[var(--line)] bg-[var(--surface-raised)] p-3 text-left whitespace-normal text-[var(--ink)] hover:border-[var(--focus)] hover:shadow-[inset_3px_0_0_var(--focus)] aria-pressed:border-[var(--focus)] aria-pressed:shadow-[inset_3px_0_0_var(--focus)]"
                         onClick={() => selection.onSelect(account.userId)}
                         type="button"
                         variant="ghost"
@@ -938,14 +994,12 @@ export const AccountDirectoryPanel = () => {
                         <span className="grid size-10 shrink-0 place-items-center rounded-full border border-[var(--line)] bg-[var(--surface)] font-extrabold text-[var(--accent)]">
                           {initials(account.name)}
                         </span>
-                        <span className="grid min-w-0 gap-1">
+                        <span className="grid min-w-0 gap-1 wrap-anywhere">
                           <strong className="wrap-anywhere">
                             {account.name}
                           </strong>
-                          <small className="overflow-hidden text-ellipsis whitespace-nowrap text-[0.74rem] text-[var(--ink-muted)]">
-                            {account.username ?? COPY_ACCOUNT.unavailable} ·{" "}
-                            {roleLabel(account.role)}
-                          </small>
+                          {account.username ?? COPY_ACCOUNT.unavailable} ·{" "}
+                          {identityText(account.identities, account.role)}
                         </span>
                         <span
                           className={`min-h-[26px] rounded-full border px-2 py-1 text-[0.68rem] font-extrabold whitespace-nowrap ${statusClass(account.status)}`}

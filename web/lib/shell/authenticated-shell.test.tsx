@@ -20,7 +20,7 @@ import { AppShell } from "@/lib/app-shell";
 import { COPY } from "@/lib/copy";
 import { LiveRegion, announce } from "@/lib/live-region";
 import { NavBar } from "@/lib/nav-bar";
-import { defaultSections, stableNavigationSections } from "@/lib/sections";
+import { defaultSections, projectNavigation } from "@/lib/sections";
 import { setAuthHint } from "@/lib/session";
 
 const mocks = vi.hoisted(() => {
@@ -62,12 +62,12 @@ const STAFF_USER: PublicUser = { ...PUBLIC_USER, role: "Staff" };
 
 const BOOTSTRAP: Bootstrap = {
   sections: defaultSections(),
-  navigation: stableNavigationSections("Member"),
+  navigation: projectNavigation({ "program.enroll": true }),
   profile: PUBLIC_USER,
 };
 const STAFF_BOOTSTRAP: Bootstrap = {
   sections: defaultSections(),
-  navigation: stableNavigationSections("Staff"),
+  navigation: projectNavigation({ "program.manage": true }),
   profile: STAFF_USER,
 };
 

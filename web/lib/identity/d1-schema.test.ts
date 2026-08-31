@@ -14,7 +14,11 @@ import { env } from "cloudflare:workers";
 import { beforeAll, describe, expect, test } from "vitest";
 
 import { applyMigrations, testDb } from "../auth/test-bootstrap";
-import { preflightDisposableSchema, seedDisposableIdentity } from "./index";
+import {
+  __preflightTest,
+  preflightDisposableSchema,
+  seedDisposableIdentity,
+} from "./index";
 import {
   applyRoleMutation,
   recordRoleDenial,
@@ -140,22 +144,54 @@ describe("#476 disposable D1 schema contract", () => {
     const tables = await readAllTables();
     expect(tables).toContain("role_definitions");
   });
+  test("preflight rejects missing Phase C columns before seed or mutation", async () => {
+    const tables = __preflightTest.REQUIRED_POST_019_TABLES.map((name) => ({
+      name,
+    }));
+    const db = {
+      prepare(sql: string) {
+        return {
+          all: async () => {
+            if (sql.includes("sqlite_master")) {
+              return { results: tables };
+            }
+            if (sql.includes("role_policy_mutations")) {
+              return { results: [{ name: "idempotency_key" }] };
+            }
+            if (sql.includes("role_assignments")) {
+              return { results: [{ name: "assignment_id" }] };
+            }
+            return { results: [] };
+          },
+        };
+      },
+    } as unknown as D1Database;
+    const result = await preflightDisposableSchema(db, {
+      databaseName: DISPOSABLE_DATABASE,
+    });
+    expect(result.kind).toBe("incomplete-schema");
+    if (result.kind !== "incomplete-schema") {
+      throw new Error("expected incomplete-schema result");
+    }
+    expect(result.missingColumns).toEqual([
+      "role_policy_mutations.result_json",
+      "role_assignments.scope_kind",
+      "role_assignments.scope_id",
+    ]);
+  });
 
-  test("preflight flags a stale pre-019 schema and never auto-drops", async () => {
+  test("preflight flags any retired authority table, even with normalized tables present, and never auto-drops", async () => {
     const db = testDb();
-    const newTables = [
-      "role_categories",
-      "role_definitions",
-      "role_definition_grants",
-      "role_assignments",
-      "role_policy_revisions",
-      "role_policy_mutations",
-      "role_audit_events",
-    ];
-    const backup = `__backup_${Date.now()}`;
-    for (const table of newTables) {
+    const legacyTables = [
+      "role_capabilities",
+      "department_managers",
+      "program_leaders",
+      "permission_policy_state",
+      "permission_policy_mutations",
+    ] as const;
+    for (const table of legacyTables) {
       await db
-        .prepare(`ALTER TABLE ${table} RENAME TO ${backup}_${table}`)
+        .prepare(`CREATE TABLE IF NOT EXISTS ${table} (marker TEXT)`)
         .run();
     }
     try {
@@ -166,20 +202,33 @@ describe("#476 disposable D1 schema contract", () => {
       if (result.kind !== "stale-schema") {
         throw new Error("expected stale-schema outcome");
       }
-      const hasLegacy = result.legacyTables.some(
-        (t) =>
-          t === "role_capabilities" ||
-          t === "permission_policy_state" ||
-          t === "permission_policy_mutations"
-      );
-      expect(hasLegacy).toBeTruthy();
+      expect(result.legacyTables).toStrictEqual(legacyTables);
       expect(result.resetCommand).toContain("DROP TABLE IF EXISTS");
+      expect(result.resetCommand).toContain("department_managers");
+      expect(result.resetCommand).toContain("program_leaders");
     } finally {
-      for (const table of newTables) {
-        await db
-          .prepare(`ALTER TABLE ${backup}_${table} RENAME TO ${table}`)
-          .run();
+      for (const table of legacyTables) {
+        await db.prepare(`DROP TABLE IF EXISTS ${table}`).run();
       }
+    }
+  });
+
+  test("preflight matches retired table names case-insensitively", async () => {
+    const db = testDb();
+    await db
+      .prepare("CREATE TABLE IF NOT EXISTS ROLE_CAPABILITIES (marker TEXT)")
+      .run();
+    try {
+      const result = await preflightDisposableSchema(db, {
+        databaseName: DISPOSABLE_DATABASE,
+      });
+      expect(result.kind).toBe("stale-schema");
+      if (result.kind !== "stale-schema") {
+        throw new Error("expected stale-schema outcome");
+      }
+      expect(result.legacyTables).toContain("role_capabilities");
+    } finally {
+      await db.prepare("DROP TABLE IF EXISTS ROLE_CAPABILITIES").run();
     }
   });
 
@@ -308,15 +357,209 @@ describe("#476 disposable D1 schema contract", () => {
         .prepare(
           `INSERT INTO role_assignments
                (assignment_id, account_user_id, role_definition_id,
-                granted_by, granted_at, revoked_by, revoked_at, revoke_reason)
+                granted_by, granted_at, scope_kind, scope_id,
+                revoked_by, revoked_at, revoke_reason)
              VALUES ('018f3b8a-0000-7000-8000-aaaa00000001', ?, ?,
-                     ?, '2026-08-27T00:00:00.000Z', NULL, NULL, NULL)`
+                     ?, '2026-08-27T00:00:00.000Z', 'Department',
+                     '018f3b8a-0000-7000-8000-000000000002', NULL, NULL, NULL)`
         )
         .bind(dmUser, roleId, "E2E_DISPOSABLE_ADMIN")
         .run();
     }, "UNIQUE constraint failed");
   });
+  test("D1 backfills assignment scope snapshots and keeps them immutable", async () => {
+    const snapshot = await readScalar<{
+      scope_kind: string;
+      scope_id: string | null;
+    }>(
+      `SELECT scope_kind, scope_id
+         FROM role_assignments
+        WHERE account_user_id = 'E2E_DISPOSABLE_DM'
+          AND role_definition_id = '018f3b8a-0000-7000-8000-100000000001'
+          AND revoked_at IS NULL`
+    );
+    expect(snapshot).toEqual({
+      scope_kind: "Department",
+      scope_id: "018f3b8a-0000-7000-8000-000000000002",
+    });
+    const activeMutations = [
+      ["assignment_id", "018f3b8a-0000-7000-8000-aaaa00000025"],
+      ["account_user_id", "E2E_DISPOSABLE_ADMIN"],
+      ["role_definition_id", "018f3b8a-0000-7000-8000-100000000002"],
+      ["granted_by", "E2E_DISPOSABLE_MEMBER"],
+      ["granted_at", "2026-08-29T00:02:00.000Z"],
+      ["revoked_by", "E2E_DISPOSABLE_MEMBER"],
+      ["revoke_reason", "active-rewrite"],
+    ] as const;
+    for (const [column, value] of activeMutations) {
+      await expectAbort(async () => {
+        await testDb()
+          .prepare(
+            `UPDATE role_assignments
+                SET ${column} = ?
+              WHERE account_user_id = 'E2E_DISPOSABLE_DM'
+                AND role_definition_id = '018f3b8a-0000-7000-8000-100000000001'
+                AND revoked_at IS NULL`
+          )
+          .bind(value)
+          .run();
+      }, "active assignment rows are immutable");
+    }
+    await expectAbort(async () => {
+      await testDb()
+        .prepare(
+          `UPDATE role_assignments
+              SET scope_kind = 'Global', scope_id = NULL
+            WHERE account_user_id = 'E2E_DISPOSABLE_DM'
+              AND role_definition_id = '018f3b8a-0000-7000-8000-100000000001'
+              AND revoked_at IS NULL`
+        )
+        .run();
+    }, "scope snapshot is immutable");
+  });
 
+  test("D1 rejects a sentinel scope ID for a Global assignment", async () => {
+    await expectAbort(async () => {
+      await testDb()
+        .prepare(
+          `INSERT INTO role_assignments
+             (assignment_id, account_user_id, role_definition_id,
+              granted_by, granted_at, scope_kind, scope_id,
+              revoked_by, revoked_at, revoke_reason)
+           VALUES (
+             's4-scope-null-sentinel',
+             'E2E_DISPOSABLE_MEMBER',
+             '018f3b8a-0000-7000-8000-000000000a02',
+             'E2E_DISPOSABLE_ADMIN',
+             '2026-08-31T00:00:00.000Z',
+             'Global',
+             '<NULL>',
+             NULL,
+             NULL,
+             NULL
+           )`
+        )
+        .run();
+    }, "scope snapshot must match Role Definition");
+  });
+
+  test("D1 permits only one active-to-revoked transition and protects terminal history", async () => {
+    const assignmentId = "018f3b8a-0000-7000-8000-aaaa00000024-terminal-guard";
+    const roleId = "018f3b8a-0000-7000-8000-100000000001";
+    await testDb()
+      .prepare(
+        `INSERT INTO role_assignments
+             (assignment_id, account_user_id, role_definition_id,
+              granted_by, granted_at, scope_kind, scope_id,
+              revoked_by, revoked_at, revoke_reason)
+         VALUES (?, 'E2E_DISPOSABLE_MEMBER', ?, 'E2E_DISPOSABLE_ADMIN',
+                 '2026-08-29T00:00:00.000Z', 'Department',
+                 '018f3b8a-0000-7000-8000-000000000002', NULL, NULL, NULL)`
+      )
+      .bind(assignmentId, roleId)
+      .run();
+    await testDb()
+      .prepare(
+        `UPDATE role_assignments
+            SET revoked_by = 'E2E_DISPOSABLE_ADMIN',
+                revoked_at = '2026-08-29T00:01:00.000Z',
+                revoke_reason = 'terminal-test'
+          WHERE assignment_id = ?`
+      )
+      .bind(assignmentId)
+      .run();
+    await expectAbort(
+      () =>
+        testDb()
+          .prepare(
+            `UPDATE role_assignments
+                SET revoked_at = '2026-08-29T00:02:00.000Z'
+              WHERE assignment_id = ?`
+          )
+          .bind(assignmentId)
+          .run(),
+      "terminal assignment rows are immutable"
+    );
+
+    await expectAbort(
+      () =>
+        testDb()
+          .prepare(
+            "UPDATE role_assignments SET account_user_id = ? WHERE assignment_id = ?"
+          )
+          .bind("E2E_DISPOSABLE_ADMIN", assignmentId)
+          .run(),
+      "terminal assignment rows are immutable"
+    );
+    await expectAbort(
+      () =>
+        testDb()
+          .prepare(
+            "UPDATE role_assignments SET role_definition_id = ? WHERE assignment_id = ?"
+          )
+          .bind("018f3b8a-0000-7000-8000-100000000002", assignmentId)
+          .run(),
+      "terminal assignment rows are immutable"
+    );
+    await expectAbort(
+      () =>
+        testDb()
+          .prepare(
+            "UPDATE role_assignments SET granted_by = ? WHERE assignment_id = ?"
+          )
+          .bind("E2E_DISPOSABLE_MEMBER", assignmentId)
+          .run(),
+      "terminal assignment rows are immutable"
+    );
+    await expectAbort(
+      () =>
+        testDb()
+          .prepare(
+            "UPDATE role_assignments SET granted_at = ? WHERE assignment_id = ?"
+          )
+          .bind("2026-08-29T00:02:00.000Z", assignmentId)
+          .run(),
+      "terminal assignment rows are immutable"
+    );
+    await expectAbort(
+      () =>
+        testDb()
+          .prepare(
+            "UPDATE role_assignments SET revoked_by = NULL WHERE assignment_id = ?"
+          )
+          .bind(assignmentId)
+          .run(),
+      "terminal assignment rows are immutable"
+    );
+    await expectAbort(
+      () =>
+        testDb()
+          .prepare(
+            "UPDATE role_assignments SET revoked_at = NULL WHERE assignment_id = ?"
+          )
+          .bind(assignmentId)
+          .run(),
+      "terminal assignment rows are immutable"
+    );
+    await expectAbort(
+      () =>
+        testDb()
+          .prepare(
+            "UPDATE role_assignments SET revoke_reason = ? WHERE assignment_id = ?"
+          )
+          .bind("rewritten", assignmentId)
+          .run(),
+      "terminal assignment rows are immutable"
+    );
+    await expectAbort(
+      () =>
+        testDb()
+          .prepare("DELETE FROM role_assignments WHERE assignment_id = ?")
+          .bind(assignmentId)
+          .run(),
+      "terminal assignment rows are immutable"
+    );
+  });
   test("D1 rejects a grant whose capability is not in the closed catalog", async () => {
     const roleId = "018f3b8a-0000-7000-8000-100000000001";
     await expectAbort(async () => {
@@ -572,6 +815,50 @@ describe("#476 disposable D1 schema contract", () => {
     expect(freshResult.outcome).toBe("SUCCESS");
     expect(freshResult.idempotent).toBe(false);
   });
+  test("kernel reserves terminal no-ops and rejects a changed key reuse", async () => {
+    const base = await readScalar<{ revision: number }>(
+      `SELECT revision FROM role_policy_revisions WHERE id = 1`
+    );
+    const input = {
+      idempotency_key: "t485-noop-reservation",
+      request_fingerprint: "fp-485-noop",
+      actor_user_id: "E2E_DISPOSABLE_ADMIN",
+      base_revision: base?.revision ?? 1,
+      now: "2026-08-29T08:00:00.000Z",
+      audit_id: "t485-noop-audit",
+      result_json: JSON.stringify({ revision: base?.revision ?? 1 }),
+      desired: [] as const,
+      audit_summary: {
+        action: "ROLE_DEFINITION_POLICY_UPDATE",
+        entity_type: "role_definition",
+        entity_id: "t485-noop",
+      },
+    };
+    const first = await applyRoleMutation(testDb(), input);
+    expect(first.outcome).toBe("SUCCESS");
+    expect(first.idempotent).toBe(false);
+    expect(first.resulting_revision).toBe(input.base_revision);
+    expect(first.result_json).toBe(input.result_json);
+    const unchanged = await readScalar<{ revision: number }>(
+      `SELECT revision FROM role_policy_revisions WHERE id = 1`
+    );
+    expect(unchanged?.revision).toBe(input.base_revision);
+    const auditCount = await readScalar<{ count: number }>(
+      `SELECT COUNT(*) AS count FROM role_audit_events WHERE audit_id = ?`,
+      input.audit_id
+    );
+    expect(auditCount?.count).toBe(0);
+
+    const replay = await applyRoleMutation(testDb(), input);
+    expect(replay.idempotent).toBe(true);
+    expect(replay.result_json).toBe(input.result_json);
+    await expect(
+      applyRoleMutation(testDb(), {
+        ...input,
+        request_fingerprint: "fp-485-noop-changed",
+      })
+    ).rejects.toBeInstanceOf(RoleIdempotencyConflictError);
+  });
 
   test("applyRoleMutation succeeds once and replays idempotently with the same key", async () => {
     const adminUser = "E2E_DISPOSABLE_ADMIN";
@@ -607,6 +894,8 @@ describe("#476 disposable D1 schema contract", () => {
           assignment_id: newAssignmentId,
           account_user_id: memberUser,
           role_definition_id: newRoleId,
+          scope_kind: "Program" as const,
+          scope_id: "018f3b8a-0000-7000-8000-300000000001",
         },
       ],
       audit_summary: {
@@ -986,6 +1275,8 @@ describe("#476 disposable D1 schema contract", () => {
           assignment_id: newAssignmentId,
           account_user_id: memberUser,
           role_definition_id: newRoleId,
+          scope_kind: "Program" as const,
+          scope_id: "018f3b8a-0000-7000-8000-300000000001",
         },
       ],
       audit_summary: {
@@ -1053,9 +1344,11 @@ describe("#476 disposable D1 schema contract", () => {
         .prepare(
           `INSERT INTO role_assignments
                (assignment_id, account_user_id, role_definition_id,
-                granted_by, granted_at, revoked_by, revoked_at, revoke_reason)
+                granted_by, granted_at, scope_kind, scope_id,
+                revoked_by, revoked_at, revoke_reason)
              VALUES ('018f3b8a-0000-7000-8000-1000000000d0-a2', ?, ?,
-                     ?, '2026-08-27T05:31:00.000Z', NULL, NULL, NULL)`
+                     ?, '2026-08-27T05:31:00.000Z', 'Program',
+                     '018f3b8a-0000-7000-8000-300000000001', NULL, NULL, NULL)`
         )
         .bind(memberUser, newRoleId, adminUser)
         .run();
@@ -1113,7 +1406,9 @@ describe("#476 disposable D1 schema contract", () => {
       "registration.approval.manage",
       "home.publish",
     ];
-    expect([...CAPABILITY_CATALOG].sort()).toStrictEqual(expected.sort());
+    expect(
+      CAPABILITY_CATALOG.map((entry) => entry.capability).sort()
+    ).toStrictEqual(expected.sort());
     expect(PROTECTED_STABLE_KEYS.ADMIN).toBe("admin");
   });
 });

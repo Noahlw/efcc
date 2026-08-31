@@ -501,7 +501,10 @@ const ManagementPanel = ({
           onEventChange={onEventChange}
         />
       ) : (
-        <ManagementDirectory onOpenProgram={onOpenProgram} />
+        <ManagementDirectory
+          departmentId={intent.departmentId}
+          onOpenProgram={onOpenProgram}
+        />
       )}
     </>
   );

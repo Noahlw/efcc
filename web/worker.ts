@@ -19,8 +19,9 @@
  *
  *   * `/api/v1/home` — D1-native Home domain public projection (085-01 #306).
  *
- *   * `/api/v1/identity/*` — D1-native Role Identity domain (#478/#479): the
- *     hierarchy projection, rename, scope, create, and reorder mutations.
+ *   * `/api/v1/identity/*` — D1-native Role Identity domain (#478/#479/#485):
+ *     hierarchy, role-definition detail, grant editing, rename, scope, create,
+ *     and reorder mutations.
  * Non-/api paths fall through to the ASSETS binding (static export).
  * AUTH-01 (#159) and AUTH-02 (#160) keep D1 as the identity authority; AUTH-04
  * (#162) / AUTH-06 (#165) expose the locked cookie-only auth boundary.
@@ -328,13 +329,19 @@ export default {
         DB: env.DB,
         EFCC_ACCESS_TOKEN_SECRET: env.EFCC_ACCESS_TOKEN_SECRET,
       } as const;
+      if (url.pathname === "/api/v1/programs/account-permissions") {
+        return authProblemResponse(
+          404,
+          "NOT_FOUND",
+          "Not found",
+          "Unknown programs route."
+        );
+      }
       const {
         handleCreateDepartment,
         handleListDepartments,
         handleListManagementAccess,
         handleGetManagementHub,
-        handleGetAccountPermissions,
-        handleUpdateAccountPermissions,
         handleListManagementDirectory,
         handleSearchManagementMembers,
         handleSearchAccountDirectory,
@@ -347,10 +354,6 @@ export default {
         handleGetManagementProgram,
         handleGetManagementCockpit,
         handleGetDepartment,
-        handleListDepartmentManagers,
-        handleAssignDepartmentManager,
-        handleRevokeDepartmentManager,
-        handleSearchDepartmentMemberOptions,
         handleUpdateDepartment,
         handleCreateProgram,
         handleListPrograms,
@@ -378,9 +381,6 @@ export default {
         handleAssistedEnroll,
         handleListEnrollments,
         handleCancelEnrollment,
-        handleAssignProgramLeader,
-        handleRevokeProgramLeader,
-        handleListProgramLeaders,
         handleListParticipantNotices,
         handleMarkParticipantNoticesRead,
         handleCreateParticipantNotice,
@@ -394,18 +394,6 @@ export default {
       }
       if (url.pathname === "/api/v1/programs/hub" && request.method === "GET") {
         return handleGetManagementHub(request, programEnv);
-      }
-      if (
-        url.pathname === "/api/v1/programs/account-permissions" &&
-        request.method === "GET"
-      ) {
-        return handleGetAccountPermissions(request, programEnv);
-      }
-      if (
-        url.pathname === "/api/v1/programs/account-permissions" &&
-        request.method === "POST"
-      ) {
-        return handleUpdateAccountPermissions(request, programEnv);
       }
       if (
         url.pathname === "/api/v1/programs/management-directory" &&
@@ -533,44 +521,6 @@ export default {
           request,
           programEnv,
           department.groups?.id ?? ""
-        );
-      }
-      const departmentManagers = url.pathname.match(
-        /^\/api\/v1\/programs\/departments\/(?<id>[^/]+)\/managers$/u
-      );
-      if (departmentManagers && request.method === "GET") {
-        return handleListDepartmentManagers(
-          request,
-          programEnv,
-          departmentManagers.groups?.id ?? ""
-        );
-      }
-      if (departmentManagers && request.method === "POST") {
-        return handleAssignDepartmentManager(
-          request,
-          programEnv,
-          departmentManagers.groups?.id ?? ""
-        );
-      }
-      const departmentManagerRevoke = url.pathname.match(
-        /^\/api\/v1\/programs\/departments\/(?<id>[^/]+)\/managers\/(?<userId>[^/]+)\/revoke$/u
-      );
-      if (departmentManagerRevoke && request.method === "POST") {
-        return handleRevokeDepartmentManager(
-          request,
-          programEnv,
-          departmentManagerRevoke.groups?.id ?? "",
-          departmentManagerRevoke.groups?.userId ?? ""
-        );
-      }
-      const departmentMemberOptions = url.pathname.match(
-        /^\/api\/v1\/programs\/departments\/(?<id>[^/]+)\/member-options$/u
-      );
-      if (departmentMemberOptions && request.method === "GET") {
-        return handleSearchDepartmentMemberOptions(
-          request,
-          programEnv,
-          departmentMemberOptions.groups?.id ?? ""
         );
       }
       const departmentPrograms = url.pathname.match(
@@ -813,34 +763,6 @@ export default {
           enrollment.groups?.enrollmentId ?? ""
         );
       }
-      const leaders = url.pathname.match(
-        /^\/api\/v1\/programs\/(?<id>[^/]+)\/leaders$/u
-      );
-      if (leaders && request.method === "POST") {
-        return handleAssignProgramLeader(
-          request,
-          programEnv,
-          leaders.groups?.id ?? ""
-        );
-      }
-      if (leaders && request.method === "GET") {
-        return handleListProgramLeaders(
-          request,
-          programEnv,
-          leaders.groups?.id ?? ""
-        );
-      }
-      const leaderRevoke = url.pathname.match(
-        /^\/api\/v1\/programs\/(?<id>[^/]+)\/leaders\/(?<userId>[^/]+)\/revoke$/u
-      );
-      if (leaderRevoke && request.method === "POST") {
-        return handleRevokeProgramLeader(
-          request,
-          programEnv,
-          leaderRevoke.groups?.id ?? "",
-          leaderRevoke.groups?.userId ?? ""
-        );
-      }
       return authProblemResponse(
         404,
         "NOT_FOUND",
@@ -1075,6 +997,18 @@ export default {
         handleRescopeRoleDefinition,
         handleReorderRoleDefinitions,
       } = await import("./lib/identity/role-handlers");
+      const {
+        handleGetRoleDefinitionDetail,
+        handleUpdateRoleDefinitionGrants,
+      } = await import("./lib/identity/permission-editor-handlers");
+      const {
+        handleSearchEligibleAccounts,
+        handleGetAccountAccess,
+        handleMutateAccountAssignments,
+        handleRevokeAccountAssignments,
+        handleGetRoleDefinitionLifecyclePreview,
+        handleRoleDefinitionLifecycle,
+      } = await import("./lib/identity/account-access-handlers");
 
       if (
         url.pathname === "/api/v1/identity/roles" &&
@@ -1093,6 +1027,144 @@ export default {
         request.method === "PATCH"
       ) {
         return handleReorderRoleDefinitions(request, roleEnv);
+      }
+      if (
+        url.pathname === "/api/v1/identity/accounts" &&
+        request.method === "GET"
+      ) {
+        return handleSearchEligibleAccounts(request, roleEnv);
+      }
+      const accountPrefix = "/api/v1/identity/accounts/";
+      if (url.pathname.startsWith(accountPrefix)) {
+        const accountPath = url.pathname.slice(accountPrefix.length);
+        const revokeSuffix = "/assignments/revoke";
+        const assignmentSuffix = "/assignments";
+        const isRevoke = accountPath.endsWith(revokeSuffix);
+        const suffix = isRevoke ? revokeSuffix : assignmentSuffix;
+        if (accountPath.endsWith(suffix)) {
+          const accountSegment = accountPath.slice(0, -suffix.length);
+          if (accountSegment.includes("/")) {
+            return authProblemResponse(
+              404,
+              "ROLE_TARGET_INELIGIBLE",
+              "Not found",
+              "找不到指定的帳戶。"
+            );
+          }
+          const accountUserId = decodePathSegment(accountSegment);
+          if (accountUserId === null || accountUserId.length === 0) {
+            return authProblemResponse(
+              404,
+              "ROLE_TARGET_INELIGIBLE",
+              "Not found",
+              "找不到指定的帳戶。"
+            );
+          }
+          if (request.method === "GET" && !isRevoke) {
+            return handleGetAccountAccess(request, roleEnv, accountUserId);
+          }
+          if (request.method === "POST") {
+            return isRevoke
+              ? handleRevokeAccountAssignments(request, roleEnv, accountUserId)
+              : handleMutateAccountAssignments(request, roleEnv, accountUserId);
+          }
+        }
+      }
+      const lifecyclePrefix = "/api/v1/identity/role-definitions/";
+      if (
+        url.pathname.startsWith(lifecyclePrefix) &&
+        url.pathname.endsWith("/lifecycle") &&
+        request.method === "GET"
+      ) {
+        const roleDefinitionId = decodePathSegment(
+          url.pathname.slice(lifecyclePrefix.length, -"/lifecycle".length)
+        );
+        if (roleDefinitionId === null || roleDefinitionId.includes("/")) {
+          return authProblemResponse(
+            404,
+            "ROLE_NOT_FOUND",
+            "Not found",
+            "找不到指定的身份組。"
+          );
+        }
+        return handleGetRoleDefinitionLifecyclePreview(
+          request,
+          roleEnv,
+          roleDefinitionId
+        );
+      }
+      if (
+        url.pathname.startsWith(lifecyclePrefix) &&
+        url.pathname.endsWith("/lifecycle") &&
+        request.method === "POST"
+      ) {
+        const roleDefinitionId = decodePathSegment(
+          url.pathname.slice(lifecyclePrefix.length, -"/lifecycle".length)
+        );
+        if (roleDefinitionId === null || roleDefinitionId.includes("/")) {
+          return authProblemResponse(
+            404,
+            "ROLE_NOT_FOUND",
+            "Not found",
+            "找不到指定的身份組。"
+          );
+        }
+        return handleRoleDefinitionLifecycle(
+          request,
+          roleEnv,
+          roleDefinitionId
+        );
+      }
+      const detailPrefix = "/api/v1/identity/role-definitions/";
+      const detailPath = url.pathname.slice(detailPrefix.length);
+      if (
+        url.pathname.startsWith(detailPrefix) &&
+        request.method === "GET" &&
+        !detailPath.includes("/")
+      ) {
+        const roleDefinitionId = decodePathSegment(detailPath);
+        if (roleDefinitionId === null) {
+          return authProblemResponse(
+            404,
+            "ROLE_NOT_FOUND",
+            "Not found",
+            "找不到指定的身份組。"
+          );
+        }
+        return handleGetRoleDefinitionDetail(
+          request,
+          roleEnv,
+          roleDefinitionId
+        );
+      }
+      if (
+        url.pathname.startsWith(detailPrefix) &&
+        request.method === "PATCH" &&
+        detailPath.endsWith("/grants")
+      ) {
+        const rolePath = detailPath.slice(0, -"/grants".length);
+        if (rolePath.includes("/")) {
+          return authProblemResponse(
+            404,
+            "ROLE_NOT_FOUND",
+            "Not found",
+            "找不到指定的身份組。"
+          );
+        }
+        const roleDefinitionId = decodePathSegment(rolePath);
+        if (roleDefinitionId === null) {
+          return authProblemResponse(
+            404,
+            "ROLE_NOT_FOUND",
+            "Not found",
+            "找不到指定的身份組。"
+          );
+        }
+        return handleUpdateRoleDefinitionGrants(
+          request,
+          roleEnv,
+          roleDefinitionId
+        );
       }
       const rescopePrefix = "/api/v1/identity/role-definitions/";
       if (

@@ -7,7 +7,7 @@ import type { Page, Route } from "@playwright/test";
 
 import { ACCOUNT_SETTINGS_COPY } from "../../web/lib/account-settings-copy";
 import { COPY } from "../../web/lib/copy";
-import { defaultSections, stableNavigationSections } from "../../web/lib/sections";
+import { defaultSections, projectNavigation } from "../../web/lib/sections";
 
 const AUTH_HINT_KEY = "efcc_auth_active";
 
@@ -48,7 +48,9 @@ function stubAuthEndpoints(user: typeof MEMBER_USER, revoked = false) {
           data: {
             user,
             sections: defaultSections(),
-            navigation: stableNavigationSections(user.role),
+            navigation: projectNavigation({
+              "program.manage": user.role !== "Member",
+            }),
           },
         }),
       });
@@ -72,7 +74,10 @@ function stubAuthEndpoints(user: typeof MEMBER_USER, revoked = false) {
         contentType: "application/json",
         body: JSON.stringify({
           requestId: "r-username",
-          data: { username: body?.username ?? "new-username", sessionRevoked: true },
+          data: {
+            username: body?.username ?? "new-username",
+            sessionRevoked: true,
+          },
         }),
       });
       return;
@@ -127,11 +132,13 @@ test.describe("084-03: Account & Account Settings acceptance", () => {
 
     // QR badge and display name
     await expect(page.getByText(COPY.profile.qrBadge)).toBeVisible();
-    await expect(page.getByRole("heading", { name: MEMBER_USER.name })).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: MEMBER_USER.name })
+    ).toBeVisible();
 
     // Details summary & list items
     const details = page.locator("details");
-    if (await details.count() > 0) {
+    if ((await details.count()) > 0) {
       // expand details if needed
       await details.locator("summary").click();
     }
@@ -139,11 +146,19 @@ test.describe("084-03: Account & Account Settings acceptance", () => {
     await expect(page.getByText(MEMBER_USER.phone)).toBeVisible();
 
     // Settings actions
-    await expect(page.getByRole("link", { name: new RegExp(ACCOUNT_SETTINGS_COPY.sectionTitle) })).toBeVisible();
-    await expect(page.getByRole("button", { name: COPY.logout.submit }).first()).toBeVisible();
+    await expect(
+      page.getByRole("link", {
+        name: new RegExp(ACCOUNT_SETTINGS_COPY.sectionTitle),
+      })
+    ).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: COPY.logout.submit }).first()
+    ).toBeVisible();
   });
 
-  test("Account Settings link navigates to /profile/settings", async ({ page }) => {
+  test("Account Settings link navigates to /profile/settings", async ({
+    page,
+  }) => {
     await initAuthenticatedPage(page);
     await page.goto("/profile");
 
@@ -154,8 +169,12 @@ test.describe("084-03: Account & Account Settings acceptance", () => {
     await settingsLink.click();
 
     await page.waitForURL("**/profile/settings");
-    await expect(page.locator("h1")).toHaveText(ACCOUNT_SETTINGS_COPY.sectionTitle);
-    await expect(page.getByText(ACCOUNT_SETTINGS_COPY.sectionLead)).toBeVisible();
+    await expect(page.locator("h1")).toHaveText(
+      ACCOUNT_SETTINGS_COPY.sectionTitle
+    );
+    await expect(
+      page.getByText(ACCOUNT_SETTINGS_COPY.sectionLead)
+    ).toBeVisible();
 
     // Back link returns to /profile
     const backLink = page.locator('a[href="/profile"]').last();
@@ -191,9 +210,7 @@ test.describe("084-03: Account & Account Settings acceptance", () => {
 
     await expect(page).toHaveURL(/\/$/u);
     await expect(
-      page
-        .getByRole("region", { name: COPY.login.title })
-        .getByRole("alert")
+      page.getByRole("region", { name: COPY.login.title }).getByRole("alert")
     ).toHaveText(COPY.account.updatedNotice);
   });
 
@@ -216,9 +233,13 @@ test.describe("084-03: Account & Account Settings acceptance", () => {
     await expect(submitPasswordBtn).toBeVisible();
 
     // Helper text for 8 chars
-    await expect(page.getByText(ACCOUNT_SETTINGS_COPY.passwordHint)).toBeVisible();
+    await expect(
+      page.getByText(ACCOUNT_SETTINGS_COPY.passwordHint)
+    ).toBeVisible();
     // Notice text
-    await expect(page.getByText(ACCOUNT_SETTINGS_COPY.passwordNotice)).toBeVisible();
+    await expect(
+      page.getByText(ACCOUNT_SETTINGS_COPY.passwordNotice)
+    ).toBeVisible();
 
     // 1. Validation: empty / short password
     await currentPasswordInput.fill("");
@@ -226,7 +247,9 @@ test.describe("084-03: Account & Account Settings acceptance", () => {
     await confirmPasswordInput.fill("short");
     await submitPasswordBtn.click();
     await expect(
-      page.getByRole("alert").filter({ hasText: ACCOUNT_SETTINGS_COPY.missingPasswordFields })
+      page
+        .getByRole("alert")
+        .filter({ hasText: ACCOUNT_SETTINGS_COPY.missingPasswordFields })
     ).toBeVisible();
 
     // 2. Validation: password mismatch
@@ -235,7 +258,9 @@ test.describe("084-03: Account & Account Settings acceptance", () => {
     await confirmPasswordInput.fill("mismatched-password-456");
     await submitPasswordBtn.click();
     await expect(
-      page.getByRole("alert").filter({ hasText: ACCOUNT_SETTINGS_COPY.passwordMismatch })
+      page
+        .getByRole("alert")
+        .filter({ hasText: ACCOUNT_SETTINGS_COPY.passwordMismatch })
     ).toBeVisible();
 
     // 3. Success: matching ≥8 chars -> redirects to /
@@ -254,7 +279,10 @@ test.describe("084-03: Account & Account Settings acceptance", () => {
 
     // Simulate offline state in page
     await page.evaluate(() => {
-      Object.defineProperty(navigator, "onLine", { value: false, configurable: true });
+      Object.defineProperty(navigator, "onLine", {
+        value: false,
+        configurable: true,
+      });
       window.dispatchEvent(new Event("offline"));
     });
 
@@ -266,7 +294,9 @@ test.describe("084-03: Account & Account Settings acceptance", () => {
     });
     await submitUsernameBtn.click();
 
-    await expect(page.locator("#new-username-error")).toHaveText(ACCOUNT_SETTINGS_COPY.offlineError);
+    await expect(page.locator("#new-username-error")).toHaveText(
+      ACCOUNT_SETTINGS_COPY.offlineError
+    );
 
     // 2. Password offline attempt
     const currentPasswordInput = page.locator("#current-password");
@@ -281,6 +311,8 @@ test.describe("084-03: Account & Account Settings acceptance", () => {
     });
     await submitPasswordBtn.click();
 
-    await expect(page.locator("#password-error")).toHaveText(ACCOUNT_SETTINGS_COPY.offlineError);
+    await expect(page.locator("#password-error")).toHaveText(
+      ACCOUNT_SETTINGS_COPY.offlineError
+    );
   });
 });

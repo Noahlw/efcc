@@ -146,6 +146,38 @@ describe("MUI-02: Program lifecycle and behavior", () => {
       legacyPin: "4321",
       newCredential: "carol-secret",
     });
+    const adminRoleDefinitionId = "programs-250-admin";
+    const seededAt = "2026-08-31T00:00:00.000Z";
+    await testDb()
+      .prepare(
+        `INSERT OR IGNORE INTO role_definitions
+          (role_definition_id, category_key, stable_key, label, description,
+           scope_kind, scope_id, position, is_protected, is_archived,
+           created_by, created_at, updated_by, updated_at)
+         VALUES (?, 'Global', 'admin', '系統管理員',
+                 '全教會唯一可改變授權政策、發佈首頁內容的身份。',
+                 'Global', NULL, 0, 1, 0, NULL, ?, NULL, ?)`
+      )
+      .bind(adminRoleDefinitionId, seededAt, seededAt)
+      .run();
+    await testDb().batch(
+      ["U001", "U003"].map((accountUserId) =>
+        testDb()
+          .prepare(
+            `INSERT OR IGNORE INTO role_assignments
+              (assignment_id, account_user_id, role_definition_id,
+               granted_by, granted_at, revoked_by, revoked_at, revoke_reason,
+               scope_kind, scope_id)
+             VALUES (?, ?, ?, 'U001', ?, NULL, NULL, NULL, 'Global', NULL)`
+          )
+          .bind(
+            `programs-250-admin-assignment-${accountUserId}`,
+            accountUserId,
+            adminRoleDefinitionId,
+            seededAt
+          )
+      )
+    );
   });
 
   test("OneOff accepts multiple independent manual Events", async () => {

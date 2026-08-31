@@ -315,16 +315,6 @@ const COPY = {
   keepEvent: "保留聚會",
   cancelReason: "取消原因",
   eventCancelledNotice: "聚會已取消。",
-  // AUTH-01 (#255): Program Leader and Department Manager administration.
-  programLeaders: "事工負責人",
-  leaderUserId: "選擇會友",
-  assignLeader: "新增負責人",
-  revokeLeader: "移除負責人",
-  confirmRevokeLeader: "確定要移除此事工負責人嗎？",
-  confirmRevoke: "確定移除",
-  leaderAssignedNotice: "已新增事工負責人。",
-  leaderRevokedNotice: "已移除事工負責人。",
-  selfDelegationForbidden: "您沒有權限執行此操作。",
   departmentSettings: "部門設定",
   departmentsTitle: "部門設定",
   departmentsLead: "只顯示你獲授權管理的部門。",
@@ -334,14 +324,6 @@ const COPY = {
   moduleEvents: "聚會",
   moduleAttendance: "出席",
   moduleCustomForms: "自訂表格",
-  departmentManagers: "部門管理者",
-  departmentManagerUserId: "選擇部門管理者",
-  assignDepartmentManager: "指派部門管理者",
-  revokeDepartmentManager: "撤銷部門管理者",
-  confirmRevokeDepartmentManager: "確定要撤銷此部門管理者嗎？",
-  departmentManagerAssignedNotice: "已指派部門管理者。",
-  departmentManagerRevokedNotice: "已撤銷部門管理者。",
-  noDepartmentManagers: "目前沒有部門管理者。",
   settingsScheduleUnavailable:
     "所屬部門目前未啟用聚會模組；不能在這裡編輯時間表規則。",
   settingsAttendanceUnavailable:
@@ -355,25 +337,7 @@ const COPY = {
   settingsSaved: "課程設定已儲存。",
   eventAvailabilityConfirmBody:
     "暫停後，此聚會將停止開放簽到（{count} 項進行中的操作會受影響）。",
-  // 087-03 Account Permissions matrix (mirrors COPY.permissions).
-  permissionsTitle: "帳戶與權限",
-  permissionsLead: "按工作範圍檢視能力；管理員可先建立草稿，確認後一次儲存。",
-  accountsSection: "管理員帳戶",
-  rolesSection: "角色定義",
-  accountName: "姓名",
-  accountRole: "角色",
-  accountDepartment: "部門",
-  roleAdmin: "管理員",
-  roleAdminScope: "全部範圍",
-  roleDepartmentManager: "部門管理者",
-  roleDepartmentManagerScope: "所屬部門課程、聚會及出席",
-  roleStaff: "同工",
-  roleStaffScope: "部門範圍內協助工作",
-  stateAssigned: "已設",
-  stateAssignable: "可指派",
-  backToSettings: "設定",
 };
-
 async function hasProjectedManagementCapability(page: Page): Promise<boolean> {
   const response = await page.evaluate(async () => {
     const accessResponse = await fetch("/api/v1/programs/access");
@@ -464,36 +428,6 @@ async function loginAs(
   await expect(
     page.getByRole("heading", { name: COPY.pageTitle })
   ).toBeVisible();
-}
-
-async function postProgramLeader(
-  page: Page,
-  programId: string,
-  userId: string,
-  action: "assign" | "revoke"
-): Promise<number> {
-  const path =
-    action === "assign"
-      ? `/api/v1/programs/${encodeURIComponent(programId)}/leaders`
-      : `/api/v1/programs/${encodeURIComponent(programId)}/leaders/${encodeURIComponent(userId)}/revoke`;
-  return page.evaluate(
-    async ({
-      path: requestPath,
-      action: requestAction,
-      userId: requestUserId,
-    }) => {
-      const response = await fetch(requestPath, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body:
-          requestAction === "assign"
-            ? JSON.stringify({ user_id: requestUserId })
-            : "{}",
-      });
-      return response.status;
-    },
-    { path, action, userId }
-  );
 }
 
 /**
@@ -2686,95 +2620,6 @@ test.describe("MUI-01 management Directory and Workspace", () => {
     await expect(page.getByRole("list", { name: "可管理課程" })).toBeVisible();
   });
 
-  test("leader exact scope and manager inheritance stay distinct", async ({
-    page,
-  }) => {
-    await loginAs(
-      page,
-      required("PROGRAMS_ADMIN_USERNAME", ADMIN_USER),
-      required("PROGRAMS_ADMIN_CREDENTIAL", ADMIN_CRED)
-    );
-    const [targetId] = await catalogProgramIds(page, "E2E_DEMO_成人查經");
-    expect(targetId).toBeTruthy();
-    const programId = required("target program", targetId);
-    const staleRevoke = await postProgramLeader(
-      page,
-      programId,
-      DEV_MEMBER.userId,
-      "revoke"
-    );
-    expect([200, 404]).toContain(staleRevoke);
-    expect(
-      await postProgramLeader(page, programId, DEV_MEMBER.userId, "assign")
-    ).toBe(200);
-
-    try {
-      await clearSession(page);
-      await loginAs(
-        page,
-        required("PROGRAMS_MEMBER_USERNAME", MEMBER_USER),
-        required("PROGRAMS_MEMBER_CREDENTIAL", MEMBER_CRED)
-      );
-      await page.goto("/programs?mode=management");
-      const leaderDirectory = page.getByRole("list", { name: "可管理課程" });
-      await expect(leaderDirectory.getByRole("button")).toHaveCount(1);
-      await expect(
-        leaderDirectory.getByRole("button", { name: /E2E_DEMO_成人查經/u })
-      ).toBeVisible();
-      await expect(page.getByText("E2E_DEMO_青年團契")).toHaveCount(0);
-      await leaderDirectory
-        .getByRole("button", { name: /E2E_DEMO_成人查經/u })
-        .click();
-      await expect(
-        page.getByRole("heading", { name: "E2E_DEMO_成人查經" })
-      ).toBeVisible();
-
-      await clearSession(page);
-      await loginAs(
-        page,
-        required("PROGRAMS_STAFF_USERNAME", STAFF_USER),
-        required("PROGRAMS_STAFF_CREDENTIAL", STAFF_CRED)
-      );
-      await page.goto("/programs?mode=management");
-      const inheritedDirectory = page.getByRole("list", {
-        name: "可管理課程",
-      });
-      const inheritedDemoRows = inheritedDirectory
-        .getByRole("button")
-        .filter({ hasText: /^E2E_DEMO_/u });
-      await expect
-        .poll(async () => inheritedDemoRows.count())
-        .toBeGreaterThanOrEqual(4);
-      await expect(
-        inheritedDirectory.getByRole("button", {
-          name: /E2E_DEMO_青年團契/u,
-        })
-      ).toBeVisible();
-    } finally {
-      await clearSession(page);
-      await loginAs(
-        page,
-        required("PROGRAMS_ADMIN_USERNAME", ADMIN_USER),
-        required("PROGRAMS_ADMIN_CREDENTIAL", ADMIN_CRED)
-      );
-      expect(
-        await postProgramLeader(page, programId, DEV_MEMBER.userId, "revoke")
-      ).toBe(200);
-    }
-
-    await clearSession(page);
-    await loginAs(
-      page,
-      required("PROGRAMS_MEMBER_USERNAME", MEMBER_USER),
-      required("PROGRAMS_MEMBER_CREDENTIAL", MEMBER_CRED)
-    );
-    await page.goto(`/programs?mode=management&program=${programId}`);
-    await expect(
-      page.getByRole("heading", { name: COPY.noManagementScope })
-    ).toBeVisible();
-    await expect(page.getByText("E2E_DEMO_成人查經")).toHaveCount(0);
-  });
-
   test("a revoked or unknown direct management link stays generic", async ({
     page,
   }) => {
@@ -3085,300 +2930,6 @@ test.describe("CFG-01 Program Settings", () => {
   });
 });
 
-test.describe("AUTH-01 Program Leader administration", () => {
-  test("Staff denies self-assignment, revokes the seeded leader, and re-grants it", async ({
-    page,
-  }) => {
-    await loginAs(
-      page,
-      required("PROGRAMS_STAFF_USERNAME", STAFF_USER),
-      required("PROGRAMS_STAFF_CREDENTIAL", STAFF_CRED)
-    );
-    const [programId] = await catalogProgramIds(page, "E2E_DEMO_成人查經");
-    expect(programId).toBeTruthy();
-    const id = required("program id", programId);
-
-    // Establish a known baseline instead of assuming one: the demo
-    // fixture does not itself grant leadership (no seed script creates
-    // program_leaders rows), and another pre-existing test in this file
-    // ("leader exact scope and manager inheritance stay distinct",
-    // MUI-01) deliberately revokes E2E_member's leadership as part of
-    // its own designed end-state. This test must not assume it runs
-    // before or after that one -- ensure the precondition itself.
-    await page.evaluate(
-      async ({ programId, memberUserId }) => {
-        const listRes = await fetch(`/api/v1/programs/${programId}/leaders`);
-        const listBody = (await listRes.json()) as {
-          data?: { leaders?: { user_id: string }[] };
-        };
-        const hasMember = (listBody.data?.leaders ?? []).some(
-          (leader) => leader.user_id === memberUserId
-        );
-        if (!hasMember) {
-          await fetch(`/api/v1/programs/${programId}/leaders`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ user_id: memberUserId }),
-          });
-        }
-      },
-      { programId: id, memberUserId: DEV_MEMBER.userId }
-    );
-
-    await page.goto(`/programs?mode=management&program=${id}&task=settings`);
-    const leadersPanel = page.getByRole("region", {
-      name: COPY.programLeaders,
-    });
-    await expect(leadersPanel).toBeVisible();
-    // Wait for the async leader-list load to settle before interacting,
-    // so a throttled (phone) profile doesn't race the initial fetch.
-    await expect(leadersPanel.getByText(/E2E Member/).first()).toBeVisible();
-
-    const combo = leadersPanel.getByRole("combobox", {
-      name: COPY.leaderUserId,
-    });
-
-    try {
-      // Self-assignment denial: pick self, submit, server-side 403.
-      // The baseline above guarantees E2E_member as leader, so this must
-      // not touch that grant.
-      await combo.click();
-      await combo.fill("E2E_staff");
-      await leadersPanel.getByRole("option", { name: /E2E Staff/ }).click();
-      await leadersPanel
-        .getByRole("button", { name: COPY.assignLeader })
-        .click();
-      await expect(
-        leadersPanel.getByText(COPY.selfDelegationForbidden, { exact: true })
-      ).toBeVisible();
-
-      // Revoke: a real state transition, not a duplicate-grant no-op.
-      // The self-denial error above does not reload the list (runAction
-      // only reloads on success), so E2E Member is still here.
-      await expect(leadersPanel.getByText(/E2E Member/).first()).toBeVisible();
-      await leadersPanel
-        .getByRole("button", { name: COPY.revokeLeader })
-        .click();
-      await expect(
-        leadersPanel.getByText(COPY.confirmRevokeLeader)
-      ).toBeVisible();
-      await leadersPanel
-        .getByRole("button", { name: COPY.confirmRevoke })
-        .click();
-      await expect(
-        leadersPanel
-          .getByText(COPY.leaderRevokedNotice, { exact: true })
-          .first()
-      ).toBeVisible();
-
-      // Re-grant: exercise the real grant path and its notice.
-      await combo.click();
-      await combo.fill("E2E_member");
-      await leadersPanel.getByRole("option", { name: /E2E Member/ }).click();
-      await leadersPanel
-        .getByRole("button", { name: COPY.assignLeader })
-        .click();
-      await expect(
-        leadersPanel
-          .getByText(COPY.leaderAssignedNotice, { exact: true })
-          .first()
-      ).toBeVisible();
-      await expect(leadersPanel.getByText(/E2E Member/).first()).toBeVisible();
-    } finally {
-      // Failure-safe restoration: guarantee E2E_member ends the test as
-      // leader regardless of where an assertion above failed.
-      await page.evaluate(
-        async ({ programId, memberUserId }) => {
-          const listRes = await fetch(`/api/v1/programs/${programId}/leaders`);
-          const listBody = (await listRes.json()) as {
-            data?: { leaders?: { user_id: string }[] };
-          };
-          const hasMember = (listBody.data?.leaders ?? []).some(
-            (leader) => leader.user_id === memberUserId
-          );
-          if (!hasMember) {
-            await fetch(`/api/v1/programs/${programId}/leaders`, {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ user_id: memberUserId }),
-            });
-          }
-        },
-        { programId: id, memberUserId: DEV_MEMBER.userId }
-      );
-    }
-  });
-});
-
-test.describe("AUTH-01 Department Manager administration", () => {
-  test("Admin grants a Department Manager, scope inherits, then revokes", async ({
-    page,
-  }) => {
-    await loginAs(
-      page,
-      required("PROGRAMS_ADMIN_USERNAME", ADMIN_USER),
-      required("PROGRAMS_ADMIN_CREDENTIAL", ADMIN_CRED)
-    );
-
-    const departmentId = await page.evaluate(async () => {
-      const res = await fetch("/api/v1/programs/departments");
-      const body = (await res.json()) as {
-        data?: {
-          departments?: { department_id: string; code: string }[];
-        };
-      };
-      return (
-        body.data?.departments?.find((d) => d.code === "E2E_DEMO_MINISTRY")
-          ?.department_id ?? null
-      );
-    });
-    const deptId = required(
-      "E2E_DEMO_MINISTRY department id",
-      departmentId ?? undefined
-    );
-
-    try {
-      await page.goto("/programs?mode=management");
-      await page
-        .getByRole("button", { name: /E2E_DEMO_示範事工.*部門設定/ })
-        .click();
-
-      // The panel's notice/error live in the OUTER "部門設定: ..." section,
-      // as a sibling of the "部門管理者" sub-region below -- not nested
-      // inside it (unlike the single-purpose LeadersPanel).
-      const deptPanel = page.getByRole("region", {
-        name: /部門設定.*E2E_DEMO_示範事工/,
-      });
-      const managersPanel = deptPanel.getByRole("region", {
-        name: COPY.departmentManagers,
-      });
-      await expect(managersPanel).toBeVisible();
-      // Confirmed empty at fixture baseline (no prior grant for this dept).
-      await expect(
-        managersPanel.getByText(COPY.noDepartmentManagers)
-      ).toBeVisible();
-
-      const combo = managersPanel.getByRole("combobox", {
-        name: COPY.departmentManagerUserId,
-      });
-      await combo.click();
-      await combo.fill("E2E_member");
-      await managersPanel.getByRole("option", { name: /E2E Member/ }).click();
-      await managersPanel
-        .getByRole("button", { name: COPY.assignDepartmentManager })
-        .click();
-      await expect(
-        deptPanel
-          .getByText(COPY.departmentManagerAssignedNotice, { exact: true })
-          .first()
-      ).toBeVisible();
-      await expect(managersPanel.getByText(/E2E Member/).first()).toBeVisible();
-
-      // Scope inheritance: E2E_member should now see the whole department
-      // (all 4 programs + the department settings card), not just the one
-      // program they lead.
-      await clearSession(page);
-      await loginAs(
-        page,
-        required("PROGRAMS_MEMBER_USERNAME", MEMBER_USER),
-        required("PROGRAMS_MEMBER_CREDENTIAL", MEMBER_CRED)
-      );
-      await page.goto("/programs?mode=management");
-      for (const programName of [
-        "E2E_DEMO_成人查經",
-        "E2E_DEMO_青年團契",
-        "E2E_DEMO_社區關懷",
-        "E2E_DEMO_管理安排",
-      ]) {
-        await expect(
-          page.getByRole("button", { name: new RegExp(programName) })
-        ).toBeVisible();
-      }
-      await expect(
-        page.getByRole("button", { name: /E2E_DEMO_示範事工.*部門設定/ })
-      ).toBeVisible();
-
-      // Revoke, back as Admin.
-      await clearSession(page);
-      await loginAs(
-        page,
-        required("PROGRAMS_ADMIN_USERNAME", ADMIN_USER),
-        required("PROGRAMS_ADMIN_CREDENTIAL", ADMIN_CRED)
-      );
-      await page.goto("/programs?mode=management");
-      await page
-        .getByRole("button", { name: /E2E_DEMO_示範事工.*部門設定/ })
-        .click();
-      const deptPanel2 = page.getByRole("region", {
-        name: /部門設定.*E2E_DEMO_示範事工/,
-      });
-      const managersPanel2 = deptPanel2.getByRole("region", {
-        name: COPY.departmentManagers,
-      });
-      await expect(
-        managersPanel2.getByText(/E2E Member/).first()
-      ).toBeVisible();
-      await managersPanel2
-        .getByRole("button", { name: COPY.revokeDepartmentManager })
-        .click();
-      await expect(
-        managersPanel2.getByText(COPY.confirmRevokeDepartmentManager)
-      ).toBeVisible();
-      await managersPanel2
-        .getByRole("button", { name: COPY.confirmRevoke })
-        .click();
-      await expect(
-        deptPanel2
-          .getByText(COPY.departmentManagerRevokedNotice, { exact: true })
-          .first()
-      ).toBeVisible();
-      await expect(
-        managersPanel2.getByText(COPY.noDepartmentManagers)
-      ).toBeVisible();
-    } finally {
-      // Failure-safe restoration: re-authenticate as Admin regardless of
-      // which persona was active when the try block failed (e.g. a
-      // failure mid-scope-check would otherwise leave the page on the
-      // E2E_member session, which lacks department.manager.assign and
-      // would 403 on the revoke below).
-      await clearSession(page);
-      await loginAs(
-        page,
-        required("PROGRAMS_ADMIN_USERNAME", ADMIN_USER),
-        required("PROGRAMS_ADMIN_CREDENTIAL", ADMIN_CRED)
-      );
-      const cleanup = await page.evaluate(
-        async ({ deptId, memberUserId }) => {
-          const listRes = await fetch(
-            `/api/v1/programs/departments/${deptId}/managers`
-          );
-          const listBody = (await listRes.json()) as {
-            data?: { managers?: { user_id: string }[] };
-          };
-          const hasMember = (listBody.data?.managers ?? []).some(
-            (m) => m.user_id === memberUserId
-          );
-          if (!hasMember) {
-            return { revoked: false, status: null as number | null };
-          }
-          const revokeRes = await fetch(
-            `/api/v1/programs/departments/${deptId}/managers/${memberUserId}/revoke`,
-            { method: "POST" }
-          );
-          return { revoked: true, status: revokeRes.status };
-        },
-        { deptId, memberUserId: DEV_MEMBER.userId }
-      );
-      if (cleanup.revoked) {
-        expect(
-          cleanup.status,
-          "safety-net revoke must succeed to leave the fixture clean"
-        ).toBe(200);
-      }
-    }
-  });
-});
-
 test.describe("086-06 Departments directory and detail", () => {
   test("directory displays only the actor's authorized department projection", async ({
     page,
@@ -3652,20 +3203,8 @@ test.describe("MUI-02 scoped Program management", () => {
     const [programId] = await catalogProgramIds(page, "E2E_DEMO_成人查經");
     const id = required("fixture program id", programId);
 
-    // This test's premise is that the member has NO management relationship
-    // to the program. That is not guaranteed by suite order alone -- an
-    // earlier AUTH-01 test intentionally leaves E2E_member re-granted as
-    // this program's leader (restoring what it found), and a Program
-    // Leader legitimately has PROGRAM_MANAGE over their own program. Revoke
-    // any such grant first so the denial below tests the real "no
-    // relationship" case regardless of what ran before it.
-    const staleLeaderRevoke = await postProgramLeader(
-      page,
-      id,
-      DEV_MEMBER.userId,
-      "revoke"
-    );
-    expect([200, 404]).toContain(staleLeaderRevoke);
+    // The Member fixture has no normalized management capability, so this
+    // direct mutation must be denied without any browser-side role branch.
     await clearSession(page);
     await loginAs(
       page,
@@ -4416,7 +3955,6 @@ test.describe("NTF-01 management attention", () => {
     let pendingResolved = false;
     let inactiveEventId = "";
     let cancelledEventId = "";
-    let memberLeaderAssigned = false;
     try {
       const memberContext = await browser.newContext();
       try {
@@ -4448,14 +3986,6 @@ test.describe("NTF-01 management attention", () => {
       } finally {
         await memberContext.close();
       }
-      const memberLeaderStatus = await postProgramLeader(
-        page,
-        programId,
-        DEV_MEMBER.userId,
-        "assign"
-      );
-      expect(memberLeaderStatus).toBe(200);
-      memberLeaderAssigned = true;
 
       inactiveEventId = await createAttentionEvent(
         page,
@@ -4687,10 +4217,6 @@ test.describe("NTF-01 management attention", () => {
         })
       ).toBeVisible();
 
-      expect(
-        await postProgramLeader(page, programId, DEV_MEMBER.userId, "revoke")
-      ).toBe(200);
-      memberLeaderAssigned = false;
       const revokedContext = await browser.newContext();
       try {
         const revokedPage = await revokedContext.newPage();
@@ -4715,14 +4241,6 @@ test.describe("NTF-01 management attention", () => {
       await expect(dialog.locator(`a[href="${inactiveHref}"]`)).toHaveCount(0);
       await expect(dialog.locator(`a[href="${cancelledHref}"]`)).toBeVisible();
     } finally {
-      if (memberLeaderAssigned) {
-        await postProgramLeader(
-          page,
-          programId,
-          DEV_MEMBER.userId,
-          "revoke"
-        ).catch(() => {});
-      }
       if (pendingRequestId && !pendingResolved) {
         await page
           .evaluate(
@@ -5498,203 +5016,5 @@ test.describe("HUB-01 Management Hub directory", () => {
     await expect(page.getByText(firstName, { exact: true })).toBeVisible();
     const scrollAfter = await page.evaluate(() => window.scrollY);
     expect(scrollAfter).toBeGreaterThanOrEqual(scrollBefore - 50);
-  });
-});
-
-// PERM-01 verifies the role-first Account & Permissions projection:
-// fixed global roles, read-only assigned-account views, scoped Department
-// Manager context, and server-side denial for a Member with a DM grant.
-test.describe("PERM-01 Account Permissions role projection", () => {
-  test("Admin sees role-first accounts; a Staff DM grant reflects immediately; the DM-only fixture is denied server-side", async ({
-    page,
-  }) => {
-    await loginAs(
-      page,
-      required("PROGRAMS_ADMIN_USERNAME", ADMIN_USER),
-      required("PROGRAMS_ADMIN_CREDENTIAL", ADMIN_CRED)
-    );
-
-    const departmentId = await page.evaluate(async () => {
-      const res = await fetch("/api/v1/programs/departments");
-      const body = (await res.json()) as {
-        data?: { departments?: { department_id: string; code: string }[] };
-      };
-      return (
-        body.data?.departments?.find((d) => d.code === "E2E_DEMO_MINISTRY")
-          ?.department_id ?? null
-      );
-    });
-    const deptId = required(
-      "E2E_DEMO_MINISTRY department id",
-      departmentId ?? undefined
-    );
-
-    const revokeManagerGrant = (userId: string) =>
-      page.evaluate(
-        async ({ deptId, userId }) => {
-          const listRes = await fetch(
-            `/api/v1/programs/departments/${deptId}/managers`
-          );
-          const listBody = (await listRes.json()) as {
-            data?: { managers?: { user_id: string }[] };
-          };
-          const hasUser = (listBody.data?.managers ?? []).some(
-            (manager) => manager.user_id === userId
-          );
-          if (hasUser) {
-            await fetch(
-              `/api/v1/programs/departments/${deptId}/managers/${userId}/revoke`,
-              { method: "POST" }
-            );
-          }
-        },
-        { deptId, userId }
-      );
-
-    const grantManager = (userId: string) =>
-      page.evaluate(
-        async ({ deptId, userId }) => {
-          const res = await fetch(
-            `/api/v1/programs/departments/${deptId}/managers`,
-            {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ user_id: userId }),
-            }
-          );
-          return res.status;
-        },
-        { deptId, userId }
-      );
-
-    try {
-      // Order-independent baseline: no active grants for either fixture.
-      await revokeManagerGrant(DEV_STAFF.userId);
-      await revokeManagerGrant(DEV_MEMBER.userId);
-
-      // The Phase B permissions surface is role-first. Account rows are
-      // read-only under the selected role, not shown in the initial list.
-      await page.goto("/management?module=permissions");
-      await expect(
-        page.getByRole("heading", { name: COPY.permissionsTitle })
-      ).toBeVisible();
-      await expect(page.getByText(COPY.permissionsLead)).toBeVisible();
-
-      const rolesRegion = page.getByRole("region", {
-        name: COPY.rolesSection,
-      });
-      await expect(rolesRegion).toBeVisible();
-      const roleList = rolesRegion.getByRole("list", {
-        name: COPY.rolesSection,
-      });
-      await expect(roleList.locator("li")).toHaveCount(3);
-      await expect(
-        roleList.getByRole("button", {
-          name: `${COPY.roleAdmin} · 角色詳情`,
-          exact: true,
-        })
-      ).toBeVisible();
-      await expect(
-        roleList.getByRole("button", {
-          name: `${COPY.roleStaff} · 角色詳情`,
-          exact: true,
-        })
-      ).toBeVisible();
-      await expect(
-        roleList.getByRole("button", {
-          name: "會友 · 角色詳情",
-          exact: true,
-        })
-      ).toBeVisible();
-      await expect(roleList.getByText(COPY.roleDepartmentManager)).toHaveCount(
-        0
-      );
-
-      const openAssignedAccounts = async (
-        roleLabel: string
-      ): Promise<Locator> => {
-        await page
-          .getByRole("button", {
-            name: `${roleLabel} · 角色詳情`,
-            exact: true,
-          })
-          .click();
-        await page
-          .getByRole("button", {
-            name: `${roleLabel} · 已指派帳戶`,
-            exact: true,
-          })
-          .click();
-        const assigned = page.getByRole("table", {
-          name: `${roleLabel} · 已指派帳戶`,
-          exact: true,
-        });
-        await expect(assigned).toBeVisible();
-        return assigned;
-      };
-
-      let table = await openAssignedAccounts(COPY.roleStaff);
-      for (const header of [
-        COPY.accountName,
-        COPY.accountRole,
-        COPY.accountDepartment,
-      ]) {
-        await expect(
-          table.getByRole("columnheader", { name: header })
-        ).toBeVisible();
-      }
-      await expect(
-        table.getByRole("rowheader", { name: "E2E Staff", exact: true })
-      ).toBeVisible();
-
-      // Grant the STAFF fixture Department Manager on the demo department.
-      // The role-first assigned-account projection reflects it on reload.
-      expect(await grantManager(DEV_STAFF.userId)).toBe(200);
-      await page.reload();
-      table = await openAssignedAccounts(COPY.roleStaff);
-      await expect(
-        table.getByRole("rowheader", { name: "E2E Staff", exact: true })
-      ).toBeVisible();
-      await expect(
-        table.getByText("E2E_DEMO_示範事工", { exact: true })
-      ).toBeVisible();
-
-      // Revoke: the Staff account no longer projects the demo department.
-      await revokeManagerGrant(DEV_STAFF.userId);
-      await page.reload();
-      table = await openAssignedAccounts(COPY.roleStaff);
-      await expect(
-        table.getByText("E2E_DEMO_示範事工", { exact: true })
-      ).toHaveCount(0);
-
-      // The DM-only fixture is denied server-side: after granting the MEMBER
-      // fixture a department manager role, the direct endpoint call returns
-      // 403 FORBIDDEN — never client-side hiding alone.
-      expect(await grantManager(DEV_MEMBER.userId)).toBe(200);
-      await clearSession(page);
-      await loginAs(
-        page,
-        required("PROGRAMS_MEMBER_USERNAME", MEMBER_USER),
-        required("PROGRAMS_MEMBER_CREDENTIAL", MEMBER_CRED)
-      );
-      const denied = await page.evaluate(async () => {
-        const res = await fetch("/api/v1/programs/account-permissions");
-        return { status: res.status, body: await res.json() };
-      });
-      expect(denied.status).toBe(403);
-      expect(denied.body).toMatchObject({ code: "FORBIDDEN" });
-    } finally {
-      // Failure-safe restoration: re-authenticate as Admin and revoke both
-      // grants so the fixtures end exactly as they started.
-      await clearSession(page);
-      await loginAs(
-        page,
-        required("PROGRAMS_ADMIN_USERNAME", ADMIN_USER),
-        required("PROGRAMS_ADMIN_CREDENTIAL", ADMIN_CRED)
-      );
-      await revokeManagerGrant(DEV_STAFF.userId);
-      await revokeManagerGrant(DEV_MEMBER.userId);
-      await clearSession(page);
-    }
   });
 });

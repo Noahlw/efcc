@@ -14,6 +14,9 @@ export type { SeedResult } from "./seeds";
 
 export {
   applyRoleMutation,
+  reserveRoleMutationNoop,
+  reserveRoleMutationConflict,
+  reserveRoleMutationDenial,
   recordRoleDenial,
   readCurrentRevision,
   RoleIdempotencyConflictError,
@@ -25,6 +28,7 @@ export type {
   RoleMutationInput,
   RoleMutationResult,
   RoleDesiredChange,
+  RoleMutationDenialOptions,
 } from "./mutations";
 
 export {
@@ -32,6 +36,7 @@ export {
   loadActorRoles,
   resolveActorHighestPosition,
   resolveActorCapabilities,
+  loadBootstrapIdentity,
   renameRoleDefinition,
   createRoleDefinition,
   rescopeRoleDefinition,
@@ -55,6 +60,7 @@ export {
   RoleHighestProtectedError,
   RoleScopeMismatchError,
   RoleSelfRenameError,
+  RoleInvalidTargetError,
   RoleTargetNotFoundError,
   RoleInvalidParentError,
   RoleCrossCategoryError,
@@ -63,11 +69,15 @@ export {
   __test as __hierarchyTest,
 } from "./role-hierarchy";
 export type {
+  BootstrapIdentity,
+  BootstrapIdentitySummary,
   RoleHierarchyView,
   RoleHierarchyCategory,
   RoleHierarchyDefinition,
   RoleHierarchyAction,
   RoleHierarchyActionAffordance,
+  RoleAssignmentActionAffordance,
+  RoleLifecycleActionAffordance,
   RoleHierarchyScopeOption,
   RoleHierarchyOrderTarget,
   RoleRenameInput,
@@ -88,6 +98,57 @@ export {
   ROLE_AUDIT_ACTION,
   isCapability,
 } from "./types";
+export {
+  HIGH_RISK_CAPABILITIES,
+  capabilityMetadata,
+} from "./capability-catalog";
+export type {
+  CapabilityMetadata,
+  CapabilityRisk,
+  CapabilityGroup,
+} from "./capability-catalog";
+
+export {
+  loadRoleDefinitionDetail,
+  updateRoleDefinitionGrants,
+  canonicalPermissionFingerprint,
+} from "./permission-editor";
+export type {
+  RoleDefinitionDetailView,
+  RoleDefinitionMutationResult,
+  RoleDefinitionPermission,
+  RoleDefinitionAssignedAccount,
+  PermissionGrantChange,
+  UpdateRoleDefinitionGrantsInput,
+} from "./permission-editor";
+export {
+  loadAccountAccess,
+  searchEligibleAccounts,
+  getRoleDefinitionLifecyclePreview,
+  mutateAccountAssignments,
+  revokeAccountAssignments,
+  mutateRoleDefinitionLifecycle,
+  AccountTargetIneligibleError,
+  AccountAdminProtectedError,
+  AccountSelfProtectedError,
+  AccountRevokeTargetError,
+} from "./account-access";
+export type {
+  AccountAccessView,
+  AccountAccessAccount,
+  AccountAccessIdentity,
+  AccountAccessAssignableRole,
+  EffectiveAccessGrant,
+  EffectiveAccessGroups,
+  AccountAccessActions,
+  AccountAccessMutationResult,
+  AccountAccessMutationInput,
+  RoleDefinitionLifecycleInput,
+  RoleDefinitionLifecycleResult,
+  RoleDefinitionLifecyclePreview,
+  AccountAccessImpact,
+  AccountAccessLifecycleImpact,
+} from "./account-access";
 export type {
   RoleCategoryKey,
   RoleScopeKind,

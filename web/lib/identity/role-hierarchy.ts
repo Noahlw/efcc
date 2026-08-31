@@ -1,3 +1,4 @@
+import { CAPABILITY_CATALOG } from "./capability-catalog";
 /**
  * #478/#479 — S5-A03 normalized read-only 身份組 hierarchy + the rename /
  * create / rescope / reorder mutation authority seam (Spec 091, ADR-0042).
@@ -46,11 +47,7 @@ import {
   RoleIdempotencyConflictError,
   RoleRevisionConflictError,
 } from "./mutations";
-import {
-  CAPABILITY_CATALOG,
-  PROTECTED_STABLE_KEYS,
-  ROLE_CATEGORY_KEY,
-} from "./types";
+import { PROTECTED_STABLE_KEYS, ROLE_CATEGORY_KEY } from "./types";
 import type { RoleAuditOutcome, RoleCategoryKey, RoleScopeKind } from "./types";
 
 /** Name contract (H-11): trimmed, non-empty, ≤ 60 characters (Spec 091 §8.2). */
@@ -60,10 +57,23 @@ export const ROLE_HIERARCHY_ACTION = {
   RENAME: "rename",
   SCOPE: "scope",
   REORDER: "reorder",
+  PERMISSIONS: "permissions",
 } as const;
 
 export type RoleHierarchyAction =
   (typeof ROLE_HIERARCHY_ACTION)[keyof typeof ROLE_HIERARCHY_ACTION];
+
+/** Server-authorized identity assignment action. */
+export interface RoleAssignmentActionAffordance {
+  action: "assign" | "revoke";
+  label: string;
+}
+
+/** Server-authorized lifecycle action for an identity-first entry. */
+export interface RoleLifecycleActionAffordance {
+  action: "archive" | "restore";
+  label: string;
+}
 
 /** Server-projected action affordance (H-03). */
 export interface RoleHierarchyActionAffordance {
@@ -102,6 +112,14 @@ export interface RoleReorderResult {
   idempotent: boolean;
 }
 
+/** Safe account summary for identity-first Account Access navigation. */
+export interface RoleHierarchyAssignedAccount {
+  assignmentId: string;
+  userId: string;
+  name: string;
+  username: string;
+  status: string;
+}
 /** One Role Definition summary inside the tree (H-01/H-03). */
 export interface RoleHierarchyDefinition {
   roleDefinitionId: string;
@@ -110,12 +128,19 @@ export interface RoleHierarchyDefinition {
   kind: "SYSTEM" | "GLOBAL" | "DEPARTMENT_SCOPED" | "PROGRAM_SCOPED";
   scopeKind: RoleScopeKind;
   scopeId: string | null;
+  /** Parent Department ID for Program-scoped identity context. */
+  scopeParentDepartmentId?: string | null;
   /** Human-readable scope label; null for Global identities. */
   scopeLabel: string | null;
   position: number;
   isProtected: boolean;
   isArchived: boolean;
   assignmentCount: number;
+  assignedAccounts?: RoleHierarchyAssignedAccount[];
+  /** Server-authorized assignment actions for this definition. */
+  assignmentActions?: RoleAssignmentActionAffordance[];
+  /** Server-authorized archive/restore actions for Account Access. */
+  lifecycleActions?: RoleLifecycleActionAffordance[];
   grantCount: number;
   /** Server-projected actions per the caller's capabilities (H-03). */
   actions: RoleHierarchyActionAffordance[];
@@ -317,6 +342,13 @@ export class RoleTargetNotFoundError extends Error {
     this.name = "RoleTargetNotFoundError";
   }
 }
+/** Empty role IDs are invalid targets, distinct from unknown IDs. */
+export class RoleInvalidTargetError extends Error {
+  constructor() {
+    super("ROLE_INVALID_TARGET: role definition target is required");
+    this.name = "RoleInvalidTargetError";
+  }
+}
 
 /** B-479-02/B-479-09: creation/reorder under an invalid parent Category. */
 export class RoleInvalidParentError extends Error {
@@ -368,6 +400,8 @@ interface RoleDefinitionRow {
   category_key: RoleCategoryKey;
   scope_kind: RoleScopeKind;
   scope_id: string | null;
+  /** Parent Department ID for Program-scoped definitions. */
+  parent_department_id?: string | null;
   position: number;
   is_protected: number;
   is_archived: number;
@@ -383,7 +417,48 @@ interface CategoryRow {
 interface CountRow {
   role_definition_id: string;
   assignments: number;
+  assignment_accounts: string | null;
   grants: number;
+}
+
+function parseAssignedAccounts(
+  value: string | null | undefined
+): RoleHierarchyAssignedAccount[] {
+  if (!value) {
+    return [];
+  }
+  try {
+    const parsed: unknown = JSON.parse(value);
+    if (!Array.isArray(parsed)) {
+      return [];
+    }
+    return parsed.flatMap((entry) => {
+      if (typeof entry !== "object" || entry === null) {
+        return [];
+      }
+      const candidate = entry as Record<string, unknown>;
+      if (
+        typeof candidate.assignmentId !== "string" ||
+        typeof candidate.userId !== "string" ||
+        typeof candidate.name !== "string" ||
+        typeof candidate.username !== "string" ||
+        typeof candidate.status !== "string"
+      ) {
+        return [];
+      }
+      return [
+        {
+          assignmentId: candidate.assignmentId,
+          userId: candidate.userId,
+          name: candidate.name,
+          username: candidate.username,
+          status: candidate.status,
+        },
+      ];
+    });
+  } catch {
+    return [];
+  }
 }
 
 interface DepartmentRow {
@@ -397,7 +472,7 @@ interface ProgramRow {
 }
 
 /** Roles the actor holds in the disposable model, in global order. */
-interface ActorRoleRow {
+export interface ActorRoleRow {
   role_definition_id: string;
   position: number;
   is_protected: number;
@@ -406,6 +481,50 @@ interface ActorRoleRow {
   scope_id: string | null;
   label: string;
   stable_key: string;
+}
+/**
+ * SQL predicate for assignment summaries visible to the actor's effective
+ * scope. Assignment scope snapshots are authoritative; current Role
+ * Definition metadata is intentionally not consulted here.
+ */
+export function assignmentScopeFilterForActor(
+  actorRoles: readonly Pick<ActorRoleRow, "scope_kind" | "scope_id">[]
+): { sql: string; binds: string[] } {
+  const highest = actorRoles[0];
+  if (!highest) {
+    return { sql: "1 = 0", binds: [] };
+  }
+  if (highest.scope_kind === ROLE_CATEGORY_KEY.GLOBAL) {
+    return { sql: "1 = 1", binds: [] };
+  }
+  if (highest.scope_kind === ROLE_CATEGORY_KEY.DEPARTMENT && highest.scope_id) {
+    return {
+      sql: `(
+        (ra.scope_kind = 'Global' AND ra.scope_id IS NULL)
+        OR (ra.scope_kind = 'Department' AND ra.scope_id = ?)
+        OR (
+          ra.scope_kind = 'Program'
+          AND EXISTS (
+            SELECT 1
+              FROM programs snapshot_program
+             WHERE snapshot_program.program_id = ra.scope_id
+               AND snapshot_program.department_id = ?
+          )
+        )
+      )`,
+      binds: [highest.scope_id, highest.scope_id],
+    };
+  }
+  if (highest.scope_kind === ROLE_CATEGORY_KEY.PROGRAM && highest.scope_id) {
+    return {
+      sql: `(
+        (ra.scope_kind = 'Global' AND ra.scope_id IS NULL)
+        OR (ra.scope_kind = 'Program' AND ra.scope_id = ?)
+      )`,
+      binds: [highest.scope_id],
+    };
+  }
+  return { sql: "1 = 0", binds: [] };
 }
 
 function roleKind(
@@ -429,7 +548,7 @@ function roleKind(
   return "PROGRAM_SCOPED";
 }
 
-/** Load every role the actor holds (active assignments only, Spec 091 §4.5). */
+/** Load every role the actor holds using immutable assignment scopes (Spec 091 §4.5). */
 export async function loadActorRoles(
   db: D1Database,
   actorUserId: string
@@ -437,11 +556,13 @@ export async function loadActorRoles(
   const rows = await db
     .prepare(
       `SELECT rd.role_definition_id, rd.position, rd.is_protected,
-              rd.category_key, rd.scope_kind, rd.scope_id, rd.label,
+              rd.category_key, ra.scope_kind, ra.scope_id, rd.label,
               rd.stable_key
          FROM role_assignments ra
          JOIN role_definitions rd ON rd.role_definition_id = ra.role_definition_id
-        WHERE ra.account_user_id = ? AND ra.revoked_at IS NULL
+        WHERE ra.account_user_id = ?
+          AND ra.revoked_at IS NULL
+          AND rd.is_archived = 0
         ORDER BY rd.position ASC`
     )
     .bind(actorUserId)
@@ -451,25 +572,63 @@ export async function loadActorRoles(
 
 /**
  * Effective capability resolution (Spec 091 §4.5/§6.1): Admin holds every
- * `role.*` capability; every other actor's capabilities are the union of
- * grants across their active assignments. The hierarchy/rename surface
- * checks exactly `role.read` (read projection) and `role.name.write`
- * (rename mutation) — never the UI projection.
+ * closed catalog capability; every Active Account receives the automatic
+ * `program.enroll` baseline; all other capabilities are the union of grants
+ * across active assignments whose immutable scope snapshot is Global or
+ * exactly matches the requested resource scope. A Program scope is resolved
+ * to its parent Department before filtering so Department authority applies to
+ * its Programs.
  */
 export async function resolveActorCapabilities(
   db: D1Database,
-  actorUserId: string
+  actorUserId: string,
+  scope?: { departmentId?: string; programId?: string } | null
 ): Promise<Record<string, boolean>> {
   const roles = await loadActorRoles(db, actorUserId);
   const capabilities: Record<string, boolean> = {};
-  for (const role of roles) {
-    if (role.stable_key === PROTECTED_STABLE_KEYS.ADMIN) {
-      for (const capability of CAPABILITY_CATALOG) {
-        if (capability.startsWith("role.")) {
-          capabilities[capability] = true;
-        }
-      }
+  const account = await db
+    .prepare(`SELECT account_status FROM accounts WHERE user_id = ?`)
+    .bind(actorUserId)
+    .first<{ account_status: string }>();
+  if (account?.account_status === "Active") {
+    capabilities["program.enroll"] = true;
+  }
+  if (account?.account_status !== "Active") {
+    return capabilities;
+  }
+  if (roles.some((role) => role.stable_key === PROTECTED_STABLE_KEYS.ADMIN)) {
+    for (const entry of CAPABILITY_CATALOG) {
+      capabilities[entry.capability] = true;
     }
+    return capabilities;
+  }
+
+  const parentDepartment = scope?.programId
+    ? await db
+        .prepare(`SELECT department_id FROM programs WHERE program_id = ?`)
+        .bind(scope.programId)
+        .first<{ department_id: string }>()
+    : null;
+  let scopedFilter = "";
+  let scopeBinds: string[] = [];
+  if (scope?.programId) {
+    scopedFilter = `AND (
+      (ra.scope_kind = 'Global' AND ra.scope_id IS NULL)
+      OR (ra.scope_kind = 'Department' AND ra.scope_id = ?)
+      OR (ra.scope_kind = 'Program' AND ra.scope_id = ?)
+    )`;
+    scopeBinds = [
+      parentDepartment?.department_id ?? scope.departmentId ?? "",
+      scope.programId,
+    ];
+  } else if (scope?.departmentId) {
+    scopedFilter = `AND (
+      (ra.scope_kind = 'Global' AND ra.scope_id IS NULL)
+      OR (ra.scope_kind = 'Department' AND ra.scope_id = ?)
+    )`;
+    scopeBinds = [scope.departmentId];
+  } else if (scope === null) {
+    scopedFilter = `AND ra.scope_kind = 'Global' AND ra.scope_id IS NULL`;
   }
   const grants = await db
     .prepare(
@@ -477,14 +636,59 @@ export async function resolveActorCapabilities(
          FROM role_definition_grants rg
          JOIN role_assignments ra
            ON ra.role_definition_id = rg.role_definition_id
-        WHERE ra.account_user_id = ? AND ra.revoked_at IS NULL`
+         JOIN role_definitions rd
+           ON rd.role_definition_id = ra.role_definition_id
+        WHERE ra.account_user_id = ?
+          AND ra.revoked_at IS NULL
+          AND rd.is_archived = 0
+          ${scopedFilter}`
     )
-    .bind(actorUserId)
+    .bind(actorUserId, ...scopeBinds)
     .all<{ capability: string }>();
   for (const grant of grants.results ?? []) {
     capabilities[grant.capability] = true;
   }
   return capabilities;
+}
+
+export interface BootstrapIdentitySummary {
+  label: string;
+  scopeKind: RoleScopeKind;
+  scopeLabel: string | null;
+}
+
+export interface BootstrapIdentity {
+  systemRole: "Admin" | "Staff" | null;
+  identities: readonly BootstrapIdentitySummary[];
+  capabilities: Record<string, boolean>;
+}
+
+/** Load the privacy-safe identity projection used by the authenticated shell. */
+export async function loadBootstrapIdentity(
+  db: D1Database,
+  actorUserId: string
+): Promise<BootstrapIdentity> {
+  const roles = await loadActorRoles(db, actorUserId);
+  const names = await loadScopeNames(db);
+  const identities = roles
+    .filter((role) => role.stable_key !== PROTECTED_STABLE_KEYS.MEMBER)
+    .map((role) => ({
+      label: role.label,
+      scopeKind: role.scope_kind,
+      scopeLabel: scopeLabel(role.scope_kind, role.scope_id, names),
+    }));
+  const systemRole = roles.some(
+    (role) => role.stable_key === PROTECTED_STABLE_KEYS.ADMIN
+  )
+    ? "Admin"
+    : roles.some((role) => role.stable_key === PROTECTED_STABLE_KEYS.STAFF)
+      ? "Staff"
+      : null;
+  return {
+    systemRole,
+    identities,
+    capabilities: await resolveActorCapabilities(db, actorUserId),
+  };
 }
 
 /**
@@ -553,45 +757,71 @@ export async function loadRoleHierarchy(
   if (!capabilities["role.read"]) {
     throw new RoleCapabilityDeniedError();
   }
-  const [categories, definitions, counts, revisionRow, actorRoles] =
-    await Promise.all([
-      db
-        .prepare(
-          `SELECT category_key, label, description, display_order
-             FROM role_categories ORDER BY display_order ASC`
-        )
-        .all<CategoryRow>(),
-      db
-        .prepare(
-          `SELECT role_definition_id, stable_key, label, description,
-                  category_key, scope_kind, scope_id, position,
-                  is_protected, is_archived
-             FROM role_definitions ORDER BY position ASC`
-        )
-        .all<RoleDefinitionRow>(),
-      db
-        .prepare(
-          `SELECT rd.role_definition_id,
-                  (SELECT COUNT(*) FROM role_assignments ra
-                    WHERE ra.role_definition_id = rd.role_definition_id
-                      AND ra.revoked_at IS NULL) AS assignments,
-                  (SELECT COUNT(*) FROM role_definition_grants rg
-                    WHERE rg.role_definition_id = rd.role_definition_id) AS grants
-             FROM role_definitions rd`
-        )
-        .all<CountRow>(),
-      db
-        .prepare(`SELECT revision FROM role_policy_revisions WHERE id = 1`)
-        .first<{ revision: number }>(),
-      loadActorRoles(db, actorUserId),
-    ]);
+  const actorRoles = await loadActorRoles(db, actorUserId);
+  const assignmentScope = assignmentScopeFilterForActor(actorRoles);
+  const [categories, definitions, counts, revisionRow] = await Promise.all([
+    db
+      .prepare(
+        `SELECT category_key, label, description, display_order
+           FROM role_categories ORDER BY display_order ASC`
+      )
+      .all<CategoryRow>(),
+    db
+      .prepare(
+        `SELECT role_definition_id, stable_key, label, description,
+                category_key, scope_kind, scope_id,
+                (
+                  SELECT p.department_id
+                    FROM programs p
+                   WHERE p.program_id = role_definitions.scope_id
+                     AND role_definitions.scope_kind = 'Program'
+                ) AS parent_department_id,
+                position, is_protected, is_archived
+           FROM role_definitions ORDER BY position ASC`
+      )
+      .all<RoleDefinitionRow>(),
+    db
+      .prepare(
+        `SELECT rd.role_definition_id,
+                (SELECT COUNT(*) FROM role_assignments ra
+                  WHERE ra.role_definition_id = rd.role_definition_id
+                    AND ra.revoked_at IS NULL
+                    AND ${assignmentScope.sql}) AS assignments,
+                (SELECT json_group_array(
+                          json_object(
+                            'assignmentId', ra.assignment_id,
+                            'userId', a.user_id,
+                            'name', a.name,
+                            'username', a.username,
+                            'status', a.account_status
+                          )
+                        )
+                   FROM role_assignments ra
+                   JOIN accounts a ON a.user_id = ra.account_user_id
+                  WHERE ra.role_definition_id = rd.role_definition_id
+                    AND ra.revoked_at IS NULL
+                    AND ${assignmentScope.sql}) AS assignment_accounts,
+                (SELECT COUNT(*) FROM role_definition_grants rg
+                  WHERE rg.role_definition_id = rd.role_definition_id) AS grants
+           FROM role_definitions rd`
+      )
+      .bind(...assignmentScope.binds, ...assignmentScope.binds)
+      .all<CountRow>(),
+    db
+      .prepare(`SELECT revision FROM role_policy_revisions WHERE id = 1`)
+      .first<{ revision: number }>(),
+  ]);
 
   const revision = revisionRow?.revision ?? 1;
   const names = await loadScopeNames(db);
   const countById = new Map(
     (counts.results ?? []).map((row) => [
       row.role_definition_id,
-      { assignments: row.assignments, grants: row.grants },
+      {
+        assignments: row.assignments,
+        assignment_accounts: row.assignment_accounts,
+        grants: row.grants,
+      },
     ])
   );
 
@@ -600,16 +830,82 @@ export async function loadRoleHierarchy(
       ? (actorRoles[0]?.position ?? Number.POSITIVE_INFINITY)
       : Number.POSITIVE_INFINITY;
   const projectedScopeOptions = scopeOptionsForActor(actorRoles, names);
+  const permissionCapabilities = new Map(
+    await Promise.all(
+      (definitions.results ?? []).map(async (row) => {
+        const scope =
+          row.scope_kind === ROLE_CATEGORY_KEY.DEPARTMENT && row.scope_id
+            ? { departmentId: row.scope_id }
+            : row.scope_kind === ROLE_CATEGORY_KEY.PROGRAM && row.scope_id
+              ? { programId: row.scope_id }
+              : null;
+        return [
+          row.role_definition_id,
+          await resolveActorCapabilities(db, actorUserId, scope),
+        ] as const;
+      })
+    )
+  );
+  const createCapabilityScopes = new Set<string>();
+  if (capabilities["role.create"] === true) {
+    const createScopeTargets: {
+      scope_kind: RoleScopeKind;
+      scope_id: string;
+    }[] = [
+      ...[...names.departments.keys()].map((scopeId) => ({
+        scope_kind: ROLE_CATEGORY_KEY.DEPARTMENT,
+        scope_id: scopeId,
+      })),
+      ...[...names.programs.keys()].map((scopeId) => ({
+        scope_kind: ROLE_CATEGORY_KEY.PROGRAM,
+        scope_id: scopeId,
+      })),
+    ];
+    const resolvedCreateScopes = await Promise.all(
+      createScopeTargets.map(
+        async (target) =>
+          [
+            `${target.scope_kind}:${target.scope_id}`,
+            (
+              await resolveActorCapabilities(
+                db,
+                actorUserId,
+                capabilityScopeFor(target)
+              )
+            )["role.create"] === true,
+          ] as const
+      )
+    );
+    for (const [scopeKey, allowed] of resolvedCreateScopes) {
+      if (allowed) {
+        createCapabilityScopes.add(scopeKey);
+      }
+    }
+  }
+  // Scoped readers may always see the code-owned global anchors so the
+  // hierarchy remains explainable. Their summaries are safe global metadata;
+  // unrelated scoped definitions still require target-scope `role.read`.
+  const visibleDefinitions = (definitions.results ?? []).filter((row) => {
+    const isProtectedAnchor =
+      row.category_key === ROLE_CATEGORY_KEY.GLOBAL &&
+      Object.values(PROTECTED_STABLE_KEYS).includes(row.stable_key);
+    return (
+      isProtectedAnchor ||
+      permissionCapabilities.get(row.role_definition_id)?.["role.read"] === true
+    );
+  });
 
   const categoriesView: RoleHierarchyCategory[] = (
     categories.results ?? []
   ).map((category) => {
-    const definitionsView = (definitions.results ?? [])
+    const definitionsView = visibleDefinitions
       .filter((row) => row.category_key === category.category_key)
       .map((row) => {
         const countsForRole = countById.get(row.role_definition_id);
         const canRename =
-          capabilities["role.name.write"] === true &&
+          permissionCapabilities.get(row.role_definition_id)?.[
+            "role.name.write"
+          ] === true &&
           // Staff is assignable and can be renamed by an eligible higher
           // actor holding role.name.write; only Admin and 會友基礎 are locked.
           (row.is_protected === 0 ||
@@ -619,7 +915,9 @@ export async function loadRoleHierarchy(
           actorRoles[0]?.role_definition_id !== row.role_definition_id &&
           isWithinActorScope(actorRoles, row);
         const canRescope =
-          capabilities["role.scope.write"] === true &&
+          permissionCapabilities.get(row.role_definition_id)?.[
+            "role.scope.write"
+          ] === true &&
           isEligibleRoleManager(actorRoles) &&
           row.is_protected === 0 &&
           row.stable_key !== PROTECTED_STABLE_KEYS.ADMIN &&
@@ -629,13 +927,71 @@ export async function loadRoleHierarchy(
           actorRoles[0]?.role_definition_id !== row.role_definition_id &&
           isWithinActorScope(actorRoles, row);
         // B-479-07/B-479-08: the reorder affordance appears on every lower,
-        // in-scope sibling when the actor holds role.reorder.
+        // in-scope sibling when the actor holds role.reorder. Protected
+        // anchors are immutable even when the actor has global authority.
         const canReorder =
-          capabilities["role.reorder"] === true &&
+          permissionCapabilities.get(row.role_definition_id)?.[
+            "role.reorder"
+          ] === true &&
+          row.is_protected === 0 &&
+          row.stable_key !== PROTECTED_STABLE_KEYS.ADMIN &&
+          row.stable_key !== PROTECTED_STABLE_KEYS.MEMBER &&
           row.is_archived === 0 &&
           row.position > highestPosition &&
           actorRoles[0]?.role_definition_id !== row.role_definition_id &&
           isWithinActorScope(actorRoles, row);
+        const canAssign =
+          permissionCapabilities.get(row.role_definition_id)?.[
+            "role.assign"
+          ] === true &&
+          row.is_protected === 0 &&
+          row.stable_key !== PROTECTED_STABLE_KEYS.ADMIN &&
+          row.stable_key !== PROTECTED_STABLE_KEYS.MEMBER &&
+          row.is_archived === 0 &&
+          row.position > highestPosition &&
+          actorRoles[0]?.role_definition_id !== row.role_definition_id &&
+          isWithinActorScope(actorRoles, row);
+        const canRevoke =
+          permissionCapabilities.get(row.role_definition_id)?.[
+            "role.revoke"
+          ] === true &&
+          row.is_protected === 0 &&
+          row.stable_key !== PROTECTED_STABLE_KEYS.ADMIN &&
+          row.stable_key !== PROTECTED_STABLE_KEYS.MEMBER &&
+          row.is_archived === 0 &&
+          row.position > highestPosition &&
+          actorRoles[0]?.role_definition_id !== row.role_definition_id &&
+          isWithinActorScope(actorRoles, row);
+        const assignmentActions: RoleAssignmentActionAffordance[] = [];
+        if (canAssign) {
+          assignmentActions.push({ action: "assign", label: "指派" });
+        }
+        if (canRevoke) {
+          assignmentActions.push({ action: "revoke", label: "撤銷" });
+        }
+        const canReadAssignments =
+          permissionCapabilities.get(row.role_definition_id)?.["role.read"] ===
+          true;
+        const canReadPermissions =
+          permissionCapabilities.get(row.role_definition_id)?.[
+            "role.permissions.read"
+          ] === true &&
+          row.is_protected === 0 &&
+          row.stable_key !== PROTECTED_STABLE_KEYS.ADMIN &&
+          row.stable_key !== PROTECTED_STABLE_KEYS.MEMBER &&
+          row.is_archived === 0 &&
+          row.position > highestPosition &&
+          actorRoles[0]?.role_definition_id !== row.role_definition_id &&
+          isWithinActorScope(actorRoles, row);
+        const canLifecycle =
+          permissionCapabilities.get(row.role_definition_id)?.[
+            "role.delete"
+          ] === true &&
+          row.is_protected === 0 &&
+          row.position > highestPosition &&
+          actorRoles[0]?.role_definition_id !== row.role_definition_id &&
+          isWithinActorScope(actorRoles, row);
+
         const actions: RoleHierarchyActionAffordance[] = [];
         if (canRename) {
           actions.push({
@@ -649,20 +1005,42 @@ export async function loadRoleHierarchy(
             label: "編輯適用範圍",
           });
         }
+        if (canReadPermissions) {
+          actions.push({
+            action: ROLE_HIERARCHY_ACTION.PERMISSIONS,
+            label: "編輯權限",
+          });
+        }
+        const lifecycleActions: RoleLifecycleActionAffordance[] = canLifecycle
+          ? [
+              {
+                action: row.is_archived === 1 ? "restore" : "archive",
+                label: row.is_archived === 1 ? "恢復" : "停用",
+              },
+            ]
+          : [];
         return {
           roleDefinitionId: row.role_definition_id,
           label: row.label,
           description: row.description,
           kind: roleKind(row.category_key, row.stable_key),
           scopeKind: row.scope_kind,
+          scopeParentDepartmentId: row.parent_department_id ?? null,
           scopeId: row.scope_id,
           scopeLabel: scopeLabel(row.scope_kind, row.scope_id, names),
           position: row.position,
           isProtected: row.is_protected === 1,
           isArchived: row.is_archived === 1,
-          assignmentCount: countsForRole?.assignments ?? 0,
+          assignmentCount: canReadAssignments
+            ? (countsForRole?.assignments ?? 0)
+            : 0,
+          assignedAccounts: canReadAssignments
+            ? parseAssignedAccounts(countsForRole?.assignment_accounts)
+            : [],
+          assignmentActions,
           grantCount: countsForRole?.grants ?? 0,
           actions,
+          lifecycleActions,
           scopeOptions: canRescope ? projectedScopeOptions : [],
           reorderActions: canReorder
             ? [{ action: ROLE_HIERARCHY_ACTION.REORDER, label: "調整順序" }]
@@ -701,6 +1079,11 @@ export async function loadRoleHierarchy(
       for (const scopeId of scopeIds) {
         if (
           !isWithinActorScopeValue(actorRoles, category.category_key, scopeId)
+        ) {
+          continue;
+        }
+        if (
+          !createCapabilityScopes.has(`${category.category_key}:${scopeId}`)
         ) {
           continue;
         }
@@ -751,6 +1134,24 @@ function isWithinActorScopeValue(
     highest.scope_id !== null &&
     highest.scope_id === scopeId
   );
+}
+/**
+ * Convert a Role Definition's explicit scope to the resource scope accepted
+ * by capability resolution. Global identities intentionally map to `null`,
+ * which asks for Global-only grants; omitted scope remains the any-scope
+ * projection used by navigation/bootstrap callers.
+ */
+export function capabilityScopeFor(target: {
+  scope_kind: RoleScopeKind;
+  scope_id: string | null;
+}): { departmentId?: string; programId?: string } | null {
+  if (target.scope_kind === ROLE_CATEGORY_KEY.DEPARTMENT && target.scope_id) {
+    return { departmentId: target.scope_id };
+  }
+  if (target.scope_kind === ROLE_CATEGORY_KEY.PROGRAM && target.scope_id) {
+    return { programId: target.scope_id };
+  }
+  return null;
 }
 
 /**
@@ -890,17 +1291,22 @@ async function nextRolePosition(
   throw new RoleInvalidParentError();
 }
 
-/** Scope rule (Spec 091 §5.2): a scoped actor cannot manage outside scope. */
 /**
- * Scope rule (Spec 091 §4.5/§5.2): the HIGHEST assigned identity drives
- * role-management authority. A Global highest (Admin/Staff) manages any
- * lower definition church-wide; a scoped highest manages only lower
- * definitions with the identical Department/Program scope.
+ * Scope rule (Spec 091 §4.5/§5.2): a Department actor may manage a
+ * Program-scoped target when that Program belongs to the same Department;
+ * other scoped targets still require an exact scope match.
  */
 function isWithinActorScope(
   actorRoles: ActorRoleRow[],
   target: RoleDefinitionRow
 ): boolean {
+  const highest = actorRoles[0];
+  if (
+    highest?.scope_kind === ROLE_CATEGORY_KEY.DEPARTMENT &&
+    target.scope_kind === ROLE_CATEGORY_KEY.PROGRAM
+  ) {
+    return target.parent_department_id === highest.scope_id;
+  }
   return isWithinActorScopeValue(
     actorRoles,
     target.scope_kind,
@@ -953,8 +1359,8 @@ async function assertRenameEligible(
   actorUserId: string,
   target: RoleDefinitionRow
 ): Promise<void> {
-  // Spec 091 §10 order: capability first (ROLE_FORBIDDEN), then the
-  // protected Admin / 會友基礎 locks (H-08), then self/highest/scope.
+  // Resolve the operation capability broadly first so an actor who has the
+  // operation only in another scope receives ROLE_SCOPE_MISMATCH below.
   const capabilities = await resolveActorCapabilities(db, actorUserId);
   if (!capabilities["role.name.write"]) {
     throw new RoleCapabilityDeniedError();
@@ -996,6 +1402,14 @@ async function assertRenameEligible(
   if (!isWithinActorScope(actorRoles, target)) {
     throw new RoleScopeMismatchError();
   }
+  const scopedCapabilities = await resolveActorCapabilities(
+    db,
+    actorUserId,
+    capabilityScopeFor(target)
+  );
+  if (!scopedCapabilities["role.name.write"]) {
+    throw new RoleCapabilityDeniedError();
+  }
 }
 
 async function findRoleDefinition(
@@ -1005,8 +1419,14 @@ async function findRoleDefinition(
   return db
     .prepare(
       `SELECT role_definition_id, stable_key, label, description,
-              category_key, scope_kind, scope_id, position,
-              is_protected, is_archived
+              category_key, scope_kind, scope_id,
+              (
+                SELECT p.department_id
+                  FROM programs p
+                 WHERE p.program_id = role_definitions.scope_id
+                   AND role_definitions.scope_kind = 'Program'
+              ) AS parent_department_id,
+              position, is_protected, is_archived
          FROM role_definitions WHERE role_definition_id = ?`
     )
     .bind(roleDefinitionId)
@@ -1507,6 +1927,14 @@ export async function rescopeRoleDefinition(
   if (!isWithinActorScope(actorRoles, target)) {
     return recordDenial(new RoleScopeMismatchError());
   }
+  const scopedCapabilities = await resolveActorCapabilities(
+    db,
+    input.actor_user_id,
+    capabilityScopeFor(target)
+  );
+  if (!scopedCapabilities["role.scope.write"]) {
+    return recordDenial(new RoleCapabilityDeniedError());
+  }
   // Staff has a global system assignment but its scope-edit contract is
   // intentionally scoped-only; Admin is the only actor that may choose Global.
   if (
@@ -1835,6 +2263,17 @@ export async function createRoleDefinition(
       return recordDenial(new RoleInvalidParentError(), "REJECTED");
     }
   }
+  const scopedCapabilities = await resolveActorCapabilities(
+    db,
+    input.actor_user_id,
+    capabilityScopeFor({
+      scope_kind: input.scope_kind,
+      scope_id: input.scope_id,
+    })
+  );
+  if (!scopedCapabilities["role.create"]) {
+    return recordDenial(new RoleCapabilityDeniedError());
+  }
 
   // Globally unique normalized name (B-479-03/B-479-04).
   const candidates = await db
@@ -2046,8 +2485,14 @@ export async function reorderRoleDefinitions(
   const rows = await db
     .prepare(
       `SELECT role_definition_id, stable_key, label, description,
-              category_key, scope_kind, scope_id, position,
-              is_protected, is_archived
+              category_key, scope_kind, scope_id,
+              (
+                SELECT p.department_id
+                  FROM programs p
+                 WHERE p.program_id = role_definitions.scope_id
+                   AND role_definitions.scope_kind = 'Program'
+              ) AS parent_department_id,
+              position, is_protected, is_archived
          FROM role_definitions
         WHERE role_definition_id IN (?, ?)`
     )
@@ -2112,6 +2557,18 @@ export async function reorderRoleDefinitions(
       return recordDenial(new RoleScopeMismatchError());
     }
   }
+  const capabilitiesByTarget = await Promise.all(
+    [firstRow, secondRow].map((row) =>
+      resolveActorCapabilities(db, input.actor_user_id, capabilityScopeFor(row))
+    )
+  );
+  if (
+    capabilitiesByTarget.some(
+      (capabilities) => capabilities["role.reorder"] !== true
+    )
+  ) {
+    return recordDenial(new RoleCapabilityDeniedError());
+  }
   const baseRevision = input.base_revision;
   const auditReason = `base=${baseRevision};new=${baseRevision + 1};idem=${input.idempotency_key}`;
 
@@ -2156,9 +2613,10 @@ export async function reorderRoleDefinitions(
       idempotent: result.idempotent,
     };
   } catch (error) {
-    if (error instanceof RoleRevisionConflictError && !error.auditWritten) {
+    if (error instanceof RoleRevisionConflictError) {
       // B-479-10: a stale order revision is rejected with the authoritative
-      // revision and the authoritative sibling order.
+      // revision and the authoritative sibling order. The mutation kernel
+      // already owns the conflict audit when auditWritten is true.
       const authoritative = await db
         .prepare(
           `SELECT role_definition_id FROM role_definitions
@@ -2170,17 +2628,19 @@ export async function reorderRoleDefinitions(
       const authoritativeIds =
         (authoritative.results ?? []).map((row) => row.role_definition_id) ??
         [];
-      await recordRoleDenialForCreate(db, {
-        actor_user_id: input.actor_user_id,
-        now: input.now,
-        audit_id: input.audit_id,
-        correlation_id: input.correlation_id,
-        action: "ROLE_DEFINITION_REORDER",
-        entity_type: "role_definition",
-        entity_id: auditEntityId,
-        reason: `ROLE_ORDER_CONFLICT:current=${error.currentRevision}`,
-        outcome: "CONFLICT",
-      });
+      if (!error.auditWritten) {
+        await recordRoleDenialForCreate(db, {
+          actor_user_id: input.actor_user_id,
+          now: input.now,
+          audit_id: input.audit_id,
+          correlation_id: input.correlation_id,
+          action: "ROLE_DEFINITION_REORDER",
+          entity_type: "role_definition",
+          entity_id: auditEntityId,
+          reason: `ROLE_ORDER_CONFLICT:current=${error.currentRevision}`,
+          outcome: "CONFLICT",
+        });
+      }
       throw new RoleOrderConflictError(error.currentRevision, authoritativeIds);
     }
     if (error instanceof RoleIdempotencyConflictError) {

@@ -3,19 +3,14 @@
  */
 
 import { MODULE_KEYS } from "./capabilities";
-import type { Capability, ModuleKey } from "./capabilities";
-import type { RolePolicyStore } from "./capability-authorizer";
+import type { ModuleKey } from "./capabilities";
 import type {
   AuditInput,
-  ElevatedAccountRow,
   GenerationRunItemInput,
   GenerationRunItemRow,
   GenerationRunRow,
   ProgramAccessRow,
   DepartmentInput,
-  DepartmentManagerGrantInput,
-  DepartmentManagerRevokeInput,
-  DepartmentManagerRow,
   DepartmentModuleRow,
   DepartmentRow,
   DepartmentUpdate,
@@ -35,9 +30,6 @@ import type {
   PreviewOccurrenceRow,
   PreviewPlanRow,
   ProgramInput,
-  ProgramLeaderGrantInput,
-  ProgramLeaderRevokeInput,
-  ProgramLeaderRow,
   ProgramRow,
   ProgramUpdate,
   AccountDirectorySearchFilters,
@@ -50,11 +42,8 @@ import type {
   ScheduleRuleRow,
   ScheduleRuleUpdate,
   WorkspaceStore,
-  PermissionPolicyMutationInput,
-  PermissionPolicyMutationRecord,
-  PermissionPolicyMutationResult,
+  ProgramIdentityAssignmentRow,
 } from "./workspace-store";
-import { PermissionPolicyIdempotencyConflictError } from "./program-errors";
 
 function chunk<T>(items: readonly T[], size = 50): T[][] {
   const chunks: T[][] = [];
@@ -92,7 +81,7 @@ export class WorkspaceNotFoundError extends Error {
 }
 
 // oxlint-disable-next-line eslint/max-classes-per-file
-export class D1WorkspaceStore implements WorkspaceStore, RolePolicyStore {
+export class D1WorkspaceStore implements WorkspaceStore {
   readonly db: D1Database;
 
   constructor(db: D1Database) {
@@ -334,8 +323,18 @@ export class D1WorkspaceStore implements WorkspaceStore, RolePolicyStore {
     }
     return this.db
       .prepare(
-        `SELECT department_id FROM department_managers
-          WHERE user_id = ? AND revoked_at IS NULL`
+        `SELECT DISTINCT ra.scope_id AS department_id
+           FROM role_assignments ra
+           JOIN role_definitions rd
+             ON rd.role_definition_id = ra.role_definition_id
+           JOIN role_definition_grants rg
+             ON rg.role_definition_id = rd.role_definition_id
+          WHERE ra.account_user_id = ?
+            AND ra.revoked_at IS NULL
+            AND rd.is_archived = 0
+            AND ra.scope_kind = 'Department'
+            AND ra.scope_id IS NOT NULL
+            AND rg.capability IN ('department.manage', 'department.manager.assign')`
       )
       .bind(userId)
       .all<{ department_id: string }>()
@@ -362,9 +361,7 @@ export class D1WorkspaceStore implements WorkspaceStore, RolePolicyStore {
     if (scoped && departmentIds.length === 0) {
       return Promise.resolve([]);
     }
-    const placeholders = scoped
-      ? departmentIds.map(() => "?").join(", ")
-      : "";
+    const placeholders = scoped ? departmentIds.map(() => "?").join(", ") : "";
     const scopePredicate = scoped
       ? `AND EXISTS (
            SELECT 1
@@ -377,7 +374,25 @@ export class D1WorkspaceStore implements WorkspaceStore, RolePolicyStore {
          )`
       : "";
     const departmentPredicate = scoped
-      ? `AND departments.department_id IN (${placeholders})`
+      ? `WHERE departments.department_id IN (${placeholders})`
+      : "";
+    const identityScopePredicate = scoped
+      ? `AND (
+           identity_assignments.scope_kind = 'Global'
+           OR (
+             identity_assignments.scope_kind = 'Department'
+             AND identity_assignments.scope_id = departments.department_id
+           )
+           OR (
+             identity_assignments.scope_kind = 'Program'
+             AND EXISTS (
+               SELECT 1
+                 FROM programs identity_programs
+                WHERE identity_programs.program_id = identity_assignments.scope_id
+                  AND identity_programs.department_id IN (${placeholders})
+             )
+           )
+         )`
       : "";
     return this.db
       .prepare(
@@ -399,10 +414,39 @@ export class D1WorkspaceStore implements WorkspaceStore, RolePolicyStore {
                 accounts.name,
                 accounts.username,
                 accounts.phone,
-                accounts.role,
+                CASE
+                  WHEN EXISTS (
+                    SELECT 1
+                      FROM role_assignments system_admin_assignment
+                      JOIN role_definitions system_admin_role
+                        ON system_admin_role.role_definition_id =
+                           system_admin_assignment.role_definition_id
+                     WHERE system_admin_assignment.account_user_id = accounts.user_id
+                       AND system_admin_assignment.revoked_at IS NULL
+                       AND system_admin_role.stable_key = 'admin'
+                       AND system_admin_role.is_archived = 0
+                  ) THEN 'Admin'
+                  WHEN EXISTS (
+                    SELECT 1
+                      FROM role_assignments system_staff_assignment
+                      JOIN role_definitions system_staff_role
+                        ON system_staff_role.role_definition_id =
+                           system_staff_assignment.role_definition_id
+                     WHERE system_staff_assignment.account_user_id = accounts.user_id
+                       AND system_staff_assignment.revoked_at IS NULL
+                       AND system_staff_role.stable_key = 'staff'
+                       AND system_staff_role.is_archived = 0
+                  ) THEN 'Staff'
+                  ELSE 'Member'
+                END AS role,
                 accounts.account_status,
                 departments.department_id,
-                departments.name AS department_name
+                departments.name AS department_name,
+                identity_roles.role_definition_id AS identity_id,
+                identity_roles.label AS identity_label,
+                identity_roles.stable_key AS identity_stable_key,
+                identity_assignments.scope_kind AS identity_scope_kind,
+                identity_assignments.scope_id AS identity_scope_id
            FROM matched_accounts
            JOIN accounts ON accounts.user_id = matched_accounts.user_id
            LEFT JOIN enrollments
@@ -412,11 +456,20 @@ export class D1WorkspaceStore implements WorkspaceStore, RolePolicyStore {
              ON programs.program_id = enrollments.program_id
            LEFT JOIN departments
              ON departments.department_id = programs.department_id
+          LEFT JOIN role_assignments identity_assignments
+            ON identity_assignments.account_user_id = accounts.user_id
+           AND identity_assignments.revoked_at IS NULL
+          LEFT JOIN role_definitions identity_roles
+            ON identity_roles.role_definition_id =
+               identity_assignments.role_definition_id
+           AND identity_roles.is_archived = 0
+           ${identityScopePredicate}
           ${departmentPredicate}
           ORDER BY accounts.name ASC,
                    accounts.username ASC,
                    departments.display_order ASC,
-                   departments.name ASC`
+                   departments.name ASC,
+                   identity_roles.position ASC`
       )
       .bind(
         ...(scoped
@@ -426,6 +479,7 @@ export class D1WorkspaceStore implements WorkspaceStore, RolePolicyStore {
               pattern,
               ...departmentIds,
               normalizedLimit,
+              ...departmentIds,
               ...departmentIds,
             ]
           : [pattern, pattern, pattern, normalizedLimit])
@@ -453,11 +507,71 @@ export class D1WorkspaceStore implements WorkspaceStore, RolePolicyStore {
       filterValues.push(filters.status);
     }
     if (filters.role !== undefined) {
-      filterParts.push("accounts.role = ?");
-      filterValues.push(filters.role);
+      const stableKey =
+        filters.role === "Admin"
+          ? "admin"
+          : filters.role === "Staff"
+            ? "staff"
+            : "member";
+      if (stableKey === "member") {
+        filterParts.push(
+          `NOT EXISTS (
+             SELECT 1
+               FROM role_assignments member_admin_assignments
+               JOIN role_definitions member_admin_roles
+                 ON member_admin_roles.role_definition_id =
+                    member_admin_assignments.role_definition_id
+              WHERE member_admin_assignments.account_user_id = accounts.user_id
+                AND member_admin_assignments.revoked_at IS NULL
+                AND member_admin_roles.is_archived = 0
+                AND member_admin_roles.stable_key = 'admin'
+           )
+           AND NOT EXISTS (
+             SELECT 1
+               FROM role_assignments member_staff_assignments
+               JOIN role_definitions member_staff_roles
+                 ON member_staff_roles.role_definition_id =
+                    member_staff_assignments.role_definition_id
+              WHERE member_staff_assignments.account_user_id = accounts.user_id
+                AND member_staff_assignments.revoked_at IS NULL
+                AND member_staff_roles.is_archived = 0
+                AND member_staff_roles.stable_key = 'staff'
+           )`
+        );
+      } else {
+        filterParts.push(
+          `EXISTS (
+             SELECT 1
+               FROM role_assignments filtered_assignments
+               JOIN role_definitions filtered_roles
+                 ON filtered_roles.role_definition_id =
+                    filtered_assignments.role_definition_id
+              WHERE filtered_assignments.account_user_id = accounts.user_id
+                AND filtered_assignments.revoked_at IS NULL
+                AND filtered_roles.is_archived = 0
+                AND filtered_roles.stable_key = ?
+           )`
+        );
+        filterValues.push(stableKey);
+      }
+    }
+    if (filters.identityId !== undefined) {
+      filterParts.push(
+        `EXISTS (
+           SELECT 1
+             FROM role_assignments filtered_identity_assignments
+            WHERE filtered_identity_assignments.account_user_id = accounts.user_id
+              AND filtered_identity_assignments.revoked_at IS NULL
+              AND filtered_identity_assignments.role_definition_id = ?
+         )`
+      );
+      filterValues.push(filters.identityId);
     }
     if (filters.department !== undefined) {
-      const escapedDepartment = filters.department.replaceAll(/[\\%_]/gu, "\\$&");
+      const escapedDepartment = filters.department.replaceAll(
+        /[\\%_]/gu,
+        "\\$&"
+      );
       filterParts.push(
         `EXISTS (
            SELECT 1
@@ -495,10 +609,39 @@ export class D1WorkspaceStore implements WorkspaceStore, RolePolicyStore {
                 accounts.name,
                 accounts.username,
                 accounts.phone,
-                accounts.role,
+                CASE
+                  WHEN EXISTS (
+                    SELECT 1
+                      FROM role_assignments system_admin_assignment
+                      JOIN role_definitions system_admin_role
+                        ON system_admin_role.role_definition_id =
+                           system_admin_assignment.role_definition_id
+                     WHERE system_admin_assignment.account_user_id = accounts.user_id
+                       AND system_admin_assignment.revoked_at IS NULL
+                       AND system_admin_role.stable_key = 'admin'
+                       AND system_admin_role.is_archived = 0
+                  ) THEN 'Admin'
+                  WHEN EXISTS (
+                    SELECT 1
+                      FROM role_assignments system_staff_assignment
+                      JOIN role_definitions system_staff_role
+                        ON system_staff_role.role_definition_id =
+                           system_staff_assignment.role_definition_id
+                     WHERE system_staff_assignment.account_user_id = accounts.user_id
+                       AND system_staff_assignment.revoked_at IS NULL
+                       AND system_staff_role.stable_key = 'staff'
+                       AND system_staff_role.is_archived = 0
+                  ) THEN 'Staff'
+                  ELSE 'Member'
+                END AS role,
                 accounts.account_status,
                 departments.department_id,
-                departments.name AS department_name
+                departments.name AS department_name,
+                identity_roles.role_definition_id AS identity_id,
+                identity_roles.label AS identity_label,
+                identity_roles.stable_key AS identity_stable_key,
+                identity_assignments.scope_kind AS identity_scope_kind,
+                identity_assignments.scope_id AS identity_scope_id
            FROM matched_accounts
            JOIN accounts ON accounts.user_id = matched_accounts.user_id
            LEFT JOIN enrollments
@@ -508,10 +651,18 @@ export class D1WorkspaceStore implements WorkspaceStore, RolePolicyStore {
              ON programs.program_id = enrollments.program_id
            LEFT JOIN departments
              ON departments.department_id = programs.department_id
+          LEFT JOIN role_assignments identity_assignments
+             ON identity_assignments.account_user_id = accounts.user_id
+            AND identity_assignments.revoked_at IS NULL
+          LEFT JOIN role_definitions identity_roles
+             ON identity_roles.role_definition_id =
+                identity_assignments.role_definition_id
+            AND identity_roles.is_archived = 0
           ORDER BY accounts.name ASC,
                    accounts.username ASC,
                    departments.display_order ASC,
-                   departments.name ASC`
+                   departments.name ASC,
+                   identity_roles.position ASC`
       )
       .bind(
         ...filterValues,
@@ -540,11 +691,71 @@ export class D1WorkspaceStore implements WorkspaceStore, RolePolicyStore {
       filterValues.push(filters.status);
     }
     if (filters.role !== undefined) {
-      filterParts.push("accounts.role = ?");
-      filterValues.push(filters.role);
+      const stableKey =
+        filters.role === "Admin"
+          ? "admin"
+          : filters.role === "Staff"
+            ? "staff"
+            : "member";
+      if (stableKey === "member") {
+        filterParts.push(
+          `NOT EXISTS (
+             SELECT 1
+               FROM role_assignments member_admin_assignments
+               JOIN role_definitions member_admin_roles
+                 ON member_admin_roles.role_definition_id =
+                    member_admin_assignments.role_definition_id
+              WHERE member_admin_assignments.account_user_id = accounts.user_id
+                AND member_admin_assignments.revoked_at IS NULL
+                AND member_admin_roles.is_archived = 0
+                AND member_admin_roles.stable_key = 'admin'
+           )
+           AND NOT EXISTS (
+             SELECT 1
+               FROM role_assignments member_staff_assignments
+               JOIN role_definitions member_staff_roles
+                 ON member_staff_roles.role_definition_id =
+                    member_staff_assignments.role_definition_id
+              WHERE member_staff_assignments.account_user_id = accounts.user_id
+                AND member_staff_roles.is_archived = 0
+                AND member_staff_assignments.revoked_at IS NULL
+                AND member_staff_roles.stable_key = 'staff'
+           )`
+        );
+      } else {
+        filterParts.push(
+          `EXISTS (
+             SELECT 1
+               FROM role_assignments filtered_assignments
+               JOIN role_definitions filtered_roles
+                 ON filtered_roles.role_definition_id =
+                    filtered_assignments.role_definition_id
+              WHERE filtered_assignments.account_user_id = accounts.user_id
+                AND filtered_assignments.revoked_at IS NULL
+                AND filtered_roles.is_archived = 0
+                AND filtered_roles.stable_key = ?
+           )`
+        );
+        filterValues.push(stableKey);
+      }
+    }
+    if (filters.identityId !== undefined) {
+      filterParts.push(
+        `EXISTS (
+           SELECT 1
+             FROM role_assignments filtered_identity_assignments
+            WHERE filtered_identity_assignments.account_user_id = accounts.user_id
+              AND filtered_identity_assignments.revoked_at IS NULL
+              AND filtered_identity_assignments.role_definition_id = ?
+         )`
+      );
+      filterValues.push(filters.identityId);
     }
     if (filters.department !== undefined) {
-      const escapedDepartment = filters.department.replaceAll(/[\\%_]/gu, "\\$&");
+      const escapedDepartment = filters.department.replaceAll(
+        /[\\%_]/gu,
+        "\\$&"
+      );
       filterParts.push(
         `EXISTS (
            SELECT 1
@@ -568,7 +779,19 @@ export class D1WorkspaceStore implements WorkspaceStore, RolePolicyStore {
         `SELECT
            COUNT(*) AS total,
            SUM(CASE WHEN accounts.account_status = 'Active' THEN 1 ELSE 0 END) AS active,
-           SUM(CASE WHEN accounts.role IN ('Admin', 'Staff') THEN 1 ELSE 0 END) AS elevated,
+           SUM(
+             CASE WHEN EXISTS (
+               SELECT 1
+                 FROM role_assignments elevated_assignments
+                 JOIN role_definitions elevated_roles
+                   ON elevated_roles.role_definition_id =
+                      elevated_assignments.role_definition_id
+                WHERE elevated_assignments.account_user_id = accounts.user_id
+                  AND elevated_assignments.revoked_at IS NULL
+                  AND elevated_roles.is_archived = 0
+                  AND elevated_roles.stable_key IN ('admin', 'staff')
+             ) THEN 1 ELSE 0 END
+           ) AS elevated,
            SUM(CASE WHEN accounts.account_status = 'Pending' THEN 1 ELSE 0 END) AS pending
          FROM accounts
         WHERE ${filterParts.join(" AND ")}
@@ -597,10 +820,39 @@ export class D1WorkspaceStore implements WorkspaceStore, RolePolicyStore {
                 accounts.name,
                 accounts.username,
                 accounts.phone,
-                accounts.role,
+                CASE
+                  WHEN EXISTS (
+                    SELECT 1
+                      FROM role_assignments system_admin_assignment
+                      JOIN role_definitions system_admin_role
+                        ON system_admin_role.role_definition_id =
+                           system_admin_assignment.role_definition_id
+                     WHERE system_admin_assignment.account_user_id = accounts.user_id
+                       AND system_admin_assignment.revoked_at IS NULL
+                       AND system_admin_role.stable_key = 'admin'
+                       AND system_admin_role.is_archived = 0
+                  ) THEN 'Admin'
+                  WHEN EXISTS (
+                    SELECT 1
+                      FROM role_assignments system_staff_assignment
+                      JOIN role_definitions system_staff_role
+                        ON system_staff_role.role_definition_id =
+                           system_staff_assignment.role_definition_id
+                     WHERE system_staff_assignment.account_user_id = accounts.user_id
+                       AND system_staff_assignment.revoked_at IS NULL
+                       AND system_staff_role.stable_key = 'staff'
+                       AND system_staff_role.is_archived = 0
+                  ) THEN 'Staff'
+                  ELSE 'Member'
+                END AS role,
                 accounts.account_status,
                 departments.department_id,
-                departments.name AS department_name
+                departments.name AS department_name,
+                identity_roles.role_definition_id AS identity_id,
+                identity_roles.label AS identity_label,
+                identity_roles.stable_key AS identity_stable_key,
+                identity_assignments.scope_kind AS identity_scope_kind,
+                identity_assignments.scope_id AS identity_scope_id
            FROM accounts
            LEFT JOIN enrollments
              ON enrollments.member_user_id = accounts.user_id
@@ -609,8 +861,17 @@ export class D1WorkspaceStore implements WorkspaceStore, RolePolicyStore {
              ON programs.program_id = enrollments.program_id
            LEFT JOIN departments
              ON departments.department_id = programs.department_id
+          LEFT JOIN role_assignments identity_assignments
+             ON identity_assignments.account_user_id = accounts.user_id
+            AND identity_assignments.revoked_at IS NULL
+          LEFT JOIN role_definitions identity_roles
+             ON identity_roles.role_definition_id =
+                identity_assignments.role_definition_id
+            AND identity_roles.is_archived = 0
           WHERE accounts.user_id = ?
-          ORDER BY departments.display_order ASC, departments.name ASC`
+          ORDER BY departments.display_order ASC,
+                   departments.name ASC,
+                   identity_roles.position ASC`
       )
       .bind(userId)
       .all<ManagementMemberSearchRow>()
@@ -2101,428 +2362,40 @@ export class D1WorkspaceStore implements WorkspaceStore, RolePolicyStore {
     return this.findEnrollmentById(id);
   }
 
-  findDepartmentManager(
-    departmentId: string,
-    userId: string
-  ): Promise<DepartmentManagerRow | null> {
+  listProgramIdentityAssignments(
+    programId: string
+  ): Promise<ProgramIdentityAssignmentRow[]> {
     return this.db
       .prepare(
-        `SELECT department_id, user_id, granted_by, granted_at, revoked_by, revoked_at
-           FROM department_managers
-          WHERE department_id = ? AND user_id = ?`
-      )
-      .bind(departmentId, userId)
-      .first<DepartmentManagerRow>();
-  }
-
-  listDepartmentManagers(
-    departmentId: string
-  ): Promise<DepartmentManagerRow[]> {
-    return this.db
-      .prepare(
-        `SELECT department_managers.*, accounts.name AS user_name,
-                accounts.username
-           FROM department_managers
-           LEFT JOIN accounts ON accounts.user_id = department_managers.user_id
-          WHERE department_managers.department_id = ?
-            AND department_managers.revoked_at IS NULL
-          ORDER BY department_managers.granted_at`
-      )
-      .bind(departmentId)
-      .all<DepartmentManagerRow>()
-      .then((result) => result.results);
-  }
-
-  async assignDepartmentManager(
-    input: DepartmentManagerGrantInput
-  ): Promise<DepartmentManagerRow> {
-    const existing = await this.findDepartmentManager(
-      input.department_id,
-      input.user_id
-    );
-    if (existing?.revoked_at === null) {
-      return existing;
-    }
-    await this.db
-      .prepare(
-        existing
-          ? `UPDATE department_managers
-                SET granted_by = ?, granted_at = ?, revoked_by = NULL, revoked_at = NULL
-              WHERE department_id = ? AND user_id = ? AND revoked_at IS NOT NULL`
-          : `INSERT INTO department_managers
-                (department_id, user_id, granted_by, granted_at)
-              VALUES (?, ?, ?, ?)
-              ON CONFLICT(department_id, user_id) DO NOTHING`
-      )
-      .bind(
-        ...(existing
-          ? [
-              input.granted_by,
-              input.granted_at,
-              input.department_id,
-              input.user_id,
-            ]
-          : [
-              input.department_id,
-              input.user_id,
-              input.granted_by,
-              input.granted_at,
-            ])
-      )
-      .run();
-    const row = await this.findDepartmentManager(
-      input.department_id,
-      input.user_id
-    );
-    if (!row) {
-      throw new Error("department manager row missing after assign");
-    }
-    return row;
-  }
-
-  async revokeDepartmentManager(
-    input: DepartmentManagerRevokeInput
-  ): Promise<DepartmentManagerRow | null> {
-    await this.db
-      .prepare(
-        `UPDATE department_managers
-            SET revoked_by = ?, revoked_at = ?
-          WHERE department_id = ? AND user_id = ? AND revoked_at IS NULL`
-      )
-      .bind(
-        input.revoked_by,
-        input.revoked_at,
-        input.department_id,
-        input.user_id
-      )
-      .run();
-    return this.findDepartmentManager(input.department_id, input.user_id);
-  }
-
-  /**
-   * Every Admin/Staff account (087-03 #320), with active Department Manager
-   * grants joined for department context. A Staff account with a grant
-   * projects as department-manager; a plain Staff account projects as staff.
-   * Department Manager grants on Member accounts remain scoped access and do
-   * not make those accounts admin-capable for this church-wide matrix.
-   */
-  listElevatedAccounts(): Promise<ElevatedAccountRow[]> {
-    return this.db
-      .prepare(
-        `SELECT a.user_id, a.name, a.role, a.account_status,
-                dm.department_id, d.name AS department_name, d.display_order
-           FROM accounts a
-           LEFT JOIN department_managers dm
-             ON dm.user_id = a.user_id AND dm.revoked_at IS NULL
-           LEFT JOIN departments d ON d.department_id = dm.department_id
-          WHERE a.role IN ('Admin', 'Staff')
-          ORDER BY a.name COLLATE NOCASE, a.user_id, d.display_order, d.name`
-      )
-      .all<ElevatedAccountRow>()
-      .then((result) => result.results);
-  }
-
-  listRoleCapabilities(): Promise<{ role: string; capability: string }[]> {
-    return this.db
-      .prepare(
-        "SELECT role, capability FROM role_capabilities ORDER BY role, capability"
-      )
-      .all<{ role: string; capability: string }>()
-      .then((result) => result.results);
-  }
-
-  async getPermissionPolicyRevision(): Promise<number> {
-    const row = await this.db
-      .prepare("SELECT revision FROM permission_policy_state WHERE id = 1")
-      .first<{ revision: number }>();
-    return row?.revision ?? 1;
-  }
-
-  findPermissionPolicyMutation(
-    idempotencyKey: string
-  ): Promise<PermissionPolicyMutationRecord | null> {
-    return this.db
-      .prepare(
-        `SELECT idempotency_key, request_fingerprint, actor_user_id,
-                base_revision, outcome, resulting_revision
-           FROM permission_policy_mutations
-          WHERE idempotency_key = ?`
-      )
-      .bind(idempotencyKey)
-      .first<PermissionPolicyMutationRecord>();
-  }
-
-  /**
-   * Apply the complete policy projection as one D1 batch.
-   *
-   * The PENDING ledger row is inserted first and every subsequent statement
-   * is gated on that exact key/fingerprint plus the expected singleton
-   * revision. D1 rolls the whole batch back if any statement fails, so role
-   * rows, revision, ledger, and audit cannot partially commit.
-   */
-  async applyPermissionPolicyMutation(
-    input: PermissionPolicyMutationInput
-  ): Promise<PermissionPolicyMutationResult> {
-    const capabilities = [
-      ...new Set(input.desired.map((change) => change.capability)),
-    ];
-    const capabilityPlaceholders = capabilities.map(() => "?").join(", ");
-    const gate = `EXISTS (
-      SELECT 1 FROM permission_policy_mutations m
-       WHERE m.idempotency_key = ?
-         AND m.request_fingerprint = ?
-         AND m.outcome = 'PENDING'
-    ) AND EXISTS (
-      SELECT 1 FROM permission_policy_state s
-       WHERE s.id = 1 AND s.revision = ?
-    )`;
-    const now = new Date().toISOString();
-    const mutationInsert = this.db
-      .prepare(
-        `INSERT OR IGNORE INTO permission_policy_mutations
-           (idempotency_key, request_fingerprint, actor_user_id,
-            base_revision, outcome, resulting_revision, created_at)
-         VALUES (?, ?, ?, ?, 'PENDING', NULL, ?)`
-      )
-      .bind(
-        input.idempotency_key,
-        input.request_fingerprint,
-        input.actor_user_id,
-        input.base_revision,
-        now
-      );
-
-    const statements: D1PreparedStatement[] = [mutationInsert];
-    if (capabilities.length > 0) {
-      statements.push(
-        this.db
-          .prepare(
-            `DELETE FROM role_capabilities
-              WHERE role IN ('Admin', 'Staff', 'Member')
-                AND capability IN (${capabilityPlaceholders})
-                AND ${gate}`
-          )
-          .bind(...capabilities, input.idempotency_key, input.request_fingerprint, input.base_revision)
-      );
-    }
-
-    for (const change of input.desired) {
-      if (!change.value) {
-        continue;
-      }
-      statements.push(
-        this.db
-          .prepare(
-            `INSERT INTO role_capabilities
-               (role, capability, granted_by, granted_at)
-             SELECT ?, ?, ?, ?
-              WHERE ${gate}`
-          )
-          .bind(
-            change.role,
-            change.capability,
-            input.actor_user_id,
-            now,
-            input.idempotency_key,
-            input.request_fingerprint,
-            input.base_revision
-          )
-      );
-    }
-
-    statements.push(
-      this.db
-        .prepare(
-          `UPDATE permission_policy_state
-              SET revision = revision + 1, updated_at = ?
-            WHERE id = 1 AND revision = ?
-              AND EXISTS (
-                SELECT 1 FROM permission_policy_mutations m
-                 WHERE m.idempotency_key = ?
-                   AND m.request_fingerprint = ?
-                   AND m.outcome = 'PENDING'
-              )`
-        )
-        .bind(
-          now,
-          input.base_revision,
-          input.idempotency_key,
-          input.request_fingerprint
-        )
-    );
-
-    statements.push(
-      this.db
-        .prepare(
-          `UPDATE permission_policy_mutations
-              SET applied = 1
-            WHERE idempotency_key = ?
-              AND request_fingerprint = ?
-              AND outcome = 'PENDING'
-              AND changes() > 0`
-        )
-        .bind(input.idempotency_key, input.request_fingerprint)
-    );
-
-    statements.push(
-      this.db
-        .prepare(
-          `UPDATE permission_policy_mutations
-              SET outcome = CASE
-                    WHEN applied = 1 THEN 'SUCCESS'
-                    ELSE 'CONFLICT'
-                  END,
-                  resulting_revision = (
-                    SELECT revision FROM permission_policy_state WHERE id = 1
-                  ),
-                  completed_at = ?
-            WHERE idempotency_key = ?
-              AND request_fingerprint = ?
-              AND outcome = 'PENDING'`
-        )
-        .bind(
-          now,
-          input.idempotency_key,
-          input.request_fingerprint
-        )
-    );
-
-    // Only the first terminal attempt writes the terminal audit row. Replays
-    // are recorded by the domain adapter as DUPLICATE without touching policy.
-    statements.push(
-      this.db
-        .prepare(
-          `INSERT INTO audit_events
-             (audit_id, inserted_at, actor_user_id, action, entity_type,
-              entity_id, old_value_json, new_value_json, reason, outcome,
-              correlation_id)
-           SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?,
-                  CASE WHEN m.outcome = 'SUCCESS' THEN 'SUCCESS' ELSE 'CONFLICT' END,
-                  ?
-             FROM permission_policy_mutations m
-            WHERE m.idempotency_key = ?
-              AND m.request_fingerprint = ?
-              AND m.outcome IN ('SUCCESS', 'CONFLICT')
-              AND m.audit_written = 0`
-        )
-        .bind(
-          input.audit.audit_id,
-          input.audit.inserted_at,
-          input.audit.actor_user_id,
-          input.audit.action,
-          input.audit.entity_type,
-          input.audit.entity_id,
-          input.audit.old_value_json,
-          input.audit.new_value_json,
-          input.audit.reason,
-          input.audit.correlation_id,
-          input.idempotency_key,
-          input.request_fingerprint
-        )
-    );
-
-    statements.push(
-      this.db
-        .prepare(
-          `UPDATE permission_policy_mutations
-              SET audit_written = 1
-            WHERE idempotency_key = ?
-              AND request_fingerprint = ?
-              AND outcome IN ('SUCCESS', 'CONFLICT')
-              AND audit_written = 0`
-        )
-        .bind(input.idempotency_key, input.request_fingerprint)
-    );
-
-    const results = await this.db.batch(statements);
-    const record = await this.findPermissionPolicyMutation(
-      input.idempotency_key
-    );
-    if (!record || record.request_fingerprint !== input.request_fingerprint) {
-      throw new PermissionPolicyIdempotencyConflictError();
-    }
-    if (
-      record.outcome !== "SUCCESS" &&
-      record.outcome !== "CONFLICT"
-    ) {
-      throw new Error("Permission Policy mutation did not reach a terminal state.");
-    }
-    return {
-      outcome: record.outcome,
-      resulting_revision: record.resulting_revision ?? input.base_revision,
-      created: (results[0]?.meta?.changes ?? 0) > 0,
-    };
-  }
-
-  findProgramLeader(
-    programId: string,
-    userId: string
-  ): Promise<ProgramLeaderRow | null> {
-    return this.db
-      .prepare(
-        `SELECT program_id, user_id, granted_by, granted_at, revoked_by, revoked_at
-         FROM program_leaders
-         WHERE program_id = ? AND user_id = ?`
-      )
-      .bind(programId, userId)
-      .first<ProgramLeaderRow>();
-  }
-
-  listProgramLeaders(programId: string): Promise<ProgramLeaderRow[]> {
-    return this.db
-      .prepare(
-        `SELECT program_leaders.*, accounts.name AS user_name,
-                accounts.username
-           FROM program_leaders
-           LEFT JOIN accounts ON accounts.user_id = program_leaders.user_id
-          WHERE program_leaders.program_id = ? AND program_leaders.revoked_at IS NULL
-          ORDER BY program_leaders.granted_at`
+        `SELECT DISTINCT
+                p.program_id,
+                ra.account_user_id AS user_id,
+                rd.role_definition_id,
+                rd.label,
+                ra.scope_kind,
+                ra.scope_id,
+                ra.granted_at,
+                a.name AS user_name,
+                a.username
+           FROM programs p
+           JOIN role_assignments ra
+             ON ra.revoked_at IS NULL
+           JOIN role_definitions rd
+             ON rd.role_definition_id = ra.role_definition_id
+           JOIN role_definition_grants rg
+             ON rg.role_definition_id = rd.role_definition_id
+            AND rg.capability IN ('program.manage', 'program.leader.assign')
+           JOIN accounts a ON a.user_id = ra.account_user_id
+          WHERE p.program_id = ? AND a.account_status = 'Active'
+            AND (
+              (ra.scope_kind = 'Program' AND ra.scope_id = p.program_id)
+              OR (ra.scope_kind = 'Department' AND ra.scope_id = p.department_id)
+            )
+          ORDER BY ra.granted_at, a.name, a.user_id`
       )
       .bind(programId)
-      .all<ProgramLeaderRow>()
-      .then((r) => r.results);
-  }
-
-  async assignProgramLeader(
-    input: ProgramLeaderGrantInput
-  ): Promise<ProgramLeaderRow> {
-    const existing = await this.findProgramLeader(
-      input.program_id,
-      input.user_id
-    );
-    const sql = existing
-      ? `UPDATE program_leaders
-         SET granted_by = ?, granted_at = ?, revoked_by = NULL, revoked_at = NULL
-         WHERE program_id = ? AND user_id = ? AND revoked_at IS NOT NULL`
-      : `INSERT INTO program_leaders (program_id, user_id, granted_by, granted_at)
-         VALUES (?, ?, ?, ?)
-         ON CONFLICT(program_id, user_id) DO NOTHING`;
-    const args = existing
-      ? [input.granted_by, input.granted_at, input.program_id, input.user_id]
-      : [input.program_id, input.user_id, input.granted_by, input.granted_at];
-    await this.db
-      .prepare(sql)
-      .bind(...args)
-      .run();
-    const row = await this.findProgramLeader(input.program_id, input.user_id);
-    if (!row) {
-      throw new Error("program leader row missing after assign");
-    }
-    return row;
-  }
-
-  async revokeProgramLeader(
-    input: ProgramLeaderRevokeInput
-  ): Promise<ProgramLeaderRow | null> {
-    await this.db
-      .prepare(
-        `UPDATE program_leaders
-         SET revoked_by = ?, revoked_at = ?
-         WHERE program_id = ? AND user_id = ? AND revoked_at IS NULL`
-      )
-      .bind(input.revoked_by, input.revoked_at, input.program_id, input.user_id)
-      .run();
-    return this.findProgramLeader(input.program_id, input.user_id);
+      .all<ProgramIdentityAssignmentRow>()
+      .then((result) => result.results ?? []);
   }
 
   private auditInsertStatement(input: AuditInput): D1PreparedStatement {
@@ -2579,43 +2452,5 @@ export class D1WorkspaceStore implements WorkspaceStore, RolePolicyStore {
 
   async audit(input: AuditInput): Promise<void> {
     await this.auditInsertStatement(input).run();
-  }
-
-  async hasCapability(role: string, capability: Capability): Promise<boolean> {
-    const row = await this.db
-      .prepare(
-        "SELECT 1 FROM role_capabilities WHERE role = ? AND capability = ?"
-      )
-      .bind(role, capability)
-      .first<{ 1: number }>();
-    return row !== null;
-  }
-
-  async hasDepartmentManagement(
-    userId: string,
-    departmentId: string
-  ): Promise<boolean> {
-    const row = await this.db
-      .prepare(
-        `SELECT 1 FROM department_managers
-          WHERE department_id = ? AND user_id = ? AND revoked_at IS NULL`
-      )
-      .bind(departmentId, userId)
-      .first<{ 1: number }>();
-    return row !== null;
-  }
-
-  async hasProgramLeadership(
-    userId: string,
-    programId: string
-  ): Promise<boolean> {
-    const row = await this.db
-      .prepare(
-        `SELECT 1 FROM program_leaders
-         WHERE program_id = ? AND user_id = ? AND revoked_at IS NULL`
-      )
-      .bind(programId, userId)
-      .first<{ 1: number }>();
-    return row !== null;
   }
 }

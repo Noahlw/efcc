@@ -20,8 +20,8 @@ import type { Bootstrap, PublicUser } from "@/lib/api";
 import { COPY } from "@/lib/copy";
 import {
   defaultSections,
-  sectionsForRole,
-  stableNavigationSections,
+  projectSections,
+  projectNavigation,
 } from "@/lib/sections";
 
 const mocks = vi.hoisted(() => {
@@ -41,12 +41,12 @@ const mocks = vi.hoisted(() => {
 
 const { replaceMock, pathnameMock, mockRouter, announceMock } = mocks;
 
-vi.mock(import('next/navigation'), () => ({
+vi.mock(import("next/navigation"), () => ({
   useRouter: () => mockRouter,
   usePathname: () => pathnameMock(),
 }));
 
-vi.mock(import('@/lib/live-region'), () => ({
+vi.mock(import("@/lib/live-region"), () => ({
   announce: mocks.announceMock,
 }));
 const sessionMocks = vi.hoisted(() => ({
@@ -57,7 +57,7 @@ const sessionMocks = vi.hoisted(() => ({
   rememberDeepLinkMock: vi.fn<(value: string) => void>(),
 }));
 
-vi.mock(import('@/lib/session'), () => ({
+vi.mock(import("@/lib/session"), () => ({
   clearAuthHint: sessionMocks.clearAuthHintMock,
   setAuthHint: sessionMocks.setAuthHintMock,
   hasAuthHint: sessionMocks.hasAuthHintMock,
@@ -77,8 +77,8 @@ const PROFILE: PublicUser = {
 };
 
 const BOOTSTRAP: Bootstrap = {
-  sections: sectionsForRole("Member"),
-  navigation: stableNavigationSections("Member"),
+  sections: projectSections({ "program.enroll": true }),
+  navigation: projectNavigation({ "program.enroll": true }),
   profile: PROFILE,
 };
 
@@ -249,7 +249,9 @@ describe(ProfileSettingsPage, () => {
     await user.click(
       screen.getByRole("button", { name: ACCOUNT_SETTINGS_COPY.usernameSubmit })
     );
-    await expect(screen.findByText(ACCOUNT_SETTINGS_COPY.usernameTaken)).resolves.toBeInTheDocument();
+    await expect(
+      screen.findByText(ACCOUNT_SETTINGS_COPY.usernameTaken)
+    ).resolves.toBeInTheDocument();
     expect(
       screen.getByLabelText(ACCOUNT_SETTINGS_COPY.usernameLabel)
     ).toHaveValue("taken.user");
@@ -259,9 +261,11 @@ describe(ProfileSettingsPage, () => {
     await user.click(
       screen.getByRole("button", { name: ACCOUNT_SETTINGS_COPY.usernameSubmit })
     );
-    await expect(screen.findByRole("heading", {
+    await expect(
+      screen.findByRole("heading", {
         name: ACCOUNT_SETTINGS_COPY.updated,
-      })).resolves.toBeInTheDocument();
+      })
+    ).resolves.toBeInTheDocument();
     expect(
       screen.getByText(ACCOUNT_SETTINGS_COPY.usernameSuccess)
     ).toBeInTheDocument();
@@ -362,9 +366,11 @@ describe(ProfileSettingsPage, () => {
       screen.getByRole("button", { name: ACCOUNT_SETTINGS_COPY.passwordSubmit })
     );
 
-    await expect(screen.findByRole("heading", {
+    await expect(
+      screen.findByRole("heading", {
         name: ACCOUNT_SETTINGS_COPY.updated,
-      })).resolves.toBeInTheDocument();
+      })
+    ).resolves.toBeInTheDocument();
     expect(
       screen.getByText(ACCOUNT_SETTINGS_COPY.passwordSuccess)
     ).toBeInTheDocument();
@@ -398,7 +404,9 @@ describe(ProfileSettingsPage, () => {
       screen.getByRole("button", { name: ACCOUNT_SETTINGS_COPY.passwordSubmit })
     );
 
-    await expect(screen.findByText(ACCOUNT_SETTINGS_COPY.wrongCurrentPassword)).resolves.toBeInTheDocument();
+    await expect(
+      screen.findByText(ACCOUNT_SETTINGS_COPY.wrongCurrentPassword)
+    ).resolves.toBeInTheDocument();
     expect(
       screen.getByLabelText(ACCOUNT_SETTINGS_COPY.currentPasswordLabel)
     ).toHaveValue("wrong-pass");
@@ -512,7 +520,9 @@ describe(ProfileSettingsPage, () => {
       screen.getByRole("button", { name: ACCOUNT_SETTINGS_COPY.passwordSubmit })
     );
 
-    await expect(screen.findByText(ACCOUNT_SETTINGS_COPY.unavailable)).resolves.toBeInTheDocument();
+    await expect(
+      screen.findByText(ACCOUNT_SETTINGS_COPY.unavailable)
+    ).resolves.toBeInTheDocument();
     expect(
       screen.getByRole("button", { name: ACCOUNT_SETTINGS_COPY.retry })
     ).toHaveFocus();
@@ -551,7 +561,9 @@ describe(ProfileSettingsPage, () => {
       screen.getByRole("button", { name: ACCOUNT_SETTINGS_COPY.usernameSubmit })
     );
 
-    await expect(screen.findByText(COPY.error.forbidden)).resolves.toBeInTheDocument();
+    await expect(
+      screen.findByText(COPY.error.forbidden)
+    ).resolves.toBeInTheDocument();
     expect(
       screen.queryByLabelText(ACCOUNT_SETTINGS_COPY.usernameLabel)
     ).not.toBeInTheDocument();
@@ -674,7 +686,7 @@ describe(ProfilePage, () => {
     expect(screen.getByText(COPY.profile.accountDetails)).toBeInTheDocument();
     expect(screen.getByText(PROFILE.username)).toBeInTheDocument();
     expect(screen.getByText(PROFILE.phone)).toBeInTheDocument();
-    expect(screen.getByText(PROFILE.role)).toBeInTheDocument();
+    expect(screen.getByText("會友")).toBeInTheDocument();
 
     const settingsLink = screen.getByRole("link", {
       name: new RegExp(COPY.profile.accountSettings, "u"),
@@ -709,7 +721,7 @@ describe(ProfilePage, () => {
     const managementSections = defaultSections();
     sessionMocks.restoreBootstrapMock.mockResolvedValue({
       sections: managementSections,
-      navigation: stableNavigationSections("Admin"),
+      navigation: projectNavigation({ "home.publish": true }),
       profile: { ...PROFILE, role: "Admin" },
     });
     pathnameMock.mockReturnValue("/profile");

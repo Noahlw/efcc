@@ -55,46 +55,98 @@ INSERT OR IGNORE INTO role_definitions (
   ('018f3b8a-0000-7000-8000-100000000001', 'Department', 'department.manager.adult', '成人部門管理者', '可管理成人部門的日常運作及課程目錄。', 'Department', '018f3b8a-0000-7000-8000-000000000002', 10, 0, 0, NULL, '2026-08-27T00:00:00.000Z', NULL, '2026-08-27T00:00:00.000Z'),
   ('018f3b8a-0000-7000-8000-100000000002', 'Program', 'program.leader.youth-bible-study', '青少年查經帶領', '可帶領青少年查經聚會並登記出席。', 'Program', '018f3b8a-0000-7000-8000-300000000001', 20, 0, 0, NULL, '2026-08-27T00:00:00.000Z', NULL, '2026-08-27T00:00:00.000Z');
 
-INSERT OR IGNORE INTO role_definition_grants (role_definition_id, capability, granted_by, granted_at) VALUES
-  ('018f3b8a-0000-7000-8000-000000000a03', 'program.enroll', NULL, '2026-08-27T00:00:00.000Z'),
-  ('018f3b8a-0000-7000-8000-000000000a02', 'role.read', NULL, '2026-08-27T00:00:00.000Z'),
-  ('018f3b8a-0000-7000-8000-000000000a02', 'role.assign', NULL, '2026-08-27T00:00:00.000Z'),
-  ('018f3b8a-0000-7000-8000-000000000a02', 'role.revoke', NULL, '2026-08-27T00:00:00.000Z'),
-  ('018f3b8a-0000-7000-8000-000000000a02', 'role.reorder', NULL, '2026-08-27T00:00:00.000Z'),
-  ('018f3b8a-0000-7000-8000-000000000a02', 'role.permissions.read', NULL, '2026-08-27T00:00:00.000Z'),
-  ('018f3b8a-0000-7000-8000-000000000a02', 'role.permissions.write', NULL, '2026-08-27T00:00:00.000Z'),
-  ('018f3b8a-0000-7000-8000-000000000a02', 'role.create', NULL, '2026-08-27T00:00:00.000Z'),
-  ('018f3b8a-0000-7000-8000-000000000a02', 'role.delete', NULL, '2026-08-27T00:00:00.000Z'),
-  ('018f3b8a-0000-7000-8000-100000000001', 'role.read', NULL, '2026-08-27T00:00:00.000Z'),
-  ('018f3b8a-0000-7000-8000-100000000001', 'role.assign', NULL, '2026-08-27T00:00:00.000Z'),
-  ('018f3b8a-0000-7000-8000-100000000001', 'role.revoke', NULL, '2026-08-27T00:00:00.000Z'),
-  ('018f3b8a-0000-7000-8000-100000000001', 'role.reorder', NULL, '2026-08-27T00:00:00.000Z'),
-  ('018f3b8a-0000-7000-8000-100000000001', 'role.permissions.read', NULL, '2026-08-27T00:00:00.000Z'),
-  ('018f3b8a-0000-7000-8000-100000000001', 'role.permissions.write', NULL, '2026-08-27T00:00:00.000Z'),
-  ('018f3b8a-0000-7000-8000-100000000001', 'department.manage', NULL, '2026-08-27T00:00:00.000Z'),
-  ('018f3b8a-0000-7000-8000-100000000001', 'department.publish', NULL, '2026-08-27T00:00:00.000Z'),
-  ('018f3b8a-0000-7000-8000-100000000001', 'department.module.configure', NULL, '2026-08-27T00:00:00.000Z'),
-  ('018f3b8a-0000-7000-8000-100000000001', 'program.manage', NULL, '2026-08-27T00:00:00.000Z'),
-  ('018f3b8a-0000-7000-8000-100000000001', 'program.publish', NULL, '2026-08-27T00:00:00.000Z'),
-  ('018f3b8a-0000-7000-8000-100000000001', 'program.leader.assign', NULL, '2026-08-27T00:00:00.000Z'),
-  ('018f3b8a-0000-7000-8000-100000000002', 'role.read', NULL, '2026-08-27T00:00:00.000Z'),
-  ('018f3b8a-0000-7000-8000-100000000002', 'role.assign', NULL, '2026-08-27T00:00:00.000Z'),
-  ('018f3b8a-0000-7000-8000-100000000002', 'role.revoke', NULL, '2026-08-27T00:00:00.000Z'),
-  ('018f3b8a-0000-7000-8000-100000000002', 'program.manage', NULL, '2026-08-27T00:00:00.000Z'),
-  ('018f3b8a-0000-7000-8000-100000000002', 'program.enroll', NULL, '2026-08-27T00:00:00.000Z');
+WITH seeded_grants(role_definition_id, capability) AS (
+  VALUES
+    ('018f3b8a-0000-7000-8000-000000000a02', 'role.read'),
+    ('018f3b8a-0000-7000-8000-000000000a02', 'role.assign'),
+    ('018f3b8a-0000-7000-8000-000000000a02', 'role.revoke'),
+    ('018f3b8a-0000-7000-8000-000000000a02', 'role.reorder'),
+    ('018f3b8a-0000-7000-8000-000000000a02', 'role.name.write'),
+    ('018f3b8a-0000-7000-8000-000000000a02', 'role.permissions.read'),
+    ('018f3b8a-0000-7000-8000-000000000a02', 'role.permissions.write'),
+    ('018f3b8a-0000-7000-8000-000000000a02', 'role.scope.read'),
+    ('018f3b8a-0000-7000-8000-000000000a02', 'role.scope.write'),
+    ('018f3b8a-0000-7000-8000-000000000a02', 'role.create'),
+    ('018f3b8a-0000-7000-8000-000000000a02', 'role.delete'),
+    ('018f3b8a-0000-7000-8000-000000000a02', 'department.manage'),
+    ('018f3b8a-0000-7000-8000-000000000a02', 'department.publish'),
+    ('018f3b8a-0000-7000-8000-000000000a02', 'department.module.configure'),
+    ('018f3b8a-0000-7000-8000-000000000a02', 'department.manager.assign'),
+    ('018f3b8a-0000-7000-8000-000000000a02', 'program.manage'),
+    ('018f3b8a-0000-7000-8000-000000000a02', 'program.publish'),
+    ('018f3b8a-0000-7000-8000-000000000a02', 'program.enroll'),
+    ('018f3b8a-0000-7000-8000-000000000a02', 'program.leader.assign'),
+    ('018f3b8a-0000-7000-8000-000000000a02', 'account.permissions.read'),
+    ('018f3b8a-0000-7000-8000-000000000a02', 'account.directory.read'),
+    ('018f3b8a-0000-7000-8000-000000000a02', 'registration.approval.manage'),
+    ('018f3b8a-0000-7000-8000-100000000001', 'role.read'),
+    ('018f3b8a-0000-7000-8000-100000000001', 'role.assign'),
+    ('018f3b8a-0000-7000-8000-100000000001', 'role.revoke'),
+    ('018f3b8a-0000-7000-8000-100000000001', 'role.reorder'),
+    ('018f3b8a-0000-7000-8000-100000000001', 'role.permissions.read'),
+    ('018f3b8a-0000-7000-8000-100000000001', 'role.permissions.write'),
+    ('018f3b8a-0000-7000-8000-100000000001', 'department.manage'),
+    ('018f3b8a-0000-7000-8000-100000000001', 'department.publish'),
+    ('018f3b8a-0000-7000-8000-100000000001', 'department.module.configure'),
+    ('018f3b8a-0000-7000-8000-100000000001', 'program.manage'),
+    ('018f3b8a-0000-7000-8000-100000000001', 'program.publish'),
+    ('018f3b8a-0000-7000-8000-100000000001', 'program.leader.assign'),
+    ('018f3b8a-0000-7000-8000-100000000002', 'role.read'),
+    ('018f3b8a-0000-7000-8000-100000000002', 'role.assign'),
+    ('018f3b8a-0000-7000-8000-100000000002', 'role.revoke'),
+    ('018f3b8a-0000-7000-8000-100000000002', 'program.manage'),
+    ('018f3b8a-0000-7000-8000-100000000002', 'program.enroll')
+)
+INSERT OR IGNORE INTO role_definition_grants
+  (role_definition_id, capability, granted_by, granted_at)
+SELECT seeded_grants.role_definition_id, seeded_grants.capability, NULL,
+  '2026-08-27T00:00:00.000Z'
+  FROM seeded_grants
+  JOIN role_definitions
+    ON role_definitions.role_definition_id = seeded_grants.role_definition_id
+ WHERE role_definitions.is_archived = 0;
 
+-- Re-seeding after a revoke keeps the terminal row and creates a fresh
+-- assignment ID for the active fixture instead of reactivating history.
+WITH seeded_assignments(assignment_id, account_user_id, role_definition_id, granted_by) AS (
+  VALUES
+    ('0-000000000a01-ADMIN', 'E2E_DISPOSABLE_ADMIN', '018f3b8a-0000-7000-8000-000000000a01', 'E2E_DISPOSABLE_ADMIN'),
+    ('0-000000000a02-STAFF', 'E2E_DISPOSABLE_STAFF', '018f3b8a-0000-7000-8000-000000000a02', 'E2E_DISPOSABLE_ADMIN'),
+    ('0-100000000001-DM', 'E2E_DISPOSABLE_DM', '018f3b8a-0000-7000-8000-100000000001', 'E2E_DISPOSABLE_ADMIN'),
+    ('0-100000000002-PL', 'E2E_DISPOSABLE_PL', '018f3b8a-0000-7000-8000-100000000002', 'E2E_DISPOSABLE_ADMIN')
+)
 INSERT OR IGNORE INTO role_assignments (
   assignment_id, account_user_id, role_definition_id,
-  granted_by, granted_at, revoked_by, revoked_at, revoke_reason
-) VALUES
-  ('0-000000000a01-ADMIN', 'E2E_DISPOSABLE_ADMIN', '018f3b8a-0000-7000-8000-000000000a01', 'E2E_DISPOSABLE_ADMIN', '2026-08-27T00:00:00.000Z', NULL, NULL, NULL),
-  ('0-000000000a03-ADMIN', 'E2E_DISPOSABLE_ADMIN', '018f3b8a-0000-7000-8000-000000000a03', 'E2E_DISPOSABLE_ADMIN', '2026-08-27T00:00:00.000Z', NULL, NULL, NULL),
-  ('0-000000000a02-STAFF', 'E2E_DISPOSABLE_STAFF', '018f3b8a-0000-7000-8000-000000000a02', 'E2E_DISPOSABLE_ADMIN', '2026-08-27T00:00:00.000Z', NULL, NULL, NULL),
-  ('0-000000000a03-STAFF', 'E2E_DISPOSABLE_STAFF', '018f3b8a-0000-7000-8000-000000000a03', 'E2E_DISPOSABLE_ADMIN', '2026-08-27T00:00:00.000Z', NULL, NULL, NULL),
-  ('0-000000000a02-DM', 'E2E_DISPOSABLE_DM', '018f3b8a-0000-7000-8000-000000000a02', 'E2E_DISPOSABLE_ADMIN', '2026-08-27T00:00:00.000Z', NULL, NULL, NULL),
-  ('0-000000000a03-DM', 'E2E_DISPOSABLE_DM', '018f3b8a-0000-7000-8000-000000000a03', 'E2E_DISPOSABLE_ADMIN', '2026-08-27T00:00:00.000Z', NULL, NULL, NULL),
-  ('0-100000000001-DM', 'E2E_DISPOSABLE_DM', '018f3b8a-0000-7000-8000-100000000001', 'E2E_DISPOSABLE_ADMIN', '2026-08-27T00:00:00.000Z', NULL, NULL, NULL),
-  ('0-000000000a02-PL', 'E2E_DISPOSABLE_PL', '018f3b8a-0000-7000-8000-000000000a02', 'E2E_DISPOSABLE_ADMIN', '2026-08-27T00:00:00.000Z', NULL, NULL, NULL),
-  ('0-000000000a03-PL', 'E2E_DISPOSABLE_PL', '018f3b8a-0000-7000-8000-000000000a03', 'E2E_DISPOSABLE_ADMIN', '2026-08-27T00:00:00.000Z', NULL, NULL, NULL),
-  ('0-100000000002-PL', 'E2E_DISPOSABLE_PL', '018f3b8a-0000-7000-8000-100000000002', 'E2E_DISPOSABLE_ADMIN', '2026-08-27T00:00:00.000Z', NULL, NULL, NULL),
-  ('0-000000000a03-MEMBER', 'E2E_DISPOSABLE_MEMBER', '018f3b8a-0000-7000-8000-000000000a03', 'E2E_DISPOSABLE_ADMIN', '2026-08-27T00:00:00.000Z', NULL, NULL, NULL);
+  granted_by, granted_at, scope_kind, scope_id,
+  revoked_by, revoked_at, revoke_reason
+)
+SELECT
+  CASE
+    WHEN EXISTS (
+      SELECT 1
+        FROM role_assignments AS history
+       WHERE history.assignment_id = seeded_assignments.assignment_id
+    )
+    THEN seeded_assignments.assignment_id || '-' || lower(hex(randomblob(16)))
+    ELSE seeded_assignments.assignment_id
+  END,
+  seeded_assignments.account_user_id,
+  seeded_assignments.role_definition_id,
+  seeded_assignments.granted_by,
+  '2026-08-27T00:00:00.000Z',
+  role_definitions.scope_kind,
+  role_definitions.scope_id,
+  NULL,
+  NULL,
+  NULL
+  FROM seeded_assignments
+  JOIN role_definitions
+    ON role_definitions.role_definition_id = seeded_assignments.role_definition_id
+ WHERE role_definitions.is_archived = 0
+   AND NOT EXISTS (
+     SELECT 1
+       FROM role_assignments AS active
+      WHERE active.account_user_id = seeded_assignments.account_user_id
+        AND active.role_definition_id = seeded_assignments.role_definition_id
+        AND active.revoked_at IS NULL
+   );

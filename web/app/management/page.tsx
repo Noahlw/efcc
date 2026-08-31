@@ -8,12 +8,13 @@ import { ApprovalQueue } from "@/lib/approval-queue";
 import { AttendanceOperatorPanel } from "@/lib/attendance-operator-panel";
 import { GuardedSection } from "@/lib/guarded-section";
 
+import { AccountAccessPanel } from "./account-access-panel";
 import { AccountDirectoryPanel } from "./account-directory-panel";
 import { CheckinSettings } from "./checkin-settings";
 import { HomeContentEditor } from "./home-cms-editor";
 import { ManagementHub } from "./management-hub";
 import { MemberDirectoryPanel } from "./member-directory-panel";
-import { PermissionsPanel } from "./permissions-panel";
+import { PermissionEditorPanel } from "./permission-editor-panel";
 import { RoleHierarchyPanel } from "./role-hierarchy-panel";
 import { SettingsHub } from "./settings-hub";
 import { TimezoneSettings } from "./timezone-settings";
@@ -24,7 +25,18 @@ const ManagementModule = () => {
 
   switch (module) {
     case "accounts": {
-      return <AccountDirectoryPanel />;
+      const scopedAccess =
+        searchParams.get("scopeId") !== null &&
+        (searchParams.get("scopeKind") === "Department" ||
+          searchParams.get("scopeKind") === "Program");
+      return searchParams.get("view") === "access" &&
+        (searchParams.get("account") ||
+          searchParams.get("roleDefinition") ||
+          scopedAccess) ? (
+        <AccountAccessPanel />
+      ) : (
+        <AccountDirectoryPanel />
+      );
     }
     case "approvals": {
       const requestId = searchParams.get("request");
@@ -41,7 +53,7 @@ const ManagementModule = () => {
       return <HomeContentEditor />;
     }
     case "permissions": {
-      return <PermissionsPanel />;
+      return <PermissionEditorPanel />;
     }
     case "roles": {
       return <RoleHierarchyPanel />;

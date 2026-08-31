@@ -144,8 +144,24 @@ const VIEW: RoleHierarchyView = {
           isProtected: false,
           isArchived: false,
           assignmentCount: 1,
+          assignedAccounts: [
+            {
+              assignmentId: "assignment-account-1",
+              userId: "account-1",
+              name: "Account One",
+              username: "account-one",
+              status: "Active",
+            },
+          ],
+          assignmentActions: [
+            { action: "assign", label: "指派" },
+            { action: "revoke", label: "撤銷" },
+          ],
           grantCount: 12,
-          actions: [{ action: "rename", label: "重新命名" }],
+          actions: [
+            { action: "rename", label: "重新命名" },
+            { action: "permissions", label: "編輯權限" },
+          ],
           reorderActions: [{ action: "reorder", label: "調整順序" }],
         },
         {
@@ -159,7 +175,9 @@ const VIEW: RoleHierarchyView = {
           position: 11,
           isProtected: false,
           isArchived: false,
+          assignmentActions: [{ action: "assign", label: "指派" }],
           assignmentCount: 0,
+          lifecycleActions: [{ action: "archive", label: "停用" }],
           grantCount: 0,
           actions: [],
           reorderActions: [{ action: "reorder", label: "調整順序" }],
@@ -194,7 +212,17 @@ function hierarchyResponse(overrides: Partial<RoleHierarchyView> = {}) {
 }
 
 describe(RoleHierarchyPanel, () => {
-  beforeAll(() => server.listen({ onUnhandledRequest: "error" }));
+  beforeAll(() => {
+    if (!HTMLElement.prototype.hasPointerCapture) {
+      HTMLElement.prototype.hasPointerCapture = () => false;
+      HTMLElement.prototype.setPointerCapture = () => {};
+      HTMLElement.prototype.releasePointerCapture = () => {};
+    }
+    if (!HTMLElement.prototype.scrollIntoView) {
+      HTMLElement.prototype.scrollIntoView = () => {};
+    }
+    server.listen({ onUnhandledRequest: "error" });
+  });
   afterEach(() => {
     cleanup();
     server.resetHandlers();
@@ -247,7 +275,115 @@ describe(RoleHierarchyPanel, () => {
     ).resolves.toBeTruthy();
     expect(screen.getByText(/成區/u)).toBeTruthy();
     expect(screen.getByText("11")).toBeInTheDocument();
+
     expect(screen.getByRole("button", { name: "重新命名" })).toBeTruthy();
+  });
+  test("H-03: renders the server-projected permissions action and preserves its route", async () => {
+    mocks.searchParams = new URLSearchParams(
+      `module=roles&role=${MANAGER_ROLE}&view=detail`
+    );
+    server.use(http.get("/api/v1/identity/roles", () => hierarchyResponse()));
+    render(<RoleHierarchyPanel />);
+
+    const permissions = await screen.findByRole("link", {
+      name: "編輯權限",
+    });
+    expect(permissions).toHaveAttribute(
+      "href",
+      `/management?module=permissions&role=${MANAGER_ROLE}&view=permissions`
+    );
+  });
+  test("identity-first assigned account link converges on Account Access", async () => {
+    mocks.searchParams = new URLSearchParams(
+      `module=roles&role=${MANAGER_ROLE}&view=detail`
+    );
+    server.use(http.get("/api/v1/identity/roles", () => hierarchyResponse()));
+    render(<RoleHierarchyPanel />);
+
+    const access = await screen.findByRole("link", {
+      name: "管理已指派帳戶",
+    });
+    expect(access).toHaveAttribute(
+      "href",
+      `/management?module=accounts&roleDefinition=${MANAGER_ROLE}&view=access&return=%2Fmanagement%3Fmodule%3Droles%26role%3D${MANAGER_ROLE}%26view%3Ddetail`
+    );
+  });
+  test("identity-first zero-assignment role still opens Account Access lifecycle entry", async () => {
+    mocks.searchParams = new URLSearchParams(
+      "module=roles&role=018f3b8a-0000-7000-8000-1000000000bb&view=detail"
+    );
+    server.use(http.get("/api/v1/identity/roles", () => hierarchyResponse()));
+    render(<RoleHierarchyPanel />);
+    const access = await screen.findByRole("link", {
+      name: "管理已指派帳戶",
+    });
+    expect(access).toHaveAttribute(
+      "href",
+      "/management?module=accounts&roleDefinition=018f3b8a-0000-7000-8000-1000000000bb&view=access&return=%2Fmanagement%3Fmodule%3Droles%26role%3D018f3b8a-0000-7000-8000-1000000000bb%26view%3Ddetail"
+    );
+  });
+
+  test("viewers without assignment or lifecycle capability do not get Account Access CTA", async () => {
+    const readOnlyView: RoleHierarchyView = {
+      ...VIEW,
+      caller: { userId: "u-reader", highestPosition: 10 },
+      categories: VIEW.categories.map((category) => ({
+        ...category,
+        definitions: category.definitions.map((definition) =>
+          definition.roleDefinitionId === MANAGER_ROLE
+            ? {
+                ...definition,
+                assignmentActions: [],
+                lifecycleActions: [],
+              }
+            : definition
+        ),
+      })),
+    };
+    mocks.searchParams = new URLSearchParams(
+      `module=roles&role=${MANAGER_ROLE}&view=detail`
+    );
+    server.use(
+      http.get("/api/v1/identity/roles", () => hierarchyResponse(readOnlyView))
+    );
+    render(<RoleHierarchyPanel />);
+    await screen.findByRole("heading", { name: "成人部門管理者" });
+    expect(screen.queryByRole("link", { name: "管理已指派帳戶" })).toBeNull();
+  });
+
+  test("role-delete-only identity gets the Account Access lifecycle entry", async () => {
+    const lifecycleOnlyView: RoleHierarchyView = {
+      ...VIEW,
+      caller: { userId: "u-lifecycle", highestPosition: 10 },
+      categories: VIEW.categories.map((category) => ({
+        ...category,
+        definitions: category.definitions.map((definition) =>
+          definition.roleDefinitionId === MANAGER_ROLE
+            ? {
+                ...definition,
+                assignmentActions: [],
+                lifecycleActions: [{ action: "archive", label: "停用" }],
+              }
+            : definition
+        ),
+      })),
+    };
+    mocks.searchParams = new URLSearchParams(
+      `module=roles&role=${MANAGER_ROLE}&view=detail`
+    );
+    server.use(
+      http.get("/api/v1/identity/roles", () =>
+        hierarchyResponse(lifecycleOnlyView)
+      )
+    );
+    render(<RoleHierarchyPanel />);
+    const access = await screen.findByRole("link", {
+      name: "管理已指派帳戶",
+    });
+    expect(access).toHaveAttribute(
+      "href",
+      `/management?module=accounts&roleDefinition=${MANAGER_ROLE}&view=access&return=%2Fmanagement%3Fmodule%3Droles%26role%3D${MANAGER_ROLE}%26view%3Ddetail`
+    );
   });
 
   test("H-18: a malformed role parameter falls back to the safe list", async () => {
@@ -687,11 +823,17 @@ describe(RoleHierarchyPanel, () => {
       screen.getByRole("button", { name: /成人部門管理者 · 詳情/u })
     );
     await user.click(screen.getByRole("button", { name: "編輯適用範圍" }));
-    const scopeSelect = screen.getByLabelText("適用範圍");
-    expect(scopeSelect).toHaveValue(
-      "Department:018f3b8a-0000-7000-8000-000000000002"
+    const scopeSelect = screen.getByRole("combobox", {
+      name: "適用範圍",
+    });
+    expect(scopeSelect).toHaveTextContent("成區");
+    await user.click(scopeSelect);
+    expect(screen.getAllByRole("option")).toHaveLength(1);
+    expect(screen.getByRole("option", { name: "成區" })).toHaveAttribute(
+      "aria-selected",
+      "true"
     );
-    expect(within(scopeSelect).getAllByRole("option")).toHaveLength(1);
+    await user.keyboard("{Escape}");
     await user.click(screen.getByRole("button", { name: "儲存適用範圍" }));
     const body = scopeBody as Record<string, unknown>;
     expect(body.category_key).toBe("Department");

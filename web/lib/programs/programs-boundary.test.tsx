@@ -271,6 +271,23 @@ describe("Programs intent", () => {
         .malformed
     ).toBeTruthy();
   });
+  test("preserves management department context", () => {
+    expect(
+      parseProgramsIntent("?mode=management&department=department-1")
+    ).toStrictEqual({
+      mode: "management",
+      programId: null,
+      departmentId: "department-1",
+      hash: null,
+      malformed: false,
+    });
+    expect(
+      buildProgramsHref({
+        mode: "management",
+        departmentId: "department-1",
+      })
+    ).toBe("/programs?mode=management&department=department-1");
+  });
 
   test("keeps management notifications addressable without a Program", () => {
     expect(
