@@ -329,6 +329,14 @@ export default {
         DB: env.DB,
         EFCC_ACCESS_TOKEN_SECRET: env.EFCC_ACCESS_TOKEN_SECRET,
       } as const;
+      if (url.pathname === "/api/v1/programs/account-permissions") {
+        return authProblemResponse(
+          404,
+          "NOT_FOUND",
+          "Not found",
+          "Unknown programs route."
+        );
+      }
       const {
         handleCreateDepartment,
         handleListDepartments,
