@@ -198,9 +198,14 @@ describe("PermissionEditorPanel", () => {
 
     const list = await screen.findByRole("list", { name: "身份組列表" });
     expect(within(list).getByText("青少年查經帶領")).toBeInTheDocument();
-    await userEvent.click(
-      screen.getByRole("button", { name: /青少年查經帶領/u })
+    const roleLink = screen.getByRole("link", {
+      name: /青少年查經帶領/u,
+    });
+    expect(roleLink).toHaveAttribute(
+      "href",
+      `/management?module=permissions&role=${ROLE_ID}&view=permissions`
     );
+    await userEvent.click(roleLink);
 
     expect(
       await screen.findByRole("heading", { name: /青少年查經帶領/u, level: 2 })
@@ -219,7 +224,6 @@ describe("PermissionEditorPanel", () => {
     await userEvent.type(search, "課程");
     expect(screen.getByText("課程管理")).toBeInTheDocument();
     expect(screen.queryByText("查看帳戶名錄")).not.toBeInTheDocument();
-    expect(window.location.search).toContain("view=permissions");
   });
 
   test("normalizes malformed identity and view parameters to the safe role list", async () => {

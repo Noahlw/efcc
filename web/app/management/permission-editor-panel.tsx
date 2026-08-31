@@ -1,6 +1,7 @@
 "use client";
 
 import { cva } from "class-variance-authority";
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 
@@ -438,11 +439,6 @@ export const PermissionEditorPanel = () => {
     setBaseRevision(null);
     setSaveState("clean");
     setReview(null);
-    window.history.pushState(
-      null,
-      "",
-      `/management?module=permissions&role=${encodeURIComponent(roleId)}&view=permissions`
-    );
     announce(label);
   };
 
@@ -599,6 +595,7 @@ export const PermissionEditorPanel = () => {
               {category.definitions.map((definition) => (
                 <li key={definition.roleDefinitionId}>
                   <Button
+                    asChild
                     className={cn(
                       roleButtonVariants({
                         state:
@@ -607,26 +604,29 @@ export const PermissionEditorPanel = () => {
                             : "default",
                       })
                     )}
-                    onClick={() =>
-                      selectRole(definition.roleDefinitionId, definition.label)
-                    }
-                    type="button"
                     variant="outline"
                   >
-                    <span className="grid gap-1 text-left">
-                      <strong>{definition.label}</strong>
-                      <span className="text-muted-foreground text-xs">
-                        {definition.scopeLabel ?? "全教會"} ·{" "}
-                        {definition.assignmentCount} 個已指派 ·{" "}
-                        {definition.grantCount} 項能力
-                      </span>
-                    </span>
-                    <span
-                      aria-hidden="true"
-                      className="ml-auto text-muted-foreground text-xl"
+                    <Link
+                      href={`/management?module=permissions&role=${encodeURIComponent(definition.roleDefinitionId)}&view=permissions`}
+                      onClick={() =>
+                        selectRole(definition.roleDefinitionId, definition.label)
+                      }
                     >
-                      ›
-                    </span>
+                      <span className="grid gap-1 text-left">
+                        <strong>{definition.label}</strong>
+                        <span className="text-muted-foreground text-xs">
+                          {definition.scopeLabel ?? "全教會"} ·{" "}
+                          {definition.assignmentCount} 個已指派 ·{" "}
+                          {definition.grantCount} 項能力
+                        </span>
+                      </span>
+                      <span
+                        aria-hidden="true"
+                        className="ml-auto text-muted-foreground text-xl"
+                      >
+                        ›
+                      </span>
+                    </Link>
                   </Button>
                 </li>
               ))}
@@ -697,6 +697,7 @@ export const PermissionEditorPanel = () => {
             <label className="grid gap-2" htmlFor="permission-search">
               <span className="text-sm font-medium">{SEARCH_LABEL}</span>
               <Input
+                className="min-h-11"
                 id="permission-search"
                 onChange={(event) => setQuery(event.target.value)}
                 placeholder={SEARCH_PLACEHOLDER}

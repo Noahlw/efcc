@@ -271,18 +271,17 @@ describe(RoleHierarchyPanel, () => {
     expect(screen.getByRole("button", { name: "重新命名" })).toBeTruthy();
   });
   test("H-03: renders the server-projected permissions action and preserves its route", async () => {
-    const user = userEvent.setup();
     mocks.searchParams = new URLSearchParams(
       `module=roles&role=${MANAGER_ROLE}&view=detail`
     );
     server.use(http.get("/api/v1/identity/roles", () => hierarchyResponse()));
     render(<RoleHierarchyPanel />);
 
-    const permissions = await screen.findByRole("button", {
+    const permissions = await screen.findByRole("link", {
       name: "編輯權限",
     });
-    await user.click(permissions);
-    expect(mocks.router.push).toHaveBeenCalledWith(
+    expect(permissions).toHaveAttribute(
+      "href",
       `/management?module=permissions&role=${MANAGER_ROLE}&view=permissions`
     );
   });
@@ -293,11 +292,11 @@ describe(RoleHierarchyPanel, () => {
     server.use(http.get("/api/v1/identity/roles", () => hierarchyResponse()));
     render(<RoleHierarchyPanel />);
 
-    const access = await screen.findByRole("button", {
+    const access = await screen.findByRole("link", {
       name: "管理已指派帳戶",
     });
-    await userEvent.setup().click(access);
-    expect(mocks.router.push).toHaveBeenCalledWith(
+    expect(access).toHaveAttribute(
+      "href",
       `/management?module=accounts&roleDefinition=${MANAGER_ROLE}&view=access&return=%2Fmanagement%3Fmodule%3Droles%26role%3D${MANAGER_ROLE}%26view%3Ddetail`
     );
   });
@@ -307,11 +306,11 @@ describe(RoleHierarchyPanel, () => {
     );
     server.use(http.get("/api/v1/identity/roles", () => hierarchyResponse()));
     render(<RoleHierarchyPanel />);
-    const access = await screen.findByRole("button", {
+    const access = await screen.findByRole("link", {
       name: "管理已指派帳戶",
     });
-    await userEvent.setup().click(access);
-    expect(mocks.router.push).toHaveBeenCalledWith(
+    expect(access).toHaveAttribute(
+      "href",
       "/management?module=accounts&roleDefinition=018f3b8a-0000-7000-8000-1000000000bb&view=access&return=%2Fmanagement%3Fmodule%3Droles%26role%3D018f3b8a-0000-7000-8000-1000000000bb%26view%3Ddetail"
     );
   });

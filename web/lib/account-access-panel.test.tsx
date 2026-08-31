@@ -345,8 +345,9 @@ describe("AccountAccessPanel", () => {
     });
     render(<AccountAccessPanel />);
     await screen.findByRole("heading", { name: "選擇身份組" });
-    await userEvent.click(screen.getByRole("button", { name: /課程負責人/u }));
-    expect(mocks.router.push).toHaveBeenCalledWith(
+    const roleLink = screen.getByRole("link", { name: /課程負責人/u });
+    expect(roleLink).toHaveAttribute(
+      "href",
       "/management?module=accounts&roleDefinition=program-role&view=access&return=%2Fprograms%3Fmode%3Dmanagement%26program%3Dprogram-1%26task%3Dsettings"
     );
   });
@@ -389,10 +390,10 @@ describe("AccountAccessPanel", () => {
     render(<AccountAccessPanel />);
     await screen.findByRole("heading", { name: "選擇身份組" });
     expect(
-      screen.getByRole("button", { name: /可指派身份組/u })
+      screen.getByRole("link", { name: /可指派身份組/u })
     ).toBeInTheDocument();
     expect(
-      screen.queryByRole("button", { name: /不可指派身份組/u })
+      screen.queryByRole("link", { name: /不可指派身份組/u })
     ).not.toBeInTheDocument();
   });
   test("searches eligible accounts and navigates with canonical access URL", async () => {
@@ -413,12 +414,12 @@ describe("AccountAccessPanel", () => {
       await screen.findByRole("searchbox", { name: "搜尋可用帳戶" }),
       "Other"
     );
-    const candidate = await screen.findByRole("button", {
+    const candidate = await screen.findByRole("link", {
       name: /Other Account/,
     });
-    await user.click(candidate);
-    expect(mocks.router.push).toHaveBeenCalledWith(
-      expect.stringContaining("module=accounts&account=other&view=access")
+    expect(candidate).toHaveAttribute(
+      "href",
+      "/management?module=accounts&account=other&roleDefinition=role-lower&view=access&return=%2Fmanagement%3Fmodule%3Daccounts%26roleDefinition%3Drole-lower%26view%3Daccess"
     );
   });
 
@@ -501,6 +502,24 @@ describe("AccountAccessPanel", () => {
         expect.any(String)
       )
     );
+  });
+  test("names duplicate identities in successful feedback", async () => {
+    const user = userEvent.setup();
+    mocks.mutateAccountAssignments.mockResolvedValue({
+      ...view,
+      idempotent: false,
+      duplicateRoleDefinitionIds: ["role-lower", "role-not-in-view"],
+    });
+    render(<AccountAccessPanel />);
+    await user.click(
+      await screen.findByRole("switch", { name: "新增 課程協調者" })
+    );
+    await user.click(screen.getByRole("button", { name: "檢視新增 (1)" }));
+    await user.click(screen.getByRole("button", { name: "確認一次新增" }));
+
+    const status = await screen.findByRole("status");
+    expect(status).toHaveTextContent("課程協調者");
+    expect(status).toHaveTextContent("role-not-in-view");
   });
 
   test("previews revoke impact and confirms an explicit revoke", async () => {
@@ -773,13 +792,12 @@ describe("AccountAccessPanel", () => {
     ).toBeTruthy();
     const searchbox = screen.getByRole("searchbox");
     await user.type(searchbox, "Other");
-    await user.click(
-      await screen.findByRole("button", { name: /Other Account/ })
-    );
-    expect(mocks.router.push).toHaveBeenCalledWith(
-      expect.stringContaining(
-        "account=other&roleDefinition=role-lower&view=access"
-      )
+    const candidate = await screen.findByRole("link", {
+      name: /Other Account/,
+    });
+    expect(candidate).toHaveAttribute(
+      "href",
+      "/management?module=accounts&account=other&roleDefinition=role-lower&view=access&return=%2Fmanagement%3Fmodule%3Daccounts%26roleDefinition%3Drole-lower%26view%3Daccess"
     );
   });
 

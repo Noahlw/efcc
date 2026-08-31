@@ -1,6 +1,7 @@
 "use client";
 
 import { cva } from "class-variance-authority";
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 
@@ -1400,39 +1401,37 @@ export const RoleHierarchyPanel = () => {
             (action) => action.action === "permissions"
           ) && (
             <Button
+              asChild
               className={cn(
                 actionButtonVariants({ tone: "primary" }),
                 "mt-4 w-fit"
               )}
-              onClick={() =>
-                router.push(
-                  `/management?module=permissions&role=${encodeURIComponent(selected.roleDefinitionId)}&view=permissions`
-                )
-              }
               size="lg"
-              type="button"
               variant="default"
             >
-              {PERMISSION_EDIT_LABEL}
+              <Link
+                href={`/management?module=permissions&role=${encodeURIComponent(selected.roleDefinitionId)}&view=permissions`}
+              >
+                {PERMISSION_EDIT_LABEL}
+              </Link>
             </Button>
           )}
           {!selected.isProtected &&
             (selected.assignmentActions ?? []).length > 0 && (
               <Button
+                asChild
                 className={cn(
                   actionButtonVariants({ tone: "primary" }),
                   "mt-4 w-fit"
                 )}
-                onClick={() => {
-                  router.push(
-                    `/management?module=accounts&roleDefinition=${encodeURIComponent(selected.roleDefinitionId)}&view=access&return=${encodeURIComponent(`/management?module=roles&role=${encodeURIComponent(selected.roleDefinitionId)}&view=detail`)}`
-                  );
-                }}
                 size="lg"
-                type="button"
                 variant="default"
               >
-                管理已指派帳戶
+                <Link
+                  href={`/management?module=accounts&roleDefinition=${encodeURIComponent(selected.roleDefinitionId)}&view=access&return=${encodeURIComponent(`/management?module=roles&role=${encodeURIComponent(selected.roleDefinitionId)}&view=detail`)}`}
+                >
+                  管理已指派帳戶
+                </Link>
               </Button>
             )}
           {scopeState.kind !== "idle" && (

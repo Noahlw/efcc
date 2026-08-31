@@ -1,6 +1,7 @@
 "use client";
 
 import { cva } from "class-variance-authority";
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 
@@ -783,6 +784,16 @@ export const AccountAccessPanel = () => {
         key
       );
       if (!isCurrentRoute(requestRouteKey, requestRouteGeneration)) return;
+      const duplicateLabels = result.duplicateRoleDefinitionIds.map(
+        (roleId) =>
+          view.assignableRoles.find(
+            (role) => role.roleDefinitionId === roleId
+          )?.label ??
+          view.activeAssignments.find(
+            (assignment) => assignment.roleDefinitionId === roleId
+          )?.label ??
+          roleId
+      );
       setView(result);
       setSelectedIds([]);
       setReviewOpen(false);
@@ -790,8 +801,8 @@ export const AccountAccessPanel = () => {
       setStatus({
         kind: "success",
         message:
-          result.duplicateRoleDefinitionIds.length > 0
-            ? "身份組已更新；重複項目沒有再次指派。"
+          duplicateLabels.length > 0
+            ? `身份組已更新；重複項目（${duplicateLabels.join("、")}）沒有再次指派。`
             : "身份組已一次更新。",
       });
     } catch (error) {
@@ -1130,27 +1141,22 @@ export const AccountAccessPanel = () => {
             {scopedDefinitions.map((definition) => (
               <li key={definition.roleDefinitionId}>
                 <Button
+                  asChild
                   className="min-h-11 w-full justify-start text-left"
-                  onClick={() => {
-                    const returnTo = safeManagementReturnHref(
-                      searchParams.get("return"),
-                      "/management?module=accounts"
-                    );
-                    router.push(
-                      `/management?module=accounts&roleDefinition=${encodeURIComponent(definition.roleDefinitionId)}&view=access&return=${encodeURIComponent(returnTo)}`
-                    );
-                  }}
-                  type="button"
                   variant="outline"
                 >
-                  <span className="min-w-0">
-                    <strong className="block wrap-anywhere">
-                      {definition.label}
-                    </strong>
-                    <small className="block wrap-anywhere text-[var(--ink-muted)]">
-                      {definition.scopeLabel ?? "全教會"}
-                    </small>
-                  </span>
+                  <Link
+                    href={`/management?module=accounts&roleDefinition=${encodeURIComponent(definition.roleDefinitionId)}&view=access&return=${encodeURIComponent(returnHref(searchParams.get("return")))}`}
+                  >
+                    <span className="min-w-0">
+                      <strong className="block wrap-anywhere">
+                        {definition.label}
+                      </strong>
+                      <small className="block wrap-anywhere text-[var(--ink-muted)]">
+                        {definition.scopeLabel ?? "全教會"}
+                      </small>
+                    </span>
+                  </Link>
                 </Button>
               </li>
             ))}
@@ -1317,23 +1323,22 @@ export const AccountAccessPanel = () => {
                   eligibleAccounts.map((candidate) => (
                     <li className="min-w-0" key={candidate.userId}>
                       <Button
+                        asChild
                         className="min-h-11 w-full justify-start border border-[var(--line)] bg-[var(--surface)] text-left text-[var(--ink)]"
-                        onClick={() =>
-                          router.push(
-                            `/management?module=accounts&account=${encodeURIComponent(candidate.userId)}&roleDefinition=${encodeURIComponent(roleDefinition.roleDefinitionId)}&view=access&return=${encodeURIComponent(`/management?module=accounts&roleDefinition=${encodeURIComponent(roleDefinition.roleDefinitionId)}&view=access`)}`
-                          )
-                        }
-                        type="button"
                         variant="outline"
                       >
-                        <span className="min-w-0">
-                          <strong className="wrap-anywhere block">
-                            {candidate.name}
-                          </strong>
-                          <small className="wrap-anywhere block text-[var(--ink-muted)]">
-                            {candidate.username}
-                          </small>
-                        </span>
+                        <Link
+                          href={`/management?module=accounts&account=${encodeURIComponent(candidate.userId)}&roleDefinition=${encodeURIComponent(roleDefinition.roleDefinitionId)}&view=access&return=${encodeURIComponent(`/management?module=accounts&roleDefinition=${encodeURIComponent(roleDefinition.roleDefinitionId)}&view=access`)}`}
+                        >
+                          <span className="min-w-0">
+                            <strong className="wrap-anywhere block">
+                              {candidate.name}
+                            </strong>
+                            <small className="wrap-anywhere block text-[var(--ink-muted)]">
+                              {candidate.username}
+                            </small>
+                          </span>
+                        </Link>
                       </Button>
                     </li>
                   ))
@@ -1600,23 +1605,22 @@ export const AccountAccessPanel = () => {
                     eligibleAccounts.map((candidate) => (
                       <li className="min-w-0" key={candidate.userId}>
                         <Button
+                          asChild
                           className="min-h-11 w-full justify-start border border-[var(--line)] bg-[var(--surface)] text-left text-[var(--ink)]"
-                          onClick={() =>
-                            router.push(
-                              `/management?module=accounts&account=${encodeURIComponent(candidate.userId)}&view=access&return=${encodeURIComponent(`/management?module=accounts&account=${accountUserId}&view=access`)}`
-                            )
-                          }
-                          type="button"
                           variant="outline"
                         >
-                          <span className="min-w-0">
-                            <strong className="wrap-anywhere block">
-                              {candidate.name}
-                            </strong>
-                            <small className="wrap-anywhere block text-[var(--ink-muted)]">
-                              {candidate.username}
-                            </small>
-                          </span>
+                          <Link
+                            href={`/management?module=accounts&account=${encodeURIComponent(candidate.userId)}&view=access&return=${encodeURIComponent(`/management?module=accounts&account=${accountUserId}&view=access`)}`}
+                          >
+                            <span className="min-w-0">
+                              <strong className="wrap-anywhere block">
+                                {candidate.name}
+                              </strong>
+                              <small className="wrap-anywhere block text-[var(--ink-muted)]">
+                                {candidate.username}
+                              </small>
+                            </span>
+                          </Link>
                         </Button>
                       </li>
                     ))
