@@ -37,16 +37,7 @@ const FORBIDDEN = [
   {
     label: "shipped CSS Module import (.module.css)",
     regex: /\.module\.css/g,
-    allowFiles: new Set([
-      "web/app/_sections/section-view.tsx",
-      "web/app/guest-check-in/page.tsx",
-      "web/lib/app-shell.tsx",
-      "web/lib/empty-state.tsx",
-      "web/lib/forbidden-view.tsx",
-      "web/lib/offline-banner.tsx",
-      "web/lib/recovery-view.tsx",
-      "web/lib/shell-header.tsx",
-    ]),
+    allowFiles: new Set(),
   },
   {
     label: "retired fixed field systemRole",
@@ -311,8 +302,8 @@ describe("verify-phase-f-contraction scanner", () => {
   test("accepts AccountDirectory identity labels", () => {
     assert.equal(checkFixture("identities: readonly PublicIdentitySummary[]; capabilities: Record<string, boolean>", "web/lib/api.ts"), "pass");
   });
-  test("accepts CSS allowlist for deferred UI worker (temporary)", () => {
-    assert.equal(checkFixture('import styles from "./auth-shell.module.css";', "web/lib/app-shell.tsx"), "pass");
+  test("rejects shipped CSS Module import even for shell islands", () => {
+    assert.equal(checkFixture('import styles from "./auth-shell.module.css";', "web/lib/app-shell.tsx"), "fail");
   });
   test("accepts stale-schema test fixture when file is excluded", () => {
     // d1-schema.test.ts is excluded from shipped scan (EXCLUDED_FILE_RE), so even though direct fixture would be checked, the scanner run excludes it
