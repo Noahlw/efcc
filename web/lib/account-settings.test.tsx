@@ -738,6 +738,9 @@ describe(ProfilePage, () => {
       navigation: projectNavigation({ "home.publish": true }),
       profile: { ...PROFILE },
     });
+    pathnameMock.mockReturnValue("/profile");
+    sessionMocks.hasAuthHintMock.mockReturnValue(true);
+    render(<ProfilePage />);
     await waitFor(() => {
       expect(
         screen.getByRole("heading", { name: COPY.profile.title })
