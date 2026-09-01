@@ -1,7 +1,7 @@
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { afterEach, describe, expect, test, vi } from "vitest";
 import { useEffect } from "react";
+import { afterEach, describe, expect, test, vi } from "vitest";
 
 import {
   useAsyncResource,
@@ -32,12 +32,8 @@ type HarnessProps = {
   options?: Partial<AsyncResourceOptions<string, State>>;
   initialRequest?: AsyncRequest;
 };
-const LifecycleHarness = ({
-  load,
-  options,
-  initialRequest,
-}: HarnessProps) => {
-  const { state, run, retry } = useAsyncResource<string, State>(
+const LifecycleHarness = ({ load, options, initialRequest }: HarnessProps) => {
+  const { state, run, refresh, retry } = useAsyncResource<string, State>(
     load,
     {
       toLoading: () => ({ kind: "loading" }),
@@ -55,6 +51,9 @@ const LifecycleHarness = ({
   const handleLoad = () => {
     void run();
   };
+  const handleRefresh = () => {
+    void refresh().catch(() => {});
+  };
   const handleRetry = () => {
     retry();
   };
@@ -66,6 +65,9 @@ const LifecycleHarness = ({
       </p>
       <button type="button" onClick={handleLoad}>
         載入
+      </button>
+      <button type="button" onClick={handleRefresh}>
+        刷新
       </button>
       <button type="button" onClick={handleRetry}>
         重試
@@ -108,10 +110,38 @@ describe(useAsyncResource, () => {
     expect(requests).toHaveLength(2);
 
     requests[1].resolve("new");
-    await waitFor(() => expect(screen.getByTestId("state")).toHaveTextContent("ready:new"));
+    await waitFor(() =>
+      expect(screen.getByTestId("state")).toHaveTextContent("ready:new")
+    );
     requests[0].resolve("old");
     await Promise.resolve();
     expect(screen.getByTestId("state")).toHaveTextContent("ready:new");
+  });
+
+  test("refreshes data without unmounting the current ready state", async () => {
+    const requests: Deferred<string>[] = [];
+    const load = vi.fn(() => {
+      const request = deferred<string>();
+      requests.push(request);
+      return request.promise;
+    });
+    const user = userEvent.setup();
+
+    render(<LifecycleHarness load={load} />);
+    await waitFor(() => expect(requests).toHaveLength(1));
+    requests[0].resolve("old");
+    await waitFor(() =>
+      expect(screen.getByTestId("state")).toHaveTextContent("ready:old")
+    );
+
+    await user.click(screen.getByRole("button", { name: "刷新" }));
+    await waitFor(() => expect(requests).toHaveLength(2));
+    expect(screen.getByTestId("state")).toHaveTextContent("ready:old");
+
+    requests[1].resolve("new");
+    await waitFor(() =>
+      expect(screen.getByTestId("state")).toHaveTextContent("ready:new")
+    );
   });
 
   test("focuses the configured error target after a retry fails", async () => {
@@ -127,9 +157,13 @@ describe(useAsyncResource, () => {
         options={{ focusTarget: "#retry-target" }}
       />
     );
-    await waitFor(() => expect(screen.getByTestId("state")).toHaveTextContent("error"));
+    await waitFor(() =>
+      expect(screen.getByTestId("state")).toHaveTextContent("error")
+    );
     await user.click(screen.getByRole("button", { name: "重試" }));
-    await waitFor(() => expect(screen.getByTestId("state")).toHaveTextContent("error"));
+    await waitFor(() =>
+      expect(screen.getByTestId("state")).toHaveTextContent("error")
+    );
     expect(screen.getByRole("button", { name: "重試" })).toBeInTheDocument();
     expect(document.activeElement).toBe(screen.getByText("retry target"));
   });
@@ -151,12 +185,16 @@ describe(useAsyncResource, () => {
         }}
       />
     );
-    await waitFor(() => expect(screen.getByTestId("state")).toHaveTextContent("ready:ready"));
+    await waitFor(() =>
+      expect(screen.getByTestId("state")).toHaveTextContent("ready:ready")
+    );
     expect(announceMock).toHaveBeenNthCalledWith(1, "正在載入…");
     expect(announceMock).toHaveBeenNthCalledWith(2, "已載入 ready");
 
     await user.click(screen.getByRole("button", { name: "重試" }));
-    await waitFor(() => expect(screen.getByTestId("state")).toHaveTextContent("error"));
+    await waitFor(() =>
+      expect(screen.getByTestId("state")).toHaveTextContent("error")
+    );
     expect(announceMock).toHaveBeenNthCalledWith(3, "正在載入…");
     expect(announceMock).toHaveBeenNthCalledWith(4, "載入失敗，請重試。");
   });
@@ -179,6 +217,31 @@ describe(useAsyncResource, () => {
     await waitFor(() => expect(onAuthRequired).toHaveBeenCalledWith(authError));
     expect(screen.getByTestId("state")).toHaveTextContent("loading");
   });
+  test("refresh propagates AUTH_REQUIRED after invoking the route callback", async () => {
+    const user = userEvent.setup();
+    const authError = { code: "AUTH_REQUIRED" };
+    const onAuthRequired = vi.fn();
+    const load = vi
+      .fn<() => Promise<string>>()
+      .mockResolvedValueOnce("ready")
+      .mockRejectedValueOnce(authError);
+
+    render(
+      <LifecycleHarness
+        load={load}
+        options={{
+          isAuthRequired: (error) => error === authError,
+          onAuthRequired,
+        }}
+      />
+    );
+    await waitFor(() =>
+      expect(screen.getByTestId("state")).toHaveTextContent("ready:ready")
+    );
+    await user.click(screen.getByRole("button", { name: "刷新" }));
+    await waitFor(() => expect(onAuthRequired).toHaveBeenCalledWith(authError));
+    expect(screen.getByTestId("state")).toHaveTextContent("ready:ready");
+  });
 
   test("ignores a cancelled request even when it resolves", async () => {
     const requestToken: AsyncRequest = { cancelled: false };
@@ -188,9 +251,7 @@ describe(useAsyncResource, () => {
       return request.promise;
     });
 
-    render(
-      <LifecycleHarness load={load} initialRequest={requestToken} />
-    );
+    render(<LifecycleHarness load={load} initialRequest={requestToken} />);
     await waitFor(() => expect(load).toHaveBeenCalled());
     requestToken.cancelled = true;
     request.resolve("cancelled");

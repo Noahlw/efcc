@@ -19,6 +19,8 @@ const MEMBER_USER = {
   role: "Member",
   status: "Active",
   qrCodeString: "qr:u-member-101",
+  identities: [{ label: "會友基礎", scopeKind: "Global", scopeLabel: null }],
+  capabilities: { "program.enroll": true, "role.manage": false },
 };
 
 function stubAuthEndpoints(user: typeof MEMBER_USER, revoked = false) {
@@ -120,7 +122,7 @@ async function initAuthenticatedPage(
 }
 
 test.describe("084-03: Account & Account Settings acceptance", () => {
-  test("Account screen renders profile info (display name, phone, role, QR code)", async ({
+  test("Account screen renders privacy-safe profile info and QR code", async ({
     page,
   }) => {
     await initAuthenticatedPage(page);
@@ -143,7 +145,16 @@ test.describe("084-03: Account & Account Settings acceptance", () => {
       await details.locator("summary").click();
     }
     await expect(page.getByText(MEMBER_USER.username)).toBeVisible();
-    await expect(page.getByText(MEMBER_USER.phone)).toBeVisible();
+    await expect(page.getByText(MEMBER_USER.phone)).toHaveCount(0);
+    await expect(page.getByText(MEMBER_USER.role, { exact: true })).toHaveCount(
+      0
+    );
+    const identities = page.getByRole("region", { name: "身份組" });
+    await expect(identities).toContainText("會友基礎");
+    await expect(identities).toContainText("全域（Global）");
+    await expect(page.getByText("program.enroll", { exact: true })).toHaveCount(
+      0
+    );
 
     // Settings actions
     await expect(

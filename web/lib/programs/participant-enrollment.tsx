@@ -1,12 +1,22 @@
 "use client";
 
+import { cva } from "class-variance-authority";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { Alert } from "@/components/ui/alert";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { RpcError } from "@/lib/api";
 import { COPY, errorCopyFor } from "@/lib/copy";
-import { announce } from "@/lib/live-region";
 import {
   cancelEnrollment,
   submitEnrollmentRequest,
@@ -19,8 +29,7 @@ import type {
   ParticipantScheduleRule,
   ProgramSummary,
 } from "@/lib/programs/program-api";
-
-import styles from "@/app/programs/programs.module.css";
+import { cn } from "@/lib/utils";
 
 export interface ParticipantEnrollmentProps {
   program: ProgramSummary;
@@ -33,6 +42,52 @@ export interface ParticipantEnrollmentProps {
 }
 
 type ConfirmKind = "withdraw" | "cancel";
+type RetryAction =
+  | {
+      kind: "request";
+      idempotencyKey: string;
+      previousRequestIds: readonly string[];
+      uncertain?: boolean;
+    }
+  | {
+      kind: "withdraw";
+      requestId: string;
+      idempotencyKey: string;
+      uncertain?: boolean;
+    }
+  | {
+      kind: "cancel";
+      enrollmentId: string;
+      idempotencyKey: string;
+      uncertain?: boolean;
+    }
+  | { kind: "refresh"; successCopy: string };
+type MutationRetryAction = Exclude<RetryAction, { kind: "refresh" }>;
+function idempotencyKey(): string {
+  return crypto.randomUUID();
+}
+
+const enrollmentPanelVariants = cva(
+  "grid min-w-0 gap-2 pb-[calc(6rem+env(safe-area-inset-bottom,0px))] text-[var(--ink)]"
+);
+
+const actionSurfaceVariants = cva(
+  "mt-3 grid min-w-0 rounded-[1.125rem] bg-[var(--surface-raised)] p-4 shadow-[0_1px_3px_color-mix(in_srgb,var(--ink)_6%,transparent)]"
+);
+
+const enrollmentActionVariants = cva(
+  "h-auto min-h-11 w-full whitespace-normal px-4 py-3 text-base font-bold",
+  {
+    variants: {
+      tone: {
+        primary: "",
+        caution:
+          "border-[var(--pending-border)] bg-[var(--pending-surface)] text-[var(--pending)] hover:border-[var(--pending)] hover:bg-[var(--pending-surface)] hover:text-[var(--pending)]",
+      },
+    },
+    defaultVariants: { tone: "primary" },
+  }
+);
 
 function errorMessage(error: unknown): string {
   if (!(error instanceof RpcError)) {
@@ -47,6 +102,27 @@ function errorMessage(error: unknown): string {
   return errorCopyFor(error.problem.code, error.problem.detail);
 }
 
+function isAmbiguousMutationError(error: unknown): boolean {
+  if (!(error instanceof RpcError)) {
+    return true;
+  }
+  return (
+    error.problem.status === 0 ||
+    error.problem.code === "NETWORK_ERROR" ||
+    error.problem.code === "MALFORMED_RESPONSE" ||
+    error.problem.code === "MALFORMED_REQUEST" ||
+    error.problem.code === "UNAVAILABLE"
+  );
+}
+function isDuplicateMutationError(error: unknown): boolean {
+  if (!(error instanceof RpcError)) {
+    return false;
+  }
+  return (
+    error.problem.code === "CONFLICT" ||
+    error.problem.code === "ENROLLMENT_DUPLICATE"
+  );
+}
 interface EnrollmentActionProps {
   program: ProgramSummary;
   enrollmentAccess: ParticipantEnrollmentAccess;
@@ -57,6 +133,7 @@ interface EnrollmentActionProps {
     | ParticipantEnrollmentSnapshot["enrollments"][number]
     | null;
   busy: boolean;
+  disabled: boolean;
   onRequest: () => void;
   onBeginConfirm: (kind: ConfirmKind) => void;
 }
@@ -69,39 +146,40 @@ const EnrollmentAction = ({
   latestRequest,
   cancelledEnrollment,
   busy,
+  disabled,
   onRequest,
   onBeginConfirm,
 }: EnrollmentActionProps) => {
+  const copyClass =
+    "m-0 min-w-0 wrap-anywhere text-sm leading-[1.6] text-[var(--ink-muted)]";
   if (program.lifecycle === "Archived") {
-    return <p className={styles.emptyLine}>{COPY.programs.archivedNote}</p>;
+    return <p className={copyClass}>{COPY.programs.archivedNote}</p>;
   }
   if (enrollmentAccess === "Unavailable") {
     return (
-      <p className={styles.emptyLine}>
-        {COPY.programs.enrollmentUnavailableNote}
-      </p>
+      <p className={copyClass}>{COPY.programs.enrollmentUnavailableNote}</p>
     );
   }
   if (program.enrollment_mode === "ManagerOnly") {
-    return <p className={styles.emptyLine}>{COPY.programs.managerOnlyNote}</p>;
+    return <p className={copyClass}>{COPY.programs.managerOnlyNote}</p>;
   }
   if (program.lifecycle === "Draft") {
-    return (
-      <p className={styles.emptyLine}>{COPY.programs.enrollmentDraftNote}</p>
-    );
+    return <p className={copyClass}>{COPY.programs.enrollmentDraftNote}</p>;
   }
   if (activeEnrollment) {
     return (
       <>
-        <p className={styles.emptyLine}>{COPY.programs.enrollmentActive}</p>
-        <p className={styles.programDetailMuted}>
-          {COPY.programs.enrollmentActiveHint}
-        </p>
-        <div className={styles.actionBarCard}>
+        <p className={copyClass}>{COPY.programs.enrollmentActive}</p>
+        <p className={copyClass}>{COPY.programs.enrollmentActiveHint}</p>
+        <div
+          className={cn(actionSurfaceVariants())}
+          data-enrollment-action-surface
+        >
           <Button
             type="button"
-            className={styles.dangerButton}
-            disabled={busy}
+            variant="outline"
+            className={cn(enrollmentActionVariants({ tone: "caution" }))}
+            disabled={disabled}
             onClick={() => onBeginConfirm("cancel")}
           >
             {busy ? COPY.programs.withdrawing : COPY.programs.cancelEnrollment}
@@ -113,15 +191,17 @@ const EnrollmentAction = ({
   if (pendingRequest) {
     return (
       <>
-        <p className={styles.emptyLine}>{COPY.programs.requestPending}</p>
-        <p className={styles.programDetailMuted}>
-          {COPY.programs.requestPendingHint}
-        </p>
-        <div className={styles.actionBarCard}>
+        <p className={copyClass}>{COPY.programs.requestPending}</p>
+        <p className={copyClass}>{COPY.programs.requestPendingHint}</p>
+        <div
+          className={cn(actionSurfaceVariants())}
+          data-enrollment-action-surface
+        >
           <Button
             type="button"
-            className={styles.actionButton}
-            disabled={busy}
+            variant="outline"
+            className={cn(enrollmentActionVariants({ tone: "caution" }))}
+            disabled={disabled}
             onClick={() => onBeginConfirm("withdraw")}
           >
             {busy ? COPY.programs.withdrawing : COPY.programs.withdrawRequest}
@@ -132,24 +212,23 @@ const EnrollmentAction = ({
   }
   if (enrollmentAccess === "Ineligible") {
     return (
-      <p className={styles.emptyLine}>
-        {COPY.programs.enrollmentIneligibleNote}
-      </p>
+      <p className={copyClass}>{COPY.programs.enrollmentIneligibleNote}</p>
     );
   }
   switch (latestRequest?.status) {
     case "Rejected": {
       return (
         <>
-          <p className={styles.emptyLine}>{COPY.programs.requestRejected}</p>
-          <p className={styles.programDetailMuted}>
-            {COPY.programs.requestRejectedHint}
-          </p>
-          <div className={styles.actionBarCard}>
+          <p className={copyClass}>{COPY.programs.requestRejected}</p>
+          <p className={copyClass}>{COPY.programs.requestRejectedHint}</p>
+          <div
+            className={cn(actionSurfaceVariants())}
+            data-enrollment-action-surface
+          >
             <Button
               type="button"
-              className={styles.button}
-              disabled={busy}
+              className={cn(enrollmentActionVariants({ tone: "primary" }))}
+              disabled={disabled}
               onClick={onRequest}
             >
               {busy ? COPY.programs.submitting : COPY.programs.reEnroll}
@@ -161,15 +240,16 @@ const EnrollmentAction = ({
     case "Withdrawn": {
       return (
         <>
-          <p className={styles.emptyLine}>{COPY.programs.requestWithdrawn}</p>
-          <p className={styles.programDetailMuted}>
-            {COPY.programs.requestWithdrawnHint}
-          </p>
-          <div className={styles.actionBarCard}>
+          <p className={copyClass}>{COPY.programs.requestWithdrawn}</p>
+          <p className={copyClass}>{COPY.programs.requestWithdrawnHint}</p>
+          <div
+            className={cn(actionSurfaceVariants())}
+            data-enrollment-action-surface
+          >
             <Button
               type="button"
-              className={styles.button}
-              disabled={busy}
+              className={cn(enrollmentActionVariants({ tone: "primary" }))}
+              disabled={disabled}
               onClick={onRequest}
             >
               {busy ? COPY.programs.submitting : COPY.programs.reEnroll}
@@ -185,15 +265,16 @@ const EnrollmentAction = ({
   if (cancelledEnrollment) {
     return (
       <>
-        <p className={styles.emptyLine}>{COPY.programs.enrollmentCancelled}</p>
-        <p className={styles.programDetailMuted}>
-          {COPY.programs.enrollmentCancelledHint}
-        </p>
-        <div className={styles.actionBarCard}>
+        <p className={copyClass}>{COPY.programs.enrollmentCancelled}</p>
+        <p className={copyClass}>{COPY.programs.enrollmentCancelledHint}</p>
+        <div
+          className={cn(actionSurfaceVariants())}
+          data-enrollment-action-surface
+        >
           <Button
             type="button"
-            className={styles.button}
-            disabled={busy}
+            className={cn(enrollmentActionVariants({ tone: "primary" }))}
+            disabled={disabled}
             onClick={onRequest}
           >
             {busy ? COPY.programs.submitting : COPY.programs.reEnroll}
@@ -204,17 +285,15 @@ const EnrollmentAction = ({
   }
   if (latestRequest?.status === "Approved") {
     return (
-      <p className={styles.emptyLine}>
-        {COPY.programs.enrollmentUnavailableNote}
-      </p>
+      <p className={copyClass}>{COPY.programs.enrollmentUnavailableNote}</p>
     );
   }
   return (
-    <div className={styles.actionBarCard}>
+    <div className={cn(actionSurfaceVariants())} data-enrollment-action-surface>
       <Button
         type="button"
-        className={styles.button}
-        disabled={busy}
+        className={cn(enrollmentActionVariants({ tone: "primary" }))}
+        disabled={disabled}
         onClick={onRequest}
       >
         {busy ? COPY.programs.submitting : COPY.programs.enroll}
@@ -236,11 +315,11 @@ export const ParticipantEnrollment = ({
   const [notice, setNotice] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [confirmKind, setConfirmKind] = useState<ConfirmKind | null>(null);
+  const [retryAction, setRetryAction] = useState<RetryAction | null>(null);
   const mounted = useRef(true);
-  const dialogRef = useRef<HTMLDialogElement | null>(null);
+  const successCopyRef = useRef<string | null>(null);
   const previousFocusRef = useRef<HTMLElement | null>(null);
   const errorRef = useRef<HTMLOutputElement | null>(null);
-
   useEffect(() => {
     mounted.current = true;
     return () => {
@@ -261,7 +340,6 @@ export const ParticipantEnrollment = ({
     const message = COPY.programs.enrollmentOfflineError;
     setActionError(message);
     setNotice(null);
-    announce(message);
   }, []);
 
   const closeConfirm = useCallback(() => {
@@ -271,43 +349,17 @@ export const ParticipantEnrollment = ({
       previousFocusRef.current = null;
     });
   }, []);
-
-  useEffect(() => {
-    const dialogEl = dialogRef.current;
-    if (!dialogEl) {
-      return;
-    }
-    if (confirmKind === null) {
-      if (dialogEl.open) {
-        dialogEl.close();
-      }
-      return;
-    }
-    // Native showModal() renders in the top layer with a real backdrop and
-    // traps Tab focus inside the dialog automatically -- no hand-rolled
-    // focus trap needed. The dismiss button still gets explicit initial
-    // focus since showModal()'s own default (the dialog element itself)
-    // isn't the most useful landing spot here.
-    if (!dialogEl.open) {
-      dialogEl.showModal();
-    }
-    const dismissButton = dialogEl.querySelector<HTMLButtonElement>(
-      "[data-confirm-dismiss]"
-    );
-    dismissButton?.focus();
-    // The native dialog already closes itself on Escape (firing `cancel`
-    // before `close`); hook that to run the same focus-restore path as an
-    // explicit dismiss click.
-    const onCancel = (event: Event) => {
-      event.preventDefault();
-      closeConfirm();
-    };
-    dialogEl.addEventListener("cancel", onCancel);
-    return () => dialogEl.removeEventListener("cancel", onCancel);
-  }, [closeConfirm, confirmKind]);
-
   const runAction = useCallback(
-    async (action: () => Promise<unknown>, successCopy: string) => {
+    async (
+      action: () => Promise<unknown>,
+      successCopy: string,
+      retry: MutationRetryAction
+    ) => {
+      if (busy) {
+        return;
+      }
+      successCopyRef.current = successCopy;
+      setRetryAction(retry);
       if (typeof navigator !== "undefined" && !navigator.onLine) {
         showOfflineError();
         return;
@@ -316,32 +368,66 @@ export const ParticipantEnrollment = ({
       setNotice(null);
       setActionError(null);
       try {
-        await action();
-        await onRefresh();
+        try {
+          await action();
+        } catch (error) {
+          if (!mounted.current) {
+            return;
+          }
+          setActionError(errorMessage(error));
+          if (
+            error instanceof RpcError &&
+            error.problem.code === "AUTH_REQUIRED"
+          ) {
+            try {
+              await onRefresh();
+            } catch {
+              // Route-owned refresh handles the authentication handoff.
+            }
+            return;
+          }
+          const shouldReconcile =
+            isAmbiguousMutationError(error) ||
+            (retry.uncertain === true && isDuplicateMutationError(error));
+          if (shouldReconcile) {
+            setRetryAction({ ...retry, uncertain: true });
+            try {
+              await onRefresh();
+            } catch {
+              // Keep the mutation retryable when reconciliation also fails.
+            }
+          }
+          return;
+        }
+
         if (!mounted.current) {
           return;
         }
-        setNotice(successCopy);
-        announce(successCopy);
-      } catch (error) {
-        if (!mounted.current) {
-          return;
-        }
-        const message = errorMessage(error);
-        setActionError(message);
-        announce(message);
+        // The mutation has committed. A failed reconciliation must retry the
+        // read, never replay the write against an already-applied request.
+        setRetryAction({ kind: "refresh", successCopy });
         try {
           await onRefresh();
-        } catch {
-          // Keep the primary action error visible if reconciliation also fails.
+        } catch (error) {
+          if (!mounted.current) {
+            return;
+          }
+          setActionError(errorMessage(error));
+          return;
         }
+        if (!mounted.current) {
+          return;
+        }
+        setRetryAction(null);
+        successCopyRef.current = null;
+        setNotice(successCopy);
       } finally {
         if (mounted.current) {
           setBusy(false);
         }
       }
     },
-    [onRefresh, showOfflineError]
+    [busy, onRefresh, showOfflineError]
   );
 
   const activeEnrollment = useMemo(
@@ -367,6 +453,38 @@ export const ParticipantEnrollment = ({
       null,
     [enrollment]
   );
+  useEffect(() => {
+    if (!actionError || !retryAction || retryAction.kind === "refresh") {
+      return;
+    }
+    const mutationSettled =
+      retryAction.kind === "request"
+        ? (enrollment?.requests.some(
+            (request) =>
+              !retryAction.previousRequestIds.includes(request.request_id) &&
+              (request.status === "Pending" || request.status === "Approved")
+          ) ?? false)
+        : retryAction.kind === "withdraw"
+          ? (enrollment?.requests.some(
+              (request) =>
+                request.request_id === retryAction.requestId &&
+                request.status === "Withdrawn"
+            ) ?? false)
+          : (enrollment?.enrollments.some(
+              (item) =>
+                item.enrollment_id === retryAction.enrollmentId &&
+                item.status === "Cancelled"
+            ) ?? false);
+    if (mutationSettled) {
+      const successCopy = successCopyRef.current;
+      successCopyRef.current = null;
+      setActionError(null);
+      setRetryAction(null);
+      if (successCopy !== null) {
+        setNotice(successCopy);
+      }
+    }
+  }, [actionError, enrollment, latestRequest, pendingRequest, retryAction]);
   const canRequest =
     enrollmentAccess === "Eligible" &&
     program.lifecycle === "Active" &&
@@ -378,7 +496,25 @@ export const ParticipantEnrollment = ({
     canRequest && (scheduleRules.length > 0 || events.length > 0);
 
   const beginConfirm = (kind: ConfirmKind) => {
+    if (busy) {
+      return;
+    }
     if (typeof navigator !== "undefined" && !navigator.onLine) {
+      const offlineRetry =
+        kind === "withdraw" && pendingRequest
+          ? {
+              kind: "withdraw" as const,
+              requestId: pendingRequest.request_id,
+              idempotencyKey: idempotencyKey(),
+            }
+          : kind === "cancel" && activeEnrollment
+            ? {
+                kind: "cancel" as const,
+                enrollmentId: activeEnrollment.enrollment_id,
+                idempotencyKey: idempotencyKey(),
+              }
+            : null;
+      setRetryAction(offlineRetry);
       showOfflineError();
       return;
     }
@@ -392,35 +528,126 @@ export const ParticipantEnrollment = ({
   };
 
   const handleRequest = () => {
+    const key = idempotencyKey();
+    const previousRequestIds =
+      enrollment?.requests.map(({ request_id }) => request_id) ?? [];
     void runAction(
-      () => submitEnrollmentRequest(program.program_id),
-      COPY.programs.requestSubmitted
+      () => submitEnrollmentRequest(program.program_id, key),
+      COPY.programs.requestSubmitted,
+      { kind: "request", idempotencyKey: key, previousRequestIds }
     );
   };
 
   const acceptConfirmation = () => {
     const kind = confirmKind;
+    const retry = retryAction;
     closeConfirm();
     if (kind === "withdraw" && pendingRequest) {
+      const sameRetry =
+        retry?.kind === "withdraw" &&
+        retry.requestId === pendingRequest.request_id;
+      const key = sameRetry ? retry.idempotencyKey : idempotencyKey();
       void runAction(
         () =>
           withdrawEnrollmentRequest(
             program.program_id,
-            pendingRequest.request_id
+            pendingRequest.request_id,
+            key
           ),
-        COPY.programs.requestWithdrawnNotice
+        COPY.programs.requestWithdrawnNotice,
+        {
+          kind: "withdraw",
+          requestId: pendingRequest.request_id,
+          idempotencyKey: key,
+          uncertain: sameRetry ? retry.uncertain : undefined,
+        }
       );
     } else if (kind === "cancel" && activeEnrollment) {
+      const sameRetry =
+        retry?.kind === "cancel" &&
+        retry.enrollmentId === activeEnrollment.enrollment_id;
+      const key = sameRetry ? retry.idempotencyKey : idempotencyKey();
       void runAction(
         () =>
-          cancelEnrollment(program.program_id, activeEnrollment.enrollment_id),
-        COPY.programs.enrollmentCancelledNotice
+          cancelEnrollment(
+            program.program_id,
+            activeEnrollment.enrollment_id,
+            key
+          ),
+        COPY.programs.enrollmentCancelledNotice,
+        {
+          kind: "cancel",
+          enrollmentId: activeEnrollment.enrollment_id,
+          idempotencyKey: key,
+          uncertain: sameRetry ? retry.uncertain : undefined,
+        }
       );
     } else if (kind !== null) {
       // Server state changed while the confirm dialog was open (e.g. the
       // request/enrollment this confirm targeted no longer exists) --
       // reconcile the UI instead of silently no-opping.
-      void onRefresh();
+      void onRefresh().catch((error: unknown) => {
+        if (mounted.current) {
+          setActionError(errorMessage(error));
+        }
+      });
+    }
+  };
+
+  const retryLastAction = () => {
+    const retry = retryAction;
+    if (!retry) {
+      return;
+    }
+    if (retry.kind === "refresh") {
+      if (busy) {
+        return;
+      }
+      if (typeof navigator !== "undefined" && !navigator.onLine) {
+        showOfflineError();
+        return;
+      }
+      setBusy(true);
+      setNotice(null);
+      setActionError(null);
+      void (async () => {
+        try {
+          await onRefresh();
+          if (!mounted.current) {
+            return;
+          }
+          setRetryAction(null);
+          setNotice(retry.successCopy);
+        } catch (error) {
+          if (mounted.current) {
+            setActionError(errorMessage(error));
+          }
+        } finally {
+          if (mounted.current) {
+            setBusy(false);
+          }
+        }
+      })();
+      return;
+    }
+    if (retry.kind === "request") {
+      void runAction(
+        () => submitEnrollmentRequest(program.program_id, retry.idempotencyKey),
+        COPY.programs.requestSubmitted,
+        retry
+      );
+      return;
+    }
+    if (
+      (retry.kind === "withdraw" || retry.kind === "cancel") &&
+      typeof navigator !== "undefined" &&
+      !navigator.onLine
+    ) {
+      showOfflineError();
+      return;
+    }
+    if (retry.kind === "withdraw" || retry.kind === "cancel") {
+      beginConfirm(retry.kind);
     }
   };
 
@@ -436,24 +663,52 @@ export const ParticipantEnrollment = ({
     confirmKind === "withdraw"
       ? COPY.programs.withdrawConfirmAccept
       : COPY.programs.cancelConfirmAccept;
-
+  const actionDisabled = busy || (actionError !== null && retryAction !== null);
   return (
     <section
-      className={styles.eventsPanel}
+      className={cn(enrollmentPanelVariants())}
       aria-labelledby="program-enrollment-title"
       aria-busy={busy}
+      data-enrollment-panel
     >
       {notice !== null && (
-        <output className={styles.panelNotice}>{notice}</output>
+        <output
+          className="min-w-0 wrap-anywhere text-sm font-semibold text-[var(--success)]"
+          role="status"
+          data-enrollment-notice
+        >
+          {notice}
+        </output>
       )}
       {actionError !== null && (
-        <Alert className={styles.panelError} variant="destructive">
-          <output ref={errorRef} tabIndex={-1}>
+        <Alert
+          className="grid min-w-0 gap-2 border-[var(--error-border)] bg-[var(--error-surface)] text-[var(--error)]"
+          variant="destructive"
+        >
+          <output
+            ref={errorRef}
+            tabIndex={-1}
+            className="min-w-0 wrap-anywhere leading-[1.5]"
+          >
             {actionError}
           </output>
+          {retryAction && (
+            <Button
+              className="h-auto min-h-11 w-full whitespace-normal border-[var(--line-strong)] bg-[var(--surface-raised)] px-4 py-3 text-base font-bold text-[var(--ink)] hover:bg-[var(--surface)] hover:text-[var(--ink)] sm:w-fit"
+              variant="outline"
+              type="button"
+              data-enrollment-retry
+              onClick={retryLastAction}
+            >
+              {COPY.error.retry}
+            </Button>
+          )}
         </Alert>
       )}
-      <h3 id="program-enrollment-title" className={styles.panelHeading}>
+      <h3
+        id="program-enrollment-title"
+        className="m-0 wrap-anywhere text-sm font-bold tracking-[0.04em] text-[var(--ink-muted)]"
+      >
         {COPY.programs.enrollment}
       </h3>
 
@@ -465,53 +720,74 @@ export const ParticipantEnrollment = ({
         latestRequest={latestRequest}
         cancelledEnrollment={cancelledEnrollment}
         busy={busy}
+        disabled={actionDisabled}
         onRequest={handleRequest}
         onBeginConfirm={beginConfirm}
       />
 
       {showScheduleAdvisory && (
-        <p className={styles.programDetailMuted}>
+        <p className="m-0 min-w-0 wrap-anywhere leading-[1.6] text-[var(--ink-muted)]">
           {COPY.programs.enrollmentScheduleAdvisory}
         </p>
       )}
 
       {showEventDetailAdvisory && canRequest && (
-        <p className={styles.programDetailMuted}>
+        <p className="m-0 min-w-0 wrap-anywhere leading-[1.6] text-[var(--ink-muted)]">
           {COPY.programs.enrollmentEventDetailAdvisory}
         </p>
       )}
 
-      {confirmKind !== null && (
-        <dialog
-          ref={dialogRef}
-          className={styles.participantConfirm}
-          aria-modal="true"
+      <AlertDialog
+        open={confirmKind !== null}
+        onOpenChange={(open) => {
+          if (!open) {
+            closeConfirm();
+          }
+        }}
+      >
+        <AlertDialogContent
+          className="min-w-0 max-w-[32rem] border-[var(--line-strong)] bg-[var(--surface-raised)] p-5"
+          data-confirm-dialog
           aria-labelledby="participant-confirm-title"
           aria-describedby="participant-confirm-body"
         >
-          <div className={styles.participantConfirmSurface}>
-            <h4 id="participant-confirm-title">{confirmationTitle}</h4>
-            <p id="participant-confirm-body">{confirmationBody}</p>
-            <div className={styles.participantConfirmActions}>
-              <Button
-                className={styles.secondaryButton}
-                type="button"
-                data-confirm-dismiss
-                onClick={closeConfirm}
-              >
-                {COPY.programs.cancelRevoke}
-              </Button>
-              <Button
-                className={styles.dangerButton}
-                type="button"
-                onClick={acceptConfirmation}
-              >
-                {confirmationAccept}
-              </Button>
-            </div>
-          </div>
-        </dialog>
-      )}
+          <AlertDialogHeader className="min-w-0 gap-2">
+            <AlertDialogTitle
+              className="min-w-0 wrap-anywhere text-lg font-extrabold text-[var(--ink)]"
+              id="participant-confirm-title"
+            >
+              {confirmationTitle}
+            </AlertDialogTitle>
+            <AlertDialogDescription
+              className="min-w-0 wrap-anywhere text-sm leading-[1.6] text-[var(--ink-muted)]"
+              id="participant-confirm-body"
+            >
+              {confirmationBody}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="flex min-w-0 flex-wrap gap-2 max-[799px]:flex-col-reverse [&>*]:h-auto [&>*]:min-h-11 [&>*]:w-full [&>*]:whitespace-normal sm:[&>*]:w-fit">
+            <AlertDialogCancel
+              className="min-h-[44px] min-w-[44px] px-4 py-3 text-base font-bold"
+              data-confirm-dismiss
+              onClick={closeConfirm}
+            >
+              {COPY.programs.cancelRevoke}
+            </AlertDialogCancel>
+            <AlertDialogAction
+              variant="outline"
+              className={cn(
+                enrollmentActionVariants({ tone: "caution" }),
+                "min-h-[44px] px-4 py-3"
+              )}
+              data-confirm-action
+              data-tone="caution"
+              onClick={acceptConfirmation}
+            >
+              {confirmationAccept}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </section>
   );
 };

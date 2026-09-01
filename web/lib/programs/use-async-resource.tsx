@@ -42,6 +42,11 @@ export interface AsyncResource<_T, S extends { kind: string }> {
   state: S;
   /** Run a load; pass a `{ cancelled }` token to drop the run when it flips. */
   run: (request?: { cancelled: boolean }) => Promise<void>;
+  /**
+   * Refresh without replacing the current state with loading; rejects the
+   * request error so the caller can keep its local action feedback mounted.
+   */
+  refresh: (request?: { cancelled: boolean }) => Promise<void>;
   /** Re-run the load (and focus `focusTarget` when it fails again). */
   retry: () => void;
 }
@@ -82,14 +87,19 @@ export function useAsyncResource<T, S extends { kind: string }>(
     };
   }, []);
 
-  const run = useCallback(
-    async (request?: { cancelled: boolean }) => {
+  const execute = useCallback(
+    async (
+      request: { cancelled: boolean } | undefined,
+      mode: "load" | "refresh"
+    ) => {
       requestId.current += 1;
       const currentRequest = requestId.current;
-      const {current} = optionsRef;
-      setState(current.toLoading());
-      if (current.announceLoading) {
-        announce(current.announceLoading);
+      const { current } = optionsRef;
+      if (mode === "load") {
+        setState(current.toLoading());
+        if (current.announceLoading) {
+          announce(current.announceLoading);
+        }
       }
       try {
         const data = await loadRef.current(request);
@@ -101,9 +111,11 @@ export function useAsyncResource<T, S extends { kind: string }>(
           return;
         }
         setState(current.toReady(data));
-        const readyMessage = current.announceReady?.(data);
-        if (readyMessage) {
-          announce(readyMessage);
+        if (mode === "load") {
+          const readyMessage = current.announceReady?.(data);
+          if (readyMessage) {
+            announce(readyMessage);
+          }
         }
       } catch (error) {
         if (
@@ -115,7 +127,13 @@ export function useAsyncResource<T, S extends { kind: string }>(
         }
         if (current.onAuthRequired && current.isAuthRequired?.(error)) {
           current.onAuthRequired(error);
+          if (mode === "refresh") {
+            throw error;
+          }
           return;
+        }
+        if (mode === "refresh") {
+          throw error;
         }
         const outcome = current.onError(error);
         if (outcome === null) {
@@ -128,9 +146,19 @@ export function useAsyncResource<T, S extends { kind: string }>(
         }
       }
     },
-    // `deps` intentionally drives run identity (mirrors each call site's
-    // previous useCallback deps); load/options are read through refs.
+    // `deps` intentionally drives resource identity; load/options are read
+    // through refs so each caller controls its own request lifecycle.
     deps
+  );
+
+  const run = useCallback(
+    (request?: { cancelled: boolean }) => execute(request, "load"),
+    [execute]
+  );
+
+  const refresh = useCallback(
+    (request?: { cancelled: boolean }) => execute(request, "refresh"),
+    [execute]
   );
 
   const retry = useCallback(() => {
@@ -157,5 +185,5 @@ export function useAsyncResource<T, S extends { kind: string }>(
     retryFocusPending.current = false;
   }, [state.kind]);
 
-  return { state, run, retry };
+  return { state, run, refresh, retry };
 }

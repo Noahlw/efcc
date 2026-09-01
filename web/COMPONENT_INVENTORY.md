@@ -128,7 +128,7 @@ Active usage in shipped surfaces is a strict subset (see per-surface). `Select`/
 
 ## S4 — Management
 
-### Management Hub & Settings Hub (`app/management/page.tsx`, `app/management/management-hub.tsx`, `app/management/settings-hub.tsx`, `app/management/management-settings.module.css`)
+### Management Hub & Settings Hub (`app/management/page.tsx`, `app/management/management-hub.tsx`, `app/management/settings-hub.tsx`)
 
 - **shadcn used:** none directly — hub is a composition of navigation cards; shared primitives are in child panels
 
@@ -152,7 +152,6 @@ Active usage in shipped surfaces is a strict subset (see per-surface). `Select`/
 
 - **shadcn used:** `ActionSurface`, `Button`, `Checkbox`, `Select`, `AlertDialog`, `Input`, `Textarea`, `Card`, `Alert`; domain selection, registration queries, confirmation copy, decision mutations, and conflict reconciliation remain local
 
-
 ---
 
 ## Summary statement
@@ -163,9 +162,9 @@ All shipped S1–S4 **common visual elements** (submit/primary actions, secondar
 
 | Module | Layout / domain classes kept | Control primitives replaced |
 | --- | --- | --- |
-| `app/page.module.css` | page, header, main, bodyCenter, splitLogin, loginCopy, formCard, etc. | `Button`, `Input`, `Card`, `Alert`, `Skeleton` |
+| `app/page.tsx` | Tailwind page, header, main, bodyCenter, splitLogin, loginCopy, formCard, etc. | `Button`, `Input`, `Card`, `Alert`, `Skeleton` |
 | `app/home/page.tsx`, `lib/announcement-detail.tsx`, `lib/feed-presentation.tsx` | Tailwind page/detail/feed layout and semantic state slots | `Badge`, `Button`, `Card`, `Alert`, `Skeleton` |
-| `app/programs/programs.module.css` | page, card, deptList, eventsPanel, programDetail, workspace*, directory* | `Button`, `Badge`, `Card`, `Input`, `Textarea`, `Alert`, `Skeleton`, `Tabs`, `Accordion` |
+| `app/programs/page.tsx`, `lib/programs/*.tsx` | Tailwind page, card, directory, detail, workspace, and task layouts | `Button`, `Badge`, `Card`, `Input`, `Textarea`, `Alert`, `Skeleton`, `Tabs`, `Accordion` |
 | `lib/attendance-panel.module.css` | page, card, camera*, method*, confirmation, chooser, roster* | `Button`, `Input`, `Card`, `Alert`, `Badge`, `Skeleton` (radio chooser stays native) |
 | `app/notices/page.tsx`, `lib/notices-panel.tsx`, `lib/messages-panel.tsx` | Tailwind page/list/detail layout and semantic state slots | `Button`, `Badge`, `Card`, `Alert`, `Skeleton` |
 | `app/management/*` | page, header, groupCard, row, results, detail, policyLayout, etc. | `Switch`, `Accordion`, `Input`, `Badge` where used; row-buttons stay native |

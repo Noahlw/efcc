@@ -74,6 +74,10 @@ const PROFILE: PublicUser = {
   role: "Member",
   status: "Active",
   qrCodeString: "qr-member-demo",
+  identities: [
+    { label: "青年部門協調員", scopeKind: "Department", scopeLabel: "青年部" },
+  ],
+  capabilities: { "program.enroll": true, "role.manage": false },
 };
 
 const BOOTSTRAP: Bootstrap = {
@@ -639,7 +643,12 @@ describe(ProfileSettingsPage, () => {
       screen.getByRole("button", { name: ACCOUNT_SETTINGS_COPY.usernameSubmit })
     );
     await waitFor(() => {
-      expect(screen.getByRole("alert").parentElement).toHaveFocus();
+      expect(usernameInput).toHaveFocus();
+      expect(usernameInput).toHaveAttribute("aria-invalid", "true");
+      expect(usernameInput).toHaveAttribute(
+        "aria-describedby",
+        "new-username-hint new-username-error"
+      );
     });
     server.use(
       http.post("/api/v1/auth/username", () =>
@@ -682,11 +691,18 @@ describe(ProfilePage, () => {
     expect(
       screen.getByRole("heading", { name: PROFILE.name })
     ).toBeInTheDocument();
-    expect(screen.getByText(COPY.profile.statusValid)).toBeInTheDocument();
+    expect(screen.getByText(COPY.profile.statusValid)).toHaveAttribute(
+      "data-profile-status",
+      "active"
+    );
     expect(screen.getByText(COPY.profile.accountDetails)).toBeInTheDocument();
     expect(screen.getByText(PROFILE.username)).toBeInTheDocument();
-    expect(screen.getByText(PROFILE.phone)).toBeInTheDocument();
-    expect(screen.getByText("會友")).toBeInTheDocument();
+    expect(screen.getByText("青年部門協調員")).toBeInTheDocument();
+    expect(screen.queryByText("program.enroll")).not.toBeInTheDocument();
+    expect(screen.queryByText("role.manage")).not.toBeInTheDocument();
+    expect(screen.getByText("部門（Department） · 青年部")).toBeInTheDocument();
+    expect(screen.queryByText(PROFILE.phone)).not.toBeInTheDocument();
+    expect(screen.queryByText("Member")).not.toBeInTheDocument();
 
     const settingsLink = screen.getByRole("link", {
       name: new RegExp(COPY.profile.accountSettings, "u"),

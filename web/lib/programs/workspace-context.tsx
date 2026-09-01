@@ -13,11 +13,39 @@ import type {
   Program,
 } from "./program-api";
 import type { ProgramsTask } from "./programs-intent";
+export interface WorkspaceRouteContextValue {
+  departmentId: string | null;
+  hash: string | null;
+}
+
+const WorkspaceRouteContext = createContext<WorkspaceRouteContextValue>({
+  departmentId: null,
+  hash: null,
+});
+
+export const WorkspaceRouteProvider = ({
+  value,
+  children,
+}: {
+  value: WorkspaceRouteContextValue;
+  children: React.ReactNode;
+}) => (
+  <WorkspaceRouteContext.Provider value={value}>
+    {children}
+  </WorkspaceRouteContext.Provider>
+);
+
+export function useWorkspaceRouteContext(): WorkspaceRouteContextValue {
+  return useContext(WorkspaceRouteContext);
+}
 
 export interface WorkspaceTaskContextValue {
   program: Program;
   modules: readonly DepartmentModule[];
   attention: ManagementAttention | null;
+  /** Validated management directory context for non-intercepted Links. */
+  departmentId?: string | null;
+  hash?: string | null;
   onAttentionRefresh: () => void;
   onTaskChange: (task: ProgramsTask | null, eventId?: string | null) => void;
   onOpenEvent?: (eventId: string) => void;

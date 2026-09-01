@@ -1,6 +1,7 @@
 /* oxlint-disable vitest/require-top-level-describe, vitest/prefer-import-in-mock, vitest/prefer-mock-promise-shorthand, vitest/prefer-called-with -- shared fixture hooks cover all PUI-02 describes */
 import {
   cleanup,
+  fireEvent,
   render,
   screen,
   waitFor,
@@ -106,28 +107,29 @@ const catalogFixture = (
 function renderDirectory(
   props: Partial<Parameters<typeof ParticipantDirectory>[0]> = {}
 ) {
-  const onManagement = vi.fn<() => void>();
-  const onHome = vi.fn<() => void>();
-  const onOpenProgram = vi.fn<(programId: string) => void>();
+  const managementHref = props.managementHref ?? "/programs?mode=management";
+  const homeHref = props.homeHref ?? "/home";
+  const programHref =
+    props.programHref ??
+    vi.fn((programId: string) => `/programs?program=${programId}`);
   const view = render(
     <ParticipantDirectory
       programId={props.programId ?? null}
       canManage={props.canManage ?? false}
-      onManagement={props.onManagement ?? onManagement}
-      onHome={props.onHome ?? onHome}
-      onOpenProgram={props.onOpenProgram ?? onOpenProgram}
+      managementHref={managementHref}
+      homeHref={homeHref}
+      onOpenProgram={props.onOpenProgram}
+      focusProgramId={props.focusProgramId}
+      onFocusProgram={props.onFocusProgram}
+      programHref={programHref}
     />
   );
-  return { onManagement, onOpenProgram, onHome, view };
+  return { managementHref, homeHref, programHref, view };
 }
 
 const rowNames = (): string[] =>
-  [
-    ...document.querySelectorAll<HTMLElement>("button[class*='directoryCard']"),
-  ].map(
-    (button) =>
-      button.querySelector<HTMLElement>("span[class*='directoryCardTitle']")
-        ?.textContent ?? ""
+  [...document.querySelectorAll<HTMLElement>("a[data-program-row]")].map(
+    (link) => link.querySelector("[data-program-name]")?.textContent ?? ""
   );
 
 beforeEach(() => {
@@ -156,7 +158,7 @@ describe("PUI-02 participant directory loading and collection", () => {
     const list = await screen.findByRole("list", {
       name: COPY.programs.catalogListLabel,
     });
-    expect(within(list).getAllByRole("button")).toHaveLength(3);
+    expect(within(list).getAllByRole("link")).toHaveLength(3);
     expect(rowNames()).toStrictEqual(["查經小組", "青年團契", "社區關懷"]);
   });
 
@@ -204,7 +206,7 @@ describe("PUI-02 participant directory loading and collection", () => {
     const list = await screen.findByRole("list", {
       name: COPY.programs.catalogListLabel,
     });
-    const buttons = within(list).getAllByRole("button");
+    const buttons = within(list).getAllByRole("link");
     expect(buttons).toHaveLength(4);
     expect(buttons[0]).toHaveTextContent(COPY.programs.statusActive);
     expect(buttons[1]).toHaveTextContent(COPY.programs.statusPending);
@@ -236,7 +238,7 @@ describe("PUI-02 participant directory loading and collection", () => {
     const list = await screen.findByRole("list", {
       name: COPY.programs.catalogListLabel,
     });
-    const buttons = within(list).getAllByRole("button");
+    const buttons = within(list).getAllByRole("link");
     expect(buttons).toHaveLength(4);
     expect(buttons[0]).toHaveTextContent(COPY.programs.statusWithdrawn);
     expect(buttons[1]).toHaveTextContent(COPY.programs.statusCancelled);
@@ -250,7 +252,7 @@ describe("PUI-02 participant directory loading and collection", () => {
     });
     renderDirectory();
 
-    await screen.findByRole("button", { name: /查經小組/u });
+    await screen.findByRole("link", { name: /查經小組/u });
     expect(screen.queryByText(/check_in_token/iu)).not.toBeInTheDocument();
     expect(screen.queryByText(/capabilities/iu)).not.toBeInTheDocument();
   });
@@ -271,7 +273,7 @@ describe("PUI-02 participant directory loading and collection", () => {
     });
     renderDirectory();
 
-    const card = await screen.findByRole("button", { name: /超長課程名稱/u });
+    const card = await screen.findByRole("link", { name: /超長課程名稱/u });
     expect(card).toHaveTextContent(longTitle);
     expect(card).toHaveTextContent(longSecondary);
     expect(card.querySelector("svg")).toBeInTheDocument();
@@ -285,7 +287,7 @@ describe("PUI-02 participant directory search and filters", () => {
     });
     renderDirectory();
 
-    await screen.findByRole("button", { name: /查經小組/u });
+    await screen.findByRole("link", { name: /查經小組/u });
     expect(
       screen.queryByRole("heading", { name: COPY.programs.participantMode })
     ).not.toBeInTheDocument();
@@ -309,7 +311,7 @@ describe("PUI-02 participant directory search and filters", () => {
     });
     renderDirectory();
 
-    await screen.findByRole("button", { name: /查經小組/u });
+    await screen.findByRole("link", { name: /查經小組/u });
     const originalOrder = rowNames();
 
     const search = screen.getByRole("searchbox");
@@ -341,7 +343,7 @@ describe("PUI-02 participant directory search and filters", () => {
     });
     renderDirectory();
 
-    await screen.findByRole("button", { name: /活躍課程/u });
+    await screen.findByRole("link", { name: /活躍課程/u });
     const filterGroup = screen.getByRole("group", {
       name: COPY.programs.filterGroupLabel,
     });
@@ -377,7 +379,7 @@ describe("PUI-02 participant directory search and filters", () => {
     });
     renderDirectory();
 
-    await screen.findByRole("button", { name: /活躍課程/u });
+    await screen.findByRole("link", { name: /活躍課程/u });
     const filterGroup = screen.getByRole("group", {
       name: COPY.programs.filterGroupLabel,
     });
@@ -407,7 +409,7 @@ describe("PUI-02 participant directory search and filters", () => {
     });
     renderDirectory();
 
-    await screen.findByRole("button", { name: /查經小組/u });
+    await screen.findByRole("link", { name: /查經小組/u });
 
     const filterGroup = screen.getByRole("group", {
       name: COPY.programs.filterGroupLabel,
@@ -431,7 +433,7 @@ describe("PUI-02 participant directory search and filters", () => {
     await user.click(clearButton);
 
     await expect(
-      screen.findByRole("button", { name: /查經小組/u })
+      screen.findByRole("link", { name: /查經小組/u })
     ).resolves.toBeInTheDocument();
   });
 });
@@ -449,9 +451,9 @@ describe("PUI-02 participant directory recovery and handoff", () => {
           key="stale"
           programId={null}
           canManage={false}
-          onHome={vi.fn<() => void>()}
-          onManagement={vi.fn<() => void>()}
-          onOpenProgram={vi.fn<(programId: string) => void>()}
+          managementHref="/programs?mode=management"
+          homeHref="/home"
+          programHref={() => "/programs"}
         />
       </StrictMode>
     );
@@ -465,20 +467,20 @@ describe("PUI-02 participant directory recovery and handoff", () => {
           key="fresh"
           programId={null}
           canManage={false}
-          onManagement={vi.fn<() => void>()}
-          onHome={vi.fn<() => void>()}
-          onOpenProgram={vi.fn<(programId: string) => void>()}
+          managementHref="/programs?mode=management"
+          homeHref="/home"
+          programHref={() => "/programs"}
         />
       </StrictMode>
     );
 
-    const freshRow = await screen.findByRole("button", { name: /新鮮課程/u });
+    const freshRow = await screen.findByRole("link", { name: /新鮮課程/u });
     stale.resolve({
       catalog: catalogFixture([catalogProgram("program-1", "過期課程")]),
     });
     await waitFor(() => {
       expect(
-        screen.queryByRole("button", { name: /過期課程/u })
+        screen.queryByRole("link", { name: /過期課程/u })
       ).not.toBeInTheDocument();
     });
     expect(freshRow).toBeInTheDocument();
@@ -496,9 +498,7 @@ describe("PUI-02 participant directory recovery and handoff", () => {
     expect(unavailable.closest('[role="status"]')).toHaveTextContent(
       COPY.programs.programUnavailableHint
     );
-    expect(
-      screen.getByRole("button", { name: /查經小組/u })
-    ).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /查經小組/u })).toBeInTheDocument();
     expect(screen.getByRole("searchbox")).toBeInTheDocument();
   });
 
@@ -545,7 +545,7 @@ describe("PUI-02 participant directory recovery and handoff", () => {
       screen.getByRole("button", { name: COPY.programs.catalogRetry })
     );
     await expect(
-      screen.findByRole("button", { name: /查經小組/u })
+      screen.findByRole("link", { name: /查經小組/u })
     ).resolves.toBeInTheDocument();
   });
 
@@ -555,9 +555,9 @@ describe("PUI-02 participant directory recovery and handoff", () => {
       .mockResolvedValueOnce({ catalog: catalogFixture() })
       .mockRejectedValueOnce(new Error("offline"))
       .mockResolvedValueOnce({ catalog: catalogFixture() });
-    const { onHome, onManagement, onOpenProgram, view } = renderDirectory();
+    const { homeHref, managementHref, programHref, view } = renderDirectory();
 
-    await screen.findByRole("button", { name: /查經小組/u });
+    await screen.findByRole("link", { name: /查經小組/u });
     const search = screen.getByRole("searchbox", {
       name: COPY.programs.catalogSearchLabel,
     });
@@ -576,9 +576,9 @@ describe("PUI-02 participant directory recovery and handoff", () => {
       <ParticipantDirectory
         programId={null}
         canManage={false}
-        onHome={onHome}
-        onManagement={onManagement}
-        onOpenProgram={onOpenProgram}
+        managementHref={managementHref}
+        homeHref={homeHref}
+        programHref={programHref}
       />
     );
     await screen.findByRole("heading", {
@@ -588,7 +588,7 @@ describe("PUI-02 participant directory recovery and handoff", () => {
       screen.getByRole("button", { name: COPY.programs.catalogRetry })
     );
 
-    await screen.findByRole("button", { name: /青年團契/u });
+    await screen.findByRole("link", { name: /青年團契/u });
     expect(screen.getByRole("searchbox")).toHaveValue("青年");
     const eligibleAfter = within(
       screen.getByRole("group", { name: COPY.programs.filterGroupLabel })
@@ -597,11 +597,10 @@ describe("PUI-02 participant directory recovery and handoff", () => {
   });
 
   test("FORBIDDEN catalog failure shows the forbidden state with Home escape", async () => {
-    const user = userEvent.setup();
     mocks.listParticipantCatalog.mockRejectedValueOnce(
       new RpcError({ code: "FORBIDDEN", status: 403 })
     );
-    const { onHome } = renderDirectory();
+    const { homeHref } = renderDirectory();
 
     await expect(
       screen.findByRole("heading", {
@@ -615,8 +614,9 @@ describe("PUI-02 participant directory recovery and handoff", () => {
       screen.queryByRole("button", { name: COPY.programs.catalogRetry })
     ).not.toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: COPY.nav.backToHome }));
-    expect(onHome).toHaveBeenCalledOnce();
+    expect(
+      screen.getByRole("link", { name: COPY.nav.backToHome })
+    ).toHaveAttribute("href", homeHref);
     expect(mocks.listParticipantCatalog).toHaveBeenCalledOnce();
   });
 
@@ -632,13 +632,32 @@ describe("PUI-02 participant directory recovery and handoff", () => {
   });
 
   test("row selection hands off the opaque Program id", async () => {
-    const user = userEvent.setup();
     mocks.listParticipantCatalog.mockResolvedValue({
       catalog: catalogFixture(),
     });
-    const { onOpenProgram } = renderDirectory();
+    const { programHref } = renderDirectory();
+    const link = await screen.findByRole("link", { name: /青年團契/u });
+    expect(link).toHaveAttribute("href", "/programs?program=program-2");
+    expect(programHref).toHaveBeenCalledWith("program-2");
+  });
 
-    await user.click(await screen.findByRole("button", { name: /青年團契/u }));
+  test("records row navigation and restores focus to the origin row", async () => {
+    mocks.listParticipantCatalog.mockResolvedValue({
+      catalog: catalogFixture(),
+    });
+    const onOpenProgram = vi.fn();
+    const onFocusProgram = vi.fn();
+    renderDirectory({
+      onOpenProgram,
+      focusProgramId: "program-2",
+      onFocusProgram,
+    });
+
+    const row = await screen.findByRole("link", { name: /青年團契/u });
+    await waitFor(() => expect(document.activeElement).toBe(row));
+    expect(onFocusProgram).toHaveBeenCalledOnce();
+
+    fireEvent.click(row);
     expect(onOpenProgram).toHaveBeenCalledWith("program-2");
   });
 
@@ -646,13 +665,14 @@ describe("PUI-02 participant directory recovery and handoff", () => {
     mocks.listParticipantCatalog.mockResolvedValue({
       catalog: catalogFixture(),
     });
-    const { onManagement, view } = renderDirectory({ canManage: true });
+    renderDirectory({
+      canManage: true,
+      managementHref: "/programs?mode=management",
+    });
 
-    const entry = await screen.findByRole("button", {
+    const entry = await screen.findByRole("link", {
       name: COPY.programs.enterManagement,
     });
-    await userEvent.click(entry);
-    expect(onManagement).toHaveBeenCalledOnce();
-    view.unmount();
+    expect(entry).toHaveAttribute("href", "/programs?mode=management");
   });
 });

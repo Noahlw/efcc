@@ -1,7 +1,7 @@
 "use client";
 
 import { usePathname } from "next/navigation";
-import { useState, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -37,7 +37,16 @@ export const ShellHeader = ({
 }) => {
   const { bootstrap } = useApp();
   const pathname = usePathname();
-  const [attentionOpen, setAttentionOpen] = useState(false);
+  const [attentionOpenPath, setAttentionOpenPath] = useState<string | null>(
+    null
+  );
+  const previousPathnameRef = useRef(pathname);
+  useEffect(() => {
+    previousPathnameRef.current = pathname;
+    setAttentionOpenPath(null);
+  }, [pathname]);
+  const attentionOpen =
+    previousPathnameRef.current === pathname && attentionOpenPath === pathname;
   const bellRef = useRef<HTMLButtonElement>(null);
 
   const isScanner = pathname === "/scanner" || pathname.startsWith("/scanner/");
@@ -88,7 +97,7 @@ export const ShellHeader = ({
           )}
         </div>
 
-        {isManagement ? (
+        {isManagement && pathname !== "/programs" ? (
           <div className={styles.headerActions}>
             <Button
               ref={bellRef}
@@ -99,7 +108,7 @@ export const ShellHeader = ({
               aria-label={COPY.attention.bellLabel(attentionCount)}
               aria-haspopup="dialog"
               aria-expanded={attentionOpen}
-              onClick={() => setAttentionOpen(true)}
+              onClick={() => setAttentionOpenPath(pathname)}
             >
               <BellIcon />
               <Badge
@@ -114,12 +123,14 @@ export const ShellHeader = ({
         ) : null}
       </header>
 
-      <AttentionPanel
-        open={attentionOpen}
-        onClose={() => setAttentionOpen(false)}
-        data={attentionData}
-        onCloseAutoFocus={() => bellRef.current?.focus()}
-      />
+      {pathname !== "/programs" && (
+        <AttentionPanel
+          open={attentionOpen}
+          onClose={() => setAttentionOpenPath(null)}
+          data={attentionData}
+          onCloseAutoFocus={() => bellRef.current?.focus()}
+        />
+      )}
     </>
   );
 };

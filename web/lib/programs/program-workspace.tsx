@@ -34,8 +34,13 @@ import { EventDetail } from "./event-detail";
 import { buildProgramsHref } from "./programs-intent";
 import type { ProgramsTask } from "./programs-intent";
 import { useAsyncResource } from "./use-async-resource";
-import { hasModule, redirectToLoginIfRequired } from "./workspace-context";
 import {
+  hasModule,
+  redirectToLoginIfRequired,
+  useWorkspaceRouteContext,
+} from "./workspace-context";
+import {
+  TaskUnavailable,
   WorkspaceNavigation,
   WorkspaceOverview,
   WorkspaceTask,
@@ -43,7 +48,51 @@ import {
   type WorkspaceSummaryState,
 } from "./workspace-task";
 
-import styles from "@/app/programs/programs.module.css";
+const styles = {
+  workspaceSection: "grid min-w-0 gap-4",
+  programDetailBack:
+    "min-h-11 min-w-11 w-fit rounded-lg border border-[var(--line-strong)] bg-transparent px-4 py-2 text-[var(--ink)] whitespace-normal hover:bg-[var(--surface)]",
+  workspaceHeading:
+    "m-0 min-w-0 text-lg font-extrabold leading-6 tracking-[-0.02em] [overflow-wrap:anywhere]",
+  panelNotice:
+    "block rounded-lg border border-[var(--success-border)] bg-[var(--success-surface)] p-3 text-[var(--ink)] [overflow-wrap:anywhere]",
+  panelError:
+    "grid min-w-0 gap-2 rounded-lg border border-[var(--error-border)] bg-[var(--error-surface)] p-3 text-[var(--error)] [overflow-wrap:anywhere]",
+  workspaceFacts:
+    "grid min-w-0 gap-3 rounded-lg border border-[var(--line)] bg-[var(--surface)] p-4 [overflow-wrap:anywhere]",
+  secondaryButton:
+    "min-h-11 min-w-11 w-fit rounded-lg border border-[var(--line-strong)] bg-transparent px-4 py-2 text-[var(--ink)] whitespace-normal hover:bg-[var(--surface)]",
+  workspaceTask: "grid min-w-0 gap-4",
+  form: "grid min-w-0 gap-4",
+  field: "grid min-w-0 gap-1.5",
+  fieldLabel: "grid min-w-0 gap-1.5 text-sm font-bold text-[var(--ink)]",
+  input:
+    "min-h-11 min-w-0 rounded-lg border-[var(--line-strong)] bg-[var(--surface-raised)] text-base",
+  textarea:
+    "min-h-11 min-w-0 rounded-lg border-[var(--line-strong)] bg-[var(--surface-raised)] text-base",
+  workspaceActions: "flex min-w-0 flex-wrap items-center gap-3",
+  button:
+    "min-h-11 min-w-11 w-fit rounded-lg bg-[var(--accent)] px-4 py-2 text-white whitespace-normal hover:bg-[var(--accent-deep)]",
+  boundaryState:
+    "grid min-w-0 gap-3 rounded-lg border border-[var(--line)] bg-[var(--surface)] p-5 [overflow-wrap:anywhere]",
+  boundaryError:
+    "grid min-w-0 gap-3 rounded-lg border border-[var(--error-border)] bg-[var(--error-surface)] p-4 text-[var(--error)] [overflow-wrap:anywhere]",
+  boundaryTitle:
+    "m-0 min-w-0 text-xl font-extrabold leading-tight tracking-[-0.02em] [overflow-wrap:anywhere]",
+  retry:
+    "min-h-11 min-w-11 w-fit rounded-lg border border-[var(--line-strong)] bg-transparent px-4 py-2 text-[var(--ink)] whitespace-normal hover:bg-[var(--surface)]",
+  managementWorkspace: "grid min-w-0 gap-4",
+  workspaceHeader:
+    "flex min-w-0 flex-wrap items-start justify-between gap-3 border-b border-[var(--line)] pb-3",
+  workspaceHeaderMain: "flex min-w-0 flex-1 flex-wrap items-center gap-3",
+  workspaceHeaderMeta: "flex min-w-0 flex-wrap items-center gap-2",
+  directoryStatus: "shrink-0 whitespace-normal",
+  workspaceDepartmentBadge: "min-w-0 max-w-full whitespace-normal",
+  directoryStatusActive: "border-transparent bg-[var(--accent)] text-white",
+  directoryStatusDraft: "border-[var(--line-strong)] bg-[var(--surface)]",
+  directoryStatusArchived:
+    "border-[var(--line-strong)] bg-[var(--surface)] text-[var(--ink-muted)]",
+} as const;
 
 export interface ProgramWorkspaceProps {
   programId: string;
@@ -195,7 +244,7 @@ const CourseFacts = ({
       className={styles.workspaceSection}
       aria-labelledby="programs-workspace-facts-title"
     >
-      <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+      <div className="flex min-w-0 flex-wrap items-center gap-2">
         <Button
           type="button"
           className={styles.programDetailBack}
@@ -328,7 +377,7 @@ const CourseEdit = ({
       className={styles.workspaceTask}
       aria-labelledby="programs-workspace-course-edit-title"
     >
-      <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+      <div className="flex min-w-0 flex-wrap items-center gap-2">
         <Button
           type="button"
           className={styles.programDetailBack}
@@ -407,7 +456,6 @@ const CourseEdit = ({
     </section>
   );
 };
-
 export const ProgramWorkspace = ({
   programId,
   task,
@@ -419,6 +467,7 @@ export const ProgramWorkspace = ({
   onTaskChange,
   onEventChange,
 }: ProgramWorkspaceProps) => {
+  const { departmentId, hash } = useWorkspaceRouteContext();
   const [summary, setSummary] = useState<WorkspaceSummaryState>(() =>
     initialSummary()
   );
@@ -445,6 +494,14 @@ export const ProgramWorkspace = ({
     setCourseNotice(null);
     setWorkspaceNotice(created ? COPY.programs.programCreatedNotice : null);
   }, [programId]);
+  useEffect(() => {
+    setCourseView("overview");
+    setCourseProgramOverride(null);
+    setCourseNotice(null);
+    if (task) {
+      setWorkspaceNotice(null);
+    }
+  }, [task]);
   const {
     state,
     run: loadWorkspace,
@@ -641,6 +698,13 @@ export const ProgramWorkspace = ({
     );
   }
   const workspaceProgram = courseProgramOverride ?? state.program;
+  const canAccessSettings =
+    workspaceProgram.capabilities.manage ||
+    workspaceProgram.capabilities.leader_assign;
+  const canRenderTask =
+    task === "settings"
+      ? canAccessSettings
+      : workspaceProgram.capabilities.manage;
 
   return (
     <section
@@ -701,6 +765,10 @@ export const ProgramWorkspace = ({
           programId={programId}
           task={task}
           modules={state.modules}
+          departmentId={departmentId}
+          hash={hash}
+          canManage={workspaceProgram.capabilities.manage}
+          canAccessSettings={canAccessSettings}
           onTaskChange={(nextTask) => {
             setCourseView("overview");
             setCourseNotice(null);
@@ -723,24 +791,47 @@ export const ProgramWorkspace = ({
           onBack={returnToFacts}
           onSaved={handleCourseSaved}
         />
-      ) : task && task === "events" && eventId ? (
+      ) : task &&
+        task === "events" &&
+        eventId &&
+        workspaceProgram.capabilities.manage ? (
         <EventDetail
           programId={programId}
           eventId={eventId}
           canManage={workspaceProgram.capabilities.manage}
+          departmentId={departmentId}
+          hash={hash}
           backHref={buildProgramsHref({
             mode: "management",
             programId,
+            departmentId,
             task: "events",
+            hash,
           })}
           onAttentionRefresh={onAttentionRefresh}
-          onBack={() => onEventChange?.(null)}
+          onBack={(event) => {
+            if (
+              event.defaultPrevented ||
+              event.button !== 0 ||
+              event.metaKey ||
+              event.ctrlKey ||
+              event.shiftKey ||
+              event.altKey ||
+              !onEventChange
+            ) {
+              return;
+            }
+            event.preventDefault();
+            onEventChange(null);
+          }}
         />
-      ) : task ? (
+      ) : task && canRenderTask ? (
         <WorkspaceTask
           program={workspaceProgram}
           task={task}
           modules={state.modules}
+          departmentId={departmentId}
+          hash={hash}
           attention={attention}
           onAttentionRefresh={onAttentionRefresh}
           onTaskChange={(nextTask, nextEventId) => {
@@ -752,14 +843,18 @@ export const ProgramWorkspace = ({
               onTaskChange(nextTask, nextEventId);
             }
           }}
-          onOpenEvent={(id) => onEventChange?.(id)}
+          onOpenEvent={onEventChange ? (id) => onEventChange(id) : undefined}
         />
+      ) : task ? (
+        <TaskUnavailable task={task} />
       ) : (
         <WorkspaceOverview
           program={workspaceProgram}
           cockpit={state.cockpit}
           summary={summary}
           onOpenFacts={openCourseFacts}
+          departmentId={departmentId}
+          hash={hash}
           onTaskChange={onTaskChange}
         />
       )}

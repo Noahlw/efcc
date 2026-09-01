@@ -4,9 +4,15 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { FormEvent } from "react";
 
 import { Alert } from "@/components/ui/alert";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import { RpcError } from "@/lib/api";
@@ -29,7 +35,62 @@ import type {
 } from "@/lib/programs/program-api";
 import { isWallDate, WEEKDAY_LABELS } from "@/lib/programs/recurrence";
 
-import styles from "@/app/programs/programs.module.css";
+const styles = {
+  workspaceTask: "grid min-w-0 gap-4",
+  settingsSurface: "gap-4",
+  workspaceHeading:
+    "m-0 min-w-0 text-lg font-extrabold leading-6 tracking-[-0.02em] [overflow-wrap:anywhere]",
+  programDetailMuted:
+    "m-0 text-sm leading-6 text-[var(--ink-muted)] [overflow-wrap:anywhere]",
+  panelNotice:
+    "block rounded-lg border border-[var(--success-border)] bg-[var(--success-surface)] p-3 text-[var(--ink)] [overflow-wrap:anywhere]",
+  panelError:
+    "grid min-w-0 gap-2 rounded-lg border border-[var(--error-border)] bg-[var(--error-surface)] p-3 text-[var(--error)] [overflow-wrap:anywhere]",
+  settingsUnavailable:
+    "grid min-w-0 gap-2 rounded-lg border border-[var(--line)] bg-[var(--surface)] p-4",
+  workspaceSubheading:
+    "m-0 text-base font-bold leading-6 [overflow-wrap:anywhere]",
+  settingsGroups: "grid min-w-0 gap-5",
+  settingsGroup:
+    "grid min-w-0 gap-4 rounded-lg border border-[var(--line)] bg-[var(--surface-raised)] p-4",
+  settingsGroupLead:
+    "m-0 text-sm leading-6 text-[var(--ink-muted)] [overflow-wrap:anywhere]",
+  settingsForm: "grid min-w-0 gap-4",
+  field: "grid min-w-0 gap-1.5",
+  fieldLabel: "grid min-w-0 gap-1.5 text-sm font-bold text-[var(--ink)]",
+  input:
+    "min-h-11 min-w-0 rounded-lg border-[var(--line-strong)] bg-[var(--surface-raised)] text-base",
+  textarea:
+    "min-h-11 min-w-0 rounded-lg border-[var(--line-strong)] bg-[var(--surface-raised)] text-base",
+  settingsActions: "flex min-w-0 flex-wrap items-center gap-3",
+  button:
+    "min-h-11 min-w-11 w-fit rounded-lg bg-[var(--accent)] px-4 py-2 text-white whitespace-normal hover:bg-[var(--accent-deep)]",
+  settingsCurrent:
+    "grid min-w-0 gap-2 rounded-lg border border-[var(--line)] bg-[var(--surface)] p-3",
+  fieldHint:
+    "m-0 text-sm leading-6 text-[var(--ink-muted)] [overflow-wrap:anywhere]",
+  select:
+    "min-h-11 min-w-0 w-full rounded-lg border border-[var(--line-strong)] bg-[var(--surface-raised)] px-3 text-base text-[var(--ink)]",
+  confirmRow:
+    "grid min-w-0 gap-3 rounded-lg border border-[var(--pending-border)] bg-[var(--pending-surface)] p-3 [overflow-wrap:anywhere]",
+  secondaryButton:
+    "min-h-11 min-w-11 w-fit rounded-lg border border-[var(--line-strong)] bg-transparent px-4 py-2 text-[var(--ink)] whitespace-normal hover:bg-[var(--surface)]",
+  settingsReadonly:
+    "m-0 rounded-lg border border-dashed border-[var(--line)] bg-[var(--surface)] p-3 text-sm leading-6 text-[var(--ink-muted)] [overflow-wrap:anywhere]",
+  retry:
+    "min-h-11 min-w-11 w-fit rounded-lg border border-[var(--line-strong)] bg-transparent px-4 py-2 text-[var(--ink)] whitespace-normal hover:bg-[var(--surface)]",
+  settingsRuleList: "m-0 grid min-w-0 list-none gap-3 p-0",
+  settingsRuleRow:
+    "grid min-w-0 gap-3 rounded-lg border border-[var(--line)] bg-[var(--surface)] p-3 [overflow-wrap:anywhere]",
+  settingsRuleSummary:
+    "flex min-w-0 flex-wrap items-center justify-between gap-3 [overflow-wrap:anywhere]",
+  settingsExceptionList: "m-0 grid min-w-0 list-none gap-2 p-0",
+  successOutline:
+    "min-h-11 min-w-11 w-fit rounded-lg border border-[var(--success-border)] bg-[var(--success-surface)] px-4 py-2 text-[var(--success)] whitespace-normal",
+  timeMarker: "m-0 text-xs text-[var(--ink-muted)]",
+  programDetailBack:
+    "min-h-11 min-w-11 w-fit rounded-lg border border-[var(--line-strong)] bg-transparent px-4 py-2 text-[var(--ink)] whitespace-normal hover:bg-[var(--surface)]",
+} as const;
 
 interface BasicsValues {
   name: string;
@@ -650,51 +711,61 @@ export const ProgramSettings = ({
                 <span className={styles.fieldLabel}>
                   {COPY.programs.discoverabilityListed}
                 </span>
-                <select
-                  className={styles.select}
-                  aria-label={COPY.programs.discoverabilityListed}
+                <Select
                   value={enrollment.discoverability}
-                  onChange={(event) =>
+                  onValueChange={(value) =>
                     setEnrollment((previous) => ({
                       ...previous,
-                      discoverability: event.target
-                        .value as Program["discoverability"],
+                      discoverability: value as Program["discoverability"],
                     }))
                   }
                   disabled={busy}
                 >
-                  <option value="Unlisted">
-                    {COPY.programs.discoverabilityUnlisted}
-                  </option>
-                  <option value="Listed">
-                    {COPY.programs.discoverabilityListed}
-                  </option>
-                </select>
+                  <SelectTrigger
+                    className={styles.select}
+                    aria-label={COPY.programs.discoverabilityListed}
+                  >
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Unlisted">
+                      {COPY.programs.discoverabilityUnlisted}
+                    </SelectItem>
+                    <SelectItem value="Listed">
+                      {COPY.programs.discoverabilityListed}
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
               </label>
               <label className={styles.field}>
                 <span className={styles.fieldLabel}>
                   {COPY.programs.programEnrollmentMode}
                 </span>
-                <select
-                  className={styles.select}
-                  aria-label={COPY.programs.programEnrollmentMode}
+                <Select
                   value={enrollment.enrollmentMode}
-                  onChange={(event) =>
+                  onValueChange={(value) =>
                     setEnrollment((previous) => ({
                       ...previous,
-                      enrollmentMode: event.target
-                        .value as Program["enrollment_mode"],
+                      enrollmentMode: value as Program["enrollment_mode"],
                     }))
                   }
                   disabled={busy}
                 >
-                  <option value="MemberRequest">
-                    {COPY.programs.enrollmentModeMemberRequest}
-                  </option>
-                  <option value="ManagerOnly">
-                    {COPY.programs.enrollmentModeManagerOnly}
-                  </option>
-                </select>
+                  <SelectTrigger
+                    className={styles.select}
+                    aria-label={COPY.programs.programEnrollmentMode}
+                  >
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="MemberRequest">
+                      {COPY.programs.enrollmentModeMemberRequest}
+                    </SelectItem>
+                    <SelectItem value="ManagerOnly">
+                      {COPY.programs.enrollmentModeManagerOnly}
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
               </label>
               <div className={styles.settingsActions}>
                 {!confirmingEnrollment && (
@@ -802,51 +873,68 @@ export const ProgramSettings = ({
                                   <span className={styles.fieldLabel}>
                                     {COPY.programs.behaviorType}
                                   </span>
-                                  <select
-                                    className={styles.select}
+                                  <Select
                                     value={draft.recurrence}
-                                    onChange={(event) =>
+                                    onValueChange={(value) =>
                                       setRuleDrafts((previous) => ({
                                         ...previous,
                                         [rule.rule_id]: {
                                           ...draft,
-                                          recurrence: event.target
-                                            .value as RuleValues["recurrence"],
+                                          recurrence:
+                                            value as RuleValues["recurrence"],
                                         },
                                       }))
                                     }
                                   >
-                                    <option value="WEEKLY">
-                                      {COPY.programs.ruleWeekly}
-                                    </option>
-                                    <option value="MONTHLY">
-                                      {COPY.programs.ruleMonthly}
-                                    </option>
-                                  </select>
+                                    <SelectTrigger
+                                      className={styles.select}
+                                      aria-label={COPY.programs.behaviorType}
+                                    >
+                                      <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      <SelectItem value="WEEKLY">
+                                        {COPY.programs.ruleWeekly}
+                                      </SelectItem>
+                                      <SelectItem value="MONTHLY">
+                                        {COPY.programs.ruleMonthly}
+                                      </SelectItem>
+                                    </SelectContent>
+                                  </Select>
                                 </label>
                                 <label className={styles.field}>
                                   <span className={styles.fieldLabel}>
                                     {COPY.programs.dayOfWeekLabel}
                                   </span>
-                                  <select
-                                    className={styles.select}
+                                  <Select
                                     value={draft.dayOfWeek}
-                                    onChange={(event) =>
+                                    onValueChange={(value) =>
                                       setRuleDrafts((previous) => ({
                                         ...previous,
                                         [rule.rule_id]: {
                                           ...draft,
-                                          dayOfWeek: event.target.value,
+                                          dayOfWeek: value,
                                         },
                                       }))
                                     }
                                   >
-                                    {WEEKDAY_LABELS.map((label, index) => (
-                                      <option key={label} value={index}>
-                                        {label}
-                                      </option>
-                                    ))}
-                                  </select>
+                                    <SelectTrigger
+                                      className={styles.select}
+                                      aria-label={COPY.programs.dayOfWeekLabel}
+                                    >
+                                      <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      {WEEKDAY_LABELS.map((label, index) => (
+                                        <SelectItem
+                                          key={label}
+                                          value={String(index)}
+                                        >
+                                          {label}
+                                        </SelectItem>
+                                      ))}
+                                    </SelectContent>
+                                  </Select>
                                 </label>
                                 <label className={styles.field}>
                                   <span className={styles.fieldLabel}>
@@ -1069,37 +1157,47 @@ export const ProgramSettings = ({
                                       <span className={styles.fieldLabel}>
                                         {COPY.programs.settingsExceptionAction}
                                       </span>
-                                      <select
-                                        className={styles.select}
+                                      <Select
                                         value={
                                           exceptionDraftFor(rule.rule_id).action
                                         }
-                                        onChange={(event) =>
+                                        onValueChange={(value) =>
                                           setExceptionDrafts((previous) => ({
                                             ...previous,
                                             [rule.rule_id]: {
                                               ...exceptionDraftFor(
                                                 rule.rule_id
                                               ),
-                                              action: event.target
-                                                .value as ExceptionValues["action"],
+                                              action:
+                                                value as ExceptionValues["action"],
                                             },
                                           }))
                                         }
                                       >
-                                        <option value="CANCEL">
-                                          {
+                                        <SelectTrigger
+                                          className={styles.select}
+                                          aria-label={
                                             COPY.programs
-                                              .settingsExceptionCancel
+                                              .settingsExceptionAction
                                           }
-                                        </option>
-                                        <option value="RESCHEDULE">
-                                          {
-                                            COPY.programs
-                                              .settingsExceptionReschedule
-                                          }
-                                        </option>
-                                      </select>
+                                        >
+                                          <SelectValue />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                          <SelectItem value="CANCEL">
+                                            {
+                                              COPY.programs
+                                                .settingsExceptionCancel
+                                            }
+                                          </SelectItem>
+                                          <SelectItem value="RESCHEDULE">
+                                            {
+                                              COPY.programs
+                                                .settingsExceptionReschedule
+                                            }
+                                          </SelectItem>
+                                        </SelectContent>
+                                      </Select>
                                     </label>
                                     {exceptionDraftFor(rule.rule_id).action ===
                                       "RESCHEDULE" && (
@@ -1205,45 +1303,60 @@ export const ProgramSettings = ({
                     <span className={styles.fieldLabel}>
                       {COPY.programs.behaviorType}
                     </span>
-                    <select
-                      className={styles.select}
+                    <Select
                       value={newRule.recurrence}
-                      onChange={(event) =>
+                      onValueChange={(value) =>
                         setNewRule((previous) => ({
                           ...previous,
-                          recurrence: event.target
-                            .value as RuleValues["recurrence"],
+                          recurrence: value as RuleValues["recurrence"],
                         }))
                       }
                       disabled={busy}
                     >
-                      <option value="WEEKLY">{COPY.programs.ruleWeekly}</option>
-                      <option value="MONTHLY">
-                        {COPY.programs.ruleMonthly}
-                      </option>
-                    </select>
+                      <SelectTrigger
+                        className={styles.select}
+                        aria-label={COPY.programs.behaviorType}
+                      >
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="WEEKLY">
+                          {COPY.programs.ruleWeekly}
+                        </SelectItem>
+                        <SelectItem value="MONTHLY">
+                          {COPY.programs.ruleMonthly}
+                        </SelectItem>
+                      </SelectContent>
+                    </Select>
                   </label>
                   <label className={styles.field}>
                     <span className={styles.fieldLabel}>
                       {COPY.programs.dayOfWeekLabel}
                     </span>
-                    <select
-                      className={styles.select}
+                    <Select
                       value={newRule.dayOfWeek}
-                      onChange={(event) =>
+                      onValueChange={(value) =>
                         setNewRule((previous) => ({
                           ...previous,
-                          dayOfWeek: event.target.value,
+                          dayOfWeek: value,
                         }))
                       }
                       disabled={busy}
                     >
-                      {WEEKDAY_LABELS.map((label, index) => (
-                        <option key={label} value={index}>
-                          {label}
-                        </option>
-                      ))}
-                    </select>
+                      <SelectTrigger
+                        className={styles.select}
+                        aria-label={COPY.programs.dayOfWeekLabel}
+                      >
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {WEEKDAY_LABELS.map((label, index) => (
+                          <SelectItem key={label} value={String(index)}>
+                            {label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </label>
                   <label className={styles.field}>
                     <span className={styles.fieldLabel}>

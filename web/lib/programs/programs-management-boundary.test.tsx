@@ -1,4 +1,4 @@
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
@@ -28,6 +28,7 @@ const mocks = vi.hoisted(() => {
     listEnrollmentRequests: vi.fn(),
     listEnrollments: vi.fn(),
     pathname: vi.fn(() => "/programs"),
+    listScheduleRules: vi.fn(),
     router,
   };
 });
@@ -39,6 +40,7 @@ vi.mock(import("@/lib/programs/program-api"), () => ({
   listEvents: mocks.listEvents,
   listEnrollmentRequests: mocks.listEnrollmentRequests,
   listEnrollments: mocks.listEnrollments,
+  listScheduleRules: mocks.listScheduleRules,
 }));
 
 vi.mock("next/navigation", () => ({
@@ -130,6 +132,7 @@ beforeEach(() => {
   mocks.listEvents.mockReset();
   mocks.listEnrollmentRequests.mockReset();
   mocks.listEnrollments.mockReset();
+  mocks.listScheduleRules.mockReset();
   mocks.router.push.mockReset();
   mocks.router.replace.mockReset();
   mocks.getManagementAccess.mockResolvedValue({
@@ -149,6 +152,7 @@ beforeEach(() => {
   });
   mocks.listEnrollmentRequests.mockResolvedValue({ requests: [] });
   mocks.listEnrollments.mockResolvedValue({ enrollments: [] });
+  mocks.listScheduleRules.mockResolvedValue({ rules: [] });
 });
 
 afterEach(() => {
@@ -157,13 +161,21 @@ afterEach(() => {
 
 describe("Programs management boundary", () => {
   test("routes from scoped Directory into a status-first Program Cockpit and focused task", async () => {
-    render(<ProgramsBoundary />);
+    const view = render(<ProgramsBoundary />);
 
-    const row = await screen.findByRole("button", { name: /查經小組/u });
+    const row = await screen.findByRole("link", { name: /查經小組/u });
     expect(row).toHaveTextContent("青年事工");
-    await userEvent.click(row);
+    expect(row).toHaveAttribute(
+      "href",
+      "/programs?mode=management&program=program-1"
+    );
 
-    expect(window.location.search).toBe("?mode=management&program=program-1");
+    window.history.replaceState(
+      {},
+      "",
+      row.getAttribute("href") ?? "/programs?mode=management"
+    );
+    view.rerender(<ProgramsBoundary />);
     await expect(
       screen.findByRole("heading", { name: "查經小組" })
     ).resolves.toBeInTheDocument();
@@ -173,9 +185,7 @@ describe("Programs management boundary", () => {
     expect(
       screen.getByText(COPY.programs.cockpitParticipantsTile)
     ).toBeInTheDocument();
-    await userEvent.click(
-      screen.getByRole("button", { name: /聚會.*個聚會/u })
-    );
+    await userEvent.click(screen.getByRole("link", { name: /聚會.*個聚會/u }));
     expect(window.location.search).toBe(
       "?mode=management&program=program-1&task=events"
     );
@@ -184,6 +194,34 @@ describe("Programs management boundary", () => {
         name: COPY.programs.workspaceTaskEvents,
       })
     ).resolves.toBeInTheDocument();
+  });
+  test("restores the directory search and focuses the selected row after Back", async () => {
+    const view = render(<ProgramsBoundary />);
+    const search = await screen.findByRole("searchbox", {
+      name: COPY.programs.managementDirectorySearchLabel,
+    });
+    await userEvent.type(search, "查經");
+    const row = await screen.findByRole("link", { name: /查經小組/u });
+    await userEvent.click(row);
+    await screen.findByRole("heading", { name: "查經小組" });
+
+    await userEvent.click(
+      screen.getByRole("button", { name: COPY.programs.workspaceBack })
+    );
+    await expect(
+      screen.findByRole("heading", {
+        name: COPY.programs.managementDirectoryTitle,
+      })
+    ).resolves.toBeInTheDocument();
+    expect(
+      screen.getByRole("searchbox", {
+        name: COPY.programs.managementDirectorySearchLabel,
+      })
+    ).toHaveValue("查經");
+    await waitFor(() =>
+      expect(screen.getByRole("link", { name: /查經小組/u })).toHaveFocus()
+    );
+    view.unmount();
   });
   test("restores the selected Department context from a management return URL", async () => {
     const otherDepartment = {
@@ -209,22 +247,29 @@ describe("Programs management boundary", () => {
     );
     render(<ProgramsBoundary />);
     await screen.findByRole("button", { name: /青年事工.*部門設定/u });
+    const row = await screen.findByRole("link", { name: /查經小組/u });
+    expect(row).toHaveAttribute(
+      "href",
+      "/programs?mode=management&department=dept-1&program=program-1"
+    );
     expect(
       screen.queryByRole("button", { name: /敬拜事工.*部門設定/u })
     ).not.toBeInTheDocument();
   });
   test("carries the next meeting event into the participants roster task", async () => {
+    window.history.replaceState(
+      {},
+      "",
+      "/programs?mode=management&program=program-1"
+    );
     render(<ProgramsBoundary />);
 
-    await userEvent.click(
-      await screen.findByRole("button", { name: /查經小組/u })
-    );
-    await screen.findByRole("button", {
+    await screen.findByRole("link", {
       name: COPY.programs.cockpitManageRoster,
     });
 
     await userEvent.click(
-      screen.getByRole("button", {
+      screen.getByRole("link", {
         name: COPY.programs.cockpitManageRoster,
       })
     );

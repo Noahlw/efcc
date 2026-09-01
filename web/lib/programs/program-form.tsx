@@ -6,6 +6,13 @@ import type { FormEvent } from "react";
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { RpcError } from "@/lib/api";
 import { COPY, errorCopyFor } from "@/lib/copy";
@@ -18,7 +25,31 @@ import type {
   ProgramPatch,
 } from "@/lib/programs/program-api";
 
-import styles from "@/app/programs/programs.module.css";
+const styles = {
+  workspaceTask: "grid min-w-0 gap-4",
+  workspaceHeading:
+    "m-0 min-w-0 text-lg font-extrabold leading-6 tracking-[-0.02em] [overflow-wrap:anywhere]",
+  programDetailMuted:
+    "m-0 text-sm leading-6 text-[var(--ink-muted)] [overflow-wrap:anywhere]",
+  secondaryButton:
+    "min-h-11 min-w-11 w-fit rounded-lg border border-[var(--line-strong)] bg-transparent px-4 py-2 text-[var(--ink)] whitespace-normal hover:bg-[var(--surface)]",
+  panelError:
+    "grid min-w-0 gap-2 rounded-lg border border-[var(--error-border)] bg-[var(--error-surface)] p-3 text-[var(--error)] [overflow-wrap:anywhere]",
+  panelNotice:
+    "block rounded-lg border border-[var(--success-border)] bg-[var(--success-surface)] p-3 text-[var(--ink)] [overflow-wrap:anywhere]",
+  form: "grid min-w-0 gap-4",
+  field: "grid min-w-0 gap-1.5",
+  fieldLabel: "grid min-w-0 gap-1.5 text-sm font-bold text-[var(--ink)]",
+  select:
+    "min-h-11 min-w-0 w-full rounded-lg border border-[var(--line-strong)] bg-[var(--surface-raised)] px-3 text-base text-[var(--ink)]",
+  input:
+    "min-h-11 min-w-0 rounded-lg border-[var(--line-strong)] bg-[var(--surface-raised)] text-base",
+  textarea:
+    "min-h-11 min-w-0 rounded-lg border-[var(--line-strong)] bg-[var(--surface-raised)] text-base",
+  workspaceActions: "flex min-w-0 flex-wrap items-center gap-3",
+  button:
+    "min-h-11 min-w-11 w-fit rounded-lg bg-[var(--accent)] px-4 py-2 text-white whitespace-normal hover:bg-[var(--accent-deep)]",
+} as const;
 
 interface FormValues {
   departmentId: string;
@@ -216,24 +247,30 @@ export const ProgramForm = ({
           <div className={styles.field}>
             <label className={styles.fieldLabel}>
               {COPY.programs.workspaceDepartment}
-              <select
-                className={styles.select}
+              <Select
                 value={values.departmentId}
-                onChange={(event) => update("departmentId", event.target.value)}
-                required
+                onValueChange={(value) => update("departmentId", value)}
                 disabled={busy}
               >
-                {departments
-                  .filter(({ capabilities }) => capabilities.manage)
-                  .map((department) => (
-                    <option
-                      key={department.department_id}
-                      value={department.department_id}
-                    >
-                      {department.name} · {department.code}
-                    </option>
-                  ))}
-              </select>
+                <SelectTrigger
+                  className={styles.select}
+                  aria-label={COPY.programs.workspaceDepartment}
+                >
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {departments
+                    .filter(({ capabilities }) => capabilities.manage)
+                    .map((department) => (
+                      <SelectItem
+                        key={department.department_id}
+                        value={department.department_id}
+                      >
+                        {department.name} · {department.code}
+                      </SelectItem>
+                    ))}
+                </SelectContent>
+              </Select>
             </label>
           </div>
         )}
@@ -280,60 +317,75 @@ export const ProgramForm = ({
         <div className={styles.field}>
           <label className={styles.fieldLabel}>
             {COPY.programs.behaviorType}
-            <select
-              className={styles.select}
+            <Select
               value={values.behaviorType}
-              onChange={(event) =>
-                update(
-                  "behaviorType",
-                  event.target.value as Program["behavior_type"]
-                )
+              onValueChange={(value) =>
+                update("behaviorType", value as Program["behavior_type"])
               }
               disabled={busy || initial !== undefined}
             >
-              <option value="Recurring">
-                {COPY.programs.behaviorRecurring}
-              </option>
-              <option value="OneOff">{COPY.programs.behaviorOneOff}</option>
-            </select>
+              <SelectTrigger
+                className={styles.select}
+                aria-label={COPY.programs.behaviorType}
+              >
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="Recurring">
+                  {COPY.programs.behaviorRecurring}
+                </SelectItem>
+                <SelectItem value="OneOff">
+                  {COPY.programs.behaviorOneOff}
+                </SelectItem>
+              </SelectContent>
+            </Select>
           </label>
         </div>
         <div className={styles.field}>
           <label className={styles.fieldLabel}>
             {COPY.programs.programLifecycle}
-            <select
-              className={styles.select}
+            <Select
               value={values.lifecycle}
-              onChange={(event) =>
-                update("lifecycle", event.target.value as Program["lifecycle"])
+              onValueChange={(value) =>
+                update("lifecycle", value as Program["lifecycle"])
               }
               disabled={busy || initial?.lifecycle === "Archived"}
             >
-              {(!initial || initial.lifecycle === "Draft") && (
-                <option value="Draft">{COPY.programs.lifecycleDraft}</option>
-              )}
-              {(!initial ||
-                initial.lifecycle === "Draft" ||
-                initial.lifecycle === "Active") && (
-                <option
-                  value="Active"
-                  disabled={
-                    busy ||
-                    (initial === undefined
-                      ? !canActivate
-                      : initial.lifecycle !== "Active" && !canActivate)
-                  }
-                >
-                  {COPY.programs.lifecycleActive}
-                </option>
-              )}
-              {(initial?.lifecycle === "Active" ||
-                initial?.lifecycle === "Archived") && (
-                <option value="Archived">
-                  {COPY.programs.lifecycleArchived}
-                </option>
-              )}
-            </select>
+              <SelectTrigger
+                className={styles.select}
+                aria-label={COPY.programs.programLifecycle}
+              >
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {(!initial || initial.lifecycle === "Draft") && (
+                  <SelectItem value="Draft">
+                    {COPY.programs.lifecycleDraft}
+                  </SelectItem>
+                )}
+                {(!initial ||
+                  initial.lifecycle === "Draft" ||
+                  initial.lifecycle === "Active") && (
+                  <SelectItem
+                    value="Active"
+                    disabled={
+                      busy ||
+                      (initial === undefined
+                        ? !canActivate
+                        : initial.lifecycle !== "Active" && !canActivate)
+                    }
+                  >
+                    {COPY.programs.lifecycleActive}
+                  </SelectItem>
+                )}
+                {(initial?.lifecycle === "Active" ||
+                  initial?.lifecycle === "Archived") && (
+                  <SelectItem value="Archived">
+                    {COPY.programs.lifecycleArchived}
+                  </SelectItem>
+                )}
+              </SelectContent>
+            </Select>
           </label>
         </div>
         {initial === undefined && !canActivate && (
@@ -344,47 +396,55 @@ export const ProgramForm = ({
         <div className={styles.field}>
           <label className={styles.fieldLabel}>
             {COPY.programs.discoverabilityListed}
-            <select
-              className={styles.select}
+            <Select
               value={values.discoverability}
-              onChange={(event) =>
-                update(
-                  "discoverability",
-                  event.target.value as Program["discoverability"]
-                )
+              onValueChange={(value) =>
+                update("discoverability", value as Program["discoverability"])
               }
               disabled={busy}
             >
-              <option value="Unlisted">
-                {COPY.programs.discoverabilityUnlisted}
-              </option>
-              <option value="Listed">
-                {COPY.programs.discoverabilityListed}
-              </option>
-            </select>
+              <SelectTrigger
+                className={styles.select}
+                aria-label={COPY.programs.discoverabilityListed}
+              >
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="Unlisted">
+                  {COPY.programs.discoverabilityUnlisted}
+                </SelectItem>
+                <SelectItem value="Listed">
+                  {COPY.programs.discoverabilityListed}
+                </SelectItem>
+              </SelectContent>
+            </Select>
           </label>
         </div>
         <div className={styles.field}>
           <label className={styles.fieldLabel}>
             {COPY.programs.programEnrollmentMode}
-            <select
-              className={styles.select}
+            <Select
               value={values.enrollmentMode}
-              onChange={(event) =>
-                update(
-                  "enrollmentMode",
-                  event.target.value as Program["enrollment_mode"]
-                )
+              onValueChange={(value) =>
+                update("enrollmentMode", value as Program["enrollment_mode"])
               }
               disabled={busy}
             >
-              <option value="MemberRequest">
-                {COPY.programs.enrollmentModeMemberRequest}
-              </option>
-              <option value="ManagerOnly">
-                {COPY.programs.enrollmentModeManagerOnly}
-              </option>
-            </select>
+              <SelectTrigger
+                className={styles.select}
+                aria-label={COPY.programs.programEnrollmentMode}
+              >
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="MemberRequest">
+                  {COPY.programs.enrollmentModeMemberRequest}
+                </SelectItem>
+                <SelectItem value="ManagerOnly">
+                  {COPY.programs.enrollmentModeManagerOnly}
+                </SelectItem>
+              </SelectContent>
+            </Select>
           </label>
         </div>
         <div className={styles.workspaceActions}>

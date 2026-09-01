@@ -664,12 +664,14 @@ async function programsFetch<T>(
 
 /** POST /api/v1/programs/:programId/enrollment-requests */
 export function submitEnrollmentRequest(
-  programId: string
+  programId: string,
+  idempotencyKey?: string
 ): Promise<{ request: EnrollmentRequest }> {
   return programsFetch(
     `/api/v1/programs/${programId}/enrollment-requests`,
     "POST",
-    {}
+    {},
+    { idempotencyKey }
   );
 }
 /** GET /api/v1/programs/:programId/enrollment-requests */
@@ -717,12 +719,14 @@ export function decideEnrollmentRequest(
 /** POST /api/v1/programs/:programId/enrollment-requests/:requestId/withdraw */
 export function withdrawEnrollmentRequest(
   programId: string,
-  requestId: string
+  requestId: string,
+  idempotencyKey?: string
 ): Promise<{ request: EnrollmentRequest }> {
   return programsFetch(
     `/api/v1/programs/${programId}/enrollment-requests/${requestId}/withdraw`,
     "POST",
-    {}
+    {},
+    { idempotencyKey }
   );
 }
 
@@ -743,15 +747,16 @@ export function listEnrollments(
   return programsFetch(`/api/v1/programs/${programId}/enrollments`, "GET");
 }
 
-/** POST /api/v1/programs/:programId/enrollments/:enrollmentId/cancel */
 export function cancelEnrollment(
   programId: string,
-  enrollmentId: string
+  enrollmentId: string,
+  idempotencyKey?: string
 ): Promise<{ enrollment: Enrollment }> {
   return programsFetch(
     `/api/v1/programs/${programId}/enrollments/${enrollmentId}/cancel`,
     "POST",
-    {}
+    {},
+    { idempotencyKey }
   );
 }
 

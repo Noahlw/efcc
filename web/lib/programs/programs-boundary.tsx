@@ -25,7 +25,11 @@ import type {
 import { rememberDeepLink } from "@/lib/session";
 
 import { ManagementDirectory } from "./management-directory";
-import { ParticipantDirectory } from "./participant-directory";
+import {
+  ParticipantDirectory,
+  clearParticipantProgramFocus,
+  rememberParticipantProgramFocus,
+} from "./participant-directory";
 import { ParticipantEventDetailPage } from "./participant-event-detail-page";
 import { ParticipantProgramDetail } from "./participant-program-detail";
 import { ProgramWorkspace } from "./program-workspace";
@@ -39,8 +43,7 @@ import type {
 import { ProgramsNotifications } from "./programs-notifications";
 import type { ManagementNotificationState } from "./programs-notifications";
 import { useAsyncResource } from "./use-async-resource";
-
-import styles from "@/app/programs/programs.module.css";
+import { WorkspaceRouteProvider } from "./workspace-context";
 
 type ManagementAttentionState =
   | { kind: "loading" }
@@ -71,7 +74,8 @@ function applyProgramsNavigation(
   if (
     !replace &&
     typeof window !== "undefined" &&
-    href === `${window.location.pathname}${window.location.search}`
+    href ===
+      `${window.location.pathname}${window.location.search}${window.location.hash}`
   ) {
     // Rapid double-click/duplicate-call to the exact current URL --
     // skip the push so it does not leave a duplicate history entry.
@@ -91,8 +95,10 @@ function applyProgramsNavigation(
   }
   setSearch(href.slice("/programs".length));
 }
-
-function participantOriginHref(origin: ProgramsOrigin | undefined): string {
+function participantOriginHref(
+  origin: ProgramsOrigin | undefined,
+  hash: string | null | undefined
+): string {
   switch (origin) {
     case "home": {
       return "/home";
@@ -104,11 +110,10 @@ function participantOriginHref(origin: ProgramsOrigin | undefined): string {
       return "/messages";
     }
     default: {
-      return "/programs";
+      return `/programs${hash ?? ""}`;
     }
   }
 }
-
 const TASK_LABEL_BY_TASK: Record<ProgramsTask, string> = {
   events: COPY.programs.workspaceTaskEvents,
   participants: COPY.programs.workspaceTaskParticipants,
@@ -160,6 +165,7 @@ async function markNotificationsRead(
         ? errorCopyFor(code, error.problem.detail)
         : COPY.error.networkError
     );
+    throw error;
   }
 }
 
@@ -191,10 +197,19 @@ const StatePanel = ({
 }: StatePanelProps) => {
   const content = (
     <>
-      {title && <h2 className={styles.boundaryTitle}>{title}</h2>}
-      <p>{message}</p>
+      {title && (
+        <h2 className="m-0 mb-2 min-w-0 wrap-anywhere text-[1.35rem] font-extrabold tracking-[-0.02em] text-[var(--ink)]">
+          {title}
+        </h2>
+      )}
+      <p className="m-0 mb-4 min-w-0 wrap-anywhere leading-[1.6]">{message}</p>
       {actionLabel && onAction && (
-        <Button className={styles.retry} type="button" onClick={onAction}>
+        <Button
+          variant="outline"
+          className="min-h-11 h-auto rounded-[var(--radius-sm)] border-[var(--accent)] bg-transparent px-[1.125rem] py-[0.5625rem] text-base font-bold text-[var(--accent)] hover:bg-[var(--accent)] hover:text-[var(--surface-raised)] focus-visible:ring-3 focus-visible:ring-[var(--focus)]"
+          type="button"
+          onClick={onAction}
+        >
           {actionLabel}
         </Button>
       )}
@@ -205,7 +220,7 @@ const StatePanel = ({
       <output
         id={id}
         tabIndex={id ? -1 : undefined}
-        className={styles.boundaryState}
+        className="block max-w-[60ch] min-w-0 rounded-[var(--radius-sm)] border border-[var(--line)] bg-[var(--surface)] p-4 text-[var(--ink)] [overflow-wrap:anywhere]"
         aria-busy="true"
       >
         <Skeleton className="mb-3 h-4 w-2/3" aria-hidden="true" />
@@ -217,7 +232,7 @@ const StatePanel = ({
     <Alert
       id={id}
       tabIndex={id ? -1 : undefined}
-      className={styles.boundaryError}
+      className="max-w-[60ch] rounded-[var(--radius-sm)] border-[var(--error-border)] bg-[var(--error-surface)] p-4 text-[var(--ink)] [overflow-wrap:anywhere]"
       variant="destructive"
     >
       {content}
@@ -230,24 +245,27 @@ const BoundaryFrame = ({
   intent,
   onModeChange,
   showModeTabs,
+  detailReady,
 }: {
   children: React.ReactNode;
   intent: ProgramsIntent;
   onModeChange: (mode: "participant" | "management") => void;
   showModeTabs: boolean;
+  detailReady: boolean;
 }) => {
   // A selected participant program/event renders its own heading and back
-  // action (ParticipantProgramDetail / ParticipantEventDetailPage). Showing
-  // the catalog's own <h1>課程</h1> + lead above it wastes ~110px and
-  // demotes the real title to <h2> — impeccable critique #391 (T4A/T5A/T7A).
+  // action once access is ready. Keep the boundary heading while access is
+  // loading or unavailable so every fallback still has a page-level heading.
   const showCatalogHeader = !(
-    intent.mode === "participant" && intent.programId
+    intent.mode === "participant" &&
+    intent.programId &&
+    detailReady
   );
 
   if (!showCatalogHeader) {
     return (
-      <section className={styles.boundary}>
-        <div id="programs-mode-panel" className={styles.boundaryPanel}>
+      <section className="w-full max-w-[760px] min-w-0 rounded-[var(--radius-md)] border border-[var(--line)] bg-[var(--surface-raised)] p-[clamp(1.25rem,3vw,2rem)]">
+        <div id="programs-mode-panel" className="min-h-0 pt-6">
           {children}
         </div>
       </section>
@@ -255,12 +273,20 @@ const BoundaryFrame = ({
   }
 
   return (
-    <section className={styles.boundary} aria-labelledby="programs-title">
-      <header className={styles.boundaryHeader}>
-        <h1 id="programs-title" className={styles.cardTitle}>
+    <section
+      className="w-full max-w-[760px] min-w-0 rounded-[var(--radius-md)] border border-[var(--line)] bg-[var(--surface-raised)] p-[clamp(1.25rem,3vw,2rem)]"
+      aria-labelledby="programs-title"
+    >
+      <header className="border-b border-[var(--line)] pb-5">
+        <h1
+          id="programs-title"
+          className="m-0 mb-2 min-w-0 wrap-anywhere text-[1.35rem] font-extrabold tracking-[-0.02em] text-[var(--ink)]"
+        >
           {COPY.programs.pageTitle}
         </h1>
-        <p className={styles.cardLead}>{COPY.programs.entryLead}</p>
+        <p className="m-0 mb-5 max-w-[65ch] wrap-anywhere text-[var(--ink-muted)] leading-[1.6]">
+          {COPY.programs.entryLead}
+        </p>
         {showModeTabs && (
           <Tabs
             value={intent.mode}
@@ -269,13 +295,13 @@ const BoundaryFrame = ({
             }
           >
             <TabsList
-              className={styles.modeSwitch}
+              className="mt-5 w-fit gap-2 rounded-[var(--radius-sm)] border border-[var(--line)] bg-[var(--surface)] p-1"
               variant="line"
               aria-label={COPY.programs.modeLabel}
             >
               <TabsTrigger
                 id="programs-participant-tab"
-                className={styles.modeButton}
+                className="h-auto min-h-11 rounded-[var(--radius-sm)] border-0 px-4 py-2 font-bold whitespace-normal wrap-anywhere text-[var(--ink-muted)] hover:bg-[var(--surface-raised)] hover:text-[var(--ink)] focus-visible:ring-2 focus-visible:ring-[var(--focus)] aria-selected:bg-[var(--accent)] aria-selected:text-[var(--surface-raised)] data-[state=active]:bg-[var(--accent)] data-[state=active]:text-[var(--surface-raised)]"
                 value="participant"
                 aria-controls="programs-mode-panel"
               >
@@ -284,7 +310,7 @@ const BoundaryFrame = ({
               {intent.mode === "management" && (
                 <TabsTrigger
                   id="programs-management-tab"
-                  className={styles.modeButton}
+                  className="h-auto min-h-11 rounded-[var(--radius-sm)] border-0 px-4 py-2 font-bold whitespace-normal wrap-anywhere text-[var(--ink-muted)] hover:bg-[var(--surface-raised)] hover:text-[var(--ink)] focus-visible:ring-2 focus-visible:ring-[var(--focus)] aria-selected:bg-[var(--accent)] aria-selected:text-[var(--surface-raised)] data-[state=active]:bg-[var(--accent)] data-[state=active]:text-[var(--surface-raised)]"
                   value="management"
                   aria-controls="programs-mode-panel"
                 >
@@ -297,7 +323,7 @@ const BoundaryFrame = ({
       </header>
       <div
         id="programs-mode-panel"
-        className={styles.boundaryPanel}
+        className="min-h-0 pt-6"
         role={showModeTabs ? "tabpanel" : "region"}
         aria-labelledby={
           showModeTabs
@@ -322,6 +348,9 @@ const ManagementPanel = ({
   onTaskChange,
   onEventChange,
   onBackDirectory,
+  directoryQuery,
+  onDirectoryQueryChange,
+  directoryFocusProgramId,
 }: {
   projection: ProgramsManagementAccess;
   intent: ProgramsIntent;
@@ -331,6 +360,9 @@ const ManagementPanel = ({
   onTaskChange: (task: ProgramsTask | null, eventId?: string | null) => void;
   onEventChange: (eventId: string | null) => void;
   onBackDirectory: () => void;
+  directoryQuery: string;
+  onDirectoryQueryChange: (query: string) => void;
+  directoryFocusProgramId: string | null;
 }) => {
   const router = useRouter();
   const [attentionRefreshKey, setAttentionRefreshKey] = useState(0);
@@ -442,9 +474,8 @@ const ManagementPanel = ({
       onRetry={retryNotifications}
       onOpen={refreshNotifications}
       onMarkRead={markNotificationsRead}
-      onViewAll={() => {
-        onTaskChange("notifications");
-      }}
+      departmentId={intent.departmentId}
+      hash={intent.hash}
       full={intent.task === "notifications"}
     />
   );
@@ -464,45 +495,59 @@ const ManagementPanel = ({
 
   return (
     <>
-      <div className={styles.managementHeaderRow}>
-        <div>
-          <h2 className={styles.boundaryTitle}>
+      <div className="flex min-w-0 items-start justify-between gap-4 max-[799px]:flex-col">
+        <div className="min-w-0">
+          <h2 className="m-0 mb-2 min-w-0 wrap-anywhere text-[1.35rem] font-extrabold tracking-[-0.02em] text-[var(--ink)]">
             {COPY.programs.managementMode}
           </h2>
-          <p className={styles.boundaryLead}>{COPY.programs.managementLead}</p>
+          <p className="m-0 max-w-[65ch] wrap-anywhere text-[var(--ink-muted)] leading-[1.6]">
+            {COPY.programs.managementLead}
+          </p>
         </div>
         {intent.task !== "notifications" && notificationSurface}
       </div>
-      <output className={styles.boundaryStatus}>
+      <output className="m-0 mb-5 block wrap-anywhere font-bold text-[var(--success)]">
         {COPY.programs.managementScopeReady}
       </output>
-      <p className={styles.boundaryHint}>
+      <p className="m-[-0.5rem] mb-5 max-w-[60ch] wrap-anywhere text-[var(--ink-muted)] leading-[1.6]">
         {COPY.programs.managementBoundaryHint}
       </p>
       {intent.task === "notifications" && notificationSurface}
       <Button
-        className={styles.secondaryButton}
+        variant="outline"
+        className="h-auto min-h-11 w-fit rounded-[var(--radius-sm)] border-[var(--line-strong)] bg-[var(--surface-raised)] px-3 py-2 text-[var(--ink)] whitespace-normal wrap-anywhere hover:bg-[var(--surface)] focus-visible:ring-3 focus-visible:ring-[var(--focus)]"
         type="button"
         onClick={onParticipant}
       >
         {COPY.programs.enterParticipant}
       </Button>
       {intent.task === "notifications" ? null : intent.programId ? (
-        <ProgramWorkspace
-          key={intent.programId}
-          programId={intent.programId}
-          task={intent.task}
-          eventId={intent.eventId ?? null}
-          created={intent.created}
-          attention={attention}
-          onAttentionRefresh={refreshAttention}
-          onBack={onBackDirectory}
-          onTaskChange={onTaskChange}
-          onEventChange={onEventChange}
-        />
+        <WorkspaceRouteProvider
+          value={{
+            departmentId: intent.departmentId ?? null,
+            hash: intent.hash,
+          }}
+        >
+          <ProgramWorkspace
+            key={intent.programId}
+            programId={intent.programId}
+            task={intent.task}
+            eventId={intent.eventId ?? null}
+            created={intent.created}
+            attention={attention}
+            onAttentionRefresh={refreshAttention}
+            onBack={onBackDirectory}
+            onTaskChange={onTaskChange}
+            onEventChange={onEventChange}
+          />
+        </WorkspaceRouteProvider>
       ) : (
         <ManagementDirectory
           departmentId={intent.departmentId}
+          hash={intent.hash}
+          query={directoryQuery}
+          onQueryChange={onDirectoryQueryChange}
+          focusProgramId={directoryFocusProgramId}
           onOpenProgram={onOpenProgram}
         />
       )}
@@ -524,7 +569,13 @@ const ProgramsBoundaryBody = ({
   navigateManagementEvent,
   navigateParticipantEvent,
   navigateParticipantBack,
-  openProgram,
+  navigateParticipantEventBack,
+  directoryQuery,
+  onDirectoryQueryChange,
+  directoryFocusProgramId,
+  participantFocusProgramId,
+  onParticipantProgramOpen,
+  onParticipantProgramFocus,
 }: {
   access: AccessState;
   intent: ProgramsIntent;
@@ -534,7 +585,8 @@ const ProgramsBoundaryBody = ({
     mode: "participant" | "management",
     replace?: boolean,
     programId?: string | null,
-    hash?: string | null
+    hash?: string | null,
+    departmentId?: string | null
   ) => void;
   openManagementProgram: (programId: string, created?: boolean) => void;
   navigateManagementTask: (
@@ -544,7 +596,13 @@ const ProgramsBoundaryBody = ({
   navigateManagementEvent: (eventId: string | null) => void;
   navigateParticipantEvent: (eventId: string | null) => void;
   navigateParticipantBack: () => void;
-  openProgram: (programId: string) => void;
+  navigateParticipantEventBack: () => void;
+  directoryQuery: string;
+  onDirectoryQueryChange: (query: string) => void;
+  directoryFocusProgramId: string | null;
+  participantFocusProgramId: string | null;
+  onParticipantProgramOpen: (programId: string) => void;
+  onParticipantProgramFocus: () => void;
 }) => (
   <>
     {access.kind === "loading" && (
@@ -596,13 +654,24 @@ const ProgramsBoundaryBody = ({
     {access.kind === "ready" && intent.mode === "management" && (
       <ManagementPanel
         projection={access.projection}
+        directoryQuery={directoryQuery}
+        onDirectoryQueryChange={onDirectoryQueryChange}
+        directoryFocusProgramId={directoryFocusProgramId}
         intent={intent}
         onParticipant={() => navigateMode("participant")}
         onRecoverParticipant={() => navigateMode("participant", true)}
         onOpenProgram={openManagementProgram}
         onTaskChange={navigateManagementTask}
         onEventChange={navigateManagementEvent}
-        onBackDirectory={() => navigateMode("management", true, null)}
+        onBackDirectory={() =>
+          navigateMode(
+            "management",
+            true,
+            null,
+            intent.hash,
+            intent.departmentId
+          )
+        }
       />
     )}
     {access.kind === "ready" &&
@@ -612,22 +681,54 @@ const ProgramsBoundaryBody = ({
           programId={intent.programId}
           eventId={intent.eventId}
           origin={intent.origin}
+          hash={intent.hash}
+          onBack={navigateParticipantEventBack}
         />
       ) : intent.programId ? (
         <ParticipantProgramDetail
           programId={intent.programId}
-          canManage={access.projection.hasManagementCapability}
-          onManagement={() => navigateMode("management")}
+          backHref={participantOriginHref(intent.origin, intent.hash)}
           onBack={navigateParticipantBack}
+          eventHref={(eventId) =>
+            buildProgramsHref({
+              mode: "participant",
+              programId: intent.programId,
+              eventId,
+              hash: intent.hash,
+              origin: intent.origin ?? "programs",
+            })
+          }
+          managementHref={buildProgramsHref({
+            mode: "management",
+            programId: intent.programId ?? null,
+            departmentId: intent.departmentId,
+            hash: intent.hash,
+          })}
+          canManage={access.projection.hasManagementCapability}
           onOpenEvent={navigateParticipantEvent}
         />
       ) : (
         <ParticipantDirectory
           programId={null}
           canManage={access.projection.hasManagementCapability}
-          onManagement={() => navigateMode("management")}
-          onHome={onHome}
-          onOpenProgram={openProgram}
+          managementHref={buildProgramsHref({
+            mode: "management",
+            programId: intent.programId ?? null,
+            departmentId: intent.departmentId,
+            hash: intent.hash,
+          })}
+          programHref={(programId) =>
+            buildProgramsHref({
+              mode: "participant",
+              programId,
+              hash: intent.hash,
+              origin: "programs",
+            })
+          }
+          onOpenProgram={onParticipantProgramOpen}
+          focusProgramId={participantFocusProgramId}
+          onFocusProgram={onParticipantProgramFocus}
+          homeHref="/home"
         />
       ))}
   </>
@@ -641,6 +742,25 @@ export const ProgramsBoundary = () => {
   const routeKey = `${pathname}?${routeQuery}${routeHash}`;
   const [search, setSearch] = useState("");
   const [locationReady, setLocationReady] = useState(false);
+  const [managementDirectoryQuery, setManagementDirectoryQuery] = useState("");
+  const [directoryFocusProgramId, setDirectoryFocusProgramId] = useState<
+    string | null
+  >(null);
+  const participantFocusProgramId = useRef<string | null>(null);
+  useEffect(() => {
+    return () => {
+      if (
+        typeof window !== "undefined" &&
+        window.location.pathname !== "/programs"
+      ) {
+        clearParticipantProgramFocus();
+      }
+    };
+  }, []);
+  const updateManagementDirectoryQuery = (query: string) => {
+    setManagementDirectoryQuery(query);
+    setDirectoryFocusProgramId(null);
+  };
   const previousMode = useRef<ProgramsIntent["mode"] | null>(null);
   const focusMode = useRef<ProgramsIntent["mode"] | null>(null);
   const retryFocusPending = useRef(false);
@@ -737,11 +857,13 @@ export const ProgramsBoundary = () => {
     mode: "participant" | "management",
     replace = false,
     programId = intent.programId,
-    hash = intent.hash
+    hash = intent.hash,
+    departmentId: string | null | undefined = intent.departmentId
   ) => {
     const href = buildProgramsHref({
       mode,
       programId,
+      departmentId: mode === "management" ? departmentId : undefined,
       hash,
     });
     focusMode.current = mode;
@@ -752,18 +874,12 @@ export const ProgramsBoundary = () => {
         : COPY.programs.participantMode
     );
   };
-  const navigateParticipantBack = () => {
-    const href = participantOriginHref(intent.origin);
-    if (href === "/programs") {
-      navigateMode("participant", true, null);
-      return;
-    }
-    router.replace(href);
-  };
   const openManagementProgram = (programId: string, created?: boolean) => {
+    setDirectoryFocusProgramId(programId);
     const href = buildProgramsHref({
       mode: "management",
       programId,
+      departmentId: intent.departmentId,
       created,
       hash: intent.hash,
     });
@@ -780,6 +896,7 @@ export const ProgramsBoundary = () => {
     const href = buildProgramsHref({
       mode: "management",
       programId: task === "notifications" ? null : intent.programId,
+      departmentId: intent.departmentId,
       task,
       eventId,
       created: undefined,
@@ -802,6 +919,7 @@ export const ProgramsBoundary = () => {
     const href = buildProgramsHref({
       mode: "management",
       programId: intent.programId,
+      departmentId: intent.departmentId,
       task: "events",
       eventId,
       hash: intent.hash,
@@ -834,17 +952,39 @@ export const ProgramsBoundary = () => {
         : COPY.programs.eventDetailTitle
     );
   };
-  // PUI-02: row selection hands off through the canonical opaque Program
-  // intent URL — the directory never renders the nested manager.
-  const openProgram = (programId: string) => {
-    const href = buildProgramsHref({
-      mode: "participant",
-      programId,
-      hash: intent.hash,
-      origin: "programs",
-    });
-    applyProgramsNavigation(router, setSearch, href);
-    announce(COPY.programs.programSelected);
+  const navigateParticipantBack = () => {
+    const href = participantOriginHref(intent.origin, intent.hash);
+    if (intent.origin === undefined || intent.origin === "programs") {
+      if (intent.programId) {
+        rememberParticipantProgramFocus(intent.programId);
+      }
+      applyProgramsNavigation(router, setSearch, href, true, {
+        efccSection: "programs",
+      });
+      return;
+    }
+    router.replace(href);
+  };
+  const navigateParticipantEventBack = () => {
+    if (!intent.programId) {
+      return;
+    }
+    if (intent.origin === undefined || intent.origin === "programs") {
+      applyProgramsNavigation(
+        router,
+        setSearch,
+        buildProgramsHref({
+          mode: "participant",
+          programId: intent.programId,
+          origin: intent.origin ?? "programs",
+          hash: intent.hash,
+        }),
+        true,
+        { efccSection: "programs" }
+      );
+      return;
+    }
+    router.replace(participantOriginHref(intent.origin, intent.hash));
   };
   useEffect(() => {
     const mode = resolveFocusMode(
@@ -880,6 +1020,7 @@ export const ProgramsBoundary = () => {
         intent={intent}
         onModeChange={navigateMode}
         showModeTabs={false}
+        detailReady={false}
       >
         <StatePanel
           id="programs-access-state"
@@ -887,7 +1028,7 @@ export const ProgramsBoundary = () => {
           title={COPY.programs.malformedIntent}
           message={COPY.programs.malformedIntentHint}
           actionLabel={COPY.programs.backToEntry}
-          onAction={() => navigateMode("participant", true)}
+          onAction={() => navigateMode("participant", true, null)}
         />
       </BoundaryFrame>
     );
@@ -898,6 +1039,7 @@ export const ProgramsBoundary = () => {
       intent={intent}
       onModeChange={navigateMode}
       showModeTabs={showModeTabs}
+      detailReady={access.kind === "ready"}
     >
       <ProgramsBoundaryBody
         access={access}
@@ -910,7 +1052,17 @@ export const ProgramsBoundary = () => {
         navigateManagementEvent={navigateManagementEvent}
         navigateParticipantEvent={navigateParticipantEvent}
         navigateParticipantBack={navigateParticipantBack}
-        openProgram={openProgram}
+        navigateParticipantEventBack={navigateParticipantEventBack}
+        directoryQuery={managementDirectoryQuery}
+        onDirectoryQueryChange={updateManagementDirectoryQuery}
+        directoryFocusProgramId={directoryFocusProgramId}
+        participantFocusProgramId={participantFocusProgramId.current}
+        onParticipantProgramOpen={(programId) => {
+          participantFocusProgramId.current = programId;
+        }}
+        onParticipantProgramFocus={() => {
+          participantFocusProgramId.current = null;
+        }}
       />
     </BoundaryFrame>
   );

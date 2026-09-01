@@ -96,6 +96,27 @@ function parseProgramIntent(
   };
 }
 
+function parseDepartmentIntent(
+  rawDepartment: { value: string | null; duplicate: boolean },
+  mode: ProgramsMode
+): {
+  id: string | null;
+  malformed: boolean;
+  supplied: string | null;
+  duplicate: boolean;
+} {
+  const parsed = parseProgramIntent(rawDepartment, {
+    value: null,
+    duplicate: false,
+  });
+  return {
+    ...parsed,
+    malformed:
+      parsed.malformed ||
+      (mode !== "management" && rawDepartment.value !== null),
+  };
+}
+
 function parseHash(rawHash: string | null): {
   value: string | null;
   malformed: boolean;
@@ -246,10 +267,7 @@ export function parseProgramsIntent(search: string): ProgramsIntent {
   const mode: ProgramsMode =
     rawMode.value === "management" ? "management" : "participant";
   const program = parseProgramIntent(rawProgram, rawProgramId);
-  const department = parseProgramIntent(rawDepartment, {
-    value: null,
-    duplicate: false,
-  });
+  const department = parseDepartmentIntent(rawDepartment, mode);
   const hash = parseHash(rawHash);
   const origin = parseOrigin(rawFrom, mode, program.id);
   const task = parseTask(rawTask.value, mode, program.id);
@@ -272,7 +290,9 @@ export function parseProgramsIntent(search: string): ProgramsIntent {
     origin.value === undefined ? {} : { origin: origin.value };
 
   const departmentField =
-    department.id === null ? {} : { departmentId: department.id };
+    mode === "management" && department.id !== null
+      ? { departmentId: department.id }
+      : {};
   if (task.value !== undefined && !malformed) {
     return {
       mode,
@@ -396,7 +416,11 @@ export function buildProgramsHref({
   if (mode === "management") {
     params.set("mode", "management");
   }
-  if (departmentId && SAFE_PROGRAM_ID.test(departmentId)) {
+  if (
+    mode === "management" &&
+    departmentId &&
+    SAFE_PROGRAM_ID.test(departmentId)
+  ) {
     params.set("department", departmentId);
   }
   appendCreated(params, mode, programId, created);

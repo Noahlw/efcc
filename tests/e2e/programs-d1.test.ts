@@ -273,6 +273,18 @@ const COPY = {
   eventTypeTraining: "訓練",
   recurrenceTag: "重複標記",
   recurrenceNone: "無",
+  rescheduleEvent: "改期",
+  confirmReschedule: "確認改期",
+  rescheduleStart: "改期開始時間",
+  rescheduleEnd: "改期結束時間",
+  cancelOccurrence: "取消該次",
+  cancelOccurrenceConfirm: "確定取消這次聚會嗎？之後可以恢復。",
+  confirmCancelOccurrence: "確定取消該次",
+  keepOccurrence: "保留該次",
+  restoreOccurrence: "恢復該次",
+  exceptionUpdatedNotice: "已更新例外。",
+  exceptionRemovedNotice: "已移除例外。",
+  eventRescheduledBadge: "已改期至 {time}",
   repeatInformational: "「重複標記」只作顯示參考，不會自動生成其他聚會。",
   cancelBlockedWithAttendance:
     "此聚會已有出席記錄，不能取消；如需更正請使用出席名單的作廢功能。",
@@ -430,6 +442,15 @@ async function loginAs(
   ).toBeVisible();
 }
 
+async function chooseSelectOption(
+  page: Page,
+  label: string,
+  option: string,
+  scope: Page | Locator = page
+): Promise<void> {
+  await scope.getByRole("combobox", { name: label }).click();
+  await page.getByRole("option", { name: option, exact: true }).click();
+}
 /**
  * The eligible action is 報名 (enroll); after a withdrawn/cancelled/rejected
  * history it becomes 重新報名 (reEnroll). Shared member-flow helpers must
@@ -563,7 +584,7 @@ test.describe("PUI-01 Programs boundary", () => {
       hasManagement,
       "admin fixture must expose projected management capability"
     ).toBe(true);
-    const managementButton = page.getByRole("button", {
+    const managementButton = page.getByRole("link", {
       name: COPY.enterManagement,
     });
     await expect(managementButton).toBeVisible();
@@ -600,7 +621,7 @@ test.describe("PUI-01 Programs boundary", () => {
       page.getByRole("heading", { name: COPY.pageTitle })
     ).toBeVisible();
     const hasManagement = await hasProjectedManagementCapability(page);
-    const managementButton = page.getByRole("button", {
+    const managementButton = page.getByRole("link", {
       name: COPY.enterManagement,
     });
     await expect(managementButton).toHaveCount(hasManagement ? 1 : 0);
@@ -631,7 +652,7 @@ test.describe("PUI-01 Programs boundary", () => {
     // detail is showing -- the child <article> is the region landmark now.
     const panel = page.locator("#programs-mode-panel");
 
-    await page.getByRole("button", { name: COPY.enterManagement }).click();
+    await page.getByRole("link", { name: COPY.enterManagement }).click();
     await expect(page).toHaveURL(
       new RegExp(
         `/programs\\?mode=management&program=${programId}#overview$`,
@@ -740,21 +761,21 @@ test.describe("PUI-02 participant Programs directory", () => {
     );
 
     await expect(
-      page.getByRole("button", { name: /E2E_DEMO_成人查經/u })
+      page.getByRole("link", { name: /E2E_DEMO_成人查經/u })
     ).toBeVisible();
     await expect(
-      page.getByRole("button", { name: /E2E_DEMO_青年團契/u })
+      page.getByRole("link", { name: /E2E_DEMO_青年團契/u })
     ).toBeVisible();
     await expect(
-      page.getByRole("button", { name: /E2E_DEMO_管理安排/u })
+      page.getByRole("link", { name: /E2E_DEMO_管理安排/u })
     ).toBeVisible();
     await expect(
-      page.getByRole("button", {
+      page.getByRole("link", {
         name: new RegExp(COPY.statusManagerOnly, "u"),
       })
     ).toBeVisible();
     await expect(
-      page.getByRole("button", { name: /E2E_DEMO_社區關懷/u })
+      page.getByRole("link", { name: /E2E_DEMO_社區關懷/u })
     ).toHaveCount(0);
 
     const ids = await catalogProgramIds(page, "E2E_DEMO_社區關懷");
@@ -786,13 +807,11 @@ test.describe("PUI-02 participant Programs directory", () => {
     await expect(
       page.getByRole("heading", { name: COPY.catalogForbidden })
     ).toBeVisible();
-    await expect(
-      page.getByRole("button", { name: COPY.backHome })
-    ).toBeVisible();
+    await expect(page.getByRole("link", { name: COPY.backHome })).toBeVisible();
     await expect(
       page.getByRole("button", { name: COPY.catalogRetry })
     ).toHaveCount(0);
-    await page.getByRole("button", { name: COPY.backHome }).click();
+    await page.getByRole("link", { name: COPY.backHome }).click();
     await expect(page).toHaveURL(/\/home$/u);
   });
 
@@ -830,7 +849,7 @@ test.describe("PUI-02 participant Programs directory", () => {
     });
     await page.goto("/programs");
 
-    const card = page.getByRole("button", { name: /超長課程名稱/u });
+    const card = page.getByRole("link", { name: /超長課程名稱/u });
     await expect(card).toBeVisible();
     await expect(
       page.getByRole("searchbox", { name: COPY.catalogSearchLabel })
@@ -853,26 +872,16 @@ test.describe("PUI-02 participant Programs directory", () => {
       await page.setViewportSize({ width, height });
       const geometry = await page.evaluate(() => {
         const outlet = document.querySelector<HTMLElement>("#shell-content");
-        const card = document.querySelector<HTMLElement>(
-          'button[class*="participantDirectoryCard"]'
-        );
-        const body = card?.querySelector<HTMLElement>(
-          '[class*="directoryCardBody"]'
-        );
-        const title = card?.querySelector<HTMLElement>(
-          '[class*="directoryCardTitle"]'
-        );
-        const secondary = card?.querySelector<HTMLElement>(
-          '[class*="directoryCardSecondary"]'
-        );
-        const chevron = card?.querySelector<SVGElement>(
-          '[class*="directoryChevron"]'
-        );
+        const card = document.querySelector<HTMLElement>("[data-program-row]");
+        const body = document.body;
+        const title = card?.querySelector<HTMLElement>("[data-program-name]");
+        const secondary = title?.nextElementSibling as HTMLElement | null;
+        const chevron = card?.querySelector<SVGElement>("svg");
         const search = document.querySelector<HTMLElement>(
           "#programs-catalog-search"
         );
         const filters = document.querySelector<HTMLElement>(
-          '[class*="directoryFilters"]'
+          '[role="group"][aria-label="課程篩選"]'
         );
         if (
           !outlet ||
@@ -941,10 +950,10 @@ test.describe("PUI-02 participant Programs directory", () => {
     expect(hasManagement).toBe(true);
 
     await expect(
-      page.getByRole("button", { name: /E2E_DEMO_成人查經/u })
+      page.getByRole("link", { name: /E2E_DEMO_成人查經/u })
     ).toBeVisible();
     await expect(
-      page.getByRole("button", { name: /E2E_DEMO_社區關懷/u })
+      page.getByRole("link", { name: /E2E_DEMO_社區關懷/u })
     ).toBeVisible();
   });
 
@@ -1043,13 +1052,13 @@ test.describe("PUI-02 participant Programs directory", () => {
       await expect(eligiblePill).toHaveAttribute("aria-pressed", "true");
       await expect(allPill).toHaveAttribute("aria-pressed", "false");
       await expect(
-        memberPage.getByRole("button", { name: /E2E_DEMO_成人查經/u })
+        memberPage.getByRole("link", { name: /E2E_DEMO_成人查經/u })
       ).toBeVisible();
       await expect(
-        memberPage.getByRole("button", { name: /E2E_DEMO_青年團契/u })
+        memberPage.getByRole("link", { name: /E2E_DEMO_青年團契/u })
       ).toBeVisible();
       await expect(
-        memberPage.getByRole("button", { name: /E2E_DEMO_管理安排/u })
+        memberPage.getByRole("link", { name: /E2E_DEMO_管理安排/u })
       ).toHaveCount(0);
 
       // Filter: 待審批 — submit a real enrollment request, then the pill
@@ -1069,10 +1078,10 @@ test.describe("PUI-02 participant Programs directory", () => {
       await pendingPill.click();
       await expect(pendingPill).toHaveAttribute("aria-pressed", "true");
       await expect(
-        memberPage.getByRole("button", { name: /E2E_DEMO_青年團契/u })
+        memberPage.getByRole("link", { name: /E2E_DEMO_青年團契/u })
       ).toBeVisible();
       await expect(
-        memberPage.getByRole("button", { name: /E2E_DEMO_成人查經/u })
+        memberPage.getByRole("link", { name: /E2E_DEMO_成人查經/u })
       ).toHaveCount(0);
 
       // Filter: 已參加 — the admin approves the fresh request; the member's
@@ -1096,51 +1105,36 @@ test.describe("PUI-02 participant Programs directory", () => {
       await activePill.click();
       await expect(activePill).toHaveAttribute("aria-pressed", "true");
       await expect(
-        memberPage.getByRole("button", { name: /E2E_DEMO_青年團契/u })
+        memberPage.getByRole("link", { name: /E2E_DEMO_青年團契/u })
       ).toBeVisible();
       await expect(
-        memberPage.getByRole("button", { name: /E2E_DEMO_成人查經/u })
+        memberPage.getByRole("link", { name: /E2E_DEMO_成人查經/u })
       ).toHaveCount(0);
 
       // Filter: 全部 restores every listed row, including the ManagerOnly one.
       await allPill.click();
       await expect(allPill).toHaveAttribute("aria-pressed", "true");
       await expect(
-        memberPage.getByRole("button", { name: /E2E_DEMO_成人查經/u })
+        memberPage.getByRole("link", { name: /E2E_DEMO_成人查經/u })
       ).toBeVisible();
       await expect(
-        memberPage.getByRole("button", { name: /E2E_DEMO_青年團契/u })
+        memberPage.getByRole("link", { name: /E2E_DEMO_青年團契/u })
       ).toBeVisible();
       await expect(
-        memberPage.getByRole("button", { name: /E2E_DEMO_管理安排/u })
+        memberPage.getByRole("link", { name: /E2E_DEMO_管理安排/u })
       ).toBeVisible();
     } finally {
-      // Best-effort cleanup on every path: cancel the fresh member's Active
-      // enrollment so the shared D1 returns to its pre-test enrollment
-      // state — an extra Active enrollment would break the queue-count and
-      // event 已報名 count assertions in later tests on the same database.
+      // Reset both active and pending outcomes so an interrupted setup cannot
+      // leave a request in the shared disposable database.
       try {
         if (programId) {
           await memberPage.goto(`/programs?program=${programId}#overview`);
           const cleanupPanel = enrollmentPanelOf(memberPage);
-          const cancel = cleanupPanel.getByRole("button", {
-            name: COPY.cancelEnrollment,
-          });
-          if (await cancel.isVisible()) {
-            await cancel.click();
-            // The exit action is gated by an explicit confirm dialog;
-            // anchor the accept label exactly (getByRole name is substring).
-            await cleanupPanel
-              .getByRole("button", {
-                name: new RegExp(`^${COPY.cancelConfirmAccept}$`, "u"),
-              })
-              .click();
-          }
+          await resetParticipantEnrollment(memberPage, cleanupPanel, COPY);
         }
-      } catch {
-        // Cleanup is best-effort; the test outcome is already decided.
+      } finally {
+        await memberContext.close();
       }
-      await memberContext.close();
     }
   });
 
@@ -1154,25 +1148,25 @@ test.describe("PUI-02 participant Programs directory", () => {
     );
 
     await expect(
-      page.getByRole("button", { name: /E2E_DEMO_成人查經/u })
+      page.getByRole("link", { name: /E2E_DEMO_成人查經/u })
     ).toBeVisible();
     const search = page.getByRole("searchbox", {
       name: COPY.catalogSearchLabel,
     });
     await search.fill("青年");
     await expect(
-      page.getByRole("button", { name: /E2E_DEMO_成人查經/u })
+      page.getByRole("link", { name: /E2E_DEMO_成人查經/u })
     ).toHaveCount(0);
     await expect(
-      page.getByRole("button", { name: /E2E_DEMO_青年團契/u })
+      page.getByRole("link", { name: /E2E_DEMO_青年團契/u })
     ).toBeVisible();
 
     await page.getByRole("button", { name: COPY.catalogClearSearch }).click();
     await expect(
-      page.getByRole("button", { name: /E2E_DEMO_成人查經/u })
+      page.getByRole("link", { name: /E2E_DEMO_成人查經/u })
     ).toBeVisible();
     await expect(
-      page.getByRole("button", { name: /E2E_DEMO_青年團契/u })
+      page.getByRole("link", { name: /E2E_DEMO_青年團契/u })
     ).toBeVisible();
   });
 
@@ -1199,7 +1193,7 @@ test.describe("PUI-02 participant Programs directory", () => {
       .getByRole("button", { name: COPY.catalogClearFilters })
       .click();
     await expect(
-      page.getByRole("button", { name: /E2E_DEMO_成人查經/u })
+      page.getByRole("link", { name: /E2E_DEMO_成人查經/u })
     ).toBeVisible();
   });
 
@@ -1214,15 +1208,17 @@ test.describe("PUI-02 participant Programs directory", () => {
 
     const [programId] = await catalogProgramIds(page, "E2E_DEMO_成人查經");
     expect(programId).toBeTruthy();
-    await page.getByRole("button", { name: /E2E_DEMO_成人查經/u }).click();
+    await page.getByRole("link", { name: /E2E_DEMO_成人查經/u }).click();
     await expect(page).toHaveURL(
       new RegExp(`/programs\\?program=${programId}&from=programs$`, "u")
     );
     await expect(page.locator("#program-detail-title")).toBeVisible();
     await expect(
-      page.getByRole("button", { name: COPY.detailBack })
+      page.getByRole("link", { name: COPY.detailBack, exact: true })
     ).toBeVisible();
-    await page.getByRole("button", { name: COPY.detailBack }).click();
+    await page
+      .getByRole("link", { name: COPY.detailBack, exact: true })
+      .click();
     await expect(page).toHaveURL(/\/programs$/u);
   });
 });
@@ -1239,6 +1235,25 @@ test.describe("PUI-03 participant Program detail", () => {
     const [programId] = await catalogProgramIds(page, "E2E_DEMO_成人查經");
     expect(programId).toBeTruthy();
 
+    // Catalog-origin Back keeps the boundary state and restores the clicked
+    // row instead of forcing a document navigation.
+    await page.goto("/programs");
+    const originRow = page.getByRole("link", { name: /E2E_DEMO_成人查經/u });
+    await originRow.focus();
+    await originRow.click();
+    await expect(page.locator("#program-detail-title")).toBeVisible();
+    await page
+      .getByRole("link", { name: COPY.detailBack, exact: true })
+      .click();
+    await expect(page).toHaveURL(/\/programs$/u);
+    await expect
+      .poll(() =>
+        page.evaluate(
+          () => document.activeElement?.getAttribute("data-program-id") ?? null
+        )
+      )
+      .toBe(programId);
+
     await page.goto(`/programs?program=${programId}#overview`);
     // #389 dropped the separate 課程簡介 subheading; the program-name
     // title id is the stable arrival signal for Program detail now.
@@ -1249,7 +1264,7 @@ test.describe("PUI-03 participant Program detail", () => {
     // #389 gap-fix: no Active enrollment means getEventDetail's participant
     // projection 404s, so the CTA must not render for this unenrolled member.
     await expect(
-      page.getByRole("button", { name: COPY.viewEventDetail })
+      page.getByRole("link", { name: COPY.viewEventDetail })
     ).toHaveCount(0);
     // The grouped schedule keeps recurrence rules and concrete Events
     // semantically distinct, while the requestable member sees only the
@@ -1285,10 +1300,12 @@ test.describe("PUI-03 participant Program detail", () => {
       page.getByRole("list", { name: COPY.scheduleEventsGroup })
     ).toBeVisible();
 
-    await page.getByRole("button", { name: COPY.detailBack }).click();
+    await page
+      .getByRole("link", { name: COPY.detailBack, exact: true })
+      .click();
     await expect(page).toHaveURL(/\/programs#overview$/u);
     await expect(
-      page.getByRole("button", { name: /E2E_DEMO_成人查經/u })
+      page.getByRole("link", { name: /E2E_DEMO_成人查經/u })
     ).toBeVisible();
   });
 
@@ -1318,7 +1335,9 @@ test.describe("PUI-03 participant Program detail", () => {
       page.getByRole("heading", { name: COPY.detailUnavailable })
     ).toBeVisible();
     await expect(page.getByText(hiddenProgramId)).toHaveCount(0);
-    await page.getByRole("button", { name: COPY.detailBack }).click();
+    await page
+      .getByRole("link", { name: COPY.detailBack, exact: true })
+      .click();
     await expect(page).toHaveURL(/\/programs#overview$/u);
   });
 });
@@ -1361,7 +1380,7 @@ test.describe("PUI-05 participant Event Detail", () => {
         // hasActiveEnrollment gate), so the 查看聚會詳情 CTA must not
         // render here — offering it would be a predictable dead click.
         await expect(
-          memberPage.getByRole("button", { name: COPY.viewEventDetail })
+          memberPage.getByRole("link", { name: COPY.viewEventDetail })
         ).toHaveCount(0);
         await submitActionButton(enrollmentPanel).click();
         await expect(pendingHint).toBeVisible();
@@ -1446,7 +1465,7 @@ test.describe("PUI-05 participant Event Detail", () => {
       expect(expectedEventId).toBeTruthy();
       expect(expectedEventId).toBe(openedEvent?.eventId);
       const programDetailUrl = memberPage.url();
-      const eventDetailButton = memberPage.getByRole("button", {
+      const eventDetailButton = memberPage.getByRole("link", {
         name: COPY.viewEventDetail,
       });
       await expect(eventDetailButton).toBeVisible();
@@ -1471,7 +1490,7 @@ test.describe("PUI-05 participant Event Detail", () => {
         memberPage.getByText(COPY.eventInstructions, { exact: false })
       ).toBeVisible();
       await expect(
-        memberPage.getByRole("button", { name: COPY.backToOrigin })
+        memberPage.getByRole("link", { name: COPY.backToOrigin })
       ).toBeVisible();
       await expect(memberPage.getByText(COPY.checkInAvailable)).toBeVisible();
 
@@ -1519,7 +1538,7 @@ test.describe("PUI-05 participant Event Detail", () => {
       // program detail.
       await memberPage.goBack();
       await expect(memberPage).toHaveURL(eventDetailUrl);
-      await memberPage.getByRole("button", { name: COPY.backToOrigin }).click();
+      await memberPage.getByRole("link", { name: COPY.backToOrigin }).click();
       await expect(memberPage).toHaveURL(programDetailUrl);
     } finally {
       try {
@@ -1767,7 +1786,7 @@ test.describe("NTC-01 participant Notices", () => {
         await expect(page).toHaveURL(
           /\/programs\?program=[^&]+&from=notices&event=[^&]+$/u
         );
-        const backBtn = page.getByRole("button", { name: COPY.backToOrigin });
+        const backBtn = page.getByRole("link", { name: COPY.backToOrigin });
         await expect(backBtn).toBeVisible();
         await backBtn.click();
         await expect(page).toHaveURL(/\/notices$/u);
@@ -1849,7 +1868,7 @@ test.describe("PUI-04 participant Enrollment lifecycle", () => {
     await enrollmentPanel
       .getByRole("button", { name: COPY.withdrawRequest })
       .click();
-    const withdrawDialog = page.getByRole("dialog", {
+    const withdrawDialog = page.getByRole("alertdialog", {
       name: COPY.withdrawConfirmTitle,
     });
     await expect(withdrawDialog).toBeVisible();
@@ -1861,7 +1880,7 @@ test.describe("PUI-04 participant Enrollment lifecycle", () => {
       .getByRole("button", { name: new RegExp(`^${COPY.cancelRevoke}$`, "u") })
       .click();
     await expect(
-      page.getByRole("dialog", { name: COPY.withdrawConfirmTitle })
+      page.getByRole("alertdialog", { name: COPY.withdrawConfirmTitle })
     ).toHaveCount(0);
     await expect(
       enrollmentPanel.getByText(COPY.requestPendingHint)
@@ -1872,7 +1891,7 @@ test.describe("PUI-04 participant Enrollment lifecycle", () => {
       .getByRole("button", { name: COPY.withdrawRequest })
       .click();
     await page
-      .getByRole("dialog", { name: COPY.withdrawConfirmTitle })
+      .getByRole("alertdialog", { name: COPY.withdrawConfirmTitle })
       .getByRole("button", {
         name: new RegExp(`^${COPY.withdrawConfirmAccept}$`, "u"),
       })
@@ -1951,7 +1970,7 @@ test.describe("PUI-04 participant Enrollment lifecycle", () => {
       await enrollmentPanel
         .getByRole("button", { name: COPY.cancelEnrollment })
         .click();
-      const exitDialog = memberPage.getByRole("dialog", {
+      const exitDialog = memberPage.getByRole("alertdialog", {
         name: COPY.cancelConfirmTitle,
       });
       await expect(exitDialog).toBeVisible();
@@ -1962,7 +1981,7 @@ test.describe("PUI-04 participant Enrollment lifecycle", () => {
         })
         .click();
       await expect(
-        memberPage.getByRole("dialog", { name: COPY.cancelConfirmTitle })
+        memberPage.getByRole("alertdialog", { name: COPY.cancelConfirmTitle })
       ).toHaveCount(0);
       await expect(
         enrollmentPanel.getByText(COPY.enrollmentActiveHint)
@@ -1973,7 +1992,7 @@ test.describe("PUI-04 participant Enrollment lifecycle", () => {
         .getByRole("button", { name: COPY.cancelEnrollment })
         .click();
       await memberPage
-        .getByRole("dialog", { name: COPY.cancelConfirmTitle })
+        .getByRole("alertdialog", { name: COPY.cancelConfirmTitle })
         .getByRole("button", {
           name: new RegExp(`^${COPY.cancelConfirmAccept}$`, "u"),
         })
@@ -2084,7 +2103,7 @@ test.describe("MUI-01 management Directory and Workspace", () => {
     const [programId] = await catalogProgramIds(page, "E2E_DEMO_成人查經");
     expect(programId).toBeTruthy();
 
-    await page.getByRole("button", { name: COPY.enterManagement }).click();
+    await page.getByRole("link", { name: COPY.enterManagement }).click();
     await expect(page).toHaveURL(/\/programs\?mode=management$/u);
     await expect(
       page.getByRole("heading", { name: COPY.managementDirectoryTitle })
@@ -2095,8 +2114,8 @@ test.describe("MUI-01 management Directory and Workspace", () => {
       name: COPY.managementDirectorySearchLabel,
     });
     await search.fill("成人查經");
-    await expect(directory.getByRole("button")).toHaveCount(1);
-    await directory.getByRole("button", { name: /E2E_DEMO_成人查經/u }).click();
+    await expect(directory.getByRole("link")).toHaveCount(1);
+    await directory.getByRole("link", { name: /E2E_DEMO_成人查經/u }).click();
     await expect(page).toHaveURL(
       new RegExp(`/programs\\?mode=management&program=${programId}$`, "u")
     );
@@ -2110,12 +2129,12 @@ test.describe("MUI-01 management Directory and Workspace", () => {
     ).toBeVisible();
     await expect(page.getByText(COPY.cockpitWeeklyWork)).toBeVisible();
     await expect(
-      page.getByRole("button", {
+      page.getByRole("link", {
         name: new RegExp(`${COPY.cockpitEventsTile}.*個聚會`, "u"),
       })
     ).toBeVisible();
     await expect(
-      page.getByRole("button", {
+      page.getByRole("link", {
         name: new RegExp(`^${COPY.cockpitParticipantsTile}\\s`, "u"),
       })
     ).toBeVisible();
@@ -2123,7 +2142,7 @@ test.describe("MUI-01 management Directory and Workspace", () => {
       page.getByRole("heading", { name: COPY.cockpitOthers })
     ).toBeVisible();
 
-    const nextMeeting = page.getByRole("button", {
+    const nextMeeting = page.getByRole("link", {
       name: COPY.cockpitManageRoster,
     });
     await expect(nextMeeting).toBeVisible();
@@ -2140,7 +2159,7 @@ test.describe("MUI-01 management Directory and Workspace", () => {
     await expect(page).toHaveURL(
       new RegExp(`/programs\\?program=${programId}`, "u")
     );
-    await page.getByRole("button", { name: COPY.enterManagement }).click();
+    await page.getByRole("link", { name: COPY.enterManagement }).click();
     await expect(page).toHaveURL(
       new RegExp(`/programs\\?mode=management&program=${programId}$`, "u")
     );
@@ -2546,7 +2565,7 @@ test.describe("MUI-01 management Directory and Workspace", () => {
       required("PROGRAMS_ADMIN_USERNAME", ADMIN_USER),
       required("PROGRAMS_ADMIN_CREDENTIAL", ADMIN_CRED)
     );
-    const enterManagement = page.getByRole("button", {
+    const enterManagement = page.getByRole("link", {
       name: COPY.enterManagement,
     });
     await enterManagement.focus();
@@ -2555,8 +2574,7 @@ test.describe("MUI-01 management Directory and Workspace", () => {
       page.getByRole("heading", { name: COPY.managementDirectoryTitle })
     ).toBeVisible();
     const firstProgram = page
-      .getByRole("list", { name: "可管理課程" })
-      .getByRole("button")
+      .getByRole("link")
       .filter({ hasText: "E2E_DEMO_成人查經" })
       .first();
     // Capture the row's program name before navigating (the directory
@@ -2576,7 +2594,7 @@ test.describe("MUI-01 management Directory and Workspace", () => {
       page.getByRole("heading", { name: firstProgramName })
     ).toBeVisible();
     await expect(
-      page.getByRole("button", {
+      page.getByRole("link", {
         name: new RegExp(`^${COPY.cockpitEventsTile}\\s`, "u"),
       })
     ).toBeVisible();
@@ -2613,7 +2631,7 @@ test.describe("MUI-01 management Directory and Workspace", () => {
       required("PROGRAMS_STAFF_USERNAME", STAFF_USER),
       required("PROGRAMS_STAFF_CREDENTIAL", STAFF_CRED)
     );
-    await page.getByRole("button", { name: COPY.enterManagement }).click();
+    await page.getByRole("link", { name: COPY.enterManagement }).click();
     await expect(
       page.getByRole("heading", { name: COPY.managementDirectoryTitle })
     ).toBeVisible();
@@ -2684,10 +2702,11 @@ test.describe("MUI-01 management Directory and Workspace", () => {
       ).toBeVisible();
       for (const [width, height] of widths) {
         await page.setViewportSize({ width, height });
-        const focusTarget = page
-          .locator(
-            '[class*="managementWorkspace"] a, [class*="managementWorkspace"] button, [class*="managementWorkspace"] input, [class*="managementWorkspace"] select, [class*="managementWorkspace"] textarea'
-          )
+        const workspace = page.locator(
+          '[aria-labelledby="programs-workspace-title"]'
+        );
+        const focusTarget = workspace
+          .locator("a, button, input, select, textarea")
           .first();
         await focusTarget.focus();
         const focus = await page.evaluate(() => {
@@ -2705,7 +2724,7 @@ test.describe("MUI-01 management Directory and Workspace", () => {
         expect(focus.outlineWidth).toBeGreaterThanOrEqual(2);
         const geometry = await page.evaluate(() => {
           const workspace = document.querySelector<HTMLElement>(
-            '[class*="managementWorkspace"]'
+            '[aria-labelledby="programs-workspace-title"]'
           );
           const outlet = document.querySelector<HTMLElement>("#shell-content");
           const dock = document.querySelector<HTMLElement>(".nav-phone");
@@ -2720,6 +2739,7 @@ test.describe("MUI-01 management Directory and Workspace", () => {
               box.height > 0 &&
               style.display !== "none" &&
               style.visibility !== "hidden" &&
+              element.getAttribute("aria-hidden") !== "true" &&
               !element.closest("[hidden]")
             );
           };
@@ -2872,9 +2892,15 @@ test.describe("CFG-01 Program Settings", () => {
       const discoverabilitySelect = page.getByRole("combobox", {
         name: COPY.discoverabilityListed,
       });
-      await expect(discoverabilitySelect).toHaveValue("Listed");
+      await expect(discoverabilitySelect).toHaveText(
+        COPY.discoverabilityListed
+      );
 
-      await discoverabilitySelect.selectOption("Unlisted");
+      await chooseSelectOption(
+        page,
+        COPY.discoverabilityListed,
+        COPY.discoverabilityUnlisted
+      );
       await page
         .getByRole("button", { name: COPY.settingsSaveEnrollment })
         .click();
@@ -2896,10 +2922,16 @@ test.describe("CFG-01 Program Settings", () => {
       await expect(
         page.getByText(COPY.settingsSaved, { exact: true }).first()
       ).toBeVisible();
-      await expect(discoverabilitySelect).toHaveValue("Unlisted");
+      await expect(discoverabilitySelect).toHaveText(
+        COPY.discoverabilityUnlisted
+      );
 
       // Revert, same confirm flow.
-      await discoverabilitySelect.selectOption("Listed");
+      await chooseSelectOption(
+        page,
+        COPY.discoverabilityListed,
+        COPY.discoverabilityListed
+      );
       await page
         .getByRole("button", { name: COPY.settingsSaveEnrollment })
         .click();
@@ -2913,7 +2945,9 @@ test.describe("CFG-01 Program Settings", () => {
       await expect(
         page.getByText(COPY.settingsSaved, { exact: true }).first()
       ).toBeVisible();
-      await expect(discoverabilitySelect).toHaveValue("Listed");
+      await expect(discoverabilitySelect).toHaveText(
+        COPY.discoverabilityListed
+      );
     } finally {
       const status = await page.evaluate(async (programId) => {
         const res = await fetch(`/api/v1/programs/${programId}`, {
@@ -3092,7 +3126,7 @@ test.describe("MUI-02 scoped Program management", () => {
       required("PROGRAMS_ADMIN_USERNAME", ADMIN_USER),
       required("PROGRAMS_ADMIN_CREDENTIAL", ADMIN_CRED)
     );
-    await page.getByRole("button", { name: COPY.enterManagement }).click();
+    await page.getByRole("link", { name: COPY.enterManagement }).click();
     // Post-086-06 the create entry lives in the department settings panel
     // (the management directory no longer carries a top-level create).
     await page
@@ -3122,8 +3156,8 @@ test.describe("MUI-02 scoped Program management", () => {
     await page
       .getByRole("textbox", { name: COPY.programCategory })
       .fill("E2E 活動類別");
-    await page.getByLabel(COPY.behaviorType).selectOption("OneOff");
-    await page.getByLabel(COPY.lifecycle).selectOption("Active");
+    await chooseSelectOption(page, COPY.behaviorType, COPY.behaviorOneOff);
+    await chooseSelectOption(page, COPY.lifecycle, COPY.lifecycleActive);
     await page.getByRole("button", { name: COPY.saveProgram }).click();
 
     await expect(
@@ -3132,64 +3166,120 @@ test.describe("MUI-02 scoped Program management", () => {
     const programId = new URL(page.url()).searchParams.get("program");
     expect(programId).toBeTruthy();
     const id = required("created program id", programId ?? undefined);
-    const events = [
-      ["2098-12-01T10:00:00.000Z", "2098-12-01T11:00:00.000Z"],
-      ["2098-12-08T10:00:00.000Z", "2098-12-08T11:00:00.000Z"],
-    ] as const;
-    const eventResult = await page.evaluate(
-      async ({ programId: id, eventTimes }) => {
-        const statuses = await Promise.all(
-          eventTimes.map(async ([starts_at, ends_at]) => {
-            const response = await fetch(`/api/v1/programs/${id}/events`, {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ starts_at, ends_at }),
-            });
-            return response.status;
-          })
-        );
-        const listed = await fetch(`/api/v1/programs/${id}/events`);
-        const body = (await listed.json()) as {
-          data?: { events?: unknown[] };
-        };
-        return {
-          statuses,
-          listStatus: listed.status,
-          count: body.data?.events?.length ?? -1,
-        };
-      },
-      { programId: id, eventTimes: events }
-    );
-    expect(eventResult).toStrictEqual({
-      statuses: [201, 201],
-      listStatus: 200,
-      count: 2,
-    });
-
-    await page.getByRole("button", { name: COPY.editProgram }).click();
-    const updatedName = `${originalName}_更新`;
-    await page
-      .getByRole("textbox", { name: COPY.programName })
-      .fill(updatedName);
-    await page
-      .getByRole("textbox", { name: COPY.editPurposeLabel })
-      .fill("MUI-02 測試簡介 (已更新)");
-    await page.getByRole("button", { name: COPY.saveProgram }).click();
-    await expect(
-      page.getByRole("heading", { name: updatedName })
-    ).toBeVisible();
-    await expect(page).toHaveURL(/\/programs\?mode=management/u);
-    await expect(page.url()).toContain(`program=${id}`);
-
-    const archiveStatus = await page.evaluate(async (programId) => {
-      const response = await fetch(`/api/v1/programs/${programId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ lifecycle: "Archived" }),
+    try {
+      const events = [
+        ["2098-12-01T10:00:00.000Z", "2098-12-01T11:00:00.000Z"],
+        ["2098-12-08T10:00:00.000Z", "2098-12-08T11:00:00.000Z"],
+      ] as const;
+      const eventResult = await page.evaluate(
+        async ({ programId: id, eventTimes }) => {
+          const statuses = await Promise.all(
+            eventTimes.map(async ([starts_at, ends_at]) => {
+              const response = await fetch(`/api/v1/programs/${id}/events`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ starts_at, ends_at }),
+              });
+              return response.status;
+            })
+          );
+          const listed = await fetch(`/api/v1/programs/${id}/events`);
+          const body = (await listed.json()) as {
+            data?: { events?: unknown[] };
+          };
+          return {
+            statuses,
+            listStatus: listed.status,
+            count: body.data?.events?.length ?? -1,
+          };
+        },
+        { programId: id, eventTimes: events }
+      );
+      expect(eventResult).toStrictEqual({
+        statuses: [201, 201],
+        listStatus: 200,
+        count: 2,
       });
-      return response.status;
-    }, id);
-    expect(archiveStatus).toBe(409);
+
+      await page.getByRole("button", { name: COPY.editProgram }).click();
+      const updatedName = `${originalName}_更新`;
+      await page
+        .getByRole("textbox", { name: COPY.programName })
+        .fill(updatedName);
+      await page
+        .getByRole("textbox", { name: COPY.editPurposeLabel })
+        .fill("MUI-02 測試簡介 (已更新)");
+      await page.getByRole("button", { name: COPY.saveProgram }).click();
+      await expect(
+        page.getByRole("heading", { name: updatedName })
+      ).toBeVisible();
+      await expect(page).toHaveURL(/\/programs\?mode=management/u);
+      await expect(page.url()).toContain(`program=${id}`);
+
+      const archiveStatus = await page.evaluate(async (programId) => {
+        const response = await fetch(`/api/v1/programs/${programId}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ lifecycle: "Archived" }),
+        });
+        return response.status;
+      }, id);
+      expect(archiveStatus).toBe(409);
+    } finally {
+      const cleanup = await page.evaluate(async (targetId) => {
+        const response = await fetch(
+          `/api/v1/programs/${encodeURIComponent(targetId)}/events`
+        );
+        const body = (await response.json()) as {
+          data?: { events?: { event_id?: string }[] };
+        };
+        const eventStatuses: number[] = [];
+        for (const [index, event] of (body.data?.events ?? []).entries()) {
+          if (!event.event_id) {
+            continue;
+          }
+          const startsAt = new Date(
+            Date.UTC(2000, 0, 1, 0, index * 120)
+          ).toISOString();
+          const endsAt = new Date(
+            Date.parse(startsAt) + 90 * 60_000
+          ).toISOString();
+          const patch = await fetch(
+            `/api/v1/programs/${encodeURIComponent(targetId)}/events/${encodeURIComponent(event.event_id)}`,
+            {
+              method: "PATCH",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                starts_at: startsAt,
+                ends_at: endsAt,
+                check_in_window_opens_at: startsAt,
+                check_in_window_closes_at: endsAt,
+              }),
+            }
+          );
+          eventStatuses.push(patch.status);
+        }
+        const archive = await fetch(
+          `/api/v1/programs/${encodeURIComponent(targetId)}`,
+          {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ lifecycle: "Archived" }),
+          }
+        );
+        return {
+          archiveStatus: archive.status,
+          eventStatuses,
+          listStatus: response.status,
+        };
+      }, id);
+      expect(cleanup.listStatus).toBe(200);
+      expect(cleanup.eventStatuses).toHaveLength(2);
+      expect(cleanup.eventStatuses.every((status) => status === 200)).toBe(
+        true
+      );
+      expect(cleanup.archiveStatus).toBe(200);
+    }
   });
 
   test("member direct Program mutation is denied server-side", async ({
@@ -3266,6 +3356,153 @@ test.describe("MUI-02 scoped Program management", () => {
       page.getByRole("button", { name: COPY.assistedEnroll })
     ).toBeVisible();
     await expect(page.getByText(COPY.assistedEnrollAck)).toBeVisible();
+  });
+  test("canonical ParticipantsTask cancels an active enrollment into history", async ({
+    page,
+  }) => {
+    await loginAs(
+      page,
+      required("PROGRAMS_ADMIN_USERNAME", ADMIN_USER),
+      required("PROGRAMS_ADMIN_CREDENTIAL", ADMIN_CRED)
+    );
+    const departmentId = required(
+      "participant cancellation department id",
+      (await fetchCatalog(page))[0]?.department.department_id
+    );
+    const programName = `E2E_D_CAN_${Date.now()}`;
+    const created = await page.evaluate(
+      async ({ departmentId: id, name }) => {
+        const response = await fetch(
+          `/api/v1/programs/departments/${encodeURIComponent(id)}/programs`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              name,
+              description: "Phase D canonical cancellation fixture",
+              category: "Phase D",
+              behavior_type: "OneOff",
+              lifecycle: "Active",
+              discoverability: "Listed",
+              enrollment_mode: "MemberRequest",
+              display_order: 0,
+            }),
+          }
+        );
+        const body = (await response.json()) as {
+          data?: { program?: { program_id?: string } };
+        };
+        return {
+          id: body.data?.program?.program_id,
+          status: response.status,
+        };
+      },
+      { departmentId, name: programName }
+    );
+    expect(created.status).toBe(201);
+    const id = required("participant cancellation program id", created.id);
+    try {
+      const enrollmentStatus = await page.evaluate(async (targetId) => {
+        const response = await fetch(
+          `/api/v1/programs/${encodeURIComponent(targetId)}/enrollments`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "Idempotency-Key": `phase-d-canonical-cancel-${Date.now()}`,
+            },
+            body: JSON.stringify({ member_user_id: "U-E2E-MEMBER" }),
+          }
+        );
+        return response.status;
+      }, id);
+      expect(enrollmentStatus).toBe(201);
+      await page.goto(
+        `/programs?mode=management&program=${encodeURIComponent(id)}&task=participants`
+      );
+      const managementPanel = page.getByRole("tabpanel", { name: "管理模式" });
+      await expect(
+        page.getByRole("heading", {
+          name: COPY.workspaceTaskParticipants,
+          exact: true,
+        })
+      ).toBeVisible();
+      await page.getByRole("tab", { name: /使用中 \(\d+\)/u }).click();
+      const activeList = page.getByRole("list", {
+        name: COPY.workspaceActiveParticipants,
+      });
+      const activeRow = activeList
+        .getByRole("listitem")
+        .filter({ hasText: "E2E Member" })
+        .first();
+      await expect(activeRow).toBeVisible();
+      await activeRow
+        .getByRole("button", { name: COPY.cancelEnrollment })
+        .click();
+      await expect(
+        managementPanel.getByText(COPY.enrollmentCancelledNotice, {
+          exact: true,
+        })
+      ).toBeVisible();
+      await page.getByRole("tab", { name: /歷史 \(\d+\)/u }).click();
+      await expect(
+        page
+          .getByRole("list", { name: COPY.enrollmentHistory })
+          .getByText("E2E Member")
+          .first()
+      ).toBeVisible();
+    } finally {
+      const cleanup = await page.evaluate(async (targetId) => {
+        const enrollmentsResponse = await fetch(
+          `/api/v1/programs/${encodeURIComponent(targetId)}/enrollments`
+        );
+        const enrollmentsBody = (await enrollmentsResponse.json()) as {
+          data?: {
+            enrollments?: {
+              enrollment_id?: string;
+              member_user_id?: string;
+              status?: string;
+            }[];
+          };
+        };
+        const active = enrollmentsBody.data?.enrollments?.find(
+          (item) =>
+            item.member_user_id === "U-E2E-MEMBER" &&
+            item.status === "Active" &&
+            item.enrollment_id
+        );
+        let cancelStatus: number | null = null;
+        if (active?.enrollment_id) {
+          const response = await fetch(
+            `/api/v1/programs/${encodeURIComponent(targetId)}/enrollments/${encodeURIComponent(active.enrollment_id)}/cancel`,
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: "{}",
+            }
+          );
+          cancelStatus = response.status;
+        }
+        const archiveResponse = await fetch(
+          `/api/v1/programs/${encodeURIComponent(targetId)}`,
+          {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ lifecycle: "Archived" }),
+          }
+        );
+        return {
+          archiveStatus: archiveResponse.status,
+          cancelStatus,
+          listStatus: enrollmentsResponse.status,
+        };
+      }, id);
+      expect(cleanup.listStatus).toBe(200);
+      expect(
+        cleanup.cancelStatus === null || cleanup.cancelStatus === 200
+      ).toBe(true);
+      expect(cleanup.archiveStatus).toBe(200);
+    }
   });
 });
 
@@ -3414,12 +3651,18 @@ test.describe("EVT-01 event operational detail and availability", () => {
     await createForm.getByLabel(COPY.eventDate).fill(date);
     await createForm.getByLabel(COPY.eventTime).fill(time);
     await createForm.getByLabel(COPY.eventName).fill(name);
-    await createForm
-      .getByLabel(COPY.eventType)
-      .selectOption(COPY.eventTypeTraining);
-    await createForm
-      .getByLabel(COPY.recurrenceTag)
-      .selectOption(COPY.recurrenceNone);
+    await chooseSelectOption(
+      page,
+      COPY.eventType,
+      COPY.eventTypeTraining,
+      createForm
+    );
+    await chooseSelectOption(
+      page,
+      COPY.recurrenceTag,
+      COPY.recurrenceNone,
+      createForm
+    );
     await createForm.getByRole("button", { name: COPY.createMeeting }).click();
     await expect(page).toHaveURL(
       new RegExp(
@@ -3435,6 +3678,96 @@ test.describe("EVT-01 event operational detail and availability", () => {
     await expect(page.getByRole("heading", { name })).toBeVisible();
     return match?.[1] ?? "";
   }
+  test("canonical EventsTask refetches schedule exceptions for reschedule and restore", async ({
+    page,
+  }) => {
+    await loginAs(
+      page,
+      required("PROGRAMS_ADMIN_USERNAME", ADMIN_USER),
+      required("PROGRAMS_ADMIN_CREDENTIAL", ADMIN_CRED)
+    );
+    const [programId] = await catalogProgramIds(page, "E2E_DEMO_成人查經");
+    const id = required("schedule exception program id", programId);
+    let eventId = "";
+    try {
+      await openEventsTask(page, id);
+      const events = page.getByRole("list", { name: COPY.workspaceTaskEvents });
+      const reschedule = events
+        .getByRole("button", { name: COPY.rescheduleEvent })
+        .first();
+      const initialRow = reschedule.locator("xpath=ancestor::li");
+      eventId = required(
+        "schedule exception event id",
+        (await initialRow.getAttribute("data-event-id")) ?? undefined
+      );
+      const eventRow = events.locator(`[data-event-id="${eventId}"]`);
+      await expect(reschedule).toBeVisible();
+      await reschedule.click();
+      await eventRow
+        .getByRole("textbox", { name: COPY.rescheduleStart })
+        .fill("20:00");
+      await eventRow
+        .getByRole("textbox", { name: COPY.rescheduleEnd })
+        .fill("21:00");
+      await eventRow
+        .getByRole("button", { name: COPY.confirmReschedule })
+        .click();
+      await expect(
+        eventRow.getByText(
+          COPY.eventRescheduledBadge.replace("{time}", "20:00"),
+          { exact: true }
+        )
+      ).toBeVisible();
+      await eventRow
+        .getByRole("button", { name: COPY.restoreOccurrence })
+        .click();
+      await expect(
+        eventRow.getByRole("button", { name: COPY.restoreOccurrence })
+      ).toHaveCount(0);
+      await expect(eventRow.getByText(/已改期至/u)).toHaveCount(0);
+    } finally {
+      if (eventId) {
+        await page.evaluate(
+          async ({ programId: targetProgramId, eventId: targetEventId }) => {
+            const eventsResponse = await fetch(
+              `/api/v1/programs/${encodeURIComponent(targetProgramId)}/events`
+            );
+            if (!eventsResponse.ok) {
+              throw new Error(
+                `event cleanup list failed: ${eventsResponse.status}`
+              );
+            }
+            const eventsBody = (await eventsResponse.json()) as {
+              data?: {
+                events?: Array<{
+                  event_id?: string;
+                  exception?: {
+                    exception_id?: string;
+                    rule_id?: string;
+                  } | null;
+                }>;
+              };
+            };
+            const exception = eventsBody.data?.events?.find(
+              (event) => event.event_id === targetEventId
+            )?.exception;
+            if (exception?.exception_id && exception.rule_id) {
+              const deleteResponse = await fetch(
+                `/api/v1/programs/${encodeURIComponent(targetProgramId)}/schedule-rules/${encodeURIComponent(exception.rule_id)}/exceptions/${encodeURIComponent(exception.exception_id)}`,
+                { method: "DELETE" }
+              );
+              if (!deleteResponse.ok) {
+                throw new Error(
+                  `exception cleanup failed: ${deleteResponse.status}`
+                );
+              }
+            }
+          },
+          { programId: id, eventId }
+        );
+      }
+    }
+  });
 
   test("admin creates, deep-links, and edits an event with HK wall display", async ({
     page,
@@ -3489,7 +3822,7 @@ test.describe("EVT-01 event operational detail and availability", () => {
     await page.reload();
     await expect(page.getByRole("heading", { name: renamed })).toBeVisible();
 
-    await page.getByRole("button", { name: COPY.eventDetailBack }).click();
+    await page.getByRole("link", { name: COPY.eventDetailBack }).click();
     await expect(page).toHaveURL(
       new RegExp(
         `/programs\\?mode=management&program=${programId}&task=events$`,
@@ -4037,9 +4370,10 @@ test.describe("NTF-01 management attention", () => {
       const dialog = page.getByRole("dialog", { name: COPY.notificationTitle });
       await expect(dialog).toBeVisible();
 
-      const pendingHref = `/programs?mode=management&program=${programId}&task=participants`;
-      const inactiveHref = `/programs?mode=management&program=${programId}&task=events&event=${inactiveEventId}`;
-      const cancelledHref = `/programs?mode=management&program=${programId}&task=events&event=${cancelledEventId}`;
+      const departmentQuery = `department=${encodeURIComponent(departmentId)}`;
+      const pendingHref = `/programs?mode=management&${departmentQuery}&program=${programId}&task=participants`;
+      const inactiveHref = `/programs?mode=management&${departmentQuery}&program=${programId}&task=events&event=${inactiveEventId}`;
+      const cancelledHref = `/programs?mode=management&${departmentQuery}&program=${programId}&task=events&event=${cancelledEventId}`;
       await expect(dialog.locator(`a[href="${pendingHref}"]`)).toBeVisible();
       await expect(dialog.locator(`a[href="${inactiveHref}"]`)).toBeVisible();
       await expect(dialog.locator(`a[href="${cancelledHref}"]`)).toBeVisible();
@@ -4242,45 +4576,69 @@ test.describe("NTF-01 management attention", () => {
       await expect(dialog.locator(`a[href="${cancelledHref}"]`)).toBeVisible();
     } finally {
       if (pendingRequestId && !pendingResolved) {
-        await page
-          .evaluate(
-            async ({ programId: id, requestId }) => {
-              const response = await fetch(
-                `/api/v1/programs/${encodeURIComponent(id)}/enrollment-requests/${encodeURIComponent(requestId)}/decision`,
+        await page.evaluate(
+          async ({ programId: id, requestId }) => {
+            const response = await fetch(
+              `/api/v1/programs/${encodeURIComponent(id)}/enrollment-requests/${encodeURIComponent(requestId)}/decision`,
+              {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ action: "Rejected" }),
+              }
+            );
+            if (!response.ok) {
+              await fetch(
+                `/api/v1/programs/${encodeURIComponent(id)}/enrollment-requests/${encodeURIComponent(requestId)}/withdraw`,
                 {
                   method: "POST",
                   headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({ action: "Rejected" }),
+                  body: "{}",
                 }
               );
-              if (!response.ok) {
-                await fetch(
-                  `/api/v1/programs/${encodeURIComponent(id)}/enrollment-requests/${encodeURIComponent(requestId)}/withdraw`,
-                  {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: "{}",
-                  }
-                );
-              }
-            },
-            { programId, requestId: pendingRequestId }
-          )
-          .catch(() => {});
+            }
+          },
+          { programId, requestId: pendingRequestId }
+        );
       }
+      const cleanupEventStatuses: number[] = [];
       if (inactiveEventId) {
-        await patchAttentionEvent(page, programId, inactiveEventId, {
-          availability: "Active",
-        }).catch(() => -1);
+        cleanupEventStatuses.push(
+          await patchAttentionEvent(page, programId, inactiveEventId, {
+            availability: "Active",
+          })
+        );
+        cleanupEventStatuses.push(
+          await patchAttentionEvent(page, programId, inactiveEventId, {
+            starts_at: "2000-01-01T00:00:00.000Z",
+            ends_at: "2000-01-01T01:30:00.000Z",
+            check_in_window_opens_at: "2000-01-01T00:00:00.000Z",
+            check_in_window_closes_at: "2000-01-01T02:00:00.000Z",
+          })
+        );
       }
       if (cancelledEventId) {
-        await patchAttentionEvent(page, programId, cancelledEventId, {
-          starts_at: "2000-01-01T00:00:00.000Z",
-          ends_at: "2000-01-01T01:30:00.000Z",
-          check_in_window_opens_at: "2000-01-01T00:00:00.000Z",
-          check_in_window_closes_at: "2000-01-01T02:00:00.000Z",
-        }).catch(() => -1);
+        cleanupEventStatuses.push(
+          await patchAttentionEvent(page, programId, cancelledEventId, {
+            starts_at: "2000-01-01T02:00:00.000Z",
+            ends_at: "2000-01-01T03:30:00.000Z",
+            check_in_window_opens_at: "2000-01-01T02:00:00.000Z",
+            check_in_window_closes_at: "2000-01-01T04:00:00.000Z",
+          })
+        );
       }
+      expect(cleanupEventStatuses.every((status) => status === 200)).toBe(true);
+      const archiveStatus = await page.evaluate(async (id) => {
+        const response = await fetch(
+          `/api/v1/programs/${encodeURIComponent(id)}`,
+          {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ lifecycle: "Archived" }),
+          }
+        );
+        return response.status;
+      }, programId);
+      expect(archiveStatus).toBe(200);
     }
   });
 });
