@@ -216,7 +216,6 @@ const NotificationFeed = ({
   status,
   announcement,
   focusTargetRef,
-  departmentId,
   hash,
 }: {
   state: ManagementNotificationState;
@@ -227,7 +226,6 @@ const NotificationFeed = ({
   status?: FeedPresentationProps["status"];
   announcement?: FeedPresentationProps["announcement"];
   focusTargetRef?: FeedPresentationProps["focusTargetRef"];
-  departmentId?: string | null;
   hash?: string | null;
 }) => {
   const feedState = feedStateFor(state);
@@ -453,7 +451,6 @@ export const ProgramsNotifications = ({
           status={notificationStatus}
           announcement={announcement}
           focusTargetRef={focusTargetRef}
-          departmentId={departmentId}
           hash={hash}
         />
       </section>
@@ -515,7 +512,9 @@ export const ProgramsNotifications = ({
           tabIndex={-1}
         >
           <div className={styles.notificationPopoverHeader}>
-            <strong>{COPY.programs.notificationsTitle}</strong>
+            <h3 className="m-0 text-base font-bold">
+              {COPY.programs.notificationsTitle}
+            </h3>
             {unreadCount > 0 && <Badge variant="default">{unreadCount}</Badge>}
           </div>
           <NotificationFeed
@@ -526,7 +525,6 @@ export const ProgramsNotifications = ({
             status={notificationStatus}
             announcement={announcement}
             focusTargetRef={focusTargetRef}
-            departmentId={departmentId}
             hash={hash}
           />
           {effectiveState.kind === "ready" &&
