@@ -401,7 +401,7 @@ test.describe("S4 Management hardening integration gate", () => {
     await expect(page).toHaveURL(/\/management\?module=approvals/u);
   });
 
-  test("Account Directory opens populated and supports search plus phone/desktop filters", async ({
+  test("Account Directory opens populated and supports status plus department filters", async ({
     page,
   }, testInfo) => {
     onlyProjects(testInfo, ["phone-390", "desktop-1024"]);
@@ -426,8 +426,8 @@ test.describe("S4 Management hardening integration gate", () => {
       await page.getByRole("button", { name: /^篩選/u }).click();
       const dialog = page.getByRole("dialog", { name: "篩選帳戶" });
       await expect(dialog).toBeVisible();
-      await dialog.locator("#account-sheet-role").click();
-      await page.getByRole("option", { name: "管理員", exact: true }).click();
+      await dialog.locator("#account-sheet-status").click();
+      await page.getByRole("option", { name: "生效", exact: true }).click();
       await dialog
         .getByRole("button", { name: "套用篩選", exact: true })
         .click();
@@ -435,16 +435,14 @@ test.describe("S4 Management hardening integration gate", () => {
         page.getByRole("button", { name: /篩選\s+1/u })
       ).toBeVisible();
     } else {
-      const roleFilter = page.locator("#account-directory-role");
-      await roleFilter.click();
-      await page.getByRole("option", { name: "管理員", exact: true }).click();
+      const statusFilter = page.locator("#account-directory-status");
+      await statusFilter.click();
+      await page.getByRole("option", { name: "生效", exact: true }).click();
     }
     await expect(
       page.getByRole("button", { name: /E2E Admin/u })
     ).toBeVisible();
-    await expect(page.getByRole("button", { name: /E2E Staff/u })).toHaveCount(
-      0
-    );
+    await expect(page.getByRole("button", { name: /E2E Staff/u })).toBeVisible();
 
     await page
       .getByRole("button", { name: /E2E Admin/u })
@@ -560,7 +558,7 @@ test.describe("S4 Management hardening integration gate", () => {
       await page.keyboard.press("Escape");
       await expect(filter).toBeFocused();
     } else {
-      await expect(page.locator("#account-directory-role")).toBeVisible();
+      await expect(page.locator("#account-directory-status")).toBeVisible();
     }
     await page.evaluate(() => {
       const longName = "陳大文".repeat(20);

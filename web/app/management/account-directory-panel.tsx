@@ -495,6 +495,7 @@ export const AccountDirectoryPanel = () => {
     const params = new URLSearchParams(
       buildAccountsHref({ department, query, status }).split("?")[1]
     );
+    params.set("account", account.userId);
     params.set("return", returnHref);
     setSelectedId(account.userId);
     window.history.pushState(null, "", `/management?${params.toString()}`);
