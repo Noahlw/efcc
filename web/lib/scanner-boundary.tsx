@@ -10,6 +10,7 @@ import { Card } from "@/components/ui/card";
 import { RpcError } from "@/lib/api";
 import { AssistedScannerPanel } from "@/lib/assisted-scanner-panel";
 import type { AttendanceEventSummary } from "@/lib/attendance";
+import { attendanceButtonVariants } from "@/lib/attendance-scanner-ui";
 import { COPY, errorCopyFor } from "@/lib/copy";
 import { announce } from "@/lib/live-region";
 import { listScannerEvents } from "@/lib/programs/program-api";
@@ -17,10 +18,7 @@ import { buildScannerHref, parseScannerIntent } from "@/lib/scanner-intent";
 import type { ScannerMode } from "@/lib/scanner-intent";
 import { SelfCheckInPanel } from "@/lib/self-check-in-panel";
 import { clearAuthHint, rememberDeepLink } from "@/lib/session";
-const secondaryControl =
-  "min-h-11 h-auto rounded-[var(--radius-sm)] border border-[var(--line-strong)] bg-[var(--surface-raised)] px-4 py-3 text-base font-bold text-[var(--ink)] hover:bg-[var(--surface)] hover:text-[var(--ink)]";
-const modeTabControl =
-  "min-h-11 h-auto rounded-[var(--radius-sm)] border border-[var(--line-strong)] bg-[var(--surface-raised)] px-4 py-2.5 text-base font-bold text-[var(--ink)] hover:bg-[var(--surface)] hover:text-[var(--ink)] aria-selected:border-[var(--accent)] aria-selected:bg-[var(--surface)] aria-selected:text-[var(--accent-deep)]";
+
 type EventState =
   | { kind: "loading" }
   | { kind: "ready"; events: AttendanceEventSummary[] }
@@ -39,7 +37,7 @@ const ScannerState = ({
   tone: "info" | "error";
 }) => (
   <Card
-    className="grid gap-4.5 p-5 bg-[var(--surface-raised)] border border-[var(--line-strong)] rounded-[var(--radius-md)]"
+    className="grid gap-[1.125rem] p-5 bg-[var(--surface-raised)] border border-[var(--line-strong)] rounded-[var(--radius-md)]"
     role="region"
     aria-labelledby="scanner-state-title"
     tabIndex={-1}
@@ -60,7 +58,7 @@ const ScannerState = ({
     {actionLabel && onAction && (
       <Button
         variant="outline"
-        className={secondaryControl}
+        className={attendanceButtonVariants({ variant: "secondary" })}
         type="button"
         ref={actionRef}
         onClick={onAction}
@@ -262,7 +260,7 @@ export const ScannerBoundary = () => {
         >
           <Button
             variant="outline"
-            className={modeTabControl}
+            className={attendanceButtonVariants({ variant: "modeTab" })}
             id="scanner-self-tab"
             type="button"
             role="tab"
@@ -275,7 +273,7 @@ export const ScannerBoundary = () => {
           </Button>
           <Button
             variant="outline"
-            className={modeTabControl}
+            className={attendanceButtonVariants({ variant: "modeTab" })}
             id="scanner-assisted-tab"
             type="button"
             role="tab"
@@ -297,7 +295,7 @@ export const ScannerBoundary = () => {
           <span>{eventsState.message}</span>
           <Button
             variant="outline"
-            className={secondaryControl}
+            className={attendanceButtonVariants({ variant: "secondary" })}
             type="button"
             ref={retryRef}
             onClick={retryEvents}
@@ -315,7 +313,7 @@ export const ScannerBoundary = () => {
           {COPY.attendance.assistedContextStale}
           <Button
             variant="outline"
-            className={secondaryControl}
+            className={attendanceButtonVariants({ variant: "secondary" })}
             type="button"
             onClick={recoverToSelf}
           >

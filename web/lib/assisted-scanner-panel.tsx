@@ -15,7 +15,10 @@ import {
   attendanceEventLabel,
   attendanceEventName,
 } from "@/lib/attendance-display";
-import { ScannerStatusOutput } from "@/lib/attendance-scanner-ui";
+import {
+  attendanceButtonVariants,
+  ScannerStatusOutput,
+} from "@/lib/attendance-scanner-ui";
 import { COPY, errorCopyFor } from "@/lib/copy";
 import { hkWallLabel } from "@/lib/hk-time";
 import { announce } from "@/lib/live-region";
@@ -25,14 +28,10 @@ import {
 } from "@/lib/programs/program-api";
 import { useQrCamera } from "@/lib/use-qr-camera";
 
-const primaryControl =
-  "min-h-11 h-auto rounded-[var(--radius-sm)] px-4 py-3 text-base font-extrabold";
-const secondaryControl =
-  "min-h-11 h-auto rounded-[var(--radius-sm)] border border-[var(--line-strong)] bg-[var(--surface-raised)] px-4 py-3 text-base font-bold text-[var(--ink)] hover:bg-[var(--surface)] hover:text-[var(--ink)]";
 const inputControl =
   "min-h-11 h-auto rounded-[var(--radius-sm)] border border-[var(--line-strong)] bg-[var(--surface-raised)] px-3 py-3 text-base text-[var(--ink)] placeholder:text-[var(--ink-muted)] focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50";
 const eventButtonControl =
-  "flex w-full min-h-11 flex-col items-start justify-between rounded-[var(--radius-sm)] border border-[var(--line-strong)] bg-[var(--surface-raised)] p-3 text-left text-base font-normal text-[var(--ink)] hover:bg-[var(--surface)] hover:text-[var(--ink)] sm:flex-row sm:items-center";
+  "flex w-full min-h-11 flex-col items-start justify-between rounded-[var(--radius-sm)] border border-[var(--line-strong)] bg-[var(--surface-raised)] p-3 text-left text-base font-normal text-[var(--ink)] hover:bg-[var(--surface)] hover:text-[var(--ink)] sm:flex-row sm:items-center motion-reduce:transition-none";
 
 type StatusTone = "info" | "success" | "error";
 
@@ -81,22 +80,17 @@ export const AssistedScannerPanel = ({
   const { videoRef, cameraOpen, startCamera, stopCamera } = useQrCamera({
     onDetect: (value) => {
       const eventId = scanEventRef.current;
-      if (!eventId || eventId !== currentEventRef.current) {
+      if (!eventId) {
         return;
       }
-      // scanMember is a hoisted function declaration in this component; the
-      // repo lint requires the disable even though the declaration is hoisted.
-      // eslint-disable-next-line no-use-before-define
-      void scanMember(value, eventId);
+      stopCamera();
+      scanEventRef.current = null;
+      void searchAndCheckInQr(eventId, value);
     },
     onUnavailable: () => {
-      if (!mountedRef.current) {
-        return;
-      }
       const message = COPY.attendance.cameraUnavailable;
       showStatus(message, "error");
       announce(message);
-      searchRef.current?.focus();
     },
   });
 
@@ -104,51 +98,39 @@ export const AssistedScannerPanel = ({
     mountedRef.current = true;
     return () => {
       mountedRef.current = false;
-      scanEventRef.current = null;
       stopCamera();
     };
-    // Camera cleanup belongs to this panel instance, not callback identity.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
-    if (currentEventRef.current === requestedEventId) {
-      return;
+    if (currentEventRef.current !== requestedEventId) {
+      currentEventRef.current = requestedEventId;
+      resetTransient();
+      stopCamera();
     }
-    currentEventRef.current = requestedEventId;
-    stopCamera();
-    resetTransient();
-    if (requestedEventId && !selectedEvent) {
-      showStatus(contextError ?? COPY.attendance.assistedContextStale, "error");
-      announce(contextError ?? COPY.attendance.assistedContextStale);
-    }
-    if (requestedEventId && selectedEvent) {
-      searchRef.current?.focus();
-    }
-    // The context transition deliberately runs once per server-validated ID.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [contextError, requestedEventId, selectedEvent]);
-
-  useEffect(() => {
-    if (contextError) {
-      showStatus(contextError, "error");
-    }
-  }, [contextError]);
+  }, [requestedEventId]);
 
   useEffect(() => {
     if (members.length > 0) {
       resultsRef.current?.focus();
     }
   }, [members]);
+  useEffect(() => {
+    if (contextError) {
+      showStatus(contextError, "error");
+      announce(contextError);
+    }
+  }, [contextError]);
 
-  function changeContext(eventId: string | null) {
-    stopCamera();
-    currentEventRef.current = eventId;
+  const changeContext = (nextEventId: string | null) => {
     resetTransient();
-    onEventChange(eventId);
-  }
+    stopCamera();
+    onEventChange(nextEventId);
+  };
 
-  function showError(error: unknown) {
+  function handleAuthError(error: unknown) {
     if (
       error instanceof RpcError &&
       error.problem.code === "AUTH_REQUIRED" &&
@@ -160,7 +142,7 @@ export const AssistedScannerPanel = ({
     const message =
       error instanceof RpcError
         ? errorCopyFor(error.problem.code, error.problem.detail)
-        : COPY.error.networkError;
+        : COPY.attendance.assistedAccessError;
     showStatus(message, "error");
     announce(message);
   }
@@ -173,19 +155,25 @@ export const AssistedScannerPanel = ({
     setBusy(true);
     try {
       const result = await assistedCheckIn(eventId, member.user_id, method);
-      if (!mountedRef.current || currentEventRef.current !== eventId) {
+      if (!mountedRef.current) {
         return;
       }
-      const message =
+      const successMessage =
         result.outcome === "duplicate"
           ? COPY.attendance.duplicate
           : COPY.attendance.success;
-      showStatus(message, result.outcome === "duplicate" ? "info" : "success");
-      announce(message);
-    } catch (error) {
-      if (mountedRef.current && currentEventRef.current === eventId) {
-        showError(error);
+      showStatus(
+        successMessage,
+        result.outcome === "duplicate" ? "info" : "success"
+      );
+      announce(successMessage);
+      setMembers([]);
+      setQuery("");
+    } catch (error: unknown) {
+      if (!mountedRef.current) {
+        return;
       }
+      handleAuthError(error);
     } finally {
       if (mountedRef.current) {
         setBusy(false);
@@ -193,28 +181,35 @@ export const AssistedScannerPanel = ({
     }
   }
 
-  async function scanMember(rawValue: string, eventId: string) {
+  async function searchAndCheckInQr(eventId: string, qrCode: string) {
     setBusy(true);
+    showStatus(COPY.attendance.resolving, "info");
+    announce(COPY.attendance.resolving);
     try {
-      const result = await searchAttendanceMembers(eventId, rawValue.trim());
-      if (!mountedRef.current || currentEventRef.current !== eventId) {
+      const { members: matches } = await searchAttendanceMembers(
+        eventId,
+        qrCode
+      );
+      if (!mountedRef.current) {
         return;
       }
-      if (result.members.length === 0) {
-        showStatus(COPY.attendance.memberSearchEmpty);
-        announce(COPY.attendance.memberSearchEmpty);
+      if (matches.length === 1) {
+        await checkIn(matches[0], eventId, "leader_qr_scan");
+      } else if (matches.length > 1) {
+        setMembers(matches);
+        const message = COPY.attendance.assistedMemberSearchAmbiguous;
+        showStatus(message, "error");
+        announce(message);
+      } else {
+        const message = COPY.attendance.memberSearchEmpty;
+        showStatus(message, "error");
+        announce(message);
+      }
+    } catch (error: unknown) {
+      if (!mountedRef.current) {
         return;
       }
-      if (result.members.length !== 1) {
-        showStatus(COPY.attendance.assistedMemberSearchAmbiguous, "error");
-        announce(COPY.attendance.assistedMemberSearchAmbiguous);
-        return;
-      }
-      await checkIn(result.members[0], eventId, "leader_qr_scan");
-    } catch (error) {
-      if (mountedRef.current && currentEventRef.current === eventId) {
-        showError(error);
-      }
+      handleAuthError(error);
     } finally {
       if (mountedRef.current) {
         setBusy(false);
@@ -224,31 +219,37 @@ export const AssistedScannerPanel = ({
 
   async function searchMembers() {
     if (!selectedEvent) {
-      const message = COPY.attendance.assistedContextRequired;
-      showStatus(message);
-      announce(message);
       return;
     }
-    const eventId = selectedEvent.event_id;
+    const trimmed = query.trim();
+    if (!trimmed) {
+      showStatus(COPY.attendance.assistedSearchHint, "error");
+      searchRef.current?.focus();
+      return;
+    }
     setBusy(true);
     try {
-      const result = await searchAttendanceMembers(eventId, query.trim());
-      if (!mountedRef.current || currentEventRef.current !== eventId) {
+      const { members: matches } = await searchAttendanceMembers(
+        selectedEvent.event_id,
+        trimmed
+      );
+      if (!mountedRef.current) {
         return;
       }
-      setMembers(result.members);
-      if (result.members.length === 0) {
-        showStatus(COPY.attendance.memberSearchEmpty);
+      setMembers(matches);
+      if (matches.length === 0) {
+        showStatus(COPY.attendance.memberSearchEmpty, "error");
         announce(COPY.attendance.memberSearchEmpty);
       } else {
         const message = COPY.attendance.assistedMembersFound;
-        showStatus(message);
+        showStatus(message, "info");
         announce(message);
       }
-    } catch (error) {
-      if (mountedRef.current && currentEventRef.current === eventId) {
-        showError(error);
+    } catch (error: unknown) {
+      if (!mountedRef.current) {
+        return;
       }
+      handleAuthError(error);
     } finally {
       if (mountedRef.current) {
         setBusy(false);
@@ -259,26 +260,26 @@ export const AssistedScannerPanel = ({
   return (
     <div className="mx-auto w-[min(100%,760px)] px-4 py-8 pb-12">
       <Card
-        className="grid gap-4.5 p-5 bg-[var(--surface-raised)] border border-[var(--line-strong)] rounded-[var(--radius-md)]"
+        className="grid gap-[1.125rem] p-5 bg-[var(--surface-raised)] border border-[var(--line-strong)] rounded-[var(--radius-md)]"
         role="region"
         aria-labelledby="assisted-scanner-title"
       >
         <h1
           id="assisted-scanner-title"
-          className="text-2xl font-extrabold leading-tight tracking-[0.01em] text-[var(--ink)]"
+          className="text-2xl font-extrabold leading-tight tracking-[0.01em] text-[var(--ink)] min-w-0 whitespace-normal [overflow-wrap:anywhere]"
         >
           {COPY.sections.scanner}
         </h1>
-        <p className="-mt-1.5 text-base leading-relaxed text-[var(--ink-muted)]">
+        <p className="-mt-1.5 text-base leading-relaxed text-[var(--ink-muted)] min-w-0 whitespace-normal [overflow-wrap:anywhere]">
           {COPY.attendance.assistedHint}
         </p>
         <div
-          className="mt-4 grid gap-3"
+          className="mt-4 grid gap-3 min-w-0"
           aria-label={COPY.attendance.assistedMode}
         >
           <div className="flex flex-wrap gap-3">
             <Button
-              className={primaryControl}
+              className={attendanceButtonVariants({ variant: "primaryFit" })}
               type="button"
               disabled={!selectedEvent || busy || cameraOpen}
               onClick={() => {
@@ -295,7 +296,7 @@ export const AssistedScannerPanel = ({
             {cameraOpen && (
               <Button
                 variant="outline"
-                className={secondaryControl}
+                className={attendanceButtonVariants({ variant: "secondary" })}
                 type="button"
                 onClick={() => {
                   scanEventRef.current = null;
@@ -317,8 +318,8 @@ export const AssistedScannerPanel = ({
           )}
         </div>
         {selectedEvent ? (
-          <div className="mt-4 grid gap-3">
-            <p className="text-sm text-[var(--ink-muted)]">
+          <div className="mt-4 grid gap-3 min-w-0">
+            <p className="text-sm text-[var(--ink-muted)] min-w-0 whitespace-normal [overflow-wrap:anywhere]">
               {attendanceEventLabel(selectedEvent)}
               {selectedEvent.location?.trim()
                 ? ` · ${COPY.attendance.eventLocation}: ${selectedEvent.location.trim()}`
@@ -347,7 +348,7 @@ export const AssistedScannerPanel = ({
               </label>
               <Button
                 variant="outline"
-                className={secondaryControl}
+                className={attendanceButtonVariants({ variant: "secondary" })}
                 type="submit"
                 disabled={busy}
                 aria-busy={busy}
@@ -358,7 +359,7 @@ export const AssistedScannerPanel = ({
             {members.length > 0 && (
               <ul
                 ref={resultsRef}
-                className="mt-2 grid gap-2"
+                className="mt-2 grid gap-2 min-w-0 list-none p-0"
                 aria-label={COPY.attendance.memberSearch}
                 aria-live="polite"
                 tabIndex={-1}
@@ -378,11 +379,13 @@ export const AssistedScannerPanel = ({
                         )
                       }
                     >
-                      <strong>{member.name}</strong>
-                      <span className="text-sm text-[var(--ink-muted)]">
+                      <strong className="min-w-0 whitespace-normal [overflow-wrap:anywhere]">
+                        {member.name}
+                      </strong>
+                      <span className="text-sm text-[var(--ink-muted)] min-w-0 whitespace-normal [overflow-wrap:anywhere]">
                         {member.phone ?? member.user_id}
                       </span>
-                      <span className="text-sm font-bold text-[var(--accent)] mt-1 sm:mt-0">
+                      <span className="text-sm font-bold text-[var(--accent)] mt-1 sm:mt-0 shrink-0">
                         {COPY.attendance.checkInMember}
                       </span>
                     </Button>

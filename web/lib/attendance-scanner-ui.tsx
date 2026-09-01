@@ -1,5 +1,6 @@
 "use client";
 
+import { cva } from "class-variance-authority";
 import { useState } from "react";
 import type { Ref, RefObject } from "react";
 
@@ -17,14 +18,52 @@ import {
 } from "@/lib/attendance-display";
 import { COPY } from "@/lib/copy";
 import { hkTime24Label, hkWallLabel } from "@/lib/hk-time";
-const primaryControl =
-  "min-h-11 h-auto rounded-[var(--radius-sm)] px-4 py-3 text-base font-extrabold";
-const secondaryControl =
-  "min-h-11 h-auto rounded-[var(--radius-sm)] border border-[var(--line-strong)] bg-[var(--surface-raised)] px-4 py-3 text-base font-bold text-[var(--ink)] hover:bg-[var(--surface)] hover:text-[var(--ink)]";
-const backControl =
-  "min-h-11 h-auto px-2 py-3 text-base font-bold text-[var(--accent-deep)] hover:bg-transparent hover:text-[var(--accent)]";
-const cameraStopControl =
-  "min-h-12 rounded-[var(--radius-sm)] border border-white/40 bg-black/50 px-4 font-semibold text-white hover:bg-black/70 hover:text-white focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50";
+import { cn } from "@/lib/utils";
+
+export const attendanceButtonVariants = cva(
+  "inline-flex min-h-11 h-auto min-w-0 items-center justify-center rounded-[var(--radius-sm)] px-4 py-3 text-base font-bold transition-colors outline-none motion-reduce:transition-none focus-visible:border-[var(--focus)] focus-visible:ring-3 focus-visible:ring-[var(--focus)]/30 disabled:pointer-events-none disabled:opacity-50",
+  {
+    variants: {
+      variant: {
+        primary:
+          "w-full bg-[var(--accent)] text-white font-extrabold hover:bg-[var(--accent-deep)] active:bg-[var(--accent-deep)]",
+        primaryFit:
+          "w-auto bg-[var(--accent)] text-white font-extrabold hover:bg-[var(--accent-deep)] active:bg-[var(--accent-deep)]",
+        secondary:
+          "border border-[var(--line-strong)] bg-[var(--surface-raised)] text-[var(--ink)] hover:bg-[var(--surface)] hover:text-[var(--ink)]",
+        danger:
+          "border border-[var(--error)] bg-[var(--surface-raised)] text-[var(--error)] hover:bg-[var(--error-surface)] hover:text-[var(--error)]",
+        back: "w-fit min-h-11 px-2 py-3 text-[var(--accent-deep)] hover:bg-transparent hover:text-[var(--accent)] font-bold",
+        modeTab:
+          "border border-[var(--line-strong)] bg-[var(--surface-raised)] px-4 py-2.5 text-base font-bold text-[var(--ink)] hover:bg-[var(--surface)] hover:text-[var(--ink)] aria-selected:border-[var(--accent)] aria-selected:bg-[var(--surface)] aria-selected:text-[var(--accent-deep)]",
+        cameraStop:
+          "min-h-12 rounded-[var(--radius-sm)] border border-white/40 bg-black/50 px-4 font-semibold text-white hover:bg-black/70 hover:text-white focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50",
+      },
+    },
+    defaultVariants: {
+      variant: "primary",
+    },
+  }
+);
+
+export const statusOutputVariants = cva(
+  "rounded-[var(--radius-sm)] border p-3 text-base min-w-0 [overflow-wrap:anywhere]",
+  {
+    variants: {
+      tone: {
+        info: "border-[var(--line-strong)] bg-[var(--surface-raised)] text-[var(--ink)]",
+        success:
+          "border-[var(--success-border)] bg-[var(--success-surface)] text-[var(--success)]",
+        error:
+          "border-[var(--error-border)] bg-[var(--error-surface)] text-[var(--error)]",
+      },
+    },
+    defaultVariants: {
+      tone: "info",
+    },
+  }
+);
+
 export type StatusTone = "info" | "success" | "error";
 
 /**
@@ -41,7 +80,7 @@ export const ScannerStatusOutput = ({
   tone?: StatusTone;
 }) => (
   <output
-    className="rounded-[var(--radius-sm)] border border-[var(--line-strong)] p-3 text-base"
+    className={cn(statusOutputVariants({ tone: tone ?? "info" }))}
     data-tone={message ? tone : undefined}
     aria-live="polite"
     aria-atomic="true"
@@ -103,7 +142,7 @@ export const ScannerCamera = ({
     </div>
     {!cameraOpen && (
       <Button
-        className={primaryControl}
+        className={attendanceButtonVariants({ variant: "primaryFit" })}
         type="button"
         data-camera-available={cameraAvailable}
         onClick={onStart}
@@ -114,7 +153,7 @@ export const ScannerCamera = ({
     {cameraOpen && (
       <Button
         variant="outline"
-        className={secondaryControl}
+        className={attendanceButtonVariants({ variant: "secondary" })}
         type="button"
         onClick={onClose}
       >
@@ -136,9 +175,10 @@ export const CameraFirstScanner = ({
   onStop: () => void;
 }) => (
   <div
-    className={`relative flex flex-col items-center justify-between min-h-[560px] p-5 pb-24 bg-black text-white rounded-[var(--radius-md)] ${
-      opening ? "opacity-90" : ""
-    }`}
+    className={cn(
+      "relative flex flex-col items-center justify-center min-h-[min(760px,calc(100dvh-84px-env(safe-area-inset-bottom,0px)))] [@media(max-height:640px)]:min-h-[560px] p-[92px_20px_142px] [@media(max-height:640px)]:p-[48px_20px_96px] overflow-hidden bg-[radial-gradient(120%_80%_at_50%_28%,#344342_0%,#172021_56%,#050708_100%)] text-white rounded-[var(--radius-md)] motion-reduce:transition-none",
+      opening && "opacity-90"
+    )}
     data-camera-state={opening ? "opening" : "live"}
     data-testid="scanner-camera-stage"
   >
@@ -174,7 +214,10 @@ export const CameraFirstScanner = ({
     </figure>
     <Button
       variant="ghost"
-      className={cameraStopControl}
+      className={cn(
+        attendanceButtonVariants({ variant: "cameraStop" }),
+        "absolute right-5 bottom-[calc(76px+env(safe-area-inset-bottom,0px))] left-5"
+      )}
       type="button"
       disabled={opening}
       aria-busy={opening}
@@ -222,28 +265,31 @@ const ScannerEventChoiceGroup = ({
   const checked = events.find((event) => event.event_id === checkedId) ?? null;
 
   return (
-    <fieldset className="grid gap-4 border-0 p-0 m-0">
+    <fieldset className="grid gap-4 border-0 p-0 m-0 min-w-0">
       <legend
         id={legendId}
         ref={headingRef as Ref<HTMLLegendElement>}
         tabIndex={headingTabIndex}
-        className={`p-0 m-0 ${legendClassName}`}
+        className={cn(
+          "p-0 m-0 min-w-0 whitespace-normal [overflow-wrap:anywhere]",
+          legendClassName
+        )}
       >
         {legend}
       </legend>
       {lead && (
-        <p className="-mt-1.5 text-base leading-relaxed text-[var(--ink-muted)]">
+        <p className="-mt-1.5 text-base leading-relaxed text-[var(--ink-muted)] min-w-0 whitespace-normal [overflow-wrap:anywhere]">
           {lead}
         </p>
       )}
-      <div className="grid gap-2">
+      <div className="grid gap-2 min-w-0">
         {events.map((event) => (
           <label
             key={event.event_id}
-            className="flex items-center gap-3 p-3 rounded-[var(--radius-sm)] border border-[var(--line-strong)] bg-[var(--surface-raised)] cursor-pointer hover:bg-[var(--surface)]"
+            className="flex items-center gap-3 p-3 rounded-[var(--radius-sm)] border border-[var(--line-strong)] bg-[var(--surface-raised)] cursor-pointer hover:bg-[var(--surface)] min-w-0 motion-reduce:transition-none"
           >
             <input
-              className="h-5 w-5 accent-[var(--accent)]"
+              className="h-5 w-5 accent-[var(--accent)] shrink-0"
               type="radio"
               name={radioName}
               value={event.event_id}
@@ -251,9 +297,9 @@ const ScannerEventChoiceGroup = ({
               checked={checkedId === event.event_id}
               onChange={() => setCheckedId(event.event_id)}
             />
-            <span className="grid gap-0.5 text-base text-[var(--ink)]">
+            <span className="grid gap-0.5 text-base text-[var(--ink)] min-w-0 whitespace-normal [overflow-wrap:anywhere]">
               <strong>{attendanceEventName(event)}</strong>
-              <span className="text-sm text-[var(--ink-muted)]">
+              <span className="text-sm text-[var(--ink-muted)] min-w-0 whitespace-normal [overflow-wrap:anywhere]">
                 {attendanceEventMeta(event)}
               </span>
             </span>
@@ -261,7 +307,7 @@ const ScannerEventChoiceGroup = ({
         ))}
       </div>
       <Button
-        className={primaryControl}
+        className={attendanceButtonVariants({ variant: "primary" })}
         type="button"
         disabled={disabled || !checked}
         onClick={() => {
@@ -288,7 +334,7 @@ export const ScannerChooser = ({
   onSelect: (event: AttendanceEvent) => void;
 }) => (
   <Card
-    className="grid gap-4.5 p-5 bg-[var(--surface-raised)] border border-[var(--line-strong)] rounded-[var(--radius-md)]"
+    className="grid gap-[1.125rem] p-5 bg-[var(--surface-raised)] border border-[var(--line-strong)] rounded-[var(--radius-md)]"
     role="region"
     aria-labelledby="scanner-chooser-title"
   >
@@ -298,7 +344,7 @@ export const ScannerChooser = ({
       </span>
       <Button
         variant="link"
-        className={backControl}
+        className={attendanceButtonVariants({ variant: "back" })}
         type="button"
         onClick={onBack}
       >
@@ -400,7 +446,7 @@ export const ScannerConfirmation = ({
   onNotThisEvent: () => void;
 }) => (
   <Card
-    className="grid gap-4.5 p-5 bg-[var(--surface-raised)] border border-[var(--line-strong)] rounded-[var(--radius-md)]"
+    className="grid gap-[1.125rem] p-5 bg-[var(--surface-raised)] border border-[var(--line-strong)] rounded-[var(--radius-md)]"
     role="region"
     aria-labelledby="attendance-confirm-title"
   >
@@ -409,7 +455,7 @@ export const ScannerConfirmation = ({
     </header>
     <Button
       variant="link"
-      className={backControl}
+      className={attendanceButtonVariants({ variant: "back" })}
       type="button"
       disabled={busy}
       onClick={onRescan}
@@ -425,40 +471,40 @@ export const ScannerConfirmation = ({
     <h1
       id="attendance-confirm-title"
       ref={headingRef}
-      className="text-2xl font-extrabold leading-tight tracking-[0.01em] text-[var(--ink)]"
+      className="text-2xl font-extrabold leading-tight tracking-[0.01em] text-[var(--ink)] min-w-0 whitespace-normal [overflow-wrap:anywhere]"
       tabIndex={-1}
     >
       {COPY.attendance.confirmTitle}
     </h1>
-    <p className="-mt-1.5 text-base leading-relaxed text-[var(--ink-muted)]">
+    <p className="-mt-1.5 text-base leading-relaxed text-[var(--ink-muted)] min-w-0 whitespace-normal [overflow-wrap:anywhere]">
       {COPY.attendance.confirmLead}
     </p>
     <article
-      className="grid gap-3 p-4 rounded-[var(--radius-sm)] border border-[var(--line-strong)] bg-[var(--surface)]"
+      className="grid gap-3 p-4 rounded-[var(--radius-sm)] border border-[var(--line-strong)] bg-[var(--surface)] min-w-0"
       aria-labelledby="attendance-confirm-event-title"
     >
-      <span className="text-xs font-bold uppercase tracking-wider text-[var(--accent-deep)]">
+      <span className="text-xs font-bold uppercase tracking-wider text-[var(--accent-deep)] min-w-0 whitespace-normal [overflow-wrap:anywhere]">
         {event.program_name}
       </span>
       <h2
         id="attendance-confirm-event-title"
-        className="text-xl font-extrabold text-[var(--ink)]"
+        className="text-xl font-extrabold text-[var(--ink)] min-w-0 whitespace-normal [overflow-wrap:anywhere]"
       >
         {attendanceEventName(event)}
       </h2>
       <div className="grid gap-2 border-t border-[var(--line)] pt-3">
-        <div className="flex items-center gap-2 text-sm text-[var(--ink)]">
+        <div className="flex items-center gap-2 text-sm text-[var(--ink)] min-w-0">
           <EventDetailIcon kind="time" />
-          <span>
+          <span className="min-w-0 whitespace-normal [overflow-wrap:anywhere]">
             <span className="font-bold text-[var(--ink-muted)] mr-1">
               {COPY.attendance.eventTime}
             </span>
             {hkWallLabel(event.starts_at)} – {hkWallLabel(event.ends_at)}
           </span>
         </div>
-        <div className="flex items-center gap-2 text-sm text-[var(--ink)]">
+        <div className="flex items-center gap-2 text-sm text-[var(--ink)] min-w-0">
           <EventDetailIcon kind="location" />
-          <span>
+          <span className="min-w-0 whitespace-normal [overflow-wrap:anywhere]">
             <span className="font-bold text-[var(--ink-muted)] mr-1">
               {COPY.attendance.eventLocation}
             </span>
@@ -476,7 +522,7 @@ export const ScannerConfirmation = ({
       {retryAvailable ? (
         <Button
           ref={retryRef}
-          className={primaryControl}
+          className={attendanceButtonVariants({ variant: "primary" })}
           type="button"
           disabled={busy}
           aria-busy={busy}
@@ -486,7 +532,7 @@ export const ScannerConfirmation = ({
         </Button>
       ) : (
         <Button
-          className={primaryControl}
+          className={attendanceButtonVariants({ variant: "primary" })}
           type="button"
           disabled={busy}
           aria-busy={busy}
@@ -497,7 +543,7 @@ export const ScannerConfirmation = ({
       )}
       <Button
         variant="outline"
-        className={secondaryControl}
+        className={attendanceButtonVariants({ variant: "secondary" })}
         type="button"
         disabled={busy}
         onClick={onNotThisEvent}
@@ -520,7 +566,7 @@ export const ScannerCheckinResult = ({
   onScanAgain: () => void;
 }) => (
   <Card
-    className="grid gap-4.5 p-5 bg-[var(--surface-raised)] border border-[var(--line-strong)] rounded-[var(--radius-md)] text-center"
+    className="grid gap-[1.125rem] p-5 bg-[var(--surface-raised)] border border-[var(--line-strong)] rounded-[var(--radius-md)] text-center"
     role="region"
     aria-labelledby="attendance-result-title"
   >
@@ -531,7 +577,7 @@ export const ScannerCheckinResult = ({
     <h1
       id="attendance-result-title"
       ref={headingRef}
-      className="text-2xl font-extrabold leading-tight tracking-[0.01em] text-[var(--ink)]"
+      className="text-2xl font-extrabold leading-tight tracking-[0.01em] text-[var(--ink)] min-w-0 whitespace-normal [overflow-wrap:anywhere]"
       tabIndex={-1}
     >
       {kind === "success"
@@ -539,7 +585,7 @@ export const ScannerCheckinResult = ({
         : COPY.attendance.duplicateTitle}
     </h1>
     {kind === "success" ? (
-      <p className="text-base text-[var(--ink-muted)] leading-relaxed">
+      <p className="text-base text-[var(--ink-muted)] leading-relaxed min-w-0 whitespace-normal [overflow-wrap:anywhere]">
         <span>{event.program_name}</span>
         <span aria-hidden="true"> · </span>
         <span>{attendanceEventName(event)}</span>
@@ -550,12 +596,15 @@ export const ScannerCheckinResult = ({
       </p>
     )}
     <div className="mt-2 grid gap-3">
-      <Button asChild className={primaryControl}>
+      <Button
+        asChild
+        className={attendanceButtonVariants({ variant: "primary" })}
+      >
         <a href="/">{COPY.attendance.backHome}</a>
       </Button>
       <Button
         variant="outline"
-        className={secondaryControl}
+        className={attendanceButtonVariants({ variant: "secondary" })}
         type="button"
         onClick={onScanAgain}
       >
@@ -634,7 +683,7 @@ export const ScannerOutcome = ({
   );
   return (
     <Card
-      className="grid gap-4.5 p-5 bg-[var(--surface-raised)] border border-[var(--line-strong)] rounded-[var(--radius-md)] text-center"
+      className="grid gap-[1.125rem] p-5 bg-[var(--surface-raised)] border border-[var(--line-strong)] rounded-[var(--radius-md)] text-center"
       role="region"
       aria-labelledby="scanner-outcome-title"
     >
@@ -645,7 +694,7 @@ export const ScannerOutcome = ({
       <h1
         id="scanner-outcome-title"
         ref={headingRef}
-        className="text-2xl font-extrabold leading-tight tracking-[0.01em] text-[var(--ink)]"
+        className="text-2xl font-extrabold leading-tight tracking-[0.01em] text-[var(--ink)] min-w-0 whitespace-normal [overflow-wrap:anywhere]"
         tabIndex={headingRef ? -1 : undefined}
       >
         {kind === "window-not-open"
@@ -656,7 +705,7 @@ export const ScannerOutcome = ({
       </h1>
       {kind === "window-not-open" ? (
         openingTime ? (
-          <p className="text-base text-[var(--ink-muted)] leading-relaxed">
+          <p className="text-base text-[var(--ink-muted)] leading-relaxed min-w-0 whitespace-normal [overflow-wrap:anywhere]">
             {COPY.attendance.outcomeWindowBodyPrefix}{" "}
             <strong>{openingTime}</strong>{" "}
             {hasThirtyMinuteWindow
@@ -669,7 +718,7 @@ export const ScannerOutcome = ({
           </p>
         )
       ) : (
-        <p className="text-base text-[var(--ink-muted)] leading-relaxed">
+        <p className="text-base text-[var(--ink-muted)] leading-relaxed min-w-0 whitespace-normal [overflow-wrap:anywhere]">
           {kind === "cancelled"
             ? COPY.attendance.outcomeCancelledBody
             : COPY.attendance.outcomeNotEnrolledBody}
@@ -677,13 +726,16 @@ export const ScannerOutcome = ({
       )}
       <div className="mt-2 grid gap-3">
         {kind === "not-enrolled" && (
-          <Button asChild className={primaryControl}>
+          <Button
+            asChild
+            className={attendanceButtonVariants({ variant: "primary" })}
+          >
             <a href={programHref}>{COPY.attendance.viewProgramDetail}</a>
           </Button>
         )}
         <Button
           variant="outline"
-          className={secondaryControl}
+          className={attendanceButtonVariants({ variant: "secondary" })}
           type="button"
           onClick={onBack}
         >
@@ -710,7 +762,7 @@ export const ScannerEventPicker = ({
   headingRef?: RefObject<HTMLElement | null>;
   disabled?: boolean;
 }) => (
-  <div className="mt-4 grid gap-3" aria-labelledby="choose-event-title">
+  <div className="mt-4 grid gap-3 min-w-0" aria-labelledby="choose-event-title">
     <ScannerEventChoiceGroup
       events={events}
       onSelect={onSelect}

@@ -22,24 +22,9 @@ const isLocal =
   !parsedTarget.password &&
   ["localhost", "127.0.0.1"].includes(parsedTarget.hostname);
 if (!isLocal) {
-  if (
-    parsedTarget.protocol !== "https:" ||
-    parsedTarget.username ||
-    parsedTarget.password
-  ) {
-    throw new Error(
-      "PHASE_E_TARGET_URL must be an absolute HTTP loopback URL or an absolute HTTPS URL without credentials"
-    );
-  }
-  if (
-    !/^efcc-(?:auth|dev)-[a-z0-9-]+\.efcc-ggc\.workers\.dev$/iu.test(
-      parsedTarget.hostname
-    )
-  ) {
-    throw new Error(
-      "PHASE_E_TARGET_URL must use the efcc-auth-*.efcc-ggc.workers.dev acceptance host or the efcc-dev-*.efcc-ggc.workers.dev dev-testing host"
-    );
-  }
+  throw new Error(
+    "PHASE_E_TARGET_URL must be a local loopback URL (http://127.0.0.1:8787 or http://localhost:8787); remote acceptance/dev workers and non-loopback URLs are rejected for Phase E geometry suites"
+  );
 }
 
 export default defineConfig({

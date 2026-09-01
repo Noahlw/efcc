@@ -10,6 +10,7 @@ import { RpcError } from "@/lib/api";
 import type { AttendanceEvent } from "@/lib/attendance";
 import { entryFromValue } from "@/lib/attendance-entry";
 import {
+  attendanceButtonVariants,
   CheckinConfirmationIcon,
   ScannerEventPicker,
   ScannerStatusOutput,
@@ -21,14 +22,8 @@ import { announce } from "@/lib/live-region";
 import { guestCheckIn } from "@/lib/programs/program-api";
 import { useAttendanceFlow } from "@/lib/use-attendance-flow";
 
-const primaryControl =
-  "min-h-11 h-auto w-full rounded-[var(--radius-sm)] px-4 py-3 text-base font-extrabold";
 const inputControl =
   "min-h-11 h-auto rounded-[var(--radius-sm)] border border-[var(--line-strong)] bg-[var(--surface-raised)] px-3 py-3 text-base text-[var(--ink)] placeholder:text-[var(--ink-muted)] focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50";
-const backControl =
-  "min-h-11 h-auto px-2 py-3 text-base font-bold text-[var(--accent-deep)] hover:bg-transparent hover:text-[var(--accent)]";
-const memberLinkControl =
-  "min-h-11 h-auto rounded-[var(--radius-sm)] border border-[var(--line-strong)] bg-[var(--surface-raised)] px-4 py-3 text-base font-bold text-[var(--ink)] hover:bg-[var(--surface)] hover:text-[var(--ink)]";
 
 interface GuestResult {
   kind: "success" | "duplicate";
@@ -64,7 +59,7 @@ const GuestCheckinResult = ({
   headingRef: RefObject<HTMLHeadingElement | null>;
 }) => (
   <Card
-    className="grid gap-4.5 p-5 bg-[var(--surface-raised)] border border-[var(--line-strong)] rounded-[var(--radius-md)] text-center"
+    className="grid gap-[1.125rem] p-5 bg-[var(--surface-raised)] border border-[var(--line-strong)] rounded-[var(--radius-md)] text-center"
     role="region"
     aria-labelledby="guest-result-title"
   >
@@ -79,14 +74,14 @@ const GuestCheckinResult = ({
     <h1
       id="guest-result-title"
       ref={headingRef}
-      className="text-2xl font-extrabold leading-tight tracking-[0.01em] text-[var(--ink)]"
+      className="text-2xl font-extrabold leading-tight tracking-[0.01em] text-[var(--ink)] min-w-0 whitespace-normal [overflow-wrap:anywhere]"
       tabIndex={-1}
     >
       {result.kind === "success"
         ? COPY.attendance.guestResultTitle
         : COPY.attendance.duplicateTitle}
     </h1>
-    <p className="text-base text-[var(--ink-muted)] leading-relaxed">
+    <p className="text-base text-[var(--ink-muted)] leading-relaxed min-w-0 whitespace-normal [overflow-wrap:anywhere]">
       {result.kind === "success"
         ? COPY.attendance.guestResultLead(
             hkDayPeriodFromIso(result.event.starts_at)
@@ -94,7 +89,10 @@ const GuestCheckinResult = ({
         : COPY.attendance.guestDuplicate}
     </p>
     <div className="mt-2 grid gap-3">
-      <Button asChild className={primaryControl}>
+      <Button
+        asChild
+        className={attendanceButtonVariants({ variant: "primary" })}
+      >
         <a href="/">{COPY.attendance.guestDone}</a>
       </Button>
     </div>
@@ -115,6 +113,7 @@ export const AttendancePanel = () => {
   const chooserHeadingRef = useRef<HTMLHeadingElement>(null);
   const resultHeadingRef = useRef<HTMLHeadingElement>(null);
   const flow = useAttendanceFlow(inputRef, {
+    cameraFirst: false,
     cameraEnabled: false,
     invalidEntryMessage: COPY.attendance.invalidEntryCode,
     offlineResolveMessage: COPY.attendance.offlineResolve,
@@ -123,36 +122,29 @@ export const AttendancePanel = () => {
   useEffect(() => {
     if (result) {
       resultHeadingRef.current?.focus();
-    } else if (flow.events.length > 1) {
+    }
+  }, [result]);
+
+  useEffect(() => {
+    if (awaitingSelection) {
       chooserHeadingRef.current?.focus();
     }
-  }, [flow.events.length, result]);
-  useEffect(() => {
-    if (result || flow.view !== "outcome" || !flow.outcome) {
-      return;
-    }
-    const message = COPY.attendance.noEvents;
-    flow.showStatus(message, "error");
-    announce(message);
-    inputRef.current?.focus();
-    // The flow object is intentionally not a dependency; its showStatus
-    // callback is recreated with the hook state and would retrigger this
-    // terminal-state announcement.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [flow.outcome, flow.view, result]);
+  }, [awaitingSelection]);
 
   const clearFormStatus = () => {
     setValidationError("");
-    flow.showStatus("");
   };
 
   const validate = (): boolean => {
+    const rawInput = flow.input.trim();
+    const rawName = name.trim();
+    const rawPhone = phone.trim();
     let firstMissing: HTMLInputElement | null = null;
-    if (flow.input.trim().length === 0) {
+    if (rawInput.length === 0) {
       firstMissing = inputRef.current;
-    } else if (name.trim().length === 0) {
+    } else if (rawName.length === 0) {
       firstMissing = nameRef.current;
-    } else if (phone.trim().length === 0) {
+    } else if (rawPhone.length === 0) {
       firstMissing = phoneRef.current;
     }
     if (firstMissing === null) {
@@ -163,17 +155,14 @@ export const AttendancePanel = () => {
     flow.showStatus(message, "error");
     announce(message);
     firstMissing.focus();
-    // ponytail: the error <output> now renders directly above the fields it
-    // names, so validation feedback is visible at 320×568 with zero
-    // scrolling — the old scrollIntoView rAF jumped the window 76px.
     return false;
   };
 
-  async function submitGuest(event: AttendanceEvent) {
-    const parsedEntry = entryFromValue(flow.input);
-    const credentialValue = parsedEntry.value || flow.input.trim();
-    const fromQr = flow.fromQr || parsedEntry.fromQr;
+  async function submitGuest(event: AttendanceEvent, fromQr = flow.fromQr) {
+    clearFormStatus();
+    setSubmitting(true);
     try {
+      const credentialValue = flow.input.trim();
       const guestResult = await guestCheckIn({
         event_id: event.event_id,
         method: fromQr ? "guest_qr_scan" : "guest_manual_code",
@@ -183,16 +172,11 @@ export const AttendancePanel = () => {
           ? { program_token: credentialValue }
           : { entry: credentialValue }),
       });
-      const kind =
-        guestResult.outcome === "duplicate" ? "duplicate" : "success";
-      setResult({ kind, event });
-      setAwaitingSelection(false);
+      setResult({
+        kind: guestResult.outcome === "duplicate" ? "duplicate" : "success",
+        event,
+      });
       flow.showStatus("");
-      announce(
-        kind === "duplicate"
-          ? COPY.attendance.guestDuplicate
-          : COPY.attendance.guestResultTitle
-      );
     } catch (error) {
       const message = guestSubmitErrorCopy(error);
       flow.showStatus(message, "error");
@@ -214,16 +198,12 @@ export const AttendancePanel = () => {
       return;
     }
     setSubmitting(true);
-    if (flow.selected) {
-      await submitGuest(flow.selected);
-      return;
-    }
     try {
-      const resolvedEvents = await flow.resolve(flow.input);
-      if (resolvedEvents.length === 1) {
-        await submitGuest(resolvedEvents[0]);
-      } else {
-        setAwaitingSelection(resolvedEvents.length > 1);
+      const events = await flow.resolve(flow.input);
+      if (events.length === 1) {
+        await submitGuest(events[0]);
+      } else if (events.length > 1) {
+        setAwaitingSelection(true);
       }
     } finally {
       setSubmitting(false);
@@ -231,10 +211,6 @@ export const AttendancePanel = () => {
   }
 
   const selectEvent = (event: AttendanceEvent) => {
-    if (submitting) {
-      return;
-    }
-    flow.setSelected(event);
     const shouldSubmit =
       awaitingSelection ||
       (flow.input.trim().length > 0 &&
@@ -250,7 +226,7 @@ export const AttendancePanel = () => {
   if (result) {
     return (
       <div
-        className="mx-auto w-[min(100%,760px)] px-4 py-8 pb-12"
+        className="mx-auto w-[min(100%,760px)] px-4 py-8 [@media(max-height:640px)]:py-4 pb-[calc(3rem+env(safe-area-inset-bottom,0px))] [@media(max-height:640px)]:pb-[calc(1.5rem+env(safe-area-inset-bottom,0px))]"
         data-surface="guest-check-in"
       >
         <GuestCheckinResult result={result} headingRef={resultHeadingRef} />
@@ -262,24 +238,28 @@ export const AttendancePanel = () => {
 
   return (
     <div
-      className="mx-auto w-[min(100%,760px)] px-4 py-8 pb-12"
+      className="mx-auto w-[min(100%,760px)] px-4 py-8 [@media(max-height:640px)]:py-4 pb-[calc(3rem+env(safe-area-inset-bottom,0px))] [@media(max-height:640px)]:pb-[calc(1.5rem+env(safe-area-inset-bottom,0px))]"
       data-surface="guest-check-in"
     >
       <Card
-        className="grid gap-4.5 p-5 bg-[var(--surface-raised)] border border-[var(--line-strong)] rounded-[var(--radius-md)]"
+        className="grid gap-[1.125rem] p-5 [@media(max-height:640px)]:p-3 [@media(max-height:640px)]:gap-3 bg-[var(--surface-raised)] border border-[var(--line-strong)] rounded-[var(--radius-md)]"
         role="region"
         aria-labelledby="attendance-title"
       >
-        <Button asChild variant="link" className={backControl}>
+        <Button
+          asChild
+          variant="link"
+          className={attendanceButtonVariants({ variant: "back" })}
+        >
           <a href="/">{COPY.attendance.guestBack}</a>
         </Button>
         <h1
           id="attendance-title"
-          className="text-2xl font-extrabold leading-tight tracking-[0.01em] text-[var(--ink)]"
+          className="text-2xl font-extrabold leading-tight tracking-[0.01em] text-[var(--ink)] min-w-0 whitespace-normal [overflow-wrap:anywhere]"
         >
           {COPY.attendance.guestTitle}
         </h1>
-        <p className="-mt-1.5 text-base leading-relaxed text-[var(--ink-muted)]">
+        <p className="-mt-1.5 text-base leading-relaxed text-[var(--ink-muted)] min-w-0 whitespace-normal [overflow-wrap:anywhere]">
           {COPY.attendance.guestLead}
         </p>
         {flow.status && (
@@ -363,7 +343,7 @@ export const AttendancePanel = () => {
             </span>
           </label>
           <Button
-            className={primaryControl}
+            className={attendanceButtonVariants({ variant: "primary" })}
             type="submit"
             disabled={submitBusy || awaitingSelection}
             aria-busy={submitBusy}
@@ -382,7 +362,11 @@ export const AttendancePanel = () => {
           />
         )}
         <div className="mt-4 grid gap-3">
-          <Button asChild variant="outline" className={memberLinkControl}>
+          <Button
+            asChild
+            variant="outline"
+            className={attendanceButtonVariants({ variant: "secondary" })}
+          >
             <a
               href="/"
               onClick={() => {

@@ -10,6 +10,10 @@ import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { RpcError } from "@/lib/api";
 import { attendanceEventName } from "@/lib/attendance-display";
+import {
+  attendanceButtonVariants,
+  ScannerStatusOutput,
+} from "@/lib/attendance-scanner-ui";
 import { COPY, errorCopyFor } from "@/lib/copy";
 import { hkWallLabel } from "@/lib/hk-time";
 import { announce } from "@/lib/live-region";
@@ -27,20 +31,15 @@ import type {
   AttendanceMember,
   AttendanceRow,
 } from "@/lib/programs/program-api";
+import { clearAuthHint, rememberDeepLink } from "@/lib/session";
 import { useQrCamera } from "@/lib/use-qr-camera";
+import { cn } from "@/lib/utils";
 
-const primaryControl =
-  "min-h-11 h-auto rounded-[var(--radius-sm)] px-4 py-3 text-base font-extrabold";
-const secondaryControl =
-  "min-h-11 h-auto rounded-[var(--radius-sm)] border border-[var(--line-strong)] bg-[var(--surface-raised)] px-4 py-3 text-base font-bold text-[var(--ink)] hover:bg-[var(--surface)] hover:text-[var(--ink)]";
-const dangerControl =
-  "min-h-11 h-auto rounded-[var(--radius-sm)] border border-[var(--error)] bg-[var(--surface-raised)] px-4 py-3 text-base font-bold text-[var(--error)] hover:bg-[var(--error-surface)] hover:text-[var(--error)]";
 const inputControl =
   "min-h-11 h-auto rounded-[var(--radius-sm)] border border-[var(--line-strong)] bg-[var(--surface-raised)] px-3 py-3 text-base text-[var(--ink)] placeholder:text-[var(--ink-muted)] focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50";
 const eventButtonControl =
-  "flex w-full min-h-11 flex-col items-start justify-between rounded-[var(--radius-sm)] border border-[var(--line-strong)] bg-[var(--surface-raised)] p-3 text-left text-base font-normal text-[var(--ink)] hover:bg-[var(--surface)] hover:text-[var(--ink)] sm:flex-row sm:items-center";
-const backControl =
-  "min-h-11 h-auto px-2 py-3 text-base font-bold text-[var(--accent-deep)] hover:bg-transparent hover:text-[var(--accent)]";
+  "flex w-full min-h-11 flex-col items-start justify-between rounded-[var(--radius-sm)] border border-[var(--line-strong)] bg-[var(--surface-raised)] p-3 text-left text-base font-normal text-[var(--ink)] hover:bg-[var(--surface)] hover:text-[var(--ink)] sm:flex-row sm:items-center motion-reduce:transition-none";
+
 type StatusTone = "info" | "success" | "error";
 
 type MemberDirectory = Readonly<Record<string, AttendanceMember>>;
@@ -68,20 +67,20 @@ export const AttendanceChooser = ({
 }: AttendanceChooserProps) => {
   return (
     <Card
-      className="grid gap-4.5 p-5 bg-[var(--surface-raised)] border border-[var(--line-strong)] rounded-[var(--radius-md)]"
+      className="grid gap-[1.125rem] p-5 bg-[var(--surface-raised)] border border-[var(--line-strong)] rounded-[var(--radius-md)] print:hidden"
       role="region"
       aria-labelledby="attendance-chooser-title"
     >
       <h1
         id="attendance-chooser-title"
-        className="text-2xl font-extrabold leading-tight tracking-[0.01em] text-[var(--ink)]"
+        className="text-2xl font-extrabold leading-tight tracking-[0.01em] text-[var(--ink)] min-w-0 whitespace-normal [overflow-wrap:anywhere]"
       >
         {COPY.attendance.chooserTitle}
       </h1>
-      <p className="-mt-1.5 text-base leading-relaxed text-[var(--ink-muted)]">
+      <p className="-mt-1.5 text-base leading-relaxed text-[var(--ink-muted)] min-w-0 whitespace-normal [overflow-wrap:anywhere]">
         {COPY.attendance.chooserLead}
       </p>
-      <h2 className="mt-1.5 text-xl font-extrabold leading-snug text-[var(--ink)]">
+      <h2 className="mt-1.5 text-xl font-extrabold leading-snug text-[var(--ink)] min-w-0 whitespace-normal [overflow-wrap:anywhere]">
         {COPY.attendance.chooserOpenMeetings}
       </h2>
 
@@ -98,11 +97,13 @@ export const AttendanceChooser = ({
 
       {error && !loading && (
         <Alert variant="destructive" className="grid gap-2">
-          <p>{error}</p>
+          <p className="min-w-0 whitespace-normal [overflow-wrap:anywhere]">
+            {error}
+          </p>
           {onRetry && (
             <Button
               variant="outline"
-              className={secondaryControl}
+              className={attendanceButtonVariants({ variant: "secondary" })}
               type="button"
               onClick={onRetry}
               disabled={busy}
@@ -124,7 +125,7 @@ export const AttendanceChooser = ({
 
       {!loading && !error && events.length > 0 && (
         <ul
-          className="mt-2 grid gap-2 list-none p-0"
+          className="mt-2 grid gap-2 list-none p-0 min-w-0"
           aria-label={COPY.attendance.chooserOpenMeetings}
         >
           {events.map((event) => (
@@ -136,14 +137,14 @@ export const AttendanceChooser = ({
                 disabled={busy}
                 onClick={() => onSelect(event.event_id)}
               >
-                <span className="grid gap-0.5">
+                <span className="grid gap-0.5 min-w-0 whitespace-normal [overflow-wrap:anywhere]">
                   <strong>{attendanceEventName(event)}</strong>
-                  <span className="text-sm text-[var(--ink-muted)]">
+                  <span className="text-sm text-[var(--ink-muted)] min-w-0 whitespace-normal [overflow-wrap:anywhere]">
                     {hkWallLabel(event.starts_at)}
                     {event.location ? ` · ${event.location}` : ""}
                   </span>
                 </span>
-                <span className="text-sm font-bold text-[var(--accent)] mt-1 sm:mt-0">
+                <span className="text-sm font-bold text-[var(--accent)] mt-1 sm:mt-0 shrink-0">
                   {COPY.attendance.rosterTitle}
                 </span>
                 <svg
@@ -302,12 +303,12 @@ export const AttendanceRoster = ({
 
   return (
     <>
-      <header className="grid gap-2 pb-4 border-b border-[var(--line)]">
+      <header className="grid gap-2 pb-4 border-b border-[var(--line)] print:hidden">
         <div className="flex items-center justify-between gap-2">
           {onBack && (
             <Button
               variant="link"
-              className={backControl}
+              className={attendanceButtonVariants({ variant: "back" })}
               type="button"
               onClick={onBack}
               disabled={busy}
@@ -332,16 +333,19 @@ export const AttendanceRoster = ({
         </div>
         <div className="flex flex-col sm:flex-row sm:items-baseline sm:justify-between gap-2">
           <div>
-            <h1 className="text-2xl font-extrabold leading-tight tracking-[0.01em] text-[var(--ink)]">
+            <h1 className="text-2xl font-extrabold leading-tight tracking-[0.01em] text-[var(--ink)] min-w-0 whitespace-normal [overflow-wrap:anywhere]">
               {COPY.attendance.rosterTitle}
             </h1>
-            <p className="-mt-1.5 text-base leading-relaxed text-[var(--ink-muted)]">
+            <p className="-mt-1.5 text-base leading-relaxed text-[var(--ink-muted)] min-w-0 whitespace-normal [overflow-wrap:anywhere]">
               {eventTitle}
               {event.location ? ` · ${event.location}` : ""}
               {` · ${hkWallLabel(event.starts_at)}`}
             </p>
           </div>
-          <p className="text-sm text-[var(--ink-muted)]" aria-live="polite">
+          <p
+            className="text-sm text-[var(--ink-muted)] shrink-0"
+            aria-live="polite"
+          >
             <strong>
               {COPY.attendance.checkedInCount(activeRows.length, rows.length)}
             </strong>
@@ -351,7 +355,7 @@ export const AttendanceRoster = ({
           {onPrint && (
             <Button
               variant="outline"
-              className={secondaryControl}
+              className={attendanceButtonVariants({ variant: "secondary" })}
               type="button"
               onClick={onPrint}
               disabled={busy}
@@ -362,7 +366,7 @@ export const AttendanceRoster = ({
           {onExport && (
             <Button
               variant="outline"
-              className={secondaryControl}
+              className={attendanceButtonVariants({ variant: "secondary" })}
               type="button"
               onClick={onExport}
               disabled={busy}
@@ -375,14 +379,14 @@ export const AttendanceRoster = ({
 
       {rows.length === 0 ? (
         <output
-          className="text-base text-[var(--ink-muted)] py-4 text-center block"
+          className="text-base text-[var(--ink-muted)] py-4 text-center block print:hidden"
           aria-live="polite"
         >
           {COPY.programs.eventNoParticipants}
         </output>
       ) : (
         <ul
-          className="grid gap-3 list-none p-0 mt-4"
+          className="grid gap-3 list-none p-0 mt-4 print:hidden"
           aria-label={COPY.attendance.rosterTitle}
         >
           {rows.map((row) => {
@@ -429,7 +433,9 @@ export const AttendanceRoster = ({
                   <div className="flex flex-wrap gap-3 mt-2">
                     <Button
                       variant="outline"
-                      className={dangerControl}
+                      className={attendanceButtonVariants({
+                        variant: "danger",
+                      })}
                       type="button"
                       disabled={busy}
                       onClick={() => {
@@ -443,7 +449,9 @@ export const AttendanceRoster = ({
                     {row.member_user_id === null && (
                       <Button
                         variant="outline"
-                        className={secondaryControl}
+                        className={attendanceButtonVariants({
+                          variant: "secondary",
+                        })}
                         type="button"
                         disabled={busy}
                         onClick={() => {
@@ -496,7 +504,9 @@ export const AttendanceRoster = ({
                     <div className="flex flex-wrap gap-3 mt-2">
                       <Button
                         variant="outline"
-                        className={dangerControl}
+                        className={attendanceButtonVariants({
+                          variant: "danger",
+                        })}
                         type="submit"
                         disabled={busy}
                       >
@@ -504,7 +514,9 @@ export const AttendanceRoster = ({
                       </Button>
                       <Button
                         variant="outline"
-                        className={secondaryControl}
+                        className={attendanceButtonVariants({
+                          variant: "secondary",
+                        })}
                         type="button"
                         onClick={() => setVoidingId(null)}
                         disabled={busy}
@@ -587,7 +599,9 @@ export const AttendanceRoster = ({
                     </label>
                     <div className="flex flex-wrap gap-3 mt-2">
                       <Button
-                        className={primaryControl}
+                        className={attendanceButtonVariants({
+                          variant: "primaryFit",
+                        })}
                         type="submit"
                         disabled={busy}
                       >
@@ -595,7 +609,9 @@ export const AttendanceRoster = ({
                       </Button>
                       <Button
                         variant="outline"
-                        className={secondaryControl}
+                        className={attendanceButtonVariants({
+                          variant: "secondary",
+                        })}
                         type="button"
                         onClick={() => setCorrectionId(null)}
                         disabled={busy}
@@ -614,7 +630,13 @@ export const AttendanceRoster = ({
   );
 };
 
-export const AttendanceOperatorPanel = () => {
+export interface AttendanceOperatorPanelProps {
+  onAuthRequired?: () => void;
+}
+
+export const AttendanceOperatorPanel = ({
+  onAuthRequired,
+}: AttendanceOperatorPanelProps = {}) => {
   const [eventId, setEventId] = useState<string | null>(null);
   const [chooserEvents, setChooserEvents] = useState<AttendanceEventSummary[]>(
     []
@@ -632,16 +654,35 @@ export const AttendanceOperatorPanel = () => {
   const [tone, setTone] = useState<StatusTone>("info");
   const [busy, setBusy] = useState(false);
 
+  function handleAuthRequired() {
+    if (onAuthRequired) {
+      onAuthRequired();
+      return;
+    }
+    clearAuthHint();
+    if (typeof window !== "undefined") {
+      rememberDeepLink(
+        `${window.location.pathname}${window.location.search}${window.location.hash}`
+      );
+      sessionStorage.setItem("efcc_session_expired", "1");
+      window.location.assign("/");
+    }
+  }
+
   function showStatus(message: string, nextTone: StatusTone = "info") {
     setStatus(message);
     setTone(nextTone);
   }
 
   function showError(error: unknown) {
+    if (error instanceof RpcError && error.problem.code === "AUTH_REQUIRED") {
+      handleAuthRequired();
+      return;
+    }
     const message =
       error instanceof RpcError
         ? errorCopyFor(error.problem.code, error.problem.detail)
-        : COPY.error.networkError;
+        : COPY.attendance.assistedAccessError;
     showStatus(message, "error");
     announce(message);
   }
@@ -650,47 +691,42 @@ export const AttendanceOperatorPanel = () => {
     setChooserLoading(true);
     setChooserError(null);
     try {
-      const result = await listScannerEvents();
-      setChooserEvents(result.events);
+      const { events } = await listScannerEvents();
+      setChooserEvents(events);
     } catch (error) {
+      if (error instanceof RpcError && error.problem.code === "AUTH_REQUIRED") {
+        handleAuthRequired();
+        return;
+      }
       const message =
         error instanceof RpcError
           ? errorCopyFor(error.problem.code, error.problem.detail)
-          : COPY.error.networkError;
+          : COPY.attendance.assistedAccessError;
       setChooserError(message);
-      showError(error);
+      announce(message);
     } finally {
       setChooserLoading(false);
     }
   }
 
-  async function loadRoster(nextEventId: string, silent = false) {
-    const normalizedId = nextEventId.trim();
-    if (!normalizedId) {
-      return false;
-    }
+  async function loadRoster(id: string) {
     setBusy(true);
     try {
-      const result = await listAttendanceRoster(normalizedId);
-      setEventId(normalizedId);
+      const result = await listAttendanceRoster(id);
       setEvent(result.event);
       setRows(result.attendances);
-      setMembers([]);
-      if (!silent) {
-        setStatus("");
-      }
-      return true;
+      updateAttendanceEventUrl(id);
     } catch (error) {
       showError(error);
-      return false;
     } finally {
       setBusy(false);
     }
   }
 
   async function selectEvent(nextEventId: string) {
-    updateAttendanceEventUrl(nextEventId);
+    setEventId(nextEventId);
     await loadRoster(nextEventId);
+    setStatus("");
   }
 
   function backToChooser() {
@@ -698,30 +734,35 @@ export const AttendanceOperatorPanel = () => {
     setEvent(null);
     setRows([]);
     setMembers([]);
+    setQuery("");
     setStatus("");
     updateAttendanceEventUrl(null);
+    void loadChooser();
   }
 
   async function searchMembers() {
-    if (!eventId || !query.trim()) {
-      showStatus(COPY.attendance.memberSearchEmpty);
+    const trimmed = query.trim();
+    if (!eventId || !trimmed) {
       return;
     }
     setBusy(true);
     try {
-      const result = await searchAttendanceMembers(eventId, query.trim());
-      setMembers(result.members);
-      setMemberDirectory((previous) => {
-        const next = { ...previous };
-        for (const member of result.members) {
+      const result = await searchAttendanceMembers(eventId, trimmed);
+      const nextMembers = result.members ?? [];
+      setMembers(nextMembers);
+      setMemberDirectory((current) => {
+        const next = { ...current };
+        for (const member of nextMembers) {
           next[member.user_id] = member;
         }
         return next;
       });
-      if (result.members.length === 0) {
-        showStatus(COPY.attendance.memberSearchEmpty);
-        announce(COPY.attendance.memberSearchEmpty);
-      }
+      const message =
+        nextMembers.length === 0
+          ? COPY.attendance.memberSearchEmpty
+          : COPY.attendance.assistedMembersFound;
+      showStatus(message, nextMembers.length === 0 ? "error" : "info");
+      announce(message);
     } catch (error) {
       showError(error);
     } finally {
@@ -739,47 +780,19 @@ export const AttendanceOperatorPanel = () => {
     setBusy(true);
     try {
       const result = await assistedCheckIn(eventId, member.user_id, method);
-      const message =
+      const successMessage =
         result.outcome === "duplicate"
           ? COPY.attendance.duplicate
           : COPY.attendance.success;
-      showStatus(message, result.outcome === "duplicate" ? "info" : "success");
-      announce(message);
-      await loadRoster(eventId, true);
+      showStatus(successMessage, "success");
+      announce(successMessage);
+      await loadRoster(eventId);
     } catch (error) {
       showError(error);
     } finally {
       setBusy(false);
     }
   }
-
-  async function scanMember(rawValue: string) {
-    if (!eventId) {
-      return;
-    }
-    try {
-      const result = await searchAttendanceMembers(eventId, rawValue);
-      if (result.members.length !== 1) {
-        showStatus(COPY.attendance.assistedMemberSearchAmbiguous);
-        announce(COPY.attendance.assistedMemberSearchAmbiguous);
-        return;
-      }
-      setMemberDirectory((previous) => ({
-        ...previous,
-        [result.members[0].user_id]: result.members[0],
-      }));
-      await checkIn(result.members[0], "leader_qr_scan");
-    } catch (error) {
-      showError(error);
-    }
-  }
-
-  const { videoRef, cameraOpen, startCamera, stopCamera } = useQrCamera({
-    onDetect: (value) => {
-      void scanMember(value);
-    },
-    onUnavailable: () => showStatus(COPY.attendance.cameraUnavailable, "error"),
-  });
 
   async function handleVoid(
     row: AttendanceRow,
@@ -790,7 +803,9 @@ export const AttendanceOperatorPanel = () => {
       await voidAttendance(row.attendance_id, reason);
       showStatus(COPY.attendance.voidSuccess, "success");
       announce(COPY.attendance.voidSuccess);
-      await loadRoster(row.event_id, true);
+      if (eventId) {
+        await loadRoster(eventId);
+      }
       return true;
     } catch (error) {
       showError(error);
@@ -809,7 +824,9 @@ export const AttendanceOperatorPanel = () => {
       await correctGuestAttendance(row.attendance_id, input);
       showStatus(COPY.attendance.correctionSaved, "success");
       announce(COPY.attendance.correctionSaved);
-      await loadRoster(row.event_id, true);
+      if (eventId) {
+        await loadRoster(eventId);
+      }
       return true;
     } catch (error) {
       showError(error);
@@ -819,8 +836,46 @@ export const AttendanceOperatorPanel = () => {
     }
   }
 
+  const { videoRef, cameraOpen, startCamera, stopCamera } = useQrCamera({
+    onDetect: (qrString) => {
+      stopCamera();
+      const match = members.find(
+        (m) => m.qr_code_string?.trim() === qrString.trim()
+      );
+      if (match) {
+        void checkIn(match, "leader_qr_scan");
+        return;
+      }
+      if (!eventId) {
+        return;
+      }
+      void searchAttendanceMembers(eventId, qrString)
+        .then((result) => {
+          const list = result.members ?? [];
+          if (list.length === 1) {
+            void checkIn(list[0], "leader_qr_scan");
+          } else if (list.length > 1) {
+            setMembers(list);
+            const message = COPY.attendance.assistedMemberSearchAmbiguous;
+            showStatus(message, "error");
+            announce(message);
+          } else {
+            const message = COPY.attendance.memberSearchEmpty;
+            showStatus(message, "error");
+            announce(message);
+          }
+        })
+        .catch(showError);
+    },
+    onUnavailable: () => {
+      const message = COPY.attendance.cameraUnavailable;
+      showStatus(message, "error");
+      announce(message);
+    },
+  });
+
   function exportRoster() {
-    if (typeof window === "undefined" || !event) {
+    if (!event) {
       return;
     }
     const header = [
@@ -862,164 +917,169 @@ export const AttendanceOperatorPanel = () => {
 
   const rosterVisible = Boolean(event && eventId);
   return (
-    <div className="mx-auto w-[min(100%,760px)] px-4 py-8 pb-12">
+    <div className="mx-auto w-[min(100%,760px)] px-4 py-8 pb-12 print:p-0 print:m-0 print:w-full">
       <Card
-        className="grid gap-4.5 p-5 bg-[var(--surface-raised)] border border-[var(--line-strong)] rounded-[var(--radius-md)]"
+        className="grid gap-[1.125rem] p-5 bg-[var(--surface-raised)] border border-[var(--line-strong)] rounded-[var(--radius-md)] print:border-0 print:shadow-none print:p-0 print:bg-transparent"
         role="region"
         aria-labelledby={
           rosterVisible ? "attendance-roster-title" : "attendance-chooser-title"
         }
         aria-busy={busy || chooserLoading}
       >
-        {!rosterVisible && (
-          <AttendanceChooser
-            events={chooserEvents}
-            loading={chooserLoading}
-            busy={busy}
-            error={chooserError}
-            onSelect={(nextEventId) => void selectEvent(nextEventId)}
-            onRetry={() => void loadChooser()}
-          />
-        )}
+        <div className="print:hidden">
+          {!rosterVisible && (
+            <AttendanceChooser
+              events={chooserEvents}
+              loading={chooserLoading}
+              busy={busy}
+              error={chooserError}
+              onSelect={(nextEventId) => void selectEvent(nextEventId)}
+              onRetry={() => void loadChooser()}
+            />
+          )}
 
-        {!rosterVisible && <h2 className="sr-only">{COPY.sections.events}</h2>}
+          {!rosterVisible && (
+            <h2 className="sr-only">{COPY.sections.events}</h2>
+          )}
 
-        {rosterVisible && event && eventId && (
-          <>
-            <div id="attendance-roster-title">
-              <AttendanceRoster
-                event={event}
-                rows={rows}
-                memberDirectory={memberDirectory}
-                busy={busy}
-                onBack={backToChooser}
-                onVoid={handleVoid}
-                onCorrectGuest={handleCorrection}
-                onPrint={printAttendanceRoster}
-                onExport={exportRoster}
-              />
-            </div>
+          {rosterVisible && event && eventId && (
+            <>
+              <div id="attendance-roster-title">
+                <AttendanceRoster
+                  event={event}
+                  rows={rows}
+                  memberDirectory={memberDirectory}
+                  busy={busy}
+                  onBack={backToChooser}
+                  onVoid={handleVoid}
+                  onCorrectGuest={handleCorrection}
+                  onPrint={printAttendanceRoster}
+                  onExport={exportRoster}
+                />
+              </div>
 
-            {event.status === "Active" && event.availability === "Active" && (
-              <section
-                className="mt-4 grid gap-3"
-                aria-labelledby="attendance-operations-title"
-              >
-                <h2
-                  id="attendance-operations-title"
-                  className="mt-1.5 text-xl font-extrabold leading-snug text-[var(--ink)]"
+              {event.status === "Active" && event.availability === "Active" && (
+                <section
+                  className="mt-4 grid gap-3"
+                  aria-labelledby="attendance-operations-title"
                 >
-                  {COPY.attendance.operatorTitle}
-                </h2>
-                <div className="flex flex-wrap gap-3 mt-2">
-                  <Button
-                    variant="outline"
-                    className={secondaryControl}
-                    type="button"
-                    disabled={busy}
-                    onClick={() => void startCamera()}
+                  <h2
+                    id="attendance-operations-title"
+                    className="mt-1.5 text-xl font-extrabold leading-snug text-[var(--ink)] min-w-0 whitespace-normal [overflow-wrap:anywhere]"
                   >
-                    {cameraOpen
-                      ? COPY.attendance.cameraRetry
-                      : COPY.attendance.camera}
-                  </Button>
-                  {cameraOpen && (
+                    {COPY.attendance.operatorTitle}
+                  </h2>
+                  <div className="flex flex-wrap gap-3 mt-2">
                     <Button
                       variant="outline"
-                      className={secondaryControl}
+                      className={attendanceButtonVariants({
+                        variant: "secondary",
+                      })}
                       type="button"
-                      onClick={stopCamera}
+                      disabled={busy}
+                      onClick={() => void startCamera()}
                     >
-                      {COPY.attendance.cameraClose}
+                      {cameraOpen
+                        ? COPY.attendance.cameraRetry
+                        : COPY.attendance.camera}
                     </Button>
-                  )}
-                </div>
-                {cameraOpen && (
-                  <video
-                    ref={videoRef}
-                    className="aspect-video w-full rounded-[var(--radius-sm)] border border-[var(--line-strong)] bg-black object-cover"
-                    muted
-                    playsInline
-                    aria-label={COPY.attendance.camera}
-                  />
-                )}
-                <div className="grid gap-3 sm:grid-cols-[1fr_auto]">
-                  <label className="grid gap-1.5" htmlFor="member-search">
-                    <span className="text-sm font-bold leading-normal text-[var(--ink)]">
-                      {COPY.attendance.memberSearch}
-                    </span>
-                    <Input
-                      id="member-search"
-                      className={inputControl}
-                      value={query}
-                      onChange={(changeEvent) =>
-                        setQuery(changeEvent.target.value)
-                      }
-                      onKeyDown={(keyEvent) => {
-                        if (keyEvent.key === "Enter") {
-                          keyEvent.preventDefault();
-                          void searchMembers();
-                        }
-                      }}
+                    {cameraOpen && (
+                      <Button
+                        variant="outline"
+                        className={attendanceButtonVariants({
+                          variant: "secondary",
+                        })}
+                        type="button"
+                        onClick={stopCamera}
+                      >
+                        {COPY.attendance.cameraClose}
+                      </Button>
+                    )}
+                  </div>
+                  {cameraOpen && (
+                    <video
+                      ref={videoRef}
+                      className="aspect-video w-full rounded-[var(--radius-sm)] border border-[var(--line-strong)] bg-black object-cover"
+                      muted
+                      playsInline
+                      aria-label={COPY.attendance.camera}
                     />
-                  </label>
-                  <Button
-                    variant="outline"
-                    className={secondaryControl}
-                    type="button"
-                    disabled={busy}
-                    onClick={() => void searchMembers()}
-                  >
-                    {COPY.attendance.search}
-                  </Button>
-                </div>
-                {members.length > 0 && (
-                  <ul
-                    className="mt-2 grid gap-2 list-none p-0"
-                    aria-label={COPY.attendance.memberSearch}
-                  >
-                    {members.map((member) => (
-                      <li key={member.user_id}>
-                        <Button
-                          variant="outline"
-                          className={eventButtonControl}
-                          type="button"
-                          disabled={busy}
-                          onClick={() => void checkIn(member)}
-                        >
-                          <strong>{member.name}</strong>
-                          <span className="text-sm text-[var(--ink-muted)]">
-                            {member.phone ?? member.user_id}
-                          </span>
-                          <span className="text-sm font-bold text-[var(--accent)] mt-1 sm:mt-0">
-                            {COPY.attendance.checkInMember}
-                          </span>
-                        </Button>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </section>
-            )}
-          </>
-        )}
+                  )}
+                  <div className="grid gap-3 sm:grid-cols-[1fr_auto]">
+                    <label className="grid gap-1.5" htmlFor="member-search">
+                      <span className="text-sm font-bold leading-normal text-[var(--ink)]">
+                        {COPY.attendance.memberSearch}
+                      </span>
+                      <Input
+                        id="member-search"
+                        className={inputControl}
+                        value={query}
+                        onChange={(changeEvent) =>
+                          setQuery(changeEvent.target.value)
+                        }
+                        onKeyDown={(keyEvent) => {
+                          if (keyEvent.key === "Enter") {
+                            keyEvent.preventDefault();
+                            void searchMembers();
+                          }
+                        }}
+                      />
+                    </label>
+                    <Button
+                      variant="outline"
+                      className={attendanceButtonVariants({
+                        variant: "secondary",
+                      })}
+                      type="button"
+                      disabled={busy}
+                      onClick={() => void searchMembers()}
+                    >
+                      {COPY.attendance.search}
+                    </Button>
+                  </div>
+                  {members.length > 0 && (
+                    <ul
+                      className="mt-2 grid gap-2 list-none p-0 min-w-0"
+                      aria-label={COPY.attendance.memberSearch}
+                    >
+                      {members.map((member) => (
+                        <li key={member.user_id}>
+                          <Button
+                            variant="outline"
+                            className={eventButtonControl}
+                            type="button"
+                            disabled={busy}
+                            onClick={() => void checkIn(member)}
+                          >
+                            <strong>{member.name}</strong>
+                            <span className="text-sm text-[var(--ink-muted)]">
+                              {member.phone ?? member.user_id}
+                            </span>
+                            <span className="text-sm font-bold text-[var(--accent)] mt-1 sm:mt-0 shrink-0">
+                              {COPY.attendance.checkInMember}
+                            </span>
+                          </Button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </section>
+              )}
+            </>
+          )}
 
-        <output
-          className="rounded-[var(--radius-sm)] border border-[var(--line-strong)] p-3 text-base mt-2"
-          data-tone={status ? tone : undefined}
-          aria-live="polite"
-          aria-atomic="true"
-        >
-          {status}
-        </output>
+          <ScannerStatusOutput message={status} tone={tone} />
+        </div>
 
         {rosterVisible && event && (
           <section
-            className="hidden print:block print:p-8"
+            className="hidden print:block print:p-0 print:m-0"
             aria-label={COPY.attendance.printSheet}
           >
-            <h1>{event.name?.trim() || event.program_name}</h1>
-            <p>
+            <h1 className="text-xl font-bold">
+              {event.name?.trim() || event.program_name}
+            </h1>
+            <p className="text-sm text-gray-700">
               {hkWallLabel(event.starts_at)}
               {event.location ? ` · ${event.location}` : ""}
             </p>
@@ -1028,7 +1088,7 @@ export const AttendanceOperatorPanel = () => {
                 const phone = rowPhone(row, memberDirectory);
                 return (
                   <div
-                    className="flex justify-between py-1 border-b border-gray-300"
+                    className="flex justify-between py-1 border-b border-gray-300 text-sm"
                     key={row.attendance_id}
                   >
                     <span>{rowLabel(row, memberDirectory)}</span>

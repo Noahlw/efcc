@@ -10,6 +10,7 @@ import { RpcError } from "@/lib/api";
 import type { AttendanceEvent } from "@/lib/attendance";
 import { attendanceEventLabel } from "@/lib/attendance-display";
 import {
+  attendanceButtonVariants,
   CameraFirstScanner,
   ScannerCheckinResult,
   ScannerChooser,
@@ -23,15 +24,10 @@ import { selfCheckIn } from "@/lib/programs/program-api";
 import { buildProgramsHref } from "@/lib/programs/programs-intent";
 import { useAttendanceFlow } from "@/lib/use-attendance-flow";
 
-const primaryControl =
-  "min-h-11 h-auto rounded-[var(--radius-sm)] px-4 py-3 text-base font-extrabold";
-const secondaryControl =
-  "min-h-11 h-auto rounded-[var(--radius-sm)] border border-[var(--line-strong)] bg-[var(--surface-raised)] px-4 py-3 text-base font-bold text-[var(--ink)] hover:bg-[var(--surface)] hover:text-[var(--ink)]";
 const inputControl =
   "min-h-11 h-auto rounded-[var(--radius-sm)] border border-[var(--line-strong)] bg-[var(--surface-raised)] px-3 py-3 text-base text-[var(--ink)] placeholder:text-[var(--ink-muted)] focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50";
 const methodControl =
-  "flex flex-col justify-center min-h-24 rounded-[var(--radius-sm)] border border-[var(--line-strong)] bg-[var(--surface-raised)] px-4 py-3 text-left text-base font-normal text-[var(--ink)] hover:bg-[var(--surface)] hover:text-[var(--ink)]";
-
+  "flex flex-col justify-center min-h-24 rounded-[var(--radius-sm)] border border-[var(--line-strong)] bg-[var(--surface-raised)] px-4 py-3 text-left text-base font-normal text-[var(--ink)] hover:bg-[var(--surface)] hover:text-[var(--ink)] motion-reduce:transition-none";
 interface CheckinResult {
   kind: "success" | "duplicate";
   event: AttendanceEvent;
@@ -422,7 +418,7 @@ export const SelfCheckInPanel = ({
         )}
       </label>
       <Button
-        className={primaryControl}
+        className={attendanceButtonVariants({ variant: "primary" })}
         type="submit"
         disabled={flow.busy || submitting}
         aria-busy={flow.busy || submitting}
@@ -433,7 +429,7 @@ export const SelfCheckInPanel = ({
       {isPhone && (
         <Button
           variant="outline"
-          className={secondaryControl}
+          className={attendanceButtonVariants({ variant: "secondary" })}
           type="button"
           onClick={backToScan}
         >
@@ -512,7 +508,7 @@ export const SelfCheckInPanel = ({
         data-scanner-state="desktop-manual"
       >
         <Card
-          className="grid gap-4.5 p-5 bg-[var(--surface-raised)] border border-[var(--line-strong)] rounded-[var(--radius-md)]"
+          className="grid gap-[1.125rem] p-5 bg-[var(--surface-raised)] border border-[var(--line-strong)] rounded-[var(--radius-md)]"
           aria-labelledby="attendance-title"
         >
           <h1
@@ -540,11 +536,11 @@ export const SelfCheckInPanel = ({
   if (scanStopped || flow.cameraUnavailable || flow.cameraAvailable === false) {
     return (
       <div
-        className="mx-auto w-[min(100%,760px)] px-4 py-8 pb-12"
+        className="mx-auto w-[min(100%,760px)] px-4 py-8 [@media(max-height:640px)]:py-4 pb-[calc(3rem+env(safe-area-inset-bottom,0px))] [@media(max-height:640px)]:pb-[calc(1.5rem+env(safe-area-inset-bottom,0px))]"
         data-scanner-state="fallback"
       >
         <Card
-          className="grid gap-4.5 p-5 bg-[var(--surface-raised)] border border-[var(--line-strong)] rounded-[var(--radius-md)]"
+          className="grid gap-[1.125rem] p-5 [@media(max-height:640px)]:p-3 [@media(max-height:640px)]:gap-3 bg-[var(--surface-raised)] border border-[var(--line-strong)] rounded-[var(--radius-md)]"
           aria-labelledby="fallback-methods-title"
         >
           <h1
@@ -566,7 +562,7 @@ export const SelfCheckInPanel = ({
               <strong>{COPY.attendance.cameraDeniedTitle}</strong>
               <p>{COPY.attendance.cameraDeniedBody}</p>
               <Button
-                className={primaryControl}
+                className={attendanceButtonVariants({ variant: "primaryFit" })}
                 type="button"
                 onClick={retryCamera}
               >
