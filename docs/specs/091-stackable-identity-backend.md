@@ -1,9 +1,11 @@
 # 091 — Stackable 身份組 Backend and Authorization Contract
 
-**Status:** Proposed — selected through the 2026-08-27 CEO grill; implementation pending
+**Status:** Implemented — local automated gate ready; production release conditional
 **Parent authority:** `CONTEXT.md`, ADR-0042, ADR-0043, the accepted D1/Worker boundary, and the active product/design-system contract
 **Supersedes for identity/permission behavior:** the role boundary in Spec 079, the fixed-role clauses in Spec 460, the permission-write assumptions in Specs 453/454, and the deferred S4.1 custom-role brief
-**Scope:** pre-production backend/domain rewrite only. No production code, migration, fixture, or UI implementation is authorized by this document alone.
+**Scope:** Implemented normalized identity, authorization, registration-approval, and account-access contract. Production promotion remains subject to the Phase F release-gate record and its human/operational conditions.
+
+**Implementation disposition:** The identity contract is implemented through migrations `0019`–`0026`, the Worker authority seams, and the enabled local D1 test suites. The aggregate Phase F release record remains `BLOCKED` while the full Programs D1 browser matrix loses its local arm64 Worker; this status line records implementation state, not a production-release claim.
 
 ---
 
@@ -36,7 +38,7 @@ This specification does not add:
 - Household check-in, care workflows, S7 roster expansion, or unrelated domain features
 - A production physical-delete operation for live identity history
 - Multi-account bulk identity assignment in the first release
-- A mobile layout implementation; layout work is a separate gated delivery after the colleague's polish commit
+- A mobile redesign outside the Civic Minimal responsive contract and its release evidence
 
 ## 3. Canonical language
 
@@ -247,23 +249,36 @@ A stale order revision returns the latest tree plus a named conflict. The operat
 
 ## 8. Normalized storage contract
 
-The clean cutover uses explicit relational records. Do not encode roles, assignments, scopes, positions, or grants as an account JSON blob.
+The executable clean-cutover contract is migrations `0019`–`0026`. These
+migrations use explicit relational records; roles, assignments, scopes,
+positions, and grants are not encoded as an Account JSON blob.
 
-### 8.1 Required records
+### 8.1 Implemented records
 
-| Record | Required fields and invariants |
+| Record | Implemented fields and invariants |
 | --- | --- |
-| `role_categories` | ID, parent category ID, kind, Department/Program owner, display name, order key, lifecycle, timestamps. Parent categories are non-assignable. |
-| `role_definitions` | ID, display name, normalized unique name, kind, category ID, scope kind/ID, order key, lifecycle, created/updated actor and timestamps. Admin and Member Baseline are protected. |
-| `role_assignments` | Account ID + Role Definition ID unique while active, assignment state, actor/reason/timestamps, FK to Active Account and Role Definition. |
-| `role_grants` | Role Definition ID + capability key unique, grant state, actor/timestamps, FK to closed capability catalog. |
-| `role_capabilities` | Closed catalog key, Cantonese label, description, risk class, whether system-only, and whether scope is required. The catalog is code-owned; operators cannot create arbitrary capability keys. |
-| `role_order_revisions` | Monotonic revision, ordered tree snapshot/hash or normalized order changes, actor, timestamp, idempotency/correlation reference. |
-| `role_policy_revisions` | Monotonic grant-policy revision and authoritative change metadata. |
-| `idempotency_records` | Actor, key, request hash, operation, terminal response reference, timestamps; changed request with the same key is rejected. |
-| `audit_events` | Immutable append-only privileged mutation event with actor, operation, target identity/account/scope, outcome, old/new summary, reason, correlation ID, and revision. |
+| `role_categories` | Fixed `category_key` (`Global`, `Department`, `Program`), label/description, non-assignable flag, and display order. |
+| `role_definitions` | Opaque ID, stable key, label/description, category, `Global`/`Department`/`Program` scope, position, protected/archive flags, and actor/timestamp metadata. Global display names are unique through the stable key contract. |
+| `role_definition_grants` | `(role_definition_id, capability)` primary key, closed capability CHECK vocabulary, granting actor, and timestamp. |
+| `role_assignments` | Assignment ID, Account and Role Definition references, grant/revoke actor and timestamps, reason, and the immutable scope snapshot added by migration `0024`; one active row per Account/Role Definition pair. |
+| `role_policy_revisions` | Singleton `id = 1` revision ledger used by atomic role-policy and assignment mutations. |
+| `role_policy_mutations` | Actor-bound idempotency key, request fingerprint, base/resulting revision, terminal outcome, applied/audit flags, timestamps, and `result_json` added by `0023`; terminal rows become immutable through `0020`. |
+| `role_audit_events` | Immutable append-only privileged mutation record with actor, action, entity, old/new summaries, reason, outcome, and correlation ID. `0021` adds the `REJECTED` outcome. |
 
-Stable IDs remain opaque. Display names and scopes are safe human-readable output; credentials and secrets never enter this projection.
+Migration `0019` creates the seven normalized identity records and their
+protected anchors. Migrations `0020`–`0025` add terminal idempotency,
+rejected-outcome, protected-identity, response-replay, scope-snapshot, and
+active-assignment guards. Migration `0026` removes the retired Account and
+registration fixed-role columns and their write guards while preserving every
+other identity, credential, status, and registration field.
+
+The current schema intentionally has no separate `role_grants`,
+`role_capabilities`, `role_order_revisions`, or `idempotency_records` tables:
+grants, capability vocabulary, order revision, and idempotency are represented
+by the implemented records above and the code-owned capability catalog.
+
+Stable IDs remain opaque. Display names and scopes are safe human-readable
+output; credentials and secrets never enter this projection.
 
 ### 8.2 Constraints
 
@@ -411,16 +426,23 @@ This is a clean pre-production rewrite:
 - Admin membership is seed/operations-only, Admin accounts are exclusive, and the last Active Admin cannot be removed, suspended, or deactivated.
 - The final report remains `RELEASE CONDITIONAL` when required human/AT evidence is missing.
 
-## 14. Implementation handoff order
+## 14. Implementation record
 
-1. Rewrite development permission migrations and reset/seed contract.
-2. Implement normalized Role Category/Definition/Assignment/Grant records and closed capability catalog.
-3. Implement server authority resolver, hierarchy/scope checks, and idempotent operation commands.
-4. Implement role-tree and account/identity projections.
-5. Implement permissions projection and atomic revision handling.
-6. Migrate local shadcn controls and permission UX only after the layout colleague's commit is present.
-7. Add deterministic, keyboard, screen-reader, reflow, focus-not-obscured, and real-device evidence.
-8. Consolidate this spec and related documents into the canonical ADR/CONTEXT/design-system chain.
+The implementation sequence is complete for the normalized identity contract:
+
+1. Migrations `0019`–`0026` establish the normalized records, guards,
+   response replay, scope snapshots, and fixed-role contraction.
+2. Worker authority resolves capabilities and scope from active assignments;
+   registration approval creates a role-free Active Account with automatic
+   `會友基礎`.
+3. Identity tree, permission editor, Account Access, registration approval,
+   and account-directory projections consume normalized identities and
+   capabilities.
+4. Enabled local D1, component, and browser seams cover atomicity,
+   idempotency, stale-schema refusal, role-free payloads, and observable
+   identity/access behavior.
+5. Remaining production release conditions are recorded in the Phase F release
+   gate; this specification does not infer human or hardware outcomes.
 
 ## 15. Current document authority
 

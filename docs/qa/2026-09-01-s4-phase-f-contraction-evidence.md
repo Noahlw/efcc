@@ -18,7 +18,7 @@
 
 `pnpm dev:local` was started under the process supervisor on `127.0.0.1:8787`. After the first post-migration attempt exposed a remaining fixture SQL write to `accounts.role`, commit `715b96a` removed that obsolete seed column while retaining normalized identity assignments and the legacy-PIN upgrade fixture. A clean rerun then passed:
 
-- `pnpm db:seed:local`: reset 28 commands and role-free legacy reset/seed 11 commands succeeded.
+- `pnpm db:seed:local`: reset 29 commands and role-free legacy reset/seed 11 commands succeeded.
 - `pnpm db:seed:disposable`: 6 commands succeeded.
 - `DEMO_TARGET_URL=http://127.0.0.1:8787 pnpm db:seed:demo`: demo programs/events, module gate, notices, and home content seeded successfully.
 
@@ -40,4 +40,4 @@ F-494-01 through F-494-04 are `READY`. The implementation commits are authored a
 - `715b96a` — update disposable seeds for role-free accounts
 - `54fc26f` — cover generic unknown route fallback
 
-F-495 release evidence and human gates remain pending in this intermediate record. This document does not claim production readiness.
+- The Phase F release gate and human-gate disposition are recorded in `docs/qa/2026-09-01-s4-phase-f-release-gate.md`; the full Programs D1 browser matrix remains blocked by the local arm64 Worker failure, while unavailable manual rows remain `UNCLAIMED`.

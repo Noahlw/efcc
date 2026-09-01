@@ -536,10 +536,9 @@ function renderItemRow(item: TestEvidenceItem, index: number): string {
   return `<tr>
     <th scope="row" class="cell-index">${index + 1}</th>
     <td class="cell-file"><code>${escapeHtml(item.file || item.suite)}</code></td>
-    <td class="cell-title">
-      <strong>${escapeHtml(item.title)}</strong>
-      ${skipReasonHtml}
-    </td>
+    <td class="cell-title"><strong>${escapeHtml(item.title)}</strong>${
+      skipReasonHtml ? `\n      ${skipReasonHtml}` : ""
+    }</td>
     <td class="cell-project"><code>${escapeHtml(item.project)}</code></td>
     <td class="cell-viewport">${escapeHtml(viewportText)}</td>
     <td class="cell-status"><span class="${statusClass}">${statusText}</span> <span class="badge">${escapeHtml(item.state)}</span></td>

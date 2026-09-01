@@ -48,12 +48,12 @@ pnpm exec playwright test -c tests/e2e/programs-d1.config.ts
 
 `pnpm dev:local` builds the Next static export and applies local migrations. `pnpm db:seed:local` is safe to rerun; it first resets only disposable `E2E_`/`E2E_DEMO_` domain rows, seeds the account fixtures, and then invokes the local-only `pnpm db:seed:disposable` identity seed. The identity seed is additive (`INSERT OR IGNORE`), contains only `E2E_DISPOSABLE_` rows, and never targets a remote or non-disposable database.
 
-| Username     | Credential                | Role   |
-| ------------ | ------------------------- | ------ |
-| `E2E_admin`  | `E2E_admin!dev`           | Admin  |
-| `E2E_staff`  | `E2E_staff!dev`           | Staff  |
-| `E2E_member` | `E2E_member!dev`          | Member |
-| `E2E_legacy` | PIN `1234` (upgrade test) | Member |
+| Username | Credential | Seeded identity context |
+| --- | --- | --- |
+| `E2E_admin` | `E2E_admin!dev` | Protected Admin identity |
+| `E2E_staff` | `E2E_staff!dev` | Assignable Staff identity |
+| `E2E_member` | `E2E_member!dev` | Automatic `會友基礎` baseline |
+| `E2E_legacy` | PIN `1234` (upgrade test) | Automatic `會友基礎` after upgrade |
 
 The local auth suite defaults to those fixtures. The account seed resets `E2E_legacy` to its legacy-PIN state so the upgrade test can be rerun. The other D1 suites use the active three accounts by default; `attendance-d1` creates its own disposable domain rows for each run. `db:seed:demo` is local-only and refuses non-loopback targets; it creates one `E2E_DEMO_` department, four programs, and generated events for the recurring program.
 
@@ -82,6 +82,27 @@ pnpm exec tsx tests/e2e/plan-doc-appender.ts \
   --heading="## Executed results — local Programs D1" \
   --target-url=http://127.0.0.1:8787
 ```
+
+## Phase F release evidence
+
+Phase F (#494/#495) keeps the release evidence numeric and local. Geometry suites attach UTF-8 JSON through Playwright `testInfo.attach`; the renderer rejects image attachments and non-loopback target URLs:
+
+```sh
+pnpm verify:contraction
+pnpm exec tsx tests/e2e/render-phase-f-evidence.ts \
+  --input=tests/e2e/test-results/phase-f \
+  --json=docs/qa/2026-09-01-s4-phase-f-release-evidence.json \
+  --html=docs/qa/2026-09-01-s4-phase-f-release-evidence.html
+pnpm exec tsx tests/e2e/plan-doc-appender.ts \
+  --plan=docs/specs/s4-phase-f-acceptance-trace.md \
+  --results=tests/e2e/test-results/phase-f/phase-d-programs-geometry/results.json \
+  --heading="## Executed results" \
+  --target-url=http://127.0.0.1:8787
+```
+
+The per-suite reports live under `tests/e2e/test-results/phase-f/<suite>/results.json`. The rendered JSON/HTML, the acceptance trace, `docs/qa/2026-09-01-s4-phase-f-release-gate.md`, and `docs/qa/2026-09-01-s4-phase-f-audit-dispositions.md` are the reviewable outputs. Numeric evidence proves DOM/API geometry and state only; it does not claim human keyboard/AT, real-device camera/touch, native print-preview, forced-colors, zoom/reflow, or text-spacing outcomes.
+
+All Phase F automated runs use `http://127.0.0.1:8787`, local D1, pinned Chromium, and disposable `E2E_`, `E2E_DEMO_`, or `E2E_DISPOSABLE_` fixtures. They never mutate Apps Script, Google Sheets, Cloudflare production, remote D1, or a non-disposable account. A complete local matrix failure remains a release blocker; unavailable human rows stay `UNCLAIMED`.
 
 ## Static-shell suite
 

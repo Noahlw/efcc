@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: Accepted
 ---
 
 # Discord-like Stackable Role Model
@@ -122,3 +122,20 @@ Role display names are globally unique. Renaming is a separate
 `role.name.write` capability, preserves the stable Role Definition and all
 assignments, validates uniqueness server-side, and records old/new names in
 the audit outcome. Admin's display name is fixed.
+
+## Phase F disposition — 2026-09-01
+
+This decision is accepted and implemented in the normalized identity and
+capability-owned authorization path. The fixed global Account-role storage and
+compatibility vocabulary described by the pre-production model are retired;
+Role Categories, Role Definitions, Role Assignments, explicit scope, additive
+grants, and the protected `會友基礎` baseline remain the active domain rules.
+
+Implementation and contraction evidence is recorded in
+[Spec 091](../specs/091-stackable-identity-backend.md),
+[Spec 092](../specs/092-discord-identity-design-system-adoption.md), and
+[the Phase F release gate](../qa/2026-09-01-s4-phase-f-release-gate.md).
+The local automated release gate remains blocked by the reproducible
+single-process Programs D1 run losing its loopback Worker on arm64; unavailable
+human accessibility/device rows remain explicitly `UNCLAIMED`, not inferred
+from automation.

@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: Accepted
 ---
 
 # Owned Civic Design-System Governance
@@ -17,3 +17,17 @@ The design-system acceptance bar is WCAG 2.2 Level AA plus human keyboard, scree
 - `cmdk`, TanStack Virtual/Table, and React Aria remain feature- or scale-triggered additions, never speculative global migrations.
 - Design-system drift is inventoried across the whole route/state matrix and reconciled in a bounded pass rather than patched opportunistically.
 - The role model in ADR-0042 and the WCAG gates in `docs/research/2026-08-27-wcag-2.2-ux-audit-gates.md` are required inputs for future role-management and screen audits.
+
+## Phase F disposition — 2026-09-01
+
+This decision is accepted and implemented for the shipped product surfaces.
+The Civic Minimal token contract, local shadcn/Radix primitives, Tailwind
+route styling, and documented native platform/semantic exceptions are the
+active design-system boundary. No shipped CSS Module import remains.
+
+The numeric release report and contraction scanner are linked from
+[the Phase F release gate](../qa/2026-09-01-s4-phase-f-release-gate.md) and
+[the component inventory](../../web/COMPONENT_INVENTORY.md). Human
+keyboard/assistive-technology, real-device, print-preview, and visual
+accessibility rows remain `UNCLAIMED`; the release record does not infer those
+outcomes from DOM or Playwright evidence.
