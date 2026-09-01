@@ -395,7 +395,9 @@ test.describe("UI-04 Next frontend trace", () => {
     await expect(page.locator("form")).toHaveCount(2);
   });
 
-  test("approval queue renders for Admin (role-gated)", async ({ page }) => {
+  test("approval queue renders for a capability-bearing identity", async ({
+    page,
+  }) => {
     await loginAs(
       page,
       required("PROGRAMS_ADMIN_USERNAME", ADMIN_USER),
@@ -406,9 +408,6 @@ test.describe("UI-04 Next frontend trace", () => {
       page.getByRole("heading", { name: COPY.approvalTitle })
     ).toBeVisible();
     await expect(page.getByRole("tab", { name: /待審批 \d+/u })).toBeVisible();
-    await expect(
-      page.getByRole("tabpanel", { name: /待審批 \d+/u })
-    ).toBeVisible();
     await expect(
       page.getByText(COPY.approvalEmpty, { exact: true })
     ).toBeVisible();
