@@ -117,6 +117,10 @@ function barrieredDb(db: D1Database): D1Database {
 
 describe("#476 disposable D1 schema contract", () => {
   beforeAll(async () => {
+    await testDb().prepare("DROP TABLE IF EXISTS accounts_old").run().catch(() => {});
+    await testDb().prepare("DROP TABLE IF EXISTS registration_requests_old").run().catch(() => {});
+    await testDb().prepare("DROP TABLE IF EXISTS accounts_new").run().catch(() => {});
+    await testDb().prepare("DROP TABLE IF EXISTS registration_requests_new").run().catch(() => {});
     await applyMigrations();
     const preflight = await preflightDisposableSchema(testDb(), {
       databaseName: DISPOSABLE_DATABASE,
@@ -128,7 +132,6 @@ describe("#476 disposable D1 schema contract", () => {
       databaseName: DISPOSABLE_DATABASE,
     });
   });
-
   test("preflight reports non-disposable database names without touching D1", async () => {
     const result = await preflightDisposableSchema(testDb(), {
       databaseName: "efcc-identity-prod",

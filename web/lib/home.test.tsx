@@ -78,7 +78,8 @@ const MEMBER_PROFILE: PublicUser = {
   name: "陳小明",
   username: "member.demo",
   phone: "91234567",
-  role: "Member",
+  identities: [],
+  capabilities: {},
   status: "Active",
   qrCodeString: "qr:u-member-101",
 };

@@ -621,18 +621,13 @@ export async function handleSearchAccountDirectory(
   const limit = Number.isFinite(parsedLimit)
     ? Math.min(50, Math.max(1, Math.floor(parsedLimit)))
     : 20;
-  const rawRole = url.searchParams.get("role");
   const rawCursor = url.searchParams.get("cursor");
   const cursor = rawCursor === null ? 0 : Number(rawCursor);
   const rawStatus = url.searchParams.get("status");
   const rawDepartment = url.searchParams.get("department")?.trim() || undefined;
-  const roles = ["Admin", "Staff", "Member"] as const;
   const statuses = ["Pending", "Active", "Suspended", "Deactivated"] as const;
   if (!Number.isInteger(cursor) || cursor < 0) {
     return validation(requestId, "Invalid Account Directory cursor.");
-  }
-  if (rawRole !== null && !roles.includes(rawRole as (typeof roles)[number])) {
-    return validation(requestId, "Unknown account role filter.");
   }
   if (
     rawStatus !== null &&
@@ -651,8 +646,6 @@ export async function handleSearchAccountDirectory(
       limit,
       {
         department: rawDepartment,
-        role:
-          rawRole === null ? undefined : (rawRole as (typeof roles)[number]),
         status:
           rawStatus === null
             ? undefined

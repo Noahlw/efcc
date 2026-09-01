@@ -34,7 +34,7 @@ import { ACCESS_TOKEN_TTL_MS } from "./credentials";
 
 const SECRET = "test-access-token-secret";
 
-const HEADER = ["User_ID", "Name", "Username", "PIN_Code", "System_Role", "Status"];
+const HEADER = ["User_ID", "Name", "Username", "PIN_Code", "Status"];
 
 beforeAll(async () => {
   await applyMigrations();
@@ -71,7 +71,7 @@ describe("AUTH-01: schema", () => {
   test("User_ID is immutable at the schema level", async () => {
     await importLegacyUsers(testDb(), [
       HEADER,
-      ["U100", "Alice Chan", "alice100", "1234", "Admin", "Active"],
+      ["U100", "Alice Chan", "alice100", "1234", "Active"],
     ]);
     await expect(
       testDb()
@@ -83,7 +83,7 @@ describe("AUTH-01: schema", () => {
   test("username uniqueness is enforced transactionally on normalized form", async () => {
     await importLegacyUsers(testDb(), [
       HEADER,
-      ["U101", "Alice Chan", "alice101", "1234", "Admin", "Active"],
+      ["U101", "Alice Chan", "alice101", "1234", "Active"],
     ]);
     // 'Alice101' and 'alice101' normalize to the same key -> UNIQUE violation.
     await expect(
@@ -91,9 +91,9 @@ describe("AUTH-01: schema", () => {
         .prepare(
           `INSERT INTO accounts (
              user_id, name, username, username_normalized, credential_kind,
-             credential_version, account_status, role, legacy_pin_hash,
+             credential_version, account_status,  legacy_pin_hash,
              requires_upgrade, created_at, updated_at
-           ) VALUES (?, ?, ?, ?, 'password', 2, 'Active', 'Member',
+           ) VALUES (?, ?, ?, ?, 'password', 2, 'Active', 
                      NULL, 0, ?, ?)`
         )
         .bind(
@@ -113,9 +113,9 @@ describe("AUTH-01: schema", () => {
       .prepare(
         `INSERT INTO accounts (
            user_id, name, username, username_normalized, credential_hash,
-           credential_kind, credential_version, account_status, role,
+           credential_kind, credential_version, account_status, 
            requires_upgrade, created_at, updated_at
-         ) VALUES (?, ?, ?, ?, ?, 'password', 2, 'Active', 'Member', 0, ?, ?)`
+         ) VALUES (?, ?, ?, ?, ?, 'password', 2, 'Active',  0, ?, ?)`
       )
       .bind(
         "U102",
@@ -141,9 +141,9 @@ describe("AUTH-01: legacy import", () => {
     const before = await countAccounts();
     const rows = [
       HEADER,
-      ["U201", "Alice Chan", "alice201", "1234", "Admin", "Active"],
-      ["U202", "Bob Lee", "bob202", "5678", "Member", "Active"],
-      ["U203", "Carol Wong", "carol203", "0000", "Staff", "Active"],
+      ["U201", "Alice Chan", "alice201", "1234", "Active"],
+      ["U202", "Bob Lee", "bob202", "5678", "Active"],
+      ["U203", "Carol Wong", "carol203", "0000", "Active"],
     ];
     const result = await importLegacyUsers(testDb(), rows);
     expect(result.imported).toBe(3);
@@ -153,15 +153,14 @@ describe("AUTH-01: legacy import", () => {
     const alice = await findAccountByUsername(testDb(), "alice201");
     expect(alice).not.toBeNull();
     expect(alice!.user_id).toBe("U201");
-    expect(alice!.role).toBe("Admin");
+    expect((alice as unknown as Record<string, unknown>).role).toBeUndefined();
     expect(alice!.requires_upgrade).toBe(1);
     expect(alice!.credential_kind).toBe("legacy_pin");
     expect(alice!.credential_hash).toBeNull();
-    // TEACHER source is retired to STAFF (ADR-0025): no stored Teacher role.
     const carol = await findAccountByUsername(testDb(), "carol203");
     expect(carol).not.toBeNull();
-    expect(carol!.role).toBe("Staff");
-    // One-time legacy PIN hash is stored, never the cleartext PIN.
+    expect((carol as unknown as Record<string, unknown>).role).toBeUndefined();
+    expect(carol!.account_status).toBe("Active");
     expect(alice!.legacy_pin_hash).toMatch(/^pbkdf2:/);
     // Scan every field except the wall-clock timestamps, whose digits can
     // coincidentally contain any 4-digit sequence (e.g. epoch 1785912340xxx).
@@ -172,7 +171,7 @@ describe("AUTH-01: legacy import", () => {
   });
 
   test("re-run is idempotent — no duplicate accounts", async () => {
-    const row = ["U210", "David Tang", "david210", "1111", "Member", "Active"];
+    const row = ["U210", "David Tang", "david210", "1111",  "Active"];
     await importLegacyUsers(testDb(), [HEADER, row]);
     const first = await countAccounts();
     const rerun = await importLegacyUsers(testDb(), [HEADER, row]);
@@ -181,12 +180,11 @@ describe("AUTH-01: legacy import", () => {
     expect(await countAccounts()).toBe(first);
   });
 
-  test("0002 write-time guard: INSERT/UPDATE of a non-canonical role aborts (RAISE ABORT)", async () => {
-    // The migration's data UPDATE retires existing Teacher rows; the guards
-    // below close the write path so the retired spelling can never return.
-    // Canonical: Admin, Staff, Member (ADR-0025).
-
-    // INSERT with the retired spelling fails closed.
+  test("0002 write-time guard removed: role column no longer exists, INSERT with role fails with no-column error", async () => {
+    // After #494 the fixed role column and its BEFORE triggers are removed.
+    // Any lingering INSERT that still references `role` must fail with a
+    // missing-column error, not the old RAISE message. Canonical INSERTs
+    // without role continue to work.
     await expect(
       testDb()
         .prepare(
@@ -201,49 +199,48 @@ describe("AUTH-01: legacy import", () => {
         )
         .bind(Date.now(), Date.now())
         .run()
-    ).rejects.toThrow(/role must be Admin, Staff, or Member/);
+    ).rejects.toThrow(/no column named role|no such column/i);
 
-    // Canonical INSERT still works.
+    // Canonical INSERT still works (role-free).
     await testDb()
       .prepare(
         'INSERT INTO accounts (' +
-          ' user_id, name, username, username_normalized, role,' +
+          ' user_id, name, username, username_normalized, ' +
           ' account_status, credential_kind, requires_upgrade,' +
           ' created_at, updated_at' +
           ' ) VALUES (' +
-          " 'U701', 'Uma Staff', 'uma701', 'uma701', 'Staff'," +
+          " 'U701', 'Uma Staff', 'uma701', 'uma701', " +
           " 'Active', 'legacy_pin', 1, ?, ?" +
           ' )'
       )
       .bind(Date.now(), Date.now())
       .run();
-
-    // UPDATE back to the retired spelling is rejected, and the row survives
-    // with its canonical role.
+    // UPDATE with role also fails (column gone) and the row survives role-free.
     await expect(
       testDb()
         .prepare("UPDATE accounts SET role = 'Teacher' WHERE user_id = ?")
         .bind("U701")
         .run()
-    ).rejects.toThrow(/role must be Admin, Staff, or Member/);
+    ).rejects.toThrow(/no column named role|no such column/i);
     const after = await findAccountByUserId(testDb(), "U701");
-    expect(after?.role).toBe("Staff");
+    expect((after as unknown as Record<string, unknown>)?.role).toBeUndefined();
+    expect(after?.account_status).toBe("Active");
 
-    // Canonical UPDATE still works.
+    // Canonical UPDATE (without role) still works — e.g., name change.
     await testDb()
-      .prepare("UPDATE accounts SET role = 'Admin' WHERE user_id = ?")
+      .prepare("UPDATE accounts SET name = 'Uma Promoted' WHERE user_id = ?")
       .bind("U701")
       .run();
     const promoted = await findAccountByUserId(testDb(), "U701");
-    expect(promoted?.role).toBe("Admin");
+    expect(promoted?.name).toBe("Uma Promoted");
   });
 
   test("duplicate username in source fails closed with no partial write", async () => {
     const before = await countAccounts();
     const dupRows = [
       HEADER,
-      ["U220", "David", "david220", "1111", "Member", "Active"],
-      ["U221", "David Clone", "david220", "2222", "Member", "Active"],
+      ["U220", "David", "david220", "1111",  "Active"],
+      ["U221", "David Clone", "david220", "2222",  "Active"],
     ];
     await expect(importLegacyUsers(testDb(), dupRows)).rejects.toThrow(
       /duplicate username/
@@ -255,8 +252,8 @@ describe("AUTH-01: legacy import", () => {
     const before = await countAccounts();
     const rows = [
       HEADER,
-      ["U230", "Eve", "eve230", "", "Member", "Active"],
-      ["U231", "Frank", "frank231", "9999", "Member", "Active"],
+      ["U230", "Eve", "eve230", "",  "Active"],
+      ["U231", "Frank", "frank231", "9999",  "Active"],
     ];
     const result = await importLegacyUsers(testDb(), rows);
     expect(result.imported).toBe(1);
@@ -271,8 +268,8 @@ describe("AUTH-01: legacy import", () => {
     const before = await countAccounts();
     const badRows = [
       HEADER,
-      ["U232", "Eve", "eve232", "12A4", "Member", "Active"],
-      ["U233", "Frank", "frank233", "12345", "Member", "Active"],
+      ["U232", "Eve", "eve232", "12A4",  "Active"],
+      ["U233", "Frank", "frank233", "12345",  "Active"],
     ];
     await expect(importLegacyUsers(testDb(), badRows)).rejects.toThrow(
       /PIN_Code must be exactly 4 ASCII digits/
@@ -284,7 +281,7 @@ describe("AUTH-01: legacy import", () => {
     await expect(
       importLegacyUsers(testDb(), [
         ["User_ID", "Name", "Username", "System_Role", "Status"], // no PIN_Code
-        ["U240", "Grace", "grace240", "Member", "Active"],
+        ["U240", "Grace", "grace240",  "Active"],
       ])
     ).rejects.toThrow(/missing a required column/);
   });
@@ -295,7 +292,7 @@ describe("AUTH-01: legacy import", () => {
       // Seed an existing D1 account that owns the username "alice-collision".
       await importLegacyUsers(testDb(), [
         HEADER,
-        ["U500", "Alice Owner", "alice-collision", "1234", "Member", "Active"],
+        ["U500", "Alice Owner", "alice-collision", "1234",  "Active"],
       ]);
       const beforeCount = await countAccounts();
       const beforeAll = await testDb()
@@ -309,8 +306,8 @@ describe("AUTH-01: legacy import", () => {
       await expect(
         importLegacyUsers(testDb(), [
           HEADER,
-          ["U501", "Ben", "ben501", "1111", "Member", "Active"],
-          ["U502", "Clone Alice", "ALICE-COLLISION", "2222", "Member", "Active"],
+          ["U501", "Ben", "ben501", "1111",  "Active"],
+          ["U502", "Clone Alice", "ALICE-COLLISION", "2222",  "Active"],
         ])
       ).rejects.toThrow(/collides with an existing D1 account/);
 
@@ -336,8 +333,8 @@ describe("AUTH-01: legacy import", () => {
       await expect(
         importLegacyUsers(testDb(), [
           HEADER,
-          ["U510", "Dan", "dan510", "3333", "Member", "Active"],
-          ["U511", "Dan Clone", "DAN510", "4444", "Member", "Active"],
+          ["U510", "Dan", "dan510", "3333",  "Active"],
+          ["U511", "Dan Clone", "DAN510", "4444",  "Active"],
         ])
       ).rejects.toThrow(/duplicate username/i);
 
@@ -363,7 +360,7 @@ describe("AUTH-01: forced credential upgrade gate", () => {
   test("no session is issued before the upgrade completes", async () => {
     await importLegacyUsers(testDb(), [
       HEADER,
-      ["U300", "Hugo", "hugo300", "1234", "Member", "Active"],
+      ["U300", "Hugo", "hugo300", "1234",  "Active"],
     ]);
     await expect(
       issueSession(testDb(), { userId: "U300", accessTokenSecret: SECRET })
@@ -373,7 +370,7 @@ describe("AUTH-01: forced credential upgrade gate", () => {
   test("upgrade verifies the one-time legacy PIN hash, then clears it", async () => {
     await importLegacyUsers(testDb(), [
       HEADER,
-      ["U301", "Ivy", "ivy301", "1234", "Member", "Active"],
+      ["U301", "Ivy", "ivy301", "1234",  "Active"],
     ]);
     const result = await completeCredentialUpgrade(testDb(), {
       userId: "U301",
@@ -401,7 +398,7 @@ describe("AUTH-01: forced credential upgrade gate", () => {
   test("wrong legacy PIN does not upgrade and never leaks identity", async () => {
     await importLegacyUsers(testDb(), [
       HEADER,
-      ["U302", "Jack", "jack302", "1234", "Member", "Active"],
+      ["U302", "Jack", "jack302", "1234",  "Active"],
     ]);
     await expect(
       completeCredentialUpgrade(testDb(), {
@@ -418,7 +415,7 @@ describe("AUTH-01: forced credential upgrade gate", () => {
   test("upgrade on a non-legacy account is rejected", async () => {
     await importLegacyUsers(testDb(), [
       HEADER,
-      ["U303", "Kim", "kim303", "1234", "Member", "Active"],
+      ["U303", "Kim", "kim303", "1234",  "Active"],
     ]);
     await completeCredentialUpgrade(testDb(), {
       userId: "U303",
@@ -437,7 +434,7 @@ describe("AUTH-01: forced credential upgrade gate", () => {
   test("after upgrade a session is issued normally", async () => {
     await importLegacyUsers(testDb(), [
       HEADER,
-      ["U304", "Leo", "leo304", "1234", "Member", "Active"],
+      ["U304", "Leo", "leo304", "1234",  "Active"],
     ]);
     await completeCredentialUpgrade(testDb(), {
       userId: "U304",

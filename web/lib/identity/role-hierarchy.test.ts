@@ -434,11 +434,11 @@ describe("#478 role hierarchy and rename contract", () => {
         .prepare(
           `INSERT OR IGNORE INTO accounts
              (user_id, name, username, username_normalized, credential_hash,
-              credential_kind, credential_version, account_status, role, phone,
+              credential_kind, credential_version, account_status, phone,
               qr_code_string, legacy_pin_hash, requires_upgrade, lock_level,
               failed_attempts, locked_until, lock_since, created_at, updated_at)
            VALUES (?, 'Comma Account', 'comma-account', 'comma-account', NULL,
-                   'password', 2, 'Active', 'Member', NULL, NULL, NULL, 0, 0,
+                   'password', 2, 'Active', NULL, NULL, NULL, 0, 0,
                    0, NULL, NULL, ?, ?)`
         )
         .bind(commaAccount, Date.parse(NOW), Date.parse(NOW)),
@@ -533,11 +533,11 @@ describe("#478 role hierarchy and rename contract", () => {
         .prepare(
           `INSERT OR IGNORE INTO accounts
              (user_id, name, username, username_normalized, credential_hash,
-              credential_kind, credential_version, account_status, role, phone,
+              credential_kind, credential_version, account_status, phone,
               qr_code_string, legacy_pin_hash, requires_upgrade, lock_level,
               failed_attempts, locked_until, lock_since, created_at, updated_at)
            VALUES (?, 'Role-read-only', ?, ?, NULL, 'password', 2, 'Active',
-                   'Member', NULL, NULL, NULL, 0, 0, 0, NULL, NULL, ?, ?)`
+                   NULL, NULL, NULL, 0, 0, 0, NULL, NULL, ?, ?)`
         )
         .bind(
           actor,
@@ -2714,10 +2714,10 @@ describe("#479 role definition creation, scoped authority, and sibling order", (
         .prepare(
           `INSERT OR IGNORE INTO accounts
              (user_id, name, username, username_normalized, credential_hash,
-              credential_kind, credential_version, account_status, role, phone,
+              credential_kind, credential_version, account_status, phone,
               qr_code_string, legacy_pin_hash, requires_upgrade, lock_level,
               failed_attempts, locked_until, lock_since, created_at, updated_at)
-           VALUES (?, ?, ?, ?, NULL, 'password', 2, 'Active', 'Member',
+           VALUES (?, ?, ?, ?, NULL, 'password', 2, 'Active',
                    NULL, NULL, NULL, 0, 0, 0, NULL, NULL, ?, ?)`
         )
         .bind(

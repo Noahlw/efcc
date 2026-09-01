@@ -54,12 +54,12 @@ const PUBLIC_USER: PublicUser = {
   name: "測試用",
   username: "test",
   phone: "00000000",
-  role: "Member",
+  identities: [],
+  capabilities: {},
   status: "Active",
   qrCodeString: "qr-placeholder",
 };
-const STAFF_USER: PublicUser = { ...PUBLIC_USER, role: "Staff" };
-
+const STAFF_USER: PublicUser = { ...PUBLIC_USER };
 const BOOTSTRAP: Bootstrap = {
   sections: defaultSections(),
   navigation: projectNavigation({ "program.enroll": true }),

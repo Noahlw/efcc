@@ -69,10 +69,10 @@ export const ShellHeader = ({
     NON_DOCK_SECTION_TITLES[currentSection] ??
     COPY.shell.shortMark;
   const displayName = bootstrap.profile.name || bootstrap.profile.username;
-  const roleLabel =
-    COPY.shell.roleLabels[
-      bootstrap.profile.role as keyof typeof COPY.shell.roleLabels
-    ] ?? bootstrap.profile.role;
+  const identityLabel =
+    bootstrap.profile.identities.length > 0
+      ? bootstrap.profile.identities.map((entry) => entry.label).join("、")
+      : "會友基礎";
   const unreadNoticeCount = attentionData.notices.filter(
     (notice) => notice.unread
   ).length;
@@ -87,7 +87,7 @@ export const ShellHeader = ({
               <span className={styles.shortMark}>{COPY.shell.shortMark}</span>
               <div className={styles.identityBlock}>
                 <span className={styles.identityName}>{displayName}</span>
-                <span className={styles.identityRole}>{roleLabel}</span>
+                <span className={styles.identityRole}>{identityLabel}</span>
               </div>
             </>
           ) : (

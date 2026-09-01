@@ -455,8 +455,6 @@ export interface MemberOption {
   username: string;
 }
 /** Server-scoped Member Directory result (Management Hub, Spec 087 US 13-15). */
-export type MemberDirectoryRole = "Admin" | "Staff" | "Member";
-
 export interface MemberDirectoryDepartment {
   id: string;
   name: string;
@@ -474,8 +472,6 @@ export interface MemberDirectoryMember {
   userId: string;
   name: string;
   phone: string | null;
-  /** Derived from normalized identities for existing directory vocabulary. */
-  role: MemberDirectoryRole;
   identities: AccountIdentitySummary[];
   status: "Pending" | "Active" | "Suspended" | "Deactivated";
   departments: MemberDirectoryDepartment[];
@@ -998,14 +994,13 @@ export function searchManagementMembers(
   return programsFetch(`/api/v1/programs/members?${params.toString()}`, "GET");
 }
 
-/** GET /api/v1/programs/accounts?q=...&role=...&status=... — Account Directory. */
+/** GET /api/v1/programs/accounts?q=...&status=... — Account Directory. */
 export function searchAccountDirectory(
   query: string,
   options?: {
     cursor?: string;
     department?: string;
     limit?: number;
-    role?: AccountDirectoryMember["role"];
     status?: AccountDirectoryMember["status"];
   }
 ): Promise<AccountDirectoryView> {
@@ -1018,9 +1013,6 @@ export function searchAccountDirectory(
   }
   if (options?.department !== undefined) {
     params.set("department", options.department);
-  }
-  if (options?.role !== undefined) {
-    params.set("role", options.role);
   }
   if (options?.status !== undefined) {
     params.set("status", options.status);

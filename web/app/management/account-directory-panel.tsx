@@ -55,11 +55,9 @@ const ACCOUNT_DETAIL_CLASS =
 
 interface AccountUrlState {
   query: string;
-  role: AccountDirectoryMember["role"] | "";
   status: AccountDirectoryMember["status"] | "";
   department: string;
 }
-
 type DirectoryState =
   | { kind: "loading"; data: null }
   | { kind: "ready"; data: AccountDirectoryView }
@@ -76,24 +74,12 @@ type DetailState =
   | { kind: "ready"; account: AccountDirectoryMember }
   | { kind: "error"; message: string };
 
-function roleLabel(role: AccountDirectoryMember["role"]): string {
-  if (role === "Admin") {
-    return COPY_ACCOUNT.admin;
-  }
-  if (role === "Staff") {
-    return COPY_ACCOUNT.staff;
-  }
-  return COPY_ACCOUNT.member;
-}
 function identityText(
-  identities: AccountDirectoryMember["identities"] | undefined,
-  role: AccountDirectoryMember["role"]
+  identities: AccountDirectoryMember["identities"] | undefined
 ): string {
   return identities && identities.length > 0
     ? identities.map(({ label }) => label).join("、")
-    : role === "Member"
-      ? "會友基礎"
-      : roleLabel(role);
+    : COPY_ACCOUNT.member;
 }
 
 function statusLabel(status: AccountDirectoryMember["status"]): string {
@@ -123,12 +109,6 @@ function initials(name: string): string {
   return [...name.replaceAll(/\s+/gu, "")].slice(-2).join("");
 }
 
-function parseRole(value: string | null): AccountDirectoryMember["role"] | "" {
-  return value === "Admin" || value === "Staff" || value === "Member"
-    ? value
-    : "";
-}
-
 function parseStatus(
   value: string | null
 ): AccountDirectoryMember["status"] | "" {
@@ -143,15 +123,11 @@ function parseStatus(
 function buildAccountsHref({
   department,
   query,
-  role,
   status,
 }: AccountUrlState): string {
   const params = new URLSearchParams({ module: "accounts" });
   if (query.trim()) {
     params.set("q", query.trim());
-  }
-  if (role) {
-    params.set("role", role);
   }
   if (status) {
     params.set("status", status);
@@ -202,46 +178,6 @@ function accountErrorMessage(error: unknown): string {
   return errorCopyFor(code, detail);
 }
 
-function AccountRoleSelect({
-  id,
-  value,
-  onChange,
-}: {
-  id: string;
-  value: AccountDirectoryMember["role"] | "";
-  onChange: (value: AccountDirectoryMember["role"] | "") => void;
-}) {
-  return (
-    <Select
-      onValueChange={(next) =>
-        onChange(
-          next === ALL_FILTER_VALUE
-            ? ""
-            : (next as AccountDirectoryMember["role"])
-        )
-      }
-      value={value || ALL_FILTER_VALUE}
-    >
-      <SelectTrigger
-        aria-describedby="account-directory-lead"
-        aria-label={COPY_ACCOUNT.roleLabel}
-        className={ACCOUNT_SELECT_CLASS}
-        id={id}
-      >
-        <SelectValue />
-      </SelectTrigger>
-      <SelectContent>
-        <SelectItem value={ALL_FILTER_VALUE}>
-          {COPY_ACCOUNT.allRoles}
-        </SelectItem>
-        <SelectItem value="Admin">{COPY_ACCOUNT.admin}</SelectItem>
-        <SelectItem value="Staff">{COPY_ACCOUNT.staff}</SelectItem>
-        <SelectItem value="Member">{COPY_ACCOUNT.member}</SelectItem>
-      </SelectContent>
-    </Select>
-  );
-}
-
 function AccountStatusSelect({
   id,
   value,
@@ -274,8 +210,8 @@ function AccountStatusSelect({
         <SelectItem value={ALL_FILTER_VALUE}>
           {COPY_ACCOUNT.allStatuses}
         </SelectItem>
-        <SelectItem value="Active">{COPY_ACCOUNT.active}</SelectItem>
         <SelectItem value="Pending">{COPY_ACCOUNT.pending}</SelectItem>
+        <SelectItem value="Active">{COPY_ACCOUNT.active}</SelectItem>
         <SelectItem value="Suspended">{COPY_ACCOUNT.suspended}</SelectItem>
         <SelectItem value="Deactivated">{COPY_ACCOUNT.deactivated}</SelectItem>
       </SelectContent>
@@ -371,9 +307,6 @@ export const AccountDirectoryPanel = () => {
   const restoreAccessFocus =
     searchParams.get("returnFocus") === "account-access";
   const [query, setQuery] = useState(searchParams.get("q") ?? "");
-  const [role, setRole] = useState<AccountDirectoryMember["role"] | "">(
-    parseRole(searchParams.get("role"))
-  );
   const [status, setStatus] = useState<AccountDirectoryMember["status"] | "">(
     parseStatus(searchParams.get("status"))
   );
@@ -404,7 +337,6 @@ export const AccountDirectoryPanel = () => {
       searchAccountDirectory(query.trim(), {
         department: department.trim() || undefined,
         limit: SEARCH_LIMIT,
-        role: role || undefined,
         status: status || undefined,
       }),
     {
@@ -430,9 +362,8 @@ export const AccountDirectoryPanel = () => {
         router.replace("/");
       },
     },
-    [department, query, role, router, status]
+    [department, query, router, status]
   );
-
   const { state } = listResource;
   const resourceView = state.kind === "ready" ? state.data : null;
   const accountView = appendedView ?? resourceView;
@@ -486,8 +417,7 @@ export const AccountDirectoryPanel = () => {
   useEffect(() => {
     loadMoreRequestId.current += 1;
     setLoadMoreError(null);
-  }, [department, query, role, status]);
-
+  }, [department, query, status]);
   useEffect(() => {
     if (!selectedId) {
       setDetailState({ kind: "idle" });
@@ -534,43 +464,37 @@ export const AccountDirectoryPanel = () => {
   const updateQuery = (value: string) => {
     setQuery(value);
     setSelectedId(null);
-    updateUrl({ department, query: value, role, status });
+    updateUrl({ department, query: value, status });
   };
 
-  const updateFilter = (
-    nextRole: AccountDirectoryMember["role"] | "",
-    nextStatus: AccountDirectoryMember["status"] | ""
-  ) => {
-    setRole(nextRole);
+  const updateFilter = (nextStatus: AccountDirectoryMember["status"] | "") => {
     setStatus(nextStatus);
     setSelectedId(null);
-    updateUrl({ department, query, role: nextRole, status: nextStatus });
+    updateUrl({ department, query, status: nextStatus });
   };
 
   const updateDepartment = (value: string) => {
     setDepartment(value);
     setSelectedId(null);
-    updateUrl({ department: value, query, role, status });
+    updateUrl({ department: value, query, status });
   };
 
   const clearFilters = () => {
-    setRole("");
     setStatus("");
     setDepartment("");
     setSelectedId(null);
-    updateUrl({ department: "", query, role: "", status: "" });
+    updateUrl({ department: "", query, status: "" });
   };
 
   const returnHref = safeManagementReturnHref(
     searchParams.get("return"),
-    buildAccountsHref({ department, query, role, status })
+    buildAccountsHref({ department, query, status })
   );
 
   const handleSelect = (account: AccountDirectoryMember) => {
     const params = new URLSearchParams(
-      buildAccountsHref({ department, query, role, status }).split("?")[1]
+      buildAccountsHref({ department, query, status }).split("?")[1]
     );
-    params.set("account", account.userId);
     params.set("return", returnHref);
     setSelectedId(account.userId);
     window.history.pushState(null, "", `/management?${params.toString()}`);
@@ -589,7 +513,6 @@ export const AccountDirectoryPanel = () => {
         cursor: accountView.nextCursor,
         department: department.trim() || undefined,
         limit: SEARCH_LIMIT,
-        role: role || undefined,
         status: status || undefined,
       });
       if (requestId !== loadMoreRequestId.current) {
@@ -632,9 +555,7 @@ export const AccountDirectoryPanel = () => {
     listResource.retry();
   };
 
-  const activeFilterCount = [role, status, department.trim()].filter(
-    Boolean
-  ).length;
+  const activeFilterCount = [status, department.trim()].filter(Boolean).length;
   const frameState: DirectoryFrameState =
     state.kind === "error"
       ? state.failure === "forbidden"
@@ -719,18 +640,10 @@ export const AccountDirectoryPanel = () => {
               <dl className="mt-4 grid min-w-0 grid-cols-2 border-t border-l border-[var(--line)] max-[479px]:grid-cols-1">
                 <div className="min-w-0 border-r border-b border-[var(--line)] p-3">
                   <dt className="text-xs font-bold text-[var(--ink-muted)]">
-                    {COPY_ACCOUNT.role}
-                  </dt>
-                  <dd className="m-0 mt-1 wrap-anywhere font-bold">
-                    {roleLabel(selected.role)}
-                  </dd>
-                </div>
-                <div className="min-w-0 border-r border-b border-[var(--line)] p-3">
-                  <dt className="text-xs font-bold text-[var(--ink-muted)]">
                     身份組
                   </dt>
                   <dd className="m-0 mt-1 wrap-anywhere font-bold">
-                    {identityText(selected.identities, selected.role)}
+                    {identityText(selected.identities)}
                   </dd>
                 </div>
                 <div className="min-w-0 border-r border-b border-[var(--line)] p-3">
@@ -790,19 +703,6 @@ export const AccountDirectoryPanel = () => {
         <>
           <label
             className={ACCOUNT_FIELD_CLASS}
-            htmlFor="account-directory-role"
-          >
-            <span className={ACCOUNT_FIELD_LABEL_CLASS}>
-              {COPY_ACCOUNT.roleLabel}
-            </span>
-            <AccountRoleSelect
-              id="account-directory-role"
-              onChange={(nextRole) => updateFilter(nextRole, status)}
-              value={role}
-            />
-          </label>
-          <label
-            className={ACCOUNT_FIELD_CLASS}
             htmlFor="account-directory-status"
           >
             <span className={ACCOUNT_FIELD_LABEL_CLASS}>
@@ -810,7 +710,7 @@ export const AccountDirectoryPanel = () => {
             </span>
             <AccountStatusSelect
               id="account-directory-status"
-              onChange={(nextStatus) => updateFilter(role, nextStatus)}
+              onChange={(nextStatus) => updateFilter(nextStatus)}
               value={status}
             />
           </label>
@@ -866,19 +766,6 @@ export const AccountDirectoryPanel = () => {
             <div className="mt-4 grid gap-3">
               <label
                 className={ACCOUNT_FIELD_CLASS}
-                htmlFor="account-sheet-role"
-              >
-                <span className={ACCOUNT_FIELD_LABEL_CLASS}>
-                  {COPY_ACCOUNT.roleLabel}
-                </span>
-                <AccountRoleSelect
-                  id="account-sheet-role"
-                  onChange={(nextRole) => updateFilter(nextRole, status)}
-                  value={role}
-                />
-              </label>
-              <label
-                className={ACCOUNT_FIELD_CLASS}
                 htmlFor="account-sheet-status"
               >
                 <span className={ACCOUNT_FIELD_LABEL_CLASS}>
@@ -886,7 +773,7 @@ export const AccountDirectoryPanel = () => {
                 </span>
                 <AccountStatusSelect
                   id="account-sheet-status"
-                  onChange={(nextStatus) => updateFilter(role, nextStatus)}
+                  onChange={(nextStatus) => updateFilter(nextStatus)}
                   value={status}
                 />
               </label>
@@ -1031,7 +918,7 @@ export const AccountDirectoryPanel = () => {
                             {account.name}
                           </strong>
                           {account.username ?? COPY_ACCOUNT.unavailable} ·{" "}
-                          {identityText(account.identities, account.role)}
+                          {identityText(account.identities)}
                         </span>
                         <span
                           className={`min-h-[26px] rounded-full border px-2 py-1 text-[0.68rem] font-extrabold whitespace-nowrap ${statusClass(account.status)}`}

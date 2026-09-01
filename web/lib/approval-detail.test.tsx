@@ -46,7 +46,6 @@ const PENDING: RegistrationDetail = {
   name: "Dave Ng",
   phone: "9123 4567",
   status: "Pending",
-  role: "Member",
   submittedAt: 1_700_000_000_000,
   decidedAt: null,
   decisionNote: null,

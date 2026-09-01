@@ -84,30 +84,25 @@ const PUBLIC_USER: PublicUser = {
   name: "測試用",
   username: "test",
   phone: "00000000",
-  role: "Member",
-  status: "Active",
-  qrCodeString: "qr-placeholder",
   identities: [{ label: "會友基礎", scopeKind: "Global", scopeLabel: null }],
   capabilities: { "program.enroll": true, "role.manage": false },
+  status: "Active",
+  qrCodeString: "qr-placeholder",
 };
 const LEGACY_USER: PublicUser = {
   ...PUBLIC_USER,
   userId: "U-legacy",
   username: "legacy",
 };
-// Canonical ADR-0025 role strings — D1 stores and the API expose these
 // title-case values; uppercase spellings fall back to the Member set.
-const STAFF_USER: PublicUser = { ...PUBLIC_USER, role: "Staff" };
-const ADMIN_USER: PublicUser = { ...PUBLIC_USER, role: "Admin" };
+const STAFF_USER: PublicUser = { ...PUBLIC_USER };
+const ADMIN_USER: PublicUser = { ...PUBLIC_USER };
 const PROGRAM_LEADER_USER: PublicUser = {
   ...PUBLIC_USER,
-  role: "Program Leader",
 };
 const DEPARTMENT_MANAGER_USER: PublicUser = {
   ...PUBLIC_USER,
-  role: "Department Manager",
 };
-
 const BOOTSTRAP: Bootstrap = {
   sections: MEMBER_SECTIONS,
   navigation: NAVIGATION,
@@ -139,7 +134,6 @@ const DEFAULT_HANDLER = [
         data: {
           userId: "U-test",
           name: "測試用",
-          role: "Member",
           status: "Active",
           mustSetNewCredential: false,
         },
@@ -354,7 +348,6 @@ describe("Shell", () => {
             data: {
               userId: "U-legacy",
               name: "舊帳戶",
-              role: "MEMBER",
               status: "Active",
               mustSetNewCredential: true,
             },
@@ -444,7 +437,6 @@ describe("Shell", () => {
             data: {
               userId: "U-legacy",
               name: "舊帳戶",
-              role: "MEMBER",
               status: "Active",
               mustSetNewCredential: true,
             },
@@ -545,7 +537,6 @@ describe("Shell", () => {
             data: {
               userId: "U-legacy",
               name: "舊帳戶",
-              role: "MEMBER",
               status: "Active",
               mustSetNewCredential: true,
             },
@@ -616,7 +607,6 @@ describe("Shell", () => {
             data: {
               userId: "U-legacy",
               name: "舊帳戶",
-              role: "MEMBER",
               status: "Active",
               mustSetNewCredential: true,
             },
@@ -689,7 +679,6 @@ describe("Shell", () => {
             data: {
               userId: "U-legacy",
               name: "舊帳戶",
-              role: "MEMBER",
               status: "Active",
               mustSetNewCredential: true,
             },
@@ -969,7 +958,6 @@ describe("Shell", () => {
           data: {
             userId: "U-test",
             name: "測試用",
-            role: "Member",
             status: "Active",
             mustSetNewCredential: false,
           },
@@ -988,7 +976,6 @@ describe("Shell", () => {
             data: {
               userId: "U-legacy",
               name: "舊帳戶",
-              role: "MEMBER",
               status: "Active",
               mustSetNewCredential: true,
             },
@@ -1038,7 +1025,6 @@ describe("Shell", () => {
             data: {
               userId: "U-legacy",
               name: "舊帳戶",
-              role: "MEMBER",
               status: "Active",
               mustSetNewCredential: true,
             },

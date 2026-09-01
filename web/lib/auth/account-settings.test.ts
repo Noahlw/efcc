@@ -190,14 +190,14 @@ beforeAll(async () => {
   await importLegacyUsers(testDb(), [
     HEADER,
     ["U001", "Alice Chan", "alice", "1234", "Admin", "Active"],
-    ["U002", "Bob Lee", "bob", "5678", "Member", "Active"],
-    ["U003", "Carol Wong", "carol", "0000", "Member", "Active"],
+    ["U002", "Bob Lee", "bob", "5678",  "Active"],
+    ["U003", "Carol Wong", "carol", "0000",  "Active"],
     // U004 stays Suspended: the self-service surface must refuse it (403).
-    ["U004", "Dana Fox", "dana", "1111", "Member", "Suspended"],
+    ["U004", "Dana Fox", "dana", "1111",  "Suspended"],
     // Dedicated replay fixtures: the retry tests below mutate these users
     // and must not depend on (or disturb) any test that reuses them.
-    ["U-REPLAY", "Rita Replay", "rita", "2222", "Member", "Active"],
-    ["U-PWREP", "Paul Replay", "paul", "3333", "Member", "Active"],
+    ["U-REPLAY", "Rita Replay", "rita", "2222",  "Active"],
+    ["U-PWREP", "Paul Replay", "paul", "3333",  "Active"],
   ]);
   await completeCredentialUpgrade(testDb(), {
     userId: "U001",
@@ -316,8 +316,8 @@ describe("UI-04: POST /api/v1/auth/username", () => {
       .prepare(
         `INSERT INTO registration_requests (
            request_id, user_id, username, username_normalized, name,
-           credential_hash, credential_kind, account_status, role, submitted_at
-         ) VALUES (?, ?, ?, ?, ?, ?, 'password', 'Pending', 'Member', ?)`
+           credential_hash, credential_kind, account_status,  submitted_at
+         ) VALUES (?, ?, ?, ?, ?, ?, 'password', 'Pending',  ?)`
       )
       .bind(
         "req-reserved",
@@ -351,8 +351,8 @@ describe("UI-04: POST /api/v1/auth/username", () => {
       .prepare(
         `INSERT INTO registration_requests (
            request_id, user_id, username, username_normalized, name,
-           credential_hash, credential_kind, account_status, role, submitted_at
-         ) VALUES (?, ?, ?, ?, ?, ?, 'password', 'Pending', 'Member', ?)`
+           credential_hash, credential_kind, account_status,  submitted_at
+         ) VALUES (?, ?, ?, ?, ?, ?, 'password', 'Pending',  ?)`
       )
       .bind(
         "req-race",
@@ -566,11 +566,11 @@ describe("UI-04: POST /api/v1/auth/username", () => {
       await testDb()
         .prepare(
           'INSERT INTO accounts (' +
-            ' user_id, name, username, username_normalized, role,' +
+            ' user_id, name, username, username_normalized, ' +
             ' account_status, credential_kind, requires_upgrade,' +
             ' created_at, updated_at' +
             ' ) VALUES (' +
-            " 'U-RACE-SUS', 'Susp Race', 'susp-orig', 'susp-orig', 'Member'," +
+            " 'U-RACE-SUS', 'Susp Race', 'susp-orig', 'susp-orig', " +
             " 'Active', 'password', 0, ?, ?" +
             ' )'
         )
@@ -634,11 +634,11 @@ describe("UI-04: POST /api/v1/auth/username", () => {
       await testDb()
         .prepare(
           'INSERT INTO accounts (' +
-            ' user_id, name, username, username_normalized, role,' +
+            ' user_id, name, username, username_normalized, ' +
             ' account_status, credential_kind, requires_upgrade,' +
             ' created_at, updated_at' +
             ' ) VALUES (' +
-            " 'U-RACE-NAME', 'Race Name', 'race-orig', 'race-orig', 'Member'," +
+            " 'U-RACE-NAME', 'Race Name', 'race-orig', 'race-orig', " +
             " 'Active', 'password', 0, ?, ?" +
             ' )'
         )
@@ -868,11 +868,11 @@ describe("UI-04: POST /api/v1/auth/password", () => {
       await testDb()
         .prepare(
           'INSERT INTO accounts (' +
-            ' user_id, name, username, username_normalized, role,' +
+            ' user_id, name, username, username_normalized, ' +
             ' account_status, credential_kind, credential_hash,' +
             ' requires_upgrade, created_at, updated_at' +
             ' ) VALUES (' +
-            " 'U-RACE-PWD', 'Pass Race', 'pass-orig', 'pass-orig', 'Member'," +
+            " 'U-RACE-PWD', 'Pass Race', 'pass-orig', 'pass-orig', " +
             " 'Active', 'password', ?, 0, ?, ?" +
             ' )'
         )

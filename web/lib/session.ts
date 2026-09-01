@@ -89,7 +89,7 @@ export function clearAuthHint(): void {
 /**
  * Assemble the shell Bootstrap from cookie-verified user data and the two
  * server projections. Missing or malformed projections fail closed; the
- * browser never derives authorization or navigation from `user.role`.
+ * browser never derives authorization or navigation from identities/capabilities.
  */
 export function buildBootstrap(
   user: PublicUser,

@@ -70,7 +70,7 @@ const APPROVAL_UI_COPY = {
   tabsLabel: "註冊審批分類",
   searchLabel: "搜尋申請",
   searchPlaceholder: "按姓名、用戶名稱或電話搜尋",
-  roleFilterLabel: "篩選角色",
+  filterLabel: "篩選角色",
   allRoles: "全部角色",
   selectAll: "全選目前結果",
   selected: (count: number) => `已選 ${count} 位`,
@@ -136,11 +136,6 @@ function approvalStatusBadgeClass(item: PendingRegistration): string {
   return "border-[var(--pending-border)] bg-[var(--pending-surface)] text-[var(--pending)]";
 }
 
-function approvalRoleLabel(role: string): string {
-  return (
-    COPY.shell.roleLabels[role as keyof typeof COPY.shell.roleLabels] ?? role
-  );
-}
 
 function approvalMatchesSearch(
   item: PendingRegistration,
@@ -148,7 +143,7 @@ function approvalMatchesSearch(
 ): boolean {
   const normalized = query.trim().toLocaleLowerCase("zh-Hant");
   if (!normalized) return true;
-  return [item.name, item.username, item.phone ?? "", item.role]
+  return [item.name, item.username, item.phone ?? ""]
     .join(" ")
     .toLocaleLowerCase("zh-Hant")
     .includes(normalized);
@@ -184,7 +179,7 @@ export const ApprovalQueue = () => {
     status: "Pending",
   });
   const [query, setQuery] = useState("");
-  const [roleFilter, setRoleFilter] = useState("");
+  const [, setRoleFilter] = useState("");
   const [filterOpen, setFilterOpen] = useState(false);
   const [selectedIds, setSelectedIds] = useState<string[]>(() => [
     ...approvalSelection.keys(),
@@ -262,9 +257,9 @@ export const ApprovalQueue = () => {
       registrations.filter(
         (item) =>
           approvalMatchesSearch(item, query) &&
-          (!roleFilter || item.role === roleFilter)
+          (true)
       ),
-    [query, registrations, roleFilter]
+    [query, registrations, ""]
   );
   const selectableIds =
     activeStatus === "Pending"
@@ -617,16 +612,10 @@ export const ApprovalQueue = () => {
           <div className="grid min-w-0 gap-2">
             <span
               className="text-[0.82rem] font-bold text-[var(--ink)]"
-              id="approval-role-filter-label"
             >
-              {APPROVAL_UI_COPY.roleFilterLabel}
+              {APPROVAL_UI_COPY.filterLabel}
             </span>
-            <Select
-              value={roleFilter || "all"}
-              onValueChange={(value) =>
-                setRoleFilter(value === "all" ? "" : value)
-              }
-            >
+            <Select value="all" onValueChange={(value) => setRoleFilter(value === "all" ? "" : value)}>
               <SelectTrigger
                 id="approval-role-filter"
                 aria-labelledby="approval-role-filter-label"
@@ -652,13 +641,13 @@ export const ApprovalQueue = () => {
         }
         filter={
           <Button
-            aria-label={roleFilter ? "篩選 1" : "篩選"}
+            aria-label="篩選"
             className="min-h-12 min-w-11 border-[var(--line-strong)] bg-[var(--surface-raised)] px-4 font-extrabold text-[var(--ink)] hover:bg-[var(--surface)]"
             onClick={() => setFilterOpen(true)}
             type="button"
             variant="outline"
           >
-            篩選{roleFilter ? " 1" : ""}
+            篩選
           </Button>
         }
         filterSheet={
@@ -676,14 +665,9 @@ export const ApprovalQueue = () => {
                     className="text-[0.82rem] font-bold text-[var(--ink)]"
                     id="approval-sheet-role-filter-label"
                   >
-                    {APPROVAL_UI_COPY.roleFilterLabel}
+                    {APPROVAL_UI_COPY.filterLabel}
                   </span>
-                  <Select
-                    value={roleFilter || "all"}
-                    onValueChange={(value) => {
-                      setRoleFilter(value === "all" ? "" : value);
-                    }}
-                  >
+                  <Select value="all" onValueChange={(value) => setRoleFilter(value === "all" ? "" : value)}>
                     <SelectTrigger
                       id="approval-sheet-role-filter"
                       aria-labelledby="approval-sheet-role-filter-label"
@@ -901,7 +885,7 @@ export const ApprovalQueue = () => {
                           {item.username}
                         </span>
                         <span className="min-w-0 whitespace-normal wrap-anywhere text-xs text-[var(--ink-muted)]">
-                          {item.phone ?? "—"} · {approvalRoleLabel(item.role)} ·{" "}
+                          {item.phone ?? "—"} · {item.accountStatus} ·{" "}
                           {formatSubmittedAt(item.submittedAt)}
                         </span>
                       </div>
