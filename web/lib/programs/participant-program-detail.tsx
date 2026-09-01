@@ -1,11 +1,12 @@
 "use client";
 /* oxlint-disable jsx-a11y/prefer-tag-over-role -- preserve the Programs status role contract */
 
-import { cva, type VariantProps } from "class-variance-authority";
+import { cva } from "class-variance-authority";
+import type { VariantProps } from "class-variance-authority";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { MouseEventHandler } from "react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { Alert } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -373,7 +374,7 @@ export const ParticipantProgramDetail = ({
     refresh,
     retry: retryDetail,
   } = useAsyncResource<ParticipantProgramDetailData, DetailState>(
-    async () => getParticipantProgramDetail(programId),
+    () => getParticipantProgramDetail(programId),
     {
       toLoading: () => ({ kind: "loading" }),
       toReady: (detail) => ({ kind: "ready", detail }),
@@ -682,7 +683,7 @@ export const ParticipantProgramDetail = ({
             asChild
             className="h-auto min-h-11 whitespace-normal px-4 py-3 text-base font-extrabold max-[799px]:w-full"
           >
-            <Link href={managementHref}>{COPY.programs.enterManagement}</Link>
+            <a href={managementHref}>{COPY.programs.enterManagement}</a>
           </Button>
         </div>
       )}
