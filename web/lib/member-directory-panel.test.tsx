@@ -7,7 +7,7 @@ import {
 } from "@testing-library/react";
 // 087-04 (#321) — component tests for the Member Directory panel
 // (Spec 087 US 13-15). MSW intercepts GET /api/v1/programs/members at the
-// same seam as lib/permissions-panel.test.tsx. Covers: live search renders
+// same seam as the directory's public Worker endpoint. Covers: live search renders
 // results; selecting a result shows the member detail (contact, role,
 // department memberships) inline with no separate commit step; and the
 // empty / loading / server-error (retry re-fetches) / forbidden states.

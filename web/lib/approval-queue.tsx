@@ -866,7 +866,7 @@ export const ApprovalQueue = () => {
                           onCheckedChange={() => toggleSelection(item)}
                           disabled={busy}
                           aria-label={`選取 ${item.name}`}
-                          className="size-5 shrink-0"
+                          className="size-11 shrink-0"
                         />
                       )}
                       <div className="grid min-w-0 gap-1 wrap-anywhere">
@@ -879,7 +879,7 @@ export const ApprovalQueue = () => {
                             }
                           }}
                           href={`/management?module=approvals&request=${encodeURIComponent(item.requestId)}`}
-                          className="min-w-0 whitespace-normal wrap-anywhere text-base font-extrabold text-[var(--ink)] hover:text-[var(--accent)] hover:underline"
+                          className="inline-flex min-h-11 min-w-0 items-center whitespace-normal wrap-anywhere text-base font-extrabold text-[var(--ink)] hover:text-[var(--accent)] hover:underline"
                           aria-label={`${COPY.approvals.openDetail} ${item.name}`}
                           onClick={(event) => {
                             if (

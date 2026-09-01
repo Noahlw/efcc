@@ -454,7 +454,7 @@ export function ApprovalDetail({ requestId }: { requestId: string }) {
                     <AlertDialogTrigger asChild>
                       <Button
                         type="button"
-                        className="min-h-11 font-extrabold"
+                        className="min-h-11 min-w-11 font-extrabold"
                         disabled={busy !== null}
                         aria-busy={busy === "approve"}
                         aria-haspopup="dialog"
@@ -470,7 +470,7 @@ export function ApprovalDetail({ requestId }: { requestId: string }) {
                     <AlertDialogTrigger asChild>
                       <Button
                         type="button"
-                        className="min-h-11 font-extrabold"
+                        className="min-h-11 min-w-11 font-extrabold"
                         disabled={busy !== null}
                         aria-busy={busy === "reject"}
                         aria-haspopup="dialog"
