@@ -565,9 +565,7 @@ describe("AccountAccessPanel", () => {
     });
     expect(within(revokeDialog).getByText("可能失去（1 項）")).toBeTruthy();
     expect(within(revokeDialog).getByText("保留（1 項）")).toBeTruthy();
-    expect(
-      within(revokeDialog).getByText("來源：課程協調者")
-    ).toBeTruthy();
+    expect(within(revokeDialog).getByText("來源：課程協調者")).toBeTruthy();
     expect(within(revokeDialog).getByText("來源：會友基礎")).toBeTruthy();
     await user.click(screen.getByRole("button", { name: "確認撤銷" }));
     await waitFor(() =>
@@ -1409,5 +1407,155 @@ describe("AccountAccessPanel", () => {
     expect(mocks.rememberDeepLink).toHaveBeenCalledWith(
       "/management?module=accounts&account=target&view=access#refresh"
     );
+  });
+  test("fails closed to safe list when identity entry role definition is unrecognized", async () => {
+    const user = userEvent.setup();
+    mocks.searchParams = new URLSearchParams(
+      "module=accounts&roleDefinition=unrecognized-role-999&view=access&return=%2Fmanagement%3Fmodule%3Droles"
+    );
+    mocks.getRoleHierarchy.mockResolvedValue(hierarchy);
+    render(<AccountAccessPanel />);
+
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent("找不到指定的身份組。");
+    const back = within(alert).getByRole("button", {
+      name: "返回身份組列表",
+    });
+    await user.click(back);
+    expect(mocks.router.replace).toHaveBeenCalledWith(
+      "/management?module=roles"
+    );
+  });
+
+  test("excludes archived identities from assignment options and rolls back invalid selections", async () => {
+    const user = userEvent.setup();
+    mocks.getAccountAccess.mockResolvedValue({
+      ...view,
+      assignableRoles: [
+        {
+          roleDefinitionId: "role-lower",
+          label: "課程協調者",
+          scopeKind: "Global",
+          scopeId: null,
+          scopeLabel: null,
+          position: 4,
+        },
+      ],
+    });
+    mocks.mutateAccountAssignments.mockRejectedValueOnce(
+      new Error("network error")
+    );
+    render(<AccountAccessPanel />);
+
+    const option = await screen.findByRole("switch", {
+      name: "新增 課程協調者",
+    });
+    expect(screen.queryByText("已停用身份組")).toBeNull();
+
+    await user.click(option);
+    expect(option).toBeChecked();
+
+    await user.click(screen.getByRole("button", { name: "檢視新增 (1)" }));
+    await user.click(screen.getByRole("button", { name: "確認一次新增" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "帳戶權限暫時無法載入，請稍後再試。"
+    );
+    expect(option).toBeChecked();
+  });
+
+  test("displays grouped Global, Department, and Program impact with supplying identity provenance before revoke confirmation", async () => {
+    const user = userEvent.setup();
+    const impactView: AccountAccessView = {
+      ...revokeView,
+      activeAssignments: [
+        {
+          assignmentId: "assignment-role-lower",
+          roleDefinitionId: "role-lower",
+          label: "課程協調者",
+          scopeKind: "Department",
+          scopeId: "dept-1",
+          scopeLabel: "成人部",
+          position: 4,
+          state: "ACTIVE",
+          grantedAt: "2026-08-29T00:00:00.000Z",
+          revokedAt: null,
+          revokedBy: null,
+          revokeReason: null,
+        },
+      ],
+      effectiveAccess: {
+        Global: [
+          {
+            capability: "program.enroll",
+            label: "提交課程報名",
+            description: "提交自己的課程報名。",
+            group: "會友基礎",
+            risk: "normal",
+            scopeRequired: false,
+            scopeKind: "Global",
+            scopeId: null,
+            scopeLabel: null,
+            sources: ["會友基礎"],
+            sourceRoleDefinitionIds: ["member"],
+          },
+        ],
+        Department: [
+          {
+            capability: "program.manage",
+            label: "檢視部門活動",
+            description: "檢視部門活動詳情。",
+            group: "活動管理",
+            risk: "normal",
+            scopeRequired: true,
+            scopeKind: "Department",
+            scopeId: "dept-1",
+            scopeLabel: "成人部",
+            sources: ["課程協調者"],
+            sourceRoleDefinitionIds: ["role-lower"],
+          },
+        ],
+        Program: [],
+      },
+    };
+    mocks.getAccountAccess.mockResolvedValue(impactView);
+    render(<AccountAccessPanel />);
+
+    await user.click(
+      await screen.findByRole("button", { name: "撤銷 課程協調者" })
+    );
+
+    const dialog = await screen.findByRole("heading", {
+      name: "確認撤銷身份組？",
+    });
+    expect(dialog).toBeTruthy();
+
+    const revokeDialog = screen.getByRole("alertdialog", {
+      name: "確認撤銷身份組？",
+    });
+    expect(within(revokeDialog).getByText("可能失去（1 項）")).toBeTruthy();
+    expect(within(revokeDialog).getByText("保留（1 項）")).toBeTruthy();
+    expect(
+      within(revokeDialog).getAllByRole("heading", { name: "Global" })
+    ).toHaveLength(2);
+    expect(
+      within(revokeDialog).getAllByRole("heading", { name: "Department" })
+    ).toHaveLength(2);
+    expect(
+      within(revokeDialog).getAllByRole("heading", { name: "Program" })
+    ).toHaveLength(2);
+    expect(within(revokeDialog).getByText("來源：課程協調者")).toBeTruthy();
+    expect(within(revokeDialog).getByText("來源：會友基礎")).toBeTruthy();
+  });
+
+  test("enforces single-account assignment operations with no bulk account checkboxes", async () => {
+    mocks.getAccountAccess.mockResolvedValue(view);
+    render(<AccountAccessPanel />);
+
+    expect(
+      await screen.findByRole("heading", { name: "Target Account" })
+    ).toBeTruthy();
+    expect(screen.queryByLabelText("全選帳戶")).toBeNull();
+    expect(screen.queryByRole("button", { name: "批次指派" })).toBeNull();
   });
 });

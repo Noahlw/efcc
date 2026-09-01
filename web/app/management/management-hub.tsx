@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Fragment, useEffect } from "react";
 
+import { Button } from "@/components/ui/button";
 import { RpcError } from "@/lib/api";
 import { COPY, errorCopyFor } from "@/lib/copy";
 import { announce } from "@/lib/live-region";
@@ -13,25 +14,29 @@ import {
   type ManagementHubRow,
   type ManagementHubView,
 } from "@/lib/programs/program-api";
-import { rememberDeepLink } from "@/lib/session";
 import { useAsyncResource } from "@/lib/programs/use-async-resource";
-
-import styles from "./management-hub.module.css";
+import { rememberDeepLink } from "@/lib/session";
 
 type HubState =
   | { kind: "loading" }
-  | ManagementHubView & { kind: "ready" }
+  | (ManagementHubView & { kind: "ready" })
   | {
       kind: "error";
       failure: "forbidden" | "recoverable";
       message: string;
     };
 
-function HubIcon({ rowKey, chevron = false }: { rowKey: string; chevron?: boolean }) {
+function HubIcon({
+  rowKey,
+  chevron = false,
+}: {
+  rowKey: string;
+  chevron?: boolean;
+}) {
   if (chevron) {
     return (
       <svg
-        className={styles.chevron}
+        className="size-5 shrink-0 stroke-[var(--ink-muted)] fill-none stroke-[2] stroke-linecap-round stroke-linejoin-round"
         viewBox="0 0 24 24"
         aria-hidden="true"
         focusable="false"
@@ -42,7 +47,8 @@ function HubIcon({ rowKey, chevron = false }: { rowKey: string; chevron?: boolea
   }
 
   const common = {
-    className: styles.icon,
+    className:
+      "size-6 shrink-0 stroke-[var(--accent,#9c302c)] fill-none stroke-[1.75] stroke-linecap-round stroke-linejoin-round",
     viewBox: "0 0 24 24",
     "aria-hidden": true,
     focusable: false,
@@ -92,13 +98,20 @@ function HubIcon({ rowKey, chevron = false }: { rowKey: string; chevron?: boolea
 
 function HubRow({ row }: { row: ManagementHubRow }) {
   return (
-    <li className={styles.rowItem}>
-      <Link className={styles.row} href={row.href}>
-        <span className={styles.rowLead}>
+    <li className="m-0 p-0">
+      <Link
+        className="grid min-h-[4.25rem] w-full min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-4 py-3.5 text-left text-[var(--ink)] transition-colors hover:bg-[var(--surface,#f4f5f3)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus,#176a87)] focus-visible:ring-offset-2"
+        href={row.href}
+      >
+        <span className="flex min-w-0 items-center gap-3.5">
           <HubIcon rowKey={row.key} />
-          <span className={styles.rowCopy}>
-            <span className={styles.rowLabel}>{row.label}</span>
-            <span className={styles.rowDescription}>{row.description}</span>
+          <span className="grid min-w-0 gap-0.5">
+            <span className="block min-w-0 text-base font-bold leading-[1.35] text-[var(--ink)] wrap-anywhere">
+              {row.label}
+            </span>
+            <span className="block min-w-0 text-[0.875rem] font-normal leading-[1.4] text-[var(--ink-muted)] wrap-anywhere">
+              {row.description}
+            </span>
           </span>
         </span>
         <HubIcon rowKey={row.key} chevron />
@@ -110,11 +123,14 @@ function HubRow({ row }: { row: ManagementHubRow }) {
 function HubGroup({ group }: { group: ManagementHubGroup }) {
   const headingId = `management-group-${group.key}`;
   return (
-    <section className={styles.groupSection} aria-labelledby={headingId}>
-      <h2 id={headingId} className={styles.groupLabel}>
+    <section className="min-w-0" aria-labelledby={headingId}>
+      <h2
+        id={headingId}
+        className="mb-2 text-[1.1rem] font-bold leading-[1.35] text-[var(--ink)] wrap-anywhere"
+      >
         {group.label}
       </h2>
-      <ul className={styles.groupCard}>
+      <ul className="m-0 list-none overflow-hidden rounded-[12px] border border-[var(--line)] bg-[var(--surface-raised)] p-0 shadow-none [&>li+li]:border-t [&>li+li]:border-[var(--line)]">
         {group.rows.map((row) => (
           <HubRow key={row.key} row={row} />
         ))}
@@ -125,14 +141,24 @@ function HubGroup({ group }: { group: ManagementHubGroup }) {
 
 function EntryCard({ entryCard }: { entryCard: ManagementHubRow }) {
   return (
-    <section className={styles.entrySection} aria-labelledby="management-entry-label">
-      <p id="management-entry-label" className={styles.entryLabel}>
+    <section className="min-w-0" aria-labelledby="management-entry-label">
+      <p
+        id="management-entry-label"
+        className="mb-2 text-[0.875rem] font-bold leading-[1.35] text-[var(--ink-muted)] wrap-anywhere"
+      >
         {COPY.management.anotherEntry}
       </p>
-      <Link className={styles.entryLink} href={entryCard.href}>
-        <span className={styles.entryCopy}>
-          <span className={styles.entryTitle}>{entryCard.label}</span>
-          <span className={styles.entryDescription}>{entryCard.description}</span>
+      <Link
+        className="grid min-h-[4.25rem] w-full min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-3 rounded-[12px] border border-dashed border-[var(--line-strong)] bg-[var(--surface-raised)] px-4 py-3.5 text-left text-[var(--ink)] transition-colors hover:bg-[var(--surface,#f4f5f3)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus,#176a87)] focus-visible:ring-offset-2"
+        href={entryCard.href}
+      >
+        <span className="grid min-w-0 gap-0.5">
+          <span className="block min-w-0 text-base font-bold leading-[1.35] text-[var(--ink)] wrap-anywhere">
+            {entryCard.label}
+          </span>
+          <span className="block min-w-0 text-[0.875rem] font-normal leading-[1.4] text-[var(--ink-muted)] wrap-anywhere">
+            {entryCard.description}
+          </span>
         </span>
         <HubIcon rowKey={entryCard.key} chevron />
       </Link>
@@ -156,7 +182,10 @@ function DirectoryContent({ groups, entryCard }: ManagementHubView) {
         : visibleGroups.length;
 
   return (
-    <>
+    <div
+      data-slot="management-hub-grid"
+      className="mt-[1.625rem] grid grid-cols-1 items-start gap-6 lg:grid-cols-2"
+    >
       {visibleGroups.map((group, index) => (
         <Fragment key={group.key}>
           {entryCard && index === entryIndex && (
@@ -168,16 +197,17 @@ function DirectoryContent({ groups, entryCard }: ManagementHubView) {
       {entryCard && entryIndex === visibleGroups.length && (
         <EntryCard entryCard={entryCard} />
       )}
-    </>
+    </div>
   );
 }
 
 export function ManagementHub() {
   const router = useRouter();
-  const { state, run: loadHub, retry } = useAsyncResource<
-    ManagementHubView,
-    HubState
-  >(
+  const {
+    state,
+    run: loadHub,
+    retry,
+  } = useAsyncResource<ManagementHubView, HubState>(
     () => getManagementHub(),
     {
       toLoading: () => ({ kind: "loading" }),
@@ -214,19 +244,27 @@ export function ManagementHub() {
   }, [loadHub]);
 
   return (
-    <section className={styles.page} aria-labelledby="management-hub-title">
-      <header className={styles.header}>
-        <h1 id="management-hub-title" className={styles.title}>
+    <section
+      className="mx-auto w-full max-w-[1040px] min-w-0 px-4 pb-16 pt-8 text-[var(--ink)] min-[481px]:px-6"
+      aria-labelledby="management-hub-title"
+    >
+      <header className="pb-1">
+        <h1
+          id="management-hub-title"
+          className="text-[clamp(1.5rem,5.5vw,2rem)] font-extrabold leading-tight tracking-[-0.02em] text-[var(--ink)] wrap-anywhere"
+        >
           {COPY.management.managementTitle}
         </h1>
-        <p className={styles.lead}>{COPY.management.managementLead}</p>
+        <p className="mt-1 text-base font-normal leading-[1.6] text-[var(--ink-muted)] wrap-anywhere">
+          {COPY.management.managementLead}
+        </p>
       </header>
 
       {state.kind === "loading" && (
         <output
           id="management-hub-state"
           tabIndex={-1}
-          className={styles.state}
+          className="mt-8 block rounded-[12px] border border-[var(--line)] bg-[var(--surface-raised)] p-6 text-center text-base text-[var(--ink-muted)]"
           aria-busy="true"
         >
           {COPY.management.loading}
@@ -237,18 +275,25 @@ export function ManagementHub() {
         <section
           id="management-hub-state"
           tabIndex={-1}
-          className={styles.error}
+          className="mt-8 rounded-[12px] border border-[var(--error-border,#e5b4b0)] bg-[var(--error-surface,#fbeeed)] p-6 text-center text-[var(--ink)]"
           role="alert"
         >
-          <h2 className={styles.stateTitle}>
+          <h2 className="text-lg font-bold leading-snug text-[var(--error,#b3261e)]">
             {state.failure === "forbidden"
               ? COPY.management.forbidden
               : COPY.management.loadError}
           </h2>
-          <p className={styles.stateMessage}>{state.message}</p>
-          <button className={styles.retry} type="button" onClick={retry}>
+          <p className="mt-2 text-sm text-[var(--ink-muted)]">
+            {state.message}
+          </p>
+          <Button
+            className="mt-4 inline-flex min-h-[44px] items-center justify-center rounded-[8px] border border-[var(--line-strong)] bg-[var(--surface-raised)] px-4 py-2 text-sm font-semibold text-[var(--ink)] transition-colors hover:bg-[var(--surface,#f4f5f3)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus,#176a87)]"
+            type="button"
+            onClick={retry}
+            variant="outline"
+          >
             {COPY.management.retry}
-          </button>
+          </Button>
         </section>
       )}
 
@@ -264,12 +309,17 @@ export function ManagementHub() {
           <section
             id="management-hub-state"
             tabIndex={-1}
-            className={styles.empty}
+            className="mt-8 rounded-[12px] border border-[var(--line)] bg-[var(--surface-raised)] p-8 text-center text-[var(--ink)]"
             role="status"
             aria-live="polite"
           >
-            <h2 className={styles.stateTitle}>{COPY.management.emptyTitle}</h2>
-            <Link className={styles.backLink} href="/">
+            <h2 className="text-lg font-bold leading-snug">
+              {COPY.management.emptyTitle}
+            </h2>
+            <Link
+              className="mt-4 inline-flex min-h-[44px] items-center justify-center rounded-[8px] border border-[var(--line-strong)] bg-[var(--surface-raised)] px-4 py-2 text-sm font-semibold text-[var(--ink)] transition-colors hover:bg-[var(--surface,#f4f5f3)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus,#176a87)]"
+              href="/"
+            >
               {COPY.management.backHome}
             </Link>
           </section>

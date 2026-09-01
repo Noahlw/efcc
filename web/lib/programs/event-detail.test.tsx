@@ -1051,4 +1051,28 @@ describe("EVT-01 event detail", () => {
     );
     expect(cancelled).toBeTruthy();
   });
+
+  test("invokes onAuthRequired when event load returns AUTH_REQUIRED", async () => {
+    const onAuthRequired = vi.fn();
+    mocks.getEvent.mockRejectedValue(
+      new RpcError({
+        type: "https://efcc.example/problems/auth-required",
+        title: "Auth Required",
+        status: 401,
+        code: "AUTH_REQUIRED",
+        detail: "登入逾時",
+      })
+    );
+    render(
+      <EventDetail
+        programId="program-1"
+        eventId="event-1"
+        canManage
+        onBack={() => {}}
+        backHref="/programs"
+        onAuthRequired={onAuthRequired}
+      />
+    );
+    await vi.waitFor(() => expect(onAuthRequired).toHaveBeenCalledOnce());
+  });
 });

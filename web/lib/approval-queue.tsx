@@ -5,8 +5,13 @@ import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import {
+  DirectoryFrame,
+  type DirectoryFrameState,
+} from "@/app/management/directory-frame";
+import {
+  ActionSurface,
+  ManagementFilterSheet,
   ManagementPageHeader,
-  ManagementStickyActionBar,
   safeManagementReturnHref,
 } from "@/app/management/management-action-framework";
 import {
@@ -39,8 +44,6 @@ import {
   type RegistrationQueueStatus,
 } from "@/lib/registration-client";
 import { QUEUE_COPY, registrationErrorCopy } from "@/lib/registration-copy";
-
-import styles from "./approval-queue.module.css";
 
 // The queue implementation below owns the S4 selection and batch action state.
 type ApprovalQueueState =
@@ -100,13 +103,17 @@ const APPROVAL_UI_COPY = {
 const approvalSelection = new Map<string, PendingRegistration>();
 let preserveSelectionForDetail = false;
 
-export function preserveApprovalSelectionForDetail() {
+let approvalFocusRequestId: string | null = null;
+
+export function preserveApprovalSelectionForDetail(requestId?: string) {
   preserveSelectionForDetail = true;
+  approvalFocusRequestId = requestId ?? null;
 }
 
 export function clearApprovalSelection() {
   approvalSelection.clear();
   preserveSelectionForDetail = false;
+  approvalFocusRequestId = null;
 }
 
 function approvalStatusLabel(item: PendingRegistration): string {
@@ -119,14 +126,14 @@ function approvalStatusLabel(item: PendingRegistration): string {
   return COPY.approvals.statusPending;
 }
 
-function approvalStatusClass(item: PendingRegistration): string {
+function approvalStatusBadgeClass(item: PendingRegistration): string {
   if (item.accountStatus === "Active" || item.decision === "Approved") {
-    return styles.statusApproved;
+    return "border-[var(--success-border)] bg-[var(--success-surface)] text-[var(--success)]";
   }
   if (item.accountStatus === "Rejected" || item.decision === "Rejected") {
-    return styles.statusRejected;
+    return "border-[var(--error-border)] bg-[var(--error-surface)] text-[var(--error)]";
   }
-  return styles.statusPending;
+  return "border-[var(--pending-border)] bg-[var(--pending-surface)] text-[var(--pending)]";
 }
 
 function approvalRoleLabel(role: string): string {
@@ -178,6 +185,7 @@ export const ApprovalQueue = () => {
   });
   const [query, setQuery] = useState("");
   const [roleFilter, setRoleFilter] = useState("");
+  const [filterOpen, setFilterOpen] = useState(false);
   const [selectedIds, setSelectedIds] = useState<string[]>(() => [
     ...approvalSelection.keys(),
   ]);
@@ -192,6 +200,7 @@ export const ApprovalQueue = () => {
   const resultHeadingRef = useRef<HTMLHeadingElement>(null);
   const stateRef = useRef<HTMLParagraphElement>(null);
   const forbiddenHeadingRef = useRef<HTMLHeadingElement>(null);
+  const rowLinkRefs = useRef<Map<string, HTMLAnchorElement>>(new Map());
 
   const load = useCallback(async (status: RegistrationQueueStatus) => {
     const sequence = ++requestSequence.current;
@@ -282,7 +291,16 @@ export const ApprovalQueue = () => {
 
   useEffect(() => {
     if (state.kind === "ready") {
-      resultHeadingRef.current?.focus();
+      const focusRequestId = approvalFocusRequestId;
+      const rowLink = focusRequestId
+        ? rowLinkRefs.current.get(focusRequestId)
+        : undefined;
+      if (rowLink) {
+        rowLink.focus();
+        approvalFocusRequestId = null;
+      } else {
+        resultHeadingRef.current?.focus();
+      }
     } else if (state.kind === "error") {
       stateRef.current?.focus();
     } else if (state.kind === "forbidden") {
@@ -471,28 +489,6 @@ export const ApprovalQueue = () => {
     setActiveStatus(status);
   };
 
-  if (state.kind === "forbidden") {
-    return (
-      <section
-        aria-labelledby="approval-queue-forbidden-title"
-        className={styles.forbiddenState}
-      >
-        <h1
-          id="approval-queue-forbidden-title"
-          ref={forbiddenHeadingRef}
-          tabIndex={-1}
-          className={styles.title}
-        >
-          {COPY.approvals.approvalsTitle}
-        </h1>
-        <p role="alert">{COPY.error.forbidden}</p>
-        <Link href="/management?module=approvals" className={styles.back}>
-          {COPY.approvals.backToApprovals}
-        </Link>
-      </section>
-    );
-  }
-
   const visibleNames = selectedItems;
   const confirmationNames = selectedItems.slice(0, 3);
   const hiddenNameCount = Math.max(
@@ -509,208 +505,337 @@ export const ApprovalQueue = () => {
         ? "review"
         : "selection";
 
+  const frameState: DirectoryFrameState =
+    state.kind === "error"
+      ? "error"
+      : state.kind === "forbidden"
+        ? "forbidden"
+        : state.kind === "ready" && filteredRegistrations.length === 0
+          ? "empty"
+          : state.kind;
+
   return (
-    <section
-      aria-busy={state.kind === "loading" || busy}
-      aria-labelledby="approval-queue-title"
-      className={styles.page}
-    >
-      <ManagementPageHeader
-        action={
-          <Button
-            type="button"
-            onClick={() => void load(activeStatus)}
-            className="min-h-11"
-            disabled={busy}
-            aria-busy={state.kind === "loading"}
-            size="lg"
-            variant="outline"
-          >
-            {QUEUE_COPY.refresh}
-          </Button>
-        }
-        backHref={returnHref}
-        backLabel={returnLabel}
-        lead={COPY.approvals.approvalsLead}
-        title={COPY.approvals.approvalsTitle}
-        titleId="approval-queue-title"
-      />
-
-      <div
-        className={styles.tabs}
-        role="tablist"
-        aria-label={APPROVAL_UI_COPY.tabsLabel}
-      >
-        <Button
-          type="button"
-          role="tab"
-          id="approval-pending-tab"
-          aria-controls="approval-queue-panel"
-          aria-selected={activeStatus === "Pending"}
-          className={`${styles.tab} min-h-11`}
-          onClick={() => handleTab("Pending")}
-          disabled={busy}
-          size="lg"
-          variant="ghost"
-        >
-          {COPY.approvals.statusPending}
-          {activeStatus === "Pending" && state.kind === "ready" && (
-            <span className={styles.tabCount}>{registrations.length}</span>
-          )}
-        </Button>
-        <Button
-          type="button"
-          role="tab"
-          id="approval-processed-tab"
-          aria-controls="approval-queue-panel"
-          aria-selected={activeStatus === "Processed"}
-          className={`${styles.tab} min-h-11`}
-          onClick={() => handleTab("Processed")}
-          disabled={busy}
-          size="lg"
-          variant="ghost"
-        >
-          {APPROVAL_UI_COPY.processedTab}
-          {activeStatus === "Processed" && state.kind === "ready" && (
-            <span className={styles.tabCount}>{registrations.length}</span>
-          )}
-        </Button>
-      </div>
-
-      {notice && (
-        <p
-          role={noticeKind === "error" ? "alert" : "status"}
-          aria-live={noticeKind === "error" ? "assertive" : "polite"}
-          className={`${styles.notice} ${
-            noticeKind === "success" ? styles.noticeSuccess : styles.noticeError
-          }`}
-        >
-          {notice}
-        </p>
-      )}
-
-      {state.kind === "loading" && (
-        <p
-          className={styles.loading}
-          role="status"
-          aria-live="polite"
-          tabIndex={-1}
-          ref={stateRef}
-        >
-          {QUEUE_COPY.loading}
-        </p>
-      )}
-
-      {state.kind === "error" && (
-        <p role="alert" className={styles.error} tabIndex={-1} ref={stateRef}>
-          {state.message}
-        </p>
-      )}
-
-      {state.kind === "ready" && (
-        <section
-          id="approval-queue-panel"
-          role="tabpanel"
-          aria-labelledby={
-            activeStatus === "Pending"
-              ? "approval-pending-tab"
-              : "approval-processed-tab"
-          }
-          className={styles.panel}
-        >
-          <div className={styles.controls}>
-            <label className={styles.field} htmlFor="approval-search">
-              <span className={styles.fieldLabel}>
-                {APPROVAL_UI_COPY.searchLabel}
-              </span>
-              <Input
-                id="approval-search"
-                type="search"
-                value={query}
-                onChange={(event) => setQuery(event.target.value)}
-                placeholder={APPROVAL_UI_COPY.searchPlaceholder}
-                className={styles.input}
-                autoComplete="off"
-              />
-            </label>
-            <div className={styles.field}>
-              <span
-                className={styles.fieldLabel}
-                id="approval-role-filter-label"
-              >
-                {APPROVAL_UI_COPY.roleFilterLabel}
-              </span>
-              <Select
-                value={roleFilter || "all"}
-                onValueChange={(value) =>
-                  setRoleFilter(value === "all" ? "" : value)
-                }
-              >
-                <SelectTrigger
-                  id="approval-role-filter"
-                  aria-labelledby="approval-role-filter-label"
-                  className={styles.select}
-                  size="default"
+    <div className="mx-auto w-full min-w-0">
+      <DirectoryFrame
+        ariaLabelledBy="approval-queue-title"
+        header={
+          <div className="grid min-w-0 gap-4">
+            <ManagementPageHeader
+              action={
+                <Button
+                  type="button"
+                  onClick={() => void load(activeStatus)}
+                  className="min-h-11"
+                  disabled={busy}
+                  aria-busy={state.kind === "loading"}
+                  size="lg"
+                  variant="outline"
                 >
-                  <SelectValue placeholder={APPROVAL_UI_COPY.allRoles} />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">
-                    {APPROVAL_UI_COPY.allRoles}
-                  </SelectItem>
-                  <SelectItem value="Member">
-                    {COPY.shell.roleLabels.Member}
-                  </SelectItem>
-                  <SelectItem value="Staff">
-                    {COPY.shell.roleLabels.Staff}
-                  </SelectItem>
-                  <SelectItem value="Admin">
-                    {COPY.shell.roleLabels.Admin}
-                  </SelectItem>
-                </SelectContent>
-              </Select>
+                  {QUEUE_COPY.refresh}
+                </Button>
+              }
+              backHref={returnHref}
+              backLabel={returnLabel}
+              lead={COPY.approvals.approvalsLead}
+              title={COPY.approvals.approvalsTitle}
+              titleId="approval-queue-title"
+            />
+            <div
+              className="flex items-center gap-2 border-b border-[var(--line)] pb-2"
+              role="tablist"
+              aria-label={APPROVAL_UI_COPY.tabsLabel}
+            >
+              <Button
+                type="button"
+                role="tab"
+                id="approval-pending-tab"
+                aria-controls="approval-queue-panel"
+                aria-selected={activeStatus === "Pending"}
+                className={`min-h-11 ${
+                  activeStatus === "Pending"
+                    ? "border-b-2 border-[var(--accent)] font-extrabold text-[var(--ink)]"
+                    : "text-[var(--ink-muted)]"
+                }`}
+                onClick={() => handleTab("Pending")}
+                disabled={busy}
+                size="lg"
+                variant="ghost"
+              >
+                {COPY.approvals.statusPending}
+                {activeStatus === "Pending" && state.kind === "ready" && (
+                  <span className="ml-1.5 rounded-full bg-[var(--surface)] px-2 py-0.5 text-xs font-bold">
+                    {registrations.length}
+                  </span>
+                )}
+              </Button>
+              <Button
+                type="button"
+                role="tab"
+                id="approval-processed-tab"
+                aria-controls="approval-queue-panel"
+                aria-selected={activeStatus === "Processed"}
+                className={`min-h-11 ${
+                  activeStatus === "Processed"
+                    ? "border-b-2 border-[var(--accent)] font-extrabold text-[var(--ink)]"
+                    : "text-[var(--ink-muted)]"
+                }`}
+                onClick={() => handleTab("Processed")}
+                disabled={busy}
+                size="lg"
+                variant="ghost"
+              >
+                {APPROVAL_UI_COPY.processedTab}
+                {activeStatus === "Processed" && state.kind === "ready" && (
+                  <span className="ml-1.5 rounded-full bg-[var(--surface)] px-2 py-0.5 text-xs font-bold">
+                    {registrations.length}
+                  </span>
+                )}
+              </Button>
             </div>
           </div>
-
-          {activeStatus === "Pending" && registrations.length > 0 && (
-            <div className={styles.selectAllRow}>
-              <label
-                className={styles.checkboxLabel}
-                htmlFor="approval-select-all"
+        }
+        search={
+          <div className="grid min-w-0 gap-2">
+            <label
+              htmlFor="approval-search"
+              className="text-[0.82rem] font-bold text-[var(--ink)]"
+            >
+              {APPROVAL_UI_COPY.searchLabel}
+            </label>
+            <Input
+              id="approval-search"
+              type="search"
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder={APPROVAL_UI_COPY.searchPlaceholder}
+              className="h-12 min-h-12 w-full min-w-0 rounded-[8px] border border-[var(--line-strong)] bg-[var(--surface-raised)] px-3 text-base text-[var(--ink)]"
+              autoComplete="off"
+            />
+          </div>
+        }
+        desktopFilters={
+          <div className="grid min-w-0 gap-2">
+            <span
+              className="text-[0.82rem] font-bold text-[var(--ink)]"
+              id="approval-role-filter-label"
+            >
+              {APPROVAL_UI_COPY.roleFilterLabel}
+            </span>
+            <Select
+              value={roleFilter || "all"}
+              onValueChange={(value) =>
+                setRoleFilter(value === "all" ? "" : value)
+              }
+            >
+              <SelectTrigger
+                id="approval-role-filter"
+                aria-labelledby="approval-role-filter-label"
+                className="h-12 min-h-12 w-full min-w-0 rounded-[8px] border-[var(--line-strong)] bg-[var(--surface-raised)] px-3 text-base text-[var(--ink)]"
+                size="default"
               >
-                <Checkbox
-                  id="approval-select-all"
-                  aria-label={APPROVAL_UI_COPY.selectAll}
-                  checked={selectAllState}
-                  onCheckedChange={toggleSelectAll}
-                  disabled={busy || selectableIds.length === 0}
-                />
-                <span>{APPROVAL_UI_COPY.selectAll}</span>
-              </label>
-              <span className={styles.loadedHint}>
-                {filteredRegistrations.length} / {registrations.length}
-              </span>
-              <span className={styles.limitHint}>
-                {APPROVAL_UI_COPY.batchLimit}
-              </span>
+                <SelectValue placeholder={APPROVAL_UI_COPY.allRoles} />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">{APPROVAL_UI_COPY.allRoles}</SelectItem>
+                <SelectItem value="Member">
+                  {COPY.shell.roleLabels.Member}
+                </SelectItem>
+                <SelectItem value="Staff">
+                  {COPY.shell.roleLabels.Staff}
+                </SelectItem>
+                <SelectItem value="Admin">
+                  {COPY.shell.roleLabels.Admin}
+                </SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        }
+        filter={
+          <Button
+            aria-label={roleFilter ? "篩選 1" : "篩選"}
+            className="min-h-12 min-w-11 border-[var(--line-strong)] bg-[var(--surface-raised)] px-4 font-extrabold text-[var(--ink)] hover:bg-[var(--surface)]"
+            onClick={() => setFilterOpen(true)}
+            type="button"
+            variant="outline"
+          >
+            篩選{roleFilter ? " 1" : ""}
+          </Button>
+        }
+        filterSheet={
+          filterOpen ? (
+            <ManagementFilterSheet
+              label="篩選申請"
+              onClose={() => setFilterOpen(false)}
+            >
+              <div className="mt-4 grid gap-3">
+                <label
+                  className="grid min-w-0 gap-2"
+                  htmlFor="approval-sheet-role-filter"
+                >
+                  <span
+                    className="text-[0.82rem] font-bold text-[var(--ink)]"
+                    id="approval-sheet-role-filter-label"
+                  >
+                    {APPROVAL_UI_COPY.roleFilterLabel}
+                  </span>
+                  <Select
+                    value={roleFilter || "all"}
+                    onValueChange={(value) => {
+                      setRoleFilter(value === "all" ? "" : value);
+                    }}
+                  >
+                    <SelectTrigger
+                      id="approval-sheet-role-filter"
+                      aria-labelledby="approval-sheet-role-filter-label"
+                      className="h-12 min-h-12 w-full min-w-0 rounded-[8px] border-[var(--line-strong)] bg-[var(--surface-raised)] px-3 text-base text-[var(--ink)]"
+                      size="default"
+                    >
+                      <SelectValue placeholder={APPROVAL_UI_COPY.allRoles} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">
+                        {APPROVAL_UI_COPY.allRoles}
+                      </SelectItem>
+                      <SelectItem value="Member">
+                        {COPY.shell.roleLabels.Member}
+                      </SelectItem>
+                      <SelectItem value="Staff">
+                        {COPY.shell.roleLabels.Staff}
+                      </SelectItem>
+                      <SelectItem value="Admin">
+                        {COPY.shell.roleLabels.Admin}
+                      </SelectItem>
+                    </SelectContent>
+                  </Select>
+                </label>
+                <div className="mt-2 flex items-center justify-between gap-3 border-t border-[var(--line)] pt-3">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    onClick={() => {
+                      setRoleFilter("");
+                      setFilterOpen(false);
+                    }}
+                    className="min-h-11 font-extrabold text-[var(--ink-muted)]"
+                  >
+                    清除篩選
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="default"
+                    onClick={() => setFilterOpen(false)}
+                    className="min-h-11 font-extrabold"
+                  >
+                    套用篩選
+                  </Button>
+                </div>
+              </div>
+            </ManagementFilterSheet>
+          ) : null
+        }
+        loading={
+          <p
+            aria-label={QUEUE_COPY.loading}
+            className="mt-4 grid min-w-0 place-items-center gap-2 rounded-[var(--radius-md)] border border-[var(--line)] bg-[var(--surface-raised)] p-6 text-center text-[var(--ink-muted)]"
+            role="status"
+            aria-live="polite"
+            tabIndex={-1}
+            ref={stateRef}
+          >
+            {QUEUE_COPY.loading}
+          </p>
+        }
+        error={
+          state.kind === "error" ? (
+            <div
+              className="mt-4 grid min-w-0 gap-3 rounded-[var(--radius-md)] border border-[var(--error-border)] bg-[var(--error-surface)] p-6 text-center text-[var(--ink)]"
+              role="alert"
+              tabIndex={-1}
+              ref={stateRef}
+            >
+              <p className="m-0 text-base font-extrabold">{state.message}</p>
+              <Button
+                className="mx-auto min-h-11 border-[var(--accent)] bg-[var(--accent)] px-4 font-extrabold text-white hover:bg-[var(--accent-deep)]"
+                onClick={() => void load(activeStatus)}
+                type="button"
+              >
+                重試連接
+              </Button>
             </div>
-          )}
-
-          {registrations.length === 0 ? (
-            <p role="status" className={styles.empty}>
-              {activeStatus === "Pending"
+          ) : null
+        }
+        forbidden={
+          <div
+            className="mt-4 grid min-w-0 gap-3 rounded-[var(--radius-md)] border border-[var(--error-border)] bg-[var(--error-surface)] p-6 text-center text-[var(--ink)]"
+            role="alert"
+            tabIndex={-1}
+            ref={forbiddenHeadingRef}
+          >
+            <p className="m-0 text-base font-extrabold">
+              {COPY.error.forbidden}
+            </p>
+            <Link
+              href="/management?module=approvals"
+              className="font-bold text-[var(--accent)] underline"
+            >
+              {COPY.approvals.backToApprovals}
+            </Link>
+          </div>
+        }
+        empty={
+          <p
+            role="status"
+            className="mt-4 grid min-w-0 place-items-center gap-2 rounded-[var(--radius-md)] border border-dashed border-[var(--line-strong)] bg-[var(--surface-raised)] p-6 text-center text-[var(--ink-muted)]"
+          >
+            {activeStatus === "Pending"
+              ? registrations.length === 0
                 ? QUEUE_COPY.empty
-                : "目前沒有已處理的申請。"}
-            </p>
-          ) : filteredRegistrations.length === 0 ? (
-            <p role="status" className={styles.empty}>
-              {APPROVAL_UI_COPY.noMatches}
-            </p>
-          ) : (
-            <>
+                : APPROVAL_UI_COPY.noMatches
+              : registrations.length === 0
+                ? "目前沒有已處理的申請。"
+                : APPROVAL_UI_COPY.noMatches}
+          </p>
+        }
+        hasResults={filteredRegistrations.length > 0}
+        list={
+          state.kind === "ready" && filteredRegistrations.length > 0 ? (
+            <section
+              id="approval-queue-panel"
+              role="tabpanel"
+              aria-labelledby={
+                activeStatus === "Pending"
+                  ? "approval-pending-tab"
+                  : "approval-processed-tab"
+              }
+              className="grid min-w-0 gap-3"
+            >
+              {activeStatus === "Pending" && registrations.length > 0 && (
+                <div className="flex flex-wrap items-center justify-between gap-3 rounded-[var(--radius-md)] border border-[var(--line)] bg-[var(--surface-raised)] p-3">
+                  <label
+                    className="flex cursor-pointer items-center gap-2 text-sm font-bold text-[var(--ink)]"
+                    htmlFor="approval-select-all"
+                  >
+                    <Checkbox
+                      id="approval-select-all"
+                      aria-label={APPROVAL_UI_COPY.selectAll}
+                      checked={selectAllState}
+                      onCheckedChange={toggleSelectAll}
+                      disabled={busy || selectableIds.length === 0}
+                    />
+                    <span>{APPROVAL_UI_COPY.selectAll}</span>
+                  </label>
+                  <div className="flex items-center gap-3 text-xs text-[var(--ink-muted)]">
+                    <span className="font-mono">
+                      {filteredRegistrations.length} / {registrations.length}
+                    </span>
+                    <span>{APPROVAL_UI_COPY.batchLimit}</span>
+                  </div>
+                </div>
+              )}
+
               <h2
                 id="approval-results-title"
-                className={styles.resultsHeading}
+                className="m-0 text-base font-extrabold text-[var(--ink)] outline-none"
                 tabIndex={-1}
                 ref={resultHeadingRef}
               >
@@ -719,7 +844,7 @@ export const ApprovalQueue = () => {
                   : APPROVAL_UI_COPY.processedTab}
               </h2>
               <ul
-                className={styles.rows}
+                className="m-0 grid min-w-0 list-none gap-2 p-0"
                 aria-label={
                   activeStatus === "Pending"
                     ? COPY.approvals.statusPending
@@ -730,7 +855,10 @@ export const ApprovalQueue = () => {
                   const selected = selectedIds.includes(item.requestId);
                   const itemStatus = approvalStatusLabel(item);
                   return (
-                    <li className={styles.row} key={item.requestId}>
+                    <li
+                      className="grid min-w-0 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 rounded-[var(--radius-md)] border border-[var(--line)] bg-[var(--surface-raised)] p-3.5 hover:border-[var(--line-strong)]"
+                      key={item.requestId}
+                    >
                       {activeStatus === "Pending" && (
                         <Checkbox
                           id={`approval-select-${index}`}
@@ -738,13 +866,20 @@ export const ApprovalQueue = () => {
                           onCheckedChange={() => toggleSelection(item)}
                           disabled={busy}
                           aria-label={`選取 ${item.name}`}
-                          className={styles.checkbox}
+                          className="size-11 shrink-0"
                         />
                       )}
-                      <div className={styles.identity}>
+                      <div className="grid min-w-0 gap-1 wrap-anywhere">
                         <Link
+                          ref={(node) => {
+                            if (node) {
+                              rowLinkRefs.current.set(item.requestId, node);
+                            } else {
+                              rowLinkRefs.current.delete(item.requestId);
+                            }
+                          }}
                           href={`/management?module=approvals&request=${encodeURIComponent(item.requestId)}`}
-                          className={styles.detailLink}
+                          className="inline-flex min-h-11 min-w-0 items-center whitespace-normal wrap-anywhere text-base font-extrabold text-[var(--ink)] hover:text-[var(--accent)] hover:underline"
                           aria-label={`${COPY.approvals.openDetail} ${item.name}`}
                           onClick={(event) => {
                             if (
@@ -754,20 +889,24 @@ export const ApprovalQueue = () => {
                               !event.shiftKey &&
                               !event.altKey
                             ) {
-                              preserveApprovalSelectionForDetail();
+                              preserveApprovalSelectionForDetail(
+                                item.requestId
+                              );
                             }
                           }}
                         >
                           {item.name}
                         </Link>
-                        <span className={styles.username}>{item.username}</span>
-                        <span className={styles.meta}>
+                        <span className="min-w-0 whitespace-normal wrap-anywhere font-mono text-xs text-[var(--ink-muted)]">
+                          {item.username}
+                        </span>
+                        <span className="min-w-0 whitespace-normal wrap-anywhere text-xs text-[var(--ink-muted)]">
                           {item.phone ?? "—"} · {approvalRoleLabel(item.role)} ·{" "}
                           {formatSubmittedAt(item.submittedAt)}
                         </span>
                       </div>
                       <span
-                        className={`${styles.status} ${approvalStatusClass(item)}`}
+                        className={`min-h-[26px] rounded-full border px-2.5 py-1 text-xs font-extrabold whitespace-nowrap ${approvalStatusBadgeClass(item)}`}
                       >
                         {itemStatus}
                       </span>
@@ -775,89 +914,104 @@ export const ApprovalQueue = () => {
                   );
                 })}
               </ul>
-            </>
-          )}
-        </section>
+            </section>
+          ) : undefined
+        }
+        state={frameState}
+        width="wide"
+      />
+
+      {notice && (
+        <p
+          role={noticeKind === "error" ? "alert" : "status"}
+          aria-live={noticeKind === "error" ? "assertive" : "polite"}
+          className={`mt-4 rounded-[var(--radius-md)] border p-3 text-sm font-bold ${
+            noticeKind === "success"
+              ? "border-[var(--success-border)] bg-[var(--success-surface)] text-[var(--success)]"
+              : "border-[var(--error-border)] bg-[var(--error-surface)] text-[var(--error)]"
+          }`}
+        >
+          {notice}
+        </p>
       )}
 
-      {activeStatus === "Pending" && selectedIds.length > 0 && (
-        <AlertDialog
-          open={confirmOpen}
-          onOpenChange={(open) => {
-            if (open) {
-              setConfirmOpen(true);
-            } else {
-              closeConfirmation();
-            }
-          }}
-        >
-          <ManagementStickyActionBar
-            busy={busy}
-            disabled={busy}
-            label={APPROVAL_UI_COPY.selectionRegion}
-            state={actionSurfaceState}
-          >
-            <div className={styles.tray}>
-              <div className={styles.trayMain}>
-                <strong>{APPROVAL_UI_COPY.selected(selectedIds.length)}</strong>
-                <Button
-                  type="button"
-                  className="min-h-11"
-                  onClick={() => setTrayOpen((open) => !open)}
-                  aria-expanded={trayOpen}
-                  disabled={busy}
-                  size="lg"
-                  variant="outline"
-                >
-                  {trayOpen
-                    ? APPROVAL_UI_COPY.hideSelected
-                    : APPROVAL_UI_COPY.reviewSelected}
-                </Button>
-              </div>
-              <div className={styles.trayActions}>
-                <Button
-                  type="button"
-                  className="min-h-11"
-                  onClick={clearSelection}
-                  disabled={busy}
-                  size="lg"
-                  variant="outline"
-                >
-                  {APPROVAL_UI_COPY.clear}
-                </Button>
-                <AlertDialogTrigger asChild>
+      {state.kind === "ready" &&
+        activeStatus === "Pending" &&
+        selectedIds.length > 0 && (
+          <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
+            <ActionSurface
+              busy={busy}
+              disabled={busy}
+              label={APPROVAL_UI_COPY.selectionRegion}
+              state={actionSurfaceState}
+            >
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="flex items-center gap-3">
+                  <strong>
+                    {APPROVAL_UI_COPY.selected(selectedIds.length)}
+                  </strong>
                   <Button
                     type="button"
                     className="min-h-11"
-                    onClick={beginBatchConfirmation}
+                    onClick={() => setTrayOpen((open) => !open)}
+                    aria-expanded={trayOpen}
                     disabled={busy}
-                    aria-busy={busy}
-                    aria-haspopup="dialog"
                     size="lg"
-                    variant="default"
+                    variant="outline"
                   >
-                    {APPROVAL_UI_COPY.bulkApprove}
+                    {trayOpen
+                      ? APPROVAL_UI_COPY.hideSelected
+                      : APPROVAL_UI_COPY.reviewSelected}
                   </Button>
-                </AlertDialogTrigger>
+                </div>
+                <div className="flex items-center gap-3">
+                  <Button
+                    type="button"
+                    className="min-h-11"
+                    onClick={clearSelection}
+                    disabled={busy}
+                    size="lg"
+                    variant="outline"
+                  >
+                    {APPROVAL_UI_COPY.clear}
+                  </Button>
+                  <AlertDialogTrigger asChild>
+                    <Button
+                      type="button"
+                      className="min-h-11"
+                      onClick={beginBatchConfirmation}
+                      disabled={busy}
+                      aria-busy={busy}
+                      aria-haspopup="dialog"
+                      size="lg"
+                      variant="default"
+                    >
+                      {APPROVAL_UI_COPY.bulkApprove}
+                    </Button>
+                  </AlertDialogTrigger>
+                </div>
               </div>
               {trayOpen && (
                 <ul
-                  className={styles.trayItems}
+                  className="m-0 mt-3 grid max-h-48 min-w-0 list-none gap-2 overflow-y-auto p-0"
                   aria-label={APPROVAL_UI_COPY.selectedItemsLabel}
                 >
                   {visibleNames.map((item) => (
-                    <li key={item.requestId} className={styles.trayItem}>
-                      <span>
+                    <li
+                      key={item.requestId}
+                      className="flex min-w-0 items-center justify-between gap-2 rounded border border-[var(--line)] bg-[var(--surface-raised)] p-2 text-sm"
+                    >
+                      <span className="min-w-0 whitespace-normal wrap-anywhere">
                         {item.name}
                         {staleIds.has(item.requestId) && (
-                          <small className={styles.stale}>
+                          <small className="ml-2 text-xs font-bold text-[var(--error)]">
                             {APPROVAL_UI_COPY.stale}
                           </small>
                         )}
                       </span>
                       <Button
                         type="button"
-                        className={`${styles.remove} min-h-11 min-w-11`}
+                        className="size-11 min-h-11 min-w-11 shrink-0 p-0 text-sm"
                         onClick={() => removeSelection(item.requestId)}
                         disabled={busy}
                         aria-label={APPROVAL_UI_COPY.remove(item.name)}
@@ -870,42 +1024,41 @@ export const ApprovalQueue = () => {
                   ))}
                 </ul>
               )}
-            </div>
-          </ManagementStickyActionBar>
-          <AlertDialogContent
-            className={styles.confirmDialog}
-            aria-labelledby="approval-batch-confirm-title"
-            aria-describedby="approval-batch-confirm-body"
-          >
-            <div className={styles.confirmSurface}>
-              <AlertDialogTitle id="approval-batch-confirm-title">
-                {APPROVAL_UI_COPY.confirmTitle}
-              </AlertDialogTitle>
-              <AlertDialogDescription id="approval-batch-confirm-body">
-                {APPROVAL_UI_COPY.activeAccounts(selectedItems.length)}
-              </AlertDialogDescription>
-              <ul className={styles.confirmNames}>
-                {confirmationNames.map((item) => (
-                  <li key={item.requestId}>{item.name}</li>
-                ))}
-                {hiddenNameCount > 0 && <li>+{hiddenNameCount}</li>}
-              </ul>
-              <AlertDialogFooter className={styles.confirmActions}>
-                <AlertDialogCancel onClick={closeConfirmation}>
-                  {APPROVAL_UI_COPY.confirmCancel}
-                </AlertDialogCancel>
-                <AlertDialogAction
-                  onClick={acceptBatchConfirmation}
-                  disabled={busy}
-                  aria-busy={busy}
-                >
-                  {APPROVAL_UI_COPY.confirmApprove}
-                </AlertDialogAction>
-              </AlertDialogFooter>
-            </div>
-          </AlertDialogContent>
-        </AlertDialog>
-      )}
-    </section>
+            </ActionSurface>
+            <AlertDialogContent
+              className="max-w-md"
+              aria-labelledby="approval-batch-confirm-title"
+              aria-describedby="approval-batch-confirm-body"
+            >
+              <div className="grid gap-4">
+                <AlertDialogTitle id="approval-batch-confirm-title">
+                  {APPROVAL_UI_COPY.confirmTitle}
+                </AlertDialogTitle>
+                <AlertDialogDescription id="approval-batch-confirm-body">
+                  {APPROVAL_UI_COPY.activeAccounts(selectedItems.length)}
+                </AlertDialogDescription>
+                <ul className="m-0 max-h-32 list-disc overflow-y-auto pl-5 text-sm">
+                  {confirmationNames.map((item) => (
+                    <li key={item.requestId}>{item.name}</li>
+                  ))}
+                  {hiddenNameCount > 0 && <li>+{hiddenNameCount}</li>}
+                </ul>
+                <AlertDialogFooter>
+                  <AlertDialogCancel onClick={closeConfirmation}>
+                    {APPROVAL_UI_COPY.confirmCancel}
+                  </AlertDialogCancel>
+                  <AlertDialogAction
+                    onClick={acceptBatchConfirmation}
+                    disabled={busy}
+                    aria-busy={busy}
+                  >
+                    {APPROVAL_UI_COPY.confirmApprove}
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </div>
+            </AlertDialogContent>
+          </AlertDialog>
+        )}
+    </div>
   );
 };

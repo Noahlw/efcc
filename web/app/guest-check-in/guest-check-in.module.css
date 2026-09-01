@@ -33,6 +33,7 @@
   display: inline-flex;
   align-items: center;
   gap: 0.625rem;
+  min-height: 44px;
   color: var(--ink);
   font-weight: 800;
   font-size: 1rem;

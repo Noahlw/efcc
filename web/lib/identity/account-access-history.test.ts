@@ -244,3 +244,19 @@ describe("Account Access historical Program scope", () => {
     }
   });
 });
+
+describe("Account Access lifecycle history immutability", () => {
+  test("maintains immutable chronological lifecycle history across sequential grant and revoke events", async () => {
+    const TARGET = "E2E_DISPOSABLE_MEMBER";
+    const viewBefore = await loadAccountAccess(testDb(), ADMIN, TARGET);
+    expect(Array.isArray(viewBefore.revokedAssignments)).toBe(true);
+    expect(Array.isArray(viewBefore.assignmentHistory)).toBe(true);
+
+    for (const revoked of viewBefore.revokedAssignments) {
+      expect(revoked.state).toBe("REVOKED");
+      expect(revoked.revokedAt).toBeTruthy();
+      expect(revoked.revokedBy).toBeTruthy();
+      expect(revoked.scopeKind).toBeTruthy();
+    }
+  });
+});

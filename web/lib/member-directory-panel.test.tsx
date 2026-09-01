@@ -7,7 +7,7 @@ import {
 } from "@testing-library/react";
 // 087-04 (#321) — component tests for the Member Directory panel
 // (Spec 087 US 13-15). MSW intercepts GET /api/v1/programs/members at the
-// same seam as lib/permissions-panel.test.tsx. Covers: live search renders
+// same seam as the directory's public Worker endpoint. Covers: live search renders
 // results; selecting a result shows the member detail (contact, role,
 // department memberships) inline with no separate commit step; and the
 // empty / loading / server-error (retry re-fetches) / forbidden states.
@@ -323,5 +323,49 @@ describe("MemberDirectoryPanel", () => {
     expect(
       screen.getByRole("link", { name: MEMBERS.backToManagement })
     ).toHaveAttribute("href", "/management?module=settings");
+  });
+
+  test("forwards the 20-member search limit parameter and query to the member search seam", async () => {
+    const user = userEvent.setup();
+    let requestedUrl = "";
+    server.use(
+      http.get("/api/v1/programs/members", ({ request }) => {
+        requestedUrl = request.url;
+        return membersResponse(MEMBER_ROWS.slice(0, 1));
+      })
+    );
+    render(<MemberDirectoryPanel />);
+    await user.type(screen.getByLabelText(MEMBERS.searchLabel), "陳大");
+    await screen.findByRole("button", { name: /陳大文/ });
+    const params = new URL(requestedUrl).searchParams;
+    expect(params.get("limit")).toBe("20");
+    expect(params.get("q")).toBe("陳大");
+  });
+
+  test("restores focus to the search field after selecting a member and clearing search query", async () => {
+    const user = userEvent.setup();
+    server.use(liveSearchHandler());
+    render(<MemberDirectoryPanel />);
+    const search = screen.getByLabelText(MEMBERS.searchLabel);
+    await user.type(search, "陳大");
+    const row = await screen.findByRole("button", { name: /陳大文/ });
+    await user.click(row);
+    await screen.findByRole("heading", { name: MEMBERS.memberDetail });
+
+    await user.clear(search);
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("heading", { name: MEMBERS.memberDetail })
+      ).toBeNull()
+    );
+    expect(document.activeElement).toBe(search);
+  });
+
+  test("renders ManagementPageHeader title and description inside DirectoryFrame", () => {
+    render(<MemberDirectoryPanel />);
+    expect(
+      screen.getByRole("heading", { level: 1, name: MEMBERS.membersTitle })
+    ).toBeInTheDocument();
+    expect(screen.getAllByText(MEMBERS.membersLead).length).toBeGreaterThan(0);
   });
 });

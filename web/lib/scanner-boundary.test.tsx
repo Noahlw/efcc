@@ -76,7 +76,9 @@ describe("Scanner mode boundary", () => {
       configurable: true,
       value: {
         getUserMedia: vi.fn<() => Promise<MediaStream>>().mockResolvedValue({
-          getTracks: () => [{ stop: vi.fn<() => void>(), addEventListener: vi.fn() }],
+          getTracks: () => [
+            { stop: vi.fn<() => void>(), addEventListener: vi.fn() },
+          ],
         } as unknown as MediaStream),
       },
     });
@@ -86,6 +88,7 @@ describe("Scanner mode boundary", () => {
     cleanup();
     vi.restoreAllMocks();
     server.resetHandlers();
+    sessionStorage.clear();
     Reflect.deleteProperty(window, "BarcodeDetector");
     Reflect.deleteProperty(navigator, "mediaDevices");
     window.history.replaceState(null, "", "/scanner");
@@ -168,5 +171,47 @@ describe("Scanner mode boundary", () => {
     expect(screen.getByLabelText(COPY.attendance.assistedContext)).toHaveValue(
       ""
     );
+  });
+
+  test("handles AUTH_REQUIRED by remembering deep link and redirecting to login", async () => {
+    window.history.replaceState(
+      null,
+      "",
+      "/scanner?mode=assisted&event=event-1#scan"
+    );
+    server.use(
+      http.get("/api/v1/attendance/scanner-events", () =>
+        HttpResponse.json(
+          {
+            type: "https://efcc.example/problems/auth-required",
+            title: "Auth Required",
+            status: 401,
+            code: "AUTH_REQUIRED",
+            requestId: "rid-auth",
+          },
+          { status: 401 }
+        )
+      )
+    );
+    render(<ScannerBoundary />);
+    await waitFor(() => expect(mocks.replace).toHaveBeenCalledWith("/"));
+    expect(sessionStorage.getItem("efcc_session_expired")).toBe("1");
+    expect(sessionStorage.getItem("efcc_deep_link")).toBe(
+      "/scanner?mode=assisted&event=event-1#scan"
+    );
+  });
+
+  test("falls back safely to Self mode without mode tabs when URL intent is malformed", async () => {
+    window.history.replaceState(null, "", "/scanner?mode=assisted&mode=self");
+    server.use(eventsHandler([EVENT]));
+    render(<ScannerBoundary />);
+
+    await screen.findByText(COPY.attendance.cameraLiveHint);
+    expect(
+      screen.queryByRole("tab", { name: COPY.attendance.operatorMode })
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByLabelText(COPY.attendance.assistedContext)
+    ).not.toBeInTheDocument();
   });
 });

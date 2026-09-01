@@ -112,6 +112,12 @@ describe(SettingsHub, () => {
     const back = screen.getByRole("link", { name: SETTINGS.settingsBack });
     expect(back).toHaveAttribute("href", "/management");
   });
+
+  test("is a pure read-only navigation screen — no form controls, inputs, or buttons anywhere", () => {
+    render(<SettingsHub />);
+    expectNoFormElements();
+    expect(document.querySelector("button")).toBeNull();
+  });
 });
 
 describe(CheckinSettings, () => {
@@ -146,11 +152,11 @@ describe(CheckinSettings, () => {
     expect(screen.getByText(SETTINGS.afterEndValue)).toBeInTheDocument();
   });
 
-  test("is a pure read-only screen — no form controls anywhere", () => {
+  test("is a pure read-only screen — no form controls or buttons anywhere", () => {
     render(<CheckinSettings />);
     expectNoFormElements();
+    expect(document.querySelector("button")).toBeNull();
   });
-
   test("back action returns to the settings hub", () => {
     render(<CheckinSettings />);
 
@@ -171,11 +177,11 @@ describe(TimezoneSettings, () => {
     expect(screen.getByText(SETTINGS.gmt8Value)).toBeInTheDocument();
   });
 
-  test("is a pure read-only screen — no form controls anywhere", () => {
+  test("is a pure read-only screen — no form controls or buttons anywhere", () => {
     render(<TimezoneSettings />);
     expectNoFormElements();
+    expect(document.querySelector("button")).toBeNull();
   });
-
   test("back action returns to the settings hub", () => {
     render(<TimezoneSettings />);
 

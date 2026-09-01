@@ -730,11 +730,7 @@ describe("#486 Account Access domain", () => {
            (role_definition_id, capability, granted_by, granted_at)
          VALUES (?, 'program.manage', ?, ?)`
       )
-      .bind(
-        created.roleDefinitionId,
-        ADMIN,
-        "2026-08-29T00:00:56.000Z"
-      )
+      .bind(created.roleDefinitionId, ADMIN, "2026-08-29T00:00:56.000Z")
       .run();
 
     const added = await mutateAccountAssignments(testDb(), {
@@ -762,9 +758,7 @@ describe("#486 Account Access domain", () => {
           grant.sources.includes("快照歷史測試身份組")
       )
     ).toBe(true);
-    expect(
-      (await loadBootstrapIdentity(testDb(), MEMBER)).identities
-    ).toEqual(
+    expect((await loadBootstrapIdentity(testDb(), MEMBER)).identities).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
           label: "快照歷史測試身份組",
@@ -826,8 +820,7 @@ describe("#486 Account Access domain", () => {
     );
     expect(
       scopedRescopeView.activeAssignments.some(
-        (assignment) =>
-          assignment.roleDefinitionId === created.roleDefinitionId
+        (assignment) => assignment.roleDefinitionId === created.roleDefinitionId
       )
     ).toBe(false);
     expect(
@@ -847,9 +840,7 @@ describe("#486 Account Access domain", () => {
       { departmentId: ADULT_DEPARTMENT }
     );
     expect(activeDepartmentCapabilities["program.manage"]).not.toBe(true);
-    expect(
-      (await loadBootstrapIdentity(testDb(), MEMBER)).identities
-    ).toEqual(
+    expect((await loadBootstrapIdentity(testDb(), MEMBER)).identities).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
           label: "快照歷史測試身份組",
@@ -858,11 +849,7 @@ describe("#486 Account Access domain", () => {
       ])
     );
 
-    const scopedView = await loadAccountAccess(
-      testDb(),
-      PROGRAM_ACTOR,
-      MEMBER
-    );
+    const scopedView = await loadAccountAccess(testDb(), PROGRAM_ACTOR, MEMBER);
     expect(
       scopedView.activeAssignments.some(
         (assignment) =>
@@ -982,9 +969,7 @@ describe("#486 Account Access domain", () => {
       { programId: YOUTH_PROGRAM }
     );
     expect(postRescopeProgramCapabilities["program.manage"]).not.toBe(true);
-    expect(
-      (await loadBootstrapIdentity(testDb(), MEMBER)).identities
-    ).toEqual(
+    expect((await loadBootstrapIdentity(testDb(), MEMBER)).identities).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
           label: "快照歷史測試身份組",
@@ -1782,5 +1767,102 @@ describe("#486 Account Access domain", () => {
       reason: "ROLE_IDEMPOTENCY_REUSE",
       correlation_id: "account-access-red-reuse-lifecycle-rejected-correlation",
     });
+  });
+  test("rejects atomic assignment batch containing an archived or ineligible role definition without applying any grants", async () => {
+    const before = await loadAccountAccess(testDb(), ADMIN, STAFF);
+    const beforeCount = await testDb()
+      .prepare(
+        "SELECT COUNT(*) AS count FROM role_assignments WHERE account_user_id = ? AND revoked_at IS NULL"
+      )
+      .bind(STAFF)
+      .first<{ count: number }>();
+
+    await expect(
+      mutateAccountAssignments(testDb(), {
+        actor_user_id: ADMIN,
+        account_user_id: STAFF,
+        base_revision: before.revision,
+        role_definition_ids: [
+          GRANTABLE_DEPARTMENT_ROLE,
+          "018f3b8a-ffff-7000-8000-999999999999",
+        ],
+        idempotency_key: "account-access-atomic-invalid-batch",
+        now: "2026-08-29T00:14:00.000Z",
+        audit_id: "account-access-atomic-invalid-batch-audit",
+        correlation_id: "account-access-atomic-invalid-batch-correlation",
+      })
+    ).rejects.toThrow();
+
+    const afterCount = await testDb()
+      .prepare(
+        "SELECT COUNT(*) AS count FROM role_assignments WHERE account_user_id = ? AND revoked_at IS NULL"
+      )
+      .bind(STAFF)
+      .first<{ count: number }>();
+    expect(afterCount?.count).toBe(beforeCount?.count);
+  });
+
+  test("rejects assignment and revoke on nonexistent, inactive, or admin accounts with canonical domain errors", async () => {
+    const revision =
+      (
+        await testDb()
+          .prepare("SELECT revision FROM role_policy_revisions WHERE id = 1")
+          .first<{ revision: number }>()
+      )?.revision ?? 1;
+
+    await expect(
+      loadAccountAccess(testDb(), ADMIN, "NONEXISTENT_USER_999")
+    ).rejects.toThrow();
+
+    await expect(
+      mutateAccountAssignments(testDb(), {
+        actor_user_id: ADMIN,
+        account_user_id: ADMIN,
+        base_revision: revision,
+        role_definition_ids: [DEPARTMENT_ROLE],
+        idempotency_key: "account-access-admin-target-grant",
+        now: "2026-08-29T00:14:01.000Z",
+        audit_id: "account-access-admin-target-grant-audit",
+        correlation_id: "account-access-admin-target-grant-correlation",
+      })
+    ).rejects.toThrow();
+  });
+
+  test("rejects cross-department scope tampering when assigning or revoking roles", async () => {
+    const revision =
+      (
+        await testDb()
+          .prepare("SELECT revision FROM role_policy_revisions WHERE id = 1")
+          .first<{ revision: number }>()
+      )?.revision ?? 1;
+
+    await expect(
+      mutateAccountAssignments(testDb(), {
+        actor_user_id: PROGRAM_ACTOR,
+        account_user_id: STAFF,
+        base_revision: revision,
+        role_definition_ids: [DEPARTMENT_ROLE],
+        idempotency_key: "account-access-cross-scope-tamper",
+        now: "2026-08-29T00:14:02.000Z",
+        audit_id: "account-access-cross-scope-tamper-audit",
+        correlation_id: "account-access-cross-scope-tamper-correlation",
+      })
+    ).rejects.toThrow();
+  });
+
+  test("computes grouped Global, Department, and Program impact with multi-source provenance on revoke", async () => {
+    const view = await loadAccountAccess(testDb(), ADMIN, STAFF);
+    expect(view.effectiveAccess).toHaveProperty("Global");
+    expect(view.effectiveAccess).toHaveProperty("Department");
+    expect(view.effectiveAccess).toHaveProperty("Program");
+
+    for (const scope of ["Global", "Department", "Program"] as const) {
+      for (const grant of view.effectiveAccess[scope]) {
+        expect(Array.isArray(grant.sources)).toBe(true);
+        expect(grant.sources.length).toBeGreaterThan(0);
+        expect(Array.isArray(grant.sourceRoleDefinitionIds)).toBe(true);
+        expect(grant.sourceRoleDefinitionIds.length).toBeGreaterThan(0);
+      }
+    }
   });
 });

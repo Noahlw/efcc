@@ -395,6 +395,9 @@ export const AccountDirectoryPanel = () => {
     kind: "idle",
   });
   const loadMoreRequestId = useRef(0);
+  const rowButtonRefs = useRef<Map<string, HTMLButtonElement>>(new Map());
+  const previousSelectedIdRef = useRef<string | null>(selectedId);
+  const restoreRowFocusRef = useRef(false);
 
   const listResource = useAsyncResource<AccountDirectoryView, DirectoryState>(
     () =>
@@ -451,12 +454,34 @@ export const AccountDirectoryPanel = () => {
 
   useEffect(() => {
     const syncSelection = () => {
-      setSelectedId(new URLSearchParams(window.location.search).get("account"));
+      const nextSelectedId = new URLSearchParams(window.location.search).get(
+        "account"
+      );
+      if (previousSelectedIdRef.current && !nextSelectedId) {
+        restoreRowFocusRef.current = true;
+      }
+      setSelectedId(nextSelectedId);
     };
     setSelectedId(searchParams.get("account"));
     window.addEventListener("popstate", syncSelection);
     return () => window.removeEventListener("popstate", syncSelection);
   }, [searchParams]);
+  useEffect(() => {
+    if (
+      restoreRowFocusRef.current &&
+      previousSelectedIdRef.current &&
+      !selectedId
+    ) {
+      const prevButton = rowButtonRefs.current.get(
+        previousSelectedIdRef.current
+      );
+      if (prevButton) {
+        prevButton.focus();
+      }
+      restoreRowFocusRef.current = false;
+    }
+    previousSelectedIdRef.current = selectedId;
+  }, [selectedId]);
 
   useEffect(() => {
     loadMoreRequestId.current += 1;
@@ -985,6 +1010,13 @@ export const AccountDirectoryPanel = () => {
                   {accountView.accounts.map((account) => (
                     <li key={account.userId} className="min-w-0">
                       <Button
+                        ref={(node) => {
+                          if (node) {
+                            rowButtonRefs.current.set(account.userId, node);
+                          } else {
+                            rowButtonRefs.current.delete(account.userId);
+                          }
+                        }}
                         aria-pressed={selection.selectedId === account.userId}
                         className="h-auto grid min-h-[68px] w-full min-w-0 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 rounded-[var(--radius-md)] border border-[var(--line)] bg-[var(--surface-raised)] p-3 text-left whitespace-normal text-[var(--ink)] hover:border-[var(--focus)] hover:shadow-[inset_3px_0_0_var(--focus)] aria-pressed:border-[var(--focus)] aria-pressed:shadow-[inset_3px_0_0_var(--focus)]"
                         onClick={() => selection.onSelect(account.userId)}

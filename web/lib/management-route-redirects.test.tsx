@@ -117,7 +117,68 @@ describe("S4 canonical management redirects", () => {
     );
   });
 
-  test("redirects legacy permissions to canonical Role Policy", async () => {
+  test("E-493-04: redirects legacy permissions to canonical Role Policy", async () => {
+    render(<PermissionsPage />);
+    await waitFor(() =>
+      expect(mocks.router.replace).toHaveBeenCalledWith(
+        "/management?module=permissions"
+      )
+    );
+  });
+
+  test("E-493-04: preserves approved management returns when redirecting legacy permissions", async () => {
+    window.history.replaceState(
+      {},
+      "",
+      "/permissions?return=%2Fmanagement%3Fmodule%3Daccounts"
+    );
+    mocks.searchParams.get.mockReturnValue("/management?module=accounts");
+    render(<PermissionsPage />);
+    await waitFor(() =>
+      expect(mocks.router.replace).toHaveBeenCalledWith(
+        "/management?module=permissions&return=%2Fmanagement%3Fmodule%3Daccounts"
+      )
+    );
+    expect(screen.getByRole("status")).toHaveTextContent("正在前往帳戶與權限…");
+  });
+
+  test("E-493-04: rejects external or protocol-relative returns when redirecting legacy permissions", async () => {
+    window.history.replaceState(
+      {},
+      "",
+      "/permissions?return=https%3A%2F%2Fattacker.com"
+    );
+    mocks.searchParams.get.mockReturnValue("https://attacker.com");
+    render(<PermissionsPage />);
+    await waitFor(() =>
+      expect(mocks.router.replace).toHaveBeenCalledWith(
+        "/management?module=permissions"
+      )
+    );
+
+    window.history.replaceState(
+      {},
+      "",
+      "/permissions?return=%2F%2Fattacker.com"
+    );
+    mocks.searchParams.get.mockReturnValue("//attacker.com");
+    render(<PermissionsPage />);
+    await waitFor(() =>
+      expect(mocks.router.replace).toHaveBeenCalledWith(
+        "/management?module=permissions"
+      )
+    );
+  });
+
+  test("E-493-04: drops legacy fixed-role parameters (role, view, tab) on canonical permissions redirect", async () => {
+    window.history.replaceState(
+      {},
+      "",
+      "/permissions?role=admin&view=matrix&tab=permissions"
+    );
+    mocks.searchParams.get.mockImplementation((k) =>
+      k === "role" ? "admin" : k === "view" ? "matrix" : null
+    );
     render(<PermissionsPage />);
     await waitFor(() =>
       expect(mocks.router.replace).toHaveBeenCalledWith(

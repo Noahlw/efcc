@@ -10,6 +10,7 @@ import { Card } from "@/components/ui/card";
 import { RpcError } from "@/lib/api";
 import { AssistedScannerPanel } from "@/lib/assisted-scanner-panel";
 import type { AttendanceEventSummary } from "@/lib/attendance";
+import { attendanceButtonVariants } from "@/lib/attendance-scanner-ui";
 import { COPY, errorCopyFor } from "@/lib/copy";
 import { announce } from "@/lib/live-region";
 import { listScannerEvents } from "@/lib/programs/program-api";
@@ -17,11 +18,6 @@ import { buildScannerHref, parseScannerIntent } from "@/lib/scanner-intent";
 import type { ScannerMode } from "@/lib/scanner-intent";
 import { SelfCheckInPanel } from "@/lib/self-check-in-panel";
 import { clearAuthHint, rememberDeepLink } from "@/lib/session";
-
-import styles from "./attendance-panel.module.css";
-
-const secondaryControl = `${styles.buttonSecondary} min-h-11 h-auto rounded-[var(--radius-sm)] border-[var(--line-strong)] bg-[var(--surface-raised)] px-4 py-3 text-base font-bold text-[var(--ink)] hover:bg-[var(--surface)] hover:text-[var(--ink)]`;
-const modeTabControl = `${styles.modeButton} min-h-11 h-auto rounded-[var(--radius-sm)] border-[var(--line-strong)] bg-[var(--surface-raised)] px-4 py-2.5 text-base font-bold text-[var(--ink)] hover:bg-[var(--surface)] hover:text-[var(--ink)] aria-selected:border-[var(--accent)] aria-selected:bg-[var(--surface)] aria-selected:text-[var(--accent-deep)]`;
 
 type EventState =
   | { kind: "loading" }
@@ -41,21 +37,28 @@ const ScannerState = ({
   tone: "info" | "error";
 }) => (
   <Card
-    className={styles.card}
+    className="grid gap-[1.125rem] p-5 bg-[var(--surface-raised)] border border-[var(--line-strong)] rounded-[var(--radius-md)]"
     role="region"
     aria-labelledby="scanner-state-title"
     tabIndex={-1}
   >
-    <h1 id="scanner-state-title" className={styles.title}>
+    <h1
+      id="scanner-state-title"
+      className="text-2xl font-extrabold leading-tight tracking-[0.01em] text-[var(--ink)]"
+    >
       {COPY.sections.scanner}
     </h1>
-    <output className={styles.status} data-tone={tone} aria-live="polite">
+    <output
+      className="rounded-[var(--radius-sm)] border border-[var(--line-strong)] p-3 text-base"
+      data-tone={tone}
+      aria-live="polite"
+    >
       {message}
     </output>
     {actionLabel && onAction && (
       <Button
         variant="outline"
-        className={secondaryControl}
+        className={attendanceButtonVariants({ variant: "secondary" })}
         type="button"
         ref={actionRef}
         onClick={onAction}
@@ -240,20 +243,24 @@ export const ScannerBoundary = () => {
   );
 
   if (accessStateVisible) {
-    return <div className={styles.page}>{accessState}</div>;
+    return (
+      <div className="mx-auto w-[min(100%,760px)] px-4 py-8 pb-12">
+        {accessState}
+      </div>
+    );
   }
 
   return (
     <>
       {showModeTabs && (
         <div
-          className={styles.modeSwitch}
+          className="mx-auto grid w-[min(100%,760px)] grid-cols-2 gap-2 px-4 pt-4"
           role="tablist"
           aria-label={COPY.attendance.modeLabel}
         >
           <Button
             variant="outline"
-            className={modeTabControl}
+            className={attendanceButtonVariants({ variant: "modeTab" })}
             id="scanner-self-tab"
             type="button"
             role="tab"
@@ -266,7 +273,7 @@ export const ScannerBoundary = () => {
           </Button>
           <Button
             variant="outline"
-            className={modeTabControl}
+            className={attendanceButtonVariants({ variant: "modeTab" })}
             id="scanner-assisted-tab"
             type="button"
             role="tab"
@@ -282,13 +289,13 @@ export const ScannerBoundary = () => {
       {!assistedRequested && eventsState.kind === "error" && (
         <Alert
           variant="destructive"
-          className={styles.status}
+          className="rounded-[var(--radius-sm)] border border-[var(--line-strong)] p-3 text-base"
           data-tone="error"
         >
           <span>{eventsState.message}</span>
           <Button
             variant="outline"
-            className={secondaryControl}
+            className={attendanceButtonVariants({ variant: "secondary" })}
             type="button"
             ref={retryRef}
             onClick={retryEvents}
@@ -300,13 +307,13 @@ export const ScannerBoundary = () => {
       {malformed && (
         <Alert
           variant="destructive"
-          className={styles.status}
+          className="rounded-[var(--radius-sm)] border border-[var(--line-strong)] p-3 text-base"
           data-tone="error"
         >
           {COPY.attendance.assistedContextStale}
           <Button
             variant="outline"
-            className={secondaryControl}
+            className={attendanceButtonVariants({ variant: "secondary" })}
             type="button"
             onClick={recoverToSelf}
           >

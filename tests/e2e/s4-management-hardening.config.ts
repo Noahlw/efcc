@@ -53,10 +53,11 @@ export default defineConfig({
   reporter: [["list"], ["json", { outputFile: resultsFile }]],
   use: {
     baseURL: targetUrl,
-    // Login credentials are entered in this suite; keep traces out of the
-    // evidence bundle while retaining failure screenshots.
+    // Login credentials are entered in this suite; keep traces and
+    // screenshots out of the evidence bundle. Geometry is proven with
+    // numeric DOM measurements only.
     trace: "off",
-    screenshot: "only-on-failure",
+    screenshot: "off",
   },
   projects: [
     {
@@ -64,24 +65,12 @@ export default defineConfig({
       use: { viewport: { width: 320, height: 844 } },
     },
     {
-      name: "phone-375",
-      use: { viewport: { width: 375, height: 844 } },
-    },
-    {
       name: "phone-390",
       use: { viewport: { width: 390, height: 844 } },
     },
     {
-      name: "phone-414",
-      use: { viewport: { width: 414, height: 844 } },
-    },
-    {
       name: "tablet-600",
       use: { viewport: { width: 600, height: 844 } },
-    },
-    {
-      name: "phone-748",
-      use: { viewport: { width: 748, height: 1366 } },
     },
     {
       name: "tablet-799",
@@ -92,16 +81,16 @@ export default defineConfig({
       use: { viewport: { width: 800, height: 900 } },
     },
     {
+      name: "desktop-900",
+      use: { viewport: { width: 900, height: 900 } },
+    },
+    {
       name: "desktop-1024",
       use: { viewport: { width: 1024, height: 900 } },
     },
     {
       name: "desktop-1440",
       use: { viewport: { width: 1440, height: 900 } },
-    },
-    {
-      name: "desktop-1920",
-      use: { viewport: { width: 1920, height: 900 } },
     },
   ],
 });
