@@ -841,4 +841,255 @@ describe(RoleHierarchyPanel, () => {
     expect(body.scope_id).toBe("018f3b8a-0000-7000-8000-000000000002");
     expect(body.base_revision).toBeTypeOf("number");
   });
+
+  test("E-493-01: unauthorized, archived, or invalid view state falls back to safe list/detail without exposing mutation form", async () => {
+    // 1. Unknown / malformed role falls back to safe list
+    mocks.searchParams = new URLSearchParams(
+      "module=roles&role=018f3b8a-0000-7000-8000-999999999999&view=rename"
+    );
+    server.use(http.get("/api/v1/identity/roles", () => hierarchyResponse()));
+    render(<RoleHierarchyPanel />);
+    await expect(
+      screen.findByRole("heading", { name: /身份組/u })
+    ).resolves.toBeTruthy();
+    expect(screen.queryByLabelText("新名稱")).toBeNull();
+    expect(
+      screen.queryByRole("heading", { name: "成人部門管理者" })
+    ).toBeNull();
+    cleanup();
+
+    // 2. Archived role projection falls back from rename to detail without rename action
+    const ARCHIVED_ROLE_ID = "018f3b8a-0000-7000-8000-100000000099";
+    const archivedView: RoleHierarchyView = {
+      ...VIEW,
+      categories: VIEW.categories.map((category) =>
+        category.categoryKey === "Department"
+          ? {
+              ...category,
+              definitions: [
+                ...category.definitions,
+                {
+                  roleDefinitionId: ARCHIVED_ROLE_ID,
+                  label: "已停用身份組",
+                  description: "舊有身份組",
+                  kind: "DEPARTMENT_SCOPED",
+                  scopeKind: "Department",
+                  scopeId: "018f3b8a-0000-7000-8000-000000000002",
+                  scopeLabel: "成區",
+                  position: 99,
+                  isProtected: false,
+                  isArchived: true,
+                  assignmentCount: 0,
+                  grantCount: 0,
+                  actions: [],
+                  reorderActions: [],
+                },
+              ],
+            }
+          : category
+      ),
+    };
+    mocks.searchParams = new URLSearchParams(
+      `module=roles&role=${ARCHIVED_ROLE_ID}&view=rename`
+    );
+    server.use(
+      http.get("/api/v1/identity/roles", () => hierarchyResponse(archivedView))
+    );
+    render(<RoleHierarchyPanel />);
+    await expect(
+      screen.findByRole("heading", { name: "已停用身份組" })
+    ).resolves.toBeTruthy();
+    expect(screen.queryByLabelText("新名稱")).toBeNull();
+    expect(screen.queryByRole("button", { name: "重新命名" })).toBeNull();
+    cleanup();
+
+    // 3. Unauthorized / 403 projection fails closed to error without exposing identity mutation views
+    server.use(
+      http.get("/api/v1/identity/roles", () =>
+        HttpResponse.json(
+          {
+            status: 403,
+            code: "FORBIDDEN",
+            title: "Forbidden",
+            detail: "forbidden",
+            requestId: "rid-unauthorized",
+          },
+          { status: 403 }
+        )
+      )
+    );
+    mocks.searchParams = new URLSearchParams(
+      `module=roles&role=${MANAGER_ROLE}&view=rename`
+    );
+    render(
+      <>
+        <LiveRegion />
+        <RoleHierarchyPanel />
+      </>
+    );
+    await expect(
+      screen.findByText(FORBIDDEN_MESSAGE, { selector: "h2" })
+    ).resolves.toBeInTheDocument();
+    expect(screen.queryByLabelText("新名稱")).toBeNull();
+    expect(
+      screen.queryByRole("heading", { name: "成人部門管理者" })
+    ).toBeNull();
+    expect(screen.queryByRole("button", { name: "重新命名" })).toBeNull();
+    cleanup();
+
+    // 4. Unknown view parameter falls back safely to list view
+    server.use(http.get("/api/v1/identity/roles", () => hierarchyResponse()));
+    mocks.searchParams = new URLSearchParams(
+      `module=roles&role=${MANAGER_ROLE}&view=matrix`
+    );
+    render(<RoleHierarchyPanel />);
+    await expect(
+      screen.findByRole("heading", { name: /身份組/u })
+    ).resolves.toBeTruthy();
+    expect(
+      screen.queryByRole("heading", { name: "成人部門管理者" })
+    ).toBeNull();
+    expect(screen.queryByLabelText("新名稱")).toBeNull();
+  });
+
+  test("E-493-01: validates return parameter and preserves safe return target across list and detail Back actions", async () => {
+    const user = userEvent.setup();
+    mocks.searchParams = new URLSearchParams(
+      "module=roles&return=%2Fmanagement%3Fmodule%3Dsettings"
+    );
+    server.use(http.get("/api/v1/identity/roles", () => hierarchyResponse()));
+    render(<RoleHierarchyPanel />);
+    await expect(
+      screen.findByRole("heading", { name: /身份組/u })
+    ).resolves.toBeTruthy();
+
+    // Header back navigation uses validated return
+    const headerBack = screen.getByRole("link", { name: "返回管理工作" });
+    expect(headerBack).toHaveAttribute("href", "/management?module=settings");
+
+    cleanup();
+
+    // Unsafe return falls back to /management
+    mocks.searchParams = new URLSearchParams(
+      "module=roles&return=https%3A%2F%2Fexternal.com"
+    );
+    render(<RoleHierarchyPanel />);
+    await expect(
+      screen.findByRole("heading", { name: /身份組/u })
+    ).resolves.toBeTruthy();
+    expect(screen.getByRole("link", { name: "返回管理工作" })).toHaveAttribute(
+      "href",
+      "/management"
+    );
+  });
+
+  test("E-493-02 / E-493-03: protected Admin and 會友基礎 anchors prevent rename, scope, and reorder mutations", async () => {
+    const user = userEvent.setup();
+    server.use(http.get("/api/v1/identity/roles", () => hierarchyResponse()));
+    render(<RoleHierarchyPanel />);
+    await screen.findByRole("heading", { name: /身份組/u });
+    await user.click(screen.getByRole("button", { name: /全教會/u }));
+
+    // Admin checks: position 0, protected anchor
+    const adminRow = screen.getByRole("button", {
+      name: /系統管理員 · 詳情/u,
+    });
+    expect(adminRow).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /上移 · 系統管理員/u })
+    ).toBeNull();
+    expect(
+      screen.queryByRole("button", { name: /下移 · 系統管理員/u })
+    ).toBeNull();
+
+    await user.click(adminRow);
+    await expect(
+      screen.findByRole("heading", { name: "系統管理員" })
+    ).resolves.toBeTruthy();
+    expect(screen.queryByRole("button", { name: "重新命名" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "編輯適用範圍" })).toBeNull();
+
+    // Return to list
+    await user.click(screen.getByRole("button", { name: "返回身份組列表" }));
+
+    // 會友基礎 checks: position 999, protected anchor
+    const memberRow = screen.getByRole("button", {
+      name: /會友基礎 · 詳情/u,
+    });
+    expect(memberRow).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /上移 · 會友基礎/u })
+    ).toBeNull();
+    expect(
+      screen.queryByRole("button", { name: /下移 · 會友基礎/u })
+    ).toBeNull();
+
+    await user.click(memberRow);
+    await expect(
+      screen.findByRole("heading", { name: "會友基礎" })
+    ).resolves.toBeTruthy();
+    expect(screen.queryByRole("button", { name: "重新命名" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "編輯適用範圍" })).toBeNull();
+  });
+
+  test("E-493-03: sibling reorder buttons enforce category boundary limits and support keyboard activation", async () => {
+    const user = userEvent.setup();
+    let reorderBody: unknown = null;
+    server.use(
+      http.get("/api/v1/identity/roles", () => hierarchyResponse()),
+      http.patch("/api/v1/identity/roles/order", async ({ request }) => {
+        reorderBody = await request.json();
+        return HttpResponse.json({
+          requestId: "rid-keyboard-reorder",
+          data: {
+            categoryKey: "Department",
+            orderedRoleDefinitionIds: [MANAGER_ROLE, "sibling-b"],
+            revision: 6,
+            idempotent: false,
+          },
+        });
+      })
+    );
+    render(
+      <>
+        <LiveRegion />
+        <RoleHierarchyPanel />
+      </>
+    );
+    await screen.findByRole("heading", { name: /身份組/u });
+    await user.click(screen.getByRole("button", { name: /部門/u }));
+
+    // First sibling: 上移 is disabled, 下移 is enabled
+    const managerUp = screen.getByRole("button", {
+      name: /上移 · 成人部門管理者/u,
+    });
+    const managerDown = screen.getByRole("button", {
+      name: /下移 · 成人部門管理者/u,
+    });
+    expect(managerUp).toBeDisabled();
+    expect(managerDown).toBeEnabled();
+
+    // Second (last) sibling: 下移 is disabled, 上移 is enabled
+    const deputyUp = screen.getByRole("button", {
+      name: /上移 · 成區副手/u,
+    });
+    const deputyDown = screen.getByRole("button", {
+      name: /下移 · 成區副手/u,
+    });
+    expect(deputyUp).toBeEnabled();
+    expect(deputyDown).toBeDisabled();
+
+    // Keyboard activation on reorder button
+    managerDown.focus();
+    expect(document.activeElement).toBe(managerDown);
+    await user.keyboard("{Enter}");
+
+    await waitFor(() => {
+      expect(reorderBody).not.toBeNull();
+    });
+    const body = reorderBody as Record<string, unknown>;
+    expect(body.category_key).toBe("Department");
+    expect(Array.isArray(body.targets)).toBeTruthy();
+    expect(body.targets as unknown[]).toHaveLength(2);
+  });
 });

@@ -295,7 +295,6 @@ const ImpactGroups = ({
   </div>
 );
 
-
 const LifecyclePreviewGroups = ({
   accountUserId,
   preview,
@@ -1928,6 +1927,15 @@ export const AccountAccessPanel = () => {
               以下身份組會一次提交；任何一項不符合授權，整批都不會變更。
             </SheetDescription>
           </SheetHeader>
+          {status && (
+            <p
+              aria-live="polite"
+              className={cn("mx-4 mb-2", statusVariants({ kind: status.kind }))}
+              role={status.kind === "success" ? "status" : "alert"}
+            >
+              {status.message}
+            </p>
+          )}
           <ul
             aria-label="待新增身份組"
             className="m-0 grid gap-2 px-4 [list-style:none]"

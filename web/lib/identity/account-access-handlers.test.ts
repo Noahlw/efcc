@@ -585,4 +585,83 @@ describe("#486 Account Access handlers", () => {
     );
     expect(restore.status).toBe(200);
   });
+  test("search endpoint omits all credential and private fields and rejects unauthorized callers", async () => {
+    const memberHeaders = {
+      Cookie: `${ACCESS_COOKIE_NAME}=${memberCookie}`,
+    };
+    const denied = await worker.fetch(
+      request("/api/v1/identity/accounts?q=Disposable&offset=0&limit=20", {
+        headers: memberHeaders,
+      }),
+      testEnv()
+    );
+    expect(denied.status).toBe(403);
+
+    const adminHeaders = {
+      Cookie: `${ACCESS_COOKIE_NAME}=${adminCookie}`,
+    };
+    const allowed = await worker.fetch(
+      request("/api/v1/identity/accounts?q=Disposable&offset=0&limit=20", {
+        headers: adminHeaders,
+      }),
+      testEnv()
+    );
+    expect(allowed.status).toBe(200);
+    const body = (await allowed.json()) as {
+      data: {
+        accounts: Array<Record<string, unknown>>;
+      };
+    };
+    for (const account of body.data.accounts) {
+      expect(account).not.toHaveProperty("credentialHash");
+      expect(account).not.toHaveProperty("credential_hash");
+      expect(account).not.toHaveProperty("legacyPinHash");
+      expect(account).not.toHaveProperty("legacy_pin_hash");
+      expect(account).not.toHaveProperty("phone");
+    }
+  });
+
+  test("rejects atomic assignment request containing an invalid role ID with canonical Problem Details", async () => {
+    const adminHeaders = {
+      Cookie: `${ACCESS_COOKIE_NAME}=${adminCookie}`,
+      "Content-Type": "application/json",
+    };
+    const response = await worker.fetch(
+      request(`/api/v1/identity/accounts/${STAFF}/assignments`, {
+        method: "POST",
+        headers: adminHeaders,
+        body: {
+          base_revision: await revision(),
+          role_definition_ids: [
+            DEPARTMENT_ROLE,
+            "018f3b8a-ffff-7000-8000-999999999999",
+          ],
+        },
+      }),
+      testEnv()
+    );
+    expect(response.status).toBeGreaterThanOrEqual(400);
+    const problemBody = await problem(response);
+    expect(problemBody).toHaveProperty("type");
+    expect(problemBody).toHaveProperty("title");
+  });
+
+  test("strictly forbids multi-account bulk assignment endpoints", async () => {
+    const adminHeaders = {
+      Cookie: `${ACCESS_COOKIE_NAME}=${adminCookie}`,
+      "Content-Type": "application/json",
+    };
+    const bulkResponse = await worker.fetch(
+      request("/api/v1/identity/accounts/assignments", {
+        method: "POST",
+        headers: adminHeaders,
+        body: {
+          account_user_ids: [STAFF],
+          role_definition_ids: [DEPARTMENT_ROLE],
+        },
+      }),
+      testEnv()
+    );
+    expect(bulkResponse.status).toBe(404);
+  });
 });

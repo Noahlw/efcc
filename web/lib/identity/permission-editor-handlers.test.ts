@@ -17,6 +17,7 @@ const HOST = "https://efcc.example";
 const DATABASE = "E2E_disposable-local";
 const ADMIN = "E2E_DISPOSABLE_ADMIN";
 const MEMBER = "E2E_DISPOSABLE_MEMBER";
+const ADMIN_ROLE = "018f3b8a-0000-7000-8000-000000000a01";
 const STAFF_ROLE = "018f3b8a-0000-7000-8000-000000000a02";
 const PROGRAM_LEADER_ROLE = "018f3b8a-0000-7000-8000-100000000002";
 
@@ -363,7 +364,7 @@ describe("#485 Permission Editor Worker seam", () => {
 
   test("protected denial replay preserves the original request identity", async () => {
     const current = await currentRevision();
-    const path = `/api/v1/identity/role-definitions/${"018f3b8a-0000-7000-8000-000000000a01"}/grants`;
+    const path = `/api/v1/identity/role-definitions/${ADMIN_ROLE}/grants`;
     const init = {
       method: "PATCH",
       headers: {
@@ -390,8 +391,41 @@ describe("#485 Permission Editor Worker seam", () => {
         `SELECT COUNT(*) AS count FROM role_audit_events
           WHERE entity_id = ? AND outcome = 'DENIED'`
       )
-      .bind("018f3b8a-0000-7000-8000-000000000a01")
+      .bind(ADMIN_ROLE)
       .first<{ count: number }>();
     assert.equal(audits?.count, 1);
+  });
+  test("GET detail for protected Admin identity returns all capabilities locked and non-writable", async () => {
+    const response = await worker.fetch(
+      request(`/api/v1/identity/role-definitions/${ADMIN_ROLE}`, {
+        headers: { Cookie: `${ACCESS_COOKIE_NAME}=${adminCookie}` },
+      }),
+      testEnv()
+    );
+    assert.equal(response.status, 200);
+    const body = await bodyOf(response);
+    const data = body.data as {
+      permissions: readonly {
+        capability: string;
+        value: boolean;
+        locked: boolean;
+        editable: boolean;
+        lockReason: string | null;
+      }[];
+      caller: { userId: string; canRead: boolean; canWrite: boolean };
+      roleDefinition: { isProtected: boolean };
+    };
+    assert.equal(data.roleDefinition.isProtected, true);
+    assert.equal(data.caller.canWrite, false);
+    assert.ok(data.permissions.every((permission) => permission.value));
+    assert.ok(data.permissions.every((permission) => permission.locked));
+    assert.ok(data.permissions.every((permission) => !permission.editable));
+    assert.ok(
+      data.permissions.every(
+        (permission) =>
+          typeof permission.lockReason === "string" &&
+          permission.lockReason.length > 0
+      )
+    );
   });
 });
