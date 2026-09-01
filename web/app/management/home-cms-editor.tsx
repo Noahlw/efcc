@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { RpcError } from "@/lib/api";
 import { COPY } from "@/lib/copy";
 import { getHome } from "@/lib/home-api";
@@ -597,7 +599,7 @@ export function HomeContentEditor() {
             role="group"
             aria-label={copy.switchTemplate}
           >
-            <button
+            <Button
               id="home-cms-template-a"
               className={cn(
                 "min-h-[44px] rounded-md px-4 py-2 text-sm font-bold transition-colors focus-visible:outline-[3px]! focus-visible:outline-[var(--focus)]! focus-visible:outline-offset-[3px]!",
@@ -611,8 +613,8 @@ export function HomeContentEditor() {
               disabled={busy}
             >
               {copy.templateA}
-            </button>
-            <button
+            </Button>
+            <Button
               id="home-cms-template-b"
               className={cn(
                 "min-h-[44px] rounded-md px-4 py-2 text-sm font-bold transition-colors focus-visible:outline-[3px]! focus-visible:outline-[var(--focus)]! focus-visible:outline-offset-[3px]!",
@@ -626,7 +628,7 @@ export function HomeContentEditor() {
               disabled={busy}
             >
               {copy.templateB}
-            </button>
+            </Button>
           </div>
 
           <form
@@ -659,7 +661,7 @@ export function HomeContentEditor() {
                   <span className="text-sm font-bold text-[var(--ink)]">
                     {copy.featuredEvent}
                   </span>
-                  <input
+                  <Input
                     id="home-cms-featured-event"
                     className="min-h-[44px] w-full rounded-md border border-[var(--line-strong)] bg-[var(--surface-raised)] px-3 py-2 text-base text-[var(--ink)] placeholder:text-[var(--ink-muted)] focus-visible:border-[var(--focus)] focus-visible:outline-[3px]! focus-visible:outline-[var(--focus)]! focus-visible:outline-offset-[3px]! disabled:opacity-50"
                     value={form.featuredEventId}
@@ -704,7 +706,7 @@ export function HomeContentEditor() {
                   <span className="text-sm font-bold text-[var(--ink)]">
                     {copy.title}
                   </span>
-                  <input
+                  <Input
                     id="home-cms-title"
                     className="min-h-[44px] w-full rounded-md border border-[var(--line-strong)] bg-[var(--surface-raised)] px-3 py-2 text-base text-[var(--ink)] placeholder:text-[var(--ink-muted)] focus-visible:border-[var(--focus)] focus-visible:outline-[3px]! focus-visible:outline-[var(--focus)]! focus-visible:outline-offset-[3px]! disabled:opacity-50"
                     value={form.title}
@@ -718,7 +720,7 @@ export function HomeContentEditor() {
                   <span className="text-sm font-bold text-[var(--ink)]">
                     {copy.summary}
                   </span>
-                  <textarea
+                  <Textarea
                     id="home-cms-summary"
                     className="min-h-[88px] w-full rounded-md border border-[var(--line-strong)] bg-[var(--surface-raised)] px-3 py-2 text-base text-[var(--ink)] placeholder:text-[var(--ink-muted)] focus-visible:border-[var(--focus)] focus-visible:outline-[3px]! focus-visible:outline-[var(--focus)]! focus-visible:outline-offset-[3px]! disabled:opacity-50"
                     value={form.summary}
@@ -733,7 +735,7 @@ export function HomeContentEditor() {
                   <span className="text-sm font-bold text-[var(--ink)]">
                     {copy.body}
                   </span>
-                  <textarea
+                  <Textarea
                     id="home-cms-body"
                     className="min-h-[160px] w-full rounded-md border border-[var(--line-strong)] bg-[var(--surface-raised)] px-3 py-2 text-base text-[var(--ink)] placeholder:text-[var(--ink-muted)] focus-visible:border-[var(--focus)] focus-visible:outline-[3px]! focus-visible:outline-[var(--focus)]! focus-visible:outline-offset-[3px]! disabled:opacity-50"
                     value={form.bodyMarkdown}
@@ -749,7 +751,7 @@ export function HomeContentEditor() {
                     <span className="text-sm font-bold text-[var(--ink)]">
                       {copy.ctaLabel}
                     </span>
-                    <input
+                    <Input
                       id="home-cms-cta-label"
                       className="min-h-[44px] w-full rounded-md border border-[var(--line-strong)] bg-[var(--surface-raised)] px-3 py-2 text-base text-[var(--ink)] placeholder:text-[var(--ink-muted)] focus-visible:border-[var(--focus)] focus-visible:outline-[3px]! focus-visible:outline-[var(--focus)]! focus-visible:outline-offset-[3px]! disabled:opacity-50"
                       value={form.ctaLabel}
@@ -763,7 +765,7 @@ export function HomeContentEditor() {
                     <span className="text-sm font-bold text-[var(--ink)]">
                       {copy.ctaUrl}
                     </span>
-                    <input
+                    <Input
                       id="home-cms-cta-url"
                       className="min-h-[44px] w-full rounded-md border border-[var(--line-strong)] bg-[var(--surface-raised)] px-3 py-2 text-base text-[var(--ink)] placeholder:text-[var(--ink-muted)] focus-visible:border-[var(--focus)] focus-visible:outline-[3px]! focus-visible:outline-[var(--focus)]! focus-visible:outline-offset-[3px]! disabled:opacity-50"
                       type="url"
@@ -780,7 +782,7 @@ export function HomeContentEditor() {
                     <span className="text-sm font-bold text-[var(--ink)]">
                       {copy.imageUrl}
                     </span>
-                    <input
+                    <Input
                       id="home-cms-image-url"
                       className="min-h-[44px] w-full rounded-md border border-[var(--line-strong)] bg-[var(--surface-raised)] px-3 py-2 text-base text-[var(--ink)] placeholder:text-[var(--ink-muted)] focus-visible:border-[var(--focus)] focus-visible:outline-[3px]! focus-visible:outline-[var(--focus)]! focus-visible:outline-offset-[3px]! disabled:opacity-50"
                       type="url"
@@ -795,7 +797,7 @@ export function HomeContentEditor() {
                     <span className="text-sm font-bold text-[var(--ink)]">
                       {copy.imageAlt}
                     </span>
-                    <input
+                    <Input
                       id="home-cms-image-alt"
                       className="min-h-[44px] w-full rounded-md border border-[var(--line-strong)] bg-[var(--surface-raised)] px-3 py-2 text-base text-[var(--ink)] placeholder:text-[var(--ink-muted)] focus-visible:border-[var(--focus)] focus-visible:outline-[3px]! focus-visible:outline-[var(--focus)]! focus-visible:outline-offset-[3px]! disabled:opacity-50"
                       value={form.imageAlt}
@@ -962,7 +964,7 @@ export function HomeContentEditor() {
                 role="group"
                 aria-label={copy.preview}
               >
-                <button
+                <Button
                   id="home-cms-preview-phone"
                   className={cn(
                     "min-h-[44px] rounded-md px-4 py-2 text-sm font-bold transition-colors focus-visible:outline-[3px]! focus-visible:outline-[var(--focus)]! focus-visible:outline-offset-[3px]!",
@@ -975,8 +977,8 @@ export function HomeContentEditor() {
                   onClick={() => setPreviewViewport("phone")}
                 >
                   {copy.previewPhone}
-                </button>
-                <button
+                </Button>
+                <Button
                   id="home-cms-preview-desktop"
                   className={cn(
                     "min-h-[44px] rounded-md px-4 py-2 text-sm font-bold transition-colors focus-visible:outline-[3px]! focus-visible:outline-[var(--focus)]! focus-visible:outline-offset-[3px]!",
@@ -989,7 +991,7 @@ export function HomeContentEditor() {
                   onClick={() => setPreviewViewport("desktop")}
                 >
                   {copy.previewDesktop}
-                </button>
+                </Button>
               </div>
               <div className="flex justify-center rounded-lg border border-[var(--line)] bg-[var(--surface)] p-4">
                 <article

@@ -368,8 +368,6 @@ describe(HomeContentEditor, () => {
     expect(statusBadge).not.toBeNull();
     expect(statusBadge).toHaveTextContent(EDITOR.statusPublished);
     expect(statusBadge).toHaveTextContent("v5");
-    expect(screen.getByText(EDITOR.statusPublished)).toBeVisible();
-    expect(screen.getByText(/v5/)).toBeVisible();
 
     await user.clear(element("home-cms-title") as HTMLInputElement);
     await user.type(

@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Fragment, useEffect } from "react";
 
+import { Button } from "@/components/ui/button";
 import { RpcError } from "@/lib/api";
 import { COPY, errorCopyFor } from "@/lib/copy";
 import { announce } from "@/lib/live-region";
@@ -285,13 +286,14 @@ export function ManagementHub() {
           <p className="mt-2 text-sm text-[var(--ink-muted)]">
             {state.message}
           </p>
-          <button
+          <Button
             className="mt-4 inline-flex min-h-[44px] items-center justify-center rounded-[8px] border border-[var(--line-strong)] bg-[var(--surface-raised)] px-4 py-2 text-sm font-semibold text-[var(--ink)] transition-colors hover:bg-[var(--surface,#f4f5f3)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus,#176a87)]"
             type="button"
             onClick={retry}
+            variant="outline"
           >
             {COPY.management.retry}
-          </button>
+          </Button>
         </section>
       )}
 

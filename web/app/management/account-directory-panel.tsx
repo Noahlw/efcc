@@ -397,6 +397,7 @@ export const AccountDirectoryPanel = () => {
   const loadMoreRequestId = useRef(0);
   const rowButtonRefs = useRef<Map<string, HTMLButtonElement>>(new Map());
   const previousSelectedIdRef = useRef<string | null>(selectedId);
+  const restoreRowFocusRef = useRef(false);
 
   const listResource = useAsyncResource<AccountDirectoryView, DirectoryState>(
     () =>
@@ -453,20 +454,31 @@ export const AccountDirectoryPanel = () => {
 
   useEffect(() => {
     const syncSelection = () => {
-      setSelectedId(new URLSearchParams(window.location.search).get("account"));
+      const nextSelectedId = new URLSearchParams(window.location.search).get(
+        "account"
+      );
+      if (previousSelectedIdRef.current && !nextSelectedId) {
+        restoreRowFocusRef.current = true;
+      }
+      setSelectedId(nextSelectedId);
     };
     setSelectedId(searchParams.get("account"));
     window.addEventListener("popstate", syncSelection);
     return () => window.removeEventListener("popstate", syncSelection);
   }, [searchParams]);
   useEffect(() => {
-    if (previousSelectedIdRef.current && !selectedId) {
+    if (
+      restoreRowFocusRef.current &&
+      previousSelectedIdRef.current &&
+      !selectedId
+    ) {
       const prevButton = rowButtonRefs.current.get(
         previousSelectedIdRef.current
       );
       if (prevButton) {
         prevButton.focus();
       }
+      restoreRowFocusRef.current = false;
     }
     previousSelectedIdRef.current = selectedId;
   }, [selectedId]);

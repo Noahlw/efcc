@@ -103,13 +103,17 @@ const APPROVAL_UI_COPY = {
 const approvalSelection = new Map<string, PendingRegistration>();
 let preserveSelectionForDetail = false;
 
-export function preserveApprovalSelectionForDetail() {
+let approvalFocusRequestId: string | null = null;
+
+export function preserveApprovalSelectionForDetail(requestId?: string) {
   preserveSelectionForDetail = true;
+  approvalFocusRequestId = requestId ?? null;
 }
 
 export function clearApprovalSelection() {
   approvalSelection.clear();
   preserveSelectionForDetail = false;
+  approvalFocusRequestId = null;
 }
 
 function approvalStatusLabel(item: PendingRegistration): string {
@@ -196,6 +200,7 @@ export const ApprovalQueue = () => {
   const resultHeadingRef = useRef<HTMLHeadingElement>(null);
   const stateRef = useRef<HTMLParagraphElement>(null);
   const forbiddenHeadingRef = useRef<HTMLHeadingElement>(null);
+  const rowLinkRefs = useRef<Map<string, HTMLAnchorElement>>(new Map());
 
   const load = useCallback(async (status: RegistrationQueueStatus) => {
     const sequence = ++requestSequence.current;
@@ -286,7 +291,16 @@ export const ApprovalQueue = () => {
 
   useEffect(() => {
     if (state.kind === "ready") {
-      resultHeadingRef.current?.focus();
+      const focusRequestId = approvalFocusRequestId;
+      const rowLink = focusRequestId
+        ? rowLinkRefs.current.get(focusRequestId)
+        : undefined;
+      if (rowLink) {
+        rowLink.focus();
+        approvalFocusRequestId = null;
+      } else {
+        resultHeadingRef.current?.focus();
+      }
     } else if (state.kind === "error") {
       stateRef.current?.focus();
     } else if (state.kind === "forbidden") {
@@ -653,13 +667,15 @@ export const ApprovalQueue = () => {
               label="篩選申請"
               onClose={() => setFilterOpen(false)}
             >
-              <h2 className="m-0 pr-12 text-lg font-extrabold">篩選申請</h2>
               <div className="mt-4 grid gap-3">
                 <label
                   className="grid min-w-0 gap-2"
                   htmlFor="approval-sheet-role-filter"
                 >
-                  <span className="text-[0.82rem] font-bold text-[var(--ink)]">
+                  <span
+                    className="text-[0.82rem] font-bold text-[var(--ink)]"
+                    id="approval-sheet-role-filter-label"
+                  >
                     {APPROVAL_UI_COPY.roleFilterLabel}
                   </span>
                   <Select
@@ -855,8 +871,15 @@ export const ApprovalQueue = () => {
                       )}
                       <div className="grid min-w-0 gap-1 wrap-anywhere">
                         <Link
+                          ref={(node) => {
+                            if (node) {
+                              rowLinkRefs.current.set(item.requestId, node);
+                            } else {
+                              rowLinkRefs.current.delete(item.requestId);
+                            }
+                          }}
                           href={`/management?module=approvals&request=${encodeURIComponent(item.requestId)}`}
-                          className="text-base font-extrabold text-[var(--ink)] hover:text-[var(--accent)] hover:underline"
+                          className="min-w-0 whitespace-normal wrap-anywhere text-base font-extrabold text-[var(--ink)] hover:text-[var(--accent)] hover:underline"
                           aria-label={`${COPY.approvals.openDetail} ${item.name}`}
                           onClick={(event) => {
                             if (
@@ -866,16 +889,18 @@ export const ApprovalQueue = () => {
                               !event.shiftKey &&
                               !event.altKey
                             ) {
-                              preserveApprovalSelectionForDetail();
+                              preserveApprovalSelectionForDetail(
+                                item.requestId
+                              );
                             }
                           }}
                         >
                           {item.name}
                         </Link>
-                        <span className="font-mono text-xs text-[var(--ink-muted)]">
+                        <span className="min-w-0 whitespace-normal wrap-anywhere font-mono text-xs text-[var(--ink-muted)]">
                           {item.username}
                         </span>
-                        <span className="text-xs text-[var(--ink-muted)]">
+                        <span className="min-w-0 whitespace-normal wrap-anywhere text-xs text-[var(--ink-muted)]">
                           {item.phone ?? "—"} · {approvalRoleLabel(item.role)} ·{" "}
                           {formatSubmittedAt(item.submittedAt)}
                         </span>
@@ -910,126 +935,130 @@ export const ApprovalQueue = () => {
         </p>
       )}
 
-      {activeStatus === "Pending" && selectedIds.length > 0 && (
-        <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
-          <ActionSurface
-            busy={busy}
-            disabled={busy}
-            label={APPROVAL_UI_COPY.selectionRegion}
-            state={actionSurfaceState}
-          >
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div className="flex items-center gap-3">
-                <strong>{APPROVAL_UI_COPY.selected(selectedIds.length)}</strong>
-                <Button
-                  type="button"
-                  className="min-h-11"
-                  onClick={() => setTrayOpen((open) => !open)}
-                  aria-expanded={trayOpen}
-                  disabled={busy}
-                  size="lg"
-                  variant="outline"
-                >
-                  {trayOpen
-                    ? APPROVAL_UI_COPY.hideSelected
-                    : APPROVAL_UI_COPY.reviewSelected}
-                </Button>
-              </div>
-              <div className="flex items-center gap-3">
-                <Button
-                  type="button"
-                  className="min-h-11"
-                  onClick={clearSelection}
-                  disabled={busy}
-                  size="lg"
-                  variant="outline"
-                >
-                  {APPROVAL_UI_COPY.clear}
-                </Button>
-                <AlertDialogTrigger asChild>
+      {state.kind === "ready" &&
+        activeStatus === "Pending" &&
+        selectedIds.length > 0 && (
+          <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
+            <ActionSurface
+              busy={busy}
+              disabled={busy}
+              label={APPROVAL_UI_COPY.selectionRegion}
+              state={actionSurfaceState}
+            >
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="flex items-center gap-3">
+                  <strong>
+                    {APPROVAL_UI_COPY.selected(selectedIds.length)}
+                  </strong>
                   <Button
                     type="button"
                     className="min-h-11"
-                    onClick={beginBatchConfirmation}
+                    onClick={() => setTrayOpen((open) => !open)}
+                    aria-expanded={trayOpen}
                     disabled={busy}
-                    aria-busy={busy}
-                    aria-haspopup="dialog"
                     size="lg"
-                    variant="default"
+                    variant="outline"
                   >
-                    {APPROVAL_UI_COPY.bulkApprove}
+                    {trayOpen
+                      ? APPROVAL_UI_COPY.hideSelected
+                      : APPROVAL_UI_COPY.reviewSelected}
                   </Button>
-                </AlertDialogTrigger>
-              </div>
-            </div>
-            {trayOpen && (
-              <ul
-                className="m-0 mt-3 grid max-h-48 min-w-0 list-none gap-2 overflow-y-auto p-0"
-                aria-label={APPROVAL_UI_COPY.selectedItemsLabel}
-              >
-                {visibleNames.map((item) => (
-                  <li
-                    key={item.requestId}
-                    className="flex items-center justify-between gap-2 rounded border border-[var(--line)] bg-[var(--surface-raised)] p-2 text-sm"
+                </div>
+                <div className="flex items-center gap-3">
+                  <Button
+                    type="button"
+                    className="min-h-11"
+                    onClick={clearSelection}
+                    disabled={busy}
+                    size="lg"
+                    variant="outline"
                   >
-                    <span>
-                      {item.name}
-                      {staleIds.has(item.requestId) && (
-                        <small className="ml-2 text-xs font-bold text-[var(--error)]">
-                          {APPROVAL_UI_COPY.stale}
-                        </small>
-                      )}
-                    </span>
+                    {APPROVAL_UI_COPY.clear}
+                  </Button>
+                  <AlertDialogTrigger asChild>
                     <Button
                       type="button"
-                      className="size-8 min-h-8 min-w-8 p-0 text-sm"
-                      onClick={() => removeSelection(item.requestId)}
+                      className="min-h-11"
+                      onClick={beginBatchConfirmation}
                       disabled={busy}
-                      aria-label={APPROVAL_UI_COPY.remove(item.name)}
-                      size="icon"
-                      variant="outline"
+                      aria-busy={busy}
+                      aria-haspopup="dialog"
+                      size="lg"
+                      variant="default"
                     >
-                      ×
+                      {APPROVAL_UI_COPY.bulkApprove}
                     </Button>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </ActionSurface>
-          <AlertDialogContent
-            className="max-w-md"
-            aria-labelledby="approval-batch-confirm-title"
-            aria-describedby="approval-batch-confirm-body"
-          >
-            <div className="grid gap-4">
-              <AlertDialogTitle id="approval-batch-confirm-title">
-                {APPROVAL_UI_COPY.confirmTitle}
-              </AlertDialogTitle>
-              <AlertDialogDescription id="approval-batch-confirm-body">
-                {APPROVAL_UI_COPY.activeAccounts(selectedItems.length)}
-              </AlertDialogDescription>
-              <ul className="m-0 max-h-32 list-disc overflow-y-auto pl-5 text-sm">
-                {confirmationNames.map((item) => (
-                  <li key={item.requestId}>{item.name}</li>
-                ))}
-                {hiddenNameCount > 0 && <li>+{hiddenNameCount}</li>}
-              </ul>
-              <AlertDialogFooter>
-                <AlertDialogCancel onClick={closeConfirmation}>
-                  {APPROVAL_UI_COPY.confirmCancel}
-                </AlertDialogCancel>
-                <AlertDialogAction
-                  onClick={acceptBatchConfirmation}
-                  disabled={busy}
-                  aria-busy={busy}
+                  </AlertDialogTrigger>
+                </div>
+              </div>
+              {trayOpen && (
+                <ul
+                  className="m-0 mt-3 grid max-h-48 min-w-0 list-none gap-2 overflow-y-auto p-0"
+                  aria-label={APPROVAL_UI_COPY.selectedItemsLabel}
                 >
-                  {APPROVAL_UI_COPY.confirmApprove}
-                </AlertDialogAction>
-              </AlertDialogFooter>
-            </div>
-          </AlertDialogContent>
-        </AlertDialog>
-      )}
+                  {visibleNames.map((item) => (
+                    <li
+                      key={item.requestId}
+                      className="flex min-w-0 items-center justify-between gap-2 rounded border border-[var(--line)] bg-[var(--surface-raised)] p-2 text-sm"
+                    >
+                      <span className="min-w-0 whitespace-normal wrap-anywhere">
+                        {item.name}
+                        {staleIds.has(item.requestId) && (
+                          <small className="ml-2 text-xs font-bold text-[var(--error)]">
+                            {APPROVAL_UI_COPY.stale}
+                          </small>
+                        )}
+                      </span>
+                      <Button
+                        type="button"
+                        className="size-11 min-h-11 min-w-11 shrink-0 p-0 text-sm"
+                        onClick={() => removeSelection(item.requestId)}
+                        disabled={busy}
+                        aria-label={APPROVAL_UI_COPY.remove(item.name)}
+                        size="icon"
+                        variant="outline"
+                      >
+                        ×
+                      </Button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </ActionSurface>
+            <AlertDialogContent
+              className="max-w-md"
+              aria-labelledby="approval-batch-confirm-title"
+              aria-describedby="approval-batch-confirm-body"
+            >
+              <div className="grid gap-4">
+                <AlertDialogTitle id="approval-batch-confirm-title">
+                  {APPROVAL_UI_COPY.confirmTitle}
+                </AlertDialogTitle>
+                <AlertDialogDescription id="approval-batch-confirm-body">
+                  {APPROVAL_UI_COPY.activeAccounts(selectedItems.length)}
+                </AlertDialogDescription>
+                <ul className="m-0 max-h-32 list-disc overflow-y-auto pl-5 text-sm">
+                  {confirmationNames.map((item) => (
+                    <li key={item.requestId}>{item.name}</li>
+                  ))}
+                  {hiddenNameCount > 0 && <li>+{hiddenNameCount}</li>}
+                </ul>
+                <AlertDialogFooter>
+                  <AlertDialogCancel onClick={closeConfirmation}>
+                    {APPROVAL_UI_COPY.confirmCancel}
+                  </AlertDialogCancel>
+                  <AlertDialogAction
+                    onClick={acceptBatchConfirmation}
+                    disabled={busy}
+                    aria-busy={busy}
+                  >
+                    {APPROVAL_UI_COPY.confirmApprove}
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </div>
+            </AlertDialogContent>
+          </AlertDialog>
+        )}
     </div>
   );
 };

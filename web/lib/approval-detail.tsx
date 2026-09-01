@@ -374,7 +374,7 @@ export function ApprovalDetail({ requestId }: { requestId: string }) {
               <span className="font-bold text-[var(--ink-muted)]">
                 {COPY.approvals.applicantName}
               </span>
-              <span className="font-extrabold text-[var(--ink)]">
+              <span className="min-w-0 whitespace-normal wrap-anywhere font-extrabold text-[var(--ink)]">
                 {state.registration.name}
               </span>
             </div>
@@ -382,16 +382,20 @@ export function ApprovalDetail({ requestId }: { requestId: string }) {
               <span className="font-bold text-[var(--ink-muted)]">
                 {COPY.approvals.applicantContact}
               </span>
-              <span className="grid gap-0.5 text-[var(--ink)]">
-                <span className="font-mono">{state.registration.username}</span>
+              <span className="grid min-w-0 gap-0.5 text-[var(--ink)]">
+                <span className="min-w-0 whitespace-normal wrap-anywhere font-mono">
+                  {state.registration.username}
+                </span>
                 {state.registration.phone && (
-                  <span>{state.registration.phone}</span>
+                  <span className="min-w-0 whitespace-normal wrap-anywhere">
+                    {state.registration.phone}
+                  </span>
                 )}
               </span>
             </div>
             <div className="grid grid-cols-[120px_1fr] items-baseline gap-4 border-b border-[var(--line)] pb-3 text-sm">
               <span className="font-bold text-[var(--ink-muted)]">角色</span>
-              <span className="text-[var(--ink)]">
+              <span className="min-w-0 whitespace-normal wrap-anywhere text-[var(--ink)]">
                 {detailRoleLabel(state.registration.role)}
               </span>
             </div>
@@ -399,7 +403,7 @@ export function ApprovalDetail({ requestId }: { requestId: string }) {
               <span className="font-bold text-[var(--ink-muted)]">
                 {DETAIL_UI_COPY.submittedAt}
               </span>
-              <span className="text-[var(--ink)]">
+              <span className="min-w-0 whitespace-normal wrap-anywhere text-[var(--ink)]">
                 {detailFormatSubmittedAt(state.registration.submittedAt)}
               </span>
             </div>
@@ -420,7 +424,7 @@ export function ApprovalDetail({ requestId }: { requestId: string }) {
                 <span className="font-bold text-[var(--ink-muted)]">
                   {COPY.approvals.decisionNote}
                 </span>
-                <span className="text-[var(--ink)]">
+                <span className="min-w-0 whitespace-normal wrap-anywhere text-[var(--ink)]">
                   {state.registration.decisionNote}
                 </span>
               </div>
