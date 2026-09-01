@@ -212,8 +212,8 @@ surviving domain rules) document the decisions that replaced it.
 - `pnpm db:seed:demo` — seeds the local `E2E_DEMO_` department, programs, and generated recurring events.
 - `pnpm exec playwright test -c tests/e2e/<relevant-config>.ts` — required local browser acceptance run for the changed capability.
 - `pnpm exec playwright test -c tests/e2e/auth-d1.config.ts` — local cookie/auth smoke by default; set the five `AUTH_*` values only when targeting an optional deployed Worker.
-- `.husky/pre-commit` — Runs `lint-staged` (formatting/linting) followed by `pnpm typecheck` on every commit (ADR-0014).
-- GitHub Actions (`.github/workflows/`) — `precheck.yml` is the deterministic typecheck/unit/component/static-shell gate; `e2e.yml` runs the rebuilt D1 auth contract on pushes/PRs and exposes optional deployed D1 Playwright smoke only through `workflow_dispatch` (ADR-0029).
+- `.husky/pre-commit` — Runs a Node `>= 22.18.0` guard, `ultracite doctor`, staged Oxfmt via `lint-staged`, then `pnpm verify:precommit` on every commit (ADR-0014).
+- GitHub Actions (`.github/workflows/`) — `fast-ci.yml` is the single automatic gate (root + `web/` typechecks via `pnpm verify:fast`); `e2e.yml` is manual-only (`workflow_dispatch`) and runs the rebuilt D1 auth contract plus an optional deployed D1 Playwright smoke (ADR-0029). All other deterministic checks run locally through the pre-commit hook and `pnpm verify:precommit`.
 - Full step-by-step workflow: [`CONTRIBUTING.md`](CONTRIBUTING.md) for clone/install/branching, plus `README.md` sections "Build and run the web Worker locally" and "Deploy the isolated Worker".
 
 ---

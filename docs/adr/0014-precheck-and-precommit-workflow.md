@@ -96,6 +96,10 @@ its CI/pre-commit provisions:
 - **`e2e.yml` is manual-only** (`workflow_dispatch`): its `auth-contract` and
   `deployed-auth` jobs are operator-dispatched and neither is a required
   merge check; both keep their fail-closed behavior.
+- **The four Phase C Worker test files are excluded from `verify:precommit`**
+  (via `pnpm test:workerd`): their five test-side assertion defects were
+  diagnosed in Phase D and flagged in PR #502; they are repaired in a
+  Phase C/D follow-up before the files rejoin the gate.
 - **Ultracite syntax debt is deferred** to issue #498: the repository-wide
   `pnpm check` audit (thousands of existing diagnostics) is not part of Fast
   CI or the pre-commit gate, and no broad suppression was added. The
