@@ -17,7 +17,6 @@ const HEADER = [
   "Name",
   "Username",
   "PIN_Code",
-  "System_Role",
   "Status",
 ];
 
@@ -112,7 +111,7 @@ interface AccountRow {
   name: string;
   username: string | null;
   phone: string | null;
-  role: string;
+  identities: { label: string; scopeKind: string; scopeLabel: string | null }[];
   status: string;
   departments: { id: string; name: string }[];
   canOpenAccess: boolean;
@@ -141,10 +140,10 @@ describe("S4-02: Account Directory contract", () => {
     await applyMigrations();
     await importLegacyUsers(testDb(), [
       HEADER,
-      ["AD001", "Directory Admin", "ad-admin", "1111", "Admin", "Active"],
-      ["AD002", "Directory Staff", "ad-staff", "2222", "Staff", "Active"],
-      ["AD003", "Directory Member", "ad-member", "3333", "Member", "Active"],
-      ["AD004", "Directory Pending", "ad-pending", "4444", "Member", "Pending"],
+      ["AD001", "Directory Admin", "ad-admin", "1111", "Active"],
+      ["AD002", "Directory Staff", "ad-staff", "2222", "Active"],
+      ["AD003", "Directory Member", "ad-member", "3333", "Active"],
+      ["AD004", "Directory Pending", "ad-pending", "4444", "Pending"],
     ]);
     await ensureIdentity("admin", "AD001");
     await ensureIdentity("staff", "AD002");
@@ -244,7 +243,6 @@ describe("S4-02: Account Directory contract", () => {
         name: string;
         username: string;
         phone: string | null;
-        role: string;
         status: string;
         identities: {
           id: string;
@@ -262,7 +260,6 @@ describe("S4-02: Account Directory contract", () => {
       name: "Directory Pending",
       username: "ad-pending",
       phone: null,
-      role: "Member",
       identities: [],
       status: "Pending",
       canOpenAccess: false,
@@ -270,49 +267,46 @@ describe("S4-02: Account Directory contract", () => {
     });
   });
 
-  test("Staff can filter the Account Directory by role and status", async () => {
+  test("Staff can filter the Account Directory by status", async () => {
     const response = await worker.fetch(
       request(
-        "/api/v1/programs/accounts?q=Directory&role=Staff&status=Active",
+        "/api/v1/programs/accounts?q=Directory&status=Active",
         staffAccess
       ),
       testEnv()
     );
     assert.strictEqual(response.status, 200);
     const body = (await response.json()) as AccountBody;
-    assert.deepStrictEqual(
-      body.data.accounts.map((account) => account.userId),
-      ["AD002"]
-    );
-    assert.strictEqual(body.data.accounts[0]?.canOpenAccess, false);
+    assert.ok(body.data.accounts.some((a) => a.userId === "AD002"));
+    assert.ok(body.data.accounts.every((a) => a.status === "Active"));
+    const staff = body.data.accounts.find((a) => a.userId === "AD002");
+    assert.strictEqual(staff?.canOpenAccess, false);
   });
-  test("Member role filter includes accounts with automatic baseline access", async () => {
+  test("Member baseline access is included in active Directory results", async () => {
     const response = await worker.fetch(
       request(
-        "/api/v1/programs/accounts?q=Directory&role=Member&status=Active",
+        "/api/v1/programs/accounts?q=Directory&status=Active",
         staffAccess
       ),
       testEnv()
     );
     assert.strictEqual(response.status, 200);
     const body = (await response.json()) as AccountBody;
-    assert.deepStrictEqual(
-      body.data.accounts.map((account) => account.userId),
-      ["AD003"]
-    );
+    assert.ok(body.data.accounts.some((a) => a.userId === "AD003"));
+    const member = body.data.accounts.find((a) => a.userId === "AD003");
+    assert.ok(member);
+    assert.ok(Array.isArray(member.identities));
   });
 
   test("filters the Account Directory without requiring a search term", async () => {
     const response = await worker.fetch(
-      request("/api/v1/programs/accounts?role=Staff", staffAccess),
+      request("/api/v1/programs/accounts?status=Active", staffAccess),
       testEnv()
     );
     assert.strictEqual(response.status, 200);
     const body = (await response.json()) as AccountBody;
-    assert.deepStrictEqual(
-      body.data.accounts.map((account) => account.userId),
-      ["AD002"]
-    );
+    assert.ok(body.data.accounts.some((a) => a.userId === "AD002"));
+    assert.ok(body.data.accounts.every((a) => a.status === "Active"));
   });
 
   test("Member is forbidden from the church-wide Account Directory", async () => {

@@ -49,7 +49,6 @@ const HEADER = [
   "Name",
   "Username",
   "PIN_Code",
-  "System_Role",
   "Status",
 ];
 const HOST = "https://efcc.example";
@@ -189,15 +188,15 @@ beforeAll(async () => {
   await applyMigrations();
   await importLegacyUsers(testDb(), [
     HEADER,
-    ["U001", "Alice Chan", "alice", "1234", "Admin", "Active"],
-    ["U002", "Bob Lee", "bob", "5678",  "Active"],
-    ["U003", "Carol Wong", "carol", "0000",  "Active"],
+    ["U001", "Alice Chan", "alice", "1234", "Active"],
+    ["U002", "Bob Lee", "bob", "5678", "Active"],
+    ["U003", "Carol Wong", "carol", "0000", "Active"],
     // U004 stays Suspended: the self-service surface must refuse it (403).
-    ["U004", "Dana Fox", "dana", "1111",  "Suspended"],
+    ["U004", "Dana Fox", "dana", "1111", "Suspended"],
     // Dedicated replay fixtures: the retry tests below mutate these users
     // and must not depend on (or disturb) any test that reuses them.
-    ["U-REPLAY", "Rita Replay", "rita", "2222",  "Active"],
-    ["U-PWREP", "Paul Replay", "paul", "3333",  "Active"],
+    ["U-REPLAY", "Rita Replay", "rita", "2222", "Active"],
+    ["U-PWREP", "Paul Replay", "paul", "3333", "Active"],
   ]);
   await completeCredentialUpgrade(testDb(), {
     userId: "U001",

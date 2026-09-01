@@ -414,30 +414,6 @@ export class D1WorkspaceStore implements WorkspaceStore {
                 accounts.name,
                 accounts.username,
                 accounts.phone,
-                CASE
-                  WHEN EXISTS (
-                    SELECT 1
-                      FROM role_assignments system_admin_assignment
-                      JOIN role_definitions system_admin_role
-                        ON system_admin_role.role_definition_id =
-                           system_admin_assignment.role_definition_id
-                     WHERE system_admin_assignment.account_user_id = accounts.user_id
-                       AND system_admin_assignment.revoked_at IS NULL
-                       AND system_admin_role.stable_key = 'admin'
-                       AND system_admin_role.is_archived = 0
-                  ) THEN 'Admin'
-                  WHEN EXISTS (
-                    SELECT 1
-                      FROM role_assignments system_staff_assignment
-                      JOIN role_definitions system_staff_role
-                        ON system_staff_role.role_definition_id =
-                           system_staff_assignment.role_definition_id
-                     WHERE system_staff_assignment.account_user_id = accounts.user_id
-                       AND system_staff_assignment.revoked_at IS NULL
-                       AND system_staff_role.stable_key = 'staff'
-                       AND system_staff_role.is_archived = 0
-                  ) THEN 'Staff'
-                  ELSE 'Member'
                 accounts.account_status,
                 departments.department_id,
                 departments.name AS department_name,
@@ -559,30 +535,6 @@ export class D1WorkspaceStore implements WorkspaceStore {
                 accounts.name,
                 accounts.username,
                 accounts.phone,
-                CASE
-                  WHEN EXISTS (
-                    SELECT 1
-                      FROM role_assignments system_admin_assignment
-                      JOIN role_definitions system_admin_role
-                        ON system_admin_role.role_definition_id =
-                           system_admin_assignment.role_definition_id
-                     WHERE system_admin_assignment.account_user_id = accounts.user_id
-                       AND system_admin_assignment.revoked_at IS NULL
-                       AND system_admin_role.stable_key = 'admin'
-                       AND system_admin_role.is_archived = 0
-                  ) THEN 'Admin'
-                  WHEN EXISTS (
-                    SELECT 1
-                      FROM role_assignments system_staff_assignment
-                      JOIN role_definitions system_staff_role
-                        ON system_staff_role.role_definition_id =
-                           system_staff_assignment.role_definition_id
-                     WHERE system_staff_assignment.account_user_id = accounts.user_id
-                       AND system_staff_assignment.revoked_at IS NULL
-                       AND system_staff_role.stable_key = 'staff'
-                       AND system_staff_role.is_archived = 0
-                  ) THEN 'Staff'
-                  ELSE 'Member'
                 accounts.account_status,
                 departments.department_id,
                 departments.name AS department_name,
@@ -720,30 +672,6 @@ export class D1WorkspaceStore implements WorkspaceStore {
                 accounts.name,
                 accounts.username,
                 accounts.phone,
-                CASE
-                  WHEN EXISTS (
-                    SELECT 1
-                      FROM role_assignments system_admin_assignment
-                      JOIN role_definitions system_admin_role
-                        ON system_admin_role.role_definition_id =
-                           system_admin_assignment.role_definition_id
-                     WHERE system_admin_assignment.account_user_id = accounts.user_id
-                       AND system_admin_assignment.revoked_at IS NULL
-                       AND system_admin_role.stable_key = 'admin'
-                       AND system_admin_role.is_archived = 0
-                  ) THEN 'Admin'
-                  WHEN EXISTS (
-                    SELECT 1
-                      FROM role_assignments system_staff_assignment
-                      JOIN role_definitions system_staff_role
-                        ON system_staff_role.role_definition_id =
-                           system_staff_assignment.role_definition_id
-                     WHERE system_staff_assignment.account_user_id = accounts.user_id
-                       AND system_staff_assignment.revoked_at IS NULL
-                       AND system_staff_role.stable_key = 'staff'
-                       AND system_staff_role.is_archived = 0
-                  ) THEN 'Staff'
-                  ELSE 'Member'
                 accounts.account_status,
                 departments.department_id,
                 departments.name AS department_name,
