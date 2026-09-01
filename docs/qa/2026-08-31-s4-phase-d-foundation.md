@@ -98,6 +98,18 @@ PROGRAMS_TARGET_URL=http://127.0.0.1:8797 fnm exec --using v22.18.0 pnpm exec pl
 
 A prior run against the default 8787 target returned two 404 setup errors; it is excluded from the final evidence above.
 
+## Standalone shell responsive rerun
+
+The required standalone gate was rerun while the disposable Node 22 Wrangler Worker was ready on `127.0.0.1:8797`:
+
+```text
+PATH=/Users/noah.wong/.local/share/fnm/node-versions/v22.18.0/installation/bin:/usr/local/bin:/usr/bin:/bin pnpm test:shell-responsive
+```
+
+**PASS — 92 passed, 1 intentional skip in 93 scheduled tests; 1 worker; 31.2s.**
+
+`tests/e2e/responsive.config.ts` intentionally builds and serves the static Next output at `127.0.0.1:4173`; it does not issue Worker requests. The Worker remained ready on port 8797 for the local acceptance environment, and the standalone command was not combined with `test:shell-geometry`.
+
 ## Cutover and cleanup evidence
 
 - Deleted public/Programs CSS module callers were searched after the cutover; no executable import of a deleted module remained.
