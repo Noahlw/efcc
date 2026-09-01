@@ -1,4 +1,4 @@
-/* oxlint-disable vitest/prefer-import-in-mock, vitest/prefer-mock-promise-shorthand, vitest/prefer-called-with, unicorn/prefer-query-selector */
+/* oxlint-disable vitest/prefer-import-in-mock, vitest/prefer-mock-promise-shorthand, vitest/prefer-called-with, unicorn/prefer-query-selector, vitest/max-expects, promise/avoid-new */
 
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -95,13 +95,45 @@ const LEGACY_USER: PublicUser = {
   username: "legacy",
 };
 // title-case values; uppercase spellings fall back to the Member set.
-const STAFF_USER: PublicUser = { ...PUBLIC_USER };
-const ADMIN_USER: PublicUser = { ...PUBLIC_USER };
+const STAFF_USER: PublicUser = {
+  ...PUBLIC_USER,
+  identities: [
+    {
+      label: COPY.shell.roleLabels.Staff,
+      scopeKind: "Global",
+      scopeLabel: null,
+    },
+  ],
+};
+const ADMIN_USER: PublicUser = {
+  ...PUBLIC_USER,
+  identities: [
+    {
+      label: COPY.shell.roleLabels.Admin,
+      scopeKind: "Global",
+      scopeLabel: null,
+    },
+  ],
+};
 const PROGRAM_LEADER_USER: PublicUser = {
   ...PUBLIC_USER,
+  identities: [
+    {
+      label: "導師",
+      scopeKind: "Global",
+      scopeLabel: null,
+    },
+  ],
 };
 const DEPARTMENT_MANAGER_USER: PublicUser = {
   ...PUBLIC_USER,
+  identities: [
+    {
+      label: "部長",
+      scopeKind: "Global",
+      scopeLabel: null,
+    },
+  ],
 };
 const BOOTSTRAP: Bootstrap = {
   sections: MEMBER_SECTIONS,
@@ -764,7 +796,6 @@ describe("Shell", () => {
       ).toHaveLength(1);
       expect(localStorage.getItem(AUTH_HINT_KEY)).toBe("1");
     });
-    /* oxlint-enable vitest/max-expects */
 
     test("stored access session silently restores and redirects on reload", async () => {
       setAuthHint();
@@ -914,6 +945,7 @@ describe("Shell", () => {
       await user.click(screen.getByRole("button", { name: COPY.login.submit }));
       expect(screen.getByText(COPY.login.missingFields)).toBeInTheDocument();
     });
+
     test("focuses the first invalid login field and associates the error", async () => {
       const user = userEvent.setup();
       render(<LoginPage />);
@@ -1235,6 +1267,7 @@ describe("Shell", () => {
       expect(screen.queryByText(COPY.profile.phone)).not.toBeInTheDocument();
       expect(screen.queryByText(PUBLIC_USER.phone)).not.toBeInTheDocument();
     });
+
     test("keeps the account details disclosure and chevron state synchronized", async () => {
       const { user } = renderRestoredProfile();
       await screen.findAllByRole("button", { name: COPY.logout.submit });
@@ -1292,6 +1325,7 @@ describe("Shell", () => {
         screen.queryByRole("img", { name: COPY.profile.qrCode })
       ).toBeNull();
     });
+
     test("does not create an identity section when the server returns none", async () => {
       server.use(
         http.get("/api/v1/auth/me", () =>
@@ -1311,6 +1345,7 @@ describe("Shell", () => {
         screen.queryByRole("region", { name: "身份組" })
       ).not.toBeInTheDocument();
     });
+
     test("preserves non-active status copy with an inactive status projection", async () => {
       server.use(
         http.get("/api/v1/auth/me", () =>
@@ -1608,6 +1643,7 @@ describe("Shell", () => {
         screen.getByRole("dialog", { name: COPY.attention.title })
       ).toBeInTheDocument();
     });
+
     test("leaves Programs notification ownership to its Feed-backed control", () => {
       pathnameMock.mockReturnValue("/programs");
       render(

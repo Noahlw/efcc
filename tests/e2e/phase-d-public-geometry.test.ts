@@ -378,7 +378,7 @@ test("duplicate registration keeps the username draft and field recovery", async
   await page.getByLabel("姓名").fill("幾何測試");
   await page.getByLabel("電話").fill("91234567");
   await page.getByRole("button", { name: "提交註冊申請" }).click();
-  await expect(page.getByRole("alert")).toBeVisible();
+  await expect(page.locator("#registration-error")).toBeVisible();
   await expect(username).toHaveAttribute("aria-invalid", "true");
   await expect(username).toBeFocused();
   await expect(username).toHaveValue("E2E_geometry_duplicate");
