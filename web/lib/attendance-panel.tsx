@@ -235,6 +235,8 @@ export const AttendancePanel = () => {
   }
 
   const submitBusy = flow.busy || submitting;
+  const guestStatus =
+    flow.status || (flow.outcome ? COPY.attendance.noEvents : "");
 
   return (
     <div
@@ -262,8 +264,11 @@ export const AttendancePanel = () => {
         <p className="-mt-1.5 text-base leading-relaxed text-[var(--ink-muted)] min-w-0 whitespace-normal [overflow-wrap:anywhere]">
           {COPY.attendance.guestLead}
         </p>
-        {flow.status && (
-          <ScannerStatusOutput message={flow.status} tone={flow.tone} />
+        {guestStatus && (
+          <ScannerStatusOutput
+            message={guestStatus}
+            tone={flow.status ? flow.tone : "info"}
+          />
         )}
         <form
           className="grid gap-3"

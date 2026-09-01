@@ -31,8 +31,13 @@ const adminUsername =
 const adminCredential =
   process.env.PROGRAMS_ADMIN_CREDENTIAL ??
   (localTarget ? DEV_ADMIN.credential : undefined);
-const eventId = required("PHASE_E_EVENT_ID", process.env.PHASE_E_EVENT_ID);
-
+async function firstEventId(page: Page): Promise<string> {
+  const payload = (await page.evaluate(async () => {
+    const response = await fetch("/api/v1/attendance/scanner-events");
+    return response.json();
+  })) as { data?: { events?: { event_id?: string }[] } };
+  return required("PHASE_E_EVENT_ID", payload.data?.events?.[0]?.event_id);
+}
 function appPath(pathname: string): string {
   return `${targetPath}${pathname}` || "/";
 }
@@ -49,8 +54,11 @@ async function loginAs(
   await page.waitForURL((url) => url.pathname !== appPath("/"));
 }
 
-async function assertAttendanceGeometry(page: Page): Promise<void> {
-  const result = await page.evaluate(() => {
+async function assertAttendanceGeometry(
+  page: Page,
+  options: { finalSelector: string; requireShell?: boolean }
+): Promise<void> {
+  const result = await page.evaluate(({ finalSelector }) => {
     const root = document.documentElement;
     const elements = [
       ...document.querySelectorAll<HTMLElement>(
@@ -59,10 +67,10 @@ async function assertAttendanceGeometry(page: Page): Promise<void> {
     ].filter((element) => {
       const style = getComputedStyle(element);
       return (
+        element.getAttribute("aria-hidden") !== "true" &&
         style.display !== "none" &&
         style.visibility !== "hidden" &&
-        element.getClientRects().length > 0 &&
-        element.getAttribute("aria-hidden") !== "true"
+        element.getClientRects().length > 0
       );
     });
     const rects = elements.map((element) => {
@@ -73,35 +81,65 @@ async function assertAttendanceGeometry(page: Page): Promise<void> {
         height: rect.height,
         left: rect.left,
         right: rect.right,
-        top: rect.top,
-        bottom: rect.bottom,
         label:
           element.getAttribute("aria-label") ??
           element.textContent?.trim() ??
           "",
       };
     });
-    const final = rects.at(-1);
-    const pageStyle = getComputedStyle(document.body);
-    const dock = document.querySelector(
-      "[data-shell-bottom-nav], nav[aria-label]"
-    );
-    const dockRect = dock?.getBoundingClientRect();
+    const finalElement = document.querySelector<HTMLElement>(finalSelector);
+    const shell = document.querySelector<HTMLElement>("#shell-content");
+    const dock = document.querySelector<HTMLElement>("#main-navigation");
+    const shellPaddingBottom = shell
+      ? getComputedStyle(shell).paddingBottom
+      : "";
+    if (!finalElement) {
+      return {
+        overflow: root.scrollWidth > root.clientWidth + 1,
+        undersized: rects.filter((item) => item.width < 44 || item.height < 44),
+        overflowing: rects.filter(
+          (item) => item.left < -1 || item.right > window.innerWidth + 1
+        ),
+        finalPresent: false,
+        finalReachable: false,
+        shellPaddingBottom,
+        dockClearance: false,
+        hasShell: Boolean(shell),
+        isPhone: window.innerWidth < 800,
+      };
+    }
+    finalElement.scrollIntoView({ block: "center", inline: "nearest" });
+    const finalRect = finalElement.getBoundingClientRect();
+    const dockRect = dock?.getBoundingClientRect() ?? null;
     return {
       overflow: root.scrollWidth > root.clientWidth + 1,
       undersized: rects.filter((item) => item.width < 44 || item.height < 44),
+      overflowing: rects.filter(
+        (item) => item.left < -1 || item.right > window.innerWidth + 1
+      ),
+      finalPresent: true,
       finalReachable:
-        !final ||
-        final.bottom <= Math.max(window.innerHeight, root.scrollHeight) + 1,
-      safeAreaPadding: pageStyle.paddingBottom,
-      dockClearance: !dockRect || !final || final.bottom <= dockRect.top + 1,
+        finalRect.top >= -1 && finalRect.bottom <= window.innerHeight + 1,
+      shellPaddingBottom,
+      dockClearance: !dockRect || finalRect.bottom <= dockRect.top + 1,
+      hasShell: Boolean(shell),
+      isPhone: window.innerWidth < 800,
     };
-  });
+  }, options);
   expect(result.overflow).toBe(false);
+  expect(result.overflowing, JSON.stringify(result.overflowing)).toHaveLength(
+    0
+  );
   expect(result.undersized, JSON.stringify(result.undersized)).toHaveLength(0);
+  expect(result.finalPresent).toBe(true);
   expect(result.finalReachable).toBe(true);
-  expect(result.safeAreaPadding).toBeTruthy();
-  expect(result.dockClearance).toBe(true);
+  if (options.requireShell) {
+    expect(result.hasShell).toBe(true);
+    if (result.isPhone) {
+      expect(result.shellPaddingBottom).not.toBe("0px");
+      expect(result.dockClearance).toBe(true);
+    }
+  }
 }
 
 test.describe("Phase E Attendance Geometry (E-491-05)", () => {
@@ -117,7 +155,9 @@ test.describe("Phase E Attendance Geometry (E-491-05)", () => {
       node.textContent = "超長中文內容與unbroken-content-".repeat(24);
       document.querySelector("form")?.append(node);
     });
-    await assertAttendanceGeometry(page);
+    await assertAttendanceGeometry(page, {
+      finalSelector: "button[type='submit']",
+    });
     const long = page.locator('[data-geometry-long-content="true"]');
     expect(await long.evaluate((node) => node.scrollWidth)).toBeLessThanOrEqual(
       await long.evaluate((node) => node.clientWidth + 1)
@@ -133,8 +173,16 @@ test.describe("Phase E Attendance Geometry (E-491-05)", () => {
       required("PROGRAMS_MEMBER_CREDENTIAL", memberCredential)
     );
     await page.goto(appPath("/scanner"));
-    await assertAttendanceGeometry(page);
     const width = page.viewportSize()?.width ?? 0;
+    const finalSelector =
+      width >= 800
+        ? "#attendance-code"
+        : "[data-testid='scanner-camera-stage'] button";
+    await page.waitForSelector(finalSelector);
+    await assertAttendanceGeometry(page, {
+      finalSelector,
+      requireShell: true,
+    });
     if (width >= 800) {
       await expect(
         page.locator('[data-scanner-state="desktop-manual"]')
@@ -160,8 +208,17 @@ test.describe("Phase E Attendance Geometry (E-491-05)", () => {
       required("PROGRAMS_ADMIN_USERNAME", adminUsername),
       required("PROGRAMS_ADMIN_CREDENTIAL", adminCredential)
     );
-    await page.goto(appPath("/scanner?mode=assisted"));
-    await assertAttendanceGeometry(page);
+    const selectedEventId = await firstEventId(page);
+    await page.goto(
+      appPath(
+        `/scanner?mode=assisted&event=${encodeURIComponent(selectedEventId)}`
+      )
+    );
+    await page.waitForSelector("#assisted-event-context");
+    await assertAttendanceGeometry(page, {
+      finalSelector: "#assisted-event-context",
+      requireShell: true,
+    });
   });
 
   test("Events operator roster print sheet hides screen chrome", async ({
@@ -173,13 +230,21 @@ test.describe("Phase E Attendance Geometry (E-491-05)", () => {
       required("PROGRAMS_ADMIN_USERNAME", adminUsername),
       required("PROGRAMS_ADMIN_CREDENTIAL", adminCredential)
     );
-    await page.goto(appPath(`/events?eventId=${encodeURIComponent(eventId)}`));
-    await page.waitForSelector('[aria-label="列印簽到表"]');
+    const selectedEventId = await firstEventId(page);
+    await page.goto(
+      appPath(`/events?eventId=${encodeURIComponent(selectedEventId)}`)
+    );
+    await page.waitForSelector('[aria-label="列印簽到表"]', {
+      state: "attached",
+    });
     await page.emulateMedia({ media: "print" });
     await expect(page.locator('[aria-label="列印簽到表"]')).toBeVisible();
     for (const element of await page.locator(".print\\:hidden").all()) {
       await expect(element).toBeHidden();
     }
-    await assertAttendanceGeometry(page);
+    await assertAttendanceGeometry(page, {
+      finalSelector: "[aria-label='列印簽到表']",
+      requireShell: false,
+    });
   });
 });

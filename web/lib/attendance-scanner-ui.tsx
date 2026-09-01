@@ -21,7 +21,7 @@ import { hkTime24Label, hkWallLabel } from "@/lib/hk-time";
 import { cn } from "@/lib/utils";
 
 export const attendanceButtonVariants = cva(
-  "inline-flex min-h-11 h-auto min-w-0 items-center justify-center rounded-[var(--radius-sm)] px-4 py-3 text-base font-bold transition-colors outline-none motion-reduce:transition-none focus-visible:border-[var(--focus)] focus-visible:ring-3 focus-visible:ring-[var(--focus)]/30 disabled:pointer-events-none disabled:opacity-50",
+  "inline-flex min-h-11 h-auto min-w-11 items-center justify-center rounded-[var(--radius-sm)] px-4 py-3 text-base font-bold transition-colors outline-none motion-reduce:transition-none focus-visible:border-[var(--focus)] focus-visible:ring-3 focus-visible:ring-[var(--focus)]/30 disabled:pointer-events-none disabled:opacity-50",
   {
     variants: {
       variant: {
@@ -33,7 +33,7 @@ export const attendanceButtonVariants = cva(
           "border border-[var(--line-strong)] bg-[var(--surface-raised)] text-[var(--ink)] hover:bg-[var(--surface)] hover:text-[var(--ink)]",
         danger:
           "border border-[var(--error)] bg-[var(--surface-raised)] text-[var(--error)] hover:bg-[var(--error-surface)] hover:text-[var(--error)]",
-        back: "w-fit min-h-11 px-2 py-3 text-[var(--accent-deep)] hover:bg-transparent hover:text-[var(--accent)] font-bold",
+        back: "w-fit min-w-11 min-h-11 px-2 py-3 text-[var(--accent-deep)] hover:bg-transparent hover:text-[var(--accent)] font-bold",
         modeTab:
           "border border-[var(--line-strong)] bg-[var(--surface-raised)] px-4 py-2.5 text-base font-bold text-[var(--ink)] hover:bg-[var(--surface)] hover:text-[var(--ink)] aria-selected:border-[var(--accent)] aria-selected:bg-[var(--surface)] aria-selected:text-[var(--accent-deep)]",
         cameraStop:

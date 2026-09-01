@@ -29,7 +29,7 @@ import {
 import { useQrCamera } from "@/lib/use-qr-camera";
 
 const inputControl =
-  "min-h-11 h-auto rounded-[var(--radius-sm)] border border-[var(--line-strong)] bg-[var(--surface-raised)] px-3 py-3 text-base text-[var(--ink)] placeholder:text-[var(--ink-muted)] focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50";
+  "min-h-11 h-auto min-w-0 w-full rounded-[var(--radius-sm)] border border-[var(--line-strong)] bg-[var(--surface-raised)] px-3 py-3 text-base text-[var(--ink)] placeholder:text-[var(--ink-muted)] focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50";
 const eventButtonControl =
   "flex w-full min-h-11 flex-col items-start justify-between rounded-[var(--radius-sm)] border border-[var(--line-strong)] bg-[var(--surface-raised)] p-3 text-left text-base font-normal text-[var(--ink)] hover:bg-[var(--surface)] hover:text-[var(--ink)] sm:flex-row sm:items-center motion-reduce:transition-none";
 
@@ -326,13 +326,16 @@ export const AssistedScannerPanel = ({
                 : ""}
             </p>
             <form
-              className="grid gap-3 sm:grid-cols-[1fr_auto]"
+              className="grid min-w-0 gap-3 sm:grid-cols-[1fr_auto]"
               onSubmit={(event) => {
                 event.preventDefault();
                 void searchMembers();
               }}
             >
-              <label className="grid gap-1.5" htmlFor="assisted-member-search">
+              <label
+                className="grid min-w-0 gap-1.5"
+                htmlFor="assisted-member-search"
+              >
                 <span className="text-sm font-bold leading-normal text-[var(--ink)]">
                   {COPY.attendance.memberSearch}
                 </span>
