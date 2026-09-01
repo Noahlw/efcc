@@ -33,9 +33,16 @@ const PUBLIC_USER = {
   name: "Test User",
   username: "tester",
   phone: "0900000000",
-  role: "Staff",
   status: "active",
   qrCodeString: "qr:u1",
+  identities: [
+    {
+      label: "同工",
+      scopeKind: "Global",
+      scopeLabel: null,
+    },
+  ],
+  capabilities: { "program.manage": true },
 };
 
 const AUTH_HINT_KEY = "efcc_auth_active";
@@ -221,7 +228,7 @@ test("bottom nav and page outlet reserve safe-area inset", async ({
 
 test("nav targets are at least 44x44 and keyboard reachable with a visible focus cue", async ({
   page,
-}, testInfo) => {
+}) => {
   await page.goto("/profile.html");
 
   const visibleNav = page.locator("#main-navigation");
