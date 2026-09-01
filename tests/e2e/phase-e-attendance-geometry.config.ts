@@ -34,7 +34,16 @@ export default defineConfig({
   retries: 1,
   fullyParallel: false,
   workers: 1,
-  reporter: [["list"]],
+  reporter: [
+    ["list"],
+    [
+      "json",
+      {
+        outputFile:
+          "tests/e2e/test-results/phase-f/phase-e-attendance-geometry/results.json",
+      },
+    ],
+  ],
   use: {
     baseURL: targetUrl,
     permissions: ["camera"],

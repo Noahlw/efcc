@@ -46,10 +46,21 @@ export default defineConfig({
   retries: 1,
   fullyParallel: false,
   workers: 1,
-  reporter: [["list"]],
+  reporter: [
+    ["list"],
+    [
+      "json",
+      {
+        outputFile:
+          "tests/e2e/test-results/phase-f/phase-d-programs-geometry/results.json",
+      },
+    ],
+  ],
   use: {
     baseURL: targetUrl,
     trace: "off",
+    screenshot: "off",
+    video: "off",
   },
   projects: [
     {

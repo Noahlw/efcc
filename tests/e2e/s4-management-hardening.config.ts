@@ -37,10 +37,9 @@ if (
 
 const outputDir =
   process.env.S4_E2E_OUTPUT_DIR ??
-  path.resolve("test-results", "s4-management-hardening");
+  path.resolve("tests/e2e/test-results/phase-f/s4-management-hardening");
 const resultsFile =
   process.env.S4_E2E_RESULTS_FILE ?? path.join(outputDir, "results.json");
-
 export default defineConfig({
   testDir: ".",
   testMatch: ["**/s4-management-hardening.test.ts"],
@@ -58,6 +57,7 @@ export default defineConfig({
     // numeric DOM measurements only.
     trace: "off",
     screenshot: "off",
+    video: "off",
   },
   projects: [
     {

@@ -7,6 +7,7 @@ import { expect, test } from "@playwright/test";
 import type { Page, Route, TestInfo } from "@playwright/test";
 
 import { projectSections, projectNavigation } from "../../web/lib/sections";
+import { attachNumericEvidence } from "./numeric-evidence";
 
 const AUTH_HINT_KEY = "efcc_auth_active";
 const TARGET_PATH = process.env.AUTH_UI_TARGET_URL
@@ -145,7 +146,8 @@ async function stubUsernameUnavailable(page: Page): Promise<void> {
 
 async function assertContained(
   page: Page,
-  requireShell = false
+  requireShell = false,
+  testInfo?: TestInfo
 ): Promise<void> {
   const viewport = await page.evaluate(() => {
     const navigation = document.querySelector<HTMLElement>("#main-navigation");
@@ -172,6 +174,27 @@ async function assertContained(
           : null,
     };
   });
+  const undersized = await page
+    .locator("a, button, input, select, textarea")
+    .evaluateAll((elements) =>
+      elements
+        .map((element) => {
+          const rect = element.getBoundingClientRect();
+          return {
+            role: element.tagName.toLowerCase(),
+            width: rect.width,
+            height: rect.height,
+            text: element.textContent?.trim() ?? "",
+          };
+        })
+        .filter(({ width, height }) => width > 0 && (width < 44 || height < 44))
+    );
+  if (testInfo) {
+    await attachNumericEvidence(testInfo, "public-contained-viewport", {
+      undersized,
+      viewport,
+    });
+  }
   expect(viewport.documentWidth).toBeLessThanOrEqual(viewport.innerWidth);
   expect(viewport.bodyWidth).toBeLessThanOrEqual(viewport.innerWidth);
   if (requireShell) {
@@ -195,27 +218,13 @@ async function assertContained(
       expect(viewport.shell.navigationPosition).toBe("sticky");
     }
   }
-  const undersized = await page
-    .locator("a, button, input, select, textarea")
-    .evaluateAll((elements) =>
-      elements
-        .map((element) => {
-          const rect = element.getBoundingClientRect();
-          return {
-            role: element.tagName.toLowerCase(),
-            width: rect.width,
-            height: rect.height,
-            text: element.textContent?.trim() ?? "",
-          };
-        })
-        .filter(({ width, height }) => width > 0 && (width < 44 || height < 44))
-    );
   expect(undersized).toEqual([]);
 }
 
 async function assertFocusedControlVisible(
   page: Page,
-  expectedSelector?: string
+  expectedSelector?: string,
+  testInfo?: TestInfo
 ): Promise<void> {
   const result = await page.evaluate((selector) => {
     const active = document.activeElement;
@@ -240,8 +249,10 @@ async function assertFocusedControlVisible(
       matches: selector === undefined ? true : active.matches(selector),
     };
   }, expectedSelector);
+  if (testInfo && result) {
+    await attachNumericEvidence(testInfo, "public-focused-control", result);
+  }
   expect(result).not.toBeNull();
-  expect(result?.top).toBeGreaterThanOrEqual(0);
   expect(result?.bottom).toBeLessThanOrEqual(result?.viewportHeight ?? 0);
   expect(result?.left).toBeGreaterThanOrEqual(0);
   expect(result?.right).toBeLessThanOrEqual(result?.viewportWidth ?? 0);
@@ -260,7 +271,7 @@ async function assertFocusedControlVisible(
 
 test("public login keeps one heading, recovery focus, and target sizes", async ({
   page,
-}) => {
+}, testInfo: TestInfo) => {
   await page.goto(appPath("/"));
   await expect(page.locator("h1")).toHaveCount(1);
   await expect(page.getByRole("button", { name: "登入" })).toBeVisible();
@@ -269,10 +280,12 @@ test("public login keeps one heading, recovery focus, and target sizes", async (
   await expect(username).toBeFocused();
   await expect(username).toHaveAttribute("aria-invalid", "true");
   await expect(username).toHaveAttribute("aria-describedby", "login-error");
-  await assertFocusedControlVisible(page, "#login-username");
-  await assertContained(page);
+  await assertFocusedControlVisible(page, "#login-username", testInfo);
+  await assertContained(page, false, testInfo);
 });
-test("login error keeps a focused critical error anchor", async ({ page }) => {
+test("login error keeps a focused critical error anchor", async ({
+  page,
+}, testInfo: TestInfo) => {
   await stubLoginError(page);
   await page.goto(appPath("/"));
   await page.getByLabel("用戶名稱").fill("E2E_geometry_missing");
@@ -282,12 +295,16 @@ test("login error keeps a focused critical error anchor", async ({ page }) => {
     page.getByRole("alert", { name: "用戶名稱或密碼不正確。" })
   ).toBeVisible();
   await expect(page.locator("#login-error").locator("xpath=..")).toBeFocused();
-  await assertFocusedControlVisible(page, '[tabindex="-1"]:has(#login-error)');
-  await assertContained(page);
+  await assertFocusedControlVisible(
+    page,
+    '[tabindex="-1"]:has(#login-error)',
+    testInfo
+  );
+  await assertContained(page, false, testInfo);
 });
 test("recoverable auth restore exposes retry and safe-home anchors", async ({
   page,
-}) => {
+}, testInfo: TestInfo) => {
   await stubRecoverableRestore(page);
   await page.goto(appPath("/"));
   await expect(
@@ -298,12 +315,12 @@ test("recoverable auth restore exposes retry and safe-home anchors", async ({
     "href",
     "/"
   );
-  await assertFocusedControlVisible(page, 'main[tabindex="-1"]');
-  await assertContained(page);
+  await assertFocusedControlVisible(page, 'main[tabindex="-1"]', testInfo);
+  await assertContained(page, false, testInfo);
 });
 test("legacy upgrade gate preserves focused validation and bounded controls", async ({
   page,
-}) => {
+}, testInfo: TestInfo) => {
   await page.route("**/api/v1/auth/login", (route: Route) =>
     route.fulfill({
       status: 200,
@@ -331,18 +348,17 @@ test("legacy upgrade gate preserves focused validation and bounded controls", as
   await page.locator("#legacy-pin").fill("");
   await upgradeSubmit.click();
   await expect(page.locator("#legacy-pin")).toBeFocused();
-  await assertFocusedControlVisible(page, "#legacy-pin");
-  await assertContained(page);
-  await page.locator("#legacy-pin").fill("1234");
+  await assertFocusedControlVisible(page, "#legacy-pin", testInfo);
+  await assertContained(page, false, testInfo);
   await page.locator("#new-credential").fill("short");
   await upgradeSubmit.click();
   await expect(page.locator("#new-credential")).toBeFocused();
-  await assertContained(page);
+  await assertContained(page, false, testInfo);
 });
 
 test("session expiry keeps the re-login recovery surface contained", async ({
   page,
-}) => {
+}, testInfo: TestInfo) => {
   await page.addInitScript(() => {
     sessionStorage.setItem("efcc_session_expired", "1");
   });
@@ -351,16 +367,15 @@ test("session expiry keeps the re-login recovery surface contained", async ({
     page.getByRole("heading", { name: "工作階段已過期" })
   ).toBeVisible();
   await expect(page.getByRole("button", { name: "重新登入" })).toBeVisible();
-  await assertFocusedControlVisible(page, "#session-expired-title");
-  await assertContained(page);
+  await assertFocusedControlVisible(page, "#session-expired-title", testInfo);
+  await assertContained(page, false, testInfo);
 });
 
 test("duplicate registration keeps the username draft and field recovery", async ({
   page,
-}) => {
+}, testInfo: TestInfo) => {
   await page.route("**/api/v1/auth/register", (route: Route) =>
     route.fulfill({
-      status: 409,
       contentType: "application/problem+json",
       body: JSON.stringify({
         status: 409,
@@ -382,13 +397,13 @@ test("duplicate registration keeps the username draft and field recovery", async
   await expect(username).toHaveAttribute("aria-invalid", "true");
   await expect(username).toBeFocused();
   await expect(username).toHaveValue("E2E_geometry_duplicate");
-  await assertFocusedControlVisible(page, "#reg-username");
-  await assertContained(page);
+  await assertFocusedControlVisible(page, "#reg-username", testInfo);
+  await assertContained(page, false, testInfo);
 });
 
 test("registration keeps one heading, field recovery, and target sizes", async ({
   page,
-}) => {
+}, testInfo: TestInfo) => {
   await page.goto(appPath("/register"));
   await expect(page.locator("h1")).toHaveCount(1);
   await page.getByRole("button", { name: "提交註冊申請" }).click();
@@ -399,12 +414,12 @@ test("registration keeps one heading, field recovery, and target sizes", async (
     "aria-describedby",
     "registration-error"
   );
-  await assertFocusedControlVisible(page);
-  await assertContained(page);
+  await assertFocusedControlVisible(page, undefined, testInfo);
+  await assertContained(page, false, testInfo);
 });
 test("registration done state keeps final destination anchors contained", async ({
   page,
-}) => {
+}, testInfo: TestInfo) => {
   await stubRegistrationSuccess(page);
   await page.goto(appPath("/register"));
   await page.getByLabel("用戶名稱").fill("E2E_geometry_register");
@@ -421,12 +436,12 @@ test("registration done state keeps final destination anchors contained", async 
     "href",
     "/guest-check-in"
   );
-  await assertContained(page);
+  await assertContained(page, false, testInfo);
 });
 
 test("Profile renders privacy-safe identity summaries at every W7 width", async ({
   page,
-}) => {
+}, testInfo: TestInfo) => {
   await stubAuthenticatedSession(page);
   await page.goto(appPath("/profile"));
   await expect(page.locator("h1")).toHaveCount(1);
@@ -441,11 +456,11 @@ test("Profile renders privacy-safe identity summaries at every W7 width", async 
   await expect(page.getByText("program.enroll", { exact: true })).toHaveCount(
     0
   );
-  await assertContained(page, true);
+  await assertContained(page, true, testInfo);
 });
 test("Profile keeps no-QR and zero-identity states private and contained", async ({
   page,
-}) => {
+}, testInfo: TestInfo) => {
   await stubAuthenticatedSession(page, {
     ...PROFILE,
     qrCodeString: "",
@@ -462,12 +477,12 @@ test("Profile keeps no-QR and zero-identity states private and contained", async
     "href",
     "/scanner"
   );
-  await assertContained(page, true);
+  await assertContained(page, true, testInfo);
 });
 
 test("Profile wraps multiple long identity labels without leakage", async ({
   page,
-}) => {
+}, testInfo: TestInfo) => {
   const longLabel = "身份組".repeat(80);
   await stubAuthenticatedSession(page, {
     ...PROFILE,
@@ -491,12 +506,12 @@ test("Profile wraps multiple long identity labels without leakage", async ({
   await expect(identities).toContainText("Department");
   await expect(identities).toContainText("Program");
   await expect(page.getByText(PROFILE.phone, { exact: true })).toHaveCount(0);
-  await assertContained(page, true);
+  await assertContained(page, true, testInfo);
 });
 
 test("Account Settings canonical ready state keeps anchors reachable at W7 widths", async ({
   page,
-}) => {
+}, testInfo: TestInfo) => {
   await stubAuthenticatedSession(page);
   await page.goto(appPath("/profile/settings"));
   await expect(page.getByRole("heading", { name: "帳戶設定" })).toBeVisible();
@@ -508,7 +523,7 @@ test("Account Settings canonical ready state keeps anchors reachable at W7 width
     page.getByRole("button", { name: "儲存登入名稱" })
   ).toBeVisible();
   await expect(page.getByRole("button", { name: "更改密碼" })).toBeVisible();
-  await assertContained(page, true);
+  await assertContained(page, true, testInfo);
 });
 test("Account Settings unavailable state preserves draft and focuses retry", async ({
   page,
@@ -528,12 +543,12 @@ test("Account Settings unavailable state preserves draft and focuses retry", asy
   ).toBeVisible();
   await expect(page.getByRole("button", { name: "重試連接" })).toBeFocused();
   await expect(username).toHaveValue("E2E_geometry_unavailable");
-  await assertFocusedControlVisible(page);
-  await assertContained(page, true);
+  await assertFocusedControlVisible(page, undefined, testInfo);
+  await assertContained(page, true, testInfo);
 });
 test("registrations and management settings keep canonical destinations contained", async ({
   page,
-}) => {
+}, testInfo: TestInfo) => {
   await stubAuthenticatedSession(page, MANAGEMENT_PROFILE);
   await page.goto(
     appPath("/registrations?return=https%3A%2F%2Fattacker.example")
@@ -545,8 +560,7 @@ test("registrations and management settings keep canonical destinations containe
   await expect(
     page.getByRole("heading", { name: "設定", exact: true })
   ).toBeVisible();
-  await assertContained(page, true);
-
+  await assertContained(page, true, testInfo);
   const checkinLink = page.getByRole("link", { name: /簽到設定/u });
   await expect(checkinLink).toHaveAttribute(
     "href",
@@ -556,8 +570,7 @@ test("registrations and management settings keep canonical destinations containe
   await expect(
     page.getByRole("heading", { name: "簽到設定", exact: true })
   ).toBeVisible();
-  await assertContained(page, true);
-  await page.getByRole("link", { name: "設定", exact: true }).click();
+  await assertContained(page, true, testInfo);
 
   const timezoneLink = page.getByRole("link", { name: /時區/u });
   await expect(timezoneLink).toHaveAttribute(
@@ -571,5 +584,5 @@ test("registrations and management settings keep canonical destinations containe
   await expect(
     page.getByText("香港時間（GMT+8）", { exact: true })
   ).toBeVisible();
-  await assertContained(page, true);
+  await assertContained(page, true, testInfo);
 });

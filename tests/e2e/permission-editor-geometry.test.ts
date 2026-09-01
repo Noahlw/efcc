@@ -14,6 +14,7 @@ import { expect, test } from "@playwright/test";
 import type { Page, Route } from "@playwright/test";
 
 import { defaultSections, projectNavigation } from "../../web/lib/sections";
+import { attachNumericEvidence } from "./numeric-evidence";
 
 const AUTH_HINT_KEY = "efcc_auth_active";
 const ROLE_ID = "r-staff";
@@ -287,6 +288,11 @@ test("Permission Editor detail stays contained across the W7 widths", async ({
     };
   });
 
+  await attachNumericEvidence(
+    testInfo,
+    "permission-editor-detail-geometry",
+    geometry
+  );
   expect(
     geometry.horizontalOverflow,
     `horizontal overflow at ${geometry.viewportWidth}px`
@@ -381,7 +387,7 @@ test("Permission Editor detail stays contained across the W7 widths", async ({
 
 test("Permission Editor review surface remains inside the viewport", async ({
   page,
-}) => {
+}, testInfo) => {
   await page.goto(
     `/management?module=permissions&role=${ROLE_ID}&view=permissions`
   );
@@ -443,7 +449,11 @@ test("Permission Editor review surface remains inside the viewport", async ({
       reviewItems: reviewItems.map(box),
     };
   });
-
+  await attachNumericEvidence(
+    testInfo,
+    "permission-editor-review-geometry",
+    geometry
+  );
   expect(
     geometry.horizontalOverflow,
     `horizontal overflow at ${geometry.viewportWidth}px with review open`

@@ -13,6 +13,7 @@ import { expect, test } from "@playwright/test";
 import type { Locator, Page, TestInfo } from "@playwright/test";
 
 import { DEV_ADMIN, DEV_MEMBER, DEV_STAFF } from "./dev-fixtures";
+import { attachNumericEvidence } from "./numeric-evidence";
 
 const LOGIN = "登入";
 const HUB_TITLE = "管理工作";
@@ -282,7 +283,10 @@ function onlyProjects(testInfo: TestInfo, names: readonly string[]): void {
   );
 }
 
-async function assertResponsiveGeometry(page: Page): Promise<void> {
+async function assertResponsiveGeometry(
+  page: Page,
+  testInfo?: TestInfo
+): Promise<void> {
   const geometry = await page.evaluate(() => {
     const viewportWidth = window.innerWidth;
     const horizontalWidth = Math.max(
@@ -328,6 +332,9 @@ async function assertResponsiveGeometry(page: Page): Promise<void> {
       ),
     };
   });
+  if (testInfo) {
+    await attachNumericEvidence(testInfo, "responsive-geometry", geometry);
+  }
   expect(
     geometry.horizontalOverflow,
     `horizontal overflow: ${geometry.horizontalOverflow}px`
@@ -881,7 +888,7 @@ test.describe("S4 Management hardening integration gate", () => {
       await expect(
         page.locator("main#shell-content [aria-labelledby]").first()
       ).toBeVisible();
-      await assertResponsiveGeometry(page);
+      await assertResponsiveGeometry(page, testInfo);
     }
 
     await page.goto("/management?module=accounts");
@@ -1271,7 +1278,7 @@ test.describe("S4 Management hardening integration gate", () => {
     await expect(page).toHaveURL(/\/management$/u);
 
     // numeric checks for Hub and Settings at this width
-    await assertResponsiveGeometry(page);
+    await assertResponsiveGeometry(page, testInfo);
   });
 
   test("Home Content preserves Draft/Published, Template A/B, preview, audit and conflict with long-content containment", async ({
@@ -1539,7 +1546,7 @@ test.describe("S4 Management hardening integration gate", () => {
     );
     expect(overflow).toBeLessThanOrEqual(1);
 
-    await assertResponsiveGeometry(page);
+    await assertResponsiveGeometry(page, testInfo);
   });
 
   test("Identity Tree → Detail → Permission Editor → Account Access preserves server-owned model, validated return and canonical redirect", async ({
@@ -1724,7 +1731,7 @@ test.describe("S4 Management hardening integration gate", () => {
     await page.goto("/permissions?return=https://attacker.example");
     await expect(page).toHaveURL(/\/management\?module=permissions$/u);
 
-    await assertResponsiveGeometry(page);
+    await assertResponsiveGeometry(page, testInfo);
   });
 
   test("Identity malformed URL state and legacy replace redirect fall back safely", async ({
@@ -1800,7 +1807,7 @@ test.describe("S4 Management hardening integration gate", () => {
     await page.goBack();
     await expect(page).toHaveURL(/module=accounts/u);
 
-    await assertResponsiveGeometry(page);
+    await assertResponsiveGeometry(page, testInfo);
   });
 
   test("Persona-projected affordances match Admin/Staff/Member via loopback Hub", async ({
@@ -1948,7 +1955,7 @@ test.describe("S4 Management hardening integration gate", () => {
       }
     }
 
-    await assertResponsiveGeometry(page);
+    await assertResponsiveGeometry(page, testInfo);
   });
 
   test("W7 plus 900 reflow and long CJK/unbroken containment with no overflow and 44px targets at every width", async ({
@@ -2052,7 +2059,7 @@ test.describe("S4 Management hardening integration gate", () => {
         );
         expect(overflow).toBeLessThanOrEqual(1);
       } else {
-        await assertResponsiveGeometry(page);
+        await assertResponsiveGeometry(page, testInfo);
       }
       // Cleanup injected probe
       await page.evaluate(() => {

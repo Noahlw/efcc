@@ -16,6 +16,7 @@ import type { Page, Route } from "@playwright/test";
 
 import { COPY } from "../../web/lib/copy";
 import { defaultSections, projectNavigation } from "../../web/lib/sections";
+import { attachNumericEvidence } from "./numeric-evidence";
 
 const AUTH_HINT_KEY = "efcc_auth_active";
 
@@ -180,6 +181,8 @@ test("shell critical anchors render at the pinned width with no overflow or obst
     };
   });
 
+  await attachNumericEvidence(testInfo, "shell-geometry", geometry);
+
   const phone = isPhone(testInfo.project.name);
 
   // No horizontal overflow (tolerance: 1px, matching the S4 hardening gate).
@@ -239,6 +242,10 @@ test("799px shows the phone shell; 800px shows the desktop shell", async ({
     const nav = document.querySelector<HTMLElement>("#main-navigation");
     return nav ? getComputedStyle(nav).position : null;
   });
+  await attachNumericEvidence(testInfo, "shell-breakpoint-position", {
+    position,
+    projectName: testInfo.project.name,
+  });
 
   if (testInfo.project.name === "w-799") {
     expect(position).toBe("fixed");
@@ -250,7 +257,7 @@ test("799px shows the phone shell; 800px shows the desktop shell", async ({
 
 test("attention dialog is a fixed overlay fully inside the viewport", async ({
   page,
-}) => {
+}, testInfo) => {
   await page.goto("/home");
   await expect(page.locator("#main-navigation")).toBeVisible();
 
@@ -280,6 +287,7 @@ test("attention dialog is a fixed overlay fully inside the viewport", async ({
       viewportHeight: window.innerHeight,
     };
   });
+  await attachNumericEvidence(testInfo, "attention-dialog-geometry", geometry);
 
   // P0 regression: the unlayered `.attention-panel { position: relative }`
   // overrode the Radix `fixed` utility and pushed the dialog off-screen.
@@ -331,7 +339,7 @@ test("attention dialog is a fixed overlay fully inside the viewport", async ({
 
 test("focus order at the pinned width: skip link, primary nav, main, then chrome tail", async ({
   page,
-}) => {
+}, testInfo) => {
   await page.goto("/home");
   const nav = page.locator("#main-navigation");
   await expect(nav).toBeVisible();
@@ -370,6 +378,11 @@ test("focus order at the pinned width: skip link, primary nav, main, then chrome
     return el instanceof HTMLElement
       ? getComputedStyle(el).outlineWidth
       : "0px";
+  });
+  await attachNumericEvidence(testInfo, "shell-focus-order", {
+    active,
+    firstFocus,
+    outline,
   });
   expect(outline, "focused nav item must show a focus outline").not.toBe("0px");
 });

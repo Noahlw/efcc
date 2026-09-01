@@ -1,8 +1,9 @@
 /* oxlint-disable vitest/prefer-importing-vitest-globals -- this is a Playwright suite. */
 import { expect, test } from "@playwright/test";
-import type { Page } from "@playwright/test";
+import type { Page, TestInfo } from "@playwright/test";
 
 import { DEV_ADMIN, DEV_MEMBER } from "./dev-fixtures";
+import { attachNumericEvidence } from "./numeric-evidence";
 
 const configuredTarget = process.env.PROGRAMS_TARGET_URL;
 const localTarget =
@@ -49,7 +50,8 @@ async function loginAs(
 
 async function assertProgramsGeometry(
   page: Page,
-  expectedFocusSelector?: string
+  expectedFocusSelector?: string,
+  testInfo?: TestInfo
 ): Promise<void> {
   const geometry = await page.evaluate((focusSelector) => {
     const box = (element: Element | null) => {
@@ -115,6 +117,10 @@ async function assertProgramsGeometry(
     };
   }, expectedFocusSelector);
 
+  if (testInfo) {
+    await attachNumericEvidence(testInfo, "programs-geometry", geometry);
+  }
+
   expect(geometry.overflow).toBeLessThanOrEqual(1);
   expect(geometry.shellContentClientWidth).not.toBeNull();
   expect(geometry.shellContentScrollWidth).not.toBeNull();
@@ -176,7 +182,9 @@ test.beforeAll(() => {
   }
 });
 
-test("participant material states remain contained", async ({ page }) => {
+test("participant material states remain contained", async ({
+  page,
+}, testInfo) => {
   await loginAs(
     page,
     required("PROGRAMS_MEMBER_USERNAME", memberUsername),
@@ -185,7 +193,7 @@ test("participant material states remain contained", async ({ page }) => {
   await page.goto(appPath("/programs"));
   await expect(page.getByRole("heading", { name: "課程" })).toBeVisible();
   await expect(page.getByRole("searchbox", { name: "搜尋課程" })).toBeVisible();
-  await assertProgramsGeometry(page);
+  await assertProgramsGeometry(page, undefined, testInfo);
 
   const programLink = page.getByRole("link", { name: /E2E_DEMO_/u }).first();
   await expect(programLink).toBeVisible();
@@ -201,7 +209,7 @@ test("participant material states remain contained", async ({ page }) => {
   await expect(eventList.getByRole("listitem")).toHaveCount(
     (page.viewportSize()?.width ?? 0) < 800 ? 4 : 8
   );
-  await assertProgramsGeometry(page, "#program-detail-title");
+  await assertProgramsGeometry(page, "#program-detail-title", testInfo);
 
   let mutatedProgramId: string | null = null;
   try {
@@ -298,7 +306,7 @@ test("participant material states remain contained", async ({ page }) => {
     const dialog = page.getByRole("alertdialog");
     await expect(dialog).toBeVisible();
     await page.waitForTimeout(300);
-    await assertProgramsGeometry(page, '[role="alertdialog"] button');
+    await assertProgramsGeometry(page, '[role="alertdialog"] button', testInfo);
     await dialog.getByRole("button", { name: "取消", exact: true }).click();
     await expect(dialog).toHaveCount(0);
   } finally {
@@ -370,7 +378,7 @@ test("participant material states remain contained", async ({ page }) => {
 
 test("participant Event Detail and recovery states remain contained", async ({
   page,
-}) => {
+}, testInfo) => {
   await loginAs(
     page,
     required("PROGRAMS_ADMIN_USERNAME", adminUsername),
@@ -385,7 +393,7 @@ test("participant Event Detail and recovery states remain contained", async ({
   await expect(eventLink).toBeVisible();
   await eventLink.click();
   await expect(page.locator("#participant-event-title")).toBeVisible();
-  await assertProgramsGeometry(page, "#participant-event-title");
+  await assertProgramsGeometry(page, "#participant-event-title", testInfo);
 
   const programId = new URL(page.url()).searchParams.get("program");
   if (!programId) {
@@ -400,12 +408,16 @@ test("participant Event Detail and recovery states remain contained", async ({
     page.getByRole("heading", { name: "無法開啟這個聚會" })
   ).toBeVisible();
   await expect(page.getByRole("button", { name: "重試" })).toBeVisible();
-  await assertProgramsGeometry(page, 'section[aria-label="聚會詳情"] h1');
+  await assertProgramsGeometry(
+    page,
+    'section[aria-label="聚會詳情"] h1',
+    testInfo
+  );
 });
 
 test("management directory and workspace remain contained", async ({
   page,
-}) => {
+}, testInfo) => {
   await loginAs(
     page,
     required("PROGRAMS_ADMIN_USERNAME", adminUsername),
@@ -416,14 +428,14 @@ test("management directory and workspace remain contained", async ({
   await expect(
     page.getByRole("heading", { name: "管理課程目錄" })
   ).toBeVisible();
-  await assertProgramsGeometry(page);
+  await assertProgramsGeometry(page, undefined, testInfo);
   const notificationButton = page.getByRole("button", {
     name: "開啟管理通知",
   });
   await expect(notificationButton).toBeVisible();
   await notificationButton.click();
   await expect(page.getByRole("dialog", { name: "管理通知" })).toBeVisible();
-  await assertProgramsGeometry(page);
+  await assertProgramsGeometry(page, undefined, testInfo);
   await notificationButton.click();
 
   const programLink = page
@@ -436,7 +448,7 @@ test("management directory and workspace remain contained", async ({
   await expect(
     page.getByRole("heading", { name: "E2E_DEMO_成人查經", exact: true })
   ).toBeVisible();
-  await assertProgramsGeometry(page);
+  await assertProgramsGeometry(page, undefined, testInfo);
 
   await page
     .getByRole("link", { name: /^聚會/u })
@@ -456,7 +468,7 @@ test("management directory and workspace remain contained", async ({
   await expect(page.getByRole("region", { name: "聚會詳情" })).toBeVisible();
   await page.getByRole("button", { name: "編輯聚會資料" }).click();
   await expect(page.locator("form input").first()).toBeFocused();
-  await assertProgramsGeometry(page, "form input");
+  await assertProgramsGeometry(page, "form input", testInfo);
   const participantsLink = page.getByRole("link", {
     name: "參與者",
     exact: true,
@@ -466,7 +478,7 @@ test("management directory and workspace remain contained", async ({
   await expect(
     page.getByRole("heading", { name: "參與者", exact: true }).last()
   ).toBeVisible();
-  await assertProgramsGeometry(page);
+  await assertProgramsGeometry(page, undefined, testInfo);
 
   const settingsLink = page.getByRole("link", {
     name: "課程設定",
@@ -477,11 +489,11 @@ test("management directory and workspace remain contained", async ({
   await expect(
     page.getByRole("heading", { name: "課程設定", exact: true }).last()
   ).toBeVisible();
-  await assertProgramsGeometry(page);
+  await assertProgramsGeometry(page, undefined, testInfo);
 
   await page.goto(appPath("/programs?mode=management&task=notifications"));
   await expect(
     page.getByRole("heading", { name: "管理通知", exact: true })
   ).toBeVisible();
-  await assertProgramsGeometry(page);
+  await assertProgramsGeometry(page, undefined, testInfo);
 });

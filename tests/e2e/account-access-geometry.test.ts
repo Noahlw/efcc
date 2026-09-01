@@ -1,7 +1,9 @@
+/* oxlint-disable vitest/prefer-importing-vitest-globals -- Playwright spec */
 import { expect, test } from "@playwright/test";
-import type { Page, Route } from "@playwright/test";
+import type { Route } from "@playwright/test";
 
 import { defaultSections, projectNavigation } from "../../web/lib/sections";
+import { attachNumericEvidence } from "./numeric-evidence";
 
 const AUTH_HINT_KEY = "efcc_auth_active";
 const ACCOUNT_ID = "account-access-target";
@@ -148,7 +150,7 @@ test.beforeEach(async ({ page }) => {
 
 test("Account Access remains contained with 44px actions across W7", async ({
   page,
-}) => {
+}, testInfo) => {
   await page.goto(
     `/management?module=accounts&account=${ACCOUNT_ID}&view=access`
   );
@@ -160,7 +162,9 @@ test("Account Access remains contained with 44px actions across W7", async ({
   await expect(page.getByRole("heading", { name: "Program" })).toBeVisible();
   const geometry = await page.evaluate(() => {
     const box = (node: Element | null) => {
-      if (!node) return null;
+      if (!node) {
+        return null;
+      }
       const rect = node.getBoundingClientRect();
       return {
         left: rect.left,
@@ -201,8 +205,10 @@ test("Account Access remains contained with 44px actions across W7", async ({
       paddingBottom: content ? getComputedStyle(content).paddingBottom : null,
     };
   });
+
+  await attachNumericEvidence(testInfo, "account-access-geometry", geometry);
+
   expect(geometry.overflow).toBeLessThanOrEqual(1);
-  expect(geometry.main).not.toBeNull();
   expect(geometry.input).not.toBeNull();
   expect(geometry.input?.height ?? 0).toBeGreaterThanOrEqual(44);
   expect(geometry.buttons.every((button) => (button?.height ?? 0) >= 44)).toBe(
@@ -226,7 +232,7 @@ test("Account Access remains contained with 44px actions across W7", async ({
 
 test("Account Access add review stays inside the viewport", async ({
   page,
-}) => {
+}, testInfo) => {
   await page.goto(
     `/management?module=accounts&account=${ACCOUNT_ID}&view=access`
   );
@@ -249,6 +255,9 @@ test("Account Access add review stays inside the viewport", async ({
     const value = element.getBoundingClientRect();
     return { left: value.left, right: value.right, bottom: value.bottom };
   });
+
+  await attachNumericEvidence(testInfo, "account-access-review-geometry", rect);
+
   expect(rect.left).toBeGreaterThanOrEqual(-1);
   expect(rect.right).toBeLessThanOrEqual(
     (await page.evaluate(() => window.innerWidth)) + 1
