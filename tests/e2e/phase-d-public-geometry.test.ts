@@ -350,8 +350,8 @@ test("legacy upgrade gate preserves focused validation and bounded controls", as
   await expect(page.locator("#legacy-pin")).toBeFocused();
   await assertFocusedControlVisible(page, "#legacy-pin", testInfo);
   await assertContained(page, false, testInfo);
+  await page.locator("#legacy-pin").fill("1234");
   await page.locator("#new-credential").fill("short");
-  await upgradeSubmit.click();
   await expect(page.locator("#new-credential")).toBeFocused();
   await assertContained(page, false, testInfo);
 });
@@ -376,6 +376,7 @@ test("duplicate registration keeps the username draft and field recovery", async
 }, testInfo: TestInfo) => {
   await page.route("**/api/v1/auth/register", (route: Route) =>
     route.fulfill({
+      status: 409,
       contentType: "application/problem+json",
       body: JSON.stringify({
         status: 409,
@@ -571,6 +572,10 @@ test("registrations and management settings keep canonical destinations containe
     page.getByRole("heading", { name: "簽到設定", exact: true })
   ).toBeVisible();
   await assertContained(page, true, testInfo);
+  await page.getByRole("link", { name: "設定", exact: true }).click();
+  await expect(
+    page.getByRole("heading", { name: "設定", exact: true })
+  ).toBeVisible();
 
   const timezoneLink = page.getByRole("link", { name: /時區/u });
   await expect(timezoneLink).toHaveAttribute(

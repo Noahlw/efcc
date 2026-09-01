@@ -552,6 +552,10 @@ test.describe("S4 Management hardening integration gate", () => {
       const dialog = page.getByRole("dialog", { name: "篩選帳戶" });
       await expect(dialog).toBeVisible();
       const box = await dialog.boundingBox();
+      await attachNumericEvidence(testInfo, "account-directory-filter-box", {
+        box,
+        viewportWidth,
+      });
       expect(box?.width ?? 0).toBeLessThanOrEqual(viewportWidth);
       await page.keyboard.press("Escape");
       await expect(filter).toBeFocused();
@@ -574,6 +578,10 @@ test.describe("S4 Management hardening integration gate", () => {
           document.documentElement.scrollWidth
         ) - window.innerWidth
     );
+    await attachNumericEvidence(testInfo, "account-directory-overflow", {
+      overflow,
+      viewportWidth,
+    });
     expect(overflow).toBeLessThanOrEqual(1);
   });
   test("Role list exposes protected Member Baseline and drills directly into permissions", async ({
@@ -971,7 +979,12 @@ test.describe("S4 Management hardening integration gate", () => {
     await expectSelected(cb);
     const tray = page.locator('[aria-label="審批選取集"]');
     await expect(tray).toBeVisible();
-    expect(await horiz()).toBeLessThanOrEqual(1);
+    const trayOverflow = await horiz();
+    await attachNumericEvidence(testInfo, "approvals-tray-overflow", {
+      overflow: trayOverflow,
+      vw,
+    });
+    expect(trayOverflow).toBeLessThanOrEqual(1);
     const trayPos = await tray.evaluate((e) => getComputedStyle(e).position);
     expect(trayPos).toBe("static");
     const approveBtn = tray.getByRole("button", { name: /核准/u }).first();
@@ -985,6 +998,11 @@ test.describe("S4 Management hardening integration gate", () => {
     await page.waitForTimeout(100);
     const dockBox = await page.locator(".nav-phone").boundingBox();
     const actionBox = await approveBtn.boundingBox();
+    await attachNumericEvidence(testInfo, "approvals-dock-clearance", {
+      actionBox,
+      dockBox,
+      isCompact,
+    });
     if (dockBox && actionBox && isCompact) {
       expect(actionBox.y + actionBox.height).toBeLessThanOrEqual(dockBox.y + 1);
     }
@@ -1018,6 +1036,10 @@ test.describe("S4 Management hardening integration gate", () => {
           };
         })
       );
+    await attachNumericEvidence(testInfo, "approvals-decision-bounds", {
+      decisionBounds,
+      vw,
+    });
     for (const bounds of decisionBounds) {
       expect(bounds.width).toBeGreaterThanOrEqual(44);
       expect(bounds.height).toBeGreaterThanOrEqual(44);
@@ -1030,6 +1052,10 @@ test.describe("S4 Management hardening integration gate", () => {
     });
     await expect(detailDialog).toBeVisible();
     const detailDialogBox = await detailDialog.boundingBox();
+    await attachNumericEvidence(testInfo, "approvals-detail-dialog-box", {
+      detailDialogBox,
+      vw,
+    });
     if (detailDialogBox) {
       expect(detailDialogBox.width).toBeLessThanOrEqual(vw);
       expect(detailDialogBox.height).toBeLessThanOrEqual(
@@ -1083,6 +1109,11 @@ test.describe("S4 Management hardening integration gate", () => {
     await page.waitForTimeout(100);
     const dockBox2 = await page.locator(".nav-phone").boundingBox();
     const saveBox = await saveBtn.boundingBox();
+    await attachNumericEvidence(testInfo, "permissions-save-dock-clearance", {
+      dockBox: dockBox2,
+      isCompact,
+      saveBox,
+    });
     if (dockBox2 && saveBox && isCompact) {
       expect(saveBox.y + saveBox.height).toBeLessThanOrEqual(dockBox2.y + 1);
     }
@@ -1108,6 +1139,10 @@ test.describe("S4 Management hardening integration gate", () => {
       );
     });
     const reviewBox = await reviewContent.boundingBox();
+    await attachNumericEvidence(testInfo, "permissions-review-box", {
+      reviewBox,
+      vw,
+    });
     if (reviewBox) {
       expect(reviewBox.x).toBeGreaterThanOrEqual(-1);
       expect(reviewBox.y).toBeGreaterThanOrEqual(-1);
@@ -1128,6 +1163,10 @@ test.describe("S4 Management hardening integration gate", () => {
           };
         })
       );
+    await attachNumericEvidence(testInfo, "permissions-review-buttons", {
+      reviewButtons,
+      vw,
+    });
     for (const bounds of reviewButtons) {
       expect(bounds.width).toBeGreaterThanOrEqual(44);
       expect(bounds.height).toBeGreaterThanOrEqual(44);
@@ -1319,8 +1358,10 @@ test.describe("S4 Management hardening integration gate", () => {
           document.documentElement.scrollWidth
         ) - window.innerWidth
     );
+    await attachNumericEvidence(testInfo, "home-content-overflow-before", {
+      overflowBefore,
+    });
     expect(overflowBefore).toBeLessThanOrEqual(1);
-
     // Save draft
     const draftTitle = `E2E Home ${uniqueSuffix()}`;
     await page.locator("#home-cms-title").fill(draftTitle);
@@ -1389,8 +1430,10 @@ test.describe("S4 Management hardening integration gate", () => {
           document.documentElement.scrollWidth
         ) - window.innerWidth
     );
+    await attachNumericEvidence(testInfo, "home-content-overflow-after", {
+      homeOverflow,
+    });
     expect(homeOverflow).toBeLessThanOrEqual(1);
-
     // restore snapshot if we captured one
     if (
       snapshotData &&
@@ -1489,6 +1532,10 @@ test.describe("S4 Management hardening integration gate", () => {
         const dialog = page.getByRole("dialog");
         await expect(dialog).toBeVisible();
         const box = await dialog.boundingBox();
+        await attachNumericEvidence(testInfo, "member-directory-filter-box", {
+          box,
+          viewportWidth,
+        });
         expect(box?.width ?? 0).toBeLessThanOrEqual(viewportWidth);
         await page.keyboard.press("Escape");
         await expect(filter).toBeFocused();
@@ -1505,6 +1552,10 @@ test.describe("S4 Management hardening integration gate", () => {
       const columns = await workspace.evaluate(
         (el) => getComputedStyle(el).gridTemplateColumns
       );
+      await attachNumericEvidence(testInfo, "member-directory-columns", {
+        columns,
+        viewportWidth,
+      });
       if (viewportWidth >= 800 && viewportWidth < 1024) {
         expect(columns.split(" ").filter(Boolean)).toHaveLength(1);
       }
@@ -1544,8 +1595,11 @@ test.describe("S4 Management hardening integration gate", () => {
           document.documentElement.scrollWidth
         ) - window.innerWidth
     );
+    await attachNumericEvidence(testInfo, "member-directory-overflow", {
+      overflow,
+      viewportWidth,
+    });
     expect(overflow).toBeLessThanOrEqual(1);
-
     await assertResponsiveGeometry(page, testInfo);
   });
 
@@ -2015,26 +2069,35 @@ test.describe("S4 Management hardening integration gate", () => {
           if (await dialog.count()) {
             await expect(dialog).toBeVisible();
             const box = await dialog.boundingBox();
+            await attachNumericEvidence(testInfo, "probe-dialog-box", {
+              box,
+              surface,
+              title,
+              width,
+            });
             expect(box?.width ?? 0).toBeLessThanOrEqual(width + 1);
             await page.keyboard.press("Escape");
           }
         }
       }
-      // 900 interior reflow: at 900, workspace should still be single column inside detail layout
       if (width === 900) {
         const workspace = page.locator("[data-directory-workspace]");
         if (await workspace.count()) {
           const cols = await workspace.evaluate(
             (el) => getComputedStyle(el).gridTemplateColumns
           );
+          await attachNumericEvidence(testInfo, "probe-columns-900", {
+            cols,
+            surface,
+            title,
+            width,
+          });
           expect(cols.split(" ").filter(Boolean)).toHaveLength(1);
         }
       }
-      // 1024 sticky: at >=1024, detail sticky reachable
       if (width >= 1024) {
         const detail = page.locator("[data-directory-detail]");
         if (await detail.count()) {
-          // Trigger detail by clicking first row if exists
           const row = page
             .getByRole("button")
             .filter({ hasText: /E2E|陳大文|同工|帳戶/ })
@@ -2045,7 +2108,6 @@ test.describe("S4 Management hardening integration gate", () => {
           }
         }
       }
-      // For approvals/home-content, undersized route-owned controls are being fixed by respective lanes — check overflow only to avoid false fail while preserving numeric evidence
       if (
         surface.includes("module=approvals") ||
         surface.includes("module=home-content")
@@ -2057,6 +2119,12 @@ test.describe("S4 Management hardening integration gate", () => {
               document.documentElement.scrollWidth
             ) - window.innerWidth
         );
+        await attachNumericEvidence(testInfo, "probe-overflow", {
+          overflow,
+          surface,
+          title,
+          width,
+        });
         expect(overflow).toBeLessThanOrEqual(1);
       } else {
         await assertResponsiveGeometry(page, testInfo);

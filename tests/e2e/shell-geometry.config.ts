@@ -18,8 +18,7 @@ export default defineConfig({
     [
       "json",
       {
-        outputFile:
-          "tests/e2e/test-results/phase-f/shell-geometry/results.json",
+        outputFile: "test-results/phase-f/shell-geometry/results.json",
       },
     ],
   ],

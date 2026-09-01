@@ -40,7 +40,7 @@ export default defineConfig({
       "json",
       {
         outputFile:
-          "tests/e2e/test-results/phase-f/phase-e-attendance-geometry/results.json",
+          "test-results/phase-f/phase-e-attendance-geometry/results.json",
       },
     ],
   ],
