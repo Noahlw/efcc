@@ -35,7 +35,11 @@ export const RecoveryView = ({
 
   return (
     <main className={styles.state} ref={liveRef} tabIndex={-1}>
-      <Alert variant="destructive" className={styles.alert}>
+      <Alert
+        aria-label={message}
+        variant="destructive"
+        className={styles.alert}
+      >
         {message}
       </Alert>
       {onRetry && (

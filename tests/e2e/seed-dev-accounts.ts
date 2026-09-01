@@ -261,6 +261,8 @@ async function main(): Promise<void> {
     // treat it as a single-character wildcard.
     const e2eProgramIds =
       "(SELECT p.program_id FROM programs AS p LEFT JOIN departments AS d ON d.department_id = p.department_id WHERE p.name GLOB 'E2E_*' OR d.code GLOB 'E2E_*' OR d.name GLOB 'E2E_*')";
+    const filterAccountIds =
+      "(SELECT user_id FROM accounts WHERE username GLOB 'E2E_filter_*')";
     process.stdout.write(
       [
         "-- EFCC dev-testing D1 reset (PRG-05 #224). Deletes all E2E_ rows.",
@@ -273,9 +275,17 @@ async function main(): Promise<void> {
         `DELETE FROM program_preview_plans WHERE program_id IN ${e2eProgramIds};`,
         `DELETE FROM program_schedule_exceptions WHERE rule_id IN (SELECT rule_id FROM program_schedule_rules WHERE program_id IN ${e2eProgramIds});`,
         `DELETE FROM program_schedule_rules WHERE program_id IN ${e2eProgramIds};`,
+        `DELETE FROM sessions WHERE user_id IN ${filterAccountIds};`,
+        `DELETE FROM attendances WHERE member_user_id IN ${filterAccountIds};`,
+        `DELETE FROM enrollments WHERE member_user_id IN ${filterAccountIds};`,
+        `DELETE FROM enrollment_requests WHERE member_user_id IN ${filterAccountIds};`,
+        `DELETE FROM account_events WHERE actor_user_id IN ${filterAccountIds};`,
+        `DELETE FROM program_notification_reads WHERE user_id IN ${filterAccountIds};`,
+        `DELETE FROM participant_notices WHERE member_user_id IN ${filterAccountIds};`,
         "DELETE FROM role_assignments WHERE account_user_id IN (SELECT user_id FROM accounts WHERE username GLOB 'E2E_*') AND revoked_at IS NULL;",
         `DELETE FROM role_assignments WHERE role_definition_id IN (SELECT role_definition_id FROM role_definitions WHERE scope_kind = 'Program' AND scope_id IN ${e2eProgramIds}) AND revoked_at IS NULL;`,
         `DELETE FROM role_assignments WHERE role_definition_id IN (SELECT role_definition_id FROM role_definitions WHERE scope_kind = 'Department' AND scope_id IN (SELECT department_id FROM departments WHERE code GLOB 'E2E_*' OR name GLOB 'E2E_*')) AND revoked_at IS NULL;`,
+        `DELETE FROM accounts WHERE user_id IN ${filterAccountIds};`,
         `DELETE FROM attendances WHERE event_id IN (SELECT event_id FROM events WHERE program_id IN ${e2eProgramIds});`,
         `DELETE FROM events WHERE program_id IN ${e2eProgramIds};`,
         `DELETE FROM enrollments WHERE program_id IN ${e2eProgramIds};`,

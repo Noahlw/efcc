@@ -1,6 +1,4 @@
 /* oxlint-disable vitest/prefer-import-in-mock, vitest/prefer-mock-promise-shorthand, vitest/prefer-called-with, unicorn/prefer-query-selector */
-import { readFileSync } from "node:fs";
-import path from "node:path";
 
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -89,6 +87,13 @@ const PUBLIC_USER: PublicUser = {
   role: "Member",
   status: "Active",
   qrCodeString: "qr-placeholder",
+  identities: [{ label: "會友基礎", scopeKind: "Global", scopeLabel: null }],
+  capabilities: { "program.enroll": true, "role.manage": false },
+};
+const LEGACY_USER: PublicUser = {
+  ...PUBLIC_USER,
+  userId: "U-legacy",
+  username: "legacy",
 };
 // Canonical ADR-0025 role strings — D1 stores and the API expose these
 // title-case values; uppercase spellings fall back to the Member set.
@@ -360,7 +365,7 @@ describe("Shell", () => {
           return HttpResponse.json({
             requestId: "r-me",
             data: {
-              user: PUBLIC_USER,
+              user: LEGACY_USER,
               sections: MEMBER_SECTIONS,
               navigation: NAVIGATION,
             },
@@ -380,7 +385,7 @@ describe("Shell", () => {
           });
           return HttpResponse.json({
             requestId: "r-upgraded",
-            data: { user: PUBLIC_USER },
+            data: { user: LEGACY_USER },
           });
         })
       );
@@ -465,7 +470,7 @@ describe("Shell", () => {
           return HttpResponse.json({
             requestId: "r-me",
             data: {
-              user: PUBLIC_USER,
+              user: LEGACY_USER,
               sections: MEMBER_SECTIONS,
               navigation: NAVIGATION,
             },
@@ -476,7 +481,7 @@ describe("Shell", () => {
           await request.json();
           return HttpResponse.json({
             requestId: "r-upgraded",
-            data: { user: PUBLIC_USER },
+            data: { user: LEGACY_USER },
           });
         })
       );
@@ -551,7 +556,7 @@ describe("Shell", () => {
           return HttpResponse.json({
             requestId: "r-me",
             data: {
-              user: PUBLIC_USER,
+              user: LEGACY_USER,
               sections: MEMBER_SECTIONS,
               navigation: NAVIGATION,
             },
@@ -667,6 +672,7 @@ describe("Shell", () => {
           screen.getByRole("heading", { name: COPY.login.upgradeTitle })
         ).toBeInTheDocument();
       });
+      expect(screen.getByRole("alert").parentElement).toHaveFocus();
       expect(replaceMock).not.toHaveBeenCalled();
       expect(localStorage.getItem(AUTH_HINT_KEY)).toBeNull();
     });
@@ -709,7 +715,7 @@ describe("Shell", () => {
           return HttpResponse.json({
             requestId: "r-me",
             data: {
-              user: PUBLIC_USER,
+              user: LEGACY_USER,
               sections: MEMBER_SECTIONS,
               navigation: NAVIGATION,
             },
@@ -919,6 +925,60 @@ describe("Shell", () => {
       await user.click(screen.getByRole("button", { name: COPY.login.submit }));
       expect(screen.getByText(COPY.login.missingFields)).toBeInTheDocument();
     });
+    test("focuses the first invalid login field and associates the error", async () => {
+      const user = userEvent.setup();
+      render(<LoginPage />);
+      await user.click(screen.getByRole("button", { name: COPY.login.submit }));
+      const username = screen.getByLabelText(COPY.login.usernameLabel);
+      expect(username).toHaveFocus();
+      expect(username).toHaveAttribute("aria-invalid", "true");
+      expect(username).toHaveAttribute("aria-describedby", "login-error");
+      expect(
+        screen.getByRole("alert", { name: COPY.login.missingFields })
+      ).toBeInTheDocument();
+    });
+
+    test("marks login controls busy while the auth request is pending", async () => {
+      let release: ((response: Response) => void) | undefined;
+      server.use(
+        http.post(
+          "/api/v1/auth/login",
+          () =>
+            new Promise<Response>((resolve) => {
+              release = resolve;
+            })
+        )
+      );
+      const user = userEvent.setup();
+      render(<LoginPage />);
+      await user.type(screen.getByLabelText(COPY.login.usernameLabel), "test");
+      await user.type(
+        screen.getByLabelText(COPY.login.passwordLabel),
+        "pw-pass"
+      );
+      await user.click(screen.getByRole("button", { name: COPY.login.submit }));
+      const submit = screen.getByRole("button", {
+        name: COPY.login.submitting,
+      });
+      expect(submit).toBeDisabled();
+      expect(submit).toHaveAttribute("aria-busy", "true");
+      expect(screen.getByRole("form")).toHaveAttribute("aria-busy", "true");
+      release?.(
+        HttpResponse.json({
+          requestId: "r-login-busy",
+          data: {
+            userId: "U-test",
+            name: "測試用",
+            role: "Member",
+            status: "Active",
+            mustSetNewCredential: false,
+          },
+        })
+      );
+      await waitFor(() => {
+        expect(replaceMock).toHaveBeenCalledWith("/profile");
+      });
+    });
 
     test("blocks upgrade submission when password is shorter than 8 characters", async () => {
       server.use(
@@ -962,6 +1022,12 @@ describe("Shell", () => {
       expect(
         screen.getByText(COPY.login.upgradePasswordTooShort)
       ).toBeInTheDocument();
+      expect(screen.getByLabelText(COPY.login.newPasswordLabel)).toHaveFocus();
+      expect(
+        screen.getByLabelText(COPY.login.newPasswordLabel)
+      ).toHaveAttribute("aria-describedby", "login-notice");
+      expect(document.querySelectorAll("#login-error")).toHaveLength(0);
+      expect(document.querySelectorAll("#login-notice")).toHaveLength(1);
     });
 
     test("blocks upgrade submission when password and confirm password do not match", async () => {
@@ -1152,23 +1218,12 @@ describe("Shell", () => {
       return { user, view };
     }
 
-    test("renders the QR identity as an img with a descriptive label and the immutable code", async () => {
+    test("renders the QR identity as a labelled image", async () => {
       renderRestoredProfile();
-      // Await the shell so the profile surface is mounted.
       await screen.findAllByRole("button", { name: COPY.logout.submit });
       const qr = screen.getByRole("img", { name: COPY.profile.qrCode });
       expect(qr).toBeInTheDocument();
-      // The QR slot is a fixed 220px square — no proportional min() clamp
-      // that would shrink the code below scannable size on narrow phones (S5).
-      const css = readFileSync(
-        path.resolve(process.cwd(), "app/profile/profile.module.css"),
-        "utf-8"
-      );
-      const qrSquare =
-        css
-          .split(".qrSquare")[1]
-          ?.slice(0, css.split(".qrSquare")[1]?.indexOf("}") ?? 0) ?? "";
-      expect(qrSquare).not.toContain("min(");
+      expect(qr).toHaveAttribute("aria-label", COPY.profile.qrCode);
     });
 
     test("shows a validated Scanner return link for the Member QR fallback", async () => {
@@ -1184,13 +1239,48 @@ describe("Shell", () => {
       }
     });
 
-    test("renders the phone and status info grid with their values", async () => {
+    test("renders status and username while keeping contact details private", async () => {
       renderRestoredProfile();
       await screen.findAllByRole("button", { name: COPY.logout.submit });
-      expect(screen.getByText(COPY.profile.phone)).toBeInTheDocument();
-      expect(screen.getByText(PUBLIC_USER.phone)).toBeInTheDocument();
+      expect(screen.getByText(COPY.profile.username)).toBeInTheDocument();
+      expect(screen.getByText(PUBLIC_USER.username)).toBeInTheDocument();
       expect(screen.getByText(COPY.profile.status)).toBeInTheDocument();
       expect(screen.getByText(PUBLIC_USER.status)).toBeInTheDocument();
+      expect(screen.queryByText(COPY.profile.phone)).not.toBeInTheDocument();
+      expect(screen.queryByText(PUBLIC_USER.phone)).not.toBeInTheDocument();
+    });
+    test("keeps the account details disclosure and chevron state synchronized", async () => {
+      const { user } = renderRestoredProfile();
+      await screen.findAllByRole("button", { name: COPY.logout.submit });
+      const detailsRegion = screen.getByRole("region", {
+        name: COPY.profile.accountDetails,
+      });
+      const details = detailsRegion.querySelector("details");
+      if (!details) {
+        throw new Error("Expected account details disclosure");
+      }
+      expect(details).not.toHaveAttribute("open");
+      const summary = details.querySelector("summary");
+      if (!summary) {
+        throw new Error("Expected account details summary");
+      }
+      await user.click(summary);
+      expect(details).toHaveAttribute("open");
+      expect(details.querySelector("summary svg")).toBeInTheDocument();
+    });
+
+    test("renders only privacy-safe effective identity summaries", async () => {
+      renderRestoredProfile();
+      await screen.findAllByRole("button", { name: COPY.logout.submit });
+      const identityRegion = screen.getByRole("region", { name: "身份組" });
+      expect(identityRegion).toHaveTextContent("會友基礎");
+      expect(
+        identityRegion.querySelector("[data-scope-kind='Global']")
+      ).toBeInTheDocument();
+      expect(identityRegion).not.toHaveTextContent(PUBLIC_USER.userId);
+      expect(screen.queryByText("program.enroll")).not.toBeInTheDocument();
+      expect(screen.queryByText("Member")).not.toBeInTheDocument();
+      expect(identityRegion).not.toHaveTextContent(PUBLIC_USER.phone);
     });
 
     test("renders the empty state when the profile carries no QR data", async () => {
@@ -1215,6 +1305,45 @@ describe("Shell", () => {
       expect(
         screen.queryByRole("img", { name: COPY.profile.qrCode })
       ).toBeNull();
+    });
+    test("does not create an identity section when the server returns none", async () => {
+      server.use(
+        http.get("/api/v1/auth/me", () =>
+          HttpResponse.json({
+            requestId: "r-me-no-identities",
+            data: {
+              user: { ...PUBLIC_USER, identities: [], qrCodeString: "" },
+              sections: MEMBER_SECTIONS,
+              navigation: NAVIGATION,
+            },
+          })
+        )
+      );
+      renderRestoredProfile();
+      await screen.findAllByRole("button", { name: COPY.logout.submit });
+      expect(
+        screen.queryByRole("region", { name: "身份組" })
+      ).not.toBeInTheDocument();
+    });
+    test("preserves non-active status copy with an inactive status projection", async () => {
+      server.use(
+        http.get("/api/v1/auth/me", () =>
+          HttpResponse.json({
+            requestId: "r-me-inactive",
+            data: {
+              user: { ...PUBLIC_USER, status: "Suspended" },
+              sections: MEMBER_SECTIONS,
+              navigation: NAVIGATION,
+            },
+          })
+        )
+      );
+      renderRestoredProfile();
+      await screen.findAllByRole("button", { name: COPY.logout.submit });
+      expect(screen.getByRole("status", { name: "Suspended" })).toHaveAttribute(
+        "data-profile-status",
+        "inactive"
+      );
     });
   });
 
@@ -1492,6 +1621,20 @@ describe("Shell", () => {
       expect(
         screen.getByRole("dialog", { name: COPY.attention.title })
       ).toBeInTheDocument();
+    });
+    test("leaves Programs notification ownership to its Feed-backed control", () => {
+      pathnameMock.mockReturnValue("/programs");
+      render(
+        <AppProvider bootstrap={ADMIN_BOOTSTRAP} onSignOut={() => {}}>
+          <ShellHeader />
+        </AppProvider>
+      );
+      expect(
+        screen.queryByRole("button", { name: COPY.attention.bellLabel(0) })
+      ).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole("dialog", { name: COPY.attention.title })
+      ).not.toBeInTheDocument();
     });
 
     test("renders brand mark on /home, contextual section title elsewhere, no identity block or bell for Member accounts", () => {

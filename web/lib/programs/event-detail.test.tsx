@@ -9,8 +9,6 @@ import { COPY } from "@/lib/copy";
 import { EventDetail } from "@/lib/programs/event-detail";
 import type { EventDetail as EventDetailData } from "@/lib/programs/program-api";
 
-import styles from "@/app/programs/programs.module.css";
-
 const mocks = vi.hoisted(() => ({
   getEvent: vi.fn(),
   updateEvent: vi.fn(),
@@ -95,6 +93,7 @@ describe("EVT-01 event detail", () => {
         eventId="event-1"
         canManage
         onBack={() => {}}
+        backHref="/programs"
       />
     );
     await expect(
@@ -125,6 +124,34 @@ describe("EVT-01 event detail", () => {
     ).toBeInTheDocument();
     expect(mocks.getEvent).toHaveBeenCalledWith("program-1", "event-1");
   });
+  test("renders the server-projected schedule exception", async () => {
+    const exception = {
+      exception_id: "exception-1",
+      rule_id: "rule-1",
+      override_date: "2026-08-11",
+      action: "RESCHEDULE" as const,
+      new_start_time: "20:30",
+      new_end_time: "22:00",
+      created_at: "2026-01-01T00:00:00.000Z",
+    };
+    mocks.getEvent.mockResolvedValue(
+      detailFixture({ event: { ...detailFixture().event, exception } })
+    );
+    render(
+      <EventDetail
+        programId="program-1"
+        eventId="event-1"
+        canManage
+        backHref="/programs"
+      />
+    );
+    await screen.findByRole("heading", { name: "迎新聚會" });
+    expect(
+      screen.getByText(
+        COPY.programs.eventRescheduledBadge.replace("{time}", "20:30")
+      )
+    ).toBeInTheDocument();
+  });
 
   test("back button returns to the list", async () => {
     mocks.getEvent.mockResolvedValue(detailFixture());
@@ -135,11 +162,13 @@ describe("EVT-01 event detail", () => {
         eventId="event-1"
         canManage
         onBack={onBack}
+        backHref="/programs"
       />
     );
-    const back = await screen.findByRole("button", {
+    const back = await screen.findByRole("link", {
       name: COPY.programs.eventDetailBack,
     });
+    expect(back).toHaveAttribute("href", "/programs");
     await userEvent.click(back);
     expect(onBack).toHaveBeenCalledOnce();
   });
@@ -157,6 +186,7 @@ describe("EVT-01 event detail", () => {
         eventId="event-1"
         canManage
         onBack={() => {}}
+        backHref="/programs"
         onAttentionRefresh={onAttentionRefresh}
       />
     );
@@ -206,6 +236,7 @@ describe("EVT-01 event detail", () => {
         eventId="event-1"
         canManage
         onBack={() => {}}
+        backHref="/programs"
       />
     );
     await user.click(
@@ -245,6 +276,7 @@ describe("EVT-01 event detail", () => {
         eventId="event-1"
         canManage
         onBack={() => {}}
+        backHref="/programs"
       />
     );
     const deactivate = await screen.findByRole("button", {
@@ -306,6 +338,7 @@ describe("EVT-01 event detail", () => {
         eventId="event-1"
         canManage
         onBack={() => {}}
+        backHref="/programs"
       />
     );
 
@@ -350,6 +383,7 @@ describe("EVT-01 event detail", () => {
         eventId="event-1"
         canManage
         onBack={() => {}}
+        backHref="/programs"
       />
     );
     await user.click(
@@ -409,6 +443,7 @@ describe("EVT-01 event detail", () => {
         eventId="event-1"
         canManage
         onBack={() => {}}
+        backHref="/programs"
       />
     );
     await user.click(
@@ -449,6 +484,7 @@ describe("EVT-01 event detail", () => {
         eventId="event-1"
         canManage
         onBack={() => {}}
+        backHref="/programs"
       />
     );
     await expect(
@@ -482,6 +518,7 @@ describe("EVT-01 event detail", () => {
         eventId="event-1"
         canManage
         onBack={() => {}}
+        backHref="/programs"
       />
     );
     await user.click(
@@ -524,6 +561,7 @@ describe("EVT-01 event detail", () => {
         eventId="event-1"
         canManage
         onBack={() => {}}
+        backHref="/programs"
       />
     );
     await user.click(
@@ -601,6 +639,7 @@ describe("EVT-01 event detail", () => {
         eventId="event-1"
         canManage
         onBack={() => {}}
+        backHref="/programs"
       />
     );
     await user.click(
@@ -650,7 +689,9 @@ describe("EVT-01 event detail", () => {
         programId="program-1"
         eventId="missing"
         canManage={false}
+        hash="#overview"
         onBack={() => {}}
+        backHref="/programs#overview"
       />
     );
     await expect(
@@ -665,7 +706,7 @@ describe("EVT-01 event detail", () => {
       screen.getByRole("link", {
         name: COPY.programs.eventDetailViewProgram,
       })
-    ).toHaveAttribute("href", "/programs?program=program-1");
+    ).toHaveAttribute("href", "/programs?program=program-1#overview");
     expect(
       screen.getByRole("link", {
         name: COPY.programs.eventDetailBackToCatalog,
@@ -679,6 +720,31 @@ describe("EVT-01 event detail", () => {
       screen.findByRole("heading", { name: "迎新聚會" })
     ).resolves.toBeInTheDocument();
   });
+  test("management recovery preserves the scoped Program return", async () => {
+    mocks.getEvent.mockRejectedValue(
+      new RpcError({ code: "NOT_FOUND", status: 404, title: "Not found" })
+    );
+    render(
+      <EventDetail
+        programId="program-1"
+        eventId="missing"
+        canManage
+        departmentId="dept-1"
+        hash="#events"
+        onBack={() => {}}
+        backHref="/programs?mode=management&department=dept-1&program=program-1&task=events#events"
+      />
+    );
+
+    await expect(
+      screen.findByRole("link", {
+        name: COPY.programs.eventDetailViewProgram,
+      })
+    ).resolves.toHaveAttribute(
+      "href",
+      "/programs?mode=management&department=dept-1&program=program-1&task=events#events"
+    );
+  });
 
   test("non-managers see the read-only projection without action controls", async () => {
     mocks.getEvent.mockResolvedValue(detailFixture());
@@ -688,6 +754,7 @@ describe("EVT-01 event detail", () => {
         eventId="event-1"
         canManage={false}
         onBack={() => {}}
+        backHref="/programs"
       />
     );
     await screen.findByRole("heading", { name: "迎新聚會" });
@@ -713,6 +780,7 @@ describe("EVT-01 event detail", () => {
         eventId="event-1"
         canManage={false}
         onBack={() => {}}
+        backHref="/programs"
       />
     );
     await expect(
@@ -738,6 +806,7 @@ describe("EVT-01 event detail", () => {
         eventId="event-1"
         canManage={false}
         onBack={() => {}}
+        backHref="/programs"
       />
     );
 
@@ -785,8 +854,8 @@ describe("EVT-01 event detail", () => {
       name: COPY.programs.goToScan,
     });
     expect(cta).toHaveAttribute("href", "/scanner?event=event-1");
-    expect(cta).toHaveClass(styles.button);
-    expect(cta.parentElement).toHaveClass(styles.actionBarCard);
+    expect(cta).toHaveAttribute("data-action-state", "available");
+    expect(cta.parentElement).toHaveAttribute("data-action-bar");
 
     // No management controls.
     expect(
@@ -815,6 +884,7 @@ describe("EVT-01 event detail", () => {
         eventId="event-1"
         canManage={false}
         onBack={() => {}}
+        backHref="/programs"
       />
     );
     await screen.findByRole("heading", { name: "迎新聚會" });
@@ -825,7 +895,7 @@ describe("EVT-01 event detail", () => {
     const closedCta = screen.getByRole("link", {
       name: COPY.programs.goToScan,
     });
-    expect(closedCta).toHaveClass(styles.secondaryButton);
+    expect(closedCta).toHaveAttribute("data-action-state", "closed");
   });
 
   test("participant projection back uses the supplied onBack callback (history.back wrapper)", async () => {
@@ -838,10 +908,11 @@ describe("EVT-01 event detail", () => {
         eventId="event-1"
         canManage={false}
         onBack={onBack}
+        backHref="/programs"
       />
     );
     await user.click(
-      await screen.findByRole("button", { name: COPY.programs.backToOrigin })
+      await screen.findByRole("link", { name: COPY.programs.backToOrigin })
     );
     expect(onBack).toHaveBeenCalledOnce();
   });
@@ -868,6 +939,7 @@ describe("EVT-01 event detail", () => {
         eventId="event-1"
         canManage
         onBack={() => {}}
+        backHref="/programs"
       />
     );
     await user.click(await screen.findByRole("button", { name: /編輯聚會/u }));
@@ -900,6 +972,7 @@ describe("EVT-01 event detail", () => {
         eventId="event-1"
         canManage
         onBack={() => {}}
+        backHref="/programs"
       />
     );
     await user.click(
@@ -937,6 +1010,7 @@ describe("EVT-01 event detail", () => {
         eventId="event-1"
         canManage
         onBack={() => {}}
+        backHref="/programs"
       />
     );
     await user.click(
@@ -958,6 +1032,7 @@ describe("EVT-01 event detail", () => {
         eventId="event-1"
         canManage
         onBack={() => {}}
+        backHref="/programs"
       />
     );
     await user.click(

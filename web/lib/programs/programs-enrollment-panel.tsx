@@ -25,7 +25,30 @@ import type {
   Program,
 } from "@/lib/programs/program-api";
 
-import styles from "@/app/programs/programs.module.css";
+const styles = {
+  eventList: "m-0 grid min-w-0 list-none gap-2 p-0",
+  emptyLine:
+    "m-0 rounded-lg border border-dashed border-[var(--line)] p-4 text-sm text-[var(--ink-muted)] [overflow-wrap:anywhere]",
+  eventRow:
+    "flex min-w-0 flex-wrap items-center gap-3 rounded-lg border border-[var(--line)] bg-[var(--surface-raised)] p-3 [overflow-wrap:anywhere]",
+  eventDate: "min-w-0 text-sm [overflow-wrap:anywhere]",
+  eventSource: "shrink-0 whitespace-normal",
+  cancelForm: "flex min-w-0 flex-wrap items-center gap-2",
+  input: "min-h-11 min-w-0",
+  actionButton:
+    "min-h-11 min-w-11 w-fit rounded-lg bg-[var(--accent)] px-4 py-2 text-white whitespace-normal hover:bg-[var(--accent-deep)]",
+  eventCancelled: "text-[var(--error)]",
+  eventActive: "text-[var(--accent)]",
+  eventsPanel: "grid min-w-0 gap-4",
+  panelNotice:
+    "block rounded-lg border border-[var(--success-border)] bg-[var(--success-surface)] p-3 text-[var(--ink)] [overflow-wrap:anywhere]",
+  panelError:
+    "grid min-w-0 gap-2 rounded-lg border border-[var(--error-border)] bg-[var(--error-surface)] p-3 text-[var(--error)] [overflow-wrap:anywhere]",
+  panelHeading:
+    "m-0 text-lg font-extrabold leading-6 tracking-[-0.02em] [overflow-wrap:anywhere]",
+  ruleForm:
+    "grid min-w-0 gap-3 rounded-lg border border-[var(--line)] bg-[var(--surface)] p-4",
+} as const;
 
 function errorMessage(err: unknown): string {
   return err instanceof RpcError
@@ -85,6 +108,7 @@ const RequestList = ({
               onSubmit={onDecide(request.request_id)}
             >
               <Input
+                className={styles.input}
                 type="text"
                 name="decision_note"
                 aria-label={COPY.programs.decisionNote}

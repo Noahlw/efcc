@@ -228,7 +228,6 @@ test.describe("UI-04 Next frontend trace", () => {
         exact: true,
       })
     ).toBeVisible();
-    await expect(page.getByText("系統管理員", { exact: true })).toBeVisible();
     const qr = page.getByRole("img", { name: COPY.qrCode });
     await expect(qr).toBeVisible();
     await expect(qr).toHaveAttribute("aria-label", COPY.qrCode);
@@ -237,8 +236,11 @@ test.describe("UI-04 Next frontend trace", () => {
     const qrBox = await qr.boundingBox();
     expect(qrBox?.width).toBe(220);
     expect(qrBox?.height).toBe(220);
-    await expect(page.getByText(COPY.phone, { exact: true })).toBeVisible();
-    await expect(page.getByText(COPY.status, { exact: true })).toBeVisible();
+    await expect(page.getByText(COPY.phone, { exact: true })).toHaveCount(0);
+    await expect(page.getByText("program.enroll", { exact: true })).toHaveCount(
+      0
+    );
+    await expect(page.getByText("role.manage", { exact: true })).toHaveCount(0);
   });
 
   test("staff login renders the shell and Profile identity", async ({
@@ -256,8 +258,14 @@ test.describe("UI-04 Next frontend trace", () => {
       name: "帳戶資料",
     });
     await expect(
-      profileDetails.getByText("同工", { exact: true })
+      profileDetails.getByText(
+        required("PROGRAMS_STAFF_USERNAME", STAFF_USER),
+        { exact: true }
+      )
     ).toBeVisible();
+    await expect(
+      profileDetails.getByText(COPY.phone, { exact: true })
+    ).toHaveCount(0);
     for (const section of [
       COPY.homeSection,
       COPY.programsSection,
@@ -281,11 +289,16 @@ test.describe("UI-04 Next frontend trace", () => {
     );
     await page.goto(appPath("/profile"));
     await page.getByText("帳戶資料", { exact: true }).click();
+    const profileDetails = page.getByRole("region", { name: "帳戶資料" });
     await expect(
-      page
-        .getByRole("region", { name: "帳戶資料" })
-        .getByText("會友", { exact: true })
+      profileDetails.getByText(
+        required("PROGRAMS_MEMBER_USERNAME", MEMBER_USER),
+        { exact: true }
+      )
     ).toBeVisible();
+    await expect(
+      profileDetails.getByText(COPY.phone, { exact: true })
+    ).toHaveCount(0);
   });
 
   test("member shell keeps stable navigation and omits unauthorized sections", async ({
@@ -339,6 +352,25 @@ test.describe("UI-04 Next frontend trace", () => {
     ).toBeVisible();
   });
 
+  test("blank registration focuses its first invalid field with an associated error", async ({
+    page,
+  }) => {
+    await page.goto(appPath("/register"));
+    await page.getByRole("button", { name: COPY.registerSubmit }).click();
+    const username = page.getByLabel(COPY.registerUsername);
+    await expect(username).toBeFocused();
+    await expect(username).toHaveAttribute("aria-invalid", "true");
+    await expect(username).toHaveAttribute(
+      "aria-describedby",
+      "registration-error"
+    );
+    await expect(
+      page.getByRole("alert", {
+        name: "請完成所有資料，密碼最少 8 個字元。",
+      })
+    ).toBeVisible();
+  });
+
   test("Account Settings surface renders credential-change fields", async ({
     page,
   }) => {
@@ -380,6 +412,19 @@ test.describe("UI-04 Next frontend trace", () => {
     await expect(
       page.getByText(COPY.approvalEmpty, { exact: true })
     ).toBeVisible();
+  });
+  test("registrations redirect rejects an external return", async ({
+    page,
+  }) => {
+    await loginAs(
+      page,
+      required("PROGRAMS_ADMIN_USERNAME", ADMIN_USER),
+      required("PROGRAMS_ADMIN_CREDENTIAL", ADMIN_CRED)
+    );
+    await page.goto(
+      appPath("/registrations?return=https%3A%2F%2Fattacker.example")
+    );
+    await page.waitForURL("**/management?module=approvals");
   });
 
   test("approval queue is forbidden for Member (role-gated)", async ({

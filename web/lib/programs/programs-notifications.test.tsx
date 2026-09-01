@@ -1,6 +1,12 @@
-import { render, screen, waitFor, within } from "@testing-library/react";
+import {
+  cleanup,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, test, vi } from "vitest";
+import { afterEach, describe, expect, test, vi } from "vitest";
 
 import { COPY } from "@/lib/copy";
 import type { ManagementNotifications } from "@/lib/programs/program-api";
@@ -9,6 +15,7 @@ import type {
   ManagementNotificationState,
   ProgramsNotificationsProps,
 } from "@/lib/programs/programs-notifications";
+afterEach(cleanup);
 
 const notification: ManagementNotifications["items"][number] = {
   kind: "enrollment",
@@ -46,7 +53,6 @@ describe("management notification control", () => {
         state={readyState()}
         onRetry={vi.fn<ProgramsNotificationsProps["onRetry"]>()}
         onMarkRead={onMarkRead}
-        onViewAll={vi.fn<ProgramsNotificationsProps["onViewAll"]>()}
       />
     );
 
@@ -57,6 +63,11 @@ describe("management notification control", () => {
     await user.click(trigger);
 
     expect(screen.getByRole("dialog")).toBeInTheDocument();
+    expect(
+      screen.getByRole("region", {
+        name: COPY.programs.notificationsTitle,
+      })
+    ).toHaveAttribute("data-feed-state", "ready");
     await waitFor(() => {
       expect(onMarkRead).toHaveBeenCalledWith([
         expect.objectContaining({
@@ -69,7 +80,38 @@ describe("management notification control", () => {
       screen.queryByText(COPY.programs.notificationsUnread)
     ).not.toBeInTheDocument();
   });
+  test("keeps the unread badge when marking read fails", async () => {
+    const user = userEvent.setup();
+    const onMarkRead = vi
+      .fn<ProgramsNotificationsProps["onMarkRead"]>()
+      .mockRejectedValueOnce(new Error("read failed"))
+      .mockResolvedValueOnce();
+    render(
+      <ProgramsNotifications
+        state={readyState()}
+        onRetry={vi.fn<ProgramsNotificationsProps["onRetry"]>()}
+        onMarkRead={onMarkRead}
+      />
+    );
 
+    await user.click(
+      screen.getByRole("button", {
+        name: COPY.programs.notificationBellTitle,
+      })
+    );
+    await waitFor(() => expect(onMarkRead).toHaveBeenCalledOnce());
+    const readAlert = screen.getByRole("alert");
+    expect(readAlert).toHaveTextContent(COPY.programs.notificationsReadError);
+    await user.click(
+      within(readAlert).getByRole("button", {
+        name: COPY.programs.notificationsRetry,
+      })
+    );
+    await waitFor(() => expect(onMarkRead).toHaveBeenCalledTimes(2));
+    expect(
+      screen.queryByText(COPY.programs.notificationsUnread)
+    ).not.toBeInTheDocument();
+  });
   test("renders empty and error states in the same bounded surface", () => {
     const onRetry = vi.fn<ProgramsNotificationsProps["onRetry"]>();
     const { rerender } = render(
@@ -77,24 +119,28 @@ describe("management notification control", () => {
         state={readyState({ items: [], unread_count: 0 })}
         onRetry={onRetry}
         onMarkRead={vi.fn<ProgramsNotificationsProps["onMarkRead"]>()}
-        onViewAll={vi.fn<ProgramsNotificationsProps["onViewAll"]>()}
         full
       />
     );
     expect(screen.getByRole("status")).toHaveTextContent(
       COPY.programs.notificationsEmpty
     );
+    expect(
+      document.querySelector<HTMLElement>('[data-feed-state="empty"]')
+    ).not.toBeNull();
 
     rerender(
       <ProgramsNotifications
         state={{ kind: "error", message: "暫時無法載入" }}
         onRetry={onRetry}
         onMarkRead={vi.fn<ProgramsNotificationsProps["onMarkRead"]>()}
-        onViewAll={vi.fn<ProgramsNotificationsProps["onViewAll"]>()}
         full
       />
     );
     expect(screen.getByRole("alert")).toHaveTextContent("暫時無法載入");
+    expect(
+      document.querySelector<HTMLElement>('[data-feed-state="error"]')
+    ).not.toBeNull();
     expect(
       screen.getByRole("button", { name: COPY.programs.notificationsRetry })
     ).toBeInTheDocument();
@@ -108,8 +154,9 @@ describe("management notification control", () => {
         state={readyState()}
         onRetry={vi.fn<ProgramsNotificationsProps["onRetry"]>()}
         onMarkRead={onMarkRead}
-        onViewAll={vi.fn<ProgramsNotificationsProps["onViewAll"]>()}
         full
+        departmentId="dept-current"
+        hash="#overview"
       />
     );
 
@@ -137,7 +184,55 @@ describe("management notification control", () => {
         }),
       ]);
     });
+    expect(scoped.getByRole("link", { name: /青年團契/u })).toHaveAttribute(
+      "href",
+      "/programs?mode=management&department=dept-1&program=program-1&task=participants#overview"
+    );
     await user.click(scoped.getByRole("link", { name: /青年團契/u }));
     expect(onMarkRead).toHaveBeenCalled();
+  });
+  test("uses a semantic canonical link for the compact view-all action", async () => {
+    const user = userEvent.setup();
+    render(
+      <ProgramsNotifications
+        state={readyState({ has_more: true })}
+        onRetry={vi.fn<ProgramsNotificationsProps["onRetry"]>()}
+        onMarkRead={vi.fn<ProgramsNotificationsProps["onMarkRead"]>()}
+      />
+    );
+
+    await user.click(
+      screen.getByRole("button", {
+        name: COPY.programs.notificationBellTitle,
+      })
+    );
+    const viewAll = screen.getByRole("link", {
+      name: COPY.programs.notificationsViewAll,
+    });
+    expect(viewAll).toHaveAttribute(
+      "href",
+      "/programs?mode=management&task=notifications"
+    );
+    await user.click(viewAll);
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+  test("forwards Feed Presentation status and announcement slots", () => {
+    render(
+      <ProgramsNotifications
+        state={readyState()}
+        onRetry={vi.fn<ProgramsNotificationsProps["onRetry"]>()}
+        onMarkRead={vi.fn<ProgramsNotificationsProps["onMarkRead"]>()}
+        status={<output>通知已更新</output>}
+        announcement={{ key: "revision-2", message: "通知已更新" }}
+        full
+      />
+    );
+
+    expect(screen.getByText("通知已更新")).toBeInTheDocument();
+    expect(
+      document.querySelector(
+        '[data-feed-announcement-owner="global-live-region"]'
+      )
+    ).toBeInTheDocument();
   });
 });

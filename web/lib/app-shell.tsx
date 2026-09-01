@@ -14,6 +14,10 @@ import { ForbiddenView } from "@/lib/forbidden-view";
 import { announce } from "@/lib/live-region";
 import { NavBar } from "@/lib/nav-bar";
 import { OfflineBanner } from "@/lib/offline-banner";
+import {
+  clearAccessCache,
+  clearCatalogCache,
+} from "@/lib/programs/program-api";
 import { useAsyncResource } from "@/lib/programs/use-async-resource";
 import { RecoveryView } from "@/lib/recovery-view";
 import {
@@ -45,6 +49,10 @@ type ShellState =
 
 const LOGOUT_FAILED_KEY = "efcc_logout_failed";
 const SESSION_EXPIRED_KEY = "efcc_session_expired";
+function clearProgramCaches(): void {
+  clearAccessCache();
+  clearCatalogCache();
+}
 
 const ShellFrame = ({
   bootstrap,
@@ -58,6 +66,7 @@ const ShellFrame = ({
   const isScanner = pathname === "/scanner" || pathname.startsWith("/scanner/");
 
   const handleSignOut = useCallback(async () => {
+    clearProgramCaches();
     let rpcFailed = false;
     try {
       await authLogout();
@@ -105,8 +114,8 @@ const LoadingShell = () => (
 export const AppShell = ({ children }: { children: React.ReactNode }) => {
   const router = useRouter();
   const pathname = usePathname();
-
   const handleAuthRequired = useCallback(() => {
+    clearProgramCaches();
     clearAuthHint();
     rememberDeepLink(
       `${pathname}${window.location.search}${window.location.hash}`
@@ -162,6 +171,7 @@ export const AppShell = ({ children }: { children: React.ReactNode }) => {
   if (state.kind === "error") {
     if (state.code === "FORBIDDEN") {
       const handleForbiddenSignOut = async () => {
+        clearProgramCaches();
         try {
           await authLogout();
         } catch {

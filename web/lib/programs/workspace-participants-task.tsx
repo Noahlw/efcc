@@ -13,6 +13,7 @@ import { COPY, errorCopyFor } from "@/lib/copy";
 import { announce } from "@/lib/live-region";
 import {
   assistedEnroll,
+  cancelEnrollment,
   decideEnrollmentRequest,
   listEnrollmentSnapshot,
 } from "@/lib/programs/program-api";
@@ -26,10 +27,48 @@ import {
   useWorkspaceTaskContext,
 } from "./workspace-context";
 
-import styles from "@/app/programs/programs.module.css";
+const styles = {
+  programDetailMuted:
+    "m-0 text-sm leading-6 text-[var(--ink-muted)] [overflow-wrap:anywhere]",
+  workspaceTaskList: "m-0 grid min-w-0 list-none gap-2 p-0",
+  workspaceTaskRow:
+    "flex min-w-0 flex-wrap items-center gap-3 rounded-lg border border-[var(--line)] bg-[var(--surface-raised)] p-3 [overflow-wrap:anywhere]",
+  field: "grid min-w-0 gap-1.5",
+  fieldLabel: "grid min-w-0 gap-1.5 text-sm font-bold text-[var(--ink)]",
+  input:
+    "min-h-11 min-w-0 rounded-lg border-[var(--line-strong)] bg-[var(--surface-raised)] text-base",
+  successOutline:
+    "min-h-11 min-w-11 w-fit rounded-lg border border-[var(--success-border)] bg-[var(--success-surface)] px-4 py-2 text-[var(--success)] whitespace-normal",
+  dangerOutline:
+    "min-h-11 min-w-11 w-fit rounded-lg border border-[var(--error-border)] bg-transparent px-4 py-2 text-[var(--error)] whitespace-normal",
+  panelError:
+    "grid min-w-0 gap-2 rounded-lg border border-[var(--error-border)] bg-[var(--error-surface)] p-3 text-[var(--error)] [overflow-wrap:anywhere]",
+  workspaceTask: "grid min-w-0 gap-4",
+  workspaceHeading:
+    "m-0 min-w-0 text-lg font-extrabold leading-6 tracking-[-0.02em] [overflow-wrap:anywhere]",
+  panelNotice:
+    "block rounded-lg border border-[var(--success-border)] bg-[var(--success-surface)] p-3 text-[var(--ink)] [overflow-wrap:anywhere]",
+  ruleForm:
+    "grid min-w-0 gap-3 rounded-lg border border-[var(--line)] bg-[var(--surface)] p-4",
+  actionButton:
+    "min-h-11 min-w-11 w-fit rounded-lg bg-[var(--accent)] px-4 py-2 text-white whitespace-normal hover:bg-[var(--accent-deep)]",
+  boundaryError:
+    "grid min-w-0 gap-3 rounded-lg border border-[var(--error-border)] bg-[var(--error-surface)] p-4 text-[var(--error)] [overflow-wrap:anywhere]",
+  retry:
+    "min-h-11 min-w-11 w-fit rounded-lg border border-[var(--line-strong)] bg-transparent px-4 py-2 text-[var(--ink)] whitespace-normal hover:bg-[var(--surface)]",
+  workspaceActions: "flex min-w-0 flex-wrap items-center gap-3",
+  taskButton:
+    "min-h-11 min-w-11 rounded-lg border border-[var(--line-strong)] bg-transparent px-3 py-2 text-[var(--ink)] whitespace-normal",
+  secondaryButton:
+    "min-h-11 min-w-11 w-fit rounded-lg border border-[var(--line-strong)] bg-transparent px-4 py-2 text-[var(--ink)] whitespace-normal hover:bg-[var(--surface)]",
+} as const;
 
 type ParticipantTab = "pending" | "active" | "history";
 type ParticipantFailure = "forbidden" | "stale" | "conflict" | "server";
+type CancelRetry = {
+  enrollmentId: string;
+  idempotencyKey: string;
+};
 
 type ParticipantsState =
   | { kind: "loading" }
@@ -78,6 +117,18 @@ function participantIssue(error: unknown): {
         : COPY.error.networkError,
   };
 }
+function isAmbiguousCancelError(error: unknown): boolean {
+  if (!(error instanceof RpcError)) {
+    return true;
+  }
+  return (
+    error.problem.status === 0 ||
+    error.problem.code === "NETWORK_ERROR" ||
+    error.problem.code === "MALFORMED_RESPONSE" ||
+    error.problem.code === "MALFORMED_REQUEST" ||
+    error.problem.code === "UNAVAILABLE"
+  );
+}
 
 function requestStatusLabel(status: EnrollmentRequest["status"]): string {
   if (status === "Pending") {
@@ -93,7 +144,7 @@ function requestStatusLabel(status: EnrollmentRequest["status"]): string {
 }
 
 export const ParticipantsTask = () => {
-  const { program, attention, onAttentionRefresh } = useWorkspaceTaskContext();
+  const { program, onAttentionRefresh } = useWorkspaceTaskContext();
   const programId = program.program_id;
   const canManage = program.capabilities.manage;
   const { state, run, retry } = useAsyncResource<
@@ -122,10 +173,12 @@ export const ParticipantsTask = () => {
   );
   const [tab, setTab] = useState<ParticipantTab>("pending");
   const [busyRequestId, setBusyRequestId] = useState<string | null>(null);
+  const [busyEnrollmentId, setBusyEnrollmentId] = useState<string | null>(null);
   const [actionErrors, setActionErrors] = useState<Record<string, string>>({});
   const [notes, setNotes] = useState<Record<string, string>>({});
   const [notice, setNotice] = useState<string | null>(null);
   const [refreshingAction, setRefreshingAction] = useState<string | null>(null);
+  const [cancelRetry, setCancelRetry] = useState<CancelRetry | null>(null);
   const [assistedBusy, setAssistedBusy] = useState(false);
   const [assistedError, setAssistedError] = useState<string | null>(null);
   // Most recent successful snapshot: a failed refresh after a successful
@@ -145,18 +198,24 @@ export const ParticipantsTask = () => {
       lastReadyRef.current = state;
     }
   }, [state]);
+  const mutationBusy =
+    busyRequestId !== null ||
+    busyEnrollmentId !== null ||
+    assistedBusy ||
+    refreshingAction !== null;
 
   useEffect(() => {
     if (refreshingAction === null || state.kind === "loading") {
       return;
     }
     if (state.kind === "ready") {
+      setCancelRetry(null);
       setNotice(refreshSuccess);
       announce(refreshSuccess);
+      setRefreshingAction(null);
     } else {
       setNotice(null);
     }
-    setRefreshingAction(null);
   }, [refreshSuccess, refreshingAction, state]);
 
   const queue = useMemo(() => {
@@ -204,10 +263,6 @@ export const ParticipantsTask = () => {
     };
   }, [state]);
 
-  const pendingAttentionCount = attention?.programs.find(
-    ({ program_id }) => program_id === programId
-  )?.pending_enrollment_count;
-
   const handleDecision = async (
     request: EnrollmentRequest,
     action: "Approved" | "Rejected"
@@ -244,6 +299,53 @@ export const ParticipantsTask = () => {
       setBusyRequestId(null);
     }
   };
+  const handleCancelEnrollment = async (
+    enrollment: Enrollment,
+    retryKey?: string
+  ) => {
+    const idempotencyKey =
+      retryKey ??
+      (cancelRetry?.enrollmentId === enrollment.enrollment_id
+        ? cancelRetry.idempotencyKey
+        : crypto.randomUUID());
+    setCancelRetry({
+      enrollmentId: enrollment.enrollment_id,
+      idempotencyKey,
+    });
+    setBusyEnrollmentId(enrollment.enrollment_id);
+    setNotice(null);
+    setActionErrors((current) => {
+      const { [enrollment.enrollment_id]: _, ...next } = current;
+      return next;
+    });
+    try {
+      await cancelEnrollment(
+        programId,
+        enrollment.enrollment_id,
+        idempotencyKey
+      );
+      onAttentionRefresh();
+      setRefreshSuccess(COPY.programs.enrollmentCancelledNotice);
+      setRefreshingAction(enrollment.enrollment_id);
+      void run();
+    } catch (error) {
+      if (redirectToLoginIfRequired(error)) {
+        setCancelRetry(null);
+        return;
+      }
+      if (!isAmbiguousCancelError(error)) {
+        setCancelRetry(null);
+      }
+      const issue = participantIssue(error);
+      setActionErrors((current) => ({
+        ...current,
+        [enrollment.enrollment_id]: issue.message,
+      }));
+      announce(issue.message);
+    } finally {
+      setBusyEnrollmentId(null);
+    }
+  };
 
   const handleAssisted = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -273,6 +375,13 @@ export const ParticipantsTask = () => {
     } finally {
       setAssistedBusy(false);
     }
+  };
+  const refreshParticipants = () => {
+    setActionErrors({});
+    setNotice(null);
+    setRefreshSuccess(COPY.programs.workspaceParticipantsRefreshSuccess);
+    setRefreshingAction("refresh");
+    void run();
   };
 
   const renderPending = () => {
@@ -319,14 +428,14 @@ export const ParticipantsTask = () => {
                           [request.request_id]: event.target.value,
                         }))
                       }
-                      disabled={busyRequestId !== null}
+                      disabled={mutationBusy}
                     />
                   </label>
                   <Button
                     type="button"
                     className={styles.successOutline}
                     onClick={() => void handleDecision(request, "Approved")}
-                    disabled={busyRequestId !== null}
+                    disabled={mutationBusy}
                   >
                     {COPY.programs.approve}
                   </Button>
@@ -334,7 +443,7 @@ export const ParticipantsTask = () => {
                     type="button"
                     className={styles.dangerOutline}
                     onClick={() => void handleDecision(request, "Rejected")}
-                    disabled={busyRequestId !== null}
+                    disabled={mutationBusy}
                   >
                     {COPY.programs.reject}
                   </Button>
@@ -376,6 +485,7 @@ export const ParticipantsTask = () => {
             <li
               key={enrollment.enrollment_id}
               className={styles.workspaceTaskRow}
+              aria-busy={busyEnrollmentId === enrollment.enrollment_id}
             >
               <strong>
                 {enrollment.member_name ??
@@ -385,6 +495,39 @@ export const ParticipantsTask = () => {
               <span>{COPY.programs.enrollmentActive}</span>
               {request && <span>{requestStatusLabel(request.status)}</span>}
               <span>{formatEventTime(enrollment.enrolled_at)}</span>
+              {canManage && (
+                <Button
+                  type="button"
+                  className={styles.dangerOutline}
+                  onClick={() => void handleCancelEnrollment(enrollment)}
+                  disabled={
+                    mutationBusy ||
+                    cancelRetry?.enrollmentId === enrollment.enrollment_id
+                  }
+                >
+                  {COPY.programs.cancelEnrollment}
+                </Button>
+              )}
+              {actionErrors[enrollment.enrollment_id] && (
+                <Alert className={styles.panelError} variant="destructive">
+                  {actionErrors[enrollment.enrollment_id]}
+                  {cancelRetry?.enrollmentId === enrollment.enrollment_id && (
+                    <Button
+                      type="button"
+                      className={styles.retry}
+                      onClick={() =>
+                        void handleCancelEnrollment(
+                          enrollment,
+                          cancelRetry.idempotencyKey
+                        )
+                      }
+                      disabled={mutationBusy}
+                    >
+                      {COPY.error.retry}
+                    </Button>
+                  )}
+                </Alert>
+              )}
             </li>
           );
         })}
@@ -456,16 +599,22 @@ export const ParticipantsTask = () => {
       >
         {COPY.programs.workspaceTaskParticipants}
       </h4>
-      <p className={styles.programDetailMuted}>
-        {COPY.programs.workspaceTaskParticipantsLead}
-      </p>
       {notice !== null && (
         <output className={styles.panelNotice}>{notice}</output>
       )}
       {state.kind === "error" && lastReadyRef.current !== null && (
-        <output className={styles.panelNotice}>
-          {COPY.programs.workspaceParticipantsRefreshFailed}
-        </output>
+        <div className={styles.workspaceActions}>
+          <output className={styles.panelNotice}>
+            {COPY.programs.workspaceParticipantsRefreshFailed}
+          </output>
+          <Button
+            className={styles.retry}
+            type="button"
+            onClick={refreshParticipants}
+          >
+            {COPY.programs.workspaceParticipantsRefresh}
+          </Button>
+        </div>
       )}
       {canManage && (
         <form className={styles.ruleForm} onSubmit={handleAssisted}>
@@ -482,7 +631,7 @@ export const ParticipantsTask = () => {
           <Button
             type="submit"
             className={styles.actionButton}
-            disabled={assistedBusy || busyRequestId !== null}
+            disabled={mutationBusy}
           >
             {assistedBusy
               ? COPY.programs.submitting
@@ -535,7 +684,7 @@ export const ParticipantsTask = () => {
                     [
                       "pending",
                       COPY.programs.tabsPending,
-                      pendingAttentionCount ?? queue.counts.pending,
+                      queue.counts.pending,
                     ],
                     ["active", COPY.programs.tabsActive, queue.counts.active],
                     [
@@ -557,21 +706,16 @@ export const ParticipantsTask = () => {
                 ))}
               </TabsList>
             </Tabs>
-            <Button
-              type="button"
-              className={styles.secondaryButton}
-              onClick={() => {
-                setActionErrors({});
-                setNotice(null);
-                setRefreshSuccess(
-                  COPY.programs.workspaceParticipantsRefreshSuccess
-                );
-                setRefreshingAction("refresh");
-                void run();
-              }}
-            >
-              {COPY.programs.workspaceParticipantsRefresh}
-            </Button>
+            {state.kind !== "error" && (
+              <Button
+                type="button"
+                className={styles.secondaryButton}
+                onClick={refreshParticipants}
+                disabled={mutationBusy}
+              >
+                {COPY.programs.workspaceParticipantsRefresh}
+              </Button>
+            )}
           </div>
           {queue.counts.pending + queue.counts.active + queue.counts.history ===
             0 && (

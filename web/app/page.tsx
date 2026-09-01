@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 
@@ -8,7 +9,13 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
-import { authLogin, authMe, authUpgrade, RpcError } from "@/lib/api";
+import {
+  authLogin,
+  authLogout,
+  authMe,
+  authUpgrade,
+  RpcError,
+} from "@/lib/api";
 import type { Bootstrap } from "@/lib/api";
 import { COPY, LANDING, errorCopyFor } from "@/lib/copy";
 import {
@@ -29,11 +36,6 @@ import {
   setAuthHint,
 } from "@/lib/session";
 
-import styles from "./page.module.css";
-
-const LOGOUT_FAILED_KEY = "efcc_logout_failed";
-const ACCOUNT_UPDATED_KEY = "efcc_account_updated";
-
 type View =
   | { kind: "SIGNED_OUT" }
   | { kind: "RESTORING" }
@@ -43,6 +45,18 @@ type View =
   | { kind: "SESSION_EXPIRED" }
   | { kind: "ERROR"; error: string }
   | { kind: "RECOVERABLE_ERROR"; error: string; retry: () => void };
+
+type LoginField =
+  | "username"
+  | "password"
+  | "legacyPin"
+  | "newCredential"
+  | "confirmCredential";
+const LOGOUT_FAILED_KEY = "efcc_logout_failed";
+const ACCOUNT_UPDATED_KEY = "efcc_account_updated";
+function matchesUsername(actual: string, expected: string): boolean {
+  return actual.trim().toLowerCase() === expected.trim().toLowerCase();
+}
 
 const LoginPage = () => {
   const router = useRouter();
@@ -60,18 +74,47 @@ const LoginPage = () => {
   const [noticeKind, setNoticeKind] = useState<"error" | "info" | "success">(
     "info"
   );
+  const [invalidFields, setInvalidFields] = useState<LoginField[]>([]);
   const mountRef = useRef(true);
-
+  const usernameRef = useRef<HTMLInputElement>(null);
+  const passwordRef = useRef<HTMLInputElement>(null);
+  const legacyPinRef = useRef<HTMLInputElement>(null);
+  const newCredentialRef = useRef<HTMLInputElement>(null);
+  const confirmCredentialRef = useRef<HTMLInputElement>(null);
+  const errorRef = useRef<HTMLDivElement>(null);
+  const noticeRef = useRef<HTMLDivElement>(null);
+  const sessionExpiredHeadingRef = useRef<HTMLHeadingElement>(null);
   useEffect(
     () => () => {
       mountRef.current = false;
     },
     []
   );
+  useEffect(() => {
+    if (view.kind === "ERROR" && invalidFields.length === 0) {
+      errorRef.current?.focus();
+    }
+  }, [view, invalidFields.length]);
+  useEffect(() => {
+    if (
+      view.kind === "UPGRADE" &&
+      noticeKind === "error" &&
+      notice &&
+      invalidFields.length === 0
+    ) {
+      noticeRef.current?.focus();
+    }
+  }, [view, notice, noticeKind, invalidFields.length]);
+  useEffect(() => {
+    if (view.kind === "SESSION_EXPIRED") {
+      sessionExpiredHeadingRef.current?.focus();
+    }
+  }, [view.kind]);
 
   const handleExpiry = useCallback(() => {
     clearAuthHint();
     announce(COPY.sessionExpired.title);
+    setInvalidFields([]);
     setView({ kind: "SESSION_EXPIRED" });
   }, []);
 
@@ -157,11 +200,27 @@ const LoginPage = () => {
   }, []);
 
   const handleLogin = useCallback(async () => {
-    if (!username.trim() || !password) {
+    const missingUsername = !username.trim();
+    const missingPassword = password.length === 0;
+    if (missingUsername || missingPassword) {
+      const nextInvalidFields: LoginField[] = [];
+      if (missingUsername) {
+        nextInvalidFields.push("username");
+      }
+      if (missingPassword) {
+        nextInvalidFields.push("password");
+      }
+      setInvalidFields(nextInvalidFields);
       setView({ kind: "ERROR", error: COPY.login.missingFields });
       announce(COPY.login.missingFields);
+      if (missingUsername) {
+        usernameRef.current?.focus();
+      } else {
+        passwordRef.current?.focus();
+      }
       return;
     }
+    setInvalidFields([]);
     setView({ kind: "AUTHENTICATING" });
     announce(COPY.login.submitting);
     setNotice(null);
@@ -198,15 +257,30 @@ const LoginPage = () => {
         : error instanceof RpcError
           ? errorCopyFor(error.problem.code)
           : COPY.login.networkError;
+      setInvalidFields([]);
       setView({ kind: "ERROR", error: msg });
       announce(msg);
       clearAuthHint();
     }
   }, [username, password, navigateAfterLogin]);
-
   const finishUpgrade = useCallback(async () => {
     try {
       const me = await authMe();
+      if (!matchesUsername(me.user.username, username)) {
+        try {
+          await authLogout();
+        } catch {
+          // A stale session is not evidence that the upgrade committed.
+        }
+        clearAuthHint();
+        const msg = COPY.login.upgradeNetworkError;
+        setInvalidFields([]);
+        setNoticeKind("error");
+        setNotice(msg);
+        setView({ kind: "SIGNED_OUT" });
+        announce(msg);
+        return;
+      }
       const bootstrap = buildBootstrap(me.user, me.sections, me.navigation);
       announce(COPY.login.success);
       navigateAfterLogin(bootstrap);
@@ -215,24 +289,49 @@ const LoginPage = () => {
         error instanceof RpcError
           ? errorCopyFor(error.problem.code, error.problem.detail)
           : COPY.error.networkError;
+      if (error instanceof RpcError && error.problem.code === "AUTH_REQUIRED") {
+        clearAuthHint();
+        setInvalidFields([]);
+        setNoticeKind("error");
+        setNotice(msg);
+        setView({ kind: "SIGNED_OUT" });
+        announce(msg);
+        return;
+      }
       setView({ kind: "RECOVERABLE_ERROR", error: msg, retry: finishUpgrade });
       announce(msg);
     }
-  }, [navigateAfterLogin]);
+  }, [navigateAfterLogin, username]);
 
   const handleUpgrade = useCallback(async () => {
+    // The auth boundary applies the canonical legacy normalization (strip
+    // non-digits, then zero-pad/truncate to four digits), so reject only an
+    // input that has no usable PIN digits.
+    if (!/\d/u.test(legacyPin)) {
+      setInvalidFields(["legacyPin"]);
+      setNotice(COPY.login.upgradeLegacyPinInvalid);
+      setNoticeKind("error");
+      announce(COPY.login.upgradeLegacyPinInvalid);
+      legacyPinRef.current?.focus();
+      return;
+    }
     if (newCredential.length < 8) {
+      setInvalidFields(["newCredential"]);
       setNotice(COPY.login.upgradePasswordTooShort);
       setNoticeKind("error");
       announce(COPY.login.upgradePasswordTooShort);
+      newCredentialRef.current?.focus();
       return;
     }
     if (newCredential !== confirmCredential) {
+      setInvalidFields(["confirmCredential"]);
       setNotice(COPY.login.upgradePasswordMismatch);
       setNoticeKind("error");
       announce(COPY.login.upgradePasswordMismatch);
+      confirmCredentialRef.current?.focus();
       return;
     }
+    setInvalidFields([]);
     setView({ kind: "UPGRADING" });
     announce(COPY.login.upgrading);
     setNotice(null);
@@ -245,11 +344,16 @@ const LoginPage = () => {
           : COPY.login.upgradeNetworkError;
       const ambiguous =
         error instanceof RpcError &&
-        (error.problem.code === "NETWORK_ERROR" || error.problem.status === 0);
+        (error.problem.code === "NETWORK_ERROR" ||
+          error.problem.code === "MALFORMED_RESPONSE" ||
+          error.problem.code === "UNAVAILABLE" ||
+          error.problem.status === 0);
       if (!ambiguous) {
         // Definitive server problem: the upgrade did not commit. The gate
         // stays mounted so a retry may re-submit the same PIN.
+        setInvalidFields([]);
         setView({ kind: "UPGRADE" });
+        setNoticeKind("error");
         setNotice(msg);
         announce(msg);
         clearAuthHint();
@@ -262,6 +366,20 @@ const LoginPage = () => {
       // session (Spec 077 U5).
       try {
         const me = await authMe();
+        if (!matchesUsername(me.user.username, username)) {
+          try {
+            await authLogout();
+          } catch {
+            // A stale session is not evidence that the upgrade committed.
+          }
+          clearAuthHint();
+          setInvalidFields([]);
+          setNoticeKind("error");
+          setNotice(COPY.login.upgradeNetworkError);
+          setView({ kind: "SIGNED_OUT" });
+          announce(COPY.login.upgradeNetworkError);
+          return;
+        }
         const bootstrap = buildBootstrap(me.user, me.sections, me.navigation);
         setAuthHint();
         announce(COPY.login.success);
@@ -273,7 +391,9 @@ const LoginPage = () => {
           probeError.problem.code === "AUTH_REQUIRED";
         if (noSession) {
           // Definitive: the upgrade did not commit. Re-mount the gate.
+          setInvalidFields([]);
           setView({ kind: "UPGRADE" });
+          setNoticeKind("error");
           setNotice(msg);
           announce(msg);
           clearAuthHint();
@@ -305,12 +425,16 @@ const LoginPage = () => {
 
   if (view.kind === "RESTORING") {
     return (
-      <main className={styles.restoring}>
+      <main
+        className="flex min-h-screen flex-col items-center justify-center gap-4 bg-[var(--surface)] p-4 text-center text-[var(--ink)]"
+        aria-busy="true"
+      >
+        <h1 className="sr-only">{COPY.login.title}</h1>
         <Skeleton
-          className="h-8 w-8 rounded-full bg-[var(--skeleton)]"
+          className="size-8 rounded-full bg-[var(--skeleton)]"
           aria-hidden="true"
         />
-        <p>{COPY.restore.loading}</p>
+        <p className="text-[var(--ink-muted)]">{COPY.restore.loading}</p>
       </main>
     );
   }
@@ -318,25 +442,33 @@ const LoginPage = () => {
   if (view.kind === "RECOVERABLE_ERROR") {
     const handleRetry = view.retry;
     return (
-      <RecoveryView message={view.error} safeHref="/" onRetry={handleRetry} />
+      <div className="min-h-screen bg-[var(--surface)] text-[var(--ink)]">
+        <h1 className="sr-only">{COPY.login.title}</h1>
+        <RecoveryView message={view.error} safeHref="/" onRetry={handleRetry} />
+      </div>
     );
   }
 
   if (view.kind === "SESSION_EXPIRED") {
     return (
-      <main className={styles.sessionExpired}>
+      <main className="flex min-h-screen items-center justify-center bg-[var(--surface)] p-4">
         <Card
-          className={`${styles.sessionExpiredCard} gap-0 overflow-visible border border-[var(--line)] bg-[var(--paper-raised)] shadow-none ring-0`}
+          className="w-full max-w-[400px] min-w-0 gap-0 overflow-visible border border-[var(--line)] bg-[var(--surface-raised)] p-[1.875rem_1.375rem] text-center shadow-none ring-0"
           role="article"
         >
-          <h1 className={styles.sessionExpiredTitle}>
+          <h1
+            ref={sessionExpiredHeadingRef}
+            id="session-expired-title"
+            className="wrap-anywhere text-2xl font-extrabold leading-tight text-[var(--ink)]"
+            tabIndex={-1}
+          >
             {COPY.sessionExpired.title}
           </h1>
-          <p className={styles.sessionExpiredMessage}>
+          <p className="mt-2.5 wrap-anywhere text-[0.9rem] leading-[1.6] text-[var(--ink-muted)]">
             {COPY.sessionExpired.message}
           </p>
           <Button
-            className="min-h-11 w-full rounded-[8px] bg-[var(--accent)] px-6 text-base font-extrabold text-white hover:bg-[var(--accent-deep)]"
+            className="mt-5 min-h-11 w-full rounded-[8px] bg-[var(--accent)] px-6 text-base font-extrabold text-white hover:bg-[var(--accent-deep)]"
             type="button"
             onClick={() => setView({ kind: "SIGNED_OUT" })}
           >
@@ -351,50 +483,70 @@ const LoginPage = () => {
   const busy = view.kind === "AUTHENTICATING" || view.kind === "UPGRADING";
 
   return (
-    <div className={styles.page}>
-      <a className={styles.skipLink} href="#login">
+    <div className="flex min-h-screen flex-col bg-[var(--surface)] text-[var(--ink)] antialiased">
+      <a
+        className="absolute left-4 top-[-3rem] z-[200] inline-flex min-h-11 items-center rounded-lg bg-[var(--accent)] px-4 py-3 font-bold text-white transition-[top] duration-150 ease-out motion-reduce:transition-none focus-visible:top-4 focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-[var(--focus)]"
+        href="#login"
+      >
         {LANDING.skipToLogin}
       </a>
 
-      {/* Minimal civic shell — official church title. */}
-      <header className={styles.header}>
-        <div className={styles.brand} aria-label={LANDING.homeLabel}>
-          <span>{LANDING.brandFull}</span>
-        </div>
+      <header className="flex items-center border-b border-[var(--line)] bg-[var(--surface-raised)] px-[clamp(1.25rem,4vw,2.5rem)] py-4">
+        <Link
+          className="inline-flex min-h-11 items-center rounded-lg font-extrabold tracking-[0.02em] focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-[var(--focus)] focus-visible:ring-offset-2"
+          href="/"
+          aria-label={LANDING.homeLabel}
+        >
+          <span className="min-w-0 wrap-anywhere">{LANDING.brandFull}</span>
+        </Link>
       </header>
 
-      <main className={styles.main}>
-        <div className={styles.bodyCenter}>
-          <div className={styles.splitLogin}>
+      <main className="flex flex-1">
+        <div className="flex flex-1 items-center justify-center px-[clamp(1.25rem,4vw,2.5rem)] py-[clamp(2rem,6vw,4rem)] max-[799px]:items-start max-[799px]:justify-start max-[799px]:p-4">
+          <div className="grid w-full max-w-[860px] items-center gap-[clamp(2rem,5vw,3.5rem)] max-[799px]:grid-cols-1 min-[800px]:grid-cols-2">
             <Card
               id="login"
-              className={`${styles.formCard} gap-0 overflow-visible border border-[var(--line)] bg-[var(--paper-raised)] shadow-none ring-0`}
+              className="order-first w-full max-w-[400px] min-w-0 gap-0 overflow-visible border border-[var(--line)] bg-[var(--surface-raised)] p-7 shadow-none ring-0 max-[799px]:order-first max-[799px]:max-w-none max-[799px]:p-4 min-[800px]:order-2 min-[800px]:justify-self-end"
               role="region"
               aria-labelledby="login-title"
             >
-              <div className={styles.cardHead}>
-                <h2 id="login-title" className={styles.cardTitle}>
+              <div className="mb-1.5 flex items-center gap-2.5">
+                <h2
+                  id="login-title"
+                  className="min-w-0 wrap-anywhere text-[1.35rem] font-extrabold leading-tight tracking-[-0.01em]"
+                >
                   {upgradeMode ? COPY.login.upgradeTitle : COPY.login.title}
                 </h2>
               </div>
-              <p className={styles.cardLead}>{LANDING.loginPanelLead}</p>
+              <p className="mb-5 wrap-anywhere text-[0.9rem] text-[var(--ink-muted)] max-[799px]:hidden">
+                {LANDING.loginPanelLead}
+              </p>
               {notice && (
-                <Alert
-                  variant={noticeKind === "error" ? "destructive" : "default"}
-                  className={`${styles.notice} ${
-                    noticeKind === "error"
-                      ? "border-[var(--error-border)] bg-[var(--error-surface)] text-[var(--error)]"
-                      : noticeKind === "success"
-                        ? "border-[var(--success-border)] bg-[var(--success-surface)] text-[var(--ink)]"
-                        : "border-[var(--line)] bg-[var(--paper-raised)] text-[var(--ink)]"
-                  }`}
+                <div
+                  ref={noticeRef}
+                  tabIndex={-1}
+                  className="mb-4 outline-none"
                 >
-                  {notice}
-                </Alert>
+                  <Alert
+                    id="login-notice"
+                    variant={noticeKind === "error" ? "destructive" : "default"}
+                    className={`mb-0 text-[0.92rem] leading-[1.5] ${
+                      noticeKind === "error"
+                        ? "border-[var(--error-border)] bg-[var(--error-surface)] text-[var(--error)]"
+                        : noticeKind === "success"
+                          ? "border-[var(--success-border)] bg-[var(--success-surface)] text-[var(--ink)]"
+                          : "border-[var(--line)] bg-[var(--surface-raised)] text-[var(--ink)]"
+                    }`}
+                  >
+                    {notice}
+                  </Alert>
+                </div>
               )}
               <form
-                className={styles.form}
+                className="flex min-w-0 flex-col gap-4 max-[799px]:gap-2.5"
                 noValidate
+                aria-labelledby="login-title"
+                aria-busy={busy}
                 onSubmit={(e) => {
                   e.preventDefault();
                   if (!busy) {
@@ -406,90 +558,187 @@ const LoginPage = () => {
                   }
                 }}
               >
-                <label className={styles.field}>
-                  <span className={styles.fieldLabel}>
+                <div className="flex min-w-0 flex-col gap-1.5">
+                  <label
+                    className="text-[0.88rem] font-bold text-[var(--ink-muted)]"
+                    htmlFor="login-username"
+                  >
                     {COPY.login.usernameLabel}
-                  </span>
+                  </label>
                   <Input
-                    className="min-h-11 rounded-[8px] border-[var(--line-strong)] bg-[var(--paper-raised)] px-3 py-2 text-base text-[var(--ink)] focus-visible:border-[var(--focus)] focus-visible:ring-3 focus-visible:ring-[var(--focus)]"
+                    ref={usernameRef}
+                    id="login-username"
+                    className="min-h-11 rounded-[8px] border-[var(--line-strong)] bg-[var(--surface-raised)] px-3 py-2 text-base text-[var(--ink)] focus-visible:border-[var(--focus)] focus-visible:ring-3 focus-visible:ring-[var(--focus)]"
                     value={username}
-                    onChange={(e) => setUsername(e.target.value)}
+                    onChange={(e) => {
+                      setUsername(e.target.value);
+                      setInvalidFields([]);
+                      if (view.kind === "ERROR") {
+                        setView({ kind: "SIGNED_OUT" });
+                      }
+                    }}
                     disabled={busy || upgradeMode}
                     autoComplete="username"
+                    aria-invalid={
+                      invalidFields.includes("username") || undefined
+                    }
+                    aria-describedby={
+                      invalidFields.includes("username")
+                        ? "login-error"
+                        : undefined
+                    }
                     required
                   />
-                </label>
+                </div>
                 {upgradeMode ? (
                   <>
-                    <label className={styles.field}>
-                      <span className={styles.fieldLabel}>
+                    <div className="flex min-w-0 flex-col gap-1.5">
+                      <label
+                        className="text-[0.88rem] font-bold text-[var(--ink-muted)]"
+                        htmlFor="legacy-pin"
+                      >
                         {COPY.login.legacyPasswordLabel}
-                      </span>
+                      </label>
                       <Input
-                        className="min-h-11 rounded-[8px] border-[var(--line-strong)] bg-[var(--paper-raised)] px-3 py-2 text-base text-[var(--ink)] focus-visible:border-[var(--focus)] focus-visible:ring-3 focus-visible:ring-[var(--focus)]"
+                        ref={legacyPinRef}
+                        id="legacy-pin"
+                        className="min-h-11 rounded-[8px] border-[var(--line-strong)] bg-[var(--surface-raised)] px-3 py-2 text-base text-[var(--ink)] focus-visible:border-[var(--focus)] focus-visible:ring-3 focus-visible:ring-[var(--focus)]"
                         type="password"
                         value={legacyPin}
-                        onChange={(e) => setLegacyPin(e.target.value)}
+                        onChange={(e) => {
+                          setLegacyPin(e.target.value);
+                          setInvalidFields([]);
+                          if (noticeKind === "error") {
+                            setNotice(null);
+                          }
+                        }}
                         disabled={busy}
                         autoComplete="current-password"
                         inputMode="numeric"
                         maxLength={4}
                         minLength={4}
                         pattern="[0-9]{4}"
+                        aria-invalid={
+                          invalidFields.includes("legacyPin") || undefined
+                        }
+                        aria-describedby={
+                          invalidFields.includes("legacyPin")
+                            ? "login-notice"
+                            : undefined
+                        }
                         required
                       />
-                    </label>
-                    <label className={styles.field}>
-                      <span className={styles.fieldLabel}>
+                    </div>
+                    <div className="flex min-w-0 flex-col gap-1.5">
+                      <label
+                        className="text-[0.88rem] font-bold text-[var(--ink-muted)]"
+                        htmlFor="new-credential"
+                      >
                         {COPY.login.newPasswordLabel}
-                      </span>
+                      </label>
                       <Input
-                        className="min-h-11 rounded-[8px] border-[var(--line-strong)] bg-[var(--paper-raised)] px-3 py-2 text-base text-[var(--ink)] focus-visible:border-[var(--focus)] focus-visible:ring-3 focus-visible:ring-[var(--focus)]"
+                        ref={newCredentialRef}
+                        id="new-credential"
+                        className="min-h-11 rounded-[8px] border-[var(--line-strong)] bg-[var(--surface-raised)] px-3 py-2 text-base text-[var(--ink)] focus-visible:border-[var(--focus)] focus-visible:ring-3 focus-visible:ring-[var(--focus)]"
                         type="password"
                         value={newCredential}
-                        onChange={(e) => setNewCredential(e.target.value)}
+                        onChange={(e) => {
+                          setNewCredential(e.target.value);
+                          setInvalidFields([]);
+                          if (noticeKind === "error") {
+                            setNotice(null);
+                          }
+                        }}
                         disabled={busy}
                         autoComplete="new-password"
+                        aria-invalid={
+                          invalidFields.includes("newCredential") || undefined
+                        }
+                        aria-describedby={
+                          invalidFields.includes("newCredential")
+                            ? "login-notice"
+                            : undefined
+                        }
                         minLength={8}
                         required
                       />
-                    </label>
-                    <label className={styles.field}>
-                      <span className={styles.fieldLabel}>
+                    </div>
+                    <div className="flex min-w-0 flex-col gap-1.5">
+                      <label
+                        className="text-[0.88rem] font-bold text-[var(--ink-muted)]"
+                        htmlFor="confirm-credential"
+                      >
                         {COPY.login.confirmPasswordLabel}
-                      </span>
+                      </label>
                       <Input
-                        className="min-h-11 rounded-[8px] border-[var(--line-strong)] bg-[var(--paper-raised)] px-3 py-2 text-base text-[var(--ink)] focus-visible:border-[var(--focus)] focus-visible:ring-3 focus-visible:ring-[var(--focus)]"
+                        ref={confirmCredentialRef}
+                        id="confirm-credential"
+                        className="min-h-11 rounded-[8px] border-[var(--line-strong)] bg-[var(--surface-raised)] px-3 py-2 text-base text-[var(--ink)] focus-visible:border-[var(--focus)] focus-visible:ring-3 focus-visible:ring-[var(--focus)]"
                         type="password"
                         value={confirmCredential}
-                        onChange={(e) => setConfirmCredential(e.target.value)}
+                        onChange={(e) => {
+                          setConfirmCredential(e.target.value);
+                          setInvalidFields([]);
+                          if (noticeKind === "error") {
+                            setNotice(null);
+                          }
+                        }}
                         disabled={busy}
                         autoComplete="new-password"
+                        aria-invalid={
+                          invalidFields.includes("confirmCredential") ||
+                          undefined
+                        }
+                        aria-describedby={
+                          invalidFields.includes("confirmCredential")
+                            ? "login-notice"
+                            : undefined
+                        }
                         minLength={8}
                         required
                       />
-                    </label>
+                    </div>
                   </>
                 ) : (
-                  <label className={styles.field}>
-                    <span className={styles.fieldLabel}>
+                  <div className="flex min-w-0 flex-col gap-1.5">
+                    <label
+                      className="text-[0.88rem] font-bold text-[var(--ink-muted)]"
+                      htmlFor="login-password"
+                    >
                       {COPY.login.passwordLabel}
-                    </span>
+                    </label>
                     <Input
-                      className="min-h-11 rounded-[8px] border-[var(--line-strong)] bg-[var(--paper-raised)] px-3 py-2 text-base text-[var(--ink)] focus-visible:border-[var(--focus)] focus-visible:ring-3 focus-visible:ring-[var(--focus)]"
+                      ref={passwordRef}
+                      id="login-password"
+                      className="min-h-11 rounded-[8px] border-[var(--line-strong)] bg-[var(--surface-raised)] px-3 py-2 text-base text-[var(--ink)] focus-visible:border-[var(--focus)] focus-visible:ring-3 focus-visible:ring-[var(--focus)]"
                       type="password"
                       value={password}
-                      onChange={(e) => setPassword(e.target.value)}
+                      onChange={(e) => {
+                        setPassword(e.target.value);
+                        setInvalidFields([]);
+                        if (view.kind === "ERROR") {
+                          setView({ kind: "SIGNED_OUT" });
+                        }
+                      }}
                       disabled={busy}
                       autoComplete="current-password"
+                      aria-invalid={
+                        invalidFields.includes("password") || undefined
+                      }
+                      aria-describedby={
+                        invalidFields.includes("password")
+                          ? "login-error"
+                          : undefined
+                      }
                       required
                     />
-                  </label>
+                  </div>
                 )}
                 <Button
                   className="min-h-11 w-full rounded-[8px] bg-[var(--accent)] px-6 text-base font-extrabold text-white hover:bg-[var(--accent-deep)]"
                   type="submit"
                   disabled={busy}
+                  aria-busy={busy}
                 >
                   {busy
                     ? upgradeMode
@@ -499,39 +748,51 @@ const LoginPage = () => {
                       ? COPY.login.upgradeSubmit
                       : COPY.login.submit}
                 </Button>
-                <p className={styles.loginNote}>{LANDING.loginAfterNote}</p>
-                <p className={styles.registerEntry}>
+                <p className="m-0 text-center text-[0.8rem] leading-[1.6] text-[var(--ink-muted)] max-[799px]:hidden">
+                  {LANDING.loginAfterNote}
+                </p>
+                <p className="m-0.5 text-center">
                   <Button
                     asChild
                     variant="link"
-                    className="min-h-11 w-full rounded-[8px] text-[var(--ink)] font-bold hover:text-[var(--accent)]"
+                    className="min-h-11 w-full rounded-[8px] font-bold text-[var(--ink)] hover:text-[var(--accent)]"
                   >
-                    <a href="/register">{REGISTRATION_COPY.pageTitle}</a>
+                    <Link href="/register">{REGISTRATION_COPY.pageTitle}</Link>
                   </Button>
                 </p>
-                <p className={styles.guestEntry}>
+                <p className="mt-[0.4rem]">
                   <Button
                     asChild
                     variant="outline"
-                    className="min-h-11 w-full rounded-[8px] border-[var(--line-strong)] bg-[var(--paper-raised)] px-3 text-[var(--ink)] font-bold hover:bg-[var(--paper)] hover:text-[var(--ink)]"
+                    className="min-h-11 w-full rounded-[8px] border-[var(--line-strong)] bg-[var(--surface-raised)] px-3 font-bold text-[var(--ink)] hover:bg-[var(--surface)] hover:text-[var(--ink)]"
                   >
-                    <a href="/guest-check-in">{COPY.login.guestCheckIn}</a>
+                    <Link href="/guest-check-in">
+                      {COPY.login.guestCheckIn}
+                    </Link>
                   </Button>
                 </p>
               </form>
               {view.kind === "ERROR" && (
-                <Alert
-                  variant="destructive"
-                  className={`${styles.notice} border-[var(--error-border)] bg-[var(--error-surface)] text-[var(--error)]`}
-                >
-                  {view.error}
-                </Alert>
+                <div ref={errorRef} tabIndex={-1} className="mt-4 outline-none">
+                  <Alert
+                    id="login-error"
+                    aria-label={view.error}
+                    variant="destructive"
+                    className="border-[var(--error-border)] bg-[var(--error-surface)] text-[var(--error)]"
+                  >
+                    {view.error}
+                  </Alert>
+                </div>
               )}
             </Card>
 
-            <div className={styles.loginCopy}>
-              <h1>{LANDING.brandFull}</h1>
-              <p>{LANDING.systemDescription}</p>
+            <div className="order-2 w-full max-w-[40ch] min-w-0 max-[799px]:mt-2 min-[800px]:order-1">
+              <h1 className="mb-3 wrap-anywhere text-[clamp(1.75rem,3vw,2.25rem)] font-extrabold leading-tight tracking-[-0.02em]">
+                {LANDING.brandFull}
+              </h1>
+              <p className="m-0 wrap-anywhere leading-[1.6] text-[var(--ink-muted)]">
+                {LANDING.systemDescription}
+              </p>
             </div>
           </div>
         </div>

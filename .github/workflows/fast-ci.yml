@@ -1,0 +1,56 @@
+# Fast CI — the single automatic deterministic gate.
+#
+# Exactly one job: root and web typechecks. Non-browser checks (prototype,
+# identity, workerd, components) run locally via `pnpm verify:precommit`
+# before commits; browser/Worker-D1 Playwright suites are explicit local
+# commands; the D1 auth acceptance contract and deployed smoke are manual
+# `workflow_dispatch` jobs in e2e.yml. The Ultracite syntax audit is deferred
+# to #498 and never runs here.
+#
+# Failures are LOUD: no continue-on-error, no `|| true`.
+
+name: Fast CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master, "feat/**"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: fast-ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  fast-ci:
+    name: Fast CI
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Enable pnpm (corepack)
+        run: corepack enable
+
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: "22.18.0"
+          cache: pnpm
+          cache-dependency-path: |
+            pnpm-lock.yaml
+            web/pnpm-lock.yaml
+
+      - name: Install root dependencies
+        env:
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
+        run: pnpm install --frozen-lockfile
+
+      - name: Install web dependencies
+        run: pnpm --dir web install --frozen-lockfile
+
+      - name: Typecheck (root + web)
+        run: pnpm verify:fast

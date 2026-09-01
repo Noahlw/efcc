@@ -126,6 +126,10 @@ describe(RegistrationForm, () => {
     await expect(screen.findByRole("alert")).resolves.toHaveTextContent(
       QUEUE_COPY.conflict
     );
+    const username = screen.getByLabelText(REGISTRATION_COPY.usernameLabel);
+    expect(username).toHaveAttribute("aria-invalid", "true");
+    expect(username).toHaveAttribute("aria-describedby", "registration-error");
+    expect(username).toHaveFocus();
   });
 
   test("blocks submission when required fields are missing", async () => {
@@ -138,6 +142,57 @@ describe(RegistrationForm, () => {
     await expect(screen.findByRole("alert")).resolves.toHaveTextContent(
       REGISTRATION_COPY.missingFields
     );
+  });
+  test("focuses the first invalid field and associates its error", async () => {
+    const user = userEvent.setup();
+    render(<RegistrationForm />);
+    await user.click(
+      screen.getByRole("button", { name: REGISTRATION_COPY.submit })
+    );
+    const username = screen.getByLabelText(REGISTRATION_COPY.usernameLabel);
+    expect(username).toHaveFocus();
+    expect(username).toHaveAttribute("aria-invalid", "true");
+    expect(username).toHaveAttribute("aria-describedby", "registration-error");
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      REGISTRATION_COPY.missingFields
+    );
+  });
+
+  test("preserves completed registration drafts and marks the submit busy", async () => {
+    let release: ((response: Response) => void) | undefined;
+    server.use(
+      http.post(
+        "/api/v1/auth/register",
+        () =>
+          new Promise<Response>((resolve) => {
+            release = resolve;
+          })
+      )
+    );
+    const user = userEvent.setup();
+    render(<RegistrationForm />);
+    await fillForm(user);
+    await user.click(
+      screen.getByRole("button", { name: REGISTRATION_COPY.submit })
+    );
+    const submit = screen.getByRole("button", {
+      name: REGISTRATION_COPY.submitting,
+    });
+    expect(submit).toBeDisabled();
+    expect(submit).toHaveAttribute("aria-busy", "true");
+    expect(screen.getByRole("form")).toHaveAttribute("aria-busy", "true");
+    expect(screen.getByLabelText(REGISTRATION_COPY.usernameLabel)).toHaveValue(
+      "dave"
+    );
+    release?.(
+      HttpResponse.json(
+        { requestId: "rid-busy", data: { status: "pending" } },
+        { status: 200 }
+      )
+    );
+    await expect(
+      screen.findByText(REGISTRATION_COPY.doneTitle)
+    ).resolves.toBeInTheDocument();
   });
 
   test("blocks submission when phone is left blank (now required, not optional)", async () => {
@@ -171,7 +226,10 @@ describe(RegistrationForm, () => {
       screen.getByLabelText(REGISTRATION_COPY.usernameLabel),
       "dave"
     );
-    await user.type(screen.getByLabelText(REGISTRATION_COPY.passwordLabel), "short");
+    await user.type(
+      screen.getByLabelText(REGISTRATION_COPY.passwordLabel),
+      "short"
+    );
     await user.type(
       screen.getByLabelText(REGISTRATION_COPY.nameLabel),
       "Dave Ng"

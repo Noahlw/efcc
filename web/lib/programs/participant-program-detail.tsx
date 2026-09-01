@@ -1,7 +1,10 @@
 "use client";
 /* oxlint-disable jsx-a11y/prefer-tag-over-role -- preserve the Programs status role contract */
 
+import { cva, type VariantProps } from "class-variance-authority";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
+import type { MouseEventHandler } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { Alert } from "@/components/ui/alert";
@@ -10,6 +13,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { RpcError } from "@/lib/api";
+import { ContextualTaskHeader } from "@/lib/contextual-task-header";
 import { COPY, errorCopyFor } from "@/lib/copy";
 import {
   hkDayPadded,
@@ -17,7 +21,6 @@ import {
   hkShortDateLabel,
   hkShortTimeRange,
 } from "@/lib/hk-time";
-import { announce } from "@/lib/live-region";
 import { getParticipantProgramDetail } from "@/lib/programs/program-api";
 import type {
   ParticipantEventSummary,
@@ -25,19 +28,25 @@ import type {
 } from "@/lib/programs/program-api";
 import { formatScheduleRuleLabel } from "@/lib/programs/recurrence";
 import { rememberDeepLink } from "@/lib/session";
+import { cn } from "@/lib/utils";
 
 import { EventFactIcon } from "./event-detail";
 import { ParticipantEnrollment } from "./participant-enrollment";
-
-import styles from "@/app/programs/programs.module.css";
+import { useAsyncResource } from "./use-async-resource";
 
 export interface ParticipantProgramDetailProps {
   programId: string;
-  onBack: () => void;
+  /** Safe same-origin destination for the Contextual Task Header Back link. */
+  backHref: string;
+  /** Boundary-owned in-place navigation for same-app route state. */
+  onBack?: () => void;
   canManage: boolean;
-  onManagement: () => void;
-  /** PUI-05 (#323): open a participant Event Detail deep link on the boundary. */
-  onOpenEvent: (eventId: string) => void;
+  /** PUI-05 (#323): optional compatibility callback for boundary navigation. */
+  onOpenEvent?: (eventId: string) => void;
+  /** Canonical same-origin URL for a participant Event Detail deep link. */
+  eventHref?: (eventId: string) => string;
+  /** Canonical same-origin destination for the management workspace Link. */
+  managementHref: string;
   conflictProgramName?: string | null;
 }
 
@@ -159,12 +168,28 @@ function conflictNote(
     : null;
 }
 
-const statusClass: Record<StatusKind, string> = {
-  success: styles.directoryStatusSuccess,
-  pending: styles.directoryStatusPending,
-  neutral: styles.directoryStatusNeutral,
-  danger: styles.directoryStatusDanger,
-};
+const detailStatusVariants = cva(
+  "inline-flex min-h-6 w-fit items-center rounded-[var(--radius-pill)] border px-3 py-1 text-xs font-bold tracking-[0.02em]",
+  {
+    variants: {
+      tone: {
+        success:
+          "border-[var(--success-border)] bg-[var(--success-surface)] text-[var(--success)]",
+        pending:
+          "border-[var(--pending-border)] bg-[var(--pending-surface)] text-[var(--pending)]",
+        neutral:
+          "border-[var(--line)] bg-[var(--surface)] text-[var(--ink-muted)]",
+        danger:
+          "border-[var(--error-border)] bg-[var(--error-surface)] text-[var(--error)]",
+      },
+    },
+    defaultVariants: { tone: "neutral" },
+  }
+);
+
+type DetailStatusTone = NonNullable<
+  VariantProps<typeof detailStatusVariants>["tone"]
+>;
 
 interface ParticipantScheduleProps {
   program: ParticipantProgramDetailData["program"];
@@ -182,27 +207,30 @@ const ParticipantSchedule = ({
   onExpandAll,
 }: ParticipantScheduleProps) => (
   <section
-    className={styles.programDetailSection}
+    className="grid min-w-0 gap-2 px-1 pt-2"
     aria-labelledby="program-detail-schedule"
   >
-    <h3 id="program-detail-schedule" className={styles.programDetailHeading}>
+    <h3
+      id="program-detail-schedule"
+      className="m-0 px-2 text-[0.8125rem] font-extrabold tracking-[0.1em] text-[var(--ink-muted)]"
+    >
       {COPY.programs.scheduleTitle}
     </h3>
     {scheduleRules.length > 0 && (
-      <div className={styles.programDetailScheduleGroup}>
-        <h4
-          id="program-detail-schedule-rules"
-          className={styles.programDetailSubheading}
-        >
+      <div className="grid min-w-0 overflow-hidden rounded-[1.125rem] bg-[var(--surface-raised)] shadow-[0_1px_3px_color-mix(in_srgb,var(--ink)_6%,transparent)]">
+        <h4 id="program-detail-schedule-rules" className="sr-only">
           {COPY.programs.scheduleRulesGroup}
         </h4>
         <ul
-          className={styles.programDetailList}
+          className="m-0 grid min-w-0 list-none gap-2 p-0 leading-[1.6]"
           aria-label={COPY.programs.scheduleRulesGroup}
         >
           {scheduleRules.map((rule) => (
-            <li key={rule.rule_id} className={styles.programDetailEvent}>
-              <span className={styles.programDetailScheduleCopy}>
+            <li
+              key={rule.rule_id}
+              className="flex min-w-0 items-center gap-3 border-b border-[var(--line)] px-4 py-3.5 last:border-b-0"
+            >
+              <span className="min-w-0 wrap-anywhere">
                 {formatScheduleRuleLabel(rule)}
               </span>
             </li>
@@ -211,15 +239,12 @@ const ParticipantSchedule = ({
       </div>
     )}
     {events.length > 0 && (
-      <div className={styles.programDetailScheduleGroup}>
-        <h4
-          id="program-detail-schedule-events"
-          className={styles.programDetailSubheading}
-        >
+      <div className="grid min-w-0 overflow-hidden rounded-[1.125rem] bg-[var(--surface-raised)] shadow-[0_1px_3px_color-mix(in_srgb,var(--ink)_6%,transparent)]">
+        <h4 id="program-detail-schedule-events" className="sr-only">
           {COPY.programs.scheduleEventsGroup}
         </h4>
         <ul
-          className={styles.programDetailList}
+          className="m-0 grid min-w-0 list-none gap-0 p-0 leading-[1.6]"
           aria-label={COPY.programs.scheduleEventsGroup}
         >
           {events.map((event, index) => {
@@ -229,31 +254,42 @@ const ParticipantSchedule = ({
               program.lifecycle !== "Archived" &&
               program.enrollment_mode !== "ManagerOnly";
             return (
-              <li key={event.event_id} className={styles.programDetailEvent}>
-                <time className={styles.eventDate} dateTime={event.starts_at}>
-                  <b className={styles.eventDateDay}>
+              <li
+                key={event.event_id}
+                className="flex min-w-0 items-center gap-3 border-b border-[var(--line)] px-4 py-3.5 last:border-b-0"
+              >
+                <time
+                  className="flex w-[3.25rem] shrink-0 flex-col items-center justify-center rounded-[0.75rem] bg-[var(--surface)] py-1.5 text-center [font-variant-numeric:tabular-nums] leading-[1.1]"
+                  dateTime={event.starts_at}
+                >
+                  <b className="block text-[1.0625rem] font-extrabold text-[var(--ink)]">
                     {hkDayPadded(event.starts_at)}
                   </b>
-                  <span className={styles.eventDateMonth}>
+                  <span className="mt-0.5 block text-[0.6875rem] text-[var(--ink-muted)]">
                     {hkMonthWeekdayLabel(event.starts_at)}
                   </span>
                 </time>
-                <div className={styles.programDetailScheduleCopy}>
-                  <strong>{eventTitle(event, index)}</strong>
-                  <span className={styles.eventSource}>
+                <div className="grid min-w-0 flex-1 gap-0.5">
+                  <strong className="min-w-0 wrap-anywhere text-[0.9375rem] font-bold">
+                    {eventTitle(event, index)}
+                  </strong>
+                  <span className="min-w-0 wrap-anywhere text-[0.8125rem] text-[var(--ink-muted)]">
                     {eventWhen(event)}
                     {location ? ` · ${location}` : ""}
                   </span>
-                  <span className={styles.programDetailLifecycle}>
+                  <span className="inline-flex w-fit min-w-0 items-center gap-1.5 wrap-anywhere text-xs font-bold text-[var(--ink-muted)]">
                     <span
-                      className={styles.programDetailLifecycleDot}
+                      className="size-2 shrink-0 rounded-full bg-[var(--ink-muted)]"
                       aria-hidden="true"
                     />
                     {COPY.programs.eventActive}
                   </span>
                   {selfCheckInAvailable && (
                     <Badge
-                      className={`${styles.directoryStatus} ${styles.directoryStatusNeutral}`}
+                      className={cn(
+                        detailStatusVariants({ tone: "neutral" }),
+                        "w-fit"
+                      )}
                       variant="outline"
                       role="status"
                       aria-label={COPY.programs.checkInAvailable}
@@ -269,7 +305,8 @@ const ParticipantSchedule = ({
         {totalEventCount > events.length && onExpandAll && (
           <Button
             type="button"
-            className={styles.programDetailExpandButton}
+            className="h-auto min-h-11 w-full whitespace-normal rounded-none border-0 px-4 py-3 text-sm font-bold text-[var(--accent)] hover:bg-[var(--surface)] hover:text-[var(--accent-deep)] focus-visible:ring-3 focus-visible:ring-[var(--focus)]"
+            variant="ghost"
             onClick={onExpandAll}
           >
             {COPY.programs.scheduleExpandAll.replace(
@@ -281,7 +318,7 @@ const ParticipantSchedule = ({
       </div>
     )}
     {scheduleRules.length === 0 && events.length === 0 && (
-      <p className={styles.programDetailMuted}>
+      <p className="m-0 min-w-0 wrap-anywhere leading-[1.6] text-[var(--ink-muted)]">
         {COPY.programs.detailEventsNone}
       </p>
     )}
@@ -290,19 +327,85 @@ const ParticipantSchedule = ({
 
 export const ParticipantProgramDetail = ({
   programId,
+  backHref,
   onBack,
   canManage,
-  onManagement,
   onOpenEvent,
+  eventHref,
+  managementHref,
   conflictProgramName = null,
 }: ParticipantProgramDetailProps) => {
   const router = useRouter();
-  const [state, setState] = useState<DetailState>({ kind: "loading" });
-  const mounted = useRef(true);
-  const requestId = useRef(0);
-  const retryFocusPending = useRef(false);
-
   const [eventLimit, setEventLimit] = useState(MOBILE_EVENT_CAP);
+  const onAuthRequired = useCallback(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+    rememberDeepLink(
+      `${window.location.pathname}${window.location.search}${window.location.hash}`
+    );
+    router.replace("/");
+  }, [router]);
+  const handleBack = useCallback<MouseEventHandler<HTMLAnchorElement>>(
+    (event) => {
+      if (
+        event.defaultPrevented ||
+        event.button !== 0 ||
+        event.metaKey ||
+        event.ctrlKey ||
+        event.shiftKey ||
+        event.altKey
+      ) {
+        return;
+      }
+      event.preventDefault();
+      if (onBack) {
+        onBack();
+        return;
+      }
+      router.replace(backHref);
+    },
+    [backHref, onBack, router]
+  );
+  const {
+    state,
+    run,
+    refresh,
+    retry: retryDetail,
+  } = useAsyncResource<ParticipantProgramDetailData, DetailState>(
+    async () => getParticipantProgramDetail(programId),
+    {
+      toLoading: () => ({ kind: "loading" }),
+      toReady: (detail) => ({ kind: "ready", detail }),
+      onError: (error) => {
+        if (
+          error instanceof RpcError &&
+          (error.problem.code === "NOT_FOUND" ||
+            error.problem.code === "FORBIDDEN")
+        ) {
+          return { kind: "unavailable" };
+        }
+        return {
+          kind: "error",
+          message:
+            error instanceof RpcError
+              ? errorCopyFor(error.problem.code, error.problem.detail)
+              : COPY.error.networkError,
+        };
+      },
+      announceLoading: COPY.programs.detailLoading,
+      announceError: (error) =>
+        error instanceof RpcError &&
+        (error.problem.code === "NOT_FOUND" ||
+          error.problem.code === "FORBIDDEN")
+          ? COPY.programs.detailUnavailable
+          : undefined,
+      isAuthRequired: (error) =>
+        error instanceof RpcError && error.problem.code === "AUTH_REQUIRED",
+      onAuthRequired,
+    },
+    [programId, router]
+  );
 
   useEffect(() => {
     if (typeof window.matchMedia !== "function") {
@@ -318,67 +421,8 @@ export const ParticipantProgramDetail = ({
   }, []);
 
   useEffect(() => {
-    mounted.current = true;
-    return () => {
-      mounted.current = false;
-    };
-  }, []);
-
-  const loadDetail = useCallback(
-    async ({ showLoading = true }: { showLoading?: boolean } = {}) => {
-      requestId.current += 1;
-      const currentRequest = requestId.current;
-      if (showLoading) {
-        setState({ kind: "loading" });
-        announce(COPY.programs.detailLoading);
-      }
-      try {
-        const detail = await getParticipantProgramDetail(programId);
-        if (!mounted.current || requestId.current !== currentRequest) {
-          return;
-        }
-        setState({ kind: "ready", detail });
-      } catch (error) {
-        if (!mounted.current || requestId.current !== currentRequest) {
-          return;
-        }
-        if (
-          error instanceof RpcError &&
-          error.problem.code === "AUTH_REQUIRED"
-        ) {
-          rememberDeepLink(
-            `${window.location.pathname}${window.location.search}${window.location.hash}`
-          );
-          router.replace("/");
-          return;
-        }
-        if (
-          error instanceof RpcError &&
-          (error.problem.code === "NOT_FOUND" ||
-            error.problem.code === "FORBIDDEN")
-        ) {
-          setState({ kind: "unavailable" });
-          announce(COPY.programs.detailUnavailable);
-          return;
-        }
-        const message =
-          error instanceof RpcError
-            ? errorCopyFor(error.problem.code, error.problem.detail)
-            : COPY.error.networkError;
-        setState({ kind: "error", message });
-        announce(message);
-      }
-    },
-    [programId, router]
-  );
-  const refreshDetail = useCallback(
-    () => loadDetail({ showLoading: false }),
-    [loadDetail]
-  );
-
-  useEffect(() => {
-    void loadDetail();
-  }, [loadDetail]);
+    void run();
+  }, [run]);
 
   useEffect(() => {
     if (state.kind === "loading") {
@@ -388,19 +432,10 @@ export const ParticipantProgramDetail = ({
       state.kind === "ready"
         ? "#program-detail-title"
         : "#program-detail-state";
-    const panel = document.querySelector<HTMLElement>(targetId);
-    if (!panel) {
-      return;
-    }
-    panel.focus();
-    retryFocusPending.current = false;
+    document.querySelector<HTMLElement>(targetId)?.focus();
   }, [state.kind]);
 
-  const retryDetail = () => {
-    retryFocusPending.current = true;
-    void loadDetail();
-  };
-
+  const refreshDetail = useCallback(() => refresh(), [refresh]);
   const scheduledEvents = useMemo(() => {
     if (state.kind !== "ready") {
       return [];
@@ -420,12 +455,14 @@ export const ParticipantProgramDetail = ({
     return (
       <section
         id="program-detail-state"
-        className={styles.boundaryState}
+        className="grid min-w-0 max-w-[60ch] gap-3 rounded-[var(--radius-md)] border border-[var(--line)] bg-[var(--surface)] p-4 text-[var(--ink)]"
         tabIndex={-1}
         role="status"
         aria-busy="true"
       >
-        <p>{COPY.programs.detailLoading}</p>
+        <h1 className="m-0 wrap-anywhere text-[1.35rem] font-extrabold leading-tight">
+          {COPY.programs.detailLoading}
+        </h1>
         <Skeleton className="h-16 w-full" aria-hidden="true" />
       </section>
     );
@@ -435,16 +472,24 @@ export const ParticipantProgramDetail = ({
     return (
       <section
         id="program-detail-state"
-        className={styles.boundaryState}
+        className="grid min-w-0 max-w-[60ch] gap-3 rounded-[var(--radius-md)] border border-[var(--line)] bg-[var(--surface)] p-4 text-[var(--ink)]"
         tabIndex={-1}
         role="status"
       >
-        <h2 className={styles.boundaryTitle}>
+        <h1 className="m-0 wrap-anywhere text-[1.35rem] font-extrabold leading-tight">
           {COPY.programs.detailUnavailable}
-        </h2>
-        <p>{COPY.programs.detailUnavailableHint}</p>
-        <Button className={styles.retry} type="button" onClick={onBack}>
-          {COPY.programs.detailBack}
+        </h1>
+        <p className="m-0 wrap-anywhere leading-[1.6] text-[var(--ink-muted)]">
+          {COPY.programs.detailUnavailableHint}
+        </p>
+        <Button
+          asChild
+          className="h-auto min-h-11 w-full whitespace-normal px-4 py-3 text-base font-bold sm:w-fit"
+          variant="outline"
+        >
+          <Link href={backHref} replace onClick={handleBack}>
+            {COPY.programs.detailBack}
+          </Link>
         </Button>
       </section>
     );
@@ -454,24 +499,30 @@ export const ParticipantProgramDetail = ({
     return (
       <Alert
         id="program-detail-state"
-        className={styles.boundaryError}
+        className="grid min-w-0 max-w-[60ch] gap-1.5 border-[var(--error-border)] bg-[var(--error-surface)] p-4 text-[var(--ink)]"
         tabIndex={-1}
         variant="destructive"
       >
-        <h2 className={styles.boundaryTitle}>
+        <h1 className="m-0 wrap-anywhere text-[1.35rem] font-extrabold leading-tight">
           {COPY.programs.detailLoadError}
-        </h2>
-        <p>{state.message}</p>
-        <div className={styles.programDetailActions}>
-          <Button className={styles.retry} type="button" onClick={retryDetail}>
+        </h1>
+        <p className="m-0 wrap-anywhere leading-[1.6]">{state.message}</p>
+        <div className="mt-2 flex min-w-0 flex-wrap gap-3 max-[799px]:flex-col">
+          <Button
+            className="h-auto min-h-11 w-full whitespace-normal px-4 py-3 text-base font-bold sm:w-fit"
+            type="button"
+            onClick={retryDetail}
+          >
             {COPY.programs.detailRetry}
           </Button>
           <Button
-            className={styles.secondaryButton}
-            type="button"
-            onClick={onBack}
+            asChild
+            className="h-auto min-h-11 w-full whitespace-normal border-[var(--line-strong)] bg-[var(--surface-raised)] px-4 py-3 text-base font-bold text-[var(--ink)] hover:bg-[var(--surface)] hover:text-[var(--ink)] sm:w-fit"
+            variant="outline"
           >
-            {COPY.programs.detailBack}
+            <Link href={backHref} replace onClick={handleBack}>
+              {COPY.programs.detailBack}
+            </Link>
           </Button>
         </div>
       </Alert>
@@ -501,91 +552,111 @@ export const ParticipantProgramDetail = ({
 
   return (
     <article
-      className={styles.programDetail}
+      className="grid min-w-0 gap-3 pb-[calc(6rem+env(safe-area-inset-bottom,0px))] text-[var(--ink)]"
       aria-labelledby="program-detail-title"
     >
-      <Button
-        className={styles.programDetailBack}
-        type="button"
-        aria-label={COPY.programs.detailBack}
-        onClick={onBack}
-      >
-        <EventFactIcon name="back" /> {COPY.programs.detailBack}
-      </Button>
-      <header className={styles.programDetailHeader}>
-        <Badge
-          className={`${styles.directoryStatus} ${statusClass[status.kind]} ${styles.programDetailStatus}`}
-          variant={
-            status.kind === "danger"
-              ? "destructive"
-              : status.kind === "neutral"
-                ? "outline"
-                : status.kind === "pending"
-                  ? "secondary"
-                  : "default"
-          }
-          role="status"
-        >
-          {status.label}
-        </Badge>
-        <h1
-          id="program-detail-title"
-          className={styles.boundaryTitle}
-          tabIndex={-1}
-        >
-          {program.name}
-        </h1>
-        <p className={styles.programDetailDescription}>
-          {program.description ?? COPY.programs.programDescriptionEmpty}
-        </p>
-      </header>
+      <ContextualTaskHeader
+        backHref={backHref}
+        backLabel={COPY.programs.detailBack}
+        backReplace
+        onBack={handleBack}
+        title={program.name}
+        lead={program.description ?? COPY.programs.programDescriptionEmpty}
+        headingId="program-detail-title"
+        status={
+          <Badge
+            className={cn(
+              detailStatusVariants({
+                tone: status.kind as DetailStatusTone,
+              })
+            )}
+            variant="outline"
+            role="status"
+          >
+            {status.label}
+          </Badge>
+        }
+        className="min-w-0 [&_h1]:min-w-0 [&_h1]:wrap-anywhere [&_p]:min-w-0 [&_p]:wrap-anywhere"
+      />
 
       {nextEvent && (
         <article
-          className={styles.programDetailNextEvent}
+          className="grid min-w-0 gap-3 rounded-[1.125rem] bg-[var(--surface-raised)] px-4 py-4 shadow-[0_1px_3px_color-mix(in_srgb,var(--ink)_6%,transparent)]"
           aria-labelledby="program-detail-next-event"
         >
-          <span className={styles.programDetailMonoLabel}>
+          <span className="min-w-0 wrap-anywhere text-xs font-semibold tracking-[0.05em] text-[var(--ink-muted)]">
             {COPY.programs.nextMeeting}
           </span>
           <h3
             id="program-detail-next-event"
-            className={styles.programDetailNextEventTitle}
+            className="m-0 min-w-0 wrap-anywhere text-[1.0625rem] font-bold leading-[1.35]"
           >
             {eventTitle(nextEvent, 0)}
           </h3>
-          <Card className={styles.programDetailInfoCard}>
-            <p
-              className={`${styles.programDetailFactRow} ${styles.programDetailFactTime}`}
-            >
+          <Card className="m-0 grid min-w-0 gap-2 border-0 bg-transparent p-0 shadow-none">
+            <p className="m-0 flex min-w-0 items-center gap-2 wrap-anywhere text-[0.9375rem] leading-[1.5]">
               <EventFactIcon name="calendar" />
-              <span>
+              <span className="min-w-0 wrap-anywhere">
                 {hkShortDateLabel(nextEvent.starts_at)}
                 {hkShortTimeRange(nextEvent.starts_at, nextEvent.ends_at)}
               </span>
             </p>
             {nextLocation ? (
-              <p className={styles.programDetailFactRow}>
+              <p className="m-0 flex min-w-0 items-center gap-2 wrap-anywhere text-[0.9375rem] leading-[1.5]">
                 <EventFactIcon name="pin" />
-                <span>{nextLocation}</span>
+                <span className="min-w-0 wrap-anywhere">{nextLocation}</span>
               </p>
             ) : null}
           </Card>
           {nextConflict && (
-            <p className={styles.programDetailConflict} role="note">
+            <p
+              className="m-0 min-w-0 wrap-anywhere rounded-[var(--radius-sm)] border border-[var(--pending-border)] bg-[var(--pending-surface)] px-3 py-2.5 text-sm leading-[1.5] text-[var(--pending)]"
+              role="note"
+            >
               {nextConflict}
             </p>
           )}
-          {canOpenEventDetail && (
-            <Button
-              type="button"
-              className={styles.secondaryButton}
-              onClick={() => onOpenEvent(nextEvent.event_id)}
-              aria-label={COPY.programs.viewEventDetail}
-            >
-              {COPY.programs.viewEventDetail}
-            </Button>
-          )}
+          {canOpenEventDetail &&
+            (eventHref || onOpenEvent) &&
+            (eventHref ? (
+              <Button
+                asChild
+                className="h-auto min-h-11 w-full whitespace-normal border-[var(--line-strong)] bg-[var(--surface-raised)] px-4 py-3 text-left text-base font-bold text-[var(--ink)] hover:bg-[var(--surface)] hover:text-[var(--ink)]"
+                variant="outline"
+              >
+                <Link
+                  href={eventHref(nextEvent.event_id)}
+                  aria-label={COPY.programs.viewEventDetail}
+                  onClick={(event) => {
+                    if (
+                      !onOpenEvent ||
+                      event.defaultPrevented ||
+                      event.button !== 0 ||
+                      event.metaKey ||
+                      event.ctrlKey ||
+                      event.shiftKey ||
+                      event.altKey
+                    ) {
+                      return;
+                    }
+                    event.preventDefault();
+                    onOpenEvent(nextEvent.event_id);
+                  }}
+                >
+                  {COPY.programs.viewEventDetail}
+                </Link>
+              </Button>
+            ) : (
+              <Button
+                type="button"
+                className="h-auto min-h-11 w-full whitespace-normal border-[var(--line-strong)] bg-[var(--surface-raised)] px-4 py-3 text-left text-base font-bold text-[var(--ink)] hover:bg-[var(--surface)] hover:text-[var(--ink)]"
+                variant="outline"
+                onClick={() => onOpenEvent?.(nextEvent.event_id)}
+                aria-label={COPY.programs.viewEventDetail}
+              >
+                {COPY.programs.viewEventDetail}
+              </Button>
+            ))}
         </article>
       )}
 
@@ -598,17 +669,20 @@ export const ParticipantProgramDetail = ({
       />
 
       {canManage && (
-        <div className={styles.managementEntry}>
-          <div>
-            <h3>{COPY.programs.managementMode}</h3>
-            <p>{COPY.programs.managementLead}</p>
+        <div className="mt-1 flex min-w-0 items-center justify-between gap-4 rounded-[var(--radius-md)] border border-[var(--line)] bg-[var(--surface-raised)] p-4 max-[799px]:flex-col max-[799px]:items-stretch">
+          <div className="min-w-0">
+            <h3 className="m-0 wrap-anywhere text-base font-extrabold">
+              {COPY.programs.managementMode}
+            </h3>
+            <p className="m-0 mt-1 wrap-anywhere leading-[1.5] text-[var(--ink-muted)]">
+              {COPY.programs.managementLead}
+            </p>
           </div>
           <Button
-            className={styles.button}
-            type="button"
-            onClick={onManagement}
+            asChild
+            className="h-auto min-h-11 whitespace-normal px-4 py-3 text-base font-extrabold max-[799px]:w-full"
           >
-            {COPY.programs.enterManagement}
+            <Link href={managementHref}>{COPY.programs.enterManagement}</Link>
           </Button>
         </div>
       )}

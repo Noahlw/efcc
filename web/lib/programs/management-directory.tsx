@@ -1,12 +1,12 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { Alert } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { RpcError } from "@/lib/api";
@@ -19,11 +19,51 @@ import type {
   ManagementProgram as ManagementProgramRecord,
 } from "@/lib/programs/program-api";
 import { rememberDeepLink } from "@/lib/session";
+import { cn } from "@/lib/utils";
 
 import { DepartmentSettingsPanel } from "./department-settings-panel";
+import { buildProgramsHref } from "./programs-intent";
 import { useAsyncResource } from "./use-async-resource";
 
-import styles from "@/app/programs/programs.module.css";
+const styles = {
+  directoryCard:
+    "group flex h-auto min-h-11 w-full min-w-0 flex-col items-start gap-2 rounded-lg border border-[var(--line)] bg-[var(--surface-raised)] p-4 text-left whitespace-normal transition-colors hover:border-[var(--accent)] [overflow-wrap:anywhere]",
+  directoryCardTitle:
+    "block min-w-0 text-base font-extrabold leading-6 whitespace-normal [overflow-wrap:anywhere]",
+  directoryCardMeta:
+    "flex min-w-0 flex-wrap items-center gap-2 text-sm leading-6 text-[var(--ink-muted)] whitespace-normal [overflow-wrap:anywhere]",
+  boundaryTitle:
+    "m-0 min-w-0 text-xl font-extrabold leading-tight tracking-[-0.02em] [overflow-wrap:anywhere]",
+  boundaryLead:
+    "mt-1 mb-5 max-w-prose text-base leading-6 text-[var(--ink-muted)] [overflow-wrap:anywhere]",
+  boundaryState:
+    "grid min-w-0 gap-3 rounded-lg border border-[var(--line)] bg-[var(--surface)] p-5 [overflow-wrap:anywhere]",
+  boundaryError:
+    "grid min-w-0 gap-3 rounded-lg border border-[var(--error-border)] bg-[var(--error-surface)] p-4 text-[var(--error)] [overflow-wrap:anywhere]",
+  retry:
+    "min-h-11 min-w-11 w-fit rounded-lg border border-[var(--error-border)] bg-transparent px-4 py-2 text-[var(--error)] whitespace-normal hover:bg-[var(--error-surface)]",
+  moduleSection:
+    "grid min-w-0 gap-3 rounded-lg border border-[var(--line)] bg-[var(--surface-raised)] p-4",
+  sectionLabel:
+    "m-0 text-sm font-bold uppercase tracking-[0.08em] text-[var(--ink-muted)]",
+  fieldHint:
+    "m-0 text-sm leading-6 text-[var(--ink-muted)] [overflow-wrap:anywhere]",
+  deptList: "m-0 mb-7 grid list-none gap-3 p-0",
+  deptItem: "min-w-0 overflow-hidden rounded-lg border border-[var(--line)]",
+  directorySearch: "mb-5 grid min-w-0 gap-2",
+  directorySearchLabel: "text-sm font-bold leading-5 text-[var(--ink)]",
+  directorySearchRow: "flex min-w-0 flex-wrap items-center gap-3",
+  input:
+    "min-h-11 min-w-0 rounded-lg border-[var(--line-strong)] bg-[var(--surface-raised)] text-base",
+  clearButton:
+    "min-h-11 min-w-11 w-fit rounded-lg border border-[var(--line-strong)] bg-transparent px-4 py-2 text-[var(--ink)] whitespace-normal hover:bg-[var(--surface)]",
+  directoryList: "m-0 grid list-none gap-3 p-0",
+  directoryItem: "m-0 min-w-0",
+  directoryCardDescription:
+    "block min-w-0 text-sm leading-6 text-[var(--ink-muted)] [overflow-wrap:anywhere]",
+  directoryMetaItem: "min-w-0 [overflow-wrap:anywhere]",
+  directoryStatus: "shrink-0 whitespace-normal",
+} as const;
 
 export interface ManagementProgram {
   program: ManagementProgramRecord;
@@ -141,16 +181,35 @@ export interface ManagementDirectoryProps {
   onOpenProgram: (programId: string, created?: boolean) => void;
   /** Optional Department context restored from a safe return URL. */
   departmentId?: string | null;
+  /** Hash fragment restored with the current Programs intent. */
+  hash?: string | null;
   /** Render only the scoped Departments administration surface. */
   departmentOnly?: boolean;
+  /** Preserve the directory search while a Program workspace is open. */
+  query?: string;
+  onQueryChange?: (query: string) => void;
+  /** Program row to focus after returning from its workspace. */
+  focusProgramId?: string | null;
 }
 export const ManagementDirectory = ({
   onOpenProgram,
   departmentId = null,
+  hash = null,
   departmentOnly = false,
+  query,
+  onQueryChange,
+  focusProgramId = null,
 }: ManagementDirectoryProps) => {
+  const [localQuery, setLocalQuery] = useState("");
+  const directoryQuery = query ?? localQuery;
+  const updateQuery = (value: string) => {
+    if (onQueryChange) {
+      onQueryChange(value);
+    } else {
+      setLocalQuery(value);
+    }
+  };
   const router = useRouter();
-  const [query, setQuery] = useState("");
   const {
     state,
     run: loadDirectory,
@@ -210,7 +269,7 @@ export const ManagementDirectory = ({
     if (state.kind !== "ready") {
       return [];
     }
-    const needle = query.trim().toLocaleLowerCase();
+    const needle = directoryQuery.trim().toLocaleLowerCase();
     const rows = departmentId
       ? state.rows.filter(
           ({ department }) => department.department_id === departmentId
@@ -230,7 +289,16 @@ export const ManagementDirectory = ({
         .filter((value): value is string => Boolean(value))
         .some((value) => value.toLocaleLowerCase().includes(needle))
     );
-  }, [departmentId, query, state]);
+  }, [departmentId, directoryQuery, state]);
+  useEffect(() => {
+    if (state.kind !== "ready" || !focusProgramId) {
+      return;
+    }
+    const row = [
+      ...document.querySelectorAll<HTMLElement>("[data-program-id]"),
+    ].find((candidate) => candidate.dataset.programId === focusProgramId);
+    row?.focus();
+  }, [filteredRows, focusProgramId, state.kind]);
   const scopedDepartments =
     state.kind === "ready"
       ? state.departments.filter(
@@ -360,16 +428,16 @@ export const ManagementDirectory = ({
                 id="programs-management-directory-search"
                 className={styles.input}
                 type="search"
-                value={query}
-                onChange={(event) => setQuery(event.target.value)}
+                value={directoryQuery}
+                onChange={(event) => updateQuery(event.target.value)}
                 placeholder={COPY.programs.managementDirectorySearchPlaceholder}
                 autoComplete="off"
               />
-              {query.trim() && (
+              {directoryQuery.trim() && (
                 <Button
                   className={styles.clearButton}
                   type="button"
-                  onClick={() => setQuery("")}
+                  onClick={() => updateQuery("")}
                 >
                   {COPY.programs.managementDirectoryClearSearch}
                 </Button>
@@ -389,7 +457,7 @@ export const ManagementDirectory = ({
               <Button
                 className={styles.retry}
                 type="button"
-                onClick={() => setQuery("")}
+                onClick={() => updateQuery("")}
               >
                 {COPY.programs.managementDirectoryClearSearch}
               </Button>
@@ -401,53 +469,73 @@ export const ManagementDirectory = ({
             >
               {filteredRows.map(({ program, department, scope }) => (
                 <li key={program.program_id} className={styles.directoryItem}>
-                  <Button
-                    className={styles.directoryCard}
-                    type="button"
-                    onClick={() => onOpenProgram(program.program_id)}
-                  >
-                    <span className={styles.directoryCardTitle}>
-                      {program.name}
-                    </span>
-                    {program.description && (
-                      <span className={styles.directoryCardDescription}>
-                        {program.description}
+                  <Button asChild className={styles.directoryCard}>
+                    <Link
+                      href={buildProgramsHref({
+                        mode: "management",
+                        programId: program.program_id,
+                        departmentId,
+                        hash,
+                      })}
+                      data-program-id={program.program_id}
+                      onClick={(event) => {
+                        if (
+                          event.defaultPrevented ||
+                          event.button !== 0 ||
+                          event.metaKey ||
+                          event.ctrlKey ||
+                          event.shiftKey ||
+                          event.altKey
+                        ) {
+                          return;
+                        }
+                        event.preventDefault();
+                        onOpenProgram(program.program_id);
+                      }}
+                    >
+                      <span className={styles.directoryCardTitle}>
+                        {program.name}
                       </span>
-                    )}
-                    <span className={styles.directoryCardMeta}>
-                      <span className={styles.directoryMetaItem}>
-                        {department.name} · {department.code}
-                      </span>
-                      {program.category && (
-                        <span className={styles.directoryMetaItem}>
-                          {program.category}
+                      {program.description && (
+                        <span className={styles.directoryCardDescription}>
+                          {program.description}
                         </span>
                       )}
-                      <Badge
-                        className={styles.directoryStatus}
-                        variant="outline"
-                      >
-                        {scope === "department"
-                          ? COPY.programs.managementScopeDepartment
-                          : COPY.programs.managementScopeProgram}
-                      </Badge>
-                      <Badge
-                        className={`${styles.directoryStatus} ${styles[`directoryStatus${program.lifecycle}`]}`}
-                        variant={
-                          program.lifecycle === "Active"
-                            ? "default"
+                      <span className={styles.directoryCardMeta}>
+                        <span className={styles.directoryMetaItem}>
+                          {department.name} · {department.code}
+                        </span>
+                        {program.category && (
+                          <span className={styles.directoryMetaItem}>
+                            {program.category}
+                          </span>
+                        )}
+                        <Badge
+                          className={styles.directoryStatus}
+                          variant="outline"
+                        >
+                          {scope === "department"
+                            ? COPY.programs.managementScopeDepartment
+                            : COPY.programs.managementScopeProgram}
+                        </Badge>
+                        <Badge
+                          className={styles.directoryStatus}
+                          variant={
+                            program.lifecycle === "Active"
+                              ? "default"
+                              : program.lifecycle === "Draft"
+                                ? "secondary"
+                                : "outline"
+                          }
+                        >
+                          {program.lifecycle === "Active"
+                            ? COPY.programs.lifecycleActive
                             : program.lifecycle === "Draft"
-                              ? "secondary"
-                              : "outline"
-                        }
-                      >
-                        {program.lifecycle === "Active"
-                          ? COPY.programs.lifecycleActive
-                          : program.lifecycle === "Draft"
-                            ? COPY.programs.lifecycleDraft
-                            : COPY.programs.lifecycleArchived}
-                      </Badge>
-                    </span>
+                              ? COPY.programs.lifecycleDraft
+                              : COPY.programs.lifecycleArchived}
+                        </Badge>
+                      </span>
+                    </Link>
                   </Button>
                 </li>
               ))}

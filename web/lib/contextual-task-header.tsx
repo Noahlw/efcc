@@ -1,7 +1,7 @@
 "use client";
 
-import { cva } from 'class-variance-authority';
-import type { VariantProps } from 'class-variance-authority';
+import { cva } from "class-variance-authority";
+import type { VariantProps } from "class-variance-authority";
 import Link from "next/link";
 import * as React from "react";
 
@@ -33,6 +33,10 @@ export interface ContextualTaskHeaderProps extends ContextualTaskHeaderVariants 
   headingId?: string;
   /** A caller-owned heading ref for predictable focus after a state change. */
   headingRef?: React.Ref<HTMLHeadingElement>;
+  /** Replace history when the caller is restoring an existing route. */
+  backReplace?: boolean;
+  /** Optional caller-owned interception for history-backed transitions. */
+  onBack?: React.MouseEventHandler<HTMLAnchorElement>;
   className?: string;
 }
 
@@ -50,10 +54,33 @@ export const ContextualTaskHeader = ({
   action,
   headingId,
   headingRef,
+  backReplace,
+  onBack,
   className,
   layout,
-}: ContextualTaskHeaderProps) =>
-  (
+}: ContextualTaskHeaderProps) => {
+  const handleBackClick: React.MouseEventHandler<HTMLAnchorElement> = (
+    event
+  ) => {
+    onBack?.(event);
+    if (
+      event.defaultPrevented ||
+      !backReplace ||
+      event.button !== 0 ||
+      event.metaKey ||
+      event.ctrlKey ||
+      event.shiftKey ||
+      event.altKey
+    ) {
+      return;
+    }
+    // Next's same-route router cache can retain the current query/hash for
+    // client-only route boundaries. A replace Back link must still land on
+    // the exact canonical href supplied by its route owner.
+    event.preventDefault();
+    window.location.replace(backHref);
+  };
+  return (
     <header
       className={cn(contextualTaskHeaderVariants({ layout, className }))}
       data-contextual-task-header
@@ -61,6 +88,8 @@ export const ContextualTaskHeader = ({
       <Link
         className="inline-flex min-h-11 w-fit items-center gap-1.5 rounded-[8px] px-2 text-[var(--ink-muted)] no-underline outline-none hover:bg-[var(--surface)] hover:text-[var(--ink)] focus-visible:ring-3 focus-visible:ring-[var(--focus)]"
         href={backHref}
+        replace={backReplace}
+        onClick={handleBackClick}
       >
         <svg
           aria-hidden="true"
@@ -82,7 +111,7 @@ export const ContextualTaskHeader = ({
       <div className="flex items-start justify-between gap-4 max-[799px]:flex-col">
         <div className="min-w-0">
           <h1
-            className="m-0 text-[clamp(1.75rem,5vw,2.35rem)] font-extrabold tracking-[-0.03em] text-[var(--ink)] outline-none"
+            className="m-0 text-[clamp(1.75rem,5vw,2.35rem)] font-extrabold tracking-[-0.03em] text-[var(--ink)] outline-none focus-visible:ring-3 focus-visible:ring-[var(--focus)]"
             id={headingId}
             ref={headingRef}
             tabIndex={-1}
@@ -101,5 +130,5 @@ export const ContextualTaskHeader = ({
         )}
       </div>
     </header>
-  )
-;
+  );
+};

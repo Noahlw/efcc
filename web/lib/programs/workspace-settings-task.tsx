@@ -5,10 +5,19 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 
 import { ProgramSettings } from "./program-settings";
+import { buildProgramsHref } from "./programs-intent";
 import { hasModule, useWorkspaceTaskContext } from "./workspace-context";
 
 export const SettingsTask = () => {
-  const { program, modules, onTaskChange } = useWorkspaceTaskContext();
+  const { program, modules, onTaskChange, departmentId, hash } =
+    useWorkspaceTaskContext();
+  const returnHref = buildProgramsHref({
+    mode: "management",
+    programId: program.program_id,
+    departmentId,
+    task: "settings",
+    hash,
+  });
 
   return (
     <>
@@ -34,7 +43,7 @@ export const SettingsTask = () => {
             </p>
             <Button asChild className="min-h-11 w-fit">
               <Link
-                href={`/management?module=accounts&scopeKind=Program&scopeId=${encodeURIComponent(program.program_id)}&view=access&return=${encodeURIComponent(`/programs?mode=management&program=${encodeURIComponent(program.program_id)}&task=settings`)}`}
+                href={`/management?module=accounts&scopeKind=Program&scopeId=${encodeURIComponent(program.program_id)}&view=access&return=${encodeURIComponent(returnHref)}`}
               >
                 管理帳戶身份組
               </Link>

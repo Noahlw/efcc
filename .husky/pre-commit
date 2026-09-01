@@ -1,4 +1,5 @@
-# Keep the commit hook deterministic: format staged files here; run `pnpm check`
-# separately until the repository's existing full-lint baseline is cleared.
+# Oxfmt uses the Ultracite formatter config; full Oxlint syntax debt is deferred to #498.
+node -e 'const [major, minor] = process.versions.node.split(".").map(Number); if (major < 22 || (major === 22 && minor < 18)) { console.error("EFCC pre-commit requires Node >=22.18.0; run fnm use"); process.exit(1); }'
+pnpm exec ultracite doctor
 pnpm exec lint-staged --config package.json
-pnpm typecheck
+pnpm verify:precommit

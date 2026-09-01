@@ -130,7 +130,7 @@ test("shell header spans top and desktop side rail sits below it, not overlappin
 }, testInfo) => {
   await page.goto("/profile.html");
 
-  const header = page.locator("header");
+  const header = page.getByRole("banner");
   await expect(header).toBeVisible();
   const headerBox = requireBox(await header.boundingBox());
 

@@ -1,4 +1,3 @@
-// @vitest-environment workers
 import { env } from "cloudflare:workers";
 import { beforeAll, describe, expect, test } from "vitest";
 
@@ -24,8 +23,7 @@ const ADULT_EVENT = "C487-ADULT-EVENT";
 const CUSTOM_USER = "E2E_C487_CUSTOM";
 const TARGET_USER = "E2E_C487_TARGET";
 const CUSTOM_ROLE = "C487-CUSTOM-PROGRAM-ROLE";
-const PROGRAM_LEADER_ROLE =
-  "018f3b8a-0000-7000-8000-100000000002";
+const PROGRAM_LEADER_ROLE = "018f3b8a-0000-7000-8000-100000000002";
 const TARGET_REQUEST_PL = "C487-REQUEST-PL";
 const TARGET_REQUEST_MEMBER = "C487-REQUEST-MEMBER";
 const TARGET_REQUEST_CUSTOM = "C487-REQUEST-CUSTOM";
@@ -936,9 +934,7 @@ describe("#487 normalized authority Worker seams", () => {
       }>(queue);
       expect(queueData.status).toBe("Pending");
       expect(
-        queueData.registrations.some(
-          ({ requestId }) => requestId === approveId
-        )
+        queueData.registrations.some(({ requestId }) => requestId === approveId)
       ).toBe(true);
 
       const detail = await withCookie(

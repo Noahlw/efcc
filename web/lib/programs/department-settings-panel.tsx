@@ -24,7 +24,35 @@ import type {
 
 import { ProgramForm } from "./program-form";
 
-import styles from "@/app/programs/programs.module.css";
+const styles = {
+  moduleSection:
+    "grid min-w-0 gap-4 rounded-lg border border-[var(--line)] bg-[var(--surface-raised)] p-4 [overflow-wrap:anywhere]",
+  programSummary:
+    "flex min-w-0 flex-wrap items-start justify-between gap-3 border-b border-[var(--line)] pb-3",
+  sectionLabel:
+    "m-0 text-sm font-bold uppercase tracking-[0.08em] text-[var(--ink-muted)]",
+  toggle:
+    "min-h-11 min-w-11 w-fit rounded-lg border border-[var(--line-strong)] bg-transparent px-4 py-2 text-[var(--ink)] whitespace-normal hover:bg-[var(--surface)]",
+  notice:
+    "block rounded-lg border border-[var(--success-border)] bg-[var(--success-surface)] p-3 text-[var(--ink)] [overflow-wrap:anywhere]",
+  error:
+    "rounded-lg border border-[var(--error-border)] bg-[var(--error-surface)] p-3 text-[var(--error)] [overflow-wrap:anywhere]",
+  workspaceActions: "flex min-w-0 flex-wrap items-center gap-3",
+  button:
+    "min-h-11 min-w-11 w-fit rounded-lg bg-[var(--accent)] px-4 py-2 text-white whitespace-normal hover:bg-[var(--accent-deep)]",
+  fieldHint:
+    "m-0 text-sm leading-6 text-[var(--ink-muted)] [overflow-wrap:anywhere]",
+  form: "grid min-w-0 gap-4",
+  field: "grid min-w-0 gap-1.5",
+  fieldLabel: "grid min-w-0 gap-1.5 text-sm font-bold text-[var(--ink)]",
+  input:
+    "min-h-11 min-w-0 rounded-lg border-[var(--line-strong)] bg-[var(--surface-raised)] text-base",
+  panelHeading:
+    "m-0 text-lg font-extrabold leading-6 tracking-[-0.02em] [overflow-wrap:anywhere]",
+  workspaceTaskList: "m-0 grid min-w-0 list-none gap-2 p-0",
+  workspaceTaskRow:
+    "flex min-w-0 flex-wrap items-center justify-between gap-3 rounded-lg border border-[var(--line)] bg-[var(--surface)] p-3 [overflow-wrap:anywhere]",
+} as const;
 
 const MODULE_KEYS: readonly DepartmentModule["module_key"][] = [
   "program_catalog",

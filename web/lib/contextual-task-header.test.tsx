@@ -1,10 +1,20 @@
 import { cleanup, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { createRef } from "react";
-import { afterEach, describe, expect, test } from "vitest";
+import type { ComponentProps } from "react";
+import { afterEach, describe, expect, test, vi } from "vitest";
 
-import { ContextualTaskHeader } from '@/lib/contextual-task-header';
-import type { ContextualTaskHeaderProps } from '@/lib/contextual-task-header';
+vi.mock("next/link", () => ({
+  default: ({
+    replace,
+    ...props
+  }: ComponentProps<"a"> & { replace?: boolean }) => (
+    <a data-link-replace={replace ? "true" : "false"} {...props} />
+  ),
+}));
+
+import { ContextualTaskHeader } from "@/lib/contextual-task-header";
+import type { ContextualTaskHeaderProps } from "@/lib/contextual-task-header";
 
 afterEach(() => cleanup());
 
@@ -20,7 +30,7 @@ describe(ContextualTaskHeader, () => {
     render(
       <ContextualTaskHeader
         {...DEFAULT_PROPS}
-        status={<output >已載入</output>}
+        status={<output>已載入</output>}
         action={<button type="button">儲存</button>}
       />
     );
@@ -37,6 +47,37 @@ describe(ContextualTaskHeader, () => {
     ).toHaveAttribute("href", DEFAULT_PROPS.backHref);
     expect(screen.getByRole("status")).toHaveTextContent("已載入");
     expect(screen.getByRole("button", { name: "儲存" })).toBeEnabled();
+  });
+  test("uses normal push navigation by default", () => {
+    render(<ContextualTaskHeader {...DEFAULT_PROPS} />);
+
+    expect(
+      screen.getByRole("link", { name: DEFAULT_PROPS.backLabel })
+    ).toHaveAttribute("data-link-replace", "false");
+  });
+
+  test("passes replace navigation to the Back link", () => {
+    render(<ContextualTaskHeader {...DEFAULT_PROPS} backReplace />);
+
+    expect(
+      screen.getByRole("link", { name: DEFAULT_PROPS.backLabel })
+    ).toHaveAttribute("data-link-replace", "true");
+  });
+
+  test("passes Back interception to the caller without owning navigation", async () => {
+    const user = userEvent.setup();
+    const seenCurrentTarget = vi.fn();
+    const onBack = vi.fn((event: React.MouseEvent<HTMLAnchorElement>) => {
+      seenCurrentTarget(event.currentTarget);
+      event.preventDefault();
+    });
+    render(<ContextualTaskHeader {...DEFAULT_PROPS} onBack={onBack} />);
+
+    const link = screen.getByRole("link", { name: DEFAULT_PROPS.backLabel });
+    await user.click(link);
+
+    expect(onBack).toHaveBeenCalledOnce();
+    expect(seenCurrentTarget).toHaveBeenCalledWith(link);
   });
 
   test("supports keyboard navigation and caller-owned heading focus", async () => {
@@ -64,11 +105,7 @@ describe(ContextualTaskHeader, () => {
       <ContextualTaskHeader
         {...DEFAULT_PROPS}
         layout="compact"
-        status={
-          <output  aria-busy="true">
-            正在載入…
-          </output>
-        }
+        status={<output aria-busy="true">正在載入…</output>}
         action={
           <button type="button" disabled aria-busy="true">
             儲存中…

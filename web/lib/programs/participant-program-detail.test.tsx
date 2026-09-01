@@ -129,19 +129,24 @@ const detailFixture = (
 function renderDetail(
   props: Partial<Parameters<typeof ParticipantProgramDetail>[0]> = {}
 ) {
-  const onBack = vi.fn<() => void>();
   const onOpenEvent = vi.fn<(eventId: string) => void>();
+  const eventHref =
+    props.eventHref ??
+    vi.fn((eventId: string) => `/programs?program=program-1&event=${eventId}`);
+  const managementHref =
+    props.managementHref ?? "/programs?mode=management&program=program-1";
   const view = render(
     <ParticipantProgramDetail
       programId={props.programId ?? "program-1"}
-      onBack={props.onBack ?? onBack}
+      backHref={props.backHref ?? "/programs"}
       canManage={props.canManage ?? false}
-      onManagement={props.onManagement ?? vi.fn<() => void>()}
       onOpenEvent={props.onOpenEvent ?? onOpenEvent}
+      eventHref={eventHref}
+      managementHref={managementHref}
       conflictProgramName={props.conflictProgramName}
     />
   );
-  return { onBack, onOpenEvent, view };
+  return { onOpenEvent, eventHref, view };
 }
 
 beforeEach(() => {
@@ -154,9 +159,9 @@ afterEach(() => {
 });
 
 describe("PUI-03 participant Program detail", () => {
-  test("renders the reworked detail layout with icon card, event schedule, and back action", async () => {
+  test("renders the reworked detail layout with icon card, event schedule, and back link", async () => {
     mocks.getParticipantProgramDetail.mockResolvedValue(detailFixture());
-    const { onBack, onOpenEvent } = renderDetail({ canManage: true });
+    const { onOpenEvent } = renderDetail({ canManage: true });
 
     expect(screen.getByRole("status")).toHaveAttribute("aria-busy", "true");
     const heading = await screen.findByRole("heading", {
@@ -170,7 +175,6 @@ describe("PUI-03 participant Program detail", () => {
       screen.getByText("為青年建立穩定的同行與學習空間。")
     ).toBeInTheDocument();
     expect(screen.getByText(COPY.programs.statusEligible)).toBeInTheDocument();
-    // #425: the page title is the document's single level-1 heading.
     expect(
       screen.getByRole("heading", { level: 1, name: "青年門徒小組" })
     ).toBeInTheDocument();
@@ -183,14 +187,14 @@ describe("PUI-03 participant Program detail", () => {
       within(nextCard).getByText("3月4日（三）晚上 7:30–9:00")
     ).toBeInTheDocument();
     expect(within(nextCard).getByText("二樓禮堂")).toBeInTheDocument();
-    expect(
-      screen.queryByRole("heading", { name: COPY.programs.detailPurpose })
-    ).not.toBeInTheDocument();
-    await userEvent.click(
-      within(nextCard).getByRole("button", {
-        name: COPY.programs.viewEventDetail,
-      })
+    const eventLink = within(nextCard).getByRole("link", {
+      name: COPY.programs.viewEventDetail,
+    });
+    expect(eventLink).toHaveAttribute(
+      "href",
+      "/programs?program=program-1&event=event-1"
     );
+    await userEvent.click(eventLink);
     expect(onOpenEvent).toHaveBeenCalledExactlyOnceWith("event-1");
 
     const rules = screen.getByRole("list", {
@@ -204,17 +208,39 @@ describe("PUI-03 participant Program detail", () => {
     });
     expect(within(schedule).getByText("第三課聚會")).toBeInTheDocument();
     expect(within(schedule).getByText("第四課聚會")).toBeInTheDocument();
-    expect(
-      screen.queryByRole("list", { name: COPY.programs.enrollmentHistory })
-    ).not.toBeInTheDocument();
-    expect(
-      screen.getByRole("button", { name: COPY.programs.detailBack })
-    ).toHaveTextContent("課程");
 
-    await userEvent.click(
-      screen.getByRole("button", { name: COPY.programs.detailBack })
-    );
-    expect(onBack).toHaveBeenCalledOnce();
+    const backLink = screen.getByRole("link", {
+      name: COPY.programs.detailBack,
+    });
+
+    expect(backLink).toHaveAttribute("href", "/programs");
+  });
+  test("preserves modified and middle event Link clicks for browser behavior", async () => {
+    mocks.getParticipantProgramDetail.mockResolvedValue(detailFixture());
+    const { onOpenEvent } = renderDetail({ canManage: true });
+
+    await screen.findByRole("heading", { name: "青年門徒小組" });
+    const eventLink = screen.getByRole("link", {
+      name: COPY.programs.viewEventDetail,
+    });
+    const modifiedClick = new MouseEvent("click", {
+      bubbles: true,
+      cancelable: true,
+      button: 0,
+      ctrlKey: true,
+    });
+    eventLink.dispatchEvent(modifiedClick);
+    expect(modifiedClick.defaultPrevented).toBe(false);
+    expect(onOpenEvent).not.toHaveBeenCalled();
+
+    const middleClick = new MouseEvent("click", {
+      bubbles: true,
+      cancelable: true,
+      button: 1,
+    });
+    eventLink.dispatchEvent(middleClick);
+    expect(middleClick.defaultPrevented).toBe(false);
+    expect(onOpenEvent).not.toHaveBeenCalled();
   });
 
   test("groups schedule sources and caps upcoming events at 800px", async () => {
@@ -464,7 +490,7 @@ describe("PUI-03 participant Program detail", () => {
     // Active enrollment (department-workspace.ts hasActiveEnrollment gate),
     // so this CTA must not render for a plain unenrolled, non-managing view.
     expect(
-      within(nextCard).queryByRole("button", {
+      within(nextCard).queryByRole("link", {
         name: COPY.programs.viewEventDetail,
       })
     ).not.toBeInTheDocument();
@@ -683,10 +709,26 @@ describe("PUI-03 participant Program detail", () => {
 
     await screen.findByRole("heading", { name: "青年門徒小組" });
     expect(
-      screen.getByRole("button", { name: COPY.programs.enterManagement })
+      screen.getByRole("link", { name: COPY.programs.enterManagement })
     ).toBeInTheDocument();
     const actions = screen.getAllByRole("button");
     expect(actions.at(-1)).toHaveAccessibleName(COPY.programs.cancelEnrollment);
+  });
+
+  test("management entry uses a semantic Link when its canonical href is supplied", async () => {
+    mocks.getParticipantProgramDetail.mockResolvedValue(detailFixture());
+    renderDetail({
+      canManage: true,
+      managementHref: "/programs?mode=management&program=program-1",
+    });
+
+    const entry = await screen.findByRole("link", {
+      name: COPY.programs.enterManagement,
+    });
+    expect(entry).toHaveAttribute(
+      "href",
+      "/programs?mode=management&program=program-1"
+    );
   });
 
   test("ManagerOnly renders the 由同工安排 tag, read-only note, and no self-enroll action", async () => {
@@ -782,12 +824,15 @@ describe("PUI-03 participant Program detail", () => {
     ).not.toBeInTheDocument();
   });
 
-  test("renders a privacy-preserving unavailable state for missing or unauthorized detail", async () => {
+  test("renders a privacy-preserving unavailable state with a safe Back link", async () => {
     mocks.getParticipantProgramDetail.mockRejectedValue(
       new RpcError({ code: "NOT_FOUND", status: 404 })
     );
-    const user = userEvent.setup();
-    const { onBack } = renderDetail({ programId: "hidden-program" });
+
+    renderDetail({
+      programId: "hidden-program",
+      backHref: "/home",
+    });
 
     await expect(
       screen.findByRole("heading", { name: COPY.programs.detailUnavailable })
@@ -796,10 +841,9 @@ describe("PUI-03 participant Program detail", () => {
       screen.getByText(COPY.programs.detailUnavailableHint)
     ).toBeInTheDocument();
     expect(screen.queryByText("hidden-program")).not.toBeInTheDocument();
-    await user.click(
-      screen.getByRole("button", { name: COPY.programs.detailBack })
-    );
-    expect(onBack).toHaveBeenCalledOnce();
+    expect(
+      screen.getByRole("link", { name: COPY.programs.detailBack })
+    ).toHaveAttribute("href", "/home");
   });
 
   test("retries recoverable failures and ignores stale detail responses", async () => {
@@ -812,10 +856,11 @@ describe("PUI-03 participant Program detail", () => {
     view.rerender(
       <ParticipantProgramDetail
         programId="program-2"
-        onBack={vi.fn<() => void>()}
+        backHref="/programs"
         canManage={false}
-        onManagement={vi.fn<() => void>()}
+        managementHref="/programs?mode=management&program=program-2"
         onOpenEvent={vi.fn<(eventId: string) => void>()}
+        eventHref={(eventId) => `/programs?program=program-2&event=${eventId}`}
       />
     );
     stale.resolve(detailFixture({ program: program("program-1", "過期內容") }));
@@ -833,6 +878,25 @@ describe("PUI-03 participant Program detail", () => {
       screen.findByRole("heading", { name: "青年門徒小組" })
     ).resolves.toBeInTheDocument();
     view.unmount();
+  });
+  test("focuses the privacy-preserving panel when retry resolves unavailable", async () => {
+    mocks.getParticipantProgramDetail
+      .mockRejectedValueOnce(new Error("offline"))
+      .mockRejectedValueOnce(new RpcError({ code: "FORBIDDEN", status: 403 }));
+    renderDetail();
+
+    await expect(
+      screen.findByRole("heading", { name: COPY.programs.detailLoadError })
+    ).resolves.toBeInTheDocument();
+    await userEvent.click(
+      screen.getByRole("button", { name: COPY.programs.detailRetry })
+    );
+    const unavailable = await screen.findByRole("heading", {
+      name: COPY.programs.detailUnavailable,
+    });
+    expect(document.activeElement).toBe(
+      document.querySelector("#program-detail-state")
+    );
   });
 
   test("returns expired sessions to login after remembering the direct link", async () => {

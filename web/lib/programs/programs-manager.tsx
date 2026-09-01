@@ -6,6 +6,13 @@ import { Alert } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import { RpcError } from "@/lib/api";
@@ -30,7 +37,68 @@ import type {
 import { EnrollmentPanel } from "@/lib/programs/programs-enrollment-panel";
 import { EventsPanel } from "@/lib/programs/programs-events-panel";
 
-import styles from "@/app/programs/programs.module.css";
+const styles = {
+  form: "grid min-w-0 gap-4",
+  field: "grid min-w-0 gap-1.5",
+  fieldLabel: "grid min-w-0 gap-1.5 text-sm font-bold text-[var(--ink)]",
+  input:
+    "min-h-11 min-w-0 rounded-lg border-[var(--line-strong)] bg-[var(--surface-raised)] text-base",
+  textarea:
+    "min-h-11 min-w-0 rounded-lg border-[var(--line-strong)] bg-[var(--surface-raised)] text-base",
+  select:
+    "min-h-11 min-w-0 w-full rounded-lg border border-[var(--line-strong)] bg-[var(--surface-raised)] px-3 text-base text-[var(--ink)]",
+  button:
+    "min-h-11 min-w-11 w-fit rounded-lg bg-[var(--accent)] px-4 py-2 text-white whitespace-normal hover:bg-[var(--accent-deep)]",
+  card: "grid min-w-0 gap-4 rounded-lg border border-[var(--line)] bg-[var(--surface-raised)] p-5",
+  cardTitle:
+    "m-0 min-w-0 text-xl font-extrabold leading-tight tracking-[-0.02em] [overflow-wrap:anywhere]",
+  stateCenter: "grid min-w-0 gap-3 p-4 [overflow-wrap:anywhere]",
+  error:
+    "grid min-w-0 gap-2 rounded-lg border border-[var(--error-border)] bg-[var(--error-surface)] p-3 text-[var(--error)] [overflow-wrap:anywhere]",
+  retry:
+    "min-h-11 min-w-11 w-fit rounded-lg border border-[var(--line-strong)] bg-transparent px-4 py-2 text-[var(--ink)] whitespace-normal hover:bg-[var(--surface)]",
+  cardLead:
+    "m-0 max-w-prose text-base leading-6 text-[var(--ink-muted)] [overflow-wrap:anywhere]",
+  notice:
+    "block rounded-lg border border-[var(--success-border)] bg-[var(--success-surface)] p-3 text-[var(--ink)] [overflow-wrap:anywhere]",
+  sectionLabel:
+    "m-0 text-sm font-bold uppercase tracking-[0.08em] text-[var(--ink-muted)]",
+  deptList: "m-0 grid list-none gap-3 p-0",
+  deptRow:
+    "flex min-w-0 flex-wrap items-center justify-between gap-3 border-b border-[var(--line)] p-4 [overflow-wrap:anywhere]",
+  deptName: "m-0 min-w-0 text-base font-extrabold [overflow-wrap:anywhere]",
+  deptCode: "mt-1 text-sm text-[var(--ink-muted)]",
+  deptItem: "min-w-0 overflow-hidden rounded-lg border border-[var(--line)]",
+  deptActions: "flex min-w-0 flex-wrap items-center gap-2",
+  badge: "shrink-0 whitespace-normal",
+  badgeActive: "border-transparent bg-[var(--accent)] text-white",
+  toggle:
+    "min-h-11 min-w-11 w-fit rounded-lg border border-[var(--line-strong)] bg-transparent px-3 py-2 text-[var(--ink)] whitespace-normal hover:bg-[var(--surface)]",
+  detail: "grid min-w-0 gap-4 p-4",
+  moduleSection:
+    "grid min-w-0 gap-3 rounded-lg border border-[var(--line)] bg-[var(--surface)] p-4",
+  moduleRow:
+    "flex min-w-0 flex-wrap items-center justify-between gap-3 border-b border-[var(--line)] py-2 last:border-b-0",
+  moduleName: "min-w-0 text-sm [overflow-wrap:anywhere]",
+  toggleOn: "border-[var(--success-border)] bg-[var(--success-surface)]",
+  programList: "m-0 grid min-w-0 list-none gap-2 p-0",
+  programItem: "min-w-0 rounded-lg border border-[var(--line)]",
+  programSummary:
+    "flex min-w-0 flex-wrap items-center justify-between gap-3 p-3 [overflow-wrap:anywhere]",
+  programName: "m-0 min-w-0 font-bold [overflow-wrap:anywhere]",
+  programMeta: "mt-2 flex min-w-0 flex-wrap gap-2",
+  tag: "rounded-full border border-[var(--line)] px-2 py-1 text-xs text-[var(--ink-muted)]",
+  programDetail: "grid min-w-0 gap-4 border-t border-[var(--line)] p-4",
+  taskNav: "flex min-w-0 flex-wrap gap-2",
+  taskButton:
+    "min-h-11 min-w-11 rounded-lg border border-[var(--line-strong)] bg-transparent px-3 py-2 text-[var(--ink)] whitespace-normal aria-pressed:bg-[var(--accent)] aria-pressed:text-white",
+  programOverview:
+    "grid min-w-0 gap-2 text-sm leading-6 [overflow-wrap:anywhere]",
+  programOverviewMeta:
+    "m-0 text-sm text-[var(--ink-muted)] [overflow-wrap:anywhere]",
+  panelHeading:
+    "m-0 text-lg font-extrabold leading-6 tracking-[-0.02em] [overflow-wrap:anywhere]",
+} as const;
 
 type View =
   | { kind: "loading" }
@@ -153,62 +221,102 @@ const ProgramForm = ({
     <div className={styles.field}>
       <label className={styles.fieldLabel}>
         {COPY.programs.behaviorType}
-        <select
+        <Select
           name="behavior_type"
-          className={styles.select}
           defaultValue={initial?.behavior_type ?? "Recurring"}
           disabled={initial !== undefined}
         >
-          <option value="Recurring">{COPY.programs.behaviorRecurring}</option>
-          <option value="OneOff">{COPY.programs.behaviorOneOff}</option>
-        </select>
+          <SelectTrigger
+            className={styles.select}
+            aria-label={COPY.programs.behaviorType}
+          >
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="Recurring">
+              {COPY.programs.behaviorRecurring}
+            </SelectItem>
+            <SelectItem value="OneOff">
+              {COPY.programs.behaviorOneOff}
+            </SelectItem>
+          </SelectContent>
+        </Select>
       </label>
     </div>
     <div className={styles.field}>
       <label className={styles.fieldLabel}>
         {COPY.programs.programLifecycle}
-        <select
+        <Select
           name="lifecycle"
-          className={styles.select}
           defaultValue={initial?.lifecycle ?? "Draft"}
           disabled={initial?.lifecycle === "Archived"}
         >
-          <option value="Draft">{COPY.programs.lifecycleDraft}</option>
-          <option value="Active">{COPY.programs.lifecycleActive}</option>
-          <option value="Archived">{COPY.programs.lifecycleArchived}</option>
-        </select>
+          <SelectTrigger
+            className={styles.select}
+            aria-label={COPY.programs.programLifecycle}
+          >
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="Draft">
+              {COPY.programs.lifecycleDraft}
+            </SelectItem>
+            <SelectItem value="Active">
+              {COPY.programs.lifecycleActive}
+            </SelectItem>
+            <SelectItem value="Archived">
+              {COPY.programs.lifecycleArchived}
+            </SelectItem>
+          </SelectContent>
+        </Select>
       </label>
     </div>
     <div className={styles.field}>
       <label className={styles.fieldLabel}>
         {COPY.programs.discoverabilityListed}
-        <select
+        <Select
           name="discoverability"
-          className={styles.select}
           defaultValue={initial?.discoverability ?? "Unlisted"}
         >
-          <option value="Unlisted">
-            {COPY.programs.discoverabilityUnlisted}
-          </option>
-          <option value="Listed">{COPY.programs.discoverabilityListed}</option>
-        </select>
+          <SelectTrigger
+            className={styles.select}
+            aria-label={COPY.programs.discoverabilityListed}
+          >
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="Unlisted">
+              {COPY.programs.discoverabilityUnlisted}
+            </SelectItem>
+            <SelectItem value="Listed">
+              {COPY.programs.discoverabilityListed}
+            </SelectItem>
+          </SelectContent>
+        </Select>
       </label>
     </div>
     <div className={styles.field}>
       <label className={styles.fieldLabel}>
         {COPY.programs.programEnrollmentMode}
-        <select
+        <Select
           name="enrollment_mode"
-          className={styles.select}
           defaultValue={initial?.enrollment_mode ?? "MemberRequest"}
         >
-          <option value="MemberRequest">
-            {COPY.programs.enrollmentModeMemberRequest}
-          </option>
-          <option value="ManagerOnly">
-            {COPY.programs.enrollmentModeManagerOnly}
-          </option>
-        </select>
+          <SelectTrigger
+            className={styles.select}
+            aria-label={COPY.programs.programEnrollmentMode}
+          >
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="MemberRequest">
+              {COPY.programs.enrollmentModeMemberRequest}
+            </SelectItem>
+            <SelectItem value="ManagerOnly">
+              {COPY.programs.enrollmentModeManagerOnly}
+            </SelectItem>
+          </SelectContent>
+        </Select>
       </label>
     </div>
     <div className={styles.field}>

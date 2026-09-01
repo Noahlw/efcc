@@ -1,4 +1,3 @@
-// @vitest-environment workers
 /**
  * #485 — Permission Editor domain seam.
  *

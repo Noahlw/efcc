@@ -623,7 +623,7 @@ test.describe("PUI-05 Home origin supplement", () => {
       ).toBeVisible();
       await expect(memberPage.getByText(COPY.eventInstructions)).toBeVisible();
       await expect(memberPage.getByText(COPY.checkInAvailable)).toBeVisible();
-      await memberPage.getByRole("button", { name: COPY.backToOrigin }).click();
+      await memberPage.getByRole("link", { name: COPY.backToOrigin }).click();
       await expect(memberPage).toHaveURL(/\/home$/u);
     } finally {
       try {
@@ -714,7 +714,7 @@ test.describe("PUI-05 Home origin supplement", () => {
         page.getByRole("heading", { name: /E2E_DEMO_/u })
       ).toBeVisible();
     }
-    await page.getByRole("button", { name: "課程", exact: true }).click();
+    await page.getByRole("link", { name: "課程", exact: true }).click();
     await expect(page).toHaveURL(/\/home$/u);
   });
 });

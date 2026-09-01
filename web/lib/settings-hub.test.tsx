@@ -54,11 +54,16 @@ describe(SettingsHub, () => {
     expect(
       screen.getByText(SETTINGS.accountsPermissionsRowHint)
     ).toBeInTheDocument();
-    expect(screen.getByText(SETTINGS.checkinSettingsRowHint)).toBeInTheDocument();
+    expect(
+      screen.getByText(SETTINGS.checkinSettingsRowHint)
+    ).toBeInTheDocument();
     expect(screen.getByText(SETTINGS.timezoneRowHint)).toBeInTheDocument();
 
     expectBefore(rows[0], rows[1]);
     expectBefore(rows[1], rows[2]);
+    expect(
+      document.querySelectorAll('[data-slot="settings-row"]')
+    ).toHaveLength(3);
   });
 
   test("簽到設定 and 時區 rows link to the locked routes", () => {
