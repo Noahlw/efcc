@@ -25,12 +25,14 @@ import {
 } from "@/lib/programs/program-api";
 import { useQrCamera } from "@/lib/use-qr-camera";
 
-import styles from "./attendance-panel.module.css";
-
-const primaryControl = `${styles.button} min-h-11 h-auto rounded-[var(--radius-sm)] px-4 py-3 text-base font-extrabold`;
-const secondaryControl = `${styles.buttonSecondary} min-h-11 h-auto rounded-[var(--radius-sm)] border-[var(--line-strong)] bg-[var(--surface-raised)] px-4 py-3 text-base font-bold text-[var(--ink)] hover:bg-[var(--surface)] hover:text-[var(--ink)]`;
-const inputControl = `${styles.input} min-h-11 h-auto rounded-[var(--radius-sm)] border-[var(--line-strong)] bg-[var(--surface-raised)] px-3 py-3 text-base text-[var(--ink)] placeholder:text-[var(--ink-muted)] focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50`;
-const eventButtonControl = `${styles.eventButton} min-h-11 h-auto rounded-[var(--radius-sm)] border-[var(--line-strong)] bg-[var(--surface-raised)] px-4 py-3 text-left text-base font-normal text-[var(--ink)] hover:bg-[var(--surface)] hover:text-[var(--ink)]`;
+const primaryControl =
+  "min-h-11 h-auto rounded-[var(--radius-sm)] px-4 py-3 text-base font-extrabold";
+const secondaryControl =
+  "min-h-11 h-auto rounded-[var(--radius-sm)] border border-[var(--line-strong)] bg-[var(--surface-raised)] px-4 py-3 text-base font-bold text-[var(--ink)] hover:bg-[var(--surface)] hover:text-[var(--ink)]";
+const inputControl =
+  "min-h-11 h-auto rounded-[var(--radius-sm)] border border-[var(--line-strong)] bg-[var(--surface-raised)] px-3 py-3 text-base text-[var(--ink)] placeholder:text-[var(--ink-muted)] focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50";
+const eventButtonControl =
+  "flex w-full min-h-11 flex-col items-start justify-between rounded-[var(--radius-sm)] border border-[var(--line-strong)] bg-[var(--surface-raised)] p-3 text-left text-base font-normal text-[var(--ink)] hover:bg-[var(--surface)] hover:text-[var(--ink)] sm:flex-row sm:items-center";
 
 type StatusTone = "info" | "success" | "error";
 
@@ -255,18 +257,26 @@ export const AssistedScannerPanel = ({
   }
 
   return (
-    <div className={styles.page}>
+    <div className="mx-auto w-[min(100%,760px)] px-4 py-8 pb-12">
       <Card
-        className={styles.card}
+        className="grid gap-4.5 p-5 bg-[var(--surface-raised)] border border-[var(--line-strong)] rounded-[var(--radius-md)]"
         role="region"
         aria-labelledby="assisted-scanner-title"
       >
-        <h1 id="assisted-scanner-title" className={styles.title}>
+        <h1
+          id="assisted-scanner-title"
+          className="text-2xl font-extrabold leading-tight tracking-[0.01em] text-[var(--ink)]"
+        >
           {COPY.sections.scanner}
         </h1>
-        <p className={styles.lead}>{COPY.attendance.assistedHint}</p>
-        <div className={styles.group} aria-label={COPY.attendance.assistedMode}>
-          <div className={styles.actionsRow}>
+        <p className="-mt-1.5 text-base leading-relaxed text-[var(--ink-muted)]">
+          {COPY.attendance.assistedHint}
+        </p>
+        <div
+          className="mt-4 grid gap-3"
+          aria-label={COPY.attendance.assistedMode}
+        >
+          <div className="flex flex-wrap gap-3">
             <Button
               className={primaryControl}
               type="button"
@@ -299,7 +309,7 @@ export const AssistedScannerPanel = ({
           {cameraOpen && (
             <video
               ref={videoRef}
-              className={styles.video}
+              className="aspect-video w-full rounded-[var(--radius-sm)] border border-[var(--line-strong)] bg-black object-cover"
               muted
               playsInline
               aria-label={COPY.attendance.camera}
@@ -307,22 +317,22 @@ export const AssistedScannerPanel = ({
           )}
         </div>
         {selectedEvent ? (
-          <div className={styles.group}>
-            <p className={styles.hint}>
+          <div className="mt-4 grid gap-3">
+            <p className="text-sm text-[var(--ink-muted)]">
               {attendanceEventLabel(selectedEvent)}
               {selectedEvent.location?.trim()
                 ? ` · ${COPY.attendance.eventLocation}: ${selectedEvent.location.trim()}`
                 : ""}
             </p>
             <form
-              className={styles.inputRow}
+              className="grid gap-3 sm:grid-cols-[1fr_auto]"
               onSubmit={(event) => {
                 event.preventDefault();
                 void searchMembers();
               }}
             >
-              <label className={styles.field} htmlFor="assisted-member-search">
-                <span className={styles.fieldLabel}>
+              <label className="grid gap-1.5" htmlFor="assisted-member-search">
+                <span className="text-sm font-bold leading-normal text-[var(--ink)]">
                   {COPY.attendance.memberSearch}
                 </span>
                 <Input
@@ -348,7 +358,7 @@ export const AssistedScannerPanel = ({
             {members.length > 0 && (
               <ul
                 ref={resultsRef}
-                className={styles.events}
+                className="mt-2 grid gap-2"
                 aria-label={COPY.attendance.memberSearch}
                 aria-live="polite"
                 tabIndex={-1}
@@ -369,10 +379,10 @@ export const AssistedScannerPanel = ({
                       }
                     >
                       <strong>{member.name}</strong>
-                      <span className={styles.eventMeta}>
+                      <span className="text-sm text-[var(--ink-muted)]">
                         {member.phone ?? member.user_id}
                       </span>
-                      <span className={styles.rowAction}>
+                      <span className="text-sm font-bold text-[var(--accent)] mt-1 sm:mt-0">
                         {COPY.attendance.checkInMember}
                       </span>
                     </Button>
@@ -382,17 +392,20 @@ export const AssistedScannerPanel = ({
             )}
           </div>
         ) : contextError ? (
-          <Alert variant="destructive" className={styles.hint}>
+          <Alert
+            variant="destructive"
+            className="text-sm text-[var(--ink-muted)]"
+          >
             {contextError}
           </Alert>
         ) : (
-          <p className={styles.hint}>
+          <p className="text-sm text-[var(--ink-muted)]">
             {COPY.attendance.assistedContextRequired}
           </p>
         )}
-        <div className={styles.context}>
-          <label className={styles.field} htmlFor="assisted-event-context">
-            <span className={styles.contextLabel}>
+        <div className="mt-4 grid gap-2 border-t border-[var(--line)] pt-4">
+          <label className="grid gap-1.5" htmlFor="assisted-event-context">
+            <span className="text-sm font-bold text-[var(--ink)]">
               {COPY.attendance.assistedContext}
             </span>
             <select
@@ -411,7 +424,10 @@ export const AssistedScannerPanel = ({
               ))}
             </select>
           </label>
-          <p id="assisted-event-context-hint" className={styles.contextHint}>
+          <p
+            id="assisted-event-context-hint"
+            className="text-xs text-[var(--ink-muted)]"
+          >
             {COPY.attendance.assistedContextHint}
           </p>
         </div>

@@ -2,9 +2,6 @@
 // panel. MSW intercepts the Worker RPCs; the form's native constraint
 // validation and the error/duplicate feedback paths are asserted against
 // the real DOM, matching the E2E suite's observable contracts.
-import { readFileSync } from "node:fs";
-import path from "node:path";
-
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import type { UserEvent } from "@testing-library/user-event";
 import userEvent from "@testing-library/user-event";
@@ -164,6 +161,29 @@ describe(AttendancePanel, () => {
       expect(screen.getByLabelText(COPY.attendance.guestCode)).toHaveFocus();
       expect(resolveCalls).toBe(0);
       expect(guestPosts).toBe(0);
+    });
+
+    test("missing guest name focuses name field and missing phone focuses phone field", async () => {
+      const user = userEvent.setup();
+      render(<AttendancePanel />);
+
+      const codeInput = screen.getByLabelText(COPY.attendance.guestCode);
+      const nameInput = screen.getByLabelText(
+        new RegExp(`^${COPY.attendance.guestName}`, "u")
+      );
+      const submitButton = screen.getByRole("button", {
+        name: COPY.attendance.guestSubmit,
+      });
+
+      // Fill code only -> submit should focus name
+      await user.type(codeInput, "ATT1234");
+      await user.click(submitButton);
+      expect(nameInput).toHaveFocus();
+
+      // Fill name as well, leave phone empty -> submit should focus phone
+      await user.type(nameInput, "陳小明");
+      await user.click(submitButton);
+      expect(phoneField()).toHaveFocus();
     });
 
     test("one open event chains resolve to a real completion card", async () => {
@@ -347,9 +367,7 @@ describe(AttendancePanel, () => {
         screen.getByRole("button", { name: COPY.attendance.guestSubmit })
       );
 
-      const pickerLegend = await screen.findByText(
-        COPY.attendance.chooseEvent
-      );
+      const pickerLegend = await screen.findByText(COPY.attendance.chooseEvent);
       await waitFor(() => expect(pickerLegend).toHaveFocus());
       expect(screen.getByLabelText(COPY.attendance.guestName)).toHaveValue(
         "E2E訪客"
@@ -504,38 +522,6 @@ describe(AttendancePanel, () => {
           value: originalMediaDevices,
         });
       }
-    });
-  });
-
-  describe("attendance module guardrails", () => {
-    test(".rowName wraps long names instead of occluding sibling controls", () => {
-      const css = readFileSync(
-        path.resolve(process.cwd(), "lib/attendance-panel.module.css"),
-        "utf-8"
-      );
-      const rowNameBlock = css.match(/\.rowName \{[^}]*\}/u)?.[0] ?? "";
-      expect(rowNameBlock).toContain("overflow-wrap: anywhere");
-      expect(rowNameBlock).toContain("max-width");
-      expect(rowNameBlock).toContain("min-width: 0");
-    });
-
-    test("off-scale font sizes are gone from the attendance module", () => {
-      const css = readFileSync(
-        path.resolve(process.cwd(), "lib/attendance-panel.module.css"),
-        "utf-8"
-      );
-      expect(css).not.toMatch(/font-size: (?:0\.[89]rem|0\.95rem|0\.78rem)/u);
-    });
-
-    test("window outcome uses the declared pending token", () => {
-      const css = readFileSync(
-        path.resolve(process.cwd(), "lib/attendance-panel.module.css"),
-        "utf-8"
-      );
-      const windowOutcomeBlock =
-        css.match(/\.outcomeIconWindow \{[^}]*\}/u)?.[0] ?? "";
-      expect(css).not.toContain("var(--warning");
-      expect(windowOutcomeBlock).toContain("stroke: var(--pending);");
     });
   });
 });

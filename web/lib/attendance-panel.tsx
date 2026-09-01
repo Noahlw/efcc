@@ -21,12 +21,14 @@ import { announce } from "@/lib/live-region";
 import { guestCheckIn } from "@/lib/programs/program-api";
 import { useAttendanceFlow } from "@/lib/use-attendance-flow";
 
-import styles from "./attendance-panel.module.css";
-
-const primaryControl = `${styles.button} min-h-11 h-auto w-full rounded-[var(--radius-sm)] px-4 py-3 text-base font-extrabold`;
-const inputControl = `${styles.input} min-h-11 h-auto rounded-[var(--radius-sm)] border-[var(--line-strong)] bg-[var(--surface-raised)] px-3 py-3 text-base text-[var(--ink)] placeholder:text-[var(--ink-muted)] focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50`;
-const backControl = `${styles.back} min-h-11 h-auto px-2 py-3 text-base font-bold text-[var(--accent-deep)] hover:bg-transparent hover:text-[var(--accent)]`;
-const memberLinkControl = `${styles.guestMemberLink} min-h-11 h-auto rounded-[var(--radius-sm)] border-[var(--line-strong)] bg-[var(--surface-raised)] px-4 py-3 text-base font-bold text-[var(--ink)] hover:bg-[var(--surface)] hover:text-[var(--ink)]`;
+const primaryControl =
+  "min-h-11 h-auto w-full rounded-[var(--radius-sm)] px-4 py-3 text-base font-extrabold";
+const inputControl =
+  "min-h-11 h-auto rounded-[var(--radius-sm)] border border-[var(--line-strong)] bg-[var(--surface-raised)] px-3 py-3 text-base text-[var(--ink)] placeholder:text-[var(--ink-muted)] focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50";
+const backControl =
+  "min-h-11 h-auto px-2 py-3 text-base font-bold text-[var(--accent-deep)] hover:bg-transparent hover:text-[var(--accent)]";
+const memberLinkControl =
+  "min-h-11 h-auto rounded-[var(--radius-sm)] border border-[var(--line-strong)] bg-[var(--surface-raised)] px-4 py-3 text-base font-bold text-[var(--ink)] hover:bg-[var(--surface)] hover:text-[var(--ink)]";
 
 interface GuestResult {
   kind: "success" | "duplicate";
@@ -62,36 +64,36 @@ const GuestCheckinResult = ({
   headingRef: RefObject<HTMLHeadingElement | null>;
 }) => (
   <Card
-    className={`${styles.card} ${styles.checkinResult}`}
+    className="grid gap-4.5 p-5 bg-[var(--surface-raised)] border border-[var(--line-strong)] rounded-[var(--radius-md)] text-center"
     role="region"
     aria-labelledby="guest-result-title"
   >
-    <header className={styles.resultHeader}>
+    <header className="text-xs font-bold uppercase tracking-wider text-[var(--ink-muted)]">
       <span>{COPY.attendance.guestTitle}</span>
     </header>
     <CheckinConfirmationIcon
       kind={result.kind}
-      className={styles.guestResultIcon}
+      className="mx-auto h-16 w-16 text-[var(--accent)]"
       testId="guest-result-icon"
     />
     <h1
       id="guest-result-title"
       ref={headingRef}
-      className={styles.title}
+      className="text-2xl font-extrabold leading-tight tracking-[0.01em] text-[var(--ink)]"
       tabIndex={-1}
     >
       {result.kind === "success"
         ? COPY.attendance.guestResultTitle
         : COPY.attendance.duplicateTitle}
     </h1>
-    <p className={styles.resultCopy}>
+    <p className="text-base text-[var(--ink-muted)] leading-relaxed">
       {result.kind === "success"
         ? COPY.attendance.guestResultLead(
             hkDayPeriodFromIso(result.event.starts_at)
           )
         : COPY.attendance.guestDuplicate}
     </p>
-    <div className={styles.resultActions}>
+    <div className="mt-2 grid gap-3">
       <Button asChild className={primaryControl}>
         <a href="/">{COPY.attendance.guestDone}</a>
       </Button>
@@ -247,7 +249,10 @@ export const AttendancePanel = () => {
 
   if (result) {
     return (
-      <div className={styles.page} data-surface="guest-check-in">
+      <div
+        className="mx-auto w-[min(100%,760px)] px-4 py-8 pb-12"
+        data-surface="guest-check-in"
+      >
         <GuestCheckinResult result={result} headingRef={resultHeadingRef} />
       </div>
     );
@@ -256,35 +261,40 @@ export const AttendancePanel = () => {
   const submitBusy = flow.busy || submitting;
 
   return (
-    <div className={styles.page} data-surface="guest-check-in">
+    <div
+      className="mx-auto w-[min(100%,760px)] px-4 py-8 pb-12"
+      data-surface="guest-check-in"
+    >
       <Card
-        className={styles.card}
+        className="grid gap-4.5 p-5 bg-[var(--surface-raised)] border border-[var(--line-strong)] rounded-[var(--radius-md)]"
         role="region"
         aria-labelledby="attendance-title"
       >
         <Button asChild variant="link" className={backControl}>
           <a href="/">{COPY.attendance.guestBack}</a>
         </Button>
-        <h1 id="attendance-title" className={styles.title}>
+        <h1
+          id="attendance-title"
+          className="text-2xl font-extrabold leading-tight tracking-[0.01em] text-[var(--ink)]"
+        >
           {COPY.attendance.guestTitle}
         </h1>
-        <p className={styles.lead}>{COPY.attendance.guestLead}</p>
-        {/* Status renders only while a message exists (quiet spacer removed):
-            resolve/validation errors land between the lead and the fields
-            they name — inside the initial viewport on short phones (F-05). */}
+        <p className="-mt-1.5 text-base leading-relaxed text-[var(--ink-muted)]">
+          {COPY.attendance.guestLead}
+        </p>
         {flow.status && (
           <ScannerStatusOutput message={flow.status} tone={flow.tone} />
         )}
         <form
-          className={styles.form}
+          className="grid gap-3"
           noValidate
           onSubmit={(event) => {
             event.preventDefault();
             void submit();
           }}
         >
-          <label className={styles.field} htmlFor="attendance-code">
-            <span className={styles.fieldLabel}>
+          <label className="grid gap-1.5" htmlFor="attendance-code">
+            <span className="text-sm font-bold leading-normal text-[var(--ink)]">
               {COPY.attendance.guestCode}
             </span>
             <Input
@@ -305,8 +315,8 @@ export const AttendancePanel = () => {
               aria-invalid={Boolean(validationError) && !flow.input.trim()}
             />
           </label>
-          <label className={styles.field} htmlFor="guest-name">
-            <span className={styles.fieldLabel}>
+          <label className="grid gap-1.5" htmlFor="guest-name">
+            <span className="text-sm font-bold leading-normal text-[var(--ink)]">
               {COPY.attendance.guestName}
             </span>
             <Input
@@ -325,8 +335,8 @@ export const AttendancePanel = () => {
               aria-invalid={Boolean(validationError) && !name.trim()}
             />
           </label>
-          <label className={styles.field} htmlFor="guest-phone">
-            <span className={styles.fieldLabel}>
+          <label className="grid gap-1.5" htmlFor="guest-phone">
+            <span className="text-sm font-bold leading-normal text-[var(--ink)]">
               {COPY.attendance.guestPhoneLabel}
             </span>
             <Input
@@ -345,7 +355,10 @@ export const AttendancePanel = () => {
               aria-describedby="guest-phone-hint"
               aria-invalid={Boolean(validationError) && !phone.trim()}
             />
-            <span id="guest-phone-hint" className={styles.fieldHint}>
+            <span
+              id="guest-phone-hint"
+              className="text-xs leading-normal text-[var(--ink-muted)]"
+            >
               {COPY.attendance.guestPhoneHint}
             </span>
           </label>
@@ -368,7 +381,7 @@ export const AttendancePanel = () => {
             onSelect={selectEvent}
           />
         )}
-        <div className={styles.group}>
+        <div className="mt-4 grid gap-3">
           <Button asChild variant="outline" className={memberLinkControl}>
             <a
               href="/"

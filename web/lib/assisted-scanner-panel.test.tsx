@@ -361,4 +361,112 @@ describe("Assisted Scanner panel", () => {
       ""
     );
   });
+
+  test("invokes onAuthRequired when member search returns AUTH_REQUIRED", async () => {
+    const onAuthRequired = vi.fn();
+    server.use(
+      http.get("/api/v1/attendance/events/event-1/members", () =>
+        HttpResponse.json(
+          {
+            type: "https://efcc.example/problems/auth-required",
+            title: "Auth Required",
+            status: 401,
+            code: "AUTH_REQUIRED",
+            requestId: "rid-auth",
+          },
+          { status: 401 }
+        )
+      )
+    );
+    const user = userEvent.setup();
+    render(
+      <AssistedScannerPanel
+        events={EVENTS}
+        requestedEventId="event-1"
+        onEventChange={() => {}}
+        onAuthRequired={onAuthRequired}
+      />
+    );
+    await user.type(
+      screen.getByLabelText(COPY.attendance.memberSearch),
+      "陳大文"
+    );
+    await user.click(
+      screen.getByRole("button", { name: COPY.attendance.search })
+    );
+    await waitFor(() => expect(onAuthRequired).toHaveBeenCalledOnce());
+  });
+
+  test("invokes onAuthRequired when check-in returns AUTH_REQUIRED", async () => {
+    const onAuthRequired = vi.fn();
+    server.use(
+      http.get("/api/v1/attendance/events/event-1/members", () =>
+        HttpResponse.json({
+          requestId: "rid-members",
+          data: { members: [MEMBER] },
+        })
+      ),
+      http.post("/api/v1/attendance/events/event-1/check-in", () =>
+        HttpResponse.json(
+          {
+            type: "https://efcc.example/problems/auth-required",
+            title: "Auth Required",
+            status: 401,
+            code: "AUTH_REQUIRED",
+            requestId: "rid-auth",
+          },
+          { status: 401 }
+        )
+      )
+    );
+    const user = userEvent.setup();
+    render(
+      <AssistedScannerPanel
+        events={EVENTS}
+        requestedEventId="event-1"
+        onEventChange={() => {}}
+        onAuthRequired={onAuthRequired}
+      />
+    );
+    await user.type(
+      screen.getByLabelText(COPY.attendance.memberSearch),
+      "陳大文"
+    );
+    await user.click(
+      screen.getByRole("button", { name: COPY.attendance.search })
+    );
+    await screen.findByText(MEMBER.name);
+    await user.click(screen.getByRole("button", { name: /替成員簽到/u }));
+    await waitFor(() => expect(onAuthRequired).toHaveBeenCalledOnce());
+  });
+
+  test("displays forbidden error without exposing member search results when search returns 403", async () => {
+    server.use(
+      http.get("/api/v1/attendance/events/event-1/members", () =>
+        HttpResponse.json(
+          {
+            type: "https://efcc.example/problems/forbidden",
+            title: "Forbidden",
+            status: 403,
+            code: "FORBIDDEN",
+            requestId: "rid-forbidden",
+          },
+          { status: 403 }
+        )
+      )
+    );
+    const user = userEvent.setup();
+    renderPanel("event-1");
+    await user.type(
+      screen.getByLabelText(COPY.attendance.memberSearch),
+      "陳大文"
+    );
+    await user.click(
+      screen.getByRole("button", { name: COPY.attendance.search })
+    );
+    await expect(
+      screen.findByText(COPY.error.forbidden)
+    ).resolves.toBeVisible();
+    expect(screen.queryByText(MEMBER.name)).not.toBeInTheDocument();
+  });
 });

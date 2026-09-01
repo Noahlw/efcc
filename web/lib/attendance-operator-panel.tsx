@@ -29,15 +29,18 @@ import type {
 } from "@/lib/programs/program-api";
 import { useQrCamera } from "@/lib/use-qr-camera";
 
-import styles from "./attendance-panel.module.css";
-
-const primaryControl = `${styles.button} min-h-11 h-auto rounded-[var(--radius-sm)] px-4 py-3 text-base font-extrabold`;
-const secondaryControl = `${styles.buttonSecondary} min-h-11 h-auto rounded-[var(--radius-sm)] border-[var(--line-strong)] bg-[var(--surface-raised)] px-4 py-3 text-base font-bold text-[var(--ink)] hover:bg-[var(--surface)] hover:text-[var(--ink)]`;
-const dangerControl = `${styles.buttonDanger} min-h-11 h-auto rounded-[var(--radius-sm)] border-[var(--error)] bg-[var(--surface-raised)] px-4 py-3 text-base font-bold text-[var(--error)] hover:bg-[var(--error-surface)] hover:text-[var(--error)]`;
-const inputControl = `${styles.input} min-h-11 h-auto rounded-[var(--radius-sm)] border-[var(--line-strong)] bg-[var(--surface-raised)] px-3 py-3 text-base text-[var(--ink)] placeholder:text-[var(--ink-muted)] focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50`;
-const eventButtonControl = `${styles.eventButton} min-h-11 h-auto rounded-[var(--radius-sm)] border-[var(--line-strong)] bg-[var(--surface-raised)] px-4 py-3 text-left text-base font-normal text-[var(--ink)] hover:bg-[var(--surface)] hover:text-[var(--ink)]`;
-const backControl = `${styles.back} min-h-11 h-auto px-2 py-3 text-base font-bold text-[var(--accent-deep)] hover:bg-transparent hover:text-[var(--accent)]`;
-
+const primaryControl =
+  "min-h-11 h-auto rounded-[var(--radius-sm)] px-4 py-3 text-base font-extrabold";
+const secondaryControl =
+  "min-h-11 h-auto rounded-[var(--radius-sm)] border border-[var(--line-strong)] bg-[var(--surface-raised)] px-4 py-3 text-base font-bold text-[var(--ink)] hover:bg-[var(--surface)] hover:text-[var(--ink)]";
+const dangerControl =
+  "min-h-11 h-auto rounded-[var(--radius-sm)] border border-[var(--error)] bg-[var(--surface-raised)] px-4 py-3 text-base font-bold text-[var(--error)] hover:bg-[var(--error-surface)] hover:text-[var(--error)]";
+const inputControl =
+  "min-h-11 h-auto rounded-[var(--radius-sm)] border border-[var(--line-strong)] bg-[var(--surface-raised)] px-3 py-3 text-base text-[var(--ink)] placeholder:text-[var(--ink-muted)] focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50";
+const eventButtonControl =
+  "flex w-full min-h-11 flex-col items-start justify-between rounded-[var(--radius-sm)] border border-[var(--line-strong)] bg-[var(--surface-raised)] p-3 text-left text-base font-normal text-[var(--ink)] hover:bg-[var(--surface)] hover:text-[var(--ink)] sm:flex-row sm:items-center";
+const backControl =
+  "min-h-11 h-auto px-2 py-3 text-base font-bold text-[var(--accent-deep)] hover:bg-transparent hover:text-[var(--accent)]";
 type StatusTone = "info" | "success" | "error";
 
 type MemberDirectory = Readonly<Record<string, AttendanceMember>>;
@@ -65,21 +68,26 @@ export const AttendanceChooser = ({
 }: AttendanceChooserProps) => {
   return (
     <Card
-      className={styles.chooser}
+      className="grid gap-4.5 p-5 bg-[var(--surface-raised)] border border-[var(--line-strong)] rounded-[var(--radius-md)]"
       role="region"
       aria-labelledby="attendance-chooser-title"
     >
-      <h1 id="attendance-chooser-title" className={styles.title}>
+      <h1
+        id="attendance-chooser-title"
+        className="text-2xl font-extrabold leading-tight tracking-[0.01em] text-[var(--ink)]"
+      >
         {COPY.attendance.chooserTitle}
       </h1>
-      <p className={styles.lead}>{COPY.attendance.chooserLead}</p>
-      <h2 className={styles.sectionTitle}>
+      <p className="-mt-1.5 text-base leading-relaxed text-[var(--ink-muted)]">
+        {COPY.attendance.chooserLead}
+      </p>
+      <h2 className="mt-1.5 text-xl font-extrabold leading-snug text-[var(--ink)]">
         {COPY.attendance.chooserOpenMeetings}
       </h2>
 
       {loading && (
         <output
-          className={styles.chooserLoading}
+          className="flex items-center gap-2 text-sm text-[var(--ink-muted)]"
           aria-busy="true"
           aria-live="polite"
         >
@@ -89,7 +97,7 @@ export const AttendanceChooser = ({
       )}
 
       {error && !loading && (
-        <Alert variant="destructive" className={styles.chooserError}>
+        <Alert variant="destructive" className="grid gap-2">
           <p>{error}</p>
           {onRetry && (
             <Button
@@ -106,14 +114,17 @@ export const AttendanceChooser = ({
       )}
 
       {!loading && !error && events.length === 0 && (
-        <output className={styles.chooserEmpty} aria-live="polite">
+        <output
+          className="text-base text-[var(--ink-muted)] py-4 text-center block"
+          aria-live="polite"
+        >
           {COPY.attendance.chooserEmpty}
         </output>
       )}
 
       {!loading && !error && events.length > 0 && (
         <ul
-          className={styles.events}
+          className="mt-2 grid gap-2 list-none p-0"
           aria-label={COPY.attendance.chooserOpenMeetings}
         >
           {events.map((event) => (
@@ -125,22 +136,29 @@ export const AttendanceChooser = ({
                 disabled={busy}
                 onClick={() => onSelect(event.event_id)}
               >
-                <span className={styles.eventCopy}>
+                <span className="grid gap-0.5">
                   <strong>{attendanceEventName(event)}</strong>
-                  <span className={styles.eventMeta}>
+                  <span className="text-sm text-[var(--ink-muted)]">
                     {hkWallLabel(event.starts_at)}
                     {event.location ? ` · ${event.location}` : ""}
                   </span>
                 </span>
-                <span className={styles.rowAction}>
+                <span className="text-sm font-bold text-[var(--accent)] mt-1 sm:mt-0">
                   {COPY.attendance.rosterTitle}
                 </span>
                 <svg
-                  className={styles.chevron}
+                  className="h-4 w-4 shrink-0 text-[var(--ink-muted)] hidden sm:block"
                   viewBox="0 0 24 24"
                   aria-hidden="true"
                 >
-                  <path d="m9 5 7 7-7 7" />
+                  <path
+                    fill="none"
+                    stroke="currentColor"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth="2"
+                    d="M9 5l7 7-7 7"
+                  />
                 </svg>
               </Button>
             </li>
@@ -284,8 +302,8 @@ export const AttendanceRoster = ({
 
   return (
     <>
-      <header className={styles.rosterHeader}>
-        <div className={styles.rosterHeaderTopline}>
+      <header className="grid gap-2 pb-4 border-b border-[var(--line)]">
+        <div className="flex items-center justify-between gap-2">
           {onBack && (
             <Button
               variant="link"
@@ -299,8 +317,10 @@ export const AttendanceRoster = ({
           )}
           <Badge
             variant="outline"
-            className={`${styles.statusBadge} ${
-              statusIsOpen ? styles.statusBadgeActive : styles.statusBadgeMuted
+            className={`px-2.5 py-0.5 text-xs font-semibold ${
+              statusIsOpen
+                ? "border-[var(--success-border)] bg-[var(--success-surface)] text-[var(--success)]"
+                : "border-[var(--line-strong)] bg-[var(--surface)] text-[var(--ink-muted)]"
             }`}
           >
             {statusIsOpen
@@ -310,22 +330,24 @@ export const AttendanceRoster = ({
                 : COPY.attendance.eventClosed}
           </Badge>
         </div>
-        <div className={styles.rosterHeadingRow}>
+        <div className="flex flex-col sm:flex-row sm:items-baseline sm:justify-between gap-2">
           <div>
-            <h1 className={styles.title}>{COPY.attendance.rosterTitle}</h1>
-            <p className={styles.lead}>
+            <h1 className="text-2xl font-extrabold leading-tight tracking-[0.01em] text-[var(--ink)]">
+              {COPY.attendance.rosterTitle}
+            </h1>
+            <p className="-mt-1.5 text-base leading-relaxed text-[var(--ink-muted)]">
               {eventTitle}
               {event.location ? ` · ${event.location}` : ""}
               {` · ${hkWallLabel(event.starts_at)}`}
             </p>
           </div>
-          <p className={styles.rosterCount} aria-live="polite">
+          <p className="text-sm text-[var(--ink-muted)]" aria-live="polite">
             <strong>
               {COPY.attendance.checkedInCount(activeRows.length, rows.length)}
             </strong>
           </p>
         </div>
-        <div className={styles.actionsRow}>
+        <div className="flex flex-wrap gap-3 mt-2">
           {onPrint && (
             <Button
               variant="outline"
@@ -352,12 +374,15 @@ export const AttendanceRoster = ({
       </header>
 
       {rows.length === 0 ? (
-        <output className={styles.chooserEmpty} aria-live="polite">
+        <output
+          className="text-base text-[var(--ink-muted)] py-4 text-center block"
+          aria-live="polite"
+        >
           {COPY.programs.eventNoParticipants}
         </output>
       ) : (
         <ul
-          className={styles.rosterList}
+          className="grid gap-3 list-none p-0 mt-4"
           aria-label={COPY.attendance.rosterTitle}
         >
           {rows.map((row) => {
@@ -369,22 +394,25 @@ export const AttendanceRoster = ({
             const isVoiding = voidingId === row.attendance_id;
             const isCorrecting = correctionId === row.attendance_id;
             return (
-              <li className={styles.rowCard} key={row.attendance_id}>
-                <div className={styles.rowHeader}>
+              <li
+                className="grid gap-3 p-4 rounded-[var(--radius-sm)] border border-[var(--line-strong)] bg-[var(--surface-raised)]"
+                key={row.attendance_id}
+              >
+                <div className="flex items-start justify-between gap-2">
                   <div>
-                    <strong className={styles.rowName}>
+                    <strong className="text-base font-bold text-[var(--ink)] [overflow-wrap:anywhere] min-w-0 max-w-full">
                       {rowLabel(row, memberDirectory)}
                     </strong>
-                    <p className={styles.eventMeta}>
+                    <p className="text-sm text-[var(--ink-muted)]">
                       {displayPhone ?? COPY.attendance.method[row.method]}
                     </p>
                   </div>
                   <Badge
                     variant="outline"
-                    className={`${styles.pill} ${
+                    className={`px-2 py-0.5 text-xs font-semibold rounded-full ${
                       row.status === "Active"
-                        ? styles.pillActive
-                        : styles.pillMuted
+                        ? "border-[var(--success-border)] bg-[var(--success-surface)] text-[var(--success)]"
+                        : "border-[var(--line-strong)] bg-[var(--surface)] text-[var(--ink-muted)]"
                     }`}
                   >
                     {COPY.attendance.status[row.status]}
@@ -392,11 +420,13 @@ export const AttendanceRoster = ({
                 </div>
 
                 {row.status === "Voided" && row.void_reason && (
-                  <p className={styles.voidNote}>{row.void_reason}</p>
+                  <p className="text-xs text-[var(--error)] bg-[var(--error-surface)] border border-[var(--error-border)] p-2 rounded-[var(--radius-sm)]">
+                    {row.void_reason}
+                  </p>
                 )}
 
                 {row.status === "Active" && (
-                  <div className={styles.actionsRow}>
+                  <div className="flex flex-wrap gap-3 mt-2">
                     <Button
                       variant="outline"
                       className={dangerControl}
@@ -432,23 +462,23 @@ export const AttendanceRoster = ({
 
                 {isVoiding && (
                   <form
-                    className={styles.operationPanel}
+                    className="grid gap-3 p-4 rounded-[var(--radius-sm)] border border-[var(--line-strong)] bg-[var(--surface)] mt-2"
                     onSubmit={(formEvent) => {
                       formEvent.preventDefault();
                       void submitVoid(row);
                     }}
                   >
-                    <h2 className={styles.operationTitle}>
+                    <h2 className="text-lg font-bold text-[var(--ink)]">
                       {COPY.attendance.voidAttendance}
                     </h2>
-                    <p className={styles.operationLead}>
+                    <p className="text-sm text-[var(--ink-muted)]">
                       {COPY.attendance.voidLead}
                     </p>
                     <label
-                      className={styles.field}
+                      className="grid gap-1.5"
                       htmlFor={`void-reason-${row.attendance_id}`}
                     >
-                      <span className={styles.fieldLabel}>
+                      <span className="text-sm font-bold leading-normal text-[var(--ink)]">
                         {COPY.attendance.voidReason}
                       </span>
                       <Input
@@ -463,7 +493,7 @@ export const AttendanceRoster = ({
                         autoComplete="off"
                       />
                     </label>
-                    <div className={styles.actionsRow}>
+                    <div className="flex flex-wrap gap-3 mt-2">
                       <Button
                         variant="outline"
                         className={dangerControl}
@@ -487,7 +517,7 @@ export const AttendanceRoster = ({
 
                 {isCorrecting && (
                   <form
-                    className={styles.operationPanel}
+                    className="grid gap-3 p-4 rounded-[var(--radius-sm)] border border-[var(--line-strong)] bg-[var(--surface)] mt-2"
                     onSubmit={(formEvent) => {
                       formEvent.preventDefault();
                       void submitCorrection(row);
@@ -495,19 +525,19 @@ export const AttendanceRoster = ({
                   >
                     <h2
                       ref={correctionHeadingRef}
-                      className={styles.operationTitle}
+                      className="text-lg font-bold text-[var(--ink)]"
                       tabIndex={-1}
                     >
                       {COPY.attendance.guestCorrection}
                     </h2>
-                    <p className={styles.operationLead}>
+                    <p className="text-sm text-[var(--ink-muted)]">
                       {COPY.attendance.correctionLead}
                     </p>
                     <label
-                      className={styles.field}
+                      className="grid gap-1.5"
                       htmlFor={`correction-name-${row.attendance_id}`}
                     >
-                      <span className={styles.fieldLabel}>
+                      <span className="text-sm font-bold leading-normal text-[var(--ink)]">
                         {COPY.attendance.guestName}
                       </span>
                       <Input
@@ -522,10 +552,10 @@ export const AttendanceRoster = ({
                       />
                     </label>
                     <label
-                      className={styles.field}
+                      className="grid gap-1.5"
                       htmlFor={`correction-phone-${row.attendance_id}`}
                     >
-                      <span className={styles.fieldLabel}>
+                      <span className="text-sm font-bold leading-normal text-[var(--ink)]">
                         {COPY.attendance.guestPhone}
                       </span>
                       <Input
@@ -539,10 +569,10 @@ export const AttendanceRoster = ({
                       />
                     </label>
                     <label
-                      className={styles.field}
+                      className="grid gap-1.5"
                       htmlFor={`correction-reason-${row.attendance_id}`}
                     >
-                      <span className={styles.fieldLabel}>
+                      <span className="text-sm font-bold leading-normal text-[var(--ink)]">
                         {COPY.attendance.correctionReason}
                       </span>
                       <Input
@@ -555,7 +585,7 @@ export const AttendanceRoster = ({
                         required
                       />
                     </label>
-                    <div className={styles.actionsRow}>
+                    <div className="flex flex-wrap gap-3 mt-2">
                       <Button
                         className={primaryControl}
                         type="submit"
@@ -832,9 +862,9 @@ export const AttendanceOperatorPanel = () => {
 
   const rosterVisible = Boolean(event && eventId);
   return (
-    <div className={styles.page}>
+    <div className="mx-auto w-[min(100%,760px)] px-4 py-8 pb-12">
       <Card
-        className={styles.card}
+        className="grid gap-4.5 p-5 bg-[var(--surface-raised)] border border-[var(--line-strong)] rounded-[var(--radius-md)]"
         role="region"
         aria-labelledby={
           rosterVisible ? "attendance-roster-title" : "attendance-chooser-title"
@@ -852,9 +882,7 @@ export const AttendanceOperatorPanel = () => {
           />
         )}
 
-        {!rosterVisible && (
-          <h2 className={styles.srOnly}>{COPY.sections.events}</h2>
-        )}
+        {!rosterVisible && <h2 className="sr-only">{COPY.sections.events}</h2>}
 
         {rosterVisible && event && eventId && (
           <>
@@ -874,16 +902,16 @@ export const AttendanceOperatorPanel = () => {
 
             {event.status === "Active" && event.availability === "Active" && (
               <section
-                className={styles.group}
+                className="mt-4 grid gap-3"
                 aria-labelledby="attendance-operations-title"
               >
                 <h2
                   id="attendance-operations-title"
-                  className={styles.sectionTitle}
+                  className="mt-1.5 text-xl font-extrabold leading-snug text-[var(--ink)]"
                 >
                   {COPY.attendance.operatorTitle}
                 </h2>
-                <div className={styles.actionsRow}>
+                <div className="flex flex-wrap gap-3 mt-2">
                   <Button
                     variant="outline"
                     className={secondaryControl}
@@ -909,15 +937,15 @@ export const AttendanceOperatorPanel = () => {
                 {cameraOpen && (
                   <video
                     ref={videoRef}
-                    className={styles.video}
+                    className="aspect-video w-full rounded-[var(--radius-sm)] border border-[var(--line-strong)] bg-black object-cover"
                     muted
                     playsInline
                     aria-label={COPY.attendance.camera}
                   />
                 )}
-                <div className={styles.inputRow}>
-                  <label className={styles.field} htmlFor="member-search">
-                    <span className={styles.fieldLabel}>
+                <div className="grid gap-3 sm:grid-cols-[1fr_auto]">
+                  <label className="grid gap-1.5" htmlFor="member-search">
+                    <span className="text-sm font-bold leading-normal text-[var(--ink)]">
                       {COPY.attendance.memberSearch}
                     </span>
                     <Input
@@ -947,7 +975,7 @@ export const AttendanceOperatorPanel = () => {
                 </div>
                 {members.length > 0 && (
                   <ul
-                    className={styles.events}
+                    className="mt-2 grid gap-2 list-none p-0"
                     aria-label={COPY.attendance.memberSearch}
                   >
                     {members.map((member) => (
@@ -960,10 +988,10 @@ export const AttendanceOperatorPanel = () => {
                           onClick={() => void checkIn(member)}
                         >
                           <strong>{member.name}</strong>
-                          <span className={styles.eventMeta}>
+                          <span className="text-sm text-[var(--ink-muted)]">
                             {member.phone ?? member.user_id}
                           </span>
-                          <span className={styles.rowAction}>
+                          <span className="text-sm font-bold text-[var(--accent)] mt-1 sm:mt-0">
                             {COPY.attendance.checkInMember}
                           </span>
                         </Button>
@@ -977,7 +1005,7 @@ export const AttendanceOperatorPanel = () => {
         )}
 
         <output
-          className={styles.status}
+          className="rounded-[var(--radius-sm)] border border-[var(--line-strong)] p-3 text-base mt-2"
           data-tone={status ? tone : undefined}
           aria-live="polite"
           aria-atomic="true"
@@ -987,7 +1015,7 @@ export const AttendanceOperatorPanel = () => {
 
         {rosterVisible && event && (
           <section
-            className={styles.printSheet}
+            className="hidden print:block print:p-8"
             aria-label={COPY.attendance.printSheet}
           >
             <h1>{event.name?.trim() || event.program_name}</h1>
@@ -995,11 +1023,14 @@ export const AttendanceOperatorPanel = () => {
               {hkWallLabel(event.starts_at)}
               {event.location ? ` · ${event.location}` : ""}
             </p>
-            <div className={styles.printRows}>
+            <div className="grid gap-2 border-t border-black pt-4 mt-4">
               {rows.map((row) => {
                 const phone = rowPhone(row, memberDirectory);
                 return (
-                  <div className={styles.printRow} key={row.attendance_id}>
+                  <div
+                    className="flex justify-between py-1 border-b border-gray-300"
+                    key={row.attendance_id}
+                  >
                     <span>{rowLabel(row, memberDirectory)}</span>
                     <span>
                       {phone ? COPY.attendance.maskedPhone(phone) : "—"}

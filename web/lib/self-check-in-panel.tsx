@@ -23,12 +23,14 @@ import { selfCheckIn } from "@/lib/programs/program-api";
 import { buildProgramsHref } from "@/lib/programs/programs-intent";
 import { useAttendanceFlow } from "@/lib/use-attendance-flow";
 
-import styles from "./attendance-panel.module.css";
-
-const primaryControl = `${styles.button} min-h-11 h-auto rounded-[var(--radius-sm)] px-4 py-3 text-base font-extrabold`;
-const secondaryControl = `${styles.buttonSecondary} min-h-11 h-auto rounded-[var(--radius-sm)] border-[var(--line-strong)] bg-[var(--surface-raised)] px-4 py-3 text-base font-bold text-[var(--ink)] hover:bg-[var(--surface)] hover:text-[var(--ink)]`;
-const inputControl = `${styles.input} min-h-11 h-auto rounded-[var(--radius-sm)] border-[var(--line-strong)] bg-[var(--surface-raised)] px-3 py-3 text-base text-[var(--ink)] placeholder:text-[var(--ink-muted)] focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50`;
-const methodControl = `${styles.methodCard} min-h-24 rounded-[var(--radius-sm)] border-[var(--line-strong)] bg-[var(--surface-raised)] px-4 py-3 text-left text-base font-normal text-[var(--ink)] hover:bg-[var(--surface)] hover:text-[var(--ink)]`;
+const primaryControl =
+  "min-h-11 h-auto rounded-[var(--radius-sm)] px-4 py-3 text-base font-extrabold";
+const secondaryControl =
+  "min-h-11 h-auto rounded-[var(--radius-sm)] border border-[var(--line-strong)] bg-[var(--surface-raised)] px-4 py-3 text-base font-bold text-[var(--ink)] hover:bg-[var(--surface)] hover:text-[var(--ink)]";
+const inputControl =
+  "min-h-11 h-auto rounded-[var(--radius-sm)] border border-[var(--line-strong)] bg-[var(--surface-raised)] px-3 py-3 text-base text-[var(--ink)] placeholder:text-[var(--ink-muted)] focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50";
+const methodControl =
+  "flex flex-col justify-center min-h-24 rounded-[var(--radius-sm)] border border-[var(--line-strong)] bg-[var(--surface-raised)] px-4 py-3 text-left text-base font-normal text-[var(--ink)] hover:bg-[var(--surface)] hover:text-[var(--ink)]";
 
 interface CheckinResult {
   kind: "success" | "duplicate";
@@ -365,7 +367,7 @@ export const SelfCheckInPanel = ({
   const manualForm = (withHeading: boolean) => (
     <form
       noValidate
-      className={styles.form}
+      className="grid gap-3"
       data-scanner-state="manual"
       onSubmit={(event) => {
         event.preventDefault();
@@ -377,19 +379,22 @@ export const SelfCheckInPanel = ({
           <h1
             ref={scanHeadingRef}
             id="attendance-code-label"
-            className={styles.title}
+            className="text-2xl font-extrabold leading-tight tracking-[0.01em] text-[var(--ink)]"
             tabIndex={-1}
           >
             {COPY.attendance.manualCodeLabel}
           </h1>
-          <p id="manual-entry-hint" className={styles.lead}>
+          <p
+            id="manual-entry-hint"
+            className="-mt-1.5 text-base leading-relaxed text-[var(--ink-muted)]"
+          >
             {COPY.attendance.manualCodeHint}
           </p>
         </>
       )}
-      <label className={styles.field} htmlFor="attendance-code">
+      <label className="grid gap-1.5" htmlFor="attendance-code">
         {!withHeading && (
-          <span className={styles.fieldLabel}>
+          <span className="text-sm font-bold leading-normal text-[var(--ink)]">
             {COPY.attendance.manualCodeLabel}
           </span>
         )}
@@ -408,7 +413,10 @@ export const SelfCheckInPanel = ({
           aria-describedby="manual-entry-hint"
         />
         {!withHeading && (
-          <span id="manual-entry-hint" className={styles.fieldHint}>
+          <span
+            id="manual-entry-hint"
+            className="text-xs leading-normal text-[var(--ink-muted)]"
+          >
             {COPY.attendance.manualCodeHint}
           </span>
         )}
@@ -437,7 +445,7 @@ export const SelfCheckInPanel = ({
 
   if ((flow.view === "chooser" || showChooser) && flow.events.length > 1) {
     return (
-      <div className={styles.page}>
+      <div className="mx-auto w-[min(100%,760px)] px-4 py-8 pb-12">
         <ScannerChooser
           events={flow.events}
           headingRef={chooserHeadingRef}
@@ -450,7 +458,7 @@ export const SelfCheckInPanel = ({
 
   if (checkinResult) {
     return (
-      <div className={styles.page}>
+      <div className="mx-auto w-[min(100%,760px)] px-4 py-8 pb-12">
         <ScannerCheckinResult
           event={checkinResult.event}
           kind={checkinResult.kind}
@@ -463,7 +471,7 @@ export const SelfCheckInPanel = ({
 
   if (flow.selected) {
     return (
-      <div className={styles.page}>
+      <div className="mx-auto w-[min(100%,760px)] px-4 py-8 pb-12">
         <ScannerConfirmation
           event={flow.selected}
           headingRef={confirmationHeadingRef}
@@ -482,7 +490,7 @@ export const SelfCheckInPanel = ({
 
   if (flow.view === "outcome" && flow.outcome) {
     return (
-      <div className={styles.page}>
+      <div className="mx-auto w-[min(100%,760px)] px-4 py-8 pb-12">
         <ScannerOutcome
           kind={flow.outcome.kind}
           latest={flow.outcome.latest}
@@ -499,12 +507,18 @@ export const SelfCheckInPanel = ({
 
   if (!isPhone) {
     return (
-      <div className={styles.page} data-scanner-state="desktop-manual">
-        <Card className={styles.card} aria-labelledby="attendance-title">
+      <div
+        className="mx-auto w-[min(100%,760px)] px-4 py-8 pb-12"
+        data-scanner-state="desktop-manual"
+      >
+        <Card
+          className="grid gap-4.5 p-5 bg-[var(--surface-raised)] border border-[var(--line-strong)] rounded-[var(--radius-md)]"
+          aria-labelledby="attendance-title"
+        >
           <h1
             id="attendance-title"
             ref={scanHeadingRef}
-            className={styles.title}
+            className="text-2xl font-extrabold leading-tight tracking-[0.01em] text-[var(--ink)]"
             tabIndex={-1}
           >
             {title}
@@ -516,24 +530,39 @@ export const SelfCheckInPanel = ({
   }
 
   if (!deepLinkChecked || hasDeepLink || manualOpen) {
-    return <div className={styles.page}>{manualForm(true)}</div>;
+    return (
+      <div className="mx-auto w-[min(100%,760px)] px-4 py-8 pb-12">
+        {manualForm(true)}
+      </div>
+    );
   }
 
   if (scanStopped || flow.cameraUnavailable || flow.cameraAvailable === false) {
     return (
-      <div className={styles.page} data-scanner-state="fallback">
-        <Card className={styles.card} aria-labelledby="fallback-methods-title">
+      <div
+        className="mx-auto w-[min(100%,760px)] px-4 py-8 pb-12"
+        data-scanner-state="fallback"
+      >
+        <Card
+          className="grid gap-4.5 p-5 bg-[var(--surface-raised)] border border-[var(--line-strong)] rounded-[var(--radius-md)]"
+          aria-labelledby="fallback-methods-title"
+        >
           <h1
             ref={fallbackHeadingRef}
             id="fallback-methods-title"
-            className={styles.title}
+            className="text-2xl font-extrabold leading-tight tracking-[0.01em] text-[var(--ink)]"
             tabIndex={-1}
           >
             {COPY.attendance.fallbackTitle}
           </h1>
-          <p className={styles.lead}>{COPY.attendance.fallbackLead}</p>
+          <p className="-mt-1.5 text-base leading-relaxed text-[var(--ink-muted)]">
+            {COPY.attendance.fallbackLead}
+          </p>
           {flow.cameraPermissionDenied && (
-            <Alert variant="destructive" className={styles.cameraUnavailable}>
+            <Alert
+              variant="destructive"
+              className="grid gap-2 border-[var(--error-border)] bg-[var(--error-surface)] text-[var(--error)] p-4 rounded-[var(--radius-sm)]"
+            >
               <strong>{COPY.attendance.cameraDeniedTitle}</strong>
               <p>{COPY.attendance.cameraDeniedBody}</p>
               <Button
@@ -546,16 +575,19 @@ export const SelfCheckInPanel = ({
             </Alert>
           )}
           {flow.cameraUnsupported && !flow.cameraPermissionDenied && (
-            <Alert variant="destructive" className={styles.cameraUnavailable}>
+            <Alert
+              variant="destructive"
+              className="grid gap-2 border-[var(--error-border)] bg-[var(--error-surface)] text-[var(--error)] p-4 rounded-[var(--radius-sm)]"
+            >
               <strong>{COPY.attendance.cameraUnsupportedTitle}</strong>
               <p>{COPY.attendance.cameraUnsupportedHint}</p>
             </Alert>
           )}
           <section
-            className={styles.methodSection}
+            className="mt-4 grid gap-3"
             aria-labelledby="fallback-methods-title"
           >
-            <div className={styles.methodGrid}>
+            <div className="grid gap-3 sm:grid-cols-2">
               <Button
                 variant="outline"
                 className={methodControl}
@@ -573,9 +605,6 @@ export const SelfCheckInPanel = ({
               </Button>
             </div>
           </section>
-          {/* Dedicated denied/unsupported alerts above already own these
-              messages; the status output still carries resolve/offline
-              failures that land on this fallback view. */}
           {!flow.cameraPermissionDenied && !flow.cameraUnsupported && (
             <ScannerStatusOutput message={flow.status} tone={flow.tone} />
           )}
