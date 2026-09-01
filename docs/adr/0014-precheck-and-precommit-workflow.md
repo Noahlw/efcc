@@ -75,7 +75,28 @@ auth contract.
   `auth-contract` job).
 - PRs can be safely configured with those deterministic status checks in GitHub
   branch protection.
-- A fresh deployed D1 auth proof remains a separate manual gate. It is red
-  (fail-closed) until the operator provisions `AUTH_TARGET_URL`, acceptance
-  accounts, and an isolated D1 database; a missing deployment proof is never
-  reported as a green deployed result.
+
+## Amendment (2026-09-01) — Fast CI and local pre-commit ownership
+
+The decision text above is historical. The current ownership split supersedes
+its CI/pre-commit provisions:
+
+- **Fast CI** (`.github/workflows/fast-ci.yml`, replacing `precheck.yml`) is
+  the single automatic gate and the only required status check. It runs one
+  job — `pnpm verify:fast` (root and `web/` typechecks) — with no
+  Chromium, Wrangler, Vitest, component, Playwright, or Ultracite step.
+- **All passing non-browser checks run locally**: the pre-commit hook
+  (`.husky/pre-commit`) runs a Node `>= 22.18.0` guard, `ultracite doctor`,
+  staged Oxfmt via `lint-staged`, then `pnpm verify:precommit` (root/web
+  typechecks, prototype, identity, workerd, components). `pnpm verify` adds
+  the browser shell/geometry suites as local evidence.
+- **Browser/Worker-D1 Playwright suites** remain explicit local commands
+  against `wrangler dev` + local D1 (ADR-0029 local-first gate); they are not
+  CI jobs.
+- **`e2e.yml` is manual-only** (`workflow_dispatch`): its `auth-contract` and
+  `deployed-auth` jobs are operator-dispatched and neither is a required
+  merge check; both keep their fail-closed behavior.
+- **Ultracite syntax debt is deferred** to issue #498: the repository-wide
+  `pnpm check` audit (thousands of existing diagnostics) is not part of Fast
+  CI or the pre-commit gate, and no broad suppression was added. The
+  post-Phase-F refactor removes the debt and makes `pnpm check` pass.

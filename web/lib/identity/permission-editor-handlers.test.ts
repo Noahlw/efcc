@@ -1,4 +1,3 @@
-// @vitest-environment workers
 /** #485 — Permission Editor Worker transport and recovery seam. */
 import assert from "node:assert/strict";
 

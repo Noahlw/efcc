@@ -1,4 +1,3 @@
-// @vitest-environment workers
 import { env } from "cloudflare:workers";
 import { beforeAll, describe, expect, test } from "vitest";
 

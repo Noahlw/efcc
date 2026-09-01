@@ -5,7 +5,7 @@ This document is the entry point for a developer working from a fresh clone. It 
 ## Requirements
 
 - **Git**
-- **Node.js 22** — pinned in [`.node-version`](.node-version) and used by CI. Select it with `fnm use`, `mise install`, or `asdf install` from the repo root.
+- **Node.js 22.18.0** — pinned in [`.node-version`](.node-version) and used by CI. Select it with `fnm use`, `mise install`, or `asdf install` from the repo root. The pre-commit hook refuses to run on older Node (the checked-in TypeScript Oxfmt config requires ≥ 22.18.0).
 - **pnpm 11.7.0** — pinned in the root `packageManager` field. `corepack enable` makes the pinned version available.
 - **Chromium** — installed automatically for Playwright by `pnpm run bootstrap`.
 
@@ -21,7 +21,7 @@ pnpm run verify
 ```
 
 - `pnpm run bootstrap` — the single canonical fresh-clone dependency command. Installs the root dependencies and then the `web/` dependencies using their frozen lockfiles, and installs the Playwright Chromium browser through the root install lifecycle. (It is named `bootstrap`, not `setup`, to avoid colliding with pnpm's built-in `pnpm setup`.) Run it once in the clone; run it again after lockfile changes.
-- `pnpm run verify` — the local equivalent of the deterministic CI gate (see [Verification](#verification)).
+- `pnpm run verify` — the full local gate: pre-commit checks plus the browser shell/geometry suites (see [Verification](#verification)).
 
 ## Branching and worktrees
 
@@ -54,18 +54,22 @@ The repository has two independent pnpm install boundaries with separate lockfil
 
 ## Verification
 
-### Deterministic CI gate (local)
+### Fast CI — the single automatic gate
 
-`pnpm run verify` runs the same deterministic, credential-free checks as the Precheck workflow, in the same order:
+The only automatic workflow is **Fast CI** (`.github/workflows/fast-ci.yml`): one job that runs `pnpm verify:fast` — root and `web/` typechecks. It is the single required status check on `main`.
+
+All other deterministic, credential-free checks run locally before commits through the pre-commit hook and `pnpm verify:precommit`:
 
 1. Root typecheck (`pnpm typecheck`)
-2. Root GAS/prototype tests (`pnpm test`)
-3. `web/` typecheck (`pnpm --dir web typecheck`)
-4. `web/` workerd tests (`pnpm --dir web test`)
-5. `web/` component tests (`pnpm --dir web test:components`)
-6. Responsive-shell Playwright suite (`pnpm test:shell-responsive`)
+2. `web/` typecheck (`pnpm --dir web typecheck`)
+3. Root GAS/prototype tests (`pnpm test`)
+4. Identity tests (`pnpm verify:identity`)
+5. `web/` workerd tests (`pnpm test:workerd` — excludes the four Phase C Worker files whose defects are tracked on #498)
+6. `web/` component tests (`pnpm --dir web test:components`)
 
-None of these deploy anything or require secrets. Prefer `pnpm run verify` before opening a PR.
+`pnpm run verify` additionally runs the browser shell/geometry Playwright suites (`pnpm test:shell-responsive`, `pnpm test:shell-geometry`, `pnpm test:role-hierarchy-geometry`). None of these deploy anything or require secrets. Prefer `pnpm run verify` before opening a PR; `pnpm run verify:precommit` is the faster non-browser gate the hook runs.
+
+`pnpm check` (Ultracite repository-wide lint) is **deferred** — the existing syntax backlog is tracked on issue #498 and will be repaired after Phase F; it is not part of Fast CI or the pre-commit gate.
 
 ### Test selection
 
@@ -103,10 +107,12 @@ Cloudflare deployment is optional/manual production-promotion evidence. If an op
 
 The repository uses [husky](https://typicode.github.io/husky/) with a pre-commit hook (`.husky/pre-commit`) that runs, in order:
 
-1. `lint-staged` — formats and fixes staged JS/TS/JSON/Markdown files (Ultracite + oxfmt)
-2. `pnpm typecheck` — root and `tests/e2e` TypeScript
+1. **Node version guard** — fails fast with `EFCC pre-commit requires Node >=22.18.0; run fnm use` when the runtime is too old (the checked-in TypeScript Oxfmt config cannot load on older Node).
+2. `ultracite doctor` — proves the installed Ultracite/Oxlint/Oxfmt configuration (6 passed, 0 warnings, 0 failed).
+3. `lint-staged` — formats staged JS/TS/JSON/Markdown files via the Ultracite-owned Oxfmt backend (`oxfmt --write --no-error-on-unmatched-pattern`).
+4. `verify:precommit` — the full non-browser gate (root/web typechecks, prototype, identity, workerd, components).
 
-The hook is auto-installed by `pnpm run bootstrap` (via the root `prepare` script). If it fails, fix the reported formatting or type errors and re-stage; the commit is blocked until it passes.
+The hook is auto-installed by `pnpm run bootstrap` (via the root `prepare` script). If it fails, fix the reported formatting or type errors and re-stage; the commit is blocked until it passes. The full repository-wide Ultracite lint (`pnpm check`) is intentionally not part of the hook — its backlog is tracked on #498.
 
 ## Apps Script retirement note
 
@@ -127,7 +133,8 @@ When changing `web/`, read [`web/AGENTS.md`](web/AGENTS.md) first. This reposito
 
 Configure these in GitHub repository settings; committed files cannot enable them:
 
-- Protect `main`: require pull requests, conversation resolution, and the four deterministic checks `Root typecheck & unit (prototype)`, `Web typecheck & tests (workerd + components)`, `Shell responsive (static shell, 375px + 1280px)`, and `D1 auth contract (workerd)`; prevent force-pushes and branch deletion.
+-- Protect `main`: require pull requests, conversation resolution, and the single required status check **Fast CI**; prevent force-pushes and branch deletion. The D1 auth acceptance contract and deployed smoke are manual `workflow_dispatch` jobs and are not required checks.
+
 - Grant the next developer access through the appropriate GitHub team or repository role. Never share personal access tokens.
 - Configure `AUTH_TARGET_URL` and the five `AUTH_*` values as Actions inputs only if the optional deployed D1 smoke is needed. The workflow accepts only the reserved `efcc-auth-*.efcc-ggc.workers.dev` namespace, but the operator must still verify that the Worker/D1 target and accounts are disposable before dispatch.
 - Keep Cloudflare deployment ownership separate from repository write access. Dispatch the optional deployed D1 smoke only after rotating the isolated target and acceptance fixtures; retain its Playwright artifact as operational evidence, not as the local `READY` gate.

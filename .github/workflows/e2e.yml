@@ -11,13 +11,14 @@
 # request context. It proves the actual cookie boundary without pretending the
 # legacy Apps Script iframe is the new login implementation.
 
+# Manual only (Fast CI is the single automatic gate): neither job runs on
+# push or pull request, and neither is a required merge check. An operator
+# dispatches this workflow to run the workerd D1 auth contract or the
+# isolated deployed smoke; both jobs keep their fail-closed behavior.
+
 name: D1 auth acceptance gate
 
 on:
-  push:
-    branches: [main, master]
-  pull_request:
-    branches: [main, master, "feat/**"]
   workflow_dispatch:
 
 permissions:

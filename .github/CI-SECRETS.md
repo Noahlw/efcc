@@ -4,9 +4,10 @@ The rebuilt login boundary is the Cloudflare Worker `/api/v1/auth/*` surface bac
 
 ## How the checks behave
 
-- **Deterministic PR checks** (`.github/workflows/precheck.yml`) need no secrets or deployment: root prototype checks, web typechecks, workerd D1 auth tests, component tests, and the local static-shell responsive suite.
-- **D1 auth contract check** (`e2e.yml`, `auth-contract` job) also needs no secrets or deployment. It runs the real Worker/D1 `Fetch` boundary in the Cloudflare Vitest pool and covers the cookie-only transport, legacy-PIN upgrade, session lifecycle, and forbidden header/CORS paths.
-- **Optional deployed D1 auth smoke** (`e2e.yml`, `deployed-auth` job) runs only from `workflow_dispatch`. It is fail-closed: missing target or acceptance credentials produce an explicit failure before Playwright starts. A manual run is operational evidence only; it is not required for repository `READY` and never writes to a production database.
+- **Fast CI** (`.github/workflows/fast-ci.yml`) is the only automatic deterministic PR check. It needs no secrets or deployment: one job runs `pnpm verify:fast` (root and `web/` typechecks) and is the single required status check.
+- **Local checks** — all other passing non-browser checks run locally through the pre-commit hook and `pnpm verify:precommit` (root/web typechecks, prototype, identity, workerd, components); the full local gate `pnpm verify` adds the browser shell/geometry suites. Browser/Worker-D1 Playwright suites remain explicit local commands against `wrangler dev` + local D1.
+- **D1 auth contract job** (`e2e.yml`, `auth-contract`) runs only from `workflow_dispatch` (manual). It needs no secrets or deployment and runs the real Worker/D1 `Fetch` boundary in the Cloudflare Vitest pool (cookie-only transport, legacy-PIN upgrade, session lifecycle, forbidden header/CORS paths). It is not a required merge check.
+- **Optional deployed D1 auth smoke** (`e2e.yml`, `deployed-auth` job) also runs only from `workflow_dispatch`. It is fail-closed: missing target or acceptance credentials produce an explicit failure before Playwright starts. A manual run is operational evidence only; it is not required for repository `READY` and never writes to a production database.
 
 The browser talks directly to the Worker/D1 surfaces (`/api/v1/auth/*`, `/api/v1/programs/*`, `/api/v1/attendance*`); there is no Apps Script proxy in the request path.
 
@@ -60,8 +61,8 @@ To run the D1 suites against the shared dev-testing worker instead: `https://efc
 | ------------ | ------ | ---------------- |
 | `E2E_admin`  | Admin  | `E2E_admin!dev`  |
 | `E2E_staff`  | Staff  | `E2E_staff!dev`  |
-| `E2E_member` | Member  | `E2E_member!dev` |
-| `E2E_legacy` | Member | PIN `1234`        |
+| `E2E_member` | Member | `E2E_member!dev` |
+| `E2E_legacy` | Member | PIN `1234`       |
 
 One-time provisioning runbook (all wrangler commands from `web/`):
 
