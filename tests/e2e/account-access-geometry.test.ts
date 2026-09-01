@@ -13,9 +13,20 @@ const PUBLIC_USER = {
   name: "Account Access Admin",
   username: "account-access-admin",
   phone: "",
-  role: "Admin",
   status: "active",
   qrCodeString: "",
+  identities: [
+    {
+      label: "系統管理員",
+      scopeKind: "Global" as const,
+      scopeLabel: null,
+    },
+  ],
+  capabilities: {
+    "role.manage": true,
+    "role.read": true,
+    "role.assign": true,
+  },
 };
 const VIEW = {
   account: {

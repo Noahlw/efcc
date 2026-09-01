@@ -4,20 +4,6 @@
 // Kept separate from lib/copy.ts to avoid coupling this ticket to the
 // concurrently-in-flight login landing copy (CF0-08).
 
-// Error-code → user message mapping, mirroring `errorCopyFor`'s vocabulary.
-function registrationErrorFor(code: string, detail?: string): string {
-  if (code === "NETWORK_ERROR") return QUEUE_COPY.networkError;
-  if (code === "AUTH_REQUIRED") return QUEUE_COPY.unauthorized;
-  if (code === "FORBIDDEN") return QUEUE_COPY.forbidden;
-  if (code === "VALIDATION") return detail ?? QUEUE_COPY.validation;
-  if (code === "CONFLICT") return QUEUE_COPY.conflict;
-  if (code === "NOT_FOUND" || code.endsWith("_NOT_FOUND")) {
-    return QUEUE_COPY.notFound;
-  }
-  if (code === "UNAVAILABLE") return QUEUE_COPY.unavailable;
-  return QUEUE_COPY.unknownError;
-}
-
 export const REGISTRATION_COPY = {
   backToLogin: "返回登入",
   pageTitle: "註冊帳戶",
@@ -51,7 +37,6 @@ export const QUEUE_COPY = {
   name: "姓名",
   phone: "電話",
   submittedAt: "提交時間",
-  role: "角色",
   done: "已更新申請狀態。",
   networkError: "無法連接伺服器，請檢查網路後再試。",
   forbidden: "您沒有權限執行此操作。",
@@ -63,6 +48,31 @@ export const QUEUE_COPY = {
   unknownError: "發生未知錯誤，請稍後再試。",
 } as const;
 
+// Error-code → user message mapping, mirroring `errorCopyFor`'s vocabulary.
+function registrationErrorFor(code: string, detail?: string): string {
+  if (code === "NETWORK_ERROR") {
+    return QUEUE_COPY.networkError;
+  }
+  if (code === "AUTH_REQUIRED") {
+    return QUEUE_COPY.unauthorized;
+  }
+  if (code === "FORBIDDEN") {
+    return QUEUE_COPY.forbidden;
+  }
+  if (code === "VALIDATION") {
+    return detail ?? QUEUE_COPY.validation;
+  }
+  if (code === "CONFLICT") {
+    return QUEUE_COPY.conflict;
+  }
+  if (code === "NOT_FOUND" || code.endsWith("_NOT_FOUND")) {
+    return QUEUE_COPY.notFound;
+  }
+  if (code === "UNAVAILABLE") {
+    return QUEUE_COPY.unavailable;
+  }
+  return QUEUE_COPY.unknownError;
+}
 export function registrationErrorCopy(code: string, detail?: string): string {
   return registrationErrorFor(code, detail);
 }

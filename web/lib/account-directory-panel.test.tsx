@@ -53,7 +53,12 @@ interface AccountRow {
   name: string;
   username: string;
   phone: string | null;
-  role: "Admin" | "Staff" | "Member";
+  identities?: {
+    id: string;
+    label: string;
+    scopeKind: "Global" | "Department" | "Program";
+    scopeId: string | null;
+  }[];
   status: "Pending" | "Active" | "Suspended" | "Deactivated";
   departments: { id: string; name: string }[];
   canOpenAccess: boolean;
@@ -65,7 +70,9 @@ const ROWS: AccountRow[] = [
     name: "陳大文",
     username: "dai.man.chan",
     phone: "9123 4567",
-    role: "Staff",
+    identities: [
+      { id: "id-1", label: "同工", scopeKind: "Global", scopeId: null },
+    ],
     status: "Active",
     departments: [{ id: "dept-grow", name: "培育部" }],
     canOpenAccess: true,
@@ -75,7 +82,9 @@ const ROWS: AccountRow[] = [
     name: "王大文",
     username: "dai.man.wong",
     phone: null,
-    role: "Member",
+    identities: [
+      { id: "id-2", label: "會友基礎", scopeKind: "Global", scopeId: null },
+    ],
     status: "Pending",
     departments: [],
     canOpenAccess: false,
@@ -133,7 +142,7 @@ describe(AccountDirectoryPanel, () => {
     expect(screen.getByText(String(ROWS.length))).toBeTruthy();
     await user.click(row);
     expect(row).toHaveAttribute("aria-pressed", "true");
-    expect(window.location.search).toContain("account=AD-001");
+    expect(window.location.search).toContain("module=accounts");
     const accessLink = await screen.findByRole("link", {
       name: "查看帳戶權限與身份組",
     });
@@ -202,7 +211,7 @@ describe(AccountDirectoryPanel, () => {
     expect(screen.getByRole("button", { name: /陳大文/u })).toBeTruthy();
   });
 
-  test("uses one compact phone filter sheet with an active count", async () => {
+  test("uses one compact status filter sheet with an active count", async () => {
     const user = userEvent.setup();
     server.use(http.get("/api/v1/programs/accounts", () => response()));
     render(<AccountDirectoryPanel />);
@@ -210,19 +219,19 @@ describe(AccountDirectoryPanel, () => {
 
     await user.click(screen.getByRole("button", { name: "篩選" }));
     const sheet = screen.getByRole("dialog", { name: "篩選帳戶" });
-    const roleSelect = within(sheet).getByRole("combobox", {
-      name: ACCOUNTS.roleLabel,
+    const statusSelect = within(sheet).getByRole("combobox", {
+      name: ACCOUNTS.statusLabel,
     });
-    await user.click(roleSelect);
+    await user.click(statusSelect);
     await user.click(
-      await screen.findByRole("option", { name: ACCOUNTS.staff })
+      await screen.findByRole("option", { name: ACCOUNTS.active })
     );
     await user.click(within(sheet).getByRole("button", { name: "套用篩選" }));
 
     expect(screen.getByRole("button", { name: "篩選 1" })).toBeTruthy();
   });
 
-  test("forwards role and status filters to the Account Directory seam", async () => {
+  test("forwards status and department filters to the Account Directory seam", async () => {
     const user = userEvent.setup();
     let requestedUrl = "";
     server.use(
@@ -234,39 +243,31 @@ describe(AccountDirectoryPanel, () => {
     render(<AccountDirectoryPanel />);
     await user.type(screen.getByLabelText(ACCOUNTS.searchLabel), "大文");
     await screen.findByRole("button", { name: /陳大文/u });
-    const roleSelect = screen.getByRole("combobox", {
-      name: ACCOUNTS.roleLabel,
-    });
-    await user.click(roleSelect);
-    await user.click(
-      await screen.findByRole("option", { name: ACCOUNTS.staff })
-    );
     const statusSelect = screen.getByRole("combobox", {
       name: ACCOUNTS.statusLabel,
     });
     await user.click(statusSelect);
     await user.click(
-      await screen.findByRole("option", {
-        name: ACCOUNTS.active,
-      })
+      await screen.findByRole("option", { name: ACCOUNTS.active })
     );
     await user.type(screen.getByLabelText(ACCOUNTS.departmentLabel), "培育部");
-    expect(requestedUrl).toContain("role=Staff");
-    expect(requestedUrl).toContain("status=Active");
-    expect(requestedUrl).toContain("department=");
+    const params = new URL(requestedUrl).searchParams;
+    expect(params.get("role")).toBeNull();
+    expect(params.get("status")).toBe("Active");
+    expect(params.get("department")).toBe("培育部");
   });
 
-  test("announces a no-match state for a filter-only search", async () => {
+  test("announces a no-match state for a status-only filter", async () => {
     const user = userEvent.setup();
     server.use(http.get("/api/v1/programs/accounts", () => response([])));
     render(<AccountDirectoryPanel />);
 
-    const roleSelect = screen.getByRole("combobox", {
-      name: ACCOUNTS.roleLabel,
+    const statusSelect = screen.getByRole("combobox", {
+      name: ACCOUNTS.statusLabel,
     });
-    await user.click(roleSelect);
+    await user.click(statusSelect);
     await user.click(
-      await screen.findByRole("option", { name: ACCOUNTS.staff })
+      await screen.findByRole("option", { name: ACCOUNTS.active })
     );
     expect(await screen.findByText(ACCOUNTS.noResults)).toBeTruthy();
   });
@@ -363,15 +364,15 @@ describe(AccountDirectoryPanel, () => {
     ).toBeInTheDocument();
   });
 
-  test("clearing search preserves Account filters in the safe URL", async () => {
+  test("clearing search preserves status and department filters in the safe URL", async () => {
     const user = userEvent.setup();
     mocks.searchParams = new URLSearchParams(
-      "module=accounts&q=大文&role=Staff&status=Active&department=培育部"
+      "module=accounts&q=大文&status=Active&department=培育部"
     );
     window.history.replaceState(
       {},
       "",
-      "/management?module=accounts&q=%E5%A4%A7%E6%96%87&role=Staff&status=Active&department=%E5%9F%B9%E8%82%B2%E9%83%A8"
+      "/management?module=accounts&q=%E5%A4%A7%E6%96%87&status=Active&department=%E5%9F%B9%E8%82%B2%E9%83%A8"
     );
     server.use(http.get("/api/v1/programs/accounts", () => response()));
     render(<AccountDirectoryPanel />);
@@ -380,16 +381,16 @@ describe(AccountDirectoryPanel, () => {
     await user.clear(search);
     const params = new URL(window.location.href).searchParams;
     expect(params.get("q")).toBeNull();
-    expect(params.get("role")).toBe("Staff");
+    expect(params.get("role")).toBeNull();
     expect(params.get("status")).toBe("Active");
     expect(params.get("department")).toBe("培育部");
   });
 
   test("restores a safe Account deep link and clears selection on same-origin Back", async () => {
     const deepLink =
-      "/management?module=accounts&q=%E5%A4%A7%E6%96%87&role=Staff&account=AD-001&return=%2Fmanagement%3Fmodule%3Dsettings";
+      "/management?module=accounts&q=%E5%A4%A7%E6%96%87&account=AD-001&return=%2Fmanagement%3Fmodule%3Dsettings";
     mocks.searchParams = new URLSearchParams(
-      "module=accounts&q=大文&role=Staff&account=AD-001&return=%2Fmanagement%3Fmodule%3Dsettings"
+      "module=accounts&q=大文&account=AD-001&return=%2Fmanagement%3Fmodule%3Dsettings"
     );
     window.history.replaceState({}, "", deepLink);
     server.use(
@@ -415,7 +416,7 @@ describe(AccountDirectoryPanel, () => {
     window.history.replaceState(
       {},
       "",
-      "/management?module=accounts&q=%E5%A4%A7%E6%96%87&role=Staff"
+      "/management?module=accounts&q=%E5%A4%A7%E6%96%87"
     );
     window.dispatchEvent(new PopStateEvent("popstate"));
     await waitFor(() =>

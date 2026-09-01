@@ -28,9 +28,20 @@ const PUBLIC_USER = {
   name: "Test Admin",
   username: "tester",
   phone: "0900000000",
-  role: "Admin",
   status: "active",
   qrCodeString: "qr:u-admin",
+  identities: [
+    {
+      label: "系統管理員",
+      scopeKind: "Global" as const,
+      scopeLabel: null,
+    },
+  ],
+  capabilities: {
+    "role.manage": true,
+    "role.read": true,
+    "role.assign": true,
+  },
 };
 
 const HIERARCHY = {

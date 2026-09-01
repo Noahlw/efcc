@@ -25,9 +25,16 @@ const PUBLIC_USER = {
   name: "Test User",
   username: "tester",
   phone: "0900000000",
-  role: "Staff",
   status: "active",
   qrCodeString: "qr:u1",
+  identities: [
+    {
+      label: "青年部同工",
+      scopeKind: "Department" as const,
+      scopeLabel: "青年部",
+    },
+  ],
+  capabilities: { "home.publish": true },
 };
 
 async function stubAuth(route: Route) {
