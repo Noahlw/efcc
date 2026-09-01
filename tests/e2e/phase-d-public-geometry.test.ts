@@ -19,7 +19,6 @@ const PROFILE = {
   name: "幾何測試會友",
   username: "E2E_geometry_member",
   phone: "91234567",
-  role: "Member",
   status: "Active",
   qrCodeString: "qr:E2E_geometry_member",
   identities: [
@@ -330,7 +329,6 @@ test("legacy upgrade gate preserves focused validation and bounded controls", as
         data: {
           userId: "E2E_geometry_legacy",
           name: "幾何測試舊帳戶",
-          role: "Member",
           status: "Active",
           mustSetNewCredential: true,
         },
@@ -453,7 +451,6 @@ test("Profile renders privacy-safe identity summaries at every W7 width", async 
     "部門（Department） · 青年部"
   );
   await expect(page.getByText(PROFILE.phone, { exact: true })).toHaveCount(0);
-  await expect(page.getByText(PROFILE.role, { exact: true })).toHaveCount(0);
   await expect(page.getByText("program.enroll", { exact: true })).toHaveCount(
     0
   );
