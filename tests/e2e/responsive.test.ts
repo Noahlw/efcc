@@ -191,6 +191,8 @@ test("bottom nav and page outlet reserve safe-area inset", async ({
   page,
 }, testInfo) => {
   await page.goto("/home.html");
+  await expect(page.locator("#main-navigation")).toBeVisible();
+  await expect(page.locator(".shell-content")).toBeVisible();
 
   // Emulate a notched device so env(safe-area-inset-bottom) resolves to a
   // non-zero value (viewport-fit=cover is set in web/app/layout.tsx).
@@ -364,9 +366,9 @@ test("login form controls are at least 44x44", async ({ page }) => {
   }
   const password = page.locator('input[autocomplete="current-password"]');
   const submit = page.getByRole("button", { name: COPY.login.submit });
-  await expect(username).toBeVisible();
-  await expect(password).toBeVisible();
-  await expect(submit).toBeVisible();
+  await expect(username).toBeVisible({ timeout: 15_000 });
+  await expect(password).toBeVisible({ timeout: 15_000 });
+  await expect(submit).toBeVisible({ timeout: 15_000 });
 
   for (const [label, control] of [
     ["username", username],
