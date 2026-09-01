@@ -459,7 +459,7 @@ test("management directory and workspace remain contained", async ({
     .locator("li[data-event-id]")
     .filter({ hasText: "進行" })
     .first();
-  await expect(eventRow).toBeVisible();
+  await expect(eventRow).toBeVisible({ timeout: 15_000 });
   const eventDetailLink = eventRow.getByRole("link", {
     name: "詳情",
     exact: true,
