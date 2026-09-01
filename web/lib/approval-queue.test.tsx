@@ -20,9 +20,13 @@ import { ApprovalQueue } from "./approval-queue";
 import { COPY } from "./copy";
 import { QUEUE_COPY } from "./registration-copy";
 
+const mocks = vi.hoisted(() => ({
+  searchParams: new URLSearchParams(),
+}));
+
 vi.mock(import("next/navigation"), () => ({
   useSearchParams: () =>
-    new URLSearchParams() as unknown as ReadonlyURLSearchParams,
+    mocks.searchParams as unknown as ReadonlyURLSearchParams,
 }));
 if (!HTMLElement.prototype.hasPointerCapture) {
   HTMLElement.prototype.hasPointerCapture = () => false;
@@ -53,6 +57,7 @@ beforeAll(() => server.listen({ onUnhandledRequest: "error" }));
 afterEach(() => {
   cleanup();
   server.resetHandlers();
+  mocks.searchParams = new URLSearchParams();
 });
 
 afterAll(() => server.close());
@@ -89,7 +94,9 @@ describe(ApprovalQueue, () => {
       )
     );
     render(<ApprovalQueue />);
-    await expect(screen.findByText(QUEUE_COPY.empty)).resolves.toBeInTheDocument();
+    await expect(
+      screen.findByText(QUEUE_COPY.empty)
+    ).resolves.toBeInTheDocument();
   });
 
   test("renders pending requests in submission order with routable detail links", async () => {
@@ -200,7 +207,9 @@ describe(ApprovalQueue, () => {
           batchCalls += 1;
           approved = true;
           expect(request.headers.get("idempotency-key")).toBeTruthy();
-          await expect(request.json()).resolves.toStrictEqual({ requestIds: ["req-1"] });
+          await expect(request.json()).resolves.toStrictEqual({
+            requestIds: ["req-1"],
+          });
           return HttpResponse.json({
             requestId: "rid-4",
             data: { accountStatus: "active", approvedCount: 1 },
@@ -226,7 +235,9 @@ describe(ApprovalQueue, () => {
     expect(batchCalls).toBe(0);
     await user.click(bulkButton);
     await user.click(screen.getByRole("button", { name: "確認核准" }));
-    await expect(screen.findByText(QUEUE_COPY.empty)).resolves.toBeInTheDocument();
+    await expect(
+      screen.findByText(QUEUE_COPY.empty)
+    ).resolves.toBeInTheDocument();
     expect(batchCalls).toBe(1);
   });
 
@@ -278,7 +289,9 @@ describe(ApprovalQueue, () => {
     );
 
     release();
-    await expect(screen.findByText(QUEUE_COPY.empty)).resolves.toBeInTheDocument();
+    await expect(
+      screen.findByText(QUEUE_COPY.empty)
+    ).resolves.toBeInTheDocument();
   });
 
   test("selection persists across search/filter and supports review removal and clear", async () => {
@@ -349,7 +362,9 @@ describe(ApprovalQueue, () => {
     const user = userEvent.setup();
     render(<ApprovalQueue />);
     await user.click(await screen.findByRole("tab", { name: /已處理/u }));
-    await expect(screen.findByText(COPY.approvals.statusRejected)).resolves.toBeInTheDocument();
+    await expect(
+      screen.findByText(COPY.approvals.statusRejected)
+    ).resolves.toBeInTheDocument();
     expect(
       screen.queryByRole("checkbox", { name: /選取/u })
     ).not.toBeInTheDocument();
@@ -377,7 +392,9 @@ describe(ApprovalQueue, () => {
       await screen.findByRole("checkbox", { name: "選取 Dave Ng" })
     );
     await user.click(screen.getByRole("tab", { name: /已處理/u }));
-    await expect(screen.findByText("目前沒有已處理的申請。")).resolves.toBeInTheDocument();
+    await expect(
+      screen.findByText("目前沒有已處理的申請。")
+    ).resolves.toBeInTheDocument();
     expect(
       screen.queryByRole("button", { name: "核准所選" })
     ).not.toBeInTheDocument();
@@ -411,7 +428,9 @@ describe(ApprovalQueue, () => {
     );
     await user.click(screen.getByRole("button", { name: "核准所選" }));
     await user.click(screen.getByRole("button", { name: "確認核准" }));
-    await expect(screen.findByText("部分申請已變更，請檢視所選項目後再試。")).resolves.toBeInTheDocument();
+    await expect(
+      screen.findByText("部分申請已變更，請檢視所選項目後再試。")
+    ).resolves.toBeInTheDocument();
     expect(screen.getByText("已選 1 位")).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "審批選取集" })).toHaveAttribute(
       "data-state",
@@ -437,7 +456,9 @@ describe(ApprovalQueue, () => {
     render(<ApprovalQueue />);
     const root = screen.getByRole("region", { name: /註冊審批/u });
     expect(root).toHaveAttribute("aria-busy", "true");
-    expect(screen.getByRole("status")).toHaveAttribute("aria-live", "polite");
+    expect(
+      screen.getByRole("status", { name: QUEUE_COPY.loading })
+    ).toHaveAttribute("aria-live", "polite");
     const heading = await screen.findByRole("heading", {
       name: COPY.approvals.statusPending,
       level: 2,
@@ -471,5 +492,69 @@ describe(ApprovalQueue, () => {
       name: COPY.approvals.backToApprovals,
     });
     expect(link).toHaveAttribute("href", "/management?module=approvals");
+  });
+
+  test("preserves custom safe return target in the ManagementPageHeader back link", async () => {
+    mocks.searchParams = new URLSearchParams(
+      "module=approvals&return=%2Fmanagement%3Fmodule%3Dsettings"
+    );
+    server.use(
+      http.get("/api/v1/auth/registrations", () =>
+        HttpResponse.json({
+          requestId: "rid-return",
+          data: { registrations: PENDING_ONE },
+        })
+      )
+    );
+    render(<ApprovalQueue />);
+    await screen.findByText("Dave Ng");
+    const backLink = screen.getByRole("link", { name: "設定" });
+    expect(backLink).toHaveAttribute("href", "/management?module=settings");
+  });
+
+  test("opens the mobile filter sheet to filter queue items by role", async () => {
+    const user = userEvent.setup();
+    server.use(
+      http.get("/api/v1/auth/registrations", () =>
+        HttpResponse.json({
+          requestId: "rid-filter",
+          data: { registrations: PENDING_ONE },
+        })
+      )
+    );
+    render(<ApprovalQueue />);
+    await screen.findByText("Dave Ng");
+
+    const filterTrigger = screen.getByRole("button", { name: /^篩選/ });
+    await user.click(filterTrigger);
+    const sheet = screen.getByRole("dialog", { name: /篩選/ });
+    expect(sheet).toBeInTheDocument();
+  });
+
+  test("recovers from an initial queue load failure via the retry button", async () => {
+    const user = userEvent.setup();
+    let failed = true;
+    server.use(
+      http.get("/api/v1/auth/registrations", () => {
+        if (failed) {
+          failed = false;
+          return HttpResponse.json(
+            { code: "INTERNAL", message: "Server error" },
+            { status: 500 }
+          );
+        }
+        return HttpResponse.json({
+          requestId: "rid-retry-success",
+          data: { registrations: PENDING_ONE },
+        });
+      })
+    );
+    render(<ApprovalQueue />);
+    expect(
+      await screen.findByText(QUEUE_COPY.unknownError)
+    ).toBeInTheDocument();
+    const retryButton = screen.getByRole("button", { name: "重試連接" });
+    await user.click(retryButton);
+    expect(await screen.findByText("Dave Ng")).toBeInTheDocument();
   });
 });

@@ -1,4 +1,10 @@
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import {
+  cleanup,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 // 087-02 (#319) — component tests for the routable Approval Detail screen.
 // MSW intercepts the Worker detail + decide endpoints (same seam as
 // lib/approval-queue.test.tsx). Fixtures carry no credential material.
@@ -8,13 +14,30 @@ import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { setupServer } from "msw/node";
-import { afterAll, afterEach, beforeAll, describe, expect, test } from "vitest";
+import type { ReadonlyURLSearchParams } from "next/navigation";
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  describe,
+  expect,
+  test,
+  vi,
+} from "vitest";
 
 import { ApprovalDetail } from "./approval-detail";
 import { COPY } from "./copy";
 import type { RegistrationDetail } from "./registration-client";
 import { QUEUE_COPY } from "./registration-copy";
 
+const mocks = vi.hoisted(() => ({
+  searchParams: new URLSearchParams(),
+}));
+
+vi.mock(import("next/navigation"), () => ({
+  useSearchParams: () =>
+    mocks.searchParams as unknown as ReadonlyURLSearchParams,
+}));
 const server = setupServer();
 
 const PENDING: RegistrationDetail = {
@@ -41,6 +64,7 @@ beforeAll(() => server.listen({ onUnhandledRequest: "error" }));
 afterEach(() => {
   cleanup();
   server.resetHandlers();
+  mocks.searchParams = new URLSearchParams();
 });
 
 afterAll(() => server.close());
@@ -56,9 +80,11 @@ describe(ApprovalDetail, () => {
     );
     render(<ApprovalDetail requestId="req-1" />);
 
-    await expect(screen.findByRole("heading", {
+    await expect(
+      screen.findByRole("heading", {
         name: COPY.approvals.approvalDetailTitle,
-      })).resolves.toBeInTheDocument();
+      })
+    ).resolves.toBeInTheDocument();
     expect(screen.getByText("Dave Ng")).toBeInTheDocument();
     expect(screen.getByText("dave")).toBeInTheDocument();
     expect(screen.getByText("9123 4567")).toBeInTheDocument();
@@ -81,7 +107,9 @@ describe(ApprovalDetail, () => {
     );
     render(<ApprovalDetail requestId="req-1" />);
 
-    await expect(screen.findByText(COPY.approvals.statusRejected)).resolves.toBeInTheDocument();
+    await expect(
+      screen.findByText(COPY.approvals.statusRejected)
+    ).resolves.toBeInTheDocument();
     expect(screen.getByText("資料不完整")).toBeInTheDocument();
     expect(screen.getByText(COPY.approvals.decisionMade)).toBeInTheDocument();
     // Read-only: no decision controls are offered for a decided request.
@@ -138,7 +166,9 @@ describe(ApprovalDetail, () => {
 
     // The decision posts with an Idempotency-Key and the detail reloads to
     // the read-only Approved outcome (atomic: one round-trip, then locked).
-    await expect(screen.findByText(COPY.approvals.statusApproved)).resolves.toBeInTheDocument();
+    await expect(
+      screen.findByText(COPY.approvals.statusApproved)
+    ).resolves.toBeInTheDocument();
     expect(approveCalls[0]?.idempotency).toBeTruthy();
     // 已處理申請。 appears both as the success notice and as the read-only
     // outcome marker on the locked detail.
@@ -186,7 +216,9 @@ describe(ApprovalDetail, () => {
 
     // Client-side gate: the required-note error is announced inline and no
     // POST leaves the browser (the server also 422s, but this must not fire).
-    await expect(screen.findByText(COPY.approvals.rejectionNoteRequired)).resolves.toBeInTheDocument();
+    await expect(
+      screen.findByText(COPY.approvals.rejectionNoteRequired)
+    ).resolves.toBeInTheDocument();
     expect(rejectPosts).toBe(0);
     expect(
       screen.getByRole("alertdialog", { name: "確認拒絕申請" })
@@ -296,7 +328,9 @@ describe(ApprovalDetail, () => {
     ).toHaveAttribute("data-state", "busy");
 
     release();
-    await expect(screen.findByText(COPY.approvals.statusApproved)).resolves.toBeInTheDocument();
+    await expect(
+      screen.findByText(COPY.approvals.statusApproved)
+    ).resolves.toBeInTheDocument();
   });
 
   test("reject with a note commits atomically with the note and shows it read-only", async () => {
@@ -341,7 +375,9 @@ describe(ApprovalDetail, () => {
     );
     await user.click(screen.getByRole("button", { name: "確認拒絕" }));
 
-    await expect(screen.findByText(COPY.approvals.statusRejected)).resolves.toBeInTheDocument();
+    await expect(
+      screen.findByText(COPY.approvals.statusRejected)
+    ).resolves.toBeInTheDocument();
     expect(rejectCalls[0]?.decisionNote).toBe("資料不完整");
     expect(rejectCalls[0]?.idempotency).toBeTruthy();
     // Terminal + auditable: the recorded note is visible on the read-only
@@ -436,6 +472,48 @@ describe(ApprovalDetail, () => {
     );
     render(<ApprovalDetail requestId="req-unknown" />);
 
-    await expect(screen.findByText(QUEUE_COPY.notFound)).resolves.toBeInTheDocument();
+    await expect(
+      screen.findByText(QUEUE_COPY.notFound)
+    ).resolves.toBeInTheDocument();
+  });
+
+  test("preserves custom safe return target in the back link", async () => {
+    mocks.searchParams = new URLSearchParams(
+      "module=approvals&request=req-1&return=%2Fmanagement%3Fmodule%3Dsettings"
+    );
+    server.use(
+      http.get("/api/v1/auth/registrations/req-1", () =>
+        detailResponse(PENDING)
+      )
+    );
+    render(<ApprovalDetail requestId="req-1" />);
+    await screen.findByText("Dave Ng");
+    const backLink = screen.getByRole("link", { name: "設定" });
+    expect(backLink).toHaveAttribute("href", "/management?module=settings");
+  });
+
+  test("reject dialog cancels without submitting and restores focus to reject trigger", async () => {
+    const user = userEvent.setup();
+    server.use(
+      http.get("/api/v1/auth/registrations/req-1", () =>
+        detailResponse(PENDING)
+      )
+    );
+    render(<ApprovalDetail requestId="req-1" />);
+    await screen.findByText("Dave Ng");
+
+    const rejectButton = screen.getByRole("button", {
+      name: QUEUE_COPY.reject,
+    });
+    await user.click(rejectButton);
+    const dialog = screen.getByRole("alertdialog");
+    expect(dialog).toBeInTheDocument();
+
+    const cancelButton = within(dialog).getByRole("button", {
+      name: "取消",
+    });
+    await user.click(cancelButton);
+    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+    expect(document.activeElement).toBe(rejectButton);
   });
 });

@@ -525,4 +525,53 @@ describe(AccountDirectoryPanel, () => {
     });
     await waitFor(() => expect(document.activeElement).toBe(accessLink));
   });
+
+  test("shows the forbidden state when the server returns 403 FORBIDDEN", async () => {
+    server.use(
+      http.get("/api/v1/programs/accounts", () =>
+        HttpResponse.json({ code: "FORBIDDEN" }, { status: 403 })
+      )
+    );
+    render(<AccountDirectoryPanel />);
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent(ACCOUNTS.forbidden);
+  });
+
+  test("forwards the 50-account domain search limit parameter to the accounts query", async () => {
+    let requestedUrl = "";
+    server.use(
+      http.get("/api/v1/programs/accounts", ({ request }) => {
+        requestedUrl = request.url;
+        return response();
+      })
+    );
+    render(<AccountDirectoryPanel />);
+    await screen.findByRole("button", { name: /陳大文/u });
+    const params = new URL(requestedUrl).searchParams;
+    expect(params.get("limit")).toBe("50");
+  });
+
+  test("restores focus to the selected row button in the list when detail is dismissed", async () => {
+    const user = userEvent.setup();
+    server.use(
+      http.get("/api/v1/programs/accounts", () => response()),
+      http.get("/api/v1/programs/accounts/AD-001", () =>
+        HttpResponse.json({
+          requestId: "rid-account-detail",
+          data: ROWS[0],
+        })
+      )
+    );
+    render(<AccountDirectoryPanel />);
+    const row = await screen.findByRole("button", { name: /陳大文/u });
+    await user.click(row);
+    await screen.findByRole("heading", { name: ROWS[0].name });
+
+    window.history.replaceState({}, "", "/management?module=accounts");
+    window.dispatchEvent(new PopStateEvent("popstate"));
+    await waitFor(() =>
+      expect(screen.queryByRole("heading", { name: ROWS[0].name })).toBeNull()
+    );
+    await waitFor(() => expect(document.activeElement).toBe(row));
+  });
 });

@@ -1,10 +1,10 @@
 /* oxlint-disable eslint/complexity eslint/no-use-before-define eslint/require-unicode-regexp eslint/prefer-named-capture-group react/function-component-definition react-hooks/exhaustive-deps jsx-a11y/prefer-tag-over-role -- single-page CMS editor keeps prototype field wiring together. */
 "use client";
 
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 
+import { Button } from "@/components/ui/button";
 import { RpcError } from "@/lib/api";
 import { COPY } from "@/lib/copy";
 import { getHome } from "@/lib/home-api";
@@ -27,8 +27,12 @@ import type {
 } from "@/lib/home-cms-api";
 import { announce } from "@/lib/live-region";
 import { rememberDeepLink } from "@/lib/session";
+import { cn } from "@/lib/utils";
 
-import styles from "./home-cms-editor.module.css";
+import {
+  ActionSurface,
+  ManagementPageHeader,
+} from "./management-action-framework";
 
 const copy = COPY.homeEditor;
 
@@ -501,41 +505,37 @@ export function HomeContentEditor() {
   };
 
   const busy = operation !== "idle" || loadState === "loading";
-  const previewClass =
-    previewViewport === "phone" ? styles.previewPhone : styles.previewDesktop;
 
   return (
     <section
-      className={styles.page}
+      className="mx-auto grid max-w-[960px] gap-6 p-4 sm:p-6"
       aria-labelledby="home-cms-editor-title"
       aria-busy={busy || previewLoading}
     >
-      <header className={styles.header}>
-        <Link className={styles.backLink} href="/management">
-          <span aria-hidden="true">←</span>
-          <span>{COPY.management.backHome}</span>
-        </Link>
-        <div className={styles.titleRow}>
-          <div>
-            <h1 id="home-cms-editor-title" className={styles.title}>
-              {copy.editorTitle}
-            </h1>
-            <p className={styles.lead}>{copy.previewLead}</p>
-          </div>
-          {loadState === "ready" && (
-            <span className={styles.statusBadge}>
+      <ManagementPageHeader
+        backHref="/management"
+        backLabel={COPY.management.backHome}
+        lead={copy.previewLead}
+        title={copy.editorTitle}
+        titleId="home-cms-editor-title"
+        action={
+          loadState === "ready" ? (
+            <span
+              className="inline-flex items-center gap-1 rounded-full border border-[var(--line)] bg-[var(--surface-raised)] px-3 py-1 text-xs font-bold text-[var(--ink-muted)]"
+              data-slot="home-cms-status-badge"
+            >
               <span>{statusLabel(form.status)}</span>
               {form.version ? <span> · v{form.version}</span> : null}
             </span>
-          )}
-        </div>
-      </header>
+          ) : undefined
+        }
+      />
 
       {loadState === "loading" && (
         <output
           ref={stateRef}
           id="home-cms-state"
-          className={styles.state}
+          className="rounded-lg border border-[var(--line)] bg-[var(--surface-raised)] p-6 text-center text-sm text-[var(--ink-muted)]"
           tabIndex={-1}
           aria-busy="true"
           aria-live="polite"
@@ -548,18 +548,21 @@ export function HomeContentEditor() {
         <section
           ref={stateRef}
           id="home-cms-state"
-          className={styles.error}
+          className="grid gap-3 rounded-lg border border-[var(--error-border)] bg-[var(--error-surface)] p-6 text-[var(--ink)]"
           tabIndex={-1}
           role="alert"
         >
-          <h2 className={styles.stateTitle}>{loadError}</h2>
-          <button
-            className={styles.secondaryButton}
+          <h2 className="text-base font-bold text-[var(--error)]">
+            {loadError}
+          </h2>
+          <Button
+            className="w-fit"
             type="button"
+            variant="secondary"
             onClick={() => void loadEditor()}
           >
             {copy.retry}
-          </button>
+          </Button>
         </section>
       )}
 
@@ -568,36 +571,40 @@ export function HomeContentEditor() {
           {conflictLatest && (
             <section
               ref={stateRef}
-              className={styles.conflict}
+              className="grid gap-3 rounded-lg border border-[var(--error-border)] bg-[var(--error-surface)] p-6 text-[var(--ink)]"
               tabIndex={-1}
               role="alert"
               aria-live="assertive"
             >
-              <h2 className={styles.stateTitle}>{copy.conflictTitle}</h2>
-              <p>{notice || ""}</p>
-              <button
+              <h2 className="text-base font-bold text-[var(--error)]">
+                {copy.conflictTitle}
+              </h2>
+              <p className="text-sm text-[var(--ink-muted)]">{notice || ""}</p>
+              <Button
                 id="home-cms-conflict-reload"
-                className={styles.secondaryButton}
+                className="w-fit"
                 type="button"
+                variant="secondary"
                 onClick={handleReloadLatest}
               >
                 {copy.conflictReload}
-              </button>
+              </Button>
             </section>
           )}
 
           <div
-            className={styles.templateSwitch}
+            className="flex flex-wrap gap-2 my-1"
             role="group"
             aria-label={copy.switchTemplate}
           >
             <button
               id="home-cms-template-a"
-              className={
+              className={cn(
+                "min-h-[44px] rounded-md px-4 py-2 text-sm font-bold transition-colors focus-visible:outline-[3px]! focus-visible:outline-[var(--focus)]! focus-visible:outline-offset-[3px]!",
                 form.templateType === "A"
-                  ? styles.templateActive
-                  : styles.templateButton
-              }
+                  ? "bg-[var(--accent)] text-white shadow-xs"
+                  : "border border-[var(--line)] bg-[var(--surface-raised)] text-[var(--ink)] hover:bg-[var(--surface)]"
+              )}
               type="button"
               aria-pressed={form.templateType === "A"}
               onClick={() => updateField("templateType", "A")}
@@ -607,11 +614,12 @@ export function HomeContentEditor() {
             </button>
             <button
               id="home-cms-template-b"
-              className={
+              className={cn(
+                "min-h-[44px] rounded-md px-4 py-2 text-sm font-bold transition-colors focus-visible:outline-[3px]! focus-visible:outline-[var(--focus)]! focus-visible:outline-offset-[3px]!",
                 form.templateType === "B"
-                  ? styles.templateActive
-                  : styles.templateButton
-              }
+                  ? "bg-[var(--accent)] text-white shadow-xs"
+                  : "border border-[var(--line)] bg-[var(--surface-raised)] text-[var(--ink)] hover:bg-[var(--surface)]"
+              )}
               type="button"
               aria-pressed={form.templateType === "B"}
               onClick={() => updateField("templateType", "B")}
@@ -622,7 +630,7 @@ export function HomeContentEditor() {
           </div>
 
           <form
-            className={styles.editorForm}
+            className="grid gap-6"
             onSubmit={(event) => {
               event.preventDefault();
               void handlePublish();
@@ -630,23 +638,30 @@ export function HomeContentEditor() {
           >
             {form.templateType === "A" ? (
               <article
-                className={styles.editorCard}
+                className="grid gap-4 rounded-xl border border-[var(--line)] bg-[var(--surface-raised)] p-4 sm:p-6 shadow-xs"
                 aria-labelledby="home-cms-template-a-heading"
               >
-                <div className={styles.cardHeading}>
-                  <h2 id="home-cms-template-a-heading">{copy.templateA}</h2>
-                  <p>{copy.templateADescription}</p>
+                <div>
+                  <h2
+                    id="home-cms-template-a-heading"
+                    className="text-base font-bold text-[var(--ink)]"
+                  >
+                    {copy.templateA}
+                  </h2>
+                  <p className="text-xs text-[var(--ink-muted)]">
+                    {copy.templateADescription}
+                  </p>
                 </div>
                 <label
-                  className={styles.field}
+                  className="grid gap-1.5"
                   htmlFor="home-cms-featured-event"
                 >
-                  <span className={styles.fieldLabel}>
+                  <span className="text-sm font-bold text-[var(--ink)]">
                     {copy.featuredEvent}
                   </span>
                   <input
                     id="home-cms-featured-event"
-                    className={styles.input}
+                    className="min-h-[44px] w-full rounded-md border border-[var(--line-strong)] bg-[var(--surface-raised)] px-3 py-2 text-base text-[var(--ink)] placeholder:text-[var(--ink-muted)] focus-visible:border-[var(--focus)] focus-visible:outline-[3px]! focus-visible:outline-[var(--focus)]! focus-visible:outline-offset-[3px]! disabled:opacity-50"
                     value={form.featuredEventId}
                     onChange={(event) =>
                       updateField("featuredEventId", event.target.value)
@@ -656,30 +671,42 @@ export function HomeContentEditor() {
                     disabled={busy}
                   />
                 </label>
-                <p className={styles.helper} id="home-cms-fallback">
+                <p
+                  className="text-xs text-[var(--ink-muted)]"
+                  id="home-cms-fallback"
+                >
                   {copy.fallbackNote}
                 </p>
-                <div className={styles.fallbackPreview}>
-                  <span className={styles.fallbackLabel}>
-                    {copy.fallbackDescription}
-                  </span>
-                  <strong>{previewEventLabel(previewHome)}</strong>
+                <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-dashed border-[var(--line)] bg-[var(--surface)] p-3 text-xs text-[var(--ink-muted)]">
+                  <span>{copy.fallbackDescription}</span>
+                  <strong className="font-bold text-[var(--ink)]">
+                    {previewEventLabel(previewHome)}
+                  </strong>
                 </div>
               </article>
             ) : (
               <article
-                className={styles.editorCard}
+                className="grid gap-4 rounded-xl border border-[var(--line)] bg-[var(--surface-raised)] p-4 sm:p-6 shadow-xs"
                 aria-labelledby="home-cms-template-b-heading"
               >
-                <div className={styles.cardHeading}>
-                  <h2 id="home-cms-template-b-heading">{copy.templateB}</h2>
-                  <p>{copy.previewLead}</p>
+                <div>
+                  <h2
+                    id="home-cms-template-b-heading"
+                    className="text-base font-bold text-[var(--ink)]"
+                  >
+                    {copy.templateB}
+                  </h2>
+                  <p className="text-xs text-[var(--ink-muted)]">
+                    {copy.previewLead}
+                  </p>
                 </div>
-                <label className={styles.field} htmlFor="home-cms-title">
-                  <span className={styles.fieldLabel}>{copy.title}</span>
+                <label className="grid gap-1.5" htmlFor="home-cms-title">
+                  <span className="text-sm font-bold text-[var(--ink)]">
+                    {copy.title}
+                  </span>
                   <input
                     id="home-cms-title"
-                    className={styles.input}
+                    className="min-h-[44px] w-full rounded-md border border-[var(--line-strong)] bg-[var(--surface-raised)] px-3 py-2 text-base text-[var(--ink)] placeholder:text-[var(--ink-muted)] focus-visible:border-[var(--focus)] focus-visible:outline-[3px]! focus-visible:outline-[var(--focus)]! focus-visible:outline-offset-[3px]! disabled:opacity-50"
                     value={form.title}
                     onChange={(event) =>
                       updateField("title", event.target.value)
@@ -687,11 +714,13 @@ export function HomeContentEditor() {
                     disabled={busy}
                   />
                 </label>
-                <label className={styles.field} htmlFor="home-cms-summary">
-                  <span className={styles.fieldLabel}>{copy.summary}</span>
+                <label className="grid gap-1.5" htmlFor="home-cms-summary">
+                  <span className="text-sm font-bold text-[var(--ink)]">
+                    {copy.summary}
+                  </span>
                   <textarea
                     id="home-cms-summary"
-                    className={styles.textarea}
+                    className="min-h-[88px] w-full rounded-md border border-[var(--line-strong)] bg-[var(--surface-raised)] px-3 py-2 text-base text-[var(--ink)] placeholder:text-[var(--ink-muted)] focus-visible:border-[var(--focus)] focus-visible:outline-[3px]! focus-visible:outline-[var(--focus)]! focus-visible:outline-offset-[3px]! disabled:opacity-50"
                     value={form.summary}
                     onChange={(event) =>
                       updateField("summary", event.target.value)
@@ -700,11 +729,13 @@ export function HomeContentEditor() {
                     disabled={busy}
                   />
                 </label>
-                <label className={styles.field} htmlFor="home-cms-body">
-                  <span className={styles.fieldLabel}>{copy.body}</span>
+                <label className="grid gap-1.5" htmlFor="home-cms-body">
+                  <span className="text-sm font-bold text-[var(--ink)]">
+                    {copy.body}
+                  </span>
                   <textarea
                     id="home-cms-body"
-                    className={styles.textarea}
+                    className="min-h-[160px] w-full rounded-md border border-[var(--line-strong)] bg-[var(--surface-raised)] px-3 py-2 text-base text-[var(--ink)] placeholder:text-[var(--ink-muted)] focus-visible:border-[var(--focus)] focus-visible:outline-[3px]! focus-visible:outline-[var(--focus)]! focus-visible:outline-offset-[3px]! disabled:opacity-50"
                     value={form.bodyMarkdown}
                     onChange={(event) =>
                       updateField("bodyMarkdown", event.target.value)
@@ -713,12 +744,14 @@ export function HomeContentEditor() {
                     disabled={busy}
                   />
                 </label>
-                <div className={styles.fieldGrid}>
-                  <label className={styles.field} htmlFor="home-cms-cta-label">
-                    <span className={styles.fieldLabel}>{copy.ctaLabel}</span>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <label className="grid gap-1.5" htmlFor="home-cms-cta-label">
+                    <span className="text-sm font-bold text-[var(--ink)]">
+                      {copy.ctaLabel}
+                    </span>
                     <input
                       id="home-cms-cta-label"
-                      className={styles.input}
+                      className="min-h-[44px] w-full rounded-md border border-[var(--line-strong)] bg-[var(--surface-raised)] px-3 py-2 text-base text-[var(--ink)] placeholder:text-[var(--ink-muted)] focus-visible:border-[var(--focus)] focus-visible:outline-[3px]! focus-visible:outline-[var(--focus)]! focus-visible:outline-offset-[3px]! disabled:opacity-50"
                       value={form.ctaLabel}
                       onChange={(event) =>
                         updateField("ctaLabel", event.target.value)
@@ -726,11 +759,13 @@ export function HomeContentEditor() {
                       disabled={busy}
                     />
                   </label>
-                  <label className={styles.field} htmlFor="home-cms-cta-url">
-                    <span className={styles.fieldLabel}>{copy.ctaUrl}</span>
+                  <label className="grid gap-1.5" htmlFor="home-cms-cta-url">
+                    <span className="text-sm font-bold text-[var(--ink)]">
+                      {copy.ctaUrl}
+                    </span>
                     <input
                       id="home-cms-cta-url"
-                      className={styles.input}
+                      className="min-h-[44px] w-full rounded-md border border-[var(--line-strong)] bg-[var(--surface-raised)] px-3 py-2 text-base text-[var(--ink)] placeholder:text-[var(--ink-muted)] focus-visible:border-[var(--focus)] focus-visible:outline-[3px]! focus-visible:outline-[var(--focus)]! focus-visible:outline-offset-[3px]! disabled:opacity-50"
                       type="url"
                       value={form.ctaUrl}
                       onChange={(event) =>
@@ -740,12 +775,14 @@ export function HomeContentEditor() {
                     />
                   </label>
                 </div>
-                <div className={styles.fieldGrid}>
-                  <label className={styles.field} htmlFor="home-cms-image-url">
-                    <span className={styles.fieldLabel}>{copy.imageUrl}</span>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <label className="grid gap-1.5" htmlFor="home-cms-image-url">
+                    <span className="text-sm font-bold text-[var(--ink)]">
+                      {copy.imageUrl}
+                    </span>
                     <input
                       id="home-cms-image-url"
-                      className={styles.input}
+                      className="min-h-[44px] w-full rounded-md border border-[var(--line-strong)] bg-[var(--surface-raised)] px-3 py-2 text-base text-[var(--ink)] placeholder:text-[var(--ink-muted)] focus-visible:border-[var(--focus)] focus-visible:outline-[3px]! focus-visible:outline-[var(--focus)]! focus-visible:outline-offset-[3px]! disabled:opacity-50"
                       type="url"
                       value={form.imageUrl}
                       onChange={(event) =>
@@ -754,11 +791,13 @@ export function HomeContentEditor() {
                       disabled={busy}
                     />
                   </label>
-                  <label className={styles.field} htmlFor="home-cms-image-alt">
-                    <span className={styles.fieldLabel}>{copy.imageAlt}</span>
+                  <label className="grid gap-1.5" htmlFor="home-cms-image-alt">
+                    <span className="text-sm font-bold text-[var(--ink)]">
+                      {copy.imageAlt}
+                    </span>
                     <input
                       id="home-cms-image-alt"
-                      className={styles.input}
+                      className="min-h-[44px] w-full rounded-md border border-[var(--line-strong)] bg-[var(--surface-raised)] px-3 py-2 text-base text-[var(--ink)] placeholder:text-[var(--ink-muted)] focus-visible:border-[var(--focus)] focus-visible:outline-[3px]! focus-visible:outline-[var(--focus)]! focus-visible:outline-offset-[3px]! disabled:opacity-50"
                       value={form.imageAlt}
                       onChange={(event) =>
                         updateField("imageAlt", event.target.value)
@@ -770,15 +809,18 @@ export function HomeContentEditor() {
               </article>
             )}
 
-            <fieldset className={styles.publishCard}>
-              <legend>{copy.publish}</legend>
-              <div className={styles.publishOptions}>
+            <fieldset className="grid gap-4 rounded-xl border border-[var(--line)] bg-[var(--surface-raised)] p-4 sm:p-6 shadow-xs">
+              <legend className="px-1 text-base font-bold text-[var(--ink)]">
+                {copy.publish}
+              </legend>
+              <div className="flex flex-wrap gap-4">
                 <label
-                  className={styles.choice}
+                  className="inline-flex min-h-[44px] cursor-pointer items-center gap-2 text-sm font-medium text-[var(--ink)]"
                   htmlFor="home-cms-publish-immediate"
                 >
                   <input
                     id="home-cms-publish-immediate"
+                    className="size-4 text-[var(--accent)] focus-visible:outline-[3px]! focus-visible:outline-[var(--focus)]! focus-visible:outline-offset-[3px]!"
                     type="radio"
                     name="home-cms-publish-mode"
                     checked={form.publishMode === "immediate"}
@@ -788,11 +830,12 @@ export function HomeContentEditor() {
                   <span>{copy.publishImmediate}</span>
                 </label>
                 <label
-                  className={styles.choice}
+                  className="inline-flex min-h-[44px] cursor-pointer items-center gap-2 text-sm font-medium text-[var(--ink)]"
                   htmlFor="home-cms-publish-scheduled"
                 >
                   <input
                     id="home-cms-publish-scheduled"
+                    className="size-4 text-[var(--accent)] focus-visible:outline-[3px]! focus-visible:outline-[var(--focus)]! focus-visible:outline-offset-[3px]!"
                     type="radio"
                     name="home-cms-publish-mode"
                     checked={form.publishMode === "scheduled"}
@@ -803,17 +846,17 @@ export function HomeContentEditor() {
                 </label>
               </div>
               {form.publishMode === "scheduled" && (
-                <div className={styles.fieldGrid}>
+                <div className="grid gap-4 sm:grid-cols-2">
                   <label
-                    className={styles.field}
+                    className="grid gap-1.5"
                     htmlFor="home-cms-schedule-start"
                   >
-                    <span className={styles.fieldLabel}>
+                    <span className="text-sm font-bold text-[var(--ink)]">
                       {copy.scheduleStart}（香港時間）
                     </span>
                     <input
                       id="home-cms-schedule-start"
-                      className={styles.input}
+                      className="min-h-[44px] w-full rounded-md border border-[var(--line-strong)] bg-[var(--surface-raised)] px-3 py-2 text-base text-[var(--ink)] focus-visible:border-[var(--focus)] focus-visible:outline-[3px]! focus-visible:outline-[var(--focus)]! focus-visible:outline-offset-[3px]! disabled:opacity-50"
                       type="datetime-local"
                       value={form.startAt}
                       onChange={(event) =>
@@ -824,15 +867,15 @@ export function HomeContentEditor() {
                     />
                   </label>
                   <label
-                    className={styles.field}
+                    className="grid gap-1.5"
                     htmlFor="home-cms-schedule-end"
                   >
-                    <span className={styles.fieldLabel}>
+                    <span className="text-sm font-bold text-[var(--ink)]">
                       {copy.scheduleEnd}（香港時間）
                     </span>
                     <input
                       id="home-cms-schedule-end"
-                      className={styles.input}
+                      className="min-h-[44px] w-full rounded-md border border-[var(--line-strong)] bg-[var(--surface-raised)] px-3 py-2 text-base text-[var(--ink)] focus-visible:border-[var(--focus)] focus-visible:outline-[3px]! focus-visible:outline-[var(--focus)]! focus-visible:outline-offset-[3px]! disabled:opacity-50"
                       type="datetime-local"
                       value={form.endAt}
                       onChange={(event) =>
@@ -845,69 +888,88 @@ export function HomeContentEditor() {
               )}
             </fieldset>
 
-            <div className={styles.actions}>
-              <button
+            <ActionSurface
+              busy={busy}
+              className="flex flex-wrap items-center justify-end gap-3 mt-4"
+              label={copy.editorTitle}
+              state={
+                operation === "saving"
+                  ? "save"
+                  : operation === "publishing"
+                    ? "busy"
+                    : "selection"
+              }
+            >
+              <Button
                 id="home-cms-preview-toggle"
-                className={styles.secondaryButton}
                 type="button"
+                variant="outline"
                 onClick={() => setPreviewOpen((open) => !open)}
                 aria-expanded={previewOpen}
                 disabled={busy}
               >
                 {copy.preview}
-              </button>
-              <button
+              </Button>
+              <Button
                 id="home-cms-save-draft"
-                className={styles.secondaryButton}
                 type="button"
+                variant="secondary"
                 onClick={handleSaveDraft}
                 disabled={busy}
               >
                 {operation === "saving" ? copy.loading : copy.saveDraft}
-              </button>
-              <button
-                id="home-cms-publish"
-                className={styles.primaryButton}
-                type="submit"
-                disabled={busy}
-              >
+              </Button>
+              <Button id="home-cms-publish" type="submit" disabled={busy}>
                 {operation === "publishing" ? copy.loading : copy.savePublished}
-              </button>
-            </div>
+              </Button>
+            </ActionSurface>
           </form>
 
           {notice && !conflictLatest && (
-            <output className={styles.notice} aria-live="polite">
+            <output
+              className="rounded-lg border border-[var(--line)] bg-[var(--surface-raised)] p-3 text-sm text-[var(--ink)] shadow-xs"
+              aria-live="polite"
+            >
               {notice}
             </output>
           )}
 
           {previewOpen && (
             <section
-              className={styles.previewSection}
+              className="grid gap-4 rounded-xl border border-[var(--line)] bg-[var(--surface-raised)] p-4 sm:p-6 shadow-xs"
               aria-labelledby="home-cms-preview-title"
             >
-              <div className={styles.sectionHeading}>
+              <div className="flex flex-wrap items-center justify-between gap-2">
                 <div>
-                  <h2 id="home-cms-preview-title">{copy.preview}</h2>
-                  <p>{copy.previewLead}</p>
+                  <h2
+                    id="home-cms-preview-title"
+                    className="text-base font-bold text-[var(--ink)]"
+                  >
+                    {copy.preview}
+                  </h2>
+                  <p className="text-xs text-[var(--ink-muted)]">
+                    {copy.previewLead}
+                  </p>
                 </div>
                 {previewLoading && (
-                  <span className={styles.previewLoading}>{copy.loading}</span>
+                  <span className="text-xs text-[var(--ink-muted)]">
+                    {copy.loading}
+                  </span>
                 )}
               </div>
               <div
-                className={styles.previewControls}
+                className="flex flex-wrap gap-2"
                 role="group"
                 aria-label={copy.preview}
               >
                 <button
                   id="home-cms-preview-phone"
-                  className={
+                  className={cn(
+                    "min-h-[44px] rounded-md px-4 py-2 text-sm font-bold transition-colors focus-visible:outline-[3px]! focus-visible:outline-[var(--focus)]! focus-visible:outline-offset-[3px]!",
                     previewViewport === "phone"
-                      ? styles.templateActive
-                      : styles.templateButton
-                  }
+                      ? "bg-[var(--accent)] text-white shadow-xs"
+                      : "border border-[var(--line)] bg-[var(--surface-raised)] text-[var(--ink)] hover:bg-[var(--surface)]"
+                  )}
                   type="button"
                   aria-pressed={previewViewport === "phone"}
                   onClick={() => setPreviewViewport("phone")}
@@ -916,11 +978,12 @@ export function HomeContentEditor() {
                 </button>
                 <button
                   id="home-cms-preview-desktop"
-                  className={
+                  className={cn(
+                    "min-h-[44px] rounded-md px-4 py-2 text-sm font-bold transition-colors focus-visible:outline-[3px]! focus-visible:outline-[var(--focus)]! focus-visible:outline-offset-[3px]!",
                     previewViewport === "desktop"
-                      ? styles.templateActive
-                      : styles.templateButton
-                  }
+                      ? "bg-[var(--accent)] text-white shadow-xs"
+                      : "border border-[var(--line)] bg-[var(--surface-raised)] text-[var(--ink)] hover:bg-[var(--surface)]"
+                  )}
                   type="button"
                   aria-pressed={previewViewport === "desktop"}
                   onClick={() => setPreviewViewport("desktop")}
@@ -928,40 +991,53 @@ export function HomeContentEditor() {
                   {copy.previewDesktop}
                 </button>
               </div>
-              <div className={styles.previewFrameWrap}>
-                <article className={`${styles.previewFrame} ${previewClass}`}>
-                  <span className={styles.previewKicker}>
+              <div className="flex justify-center rounded-lg border border-[var(--line)] bg-[var(--surface)] p-4">
+                <article
+                  className={cn(
+                    "grid gap-3 rounded-lg border border-[var(--line)] bg-[var(--surface-raised)] p-4 text-[var(--ink)] shadow-xs wrap-anywhere",
+                    previewViewport === "phone"
+                      ? "w-full max-w-[390px]"
+                      : "w-full max-w-[760px]"
+                  )}
+                >
+                  <span className="text-xs font-bold tracking-wider text-[var(--accent)] uppercase">
                     {copy.editorTitle}
                   </span>
                   {form.templateType === "A" ? (
                     <>
-                      <h3>{previewFeaturedEvent?.title || copy.templateA}</h3>
-                      <p>
+                      <h3 className="text-lg font-bold">
+                        {previewFeaturedEvent?.title || copy.templateA}
+                      </h3>
+                      <p className="text-sm text-[var(--ink-muted)]">
                         {previewFeaturedEventLabel(
                           previewFeaturedEvent,
                           previewHome
                         )}
                       </p>
-                      <span className={styles.previewMeta}>
+                      <span className="text-xs text-[var(--ink-muted)]">
                         {form.featuredEventId || copy.fallbackDescription}
                       </span>
                     </>
                   ) : (
                     <>
-                      <h3>{form.title || copy.title}</h3>
-                      <p>{form.summary || copy.summary}</p>
-                      <div className={styles.previewBody}>
+                      <h3 className="text-lg font-bold">
+                        {form.title || copy.title}
+                      </h3>
+                      <p className="text-sm text-[var(--ink-muted)]">
+                        {form.summary || copy.summary}
+                      </p>
+                      <div className="text-sm whitespace-pre-wrap">
                         {form.bodyMarkdown || copy.body}
                       </div>
                       {form.imageUrl && (
                         <img
-                          className={styles.previewImage}
+                          className="max-h-[300px] w-full rounded-md object-cover"
                           src={form.imageUrl}
-                          alt={form.imageAlt}
+                          alt={form.imageAlt ?? ""}
                         />
                       )}
                       {form.ctaLabel && (
-                        <span className={styles.previewCta}>
+                        <span className="inline-flex w-fit items-center rounded-md bg-[var(--accent)] px-3 py-1.5 text-xs font-bold text-white">
                           {form.ctaLabel}
                         </span>
                       )}
@@ -973,31 +1049,44 @@ export function HomeContentEditor() {
           )}
 
           <section
-            className={styles.auditSection}
+            className="grid gap-4 rounded-xl border border-[var(--line)] bg-[var(--surface-raised)] p-4 sm:p-6 shadow-xs"
             aria-labelledby="home-cms-audit-title"
           >
-            <div className={styles.sectionHeading}>
-              <h2 id="home-cms-audit-title">{copy.auditTrail}</h2>
+            <div className="flex items-center justify-between">
+              <h2
+                id="home-cms-audit-title"
+                className="text-base font-bold text-[var(--ink)]"
+              >
+                {copy.auditTrail}
+              </h2>
             </div>
             {audit.length === 0 ? (
-              <p className={styles.emptyAudit}>{copy.noAudit}</p>
+              <p className="m-0 text-sm text-[var(--ink-muted)]">
+                {copy.noAudit}
+              </p>
             ) : (
-              <ol className={styles.auditList}>
+              <ol className="m-0 grid list-none gap-2 p-0">
                 {audit.map((item) => (
-                  <li className={styles.auditRow} key={item.auditId}>
-                    <div className={styles.auditCopy}>
-                      <strong>
+                  <li
+                    className="flex flex-wrap items-center justify-between gap-2 border-t border-[var(--line)] pt-2 first:border-t-0 first:pt-0 text-sm"
+                    key={item.auditId}
+                  >
+                    <div className="grid gap-0.5">
+                      <strong className="font-bold text-[var(--ink)]">
                         {copy.auditPublishedBy}:{" "}
                         {item.actorName || item.actorUserId}
                       </strong>
-                      <span>
+                      <span className="text-xs text-[var(--ink-muted)]">
                         {item.templateType === "A"
                           ? copy.templateA
                           : copy.templateB}{" "}
                         · v{item.version}
                       </span>
                     </div>
-                    <time dateTime={item.insertedAt}>
+                    <time
+                      className="text-xs text-[var(--ink-muted)] whitespace-nowrap"
+                      dateTime={item.insertedAt}
+                    >
                       {copy.auditAt}: {formatHkDateTime(item.insertedAt)}
                     </time>
                   </li>
@@ -1006,7 +1095,7 @@ export function HomeContentEditor() {
             )}
           </section>
 
-          <p className={styles.metaNote}>
+          <p className="text-xs text-[var(--ink-muted)] mt-3">
             {copy.updatedAt}: {formatHkDateTime(form.updatedAt)}
             {form.publishMode === "scheduled" && form.startAt
               ? ` · ${copy.scheduledAt}: ${form.startAt}`

@@ -1,9 +1,12 @@
 "use client";
+
+import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import {
   ActionSurface,
   ManagementPageHeader,
+  safeManagementReturnHref,
 } from "@/app/management/management-action-framework";
 import {
   AlertDialog,
@@ -19,13 +22,16 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { COPY } from "@/lib/copy";
 import { announce } from "@/lib/live-region";
-import { decideRegistration, fetchRegistrationDetail, RegistrationApiError } from '@/lib/registration-client';
-import type { Decision, RegistrationDetail } from '@/lib/registration-client';
+import {
+  type Decision,
+  decideRegistration,
+  fetchRegistrationDetail,
+  RegistrationApiError,
+  type RegistrationDetail,
+} from "@/lib/registration-client";
 import { QUEUE_COPY, registrationErrorCopy } from "@/lib/registration-copy";
 
 import { clearApprovalSelection } from "./approval-queue";
-
-import styles from "./approval-detail.module.css";
 
 type DetailState =
   | { kind: "loading" }
@@ -50,16 +56,16 @@ function statusCopy(status: RegistrationDetail["status"]): string {
   }
 }
 
-function statusClass(status: RegistrationDetail["status"]): string {
+function statusBadgeClass(status: RegistrationDetail["status"]): string {
   switch (status) {
     case "Active": {
-      return styles.statusApproved;
+      return "border-[var(--success-border)] bg-[var(--success-surface)] text-[var(--success)]";
     }
     case "Rejected": {
-      return styles.statusRejected;
+      return "border-[var(--error-border)] bg-[var(--error-surface)] text-[var(--error)]";
     }
     default: {
-      return styles.statusPending;
+      return "border-[var(--pending-border)] bg-[var(--pending-surface)] text-[var(--pending)]";
     }
   }
 }
@@ -100,6 +106,15 @@ function detailFormatSubmittedAt(ts: number): string {
 
 // oxlint-disable-next-line eslint/complexity -- this component owns the detail, confirmation, and read-only states.
 export function ApprovalDetail({ requestId }: { requestId: string }) {
+  const searchParams = useSearchParams();
+  const backHref = safeManagementReturnHref(
+    searchParams.get("return"),
+    "/management?module=approvals"
+  );
+  const backLabel = backHref.includes("module=settings")
+    ? "設定"
+    : COPY.approvals.backToApprovals;
+
   const [state, setState] = useState<DetailState>({ kind: "loading" });
   const [busy, setBusy] = useState<DecisionBusy>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -131,9 +146,13 @@ export function ApprovalDetail({ requestId }: { requestId: string }) {
     announce(COPY.approvals.loading);
     try {
       const registration = await fetchRegistrationDetail(requestId);
-      if (mounted.current) {setState({ kind: "ready", registration });}
+      if (mounted.current) {
+        setState({ kind: "ready", registration });
+      }
     } catch (error) {
-      if (!mounted.current) {return;}
+      if (!mounted.current) {
+        return;
+      }
       if (
         error instanceof RegistrationApiError &&
         (error.status === 401 || error.status === 403)
@@ -157,14 +176,22 @@ export function ApprovalDetail({ requestId }: { requestId: string }) {
     return () => {
       mounted.current = false;
       window.removeEventListener("popstate", onPopState);
-      if (!returningToQueue.current) {clearApprovalSelection();}
+      if (!returningToQueue.current) {
+        clearApprovalSelection();
+      }
     };
   }, [load]);
 
   useEffect(() => {
-    if (state.kind === "ready") {headingRef.current?.focus();}
-    if (state.kind === "error") {errorRef.current?.focus();}
-    if (state.kind === "forbidden") {headingRef.current?.focus();}
+    if (state.kind === "ready") {
+      headingRef.current?.focus();
+    }
+    if (state.kind === "error") {
+      errorRef.current?.focus();
+    }
+    if (state.kind === "forbidden") {
+      headingRef.current?.focus();
+    }
   }, [state]);
 
   const commitDecision = useCallback(
@@ -180,13 +207,17 @@ export function ApprovalDetail({ requestId }: { requestId: string }) {
       setNotice(null);
       try {
         await decideRegistration(requestId, decision, decisionNote);
-        if (!mounted.current) {return;}
+        if (!mounted.current) {
+          return;
+        }
         announce(COPY.approvals.decisionMade);
         setNotice(COPY.approvals.decisionMade);
         setNoticeKind("success");
         await load();
       } catch (error) {
-        if (!mounted.current) {return;}
+        if (!mounted.current) {
+          return;
+        }
         if (
           error instanceof RegistrationApiError &&
           (error.status === 401 || error.status === 403)
@@ -199,7 +230,9 @@ export function ApprovalDetail({ requestId }: { requestId: string }) {
         setNoticeKind("error");
         announce(message);
       } finally {
-        if (mounted.current) {setBusy(null);}
+        if (mounted.current) {
+          setBusy(null);
+        }
       }
     },
     [busy, load, requestId, state]
@@ -224,7 +257,9 @@ export function ApprovalDetail({ requestId }: { requestId: string }) {
   };
 
   const acceptConfirmation = () => {
-    if (confirmKind === null) {return;}
+    if (confirmKind === null) {
+      return;
+    }
     const decision = confirmKind;
     if (decision === "reject" && !note.trim()) {
       setNoteError(true);
@@ -237,7 +272,6 @@ export function ApprovalDetail({ requestId }: { requestId: string }) {
     void commitDecision(decision, decisionNote);
   };
 
-  const backHref = "/management?module=approvals";
   const actionSurfaceState =
     busy === null
       ? noticeKind === "error" && notice
@@ -249,10 +283,13 @@ export function ApprovalDetail({ requestId }: { requestId: string }) {
 
   if (state.kind === "forbidden") {
     return (
-      <section className={styles.page} aria-labelledby="approval-detail-title">
+      <section
+        className="mx-auto w-full min-w-0 max-w-4xl px-4 pt-6 pb-9"
+        aria-labelledby="approval-detail-title"
+      >
         <ManagementPageHeader
           backHref={backHref}
-          backLabel={COPY.approvals.backToApprovals}
+          backLabel={backLabel}
           lead={COPY.approvals.approvalsLead}
           title={COPY.approvals.approvalDetailTitle}
           titleId="approval-detail-title"
@@ -261,7 +298,12 @@ export function ApprovalDetail({ requestId }: { requestId: string }) {
             returningToQueue.current = true;
           }}
         />
-        <p role="alert" className={styles.error} ref={errorRef} tabIndex={-1}>
+        <p
+          role="alert"
+          className="mt-4 rounded-[var(--radius-md)] border border-[var(--error-border)] bg-[var(--error-surface)] p-4 font-bold text-[var(--error)]"
+          ref={errorRef}
+          tabIndex={-1}
+        >
           {COPY.error.forbidden}
         </p>
       </section>
@@ -270,13 +312,13 @@ export function ApprovalDetail({ requestId }: { requestId: string }) {
 
   return (
     <section
-      className={styles.page}
+      className="mx-auto w-full min-w-0 max-w-4xl px-4 pt-6 pb-9"
       aria-labelledby="approval-detail-title"
       aria-busy={state.kind === "loading" || busy !== null}
     >
       <ManagementPageHeader
         backHref={backHref}
-        backLabel={COPY.approvals.backToApprovals}
+        backLabel={backLabel}
         lead={COPY.approvals.approvalsLead}
         title={COPY.approvals.approvalDetailTitle}
         titleId="approval-detail-title"
@@ -292,24 +334,30 @@ export function ApprovalDetail({ requestId }: { requestId: string }) {
         className={
           notice
             ? noticeKind === "error"
-              ? styles.noticeError
-              : styles.notice
+              ? "mt-4 rounded-[var(--radius-md)] border border-[var(--error-border)] bg-[var(--error-surface)] p-3 text-sm font-bold text-[var(--error)]"
+              : "mt-4 rounded-[var(--radius-md)] border border-[var(--success-border)] bg-[var(--success-surface)] p-3 text-sm font-bold text-[var(--success)]"
             : state.kind === "loading"
-              ? styles.loading
-              : styles.liveRegion
+              ? "mt-4 rounded-[var(--radius-md)] border border-[var(--line)] bg-[var(--surface-raised)] p-3 text-center text-sm text-[var(--ink-muted)]"
+              : "sr-only"
         }
       >
         {notice ?? (state.kind === "loading" ? COPY.approvals.loading : "")}
       </p>
 
       {state.kind === "error" && (
-        <div className={styles.error}>
-          <p role="alert" aria-live="assertive" ref={errorRef} tabIndex={-1}>
+        <div className="mt-4 grid min-w-0 gap-3 rounded-[var(--radius-md)] border border-[var(--error-border)] bg-[var(--error-surface)] p-6 text-center text-[var(--ink)]">
+          <p
+            role="alert"
+            aria-live="assertive"
+            ref={errorRef}
+            tabIndex={-1}
+            className="m-0 font-extrabold"
+          >
             {state.message}
           </p>
           <Button
             type="button"
-            className={`${styles.retry} min-h-11`}
+            className="mx-auto min-h-11 border-[var(--accent)] bg-[var(--accent)] px-4 font-extrabold text-white hover:bg-[var(--accent-deep)]"
             onClick={() => void load()}
             size="lg"
             variant="outline"
@@ -321,50 +369,58 @@ export function ApprovalDetail({ requestId }: { requestId: string }) {
 
       {state.kind === "ready" && (
         <>
-          <div className={styles.card}>
-            <div className={styles.detailRow}>
-              <span className={styles.label}>
+          <div className="mt-6 grid min-w-0 gap-4 rounded-[var(--radius-md)] border border-[var(--line)] bg-[var(--surface-raised)] p-6">
+            <div className="grid grid-cols-[120px_1fr] items-baseline gap-4 border-b border-[var(--line)] pb-3 text-sm">
+              <span className="font-bold text-[var(--ink-muted)]">
                 {COPY.approvals.applicantName}
               </span>
-              <span className={styles.value}>{state.registration.name}</span>
+              <span className="font-extrabold text-[var(--ink)]">
+                {state.registration.name}
+              </span>
             </div>
-            <div className={styles.detailRow}>
-              <span className={styles.label}>
+            <div className="grid grid-cols-[120px_1fr] items-baseline gap-4 border-b border-[var(--line)] pb-3 text-sm">
+              <span className="font-bold text-[var(--ink-muted)]">
                 {COPY.approvals.applicantContact}
               </span>
-              <span className={styles.value}>
-                <span>{state.registration.username}</span>
+              <span className="grid gap-0.5 text-[var(--ink)]">
+                <span className="font-mono">{state.registration.username}</span>
                 {state.registration.phone && (
                   <span>{state.registration.phone}</span>
                 )}
               </span>
             </div>
-            <div className={styles.detailRow}>
-              <span className={styles.label}>角色</span>
-              <span className={styles.value}>
+            <div className="grid grid-cols-[120px_1fr] items-baseline gap-4 border-b border-[var(--line)] pb-3 text-sm">
+              <span className="font-bold text-[var(--ink-muted)]">角色</span>
+              <span className="text-[var(--ink)]">
                 {detailRoleLabel(state.registration.role)}
               </span>
             </div>
-            <div className={styles.detailRow}>
-              <span className={styles.label}>{DETAIL_UI_COPY.submittedAt}</span>
-              <span className={styles.value}>
+            <div className="grid grid-cols-[120px_1fr] items-baseline gap-4 border-b border-[var(--line)] pb-3 text-sm">
+              <span className="font-bold text-[var(--ink-muted)]">
+                {DETAIL_UI_COPY.submittedAt}
+              </span>
+              <span className="text-[var(--ink)]">
                 {detailFormatSubmittedAt(state.registration.submittedAt)}
               </span>
             </div>
-            <div className={styles.detailRow}>
-              <span className={styles.label}>{COPY.approvals.status}</span>
+            <div className="grid grid-cols-[120px_1fr] items-center gap-4 border-b border-[var(--line)] pb-3 text-sm">
+              <span className="font-bold text-[var(--ink-muted)]">
+                {COPY.approvals.status}
+              </span>
               <span
-                className={`${styles.status} ${statusClass(state.registration.status)}`}
+                className={`w-fit min-h-[26px] rounded-full border px-2.5 py-1 text-xs font-extrabold whitespace-nowrap ${statusBadgeClass(
+                  state.registration.status
+                )}`}
               >
                 {statusCopy(state.registration.status)}
               </span>
             </div>
             {state.registration.decisionNote && (
-              <div className={styles.detailRow}>
-                <span className={styles.label}>
+              <div className="grid grid-cols-[120px_1fr] items-baseline gap-4 text-sm">
+                <span className="font-bold text-[var(--ink-muted)]">
                   {COPY.approvals.decisionNote}
                 </span>
-                <span className={styles.value}>
+                <span className="text-[var(--ink)]">
                   {state.registration.decisionNote}
                 </span>
               </div>
@@ -375,7 +431,9 @@ export function ApprovalDetail({ requestId }: { requestId: string }) {
             <AlertDialog
               open={confirmKind !== null}
               onOpenChange={(open) => {
-                if (!open) {closeConfirmation();}
+                if (!open) {
+                  closeConfirmation();
+                }
               }}
             >
               <ActionSurface
@@ -384,46 +442,48 @@ export function ApprovalDetail({ requestId }: { requestId: string }) {
                 label="申請處理操作"
                 state={actionSurfaceState}
               >
-                <p className={styles.actionHint}>
-                  請先核對申請人資料，確認後才會更新狀態。
-                </p>
-                <div className={styles.actionButtons}>
-                  <AlertDialogTrigger asChild>
-                    <Button
-                      type="button"
-                      className={`${styles.actionButton} min-h-11`}
-                      disabled={busy !== null}
-                      aria-busy={busy === "approve"}
-                      aria-haspopup="dialog"
-                      onClick={() => beginConfirmation("approve")}
-                      size="lg"
-                      variant="default"
-                    >
-                      {busy === "approve"
-                        ? COPY.approvals.approving
-                        : COPY.approvals.approve}
-                    </Button>
-                  </AlertDialogTrigger>
-                  <AlertDialogTrigger asChild>
-                    <Button
-                      type="button"
-                      className={`${styles.actionButton} min-h-11`}
-                      disabled={busy !== null}
-                      aria-busy={busy === "reject"}
-                      aria-haspopup="dialog"
-                      onClick={() => beginConfirmation("reject")}
-                      size="lg"
-                      variant="destructive"
-                    >
-                      {busy === "reject"
-                        ? COPY.approvals.rejecting
-                        : COPY.approvals.reject}
-                    </Button>
-                  </AlertDialogTrigger>
+                <div className="flex flex-wrap items-center justify-between gap-4">
+                  <p className="m-0 text-sm text-[var(--ink-muted)]">
+                    請先核對申請人資料，確認後才會更新狀態。
+                  </p>
+                  <div className="flex items-center gap-3">
+                    <AlertDialogTrigger asChild>
+                      <Button
+                        type="button"
+                        className="min-h-11 font-extrabold"
+                        disabled={busy !== null}
+                        aria-busy={busy === "approve"}
+                        aria-haspopup="dialog"
+                        onClick={() => beginConfirmation("approve")}
+                        size="lg"
+                        variant="default"
+                      >
+                        {busy === "approve"
+                          ? COPY.approvals.approving
+                          : COPY.approvals.approve}
+                      </Button>
+                    </AlertDialogTrigger>
+                    <AlertDialogTrigger asChild>
+                      <Button
+                        type="button"
+                        className="min-h-11 font-extrabold"
+                        disabled={busy !== null}
+                        aria-busy={busy === "reject"}
+                        aria-haspopup="dialog"
+                        onClick={() => beginConfirmation("reject")}
+                        size="lg"
+                        variant="destructive"
+                      >
+                        {busy === "reject"
+                          ? COPY.approvals.rejecting
+                          : COPY.approvals.reject}
+                      </Button>
+                    </AlertDialogTrigger>
+                  </div>
                 </div>
               </ActionSurface>
               <AlertDialogContent
-                className={styles.confirmDialog}
+                className="max-w-md"
                 aria-labelledby="approval-detail-confirm-title"
                 onCloseAutoFocus={(event) => {
                   event.preventDefault();
@@ -438,7 +498,7 @@ export function ApprovalDetail({ requestId }: { requestId: string }) {
                   }
                 }}
               >
-                <div className={styles.confirmSurface}>
+                <div className="grid gap-4">
                   <AlertDialogTitle id="approval-detail-confirm-title">
                     {confirmKind === "approve"
                       ? DETAIL_UI_COPY.confirmTitleApprove
@@ -450,10 +510,10 @@ export function ApprovalDetail({ requestId }: { requestId: string }) {
                       : `${state.registration.name} · ${DETAIL_UI_COPY.confirmBodyReject}`}
                   </AlertDialogDescription>
                   {confirmKind === "reject" && (
-                    <div className={styles.noteField}>
+                    <div className="grid gap-2">
                       <label
                         htmlFor="approval-detail-note"
-                        className={styles.label}
+                        className="text-sm font-bold text-[var(--ink)]"
                       >
                         {COPY.approvals.decisionNote}
                       </label>
@@ -465,7 +525,7 @@ export function ApprovalDetail({ requestId }: { requestId: string }) {
                           setNote(event.target.value);
                           setNoteError(false);
                         }}
-                        className={styles.textarea}
+                        className="min-h-[100px] w-full rounded-[8px] border border-[var(--line-strong)] bg-[var(--surface-raised)] p-3 text-base text-[var(--ink)]"
                         aria-invalid={noteError}
                         aria-describedby={
                           noteError ? "approval-detail-note-error" : undefined
@@ -476,7 +536,7 @@ export function ApprovalDetail({ requestId }: { requestId: string }) {
                       {noteError && (
                         <p
                           id="approval-detail-note-error"
-                          className={styles.fieldError}
+                          className="m-0 text-xs font-bold text-[var(--error)]"
                           role="alert"
                         >
                           {COPY.approvals.rejectionNoteRequired}
@@ -484,7 +544,7 @@ export function ApprovalDetail({ requestId }: { requestId: string }) {
                       )}
                     </div>
                   )}
-                  <AlertDialogFooter className={styles.confirmActions}>
+                  <AlertDialogFooter>
                     <AlertDialogCancel onClick={closeConfirmation}>
                       {DETAIL_UI_COPY.confirmCancel}
                     </AlertDialogCancel>
@@ -507,7 +567,7 @@ export function ApprovalDetail({ requestId }: { requestId: string }) {
               </AlertDialogContent>
             </AlertDialog>
           ) : (
-            <p className={styles.readOnly}>
+            <p className="mt-4 rounded-[var(--radius-md)] border border-[var(--line)] bg-[var(--surface)] p-4 text-center text-sm font-bold text-[var(--ink-muted)]">
               <span>{COPY.approvals.decisionMade}</span>{" "}
               <span>{DETAIL_UI_COPY.readOnly}</span>
             </p>
