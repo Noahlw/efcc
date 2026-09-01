@@ -94,12 +94,11 @@ const LEGACY_USER: PublicUser = {
   userId: "U-legacy",
   username: "legacy",
 };
-// title-case values; uppercase spellings fall back to the Member set.
 const STAFF_USER: PublicUser = {
   ...PUBLIC_USER,
   identities: [
     {
-      label: COPY.shell.roleLabels.Staff,
+      label: "同工",
       scopeKind: "Global",
       scopeLabel: null,
     },
@@ -109,7 +108,7 @@ const ADMIN_USER: PublicUser = {
   ...PUBLIC_USER,
   identities: [
     {
-      label: COPY.shell.roleLabels.Admin,
+      label: "管理員",
       scopeKind: "Global",
       scopeLabel: null,
     },
@@ -1633,7 +1632,7 @@ describe("Shell", () => {
       expect(
         screen.getByText(ADMIN_BOOTSTRAP.profile.name ?? "")
       ).toBeInTheDocument();
-      expect(screen.getByText(COPY.shell.roleLabels.Admin)).toBeInTheDocument();
+      expect(screen.getByText("管理員")).toBeInTheDocument();
       const bell = screen.getByRole("button", {
         name: COPY.attention.bellLabel(0),
       });

@@ -43,7 +43,7 @@ export const QUEUE_COPY = {
   validation: "輸入資料無效，請檢查後再試。",
   conflict: "資料衝突，請重新整理後再試。",
   notFound: "找不到該申請，可能已被處理。",
-  unauthorized: "請先以 Staff 或 Admin 身分登入。",
+  unauthorized: "請先登入具備註冊審批權限的帳戶。",
   unavailable: "系統暫時無法使用，請稍後再試。",
   unknownError: "發生未知錯誤，請稍後再試。",
 } as const;

@@ -232,7 +232,7 @@ test.describe("089-S1: Reconciled shared shell, top bar, and Attention panel con
     await expect(header).toBeVisible();
     await expect(header.getByText(COPY.shell.shortMark)).toBeVisible();
     await expect(header.getByText(STAFF_USER.name)).toBeVisible();
-    await expect(header.getByText(COPY.shell.roleLabels.Staff)).toBeVisible();
+    await expect(header.getByText("同工")).toBeVisible();
 
     const bell = header.getByRole("button", {
       name: new RegExp(COPY.attention.title),
