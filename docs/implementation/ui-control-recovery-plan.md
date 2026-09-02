@@ -142,19 +142,19 @@ Update this table at the start and end of every implementation session.
 | Field | Current value |
 |---|---|
 | Current phase | **Phase 0 — Foundation & Recovery Control** |
-| Phase status | `IN PROGRESS — stacked delivery amendment` |
+| Phase status | `IN PROGRESS — Phase 0 stack root published` |
 | Rescue integration HEAD | `6e6fe51770cd49a6f362d5c6cb4a8eafd5ba9ea2` — T02 / #545 merged |
 | Active phase stack | Amendment → T04 → T03 → T05 → T06 |
-| Implementation frontier | Amendment branch; T04 / #509 after amendment reaches `STACK_GREEN` |
-| Merge frontier | Amendment PR targeting `rescue/ui-control-recovery`; T02 already merged |
-| Review pending | Amendment documentation |
+| Implementation frontier | T04 / #509 eligible for restack onto amendment |
+| Merge frontier | Amendment PR #547 into `rescue/ui-control-recovery`; T02 already merged |
+| Review pending | None; amendment Standards and Spec review passed |
 | Human approval pending | None for Phase 0 foundation tickets |
 | Active blocker | None for amendment; T03 is logically eligible after T02 merged but technically blocked by parent T04; T05/T06 remain logically blocked |
-| Next safe action | Complete and publish the stacked-delivery amendment, then restack T04 |
+| Next safe action | Restack T04 onto the `STACK_GREEN` amendment branch and retarget #546 |
 | Last merged rescue SHA | `6e6fe51770cd49a6f362d5c6cb4a8eafd5ba9ea2` |
 | Last rollback checkpoint | Frozen Phase F SHA `6edf28c0f8f7058cf992416e7b517824c3178c8` |
 | Parent Spec amendment | [Owner-approved comment](https://github.com/Noahlw/efcc/issues/505#issuecomment-5514680835) |
-| Entry verification | T01 and T02 are merged in rescue; T04 reviewed implementation `865e932b0e8d1f5567330fa242fe3fcf185afc9c` is preserved on its branch and requires restacking |
+| Entry verification | T01 and T02 are merged in rescue; amendment PR #547 is published and reviewed; T04 reviewed implementation `865e932b0e8d1f5567330fa242fe3fcf185afc9c` is preserved and requires restacking |
 
 > T02 / #545 merged at `6e6fe51770cd49a6f362d5c6cb4a8eafd5ba9ea2`. The amendment is documentation-only and changes sequencing, not ticket scope, logical blockers, contracts, preservation, or approval authority.
 
@@ -372,18 +372,18 @@ The tracker separates the implementation frontier from the merge frontier. `STAC
 | Rescue base SHA | `6e6fe51770cd49a6f362d5c6cb4a8eafd5ba9ea2` |
 | Stack root | `docs/ui-rescue-stacked-pr-delivery` |
 | Stack tip | `docs/ui-rescue-stacked-pr-delivery` |
-| Implementation frontier | T04 / #509 after amendment reaches `STACK_GREEN` |
-| Merge frontier | Amendment PR into `rescue/ui-control-recovery` |
-| Review pending | Amendment documentation |
+| Implementation frontier | T04 / #509 eligible for restack onto amendment |
+| Merge frontier | Amendment PR #547 into `rescue/ui-control-recovery` |
+| Review pending | None; amendment Standards and Spec axes passed |
 | Human approval pending | None for Phase 0 foundation tickets |
 | Descendants requiring restack | T04 / PR #546 |
-| Next safe action | Validate, review, and publish the stacked-delivery amendment |
+| Next safe action | Restack T04 onto `docs/ui-rescue-stacked-pr-delivery`, retarget #546, and rerun T04 gates |
 
 ## Stack map
 
 | Pos | Ticket | Logical blockers | Stack parent | Branch | Worktree | PR base | PR | State | Reviewed implementation SHA | Human gate | Rollback boundary |
 |---:|---|---|---|---|---|---|---|---|---|---|---|
-| 0 | Amendment | None | `rescue/ui-control-recovery` | `docs/ui-rescue-stacked-pr-delivery` | `/home/ubuntu/efcc-rescue-stacked-delivery` | `rescue/ui-control-recovery` | pending | `IN_PROGRESS` | pending | N/A | `6e6fe517` |
+| 0 | Amendment | None | `rescue/ui-control-recovery` | `docs/ui-rescue-stacked-pr-delivery` | `/home/ubuntu/efcc-rescue-stacked-delivery` | `rescue/ui-control-recovery` | #547 | `STACK_GREEN` | `f39062ffd81746b18322ea6035461179cf669363` | N/A | `6e6fe517` |
 | 1 | T04 / #509 | T01 | `docs/ui-rescue-stacked-pr-delivery` | `rescue/t04-worker-suites` | `/home/ubuntu/efcc-rescue-t04-worker-suites` | `rescue/ui-control-recovery (until restack)` | #546 | `RESTACK_REQUIRED` | `865e932b0e8d1f5567330fa242fe3fcf185afc9c` | N/A | `6d27fee` |
 | 2 | T03 / #508 | T02 | `rescue/t04-worker-suites` | `rescue/t03-styling-governance` | planned | `rescue/t04-worker-suites` | — | `BLOCKED` | — | N/A | pending |
 | 3 | T05 / #510 | T04 | `rescue/t03-styling-governance` | `rescue/t05-runtime-stability` | planned | `rescue/t03-styling-governance` | — | `BLOCKED` | — | N/A | pending |
@@ -465,19 +465,19 @@ Append one compact entry after every ticket. Do not copy the entire issue body.
 
 #### Amendment — Adopt ticket-isolated stacked PR delivery
 
-- **Status:** `IN_PROGRESS`
+- **Status:** `STACK_GREEN`
 - **Base rescue SHA:** `6e6fe51770cd49a6f362d5c6cb4a8eafd5ba9ea2`
 - **Rollback boundary:** `6e6fe51`
-- **Reviewed implementation SHA / merge SHA:** pending / pending
-- **Branch / PR:** `docs/ui-rescue-stacked-pr-delivery` / pending
+- **Reviewed implementation SHA / merge SHA:** `f39062ffd81746b18322ea6035461179cf669363` / pending
+- **Branch / PR:** `docs/ui-rescue-stacked-pr-delivery` / [#547](https://github.com/Noahlw/efcc/pull/547)
 - **Worktree:** `/home/ubuntu/efcc-rescue-stacked-delivery`
 - **Delivered outcome:** Owner-approved sequencing amendment for ticket-isolated stacked PRs within each phase; `STACK_GREEN` unlocks child implementation without implying approval or merge; parent corrections propagate through descendants by restacking.
-- **Tests:** Documentation integrity and local-link checks passed; `git diff --check` passed; two-axis `/code-review` pending.
-- **Code review:** Pending.
+- **Tests:** Documentation integrity and local-link checks passed; `git diff --check` passed; two-axis `/code-review` passed with zero actionable findings.
+- **Code review:** Standards and Spec axes passed with zero actionable findings.
 - **Human approval:** `N/A`
 - **Preservation impact:** Sequencing only; ticket acceptance criteria, logical blockers, domain contracts, preservation dispositions, UI contract values, and final Rescue Integration gate unchanged.
-- **Open blocker:** None; amendment PR not yet published.
-- **Next eligible ticket:** T04 / #509 after amendment reaches `STACK_GREEN`.
+- **Open blocker:** None; T04 / #509 may now be restacked.
+- **Next eligible ticket:** T04 / #509; restack and reverify before marking `STACK_GREEN`.
 
 #### T04 / #509 — Restore excluded normalized Worker suites
 
@@ -535,7 +535,7 @@ Keep links here so new sessions do not need to rediscover them.
 |---|---|---|
 | Preservation Ledger | T01 / #506 | [`ui-control-recovery-preservation-ledger.md`](ui-control-recovery-preservation-ledger.md) and [`ui-control-recovery-preservation-summary.md`](ui-control-recovery-preservation-summary.md) — full post-main S4 lineage merged with #544 |
 | UI governance authority | T02 / #507 | [`ui-control-recovery-governance.md`](ui-control-recovery-governance.md) — created, verified, and merged via PR #545 at `6e6fe51` |
-| Stacked PR delivery amendment | Amendment | `AGENTS.md`, [`ui-control-recovery-governance.md`](ui-control-recovery-governance.md), and this tracker — pending amendment PR |
+| Stacked PR delivery amendment | Amendment | `AGENTS.md`, [`ui-control-recovery-governance.md`](ui-control-recovery-governance.md), and this tracker — PR #547 `STACK_GREEN` |
 | Scenario Registry | T03+ | Not created |
 | UI Contract Registry | T03+ | Not created |
 | UI Lab | T07 / #512 | Not created |
