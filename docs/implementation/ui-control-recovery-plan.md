@@ -525,16 +525,16 @@ No production implementation, schema, API, permission, audit, idempotency, scope
 
 #### T04 / #509 — Restore excluded normalized Worker suites
 
-- **Status:** `VERIFYING`
+- **Status:** `PR_READY`
 - **Base rescue SHA:** `6d27fee83a7033af1cf0e896868b3f0e812f0273`
-- **Head / merge SHA:** pending / pending
-- **Branch / PR:** `rescue/t04-worker-suites` / pending
+- **Head / merge SHA:** `39db96bcfd58fcfc1c1ced94620de66c3eaf997d` / pending
+- **Branch / PR:** `rescue/t04-worker-suites` / [#546](https://github.com/Noahlw/efcc/pull/546)
 - **Delivered outcome:** Restored four normalized Worker suites to the aggregate, corrected retired bootstrap-field assertions, isolated pending-request fixtures, corrected scope/audit expectations, and preserved the role-free schema contract.
-- **Tests:** Focused four-suite run: 4 files / 31 tests passed; `pnpm test:workerd`: 43 files / 605 tests passed; `pnpm typecheck` and `pnpm --dir web typecheck` passed; `git diff --check` passed.
-- **Code review:** Pending.
+- **Tests:** Focused four-suite run: 4 files / 31 tests passed; `pnpm test:workerd`: 43 files / 605 tests passed; `pnpm typecheck` and `pnpm --dir web typecheck` passed; commit-time `pnpm verify:precommit` passed; `git diff --check` passed.
+- **Code review:** Standards and Spec axes passed with zero findings.
 - **Human approval:** `N/A`
 - **Preservation impact:** Normalized identity, permission, audit, idempotency, scope, authorization, and aggregate Worker coverage.
-- **Open blocker:** None; T05 / #510 remains blocked until T04 merges.
+- **Open blocker:** PR #546 review/merge; T05 / #510 remains blocked until T04 merges.
 - **Next eligible ticket:** T05 / #510 after T04 merge; T02 / #507 remains independent.
 ---
 
@@ -545,7 +545,6 @@ No production implementation, schema, API, permission, audit, idempotency, scope
 | — | — | — | — | — | — | — |
 
 Allowed status:
-
 - `PENDING`
 - `APPROVED`
 - `REJECTED`
