@@ -106,7 +106,7 @@ Update this table at the start and end of every implementation session.
 | Rescue integration HEAD | `cdb326f206da0bb6ff9de9997124f7bb7b16ff61` — finalized tracker bootstrap on frozen Phase F SHA |
 | Active ticket | T01 / [#506](https://github.com/Noahlw/efcc/issues/506) |
 | Active branch/worktree | `rescue/t01-preservation-ledger` / `/home/ubuntu/efcc-rescue-t01-ledger` |
-| Active PR | None |
+| Active PR | [#543](https://github.com/Noahlw/efcc/pull/543) |
 | Current frontier | T01 [#506](https://github.com/Noahlw/efcc/issues/506), T02 [#507](https://github.com/Noahlw/efcc/issues/507) — both `OPEN`; T01 selected |
 | Pending human approval | None |
 | Active blocker | None |
