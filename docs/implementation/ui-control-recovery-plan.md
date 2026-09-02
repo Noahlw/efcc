@@ -517,9 +517,13 @@ Append one compact entry after every ticket. Do not copy the entire issue body.
 | C-487-04 still probes the retired `accounts.role` column. | `UPDATE accounts SET role` fails with `no such column: role` after migration `0026`. | Current schema intentionally has no `accounts.role`; replaced the mutation with a `PRAGMA table_info(accounts)` absence assertion while retaining normalized management/authorization checks. | Confirmed; assertion corrected |
 | The cross-scope permission expectation is too broad. | A department actor targeting a role outside its scope returns `RoleScopeMismatchError`, not a generic capability denial. | Permission editor test now asserts `RoleScopeMismatchError` exactly; focused suite passes. | Confirmed; assertion corrected |
 | The audit-count query includes adjacent idempotency-conflict IDs, and replay must not create another audit row. | A prefix `LIKE` query can count the conflict audit; the exact original denial produces one matching audit row. | Replaced prefix matching with `audit_id = ?` and expected count `1`; handler replay audit count corrected from `2` to `1`. Focused suite passes. | Confirmed; assertions corrected |
-| Audit ordering remains timestamp-dependent. | Tied timestamps would make result ordering unstable. | Existing permission-editor query orders by deterministic `audit_id ASC`; no change required. | Refuted for current failure |
+| Audit ordering remains timestamp-dependent. | Tied timestamps would make result ordering unstable. | GRANT audit query lacked `audit_id DESC`; added deterministic `ORDER BY inserted_at DESC, audit_id DESC` to match REVOKE. Both queries now deterministic. | Confirmed; corrected in implementation commit |
 
 | Aggregate transport diagnostic | Expected result was a complete required aggregate output. | The first context-mode invocation timed out at the transport layer after 30 seconds while its child process continued; no pass/fail was classified from that attempt. The verified supervised rerun completed separately with the 43-file / 605-test result above. | Diagnostic transport failure retained; superseded by supervised evidence |
+
+| Finding 1 — positive REVOKE audit proof | The second PATCH sends `home.publish: false`, so it must emit one successful `ROLE_DEFINITION_REVOKE` audit correlated to that response. | Response-correlated query: `AND correlation_id = ?` bound to `currentBody.requestId`; asserts `outcome === "SUCCESS"`; deterministic `ORDER BY inserted_at DESC, audit_id DESC`; GRANT count retained at exactly `1`. | Verified; focused handler test passes |
+
+| Finding 2 — deterministic GRANT ordering | GRANT audit query used `ORDER BY inserted_at DESC LIMIT 1` without tiebreaker. | Added `audit_id DESC` to GRANT query to match REVOKE deterministic ordering. | Verified; all suites pass |
 
 No production implementation, schema, API, permission, audit, idempotency, scope, or authorization code was changed by T04.
 
@@ -527,15 +531,15 @@ No production implementation, schema, API, permission, audit, idempotency, scope
 
 - **Status:** `PR_READY`
 - **Base rescue SHA:** `6d27fee83a7033af1cf0e896868b3f0e812f0273`
-- **Head / merge SHA:** `39db96bcfd58fcfc1c1ced94620de66c3eaf997d` / pending
+- **Reviewed implementation SHA / merge SHA:** `865e932b0e8d1f5567330fa242fe3fcf185afc9c` / pending
 - **Branch / PR:** `rescue/t04-worker-suites` / [#546](https://github.com/Noahlw/efcc/pull/546)
-- **Delivered outcome:** Restored four normalized Worker suites to the aggregate, corrected retired bootstrap-field assertions, isolated pending-request fixtures, corrected scope/audit expectations, and preserved the role-free schema contract.
-- **Tests:** Focused four-suite run: 4 files / 31 tests passed; `pnpm test:workerd`: 43 files / 605 tests passed; `pnpm typecheck` and `pnpm --dir web typecheck` passed; commit-time `pnpm verify:precommit` passed; `git diff --check` passed.
-- **Code review:** Standards and Spec axes passed with zero findings.
+- **Delivered outcome:** Restored four normalized Worker suites to the aggregate, corrected retired bootstrap-field assertions, isolated pending-request fixtures, corrected scope/audit expectations, preserved the role-free schema contract, added response-correlated REVOKE audit proof, and ensured deterministic audit ordering.
+- **Tests:** Focused four-suite run: 4 files / 31 tests passed; `pnpm test:workerd`: 43 files / 605 tests passed; `pnpm typecheck` and `pnpm --dir web typecheck` passed; `pnpm verify:precommit` passed; `git diff --check` passed.
+- **Code review:** Standards: zero hard violations, two bounded judgement-call smells (Data Clumps in fixture tuples, duplicated identity assertion shape — both follow existing patterns). Spec: two findings resolved (tracker wording corrected; GRANT ordering made deterministic).
 - **Human approval:** `N/A`
 - **Preservation impact:** Normalized identity, permission, audit, idempotency, scope, authorization, and aggregate Worker coverage.
-- **Open blocker:** PR #546 review/merge; T05 / #510 remains blocked until T04 merges.
-- **Next eligible ticket:** T05 / #510 after T04 merge; T02 / #507 remains independent.
+- **Open blocker:** None; T04 correction complete; awaiting stacked-delivery transition.
+- **Next eligible ticket:** T03, T05 after stacking.
 ---
 
 ## 15. Human approval queue
