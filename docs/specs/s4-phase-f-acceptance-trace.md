@@ -47,12 +47,13 @@ The final verdict is `AUTOMATION READY — RELEASE CONDITIONAL` when F-494-01..0
 The required single-process
 `PROGRAMS_TARGET_URL=http://127.0.0.1:8787 pnpm exec playwright test --config=tests/e2e/programs-d1.config.ts`
 run was retried after reseeding disposable local fixtures and after the
-navigation/readiness fixes recorded on this branch. Each attempt reproduced
+navigation/readiness fixes recorded on this branch. Earlier attempts reproduced
 the local arm64 `workerd` failure (`kj::async-io-unix.c++:186 disconnected`,
 `Broken pipe`, followed by Playwright `Network connection lost` or
-`ERR_CONNECTION_REFUSED`) after roughly 30–53 tests. The first failing
-journey is therefore an infrastructure-backed `BLOCKED` result, not a
-converted skip.
+`ERR_CONNECTION_REFUSED`) after roughly 30–53 tests. The latest final-gate
+attempt lost the Worker after the first four tests and then failed at
+`page.goto("/")` with `ERR_CONNECTION_REFUSED`. The first failing journey is
+therefore an infrastructure-backed `BLOCKED` result, not a converted skip.
 
 The participant Programs geometry report records 24/24 passing assertions
 from eight isolated project runs at the required widths after the same
@@ -62,6 +63,32 @@ F-495-01 and F-495-03 remain `BLOCKED` by this result. F-495-04 remains
 `UNCLAIMED` where human evidence is unavailable. The authoritative aggregate
 verdict is recorded in
 `docs/qa/2026-09-01-s4-phase-f-release-gate.md`.
+
+## Final gate re-verification — 2026-09-02
+
+The required final local matrix was rerun against the already-seeded disposable
+D1 database and loopback Worker. The Programs geometry and full Programs D1
+commands both failed after the local arm64 Worker terminated; management also
+failed after the same Worker death. The first live UI run had 30 expected and
+2 unexpected assertion failures for the approval-empty state; after resetting
+and reseeding disposable fixtures, the same live UI command passed 32/32.
+
+F-495-02 remains `READY` only for the committed deterministic report
+(367 total, 282 passed, 85 intentional skips, 0 failed) and its prior 24/24
+isolated-project Programs geometry input. The failed reruns are recorded in
+the release-gate record and are not converted to skips or passes. The
+aggregate verdict therefore remains `BLOCKED`; human-only rows remain
+`UNCLAIMED`.
+
+The final post-matrix reliability rerun also exposed one workerd-suite
+failure: `pnpm test:workerd` exited 1 with 39 files, 573 passed, and the
+existing `lib/programs/programs.test.ts` PUI-02 test timing out at its default
+30-second budget (`programs.test.ts:7454`). `pnpm verify:identity` passed
+98/98 before that command; separate reruns of components and prototype passed
+786/786 and 38/38. The earlier workerd pass remains historical, so F-495-03
+is blocked by this fresh timeout as well as the full Programs D1 failure.
+
+
 
 ## Executed results
 
