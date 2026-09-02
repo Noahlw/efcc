@@ -103,14 +103,14 @@ Update this table at the start and end of every implementation session.
 |---|---|
 | Current phase | **Phase 0 — Foundation & Recovery Control** |
 | Phase status | `NOT STARTED` |
-| Rescue integration HEAD | Frozen Phase F SHA `6edf28c0f8f7058cf992416e7b517824c3178c8c` — rescue branch created; tracker bootstrap commit pending |
+| Rescue integration HEAD | `3100030690ecd99ae957a063510e0c916ab594a3` — tracker bootstrap committed on frozen Phase F SHA |
 | Active ticket | `None` |
 | Active branch/worktree | `None` |
 | Active PR | `None` |
 | Current frontier | T01 [#506](https://github.com/Noahlw/efcc/issues/506), T02 [#507](https://github.com/Noahlw/efcc/issues/507) — both `OPEN` |
 | Pending human approval | None |
 | Active blocker | None |
-| Next safe action | Commit this tracker bootstrap on `rescue/ui-control-recovery`, then start T01 / #506 from that rescue HEAD |
+| Next safe action | Start T01 / #506 from this rescue HEAD in its own worktree |
 | Last merged rescue SHA | None |
 | Last rollback checkpoint | Frozen Phase F SHA `6edf28c0f8f7058cf992416e7b517824c3178c8` |
 | Entry verification | Frozen Phase F worktree and SHA verified; `rescue/ui-control-recovery` now exists locally from that SHA; tracker installed at `docs/implementation/ui-control-recovery-plan.md`; GitHub frontier remains #506/#507 `OPEN`; no Phase 0 ticket is active in another worktree |
@@ -412,7 +412,7 @@ Only record blockers or decisions that affect more than one ticket or the next p
 | B-002 | Verification | Starting state | Four normalized Worker suites are excluded from the required aggregate | T04 / #509 | `OPEN` | — |
 | B-003 | Runtime | Phase F | Full Programs/Worker/D1 journey is unreliable | T05 / #510 | `OPEN` | — |
 | D-001 | Decision | Planning | `SALVAGE STACK` vs `SELECTIVE REPLAY` remains undecided until Programs tracer evidence | T12 / #517 + owner | `PENDING` | — |
-| B-004 | Reconciliation | Starting state | Required `rescue/ui-control-recovery` branch and intended tracker path were absent at session entry | Phase 0 / owner | `RESOLVED` | Rescue branch created locally from frozen Phase F SHA; tracker installed at intended path; bootstrap commit pending |
+| B-004 | Reconciliation | Starting state | Required `rescue/ui-control-recovery` branch and intended tracker path were absent at session entry | Phase 0 / owner | `RESOLVED` | Rescue branch and tracker bootstrap are committed; branch is based on the frozen Phase F SHA |
 
 Do not create extra implementation work here. If a blocker needs implementation outside an existing ticket, stop and ask the owner whether the tracker/spec must change.
 
