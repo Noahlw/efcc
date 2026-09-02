@@ -104,3 +104,9 @@ its CI/pre-commit provisions:
   `pnpm check` audit (thousands of existing diagnostics) is not part of Fast
   CI or the pre-commit gate, and no broad suppression was added. The
   post-Phase-F refactor removes the debt and makes `pnpm check` pass.
+
+## Amendment (2026-09-03) — T04 normalized Worker suites rejoin the gate
+
+- T04 / [#509](https://github.com/Noahlw/efcc/issues/509) corrected the test-side fixture and assertion defects that previously prevented the normalized Worker suites from running in the aggregate.
+- `pnpm test:workerd` now includes all 43 Worker test files; the verified aggregate result is 43 files / 605 tests passed.
+- The earlier Phase C/D exclusion note above records historical state; no production behavior, schema, or authorization authority changed.

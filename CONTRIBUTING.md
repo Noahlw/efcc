@@ -64,7 +64,7 @@ All other deterministic, credential-free checks run locally before commits throu
 2. `web/` typecheck (`pnpm --dir web typecheck`)
 3. Root GAS/prototype tests (`pnpm test`)
 4. Identity tests (`pnpm verify:identity`)
-5. `web/` workerd tests (`pnpm test:workerd` — excludes the four Phase C Worker files whose test-side defects are flagged in PR #502)
+5. `web/` workerd tests (`pnpm test:workerd` — includes all normalized Worker files; T04 / #509 restored the four previously excluded files)
 6. `web/` component tests (`pnpm --dir web test:components`)
 
 `pnpm run verify` additionally runs the browser shell/geometry Playwright suites (`pnpm test:shell-responsive`, `pnpm test:shell-geometry`, `pnpm test:role-hierarchy-geometry`). None of these deploy anything or require secrets. Prefer `pnpm run verify` before opening a PR; `pnpm run verify:precommit` is the faster non-browser gate the hook runs.

@@ -142,19 +142,19 @@ Update this table at the start and end of every implementation session.
 | Field | Current value |
 |---|---|
 | Current phase | **Phase 0 — Foundation & Recovery Control** |
-| Phase status | `IN PROGRESS — Phase 0 stack root published` |
+| Phase status | `IN PROGRESS — T04 stack green` |
 | Rescue integration HEAD | `6e6fe51770cd49a6f362d5c6cb4a8eafd5ba9ea2` — T02 / #545 merged |
 | Active phase stack | Amendment → T04 → T03 → T05 → T06 |
-| Implementation frontier | T04 / #509 eligible for restack onto amendment |
-| Merge frontier | Amendment PR #547 into `rescue/ui-control-recovery`; T02 already merged |
-| Review pending | None; amendment Standards and Spec review passed |
+| Implementation frontier | T03 / #508 may start from T04 `STACK_GREEN` |
+| Merge frontier | Amendment PR #547 into `rescue/ui-control-recovery`; parent-first merge remains pending |
+| Review pending | None; T04 Standards and Spec axes passed on the restacked diff |
 | Human approval pending | None for Phase 0 foundation tickets |
-| Active blocker | None for amendment; T03 is logically eligible after T02 merged but technically blocked by parent T04; T05/T06 remain logically blocked |
-| Next safe action | Restack T04 onto the `STACK_GREEN` amendment branch and retarget #546 |
+| Active blocker | T05/T06 remain logically blocked; T03 is unlocked by merged T02 and green technical parent T04 |
+| Next safe action | Create T03 worktree from `rescue/t04-worker-suites` and implement only #508 |
 | Last merged rescue SHA | `6e6fe51770cd49a6f362d5c6cb4a8eafd5ba9ea2` |
 | Last rollback checkpoint | Frozen Phase F SHA `6edf28c0f8f7058cf992416e7b517824c3178c8` |
 | Parent Spec amendment | [Owner-approved comment](https://github.com/Noahlw/efcc/issues/505#issuecomment-5514680835) |
-| Entry verification | T01 and T02 are merged in rescue; amendment PR #547 is published and reviewed; T04 reviewed implementation `865e932b0e8d1f5567330fa242fe3fcf185afc9c` is preserved and requires restacking |
+| Entry verification | T01/T02 are merged in rescue; amendment PR #547 is `STACK_GREEN`; T04 PR #546 is retargeted to the amendment and verified `STACK_GREEN` at reviewed implementation `cdbe4757af51247a78bc3a1c94ade1f11c332a6a` |
 
 > T02 / #545 merged at `6e6fe51770cd49a6f362d5c6cb4a8eafd5ba9ea2`. The amendment is documentation-only and changes sequencing, not ticket scope, logical blockers, contracts, preservation, or approval authority.
 
@@ -182,9 +182,9 @@ Update this table at the start and end of every implementation session.
 |---|---|---|---|---|---|---|---|
 | T01 | [#506](https://github.com/Noahlw/efcc/issues/506) | Freeze A–F and publish Preservation Ledger | None | `MERGED_RESCUE` | [#544](https://github.com/Noahlw/efcc/pull/544) | `6d27fee83a7033af1cf0e896868b3f0e812f0273` | Initial ledger plus full post-main S4 lineage correction merged; final provenance and link checks passed |
 | T02 | [#507](https://github.com/Noahlw/efcc/issues/507) | Establish UI governance and agent change control | None | `MERGED_RESCUE` | [#545](https://github.com/Noahlw/efcc/pull/545) | `6e6fe51770cd49a6f362d5c6cb4a8eafd5ba9ea2` | Governance authority merged; stacked-delivery amendment is the next stack root |
-| T03 | [#508](https://github.com/Noahlw/efcc/issues/508) | Enforce styling ownership and typed UI contract governance | T02 | `BLOCKED` | — | — | Logical blocker T02 is merged; technical stack parent T04 is not yet `STACK_GREEN` |
-| T04 | [#509](https://github.com/Noahlw/efcc/issues/509) | Restore excluded normalized Worker suites | T01 | `RESTACK_REQUIRED` | [#546](https://github.com/Noahlw/efcc/pull/546) | — | Reviewed implementation `865e932`; current PR still targets rescue until restack onto amendment |
-| T05 | [#510](https://github.com/Noahlw/efcc/issues/510) | Stabilize full Programs/Worker/D1 runtime | T04 | `BLOCKED` | — | — | Waiting for logical blocker T04 and technical stack parent T03 to reach `STACK_GREEN` |
+| T03 | [#508](https://github.com/Noahlw/efcc/issues/508) | Enforce styling ownership and typed UI contract governance | T02 | `FRONTIER` | — | — | Logical blocker T02 is merged and technical parent T04 is `STACK_GREEN`; create T03 from T04 |
+| T04 | [#509](https://github.com/Noahlw/efcc/issues/509) | Restore excluded normalized Worker suites | T01 | `STACK_GREEN` | [#546](https://github.com/Noahlw/efcc/pull/546) | — | Restacked onto amendment; focused, aggregate, typecheck, precommit, diff-check, and two-axis review gates pass |
+| T05 | [#510](https://github.com/Noahlw/efcc/issues/510) | Stabilize full Programs/Worker/D1 runtime | T04 | `BLOCKED` | — | — | Waiting for T03 technical stack parent |
 | T06 | [#511](https://github.com/Noahlw/efcc/issues/511) | Contain global CSS cascade | T01, T03, T05 | `BLOCKED` | — | — | Waiting for T03 and T05 `STACK_GREEN` |
 
 ### Phase 0 exit record
@@ -195,11 +195,11 @@ Update this table at the start and end of every implementation session.
 | Tickets merged | T01 / #506 and T02 / #507 |
 | Rescue integration SHA | `6e6fe51770cd49a6f362d5c6cb4a8eafd5ba9ea2` |
 | Preservation Ledger | Full post-main S4 lineage merged with T01 correction — [`ui-control-recovery-preservation-ledger.md`](ui-control-recovery-preservation-ledger.md) and [`ui-control-recovery-preservation-summary.md`](ui-control-recovery-preservation-summary.md) |
-| Governance authority | T02 / #507 merged; stacked-delivery amendment pending |
-| Required Worker gate | T04 reviewed implementation complete; branch requires restack onto amendment |
+| Governance authority | T02 / #507 merged; stacked-delivery amendment is `STACK_GREEN` |
+| Required Worker gate | T04 / #509 is `STACK_GREEN` on its stack branch; merge frontier remains parent-first |
 | Programs runtime | Phase F blocker still open — T05 owns it |
 | Cascade result | Not run — T06 owns it |
-| Open blockers | T05/T06 remain logically blocked; T03 is next after T04 reaches `STACK_GREEN`; amendment must reach `STACK_GREEN` before T04 restack |
+| Open blockers | T05/T06 remain logically blocked; T03 is the next implementation frontier |
 | Next phase | Phase 1 after all six Phase 0 tickets merge parent-first |
 
 ---
@@ -371,21 +371,21 @@ The tracker separates the implementation frontier from the merge frontier. `STAC
 | Phase | Phase 0 — Foundation & Recovery Control |
 | Rescue base SHA | `6e6fe51770cd49a6f362d5c6cb4a8eafd5ba9ea2` |
 | Stack root | `docs/ui-rescue-stacked-pr-delivery` |
-| Stack tip | `docs/ui-rescue-stacked-pr-delivery` |
-| Implementation frontier | T04 / #509 eligible for restack onto amendment |
+| Stack tip | `rescue/t04-worker-suites` / PR #546 |
+| Implementation frontier | T03 / #508 |
 | Merge frontier | Amendment PR #547 into `rescue/ui-control-recovery` |
-| Review pending | None; amendment Standards and Spec axes passed |
+| Review pending | None; T04 Standards and Spec axes passed |
 | Human approval pending | None for Phase 0 foundation tickets |
-| Descendants requiring restack | T04 / PR #546 |
-| Next safe action | Restack T04 onto `docs/ui-rescue-stacked-pr-delivery`, retarget #546, and rerun T04 gates |
+| Descendants requiring restack | None |
+| Next safe action | Create T03 worktree from `rescue/t04-worker-suites` and implement only #508 |
 
 ## Stack map
 
 | Pos | Ticket | Logical blockers | Stack parent | Branch | Worktree | PR base | PR | State | Reviewed implementation SHA | Human gate | Rollback boundary |
 |---:|---|---|---|---|---|---|---|---|---|---|---|
 | 0 | Amendment | None | `rescue/ui-control-recovery` | `docs/ui-rescue-stacked-pr-delivery` | `/home/ubuntu/efcc-rescue-stacked-delivery` | `rescue/ui-control-recovery` | #547 | `STACK_GREEN` | `f39062ffd81746b18322ea6035461179cf669363` | N/A | `6e6fe517` |
-| 1 | T04 / #509 | T01 | `docs/ui-rescue-stacked-pr-delivery` | `rescue/t04-worker-suites` | `/home/ubuntu/efcc-rescue-t04-worker-suites` | `rescue/ui-control-recovery (until restack)` | #546 | `RESTACK_REQUIRED` | `865e932b0e8d1f5567330fa242fe3fcf185afc9c` | N/A | `6d27fee` |
-| 2 | T03 / #508 | T02 | `rescue/t04-worker-suites` | `rescue/t03-styling-governance` | planned | `rescue/t04-worker-suites` | — | `BLOCKED` | — | N/A | pending |
+| 1 | T04 / #509 | T01 | `docs/ui-rescue-stacked-pr-delivery` | `rescue/t04-worker-suites` | `/home/ubuntu/efcc-rescue-t04-worker-suites` | `docs/ui-rescue-stacked-pr-delivery` | #546 | `STACK_GREEN` | `cdbe4757af51247a78bc3a1c94ade1f11c332a6a` | N/A | `6d27fee` |
+| 2 | T03 / #508 | T02 | `rescue/t04-worker-suites` | `rescue/t03-styling-governance` | planned | `rescue/t04-worker-suites` | — | `FRONTIER` | — | N/A | pending |
 | 3 | T05 / #510 | T04 | `rescue/t03-styling-governance` | `rescue/t05-runtime-stability` | planned | `rescue/t03-styling-governance` | — | `BLOCKED` | — | N/A | pending |
 | 4 | T06 / #511 | T01, T03, T05 | `rescue/t05-runtime-stability` | `rescue/t06-css-cascade` | planned | `rescue/t05-runtime-stability` | — | `BLOCKED` | — | N/A | pending |
 
@@ -477,36 +477,24 @@ Append one compact entry after every ticket. Do not copy the entire issue body.
 - **Human approval:** `N/A`
 - **Preservation impact:** Sequencing only; ticket acceptance criteria, logical blockers, domain contracts, preservation dispositions, UI contract values, and final Rescue Integration gate unchanged.
 - **Open blocker:** None; T04 / #509 may now be restacked.
-- **Next eligible ticket:** T04 / #509; restack and reverify before marking `STACK_GREEN`.
+- **Next eligible ticket:** T03 / #508; create its branch from `rescue/t04-worker-suites`.
 
 #### T04 / #509 — Restore excluded normalized Worker suites
 
-- **Status:** `RESTACK_REQUIRED`
+- **Status:** `STACK_GREEN`
 - **Base rescue SHA:** `6d27fee83a7033af1cf0e896868b3f0e812f0273`
-- **Reviewed implementation SHA / merge SHA:** `865e932b0e8d1f5567330fa242fe3fcf185afc9c` / pending
+- **Reviewed implementation SHA / merge SHA:** `cdbe4757af51247a78bc3a1c94ade1f11c332a6a` / pending
 - **Rollback boundary:** `6d27fee`
 - **Branch / PR:** `rescue/t04-worker-suites` / [#546](https://github.com/Noahlw/efcc/pull/546)
 - **Worktree:** `/home/ubuntu/efcc-rescue-t04-worker-suites`
 - **Delivered outcome:** Restored four normalized Worker suites to the aggregate; corrected retired bootstrap-field assertions, isolated pending-request fixtures, corrected scope/audit expectations, preserved the role-free schema contract, added response-correlated successful `ROLE_DEFINITION_REVOKE` proof, retained GRANT replay count exactly `1`, and made audit ordering deterministic.
-- **Tests:** Focused four-suite run passed (4 files / 31 tests); `pnpm test:workerd` passed (43 files / 605 tests); root and web typechecks passed; `pnpm verify:precommit` passed (59 component files / 786 tests); `git diff --check` passed.
-- **Code review:** Standards: zero hard violations; two bounded baseline smells, both following existing patterns. Spec findings resolved: tracker SHA wording and deterministic GRANT ordering.
+- **Tests:** Focused four-suite run passed (4 files / 31 tests); `pnpm test:workerd` passed (43 files / 605 tests); root and web typechecks passed; `pnpm verify:precommit` passed; `git diff --check` passed.
+- **Code review:** Standards and Spec axes passed on the restacked incremental diff against amendment `47525a9`, with zero actionable findings.
 - **Human approval:** `N/A`
 - **Preservation impact:** Normalized identity, permission, audit, idempotency, scope, authorization, and aggregate Worker coverage; no production implementation changed.
-- **Open blocker:** Requires restack onto the amendment before final `STACK_GREEN`.
-- **Next eligible ticket:** T03 / #508 after T04 reaches `STACK_GREEN`.
+- **Open blocker:** None; T04 is `STACK_GREEN`, but parent-first merge remains pending.
+- **Next eligible ticket:** T03 / #508; create its branch from `rescue/t04-worker-suites`.
 
-### T04 / #509 — Root-cause evidence matrix
-
-| Hypothesis | Diagnostic result | Status |
-|---|---|---|
-| Normalized authority suites still expected retired fixed-role fields. | Removed `role`/`systemRole` assertions; asserted current identity summaries and omission; suites pass. | Confirmed; test contract corrected |
-| C-487-02 fixtures violated pending-enrollment uniqueness. | Added three distinct disposable target accounts and bound one request to each. | Confirmed; fixture corrected |
-| C-487-04 probed retired `accounts.role`. | Replaced mutation with `PRAGMA table_info(accounts)` absence assertion while retaining management/authorization checks. | Confirmed; assertion corrected |
-| Cross-scope permission expectation was too broad. | Asserted exact `RoleScopeMismatchError`. | Confirmed; assertion corrected |
-| Audit-count query included adjacent idempotency-conflict IDs. | Replaced prefix matching with exact `audit_id = ?`; retained replay count exactly `1`. | Confirmed; assertion corrected |
-| Audit ordering could depend on tied timestamps. | GRANT and REVOKE queries use `ORDER BY inserted_at DESC, audit_id DESC`. | Confirmed; deterministic |
-| Second PATCH needed positive REVOKE audit proof. | Queried exact action/entity/correlation and asserted `correlation_id === currentBody.requestId` and `outcome === "SUCCESS"`. | Confirmed; focused handler test passes |
-| First aggregate transport attempt timed out. | Supervised rerun completed with 43 files / 605 tests; timeout retained as diagnostic, not classified as test failure. | Superseded by verified evidence |
 
 ### T04 / #509 — Root-cause evidence matrix
 
@@ -518,28 +506,12 @@ Append one compact entry after every ticket. Do not copy the entire issue body.
 | The cross-scope permission expectation is too broad. | A department actor targeting a role outside its scope returns `RoleScopeMismatchError`, not a generic capability denial. | Permission editor test now asserts `RoleScopeMismatchError` exactly; focused suite passes. | Confirmed; assertion corrected |
 | The audit-count query includes adjacent idempotency-conflict IDs, and replay must not create another audit row. | A prefix `LIKE` query can count the conflict audit; the exact original denial produces one matching audit row. | Replaced prefix matching with `audit_id = ?` and expected count `1`; handler replay audit count corrected from `2` to `1`. Focused suite passes. | Confirmed; assertions corrected |
 | Audit ordering remains timestamp-dependent. | Tied timestamps would make result ordering unstable. | GRANT audit query lacked `audit_id DESC`; added deterministic `ORDER BY inserted_at DESC, audit_id DESC` to match REVOKE. Both queries now deterministic. | Confirmed; corrected in implementation commit |
-
 | Aggregate transport diagnostic | Expected result was a complete required aggregate output. | The first context-mode invocation timed out at the transport layer after 30 seconds while its child process continued; no pass/fail was classified from that attempt. The verified supervised rerun completed separately with the 43-file / 605-test result above. | Diagnostic transport failure retained; superseded by supervised evidence |
-
 | Finding 1 — positive REVOKE audit proof | The second PATCH sends `home.publish: false`, so it must emit one successful `ROLE_DEFINITION_REVOKE` audit correlated to that response. | Response-correlated query: `AND correlation_id = ?` bound to `currentBody.requestId`; asserts `outcome === "SUCCESS"`; deterministic `ORDER BY inserted_at DESC, audit_id DESC`; GRANT count retained at exactly `1`. | Verified; focused handler test passes |
-
 | Finding 2 — deterministic GRANT ordering | GRANT audit query used `ORDER BY inserted_at DESC LIMIT 1` without tiebreaker. | Added `audit_id DESC` to GRANT query to match REVOKE deterministic ordering. | Verified; all suites pass |
 
 No production implementation, schema, API, permission, audit, idempotency, scope, or authorization code was changed by T04.
 
-#### T04 / #509 — Restore excluded normalized Worker suites
-
-- **Status:** `PR_READY`
-- **Base rescue SHA:** `6d27fee83a7033af1cf0e896868b3f0e812f0273`
-- **Reviewed implementation SHA / merge SHA:** `865e932b0e8d1f5567330fa242fe3fcf185afc9c` / pending
-- **Branch / PR:** `rescue/t04-worker-suites` / [#546](https://github.com/Noahlw/efcc/pull/546)
-- **Delivered outcome:** Restored four normalized Worker suites to the aggregate, corrected retired bootstrap-field assertions, isolated pending-request fixtures, corrected scope/audit expectations, preserved the role-free schema contract, added response-correlated REVOKE audit proof, and ensured deterministic audit ordering.
-- **Tests:** Focused four-suite run: 4 files / 31 tests passed; `pnpm test:workerd`: 43 files / 605 tests passed; `pnpm typecheck` and `pnpm --dir web typecheck` passed; `pnpm verify:precommit` passed; `git diff --check` passed.
-- **Code review:** Standards: zero hard violations, two bounded judgement-call smells (Data Clumps in fixture tuples, duplicated identity assertion shape — both follow existing patterns). Spec: two findings resolved (tracker wording corrected; GRANT ordering made deterministic).
-- **Human approval:** `N/A`
-- **Preservation impact:** Normalized identity, permission, audit, idempotency, scope, authorization, and aggregate Worker coverage.
-- **Open blocker:** None; T04 correction complete; awaiting stacked-delivery transition.
-- **Next eligible ticket:** T03, T05 after stacking.
 ---
 
 ## 15. Human approval queue
@@ -586,7 +558,7 @@ Only record blockers or decisions that affect more than one ticket or the next p
 | ID | Type | First seen | Description | Owner ticket / person | Status | Evidence / resolution |
 |---|---|---|---|---|---|---|
 | B-001 | Governance | Starting state | Existing blanket layout-CVA rule conflicts with approved semantic-CVA/composition ownership | T02 / #507 | `RESOLVED` | Governance authority merged via #545; root guidance delegates composition/layout to patterns/routes |
-| B-002 | Verification | Starting state | Four normalized Worker suites are excluded from the required aggregate | T04 / #509 | `IN_PROGRESS` | Source correction is complete on reviewed implementation `865e932`; aggregate passes 43 files / 605 tests with no exclusions on the T04 branch; stack integration remains tracked by T04 `RESTACK_REQUIRED` |
+| B-002 | Verification | Starting state | Four normalized Worker suites are excluded from the required aggregate | T04 / #509 | `RESOLVED` | T04 is `STACK_GREEN` on reviewed implementation `cdbe475`; aggregate passes 43 files / 605 tests with no exclusions on the T04 branch; parent-first merge remains pending |
 | B-003 | Runtime | Phase F | Full Programs/Worker/D1 journey is unreliable | T05 / #510 | `OPEN` | — |
 | D-001 | Decision | Planning | `SALVAGE STACK` vs `SELECTIVE REPLAY` remains undecided until Programs tracer evidence | T12 / #517 + owner | `PENDING` | — |
 | B-004 | Reconciliation | Starting state | Required `rescue/ui-control-recovery` branch and intended tracker path were absent at session entry | Phase 0 / owner | `RESOLVED` | Rescue branch and tracker bootstrap are committed; branch is based on the frozen Phase F SHA |
@@ -651,9 +623,7 @@ A requested change to those items is not a tracker update. It is an owner-approv
 
 ## 20. Next safe action
 
-1. Validate the amendment documentation and local links.
-2. Run two-axis `/code-review` and resolve genuine findings.
-3. Publish `docs/ui-rescue-stacked-pr-delivery` targeting `rescue/ui-control-recovery`.
-4. Mark the amendment `STACK_GREEN`.
-5. Restack T04 / #509 onto the amendment, retarget #546, and rerun its gates.
-6. Start T03 only after T04 reaches `STACK_GREEN`; keep the Phase 0 stack parent-first and do not start Phase 1.
+1. Create a clean T03 / #508 worktree from the current tip of `rescue/t04-worker-suites` (reviewed implementation `cdbe475`; include the final tracker bookkeeping).
+2. Read Issue #508 and verify T02 logical blocker plus T04 technical stack parent are present.
+3. Implement only T03, run its focused/aggregate gates, run two-axis `/code-review`, and publish its ticket-isolated PR targeting `rescue/t04-worker-suites`.
+4. Mark T03 `STACK_GREEN` only after its implementation, required evidence, review, isolated PR, and safety gate pass; then continue to T05.
