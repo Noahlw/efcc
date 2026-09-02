@@ -214,7 +214,7 @@ describe("#485 Permission Editor Worker seam", () => {
       )
       .bind(PROGRAM_LEADER_ROLE)
       .first<{ count: number }>();
-    assert.equal(auditCount?.count, 2);
+    assert.equal(auditCount?.count, 1);
   });
 
   test("stale PATCH returns nested authoritative revision and Member is forbidden", async () => {

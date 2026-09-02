@@ -508,6 +508,34 @@ Append one compact entry after every ticket. Do not copy the entire issue body.
 | Second PATCH needed positive REVOKE audit proof. | Queried exact action/entity/correlation and asserted `correlation_id === currentBody.requestId` and `outcome === "SUCCESS"`. | Confirmed; focused handler test passes |
 | First aggregate transport attempt timed out. | Supervised rerun completed with 43 files / 605 tests; timeout retained as diagnostic, not classified as test failure. | Superseded by verified evidence |
 
+### T04 / #509 — Root-cause evidence matrix
+
+| Hypothesis | Expected observation if true | Diagnostic result | Status |
+|---|---|---|---|
+| The four suites were excluded because their bootstrap assertions still expect retired fixed-role fields. | `role`/`systemRole` assertions fail with `undefined` versus `null`; the current public projection omits those fields. | `web/lib/auth/handlers.ts` `secretFreeUser` returns identities/capabilities only; contraction tests reject `systemRole`/legacy role fields. Updated both normalized authority suites to assert omission and current identity summaries; both pass. | Confirmed; test contract corrected |
+| C-487-02 fixture rows violate the pending enrollment uniqueness contract. | Multiple Pending rows for one `(program_id, member_user_id)` collide with migration `0005`, leaving later request IDs absent and decision calls returning 404. | The fixture inserted all three request IDs for `TARGET_USER`; migration `0005` enforces a unique pending member/program pair. Added three distinct disposable target accounts and bound one request to each; C-487-02 passes. | Confirmed; fixture corrected |
+| C-487-04 still probes the retired `accounts.role` column. | `UPDATE accounts SET role` fails with `no such column: role` after migration `0026`. | Current schema intentionally has no `accounts.role`; replaced the mutation with a `PRAGMA table_info(accounts)` absence assertion while retaining normalized management/authorization checks. | Confirmed; assertion corrected |
+| The cross-scope permission expectation is too broad. | A department actor targeting a role outside its scope returns `RoleScopeMismatchError`, not a generic capability denial. | Permission editor test now asserts `RoleScopeMismatchError` exactly; focused suite passes. | Confirmed; assertion corrected |
+| The audit-count query includes adjacent idempotency-conflict IDs, and replay must not create another audit row. | A prefix `LIKE` query can count the conflict audit; the exact original denial produces one matching audit row. | Replaced prefix matching with `audit_id = ?` and expected count `1`; handler replay audit count corrected from `2` to `1`. Focused suite passes. | Confirmed; assertions corrected |
+| Audit ordering remains timestamp-dependent. | Tied timestamps would make result ordering unstable. | Existing permission-editor query orders by deterministic `audit_id ASC`; no change required. | Refuted for current failure |
+
+| Aggregate transport diagnostic | Expected result was a complete required aggregate output. | The first context-mode invocation timed out at the transport layer after 30 seconds while its child process continued; no pass/fail was classified from that attempt. The verified supervised rerun completed separately with the 43-file / 605-test result above. | Diagnostic transport failure retained; superseded by supervised evidence |
+
+No production implementation, schema, API, permission, audit, idempotency, scope, or authorization code was changed by T04.
+
+#### T04 / #509 — Restore excluded normalized Worker suites
+
+- **Status:** `VERIFYING`
+- **Base rescue SHA:** `6d27fee83a7033af1cf0e896868b3f0e812f0273`
+- **Head / merge SHA:** pending / pending
+- **Branch / PR:** `rescue/t04-worker-suites` / pending
+- **Delivered outcome:** Restored four normalized Worker suites to the aggregate, corrected retired bootstrap-field assertions, isolated pending-request fixtures, corrected scope/audit expectations, and preserved the role-free schema contract.
+- **Tests:** Focused four-suite run: 4 files / 31 tests passed; `pnpm test:workerd`: 43 files / 605 tests passed; `pnpm typecheck` and `pnpm --dir web typecheck` passed; `git diff --check` passed.
+- **Code review:** Pending.
+- **Human approval:** `N/A`
+- **Preservation impact:** Normalized identity, permission, audit, idempotency, scope, authorization, and aggregate Worker coverage.
+- **Open blocker:** None; T05 / #510 remains blocked until T04 merges.
+- **Next eligible ticket:** T05 / #510 after T04 merge; T02 / #507 remains independent.
 ---
 
 ## 15. Human approval queue
