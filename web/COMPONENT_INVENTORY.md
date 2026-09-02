@@ -138,7 +138,7 @@ Active usage in shipped surfaces is a strict subset (see per-surface). `Select`/
 
 ### Account Directory (`app/management/account-directory-panel.tsx`, `app/management/directory-frame.tsx`)
 
-- **shadcn used:** `Button`, `Input`, `Select`; `DirectoryFrame` owns typed state slots, selection, pagination, and focus restoration while Account keeps `q`, `role`, `status`, `department`, detail queries, URLs, and permissions local
+- **shadcn used:** `Button`, `Input`, `Select`; `DirectoryFrame` owns typed state slots, selection, pagination, and focus restoration while Account keeps `q`, `status`, `department`, detail queries, URLs, and permissions local
 
 ### Permissions & Roles (`app/management/permission-editor-panel.tsx`, `app/management/role-hierarchy-panel.tsx`)
 

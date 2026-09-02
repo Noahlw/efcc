@@ -140,6 +140,41 @@ describe("render-phase-f-evidence", () => {
     });
   });
 
+  test("preserves repeated numeric attachments", () => {
+    const duplicateReport = structuredClone(validReport);
+    const firstResult =
+      duplicateReport.suites?.[0]?.specs?.[0]?.tests?.[0]?.results?.[0];
+    if (!firstResult) {
+      throw new Error("fixture result is missing");
+    }
+    firstResult.attachments = [
+      ...(firstResult.attachments ?? []),
+      {
+        name: "shell-geometry",
+        contentType: "application/json",
+        body: JSON.stringify({ breakpoint: "800px" }),
+      },
+    ];
+
+    const items = parsePlaywrightJsonReport(
+      duplicateReport,
+      "shell-geometry/results.json"
+    );
+    expect(items[0]?.numericAttachments["shell-geometry"]).toStrictEqual([
+      {
+        viewportWidth: 320,
+        viewportHeight: 844,
+        horizontalOverflow: 0,
+        navPosition: "fixed",
+        undersized: [],
+      },
+      { breakpoint: "800px" },
+    ]);
+    expect(renderEvidenceHtml(items)).toContain(
+      "&quot;breakpoint&quot;: &quot;800px&quot;"
+    );
+  });
+
   test("preserves skipped item metadata and reasons in parsed evidence", () => {
     const items = parsePlaywrightJsonReport(
       validReport,

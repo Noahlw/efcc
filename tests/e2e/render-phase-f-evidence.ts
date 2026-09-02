@@ -313,6 +313,8 @@ function collectNumericAttachments(
   sourcePath?: string
 ): Record<string, unknown> {
   const attachments: Record<string, unknown> = {};
+  const duplicateNames = new Set<string>();
+
   for (const res of results) {
     for (const attachment of res.attachments ?? []) {
       validateAttachment(attachment);
@@ -320,10 +322,18 @@ function collectNumericAttachments(
         attachment.contentType === "application/json" ||
         attachment.name.endsWith(".json")
       ) {
-        attachments[attachment.name] = parseJsonAttachmentBody(
-          attachment,
-          sourcePath
-        );
+        const value = parseJsonAttachmentBody(attachment, sourcePath);
+        if (Object.hasOwn(attachments, attachment.name)) {
+          const existing = attachments[attachment.name];
+          if (duplicateNames.has(attachment.name)) {
+            (existing as unknown[]).push(value);
+          } else {
+            attachments[attachment.name] = [existing, value];
+            duplicateNames.add(attachment.name);
+          }
+        } else {
+          attachments[attachment.name] = value;
+        }
       }
     }
   }
