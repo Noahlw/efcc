@@ -8,6 +8,7 @@
 import { defineConfig } from "@playwright/test";
 
 export default defineConfig({
+  metadata: { phaseFTargetUrl: "http://127.0.0.1:4173" },
   testDir: ".",
   testMatch:
     /(?:role-hierarchy|permission-editor|account-access)-geometry\.test\.ts$/u,
@@ -20,8 +21,7 @@ export default defineConfig({
     [
       "json",
       {
-        outputFile:
-          "test-results/phase-f/role-hierarchy-geometry/results.json",
+        outputFile: "test-results/phase-f/role-hierarchy-geometry/results.json",
       },
     ],
   ],

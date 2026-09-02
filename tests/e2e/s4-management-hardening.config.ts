@@ -41,6 +41,7 @@ const outputDir =
 const resultsFile =
   process.env.S4_E2E_RESULTS_FILE ?? path.join(outputDir, "results.json");
 export default defineConfig({
+  metadata: { phaseFTargetUrl: targetUrl },
   testDir: ".",
   testMatch: ["**/s4-management-hardening.test.ts"],
   timeout: 90_000,

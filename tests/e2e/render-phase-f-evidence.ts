@@ -65,8 +65,10 @@ export interface PlaywrightProjectConfig {
 export interface PlaywrightJsonReport {
   config?: {
     rootDir?: string;
+    metadata?: Record<string, unknown>;
     use?: { baseURL?: string };
     projects?: PlaywrightProjectConfig[];
+    webServer?: { url?: string } | null;
   };
   suites?: PlaywrightSuite[];
   errors?: unknown[];
@@ -143,6 +145,21 @@ export function validateLoopbackUrl(urlStr: string | undefined): void {
   }
 }
 
+function collectReportTargetUrls(report: PlaywrightJsonReport): string[] {
+  const config = report.config;
+  const metadataTarget = config?.metadata?.phaseFTargetUrl;
+  if (metadataTarget !== undefined && typeof metadataTarget !== "string") {
+    throw new TypeError("Phase F target URL metadata must be a string");
+  }
+
+  return [
+    metadataTarget,
+    config?.use?.baseURL,
+    config?.webServer?.url,
+    ...(config?.projects ?? []).map((project) => project.use?.baseURL),
+  ].filter((url): url is string => typeof url === "string");
+}
+
 /**
  * Validates attachment metadata to ensure no screenshot/image attachments are present.
  */
@@ -190,7 +207,7 @@ function parseJsonAttachmentBody(
   attachment: PlaywrightAttachment,
   sourcePath?: string
 ): unknown {
-  if (attachment.body) {
+  if (attachment.body !== undefined) {
     try {
       return JSON.parse(attachment.body);
     } catch {
@@ -200,24 +217,31 @@ function parseJsonAttachmentBody(
         );
         return JSON.parse(decoded);
       } catch {
-        return attachment.body;
+        throw new Error(
+          `Malformed JSON attachment rejected: ${attachment.name}`
+        );
       }
     }
   }
 
   if (attachment.path) {
     const resolvedPath = resolveAttachmentPath(attachment.path, sourcePath);
-    if (resolvedPath) {
-      try {
-        const content = readFileSync(resolvedPath, "utf-8");
-        return JSON.parse(content);
-      } catch {
-        return null;
-      }
+    if (!resolvedPath) {
+      throw new Error(
+        `JSON attachment path not found: ${attachment.path} (${attachment.name})`
+      );
+    }
+    try {
+      const content = readFileSync(resolvedPath, "utf-8");
+      return JSON.parse(content);
+    } catch {
+      throw new Error(`Malformed JSON attachment rejected: ${attachment.name}`);
     }
   }
 
-  return null;
+  throw new Error(
+    `JSON attachment has no readable body or path: ${attachment.name}`
+  );
 }
 
 /**
@@ -349,21 +373,22 @@ export function parsePlaywrightJsonReport(
   const report: PlaywrightJsonReport =
     typeof reportInput === "string" ? JSON.parse(reportInput) : reportInput;
 
-  if (report.config?.use?.baseURL) {
-    validateLoopbackUrl(report.config.use.baseURL);
+  const targetUrls = collectReportTargetUrls(report);
+  if (targetUrls.length === 0) {
+    throw new Error(
+      "Missing target URL metadata: Phase F evidence reports must record a loopback target URL"
+    );
+  }
+  for (const targetUrl of targetUrls) {
+    validateLoopbackUrl(targetUrl);
   }
 
-  const projectConfigMap: Record<string, PlaywrightProjectConfig> = {};
-  if (report.config?.projects) {
-    for (const proj of report.config.projects) {
-      if (proj.name) {
-        projectConfigMap[proj.name] = proj;
-        if (proj.use?.baseURL) {
-          validateLoopbackUrl(proj.use.baseURL);
-        }
-      }
-    }
-  }
+  const projectConfigMap: Record<string, PlaywrightProjectConfig> =
+    Object.fromEntries(
+      (report.config?.projects ?? [])
+        .filter((project) => project.name)
+        .map((project) => [project.name, project])
+    );
 
   const items: TestEvidenceItem[] = [];
 
@@ -772,7 +797,7 @@ async function findJsonFiles(dir: string): Promise<string[]> {
     const fullPath = path.join(dir, entry.name);
     if (entry.isDirectory()) {
       files.push(...(await findJsonFiles(fullPath)));
-    } else if (entry.isFile() && entry.name.endsWith(".json")) {
+    } else if (entry.isFile() && entry.name === "results.json") {
       files.push(fullPath);
     }
   }

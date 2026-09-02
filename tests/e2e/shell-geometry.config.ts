@@ -7,6 +7,7 @@
 import { defineConfig } from "@playwright/test";
 
 export default defineConfig({
+  metadata: { phaseFTargetUrl: "http://127.0.0.1:4173" },
   testDir: ".",
   testMatch: /shell-geometry\.test\.ts$/u,
   timeout: 30_000,

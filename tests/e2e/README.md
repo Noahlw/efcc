@@ -85,7 +85,7 @@ pnpm exec tsx tests/e2e/plan-doc-appender.ts \
 
 ## Phase F release evidence
 
-Phase F (#494/#495) keeps the release evidence numeric and local. Geometry suites attach UTF-8 JSON through Playwright `testInfo.attach`; the renderer rejects image attachments and non-loopback target URLs:
+Phase F (#494/#495) keeps the release evidence numeric and local. Geometry suites attach UTF-8 JSON through Playwright `testInfo.attach`; their configs record `metadata.phaseFTargetUrl`, and the renderer rejects image attachments, missing target metadata, and non-loopback target URLs:
 
 ```sh
 pnpm verify:contraction

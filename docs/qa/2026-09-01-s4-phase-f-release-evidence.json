@@ -67,12 +67,12 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 932,
+      "duration": 1005,
       "numericAttachments": {
         "account-access-review-geometry": {
           "left": 0,
           "right": 448,
-          "bottom": 900.0849609375
+          "bottom": 900
         }
       }
     },
@@ -87,7 +87,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 944,
+      "duration": 1020,
       "numericAttachments": {
         "account-access-review-geometry": {
           "left": 0,
@@ -107,7 +107,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 959,
+      "duration": 983,
       "numericAttachments": {
         "account-access-review-geometry": {
           "left": 0,
@@ -127,12 +127,12 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 1004,
+      "duration": 976,
       "numericAttachments": {
         "account-access-review-geometry": {
           "left": 0,
           "right": 390,
-          "bottom": 844
+          "bottom": 844.0908813476562
         }
       }
     },
@@ -147,7 +147,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 943,
+      "duration": 1123,
       "numericAttachments": {
         "account-access-review-geometry": {
           "left": 0,
@@ -167,7 +167,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 967,
+      "duration": 935,
       "numericAttachments": {
         "account-access-review-geometry": {
           "left": 0,
@@ -187,12 +187,12 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 954,
+      "duration": 1064,
       "numericAttachments": {
         "account-access-review-geometry": {
           "left": 0,
           "right": 448,
-          "bottom": 900.3618774414062
+          "bottom": 900
         }
       }
     },
@@ -207,7 +207,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 851,
+      "duration": 726,
       "numericAttachments": {
         "account-access-geometry": {
           "viewportWidth": 1024,
@@ -313,7 +313,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 727,
+      "duration": 1087,
       "numericAttachments": {
         "account-access-geometry": {
           "viewportWidth": 1440,
@@ -419,7 +419,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 800,
+      "duration": 759,
       "numericAttachments": {
         "account-access-geometry": {
           "viewportWidth": 320,
@@ -525,7 +525,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 764,
+      "duration": 881,
       "numericAttachments": {
         "account-access-geometry": {
           "viewportWidth": 390,
@@ -631,7 +631,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 778,
+      "duration": 787,
       "numericAttachments": {
         "account-access-geometry": {
           "viewportWidth": 600,
@@ -737,7 +737,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 736,
+      "duration": 819,
       "numericAttachments": {
         "account-access-geometry": {
           "viewportWidth": 799,
@@ -843,7 +843,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 820,
+      "duration": 861,
       "numericAttachments": {
         "account-access-geometry": {
           "viewportWidth": 800,
@@ -949,7 +949,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 701,
+      "duration": 722,
       "numericAttachments": {
         "permission-editor-detail-geometry": {
           "viewportWidth": 1024,
@@ -1079,7 +1079,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 609,
+      "duration": 682,
       "numericAttachments": {
         "permission-editor-detail-geometry": {
           "viewportWidth": 1440,
@@ -1209,7 +1209,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 713,
+      "duration": 829,
       "numericAttachments": {
         "permission-editor-detail-geometry": {
           "viewportWidth": 320,
@@ -1339,7 +1339,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 774,
+      "duration": 788,
       "numericAttachments": {
         "permission-editor-detail-geometry": {
           "viewportWidth": 390,
@@ -1469,7 +1469,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 801,
+      "duration": 721,
       "numericAttachments": {
         "permission-editor-detail-geometry": {
           "viewportWidth": 600,
@@ -1599,7 +1599,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 801,
+      "duration": 770,
       "numericAttachments": {
         "permission-editor-detail-geometry": {
           "viewportWidth": 799,
@@ -1729,7 +1729,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 612,
+      "duration": 640,
       "numericAttachments": {
         "permission-editor-detail-geometry": {
           "viewportWidth": 800,
@@ -1859,7 +1859,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 946,
+      "duration": 988,
       "numericAttachments": {
         "permission-editor-review-geometry": {
           "viewportWidth": 1024,
@@ -1868,16 +1868,16 @@
           "sheet": {
             "left": 0,
             "right": 1024,
-            "top": 683.8790893554688,
-            "bottom": 900.8790893554688,
+            "top": 683.361083984375,
+            "bottom": 900.361083984375,
             "width": 1024,
             "height": 217
           },
           "review": {
             "left": 0,
             "right": 1024,
-            "top": 746.8790893554688,
-            "bottom": 788.8790893554688,
+            "top": 746.361083984375,
+            "bottom": 788.361083984375,
             "width": 1024,
             "height": 42
           },
@@ -1885,8 +1885,8 @@
             {
               "left": 0,
               "right": 1024,
-              "top": 746.8790893554688,
-              "bottom": 788.8790893554688,
+              "top": 746.361083984375,
+              "bottom": 788.361083984375,
               "width": 1024,
               "height": 42
             }
@@ -1905,7 +1905,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 966,
+      "duration": 1033,
       "numericAttachments": {
         "permission-editor-review-geometry": {
           "viewportWidth": 1440,
@@ -1914,16 +1914,16 @@
           "sheet": {
             "left": 0,
             "right": 1440,
-            "top": 683.0831909179688,
-            "bottom": 900.0831909179688,
+            "top": 683,
+            "bottom": 900,
             "width": 1440,
             "height": 217
           },
           "review": {
             "left": 0,
             "right": 1440,
-            "top": 746.0831909179688,
-            "bottom": 788.0831909179688,
+            "top": 746,
+            "bottom": 788,
             "width": 1440,
             "height": 42
           },
@@ -1931,8 +1931,8 @@
             {
               "left": 0,
               "right": 1440,
-              "top": 746.0831909179688,
-              "bottom": 788.0831909179688,
+              "top": 746,
+              "bottom": 788,
               "width": 1440,
               "height": 42
             }
@@ -1951,7 +1951,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 995,
+      "duration": 987,
       "numericAttachments": {
         "permission-editor-review-geometry": {
           "viewportWidth": 320,
@@ -1960,16 +1960,16 @@
           "sheet": {
             "left": 0,
             "right": 320,
-            "top": 627.3618774414062,
-            "bottom": 844.3618774414062,
+            "top": 627.3594970703125,
+            "bottom": 844.3594970703125,
             "width": 320,
             "height": 217
           },
           "review": {
             "left": 0,
             "right": 320,
-            "top": 690.3618774414062,
-            "bottom": 732.3618774414062,
+            "top": 690.3594970703125,
+            "bottom": 732.3594970703125,
             "width": 320,
             "height": 42
           },
@@ -1977,8 +1977,8 @@
             {
               "left": 0,
               "right": 320,
-              "top": 690.3618774414062,
-              "bottom": 732.3618774414062,
+              "top": 690.3594970703125,
+              "bottom": 732.3594970703125,
               "width": 320,
               "height": 42
             }
@@ -1997,7 +1997,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 940,
+      "duration": 918,
       "numericAttachments": {
         "permission-editor-review-geometry": {
           "viewportWidth": 390,
@@ -2006,16 +2006,16 @@
           "sheet": {
             "left": 0,
             "right": 390,
-            "top": 627.3602905273438,
-            "bottom": 844.3602905273438,
+            "top": 627.8856201171875,
+            "bottom": 844.8856201171875,
             "width": 390,
             "height": 217
           },
           "review": {
             "left": 0,
             "right": 390,
-            "top": 690.3602905273438,
-            "bottom": 732.3602905273438,
+            "top": 690.8856201171875,
+            "bottom": 732.8856201171875,
             "width": 390,
             "height": 42
           },
@@ -2023,8 +2023,8 @@
             {
               "left": 0,
               "right": 390,
-              "top": 690.3602905273438,
-              "bottom": 732.3602905273438,
+              "top": 690.8856201171875,
+              "bottom": 732.8856201171875,
               "width": 390,
               "height": 42
             }
@@ -2043,7 +2043,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 939,
+      "duration": 1054,
       "numericAttachments": {
         "permission-editor-review-geometry": {
           "viewportWidth": 600,
@@ -2052,16 +2052,16 @@
           "sheet": {
             "left": 0,
             "right": 600,
-            "top": 627.8803100585938,
-            "bottom": 844.8803100585938,
+            "top": 627,
+            "bottom": 844,
             "width": 600,
             "height": 217
           },
           "review": {
             "left": 0,
             "right": 600,
-            "top": 690.8803100585938,
-            "bottom": 732.8803100585938,
+            "top": 690,
+            "bottom": 732,
             "width": 600,
             "height": 42
           },
@@ -2069,8 +2069,8 @@
             {
               "left": 0,
               "right": 600,
-              "top": 690.8803100585938,
-              "bottom": 732.8803100585938,
+              "top": 690,
+              "bottom": 732,
               "width": 600,
               "height": 42
             }
@@ -2089,7 +2089,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 994,
+      "duration": 965,
       "numericAttachments": {
         "permission-editor-review-geometry": {
           "viewportWidth": 799,
@@ -2098,16 +2098,16 @@
           "sheet": {
             "left": 0,
             "right": 799,
-            "top": 683.0845947265625,
-            "bottom": 900.0845947265625,
+            "top": 683.361083984375,
+            "bottom": 900.361083984375,
             "width": 799,
             "height": 217
           },
           "review": {
             "left": 0,
             "right": 799,
-            "top": 746.0845947265625,
-            "bottom": 788.0845947265625,
+            "top": 746.361083984375,
+            "bottom": 788.361083984375,
             "width": 799,
             "height": 42
           },
@@ -2115,8 +2115,8 @@
             {
               "left": 0,
               "right": 799,
-              "top": 746.0845947265625,
-              "bottom": 788.0845947265625,
+              "top": 746.361083984375,
+              "bottom": 788.361083984375,
               "width": 799,
               "height": 42
             }
@@ -2135,7 +2135,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 986,
+      "duration": 984,
       "numericAttachments": {
         "permission-editor-review-geometry": {
           "viewportWidth": 800,
@@ -2144,16 +2144,16 @@
           "sheet": {
             "left": 0,
             "right": 800,
-            "top": 683.0845947265625,
-            "bottom": 900.0845947265625,
+            "top": 683,
+            "bottom": 900,
             "width": 800,
             "height": 217
           },
           "review": {
             "left": 0,
             "right": 800,
-            "top": 746.0845947265625,
-            "bottom": 788.0845947265625,
+            "top": 746,
+            "bottom": 788,
             "width": 800,
             "height": 42
           },
@@ -2161,8 +2161,8 @@
             {
               "left": 0,
               "right": 800,
-              "top": 746.0845947265625,
-              "bottom": 788.0845947265625,
+              "top": 746,
+              "bottom": 788,
               "width": 800,
               "height": 42
             }
@@ -2181,7 +2181,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 15052,
+      "duration": 12698,
       "numericAttachments": {
         "programs-geometry": {
           "viewportWidth": 1024,
@@ -2334,7 +2334,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 12143,
+      "duration": 12789,
       "numericAttachments": {
         "programs-geometry": {
           "viewportWidth": 1440,
@@ -2487,7 +2487,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 16281,
+      "duration": 12664,
       "numericAttachments": {
         "programs-geometry": {
           "viewportWidth": 320,
@@ -2638,9 +2638,9 @@
         "width": 390,
         "height": 844
       },
-      "state": "expected",
+      "state": "flaky",
       "status": "passed",
-      "duration": 15008,
+      "duration": 23577,
       "numericAttachments": {
         "programs-geometry": {
           "viewportWidth": 390,
@@ -2793,7 +2793,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 15382,
+      "duration": 15440,
       "numericAttachments": {
         "programs-geometry": {
           "viewportWidth": 600,
@@ -2946,7 +2946,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 15337,
+      "duration": 16892,
       "numericAttachments": {
         "programs-geometry": {
           "viewportWidth": 799,
@@ -3099,7 +3099,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 12992,
+      "duration": 13255,
       "numericAttachments": {
         "programs-geometry": {
           "viewportWidth": 800,
@@ -3252,7 +3252,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 14354,
+      "duration": 16050,
       "numericAttachments": {
         "programs-geometry": {
           "viewportWidth": 900,
@@ -3405,7 +3405,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 4398,
+      "duration": 4503,
       "numericAttachments": {
         "programs-geometry": {
           "viewportWidth": 1024,
@@ -3570,7 +3570,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 4436,
+      "duration": 4203,
       "numericAttachments": {
         "programs-geometry": {
           "viewportWidth": 1440,
@@ -3735,7 +3735,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 4169,
+      "duration": 4291,
       "numericAttachments": {
         "programs-geometry": {
           "viewportWidth": 320,
@@ -3900,7 +3900,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 4137,
+      "duration": 4329,
       "numericAttachments": {
         "programs-geometry": {
           "viewportWidth": 390,
@@ -4065,7 +4065,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 4194,
+      "duration": 4052,
       "numericAttachments": {
         "programs-geometry": {
           "viewportWidth": 600,
@@ -4230,7 +4230,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 4345,
+      "duration": 4308,
       "numericAttachments": {
         "programs-geometry": {
           "viewportWidth": 799,
@@ -4395,7 +4395,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 4190,
+      "duration": 4275,
       "numericAttachments": {
         "programs-geometry": {
           "viewportWidth": 800,
@@ -4560,7 +4560,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 4322,
+      "duration": 4324,
       "numericAttachments": {
         "programs-geometry": {
           "viewportWidth": 900,
@@ -4725,7 +4725,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 10184,
+      "duration": 10792,
       "numericAttachments": {
         "programs-geometry": {
           "viewportWidth": 1024,
@@ -4890,7 +4890,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 10870,
+      "duration": 10477,
       "numericAttachments": {
         "programs-geometry": {
           "viewportWidth": 1440,
@@ -5055,7 +5055,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 9917,
+      "duration": 9738,
       "numericAttachments": {
         "programs-geometry": {
           "viewportWidth": 320,
@@ -5220,7 +5220,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 10043,
+      "duration": 9442,
       "numericAttachments": {
         "programs-geometry": {
           "viewportWidth": 390,
@@ -5385,7 +5385,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 9926,
+      "duration": 9987,
       "numericAttachments": {
         "programs-geometry": {
           "viewportWidth": 600,
@@ -5550,7 +5550,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 10153,
+      "duration": 9704,
       "numericAttachments": {
         "programs-geometry": {
           "viewportWidth": 799,
@@ -5715,7 +5715,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 9940,
+      "duration": 10324,
       "numericAttachments": {
         "programs-geometry": {
           "viewportWidth": 800,
@@ -5880,7 +5880,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 9981,
+      "duration": 9806,
       "numericAttachments": {
         "programs-geometry": {
           "viewportWidth": 900,
@@ -6045,7 +6045,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 598,
+      "duration": 562,
       "numericAttachments": {
         "public-contained-viewport": {
           "undersized": [],
@@ -6078,7 +6078,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 571,
+      "duration": 585,
       "numericAttachments": {
         "public-contained-viewport": {
           "undersized": [],
@@ -6111,7 +6111,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 609,
+      "duration": 605,
       "numericAttachments": {
         "public-contained-viewport": {
           "undersized": [],
@@ -6144,7 +6144,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 658,
+      "duration": 537,
       "numericAttachments": {
         "public-contained-viewport": {
           "undersized": [],
@@ -6177,7 +6177,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 551,
+      "duration": 662,
       "numericAttachments": {
         "public-contained-viewport": {
           "undersized": [],
@@ -6210,7 +6210,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 571,
+      "duration": 724,
       "numericAttachments": {
         "public-contained-viewport": {
           "undersized": [],
@@ -6243,7 +6243,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 587,
+      "duration": 568,
       "numericAttachments": {
         "public-contained-viewport": {
           "undersized": [],
@@ -6277,7 +6277,7 @@
       "state": "skipped",
       "status": "skipped",
       "skipReason": "Material account settings error states are pinned at 320/799/800.",
-      "duration": 86,
+      "duration": 63,
       "numericAttachments": {}
     },
     {
@@ -6292,7 +6292,7 @@
       "state": "skipped",
       "status": "skipped",
       "skipReason": "Material account settings error states are pinned at 320/799/800.",
-      "duration": 66,
+      "duration": 74,
       "numericAttachments": {}
     },
     {
@@ -6306,7 +6306,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 798,
+      "duration": 894,
       "numericAttachments": {
         "public-focused-control": {
           "top": 389.1875,
@@ -6351,7 +6351,7 @@
       "state": "skipped",
       "status": "skipped",
       "skipReason": "Material account settings error states are pinned at 320/799/800.",
-      "duration": 58,
+      "duration": 65,
       "numericAttachments": {}
     },
     {
@@ -6366,7 +6366,7 @@
       "state": "skipped",
       "status": "skipped",
       "skipReason": "Material account settings error states are pinned at 320/799/800.",
-      "duration": 59,
+      "duration": 71,
       "numericAttachments": {}
     },
     {
@@ -6380,7 +6380,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 820,
+      "duration": 1014,
       "numericAttachments": {
         "public-focused-control": {
           "top": 384.078125,
@@ -6424,7 +6424,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 879,
+      "duration": 750,
       "numericAttachments": {
         "public-focused-control": {
           "top": 384.078125,
@@ -6468,7 +6468,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 674,
+      "duration": 645,
       "numericAttachments": {
         "public-focused-control": {
           "top": 129.421875,
@@ -6504,7 +6504,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 622,
+      "duration": 609,
       "numericAttachments": {
         "public-focused-control": {
           "top": 129.421875,
@@ -6540,7 +6540,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 605,
+      "duration": 589,
       "numericAttachments": {
         "public-focused-control": {
           "top": 129.421875,
@@ -6576,7 +6576,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 736,
+      "duration": 602,
       "numericAttachments": {
         "public-focused-control": {
           "top": 129.421875,
@@ -6648,7 +6648,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 644,
+      "duration": 613,
       "numericAttachments": {
         "public-focused-control": {
           "top": 129.421875,
@@ -6684,7 +6684,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 624,
+      "duration": 643,
       "numericAttachments": {
         "public-focused-control": {
           "top": 129.421875,
@@ -6720,7 +6720,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 805,
+      "duration": 874,
       "numericAttachments": {
         "public-focused-control": {
           "top": 348.078125,
@@ -6756,7 +6756,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 798,
+      "duration": 858,
       "numericAttachments": {
         "public-focused-control": {
           "top": 348.078125,
@@ -6792,7 +6792,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 818,
+      "duration": 823,
       "numericAttachments": {
         "public-focused-control": {
           "top": 203.28125,
@@ -6828,7 +6828,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 908,
+      "duration": 765,
       "numericAttachments": {
         "public-focused-control": {
           "top": 203.28125,
@@ -6864,7 +6864,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 922,
+      "duration": 796,
       "numericAttachments": {
         "public-focused-control": {
           "top": 203.28125,
@@ -6900,7 +6900,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 969,
+      "duration": 783,
       "numericAttachments": {
         "public-focused-control": {
           "top": 297.8125,
@@ -6936,7 +6936,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 893,
+      "duration": 867,
       "numericAttachments": {
         "public-focused-control": {
           "top": 348.078125,
@@ -6972,7 +6972,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 733,
+      "duration": 704,
       "numericAttachments": {
         "public-focused-control": {
           "top": 671.625,
@@ -7008,7 +7008,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 715,
+      "duration": 686,
       "numericAttachments": {
         "public-focused-control": {
           "top": 671.625,
@@ -7044,7 +7044,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 721,
+      "duration": 774,
       "numericAttachments": {
         "public-focused-control": {
           "top": 385.203125,
@@ -7080,7 +7080,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 704,
+      "duration": 705,
       "numericAttachments": {
         "public-focused-control": {
           "top": 385.203125,
@@ -7116,7 +7116,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 733,
+      "duration": 786,
       "numericAttachments": {
         "public-focused-control": {
           "top": 385.203125,
@@ -7152,7 +7152,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 726,
+      "duration": 695,
       "numericAttachments": {
         "public-focused-control": {
           "top": 621.359375,
@@ -7188,7 +7188,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 792,
+      "duration": 758,
       "numericAttachments": {
         "public-focused-control": {
           "top": 671.625,
@@ -7224,7 +7224,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 608,
+      "duration": 535,
       "numericAttachments": {
         "public-contained-viewport": {
           "undersized": [],
@@ -7257,7 +7257,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 540,
+      "duration": 541,
       "numericAttachments": {
         "public-contained-viewport": {
           "undersized": [],
@@ -7290,7 +7290,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 552,
+      "duration": 656,
       "numericAttachments": {
         "public-contained-viewport": {
           "undersized": [],
@@ -7323,7 +7323,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 557,
+      "duration": 547,
       "numericAttachments": {
         "public-contained-viewport": {
           "undersized": [],
@@ -7356,7 +7356,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 544,
+      "duration": 512,
       "numericAttachments": {
         "public-contained-viewport": {
           "undersized": [],
@@ -7389,7 +7389,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 552,
+      "duration": 591,
       "numericAttachments": {
         "public-contained-viewport": {
           "undersized": [],
@@ -7422,7 +7422,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 560,
+      "duration": 725,
       "numericAttachments": {
         "public-contained-viewport": {
           "undersized": [],
@@ -7455,7 +7455,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 606,
+      "duration": 667,
       "numericAttachments": {
         "public-contained-viewport": {
           "undersized": [],
@@ -7485,6 +7485,39 @@
       "viewport": {
         "width": 1440,
         "height": 900
+      },
+      "state": "expected",
+      "status": "passed",
+      "duration": 671,
+      "numericAttachments": {
+        "public-contained-viewport": {
+          "undersized": [],
+          "viewport": {
+            "innerWidth": 1440,
+            "innerHeight": 900,
+            "documentWidth": 1440,
+            "bodyWidth": 1440,
+            "shell": {
+              "navigationPosition": "sticky",
+              "navigationTop": 64,
+              "navigationBottom": 900,
+              "contentClientWidth": 1240,
+              "contentScrollWidth": 1240,
+              "contentPaddingBottom": 0,
+              "focusedInNavigation": false
+            }
+          }
+        }
+      }
+    },
+    {
+      "suite": "phase-d-public-geometry.test.ts",
+      "file": "phase-d-public-geometry.test.ts",
+      "title": "Profile renders privacy-safe identity summaries at every W7 width",
+      "project": "w-320",
+      "viewport": {
+        "width": 320,
+        "height": 844
       },
       "state": "expected",
       "status": "passed",
@@ -7493,39 +7526,6 @@
         "public-contained-viewport": {
           "undersized": [],
           "viewport": {
-            "innerWidth": 1440,
-            "innerHeight": 900,
-            "documentWidth": 1440,
-            "bodyWidth": 1440,
-            "shell": {
-              "navigationPosition": "sticky",
-              "navigationTop": 64,
-              "navigationBottom": 900,
-              "contentClientWidth": 1240,
-              "contentScrollWidth": 1240,
-              "contentPaddingBottom": 0,
-              "focusedInNavigation": false
-            }
-          }
-        }
-      }
-    },
-    {
-      "suite": "phase-d-public-geometry.test.ts",
-      "file": "phase-d-public-geometry.test.ts",
-      "title": "Profile renders privacy-safe identity summaries at every W7 width",
-      "project": "w-320",
-      "viewport": {
-        "width": 320,
-        "height": 844
-      },
-      "state": "expected",
-      "status": "passed",
-      "duration": 633,
-      "numericAttachments": {
-        "public-contained-viewport": {
-          "undersized": [],
-          "viewport": {
             "innerWidth": 320,
             "innerHeight": 844,
             "documentWidth": 320,
@@ -7554,7 +7554,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 614,
+      "duration": 613,
       "numericAttachments": {
         "public-contained-viewport": {
           "undersized": [],
@@ -7587,7 +7587,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 650,
+      "duration": 590,
       "numericAttachments": {
         "public-contained-viewport": {
           "undersized": [],
@@ -7620,7 +7620,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 750,
+      "duration": 637,
       "numericAttachments": {
         "public-contained-viewport": {
           "undersized": [],
@@ -7653,7 +7653,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 580,
+      "duration": 613,
       "numericAttachments": {
         "public-contained-viewport": {
           "undersized": [],
@@ -7686,7 +7686,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 610,
+      "duration": 566,
       "numericAttachments": {
         "public-contained-viewport": {
           "undersized": [],
@@ -7719,7 +7719,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 597,
+      "duration": 620,
       "numericAttachments": {
         "public-contained-viewport": {
           "undersized": [],
@@ -7752,7 +7752,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 569,
+      "duration": 621,
       "numericAttachments": {
         "public-contained-viewport": {
           "undersized": [],
@@ -7785,7 +7785,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 566,
+      "duration": 559,
       "numericAttachments": {
         "public-contained-viewport": {
           "undersized": [],
@@ -7818,7 +7818,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 595,
+      "duration": 597,
       "numericAttachments": {
         "public-contained-viewport": {
           "undersized": [],
@@ -7851,7 +7851,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 654,
+      "duration": 562,
       "numericAttachments": {
         "public-contained-viewport": {
           "undersized": [],
@@ -7884,7 +7884,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 530,
+      "duration": 726,
       "numericAttachments": {
         "public-contained-viewport": {
           "undersized": [],
@@ -7917,7 +7917,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 800,
+      "duration": 747,
       "numericAttachments": {
         "public-focused-control": {
           "top": 325.046875,
@@ -7953,7 +7953,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 881,
+      "duration": 705,
       "numericAttachments": {
         "public-focused-control": {
           "top": 325.046875,
@@ -7989,7 +7989,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 730,
+      "duration": 692,
       "numericAttachments": {
         "public-focused-control": {
           "top": 99.09375,
@@ -8025,7 +8025,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 725,
+      "duration": 795,
       "numericAttachments": {
         "public-focused-control": {
           "top": 99.09375,
@@ -8061,7 +8061,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 809,
+      "duration": 713,
       "numericAttachments": {
         "public-focused-control": {
           "top": 99.09375,
@@ -8097,7 +8097,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 800,
+      "duration": 770,
       "numericAttachments": {
         "public-focused-control": {
           "top": 274.78125,
@@ -8133,7 +8133,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 736,
+      "duration": 730,
       "numericAttachments": {
         "public-focused-control": {
           "top": 325.046875,
@@ -8169,7 +8169,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 497,
+      "duration": 517,
       "numericAttachments": {
         "public-focused-control": {
           "top": 0,
@@ -8205,7 +8205,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 492,
+      "duration": 474,
       "numericAttachments": {
         "public-focused-control": {
           "top": 0,
@@ -8241,7 +8241,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 471,
+      "duration": 492,
       "numericAttachments": {
         "public-focused-control": {
           "top": 0,
@@ -8277,7 +8277,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 490,
+      "duration": 461,
       "numericAttachments": {
         "public-focused-control": {
           "top": 0,
@@ -8313,7 +8313,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 499,
+      "duration": 472,
       "numericAttachments": {
         "public-focused-control": {
           "top": 0,
@@ -8349,7 +8349,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 505,
+      "duration": 482,
       "numericAttachments": {
         "public-focused-control": {
           "top": 0,
@@ -8385,7 +8385,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 530,
+      "duration": 470,
       "numericAttachments": {
         "public-focused-control": {
           "top": 0,
@@ -8421,7 +8421,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 628,
+      "duration": 766,
       "numericAttachments": {
         "public-contained-viewport": {
           "undersized": [],
@@ -8446,7 +8446,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 667,
+      "duration": 765,
       "numericAttachments": {
         "public-contained-viewport": {
           "undersized": [],
@@ -8471,7 +8471,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 757,
+      "duration": 676,
       "numericAttachments": {
         "public-contained-viewport": {
           "undersized": [],
@@ -8496,7 +8496,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 666,
+      "duration": 689,
       "numericAttachments": {
         "public-contained-viewport": {
           "undersized": [],
@@ -8521,7 +8521,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 671,
+      "duration": 667,
       "numericAttachments": {
         "public-contained-viewport": {
           "undersized": [],
@@ -8546,7 +8546,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 626,
+      "duration": 645,
       "numericAttachments": {
         "public-contained-viewport": {
           "undersized": [],
@@ -8571,7 +8571,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 681,
+      "duration": 685,
       "numericAttachments": {
         "public-contained-viewport": {
           "undersized": [],
@@ -8596,7 +8596,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 504,
+      "duration": 584,
       "numericAttachments": {
         "public-focused-control": {
           "top": 129.421875,
@@ -8632,7 +8632,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 555,
+      "duration": 539,
       "numericAttachments": {
         "public-focused-control": {
           "top": 129.421875,
@@ -8668,7 +8668,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 681,
+      "duration": 548,
       "numericAttachments": {
         "public-focused-control": {
           "top": 129.421875,
@@ -8704,7 +8704,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 518,
+      "duration": 480,
       "numericAttachments": {
         "public-focused-control": {
           "top": 129.421875,
@@ -8740,7 +8740,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 517,
+      "duration": 518,
       "numericAttachments": {
         "public-focused-control": {
           "top": 129.421875,
@@ -8776,7 +8776,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 534,
+      "duration": 529,
       "numericAttachments": {
         "public-focused-control": {
           "top": 129.421875,
@@ -8812,7 +8812,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 542,
+      "duration": 517,
       "numericAttachments": {
         "public-focused-control": {
           "top": 129.421875,
@@ -8848,7 +8848,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 2081,
+      "duration": 2130,
       "numericAttachments": {
         "public-contained-viewport": {
           "undersized": [],
@@ -8881,7 +8881,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 2290,
+      "duration": 2114,
       "numericAttachments": {
         "public-contained-viewport": {
           "undersized": [],
@@ -8914,7 +8914,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 2298,
+      "duration": 2025,
       "numericAttachments": {
         "public-contained-viewport": {
           "undersized": [],
@@ -8947,7 +8947,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 2275,
+      "duration": 2419,
       "numericAttachments": {
         "public-contained-viewport": {
           "undersized": [],
@@ -8980,7 +8980,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 2129,
+      "duration": 2162,
       "numericAttachments": {
         "public-contained-viewport": {
           "undersized": [],
@@ -9013,7 +9013,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 2202,
+      "duration": 2132,
       "numericAttachments": {
         "public-contained-viewport": {
           "undersized": [],
@@ -9046,7 +9046,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 2361,
+      "duration": 2384,
       "numericAttachments": {
         "public-contained-viewport": {
           "undersized": [],
@@ -9079,7 +9079,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 403,
+      "duration": 426,
       "numericAttachments": {
         "public-focused-control": {
           "top": 389.953125,
@@ -9115,7 +9115,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 404,
+      "duration": 449,
       "numericAttachments": {
         "public-focused-control": {
           "top": 389.953125,
@@ -9151,7 +9151,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 468,
+      "duration": 388,
       "numericAttachments": {
         "public-focused-control": {
           "top": 361.953125,
@@ -9187,7 +9187,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 474,
+      "duration": 369,
       "numericAttachments": {
         "public-focused-control": {
           "top": 361.953125,
@@ -9223,7 +9223,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 507,
+      "duration": 387,
       "numericAttachments": {
         "public-focused-control": {
           "top": 361.953125,
@@ -9259,7 +9259,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 444,
+      "duration": 451,
       "numericAttachments": {
         "public-focused-control": {
           "top": 389.953125,
@@ -9295,7 +9295,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 499,
+      "duration": 393,
       "numericAttachments": {
         "public-focused-control": {
           "top": 389.953125,
@@ -9327,7 +9327,7 @@
       "project": "print-media",
       "state": "expected",
       "status": "passed",
-      "duration": 1966,
+      "duration": 2394,
       "numericAttachments": {
         "attendance-geometry": {
           "overflow": false,
@@ -9353,7 +9353,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 1985,
+      "duration": 2200,
       "numericAttachments": {
         "attendance-geometry": {
           "overflow": false,
@@ -9379,7 +9379,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 1858,
+      "duration": 1968,
       "numericAttachments": {
         "attendance-geometry": {
           "overflow": false,
@@ -9405,7 +9405,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 1742,
+      "duration": 1859,
       "numericAttachments": {
         "attendance-geometry": {
           "overflow": false,
@@ -9431,7 +9431,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 1803,
+      "duration": 1933,
       "numericAttachments": {
         "attendance-geometry": {
           "overflow": false,
@@ -9457,7 +9457,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 1900,
+      "duration": 1859,
       "numericAttachments": {
         "attendance-geometry": {
           "overflow": false,
@@ -9483,7 +9483,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 1880,
+      "duration": 2509,
       "numericAttachments": {
         "attendance-geometry": {
           "overflow": false,
@@ -9509,7 +9509,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 1955,
+      "duration": 1951,
       "numericAttachments": {
         "attendance-geometry": {
           "overflow": false,
@@ -9531,7 +9531,7 @@
       "project": "print-media",
       "state": "expected",
       "status": "passed",
-      "duration": 1950,
+      "duration": 1851,
       "numericAttachments": {
         "attendance-geometry": {
           "overflow": false,
@@ -9558,7 +9558,7 @@
       "state": "skipped",
       "status": "skipped",
       "skipReason": "Skipped by test configuration",
-      "duration": 85,
+      "duration": 63,
       "numericAttachments": {}
     },
     {
@@ -9573,7 +9573,7 @@
       "state": "skipped",
       "status": "skipped",
       "skipReason": "Skipped by test configuration",
-      "duration": 71,
+      "duration": 60,
       "numericAttachments": {}
     },
     {
@@ -9588,7 +9588,7 @@
       "state": "skipped",
       "status": "skipped",
       "skipReason": "Skipped by test configuration",
-      "duration": 64,
+      "duration": 75,
       "numericAttachments": {}
     },
     {
@@ -9603,7 +9603,7 @@
       "state": "skipped",
       "status": "skipped",
       "skipReason": "Skipped by test configuration",
-      "duration": 57,
+      "duration": 60,
       "numericAttachments": {}
     },
     {
@@ -9618,7 +9618,7 @@
       "state": "skipped",
       "status": "skipped",
       "skipReason": "Skipped by test configuration",
-      "duration": 71,
+      "duration": 58,
       "numericAttachments": {}
     },
     {
@@ -9633,7 +9633,7 @@
       "state": "skipped",
       "status": "skipped",
       "skipReason": "Skipped by test configuration",
-      "duration": 56,
+      "duration": 68,
       "numericAttachments": {}
     },
     {
@@ -9648,7 +9648,7 @@
       "state": "skipped",
       "status": "skipped",
       "skipReason": "Skipped by test configuration",
-      "duration": 57,
+      "duration": 61,
       "numericAttachments": {}
     },
     {
@@ -9658,7 +9658,7 @@
       "project": "print-media",
       "state": "expected",
       "status": "passed",
-      "duration": 600,
+      "duration": 541,
       "numericAttachments": {
         "attendance-geometry": {
           "overflow": false,
@@ -9684,7 +9684,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 532,
+      "duration": 561,
       "numericAttachments": {
         "attendance-geometry": {
           "overflow": false,
@@ -9710,7 +9710,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 698,
+      "duration": 557,
       "numericAttachments": {
         "attendance-geometry": {
           "overflow": false,
@@ -9736,7 +9736,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 549,
+      "duration": 530,
       "numericAttachments": {
         "attendance-geometry": {
           "overflow": false,
@@ -9762,7 +9762,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 529,
+      "duration": 536,
       "numericAttachments": {
         "attendance-geometry": {
           "overflow": false,
@@ -9788,7 +9788,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 511,
+      "duration": 525,
       "numericAttachments": {
         "attendance-geometry": {
           "overflow": false,
@@ -9814,7 +9814,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 628,
+      "duration": 569,
       "numericAttachments": {
         "attendance-geometry": {
           "overflow": false,
@@ -9840,7 +9840,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 662,
+      "duration": 537,
       "numericAttachments": {
         "attendance-geometry": {
           "overflow": false,
@@ -9862,7 +9862,7 @@
       "project": "print-media",
       "state": "expected",
       "status": "passed",
-      "duration": 1304,
+      "duration": 1166,
       "numericAttachments": {
         "attendance-geometry": {
           "overflow": false,
@@ -9888,7 +9888,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 1244,
+      "duration": 1275,
       "numericAttachments": {
         "attendance-geometry": {
           "overflow": false,
@@ -9914,7 +9914,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 1350,
+      "duration": 1217,
       "numericAttachments": {
         "attendance-geometry": {
           "overflow": false,
@@ -9940,7 +9940,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 1324,
+      "duration": 1251,
       "numericAttachments": {
         "attendance-geometry": {
           "overflow": false,
@@ -9966,7 +9966,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 1198,
+      "duration": 1516,
       "numericAttachments": {
         "attendance-geometry": {
           "overflow": false,
@@ -9992,7 +9992,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 1299,
+      "duration": 1308,
       "numericAttachments": {
         "attendance-geometry": {
           "overflow": false,
@@ -10018,7 +10018,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 1397,
+      "duration": 1333,
       "numericAttachments": {
         "attendance-geometry": {
           "overflow": false,
@@ -10044,7 +10044,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 1152,
+      "duration": 1206,
       "numericAttachments": {
         "attendance-geometry": {
           "overflow": false,
@@ -10070,7 +10070,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 692,
+      "duration": 669,
       "numericAttachments": {
         "role-create-reorder-geometry": {
           "viewportWidth": 1024,
@@ -10093,7 +10093,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 654,
+      "duration": 693,
       "numericAttachments": {
         "role-create-reorder-geometry": {
           "viewportWidth": 1440,
@@ -10116,7 +10116,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 675,
+      "duration": 631,
       "numericAttachments": {
         "role-create-reorder-geometry": {
           "viewportWidth": 320,
@@ -10139,7 +10139,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 639,
+      "duration": 605,
       "numericAttachments": {
         "role-create-reorder-geometry": {
           "viewportWidth": 390,
@@ -10162,7 +10162,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 613,
+      "duration": 700,
       "numericAttachments": {
         "role-create-reorder-geometry": {
           "viewportWidth": 600,
@@ -10185,7 +10185,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 590,
+      "duration": 681,
       "numericAttachments": {
         "role-create-reorder-geometry": {
           "viewportWidth": 799,
@@ -10208,7 +10208,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 650,
+      "duration": 649,
       "numericAttachments": {
         "role-create-reorder-geometry": {
           "viewportWidth": 800,
@@ -10231,7 +10231,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 675,
+      "duration": 668,
       "numericAttachments": {
         "role-hierarchy-geometry": {
           "viewportWidth": 1024,
@@ -10251,7 +10251,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 715,
+      "duration": 808,
       "numericAttachments": {
         "role-hierarchy-geometry": {
           "viewportWidth": 1440,
@@ -10271,7 +10271,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 631,
+      "duration": 616,
       "numericAttachments": {
         "role-hierarchy-geometry": {
           "viewportWidth": 320,
@@ -10291,7 +10291,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 707,
+      "duration": 645,
       "numericAttachments": {
         "role-hierarchy-geometry": {
           "viewportWidth": 390,
@@ -10311,7 +10311,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 652,
+      "duration": 865,
       "numericAttachments": {
         "role-hierarchy-geometry": {
           "viewportWidth": 600,
@@ -10331,7 +10331,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 600,
+      "duration": 649,
       "numericAttachments": {
         "role-hierarchy-geometry": {
           "viewportWidth": 799,
@@ -10351,7 +10351,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 669,
+      "duration": 712,
       "numericAttachments": {
         "role-hierarchy-geometry": {
           "viewportWidth": 800,
@@ -10371,7 +10371,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 825,
+      "duration": 961,
       "numericAttachments": {
         "role-rename-geometry": {
           "viewportWidth": 1024,
@@ -10392,7 +10392,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 765,
+      "duration": 764,
       "numericAttachments": {
         "role-rename-geometry": {
           "viewportWidth": 1440,
@@ -10413,7 +10413,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 754,
+      "duration": 775,
       "numericAttachments": {
         "role-rename-geometry": {
           "viewportWidth": 320,
@@ -10434,7 +10434,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 819,
+      "duration": 799,
       "numericAttachments": {
         "role-rename-geometry": {
           "viewportWidth": 390,
@@ -10455,7 +10455,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 804,
+      "duration": 767,
       "numericAttachments": {
         "role-rename-geometry": {
           "viewportWidth": 600,
@@ -10476,7 +10476,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 807,
+      "duration": 828,
       "numericAttachments": {
         "role-rename-geometry": {
           "viewportWidth": 799,
@@ -10497,7 +10497,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 798,
+      "duration": 791,
       "numericAttachments": {
         "role-rename-geometry": {
           "viewportWidth": 800,
@@ -10518,7 +10518,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 2310,
+      "duration": 2524,
       "numericAttachments": {}
     },
     {
@@ -10533,296 +10533,58 @@
       "state": "skipped",
       "status": "skipped",
       "skipReason": "Focused functional probe runs only at phone-390 / desktop-1024",
-      "duration": 76,
-      "numericAttachments": {}
-    },
-    {
-      "suite": "s4-management-hardening.test.ts > S4 Management hardening integration gate",
-      "file": "s4-management-hardening.test.ts",
-      "title": "Account Directory opens populated and supports status plus department filters",
-      "project": "desktop-800",
-      "viewport": {
-        "width": 800,
-        "height": 900
-      },
-      "state": "skipped",
-      "status": "skipped",
-      "skipReason": "Focused functional probe runs only at phone-390 / desktop-1024",
-      "duration": 103,
-      "numericAttachments": {}
-    },
-    {
-      "suite": "s4-management-hardening.test.ts > S4 Management hardening integration gate",
-      "file": "s4-management-hardening.test.ts",
-      "title": "Account Directory opens populated and supports status plus department filters",
-      "project": "desktop-900",
-      "viewport": {
-        "width": 900,
-        "height": 900
-      },
-      "state": "skipped",
-      "status": "skipped",
-      "skipReason": "Focused functional probe runs only at phone-390 / desktop-1024",
-      "duration": 101,
-      "numericAttachments": {}
-    },
-    {
-      "suite": "s4-management-hardening.test.ts > S4 Management hardening integration gate",
-      "file": "s4-management-hardening.test.ts",
-      "title": "Account Directory opens populated and supports status plus department filters",
-      "project": "phone-320",
-      "viewport": {
-        "width": 320,
-        "height": 844
-      },
-      "state": "skipped",
-      "status": "skipped",
-      "skipReason": "Focused functional probe runs only at phone-390 / desktop-1024",
-      "duration": 107,
-      "numericAttachments": {}
-    },
-    {
-      "suite": "s4-management-hardening.test.ts > S4 Management hardening integration gate",
-      "file": "s4-management-hardening.test.ts",
-      "title": "Account Directory opens populated and supports status plus department filters",
-      "project": "phone-390",
-      "viewport": {
-        "width": 390,
-        "height": 844
-      },
-      "state": "expected",
-      "status": "passed",
-      "duration": 2480,
-      "numericAttachments": {}
-    },
-    {
-      "suite": "s4-management-hardening.test.ts > S4 Management hardening integration gate",
-      "file": "s4-management-hardening.test.ts",
-      "title": "Account Directory opens populated and supports status plus department filters",
-      "project": "tablet-600",
-      "viewport": {
-        "width": 600,
-        "height": 844
-      },
-      "state": "skipped",
-      "status": "skipped",
-      "skipReason": "Focused functional probe runs only at phone-390 / desktop-1024",
-      "duration": 72,
-      "numericAttachments": {}
-    },
-    {
-      "suite": "s4-management-hardening.test.ts > S4 Management hardening integration gate",
-      "file": "s4-management-hardening.test.ts",
-      "title": "Account Directory opens populated and supports status plus department filters",
-      "project": "tablet-799",
-      "viewport": {
-        "width": 799,
-        "height": 844
-      },
-      "state": "skipped",
-      "status": "skipped",
-      "skipReason": "Focused functional probe runs only at phone-390 / desktop-1024",
-      "duration": 78,
-      "numericAttachments": {}
-    },
-    {
-      "suite": "s4-management-hardening.test.ts > S4 Management hardening integration gate",
-      "file": "s4-management-hardening.test.ts",
-      "title": "Account Directory progressively appends a bounded page",
-      "project": "desktop-1024",
-      "viewport": {
-        "width": 1024,
-        "height": 900
-      },
-      "state": "expected",
-      "status": "passed",
-      "duration": 6522,
-      "numericAttachments": {}
-    },
-    {
-      "suite": "s4-management-hardening.test.ts > S4 Management hardening integration gate",
-      "file": "s4-management-hardening.test.ts",
-      "title": "Account Directory progressively appends a bounded page",
-      "project": "desktop-1440",
-      "viewport": {
-        "width": 1440,
-        "height": 900
-      },
-      "state": "skipped",
-      "status": "skipped",
-      "skipReason": "Focused functional probe runs only at desktop-1024",
-      "duration": 58,
-      "numericAttachments": {}
-    },
-    {
-      "suite": "s4-management-hardening.test.ts > S4 Management hardening integration gate",
-      "file": "s4-management-hardening.test.ts",
-      "title": "Account Directory progressively appends a bounded page",
-      "project": "desktop-800",
-      "viewport": {
-        "width": 800,
-        "height": 900
-      },
-      "state": "skipped",
-      "status": "skipped",
-      "skipReason": "Focused functional probe runs only at desktop-1024",
-      "duration": 63,
-      "numericAttachments": {}
-    },
-    {
-      "suite": "s4-management-hardening.test.ts > S4 Management hardening integration gate",
-      "file": "s4-management-hardening.test.ts",
-      "title": "Account Directory progressively appends a bounded page",
-      "project": "desktop-900",
-      "viewport": {
-        "width": 900,
-        "height": 900
-      },
-      "state": "skipped",
-      "status": "skipped",
-      "skipReason": "Focused functional probe runs only at desktop-1024",
-      "duration": 64,
-      "numericAttachments": {}
-    },
-    {
-      "suite": "s4-management-hardening.test.ts > S4 Management hardening integration gate",
-      "file": "s4-management-hardening.test.ts",
-      "title": "Account Directory progressively appends a bounded page",
-      "project": "phone-320",
-      "viewport": {
-        "width": 320,
-        "height": 844
-      },
-      "state": "skipped",
-      "status": "skipped",
-      "skipReason": "Focused functional probe runs only at desktop-1024",
-      "duration": 67,
-      "numericAttachments": {}
-    },
-    {
-      "suite": "s4-management-hardening.test.ts > S4 Management hardening integration gate",
-      "file": "s4-management-hardening.test.ts",
-      "title": "Account Directory progressively appends a bounded page",
-      "project": "phone-390",
-      "viewport": {
-        "width": 390,
-        "height": 844
-      },
-      "state": "skipped",
-      "status": "skipped",
-      "skipReason": "Focused functional probe runs only at desktop-1024",
-      "duration": 77,
-      "numericAttachments": {}
-    },
-    {
-      "suite": "s4-management-hardening.test.ts > S4 Management hardening integration gate",
-      "file": "s4-management-hardening.test.ts",
-      "title": "Account Directory progressively appends a bounded page",
-      "project": "tablet-600",
-      "viewport": {
-        "width": 600,
-        "height": 844
-      },
-      "state": "skipped",
-      "status": "skipped",
-      "skipReason": "Focused functional probe runs only at desktop-1024",
-      "duration": 91,
-      "numericAttachments": {}
-    },
-    {
-      "suite": "s4-management-hardening.test.ts > S4 Management hardening integration gate",
-      "file": "s4-management-hardening.test.ts",
-      "title": "Account Directory progressively appends a bounded page",
-      "project": "tablet-799",
-      "viewport": {
-        "width": 799,
-        "height": 844
-      },
-      "state": "skipped",
-      "status": "skipped",
-      "skipReason": "Focused functional probe runs only at desktop-1024",
-      "duration": 61,
-      "numericAttachments": {}
-    },
-    {
-      "suite": "s4-management-hardening.test.ts > S4 Management hardening integration gate",
-      "file": "s4-management-hardening.test.ts",
-      "title": "approval Pending/Processed views preserve explicit selection lifecycle",
-      "project": "desktop-1024",
-      "viewport": {
-        "width": 1024,
-        "height": 900
-      },
-      "state": "skipped",
-      "status": "skipped",
-      "skipReason": "Focused functional probe runs only at phone-390",
-      "duration": 63,
-      "numericAttachments": {}
-    },
-    {
-      "suite": "s4-management-hardening.test.ts > S4 Management hardening integration gate",
-      "file": "s4-management-hardening.test.ts",
-      "title": "approval Pending/Processed views preserve explicit selection lifecycle",
-      "project": "desktop-1440",
-      "viewport": {
-        "width": 1440,
-        "height": 900
-      },
-      "state": "skipped",
-      "status": "skipped",
-      "skipReason": "Focused functional probe runs only at phone-390",
-      "duration": 58,
-      "numericAttachments": {}
-    },
-    {
-      "suite": "s4-management-hardening.test.ts > S4 Management hardening integration gate",
-      "file": "s4-management-hardening.test.ts",
-      "title": "approval Pending/Processed views preserve explicit selection lifecycle",
-      "project": "desktop-800",
-      "viewport": {
-        "width": 800,
-        "height": 900
-      },
-      "state": "skipped",
-      "status": "skipped",
-      "skipReason": "Focused functional probe runs only at phone-390",
-      "duration": 74,
-      "numericAttachments": {}
-    },
-    {
-      "suite": "s4-management-hardening.test.ts > S4 Management hardening integration gate",
-      "file": "s4-management-hardening.test.ts",
-      "title": "approval Pending/Processed views preserve explicit selection lifecycle",
-      "project": "desktop-900",
-      "viewport": {
-        "width": 900,
-        "height": 900
-      },
-      "state": "skipped",
-      "status": "skipped",
-      "skipReason": "Focused functional probe runs only at phone-390",
-      "duration": 63,
-      "numericAttachments": {}
-    },
-    {
-      "suite": "s4-management-hardening.test.ts > S4 Management hardening integration gate",
-      "file": "s4-management-hardening.test.ts",
-      "title": "approval Pending/Processed views preserve explicit selection lifecycle",
-      "project": "phone-320",
-      "viewport": {
-        "width": 320,
-        "height": 844
-      },
-      "state": "skipped",
-      "status": "skipped",
-      "skipReason": "Focused functional probe runs only at phone-390",
       "duration": 73,
       "numericAttachments": {}
     },
     {
       "suite": "s4-management-hardening.test.ts > S4 Management hardening integration gate",
       "file": "s4-management-hardening.test.ts",
-      "title": "approval Pending/Processed views preserve explicit selection lifecycle",
+      "title": "Account Directory opens populated and supports status plus department filters",
+      "project": "desktop-800",
+      "viewport": {
+        "width": 800,
+        "height": 900
+      },
+      "state": "skipped",
+      "status": "skipped",
+      "skipReason": "Focused functional probe runs only at phone-390 / desktop-1024",
+      "duration": 108,
+      "numericAttachments": {}
+    },
+    {
+      "suite": "s4-management-hardening.test.ts > S4 Management hardening integration gate",
+      "file": "s4-management-hardening.test.ts",
+      "title": "Account Directory opens populated and supports status plus department filters",
+      "project": "desktop-900",
+      "viewport": {
+        "width": 900,
+        "height": 900
+      },
+      "state": "skipped",
+      "status": "skipped",
+      "skipReason": "Focused functional probe runs only at phone-390 / desktop-1024",
+      "duration": 82,
+      "numericAttachments": {}
+    },
+    {
+      "suite": "s4-management-hardening.test.ts > S4 Management hardening integration gate",
+      "file": "s4-management-hardening.test.ts",
+      "title": "Account Directory opens populated and supports status plus department filters",
+      "project": "phone-320",
+      "viewport": {
+        "width": 320,
+        "height": 844
+      },
+      "state": "skipped",
+      "status": "skipped",
+      "skipReason": "Focused functional probe runs only at phone-390 / desktop-1024",
+      "duration": 141,
+      "numericAttachments": {}
+    },
+    {
+      "suite": "s4-management-hardening.test.ts > S4 Management hardening integration gate",
+      "file": "s4-management-hardening.test.ts",
+      "title": "Account Directory opens populated and supports status plus department filters",
       "project": "phone-390",
       "viewport": {
         "width": 390,
@@ -10830,13 +10592,13 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 5918,
+      "duration": 2655,
       "numericAttachments": {}
     },
     {
       "suite": "s4-management-hardening.test.ts > S4 Management hardening integration gate",
       "file": "s4-management-hardening.test.ts",
-      "title": "approval Pending/Processed views preserve explicit selection lifecycle",
+      "title": "Account Directory opens populated and supports status plus department filters",
       "project": "tablet-600",
       "viewport": {
         "width": 600,
@@ -10844,14 +10606,14 @@
       },
       "state": "skipped",
       "status": "skipped",
-      "skipReason": "Focused functional probe runs only at phone-390",
-      "duration": 66,
+      "skipReason": "Focused functional probe runs only at phone-390 / desktop-1024",
+      "duration": 60,
       "numericAttachments": {}
     },
     {
       "suite": "s4-management-hardening.test.ts > S4 Management hardening integration gate",
       "file": "s4-management-hardening.test.ts",
-      "title": "approval Pending/Processed views preserve explicit selection lifecycle",
+      "title": "Account Directory opens populated and supports status plus department filters",
       "project": "tablet-799",
       "viewport": {
         "width": 799,
@@ -10859,14 +10621,14 @@
       },
       "state": "skipped",
       "status": "skipped",
-      "skipReason": "Focused functional probe runs only at phone-390",
+      "skipReason": "Focused functional probe runs only at phone-390 / desktop-1024",
       "duration": 76,
       "numericAttachments": {}
     },
     {
       "suite": "s4-management-hardening.test.ts > S4 Management hardening integration gate",
       "file": "s4-management-hardening.test.ts",
-      "title": "canonical management navigation preserves safe Back origins",
+      "title": "Account Directory progressively appends a bounded page",
       "project": "desktop-1024",
       "viewport": {
         "width": 1024,
@@ -10874,69 +10636,193 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 5268,
+      "duration": 6516,
       "numericAttachments": {}
     },
     {
       "suite": "s4-management-hardening.test.ts > S4 Management hardening integration gate",
       "file": "s4-management-hardening.test.ts",
-      "title": "canonical management navigation preserves safe Back origins",
+      "title": "Account Directory progressively appends a bounded page",
       "project": "desktop-1440",
       "viewport": {
         "width": 1440,
         "height": 900
       },
-      "state": "expected",
-      "status": "passed",
-      "duration": 5121,
+      "state": "skipped",
+      "status": "skipped",
+      "skipReason": "Focused functional probe runs only at desktop-1024",
+      "duration": 58,
       "numericAttachments": {}
     },
     {
       "suite": "s4-management-hardening.test.ts > S4 Management hardening integration gate",
       "file": "s4-management-hardening.test.ts",
-      "title": "canonical management navigation preserves safe Back origins",
+      "title": "Account Directory progressively appends a bounded page",
       "project": "desktop-800",
       "viewport": {
         "width": 800,
         "height": 900
       },
-      "state": "expected",
-      "status": "passed",
-      "duration": 5773,
+      "state": "skipped",
+      "status": "skipped",
+      "skipReason": "Focused functional probe runs only at desktop-1024",
+      "duration": 73,
       "numericAttachments": {}
     },
     {
       "suite": "s4-management-hardening.test.ts > S4 Management hardening integration gate",
       "file": "s4-management-hardening.test.ts",
-      "title": "canonical management navigation preserves safe Back origins",
+      "title": "Account Directory progressively appends a bounded page",
       "project": "desktop-900",
       "viewport": {
         "width": 900,
         "height": 900
       },
-      "state": "expected",
-      "status": "passed",
-      "duration": 5131,
+      "state": "skipped",
+      "status": "skipped",
+      "skipReason": "Focused functional probe runs only at desktop-1024",
+      "duration": 57,
       "numericAttachments": {}
     },
     {
       "suite": "s4-management-hardening.test.ts > S4 Management hardening integration gate",
       "file": "s4-management-hardening.test.ts",
-      "title": "canonical management navigation preserves safe Back origins",
+      "title": "Account Directory progressively appends a bounded page",
       "project": "phone-320",
       "viewport": {
         "width": 320,
         "height": 844
       },
-      "state": "expected",
-      "status": "passed",
-      "duration": 5228,
+      "state": "skipped",
+      "status": "skipped",
+      "skipReason": "Focused functional probe runs only at desktop-1024",
+      "duration": 97,
       "numericAttachments": {}
     },
     {
       "suite": "s4-management-hardening.test.ts > S4 Management hardening integration gate",
       "file": "s4-management-hardening.test.ts",
-      "title": "canonical management navigation preserves safe Back origins",
+      "title": "Account Directory progressively appends a bounded page",
+      "project": "phone-390",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "state": "skipped",
+      "status": "skipped",
+      "skipReason": "Focused functional probe runs only at desktop-1024",
+      "duration": 59,
+      "numericAttachments": {}
+    },
+    {
+      "suite": "s4-management-hardening.test.ts > S4 Management hardening integration gate",
+      "file": "s4-management-hardening.test.ts",
+      "title": "Account Directory progressively appends a bounded page",
+      "project": "tablet-600",
+      "viewport": {
+        "width": 600,
+        "height": 844
+      },
+      "state": "skipped",
+      "status": "skipped",
+      "skipReason": "Focused functional probe runs only at desktop-1024",
+      "duration": 62,
+      "numericAttachments": {}
+    },
+    {
+      "suite": "s4-management-hardening.test.ts > S4 Management hardening integration gate",
+      "file": "s4-management-hardening.test.ts",
+      "title": "Account Directory progressively appends a bounded page",
+      "project": "tablet-799",
+      "viewport": {
+        "width": 799,
+        "height": 844
+      },
+      "state": "skipped",
+      "status": "skipped",
+      "skipReason": "Focused functional probe runs only at desktop-1024",
+      "duration": 65,
+      "numericAttachments": {}
+    },
+    {
+      "suite": "s4-management-hardening.test.ts > S4 Management hardening integration gate",
+      "file": "s4-management-hardening.test.ts",
+      "title": "approval Pending/Processed views preserve explicit selection lifecycle",
+      "project": "desktop-1024",
+      "viewport": {
+        "width": 1024,
+        "height": 900
+      },
+      "state": "skipped",
+      "status": "skipped",
+      "skipReason": "Focused functional probe runs only at phone-390",
+      "duration": 63,
+      "numericAttachments": {}
+    },
+    {
+      "suite": "s4-management-hardening.test.ts > S4 Management hardening integration gate",
+      "file": "s4-management-hardening.test.ts",
+      "title": "approval Pending/Processed views preserve explicit selection lifecycle",
+      "project": "desktop-1440",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "state": "skipped",
+      "status": "skipped",
+      "skipReason": "Focused functional probe runs only at phone-390",
+      "duration": 77,
+      "numericAttachments": {}
+    },
+    {
+      "suite": "s4-management-hardening.test.ts > S4 Management hardening integration gate",
+      "file": "s4-management-hardening.test.ts",
+      "title": "approval Pending/Processed views preserve explicit selection lifecycle",
+      "project": "desktop-800",
+      "viewport": {
+        "width": 800,
+        "height": 900
+      },
+      "state": "skipped",
+      "status": "skipped",
+      "skipReason": "Focused functional probe runs only at phone-390",
+      "duration": 69,
+      "numericAttachments": {}
+    },
+    {
+      "suite": "s4-management-hardening.test.ts > S4 Management hardening integration gate",
+      "file": "s4-management-hardening.test.ts",
+      "title": "approval Pending/Processed views preserve explicit selection lifecycle",
+      "project": "desktop-900",
+      "viewport": {
+        "width": 900,
+        "height": 900
+      },
+      "state": "skipped",
+      "status": "skipped",
+      "skipReason": "Focused functional probe runs only at phone-390",
+      "duration": 59,
+      "numericAttachments": {}
+    },
+    {
+      "suite": "s4-management-hardening.test.ts > S4 Management hardening integration gate",
+      "file": "s4-management-hardening.test.ts",
+      "title": "approval Pending/Processed views preserve explicit selection lifecycle",
+      "project": "phone-320",
+      "viewport": {
+        "width": 320,
+        "height": 844
+      },
+      "state": "skipped",
+      "status": "skipped",
+      "skipReason": "Focused functional probe runs only at phone-390",
+      "duration": 64,
+      "numericAttachments": {}
+    },
+    {
+      "suite": "s4-management-hardening.test.ts > S4 Management hardening integration gate",
+      "file": "s4-management-hardening.test.ts",
+      "title": "approval Pending/Processed views preserve explicit selection lifecycle",
       "project": "phone-390",
       "viewport": {
         "width": 390,
@@ -10944,45 +10830,17 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 5099,
+      "duration": 6695,
       "numericAttachments": {}
     },
     {
       "suite": "s4-management-hardening.test.ts > S4 Management hardening integration gate",
       "file": "s4-management-hardening.test.ts",
-      "title": "canonical management navigation preserves safe Back origins",
+      "title": "approval Pending/Processed views preserve explicit selection lifecycle",
       "project": "tablet-600",
       "viewport": {
         "width": 600,
         "height": 844
-      },
-      "state": "expected",
-      "status": "passed",
-      "duration": 5007,
-      "numericAttachments": {}
-    },
-    {
-      "suite": "s4-management-hardening.test.ts > S4 Management hardening integration gate",
-      "file": "s4-management-hardening.test.ts",
-      "title": "canonical management navigation preserves safe Back origins",
-      "project": "tablet-799",
-      "viewport": {
-        "width": 799,
-        "height": 844
-      },
-      "state": "expected",
-      "status": "passed",
-      "duration": 5431,
-      "numericAttachments": {}
-    },
-    {
-      "suite": "s4-management-hardening.test.ts > S4 Management hardening integration gate",
-      "file": "s4-management-hardening.test.ts",
-      "title": "captures explicit loading, empty, error, and forbidden management states",
-      "project": "desktop-1024",
-      "viewport": {
-        "width": 1024,
-        "height": 900
       },
       "state": "skipped",
       "status": "skipped",
@@ -10993,6 +10851,148 @@
     {
       "suite": "s4-management-hardening.test.ts > S4 Management hardening integration gate",
       "file": "s4-management-hardening.test.ts",
+      "title": "approval Pending/Processed views preserve explicit selection lifecycle",
+      "project": "tablet-799",
+      "viewport": {
+        "width": 799,
+        "height": 844
+      },
+      "state": "skipped",
+      "status": "skipped",
+      "skipReason": "Focused functional probe runs only at phone-390",
+      "duration": 69,
+      "numericAttachments": {}
+    },
+    {
+      "suite": "s4-management-hardening.test.ts > S4 Management hardening integration gate",
+      "file": "s4-management-hardening.test.ts",
+      "title": "canonical management navigation preserves safe Back origins",
+      "project": "desktop-1024",
+      "viewport": {
+        "width": 1024,
+        "height": 900
+      },
+      "state": "expected",
+      "status": "passed",
+      "duration": 5997,
+      "numericAttachments": {}
+    },
+    {
+      "suite": "s4-management-hardening.test.ts > S4 Management hardening integration gate",
+      "file": "s4-management-hardening.test.ts",
+      "title": "canonical management navigation preserves safe Back origins",
+      "project": "desktop-1440",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "state": "expected",
+      "status": "passed",
+      "duration": 6280,
+      "numericAttachments": {}
+    },
+    {
+      "suite": "s4-management-hardening.test.ts > S4 Management hardening integration gate",
+      "file": "s4-management-hardening.test.ts",
+      "title": "canonical management navigation preserves safe Back origins",
+      "project": "desktop-800",
+      "viewport": {
+        "width": 800,
+        "height": 900
+      },
+      "state": "expected",
+      "status": "passed",
+      "duration": 5959,
+      "numericAttachments": {}
+    },
+    {
+      "suite": "s4-management-hardening.test.ts > S4 Management hardening integration gate",
+      "file": "s4-management-hardening.test.ts",
+      "title": "canonical management navigation preserves safe Back origins",
+      "project": "desktop-900",
+      "viewport": {
+        "width": 900,
+        "height": 900
+      },
+      "state": "expected",
+      "status": "passed",
+      "duration": 6299,
+      "numericAttachments": {}
+    },
+    {
+      "suite": "s4-management-hardening.test.ts > S4 Management hardening integration gate",
+      "file": "s4-management-hardening.test.ts",
+      "title": "canonical management navigation preserves safe Back origins",
+      "project": "phone-320",
+      "viewport": {
+        "width": 320,
+        "height": 844
+      },
+      "state": "expected",
+      "status": "passed",
+      "duration": 6241,
+      "numericAttachments": {}
+    },
+    {
+      "suite": "s4-management-hardening.test.ts > S4 Management hardening integration gate",
+      "file": "s4-management-hardening.test.ts",
+      "title": "canonical management navigation preserves safe Back origins",
+      "project": "phone-390",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "state": "expected",
+      "status": "passed",
+      "duration": 6424,
+      "numericAttachments": {}
+    },
+    {
+      "suite": "s4-management-hardening.test.ts > S4 Management hardening integration gate",
+      "file": "s4-management-hardening.test.ts",
+      "title": "canonical management navigation preserves safe Back origins",
+      "project": "tablet-600",
+      "viewport": {
+        "width": 600,
+        "height": 844
+      },
+      "state": "expected",
+      "status": "passed",
+      "duration": 6112,
+      "numericAttachments": {}
+    },
+    {
+      "suite": "s4-management-hardening.test.ts > S4 Management hardening integration gate",
+      "file": "s4-management-hardening.test.ts",
+      "title": "canonical management navigation preserves safe Back origins",
+      "project": "tablet-799",
+      "viewport": {
+        "width": 799,
+        "height": 844
+      },
+      "state": "expected",
+      "status": "passed",
+      "duration": 6579,
+      "numericAttachments": {}
+    },
+    {
+      "suite": "s4-management-hardening.test.ts > S4 Management hardening integration gate",
+      "file": "s4-management-hardening.test.ts",
+      "title": "captures explicit loading, empty, error, and forbidden management states",
+      "project": "desktop-1024",
+      "viewport": {
+        "width": 1024,
+        "height": 900
+      },
+      "state": "skipped",
+      "status": "skipped",
+      "skipReason": "Focused functional probe runs only at phone-390",
+      "duration": 61,
+      "numericAttachments": {}
+    },
+    {
+      "suite": "s4-management-hardening.test.ts > S4 Management hardening integration gate",
+      "file": "s4-management-hardening.test.ts",
       "title": "captures explicit loading, empty, error, and forbidden management states",
       "project": "desktop-1440",
       "viewport": {
@@ -11002,7 +11002,7 @@
       "state": "skipped",
       "status": "skipped",
       "skipReason": "Focused functional probe runs only at phone-390",
-      "duration": 55,
+      "duration": 62,
       "numericAttachments": {}
     },
     {
@@ -11017,7 +11017,7 @@
       "state": "skipped",
       "status": "skipped",
       "skipReason": "Focused functional probe runs only at phone-390",
-      "duration": 66,
+      "duration": 59,
       "numericAttachments": {}
     },
     {
@@ -11032,7 +11032,7 @@
       "state": "skipped",
       "status": "skipped",
       "skipReason": "Focused functional probe runs only at phone-390",
-      "duration": 66,
+      "duration": 69,
       "numericAttachments": {}
     },
     {
@@ -11061,7 +11061,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 3217,
+      "duration": 3437,
       "numericAttachments": {}
     },
     {
@@ -11076,7 +11076,7 @@
       "state": "skipped",
       "status": "skipped",
       "skipReason": "Focused functional probe runs only at phone-390",
-      "duration": 67,
+      "duration": 62,
       "numericAttachments": {}
     },
     {
@@ -11091,7 +11091,7 @@
       "state": "skipped",
       "status": "skipped",
       "skipReason": "Focused functional probe runs only at phone-390",
-      "duration": 73,
+      "duration": 61,
       "numericAttachments": {}
     },
     {
@@ -11105,7 +11105,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 1861,
+      "duration": 1775,
       "numericAttachments": {
         "account-directory-overflow": {
           "overflow": 0,
@@ -11125,7 +11125,7 @@
       "state": "skipped",
       "status": "skipped",
       "skipReason": "Focused functional probe runs only at tablet-600 / tablet-799 / desktop-800 / desktop-1024",
-      "duration": 75,
+      "duration": 64,
       "numericAttachments": {}
     },
     {
@@ -11139,7 +11139,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 1555,
+      "duration": 1474,
       "numericAttachments": {
         "account-directory-overflow": {
           "overflow": 0,
@@ -11159,7 +11159,7 @@
       "state": "skipped",
       "status": "skipped",
       "skipReason": "Focused functional probe runs only at tablet-600 / tablet-799 / desktop-800 / desktop-1024",
-      "duration": 66,
+      "duration": 64,
       "numericAttachments": {}
     },
     {
@@ -11174,7 +11174,7 @@
       "state": "skipped",
       "status": "skipped",
       "skipReason": "Focused functional probe runs only at tablet-600 / tablet-799 / desktop-800 / desktop-1024",
-      "duration": 66,
+      "duration": 89,
       "numericAttachments": {}
     },
     {
@@ -11189,7 +11189,7 @@
       "state": "skipped",
       "status": "skipped",
       "skipReason": "Focused functional probe runs only at tablet-600 / tablet-799 / desktop-800 / desktop-1024",
-      "duration": 59,
+      "duration": 55,
       "numericAttachments": {}
     },
     {
@@ -11203,7 +11203,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 1707,
+      "duration": 1711,
       "numericAttachments": {
         "account-directory-filter-box": {
           "box": {
@@ -11231,14 +11231,14 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 1966,
+      "duration": 1835,
       "numericAttachments": {
         "account-directory-filter-box": {
           "box": {
             "x": -320,
-            "y": 249.38275146484375,
+            "y": 240.9203338623047,
             "width": 640,
-            "height": 450
+            "height": 450.00001525878906
           },
           "viewportWidth": 799
         },
@@ -11260,7 +11260,7 @@
       "state": "skipped",
       "status": "skipped",
       "skipReason": "Focused functional probe runs only at phone-390 / desktop-900",
-      "duration": 149,
+      "duration": 112,
       "numericAttachments": {}
     },
     {
@@ -11275,7 +11275,7 @@
       "state": "skipped",
       "status": "skipped",
       "skipReason": "Focused functional probe runs only at phone-390 / desktop-900",
-      "duration": 64,
+      "duration": 60,
       "numericAttachments": {}
     },
     {
@@ -11290,7 +11290,7 @@
       "state": "skipped",
       "status": "skipped",
       "skipReason": "Focused functional probe runs only at phone-390 / desktop-900",
-      "duration": 58,
+      "duration": 65,
       "numericAttachments": {}
     },
     {
@@ -11304,7 +11304,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 3035,
+      "duration": 3261,
       "numericAttachments": {
         "home-content-overflow-before": {
           "overflowBefore": 0
@@ -11326,274 +11326,274 @@
       "state": "skipped",
       "status": "skipped",
       "skipReason": "Focused functional probe runs only at phone-390 / desktop-900",
-      "duration": 56,
-      "numericAttachments": {}
-    },
-    {
-      "suite": "s4-management-hardening.test.ts > S4 Management hardening integration gate",
-      "file": "s4-management-hardening.test.ts",
-      "title": "Home Content preserves Draft/Published, Template A/B, preview, audit and conflict with long-content containment",
-      "project": "phone-390",
-      "viewport": {
-        "width": 390,
-        "height": 844
-      },
-      "state": "expected",
-      "status": "passed",
-      "duration": 2763,
-      "numericAttachments": {
-        "home-content-overflow-before": {
-          "overflowBefore": 0
-        },
-        "home-content-overflow-after": {
-          "homeOverflow": 0
-        }
-      }
-    },
-    {
-      "suite": "s4-management-hardening.test.ts > S4 Management hardening integration gate",
-      "file": "s4-management-hardening.test.ts",
-      "title": "Home Content preserves Draft/Published, Template A/B, preview, audit and conflict with long-content containment",
-      "project": "tablet-600",
-      "viewport": {
-        "width": 600,
-        "height": 844
-      },
-      "state": "skipped",
-      "status": "skipped",
-      "skipReason": "Focused functional probe runs only at phone-390 / desktop-900",
-      "duration": 64,
-      "numericAttachments": {}
-    },
-    {
-      "suite": "s4-management-hardening.test.ts > S4 Management hardening integration gate",
-      "file": "s4-management-hardening.test.ts",
-      "title": "Home Content preserves Draft/Published, Template A/B, preview, audit and conflict with long-content containment",
-      "project": "tablet-799",
-      "viewport": {
-        "width": 799,
-        "height": 844
-      },
-      "state": "skipped",
-      "status": "skipped",
-      "skipReason": "Focused functional probe runs only at phone-390 / desktop-900",
-      "duration": 77,
-      "numericAttachments": {}
-    },
-    {
-      "suite": "s4-management-hardening.test.ts > S4 Management hardening integration gate",
-      "file": "s4-management-hardening.test.ts",
-      "title": "Identity malformed URL state and legacy replace redirect fall back safely",
-      "project": "desktop-1024",
-      "viewport": {
-        "width": 1024,
-        "height": 900
-      },
-      "state": "skipped",
-      "status": "skipped",
-      "skipReason": "Focused functional probe runs only at phone-320 / desktop-900",
-      "duration": 85,
-      "numericAttachments": {}
-    },
-    {
-      "suite": "s4-management-hardening.test.ts > S4 Management hardening integration gate",
-      "file": "s4-management-hardening.test.ts",
-      "title": "Identity malformed URL state and legacy replace redirect fall back safely",
-      "project": "desktop-1440",
-      "viewport": {
-        "width": 1440,
-        "height": 900
-      },
-      "state": "skipped",
-      "status": "skipped",
-      "skipReason": "Focused functional probe runs only at phone-320 / desktop-900",
-      "duration": 59,
-      "numericAttachments": {}
-    },
-    {
-      "suite": "s4-management-hardening.test.ts > S4 Management hardening integration gate",
-      "file": "s4-management-hardening.test.ts",
-      "title": "Identity malformed URL state and legacy replace redirect fall back safely",
-      "project": "desktop-800",
-      "viewport": {
-        "width": 800,
-        "height": 900
-      },
-      "state": "skipped",
-      "status": "skipped",
-      "skipReason": "Focused functional probe runs only at phone-320 / desktop-900",
-      "duration": 58,
-      "numericAttachments": {}
-    },
-    {
-      "suite": "s4-management-hardening.test.ts > S4 Management hardening integration gate",
-      "file": "s4-management-hardening.test.ts",
-      "title": "Identity malformed URL state and legacy replace redirect fall back safely",
-      "project": "desktop-900",
-      "viewport": {
-        "width": 900,
-        "height": 900
-      },
-      "state": "expected",
-      "status": "passed",
-      "duration": 5673,
-      "numericAttachments": {
-        "responsive-geometry": {
-          "horizontalOverflow": 0,
-          "undersized": []
-        }
-      }
-    },
-    {
-      "suite": "s4-management-hardening.test.ts > S4 Management hardening integration gate",
-      "file": "s4-management-hardening.test.ts",
-      "title": "Identity malformed URL state and legacy replace redirect fall back safely",
-      "project": "phone-320",
-      "viewport": {
-        "width": 320,
-        "height": 844
-      },
-      "state": "expected",
-      "status": "passed",
-      "duration": 5983,
-      "numericAttachments": {
-        "responsive-geometry": {
-          "horizontalOverflow": 0,
-          "undersized": []
-        }
-      }
-    },
-    {
-      "suite": "s4-management-hardening.test.ts > S4 Management hardening integration gate",
-      "file": "s4-management-hardening.test.ts",
-      "title": "Identity malformed URL state and legacy replace redirect fall back safely",
-      "project": "phone-390",
-      "viewport": {
-        "width": 390,
-        "height": 844
-      },
-      "state": "skipped",
-      "status": "skipped",
-      "skipReason": "Focused functional probe runs only at phone-320 / desktop-900",
-      "duration": 95,
-      "numericAttachments": {}
-    },
-    {
-      "suite": "s4-management-hardening.test.ts > S4 Management hardening integration gate",
-      "file": "s4-management-hardening.test.ts",
-      "title": "Identity malformed URL state and legacy replace redirect fall back safely",
-      "project": "tablet-600",
-      "viewport": {
-        "width": 600,
-        "height": 844
-      },
-      "state": "skipped",
-      "status": "skipped",
-      "skipReason": "Focused functional probe runs only at phone-320 / desktop-900",
-      "duration": 58,
-      "numericAttachments": {}
-    },
-    {
-      "suite": "s4-management-hardening.test.ts > S4 Management hardening integration gate",
-      "file": "s4-management-hardening.test.ts",
-      "title": "Identity malformed URL state and legacy replace redirect fall back safely",
-      "project": "tablet-799",
-      "viewport": {
-        "width": 799,
-        "height": 844
-      },
-      "state": "skipped",
-      "status": "skipped",
-      "skipReason": "Focused functional probe runs only at phone-320 / desktop-900",
-      "duration": 56,
-      "numericAttachments": {}
-    },
-    {
-      "suite": "s4-management-hardening.test.ts > S4 Management hardening integration gate",
-      "file": "s4-management-hardening.test.ts",
-      "title": "Identity Tree → Detail → Permission Editor → Account Access preserves server-owned model, validated return and canonical redirect",
-      "project": "desktop-1024",
-      "viewport": {
-        "width": 1024,
-        "height": 900
-      },
-      "state": "expected",
-      "status": "passed",
-      "duration": 5049,
-      "numericAttachments": {
-        "responsive-geometry": {
-          "horizontalOverflow": 0,
-          "undersized": []
-        }
-      }
-    },
-    {
-      "suite": "s4-management-hardening.test.ts > S4 Management hardening integration gate",
-      "file": "s4-management-hardening.test.ts",
-      "title": "Identity Tree → Detail → Permission Editor → Account Access preserves server-owned model, validated return and canonical redirect",
-      "project": "desktop-1440",
-      "viewport": {
-        "width": 1440,
-        "height": 900
-      },
-      "state": "skipped",
-      "status": "skipped",
-      "skipReason": "Focused functional probe runs only at phone-390 / desktop-900 / desktop-1024",
-      "duration": 64,
-      "numericAttachments": {}
-    },
-    {
-      "suite": "s4-management-hardening.test.ts > S4 Management hardening integration gate",
-      "file": "s4-management-hardening.test.ts",
-      "title": "Identity Tree → Detail → Permission Editor → Account Access preserves server-owned model, validated return and canonical redirect",
-      "project": "desktop-800",
-      "viewport": {
-        "width": 800,
-        "height": 900
-      },
-      "state": "skipped",
-      "status": "skipped",
-      "skipReason": "Focused functional probe runs only at phone-390 / desktop-900 / desktop-1024",
-      "duration": 77,
-      "numericAttachments": {}
-    },
-    {
-      "suite": "s4-management-hardening.test.ts > S4 Management hardening integration gate",
-      "file": "s4-management-hardening.test.ts",
-      "title": "Identity Tree → Detail → Permission Editor → Account Access preserves server-owned model, validated return and canonical redirect",
-      "project": "desktop-900",
-      "viewport": {
-        "width": 900,
-        "height": 900
-      },
-      "state": "expected",
-      "status": "passed",
-      "duration": 5374,
-      "numericAttachments": {
-        "responsive-geometry": {
-          "horizontalOverflow": 0,
-          "undersized": []
-        }
-      }
-    },
-    {
-      "suite": "s4-management-hardening.test.ts > S4 Management hardening integration gate",
-      "file": "s4-management-hardening.test.ts",
-      "title": "Identity Tree → Detail → Permission Editor → Account Access preserves server-owned model, validated return and canonical redirect",
-      "project": "phone-320",
-      "viewport": {
-        "width": 320,
-        "height": 844
-      },
-      "state": "skipped",
-      "status": "skipped",
-      "skipReason": "Focused functional probe runs only at phone-390 / desktop-900 / desktop-1024",
       "duration": 72,
       "numericAttachments": {}
     },
     {
       "suite": "s4-management-hardening.test.ts > S4 Management hardening integration gate",
       "file": "s4-management-hardening.test.ts",
+      "title": "Home Content preserves Draft/Published, Template A/B, preview, audit and conflict with long-content containment",
+      "project": "phone-390",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "state": "expected",
+      "status": "passed",
+      "duration": 2907,
+      "numericAttachments": {
+        "home-content-overflow-before": {
+          "overflowBefore": 0
+        },
+        "home-content-overflow-after": {
+          "homeOverflow": 0
+        }
+      }
+    },
+    {
+      "suite": "s4-management-hardening.test.ts > S4 Management hardening integration gate",
+      "file": "s4-management-hardening.test.ts",
+      "title": "Home Content preserves Draft/Published, Template A/B, preview, audit and conflict with long-content containment",
+      "project": "tablet-600",
+      "viewport": {
+        "width": 600,
+        "height": 844
+      },
+      "state": "skipped",
+      "status": "skipped",
+      "skipReason": "Focused functional probe runs only at phone-390 / desktop-900",
+      "duration": 59,
+      "numericAttachments": {}
+    },
+    {
+      "suite": "s4-management-hardening.test.ts > S4 Management hardening integration gate",
+      "file": "s4-management-hardening.test.ts",
+      "title": "Home Content preserves Draft/Published, Template A/B, preview, audit and conflict with long-content containment",
+      "project": "tablet-799",
+      "viewport": {
+        "width": 799,
+        "height": 844
+      },
+      "state": "skipped",
+      "status": "skipped",
+      "skipReason": "Focused functional probe runs only at phone-390 / desktop-900",
+      "duration": 53,
+      "numericAttachments": {}
+    },
+    {
+      "suite": "s4-management-hardening.test.ts > S4 Management hardening integration gate",
+      "file": "s4-management-hardening.test.ts",
+      "title": "Identity malformed URL state and legacy replace redirect fall back safely",
+      "project": "desktop-1024",
+      "viewport": {
+        "width": 1024,
+        "height": 900
+      },
+      "state": "skipped",
+      "status": "skipped",
+      "skipReason": "Focused functional probe runs only at phone-320 / desktop-900",
+      "duration": 64,
+      "numericAttachments": {}
+    },
+    {
+      "suite": "s4-management-hardening.test.ts > S4 Management hardening integration gate",
+      "file": "s4-management-hardening.test.ts",
+      "title": "Identity malformed URL state and legacy replace redirect fall back safely",
+      "project": "desktop-1440",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "state": "skipped",
+      "status": "skipped",
+      "skipReason": "Focused functional probe runs only at phone-320 / desktop-900",
+      "duration": 55,
+      "numericAttachments": {}
+    },
+    {
+      "suite": "s4-management-hardening.test.ts > S4 Management hardening integration gate",
+      "file": "s4-management-hardening.test.ts",
+      "title": "Identity malformed URL state and legacy replace redirect fall back safely",
+      "project": "desktop-800",
+      "viewport": {
+        "width": 800,
+        "height": 900
+      },
+      "state": "skipped",
+      "status": "skipped",
+      "skipReason": "Focused functional probe runs only at phone-320 / desktop-900",
+      "duration": 67,
+      "numericAttachments": {}
+    },
+    {
+      "suite": "s4-management-hardening.test.ts > S4 Management hardening integration gate",
+      "file": "s4-management-hardening.test.ts",
+      "title": "Identity malformed URL state and legacy replace redirect fall back safely",
+      "project": "desktop-900",
+      "viewport": {
+        "width": 900,
+        "height": 900
+      },
+      "state": "expected",
+      "status": "passed",
+      "duration": 5924,
+      "numericAttachments": {
+        "responsive-geometry": {
+          "horizontalOverflow": 0,
+          "undersized": []
+        }
+      }
+    },
+    {
+      "suite": "s4-management-hardening.test.ts > S4 Management hardening integration gate",
+      "file": "s4-management-hardening.test.ts",
+      "title": "Identity malformed URL state and legacy replace redirect fall back safely",
+      "project": "phone-320",
+      "viewport": {
+        "width": 320,
+        "height": 844
+      },
+      "state": "expected",
+      "status": "passed",
+      "duration": 6523,
+      "numericAttachments": {
+        "responsive-geometry": {
+          "horizontalOverflow": 0,
+          "undersized": []
+        }
+      }
+    },
+    {
+      "suite": "s4-management-hardening.test.ts > S4 Management hardening integration gate",
+      "file": "s4-management-hardening.test.ts",
+      "title": "Identity malformed URL state and legacy replace redirect fall back safely",
+      "project": "phone-390",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "state": "skipped",
+      "status": "skipped",
+      "skipReason": "Focused functional probe runs only at phone-320 / desktop-900",
+      "duration": 65,
+      "numericAttachments": {}
+    },
+    {
+      "suite": "s4-management-hardening.test.ts > S4 Management hardening integration gate",
+      "file": "s4-management-hardening.test.ts",
+      "title": "Identity malformed URL state and legacy replace redirect fall back safely",
+      "project": "tablet-600",
+      "viewport": {
+        "width": 600,
+        "height": 844
+      },
+      "state": "skipped",
+      "status": "skipped",
+      "skipReason": "Focused functional probe runs only at phone-320 / desktop-900",
+      "duration": 55,
+      "numericAttachments": {}
+    },
+    {
+      "suite": "s4-management-hardening.test.ts > S4 Management hardening integration gate",
+      "file": "s4-management-hardening.test.ts",
+      "title": "Identity malformed URL state and legacy replace redirect fall back safely",
+      "project": "tablet-799",
+      "viewport": {
+        "width": 799,
+        "height": 844
+      },
+      "state": "skipped",
+      "status": "skipped",
+      "skipReason": "Focused functional probe runs only at phone-320 / desktop-900",
+      "duration": 57,
+      "numericAttachments": {}
+    },
+    {
+      "suite": "s4-management-hardening.test.ts > S4 Management hardening integration gate",
+      "file": "s4-management-hardening.test.ts",
+      "title": "Identity Tree → Detail → Permission Editor → Account Access preserves server-owned model, validated return and canonical redirect",
+      "project": "desktop-1024",
+      "viewport": {
+        "width": 1024,
+        "height": 900
+      },
+      "state": "expected",
+      "status": "passed",
+      "duration": 6167,
+      "numericAttachments": {
+        "responsive-geometry": {
+          "horizontalOverflow": 0,
+          "undersized": []
+        }
+      }
+    },
+    {
+      "suite": "s4-management-hardening.test.ts > S4 Management hardening integration gate",
+      "file": "s4-management-hardening.test.ts",
+      "title": "Identity Tree → Detail → Permission Editor → Account Access preserves server-owned model, validated return and canonical redirect",
+      "project": "desktop-1440",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "state": "skipped",
+      "status": "skipped",
+      "skipReason": "Focused functional probe runs only at phone-390 / desktop-900 / desktop-1024",
+      "duration": 56,
+      "numericAttachments": {}
+    },
+    {
+      "suite": "s4-management-hardening.test.ts > S4 Management hardening integration gate",
+      "file": "s4-management-hardening.test.ts",
+      "title": "Identity Tree → Detail → Permission Editor → Account Access preserves server-owned model, validated return and canonical redirect",
+      "project": "desktop-800",
+      "viewport": {
+        "width": 800,
+        "height": 900
+      },
+      "state": "skipped",
+      "status": "skipped",
+      "skipReason": "Focused functional probe runs only at phone-390 / desktop-900 / desktop-1024",
+      "duration": 71,
+      "numericAttachments": {}
+    },
+    {
+      "suite": "s4-management-hardening.test.ts > S4 Management hardening integration gate",
+      "file": "s4-management-hardening.test.ts",
+      "title": "Identity Tree → Detail → Permission Editor → Account Access preserves server-owned model, validated return and canonical redirect",
+      "project": "desktop-900",
+      "viewport": {
+        "width": 900,
+        "height": 900
+      },
+      "state": "expected",
+      "status": "passed",
+      "duration": 5729,
+      "numericAttachments": {
+        "responsive-geometry": {
+          "horizontalOverflow": 0,
+          "undersized": []
+        }
+      }
+    },
+    {
+      "suite": "s4-management-hardening.test.ts > S4 Management hardening integration gate",
+      "file": "s4-management-hardening.test.ts",
+      "title": "Identity Tree → Detail → Permission Editor → Account Access preserves server-owned model, validated return and canonical redirect",
+      "project": "phone-320",
+      "viewport": {
+        "width": 320,
+        "height": 844
+      },
+      "state": "skipped",
+      "status": "skipped",
+      "skipReason": "Focused functional probe runs only at phone-390 / desktop-900 / desktop-1024",
+      "duration": 63,
+      "numericAttachments": {}
+    },
+    {
+      "suite": "s4-management-hardening.test.ts > S4 Management hardening integration gate",
+      "file": "s4-management-hardening.test.ts",
       "title": "Identity Tree → Detail → Permission Editor → Account Access preserves server-owned model, validated return and canonical redirect",
       "project": "phone-390",
       "viewport": {
@@ -11602,7 +11602,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 5954,
+      "duration": 6233,
       "numericAttachments": {
         "responsive-geometry": {
           "horizontalOverflow": 0,
@@ -11622,7 +11622,7 @@
       "state": "skipped",
       "status": "skipped",
       "skipReason": "Focused functional probe runs only at phone-390 / desktop-900 / desktop-1024",
-      "duration": 59,
+      "duration": 79,
       "numericAttachments": {}
     },
     {
@@ -11637,7 +11637,7 @@
       "state": "skipped",
       "status": "skipped",
       "skipReason": "Focused functional probe runs only at phone-390 / desktop-900 / desktop-1024",
-      "duration": 76,
+      "duration": 62,
       "numericAttachments": {}
     },
     {
@@ -11652,150 +11652,150 @@
       "state": "skipped",
       "status": "skipped",
       "skipReason": "Focused functional probe runs only at phone-320",
+      "duration": 72,
+      "numericAttachments": {}
+    },
+    {
+      "suite": "s4-management-hardening.test.ts > S4 Management hardening integration gate",
+      "file": "s4-management-hardening.test.ts",
+      "title": "legacy route redirects retain auth deep-link behavior after session clear",
+      "project": "desktop-1440",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "state": "skipped",
+      "status": "skipped",
+      "skipReason": "Focused functional probe runs only at phone-320",
+      "duration": 73,
+      "numericAttachments": {}
+    },
+    {
+      "suite": "s4-management-hardening.test.ts > S4 Management hardening integration gate",
+      "file": "s4-management-hardening.test.ts",
+      "title": "legacy route redirects retain auth deep-link behavior after session clear",
+      "project": "desktop-800",
+      "viewport": {
+        "width": 800,
+        "height": 900
+      },
+      "state": "skipped",
+      "status": "skipped",
+      "skipReason": "Focused functional probe runs only at phone-320",
+      "duration": 72,
+      "numericAttachments": {}
+    },
+    {
+      "suite": "s4-management-hardening.test.ts > S4 Management hardening integration gate",
+      "file": "s4-management-hardening.test.ts",
+      "title": "legacy route redirects retain auth deep-link behavior after session clear",
+      "project": "desktop-900",
+      "viewport": {
+        "width": 900,
+        "height": 900
+      },
+      "state": "skipped",
+      "status": "skipped",
+      "skipReason": "Focused functional probe runs only at phone-320",
+      "duration": 67,
+      "numericAttachments": {}
+    },
+    {
+      "suite": "s4-management-hardening.test.ts > S4 Management hardening integration gate",
+      "file": "s4-management-hardening.test.ts",
+      "title": "legacy route redirects retain auth deep-link behavior after session clear",
+      "project": "phone-320",
+      "viewport": {
+        "width": 320,
+        "height": 844
+      },
+      "state": "expected",
+      "status": "passed",
+      "duration": 1545,
+      "numericAttachments": {}
+    },
+    {
+      "suite": "s4-management-hardening.test.ts > S4 Management hardening integration gate",
+      "file": "s4-management-hardening.test.ts",
+      "title": "legacy route redirects retain auth deep-link behavior after session clear",
+      "project": "phone-390",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "state": "skipped",
+      "status": "skipped",
+      "skipReason": "Focused functional probe runs only at phone-320",
+      "duration": 75,
+      "numericAttachments": {}
+    },
+    {
+      "suite": "s4-management-hardening.test.ts > S4 Management hardening integration gate",
+      "file": "s4-management-hardening.test.ts",
+      "title": "legacy route redirects retain auth deep-link behavior after session clear",
+      "project": "tablet-600",
+      "viewport": {
+        "width": 600,
+        "height": 844
+      },
+      "state": "skipped",
+      "status": "skipped",
+      "skipReason": "Focused functional probe runs only at phone-320",
+      "duration": 82,
+      "numericAttachments": {}
+    },
+    {
+      "suite": "s4-management-hardening.test.ts > S4 Management hardening integration gate",
+      "file": "s4-management-hardening.test.ts",
+      "title": "legacy route redirects retain auth deep-link behavior after session clear",
+      "project": "tablet-799",
+      "viewport": {
+        "width": 799,
+        "height": 844
+      },
+      "state": "skipped",
+      "status": "skipped",
+      "skipReason": "Focused functional probe runs only at phone-320",
+      "duration": 89,
+      "numericAttachments": {}
+    },
+    {
+      "suite": "s4-management-hardening.test.ts > S4 Management hardening integration gate",
+      "file": "s4-management-hardening.test.ts",
+      "title": "Management Hub and settings preserve server-projected grouping, safe Back and static semantics",
+      "project": "desktop-1024",
+      "viewport": {
+        "width": 1024,
+        "height": 900
+      },
+      "state": "expected",
+      "status": "passed",
+      "duration": 11388,
+      "numericAttachments": {
+        "responsive-geometry": {
+          "horizontalOverflow": 0,
+          "undersized": []
+        }
+      }
+    },
+    {
+      "suite": "s4-management-hardening.test.ts > S4 Management hardening integration gate",
+      "file": "s4-management-hardening.test.ts",
+      "title": "Management Hub and settings preserve server-projected grouping, safe Back and static semantics",
+      "project": "desktop-1440",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "state": "skipped",
+      "status": "skipped",
+      "skipReason": "Focused functional probe runs only at phone-390 / desktop-900 / desktop-1024",
       "duration": 68,
       "numericAttachments": {}
     },
     {
       "suite": "s4-management-hardening.test.ts > S4 Management hardening integration gate",
       "file": "s4-management-hardening.test.ts",
-      "title": "legacy route redirects retain auth deep-link behavior after session clear",
-      "project": "desktop-1440",
-      "viewport": {
-        "width": 1440,
-        "height": 900
-      },
-      "state": "skipped",
-      "status": "skipped",
-      "skipReason": "Focused functional probe runs only at phone-320",
-      "duration": 74,
-      "numericAttachments": {}
-    },
-    {
-      "suite": "s4-management-hardening.test.ts > S4 Management hardening integration gate",
-      "file": "s4-management-hardening.test.ts",
-      "title": "legacy route redirects retain auth deep-link behavior after session clear",
-      "project": "desktop-800",
-      "viewport": {
-        "width": 800,
-        "height": 900
-      },
-      "state": "skipped",
-      "status": "skipped",
-      "skipReason": "Focused functional probe runs only at phone-320",
-      "duration": 110,
-      "numericAttachments": {}
-    },
-    {
-      "suite": "s4-management-hardening.test.ts > S4 Management hardening integration gate",
-      "file": "s4-management-hardening.test.ts",
-      "title": "legacy route redirects retain auth deep-link behavior after session clear",
-      "project": "desktop-900",
-      "viewport": {
-        "width": 900,
-        "height": 900
-      },
-      "state": "skipped",
-      "status": "skipped",
-      "skipReason": "Focused functional probe runs only at phone-320",
-      "duration": 72,
-      "numericAttachments": {}
-    },
-    {
-      "suite": "s4-management-hardening.test.ts > S4 Management hardening integration gate",
-      "file": "s4-management-hardening.test.ts",
-      "title": "legacy route redirects retain auth deep-link behavior after session clear",
-      "project": "phone-320",
-      "viewport": {
-        "width": 320,
-        "height": 844
-      },
-      "state": "expected",
-      "status": "passed",
-      "duration": 1838,
-      "numericAttachments": {}
-    },
-    {
-      "suite": "s4-management-hardening.test.ts > S4 Management hardening integration gate",
-      "file": "s4-management-hardening.test.ts",
-      "title": "legacy route redirects retain auth deep-link behavior after session clear",
-      "project": "phone-390",
-      "viewport": {
-        "width": 390,
-        "height": 844
-      },
-      "state": "skipped",
-      "status": "skipped",
-      "skipReason": "Focused functional probe runs only at phone-320",
-      "duration": 91,
-      "numericAttachments": {}
-    },
-    {
-      "suite": "s4-management-hardening.test.ts > S4 Management hardening integration gate",
-      "file": "s4-management-hardening.test.ts",
-      "title": "legacy route redirects retain auth deep-link behavior after session clear",
-      "project": "tablet-600",
-      "viewport": {
-        "width": 600,
-        "height": 844
-      },
-      "state": "skipped",
-      "status": "skipped",
-      "skipReason": "Focused functional probe runs only at phone-320",
-      "duration": 106,
-      "numericAttachments": {}
-    },
-    {
-      "suite": "s4-management-hardening.test.ts > S4 Management hardening integration gate",
-      "file": "s4-management-hardening.test.ts",
-      "title": "legacy route redirects retain auth deep-link behavior after session clear",
-      "project": "tablet-799",
-      "viewport": {
-        "width": 799,
-        "height": 844
-      },
-      "state": "skipped",
-      "status": "skipped",
-      "skipReason": "Focused functional probe runs only at phone-320",
-      "duration": 84,
-      "numericAttachments": {}
-    },
-    {
-      "suite": "s4-management-hardening.test.ts > S4 Management hardening integration gate",
-      "file": "s4-management-hardening.test.ts",
-      "title": "Management Hub and settings preserve server-projected grouping, safe Back and static semantics",
-      "project": "desktop-1024",
-      "viewport": {
-        "width": 1024,
-        "height": 900
-      },
-      "state": "expected",
-      "status": "passed",
-      "duration": 9009,
-      "numericAttachments": {
-        "responsive-geometry": {
-          "horizontalOverflow": 0,
-          "undersized": []
-        }
-      }
-    },
-    {
-      "suite": "s4-management-hardening.test.ts > S4 Management hardening integration gate",
-      "file": "s4-management-hardening.test.ts",
-      "title": "Management Hub and settings preserve server-projected grouping, safe Back and static semantics",
-      "project": "desktop-1440",
-      "viewport": {
-        "width": 1440,
-        "height": 900
-      },
-      "state": "skipped",
-      "status": "skipped",
-      "skipReason": "Focused functional probe runs only at phone-390 / desktop-900 / desktop-1024",
-      "duration": 72,
-      "numericAttachments": {}
-    },
-    {
-      "suite": "s4-management-hardening.test.ts > S4 Management hardening integration gate",
-      "file": "s4-management-hardening.test.ts",
       "title": "Management Hub and settings preserve server-projected grouping, safe Back and static semantics",
       "project": "desktop-800",
       "viewport": {
@@ -11805,7 +11805,7 @@
       "state": "skipped",
       "status": "skipped",
       "skipReason": "Focused functional probe runs only at phone-390 / desktop-900 / desktop-1024",
-      "duration": 64,
+      "duration": 66,
       "numericAttachments": {}
     },
     {
@@ -11819,7 +11819,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 9228,
+      "duration": 11527,
       "numericAttachments": {
         "responsive-geometry": {
           "horizontalOverflow": 0,
@@ -11834,40 +11834,6 @@
       "project": "phone-320",
       "viewport": {
         "width": 320,
-        "height": 844
-      },
-      "state": "skipped",
-      "status": "skipped",
-      "skipReason": "Focused functional probe runs only at phone-390 / desktop-900 / desktop-1024",
-      "duration": 63,
-      "numericAttachments": {}
-    },
-    {
-      "suite": "s4-management-hardening.test.ts > S4 Management hardening integration gate",
-      "file": "s4-management-hardening.test.ts",
-      "title": "Management Hub and settings preserve server-projected grouping, safe Back and static semantics",
-      "project": "phone-390",
-      "viewport": {
-        "width": 390,
-        "height": 844
-      },
-      "state": "expected",
-      "status": "passed",
-      "duration": 8641,
-      "numericAttachments": {
-        "responsive-geometry": {
-          "horizontalOverflow": 0,
-          "undersized": []
-        }
-      }
-    },
-    {
-      "suite": "s4-management-hardening.test.ts > S4 Management hardening integration gate",
-      "file": "s4-management-hardening.test.ts",
-      "title": "Management Hub and settings preserve server-projected grouping, safe Back and static semantics",
-      "project": "tablet-600",
-      "viewport": {
-        "width": 600,
         "height": 844
       },
       "state": "skipped",
@@ -11880,6 +11846,40 @@
       "suite": "s4-management-hardening.test.ts > S4 Management hardening integration gate",
       "file": "s4-management-hardening.test.ts",
       "title": "Management Hub and settings preserve server-projected grouping, safe Back and static semantics",
+      "project": "phone-390",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "state": "expected",
+      "status": "passed",
+      "duration": 11303,
+      "numericAttachments": {
+        "responsive-geometry": {
+          "horizontalOverflow": 0,
+          "undersized": []
+        }
+      }
+    },
+    {
+      "suite": "s4-management-hardening.test.ts > S4 Management hardening integration gate",
+      "file": "s4-management-hardening.test.ts",
+      "title": "Management Hub and settings preserve server-projected grouping, safe Back and static semantics",
+      "project": "tablet-600",
+      "viewport": {
+        "width": 600,
+        "height": 844
+      },
+      "state": "skipped",
+      "status": "skipped",
+      "skipReason": "Focused functional probe runs only at phone-390 / desktop-900 / desktop-1024",
+      "duration": 66,
+      "numericAttachments": {}
+    },
+    {
+      "suite": "s4-management-hardening.test.ts > S4 Management hardening integration gate",
+      "file": "s4-management-hardening.test.ts",
+      "title": "Management Hub and settings preserve server-projected grouping, safe Back and static semantics",
       "project": "tablet-799",
       "viewport": {
         "width": 799,
@@ -11888,7 +11888,7 @@
       "state": "skipped",
       "status": "skipped",
       "skipReason": "Focused functional probe runs only at phone-390 / desktop-900 / desktop-1024",
-      "duration": 63,
+      "duration": 59,
       "numericAttachments": {}
     },
     {
@@ -11902,7 +11902,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 4240,
+      "duration": 5506,
       "numericAttachments": {
         "responsive-geometry": {
           "horizontalOverflow": 0,
@@ -11921,7 +11921,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 4400,
+      "duration": 5577,
       "numericAttachments": {
         "responsive-geometry": {
           "horizontalOverflow": 0,
@@ -11940,7 +11940,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 4709,
+      "duration": 5039,
       "numericAttachments": {
         "responsive-geometry": {
           "horizontalOverflow": 0,
@@ -11959,7 +11959,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 4749,
+      "duration": 5479,
       "numericAttachments": {
         "responsive-geometry": {
           "horizontalOverflow": 0,
@@ -11978,7 +11978,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 4589,
+      "duration": 5589,
       "numericAttachments": {
         "responsive-geometry": {
           "horizontalOverflow": 0,
@@ -11997,7 +11997,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 4837,
+      "duration": 5427,
       "numericAttachments": {
         "responsive-geometry": {
           "horizontalOverflow": 0,
@@ -12016,7 +12016,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 4633,
+      "duration": 5697,
       "numericAttachments": {
         "responsive-geometry": {
           "horizontalOverflow": 0,
@@ -12035,7 +12035,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 4990,
+      "duration": 5670,
       "numericAttachments": {
         "responsive-geometry": {
           "horizontalOverflow": 0,
@@ -12054,7 +12054,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 2371,
+      "duration": 3332,
       "numericAttachments": {
         "member-directory-overflow": {
           "overflow": 0,
@@ -12078,7 +12078,7 @@
       "state": "skipped",
       "status": "skipped",
       "skipReason": "Focused functional probe runs only at phone-320 / tablet-600 / tablet-799 / desktop-800 / desktop-900 / desktop-1024",
-      "duration": 78,
+      "duration": 54,
       "numericAttachments": {}
     },
     {
@@ -12092,7 +12092,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 1381,
+      "duration": 1527,
       "numericAttachments": {
         "member-directory-overflow": {
           "overflow": 0,
@@ -12115,7 +12115,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 1397,
+      "duration": 1439,
       "numericAttachments": {
         "member-directory-overflow": {
           "overflow": 0,
@@ -12138,7 +12138,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 1387,
+      "duration": 1383,
       "numericAttachments": {
         "member-directory-overflow": {
           "overflow": 0,
@@ -12162,7 +12162,7 @@
       "state": "skipped",
       "status": "skipped",
       "skipReason": "Focused functional probe runs only at phone-320 / tablet-600 / tablet-799 / desktop-800 / desktop-900 / desktop-1024",
-      "duration": 62,
+      "duration": 55,
       "numericAttachments": {}
     },
     {
@@ -12176,7 +12176,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 1245,
+      "duration": 1397,
       "numericAttachments": {
         "member-directory-overflow": {
           "overflow": 0,
@@ -12199,7 +12199,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 1500,
+      "duration": 1443,
       "numericAttachments": {
         "member-directory-overflow": {
           "overflow": 0,
@@ -12222,7 +12222,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 5410,
+      "duration": 5906,
       "numericAttachments": {
         "approvals-tray-overflow": {
           "overflow": 0,
@@ -12262,10 +12262,10 @@
         },
         "approvals-detail-dialog-box": {
           "detailDialogBox": {
-            "x": 321.8936767578125,
-            "y": 390.0967102050781,
-            "width": 380.212646484375,
-            "height": 119.80657958984375
+            "x": 320.7218322753906,
+            "y": 389.7274475097656,
+            "width": 382.5563659667969,
+            "height": 120.54510498046875
           },
           "vw": 1024
         },
@@ -12326,7 +12326,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 5431,
+      "duration": 6439,
       "numericAttachments": {
         "approvals-tray-overflow": {
           "overflow": 0,
@@ -12366,10 +12366,10 @@
         },
         "approvals-detail-dialog-box": {
           "detailDialogBox": {
-            "x": 528.7217407226562,
-            "y": 389.7274169921875,
-            "width": 382.5565185546875,
-            "height": 120.545166015625
+            "x": 528,
+            "y": 389.5,
+            "width": 384,
+            "height": 121
           },
           "vw": 1440
         },
@@ -12430,7 +12430,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 5699,
+      "duration": 5623,
       "numericAttachments": {
         "approvals-tray-overflow": {
           "overflow": 0,
@@ -12470,10 +12470,10 @@
         },
         "approvals-detail-dialog-box": {
           "detailDialogBox": {
-            "x": 208.72183227539062,
-            "y": 389.7274475097656,
-            "width": 382.5563659667969,
-            "height": 120.54510498046875
+            "x": 208.15863037109375,
+            "y": 389.54998779296875,
+            "width": 383.6827392578125,
+            "height": 120.9000244140625
           },
           "vw": 800
         },
@@ -12495,7 +12495,7 @@
         "permissions-review-box": {
           "reviewBox": {
             "x": 0,
-            "y": 683,
+            "y": 683.084228515625,
             "width": 800,
             "height": 217
           },
@@ -12534,7 +12534,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 5371,
+      "duration": 5553,
       "numericAttachments": {
         "approvals-tray-overflow": {
           "overflow": 0,
@@ -12574,10 +12574,10 @@
         },
         "approvals-detail-dialog-box": {
           "detailDialogBox": {
-            "x": 258.72003173828125,
-            "y": 389.7268981933594,
-            "width": 382.5599365234375,
-            "height": 120.54620361328125
+            "x": 258.1593322753906,
+            "y": 389.5502014160156,
+            "width": 383.6813659667969,
+            "height": 120.89959716796875
           },
           "vw": 900
         },
@@ -12636,9 +12636,9 @@
         "width": 320,
         "height": 844
       },
-      "state": "expected",
+      "state": "flaky",
       "status": "passed",
-      "duration": 5085,
+      "duration": 7408,
       "numericAttachments": {
         "approvals-tray-overflow": {
           "overflow": 0,
@@ -12703,7 +12703,7 @@
         "permissions-review-box": {
           "reviewBox": {
             "x": 0,
-            "y": 627.3618774414062,
+            "y": 627.3595581054688,
             "width": 320,
             "height": 217
           },
@@ -12742,7 +12742,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 5485,
+      "duration": 5285,
       "numericAttachments": {
         "approvals-tray-overflow": {
           "overflow": 0,
@@ -12782,10 +12782,10 @@
         },
         "approvals-detail-dialog-box": {
           "detailDialogBox": {
-            "x": 0,
-            "y": 335.5,
-            "width": 390,
-            "height": 173
+            "x": 0.16181409358978271,
+            "y": 335.57177734375,
+            "width": 389.67638170719147,
+            "height": 172.8564453125
           },
           "vw": 390
         },
@@ -12807,7 +12807,7 @@
         "permissions-review-box": {
           "reviewBox": {
             "x": 0,
-            "y": 627.3618774414062,
+            "y": 627.3595581054688,
             "width": 390,
             "height": 217
           },
@@ -12846,7 +12846,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 5201,
+      "duration": 5442,
       "numericAttachments": {
         "approvals-tray-overflow": {
           "overflow": 0,
@@ -12911,7 +12911,7 @@
         "permissions-review-box": {
           "reviewBox": {
             "x": 0,
-            "y": 627,
+            "y": 627.0835571289062,
             "width": 600,
             "height": 217
           },
@@ -12950,7 +12950,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 5276,
+      "duration": 5651,
       "numericAttachments": {
         "approvals-tray-overflow": {
           "overflow": 0,
@@ -13015,7 +13015,7 @@
         "permissions-review-box": {
           "reviewBox": {
             "x": 0,
-            "y": 683.361083984375,
+            "y": 683.0838623046875,
             "width": 799,
             "height": 217
           },
@@ -13054,7 +13054,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 8974,
+      "duration": 11428,
       "numericAttachments": {
         "responsive-geometry": {
           "horizontalOverflow": 0,
@@ -13074,7 +13074,7 @@
       "state": "skipped",
       "status": "skipped",
       "skipReason": "Focused functional probe runs only at desktop-900 / desktop-1024",
-      "duration": 54,
+      "duration": 57,
       "numericAttachments": {}
     },
     {
@@ -13089,7 +13089,7 @@
       "state": "skipped",
       "status": "skipped",
       "skipReason": "Focused functional probe runs only at desktop-900 / desktop-1024",
-      "duration": 58,
+      "duration": 64,
       "numericAttachments": {}
     },
     {
@@ -13103,7 +13103,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 8352,
+      "duration": 10982,
       "numericAttachments": {
         "responsive-geometry": {
           "horizontalOverflow": 0,
@@ -13123,7 +13123,7 @@
       "state": "skipped",
       "status": "skipped",
       "skipReason": "Focused functional probe runs only at desktop-900 / desktop-1024",
-      "duration": 65,
+      "duration": 63,
       "numericAttachments": {}
     },
     {
@@ -13138,7 +13138,7 @@
       "state": "skipped",
       "status": "skipped",
       "skipReason": "Focused functional probe runs only at desktop-900 / desktop-1024",
-      "duration": 62,
+      "duration": 59,
       "numericAttachments": {}
     },
     {
@@ -13153,7 +13153,7 @@
       "state": "skipped",
       "status": "skipped",
       "skipReason": "Focused functional probe runs only at desktop-900 / desktop-1024",
-      "duration": 66,
+      "duration": 57,
       "numericAttachments": {}
     },
     {
@@ -13168,7 +13168,7 @@
       "state": "skipped",
       "status": "skipped",
       "skipReason": "Focused functional probe runs only at desktop-900 / desktop-1024",
-      "duration": 61,
+      "duration": 59,
       "numericAttachments": {}
     },
     {
@@ -13182,7 +13182,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 2906,
+      "duration": 3086,
       "numericAttachments": {}
     },
     {
@@ -13197,7 +13197,7 @@
       "state": "skipped",
       "status": "skipped",
       "skipReason": "Focused functional probe runs only at phone-390 / desktop-1024",
-      "duration": 77,
+      "duration": 66,
       "numericAttachments": {}
     },
     {
@@ -13242,7 +13242,7 @@
       "state": "skipped",
       "status": "skipped",
       "skipReason": "Focused functional probe runs only at phone-390 / desktop-1024",
-      "duration": 59,
+      "duration": 80,
       "numericAttachments": {}
     },
     {
@@ -13256,7 +13256,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 2486,
+      "duration": 3243,
       "numericAttachments": {}
     },
     {
@@ -13271,7 +13271,7 @@
       "state": "skipped",
       "status": "skipped",
       "skipReason": "Focused functional probe runs only at phone-390 / desktop-1024",
-      "duration": 56,
+      "duration": 62,
       "numericAttachments": {}
     },
     {
@@ -13286,7 +13286,7 @@
       "state": "skipped",
       "status": "skipped",
       "skipReason": "Focused functional probe runs only at phone-390 / desktop-1024",
-      "duration": 102,
+      "duration": 90,
       "numericAttachments": {}
     },
     {
@@ -13300,7 +13300,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 6152,
+      "duration": 6956,
       "numericAttachments": {
         "responsive-geometry": {
           "horizontalOverflow": 0,
@@ -13325,7 +13325,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 6239,
+      "duration": 7026,
       "numericAttachments": {
         "responsive-geometry": {
           "horizontalOverflow": 0,
@@ -13350,7 +13350,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 6164,
+      "duration": 7371,
       "numericAttachments": {
         "responsive-geometry": {
           "horizontalOverflow": 0,
@@ -13375,7 +13375,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 6086,
+      "duration": 7517,
       "numericAttachments": {
         "responsive-geometry": {
           "horizontalOverflow": 0,
@@ -13406,7 +13406,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 6132,
+      "duration": 7276,
       "numericAttachments": {
         "responsive-geometry": {
           "horizontalOverflow": 0,
@@ -13442,7 +13442,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 6092,
+      "duration": 7089,
       "numericAttachments": {
         "responsive-geometry": {
           "horizontalOverflow": 0,
@@ -13451,7 +13451,7 @@
         "probe-dialog-box": {
           "box": {
             "x": 0,
-            "y": 576.6051025390625,
+            "y": 576.5,
             "width": 390,
             "height": 267.5
           },
@@ -13478,7 +13478,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 6379,
+      "duration": 7250,
       "numericAttachments": {
         "responsive-geometry": {
           "horizontalOverflow": 0,
@@ -13514,7 +13514,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 6696,
+      "duration": 7613,
       "numericAttachments": {
         "responsive-geometry": {
           "horizontalOverflow": 0,
@@ -13523,7 +13523,7 @@
         "probe-dialog-box": {
           "box": {
             "x": -320,
-            "y": 226.83673095703125,
+            "y": 225,
             "width": 640,
             "height": 450
           },
@@ -13550,7 +13550,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 547,
+      "duration": 481,
       "numericAttachments": {
         "shell-breakpoint-position": {
           "position": "sticky",
@@ -13569,7 +13569,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 453,
+      "duration": 498,
       "numericAttachments": {
         "shell-breakpoint-position": {
           "position": "sticky",
@@ -13588,7 +13588,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 485,
+      "duration": 470,
       "numericAttachments": {
         "shell-breakpoint-position": {
           "position": "fixed",
@@ -13607,7 +13607,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 529,
+      "duration": 459,
       "numericAttachments": {
         "shell-breakpoint-position": {
           "position": "fixed",
@@ -13626,7 +13626,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 497,
+      "duration": 494,
       "numericAttachments": {
         "shell-breakpoint-position": {
           "position": "fixed",
@@ -13645,7 +13645,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 463,
+      "duration": 480,
       "numericAttachments": {
         "shell-breakpoint-position": {
           "position": "fixed",
@@ -13664,7 +13664,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 570,
+      "duration": 560,
       "numericAttachments": {
         "shell-breakpoint-position": {
           "position": "sticky",
@@ -13683,7 +13683,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 1420,
+      "duration": 1124,
       "numericAttachments": {
         "attention-dialog-geometry": {
           "position": "fixed",
@@ -13709,7 +13709,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 1226,
+      "duration": 1119,
       "numericAttachments": {
         "attention-dialog-geometry": {
           "position": "fixed",
@@ -13735,7 +13735,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 1022,
+      "duration": 1027,
       "numericAttachments": {
         "attention-dialog-geometry": {
           "position": "fixed",
@@ -13761,7 +13761,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 1067,
+      "duration": 1109,
       "numericAttachments": {
         "attention-dialog-geometry": {
           "position": "fixed",
@@ -13787,7 +13787,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 1071,
+      "duration": 1061,
       "numericAttachments": {
         "attention-dialog-geometry": {
           "position": "fixed",
@@ -13813,7 +13813,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 1106,
+      "duration": 1197,
       "numericAttachments": {
         "attention-dialog-geometry": {
           "position": "fixed",
@@ -13839,7 +13839,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 1213,
+      "duration": 1171,
       "numericAttachments": {
         "attention-dialog-geometry": {
           "position": "fixed",
@@ -13865,7 +13865,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 599,
+      "duration": 622,
       "numericAttachments": {
         "shell-focus-order": {
           "active": {
@@ -13891,7 +13891,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 507,
+      "duration": 909,
       "numericAttachments": {
         "shell-focus-order": {
           "active": {
@@ -13917,7 +13917,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 494,
+      "duration": 539,
       "numericAttachments": {
         "shell-focus-order": {
           "active": {
@@ -13943,7 +13943,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 548,
+      "duration": 726,
       "numericAttachments": {
         "shell-focus-order": {
           "active": {
@@ -13969,7 +13969,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 565,
+      "duration": 570,
       "numericAttachments": {
         "shell-focus-order": {
           "active": {
@@ -13995,7 +13995,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 440,
+      "duration": 539,
       "numericAttachments": {
         "shell-focus-order": {
           "active": {
@@ -14021,7 +14021,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 647,
+      "duration": 538,
       "numericAttachments": {
         "shell-focus-order": {
           "active": {
@@ -14047,7 +14047,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 881,
+      "duration": 736,
       "numericAttachments": {
         "shell-geometry": {
           "viewportWidth": 1024,
@@ -14075,7 +14075,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 739,
+      "duration": 801,
       "numericAttachments": {
         "shell-geometry": {
           "viewportWidth": 1440,
@@ -14103,7 +14103,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 680,
+      "duration": 784,
       "numericAttachments": {
         "shell-geometry": {
           "viewportWidth": 320,
@@ -14131,7 +14131,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 685,
+      "duration": 714,
       "numericAttachments": {
         "shell-geometry": {
           "viewportWidth": 390,
@@ -14159,7 +14159,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 712,
+      "duration": 636,
       "numericAttachments": {
         "shell-geometry": {
           "viewportWidth": 600,
@@ -14187,7 +14187,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 654,
+      "duration": 784,
       "numericAttachments": {
         "shell-geometry": {
           "viewportWidth": 799,
@@ -14215,7 +14215,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 728,
+      "duration": 857,
       "numericAttachments": {
         "shell-geometry": {
           "viewportWidth": 800,

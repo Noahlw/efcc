@@ -11,6 +11,7 @@ describe("render-phase-f-evidence", () => {
   const validReport: PlaywrightJsonReport = {
     config: {
       rootDir: "/app",
+      metadata: { phaseFTargetUrl: "http://127.0.0.1:8787" },
       projects: [
         {
           name: "w-320",
@@ -187,9 +188,21 @@ describe("render-phase-f-evidence", () => {
     );
   });
 
+  test("rejects reports without target URL metadata", () => {
+    const missingTargetReport: PlaywrightJsonReport = {
+      config: { projects: [{ name: "w-320" }] },
+      suites: [],
+    };
+
+    expect(() => parsePlaywrightJsonReport(missingTargetReport)).toThrow(
+      /missing target URL/i
+    );
+  });
+
   test("preserves explicit skip reasons across annotations and statuses", () => {
     const skipReport: PlaywrightJsonReport = {
       config: {
+        metadata: { phaseFTargetUrl: "http://127.0.0.1:8787" },
         projects: [{ name: "w-600" }],
       },
       suites: [
@@ -265,6 +278,48 @@ describe("render-phase-f-evidence", () => {
 
     expect(() => parsePlaywrightJsonReport(imageReport)).toThrow(
       /image attachment/i
+    );
+  });
+
+  test("rejects malformed JSON attachments", () => {
+    const malformedReport: PlaywrightJsonReport = {
+      config: {
+        projects: [
+          { name: "w-320", use: { baseURL: "http://127.0.0.1:8787" } },
+        ],
+      },
+      suites: [
+        {
+          title: "suite",
+          specs: [
+            {
+              title: "test with malformed JSON",
+              tests: [
+                {
+                  projectName: "w-320",
+                  status: "expected",
+                  results: [
+                    {
+                      status: "passed",
+                      attachments: [
+                        {
+                          name: "geometry",
+                          contentType: "application/json",
+                          body: "not-json",
+                        },
+                      ],
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    };
+
+    expect(() => parsePlaywrightJsonReport(malformedReport)).toThrow(
+      /malformed JSON attachment/i
     );
   });
 });

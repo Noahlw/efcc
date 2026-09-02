@@ -52,12 +52,11 @@ const server = setupServer();
 const MEMBERS = COPY.managementMembers;
 
 // Wire contract: GET /api/v1/programs/members -> data.members of
-// { userId, name, phone: string|null, role, status, departments }.
+// { userId, name, phone: string|null, identities, status, departments }.
 interface MemberRow {
   userId: string;
   name: string;
   phone: string | null;
-  role?: "Admin" | "Staff" | "Member";
   identities?: Array<{
     id: string;
     label: string;

@@ -452,10 +452,10 @@ export const COPY = {
     policyNoChanges: "沒有可儲存的變更。",
   },
   // Member Directory (Spec 087 US 13-15 / ticket 087-04 #321). Church-wide
-  // search for Admin/Staff, department-scoped for Department Managers, with
-  // the member detail (contact, role, department memberships) rendered inline
-  // from a selected result — no separate commit step. Copy is verbatim from
-  // the canonical prototype's member-directory and participant-detail screens.
+  // search for authorized operators, with member detail (contact, identities,
+  // and department memberships) rendered inline from a selected result — no
+  // separate commit step. Copy is verbatim from the canonical prototype's
+  // member-directory and participant-detail screens.
   managementMembers: {
     membersTitle: "參與者",
     membersLead: "搜尋並查看會員資料。",
@@ -465,7 +465,6 @@ export const COPY = {
     emptyHint: "請嘗試其他姓名、登入名稱或電話。",
     memberDetail: "參與者資料",
     memberContact: "聯絡",
-    memberRole: "角色",
     memberDepartments: "部門",
     detailUsername: "登入名稱",
     detailPhone: "電話",

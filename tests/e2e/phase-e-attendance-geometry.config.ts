@@ -28,6 +28,7 @@ if (!isLocal) {
 }
 
 export default defineConfig({
+  metadata: { phaseFTargetUrl: targetUrl },
   testDir: ".",
   testMatch: ["**/phase-e-attendance-geometry.test.ts"],
   timeout: 60_000,

@@ -268,14 +268,6 @@ export const MemberDirectoryPanel = () => {
                 </dd>
               </div>
               <div className="grid min-w-0 grid-cols-[minmax(5rem,6rem)_minmax(0,1fr)] gap-3 text-sm leading-6 max-[479px]:grid-cols-[minmax(4.5rem,5.5rem)_minmax(0,1fr)]">
-                <dt className="text-[var(--ink-muted)]">
-                  {MEMBERS.memberRole}
-                </dt>
-                <dd className="m-0 min-w-0 wrap-anywhere font-semibold text-[var(--ink)]">
-                  {""}
-                </dd>
-              </div>
-              <div className="grid min-w-0 grid-cols-[minmax(5rem,6rem)_minmax(0,1fr)] gap-3 text-sm leading-6 max-[479px]:grid-cols-[minmax(4.5rem,5.5rem)_minmax(0,1fr)]">
                 <dt className="text-[var(--ink-muted)]">身份組</dt>
                 <dd className="m-0 min-w-0 wrap-anywhere font-semibold text-[var(--ink)]">
                   {identityText(selected.identities)}

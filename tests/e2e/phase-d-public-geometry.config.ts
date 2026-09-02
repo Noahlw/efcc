@@ -41,6 +41,7 @@ if (!isLocal) {
 }
 
 export default defineConfig({
+  metadata: { phaseFTargetUrl: targetUrl },
   testDir: ".",
   testMatch: ["**/phase-d-public-geometry.test.ts"],
   timeout: 45_000,
@@ -52,8 +53,7 @@ export default defineConfig({
     [
       "json",
       {
-        outputFile:
-          "test-results/phase-f/phase-d-public-geometry/results.json",
+        outputFile: "test-results/phase-f/phase-d-public-geometry/results.json",
       },
     ],
   ],

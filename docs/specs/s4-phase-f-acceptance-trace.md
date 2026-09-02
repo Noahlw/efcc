@@ -65,18 +65,12 @@ verdict is recorded in
 
 ## Executed results
 
-- Generated: 2026-09-01T21:42:43.164Z
+- Generated: 2026-09-02T02:59:58.936Z
 - Target: http://127.0.0.1:8787/
 - Total assertions: 24 | Passed: 24 | Failed: 0
 
 | Role | Assertion | Result | Detail |
 |------|-----------|--------|--------|
-| w-1024 | participant material states remain contained | PASS |  |
-| w-1024 | participant Event Detail and recovery states remain contained | PASS |  |
-| w-1024 | management directory and workspace remain contained | PASS |  |
-| w-1440 | participant material states remain contained | PASS |  |
-| w-1440 | participant Event Detail and recovery states remain contained | PASS |  |
-| w-1440 | management directory and workspace remain contained | PASS |  |
 | w-320 | participant material states remain contained | PASS |  |
 | w-320 | participant Event Detail and recovery states remain contained | PASS |  |
 | w-320 | management directory and workspace remain contained | PASS |  |
@@ -95,4 +89,10 @@ verdict is recorded in
 | w-900 | participant material states remain contained | PASS |  |
 | w-900 | participant Event Detail and recovery states remain contained | PASS |  |
 | w-900 | management directory and workspace remain contained | PASS |  |
+| w-1024 | participant material states remain contained | PASS |  |
+| w-1024 | participant Event Detail and recovery states remain contained | PASS |  |
+| w-1024 | management directory and workspace remain contained | PASS |  |
+| w-1440 | participant material states remain contained | PASS |  |
+| w-1440 | participant Event Detail and recovery states remain contained | PASS |  |
+| w-1440 | management directory and workspace remain contained | PASS |  |
 

@@ -10,7 +10,6 @@ const SEARCH_LABEL = "搜尋會員";
 const DETAIL_TITLE = "參與者資料";
 const MEMBER_CONTACT = "聯絡";
 const DETAIL_UNAVAILABLE = "未提供";
-const MEMBER_ROLE = "角色";
 const MEMBER_DEPARTMENTS = "部門";
 const BACK_TO_MANAGEMENT = "返回管理工作";
 const SEEDED_DEPARTMENT_ID = "018f3b8a-0000-7000-8000-000000000002";
@@ -363,8 +362,9 @@ test.describe("087-04 Member Directory", () => {
       ).toHaveCount(0);
 
       await searchMembers(memberSearch, "E2E Admin");
-      // Selecting a result renders contact/role/departments inline. There is
-      // no save/confirm/submit commit action for this read-only detail.
+      // Selecting a result renders contact, identities, and departments
+      // inline. There is no save/confirm/submit commit action for this
+      // read-only detail.
       await page
         .getByRole("button", { name: "E2E Admin", exact: true })
         .click();
@@ -375,8 +375,9 @@ test.describe("087-04 Member Directory", () => {
       ).toBeVisible();
       await expect(detail.getByText(MEMBER_CONTACT)).toBeVisible();
       await expect(detail.getByText(DETAIL_UNAVAILABLE)).toBeVisible();
-      await expect(detail.getByText(MEMBER_ROLE)).toBeVisible();
-      await expect(detail.getByText("Admin", { exact: true })).toBeVisible();
+      await expect(
+        detail.getByText("系統管理員", { exact: true })
+      ).toBeVisible();
       await expect(detail.getByText(MEMBER_DEPARTMENTS)).toBeVisible();
       await expect(
         detail.getByText(SEEDED_DEPARTMENT_NAME, { exact: true })

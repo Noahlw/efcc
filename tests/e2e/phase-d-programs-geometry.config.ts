@@ -40,6 +40,7 @@ if (!isLocal) {
 }
 
 export default defineConfig({
+  metadata: { phaseFTargetUrl: targetUrl },
   testDir: ".",
   testMatch: ["**/phase-d-programs-geometry.test.ts"],
   timeout: 60_000,

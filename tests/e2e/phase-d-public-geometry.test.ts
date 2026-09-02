@@ -253,6 +253,7 @@ async function assertFocusedControlVisible(
   }
   expect(result).not.toBeNull();
   expect(result?.bottom).toBeLessThanOrEqual(result?.viewportHeight ?? 0);
+  expect(result?.top).toBeGreaterThanOrEqual(0);
   expect(result?.left).toBeGreaterThanOrEqual(0);
   expect(result?.right).toBeLessThanOrEqual(result?.viewportWidth ?? 0);
   if (
