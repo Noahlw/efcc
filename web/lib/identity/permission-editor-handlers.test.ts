@@ -130,7 +130,7 @@ describe("#485 Permission Editor Worker seam", () => {
     assert.equal(await currentRevision(), before);
   });
 
-  test("PATCH commits one grant, correlates its audit, and replays without a second audit", async () => {
+  test("PATCH commits grant and revoke audits, and replays grant without a second audit", async () => {
     const before = await currentRevision();
     const key = "permission-editor-handler-replay";
     const path = `/api/v1/identity/role-definitions/${PROGRAM_LEADER_ROLE}/grants`;
@@ -165,7 +165,7 @@ describe("#485 Permission Editor Worker seam", () => {
       .prepare(
         `SELECT correlation_id, outcome FROM role_audit_events
            WHERE action = 'ROLE_DEFINITION_GRANT' AND entity_id = ?
-           ORDER BY inserted_at DESC LIMIT 1`
+           ORDER BY inserted_at DESC, audit_id DESC LIMIT 1`
       )
       .bind(PROGRAM_LEADER_ROLE)
       .first<{ correlation_id: string; outcome: string }>();
@@ -187,6 +187,20 @@ describe("#485 Permission Editor Worker seam", () => {
       testEnv()
     );
     assert.equal(current.status, 200);
+    const currentBody = await bodyOf(current);
+    assert.equal(current.headers.get("X-Request-Id"), currentBody.requestId);
+    const revokeAudit = await testDb()
+      .prepare(
+        `SELECT correlation_id, outcome FROM role_audit_events
+           WHERE action = 'ROLE_DEFINITION_REVOKE'
+             AND entity_id = ?
+             AND correlation_id = ?
+           ORDER BY inserted_at DESC, audit_id DESC LIMIT 1`
+      )
+      .bind(PROGRAM_LEADER_ROLE, currentBody.requestId)
+      .first<{ correlation_id: string; outcome: string }>();
+    assert.equal(revokeAudit?.correlation_id, currentBody.requestId);
+    assert.equal(revokeAudit?.outcome, "SUCCESS");
 
     const replay = await worker.fetch(request(path, init), testEnv());
     assert.equal(replay.status, 200);
