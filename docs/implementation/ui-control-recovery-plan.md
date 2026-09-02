@@ -41,7 +41,7 @@ The GitHub ticket being implemented is always the acceptance-scope authority.
 | Frozen Phase F source | `feat/s4-f-contraction-release-gate` |
 | Frozen Phase F SHA | `6edf28c0f8f7058cf992416e7b517824c3178c8c` |
 | Rescue integration branch | `rescue/ui-control-recovery` |
-| Historical stack | PRs #473, #496, #497, #501, #502, #503, #504 |
+| Historical stack | PRs #457, #458, #469, #470, #471, #472, #473, #496, #497, #501, #502, #503, #504 |
 | Rescue decision | Undecided until T12 / [#517](https://github.com/Noahlw/efcc/issues/517): `SALVAGE STACK` or `SELECTIVE REPLAY` |
 
 ### Stable delivery rules
@@ -54,7 +54,7 @@ The GitHub ticket being implemented is always the acceptance-scope authority.
 - Tests and `/code-review` must complete before a PR is considered ready.
 - A visual ticket is not complete until the required human approval is recorded.
 - Do not weaken tests, contracts, baselines, or tolerances to make implementation pass.
-- Do not modify or supersede the historical A–F PRs before T35/T36.
+- Do not modify or supersede the historical S4 PRs recorded in the ledger before T35/T36.
 - Do not use a single phase session to combine several tickets into one PR.
 
 ---
@@ -102,20 +102,20 @@ Update this table at the start and end of every implementation session.
 | Field | Current value |
 |---|---|
 | Current phase | **Phase 0 — Foundation & Recovery Control** |
-| Phase status | `IN PROGRESS — T02` |
-| Rescue integration HEAD | `d71a7ae807e7bd91795d0d0f6ac514074b3cd7e2` — T01 / #506 merged |
-| Active ticket | `None` |
-| Active branch/worktree | `None` |
-| Active PR | None |
-| Current frontier | T02 [#507](https://github.com/Noahlw/efcc/issues/507) and T04 [#509](https://github.com/Noahlw/efcc/issues/509) are eligible; T02 selected |
+| Phase status | `IN PROGRESS — T01 correction` |
+| Rescue integration HEAD | `e68d554e7dd7abb97dfa916ffe861f616b82cc57` — T01 initial ledger merged; correction worktree based here |
+| Active ticket | T01 / [#506](https://github.com/Noahlw/efcc/issues/506) — full-S4 provenance correction |
+| Active branch/worktree | `rescue/t01-full-s4-lineage` / `/home/ubuntu/efcc-rescue-t01-lineage` |
+| Active PR | [#544](https://github.com/Noahlw/efcc/pull/544) |
+| Current frontier | T01 correction [#506](https://github.com/Noahlw/efcc/issues/506) active; T02 [#507](https://github.com/Noahlw/efcc/issues/507) remains independent; T04 [#509](https://github.com/Noahlw/efcc/issues/509) blocked until correction merges |
 | Pending human approval | None |
 | Active blocker | None |
-| Next safe action | Create a fresh T02 worktree from this rescue HEAD and update its Active Ticket record |
+| Next safe action | Await review and merge of T01 correction PR #544; do not start T04 |
 | Last merged rescue SHA | `d71a7ae807e7bd91795d0d0f6ac514074b3cd7e2` |
 | Last rollback checkpoint | Frozen Phase F SHA `6edf28c0f8f7058cf992416e7b517824c3178c8` |
-| Entry verification | Frozen Phase F source and rescue bootstrap verified; T01 / #506 merged into rescue at `d71a7ae807e7bd91795d0d0f6ac514074b3cd7e2`; T02 and T04 are the next eligible tickets; no other Phase 0 implementation worktree is active |
+| Entry verification | Frozen Phase F ancestry and rescue base verified; initial T01 PR #543 merged at `d71a7ae807e7bd91795d0d0f6ac514074b3cd7e2`; this correction is the sole active Phase 0 worktree; T02 is not active; T04 remains blocked |
 
-> If this tracker was first committed on a docs branch based on `main`, apply the documentation-only tracker commit to `rescue/ui-control-recovery` before T01. Do not merge the historical Phase F stack into `main` merely to move this document.
+> The tracker is committed on `rescue/ui-control-recovery`; the T01 full-lineage correction must merge before T04 starts. Do not merge the historical S4 stack into `main` merely to move this document.
 
 ---
 
@@ -123,7 +123,7 @@ Update this table at the start and end of every implementation session.
 
 | Phase | Tickets | Outcome | Entry gate | Exit gate | Status |
 |---|---|---|---|---|---|
-| **0 — Foundation & Recovery Control** | T01–T06 / #506–#511 | Preserve A–F value, establish governance/enforcement, restore required Worker tests, stabilize local acceptance runtime, contain global cascade | Parent/tickets published; frozen Phase F SHA verified | #506–#511 merged into rescue; cascade evidence recorded | `NOT STARTED` |
+| **0 — Foundation & Recovery Control** | T01–T06 / #506–#511 | Preserve full post-main S4 value, establish governance/enforcement, restore required Worker tests, stabilize local acceptance runtime, contain global cascade | Parent/tickets published; frozen Phase F SHA and full S4 ancestry verified | #506–#511 merged into rescue; cascade evidence recorded | `NOT STARTED` |
 | **1 — Executable UI Foundation** | T07–T12 / #512–#517 | UI Lab, app-facing contracts, composition grammar, shell, Programs tracer, rescue-path decision | Phase 0 complete | #512–#517 merged; required human approvals recorded; T12 decision recorded | `BLOCKED` |
 | **2 — Programs Route Family** | T13–T16 / #518–#521 | Complete participant and management Programs rescue | Phase 1 complete | #518–#521 merged and Programs family approved | `BLOCKED` |
 | **3 — Member & Public Surfaces** | T17–T19 / #522–#524 | Profile/settings, public auth, communications rescued | Phase 2 complete | #522–#524 merged and approved | `BLOCKED` |
@@ -139,10 +139,10 @@ Update this table at the start and end of every implementation session.
 
 | Key | Issue | Ticket | Blocked by | Status | PR | Merge SHA | Evidence / notes |
 |---|---|---|---|---|---|---|---|
-| T01 | [#506](https://github.com/Noahlw/efcc/issues/506) | Freeze A–F and publish Preservation Ledger | None | `MERGED_RESCUE` | [#543](https://github.com/Noahlw/efcc/pull/543) | `d71a7ae807e7bd91795d0d0f6ac514074b3cd7e2` | Ledger and generated summary verified; two-axis `/code-review` passed; merged into rescue |
+| T01 | [#506](https://github.com/Noahlw/efcc/issues/506) | Freeze A–F and publish Preservation Ledger | None | `IN PROGRESS` | [#544](https://github.com/Noahlw/efcc/pull/544) | — | Initial ledger merged via [#543](https://github.com/Noahlw/efcc/pull/543); full pre-#473 S4 lineage correction PR #544 is review-ready |
 | T02 | [#507](https://github.com/Noahlw/efcc/issues/507) | Establish UI governance and agent change control | None | `FRONTIER` | — | — | Owner reviews governance |
 | T03 | [#508](https://github.com/Noahlw/efcc/issues/508) | Enforce styling ownership and typed UI contract governance | T02 | `BLOCKED` | — | — | — |
-| T04 | [#509](https://github.com/Noahlw/efcc/issues/509) | Restore excluded normalized Worker suites | T01 | `FRONTIER` | — | — | T01 merged; eligible after T02 selection boundary |
+| T04 | [#509](https://github.com/Noahlw/efcc/issues/509) | Restore excluded normalized Worker suites | T01 | `BLOCKED` | — | — | Initial ledger merged, but T01 provenance correction must merge first |
 | T05 | [#510](https://github.com/Noahlw/efcc/issues/510) | Stabilize full Programs/Worker/D1 runtime | T04 | `BLOCKED` | — | — | — |
 | T06 | [#511](https://github.com/Noahlw/efcc/issues/511) | Contain global CSS cascade | T01, T03, T05 | `BLOCKED` | — | — | Diagnostic comparison, not final visual baseline |
 
@@ -151,9 +151,9 @@ Update this table at the start and end of every implementation session.
 | Field | Value |
 |---|---|
 | Phase status | `NOT COMPLETE` |
-| Tickets merged | T01 / #506 |
-| Rescue integration SHA | `d71a7ae807e7bd91795d0d0f6ac514074b3cd7e2` |
-| Preservation Ledger | Merged with T01 — [`ui-control-recovery-preservation-ledger.md`](ui-control-recovery-preservation-ledger.md) |
+| Tickets merged | T01 / #506 initial ledger; full-S4 provenance correction pending |
+| Rescue integration SHA | `e68d554e7dd7abb97dfa916ffe861f616b82cc57` |
+| Preservation Ledger | Initial ledger merged; full-S4 lineage correction pending — [`ui-control-recovery-preservation-ledger.md`](ui-control-recovery-preservation-ledger.md) and [`ui-control-recovery-preservation-summary.md`](ui-control-recovery-preservation-summary.md) |
 | Governance authority | Not created — T02 owns it |
 | Required Worker gate | Still excludes four suites — T04 owns it |
 | Programs runtime | Phase F blocker still open — T05 owns it |
@@ -327,19 +327,19 @@ Only one active implementation ticket should normally appear here.
 
 | Field | Value |
 |---|---|
-| Ticket / issue | None |
-| Phase | None |
-| Goal | None |
-| Base rescue SHA | None |
-| Branch / worktree | None |
-| PR | None |
-| Required skills | None |
-| Focused tests | None |
-| Aggregate tests | None |
-| Human gate | None |
-| Current status | None |
-| Blocker | None |
-| Next action | Create T02 / #507 worktree and update this record |
+| Ticket / issue | T01 correction / [#506](https://github.com/Noahlw/efcc/issues/506) |
+| Phase | Phase 0 — Foundation & Recovery Control |
+| Goal | Extend T01 provenance from #473 to the full post-main S4 lineage |
+| Base rescue SHA | `e68d554e7dd7abb97dfa916ffe861f616b82cc57` |
+| Branch / worktree | `rescue/t01-full-s4-lineage` / `/home/ubuntu/efcc-rescue-t01-lineage` |
+| PR | [#544](https://github.com/Noahlw/efcc/pull/544) |
+| Required skills | `/using-git-worktrees`, `/implement`, `/code-review`, `/pr-description` |
+| Focused tests | Ancestry/provenance integrity: 13 exact PR OIDs, 23 capability rows, 15 route rows, six bridge rows, current seam paths, historical-state checks, and 67 local links passed |
+| Aggregate tests | N/A — documentation-only correction |
+| Human gate | N/A |
+| Current status | `PR_READY` |
+| Blocker | Awaiting review/merge of correction PR #544; T04 must not start |
+| Next action | Await owner review/merge of PR #544, then update rescue tracker before T04 |
 
 ---
 
@@ -377,6 +377,20 @@ Append one compact entry after every ticket. Do not copy the entire issue body.
 - **Open blocker:** None; T01 is merged. T02 / #507 is selected as the next ticket; T04 / #509 is also eligible after the one-ticket boundary.
 - **Next eligible ticket:** T02 / #507 (selected); T04 / #509
 
+#### T01 / #506 — Extend the Preservation Ledger to the full S4 lineage
+
+- **Status:** `PR_READY`
+- **Base rescue SHA:** `e68d554e7dd7abb97dfa916ffe861f616b82cc57`
+- **Head / merge SHA:** `bbb50678677b9f90036d2be8ca12330da32b1999` / pending
+- **Branch / PR:** `rescue/t01-full-s4-lineage` / [#544](https://github.com/Noahlw/efcc/pull/544)
+- **Delivered outcome:** Verified main→#457→#458→#469→#470→#471→#472→#473→#496→#497→#501→#502→#503→#504 lineage; six pre-#473 capability bridge rows; current Phase F replacement seams; generated summary and synchronized tracker.
+- **Tests:** GitHub ancestry/frontier check passed; correction integrity check passed with 13 exact PR OIDs, 23 capability rows, 15 route rows, six bridge rows, 67 local links; `git diff --check` passed; aggregate runtime not applicable.
+- **Code review:** Two-axis `/code-review` passed with zero findings.
+- **Human approval:** `N/A`
+- **Preservation impact:** [`ui-control-recovery-preservation-ledger.md`](ui-control-recovery-preservation-ledger.md) and [`ui-control-recovery-preservation-summary.md`](ui-control-recovery-preservation-summary.md)
+- **Open blocker:** PR #544 review/merge; T04 / #509 must remain blocked until this correction merges.
+- **Next eligible ticket:** T02 / #507 may proceed independently; T04 / #509 after correction merge.
+
 ---
 
 ## 15. Human approval queue
@@ -402,7 +416,7 @@ Keep links here so new sessions do not need to rediscover them.
 
 | Asset | Owner ticket | Current reference / status |
 |---|---|---|
-| Preservation Ledger | T01 / #506 | [`ui-control-recovery-preservation-ledger.md`](ui-control-recovery-preservation-ledger.md) and [`ui-control-recovery-preservation-summary.md`](ui-control-recovery-preservation-summary.md) — created and verified; PR #543 |
+| Preservation Ledger | T01 / #506 | [`ui-control-recovery-preservation-ledger.md`](ui-control-recovery-preservation-ledger.md) and [`ui-control-recovery-preservation-summary.md`](ui-control-recovery-preservation-summary.md) — initial ledger merged; full-S4 lineage correction PR #544 review-ready |
 | UI governance authority | T02 / #507 | Not created |
 | Scenario Registry | T03+ | Not created |
 | UI Contract Registry | T03+ | Not created |

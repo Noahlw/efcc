@@ -1,14 +1,14 @@
-# EFCC UI Control Recovery — Generated Preservation Summary
+# EFCC UI Control Recovery — Generated Full-Lineage Preservation Summary
 
 **Generated for:** T01 / [#506](https://github.com/Noahlw/efcc/issues/506)  
 **Generated:** 2026-09-02  
 **Source ledger:** [`ui-control-recovery-preservation-ledger.md`](ui-control-recovery-preservation-ledger.md)  
 **Frozen source SHA:** `6edf28c0f8f7058cf992416e7b517824c3178c8c`  
-**Rescue base SHA:** `cdb326f206da0bb6ff9de9997124f7bb7b16ff61`
+**Rescue base SHA:** `e68d554e7dd7abb97dfa916ffe861f616b82cc57`
 
 ## Immediate answer for the next agent
 
-The A–F source stack is frozen as an immutable input for Phase 0 and pre-supersession rescue work. The first eligible rescue tickets are **T01 / #506** and **T02 / #507**. T01 is the active ticket in its own worktree; T02 is independently unblocked but must use its own branch and PR. No historical A–F PR has been modified, merged, closed, rebased, force-pushed, or marked superseded before the owner-approved T35/T36 promotion and supersession gate.
+The full post-main S4 lineage is frozen as an immutable input for Phase 0 and pre-supersession rescue work. T01 / #506 is active only for this provenance correction; T02 / #507 remains independently eligible, and T04 / #509 must wait for the correction PR to merge. No historical S4 PR has been modified, merged, closed, rebased, force-pushed, or marked superseded before the owner-approved T35/T36 promotion and supersession gate.
 
 The next dependency frontier is fixed:
 
@@ -18,13 +18,26 @@ The next dependency frontier is fixed:
       #506 → #509 → #510
 #506 + #508 + #510 → #511
 ```
+## Newly explicit pre-#473 provenance
+
+The corrected ledger now traces the meaningful capabilities introduced before the shadcn migration:
+
+- **#457:** additive role/capability model and Member Baseline; Management Hub projection; Account Directory; Registration Approval; Permission Policy; Worker/D1 management, mutations, audit, and conflict behavior.
+- **#458:** Discord-derived interaction authority; role-first management; explicit selection; origin-aware navigation/action framework; responsive H-01…H-40 contract; batch-approval authority; custom-role deferral.
+- **#469:** bounded initial Account Directory page; deterministic cursor pagination; summary counts; unique append; search/filter context; Account Detail return context; responsive behavior.
+- **#470:** actor-scoped idempotency; all-or-nothing Pending validation; immutable per-request audit; stale/conflict behavior; bounded D1 batch operations.
+- **#471:** role-first Permission workspace; staged review; CAS-safe save; Pending/Processed approval workflow; explicit selection; confirmation/rejection reason; processed read-only detail; responsive action surfaces.
+- **#472:** isolated local-D1 management gate; geometry, focus, safe-area, and dock checks; loading/empty/error/forbidden/conflict/read-only states; historical S4 verification evidence.
+
+Each capability is mapped through #473 and Phase A–F to its current Phase F seam in the [full-lineage ledger](ui-control-recovery-preservation-ledger.md). No obsolete pre-#473 file is required to survive when its capability has a verified replacement.
+
 
 ## What is preserved
 
 - Worker/D1 remains the authority for normalized 身份組, explicit scope, capability resolution, protected `Admin`/`會友基礎`, assignable `Staff`, additive effective permissions, audit, idempotency, revisions, and registration approval.
 - Existing route URLs, shell transition, safe deep links, origin-aware Back, Programs/enrollment/workspace, management/identity operations, scanner/attendance/guest flows, Events, and recovery states remain preservation targets.
 - Civic Minimal, Cantonese-first language, local shadcn/Radix primitives, Tailwind/token styling, documented native exceptions, accessibility mechanics, numeric evidence, and local disposable verification remain the active implementation inputs.
-- Historical A–F phase traces, QA records, screenshots, HTML audits, JSON reports, review findings, and rollback checkpoints remain provenance and must not be silently discarded.
+- Historical A–F phase traces, the pre-#473 S4 gate records, QA records, screenshots, HTML audits, JSON reports, review findings, and rollback checkpoints remain provenance and must not be silently discarded.
 - Phase B deferred findings (`account-settings.md` F-09…F-15, `synthesis.md` C-03/C-05, and `workspace-settings.md` WS-01…WS-12) are explicitly imported into the ledger rather than presented as silently fixed.
 
 ## What is not approved
