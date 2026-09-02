@@ -400,7 +400,7 @@ Append one compact entry after every ticket. Do not copy the entire issue body.
 - **Branch / PR:** `rescue/t02-ui-governance` / [#545](https://github.com/Noahlw/efcc/pull/545)
 - **Delivered outcome:** Persistent UI governance authority defining precedence, canonical styling stack, four ownership layers, semantic CVA/composition boundaries, Contract Change control, exact waivers, approvals, evidence, and rescue scope; concise root guidance pointer.
 - **Tests:** Governance integrity check passed with 10 authority sections, full post-main S4 lineage link, canonical stack, four ownership layers, semantic CVA/composition, Contract Change, waiver, approval, scope preservation, and `AGENTS.md` pointers; `git diff --check` passed; Markdown/local links verified; aggregate runtime not applicable.
-- **Code review:** Pending final `/code-review` on `6d27fee...9c57b71`.
+- **Code review:** Standards and Spec axes passed on `6d27fee83a7033af1cf0e896868b3f0e812f0273...9162f737cf5f6954351e47478d142493d942e9fc` with zero findings.
 - **Human approval:** `N/A`
 - **Workflow:** `/implement` scope applied before editing; the T01 workflow deviation remains recorded above and T02 onward follows this gate.
 - **Preservation impact:** [`ui-control-recovery-governance.md`](ui-control-recovery-governance.md) and `AGENTS.md`
