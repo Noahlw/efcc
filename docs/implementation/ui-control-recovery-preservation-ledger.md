@@ -1,9 +1,9 @@
-# EFCC UI Control Recovery — A–F Preservation Ledger
+# EFCC UI Control Recovery — Full Post-Main S4 Preservation Ledger
 
 **Ticket:** T01 / [#506](https://github.com/Noahlw/efcc/issues/506)  
-**Ledger status:** Active rescue input; published with the T01 implementation branch  
+**Ledger status:** Active T01 course-correction input; initial ledger merged, full lineage correction pending
 **Frozen source:** `feat/s4-f-contraction-release-gate` at `6edf28c0f8f7058cf992416e7b517824c3178c8c`  
-**Rescue base:** `rescue/ui-control-recovery` at finalized tracker bootstrap `cdb326f206da0bb6ff9de9997124f7bb7b16ff61`  
+**Rescue base:** `rescue/ui-control-recovery` at `e68d554e7dd7abb97dfa916ffe861f616b82cc57`
 **Prepared:** 2026-09-02
 
 This ledger is the capability-level preservation record required before route rescue. It separates domain authority, presentation, test infrastructure, and historical evidence. It does not approve a visual baseline, choose `SALVAGE STACK` versus `SELECTIVE REPLAY`, or supersede any historical PR.
@@ -34,13 +34,39 @@ The source stack is immutable for Phase 0 and all pre-supersession rescue work. 
 | `REPLAY` | Reimplement only after evidence shows preservation cannot be achieved safely. No retained shipped capability receives this disposition in Phase 0; the global rescue decision belongs to T12 / #517. |
 | `RETIRE` | Remove an obsolete compatibility or historical implementation path while retaining the current replacement and provenance. |
 
-## 2. Frozen source stack
+## 2. Full post-main S4 source lineage
 
-The exact GitHub PR metadata below was verified with `gh pr view <number> --json number,headRefName,headRefOid,baseRefName,baseRefOid,state,mergedAt` on 2026-09-02. Every historical PR was `OPEN` with `mergedAt: null` at the freeze check. The OIDs are the PR head facts; a QA report's named implementation/review commit is retained as evidence but is not substituted for the PR head.
+The verified post-main S4 chain is:
+
+```text
+main @ 83fafdb813db62fa530ddd2bddcecf60571763ec
+  → #457 @ 6b93a4c53780172376ee13e64ec4f3eb77f44081
+  → #458 @ 07b6628398d94a676caee0c32cd0231eedac3e9c
+  → #469 @ 529d10cf44335f24a8be8cf1840ab7e6203a7fcd
+  → #470 @ 27062fee0fb87d6f09640b8df259d92ea449f726
+  → #471 @ b36f2ff3e5b36cc600a55d9348a1e8a3453479ad
+  → #472 @ b5a99d7b4a802e3279c06a6f3baa29e2f60ac51e
+  → #473 @ 85817f563a801e891bfbf758e3174ea0bdea9544
+  → #496 @ 3cc674f4e2240abaebb47bb75c6614a8c3d7c624
+  → #497 @ c75c99e84d699d2d1eac44f07d4e013ead4c12a5
+  → #501 @ f914de96df329f0e455890865f98e80143d7c27e
+  → #502 @ 7547fbf8ee6ed8b441d173135550081a487b1f72
+  → #503 @ c06f9fc0921830a237a7334f1009a7867663a784
+  → #504 / frozen Phase F tip @ 6edf28c0f8f7058cf992416e7b517824c3178c8c
+  → rescue/ui-control-recovery
+```
+
+The exact GitHub PR metadata below was verified with `gh pr view <number> --json number,headRefName,headRefOid,baseRefName,baseRefOid,state,mergedAt` on 2026-09-02. Every historical PR was `OPEN` with `mergedAt: null` at verification. Each row's base OID equals the preceding row's head OID; #457 starts at the verified `main` OID. The OIDs are PR head facts, not evidence-report revision labels.
 
 | Stack stage | PR / scope | Base branch and exact base SHA | Head branch and exact head SHA | State at freeze | Primary evidence |
 |---|---|---|---|---|---|
-| Migration origin | #473 — whole-app shadcn migration and S4 polish | `feat/s4-11-integration-gate` / `b5a99d7b4a802e3279c06a6f3baa29e2f60ac51e` | `feat/s4-12-shadcn-migration` / `85817f563a801e891bfbf758e3174ea0bdea9544` | `OPEN`, unmerged | [`pr/473`](https://github.com/Noahlw/efcc/pull/473), [`s4-phase-a-acceptance-trace.md`](../specs/s4-phase-a-acceptance-trace.md) |
+| S4-01…S4-06 management foundation | #457 — management access, accounts, approvals, permission policy | `main` / `83fafdb813db62fa530ddd2bddcecf60571763ec` | `feat/s4-management-access` / `6b93a4c53780172376ee13e64ec4f3eb77f44081` | `OPEN`, unmerged | [`S4-06 integration gate`](../qa/2026-08-26-s4-06-integration-gate.md), Specs 453/454 |
+| S4-07 hardening authority | #458 — Discord-derived UX hardening contract | `feat/s4-management-access` / `6b93a4c53780172376ee13e64ec4f3eb77f44081` | `feat/s4-07-hardening-contract` / `07b6628398d94a676caee0c32cd0231eedac3e9c` | `OPEN`, unmerged | [`ADR-0040`](../adr/0040-discord-derived-s4-management-interaction-authority.md), [`ADR-0041`](../adr/0041-atomic-registration-batch-approval.md), [`Spec 460`](../specs/460-s4-discord-ux-hardening-amendment.md) |
+| S4-08 Account Directory | #469 — Account Directory ledger hardening | `feat/s4-07-hardening-contract` / `07b6628398d94a676caee0c32cd0231eedac3e9c` | `feat/s4-08-account-directory-ledger` / `529d10cf44335f24a8be8cf1840ab7e6203a7fcd` | `OPEN`, unmerged | [`S4 hardening gate`](../qa/2026-08-26-s4-hardening-gate.md), Account Directory evidence under `docs/qa/screenshots/s4-hardening/` |
+| S4-09 registration batch | #470 — atomic registration batch approval | `feat/s4-08-account-directory-ledger` / `529d10cf44335f24a8be8cf1840ab7e6203a7fcd` | `feat/s4-09-registration-batch` / `27062fee0fb87d6f09640b8df259d92ea449f726` | `OPEN`, unmerged | [`ADR-0041`](../adr/0041-atomic-registration-batch-approval.md), `web/lib/auth/registration-batch.test.ts` |
+| S4-10 management UX | #471 — Discord-style management UX | `feat/s4-09-registration-batch` / `27062fee0fb87d6f09640b8df259d92ea449f726` | `feat/s4-10-discord-role-ux` / `b36f2ff3e5b36cc600a55d9348a1e8a3453479ad` | `OPEN`, unmerged | [`S4 hardening gate`](../qa/2026-08-26-s4-hardening-gate.md), [`Spec 460`](../specs/460-s4-discord-ux-hardening-amendment.md) |
+| S4-11 integration gate | #472 — management hardening integration gate | `feat/s4-10-discord-role-ux` / `b36f2ff3e5b36cc600a55d9348a1e8a3453479ad` | `feat/s4-11-integration-gate` / `b5a99d7b4a802e3279c06a6f3baa29e2f60ac51e` | `OPEN`, unmerged | [`S4-06 integration gate`](../qa/2026-08-26-s4-06-integration-gate.md), [`S4 hardening gate`](../qa/2026-08-26-s4-hardening-gate.md) |
+| S4-12 migration | #473 — whole-app shadcn migration and S4 polish | `feat/s4-11-integration-gate` / `b5a99d7b4a802e3279c06a6f3baa29e2f60ac51e` | `feat/s4-12-shadcn-migration` / `85817f563a801e891bfbf758e3174ea0bdea9544` | `OPEN`, unmerged | [`pr/473`](https://github.com/Noahlw/efcc/pull/473), [`Phase A trace`](../specs/s4-phase-a-acceptance-trace.md) |
 | Phase A | #496 — identity and UI foundations (#476–#478) | `feat/s4-12-shadcn-migration` / `85817f563a801e891bfbf758e3174ea0bdea9544` | `remediate-478` / `3cc674f4e2240abaebb47bb75c6614a8c3d7c624` | `OPEN`, unmerged | [`pr/496`](https://github.com/Noahlw/efcc/pull/496), [`Phase A QA`](../qa/2026-08-28-s4-phase-a-foundation.md) |
 | Phase B | #497 — shared modules and role definitions (#479–#484) | `remediate-478` / `3cc674f4e2240abaebb47bb75c6614a8c3d7c624` | `feat/s4-b-shared-modules-role-definitions` / `c75c99e84d699d2d1eac44f07d4e013ead4c12a5` | `OPEN`, unmerged | [`pr/497`](https://github.com/Noahlw/efcc/pull/497), [`Phase B QA`](../qa/2026-08-28-s4-phase-b-foundation.md) |
 | Phase C | #501 — stackable identity integration (#485–#487) | `feat/s4-b-shared-modules-role-definitions` / `c75c99e84d699d2d1eac44f07d4e013ead4c12a5` | `feat/s4-c-stackable-identity-integration` / `f914de96df329f0e455890865f98e80143d7c27e` | `OPEN`, unmerged | [`pr/501`](https://github.com/Noahlw/efcc/pull/501), [`Phase C QA`](../qa/2026-08-29-s4-phase-c-foundation.md) |
@@ -48,9 +74,21 @@ The exact GitHub PR metadata below was verified with `gh pr view <number> --json
 | Phase E | #503 — operations route polish (#491–#493) | `feat/s4-d-member-public-route-polish` / `7547fbf8ee6ed8b441d173135550081a487b1f72` | `feat/s4-e-operations-route-polish` / `c06f9fc0921830a237a7334f1009a7867663a784` | `OPEN`, unmerged | [`pr/503`](https://github.com/Noahlw/efcc/pull/503), [`Phase E QA`](../qa/2026-09-01-s4-phase-e-foundation.md) |
 | Phase F | #504 — contraction and release gate (#494–#495) | `feat/s4-e-operations-route-polish` / `c06f9fc0921830a237a7334f1009a7867663a784` | `feat/s4-f-contraction-release-gate` / `6edf28c0f8f7058cf992416e7b517824c3178c8c` | `OPEN`, unmerged | [`pr/504`](https://github.com/Noahlw/efcc/pull/504), [`Phase F trace`](../specs/s4-phase-f-acceptance-trace.md) |
 
+### PR head OIDs versus evidence revisions
+
+The immutable source table uses the GitHub API `headRefOid` for each PR. Historical QA documents may name a later implementation, review, correction, or report commit; those identifiers are retained as evidence provenance and are never substituted for the PR head:
+
+- **#457–#472:** the early S4 gate records integrated implementation commits such as `b7ad4fe`, `2e92f14`, `151d3f6`, `aab7ea53`, `600c8387`, and `c18cb0c`; these are report-recorded abbreviated commits, not guessed PR heads.
+- **#473:** PR head is `85817f563a801e891bfbf758e3174ea0bdea9544`; the polish audit names report revisions such as `7fdde402` and `d97af438`.
+- **#496:** PR head is `3cc674f4e2240abaebb47bb75c6614a8c3d7c624`; Phase A QA names implementation/reviewed head `8e902b4a1eadf4a2f25aa2924243d53ab2f471d4`, evidence record `8b1e141d14af93e06d5517cd55a1d37aa6382c45`, and correction `48b4dbe059a361ec801811a503f6c97c71c91c13`.
+- **#497:** PR head is `c75c99e84d699d2d1eac44f07d4e013ead4c12a5`; Phase B QA names publication/recovery revisions `a89539dd`, `28e80113`, and `c4737690` as abbreviated report identifiers.
+- **#501:** PR head is `f914de96df329f0e455890865f98e80143d7c27e`; Phase C QA names verification/publication revisions including `b59d13d4f893281801cc4c31a033d4ca1cd7801f`, `f3cf4e1db292426d5ba4dc93a1dcadbe0f71c262`, `be4aff4f3a0c5ceca2edc7276e23a89f6fbaf912`, and `1ccbb0120eb9d5c288f3e385f7194b9cfd59853f`.
+- **#502:** PR head is `7547fbf8ee6ed8b441d173135550081a487b1f72`; Phase D QA names implementation head `343cafd28a210f6eac2c4c96714a0e51f8e6463c`.
+- **#503/#504:** the Phase E and Phase F QA records use the cumulative branch heads `c06f9fc0921830a237a7334f1009a7867663a784` and `6edf28c0f8f7058cf992416e7b517824c3178c8c`; contraction evidence also names abbreviated implementation commits, which remain report provenance.
+
 ### Historical rollback checkpoints
 
-The migration-origin PR records one atomic checkpoint per wave: `09251463` (Wave 0), `6b24ebe3` (Wave 1), `ee1cb96d` (Wave 2), `3fa8bbe4` (Wave 3), `22d12563` (Wave 4), `e892b4bd` (Wave 5), and `7fdde402` / `d97af438` (follow-up audit evidence). These are historical rollback references, not new rescue heads. Phase A–F QA reports also retain their implementation/review commits and are linked above.
+The migration-origin PR records one atomic checkpoint per wave: `09251463` (Wave 0), `6b24ebe3` (Wave 1), `ee1cb96d` (Wave 2), `3fa8bbe4` (Wave 3), `22d12563` (Wave 4), `e892b4bd` (Wave 5), and `7fdde402` / `d97af438` (follow-up audit evidence). These are historical rollback references, not new rescue heads. The full post-main S4 lineage above remains the preservation source; the rescue branch is based only on the frozen Phase F tip.
 
 ## 3. Capability preservation ledger
 
@@ -75,6 +113,21 @@ Each row has one primary disposition. `Known defect / condition` is intentionall
 | C-15 | Historical findings | Active P1/lower-severity audit dispositions and unresolved review findings. Seam: [`2026-09-01-s4-phase-f-audit-dispositions.md`](../qa/2026-09-01-s4-phase-f-audit-dispositions.md). | Phase F polish/sticky-overlay audits; PR #503 review; #505 | P1 rows are linked to owning tests/evidence; release gate retains blocked/unclaimed rows | P1 and touched-route lower-severity implementation findings are recorded `Fixed`; this does not close runtime blockers or human gates. | `PRESERVE_AND_AUDIT` |
 | C-16 | Legacy compatibility | Fixed global Account-role vocabulary, obsolete role columns/tables, shipped CSS Module paths, and compatibility selectors eliminated by the normalized cutover/contraction. | ADR-0042 Phase F disposition; migration `0026`; PR #504 | `tests/e2e/verify-phase-f-contraction.ts`, `pnpm verify:contraction`, Phase F contraction evidence | Preserve migration history and the normalized replacement; do not restore fixed-role branches, aliases, or parallel CSS paths. | `RETIRE` |
 | C-17 | Platform/semantic exceptions | Native camera/video, print, select/date inputs, attendance radio chooser, navigation anchors, and domain-row actions retained only for documented platform or semantic reasons. | ADR-0043; `DESIGN.md`; `web/COMPONENT_INVENTORY.md` | Native-exception registry; attendance, directory, and print-media tests | Human camera, print-preview, touch, and AT outcomes remain unclaimed; native shape is not a general styling escape hatch. | `PRESERVE_AND_AUDIT` |
+
+### Pre-#473 capability lineage bridge
+
+The following rows make the pre-#473 origins explicit. They preserve capabilities, not obsolete files: every row follows the original capability through later evolution to the current Phase F seam, proof, condition, and one approved disposition.
+
+| ID | Original capability and origin PR | Later evolution / replacement lineage | Current Phase F implementation seam | Current proof / known condition | Disposition |
+|---|---|---|---|---|---|
+| C-18 | **#457 — S4 management foundation:** additive role/capability model and `會友基礎` baseline; Management Hub capability projection; Account Directory; Registration Approval; Permission Policy; Worker/D1 management seams; approval/permission mutations; audit and conflict behavior. | #458 hardening authority; #469 directory ledger; #470 batch approval; #471 management UX; #472 integration gate; #473 shadcn migration; #496 normalized identity; #497 shared modules; #501 normalized authority integration; #502/#503 route polish; #504 contraction. | `web/lib/programs/capabilities.ts`, `web/app/management/management-hub.tsx`, `web/app/management/page.tsx`, `web/lib/auth/handlers.ts`, `web/lib/identity/permission-editor.ts`, migrations `0015`–`0017`. | [`S4-06 integration gate`](../qa/2026-08-26-s4-06-integration-gate.md); `web/lib/programs/capabilities.test.ts`, `management-hub.test.tsx`, `worker.auth.test.ts`, and identity Worker suites. The four normalized Worker exclusions remain a T04 condition. | `PRESERVE_AND_AUDIT` |
+| C-19 | **#458 — S4 hardening authority:** Discord-derived interaction grammar; protected Member Baseline; role-first management; explicit selection; origin-aware management navigation/action framework; responsive H-01…H-40 expectations; canonical redirects; Registration Batch authority; custom-role deferral. | #471 staged role/approval workflows; #472 hardening gate; #473 primitive migration and mobile action-surface repair; #497 shared `ActionSurface`/directory/feed seams; #501 normalized identity; #502/#503 management integration; #504 contraction. | `web/app/management/management-action-framework.tsx`, `web/app/permissions/page.tsx`, `web/app/management/page.tsx`, `web/lib/approval-queue.tsx`, ADR-0040, and ADR-0041. | [`Spec 460`](../specs/460-s4-discord-ux-hardening-amendment.md), [`S4 hardening gate`](../qa/2026-08-26-s4-hardening-gate.md), and `tests/e2e/s4-management-hardening.test.ts`. Human AT/device/preference rows and the global cascade remain open conditions. | `PRESERVE_AND_AUDIT` |
+| C-20 | **#469 — Account Directory evolution:** bounded initial page; deterministic cursor pagination; summary counts; unique append; search/filter context; Account Detail return context; dense responsive directory behavior. | #472 integration proof; #473 shadcn controls and responsive repair; #497 `DirectoryFrame`; #501 normalized identity projections; #502/#503 route and focus restoration; #504 numeric/contraction evidence. | `web/app/management/account-directory-panel.tsx`, `web/app/management/directory-frame.tsx`, `web/lib/programs/management-directory.tsx`, `web/lib/programs/d1-workspace-store.ts`, `web/lib/programs/department-workspace.ts`, and `web/lib/programs/program-handlers.ts`. | `web/lib/account-directory-panel.test.tsx`, `web/lib/programs/account-directory.test.ts`, `web/lib/programs/management-directory.test.tsx`; Phase F S4-P1-03/S4-P1-04 records round-trip and 800px proof. Read-only detail and query/filter ownership remain domain boundaries. | `PRESERVE_AND_AUDIT` |
+| C-21 | **#470 — atomic Registration Batch Approval:** actor-scoped idempotency; all-or-nothing Pending checks; per-request immutable audit; stale/conflict behavior; bounded D1 batch statements. | #471 explicit selection/review/confirmation; #473 approval primitives and H-35 single-decision audit repair; #497 lifecycle/action seams; #501 normalized authority; #502/#503 responsive queue/detail; #504 contraction and release evidence. | `web/lib/auth/registrations.ts`, `web/lib/registration-client.ts`, `web/lib/approval-queue.tsx`, `web/lib/approval-detail.tsx`, `web/worker.ts`, and migration `0018_registration_batch_idempotency.sql`. | `web/lib/auth/registration-batch.test.ts`, `web/worker.auth.test.ts`, [`ADR-0041`](../adr/0041-atomic-registration-batch-approval.md), and Phase F F-494-01. The batch limit and single/batch audit distinction remain required contracts; no production defect is inferred. | `PRESERVE` |
+| C-22 | **#471 — Discord-style management UX:** role-first Permission workspace; staged permission review; CAS-safe save; Pending/Processed approval workflow; explicit selection; confirmation/rejection reason; processed read-only detail; responsive/action-surface behavior. | #472 hardening gate; #473 local shadcn/Radix migration and mobile-flow fix; #496/#497 identity hierarchy and shared composition; #501 normalized Permission Editor/Account Access; #502/#503 route and geometry evidence; #504 contraction. | `web/app/management/permission-editor-panel.tsx`, `web/app/management/role-hierarchy-panel.tsx`, `web/app/management/account-access-panel.tsx`, `web/lib/identity/mutations.ts`, `web/lib/approval-queue.tsx`, and `web/lib/approval-detail.tsx`. | `web/lib/identity/permission-editor.test.ts`, `permission-editor-handlers.test.ts`, `account-access.test.ts`, `web/lib/approval-queue.test.tsx`, [`S4 hardening gate`](../qa/2026-08-26-s4-hardening-gate.md), and Phase E/F evidence. Four normalized Worker test files and final runtime reliability remain unresolved. | `PRESERVE_AND_AUDIT` |
+| C-23 | **#472 — S4 management integration gate:** isolated local-D1 gate; management geometry; focus/safe-area/dock checks; loading/empty/error/forbidden/conflict/read-only states; historical S4 verification evidence. | #473 expanded primitive/route coverage; #496–#503 carried the gate through identity and route waves; #504 contraction/release gate retained the evidence vocabulary and added numeric artifacts. | `tests/e2e/s4-management-hardening.config.ts`, `tests/e2e/s4-management-hardening.test.ts`, `tests/e2e/verify-phase-f-contraction.ts`, and `tests/e2e/numeric-evidence.ts`. | [`S4 hardening gate`](../qa/2026-08-26-s4-hardening-gate.md), [`Phase F release gate`](../qa/2026-09-01-s4-phase-f-release-gate.md), and Phase F numeric/contraction evidence. The current full Programs D1 Worker failure means prior isolated passes remain historical evidence. | `PRESERVE_AND_AUDIT` |
+
+These bridge rows complement C-01…C-17: C-18 preserves the original management/domain foundation, C-19 the hardening authority, C-20 the directory capability, C-21 batch approval, C-22 role-first management UX, and C-23 the integration/evidence gate. The later Phase A–F rows remain the current implementation lineage; no original pre-#473 file is required to survive when its capability has a verified replacement seam.
 
 ### Capability facts that must not be lost
 
