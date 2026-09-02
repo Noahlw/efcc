@@ -106,11 +106,11 @@ Update this table at the start and end of every implementation session.
 | Rescue integration HEAD | `6d27fee83a7033af1cf0e896868b3f0e812f0273` — T01 full-lineage correction merged |
 | Active ticket | T02 / [#507](https://github.com/Noahlw/efcc/issues/507) |
 | Active branch/worktree | `rescue/t02-ui-governance` / `/home/ubuntu/efcc-rescue-t02-governance` |
-| Active PR | None |
+| Active PR | [#545](https://github.com/Noahlw/efcc/pull/545) |
 | Current frontier | T02 [#507](https://github.com/Noahlw/efcc/issues/507) active; T04 [#509](https://github.com/Noahlw/efcc/issues/509) now `FRONTIER`; T03/T05/T06 remain blocked by declared edges |
 | Pending human approval | None |
 | Active blocker | None |
-| Next safe action | Verify the governance authority and project pointer, then run `/code-review` |
+| Next safe action | Await review and merge of T02 PR #545; keep T04 frontier unstarted in this one-ticket worktree |
 | Last merged rescue SHA | `6d27fee83a7033af1cf0e896868b3f0e812f0273` |
 | Last rollback checkpoint | Frozen Phase F SHA `6edf28c0f8f7058cf992416e7b517824c3178c8` |
 | Entry verification | Frozen Phase F ancestry and rescue base verified; T01 initial ledger and full-lineage correction merged; tracker is on this fresh T02 worktree; T04 is eligible but not selected |
@@ -140,7 +140,7 @@ Update this table at the start and end of every implementation session.
 | Key | Issue | Ticket | Blocked by | Status | PR | Merge SHA | Evidence / notes |
 |---|---|---|---|---|---|---|---|
 | T01 | [#506](https://github.com/Noahlw/efcc/issues/506) | Freeze A–F and publish Preservation Ledger | None | `MERGED_RESCUE` | [#544](https://github.com/Noahlw/efcc/pull/544) | `6d27fee83a7033af1cf0e896868b3f0e812f0273` | Initial ledger plus full post-main S4 lineage correction merged; final provenance and link checks passed |
-| T02 | [#507](https://github.com/Noahlw/efcc/issues/507) | Establish UI governance and agent change control | None | `VERIFYING` | — | — | Governance authority and concise `AGENTS.md` pointer created; documentation integrity verification underway |
+| T02 | [#507](https://github.com/Noahlw/efcc/issues/507) | Establish UI governance and agent change control | None | `PR_READY` | [#545](https://github.com/Noahlw/efcc/pull/545) | — | Governance authority and concise `AGENTS.md` pointer verified; two-axis `/code-review` passed; awaiting review/merge |
 | T03 | [#508](https://github.com/Noahlw/efcc/issues/508) | Enforce styling ownership and typed UI contract governance | T02 | `BLOCKED` | — | — | — |
 | T04 | [#509](https://github.com/Noahlw/efcc/issues/509) | Restore excluded normalized Worker suites | T01 | `FRONTIER` | — | — | T01 correction merged; eligible, not selected while T02 is active |
 | T05 | [#510](https://github.com/Noahlw/efcc/issues/510) | Stabilize full Programs/Worker/D1 runtime | T04 | `BLOCKED` | — | — | — |
@@ -332,14 +332,14 @@ Only one active implementation ticket should normally appear here.
 | Goal | Establish the UI governance and agent change-control authority |
 | Base rescue SHA | `6d27fee83a7033af1cf0e896868b3f0e812f0273` |
 | Branch / worktree | `rescue/t02-ui-governance` / `/home/ubuntu/efcc-rescue-t02-governance` |
-| PR | None |
+| PR | [#545](https://github.com/Noahlw/efcc/pull/545) |
 | Required skills | `/using-git-worktrees`, `/implement`, `/code-review`, `/pr-description` |
-| Focused tests | Governance documentation integrity and deliberate change-control fixture checks |
+| Focused tests | Governance integrity check: 9 authority sections, canonical stack, four ownership layers, semantic CVA/composition, Contract Change, waiver, approval, scope, pointer, tracker, and 64 local links passed |
 | Aggregate tests | N/A — documentation-only authority ticket |
 | Human gate | N/A |
-| Current status | `VERIFYING` |
-| Blocker | None |
-| Next action | Run governance integrity/diff checks, then invoke `/code-review` before PR preparation |
+| Current status | `PR_READY` |
+| Blocker | Awaiting review/merge of PR #545; T04 remains unstarted |
+| Next action | Await review/merge of PR #545 before starting another ticket |
 
 ---
 
@@ -392,6 +392,21 @@ Append one compact entry after every ticket. Do not copy the entire issue body.
 - **Open blocker:** None; T01 full-lineage correction merged. T02 is selected; T04 is now eligible.
 - **Next eligible ticket:** T02 / #507 (selected); T04 / #509
 
+#### T02 / #507 — Establish UI governance and agent change control
+
+- **Status:** `PR_READY`
+- **Base rescue SHA:** `6d27fee83a7033af1cf0e896868b3f0e812f0273`
+- **Head / merge SHA:** `358adbd85ea2d7416eb53933744a29325676f3c9` / pending
+- **Branch / PR:** `rescue/t02-ui-governance` / [#545](https://github.com/Noahlw/efcc/pull/545)
+- **Delivered outcome:** Persistent UI governance authority defining precedence, canonical styling stack, four ownership layers, semantic CVA/composition boundaries, Contract Change control, exact waivers, approvals, evidence, and rescue scope; concise root guidance pointer.
+- **Tests:** Governance integrity check passed with 9 authority sections and 64 local links; `git diff --check` passed; aggregate runtime not applicable.
+- **Code review:** Standards and Spec axes passed with zero findings.
+- **Human approval:** `N/A`
+- **Workflow:** `/implement` scope applied before editing; the T01 workflow deviation remains recorded above and T02 onward follows this gate.
+- **Preservation impact:** [`ui-control-recovery-governance.md`](ui-control-recovery-governance.md) and `AGENTS.md`
+- **Open blocker:** PR #545 review/merge; T04 / #509 remains unstarted.
+- **Next eligible ticket:** T04 / #509 is `FRONTIER`; T03 / #508 unlocks after T02 merge.
+
 ---
 
 ## 15. Human approval queue
@@ -417,7 +432,7 @@ Keep links here so new sessions do not need to rediscover them.
 | Asset | Owner ticket | Current reference / status |
 |---|---|---|
 | Preservation Ledger | T01 / #506 | [`ui-control-recovery-preservation-ledger.md`](ui-control-recovery-preservation-ledger.md) and [`ui-control-recovery-preservation-summary.md`](ui-control-recovery-preservation-summary.md) — full post-main S4 lineage merged with #544 |
-| UI governance authority | T02 / #507 | [`ui-control-recovery-governance.md`](ui-control-recovery-governance.md) — created; verification pending |
+| UI governance authority | T02 / #507 | [`ui-control-recovery-governance.md`](ui-control-recovery-governance.md) — created and verified; PR #545 |
 | Scenario Registry | T03+ | Not created |
 | UI Contract Registry | T03+ | Not created |
 | UI Lab | T07 / #512 | Not created |
