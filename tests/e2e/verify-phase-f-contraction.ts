@@ -10,10 +10,17 @@ import { describe, test } from "node:test";
 
 const ROOT = path.resolve(import.meta.dirname, "../..");
 
-
 // Files/dirs excluded from shipped scan
-const EXCLUDED_DIR_PARTS = new Set(["__tests__", "prototype", "out", ".next", "dist", "generated"]);
-const EXCLUDED_FILE_RE = /(?:\.test\.[tj]sx?$|\.spec\.[tj]sx?$|\.stories\.[tj]sx?$)/;
+const EXCLUDED_DIR_PARTS = new Set([
+  "__tests__",
+  "prototype",
+  "out",
+  ".next",
+  "dist",
+  "generated",
+]);
+const EXCLUDED_FILE_RE =
+  /(?:\.test\.[tj]sx?$|\.spec\.[tj]sx?$|\.stories\.[tj]sx?$)/;
 
 const SCAN_ROOTS = [
   path.join(ROOT, "web", "app"),
@@ -47,6 +54,36 @@ const FORBIDDEN = [
   {
     label: "retired helper requireAdminOrStaff",
     regex: /\brequireAdminOrStaff\b/g,
+    allowFiles: new Set(),
+  },
+  {
+    label: "retired RolePolicyStore helper",
+    regex: /\bRolePolicyStore\b/g,
+    allowFiles: new Set(),
+  },
+  {
+    label: "retired hasActiveManagementGrant helper",
+    regex: /\bhasActiveManagementGrant\b/g,
+    allowFiles: new Set(),
+  },
+  {
+    label: "retired sectionsForRole helper",
+    regex: /\bsectionsForRole\b/g,
+    allowFiles: new Set(),
+  },
+  {
+    label: "retired stableNavigationSections helper",
+    regex: /\bstableNavigationSections\b/g,
+    allowFiles: new Set(),
+  },
+  {
+    label: "retired ROLE_CAPABILITY_DEFAULTS constant",
+    regex: /\bROLE_CAPABILITY_DEFAULTS\b/g,
+    allowFiles: new Set(),
+  },
+  {
+    label: "retired PermissionPolicy helper",
+    regex: /\bPermissionPolicy[A-Za-z0-9_]*\b/g,
     allowFiles: new Set(),
   },
   {
@@ -110,8 +147,10 @@ const FORBIDDEN = [
     ]),
   },
   {
-    label: "role field definition for fixed Account role (role: string | Role | \"Admin\" etc)",
-    regex: /(?<![A-Za-z0-9_])role\s*\??\s*:\s*(?:"Admin"|"Staff"|"Member"|'Admin'|'Staff'|'Member'|string|Role\b|MemberDirectoryRole)/g,
+    label:
+      'role field definition for fixed Account role (role: string | Role | "Admin" etc)',
+    regex:
+      /(?<![A-Za-z0-9_])role\s*\??\s*:\s*(?:"Admin"|"Staff"|"Member"|'Admin'|'Staff'|'Member'|string|Role\b|MemberDirectoryRole)/g,
     allowFiles: new Set(),
   },
   {
@@ -121,7 +160,8 @@ const FORBIDDEN = [
   },
   // Additional narrow helpers that historically existed as executable SQL/DTO paths
   {
-    label: "legacy executable SQL helper importLegacyUsers (role still present in its body is covered by other patterns)",
+    label:
+      "legacy executable SQL helper importLegacyUsers (role still present in its body is covered by other patterns)",
     regex: /\bimportLegacyUsers\b/g,
     allowFiles: new Set(["web/lib/identity/seeds.ts"]),
     conditional: true,
@@ -182,7 +222,13 @@ function collectFiles(): string[] {
 }
 
 export function scanContent(relPath: string, content: string) {
-  const hits: Array<{ file: string; line: number; label: string; excerpt: string; matches: string }> = [];
+  const hits: Array<{
+    file: string;
+    line: number;
+    label: string;
+    excerpt: string;
+    matches: string;
+  }> = [];
   const lines = content.split("\n");
   // For conditional pattern importLegacyUsers, track if file also has role
   const hasRole = /\brole\b/.test(content);
@@ -199,7 +245,10 @@ export function scanContent(relPath: string, content: string) {
       if (rule.regex.test(line)) {
         // Find all matches on this line for excerpt
         rule.regex.lastIndex = 0;
-        const matches = [...line.matchAll(rule.regex)].map((mm) => mm[0]).slice(0, 3).join(", ");
+        const matches = [...line.matchAll(rule.regex)]
+          .map((mm) => mm[0])
+          .slice(0, 3)
+          .join(", ");
         const excerpt = line.trim().slice(0, 160);
         hits.push({
           file: relPath,
@@ -216,7 +265,13 @@ export function scanContent(relPath: string, content: string) {
 
 function main() {
   const files = collectFiles();
-  const allHits: Array<{ file: string; line: number; label: string; excerpt: string; matches: string }> = [];
+  const allHits: Array<{
+    file: string;
+    line: number;
+    label: string;
+    excerpt: string;
+    matches: string;
+  }> = [];
   let cssCount = 0;
   for (const abs of files) {
     const rel = path.relative(ROOT, abs);
@@ -229,12 +284,18 @@ function main() {
   }
 
   if (allHits.length === 0) {
-    console.log("verify:contraction PASS — zero forbidden shipped occurrences and zero shipped CSS Module imports");
-    console.log(`scanned ${files.length} shipped files (web/app, web/lib, web/worker.ts)`);
+    console.log(
+      "verify:contraction PASS — zero forbidden shipped occurrences and zero shipped CSS Module imports"
+    );
+    console.log(
+      `scanned ${files.length} shipped files (web/app, web/lib, web/worker.ts)`
+    );
     process.exit(0);
   }
 
-  console.error(`verify:contraction FAIL — ${allHits.length} forbidden shipped occurrence(s)`);
+  console.error(
+    `verify:contraction FAIL — ${allHits.length} forbidden shipped occurrence(s)`
+  );
   console.error(`  shipped CSS Module imports: ${cssCount}`);
   console.error(`  other forbidden: ${allHits.length - cssCount}`);
   console.error("");
@@ -245,7 +306,9 @@ function main() {
     if (!byFile.has(key)) byFile.set(key, []);
     byFile.get(key)!.push(h);
   }
-  for (const [file, list] of [...byFile.entries()].sort() as Array<[string, typeof allHits]>) {
+  for (const [file, list] of [...byFile.entries()].sort() as Array<
+    [string, typeof allHits]
+  >) {
     console.error(`${file}:`);
     for (const h of list) {
       console.error(`  ${h.line}: ${h.label} — ${h.excerpt}`);
@@ -256,7 +319,6 @@ function main() {
   process.exit(1);
 }
 
-
 function checkFixture(content: string, fakeFile: string) {
   const hits = scanContent(fakeFile, content);
   return hits.length === 0 ? "pass" : "fail";
@@ -264,62 +326,149 @@ function checkFixture(content: string, fakeFile: string) {
 
 describe("verify-phase-f-contraction scanner", () => {
   test("rejects shipped CSS Module import", () => {
-    assert.equal(checkFixture('import styles from "./foo.module.css";', "web/app/foo.tsx"), "fail");
+    assert.equal(
+      checkFixture('import styles from "./foo.module.css";', "web/app/foo.tsx"),
+      "fail"
+    );
   });
   test("rejects retired systemRole field", () => {
     assert.equal(checkFixture('systemRole: "Admin"', "web/lib/api.ts"), "fail");
   });
   test("rejects requireAdminOrStaff helper", () => {
-    assert.equal(checkFixture("requireAdminOrStaff(request, env, requestId)", "web/lib/auth/handlers.ts"), "fail");
+    assert.equal(
+      checkFixture(
+        "requireAdminOrStaff(request, env, requestId)",
+        "web/lib/auth/handlers.ts"
+      ),
+      "fail"
+    );
+  });
+
+  test("rejects retired fixed-role authority helpers", () => {
+    for (const symbol of [
+      "RolePolicyStore",
+      "hasActiveManagementGrant",
+      "sectionsForRole",
+      "stableNavigationSections",
+      "ROLE_CAPABILITY_DEFAULTS",
+      "PermissionPolicy",
+    ]) {
+      assert.equal(
+        checkFixture(symbol, "web/lib/auth/handlers.ts"),
+        "fail",
+        symbol
+      );
+    }
   });
   test("rejects account-permissions compatibility route", () => {
-    assert.equal(checkFixture('"/api/v1/programs/account-permissions"', "web/worker.ts"), "fail");
+    assert.equal(
+      checkFixture('"/api/v1/programs/account-permissions"', "web/worker.ts"),
+      "fail"
+    );
   });
   test("rejects legacy table role_capabilities outside preflight", () => {
-    assert.equal(checkFixture("CREATE TABLE role_capabilities (x TEXT)", "web/lib/foo.ts"), "fail");
+    assert.equal(
+      checkFixture("CREATE TABLE role_capabilities (x TEXT)", "web/lib/foo.ts"),
+      "fail"
+    );
   });
   test("rejects accounts_role_write_guard trigger", () => {
-    assert.equal(checkFixture("accounts_role_write_guard", "web/lib/auth/accounts.ts"), "fail");
+    assert.equal(
+      checkFixture("accounts_role_write_guard", "web/lib/auth/accounts.ts"),
+      "fail"
+    );
   });
   test("rejects uppercase ROLE constant", () => {
-    assert.equal(checkFixture('export const ROLE = { ADMIN: "Admin" }', "web/lib/auth/accounts.ts"), "fail");
+    assert.equal(
+      checkFixture(
+        'export const ROLE = { ADMIN: "Admin" }',
+        "web/lib/auth/accounts.ts"
+      ),
+      "fail"
+    );
   });
   test("rejects MemberDirectoryRole type", () => {
-    assert.equal(checkFixture('type MemberDirectoryRole = "Admin"', "web/lib/programs/program-api.ts"), "fail");
+    assert.equal(
+      checkFixture(
+        'type MemberDirectoryRole = "Admin"',
+        "web/lib/programs/program-api.ts"
+      ),
+      "fail"
+    );
   });
   test("rejects fixed role field via quoted key", () => {
-    assert.equal(checkFixture('role: "Member"', "web/lib/auth/registrations.ts"), "fail");
+    assert.equal(
+      checkFixture('role: "Member"', "web/lib/auth/registrations.ts"),
+      "fail"
+    );
   });
   test("rejects dot role access on legacy DTO", () => {
-    assert.equal(checkFixture("account.role", "web/lib/auth/handlers.ts"), "fail");
+    assert.equal(
+      checkFixture("account.role", "web/lib/auth/handlers.ts"),
+      "fail"
+    );
   });
   test("accepts preflight allowlist for legacy tables", () => {
-    assert.equal(checkFixture("role_capabilities, department_managers, program_leaders", "web/lib/identity/preflight.ts"), "pass");
+    assert.equal(
+      checkFixture(
+        "role_capabilities, department_managers, program_leaders",
+        "web/lib/identity/preflight.ts"
+      ),
+      "pass"
+    );
   });
   test("accepts normalized role_definition terminology", () => {
-    assert.equal(checkFixture("role_definition_id, role_assignments, role_categories, role_definition_grants", "web/lib/identity/role-hierarchy.ts"), "pass");
+    assert.equal(
+      checkFixture(
+        "role_definition_id, role_assignments, role_categories, role_definition_grants",
+        "web/lib/identity/role-hierarchy.ts"
+      ),
+      "pass"
+    );
   });
   test("accepts AccountDirectory identity labels", () => {
-    assert.equal(checkFixture("identities: readonly PublicIdentitySummary[]; capabilities: Record<string, boolean>", "web/lib/api.ts"), "pass");
+    assert.equal(
+      checkFixture(
+        "identities: readonly PublicIdentitySummary[]; capabilities: Record<string, boolean>",
+        "web/lib/api.ts"
+      ),
+      "pass"
+    );
   });
   test("rejects shipped CSS Module import even for shell islands", () => {
-    assert.equal(checkFixture('import styles from "./auth-shell.module.css";', "web/lib/app-shell.tsx"), "fail");
+    assert.equal(
+      checkFixture(
+        'import styles from "./auth-shell.module.css";',
+        "web/lib/app-shell.tsx"
+      ),
+      "fail"
+    );
   });
   test("accepts stale-schema test fixture when file is excluded", () => {
     // d1-schema.test.ts is excluded from shipped scan (EXCLUDED_FILE_RE), so even though direct fixture would be checked, the scanner run excludes it
     // For direct scanContent, normalized role_* terms are allowed, so this passes
-    assert.equal(checkFixture("role_assignments, role_definitions", "web/lib/identity/d1-schema.test.ts"), "pass");
+    assert.equal(
+      checkFixture(
+        "role_assignments, role_definitions",
+        "web/lib/identity/d1-schema.test.ts"
+      ),
+      "pass"
+    );
   });
 });
 
-const isMain = process.argv[1] && import.meta.url.endsWith(path.basename(process.argv[1]));
-const isTestRun = process.argv.includes("--test") || process.env.NODE_TEST_CONTEXT !== undefined;
+const isMain =
+  process.argv[1] && import.meta.url.endsWith(path.basename(process.argv[1]));
+const isTestRun =
+  process.argv.includes("--test") ||
+  process.env.NODE_TEST_CONTEXT !== undefined;
 if (isMain && !isTestRun) {
   if (process.argv.includes("--check-fixture")) {
     const idx = process.argv.indexOf("--check-fixture");
     const content = process.argv[idx + 1] ?? "";
     const fileIdx = process.argv.indexOf("--file");
-    const fakeFile = fileIdx !== -1 ? process.argv[fileIdx + 1] : "web/lib/foo.ts";
+    const fakeFile =
+      fileIdx !== -1 ? process.argv[fileIdx + 1] : "web/lib/foo.ts";
     const hits = scanContent(fakeFile, content);
     if (hits.length === 0) {
       console.log(`fixture PASS for ${fakeFile}`);
