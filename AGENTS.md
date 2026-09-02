@@ -24,5 +24,5 @@
 - Canonical UI operating authority: [`docs/implementation/ui-control-recovery-governance.md`](docs/implementation/ui-control-recovery-governance.md). Read it before app-facing UI work.
 - Use Tailwind for ordinary layout/visual rules, CVA for stable semantic axes, local shadcn/Radix primitives plus `cn()`, tokens, and narrow layered global CSS. Patterns own repeated composition; routes own domain content/state/arrangement.
 - Ordinary implementation agents MUST NOT lower expectations, widen tolerances, change baselines, add skips/allowlists/suppressions, remove coverage, extend waivers, or use `!important` as routine containment.
-- Any token, primitive/pattern contract, scenario, tolerance, baseline, coverage, native exception, waiver, or approval change is a human-approved **CONTRACT CHANGE**.
-- Keep one unapproved visual slice in flight and do not mix visual rescue with unrelated backend, schema, feature, lint, or data work. Do not treat screenshots or headless geometry as human approval.
+- Any token, primitive/pattern contract, scenario, tolerance, baseline, coverage, native exception, waiver, or approval requirement is a human-approved **CONTRACT CHANGE**.
+- Keep at most one unapproved visual slice in flight and do not mix visual rescue with unrelated backend, schema, feature, lint, or data work. Do not treat screenshots or headless geometry as human approval.

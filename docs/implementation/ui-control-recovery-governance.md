@@ -122,7 +122,7 @@ An expired, missing-owner, over-broad, or condition-free waiver fails validation
 
 ## 9. Rescue scope and preservation
 
-The rescue preserves URLs, route intent, domain ownership, permissions, mutations, workflow outcomes, server authority, accessibility semantics, and the valuable A–F implementation unless a separately audited correctness defect requires change. Presentation, hierarchy, spacing, density, primitive defaults, pattern composition, responsive layout, and state presentation may change only through the ownership and approval rules above.
+The rescue preserves URLs, route intent, domain ownership, permissions, mutations, workflow outcomes, server authority, accessibility semantics, and the full post-main S4 implementation lineage recorded by the [Preservation Ledger](ui-control-recovery-preservation-ledger.md) — including pre-#473 S4 implementation/hardening and the later #473 + Phase A–F evolution (#457 → #458 → #469 → #470 → #471 → #472 → #473 → #496 → #497 → #501 → #502 → #503 → #504 → frozen Phase F) — unless a separately audited correctness defect requires change. Presentation, hierarchy, spacing, density, primitive defaults, pattern composition, responsive layout, and state presentation may change only through the ownership and approval rules above.
 
 Do not:
 

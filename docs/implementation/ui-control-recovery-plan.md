@@ -418,6 +418,7 @@ Append one compact entry after every ticket. Do not copy the entire issue body.
 Allowed status:
 
 - `PENDING`
+- `APPROVED`
 - `REJECTED`
 - `N/A`
 
