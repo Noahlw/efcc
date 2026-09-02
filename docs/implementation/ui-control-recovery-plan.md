@@ -102,18 +102,18 @@ Update this table at the start and end of every implementation session.
 | Field | Current value |
 |---|---|
 | Current phase | **Phase 0 — Foundation & Recovery Control** |
-| Phase status | `IN PROGRESS — T01` |
-| Rescue integration HEAD | `cdb326f206da0bb6ff9de9997124f7bb7b16ff61` — finalized tracker bootstrap on frozen Phase F SHA |
-| Active ticket | T01 / [#506](https://github.com/Noahlw/efcc/issues/506) |
-| Active branch/worktree | `rescue/t01-preservation-ledger` / `/home/ubuntu/efcc-rescue-t01-ledger` |
-| Active PR | [#543](https://github.com/Noahlw/efcc/pull/543) |
-| Current frontier | T01 [#506](https://github.com/Noahlw/efcc/issues/506), T02 [#507](https://github.com/Noahlw/efcc/issues/507) — both `OPEN`; T01 selected |
+| Phase status | `IN PROGRESS — T02` |
+| Rescue integration HEAD | `d71a7ae807e7bd91795d0d0f6ac514074b3cd7e2` — T01 / #506 merged |
+| Active ticket | `None` |
+| Active branch/worktree | `None` |
+| Active PR | None |
+| Current frontier | T02 [#507](https://github.com/Noahlw/efcc/issues/507) and T04 [#509](https://github.com/Noahlw/efcc/issues/509) are eligible; T02 selected |
 | Pending human approval | None |
 | Active blocker | None |
-| Next safe action | Await review and merge of T01 PR #543; do not start another ticket in this worktree |
-| Last merged rescue SHA | None |
+| Next safe action | Create a fresh T02 worktree from this rescue HEAD and update its Active Ticket record |
+| Last merged rescue SHA | `d71a7ae807e7bd91795d0d0f6ac514074b3cd7e2` |
 | Last rollback checkpoint | Frozen Phase F SHA `6edf28c0f8f7058cf992416e7b517824c3178c8` |
-| Entry verification | Frozen Phase F worktree and SHA verified; rescue branch created from that SHA; tracker bootstrap committed; GitHub frontier remains #506/#507 `OPEN`; no other Phase 0 worktree is active |
+| Entry verification | Frozen Phase F source and rescue bootstrap verified; T01 / #506 merged into rescue at `d71a7ae807e7bd91795d0d0f6ac514074b3cd7e2`; T02 and T04 are the next eligible tickets; no other Phase 0 implementation worktree is active |
 
 > If this tracker was first committed on a docs branch based on `main`, apply the documentation-only tracker commit to `rescue/ui-control-recovery` before T01. Do not merge the historical Phase F stack into `main` merely to move this document.
 
@@ -139,10 +139,10 @@ Update this table at the start and end of every implementation session.
 
 | Key | Issue | Ticket | Blocked by | Status | PR | Merge SHA | Evidence / notes |
 |---|---|---|---|---|---|---|---|
-| T01 | [#506](https://github.com/Noahlw/efcc/issues/506) | Freeze A–F and publish Preservation Ledger | None | `PR_READY` | [#543](https://github.com/Noahlw/efcc/pull/543) | — | Ledger and generated summary verified; two-axis `/code-review` passed; awaiting review/merge |
+| T01 | [#506](https://github.com/Noahlw/efcc/issues/506) | Freeze A–F and publish Preservation Ledger | None | `MERGED_RESCUE` | [#543](https://github.com/Noahlw/efcc/pull/543) | `d71a7ae807e7bd91795d0d0f6ac514074b3cd7e2` | Ledger and generated summary verified; two-axis `/code-review` passed; merged into rescue |
 | T02 | [#507](https://github.com/Noahlw/efcc/issues/507) | Establish UI governance and agent change control | None | `FRONTIER` | — | — | Owner reviews governance |
 | T03 | [#508](https://github.com/Noahlw/efcc/issues/508) | Enforce styling ownership and typed UI contract governance | T02 | `BLOCKED` | — | — | — |
-| T04 | [#509](https://github.com/Noahlw/efcc/issues/509) | Restore excluded normalized Worker suites | T01 | `BLOCKED` | — | — | — |
+| T04 | [#509](https://github.com/Noahlw/efcc/issues/509) | Restore excluded normalized Worker suites | T01 | `FRONTIER` | — | — | T01 merged; eligible after T02 selection boundary |
 | T05 | [#510](https://github.com/Noahlw/efcc/issues/510) | Stabilize full Programs/Worker/D1 runtime | T04 | `BLOCKED` | — | — | — |
 | T06 | [#511](https://github.com/Noahlw/efcc/issues/511) | Contain global CSS cascade | T01, T03, T05 | `BLOCKED` | — | — | Diagnostic comparison, not final visual baseline |
 
@@ -151,9 +151,9 @@ Update this table at the start and end of every implementation session.
 | Field | Value |
 |---|---|
 | Phase status | `NOT COMPLETE` |
-| Tickets merged | None |
-| Rescue integration SHA | — |
-| Preservation Ledger | Created in T01 branch; merge pending — [`ui-control-recovery-preservation-ledger.md`](ui-control-recovery-preservation-ledger.md) |
+| Tickets merged | T01 / #506 |
+| Rescue integration SHA | `d71a7ae807e7bd91795d0d0f6ac514074b3cd7e2` |
+| Preservation Ledger | Merged with T01 — [`ui-control-recovery-preservation-ledger.md`](ui-control-recovery-preservation-ledger.md) |
 | Governance authority | Not created — T02 owns it |
 | Required Worker gate | Still excludes four suites — T04 owns it |
 | Programs runtime | Phase F blocker still open — T05 owns it |
@@ -327,19 +327,19 @@ Only one active implementation ticket should normally appear here.
 
 | Field | Value |
 |---|---|
-| Ticket / issue | T01 / [#506](https://github.com/Noahlw/efcc/issues/506) |
-| Phase | Phase 0 — Foundation & Recovery Control |
-| Goal | Freeze the A–F source stack and publish the capability-level Preservation Ledger |
-| Base rescue SHA | `cdb326f206da0bb6ff9de9997124f7bb7b16ff61` |
-| Branch / worktree | `rescue/t01-preservation-ledger` / `/home/ubuntu/efcc-rescue-t01-ledger` |
-| PR | [#543](https://github.com/Noahlw/efcc/pull/543) |
-| Required skills | `/using-git-worktrees`, `/code-review`, `/pr-description` |
-| Focused tests | Documentation/evidence integrity check: 17 capability rows, 15 route rows, exact SHAs, deferred findings, and local links passed |
-| Aggregate tests | N/A — documentation-only ticket |
-| Human gate | N/A |
-| Current status | `PR_READY` |
-| Blocker | Awaiting PR review/merge; no implementation blocker |
-| Next action | Await review/merge of PR #543 before starting the next ticket |
+| Ticket / issue | None |
+| Phase | None |
+| Goal | None |
+| Base rescue SHA | None |
+| Branch / worktree | None |
+| PR | None |
+| Required skills | None |
+| Focused tests | None |
+| Aggregate tests | None |
+| Human gate | None |
+| Current status | None |
+| Blocker | None |
+| Next action | Create T02 / #507 worktree and update this record |
 
 ---
 
@@ -365,17 +365,17 @@ Append one compact entry after every ticket. Do not copy the entire issue body.
 
 #### T01 / #506 — Freeze A–F and publish the Preservation Ledger
 
-- **Status:** `PR_READY`
+- **Status:** `MERGED_RESCUE`
 - **Base rescue SHA:** `cdb326f206da0bb6ff9de9997124f7bb7b16ff61`
-- **Head / merge SHA:** `1e3b14b9827f23fcf432b5bdd663c4d13b893858` / pending
+- **Head / merge SHA:** `1dc5023f4d9bb7fbc02b2855d405e72cf5a9af02` / `d71a7ae807e7bd91795d0d0f6ac514074b3cd7e2`
 - **Branch / PR:** `rescue/t01-preservation-ledger` / [#543](https://github.com/Noahlw/efcc/pull/543)
 - **Delivered outcome:** Exact frozen A–F provenance; 17 capability dispositions; 15 shipped route/state rows with exclusions; imported deferred/review/runtime findings; generated frontier summary.
 - **Tests:** Documentation integrity check passed; `git diff --check` passed; aggregate runtime not applicable to this documentation-only ticket.
 - **Code review:** Two-axis `/code-review` passed after fixing the settings seam, supersession-boundary, authority-chain, tracker-state, deferred-finding, Programs-state, and Phase F SHA findings.
 - **Human approval:** `N/A`
 - **Preservation impact:** [`ui-control-recovery-preservation-ledger.md`](ui-control-recovery-preservation-ledger.md) and [`ui-control-recovery-preservation-summary.md`](ui-control-recovery-preservation-summary.md)
-- **Open blocker:** PR #543 review/merge.
-- **Next eligible ticket:** T02 / #507 is independently unblocked; T04 / #509 remains blocked until #506 merges.
+- **Open blocker:** None; T01 is merged. T02 / #507 is selected as the next ticket; T04 / #509 is also eligible after the one-ticket boundary.
+- **Next eligible ticket:** T02 / #507 (selected); T04 / #509
 
 ---
 
