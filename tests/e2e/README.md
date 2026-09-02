@@ -16,6 +16,10 @@ Each Playwright config has a positive `testMatch`; suites must not cross loaders
 | `shell-geometry.config.ts` | `pnpm test:shell-geometry` | Pinned Chromium shell geometry at 320/390/600/799/800/1024/1440 CSS px (TK-09): critical anchors, no overflow/obstruction, numeric CSS-pixel evidence only (TK-12). |
 | `role-hierarchy-geometry.config.ts` | `pnpm test:role-hierarchy-geometry` | #478 H-20 pinned hierarchy/list/detail/rename geometry at 320/390/600/799/800/1024/1440 CSS px; numeric CSS-pixel evidence only (no screenshots). |
 
+The identity 900px seam is covered by the `desktop-900` project in
+`s4-management-hardening.config.ts`; the focused static identity report is
+W7-only by design.
+
 `pnpm test:shell-responsive` builds the Next static export and serves it through `tests/e2e/serve-static.ts` on port `4173`. It runs the mobile and desktop projects without a Worker, D1, Google session, or network target.
 
 `pnpm test:shell-geometry` is the pinned-width companion (TK-09): the same static-shell harness at 320, 390, 600, 799, 800, 1024, and 1440 CSS px. Both 799 and 800 are exercised so the 800px shell breakpoint is verified on each side. Evidence is numeric CSS pixels only — no screenshots, image snapshots, or pixel diffs (TK-12). Both suites run locally via `pnpm verify`; they are not part of the automatic CI gate (Fast CI is typecheck-only).
@@ -100,9 +104,16 @@ pnpm exec tsx tests/e2e/plan-doc-appender.ts \
   --target-url=http://127.0.0.1:8787
 ```
 
-The per-suite reports live under `tests/e2e/test-results/phase-f/<suite>/results.json`. The rendered JSON/HTML, the acceptance trace, `docs/qa/2026-09-01-s4-phase-f-release-gate.md`, and `docs/qa/2026-09-01-s4-phase-f-audit-dispositions.md` are the reviewable outputs. Numeric evidence proves DOM/API geometry and state only; it does not claim human keyboard/AT, real-device camera/touch, native print-preview, forced-colors, zoom/reflow, or text-spacing outcomes.
+The explicit post-migration schema smoke is:
+`pnpm exec tsx tests/e2e/inspect-local-identity-schema.ts`
+It queries local `sqlite_master` and `PRAGMA` table-valued functions, asserts the
+seven normalized identity tables plus role-free `accounts` and
+`registration_requests`, and rejects pre-019 tables and retired role-guard
+triggers.
 
-All Phase F automated runs use `http://127.0.0.1:8787`, local D1, pinned Chromium, and disposable `E2E_`, `E2E_DEMO_`, or `E2E_DISPOSABLE_` fixtures. They never mutate Apps Script, Google Sheets, Cloudflare production, remote D1, or a non-disposable account. A complete local matrix failure remains a release blocker; unavailable human rows stay `UNCLAIMED`.
+Geometry reports live under `tests/e2e/test-results/phase-f/<suite>/results.json`. Route-only reports remain at their suite-specific paths such as `tests/e2e/test-results/auth-d1-results.json`, `live-ui-results.json`, `attendance-d1-results.json`, and `programs-d1-results.json` when a suite completes; a missing report from a failed suite is not evidence. The rendered JSON/HTML, the acceptance trace, `docs/qa/2026-09-01-s4-phase-f-release-gate.md`, and `docs/qa/2026-09-01-s4-phase-f-audit-dispositions.md` are the reviewable outputs. Numeric evidence proves DOM/API geometry and state only; it does not claim human keyboard/AT, real-device camera/touch, native print-preview, forced-colors, zoom/reflow, or text-spacing outcomes.
+
+Worker-backed Phase F runs use `http://127.0.0.1:8787`, local D1, pinned Chromium, and disposable `E2E_`, `E2E_DEMO_`, or `E2E_DISPOSABLE_` fixtures. The static-shell suite intentionally runs against its local `4173` server without Worker/D1. No suite mutates Apps Script, Google Sheets, Cloudflare production, remote D1, or a non-disposable account. A complete matrix failure remains a release blocker; unavailable human rows stay `UNCLAIMED`.
 
 ## Static-shell suite
 

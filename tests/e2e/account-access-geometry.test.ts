@@ -219,8 +219,8 @@ test("Account Access remains contained with 44px actions across W7", async ({
 
   await attachNumericEvidence(testInfo, "account-access-geometry", geometry);
 
+  expect(geometry.main).not.toBeNull();
   expect(geometry.overflow).toBeLessThanOrEqual(1);
-  expect(geometry.input).not.toBeNull();
   expect(geometry.input?.height ?? 0).toBeGreaterThanOrEqual(44);
   expect(geometry.buttons.every((button) => (button?.height ?? 0) >= 44)).toBe(
     true

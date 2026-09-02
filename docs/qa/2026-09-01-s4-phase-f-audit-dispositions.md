@@ -73,6 +73,9 @@ gates:
 - F-494-01 through F-494-04 are recorded `READY` in the contraction evidence.
 - The rendered numeric report is internally consistent at 367 total, 282
   passed, 85 intentional skips, and 0 failed.
+- The committed numeric report remains historical evidence only for the
+  current gate: the fresh required Programs geometry rerun failed when the
+  loopback Worker died, so F-495-02 is `BLOCKED` rather than `READY`.
 - F-495-01 and F-495-03 remain `BLOCKED` by the reproducible full Programs D1
   loopback Worker failure; isolated Programs geometry passes are not a
   substitute for that journey.

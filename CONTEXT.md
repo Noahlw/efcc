@@ -21,8 +21,8 @@ domain distinction.
 | Member Baseline | 會友基礎 | The automatic, protected participant identity applied to every Active Account. It is not assignable, editable, reorderable, or removable. |
 | Admin | 管理員 | The protected highest system identity. Admin has the system-defined all-permission rule and cannot be assigned, edited, moved, archived, or used to receive lower product assignments through ordinary identity management. |
 | Staff | 同工 | An assignable system Role Definition below Admin. Its actual authority is the grants and scopes resolved for that Account, not a global Account field. |
-| Department Manager | 事工區管理者 | A scoped Role Definition whose authority covers one or more explicitly represented Departments. It is not a global Account role. |
-| Program Leader | 事工負責人 | A scoped Role Definition whose authority covers one or more explicitly represented Programs. It is not a global Account role. |
+| Department Manager | 事工區管理者 | A scoped Role Definition whose authority covers exactly one explicitly represented Department. It is not a global Account role; several Departments require separately named scoped identities. |
+| Program Leader | 事工負責人 | A scoped Role Definition whose authority covers exactly one explicitly represented Program. It is not a global Account role; several Programs require separately named scoped identities. |
 | Registration Request | 註冊申請 | A pending request to create an Account. It carries the applicant's identity and credential material until an authorized approval decision. |
 | Registration Approval | 註冊核准 | An authorized decision that creates one Active Account and its automatic `會友基礎` in one atomic outcome. It does not assign a management identity. |
 | Approval Selection | 審批選取集 | The pending requests selected for one batch decision. The selection is temporary and ends on reload, logout, module exit, or explicit clear. |

@@ -403,7 +403,9 @@ describe("#485 Permission Editor domain seam", () => {
         audit_id: "permission-editor-audit-grant-bypass",
         correlation_id: "permission-editor-correlation-grant-bypass",
       }),
-      (error: unknown) => error instanceof RoleScopeMismatchError || error instanceof RoleCapabilityDeniedError
+      (error: unknown) =>
+        error instanceof RoleScopeMismatchError ||
+        error instanceof RoleCapabilityDeniedError
     );
     assert.equal(await revision(), before);
   });
@@ -855,10 +857,14 @@ describe("#485 Permission Editor domain seam", () => {
 
   test("reserves terminal denials and replays them before authority changes", async () => {
     await testDb()
-      .prepare("DELETE FROM role_audit_events WHERE audit_id LIKE 'permission-editor-audit-denied-invalid%'")
+      .prepare(
+        "DELETE FROM role_audit_events WHERE audit_id LIKE 'permission-editor-audit-denied-invalid%'"
+      )
       .run();
     await testDb()
-      .prepare("DELETE FROM role_policy_mutations WHERE idempotency_key = 'permission-editor-denied-invalid-replay'")
+      .prepare(
+        "DELETE FROM role_policy_mutations WHERE idempotency_key = 'permission-editor-denied-invalid-replay'"
+      )
       .run();
     await ensureReadOnlyActor();
     const before = await revision();
@@ -911,7 +917,8 @@ describe("#485 Permission Editor domain seam", () => {
           WHERE audit_id LIKE 'permission-editor-audit-denied-invalid%'`
       )
       .first<{ count: number }>();
-    expect([1, 2].includes(invalidAudits?.count ?? 0)).toBe(true);
+    // One DENIED row and one distinct REJECTED idempotency-reuse row are expected.
+    expect(invalidAudits?.count).toBe(2);
     const unauthorizedInput = {
       actor_user_id: READ_ONLY_ACTOR,
       role_definition_id: PROGRAM_LEADER_ROLE,

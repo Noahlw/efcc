@@ -301,11 +301,15 @@ function resolveSkipReason(
   const skipAnnotation = test.annotations?.find(
     (a) => a.type === "skip" || a.type === "fixme"
   );
-  return (
-    skipAnnotation?.description ||
-    lastResult?.errors?.[0]?.message ||
-    "Skipped by test configuration"
-  );
+  const reason =
+    skipAnnotation?.description?.trim() ||
+    lastResult?.errors?.[0]?.message?.trim();
+  if (!reason) {
+    throw new Error(
+      "Skipped test is missing an explicit project or fixture reason"
+    );
+  }
+  return reason;
 }
 
 function collectNumericAttachments(

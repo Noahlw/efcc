@@ -536,6 +536,20 @@ export class D1WorkspaceStore implements WorkspaceStore {
                 accounts.username,
                 accounts.phone,
                 accounts.account_status,
+                CASE
+                  WHEN EXISTS (
+                    SELECT 1
+                      FROM role_assignments admin_assignments
+                      JOIN role_definitions admin_roles
+                        ON admin_roles.role_definition_id =
+                           admin_assignments.role_definition_id
+                     WHERE admin_assignments.account_user_id = accounts.user_id
+                       AND admin_assignments.revoked_at IS NULL
+                       AND admin_roles.stable_key = 'admin'
+                       AND admin_roles.is_archived = 0
+                  ) THEN 1
+                  ELSE 0
+                END AS is_admin,
                 departments.department_id,
                 departments.name AS department_name,
                 identity_roles.role_definition_id AS identity_id,
@@ -673,6 +687,20 @@ export class D1WorkspaceStore implements WorkspaceStore {
                 accounts.username,
                 accounts.phone,
                 accounts.account_status,
+                CASE
+                  WHEN EXISTS (
+                    SELECT 1
+                      FROM role_assignments admin_assignments
+                      JOIN role_definitions admin_roles
+                        ON admin_roles.role_definition_id =
+                           admin_assignments.role_definition_id
+                     WHERE admin_assignments.account_user_id = accounts.user_id
+                       AND admin_assignments.revoked_at IS NULL
+                       AND admin_roles.stable_key = 'admin'
+                       AND admin_roles.is_archived = 0
+                  ) THEN 1
+                  ELSE 0
+                END AS is_admin,
                 departments.department_id,
                 departments.name AS department_name,
                 identity_roles.role_definition_id AS identity_id,

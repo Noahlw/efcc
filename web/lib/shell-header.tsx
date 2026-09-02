@@ -81,7 +81,7 @@ export const ShellHeader = ({
     <>
       <header
         data-shell-header
-        className="shrink-0 flex items-center justify-between gap-4 max-[560px]:gap-2 py-3 px-[clamp(1rem,3vw,1.5rem)] max-[560px]:px-3 bg-[var(--surface-raised)] border-b border-[var(--line)]"
+        className="shrink-0 flex items-center justify-between gap-4 py-3 px-[clamp(1rem,3vw,1.5rem)] bg-[var(--surface-raised)] border-b border-[var(--line)]"
       >
         <div className="flex items-center gap-[0.65rem] min-w-0">
           {isManagement ? (
@@ -90,7 +90,7 @@ export const ShellHeader = ({
                 {COPY.shell.shortMark}
               </span>
               <div className="flex flex-col items-start gap-[0.1rem] min-w-0 p-[0.3rem_0.55rem] rounded-[var(--radius-sm,8px)] text-left">
-                <span className="overflow-hidden max-w-[min(28vw,220px)] max-[560px]:max-w-[34vw] text-[var(--ink)] text-[0.9rem] font-extrabold truncate">
+                <span className="overflow-hidden max-w-[min(28vw,220px)] text-[var(--ink)] text-[0.9rem] font-extrabold truncate">
                   {displayName}
                 </span>
                 <span className="text-[var(--ink-muted)] text-xs font-[650] whitespace-nowrap">

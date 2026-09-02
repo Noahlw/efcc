@@ -150,7 +150,7 @@ Active usage in shipped surfaces is a strict subset (see per-surface). `Select`/
 
 ### Approval Queue & Detail (`lib/approval-queue.tsx`, `lib/approval-detail.tsx`, `lib/registration-form.tsx`)
 
-- **shadcn used:** `ActionSurface`, `Button`, `Checkbox`, `Select`, `AlertDialog`, `Input`, `Textarea`, `Card`, `Alert`; domain selection, registration queries, confirmation copy, decision mutations, and conflict reconciliation remain local
+- **shadcn used:** `ActionSurface`, `Button`, `Checkbox`, `AlertDialog`, `Input`, `Textarea`, `Card`, `Alert`; domain selection, registration queries, confirmation copy, decision mutations, and conflict reconciliation remain local
 
 ---
 
@@ -168,7 +168,7 @@ All shipped S1–S4 **common visual elements** (submit/primary actions, secondar
 | `lib/attendance-panel.tsx`, `lib/attendance-scanner-ui.tsx`, `lib/self-check-in-panel.tsx` etc. | Tailwind page, card, camera, method, confirmation, chooser, roster layout via tokens — `lib/attendance-panel.module.css` deleted in Phase E | `Button`, `Input`, `Card`, `Alert`, `Badge`, `Skeleton` (native retains below) |
 | `app/notices/page.tsx`, `lib/notices-panel.tsx`, `lib/messages-panel.tsx` | Tailwind page/list/detail layout and semantic state slots | `Button`, `Badge`, `Card`, `Alert`, `Skeleton` |
 | `app/management/*` (Hub, Settings, DirectoryFrame, Home CMS) | Tailwind page, header, groupCard, row, workspace, detail, policyLayout via tokens — `app/management/management-hub.module.css` and `app/management/home-cms-editor.module.css` deleted in Phase E; `web/app/globals.css` holds only shell, safe-area and irreducible print/safe-area selectors, no route-specific CSS | `Button`, `Input`, `Select`, `Textarea`, `Switch`, `Sheet`, `AlertDialog`, `ActionSurface`, `ManagementPageHeader`, `DirectoryFrame` via Tailwind |
-| `lib/approval-queue.tsx`, `lib/approval-detail.tsx` | Tailwind page, tabs, rows, tray, confirm layout via tokens — `lib/approval-queue.module.css` and `lib/approval-detail.module.css` deleted in Phase E | `Button`, `Card`, `Alert`, `ActionSurface`; `Checkbox`/`Select` stay native for test contracts |
+| `lib/approval-queue.tsx`, `lib/approval-detail.tsx` | Tailwind page, tabs, rows, tray, confirm layout via tokens — `lib/approval-queue.module.css` and `lib/approval-detail.module.css` deleted in Phase E | `Button`, `Card`, `Alert`, `ActionSurface`, `Checkbox` |
 
 ## S4 Phase E — shared integration (tickets #492/#493)
 
@@ -181,7 +181,7 @@ Deleted route CSS verified absent via `grep -r "\.module\.css" web --include="*.
 | `<video>` + MediaStream/device APIs (`getUserMedia`, `BarcodeDetector`/`wasm` decoder, `MediaStreamTrack.stop`) | `lib/use-qr-camera.ts`, `lib/self-check-in-panel.tsx`, `lib/attendance-scanner-ui.tsx` | Real camera capture and QR decode — browser device capability, not a design primitive; harden tests assert `<video>` presence and denied/unsupported/unavailable callbacks, not decoder quality |
 | Native `<fieldset>`/`<legend>` + `<input type="radio">` chooser (GOV.UK ATT-02) | `lib/attendance-panel.tsx` `ScannerEventChoiceGroup` | Event-choice radio semantics with no preselection or implicit submission — native fieldset/legend + radio contract, harden tests assert fieldset/legend and native radios |
 | Native `window.print()` + `@media print` / `print-color-adjust` | `lib/attendance-roster.tsx`, `web/app/globals.css` (irreducible print selector) | Roster/check-in sheet print-media visibility — `window.print()` is the correct imperative API; print preview/paper is manual evidence, print-media DOM visibility is automated |
-| Native `<select>` / `<input type="date">` where test contracts assert native option semantics | `app/management/account-directory-panel.tsx`, `app/management/member-directory-panel.tsx`, `lib/approval-queue.tsx` | Native select/date preserves option-test contracts and platform picker; shadcn `Select` would break those contracts |
+| Native `<select>` / `<input type="date">` where test contracts assert native option semantics | `app/management/account-directory-panel.tsx`, `app/management/member-directory-panel.tsx` | Native select/date preserves option-test contracts; shadcn `Select` would break those contracts |
 | Skip link `<a href="#shell-content">`, nav `<a>` links, `output[role="status"]`, `output[role="alert"]` | `lib/app-shell.tsx`, `lib/nav-bar.tsx`, `lib/offline-banner.tsx`, `lib/live-region.tsx` | Document navigation anchor, navigation landmark links, and live-region status/alert semantics — native elements required (Phase A registry, preserved) |
 
 Historical/prototype notes preserved: `src/gas/`, `程式碼.js`, `src/frontend/` retired frontends remain in git history only; `/prototype` and historical evidence excluded from CSS/module searches. No new scanner/directory/action/form/auth/compatibility layer was introduced; `DirectoryFrame`, `ManagementPageHeader`, `ActionSurface`, `ManagementFilterSheet`, `useAsyncResource`, and `rememberDeepLink`/`consumeDeepLink` remain the shared seams.

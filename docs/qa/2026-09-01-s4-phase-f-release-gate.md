@@ -32,16 +32,17 @@ reproducible failed Programs D1 row makes the aggregate verdict `BLOCKED`.
 | F-494-03 | Component suites; public geometry; shell responsive/geometry; contraction scanner | **READY** — shipped CSS Module imports are absent and the cited component/geometry seams passed. |
 | F-494-04 | `lib/identity/d1-schema.test.ts`; local seed commands; SQLite inspection | **READY** — stale-schema preflight refuses without dropping; post-migration identity tables and role-free Account/registration columns are present as required. |
 | F-495-01 | Public, management, attendance, auth, live UI, and Programs D1 route suites | **BLOCKED** — the complete Programs D1 single-process journey loses the loopback Worker. Other route suites passed in their recorded runs. |
-| F-495-02 | `docs/qa/2026-09-01-s4-phase-f-release-evidence.{json,html}` | **READY for the recorded numeric artifacts** — 367 assertions, 282 passed, 85 intentional skips, 0 failed. The 24 Programs geometry assertions came from eight isolated project runs after repeated full-config Worker crashes; they do not replace F-495-01. |
-| F-495-03 | `pnpm verify:identity`, `pnpm test:workerd`, component/prototype/auth/attendance/live UI suites | **BLOCKED for the aggregate row** — enabled Worker D1/component/prototype and focused browser suites passed, but the required full Programs D1 run failed at the local runtime boundary. |
+| F-495-02 | `docs/qa/2026-09-01-s4-phase-f-release-evidence.{json,html}` | **BLOCKED for the current gate** — the latest required Programs geometry rerun failed when the local Worker died. The 367-item report and 24/24 Programs geometry input remain historical numeric evidence only; they are not promoted to a current `READY` result. |
+| F-495-03 | `pnpm verify:identity`, `pnpm test:workerd`, component/prototype/auth/attendance/live UI suites | **BLOCKED** — identity, components, prototype, auth, attendance, and clean-fixture live UI passed, but the fresh workerd PUI-02 timeout and required full Programs D1 runtime failure block the aggregate row. |
 | F-495-04 | Manual matrix below | **UNCLAIMED** — no human hardware, assistive technology, print preview, or preference run. |
 | F-495-05 | This record, audit dispositions, reconciled authority files, acceptance trace, and rendered evidence | **READY after the authority files are committed** — the aggregate release verdict remains blocked by F-495-01/F-495-03. |
 
 ### Recorded passing suites
 
 - `pnpm verify:identity`: 4 files / 98 tests passed.
-- `pnpm test:workerd`: 39 files / 574 tests passed after the NTF lifecycle
-  timeout was given its required 120-second per-test budget.
+- Historical `pnpm test:workerd` run: 39 files / 574 tests passed after the NTF lifecycle
+  timeout was given its required 120-second per-test budget. The final
+  post-matrix rerun is recorded below as 573 passed / 1 failed.
 - `pnpm --dir web test:components`: 59 files / 786 tests passed.
 - `pnpm test`: 38 prototype tests passed.
 - `auth-d1`: 2 tests passed; `attendance-d1`: 52 tests passed; the clean-fixture

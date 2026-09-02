@@ -138,6 +138,8 @@ export interface ManagementMemberSearchRow {
   phone: string | null;
   /** Derived from normalized system assignments, never accounts.role. */
   account_status: string;
+  /** Whether the account has the protected normalized Admin identity. */
+  is_admin?: number;
   department_id: string | null;
   department_name: string | null;
   identity_id: string | null;

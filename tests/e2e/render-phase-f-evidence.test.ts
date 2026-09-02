@@ -274,6 +274,37 @@ describe("render-phase-f-evidence", () => {
     );
   });
 
+  test("rejects skipped reports without an explicit reason", () => {
+    const unreasonedReport: PlaywrightJsonReport = {
+      config: {
+        metadata: { phaseFTargetUrl: "http://127.0.0.1:8787" },
+        projects: [{ name: "w-600" }],
+      },
+      suites: [
+        {
+          title: "suite",
+          specs: [
+            {
+              title: "skipped test without reason",
+              tests: [
+                {
+                  projectName: "w-600",
+                  status: "skipped",
+                  results: [{ status: "skipped" }],
+                  annotations: [],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    };
+
+    expect(() => parsePlaywrightJsonReport(unreasonedReport)).toThrow(
+      /explicit project or fixture reason/iu
+    );
+  });
+
   test("rejects image attachments", () => {
     const imageReport: PlaywrightJsonReport = {
       config: {

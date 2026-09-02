@@ -3882,9 +3882,10 @@ export class DepartmentWorkspace {
           status: row.account_status,
           canOpenAccess:
             canOpenAccountAccess &&
+            row.is_admin !== 1 &&
             row.user_id !== ctx.actorUserId &&
             row.account_status === "Active",
-      departments: [],
+          departments: [],
         };
         accounts.set(row.user_id, account);
       }
@@ -3966,6 +3967,7 @@ export class DepartmentWorkspace {
       status: first.account_status,
       canOpenAccess:
         (await this.canOpenAccountAccess(ctx)) &&
+        first.is_admin !== 1 &&
         first.user_id !== ctx.actorUserId &&
         first.account_status === "Active",
       departments: [...departments.values()],

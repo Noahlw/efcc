@@ -12,13 +12,7 @@ import { completeCredentialUpgrade } from "../auth/upgrade";
 
 const SECRET = "test-access-token-secret";
 const HOST = "https://efcc.example";
-const HEADER = [
-  "User_ID",
-  "Name",
-  "Username",
-  "PIN_Code",
-  "Status",
-];
+const HEADER = ["User_ID", "Name", "Username", "PIN_Code", "Status"];
 
 function testEnv(overrides: Partial<Env> = {}): Env {
   return {
@@ -281,7 +275,12 @@ describe("S4-02: Account Directory contract", () => {
     assert.ok(body.data.accounts.every((a) => a.status === "Active"));
     const staff = body.data.accounts.find((a) => a.userId === "AD002");
     assert.strictEqual(staff?.canOpenAccess, false);
+    const admin = body.data.accounts.find(
+      (account) => account.userId === "AD001"
+    );
+    assert.strictEqual(admin?.canOpenAccess, false);
   });
+
   test("Member baseline access is included in active Directory results", async () => {
     const response = await worker.fetch(
       request(
