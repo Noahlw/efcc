@@ -381,7 +381,7 @@ Append one compact entry after every ticket. Do not copy the entire issue body.
 
 - **Status:** `PR_READY`
 - **Base rescue SHA:** `e68d554e7dd7abb97dfa916ffe861f616b82cc57`
-- **Head / merge SHA:** `e695a3e761f20e379c74b7832129e6174399dbea` / pending
+- **Head / merge SHA:** `bbb50678677b9f90036d2be8ca12330da32b1999` / pending
 - **Branch / PR:** `rescue/t01-full-s4-lineage` / [#544](https://github.com/Noahlw/efcc/pull/544)
 - **Delivered outcome:** Verified main→#457→#458→#469→#470→#471→#472→#473→#496→#497→#501→#502→#503→#504 lineage; six pre-#473 capability bridge rows; current Phase F replacement seams; generated summary and synchronized tracker.
 - **Tests:** GitHub ancestry/frontier check passed; correction integrity check passed with 13 exact PR OIDs, 23 capability rows, 15 route rows, six bridge rows, 67 local links; `git diff --check` passed; aggregate runtime not applicable.
