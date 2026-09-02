@@ -123,7 +123,7 @@ Update this table at the start and end of every implementation session.
 
 | Phase | Tickets | Outcome | Entry gate | Exit gate | Status |
 |---|---|---|---|---|---|
-| **0 — Foundation & Recovery Control** | T01–T06 / #506–#511 | Preserve full post-main S4 value, establish governance/enforcement, restore required Worker tests, stabilize local acceptance runtime, contain global cascade | Parent/tickets published; frozen Phase F SHA and full S4 ancestry verified | #506–#511 merged into rescue; cascade evidence recorded | `NOT STARTED` |
+| **0 — Foundation & Recovery Control** | T01–T06 / #506–#511 | Preserve full post-main S4 value, establish governance/enforcement, restore required Worker tests, stabilize local acceptance runtime, contain global cascade | Parent/tickets published; frozen Phase F SHA and full S4 ancestry verified | #506–#511 merged into rescue; cascade evidence recorded | `IN PROGRESS` |
 | **1 — Executable UI Foundation** | T07–T12 / #512–#517 | UI Lab, app-facing contracts, composition grammar, shell, Programs tracer, rescue-path decision | Phase 0 complete | #512–#517 merged; required human approvals recorded; T12 decision recorded | `BLOCKED` |
 | **2 — Programs Route Family** | T13–T16 / #518–#521 | Complete participant and management Programs rescue | Phase 1 complete | #518–#521 merged and Programs family approved | `BLOCKED` |
 | **3 — Member & Public Surfaces** | T17–T19 / #522–#524 | Profile/settings, public auth, communications rescued | Phase 2 complete | #522–#524 merged and approved | `BLOCKED` |
