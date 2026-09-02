@@ -10,8 +10,6 @@ import { AttentionPanel, EMPTY_ATTENTION_DATA } from "@/lib/attention-panel";
 import type { AttentionData } from "@/lib/attention-panel";
 import { COPY } from "@/lib/copy";
 
-import styles from "./auth-shell.module.css";
-
 const BellIcon = () => (
   <svg
     aria-hidden="true"
@@ -69,10 +67,11 @@ export const ShellHeader = ({
     NON_DOCK_SECTION_TITLES[currentSection] ??
     COPY.shell.shortMark;
   const displayName = bootstrap.profile.name || bootstrap.profile.username;
-  const roleLabel =
-    COPY.shell.roleLabels[
-      bootstrap.profile.role as keyof typeof COPY.shell.roleLabels
-    ] ?? bootstrap.profile.role;
+  const identityLabel =
+    Array.isArray(bootstrap?.profile?.identities) &&
+    bootstrap.profile.identities.length > 0
+      ? bootstrap.profile.identities.map((entry) => entry.label).join("、")
+      : "會友基礎";
   const unreadNoticeCount = attentionData.notices.filter(
     (notice) => notice.unread
   ).length;
@@ -80,31 +79,40 @@ export const ShellHeader = ({
 
   return (
     <>
-      <header data-shell-header className={styles.header}>
-        <div className={styles.brand}>
+      <header
+        data-shell-header
+        className="shrink-0 flex items-center justify-between gap-4 py-3 px-[clamp(1rem,3vw,1.5rem)] bg-[var(--surface-raised)] border-b border-[var(--line)]"
+      >
+        <div className="flex items-center gap-[0.65rem] min-w-0">
           {isManagement ? (
             <>
-              <span className={styles.shortMark}>{COPY.shell.shortMark}</span>
-              <div className={styles.identityBlock}>
-                <span className={styles.identityName}>{displayName}</span>
-                <span className={styles.identityRole}>{roleLabel}</span>
+              <span className="shrink-0 text-[var(--accent)] text-base font-[850] tracking-[-0.02em]">
+                {COPY.shell.shortMark}
+              </span>
+              <div className="flex flex-col items-start gap-[0.1rem] min-w-0 p-[0.3rem_0.55rem] rounded-[var(--radius-sm,8px)] text-left">
+                <span className="overflow-hidden max-w-[min(28vw,220px)] text-[var(--ink)] text-[0.9rem] font-extrabold truncate">
+                  {displayName}
+                </span>
+                <span className="text-[var(--ink-muted)] text-xs font-[650] whitespace-nowrap">
+                  {identityLabel}
+                </span>
               </div>
             </>
           ) : (
-            <span className={styles.title}>
+            <span className="text-base font-extrabold tracking-[-0.01em] text-[var(--ink)] truncate">
               {pathname === "/home" ? COPY.shell.shortMark : sectionTitle}
             </span>
           )}
         </div>
 
         {isManagement && pathname !== "/programs" ? (
-          <div className={styles.headerActions}>
+          <div className="flex shrink-0 items-center gap-2">
             <Button
               ref={bellRef}
               type="button"
               variant="ghost"
               size="icon"
-              className={`${styles.bell} size-11 rounded-full border border-[var(--line-strong)] text-[var(--ink)] hover:bg-[var(--surface)] hover:text-[var(--accent)]`}
+              className="relative size-11 rounded-full border border-[var(--line-strong)] text-[var(--ink)] hover:bg-[var(--surface)] hover:text-[var(--accent)]"
               aria-label={COPY.attention.bellLabel(attentionCount)}
               aria-haspopup="dialog"
               aria-expanded={attentionOpen}
@@ -113,7 +121,7 @@ export const ShellHeader = ({
               <BellIcon />
               <Badge
                 variant="default"
-                className={styles.bellBadge}
+                className="absolute -top-[0.2rem] -right-[0.2rem] min-w-[1.15rem] h-[1.15rem] leading-none"
                 aria-hidden="true"
               >
                 {attentionCount}

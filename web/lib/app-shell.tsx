@@ -28,8 +28,6 @@ import {
 } from "@/lib/session";
 import { ShellHeader } from "@/lib/shell-header";
 
-import styles from "./auth-shell.module.css";
-
 const shellBodyVariants = cva("shell-body", {
   variants: {
     scanner: {
@@ -86,7 +84,10 @@ const ShellFrame = ({
     <AppProvider bootstrap={bootstrap} onSignOut={handleSignOut}>
       <div className="shell">
         <OfflineBanner />
-        <a className={styles.skipLink} href="#shell-content">
+        <a
+          className="absolute left-4 -top-12 z-[100] inline-flex items-center min-h-11 px-5 py-3 bg-[var(--surface-raised)] text-[var(--accent)] border border-[var(--line)] rounded-[8px] font-semibold transition-[top] duration-150 ease-out motion-reduce:transition-none focus-visible:top-4 focus-visible:outline focus-visible:outline-3 focus-visible:outline-[var(--focus)] focus-visible:outline-offset-0"
+          href="#shell-content"
+        >
           {COPY.skipToContent}
         </a>
         <ShellHeader attentionData={EMPTY_ATTENTION_DATA} />
@@ -102,7 +103,10 @@ const ShellFrame = ({
 };
 
 const LoadingShell = () => (
-  <main className={styles.state} aria-busy="true">
+  <main
+    className="min-h-[100dvh] flex flex-col items-center justify-center gap-5 p-[2rem_clamp(1rem,4vw,2rem)] text-center bg-[var(--surface)] text-[var(--ink)]"
+    aria-busy="true"
+  >
     <Skeleton
       className="h-8 w-8 rounded-full bg-[var(--skeleton)]"
       aria-hidden="true"

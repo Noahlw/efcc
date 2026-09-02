@@ -71,15 +71,13 @@ const PROFILE: PublicUser = {
   name: "陳小明",
   username: "member.demo",
   phone: "91234567",
-  role: "Member",
-  status: "Active",
-  qrCodeString: "qr-member-demo",
   identities: [
     { label: "青年部門協調員", scopeKind: "Department", scopeLabel: "青年部" },
   ],
   capabilities: { "program.enroll": true, "role.manage": false },
+  status: "Active",
+  qrCodeString: "qr-member-demo",
 };
-
 const BOOTSTRAP: Bootstrap = {
   sections: projectSections({ "program.enroll": true }),
   navigation: projectNavigation({ "program.enroll": true }),
@@ -738,12 +736,11 @@ describe(ProfilePage, () => {
     sessionMocks.restoreBootstrapMock.mockResolvedValue({
       sections: managementSections,
       navigation: projectNavigation({ "home.publish": true }),
-      profile: { ...PROFILE, role: "Admin" },
+      profile: { ...PROFILE },
     });
     pathnameMock.mockReturnValue("/profile");
     sessionMocks.hasAuthHintMock.mockReturnValue(true);
     render(<ProfilePage />);
-
     await waitFor(() => {
       expect(
         screen.getByRole("heading", { name: COPY.profile.title })

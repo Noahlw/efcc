@@ -322,7 +322,6 @@ export interface ManagementMemberView {
   userId: string;
   name: string;
   phone: string | null;
-  role: string;
   identities: ManagementMemberIdentity[];
   status: string;
   departments: Array<{ id: string; name: string }>;
@@ -3822,7 +3821,6 @@ export class DepartmentWorkspace {
           userId: row.user_id,
           name: row.name,
           phone: row.phone,
-          role: row.role,
           identities: [],
           status: row.account_status,
           departments: [],
@@ -3880,14 +3878,13 @@ export class DepartmentWorkspace {
           name: row.name,
           username: row.username,
           phone: row.phone,
-          role: row.role,
           identities: [],
           status: row.account_status,
           canOpenAccess:
             canOpenAccountAccess &&
+            row.is_admin !== 1 &&
             row.user_id !== ctx.actorUserId &&
-            row.account_status === "Active" &&
-            row.role !== "Admin",
+            row.account_status === "Active",
           departments: [],
         };
         accounts.set(row.user_id, account);
@@ -3966,14 +3963,13 @@ export class DepartmentWorkspace {
       name: first.name,
       username: first.username,
       phone: first.phone,
-      role: first.role,
       identities: [...identities.values()],
       status: first.account_status,
       canOpenAccess:
         (await this.canOpenAccountAccess(ctx)) &&
+        first.is_admin !== 1 &&
         first.user_id !== ctx.actorUserId &&
-        first.account_status === "Active" &&
-        first.role !== "Admin",
+        first.account_status === "Active",
       departments: [...departments.values()],
     };
   }

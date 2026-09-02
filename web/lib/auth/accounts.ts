@@ -32,15 +32,8 @@ export const ACCOUNT_STATUS = {
   DEACTIVATED: "Deactivated",
 } as const;
 
-export const ROLE = {
-  ADMIN: "Admin",
-  STAFF: "Staff",
-  MEMBER: "Member",
-} as const;
-
 export type AccountStatus =
   (typeof ACCOUNT_STATUS)[keyof typeof ACCOUNT_STATUS];
-export type Role = (typeof ROLE)[keyof typeof ROLE];
 
 export interface AccountRow {
   user_id: string;
@@ -51,7 +44,6 @@ export interface AccountRow {
   credential_kind: string;
   credential_version: number;
   account_status: AccountStatus;
-  role: Role;
   phone: string | null;
   qr_code_string: string | null;
   legacy_pin_hash: string | null;
@@ -70,7 +62,6 @@ const USERS_COL_CANDIDATES: Record<string, string[]> = {
   NAME: ["Name"],
   USERNAME: ["Username"],
   PIN_CODE: ["PIN_Code"],
-  ROLE: ["Role", "System_Role"],
   STATUS: ["Status"],
 };
 
@@ -107,7 +98,6 @@ interface ParsedRow {
   name: string;
   username: string;
   username_normalized: string;
-  role: Role;
   status: string;
   legacyPinNormalized: string;
 }
@@ -162,7 +152,6 @@ export async function importLegacyUsers(
     const name = String(row[col.NAME] ?? "").trim();
     const username = String(row[col.USERNAME] ?? "").trim();
     const pinNormalized = String(row[col.PIN_CODE] ?? "").trim();
-    const roleRaw = String(row[col.ROLE] ?? "").trim().toUpperCase();
     const status = String(row[col.STATUS] ?? "").trim();
 
     const problems: string[] = [];
@@ -200,23 +189,12 @@ export async function importLegacyUsers(
     seenUserId.add(userId);
     seenNormalized.add(usernameNormalized);
 
-    // Map the uppercased sheet value to the canonical stored Role so the
-    // schema values ("Admin" / "Staff" / "Member") stay consistent. The
-    // legacy "Teacher" spelling is retired to Staff (ADR-0025).
-    const role: Role =
-      roleRaw === "ADMIN"
-        ? ROLE.ADMIN
-        : roleRaw === "TEACHER" || roleRaw === "STAFF"
-          ? ROLE.STAFF
-          : ROLE.MEMBER;
-
     parsed.push({
       sheetRow,
       user_id: userId,
       name,
       username,
       username_normalized: usernameNormalized,
-      role,
       status: status || ACCOUNT_STATUS.ACTIVE,
       legacyPinNormalized: pinNormalized,
     });
@@ -307,9 +285,9 @@ export async function importLegacyUsers(
           `INSERT INTO accounts (
              user_id, name, username, username_normalized,
              credential_hash, credential_kind, credential_version,
-             account_status, role, phone, qr_code_string,
+             account_status, phone, qr_code_string,
              legacy_pin_hash, requires_upgrade, created_at, updated_at
-           ) VALUES (?, ?, ?, ?, NULL, 'legacy_pin', 1, ?, ?, NULL, NULL, ?, 1, ?, ?)`
+           ) VALUES (?, ?, ?, ?, NULL, 'legacy_pin', 1, ?, NULL, NULL, ?, 1, ?, ?)`
         )
         .bind(
           row.user_id,
@@ -317,7 +295,6 @@ export async function importLegacyUsers(
           row.username,
           row.username_normalized,
           row.status || ACCOUNT_STATUS.ACTIVE,
-          row.role,
           legacyPinHash,
           now,
           now

@@ -9,11 +9,6 @@ export const COPY = {
   appFullName: "中國基督教播道會顯恩堂",
   shell: {
     shortMark: "顯恩堂",
-    roleLabels: {
-      Member: "會員",
-      Staff: "同工",
-      Admin: "管理員",
-    },
   },
   skipToContent: "跳到主要內容",
   login: {
@@ -457,10 +452,10 @@ export const COPY = {
     policyNoChanges: "沒有可儲存的變更。",
   },
   // Member Directory (Spec 087 US 13-15 / ticket 087-04 #321). Church-wide
-  // search for Admin/Staff, department-scoped for Department Managers, with
-  // the member detail (contact, role, department memberships) rendered inline
-  // from a selected result — no separate commit step. Copy is verbatim from
-  // the canonical prototype's member-directory and participant-detail screens.
+  // search for authorized operators, with member detail (contact, identities,
+  // and department memberships) rendered inline from a selected result — no
+  // separate commit step. Copy is verbatim from the canonical prototype's
+  // member-directory and participant-detail screens.
   managementMembers: {
     membersTitle: "參與者",
     membersLead: "搜尋並查看會員資料。",
@@ -470,7 +465,6 @@ export const COPY = {
     emptyHint: "請嘗試其他姓名、登入名稱或電話。",
     memberDetail: "參與者資料",
     memberContact: "聯絡",
-    memberRole: "角色",
     memberDepartments: "部門",
     detailUsername: "登入名稱",
     detailPhone: "電話",
@@ -485,17 +479,13 @@ export const COPY = {
   },
   accountDirectory: {
     title: "帳戶名錄",
-    lead: "搜尋登入身份，核對角色、狀態與部門關聯。",
+    lead: "搜尋登入身份，核對身份組、狀態與部門關聯。",
     searchLabel: "搜尋帳戶",
     searchPlaceholder: "姓名、登入名稱或電話",
     departmentLabel: "部門",
     departmentPlaceholder: "部門名稱（可選）",
-    roleLabel: "角色",
     statusLabel: "狀態",
-    allRoles: "全部角色",
     allStatuses: "全部狀態",
-    admin: "管理員",
-    staff: "同工",
     member: "會友",
     pending: "待審批",
     active: "生效",
@@ -509,10 +499,9 @@ export const COPY = {
     noResults: "找不到符合的帳戶",
     emptyHint: "請嘗試其他姓名、登入名稱或電話。",
     detail: "帳戶詳情",
-    detailReadOnly: "帳戶停用、角色變更及憑證重設會由另一個決策流程定義。",
+    detailReadOnly: "帳戶停用、身份組變更及憑證重設會由另一個決策流程定義。",
     contact: "電話",
     username: "登入名稱",
-    role: "角色",
     status: "狀態",
     departments: "部門關聯",
     noDepartments: "未加入任何部門",

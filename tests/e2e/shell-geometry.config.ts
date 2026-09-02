@@ -7,16 +7,27 @@
 import { defineConfig } from "@playwright/test";
 
 export default defineConfig({
+  metadata: { phaseFTargetUrl: "http://127.0.0.1:4173" },
   testDir: ".",
   testMatch: /shell-geometry\.test\.ts$/u,
   timeout: 30_000,
   retries: 1,
   fullyParallel: false,
   workers: 1,
-  reporter: [["list"]],
+  reporter: [
+    ["list"],
+    [
+      "json",
+      {
+        outputFile: "test-results/phase-f/shell-geometry/results.json",
+      },
+    ],
+  ],
   use: {
     baseURL: "http://127.0.0.1:4173",
-    trace: "retain-on-failure",
+    trace: "off",
+    screenshot: "off",
+    video: "off",
   },
   projects: [
     { name: "w-320", use: { viewport: { width: 320, height: 844 } } },

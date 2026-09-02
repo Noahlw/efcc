@@ -1,9 +1,7 @@
 "use client";
 
-import { GuardedSection } from "@/lib/guarded-section";
 import { COPY } from "@/lib/copy";
-import styles from "./section-view.module.css";
-
+import { GuardedSection } from "@/lib/guarded-section";
 /**
  * Shared Section presentation for Home and the transitional Ui03 surfaces
  * (Events, Scanner, Care, Permissions), carbonized from the accepted Minimal
@@ -18,26 +16,34 @@ import styles from "./section-view.module.css";
  * network calls, no route handlers, no data writes, and no scanner authority.
  * Domain surfaces will replace the building state when their RPCs land.
  */
-export function SectionView({
+export const SectionView = ({
   sectionKey,
   title,
 }: {
   sectionKey: string;
   title: string;
-}) {
+}) => {
   const headingId = `section-${sectionKey}-title`;
   return (
     <GuardedSection sectionKey={sectionKey}>
-      <section className={styles.section} aria-labelledby={headingId}>
-        <header className={styles.sectionHead}>
-          <h2 id={headingId} className={styles.sectionTitle}>
+      <section
+        className="max-w-[760px] mx-auto p-[2rem_clamp(1.25rem,4vw,2.75rem)_4rem]"
+        aria-labelledby={headingId}
+      >
+        <header className="flex items-baseline gap-3 pb-3 border-b border-[var(--line)] mb-8">
+          <h2
+            id={headingId}
+            className="font-sans text-[1.5rem] font-extrabold tracking-[-0.02em] leading-[1.25] text-[var(--ink)]"
+          >
             {title}
           </h2>
         </header>
-        <div className={styles.stateCenter}>
-          <p className={styles.placeholderText}>{COPY.sections.placeholder}</p>
+        <div className="flex flex-col items-center justify-center text-center min-h-[40vh] gap-4">
+          <p className="text-[var(--ink-muted)] text-base leading-[1.6]">
+            {COPY.sections.placeholder}
+          </p>
         </div>
       </section>
     </GuardedSection>
   );
-}
+};

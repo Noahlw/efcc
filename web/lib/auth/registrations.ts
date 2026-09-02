@@ -39,7 +39,6 @@ export interface RegistrationRequestRow {
   credential_hash: string;
   credential_kind: string;
   account_status: string;
-  role: string;
   submitted_at: number;
   reviewed_by: string | null;
   reviewed_at: number | null;
@@ -65,7 +64,7 @@ export class RegistrationConflictError extends Error {
 }
 
 const REQUEST_COLUMNS = `request_id, user_id, username, username_normalized,
-  name, phone, credential_hash, credential_kind, account_status, role,
+  name, phone, credential_hash, credential_kind, account_status,
   submitted_at, reviewed_by, reviewed_at, review_decision, rejection_note`;
 
 /** Look up a registration request by its opaque request_id, or null. */
@@ -151,9 +150,9 @@ export async function createRegistrationRequest(
       .prepare(
         `INSERT INTO registration_requests (
            request_id, user_id, username, username_normalized, name, phone,
-           credential_hash, credential_kind, account_status, role, submitted_at
+           credential_hash, credential_kind, account_status, submitted_at
          )
-         SELECT ?, ?, ?, ?, ?, ?, ?, 'password', 'Pending', 'Member', ?
+         SELECT ?, ?, ?, ?, ?, ?, ?, 'password', 'Pending', ?
           WHERE NOT EXISTS (
             SELECT 1 FROM accounts WHERE username_normalized = ?
           )
@@ -199,7 +198,6 @@ export async function createRegistrationRequest(
     credential_hash: options.credentialHash,
     credential_kind: "password",
     account_status: "Pending",
-    role: "Member",
     submitted_at: now,
     reviewed_by: null,
     reviewed_at: null,
@@ -266,10 +264,10 @@ export async function approveRegistration(
           `INSERT INTO accounts (
              user_id, name, username, username_normalized,
              credential_hash, credential_kind, credential_version,
-             account_status, role, phone, created_at, updated_at
+             account_status, phone, created_at, updated_at
            )
            SELECT user_id, name, username, username_normalized,
-                  credential_hash, credential_kind, 1, 'Active', role,
+                  credential_hash, credential_kind, 1, 'Active',
                   phone, ?, ?
              FROM registration_requests
             WHERE request_id = ? AND account_status = 'Pending'`
@@ -413,7 +411,7 @@ export async function rejectRegistration(
  * `user_id` — the queue must never expose credential material or the
  * immutable identity key to the browser.
  */
-const QUEUE_COLUMNS = `request_id, username, name, phone, account_status, role,
+const QUEUE_COLUMNS = `request_id, username, name, phone, account_status,
   submitted_at, reviewed_by, reviewed_at, review_decision, rejection_note`;
 
 export interface QueueRegistrationRow {
@@ -422,7 +420,6 @@ export interface QueueRegistrationRow {
   name: string;
   phone: string | null;
   account_status: string;
-  role: string;
   submitted_at: number;
   reviewed_by: string | null;
   reviewed_at: number | null;
@@ -566,10 +563,10 @@ export async function approveRegistrationsBatch(
         `INSERT INTO accounts (
            user_id, name, username, username_normalized,
            credential_hash, credential_kind, credential_version,
-           account_status, role, phone, created_at, updated_at
+           account_status, phone, created_at, updated_at
          )
          SELECT user_id, name, username, username_normalized,
-                credential_hash, credential_kind, 1, 'Active', role,
+                credential_hash, credential_kind, 1, 'Active',
                 phone, ?, ?
            FROM registration_requests
           WHERE request_id IN (${idPlaceholders})

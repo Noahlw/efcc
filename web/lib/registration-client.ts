@@ -24,7 +24,6 @@ export interface PendingRegistration {
   phone: string | null;
   submittedAt: number;
   accountStatus: string;
-  role: string;
   decision: "Approved" | "Rejected" | null;
   decisionNote: string | null;
 }
@@ -49,7 +48,6 @@ export interface RegistrationDetail {
   name: string;
   phone: string | null;
   status: "Pending" | "Active" | "Rejected";
-  role: string;
   submittedAt: number;
   decidedAt: number | null;
   decisionNote: string | null;

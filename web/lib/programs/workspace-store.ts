@@ -137,8 +137,9 @@ export interface ManagementMemberSearchRow {
   username: string;
   phone: string | null;
   /** Derived from normalized system assignments, never accounts.role. */
-  role: string;
   account_status: string;
+  /** Whether the account has the protected normalized Admin identity. */
+  is_admin?: number;
   department_id: string | null;
   department_name: string | null;
   identity_id: string | null;
@@ -150,7 +151,6 @@ export interface ManagementMemberSearchRow {
 
 export interface AccountDirectorySearchFilters {
   department?: string;
-  role?: "Admin" | "Staff" | "Member";
   identityId?: string;
   status?: "Pending" | "Active" | "Suspended" | "Deactivated";
 }

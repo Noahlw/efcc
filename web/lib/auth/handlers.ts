@@ -86,9 +86,6 @@ export interface PublicUser {
   name: string;
   username: string;
   phone: string;
-  /** Compatibility display field; authority uses systemRole/capabilities. */
-  role: string;
-  systemRole: "Admin" | "Staff" | null;
   identities: readonly PublicIdentitySummary[];
   capabilities: Record<string, boolean>;
   status: string;
@@ -105,7 +102,6 @@ function secretFreeUser(
     qr_code_string: string | null;
   },
   identity: {
-    systemRole: "Admin" | "Staff" | null;
     identities: readonly PublicIdentitySummary[];
     capabilities: Record<string, boolean>;
   }
@@ -115,8 +111,6 @@ function secretFreeUser(
     name: account.name,
     username: account.username,
     phone: account.phone ?? "",
-    role: identity.systemRole ?? "Member",
-    systemRole: identity.systemRole,
     identities: identity.identities,
     capabilities: identity.capabilities,
     status: account.account_status,
@@ -283,34 +277,6 @@ async function resolveAuthenticatedAccount(
   return { account };
 }
 
-/**
- * Resolve the caller from the access cookie and require a seeded Admin or
- * Staff identity. The account role column is not an authority source.
- */
-async function requireAdminOrStaff(
-  request: Request,
-  env: AuthEnv,
-  requestId: string
-): Promise<{ caller: AccountRow } | Response> {
-  const resolved = await resolveAuthenticatedAccount(request, env, requestId);
-  if (resolved instanceof Response) {
-    return resolved;
-  }
-  const identity = await loadBootstrapIdentity(
-    env.DB,
-    resolved.account.user_id
-  );
-  if (identity.systemRole === null) {
-    return problem(
-      403,
-      "FORBIDDEN",
-      "Forbidden",
-      "Admin or Staff identity required.",
-      requestId
-    );
-  }
-  return { caller: resolved.account };
-}
 
 /** Resolve an authenticated caller through the D1 Role-to-Capability policy. */
 async function requireCapability(
@@ -546,7 +512,6 @@ export async function handleLogin(
         data: {
           userId: account.user_id,
           name: account.name,
-          role: account.role,
           status: account.account_status,
           mustSetNewCredential: true,
         },
@@ -586,7 +551,6 @@ export async function handleLogin(
       data: {
         userId: account.user_id,
         name: account.name,
-        role: account.role,
         status: account.account_status,
         mustSetNewCredential: false,
       },
@@ -1062,7 +1026,7 @@ export async function handleAdminUnlock(
   env: AuthEnv
 ): Promise<Response> {
   const requestId = crypto.randomUUID();
-  const auth = await requireAdminOrStaff(request, env, requestId);
+  const auth = await requireCapability(request, env, requestId, CAPABILITY.REGISTRATION_APPROVAL_MANAGE);
   if (auth instanceof Response) {
     return auth;
   }
@@ -1381,7 +1345,6 @@ export async function handleListRegistrations(
     phone: r.phone,
     submittedAt: r.submitted_at,
     accountStatus: r.account_status,
-    role: r.role,
     decision: r.review_decision,
     decisionNote: r.rejection_note,
   }));
@@ -1441,7 +1404,6 @@ export async function handleRegistrationDetail(
           name: row.name,
           phone: row.phone,
           status: row.account_status,
-          role: row.role,
           submittedAt: row.submitted_at,
           decidedAt: row.reviewed_at,
           decisionNote: row.rejection_note,

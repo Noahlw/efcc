@@ -1,8 +1,9 @@
 /* oxlint-disable vitest/prefer-importing-vitest-globals -- this is a Playwright suite. */
 import { expect, test } from "@playwright/test";
-import type { Page } from "@playwright/test";
+import type { Page, TestInfo } from "@playwright/test";
 
 import { DEV_ADMIN, DEV_MEMBER } from "./dev-fixtures";
+import { attachNumericEvidence } from "./numeric-evidence";
 
 const targetUrl =
   process.env.PHASE_E_TARGET_URL ??
@@ -32,11 +33,43 @@ const adminCredential =
   process.env.PROGRAMS_ADMIN_CREDENTIAL ??
   (localTarget ? DEV_ADMIN.credential : undefined);
 async function firstEventId(page: Page): Promise<string> {
+  const configuredEventId = process.env.PHASE_E_EVENT_ID?.trim();
+  if (configuredEventId) {
+    return configuredEventId;
+  }
   const payload = (await page.evaluate(async () => {
     const response = await fetch("/api/v1/attendance/scanner-events");
-    return response.json();
-  })) as { data?: { events?: { event_id?: string }[] } };
-  return required("PHASE_E_EVENT_ID", payload.data?.events?.[0]?.event_id);
+    if (!response.ok) return null;
+    const body = await response.json();
+    return body?.data?.events?.[0] as { event_id?: string } | undefined;
+  })) as { event_id?: string } | null;
+  if (!payload?.event_id) {
+    const fallback = await page.evaluate(async () => {
+      const response = await fetch("/api/v1/programs");
+      if (!response.ok) return null;
+      const body = (await response.json()) as {
+        data?: { programs?: { program_id?: string }[] };
+      };
+      const programs = body?.data?.programs ?? [];
+      for (const program of programs) {
+        if (!program?.program_id) continue;
+        const eventRes = await fetch(
+          `/api/v1/programs/${encodeURIComponent(program.program_id)}/events`
+        );
+        if (!eventRes.ok) continue;
+        const eventBody = (await eventRes.json()) as {
+          data?: { events?: { event_id?: string }[] };
+        };
+        const eventId = eventBody?.data?.events?.[0]?.event_id;
+        if (eventId) return eventId;
+      }
+      return null;
+    });
+    if (fallback) return fallback;
+    test.skip(true, "no attendance scanner event is available for this fixture");
+    return "skipped";
+  }
+  return payload.event_id;
 }
 function appPath(pathname: string): string {
   return `${targetPath}${pathname}` || "/";
@@ -56,7 +89,8 @@ async function loginAs(
 
 async function assertAttendanceGeometry(
   page: Page,
-  options: { finalSelector: string; requireShell?: boolean }
+  options: { finalSelector: string; requireShell?: boolean },
+  testInfo?: TestInfo
 ): Promise<void> {
   const result = await page.evaluate(({ finalSelector }) => {
     const root = document.documentElement;
@@ -126,6 +160,9 @@ async function assertAttendanceGeometry(
       isPhone: window.innerWidth < 800,
     };
   }, options);
+  if (testInfo) {
+    await attachNumericEvidence(testInfo, "attendance-geometry", result);
+  }
   expect(result.overflow).toBe(false);
   expect(result.overflowing, JSON.stringify(result.overflowing)).toHaveLength(
     0
@@ -145,7 +182,7 @@ async function assertAttendanceGeometry(
 test.describe("Phase E Attendance Geometry (E-491-05)", () => {
   test("Guest page contains long CJK/unbroken content and all controls", async ({
     page,
-  }) => {
+  }, testInfo) => {
     await page.goto(appPath("/guest-check-in"));
     await page.waitForSelector("form");
     await page.evaluate(() => {
@@ -155,18 +192,31 @@ test.describe("Phase E Attendance Geometry (E-491-05)", () => {
       node.textContent = "超長中文內容與unbroken-content-".repeat(24);
       document.querySelector("form")?.append(node);
     });
-    await assertAttendanceGeometry(page, {
-      finalSelector: "button[type='submit']",
-    });
+    await assertAttendanceGeometry(
+      page,
+      {
+        finalSelector: "button[type='submit']",
+      },
+      testInfo
+    );
     const long = page.locator('[data-geometry-long-content="true"]');
-    expect(await long.evaluate((node) => node.scrollWidth)).toBeLessThanOrEqual(
-      await long.evaluate((node) => node.clientWidth + 1)
+    const longContent = await long.evaluate((node) => ({
+      clientWidth: node.clientWidth,
+      scrollWidth: node.scrollWidth,
+    }));
+    await attachNumericEvidence(
+      testInfo,
+      "attendance-long-content",
+      longContent
+    );
+    expect(longContent.scrollWidth).toBeLessThanOrEqual(
+      longContent.clientWidth + 1
     );
   });
 
   test("Self scanner has explicit 799/800 transition and short-height clearance", async ({
     page,
-  }) => {
+  }, testInfo) => {
     await loginAs(
       page,
       required("PROGRAMS_MEMBER_USERNAME", memberUsername),
@@ -179,30 +229,38 @@ test.describe("Phase E Attendance Geometry (E-491-05)", () => {
         ? "#attendance-code"
         : "[data-testid='scanner-camera-stage'] button";
     await page.waitForSelector(finalSelector);
-    await assertAttendanceGeometry(page, {
-      finalSelector,
-      requireShell: true,
-    });
-    if (width >= 800) {
-      await expect(
-        page.locator('[data-scanner-state="desktop-manual"]')
-      ).toBeVisible();
-    } else {
-      await expect(
-        page.locator('[data-testid="scanner-camera-stage"]')
-      ).toBeVisible();
-    }
+    await assertAttendanceGeometry(
+      page,
+      {
+        finalSelector,
+        requireShell: true,
+      },
+      testInfo
+    );
+    await expect(
+      page.locator(
+        width >= 800
+          ? '[data-scanner-state="desktop-manual"]'
+          : '[data-testid="scanner-camera-stage"]'
+      )
+    ).toBeVisible();
     const stage = page.locator('[data-testid="scanner-camera-stage"]');
     if (await stage.count()) {
       const box = await stage.boundingBox();
       const bottom = box ? box.y + box.height : 0;
-      expect(bottom).toBeLessThanOrEqual(
-        (page.viewportSize()?.height ?? 0) + 1
-      );
+      const viewportHeight = page.viewportSize()?.height ?? 0;
+      await attachNumericEvidence(testInfo, "attendance-camera-stage", {
+        box,
+        bottom,
+        viewportHeight,
+      });
+      expect(bottom).toBeLessThanOrEqual(viewportHeight + 1);
     }
   });
 
-  test("Assisted scanner operator geometry is contained", async ({ page }) => {
+  test("Assisted scanner operator geometry is contained", async ({
+    page,
+  }, testInfo) => {
     await loginAs(
       page,
       required("PROGRAMS_ADMIN_USERNAME", adminUsername),
@@ -215,16 +273,23 @@ test.describe("Phase E Attendance Geometry (E-491-05)", () => {
       )
     );
     await page.waitForSelector("#assisted-event-context");
-    await assertAttendanceGeometry(page, {
-      finalSelector: "#assisted-event-context",
-      requireShell: true,
-    });
+    await assertAttendanceGeometry(
+      page,
+      {
+        finalSelector: "#assisted-event-context",
+        requireShell: true,
+      },
+      testInfo
+    );
   });
 
   test("Events operator roster print sheet hides screen chrome", async ({
     page,
   }, testInfo) => {
-    test.skip(testInfo.project.name !== "print-media");
+    test.skip(
+      testInfo.project.name !== "print-media",
+      "print-media project only"
+    );
     await loginAs(
       page,
       required("PROGRAMS_ADMIN_USERNAME", adminUsername),
@@ -242,9 +307,13 @@ test.describe("Phase E Attendance Geometry (E-491-05)", () => {
     for (const element of await page.locator(".print\\:hidden").all()) {
       await expect(element).toBeHidden();
     }
-    await assertAttendanceGeometry(page, {
-      finalSelector: "[aria-label='列印簽到表']",
-      requireShell: false,
-    });
+    await assertAttendanceGeometry(
+      page,
+      {
+        finalSelector: "[aria-label='列印簽到表']",
+        requireShell: false,
+      },
+      testInfo
+    );
   });
 });

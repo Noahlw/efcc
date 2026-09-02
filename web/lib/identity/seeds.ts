@@ -119,33 +119,28 @@ const YOUTH_BIBLE_STUDY_IDENTITY = {
 const DISPOSABLE_ACCOUNTS = {
   ADMIN: {
     user_id: "E2E_DISPOSABLE_ADMIN",
-    name: "Disposable Admin",
+    name: "E2E Disposable Admin",
     username: "E2E_disposable_admin",
-    role: "Admin",
   },
   STAFF: {
     user_id: "E2E_DISPOSABLE_STAFF",
     name: "Disposable Staff",
     username: "E2E_disposable_staff",
-    role: "Staff",
   },
   DEPARTMENT_MANAGER: {
     user_id: "E2E_DISPOSABLE_DM",
     name: "Disposable Department Manager",
     username: "E2E_disposable_dm",
-    role: "Staff",
   },
   PROGRAM_LEADER: {
     user_id: "E2E_DISPOSABLE_PL",
     name: "Disposable Program Leader",
     username: "E2E_disposable_pl",
-    role: "Staff",
   },
   MEMBER: {
     user_id: "E2E_DISPOSABLE_MEMBER",
     name: "Disposable Member",
     username: "E2E_disposable_member",
-    role: "Member",
   },
 } as const;
 
@@ -154,7 +149,6 @@ const USERS_HEADER = [
   "Name",
   "Username",
   "PIN_Code",
-  "System_Role",
   "Status",
 ];
 
@@ -174,7 +168,7 @@ function disposableRows() {
       DISPOSABLE_ACCOUNTS.ADMIN.name,
       DISPOSABLE_ACCOUNTS.ADMIN.username,
       "0000",
-      DISPOSABLE_ACCOUNTS.ADMIN.role,
+
       "Active",
     ],
     [
@@ -182,7 +176,7 @@ function disposableRows() {
       DISPOSABLE_ACCOUNTS.STAFF.name,
       DISPOSABLE_ACCOUNTS.STAFF.username,
       "0000",
-      DISPOSABLE_ACCOUNTS.STAFF.role,
+
       "Active",
     ],
     [
@@ -190,7 +184,7 @@ function disposableRows() {
       DISPOSABLE_ACCOUNTS.DEPARTMENT_MANAGER.name,
       DISPOSABLE_ACCOUNTS.DEPARTMENT_MANAGER.username,
       "0000",
-      DISPOSABLE_ACCOUNTS.DEPARTMENT_MANAGER.role,
+
       "Active",
     ],
     [
@@ -198,7 +192,7 @@ function disposableRows() {
       DISPOSABLE_ACCOUNTS.PROGRAM_LEADER.name,
       DISPOSABLE_ACCOUNTS.PROGRAM_LEADER.username,
       "0000",
-      DISPOSABLE_ACCOUNTS.PROGRAM_LEADER.role,
+
       "Active",
     ],
     [
@@ -206,7 +200,7 @@ function disposableRows() {
       DISPOSABLE_ACCOUNTS.MEMBER.name,
       DISPOSABLE_ACCOUNTS.MEMBER.username,
       "0000",
-      DISPOSABLE_ACCOUNTS.MEMBER.role,
+
       "Active",
     ],
   ];

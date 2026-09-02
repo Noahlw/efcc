@@ -414,31 +414,6 @@ export class D1WorkspaceStore implements WorkspaceStore {
                 accounts.name,
                 accounts.username,
                 accounts.phone,
-                CASE
-                  WHEN EXISTS (
-                    SELECT 1
-                      FROM role_assignments system_admin_assignment
-                      JOIN role_definitions system_admin_role
-                        ON system_admin_role.role_definition_id =
-                           system_admin_assignment.role_definition_id
-                     WHERE system_admin_assignment.account_user_id = accounts.user_id
-                       AND system_admin_assignment.revoked_at IS NULL
-                       AND system_admin_role.stable_key = 'admin'
-                       AND system_admin_role.is_archived = 0
-                  ) THEN 'Admin'
-                  WHEN EXISTS (
-                    SELECT 1
-                      FROM role_assignments system_staff_assignment
-                      JOIN role_definitions system_staff_role
-                        ON system_staff_role.role_definition_id =
-                           system_staff_assignment.role_definition_id
-                     WHERE system_staff_assignment.account_user_id = accounts.user_id
-                       AND system_staff_assignment.revoked_at IS NULL
-                       AND system_staff_role.stable_key = 'staff'
-                       AND system_staff_role.is_archived = 0
-                  ) THEN 'Staff'
-                  ELSE 'Member'
-                END AS role,
                 accounts.account_status,
                 departments.department_id,
                 departments.name AS department_name,
@@ -506,55 +481,6 @@ export class D1WorkspaceStore implements WorkspaceStore {
       filterParts.push("accounts.account_status = ?");
       filterValues.push(filters.status);
     }
-    if (filters.role !== undefined) {
-      const stableKey =
-        filters.role === "Admin"
-          ? "admin"
-          : filters.role === "Staff"
-            ? "staff"
-            : "member";
-      if (stableKey === "member") {
-        filterParts.push(
-          `NOT EXISTS (
-             SELECT 1
-               FROM role_assignments member_admin_assignments
-               JOIN role_definitions member_admin_roles
-                 ON member_admin_roles.role_definition_id =
-                    member_admin_assignments.role_definition_id
-              WHERE member_admin_assignments.account_user_id = accounts.user_id
-                AND member_admin_assignments.revoked_at IS NULL
-                AND member_admin_roles.is_archived = 0
-                AND member_admin_roles.stable_key = 'admin'
-           )
-           AND NOT EXISTS (
-             SELECT 1
-               FROM role_assignments member_staff_assignments
-               JOIN role_definitions member_staff_roles
-                 ON member_staff_roles.role_definition_id =
-                    member_staff_assignments.role_definition_id
-              WHERE member_staff_assignments.account_user_id = accounts.user_id
-                AND member_staff_assignments.revoked_at IS NULL
-                AND member_staff_roles.is_archived = 0
-                AND member_staff_roles.stable_key = 'staff'
-           )`
-        );
-      } else {
-        filterParts.push(
-          `EXISTS (
-             SELECT 1
-               FROM role_assignments filtered_assignments
-               JOIN role_definitions filtered_roles
-                 ON filtered_roles.role_definition_id =
-                    filtered_assignments.role_definition_id
-              WHERE filtered_assignments.account_user_id = accounts.user_id
-                AND filtered_assignments.revoked_at IS NULL
-                AND filtered_roles.is_archived = 0
-                AND filtered_roles.stable_key = ?
-           )`
-        );
-        filterValues.push(stableKey);
-      }
-    }
     if (filters.identityId !== undefined) {
       filterParts.push(
         `EXISTS (
@@ -609,32 +535,21 @@ export class D1WorkspaceStore implements WorkspaceStore {
                 accounts.name,
                 accounts.username,
                 accounts.phone,
+                accounts.account_status,
                 CASE
                   WHEN EXISTS (
                     SELECT 1
-                      FROM role_assignments system_admin_assignment
-                      JOIN role_definitions system_admin_role
-                        ON system_admin_role.role_definition_id =
-                           system_admin_assignment.role_definition_id
-                     WHERE system_admin_assignment.account_user_id = accounts.user_id
-                       AND system_admin_assignment.revoked_at IS NULL
-                       AND system_admin_role.stable_key = 'admin'
-                       AND system_admin_role.is_archived = 0
-                  ) THEN 'Admin'
-                  WHEN EXISTS (
-                    SELECT 1
-                      FROM role_assignments system_staff_assignment
-                      JOIN role_definitions system_staff_role
-                        ON system_staff_role.role_definition_id =
-                           system_staff_assignment.role_definition_id
-                     WHERE system_staff_assignment.account_user_id = accounts.user_id
-                       AND system_staff_assignment.revoked_at IS NULL
-                       AND system_staff_role.stable_key = 'staff'
-                       AND system_staff_role.is_archived = 0
-                  ) THEN 'Staff'
-                  ELSE 'Member'
-                END AS role,
-                accounts.account_status,
+                      FROM role_assignments admin_assignments
+                      JOIN role_definitions admin_roles
+                        ON admin_roles.role_definition_id =
+                           admin_assignments.role_definition_id
+                     WHERE admin_assignments.account_user_id = accounts.user_id
+                       AND admin_assignments.revoked_at IS NULL
+                       AND admin_roles.stable_key = 'admin'
+                       AND admin_roles.is_archived = 0
+                  ) THEN 1
+                  ELSE 0
+                END AS is_admin,
                 departments.department_id,
                 departments.name AS department_name,
                 identity_roles.role_definition_id AS identity_id,
@@ -689,55 +604,6 @@ export class D1WorkspaceStore implements WorkspaceStore {
     if (filters.status !== undefined) {
       filterParts.push("accounts.account_status = ?");
       filterValues.push(filters.status);
-    }
-    if (filters.role !== undefined) {
-      const stableKey =
-        filters.role === "Admin"
-          ? "admin"
-          : filters.role === "Staff"
-            ? "staff"
-            : "member";
-      if (stableKey === "member") {
-        filterParts.push(
-          `NOT EXISTS (
-             SELECT 1
-               FROM role_assignments member_admin_assignments
-               JOIN role_definitions member_admin_roles
-                 ON member_admin_roles.role_definition_id =
-                    member_admin_assignments.role_definition_id
-              WHERE member_admin_assignments.account_user_id = accounts.user_id
-                AND member_admin_assignments.revoked_at IS NULL
-                AND member_admin_roles.is_archived = 0
-                AND member_admin_roles.stable_key = 'admin'
-           )
-           AND NOT EXISTS (
-             SELECT 1
-               FROM role_assignments member_staff_assignments
-               JOIN role_definitions member_staff_roles
-                 ON member_staff_roles.role_definition_id =
-                    member_staff_assignments.role_definition_id
-              WHERE member_staff_assignments.account_user_id = accounts.user_id
-                AND member_staff_roles.is_archived = 0
-                AND member_staff_assignments.revoked_at IS NULL
-                AND member_staff_roles.stable_key = 'staff'
-           )`
-        );
-      } else {
-        filterParts.push(
-          `EXISTS (
-             SELECT 1
-               FROM role_assignments filtered_assignments
-               JOIN role_definitions filtered_roles
-                 ON filtered_roles.role_definition_id =
-                    filtered_assignments.role_definition_id
-              WHERE filtered_assignments.account_user_id = accounts.user_id
-                AND filtered_assignments.revoked_at IS NULL
-                AND filtered_roles.is_archived = 0
-                AND filtered_roles.stable_key = ?
-           )`
-        );
-        filterValues.push(stableKey);
-      }
     }
     if (filters.identityId !== undefined) {
       filterParts.push(
@@ -820,32 +686,21 @@ export class D1WorkspaceStore implements WorkspaceStore {
                 accounts.name,
                 accounts.username,
                 accounts.phone,
+                accounts.account_status,
                 CASE
                   WHEN EXISTS (
                     SELECT 1
-                      FROM role_assignments system_admin_assignment
-                      JOIN role_definitions system_admin_role
-                        ON system_admin_role.role_definition_id =
-                           system_admin_assignment.role_definition_id
-                     WHERE system_admin_assignment.account_user_id = accounts.user_id
-                       AND system_admin_assignment.revoked_at IS NULL
-                       AND system_admin_role.stable_key = 'admin'
-                       AND system_admin_role.is_archived = 0
-                  ) THEN 'Admin'
-                  WHEN EXISTS (
-                    SELECT 1
-                      FROM role_assignments system_staff_assignment
-                      JOIN role_definitions system_staff_role
-                        ON system_staff_role.role_definition_id =
-                           system_staff_assignment.role_definition_id
-                     WHERE system_staff_assignment.account_user_id = accounts.user_id
-                       AND system_staff_assignment.revoked_at IS NULL
-                       AND system_staff_role.stable_key = 'staff'
-                       AND system_staff_role.is_archived = 0
-                  ) THEN 'Staff'
-                  ELSE 'Member'
-                END AS role,
-                accounts.account_status,
+                      FROM role_assignments admin_assignments
+                      JOIN role_definitions admin_roles
+                        ON admin_roles.role_definition_id =
+                           admin_assignments.role_definition_id
+                     WHERE admin_assignments.account_user_id = accounts.user_id
+                       AND admin_assignments.revoked_at IS NULL
+                       AND admin_roles.stable_key = 'admin'
+                       AND admin_roles.is_archived = 0
+                  ) THEN 1
+                  ELSE 0
+                END AS is_admin,
                 departments.department_id,
                 departments.name AS department_name,
                 identity_roles.role_definition_id AS identity_id,

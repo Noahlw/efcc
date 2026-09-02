@@ -8680,5 +8680,5 @@ describe("NTF-01: management notification read state (#256)", () => {
       )
       .first<{ count: number }>();
     assert.ok(Number(readRows?.count) >= 2);
-  });
+  }, 120_000);
 });

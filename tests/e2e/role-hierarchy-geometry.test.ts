@@ -19,6 +19,7 @@ import { expect, test } from "@playwright/test";
 import type { Page, Route } from "@playwright/test";
 
 import { defaultSections, projectNavigation } from "../../web/lib/sections";
+import { attachNumericEvidence } from "./numeric-evidence";
 
 const AUTH_HINT_KEY = "efcc_auth_active";
 
@@ -27,9 +28,20 @@ const PUBLIC_USER = {
   name: "Test Admin",
   username: "tester",
   phone: "0900000000",
-  role: "Admin",
   status: "active",
   qrCodeString: "qr:u-admin",
+  identities: [
+    {
+      label: "系統管理員",
+      scopeKind: "Global" as const,
+      scopeLabel: null,
+    },
+  ],
+  capabilities: {
+    "role.manage": true,
+    "role.read": true,
+    "role.assign": true,
+  },
 };
 
 const HIERARCHY = {
@@ -218,7 +230,7 @@ const isPhone = (projectName: string) =>
 
 test("identity hierarchy panel has no overflow or undersized controls at the pinned width", async ({
   page,
-}) => {
+}, testInfo) => {
   await page.goto("/management?module=roles");
 
   const heading = page.getByRole("heading", { name: "身份組", exact: true });
@@ -276,8 +288,8 @@ test("identity hierarchy panel has no overflow or undersized controls at the pin
       undersized: visibleControls.filter((c) => c.width < 44 || c.height < 44),
     };
   });
+  await attachNumericEvidence(testInfo, "role-hierarchy-geometry", geometry);
 
-  // No horizontal overflow (tolerance: 1px, matching the shell suites).
   expect(
     geometry.horizontalOverflow,
     `horizontal overflow at ${geometry.viewportWidth}px`
@@ -329,6 +341,7 @@ test("rename detail keeps the affordance visible and in flow at the pinned width
       saveBottom: saveBox ? saveBox.bottom : null,
     };
   });
+  await attachNumericEvidence(testInfo, "role-rename-geometry", geometry);
 
   expect(
     geometry.horizontalOverflow,
@@ -346,7 +359,7 @@ test("rename detail keeps the affordance visible and in flow at the pinned width
 
 test("B-479-12: create and reorder affordances keep their critical anchors at the pinned width", async ({
   page,
-}) => {
+}, testInfo) => {
   await page.goto("/management?module=roles");
 
   await expect(
@@ -389,6 +402,11 @@ test("B-479-12: create and reorder affordances keep their critical anchors at th
       dockTop: dockBox ? dockBox.top : null,
     };
   });
+  await attachNumericEvidence(
+    testInfo,
+    "role-create-reorder-geometry",
+    geometry
+  );
 
   expect(
     geometry.horizontalOverflow,

@@ -42,10 +42,10 @@ async function ensureMixedScopeFixtures(): Promise<void> {
       .prepare(
         `INSERT OR IGNORE INTO accounts
            (user_id, name, username, username_normalized, credential_hash,
-            credential_kind, credential_version, account_status, role, phone,
+            credential_kind, credential_version, account_status,  phone,
             qr_code_string, legacy_pin_hash, requires_upgrade, lock_level,
             failed_attempts, locked_until, lock_since, created_at, updated_at)
-         VALUES (?, ?, ?, ?, NULL, 'password', 2, 'Active', 'Member',
+         VALUES (?, ?, ?, ?, NULL, 'password', 2, 'Active', 
                  NULL, NULL, NULL, 0, 0, 0, NULL, NULL, ?, ?)`
       )
       .bind(
@@ -60,10 +60,10 @@ async function ensureMixedScopeFixtures(): Promise<void> {
       .prepare(
         `INSERT OR IGNORE INTO accounts
            (user_id, name, username, username_normalized, credential_hash,
-            credential_kind, credential_version, account_status, role, phone,
+            credential_kind, credential_version, account_status,  phone,
             qr_code_string, legacy_pin_hash, requires_upgrade, lock_level,
             failed_attempts, locked_until, lock_since, created_at, updated_at)
-         VALUES (?, ?, ?, ?, NULL, 'password', 2, 'Active', 'Member',
+         VALUES (?, ?, ?, ?, NULL, 'password', 2, 'Active', 
                  NULL, NULL, NULL, 0, 0, 0, NULL, NULL, ?, ?)`
       )
       .bind(
@@ -78,10 +78,10 @@ async function ensureMixedScopeFixtures(): Promise<void> {
       .prepare(
         `INSERT OR IGNORE INTO accounts
            (user_id, name, username, username_normalized, credential_hash,
-            credential_kind, credential_version, account_status, role, phone,
+            credential_kind, credential_version, account_status,  phone,
             qr_code_string, legacy_pin_hash, requires_upgrade, lock_level,
             failed_attempts, locked_until, lock_since, created_at, updated_at)
-         VALUES (?, ?, ?, ?, NULL, 'password', 2, 'Active', 'Member',
+         VALUES (?, ?, ?, ?, NULL, 'password', 2, 'Active', 
                  NULL, NULL, NULL, 0, 0, 0, NULL, NULL, ?, ?)`
       )
       .bind(
@@ -96,10 +96,10 @@ async function ensureMixedScopeFixtures(): Promise<void> {
       .prepare(
         `INSERT OR IGNORE INTO accounts
            (user_id, name, username, username_normalized, credential_hash,
-            credential_kind, credential_version, account_status, role, phone,
+            credential_kind, credential_version, account_status,  phone,
             qr_code_string, legacy_pin_hash, requires_upgrade, lock_level,
             failed_attempts, locked_until, lock_since, created_at, updated_at)
-         VALUES (?, ?, ?, ?, NULL, 'password', 2, 'Active', 'Member',
+         VALUES (?, ?, ?, ?, NULL, 'password', 2, 'Active', 
                  NULL, NULL, NULL, 0, 0, 0, NULL, NULL, ?, ?)`
       )
       .bind(
@@ -261,7 +261,7 @@ async function ensureMixedScopeFixtures(): Promise<void> {
               granted_by, granted_at, scope_kind, scope_id,
               revoked_by, revoked_at, revoke_reason)
            SELECT ?, ?, ?, ?, ?, rd.scope_kind, rd.scope_id,
-                  NULL, NULL, NULL
+                NULL, NULL, NULL
              FROM role_definitions rd
             WHERE rd.role_definition_id = ?`
         )

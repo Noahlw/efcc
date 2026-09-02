@@ -77,11 +77,6 @@ function errorCopy(error: unknown): string {
   return QUEUE_COPY.networkError;
 }
 
-function detailRoleLabel(role: string): string {
-  return (
-    COPY.shell.roleLabels[role as keyof typeof COPY.shell.roleLabels] ?? role
-  );
-}
 
 type ConfirmKind = Decision | null;
 
@@ -391,12 +386,6 @@ export function ApprovalDetail({ requestId }: { requestId: string }) {
                     {state.registration.phone}
                   </span>
                 )}
-              </span>
-            </div>
-            <div className="grid grid-cols-[120px_1fr] items-baseline gap-4 border-b border-[var(--line)] pb-3 text-sm">
-              <span className="font-bold text-[var(--ink-muted)]">角色</span>
-              <span className="min-w-0 whitespace-normal wrap-anywhere text-[var(--ink)]">
-                {detailRoleLabel(state.registration.role)}
               </span>
             </div>
             <div className="grid grid-cols-[120px_1fr] items-baseline gap-4 border-b border-[var(--line)] pb-3 text-sm">

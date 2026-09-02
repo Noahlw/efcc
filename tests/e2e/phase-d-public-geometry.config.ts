@@ -41,16 +41,27 @@ if (!isLocal) {
 }
 
 export default defineConfig({
+  metadata: { phaseFTargetUrl: targetUrl },
   testDir: ".",
   testMatch: ["**/phase-d-public-geometry.test.ts"],
   timeout: 45_000,
   retries: 1,
   fullyParallel: false,
   workers: 1,
-  reporter: [["list"]],
+  reporter: [
+    ["list"],
+    [
+      "json",
+      {
+        outputFile: "test-results/phase-f/phase-d-public-geometry/results.json",
+      },
+    ],
+  ],
   use: {
     baseURL: targetUrl,
     trace: "off",
+    screenshot: "off",
+    video: "off",
   },
   projects: [
     { name: "w-320", use: { viewport: { width: 320, height: 844 } } },

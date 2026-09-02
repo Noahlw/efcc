@@ -16,11 +16,15 @@ const MEMBER_USER = {
   name: "陳小明",
   username: "member.demo",
   phone: "91234567",
-  role: "Member",
   status: "Active",
   qrCodeString: "qr:u-member-101",
-  identities: [{ label: "會友基礎", scopeKind: "Global", scopeLabel: null }],
-  capabilities: { "program.enroll": true, "role.manage": false },
+  identities: [
+    { label: "會友基礎", scopeKind: "Global" as const, scopeLabel: null },
+  ],
+  capabilities: { "program.enroll": true, "role.manage": false } as Record<
+    string,
+    boolean
+  >,
 };
 
 function stubAuthEndpoints(user: typeof MEMBER_USER, revoked = false) {
@@ -51,7 +55,7 @@ function stubAuthEndpoints(user: typeof MEMBER_USER, revoked = false) {
             user,
             sections: defaultSections(),
             navigation: projectNavigation({
-              "program.manage": user.role !== "Member",
+              "program.manage": user.capabilities?.["program.manage"] ?? false,
             }),
           },
         }),
@@ -146,9 +150,7 @@ test.describe("084-03: Account & Account Settings acceptance", () => {
     }
     await expect(page.getByText(MEMBER_USER.username)).toBeVisible();
     await expect(page.getByText(MEMBER_USER.phone)).toHaveCount(0);
-    await expect(page.getByText(MEMBER_USER.role, { exact: true })).toHaveCount(
-      0
-    );
+    await expect(page.getByText("Member", { exact: true })).toHaveCount(0);
     const identities = page.getByRole("region", { name: "身份組" });
     await expect(identities).toContainText("會友基礎");
     await expect(identities).toContainText("全域（Global）");

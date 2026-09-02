@@ -8,8 +8,6 @@ import { Button } from "@/components/ui/button";
 import { COPY } from "@/lib/copy";
 import { announce } from "@/lib/live-region";
 
-import styles from "./auth-shell.module.css";
-
 /**
  * Transient network-error recovery state (matrix S14): alert block + primary
  * `重試連接` action + secondary route home. Announces the message for screen
@@ -34,11 +32,15 @@ export const RecoveryView = ({
   }, [message]);
 
   return (
-    <main className={styles.state} ref={liveRef} tabIndex={-1}>
+    <main
+      className="min-h-[100dvh] flex flex-col items-center justify-center gap-5 p-[2rem_clamp(1rem,4vw,2rem)] text-center bg-[var(--surface)] text-[var(--ink)]"
+      ref={liveRef}
+      tabIndex={-1}
+    >
       <Alert
         aria-label={message}
         variant="destructive"
-        className={styles.alert}
+        className="w-full max-w-[480px] mx-auto"
       >
         {message}
       </Alert>

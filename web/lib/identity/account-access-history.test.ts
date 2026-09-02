@@ -41,11 +41,11 @@ describe("Account Access historical Program scope", () => {
           .prepare(
             `INSERT OR IGNORE INTO accounts
                (user_id, name, username, username_normalized, credential_hash,
-                credential_kind, credential_version, account_status, role, phone,
+                credential_kind, credential_version, account_status,  phone,
                 qr_code_string, legacy_pin_hash, requires_upgrade, lock_level,
                 failed_attempts, locked_until, lock_since, created_at, updated_at)
              VALUES (?, 'History Target', 'history-target', 'history-target',
-                     NULL, 'password', 2, 'Active', 'Member', NULL, NULL, NULL,
+                     NULL, 'password', 2, 'Active',  NULL, NULL, NULL,
                      0, 0, 0, NULL, NULL, ?, ?)`
           )
           .bind(
@@ -57,12 +57,11 @@ describe("Account Access historical Program scope", () => {
           .prepare(
             `INSERT OR IGNORE INTO accounts
                (user_id, name, username, username_normalized, credential_hash,
-                credential_kind, credential_version, account_status, role, phone,
+                credential_kind, credential_version, account_status,  phone,
                 qr_code_string, legacy_pin_hash, requires_upgrade, lock_level,
                 failed_attempts, locked_until, lock_since, created_at, updated_at)
              VALUES (?, 'Youth Department Actor', 'youth-department-actor',
-                     'youth-department-actor', NULL, 'password', 2, 'Active',
-                     'Member', NULL, NULL, NULL, 0, 0, 0, NULL, NULL, ?, ?)`
+                     'youth-department-actor', NULL, 'password', 2, 'Active',  NULL, NULL, NULL, 0, 0, 0, NULL, NULL, ?, ?)`
           )
           .bind(
             YOUTH_DEPARTMENT_ACTOR,

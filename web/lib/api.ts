@@ -17,7 +17,6 @@
 export interface LoginResult {
   userId: string;
   name: string;
-  role: string;
   status: string;
   mustSetNewCredential: boolean;
 }
@@ -41,11 +40,8 @@ export interface PublicUser {
   name: string;
   username: string;
   phone: string;
-  /** Legacy display vocabulary; not used for authorization. */
-  role: string;
-  systemRole?: "Admin" | "Staff" | null;
-  identities?: readonly PublicIdentitySummary[];
-  capabilities?: Record<string, boolean>;
+  identities: readonly PublicIdentitySummary[];
+  capabilities: Record<string, boolean>;
   status: string;
   qrCodeString: string;
 }

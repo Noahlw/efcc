@@ -47,7 +47,6 @@ const PENDING_ONE = [
     phone: null,
     submittedAt: 1_700_000_000_000,
     accountStatus: "Pending",
-    role: "Member",
     decision: null,
     decisionNote: null,
   },
@@ -108,7 +107,6 @@ describe(ApprovalQueue, () => {
         phone: "9123 4001",
         submittedAt: 1_700_000_000_000,
         accountStatus: "Pending",
-        role: "Member",
         decision: null,
         decisionNote: null,
       },
@@ -119,7 +117,6 @@ describe(ApprovalQueue, () => {
         phone: null,
         submittedAt: 1_700_000_100_000,
         accountStatus: "Pending",
-        role: "Member",
         decision: null,
         decisionNote: null,
       },
@@ -158,7 +155,7 @@ describe(ApprovalQueue, () => {
     // Queue rows only locate/select work; mutations happen on Detail after
     // applicant-summary confirmation.
     expect(screen.getAllByRole("checkbox", { name: /選取/u })).toHaveLength(2);
-    expect(screen.queryByRole("button", { name: /批准 Member/u })).toBeNull();
+    expect(screen.queryByRole("button", { name: /^批准$/u })).toBeNull();
   });
 
   test("select-all reflects mixed local Checkbox state", async () => {
@@ -294,7 +291,7 @@ describe(ApprovalQueue, () => {
     ).resolves.toBeInTheDocument();
   });
 
-  test("selection persists across search/filter and supports review removal and clear", async () => {
+  test("selection persists across search and supports review removal and clear", async () => {
     server.use(
       http.get("/api/v1/auth/registrations", () =>
         HttpResponse.json({
@@ -324,9 +321,6 @@ describe(ApprovalQueue, () => {
       "Anna"
     );
     expect(screen.queryByText("Dave Ng")).not.toBeInTheDocument();
-    expect(screen.getByText("已選 1 位")).toBeInTheDocument();
-    await user.click(screen.getByRole("combobox", { name: "篩選角色" }));
-    await user.click(screen.getByRole("option", { name: /^同工$/u }));
     expect(screen.getByText("已選 1 位")).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "檢視所選" }));
     expect(
@@ -510,25 +504,6 @@ describe(ApprovalQueue, () => {
     await screen.findByText("Dave Ng");
     const backLink = screen.getByRole("link", { name: "設定" });
     expect(backLink).toHaveAttribute("href", "/management?module=settings");
-  });
-
-  test("opens the mobile filter sheet to filter queue items by role", async () => {
-    const user = userEvent.setup();
-    server.use(
-      http.get("/api/v1/auth/registrations", () =>
-        HttpResponse.json({
-          requestId: "rid-filter",
-          data: { registrations: PENDING_ONE },
-        })
-      )
-    );
-    render(<ApprovalQueue />);
-    await screen.findByText("Dave Ng");
-
-    const filterTrigger = screen.getByRole("button", { name: /^篩選/ });
-    await user.click(filterTrigger);
-    const sheet = screen.getByRole("dialog", { name: /篩選/ });
-    expect(sheet).toBeInTheDocument();
   });
 
   test("recovers from an initial queue load failure via the retry button", async () => {

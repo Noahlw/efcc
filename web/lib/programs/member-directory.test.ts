@@ -36,7 +36,6 @@ const HEADER = [
   "Name",
   "Username",
   "PIN_Code",
-  "System_Role",
   "Status",
 ];
 
@@ -295,7 +294,6 @@ interface MemberRow {
   userId: string;
   name: string;
   phone: string | null;
-  role: "Admin" | "Staff" | "Member";
   identities: {
     id: string;
     label: string;
@@ -347,14 +345,14 @@ describe("087-04: Member Directory search scope boundary", () => {
     await applyMigrations();
     await importLegacyUsers(testDb(), [
       HEADER,
-      ["A001", "Admin One", "root-admin", "1111", "Admin", "Active"],
-      ["A002", "Staff One", "root-staff", "2222", "Staff", "Active"],
-      ["A003", "Member Manager", "md-member-dm", "3333", "Member", "Active"],
-      ["A004", "Plain Member", "md-plain", "4444", "Member", "Active"],
-      ["A005", "Dana X", "md-dana-x", "5555", "Member", "Active"],
-      ["A006", "Evan Y", "md-evan-y", "6666", "Member", "Active"],
-      ["A007", "Fay None", "md-fay-none", "7777", "Member", "Active"],
-      ["A008", "Grace Pending", "md-grace-p", "8888", "Member", "Pending"],
+      ["A001", "Admin One", "root-admin", "1111", "Active"],
+      ["A002", "Staff One", "root-staff", "2222", "Active"],
+      ["A003", "Member Manager", "md-member-dm", "3333", "Active"],
+      ["A004", "Plain Member", "md-plain", "4444", "Active"],
+      ["A005", "Dana X", "md-dana-x", "5555", "Active"],
+      ["A006", "Evan Y", "md-evan-y", "6666", "Active"],
+      ["A007", "Fay None", "md-fay-none", "7777", "Active"],
+      ["A008", "Grace Pending", "md-grace-p", "8888", "Pending"],
     ]);
     await Promise.all(
       (
@@ -456,7 +454,6 @@ describe("087-04: Member Directory search scope boundary", () => {
       userId: "A005",
       name: "Dana X",
       phone: "9123 4567",
-      role: "Member",
       identities: [],
       status: "Active",
       departments: [

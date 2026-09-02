@@ -3,10 +3,11 @@
  * Participant Home and Church Announcement surfaces.
  */
 import { expect, test } from "@playwright/test";
-import type { Page, Route } from "@playwright/test";
+import type { Page, Route, TestInfo } from "@playwright/test";
 
 import { COPY } from "../../web/lib/copy";
 import { defaultSections, projectNavigation } from "../../web/lib/sections";
+import { attachNumericEvidence } from "./numeric-evidence";
 
 const AUTH_HINT_KEY = "efcc_auth_active";
 
@@ -15,9 +16,19 @@ const MEMBER_USER = {
   name: "陳小明",
   username: "member.demo",
   phone: "91234567",
-  role: "Member",
   status: "Active",
   qrCodeString: "qr:u-member-101",
+  identities: [
+    {
+      label: "會友基礎",
+      scopeKind: "Global" as const,
+      scopeLabel: null,
+    },
+  ],
+  capabilities: { "program.enroll": true, "role.manage": false } as Record<
+    string,
+    boolean
+  >,
 };
 
 interface HomeRouteOptions {
@@ -70,7 +81,7 @@ function stubAuthEndpoints(user: typeof MEMBER_USER) {
             user,
             sections: defaultSections(),
             navigation: projectNavigation({
-              "program.manage": user.role !== "Member",
+              "program.manage": user.capabilities?.["program.manage"] ?? false,
             }),
           },
         }),
@@ -214,7 +225,7 @@ test.describe("085-01: Participant Home and Church Announcement", () => {
 
   test("Home keeps a structural skeleton distinct from empty while projection is pending", async ({
     page,
-  }) => {
+  }, testInfo: TestInfo) => {
     await initAuthenticatedPage(page);
     await page.unroute("**/api/v1/home");
     let release!: () => void;
@@ -247,6 +258,7 @@ test.describe("085-01: Participant Home and Church Announcement", () => {
       innerWidth: window.innerWidth,
       scrollWidth: document.documentElement.scrollWidth,
     }));
+    await attachNumericEvidence(testInfo, "responsive-home-loading", geometry);
     expect(geometry.scrollWidth).toBeLessThanOrEqual(geometry.innerWidth);
     await expect(
       page.getByTestId("home-loading-skeleton").locator("a,button")

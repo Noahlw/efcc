@@ -658,7 +658,6 @@ export interface BootstrapIdentitySummary {
 }
 
 export interface BootstrapIdentity {
-  systemRole: "Admin" | "Staff" | null;
   identities: readonly BootstrapIdentitySummary[];
   capabilities: Record<string, boolean>;
 }
@@ -677,15 +676,7 @@ export async function loadBootstrapIdentity(
       scopeKind: role.scope_kind,
       scopeLabel: scopeLabel(role.scope_kind, role.scope_id, names),
     }));
-  const systemRole = roles.some(
-    (role) => role.stable_key === PROTECTED_STABLE_KEYS.ADMIN
-  )
-    ? "Admin"
-    : roles.some((role) => role.stable_key === PROTECTED_STABLE_KEYS.STAFF)
-      ? "Staff"
-      : null;
   return {
-    systemRole,
     identities,
     capabilities: await resolveActorCapabilities(db, actorUserId),
   };

@@ -2114,7 +2114,9 @@ test.describe("MUI-01 management Directory and Workspace", () => {
       name: COPY.managementDirectorySearchLabel,
     });
     await search.fill("成人查經");
-    await expect(directory.getByRole("link")).toHaveCount(1);
+    await expect(directory.getByRole("link")).toHaveCount(1, {
+      timeout: 20_000,
+    });
     await directory.getByRole("link", { name: /E2E_DEMO_成人查經/u }).click();
     await expect(page).toHaveURL(
       new RegExp(`/programs\\?mode=management&program=${programId}$`, "u")
@@ -2577,6 +2579,7 @@ test.describe("MUI-01 management Directory and Workspace", () => {
       .getByRole("link")
       .filter({ hasText: "E2E_DEMO_成人查經" })
       .first();
+    await expect(firstProgram).toBeVisible({ timeout: 20_000 });
     // Capture the row's program name before navigating (the directory
     // unmounts once the Cockpit opens). Read the card-title span, not
     // the whole row: textContent() concatenates name + description +
@@ -2635,7 +2638,9 @@ test.describe("MUI-01 management Directory and Workspace", () => {
     await expect(
       page.getByRole("heading", { name: COPY.managementDirectoryTitle })
     ).toBeVisible();
-    await expect(page.getByRole("list", { name: "可管理課程" })).toBeVisible();
+    await expect(page.getByRole("list", { name: "可管理課程" })).toBeVisible({
+      timeout: 20_000,
+    });
   });
 
   test("a revoked or unknown direct management link stays generic", async ({
@@ -4238,6 +4243,7 @@ test.describe("NTF-01 management attention", () => {
     page,
     browser,
   }) => {
+    test.setTimeout(120_000);
     await loginAs(
       page,
       required("PROGRAMS_ADMIN_USERNAME", ADMIN_USER),

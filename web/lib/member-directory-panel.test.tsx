@@ -52,12 +52,17 @@ const server = setupServer();
 const MEMBERS = COPY.managementMembers;
 
 // Wire contract: GET /api/v1/programs/members -> data.members of
-// { userId, name, phone: string|null, role, status, departments }.
+// { userId, name, phone: string|null, identities, status, departments }.
 interface MemberRow {
   userId: string;
   name: string;
   phone: string | null;
-  role: "Admin" | "Staff" | "Member";
+  identities?: Array<{
+    id: string;
+    label: string;
+    scopeKind: "Global" | "Department" | "Program";
+    scopeId: string | null;
+  }>;
   status: string;
   departments: Array<{ id: string; name: string }>;
 }
@@ -67,7 +72,9 @@ const MEMBER_ROWS: MemberRow[] = [
     userId: "U-DIR-DANA",
     name: "陳大文",
     phone: "9123 4567",
-    role: "Member",
+    identities: [
+      { id: "id-dana", label: "會友基礎", scopeKind: "Global", scopeId: null },
+    ],
     status: "Active",
     departments: [
       { id: "dept-grow", name: "培育部" },
@@ -78,7 +85,14 @@ const MEMBER_ROWS: MemberRow[] = [
     userId: "U-DIR-EVAN",
     name: "王大文",
     phone: null,
-    role: "Staff",
+    identities: [
+      {
+        id: "id-evan",
+        label: "青年部同工",
+        scopeKind: "Department",
+        scopeId: "dept-worship",
+      },
+    ],
     status: "Active",
     departments: [{ id: "dept-worship", name: "崇拜部" }],
   },
@@ -86,7 +100,9 @@ const MEMBER_ROWS: MemberRow[] = [
     userId: "U-DIR-FAY",
     name: "李秀蘭",
     phone: "7777 8888",
-    role: "Member",
+    identities: [
+      { id: "id-fay", label: "會友基礎", scopeKind: "Global", scopeId: null },
+    ],
     status: "Active",
     departments: [],
   },
@@ -141,7 +157,7 @@ describe("MemberDirectoryPanel", () => {
     expect(within(danaRow).getByText(/會友基礎/)).toBeTruthy();
     expect(within(danaRow).getByText(/培育部/)).toBeTruthy();
     const evanRow = screen.getByRole("button", { name: /王大文/ });
-    expect(within(evanRow).getByText(/Staff/)).toBeTruthy();
+    expect(within(evanRow).getByText(/青年部同工/)).toBeTruthy();
     expect(within(evanRow).getByText(/崇拜部/)).toBeTruthy();
     // No submit control exists — search is live on input.
     expect(screen.queryByRole("button", { name: /搜尋$/ })).toBeNull();
@@ -186,8 +202,8 @@ describe("MemberDirectoryPanel", () => {
     const detailView = within(detailRoot as HTMLElement);
     expect(detailView.getByText(MEMBERS.memberContact)).toBeTruthy();
     expect(detailView.getByText("9123 4567")).toBeTruthy();
-    expect(detailView.getByText(MEMBERS.memberRole)).toBeTruthy();
-    expect(detailView.getByText("Member")).toBeTruthy();
+    expect(detailView.getByText("身份組")).toBeTruthy();
+    expect(detailView.getByText("會友基礎")).toBeTruthy();
     expect(detailView.getByText(MEMBERS.memberDepartments)).toBeTruthy();
     expect(detailView.getByText("培育部")).toBeTruthy();
     expect(detailView.getByText("崇拜部")).toBeTruthy();

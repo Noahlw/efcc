@@ -28,13 +28,23 @@ if (!isLocal) {
 }
 
 export default defineConfig({
+  metadata: { phaseFTargetUrl: targetUrl },
   testDir: ".",
   testMatch: ["**/phase-e-attendance-geometry.test.ts"],
   timeout: 60_000,
   retries: 1,
   fullyParallel: false,
   workers: 1,
-  reporter: [["list"]],
+  reporter: [
+    ["list"],
+    [
+      "json",
+      {
+        outputFile:
+          "test-results/phase-f/phase-e-attendance-geometry/results.json",
+      },
+    ],
+  ],
   use: {
     baseURL: targetUrl,
     permissions: ["camera"],

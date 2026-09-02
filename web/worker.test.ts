@@ -100,3 +100,17 @@ describe("Worker: RFC9457 outer error envelope (unhandled auth-route errors)", (
     assert.equal(body.status, 500);
   });
 });
+
+describe("Worker: unknown /api routes", () => {
+  test("GET /api/v1/unknown-phase-f-route returns 404 application/problem+json NOT_FOUND", async () => {
+    const res = await worker.fetch(
+      makeRequest("/api/v1/unknown-phase-f-route", { method: "GET" }),
+      testEnv()
+    );
+    assert.equal(res.status, 404);
+    assert.match(res.headers.get("Content-Type") ?? "", /application\/problem\+json/);
+    const body = await json<{ code: string; status: number }>(res);
+    assert.equal(body.code, "NOT_FOUND");
+    assert.equal(body.status, 404);
+  });
+});

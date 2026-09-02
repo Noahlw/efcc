@@ -556,14 +556,13 @@ describe("AUTH-06: login", () => {
       data: {
         userId: string;
         name: string;
-        role: string;
         status: string;
         mustSetNewCredential: boolean;
       };
     };
     assert.strictEqual(body.data.userId, "U001");
     assert.strictEqual(body.data.name, "Alice Chan");
-    assert.strictEqual(body.data.role, "Admin");
+    assert.strictEqual(body.data.status, "Active");
     assert.strictEqual(body.data.mustSetNewCredential, false);
     assertBodyHasNoTokenKeys(body);
     const { access, refresh } = readAuthCookiesFromResponse(res);
@@ -589,8 +588,6 @@ describe("AUTH-06: login", () => {
       name: "Alice Chan",
       username: "alice",
       phone: "",
-      role: "Admin",
-      systemRole: "Admin",
       identities: [
         { label: "系統管理員", scopeKind: "Global", scopeLabel: null },
       ],
@@ -1379,7 +1376,6 @@ describe("087-02 (#319): registration detail read + required rejection note", ()
           name: string;
           phone: string | null;
           status: string;
-          role: string;
           submittedAt: number;
           decidedAt: number | null;
           decisionNote: string | null;
@@ -1392,7 +1388,6 @@ describe("087-02 (#319): registration detail read + required rejection note", ()
     assert.strictEqual(body.data.registration.name, "Noel Tang");
     assert.strictEqual(body.data.registration.phone, "9123 4576");
     assert.strictEqual(body.data.registration.status, "Pending");
-    assert.strictEqual(body.data.registration.role, "Member");
     assert.ok(
       typeof body.data.registration.submittedAt === "number",
       "submittedAt must be an epoch-millis number"

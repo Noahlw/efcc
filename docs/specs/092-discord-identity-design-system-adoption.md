@@ -1,12 +1,30 @@
 # 092 — Whole-Product UI Architecture, 身份組, and Design-System Adoption
 
-**Status:** Draft for owner review — planning only; no implementation authorized  
-**Planning baseline:** `feat/s4-12-shadcn-migration` at `f1b77c0e`  
-**Backend/domain authority:** Spec 091 and ADR-0042  
-**Design-system authority:** ADR-0043, the approved Civic Minimal contract, and this specification after owner approval  
-**Scope:** Every shipped product route; `/prototype`, historical evidence pages, and unimplemented surfaces are excluded  
+**Status:** Implemented — local automated gate ready; production release conditional
+**Planning baseline:** `feat/s4-12-shadcn-migration` at `f1b77c0e` (historical planning provenance)
+**Backend/domain authority:** Spec 091 and ADR-0042
+**Design-system authority:** ADR-0043, the approved Civic Minimal contract, and this specification
+**Scope:** Every shipped product route; `/prototype`, historical evidence pages, and unimplemented surfaces remain excluded
 
-> This specification defines a target. It does not claim the target is shipped. It does not authorize code, CSS, tests, schemas, migrations, fixtures, deployment, or data changes. A separate implementation plan may be written only after the owner approves this specification and its route/module, finding-disposition, phase, and verification matrices.
+> The planning decisions below are preserved as provenance. The Phase A–F
+> implementation and acceptance disposition is recorded below and in the linked
+> phase traces; this document no longer represents the target as unimplemented.
+
+## Phase implementation and acceptance disposition
+
+| Phase | Scope | Disposition |
+| --- | --- | --- |
+| A — #475 foundation | Civic Minimal tokens, owned shadcn/Radix primitives, Shared Shell, normalized identity foundation | Implemented; see `s4-phase-a-acceptance-trace.md`. |
+| B — shared modules | Contextual headers, async lifecycle, action surfaces, directories, feeds, settings, and workspace seams | Implemented; see `s4-phase-b-acceptance-trace.md`. |
+| C — #485–#487 identity integration | Permission Editor, Account Access, normalized bootstrap and capability-owned authorization | Implemented; see `s4-phase-c-acceptance-trace.md`. |
+| D — #488–#490 route wave | Public/auth/account, participant Programs, and Programs Workspace | Implemented; see `s4-phase-d-acceptance-trace.md`. |
+| E — #491–#493 operations wave | Scanner/attendance, management operations, Identity and Permission management | Implemented; see `s4-phase-e-acceptance-trace.md`. |
+| F — #494–#495 contraction and release gate | Fixed-role/CSS contraction, numeric evidence, local release matrix, and authority reconciliation | Implementation and evidence recorded; the aggregate release verdict is `BLOCKED` by the reproducible full Programs D1 loopback Worker failure on arm64. See `s4-phase-f-acceptance-trace.md`, `../qa/2026-09-01-s4-phase-f-release-gate.md`, and `../qa/2026-09-01-s4-phase-f-audit-dispositions.md`. |
+
+Phase F preserves the original product decisions while changing their status
+from planned target to implemented authority. Numeric DOM evidence is not a
+human accessibility, hardware, print-preview, or WCAG-conformance claim; those
+rows remain explicit in the release-gate record.
 
 ## Problem Statement
 
@@ -18,7 +36,7 @@ Tony's rebased layout/WCAG work hardens important contracts, but it is not a who
 
 The existing permission surface is also built around a fixed-role model that cannot implement Spec 091. One eligible Active Account must be able to hold several useful 身份組; categories, hierarchy, scope, assignments, grants, effective access, revisions, idempotency, and audit must remain server-owned. The product must support both identity-first and account-first work without presenting identities as decorative badges or letting the browser become the authority.
 
-The owner therefore needs one integrated, planning-only specification that:
+The owner needed one integrated specification that:
 
 - covers every shipped screen rather than only the permissions route;
 - establishes where shared UI modules earn their keep and where domain behavior remains local;
@@ -266,10 +284,10 @@ The eventual delivery is a gated phase stack: planning approval; backend/domain 
 - Small permission change sets use a capped Sheet. Large or high-risk sets use a dedicated review view. Review never becomes a viewport-blocking sticky panel.
 - Account detail supports atomic multi-identity changes for one eligible Active Account, explains lost/retained access, groups effective access by scope, and identifies grant provenance. Multi-account bulk assignment remains excluded.
 - Every audit finding on a shipped route receives `Must Fix`, `Covered by Shared Migration`, `Preserve`, or `Defer` with a reason. All shipped P0/P1 findings resolve before release.
-- The eventual work is divided into: planning approval; backend/domain cutover and role-blind UI foundation in parallel; shared behavior modules; 身份組 integration; domain route-family polish waves; whole-product cleanup and evidence.
+- The completed work comprised planning approval; backend/domain cutover and role-blind UI foundation in parallel; shared behavior modules; 身份組 integration; domain route-family polish waves; whole-product cleanup; and evidence.
 - Shared module interfaces freeze before route-family parallelism. Shared files have one integration owner. Phase handoff requires contract completion, focused tests, affected journeys, responsive evidence, and obsolete-path removal.
 - No intermediate phase is promoted to production. The complete product passes final gates before production promotion is considered separately.
-- This planning phase ends with owner approval of this specification and its planning matrices. A separate implementation plan then requires its own approval. No implementation follows automatically.
+- This specification's implementation and acceptance disposition are recorded above and in the linked phase traces; production promotion remains subject to the Phase F release-gate record.
 
 ## Testing Decisions
 
@@ -305,8 +323,8 @@ The eventual delivery is a gated phase stack: planning approval; backend/domain 
 
 ## Out of Scope
 
-- Production code, CSS, tests, schemas, migrations, fixtures, deployment, or data changes during this specification phase.
-- Automatic transition from specification approval to implementation.
+- Production code, CSS, tests, schemas, migrations, fixtures, deployment, or data changes outside the implemented and evidenced scope.
+- Automatic promotion of this implementation to production without the release-gate conditions.
 - `/prototype`, prototype-only defects, historical comparison pages, and historical screenshots as product surfaces.
 - Screenshot capture, screenshot comparison, visual image snapshots, or pixel-diff regression testing.
 - Discord colors, assets, gaming vocabulary, server/channel concepts, or branding.
@@ -329,13 +347,13 @@ The eventual delivery is a gated phase stack: planning approval; backend/domain 
 
 - Tony's `280bb2c5` work is now an ancestor of the planning baseline. It is verified contract hardening, not an external candidate and not a complete modular rewrite.
 - The strongest retained Tony-era mechanisms are the Tailwind base-layer reset, functional boundary contrast, default target sizes, Dialog/Sheet overflow and close behavior, semantic primitive hooks, selected layout containment, and geometry-test precedent.
-- The planning audit found that the shared primitive layer is real but not yet the default. The spacing scale is declared but effectively unused; literal geometry and custom control recipes remain widespread.
+- The planning audit is historical provenance; its identified seams and findings are reconciled by the implementation decisions and audit-disposition record.
 - High-confidence module seams are the Authenticated Shell, settings structure, existing async lifecycle, management action behavior, proven Member Picker interaction, attendance flow/scanner UI, directory frame, feed presentation, Programs Workspace task composition, identity management, permission editing, and account access.
 - Intentional local implementations include Home composition, CMS domain rows, camera/device state, Program settings domain forms, route-specific not-found content, and domain-specific table rows and validation.
-- The shipped account-settings split must be resolved before route polish fans out. The richer behavior becomes canonical; the dead parallel path is deleted.
+- The shipped account-settings split was resolved before route-family polish; the richer behavior is now the sole shipped implementation.
 - The current fixed-role permissions interface is replaced by the Spec 091 projection. It is not wrapped or generalized as a permanent compatibility layer.
 - Route-family polish waves are public/auth/account; Home/communications; Programs/workspace; attendance/scanner; management operations; and identity/permissions.
 - A numeric geometry report replaces screenshot evidence. It records approved anchors, computed tokens/styles, rectangles, gaps, containment, overflow, and dock/rail clearance for the required matrix.
 - Human accessibility evidence remains mandatory because numeric geometry and DOM behavior do not prove screen-reader comprehension, real-device behavior, forced-colors quality, or complete WCAG conformance.
 - The temporary grilling ledger remains decision provenance until feature-level documentation consolidation is reviewed.
-- After owner approval of this specification and its planning matrices, the next deliverable is a separate dependency-ordered implementation plan. No implementation is authorized by publication of this issue.
+- The Phase F release-gate record is the current disposition for implementation evidence, human gates, and production-promotion conditions.

@@ -8,20 +8,21 @@
 // Google / Apps Script dependency (criterion 7).
 
 import { expect, test } from "@playwright/test";
-import type { Page, Route } from "@playwright/test";
+import type { Page, Route, TestInfo } from "@playwright/test";
 
 import { COPY, LANDING } from "../../web/lib/copy";
 import { defaultSections, projectNavigation } from "../../web/lib/sections";
+import { attachNumericEvidence } from "./numeric-evidence";
 
-// Helper: assert a possibly-null bounding box is present, then return it.
-function requireBox(
-  box: { x: number; y: number; width: number; height: number } | null
-): {
+interface BoundingBox {
   width: number;
   height: number;
   x: number;
   y: number;
-} {
+}
+
+// Helper: assert a possibly-null bounding box is present, then return it.
+function requireBox(box: BoundingBox | null): BoundingBox {
   if (!box) {
     throw new Error("bounding box is null");
   }
@@ -33,9 +34,16 @@ const PUBLIC_USER = {
   name: "Test User",
   username: "tester",
   phone: "0900000000",
-  role: "Staff",
   status: "active",
   qrCodeString: "qr:u1",
+  identities: [
+    {
+      label: "同工",
+      scopeKind: "Global",
+      scopeLabel: null,
+    },
+  ],
+  capabilities: { "program.manage": true },
 };
 
 const AUTH_HINT_KEY = "efcc_auth_active";
@@ -112,12 +120,16 @@ const isMobile = (projectName: string) => projectName.startsWith("mobile");
 
 test("bottom nav below 800px, side rail at or above 800px", async ({
   page,
-}, testInfo) => {
+}, testInfo: TestInfo) => {
   await page.goto("/home.html");
 
   const nav = page.locator("#main-navigation");
   await expect(nav).toBeVisible();
   const position = await nav.evaluate((el) => getComputedStyle(el).position);
+  await attachNumericEvidence(testInfo, "responsive-navigation-position", {
+    position,
+    project: testInfo.project.name,
+  });
   if (isMobile(testInfo.project.name)) {
     expect(position).toBe("fixed");
   } else {
@@ -127,63 +139,85 @@ test("bottom nav below 800px, side rail at or above 800px", async ({
 
 test("shell header spans top and desktop side rail sits below it, not overlapping", async ({
   page,
-}, testInfo) => {
+}, testInfo: TestInfo) => {
   await page.goto("/profile.html");
 
   const header = page.getByRole("banner");
   await expect(header).toBeVisible();
   const headerBox = requireBox(await header.boundingBox());
-
-  expect(headerBox.x).toBe(0);
-
+  let railBox: BoundingBox | null = null;
   if (!isMobile(testInfo.project.name)) {
     const rail = page.locator("#main-navigation");
     await expect(rail).toBeVisible();
-    const railBox = requireBox(await rail.boundingBox());
-    expect(railBox.x).toBe(0);
-    expect(railBox.y).toBeGreaterThanOrEqual(
+    railBox = requireBox(await rail.boundingBox());
+  }
+  await attachNumericEvidence(testInfo, "responsive-header-rail", {
+    headerBox,
+    railBox,
+    project: testInfo.project.name,
+  });
+
+  expect(headerBox.x).toBe(0);
+  if (!isMobile(testInfo.project.name)) {
+    expect(railBox?.x).toBe(0);
+    expect(railBox?.y).toBeGreaterThanOrEqual(
       headerBox.y + headerBox.height - 1
     );
   }
 });
 
-test("no horizontal overflow at the target viewport", async ({ page }) => {
+test("no horizontal overflow at the target viewport", async ({
+  page,
+}, testInfo: TestInfo) => {
   for (const path of [
     "/profile.html",
     "/profile/settings.html",
     "/home.html",
   ] as const) {
     await page.goto(path);
-    const fits = await page.evaluate(
-      () => document.documentElement.scrollWidth <= window.innerWidth
-    );
-    expect(fits, `horizontal overflow on ${path}`).toBeTruthy();
+    const geometry = await page.evaluate(() => ({
+      documentScrollWidth: document.documentElement.scrollWidth,
+      viewportWidth: window.innerWidth,
+    }));
+    await attachNumericEvidence(testInfo, "responsive-document-overflow", {
+      path,
+      ...geometry,
+    });
+    expect(
+      geometry.documentScrollWidth,
+      `horizontal overflow on ${path}`
+    ).toBeLessThanOrEqual(geometry.viewportWidth);
   }
 });
 
 test("profile page fits the shell-content without horizontal overflow at 375x812", async ({
   page,
-}, testInfo) => {
+}, testInfo: TestInfo) => {
   test.skip(!isMobile(testInfo.project.name), "mobile-only");
   await page.goto("/profile.html");
-  await expect(page.locator(".shell-content")).toBeVisible();
-  const fits = await page.evaluate(() => {
-    const el = document.querySelector(".shell-content");
-    if (!el) {
-      return false;
-    }
-    return el.scrollWidth <= el.clientWidth;
+  await expect(page.getByRole("main")).toBeVisible();
+  await page.waitForSelector("#shell-content", { state: "visible" });
+  const geometry = await page.evaluate(() => {
+    const el = document.getElementById("shell-content");
+    return el
+      ? { scrollWidth: el.scrollWidth, clientWidth: el.clientWidth }
+      : null;
   });
-  expect(
-    fits,
-    "profile horizontally overflows the shell-content scroll box"
-  ).toBeTruthy();
+  await attachNumericEvidence(testInfo, "responsive-shell-content-overflow", {
+    geometry,
+  });
+  expect(geometry).not.toBeNull();
+  expect(geometry?.scrollWidth).toBeLessThanOrEqual(
+    (geometry?.clientWidth ?? 0) + 1
+  );
 });
 
 test("bottom nav and page outlet reserve safe-area inset", async ({
   page,
-}, testInfo) => {
+}, testInfo: TestInfo) => {
   await page.goto("/home.html");
+  await expect(page.locator("#main-navigation")).toBeVisible();
+  await expect(page.getByRole("main")).toBeVisible();
 
   // Emulate a notched device so env(safe-area-inset-bottom) resolves to a
   // non-zero value (viewport-fit=cover is set in web/app/layout.tsx).
@@ -194,7 +228,7 @@ test("bottom nav and page outlet reserve safe-area inset", async ({
 
   const layout = await page.evaluate(() => {
     const nav = document.querySelector<HTMLElement>("#main-navigation");
-    const shell = document.querySelector<HTMLElement>(".shell-content");
+    const shell = document.getElementById("shell-content");
     const navStyle = nav ? getComputedStyle(nav) : null;
     const shellStyle = shell ? getComputedStyle(shell) : null;
     return {
@@ -206,7 +240,11 @@ test("bottom nav and page outlet reserve safe-area inset", async ({
   // At/above 800px the side rail replaces the fixed bottom nav, so the
   // outlet intentionally reserves nothing (padding-bottom: 0).
   const expectedShell = isMobile(testInfo.project.name) ? "118px" : "0px";
-
+  await attachNumericEvidence(testInfo, "responsive-safe-area", {
+    layout,
+    expectedShell,
+    project: testInfo.project.name,
+  });
   if (isMobile(testInfo.project.name)) {
     expect(
       layout.navBottom,
@@ -221,7 +259,7 @@ test("bottom nav and page outlet reserve safe-area inset", async ({
 
 test("nav targets are at least 44x44 and keyboard reachable with a visible focus cue", async ({
   page,
-}, testInfo) => {
+}, testInfo: TestInfo) => {
   await page.goto("/profile.html");
 
   const visibleNav = page.locator("#main-navigation");
@@ -230,14 +268,21 @@ test("nav targets are at least 44x44 and keyboard reachable with a visible focus
   const navItems = visibleNav.locator(".nav-item");
   const count = await navItems.count();
   expect(count).toBeGreaterThan(0);
+  const boxes = await Promise.all(
+    Array.from({ length: count }, (_, index) =>
+      navItems.nth(index).boundingBox()
+    )
+  );
+  await attachNumericEvidence(testInfo, "responsive-nav-targets", {
+    project: testInfo.project.name,
+    targets: boxes.map((box, index) => ({ index, box })),
+  });
 
-  for (let i = 0; i < count; i += 1) {
-    const item = navItems.nth(i);
-    const box = await item.boundingBox();
-    expect(box, `nav item ${i} bounding box`).not.toBeNull();
+  for (const [index, box] of boxes.entries()) {
+    expect(box, `nav item ${index} bounding box`).not.toBeNull();
     const { width, height } = requireBox(box);
-    expect(width, `nav item ${i} width`).toBeGreaterThanOrEqual(44);
-    expect(height, `nav item ${i} height`).toBeGreaterThanOrEqual(44);
+    expect(width, `nav item ${index} width`).toBeGreaterThanOrEqual(44);
+    expect(height, `nav item ${index} height`).toBeGreaterThanOrEqual(44);
   }
 
   await page.keyboard.press("Tab");
@@ -262,6 +307,10 @@ test("nav targets are at least 44x44 and keyboard reachable with a visible focus
     return el instanceof HTMLElement
       ? getComputedStyle(el).outlineWidth
       : "0px";
+  });
+  await attachNumericEvidence(testInfo, "responsive-nav-focus", {
+    activeIsNavItem,
+    outlineWidth,
   });
   expect(outlineWidth, "focused nav item must show a focus outline").not.toBe(
     "0px"
@@ -305,20 +354,27 @@ test("exactly one polite live region announces shell status", async ({
     .not.toBe("");
 });
 
-test("primary controls are at least 44x44", async ({ page }) => {
+test("primary controls are at least 44x44", async ({
+  page,
+}, testInfo: TestInfo) => {
   await page.goto("/profile.html");
   const signOut = page
     .getByRole("button", { name: COPY.logout.submit })
     .first();
   await expect(signOut).toBeVisible();
   const box = await signOut.boundingBox();
+  await attachNumericEvidence(testInfo, "responsive-primary-control", {
+    box,
+  });
   expect(box, "Sign Out bounding box").not.toBeNull();
-  const { width, height } = requireBox(box);
-  expect(width).toBeGreaterThanOrEqual(44);
-  expect(height).toBeGreaterThanOrEqual(44);
+  const requiredBox = requireBox(box);
+  expect(requiredBox.width).toBeGreaterThanOrEqual(44);
+  expect(requiredBox.height).toBeGreaterThanOrEqual(44);
 });
 
-test("login form controls are at least 44x44", async ({ page }) => {
+test("login form controls are at least 44x44", async ({
+  page,
+}, testInfo: TestInfo) => {
   // Force the login route: an expired/revoked cookie restore (me 401 then
   // refresh 401) makes the shell clear the presence hint and land on Login.
   await page.unroute("**/api/v1/auth/me");
@@ -347,26 +403,34 @@ test("login form controls are at least 44x44", async ({ page }) => {
     })
   );
   await page.goto("/");
+  await page.waitForLoadState("networkidle");
   const username = page.locator('input[autocomplete="username"]');
   const relogin = page.getByRole("button", {
     name: COPY.sessionExpired.reLogin,
   });
-  await expect(username.or(relogin)).toBeVisible();
-  if (await relogin.isVisible()) {
-    await relogin.click();
-  }
+  await expect(relogin).toBeVisible();
+  await relogin.click();
   const password = page.locator('input[autocomplete="current-password"]');
   const submit = page.getByRole("button", { name: COPY.login.submit });
   await expect(username).toBeVisible();
   await expect(password).toBeVisible();
   await expect(submit).toBeVisible();
 
-  for (const [label, control] of [
+  const controls = [
     ["username", username],
     ["password", password],
     ["submit", submit],
-  ] as const) {
-    const box = await control.boundingBox();
+  ] as const;
+  const boxes = await Promise.all(
+    controls.map(async ([label, control]) => ({
+      label,
+      box: await control.boundingBox(),
+    }))
+  );
+  await attachNumericEvidence(testInfo, "responsive-login-controls", {
+    boxes,
+  });
+  for (const { label, box } of boxes) {
     expect(box, `${label} bounding box`).not.toBeNull();
     const { width, height } = requireBox(box);
     expect(width, `${label} width`).toBeGreaterThanOrEqual(44);
@@ -374,7 +438,9 @@ test("login form controls are at least 44x44", async ({ page }) => {
   }
 });
 
-test("recovery retry control is at least 44x44", async ({ page }) => {
+test("recovery retry control is at least 44x44", async ({
+  page,
+}, testInfo: TestInfo) => {
   // A 503 /me failure renders the RecoveryView with a retry control.
   await page.unroute("**/api/v1/auth/me");
   await page.route("**/api/v1/auth/me", (route) =>
@@ -394,39 +460,58 @@ test("recovery retry control is at least 44x44", async ({ page }) => {
   const retry = page.getByRole("button", { name: COPY.error.retry });
   await expect(retry).toBeVisible();
   const box = await retry.boundingBox();
+  await attachNumericEvidence(testInfo, "responsive-recovery-retry", {
+    box,
+  });
   expect(box, "retry bounding box").not.toBeNull();
-  const { width, height } = requireBox(box);
-  expect(width).toBeGreaterThanOrEqual(44);
-  expect(height).toBeGreaterThanOrEqual(44);
+  const requiredBox = requireBox(box);
+  expect(requiredBox.width).toBeGreaterThanOrEqual(44);
+  expect(requiredBox.height).toBeGreaterThanOrEqual(44);
 });
 
 test("register skip link and brand are at least 44px tall", async ({
   page,
-}) => {
+}, testInfo: TestInfo) => {
   await page.goto("/register.html");
   // CSS module classes are hashed in the static export, so select by the
   // stable role/aria-label the register surface exposes.
   const skip = page.locator('a[href="#register"]');
   const brand = page.getByRole("link", { name: LANDING.homeLabel });
   await expect(brand).toBeVisible();
-  for (const [label, el] of [
+  const elements = [
     ["skip link", skip],
     ["brand", brand],
-  ] as const) {
-    const height = await el.evaluate(
-      (node) => node.getBoundingClientRect().height
-    );
+  ] as const;
+  const heights = await Promise.all(
+    elements.map(async ([label, element]) => ({
+      label,
+      height: await element.evaluate(
+        (node) => node.getBoundingClientRect().height
+      ),
+    }))
+  );
+  await attachNumericEvidence(testInfo, "responsive-register-targets", {
+    heights,
+  });
+  for (const { label, height } of heights) {
     expect(height, `${label} height`).toBeGreaterThanOrEqual(44);
   }
 });
 
-test("register page fits 375x667 without vertical scroll", async ({ page }) => {
+test("register page fits 375x667 without vertical scroll", async ({
+  page,
+}, testInfo: TestInfo) => {
   await page.setViewportSize({ width: 375, height: 667 });
   await page.goto("/register.html");
-  const fits = await page.evaluate(
-    () =>
-      document.documentElement.scrollHeight <=
-      document.documentElement.clientHeight
-  );
-  expect(fits, "register exceeds the 375x667 viewport").toBeTruthy();
+  const geometry = await page.evaluate(() => ({
+    scrollHeight: document.documentElement.scrollHeight,
+    clientHeight: document.documentElement.clientHeight,
+  }));
+  await attachNumericEvidence(testInfo, "responsive-register-viewport", {
+    ...geometry,
+  });
+  expect(
+    geometry.scrollHeight,
+    "register exceeds the 375x667 viewport"
+  ).toBeLessThanOrEqual(geometry.clientHeight);
 });
