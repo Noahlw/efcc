@@ -67,7 +67,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 1005,
+      "duration": 963,
       "numericAttachments": {
         "account-access-review-geometry": {
           "left": 0,
@@ -87,7 +87,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 1020,
+      "duration": 1000,
       "numericAttachments": {
         "account-access-review-geometry": {
           "left": 0,
@@ -107,12 +107,12 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 983,
+      "duration": 890,
       "numericAttachments": {
         "account-access-review-geometry": {
           "left": 0,
           "right": 320,
-          "bottom": 844
+          "bottom": 844.0912475585938
         }
       }
     },
@@ -127,12 +127,12 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 976,
+      "duration": 889,
       "numericAttachments": {
         "account-access-review-geometry": {
           "left": 0,
           "right": 390,
-          "bottom": 844.0908813476562
+          "bottom": 844
         }
       }
     },
@@ -147,7 +147,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 1123,
+      "duration": 933,
       "numericAttachments": {
         "account-access-review-geometry": {
           "left": 0,
@@ -167,7 +167,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 935,
+      "duration": 968,
       "numericAttachments": {
         "account-access-review-geometry": {
           "left": 0,
@@ -187,7 +187,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 1064,
+      "duration": 1126,
       "numericAttachments": {
         "account-access-review-geometry": {
           "left": 0,
@@ -207,7 +207,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 726,
+      "duration": 780,
       "numericAttachments": {
         "account-access-geometry": {
           "viewportWidth": 1024,
@@ -313,7 +313,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 1087,
+      "duration": 741,
       "numericAttachments": {
         "account-access-geometry": {
           "viewportWidth": 1440,
@@ -419,7 +419,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 759,
+      "duration": 739,
       "numericAttachments": {
         "account-access-geometry": {
           "viewportWidth": 320,
@@ -525,7 +525,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 881,
+      "duration": 966,
       "numericAttachments": {
         "account-access-geometry": {
           "viewportWidth": 390,
@@ -631,7 +631,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 787,
+      "duration": 775,
       "numericAttachments": {
         "account-access-geometry": {
           "viewportWidth": 600,
@@ -737,7 +737,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 819,
+      "duration": 748,
       "numericAttachments": {
         "account-access-geometry": {
           "viewportWidth": 799,
@@ -843,7 +843,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 861,
+      "duration": 812,
       "numericAttachments": {
         "account-access-geometry": {
           "viewportWidth": 800,
@@ -949,7 +949,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 722,
+      "duration": 629,
       "numericAttachments": {
         "permission-editor-detail-geometry": {
           "viewportWidth": 1024,
@@ -1079,7 +1079,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 682,
+      "duration": 718,
       "numericAttachments": {
         "permission-editor-detail-geometry": {
           "viewportWidth": 1440,
@@ -1209,7 +1209,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 829,
+      "duration": 736,
       "numericAttachments": {
         "permission-editor-detail-geometry": {
           "viewportWidth": 320,
@@ -1339,7 +1339,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 788,
+      "duration": 667,
       "numericAttachments": {
         "permission-editor-detail-geometry": {
           "viewportWidth": 390,
@@ -1469,7 +1469,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 721,
+      "duration": 703,
       "numericAttachments": {
         "permission-editor-detail-geometry": {
           "viewportWidth": 600,
@@ -1599,7 +1599,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 770,
+      "duration": 754,
       "numericAttachments": {
         "permission-editor-detail-geometry": {
           "viewportWidth": 799,
@@ -1729,7 +1729,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 640,
+      "duration": 684,
       "numericAttachments": {
         "permission-editor-detail-geometry": {
           "viewportWidth": 800,
@@ -1859,7 +1859,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 988,
+      "duration": 978,
       "numericAttachments": {
         "permission-editor-review-geometry": {
           "viewportWidth": 1024,
@@ -1868,16 +1868,16 @@
           "sheet": {
             "left": 0,
             "right": 1024,
-            "top": 683.361083984375,
-            "bottom": 900.361083984375,
+            "top": 683,
+            "bottom": 900,
             "width": 1024,
             "height": 217
           },
           "review": {
             "left": 0,
             "right": 1024,
-            "top": 746.361083984375,
-            "bottom": 788.361083984375,
+            "top": 746,
+            "bottom": 788,
             "width": 1024,
             "height": 42
           },
@@ -1885,8 +1885,8 @@
             {
               "left": 0,
               "right": 1024,
-              "top": 746.361083984375,
-              "bottom": 788.361083984375,
+              "top": 746,
+              "bottom": 788,
               "width": 1024,
               "height": 42
             }
@@ -1905,7 +1905,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 1033,
+      "duration": 1051,
       "numericAttachments": {
         "permission-editor-review-geometry": {
           "viewportWidth": 1440,
@@ -1951,7 +1951,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 987,
+      "duration": 899,
       "numericAttachments": {
         "permission-editor-review-geometry": {
           "viewportWidth": 320,
@@ -1960,16 +1960,16 @@
           "sheet": {
             "left": 0,
             "right": 320,
-            "top": 627.3594970703125,
-            "bottom": 844.3594970703125,
+            "top": 627.3587646484375,
+            "bottom": 844.3587646484375,
             "width": 320,
             "height": 217
           },
           "review": {
             "left": 0,
             "right": 320,
-            "top": 690.3594970703125,
-            "bottom": 732.3594970703125,
+            "top": 690.3587646484375,
+            "bottom": 732.3587646484375,
             "width": 320,
             "height": 42
           },
@@ -1977,8 +1977,8 @@
             {
               "left": 0,
               "right": 320,
-              "top": 690.3594970703125,
-              "bottom": 732.3594970703125,
+              "top": 690.3587646484375,
+              "bottom": 732.3587646484375,
               "width": 320,
               "height": 42
             }
@@ -1997,7 +1997,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 918,
+      "duration": 916,
       "numericAttachments": {
         "permission-editor-review-geometry": {
           "viewportWidth": 390,
@@ -2006,16 +2006,16 @@
           "sheet": {
             "left": 0,
             "right": 390,
-            "top": 627.8856201171875,
-            "bottom": 844.8856201171875,
+            "top": 627.8803100585938,
+            "bottom": 844.8803100585938,
             "width": 390,
             "height": 217
           },
           "review": {
             "left": 0,
             "right": 390,
-            "top": 690.8856201171875,
-            "bottom": 732.8856201171875,
+            "top": 690.8803100585938,
+            "bottom": 732.8803100585938,
             "width": 390,
             "height": 42
           },
@@ -2023,8 +2023,8 @@
             {
               "left": 0,
               "right": 390,
-              "top": 690.8856201171875,
-              "bottom": 732.8856201171875,
+              "top": 690.8803100585938,
+              "bottom": 732.8803100585938,
               "width": 390,
               "height": 42
             }
@@ -2043,7 +2043,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 1054,
+      "duration": 916,
       "numericAttachments": {
         "permission-editor-review-geometry": {
           "viewportWidth": 600,
@@ -2052,16 +2052,16 @@
           "sheet": {
             "left": 0,
             "right": 600,
-            "top": 627,
-            "bottom": 844,
+            "top": 627.364990234375,
+            "bottom": 844.364990234375,
             "width": 600,
             "height": 217
           },
           "review": {
             "left": 0,
             "right": 600,
-            "top": 690,
-            "bottom": 732,
+            "top": 690.364990234375,
+            "bottom": 732.364990234375,
             "width": 600,
             "height": 42
           },
@@ -2069,8 +2069,8 @@
             {
               "left": 0,
               "right": 600,
-              "top": 690,
-              "bottom": 732,
+              "top": 690.364990234375,
+              "bottom": 732.364990234375,
               "width": 600,
               "height": 42
             }
@@ -2089,7 +2089,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 965,
+      "duration": 962,
       "numericAttachments": {
         "permission-editor-review-geometry": {
           "viewportWidth": 799,
@@ -2135,7 +2135,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 984,
+      "duration": 1061,
       "numericAttachments": {
         "permission-editor-review-geometry": {
           "viewportWidth": 800,
@@ -2144,16 +2144,16 @@
           "sheet": {
             "left": 0,
             "right": 800,
-            "top": 683,
-            "bottom": 900,
+            "top": 683.36181640625,
+            "bottom": 900.36181640625,
             "width": 800,
             "height": 217
           },
           "review": {
             "left": 0,
             "right": 800,
-            "top": 746,
-            "bottom": 788,
+            "top": 746.36181640625,
+            "bottom": 788.36181640625,
             "width": 800,
             "height": 42
           },
@@ -2161,8 +2161,8 @@
             {
               "left": 0,
               "right": 800,
-              "top": 746,
-              "bottom": 788,
+              "top": 746.36181640625,
+              "bottom": 788.36181640625,
               "width": 800,
               "height": 42
             }
@@ -10070,7 +10070,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 669,
+      "duration": 819,
       "numericAttachments": {
         "role-create-reorder-geometry": {
           "viewportWidth": 1024,
@@ -10093,7 +10093,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 693,
+      "duration": 681,
       "numericAttachments": {
         "role-create-reorder-geometry": {
           "viewportWidth": 1440,
@@ -10116,7 +10116,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 631,
+      "duration": 589,
       "numericAttachments": {
         "role-create-reorder-geometry": {
           "viewportWidth": 320,
@@ -10139,7 +10139,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 605,
+      "duration": 580,
       "numericAttachments": {
         "role-create-reorder-geometry": {
           "viewportWidth": 390,
@@ -10162,7 +10162,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 700,
+      "duration": 656,
       "numericAttachments": {
         "role-create-reorder-geometry": {
           "viewportWidth": 600,
@@ -10185,7 +10185,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 681,
+      "duration": 657,
       "numericAttachments": {
         "role-create-reorder-geometry": {
           "viewportWidth": 799,
@@ -10208,7 +10208,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 649,
+      "duration": 622,
       "numericAttachments": {
         "role-create-reorder-geometry": {
           "viewportWidth": 800,
@@ -10231,7 +10231,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 668,
+      "duration": 664,
       "numericAttachments": {
         "role-hierarchy-geometry": {
           "viewportWidth": 1024,
@@ -10251,7 +10251,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 808,
+      "duration": 792,
       "numericAttachments": {
         "role-hierarchy-geometry": {
           "viewportWidth": 1440,
@@ -10271,7 +10271,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 616,
+      "duration": 649,
       "numericAttachments": {
         "role-hierarchy-geometry": {
           "viewportWidth": 320,
@@ -10291,7 +10291,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 645,
+      "duration": 652,
       "numericAttachments": {
         "role-hierarchy-geometry": {
           "viewportWidth": 390,
@@ -10311,7 +10311,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 865,
+      "duration": 733,
       "numericAttachments": {
         "role-hierarchy-geometry": {
           "viewportWidth": 600,
@@ -10331,7 +10331,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 649,
+      "duration": 680,
       "numericAttachments": {
         "role-hierarchy-geometry": {
           "viewportWidth": 799,
@@ -10351,7 +10351,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 712,
+      "duration": 687,
       "numericAttachments": {
         "role-hierarchy-geometry": {
           "viewportWidth": 800,
@@ -10371,7 +10371,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 961,
+      "duration": 763,
       "numericAttachments": {
         "role-rename-geometry": {
           "viewportWidth": 1024,
@@ -10392,7 +10392,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 764,
+      "duration": 727,
       "numericAttachments": {
         "role-rename-geometry": {
           "viewportWidth": 1440,
@@ -10413,7 +10413,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 775,
+      "duration": 744,
       "numericAttachments": {
         "role-rename-geometry": {
           "viewportWidth": 320,
@@ -10434,7 +10434,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 799,
+      "duration": 747,
       "numericAttachments": {
         "role-rename-geometry": {
           "viewportWidth": 390,
@@ -10455,7 +10455,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 767,
+      "duration": 864,
       "numericAttachments": {
         "role-rename-geometry": {
           "viewportWidth": 600,
@@ -10476,7 +10476,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 828,
+      "duration": 823,
       "numericAttachments": {
         "role-rename-geometry": {
           "viewportWidth": 799,
@@ -10497,7 +10497,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 791,
+      "duration": 768,
       "numericAttachments": {
         "role-rename-geometry": {
           "viewportWidth": 800,
@@ -13550,7 +13550,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 481,
+      "duration": 430,
       "numericAttachments": {
         "shell-breakpoint-position": {
           "position": "sticky",
@@ -13569,7 +13569,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 498,
+      "duration": 482,
       "numericAttachments": {
         "shell-breakpoint-position": {
           "position": "sticky",
@@ -13588,7 +13588,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 470,
+      "duration": 468,
       "numericAttachments": {
         "shell-breakpoint-position": {
           "position": "fixed",
@@ -13607,7 +13607,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 459,
+      "duration": 454,
       "numericAttachments": {
         "shell-breakpoint-position": {
           "position": "fixed",
@@ -13626,7 +13626,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 494,
+      "duration": 449,
       "numericAttachments": {
         "shell-breakpoint-position": {
           "position": "fixed",
@@ -13645,7 +13645,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 480,
+      "duration": 444,
       "numericAttachments": {
         "shell-breakpoint-position": {
           "position": "fixed",
@@ -13664,7 +13664,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 560,
+      "duration": 456,
       "numericAttachments": {
         "shell-breakpoint-position": {
           "position": "sticky",
@@ -13683,7 +13683,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 1124,
+      "duration": 1050,
       "numericAttachments": {
         "attention-dialog-geometry": {
           "position": "fixed",
@@ -13709,7 +13709,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 1119,
+      "duration": 1174,
       "numericAttachments": {
         "attention-dialog-geometry": {
           "position": "fixed",
@@ -13735,7 +13735,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 1027,
+      "duration": 1029,
       "numericAttachments": {
         "attention-dialog-geometry": {
           "position": "fixed",
@@ -13761,7 +13761,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 1109,
+      "duration": 1047,
       "numericAttachments": {
         "attention-dialog-geometry": {
           "position": "fixed",
@@ -13787,7 +13787,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 1061,
+      "duration": 1017,
       "numericAttachments": {
         "attention-dialog-geometry": {
           "position": "fixed",
@@ -13813,7 +13813,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 1197,
+      "duration": 1211,
       "numericAttachments": {
         "attention-dialog-geometry": {
           "position": "fixed",
@@ -13839,7 +13839,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 1171,
+      "duration": 1607,
       "numericAttachments": {
         "attention-dialog-geometry": {
           "position": "fixed",
@@ -13865,7 +13865,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 622,
+      "duration": 506,
       "numericAttachments": {
         "shell-focus-order": {
           "active": {
@@ -13891,7 +13891,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 909,
+      "duration": 619,
       "numericAttachments": {
         "shell-focus-order": {
           "active": {
@@ -13917,7 +13917,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 539,
+      "duration": 609,
       "numericAttachments": {
         "shell-focus-order": {
           "active": {
@@ -13943,7 +13943,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 726,
+      "duration": 503,
       "numericAttachments": {
         "shell-focus-order": {
           "active": {
@@ -13969,7 +13969,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 570,
+      "duration": 534,
       "numericAttachments": {
         "shell-focus-order": {
           "active": {
@@ -13995,7 +13995,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 539,
+      "duration": 584,
       "numericAttachments": {
         "shell-focus-order": {
           "active": {
@@ -14021,7 +14021,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 538,
+      "duration": 505,
       "numericAttachments": {
         "shell-focus-order": {
           "active": {
@@ -14047,7 +14047,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 736,
+      "duration": 755,
       "numericAttachments": {
         "shell-geometry": {
           "viewportWidth": 1024,
@@ -14075,7 +14075,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 801,
+      "duration": 766,
       "numericAttachments": {
         "shell-geometry": {
           "viewportWidth": 1440,
@@ -14103,7 +14103,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 784,
+      "duration": 718,
       "numericAttachments": {
         "shell-geometry": {
           "viewportWidth": 320,
@@ -14131,7 +14131,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 714,
+      "duration": 677,
       "numericAttachments": {
         "shell-geometry": {
           "viewportWidth": 390,
@@ -14159,7 +14159,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 636,
+      "duration": 678,
       "numericAttachments": {
         "shell-geometry": {
           "viewportWidth": 600,
@@ -14187,7 +14187,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 784,
+      "duration": 697,
       "numericAttachments": {
         "shell-geometry": {
           "viewportWidth": 799,
@@ -14215,7 +14215,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 857,
+      "duration": 694,
       "numericAttachments": {
         "shell-geometry": {
           "viewportWidth": 800,
