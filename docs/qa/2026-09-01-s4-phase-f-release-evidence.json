@@ -2638,9 +2638,9 @@
         "width": 390,
         "height": 844
       },
-      "state": "flaky",
+      "state": "expected",
       "status": "passed",
-      "duration": 23577,
+      "duration": 13111,
       "numericAttachments": {
         "programs-geometry": {
           "viewportWidth": 390,
@@ -3900,7 +3900,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 4329,
+      "duration": 4121,
       "numericAttachments": {
         "programs-geometry": {
           "viewportWidth": 390,
@@ -5220,7 +5220,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 9442,
+      "duration": 9728,
       "numericAttachments": {
         "programs-geometry": {
           "viewportWidth": 390,
@@ -10518,7 +10518,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 2524,
+      "duration": 2452,
       "numericAttachments": {}
     },
     {
@@ -10533,7 +10533,7 @@
       "state": "skipped",
       "status": "skipped",
       "skipReason": "Focused functional probe runs only at phone-390 / desktop-1024",
-      "duration": 73,
+      "duration": 90,
       "numericAttachments": {}
     },
     {
@@ -10548,7 +10548,7 @@
       "state": "skipped",
       "status": "skipped",
       "skipReason": "Focused functional probe runs only at phone-390 / desktop-1024",
-      "duration": 108,
+      "duration": 93,
       "numericAttachments": {}
     },
     {
@@ -10559,6 +10559,50 @@
       "viewport": {
         "width": 900,
         "height": 900
+      },
+      "state": "skipped",
+      "status": "skipped",
+      "skipReason": "Focused functional probe runs only at phone-390 / desktop-1024",
+      "duration": 79,
+      "numericAttachments": {}
+    },
+    {
+      "suite": "s4-management-hardening.test.ts > S4 Management hardening integration gate",
+      "file": "s4-management-hardening.test.ts",
+      "title": "Account Directory opens populated and supports status plus department filters",
+      "project": "phone-320",
+      "viewport": {
+        "width": 320,
+        "height": 844
+      },
+      "state": "skipped",
+      "status": "skipped",
+      "skipReason": "Focused functional probe runs only at phone-390 / desktop-1024",
+      "duration": 91,
+      "numericAttachments": {}
+    },
+    {
+      "suite": "s4-management-hardening.test.ts > S4 Management hardening integration gate",
+      "file": "s4-management-hardening.test.ts",
+      "title": "Account Directory opens populated and supports status plus department filters",
+      "project": "phone-390",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "state": "expected",
+      "status": "passed",
+      "duration": 2496,
+      "numericAttachments": {}
+    },
+    {
+      "suite": "s4-management-hardening.test.ts > S4 Management hardening integration gate",
+      "file": "s4-management-hardening.test.ts",
+      "title": "Account Directory opens populated and supports status plus department filters",
+      "project": "tablet-600",
+      "viewport": {
+        "width": 600,
+        "height": 844
       },
       "state": "skipped",
       "status": "skipped",
@@ -10570,50 +10614,6 @@
       "suite": "s4-management-hardening.test.ts > S4 Management hardening integration gate",
       "file": "s4-management-hardening.test.ts",
       "title": "Account Directory opens populated and supports status plus department filters",
-      "project": "phone-320",
-      "viewport": {
-        "width": 320,
-        "height": 844
-      },
-      "state": "skipped",
-      "status": "skipped",
-      "skipReason": "Focused functional probe runs only at phone-390 / desktop-1024",
-      "duration": 141,
-      "numericAttachments": {}
-    },
-    {
-      "suite": "s4-management-hardening.test.ts > S4 Management hardening integration gate",
-      "file": "s4-management-hardening.test.ts",
-      "title": "Account Directory opens populated and supports status plus department filters",
-      "project": "phone-390",
-      "viewport": {
-        "width": 390,
-        "height": 844
-      },
-      "state": "expected",
-      "status": "passed",
-      "duration": 2655,
-      "numericAttachments": {}
-    },
-    {
-      "suite": "s4-management-hardening.test.ts > S4 Management hardening integration gate",
-      "file": "s4-management-hardening.test.ts",
-      "title": "Account Directory opens populated and supports status plus department filters",
-      "project": "tablet-600",
-      "viewport": {
-        "width": 600,
-        "height": 844
-      },
-      "state": "skipped",
-      "status": "skipped",
-      "skipReason": "Focused functional probe runs only at phone-390 / desktop-1024",
-      "duration": 60,
-      "numericAttachments": {}
-    },
-    {
-      "suite": "s4-management-hardening.test.ts > S4 Management hardening integration gate",
-      "file": "s4-management-hardening.test.ts",
-      "title": "Account Directory opens populated and supports status plus department filters",
       "project": "tablet-799",
       "viewport": {
         "width": 799,
@@ -10622,7 +10622,7 @@
       "state": "skipped",
       "status": "skipped",
       "skipReason": "Focused functional probe runs only at phone-390 / desktop-1024",
-      "duration": 76,
+      "duration": 93,
       "numericAttachments": {}
     },
     {
@@ -10636,7 +10636,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 6516,
+      "duration": 6530,
       "numericAttachments": {}
     },
     {
@@ -10651,7 +10651,7 @@
       "state": "skipped",
       "status": "skipped",
       "skipReason": "Focused functional probe runs only at desktop-1024",
-      "duration": 58,
+      "duration": 65,
       "numericAttachments": {}
     },
     {
@@ -10681,7 +10681,7 @@
       "state": "skipped",
       "status": "skipped",
       "skipReason": "Focused functional probe runs only at desktop-1024",
-      "duration": 57,
+      "duration": 54,
       "numericAttachments": {}
     },
     {
@@ -10696,7 +10696,7 @@
       "state": "skipped",
       "status": "skipped",
       "skipReason": "Focused functional probe runs only at desktop-1024",
-      "duration": 97,
+      "duration": 67,
       "numericAttachments": {}
     },
     {
@@ -10711,7 +10711,7 @@
       "state": "skipped",
       "status": "skipped",
       "skipReason": "Focused functional probe runs only at desktop-1024",
-      "duration": 59,
+      "duration": 57,
       "numericAttachments": {}
     },
     {
@@ -10726,7 +10726,7 @@
       "state": "skipped",
       "status": "skipped",
       "skipReason": "Focused functional probe runs only at desktop-1024",
-      "duration": 62,
+      "duration": 71,
       "numericAttachments": {}
     },
     {
@@ -10741,7 +10741,7 @@
       "state": "skipped",
       "status": "skipped",
       "skipReason": "Focused functional probe runs only at desktop-1024",
-      "duration": 65,
+      "duration": 59,
       "numericAttachments": {}
     },
     {
@@ -10752,95 +10752,6 @@
       "viewport": {
         "width": 1024,
         "height": 900
-      },
-      "state": "skipped",
-      "status": "skipped",
-      "skipReason": "Focused functional probe runs only at phone-390",
-      "duration": 63,
-      "numericAttachments": {}
-    },
-    {
-      "suite": "s4-management-hardening.test.ts > S4 Management hardening integration gate",
-      "file": "s4-management-hardening.test.ts",
-      "title": "approval Pending/Processed views preserve explicit selection lifecycle",
-      "project": "desktop-1440",
-      "viewport": {
-        "width": 1440,
-        "height": 900
-      },
-      "state": "skipped",
-      "status": "skipped",
-      "skipReason": "Focused functional probe runs only at phone-390",
-      "duration": 77,
-      "numericAttachments": {}
-    },
-    {
-      "suite": "s4-management-hardening.test.ts > S4 Management hardening integration gate",
-      "file": "s4-management-hardening.test.ts",
-      "title": "approval Pending/Processed views preserve explicit selection lifecycle",
-      "project": "desktop-800",
-      "viewport": {
-        "width": 800,
-        "height": 900
-      },
-      "state": "skipped",
-      "status": "skipped",
-      "skipReason": "Focused functional probe runs only at phone-390",
-      "duration": 69,
-      "numericAttachments": {}
-    },
-    {
-      "suite": "s4-management-hardening.test.ts > S4 Management hardening integration gate",
-      "file": "s4-management-hardening.test.ts",
-      "title": "approval Pending/Processed views preserve explicit selection lifecycle",
-      "project": "desktop-900",
-      "viewport": {
-        "width": 900,
-        "height": 900
-      },
-      "state": "skipped",
-      "status": "skipped",
-      "skipReason": "Focused functional probe runs only at phone-390",
-      "duration": 59,
-      "numericAttachments": {}
-    },
-    {
-      "suite": "s4-management-hardening.test.ts > S4 Management hardening integration gate",
-      "file": "s4-management-hardening.test.ts",
-      "title": "approval Pending/Processed views preserve explicit selection lifecycle",
-      "project": "phone-320",
-      "viewport": {
-        "width": 320,
-        "height": 844
-      },
-      "state": "skipped",
-      "status": "skipped",
-      "skipReason": "Focused functional probe runs only at phone-390",
-      "duration": 64,
-      "numericAttachments": {}
-    },
-    {
-      "suite": "s4-management-hardening.test.ts > S4 Management hardening integration gate",
-      "file": "s4-management-hardening.test.ts",
-      "title": "approval Pending/Processed views preserve explicit selection lifecycle",
-      "project": "phone-390",
-      "viewport": {
-        "width": 390,
-        "height": 844
-      },
-      "state": "expected",
-      "status": "passed",
-      "duration": 6695,
-      "numericAttachments": {}
-    },
-    {
-      "suite": "s4-management-hardening.test.ts > S4 Management hardening integration gate",
-      "file": "s4-management-hardening.test.ts",
-      "title": "approval Pending/Processed views preserve explicit selection lifecycle",
-      "project": "tablet-600",
-      "viewport": {
-        "width": 600,
-        "height": 844
       },
       "state": "skipped",
       "status": "skipped",
@@ -10852,6 +10763,95 @@
       "suite": "s4-management-hardening.test.ts > S4 Management hardening integration gate",
       "file": "s4-management-hardening.test.ts",
       "title": "approval Pending/Processed views preserve explicit selection lifecycle",
+      "project": "desktop-1440",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "state": "skipped",
+      "status": "skipped",
+      "skipReason": "Focused functional probe runs only at phone-390",
+      "duration": 60,
+      "numericAttachments": {}
+    },
+    {
+      "suite": "s4-management-hardening.test.ts > S4 Management hardening integration gate",
+      "file": "s4-management-hardening.test.ts",
+      "title": "approval Pending/Processed views preserve explicit selection lifecycle",
+      "project": "desktop-800",
+      "viewport": {
+        "width": 800,
+        "height": 900
+      },
+      "state": "skipped",
+      "status": "skipped",
+      "skipReason": "Focused functional probe runs only at phone-390",
+      "duration": 114,
+      "numericAttachments": {}
+    },
+    {
+      "suite": "s4-management-hardening.test.ts > S4 Management hardening integration gate",
+      "file": "s4-management-hardening.test.ts",
+      "title": "approval Pending/Processed views preserve explicit selection lifecycle",
+      "project": "desktop-900",
+      "viewport": {
+        "width": 900,
+        "height": 900
+      },
+      "state": "skipped",
+      "status": "skipped",
+      "skipReason": "Focused functional probe runs only at phone-390",
+      "duration": 58,
+      "numericAttachments": {}
+    },
+    {
+      "suite": "s4-management-hardening.test.ts > S4 Management hardening integration gate",
+      "file": "s4-management-hardening.test.ts",
+      "title": "approval Pending/Processed views preserve explicit selection lifecycle",
+      "project": "phone-320",
+      "viewport": {
+        "width": 320,
+        "height": 844
+      },
+      "state": "skipped",
+      "status": "skipped",
+      "skipReason": "Focused functional probe runs only at phone-390",
+      "duration": 69,
+      "numericAttachments": {}
+    },
+    {
+      "suite": "s4-management-hardening.test.ts > S4 Management hardening integration gate",
+      "file": "s4-management-hardening.test.ts",
+      "title": "approval Pending/Processed views preserve explicit selection lifecycle",
+      "project": "phone-390",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "state": "expected",
+      "status": "passed",
+      "duration": 5659,
+      "numericAttachments": {}
+    },
+    {
+      "suite": "s4-management-hardening.test.ts > S4 Management hardening integration gate",
+      "file": "s4-management-hardening.test.ts",
+      "title": "approval Pending/Processed views preserve explicit selection lifecycle",
+      "project": "tablet-600",
+      "viewport": {
+        "width": 600,
+        "height": 844
+      },
+      "state": "skipped",
+      "status": "skipped",
+      "skipReason": "Focused functional probe runs only at phone-390",
+      "duration": 76,
+      "numericAttachments": {}
+    },
+    {
+      "suite": "s4-management-hardening.test.ts > S4 Management hardening integration gate",
+      "file": "s4-management-hardening.test.ts",
+      "title": "approval Pending/Processed views preserve explicit selection lifecycle",
       "project": "tablet-799",
       "viewport": {
         "width": 799,
@@ -10860,7 +10860,7 @@
       "state": "skipped",
       "status": "skipped",
       "skipReason": "Focused functional probe runs only at phone-390",
-      "duration": 69,
+      "duration": 71,
       "numericAttachments": {}
     },
     {
@@ -10874,7 +10874,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 5997,
+      "duration": 4893,
       "numericAttachments": {}
     },
     {
@@ -10888,7 +10888,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 6280,
+      "duration": 5249,
       "numericAttachments": {}
     },
     {
@@ -10902,7 +10902,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 5959,
+      "duration": 5249,
       "numericAttachments": {}
     },
     {
@@ -10916,7 +10916,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 6299,
+      "duration": 4922,
       "numericAttachments": {}
     },
     {
@@ -10930,7 +10930,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 6241,
+      "duration": 5061,
       "numericAttachments": {}
     },
     {
@@ -10944,7 +10944,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 6424,
+      "duration": 4954,
       "numericAttachments": {}
     },
     {
@@ -10958,7 +10958,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 6112,
+      "duration": 4610,
       "numericAttachments": {}
     },
     {
@@ -10972,7 +10972,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 6579,
+      "duration": 5309,
       "numericAttachments": {}
     },
     {
@@ -10987,7 +10987,7 @@
       "state": "skipped",
       "status": "skipped",
       "skipReason": "Focused functional probe runs only at phone-390",
-      "duration": 61,
+      "duration": 56,
       "numericAttachments": {}
     },
     {
@@ -11002,7 +11002,7 @@
       "state": "skipped",
       "status": "skipped",
       "skipReason": "Focused functional probe runs only at phone-390",
-      "duration": 62,
+      "duration": 83,
       "numericAttachments": {}
     },
     {
@@ -11017,7 +11017,7 @@
       "state": "skipped",
       "status": "skipped",
       "skipReason": "Focused functional probe runs only at phone-390",
-      "duration": 59,
+      "duration": 79,
       "numericAttachments": {}
     },
     {
@@ -11032,7 +11032,7 @@
       "state": "skipped",
       "status": "skipped",
       "skipReason": "Focused functional probe runs only at phone-390",
-      "duration": 69,
+      "duration": 58,
       "numericAttachments": {}
     },
     {
@@ -11047,7 +11047,7 @@
       "state": "skipped",
       "status": "skipped",
       "skipReason": "Focused functional probe runs only at phone-390",
-      "duration": 63,
+      "duration": 61,
       "numericAttachments": {}
     },
     {
@@ -11061,7 +11061,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 3437,
+      "duration": 3252,
       "numericAttachments": {}
     },
     {
@@ -11076,7 +11076,7 @@
       "state": "skipped",
       "status": "skipped",
       "skipReason": "Focused functional probe runs only at phone-390",
-      "duration": 62,
+      "duration": 71,
       "numericAttachments": {}
     },
     {
@@ -11091,7 +11091,7 @@
       "state": "skipped",
       "status": "skipped",
       "skipReason": "Focused functional probe runs only at phone-390",
-      "duration": 61,
+      "duration": 60,
       "numericAttachments": {}
     },
     {
@@ -11105,7 +11105,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 1775,
+      "duration": 1766,
       "numericAttachments": {
         "account-directory-overflow": {
           "overflow": 0,
@@ -11125,7 +11125,7 @@
       "state": "skipped",
       "status": "skipped",
       "skipReason": "Focused functional probe runs only at tablet-600 / tablet-799 / desktop-800 / desktop-1024",
-      "duration": 64,
+      "duration": 61,
       "numericAttachments": {}
     },
     {
@@ -11139,7 +11139,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 1474,
+      "duration": 2125,
       "numericAttachments": {
         "account-directory-overflow": {
           "overflow": 0,
@@ -11174,7 +11174,7 @@
       "state": "skipped",
       "status": "skipped",
       "skipReason": "Focused functional probe runs only at tablet-600 / tablet-799 / desktop-800 / desktop-1024",
-      "duration": 89,
+      "duration": 63,
       "numericAttachments": {}
     },
     {
@@ -11189,7 +11189,7 @@
       "state": "skipped",
       "status": "skipped",
       "skipReason": "Focused functional probe runs only at tablet-600 / tablet-799 / desktop-800 / desktop-1024",
-      "duration": 55,
+      "duration": 58,
       "numericAttachments": {}
     },
     {
@@ -11203,12 +11203,12 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 1711,
+      "duration": 2019,
       "numericAttachments": {
         "account-directory-filter-box": {
           "box": {
             "x": 0,
-            "y": 585.9627685546875,
+            "y": 578.6268310546875,
             "width": 600,
             "height": 267.5
           },
@@ -11231,14 +11231,14 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 1835,
+      "duration": 1769,
       "numericAttachments": {
         "account-directory-filter-box": {
           "box": {
             "x": -320,
-            "y": 240.9203338623047,
+            "y": 249.42288208007812,
             "width": 640,
-            "height": 450.00001525878906
+            "height": 449.9999694824219
           },
           "viewportWidth": 799
         },
@@ -11260,7 +11260,7 @@
       "state": "skipped",
       "status": "skipped",
       "skipReason": "Focused functional probe runs only at phone-390 / desktop-900",
-      "duration": 112,
+      "duration": 57,
       "numericAttachments": {}
     },
     {
@@ -11275,7 +11275,7 @@
       "state": "skipped",
       "status": "skipped",
       "skipReason": "Focused functional probe runs only at phone-390 / desktop-900",
-      "duration": 60,
+      "duration": 75,
       "numericAttachments": {}
     },
     {
@@ -11290,7 +11290,7 @@
       "state": "skipped",
       "status": "skipped",
       "skipReason": "Focused functional probe runs only at phone-390 / desktop-900",
-      "duration": 65,
+      "duration": 69,
       "numericAttachments": {}
     },
     {
@@ -11304,7 +11304,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 3261,
+      "duration": 4265,
       "numericAttachments": {
         "home-content-overflow-before": {
           "overflowBefore": 0
@@ -11326,7 +11326,7 @@
       "state": "skipped",
       "status": "skipped",
       "skipReason": "Focused functional probe runs only at phone-390 / desktop-900",
-      "duration": 72,
+      "duration": 56,
       "numericAttachments": {}
     },
     {
@@ -11340,7 +11340,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 2907,
+      "duration": 2909,
       "numericAttachments": {
         "home-content-overflow-before": {
           "overflowBefore": 0
@@ -11362,7 +11362,7 @@
       "state": "skipped",
       "status": "skipped",
       "skipReason": "Focused functional probe runs only at phone-390 / desktop-900",
-      "duration": 59,
+      "duration": 66,
       "numericAttachments": {}
     },
     {
@@ -11377,7 +11377,7 @@
       "state": "skipped",
       "status": "skipped",
       "skipReason": "Focused functional probe runs only at phone-390 / desktop-900",
-      "duration": 53,
+      "duration": 61,
       "numericAttachments": {}
     },
     {
@@ -11392,7 +11392,7 @@
       "state": "skipped",
       "status": "skipped",
       "skipReason": "Focused functional probe runs only at phone-320 / desktop-900",
-      "duration": 64,
+      "duration": 80,
       "numericAttachments": {}
     },
     {
@@ -11403,104 +11403,6 @@
       "viewport": {
         "width": 1440,
         "height": 900
-      },
-      "state": "skipped",
-      "status": "skipped",
-      "skipReason": "Focused functional probe runs only at phone-320 / desktop-900",
-      "duration": 55,
-      "numericAttachments": {}
-    },
-    {
-      "suite": "s4-management-hardening.test.ts > S4 Management hardening integration gate",
-      "file": "s4-management-hardening.test.ts",
-      "title": "Identity malformed URL state and legacy replace redirect fall back safely",
-      "project": "desktop-800",
-      "viewport": {
-        "width": 800,
-        "height": 900
-      },
-      "state": "skipped",
-      "status": "skipped",
-      "skipReason": "Focused functional probe runs only at phone-320 / desktop-900",
-      "duration": 67,
-      "numericAttachments": {}
-    },
-    {
-      "suite": "s4-management-hardening.test.ts > S4 Management hardening integration gate",
-      "file": "s4-management-hardening.test.ts",
-      "title": "Identity malformed URL state and legacy replace redirect fall back safely",
-      "project": "desktop-900",
-      "viewport": {
-        "width": 900,
-        "height": 900
-      },
-      "state": "expected",
-      "status": "passed",
-      "duration": 5924,
-      "numericAttachments": {
-        "responsive-geometry": {
-          "horizontalOverflow": 0,
-          "undersized": []
-        }
-      }
-    },
-    {
-      "suite": "s4-management-hardening.test.ts > S4 Management hardening integration gate",
-      "file": "s4-management-hardening.test.ts",
-      "title": "Identity malformed URL state and legacy replace redirect fall back safely",
-      "project": "phone-320",
-      "viewport": {
-        "width": 320,
-        "height": 844
-      },
-      "state": "expected",
-      "status": "passed",
-      "duration": 6523,
-      "numericAttachments": {
-        "responsive-geometry": {
-          "horizontalOverflow": 0,
-          "undersized": []
-        }
-      }
-    },
-    {
-      "suite": "s4-management-hardening.test.ts > S4 Management hardening integration gate",
-      "file": "s4-management-hardening.test.ts",
-      "title": "Identity malformed URL state and legacy replace redirect fall back safely",
-      "project": "phone-390",
-      "viewport": {
-        "width": 390,
-        "height": 844
-      },
-      "state": "skipped",
-      "status": "skipped",
-      "skipReason": "Focused functional probe runs only at phone-320 / desktop-900",
-      "duration": 65,
-      "numericAttachments": {}
-    },
-    {
-      "suite": "s4-management-hardening.test.ts > S4 Management hardening integration gate",
-      "file": "s4-management-hardening.test.ts",
-      "title": "Identity malformed URL state and legacy replace redirect fall back safely",
-      "project": "tablet-600",
-      "viewport": {
-        "width": 600,
-        "height": 844
-      },
-      "state": "skipped",
-      "status": "skipped",
-      "skipReason": "Focused functional probe runs only at phone-320 / desktop-900",
-      "duration": 55,
-      "numericAttachments": {}
-    },
-    {
-      "suite": "s4-management-hardening.test.ts > S4 Management hardening integration gate",
-      "file": "s4-management-hardening.test.ts",
-      "title": "Identity malformed URL state and legacy replace redirect fall back safely",
-      "project": "tablet-799",
-      "viewport": {
-        "width": 799,
-        "height": 844
       },
       "state": "skipped",
       "status": "skipped",
@@ -11511,6 +11413,104 @@
     {
       "suite": "s4-management-hardening.test.ts > S4 Management hardening integration gate",
       "file": "s4-management-hardening.test.ts",
+      "title": "Identity malformed URL state and legacy replace redirect fall back safely",
+      "project": "desktop-800",
+      "viewport": {
+        "width": 800,
+        "height": 900
+      },
+      "state": "skipped",
+      "status": "skipped",
+      "skipReason": "Focused functional probe runs only at phone-320 / desktop-900",
+      "duration": 53,
+      "numericAttachments": {}
+    },
+    {
+      "suite": "s4-management-hardening.test.ts > S4 Management hardening integration gate",
+      "file": "s4-management-hardening.test.ts",
+      "title": "Identity malformed URL state and legacy replace redirect fall back safely",
+      "project": "desktop-900",
+      "viewport": {
+        "width": 900,
+        "height": 900
+      },
+      "state": "expected",
+      "status": "passed",
+      "duration": 5135,
+      "numericAttachments": {
+        "responsive-geometry": {
+          "horizontalOverflow": 0,
+          "undersized": []
+        }
+      }
+    },
+    {
+      "suite": "s4-management-hardening.test.ts > S4 Management hardening integration gate",
+      "file": "s4-management-hardening.test.ts",
+      "title": "Identity malformed URL state and legacy replace redirect fall back safely",
+      "project": "phone-320",
+      "viewport": {
+        "width": 320,
+        "height": 844
+      },
+      "state": "expected",
+      "status": "passed",
+      "duration": 5565,
+      "numericAttachments": {
+        "responsive-geometry": {
+          "horizontalOverflow": 0,
+          "undersized": []
+        }
+      }
+    },
+    {
+      "suite": "s4-management-hardening.test.ts > S4 Management hardening integration gate",
+      "file": "s4-management-hardening.test.ts",
+      "title": "Identity malformed URL state and legacy replace redirect fall back safely",
+      "project": "phone-390",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "state": "skipped",
+      "status": "skipped",
+      "skipReason": "Focused functional probe runs only at phone-320 / desktop-900",
+      "duration": 65,
+      "numericAttachments": {}
+    },
+    {
+      "suite": "s4-management-hardening.test.ts > S4 Management hardening integration gate",
+      "file": "s4-management-hardening.test.ts",
+      "title": "Identity malformed URL state and legacy replace redirect fall back safely",
+      "project": "tablet-600",
+      "viewport": {
+        "width": 600,
+        "height": 844
+      },
+      "state": "skipped",
+      "status": "skipped",
+      "skipReason": "Focused functional probe runs only at phone-320 / desktop-900",
+      "duration": 59,
+      "numericAttachments": {}
+    },
+    {
+      "suite": "s4-management-hardening.test.ts > S4 Management hardening integration gate",
+      "file": "s4-management-hardening.test.ts",
+      "title": "Identity malformed URL state and legacy replace redirect fall back safely",
+      "project": "tablet-799",
+      "viewport": {
+        "width": 799,
+        "height": 844
+      },
+      "state": "skipped",
+      "status": "skipped",
+      "skipReason": "Focused functional probe runs only at phone-320 / desktop-900",
+      "duration": 56,
+      "numericAttachments": {}
+    },
+    {
+      "suite": "s4-management-hardening.test.ts > S4 Management hardening integration gate",
+      "file": "s4-management-hardening.test.ts",
       "title": "Identity Tree → Detail → Permission Editor → Account Access preserves server-owned model, validated return and canonical redirect",
       "project": "desktop-1024",
       "viewport": {
@@ -11519,7 +11519,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 6167,
+      "duration": 6287,
       "numericAttachments": {
         "responsive-geometry": {
           "horizontalOverflow": 0,
@@ -11539,7 +11539,7 @@
       "state": "skipped",
       "status": "skipped",
       "skipReason": "Focused functional probe runs only at phone-390 / desktop-900 / desktop-1024",
-      "duration": 56,
+      "duration": 58,
       "numericAttachments": {}
     },
     {
@@ -11554,7 +11554,7 @@
       "state": "skipped",
       "status": "skipped",
       "skipReason": "Focused functional probe runs only at phone-390 / desktop-900 / desktop-1024",
-      "duration": 71,
+      "duration": 62,
       "numericAttachments": {}
     },
     {
@@ -11568,7 +11568,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 5729,
+      "duration": 5549,
       "numericAttachments": {
         "responsive-geometry": {
           "horizontalOverflow": 0,
@@ -11588,7 +11588,7 @@
       "state": "skipped",
       "status": "skipped",
       "skipReason": "Focused functional probe runs only at phone-390 / desktop-900 / desktop-1024",
-      "duration": 63,
+      "duration": 80,
       "numericAttachments": {}
     },
     {
@@ -11602,7 +11602,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 6233,
+      "duration": 4954,
       "numericAttachments": {
         "responsive-geometry": {
           "horizontalOverflow": 0,
@@ -11622,7 +11622,7 @@
       "state": "skipped",
       "status": "skipped",
       "skipReason": "Focused functional probe runs only at phone-390 / desktop-900 / desktop-1024",
-      "duration": 79,
+      "duration": 57,
       "numericAttachments": {}
     },
     {
@@ -11637,7 +11637,7 @@
       "state": "skipped",
       "status": "skipped",
       "skipReason": "Focused functional probe runs only at phone-390 / desktop-900 / desktop-1024",
-      "duration": 62,
+      "duration": 68,
       "numericAttachments": {}
     },
     {
@@ -11682,50 +11682,6 @@
       "state": "skipped",
       "status": "skipped",
       "skipReason": "Focused functional probe runs only at phone-320",
-      "duration": 72,
-      "numericAttachments": {}
-    },
-    {
-      "suite": "s4-management-hardening.test.ts > S4 Management hardening integration gate",
-      "file": "s4-management-hardening.test.ts",
-      "title": "legacy route redirects retain auth deep-link behavior after session clear",
-      "project": "desktop-900",
-      "viewport": {
-        "width": 900,
-        "height": 900
-      },
-      "state": "skipped",
-      "status": "skipped",
-      "skipReason": "Focused functional probe runs only at phone-320",
-      "duration": 67,
-      "numericAttachments": {}
-    },
-    {
-      "suite": "s4-management-hardening.test.ts > S4 Management hardening integration gate",
-      "file": "s4-management-hardening.test.ts",
-      "title": "legacy route redirects retain auth deep-link behavior after session clear",
-      "project": "phone-320",
-      "viewport": {
-        "width": 320,
-        "height": 844
-      },
-      "state": "expected",
-      "status": "passed",
-      "duration": 1545,
-      "numericAttachments": {}
-    },
-    {
-      "suite": "s4-management-hardening.test.ts > S4 Management hardening integration gate",
-      "file": "s4-management-hardening.test.ts",
-      "title": "legacy route redirects retain auth deep-link behavior after session clear",
-      "project": "phone-390",
-      "viewport": {
-        "width": 390,
-        "height": 844
-      },
-      "state": "skipped",
-      "status": "skipped",
-      "skipReason": "Focused functional probe runs only at phone-320",
       "duration": 75,
       "numericAttachments": {}
     },
@@ -11733,6 +11689,50 @@
       "suite": "s4-management-hardening.test.ts > S4 Management hardening integration gate",
       "file": "s4-management-hardening.test.ts",
       "title": "legacy route redirects retain auth deep-link behavior after session clear",
+      "project": "desktop-900",
+      "viewport": {
+        "width": 900,
+        "height": 900
+      },
+      "state": "skipped",
+      "status": "skipped",
+      "skipReason": "Focused functional probe runs only at phone-320",
+      "duration": 66,
+      "numericAttachments": {}
+    },
+    {
+      "suite": "s4-management-hardening.test.ts > S4 Management hardening integration gate",
+      "file": "s4-management-hardening.test.ts",
+      "title": "legacy route redirects retain auth deep-link behavior after session clear",
+      "project": "phone-320",
+      "viewport": {
+        "width": 320,
+        "height": 844
+      },
+      "state": "expected",
+      "status": "passed",
+      "duration": 1531,
+      "numericAttachments": {}
+    },
+    {
+      "suite": "s4-management-hardening.test.ts > S4 Management hardening integration gate",
+      "file": "s4-management-hardening.test.ts",
+      "title": "legacy route redirects retain auth deep-link behavior after session clear",
+      "project": "phone-390",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "state": "skipped",
+      "status": "skipped",
+      "skipReason": "Focused functional probe runs only at phone-320",
+      "duration": 64,
+      "numericAttachments": {}
+    },
+    {
+      "suite": "s4-management-hardening.test.ts > S4 Management hardening integration gate",
+      "file": "s4-management-hardening.test.ts",
+      "title": "legacy route redirects retain auth deep-link behavior after session clear",
       "project": "tablet-600",
       "viewport": {
         "width": 600,
@@ -11741,7 +11741,7 @@
       "state": "skipped",
       "status": "skipped",
       "skipReason": "Focused functional probe runs only at phone-320",
-      "duration": 82,
+      "duration": 74,
       "numericAttachments": {}
     },
     {
@@ -11756,6 +11756,55 @@
       "state": "skipped",
       "status": "skipped",
       "skipReason": "Focused functional probe runs only at phone-320",
+      "duration": 91,
+      "numericAttachments": {}
+    },
+    {
+      "suite": "s4-management-hardening.test.ts > S4 Management hardening integration gate",
+      "file": "s4-management-hardening.test.ts",
+      "title": "Management Hub and settings preserve server-projected grouping, safe Back and static semantics",
+      "project": "desktop-1024",
+      "viewport": {
+        "width": 1024,
+        "height": 900
+      },
+      "state": "expected",
+      "status": "passed",
+      "duration": 8455,
+      "numericAttachments": {
+        "responsive-geometry": {
+          "horizontalOverflow": 0,
+          "undersized": []
+        }
+      }
+    },
+    {
+      "suite": "s4-management-hardening.test.ts > S4 Management hardening integration gate",
+      "file": "s4-management-hardening.test.ts",
+      "title": "Management Hub and settings preserve server-projected grouping, safe Back and static semantics",
+      "project": "desktop-1440",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "state": "skipped",
+      "status": "skipped",
+      "skipReason": "Focused functional probe runs only at phone-390 / desktop-900 / desktop-1024",
+      "duration": 84,
+      "numericAttachments": {}
+    },
+    {
+      "suite": "s4-management-hardening.test.ts > S4 Management hardening integration gate",
+      "file": "s4-management-hardening.test.ts",
+      "title": "Management Hub and settings preserve server-projected grouping, safe Back and static semantics",
+      "project": "desktop-800",
+      "viewport": {
+        "width": 800,
+        "height": 900
+      },
+      "state": "skipped",
+      "status": "skipped",
+      "skipReason": "Focused functional probe runs only at phone-390 / desktop-900 / desktop-1024",
       "duration": 89,
       "numericAttachments": {}
     },
@@ -11763,55 +11812,6 @@
       "suite": "s4-management-hardening.test.ts > S4 Management hardening integration gate",
       "file": "s4-management-hardening.test.ts",
       "title": "Management Hub and settings preserve server-projected grouping, safe Back and static semantics",
-      "project": "desktop-1024",
-      "viewport": {
-        "width": 1024,
-        "height": 900
-      },
-      "state": "expected",
-      "status": "passed",
-      "duration": 11388,
-      "numericAttachments": {
-        "responsive-geometry": {
-          "horizontalOverflow": 0,
-          "undersized": []
-        }
-      }
-    },
-    {
-      "suite": "s4-management-hardening.test.ts > S4 Management hardening integration gate",
-      "file": "s4-management-hardening.test.ts",
-      "title": "Management Hub and settings preserve server-projected grouping, safe Back and static semantics",
-      "project": "desktop-1440",
-      "viewport": {
-        "width": 1440,
-        "height": 900
-      },
-      "state": "skipped",
-      "status": "skipped",
-      "skipReason": "Focused functional probe runs only at phone-390 / desktop-900 / desktop-1024",
-      "duration": 68,
-      "numericAttachments": {}
-    },
-    {
-      "suite": "s4-management-hardening.test.ts > S4 Management hardening integration gate",
-      "file": "s4-management-hardening.test.ts",
-      "title": "Management Hub and settings preserve server-projected grouping, safe Back and static semantics",
-      "project": "desktop-800",
-      "viewport": {
-        "width": 800,
-        "height": 900
-      },
-      "state": "skipped",
-      "status": "skipped",
-      "skipReason": "Focused functional probe runs only at phone-390 / desktop-900 / desktop-1024",
-      "duration": 66,
-      "numericAttachments": {}
-    },
-    {
-      "suite": "s4-management-hardening.test.ts > S4 Management hardening integration gate",
-      "file": "s4-management-hardening.test.ts",
-      "title": "Management Hub and settings preserve server-projected grouping, safe Back and static semantics",
       "project": "desktop-900",
       "viewport": {
         "width": 900,
@@ -11819,7 +11819,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 11527,
+      "duration": 8368,
       "numericAttachments": {
         "responsive-geometry": {
           "horizontalOverflow": 0,
@@ -11839,7 +11839,7 @@
       "state": "skipped",
       "status": "skipped",
       "skipReason": "Focused functional probe runs only at phone-390 / desktop-900 / desktop-1024",
-      "duration": 58,
+      "duration": 55,
       "numericAttachments": {}
     },
     {
@@ -11853,7 +11853,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 11303,
+      "duration": 8677,
       "numericAttachments": {
         "responsive-geometry": {
           "horizontalOverflow": 0,
@@ -11873,7 +11873,7 @@
       "state": "skipped",
       "status": "skipped",
       "skipReason": "Focused functional probe runs only at phone-390 / desktop-900 / desktop-1024",
-      "duration": 66,
+      "duration": 69,
       "numericAttachments": {}
     },
     {
@@ -11888,7 +11888,7 @@
       "state": "skipped",
       "status": "skipped",
       "skipReason": "Focused functional probe runs only at phone-390 / desktop-900 / desktop-1024",
-      "duration": 59,
+      "duration": 64,
       "numericAttachments": {}
     },
     {
@@ -11902,7 +11902,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 5506,
+      "duration": 4568,
       "numericAttachments": {
         "responsive-geometry": {
           "horizontalOverflow": 0,
@@ -11921,7 +11921,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 5577,
+      "duration": 4188,
       "numericAttachments": {
         "responsive-geometry": {
           "horizontalOverflow": 0,
@@ -11940,7 +11940,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 5039,
+      "duration": 4924,
       "numericAttachments": {
         "responsive-geometry": {
           "horizontalOverflow": 0,
@@ -11959,7 +11959,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 5479,
+      "duration": 4194,
       "numericAttachments": {
         "responsive-geometry": {
           "horizontalOverflow": 0,
@@ -11978,7 +11978,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 5589,
+      "duration": 4476,
       "numericAttachments": {
         "responsive-geometry": {
           "horizontalOverflow": 0,
@@ -11997,7 +11997,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 5427,
+      "duration": 4468,
       "numericAttachments": {
         "responsive-geometry": {
           "horizontalOverflow": 0,
@@ -12016,7 +12016,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 5697,
+      "duration": 4507,
       "numericAttachments": {
         "responsive-geometry": {
           "horizontalOverflow": 0,
@@ -12035,7 +12035,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 5670,
+      "duration": 4515,
       "numericAttachments": {
         "responsive-geometry": {
           "horizontalOverflow": 0,
@@ -12054,7 +12054,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 3332,
+      "duration": 1276,
       "numericAttachments": {
         "member-directory-overflow": {
           "overflow": 0,
@@ -12078,7 +12078,7 @@
       "state": "skipped",
       "status": "skipped",
       "skipReason": "Focused functional probe runs only at phone-320 / tablet-600 / tablet-799 / desktop-800 / desktop-900 / desktop-1024",
-      "duration": 54,
+      "duration": 58,
       "numericAttachments": {}
     },
     {
@@ -12092,7 +12092,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 1527,
+      "duration": 1379,
       "numericAttachments": {
         "member-directory-overflow": {
           "overflow": 0,
@@ -12115,7 +12115,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 1439,
+      "duration": 1349,
       "numericAttachments": {
         "member-directory-overflow": {
           "overflow": 0,
@@ -12138,7 +12138,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 1383,
+      "duration": 1411,
       "numericAttachments": {
         "member-directory-overflow": {
           "overflow": 0,
@@ -12162,7 +12162,7 @@
       "state": "skipped",
       "status": "skipped",
       "skipReason": "Focused functional probe runs only at phone-320 / tablet-600 / tablet-799 / desktop-800 / desktop-900 / desktop-1024",
-      "duration": 55,
+      "duration": 56,
       "numericAttachments": {}
     },
     {
@@ -12176,7 +12176,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 1397,
+      "duration": 1218,
       "numericAttachments": {
         "member-directory-overflow": {
           "overflow": 0,
@@ -12199,7 +12199,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 1443,
+      "duration": 1272,
       "numericAttachments": {
         "member-directory-overflow": {
           "overflow": 0,
@@ -12222,7 +12222,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 5906,
+      "duration": 5494,
       "numericAttachments": {
         "approvals-tray-overflow": {
           "overflow": 0,
@@ -12262,10 +12262,10 @@
         },
         "approvals-detail-dialog-box": {
           "detailDialogBox": {
-            "x": 320.7218322753906,
-            "y": 389.7274475097656,
-            "width": 382.5563659667969,
-            "height": 120.54510498046875
+            "x": 320,
+            "y": 389.5,
+            "width": 384,
+            "height": 121
           },
           "vw": 1024
         },
@@ -12326,7 +12326,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 6439,
+      "duration": 5744,
       "numericAttachments": {
         "approvals-tray-overflow": {
           "overflow": 0,
@@ -12366,10 +12366,10 @@
         },
         "approvals-detail-dialog-box": {
           "detailDialogBox": {
-            "x": 528,
-            "y": 389.5,
-            "width": 384,
-            "height": 121
+            "x": 529.8970947265625,
+            "y": 390.0977783203125,
+            "width": 380.205810546875,
+            "height": 119.804443359375
           },
           "vw": 1440
         },
@@ -12430,7 +12430,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 5623,
+      "duration": 5272,
       "numericAttachments": {
         "approvals-tray-overflow": {
           "overflow": 0,
@@ -12470,10 +12470,10 @@
         },
         "approvals-detail-dialog-box": {
           "detailDialogBox": {
-            "x": 208.15863037109375,
-            "y": 389.54998779296875,
-            "width": 383.6827392578125,
-            "height": 120.9000244140625
+            "x": 208.15997314453125,
+            "y": 389.5504150390625,
+            "width": 383.6800537109375,
+            "height": 120.899169921875
           },
           "vw": 800
         },
@@ -12495,7 +12495,7 @@
         "permissions-review-box": {
           "reviewBox": {
             "x": 0,
-            "y": 683.084228515625,
+            "y": 683.0831909179688,
             "width": 800,
             "height": 217
           },
@@ -12534,7 +12534,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 5553,
+      "duration": 5363,
       "numericAttachments": {
         "approvals-tray-overflow": {
           "overflow": 0,
@@ -12574,10 +12574,10 @@
         },
         "approvals-detail-dialog-box": {
           "detailDialogBox": {
-            "x": 258.1593322753906,
-            "y": 389.5502014160156,
-            "width": 383.6813659667969,
-            "height": 120.89959716796875
+            "x": 258.72161865234375,
+            "y": 389.7273864746094,
+            "width": 382.5567626953125,
+            "height": 120.54522705078125
           },
           "vw": 900
         },
@@ -12599,7 +12599,7 @@
         "permissions-review-box": {
           "reviewBox": {
             "x": 0,
-            "y": 683,
+            "y": 683.084228515625,
             "width": 900,
             "height": 217
           },
@@ -12636,9 +12636,9 @@
         "width": 320,
         "height": 844
       },
-      "state": "flaky",
+      "state": "expected",
       "status": "passed",
-      "duration": 7408,
+      "duration": 5164,
       "numericAttachments": {
         "approvals-tray-overflow": {
           "overflow": 0,
@@ -12678,10 +12678,10 @@
         },
         "approvals-detail-dialog-box": {
           "detailDialogBox": {
-            "x": 0,
-            "y": 325.5,
-            "width": 320,
-            "height": 193
+            "x": 3.3878707885742188,
+            "y": 327.5433044433594,
+            "width": 313.22425079345703,
+            "height": 188.91336059570312
           },
           "vw": 320
         },
@@ -12703,7 +12703,7 @@
         "permissions-review-box": {
           "reviewBox": {
             "x": 0,
-            "y": 627.3595581054688,
+            "y": 627,
             "width": 320,
             "height": 217
           },
@@ -12742,7 +12742,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 5285,
+      "duration": 5372,
       "numericAttachments": {
         "approvals-tray-overflow": {
           "overflow": 0,
@@ -12807,7 +12807,7 @@
         "permissions-review-box": {
           "reviewBox": {
             "x": 0,
-            "y": 627.3595581054688,
+            "y": 627.3618774414062,
             "width": 390,
             "height": 217
           },
@@ -12846,7 +12846,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 5442,
+      "duration": 4997,
       "numericAttachments": {
         "approvals-tray-overflow": {
           "overflow": 0,
@@ -12886,10 +12886,10 @@
         },
         "approvals-detail-dialog-box": {
           "detailDialogBox": {
-            "x": 76,
-            "y": 335.5,
-            "width": 448,
-            "height": 173
+            "x": 76.18507385253906,
+            "y": 335.57147216796875,
+            "width": 447.62986755371094,
+            "height": 172.8570556640625
           },
           "vw": 600
         },
@@ -12911,7 +12911,7 @@
         "permissions-review-box": {
           "reviewBox": {
             "x": 0,
-            "y": 627.0835571289062,
+            "y": 627,
             "width": 600,
             "height": 217
           },
@@ -12950,7 +12950,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 5651,
+      "duration": 5312,
       "numericAttachments": {
         "approvals-tray-overflow": {
           "overflow": 0,
@@ -13015,7 +13015,7 @@
         "permissions-review-box": {
           "reviewBox": {
             "x": 0,
-            "y": 683.0838623046875,
+            "y": 683,
             "width": 799,
             "height": 217
           },
@@ -13054,7 +13054,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 11428,
+      "duration": 8214,
       "numericAttachments": {
         "responsive-geometry": {
           "horizontalOverflow": 0,
@@ -13074,7 +13074,7 @@
       "state": "skipped",
       "status": "skipped",
       "skipReason": "Focused functional probe runs only at desktop-900 / desktop-1024",
-      "duration": 57,
+      "duration": 58,
       "numericAttachments": {}
     },
     {
@@ -13089,7 +13089,7 @@
       "state": "skipped",
       "status": "skipped",
       "skipReason": "Focused functional probe runs only at desktop-900 / desktop-1024",
-      "duration": 64,
+      "duration": 59,
       "numericAttachments": {}
     },
     {
@@ -13103,7 +13103,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 10982,
+      "duration": 8903,
       "numericAttachments": {
         "responsive-geometry": {
           "horizontalOverflow": 0,
@@ -13123,7 +13123,7 @@
       "state": "skipped",
       "status": "skipped",
       "skipReason": "Focused functional probe runs only at desktop-900 / desktop-1024",
-      "duration": 63,
+      "duration": 66,
       "numericAttachments": {}
     },
     {
@@ -13138,7 +13138,7 @@
       "state": "skipped",
       "status": "skipped",
       "skipReason": "Focused functional probe runs only at desktop-900 / desktop-1024",
-      "duration": 59,
+      "duration": 55,
       "numericAttachments": {}
     },
     {
@@ -13153,7 +13153,7 @@
       "state": "skipped",
       "status": "skipped",
       "skipReason": "Focused functional probe runs only at desktop-900 / desktop-1024",
-      "duration": 57,
+      "duration": 58,
       "numericAttachments": {}
     },
     {
@@ -13168,7 +13168,7 @@
       "state": "skipped",
       "status": "skipped",
       "skipReason": "Focused functional probe runs only at desktop-900 / desktop-1024",
-      "duration": 59,
+      "duration": 57,
       "numericAttachments": {}
     },
     {
@@ -13182,7 +13182,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 3086,
+      "duration": 2759,
       "numericAttachments": {}
     },
     {
@@ -13197,7 +13197,7 @@
       "state": "skipped",
       "status": "skipped",
       "skipReason": "Focused functional probe runs only at phone-390 / desktop-1024",
-      "duration": 66,
+      "duration": 57,
       "numericAttachments": {}
     },
     {
@@ -13212,7 +13212,7 @@
       "state": "skipped",
       "status": "skipped",
       "skipReason": "Focused functional probe runs only at phone-390 / desktop-1024",
-      "duration": 66,
+      "duration": 112,
       "numericAttachments": {}
     },
     {
@@ -13227,7 +13227,7 @@
       "state": "skipped",
       "status": "skipped",
       "skipReason": "Focused functional probe runs only at phone-390 / desktop-1024",
-      "duration": 64,
+      "duration": 62,
       "numericAttachments": {}
     },
     {
@@ -13242,7 +13242,7 @@
       "state": "skipped",
       "status": "skipped",
       "skipReason": "Focused functional probe runs only at phone-390 / desktop-1024",
-      "duration": 80,
+      "duration": 67,
       "numericAttachments": {}
     },
     {
@@ -13256,7 +13256,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 3243,
+      "duration": 2435,
       "numericAttachments": {}
     },
     {
@@ -13271,7 +13271,7 @@
       "state": "skipped",
       "status": "skipped",
       "skipReason": "Focused functional probe runs only at phone-390 / desktop-1024",
-      "duration": 62,
+      "duration": 61,
       "numericAttachments": {}
     },
     {
@@ -13286,7 +13286,7 @@
       "state": "skipped",
       "status": "skipped",
       "skipReason": "Focused functional probe runs only at phone-390 / desktop-1024",
-      "duration": 90,
+      "duration": 96,
       "numericAttachments": {}
     },
     {
@@ -13300,7 +13300,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 6956,
+      "duration": 6249,
       "numericAttachments": {
         "responsive-geometry": {
           "horizontalOverflow": 0,
@@ -13325,7 +13325,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 7026,
+      "duration": 5761,
       "numericAttachments": {
         "responsive-geometry": {
           "horizontalOverflow": 0,
@@ -13350,7 +13350,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 7371,
+      "duration": 5744,
       "numericAttachments": {
         "responsive-geometry": {
           "horizontalOverflow": 0,
@@ -13375,7 +13375,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 7517,
+      "duration": 5945,
       "numericAttachments": {
         "responsive-geometry": {
           "horizontalOverflow": 0,
@@ -13406,7 +13406,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 7276,
+      "duration": 6592,
       "numericAttachments": {
         "responsive-geometry": {
           "horizontalOverflow": 0,
@@ -13415,7 +13415,7 @@
         "probe-dialog-box": {
           "box": {
             "x": 0,
-            "y": 576.5,
+            "y": 576.9442138671875,
             "width": 320,
             "height": 267.5
           },
@@ -13442,7 +13442,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 7089,
+      "duration": 6077,
       "numericAttachments": {
         "responsive-geometry": {
           "horizontalOverflow": 0,
@@ -13451,7 +13451,7 @@
         "probe-dialog-box": {
           "box": {
             "x": 0,
-            "y": 576.5,
+            "y": 576.945068359375,
             "width": 390,
             "height": 267.5
           },
@@ -13478,7 +13478,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 7250,
+      "duration": 5966,
       "numericAttachments": {
         "responsive-geometry": {
           "horizontalOverflow": 0,
@@ -13487,7 +13487,7 @@
         "probe-dialog-box": {
           "box": {
             "x": 0,
-            "y": 576.5,
+            "y": 577.58203125,
             "width": 600,
             "height": 267.5
           },
@@ -13514,7 +13514,7 @@
       },
       "state": "expected",
       "status": "passed",
-      "duration": 7613,
+      "duration": 6488,
       "numericAttachments": {
         "responsive-geometry": {
           "horizontalOverflow": 0,

@@ -235,10 +235,12 @@ async function selectionControl(
     "u"
   );
   const checkbox = page.getByRole("checkbox", { name: pattern });
+  const button = page.getByRole("button", { name: pattern });
+  const candidate = checkbox.or(button).first();
+  await expect(candidate).toBeVisible();
   if (await checkbox.count()) {
     return checkbox.first();
   }
-  const button = page.getByRole("button", { name: pattern });
   if (await button.count()) {
     return button.first();
   }
@@ -442,7 +444,9 @@ test.describe("S4 Management hardening integration gate", () => {
     await expect(
       page.getByRole("button", { name: /E2E Admin/u })
     ).toBeVisible();
-    await expect(page.getByRole("button", { name: /E2E Staff/u })).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: /E2E Staff/u })
+    ).toBeVisible();
 
     await page
       .getByRole("button", { name: /E2E Admin/u })
