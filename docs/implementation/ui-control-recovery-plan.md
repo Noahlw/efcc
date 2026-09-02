@@ -367,7 +367,7 @@ Append one compact entry after every ticket. Do not copy the entire issue body.
 
 - **Status:** `PR_READY`
 - **Base rescue SHA:** `cdb326f206da0bb6ff9de9997124f7bb7b16ff61`
-- **Head / merge SHA:** `45b3bafddf11b9710cd43baf29581fb42fc6c7f1` / pending
+- **Head / merge SHA:** `1e3b14b9827f23fcf432b5bdd663c4d13b893858` / pending
 - **Branch / PR:** `rescue/t01-preservation-ledger` / [#543](https://github.com/Noahlw/efcc/pull/543)
 - **Delivered outcome:** Exact frozen A–F provenance; 17 capability dispositions; 15 shipped route/state rows with exclusions; imported deferred/review/runtime findings; generated frontier summary.
 - **Tests:** Documentation integrity check passed; `git diff --check` passed; aggregate runtime not applicable to this documentation-only ticket.
