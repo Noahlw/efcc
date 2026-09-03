@@ -2159,6 +2159,17 @@ describe("Static Governance Source Audit Engine", () => {
       expect(violations[0].ruleId).toBe(HIGH_BLAST_CSS_RULE);
     });
 
+    it("detects a broad rule after a scoped rule on the same line", () => {
+      const violations = auditFileContent(
+        "web/app/globals.css",
+        ".scope { color: red; } video { display: block; }"
+      );
+
+      expect(violations).toHaveLength(1);
+      expect(violations[0].snippet).toContain("video");
+      expect(violations[0].line).toBe(1);
+    });
+
     it("waives one exact reset while another broad rule in the same file remains active", () => {
       const violation = auditFileContent(
         "web/app/globals.css",
@@ -2288,6 +2299,39 @@ describe("Static Governance Source Audit Engine", () => {
             error.entryId === multiFileWaiver.id
         )
       ).toBe(true);
+    });
+
+    it("does not let an absolute in-repo path suppress a CSS violation", () => {
+      const rootDir = fs.mkdtempSync(
+        path.join(os.tmpdir(), "efcc-governance-absolute-waiver-")
+      );
+      const filePath = path.join(rootDir, "web/app/globals.css");
+
+      try {
+        fs.mkdirSync(path.dirname(filePath), { recursive: true });
+        fs.writeFileSync(filePath, historicalUniversalReset, "utf8");
+        const violation = auditFileContent(filePath, historicalUniversalReset, {
+          rootDir,
+        })[0] as { sourceFingerprint?: string };
+        const absolutePathWaiver = {
+          ...createHighBlastWaiver(violation.sourceFingerprint),
+          id: "WVR-ABSOLUTE-PATH-GLOBAL-CSS-TEST",
+          affectedFiles: [filePath],
+        } as FingerprintedWaiver;
+
+        const result = auditSourceCode({
+          rootDir,
+          targetFiles: ["web/app/globals.css"],
+          waivers: [absolutePathWaiver],
+          now: "2026-09-03T00:00:00Z",
+        });
+
+        expect(result.passed).toBe(false);
+        expect(result.violations).toHaveLength(1);
+        expect(result.waivedViolations).toHaveLength(0);
+      } finally {
+        fs.rmSync(rootDir, { recursive: true, force: true });
+      }
     });
 
     it("excludes only web-root generated output and never hides shipped source", () => {

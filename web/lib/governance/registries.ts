@@ -774,7 +774,7 @@ export const WAIVER_REGISTRY: readonly Waiver[] = [
     affectedFiles: ["web/app/globals.css"],
     sourceFingerprint:
       "62a1f7d8d1b16d6e640ae6b3bd0c627c46858cc396db890ffad809e18e087b0d",
-    owner: "T03 / #508",
+    owner: "Noah Wong",
     createdAt: "2026-09-04",
     expiresAt: "2026-12-31",
     rationale:
@@ -795,7 +795,7 @@ export const WAIVER_REGISTRY: readonly Waiver[] = [
     affectedFiles: ["web/app/globals.css"],
     sourceFingerprint:
       "6df9d5d1d283c49d26bc963def47afa2a3bb91f17472992dda3805ea49d3f42b",
-    owner: "T03 / #508",
+    owner: "Noah Wong",
     createdAt: "2026-09-04",
     expiresAt: "2026-12-31",
     rationale:
@@ -816,7 +816,7 @@ export const WAIVER_REGISTRY: readonly Waiver[] = [
     affectedFiles: ["web/app/globals.css"],
     sourceFingerprint:
       "b7fee4b06c3bad9cc351c8fcad45d24e55c1fbed6b62f6ad84428472642743eb",
-    owner: "T03 / #508",
+    owner: "Noah Wong",
     createdAt: "2026-09-04",
     expiresAt: "2026-12-31",
     rationale:
@@ -837,7 +837,7 @@ export const WAIVER_REGISTRY: readonly Waiver[] = [
     affectedFiles: ["web/app/globals.css"],
     sourceFingerprint:
       "668a5e03111d92037fdfc82a50d9b2b0ff4ed44fe386c82ab1406c0157b84f19",
-    owner: "T03 / #508",
+    owner: "Noah Wong",
     createdAt: "2026-09-04",
     expiresAt: "2026-12-31",
     rationale:
@@ -858,7 +858,7 @@ export const WAIVER_REGISTRY: readonly Waiver[] = [
     affectedFiles: ["web/app/globals.css"],
     sourceFingerprint:
       "ad551903d2915580f57c61cd31c408d5639302e05ccdff26b7f0e7150b49a712",
-    owner: "T03 / #508",
+    owner: "Noah Wong",
     createdAt: "2026-09-04",
     expiresAt: "2026-12-31",
     rationale:
@@ -879,7 +879,7 @@ export const WAIVER_REGISTRY: readonly Waiver[] = [
     affectedFiles: ["web/app/globals.css"],
     sourceFingerprint:
       "ded0de8d90e3c1bb2bfaced6b71a18cc3f1cc97e8eacbc3aed2f421675cecfb3",
-    owner: "T03 / #508",
+    owner: "Noah Wong",
     createdAt: "2026-09-04",
     expiresAt: "2026-12-31",
     rationale:

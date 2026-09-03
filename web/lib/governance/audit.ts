@@ -412,6 +412,27 @@ export function normalizeRepoPath(filePath: string, rootDir?: string): string {
 
   return relPath;
 }
+
+function isExactRepoRelativeWaiverPath(filePath: unknown): filePath is string {
+  if (typeof filePath !== "string" || filePath.trim() !== filePath) {
+    return false;
+  }
+  if (path.isAbsolute(filePath) || /^[a-zA-Z]:/u.test(filePath)) {
+    return false;
+  }
+
+  const normalizedPath = filePath.replace(/\\/g, "/");
+  if (normalizedPath.startsWith("/") || /[*?{}]/u.test(normalizedPath)) {
+    return false;
+  }
+
+  return normalizedPath
+    .split("/")
+    .every(
+      (segment) => segment.length > 0 && segment !== "." && segment !== ".."
+    );
+}
+
 /**
  * Strips comments from CSS string while preserving line breaks.
  */
@@ -489,6 +510,29 @@ function firstUnquotedCharacter(value: string, target: string): number {
     if (char === "'" || char === '"') {
       quote = char;
     } else if (char === target) {
+      return i;
+    }
+  }
+
+  return -1;
+}
+
+function nextUnquotedBrace(value: string, startIndex: number): number {
+  let quote: "'" | '"' | null = null;
+
+  for (let i = startIndex; i < value.length; i++) {
+    const char = value[i];
+    if (quote !== null) {
+      if (char === "\\") {
+        i++;
+      } else if (char === quote) {
+        quote = null;
+      }
+      continue;
+    }
+    if (char === "'" || char === '"') {
+      quote = char;
+    } else if (char === "{" || char === "}") {
       return i;
     }
   }
@@ -709,9 +753,8 @@ export function auditFileContent(
   if (isCssFile) {
     const cleanContent = stripCssComments(content);
     const lines = cleanContent.split("\n");
-    let layerBraceDepth = 0;
-    let keyframesBraceDepth = 0;
-    let themeBraceDepth = 0;
+    const protectedBlockKinds = new Set(["layer", "keyframes", "theme"]);
+    const blockStack: Array<"layer" | "keyframes" | "theme" | "other"> = [];
     let pendingSelector = "";
 
     for (let i = 0; i < lines.length; i++) {
@@ -719,81 +762,89 @@ export function auditFileContent(
       const trimmed = line.trim();
       if (!trimmed) continue;
 
-      const wasInLayer = layerBraceDepth > 0;
-      const wasInKeyframes = keyframesBraceDepth > 0;
-      const wasInTheme = themeBraceDepth > 0;
+      let segmentStart = 0;
+      let sawBrace = false;
+      let braceIndex = nextUnquotedBrace(line, 0);
 
-      const isOpeningLayer = /^@layer\b/i.test(trimmed);
-      const isOpeningKeyframes = /^@keyframes\b/i.test(trimmed);
-      const isOpeningTheme = /^@theme\b/i.test(trimmed);
+      while (braceIndex !== -1) {
+        sawBrace = true;
+        const brace = line[braceIndex];
 
-      const openBraces = countUnquotedCharacter(line, "{");
-      const closeBraces = countUnquotedCharacter(line, "}");
-      const openingBraceIndex = firstUnquotedCharacter(line, "{");
-
-      if (wasInLayer || isOpeningLayer) {
-        layerBraceDepth += openBraces - closeBraces;
-        if (layerBraceDepth <= 0 && closeBraces > 0) layerBraceDepth = 0;
-      }
-      if (wasInKeyframes || isOpeningKeyframes) {
-        keyframesBraceDepth += openBraces - closeBraces;
-        if (keyframesBraceDepth <= 0 && closeBraces > 0)
-          keyframesBraceDepth = 0;
-      }
-      if (wasInTheme || isOpeningTheme) {
-        themeBraceDepth += openBraces - closeBraces;
-        if (themeBraceDepth <= 0 && closeBraces > 0) themeBraceDepth = 0;
-      }
-
-      const outsideProtectedBlock =
-        !wasInLayer &&
-        !isOpeningLayer &&
-        !wasInKeyframes &&
-        !isOpeningKeyframes &&
-        !wasInTheme &&
-        !isOpeningTheme &&
-        layerBraceDepth === 0 &&
-        keyframesBraceDepth === 0 &&
-        themeBraceDepth === 0;
-
-      if (outsideProtectedBlock) {
-        if (openingBraceIndex !== -1) {
-          const currentSelector = line.slice(0, openingBraceIndex).trim();
-          const rawSelector =
-            (pendingSelector ? pendingSelector + " " : "") + currentSelector;
+        if (brace === "}") {
+          blockStack.pop();
           pendingSelector = "";
-          const selectorPart = rawSelector.trim();
-          if (selectorPart && !selectorPart.startsWith("@")) {
-            const selectorParts = splitTopLevelSelectors(selectorPart);
-            const broadSelector = selectorParts.find((selector) =>
-              isBroadSelector(selector)
-            );
-            if (broadSelector) {
-              violations.push({
-                ruleId: "RULE-NO-UNLAYERED-HIGH-BLAST-RADIUS-CSS",
-                file: normalizedPath,
-                line: i + 1,
-                snippet: trimmed,
-                sourceFingerprint: getCssSourceFingerprint(
-                  selectorPart,
-                  extractCssBlockSource(lines, i, openingBraceIndex)
-                ),
-                message: `Unlayered high-blast-radius selector "${broadSelector}" detected in "${normalizedPath}". Global CSS rules belong in globals.css @layer base or scoped pattern classes.`,
-                likelyOwnershipLayer: "global",
-              });
-            }
-          }
-        } else if (
-          firstUnquotedCharacter(trimmed, ";") === -1 &&
-          !trimmed.startsWith("@") &&
-          firstUnquotedCharacter(trimmed, "}") === -1
-        ) {
-          pendingSelector =
-            (pendingSelector ? pendingSelector + " " : "") + trimmed;
-        } else {
-          pendingSelector = "";
+          segmentStart = braceIndex + 1;
+          braceIndex = nextUnquotedBrace(line, segmentStart);
+          continue;
         }
-      } else {
+
+        const currentSelector = line.slice(segmentStart, braceIndex).trim();
+        const rawSelector =
+          (pendingSelector ? pendingSelector + " " : "") + currentSelector;
+        pendingSelector = "";
+        const selectorPart = rawSelector.trim();
+        const isProtectedBlock =
+          /^@layer\b/i.test(selectorPart) ||
+          /^@keyframes\b/i.test(selectorPart) ||
+          /^@theme\b/i.test(selectorPart);
+        const outsideProtectedBlock = !blockStack.some((kind) =>
+          protectedBlockKinds.has(kind)
+        );
+
+        if (
+          outsideProtectedBlock &&
+          selectorPart &&
+          !selectorPart.startsWith("@") &&
+          !isProtectedBlock
+        ) {
+          const selectorParts = splitTopLevelSelectors(selectorPart);
+          const broadSelector = selectorParts.find((selector) =>
+            isBroadSelector(selector)
+          );
+          if (broadSelector) {
+            violations.push({
+              ruleId: "RULE-NO-UNLAYERED-HIGH-BLAST-RADIUS-CSS",
+              file: normalizedPath,
+              line: i + 1,
+              snippet: trimmed,
+              sourceFingerprint: getCssSourceFingerprint(
+                selectorPart,
+                extractCssBlockSource(lines, i, braceIndex)
+              ),
+              message: `Unlayered high-blast-radius selector "${broadSelector}" detected in "${normalizedPath}". Global CSS rules belong in globals.css @layer base or scoped pattern classes.`,
+              likelyOwnershipLayer: "global",
+            });
+          }
+        }
+
+        const blockKind: "layer" | "keyframes" | "theme" | "other" =
+          /^@layer\b/i.test(selectorPart)
+            ? "layer"
+            : /^@keyframes\b/i.test(selectorPart)
+              ? "keyframes"
+              : /^@theme\b/i.test(selectorPart)
+                ? "theme"
+                : "other";
+        blockStack.push(blockKind);
+        segmentStart = braceIndex + 1;
+        braceIndex = nextUnquotedBrace(line, segmentStart);
+      }
+
+      const trailingText = line.slice(segmentStart).trim();
+      const outsideProtectedBlock = !blockStack.some((kind) =>
+        protectedBlockKinds.has(kind)
+      );
+      if (
+        outsideProtectedBlock &&
+        (trailingText || !sawBrace) &&
+        firstUnquotedCharacter(trailingText || trimmed, ";") === -1 &&
+        !(trailingText || trimmed).startsWith("@") &&
+        firstUnquotedCharacter(trailingText || trimmed, "}") === -1
+      ) {
+        pendingSelector =
+          (pendingSelector ? pendingSelector + " " : "") +
+          (trailingText || trimmed);
+      } else if (!outsideProtectedBlock || sawBrace) {
         pendingSelector = "";
       }
     }
@@ -1231,6 +1282,7 @@ export function auditSourceCode(options: AuditOptions = {}): AuditResult {
 
       // Exact file match ONLY (canonical waivers are exact files; wildcards are prohibited)
       const matchesFile = waiver.affectedFiles.some((affFile) => {
+        if (!isExactRepoRelativeWaiverPath(affFile)) return false;
         const normAff = normalizeRepoPath(affFile, repoRoot);
         const normViol = normalizeRepoPath(violation.file, repoRoot);
         return normAff === normViol;

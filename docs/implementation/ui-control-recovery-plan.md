@@ -148,7 +148,7 @@ Update this table at the start and end of every implementation session.
 | Implementation frontier | T03 / #508 `REVIEW_CHANGES`; T05 / #510 remains `BLOCKED_EXTERNAL_UPSTREAM` until restacked and requalified |
 | Merge frontier | Amendment PR #547 → T04 PR #546 → T03 PR #548; parent-first merge remains pending |
 | Review pending | T03 source-fingerprint correction and two-axis `/code-review`; then T05 restack and runtime qualification |
-| Human approval pending | None for Phase 0 foundation tickets |
+| Human approval pending | None — D-003 records the owner-authorized T03 Contract Change |
 | Active blocker | T03 correction is not yet GitHub-verified; T05 also retains the upstream ProxyWorker blocker; T06 remains logically blocked on T05 |
 | Next safe action | Run T03 review/gates, push the substantive head, verify its GitHub Actions run, then merge the safe prefix parent-first |
 | Last merged rescue SHA | `6e6fe51770cd49a6f362d5c6cb4a8eafd5ba9ea2` |
@@ -523,7 +523,7 @@ No production implementation, schema, API, permission, audit, idempotency, scope
 - **Delivered outcome:** Added typed route-scenario, UI-contract, approval-package, waiver, preservation-reference, and native-exception registries; strict ISO/calendar and exact metadata validation; structured contract-failure reporting; seven-rule static source audit with source-exact high-blast CSS waivers; fail-closed fast/affected/full/release CLI modes and a dedicated governance workflow.
 - **Tests:** Focused governance test: 100 passed; CLI tests: 18 passed (also 18/18 under simulated `GITHUB_BASE_REF`); governance fast/affected/full/release modes passed (affected: 5 files / 0 violations; full: 277 files / 0 active violations / 75 waived; release gate passed); root/web typechecks and `pnpm verify:precommit` passed; formatter check and `git diff --check` passed locally. Exact substantive head still requires GitHub Actions verification.
 - **Code review:** Pending two-axis review of the substantive source-fingerprint correction against `rescue/t04-worker-suites`.
-- **Human approval:** `N/A`
+- **Human approval:** `D-003 ACCEPTED` — explicit repository-owner execution prompt; no visual approval is claimed
 - **Preservation impact:** Machine-enforces T02 governance without changing production behavior, schema, permissions, routes, or domain contracts; historical debt remains explicit and waiver-backed.
 - **Open blocker:** Exact-head GitHub verification is pending; until it is green T03 is not `STACK_GREEN`. T05 remains externally blocked after the corrected head is merged/restacked.
 - **Next eligible ticket:** T05 / #510 after T03 reaches `STACK_GREEN` and is merged into rescue.
@@ -579,6 +579,7 @@ Only record blockers or decisions that affect more than one ticket or the next p
 | D-001 | Decision | Planning | `SALVAGE STACK` vs `SELECTIVE REPLAY` remains undecided until Programs tracer evidence | T12 / #517 + owner | `PENDING` | — |
 | B-004 | Reconciliation | Starting state | Required `rescue/ui-control-recovery` branch and intended tracker path were absent at session entry | Phase 0 / owner | `RESOLVED` | Rescue branch and tracker bootstrap are committed; branch is based on the frozen Phase F SHA |
 | D-002 | Decision | 2026-09-03 | Owner approved ticket-isolated stacked PR delivery within each phase; `STACK_GREEN` unlocks child implementation but not approval or merge | Owner / #505 | `ACCEPTED` | [Owner-approved execution-model amendment](https://github.com/Noahlw/efcc/issues/505#issuecomment-5514680835) |
+| D-003 | Contract Change | 2026-09-04 | Owner authorized T03 to remove selector-name escapes, require one-file source-fingerprint CSS waivers with T06 / #511 removal ownership, and own narrow web-root `out` / `.wrangler` generated-output exclusions with shipped-source coverage | Noah Wong / #505 | `ACCEPTED` | Phase 0 completion goal prompt supplied by the repository owner in this execution session; rollback boundary `bcf92fc` |
 
 Do not create extra implementation work here. If a blocker needs implementation outside an existing ticket, stop and ask the owner whether the tracker/spec must change.
 
