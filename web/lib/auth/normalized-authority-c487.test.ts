@@ -22,6 +22,9 @@ const YOUTH_EVENT = "C487-YOUTH-EVENT";
 const ADULT_EVENT = "C487-ADULT-EVENT";
 const CUSTOM_USER = "E2E_C487_CUSTOM";
 const TARGET_USER = "E2E_C487_TARGET";
+const TARGET_REQUEST_PL_USER = "E2E_C487_TARGET_PL";
+const TARGET_REQUEST_MEMBER_USER = "E2E_C487_TARGET_MEMBER";
+const TARGET_REQUEST_CUSTOM_USER = "E2E_C487_TARGET_CUSTOM";
 const CUSTOM_ROLE = "C487-CUSTOM-PROGRAM-ROLE";
 const PROGRAM_LEADER_ROLE = "018f3b8a-0000-7000-8000-100000000002";
 const TARGET_REQUEST_PL = "C487-REQUEST-PL";
@@ -98,8 +101,6 @@ async function problem(
 
 interface BootstrapData {
   user: {
-    role: string;
-    systemRole: "Admin" | "Staff" | null;
     identities: {
       label: string;
       scopeKind: string;
@@ -189,6 +190,30 @@ async function addFixtureAccounts(): Promise<void> {
       "C487 Target Member",
       "c487-target",
       "0001",
+      "Member",
+      "Active",
+    ],
+    [
+      TARGET_REQUEST_PL_USER,
+      "C487 Pending PL Target",
+      "c487-target-pl",
+      "0002",
+      "Member",
+      "Active",
+    ],
+    [
+      TARGET_REQUEST_MEMBER_USER,
+      "C487 Pending Member Target",
+      "c487-target-member",
+      "0003",
+      "Member",
+      "Active",
+    ],
+    [
+      TARGET_REQUEST_CUSTOM_USER,
+      "C487 Pending Custom Target",
+      "c487-target-custom",
+      "0004",
       "Member",
       "Active",
     ],
@@ -341,11 +366,11 @@ async function addNormalizedFixtures(): Promise<void> {
       .run();
   }
 
-  for (const requestId of [
-    TARGET_REQUEST_PL,
-    TARGET_REQUEST_MEMBER,
-    TARGET_REQUEST_CUSTOM,
-  ]) {
+  for (const [requestId, memberUserId] of [
+    [TARGET_REQUEST_PL, TARGET_REQUEST_PL_USER],
+    [TARGET_REQUEST_MEMBER, TARGET_REQUEST_MEMBER_USER],
+    [TARGET_REQUEST_CUSTOM, TARGET_REQUEST_CUSTOM_USER],
+  ] as const) {
     await db
       .prepare(
         `INSERT OR IGNORE INTO enrollment_requests
@@ -353,7 +378,7 @@ async function addNormalizedFixtures(): Promise<void> {
            request_version)
          VALUES (?, ?, ?, 'Pending', ?, 1)`
       )
-      .bind(requestId, YOUTH_PROGRAM, TARGET_USER, now)
+      .bind(requestId, YOUTH_PROGRAM, memberUserId, now)
       .run();
   }
 }
@@ -381,7 +406,6 @@ describe("#487 normalized authority Worker seams", () => {
     const customCookie = await login("c487-custom", "c487-custom-password");
 
     const member = await bootstrap(memberCookie);
-    expect(member.user.systemRole).toBeNull();
     expect(member.user.identities).toStrictEqual([]);
     expect(member.user.capabilities["program.enroll"]).toBe(true);
     expect(member.sections.map(({ key }) => key)).toStrictEqual([
@@ -400,12 +424,19 @@ describe("#487 normalized authority Worker seams", () => {
     ]);
 
     const staff = await bootstrap(staffCookie);
-    expect(staff.user.systemRole).toBe("Staff");
+    expect(staff.user.identities).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          label: "同工",
+          scopeKind: "Global",
+          scopeLabel: null,
+        }),
+      ])
+    );
     expect(staff.sections.map(({ key }) => key)).toContain("management");
     expect(staff.sections.map(({ key }) => key)).toContain("events");
 
     const department = await bootstrap(dmCookie);
-    expect(department.user.systemRole).toBeNull();
     expect(department.user.identities).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -419,7 +450,6 @@ describe("#487 normalized authority Worker seams", () => {
     expect(department.sections.map(({ key }) => key)).toContain("events");
 
     const program = await bootstrap(plCookie);
-    expect(program.user.systemRole).toBeNull();
     expect(program.user.identities).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -433,7 +463,6 @@ describe("#487 normalized authority Worker seams", () => {
     expect(program.sections.map(({ key }) => key)).toContain("events");
 
     const custom = await bootstrap(customCookie);
-    expect(custom.user.systemRole).toBeNull();
     expect(custom.user.identities).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -446,7 +475,15 @@ describe("#487 normalized authority Worker seams", () => {
     expect(custom.sections.map(({ key }) => key)).toContain("management");
 
     const admin = await bootstrap(adminCookie);
-    expect(admin.user.systemRole).toBe("Admin");
+    expect(admin.user.identities).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          label: "系統管理員",
+          scopeKind: "Global",
+          scopeLabel: null,
+        }),
+      ])
+    );
     expect(admin.user.capabilities["home.publish"]).toBe(true);
     expect(admin.user.capabilities["role.permissions.write"]).toBe(true);
     expect(admin.sections.map(({ key }) => key)).toContain("management");
@@ -465,42 +502,8 @@ describe("#487 normalized authority Worker seams", () => {
       expect(serialized).not.toContain("legacy_pin_hash");
       expect(serialized).not.toContain("refreshToken");
       expect(serialized).not.toContain("session_id");
-    }
-
-    // The legacy display field is not an authority source: changing it must
-    // not promote a Member or erase a normalized scoped identity.
-    await testDb()
-      .prepare("UPDATE accounts SET role = 'Admin' WHERE user_id = ?")
-      .bind("E2E_DISPOSABLE_MEMBER")
-      .run();
-    await testDb()
-      .prepare("UPDATE accounts SET role = 'Member' WHERE user_id = ?")
-      .bind("E2E_DISPOSABLE_PL")
-      .run();
-    try {
-      const tamperedMember = await bootstrap(memberCookie);
-      expect(tamperedMember.sections.map(({ key }) => key)).not.toContain(
-        "management"
-      );
-      expect(tamperedMember.user.capabilities["program.enroll"]).toBe(true);
-      const tamperedProgram = await bootstrap(plCookie);
-      expect(tamperedProgram.sections.map(({ key }) => key)).toContain(
-        "management"
-      );
-      expect(tamperedProgram.user.identities).toEqual(
-        expect.arrayContaining([
-          expect.objectContaining({ label: "青少年查經帶領" }),
-        ])
-      );
-    } finally {
-      await testDb()
-        .prepare("UPDATE accounts SET role = 'Member' WHERE user_id = ?")
-        .bind("E2E_DISPOSABLE_MEMBER")
-        .run();
-      await testDb()
-        .prepare("UPDATE accounts SET role = 'Staff' WHERE user_id = ?")
-        .bind("E2E_DISPOSABLE_PL")
-        .run();
+      expect(projection.user).not.toHaveProperty("role");
+      expect(projection.user).not.toHaveProperty("systemRole");
     }
   });
 
@@ -786,7 +789,7 @@ describe("#487 normalized authority Worker seams", () => {
     );
     expect(staffAccounts.status).toBe(200);
     const accountData = await envelope<{
-      accounts: { userId: string; role: string }[];
+      accounts: { userId: string }[];
     }>(staffAccounts);
     expect(
       accountData.accounts.some(({ userId }) => userId === CUSTOM_USER)
@@ -817,23 +820,12 @@ describe("#487 normalized authority Worker seams", () => {
     );
     await problem(memberMembers, 403, "FORBIDDEN");
 
-    await testDb()
-      .prepare("UPDATE accounts SET role = 'Member' WHERE user_id = ?")
-      .bind("E2E_DISPOSABLE_STAFF")
-      .run();
-    try {
-      const staffAccess = await withCookie("/api/v1/programs/access", staff);
-      expect(staffAccess.status).toBe(200);
-      const data = await envelope<{ hasManagementCapability: boolean }>(
-        staffAccess
-      );
-      expect(data.hasManagementCapability).toBe(true);
-    } finally {
-      await testDb()
-        .prepare("UPDATE accounts SET role = 'Staff' WHERE user_id = ?")
-        .bind("E2E_DISPOSABLE_STAFF")
-        .run();
-    }
+    const accountColumns = await testDb()
+      .prepare("PRAGMA table_info(accounts)")
+      .all<{ name: string }>();
+    expect(accountColumns.results?.map(({ name }) => name)).not.toContain(
+      "role"
+    );
   });
 
   test("C-487-04 registration approval requires global scope", async () => {

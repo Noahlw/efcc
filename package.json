@@ -17,7 +17,7 @@
     "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tests/e2e/tsconfig.json",
     "test": "vitest run tests/prototype",
     "test:prototype": "vitest run tests/prototype",
-    "test:workerd": "pnpm --dir web exec vitest run --config vitest.config.ts --exclude 'lib/auth/normalized-authority-c487.test.ts' --exclude 'lib/identity/permission-editor.test.ts' --exclude 'lib/identity/permission-editor-handlers.test.ts' --exclude 'lib/identity/normalized-authority.test.ts'",
+    "test:workerd": "pnpm --dir web exec vitest run --config vitest.config.ts",
     "verify:fast": "pnpm typecheck && pnpm --dir web typecheck",
     "verify:precommit": "pnpm verify:fast && pnpm test && pnpm verify:identity && pnpm test:workerd && pnpm --dir web test:components",
     "verify": "pnpm verify:precommit && pnpm test:shell-responsive && pnpm test:shell-geometry && pnpm test:role-hierarchy-geometry",

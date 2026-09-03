@@ -45,7 +45,6 @@ async function login(username: string): Promise<string> {
 
 interface BootstrapProbe {
   user: {
-    systemRole: string | null;
     identities: {
       label: string;
       scopeKind: string;
@@ -132,7 +131,8 @@ describe("#487 normalized identity authority", () => {
     expect(admin["role.permissions.write"]).toBe(true);
 
     const member = await me(await login("E2E_disposable_member"));
-    expect(member.user.systemRole).toBeNull();
+    expect(member.user).not.toHaveProperty("role");
+    expect(member.user).not.toHaveProperty("systemRole");
     expect(member.user.identities).toStrictEqual([]);
     expect(member.user.capabilities["program.enroll"]).toBe(true);
     expect(member.sections.map(({ key }) => key)).toStrictEqual([
@@ -151,7 +151,8 @@ describe("#487 normalized identity authority", () => {
     ]);
 
     const scoped = await me(await login("E2E_disposable_pl"));
-    expect(scoped.user.systemRole).toBeNull();
+    expect(scoped.user).not.toHaveProperty("role");
+    expect(scoped.user).not.toHaveProperty("systemRole");
     expect(scoped.user.identities).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
