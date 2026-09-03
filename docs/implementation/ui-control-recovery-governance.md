@@ -109,6 +109,14 @@ A waiver is an explicit temporary exception, not a passing result. Every waiver 
 - linked to a removal condition and follow-up ticket;
 - recorded alongside the preserved failing evidence.
 
+For `RULE-NO-UNLAYERED-HIGH-BLAST-RADIUS-CSS`, an exact waiver must also name
+one repo-relative affected file, the SHA-256 fingerprint of the normalized
+selector/declaration block, and an explicit removal owner. Whitespace-only
+formatting does not change that fingerprint; a material selector or declaration
+change does. A file-level waiver without the matching source fingerprint is
+never allowed to suppress a high-blast-radius CSS violation. The temporary T03
+global-CSS debt waivers are owned for removal by T06 / #511.
+
 An expired, missing-owner, over-broad, or condition-free waiver fails validation. A critical release blocker cannot be converted into a passing outcome by waiver. A waiver cannot authorize production data access, weaken domain authority, or conceal a Worker/runtime failure.
 
 ## 8. Approval and evidence discipline

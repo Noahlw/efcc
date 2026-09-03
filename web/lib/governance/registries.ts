@@ -765,6 +765,132 @@ export const APPROVAL_PACKAGE_REGISTRY: readonly ApprovalPackage[] = [
  */
 export const WAIVER_REGISTRY: readonly Waiver[] = [
   {
+    id: "WVR-T03-GLOBAL-HTML-HEIGHT",
+    ruleId: "RULE-NO-UNLAYERED-HIGH-BLAST-RADIUS-CSS",
+    route: "/",
+    scenario: "global-css-baseline",
+    viewports: [320, 390, 600, 799, 800, 1024, 1440],
+    browsers: ["chromium", "firefox", "webkit"],
+    affectedFiles: ["web/app/globals.css"],
+    sourceFingerprint:
+      "62a1f7d8d1b16d6e640ae6b3bd0c627c46858cc396db890ffad809e18e087b0d",
+    owner: "T03 / #508",
+    createdAt: "2026-09-04",
+    expiresAt: "2026-12-31",
+    rationale:
+      "Pre-existing unlayered html height rule is retained only until T06 restores explicit cascade ownership",
+    removalCondition:
+      "T06 / #511 removes or layers the rule and deletes this waiver",
+    removalOwner: "T06 / #511",
+    ledgerRef: "docs/implementation/ui-control-recovery-preservation-ledger.md",
+    status: "active",
+  },
+  {
+    id: "WVR-T03-GLOBAL-HTML-BODY-OVERFLOW",
+    ruleId: "RULE-NO-UNLAYERED-HIGH-BLAST-RADIUS-CSS",
+    route: "/",
+    scenario: "global-css-baseline",
+    viewports: [320, 390, 600, 799, 800, 1024, 1440],
+    browsers: ["chromium", "firefox", "webkit"],
+    affectedFiles: ["web/app/globals.css"],
+    sourceFingerprint:
+      "6df9d5d1d283c49d26bc963def47afa2a3bb91f17472992dda3805ea49d3f42b",
+    owner: "T03 / #508",
+    createdAt: "2026-09-04",
+    expiresAt: "2026-12-31",
+    rationale:
+      "Pre-existing unlayered html/body overflow rule is retained only until T06 restores explicit cascade ownership",
+    removalCondition:
+      "T06 / #511 removes or layers the rule and deletes this waiver",
+    removalOwner: "T06 / #511",
+    ledgerRef: "docs/implementation/ui-control-recovery-preservation-ledger.md",
+    status: "active",
+  },
+  {
+    id: "WVR-T03-GLOBAL-BODY-FLEX",
+    ruleId: "RULE-NO-UNLAYERED-HIGH-BLAST-RADIUS-CSS",
+    route: "/",
+    scenario: "global-css-baseline",
+    viewports: [320, 390, 600, 799, 800, 1024, 1440],
+    browsers: ["chromium", "firefox", "webkit"],
+    affectedFiles: ["web/app/globals.css"],
+    sourceFingerprint:
+      "b7fee4b06c3bad9cc351c8fcad45d24e55c1fbed6b62f6ad84428472642743eb",
+    owner: "T03 / #508",
+    createdAt: "2026-09-04",
+    expiresAt: "2026-12-31",
+    rationale:
+      "Pre-existing unlayered body shell foundation is retained only until T06 restores explicit cascade ownership",
+    removalCondition:
+      "T06 / #511 removes or layers the rule and deletes this waiver",
+    removalOwner: "T06 / #511",
+    ledgerRef: "docs/implementation/ui-control-recovery-preservation-ledger.md",
+    status: "active",
+  },
+  {
+    id: "WVR-T03-GLOBAL-UNIVERSAL-RESET",
+    ruleId: "RULE-NO-UNLAYERED-HIGH-BLAST-RADIUS-CSS",
+    route: "/",
+    scenario: "global-css-baseline",
+    viewports: [320, 390, 600, 799, 800, 1024, 1440],
+    browsers: ["chromium", "firefox", "webkit"],
+    affectedFiles: ["web/app/globals.css"],
+    sourceFingerprint:
+      "668a5e03111d92037fdfc82a50d9b2b0ff4ed44fe386c82ab1406c0157b84f19",
+    owner: "T03 / #508",
+    createdAt: "2026-09-04",
+    expiresAt: "2026-12-31",
+    rationale:
+      "Known Tailwind-v4 cascade debt is retained only until T06 removes the universal spacing reset",
+    removalCondition:
+      "T06 / #511 removes the universal reset and deletes this waiver",
+    removalOwner: "T06 / #511",
+    ledgerRef: "docs/implementation/ui-control-recovery-preservation-ledger.md",
+    status: "active",
+  },
+  {
+    id: "WVR-T03-GLOBAL-ANCHOR-BASE",
+    ruleId: "RULE-NO-UNLAYERED-HIGH-BLAST-RADIUS-CSS",
+    route: "/",
+    scenario: "global-css-baseline",
+    viewports: [320, 390, 600, 799, 800, 1024, 1440],
+    browsers: ["chromium", "firefox", "webkit"],
+    affectedFiles: ["web/app/globals.css"],
+    sourceFingerprint:
+      "ad551903d2915580f57c61cd31c408d5639302e05ccdff26b7f0e7150b49a712",
+    owner: "T03 / #508",
+    createdAt: "2026-09-04",
+    expiresAt: "2026-12-31",
+    rationale:
+      "Pre-existing unlayered anchor baseline is retained only until T06 restores explicit cascade ownership",
+    removalCondition:
+      "T06 / #511 removes or layers the rule and deletes this waiver",
+    removalOwner: "T06 / #511",
+    ledgerRef: "docs/implementation/ui-control-recovery-preservation-ledger.md",
+    status: "active",
+  },
+  {
+    id: "WVR-T03-GLOBAL-FOCUS-RINGS",
+    ruleId: "RULE-NO-UNLAYERED-HIGH-BLAST-RADIUS-CSS",
+    route: "/",
+    scenario: "global-css-baseline",
+    viewports: [320, 390, 600, 799, 800, 1024, 1440],
+    browsers: ["chromium", "firefox", "webkit"],
+    affectedFiles: ["web/app/globals.css"],
+    sourceFingerprint:
+      "ded0de8d90e3c1bb2bfaced6b71a18cc3f1cc97e8eacbc3aed2f421675cecfb3",
+    owner: "T03 / #508",
+    createdAt: "2026-09-04",
+    expiresAt: "2026-12-31",
+    rationale:
+      "Pre-existing unlayered focus-ring selector list is retained only until T06 assigns explicit cascade ownership",
+    removalCondition:
+      "T06 / #511 removes or layers the rule and deletes this waiver",
+    removalOwner: "T06 / #511",
+    ledgerRef: "docs/implementation/ui-control-recovery-preservation-ledger.md",
+    status: "active",
+  },
+  {
     id: "WVR-HISTORICAL-PROTOTYPE-MODULE-CSS",
     ruleId: "RULE-NO-CSS-MODULES",
     route: "/prototype",

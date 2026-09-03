@@ -11,6 +11,7 @@
  * 7. RULE-NO-FORBIDDEN-STYLING-HOOKS: detect !important routine containment and unapproved runtimes.
  */
 
+import { createHash } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 
@@ -52,13 +53,6 @@ export interface AuditOptions {
    */
   readonly now?: Date | string | number;
 }
-
-const APPROVED_GLOBAL_BASE_SELECTORS: Readonly<Record<string, true>> = {
-  html: true,
-  body: true,
-  "*": true,
-  a: true,
-};
 
 const BROAD_ELEMENT_TAG_REGEX =
   /^(html|body|div|p|span|a|button|input|textarea|select|table|thead|tbody|tr|th|td|ul|ol|li|h[1-6]|header|footer|nav|main|section|article|aside|dialog|form|label)\b/i;
@@ -421,6 +415,44 @@ function firstUnquotedCharacter(value: string, target: string): number {
   return -1;
 }
 
+function extractCssBlockSource(
+  lines: readonly string[],
+  startLine: number,
+  openingBraceIndex: number
+): string {
+  let source = "";
+  let braceDepth = 0;
+
+  for (let lineIndex = startLine; lineIndex < lines.length; lineIndex++) {
+    const segment =
+      lineIndex === startLine
+        ? lines[lineIndex].slice(openingBraceIndex)
+        : lines[lineIndex];
+    source += `${lineIndex === startLine ? "" : "\n"}${segment}`;
+    braceDepth += countUnquotedCharacter(segment, "{");
+    braceDepth -= countUnquotedCharacter(segment, "}");
+    if (braceDepth <= 0) return source;
+  }
+
+  return source;
+}
+
+function normalizeCssSource(source: string): string {
+  return source
+    .replace(/\s+/gu, " ")
+    .trim()
+    .replace(/\s*([{}:;,>+~])\s*/gu, "$1");
+}
+
+function getCssSourceFingerprint(
+  selector: string,
+  blockSource: string
+): string {
+  return createHash("sha256")
+    .update(normalizeCssSource(`${selector}${blockSource}`), "utf8")
+    .digest("hex");
+}
+
 /**
  * Matches a native JSX element tag and its attribute slice against a comma-separated selector list.
  * e.g. "input[type=radio], input[type=datetime-local]" or "select#assisted-event-context"
@@ -542,6 +574,10 @@ export function auditFileContent(
   if (
     normalizedPath.includes("node_modules/") ||
     normalizedPath.includes(".next/") ||
+    normalizedPath === "web/.wrangler" ||
+    normalizedPath.startsWith("web/.wrangler/") ||
+    normalizedPath === "web/out" ||
+    normalizedPath.startsWith("web/out/") ||
     normalizedPath.includes("dist/") ||
     normalizedPath.includes("coverage/") ||
     normalizedPath.includes(".scratch/")
@@ -560,10 +596,6 @@ export function auditFileContent(
     normalizedPath.includes("/test-setup.");
   const isUiPrimitive = normalizedPath.startsWith("web/components/ui/");
   const isRouteFile = normalizedPath.startsWith("web/app/");
-  const isGlobalsCss = /^web\/app\/globals\.(css|scss|sass|less|pcss)$/i.test(
-    normalizedPath
-  );
-
   // Rule 1: RULE-NO-UNLAYERED-HIGH-BLAST-RADIUS-CSS
   if (isCssFile) {
     const cleanContent = stripCssComments(content);
@@ -624,51 +656,22 @@ export function auditFileContent(
           const selectorPart = rawSelector.trim();
           if (selectorPart && !selectorPart.startsWith("@")) {
             const selectorParts = splitTopLevelSelectors(selectorPart);
-            if (!isGlobalsCss) {
-              // In non-globals CSS, ANY unlayered broad element selector or * is a violation.
-              const broadSelector = selectorParts.find((selector) =>
-                isBroadSelector(selector)
-              );
-              if (broadSelector) {
-                violations.push({
-                  ruleId: "RULE-NO-UNLAYERED-HIGH-BLAST-RADIUS-CSS",
-                  file: normalizedPath,
-                  line: i + 1,
-                  snippet: trimmed,
-                  message: `Unlayered high-blast-radius selector "${broadSelector}" detected in "${normalizedPath}". Global CSS rules belong in globals.css @layer base or scoped pattern classes.`,
-                  likelyOwnershipLayer: "global",
-                });
-              }
-            } else {
-              // Document/base selectors are explicitly permitted by the Global ownership layer.
-              const isApprovedGlobalBase =
-                selectorParts.length > 0 &&
-                selectorParts.every(
-                  (selector) =>
-                    APPROVED_GLOBAL_BASE_SELECTORS[selector] === true
-                );
-              // Focus-visible rings (e.g. input:focus-visible) are permitted accessibility resets.
-              const isFocusVisibleRing =
-                selectorParts.length > 0 &&
-                selectorParts.every((selector) =>
-                  /:focus-visible$/i.test(selector)
-                );
-
-              if (!isFocusVisibleRing && !isApprovedGlobalBase) {
-                const broadSelector = selectorParts.find((selector) =>
-                  isBroadSelector(selector)
-                );
-                if (broadSelector) {
-                  violations.push({
-                    ruleId: "RULE-NO-UNLAYERED-HIGH-BLAST-RADIUS-CSS",
-                    file: normalizedPath,
-                    line: i + 1,
-                    snippet: trimmed,
-                    message: `Unlayered high-blast-radius selector "${broadSelector}" detected in globals.css. Broad element styling must be placed inside @layer base or scoped with a specific class.`,
-                    likelyOwnershipLayer: "global",
-                  });
-                }
-              }
+            const broadSelector = selectorParts.find((selector) =>
+              isBroadSelector(selector)
+            );
+            if (broadSelector) {
+              violations.push({
+                ruleId: "RULE-NO-UNLAYERED-HIGH-BLAST-RADIUS-CSS",
+                file: normalizedPath,
+                line: i + 1,
+                snippet: trimmed,
+                sourceFingerprint: getCssSourceFingerprint(
+                  selectorPart,
+                  extractCssBlockSource(lines, i, openingBraceIndex)
+                ),
+                message: `Unlayered high-blast-radius selector "${broadSelector}" detected in "${normalizedPath}". Global CSS rules belong in globals.css @layer base or scoped pattern classes.`,
+                likelyOwnershipLayer: "global",
+              });
             }
           }
         } else if (
@@ -1118,11 +1121,17 @@ export function auditSourceCode(options: AuditOptions = {}): AuditResult {
       }
 
       // Exact file match ONLY (canonical waivers are exact files; wildcards are prohibited)
-      return waiver.affectedFiles.some((affFile) => {
+      const matchesFile = waiver.affectedFiles.some((affFile) => {
         const normAff = normalizeRepoPath(affFile, repoRoot);
         const normViol = normalizeRepoPath(violation.file, repoRoot);
         return normAff === normViol;
       });
+
+      if (!matchesFile) return false;
+      if (violation.ruleId === "RULE-NO-UNLAYERED-HIGH-BLAST-RADIUS-CSS") {
+        return waiver.sourceFingerprint === violation.sourceFingerprint;
+      }
+      return true;
     });
 
     if (matchingWaiver) {
@@ -1148,7 +1157,8 @@ export function auditSourceCode(options: AuditOptions = {}): AuditResult {
 function collectFilesRecursively(
   dir: string,
   fileList: string[],
-  scanErrors: AuditScanError[]
+  scanErrors: AuditScanError[],
+  rootDir = dir
 ): void {
   try {
     const dirStat = fs.lstatSync(dir);
@@ -1170,9 +1180,15 @@ function collectFilesRecursively(
     const entries = fs.readdirSync(dir, { withFileTypes: true });
     for (const entry of entries) {
       const fullPath = path.join(dir, entry.name);
+      // T03 owns the narrow exclusion for generated web outputs. Only the
+      // web-root directories are excluded; a shipped route directory named
+      // `out` or `.wrangler` must remain auditable.
+      const isKnownGeneratedDirectory =
+        dir === rootDir && (entry.name === "out" || entry.name === ".wrangler");
       if (
         entry.name === "node_modules" ||
         entry.name === ".next" ||
+        isKnownGeneratedDirectory ||
         entry.name === "dist" ||
         entry.name === "coverage" ||
         entry.name === ".git" ||
@@ -1187,7 +1203,7 @@ function collectFilesRecursively(
           message: `Symbolic link encountered during recursive audit: ${fullPath}`,
         });
       } else if (entry.isDirectory()) {
-        collectFilesRecursively(fullPath, fileList, scanErrors);
+        collectFilesRecursively(fullPath, fileList, scanErrors, rootDir);
       } else if (entry.isFile()) {
         if (
           /\.(ts|tsx|js|jsx|css|scss|sass|less|pcss|json|mjs)$/i.test(

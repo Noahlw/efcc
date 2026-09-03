@@ -156,11 +156,18 @@ export interface Waiver {
   readonly viewports: readonly ViewportSpec[];
   readonly browsers: readonly BrowserEngine[];
   readonly affectedFiles: readonly string[];
+  /**
+   * Required for high-blast-radius CSS waivers. It fingerprints the exact
+   * selector/declaration block rather than granting a file-level exemption.
+   */
+  readonly sourceFingerprint?: string;
   readonly owner: string;
   readonly createdAt: string;
   readonly expiresAt: string;
   readonly rationale: string;
   readonly removalCondition: string;
+  /** Required for high-blast-radius CSS waivers so ownership of cleanup is explicit. */
+  readonly removalOwner?: string;
   readonly ledgerRef: string;
   readonly status: "active" | "expired" | "revoked";
 }
@@ -246,6 +253,9 @@ export interface GovernanceValidationError {
     | "MISSING_WAIVER_OWNER"
     | "MISSING_WAIVER_AFFECTED_FILES"
     | "INVALID_WAIVER_AFFECTED_FILES"
+    | "MISSING_WAIVER_SOURCE_FINGERPRINT"
+    | "INVALID_WAIVER_SOURCE_FINGERPRINT"
+    | "MISSING_WAIVER_REMOVAL_OWNER"
     | "MISSING_WAIVER_FIELD"
     | "APPROVAL_MISSING_BASELINE_SHA"
     | "APPROVAL_INVALID_BASELINE_SHA"
@@ -312,6 +322,8 @@ export interface AuditViolation {
   readonly line?: number;
   readonly column?: number;
   readonly snippet?: string;
+  /** Exact normalized source identity for high-blast-radius CSS violations. */
+  readonly sourceFingerprint?: string;
   readonly message: string;
   readonly likelyOwnershipLayer: OwnershipLayer;
   readonly waived?: boolean;

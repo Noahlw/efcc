@@ -32,6 +32,7 @@ const ISO_DATETIME_REGEX =
 const APPROVAL_STATUSES = ["approved", "superseded", "revoked"] as const;
 const CONTRACT_STATUSES = ["active", "draft", "deprecated"] as const;
 const WAIVER_STATUSES = ["active", "expired", "revoked"] as const;
+const CSS_SOURCE_FINGERPRINT_REGEX = /^[0-9a-f]{64}$/iu;
 const AUDIT_RULE_IDS = [
   "RULE-NO-UNLAYERED-HIGH-BLAST-RADIUS-CSS",
   "RULE-NO-CSS-MODULES",
@@ -1241,6 +1242,41 @@ export function validateRegistries(
         field: "ruleId",
         severity: "error",
       });
+    }
+
+    if (waiver.ruleId === "RULE-NO-UNLAYERED-HIGH-BLAST-RADIUS-CSS") {
+      if (
+        typeof waiver.sourceFingerprint !== "string" ||
+        waiver.sourceFingerprint.trim() === ""
+      ) {
+        errors.push({
+          code: "MISSING_WAIVER_SOURCE_FINGERPRINT",
+          message: `Waiver "${waiver.id}" for high-blast-radius CSS must specify an exact source fingerprint`,
+          registry: "waivers",
+          entryId: waiver.id,
+          field: "sourceFingerprint",
+          severity: "error",
+        });
+      } else if (!CSS_SOURCE_FINGERPRINT_REGEX.test(waiver.sourceFingerprint)) {
+        errors.push({
+          code: "INVALID_WAIVER_SOURCE_FINGERPRINT",
+          message: `Waiver "${waiver.id}" has an invalid source fingerprint; expected a 64-character SHA-256 hex digest`,
+          registry: "waivers",
+          entryId: waiver.id,
+          field: "sourceFingerprint",
+          severity: "error",
+        });
+      }
+      if (!isSafeMetadataText(waiver.removalOwner)) {
+        errors.push({
+          code: "MISSING_WAIVER_REMOVAL_OWNER",
+          message: `Waiver "${waiver.id}" for high-blast-radius CSS must name its removal owner`,
+          registry: "waivers",
+          entryId: waiver.id,
+          field: "removalOwner",
+          severity: "error",
+        });
+      }
     }
 
     if (

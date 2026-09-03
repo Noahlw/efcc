@@ -43,6 +43,55 @@ import {
 
 const REPO_ROOT = resolveRepoRoot();
 
+type FingerprintedWaiver = Waiver & {
+  readonly sourceFingerprint?: string;
+};
+
+const HIGH_BLAST_CSS_RULE = "RULE-NO-UNLAYERED-HIGH-BLAST-RADIUS-CSS";
+
+function createHighBlastWaiver(
+  sourceFingerprint?: string
+): FingerprintedWaiver {
+  return {
+    id: "WVR-EXACT-GLOBAL-CSS-RESET-TEST",
+    ruleId: HIGH_BLAST_CSS_RULE,
+    route: "/",
+    scenario: "default",
+    viewports: [320, 1024],
+    browsers: ["chromium"],
+    affectedFiles: ["web/app/globals.css"],
+    owner: "T03 test owner",
+    createdAt: "2026-09-03",
+    expiresAt: "2026-12-31",
+    rationale: "Exact historical CSS rule fixture",
+    removalCondition: "Remove with T06 CSS cascade containment",
+    removalOwner: "T06 / #511",
+    ledgerRef: "docs/implementation/ui-control-recovery-preservation-ledger.md",
+    status: "active",
+    ...(sourceFingerprint ? { sourceFingerprint } : {}),
+  };
+}
+
+function auditCssFixture(css: string, waivers: readonly Waiver[]) {
+  const rootDir = fs.mkdtempSync(
+    path.join(os.tmpdir(), "efcc-governance-css-waiver-")
+  );
+  const filePath = path.join(rootDir, "web/app/globals.css");
+  fs.mkdirSync(path.dirname(filePath), { recursive: true });
+  fs.writeFileSync(filePath, css, "utf8");
+
+  try {
+    return auditSourceCode({
+      rootDir,
+      targetFiles: ["web/app/globals.css"],
+      waivers,
+      now: "2026-09-03T00:00:00Z",
+    });
+  } finally {
+    fs.rmSync(rootDir, { recursive: true, force: true });
+  }
+}
+
 describe("Governance Registry Validation", () => {
   it("validates the default canonical registries cleanly with zero errors", () => {
     const result = validateRegistries();
@@ -2075,6 +2124,136 @@ describe("Static Governance Source Audit Engine", () => {
       expect(result.passed).toBe(true);
       expect(result.violations).toHaveLength(0);
       expect(result.scannedFilesCount).toBeGreaterThan(10);
+    });
+  });
+
+  describe("Exact CSS Source Fingerprint Waivers", () => {
+    const historicalUniversalReset = `
+      * {
+        box-sizing: border-box;
+        padding: 0;
+        margin: 0;
+      }
+    `;
+
+    it("detects the historical universal reset before waiver resolution", () => {
+      const violations = auditFileContent(
+        "web/app/globals.css",
+        historicalUniversalReset
+      );
+
+      expect(violations).toHaveLength(1);
+      expect(violations[0].ruleId).toBe(HIGH_BLAST_CSS_RULE);
+      expect(
+        (violations[0] as { sourceFingerprint?: string }).sourceFingerprint
+      ).toMatch(/^[a-f0-9]{64}$/u);
+    });
+
+    it("waives one exact reset while another broad rule in the same file remains active", () => {
+      const violation = auditFileContent(
+        "web/app/globals.css",
+        historicalUniversalReset
+      )[0] as { sourceFingerprint?: string };
+      const waiver = createHighBlastWaiver(violation.sourceFingerprint);
+
+      const result = auditCssFixture(
+        `${historicalUniversalReset}\nbody { color: red; }`,
+        [waiver]
+      );
+
+      expect(result.waivedViolations).toHaveLength(1);
+      expect(result.waivedViolations[0].waiverId).toBe(waiver.id);
+      expect(result.violations).toHaveLength(1);
+      expect(result.violations[0].snippet).toContain("body");
+      expect(result.passed).toBe(false);
+    });
+
+    it("keeps the same fingerprint across whitespace-only changes", () => {
+      const violation = auditFileContent(
+        "web/app/globals.css",
+        historicalUniversalReset
+      )[0] as { sourceFingerprint?: string };
+      const waiver = createHighBlastWaiver(violation.sourceFingerprint);
+
+      const whitespaceVariant = `*{\n  box-sizing : border-box ;\n  padding:0;\n  margin : 0;\n}`;
+      const result = auditCssFixture(whitespaceVariant, [waiver]);
+
+      expect(result.passed).toBe(true);
+      expect(result.violations).toHaveLength(0);
+      expect(result.waivedViolations).toHaveLength(1);
+    });
+
+    it("invalidates the waiver when the selector or declaration block changes", () => {
+      const violation = auditFileContent(
+        "web/app/globals.css",
+        historicalUniversalReset
+      )[0] as { sourceFingerprint?: string };
+      const waiver = createHighBlastWaiver(violation.sourceFingerprint);
+
+      const changedRule = historicalUniversalReset.replace(
+        "margin: 0",
+        "margin: 1px"
+      );
+      const result = auditCssFixture(changedRule, [waiver]);
+
+      expect(result.passed).toBe(false);
+      expect(result.violations).toHaveLength(1);
+      expect(result.waivedViolations).toHaveLength(0);
+    });
+
+    it("rejects a generic file-level waiver for high-blast-radius CSS", () => {
+      const genericWaiver = createHighBlastWaiver();
+      const result = auditCssFixture(historicalUniversalReset, [genericWaiver]);
+
+      expect(result.passed).toBe(false);
+      expect(result.violations).toHaveLength(1);
+      expect(result.waivedViolations).toHaveLength(0);
+
+      const validation = validateRegistries({
+        ...getCanonicalRegistries(),
+        waivers: [genericWaiver],
+      });
+      expect(validation.valid).toBe(false);
+      expect(
+        validation.errors.some(
+          (error) => error.code === "MISSING_WAIVER_SOURCE_FINGERPRINT"
+        )
+      ).toBe(true);
+    });
+
+    it("excludes only web-root generated output and never hides shipped source", () => {
+      const rootDir = fs.mkdtempSync(
+        path.join(os.tmpdir(), "efcc-governance-generated-output-")
+      );
+      const generatedSource = `import styles from "./generated.module.css";`;
+      const generatedFiles = [
+        path.join(rootDir, "web/out/generated.tsx"),
+        path.join(rootDir, "web/.wrangler/generated.tsx"),
+      ];
+      const shippedFiles = [
+        path.join(rootDir, "web/app/out/shipped.tsx"),
+        path.join(rootDir, "web/src/shipped.tsx"),
+      ];
+
+      try {
+        for (const filePath of [...generatedFiles, ...shippedFiles]) {
+          fs.mkdirSync(path.dirname(filePath), { recursive: true });
+          fs.writeFileSync(filePath, generatedSource, "utf8");
+        }
+
+        const result = auditSourceCode({
+          rootDir,
+          waivers: [],
+          now: "2026-09-03T00:00:00Z",
+        });
+
+        expect(result.scannedFilesCount).toBe(2);
+        expect(
+          result.violations.map((violation) => violation.file).sort()
+        ).toEqual(["web/app/out/shipped.tsx", "web/src/shipped.tsx"]);
+      } finally {
+        fs.rmSync(rootDir, { recursive: true, force: true });
+      }
     });
   });
 
