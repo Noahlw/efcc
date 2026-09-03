@@ -113,14 +113,62 @@ An expired, missing-owner, over-broad, or condition-free waiver fails validation
 
 ## 8. Approval and evidence discipline
 
-- At most **one unapproved visual slice** may be in flight across the rescue.
+- At most **one unapproved visual phase stack** may be in flight across the rescue. A phase stack may contain multiple ticket-isolated PRs after each parent reaches `STACK_GREEN`; human approval and parent-first merge remain required before the stack enters the next phase.
 - A visual rescue PR changes only its declared UI slice and its required evidence; unrelated backend, schema, feature, lint-cleanup, or data work is out of scope.
 - Screenshots, prototypes, HTML audits, numeric geometry, and generated reports are evidence inputs. They do not become approved visual baselines without owner approval tied to a commit, scenario, viewport, browser, and artifact.
 - Headless DOM geometry does not claim keyboard-only, screen-reader, real-device, camera, native print-preview, reduced-motion, forced-colors, zoom, reflow, or text-spacing approval.
 - An implementation agent cannot self-approve a human visual, accessibility, device, or contract gate.
 - Failures must retain the first causal result and relevant route/state/viewport/browser context; later clean retries do not erase stale-fixture or infrastructure failures.
 
-## 9. Rescue scope and preservation
+## 9. Stacked PR delivery
+
+The UI Control Recovery uses ticket-isolated stacked PRs within each phase to allow dependent implementation to proceed without waiting for merge or human approval.
+
+Each ticket retains its own issue and acceptance criteria, branch/worktree and PR, reviewed implementation SHA, evidence and review record, human approval requirement where applicable, and rollback boundary.
+
+### `STACK_GREEN`
+
+Required before a child ticket can start:
+- implementation is complete within the ticket scope;
+- focused tests are green;
+- required aggregate tests are green;
+- `/code-review` Standards and Spec axes are green;
+- the ticket has its own PR with a ticket-isolated incremental diff.
+- no unresolved correctness issue makes the parent unsafe as a child base;
+
+`STACK_GREEN` unlocks implementation for dependent children. It does not mean approved, merge-ready, merged, or complete. Machine green never equals human approval.
+
+### Implementation frontier
+
+A child ticket may start only when all logical blockers and its selected immediate stack parent are present in stack ancestry as:
+- `STACK_GREEN`, or
+- `MERGED_RESCUE`.
+
+### Merge frontier
+
+A PR may merge into the rescue branch only after:
+- its logical blockers are already merged;
+- all lower stack parents are merged;
+- its own current verification and review are green;
+- required human approval is complete;
+- it has been refreshed against the actual parent/rescue state.
+
+For visual phases, the owner may review all ticket scenarios together at the phase checkpoint. Each ticket still prepares attributable evidence, approval applies to the final reviewed stack state, and no ticket requiring approval becomes merge-ready without it.
+
+### Parent correction propagation
+
+When a lower PR changes:
+- fix the earliest owning PR;
+- restack descendants;
+- rerun affected tests;
+- rerun `/code-review` where the effective diff changed;
+- invalidate affected human approval.
+
+### Phase boundary
+
+No next phase starts until the current phase stack has completed required review/approval and has merged parent-first into the rescue branch. No stack crosses a phase boundary.
+
+## 10. Rescue scope and preservation
 
 The rescue preserves URLs, route intent, domain ownership, permissions, mutations, workflow outcomes, server authority, accessibility semantics, and the full post-main S4 implementation lineage recorded by the [Preservation Ledger](ui-control-recovery-preservation-ledger.md) — including pre-#473 S4 implementation/hardening and the later #473 + Phase A–F evolution (#457 → #458 → #469 → #470 → #471 → #472 → #473 → #496 → #497 → #501 → #502 → #503 → #504 → frozen Phase F) — unless a separately audited correctness defect requires change. Presentation, hierarchy, spacing, density, primitive defaults, pattern composition, responsive layout, and state presentation may change only through the ownership and approval rules above.
 
@@ -133,7 +181,7 @@ Do not:
 - modify historical S4 PRs or declare them superseded before the approved promotion/supersession gate;
 - treat the UI Lab, prototype, historical evidence, or a temporary compatibility path as shipped product.
 
-## 10. Change checklist
+## 11. Change checklist
 
 Before opening a UI PR, the agent records:
 

@@ -25,4 +25,6 @@
 - Use Tailwind for ordinary layout/visual rules, CVA for stable semantic axes, local shadcn/Radix primitives plus `cn()`, tokens, and narrow layered global CSS. Patterns own repeated composition; routes own domain content/state/arrangement.
 - Ordinary implementation agents MUST NOT lower expectations, widen tolerances, change baselines, add skips/allowlists/suppressions, remove coverage, extend waivers, or use `!important` as routine containment.
 - Any token, primitive/pattern contract, scenario, tolerance, baseline, coverage, native exception, waiver, or approval requirement is a human-approved **CONTRACT CHANGE**.
-- Keep at most one unapproved visual slice in flight and do not mix visual rescue with unrelated backend, schema, feature, lint, or data work. Do not treat screenshots or headless geometry as human approval.
+- Keep at most one unapproved visual **phase stack** in flight. A phase stack may contain multiple ticket-isolated PRs after each parent reaches `STACK_GREEN`; human approval and parent-first merge remain required before the stack enters the next phase.
+- A dependent ticket may start from a `STACK_GREEN` parent PR without waiting for that parent to merge. Keep one branch/PR per ticket and keep child PR bases pointed at their immediate stack parent so each PR remains an incremental ticket-isolated diff.
+- Do not mix visual rescue with unrelated backend, schema, feature, lint, or data work. Do not treat screenshots or headless geometry as human approval.
