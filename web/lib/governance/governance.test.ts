@@ -2170,6 +2170,18 @@ describe("Static Governance Source Audit Engine", () => {
       expect(violations[0].line).toBe(1);
     });
 
+    it("detects a broad rule after same-line at-rule statements", () => {
+      for (const css of [
+        "@layer base; video { display: block; }",
+        '@import "theme.css"; video { display: block; }',
+      ]) {
+        const violations = auditFileContent("web/app/globals.css", css);
+
+        expect(violations).toHaveLength(1);
+        expect(violations[0].snippet).toContain("video");
+      }
+    });
+
     it("waives one exact reset while another broad rule in the same file remains active", () => {
       const violation = auditFileContent(
         "web/app/globals.css",

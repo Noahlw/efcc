@@ -284,6 +284,51 @@ function splitTopLevelSelectors(selectorString: string): string[] {
   return parts;
 }
 
+function stripLeadingAtRuleStatements(value: string): string {
+  let lastStatementSeparator = -1;
+  let statementStart = 0;
+  let sawStatement = false;
+  let onlyAtRuleStatements = true;
+  let parenDepth = 0;
+  let bracketDepth = 0;
+  let quote: "'" | '"' | null = null;
+
+  for (let i = 0; i < value.length; i++) {
+    const char = value[i];
+    if (quote !== null) {
+      if (char === "\\") {
+        i++;
+      } else if (char === quote) {
+        quote = null;
+      }
+      continue;
+    }
+
+    if (char === "'" || char === '"') {
+      quote = char;
+    } else if (char === "(") {
+      parenDepth++;
+    } else if (char === ")" && parenDepth > 0) {
+      parenDepth--;
+    } else if (char === "[") {
+      bracketDepth++;
+    } else if (char === "]" && bracketDepth > 0) {
+      bracketDepth--;
+    } else if (char === ";" && parenDepth === 0 && bracketDepth === 0) {
+      const statement = value.slice(statementStart, i).trim();
+      sawStatement = true;
+      onlyAtRuleStatements =
+        onlyAtRuleStatements && /^@[-\w]+\b/u.test(statement);
+      statementStart = i + 1;
+      lastStatementSeparator = i;
+    }
+  }
+
+  return lastStatementSeparator === -1 || !sawStatement || !onlyAtRuleStatements
+    ? value
+    : value.slice(lastStatementSeparator + 1);
+}
+
 /**
  * Evaluates whether a CSS @media query expression represents a print-media context.
  *
@@ -782,7 +827,7 @@ export function auditFileContent(
         const rawSelector =
           (pendingSelector ? pendingSelector + " " : "") + currentSelector;
         pendingSelector = "";
-        const selectorPart = rawSelector.trim();
+        const selectorPart = stripLeadingAtRuleStatements(rawSelector).trim();
         const isProtectedBlock =
           /^@layer\b/i.test(selectorPart) ||
           /^@keyframes\b/i.test(selectorPart) ||
