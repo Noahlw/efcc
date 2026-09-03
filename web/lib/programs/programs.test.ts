@@ -7297,6 +7297,24 @@ describe("PRG-03: enrollments", () => {
       enrollment.enrollment_id
     );
     assert.strictEqual(again.status, 200);
+    const auditOutcomes = await testDb()
+      .prepare(
+        `SELECT outcome FROM audit_events
+         WHERE action = 'ENROLLMENT_CANCEL' AND entity_id = ?`
+      )
+      .bind(enrollment.enrollment_id)
+      .all<{ outcome: string }>();
+    const outcomes = (auditOutcomes.results ?? []).map((row) => row.outcome);
+    assert.strictEqual(
+      outcomes.filter((outcome) => outcome === "SUCCESS").length,
+      1,
+      "a repeated cancellation must not create a second SUCCESS audit"
+    );
+    assert.strictEqual(
+      outcomes.filter((outcome) => outcome === "DUPLICATE").length,
+      1,
+      "a repeated cancellation must create one DUPLICATE audit"
+    );
     const audit = await testDb()
       .prepare(
         `SELECT outcome FROM audit_events
@@ -7451,6 +7469,9 @@ describe("PUI-02: participant catalog", () => {
     );
   });
 
+  // This scope projection intentionally exercises two account modes and the
+  // normalized role resolver; keep its explicit budget so a slow fresh
+  // workerd run remains a required test failure, never an implicit skip.
   test("Unlisted rows appear only through scoped program.manage effective access", async () => {
     const adminAccess = await accessCookieFor("alice", "alice-secret");
     const dept = await createDepartment(adminAccess, {
@@ -7497,7 +7518,7 @@ describe("PUI-02: participant catalog", () => {
       "scoped program.manage must expose the Unlisted row"
     );
     assert.ok(leaderNames.includes("PUI-02 Listed"));
-  });
+  }, 120_000);
 
   test("module-disabled Departments are excluded from the catalog", async () => {
     const adminAccess = await accessCookieFor("alice", "alice-secret");

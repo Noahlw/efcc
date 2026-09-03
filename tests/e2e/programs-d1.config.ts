@@ -42,6 +42,11 @@ if (!isLocal) {
   }
 }
 
+const resultsFile =
+  process.env.PROGRAMS_RESULTS_FILE ?? "test-results/programs-d1-results.json";
+const outputDirectory =
+  process.env.PROGRAMS_OUTPUT_DIR ?? "test-results/programs-d1";
+
 export default defineConfig({
   testDir: ".",
   testMatch: ["**/programs-d1.test.ts", "**/pui-05-home-origin.test.ts"],
@@ -60,9 +65,8 @@ export default defineConfig({
   retries: 1,
   fullyParallel: false,
   workers: 1,
-  reporter: [
-    ["line"],
-  ],
+  reporter: [["line"], ["json", { outputFile: resultsFile }]],
+  outputDir: outputDirectory,
   use: {
     baseURL: targetUrl,
     // Dev fixtures are non-secret: keep traces and screenshots as failure

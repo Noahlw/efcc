@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "next dev",
-    "dev:local": "next build && pnpm db:migrate:local && wrangler dev",
+    "dev:local": "next build && pnpm db:migrate:local && pnpm bundle:local && wrangler dev .wrangler/local-bundle/worker.js --config wrangler.jsonc --local --no-bundle",
+    "bundle:local": "wrangler deploy --dry-run --outdir .wrangler/local-bundle",
     "db:migrate:local": "wrangler d1 migrations apply efcc-identity --local",
     "build": "next build",
     "start": "next start",

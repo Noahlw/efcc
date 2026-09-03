@@ -49,7 +49,9 @@ Each username must be distinct and start with `E2E_`; each credential must conta
 
 ## Local-first E2E (default target)
 
-The D1 suites target `wrangler dev` on `http://127.0.0.1:8787` by default (AGENTS.md local-first policy — zero Cloudflare account touched). Bring up the stack with `pnpm dev:local` (builds, applies local D1 migrations, serves on :8787), seed accounts with `pnpm db:seed:local` (rerunnable; restores active fixture credentials), and seed the walkthrough with `pnpm db:seed:demo`. The local auth suite uses the active and legacy fixtures; the Programs, attendance, and live UI suites use the three active fixtures.
+The D1 suites target `wrangler dev` on `http://127.0.0.1:8787` by default (AGENTS.md local-first policy — zero Cloudflare account touched). For manual debugging, start `pnpm dev:local`, then run `pnpm db:seed:local` and `pnpm db:seed:demo` before issuing any authenticated request. The direct seed must not race an already-open D1 runtime.
+
+For the required T05 single-process Programs prerequisite, use `pnpm verify:programs-runtime` after creating `web/.dev.vars`. It starts its own local Worker, waits only for the loopback listener, resets/seeds disposable fixtures, performs the authenticated readiness probe after seeding, and fails the required row if any Worker or Playwright step fails. Each run writes a unique `test-results/programs-d1-runs/<run-id>/` artifact directory; the runner never replaces an earlier failed run with a later clean retry.
 
 Any `*_TARGET_URL` override must stay fail-closed: use HTTP only for loopback local testing, or HTTPS without embedded credentials for the reserved `efcc-auth-*.efcc-ggc.workers.dev` (acceptance) / `efcc-dev-*.efcc-ggc.workers.dev` (dev-testing) hostnames.
 

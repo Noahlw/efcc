@@ -1,11 +1,11 @@
-# GitHub Actions: D1 auth acceptance gate.
+# GitHub Actions: D1 auth and local Programs acceptance gates.
 #
 # The rebuilt login boundary is a Cloudflare Worker backed by D1. This
 # workflow no longer drives the retired Apps Script /exec role-nav suite or
 # decodes Google storage-state cookies. It is manual-only: an operator
-# dispatches it to run the workerd D1 auth contract or the deployed Worker
-# smoke after provisioning an isolated D1 database and seeded acceptance
-# accounts. Fast CI is the single automatic gate.
+# dispatches it to run the full local Programs/Worker/D1 prerequisite, the
+# workerd D1 auth contract, or the deployed Worker smoke after provisioning
+# isolated disposable fixtures. Fast CI is the single automatic gate.
 #
 # The browser UI still uses the legacy /api/v1/rpc surface in this branch, so
 # the deployed job targets the Worker auth API directly with Playwright's
@@ -51,6 +51,48 @@ jobs:
 
       - name: Run D1 auth acceptance contract
         run: pnpm --dir web exec vitest run worker.auth.test.ts lib/auth
+
+  programs-runtime:
+    name: Full Programs runtime (local)
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Enable pnpm (corepack)
+        run: corepack enable
+
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Install root dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install web dependencies
+        run: pnpm --dir web install --frozen-lockfile
+
+      - name: Create disposable local Worker secret
+        run: printf 'EFCC_ACCESS_TOKEN_SECRET="%s"\n' "$(openssl rand -hex 32)" > web/.dev.vars
+
+      - name: Run required single-process Programs journey
+        env:
+          GIT_COMMIT: ${{ github.sha }}
+        run: pnpm verify:programs-runtime
+
+      - name: Upload local Programs runtime evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: programs-runtime-${{ github.run_id }}
+          path: test-results/programs-d1-runs
+          if-no-files-found: ignore
+          retention-days: 14
 
   deployed-auth:
     name: Deployed D1 auth smoke (manual)

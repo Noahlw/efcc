@@ -528,6 +528,22 @@ No production implementation, schema, API, permission, audit, idempotency, scope
 - **Open blocker:** None for T03; T05 remains externally blocked after restack and runtime qualification.
 - **Next eligible ticket:** T05 / #510 after restacking onto rescue.
 - **Review follow-ups (deferred, non-blocking):** two-axis reviewers flagged hardening of pre-existing outer-checkout discovery/SHA/REF assertions (vacuous array-only assertions, SHA-selection truthfulness, temp-fixture extraction) — record as follow-up, not a CI blocker; production `getAffectedFiles` remains fail-closed.
+
+#### T05 / #510 — Stabilize full Programs/Worker/D1 runtime
+
+- **Status:** `BLOCKED`
+- **Base rescue SHA:** `f9e0921c556ec1aaceed76961c421609a3d6b144`
+- **Reviewed implementation SHA / merge SHA:** pending / pending
+- **Rollback boundary:** `f9e0921`
+- **Branch / PR:** `rescue/t05-runtime-stability` / pending
+- **Worktree:** `/home/ubuntu/efcc-rescue-t05-runtime-stability`
+- **Delivered outcome:** The local runner now pre-bundles the Worker, records every clean-seed stage and causal signal, coalesces request-scoped capability projections, and batches enrollment mutation audits. The required full journey remains blocked by the upstream Wrangler `ProxyWorker` failure path: `wrangler` 4.127.1 fatally exits after a rejected forward with `Network connection lost.` before the UserWorker receives the request.
+- **Tests:** `pnpm test:runtime` (11 passed), `pnpm test:workerd` (44 files / 609 passed), `pnpm --dir web test:components` (60 files / 877 passed), and `pnpm verify:precommit` pass. The required local acceptance run remains red at 22/201 tests with downstream `ERR_CONNECTION_REFUSED` after the first ProxyWorker failure; its preserved causal artifacts are under `test-results/programs-d1-runs/20260903t115753975z/`, including `wrangler.log` and a `failure-summary.json` with `proxyFailure: Error in ProxyController: Error inside ProxyWorker`.
+- **Code review:** Pending T05 implementation review; cannot claim `STACK_GREEN` while the prescribed runtime still exits.
+- **Human approval:** `N/A`
+- **Preservation impact:** T05 is limited to the local Worker/D1 acceptance seam, disposable fixtures, runtime artifacts, and required gate wiring; no production data or Apps Script/Sheets access.
+- **Open blocker:** B-003 remains open. The failure is the known upstream `Error inside ProxyWorker` regression ([workers-sdk #15317](https://github.com/cloudflare/workers-sdk/issues/15317)); the available remedy ([workers-sdk #15448](https://github.com/cloudflare/workers-sdk/pull/15448)) is still open/blocked and cannot be vendored or referenced as an unmerged dependency without owner approval.
+- **Next eligible ticket:** T06 / #511 only after T05 reaches `STACK_GREEN`.
 ---
 
 ## 15. Human approval queue
@@ -575,7 +591,7 @@ Only record blockers or decisions that affect more than one ticket or the next p
 |---|---|---|---|---|---|---|
 | B-001 | Governance | Starting state | Existing blanket layout-CVA rule conflicts with approved semantic-CVA/composition ownership | T02 / #507 | `RESOLVED` | Governance authority merged via #545; root guidance delegates composition/layout to patterns/routes |
 | B-002 | Verification | Starting state | Four normalized Worker suites are excluded from the required aggregate | T04 / #509 | `RESOLVED` | T04 is merged into rescue at `6e7428b6` from reviewed implementation `cdbe475`; aggregate passes 43 files / 605 tests with no exclusions |
-| B-003 | Runtime | Phase F | Full Programs/Worker/D1 journey is unreliable | T05 / #510 | `OPEN` | — |
+| B-003 | Runtime | Phase F | Full Programs/Worker/D1 journey is unreliable | T05 / #510 | `OPEN` | The required local run now records clean seeds and preserves first-cause evidence, but `wrangler` 4.127.1 still exits on the upstream `Error inside ProxyWorker` / `Network connection lost.` path before the failing request reaches the UserWorker; the known remedy is open/blocked in [workers-sdk #15448](https://github.com/cloudflare/workers-sdk/pull/15448), tracked in [workers-sdk #15317](https://github.com/cloudflare/workers-sdk/issues/15317). T05 remains blocked; do not mark `STACK_GREEN` or hide the required row with isolated retries. |
 | D-001 | Decision | Planning | `SALVAGE STACK` vs `SELECTIVE REPLAY` remains undecided until Programs tracer evidence | T12 / #517 + owner | `PENDING` | — |
 | B-004 | Reconciliation | Starting state | Required `rescue/ui-control-recovery` branch and intended tracker path were absent at session entry | Phase 0 / owner | `RESOLVED` | Rescue branch and tracker bootstrap are committed; branch is based on the frozen Phase F SHA |
 | D-002 | Decision | 2026-09-03 | Owner approved ticket-isolated stacked PR delivery within each phase; `STACK_GREEN` unlocks child implementation but not approval or merge | Owner / #505 | `ACCEPTED` | [Owner-approved execution-model amendment](https://github.com/Noahlw/efcc/issues/505#issuecomment-5514680835) |

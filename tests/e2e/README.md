@@ -16,9 +16,7 @@ Each Playwright config has a positive `testMatch`; suites must not cross loaders
 | `shell-geometry.config.ts` | `pnpm test:shell-geometry` | Pinned Chromium shell geometry at 320/390/600/799/800/1024/1440 CSS px (TK-09): critical anchors, no overflow/obstruction, numeric CSS-pixel evidence only (TK-12). |
 | `role-hierarchy-geometry.config.ts` | `pnpm test:role-hierarchy-geometry` | #478 H-20 pinned hierarchy/list/detail/rename geometry at 320/390/600/799/800/1024/1440 CSS px; numeric CSS-pixel evidence only (no screenshots). |
 
-The identity 900px seam is covered by the `desktop-900` project in
-`s4-management-hardening.config.ts`; the focused static identity report is
-W7-only by design.
+The identity 900px seam is covered by the `desktop-900` project in `s4-management-hardening.config.ts`; the focused static identity report is W7-only by design.
 
 `pnpm test:shell-responsive` builds the Next static export and serves it through `tests/e2e/serve-static.ts` on port `4173`. It runs the mobile and desktop projects without a Worker, D1, Google session, or network target.
 
@@ -37,16 +35,15 @@ cp web/.dev.vars.example web/.dev.vars
 openssl rand -hex 32 # paste the value into EFCC_ACCESS_TOKEN_SECRET
 ```
 
-Use two terminals:
+Use two terminals. The sequence below is safe only when no authenticated request reaches the Worker before the direct local seed completes; otherwise the seeder can race an already-open D1 runtime:
 
 ```sh
-# terminal 1
+# terminal 1 — keep this process running; do not navigate before seeding
 pnpm dev:local
 
 # terminal 2
-pnpm db:seed:local       # E2E_ accounts + disposable identity foundation
-pnpm db:seed:disposable  # role-only rerun; --local and E2E_ rows only
-pnpm db:seed:demo        # E2E_DEMO_ department, programs, and generated events
+pnpm db:seed:local       # resets/seeds disposable E2E_ fixtures
+pnpm db:seed:demo        # seeds E2E_DEMO_ programs and generated events
 pnpm exec playwright test -c tests/e2e/programs-d1.config.ts
 ```
 
@@ -62,6 +59,16 @@ pnpm exec playwright test -c tests/e2e/programs-d1.config.ts
 The local auth suite defaults to those fixtures. The account seed resets `E2E_legacy` to its legacy-PIN state so the upgrade test can be rerun. The other D1 suites use the active three accounts by default; `attendance-d1` creates its own disposable domain rows for each run. `db:seed:demo` is local-only and refuses non-loopback targets; it creates one `E2E_DEMO_` department, four programs, and generated events for the recurring program.
 
 The local stack reads `web/.dev.vars`. Start from `web/.dev.vars.example`; the local access-token secret is required for protected routes. Never put production credentials, cookies, or tokens in that file.
+
+## Required single-process Programs runtime gate
+
+After creating `web/.dev.vars`, run the complete disposable local prerequisite with one Worker process:
+
+```sh
+pnpm verify:programs-runtime
+```
+
+The runner builds the static export, applies local migrations, waits only for the loopback listener, resets and seeds `E2E_`/`E2E_DEMO_` fixtures before its authenticated D1 health probe, and executes the unfiltered `tests/e2e/programs-d1.config.ts` journey. It exits non-zero when the Worker or any required Playwright row fails. Every invocation gets a new timestamped directory under `test-results/programs-d1-runs/` with `run.json`, `worker.log`, `wrangler.log`, `seed.log`, `playwright.log`, the built-in Playwright JSON result, and `failure-summary.json`; later clean retries never overwrite a failed stale-fixture run. The failure summary keeps the first ProxyController/workerd marker separate from downstream connection refusals or resets.
 
 ## Optional deployed smoke
 
@@ -104,14 +111,9 @@ pnpm exec tsx tests/e2e/plan-doc-appender.ts \
   --target-url=http://127.0.0.1:8787
 ```
 
-The explicit post-migration schema smoke is:
-`pnpm exec tsx tests/e2e/inspect-local-identity-schema.ts`
-It queries local `sqlite_master` and `PRAGMA` table-valued functions, asserts the
-seven normalized identity tables plus role-free `accounts` and
-`registration_requests`, and rejects pre-019 tables and retired role-guard
-triggers.
+The explicit post-migration schema smoke is: `pnpm exec tsx tests/e2e/inspect-local-identity-schema.ts` It queries local `sqlite_master` and `PRAGMA` table-valued functions, asserts the seven normalized identity tables plus role-free `accounts` and `registration_requests`, and rejects pre-019 tables and retired role-guard triggers.
 
-Geometry reports live under `tests/e2e/test-results/phase-f/<suite>/results.json`. Route-only reports remain at their suite-specific paths such as `tests/e2e/test-results/auth-d1-results.json`, `live-ui-results.json`, and `attendance-d1-results.json` when those suites pass. The required single-process `programs-d1` journey is represented by its Playwright line reporter and failure-log directory; a missing or failed report is not evidence. The rendered JSON/HTML, the acceptance trace, `docs/qa/2026-09-01-s4-phase-f-release-gate.md`, and `docs/qa/2026-09-01-s4-phase-f-audit-dispositions.md` are the reviewable outputs. Numeric evidence proves DOM/API geometry and state only; it does not claim human keyboard/AT, real-device camera/touch, native print-preview, forced-colors, zoom/reflow, or text-spacing outcomes.
+Geometry reports live under `tests/e2e/test-results/phase-f/<suite>/results.json`. Route-only reports remain at their suite-specific paths such as `tests/e2e/test-results/auth-d1-results.json`, `live-ui-results.json`, and `attendance-d1-results.json` when those suites pass. The required single-process `programs-d1` journey writes the built-in JSON report and raw Worker/seed/Playwright logs under the unique `test-results/programs-d1-runs/<run-id>/` directory; failed runs remain reviewable and a missing or failed report is not evidence. The rendered JSON/HTML, the acceptance trace, `docs/qa/2026-09-01-s4-phase-f-release-gate.md`, and `docs/qa/2026-09-01-s4-phase-f-audit-dispositions.md` are the reviewable outputs. Numeric evidence proves DOM/API geometry and state only; it does not claim human keyboard/AT, real-device camera/touch, native print-preview, forced-colors, zoom/reflow, or text-spacing outcomes.
 
 Worker-backed Phase F runs use `http://127.0.0.1:8787`, local D1, pinned Chromium, and disposable `E2E_`, `E2E_DEMO_`, or `E2E_DISPOSABLE_` fixtures. The static-shell suite intentionally runs against its local `4173` server without Worker/D1. No suite mutates Apps Script, Google Sheets, Cloudflare production, remote D1, or a non-disposable account. A complete matrix failure remains a release blocker; unavailable human rows stay `UNCLAIMED`.
 

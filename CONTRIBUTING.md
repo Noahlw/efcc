@@ -85,10 +85,10 @@ Run only the relevant suite when iterating locally:
 
 The required `READY` evidence is deterministic checks plus the relevant Playwright suite against local `wrangler dev` and local D1 at `http://127.0.0.1:8787`. This exercises the Worker, static assets, cookies, and database without touching a Cloudflare account.
 
-- Start the stack with `pnpm dev:local`.
-- Seed disposable accounts with `pnpm db:seed:local`.
-- Seed the walkthrough dataset with `pnpm db:seed:demo`.
+- Start the stack with `pnpm dev:local`; do not issue an authenticated request before seeding.
+- Seed disposable accounts with `pnpm db:seed:local`, then seed the walkthrough dataset with `pnpm db:seed:demo`.
 - Run the suite named by the changed capability under `tests/e2e/`.
+- For the complete Programs prerequisite, run `pnpm verify:programs-runtime` after creating `web/.dev.vars`; it owns build, local migrations, disposable reset/seed, listener readiness, one Worker process, and the unfiltered Programs Playwright journey. It writes timestamped failure-preserving artifacts under `test-results/programs-d1-runs/` and is local-only.
 
 Cloudflare deployment is optional/manual production-promotion evidence. If an operator runs it, use a fresh reserved `efcc-auth-*`/`efcc-dev-*` host and disposable `E2E_` fixtures; the workflow remains fail-closed. A deployed result never replaces the local gate and a missing manual run does not block repository `READY`.
 

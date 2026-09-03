@@ -1807,9 +1807,10 @@ export class D1WorkspaceStore implements WorkspaceStore {
   }
 
   async createEnrollmentRequest(
-    input: EnrollmentRequestInput
+    input: EnrollmentRequestInput,
+    audit?: AuditInput
   ): Promise<EnrollmentRequestRow> {
-    await this.db
+    const insertStmt = this.db
       .prepare(
         `INSERT INTO enrollment_requests (request_id, program_id, member_user_id,
            status, submitted_at, request_version)
@@ -1822,8 +1823,22 @@ export class D1WorkspaceStore implements WorkspaceStore {
         input.status,
         input.submitted_at,
         input.request_version
-      )
-      .run();
+      );
+    if (audit) {
+      await this.db.batch([insertStmt, this.auditInsertStatement(audit)]);
+      return {
+        request_id: input.request_id,
+        program_id: input.program_id,
+        member_user_id: input.member_user_id,
+        status: input.status,
+        submitted_at: input.submitted_at,
+        decided_by: null,
+        decided_at: null,
+        decision_note: null,
+        request_version: input.request_version,
+      };
+    }
+    await insertStmt.run();
     const row = await this.findEnrollmentRequestById(input.request_id);
     if (!row) {
       throw new WorkspaceNotFoundError("enrollment_request", input.request_id);
@@ -2201,18 +2216,29 @@ export class D1WorkspaceStore implements WorkspaceStore {
   async cancelEnrollment(
     id: string,
     cancelledBy: string,
-    cancelledAt: string
+    cancelledAt: string,
+    audit?: AuditInput
   ): Promise<EnrollmentRow | null> {
-    const result = await this.db
+    const updateStmt = this.db
       .prepare(
         `UPDATE enrollments
          SET status = 'Cancelled', cancelled_by = ?, cancelled_at = ?
          WHERE enrollment_id = ? AND status = 'Active'`
       )
-      .bind(cancelledBy, cancelledAt, id)
-      .run();
-    if ((result.meta?.changes ?? 0) === 0) {
-      return null;
+      .bind(cancelledBy, cancelledAt, id);
+    if (audit) {
+      const results = await this.db.batch([
+        updateStmt,
+        this.auditCancellationInsertGated(audit, id, cancelledBy, cancelledAt),
+      ]);
+      if ((results[0]?.meta?.changes ?? 0) === 0) {
+        return null;
+      }
+    } else {
+      const result = await updateStmt.run();
+      if ((result.meta?.changes ?? 0) === 0) {
+        return null;
+      }
     }
     return this.findEnrollmentById(id);
   }
@@ -2275,7 +2301,6 @@ export class D1WorkspaceStore implements WorkspaceStore {
         input.correlation_id
       );
   }
-
   private auditInsertGated(
     input: AuditInput,
     enrollmentId: string
@@ -2302,6 +2327,42 @@ export class D1WorkspaceStore implements WorkspaceStore {
         input.outcome,
         input.correlation_id,
         enrollmentId
+      );
+  }
+
+  private auditCancellationInsertGated(
+    input: AuditInput,
+    enrollmentId: string,
+    cancelledBy: string,
+    cancelledAt: string
+  ): D1PreparedStatement {
+    return this.db
+      .prepare(
+        `INSERT INTO audit_events (audit_id, inserted_at, actor_user_id, action,
+           entity_type, entity_id, old_value_json, new_value_json, reason, outcome,
+           correlation_id)
+         SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+           FROM enrollments e
+          WHERE e.enrollment_id = ?
+            AND e.status = 'Cancelled'
+            AND e.cancelled_by = ?
+            AND e.cancelled_at = ?`
+      )
+      .bind(
+        input.audit_id,
+        input.inserted_at,
+        input.actor_user_id,
+        input.action,
+        input.entity_type,
+        input.entity_id,
+        input.old_value_json,
+        input.new_value_json,
+        input.reason,
+        input.outcome,
+        input.correlation_id,
+        enrollmentId,
+        cancelledBy,
+        cancelledAt
       );
   }
 
