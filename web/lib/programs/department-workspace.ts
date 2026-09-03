@@ -70,7 +70,6 @@ import type {
   DepartmentLifecycle,
   DepartmentRow,
   DepartmentUpdate,
-  EnrollmentRequestInput,
   EnrollmentRequestRow,
   EnrollmentRow,
   EventAvailability,
@@ -693,17 +692,11 @@ function isPendingEnrollmentConstraint(error: unknown): boolean {
     message.includes("enrollment_requests.member_user_id")
   );
 }
+
 export class DepartmentWorkspace {
   readonly store: WorkspaceStore;
   readonly authorizer: CapabilityAuthorizer;
-  private readonly departmentModulesInFlight = new Map<
-    string,
-    Promise<DepartmentModuleRow[]>
-  >();
-  private readonly managementDirectoryInFlight = new Map<
-    string,
-    Promise<ManagementDirectoryView>
-  >();
+
   constructor(store: WorkspaceStore, authorizer: CapabilityAuthorizer) {
     this.store = store;
     this.authorizer = authorizer;
@@ -829,24 +822,6 @@ export class DepartmentWorkspace {
     return Promise.all(rows.map((row) => this.departmentView(ctx, row)));
   }
   async listManagementDirectory(
-    ctx: AuthorizationContext
-  ): Promise<ManagementDirectoryView> {
-    const existing = this.managementDirectoryInFlight.get(ctx.actorUserId);
-    if (existing) {
-      return existing;
-    }
-    const pending = this.buildManagementDirectory(ctx);
-    this.managementDirectoryInFlight.set(ctx.actorUserId, pending);
-    const clear = () => {
-      if (this.managementDirectoryInFlight.get(ctx.actorUserId) === pending) {
-        this.managementDirectoryInFlight.delete(ctx.actorUserId);
-      }
-    };
-    void pending.then(clear, clear);
-    return pending;
-  }
-
-  private async buildManagementDirectory(
     ctx: AuthorizationContext
   ): Promise<ManagementDirectoryView> {
     const allDepartments = await this.listDepartments(ctx);
@@ -2483,25 +2458,6 @@ export class DepartmentWorkspace {
     ctx: AuthorizationContext,
     row: DepartmentRow
   ): Promise<DepartmentView> {
-    if (this.authorizer.departmentCapabilities) {
-      const caps = await this.authorizer.departmentCapabilities(
-        ctx,
-        row.department_id
-      );
-      return {
-        ...row,
-        capabilities: {
-          manage: caps[CAPABILITY.DEPARTMENT_MANAGE] === true,
-          publish: caps[CAPABILITY.DEPARTMENT_PUBLISH] === true,
-          module_configure:
-            caps[CAPABILITY.DEPARTMENT_MODULE_CONFIGURE] === true,
-          manager_assign: caps[CAPABILITY.DEPARTMENT_MANAGER_ASSIGN] === true,
-          role_read: caps[CAPABILITY.ROLE_READ] === true,
-          role_assign: caps[CAPABILITY.ROLE_ASSIGN] === true,
-          role_revoke: caps[CAPABILITY.ROLE_REVOKE] === true,
-        },
-      };
-    }
     const [
       manage,
       publish,
@@ -2555,22 +2511,6 @@ export class DepartmentWorkspace {
       departmentId: row.department_id,
       programId: row.program_id,
     };
-    if (this.authorizer.programCapabilities) {
-      const caps = await this.authorizer.programCapabilities(
-        ctx,
-        row.program_id,
-        row.department_id
-      );
-      return {
-        manage: caps[CAPABILITY.PROGRAM_MANAGE] === true,
-        publish: caps[CAPABILITY.PROGRAM_PUBLISH] === true,
-        enroll: caps[CAPABILITY.PROGRAM_ENROLL] === true,
-        leader_assign: caps[CAPABILITY.PROGRAM_LEADER_ASSIGN] === true,
-        role_read: caps[CAPABILITY.ROLE_READ] === true,
-        role_assign: caps[CAPABILITY.ROLE_ASSIGN] === true,
-        role_revoke: caps[CAPABILITY.ROLE_REVOKE] === true,
-      };
-    }
     const [
       manage,
       publish,
@@ -2618,29 +2558,11 @@ export class DepartmentWorkspace {
     return program;
   }
 
-  private listDepartmentModulesInFlight(
-    departmentId: string
-  ): Promise<DepartmentModuleRow[]> {
-    const existing = this.departmentModulesInFlight.get(departmentId);
-    if (existing) {
-      return existing;
-    }
-    const pending = this.store.listDepartmentModules(departmentId);
-    this.departmentModulesInFlight.set(departmentId, pending);
-    const clear = () => {
-      if (this.departmentModulesInFlight.get(departmentId) === pending) {
-        this.departmentModulesInFlight.delete(departmentId);
-      }
-    };
-    void pending.then(clear, clear);
-    return pending;
-  }
-
   private async isModuleEnabled(
     departmentId: string,
     moduleKey: ModuleKey = MODULE_KEY.PROGRAM_CATALOG
   ): Promise<boolean> {
-    const modules = await this.listDepartmentModulesInFlight(departmentId);
+    const modules = await this.store.listDepartmentModules(departmentId);
     return modules.some(
       (module) => module.module_key === moduleKey && module.enabled === 1
     );
@@ -4105,28 +4027,16 @@ export class DepartmentWorkspace {
       throw new DuplicateEnrollmentError(programId, ctx.actorUserId);
     }
     const now = new Date().toISOString();
-    const requestId = crypto.randomUUID();
-    const input: EnrollmentRequestInput = {
-      request_id: requestId,
-      program_id: programId,
-      member_user_id: ctx.actorUserId,
-      status: "Pending",
-      submitted_at: now,
-      request_version: 1,
-    };
-    const auditRow = this.buildAuditRow(
-      ctx,
-      "ENROLLMENT_REQUEST_CREATE",
-      "enrollment_request",
-      requestId,
-      "SUCCESS",
-      null,
-      input,
-      correlationId
-    );
     let row: EnrollmentRequestRow;
     try {
-      row = await this.store.createEnrollmentRequest(input, auditRow);
+      row = await this.store.createEnrollmentRequest({
+        request_id: crypto.randomUUID(),
+        program_id: programId,
+        member_user_id: ctx.actorUserId,
+        status: "Pending",
+        submitted_at: now,
+        request_version: 1,
+      });
     } catch (error) {
       if (!isPendingEnrollmentConstraint(error)) {
         throw error;
@@ -4143,6 +4053,16 @@ export class DepartmentWorkspace {
       );
       throw new DuplicateEnrollmentError(programId, ctx.actorUserId);
     }
+    await this.audit(
+      ctx,
+      "ENROLLMENT_REQUEST_CREATE",
+      "enrollment_request",
+      row.request_id,
+      "SUCCESS",
+      null,
+      row,
+      correlationId
+    );
     return row;
   }
 
@@ -4690,27 +4610,10 @@ export class DepartmentWorkspace {
       program.department_id,
       MODULE_KEY.ENROLLMENT
     );
-    const now = new Date().toISOString();
-    const auditRow = this.buildAuditRow(
-      ctx,
-      "ENROLLMENT_CANCEL",
-      "enrollment",
-      enrollmentId,
-      "SUCCESS",
-      enrollment,
-      {
-        ...enrollment,
-        status: "Cancelled",
-        cancelled_by: ctx.actorUserId,
-        cancelled_at: now,
-      },
-      correlationId
-    );
     const cancelled = await this.store.cancelEnrollment(
       enrollmentId,
       ctx.actorUserId,
-      now,
-      auditRow
+      new Date().toISOString()
     );
     if (!cancelled) {
       await this.audit(
@@ -4725,6 +4628,16 @@ export class DepartmentWorkspace {
       );
       return enrollment;
     }
+    await this.audit(
+      ctx,
+      "ENROLLMENT_CANCEL",
+      "enrollment",
+      enrollmentId,
+      "SUCCESS",
+      enrollment,
+      cancelled,
+      correlationId
+    );
     return cancelled;
   }
 }

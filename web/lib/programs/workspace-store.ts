@@ -705,8 +705,7 @@ export interface WorkspaceStore {
   ) => Promise<GenerationRunRow>;
 
   createEnrollmentRequest: (
-    input: EnrollmentRequestInput,
-    audit?: AuditInput
+    input: EnrollmentRequestInput
   ) => Promise<EnrollmentRequestRow>;
   findEnrollmentRequestById: (
     id: string
@@ -777,8 +776,7 @@ export interface WorkspaceStore {
   cancelEnrollment: (
     id: string,
     cancelledBy: string,
-    cancelledAt: string,
-    audit?: AuditInput
+    cancelledAt: string
   ) => Promise<EnrollmentRow | null>;
   listProgramIdentityAssignments: (
     programId: string
