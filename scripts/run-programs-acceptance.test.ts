@@ -5,7 +5,8 @@ import {
   artifactPaths,
   classifyRuntimeSignals,
   redactSecrets,
-  RUNTIME_COMMANDS,
+  runtimeCommands,
+  runtimeEnvironment,
 } from "./run-programs-acceptance";
 
 describe("T05 local Programs runtime runner", () => {
@@ -21,10 +22,16 @@ describe("T05 local Programs runtime runner", () => {
     "https://127.0.0.1:8787/",
     "http://example.test:8787/",
     "http://user:password@127.0.0.1:8787/",
-    "http://127.0.0.1:8788/",
+    "http://127.0.0.1:1023/",
     "not-a-url",
   ])("rejects non-local target %s", (target) => {
     expect(() => assertLocalTarget(target)).toThrow();
+  });
+
+  test("allows an alternate unprivileged loopback port", () => {
+    expect(assertLocalTarget("http://127.0.0.1:8788/").href).toBe(
+      "http://127.0.0.1:8788/"
+    );
   });
 
   test("allocates a separate result and output path per run", () => {
@@ -40,7 +47,20 @@ describe("T05 local Programs runtime runner", () => {
     expect(paths.wranglerLog).toBe(
       "/tmp/efcc-t05/20260903t051000000z/wrangler.log"
     );
+    expect(paths.persistence).toBe(
+      "/tmp/efcc-t05/20260903t051000000z/wrangler-state"
+    );
     expect(() => artifactPaths("/tmp/efcc-t05", "../overwrite")).toThrow();
+  });
+
+  test("uses one loopback target for Programs and demo seed commands", () => {
+    const paths = artifactPaths("/tmp/efcc-t05", "20260903t051000000z");
+    const target = assertLocalTarget("http://127.0.0.1:8788/");
+    const environment = runtimeEnvironment(target, paths, {});
+
+    expect(environment.PROGRAMS_TARGET_URL).toBe("http://127.0.0.1:8788");
+    expect(environment.DEMO_TARGET_URL).toBe(environment.PROGRAMS_TARGET_URL);
+    expect(environment.PROGRAMS_PERSIST_TO).toBe(paths.persistence);
   });
 
   test("redacts local secrets before writing a failure summary", () => {
@@ -80,14 +100,50 @@ describe("T05 local Programs runtime runner", () => {
     expect(summary.proxyFailure).toContain("Error in ProxyController");
   });
 
-  test("runs the documented clean local sequence", () => {
-    expect(RUNTIME_COMMANDS.map(({ name }) => name)).toEqual([
-      "worker",
+  test("runs direct D1 preparation before one Worker and browser journey", () => {
+    const commands = runtimeCommands(
+      "/tmp/efcc-t05/20260903t051000000z/wrangler-state"
+    );
+
+    expect(commands.map(({ name }) => name)).toEqual([
+      "build",
+      "bundle",
+      "migrate",
       "seed-local",
+      "worker",
       "seed-demo",
       "programs-playwright",
     ]);
-    expect(RUNTIME_COMMANDS[3]?.args).toEqual([
+    expect(commands[2]?.args).toEqual([
+      "--dir",
+      "web",
+      "exec",
+      "wrangler",
+      "d1",
+      "migrations",
+      "apply",
+      "efcc-identity",
+      "--local",
+      "--persist-to",
+      "/tmp/efcc-t05/20260903t051000000z/wrangler-state",
+    ]);
+    expect(commands[4]?.args).toEqual([
+      "--dir",
+      "web",
+      "exec",
+      "wrangler",
+      "dev",
+      ".wrangler/local-bundle/worker.js",
+      "--config",
+      "wrangler.jsonc",
+      "--local",
+      "--no-bundle",
+      "--port",
+      "8787",
+      "--persist-to",
+      "/tmp/efcc-t05/20260903t051000000z/wrangler-state",
+    ]);
+    expect(commands[6]?.args).toEqual([
       "exec",
       "playwright",
       "test",

@@ -47,6 +47,8 @@ pnpm db:seed:demo        # seeds E2E_DEMO_ programs and generated events
 pnpm exec playwright test -c tests/e2e/programs-d1.config.ts
 ```
 
+The two-terminal sequence is an interactive debugging workflow. It is not the canonical T05 gate because it uses Wrangler's implicit local state. The canonical gate is the single-process `pnpm verify:programs-runtime` command below.
+
 `pnpm dev:local` builds the Next static export and applies local migrations. `pnpm db:seed:local` is safe to rerun; it first resets only disposable `E2E_`/`E2E_DEMO_` domain rows, seeds the account fixtures, and then invokes the local-only `pnpm db:seed:disposable` identity seed. The identity seed is additive (`INSERT OR IGNORE`), contains only `E2E_DISPOSABLE_` rows, and never targets a remote or non-disposable database.
 
 | Username | Credential | Seeded identity context |
@@ -68,7 +70,7 @@ After creating `web/.dev.vars`, run the complete disposable local prerequisite w
 pnpm verify:programs-runtime
 ```
 
-The runner builds the static export, applies local migrations, waits only for the loopback listener, resets and seeds `E2E_`/`E2E_DEMO_` fixtures before its authenticated D1 health probe, and executes the unfiltered `tests/e2e/programs-d1.config.ts` journey. It exits non-zero when the Worker or any required Playwright row fails. Every invocation gets a new timestamped directory under `test-results/programs-d1-runs/` with `run.json`, `worker.log`, `wrangler.log`, `seed.log`, `playwright.log`, the built-in Playwright JSON result, and `failure-summary.json`; later clean retries never overwrite a failed stale-fixture run. The failure summary keeps the first ProxyController/workerd marker separate from downstream connection refusals or resets.
+The runner executes one explicit sequence: build the static export, bundle the Worker, apply local migrations with `--local --persist-to <run>/wrangler-state`, direct-seed disposable identity data with the same persistence path while no Worker is serving, start exactly one long-lived loopback Worker on the selected local port with the same persistence path, wait for listener and auth readiness, seed the demo/domain state through the real Worker API, and execute the unfiltered `tests/e2e/programs-d1.config.ts` journey with retries disabled. It exits non-zero when the Worker or any required Playwright row fails. Every invocation gets a new timestamped directory under `test-results/programs-d1-runs/` with `run.json`, `prepare.log`, `worker.log`, `wrangler.log`, `seed.log`, `playwright.log`, the built-in Playwright JSON result, `wrangler-state/`, and `failure-summary.json`; later clean runs never overwrite a failed stale-fixture run. The failure summary keeps the first ProxyController/workerd marker separate from downstream connection refusals or resets.
 
 ## Optional deployed smoke
 

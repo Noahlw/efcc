@@ -88,7 +88,7 @@ The required `READY` evidence is deterministic checks plus the relevant Playwrig
 - Start the stack with `pnpm dev:local`; do not issue an authenticated request before seeding.
 - Seed disposable accounts with `pnpm db:seed:local`, then seed the walkthrough dataset with `pnpm db:seed:demo`.
 - Run the suite named by the changed capability under `tests/e2e/`.
-- For the complete Programs prerequisite, run `pnpm verify:programs-runtime` after creating `web/.dev.vars`; it owns build, local migrations, disposable reset/seed, listener readiness, one Worker process, and the unfiltered Programs Playwright journey. It writes timestamped failure-preserving artifacts under `test-results/programs-d1-runs/` and is local-only.
+- For the complete Programs prerequisite, run `pnpm verify:programs-runtime` after creating `web/.dev.vars`; it owns build, Worker bundling, local migrations with one run-specific `--persist-to` directory, disposable reset/seed before the Worker starts, listener/auth readiness, one Worker process, real-Worker demo seeding, and the unfiltered Programs Playwright journey with retries disabled. It writes timestamped failure-preserving artifacts under `test-results/programs-d1-runs/` and is local-only. Set `PROGRAMS_TARGET_URL` to another loopback port only when the default `8787` is occupied; the default remains `http://127.0.0.1:8787`.
 
 Cloudflare deployment is optional/manual production-promotion evidence. If an operator runs it, use a fresh reserved `efcc-auth-*`/`efcc-dev-*` host and disposable `E2E_` fixtures; the workflow remains fail-closed. A deployed result never replaces the local gate and a missing manual run does not block repository `READY`.
 

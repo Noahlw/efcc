@@ -2,6 +2,7 @@ import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
 const DATABASE = "efcc-identity";
+const persistTo = process.env.PROGRAMS_PERSIST_TO?.trim() ?? "";
 const LEGACY_TABLES = [
   "role_capabilities",
   "department_managers",
@@ -12,6 +13,10 @@ const LEGACY_TABLES = [
 
 interface WranglerResult {
   results?: { name?: string }[];
+}
+
+function persistenceArgs(): string[] {
+  return persistTo ? ["--persist-to", persistTo] : [];
 }
 
 function readTableNames(): Set<string> {
@@ -26,6 +31,7 @@ function readTableNames(): Set<string> {
       "execute",
       DATABASE,
       "--local",
+      ...persistenceArgs(),
       "--json",
       "--command",
       "SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%';",
@@ -64,6 +70,7 @@ function main(): void {
         "execute",
         DATABASE,
         "--local",
+        ...persistenceArgs(),
         "--file",
         seedFile,
       ],

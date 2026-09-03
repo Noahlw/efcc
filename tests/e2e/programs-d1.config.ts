@@ -56,13 +56,9 @@ export default defineConfig({
   // browser then shows its own network-error interstitial instead of the
   // app. Confirmed via trace inspection: the failing locator wait ran the
   // full timeout while the underlying click's request never completed and
-  // the server logged nothing (the request never reached the app layer),
-  // so it is a transient connectivity gap, not a slow render -- extending
-  // `expect.timeout` would not help a request that already failed. A fresh
-  // retry (new navigation) reliably recovers; this mirrors the existing
-  // `retries: 1` in tests/e2e/responsive.config.ts for the same class of
-  // local-server flake. A genuinely broken assertion still fails on retry.
-  retries: 1,
+  // The runtime gate must preserve the first failure. Retrying a navigation
+  // could hide a Worker/proxy termination or a broken D1 lifecycle.
+  retries: 0,
   fullyParallel: false,
   workers: 1,
   reporter: [["line"], ["json", { outputFile: resultsFile }]],

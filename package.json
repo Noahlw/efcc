@@ -9,7 +9,7 @@
     "postinstall": "playwright install chromium",
     "bootstrap": "pnpm install --frozen-lockfile && pnpm --dir web install --frozen-lockfile",
     "dev:local": "pnpm --dir web dev:local",
-    "db:seed:local": "tsx tests/e2e/seed-dev-accounts.ts --reset > /tmp/efcc-reset-local.sql && pnpm --dir web exec wrangler d1 execute efcc-identity --local --file=/tmp/efcc-reset-local.sql && tsx tests/e2e/seed-dev-accounts.ts --reset-legacy > /tmp/efcc-seed-local.sql && pnpm --dir web exec wrangler d1 execute efcc-identity --local --file=/tmp/efcc-seed-local.sql && pnpm db:seed:disposable",
+    "db:seed:local": "node --experimental-strip-types tests/e2e/seed-local-d1.ts",
     "db:seed:disposable": "node --experimental-strip-types tests/e2e/seed-disposable-identity.ts",
     "db:seed:demo": "tsx tests/e2e/seed-demo.ts",
     "verify:contraction": "node --experimental-strip-types tests/e2e/verify-phase-f-contraction.ts",

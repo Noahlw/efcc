@@ -37,31 +37,115 @@ type LoggedProcess = {
 };
 
 export const DEFAULT_TARGET_URL = "http://127.0.0.1:8787";
+export const DEFAULT_TARGET_PORT = 8787;
 export const DEFAULT_ARTIFACT_ROOT = "test-results/programs-d1-runs";
 export const PROGRAMS_CONFIG = "tests/e2e/programs-d1.config.ts";
 
-export const RUNTIME_COMMANDS: readonly CommandSpec[] = [
-  { name: "worker", command: "pnpm", args: ["dev:local"] },
-  { name: "seed-local", command: "pnpm", args: ["db:seed:local"] },
-  { name: "seed-demo", command: "pnpm", args: ["db:seed:demo"] },
-  {
-    name: "programs-playwright",
-    command: "pnpm",
-    args: ["exec", "playwright", "test", "-c", PROGRAMS_CONFIG],
-  },
-];
+export function runtimeCommands(
+  persistTo: string,
+  port = DEFAULT_TARGET_PORT
+): readonly CommandSpec[] {
+  if (!path.isAbsolute(persistTo)) {
+    throw new Error("T05 runtime persistence path must be absolute");
+  }
+  if (!Number.isInteger(port) || port < 1024 || port > 65535) {
+    throw new Error("T05 runtime port must be an unprivileged TCP port");
+  }
+
+  return [
+    { name: "build", command: "pnpm", args: ["--dir", "web", "build"] },
+    {
+      name: "bundle",
+      command: "pnpm",
+      args: [
+        "--dir",
+        "web",
+        "exec",
+        "wrangler",
+        "deploy",
+        "--dry-run",
+        "--outdir",
+        ".wrangler/local-bundle",
+      ],
+    },
+    {
+      name: "migrate",
+      command: "pnpm",
+      args: [
+        "--dir",
+        "web",
+        "exec",
+        "wrangler",
+        "d1",
+        "migrations",
+        "apply",
+        "efcc-identity",
+        "--local",
+        "--persist-to",
+        persistTo,
+      ],
+    },
+    { name: "seed-local", command: "pnpm", args: ["db:seed:local"] },
+    {
+      name: "worker",
+      command: "pnpm",
+      args: [
+        "--dir",
+        "web",
+        "exec",
+        "wrangler",
+        "dev",
+        ".wrangler/local-bundle/worker.js",
+        "--config",
+        "wrangler.jsonc",
+        "--local",
+        "--no-bundle",
+        "--port",
+        String(port),
+        "--persist-to",
+        persistTo,
+      ],
+    },
+    { name: "seed-demo", command: "pnpm", args: ["db:seed:demo"] },
+    {
+      name: "programs-playwright",
+      command: "pnpm",
+      args: ["exec", "playwright", "test", "-c", PROGRAMS_CONFIG],
+    },
+  ];
+}
 
 export type ArtifactPaths = {
   directory: string;
   manifest: string;
+  prepareLog: string;
   workerLog: string;
   wranglerLog: string;
   seedLog: string;
   playwrightLog: string;
   results: string;
   playwrightOutput: string;
+  persistence: string;
   failureSummary: string;
 };
+
+export function runtimeEnvironment(
+  target: URL,
+  paths: ArtifactPaths,
+  inherited: NodeJS.ProcessEnv = process.env
+): NodeJS.ProcessEnv {
+  return {
+    ...inherited,
+    CI: "1",
+    FORCE_COLOR: "0",
+    NO_COLOR: "1",
+    PROGRAMS_TARGET_URL: target.origin,
+    DEMO_TARGET_URL: target.origin,
+    PROGRAMS_RESULTS_FILE: paths.results,
+    PROGRAMS_OUTPUT_DIR: paths.playwrightOutput,
+    PROGRAMS_PERSIST_TO: paths.persistence,
+  };
+}
 
 type ManifestStage = {
   name: string;
@@ -86,10 +170,13 @@ export function assertLocalTarget(raw: string): URL {
     target.username ||
     target.password ||
     !["localhost", "127.0.0.1"].includes(target.hostname) ||
-    (target.port !== "" && target.port !== "8787")
+    (target.port !== "" &&
+      (!Number.isInteger(Number(target.port)) ||
+        Number(target.port) < 1024 ||
+        Number(target.port) > 65535))
   ) {
     throw new Error(
-      "T05 runtime gate is local-only: PROGRAMS_TARGET_URL must be an HTTP loopback URL on port 8787 without credentials"
+      "T05 runtime gate is local-only: PROGRAMS_TARGET_URL must be an HTTP loopback URL on an unprivileged port without credentials"
     );
   }
   if (target.port === "") {
@@ -109,12 +196,14 @@ export function artifactPaths(root: string, runId: string): ArtifactPaths {
   return {
     directory,
     manifest: path.join(directory, "run.json"),
+    prepareLog: path.join(directory, "prepare.log"),
     workerLog: path.join(directory, "worker.log"),
     wranglerLog: path.join(directory, "wrangler.log"),
     seedLog: path.join(directory, "seed.log"),
     playwrightLog: path.join(directory, "playwright.log"),
     results: path.join(directory, "programs-d1-results.json"),
     playwrightOutput: path.join(directory, "playwright-output"),
+    persistence: path.join(directory, "wrangler-state"),
     failureSummary: path.join(directory, "failure-summary.json"),
   };
 }
@@ -380,12 +469,16 @@ async function writeFailureSummary(
   playwrightExit: ProcessResult | null,
   secrets: readonly string[]
 ): Promise<void> {
-  const [worker, wrangler, seed, playwright] = await Promise.all([
+  const [prepare, worker, wrangler, seed, playwright] = await Promise.all([
+    readFile(paths.prepareLog, "utf8").catch(() => ""),
     readFile(paths.workerLog, "utf8").catch(() => ""),
     readFile(paths.wranglerLog, "utf8").catch(() => ""),
     readFile(paths.seedLog, "utf8").catch(() => ""),
     readFile(paths.playwrightLog, "utf8").catch(() => ""),
   ]);
+  const prepareSignals = classifyRuntimeSignals(
+    redactSecrets(prepare, secrets)
+  );
   const workerSignals = classifyRuntimeSignals(redactSecrets(worker, secrets));
   const wranglerSignals = classifyRuntimeSignals(
     redactSecrets(wrangler, secrets)
@@ -400,6 +493,7 @@ async function writeFailureSummary(
     schemaVersion: 1,
     workerExit,
     playwrightExit,
+    prepareSignals,
     workerSignals,
     wranglerSignals,
     seedSignals,
@@ -432,6 +526,8 @@ async function main(): Promise<void> {
   await mkdir(path.dirname(paths.directory), { recursive: true });
   await mkdir(paths.directory, { recursive: false });
   await mkdir(paths.playwrightOutput, { recursive: true });
+  await mkdir(paths.persistence, { recursive: true });
+  const commands = runtimeCommands(paths.persistence, Number(target.port));
 
   const manifest: {
     schemaVersion: number;
@@ -455,15 +551,7 @@ async function main(): Promise<void> {
   };
   await writeManifest(paths.manifest, manifest);
 
-  const environment: NodeJS.ProcessEnv = {
-    ...process.env,
-    CI: "1",
-    FORCE_COLOR: "0",
-    NO_COLOR: "1",
-    PROGRAMS_TARGET_URL: target.origin,
-    PROGRAMS_RESULTS_FILE: paths.results,
-    PROGRAMS_OUTPUT_DIR: paths.playwrightOutput,
-  };
+  const environment = runtimeEnvironment(target, paths);
   const workerEnvironment: NodeJS.ProcessEnv = {
     ...environment,
     WRANGLER_LOG_PATH: paths.wranglerLog,
@@ -472,74 +560,74 @@ async function main(): Promise<void> {
   let workerExit: ProcessResult | null = null;
   let playwrightExit: ProcessResult | null = null;
   const seedLog = paths.seedLog;
+  const stageLog = (spec: CommandSpec): string =>
+    spec.name === "seed-local" || spec.name === "seed-demo"
+      ? seedLog
+      : spec.name === "programs-playwright"
+        ? paths.playwrightLog
+        : paths.prepareLog;
+  const runStage = async (spec: CommandSpec): Promise<ProcessResult> => {
+    const stage: ManifestStage = {
+      name: spec.name,
+      command: `${spec.command} ${spec.args.join(" ")}`,
+      status: "running",
+      startedAt: new Date().toISOString(),
+    };
+    manifest.stages.push(stage);
+    await writeManifest(paths.manifest, manifest);
+    const result = await runLogged(spec, cwd, environment, stageLog(spec));
+    if (spec.name === "programs-playwright") {
+      playwrightExit = result;
+    }
+    stage.exit = result;
+    stage.finishedAt = new Date().toISOString();
+    stage.status = result.code === 0 ? "passed" : "failed";
+    await writeManifest(paths.manifest, manifest);
+    if (result.code !== 0) {
+      throw new Error(
+        `${spec.name} failed with exit code ${result.code ?? "null"}`
+      );
+    }
+    return result;
+  };
 
   try {
+    for (const spec of commands.slice(0, 4)) {
+      await runStage(spec);
+    }
+
+    const workerSpec = commands[4];
+    if (!workerSpec) throw new Error("T05 worker command is missing");
     const workerStage: ManifestStage = {
-      name: "worker",
-      command: "pnpm dev:local",
+      name: workerSpec.name,
+      command: `${workerSpec.command} ${workerSpec.args.join(" ")}`,
       status: "running",
       startedAt: new Date().toISOString(),
     };
     manifest.stages.push(workerStage);
     workerProcess = spawnLogged(
-      RUNTIME_COMMANDS[0],
+      workerSpec,
       cwd,
       workerEnvironment,
       paths.workerLog
     );
     await writeManifest(paths.manifest, manifest);
     await waitForWorker(workerProcess, target);
-    for (const spec of RUNTIME_COMMANDS.slice(1, 3)) {
-      const stage: ManifestStage = {
-        name: spec.name,
-        command: `${spec.command} ${spec.args.join(" ")}`,
-        status: "running",
-        startedAt: new Date().toISOString(),
-      };
-      manifest.stages.push(stage);
-      await writeManifest(paths.manifest, manifest);
-      const result = await runLogged(spec, cwd, environment, seedLog);
-      stage.exit = result;
-      stage.finishedAt = new Date().toISOString();
-      stage.status = result.code === 0 ? "passed" : "failed";
-      await writeManifest(paths.manifest, manifest);
-      if (result.code !== 0) {
-        throw new Error(
-          `${spec.name} failed with exit code ${result.code ?? "null"}`
-        );
-      }
-    }
-    // The readiness probe that touches D1 must run after the direct SQL seed.
-    // Starting it before seed-local lets two processes mutate the same local
-    // D1 storage lifecycle and can drop the Worker's RPC connection.
-    await assertHealthyTarget(target);
-    workerStage.status = "passed-readiness";
+    workerStage.status = "listener-ready";
     workerStage.finishedAt = new Date().toISOString();
     await writeManifest(paths.manifest, manifest);
-    const playwrightSpec = RUNTIME_COMMANDS[3];
-    const stage: ManifestStage = {
-      name: playwrightSpec.name,
-      command: `${playwrightSpec.command} ${playwrightSpec.args.join(" ")}`,
-      status: "running",
-      startedAt: new Date().toISOString(),
-    };
-    manifest.stages.push(stage);
+    await assertHealthyTarget(target);
+    workerStage.status = "authenticated-ready";
+    workerStage.finishedAt = new Date().toISOString();
     await writeManifest(paths.manifest, manifest);
-    playwrightExit = await runLogged(
-      playwrightSpec,
-      cwd,
-      environment,
-      paths.playwrightLog
-    );
-    stage.exit = playwrightExit;
-    stage.finishedAt = new Date().toISOString();
-    stage.status = playwrightExit.code === 0 ? "passed" : "failed";
-    await writeManifest(paths.manifest, manifest);
-    if (playwrightExit.code !== 0) {
-      throw new Error(
-        `Programs Playwright journey failed with exit code ${playwrightExit.code ?? "null"}`
-      );
+
+    const seedDemoSpec = commands[5];
+    const playwrightSpec = commands[6];
+    if (!seedDemoSpec || !playwrightSpec) {
+      throw new Error("T05 post-worker commands are missing");
     }
+    await runStage(seedDemoSpec);
+    playwrightExit = await runStage(playwrightSpec);
     manifest.status = "passed";
   } catch (error) {
     manifest.status = "failed";
@@ -556,9 +644,8 @@ async function main(): Promise<void> {
       if (workerStage) {
         workerStage.exit = workerExit;
         workerStage.finishedAt = new Date().toISOString();
-        if (workerStage.status === "running") {
-          workerStage.status = "stopped-after-failure";
-        }
+        workerStage.status =
+          manifest.status === "passed" ? "stopped" : "stopped-after-failure";
       }
     }
     manifest.finishedAt = new Date().toISOString();
