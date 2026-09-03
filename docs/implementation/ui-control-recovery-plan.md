@@ -147,10 +147,10 @@ Update this table at the start and end of every implementation session.
 | Active phase stack | T05 → T06 |
 | Implementation frontier | T05 / #510 `BLOCKED_EXTERNAL_UPSTREAM` after restack and deterministic qualification; T06 may proceed provisionally, but final validation/merge remains gated by T05 |
 | Merge frontier | T05 / #510 → T06 / #511; T05 Draft PR #549 remains blocked pending runtime proof; bounded qualification completed unsuccessfully |
-| Review pending | T05 two-axis implementation review; Draft PR #549 exists and remains truthfully blocked |
+| Review pending | None for T05; Standards and Spec two-axis review passed, while Draft PR #549 remains truthfully blocked by runtime evidence |
 | Human approval pending | None — D-003 records the owner-authorized T03 Contract Change |
 | Active blocker | T05 retains the upstream ProxyWorker blocker; T06 is permitted only as provisional implementation and remains blocked for final validation/merge |
-| Next safe action | Complete final two-axis review of the T05 implementation at stable commit `983dbf95` (with later documentation-only follow-ups), then record/use the authorized provisional T06 sequencing exception |
+| Next safe action | Record/use the authorized provisional T06 sequencing exception and start T06 / #511; keep final validation and merge gated by T05 |
 | Last merged rescue SHA | `d2652bfb11b469f5fa557d3c2c73d69c4a17649d` |
 | Last rollback checkpoint | Frozen Phase F SHA `6edf28c0f8f7058cf992416e7b517824c3178c8` |
 | Parent Spec amendment | [Owner-approved comment](https://github.com/Noahlw/efcc/issues/505#issuecomment-5514680835) |
@@ -375,10 +375,10 @@ The tracker separates the implementation frontier from the merge frontier. `STAC
 | Stack tip | `rescue/t05-runtime-stability` / T05 implementation `983dbf95` plus documentation-only follow-ups, [#549](https://github.com/Noahlw/efcc/pull/549) Draft |
 | Implementation frontier | T05 / #510 is `BLOCKED_EXTERNAL_UPSTREAM` after repo-owned lifecycle work and bounded harness qualification; T06 may proceed provisionally under the recorded sequencing exception |
 | Merge frontier | T05 / #510 → T06 / #511; T05 Draft PR #549 remains blocked pending runtime proof |
-| Review pending | T05 two-axis implementation review; bounded runtime qualification completed unsuccessfully and B-003 remains open |
+| Review pending | None for T05; Standards and Spec two-axis review passed. Bounded runtime qualification completed unsuccessfully and B-003 remains open |
 | Human approval pending | None for Phase 0 foundation tickets |
 | Descendants requiring restack | None; T05 is restacked onto rescue `b757fdc4e4714514df9baf552e47eaddf10d289d` |
-| Next safe action | Complete final two-axis review of T05 implementation commit `983dbf95` plus documentation-only follow-ups, then start the authorized provisional T06 path |
+| Next safe action | Use D-004 and start the authorized provisional T06 path; final T06 validation and merge remain gated by T05 |
 
 ## Stack map
 
@@ -544,11 +544,11 @@ No production implementation, schema, API, permission, audit, idempotency, scope
 - **Bounded 4.113.0 experiment (Step 5B — FAILED, STOPPED after run 1/3):** disposable `wrangler@4.113.0` install failed the required journey before any test executed — the bundled Miniflare server binary (max compatibility date `2026-07-28`) rejects the repo's `compatibility_date = "2026-08-02"` (`service core:user:efcc-prototype-129` refuses to start; `ERR_RUNTIME_FAILURE`). This is a material compatibility regression, NOT the ProxyWorker crash. Evidence: `test-results/programs-d1-runs/20260903t162817561z/` (`wrangler.log` line 1135, `failure-summary.json`, `run.json`). Official dependency state restored to `wrangler 4.127.1`; no pin adopted; no sequence of historical releases will be tested per owner constraint.
 - **Bounded official toolchain qualification:** Wrangler `4.127.1` remains the repository version. The rejected `4.113.0` experiment is recorded as incompatible with `compatibility_date = "2026-08-02"` and is not retried. The current stable `4.129.0` was checked; its release notes do not contain the open ProxyWorker fix. Workers SDK issue [#15317](https://github.com/cloudflare/workers-sdk/issues/15317) remains open and PR [#15448](https://github.com/cloudflare/workers-sdk/pull/15448) remains unmerged, so no preview, vendored patch, dependency patch, restart, or retry workaround is permitted.
 - **Official `createTestHarness()` qualification (bounded and discarded):** The checked-in diagnostic `web/scripts/qualify-test-harness.mjs` now rebuilds/bundles the Worker, uses committed Wrangler `4.127.1`, real loopback assets/routes, official D1 migrations and binding-backed fixture preparation, real Worker demo seeding, complete-report validation, and the same unfiltered Programs Playwright suite. The first bounded run `20260903t215426924z` recorded 201/201 with exit code 0. Fresh follow-ups did not establish repeated reliability: runner experiment `20260903t221201229z` recorded 198/201 and a real participant-detail HTTP 500 containing `Error: Network connection lost`; qualification runs `20260903t222013107z` and `20260903t230214275z` each recorded 200/201 with one required journey failure (PUI-04, then MUI-01). The fresh-build qualification run `20260903t230214275z` is the latest bounded evidence after the diagnostic hardening; the harness remains `NON-EQUIVALENT / UNRELIABLE` for this acceptance gate and was not adopted; shell-supervised `wrangler dev` remains canonical, and all qualification artifacts are retained under `test-results/test-harness-qualification/`.
-- **Code review:** T05 two-axis implementation review pending for stable implementation commit `983dbf95` plus documentation-only follow-ups; Draft PR #549 is open and truthfully blocked. `STACK_GREEN` is forbidden while the prescribed runtime still exits or the harness qualification remains unreliable.
+- **Code review:** Standards PASS and Spec PASS for the T05 implementation diff through documentation-only commit `01a8359246088195368c9f0323d46eb384289c5a`; exact-head governance CI run `33818658543` passed. Draft PR #549 is open and truthfully blocked. `STACK_GREEN` is forbidden while the prescribed runtime still exits or the harness qualification remains unreliable.
 - **Human approval:** `N/A`
 - **Preservation impact:** T05 is limited to the local Worker/D1 acceptance seam, disposable fixtures, runtime artifacts, and required gate wiring; no production data or Apps Script/Sheets access.
 - **Open blocker:** B-003 remains open. The failure is the known upstream `Error inside ProxyWorker` regression ([workers-sdk #15317](https://github.com/cloudflare/workers-sdk/issues/15317)); the available remedy ([workers-sdk #15448](https://github.com/cloudflare/workers-sdk/pull/15448)) is still open/blocked and cannot be vendored or referenced as an unmerged dependency without owner approval.
-- **Next eligible ticket:** T06 / #511 may be implemented provisionally after this T05 Draft PR is reviewed and the sequencing exception is recorded; T06 cannot become `STACK_GREEN` or merge until T05 becomes green.
+- **Next eligible ticket:** T06 / #511 may now be implemented provisionally under accepted decision D-004; T06 cannot become `STACK_GREEN` or merge until T05 becomes green.
 ---
 
 ## 15. Human approval queue
@@ -676,6 +676,5 @@ A requested change to those items is not a tracker update. It is an owner-approv
 
 ## 20. Next safe action
 
-1. Complete final two-axis review of pushed T05 PR [#549](https://github.com/Noahlw/efcc/pull/549) against stable implementation commit `983dbf957d67969db6b591bb9af61ce5c9032298` plus documentation-only follow-ups, preserving its truthful `BLOCKED_EXTERNAL_UPSTREAM` status.
-2. Record/use D-004: T06 implementation may proceed while T05 is `BLOCKED_EXTERNAL_UPSTREAM`, but final browser validation, `STACK_GREEN`, and merge remain gated by T05.
-3. Implement T06 / #511 only; do not start T07 or Phase 1.
+1. Record/use D-004: T06 implementation may proceed while T05 is `BLOCKED_EXTERNAL_UPSTREAM`, but final browser validation, `STACK_GREEN`, and merge remain gated by T05.
+2. Implement T06 / #511 only; do not start T07 or Phase 1.
