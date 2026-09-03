@@ -531,19 +531,20 @@ No production implementation, schema, API, permission, audit, idempotency, scope
 
 #### T05 / #510 — Stabilize full Programs/Worker/D1 runtime
 
-- **Status:** `BLOCKED`
-- **Base rescue SHA:** `f9e0921c556ec1aaceed76961c421609a3d6b144`
+- **Status:** `BLOCKED_EXTERNAL_UPSTREAM`
+- **Base rescue SHA:** `e07a9588f26d250393145be2791be4bc1862adf8` (corrected T03 head; restacked)
 - **Reviewed implementation SHA / merge SHA:** pending / pending
-- **Rollback boundary:** `f9e0921`
-- **Branch / PR:** `rescue/t05-runtime-stability` / pending
+- **Rollback boundary:** `e07a958`
+- **Branch / PR:** `rescue/t05-runtime-stability` / pending (do NOT open until the upstream fix lands)
 - **Worktree:** `/home/ubuntu/efcc-rescue-t05-runtime-stability`
-- **Delivered outcome:** The local runner now pre-bundles the Worker, records every clean-seed stage and causal signal, coalesces request-scoped capability projections, and batches enrollment mutation audits. The required full journey remains blocked by the upstream Wrangler `ProxyWorker` failure path: `wrangler` 4.127.1 fatally exits after a rejected forward with `Network connection lost.` before the UserWorker receives the request.
-- **Tests:** `pnpm test:runtime` (11 passed), `pnpm test:workerd` (44 files / 609 passed), `pnpm --dir web test:components` (60 files / 877 passed), and `pnpm verify:precommit` pass. The required local acceptance run remains red at 22/201 tests with downstream `ERR_CONNECTION_REFUSED` after the first ProxyWorker failure; its preserved causal artifacts are under `test-results/programs-d1-runs/20260903t115753975z/`, including `wrangler.log` and a `failure-summary.json` with `proxyFailure: Error in ProxyController: Error inside ProxyWorker`.
+- **Delivered outcome:** The local runner now pre-bundles the Worker, records every clean-seed stage and causal signal, and preserves failure artifacts per run. Production programs code matches the corrected T03 baseline exactly — Step 3 audit reverted the speculative request-coalescing and audit-batching changes (no independent EFCC defect evidence). The required full journey remains blocked by the upstream Wrangler `ProxyWorker` failure path: `wrangler` 4.127.1 fatally exits after a rejected forward with `Network connection lost.` before the UserWorker receives the request.
+- **Tests:** `pnpm test:runtime` (11 passed), focused Programs suites (124 passed), `pnpm test:workerd` (44 files / 609 passed), `pnpm test:governance` (18 passed), identity (98 passed); root/web typechecks and `git diff --check` pass. The required local acceptance run remains red under 4.127.1 with downstream `ERR_CONNECTION_REFUSED` after the first ProxyWorker failure; causal artifacts preserved under `test-results/programs-d1-runs/`.
+- **Bounded 4.113.0 experiment (Step 5B — FAILED, STOPPED after run 1/3):** disposable `wrangler@4.113.0` install failed the required journey before any test executed — the bundled Miniflare server binary (max compatibility date `2026-07-28`) rejects the repo's `compatibility_date = "2026-08-02"` (`service core:user:efcc-prototype-129` refuses to start; `ERR_RUNTIME_FAILURE`). This is a material compatibility regression, NOT the ProxyWorker crash. Evidence: `test-results/programs-d1-runs/20260903t162817561z/` (`wrangler.log` line 1135, `failure-summary.json`, `run.json`). Official dependency state restored to `wrangler 4.127.1`; no pin adopted; no sequence of historical releases will be tested per owner constraint.
 - **Code review:** Pending T05 implementation review; cannot claim `STACK_GREEN` while the prescribed runtime still exits.
 - **Human approval:** `N/A`
 - **Preservation impact:** T05 is limited to the local Worker/D1 acceptance seam, disposable fixtures, runtime artifacts, and required gate wiring; no production data or Apps Script/Sheets access.
 - **Open blocker:** B-003 remains open. The failure is the known upstream `Error inside ProxyWorker` regression ([workers-sdk #15317](https://github.com/cloudflare/workers-sdk/issues/15317)); the available remedy ([workers-sdk #15448](https://github.com/cloudflare/workers-sdk/pull/15448)) is still open/blocked and cannot be vendored or referenced as an unmerged dependency without owner approval.
-- **Next eligible ticket:** T06 / #511 only after T05 reaches `STACK_GREEN`.
+- **Next eligible ticket:** T06 / #511 only after T05 reaches `STACK_GREEN` — do NOT start T06 now.
 ---
 
 ## 15. Human approval queue
