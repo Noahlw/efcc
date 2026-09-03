@@ -11,6 +11,7 @@ import { fileURLToPath } from "node:url";
 import { createTestHarness } from "wrangler";
 
 const QUALIFICATION_TIMEOUT_MS = 15 * 60 * 1000;
+const EXPECTED_PROGRAMS_TESTS = 201;
 const REPO_ROOT = path.resolve(process.cwd(), "..");
 
 function runId() {
@@ -76,7 +77,9 @@ function runChild(command, args, environment, logPath) {
     const child = spawn(command, args, {
       cwd: REPO_ROOT,
       env: environment,
-      detached: true,
+      // Keep qualification children in the probe's process group so the
+      // outer watchdog can terminate the complete tree on timeout.
+      detached: false,
       stdio: ["ignore", "pipe", "pipe"],
     });
     const chunks = [];
@@ -101,6 +104,21 @@ function killProcessGroup(child, signal) {
   }
 }
 
+function assertCompletePlaywrightReport(reportPath) {
+  const report = JSON.parse(readFileSync(reportPath, "utf8"));
+  const stats = report?.stats;
+  if (
+    stats?.expected !== EXPECTED_PROGRAMS_TESTS ||
+    stats?.skipped !== 0 ||
+    stats?.unexpected !== 0 ||
+    stats?.flaky !== 0
+  ) {
+    throw new Error(
+      `Programs Playwright JSON report is incomplete: expected=${String(stats?.expected)}, skipped=${String(stats?.skipped)}, unexpected=${String(stats?.unexpected)}, flaky=${String(stats?.flaky)}`
+    );
+  }
+}
+
 async function runProbe() {
   const artifactDirectory = path.join(
     REPO_ROOT,
@@ -109,6 +127,55 @@ async function runProbe() {
     runId()
   );
   mkdirSync(artifactDirectory, { recursive: true });
+  const preparationEnvironment = {
+    ...process.env,
+    CI: "1",
+    FORCE_COLOR: "0",
+    NO_COLOR: "1",
+  };
+  const buildLog = path.join(artifactDirectory, "build.log");
+  const buildResult = await runChild(
+    "pnpm",
+    ["--dir", "web", "build"],
+    preparationEnvironment,
+    buildLog
+  );
+  if (buildResult.code !== 0 || buildResult.signal !== null) {
+    throw new Error(
+      `fresh Worker build failed with exit code ${buildResult.code ?? "null"}`
+    );
+  }
+  const bundleLog = path.join(artifactDirectory, "bundle.log");
+  const bundleResult = await runChild(
+    "pnpm",
+    [
+      "--dir",
+      "web",
+      "exec",
+      "wrangler",
+      "deploy",
+      "--dry-run",
+      "--outdir",
+      ".wrangler/local-bundle",
+    ],
+    preparationEnvironment,
+    bundleLog
+  );
+  if (bundleResult.code !== 0 || bundleResult.signal !== null) {
+    throw new Error(
+      `fresh Worker bundle failed with exit code ${bundleResult.code ?? "null"}`
+    );
+  }
+  console.log(
+    JSON.stringify({
+      phase: "fresh-build-and-bundle",
+      outcome: "pass",
+      logs: {
+        build: path.relative(REPO_ROOT, buildLog),
+        bundle: path.relative(REPO_ROOT, bundleLog),
+      },
+    })
+  );
   const server = createTestHarness({
     root: process.cwd(),
     workers: [
@@ -203,20 +270,36 @@ async function runProbe() {
       },
       playwrightLog
     );
+    let reportError = null;
+    if (playwrightResult.code === 0 && playwrightResult.signal === null) {
+      try {
+        assertCompletePlaywrightReport(playwrightResults);
+      } catch (error) {
+        reportError = error;
+      }
+    }
     console.log(
       JSON.stringify({
         phase: "unfiltered-programs-playwright",
-        outcome: playwrightResult.code === 0 ? "pass" : "fail",
+        outcome:
+          playwrightResult.code === 0 &&
+          playwrightResult.signal === null &&
+          reportError === null
+            ? "pass"
+            : "fail",
         code: playwrightResult.code,
         signal: playwrightResult.signal,
         log: path.relative(REPO_ROOT, playwrightLog),
         results: path.relative(REPO_ROOT, playwrightResults),
       })
     );
-    if (playwrightResult.code !== 0) {
+    if (playwrightResult.code !== 0 || playwrightResult.signal !== null) {
       throw new Error(
         `unfiltered Programs Playwright journey failed with exit code ${playwrightResult.code ?? "null"}`
       );
+    }
+    if (reportError !== null) {
+      throw reportError;
     }
     console.log(
       JSON.stringify({
@@ -271,10 +354,23 @@ async function runBoundedQualification() {
       resolve({ code: null, signal: null, error: error.message })
     );
   });
+  let timeoutHandle;
   const timeout = new Promise((resolve) => {
-    setTimeout(() => resolve({ timeout: true }), QUALIFICATION_TIMEOUT_MS);
+    timeoutHandle = setTimeout(
+      () => resolve({ timeout: true }),
+      QUALIFICATION_TIMEOUT_MS
+    );
   });
+  const handleSignal = (signal) => {
+    killProcessGroup(child, signal);
+    process.exitCode = 1;
+  };
+  process.once("SIGINT", handleSignal);
+  process.once("SIGTERM", handleSignal);
   const result = await Promise.race([exited, timeout]);
+  clearTimeout(timeoutHandle);
+  process.off("SIGINT", handleSignal);
+  process.off("SIGTERM", handleSignal);
   if ("timeout" in result) {
     killProcessGroup(child, "SIGTERM");
     await Promise.race([

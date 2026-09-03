@@ -8,6 +8,7 @@ import {
   authProbeCredentials,
   assertLocalTarget,
   artifactPaths,
+  assertProgramsReportStats,
   classifyRuntimeSignals,
   createSignalCleanup,
   cookieHeaderFromSetCookieHeaders,
@@ -165,7 +166,10 @@ describe("T05 local Programs runtime runner", () => {
 
   test("does not report a late Worker failure as a successful run", () => {
     expect(runtimeRunSucceeded(true, { code: 1, signal: null })).toBe(false);
-    expect(runtimeRunSucceeded(true, { code: 0, signal: null })).toBe(true);
+    expect(
+      runtimeRunSucceeded(true, { code: 0, signal: null }, null, true)
+    ).toBe(true);
+    expect(runtimeRunSucceeded(true, { code: 0, signal: null })).toBe(false);
     expect(
       runtimeRunSucceeded(true, { code: null, signal: "SIGINT" }, null, true)
     ).toBe(true);
@@ -176,6 +180,41 @@ describe("T05 local Programs runtime runner", () => {
       false
     );
     expect(runtimeRunSucceeded(false, { code: 0, signal: null })).toBe(false);
+    expect(
+      runtimeRunSucceeded(true, { code: 0, signal: null }, null, true, {
+        firstRuntimeSignal: "Error inside ProxyWorker",
+        proxyFailure: "Error inside ProxyWorker",
+        downstreamConnectionSignals: 0,
+        signals: ["Error inside ProxyWorker"],
+      })
+    ).toBe(false);
+  });
+
+  test("requires a complete, non-skipped Programs report", () => {
+    expect(() =>
+      assertProgramsReportStats({
+        expected: 201,
+        skipped: 0,
+        unexpected: 0,
+        flaky: 0,
+      })
+    ).not.toThrow();
+    expect(() =>
+      assertProgramsReportStats({
+        expected: 200,
+        skipped: 0,
+        unexpected: 0,
+        flaky: 0,
+      })
+    ).toThrow(/expected=200/u);
+    expect(() =>
+      assertProgramsReportStats({
+        expected: 201,
+        skipped: 1,
+        unexpected: 0,
+        flaky: 0,
+      })
+    ).toThrow(/skipped=1/u);
   });
 
   test("runs signal cleanup once for both active stage and Worker", () => {

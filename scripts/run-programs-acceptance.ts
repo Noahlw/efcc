@@ -41,6 +41,35 @@ export const DEFAULT_TARGET_URL = "http://127.0.0.1:8787";
 export const DEFAULT_TARGET_PORT = 8787;
 export const DEFAULT_ARTIFACT_ROOT = "test-results/programs-d1-runs";
 export const PROGRAMS_CONFIG = "tests/e2e/programs-d1.config.ts";
+export const EXPECTED_PROGRAMS_TESTS = 201;
+
+export function assertProgramsReportStats(stats: unknown): void {
+  if (typeof stats !== "object" || stats === null) {
+    throw new Error("Programs Playwright JSON report has no stats object");
+  }
+  const values = stats as {
+    expected?: unknown;
+    flaky?: unknown;
+    skipped?: unknown;
+    unexpected?: unknown;
+  };
+  const mismatches = [
+    ["expected", values.expected, EXPECTED_PROGRAMS_TESTS],
+    ["skipped", values.skipped, 0],
+    ["unexpected", values.unexpected, 0],
+    ["flaky", values.flaky, 0],
+  ].filter(([, actual, expected]) => actual !== expected);
+  if (mismatches.length > 0) {
+    throw new Error(
+      `Programs Playwright JSON report is incomplete: ${mismatches
+        .map(
+          ([name, actual, expected]) =>
+            `${name}=${String(actual)} (expected ${String(expected)})`
+        )
+        .join(", ")}`
+    );
+  }
+}
 
 export const RUNTIME_STAGE_TIMEOUTS_MS = {
   build: 5 * 60 * 1000,
@@ -61,19 +90,20 @@ export function runtimeRunSucceeded(
   journeyCompleted: boolean,
   workerExit: ProcessResult | null,
   interruptedSignal: NodeJS.Signals | null = null,
-  workerStopRequested = false
+  workerStopRequested = false,
+  runtimeSignals?: RuntimeSignalSummary
 ): boolean {
   const workerStoppedCleanly =
-    (workerExit?.code === 0 && workerExit.signal === null) ||
-    (workerStopRequested &&
-      workerExit?.code === null &&
-      workerExit.signal === "SIGINT");
+    workerStopRequested &&
+    ((workerExit?.code === 0 && workerExit.signal === null) ||
+      (workerExit?.code === null && workerExit.signal === "SIGINT"));
   return (
     journeyCompleted &&
     interruptedSignal === null &&
     workerExit !== null &&
     workerStoppedCleanly &&
-    workerExit.error === undefined
+    workerExit.error === undefined &&
+    (runtimeSignals === undefined || runtimeSignals.proxyFailure === null)
   );
 }
 
@@ -401,6 +431,21 @@ export async function fetchWithTimeout(
   }
 }
 
+async function assertCompleteProgramsReport(pathname: string): Promise<void> {
+  let report: unknown;
+  try {
+    report = JSON.parse(await readFile(pathname, "utf8")) as unknown;
+  } catch (error: unknown) {
+    throw new Error(
+      `Programs Playwright JSON report is missing or invalid: ${error instanceof Error ? error.message : String(error)}`
+    );
+  }
+  if (typeof report !== "object" || report === null) {
+    throw new Error("Programs Playwright JSON report has no root object");
+  }
+  assertProgramsReportStats((report as { stats?: unknown }).stats);
+}
+
 function spawnLogged(
   spec: CommandSpec,
   cwd: string,
@@ -625,7 +670,7 @@ async function writeFailureSummary(
   workerExit: ProcessResult | null,
   playwrightExit: ProcessResult | null,
   secrets: readonly string[]
-): Promise<void> {
+): Promise<RuntimeSignalSummary> {
   const [prepare, worker, wrangler, seed, playwright] = await Promise.all([
     readFile(paths.prepareLog, "utf8").catch(() => ""),
     readFile(paths.workerLog, "utf8").catch(() => ""),
@@ -644,8 +689,26 @@ async function writeFailureSummary(
   const playwrightSignals = classifyRuntimeSignals(
     redactSecrets(playwright, secrets)
   );
-  const proxyFailure =
-    wranglerSignals.proxyFailure ?? workerSignals.proxyFailure;
+  const allSignals = [
+    prepareSignals,
+    workerSignals,
+    wranglerSignals,
+    seedSignals,
+    playwrightSignals,
+  ];
+  const runtimeSignals: RuntimeSignalSummary = {
+    firstRuntimeSignal:
+      allSignals.find(({ firstRuntimeSignal }) => firstRuntimeSignal !== null)
+        ?.firstRuntimeSignal ?? null,
+    proxyFailure:
+      allSignals.find(({ proxyFailure }) => proxyFailure !== null)
+        ?.proxyFailure ?? null,
+    downstreamConnectionSignals: allSignals.reduce(
+      (count, summary) => count + summary.downstreamConnectionSignals,
+      0
+    ),
+    signals: allSignals.flatMap(({ signals }) => signals).slice(0, 40),
+  };
   await writeManifest(paths.failureSummary, {
     schemaVersion: 1,
     workerExit,
@@ -656,10 +719,11 @@ async function writeFailureSummary(
     seedSignals,
     playwrightSignals,
     interpretation:
-      proxyFailure === null
+      runtimeSignals.proxyFailure === null
         ? "No ProxyController/workerd failure marker was observed; inspect the Playwright result and logs for the first failed required row."
         : "The first runtime marker is retained separately from downstream connection-refused/reset signals; this artifact does not convert a failed row into a pass.",
   });
+  return runtimeSignals;
 }
 
 async function currentRevision(): Promise<string> {
@@ -773,7 +837,7 @@ async function main(): Promise<void> {
     manifest.stages.push(stage);
     await writeManifest(paths.manifest, manifest);
     activeStageStop = null;
-    const result = await runLogged(
+    let result = await runLogged(
       spec,
       cwd,
       environment,
@@ -791,6 +855,20 @@ async function main(): Promise<void> {
         },
       }
     );
+    if (
+      spec.name === "programs-playwright" &&
+      result.code === 0 &&
+      result.error === undefined
+    ) {
+      try {
+        await assertCompleteProgramsReport(paths.results);
+      } catch (error: unknown) {
+        result = {
+          ...result,
+          error: error instanceof Error ? error.message : String(error),
+        };
+      }
+    }
     if (spec.name === "programs-playwright") {
       playwrightExit = result;
     }
@@ -869,30 +947,32 @@ async function main(): Promise<void> {
           };
           process.exitCode = 1;
         }
-        const completedWorkerStage = manifest.stages.find(
-          (stage) => stage.name === "worker"
-        );
-        if (completedWorkerStage) {
-          if (workerExit !== null) {
-            completedWorkerStage.exit = workerExit;
-          }
-          completedWorkerStage.finishedAt = new Date().toISOString();
-          completedWorkerStage.status = runtimeRunSucceeded(
-            journeyCompleted,
-            workerExit,
-            interruptedSignal,
-            workerStopRequested
-          )
-            ? "stopped"
-            : "stopped-after-failure";
-        }
       }
+      const runtimeSignals = await writeFailureSummary(
+        paths,
+        workerExit,
+        playwrightExit,
+        [secret]
+      );
       const succeeded = runtimeRunSucceeded(
         journeyCompleted,
         workerExit,
         interruptedSignal,
-        workerStopRequested
+        workerStopRequested,
+        runtimeSignals
       );
+      const completedWorkerStage = manifest.stages.find(
+        (stage) => stage.name === "worker"
+      );
+      if (completedWorkerStage) {
+        if (workerExit !== null) {
+          completedWorkerStage.exit = workerExit;
+        }
+        completedWorkerStage.finishedAt = new Date().toISOString();
+        completedWorkerStage.status = succeeded
+          ? "stopped"
+          : "stopped-after-failure";
+      }
       if (succeeded) {
         manifest.status = "passed";
       } else {
@@ -901,7 +981,6 @@ async function main(): Promise<void> {
       }
       manifest.finishedAt = new Date().toISOString();
       await writeManifest(paths.manifest, manifest);
-      await writeFailureSummary(paths, workerExit, playwrightExit, [secret]);
       process.stdout.write(`T05 runtime artifacts: ${paths.directory}\n`);
     } finally {
       process.off("SIGINT", handleSignal);
