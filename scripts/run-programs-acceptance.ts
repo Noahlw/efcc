@@ -60,16 +60,37 @@ export function stageTimeoutMs(name: string): number {
 export function runtimeRunSucceeded(
   journeyCompleted: boolean,
   workerExit: ProcessResult | null,
-  interruptedSignal: NodeJS.Signals | null = null
+  interruptedSignal: NodeJS.Signals | null = null,
+  workerStopRequested = false
 ): boolean {
+  const workerStoppedCleanly =
+    (workerExit?.code === 0 && workerExit.signal === null) ||
+    (workerStopRequested &&
+      workerExit?.code === null &&
+      workerExit.signal === "SIGINT");
   return (
     journeyCompleted &&
     interruptedSignal === null &&
     workerExit !== null &&
-    workerExit.code === 0 &&
-    workerExit.signal === null &&
+    workerStoppedCleanly &&
     workerExit.error === undefined
   );
+}
+
+export function createSignalCleanup(
+  stopActiveStage: () => Promise<unknown>,
+  stopWorker: () => Promise<unknown>,
+  onSignal: (signal: NodeJS.Signals) => void
+): (signal: NodeJS.Signals) => void {
+  let cleanupStarted = false;
+  return (signal) => {
+    if (cleanupStarted) {
+      return;
+    }
+    cleanupStarted = true;
+    onSignal(signal);
+    void Promise.allSettled([stopActiveStage(), stopWorker()]);
+  };
 }
 
 export function runtimeCommands(
@@ -364,7 +385,7 @@ function responseSetCookieHeaders(headers: Headers): string[] {
   return combined === null ? [] : combined.split(/,(?=\s*[^;,=\s]+=[^;,]*)/u);
 }
 
-async function fetchWithTimeout(
+export async function fetchWithTimeout(
   input: URL,
   init: RequestInit = {},
   timeoutMs = 10_000
@@ -372,7 +393,9 @@ async function fetchWithTimeout(
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    return await fetch(input, { ...init, signal: controller.signal });
+    const response = await fetch(input, { ...init, signal: controller.signal });
+    await response.arrayBuffer();
+    return response;
   } finally {
     clearTimeout(timer);
   }
@@ -431,6 +454,7 @@ function spawnLogged(
 }
 
 type RunLoggedHooks = {
+  echo?: boolean;
   onStart?: (process: LoggedProcess) => void;
   onFinish?: (process: LoggedProcess) => void;
 };
@@ -443,7 +467,13 @@ export async function runLogged(
   timeoutMs = stageTimeoutMs(spec.name),
   hooks: RunLoggedHooks = {}
 ): Promise<ProcessResult> {
-  const process = spawnLogged(spec, cwd, environment, logPath);
+  const process = spawnLogged(
+    spec,
+    cwd,
+    environment,
+    logPath,
+    hooks.echo ?? true
+  );
   hooks.onStart?.(process);
   try {
     const result = await waitForExit(process, timeoutMs);
@@ -544,7 +574,6 @@ export async function assertHealthyTarget(
   credentials: AuthProbeCredentials
 ): Promise<void> {
   const response = await fetchWithTimeout(target);
-  await response.arrayBuffer();
   if (!response.ok) {
     throw new Error(
       `local Worker readiness request returned HTTP ${response.status}`
@@ -564,7 +593,6 @@ export async function assertHealthyTarget(
       }),
     }
   );
-  await loginResponse.arrayBuffer();
   if (!loginResponse.ok) {
     throw new Error(
       `local Worker auth readiness login returned HTTP ${loginResponse.status}`
@@ -581,7 +609,6 @@ export async function assertHealthyTarget(
       },
     }
   );
-  await authResponse.arrayBuffer();
   if (!authResponse.ok) {
     throw new Error(
       `local Worker auth readiness request returned HTTP ${authResponse.status}`
@@ -692,6 +719,7 @@ async function main(): Promise<void> {
   let activeStageProcess: LoggedProcess | null = null;
   let activeStageStop: Promise<ProcessResult> | null = null;
   let workerStop: Promise<ProcessResult> | null = null;
+  let workerStopRequested = false;
   let interruptedSignal: NodeJS.Signals | null = null;
   let journeyCompleted = false;
   const seedLog = paths.seedLog;
@@ -712,15 +740,24 @@ async function main(): Promise<void> {
     if (!workerProcess) {
       return Promise.resolve(null);
     }
+    if (
+      workerProcess.child.exitCode === null &&
+      workerProcess.child.signalCode === null
+    ) {
+      workerStopRequested = true;
+    }
     workerStop ??= stopLogged(workerProcess);
     return workerStop;
   };
-  const handleSignal = (signal: NodeJS.Signals): void => {
-    interruptedSignal = signal;
-    manifest.status = "failed";
-    process.exitCode = 1;
-    void Promise.allSettled([stopActiveStage(), stopWorker()]);
-  };
+  const handleSignal = createSignalCleanup(
+    stopActiveStage,
+    stopWorker,
+    (signal) => {
+      interruptedSignal = signal;
+      manifest.status = "failed";
+      process.exitCode = 1;
+    }
+  );
   process.on("SIGINT", handleSignal);
   process.on("SIGTERM", handleSignal);
   const runStage = async (spec: CommandSpec): Promise<ProcessResult> => {
@@ -743,6 +780,7 @@ async function main(): Promise<void> {
       stageLog(spec),
       stageTimeoutMs(spec.name),
       {
+        echo: spec.name !== "programs-playwright",
         onStart: (logged) => {
           activeStageProcess = logged;
         },
@@ -791,7 +829,8 @@ async function main(): Promise<void> {
       workerSpec,
       cwd,
       workerEnvironment,
-      paths.workerLog
+      paths.workerLog,
+      false
     );
     await writeManifest(paths.manifest, manifest);
     await waitForWorker(workerProcess, target);
@@ -830,18 +869,19 @@ async function main(): Promise<void> {
           };
           process.exitCode = 1;
         }
-        const workerStage = manifest.stages.find(
+        const completedWorkerStage = manifest.stages.find(
           (stage) => stage.name === "worker"
         );
-        if (workerStage) {
+        if (completedWorkerStage) {
           if (workerExit !== null) {
-            workerStage.exit = workerExit;
+            completedWorkerStage.exit = workerExit;
           }
-          workerStage.finishedAt = new Date().toISOString();
-          workerStage.status = runtimeRunSucceeded(
+          completedWorkerStage.finishedAt = new Date().toISOString();
+          completedWorkerStage.status = runtimeRunSucceeded(
             journeyCompleted,
             workerExit,
-            interruptedSignal
+            interruptedSignal,
+            workerStopRequested
           )
             ? "stopped"
             : "stopped-after-failure";
@@ -850,7 +890,8 @@ async function main(): Promise<void> {
       const succeeded = runtimeRunSucceeded(
         journeyCompleted,
         workerExit,
-        interruptedSignal
+        interruptedSignal,
+        workerStopRequested
       );
       if (succeeded) {
         manifest.status = "passed";

@@ -2,14 +2,16 @@ import { mkdtempSync, rmSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 
 import {
   authProbeCredentials,
   assertLocalTarget,
   artifactPaths,
   classifyRuntimeSignals,
+  createSignalCleanup,
   cookieHeaderFromSetCookieHeaders,
+  fetchWithTimeout,
   redactSecrets,
   runLogged,
   runtimeRunSucceeded,
@@ -164,10 +166,35 @@ describe("T05 local Programs runtime runner", () => {
   test("does not report a late Worker failure as a successful run", () => {
     expect(runtimeRunSucceeded(true, { code: 1, signal: null })).toBe(false);
     expect(runtimeRunSucceeded(true, { code: 0, signal: null })).toBe(true);
+    expect(
+      runtimeRunSucceeded(true, { code: null, signal: "SIGINT" }, null, true)
+    ).toBe(true);
+    expect(runtimeRunSucceeded(true, { code: null, signal: "SIGINT" })).toBe(
+      false
+    );
     expect(runtimeRunSucceeded(true, { code: null, signal: "SIGTERM" })).toBe(
       false
     );
     expect(runtimeRunSucceeded(false, { code: 0, signal: null })).toBe(false);
+  });
+
+  test("runs signal cleanup once for both active stage and Worker", () => {
+    const stopActiveStage = vi.fn().mockResolvedValue(null);
+    const stopWorker = vi.fn().mockResolvedValue(null);
+    const onSignal = vi.fn();
+    const handleSignal = createSignalCleanup(
+      stopActiveStage,
+      stopWorker,
+      onSignal
+    );
+
+    handleSignal("SIGTERM");
+    handleSignal("SIGINT");
+
+    expect(onSignal).toHaveBeenCalledOnce();
+    expect(onSignal).toHaveBeenCalledWith("SIGTERM");
+    expect(stopActiveStage).toHaveBeenCalledOnce();
+    expect(stopWorker).toHaveBeenCalledOnce();
   });
 
   test("bounds post-start stages and terminates a timed-out child", async () => {
@@ -218,5 +245,31 @@ describe("T05 local Programs runtime runner", () => {
         "efcc_refresh=refresh-value; Path=/; HttpOnly",
       ])
     ).toBe("efcc_access=access-value; efcc_refresh=refresh-value");
+  });
+
+  test("bounds the response body as well as fetch headers", async () => {
+    const originalFetch = globalThis.fetch;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((_input: URL | RequestInfo, init?: RequestInit) => {
+        const signal = init?.signal;
+        const body = new ReadableStream<Uint8Array>({
+          start(controller) {
+            signal?.addEventListener("abort", () => {
+              controller.error(new Error("response body aborted"));
+            });
+          },
+        });
+        return Promise.resolve(new Response(body, { status: 200 }));
+      })
+    );
+
+    try {
+      await expect(
+        fetchWithTimeout(new URL("http://127.0.0.1:8787/"), {}, 25)
+      ).rejects.toThrow("response body aborted");
+    } finally {
+      vi.stubGlobal("fetch", originalFetch);
+    }
   });
 });

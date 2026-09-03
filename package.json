@@ -27,6 +27,7 @@
     "verify:governance:full": "tsx scripts/audit-governance.ts --mode=full",
     "verify:governance:release": "tsx scripts/audit-governance.ts --mode=release",
     "verify:programs-runtime": "tsx scripts/run-programs-acceptance.ts",
+    "qualify:test-harness": "pnpm --dir web exec node scripts/qualify-test-harness.mjs",
     "verify:precommit": "pnpm verify:fast && pnpm test && pnpm test:governance && pnpm test:runtime && pnpm verify:identity && pnpm test:workerd && pnpm --dir web test:components && pnpm verify:governance",
     "verify": "pnpm verify:precommit && pnpm test:shell-responsive && pnpm test:shell-geometry && pnpm test:role-hierarchy-geometry",
     "test:shell-responsive": "playwright test --config=tests/e2e/responsive.config.ts",
