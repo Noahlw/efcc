@@ -146,15 +146,15 @@ Update this table at the start and end of every implementation session.
 | Rescue integration HEAD | `b757fdc4e4714514df9baf552e47eaddf10d289d` — T03 / #548 merged; tracker refreshed after the parent-first safe-prefix merges |
 | Active phase stack | T05 → T06 |
 | Implementation frontier | T05 / #510 `BLOCKED_EXTERNAL_UPSTREAM` after restack and deterministic qualification; T06 may proceed provisionally, but final validation/merge remains gated by T05 |
-| Merge frontier | T05 / #510 → T06 / #511; T05 Draft PR and runtime qualification remain pending |
+| Merge frontier | T05 / #510 → T06 / #511; T05 Draft PR #549 remains blocked pending runtime proof; bounded qualification completed unsuccessfully |
 | Review pending | T05 two-axis implementation review; Draft PR #549 exists and remains truthfully blocked |
 | Human approval pending | None — D-003 records the owner-authorized T03 Contract Change |
 | Active blocker | T05 retains the upstream ProxyWorker blocker; T06 is permitted only as provisional implementation and remains blocked for final validation/merge |
-| Next safe action | Complete review of truthful T05 Draft PR [#549](https://github.com/Noahlw/efcc/pull/549) at `983dbf95`, then record/use the authorized provisional T06 sequencing exception |
+| Next safe action | Complete review of truthful T05 Draft PR [#549](https://github.com/Noahlw/efcc/pull/549) at `493d41ed`, then record/use the authorized provisional T06 sequencing exception |
 | Last merged rescue SHA | `d2652bfb11b469f5fa557d3c2c73d69c4a17649d` |
 | Last rollback checkpoint | Frozen Phase F SHA `6edf28c0f8f7058cf992416e7b517824c3178c8` |
 | Parent Spec amendment | [Owner-approved comment](https://github.com/Noahlw/efcc/issues/505#issuecomment-5514680835) |
-| Entry verification | T01/T02 plus amendment #547, T04 / #546, and corrected T03 / #548 are merged into rescue; T03 exact-head run `33801176630` passed; T05 is restacked onto `b757fdc`, current head is `983dbf95`, and deterministic shell/harness evidence is preserved |
+| Entry verification | T01/T02 plus amendment #547, T04 / #546, and corrected T03 / #548 are merged into rescue; T03 exact-head run `33801176630` passed; T05 is restacked onto `b757fdc`, current T05 implementation commit is `493d41ed`, and deterministic shell/harness qualification has completed unsuccessfully with evidence preserved |
 
 > T02 / #545 merged at `6e6fe51770cd49a6f362d5c6cb4a8eafd5ba9ea2`. The amendment is documentation-only and changes sequencing, not ticket scope, logical blockers, contracts, preservation, or approval authority.
 
@@ -184,7 +184,7 @@ Update this table at the start and end of every implementation session.
 | T02 | [#507](https://github.com/Noahlw/efcc/issues/507) | Establish UI governance and agent change control | None | `MERGED_RESCUE` | [#545](https://github.com/Noahlw/efcc/pull/545) | `6e6fe51770cd49a6f362d5c6cb4a8eafd5ba9ea2` | Governance authority merged; stacked-delivery amendment is the next stack root |
 | T03 | [#508](https://github.com/Noahlw/efcc/issues/508) | Enforce styling ownership and typed UI contract governance | T02 | `MERGED_RESCUE` | [#548](https://github.com/Noahlw/efcc/pull/548) | `d2652bfb11b469f5fa557d3c2c73d69c4a17649d` | Rule 1 detects all unlayered broad CSS, high-blast waivers use exact source fingerprints/removal owners, and narrow generated-output exclusions are T03-owned; local gates, two-axis review, and exact-head GitHub run `33801176630` pass |
 | T04 | [#509](https://github.com/Noahlw/efcc/issues/509) | Restore excluded normalized Worker suites | T01 | `MERGED_RESCUE` | [#546](https://github.com/Noahlw/efcc/pull/546) | `6e7428b61bc9bbd2d82109688049696078609b59` | Restacked onto amendment; focused, aggregate, typecheck, precommit, diff-check, and two-axis review gates pass; parent-first merge complete |
-| T05 | [#510](https://github.com/Noahlw/efcc/issues/510) | Stabilize full Programs/Worker/D1 runtime | T04 | `BLOCKED_EXTERNAL_UPSTREAM` | [#549](https://github.com/Noahlw/efcc/pull/549) Draft | — | Current implementation `983dbf95`; runner tests 19/19 and aggregate gates pass, but the complete shell journey still reproduces the official Wrangler 4.127.1 ProxyWorker failure; the bounded official Test Harness qualification is also not repeatedly reliable; no production behavior change |
+| T05 | [#510](https://github.com/Noahlw/efcc/issues/510) | Stabilize full Programs/Worker/D1 runtime | T04 | `BLOCKED_EXTERNAL_UPSTREAM` | [#549](https://github.com/Noahlw/efcc/pull/549) Draft | — | Current implementation `493d41ed`; runner tests 19/19 and aggregate gates pass, but the complete shell journey still reproduces the official Wrangler 4.127.1 ProxyWorker failure; the bounded official Test Harness qualification has completed but is not repeatedly reliable; no production behavior change |
 | T06 | [#511](https://github.com/Noahlw/efcc/issues/511) | Contain global CSS cascade | T01, T03, T05 | `BLOCKED` | — | — | Provisional implementation is authorized after T05 review; final validation, `STACK_GREEN`, and merge wait for T05 |
 
 ### Phase 0 exit record
@@ -372,13 +372,13 @@ The tracker separates the implementation frontier from the merge frontier. `STAC
 | Phase | Phase 0 — Foundation & Recovery Control |
 | Rescue base SHA | `b757fdc4e4714514df9baf552e47eaddf10d289d` |
 | Stack root | `rescue/ui-control-recovery` after parent-first merge of #547, #546, and #548 |
-| Stack tip | `rescue/t05-runtime-stability` / T05 local implementation `983dbf95`, [#549](https://github.com/Noahlw/efcc/pull/549) Draft |
+| Stack tip | `rescue/t05-runtime-stability` / T05 local implementation `493d41ed`, [#549](https://github.com/Noahlw/efcc/pull/549) Draft |
 | Implementation frontier | T05 / #510 is `BLOCKED_EXTERNAL_UPSTREAM` after repo-owned lifecycle work and bounded harness qualification; T06 may proceed provisionally under the recorded sequencing exception |
 | Merge frontier | T05 / #510 → T06 / #511; T05 Draft PR #549 remains blocked pending runtime proof |
-| Review pending | T05 two-axis implementation review; runtime qualification remains blocked by B-003 |
+| Review pending | T05 two-axis implementation review; bounded runtime qualification completed unsuccessfully and B-003 remains open |
 | Human approval pending | None for Phase 0 foundation tickets |
 | Descendants requiring restack | None; T05 is restacked onto rescue `b757fdc4e4714514df9baf552e47eaddf10d289d` |
-| Next safe action | Complete review of T05 Draft PR [#549](https://github.com/Noahlw/efcc/pull/549) at `983dbf95`, then start the authorized provisional T06 path |
+| Next safe action | Complete review of T05 Draft PR [#549](https://github.com/Noahlw/efcc/pull/549) at `493d41ed`, then start the authorized provisional T06 path |
 
 ## Stack map
 
@@ -387,7 +387,7 @@ The tracker separates the implementation frontier from the merge frontier. `STAC
 | 0 | Amendment | None | `rescue/ui-control-recovery` | `docs/ui-rescue-stacked-pr-delivery` | `/home/ubuntu/efcc-rescue-stacked-delivery` | `rescue/ui-control-recovery` | #547 | `MERGED_RESCUE` | `f39062ffd81746b18322ea6035461179cf669363` | N/A | `b012a4623814678734c6e1ee4f476556a3a61274` |
 | 1 | T04 / #509 | T01 | `rescue/ui-control-recovery` | `rescue/t04-worker-suites` | `/home/ubuntu/efcc-rescue-t04-worker-suites` | `rescue/ui-control-recovery` | #546 | `MERGED_RESCUE` | `cdbe4757af51247a78bc3a1c94ade1f11c332a6a` | N/A | `6e7428b61bc9bbd2d82109688049696078609b59` |
 | 2 | T03 / #508 | T02 | `rescue/ui-control-recovery` | `rescue/t03-styling-governance` | `/Users/noah.wong/Desktop/code/EFCC-dev/.worktrees/phase0-t03-20260904` | `rescue/ui-control-recovery` | [#548](https://github.com/Noahlw/efcc/pull/548) | `MERGED_RESCUE` | `3138b950` / CI `33801176630` | D-003 ACCEPTED | `d2652bfb11b469f5fa557d3c2c73d69c4a17649d` |
-| 3 | T05 / #510 | T04 | `rescue/ui-control-recovery` | `rescue/t05-runtime-stability` | `/Users/noah.wong/Desktop/code/EFCC-dev/.worktrees/phase0-t05-20260904` | `rescue/ui-control-recovery` | [#549](https://github.com/Noahlw/efcc/pull/549) Draft | `BLOCKED_EXTERNAL_UPSTREAM` | `983dbf95` | N/A | `b757fdc4e4714514df9baf552e47eaddf10d289d` |
+| 3 | T05 / #510 | T04 | `rescue/ui-control-recovery` | `rescue/t05-runtime-stability` | `/Users/noah.wong/Desktop/code/EFCC-dev/.worktrees/phase0-t05-20260904` | `rescue/ui-control-recovery` | [#549](https://github.com/Noahlw/efcc/pull/549) Draft | `BLOCKED_EXTERNAL_UPSTREAM` | `493d41ed` | N/A | `b757fdc4e4714514df9baf552e47eaddf10d289d` |
 | 4 | T06 / #511 | T01, T03, T05 | `rescue/t05-runtime-stability` | `rescue/t06-css-cascade` | planned | `rescue/t05-runtime-stability` | — | `BLOCKED` | — | N/A | pending |
 
 ---
@@ -534,7 +534,7 @@ No production implementation, schema, API, permission, audit, idempotency, scope
 
 - **Status:** `BLOCKED_EXTERNAL_UPSTREAM`
 - **Base rescue SHA:** `b757fdc4e4714514df9baf552e47eaddf10d289d` (current rescue HEAD; T05 restacked)
-- **Current implementation SHA / merge SHA:** `983dbf95` / pending
+- **Current implementation SHA / merge SHA:** `493d41edd1a0d96a7e05a9b58ac0a4c9d9f0c5cf` / pending
 - **Rollback boundary:** `b757fdc`
 - **Branch / PR:** `rescue/t05-runtime-stability` / [#549](https://github.com/Noahlw/efcc/pull/549) Draft, target `rescue/ui-control-recovery`
 - **Worktree:** `/Users/noah.wong/Desktop/code/EFCC-dev/.worktrees/phase0-t05-20260904`
@@ -676,6 +676,6 @@ A requested change to those items is not a tracker update. It is an owner-approv
 
 ## 20. Next safe action
 
-1. Complete two-axis review of pushed T05 PR [#549](https://github.com/Noahlw/efcc/pull/549) at `983dbf95`, preserving its truthful `BLOCKED_EXTERNAL_UPSTREAM` status.
+1. Complete two-axis review of pushed T05 PR [#549](https://github.com/Noahlw/efcc/pull/549) at `493d41edd1a0d96a7e05a9b58ac0a4c9d9f0c5cf`, preserving its truthful `BLOCKED_EXTERNAL_UPSTREAM` status.
 2. Record/use D-004: T06 implementation may proceed while T05 is `BLOCKED_EXTERNAL_UPSTREAM`, but final browser validation, `STACK_GREEN`, and merge remain gated by T05.
 3. Implement T06 / #511 only; do not start T07 or Phase 1.

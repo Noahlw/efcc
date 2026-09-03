@@ -85,8 +85,8 @@ Run only the relevant suite when iterating locally:
 
 The required `READY` evidence is deterministic checks plus the relevant Playwright suite against local `wrangler dev` and local D1 at `http://127.0.0.1:8787`. This exercises the Worker, static assets, cookies, and database without touching a Cloudflare account.
 
-- Start the stack with `pnpm dev:local`; do not issue an authenticated request before seeding.
-- Seed disposable accounts with `pnpm db:seed:local`, then seed the walkthrough dataset with `pnpm db:seed:demo`.
+- Before starting the Worker, apply local migrations and seed disposable accounts with `pnpm --dir web db:migrate:local` followed by `pnpm db:seed:local`.
+- Start the stack with `pnpm dev:local`; after Worker readiness, seed the walkthrough dataset through the real API with `pnpm db:seed:demo`, then run the suite. Never run direct D1 seeding while the Worker is serving.
 - Run the suite named by the changed capability under `tests/e2e/`.
 - For the complete Programs prerequisite, run `pnpm verify:programs-runtime` after creating `web/.dev.vars`; it owns build, Worker bundling, local migrations with one run-specific `--persist-to` directory, disposable reset/seed before the Worker starts, listener readiness, a real disposable-admin login/authenticated readiness probe, one Worker process, real-Worker demo seeding, and the unfiltered Programs Playwright journey with retries disabled. Preparation and post-start stages have bounded timeouts and SIGINT/SIGTERM cleanup. It writes timestamped failure-preserving artifacts under `test-results/programs-d1-runs/` and is local-only. Set `PROGRAMS_TARGET_URL` to another loopback port only when the default `8787` is occupied; the default remains `http://127.0.0.1:8787`.
 

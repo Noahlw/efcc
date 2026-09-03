@@ -35,19 +35,20 @@ cp web/.dev.vars.example web/.dev.vars
 openssl rand -hex 32 # paste the value into EFCC_ACCESS_TOKEN_SECRET
 ```
 
-Use two terminals. The sequence below is safe only when no authenticated request reaches the Worker before the direct local seed completes; otherwise the seeder can race an already-open D1 runtime:
+Use two terminals. Complete the direct D1 migration and disposable account seed before starting the Worker; once the Worker is ready, run the demo seed through its real API:
 
 ```sh
-# terminal 1 — keep this process running; do not navigate before seeding
-pnpm dev:local
-
-# terminal 2
+# terminal 1 — direct D1 preparation; do not start the Worker yet
+pnpm --dir web db:migrate:local
 pnpm db:seed:local       # resets/seeds disposable E2E_ fixtures
-pnpm db:seed:demo        # seeds E2E_DEMO_ programs and generated events
+pnpm dev:local            # keeps the Worker process running
+
+# terminal 2 — after Worker listener readiness
+pnpm db:seed:demo         # real API seed for E2E_DEMO_ programs/events
 pnpm exec playwright test -c tests/e2e/programs-d1.config.ts
 ```
 
-The two-terminal sequence is an interactive debugging workflow. It is not the canonical T05 gate because it uses Wrangler's implicit local state. The canonical gate is the single-process `pnpm verify:programs-runtime` command below.
+The two-terminal sequence is an interactive debugging workflow. `pnpm db:seed:local` is direct D1 mutation and must finish before `pnpm dev:local` starts the Worker; `pnpm db:seed:demo` is intentionally API-backed and runs only after listener readiness. This workflow is not the canonical T05 gate because it uses Wrangler's implicit local state. The canonical gate is the single-process `pnpm verify:programs-runtime` command below.
 
 `pnpm dev:local` builds the Next static export and applies local migrations. `pnpm db:seed:local` is safe to rerun; it first resets only disposable `E2E_`/`E2E_DEMO_` domain rows, seeds the account fixtures, and then invokes the local-only `pnpm db:seed:disposable` identity seed. The identity seed is additive (`INSERT OR IGNORE`), contains only `E2E_DISPOSABLE_` rows, and never targets a remote or non-disposable database.
 
