@@ -142,19 +142,19 @@ Update this table at the start and end of every implementation session.
 | Field | Current value |
 |---|---|
 | Current phase | **Phase 0 — Foundation & Recovery Control** |
-| Phase status | `IN PROGRESS — T04 stack green` |
+| Phase status | `IN PROGRESS — T03 STACK_GREEN on exact head 3138b950 / GitHub run 33800866448; T05 remains blocked on upstream Wrangler` |
 | Rescue integration HEAD | `6e6fe51770cd49a6f362d5c6cb4a8eafd5ba9ea2` — T02 / #545 merged |
 | Active phase stack | Amendment → T04 → T03 → T05 → T06 |
-| Implementation frontier | T03 / #508 may start from T04 `STACK_GREEN` |
-| Merge frontier | Amendment PR #547 into `rescue/ui-control-recovery`; parent-first merge remains pending |
-| Review pending | None; T04 Standards and Spec axes passed on the restacked diff |
-| Human approval pending | None for Phase 0 foundation tickets |
-| Active blocker | T05/T06 remain logically blocked; T03 is unlocked by merged T02 and green technical parent T04 |
-| Next safe action | Create T03 worktree from `rescue/t04-worker-suites` and implement only #508 |
+| Implementation frontier | T03 / #508 `STACK_GREEN`; T05 / #510 remains `BLOCKED_EXTERNAL_UPSTREAM` until restacked and requalified |
+| Merge frontier | Amendment PR #547 → T04 PR #546 → T03 PR #548; parent-first merge remains pending |
+| Review pending | T03 review and exact-head CI complete; next is T05 restack and runtime qualification |
+| Human approval pending | None — D-003 records the owner-authorized T03 Contract Change |
+| Active blocker | T05 retains the upstream ProxyWorker blocker; T06 remains logically blocked on T05 |
+| Next safe action | Merge the verified safe prefix parent-first, then restack and qualify T05 |
 | Last merged rescue SHA | `6e6fe51770cd49a6f362d5c6cb4a8eafd5ba9ea2` |
 | Last rollback checkpoint | Frozen Phase F SHA `6edf28c0f8f7058cf992416e7b517824c3178c8` |
 | Parent Spec amendment | [Owner-approved comment](https://github.com/Noahlw/efcc/issues/505#issuecomment-5514680835) |
-| Entry verification | T01/T02 are merged in rescue; amendment PR #547 is `STACK_GREEN`; T04 PR #546 is retargeted to the amendment and verified `STACK_GREEN` at reviewed implementation `cdbe4757af51247a78bc3a1c94ade1f11c332a6a` |
+| Entry verification | T01/T02 are merged in rescue; amendment PR #547 and T04 PR #546 are `STACK_GREEN`; T03 PR #548 is `STACK_GREEN` at `3138b950b4e68db852d088d7af440289b62334c1` with exact-head run `33800866448` |
 
 > T02 / #545 merged at `6e6fe51770cd49a6f362d5c6cb4a8eafd5ba9ea2`. The amendment is documentation-only and changes sequencing, not ticket scope, logical blockers, contracts, preservation, or approval authority.
 
@@ -182,10 +182,10 @@ Update this table at the start and end of every implementation session.
 |---|---|---|---|---|---|---|---|
 | T01 | [#506](https://github.com/Noahlw/efcc/issues/506) | Freeze A–F and publish Preservation Ledger | None | `MERGED_RESCUE` | [#544](https://github.com/Noahlw/efcc/pull/544) | `6d27fee83a7033af1cf0e896868b3f0e812f0273` | Initial ledger plus full post-main S4 lineage correction merged; final provenance and link checks passed |
 | T02 | [#507](https://github.com/Noahlw/efcc/issues/507) | Establish UI governance and agent change control | None | `MERGED_RESCUE` | [#545](https://github.com/Noahlw/efcc/pull/545) | `6e6fe51770cd49a6f362d5c6cb4a8eafd5ba9ea2` | Governance authority merged; stacked-delivery amendment is the next stack root |
-| T03 | [#508](https://github.com/Noahlw/efcc/issues/508) | Enforce styling ownership and typed UI contract governance | T02 | `FRONTIER` | — | — | Logical blocker T02 is merged and technical parent T04 is `STACK_GREEN`; create T03 from T04 |
+| T03 | [#508](https://github.com/Noahlw/efcc/issues/508) | Enforce styling ownership and typed UI contract governance | T02 | `STACK_GREEN` | [#548](https://github.com/Noahlw/efcc/pull/548) | `3138b950` | Rule 1 detects all unlayered broad CSS, high-blast waivers use exact source fingerprints/removal owners, and narrow generated-output exclusions are T03-owned; local gates and exact-head GitHub run `33800866448` pass; parent-first merge pending |
 | T04 | [#509](https://github.com/Noahlw/efcc/issues/509) | Restore excluded normalized Worker suites | T01 | `STACK_GREEN` | [#546](https://github.com/Noahlw/efcc/pull/546) | — | Restacked onto amendment; focused, aggregate, typecheck, precommit, diff-check, and two-axis review gates pass |
-| T05 | [#510](https://github.com/Noahlw/efcc/issues/510) | Stabilize full Programs/Worker/D1 runtime | T04 | `BLOCKED` | — | — | Waiting for T03 technical stack parent |
-| T06 | [#511](https://github.com/Noahlw/efcc/issues/511) | Contain global CSS cascade | T01, T03, T05 | `BLOCKED` | — | — | Waiting for T03 and T05 `STACK_GREEN` |
+| T05 | [#510](https://github.com/Noahlw/efcc/issues/510) | Stabilize full Programs/Worker/D1 runtime | T04 | `BLOCKED_EXTERNAL_UPSTREAM` | — | — | Remote implementation at `8b2529b6`; restack onto the corrected T03 head is required before requalification; current official Wrangler still has the recorded ProxyWorker blocker |
+| T06 | [#511](https://github.com/Noahlw/efcc/issues/511) | Contain global CSS cascade | T01, T03, T05 | `BLOCKED` | — | — | Waiting for T05 `STACK_GREEN` |
 
 ### Phase 0 exit record
 
@@ -199,7 +199,7 @@ Update this table at the start and end of every implementation session.
 | Required Worker gate | T04 / #509 is `STACK_GREEN` on its stack branch; merge frontier remains parent-first |
 | Programs runtime | Phase F blocker still open — T05 owns it |
 | Cascade result | Not run — T06 owns it |
-| Open blockers | T05/T06 remain logically blocked; T03 is the next implementation frontier |
+| Open blockers | T05 remains `BLOCKED_EXTERNAL_UPSTREAM`; T06 remains blocked on T05; parent-first merge of the verified T03 stack remains pending |
 | Next phase | Phase 1 after all six Phase 0 tickets merge parent-first |
 
 ---
@@ -371,13 +371,13 @@ The tracker separates the implementation frontier from the merge frontier. `STAC
 | Phase | Phase 0 — Foundation & Recovery Control |
 | Rescue base SHA | `6e6fe51770cd49a6f362d5c6cb4a8eafd5ba9ea2` |
 | Stack root | `docs/ui-rescue-stacked-pr-delivery` |
-| Stack tip | `rescue/t04-worker-suites` / PR #546 |
-| Implementation frontier | T03 / #508 |
-| Merge frontier | Amendment PR #547 into `rescue/ui-control-recovery` |
-| Review pending | None; T04 Standards and Spec axes passed |
+| Stack tip | `rescue/t03-styling-governance` / T03 PR #548 |
+| Implementation frontier | T03 / #508 `STACK_GREEN`; T05 / #510 remains `BLOCKED_EXTERNAL_UPSTREAM` pending parent-first merge, restack, and runtime qualification |
+| Merge frontier | Amendment PR #547 → T04 PR #546 → T03 PR #548; parent-first merge remains pending |
+| Review pending | T03 review and exact-head CI complete; T05 review/runtime qualification follows the parent-first merge/restack |
 | Human approval pending | None for Phase 0 foundation tickets |
-| Descendants requiring restack | None |
-| Next safe action | Create T03 worktree from `rescue/t04-worker-suites` and implement only #508 |
+| Descendants requiring restack | T05 onto the corrected T03 head after #548 is verified and merged |
+| Next safe action | Complete T03 review and exact-head CI verification, then merge #547 → #546 → #548 parent-first |
 
 ## Stack map
 
@@ -385,8 +385,8 @@ The tracker separates the implementation frontier from the merge frontier. `STAC
 |---:|---|---|---|---|---|---|---|---|---|---|---|
 | 0 | Amendment | None | `rescue/ui-control-recovery` | `docs/ui-rescue-stacked-pr-delivery` | `/home/ubuntu/efcc-rescue-stacked-delivery` | `rescue/ui-control-recovery` | #547 | `STACK_GREEN` | `f39062ffd81746b18322ea6035461179cf669363` | N/A | `6e6fe517` |
 | 1 | T04 / #509 | T01 | `docs/ui-rescue-stacked-pr-delivery` | `rescue/t04-worker-suites` | `/home/ubuntu/efcc-rescue-t04-worker-suites` | `docs/ui-rescue-stacked-pr-delivery` | #546 | `STACK_GREEN` | `cdbe4757af51247a78bc3a1c94ade1f11c332a6a` | N/A | `6d27fee` |
-| 2 | T03 / #508 | T02 | `rescue/t04-worker-suites` | `rescue/t03-styling-governance` | planned | `rescue/t04-worker-suites` | — | `FRONTIER` | — | N/A | pending |
-| 3 | T05 / #510 | T04 | `rescue/t03-styling-governance` | `rescue/t05-runtime-stability` | planned | `rescue/t03-styling-governance` | — | `BLOCKED` | — | N/A | pending |
+| 2 | T03 / #508 | T02 | `rescue/t04-worker-suites` | `rescue/t03-styling-governance` | `/Users/noah.wong/Desktop/code/EFCC-dev/.worktrees/phase0-t03-20260904` | `rescue/t04-worker-suites` | [#548](https://github.com/Noahlw/efcc/pull/548) | `STACK_GREEN` | `3138b950` / CI `33800866448` | D-003 ACCEPTED | `bcf92fc` |
+| 3 | T05 / #510 | T04 | `rescue/t03-styling-governance` | `rescue/t05-runtime-stability` | remote branch only | `rescue/t03-styling-governance` | — | `BLOCKED_EXTERNAL_UPSTREAM` | pending | N/A | pending; waits on corrected T03 and official upstream fix qualification |
 | 4 | T06 / #511 | T01, T03, T05 | `rescue/t05-runtime-stability` | `rescue/t06-css-cascade` | planned | `rescue/t05-runtime-stability` | — | `BLOCKED` | — | N/A | pending |
 
 ---
@@ -477,7 +477,7 @@ Append one compact entry after every ticket. Do not copy the entire issue body.
 - **Human approval:** `N/A`
 - **Preservation impact:** Sequencing only; ticket acceptance criteria, logical blockers, domain contracts, preservation dispositions, UI contract values, and final Rescue Integration gate unchanged.
 - **Open blocker:** None; T04 / #509 may now be restacked.
-- **Next eligible ticket:** T03 / #508; create its branch from `rescue/t04-worker-suites`.
+- **Next eligible ticket:** T03 / #508; create its PR targeting `rescue/t04-worker-suites`.
 
 #### T04 / #509 — Restore excluded normalized Worker suites
 
@@ -512,6 +512,22 @@ Append one compact entry after every ticket. Do not copy the entire issue body.
 
 No production implementation, schema, API, permission, audit, idempotency, scope, or authorization code was changed by T04.
 
+#### T03 / #508 — Enforce styling ownership and typed UI contract governance
+
+- **Status:** `STACK_GREEN`
+- **Base rescue SHA:** `bcf92fcd9f443b1ee2f481c5beea1730a99bc840`
+- **Reviewed implementation SHA / merge SHA:** `3138b950b4e68db852d088d7af440289b62334c1` / pending parent-first merge
+- **Rollback boundary:** `bcf92fc`
+- **Branch / PR:** `rescue/t03-styling-governance` / [#548](https://github.com/Noahlw/efcc/pull/548)
+- **Worktree:** `/Users/noah.wong/Desktop/code/EFCC-dev/.worktrees/phase0-t03-20260904`
+- **Delivered outcome:** Added typed route-scenario, UI-contract, approval-package, waiver, preservation-reference, and native-exception registries; strict ISO/calendar and exact metadata validation; structured contract-failure reporting; seven-rule static source audit with source-exact high-blast CSS waivers; fail-closed fast/affected/full/release CLI modes and a dedicated governance workflow.
+- **Tests:** Focused governance test: 103 passed; CLI tests: 18 passed (also 18/18 under simulated `GITHUB_BASE_REF`); governance fast/affected/full/release modes passed (affected: 5 files / 0 violations; full: 277 files / 0 active violations / 75 waived; release gate passed); root/web typechecks and `pnpm verify:precommit` passed; formatter check and `git diff --check` passed locally; exact-head GitHub Actions run `33800866448` passed both required jobs.
+- **Code review:** Standards and Spec axes passed with zero actionable findings on `origin/rescue/t03-styling-governance...3138b950`.
+- **Human approval:** `D-003 ACCEPTED` — explicit repository-owner execution prompt; no visual approval is claimed
+- **Preservation impact:** Machine-enforces T02 governance without changing production behavior, schema, permissions, routes, or domain contracts; historical debt remains explicit and waiver-backed.
+- **Open blocker:** Parent-first merge into rescue remains pending; T05 remains externally blocked after the corrected head is merged/restacked.
+- **Next eligible ticket:** T05 / #510 after T03 reaches `STACK_GREEN` and is merged into rescue.
+- **Review follow-ups (deferred, non-blocking):** two-axis reviewers flagged hardening of pre-existing outer-checkout discovery/SHA/REF assertions (vacuous array-only assertions, SHA-selection truthfulness, temp-fixture extraction) — record as follow-up, not a CI blocker; production `getAffectedFiles` remains fail-closed.
 ---
 
 ## 15. Human approval queue
@@ -539,10 +555,10 @@ Keep links here so new sessions do not need to rediscover them.
 | Preservation Ledger | T01 / #506 | [`ui-control-recovery-preservation-ledger.md`](ui-control-recovery-preservation-ledger.md) and [`ui-control-recovery-preservation-summary.md`](ui-control-recovery-preservation-summary.md) — full post-main S4 lineage merged with #544 |
 | UI governance authority | T02 / #507 | [`ui-control-recovery-governance.md`](ui-control-recovery-governance.md) — created, verified, and merged via PR #545 at `6e6fe51` |
 | Stacked PR delivery amendment | Amendment | `AGENTS.md`, [`ui-control-recovery-governance.md`](ui-control-recovery-governance.md), and this tracker — PR #547 `STACK_GREEN` |
-| Scenario Registry | T03+ | Not created |
-| UI Contract Registry | T03+ | Not created |
+| Scenario Registry | T03 / #508 | `web/lib/governance/registries.ts` — created with 16 route scenarios and exact contract references; validated by `governance.test.ts` |
+| UI Contract Registry | T03 / #508 | `web/lib/governance/registries.ts` — created with 17 executable contracts/probe definitions; live token, safe-area, navigation, and scanner sources covered |
 | UI Lab | T07 / #512 | Not created |
-| Approval package index | T07+ | Not created |
+| Approval package index | T03 / #508 | `web/lib/governance/registries.ts` — created with 4 status/owner/baseline/evidence packages; strict approval metadata validation active |
 | T12 rescue decision | T12 / #517 | `UNDECIDED` |
 | Historical finding reconciliation | T01, route tickets, T33 | Not complete |
 | Final full-app verification | T33 / #538 | Not run |
@@ -563,6 +579,20 @@ Only record blockers or decisions that affect more than one ticket or the next p
 | D-001 | Decision | Planning | `SALVAGE STACK` vs `SELECTIVE REPLAY` remains undecided until Programs tracer evidence | T12 / #517 + owner | `PENDING` | — |
 | B-004 | Reconciliation | Starting state | Required `rescue/ui-control-recovery` branch and intended tracker path were absent at session entry | Phase 0 / owner | `RESOLVED` | Rescue branch and tracker bootstrap are committed; branch is based on the frozen Phase F SHA |
 | D-002 | Decision | 2026-09-03 | Owner approved ticket-isolated stacked PR delivery within each phase; `STACK_GREEN` unlocks child implementation but not approval or merge | Owner / #505 | `ACCEPTED` | [Owner-approved execution-model amendment](https://github.com/Noahlw/efcc/issues/505#issuecomment-5514680835) |
+| D-003 | Contract Change | 2026-09-04 | Owner authorized T03 to remove selector-name escapes, require one-file source-fingerprint CSS waivers with T06 / #511 removal ownership, and own narrow web-root `out` / `.wrangler` generated-output exclusions with shipped-source coverage | Noah Wong / #505 | `ACCEPTED` | [Complete D-003 approval artifact](#d-003-owner-approval-artifact); rollback boundary `bcf92fc` |
+
+### D-003 owner approval artifact
+
+- **Approver and authority:** Noah Wong, repository owner; approval supplied in the Phase 0 completion goal prompt used for this execution session.
+- **Exact scope:** T03 / #508 governance only: remove selector-name-based escapes for `RULE-NO-UNLAYERED-HIGH-BLAST-RADIUS-CSS`; require one exact repo-relative file plus normalized source fingerprint for each high-blast CSS waiver; require a named removal owner; and move the narrow web-root `out` / `.wrangler` generated-output scan boundary into T03 with shipped-source coverage.
+- **Affected routes, states, viewports, and browsers:** route `/`; `global-css-baseline` state/scenario; viewports `320, 390, 600, 799, 800, 1024, 1440`; browsers Chromium, Firefox, and WebKit. The generated-output boundary is scanner scope only and affects no application route or runtime state.
+- **Current expectation:** The audit may treat `html`, `body`, `*`, and `a` as approved by selector name, and a high-blast waiver can match by rule plus affected file.
+- **Proposed expectation:** Every broad leading type/universal selector outside explicit `@layer`, `@keyframes`, or `@theme` ownership is detected; a high-blast waiver matches only one exact repo-relative file and one normalized selector/declaration fingerprint; absolute, wildcard, traversal, and multi-file paths fail closed; nested shipped source remains auditable while only web-root generated output is excluded.
+- **Product, domain, and design reason:** Make the Tailwind-v4 cascade defect observable instead of silently blessing it, while retaining only the pre-existing global baseline debt needed to keep the T06 migration explicit and reversible. This changes governance truth, not product/domain behavior.
+- **Preservation impact and migration callers:** No production route, state, API, schema, permission, Worker, or domain contract changes. The governance CLI and source-audit tests consume the stricter identity; T06 / #511 is the sole migration caller responsible for removing the six temporary global-CSS waivers after cascade containment.
+- **Replacement proof:** Governance tests cover detection before waiver resolution, custom elements, same-line blocks, whitespace/material/quoted-value fingerprint behavior, exact one-file matching, absolute-path rejection, fail-closed affected mode, and generated-output boundaries. Required local gates and exact-head GitHub governance CI must pass before T03 is accepted.
+- **Rollback checkpoint:** `bcf92fc` (the T04 base immediately before the T03 contract correction).
+- **Removal condition and owner:** T06 / #511 must remove or explicitly layer all six pre-existing broad global rules, delete `WVR-T03-GLOBAL-*`, and prove reintroduction fails governance; removal owner is T06 / #511.
 
 Do not create extra implementation work here. If a blocker needs implementation outside an existing ticket, stop and ask the owner whether the tracker/spec must change.
 
@@ -623,7 +653,6 @@ A requested change to those items is not a tracker update. It is an owner-approv
 
 ## 20. Next safe action
 
-1. Create a clean T03 / #508 worktree from the current tip of `rescue/t04-worker-suites` (reviewed implementation `cdbe475`; include the final tracker bookkeeping).
-2. Read Issue #508 and verify T02 logical blocker plus T04 technical stack parent are present.
-3. Implement only T03, run its focused/aggregate gates, run two-axis `/code-review`, and publish its ticket-isolated PR targeting `rescue/t04-worker-suites`.
-4. Mark T03 `STACK_GREEN` only after its implementation, required evidence, review, isolated PR, and safety gate pass; then continue to T05.
+1. Merge #547 → #546 → #548 parent-first into `rescue/ui-control-recovery`, then restack T05.
+3. Implement/review T05 / #510 only, preserving the upstream blocker if the official runtime still fails.
+4. Keep T06 blocked until T05 is `STACK_GREEN`; do not start Phase 1.

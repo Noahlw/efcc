@@ -70,6 +70,7 @@ export default defineProject({
       "lib/shell/authenticated-shell.test.tsx",
       "lib/attention-panel.test.tsx",
       "lib/notices-panel.test.tsx",
+      "lib/governance/**/*.test.ts",
     ],
     setupFiles: ["./lib/test-setup.ts"],
     server: {
