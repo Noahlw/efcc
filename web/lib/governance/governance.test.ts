@@ -2149,6 +2149,16 @@ describe("Static Governance Source Audit Engine", () => {
       ).toMatch(/^[a-f0-9]{64}$/u);
     });
 
+    it("detects broad custom elements without a selector-name allowlist", () => {
+      const violations = auditFileContent(
+        "web/app/globals.css",
+        "video { display: block; }"
+      );
+
+      expect(violations).toHaveLength(1);
+      expect(violations[0].ruleId).toBe(HIGH_BLAST_CSS_RULE);
+    });
+
     it("waives one exact reset while another broad rule in the same file remains active", () => {
       const violation = auditFileContent(
         "web/app/globals.css",
@@ -2201,6 +2211,32 @@ describe("Static Governance Source Audit Engine", () => {
       expect(result.waivedViolations).toHaveLength(0);
     });
 
+    it("preserves quoted CSS values and normalizes structural slash whitespace", () => {
+      const quotedWithSpaces = auditFileContent(
+        "web/app/globals.css",
+        'button[data-x="a : b"] { color: red; }'
+      )[0] as { sourceFingerprint?: string };
+      const quotedWithoutSpaces = auditFileContent(
+        "web/app/globals.css",
+        'button[data-x="a:b"] { color: red; }'
+      )[0] as { sourceFingerprint?: string };
+      const ratioWithSpaces = auditFileContent(
+        "web/app/globals.css",
+        "button { margin: 1rem / 1.5; }"
+      )[0] as { sourceFingerprint?: string };
+      const ratioWithoutSpaces = auditFileContent(
+        "web/app/globals.css",
+        "button { margin: 1rem/1.5; }"
+      )[0] as { sourceFingerprint?: string };
+
+      expect(quotedWithSpaces.sourceFingerprint).not.toBe(
+        quotedWithoutSpaces.sourceFingerprint
+      );
+      expect(ratioWithSpaces.sourceFingerprint).toBe(
+        ratioWithoutSpaces.sourceFingerprint
+      );
+    });
+
     it("rejects a generic file-level waiver for high-blast-radius CSS", () => {
       const genericWaiver = createHighBlastWaiver();
       const result = auditCssFixture(historicalUniversalReset, [genericWaiver]);
@@ -2217,6 +2253,39 @@ describe("Static Governance Source Audit Engine", () => {
       expect(
         validation.errors.some(
           (error) => error.code === "MISSING_WAIVER_SOURCE_FINGERPRINT"
+        )
+      ).toBe(true);
+    });
+
+    it("rejects a high-blast waiver that names more than one file", () => {
+      const violation = auditFileContent(
+        "web/app/globals.css",
+        historicalUniversalReset
+      )[0] as { sourceFingerprint?: string };
+      const multiFileWaiver = {
+        ...createHighBlastWaiver(violation.sourceFingerprint),
+        id: "WVR-MULTI-FILE-GLOBAL-CSS-TEST",
+        affectedFiles: ["web/app/globals.css", "web/app/other.css"],
+      } as FingerprintedWaiver;
+
+      const result = auditCssFixture(historicalUniversalReset, [
+        multiFileWaiver,
+      ]);
+
+      expect(result.passed).toBe(false);
+      expect(result.violations).toHaveLength(1);
+      expect(result.waivedViolations).toHaveLength(0);
+
+      const validation = validateRegistries({
+        ...getCanonicalRegistries(),
+        waivers: [multiFileWaiver],
+      });
+      expect(validation.valid).toBe(false);
+      expect(
+        validation.errors.some(
+          (error) =>
+            error.code === "INVALID_WAIVER_AFFECTED_FILES" &&
+            error.entryId === multiFileWaiver.id
         )
       ).toBe(true);
     });

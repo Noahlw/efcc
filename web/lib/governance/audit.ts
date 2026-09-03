@@ -54,11 +54,6 @@ export interface AuditOptions {
   readonly now?: Date | string | number;
 }
 
-const BROAD_ELEMENT_TAG_REGEX =
-  /^(html|body|div|p|span|a|button|input|textarea|select|table|thead|tbody|tr|th|td|ul|ol|li|h[1-6]|header|footer|nav|main|section|article|aside|dialog|form|label)\b/i;
-const BROAD_ELEMENT_TOKEN_REGEX =
-  /(?:^|[\s>+~,])(html|body|div|p|span|a|button|input|textarea|select|table|thead|tbody|tr|th|td|ul|ol|li|h[1-6]|header|footer|nav|main|section|article|aside|dialog|form|label)\b/i;
-
 function stripQuotedCssText(value: string): string {
   let output = "";
   let quote: "'" | '"' | null = null;
@@ -89,11 +84,56 @@ function stripQuotedCssText(value: string): string {
   return output;
 }
 
+function stripCssAttributeContents(value: string): string {
+  let output = "";
+  let bracketDepth = 0;
+  let quote: "'" | '"' | null = null;
+
+  for (let i = 0; i < value.length; i++) {
+    const char = value[i];
+    if (quote !== null) {
+      output += " ";
+      if (char === "\\") {
+        if (i + 1 < value.length) {
+          output += " ";
+          i++;
+        }
+      } else if (char === quote) {
+        quote = null;
+      }
+      continue;
+    }
+
+    if (bracketDepth > 0) {
+      output += " ";
+      if (char === "'" || char === '"') {
+        quote = char;
+      } else if (char === "[") {
+        bracketDepth++;
+      } else if (char === "]") {
+        bracketDepth--;
+      }
+      continue;
+    }
+
+    if (char === "[") {
+      bracketDepth = 1;
+      output += " ";
+    } else {
+      output += char;
+    }
+  }
+
+  return output;
+}
+
 function findPseudoWrapperArguments(selector: string): string[] {
   const argumentsFound: string[] = [];
 
   for (let i = 0; i < selector.length; i++) {
-    const wrapperMatch = selector.slice(i).match(/^:(where|is|has)\s*\(/i);
+    const wrapperMatch = selector
+      .slice(i)
+      .match(/^:(where|is|has|not|matches|any|host|host-context|global)\s*\(/i);
     if (!wrapperMatch) continue;
 
     const openIndex = i + wrapperMatch[0].lastIndexOf("(");
@@ -133,17 +173,58 @@ function findPseudoWrapperArguments(selector: string): string[] {
   return argumentsFound;
 }
 
+function maskParenthesizedContent(value: string): string {
+  let output = "";
+  let parenDepth = 0;
+  let quote: "'" | '"' | null = null;
+
+  for (let i = 0; i < value.length; i++) {
+    const char = value[i];
+    if (quote !== null) {
+      if (parenDepth > 0) output += " ";
+      else output += char;
+      if (char === "\\") {
+        if (i + 1 < value.length) {
+          if (parenDepth > 0) output += " ";
+          else output += value[++i];
+        }
+      } else if (char === quote) {
+        quote = null;
+      }
+      continue;
+    }
+
+    if (char === "'" || char === '"') {
+      quote = char;
+      if (parenDepth > 0) output += " ";
+      else output += char;
+    } else if (char === "(") {
+      parenDepth++;
+      output += " ";
+    } else if (char === ")" && parenDepth > 0) {
+      parenDepth--;
+      output += " ";
+    } else if (parenDepth > 0) {
+      output += " ";
+    } else {
+      output += char;
+    }
+  }
+
+  return output;
+}
+
 function isBroadSelector(selector: string): boolean {
   const trimmed = selector.trim();
   if (!trimmed) return false;
 
-  const withoutStrings = stripQuotedCssText(trimmed);
-  if (withoutStrings.trim() === "*") return true;
-  if (BROAD_ELEMENT_TAG_REGEX.test(withoutStrings.trim())) return true;
+  const withoutStrings = stripQuotedCssText(stripCssAttributeContents(trimmed));
+  const leadingSelector = maskParenthesizedContent(withoutStrings)
+    .trim()
+    .replace(/^(?:[>+~]\s*)+/u, "");
+  if (/^(?:\*|-?[A-Za-z_][A-Za-z0-9_-]*)/u.test(leadingSelector)) return true;
 
   return findPseudoWrapperArguments(withoutStrings).some((argument) => {
-    if (/\*/u.test(argument) || BROAD_ELEMENT_TOKEN_REGEX.test(argument))
-      return true;
     return splitTopLevelSelectors(argument).some((nestedSelector) =>
       isBroadSelector(nestedSelector)
     );
@@ -438,10 +519,38 @@ function extractCssBlockSource(
 }
 
 function normalizeCssSource(source: string): string {
-  return source
-    .replace(/\s+/gu, " ")
-    .trim()
-    .replace(/\s*([{}:;,>+~])\s*/gu, "$1");
+  let output = "";
+  let unquotedSegment = "";
+  let quote: "'" | '"' | null = null;
+
+  const flushUnquotedSegment = (): void => {
+    output += unquotedSegment
+      .replace(/\s+/gu, " ")
+      .trim()
+      .replace(/\s*([{}:;,>+~=/()[\]])\s*/gu, "$1");
+    unquotedSegment = "";
+  };
+
+  for (let i = 0; i < source.length; i++) {
+    const char = source[i];
+    if (quote !== null) {
+      output += char;
+      if (char === "\\" && i + 1 < source.length) {
+        output += source[++i];
+      } else if (char === quote) {
+        quote = null;
+      }
+    } else if (char === "'" || char === '"') {
+      flushUnquotedSegment();
+      quote = char;
+      output += char;
+    } else {
+      unquotedSegment += char;
+    }
+  }
+
+  flushUnquotedSegment();
+  return output;
 }
 
 function getCssSourceFingerprint(
@@ -1129,6 +1238,7 @@ export function auditSourceCode(options: AuditOptions = {}): AuditResult {
 
       if (!matchesFile) return false;
       if (violation.ruleId === "RULE-NO-UNLAYERED-HIGH-BLAST-RADIUS-CSS") {
+        if (waiver.affectedFiles.length !== 1) return false;
         return waiver.sourceFingerprint === violation.sourceFingerprint;
       }
       return true;

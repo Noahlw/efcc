@@ -1277,6 +1277,19 @@ export function validateRegistries(
           severity: "error",
         });
       }
+      if (
+        Array.isArray(waiver.affectedFiles) &&
+        waiver.affectedFiles.length !== 1
+      ) {
+        errors.push({
+          code: "INVALID_WAIVER_AFFECTED_FILES",
+          message: `Waiver "${waiver.id}" for high-blast-radius CSS must name exactly one affected file`,
+          registry: "waivers",
+          entryId: waiver.id,
+          field: "affectedFiles",
+          severity: "error",
+        });
+      }
     }
 
     if (
