@@ -7469,9 +7469,6 @@ describe("PUI-02: participant catalog", () => {
     );
   });
 
-  // This scope projection intentionally exercises two account modes and the
-  // normalized role resolver; keep its explicit budget so a slow fresh
-  // workerd run remains a required test failure, never an implicit skip.
   test("Unlisted rows appear only through scoped program.manage effective access", async () => {
     const adminAccess = await accessCookieFor("alice", "alice-secret");
     const dept = await createDepartment(adminAccess, {
@@ -7518,7 +7515,7 @@ describe("PUI-02: participant catalog", () => {
       "scoped program.manage must expose the Unlisted row"
     );
     assert.ok(leaderNames.includes("PUI-02 Listed"));
-  }, 120_000);
+  });
 
   test("module-disabled Departments are excluded from the catalog", async () => {
     const adminAccess = await accessCookieFor("alice", "alice-secret");

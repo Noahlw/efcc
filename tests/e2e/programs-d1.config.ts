@@ -51,11 +51,6 @@ export default defineConfig({
   testDir: ".",
   testMatch: ["**/programs-d1.test.ts", "**/pui-05-home-origin.test.ts"],
   timeout: 45_000,
-  // Local `wrangler dev` (Miniflare, single process) occasionally drops a
-  // request at the socket level under sustained sequential load -- the
-  // browser then shows its own network-error interstitial instead of the
-  // app. Confirmed via trace inspection: the failing locator wait ran the
-  // full timeout while the underlying click's request never completed and
   // The runtime gate must preserve the first failure. Retrying a navigation
   // could hide a Worker/proxy termination or a broken D1 lifecycle.
   retries: 0,

@@ -32,6 +32,7 @@ const promiseConstructor = Promise as PromiseConstructorWithResolvers;
 
 type LoggedProcess = {
   child: ChildProcess;
+  detached: boolean;
   exit: Promise<ProcessResult>;
   logClosed: Promise<void>;
 };
@@ -40,6 +41,36 @@ export const DEFAULT_TARGET_URL = "http://127.0.0.1:8787";
 export const DEFAULT_TARGET_PORT = 8787;
 export const DEFAULT_ARTIFACT_ROOT = "test-results/programs-d1-runs";
 export const PROGRAMS_CONFIG = "tests/e2e/programs-d1.config.ts";
+
+export const RUNTIME_STAGE_TIMEOUTS_MS = {
+  build: 5 * 60 * 1000,
+  bundle: 5 * 60 * 1000,
+  migrate: 2 * 60 * 1000,
+  "seed-local": 2 * 60 * 1000,
+  "seed-demo": 2 * 60 * 1000,
+  "programs-playwright": 15 * 60 * 1000,
+} as const;
+
+type RuntimeStageName = keyof typeof RUNTIME_STAGE_TIMEOUTS_MS;
+
+export function stageTimeoutMs(name: string): number {
+  return RUNTIME_STAGE_TIMEOUTS_MS[name as RuntimeStageName] ?? 2 * 60 * 1000;
+}
+
+export function runtimeRunSucceeded(
+  journeyCompleted: boolean,
+  workerExit: ProcessResult | null,
+  interruptedSignal: NodeJS.Signals | null = null
+): boolean {
+  return (
+    journeyCompleted &&
+    interruptedSignal === null &&
+    workerExit !== null &&
+    workerExit.code === 0 &&
+    workerExit.signal === null &&
+    workerExit.error === undefined
+  );
+}
 
 export function runtimeCommands(
   persistTo: string,
@@ -291,6 +322,62 @@ async function localSecret(): Promise<string> {
   return value;
 }
 
+export type AuthProbeCredentials = {
+  username: string;
+  credential: string;
+};
+
+export function authProbeCredentials(
+  inherited: NodeJS.ProcessEnv = process.env
+): AuthProbeCredentials {
+  const username = inherited.PROGRAMS_ADMIN_USERNAME ?? "E2E_admin";
+  const credential = inherited.PROGRAMS_ADMIN_CREDENTIAL ?? "E2E_admin!dev";
+  if (!username.startsWith("E2E_") || credential.trim().length < 8) {
+    throw new Error(
+      "T05 auth readiness requires disposable PROGRAMS_ADMIN_USERNAME and PROGRAMS_ADMIN_CREDENTIAL fixtures"
+    );
+  }
+  return { username, credential };
+}
+
+export function cookieHeaderFromSetCookieHeaders(
+  headers: readonly string[]
+): string {
+  const cookies = headers
+    .map((header) => header.split(";", 1)[0]?.trim() ?? "")
+    .filter(Boolean);
+  if (cookies.length === 0) {
+    throw new Error("local Worker auth readiness response set no cookies");
+  }
+  return cookies.join("; ");
+}
+
+function responseSetCookieHeaders(headers: Headers): string[] {
+  const responseHeaders = headers as Headers & {
+    getSetCookie?: () => string[];
+  };
+  const nativeHeaders = responseHeaders.getSetCookie?.() ?? [];
+  if (nativeHeaders.length > 0) {
+    return nativeHeaders;
+  }
+  const combined = headers.get("set-cookie");
+  return combined === null ? [] : combined.split(/,(?=\s*[^;,=\s]+=[^;,]*)/u);
+}
+
+async function fetchWithTimeout(
+  input: URL,
+  init: RequestInit = {},
+  timeoutMs = 10_000
+): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(input, { ...init, signal: controller.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 function spawnLogged(
   spec: CommandSpec,
   cwd: string,
@@ -299,10 +386,11 @@ function spawnLogged(
   echo = true
 ): LoggedProcess {
   const stream = createWriteStream(logPath, { flags: "a" });
+  const detached = process.platform !== "win32" || spec.name === "worker";
   const child = spawn(spec.command, spec.args, {
     cwd,
     env: environment,
-    detached: spec.name === "worker",
+    detached,
     stdio: ["ignore", "pipe", "pipe"],
   });
   const forward = (chunk: Buffer): void => {
@@ -339,19 +427,39 @@ function spawnLogged(
   };
   child.once("close", closeLog);
   child.once("error", closeLog);
-  return { child, exit, logClosed };
+  return { child, detached, exit, logClosed };
 }
 
-async function runLogged(
+type RunLoggedHooks = {
+  onStart?: (process: LoggedProcess) => void;
+  onFinish?: (process: LoggedProcess) => void;
+};
+
+export async function runLogged(
   spec: CommandSpec,
   cwd: string,
   environment: NodeJS.ProcessEnv,
-  logPath: string
+  logPath: string,
+  timeoutMs = stageTimeoutMs(spec.name),
+  hooks: RunLoggedHooks = {}
 ): Promise<ProcessResult> {
   const process = spawnLogged(spec, cwd, environment, logPath);
-  const result = await process.exit;
-  await process.logClosed;
-  return result;
+  hooks.onStart?.(process);
+  try {
+    const result = await waitForExit(process, timeoutMs);
+    if (result === null) {
+      const terminated = await stopLogged(process);
+      await process.logClosed;
+      return {
+        ...terminated,
+        error: `${spec.name} timed out after ${timeoutMs}ms`,
+      };
+    }
+    await process.logClosed;
+    return result;
+  } finally {
+    hooks.onFinish?.(process);
+  }
 }
 
 async function waitForExit(
@@ -366,46 +474,35 @@ async function waitForExit(
   return result;
 }
 
-async function stopLogged(logged: LoggedProcess): Promise<ProcessResult> {
-  if (logged.child.exitCode === null && logged.child.signalCode === null) {
+export async function stopLogged(
+  logged: LoggedProcess
+): Promise<ProcessResult> {
+  const signal = (name: NodeJS.Signals): void => {
     try {
-      if (logged.child.pid && process.platform !== "win32") {
-        process.kill(-logged.child.pid, "SIGINT");
+      if (logged.detached && logged.child.pid && process.platform !== "win32") {
+        process.kill(-logged.child.pid, name);
       } else {
-        logged.child.kill("SIGINT");
+        logged.child.kill(name);
       }
     } catch {
       // The process may have exited between the state check and signal.
     }
+  };
+  if (logged.child.exitCode === null && logged.child.signalCode === null) {
+    signal("SIGINT");
   }
   const graceful = await waitForExit(logged, 10_000);
   if (graceful) {
     await logged.logClosed;
     return graceful;
   }
-  try {
-    if (logged.child.pid && process.platform !== "win32") {
-      process.kill(-logged.child.pid, "SIGTERM");
-    } else {
-      logged.child.kill("SIGTERM");
-    }
-  } catch {
-    // The process may have exited while the graceful wait elapsed.
-  }
+  signal("SIGTERM");
   const terminated = await waitForExit(logged, 5_000);
   if (terminated) {
     await logged.logClosed;
     return terminated;
   }
-  try {
-    if (logged.child.pid && process.platform !== "win32") {
-      process.kill(-logged.child.pid, "SIGKILL");
-    } else {
-      logged.child.kill("SIGKILL");
-    }
-  } catch {
-    // Nothing more can be signalled.
-  }
+  signal("SIGKILL");
   const killed = await logged.exit;
   await logged.logClosed;
   return killed;
@@ -442,17 +539,50 @@ async function waitForWorker(
   throw new Error(`local Worker did not become ready within ${timeoutMs}ms`);
 }
 
-async function assertHealthyTarget(target: URL): Promise<void> {
-  const response = await fetch(target);
+export async function assertHealthyTarget(
+  target: URL,
+  credentials: AuthProbeCredentials
+): Promise<void> {
+  const response = await fetchWithTimeout(target);
   await response.arrayBuffer();
   if (!response.ok) {
     throw new Error(
       `local Worker readiness request returned HTTP ${response.status}`
     );
   }
-  const authResponse = await fetch(new URL("/api/v1/auth/me", target));
+  const loginResponse = await fetchWithTimeout(
+    new URL("/api/v1/auth/login", target),
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Origin: target.origin,
+      },
+      body: JSON.stringify({
+        username: credentials.username,
+        password: credentials.credential,
+      }),
+    }
+  );
+  await loginResponse.arrayBuffer();
+  if (!loginResponse.ok) {
+    throw new Error(
+      `local Worker auth readiness login returned HTTP ${loginResponse.status}`
+    );
+  }
+  const setCookieHeaders = responseSetCookieHeaders(loginResponse.headers);
+  const cookieHeader = cookieHeaderFromSetCookieHeaders(setCookieHeaders);
+  const authResponse = await fetchWithTimeout(
+    new URL("/api/v1/auth/me", target),
+    {
+      headers: {
+        Cookie: cookieHeader,
+        Origin: target.origin,
+      },
+    }
+  );
   await authResponse.arrayBuffer();
-  if (authResponse.status >= 500) {
+  if (!authResponse.ok) {
     throw new Error(
       `local Worker auth readiness request returned HTTP ${authResponse.status}`
     );
@@ -559,6 +689,11 @@ async function main(): Promise<void> {
   let workerProcess: LoggedProcess | null = null;
   let workerExit: ProcessResult | null = null;
   let playwrightExit: ProcessResult | null = null;
+  let activeStageProcess: LoggedProcess | null = null;
+  let activeStageStop: Promise<ProcessResult> | null = null;
+  let workerStop: Promise<ProcessResult> | null = null;
+  let interruptedSignal: NodeJS.Signals | null = null;
+  let journeyCompleted = false;
   const seedLog = paths.seedLog;
   const stageLog = (spec: CommandSpec): string =>
     spec.name === "seed-local" || spec.name === "seed-demo"
@@ -566,7 +701,32 @@ async function main(): Promise<void> {
       : spec.name === "programs-playwright"
         ? paths.playwrightLog
         : paths.prepareLog;
+  const stopActiveStage = (): Promise<ProcessResult | null> => {
+    if (!activeStageProcess) {
+      return Promise.resolve(null);
+    }
+    activeStageStop ??= stopLogged(activeStageProcess);
+    return activeStageStop;
+  };
+  const stopWorker = (): Promise<ProcessResult | null> => {
+    if (!workerProcess) {
+      return Promise.resolve(null);
+    }
+    workerStop ??= stopLogged(workerProcess);
+    return workerStop;
+  };
+  const handleSignal = (signal: NodeJS.Signals): void => {
+    interruptedSignal = signal;
+    manifest.status = "failed";
+    process.exitCode = 1;
+    void Promise.allSettled([stopActiveStage(), stopWorker()]);
+  };
+  process.on("SIGINT", handleSignal);
+  process.on("SIGTERM", handleSignal);
   const runStage = async (spec: CommandSpec): Promise<ProcessResult> => {
+    if (interruptedSignal !== null) {
+      throw new Error(`T05 runtime interrupted by ${interruptedSignal}`);
+    }
     const stage: ManifestStage = {
       name: spec.name,
       command: `${spec.command} ${spec.args.join(" ")}`,
@@ -575,17 +735,39 @@ async function main(): Promise<void> {
     };
     manifest.stages.push(stage);
     await writeManifest(paths.manifest, manifest);
-    const result = await runLogged(spec, cwd, environment, stageLog(spec));
+    activeStageStop = null;
+    const result = await runLogged(
+      spec,
+      cwd,
+      environment,
+      stageLog(spec),
+      stageTimeoutMs(spec.name),
+      {
+        onStart: (logged) => {
+          activeStageProcess = logged;
+        },
+        onFinish: (logged) => {
+          if (activeStageProcess === logged) {
+            activeStageProcess = null;
+          }
+        },
+      }
+    );
     if (spec.name === "programs-playwright") {
       playwrightExit = result;
     }
     stage.exit = result;
     stage.finishedAt = new Date().toISOString();
-    stage.status = result.code === 0 ? "passed" : "failed";
+    stage.status =
+      result.code === 0 && result.error === undefined ? "passed" : "failed";
     await writeManifest(paths.manifest, manifest);
-    if (result.code !== 0) {
+    if (
+      result.code !== 0 ||
+      result.error !== undefined ||
+      interruptedSignal !== null
+    ) {
       throw new Error(
-        `${spec.name} failed with exit code ${result.code ?? "null"}`
+        `${spec.name} failed${result.error ? `: ${result.error}` : ` with exit code ${result.code ?? "null"}`}`
       );
     }
     return result;
@@ -616,7 +798,7 @@ async function main(): Promise<void> {
     workerStage.status = "listener-ready";
     workerStage.finishedAt = new Date().toISOString();
     await writeManifest(paths.manifest, manifest);
-    await assertHealthyTarget(target);
+    await assertHealthyTarget(target, authProbeCredentials(environment));
     workerStage.status = "authenticated-ready";
     workerStage.finishedAt = new Date().toISOString();
     await writeManifest(paths.manifest, manifest);
@@ -628,7 +810,7 @@ async function main(): Promise<void> {
     }
     await runStage(seedDemoSpec);
     playwrightExit = await runStage(playwrightSpec);
-    manifest.status = "passed";
+    journeyCompleted = true;
   } catch (error) {
     manifest.status = "failed";
     process.stderr.write(
@@ -636,22 +818,54 @@ async function main(): Promise<void> {
     );
     process.exitCode = 1;
   } finally {
-    if (workerProcess) {
-      workerExit = await stopLogged(workerProcess);
-      const workerStage = manifest.stages.find(
-        (stage) => stage.name === "worker"
-      );
-      if (workerStage) {
-        workerStage.exit = workerExit;
-        workerStage.finishedAt = new Date().toISOString();
-        workerStage.status =
-          manifest.status === "passed" ? "stopped" : "stopped-after-failure";
+    try {
+      if (workerProcess) {
+        try {
+          workerExit = await stopWorker();
+        } catch (error) {
+          workerExit = {
+            code: null,
+            signal: null,
+            error: error instanceof Error ? error.message : String(error),
+          };
+          process.exitCode = 1;
+        }
+        const workerStage = manifest.stages.find(
+          (stage) => stage.name === "worker"
+        );
+        if (workerStage) {
+          if (workerExit !== null) {
+            workerStage.exit = workerExit;
+          }
+          workerStage.finishedAt = new Date().toISOString();
+          workerStage.status = runtimeRunSucceeded(
+            journeyCompleted,
+            workerExit,
+            interruptedSignal
+          )
+            ? "stopped"
+            : "stopped-after-failure";
+        }
       }
+      const succeeded = runtimeRunSucceeded(
+        journeyCompleted,
+        workerExit,
+        interruptedSignal
+      );
+      if (succeeded) {
+        manifest.status = "passed";
+      } else {
+        manifest.status = "failed";
+        process.exitCode = 1;
+      }
+      manifest.finishedAt = new Date().toISOString();
+      await writeManifest(paths.manifest, manifest);
+      await writeFailureSummary(paths, workerExit, playwrightExit, [secret]);
+      process.stdout.write(`T05 runtime artifacts: ${paths.directory}\n`);
+    } finally {
+      process.off("SIGINT", handleSignal);
+      process.off("SIGTERM", handleSignal);
     }
-    manifest.finishedAt = new Date().toISOString();
-    await writeManifest(paths.manifest, manifest);
-    await writeFailureSummary(paths, workerExit, playwrightExit, [secret]);
-    process.stdout.write(`T05 runtime artifacts: ${paths.directory}\n`);
   }
 }
 

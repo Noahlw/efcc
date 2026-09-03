@@ -1,12 +1,21 @@
+import { mkdtempSync, rmSync } from "node:fs";
+import os from "node:os";
+import path from "node:path";
+
 import { describe, expect, test } from "vitest";
 
 import {
+  authProbeCredentials,
   assertLocalTarget,
   artifactPaths,
   classifyRuntimeSignals,
+  cookieHeaderFromSetCookieHeaders,
   redactSecrets,
+  runLogged,
+  runtimeRunSucceeded,
   runtimeCommands,
   runtimeEnvironment,
+  stageTimeoutMs,
 } from "./run-programs-acceptance";
 
 describe("T05 local Programs runtime runner", () => {
@@ -150,5 +159,64 @@ describe("T05 local Programs runtime runner", () => {
       "-c",
       "tests/e2e/programs-d1.config.ts",
     ]);
+  });
+
+  test("does not report a late Worker failure as a successful run", () => {
+    expect(runtimeRunSucceeded(true, { code: 1, signal: null })).toBe(false);
+    expect(runtimeRunSucceeded(true, { code: 0, signal: null })).toBe(true);
+    expect(runtimeRunSucceeded(true, { code: null, signal: "SIGTERM" })).toBe(
+      false
+    );
+    expect(runtimeRunSucceeded(false, { code: 0, signal: null })).toBe(false);
+  });
+
+  test("bounds post-start stages and terminates a timed-out child", async () => {
+    const directory = mkdtempSync(path.join(os.tmpdir(), "efcc-t05-runtime-"));
+    try {
+      const result = await runLogged(
+        {
+          name: "seed-demo",
+          command: process.execPath,
+          args: [
+            "-e",
+            "process.on('SIGINT', () => process.exit(0)); setInterval(() => {}, 1000)",
+          ],
+        },
+        process.cwd(),
+        process.env,
+        path.join(directory, "stage.log"),
+        25
+      );
+
+      expect(result.error).toContain("seed-demo timed out after 25ms");
+      expect(stageTimeoutMs("seed-demo")).toBe(120_000);
+      expect(stageTimeoutMs("programs-playwright")).toBe(900_000);
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  test("auth readiness uses disposable fixtures and strips cookie attributes", () => {
+    expect(
+      authProbeCredentials({
+        PROGRAMS_ADMIN_USERNAME: "E2E_admin",
+        PROGRAMS_ADMIN_CREDENTIAL: "E2E_admin!dev",
+      })
+    ).toEqual({
+      username: "E2E_admin",
+      credential: "E2E_admin!dev",
+    });
+    expect(() =>
+      authProbeCredentials({
+        PROGRAMS_ADMIN_USERNAME: "admin",
+        PROGRAMS_ADMIN_CREDENTIAL: "not-disposable",
+      })
+    ).toThrow();
+    expect(
+      cookieHeaderFromSetCookieHeaders([
+        "efcc_access=access-value; Path=/; HttpOnly",
+        "efcc_refresh=refresh-value; Path=/; HttpOnly",
+      ])
+    ).toBe("efcc_access=access-value; efcc_refresh=refresh-value");
   });
 });

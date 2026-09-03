@@ -149,7 +149,7 @@ Update this table at the start and end of every implementation session.
 | Merge frontier | T05 / #510 → T06 / #511; T05 Draft PR and runtime qualification remain pending |
 | Review pending | T05 incremental diff review, Draft PR creation, and final runtime qualification |
 | Human approval pending | None — D-003 records the owner-authorized T03 Contract Change |
-| Active blocker | T05 retains the upstream ProxyWorker blocker; T06 remains logically blocked on T05 |
+| Active blocker | T05 retains the upstream ProxyWorker blocker; T06 is permitted only as provisional implementation and remains blocked for final validation/merge |
 | Next safe action | Finish T05 local gates and two-axis review, push the restacked branch, create its truthful Draft PR, then record the authorized provisional T06 sequencing exception |
 | Last merged rescue SHA | `d2652bfb11b469f5fa557d3c2c73d69c4a17649d` |
 | Last rollback checkpoint | Frozen Phase F SHA `6edf28c0f8f7058cf992416e7b517824c3178c8` |
@@ -185,7 +185,7 @@ Update this table at the start and end of every implementation session.
 | T03 | [#508](https://github.com/Noahlw/efcc/issues/508) | Enforce styling ownership and typed UI contract governance | T02 | `MERGED_RESCUE` | [#548](https://github.com/Noahlw/efcc/pull/548) | `d2652bfb11b469f5fa557d3c2c73d69c4a17649d` | Rule 1 detects all unlayered broad CSS, high-blast waivers use exact source fingerprints/removal owners, and narrow generated-output exclusions are T03-owned; local gates, two-axis review, and exact-head GitHub run `33801176630` pass |
 | T04 | [#509](https://github.com/Noahlw/efcc/issues/509) | Restore excluded normalized Worker suites | T01 | `MERGED_RESCUE` | [#546](https://github.com/Noahlw/efcc/pull/546) | `6e7428b61bc9bbd2d82109688049696078609b59` | Restacked onto amendment; focused, aggregate, typecheck, precommit, diff-check, and two-axis review gates pass; parent-first merge complete |
 | T05 | [#510](https://github.com/Noahlw/efcc/issues/510) | Stabilize full Programs/Worker/D1 runtime | T04 | `BLOCKED_EXTERNAL_UPSTREAM` | Draft pending | — | Restacked implementation `04e758fb`; deterministic prepare/seed/readiness evidence is preserved, but the complete journey still hits the official Wrangler 4.127.1 ProxyWorker failure; no production behavior change |
-| T06 | [#511](https://github.com/Noahlw/efcc/issues/511) | Contain global CSS cascade | T01, T03, T05 | `BLOCKED` | — | — | Waiting for T05 `STACK_GREEN` |
+| T06 | [#511](https://github.com/Noahlw/efcc/issues/511) | Contain global CSS cascade | T01, T03, T05 | `BLOCKED` | — | — | Provisional implementation is authorized after T05 review; final validation, `STACK_GREEN`, and merge wait for T05 |
 
 ### Phase 0 exit record
 
@@ -200,6 +200,7 @@ Update this table at the start and end of every implementation session.
 | Programs runtime | Phase F blocker still open — T05 owns it |
 | Cascade result | Not run — T06 owns it |
 | Open blockers | T05 remains `BLOCKED_EXTERNAL_UPSTREAM`; T06 may be implemented provisionally under the owner-authorized sequencing exception, but cannot merge or become `STACK_GREEN` until T05 is green |
+| Stale living-plan PR | #542 closed as superseded by the active rescue control-plane lineage |
 | Next phase | Phase 1 only after all six Phase 0 tickets merge parent-first |
 
 ---
@@ -542,7 +543,8 @@ No production implementation, schema, API, permission, audit, idempotency, scope
 - **Tests:** T05 runner tests 13/13; root and web typechecks; the aggregate commit gate passed prototype 38, governance CLI 18, identity 98, Worker 605, components 889, and full governance with 278 files scanned, 0 active violations, and 75 waivers. Acceptance attempt `20260903t203931257z` completed prepare, local seed, readiness, and demo seed, then recorded 185/201 Playwright tests passed before the first `Error in ProxyController: Error inside ProxyWorker` / `Network connection lost.` and downstream `ERR_CONNECTION_REFUSED`. Independent clean attempt `20260903t204826297z` completed the same pre-journey stages, recorded 89 passed, 110 failed, and 2 did not run, and captured Worker/playwright exit code 1; its first cause was the same ProxyWorker/network-loss signature with 106 downstream refusals. These runs prove the lifecycle cleanup and preserve the blocker; they do not prove T05 green.
 - **Bounded 4.113.0 experiment (Step 5B — FAILED, STOPPED after run 1/3):** disposable `wrangler@4.113.0` install failed the required journey before any test executed — the bundled Miniflare server binary (max compatibility date `2026-07-28`) rejects the repo's `compatibility_date = "2026-08-02"` (`service core:user:efcc-prototype-129` refuses to start; `ERR_RUNTIME_FAILURE`). This is a material compatibility regression, NOT the ProxyWorker crash. Evidence: `test-results/programs-d1-runs/20260903t162817561z/` (`wrangler.log` line 1135, `failure-summary.json`, `run.json`). Official dependency state restored to `wrangler 4.127.1`; no pin adopted; no sequence of historical releases will be tested per owner constraint.
 - **Bounded official toolchain qualification:** Wrangler `4.127.1` remains the repository version. The rejected `4.113.0` experiment is recorded as incompatible with `compatibility_date = "2026-08-02"` and is not retried. The current stable `4.129.0` was checked; its release notes do not contain the open ProxyWorker fix. Workers SDK issue [#15317](https://github.com/cloudflare/workers-sdk/issues/15317) remains open and PR [#15448](https://github.com/cloudflare/workers-sdk/pull/15448) remains unmerged, so no preview, vendored patch, dependency patch, restart, or retry workaround is permitted.
-- **Code review:** T05 two-axis implementation review pending; `STACK_GREEN` is forbidden while the prescribed runtime still exits.
+- **Official `createTestHarness()` qualification (bounded and discarded):** With the committed Wrangler `4.127.1`, the official harness loaded the prebuilt `web/.wrangler/local-bundle` Worker, listened on a loopback URL, and dispatched a real Worker fetch that returned the expected unauthenticated `401`. The required storage boundary could not be qualified: `server.getWorker().applyD1Migrations("DB")` did not resolve during the bounded observation, and the corresponding `getEnv()` binding-access probe also hung. Without migrations/fixtures, the harness cannot prove the same real local D1, auth/session, demo seed, or unfiltered Playwright authority. The spike is therefore `NON-EQUIVALENT / UNRELIABLE` and was not adopted; shell-supervised `wrangler dev` remains the canonical path.
+- **Code review:** T05 two-axis implementation review pending after lifecycle hardening; `STACK_GREEN` is forbidden while the prescribed runtime still exits.
 - **Human approval:** `N/A`
 - **Preservation impact:** T05 is limited to the local Worker/D1 acceptance seam, disposable fixtures, runtime artifacts, and required gate wiring; no production data or Apps Script/Sheets access.
 - **Open blocker:** B-003 remains open. The failure is the known upstream `Error inside ProxyWorker` regression ([workers-sdk #15317](https://github.com/cloudflare/workers-sdk/issues/15317)); the available remedy ([workers-sdk #15448](https://github.com/cloudflare/workers-sdk/pull/15448)) is still open/blocked and cannot be vendored or referenced as an unmerged dependency without owner approval.
@@ -574,6 +576,7 @@ Keep links here so new sessions do not need to rediscover them.
 | Preservation Ledger | T01 / #506 | [`ui-control-recovery-preservation-ledger.md`](ui-control-recovery-preservation-ledger.md) and [`ui-control-recovery-preservation-summary.md`](ui-control-recovery-preservation-summary.md) — full post-main S4 lineage merged with #544 |
 | UI governance authority | T02 / #507 | [`ui-control-recovery-governance.md`](ui-control-recovery-governance.md) — created, verified, and merged via PR #545 at `6e6fe51` |
 | Stacked PR delivery amendment | Amendment | `AGENTS.md`, [`ui-control-recovery-governance.md`](ui-control-recovery-governance.md), and this tracker — PR #547 `STACK_GREEN` |
+| Superseded living-plan PR | Phase 0 control plane | PR [#542](https://github.com/Noahlw/efcc/pull/542) is closed; its old `main`-targeted plan is superseded by this rescue tracker and the merged #547/#546/#548 lineage |
 | Scenario Registry | T03 / #508 | `web/lib/governance/registries.ts` — created with 16 route scenarios and exact contract references; validated by `governance.test.ts` |
 | UI Contract Registry | T03 / #508 | `web/lib/governance/registries.ts` — created with 17 executable contracts/probe definitions; live token, safe-area, navigation, and scanner sources covered |
 | UI Lab | T07 / #512 | Not created |
@@ -599,6 +602,7 @@ Only record blockers or decisions that affect more than one ticket or the next p
 | B-004 | Reconciliation | Starting state | Required `rescue/ui-control-recovery` branch and intended tracker path were absent at session entry | Phase 0 / owner | `RESOLVED` | Rescue branch and tracker bootstrap are committed; branch is based on the frozen Phase F SHA |
 | D-002 | Decision | 2026-09-03 | Owner approved ticket-isolated stacked PR delivery within each phase; `STACK_GREEN` unlocks child implementation but not approval or merge | Owner / #505 | `ACCEPTED` | [Owner-approved execution-model amendment](https://github.com/Noahlw/efcc/issues/505#issuecomment-5514680835) |
 | D-003 | Contract Change | 2026-09-04 | Owner authorized T03 to remove selector-name escapes, require one-file source-fingerprint CSS waivers with T06 / #511 removal ownership, and own narrow web-root `out` / `.wrangler` generated-output exclusions with shipped-source coverage | Noah Wong / #505 | `ACCEPTED` | [Complete D-003 approval artifact](#d-003-owner-approval-artifact); rollback boundary `bcf92fc` |
+| D-004 | Sequencing exception | 2026-09-04 | After repo-owned T05 lifecycle hardening and bounded official Test Harness qualification, permit T06 / #511 provisional implementation while T05 remains `BLOCKED_EXTERNAL_UPSTREAM`; T06 final browser validation, `STACK_GREEN`, and merge remain gated by T05 | Noah Wong / #505 | `ACCEPTED` | Authorized by the Phase 0 completion goal prompt; T05 remains the only runtime blocker, no acceptance criterion is weakened, and Phase 1/T07 remains prohibited until Phase 0 closes |
 
 ### D-003 owner approval artifact
 
@@ -672,6 +676,6 @@ A requested change to those items is not a tracker update. It is an owner-approv
 
 ## 20. Next safe action
 
-1. Finish T05 local gates and two-axis review, push the restacked branch, and create a truthful Draft PR targeting `rescue/ui-control-recovery`.
-2. Record the owner-authorized provisional T06 sequencing exception: implementation may proceed while T05 is `BLOCKED_EXTERNAL_UPSTREAM`, but final browser validation, `STACK_GREEN`, and merge remain gated by T05.
+1. Finish T05 lifecycle hardening, local gates, and two-axis review, push the restacked branch, and create a truthful Draft PR targeting `rescue/ui-control-recovery`.
+2. Record/use D-004: T06 implementation may proceed while T05 is `BLOCKED_EXTERNAL_UPSTREAM`, but final browser validation, `STACK_GREEN`, and merge remain gated by T05.
 3. Implement T06 / #511 only; do not start T07 or Phase 1.
