@@ -142,15 +142,15 @@ Update this table at the start and end of every implementation session.
 | Field | Current value |
 |---|---|
 | Current phase | **Phase 0 — Foundation & Recovery Control** |
-| Phase status | `IN PROGRESS — T03 STACK_GREEN; T05 next` |
+| Phase status | `IN PROGRESS — T03 REVIEW_CHANGES (GitHub CI red); T05 waits on corrected T03` |
 | Rescue integration HEAD | `6e6fe51770cd49a6f362d5c6cb4a8eafd5ba9ea2` — T02 / #545 merged |
 | Active phase stack | Amendment → T04 → T03 → T05 → T06 |
-| Implementation frontier | T05 / #510 next; T03 / #508 is `STACK_GREEN` |
+| Implementation frontier | T03 / #508 repair in progress; T05 / #510 waits on corrected T03 head |
 | Merge frontier | Amendment PR #547 → T04 PR #546 → T03 PR #548; parent-first merge remains pending |
-| Review pending | None for T03; T05 implementation and two-axis `/code-review` pending |
+| Review pending | T03 CI-portability repair + two-axis `/code-review`; T05 implementation and review pending |
 | Human approval pending | None for Phase 0 foundation tickets |
-| Active blocker | T06 remains logically blocked on T05; T03's logical T02 blocker and technical T04 parent are satisfied |
-| Next safe action | Create T05 branch/worktree from current T03 tip, then implement and publish #510 |
+| Active blocker | T03 GitHub Source Governance Audit is red (2 CLI integration tests); T06 remains logically blocked on T05 |
+| Next safe action | Repair T03 test hermeticity, push, verify GitHub CI green; then restack T05 onto corrected T03 |
 | Last merged rescue SHA | `6e6fe51770cd49a6f362d5c6cb4a8eafd5ba9ea2` |
 | Last rollback checkpoint | Frozen Phase F SHA `6edf28c0f8f7058cf992416e7b517824c3178c8` |
 | Parent Spec amendment | [Owner-approved comment](https://github.com/Noahlw/efcc/issues/505#issuecomment-5514680835) |
@@ -182,9 +182,9 @@ Update this table at the start and end of every implementation session.
 |---|---|---|---|---|---|---|---|
 | T01 | [#506](https://github.com/Noahlw/efcc/issues/506) | Freeze A–F and publish Preservation Ledger | None | `MERGED_RESCUE` | [#544](https://github.com/Noahlw/efcc/pull/544) | `6d27fee83a7033af1cf0e896868b3f0e812f0273` | Initial ledger plus full post-main S4 lineage correction merged; final provenance and link checks passed |
 | T02 | [#507](https://github.com/Noahlw/efcc/issues/507) | Establish UI governance and agent change control | None | `MERGED_RESCUE` | [#545](https://github.com/Noahlw/efcc/pull/545) | `6e6fe51770cd49a6f362d5c6cb4a8eafd5ba9ea2` | Governance authority merged; stacked-delivery amendment is the next stack root |
-| T03 | [#508](https://github.com/Noahlw/efcc/issues/508) | Enforce styling ownership and typed UI contract governance | T02 | `STACK_GREEN` | [#548](https://github.com/Noahlw/efcc/pull/548) | — | Typed registries, strict validation, fail-closed audits, structured failures, CLI modes, workflow enforcement, focused/aggregate/precommit gates, and two-axis review pass |
+| T03 | [#508](https://github.com/Noahlw/efcc/issues/508) | Enforce styling ownership and typed UI contract governance | T02 | `REVIEW_CHANGES` | [#548](https://github.com/Noahlw/efcc/pull/548) | — | Typed registries, strict validation, fail-closed audits, structured failures, CLI modes, workflow enforcement, focused/aggregate/precommit gates, and two-axis review pass; GitHub Source Governance Audit red — 2 CLI tests leak ambient GITHUB_BASE_REF into temp repos (repair in progress) |
 | T04 | [#509](https://github.com/Noahlw/efcc/issues/509) | Restore excluded normalized Worker suites | T01 | `STACK_GREEN` | [#546](https://github.com/Noahlw/efcc/pull/546) | — | Restacked onto amendment; focused, aggregate, typecheck, precommit, diff-check, and two-axis review gates pass |
-| T05 | [#510](https://github.com/Noahlw/efcc/issues/510) | Stabilize full Programs/Worker/D1 runtime | T04 | `FRONTIER` | — | — | Eligible from T03 `STACK_GREEN`; create branch/worktree from the T03 stack tip |
+| T05 | [#510](https://github.com/Noahlw/efcc/issues/510) | Stabilize full Programs/Worker/D1 runtime | T04 | `FRONTIER` | — | — | Worktree created at `/home/ubuntu/efcc-rescue-t05-runtime-stability`; implementation preserved at `2b456cf`; waits on corrected T03 head before restack |
 | T06 | [#511](https://github.com/Noahlw/efcc/issues/511) | Contain global CSS cascade | T01, T03, T05 | `BLOCKED` | — | — | Waiting for T05 `STACK_GREEN` |
 
 ### Phase 0 exit record
@@ -199,7 +199,7 @@ Update this table at the start and end of every implementation session.
 | Required Worker gate | T04 / #509 is `STACK_GREEN` on its stack branch; merge frontier remains parent-first |
 | Programs runtime | Phase F blocker still open — T05 owns it |
 | Cascade result | Not run — T06 owns it |
-| Open blockers | T05 owns the open Programs runtime blocker; T06 remains blocked on T05; T03 is `STACK_GREEN` |
+| Open blockers | T03 GitHub CI red (`REVIEW_CHANGES`) blocks T05 restack; T05 owns the Programs runtime blocker; T06 remains blocked on T05 |
 | Next phase | Phase 1 after all six Phase 0 tickets merge parent-first |
 
 ---
@@ -372,12 +372,12 @@ The tracker separates the implementation frontier from the merge frontier. `STAC
 | Rescue base SHA | `6e6fe51770cd49a6f362d5c6cb4a8eafd5ba9ea2` |
 | Stack root | `docs/ui-rescue-stacked-pr-delivery` |
 | Stack tip | `rescue/t03-styling-governance` / T03 PR #548 |
-| Implementation frontier | T05 / #510 next; T03 / #508 is `STACK_GREEN` |
+| Implementation frontier | T03 / #508 repair in progress; T05 / #510 waits on corrected T03 head |
 | Merge frontier | Amendment PR #547 → T04 PR #546 → T03 PR #548; parent-first merge remains pending |
-| Review pending | None for T03; T05 implementation and two-axis `/code-review` pending |
+| Review pending | T03 CI-portability repair + two-axis `/code-review`; T05 pending |
 | Human approval pending | None for Phase 0 foundation tickets |
-| Descendants requiring restack | None |
-| Next safe action | Create T05 branch/worktree from the current T03 stack tip and begin #510 |
+| Descendants requiring restack | T05 onto corrected T03 after T03 returns to `STACK_GREEN` |
+| Next safe action | Repair T03, verify GitHub CI green, then restack T05 and resume #510 |
 
 ## Stack map
 
@@ -385,8 +385,8 @@ The tracker separates the implementation frontier from the merge frontier. `STAC
 |---:|---|---|---|---|---|---|---|---|---|---|---|
 | 0 | Amendment | None | `rescue/ui-control-recovery` | `docs/ui-rescue-stacked-pr-delivery` | `/home/ubuntu/efcc-rescue-stacked-delivery` | `rescue/ui-control-recovery` | #547 | `STACK_GREEN` | `f39062ffd81746b18322ea6035461179cf669363` | N/A | `6e6fe517` |
 | 1 | T04 / #509 | T01 | `docs/ui-rescue-stacked-pr-delivery` | `rescue/t04-worker-suites` | `/home/ubuntu/efcc-rescue-t04-worker-suites` | `docs/ui-rescue-stacked-pr-delivery` | #546 | `STACK_GREEN` | `cdbe4757af51247a78bc3a1c94ade1f11c332a6a` | N/A | `6d27fee` |
-| 2 | T03 / #508 | T02 | `rescue/t04-worker-suites` | `rescue/t03-styling-governance` | `/home/ubuntu/efcc-rescue-t03-styling-governance` | `rescue/t04-worker-suites` | [#548](https://github.com/Noahlw/efcc/pull/548) | `STACK_GREEN` | `4b33367702c2711941f72fb28391b25c27022eab` | N/A | `bcf92fc` |
-| 3 | T05 / #510 | T04 | `rescue/t03-styling-governance` | `rescue/t05-runtime-stability` | planned | `rescue/t03-styling-governance` | — | `FRONTIER` | — | N/A | pending |
+| 2 | T03 / #508 | T02 | `rescue/t04-worker-suites` | `rescue/t03-styling-governance` | `/home/ubuntu/efcc-rescue-t03-styling-governance` | `rescue/t04-worker-suites` | [#548](https://github.com/Noahlw/efcc/pull/548) | `REVIEW_CHANGES` | `4b33367702c2711941f72fb28391b25c27022eab` | N/A | `bcf92fc` |
+| 3 | T05 / #510 | T04 | `rescue/t03-styling-governance` | `rescue/t05-runtime-stability` | `/home/ubuntu/efcc-rescue-t05-runtime-stability` | `rescue/t03-styling-governance` | — | `FRONTIER` | — | N/A | pending (preserved `2b456cf`; waits on corrected T03) |
 | 4 | T06 / #511 | T01, T03, T05 | `rescue/t05-runtime-stability` | `rescue/t06-css-cascade` | planned | `rescue/t05-runtime-stability` | — | `BLOCKED` | — | N/A | pending |
 
 ---
@@ -514,7 +514,7 @@ No production implementation, schema, API, permission, audit, idempotency, scope
 
 #### T03 / #508 — Enforce styling ownership and typed UI contract governance
 
-- **Status:** `STACK_GREEN`
+- **Status:** `REVIEW_CHANGES`
 - **Base rescue SHA:** `bcf92fcd9f443b1ee2f481c5beea1730a99bc840`
 - **Reviewed implementation SHA / merge SHA:** `4b33367702c2711941f72fb28391b25c27022eab` / pending
 - **Rollback boundary:** `bcf92fc`
@@ -525,8 +525,8 @@ No production implementation, schema, API, permission, audit, idempotency, scope
 - **Code review:** Standards and Spec axes passed against `rescue/t04-worker-suites` with zero actionable findings.
 - **Human approval:** `N/A`
 - **Preservation impact:** Machine-enforces T02 governance without changing production behavior, schema, permissions, routes, or domain contracts; historical debt remains explicit and waiver-backed.
-- **Open blocker:** None; T03 logical T02 blocker and technical T04 parent are satisfied.
-- **Next eligible ticket:** T05 / #510; create its branch and worktree from the current T03 stack tip.
+- **Open blocker:** GitHub Source Governance Audit red — 2 CLI integration tests inherit ambient `GITHUB_BASE_REF` into temp repos; repair in progress, production affected discovery stays fail-closed.
+- **Next eligible ticket:** T05 / #510; restack onto the corrected T03 head after T03 returns to `STACK_GREEN`.
 ---
 
 ## 15. Human approval queue

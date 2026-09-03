@@ -177,6 +177,8 @@ describe("Governance CLI", () => {
         encoding: "utf8",
         env: getSanitizedGitEnv(),
       }).trim();
+      const originalBaseSha = process.env.GITHUB_BASE_SHA;
+      const originalBaseRef = process.env.GITHUB_BASE_REF;
 
       const git = (args: string) =>
         execSync(`git ${args}`, {
@@ -199,6 +201,11 @@ describe("Governance CLI", () => {
         );
         git("add base.ts");
         git("commit -qm base");
+        // Test-owned deterministic base: resolve the committed diff against the
+        // temp repo's own base SHA so ambient CI PR refs never leak in.
+        const tempBaseSha = git("rev-parse HEAD").trim();
+        process.env.GITHUB_BASE_SHA = tempBaseSha;
+        delete process.env.GITHUB_BASE_REF;
         git("switch -qc feature");
 
         fs.writeFileSync(
@@ -244,6 +251,16 @@ describe("Governance CLI", () => {
         }).trim();
         expect(realBranchAfter).toBe(realBranchBefore);
       } finally {
+        if (originalBaseSha !== undefined) {
+          process.env.GITHUB_BASE_SHA = originalBaseSha;
+        } else {
+          delete process.env.GITHUB_BASE_SHA;
+        }
+        if (originalBaseRef !== undefined) {
+          process.env.GITHUB_BASE_REF = originalBaseRef;
+        } else {
+          delete process.env.GITHUB_BASE_REF;
+        }
         fs.rmSync(tempRoot, { recursive: true, force: true });
       }
     });
@@ -301,6 +318,12 @@ describe("Governance CLI", () => {
         );
         git("add base.ts");
         git("commit -qm base");
+        // Test-owned deterministic base: the sandbox's own base commit, so the
+        // ambient CI PR ref (kept in originalEnv for the negative assertions
+        // above) cannot leak into temp-repo discovery. Production fail-closed
+        // behavior is unchanged.
+        process.env.GITHUB_BASE_SHA = git("rev-parse HEAD").trim();
+        delete process.env.GITHUB_BASE_REF;
         git("switch -qc isolate-feature");
         fs.writeFileSync(
           path.join(tempRoot, "changed.tsx"),
@@ -349,7 +372,11 @@ describe("Governance CLI", () => {
     it("uses GITHUB_BASE_REF in CI when provided", () => {
       const rootDir = resolveRepoRoot();
       const originalBaseRef = process.env.GITHUB_BASE_REF;
+      const originalBaseSha = process.env.GITHUB_BASE_SHA;
       try {
+        // GITHUB_BASE_SHA takes precedence in getAffectedFiles; clear it so
+        // this case genuinely exercises the BASE_REF resolution path.
+        delete process.env.GITHUB_BASE_SHA;
         process.env.GITHUB_BASE_REF = "main";
         const affected = getAffectedFiles(rootDir);
         expect(Array.isArray(affected)).toBe(true);
@@ -358,6 +385,11 @@ describe("Governance CLI", () => {
           process.env.GITHUB_BASE_REF = originalBaseRef;
         } else {
           delete process.env.GITHUB_BASE_REF;
+        }
+        if (originalBaseSha !== undefined) {
+          process.env.GITHUB_BASE_SHA = originalBaseSha;
+        } else {
+          delete process.env.GITHUB_BASE_SHA;
         }
       }
     });
