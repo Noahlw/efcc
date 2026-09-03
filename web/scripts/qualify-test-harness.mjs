@@ -104,6 +104,26 @@ function killProcessGroup(child, signal) {
   }
 }
 
+function waitForExitOrTimeout(exited, timeoutMs) {
+  let timeoutHandle;
+  const timeout = new Promise((resolve) => {
+    timeoutHandle = setTimeout(() => resolve(null), timeoutMs);
+  });
+  return Promise.race([exited, timeout]).finally(() => {
+    clearTimeout(timeoutHandle);
+  });
+}
+
+async function stopProbeGroup(child, exited, signal) {
+  killProcessGroup(child, signal);
+  const graceful = await waitForExitOrTimeout(exited, 5_000);
+  if (graceful !== null) {
+    return graceful;
+  }
+  killProcessGroup(child, "SIGKILL");
+  return waitForExitOrTimeout(exited, 5_000);
+}
+
 function assertCompletePlaywrightReport(reportPath) {
   const report = JSON.parse(readFileSync(reportPath, "utf8"));
   const stats = report?.stats;
@@ -361,32 +381,46 @@ async function runBoundedQualification() {
       QUALIFICATION_TIMEOUT_MS
     );
   });
+  let interruptedSignalResolve;
+  const interrupted = new Promise((resolve) => {
+    interruptedSignalResolve = resolve;
+  });
   const handleSignal = (signal) => {
-    killProcessGroup(child, signal);
     process.exitCode = 1;
+    interruptedSignalResolve({ interrupted: signal });
   };
   process.once("SIGINT", handleSignal);
   process.once("SIGTERM", handleSignal);
-  const result = await Promise.race([exited, timeout]);
+  const result = await Promise.race([exited, timeout, interrupted]);
   clearTimeout(timeoutHandle);
   process.off("SIGINT", handleSignal);
   process.off("SIGTERM", handleSignal);
   if ("timeout" in result) {
-    killProcessGroup(child, "SIGTERM");
-    await Promise.race([
-      exited,
-      new Promise((resolve) => setTimeout(resolve, 5_000)),
-    ]);
-    killProcessGroup(child, "SIGKILL");
+    const terminated = await stopProbeGroup(child, exited, "SIGTERM");
     console.log(
       JSON.stringify({
         phase: "qualification",
         outcome: "timeout",
         timeoutMs: QUALIFICATION_TIMEOUT_MS,
+        childTerminated: terminated !== null,
         capturedOutput: summarizeOutput(output),
       })
     );
     process.exitCode = 2;
+    return;
+  }
+  if ("interrupted" in result) {
+    const terminated = await stopProbeGroup(child, exited, result.interrupted);
+    console.log(
+      JSON.stringify({
+        phase: "qualification",
+        outcome: "interrupted",
+        signal: result.interrupted,
+        childTerminated: terminated !== null,
+        capturedOutput: summarizeOutput(output),
+      })
+    );
+    process.exitCode = terminated === null ? 2 : 1;
     return;
   }
   console.log(

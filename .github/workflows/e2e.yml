@@ -90,7 +90,15 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: programs-runtime-${{ github.run_id }}
-          path: test-results/programs-d1-runs
+          # Do not upload wrangler-state, raw logs, screenshots, or traces:
+          # those artifacts can contain request bodies, cookies, or other
+          # disposable-auth material. The local run keeps the full evidence;
+          # CI retains only the redacted summary, lifecycle manifest, and
+          # aggregate JSON result.
+          path: |
+            test-results/programs-d1-runs/**/run.json
+            test-results/programs-d1-runs/**/failure-summary.json
+            test-results/programs-d1-runs/**/programs-d1-results.json
           if-no-files-found: ignore
           retention-days: 14
 
