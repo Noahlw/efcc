@@ -53,3 +53,5 @@ This ledger assigns management-facing logical behavior to the narrowest useful s
 The focused suite signs an admin in through the browser, creates a unique `E2E_T05M_` department and Program through same-origin Worker calls, enters it through the real management directory, updates the Program name and description in the settings UI, reloads, and verifies server persistence before restoring the fixture. This proves a real Browser → Worker → D1 → Browser round trip without sharing participant state.
 
 Permission, capability, D1 mutation, audit, conflict, notification, and idempotency variants remain in `web/lib/programs/*.test.ts` Worker Contract coverage. Responsive intent for workspace, settings, attention, and task geometry is explicitly reserved for T05.6.
+
+The independent T05.6 matrix uses the same deterministic `E2E_T05R_` fixture to measure the management workspace, task navigation, settings composition, attention popover, participants task, and events task at exactly 320, 390, and 1280 CSS pixels. It uses reads only after fixture setup and does not replay management mutations.

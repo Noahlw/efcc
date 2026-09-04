@@ -33,6 +33,8 @@ export const PROMOTION_STAGES: readonly PromotionStage[] = [
 ];
 
 type JsonRecord = Record<string, unknown>;
+const EXPECTED_CANARY_WINDOW_MS = 5 * 60 * 1000;
+const EXPECTED_CANARY_RETRIES = 0;
 
 function asRecord(value: unknown): JsonRecord | null {
   return typeof value === "object" && value !== null && !Array.isArray(value)
@@ -45,9 +47,11 @@ function numberField(record: JsonRecord | null, key: string): number | null {
   return typeof value === "number" ? value : null;
 }
 
-function reportStatuses(report: unknown): { status: string; retry: number }[] {
+function reportStatuses(
+  report: unknown
+): { status: string; retry: number | null }[] {
   const root = asRecord(report);
-  const found: { status: string; retry: number }[] = [];
+  const found: { status: string; retry: number | null }[] = [];
   const visit = (suites: unknown): void => {
     if (!Array.isArray(suites)) {
       return;
@@ -75,7 +79,7 @@ function reportStatuses(report: unknown): { status: string; retry: number }[] {
               }
               found.push({
                 status: typeof result.status === "string" ? result.status : "",
-                retry: numberField(result, "retry") ?? 0,
+                retry: numberField(result, "retry"),
               });
             }
           }
@@ -171,6 +175,42 @@ async function readReport(filename: string): Promise<unknown> {
   return JSON.parse(await readFile(filename, "utf8"));
 }
 
+function timestamp(value: unknown): number | null {
+  if (typeof value !== "string") {
+    return null;
+  }
+  const parsed = Date.parse(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+export function isCanaryArtifactGreen(
+  manifest: JsonRecord | null,
+  expectedRevision: string
+): boolean {
+  const setupStartedAt = timestamp(manifest?.setupStartedAt);
+  const startedAt = timestamp(manifest?.startedAt);
+  const finishedAt = timestamp(manifest?.finishedAt);
+  const scenariosCompleted = manifest?.scenariosCompleted;
+  return (
+    manifest?.status === "passed" &&
+    manifest.revision === expectedRevision &&
+    manifest.runtime === "createTestHarness" &&
+    manifest.config === "web/wrangler.jsonc" &&
+    manifest.windowMs === EXPECTED_CANARY_WINDOW_MS &&
+    manifest.retries === EXPECTED_CANARY_RETRIES &&
+    setupStartedAt !== null &&
+    startedAt !== null &&
+    finishedAt !== null &&
+    setupStartedAt <= startedAt &&
+    finishedAt - startedAt >= EXPECTED_CANARY_WINDOW_MS &&
+    Array.isArray(manifest.failures) &&
+    manifest.failures.length === 0 &&
+    typeof scenariosCompleted === "number" &&
+    Number.isInteger(scenariosCompleted) &&
+    scenariosCompleted > 0
+  );
+}
+
 async function latestCanaryRun(
   expectedRevision: string
 ): Promise<JsonRecord | null> {
@@ -190,10 +230,7 @@ async function latestCanaryRun(
           await readFile(path.join(root, entry.name, "run.json"), "utf8")
         )
       );
-      if (
-        manifest?.status === "passed" &&
-        manifest.revision === expectedRevision
-      ) {
+      if (isCanaryArtifactGreen(manifest, expectedRevision)) {
         return manifest;
       }
     } catch {

@@ -6,6 +6,7 @@ import { describe, expect, test } from "vitest";
 import {
   PROMOTION_STAGES,
   assertLocalPromotionTarget,
+  isCanaryArtifactGreen,
   assertPlaywrightReportGreen,
   isCleanWorktreeStatus,
 } from "./verify-programs";
@@ -72,6 +73,22 @@ describe("T05.7 Programs promotion gate", () => {
         2
       )
     ).toThrow(/result count/u);
+    expect(() =>
+      assertPlaywrightReportGreen(
+        {
+          ...report,
+          suites: [
+            {
+              specs: [
+                { tests: [{ results: [{ status: "passed" }] }] },
+                { tests: [{ results: [{ status: "passed", retry: 0 }] }] },
+              ],
+            },
+          ],
+        },
+        2
+      )
+    ).toThrow(/retry/u);
   });
 
   test("accepts only a loopback target for canonical promotion", () => {
@@ -83,6 +100,32 @@ describe("T05.7 Programs promotion gate", () => {
         "https://efcc-dev-example.efcc-ggc.workers.dev"
       )
     ).toThrow(/loopback/u);
+  });
+
+  test("accepts only a complete current-revision canary artifact", () => {
+    const artifact = {
+      status: "passed",
+      revision: "rev-1",
+      runtime: "createTestHarness",
+      config: "web/wrangler.jsonc",
+      windowMs: 5 * 60 * 1000,
+      retries: 0,
+      setupStartedAt: "2026-09-05T00:00:00.000Z",
+      startedAt: "2026-09-05T00:01:00.000Z",
+      finishedAt: "2026-09-05T00:06:00.000Z",
+      scenariosCompleted: 1,
+      failures: [],
+    };
+    expect(isCanaryArtifactGreen(artifact, "rev-1")).toBe(true);
+    expect(isCanaryArtifactGreen({ ...artifact, windowMs: 1 }, "rev-1")).toBe(
+      false
+    );
+    expect(
+      isCanaryArtifactGreen(
+        { ...artifact, failures: [{ message: "boom" }] },
+        "rev-1"
+      )
+    ).toBe(false);
   });
 
   test("treats the worktree and every historical Programs group as gate inputs", () => {

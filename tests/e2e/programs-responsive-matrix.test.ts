@@ -19,11 +19,18 @@ const MEMBER = {
 const COPY = {
   login: "登入",
   catalogSearch: "搜尋課程",
+  catalogClearSearch: "清除搜尋與篩選",
   catalogList: "課程目錄",
   managementSettings: "課程設定",
+  managementNotifications: "開啟管理通知",
+  notificationsDialog: "管理通知",
   programName: "課程名稱",
   programDescription: "課程簡介",
   enroll: "報名",
+  eventDetail: "聚會詳情",
+  workspace: "課程工作區",
+  workspaceEvents: "聚會",
+  workspaceParticipants: "參與者",
 };
 
 type PlaywrightRequest = {
@@ -35,6 +42,7 @@ type PlaywrightRequest = {
 type Fixture = {
   programId: string;
   programName: string;
+  eventId: string;
 };
 
 type Geometry = {
@@ -131,9 +139,25 @@ async function createFixture(
   const programBody = (await programResponse.json()) as {
     data: { program: { program_id: string } };
   };
+  const eventResponse = await api.post(
+    `/api/v1/programs/${programBody.data.program.program_id}/events`,
+    {
+      data: {
+        name: `E2E_T05R Event ${suffix} with responsive copy`,
+        location: "Responsive test venue",
+        starts_at: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+        ends_at: new Date(Date.now() + 25 * 60 * 60 * 1000).toISOString(),
+      },
+    }
+  );
+  expect(eventResponse.status()).toBe(201);
+  const eventBody = (await eventResponse.json()) as {
+    data: { event: { event_id: string } };
+  };
   return {
     programId: programBody.data.program.program_id,
     programName,
+    eventId: eventBody.data.event.event_id,
   };
 }
 
@@ -235,13 +259,25 @@ test.afterAll(async () => {
 test.describe("T05.6 responsive Programs UI matrix", () => {
   test("participant catalog/detail keeps action geometry and dock clearance bounded", async ({
     page,
+    browser,
   }) => {
     expect(fixture).not.toBeNull();
-    const { programId, programName } = fixture!;
+    const { eventId, programId, programName } = fixture!;
     await loginAs(page, MEMBER);
     await page.goto("/programs");
     const search = page.getByRole("searchbox", { name: COPY.catalogSearch });
     await expect(search).toBeVisible();
+    await search.fill("T05-no-matching-program");
+    await expect(page.getByText("找不到相關課程")).toBeVisible();
+    assertGeometry(
+      await measure(page, "participant catalog empty search"),
+      "participant catalog empty search"
+    );
+    await page
+      .getByRole("button", { name: COPY.catalogClearSearch })
+      .first()
+      .click();
+    await expect(search).toHaveValue("");
     await search.fill(programName);
     const programLink = page.getByRole("link", {
       name: new RegExp(programName, "u"),
@@ -261,6 +297,20 @@ test.describe("T05.6 responsive Programs UI matrix", () => {
       await measure(page, "participant detail"),
       "participant detail"
     );
+
+    const eventContext = await browser.newContext();
+    const eventPage = await eventContext.newPage();
+    try {
+      await loginAs(eventPage, ADMIN);
+      await eventPage.goto(`/programs?program=${programId}&event=${eventId}`);
+      await expect(eventPage.locator("#participant-event-title")).toBeVisible();
+      assertGeometry(
+        await measure(eventPage, "participant event detail"),
+        "participant event detail"
+      );
+    } finally {
+      await eventContext.close();
+    }
   });
 
   test("management settings keeps composition and controls usable", async ({
@@ -281,9 +331,72 @@ test.describe("T05.6 responsive Programs UI matrix", () => {
     await expect(
       page.getByRole("textbox", { name: COPY.programDescription })
     ).toBeVisible();
+    const workspaceNavigation = page.getByRole("navigation", {
+      name: "管理工作",
+    });
+    await expect(workspaceNavigation).toBeVisible();
+    await expect(
+      workspaceNavigation.getByRole("link", { name: COPY.workspaceEvents })
+    ).toBeVisible();
+    await expect(
+      workspaceNavigation.getByRole("link", {
+        name: COPY.workspaceParticipants,
+      })
+    ).toBeVisible();
+
+    const notificationsButton = page.getByRole("button", {
+      name: COPY.managementNotifications,
+    });
+    await expect(notificationsButton).toBeVisible();
+    await notificationsButton.click();
+    await expect(
+      page.getByRole("dialog", { name: COPY.notificationsDialog })
+    ).toBeVisible();
+    assertGeometry(
+      await measure(page, "management attention popover"),
+      "management attention popover"
+    );
+    await notificationsButton.click();
+
     assertGeometry(
       await measure(page, "management settings"),
       "management settings"
+    );
+
+    await workspaceNavigation
+      .getByRole("link", { name: COPY.workspace, exact: true })
+      .click();
+    await expect(page.getByRole("heading", { name: "營運" })).toBeVisible();
+    assertGeometry(
+      await measure(page, "management workspace"),
+      "management workspace"
+    );
+
+    await page
+      .getByRole("link", {
+        name: new RegExp(`^${COPY.workspaceParticipants}`, "u"),
+      })
+      .click();
+    await expect(
+      page.getByRole("heading", {
+        name: COPY.workspaceParticipants,
+        exact: true,
+      })
+    ).toBeVisible();
+    assertGeometry(
+      await measure(page, "management participants task"),
+      "management participants task"
+    );
+
+    await page
+      .getByRole("link", { name: COPY.workspaceEvents, exact: true })
+      .click();
+    await expect(
+      page.getByRole("heading", { name: COPY.workspaceEvents, exact: true })
+    ).toBeVisible();
+    assertGeometry(
+      await measure(page, "management events task"),
+      "management events task"
     );
   });
 });

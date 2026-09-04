@@ -5,6 +5,7 @@ import {
   CANARY_RETRIES,
   firstCausalRuntimeSignal,
   isCanaryGreen,
+  isRuntimeTransportResponse,
 } from "./programs-runtime-canary.mjs";
 
 describe("T05.3 Runtime Reliability Canary", () => {
@@ -47,5 +48,15 @@ describe("T05.3 Runtime Reliability Canary", () => {
         failures: 1,
       })
     ).toBe(false);
+  });
+
+  test("classifies the known Harness transport failure even with a request id", () => {
+    expect(
+      isRuntimeTransportResponse(500, "Error: Network connection lost")
+    ).toBe(true);
+    expect(isRuntimeTransportResponse(500, "application failed")).toBe(false);
+    expect(isRuntimeTransportResponse(400, "Network connection lost")).toBe(
+      false
+    );
   });
 });

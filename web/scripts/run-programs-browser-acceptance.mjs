@@ -51,7 +51,9 @@ async function main() {
   let failure = null;
   let runtimeLogs = [];
   try {
-    prepared = await prepareProgramsHarness(artifactDirectory);
+    prepared = await prepareProgramsHarness(artifactDirectory, {
+      withFixture: false,
+    });
     manifest.target = prepared.target.origin;
     const environment = {
       ...process.env,

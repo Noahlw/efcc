@@ -305,7 +305,7 @@ describe("T05.2 Worker Contract Gate", () => {
         {
           method: "POST",
           cookie: adminCookie,
-          idempotencyKey: `${decisionKey}-repeat`,
+          idempotencyKey: decisionKey,
           body: { action: "Approved" },
         }
       ),

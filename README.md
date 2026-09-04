@@ -27,7 +27,7 @@ Read [`CONTEXT.md`](CONTEXT.md) for the project glossary, ADR status, and the tw
 | Self-service registration | Complete (local gate) | Web registration page + D1 | Worker + D1 | Optional isolated deployed smoke for promotion |
 | Admin/Staff approval | Complete (local gate) | Web approval queue + D1 | Worker + D1 | Expand role and rejection-path acceptance coverage |
 | Member profile | Complete (local gate) | Web profile page + D1 profile DTO | Worker + D1 | Add editable profile requirements when specified |
-| Programs | Complete (local gate) | Worker + D1 `/api/v1/programs/*` | Worker + D1 | Programs E2E against the dev-testing worker (ADR-0031) |
+| Programs | Layered testing promotion blocked | Worker + D1 `/api/v1/programs/*` | Worker + D1 | Resolve B-003, then run `pnpm verify:programs`; legacy Programs suite remains diagnostic-only |
 | Events | Complete (local gate) | Worker + D1 schedule rules and event lifecycle | Worker + D1 | Event recurrence exception acceptance expansion |
 | Attendance/check-in | Complete (local gate) | Worker + D1 `/api/v1/attendance*` | Worker + D1 | Assisted scanner and guest check-in E2E coverage |
 | Webapp redesign (shell/participant/cockpit/hub/CMS) | In progress | Specs `084`–`087`, prototype-verified | Worker + D1 | See `docs/adr/0032-prototype-design-authority.md` |

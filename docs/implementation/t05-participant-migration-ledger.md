@@ -50,3 +50,5 @@ This ledger counts logical participant behavior, not the historical three viewpo
 The new focused suite creates a unique `E2E_T05P_` department/program through the real Worker API, signs the member in through the browser, submits the request through the browser, approves it through the admin API, reloads the member detail, and exits through the browser confirmation dialog. Independent state is scenario-isolated by the unique fixture; later runs do not rely on the shared demo enrollment state.
 
 The participant rows requiring 320/390/1280 layout, overflow, target, or composition proof are explicitly retained above for T05.6. Pure Worker/D1 variants remain in the existing `web/lib/programs/*.test.ts` contract suites and the focused T05.2 tracer; Browser Acceptance does not delete them.
+
+The independent T05.6 matrix uses a deterministic `E2E_T05R_` fixture to measure participant catalog search/empty/clear, Program detail, and Event detail presentation at exactly 320, 390, and 1280 CSS pixels. It does not repeat the enrollment or approval workflow.

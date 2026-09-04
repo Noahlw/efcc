@@ -28,6 +28,8 @@ const RUNTIME_MARKER =
   /(?:Broken pipe|Connection reset by peer|Error (?:in|inside) ProxyController|Error inside ProxyWorker|deadlock|workerd.*(?:fatal|exited)|Network connection lost|ERR_CONNECTION_REFUSED)/iu;
 const DOWNSTREAM_MARKER =
   /(?:Network connection lost|ERR_CONNECTION_REFUSED|Connection reset by peer)/iu;
+const HTTP_RUNTIME_MARKER =
+  /(?:Network connection lost|ERR_CONNECTION_REFUSED|Connection reset by peer)/iu;
 
 export function firstCausalRuntimeSignal(logs) {
   const lines = (Array.isArray(logs) ? logs : [logs])
@@ -46,6 +48,10 @@ export function firstCausalRuntimeSignal(logs) {
 
 export function isCanaryGreen({ startedAt, finishedAt, failures }) {
   return finishedAt - startedAt >= CANARY_DURATION_MS && failures === 0;
+}
+
+export function isRuntimeTransportResponse(status, body) {
+  return status >= 500 && HTTP_RUNTIME_MARKER.test(String(body));
 }
 
 class CanaryFailure extends Error {
@@ -256,7 +262,9 @@ async function requestJson(target, pathname, options = {}, phase = "scenario") {
     body = raw.length > 0 ? JSON.parse(raw) : null;
   } catch (cause) {
     throw new CanaryFailure(`Worker returned non-JSON at ${pathname}`, {
-      category: "application",
+      category: isRuntimeTransportResponse(response.status, raw)
+        ? "runtime transport"
+        : "application",
       phase,
       status: response.status,
       cause,
@@ -265,7 +273,13 @@ async function requestJson(target, pathname, options = {}, phase = "scenario") {
   if (!response.ok) {
     throw new CanaryFailure(
       `Worker returned HTTP ${response.status} at ${pathname}: ${raw.slice(0, 300)}`,
-      { category: "application", phase, status: response.status }
+      {
+        category: isRuntimeTransportResponse(response.status, raw)
+          ? "runtime transport"
+          : "application",
+        phase,
+        status: response.status,
+      }
     );
   }
   if (body?.requestId !== undefined && body.requestId !== requestId) {
@@ -527,7 +541,10 @@ async function runCommand(name, args, artifactDirectory) {
   }
 }
 
-export async function prepareProgramsHarness(artifactDirectory) {
+export async function prepareProgramsHarness(
+  artifactDirectory,
+  { withFixture = true } = {}
+) {
   let server = null;
   try {
     await assertLocalSecret();
@@ -557,8 +574,9 @@ export async function prepareProgramsHarness(artifactDirectory) {
     });
     const target = (await server.listen()).url;
     const db = await seedWorkerDatabase(server.getWorker(), artifactDirectory);
-    const adminCookie = await login(target, ADMIN);
-    const fixture = await createFixture(target, adminCookie);
+    const fixture = withFixture
+      ? await createFixture(target, await login(target, ADMIN))
+      : null;
     return { server, target, db, fixture };
   } catch (error) {
     if (server !== null) {
@@ -587,7 +605,7 @@ export async function prepareProgramsHarness(artifactDirectory) {
 async function main() {
   const artifactDirectory = path.join(CANARY_ARTIFACT_ROOT, runId());
   await mkdir(artifactDirectory, { recursive: true });
-  const startedAt = Date.now();
+  const setupStartedAt = Date.now();
   const manifest = {
     schemaVersion: 1,
     runtime: "createTestHarness",
@@ -596,7 +614,8 @@ async function main() {
     windowMs: CANARY_DURATION_MS,
     revision: await revision(),
     status: "running",
-    startedAt: new Date(startedAt).toISOString(),
+    setupStartedAt: new Date(setupStartedAt).toISOString(),
+    startedAt: null,
     scenariosCompleted: 0,
     failures: [],
   };
@@ -613,7 +632,16 @@ async function main() {
     server = prepared.server;
     target = prepared.target;
     db = prepared.db;
+    if (prepared.fixture === null) {
+      throw new CanaryFailure("canary fixture was not prepared", {
+        category: "fixture/setup",
+        phase: "fixture/setup",
+      });
+    }
     const fixture = prepared.fixture;
+    const startedAt = Date.now();
+    manifest.startedAt = new Date(startedAt).toISOString();
+    await writeJson(path.join(artifactDirectory, "run.json"), manifest);
     const deadline = startedAt + CANARY_DURATION_MS;
     while (Date.now() < deadline) {
       await runScenario(target, db, fixture.programId);
