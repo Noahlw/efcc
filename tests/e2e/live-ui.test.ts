@@ -729,6 +729,11 @@ test.describe("UI-04 Next frontend trace", () => {
         root: rootGeometry,
         surface: surfaceGeometry,
       };
+      if (path === "/profile/settings") {
+        const inputGeometry = await readCascadeGeometry(page, "#new-username");
+        expect(inputGeometry.paddingInlineStart).toBeGreaterThan(0);
+        record.input = inputGeometry;
+      }
       if (path === "/programs") {
         const shellGeometry = await readCascadeGeometry(page, "#shell-content");
         const viewportWidth = page.viewportSize()?.width ?? 0;
