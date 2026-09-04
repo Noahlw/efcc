@@ -10,11 +10,19 @@
 - Authenticated E2E = Playwright versus `wrangler dev` on `127.0.0.1:8787` by default (zero Cloudflare account touched). `pnpm dev:local` builds, migrates, and starts it; `pnpm db:seed:local` seeds the disposable `E2E_` account fixtures and `pnpm db:seed:demo` seeds the `E2E_DEMO_` domain walkthrough. Unauthenticated/CSS checks use Orca `browser` (`Stateless-Wall` blocks Orca on authenticated RPCs).
 - The local run is the required `READY` gate (ADR-0029): relevant Playwright suites must pass 100% against local `wrangler dev` + local D1, with every criterion asserted through observable DOM or response state. Cloudflare deployment is optional/manual production-promotion evidence only; if run, use a fresh reserved `efcc-auth-*` or `efcc-dev-*` host, never the stale `efcc-prototype-129` host. Pipeline results append to the ticket plan when an appender command is explicitly run.
 
+## Layered testing authority
+
+- EFCC testing is layered. Read [`TESTING.md`](TESTING.md) before changing test architecture or claiming a T05 gate.
+- Worker/D1 correctness belongs to the Workers Vitest Contract Gate; repeated real-HTTP runtime reliability belongs to the `createTestHarness()` Runtime Reliability Canary; critical browser workflows belong to Playwright Browser Acceptance; viewport behavior belongs to the focused Responsive UI Matrix; promotion belongs to the aggregate gate.
+- T05 Browser Acceptance uses one representative viewport with zero retries. Responsive proof uses deterministic `320`, `390`, and `1280` scenarios. Heavy qualification is local-first; automatic GitHub CI remains fast-only.
+- T05 follows the published `#505` amendment and `#510` routing: `#551 → (#552/#553) → (#554/#555) → #556 → #557`, one owning commit per child on `rescue/t05-layered-testing`, one replacement PR. Historical `201 expected` and five-suite-run evidence remains diagnostic history.
+
 ## UI Components and Variants
 
 - All new or changed web UI MUST use the repository's local shadcn-style components and Radix primitives from `web/components/ui` where an equivalent exists. Extend an existing primitive or variant before creating a new control.
 - Component state, size, intent, and other stable semantic variants MUST use `class-variance-authority` (`cva`) with the repository's `cn` class-composition helper. Layout and composition belong to approved EFCC patterns/routes and ordinary Tailwind utilities; they are not blanket CVA variants. Keep variant definitions beside the component and preserve the existing shadcn API shape.
 - When a library, framework, or component API is unfamiliar, use the Context7 CLI before coding: `npx ctx7@latest library <name> "<specific question>"`, select the authoritative result, then run `npx ctx7@latest docs <library-id> "<single concept>"`. Keep queries free of secrets and use the fetched guidance in the implementation.
+
 ## Database Safety
 
 - Local/CI E2E may reset only explicitly disposable `E2E_`/`E2E_DEMO_` D1 fixtures through the checked-in seed scripts. Apps Script and Google Sheets are never mutated by automated tests; the `Users` tab remains immutable.
