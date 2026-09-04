@@ -88,6 +88,15 @@ describe("Programs Test Harness report helpers", () => {
       "--project",
       "phone-320",
     ]);
+    expect(programsPlaywrightArgs(undefined, "desktop")).toEqual([
+      "exec",
+      "playwright",
+      "test",
+      "-c",
+      "tests/e2e/programs-d1.config.ts",
+      "--project",
+      "desktop",
+    ]);
   });
 
   test("accepts a clean filtered report only as diagnostic evidence", () => {

@@ -933,10 +933,9 @@ async function runCanonical() {
       paths.demoSeedLog,
       { ...environment, DEMO_TARGET_URL: target.origin }
     );
-    const playwrightStageName =
-      typeof playwrightGrep === "string" && playwrightGrep.trim().length > 0
-        ? "programs-playwright-reproduction"
-        : "unfiltered-programs-playwright";
+    const playwrightStageName = filteredRun
+      ? "programs-playwright-reproduction"
+      : "unfiltered-programs-playwright";
     await runCommandStage(
       playwrightStageName,
       programsPlaywrightArgs(playwrightGrep, playwrightProject),
