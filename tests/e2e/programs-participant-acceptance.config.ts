@@ -24,7 +24,10 @@ if (!isLoopback && !isReservedWorker) {
 
 export default defineConfig({
   testDir: ".",
-  testMatch: ["**/programs-participant-acceptance.test.ts"],
+  testMatch: [
+    "**/programs-participant-acceptance.test.ts",
+    "**/programs-management-acceptance.test.ts",
+  ],
   timeout: 60_000,
   retries: 0,
   fullyParallel: false,
