@@ -158,19 +158,19 @@ Update this table at the start and end of every implementation session.
 | Field | Current value |
 |---|---|
 | Current phase | **Phase 0 — Foundation & Recovery Control** |
-| Phase status | `IN PROGRESS — T01–T04 safe prefix merged into rescue; T05 layered-testing rework published; T05.1 is the current implementation frontier; T06 remains gated on T05 promotion` |
-| Rescue integration HEAD | `d2652bfb11b469f5fa557d3c2c73d69c4a17649d` — T03 / #548 merged |
+| Phase status | `IN PROGRESS — T01–T04 safe prefix and T05 publication checkpoint are on rescue; T05.1–T05.7 implementation commits are present on the shared branch; T05 promotion is blocked by B-003; T06 remains gated` |
+| Rescue integration HEAD | `dcd21b681d54f062a2df81b38d08269e46350720` — T05 publication checkpoint on `rescue/ui-control-recovery` |
 | Active phase stack | T05.1 → T05.2/T05.3 → T05.4/T05.5 → T05.6 → T05.7 → T06 |
-| Implementation frontier | T05.1 / #551 `FRONTIER`; later T05 children follow the published dependency graph; T06 remains blocked on T05 promotion |
+| Implementation frontier | T05.1–T05.7 committed on `rescue/t05-layered-testing`; promotion qualification is blocked at the #553 Runtime Reliability Canary by B-003; no child implementation remains |
 | Merge frontier | One T05 replacement PR from `rescue/t05-layered-testing` → rescue; then T06 / #511/#550 |
-| Review pending | T05.1 focused implementation/review; T05.7 final replacement-PR review and promotion qualification later |
+| Review pending | Final `/code-review Standards` and `/code-review Spec` against the complete replacement diff; promotion rerun after B-003 is resolved |
 | Human approval pending | None — D-003 records the owner-authorized T03 Contract Change |
-| Active blocker | Historical #549 runtime evidence is carried into T05.3; T05.1 is unblocked; T06 remains promotion/merge-gated by T05 |
-| Next safe action | Start `/implement` on T05.1 / #551 from rescue `d2652bfb`; use one shared T05 branch and one owning commit per child |
-| Last merged rescue SHA | `d2652bfb11b469f5fa557d3c2c73d69c4a17649d` |
+| Active blocker | B-003 reproduced in the official Harness canary at revision `c370f469b20149559feecc6d33745d3de75b9b14`: 360 scenarios completed before HTTP 500 `Network connection lost`; T05 is not `STACK_GREEN`; T06 remains promotion/merge-gated |
+| Next safe action | Resolve/re-prove B-003 with the fixed five-minute no-retry canary, then run `pnpm verify:programs`; only after final review and Green may the replacement PR merge parent-first |
+| Last merged rescue SHA | `dcd21b681d54f062a2df81b38d08269e46350720` |
 | Last rollback checkpoint | Frozen Phase F SHA `6edf28c0f8f7058cf992416e7b517824c3178c8` |
 | Parent Spec amendment | [Owner-approved T05 layered-testing amendment](https://github.com/Noahlw/efcc/issues/505#issuecomment-5538740674) |
-| Entry verification | T01/T02 plus amendment #547, T04 / #546, and corrected T03 / #548 are merged into rescue; T03 exact-head run `33801176630` passed; T05.1–T05.7 published; #549 is superseded without merge; T05.1 is ready |
+| Entry verification | T01/T02 plus amendment #547, T04 / #546, corrected T03 / #548, and T05 publication are on rescue; T03 exact-head run `33801176630` passed; T05.1–T05.7 are committed on the shared branch; focused/browser/responsive gates pass; #553 canary reproduces B-003; #549 is superseded without merge |
 
 > T02 / #545 merged at `6e6fe51770cd49a6f362d5c6cb4a8eafd5ba9ea2`. The amendment is documentation-only and changes sequencing, not ticket scope, logical blockers, contracts, preservation, or approval authority.
 
@@ -200,7 +200,7 @@ Update this table at the start and end of every implementation session.
 | T02 | [#507](https://github.com/Noahlw/efcc/issues/507) | Establish UI governance and agent change control | None | `MERGED_RESCUE` | [#545](https://github.com/Noahlw/efcc/pull/545) | `6e6fe51770cd49a6f362d5c6cb4a8eafd5ba9ea2` | Governance authority merged; stacked-delivery amendment is the next stack root |
 | T03 | [#508](https://github.com/Noahlw/efcc/issues/508) | Enforce styling ownership and typed UI contract governance | T02 | `MERGED_RESCUE` | [#548](https://github.com/Noahlw/efcc/pull/548) | `d2652bfb11b469f5fa557d3c2c73d69c4a17649d` | Rule 1 detects all unlayered broad CSS, high-blast waivers use exact source fingerprints/removal owners, and narrow generated-output exclusions are T03-owned; local gates, two-axis review, and exact-head GitHub run `33801176630` pass |
 | T04 | [#509](https://github.com/Noahlw/efcc/issues/509) | Restore excluded normalized Worker suites | T01 | `MERGED_RESCUE` | [#546](https://github.com/Noahlw/efcc/pull/546) | `6e7428b61bc9bbd2d82109688049696078609b59` | Restacked onto amendment; focused, aggregate, typecheck, precommit, diff-check, and two-axis review gates pass; parent-first merge complete |
-| T05 | [#510](https://github.com/Noahlw/efcc/issues/510) | Layered Programs/Worker/D1 testing architecture and promotion | T04 (satisfied); T05.1 is unblocked | `FRONTIER — T05.1` | [#549](https://github.com/Noahlw/efcc/pull/549) superseded/closed; replacement PR pending | — | Published child tracers [#551–#557](https://github.com/Noahlw/efcc/issues/551); historical #549 diagnostics preserved; start at T05.1 |
+| T05 | [#510](https://github.com/Noahlw/efcc/issues/510) | Layered Programs/Worker/D1 testing architecture and promotion | T04 satisfied; child commits present | `IMPLEMENTED — PROMOTION BLOCKED` | [#549](https://github.com/Noahlw/efcc/pull/549) superseded/closed; replacement PR pending | — | #551–#557 committed on `rescue/t05-layered-testing`; Worker Contract, Browser Acceptance, and Responsive Matrix focused gates pass; #553 five-minute canary reproduces B-003; final aggregate stops fail-closed |
 | T06 | [#511](https://github.com/Noahlw/efcc/issues/511) | Contain global CSS cascade | T01, T03, T05.7 / T05 promotion | `BLOCKED` | [#550](https://github.com/Noahlw/efcc/pull/550) Draft | — | Waiting for the replacement T05 PR to qualify and merge; #550 remains based on the historical T05 branch and must be restacked |
 
 ### Phase 0 exit record
@@ -215,8 +215,8 @@ Update this table at the start and end of every implementation session.
 | Required Worker gate | T04 / #509 merged into rescue at `6e7428b61bc9bbd2d82109688049696078609b59` |
 | Programs runtime | Historical #549 diagnostic blocker preserved; current layered promotion proof is owned by T05.3/#553 and T05.7/#557 |
 | Cascade result | Not run — T06 owns it |
-| Open blockers | T05.1 is the current frontier; B-003 is carried into T05.3/T05.7; T06 remains blocked on T05 replacement promotion/merge |
-| Next phase | Phase 1 after T05.1–T05.7, the replacement T05 PR, and T06 merge parent-first |
+| Open blockers | B-003 is reproduced and remains open in T05.3/#553 and T05.7/#557; T05 replacement promotion and T06 remain blocked |
+| Next phase | Phase 1 after B-003 resolution, T05 replacement PR final review/qualification, and T06 merge parent-first |
 
 ---
 
@@ -385,15 +385,15 @@ The tracker separates the implementation frontier from the merge frontier. `STAC
 | Field | Value |
 |---|---|
 | Phase | Phase 0 — Foundation & Recovery Control |
-| Rescue base SHA | `d2652bfb11b469f5fa557d3c2c73d69c4a17649d` |
+| Rescue base SHA | `dcd21b681d54f062a2df81b38d08269e46350720` |
 | Stack root | `rescue/ui-control-recovery` after parent-first merge of #547, #546, and #548 |
-| Stack tip | `rescue/t05-layered-testing` / T05.1 frontier; shared branch planned |
-| Implementation frontier | T05.1 / #551 `FRONTIER`; T05.2–T05.7 follow the published blockers; T06 remains blocked on T05 promotion |
+| Stack tip | `rescue/t05-layered-testing` / T05.7 implementation `c370f469`; replacement PR pending qualification |
+| Implementation frontier | T05.1–T05.7 committed; #553 Runtime Reliability Canary reproduces B-003 at 360 scenarios; no child implementation remains; T06 remains blocked |
 | Merge frontier | One replacement T05 PR → rescue, then T06 / #511/#550 after restack |
-| Review pending | T05.1 focused review first; T05.7 whole replacement-PR review and promotion qualification last |
+| Review pending | Complete replacement-PR two-axis review and rerun promotion after B-003 resolution |
 | Human approval pending | None for Phase 0 foundation tickets |
 | Descendants requiring restack | T06 / #550 after the replacement T05 PR merges; #549 is historical and closed without merge |
-| Next safe action | Implement T05.1 / #551 via `/implement` on the planned shared branch; do not change T05 code in this publication checkpoint |
+| Next safe action | Resolve/re-prove B-003 with `pnpm test:programs:canary`, then run `pnpm verify:programs`; keep T06 gated until final review and parent-first merge |
 
 ## Stack map
 
@@ -402,13 +402,13 @@ The tracker separates the implementation frontier from the merge frontier. `STAC
 | 0 | Amendment | None | `rescue/ui-control-recovery` | `docs/ui-rescue-stacked-pr-delivery` | `/home/ubuntu/efcc-rescue-stacked-delivery` | `rescue/ui-control-recovery` | #547 | `MERGED_RESCUE` | `f39062ffd81746b18322ea6035461179cf669363` | N/A | `b012a4623814678734c6e1ee4f476556a3a61274` |
 | 1 | T04 / #509 | T01 | `rescue/ui-control-recovery` | `rescue/t04-worker-suites` | `/home/ubuntu/efcc-rescue-t04-worker-suites` | `rescue/ui-control-recovery` | #546 | `MERGED_RESCUE` | `cdbe4757af51247a78bc3a1c94ade1f11c332a6a` | N/A | `6e7428b61bc9bbd2d82109688049696078609b59` |
 | 2 | T03 / #508 | T02 | `rescue/ui-control-recovery` | `rescue/t03-styling-governance` | `/Users/noah.wong/Desktop/code/EFCC-dev/.worktrees/phase0-t03-20260904` | `rescue/ui-control-recovery` | [#548](https://github.com/Noahlw/efcc/pull/548) | `MERGED_RESCUE` | `3138b950` / CI `33801176630` | D-003 ACCEPTED | `d2652bfb11b469f5fa557d3c2c73d69c4a17649d` |
-| 3 | T05.1 / [#551](https://github.com/Noahlw/efcc/issues/551) | None | `rescue/ui-control-recovery` | `rescue/t05-layered-testing` (planned) | fresh worktree on start | `rescue/ui-control-recovery` | one replacement T05 PR (pending) | `FRONTIER` | pending | N/A | `d2652bfb11b469f5fa557d3c2c73d69c4a17649d` |
-| 4 | T05.2 / [#552](https://github.com/Noahlw/efcc/issues/552) | T05.1 / #551 | `rescue/t05-layered-testing` | `rescue/t05-layered-testing` | planned | `rescue/ui-control-recovery` | one replacement T05 PR (pending) | `BLOCKED` | pending | N/A | pending |
-| 5 | T05.3 / [#553](https://github.com/Noahlw/efcc/issues/553) | T05.1 / #551 | `rescue/t05-layered-testing` | `rescue/t05-layered-testing` | planned | `rescue/ui-control-recovery` | one replacement T05 PR (pending) | `BLOCKED` | pending | N/A | pending |
-| 6 | T05.4 / [#554](https://github.com/Noahlw/efcc/issues/554) | T05.2 / #552 | `rescue/t05-layered-testing` | `rescue/t05-layered-testing` | planned | `rescue/ui-control-recovery` | one replacement T05 PR (pending) | `BLOCKED` | pending | N/A | pending |
-| 7 | T05.5 / [#555](https://github.com/Noahlw/efcc/issues/555) | T05.2 / #552 | `rescue/t05-layered-testing` | `rescue/t05-layered-testing` | planned | `rescue/ui-control-recovery` | one replacement T05 PR (pending) | `BLOCKED` | pending | N/A | pending |
-| 8 | T05.6 / [#556](https://github.com/Noahlw/efcc/issues/556) | T05.4 / #554, T05.5 / #555 | `rescue/t05-layered-testing` | `rescue/t05-layered-testing` | planned | `rescue/ui-control-recovery` | one replacement T05 PR (pending) | `BLOCKED` | pending | N/A | pending |
-| 9 | T05.7 / [#557](https://github.com/Noahlw/efcc/issues/557) | T05.3 / #553, T05.4 / #554, T05.5 / #555, T05.6 / #556 | `rescue/t05-layered-testing` | `rescue/t05-layered-testing` | planned | `rescue/ui-control-recovery` | one replacement T05 PR (pending) | `BLOCKED` | pending | N/A | pending |
+| 3 | T05.1 / [#551](https://github.com/Noahlw/efcc/issues/551) | None | `rescue/ui-control-recovery` | `rescue/t05-layered-testing` | `/Users/noah.wong/Desktop/code/EFCC-dev/.worktrees/t05-layered-testing` | `rescue/ui-control-recovery` | one replacement T05 PR (pending) | `COMMITTED` | `103ab3f70bcaf5c202bf083bd1f8e9aef107b87d` | N/A | `dcd21b681d54f062a2df81b38d08269e46350720` |
+| 4 | T05.2 / [#552](https://github.com/Noahlw/efcc/issues/552) | T05.1 / #551 | `rescue/t05-layered-testing` | `rescue/t05-layered-testing` | `/Users/noah.wong/Desktop/code/EFCC-dev/.worktrees/t05-layered-testing` | `rescue/ui-control-recovery` | one replacement T05 PR (pending) | `COMMITTED` | `8a700079cc66f495ce26c93b1eaf42352e5ef92a` | N/A | `103ab3f70bcaf5c202bf083bd1f8e9aef107b87d` |
+| 5 | T05.3 / [#553](https://github.com/Noahlw/efcc/issues/553) | T05.1 / #551 | `rescue/t05-layered-testing` | `rescue/t05-layered-testing` | `/Users/noah.wong/Desktop/code/EFCC-dev/.worktrees/t05-layered-testing` | `rescue/ui-control-recovery` | one replacement T05 PR (pending) | `PROMOTION_BLOCKED` | `43f8fb89ac8db490c345e1ddf7de3572852f4f00` | N/A | `8a700079cc66f495ce26c93b1eaf42352e5ef92a` |
+| 6 | T05.4 / [#554](https://github.com/Noahlw/efcc/issues/554) | T05.2 / #552 | `rescue/t05-layered-testing` | `rescue/t05-layered-testing` | `/Users/noah.wong/Desktop/code/EFCC-dev/.worktrees/t05-layered-testing` | `rescue/ui-control-recovery` | one replacement T05 PR (pending) | `COMMITTED` | `68da4c80e8e825e2282815d112c7e3a958315d90` | N/A | `8a700079cc66f495ce26c93b1eaf42352e5ef92a` |
+| 7 | T05.5 / [#555](https://github.com/Noahlw/efcc/issues/555) | T05.2 / #552 | `rescue/t05-layered-testing` | `rescue/t05-layered-testing` | `/Users/noah.wong/Desktop/code/EFCC-dev/.worktrees/t05-layered-testing` | `rescue/ui-control-recovery` | one replacement T05 PR (pending) | `COMMITTED` | `0c70c61fbb451eecbfdfcb18efd3183ad3cfac72` | N/A | `8a700079cc66f495ce26c93b1eaf42352e5ef92a` |
+| 8 | T05.6 / [#556](https://github.com/Noahlw/efcc/issues/556) | T05.4 / #554, T05.5 / #555 | `rescue/t05-layered-testing` | `rescue/t05-layered-testing` | `/Users/noah.wong/Desktop/code/EFCC-dev/.worktrees/t05-layered-testing` | `rescue/ui-control-recovery` | one replacement T05 PR (pending) | `COMMITTED` | `d3ce7ab912aa46c19eaa644055f3cd109d5be22e` | N/A | `0c70c61fbb451eecbfdfcb18efd3183ad3cfac72` |
+| 9 | T05.7 / [#557](https://github.com/Noahlw/efcc/issues/557) | T05.3 / #553, T05.4 / #554, T05.5 / #555, T05.6 / #556 | `rescue/t05-layered-testing` | `rescue/t05-layered-testing` | `/Users/noah.wong/Desktop/code/EFCC-dev/.worktrees/t05-layered-testing` | `rescue/ui-control-recovery` | one replacement T05 PR (pending) | `PROMOTION_BLOCKED` | `c370f469b20149559feecc6d33745d3de75b9b14` | N/A | `d3ce7ab912aa46c19eaa644055f3cd109d5be22e` |
 | 10 | T06 / #511 | T05.7 / #557 and T05 promotion | `rescue/t05-layered-testing` | `rescue/t06-css-cascade` | existing branch; restack required | `rescue/t05-runtime-stability` (current live base) | [#550](https://github.com/Noahlw/efcc/pull/550) | `BLOCKED` | `5b0f6daaa3e6bc211b68da541866b7c59fff2285` | N/A | restack after replacement T05 merge |
 
 ---
@@ -549,6 +549,21 @@ No production implementation, schema, API, permission, audit, idempotency, scope
 - **Preservation impact:** Historical #505/#510 wording remains in place; #549 body, commits, checks, and diagnostic evidence remain preserved.
 - **Open blocker:** T05.1 is unblocked; B-003 runtime evidence is carried into T05.3/#553 and T05.7/#557; T06 remains gated.
 - **Next eligible ticket:** T05.1 / [#551](https://github.com/Noahlw/efcc/issues/551).
+
+#### T05.1–T05.7 / #551–#557 — Layered testing implementation checkpoint
+
+- **Status:** `PROMOTION_BLOCKED`
+- **Base rescue SHA:** `dcd21b681d54f062a2df81b38d08269e46350720`
+- **Owning implementation SHAs:** `103ab3f7` → `8a700079` → `43f8fb89` → `68da4c80` → `0c70c61f` → `d3ce7ab9` → `c370f469`
+- **Branch / PR:** `rescue/t05-layered-testing` / one replacement T05 PR pending; no child PRs
+- **Worktree:** `/Users/noah.wong/Desktop/code/EFCC-dev/.worktrees/t05-layered-testing`
+- **Delivered outcome:** Added `TESTING.md` and ADR-0044, a Workers Vitest Programs Contract Gate, an official `createTestHarness().listen()` Runtime Reliability Canary, participant and management Browser Acceptance slices, separate participant/management migration ledgers, a deterministic 320/390/1280 Responsive Matrix, and the fail-closed `pnpm verify:programs` aggregate. The legacy `programs-d1` config remains diagnostic-only.
+- **Tests:** T05.2 focused Worker Contract passed; Browser Acceptance passed 2/2 at `phone-390`; Responsive Matrix passed 6/6 across 320/390/1280; full local non-browser hook passed 606 Worker tests and 889 component tests; T05.7 aggregate passed Worker Contract then stopped at the canary after 360 scenarios on HTTP 500 `Error: Network connection lost`; no browser/responsive stage was falsely marked by the aggregate.
+- **Code review:** Final `/code-review Standards` and `/code-review Spec` pending on the complete seven-commit replacement diff.
+- **Human approval:** `N/A` for implementation; T05 promotion/merge remains owner-gated.
+- **Preservation impact:** Historical `programs-d1.test.ts`, #549 body/commits/evidence, exact `201`/five-run diagnostic history, and T06/#550 state remain preserved; no implementation PR was merged.
+- **Open blocker:** B-003 / upstream Miniflare runtime transport failure is reproducible in #553 at the decision/read boundary; T05 is not `STACK_GREEN`, and T06/#550 remains blocked/restack-required.
+- **Next eligible action:** Resolve/re-prove B-003 with the fixed five-minute no-retry canary, rerun `pnpm verify:programs`, then complete final two-axis review before opening/merging the replacement T05 PR parent-first.
 
 #### T03 / #508 — Enforce styling ownership and typed UI contract governance
 
@@ -695,7 +710,7 @@ For the T05 layered-testing rework, D-004 is the explicit owner-approved excepti
 
 ## 20. Next safe action
 
-1. Start ⟦/implement⟧ on T05.1 / [#551](https://github.com/Noahlw/efcc/issues/551) from rescue ⟦d2652bfb⟧; establish the layered authority and coexistence boundary.
-2. After T05.1 is committed and reviewed, continue with T05.2 / [#552](https://github.com/Noahlw/efcc/issues/552) and T05.3 / [#553](https://github.com/Noahlw/efcc/issues/553) according to their blockers.
-3. Continue through T05.4 / [#554](https://github.com/Noahlw/efcc/issues/554), T05.5 / [#555](https://github.com/Noahlw/efcc/issues/555), T05.6 / [#556](https://github.com/Noahlw/efcc/issues/556), then T05.7 / [#557](https://github.com/Noahlw/efcc/issues/557); keep one shared branch and one owning commit per child.
-4. Keep T06 issue #511 / Draft PR #550 blocked until the replacement T05 PR qualifies, receives final review, and merges parent-first; do not start Phase 1.
+1. Resolve/re-prove B-003 in T05.3 / [#553](https://github.com/Noahlw/efcc/issues/553) with the fixed five-minute no-retry canary; preserve any first causal runtime evidence.
+2. Run `pnpm verify:programs` at the reviewed `rescue/t05-layered-testing` head, then complete final `/code-review Standards` and `/code-review Spec` on the complete replacement diff.
+3. Open the one replacement T05 PR only after the aggregate is Green; T05.7 / [#557](https://github.com/Noahlw/efcc/issues/557) is the sole child promotion boundary.
+4. Keep T06 issue #511 / Draft PR #550 blocked until the replacement T05 PR qualifies, receives final review, merges parent-first, and #550 is restacked onto its head; do not start Phase 1.

@@ -59,6 +59,8 @@ T05.7 is the only child that can make the replacement T05 PR `STACK_GREEN`. Prom
 6. a clean worktree and structured evidence recording the exact reviewed revision; and
 7. `/code-review Standards` and `/code-review Spec` against this authority and the current T05 routing.
 
+The runnable aggregate is `pnpm verify:programs`. Browser Acceptance starts and closes its own official Harness; Responsive Matrix uses the supplied loopback `PROGRAMS_TARGET_URL` (default `http://127.0.0.1:8787`) and therefore requires a ready local Worker with disposable `E2E_` accounts. The Runtime Reliability Canary also creates and closes its own official Harness. The aggregate writes revision-pinned evidence under `test-results/programs-promotion/<run-id>/`.
+
 Automatic GitHub CI remains fast-only. Heavy qualification and governance/testing workflows are local-first, with optional manual GitHub runs serving diagnostic/parity purposes only. The old shell-supervised Wrangler runner remains diagnostic when useful.
 
 Failure evidence records the logical scenario, layer, revision, route/state/viewport where relevant, first causal runtime signal, and downstream symptoms separately. A later retry does not erase an earlier failure.

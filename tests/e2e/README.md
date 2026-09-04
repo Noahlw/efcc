@@ -18,6 +18,8 @@ Each Playwright config has a positive `testMatch`; suites must not cross loaders
 | `programs-participant-acceptance.config.ts` | `pnpm test:programs:browser` | T05.4/T05.5 critical participant and management Browser Acceptance at one representative `phone-390` viewport, zero retries, and unique disposable fixtures. |
 | `programs-responsive-matrix.config.ts` | `pnpm test:programs:responsive` | T05.6 deterministic participant/management responsive proof at exactly 320, 390, and 1280 widths; no broad domain replay and zero retries. |
 
+`pnpm test:programs:browser` starts the official Wrangler `createTestHarness()` with `web/wrangler.jsonc`, seeds disposable accounts through its D1 binding, runs both critical browser slices, and closes the Harness. Direct config invocation remains available for a manually supplied diagnostic target.
+
 The identity 900px seam is covered by the `desktop-900` project in `s4-management-hardening.config.ts`; the focused static identity report is W7-only by design.
 
 `pnpm test:shell-responsive` builds the Next static export and serves it through `tests/e2e/serve-static.ts` on port `4173`. It runs the mobile and desktop projects without a Worker, D1, Google session, or network target.

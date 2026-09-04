@@ -1,4 +1,7 @@
 import { defineConfig, devices } from "@playwright/test";
+
+// Diagnostic only; not promotion authority.
+// The layered aggregate owns T05 promotion qualification.
 // Local-first default (see AGENTS.md): `wrangler dev` serves the Worker +
 // local D1 on this origin. Override PROGRAMS_TARGET_URL for the shared
 // dev-testing worker (see .github/CI-SECRETS.md) or another
@@ -60,9 +63,7 @@ export default defineConfig({
   retries: 1,
   fullyParallel: false,
   workers: 1,
-  reporter: [
-    ["line"],
-  ],
+  reporter: [["line"]],
   use: {
     baseURL: targetUrl,
     // Dev fixtures are non-secret: keep traces and screenshots as failure

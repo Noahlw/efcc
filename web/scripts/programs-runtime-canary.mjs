@@ -527,30 +527,8 @@ async function runCommand(name, args, artifactDirectory) {
   }
 }
 
-async function main() {
-  const artifactDirectory = path.join(CANARY_ARTIFACT_ROOT, runId());
-  await mkdir(artifactDirectory, { recursive: true });
-  const startedAt = Date.now();
-  const manifest = {
-    schemaVersion: 1,
-    runtime: "createTestHarness",
-    config: "web/wrangler.jsonc",
-    retries: CANARY_RETRIES,
-    windowMs: CANARY_DURATION_MS,
-    revision: await revision(),
-    status: "running",
-    startedAt: new Date(startedAt).toISOString(),
-    scenariosCompleted: 0,
-    failures: [],
-  };
-  await writeJson(path.join(artifactDirectory, "run.json"), manifest);
-
+export async function prepareProgramsHarness(artifactDirectory) {
   let server = null;
-  let failure = null;
-  let target = null;
-  let db = null;
-  let causalSignal = null;
-  let observedRuntimeFailure = null;
   try {
     await assertLocalSecret();
     await runCommand("build", ["--dir", "web", "build"], artifactDirectory);
@@ -577,11 +555,65 @@ async function main() {
         },
       ],
     });
-    target = (await server.listen()).url;
-    const worker = server.getWorker();
-    db = await seedWorkerDatabase(worker, artifactDirectory);
-    const setupAdminCookie = await login(target, ADMIN);
-    const fixture = await createFixture(target, setupAdminCookie);
+    const target = (await server.listen()).url;
+    const db = await seedWorkerDatabase(server.getWorker(), artifactDirectory);
+    const adminCookie = await login(target, ADMIN);
+    const fixture = await createFixture(target, adminCookie);
+    return { server, target, db, fixture };
+  } catch (error) {
+    if (server !== null) {
+      try {
+        server.debug();
+      } catch {
+        // Keep the structured log capture below even when debug printing fails.
+      }
+      const runtimeLogs = server.getLogs();
+      await writeJson(
+        path.join(artifactDirectory, "runtime-logs.json"),
+        runtimeLogs
+      ).catch(() => undefined);
+      await writeJson(path.join(artifactDirectory, "failure-summary.json"), {
+        category: error?.category ?? "fixture/setup",
+        phase: error?.phase ?? "fixture/setup",
+        message: error instanceof Error ? error.message : String(error),
+        firstCausalRuntimeSignal: firstCausalRuntimeSignal(runtimeLogs),
+      }).catch(() => undefined);
+      await server.close().catch(() => undefined);
+    }
+    throw error;
+  }
+}
+
+async function main() {
+  const artifactDirectory = path.join(CANARY_ARTIFACT_ROOT, runId());
+  await mkdir(artifactDirectory, { recursive: true });
+  const startedAt = Date.now();
+  const manifest = {
+    schemaVersion: 1,
+    runtime: "createTestHarness",
+    config: "web/wrangler.jsonc",
+    retries: CANARY_RETRIES,
+    windowMs: CANARY_DURATION_MS,
+    revision: await revision(),
+    status: "running",
+    startedAt: new Date(startedAt).toISOString(),
+    scenariosCompleted: 0,
+    failures: [],
+  };
+  await writeJson(path.join(artifactDirectory, "run.json"), manifest);
+
+  let server = null;
+  let failure = null;
+  let target = null;
+  let db = null;
+  let causalSignal = null;
+  let observedRuntimeFailure = null;
+  try {
+    const prepared = await prepareProgramsHarness(artifactDirectory);
+    server = prepared.server;
+    target = prepared.target;
+    db = prepared.db;
+    const fixture = prepared.fixture;
     const deadline = startedAt + CANARY_DURATION_MS;
     while (Date.now() < deadline) {
       await runScenario(target, db, fixture.programId);

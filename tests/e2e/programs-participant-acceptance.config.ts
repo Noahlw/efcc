@@ -43,7 +43,9 @@ export default defineConfig({
       },
     ],
   ],
-  outputDir: "test-results/programs-participant",
+  outputDir:
+    process.env.PROGRAMS_BROWSER_OUTPUT_DIR ??
+    "test-results/programs-participant",
   use: {
     baseURL: targetUrl,
     trace: "retain-on-failure",
