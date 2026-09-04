@@ -13,6 +13,198 @@ import { createTestHarness } from "wrangler";
 const QUALIFICATION_TIMEOUT_MS = 15 * 60 * 1000;
 const EXPECTED_PROGRAMS_TESTS = 201;
 const REPO_ROOT = path.resolve(process.cwd(), "..");
+const REQUIRED_PROGRAMS_COUNTS = Object.freeze({
+  expected: EXPECTED_PROGRAMS_TESTS,
+  skipped: 0,
+  unexpected: 0,
+  flaky: 0,
+});
+
+function reportSource(report) {
+  if (
+    report &&
+    typeof report === "object" &&
+    "report" in report &&
+    report.report &&
+    typeof report.report === "object"
+  ) {
+    return report.report;
+  }
+  return report;
+}
+
+function testStatus(test) {
+  if (typeof test?.status === "string") {
+    if (test.status === "unexpected" || test.status === "flaky") {
+      return test.status;
+    }
+    if (["failed", "timedOut", "interrupted"].includes(test.status)) {
+      return "unexpected";
+    }
+    return test.status;
+  }
+  const results = Array.isArray(test?.results) ? test.results : [];
+  if (
+    results.some((result) =>
+      ["failed", "timedOut", "interrupted"].includes(result?.status)
+    )
+  ) {
+    return "unexpected";
+  }
+  if (results.some((result) => result?.status === "skipped")) {
+    return "skipped";
+  }
+  return "expected";
+}
+
+function errorMessages(results) {
+  return results.flatMap((result) => {
+    const errors = Array.isArray(result?.errors)
+      ? result.errors
+      : result?.error
+        ? [result.error]
+        : [];
+    return errors
+      .map((error) => error?.message)
+      .filter((message) => typeof message === "string");
+  });
+}
+
+function fullTitle(suitePath, specTitle) {
+  return [...suitePath, specTitle]
+    .filter((part) => typeof part === "string" && part.length > 0)
+    .join(" > ");
+}
+
+/**
+ * @typedef {Object} ProgramsReportSummary
+ * @property {Object} stats Playwright's report stats object.
+ * @property {Object} counts The exact count fields used by the acceptance gate.
+ * @property {Array} failedTests Unexpected or flaky row identities.
+ */
+
+/**
+ * @typedef {Object} FailedProgramsTest
+ * @property {string} title Complete suite/spec title.
+ * @property {string} fullTitle Alias for the complete suite/spec title.
+ * @property {string|null} projectId Playwright project id when reported.
+ * @property {string|null} projectName Playwright project name when reported.
+ * @property {string|null} viewport Viewport identity when reported.
+ */
+
+/**
+ * Read a Playwright JSON report without starting a Worker or Harness.
+ *
+ * @param {string} reportPath
+ * @returns {ProgramsReportSummary & Object}
+ */
+export function readProgramsReport(reportPath) {
+  let report;
+  try {
+    report = JSON.parse(readFileSync(reportPath, "utf8"));
+  } catch (error) {
+    throw new Error(
+      `Unable to read Programs Playwright JSON report at ${reportPath}: ${error instanceof Error ? error.message : String(error)}`
+    );
+  }
+  if (report === null || typeof report !== "object" || Array.isArray(report)) {
+    throw new Error("Programs Playwright JSON report must be an object");
+  }
+  const stats = report.stats;
+  const counts = Object.fromEntries(
+    Object.keys(REQUIRED_PROGRAMS_COUNTS).map((name) => [name, stats?.[name]])
+  );
+  return {
+    ...report,
+    reportPath,
+    counts,
+    failedTests: failedProgramsTests(report),
+  };
+}
+
+/**
+ * Extract every unexpected/flaky Programs row with enough identity to rerun it.
+ *
+ * @param {ProgramsReportSummary & Object} report
+ * @returns {FailedProgramsTest[]}
+ */
+export function failedProgramsTests(report) {
+  const source = reportSource(report);
+  const failures = [];
+
+  function visit(suites, parents = [], inheritedFile = null) {
+    for (const suite of Array.isArray(suites) ? suites : []) {
+      const suiteTitle =
+        typeof suite?.title === "string" ? suite.title : undefined;
+      const suitePath = suiteTitle ? [...parents, suiteTitle] : parents;
+      const suiteFile = suite?.file ?? inheritedFile;
+      for (const spec of Array.isArray(suite?.specs) ? suite.specs : []) {
+        const specTitle =
+          typeof spec?.title === "string" ? spec.title : undefined;
+        for (const test of Array.isArray(spec?.tests) ? spec.tests : []) {
+          const status = testStatus(test);
+          if (status !== "unexpected" && status !== "flaky") {
+            continue;
+          }
+          const results = Array.isArray(test.results) ? test.results : [];
+          const lastResult = results.at(-1) ?? null;
+          const projectId =
+            test.projectId ?? test.project?.id ?? test.projectName ?? null;
+          const projectName =
+            test.projectName ?? test.project?.name ?? test.projectId ?? null;
+          const viewport = test.viewport ?? test.project?.viewport ?? null;
+          const title = fullTitle(suitePath, specTitle);
+          failures.push({
+            title,
+            fullTitle: title,
+            suitePath,
+            specTitle: specTitle ?? null,
+            file: test.file ?? spec.file ?? suiteFile ?? null,
+            line: test.line ?? spec.line ?? null,
+            column: test.column ?? spec.column ?? null,
+            projectId,
+            projectName,
+            viewport,
+            status,
+            expectedStatus: test.expectedStatus ?? null,
+            retry: lastResult?.retry ?? null,
+            resultStatuses: results.map((result) => result?.status ?? null),
+            errorMessages: errorMessages(results),
+          });
+        }
+      }
+      visit(suite?.suites, suitePath, suiteFile);
+    }
+  }
+
+  visit(source?.suites);
+  return failures;
+}
+
+/**
+ * Assert the exact required Programs report counts.
+ *
+ * @param {ProgramsReportSummary & Object} report
+ */
+export function assertProgramsReportComplete(report) {
+  const stats = reportSource(report)?.stats;
+  if (stats === null || typeof stats !== "object" || Array.isArray(stats)) {
+    throw new Error("Programs Playwright JSON report has no stats object");
+  }
+  const mismatches = Object.entries(REQUIRED_PROGRAMS_COUNTS).filter(
+    ([name, expected]) =>
+      typeof stats[name] !== "number" || stats[name] !== expected
+  );
+  if (mismatches.length > 0) {
+    throw new Error(
+      `Programs Playwright JSON report is incomplete: ${Object.keys(
+        REQUIRED_PROGRAMS_COUNTS
+      )
+        .map((name) => `${name}=${String(stats[name])}`)
+        .join(", ")}`
+    );
+  }
+}
 
 function runId() {
   return new Date()
@@ -125,18 +317,7 @@ async function stopProbeGroup(child, exited, signal) {
 }
 
 function assertCompletePlaywrightReport(reportPath) {
-  const report = JSON.parse(readFileSync(reportPath, "utf8"));
-  const stats = report?.stats;
-  if (
-    stats?.expected !== EXPECTED_PROGRAMS_TESTS ||
-    stats?.skipped !== 0 ||
-    stats?.unexpected !== 0 ||
-    stats?.flaky !== 0
-  ) {
-    throw new Error(
-      `Programs Playwright JSON report is incomplete: expected=${String(stats?.expected)}, skipped=${String(stats?.skipped)}, unexpected=${String(stats?.unexpected)}, flaky=${String(stats?.flaky)}`
-    );
-  }
+  assertProgramsReportComplete(readProgramsReport(reportPath));
 }
 
 async function runProbe() {
@@ -435,8 +616,14 @@ async function runBoundedQualification() {
   process.exitCode = result.code === 0 ? 0 : 1;
 }
 
-if (process.argv.includes("--probe")) {
-  await runProbe();
-} else {
-  await runBoundedQualification();
+const isMainModule =
+  process.argv[1] !== undefined &&
+  path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+
+if (isMainModule) {
+  if (process.argv.includes("--probe")) {
+    await runProbe();
+  } else {
+    await runBoundedQualification();
+  }
 }
