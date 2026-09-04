@@ -111,6 +111,10 @@ describe("T05.7 Programs promotion gate", () => {
       path.join(repoRoot, "tests/e2e/programs-d1.config.ts"),
       "utf8"
     );
+    const governanceWorkflow = readFileSync(
+      path.join(repoRoot, ".github/workflows/ui-governance.yml"),
+      "utf8"
+    );
     for (const group of [
       "PUI-01",
       "PUI-02",
@@ -134,6 +138,10 @@ describe("T05.7 Programs promotion gate", () => {
     }
     expect(historicalConfig).toMatch(
       /diagnostic[\s\S]*not promotion authority/iu
+    );
+    expect(governanceWorkflow).toContain("workflow_dispatch:");
+    expect(governanceWorkflow).not.toMatch(
+      /^\s+(push|pull_request|schedule):/mu
     );
   });
 });

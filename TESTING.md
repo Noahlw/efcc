@@ -1,9 +1,6 @@
 # EFCC Testing Authority
 
-**Status:** Active testing architecture for the T05 Programs rework  
-**Owner:** Product/release owner  
-**Rationale:** [ADR-0044](docs/adr/0044-layered-testing-authority.md)  
-**Current T05 routing:** [#505 amendment](https://github.com/Noahlw/efcc/issues/505#issuecomment-5538740674) and [#510 execution authority](https://github.com/Noahlw/efcc/issues/510#issuecomment-5538740935)
+**Status:** Active testing architecture for the T05 Programs rework **Owner:** Product/release owner **Rationale:** [ADR-0044](docs/adr/0044-layered-testing-authority.md) **Current T05 routing:** [#505 amendment](https://github.com/Noahlw/efcc/issues/505#issuecomment-5538740674) and [#510 execution authority](https://github.com/Noahlw/efcc/issues/510#issuecomment-5538740935)
 
 This document owns the testing-layer boundaries, test isolation, canonical commands, failure evidence, and promotion rules for the T05 layered-testing migration. Domain behavior remains owned by `CONTEXT.md`, the active domain ADRs/specs, and the Worker contracts. UI ownership remains governed by `docs/implementation/ui-control-recovery-governance.md`.
 

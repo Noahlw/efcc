@@ -1,7 +1,7 @@
 # T05.4 Participant Programs Migration Ledger
 
-**Owner:** T05.4 / [#554](https://github.com/Noahlw/efcc/issues/554)  
-**Historical source:** `tests/e2e/programs-d1.test.ts`  
+**Owner:** T05.4 / [#554](https://github.com/Noahlw/efcc/issues/554)
+**Historical source:** `tests/e2e/programs-d1.test.ts`
 **Current Browser Acceptance:** `tests/e2e/programs-participant-acceptance.test.ts` at `phone-390`, `retries: 0`
 
 This ledger counts logical participant behavior, not the historical three viewport executions. The historical suite remains available during migration and is diagnostic until T05.7 contracts its authority. No row is removed without a replacement owner or an explicit retirement reason.

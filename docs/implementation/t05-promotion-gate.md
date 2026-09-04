@@ -1,7 +1,7 @@
 # T05.7 Programs Promotion Gate
 
-**Authority:** [TESTING.md](../../TESTING.md)  
-**Ticket:** [#557](https://github.com/Noahlw/efcc/issues/557)  
+**Authority:** [TESTING.md](../../TESTING.md)
+**Ticket:** [#557](https://github.com/Noahlw/efcc/issues/557)
 **Delivery:** one shared `rescue/t05-layered-testing` branch, one owning commit per child, one replacement T05 PR
 
 ## Canonical command

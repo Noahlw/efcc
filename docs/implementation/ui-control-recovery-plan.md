@@ -165,7 +165,7 @@ Update this table at the start and end of every implementation session.
 | Merge frontier | One T05 replacement PR from `rescue/t05-layered-testing` → rescue; then T06 / #511/#550 |
 | Review pending | Final `/code-review Standards` and `/code-review Spec` against the complete replacement diff; promotion rerun after B-003 is resolved |
 | Human approval pending | None — D-003 records the owner-authorized T03 Contract Change |
-| Active blocker | B-003 reproduced in the official Harness canary at revision `c370f469b20149559feecc6d33745d3de75b9b14`: 360 scenarios completed before HTTP 500 `Network connection lost`; T05 is not `STACK_GREEN`; T06 remains promotion/merge-gated |
+| Active blocker | B-003 reproduced in the official Harness canary at revision `e78b8c5540ab7b627ddb421571faeb74e6467b3f`: 160 scenarios completed before HTTP 500 `Network connection lost`; T05 is not `STACK_GREEN`; T06 remains promotion/merge-gated |
 | Next safe action | Resolve/re-prove B-003 with the fixed five-minute no-retry canary, then run `pnpm verify:programs`; only after final review and Green may the replacement PR merge parent-first |
 | Last merged rescue SHA | `dcd21b681d54f062a2df81b38d08269e46350720` |
 | Last rollback checkpoint | Frozen Phase F SHA `6edf28c0f8f7058cf992416e7b517824c3178c8` |
@@ -387,8 +387,8 @@ The tracker separates the implementation frontier from the merge frontier. `STAC
 | Phase | Phase 0 — Foundation & Recovery Control |
 | Rescue base SHA | `dcd21b681d54f062a2df81b38d08269e46350720` |
 | Stack root | `rescue/ui-control-recovery` after parent-first merge of #547, #546, and #548 |
-| Stack tip | `rescue/t05-layered-testing` / T05.7 implementation `c370f469`; replacement PR pending qualification |
-| Implementation frontier | T05.1–T05.7 committed; #553 Runtime Reliability Canary reproduces B-003 at 360 scenarios; no child implementation remains; T06 remains blocked |
+| Stack tip | `rescue/t05-layered-testing` / T05.7 implementation `e78b8c55`; replacement PR pending qualification |
+| Implementation frontier | T05.1–T05.7 committed; #553 Runtime Reliability Canary reproduces B-003 at 160 scenarios; no child implementation remains; T06 remains blocked |
 | Merge frontier | One replacement T05 PR → rescue, then T06 / #511/#550 after restack |
 | Review pending | Complete replacement-PR two-axis review and rerun promotion after B-003 resolution |
 | Human approval pending | None for Phase 0 foundation tickets |
@@ -408,7 +408,7 @@ The tracker separates the implementation frontier from the merge frontier. `STAC
 | 6 | T05.4 / [#554](https://github.com/Noahlw/efcc/issues/554) | T05.2 / #552 | `rescue/t05-layered-testing` | `rescue/t05-layered-testing` | `/Users/noah.wong/Desktop/code/EFCC-dev/.worktrees/t05-layered-testing` | `rescue/ui-control-recovery` | one replacement T05 PR (pending) | `COMMITTED` | `68da4c80e8e825e2282815d112c7e3a958315d90` | N/A | `8a700079cc66f495ce26c93b1eaf42352e5ef92a` |
 | 7 | T05.5 / [#555](https://github.com/Noahlw/efcc/issues/555) | T05.2 / #552 | `rescue/t05-layered-testing` | `rescue/t05-layered-testing` | `/Users/noah.wong/Desktop/code/EFCC-dev/.worktrees/t05-layered-testing` | `rescue/ui-control-recovery` | one replacement T05 PR (pending) | `COMMITTED` | `0c70c61fbb451eecbfdfcb18efd3183ad3cfac72` | N/A | `8a700079cc66f495ce26c93b1eaf42352e5ef92a` |
 | 8 | T05.6 / [#556](https://github.com/Noahlw/efcc/issues/556) | T05.4 / #554, T05.5 / #555 | `rescue/t05-layered-testing` | `rescue/t05-layered-testing` | `/Users/noah.wong/Desktop/code/EFCC-dev/.worktrees/t05-layered-testing` | `rescue/ui-control-recovery` | one replacement T05 PR (pending) | `COMMITTED` | `d3ce7ab912aa46c19eaa644055f3cd109d5be22e` | N/A | `0c70c61fbb451eecbfdfcb18efd3183ad3cfac72` |
-| 9 | T05.7 / [#557](https://github.com/Noahlw/efcc/issues/557) | T05.3 / #553, T05.4 / #554, T05.5 / #555, T05.6 / #556 | `rescue/t05-layered-testing` | `rescue/t05-layered-testing` | `/Users/noah.wong/Desktop/code/EFCC-dev/.worktrees/t05-layered-testing` | `rescue/ui-control-recovery` | one replacement T05 PR (pending) | `PROMOTION_BLOCKED` | `c370f469b20149559feecc6d33745d3de75b9b14` | N/A | `d3ce7ab912aa46c19eaa644055f3cd109d5be22e` |
+| 9 | T05.7 / [#557](https://github.com/Noahlw/efcc/issues/557) | T05.3 / #553, T05.4 / #554, T05.5 / #555, T05.6 / #556 | `rescue/t05-layered-testing` | `rescue/t05-layered-testing` | `/Users/noah.wong/Desktop/code/EFCC-dev/.worktrees/t05-layered-testing` | `rescue/ui-control-recovery` | one replacement T05 PR (pending) | `PROMOTION_BLOCKED` | `e78b8c5540ab7b627ddb421571faeb74e6467b3f` | N/A | `d3ce7ab912aa46c19eaa644055f3cd109d5be22e` |
 | 10 | T06 / #511 | T05.7 / #557 and T05 promotion | `rescue/t05-layered-testing` | `rescue/t06-css-cascade` | existing branch; restack required | `rescue/t05-runtime-stability` (current live base) | [#550](https://github.com/Noahlw/efcc/pull/550) | `BLOCKED` | `5b0f6daaa3e6bc211b68da541866b7c59fff2285` | N/A | restack after replacement T05 merge |
 
 ---
@@ -554,11 +554,11 @@ No production implementation, schema, API, permission, audit, idempotency, scope
 
 - **Status:** `PROMOTION_BLOCKED`
 - **Base rescue SHA:** `dcd21b681d54f062a2df81b38d08269e46350720`
-- **Owning implementation SHAs:** `103ab3f7` → `8a700079` → `43f8fb89` → `68da4c80` → `0c70c61f` → `d3ce7ab9` → `c370f469`
+- **Owning implementation SHAs:** `103ab3f7` → `8a700079` → `43f8fb89` → `68da4c80` → `0c70c61f` → `d3ce7ab9` → `e78b8c55`
 - **Branch / PR:** `rescue/t05-layered-testing` / one replacement T05 PR pending; no child PRs
 - **Worktree:** `/Users/noah.wong/Desktop/code/EFCC-dev/.worktrees/t05-layered-testing`
 - **Delivered outcome:** Added `TESTING.md` and ADR-0044, a Workers Vitest Programs Contract Gate, an official `createTestHarness().listen()` Runtime Reliability Canary, participant and management Browser Acceptance slices, separate participant/management migration ledgers, a deterministic 320/390/1280 Responsive Matrix, and the fail-closed `pnpm verify:programs` aggregate. The legacy `programs-d1` config remains diagnostic-only.
-- **Tests:** T05.2 focused Worker Contract passed; Browser Acceptance passed 2/2 at `phone-390`; Responsive Matrix passed 6/6 across 320/390/1280; full local non-browser hook passed 606 Worker tests and 889 component tests; T05.7 aggregate passed Worker Contract then stopped at the canary after 360 scenarios on HTTP 500 `Error: Network connection lost`; no browser/responsive stage was falsely marked by the aggregate.
+- **Tests:** T05.2 focused Worker Contract passed; official-Harness Browser Acceptance passed 2/2 at `phone-390`; Responsive Matrix passed 6/6 across 320/390/1280; full local non-browser hook passed 606 Worker tests and 889 component tests; final T05.7 aggregate artifact `test-results/programs-promotion/20260904t182849478z/promotion.json` passed Worker Contract then stopped at the canary after 160 scenarios on HTTP 500 `Error: Network connection lost`; no browser/responsive stage was falsely marked by the aggregate.
 - **Code review:** Final `/code-review Standards` and `/code-review Spec` pending on the complete seven-commit replacement diff.
 - **Human approval:** `N/A` for implementation; T05 promotion/merge remains owner-gated.
 - **Preservation impact:** Historical `programs-d1.test.ts`, #549 body/commits/evidence, exact `201`/five-run diagnostic history, and T06/#550 state remain preserved; no implementation PR was merged.
