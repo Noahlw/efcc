@@ -298,7 +298,7 @@ test.describe("T05.6 responsive Programs UI matrix", () => {
       "participant detail"
     );
 
-    const eventContext = await browser.newContext();
+    const eventContext = await browser.newContext({ baseURL: TARGET_URL });
     const eventPage = await eventContext.newPage();
     try {
       await loginAs(eventPage, ADMIN);
