@@ -2,7 +2,14 @@ import { defineConfig, devices } from "@playwright/test";
 
 const DEFAULT_TARGET_URL = "http://127.0.0.1:8787";
 const targetUrl = process.env.PROGRAMS_TARGET_URL ?? DEFAULT_TARGET_URL;
-const target = new URL(targetUrl);
+let target: URL;
+try {
+  target = new URL(targetUrl);
+} catch {
+  throw new Error(
+    "PROGRAMS_TARGET_URL must be a valid URL (loopback HTTP or reserved HTTPS Worker)"
+  );
+}
 const isLoopback =
   target.protocol === "http:" &&
   !target.username &&

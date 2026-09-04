@@ -3,6 +3,7 @@ import {
   test,
   type APIRequestContext,
   type Page,
+  type TestInfo,
 } from "@playwright/test";
 
 const TARGET_URL = process.env.PROGRAMS_TARGET_URL ?? "http://127.0.0.1:8787";
@@ -32,6 +33,11 @@ const COPY = {
   workspaceEvents: "聚會",
   workspaceParticipants: "參與者",
 };
+const REQUIRED_VIEWPORT_WIDTHS: Record<string, number> = {
+  "phone-320": 320,
+  "phone-390": 390,
+  "desktop-1280": 1280,
+};
 
 type PlaywrightRequest = {
   request: {
@@ -56,6 +62,26 @@ type Geometry = {
   minimumControlWidth: number;
   minimumControlHeight: number;
 };
+
+function configuredViewport(testInfo: TestInfo): {
+  width: number;
+  height: number;
+} {
+  const expectedWidth = REQUIRED_VIEWPORT_WIDTHS[testInfo.project.name];
+  const viewport = testInfo.project.use.viewport;
+  if (
+    expectedWidth === undefined ||
+    viewport === null ||
+    viewport === undefined ||
+    viewport.width !== expectedWidth ||
+    typeof viewport.height !== "number"
+  ) {
+    throw new Error(
+      `T05.6 project ${testInfo.project.name} must configure its required viewport`
+    );
+  }
+  return { width: expectedWidth, height: viewport.height };
+}
 
 let fixture: Fixture | null = null;
 let fixtureAdminApi: APIRequestContext | null = null;
@@ -161,49 +187,46 @@ async function createFixture(
   };
 }
 
-async function measure(page: Page, scenario: string): Promise<Geometry> {
-  return page.evaluate(
-    (expectedWidth) => {
-      const visible = (element: Element): element is HTMLElement => {
-        const htmlElement = element as HTMLElement;
-        const box = htmlElement.getBoundingClientRect();
-        const style = getComputedStyle(htmlElement);
-        return (
-          box.width > 0 &&
-          box.height > 0 &&
-          style.display !== "none" &&
-          style.visibility !== "hidden" &&
-          htmlElement.getAttribute("aria-hidden") !== "true" &&
-          !htmlElement.closest("[hidden]")
-        );
-      };
-      const controls = [
-        ...document.querySelectorAll(
-          "main a, main button, main input, main select, main textarea"
-        ),
-      ].filter(visible);
-      const sizes = controls.map((element) => {
-        const box = element.getBoundingClientRect();
-        return { width: box.width, height: box.height };
-      });
-      const dock = document.querySelector<HTMLElement>(".nav-phone");
-      const outlet = document.querySelector<HTMLElement>("#shell-content");
-      return {
-        expectedWidth,
-        innerWidth: window.innerWidth,
-        bodyScrollWidth: document.body.scrollWidth,
-        documentScrollWidth: document.documentElement.scrollWidth,
-        outletPaddingBottom: outlet
-          ? Number.parseFloat(getComputedStyle(outlet).paddingBottom)
-          : 0,
-        dockTop: dock?.getBoundingClientRect().top ?? null,
-        visibleControlCount: controls.length,
-        minimumControlWidth: Math.min(...sizes.map(({ width }) => width)),
-        minimumControlHeight: Math.min(...sizes.map(({ height }) => height)),
-      };
-    },
-    await page.evaluate(() => window.innerWidth)
-  );
+async function measure(page: Page, expectedWidth: number): Promise<Geometry> {
+  return page.evaluate((expectedWidth) => {
+    const visible = (element: Element): element is HTMLElement => {
+      const htmlElement = element as HTMLElement;
+      const box = htmlElement.getBoundingClientRect();
+      const style = getComputedStyle(htmlElement);
+      return (
+        box.width > 0 &&
+        box.height > 0 &&
+        style.display !== "none" &&
+        style.visibility !== "hidden" &&
+        htmlElement.getAttribute("aria-hidden") !== "true" &&
+        !htmlElement.closest("[hidden]")
+      );
+    };
+    const controls = [
+      ...document.querySelectorAll(
+        "main a, main button, main input, main select, main textarea"
+      ),
+    ].filter(visible);
+    const sizes = controls.map((element) => {
+      const box = element.getBoundingClientRect();
+      return { width: box.width, height: box.height };
+    });
+    const dock = document.querySelector<HTMLElement>(".nav-phone");
+    const outlet = document.querySelector<HTMLElement>("#shell-content");
+    return {
+      expectedWidth,
+      innerWidth: window.innerWidth,
+      bodyScrollWidth: document.body.scrollWidth,
+      documentScrollWidth: document.documentElement.scrollWidth,
+      outletPaddingBottom: outlet
+        ? Number.parseFloat(getComputedStyle(outlet).paddingBottom)
+        : 0,
+      dockTop: dock && visible(dock) ? dock.getBoundingClientRect().top : null,
+      visibleControlCount: controls.length,
+      minimumControlWidth: Math.min(...sizes.map(({ width }) => width)),
+      minimumControlHeight: Math.min(...sizes.map(({ height }) => height)),
+    };
+  }, expectedWidth);
 }
 
 function assertGeometry(geometry: Geometry, scenario: string): void {
@@ -260,7 +283,8 @@ test.describe("T05.6 responsive Programs UI matrix", () => {
   test("participant catalog/detail keeps action geometry and dock clearance bounded", async ({
     page,
     browser,
-  }) => {
+  }, testInfo) => {
+    const viewport = configuredViewport(testInfo);
     expect(fixture).not.toBeNull();
     const { eventId, programId, programName } = fixture!;
     await loginAs(page, MEMBER);
@@ -270,7 +294,7 @@ test.describe("T05.6 responsive Programs UI matrix", () => {
     await search.fill("T05-no-matching-program");
     await expect(page.getByText("找不到相關課程")).toBeVisible();
     assertGeometry(
-      await measure(page, "participant catalog empty search"),
+      await measure(page, viewport.width),
       "participant catalog empty search"
     );
     await page
@@ -283,29 +307,26 @@ test.describe("T05.6 responsive Programs UI matrix", () => {
       name: new RegExp(programName, "u"),
     });
     await expect(programLink).toBeVisible();
-    assertGeometry(
-      await measure(page, "participant catalog"),
-      "participant catalog"
-    );
+    assertGeometry(await measure(page, viewport.width), "participant catalog");
     await programLink.click();
     await expect(page).toHaveURL(
       new RegExp(`/programs\\?program=${programId}(?:&from=programs)?$`, "u")
     );
     await expect(page.locator("#program-detail-title")).toBeVisible();
     await expect(page.getByRole("button", { name: COPY.enroll })).toBeVisible();
-    assertGeometry(
-      await measure(page, "participant detail"),
-      "participant detail"
-    );
+    assertGeometry(await measure(page, viewport.width), "participant detail");
 
-    const eventContext = await browser.newContext({ baseURL: TARGET_URL });
+    const eventContext = await browser.newContext({
+      baseURL: TARGET_URL,
+      viewport,
+    });
     const eventPage = await eventContext.newPage();
     try {
       await loginAs(eventPage, ADMIN);
       await eventPage.goto(`/programs?program=${programId}&event=${eventId}`);
       await expect(eventPage.locator("#participant-event-title")).toBeVisible();
       assertGeometry(
-        await measure(eventPage, "participant event detail"),
+        await measure(eventPage, viewport.width),
         "participant event detail"
       );
     } finally {
@@ -315,7 +336,8 @@ test.describe("T05.6 responsive Programs UI matrix", () => {
 
   test("management settings keeps composition and controls usable", async ({
     page,
-  }) => {
+  }, testInfo) => {
+    const viewport = configuredViewport(testInfo);
     expect(fixture).not.toBeNull();
     const { programId } = fixture!;
     await loginAs(page, ADMIN);
@@ -353,24 +375,18 @@ test.describe("T05.6 responsive Programs UI matrix", () => {
       page.getByRole("dialog", { name: COPY.notificationsDialog })
     ).toBeVisible();
     assertGeometry(
-      await measure(page, "management attention popover"),
+      await measure(page, viewport.width),
       "management attention popover"
     );
     await notificationsButton.click();
 
-    assertGeometry(
-      await measure(page, "management settings"),
-      "management settings"
-    );
+    assertGeometry(await measure(page, viewport.width), "management settings");
 
     await workspaceNavigation
       .getByRole("link", { name: COPY.workspace, exact: true })
       .click();
     await expect(page.getByRole("heading", { name: "營運" })).toBeVisible();
-    assertGeometry(
-      await measure(page, "management workspace"),
-      "management workspace"
-    );
+    assertGeometry(await measure(page, viewport.width), "management workspace");
 
     await page
       .getByRole("link", {
@@ -384,7 +400,7 @@ test.describe("T05.6 responsive Programs UI matrix", () => {
       })
     ).toBeVisible();
     assertGeometry(
-      await measure(page, "management participants task"),
+      await measure(page, viewport.width),
       "management participants task"
     );
 
@@ -395,7 +411,7 @@ test.describe("T05.6 responsive Programs UI matrix", () => {
       page.getByRole("heading", { name: COPY.workspaceEvents, exact: true })
     ).toBeVisible();
     assertGeometry(
-      await measure(page, "management events task"),
+      await measure(page, viewport.width),
       "management events task"
     );
   });
