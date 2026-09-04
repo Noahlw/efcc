@@ -6,7 +6,9 @@ import { afterEach, describe, expect, test } from "vitest";
 
 import {
   assertProgramsReportComplete,
+  assertProgramsReportDiagnosticComplete,
   failedProgramsTests,
+  programsPlaywrightArgs,
   readProgramsReport,
 } from "./run-programs-test-harness.mjs";
 
@@ -54,6 +56,47 @@ describe("Programs Test Harness report helpers", () => {
       flaky: 0,
     });
     expect(() => assertProgramsReportComplete(report)).not.toThrow();
+  });
+
+  test("adds an exact grep only for diagnostic row reproduction", () => {
+    expect(programsPlaywrightArgs()).toEqual([
+      "exec",
+      "playwright",
+      "test",
+      "-c",
+      "tests/e2e/programs-d1.config.ts",
+    ]);
+    expect(programsPlaywrightArgs("NTF-01 management attention")).toEqual([
+      "exec",
+      "playwright",
+      "test",
+      "-c",
+      "tests/e2e/programs-d1.config.ts",
+      "--grep",
+      "NTF-01 management attention",
+    ]);
+    expect(
+      programsPlaywrightArgs("NTF-01 management attention", "phone-320")
+    ).toEqual([
+      "exec",
+      "playwright",
+      "test",
+      "-c",
+      "tests/e2e/programs-d1.config.ts",
+      "--grep",
+      "NTF-01 management attention",
+      "--project",
+      "phone-320",
+    ]);
+  });
+
+  test("accepts a clean filtered report only as diagnostic evidence", () => {
+    const report = readProgramsReport(
+      reportFile(completeReport({ expected: 1 }))
+    );
+
+    expect(() => assertProgramsReportDiagnosticComplete(report)).not.toThrow();
+    expect(() => assertProgramsReportComplete(report)).toThrow(/expected=1/u);
   });
 
   test.each([
@@ -107,9 +150,43 @@ describe("Programs Test Harness report helpers", () => {
                     retry: 0,
                     status: "failed",
                     error: { message: "participant detail returned HTTP 500" },
+                    attachments: [
+                      {
+                        name: "screenshot",
+                        contentType: "image/png",
+                        path: "/tmp/failure.png",
+                      },
+                    ],
                   },
                 ],
                 status: "unexpected",
+              },
+            ],
+          },
+          {
+            title: "a required row is not skipped",
+            file: "programs-d1.test.ts",
+            line: 2300,
+            column: 3,
+            tests: [
+              {
+                expectedStatus: "passed",
+                projectId: "desktop",
+                projectName: "desktop",
+                results: [
+                  {
+                    retry: 0,
+                    status: "skipped",
+                    attachments: [
+                      {
+                        name: "skip-context",
+                        contentType: "text/plain",
+                        path: "/tmp/skip-context.txt",
+                      },
+                    ],
+                  },
+                ],
+                status: "skipped",
               },
             ],
           },
@@ -117,7 +194,8 @@ describe("Programs Test Harness report helpers", () => {
       },
     ];
 
-    const [failure] = failedProgramsTests(report);
+    const failures = failedProgramsTests(report);
+    const [failure] = failures;
 
     expect(failure).toMatchObject({
       title:
@@ -133,9 +211,29 @@ describe("Programs Test Harness report helpers", () => {
       projectName: "phone-390",
       status: "unexpected",
       resultStatuses: ["failed"],
+      attachments: [
+        {
+          name: "screenshot",
+          contentType: "image/png",
+          path: "/tmp/failure.png",
+        },
+      ],
     });
     expect(failure.errorMessages).toEqual([
       "participant detail returned HTTP 500",
     ]);
+    expect(failures).toHaveLength(2);
+    expect(failures[1]).toMatchObject({
+      fullTitle: "programs-d1.test.ts > a required row is not skipped",
+      status: "skipped",
+      projectName: "desktop",
+      attachments: [
+        {
+          name: "skip-context",
+          contentType: "text/plain",
+          path: "/tmp/skip-context.txt",
+        },
+      ],
+    });
   });
 });

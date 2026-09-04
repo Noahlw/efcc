@@ -54,6 +54,9 @@ function testStatus(test) {
     if (["failed", "timedOut", "interrupted"].includes(test.status)) {
       return "unexpected";
     }
+    if (test.status === "passed") {
+      return "expected";
+    }
     return test.status;
   }
   const results = Array.isArray(test?.results) ? test.results : [];
@@ -83,6 +86,19 @@ function errorMessages(results) {
   });
 }
 
+function resultAttachments(results) {
+  return results.flatMap((result) =>
+    (Array.isArray(result?.attachments) ? result.attachments : []).map(
+      (attachment) => ({
+        name: attachment?.name ?? null,
+        contentType: attachment?.contentType ?? null,
+        path: attachment?.path ?? null,
+        retry: result?.retry ?? null,
+      })
+    )
+  );
+}
+
 function fullTitle(suitePath, specTitle) {
   return [...suitePath, specTitle]
     .filter((part) => typeof part === "string" && part.length > 0)
@@ -93,7 +109,7 @@ function fullTitle(suitePath, specTitle) {
  * @typedef {Object} ProgramsReportSummary
  * @property {Object} stats Playwright's report stats object.
  * @property {Object} counts The exact count fields used by the acceptance gate.
- * @property {Array} failedTests Unexpected or flaky row identities.
+ * @property {Array} failedTests Non-passing row identities.
  */
 
 /**
@@ -103,6 +119,7 @@ function fullTitle(suitePath, specTitle) {
  * @property {string|null} projectId Playwright project id when reported.
  * @property {string|null} projectName Playwright project name when reported.
  * @property {string|null} viewport Viewport identity when reported.
+ * @property {Array} attachments Playwright artifact references when reported.
  */
 
 /**
@@ -136,7 +153,7 @@ export function readProgramsReport(reportPath) {
 }
 
 /**
- * Extract every unexpected/flaky Programs row with enough identity to rerun it.
+ * Extract every non-passing Programs row with enough identity to rerun it.
  *
  * @param {ProgramsReportSummary & Object} report
  * @returns {FailedProgramsTest[]}
@@ -156,7 +173,7 @@ export function failedProgramsTests(report) {
           typeof spec?.title === "string" ? spec.title : undefined;
         for (const test of Array.isArray(spec?.tests) ? spec.tests : []) {
           const status = testStatus(test);
-          if (status !== "unexpected" && status !== "flaky") {
+          if (!["unexpected", "flaky", "skipped"].includes(status)) {
             continue;
           }
           const results = Array.isArray(test.results) ? test.results : [];
@@ -183,6 +200,7 @@ export function failedProgramsTests(report) {
             retry: lastResult?.retry ?? null,
             resultStatuses: results.map((result) => result?.status ?? null),
             errorMessages: errorMessages(results),
+            attachments: resultAttachments(results),
           });
         }
       }
@@ -215,6 +233,24 @@ export function assertProgramsReportComplete(report) {
       )
         .map((name) => `${name}=${String(stats[name])}`)
         .join(", ")}`
+    );
+  }
+}
+
+export function assertProgramsReportDiagnosticComplete(report) {
+  const stats = reportSource(report)?.stats;
+  if (stats === null || typeof stats !== "object" || Array.isArray(stats)) {
+    throw new Error("Programs Playwright JSON report has no stats object");
+  }
+  const expected = stats.expected;
+  const invalidExpected =
+    typeof expected !== "number" || !Number.isInteger(expected) || expected < 1;
+  const nonPassing = ["skipped", "unexpected", "flaky"].filter(
+    (name) => typeof stats[name] !== "number" || stats[name] !== 0
+  );
+  if (invalidExpected || nonPassing.length > 0) {
+    throw new Error(
+      `Filtered Programs Playwright report is incomplete: expected=${String(expected)}, skipped=${String(stats.skipped)}, unexpected=${String(stats.unexpected)}, flaky=${String(stats.flaky)}`
     );
   }
 }
@@ -356,6 +392,26 @@ function assertCompletePlaywrightReport(reportPath) {
   assertProgramsReportComplete(readProgramsReport(reportPath));
 }
 
+export function programsPlaywrightArgs(
+  grep = process.env.PROGRAMS_GREP,
+  project = process.env.PROGRAMS_PROJECT
+) {
+  const args = [
+    "exec",
+    "playwright",
+    "test",
+    "-c",
+    "tests/e2e/programs-d1.config.ts",
+  ];
+  if (typeof grep === "string" && grep.trim().length > 0) {
+    args.push("--grep", grep);
+  }
+  if (typeof project === "string" && project.trim().length > 0) {
+    args.push("--project", project);
+  }
+  return args;
+}
+
 function canonicalArtifactPaths(runIdValue) {
   const directory = path.join(ARTIFACT_ROOT, runIdValue);
   return {
@@ -456,7 +512,9 @@ function timingSummary(stages) {
     harnessStartupMs: stageDuration(stages, "harness-listen"),
     d1MigrationSeedMs: stageDuration(stages, "d1-migrations-and-seed"),
     demoApiSeedMs: stageDuration(stages, "real-worker-demo-seed"),
-    playwrightMs: stageDuration(stages, "unfiltered-programs-playwright"),
+    playwrightMs:
+      stageDuration(stages, "unfiltered-programs-playwright") ??
+      stageDuration(stages, "programs-playwright-reproduction"),
     totalMs,
   };
 }
@@ -620,6 +678,12 @@ async function recordFailureDiagnostics(
 }
 
 async function runCanonical() {
+  const playwrightGrep = process.env.PROGRAMS_GREP;
+  const playwrightProject = process.env.PROGRAMS_PROJECT;
+  const filteredRun =
+    (typeof playwrightGrep === "string" && playwrightGrep.trim().length > 0) ||
+    (typeof playwrightProject === "string" &&
+      playwrightProject.trim().length > 0);
   const paths = canonicalArtifactPaths(runId());
   mkdirSync(ARTIFACT_ROOT, { recursive: true });
   mkdirSync(paths.directory, { recursive: false });
@@ -630,6 +694,10 @@ async function runCanonical() {
     runId: path.basename(paths.directory),
     canonical: true,
     runtime: "createTestHarness",
+    acceptanceAuthority: filteredRun ? "diagnostic-reproduction" : "canonical",
+    filteredRun,
+    playwrightGrep: playwrightGrep?.trim() || null,
+    playwrightProject: playwrightProject?.trim() || null,
     targetUrl: null,
     revision: currentRevision(),
     status: "running",
@@ -743,10 +811,19 @@ async function runCanonical() {
     }
 
     let reportError = null;
-    if (name === "unfiltered-programs-playwright") {
+    const isProgramsPlaywrightStage =
+      name === "unfiltered-programs-playwright" ||
+      name === "programs-playwright-reproduction";
+    if (isProgramsPlaywrightStage) {
       try {
         report = readProgramsReport(paths.results);
-        assertCompletePlaywrightReport(paths.results);
+        if (result.code === 0 && result.signal === null) {
+          if (filteredRun) {
+            assertProgramsReportDiagnosticComplete(report);
+          } else {
+            assertCompletePlaywrightReport(paths.results);
+          }
+        }
       } catch (error) {
         reportError = error instanceof Error ? error.message : String(error);
       }
@@ -769,7 +846,8 @@ async function runCanonical() {
         error: result.error ?? null,
         log: path.relative(REPO_ROOT, logPath),
         results:
-          name === "unfiltered-programs-playwright"
+          name === "unfiltered-programs-playwright" ||
+          name === "programs-playwright-reproduction"
             ? path.relative(REPO_ROOT, paths.results)
             : undefined,
       });
@@ -855,9 +933,13 @@ async function runCanonical() {
       paths.demoSeedLog,
       { ...environment, DEMO_TARGET_URL: target.origin }
     );
+    const playwrightStageName =
+      typeof playwrightGrep === "string" && playwrightGrep.trim().length > 0
+        ? "programs-playwright-reproduction"
+        : "unfiltered-programs-playwright";
     await runCommandStage(
-      "unfiltered-programs-playwright",
-      ["exec", "playwright", "test", "-c", "tests/e2e/programs-d1.config.ts"],
+      playwrightStageName,
+      programsPlaywrightArgs(playwrightGrep, playwrightProject),
       paths.playwrightLog,
       {
         ...environment,
@@ -866,9 +948,13 @@ async function runCanonical() {
         PROGRAMS_OUTPUT_DIR: paths.playwrightOutput,
       }
     );
-    emit("canonical-qualification", "pass", {
-      artifacts: path.relative(REPO_ROOT, paths.directory),
-    });
+    emit(
+      filteredRun ? "diagnostic-reproduction" : "canonical-qualification",
+      filteredRun ? "diagnostic-pass" : "pass",
+      {
+        artifacts: path.relative(REPO_ROOT, paths.directory),
+      }
+    );
   } catch (error) {
     failure = error instanceof Error ? error.message : String(error);
     manifest.status = "failed";
@@ -936,13 +1022,21 @@ async function runCanonical() {
       }
     }
 
-    manifest.status = failure === null ? "passed" : "failed";
+    manifest.status =
+      failure === null
+        ? filteredRun
+          ? "diagnostic-passed"
+          : "passed"
+        : "failed";
     manifest.finishedAt = new Date().toISOString();
     manifest.timings = timingSummary(manifest.stages);
     writeJson(paths.summary, {
       schemaVersion: 1,
       canonical: true,
       runtime: "createTestHarness",
+      acceptanceAuthority: manifest.acceptanceAuthority,
+      playwrightGrep: manifest.playwrightGrep,
+      playwrightProject: manifest.playwrightProject,
       runId: manifest.runId,
       targetUrl: manifest.targetUrl,
       revision: manifest.revision,
@@ -958,10 +1052,11 @@ async function runCanonical() {
     if (failure === null) {
       writeJson(paths.failureSummary, {
         schemaVersion: 2,
-        outcome: "passed",
+        outcome: filteredRun ? "diagnostic-passed" : "passed",
         failedProgramsTests: [],
-        interpretation:
-          "The Canonical Harness closed after a complete report satisfying the unchanged Programs acceptance contract.",
+        interpretation: filteredRun
+          ? "The filtered diagnostic reproduction passed its selected row; no Canonical acceptance claim is made."
+          : "The Canonical Harness closed after a complete report satisfying the unchanged Programs acceptance contract.",
       });
     }
     await writeState();
@@ -969,9 +1064,13 @@ async function runCanonical() {
     process.off("SIGTERM", handleSignal);
     if (failure !== null) {
       process.exitCode = 1;
-      emit("canonical-qualification", "fail", {
-        artifacts: path.relative(REPO_ROOT, paths.directory),
-      });
+      emit(
+        filteredRun ? "diagnostic-reproduction" : "canonical-qualification",
+        "fail",
+        {
+          artifacts: path.relative(REPO_ROOT, paths.directory),
+        }
+      );
     }
     process.stdout.write(
       `T05 Canonical runtime artifacts: ${path.relative(REPO_ROOT, paths.directory)}\n`
