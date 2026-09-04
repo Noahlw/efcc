@@ -12,7 +12,20 @@ import { createTestHarness } from "wrangler";
 
 const QUALIFICATION_TIMEOUT_MS = 15 * 60 * 1000;
 const EXPECTED_PROGRAMS_TESTS = 201;
-const REPO_ROOT = path.resolve(process.cwd(), "..");
+const SCRIPT_PATH = fileURLToPath(import.meta.url);
+const REPO_ROOT = path.resolve(path.dirname(SCRIPT_PATH), "../..");
+const WEB_ROOT = path.join(REPO_ROOT, "web");
+const ARTIFACT_ROOT = path.join(REPO_ROOT, "test-results", "programs-d1-runs");
+const STAGE_TIMEOUTS_MS = Object.freeze({
+  build: 5 * 60 * 1000,
+  bundle: 5 * 60 * 1000,
+  "harness-listen": 2 * 60 * 1000,
+  "d1-migrations-and-seed": 2 * 60 * 1000,
+  "authenticated-readiness": 2 * 60 * 1000,
+  "real-worker-demo-seed": 2 * 60 * 1000,
+  "unfiltered-programs-playwright": 15 * 60 * 1000,
+  "harness-close": 60 * 1000,
+});
 const REQUIRED_PROGRAMS_COUNTS = Object.freeze({
   expected: EXPECTED_PROGRAMS_TESTS,
   skipped: 0,
@@ -214,11 +227,11 @@ function runId() {
 }
 
 function generatedIdentitySeed(option) {
-  const args = ["--dir", "..", "exec", "tsx", "tests/e2e/seed-dev-accounts.ts"];
+  const args = ["exec", "tsx", "tests/e2e/seed-dev-accounts.ts"];
   if (option) {
     args.push(option);
   }
-  return execFileSync("pnpm", args, { cwd: process.cwd(), encoding: "utf8" });
+  return execFileSync("pnpm", args, { cwd: REPO_ROOT, encoding: "utf8" });
 }
 
 function executableSql(sql) {
@@ -264,7 +277,13 @@ async function executeSeedSql(db, sql, progressPath) {
   }
 }
 
-function runChild(command, args, environment, logPath) {
+function runChild(
+  command,
+  args,
+  environment,
+  logPath,
+  { onStart, onFinish } = {}
+) {
   return new Promise((resolve, reject) => {
     const child = spawn(command, args, {
       cwd: REPO_ROOT,
@@ -275,13 +294,30 @@ function runChild(command, args, environment, logPath) {
       stdio: ["ignore", "pipe", "pipe"],
     });
     const chunks = [];
+    let settled = false;
+    const finish = (result) => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      onFinish?.(child);
+      resolve(result);
+    };
     child.stdout?.on("data", (chunk) => chunks.push(chunk.toString()));
     child.stderr?.on("data", (chunk) => chunks.push(chunk.toString()));
-    child.once("error", (error) => reject(error));
+    child.once("error", (error) => {
+      writeFileSync(logPath, chunks.join(""), "utf8");
+      if (!settled) {
+        settled = true;
+        onFinish?.(child);
+        reject(error);
+      }
+    });
     child.once("close", (code, signal) => {
       writeFileSync(logPath, chunks.join(""), "utf8");
-      resolve({ code, signal });
+      finish({ code, signal });
     });
+    onStart?.(child);
   });
 }
 
@@ -320,207 +356,626 @@ function assertCompletePlaywrightReport(reportPath) {
   assertProgramsReportComplete(readProgramsReport(reportPath));
 }
 
-async function runProbe() {
-  const artifactDirectory = path.join(
-    REPO_ROOT,
-    "test-results",
-    "test-harness-qualification",
-    runId()
+function canonicalArtifactPaths(runIdValue) {
+  const directory = path.join(ARTIFACT_ROOT, runIdValue);
+  return {
+    directory,
+    manifest: path.join(directory, "run.json"),
+    summary: path.join(directory, "summary.json"),
+    buildLog: path.join(directory, "build.log"),
+    bundleLog: path.join(directory, "bundle.log"),
+    seedProgress: path.join(directory, "seed-progress.log"),
+    demoSeedLog: path.join(directory, "seed-demo.log"),
+    playwrightLog: path.join(directory, "playwright.log"),
+    results: path.join(directory, "programs-d1-results.json"),
+    playwrightOutput: path.join(directory, "playwright-output"),
+    harnessDebug: path.join(directory, "harness-debug.log"),
+    failureSummary: path.join(directory, "failure-summary.json"),
+    playwrightFailure: path.join(directory, "playwright-failure.txt"),
+  };
+}
+
+function artifactReferences(paths) {
+  return Object.fromEntries(
+    Object.entries(paths).map(([name, pathname]) => [
+      name,
+      path.relative(REPO_ROOT, pathname),
+    ])
   );
-  mkdirSync(artifactDirectory, { recursive: true });
-  const preparationEnvironment = {
+}
+
+function writeJson(pathname, value) {
+  writeFileSync(pathname, `${JSON.stringify(value, null, 2)}\n`, "utf8");
+}
+
+function readFileSafe(pathname) {
+  try {
+    readFileSync(pathname, "utf8");
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function withTimeout(promise, timeoutMs, label) {
+  let timeoutHandle;
+  const timeout = new Promise((_, reject) => {
+    timeoutHandle = setTimeout(
+      () => reject(new Error(`${label} timed out after ${timeoutMs}ms`)),
+      timeoutMs
+    );
+  });
+  return Promise.race([promise, timeout]).finally(() => {
+    clearTimeout(timeoutHandle);
+  });
+}
+
+function currentRevision() {
+  try {
+    return execFileSync("git", ["rev-parse", "HEAD"], {
+      cwd: REPO_ROOT,
+      encoding: "utf8",
+    }).trim();
+  } catch {
+    return "unknown";
+  }
+}
+
+function stageStarted(name, command) {
+  return {
+    name,
+    command,
+    status: "running",
+    startedAt: new Date().toISOString(),
+  };
+}
+
+function stageFinished(stage, status, details = {}) {
+  stage.status = status;
+  stage.finishedAt = new Date().toISOString();
+  stage.durationMs =
+    new Date(stage.finishedAt).getTime() - new Date(stage.startedAt).getTime();
+  Object.assign(stage, details);
+}
+
+function stageDuration(stages, name) {
+  return stages.find((stage) => stage.name === name)?.durationMs ?? null;
+}
+
+function timingSummary(stages) {
+  const firstStage = stages[0];
+  const lastStage = stages.at(-1);
+  const totalMs =
+    firstStage?.startedAt && lastStage?.finishedAt
+      ? new Date(lastStage.finishedAt).getTime() -
+        new Date(firstStage.startedAt).getTime()
+      : null;
+  return {
+    buildMs: stageDuration(stages, "build"),
+    bundleMs: stageDuration(stages, "bundle"),
+    harnessStartupMs: stageDuration(stages, "harness-listen"),
+    d1MigrationSeedMs: stageDuration(stages, "d1-migrations-and-seed"),
+    demoApiSeedMs: stageDuration(stages, "real-worker-demo-seed"),
+    playwrightMs: stageDuration(stages, "unfiltered-programs-playwright"),
+    totalMs,
+  };
+}
+
+function responseSetCookieHeaders(headers) {
+  const responseHeaders = headers;
+  const nativeHeaders = responseHeaders.getSetCookie?.() ?? [];
+  if (nativeHeaders.length > 0) {
+    return nativeHeaders;
+  }
+  const combined = headers.get("set-cookie");
+  return combined === null ? [] : combined.split(/,(?=\s*[^;,=\s]+=[^;,]*)/u);
+}
+
+function cookieHeaderFromSetCookieHeaders(headers) {
+  const cookies = headers
+    .map((header) => header.split(";", 1)[0]?.trim() ?? "")
+    .filter(Boolean);
+  if (cookies.length === 0) {
+    throw new Error("local Worker auth readiness response set no cookies");
+  }
+  return cookies.join("; ");
+}
+
+async function fetchWithTimeout(input, init = {}, timeoutMs = 10_000) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch(input, { ...init, signal: controller.signal });
+    await response.arrayBuffer();
+    return response;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function assertHealthyTarget(target) {
+  const loginResponse = await fetchWithTimeout(
+    new URL("/api/v1/auth/login", target),
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Origin: target.origin,
+      },
+      body: JSON.stringify({
+        username: process.env.PROGRAMS_ADMIN_USERNAME ?? "E2E_admin",
+        password: process.env.PROGRAMS_ADMIN_CREDENTIAL ?? "E2E_admin!dev",
+      }),
+    }
+  );
+  if (!loginResponse.ok) {
+    throw new Error(
+      `local Worker auth readiness login returned HTTP ${loginResponse.status}`
+    );
+  }
+  const cookieHeader = cookieHeaderFromSetCookieHeaders(
+    responseSetCookieHeaders(loginResponse.headers)
+  );
+  const authResponse = await fetchWithTimeout(
+    new URL("/api/v1/auth/me", target),
+    {
+      headers: {
+        Cookie: cookieHeader,
+        Origin: target.origin,
+      },
+    }
+  );
+  if (!authResponse.ok) {
+    throw new Error(
+      `local Worker auth readiness request returned HTTP ${authResponse.status}`
+    );
+  }
+}
+
+async function recordFailureDiagnostics(
+  paths,
+  server,
+  target,
+  report,
+  cause,
+  interruptedSignal
+) {
+  const failedTests = report ? failedProgramsTests(report) : [];
+  const health = {
+    serverAliveAfterFailure: null,
+    status: null,
+    error: null,
+  };
+  if (server && target) {
+    try {
+      const response = await fetchWithTimeout(
+        new URL("/programs", target),
+        {},
+        5_000
+      );
+      health.serverAliveAfterFailure = true;
+      health.status = response.status;
+    } catch (error) {
+      health.serverAliveAfterFailure = false;
+      health.error = error instanceof Error ? error.message : String(error);
+    }
+  }
+
+  const diagnosticLines = [];
+  let debugError = null;
+  if (server) {
+    const originalLog = console.log;
+    const originalError = console.error;
+    const capture = (...values) => {
+      diagnosticLines.push(values.map((value) => String(value)).join(" "));
+    };
+    console.log = (...values) => {
+      capture(...values);
+      originalLog(...values);
+    };
+    console.error = (...values) => {
+      capture(...values);
+      originalError(...values);
+    };
+    try {
+      server.debug();
+    } catch (error) {
+      debugError = error instanceof Error ? error.message : String(error);
+    } finally {
+      console.log = originalLog;
+      console.error = originalError;
+    }
+  }
+  writeFileSync(
+    paths.harnessDebug,
+    `${diagnosticLines.join("\n")}${diagnosticLines.length > 0 ? "\n" : ""}${debugError ? `server.debug() failed: ${debugError}\n` : ""}`,
+    "utf8"
+  );
+
+  writeFileSync(
+    paths.playwrightFailure,
+    JSON.stringify(
+      {
+        error: cause,
+        interruptedSignal,
+        failedProgramsTests: failedTests,
+      },
+      null,
+      2
+    ) + "\n",
+    "utf8"
+  );
+  writeJson(paths.failureSummary, {
+    schemaVersion: 2,
+    outcome: "failed",
+    error: cause,
+    interruptedSignal,
+    serverHealth: health,
+    failedProgramsTests: failedTests,
+    harnessDebug: path.relative(REPO_ROOT, paths.harnessDebug),
+    runtimeLogs: server?.getLogs?.() ?? [],
+    interpretation:
+      "The failed-row identity and Harness health were captured before close; a failed required row is never converted into a pass.",
+  });
+}
+
+async function runCanonical() {
+  const paths = canonicalArtifactPaths(runId());
+  mkdirSync(ARTIFACT_ROOT, { recursive: true });
+  mkdirSync(paths.directory, { recursive: false });
+  mkdirSync(paths.playwrightOutput, { recursive: true });
+
+  const manifest = {
+    schemaVersion: 2,
+    runId: path.basename(paths.directory),
+    canonical: true,
+    runtime: "createTestHarness",
+    targetUrl: null,
+    revision: currentRevision(),
+    status: "running",
+    startedAt: new Date().toISOString(),
+    stages: [],
+    timings: null,
+    artifacts: artifactReferences(paths),
+  };
+  writeJson(paths.manifest, manifest);
+
+  const environment = {
     ...process.env,
     CI: "1",
     FORCE_COLOR: "0",
     NO_COLOR: "1",
   };
-  const buildLog = path.join(artifactDirectory, "build.log");
-  const buildResult = await runChild(
-    "pnpm",
-    ["--dir", "web", "build"],
-    preparationEnvironment,
-    buildLog
-  );
-  if (buildResult.code !== 0 || buildResult.signal !== null) {
-    throw new Error(
-      `fresh Worker build failed with exit code ${buildResult.code ?? "null"}`
-    );
-  }
-  const bundleLog = path.join(artifactDirectory, "bundle.log");
-  const bundleResult = await runChild(
-    "pnpm",
-    [
-      "--dir",
-      "web",
-      "exec",
-      "wrangler",
-      "deploy",
-      "--dry-run",
-      "--outdir",
-      ".wrangler/local-bundle",
-    ],
-    preparationEnvironment,
-    bundleLog
-  );
-  if (bundleResult.code !== 0 || bundleResult.signal !== null) {
-    throw new Error(
-      `fresh Worker bundle failed with exit code ${bundleResult.code ?? "null"}`
-    );
-  }
-  console.log(
-    JSON.stringify({
-      phase: "fresh-build-and-bundle",
-      outcome: "pass",
-      logs: {
-        build: path.relative(REPO_ROOT, buildLog),
-        bundle: path.relative(REPO_ROOT, bundleLog),
-      },
-    })
-  );
-  const server = createTestHarness({
-    root: process.cwd(),
-    workers: [
-      {
-        configPath: "./wrangler.jsonc",
-        prebuiltWorkerDir: "./.wrangler/local-bundle",
-      },
-    ],
-  });
+  let server = null;
+  let target = null;
+  let report = null;
+  let activeChild = null;
+  let closePromise = null;
+  let interruptedSignal = null;
+  let failure = null;
+  let closeFailure = null;
 
-  try {
-    const { url } = await server.listen();
-    const rootResponse = await fetch(new URL("/programs", url));
-    await rootResponse.arrayBuffer();
-    if (!rootResponse.ok) {
-      throw new Error(`real asset route returned HTTP ${rootResponse.status}`);
+  const writeState = () => writeJson(paths.manifest, manifest);
+  const emit = (phase, outcome, details = {}) =>
+    console.log(JSON.stringify({ phase, outcome, ...details }));
+  const stopActiveChild = () => {
+    if (activeChild?.pid === undefined) {
+      return;
     }
-    console.log(
-      JSON.stringify({
-        phase: "listen-assets-and-real-network",
-        outcome: "pass",
-        status: rootResponse.status,
-      })
-    );
+    try {
+      activeChild.kill("SIGINT");
+    } catch {
+      // The child may have exited between the signal and cleanup.
+    }
+  };
+  const closeHarness = () => {
+    if (!server) {
+      return Promise.resolve();
+    }
+    closePromise ??= server.close();
+    return closePromise;
+  };
+  const handleSignal = (signal) => {
+    interruptedSignal = signal;
+    process.exitCode = 1;
+    stopActiveChild();
+    void closeHarness().catch(() => undefined);
+  };
+  process.once("SIGINT", handleSignal);
+  process.once("SIGTERM", handleSignal);
 
-    const worker = server.getWorker();
-    await worker.applyD1Migrations("DB");
-    const env = await worker.getEnv();
-    console.log(
-      JSON.stringify({ phase: "generate-d1-seeds", outcome: "start" })
-    );
-    await executeSeedSql(
-      env.DB,
-      `${generatedIdentitySeed()}\n${generatedIdentitySeed("--reset-legacy")}\n${readFileSync(path.join(REPO_ROOT, "tests/e2e/seed-disposable-identity.sql"), "utf8")}`,
-      path.join(artifactDirectory, "seed-progress.log")
-    );
-    console.log(
-      JSON.stringify({
-        phase: "migrations-and-direct-d1-seed",
-        outcome: "pass",
-        storage: "official createTestHarness D1 binding",
-      })
-    );
-
-    const demoLog = path.join(artifactDirectory, "seed-demo.log");
-    const demoResult = await runChild(
-      "pnpm",
-      ["db:seed:demo"],
-      {
-        ...process.env,
-        DEMO_TARGET_URL: url.origin,
-        CI: "1",
-        FORCE_COLOR: "0",
-        NO_COLOR: "1",
-      },
-      demoLog
-    );
-    if (demoResult.code !== 0) {
-      throw new Error(
-        `real Worker demo seed failed with exit code ${demoResult.code ?? "null"}`
+  const runAsyncStage = async (name, action) => {
+    const stage = stageStarted(name, name);
+    manifest.stages.push(stage);
+    await writeState();
+    try {
+      if (interruptedSignal !== null) {
+        throw new Error(
+          `Canonical runtime interrupted by ${interruptedSignal}`
+        );
+      }
+      const value = await withTimeout(
+        action(),
+        STAGE_TIMEOUTS_MS[name] ?? 2 * 60 * 1000,
+        name
       );
+      stageFinished(stage, "passed");
+      await writeState();
+      emit(name, "pass", {
+        durationMs: stage.durationMs,
+      });
+      return value;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      stageFinished(stage, "failed", { error: message });
+      await writeState();
+      throw error;
     }
-    console.log(
-      JSON.stringify({
-        phase: "real-worker-demo-seed",
-        outcome: "pass",
-        log: path.relative(REPO_ROOT, demoLog),
-      })
-    );
+  };
 
-    const playwrightDirectory = path.join(
-      artifactDirectory,
-      "playwright-output"
-    );
-    mkdirSync(playwrightDirectory, { recursive: true });
-    const playwrightResults = path.join(
-      artifactDirectory,
-      "programs-d1-results.json"
-    );
-    const playwrightLog = path.join(artifactDirectory, "playwright.log");
-    const playwrightResult = await runChild(
-      "pnpm",
-      ["exec", "playwright", "test", "-c", "tests/e2e/programs-d1.config.ts"],
-      {
-        ...process.env,
-        PROGRAMS_TARGET_URL: url.origin,
-        PROGRAMS_RESULTS_FILE: playwrightResults,
-        PROGRAMS_OUTPUT_DIR: playwrightDirectory,
-        CI: "1",
-        FORCE_COLOR: "0",
-        NO_COLOR: "1",
-      },
-      playwrightLog
-    );
+  const runCommandStage = async (
+    name,
+    args,
+    logPath,
+    childEnvironment = environment
+  ) => {
+    const stage = stageStarted(name, `pnpm ${args.join(" ")}`);
+    manifest.stages.push(stage);
+    await writeState();
+    let result;
+    try {
+      result = await runChild("pnpm", args, childEnvironment, logPath, {
+        onStart: (child) => {
+          activeChild = child;
+        },
+        onFinish: (child) => {
+          if (activeChild === child) {
+            activeChild = null;
+          }
+        },
+      });
+    } catch (error) {
+      result = {
+        code: null,
+        signal: null,
+        error: error instanceof Error ? error.message : String(error),
+      };
+    }
+
     let reportError = null;
-    if (playwrightResult.code === 0 && playwrightResult.signal === null) {
+    if (name === "unfiltered-programs-playwright") {
       try {
-        assertCompletePlaywrightReport(playwrightResults);
+        report = readProgramsReport(paths.results);
+        assertCompletePlaywrightReport(paths.results);
       } catch (error) {
-        reportError = error;
+        reportError = error instanceof Error ? error.message : String(error);
       }
     }
-    console.log(
-      JSON.stringify({
-        phase: "unfiltered-programs-playwright",
-        outcome:
-          playwrightResult.code === 0 &&
-          playwrightResult.signal === null &&
-          reportError === null
-            ? "pass"
-            : "fail",
-        code: playwrightResult.code,
-        signal: playwrightResult.signal,
-        log: path.relative(REPO_ROOT, playwrightLog),
-        results: path.relative(REPO_ROOT, playwrightResults),
-      })
-    );
-    if (playwrightResult.code !== 0 || playwrightResult.signal !== null) {
+    if (reportError !== null && result.error === undefined) {
+      result = { ...result, error: reportError };
+    }
+    stage.exit = result;
+    if (
+      result.code !== 0 ||
+      result.signal !== null ||
+      result.error !== undefined ||
+      interruptedSignal !== null
+    ) {
+      stageFinished(stage, "failed");
+      await writeState();
+      emit(name, "fail", {
+        code: result.code,
+        signal: result.signal,
+        error: result.error ?? null,
+        log: path.relative(REPO_ROOT, logPath),
+        results:
+          name === "unfiltered-programs-playwright"
+            ? path.relative(REPO_ROOT, paths.results)
+            : undefined,
+      });
       throw new Error(
-        `unfiltered Programs Playwright journey failed with exit code ${playwrightResult.code ?? "null"}`
+        `${name} failed${result.error ? `: ${result.error}` : ` with exit code ${result.code ?? "null"}`}`
       );
     }
-    if (reportError !== null) {
-      throw reportError;
-    }
-    console.log(
-      JSON.stringify({
-        phase: "qualification",
-        outcome: "equivalent-and-reliable",
-        artifacts: path.relative(REPO_ROOT, artifactDirectory),
-      })
+    stageFinished(stage, "passed");
+    await writeState();
+    emit(name, "pass", {
+      durationMs: stage.durationMs,
+      log: path.relative(REPO_ROOT, logPath),
+    });
+    return result;
+  };
+
+  try {
+    await runCommandStage("build", ["--dir", "web", "build"], paths.buildLog);
+    await runCommandStage(
+      "bundle",
+      [
+        "--dir",
+        "web",
+        "exec",
+        "wrangler",
+        "deploy",
+        "--dry-run",
+        "--outdir",
+        ".wrangler/local-bundle",
+      ],
+      paths.bundleLog
     );
+
+    server = createTestHarness({
+      root: REPO_ROOT,
+      workers: [
+        {
+          configPath: "./web/wrangler.jsonc",
+          prebuiltWorkerDir: "./web/.wrangler/local-bundle",
+        },
+      ],
+    });
+    const listenResult = await runAsyncStage("harness-listen", async () => {
+      const result = await server.listen();
+      target = result.url;
+      manifest.targetUrl = target.origin;
+      const response = await fetchWithTimeout(
+        new URL("/programs", target),
+        {},
+        10_000
+      );
+      if (!response.ok) {
+        throw new Error(`real asset route returned HTTP ${response.status}`);
+      }
+      return { status: response.status };
+    });
+    emit("listen-assets-and-real-network", "pass", listenResult);
+
+    const worker = server.getWorker();
+    await runAsyncStage("d1-migrations-and-seed", async () => {
+      await worker.applyD1Migrations("DB");
+      const workerEnvironment = await worker.getEnv();
+      if (!workerEnvironment?.DB) {
+        throw new Error("Canonical Harness Worker has no DB binding");
+      }
+      await executeSeedSql(
+        workerEnvironment.DB,
+        `${generatedIdentitySeed()}\n${generatedIdentitySeed("--reset-legacy")}\n${readFileSync(path.join(REPO_ROOT, "tests/e2e/seed-disposable-identity.sql"), "utf8")}`,
+        paths.seedProgress
+      );
+    });
+    emit("migrations-and-direct-d1-seed", "pass", {
+      storage: "official createTestHarness D1 binding",
+      progress: path.relative(REPO_ROOT, paths.seedProgress),
+    });
+
+    await runAsyncStage("authenticated-readiness", () =>
+      assertHealthyTarget(target)
+    );
+    await runCommandStage(
+      "real-worker-demo-seed",
+      ["db:seed:demo"],
+      paths.demoSeedLog,
+      { ...environment, DEMO_TARGET_URL: target.origin }
+    );
+    await runCommandStage(
+      "unfiltered-programs-playwright",
+      ["exec", "playwright", "test", "-c", "tests/e2e/programs-d1.config.ts"],
+      paths.playwrightLog,
+      {
+        ...environment,
+        PROGRAMS_TARGET_URL: target.origin,
+        PROGRAMS_RESULTS_FILE: paths.results,
+        PROGRAMS_OUTPUT_DIR: paths.playwrightOutput,
+      }
+    );
+    emit("canonical-qualification", "pass", {
+      artifacts: path.relative(REPO_ROOT, paths.directory),
+    });
   } catch (error) {
-    console.error(
-      JSON.stringify({
-        phase: "qualification",
-        outcome: "failed",
-        error: error instanceof Error ? error.message : String(error),
-        artifacts: path.relative(REPO_ROOT, artifactDirectory),
-      })
-    );
+    failure = error instanceof Error ? error.message : String(error);
+    manifest.status = "failed";
     process.exitCode = 1;
+    process.stderr.write(`T05 Canonical Programs runtime failed: ${failure}\n`);
   } finally {
-    await server.close();
+    if (failure === null && interruptedSignal !== null) {
+      failure = `Canonical runtime interrupted by ${interruptedSignal}`;
+    }
+    if (failure !== null) {
+      try {
+        const failureReport =
+          report ??
+          (() => {
+            try {
+              return readProgramsReport(paths.results);
+            } catch {
+              return null;
+            }
+          })();
+        await recordFailureDiagnostics(
+          paths,
+          server,
+          target,
+          failureReport,
+          failure,
+          interruptedSignal
+        );
+      } catch (error) {
+        const diagnosticsFailure =
+          error instanceof Error ? error.message : String(error);
+        failure = `${failure}; failure diagnostics could not be written: ${diagnosticsFailure}`;
+        process.exitCode = 1;
+      }
+    }
+
+    if (server) {
+      const closeStage = stageStarted("harness-close", "server.close()");
+      manifest.stages.push(closeStage);
+      await writeState();
+      try {
+        await closeHarness();
+        stageFinished(closeStage, "passed");
+      } catch (error) {
+        closeFailure = error instanceof Error ? error.message : String(error);
+        stageFinished(closeStage, "failed", { error: closeFailure });
+        process.exitCode = 1;
+      }
+      await writeState();
+    }
+
+    if (closeFailure !== null) {
+      failure = failure
+        ? `${failure}; Harness close failed: ${closeFailure}`
+        : `Harness close failed: ${closeFailure}`;
+      if (!readFileSafe(paths.failureSummary)) {
+        await recordFailureDiagnostics(
+          paths,
+          server,
+          target,
+          report,
+          failure,
+          interruptedSignal
+        ).catch(() => undefined);
+      }
+    }
+
+    manifest.status = failure === null ? "passed" : "failed";
+    manifest.finishedAt = new Date().toISOString();
+    manifest.timings = timingSummary(manifest.stages);
+    writeJson(paths.summary, {
+      schemaVersion: 1,
+      canonical: true,
+      runtime: "createTestHarness",
+      runId: manifest.runId,
+      targetUrl: manifest.targetUrl,
+      revision: manifest.revision,
+      status: manifest.status,
+      error: failure,
+      interruptedSignal,
+      counts: report?.counts ?? null,
+      failedProgramsTests: report ? failedProgramsTests(report) : [],
+      timings: manifest.timings,
+      stages: manifest.stages,
+      artifacts: manifest.artifacts,
+    });
+    if (failure === null) {
+      writeJson(paths.failureSummary, {
+        schemaVersion: 2,
+        outcome: "passed",
+        failedProgramsTests: [],
+        interpretation:
+          "The Canonical Harness closed after a complete report satisfying the unchanged Programs acceptance contract.",
+      });
+    }
+    await writeState();
+    process.off("SIGINT", handleSignal);
+    process.off("SIGTERM", handleSignal);
+    if (failure !== null) {
+      process.exitCode = 1;
+      emit("canonical-qualification", "fail", {
+        artifacts: path.relative(REPO_ROOT, paths.directory),
+      });
+    }
+    process.stdout.write(
+      `T05 Canonical runtime artifacts: ${path.relative(REPO_ROOT, paths.directory)}\n`
+    );
   }
 }
 
@@ -533,15 +988,11 @@ function summarizeOutput(output) {
 }
 
 async function runBoundedQualification() {
-  const child = spawn(
-    process.execPath,
-    [fileURLToPath(import.meta.url), "--probe"],
-    {
-      cwd: process.cwd(),
-      detached: true,
-      stdio: ["ignore", "pipe", "pipe"],
-    }
-  );
+  const child = spawn(process.execPath, [SCRIPT_PATH, "--probe"], {
+    cwd: REPO_ROOT,
+    detached: true,
+    stdio: ["ignore", "pipe", "pipe"],
+  });
   let output = "";
   child.stdout?.on("data", (chunk) => {
     output += chunk.toString();
@@ -622,7 +1073,7 @@ const isMainModule =
 
 if (isMainModule) {
   if (process.argv.includes("--probe")) {
-    await runProbe();
+    await runCanonical();
   } else {
     await runBoundedQualification();
   }
