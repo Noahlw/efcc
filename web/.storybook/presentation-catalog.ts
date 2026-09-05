@@ -1,5 +1,7 @@
 import { MANAGEMENT_HUB_PRESENTATION } from "./management-hub.story-contract";
 import { managementHubStoryDeclarations } from "./management-hub.story-manifest";
+import { MANAGEMENT_IDENTITY_PRESENTATION } from "./management-identity.story-contract";
+import { managementIdentityStoryDeclarations } from "./management-identity.story-manifest";
 import { PROGRAMS_PRESENTATION } from "./programs.story-contract";
 import { programsStoryDeclarations } from "./programs.story-manifest";
 import { PUBLIC_AUTH_MEMBER_COMMUNICATIONS_PRESENTATION } from "./public-auth-member-communications.story-contract";
@@ -38,10 +40,14 @@ export const PUBLIC_AUTH_MEMBER_COMMUNICATIONS_PRESENTATION_DECLARATIONS =
 export const PROGRAMS_PRESENTATION_DECLARATIONS =
   discoverPresentationDeclarations(programsStoryDeclarations);
 
+export const MANAGEMENT_IDENTITY_PRESENTATION_DECLARATIONS =
+  discoverPresentationDeclarations(managementIdentityStoryDeclarations);
+
 export const ALL_PRESENTATION_DECLARATIONS = [
   ...MANAGEMENT_HUB_PRESENTATION_DECLARATIONS,
   ...PUBLIC_AUTH_MEMBER_COMMUNICATIONS_PRESENTATION_DECLARATIONS,
   ...PROGRAMS_PRESENTATION_DECLARATIONS,
+  ...MANAGEMENT_IDENTITY_PRESENTATION_DECLARATIONS,
 ] as const;
 
 export interface ScreenCatalogEntry {
@@ -187,6 +193,83 @@ export const SCREEN_CATALOG: readonly ScreenCatalogEntry[] = [
     primaryPsn: PROGRAMS_PRESENTATION.workspaceNotifications.psn,
     psns: [PROGRAMS_PRESENTATION.workspaceNotifications.psn],
     storyIds: [PROGRAMS_PRESENTATION.workspaceNotifications.storyId],
+  },
+  {
+    screenId: "management-account-directory",
+    route: "/management",
+    primaryPsn: MANAGEMENT_IDENTITY_PRESENTATION.accountDirectory.psn,
+    psns: [MANAGEMENT_IDENTITY_PRESENTATION.accountDirectory.psn],
+    storyIds: [MANAGEMENT_IDENTITY_PRESENTATION.accountDirectory.storyId],
+  },
+  {
+    screenId: "management-account-access",
+    route: "/management",
+    primaryPsn: MANAGEMENT_IDENTITY_PRESENTATION.accountAccess.psn,
+    psns: [MANAGEMENT_IDENTITY_PRESENTATION.accountAccess.psn],
+    storyIds: [MANAGEMENT_IDENTITY_PRESENTATION.accountAccess.storyId],
+  },
+  {
+    screenId: "management-approval-queue",
+    route: "/management",
+    primaryPsn: MANAGEMENT_IDENTITY_PRESENTATION.approvalQueue.psn,
+    psns: [MANAGEMENT_IDENTITY_PRESENTATION.approvalQueue.psn],
+    storyIds: [MANAGEMENT_IDENTITY_PRESENTATION.approvalQueue.storyId],
+  },
+  {
+    screenId: "management-approval-detail",
+    route: "/management",
+    primaryPsn: MANAGEMENT_IDENTITY_PRESENTATION.approvalDetail.psn,
+    psns: [MANAGEMENT_IDENTITY_PRESENTATION.approvalDetail.psn],
+    storyIds: [MANAGEMENT_IDENTITY_PRESENTATION.approvalDetail.storyId],
+  },
+  {
+    screenId: "management-member-directory",
+    route: "/management",
+    primaryPsn: MANAGEMENT_IDENTITY_PRESENTATION.memberDirectory.psn,
+    psns: [MANAGEMENT_IDENTITY_PRESENTATION.memberDirectory.psn],
+    storyIds: [MANAGEMENT_IDENTITY_PRESENTATION.memberDirectory.storyId],
+  },
+  {
+    screenId: "management-home-cms",
+    route: "/management",
+    primaryPsn: MANAGEMENT_IDENTITY_PRESENTATION.homeCms.psn,
+    psns: [MANAGEMENT_IDENTITY_PRESENTATION.homeCms.psn],
+    storyIds: [MANAGEMENT_IDENTITY_PRESENTATION.homeCms.storyId],
+  },
+  {
+    screenId: "identity-permission-editor",
+    route: "/management",
+    primaryPsn: MANAGEMENT_IDENTITY_PRESENTATION.permissionEditor.psn,
+    psns: [MANAGEMENT_IDENTITY_PRESENTATION.permissionEditor.psn],
+    storyIds: [MANAGEMENT_IDENTITY_PRESENTATION.permissionEditor.storyId],
+  },
+  {
+    screenId: "identity-role-hierarchy",
+    route: "/management",
+    primaryPsn: MANAGEMENT_IDENTITY_PRESENTATION.roleHierarchy.psn,
+    psns: [MANAGEMENT_IDENTITY_PRESENTATION.roleHierarchy.psn],
+    storyIds: [MANAGEMENT_IDENTITY_PRESENTATION.roleHierarchy.storyId],
+  },
+  {
+    screenId: "management-settings-hub",
+    route: "/management",
+    primaryPsn: MANAGEMENT_IDENTITY_PRESENTATION.settingsHub.psn,
+    psns: [MANAGEMENT_IDENTITY_PRESENTATION.settingsHub.psn],
+    storyIds: [MANAGEMENT_IDENTITY_PRESENTATION.settingsHub.storyId],
+  },
+  {
+    screenId: "management-checkin-settings",
+    route: "/management",
+    primaryPsn: MANAGEMENT_IDENTITY_PRESENTATION.checkinSettings.psn,
+    psns: [MANAGEMENT_IDENTITY_PRESENTATION.checkinSettings.psn],
+    storyIds: [MANAGEMENT_IDENTITY_PRESENTATION.checkinSettings.storyId],
+  },
+  {
+    screenId: "management-timezone-settings",
+    route: "/management",
+    primaryPsn: MANAGEMENT_IDENTITY_PRESENTATION.timezoneSettings.psn,
+    psns: [MANAGEMENT_IDENTITY_PRESENTATION.timezoneSettings.psn],
+    storyIds: [MANAGEMENT_IDENTITY_PRESENTATION.timezoneSettings.storyId],
   },
 ];
 

@@ -1,9 +1,11 @@
 import { describe, expect, test } from "vitest";
 
 import { MANAGEMENT_HUB_PRESENTATION } from "./management-hub.story-contract";
+import { MANAGEMENT_IDENTITY_PRESENTATION } from "./management-identity.story-contract";
 import {
   ALL_PRESENTATION_DECLARATIONS,
   MANAGEMENT_HUB_PRESENTATION_DECLARATIONS,
+  MANAGEMENT_IDENTITY_PRESENTATION_DECLARATIONS,
   PUBLIC_AUTH_MEMBER_COMMUNICATIONS_PRESENTATION_DECLARATIONS,
   PROGRAMS_PRESENTATION_DECLARATIONS,
   SCREEN_CATALOG,
@@ -29,7 +31,7 @@ describe("T07.1 Screen Catalog foundation", () => {
   });
 
   test("catalogs every T07.2 baseline screen from its owning Story", () => {
-    expect(SCREEN_CATALOG).toHaveLength(18);
+    expect(SCREEN_CATALOG).toHaveLength(29);
     expect(
       PUBLIC_AUTH_MEMBER_COMMUNICATIONS_PRESENTATION_DECLARATIONS
     ).toHaveLength(8);
@@ -47,11 +49,11 @@ describe("T07.1 Screen Catalog foundation", () => {
       PUBLIC_AUTH_MEMBER_COMMUNICATIONS_PRESENTATION.messages.psn,
       PUBLIC_AUTH_MEMBER_COMMUNICATIONS_PRESENTATION.notFound.psn,
     ]);
-    expect(ALL_PRESENTATION_DECLARATIONS).toHaveLength(21);
+    expect(ALL_PRESENTATION_DECLARATIONS).toHaveLength(32);
   });
 
   test("catalogs every T07.3 Programs composition from its owning Story", () => {
-    expect(SCREEN_CATALOG).toHaveLength(18);
+    expect(SCREEN_CATALOG).toHaveLength(29);
     expect(PROGRAMS_PRESENTATION_DECLARATIONS).toHaveLength(9);
     expect(
       PROGRAMS_PRESENTATION_DECLARATIONS.map(({ psn }) => psn)
@@ -66,6 +68,26 @@ describe("T07.1 Screen Catalog foundation", () => {
       PROGRAMS_PRESENTATION.workspaceSettings.psn,
       PROGRAMS_PRESENTATION.workspaceNotifications.psn,
     ]);
-    expect(ALL_PRESENTATION_DECLARATIONS).toHaveLength(21);
+    expect(ALL_PRESENTATION_DECLARATIONS).toHaveLength(32);
+  });
+
+  test("catalogs every T07.4 Management/Identity composition from its owning Story", () => {
+    expect(MANAGEMENT_IDENTITY_PRESENTATION_DECLARATIONS).toHaveLength(11);
+    expect(
+      MANAGEMENT_IDENTITY_PRESENTATION_DECLARATIONS.map(({ psn }) => psn)
+    ).toStrictEqual([
+      MANAGEMENT_IDENTITY_PRESENTATION.accountDirectory.psn,
+      MANAGEMENT_IDENTITY_PRESENTATION.accountAccess.psn,
+      MANAGEMENT_IDENTITY_PRESENTATION.approvalQueue.psn,
+      MANAGEMENT_IDENTITY_PRESENTATION.approvalDetail.psn,
+      MANAGEMENT_IDENTITY_PRESENTATION.memberDirectory.psn,
+      MANAGEMENT_IDENTITY_PRESENTATION.homeCms.psn,
+      MANAGEMENT_IDENTITY_PRESENTATION.permissionEditor.psn,
+      MANAGEMENT_IDENTITY_PRESENTATION.roleHierarchy.psn,
+      MANAGEMENT_IDENTITY_PRESENTATION.settingsHub.psn,
+      MANAGEMENT_IDENTITY_PRESENTATION.checkinSettings.psn,
+      MANAGEMENT_IDENTITY_PRESENTATION.timezoneSettings.psn,
+    ]);
+    expect(ALL_PRESENTATION_DECLARATIONS).toHaveLength(32);
   });
 });
