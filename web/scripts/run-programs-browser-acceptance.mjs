@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 
 import {
+  currentRevision,
   firstCausalRuntimeSignal,
   prepareProgramsHarness,
 } from "./programs-runtime-canary.mjs";
@@ -52,6 +53,8 @@ async function main() {
     runtime: "createTestHarness",
     config: "web/wrangler.jsonc",
     suite: "tests/e2e/programs-participant-acceptance.config.ts",
+    revision: await currentRevision(),
+    layer: "browser-acceptance",
     retries: 0,
     status: "running",
     startedAt: new Date().toISOString(),
@@ -121,9 +124,16 @@ async function main() {
           runtimeLogs
         );
         await writeJson(path.join(artifactDirectory, "failure-summary.json"), {
+          revision: manifest.revision,
+          layer: manifest.layer,
+          logicalScenario: null,
+          route: null,
+          state: null,
+          viewport: null,
           message: manifest.failure,
           firstCausalRuntimeSignal: firstCausalRuntimeSignal(runtimeLogs),
           target: manifest.target,
+          downstreamSymptoms: [],
         });
       }
       await prepared.server.close().catch((error) => {

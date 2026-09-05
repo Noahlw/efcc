@@ -3,7 +3,6 @@ import { describe, expect, test } from "vitest";
 import {
   CANARY_DURATION_MS,
   CANARY_RETRIES,
-  canaryRequestBody,
   classifyHttpFailure,
   firstCausalRuntimeSignal,
   isCanaryGreen,
@@ -62,38 +61,14 @@ describe("T05.3 Runtime Reliability Canary", () => {
     );
   });
 
-  test("keeps the bodyless experiment limited to bodyless Programs endpoints", () => {
-    expect(
-      canaryRequestBody(
-        "/api/v1/programs/program-1/enrollment-requests",
-        {},
-        true
-      )
-    ).toBeUndefined();
-    expect(
-      canaryRequestBody(
-        "/api/v1/programs/program-1/enrollments/enrollment-1/cancel",
-        {},
-        true
-      )
-    ).toBeUndefined();
-    expect(
-      canaryRequestBody(
-        "/api/v1/programs/program-1/enrollment-requests/request-1/decision",
-        { action: "Approved" },
-        true
-      )
-    ).toEqual({ action: "Approved" });
-  });
-
   test("does not promote a missing-correlation 500 to a confirmed upstream cause", () => {
     const classification = classifyHttpFailure({
       status: 500,
       requestId: null,
       body: "Unhandled application exception",
     });
-    expect(classification.category).toBe("runtime transport");
-    expect(classification.suspectedOrigin).toBe("undetermined");
+    expect(classification.category).toBe("application");
+    expect(classification.suspectedOrigin).toBe("application");
     expect(classification.confirmedOrigin).toBeNull();
   });
 });

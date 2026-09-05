@@ -30,9 +30,6 @@ const DOWNSTREAM_MARKER =
   /(?:Network connection lost|ERR_CONNECTION_REFUSED|Connection reset by peer)/iu;
 const HTTP_RUNTIME_MARKER =
   /(?:Network connection lost|ERR_CONNECTION_REFUSED|Connection reset by peer)/iu;
-const BODYLESS_NO_BODY = process.env.PROGRAMS_CANARY_BODYLESS_NO_BODY === "1";
-const BODYLESS_ENDPOINT =
-  /(?:\/enrollment-requests$|\/enrollments\/[^/]+\/cancel$)/u;
 
 export function firstCausalRuntimeSignal(logs) {
   const lines = (Array.isArray(logs) ? logs : [logs])
@@ -57,14 +54,8 @@ export function isRuntimeTransportResponse(status, body) {
   return status >= 500 && HTTP_RUNTIME_MARKER.test(String(body));
 }
 
-export function canaryRequestBody(pathname, body, bodyless = BODYLESS_NO_BODY) {
-  return bodyless && BODYLESS_ENDPOINT.test(pathname) ? undefined : body;
-}
-
 export function classifyHttpFailure({ status, requestId, body }) {
-  const runtimeTransport =
-    status >= 500 &&
-    (requestId === null || isRuntimeTransportResponse(status, body));
+  const runtimeTransport = isRuntimeTransportResponse(status, body);
   return {
     category: runtimeTransport ? "runtime transport" : "application",
     observedSymptom:
@@ -115,7 +106,7 @@ async function writeJson(filename, value) {
   await writeFile(filename, `${JSON.stringify(value, null, 2)}\n`, "utf8");
 }
 
-async function revision() {
+export async function currentRevision() {
   try {
     const result = await execFileAsync("git", ["rev-parse", "HEAD"], {
       cwd: REPO_ROOT,
@@ -585,10 +576,7 @@ async function runScenario(target, db, programId, scenarioIndex, deadlineAt) {
         method: "POST",
         cookie: memberCookie,
         idempotencyKey: `t05-canary-request-${scenarioId}`,
-        body: canaryRequestBody(
-          `/api/v1/programs/${programId}/enrollment-requests`,
-          {}
-        ),
+        body: {},
         trace: requestEvidence,
         scenarioIndex,
         operation: "member enrollment-request create",
@@ -672,10 +660,7 @@ async function runScenario(target, db, programId, scenarioIndex, deadlineAt) {
         method: "POST",
         cookie: memberCookie,
         idempotencyKey: `t05-canary-cancel-${scenarioId}`,
-        body: canaryRequestBody(
-          `/api/v1/programs/${programId}/enrollments/${enrollmentId}/cancel`,
-          {}
-        ),
+        body: {},
         trace: requestEvidence,
         scenarioIndex,
         operation: "member enrollment cancel",
@@ -788,9 +773,35 @@ export async function prepareProgramsHarness(
         category: error?.category ?? "fixture/setup",
         phase: error?.phase ?? "fixture/setup",
         message: error instanceof Error ? error.message : String(error),
+        revision: await currentRevision(),
+        layer: "harness-setup",
+        logicalScenario: null,
+        route: null,
+        state: null,
+        viewport: null,
         firstCausalRuntimeSignal: firstCausalRuntimeSignal(runtimeLogs),
+        downstreamSymptoms: [],
       }).catch(() => undefined);
       await server.close().catch(() => undefined);
+    }
+    if (server === null) {
+      await writeJson(
+        path.join(artifactDirectory, "runtime-logs.json"),
+        []
+      ).catch(() => undefined);
+      await writeJson(path.join(artifactDirectory, "failure-summary.json"), {
+        category: error?.category ?? "fixture/setup",
+        phase: error?.phase ?? "fixture/setup",
+        message: error instanceof Error ? error.message : String(error),
+        revision: await currentRevision(),
+        layer: "harness-setup",
+        logicalScenario: null,
+        route: null,
+        state: null,
+        viewport: null,
+        firstCausalRuntimeSignal: null,
+        downstreamSymptoms: [],
+      }).catch(() => undefined);
     }
     throw error;
   }
@@ -808,9 +819,8 @@ async function main() {
     config: "web/wrangler.jsonc",
     retries: CANARY_RETRIES,
     windowMs: CANARY_DURATION_MS,
-    revision: await revision(),
+    revision: await currentRevision(),
     status: "running",
-    experiment: BODYLESS_NO_BODY ? "bodyless-no-body" : "production-shaped",
     promotionRunId: process.env.PROGRAMS_PROMOTION_RUN_ID ?? null,
     setupStartedAt: new Date(setupStartedAt).toISOString(),
     startedAt: null,
@@ -914,6 +924,13 @@ async function main() {
         category: failure?.category ?? "application",
         phase: failure?.phase ?? "unknown",
         message: failure instanceof Error ? failure.message : String(failure),
+        revision: manifest.revision,
+        layer: "runtime-canary",
+        logicalScenario:
+          failure?.requestEvidence?.at(-1)?.scenarioIndex ?? null,
+        route: failure?.pathname ?? null,
+        state: failure?.phase ?? null,
+        viewport: null,
         operation: failure?.operation ?? null,
         path: failure?.pathname ?? null,
         observedSymptom: failure?.observedSymptom ?? null,
@@ -928,6 +945,9 @@ async function main() {
             : null,
         firstCausalRuntimeSignal: firstCausalRuntimeSignal(runtimeLogs),
         observedRuntimeFailure,
+        downstreamSymptoms: observedRuntimeFailure
+          ? [observedRuntimeFailure]
+          : [],
         scenariosCompleted: manifest.scenariosCompleted,
         target: target?.origin ?? null,
         requestEvidence: Array.isArray(failure?.requestEvidence)
