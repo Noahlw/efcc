@@ -1,3 +1,5 @@
+import { ATTENDANCE_SCANNER_GUEST_PRESENTATION } from "./attendance-scanner-guest.story-contract";
+import { attendanceScannerGuestStoryDeclarations } from "./attendance-scanner-guest.story-manifest";
 import { MANAGEMENT_HUB_PRESENTATION } from "./management-hub.story-contract";
 import { managementHubStoryDeclarations } from "./management-hub.story-manifest";
 import { MANAGEMENT_IDENTITY_PRESENTATION } from "./management-identity.story-contract";
@@ -43,11 +45,15 @@ export const PROGRAMS_PRESENTATION_DECLARATIONS =
 export const MANAGEMENT_IDENTITY_PRESENTATION_DECLARATIONS =
   discoverPresentationDeclarations(managementIdentityStoryDeclarations);
 
+export const ATTENDANCE_SCANNER_GUEST_PRESENTATION_DECLARATIONS =
+  discoverPresentationDeclarations(attendanceScannerGuestStoryDeclarations);
+
 export const ALL_PRESENTATION_DECLARATIONS = [
   ...MANAGEMENT_HUB_PRESENTATION_DECLARATIONS,
   ...PUBLIC_AUTH_MEMBER_COMMUNICATIONS_PRESENTATION_DECLARATIONS,
   ...PROGRAMS_PRESENTATION_DECLARATIONS,
   ...MANAGEMENT_IDENTITY_PRESENTATION_DECLARATIONS,
+  ...ATTENDANCE_SCANNER_GUEST_PRESENTATION_DECLARATIONS,
 ] as const;
 
 export interface ScreenCatalogEntry {
@@ -270,6 +276,41 @@ export const SCREEN_CATALOG: readonly ScreenCatalogEntry[] = [
     primaryPsn: MANAGEMENT_IDENTITY_PRESENTATION.timezoneSettings.psn,
     psns: [MANAGEMENT_IDENTITY_PRESENTATION.timezoneSettings.psn],
     storyIds: [MANAGEMENT_IDENTITY_PRESENTATION.timezoneSettings.storyId],
+  },
+  {
+    screenId: "attendance-guest-check-in",
+    route: "/guest-check-in",
+    primaryPsn: ATTENDANCE_SCANNER_GUEST_PRESENTATION.guestCheckIn.psn,
+    psns: [ATTENDANCE_SCANNER_GUEST_PRESENTATION.guestCheckIn.psn],
+    storyIds: [ATTENDANCE_SCANNER_GUEST_PRESENTATION.guestCheckIn.storyId],
+  },
+  {
+    screenId: "attendance-scanner-boundary",
+    route: "/scanner",
+    primaryPsn: ATTENDANCE_SCANNER_GUEST_PRESENTATION.scannerBoundary.psn,
+    psns: [ATTENDANCE_SCANNER_GUEST_PRESENTATION.scannerBoundary.psn],
+    storyIds: [ATTENDANCE_SCANNER_GUEST_PRESENTATION.scannerBoundary.storyId],
+  },
+  {
+    screenId: "attendance-assisted-check-in",
+    route: "/scanner",
+    primaryPsn: ATTENDANCE_SCANNER_GUEST_PRESENTATION.assistedCheckIn.psn,
+    psns: [ATTENDANCE_SCANNER_GUEST_PRESENTATION.assistedCheckIn.psn],
+    storyIds: [ATTENDANCE_SCANNER_GUEST_PRESENTATION.assistedCheckIn.storyId],
+  },
+  {
+    screenId: "attendance-operator",
+    route: "/events",
+    primaryPsn: ATTENDANCE_SCANNER_GUEST_PRESENTATION.operator.psn,
+    psns: [ATTENDANCE_SCANNER_GUEST_PRESENTATION.operator.psn],
+    storyIds: [ATTENDANCE_SCANNER_GUEST_PRESENTATION.operator.storyId],
+  },
+  {
+    screenId: "attendance-operator-roster",
+    route: "/events",
+    primaryPsn: ATTENDANCE_SCANNER_GUEST_PRESENTATION.operatorRoster.psn,
+    psns: [ATTENDANCE_SCANNER_GUEST_PRESENTATION.operatorRoster.psn],
+    storyIds: [ATTENDANCE_SCANNER_GUEST_PRESENTATION.operatorRoster.storyId],
   },
 ];
 

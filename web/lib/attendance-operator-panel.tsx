@@ -920,10 +920,8 @@ export const AttendanceOperatorPanel = ({
     <div className="mx-auto w-[min(100%,760px)] px-4 py-8 pb-12 print:p-0 print:m-0 print:w-full">
       <Card
         className="grid gap-[1.125rem] p-5 bg-[var(--surface-raised)] border border-[var(--line-strong)] rounded-[var(--radius-md)] print:border-0 print:shadow-none print:p-0 print:bg-transparent"
-        role="region"
-        aria-labelledby={
-          rosterVisible ? "attendance-roster-title" : "attendance-chooser-title"
-        }
+        role={rosterVisible ? "region" : undefined}
+        aria-labelledby={rosterVisible ? "attendance-roster-title" : undefined}
         aria-busy={busy || chooserLoading}
       >
         <div className="print:hidden">

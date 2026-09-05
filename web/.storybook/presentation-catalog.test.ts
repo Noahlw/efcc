@@ -1,8 +1,10 @@
 import { describe, expect, test } from "vitest";
 
+import { ATTENDANCE_SCANNER_GUEST_PRESENTATION } from "./attendance-scanner-guest.story-contract";
 import { MANAGEMENT_HUB_PRESENTATION } from "./management-hub.story-contract";
 import { MANAGEMENT_IDENTITY_PRESENTATION } from "./management-identity.story-contract";
 import {
+  ATTENDANCE_SCANNER_GUEST_PRESENTATION_DECLARATIONS,
   ALL_PRESENTATION_DECLARATIONS,
   MANAGEMENT_HUB_PRESENTATION_DECLARATIONS,
   MANAGEMENT_IDENTITY_PRESENTATION_DECLARATIONS,
@@ -31,7 +33,7 @@ describe("T07.1 Screen Catalog foundation", () => {
   });
 
   test("catalogs every T07.2 baseline screen from its owning Story", () => {
-    expect(SCREEN_CATALOG).toHaveLength(29);
+    expect(SCREEN_CATALOG).toHaveLength(34);
     expect(
       PUBLIC_AUTH_MEMBER_COMMUNICATIONS_PRESENTATION_DECLARATIONS
     ).toHaveLength(8);
@@ -49,11 +51,11 @@ describe("T07.1 Screen Catalog foundation", () => {
       PUBLIC_AUTH_MEMBER_COMMUNICATIONS_PRESENTATION.messages.psn,
       PUBLIC_AUTH_MEMBER_COMMUNICATIONS_PRESENTATION.notFound.psn,
     ]);
-    expect(ALL_PRESENTATION_DECLARATIONS).toHaveLength(32);
+    expect(ALL_PRESENTATION_DECLARATIONS).toHaveLength(37);
   });
 
   test("catalogs every T07.3 Programs composition from its owning Story", () => {
-    expect(SCREEN_CATALOG).toHaveLength(29);
+    expect(SCREEN_CATALOG).toHaveLength(34);
     expect(PROGRAMS_PRESENTATION_DECLARATIONS).toHaveLength(9);
     expect(
       PROGRAMS_PRESENTATION_DECLARATIONS.map(({ psn }) => psn)
@@ -68,7 +70,7 @@ describe("T07.1 Screen Catalog foundation", () => {
       PROGRAMS_PRESENTATION.workspaceSettings.psn,
       PROGRAMS_PRESENTATION.workspaceNotifications.psn,
     ]);
-    expect(ALL_PRESENTATION_DECLARATIONS).toHaveLength(32);
+    expect(ALL_PRESENTATION_DECLARATIONS).toHaveLength(37);
   });
 
   test("catalogs every T07.4 Management/Identity composition from its owning Story", () => {
@@ -88,6 +90,24 @@ describe("T07.1 Screen Catalog foundation", () => {
       MANAGEMENT_IDENTITY_PRESENTATION.checkinSettings.psn,
       MANAGEMENT_IDENTITY_PRESENTATION.timezoneSettings.psn,
     ]);
-    expect(ALL_PRESENTATION_DECLARATIONS).toHaveLength(32);
+    expect(ALL_PRESENTATION_DECLARATIONS).toHaveLength(37);
+  });
+
+  test("catalogs every T07.5 Attendance/Scanner/Guest composition from its owning Story", () => {
+    expect(ATTENDANCE_SCANNER_GUEST_PRESENTATION_DECLARATIONS).toHaveLength(5);
+    expect(
+      ATTENDANCE_SCANNER_GUEST_PRESENTATION_DECLARATIONS.map(({ psn }) => psn)
+    ).toStrictEqual([
+      ATTENDANCE_SCANNER_GUEST_PRESENTATION.guestCheckIn.psn,
+      ATTENDANCE_SCANNER_GUEST_PRESENTATION.scannerBoundary.psn,
+      ATTENDANCE_SCANNER_GUEST_PRESENTATION.assistedCheckIn.psn,
+      ATTENDANCE_SCANNER_GUEST_PRESENTATION.operator.psn,
+      ATTENDANCE_SCANNER_GUEST_PRESENTATION.operatorRoster.psn,
+    ]);
+    expect(ALL_PRESENTATION_DECLARATIONS).toHaveLength(37);
+    expect(SCREEN_CATALOG).toHaveLength(34);
+    expect(
+      validateScreenCatalog(SCREEN_CATALOG, ALL_PRESENTATION_DECLARATIONS)
+    ).toStrictEqual([]);
   });
 });
