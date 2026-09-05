@@ -31,8 +31,8 @@
     }
   },
   "after": {
-    "revision": "b4a382b978d2cfe284cfc747d772f01879027dd7",
-    "source": "rescue/t06-css-cascade after containment implementation",
+    "revision": "774ea0208412f4367ce1242169a686a37a1d4e04",
+    "source": "rescue/t06-css-cascade after containment and explicit utilities-layer correction",
     "target": "http://127.0.0.1:8891",
     "report": "tests/e2e/test-results/live-ui-results.json",
     "viewports": {
