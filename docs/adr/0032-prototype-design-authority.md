@@ -1,6 +1,6 @@
 # Prototype Design Authority for the EFCC Webapp Redesign
 
-**Status:** accepted
+**Status:** accepted — prototype reconciliation retained; presentation-source priority superseded
 
 Two standalone HTML files — `design/efcc-management-workspace-prototype.html`
 and `design/efcc-participant-checkin-prototype.html` — are the authoritative
@@ -91,3 +91,15 @@ primary manual event creation, not the prototype's own model. Any future
 prototype screen or revision must be evaluated against the same two files,
 decoded directly — not against a derived summary document, which is exactly
 the failure mode this ADR corrects.
+
+## Presentation-authority disposition — 2026-09-05
+
+This ADR remains historical/product-reconciliation authority for the concrete prototype contradictions it resolved and for any product/domain decisions that were subsequently absorbed into current specs, ADRs, and domain authority.
+
+Its earlier rule that the standalone prototype files automatically win every presentation conflict is no longer current visual authority.
+
+Current human presentation authority is owned by `DESIGN.md`, accepted current design ADRs/specs, and recorded owner approval under the UI Control Recovery governance.
+
+The standalone prototypes remain design evidence and provenance. Their demo-specific shell, routing, mock surfaces, scenario controls, and presentation implementation are not a production baseline and must not be copied into the Storybook catalog merely because this ADR once treated the prototype bundle as the primary redesign source.
+
+This disposition does not reverse the product/domain corrections already carried forward from the prototype reconciliation. Those corrections remain owned by whichever current domain/spec/ADR authority now defines them.

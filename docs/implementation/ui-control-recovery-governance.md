@@ -100,6 +100,8 @@ Before implementation, a Contract Change requires explicit owner approval record
 
 The approval artifact is part of the change. A code review, passing test, screenshot, or agent assertion cannot substitute for owner approval. Contract changes must be kept separate from unrelated feature, backend, schema, lint, or data work.
 
+Retiring or replacing a referenced/approved `PSN-*`, changing the active Screen Catalog baseline identity for an approved screen, or changing an approval requirement is a **CONTRACT CHANGE**. Creating or adjusting an unapproved exploratory Story is ordinary implementation until it becomes referenced by approval, contract, or provenance authority.
+
 ## 7. Waivers
 
 A waiver is an explicit temporary exception, not a passing result. Every waiver must be:
@@ -129,6 +131,37 @@ An expired, missing-owner, over-broad, or condition-free waiver fails validation
 - An implementation agent cannot self-approve a human visual, accessibility, device, or contract gate.
 - Failures must retain the first causal result and relevant route/state/viewport/browser context; later clean retries do not erase stale-fixture or infrastructure failures.
 
+## Presentation workshop and Screen Catalog
+
+Storybook is the canonical local presentation workshop and baseline shipped-screen catalog. Storybook is dev/test tooling only. It is not a production route, production runtime dependency, public preview authority, or authorization/data authority.
+
+The presentation authority split is deliberate:
+
+- Story owns one deterministic presentation state;
+- stable `PSN-*` identifies that presentation state;
+- Screen Catalog owns the obligation that each active meaningful shipped screen has a baseline PSN;
+- RouteScenario owns real-app/browser integration coverage;
+- UIContract owns executable rules;
+- ApprovalPackage owns human approval.
+
+A Storybook runtime slug is a locator only. The Screen Catalog stays thin and must not duplicate Story fixtures/args, contract definitions, browser/viewport matrices, or approval decisions. PSNs are declared by their owning Story and may be discovered into generated machine metadata for validation. EFCC does not maintain a second hand-written presentation-scenario registry. Once a PSN is referenced by an approval, contract, or provenance record, it is stable; replacement uses explicit supersession rather than silent rename or deletion. Story existence does not imply approval. Controls may explore arbitrary temporary state, but a state that becomes part of approval, contracts, regression evidence, or a long-lived product definition must be represented by a named deterministic Story.
+
+### Meaningful-screen completion
+
+A meaningful screen is a distinct, user-perceivable composition worth direct review. Route count is not screen count. After T07 qualification, every new active meaningful shipped screen must have:
+
+- a Screen Catalog entry;
+- a primary baseline PSN;
+- a resolvable real Story.
+
+A presentation-affecting ticket must update relevant Stories before final qualification. The classification of a composition as a meaningful screen remains a product/ticket decision. Machine validation enforces declared completeness but does not attempt to infer screen identity from arbitrary source code.
+
+Screen Catalog Gap is exceptional. It requires the exact screen, technical cause, reason the minimum behavior-preserving seam would be disproportionate, impact, owner/follow-up ticket, and reconciliation boundary/status. A fake replacement Story is not acceptable.
+
+### Storybook environment and data boundary
+
+Storybook may adapt runtime dependencies at a system boundary with deterministic synthetic fixtures, MSW, routing/provider adapters, and local/domain-scoped presentation seams. It must not fork presentation truth. Fixtures must be deterministic and synthetic. Production/member-derived records, secrets, auth tokens, API keys, and production identifiers are prohibited. The dependency direction is `Storybook → production presentation code`; production code must not import Stories, Storybook fixtures, Storybook handlers, or Storybook-only adapters. Historical `/prototype` and standalone prototype presentation remain evidence and provenance, not current production presentation truth.
+
 ## 9. Stacked PR delivery
 
 The UI Control Recovery uses ticket-isolated stacked PRs within each phase to allow dependent implementation to proceed without waiting for merge or human approval.
@@ -146,6 +179,10 @@ Required before a child ticket can start:
 - no unresolved correctness issue makes the parent unsafe as a child base;
 
 `STACK_GREEN` unlocks implementation for dependent children. It does not mean approved, merge-ready, merged, or complete. Machine green never equals human approval.
+
+### T07 Storybook delivery exception
+
+T07 / #512 is the only Phase 1 exception to the generic one-ticket/one-branch/one-PR rule. T07.1–T07.6 keep separate issue, acceptance, dependency, evidence, review, commit, and rollback boundaries while sharing one T07 branch and one #512 PR. Each child reaches `CHECKPOINT_GREEN` only after focused implementation, focused verification, focused Standards/Spec review, and its owning commit. Only T07.6 performs whole-PR qualification and may make the shared #512 PR `STACK_GREEN`. Child issues close only after the shared T07 PR is promoted/merged. T08–T12 return to the generic one-ticket/one-branch/one-PR stacked model.
 
 ### Implementation frontier
 
@@ -188,7 +225,7 @@ Do not:
 - create a generic Form, DataTable, CRUD, Task, page-builder, plugin, authorization, or styling framework;
 - decide `SALVAGE STACK` versus `SELECTIVE REPLAY` (T12 / #517 owns that decision);
 - modify historical S4 PRs or declare them superseded before the approved promotion/supersession gate;
-- treat the UI Lab, prototype, historical evidence, or a temporary compatibility path as shipped product.
+- treat Storybook as a development/test presentation workshop or production route. `/prototype`, standalone prototypes, historical evidence, and temporary compatibility paths are likewise not shipped-product authority.
 
 ## 11. Change checklist
 

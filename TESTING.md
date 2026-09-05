@@ -92,3 +92,60 @@ Read this document before changing test architecture. For the current T05 state,
 `#551 → (#552 and #553) → (#554 and #555) → #556 → #557`
 
 Use `/implement` for each child, keep one owning commit per child, run the child’s focused seam before proceeding, and reserve final promotion claims for T05.7.
+
+## Phase 1 presentation-testing authority
+
+T07–T12 add a presentation-testing layer without replacing the T05 Programs testing architecture above. The same principle applies: each concern belongs to the cheapest truthful seam, and a more expensive seam does not replay lower-level matrices without a reason.
+
+| Responsibility | Primary seam | Owns |
+| --- | --- | --- |
+| Isolated presentation | Storybook + Vitest | deterministic render, named presentation states, local interaction, cheap accessibility |
+| Browser presentation contracts | Playwright against the same Story presentation truth | semantic browser behavior, bounded geometry, relational layout, viewport-dependent presentation |
+| Real-app integration | Playwright against the real app/Worker | routing, authentication/session, real shell integration, navigation/history, selected critical user journeys |
+| Domain/backend | Worker/D1 contract tests | authorization, persistence, mutations, audit/idempotency, domain projections |
+| Human presentation approval | Storybook + ApprovalPackage evidence | workshop fidelity or design intent, depending on the ticket |
+| Hardware/platform | owning device/print/accessibility qualification | camera, scanner, native print preview, real-device safe area/touch, assistive-technology outcomes |
+
+### Storybook does not replace integration authority
+
+A Storybook mock may prove only the observable presentation outcome it is designed to represent. It cannot prove:
+
+- Worker authorization;
+- D1 persistence;
+- real authentication/session behavior;
+- production routing/history;
+- camera or scanner hardware;
+- native print preview;
+- real-device or assistive-technology outcomes.
+
+Conversely, real Worker/D1 setup is not required merely to render every loading/empty/error/long-copy presentation branch.
+
+### Presentation identity
+
+A named Story carries a stable repo-owned `PSN-*` presentation identity. RouteScenario / `SCN-*` remains the real-app integration identity. The two may map explicitly where useful, but neither duplicates the other’s fixture/state authority.
+
+### Viewports
+
+Routine human Storybook review uses `390`, `799`, `800`, and `1440`. This is a human-review shortcut, not a replacement for the existing machine W7 viewport authority. A separate Story is not created merely because the viewport changes.
+
+### Visual evidence
+
+Screenshots are evidence and debugging inputs, not universal routine pass/fail authority. Pixel visual-regression baselines are promoted selectively only after a surface is stable, deterministic, high-leverage, and sufficiently low-noise. T07 legacy-screen cataloging does not automatically create hard pixel baselines.
+
+### Failure ownership
+
+A failing test blocks a ticket when the ticket owns the failing contract/state or when the shared change in the ticket caused the downstream failure. A pre-existing unrelated failure remains visible and owned, but is not an automatic blocker for unrelated work. This rule never permits a ticket to ignore a failing criterion within its own acceptance scope.
+
+### Automatic CI
+
+EFCC retains one automatic Fast CI authority. T07 proves checks are deterministic and cheap; frontend/Storybook-affected changes add only lightweight Storybook/catalog integrity to Fast CI, such as:
+
+- Screen Catalog → PSN → Story integrity;
+- Storybook configuration/import/build sanity;
+- proven-cheap interaction/accessibility checks.
+
+Clearly backend-only changes may skip presentation checks. Ambiguous shared changes capable of affecting frontend presentation run them. Heavy Storybook qualification, browser geometry/relational matrices, cross-browser runs, human visual evidence, and real Worker/D1 acceptance remain explicit local/manual qualification. Exact commands are documented only after T07.1 proves the local workflow and T07.6 qualifies it.
+
+### T12 Programs division
+
+T12 uses broad deterministic Storybook presentation coverage and a narrow, finite real Worker/D1 browser tracer. The real tracer proves high-value integration boundaries; it does not replay the entire Story presentation matrix. Both presentation authority and real-system authority must be green before the T12 `SALVAGE STACK` / `SELECTIVE REPLAY` decision.
