@@ -10,7 +10,15 @@
 
 **Tech Stack:** Tailwind CSS v4, Next.js static export, React, TypeScript, Playwright, Vitest, and the existing EFCC governance registries.
 
-The same-fixture before/after record is [`docs/qa/2026-09-05-t06-cascade-before-after.json`](../../docs/qa/2026-09-05-t06-cascade-before-after.json): baseline `199b54e0` measured zero route/surface/input/search padding and only `38.953125px` phone scroll tail; T06 implementation `b4a382b9` measured positive values, Programs center delta `0`, and `115.640625px` phone scroll tail. The live-ui report remains at `tests/e2e/test-results/live-ui-results.json`.
+The same-fixture before/after record is [`docs/qa/2026-09-05-t06-cascade-before-after.json`](../../docs/qa/2026-09-05-t06-cascade-before-after.json): baseline `199b54e0` measured zero route/surface/input/search padding and only `38.953125px` phone scroll tail; T06 implementation `774ea020` measured positive values, Programs center delta `0`, and `115.640625px` phone scroll tail. The live-ui report remains at `tests/e2e/test-results/live-ui-results.json`.
+
+## Qualification trace
+
+- **Authority read before qualification:** #511 acceptance criteria, #505 owner-approved T05 qualification amendment, current #510 routing, `AGENTS.md`, `TESTING.md`, and this plan were read before the current T06 correction/review cycle.
+- **Candidate boundary:** T06 implementation/evidence candidate `774ea0208412f4367ce1242169a686a37a1d4e04`; tracker/QA readback candidate `df6426a77c9ddf29773881725e5e1758ae377f31`.
+- **Required evidence:** real Worker/D1 `live-ui` `2/2`; same-fixture before/after artifact; responsive `92`, shell geometry `28`, role-hierarchy geometry `49`; focused governance `105/105`; full/release governance, typecheck, precommit, and diff-check.
+- **Review boundary:** final independent Standards/Spec review must pass before `STACK_GREEN`, ready status, or merge. Numeric browser evidence is not human visual approval.
+- **Provenance note:** the original T06 plan and implementation history are preserved; this trace records the current qualification state and does not rewrite earlier commits.
 
 ## Global Constraints
 
