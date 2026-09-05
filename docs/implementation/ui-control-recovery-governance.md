@@ -184,6 +184,8 @@ Required before a child ticket can start:
 
 T07 / #512 is the only Phase 1 exception to the generic one-ticket/one-branch/one-PR rule. T07.1–T07.6 keep separate issue, acceptance, dependency, evidence, review, commit, and rollback boundaries while sharing one T07 branch and one #512 PR. Each child reaches `CHECKPOINT_GREEN` only after focused implementation, focused verification, focused Standards/Spec review, and its owning commit. Only T07.6 performs whole-PR qualification and may make the shared #512 PR `STACK_GREEN`. Child issues close only after the shared T07 PR is promoted/merged. T08–T12 return to the generic one-ticket/one-branch/one-PR stacked model.
 
+For Phase 1, the T07 child checkpoints follow this scoped precedence: `CHECKPOINT_GREEN` is an implementation checkpoint, not promotion; the whole shared-PR qualification at T07.6 includes the required workshop-fidelity approval; and the generic `STACK_GREEN → WAITING_HUMAN` explanation does not replace that approval order. T08–T12 retain their own required design approval and final qualification criteria before `STACK_GREEN`.
+
 ### Implementation frontier
 
 A child ticket may start only when all logical blockers and its selected immediate stack parent are present in stack ancestry as:
@@ -225,7 +227,7 @@ Do not:
 - create a generic Form, DataTable, CRUD, Task, page-builder, plugin, authorization, or styling framework;
 - decide `SALVAGE STACK` versus `SELECTIVE REPLAY` (T12 / #517 owns that decision);
 - modify historical S4 PRs or declare them superseded before the approved promotion/supersession gate;
-- treat Storybook as a development/test presentation workshop or production route. `/prototype`, standalone prototypes, historical evidence, and temporary compatibility paths are likewise not shipped-product authority.
+- treat Storybook as a shipped-product route or production runtime dependency. Storybook remains the canonical local development/test presentation workshop; `/prototype`, standalone prototypes, historical evidence, and temporary compatibility paths remain provenance only and are not shipped-product authority.
 
 ## 11. Change checklist
 

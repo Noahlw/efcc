@@ -36,7 +36,7 @@
 - Ordinary implementation agents MUST NOT lower expectations, widen tolerances, change baselines, add skips/allowlists/suppressions, remove coverage, extend waivers, or use `!important` as routine containment.
 - Any token, primitive/pattern contract, scenario, tolerance, baseline, coverage, native exception, waiver, or approval requirement is a human-approved **CONTRACT CHANGE**.
 - Keep at most one unapproved visual **phase stack** in flight. A phase stack may contain multiple ticket-isolated PRs after each parent reaches `STACK_GREEN`; human approval and parent-first merge remain required before the stack enters the next phase.
-- A dependent ticket may start from a `STACK_GREEN` parent PR without waiting for that parent to merge. Keep one branch/PR per ticket and keep child PR bases pointed at their immediate stack parent so each PR remains an incremental ticket-isolated diff.
+- A dependent ticket may start from a `STACK_GREEN` parent PR without waiting for that parent to merge. Keep one branch/PR per ticket unless an explicit owner-approved phase exception applies; keep child PR bases pointed at their immediate stack parent so each PR remains an incremental ticket-isolated diff. For T07, follow the scoped shared-PR rule above.
 - Do not mix visual rescue with unrelated backend, schema, feature, lint, or data work. Do not treat screenshots or headless geometry as human approval.
 
 ### Phase 1 Storybook presentation authority
@@ -49,5 +49,7 @@
 - Production code must not import Storybook Stories, fixtures, handlers, or Storybook-only adapters. Storybook may depend on production presentation code; production must not depend on Storybook.
 - Do not copy `/prototype` mock shell, mock surfaces, viewport simulator, demo router, or scenario controls into the production Storybook catalog.
 - T07/#512 is the one scoped shared-PR exception defined in the tracker and governance authority: T07.1–T07.6 each own one checkpoint commit on one shared branch/PR, and only T07.6 can make the PR `STACK_GREEN`. T08–T12 return to one branch/PR per ticket.
+- The generic real-app `READY` gate still requires its required browser and Worker/D1 integration evidence. Isolated presentation work follows `TESTING.md` and ADR-0045; that separation does not waive any required integration test.
+- An issue label never authorizes a worktree, `/implement`, or implementation start. T07 children remain blocked until the tracker records the approved planning gate.
 - Story existence is not human approval. T07 records workshop-fidelity approval; T08+ design tickets require real design approval before final qualification.
 - Failures block the work that owns or causes them. Preserve and report unrelated pre-existing failures rather than silently relabeling them or freezing unrelated roadmap work.
