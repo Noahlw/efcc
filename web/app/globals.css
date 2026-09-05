@@ -429,32 +429,34 @@
    (TK-03). The class owns the shell token surface AND the top-right corner
    layout — top/right/left, width, max-width, padding, gap, and translate
    are all declared here so the component only ships the `attention-panel`
-   class (no off-token Tailwind literals). The class is unlayered (it lives
-   after the Tailwind utilities layer), so it beats the shadcn/Radix
+   class (no off-token Tailwind literals). It lives in the explicit Tailwind
+   utilities layer declared after the imported utilities, so it beats the shadcn/Radix
    `top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 gap-4 rounded-xl
    p-4` utility defaults without `!important`. Both dialog surfaces use the
    shell overlay layer so they remain above the phone dock and desktop rail. */
-.attention-panel {
-  top: var(--space-4);
-  right: var(--space-4);
-  left: auto;
-  width: auto;
-  max-width: calc(100vw - var(--space-4) * 2);
-  max-height: calc(100dvh - var(--space-4) * 2);
-  z-index: var(--layer-overlay);
-  padding: 0;
-  gap: 0;
-  /* Reset the Radix DialogContent's `top-1/2 left-1/2 -translate-x-1/2
+@layer utilities {
+  .attention-panel {
+    top: var(--space-4);
+    right: var(--space-4);
+    left: auto;
+    width: auto;
+    max-width: calc(100vw - var(--space-4) * 2);
+    max-height: calc(100dvh - var(--space-4) * 2);
+    z-index: var(--layer-overlay);
+    padding: 0;
+    gap: 0;
+    /* Reset the Radix DialogContent's `top-1/2 left-1/2 -translate-x-1/2
      -translate-y-1/2` centring so the panel anchors to the top-right
      corner of the viewport (TK-03). `translate: none` clears the
      Tailwind-managed --tw-translate-* variables atomically. */
-  translate: none;
-  overflow-y: auto;
-  border: var(--border-control);
-  border-radius: var(--radius-md);
-  color: var(--ink);
-  background: var(--surface-raised);
-  box-shadow: var(--shadow-overlay);
+    translate: none;
+    overflow-y: auto;
+    border: var(--border-control);
+    border-radius: var(--radius-md);
+    color: var(--ink);
+    background: var(--surface-raised);
+    box-shadow: var(--shadow-overlay);
+  }
 }
 .attention-panel__overlay {
   z-index: var(--layer-overlay);

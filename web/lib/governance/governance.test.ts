@@ -2163,6 +2163,17 @@ describe("Static Governance Source Audit Engine", () => {
       ).toHaveLength(0);
     });
 
+    it("keeps shell overlay precedence in an explicit utilities layer", () => {
+      const globalsCss = fs.readFileSync(
+        path.join(REPO_ROOT, "web/app/globals.css"),
+        "utf8"
+      );
+
+      expect(globalsCss).toMatch(
+        /@layer utilities\s*\{[\s\S]*\.attention-panel\s*\{/u
+      );
+    });
+
     it("detects the historical universal reset before waiver resolution", () => {
       const violations = auditFileContent(
         "web/app/globals.css",
