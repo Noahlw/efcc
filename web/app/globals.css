@@ -162,36 +162,35 @@
   --breakpoint-shell: 800px;
 }
 
-html {
-  height: 100%;
-}
+/* Document/base ownership stays below component and utility composition.
+   Tailwind Preflight owns the universal box-sizing and spacing reset; keeping
+   a second unlayered reset here would defeat utilities such as p-4. */
+@layer base {
+  html {
+    height: 100%;
+  }
 
-html,
-body {
-  max-width: 100vw;
-  overflow-x: hidden;
-}
+  html,
+  body {
+    max-width: 100vw;
+    overflow-x: hidden;
+  }
 
-body {
-  min-height: 100%;
-  display: flex;
-  flex-direction: column;
-  color: var(--ink);
-  background: var(--surface);
-  font-family: var(--font-sans);
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-}
+  body {
+    min-height: 100%;
+    display: flex;
+    flex-direction: column;
+    color: var(--ink);
+    background: var(--surface);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
 
-* {
-  box-sizing: border-box;
-  padding: 0;
-  margin: 0;
-}
-
-a {
-  color: inherit;
-  text-decoration: none;
+  a {
+    color: inherit;
+    text-decoration: none;
+  }
 }
 
 .sr-only {
@@ -385,19 +384,20 @@ a {
   }
 }
 
-/* Focus-visible ring for keyboard users (CF0-06 / matrix) */
-:focus-visible {
-  outline: 2px solid var(--focus);
-  outline-offset: 2px;
-}
+/* Focus-visible ring for keyboard users (CF0-06 / matrix). */
+@layer base {
+  :focus-visible {
+    outline: 2px solid var(--focus);
+    outline-offset: 2px;
+  }
 
-button:focus-visible,
-a:focus-visible,
-input:focus-visible {
-  outline: 2px solid var(--focus);
-  outline-offset: 2px;
+  button:focus-visible,
+  a:focus-visible,
+  input:focus-visible {
+    outline: 2px solid var(--focus);
+    outline-offset: 2px;
+  }
 }
-
 
 .shell {
   height: 100dvh;

@@ -2136,6 +2136,33 @@ describe("Static Governance Source Audit Engine", () => {
       }
     `;
 
+    it("removes T03 global waivers and fails closed when the reset returns", () => {
+      expect(
+        WAIVER_REGISTRY.filter((waiver) =>
+          waiver.id.startsWith("WVR-T03-GLOBAL-")
+        )
+      ).toHaveLength(0);
+
+      const result = auditCssFixture(historicalUniversalReset, WAIVER_REGISTRY);
+      expect(result.passed).toBe(false);
+      expect(result.violations).toHaveLength(1);
+      expect(result.violations[0]?.ruleId).toBe(HIGH_BLAST_CSS_RULE);
+
+      const globalsCss = fs.readFileSync(
+        path.join(REPO_ROOT, "web/app/globals.css"),
+        "utf8"
+      );
+      const liveViolations = auditFileContent(
+        "web/app/globals.css",
+        globalsCss
+      );
+      expect(
+        liveViolations.filter(
+          (violation) => violation.ruleId === HIGH_BLAST_CSS_RULE
+        )
+      ).toHaveLength(0);
+    });
+
     it("detects the historical universal reset before waiver resolution", () => {
       const violations = auditFileContent(
         "web/app/globals.css",
