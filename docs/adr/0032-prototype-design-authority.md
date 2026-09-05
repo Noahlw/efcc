@@ -37,7 +37,9 @@ The prior stack (PR #297 and issues #291–#296) was closed without merging.
 See `.scratch/prototype-port-2026/GRILLING-DECISIONS.md` for the complete
 decision record.
 
-### Decision
+### Decision — historical reconciliation record
+
+The decisions below record the historical prototype reconciliation. They remain provenance for product/domain corrections; current presentation authority is defined in the disposition below.
 
 1. **Source of truth**: `design/efcc-management-workspace-prototype.html`
    and `design/efcc-participant-checkin-prototype.html` are binding. Where
