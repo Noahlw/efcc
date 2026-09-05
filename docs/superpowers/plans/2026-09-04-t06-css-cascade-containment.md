@@ -10,6 +10,8 @@
 
 **Tech Stack:** Tailwind CSS v4, Next.js static export, React, TypeScript, Playwright, Vitest, and the existing EFCC governance registries.
 
+The same-fixture before/after record is [`docs/qa/2026-09-05-t06-cascade-before-after.json`](../../docs/qa/2026-09-05-t06-cascade-before-after.json): baseline `199b54e0` measured zero route/surface/input/search padding and only `38.953125px` phone scroll tail; T06 implementation `b4a382b9` measured positive values, Programs center delta `0`, and `115.640625px` phone scroll tail. The live-ui report remains at `tests/e2e/test-results/live-ui-results.json`.
+
 ## Global Constraints
 
 - This is T06 / #511 containment only; do not start T07 or Phase 1.
