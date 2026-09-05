@@ -161,23 +161,23 @@ For visual phases, each ticket still prepares attributable scenario evidence. Th
 | Field | Current value |
 |---|---|
 | Current phase | **Phase 0 — Foundation & Recovery Control** |
-| Phase status | `IN PROGRESS — T01–T05 are MERGED_RESCUE; T06/#511 is MERGE_READY on PR #550; Phase 0 merge readback remains` |
-| Rescue integration HEAD | `199b54e086bfae5faff1cd4fabd42c09353087da` — verified T05 replacement PR #565 merge on `rescue/ui-control-recovery` |
-| Active phase stack | T06/#511 `rescue/t06-css-cascade` → parent-first merge into `rescue/ui-control-recovery`; T07/#512 begins only after Phase 0 exit |
-| Implementation frontier | T06 implementation/evidence candidate `092936a197c2993938e5658ce4e97f5ba76914d4`; current PR/records head `092936a197c2993938e5658ce4e97f5ba76914d4`; #511 evidence is current |
-| Merge frontier | [#550](https://github.com/Noahlw/efcc/pull/550) parent-first into `rescue/ui-control-recovery`; verify the actual merge SHA before Phase 0 exit |
+| Phase status | `COMPLETE THROUGH T06 — T01–T06 are MERGED_RESCUE; Phase 0 exit is recorded; T07/#512 is intentionally untouched` |
+| Rescue integration HEAD | `ffef73087c3cc985f1b314e8017cfdf973e26d58` — verified T06 PR #550 parent-first merge on `rescue/ui-control-recovery`; T05 replacement PR #565 remains in ancestry |
+| Active phase stack | None — T06/#511 is merged parent-first; T07/#512 is a future placeholder only and must not be started from this tracker |
+| Implementation frontier | None — T06/#511 qualification and review are complete at `09f5b0eb28f20c2e2517fe60b14fbb15bc404185`; no T07 implementation or handoff is authorized |
+| Merge frontier | None — [#550](https://github.com/Noahlw/efcc/pull/550) merged parent-first into `rescue/ui-control-recovery` at `ffef73087c3cc985f1b314e8017cfdf973e26d58` |
 | Review status | Standards PASS and Spec PASS on the complete `199b54e0...092936a1` diff; no actionable findings remain |
 | Owner approval | T05 functional-acceptance / sustained-runtime-risk amendment: [#505 comment](https://github.com/Noahlw/efcc/issues/505#issuecomment-5550498028). It permits rescue-development qualification with B-003 open; it does not authorize a runtime-fix or production-release claim |
 | Required evidence | Real Worker/D1 live-ui `2/2`; same-fixture before/after artifact; responsive `92`; shell geometry `28`; role-hierarchy `49`; focused governance `105/105`; full/release governance; typecheck; precommit; diff-check |
 | Active blocker | B-003 remains `OPEN` sustained-runtime residual risk: independent five-minute canary failed at revision `04f346c9e53db2bb6601bf4fdb2420adf80de764` after 141 completed scenarios with HTTP 500; artifact `test-results/programs-runtime-canary/20260905t083708030z/run.json`. This is not a finite-gate blocker under the approved amendment; no runtime fix or production-release claim is made |
-| Next safe action | Mark #550 ready/read back the current head, merge it parent-first into `rescue/ui-control-recovery`, verify merge SHA, finish Phase 0 exit, and then set T07/#512 as the next normal frontier |
+| Next safe action | Stop at T06. Preserve B-003 `OPEN` residual risk and all later approval gates; do not create a T07 worktree, implementation, or handoff |
 
 > Historical T01–T05 execution logs and provenance remain below. The snapshot above is the active control-plane state for the next session.
 ## 5. Phase overview
 
 | Phase | Tickets | Outcome | Entry gate | Exit gate | Status |
 |---|---|---|---|---|---|
-| **0 — Foundation & Recovery Control** | T01–T04, T05 umbrella + T05.1–T05.7, T06 / #506–#511 and #551–#557 | Preserve post-main S4 value, establish governance/enforcement, restore Worker tests, qualify layered Programs testing, and contain the global cascade | Parent/tickets published; frozen Phase F SHA and full S4 ancestry verified | T05 replacement PR #565 and T06 PR #550 merged into rescue; cascade evidence recorded | `IN PROGRESS — T06 review/merge pending` |
+| **0 — Foundation & Recovery Control** | T01–T04, T05 umbrella + T05.1–T05.7, T06 / #506–#511 and #551–#557 | Preserve post-main S4 value, establish governance/enforcement, restore Worker tests, qualify layered Programs testing, and contain the global cascade | Parent/tickets published; frozen Phase F SHA and full S4 ancestry verified | T05 replacement PR #565 and T06 PR #550 merged into rescue at `ffef73087c3cc985f1b314e8017cfdf973e26d58`; cascade evidence recorded | `COMPLETE THROUGH T06 — Phase 0 exit recorded; T07/#512 intentionally untouched` |
 | **1 — Executable UI Foundation** | T07–T12 / #512–#517 | UI Lab, app-facing contracts, composition grammar, shell, Programs tracer, rescue-path decision | Phase 0 complete | #512–#517 merged; required human approvals recorded; T12 decision recorded | `BLOCKED` |
 | **2 — Programs Route Family** | T13–T16 / #518–#521 | Complete participant-management Programs rescue | Phase 1 complete | #518–#521 merged and Programs family approved | `BLOCKED` |
 | **3 — Member & Public Surfaces** | T17–T19 / #522–#524 | Profile/settings, public auth, and communications rescued | Phase 2 complete | #522–#524 merged and approved | `BLOCKED` |
@@ -198,13 +198,13 @@ For visual phases, each ticket still prepares attributable scenario evidence. Th
 | T03 | [#508](https://github.com/Noahlw/efcc/issues/508) | Enforce styling ownership typed UI contract governance | T02 | `MERGED_RESCUE` | [#548](https://github.com/Noahlw/efcc/pull/548) | `d2652bfb11b469f5fa557d3c2c73d69c4a17649d` | High-blast CSS rule and exact source-fingerprint governance; six T03 global waivers remained owned by T06 until removal |
 | T04 | [#509](https://github.com/Noahlw/efcc/issues/509) | Restore excluded normalized Worker suites | T01 | `MERGED_RESCUE` | [#546](https://github.com/Noahlw/efcc/pull/546) | `6e7428b61bc9bbd2d82109688049696078609b59` | Focused/aggregate/typecheck/precommit/diff-check and two-axis review gates passed; parent-first merge complete |
 | T05 | [#510](https://github.com/Noahlw/efcc/issues/510) | Layered Programs/Worker/D1 testing architecture promotion | T04 and T05 child graph | `MERGED_RESCUE` | [#565](https://github.com/Noahlw/efcc/pull/565) | `199b54e086bfae5faff1cd4fabd42c09353087da` | #551–#557 plus finite-gate correction merged parent-first; `test-results/programs-promotion/20260905t092742881z/promotion.json` records four finite stages passed and canary `not_run`; B-003 remains open |
-| T06 | [#511](https://github.com/Noahlw/efcc/issues/511) | Contain global CSS cascade | T01, T03, T05.7 / T05 promotion | `MERGE_READY` | [#550](https://github.com/Noahlw/efcc/pull/550) current head `092936a197c2993938e5658ce4e97f5ba76914d4` | — | Restacked onto T05 merge; explicit `@layer utilities` shell-overlay ownership; fresh Worker-backed live-ui `2/2`; same-fixture before/after; responsive `92`; shell geometry `28`; role-hierarchy `49`; governance `105`; typecheck, precommit, and diff-check passed; Standards/Spec review PASS; ready for merge |
+| T06 | [#511](https://github.com/Noahlw/efcc/issues/511) | Contain global CSS cascade | T01, T03, T05.7 / T05 promotion | `MERGED_RESCUE` | [#550](https://github.com/Noahlw/efcc/pull/550) merge `ffef73087c3cc985f1b314e8017cfdf973e26d58` | — | Restacked onto T05 merge; explicit `@layer utilities` shell-overlay ownership; fresh Worker-backed live-ui `2/2`; same-fixture before/after; responsive `92`; shell geometry `28`; role-hierarchy `49`; governance `105`; typecheck, precommit, and diff-check passed; Standards/Spec review PASS; parent-first merge verified |
 
 ### Phase 0 exit record
 
 | Field | Value |
 |---|---|
-| Phase status | `NOT COMPLETE — T05 MERGED_RESCUE; T06/#550 MERGE_READY and rescue merge pending` |
+| Phase status | `COMPLETE THROUGH T06 — T06/#511 MERGED_RESCUE via #550 at ffef73087c3cc985f1b314e8017cfdf973e26d58; B-003 OPEN; T07/#512 untouched` |
 | Tickets merged | T01 / #506, T02 / #507, T03 / #508, T04 / #509, T05 / #510 via replacement PR #565 |
 | Rescue integration SHA | `199b54e086bfae5faff1cd4fabd42c09353087da` (T05 merge; T06 not yet merged) |
 | Preservation Ledger | Full post-main S4 lineage merged; [`ui-control-recovery-preservation-ledger.md`](ui-control-recovery-preservation-ledger.md) and [`ui-control-recovery-preservation-summary.md`](ui-control-recovery-preservation-summary.md) remain the provenance record |
@@ -212,14 +212,16 @@ For visual phases, each ticket still prepares attributable scenario evidence. Th
 | Required Worker gate | T04/#509 merged into rescue at `6e7428b61bc9bbd2d82109688049696078609b59` |
 | Programs runtime | `5147cdfd1202ad245966522f5f94ed9f8580f0ad` passed Worker Contract, Browser Acceptance `2/2`, Responsive Matrix `6/6`, and local non-browser precommit; `test-results/programs-promotion/20260905t092742881z/promotion.json` records `functional-passed`, canary `not_run`, and B-003 disclosure |
 | Cascade result | Passed on T06 candidate `09f5b0eb`; fresh Worker-backed live-ui `2/2`; before/after artifact [`docs/qa/2026-09-05-t06-cascade-before-after.json`](../qa/2026-09-05-t06-cascade-before-after.json); responsive `92`; shell geometry `28`; role-hierarchy `49`; no route/domain behavior change |
-| Open blockers | Final independent Standards/Spec readback, then #550 parent-first merge into `rescue/ui-control-recovery` and actual merge-SHA verification. B-003 remains accepted rescue-development residual risk, not finite-gate waiver or production-release approval |
-| Next phase | Phase 1 remains blocked until #550 is actually `MERGED_RESCUE` and its merge SHA is verified; then T07/#512 is the next normal implementation frontier |
+| Open blockers | No finite T06 gate blockers. B-003 remains `OPEN` sustained-runtime residual risk; this does not claim a runtime fix or authorize production release/main merge. All later human-approval and promotion gates remain preserved |
+| Next phase | Phase 1 remains blocked. T07/#512 is intentionally untouched and awaits a separate owner-approved replacement plan; no T07 implementation or handoff starts here |
 
 ---
 
-# 7. Phase 1 — Executable UI Foundation
+# 7. Phase 1 — Executable UI Foundation (future plan — intentionally untouched)
 
 **Goal:** Establish the live human-tuning and machine-contract system, then prove it on Programs.
+
+**Current control-plane rule:** T07/#512 and all Phase 1 work are intentionally untouched. This tracker grants no approval to implement, hand off, or prepare T07; the owner will provide a separate replacement plan before that phase is reconsidered.
 
 | Key | Issue | Ticket | Blocked by | Status | PR | Merge SHA | Human gate |
 |---|---|---|---|---|---|---|---|
@@ -241,7 +243,7 @@ For visual phases, each ticket still prepares attributable scenario evidence. Th
 | Approved shell SHA | — |
 | Programs tracer approval | — |
 | T12 decision | `UNDECIDED` |
-| Next phase | Phase 1 after #565 T05 and #550 T06 are actually `MERGED_RESCUE`; T07/#512 is then the next normal frontier |
+| Next phase | Future phases remain blocked; T07/#512 is intentionally untouched and awaits a separate owner-approved replacement plan; no implementation or handoff starts from this tracker |
 
 ---
 
@@ -266,7 +268,7 @@ For visual phases, each ticket still prepares attributable scenario evidence. Th
 | Programs coverage report | — |
 | Programs approval packages | — |
 | Remaining Programs defects | — |
-| Next phase | Phase 1 after #565 T05 and #550 T06 are actually `MERGED_RESCUE`; T07/#512 is then the next normal frontier |
+| Next phase | Future phases remain blocked; T07/#512 is intentionally untouched and awaits a separate owner-approved replacement plan; no implementation or handoff starts from this tracker |
 
 ---
 
@@ -289,7 +291,7 @@ For visual phases, each ticket still prepares attributable scenario evidence. Th
 | Rescue integration SHA | — |
 | Approval packages | — |
 | Remaining member/public defects | — |
-| Next phase | Phase 1 after #565 T05 and #550 T06 are actually `MERGED_RESCUE`; T07/#512 is then the next normal frontier |
+| Next phase | Future phases remain blocked; T07/#512 is intentionally untouched and awaits a separate owner-approved replacement plan; no implementation or handoff starts from this tracker |
 
 ---
 
@@ -318,7 +320,7 @@ For visual phases, each ticket still prepares attributable scenario evidence. Th
 | Approval packages | — |
 | Preserved identity/permission evidence | — |
 | Remaining management/identity defects | — |
-| Next phase | Phase 1 after #565 T05 and #550 T06 are actually `MERGED_RESCUE`; T07/#512 is then the next normal frontier |
+| Next phase | Future phases remain blocked; T07/#512 is intentionally untouched and awaits a separate owner-approved replacement plan; no implementation or handoff starts from this tracker |
 
 ---
 
@@ -344,7 +346,7 @@ For visual phases, each ticket still prepares attributable scenario evidence. Th
 | Native print evidence | — |
 | Approval packages | — |
 | Remaining attendance/scanner defects | — |
-| Next phase | Phase 1 after #565 T05 and #550 T06 are actually `MERGED_RESCUE`; T07/#512 is then the next normal frontier |
+| Next phase | Future phases remain blocked; T07/#512 is intentionally untouched and awaits a separate owner-approved replacement plan; no implementation or handoff starts from this tracker |
 
 ---
 
@@ -384,13 +386,13 @@ The tracker separates the implementation frontier from the merge frontier. `STAC
 | Phase | Phase 0 — Foundation & Recovery Control |
 | Rescue base SHA | `199b54e086bfae5faff1cd4fabd42c09353087da` |
 | Stack root | `rescue/ui-control-recovery` after parent-first merge of #547, #546, #548, and T05 replacement #565 |
-| Stack tip | `rescue/t06-css-cascade` / T06/#511 candidate `092936a197c2993938e5658ce4e97f5ba76914d4`; #550 is MERGE_READY after Standards/Spec PASS |
-| Implementation frontier | T06 implementation/evidence candidate `09f5b0eb28f20c2e2517fe60b14fbb15bc404185`; real Worker-backed live-ui `2/2`, same-fixture before/after, responsive `92`, shell geometry `28`, role-hierarchy geometry `49`, focused governance `105/105`, full/release governance, typecheck, precommit, and diff-check passed; B-003 remains open |
-| Merge frontier | [#550](https://github.com/Noahlw/efcc/pull/550) parent-first into `rescue/ui-control-recovery`; verify actual merge SHA before Phase 0 exit |
-| Review status | Final independent T06 Standards/Spec review readback is the remaining pre-ready gate; prior tracker, selector-layer, evidence-SHA, and runtime-setup findings are addressed |
+| Stack tip | `rescue/ui-control-recovery` @ `ffef73087c3cc985f1b314e8017cfdf973e26d58`; T06/#511 merged parent-first via #550; no active child stack |
+| Implementation frontier | None — T06/#511 qualification and review are complete at `09f5b0eb28f20c2e2517fe60b14fbb15bc404185`; real Worker-backed live-ui `2/2`, same-fixture before/after, responsive `92`, shell geometry `28`, role-hierarchy geometry `49`, focused governance `105/105`, full/release governance, typecheck, precommit, and diff-check passed; B-003 remains `OPEN`; T07/#512 is untouched |
+| Merge frontier | None — [#550](https://github.com/Noahlw/efcc/pull/550) merged parent-first into `rescue/ui-control-recovery` at `ffef73087c3cc985f1b314e8017cfdf973e26d58` |
+| Review status | Final independent T06 Standards/Spec review readback PASS; required qualification gates PASS; no actionable findings remain |
 | Human approval | The T05 qualification amendment and attached exit plan permit the rescue merge only after required review/gate readback; #511 explicitly does not claim final human visual approval; no production or `main` action is authorized |
 | Descendants requiring restack | None — T06 is already restacked onto T05 merge; #549 remains historical and closed without merge |
-| Next safe action | Finish final two-axis review; mark #550 ready only if both axes pass; merge #550 into `rescue/ui-control-recovery`; verify merge SHA; then finish Phase 0 exit and set T07/#512 as the next normal frontier |
+| Next safe action | Stop at T06. Preserve B-003 `OPEN` and all later ticket, human-approval, and promotion gates; do not create a T07 worktree or handoff |
 
 ## Stack map
 
@@ -408,7 +410,7 @@ The tracker separates the implementation frontier from the merge frontier. `STAC
 | 9 | T05.5 / [#555](https://github.com/Noahlw/efcc/issues/555) | T05.2 / #552 | `rescue/t05-layered-testing` | `rescue/t05-layered-testing` | historical | `rescue/ui-control-recovery` | [#565](https://github.com/Noahlw/efcc/pull/565) | `MERGED_RESCUE via #565` | see #565 | N/A | `199b54e086bfae5faff1cd4fabd42c09353087da` |
 | 10 | T05.6 / [#556](https://github.com/Noahlw/efcc/issues/556) | #554, #555 | `rescue/t05-layered-testing` | `rescue/t05-layered-testing` | historical | `rescue/ui-control-recovery` | [#565](https://github.com/Noahlw/efcc/pull/565) | `MERGED_RESCUE via #565` | see #565 | N/A | `199b54e086bfae5faff1cd4fabd42c09353087da` |
 | 11 | T05.7 / [#557](https://github.com/Noahlw/efcc/issues/557) | #553, #554, #555, #556 | `rescue/t05-layered-testing` | `rescue/t05-layered-testing` | historical | `rescue/ui-control-recovery` | [#565](https://github.com/Noahlw/efcc/pull/565) | `MERGED_RESCUE via #565` | see #565 | N/A | `199b54e086bfae5faff1cd4fabd42c09353087da` |
-| 12 | T06 / [#511](https://github.com/Noahlw/efcc/issues/511) | T05.7 / #557 and T05 promotion | `rescue/ui-control-recovery` | `rescue/t06-css-cascade` | `/Users/noah.wong/Desktop/code/EFCC-dev/.worktrees/phase0-t06-20260904` | `rescue/ui-control-recovery` | [#550](https://github.com/Noahlw/efcc/pull/550) | `MERGE_READY` | `09f5b0eb28f20c2e2517fe60b14fbb15bc404185` | N/A | `199b54e086bfae5faff1cd4fabd42c09353087da` |
+| 12 | T06 / [#511](https://github.com/Noahlw/efcc/issues/511) | T05.7 / #557 and T05 promotion | `rescue/ui-control-recovery` | `rescue/t06-css-cascade` | `/Users/noah.wong/Desktop/code/EFCC-dev/.worktrees/phase0-t06-20260904` | `rescue/ui-control-recovery` | [#550](https://github.com/Noahlw/efcc/pull/550) | `MERGED_RESCUE` (merge `ffef73087c3cc985f1b314e8017cfdf973e26d58`) | `09f5b0eb28f20c2e2517fe60b14fbb15bc404185` | N/A | `199b54e086bfae5faff1cd4fabd42c09353087da` |
 
 
 ## 14. Ticket execution log
@@ -600,19 +602,19 @@ No production implementation, schema, API, permission, audit, idempotency, scope
 
 #### T06 / #511 — Contain global CSS cascade
 
-- **Status:** `MERGE_READY`
+- **Status:** `MERGED_RESCUE` via parent-first merge of #550 into `rescue/ui-control-recovery`
 - **Base rescue SHA:** `199b54e086bfae5faff1cd4fabd42c09353087da`
-- **Reviewed implementation SHA / merge SHA:** `09f5b0eb28f20c2e2517fe60b14fbb15bc404185` / pending
-- **Branch / PR:** `rescue/t06-css-cascade` / [#550](https://github.com/Noahlw/efcc/pull/550), current head `092936a197c2993938e5658ce4e97f5ba76914d4`
+- **Reviewed implementation SHA / merge SHA:** `09f5b0eb28f20c2e2517fe60b14fbb15bc404185` / `ffef73087c3cc985f1b314e8017cfdf973e26d58`
+- **Branch / PR:** `rescue/t06-css-cascade` / [#550](https://github.com/Noahlw/efcc/pull/550), merged parent-first at `ffef73087c3cc985f1b314e8017cfdf973e26d58`; candidate head `092936a197c2993938e5658ce4e97f5ba76914d4`
 - **Worktree:** `/Users/noah.wong/Desktop/code/EFCC-dev/.worktrees/phase0-t06-20260904`
 - **Rollback boundary:** `199b54e086bfae5faff1cd4fabd42c09353087da`
 - **Delivered outcome:** Explicit Tailwind utilities-layer shell-overlay ownership; six T03 global waivers remain removed; no API, schema, permission, domain, production-data, or route-behavior change.
 - **Tests:** Real Worker/D1 live-ui `2/2`; same-fixture before/after; responsive `92`; shell geometry `28`; role-hierarchy geometry `49`; focused governance `105/105`; full/release governance; typecheck; precommit; diff-check.
 - **Code review:** Final independent Standards/Spec review PASS on `199b54e0...092936a1`; no actionable findings remain.
-- **Human approval:** `N/A` for #511’s explicitly non-final-human-visual-approval outcome; rescue merge remains gated by the approved exit plan.
-- **Preservation impact:** T05 #565 remains the sole replacement PR merged at `199b54e086bfae5faff1cd4fabd42c09353087da`; B-003 canary evidence remains open and unchanged.
-- **Open blocker:** Parent-first merge of #550 into `rescue/ui-control-recovery` and actual merge-SHA verification.
-- **Next eligible ticket:** T07 / #512 only after Phase 0 exit is recorded.
+- **Human approval:** `N/A` for #511’s explicitly non-final-human-visual-approval outcome; the approved exit plan permitted the rescue merge after the required finite gates and review. No production or `main` action is authorized.
+- **Preservation impact:** T05 replacement PR #565 remains merged at `199b54e086bfae5faff1cd4fabd42c09353087da`; T06 #550 is merged at `ffef73087c3cc985f1b314e8017cfdf973e26d58`; B-003 canary evidence remains open and unchanged.
+- **Open blocker:** No finite T06 gate blocker. B-003 remains `OPEN` residual sustained-runtime risk; it is not a runtime-fix or production-release claim.
+- **Next eligible ticket:** None. T07 / #512 is intentionally untouched and awaits a separate owner-approved replacement plan.
 
 ## 15. Human approval queue
 
@@ -742,8 +744,8 @@ For the T05 layered-testing rework, D-004 is the explicit owner-approved excepti
 
 ## 20. Next safe action
 
-1. Standards and Spec review PASS for T06/#511 on `199b54e0...092936a1`; #550 is ready to merge into rescue.
-2. Merge [#550](https://github.com/Noahlw/efcc/pull/550) parent-first into `rescue/ui-control-recovery`, verify the actual merge SHA, and never merge `main`.
-3. Verify the actual #550 merge SHA, reconcile T06 and the Phase 0 exit record in this tracker, and retain the unchanged B-003 `OPEN` residual-risk disclosure.
-4. After T01–T06 are all actually `MERGED_RESCUE`, set T07/#512 as the next normal implementation frontier.
-5. Prepare the fresh `/implement` T07/#512 handoff; retain all later ticket, human-approval, T33/#538, T35/#540, and final `main` gates.
+1. T06/#511 qualification, required finite gates, and independent Standards/Spec review are PASS; preserve their evidence and review provenance.
+2. PR [#550](https://github.com/Noahlw/efcc/pull/550) is verified `MERGED_RESCUE` parent-first into `rescue/ui-control-recovery` at `ffef73087c3cc985f1b314e8017cfdf973e26d58`; `main` remains untouched.
+3. Phase 0 exit is complete through T06. Retain B-003 `OPEN` as residual sustained-runtime risk; this is not a runtime-fix or production-release claim.
+4. Stop here. Do not create a T07 worktree, implement T07, prepare a T07 handoff, or modify #512.
+5. Retain all later ticket, human-approval, T33/#538, T35/#540, and final `main` gates for the owner’s future replacement plan.
