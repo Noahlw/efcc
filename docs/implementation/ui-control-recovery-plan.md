@@ -276,6 +276,30 @@ For visual phases, each ticket still prepares attributable scenario evidence. Th
 
 ---
 
+## Downstream UI architecture inheritance
+
+The GitHub tickets #518–#541 now carry the standardized current-architecture inheritance banner. The banner is intentionally additive: it preserves each ticket’s existing product outcome, domain behavior, preservation obligations, dependency graph, title, and acceptance scope. The original issue body remains below the banner, with only the targeted phase-entry notes on #538, #539, and #541.
+
+Because planning PR #572 is still open, the banner identifies ADR-0045 as effective after that PR merges into `rescue/ui-control-recovery`. No downstream ticket is promoted to implementation by issue publication alone.
+
+### Deferred phase-entry revalidation
+
+| Phase | Tickets | Revalidation boundary |
+|---|---|---|
+| Phase 2 — Programs Route Family | T13–T16 / #518–#521 | After T12 records `SALVAGE STACK` or `SELECTIVE REPLAY`; revalidate rescue lineage, evolved T07/T12 PSNs, Storybook-first presentation, Screen Catalog, RouteScenario, ApprovalPackage, and Worker/D1 behavior. |
+| Phase 3 — Member & Public Surfaces | T17–T19 / #522–#524 | After Phase 2; reuse T07.2 PSNs where valid and revalidate real auth/session/routing and presentation evidence. |
+| Phase 4 — Management & Identity | T20–T27 / #525–#532 | After Phase 3; treat route count separately from meaningful Screen Catalog identities, especially `/management` query/intents, and keep permission enforcement real-system-owned. |
+| Phase 5 — Attendance, Scanner & Print | T28–T31 / #533–#536 | After Phase 4; keep Storybook deterministic outcomes separate from real camera/scanner/device/print qualification and evolve T07.5 identities. |
+| Phase 6 — Contraction, Verification & Promotion | T32–T36 / #537–#541 | At phase entry, reconcile current Screen Catalog/PSN/Story, RouteScenario, UI Contract, ApprovalPackage, device/platform, T05/T12, and B-003 evidence. |
+
+Targeted future notes already published with the downstream banners are authoritative reminders, not present edits to future ticket scope:
+
+- #538 / T33 revalidates historical generated route/state inventory and monolithic Programs/Worker/D1 wording against the current Screen Catalog, PSN/Story, RouteScenario, UI Contract, T05, T12, and B-003 split.
+- #539 / T34 requires current ApprovalPackage/PSN/Story references for presentation review while retaining separate real-device, assistive-technology, camera, touch, safe-area, and native-print evidence.
+- #541 / T36 reconciles the final active UI authority chain and keeps historical UI Lab or generic scenario-registry wording as provenance only.
+
+Until PR #572 is merged, T07/#512 and T07.1/#566 remain `BLOCKED — AWAITING PLAN MERGE`; after merge, a planning-only activation may mark only T07 and T07.1 as `FRONTIER`. T07.2–T07.6 and T08–T12 remain blocked by their defined dependency graphs. No T07 worktree, implementation branch, Storybook code, or `/implement` run exists.
+
 # 8. Phase 2 — Programs Route Family
 
 **Goal:** Complete the Programs family after the tracer proves the architecture.
