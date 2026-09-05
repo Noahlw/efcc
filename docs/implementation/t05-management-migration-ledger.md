@@ -6,6 +6,14 @@
 
 This ledger assigns management-facing logical behavior to the narrowest useful seam. The historical three-project Programs suite remains available during migration; its repeated viewport execution is not the authority for domain coverage.
 
+## Executable mapping
+
+| Authority | Executable replacement |
+| --- | --- |
+| Worker Contract Gate | `web/lib/programs/programs-contract.test.ts` |
+| Browser Acceptance | `tests/e2e/programs-management-acceptance.test.ts` |
+| Responsive UI Matrix | `tests/e2e/programs-responsive-matrix.test.ts` |
+
 ## Scenario inventory
 
 | Logical scenario | Historical execution | New primary owner | Disposition |

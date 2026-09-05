@@ -27,6 +27,8 @@ Under the owner-approved [T05 rescue qualification amendment](https://github.com
 
 The canary remains independently runnable through `pnpm test:programs:canary` with its existing five-minute and zero-retry semantics. A red canary remains visible and non-zero, but does not become green or change finite-stage results. A failed finite functional scenario still blocks qualification. The machine result `functional-passed` is not T05 `STACK_GREEN`; ledger reconciliation, current-revision evidence, separate Standards/Spec review, one replacement PR, and the scoped risk record remain required.
 
+When an independent canary run is available, pass its `run.json` through `PROGRAMS_CANARY_RUN_FILE`; the promotion manifest records its `passed`/`failed`/`not_run` status, source revision, and artifact path. With no reference the manifest records `not_run`; an invalid explicit reference fails closed without making the canary a mandatory aggregate stage.
+
 ## Contraction boundary
 
 `tests/e2e/programs-d1.config.ts` remains available for selective diagnostic replay of the historical mega-suite. It is not called by `verify:programs`, and its `201 expected` count, three-project multiplication, and former five-complete-run qualification are not T05 promotion authority. The participant and management ledgers account for the historical logical scenarios before this authority is contracted.

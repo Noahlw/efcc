@@ -7,6 +7,7 @@ import {
   B003_RESIDUAL_RISK,
   PROMOTION_STAGES,
   RUNTIME_CANARY_STAGE,
+  assertMigrationLedgersComplete,
   assertLocalPromotionTarget,
   isCanaryArtifactGreen,
   isFunctionalPromotionManifest,
@@ -36,6 +37,9 @@ describe("T05.7 Programs promotion gate", () => {
       status: "open",
       disposition: "accepted-rescue-development-risk",
       scope: "rescue-development only",
+      ownerApprovalReference:
+        "https://github.com/Noahlw/efcc/issues/505#issuecomment-5550498028",
+      diagnosticCommand: "pnpm test:programs:canary",
     });
   });
 
@@ -49,6 +53,24 @@ describe("T05.7 Programs promotion gate", () => {
       isFunctionalPromotionManifest({
         status: "functional-passed",
         riskDisclosure: B003_RESIDUAL_RISK,
+        diagnostic: {
+          runtimeCanary: {
+            command: "pnpm test:programs:canary",
+            status: "failed",
+            revision: "rev-1",
+            artifact: "test-results/programs-runtime-canary/run.json",
+          },
+        },
+        migrationLedger: {
+          participantRows: 1,
+          managementRows: 1,
+          executableMappings: [
+            "web/lib/programs/programs-contract.test.ts",
+            "tests/e2e/programs-participant-acceptance.test.ts",
+            "tests/e2e/programs-management-acceptance.test.ts",
+            "tests/e2e/programs-responsive-matrix.test.ts",
+          ],
+        },
         stageResults: [
           ...finiteResults,
           { name: "runtime-canary", status: "failed" },
@@ -61,6 +83,45 @@ describe("T05.7 Programs promotion gate", () => {
         stageResults: finiteResults,
       })
     ).toBe(false);
+  });
+
+  test("requires complete migration ledgers and executable mappings", () => {
+    const participantLedger = readFileSync(
+      path.join(
+        repoRoot,
+        "docs/implementation/t05-participant-migration-ledger.md"
+      ),
+      "utf8"
+    );
+    const managementLedger = readFileSync(
+      path.join(
+        repoRoot,
+        "docs/implementation/t05-management-migration-ledger.md"
+      ),
+      "utf8"
+    );
+
+    expect(
+      assertMigrationLedgersComplete(participantLedger, managementLedger)
+    ).toMatchObject({
+      participantRows: expect.any(Number),
+      managementRows: expect.any(Number),
+      executableMappings: expect.arrayContaining([
+        "web/lib/programs/programs-contract.test.ts",
+        "tests/e2e/programs-participant-acceptance.test.ts",
+        "tests/e2e/programs-management-acceptance.test.ts",
+        "tests/e2e/programs-responsive-matrix.test.ts",
+      ]),
+    });
+    expect(() =>
+      assertMigrationLedgersComplete(
+        participantLedger.replace(
+          /\| PUI-01 admin participant[^\n]*/u,
+          "| PUI-01 | | | |"
+        ),
+        managementLedger
+      )
+    ).toThrow(/ledger row/u);
   });
 
   test("accepts only a complete zero-retry Playwright report", () => {

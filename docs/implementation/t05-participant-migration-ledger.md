@@ -14,6 +14,14 @@ This ledger counts logical participant behavior, not the historical three viewpo
 | Browser Acceptance | Cookie/session behavior, real navigation/history, DOM interaction, multi-step participant workflow, and browser → Worker → D1 → browser round trip |
 | Responsive UI Matrix | Deterministic layout, overflow, action visibility, target geometry, dock clearance, composition, and viewport interaction |
 
+## Executable mapping
+
+| Authority | Executable replacement |
+| --- | --- |
+| Worker Contract Gate | `web/lib/programs/programs-contract.test.ts` |
+| Browser Acceptance | `tests/e2e/programs-participant-acceptance.test.ts` |
+| Responsive UI Matrix | `tests/e2e/programs-responsive-matrix.test.ts` |
+
 ## Scenario inventory
 
 | Logical scenario | Historical execution | New primary owner | Migration disposition |

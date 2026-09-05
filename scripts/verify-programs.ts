@@ -48,6 +48,9 @@ export const B003_RESIDUAL_RISK = {
   status: "open",
   disposition: "accepted-rescue-development-risk",
   scope: "rescue-development only",
+  ownerApprovalReference:
+    "https://github.com/Noahlw/efcc/issues/505#issuecomment-5550498028",
+  diagnosticCommand: "pnpm test:programs:canary",
   summary:
     "The unchanged five-minute sustained-runtime canary remains unresolved diagnostic evidence; this is not a runtime-fix or production-release approval.",
 } as const;
@@ -72,9 +75,112 @@ function numberField(record: JsonRecord | null, key: string): number | null {
   return typeof value === "number" ? value : null;
 }
 
+type MigrationLedgerSummary = {
+  participantRows: number;
+  managementRows: number;
+  executableMappings: string[];
+};
+
+function ledgerRows(source: string, label: string): string[][] {
+  const scenarioStart = source.indexOf("## Scenario inventory");
+  const scenarioSource =
+    scenarioStart === -1
+      ? ""
+      : source.slice(scenarioStart + "## Scenario inventory".length);
+  const nextSection = scenarioSource.search(/\n##\s/u);
+  const scenarioSection =
+    nextSection === -1 ? scenarioSource : scenarioSource.slice(0, nextSection);
+  const rows = scenarioSection
+    .split(/\r?\n/u)
+    .filter(
+      (line) => line.trim().startsWith("|") && !/^\|\s*-{3,}/u.test(line.trim())
+    )
+    .map((line) =>
+      line
+        .split("|")
+        .slice(1, -1)
+        .map((cell) => cell.trim())
+    );
+
+  if (rows.length < 2) {
+    throw new Error(`T05.7 ${label} migration ledger has no scenario rows`);
+  }
+
+  const dataRows = rows.slice(1);
+  for (const [index, row] of dataRows.entries()) {
+    if (
+      row.length < 4 ||
+      row.slice(0, 4).some((cell) => cell.length === 0) ||
+      !/(Worker Contract|Browser Acceptance|Responsive UI Matrix)/u.test(
+        row[2] ?? ""
+      )
+    ) {
+      throw new Error(
+        `T05.7 ${label} migration ledger row ${index + 1} is incomplete`
+      );
+    }
+  }
+
+  return dataRows;
+}
+
+function assertLedgerMappings(
+  source: string,
+  label: string,
+  mappings: readonly string[]
+): number {
+  const rows = ledgerRows(source, label);
+  for (const mapping of mappings) {
+    if (!source.includes(mapping)) {
+      throw new Error(
+        `T05.7 ${label} migration ledger is missing executable mapping ${mapping}`
+      );
+    }
+  }
+  return rows.length;
+}
+
+export function assertMigrationLedgersComplete(
+  participantSource: string,
+  managementSource: string
+): MigrationLedgerSummary {
+  const participantRows = assertLedgerMappings(
+    participantSource,
+    "participant",
+    [
+      "web/lib/programs/programs-contract.test.ts",
+      "tests/e2e/programs-participant-acceptance.test.ts",
+      "tests/e2e/programs-responsive-matrix.test.ts",
+    ]
+  );
+  const managementRows = assertLedgerMappings(managementSource, "management", [
+    "web/lib/programs/programs-contract.test.ts",
+    "tests/e2e/programs-management-acceptance.test.ts",
+    "tests/e2e/programs-responsive-matrix.test.ts",
+  ]);
+
+  return {
+    participantRows,
+    managementRows,
+    executableMappings: [
+      "web/lib/programs/programs-contract.test.ts",
+      "tests/e2e/programs-participant-acceptance.test.ts",
+      "tests/e2e/programs-management-acceptance.test.ts",
+      "tests/e2e/programs-responsive-matrix.test.ts",
+    ],
+  };
+}
+
 export function isFunctionalPromotionManifest(value: unknown): boolean {
   const manifest = asRecord(value);
   const riskDisclosure = asRecord(manifest?.riskDisclosure);
+  const diagnostic = asRecord(asRecord(manifest?.diagnostic)?.runtimeCanary);
+  const migrationLedger = asRecord(manifest?.migrationLedger);
+  const executableMappings = Array.isArray(migrationLedger?.executableMappings)
+    ? migrationLedger.executableMappings.filter(
+        (mapping): mapping is string => typeof mapping === "string"
+      )
+    : [];
   const stageResults = Array.isArray(manifest?.stageResults)
     ? manifest.stageResults
         .map(asRecord)
@@ -87,6 +193,28 @@ export function isFunctionalPromotionManifest(value: unknown): boolean {
     riskDisclosure.status === B003_RESIDUAL_RISK.status &&
     riskDisclosure.disposition === B003_RESIDUAL_RISK.disposition &&
     riskDisclosure.scope === B003_RESIDUAL_RISK.scope &&
+    riskDisclosure.ownerApprovalReference ===
+      B003_RESIDUAL_RISK.ownerApprovalReference &&
+    riskDisclosure.diagnosticCommand === B003_RESIDUAL_RISK.diagnosticCommand &&
+    diagnostic?.command === B003_RESIDUAL_RISK.diagnosticCommand &&
+    ["passed", "failed", "not_run"].includes(String(diagnostic?.status)) &&
+    typeof diagnostic?.revision === "string" &&
+    (diagnostic?.status === "not_run"
+      ? diagnostic.artifact === null
+      : typeof diagnostic.artifact === "string") &&
+    typeof migrationLedger?.participantRows === "number" &&
+    Number.isInteger(migrationLedger.participantRows) &&
+    migrationLedger.participantRows > 0 &&
+    typeof migrationLedger?.managementRows === "number" &&
+    Number.isInteger(migrationLedger.managementRows) &&
+    migrationLedger.managementRows > 0 &&
+    Array.isArray(migrationLedger?.executableMappings) &&
+    [
+      "web/lib/programs/programs-contract.test.ts",
+      "tests/e2e/programs-participant-acceptance.test.ts",
+      "tests/e2e/programs-management-acceptance.test.ts",
+      "tests/e2e/programs-responsive-matrix.test.ts",
+    ].every((mapping) => executableMappings.includes(mapping)) &&
     PROMOTION_STAGES.every(({ name }) =>
       stageResults.some(
         (result) => result.name === name && result.status === "passed"
@@ -285,6 +413,43 @@ function commandOutput(error: unknown): string {
   return `${typeof record?.stdout === "string" ? record.stdout : ""}${typeof record?.stderr === "string" ? record.stderr : ""}`;
 }
 
+async function readCanaryDiagnostic(expectedRevision: string): Promise<{
+  command: string;
+  status: "passed" | "failed" | "not_run";
+  revision: string;
+  artifact: string | null;
+}> {
+  const filename = process.env.PROGRAMS_CANARY_RUN_FILE;
+  if (filename === undefined) {
+    return {
+      command: B003_RESIDUAL_RISK.diagnosticCommand,
+      status: "not_run",
+      revision: expectedRevision,
+      artifact: null,
+    };
+  }
+
+  const resolvedFilename = path.resolve(REPO_ROOT, filename);
+  const canary = await readCanaryRun(resolvedFilename);
+  const status = canary?.status;
+  const revision = canary?.revision;
+  if (
+    (status !== "passed" && status !== "failed" && status !== "not_run") ||
+    typeof revision !== "string"
+  ) {
+    throw new Error(
+      `T05.7 referenced canary diagnostic is invalid or missing revision: ${filename}`
+    );
+  }
+
+  return {
+    command: B003_RESIDUAL_RISK.diagnosticCommand,
+    status,
+    revision,
+    artifact: path.relative(REPO_ROOT, resolvedFilename),
+  };
+}
+
 async function runStage(
   stage: PromotionStage,
   artifactDirectory: string
@@ -388,6 +553,15 @@ async function main(): Promise<void> {
     stages: string[];
     stageResults: PromotionStageResult[];
     riskDisclosure: typeof B003_RESIDUAL_RISK;
+    diagnostic: {
+      runtimeCanary: {
+        command: string;
+        status: "passed" | "failed" | "not_run";
+        revision: string;
+        artifact: string | null;
+      };
+    };
+    migrationLedger: MigrationLedgerSummary;
     failure?: string;
     artifacts: string;
   } = {
@@ -401,6 +575,19 @@ async function main(): Promise<void> {
     stages: [],
     stageResults: [],
     riskDisclosure: B003_RESIDUAL_RISK,
+    diagnostic: {
+      runtimeCanary: {
+        command: B003_RESIDUAL_RISK.diagnosticCommand,
+        status: "not_run",
+        revision,
+        artifact: null,
+      },
+    },
+    migrationLedger: {
+      participantRows: 0,
+      managementRows: 0,
+      executableMappings: [],
+    },
     artifacts: path.relative(REPO_ROOT, artifactDirectory),
   };
   await writeJson(path.join(artifactDirectory, "promotion.json"), manifest);
@@ -417,6 +604,24 @@ async function main(): Promise<void> {
         "T05.7 requires a clean worktree before promotion qualification"
       );
     }
+    manifest.migrationLedger = assertMigrationLedgersComplete(
+      await readFile(
+        path.join(
+          REPO_ROOT,
+          "docs/implementation/t05-participant-migration-ledger.md"
+        ),
+        "utf8"
+      ),
+      await readFile(
+        path.join(
+          REPO_ROOT,
+          "docs/implementation/t05-management-migration-ledger.md"
+        ),
+        "utf8"
+      )
+    );
+    manifest.diagnostic.runtimeCanary = await readCanaryDiagnostic(revision);
+    await writeJson(path.join(artifactDirectory, "promotion.json"), manifest);
     for (const stage of PROMOTION_STAGES) {
       const stageResult: PromotionStageResult = {
         name: stage.name,
