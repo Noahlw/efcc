@@ -163,15 +163,15 @@ Update this table at the start and end of every implementation session.
 | Field | Current value |
 |---|---|
 | Current phase | **Phase 0 — Foundation & Recovery Control** |
-| Phase status | `IN PROGRESS — T01–T04 are on rescue; T05 finite functional qualification passed on the amended contract, while B-003 remains an independent open residual risk; T05 replacement PR/review and T06 remain gated` |
+| Phase status | `IN PROGRESS — T01–T04 are on rescue; T05 is STACK_GREEN with replacement PR #565 published after finite qualification and two-axis review; T05 merge and T06 remain outstanding` |
 | Rescue integration HEAD | `dcd21b681d54f062a2df81b38d08269e46350720` — T05 publication checkpoint on `rescue/ui-control-recovery` |
 | Active phase stack | T05.1 → T05.2/T05.3 → T05.4/T05.5 → T05.6 → T05.7 → T06 |
-| Implementation frontier | T05.1–T05.7 plus the finite-gate correction are committed on `rescue/t05-layered-testing`; the current finite candidate is `f6edb250e6bbeef45a6c62decb0afdf85c0f060d`, with four required stages passed and the separate canary failed under B-003; no child implementation remains |
-| Merge frontier | One T05 replacement PR from `rescue/t05-layered-testing` → rescue; then T06 / #511/#550 |
-| Review pending | Current candidate is awaiting separate Standards/Spec review against the amended authority; `STACK_GREEN` is not recorded until review and replacement-PR evidence pass |
+| Implementation frontier | T05.1–T05.7 plus the finite-gate correction are committed on `rescue/t05-layered-testing`; the current finite candidate is `0d87496b44a8410649b703610cf5c1a0243b167d`, with four required stages passed and the separate canary failed under B-003; no child implementation remains |
+| Merge frontier | [#565](https://github.com/Noahlw/efcc/pull/565) parent-first into `rescue/ui-control-recovery`; then restack and revalidate T06 / #511/#550 |
+| Review pending | Standards and Spec reviews PASS on final diff `dcd21b68...0d87496b`; T05.7/#557 `STACK_GREEN` recorded for published #565; merge remains pending |
 | Human approval pending | Owner-approved qualification amendment is recorded at [#505 comment](https://github.com/Noahlw/efcc/issues/505#issuecomment-5550498028); T05/T06 rescue merges remain gated by the explicit post-qualification permission and parent-first rules |
 | Active blocker | B-003 remains `OPEN` residual sustained-runtime risk, not a finite-gate blocker under the approved amendment. The current independent canary at revision `04f346c9e53db2bb6601bf4fdb2420adf80de764` failed after 141 completed scenarios at `admin enrollment-request decision` (`POST /api/v1/programs/.../enrollment-requests/.../decision`) with HTTP 500 without `X-Request-Id`; suspected origin remains undetermined and runtime logs are empty. Artifact: `test-results/programs-runtime-canary/20260905t083708030z/run.json`. T05 replacement PR/review and T06 remain promotion/merge-gated |
-| Next safe action | Complete the current two-axis review, open/update one replacement T05 PR with finite artifact `test-results/programs-promotion/20260905t090407822z/promotion.json` and independent B-003 canary evidence, then merge T05 parent-first only after `STACK_GREEN`; restack and revalidate #550 before T06 merge |
+| Next safe action | Merge #565 parent-first into `rescue/ui-control-recovery`, verify the rescue merge SHA, then safely restack and revalidate #550; do not merge `main` |
 | Last merged rescue SHA | `dcd21b681d54f062a2df81b38d08269e46350720` |
 | Last rollback checkpoint | Frozen Phase F SHA `6edf28c0f8f7058cf992416e7b517824c3178c8` |
 | Parent Spec amendment | [Owner-approved T05 layered-testing architecture amendment](https://github.com/Noahlw/efcc/issues/505#issuecomment-5538740674); [finite-gate / sustained-runtime-risk amendment](https://github.com/Noahlw/efcc/issues/505#issuecomment-5550498028) |
@@ -205,23 +205,23 @@ Update this table at the start and end of every implementation session.
 | T02 | [#507](https://github.com/Noahlw/efcc/issues/507) | Establish UI governance and agent change control | None | `MERGED_RESCUE` | [#545](https://github.com/Noahlw/efcc/pull/545) | `6e6fe51770cd49a6f362d5c6cb4a8eafd5ba9ea2` | Governance authority merged; stacked-delivery amendment is the next stack root |
 | T03 | [#508](https://github.com/Noahlw/efcc/issues/508) | Enforce styling ownership and typed UI contract governance | T02 | `MERGED_RESCUE` | [#548](https://github.com/Noahlw/efcc/pull/548) | `d2652bfb11b469f5fa557d3c2c73d69c4a17649d` | Rule 1 detects all unlayered broad CSS, high-blast waivers use exact source fingerprints/removal owners, and narrow generated-output exclusions are T03-owned; local gates, two-axis review, and exact-head GitHub run `33801176630` pass |
 | T04 | [#509](https://github.com/Noahlw/efcc/issues/509) | Restore excluded normalized Worker suites | T01 | `MERGED_RESCUE` | [#546](https://github.com/Noahlw/efcc/pull/546) | `6e7428b61bc9bbd2d82109688049696078609b59` | Restacked onto amendment; focused, aggregate, typecheck, precommit, diff-check, and two-axis review gates pass; parent-first merge complete |
-| T05 | [#510](https://github.com/Noahlw/efcc/issues/510) | Layered Programs/Worker/D1 testing architecture and promotion | T04 satisfied; child commits present | `FUNCTIONAL_QUALIFIED — PR/REVIEW PENDING` | replacement T05 PR pending | `04f346c9` candidate | #551–#557 plus finite-gate correction are committed on `rescue/t05-layered-testing`; amended aggregate `test-results/programs-promotion/20260905t090407822z/promotion.json` passed all four finite stages and records canary `not_run`; independent canary `test-results/programs-runtime-canary/20260905t083708030z/run.json` remains failed B-003 residual risk |
+| T05 | [#510](https://github.com/Noahlw/efcc/issues/510) | Layered Programs/Worker/D1 testing architecture and promotion | T04 satisfied; child commits present | `STACK_GREEN — PR PUBLISHED, MERGE PENDING` | [#565](https://github.com/Noahlw/efcc/pull/565) | `0d87496b44a8410649b703610cf5c1a0243b167d` | #551–#557 plus finite-gate correction are committed on `rescue/t05-layered-testing`; amended aggregate `test-results/programs-promotion/20260905t091233839z/promotion.json` passed all four finite stages and records canary `not_run`; independent canary remains failed B-003 residual risk |
 | T06 | [#511](https://github.com/Noahlw/efcc/issues/511) | Contain global CSS cascade | T01, T03, T05.7 / T05 promotion | `BLOCKED — WAITING T05 MERGED_RESCUE` | [#550](https://github.com/Noahlw/efcc/pull/550) Draft | — | #550 remains based on the historical T05 branch; preserve its CSS evidence, restack only after the qualified replacement T05 PR merges |
 
 ### Phase 0 exit record
 
 | Field | Value |
 |---|---|
-| Phase status | `NOT COMPLETE — T05 finite functional qualification passed; T05 replacement PR/review/merge and T06 remain outstanding` |
+| Phase status | `NOT COMPLETE — T05 is STACK_GREEN but not yet MERGED_RESCUE; #565 merge and T06 restack/revalidation/merge remain outstanding` |
 | Tickets merged | T01 / #506, T02 / #507, T04 / #509, and T03 / #508; amendment #547 also merged |
 | Rescue integration SHA | `d2652bfb11b469f5fa557d3c2c73d69c4a17649d` |
 | Preservation Ledger | Full post-main S4 lineage merged with T01 correction — [`ui-control-recovery-preservation-ledger.md`](ui-control-recovery-preservation-ledger.md) and [`ui-control-recovery-preservation-summary.md`](ui-control-recovery-preservation-summary.md) |
 | Governance authority | T02 / #507 and T03 / #508 merged; stacked-delivery amendment is merged |
 | Required Worker gate | T04 / #509 merged into rescue at `6e7428b61bc9bbd2d82109688049696078609b59` |
-| Programs runtime | Current amended finite qualification candidate `04f346c9` passed Worker Contract, Browser Acceptance, Responsive Matrix, and local non-browser precommit; `promotion.json` records runtime-canary `not_run`. Separate unchanged canary at `20260905t083708030z` failed with B-003 evidence; risk remains open and is not claimed fixed |
+| Programs runtime | Final amended finite qualification at `0d87496b44a8410649b703610cf5c1a0243b167d` passed Worker Contract, Browser Acceptance `2/2`, Responsive Matrix `6/6`, and local non-browser precommit; `test-results/programs-promotion/20260905t091233839z/promotion.json` records `functional-passed`, canary `not_run`, B-003 disclosure. Independent canary failed at source revision `04f346c9e53db2bb6601bf4fdb2420adf80de764`; risk remains open and is not claimed fixed |
 | Cascade result | Not run — T06 owns it |
-| Open blockers | T05 replacement PR publication, current Standards/Spec review, parent-first T05 merge, and T06 restack/revalidation/merge remain outstanding. B-003 is an accepted rescue-development residual risk, not a waiver for failed finite functionality or production release |
-| Next phase | Phase 1 after T05 is `MERGED_RESCUE` and T06 is restacked, revalidated, reviewed, and merged parent-first; T07/#512 is the next normal frontier then |
+| Open blockers | T05 #565 parent-first merge and T06 restack/revalidation/merge remain outstanding. B-003 is an accepted rescue-development residual risk, not a waiver for failed finite functionality or production release |
+| Next phase | Phase 1 after #565 T05 and #550 T06 are actually `MERGED_RESCUE`; T07/#512 is then the next normal frontier |
 
 ---
 
@@ -249,7 +249,7 @@ Update this table at the start and end of every implementation session.
 | Approved shell SHA | — |
 | Programs tracer approval | — |
 | T12 decision | `UNDECIDED` |
-| Next phase | Phase 2 |
+| Next phase | Phase 1 after #565 T05 and #550 T06 are actually `MERGED_RESCUE`; T07/#512 is then the next normal frontier |
 
 ---
 
@@ -274,7 +274,7 @@ Update this table at the start and end of every implementation session.
 | Programs coverage report | — |
 | Programs approval packages | — |
 | Remaining Programs defects | — |
-| Next phase | Phase 3 |
+| Next phase | Phase 1 after #565 T05 and #550 T06 are actually `MERGED_RESCUE`; T07/#512 is then the next normal frontier |
 
 ---
 
@@ -297,7 +297,7 @@ Update this table at the start and end of every implementation session.
 | Rescue integration SHA | — |
 | Approval packages | — |
 | Remaining member/public defects | — |
-| Next phase | Phase 4 |
+| Next phase | Phase 1 after #565 T05 and #550 T06 are actually `MERGED_RESCUE`; T07/#512 is then the next normal frontier |
 
 ---
 
@@ -326,7 +326,7 @@ Update this table at the start and end of every implementation session.
 | Approval packages | — |
 | Preserved identity/permission evidence | — |
 | Remaining management/identity defects | — |
-| Next phase | Phase 5 |
+| Next phase | Phase 1 after #565 T05 and #550 T06 are actually `MERGED_RESCUE`; T07/#512 is then the next normal frontier |
 
 ---
 
@@ -352,7 +352,7 @@ Update this table at the start and end of every implementation session.
 | Native print evidence | — |
 | Approval packages | — |
 | Remaining attendance/scanner defects | — |
-| Next phase | Phase 6 |
+| Next phase | Phase 1 after #565 T05 and #550 T06 are actually `MERGED_RESCUE`; T07/#512 is then the next normal frontier |
 
 ---
 
@@ -392,13 +392,13 @@ The tracker separates the implementation frontier from the merge frontier. `STAC
 | Phase | Phase 0 — Foundation & Recovery Control |
 | Rescue base SHA | `dcd21b681d54f062a2df81b38d08269e46350720` |
 | Stack root | `rescue/ui-control-recovery` after parent-first merge of #547, #546, and #548 |
-| Stack tip | `rescue/t05-layered-testing` / T05.7 implementation `e78b8c55` plus targeted corrections through candidate `f6edb250e6bbeef45a6c62decb0afdf85c0f060d`; finite replacement qualification passed, replacement PR/review pending |
+| Stack tip | `rescue/t05-layered-testing` / T05.7 implementation `e78b8c55` plus corrections through `0d87496b44a8410649b703610cf5c1a0243b167d`; finite qualification and final two-axis review passed; replacement [#565](https://github.com/Noahlw/efcc/pull/565) published, merge pending |
 | Implementation frontier | T05.1–T05.7 and finite-gate correction committed; candidate `04f346c9` passed all four finite aggregate stages; independent canary failed at 141 completed scenarios and remains B-003 `OPEN`; no child implementation remains |
-| Merge frontier | One replacement T05 PR → rescue, then T06 / #511/#550 after restack |
-| Review pending | Separate Standards/Spec review for the amended candidate is pending; T05 is not `STACK_GREEN` until review and replacement PR evidence are complete |
+| Merge frontier | [#565](https://github.com/Noahlw/efcc/pull/565) parent-first into `rescue/ui-control-recovery`; then restack and revalidate T06 / #511/#550 |
+| Review pending | Standards and Spec reviews PASS on final diff `dcd21b68...0d87496b`; T05.7/#557 `STACK_GREEN` recorded for published #565; merge remains pending |
 | Human approval pending | The finite-gate / sustained-runtime-risk amendment is owner-approved; T05/T06 rescue merges remain gated by the explicit post-qualification permission and parent-first rules |
 | Descendants requiring restack | T06 / #550 after the replacement T05 PR merges; #549 is historical and closed without merge |
-| Next safe action | Complete the two-axis review, open the one replacement T05 PR, record `STACK_GREEN` only after review, then merge T05 parent-first; restack and revalidate T06 |
+| Next safe action | Merge #565 parent-first into `rescue/ui-control-recovery`, verify the rescue merge SHA, then safely restack and revalidate #550; do not merge `main` |
 
 ## Stack map
 
@@ -413,7 +413,7 @@ The tracker separates the implementation frontier from the merge frontier. `STAC
 | 6 | T05.4 / [#554](https://github.com/Noahlw/efcc/issues/554) | T05.2 / #552 | `rescue/t05-layered-testing` | `rescue/t05-layered-testing` | `/Users/noah.wong/Desktop/code/EFCC-dev/.worktrees/t05-layered-testing` | `rescue/ui-control-recovery` | one replacement T05 PR (pending) | `COMMITTED` | `68da4c80e8e825e2282815d112c7e3a958315d90` | N/A | `8a700079cc66f495ce26c93b1eaf42352e5ef92a` |
 | 7 | T05.5 / [#555](https://github.com/Noahlw/efcc/issues/555) | T05.2 / #552 | `rescue/t05-layered-testing` | `rescue/t05-layered-testing` | `/Users/noah.wong/Desktop/code/EFCC-dev/.worktrees/t05-layered-testing` | `rescue/ui-control-recovery` | one replacement T05 PR (pending) | `COMMITTED` | `0c70c61fbb451eecbfdfcb18efd3183ad3cfac72` | N/A | `8a700079cc66f495ce26c93b1eaf42352e5ef92a` |
 | 8 | T05.6 / [#556](https://github.com/Noahlw/efcc/issues/556) | T05.4 / #554, T05.5 / #555 | `rescue/t05-layered-testing` | `rescue/t05-layered-testing` | `/Users/noah.wong/Desktop/code/EFCC-dev/.worktrees/t05-layered-testing` | `rescue/ui-control-recovery` | one replacement T05 PR (pending) | `COMMITTED` | `d3ce7ab912aa46c19eaa644055f3cd109d5be22e` | N/A | `0c70c61fbb451eecbfdfcb18efd3183ad3cfac72` |
-| 9 | T05.7 / [#557](https://github.com/Noahlw/efcc/issues/557) | T05.3 / #553, T05.4 / #554, T05.5 / #555, T05.6 / #556 | `rescue/t05-layered-testing` | `rescue/t05-layered-testing` | `/Users/noah.wong/Desktop/code/EFCC-dev/.worktrees/t05-layered-testing` | `rescue/ui-control-recovery` | one replacement T05 PR (pending review) | `FUNCTIONAL_QUALIFIED — REVIEW/PR PENDING` | `e78b8c5540ab7b627ddb421571faeb74e6467b3f` + candidate `f6edb250e6bbeef45a6c62decb0afdf85c0f060d` | N/A | `d3ce7ab912aa46c19eaa644055f3cd109d5be22e` |
+| 9 | T05.7 / [#557](https://github.com/Noahlw/efcc/issues/557) | T05.3 / #553, T05.4 / #554, T05.5 / #555, T05.6 / #556 | `rescue/t05-layered-testing` | `rescue/t05-layered-testing` | `/Users/noah.wong/Desktop/code/EFCC-dev/.worktrees/t05-layered-testing` | `rescue/ui-control-recovery` | [#565](https://github.com/Noahlw/efcc/pull/565) | `STACK_GREEN — MERGE PENDING` | `0d87496b44a8410649b703610cf5c1a0243b167d` | N/A | `d3ce7ab912aa46c19eaa644055f3cd109d5be22e` |
 | 10 | T06 / #511 | T05.7 / #557 and T05 promotion | `rescue/t05-layered-testing` | `rescue/t06-css-cascade` | existing branch; restack required | `rescue/t05-runtime-stability` (current live base) | [#550](https://github.com/Noahlw/efcc/pull/550) | `BLOCKED` | `5b0f6daaa3e6bc211b68da541866b7c59fff2285` | N/A | restack after replacement T05 merge |
 
 ---
@@ -578,14 +578,14 @@ No production implementation, schema, API, permission, audit, idempotency, scope
 
 #### T05 amended qualification checkpoint — 2026-09-05
 
-- **Status:** `FUNCTIONAL_QUALIFIED — REVIEW/PR PENDING`
+- **Status:** `STACK_GREEN — PR #565 PUBLISHED, MERGE PENDING`
 - **Authority:** [Owner-approved #505 finite-gate / sustained-runtime-risk amendment](https://github.com/Noahlw/efcc/issues/505#issuecomment-5550498028), [#510 routing](https://github.com/Noahlw/efcc/issues/510#issuecomment-5550505098)
-- **Candidate:** `f6edb250e6bbeef45a6c62decb0afdf85c0f060d` on `rescue/t05-layered-testing`; correction commit separates the finite aggregate from the unchanged canary and carries explicit B-003 disclosure.
-- **Finite evidence:** `test-results/programs-promotion/20260905t090407822z/promotion.json` — Worker Contract, Browser Acceptance, Responsive Matrix, and local non-browser precommit all `passed`; `status` is `functional-passed`; `runtime-canary` is explicitly `not_run`.
+- **Candidate:** `0d87496b44a8410649b703610cf5c1a0243b167d` is the published #565 PR head; tested implementation correction is `f6edb250`.
+- **Finite evidence:** `test-results/programs-promotion/20260905t091233839z/promotion.json` — Worker Contract, Browser Acceptance, Responsive Matrix, and local non-browser precommit all passed; status is functional-passed; runtime-canary is explicitly not_run.
 - **Independent risk evidence:** `test-results/programs-runtime-canary/20260905t083708030z/run.json` — unchanged five-minute/zero-retry canary failed at 141 completed scenarios on enrollment-request decision with HTTP 500 without `X-Request-Id`; suspected origin remains undetermined; B-003 remains `OPEN`.
-- **Review:** Separate Standards/Spec review is pending on the complete diff from rescue `dcd21b681d54f062a2df81b38d08269e46350720`; T05 is not yet `STACK_GREEN`.
-- **PR/merge:** No replacement PR yet. Historical #549 remains closed/unmerged with evidence preserved. T06/#550 remains gated and must be restacked only after T05 qualifies and merges into `rescue/ui-control-recovery`.
-- **Next action:** Complete two-axis review, open the one replacement T05 PR, then use parent-first merge only after `STACK_GREEN` evidence is recorded.
+- **Review:** Standards and Spec reviews PASS on the complete diff from rescue `dcd21b68...`; no actionable findings remain.
+- **PR/merge:** [#565](https://github.com/Noahlw/efcc/pull/565) is published from `rescue/t05-layered-testing` at `0d87496b44a8410649b703610cf5c1a0243b167d` into `rescue/ui-control-recovery`; merge pending parent-first. Historical #549 remains closed/unmerged.
+- **Next action:** Merge #565 parent-first, verify the actual rescue merge SHA, then hand off T06/#550 for safe restack and independent validation.
 
 #### T03 / #508 — Enforce styling ownership and typed UI contract governance
 
@@ -630,7 +630,7 @@ Keep links here so new sessions do not need to rediscover them.
 | Preservation Ledger | T01 / #506 | [`ui-control-recovery-preservation-ledger.md`](ui-control-recovery-preservation-ledger.md) and [`ui-control-recovery-preservation-summary.md`](ui-control-recovery-preservation-summary.md) — full post-main S4 lineage merged with #544 |
 | UI governance authority | T02 / #507 | [`ui-control-recovery-governance.md`](ui-control-recovery-governance.md) — created, verified, and merged via PR #545 at `6e6fe51` |
 | Stacked PR delivery amendment | Amendment | `AGENTS.md`, [`ui-control-recovery-governance.md`](ui-control-recovery-governance.md), and this tracker — PR #547 `STACK_GREEN` |
-| T05 layered-testing authority | T05 / #510 | [#505 architecture amendment](https://github.com/Noahlw/efcc/issues/505#issuecomment-5538740674), [#505 finite-gate / sustained-runtime-risk amendment](https://github.com/Noahlw/efcc/issues/505#issuecomment-5550498028), [#510 amended routing](https://github.com/Noahlw/efcc/issues/510#issuecomment-5550505098), and child tracers [#551–#557](https://github.com/Noahlw/efcc/issues/551); finite qualification passed at `04f346c9`, independent canary remains B-003 `OPEN`, one replacement PR model |
+| T05 layered-testing authority | T05 / #510 | [#505 architecture amendment](https://github.com/Noahlw/efcc/issues/505#issuecomment-5538740674), [#505 finite-gate / sustained-runtime-risk amendment](https://github.com/Noahlw/efcc/issues/505#issuecomment-5550498028), [#510 amended routing](https://github.com/Noahlw/efcc/issues/510#issuecomment-5550848597), child tracers [#551–#557](https://github.com/Noahlw/efcc/issues/551), and replacement [#565](https://github.com/Noahlw/efcc/pull/565); T05 `STACK_GREEN`, B-003 remains `OPEN`, one replacement PR model |
 | Scenario Registry | T03 / #508 | `web/lib/governance/registries.ts` — created with 16 route scenarios and exact contract references; validated by `governance.test.ts` |
 | UI Contract Registry | T03 / #508 | `web/lib/governance/registries.ts` — created with 17 executable contracts/probe definitions; live token, safe-area, navigation, and scanner sources covered |
 | UI Lab | T07 / #512 | Not created |
@@ -733,8 +733,8 @@ For the T05 layered-testing rework, D-004 is the explicit owner-approved excepti
 
 ## 20. Next safe action
 
-1. Complete the separate Standards and Spec reviews for candidate `f6edb250e6bbeef45a6c62decb0afdf85c0f060d` against the amended #505/#510 authority; fix only actionable findings and rerun affected checks.
-2. Open one replacement T05 PR from `rescue/t05-layered-testing` with the finite artifact, independent B-003 canary artifact, ledger reconciliation, and explicit `functional-passed` versus `STACK_GREEN` distinction.
-3. Record T05.7/#557 `STACK_GREEN` only after the review and PR evidence are complete, then merge that single replacement PR into `rescue/ui-control-recovery` and verify the actual rescue merge SHA. Do not merge #549 or `main`.
-4. Restack existing T06 issue #511 / Draft PR #550 onto the verified T05 rescue merge, rerun its own CSS measurements, browser/source/governance gates and two-axis review, then merge #550 parent-first only if all gates pass.
-5. After T05 and T06 are actually `MERGED_RESCUE`, finish the Phase 0 exit record and hand off a fresh `/implement` session at T07/#512. B-003 remains open and must be re-evaluated at T33/#538 and before T35/#540 release approval.
+1. Merge replacement [#565](https://github.com/Noahlw/efcc/pull/565) parent-first into `rescue/ui-control-recovery` only after the published finite evidence and PASS reviews are read back; do not merge `main`.
+2. Verify the actual #565 merge SHA, then safely restack existing T06/#550 and rerun its own acceptance, source/governance, and two-axis review gates.
+3. Keep B-003 `OPEN` and separately reported; its accepted rescue-development scope never becomes production release approval.
+4. After T05 and T06 are both `MERGED_RESCUE`, finish the Phase 0 exit record and set T07/#512 as the next normal frontier.
+5. Prepare a fresh `/implement` session for T07/#512; retain all later ticket, human-approval, T33/#538, T35/#540, and final `main` gates.
