@@ -180,16 +180,16 @@ For visual phases, each ticket still prepares attributable scenario evidence. Th
 
 ## 4. Current execution state
 
-> **Current checkpoint override — 2026-09-06:** T07/#512 remains active on the shared branch; T07.1/#566 and T07.2/#567 are `CHECKPOINT_GREEN` after focused verification and Standards/Spec review. T07.3–T07.6 and T08–T12 remain blocked. This override supersedes earlier `IN_PROGRESS` wording retained in historical snapshots below.
+> **Current checkpoint override — 2026-09-06:** T07/#512 remains active on the shared branch; T07.1/#566, T07.2/#567, and T07.3/#568 are `CHECKPOINT_GREEN` after focused verification and Standards/Spec review. T07.4–T07.6 and T08–T12 remain blocked. This override supersedes earlier `IN_PROGRESS` wording retained in historical snapshots below.
 
-| Current T07.1/T07.2 tracker status | `CHECKPOINT_GREEN` — T07.1/#566 owning commit `96c7a227`; T07.2/#567 owning commit is this checkpoint commit; T07/#512 remains active on the shared branch and is not `STACK_GREEN`; T07.3–T07.6 and T08–T12 remain blocked |
+| Current T07.1/T07.2/T07.3 tracker status | `CHECKPOINT_GREEN` — T07.1/#566 owning commit `96c7a227`; T07.2/#567 and T07.3/#568 owning commits are the child checkpoint commits; T07/#512 remains active on the shared branch and is not `STACK_GREEN`; T07.4–T07.6 and T08–T12 remain blocked |
 
 | Field | Current value |
 |---|---|
 | Current phase | **Phase 1 — Executable UI Foundation** |
-| Phase status | `Phase 0 is complete through T06; PR #572 and the T07 planning authority are merged; T07.1/#566 and T07.2/#567 checkpoints are green on the shared T07 branch; T07.3–T07.6 remain blocked` |
+| Phase status | `Phase 0 is complete through T06; PR #572 and the T07 planning authority are merged; T07.1/#566, T07.2/#567, and T07.3/#568 checkpoints are green on the shared T07 branch; T07.4–T07.6 remain blocked` |
 | Rescue integration HEAD | `d877aef8cbf05c2cfd6a5693186d43323b907de5` — actual PR #572 merge SHA in `rescue/ui-control-recovery`; tracker activation follows in this planning-only commit |
-| Active phase stack | T07 shared implementation branch `rescue/t07-storybook-foundation`; T07.1/#566 and T07.2/#567 are `CHECKPOINT_GREEN` in `/Users/noah.wong/Desktop/code/EFCC-dev-t07-storybook-foundation`; T07.3–T07.6 remain unstarted |
+| Active phase stack | T07 shared implementation branch `rescue/t07-storybook-foundation`; T07.1/#566, T07.2/#567, and T07.3/#568 are `CHECKPOINT_GREEN` in `/Users/noah.wong/Desktop/code/EFCC-dev-t07-storybook-foundation`; T07.4–T07.6 remain unstarted |
 | Implementation frontier | T07/#512 remains active; T07.1/#566 and T07.2/#567 are `CHECKPOINT_GREEN`; next frontier is T07.3/#568 on the same shared worktree; no separate child worktree or PR exists |
 | Merge frontier | Planning PR [#572](https://github.com/Noahlw/efcc/pull/572) is `MERGED_RESCUE` at `d877aef8cbf05c2cfd6a5693186d43323b907de5`; no implementation PR exists |
 | Review status | #572 exact-head closeout qualification and author self-review passed; T07.1/#566 and T07.2/#567 Standards/Spec reviews PASS |
@@ -258,7 +258,7 @@ This is a historical Phase 0 snapshot taken before T07.1 implementation. It is r
 | T07 | [#512](https://github.com/Noahlw/efcc/issues/512) | Local Storybook presentation workshop + baseline Screen Catalog | T03, T06 (satisfied) | `IN_PROGRESS` | shared T07 branch / #512 PR | — | Workshop-fidelity approval |
 | T07.1 | [#566](https://github.com/Noahlw/efcc/issues/566) | Management Hub Storybook vertical tracer | T03, T06 (satisfied) | `CHECKPOINT_GREEN` | shared T07 branch / #512 PR | — | Owning commit `96c7a227`; Story review checkpoint remains T07.6 |
 | T07.2 | [#567](https://github.com/Noahlw/efcc/issues/567) | Public/Auth/Member/Communications baseline catalog | T07.1 / #566 | `CHECKPOINT_GREEN` | shared #512 PR | — | Owning commit is this checkpoint commit; T07.6 representative fidelity review |
-| T07.3 | [#568](https://github.com/Noahlw/efcc/issues/568) | Programs baseline catalog | T07.1 / #566 | `BLOCKED` | shared #512 PR | — | T07.6 representative fidelity review |
+| T07.3 | [#568](https://github.com/Noahlw/efcc/issues/568) | Programs baseline catalog | T07.1 / #566 | `CHECKPOINT_GREEN` | shared #512 PR | — | T07.6 representative fidelity review |
 | T07.4 | [#569](https://github.com/Noahlw/efcc/issues/569) | Management/Identity baseline catalog | T07.1 / #566 | `BLOCKED` | shared #512 PR | — | T07.6 representative fidelity review |
 | T07.5 | [#570](https://github.com/Noahlw/efcc/issues/570) | Attendance/Scanner/Guest baseline catalog | T07.1 / #566 | `BLOCKED` | shared #512 PR | — | T07.6 representative fidelity review |
 | T07.6 | [#571](https://github.com/Noahlw/efcc/issues/571) | Catalog qualification, fidelity approval, developer workflow | T07.2 / #567, T07.3 / #568, T07.4 / #569, T07.5 / #570 | `BLOCKED` | shared #512 PR | — | Required |
@@ -272,8 +272,8 @@ This is a historical Phase 0 snapshot taken before T07.1 implementation. It is r
 
 | Field | Value |
 |---|---|
-| Phase status | `IN_PROGRESS — Phase 0 complete; Storybook planning authority is promoted; T07/#512 remains active; T07.1/#566 and T07.2/#567 are CHECKPOINT_GREEN on the shared T07 branch; T07.3–T07.6 remain blocked.` |
-| T07 Storybook workshop/catalog | `IN_PROGRESS`; T07.1 tracer and T07.2 baseline catalog checkpoints are green; T07.3–T07.6 fan-out remains unstarted |
+| Phase status | `IN_PROGRESS — Phase 0 complete; Storybook planning authority is promoted; T07/#512 remains active; T07.1/#566, T07.2/#567, and T07.3/#568 are CHECKPOINT_GREEN on the shared T07 branch; T07.4–T07.6 remain blocked.` |
+| T07 Storybook workshop/catalog | `IN_PROGRESS`; T07.1 tracer, T07.2 baseline catalog, and T07.3 Programs catalog checkpoints are green; T07.4–T07.6 fan-out remains unstarted |
 | Active Screen Catalog gaps | — |
 | T08 control approval | — |
 | T09 surface/overlay approval | — |
@@ -452,19 +452,19 @@ The tracker separates the implementation frontier from the merge frontier. `STAC
 | Phase | Phase 1 — Executable UI Foundation |
 | Rescue base SHA | `a1a40d12d7a334183951604ae1adec509015474c` — current verified rescue/T07 implementation base after planning activation |
 | Stack root | `rescue/ui-control-recovery` at `a1a40d12d7a334183951604ae1adec509015474c`; T07 shared implementation branch starts here |
-| Stack tip | `rescue/t07-storybook-foundation` at this T07.2 checkpoint; T07.1/#566 and T07.2/#567 checkpoints are green; worktree remains the sole shared T07 implementation worktree |
-| Implementation frontier | T07/#512 remains active; T07.1/#566 and T07.2/#567 are `CHECKPOINT_GREEN`; next frontier is #568 on the same shared worktree |
+| Stack tip | `rescue/t07-storybook-foundation` at this T07.3 checkpoint; T07.1/#566, T07.2/#567, and T07.3/#568 checkpoints are green; worktree remains the sole shared T07 implementation worktree |
+| Implementation frontier | T07/#512 remains active; T07.1/#566, T07.2/#567, and T07.3/#568 are `CHECKPOINT_GREEN`; next frontier is #569 on the same shared worktree |
 | Merge frontier | No implementation PR exists yet; the future T07 child commits will share one PR linked to #512 |
 | Review status | T07.1/#566 and T07.2/#567 Standards/Spec reviews are PASS; #572 planning qualification and author self-review remain passed |
 | Human approval | No T07 workshop-fidelity approval has been recorded; it remains a future T07.6 gate. T07.1/#566 and T07.2/#567 are machine checkpoints only and are not `MERGE_READY` without required approval/evidence |
-| Descendants requiring restack | None — T07 is a shared branch; #568–#571 remain blocked and do not get separate worktrees or branches |
-| Next safe action | Continue only #568 in the existing shared T07 worktree; use `/implement` for that child and preserve the single shared #512 PR topology |
+| Descendants requiring restack | None — T07 is a shared branch; #569–#571 remain blocked and do not get separate worktrees or branches |
+| Next safe action | Continue only #569 in the existing shared T07 worktree; use `/implement` for that child and preserve the single shared #512 PR topology |
 
 ### Stack map
 
-Current stack disposition: T07.1/#566 and T07.2/#567 are `CHECKPOINT_GREEN` on the shared `rescue/t07-storybook-foundation` branch; #568–#571 remain blocked and the shared #512 PR is not `STACK_GREEN`.
+Current stack disposition: T07.1/#566, T07.2/#567, and T07.3/#568 are `CHECKPOINT_GREEN` on the shared `rescue/t07-storybook-foundation` branch; #569–#571 remain blocked and the shared #512 PR is not `STACK_GREEN`.
 
-Current review disposition: T07.1/#566 and T07.2/#567 Standards/Spec review and focused verification passed; both owning checkpoint commits are present. No human workshop-fidelity approval or shared-PR `STACK_GREEN` claim is made.
+Current review disposition: T07.1/#566, T07.2/#567, and T07.3/#568 Standards/Spec review and focused verification passed; all three owning checkpoint commits are present. No human workshop-fidelity approval or shared-PR `STACK_GREEN` claim is made.
 
 | Pos | Ticket | Logical blockers | Stack parent | Branch | Worktree | PR base | PR | State | Reviewed implementation SHA | Human gate | Rollback boundary |
 |---:|---|---|---|---|---|---|---|---|---|---|---|
@@ -737,6 +737,18 @@ The start snapshot records the scope boundary for active T07.1 work; current imp
 This checkpoint supersedes current-forward `IN_PROGRESS` wording in earlier
 T07 start snapshots; those snapshots remain historical provenance.
 
+#### T07.3 implementation checkpoint — 2026-09-06
+
+- **Status:** `CHECKPOINT_GREEN` for T07.3 / #568.
+- **Owning commit:** this T07.3 checkpoint commit on `rescue/t07-storybook-foundation`.
+- **Evidence:** nine code-backed Programs composition Stories; separate synthetic Member and authorized Manager personas; deterministic MSW; Screen Catalog/PSN integrity; production presentation component boundaries; typecheck; focused T07 tests; 21 Storybook browser stories; full web suite `44 files / 606 tests`; Storybook build; final Standards/Spec review PASS.
+- **Review URLs:** `http://127.0.0.1:6006/iframe.html?id=t07-3-programs--participant-directory&viewMode=story` and `http://127.0.0.1:6006/iframe.html?id=t07-3-programs--workspace-overview&viewMode=story`.
+- **Topology:** one shared T07 branch/worktree and future shared #512 PR; no child worktree, child PR, human workshop approval, or `STACK_GREEN` claim.
+- **Next safe action:** T07.4 / #569 on the existing shared branch. T07.5–T07.6 remain blocked by the approved dependency graph; B-003 remains `OPEN` and unrelated.
+
+This checkpoint supersedes current-forward `IN_PROGRESS` wording in earlier
+T07 start snapshots; those snapshots remain historical provenance.
+
 ## 15. Human approval queue
 
 | Ticket | Scenario / surface | SHA | Viewports / browser / device | Status | Owner note | Approval artifact |
@@ -765,7 +777,7 @@ Keep links here so new sessions do not need to rediscover them.
 | T05 layered-testing authority | T05 / #510 | [#505 architecture amendment](https://github.com/Noahlw/efcc/issues/505#issuecomment-5538740674), [#505 finite-gate / sustained-runtime-risk amendment](https://github.com/Noahlw/efcc/issues/505#issuecomment-5550498028), [#510 amended routing](https://github.com/Noahlw/efcc/issues/510#issuecomment-5550848597), child tracers [#551–#557](https://github.com/Noahlw/efcc/issues/551), and replacement [#565](https://github.com/Noahlw/efcc/pull/565); T05 `STACK_GREEN`, B-003 remains `OPEN`, one replacement PR model |
 | Scenario Registry | T03 / #508 | `web/lib/governance/registries.ts` — created with 16 route scenarios and exact contract references; validated by `governance.test.ts` |
 | UI Contract Registry | T03 / #508 | `web/lib/governance/registries.ts` — created with 17 executable contracts/probe definitions; live token, safe-area, navigation, and scanner sources covered |
-| Storybook workshop + Screen Catalog | T07 / #512, #566–#571 | [`ADR-0045`](../adr/0045-local-storybook-presentation-authority.md), #505 Phase 1 amendment, and PR #572 `MERGED_RESCUE` at `d877aef8cbf05c2cfd6a5693186d43323b907de5`; T07/#512 remains active on `rescue/t07-storybook-foundation`, T07.1/#566 and T07.2/#567 are `CHECKPOINT_GREEN`, and #568–#571 remain blocked |
+| Storybook workshop + Screen Catalog | T07 / #512, #566–#571 | [`ADR-0045`](../adr/0045-local-storybook-presentation-authority.md), #505 Phase 1 amendment, and PR #572 `MERGED_RESCUE` at `d877aef8cbf05c2cfd6a5693186d43323b907de5`; T07/#512 remains active on `rescue/t07-storybook-foundation`, T07.1/#566, T07.2/#567, and #568 are `CHECKPOINT_GREEN`, and #569–#571 remain blocked |
 | Approval package index | T03 / #508 | `web/lib/governance/registries.ts` — created with 4 status/owner/baseline/evidence packages; strict approval metadata validation active |
 | T12 rescue decision | T12 / #517 | `UNDECIDED` |
 | Historical finding reconciliation | T01, route tickets, T33 | Not complete |
@@ -865,7 +877,7 @@ For the T05 layered-testing rework, D-004 is the explicit owner-approved excepti
 
 ## 20. Next safe action
 
-Current disposition: T07.1/#566 and T07.2/#567 are `CHECKPOINT_GREEN`; preserve both owning checkpoints and continue only with #568 on the shared branch. The shared T07/#512 PR is not `STACK_GREEN`.
+Current disposition: T07.1/#566, T07.2/#567, and T07.3/#568 are `CHECKPOINT_GREEN`; preserve all three owning checkpoints and continue only with #569 on the shared branch. The shared T07/#512 PR is not `STACK_GREEN`.
 
 1. T06/#511 qualification, required finite gates, and independent Standards/Spec review are PASS; preserve their evidence and review provenance.
 2. PR [#550](https://github.com/Noahlw/efcc/pull/550) is verified `MERGED_RESCUE` parent-first into `rescue/ui-control-recovery` at `ffef73087c3cc985f1b314e8017cfdf973e26d58`; `main` remains untouched.

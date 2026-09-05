@@ -23,7 +23,7 @@ const MEMBER_AUTH_ME_RESULT: AuthMeResult = {
   navigation: projectNavigation(MEMBER_CAPABILITIES),
 };
 
-const memberAuthMeHandler = http.get("/api/v1/auth/me", () =>
+export const memberAuthMeHandler = http.get("/api/v1/auth/me", () =>
   HttpResponse.json({
     requestId: `${REQUEST_ID}-auth`,
     data: MEMBER_AUTH_ME_RESULT,

@@ -5,9 +5,11 @@ import {
   ALL_PRESENTATION_DECLARATIONS,
   MANAGEMENT_HUB_PRESENTATION_DECLARATIONS,
   PUBLIC_AUTH_MEMBER_COMMUNICATIONS_PRESENTATION_DECLARATIONS,
+  PROGRAMS_PRESENTATION_DECLARATIONS,
   SCREEN_CATALOG,
   validateScreenCatalog,
 } from "./presentation-catalog";
+import { PROGRAMS_PRESENTATION } from "./programs.story-contract";
 import { PUBLIC_AUTH_MEMBER_COMMUNICATIONS_PRESENTATION } from "./public-auth-member-communications.story-contract";
 
 describe("T07.1 Screen Catalog foundation", () => {
@@ -27,7 +29,7 @@ describe("T07.1 Screen Catalog foundation", () => {
   });
 
   test("catalogs every T07.2 baseline screen from its owning Story", () => {
-    expect(SCREEN_CATALOG).toHaveLength(9);
+    expect(SCREEN_CATALOG).toHaveLength(18);
     expect(
       PUBLIC_AUTH_MEMBER_COMMUNICATIONS_PRESENTATION_DECLARATIONS
     ).toHaveLength(8);
@@ -45,6 +47,25 @@ describe("T07.1 Screen Catalog foundation", () => {
       PUBLIC_AUTH_MEMBER_COMMUNICATIONS_PRESENTATION.messages.psn,
       PUBLIC_AUTH_MEMBER_COMMUNICATIONS_PRESENTATION.notFound.psn,
     ]);
-    expect(ALL_PRESENTATION_DECLARATIONS).toHaveLength(12);
+    expect(ALL_PRESENTATION_DECLARATIONS).toHaveLength(21);
+  });
+
+  test("catalogs every T07.3 Programs composition from its owning Story", () => {
+    expect(SCREEN_CATALOG).toHaveLength(18);
+    expect(PROGRAMS_PRESENTATION_DECLARATIONS).toHaveLength(9);
+    expect(
+      PROGRAMS_PRESENTATION_DECLARATIONS.map(({ psn }) => psn)
+    ).toStrictEqual([
+      PROGRAMS_PRESENTATION.participantDirectory.psn,
+      PROGRAMS_PRESENTATION.participantProgramDetail.psn,
+      PROGRAMS_PRESENTATION.participantEventDetail.psn,
+      PROGRAMS_PRESENTATION.managementDirectory.psn,
+      PROGRAMS_PRESENTATION.workspaceOverview.psn,
+      PROGRAMS_PRESENTATION.workspaceEvents.psn,
+      PROGRAMS_PRESENTATION.workspaceParticipants.psn,
+      PROGRAMS_PRESENTATION.workspaceSettings.psn,
+      PROGRAMS_PRESENTATION.workspaceNotifications.psn,
+    ]);
+    expect(ALL_PRESENTATION_DECLARATIONS).toHaveLength(21);
   });
 });

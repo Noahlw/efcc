@@ -1,5 +1,7 @@
 import { MANAGEMENT_HUB_PRESENTATION } from "./management-hub.story-contract";
 import { managementHubStoryDeclarations } from "./management-hub.story-manifest";
+import { PROGRAMS_PRESENTATION } from "./programs.story-contract";
+import { programsStoryDeclarations } from "./programs.story-manifest";
 import { PUBLIC_AUTH_MEMBER_COMMUNICATIONS_PRESENTATION } from "./public-auth-member-communications.story-contract";
 import { publicAuthMemberCommunicationsStoryDeclarations } from "./public-auth-member-communications.story-manifest";
 
@@ -33,9 +35,13 @@ export const PUBLIC_AUTH_MEMBER_COMMUNICATIONS_PRESENTATION_DECLARATIONS =
     publicAuthMemberCommunicationsStoryDeclarations
   );
 
+export const PROGRAMS_PRESENTATION_DECLARATIONS =
+  discoverPresentationDeclarations(programsStoryDeclarations);
+
 export const ALL_PRESENTATION_DECLARATIONS = [
   ...MANAGEMENT_HUB_PRESENTATION_DECLARATIONS,
   ...PUBLIC_AUTH_MEMBER_COMMUNICATIONS_PRESENTATION_DECLARATIONS,
+  ...PROGRAMS_PRESENTATION_DECLARATIONS,
 ] as const;
 
 export interface ScreenCatalogEntry {
@@ -118,6 +124,69 @@ export const SCREEN_CATALOG: readonly ScreenCatalogEntry[] = [
     primaryPsn: PUBLIC_AUTH_MEMBER_COMMUNICATIONS_PRESENTATION.notFound.psn,
     psns: [PUBLIC_AUTH_MEMBER_COMMUNICATIONS_PRESENTATION.notFound.psn],
     storyIds: [PUBLIC_AUTH_MEMBER_COMMUNICATIONS_PRESENTATION.notFound.storyId],
+  },
+  {
+    screenId: "programs-participant-directory",
+    route: "/programs",
+    primaryPsn: PROGRAMS_PRESENTATION.participantDirectory.psn,
+    psns: [PROGRAMS_PRESENTATION.participantDirectory.psn],
+    storyIds: [PROGRAMS_PRESENTATION.participantDirectory.storyId],
+  },
+  {
+    screenId: "programs-participant-program-detail",
+    route: "/programs",
+    primaryPsn: PROGRAMS_PRESENTATION.participantProgramDetail.psn,
+    psns: [PROGRAMS_PRESENTATION.participantProgramDetail.psn],
+    storyIds: [PROGRAMS_PRESENTATION.participantProgramDetail.storyId],
+  },
+  {
+    screenId: "programs-participant-event-detail",
+    route: "/programs",
+    primaryPsn: PROGRAMS_PRESENTATION.participantEventDetail.psn,
+    psns: [PROGRAMS_PRESENTATION.participantEventDetail.psn],
+    storyIds: [PROGRAMS_PRESENTATION.participantEventDetail.storyId],
+  },
+  {
+    screenId: "programs-management-directory",
+    route: "/programs",
+    primaryPsn: PROGRAMS_PRESENTATION.managementDirectory.psn,
+    psns: [PROGRAMS_PRESENTATION.managementDirectory.psn],
+    storyIds: [PROGRAMS_PRESENTATION.managementDirectory.storyId],
+  },
+  {
+    screenId: "programs-workspace-overview",
+    route: "/programs",
+    primaryPsn: PROGRAMS_PRESENTATION.workspaceOverview.psn,
+    psns: [PROGRAMS_PRESENTATION.workspaceOverview.psn],
+    storyIds: [PROGRAMS_PRESENTATION.workspaceOverview.storyId],
+  },
+  {
+    screenId: "programs-workspace-events",
+    route: "/programs",
+    primaryPsn: PROGRAMS_PRESENTATION.workspaceEvents.psn,
+    psns: [PROGRAMS_PRESENTATION.workspaceEvents.psn],
+    storyIds: [PROGRAMS_PRESENTATION.workspaceEvents.storyId],
+  },
+  {
+    screenId: "programs-workspace-participants",
+    route: "/programs",
+    primaryPsn: PROGRAMS_PRESENTATION.workspaceParticipants.psn,
+    psns: [PROGRAMS_PRESENTATION.workspaceParticipants.psn],
+    storyIds: [PROGRAMS_PRESENTATION.workspaceParticipants.storyId],
+  },
+  {
+    screenId: "programs-workspace-settings",
+    route: "/programs",
+    primaryPsn: PROGRAMS_PRESENTATION.workspaceSettings.psn,
+    psns: [PROGRAMS_PRESENTATION.workspaceSettings.psn],
+    storyIds: [PROGRAMS_PRESENTATION.workspaceSettings.storyId],
+  },
+  {
+    screenId: "programs-workspace-notifications",
+    route: "/programs",
+    primaryPsn: PROGRAMS_PRESENTATION.workspaceNotifications.psn,
+    psns: [PROGRAMS_PRESENTATION.workspaceNotifications.psn],
+    storyIds: [PROGRAMS_PRESENTATION.workspaceNotifications.storyId],
   },
 ];
 
