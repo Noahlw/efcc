@@ -19,8 +19,9 @@ A document or artifact owns only the decisions assigned to it below:
 5. **Primitive authority:** [`web/components/ui/`](../../web/components/ui/) owns local shadcn/Radix accessible mechanics and its typed semantic API.
 6. **Product-pattern authority:** approved EFCC patterns own repeated product geometry, composition, and state presentation without owning domain fetching, permission decisions, or mutations.
 7. **Route authority:** routes own domain content, route state, domain-specific arrangement, and calls to domain adapters. Routes do not redefine shared primitive or pattern ownership.
-8. **Executable contract authority:** approved Scenario and UI Contract registries, once introduced by T03+, own machine-checkable expectations within their declared scope. They cannot silently change this governance or a domain/design authority.
-9. **Inventory/evidence authority:** [`web/COMPONENT_INVENTORY.md`](../../web/COMPONENT_INVENTORY.md) records adoption and documented native exceptions; approval packages and human evidence record owner decisions, not implementation-agent decisions.
+8. **Testing architecture authority:** [`TESTING.md`](../../TESTING.md) and its accepted testing ADR own test-layer ownership, seam selection, isolation, local/CI routing, failure evidence, and promotion composition. They cannot silently change domain or UI contracts.
+9. **Executable contract authority:** approved Scenario and UI Contract registries, once introduced by T03+, own machine-checkable expectations within their declared scope. They cannot silently change this governance or a domain/design authority.
+10. **Inventory/evidence authority:** [`web/COMPONENT_INVENTORY.md`](../../web/COMPONENT_INVENTORY.md) records adoption and documented native exceptions; approval packages and human evidence record owner decisions, not implementation-agent decisions.
 
 If two authorities appear to contradict, the lower authority does not guess or silently override the higher one. The implementation stops at a scoped contract question, records the conflict, and obtains an owner-approved decision. A screenshot, prototype, audit, generated metadata file, issue comment from a third party, or passing isolated test is not permission to override an active authority.
 

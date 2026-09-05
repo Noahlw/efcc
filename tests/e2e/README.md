@@ -9,16 +9,18 @@ Each Playwright config has a positive `testMatch`; suites must not cross loaders
 | Config | Command | Coverage |
 | --- | --- | --- |
 | `auth-d1.config.ts` | `pnpm exec playwright test -c tests/e2e/auth-d1.config.ts` | Cookie-only password login/logout and disposable legacy-PIN upgrade. |
-| `programs-d1.config.ts` | `pnpm exec playwright test -c tests/e2e/programs-d1.config.ts` | PUI-01 Programs boundary, capability-shaped management entry, URL intent, and recovery at phone/desktop sizes. |
+| `programs-d1.config.ts` | `pnpm exec playwright test -c tests/e2e/programs-d1.config.ts` | Historical diagnostic only; not T05 promotion authority. PUI-01 Programs boundary, capability-shaped management entry, URL intent, and recovery at phone/desktop sizes. |
 | `attendance-d1.config.ts` | `pnpm exec playwright test -c tests/e2e/attendance-d1.config.ts` | ATT-04 attendance flows against the real Worker API and browser UI. |
 | `live-ui.config.ts` | `pnpm exec playwright test -c tests/e2e/live-ui.config.ts` | Rebuilt Next UI shell, Profile, Account Settings, approval flow, and responsive browser states. |
 | `responsive.config.ts` | `pnpm test:shell-responsive` | Deterministic static-shell responsive/accessibility checks with an in-browser RPC stub. |
 | `shell-geometry.config.ts` | `pnpm test:shell-geometry` | Pinned Chromium shell geometry at 320/390/600/799/800/1024/1440 CSS px (TK-09): critical anchors, no overflow/obstruction, numeric CSS-pixel evidence only (TK-12). |
 | `role-hierarchy-geometry.config.ts` | `pnpm test:role-hierarchy-geometry` | #478 H-20 pinned hierarchy/list/detail/rename geometry at 320/390/600/799/800/1024/1440 CSS px; numeric CSS-pixel evidence only (no screenshots). |
+| `programs-participant-acceptance.config.ts` | `pnpm test:programs:browser` | T05.4/T05.5 critical participant and management Browser Acceptance at one representative `phone-390` viewport, zero retries, and unique disposable fixtures. |
+| `programs-responsive-matrix.config.ts` | `pnpm test:programs:responsive` | T05.6 deterministic participant/management responsive proof at exactly 320, 390, and 1280 widths; the canonical runner owns an official Harness, no broad domain replay, and zero retries. |
 
-The identity 900px seam is covered by the `desktop-900` project in
-`s4-management-hardening.config.ts`; the focused static identity report is
-W7-only by design.
+`pnpm test:programs:browser` and `pnpm test:programs:responsive` start the official Wrangler `createTestHarness()` with `web/wrangler.jsonc`, seed disposable accounts through its D1 binding, run their focused slices, and close the Harness. Direct config invocation remains available for a manually supplied diagnostic target.
+
+The identity 900px seam is covered by the `desktop-900` project in `s4-management-hardening.config.ts`; the focused static identity report is W7-only by design.
 
 `pnpm test:shell-responsive` builds the Next static export and serves it through `tests/e2e/serve-static.ts` on port `4173`. It runs the mobile and desktop projects without a Worker, D1, Google session, or network target.
 
@@ -104,12 +106,7 @@ pnpm exec tsx tests/e2e/plan-doc-appender.ts \
   --target-url=http://127.0.0.1:8787
 ```
 
-The explicit post-migration schema smoke is:
-`pnpm exec tsx tests/e2e/inspect-local-identity-schema.ts`
-It queries local `sqlite_master` and `PRAGMA` table-valued functions, asserts the
-seven normalized identity tables plus role-free `accounts` and
-`registration_requests`, and rejects pre-019 tables and retired role-guard
-triggers.
+The explicit post-migration schema smoke is: `pnpm exec tsx tests/e2e/inspect-local-identity-schema.ts` It queries local `sqlite_master` and `PRAGMA` table-valued functions, asserts the seven normalized identity tables plus role-free `accounts` and `registration_requests`, and rejects pre-019 tables and retired role-guard triggers.
 
 Geometry reports live under `tests/e2e/test-results/phase-f/<suite>/results.json`. Route-only reports remain at their suite-specific paths such as `tests/e2e/test-results/auth-d1-results.json`, `live-ui-results.json`, and `attendance-d1-results.json` when those suites pass. The required single-process `programs-d1` journey is represented by its Playwright line reporter and failure-log directory; a missing or failed report is not evidence. The rendered JSON/HTML, the acceptance trace, `docs/qa/2026-09-01-s4-phase-f-release-gate.md`, and `docs/qa/2026-09-01-s4-phase-f-audit-dispositions.md` are the reviewable outputs. Numeric evidence proves DOM/API geometry and state only; it does not claim human keyboard/AT, real-device camera/touch, native print-preview, forced-colors, zoom/reflow, or text-spacing outcomes.
 

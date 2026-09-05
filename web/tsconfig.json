@@ -54,6 +54,7 @@
     "lib/programs/d1-workspace-store.ts",
     "lib/programs/capability-authorizer.ts",
     "lib/programs/department-workspace.ts",
+    "lib/programs/programs-contract.test.ts",
     "lib/programs/program-handlers.ts",
     "lib/programs/programs.test.ts",
     "lib/programs/programs-250.test.ts",
