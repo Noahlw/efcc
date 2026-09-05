@@ -1,8 +1,14 @@
 # EFCC Testing Authority
 
-**Status:** Active testing architecture for the T05 Programs rework **Owner:** Product/release owner **Rationale:** [ADR-0044](docs/adr/0044-layered-testing-authority.md) **Current T05 routing:** [#505 amendment](https://github.com/Noahlw/efcc/issues/505#issuecomment-5538740674) and [#510 execution authority](https://github.com/Noahlw/efcc/issues/510#issuecomment-5538740935)
+**Status:** Active testing architecture for the T05 Programs rework **Owner:** Product/release owner **Rationale:** [ADR-0044](docs/adr/0044-layered-testing-authority.md) **Current T05 routing:** [#505 architecture amendment](https://github.com/Noahlw/efcc/issues/505#issuecomment-5538740674) and [#505 rescue qualification amendment](https://github.com/Noahlw/efcc/issues/505#issuecomment-5550498028), [#510 current routing](https://github.com/Noahlw/efcc/issues/510#issuecomment-5550505098)
 
 This document owns the testing-layer boundaries, test isolation, canonical commands, failure evidence, and promotion rules for the T05 layered-testing migration. Domain behavior remains owned by `CONTEXT.md`, the active domain ADRs/specs, and the Worker contracts. UI ownership remains governed by `docs/implementation/ui-control-recovery-governance.md`.
+
+## Current rescue qualification amendment
+
+For rescue-development, `pnpm verify:programs` is the finite functional aggregate. It must pass the Worker Contract Gate, real local Worker/D1 Browser Acceptance journeys, the approved Responsive UI Matrix, comprehensive local non-browser regression, migration-ledger reconciliation, current-revision artifacts, and separate Standards/Spec review.
+
+The unchanged `pnpm test:programs:canary` remains a five-minute, zero-retry sustained-runtime diagnostic. Its result is reported independently as `passed`, `failed`, or `not_run`; a failure remains non-zero and keeps B-003 `OPEN`. This amendment does not claim the runtime fault is fixed, waive any finite functional failure, or authorize production release. The runner’s `functional-passed` result is not T05 `STACK_GREEN`, which additionally requires the reviewed replacement PR and scoped risk record.
 
 ## Authority model
 
@@ -34,6 +40,8 @@ Use the official `@cloudflare/vitest-pool-workers` integration with the reposito
 
 ### Runtime Reliability Canary
 
+The canary remains independently runnable diagnostic evidence. Its five-minute window and zero-retry semantics are unchanged, but it is not a mandatory finite stage of rescue-development promotion under the approved B-003 residual-risk amendment. A failed finite functional scenario still blocks qualification.
+
 Use `createTestHarness()` with `web/wrangler.jsonc` and `server.listen()` so requests cross the real local HTTP boundary. Apply migrations and seed the disposable D1 through the Harness Worker binding. A canary scenario owns its setup, mutation/read sequence, and cleanup. Qualification is a fixed five-minute sustained window with zero unexplained runtime failures. Retries, skipped iterations, automatic Worker restarts, and smaller fallback runs cannot produce Green.
 
 ### Browser Acceptance Journey
@@ -46,17 +54,18 @@ Run deterministic focused scenarios at exactly `320`, `390`, and `1280` widths. 
 
 ## Promotion and evidence
 
+The current rescue-development aggregate separates finite functional qualification from sustained-runtime diagnosis. `pnpm verify:programs` runs the Worker Contract, Browser Acceptance, Responsive Matrix, and comprehensive local non-browser stages only. It records the canary as an independent `not_run` diagnostic in `promotion.json` and includes the explicit open B-003 risk disclosure. A red canary remains visible and non-zero when run separately; it does not become green and does not alter finite-stage results.
+
 T05.7 is the only child that can make the replacement T05 PR `STACK_GREEN`. Promotion requires:
 
 1. Worker Contract Gate Green;
-2. the five-minute Runtime Reliability Canary with zero unexplained failures;
-3. every required critical Browser Acceptance journey Green with zero retries;
-4. Responsive UI Matrix Green at all three required widths;
-5. local comprehensive non-browser precommit verification Green;
-6. a clean worktree and structured evidence recording the exact reviewed revision; and
-7. `/code-review Standards` and `/code-review Spec` against this authority and the current T05 routing.
+2. every required critical Browser Acceptance journey Green with zero retries;
+3. Responsive UI Matrix Green at all three required widths;
+4. local comprehensive non-browser precommit verification Green;
+5. a clean worktree and structured evidence recording the exact reviewed revision and the B-003 risk disclosure; and
+6. `/code-review Standards` and `/code-review Spec` against this authority and the current T05 routing.
 
-The runnable aggregate is `pnpm verify:programs`. Browser Acceptance and Responsive Matrix each start and close their own official Harness with disposable local D1 and deterministic fixtures. Their Playwright reports are written to the current promotion directory; direct config invocation with a supplied `PROGRAMS_TARGET_URL` remains a diagnostic-only path. The Runtime Reliability Canary also creates and closes its own official Harness. The aggregate writes revision-pinned evidence under `test-results/programs-promotion/<run-id>/`.
+The runnable aggregate is `pnpm verify:programs`. Browser Acceptance and Responsive Matrix each start and close their own official Harness with disposable local D1 and deterministic fixtures. Their Playwright reports are written to the current promotion directory; direct config invocation with a supplied `PROGRAMS_TARGET_URL` remains a diagnostic-only path. The aggregate writes revision-pinned finite-stage evidence and an independent `not_run` canary diagnostic record under `test-results/programs-promotion/<run-id>/`. Run `pnpm test:programs:canary` separately when sustained-runtime evidence is required.
 
 Automatic GitHub CI remains fast-only. Heavy qualification and governance/testing workflows are local-first, with optional manual GitHub runs serving diagnostic/parity purposes only. The old shell-supervised Wrangler runner remains diagnostic when useful.
 
@@ -76,7 +85,9 @@ The seven child issues are separate planning and commit boundaries on the shared
 
 ## Agent routing
 
-Read this document before changing test architecture. Start implementation at [T05.1 / #551](https://github.com/Noahlw/efcc/issues/551), then follow the blockers in [#510](https://github.com/Noahlw/efcc/issues/510):
+The current T05.1–T05.7 implementation is already committed on `rescue/t05-layered-testing`; use the amended qualification contract above and do not restart the architecture. The next normal roadmap frontier is T07/#512 only after T05 and T06 are actually merged into `rescue/ui-control-recovery`.
+
+Read this document before changing test architecture. For the current T05 state, continue qualification from `rescue/t05-layered-testing`; T05.1–T05.7 are already committed. A fresh implementation session begins at T07/#512 only after T05 and T06 are actually merged into `rescue/ui-control-recovery`.
 
 `#551 → (#552 and #553) → (#554 and #555) → #556 → #557`
 

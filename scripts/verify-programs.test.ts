@@ -4,9 +4,12 @@ import path from "node:path";
 import { describe, expect, test } from "vitest";
 
 import {
+  B003_RESIDUAL_RISK,
   PROMOTION_STAGES,
+  RUNTIME_CANARY_STAGE,
   assertLocalPromotionTarget,
   isCanaryArtifactGreen,
+  isFunctionalPromotionManifest,
   assertPlaywrightReportGreen,
   isCleanWorktreeStatus,
   stageArtifactPath,
@@ -18,11 +21,46 @@ describe("T05.7 Programs promotion gate", () => {
   test("aggregates the independent layers in dependency order", () => {
     expect(PROMOTION_STAGES.map(({ name }) => name)).toEqual([
       "worker-contract",
-      "runtime-canary",
       "browser-acceptance",
       "responsive-matrix",
       "non-browser-precommit",
     ]);
+  });
+
+  test("keeps the sustained canary separate and discloses B-003", () => {
+    expect(PROMOTION_STAGES.map(({ name }) => name)).not.toContain(
+      RUNTIME_CANARY_STAGE.name
+    );
+    expect(B003_RESIDUAL_RISK).toMatchObject({
+      id: "B-003",
+      status: "open",
+      disposition: "accepted-rescue-development-risk",
+      scope: "rescue-development only",
+    });
+  });
+
+  test("qualifies finite stages without hiding an independent red canary", () => {
+    const finiteResults = PROMOTION_STAGES.map(({ name }) => ({
+      name,
+      status: "passed",
+    }));
+
+    expect(
+      isFunctionalPromotionManifest({
+        status: "functional-passed",
+        riskDisclosure: B003_RESIDUAL_RISK,
+        stageResults: [
+          ...finiteResults,
+          { name: "runtime-canary", status: "failed" },
+        ],
+      })
+    ).toBe(true);
+    expect(
+      isFunctionalPromotionManifest({
+        status: "functional-passed",
+        stageResults: finiteResults,
+      })
+    ).toBe(false);
   });
 
   test("accepts only a complete zero-retry Playwright report", () => {
@@ -109,10 +147,13 @@ describe("T05.7 Programs promotion gate", () => {
       "/tmp/t05-promotion/run-1/worker-contract.log"
     );
     expect(stageArtifactPath(PROMOTION_STAGES[1], artifactDirectory)).toBe(
-      "/tmp/t05-promotion/run-1/runtime-canary"
+      "/tmp/t05-promotion/run-1/browser-results.json"
     );
     expect(stageArtifactPath(PROMOTION_STAGES[2], artifactDirectory)).toBe(
-      "/tmp/t05-promotion/run-1/browser-results.json"
+      "/tmp/t05-promotion/run-1/responsive-results.json"
+    );
+    expect(stageArtifactPath(RUNTIME_CANARY_STAGE, artifactDirectory)).toBe(
+      "/tmp/t05-promotion/run-1/runtime-canary"
     );
   });
 

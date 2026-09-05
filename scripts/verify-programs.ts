@@ -23,7 +23,6 @@ type PromotionStageResult = {
 
 export const PROMOTION_STAGES: readonly PromotionStage[] = [
   { name: "worker-contract", args: ["test:programs:contract"] },
-  { name: "runtime-canary", args: ["test:programs:canary"] },
   {
     name: "browser-acceptance",
     args: ["test:programs:browser"],
@@ -39,6 +38,25 @@ export const PROMOTION_STAGES: readonly PromotionStage[] = [
   { name: "non-browser-precommit", args: ["verify:precommit"] },
 ];
 
+export const RUNTIME_CANARY_STAGE: PromotionStage = {
+  name: "runtime-canary",
+  args: ["test:programs:canary"],
+};
+
+export const B003_RESIDUAL_RISK = {
+  id: "B-003",
+  status: "open",
+  disposition: "accepted-rescue-development-risk",
+  scope: "rescue-development only",
+  summary:
+    "The unchanged five-minute sustained-runtime canary remains unresolved diagnostic evidence; this is not a runtime-fix or production-release approval.",
+} as const;
+
+const MANIFEST_STAGES: readonly PromotionStage[] = [
+  ...PROMOTION_STAGES,
+  RUNTIME_CANARY_STAGE,
+];
+
 type JsonRecord = Record<string, unknown>;
 const EXPECTED_CANARY_WINDOW_MS = 5 * 60 * 1000;
 const EXPECTED_CANARY_RETRIES = 0;
@@ -52,6 +70,29 @@ function asRecord(value: unknown): JsonRecord | null {
 function numberField(record: JsonRecord | null, key: string): number | null {
   const value = record?.[key];
   return typeof value === "number" ? value : null;
+}
+
+export function isFunctionalPromotionManifest(value: unknown): boolean {
+  const manifest = asRecord(value);
+  const riskDisclosure = asRecord(manifest?.riskDisclosure);
+  const stageResults = Array.isArray(manifest?.stageResults)
+    ? manifest.stageResults
+        .map(asRecord)
+        .filter((result): result is JsonRecord => result !== null)
+    : [];
+
+  return (
+    manifest?.status === "functional-passed" &&
+    riskDisclosure?.id === B003_RESIDUAL_RISK.id &&
+    riskDisclosure.status === B003_RESIDUAL_RISK.status &&
+    riskDisclosure.disposition === B003_RESIDUAL_RISK.disposition &&
+    riskDisclosure.scope === B003_RESIDUAL_RISK.scope &&
+    PROMOTION_STAGES.every(({ name }) =>
+      stageResults.some(
+        (result) => result.name === name && result.status === "passed"
+      )
+    )
+  );
 }
 
 function reportStatuses(
@@ -346,17 +387,20 @@ async function main(): Promise<void> {
     finishedAt?: string;
     stages: string[];
     stageResults: PromotionStageResult[];
+    riskDisclosure: typeof B003_RESIDUAL_RISK;
     failure?: string;
     artifacts: string;
   } = {
     schemaVersion: 1,
-    authority: "T05.7 layered Programs promotion gate",
+    authority:
+      "T05.7 layered Programs finite promotion gate; sustained runtime canary is independent diagnostic evidence",
     runId: path.basename(artifactDirectory),
     revision,
     status: "running",
     startedAt: new Date().toISOString(),
     stages: [],
     stageResults: [],
+    riskDisclosure: B003_RESIDUAL_RISK,
     artifacts: path.relative(REPO_ROOT, artifactDirectory),
   };
   await writeJson(path.join(artifactDirectory, "promotion.json"), manifest);
@@ -404,7 +448,12 @@ async function main(): Promise<void> {
         );
       }
     }
-    manifest.status = "STACK_GREEN";
+    manifest.status = "functional-passed";
+    if (!isFunctionalPromotionManifest(manifest)) {
+      throw new Error(
+        "T05.7 functional promotion is missing required finite-stage or B-003 risk evidence"
+      );
+    }
   } catch (error) {
     manifest.status = "failed";
     manifest.failure = error instanceof Error ? error.message : String(error);
@@ -414,7 +463,7 @@ async function main(): Promise<void> {
     const recordedStages = new Set(
       manifest.stageResults.map(({ name }) => name)
     );
-    for (const stage of PROMOTION_STAGES) {
+    for (const stage of MANIFEST_STAGES) {
       if (recordedStages.has(stage.name)) {
         continue;
       }

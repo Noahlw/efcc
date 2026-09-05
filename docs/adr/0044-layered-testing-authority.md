@@ -23,6 +23,14 @@ The migration is expand → migrate → contract. Existing coverage remains avai
 
 The required default is local-first: automatic GitHub CI stays fast-only, while heavy runtime/browser qualification is run locally and optional GitHub execution is manual diagnostic/parity evidence. Failure artifacts preserve the first causal signal and distinguish it from downstream connection symptoms.
 
+## Amendment — rescue qualification separates sustained-runtime risk
+
+On 2026-09-05 the repository owner approved a narrow T05 rescue-development policy change. The finite qualification aggregate must pass the Worker Contract Gate, real local Worker/D1 Browser Acceptance journeys, the Responsive UI Matrix, comprehensive local non-browser regression, migration-ledger reconciliation, current-revision evidence, and separate Standards/Spec review. Required functional failures remain blockers.
+
+The unchanged five-minute, zero-retry Runtime Reliability Canary remains independently runnable diagnostic evidence. Its own failure remains non-zero and B-003 remains `OPEN` residual risk; it is not claimed fixed, harmless, conclusively upstream, or production-safe. The finite aggregate records the canary as `not_run` rather than silently treating it as passed, carries an explicit B-003 disclosure, and reports `functional-passed` rather than `STACK_GREEN`. T05 `STACK_GREEN` still requires the reviewed one-replacement-PR delivery and scoped risk disposition, and rescue acceptance does not authorize a production release or a merge to `main`.
+
+This amendment supersedes only the former mandatory five-minute promotion prerequisite. It does not remove coverage, change baselines or tolerances, replace the real Worker/D1 browser seam, or authorize another runtime adapter. B-003 is re-evaluated at ordinary finite failures, relevant Worker/D1/Harness/toolchain changes, T33/#538 reconciliation, and before T35/#540 final owner release approval.
+
 ## Consequences
 
 - Worker/D1 failures can be diagnosed without browser transport or viewport noise.

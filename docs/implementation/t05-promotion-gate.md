@@ -12,15 +12,20 @@ pnpm verify:programs
 
 Run it from a clean worktree after creating the ignored local `web/.dev.vars`. Browser Acceptance and Responsive Matrix each own an official `createTestHarness()` process, disposable D1, and deterministic fixture setup. Direct Responsive config invocation may use `PROGRAMS_TARGET_URL` for diagnostics, but the canonical runner provisions its own loopback Harness. The Runtime Reliability Canary owns a separate official Harness process and disposable D1.
 
-The aggregate runs these stages once and in order:
+The finite aggregate runs these required stages once and in order:
 
 1. `pnpm test:programs:contract`
-2. `pnpm test:programs:canary` — fixed five-minute window, zero retries/restarts/skips
-3. `pnpm test:programs:browser` — two critical journeys, one `phone-390` project, zero retries
-4. `pnpm test:programs:responsive` — six scenarios across exactly 320, 390, and 1280 widths, zero retries
-5. `pnpm verify:precommit` — comprehensive local non-browser verification
+2. `pnpm test:programs:browser` — two critical journeys, one `phone-390` project, zero retries
+3. `pnpm test:programs:responsive` — six scenarios across exactly 320, 390, and 1280 widths, zero retries
+4. `pnpm verify:precommit` — comprehensive local non-browser verification
 
-The aggregate validates both Playwright JSON reports, including expected count, zero skipped/unexpected/flaky results, zero result retries, and passed result statuses. It validates that the current revision has a passed five-minute canary artifact, so stale evidence cannot satisfy a new revision. Every stage log and the final `promotion.json` live under the ignored `test-results/programs-promotion/<run-id>/` directory.
+The aggregate validates both Playwright JSON reports, including expected count, zero skipped/unexpected/flaky results, zero result retries, and passed result statuses. It does not require a canary artifact; the final `promotion.json` records the canary as independent `not_run` diagnostic evidence and carries the open B-003 risk disclosure. Every stage log and the final `promotion.json` live under the ignored `test-results/programs-promotion/<run-id>/` directory.
+
+## Amended rescue-development contract
+
+Under the owner-approved [T05 rescue qualification amendment](https://github.com/Noahlw/efcc/issues/505#issuecomment-5550498028), `pnpm verify:programs` is the finite functional aggregate. It runs the Worker Contract, real local Worker/D1 Browser Acceptance, Responsive Matrix, and comprehensive local non-browser stages. It records the unchanged five-minute canary as an independent `not_run` diagnostic and includes the explicit open B-003 residual-risk disclosure; it does not look up a canary artifact as a mandatory stage.
+
+The canary remains independently runnable through `pnpm test:programs:canary` with its existing five-minute and zero-retry semantics. A red canary remains visible and non-zero, but does not become green or change finite-stage results. A failed finite functional scenario still blocks qualification. The machine result `functional-passed` is not T05 `STACK_GREEN`; ledger reconciliation, current-revision evidence, separate Standards/Spec review, one replacement PR, and the scoped risk record remain required.
 
 ## Contraction boundary
 

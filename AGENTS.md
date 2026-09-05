@@ -12,6 +12,8 @@
 
 ## Layered testing authority
 
+- **Current rescue qualification amendment (2026-09-05):** `pnpm verify:programs` is the finite functional aggregate only. It must pass the Worker Contract, real local Worker/D1 Browser Acceptance, Responsive Matrix, and comprehensive local non-browser regression stages with current, complete, zero-retry evidence. The unchanged five-minute `pnpm test:programs:canary` remains an independently reported sustained-runtime diagnostic; B-003 stays `OPEN` residual risk and is not claimed fixed, harmless, or production-safe. A failed finite functional scenario still blocks T05. The machine result `functional-passed` is not `STACK_GREEN`; that state also requires ledger reconciliation, current `/code-review Standards` and `/code-review Spec`, one replacement PR, and the scoped risk record.
+
 - EFCC testing is layered. Read [`TESTING.md`](TESTING.md) before changing test architecture or claiming a T05 gate.
 - Worker/D1 correctness belongs to the Workers Vitest Contract Gate; repeated real-HTTP runtime reliability belongs to the `createTestHarness()` Runtime Reliability Canary; critical browser workflows belong to Playwright Browser Acceptance; viewport behavior belongs to the focused Responsive UI Matrix; promotion belongs to the aggregate gate.
 - T05 Browser Acceptance uses one representative viewport with zero retries. Responsive proof uses deterministic `320`, `390`, and `1280` scenarios. Heavy qualification is local-first; automatic GitHub CI remains fast-only.
