@@ -670,6 +670,12 @@ async function runScenario(target, db, programId, scenarioIndex, deadlineAt) {
     );
   } catch (error) {
     failure = error;
+    if (failure !== null && typeof failure === "object") {
+      const lastRequest = requestEvidence.at(-1);
+      failure.scenarioIndex ??= scenarioIndex;
+      failure.operation ??= lastRequest?.operation ?? null;
+      failure.pathname ??= lastRequest?.path ?? null;
+    }
   }
 
   try {

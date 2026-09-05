@@ -4,6 +4,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 
+import { readPlaywrightFailureEvidence } from "./playwright-failure-evidence.mjs";
 import {
   currentRevision,
   firstCausalRuntimeSignal,
@@ -123,13 +124,25 @@ async function main() {
           path.join(artifactDirectory, "runtime-logs.json"),
           runtimeLogs
         );
+        const failureEvidence = await readPlaywrightFailureEvidence(
+          reportPath,
+          {
+            "phone-390": { width: 390, height: 844 },
+          },
+          {
+            route: "/programs (participant and management journeys)",
+            state: "authenticated Program journey",
+          }
+        );
+        const primaryFailure = failureEvidence[0] ?? null;
         await writeJson(path.join(artifactDirectory, "failure-summary.json"), {
           revision: manifest.revision,
           layer: manifest.layer,
-          logicalScenario: null,
-          route: null,
-          state: null,
-          viewport: null,
+          logicalScenario: primaryFailure?.logicalScenario ?? null,
+          route: primaryFailure?.route ?? null,
+          state: primaryFailure?.state ?? null,
+          viewport: primaryFailure?.viewport ?? { width: 390, height: 844 },
+          failureEvidence,
           message: manifest.failure,
           firstCausalRuntimeSignal: firstCausalRuntimeSignal(runtimeLogs),
           target: manifest.target,
