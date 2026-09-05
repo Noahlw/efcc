@@ -163,10 +163,10 @@ Update this table at the start and end of every implementation session.
 | Active phase stack | T05.1 → T05.2/T05.3 → T05.4/T05.5 → T05.6 → T05.7 → T06 |
 | Implementation frontier | T05.1–T05.7 committed on `rescue/t05-layered-testing`; promotion qualification is blocked at the #553 Runtime Reliability Canary by B-003; no child implementation remains |
 | Merge frontier | One T05 replacement PR from `rescue/t05-layered-testing` → rescue; then T06 / #511/#550 |
-| Review pending | None — Standards/Spec findings resolved in `51915675` and `5d0fd0b3`; promotion rerun after B-003 is resolved |
+| Review pending | None — Standards/Spec findings resolved in `51915675`, `5d0fd0b3`, and `9da4d31e`; promotion rerun after B-003 is resolved |
 | Human approval pending | None — D-003 records the owner-authorized T03 Contract Change |
 | Active blocker | B-003 reproduced in the current canonical promotion artifact at revision `5d0fd0b3bd9e98e41b7565cc51d23d744cca3afd`: Worker Contract passed, then Runtime Reliability Canary failed after 158 completed scenarios at scenario 159 (`admin enrollment-request decision` POST `/api/v1/programs/<program-id>/enrollment-requests/<request-id>/decision`) with HTTP 500 without `X-Request-Id`; first causal runtime signal is null and suspected origin remains undetermined. Browser Acceptance, Responsive Matrix, and non-browser precommit are `not_run`; T05 is not `STACK_GREEN`; T06 remains promotion/merge-gated |
-| Next safe action | Resolve/re-prove B-003 with the fixed five-minute no-retry canary, then run `pnpm verify:programs`; only after final review and Green may the replacement PR merge parent-first |
+| Next safe action | Re-run the fixed five-minute no-retry canary on branch tip `9da4d31e`, then run `pnpm verify:programs`; only after final review and Green may the replacement PR merge parent-first |
 | Last merged rescue SHA | `dcd21b681d54f062a2df81b38d08269e46350720` |
 | Last rollback checkpoint | Frozen Phase F SHA `6edf28c0f8f7058cf992416e7b517824c3178c8` |
 | Parent Spec amendment | [Owner-approved T05 layered-testing amendment](https://github.com/Noahlw/efcc/issues/505#issuecomment-5538740674) |
@@ -387,7 +387,7 @@ The tracker separates the implementation frontier from the merge frontier. `STAC
 | Phase | Phase 0 — Foundation & Recovery Control |
 | Rescue base SHA | `dcd21b681d54f062a2df81b38d08269e46350720` |
 | Stack root | `rescue/ui-control-recovery` after parent-first merge of #547, #546, and #548 |
-| Stack tip | `rescue/t05-layered-testing` / T05.7 implementation `e78b8c55` plus targeted corrections `c6eac28`, `51915675`, and `5d0fd0b3`; replacement PR pending qualification |
+| Stack tip | `rescue/t05-layered-testing` / T05.7 implementation `e78b8c55` plus targeted corrections `c6eac28`, `51915675`, `5d0fd0b3`, and `9da4d31e`; replacement PR pending qualification |
 | Implementation frontier | T05.1–T05.7 committed; targeted promotion corrections committed; current #553 Runtime Reliability Canary artifact observes B-003 at 158 completed scenarios; no child implementation remains; T06 remains blocked |
 | Merge frontier | One replacement T05 PR → rescue, then T06 / #511/#550 after restack |
 | Review pending | None — targeted Standards/Spec findings resolved; promotion rerun after B-003 resolution |
