@@ -1,6 +1,6 @@
 # T06 CSS Cascade Containment Implementation Plan
 
-> **Current execution status (2026-09-05):** T05 replacement PR #565 is now merged into `rescue/ui-control-recovery` at `199b54e086bfae5faff1cd4fabd42c09353087da`. The earlier provisional T05-blocked wording below is historical procedure; T06 may now complete its own finite validation. B-003 remains an open, separately reported rescue-development risk and is not a claim that the runtime fault is fixed. T06 still requires its own CSS, browser, governance, source, and review gates, and this plan does not authorize T07, production release, or a merge to `main`.
+> **Current execution status (2026-09-05):** T05 replacement PR #565 is `MERGED_RESCUE` at `199b54e086bfae5faff1cd4fabd42c09353087da`; T06/#511 is `MERGE_READY` on PR #550 at `092936a197c2993938e5658ce4e97f5ba76914d4` after finite, browser, governance, and two-axis review gates. B-003 remains open residual rescue-development risk; this plan does not claim a runtime fix, production release, or merge to `main`.
 
 > **For agentic workers:** Steps use checkbox (`- [ ]`) syntax for tracking. <!-- Note: subagent-driven-development and executing-plans skills are not available -->
 
@@ -10,12 +10,12 @@
 
 **Tech Stack:** Tailwind CSS v4, Next.js static export, React, TypeScript, Playwright, Vitest, and the existing EFCC governance registries.
 
-The same-fixture before/after record is [`docs/qa/2026-09-05-t06-cascade-before-after.json`](../../docs/qa/2026-09-05-t06-cascade-before-after.json): baseline `199b54e0` measured zero route/surface/input/search padding and only `38.953125px` phone scroll tail; T06 implementation `774ea020` measured positive values, Programs center delta `0`, and `115.640625px` phone scroll tail. The live-ui report remains at `tests/e2e/test-results/live-ui-results.json`.
+The same-fixture before/after record is [`docs/qa/2026-09-05-t06-cascade-before-after.json`](../../docs/qa/2026-09-05-t06-cascade-before-after.json): baseline `199b54e0` measured zero route/surface/input/search padding and only `38.953125px` phone scroll tail; T06 implementation `09f5b0eb` measured positive values, Programs center delta `0`, and `115.640625px` phone scroll tail. The live-ui report remains at `tests/e2e/test-results/live-ui-results.json`.
 
 ## Qualification trace
 
 - **Authority read before qualification:** #511 acceptance criteria, #505 owner-approved T05 qualification amendment, current #510 routing, `AGENTS.md`, `TESTING.md`, and this plan were read before the current T06 correction/review cycle.
-- **Candidate boundary:** T06 implementation/evidence candidate `09f5b0eb28f20c2e2517fe60b14fbb15bc404185`; tracker/QA readback candidate `016f3060afbf2655f3c8bcc62a0fb68335857784`.
+- **Candidate boundary:** T06 implementation/evidence candidate `09f5b0eb28f20c2e2517fe60b14fbb15bc404185`; tracker/QA readback candidate `092936a197c2993938e5658ce4e97f5ba76914d4`.
 - **Required evidence:** real Worker/D1 `live-ui` `2/2`; same-fixture before/after artifact; responsive `92`, shell geometry `28`, role-hierarchy geometry `49`; focused governance `105/105`; full/release governance, typecheck, precommit, and diff-check.
 - **Review boundary:** final independent Standards/Spec review must pass before `STACK_GREEN`, ready status, or merge. Numeric browser evidence is not human visual approval.
 - **Provenance note:** the original T06 plan and implementation history are preserved; this trace records the current qualification state and does not rewrite earlier commits.
@@ -150,9 +150,9 @@ Run sequentially in `/Users/noah.wong/Desktop/code/EFCC-dev/.worktrees/phase0-t0
 - Consumes: the final CSS diff, governance output, browser canary report, T05 blocker state, and exact commit SHAs.
 - Produces: an internally consistent provisional T06 record that explicitly removes the waiver, records before/after numeric evidence, and records T05 as merged and leaves T06 final validation/merge gated by its own evidence.
 
-- [ ] **Step 1: Run repository verification.** Run `fnm exec --using 22.18.0 pnpm verify:governance:full`, `fnm exec --using 22.18.0 pnpm verify:governance:release`, `fnm exec --using 22.18.0 pnpm typecheck`, `fnm exec --using 22.18.0 pnpm --dir web typecheck`, `fnm exec --using 22.18.0 pnpm verify:precommit`, and `git diff --check`. Run the focused live-ui canary when the required disposable Worker is available.
-- [ ] **Step 2: Verify T06 scope and forbidden patterns.** Confirm no `!important` was added, no route-owned selector was added to `globals.css`, no unrelated waiver changed, all existing overflow/target-size/focus/shell tests remain green, and the production/domain diff is CSS ownership plus test evidence only.
-- [ ] **Step 3: Run two-axis `/code-review` on the T06 incremental diff.** Review Standards and Spec against #511 and this plan. Fix actionable findings before handoff; call T06 `STACK_GREEN` only after T05 is `MERGED_RESCUE` and T06 gates pass.
-- [ ] **Step 4: Update the tracker and stop.** Record the exact implementation SHA, removed waiver IDs, canary viewport/report paths, any T05-backed pending browser evidence, and the the current T06 qualification and merge status. Do not start T07 or Phase 1.
+- [x] **Step 1: Run repository verification.** Run `fnm exec --using 22.18.0 pnpm verify:governance:full`, `fnm exec --using 22.18.0 pnpm verify:governance:release`, `fnm exec --using 22.18.0 pnpm typecheck`, `fnm exec --using 22.18.0 pnpm --dir web typecheck`, `fnm exec --using 22.18.0 pnpm verify:precommit`, and `git diff --check`. Run the focused live-ui canary when the required disposable Worker is available.
+- [x] **Step 2: Verify T06 scope and forbidden patterns.** Confirm no `!important` was added, no route-owned selector was added to `globals.css`, no unrelated waiver changed, all existing overflow/target-size/focus/shell tests remain green, and the production/domain diff is CSS ownership plus test evidence only.
+- [x] **Step 3: Run two-axis `/code-review` on the T06 incremental diff.** Review Standards and Spec against #511 and this plan. Fix actionable findings before handoff; call T06 `STACK_GREEN` only after T05 is `MERGED_RESCUE` and T06 gates pass.
+- [x] **Step 4: Update the tracker and stop.** Record the exact implementation SHA, removed waiver IDs, canary viewport/report paths, any T05-backed pending browser evidence, and the the current T06 qualification and merge status. Do not start T07 or Phase 1.
 
 ---
