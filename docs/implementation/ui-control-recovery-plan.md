@@ -80,6 +80,25 @@ Read the [canonical owner-approved amendment](https://github.com/Noahlw/efcc/iss
 - The historical #549 PR is superseded without merge; its diagnostic evidence remains preserved.
 - This is a T05-specific exception to the generic per-ticket PR rule and must not be generalized to other phases without a new owner-approved amendment.
 
+## T07 Storybook delivery override
+
+**Owner-approved on 2026-09-05; this exception applies only to T07/#512 and its six child issues.**
+
+T07 is the Storybook presentation-workshop and baseline-catalog umbrella. Its child topology is:
+
+`T07.1 → (T07.2, T07.3, T07.4, T07.5) → T07.6`
+
+- T07.1 — Storybook Workshop Tracer
+- T07.2 — Public / Auth / Member / Communications Baseline Catalog
+- T07.3 — Programs Baseline Catalog
+- T07.4 — Management / Identity Baseline Catalog
+- T07.5 — Attendance / Scanner / Guest Baseline Catalog
+- T07.6 — Catalog Qualification, Fidelity Approval, Developer Workflow
+
+All six child issues retain separate acceptance, dependency, evidence, review, commit, and rollback boundaries but share one T07 branch and one #512 PR. Each child has one owning commit. A child becomes `CHECKPOINT_GREEN` after focused implementation, focused verification, focused Standards/Spec review, and its owning commit. `CHECKPOINT_GREEN` is an implementation checkpoint, not promotion. Only T07.6 can make the shared #512 PR `STACK_GREEN`. Child issues and #512 close only after the shared PR is promoted/merged.
+
+This exception must not be generalized to T08–T12.
+
 Current child order: [T05.1/#551](https://github.com/Noahlw/efcc/issues/551) → [T05.2/#552](https://github.com/Noahlw/efcc/issues/552) and [T05.3/#553](https://github.com/Noahlw/efcc/issues/553) → [T05.4/#554](https://github.com/Noahlw/efcc/issues/554) and [T05.5/#555](https://github.com/Noahlw/efcc/issues/555) → [T05.6/#556](https://github.com/Noahlw/efcc/issues/556) → [T05.7/#557](https://github.com/Noahlw/efcc/issues/557).
 
 ## 3. How each phase session works
@@ -170,7 +189,7 @@ For visual phases, each ticket still prepares attributable scenario evidence. Th
 | Owner approval | T05 functional-acceptance / sustained-runtime-risk amendment: [#505 comment](https://github.com/Noahlw/efcc/issues/505#issuecomment-5550498028). It permits rescue-development qualification with B-003 open; it does not authorize a runtime-fix or production-release claim |
 | Required evidence | Real Worker/D1 live-ui `2/2`; same-fixture before/after artifact; responsive `92`; shell geometry `28`; role-hierarchy `49`; focused governance `105/105`; full/release governance; typecheck; precommit; diff-check |
 | Active blocker | B-003 remains `OPEN` sustained-runtime residual risk: independent five-minute canary failed at revision `04f346c9e53db2bb6601bf4fdb2420adf80de764` after 141 completed scenarios with HTTP 500; artifact `test-results/programs-runtime-canary/20260905t083708030z/run.json`. This is not a finite-gate blocker under the approved amendment; no runtime fix or production-release claim is made |
-| Next safe action | Stop at T06. Preserve B-003 `OPEN` residual risk and all later approval gates; do not create a T07 worktree, implementation, or handoff |
+| Next safe action | Publish the planning-only Phase 1 Storybook authority and six-child T07 topology; keep the T07 implementation frontier closed until that planning PR is merged; preserve B-003 `OPEN` residual risk and all later approval gates |
 
 > Historical T01–T05 execution logs and provenance remain below. The snapshot above is the active control-plane state for the next session.
 ## 5. Phase overview
@@ -178,7 +197,7 @@ For visual phases, each ticket still prepares attributable scenario evidence. Th
 | Phase | Tickets | Outcome | Entry gate | Exit gate | Status |
 |---|---|---|---|---|---|
 | **0 — Foundation & Recovery Control** | T01–T04, T05 umbrella + T05.1–T05.7, T06 / #506–#511 and #551–#557 | Preserve post-main S4 value, establish governance/enforcement, restore Worker tests, qualify layered Programs testing, and contain the global cascade | Parent/tickets published; frozen Phase F SHA and full S4 ancestry verified | T05 replacement PR #565 and T06 PR #550 merged into rescue at `ffef73087c3cc985f1b314e8017cfdf973e26d58`; cascade evidence recorded | `COMPLETE THROUGH T06 — Phase 0 exit recorded; T07/#512 intentionally untouched` |
-| **1 — Executable UI Foundation** | T07–T12 / #512–#517 | UI Lab, app-facing contracts, composition grammar, shell, Programs tracer, rescue-path decision | Phase 0 complete | #512–#517 merged; required human approvals recorded; T12 decision recorded | `BLOCKED` |
+| **1 — Executable UI Foundation** | T07 umbrella + T07.1–T07.6, T08–T12 / #512–#517 plus T07 child issues | Local Storybook presentation workshop/catalog, approved controls/surfaces/composition grammar, approved authenticated shell, thin complete Programs production tracer, rescue-path decision | Phase 0 complete | T07–T12 promoted into rescue; required workshop/design approvals active; machine qualification green; T12 SALVAGE/REPLAY decision recorded; tracker reconciled | `BLOCKED — AWAITING PUBLISHED T07 PLAN` |
 | **2 — Programs Route Family** | T13–T16 / #518–#521 | Complete participant-management Programs rescue | Phase 1 complete | #518–#521 merged and Programs family approved | `BLOCKED` |
 | **3 — Member & Public Surfaces** | T17–T19 / #522–#524 | Profile/settings, public auth, and communications rescued | Phase 2 complete | #522–#524 merged and approved | `BLOCKED` |
 | **4 — Management & Identity** | T20–T27 / #525–#532 | Management hubs, directories, approvals, CMS, hierarchy, permissions, and Account Access rescued | Phase 3 complete | #525–#532 merged and approved | `BLOCKED` |
@@ -217,33 +236,43 @@ For visual phases, each ticket still prepares attributable scenario evidence. Th
 
 ---
 
-# 7. Phase 1 — Executable UI Foundation (future plan — intentionally untouched)
+# 7. Phase 1 — Executable UI Foundation
 
-**Goal:** Establish the live human-tuning and machine-contract system, then prove it on Programs.
+**Goal:** Establish direct deterministic production presentation control in Storybook, actively approve shared UI foundation, then prove the complete delivery model through a thin real Programs tracer.
 
-**Current control-plane rule:** T07/#512 and all Phase 1 work are intentionally untouched. This tracker grants no approval to implement, hand off, or prepare T07; the owner will provide a separate replacement plan before that phase is reconsidered.
+**Current control-plane rule:** T07 uses its scoped shared-PR exception. T08–T12 return to one ticket / one branch / one ticket-isolated PR. Planning authority publication does not start implementation.
 
 | Key | Issue | Ticket | Blocked by | Status | PR | Merge SHA | Human gate |
 |---|---|---|---|---|---|---|---|
-| T07 | [#512](https://github.com/Noahlw/efcc/issues/512) | UI Lab and executable contract tracer | T03, T06 | `BLOCKED` | — | — | Required |
-| T08 | [#513](https://github.com/Noahlw/efcc/issues/513) | App-facing control contracts | T07 | `BLOCKED` | — | — | Required |
-| T09 | [#514](https://github.com/Noahlw/efcc/issues/514) | Surface, feedback, overlay contracts | T08 | `BLOCKED` | — | — | Required |
-| T10 | [#515](https://github.com/Noahlw/efcc/issues/515) | Minimum canonical composition grammar | T09 | `BLOCKED` | — | — | Required |
-| T11 | [#516](https://github.com/Noahlw/efcc/issues/516) | Authenticated shell and header boundary | T05, T10 | `BLOCKED` | — | — | Required |
-| T12 | [#517](https://github.com/Noahlw/efcc/issues/517) | Programs tracer and preservation-path decision | T01, T06, T11 | `BLOCKED` | — | — | Required + SALVAGE/REPLAY decision |
+| T07 | [#512](https://github.com/Noahlw/efcc/issues/512) | Local Storybook presentation workshop + baseline Screen Catalog | T03, T06 (satisfied) | `BLOCKED — AWAITING PLAN MERGE` | — | — | Workshop-fidelity approval |
+| T07.1 | [#566](https://github.com/Noahlw/efcc/issues/566) | Management Hub Storybook vertical tracer | T03, T06 (satisfied) | `BLOCKED — AWAITING PLAN MERGE` | shared #512 PR | — | Story review checkpoint |
+| T07.2 | [#567](https://github.com/Noahlw/efcc/issues/567) | Public/Auth/Member/Communications baseline catalog | T07.1 / #566 | `BLOCKED` | shared #512 PR | — | T07.6 representative fidelity review |
+| T07.3 | [#568](https://github.com/Noahlw/efcc/issues/568) | Programs baseline catalog | T07.1 / #566 | `BLOCKED` | shared #512 PR | — | T07.6 representative fidelity review |
+| T07.4 | [#569](https://github.com/Noahlw/efcc/issues/569) | Management/Identity baseline catalog | T07.1 / #566 | `BLOCKED` | shared #512 PR | — | T07.6 representative fidelity review |
+| T07.5 | [#570](https://github.com/Noahlw/efcc/issues/570) | Attendance/Scanner/Guest baseline catalog | T07.1 / #566 | `BLOCKED` | shared #512 PR | — | T07.6 representative fidelity review |
+| T07.6 | [#571](https://github.com/Noahlw/efcc/issues/571) | Catalog qualification, fidelity approval, developer workflow | T07.2 / #567, T07.3 / #568, T07.4 / #569, T07.5 / #570 | `BLOCKED` | shared #512 PR | — | Required |
+| T08 | [#513](https://github.com/Noahlw/efcc/issues/513) | Storybook-approved app-facing control contracts | T07 | `BLOCKED` | — | — | Design approval required |
+| T09 | [#514](https://github.com/Noahlw/efcc/issues/514) | Storybook-approved surface/feedback/overlay contracts | T08 | `BLOCKED` | — | — | Design approval required |
+| T10 | [#515](https://github.com/Noahlw/efcc/issues/515) | Canonical EFCC composition grammar | T09 | `BLOCKED` | — | — | Design approval required |
+| T11 | [#516](https://github.com/Noahlw/efcc/issues/516) | Authenticated shell and route-header boundary | T05, T10 | `BLOCKED` | — | — | Design approval required |
+| T12 | [#517](https://github.com/Noahlw/efcc/issues/517) | Dual-authority Programs preservation-path decision | T01, T06, T11 | `BLOCKED` | — | — | Required + SALVAGE/REPLAY decision |
 
 ### Phase 1 exit record
 
 | Field | Value |
 |---|---|
-| Phase status | `BLOCKED` |
-| Tickets merged | — |
-| Rescue integration SHA | — |
-| Approved patterns | — |
-| Approved shell SHA | — |
-| Programs tracer approval | — |
+| Phase status | `BLOCKED — Phase 0 COMPLETE; waiting for approved Storybook planning authority and T07 child topology to be published/merged. No implementation started.` |
+| T07 Storybook workshop/catalog | — |
+| Active Screen Catalog gaps | — |
+| T08 control approval | — |
+| T09 surface/overlay approval | — |
+| T10 grammar approval | — |
+| T11 approved shell SHA / ApprovalPackage | — |
+| T12 Programs presentation approval | — |
+| T12 real Worker/D1 tracer | — |
 | T12 decision | `UNDECIDED` |
-| Next phase | Future phases remain blocked; T07/#512 is intentionally untouched and awaits a separate owner-approved replacement plan; no implementation or handoff starts from this tracker |
+| Phase exit | All T07–T12 changes promoted into rescue, required approval packages active, required machine qualification green, T12 decision recorded, tracker reconciled |
+| Next phase | Reinspect the live rescue base and T12 decision, revalidate only materially affected T13–T16 scope/dependencies, then begin Phase 2 |
 
 ---
 
@@ -644,7 +673,7 @@ Keep links here so new sessions do not need to rediscover them.
 | T05 layered-testing authority | T05 / #510 | [#505 architecture amendment](https://github.com/Noahlw/efcc/issues/505#issuecomment-5538740674), [#505 finite-gate / sustained-runtime-risk amendment](https://github.com/Noahlw/efcc/issues/505#issuecomment-5550498028), [#510 amended routing](https://github.com/Noahlw/efcc/issues/510#issuecomment-5550848597), child tracers [#551–#557](https://github.com/Noahlw/efcc/issues/551), and replacement [#565](https://github.com/Noahlw/efcc/pull/565); T05 `STACK_GREEN`, B-003 remains `OPEN`, one replacement PR model |
 | Scenario Registry | T03 / #508 | `web/lib/governance/registries.ts` — created with 16 route scenarios and exact contract references; validated by `governance.test.ts` |
 | UI Contract Registry | T03 / #508 | `web/lib/governance/registries.ts` — created with 17 executable contracts/probe definitions; live token, safe-area, navigation, and scanner sources covered |
-| UI Lab | T07 / #512 | Not created |
+| Storybook workshop + Screen Catalog | T07 / #512 | Planning authority published; implementation not started |
 | Approval package index | T03 / #508 | `web/lib/governance/registries.ts` — created with 4 status/owner/baseline/evidence packages; strict approval metadata validation active |
 | T12 rescue decision | T12 / #517 | `UNDECIDED` |
 | Historical finding reconciliation | T01, route tickets, T33 | Not complete |
@@ -738,7 +767,7 @@ Agents must not silently change:
 
 A requested change to those items is not a tracker update. It is an owner-approved ticket/spec/contract change.
 
-For the T05 layered-testing rework, D-004 is the explicit owner-approved exception to the generic one-ticket/one-PR rule: the seven child issues remain separate acceptance/commit boundaries, but share one branch and one replacement PR. This exception must not be generalized to other phases without a new owner-approved amendment.
+For the T05 layered-testing rework, D-004 is the explicit owner-approved exception to the generic one-ticket/one-PR rule: the seven child issues remain separate acceptance/commit boundaries, but share one branch and one replacement PR. The T07 exception is defined above. Exceptions must not be generalized to other phases without a new owner-approved amendment.
 
 ---
 
@@ -747,5 +776,5 @@ For the T05 layered-testing rework, D-004 is the explicit owner-approved excepti
 1. T06/#511 qualification, required finite gates, and independent Standards/Spec review are PASS; preserve their evidence and review provenance.
 2. PR [#550](https://github.com/Noahlw/efcc/pull/550) is verified `MERGED_RESCUE` parent-first into `rescue/ui-control-recovery` at `ffef73087c3cc985f1b314e8017cfdf973e26d58`; `main` remains untouched.
 3. Phase 0 exit is complete through T06. Retain B-003 `OPEN` as residual sustained-runtime risk; this is not a runtime-fix or production-release claim.
-4. Stop here. Do not create a T07 worktree, implement T07, prepare a T07 handoff, or modify #512.
+4. Publish the planning-only Phase 1 Storybook authority and T07 child topology, then stop before creating a T07 worktree, implementing T07, or starting `/implement`.
 5. Retain all later ticket, human-approval, T33/#538, T35/#540, and final `main` gates for the owner’s future replacement plan.
