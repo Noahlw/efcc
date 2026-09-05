@@ -15,7 +15,7 @@ The same-fixture before/after record is [`docs/qa/2026-09-05-t06-cascade-before-
 ## Qualification trace
 
 - **Authority read before qualification:** #511 acceptance criteria, #505 owner-approved T05 qualification amendment, current #510 routing, `AGENTS.md`, `TESTING.md`, and this plan were read before the current T06 correction/review cycle.
-- **Candidate boundary:** T06 implementation/evidence candidate `774ea0208412f4367ce1242169a686a37a1d4e04`; tracker/QA readback candidate `df6426a77c9ddf29773881725e5e1758ae377f31`.
+- **Candidate boundary:** T06 implementation/evidence candidate `774ea0208412f4367ce1242169a686a37a1d4e04`; tracker/QA readback candidate `1ac80d4f479c4a8c4785f09fa76df45bc3fa6beb`.
 - **Required evidence:** real Worker/D1 `live-ui` `2/2`; same-fixture before/after artifact; responsive `92`, shell geometry `28`, role-hierarchy geometry `49`; focused governance `105/105`; full/release governance, typecheck, precommit, and diff-check.
 - **Review boundary:** final independent Standards/Spec review must pass before `STACK_GREEN`, ready status, or merge. Numeric browser evidence is not human visual approval.
 - **Provenance note:** the original T06 plan and implementation history are preserved; this trace records the current qualification state and does not rewrite earlier commits.
