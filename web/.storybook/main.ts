@@ -6,7 +6,7 @@ const { dirname } = import.meta;
 const webRoot = path.resolve(dirname, "..");
 
 const config: StorybookConfig = {
-  stories: ["./management-hub.stories.tsx"],
+  stories: ["./*.stories.tsx"],
   addons: [
     "@storybook/addon-a11y",
     "@storybook/addon-vitest",
