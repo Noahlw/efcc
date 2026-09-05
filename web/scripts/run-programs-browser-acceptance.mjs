@@ -155,6 +155,35 @@ async function main() {
         process.exitCode = 1;
       });
     }
+    if (prepared === null && failure !== null) {
+      await writeJson(
+        path.join(artifactDirectory, "runtime-logs.json"),
+        runtimeLogs
+      );
+      const failureEvidence = await readPlaywrightFailureEvidence(
+        reportPath,
+        {
+          "phone-390": { width: 390, height: 844 },
+        },
+        {
+          route: "/programs (participant and management journeys)",
+          state: "authenticated Program journey",
+        }
+      );
+      await writeJson(path.join(artifactDirectory, "failure-summary.json"), {
+        revision: manifest.revision,
+        layer: manifest.layer,
+        logicalScenario: failureEvidence[0]?.logicalScenario ?? null,
+        route: failureEvidence[0]?.route ?? "/programs",
+        state: failureEvidence[0]?.state ?? "authenticated Program journey",
+        viewport: failureEvidence[0]?.viewport ?? { width: 390, height: 844 },
+        failureEvidence,
+        message: manifest.failure,
+        firstCausalRuntimeSignal: null,
+        target: manifest.target,
+        downstreamSymptoms: [],
+      });
+    }
     manifest.finishedAt = new Date().toISOString();
     await writeJson(path.join(artifactDirectory, "run.json"), manifest);
     console.log(
