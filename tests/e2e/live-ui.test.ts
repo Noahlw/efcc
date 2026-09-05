@@ -21,7 +21,7 @@
 // account-settings-copy.ts; the suite asserts observable DOM state, never
 // client-side gating alone.
 import { expect, test } from "@playwright/test";
-import type { Page } from "@playwright/test";
+import type { Page, TestInfo } from "@playwright/test";
 
 import { DEV_ADMIN, DEV_MEMBER, DEV_STAFF } from "./dev-fixtures";
 
@@ -176,6 +176,56 @@ async function loginAs(
   await page.getByRole("button", { name: COPY.loginSubmit }).click();
   // The landing page navigates to the first permitted section on success.
   await page.waitForURL((url) => url.pathname !== SIGNED_OUT_PATH);
+}
+
+type CascadeGeometry = {
+  paddingBottom: number;
+  paddingInlineEnd: number;
+  paddingInlineStart: number;
+  paddingTop: number;
+  rect: { height: number; width: number; x: number; y: number };
+};
+
+async function readCascadeGeometry(
+  page: Page,
+  selector: string
+): Promise<CascadeGeometry> {
+  const element = page.locator(selector).first();
+  await expect(element).toBeVisible();
+  return element.evaluate((node) => {
+    const style = getComputedStyle(node);
+    const rect = node.getBoundingClientRect();
+    const pixels = (value: string): number => {
+      const parsed = Number.parseFloat(value);
+      return Number.isFinite(parsed) ? parsed : 0;
+    };
+    return {
+      paddingBottom: pixels(style.paddingBottom),
+      paddingInlineEnd: pixels(style.paddingInlineEnd),
+      paddingInlineStart: pixels(style.paddingInlineStart),
+      paddingTop: pixels(style.paddingTop),
+      rect: { height: rect.height, width: rect.width, x: rect.x, y: rect.y },
+    };
+  });
+}
+
+async function readProfileActionClearance(page: Page) {
+  return page
+    .getByRole("button", { name: "登出", exact: true })
+    .evaluate((action) => {
+      const shell = action.closest<HTMLElement>("#shell-content");
+      if (!shell) {
+        throw new Error("Profile logout action is outside #shell-content");
+      }
+      const shellRect = shell.getBoundingClientRect();
+      const actionRect = action.getBoundingClientRect();
+      const style = getComputedStyle(shell);
+      return {
+        actionBottom: actionRect.bottom,
+        scrollTail: shell.scrollHeight - (actionRect.bottom - shellRect.top),
+        shellPaddingBottom: Number.parseFloat(style.paddingBottom) || 0,
+      };
+    });
 }
 
 test.beforeAll(() => {
@@ -630,6 +680,97 @@ test.describe("UI-04 Next frontend trace", () => {
     await expect(
       page.getByRole("heading", { name: COPY.settingsTitle })
     ).toBeVisible();
+  });
+
+  test("T06 cascade computed-style geometry canaries preserve composition", async ({
+    page,
+  }, testInfo: TestInfo) => {
+    await loginAs(
+      page,
+      required("PROGRAMS_ADMIN_USERNAME", ADMIN_USER),
+      required("PROGRAMS_ADMIN_CREDENTIAL", ADMIN_CRED)
+    );
+
+    const evidence: Record<string, unknown>[] = [];
+    const surfaces = [
+      {
+        path: "/programs",
+        root: "#shell-content > div",
+        surface: 'section[aria-labelledby="programs-title"]',
+      },
+      {
+        path: "/management",
+        root: "#shell-content > section",
+        surface: 'section[aria-labelledby="management-hub-title"]',
+      },
+      {
+        path: "/profile",
+        root: "#shell-content > div",
+        surface: '[data-slot="card"][role="article"]',
+      },
+      {
+        path: "/profile/settings",
+        root: "#shell-content > div",
+        surface: 'form[aria-labelledby="account-settings-username-title"]',
+      },
+    ] as const;
+
+    for (const { path, root, surface } of surfaces) {
+      await page.goto(appPath(path));
+      const rootGeometry = await readCascadeGeometry(page, root);
+      const surfaceGeometry = await readCascadeGeometry(page, surface);
+      expect(rootGeometry.paddingInlineStart).toBeGreaterThan(0);
+      expect(rootGeometry.paddingInlineEnd).toBeGreaterThan(0);
+      expect(surfaceGeometry.paddingInlineStart).toBeGreaterThan(0);
+      expect(surfaceGeometry.paddingTop).toBeGreaterThan(0);
+
+      const record: Record<string, unknown> = {
+        path,
+        root: rootGeometry,
+        surface: surfaceGeometry,
+      };
+      if (path === "/profile/settings") {
+        const inputGeometry = await readCascadeGeometry(page, "#new-username");
+        expect(inputGeometry.paddingInlineStart).toBeGreaterThan(0);
+        record.input = inputGeometry;
+      }
+      if (path === "/programs") {
+        const shellGeometry = await readCascadeGeometry(page, "#shell-content");
+        const viewportWidth = page.viewportSize()?.width ?? 0;
+        const shellCenter = shellGeometry.rect.x + shellGeometry.rect.width / 2;
+        const centerDelta = Math.abs(
+          surfaceGeometry.rect.x + surfaceGeometry.rect.width / 2 - shellCenter
+        );
+        expect(centerDelta).toBeLessThanOrEqual(1);
+        record.centerDelta = { value: centerDelta, shellCenter, viewportWidth };
+      }
+      evidence.push(record);
+    }
+
+    await page.goto(appPath("/management?module=accounts"));
+    const searchGeometry = await readCascadeGeometry(
+      page,
+      "#account-directory-search"
+    );
+    expect(searchGeometry.paddingInlineStart).toBeGreaterThan(0);
+    evidence.push({
+      path: "/management?module=accounts",
+      search: searchGeometry,
+    });
+
+    await page.goto(appPath("/profile"));
+    const actionClearance = await readProfileActionClearance(page);
+    const isPhone = (page.viewportSize()?.width ?? 0) < 800;
+    if (isPhone) {
+      expect(actionClearance.shellPaddingBottom).toBeGreaterThanOrEqual(84);
+      expect(actionClearance.scrollTail).toBeGreaterThanOrEqual(84);
+    }
+    evidence.push({ path: "/profile", actionClearance, isPhone });
+
+    await testInfo.attach("t06-cascade-geometry.json", {
+      body: JSON.stringify(evidence, null, 2),
+      contentType: "application/json",
+    });
   });
 
   test("admin password rotation revokes the session and restores the fixture", async ({

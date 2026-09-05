@@ -1,0 +1,61 @@
+{
+  "schemaVersion": 1,
+  "ticket": "T06/#511",
+  "measurement": "computed-style and geometry canaries",
+  "sameFixtureContract": "fresh disposable local D1 seeded with db:seed:local and the same DEV_ADMIN fixture; same routes, anchors, and viewports",
+  "before": {
+    "revision": "199b54e086bfae5faff1cd4fabd42c09353087da",
+    "source": "rescue/ui-control-recovery before T06",
+    "target": "http://127.0.0.1:8892",
+    "viewports": {
+      "phone-375x667": {
+        "routes": {
+          "/programs": { "root": { "top": 0, "bottom": 0, "start": 0, "end": 0 }, "surface": { "top": 0, "bottom": 0, "start": 0, "end": 0 }, "centerDelta": 0 },
+          "/management": { "root": { "top": 0, "bottom": 0, "start": 0, "end": 0 }, "surface": { "top": 0, "bottom": 0, "start": 0, "end": 0 } },
+          "/profile": { "root": { "top": 0, "bottom": 0, "start": 0, "end": 0 }, "surface": { "top": 0, "bottom": 0, "start": 0, "end": 0 } },
+          "/profile/settings": { "root": { "top": 0, "bottom": 0, "start": 0, "end": 0 }, "surface": { "top": 0, "bottom": 0, "start": 0, "end": 0 }, "input": { "top": 0, "bottom": 0, "start": 0, "end": 0 } }
+        },
+        "search": { "top": 0, "bottom": 0, "start": 0, "end": 0 },
+        "actionClearance": { "scrollTail": 38.953125, "shellPaddingBottom": 84 }
+      },
+      "desktop-1280x720": {
+        "routes": {
+          "/programs": { "root": { "top": 0, "bottom": 0, "start": 0, "end": 0 }, "surface": { "top": 0, "bottom": 0, "start": 0, "end": 0 }, "centerDelta": 0 },
+          "/management": { "root": { "top": 0, "bottom": 0, "start": 0, "end": 0 }, "surface": { "top": 0, "bottom": 0, "start": 0, "end": 0 } },
+          "/profile": { "root": { "top": 0, "bottom": 0, "start": 0, "end": 0 }, "surface": { "top": 0, "bottom": 0, "start": 0, "end": 0 } },
+          "/profile/settings": { "root": { "top": 0, "bottom": 0, "start": 0, "end": 0 }, "surface": { "top": 0, "bottom": 0, "start": 0, "end": 0 }, "input": { "top": 0, "bottom": 0, "start": 0, "end": 0 } }
+        },
+        "search": { "top": 0, "bottom": 0, "start": 0, "end": 0 },
+        "actionClearance": { "scrollTail": -44.65625, "shellPaddingBottom": 0 }
+      }
+    }
+  },
+  "after": {
+    "revision": "09f5b0eb28f20c2e2517fe60b14fbb15bc404185",
+    "source": "rescue/t06-css-cascade after containment and explicit utilities-layer correction",
+    "target": "http://127.0.0.1:8891",
+    "report": "tests/e2e/test-results/live-ui-results.json",
+    "viewports": {
+      "phone-375x667": {
+        "routes": {
+          "/programs": { "root": { "top": 26.68, "bottom": 26.68, "start": 16, "end": 16 }, "surface": { "top": 20, "bottom": 20, "start": 20, "end": 20 }, "centerDelta": 0 },
+          "/management": { "root": { "top": 32, "bottom": 64, "start": 16, "end": 16 }, "surface": { "top": 32, "bottom": 64, "start": 16, "end": 16 } },
+          "/profile": { "root": { "top": 0, "bottom": 32, "start": 16, "end": 16 }, "surface": { "top": 20, "bottom": 20, "start": 20, "end": 20 } },
+          "/profile/settings": { "root": { "top": 16, "bottom": 32, "start": 16, "end": 16 }, "surface": { "top": 20, "bottom": 20, "start": 20, "end": 20 }, "input": { "top": 8, "bottom": 8, "start": 14, "end": 14 } }
+        },
+        "search": { "top": 4, "bottom": 4, "start": 12, "end": 12 },
+        "actionClearance": { "scrollTail": 115.640625, "shellPaddingBottom": 84 }
+      },
+      "desktop-1280x720": {
+        "routes": {
+          "/programs": { "root": { "top": 28.8, "bottom": 28.8, "start": 20, "end": 20 }, "surface": { "top": 32, "bottom": 32, "start": 32, "end": 32 }, "centerDelta": 0 },
+          "/management": { "root": { "top": 32, "bottom": 64, "start": 24, "end": 24 }, "surface": { "top": 32, "bottom": 64, "start": 24, "end": 24 } },
+          "/profile": { "root": { "top": 0, "bottom": 32, "start": 24, "end": 24 }, "surface": { "top": 24, "bottom": 24, "start": 24, "end": 24 } },
+          "/profile/settings": { "root": { "top": 32, "bottom": 48, "start": 16, "end": 16 }, "surface": { "top": 20, "bottom": 20, "start": 20, "end": 20 }, "input": { "top": 8, "bottom": 8, "start": 14, "end": 14 } }
+        },
+        "search": { "top": 4, "bottom": 4, "start": 12, "end": 12 },
+        "actionClearance": { "scrollTail": 32.03125, "shellPaddingBottom": 0 }
+      }
+    }
+  }
+}
