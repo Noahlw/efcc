@@ -553,6 +553,7 @@ No production implementation, schema, API, permission, audit, idempotency, scope
 #### T05.1–T05.7 / #551–#557 — Layered testing implementation checkpoint
 - **Runtime:** Node `22.18.0`; pnpm `11.7.0`; Wrangler `4.127.1`; Miniflare `5.20260828.0-alpha`; workerd `1.20260828.1`; Darwin `25.6.0` arm64; compatibility date `2026-08-02`; root lockfile SHA256 `f96aab0cec97b5c6e7dfeabb8a581916909bd5555f1869b6f79b3f4e132079c4`; web lockfile SHA256 `83e3cc2ce56b0159277e9a472602f079278c280ef0ed0a6eac6f56d38163548d`.
 - **Diagnostic comparison:** Direct Miniflare `ready` resolved and an unseeded `POST /api/v1/auth/login` returned `503 application/problem+json` with `X-Request-Id` and no `Network connection lost`; D1 `getD1Database("DB")` did not complete under the v4-compat configuration, so this is non-parity diagnostic evidence, not promotion proof.
+- **Linux comparison:** Hermes detached checkout `/home/ubuntu/efcc-t05-layered-diagnostic` at `b53ac8bf` used Node `22.23.2`, pnpm `11.7.0`, Wrangler `4.127.1`, Miniflare `5.20260828.0-alpha`, and workerd `1.20260828.1`; canonical Worker Contract passed, then the canary failed in scenario 1 at `admin enrollment-request decision` with HTTP 500 without `X-Request-Id`; runtime logs were empty. Artifact remains at `test-results/programs-promotion/20260905t063311063z/`. This rules out a macOS-only observation but does not confirm ownership.
 
 - **Status:** `PROMOTION_BLOCKED`
 - **Base rescue SHA:** `dcd21b681d54f062a2df81b38d08269e46350720`
