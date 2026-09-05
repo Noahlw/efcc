@@ -16,12 +16,15 @@ import {
   BROWSER_ENGINES,
   COVERAGE_DISPOSITIONS,
   OWNERSHIP_LAYERS,
+  isApprovalKind,
   isBrowserEngine,
   isCoverageDisposition,
   isOwnershipLayer,
-  type GovernanceRegistries,
-  type GovernanceValidationError,
-  type GovernanceValidationResult,
+} from "./types";
+import type {
+  GovernanceRegistries,
+  GovernanceValidationError,
+  GovernanceValidationResult,
 } from "./types";
 
 const SAFE_IDENTIFIER_REGEX = /^[A-Za-z0-9][A-Za-z0-9._~-]{1,63}$/u;
@@ -48,7 +51,9 @@ function isValidCalendarDate(
   month: number,
   day: number
 ): boolean {
-  if (year < 1 || month < 1 || month > 12 || day < 1) return false;
+  if (year < 1 || month < 1 || month > 12 || day < 1) {
+    return false;
+  }
   const daysInMonth = new Date(Date.UTC(year, month, 0)).getUTCDate();
   return day <= daysInMonth;
 }
@@ -59,30 +64,36 @@ function isValidCalendarDate(
  */
 export function parseStrictDateValue(value: unknown): Date | undefined {
   if (value instanceof Date) {
-    return Number.isNaN(value.getTime())
-      ? undefined
-      : new Date(value.getTime());
+    return Number.isNaN(value.getTime()) ? undefined : new Date(value);
   }
 
   if (typeof value === "number") {
-    if (!Number.isFinite(value)) return undefined;
+    if (!Number.isFinite(value)) {
+      return undefined;
+    }
     const parsed = new Date(value);
     return Number.isNaN(parsed.getTime()) ? undefined : parsed;
   }
 
-  if (typeof value !== "string" || value.trim() !== value) return undefined;
+  if (typeof value !== "string" || value.trim() !== value) {
+    return undefined;
+  }
 
   const dateMatch = value.match(ISO_DATE_REGEX);
   if (dateMatch) {
     const year = Number(dateMatch[1]);
     const month = Number(dateMatch[2]);
     const day = Number(dateMatch[3]);
-    if (!isValidCalendarDate(year, month, day)) return undefined;
+    if (!isValidCalendarDate(year, month, day)) {
+      return undefined;
+    }
     return new Date(Date.UTC(year, month - 1, day));
   }
 
   const datetimeMatch = value.match(ISO_DATETIME_REGEX);
-  if (!datetimeMatch) return undefined;
+  if (!datetimeMatch) {
+    return undefined;
+  }
 
   const year = Number(datetimeMatch[1]);
   const month = Number(datetimeMatch[2]);
@@ -119,15 +130,24 @@ function isExactNonEmptyString(value: unknown): value is string {
     typeof value === "string" &&
     value.trim() === value &&
     value.length > 0 &&
-    /[\u0000-\u001f\u007f]/u.test(value) === false
+    /[\u0000-\u001F\u007F]/u.test(value) === false
   );
 }
 
 function isSafeMetadataText(value: unknown): value is string {
-  if (typeof value !== "string" || value.trim() !== value || value.length === 0)
+  if (
+    typeof value !== "string" ||
+    value.trim() !== value ||
+    value.length === 0
+  ) {
     return false;
-  if (/[\u0000-\u001f\u007f]/u.test(value)) return false;
-  if (/[*?{}]/u.test(value)) return false;
+  }
+  if (/[\u0000-\u001F\u007F]/u.test(value)) {
+    return false;
+  }
+  if (/[*?{}]/u.test(value)) {
+    return false;
+  }
   return !/(^|[/\\])\.\.([/\\]|$)/u.test(value);
 }
 
@@ -135,11 +155,19 @@ function isValidRouteFormat(
   route: unknown,
   allowWildcard = false
 ): route is string {
-  if (typeof route !== "string" || route.trim() !== route || route.length === 0)
+  if (
+    typeof route !== "string" ||
+    route.trim() !== route ||
+    route.length === 0
+  ) {
     return false;
-  if (/(^|[/\\])\.\.([/\\]|$)/u.test(route)) return false;
-  if (allowWildcard && route.includes("*") && !route.endsWith("/*"))
+  }
+  if (/(^|[/\\])\.\.([/\\]|$)/u.test(route)) {
     return false;
+  }
+  if (allowWildcard && route.includes("*") && !route.endsWith("/*")) {
+    return false;
+  }
   const segment = allowWildcard
     ? "(?:[a-zA-Z0-9_.~-]+|\\*)"
     : "[a-zA-Z0-9_.~-]+";
@@ -175,7 +203,9 @@ function isValidViewportSpec(vp: unknown): boolean {
 }
 
 function isSafeDocsRelativeRef(ref: unknown): ref is string {
-  if (!isSafeMetadataText(ref) || !ref.startsWith("docs/")) return false;
+  if (!isSafeMetadataText(ref) || !ref.startsWith("docs/")) {
+    return false;
+  }
   const segments = ref.split("/");
   return segments.every(
     (segment) => segment.length > 0 && segment !== "." && segment !== ".."
@@ -183,8 +213,12 @@ function isSafeDocsRelativeRef(ref: unknown): ref is string {
 }
 
 function isSafeExactFilePath(filePath: unknown): filePath is string {
-  if (!isSafeMetadataText(filePath)) return false;
-  if (filePath.startsWith("/") || /^[a-zA-Z]:/u.test(filePath)) return false;
+  if (!isSafeMetadataText(filePath)) {
+    return false;
+  }
+  if (filePath.startsWith("/") || /^[a-zA-Z]:/u.test(filePath)) {
+    return false;
+  }
   const segments = filePath.split("/");
   return segments.every(
     (segment) => segment.length > 0 && segment !== "." && segment !== ".."
@@ -192,11 +226,18 @@ function isSafeExactFilePath(filePath: unknown): filePath is string {
 }
 
 function isSafeScopedPath(scope: unknown): scope is string {
-  if (typeof scope !== "string" || scope.trim() !== scope || scope.length === 0)
-    return false;
-  if (scope.startsWith("/") || /^[a-zA-Z]:/u.test(scope)) return false;
   if (
-    /[\u0000-\u001f\u007f]/u.test(scope) ||
+    typeof scope !== "string" ||
+    scope.trim() !== scope ||
+    scope.length === 0
+  ) {
+    return false;
+  }
+  if (scope.startsWith("/") || /^[a-zA-Z]:/u.test(scope)) {
+    return false;
+  }
+  if (
+    /[\u0000-\u001F\u007F]/u.test(scope) ||
     /[?{}]/u.test(scope) ||
     /(^|[/\\])\.\.([/\\]|$)/u.test(scope)
   ) {
@@ -204,13 +245,17 @@ function isSafeScopedPath(scope: unknown): scope is string {
   }
   const segments = scope.split("/");
   return segments.every((segment, index) => {
-    if (segment.length === 0 || segment === ".") return false;
+    if (segment.length === 0 || segment === ".") {
+      return false;
+    }
     return !segment.includes("*") || index === segments.length - 1;
   });
 }
 
 function isSafeScopeList(scope: unknown): scope is string {
-  if (typeof scope !== "string" || scope.includes("\n")) return false;
+  if (typeof scope !== "string" || scope.includes("\n")) {
+    return false;
+  }
   return scope.split(";").every((entry) => isSafeScopedPath(entry));
 }
 
@@ -222,7 +267,9 @@ function hasDuplicateValues(values: readonly unknown[]): boolean {
   const seen = new Set<string>();
   for (const value of values) {
     const key = typeof value === "string" ? value : JSON.stringify(value);
-    if (seen.has(key)) return true;
+    if (seen.has(key)) {
+      return true;
+    }
     seen.add(key);
   }
   return false;
@@ -234,6 +281,8 @@ export interface ValidationOptions {
    * Defaults to current timestamp.
    */
   readonly now?: Date | string | number;
+  /** Optional Storybook PSN declarations used when validating presentation approvals. */
+  readonly presentationPsns?: ReadonlySet<string>;
 }
 
 /**
@@ -283,7 +332,9 @@ export function validateRegistries(
   }
 
   let refDate: Date;
-  if (options.now !== undefined) {
+  if (options.now === undefined) {
+    refDate = new Date();
+  } else {
     const parsedDate = parseStrictDateValue(options.now);
     if (parsedDate === undefined) {
       errors.push({
@@ -297,8 +348,6 @@ export function validateRegistries(
     } else {
       refDate = parsedDate;
     }
-  } else {
-    refDate = new Date();
   }
   // 1. Validate Scenarios
   const scenarioIds = new Set<string>();
@@ -631,16 +680,7 @@ export function validateRegistries(
       });
     }
 
-    if (!isOwnershipLayer(contract.layer)) {
-      errors.push({
-        code: "INVALID_OWNERSHIP",
-        message: `UI contract "${contract.id}" has invalid ownership layer "${contract.layer}". Must be one of: ${OWNERSHIP_LAYERS.join(", ")}`,
-        registry: "contracts",
-        entryId: contract.id,
-        field: "layer",
-        severity: "error",
-      });
-    } else {
+    if (isOwnershipLayer(contract.layer)) {
       // Validate layer hierarchy constraints
       if (
         contract.layer === "primitive" &&
@@ -656,6 +696,15 @@ export function validateRegistries(
           severity: "error",
         });
       }
+    } else {
+      errors.push({
+        code: "INVALID_OWNERSHIP",
+        message: `UI contract "${contract.id}" has invalid ownership layer "${contract.layer}". Must be one of: ${OWNERSHIP_LAYERS.join(", ")}`,
+        registry: "contracts",
+        entryId: contract.id,
+        field: "layer",
+        severity: "error",
+      });
     }
 
     if (!isCoverageDisposition(contract.coverageDisposition)) {
@@ -777,7 +826,7 @@ export function validateRegistries(
           });
         }
 
-        if (!Object.prototype.hasOwnProperty.call(probe, "expected")) {
+        if (!Object.hasOwn(probe, "expected")) {
           errors.push({
             code: "MISSING_IDENTIFIER",
             message: `UI contract "${contract.id}" probe "${probe.id || "unnamed"}" is missing required expected value`,
@@ -811,10 +860,14 @@ export function validateRegistries(
   const referencedContractIds = new Set<string>();
 
   for (const scenario of scenarios) {
-    if (!isRecord(scenario)) continue;
+    if (!isRecord(scenario)) {
+      continue;
+    }
     if (Array.isArray(scenario.contractIds)) {
       for (const contractId of scenario.contractIds) {
-        if (!contractIds.has(contractId)) {
+        if (contractIds.has(contractId)) {
+          referencedContractIds.add(contractId);
+        } else {
           errors.push({
             code: "ORPHANED_SCENARIO",
             message: `Scenario "${scenario.id}" references non-existent contract ID "${contractId}"`,
@@ -823,8 +876,6 @@ export function validateRegistries(
             field: "contractIds",
             severity: "error",
           });
-        } else {
-          referencedContractIds.add(contractId);
         }
       }
     }
@@ -832,7 +883,9 @@ export function validateRegistries(
 
   const approvedContractIds = new Set<string>();
   for (const approval of approvals) {
-    if (!isRecord(approval)) continue;
+    if (!isRecord(approval)) {
+      continue;
+    }
     if (approval.status === "approved" && Array.isArray(approval.contractIds)) {
       for (const cid of approval.contractIds) {
         approvedContractIds.add(cid);
@@ -910,6 +963,151 @@ export function validateRegistries(
       });
     } else {
       approvalIds.add(approval.id);
+    }
+
+    if (approval.kind !== undefined && !isApprovalKind(approval.kind)) {
+      errors.push({
+        code: "INVALID_REGISTRY_FIELD",
+        message: `Approval package "${approval.id}" has invalid kind "${String(approval.kind)}"`,
+        registry: "approvals",
+        entryId: approval.id,
+        field: "kind",
+        severity: "error",
+      });
+    }
+
+    const presentationReferences: readonly [
+      "presentationPsns" | "routeScenarioRefs" | "supersedes",
+      unknown,
+    ][] = [
+      ["presentationPsns", approval.presentationPsns],
+      ["routeScenarioRefs", approval.routeScenarioRefs],
+      ["supersedes", approval.supersedes],
+    ];
+    for (const [field, value] of presentationReferences) {
+      if (value === undefined) {
+        continue;
+      }
+      if (!Array.isArray(value) || value.length === 0) {
+        errors.push({
+          code: "INVALID_REGISTRY_FIELD",
+          message: `Approval package "${approval.id}" must provide non-empty ${field} when present`,
+          registry: "approvals",
+          entryId: approval.id,
+          field,
+          severity: "error",
+        });
+        continue;
+      }
+      if (hasDuplicateValues(value)) {
+        errors.push({
+          code: "INVALID_REGISTRY_FIELD",
+          message: `Approval package "${approval.id}" contains duplicate ${field} entries`,
+          registry: "approvals",
+          entryId: approval.id,
+          field,
+          severity: "error",
+        });
+      }
+      for (const ref of value) {
+        if (typeof ref !== "string" || !SAFE_IDENTIFIER_REGEX.test(ref)) {
+          errors.push({
+            code: "INVALID_IDENTIFIER",
+            message: `Approval package "${approval.id}" contains malformed ${field} reference "${String(ref)}"`,
+            registry: "approvals",
+            entryId: approval.id,
+            field,
+            severity: "error",
+          });
+        }
+      }
+    }
+
+    if (isApprovalKind(approval.kind)) {
+      for (const field of ["presentationPsns", "routeScenarioRefs"] as const) {
+        if (approval[field] === undefined) {
+          errors.push({
+            code: "INVALID_REGISTRY_FIELD",
+            message: `Approval package "${approval.id}" of kind "${approval.kind}" must provide ${field}`,
+            registry: "approvals",
+            entryId: approval.id,
+            field,
+            severity: "error",
+          });
+        }
+      }
+    }
+
+    const presentationPsns: readonly unknown[] = Array.isArray(
+      approval.presentationPsns
+    )
+      ? approval.presentationPsns
+      : [];
+    const routeScenarioRefs: readonly unknown[] = Array.isArray(
+      approval.routeScenarioRefs
+    )
+      ? approval.routeScenarioRefs
+      : [];
+    const supersedes: readonly unknown[] = Array.isArray(approval.supersedes)
+      ? approval.supersedes
+      : [];
+
+    for (const psn of presentationPsns) {
+      if (typeof psn !== "string") {
+        continue;
+      }
+      if (!psn.startsWith("PSN-")) {
+        errors.push({
+          code: "INVALID_IDENTIFIER",
+          message: `Approval package "${approval.id}" contains a non-PSN presentation reference "${psn}"`,
+          registry: "approvals",
+          entryId: approval.id,
+          field: "presentationPsns",
+          severity: "error",
+        });
+      }
+      if (options.presentationPsns && !options.presentationPsns.has(psn)) {
+        errors.push({
+          code: "INVALID_REGISTRY_FIELD",
+          message: `Approval package "${approval.id}" references undeclared PSN "${psn}"`,
+          registry: "approvals",
+          entryId: approval.id,
+          field: "presentationPsns",
+          severity: "error",
+        });
+      }
+    }
+
+    for (const scenarioRef of routeScenarioRefs) {
+      if (typeof scenarioRef !== "string") {
+        continue;
+      }
+      if (!scenarioIds.has(scenarioRef)) {
+        errors.push({
+          code: "INVALID_REGISTRY_FIELD",
+          message: `Approval package "${approval.id}" references unknown RouteScenario "${scenarioRef}"`,
+          registry: "approvals",
+          entryId: approval.id,
+          field: "routeScenarioRefs",
+          severity: "error",
+        });
+      }
+    }
+
+    for (const supersededId of supersedes) {
+      if (typeof supersededId !== "string") {
+        continue;
+      }
+      if (!approvalIds.has(supersededId) || supersededId === approval.id) {
+        errors.push({
+          code: "INVALID_REGISTRY_FIELD",
+          message: `Approval package "${approval.id}" references unknown superseded package "${supersededId}"`,
+          registry: "approvals",
+          entryId: approval.id,
+          field: "supersedes",
+          severity: "error",
+        });
+      }
     }
 
     if (

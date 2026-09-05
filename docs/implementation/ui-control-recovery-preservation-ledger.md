@@ -165,7 +165,7 @@ The shipped app-facing inventory is the following 15 route families/surfaces. St
 
 - `/prototype` (`web/app/prototype/page.tsx` and its development-only styling) is historical/development-only, not product readiness.
 - Historical comparison HTML, screenshots, and audit pages under `docs/qa/` are provenance, not shipped surfaces.
-- Development-only harnesses and the future UI Lab are excluded until their dedicated tickets.
+- Development-only custom UI Lab harnesses remain excluded; the approved local Storybook workshop is the current Phase 1 presentation authority and is tracked by T07.
 - Retired frontends and legacy sources (`src/gas/`, `程式碼.js`, `src/frontend/`) remain historical provenance only.
 - Unimplemented future routes/features are not silently counted as shipped capability.
 

@@ -153,8 +153,8 @@ export const SCENARIO_REGISTRY: readonly RouteScenario[] = [
   },
   {
     id: "SCN-MEMBER-DIRECTORY",
-    route: "/management/member-directory",
-    scenario: "default",
+    route: "/management",
+    scenario: "module=members",
     viewports: [320, 390, 600, 799, 800, 1024, 1440],
     browsers: ["chromium"],
     contractIds: ["CTR-TK-01", "CTR-DIR-01", "CTR-CSS-01", "CTR-STY-01"],
@@ -165,8 +165,8 @@ export const SCENARIO_REGISTRY: readonly RouteScenario[] = [
   },
   {
     id: "SCN-ACCOUNT-DIRECTORY",
-    route: "/management/account-directory",
-    scenario: "default",
+    route: "/management",
+    scenario: "module=accounts",
     viewports: [320, 390, 600, 799, 800, 1024, 1440],
     browsers: ["chromium"],
     contractIds: [
@@ -183,8 +183,8 @@ export const SCENARIO_REGISTRY: readonly RouteScenario[] = [
   },
   {
     id: "SCN-ROLE-HIERARCHY",
-    route: "/management/role-hierarchy",
-    scenario: "default",
+    route: "/management",
+    scenario: "module=roles",
     viewports: [320, 390, 600, 799, 800, 1024, 1440],
     browsers: ["chromium"],
     contractIds: [
@@ -201,8 +201,8 @@ export const SCENARIO_REGISTRY: readonly RouteScenario[] = [
   },
   {
     id: "SCN-PERMISSION-EDITOR",
-    route: "/management/permission-editor",
-    scenario: "default",
+    route: "/management",
+    scenario: "module=permissions",
     viewports: [320, 390, 600, 799, 800, 1024, 1440],
     browsers: ["chromium"],
     contractIds: [
@@ -219,8 +219,8 @@ export const SCENARIO_REGISTRY: readonly RouteScenario[] = [
   },
   {
     id: "SCN-HOME-CMS-EDITOR",
-    route: "/management/home-cms",
-    scenario: "default",
+    route: "/management",
+    scenario: "module=home-content",
     viewports: [320, 390, 600, 799, 800, 1024, 1440],
     browsers: ["chromium"],
     contractIds: [
@@ -238,8 +238,8 @@ export const SCENARIO_REGISTRY: readonly RouteScenario[] = [
   },
   {
     id: "SCN-APPROVAL-QUEUE",
-    route: "/approvals",
-    scenario: "default",
+    route: "/management",
+    scenario: "module=approvals",
     viewports: [320, 390, 600, 799, 800, 1024, 1440],
     browsers: ["chromium"],
     contractIds: ["CTR-TK-01", "CTR-ACT-01", "CTR-CSS-01", "CTR-STY-01"],

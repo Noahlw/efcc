@@ -1,0 +1,12 @@
+@layer utilities {
+  [data-t07-deterministic-motion="true"] *,
+  [data-t07-deterministic-motion="true"] *::before,
+  [data-t07-deterministic-motion="true"] *::after {
+    animation: none;
+    animation-duration: 0.01ms;
+    animation-iteration-count: 1;
+    scroll-behavior: auto;
+    transition: none;
+    transition-duration: 0.01ms;
+  }
+}
