@@ -30,6 +30,9 @@ const DOWNSTREAM_MARKER =
   /(?:Network connection lost|ERR_CONNECTION_REFUSED|Connection reset by peer)/iu;
 const HTTP_RUNTIME_MARKER =
   /(?:Network connection lost|ERR_CONNECTION_REFUSED|Connection reset by peer)/iu;
+const BODYLESS_NO_BODY = process.env.PROGRAMS_CANARY_BODYLESS_NO_BODY === "1";
+const BODYLESS_ENDPOINT =
+  /(?:\/enrollment-requests$|\/enrollments\/[^/]+\/cancel$)/u;
 
 export function firstCausalRuntimeSignal(logs) {
   const lines = (Array.isArray(logs) ? logs : [logs])
@@ -54,13 +57,50 @@ export function isRuntimeTransportResponse(status, body) {
   return status >= 500 && HTTP_RUNTIME_MARKER.test(String(body));
 }
 
+export function canaryRequestBody(pathname, body, bodyless = BODYLESS_NO_BODY) {
+  return bodyless && BODYLESS_ENDPOINT.test(pathname) ? undefined : body;
+}
+
+export function classifyHttpFailure({ status, requestId, body }) {
+  const runtimeTransport =
+    status >= 500 &&
+    (requestId === null || isRuntimeTransportResponse(status, body));
+  return {
+    category: runtimeTransport ? "runtime transport" : "application",
+    observedSymptom:
+      requestId === null
+        ? `HTTP ${status} response without X-Request-Id`
+        : `HTTP ${status} response`,
+    suspectedOrigin: runtimeTransport ? "undetermined" : "application",
+    confirmedOrigin: null,
+  };
+}
+
 class CanaryFailure extends Error {
-  constructor(message, { category, phase, status, cause } = {}) {
+  constructor(
+    message,
+    {
+      category,
+      phase,
+      status,
+      cause,
+      operation,
+      pathname,
+      observedSymptom,
+      suspectedOrigin,
+      confirmedOrigin,
+    } = {}
+  ) {
     super(message, cause === undefined ? undefined : { cause });
     this.name = "CanaryFailure";
     this.category = category ?? "application";
     this.phase = phase ?? "scenario";
     this.status = status ?? null;
+    this.operation = operation ?? null;
+    this.pathname = pathname ?? null;
+    this.observedSymptom = observedSymptom ?? null;
+    this.suspectedOrigin = suspectedOrigin ?? "undetermined";
+    this.confirmedOrigin = confirmedOrigin ?? null;
   }
 }
 
@@ -213,7 +253,12 @@ function cookieHeader(headers) {
   return cookies.join("; ");
 }
 
-async function requestJson(target, pathname, options = {}, phase = "scenario") {
+async function requestJsonWithTransport(
+  target,
+  pathname,
+  options = {},
+  phase = "scenario"
+) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
   const headers = new Headers({ Origin: target.origin });
@@ -240,7 +285,12 @@ async function requestJson(target, pathname, options = {}, phase = "scenario") {
   } catch (cause) {
     throw new CanaryFailure(
       `Runtime transport failure at ${pathname}: ${cause instanceof Error ? cause.message : String(cause)}`,
-      { category: "runtime transport", phase, cause }
+      {
+        category: "runtime transport",
+        phase,
+        cause,
+        observedSymptom: "fetch/response transport exception",
+      }
     );
   } finally {
     clearTimeout(timer);
@@ -248,12 +298,18 @@ async function requestJson(target, pathname, options = {}, phase = "scenario") {
 
   const requestId = response.headers.get("X-Request-Id");
   if (!requestId) {
+    const classification = classifyHttpFailure({
+      status: response.status,
+      requestId: null,
+      body: raw,
+    });
     throw new CanaryFailure(
       `Response without X-Request-Id at ${pathname}: HTTP ${response.status} ${raw.slice(0, 300)}`,
       {
-        category: response.status >= 500 ? "runtime transport" : "application",
+        ...classification,
         phase,
         status: response.status,
+        pathname,
       }
     );
   }
@@ -261,24 +317,32 @@ async function requestJson(target, pathname, options = {}, phase = "scenario") {
   try {
     body = raw.length > 0 ? JSON.parse(raw) : null;
   } catch (cause) {
+    const classification = classifyHttpFailure({
+      status: response.status,
+      requestId,
+      body: raw,
+    });
     throw new CanaryFailure(`Worker returned non-JSON at ${pathname}`, {
-      category: isRuntimeTransportResponse(response.status, raw)
-        ? "runtime transport"
-        : "application",
+      ...classification,
       phase,
       status: response.status,
+      pathname,
       cause,
     });
   }
   if (!response.ok) {
+    const classification = classifyHttpFailure({
+      status: response.status,
+      requestId,
+      body: raw,
+    });
     throw new CanaryFailure(
       `Worker returned HTTP ${response.status} at ${pathname}: ${raw.slice(0, 300)}`,
       {
-        category: isRuntimeTransportResponse(response.status, raw)
-          ? "runtime transport"
-          : "application",
+        ...classification,
         phase,
         status: response.status,
+        pathname,
       }
     );
   }
@@ -287,18 +351,87 @@ async function requestJson(target, pathname, options = {}, phase = "scenario") {
       category: "application",
       phase,
       status: response.status,
+      pathname,
+      observedSymptom: "response/body correlation mismatch",
+      suspectedOrigin: "application",
     });
   }
-  return { body, headers: response.headers, requestId };
+  return {
+    body,
+    headers: response.headers,
+    requestId,
+    status: response.status,
+  };
 }
 
-async function login(target, identity) {
+async function requestJson(target, pathname, options = {}, phase = "scenario") {
+  const {
+    deadlineAt = null,
+    operation = pathname,
+    scenarioIndex = null,
+    trace = null,
+    ...transportOptions
+  } = options;
+  const bodyText =
+    transportOptions.body === undefined
+      ? undefined
+      : JSON.stringify(transportOptions.body);
+  const evidence = {
+    scenarioIndex,
+    operation,
+    method: transportOptions.method ?? "GET",
+    path: pathname,
+    startedAt: new Date().toISOString(),
+    finishedAt: null,
+    requestBodyBytes:
+      bodyText === undefined
+        ? 0
+        : new TextEncoder().encode(bodyText).byteLength,
+    status: null,
+    contentType: null,
+    responseCorrelationId: null,
+    aborted: false,
+    deadlineExceeded: false,
+    error: null,
+  };
+  try {
+    const result = await requestJsonWithTransport(
+      target,
+      pathname,
+      transportOptions,
+      phase
+    );
+    evidence.status = result.status;
+    evidence.contentType = result.headers.get("content-type");
+    evidence.responseCorrelationId = result.requestId;
+    return result;
+  } catch (error) {
+    if (error !== null && typeof error === "object") {
+      error.operation ??= operation;
+      error.pathname ??= pathname;
+    }
+    evidence.status = error?.status ?? null;
+    evidence.aborted = error?.cause?.name === "AbortError";
+    evidence.error = {
+      message: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? (error.stack ?? null) : null,
+    };
+    throw error;
+  } finally {
+    evidence.finishedAt = new Date().toISOString();
+    evidence.deadlineExceeded = deadlineAt !== null && Date.now() > deadlineAt;
+    trace?.push(evidence);
+  }
+}
+
+async function login(target, identity, context = {}) {
   const result = await requestJson(
     target,
     "/api/v1/auth/login",
     {
       method: "POST",
       body: { username: identity.username, password: identity.credential },
+      ...context,
     },
     "login"
   );
@@ -380,16 +513,40 @@ async function cleanupScenario(db, programId) {
   ]);
 }
 
-async function runScenario(target, db, programId) {
-  const adminCookie = await login(target, ADMIN);
-  const memberCookie = await login(target, MEMBER);
+async function runScenario(target, db, programId, scenarioIndex, deadlineAt) {
+  const requestEvidence = [];
+  let adminCookie;
+  let memberCookie;
+  try {
+    adminCookie = await login(target, ADMIN, {
+      trace: requestEvidence,
+      scenarioIndex,
+      operation: "admin login",
+      deadlineAt,
+    });
+    memberCookie = await login(target, MEMBER, {
+      trace: requestEvidence,
+      scenarioIndex,
+      operation: "member login",
+      deadlineAt,
+    });
+  } catch (error) {
+    error.requestEvidence = requestEvidence;
+    throw error;
+  }
   const scenarioId = crypto.randomUUID();
   let failure = null;
   try {
     const auth = await requestJson(
       target,
       "/api/v1/auth/me",
-      { cookie: memberCookie },
+      {
+        cookie: memberCookie,
+        trace: requestEvidence,
+        scenarioIndex,
+        operation: "member auth/me",
+        deadlineAt,
+      },
       "scenario"
     );
     if (!auth.body?.data?.user) {
@@ -402,7 +559,13 @@ async function runScenario(target, db, programId) {
     const catalog = await requestJson(
       target,
       "/api/v1/programs/catalog",
-      { cookie: memberCookie },
+      {
+        cookie: memberCookie,
+        trace: requestEvidence,
+        scenarioIndex,
+        operation: "member catalog read",
+        deadlineAt,
+      },
       "scenario"
     );
     const catalogProgram = catalog.body?.data?.catalog
@@ -422,7 +585,14 @@ async function runScenario(target, db, programId) {
         method: "POST",
         cookie: memberCookie,
         idempotencyKey: `t05-canary-request-${scenarioId}`,
-        body: {},
+        body: canaryRequestBody(
+          `/api/v1/programs/${programId}/enrollment-requests`,
+          {}
+        ),
+        trace: requestEvidence,
+        scenarioIndex,
+        operation: "member enrollment-request create",
+        deadlineAt,
       },
       "scenario"
     );
@@ -442,6 +612,10 @@ async function runScenario(target, db, programId) {
         cookie: adminCookie,
         idempotencyKey: `t05-canary-decision-${scenarioId}`,
         body: { action: "Approved" },
+        trace: requestEvidence,
+        scenarioIndex,
+        operation: "admin enrollment-request decision",
+        deadlineAt,
       },
       "scenario"
     );
@@ -460,7 +634,13 @@ async function runScenario(target, db, programId) {
     const detail = await requestJson(
       target,
       `/api/v1/programs/${programId}/participant-detail`,
-      { cookie: memberCookie },
+      {
+        cookie: memberCookie,
+        trace: requestEvidence,
+        scenarioIndex,
+        operation: "member participant detail read",
+        deadlineAt,
+      },
       "scenario"
     );
     if (detail.body?.data?.detail?.program?.program_id !== programId) {
@@ -476,7 +656,13 @@ async function runScenario(target, db, programId) {
     await requestJson(
       target,
       `/api/v1/programs/${programId}/management`,
-      { cookie: adminCookie },
+      {
+        cookie: adminCookie,
+        trace: requestEvidence,
+        scenarioIndex,
+        operation: "admin management read",
+        deadlineAt,
+      },
       "scenario"
     );
     await requestJson(
@@ -486,7 +672,14 @@ async function runScenario(target, db, programId) {
         method: "POST",
         cookie: memberCookie,
         idempotencyKey: `t05-canary-cancel-${scenarioId}`,
-        body: {},
+        body: canaryRequestBody(
+          `/api/v1/programs/${programId}/enrollments/${enrollmentId}/cancel`,
+          {}
+        ),
+        trace: requestEvidence,
+        scenarioIndex,
+        operation: "member enrollment cancel",
+        deadlineAt,
       },
       "scenario"
     );
@@ -511,6 +704,7 @@ async function runScenario(target, db, programId) {
     }
   }
   if (failure !== null) {
+    failure.requestEvidence = requestEvidence;
     throw failure;
   }
 }
@@ -603,7 +797,9 @@ export async function prepareProgramsHarness(
 }
 
 async function main() {
-  const artifactDirectory = path.join(CANARY_ARTIFACT_ROOT, runId());
+  const artifactDirectory = process.env.PROGRAMS_CANARY_ARTIFACT_DIRECTORY
+    ? path.resolve(REPO_ROOT, process.env.PROGRAMS_CANARY_ARTIFACT_DIRECTORY)
+    : path.join(CANARY_ARTIFACT_ROOT, runId());
   await mkdir(artifactDirectory, { recursive: true });
   const setupStartedAt = Date.now();
   const manifest = {
@@ -614,6 +810,8 @@ async function main() {
     windowMs: CANARY_DURATION_MS,
     revision: await revision(),
     status: "running",
+    experiment: BODYLESS_NO_BODY ? "bodyless-no-body" : "production-shaped",
+    promotionRunId: process.env.PROGRAMS_PROMOTION_RUN_ID ?? null,
     setupStartedAt: new Date(setupStartedAt).toISOString(),
     startedAt: null,
     scenariosCompleted: 0,
@@ -627,6 +825,7 @@ async function main() {
   let db = null;
   let causalSignal = null;
   let observedRuntimeFailure = null;
+  let confirmedOrigin = null;
   try {
     const prepared = await prepareProgramsHarness(artifactDirectory);
     server = prepared.server;
@@ -644,7 +843,13 @@ async function main() {
     await writeJson(path.join(artifactDirectory, "run.json"), manifest);
     const deadline = startedAt + CANARY_DURATION_MS;
     while (Date.now() < deadline) {
-      await runScenario(target, db, fixture.programId);
+      await runScenario(
+        target,
+        db,
+        fixture.programId,
+        manifest.scenariosCompleted + 1,
+        deadline
+      );
       manifest.scenariosCompleted += 1;
       await writeJson(path.join(artifactDirectory, "run.json"), manifest);
     }
@@ -669,6 +874,11 @@ async function main() {
       category: error?.category ?? "application",
       phase: error?.phase ?? "unknown",
       status: error?.status ?? null,
+      operation: error?.operation ?? null,
+      path: error?.pathname ?? null,
+      observedSymptom: error?.observedSymptom ?? null,
+      suspectedOrigin: error?.suspectedOrigin ?? "undetermined",
+      confirmedOrigin: error?.confirmedOrigin ?? null,
       message: error instanceof Error ? error.message : String(error),
     });
     manifest.finishedAt = new Date().toISOString();
@@ -686,6 +896,10 @@ async function main() {
       }
       const runtimeLogs = server.getLogs();
       causalSignal = firstCausalRuntimeSignal(runtimeLogs);
+      confirmedOrigin =
+        causalSignal !== null && !DOWNSTREAM_MARKER.test(causalSignal)
+          ? "runtime"
+          : null;
       observedRuntimeFailure =
         failure?.category === "runtime transport"
           ? failure instanceof Error
@@ -700,10 +914,25 @@ async function main() {
         category: failure?.category ?? "application",
         phase: failure?.phase ?? "unknown",
         message: failure instanceof Error ? failure.message : String(failure),
+        operation: failure?.operation ?? null,
+        path: failure?.pathname ?? null,
+        observedSymptom: failure?.observedSymptom ?? null,
+        suspectedOrigin: failure?.suspectedOrigin ?? "undetermined",
+        confirmedOrigin,
+        cause:
+          failure?.cause instanceof Error
+            ? {
+                message: failure.cause.message,
+                stack: failure.cause.stack ?? null,
+              }
+            : null,
         firstCausalRuntimeSignal: firstCausalRuntimeSignal(runtimeLogs),
         observedRuntimeFailure,
         scenariosCompleted: manifest.scenariosCompleted,
         target: target?.origin ?? null,
+        requestEvidence: Array.isArray(failure?.requestEvidence)
+          ? failure.requestEvidence
+          : [],
       });
     }
     if (server !== null) {

@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
@@ -12,6 +12,13 @@ type PromotionStage = {
   args: readonly string[];
   report?: string;
   expectedTests?: number;
+};
+
+type PromotionStageResult = {
+  name: string;
+  status: "running" | "passed" | "failed" | "not_run";
+  artifacts: string[];
+  failure?: string;
 };
 
 export const PROMOTION_STAGES: readonly PromotionStage[] = [
@@ -175,6 +182,19 @@ async function readReport(filename: string): Promise<unknown> {
   return JSON.parse(await readFile(filename, "utf8"));
 }
 
+export function stageArtifactPath(
+  stage: PromotionStage,
+  artifactDirectory: string
+): string {
+  if (stage.name === "runtime-canary") {
+    return path.join(artifactDirectory, "runtime-canary");
+  }
+  if (stage.report !== undefined) {
+    return path.join(artifactDirectory, stage.report);
+  }
+  return path.join(artifactDirectory, `${stage.name}.log`);
+}
+
 function timestamp(value: unknown): number | null {
   if (typeof value !== "string") {
     return null;
@@ -211,33 +231,12 @@ export function isCanaryArtifactGreen(
   );
 }
 
-async function latestCanaryRun(
-  expectedRevision: string
-): Promise<JsonRecord | null> {
-  const root = path.join(REPO_ROOT, "test-results", "programs-runtime-canary");
-  let entries;
+async function readCanaryRun(filename: string): Promise<JsonRecord | null> {
   try {
-    entries = await readdir(root, { withFileTypes: true });
+    return asRecord(JSON.parse(await readFile(filename, "utf8")));
   } catch {
     return null;
   }
-  for (const entry of entries
-    .filter((candidate) => candidate.isDirectory())
-    .sort((left, right) => right.name.localeCompare(left.name))) {
-    try {
-      const manifest = asRecord(
-        JSON.parse(
-          await readFile(path.join(root, entry.name, "run.json"), "utf8")
-        )
-      );
-      if (isCanaryArtifactGreen(manifest, expectedRevision)) {
-        return manifest;
-      }
-    } catch {
-      // An incomplete artifact is not a passed canary.
-    }
-  }
-  return null;
 }
 
 function commandOutput(error: unknown): string {
@@ -248,12 +247,21 @@ function commandOutput(error: unknown): string {
 async function runStage(
   stage: PromotionStage,
   artifactDirectory: string
-): Promise<void> {
-  const environment = { ...process.env };
+): Promise<string[]> {
+  const environment: NodeJS.ProcessEnv = {
+    ...process.env,
+    PROGRAMS_PROMOTION_RUN_ID: path.basename(artifactDirectory),
+  };
+  const stageArtifact = stageArtifactPath(stage, artifactDirectory);
+  const stageLog = path.join(artifactDirectory, `${stage.name}.log`);
   if (stage.name === "browser-acceptance") {
     environment.PROGRAMS_BROWSER_RESULTS_FILE = path.join(
       artifactDirectory,
       stage.report ?? "browser-results.json"
+    );
+    environment.PROGRAMS_BROWSER_ARTIFACT_DIRECTORY = path.join(
+      artifactDirectory,
+      "browser-acceptance"
     );
   }
   if (stage.name === "responsive-matrix") {
@@ -261,6 +269,13 @@ async function runStage(
       artifactDirectory,
       stage.report ?? "responsive-results.json"
     );
+    environment.PROGRAMS_RESPONSIVE_ARTIFACT_DIRECTORY = path.join(
+      artifactDirectory,
+      "responsive-matrix"
+    );
+  }
+  if (stage.name === "runtime-canary") {
+    environment.PROGRAMS_CANARY_ARTIFACT_DIRECTORY = stageArtifact;
   }
   console.log(`T05.7 ${stage.name} started`);
   try {
@@ -269,17 +284,9 @@ async function runStage(
       env: environment,
       maxBuffer: 16 * 1024 * 1024,
     });
-    await writeFile(
-      path.join(artifactDirectory, `${stage.name}.log`),
-      `${result.stdout}${result.stderr}`,
-      "utf8"
-    );
+    await writeFile(stageLog, `${result.stdout}${result.stderr}`, "utf8");
   } catch (error) {
-    await writeFile(
-      path.join(artifactDirectory, `${stage.name}.log`),
-      commandOutput(error),
-      "utf8"
-    );
+    await writeFile(stageLog, commandOutput(error), "utf8");
     throw new Error(
       `T05.7 ${stage.name} failed; see ${path.relative(REPO_ROOT, path.join(artifactDirectory, `${stage.name}.log`))}`,
       { cause: error }
@@ -299,14 +306,25 @@ async function runStage(
     }
   }
   if (stage.name === "runtime-canary") {
-    const canary = await latestCanaryRun(await currentRevision());
-    if (canary === null) {
+    const canaryManifestPath = path.join(stageArtifact, "run.json");
+    const canary = await readCanaryRun(canaryManifestPath);
+    if (
+      canary === null ||
+      !isCanaryArtifactGreen(canary, await currentRevision())
+    ) {
       throw new Error(
-        "T05.7 runtime-canary did not leave a passed five-minute artifact"
+        `T05.7 runtime-canary did not leave a passed current-run five-minute artifact at ${path.relative(REPO_ROOT, canaryManifestPath)}`
       );
     }
   }
   console.log(`T05.7 ${stage.name} passed`);
+  return [
+    ...new Set(
+      [stageArtifact, stageLog].map((filename) =>
+        path.relative(REPO_ROOT, filename)
+      )
+    ),
+  ];
 }
 
 async function main(): Promise<void> {
@@ -321,20 +339,24 @@ async function main(): Promise<void> {
   const manifest: {
     schemaVersion: number;
     authority: string;
+    runId: string;
     revision: string;
     status: string;
     startedAt: string;
     finishedAt?: string;
     stages: string[];
+    stageResults: PromotionStageResult[];
     failure?: string;
     artifacts: string;
   } = {
     schemaVersion: 1,
     authority: "T05.7 layered Programs promotion gate",
+    runId: path.basename(artifactDirectory),
     revision,
     status: "running",
     startedAt: new Date().toISOString(),
     stages: [],
+    stageResults: [],
     artifacts: path.relative(REPO_ROOT, artifactDirectory),
   };
   await writeJson(path.join(artifactDirectory, "promotion.json"), manifest);
@@ -352,10 +374,35 @@ async function main(): Promise<void> {
       );
     }
     for (const stage of PROMOTION_STAGES) {
-      process.env.PROGRAMS_TARGET_URL = promotionTarget.origin;
-      await runStage(stage, artifactDirectory);
-      manifest.stages.push(stage.name);
+      const stageResult: PromotionStageResult = {
+        name: stage.name,
+        status: "running",
+        artifacts: [
+          path.relative(REPO_ROOT, stageArtifactPath(stage, artifactDirectory)),
+          path.relative(
+            REPO_ROOT,
+            path.join(artifactDirectory, `${stage.name}.log`)
+          ),
+        ].filter((value, index, values) => values.indexOf(value) === index),
+      };
+      manifest.stageResults.push(stageResult);
       await writeJson(path.join(artifactDirectory, "promotion.json"), manifest);
+      try {
+        process.env.PROGRAMS_TARGET_URL = promotionTarget.origin;
+        stageResult.artifacts = await runStage(stage, artifactDirectory);
+        stageResult.status = "passed";
+        manifest.stages.push(stage.name);
+      } catch (error) {
+        stageResult.status = "failed";
+        stageResult.failure =
+          error instanceof Error ? error.message : String(error);
+        throw error;
+      } finally {
+        await writeJson(
+          path.join(artifactDirectory, "promotion.json"),
+          manifest
+        );
+      }
     }
     manifest.status = "STACK_GREEN";
   } catch (error) {
@@ -364,6 +411,25 @@ async function main(): Promise<void> {
     process.exitCode = 1;
     process.stderr.write(`${manifest.failure}\n`);
   } finally {
+    const recordedStages = new Set(
+      manifest.stageResults.map(({ name }) => name)
+    );
+    for (const stage of PROMOTION_STAGES) {
+      if (recordedStages.has(stage.name)) {
+        continue;
+      }
+      manifest.stageResults.push({
+        name: stage.name,
+        status: "not_run",
+        artifacts: [
+          path.relative(REPO_ROOT, stageArtifactPath(stage, artifactDirectory)),
+          path.relative(
+            REPO_ROOT,
+            path.join(artifactDirectory, `${stage.name}.log`)
+          ),
+        ].filter((value, index, values) => values.indexOf(value) === index),
+      });
+    }
     manifest.finishedAt = new Date().toISOString();
     await writeJson(path.join(artifactDirectory, "promotion.json"), manifest);
     console.log(

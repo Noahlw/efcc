@@ -10,7 +10,7 @@
 pnpm verify:programs
 ```
 
-Run it from a clean worktree after creating the ignored local `web/.dev.vars`. Browser Acceptance owns an official `createTestHarness()` process and disposable D1. The Responsive Matrix uses the local `PROGRAMS_TARGET_URL` when provided, otherwise `http://127.0.0.1:8787`, so start that loopback Worker and seed its disposable `E2E_` accounts before running the aggregate. The Runtime Reliability Canary owns a separate official Harness process and disposable D1.
+Run it from a clean worktree after creating the ignored local `web/.dev.vars`. Browser Acceptance and Responsive Matrix each own an official `createTestHarness()` process, disposable D1, and deterministic fixture setup. Direct Responsive config invocation may use `PROGRAMS_TARGET_URL` for diagnostics, but the canonical runner provisions its own loopback Harness. The Runtime Reliability Canary owns a separate official Harness process and disposable D1.
 
 The aggregate runs these stages once and in order:
 

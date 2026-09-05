@@ -47,7 +47,9 @@ export default defineConfig({
       },
     ],
   ],
-  outputDir: "test-results/programs-responsive",
+  outputDir:
+    process.env.PROGRAMS_RESPONSIVE_OUTPUT_DIR ??
+    "test-results/programs-responsive",
   use: {
     baseURL: targetUrl,
     trace: "retain-on-failure",

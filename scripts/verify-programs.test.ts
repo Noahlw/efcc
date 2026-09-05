@@ -9,6 +9,7 @@ import {
   isCanaryArtifactGreen,
   assertPlaywrightReportGreen,
   isCleanWorktreeStatus,
+  stageArtifactPath,
 } from "./verify-programs";
 
 const repoRoot = path.resolve(import.meta.dirname, "..");
@@ -100,6 +101,19 @@ describe("T05.7 Programs promotion gate", () => {
         "https://efcc-dev-example.efcc-ggc.workers.dev"
       )
     ).toThrow(/loopback/u);
+  });
+
+  test("pins each stage artifact to the current promotion run", () => {
+    const artifactDirectory = "/tmp/t05-promotion/run-1";
+    expect(stageArtifactPath(PROMOTION_STAGES[0], artifactDirectory)).toBe(
+      "/tmp/t05-promotion/run-1/worker-contract.log"
+    );
+    expect(stageArtifactPath(PROMOTION_STAGES[1], artifactDirectory)).toBe(
+      "/tmp/t05-promotion/run-1/runtime-canary"
+    );
+    expect(stageArtifactPath(PROMOTION_STAGES[2], artifactDirectory)).toBe(
+      "/tmp/t05-promotion/run-1/browser-results.json"
+    );
   });
 
   test("accepts only a complete current-revision canary artifact", () => {
