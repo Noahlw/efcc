@@ -1,6 +1,8 @@
 # Fast CI — the single automatic deterministic gate.
 #
-# Exactly one job: root and web typechecks. Non-browser checks (prototype,
+# Exactly one job: root and web typechecks plus the proven-cheap Storybook/
+# catalog integrity check when frontend-capable or uncertain paths are affected.
+# Non-browser checks (prototype,
 # identity, workerd, components) run locally via `pnpm verify:precommit`
 # before commits; browser/Worker-D1 Playwright suites are explicit local
 # commands; the D1 auth acceptance contract and deployed smoke are manual
@@ -13,9 +15,9 @@ name: Fast CI
 
 on:
   push:
-    branches: [main, master]
+    branches: [main, master, "feat/**", "rescue/**"]
   pull_request:
-    branches: [main, master, "feat/**"]
+    branches: [main, master, "feat/**", "rescue/**"]
 
 permissions:
   contents: read
@@ -31,6 +33,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
 
       - name: Enable pnpm (corepack)
         run: corepack enable
@@ -51,6 +55,19 @@ jobs:
 
       - name: Install web dependencies
         run: pnpm --dir web install --frozen-lockfile
+
+      - name: Test Storybook affected-scope resolver
+        run: pnpm test:storybook:scope
+
+      - name: Determine Storybook/catalog affected scope
+        id: storybook-scope
+        env:
+          STORYBOOK_SCOPE_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: node scripts/storybook-affected-scope.mjs
+
+      - name: Storybook/catalog integrity (frontend-affected)
+        if: steps.storybook-scope.outputs.run == 'true'
+        run: pnpm --dir web test:t07:foundation
 
       - name: Typecheck (root + web)
         run: pnpm verify:fast
