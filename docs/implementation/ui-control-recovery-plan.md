@@ -180,23 +180,23 @@ For visual phases, each ticket still prepares attributable scenario evidence. Th
 
 ## 4. Current execution state
 
-> **Current checkpoint override — 2026-09-06:** T07/#512 remains active on the shared branch; T07.1/#566 through T07.5/#570 are `CHECKPOINT_GREEN`; T07.6/#571 is `MACHINE_GREEN / WAITING_HUMAN` after full machine qualification; T08–T12 remain blocked. This override supersedes earlier `IN_PROGRESS` wording retained in historical snapshots below.
+> **Current checkpoint override — 2026-09-06:** T07/#512 remains active on the shared branch; T07.1/#566 through T07.5/#570 are `CHECKPOINT_GREEN`; T07.6/#571 is `MACHINE_GREEN / WAITING_HUMAN` after full machine qualification; shared PR #573 is open for human review; T08–T12 remain blocked. This override supersedes earlier `IN_PROGRESS` wording retained in historical snapshots below.
 
-| Current T07.1–T07.6 tracker status | `CHECKPOINT_GREEN` through T07.5; T07.1/#566 owning commit `96c7a227`; T07.2/#567, T07.3/#568, T07.4/#569, and T07.5/#570 owning commits are child checkpoint commits; T07.6/#571 is `MACHINE_GREEN / WAITING_HUMAN`; T07/#512 remains active on the shared branch and is not `STACK_GREEN`; T08–T12 remain blocked |
+| Current T07.1–T07.6 tracker status | `CHECKPOINT_GREEN` through T07.5; T07.1/#566 owning commit `96c7a227`; T07.2/#567, T07.3/#568, T07.4/#569, and T07.5/#570 owning commits are child checkpoint commits; T07.6/#571 is `MACHINE_GREEN / WAITING_HUMAN`; shared PR [#573](https://github.com/Noahlw/efcc/pull/573) is open and not merged; T07/#512 remains active and is not `STACK_GREEN`; T08–T12 remain blocked |
 
 | Field | Current value |
 |---|---|
 | Current phase | **Phase 1 — Executable UI Foundation** |
 | Phase status | `Phase 0 is complete through T06; PR #572 and the T07 planning authority are merged; T07.1/#566 through T07.5/#570 checkpoints are green on the shared T07 branch; T07.6/#571 is machine-green and waiting human workshop-fidelity/qualification; T08–T12 remain blocked` |
 | Rescue integration HEAD | `d877aef8cbf05c2cfd6a5693186d43323b907de5` — actual PR #572 merge SHA in `rescue/ui-control-recovery`; tracker activation follows in this planning-only commit |
-| Active phase stack | T07 shared implementation branch `rescue/t07-storybook-foundation`; T07.1/#566 through T07.5/#570 are `CHECKPOINT_GREEN` in `/Users/noah.wong/Desktop/code/EFCC-dev-t07-storybook-foundation`; T07.6/#571 is `MACHINE_GREEN / WAITING_HUMAN` on the same worktree |
-| Implementation frontier | T07/#512 remains active; T07.1/#566 through T07.5/#570 are `CHECKPOINT_GREEN`; T07.6/#571 machine qualification is complete and awaits human workshop-fidelity/qualification review; publish the single shared #512 PR next; do not merge |
-| Merge frontier | Planning PR [#572](https://github.com/Noahlw/efcc/pull/572) is `MERGED_RESCUE` at `d877aef8cbf05c2cfd6a5693186d43323b907de5`; no implementation PR exists |
+| Active phase stack | T07 shared implementation branch `rescue/t07-storybook-foundation`; T07.1/#566 through T07.5/#570 are `CHECKPOINT_GREEN`; T07.6/#571 is `MACHINE_GREEN / WAITING_HUMAN` on the same worktree; shared PR [#573](https://github.com/Noahlw/efcc/pull/573) is open for human review |
+| Implementation frontier | T07/#512 remains active; T07.1/#566 through T07.5/#570 are `CHECKPOINT_GREEN`; T07.6/#571 is `MACHINE_GREEN / WAITING_HUMAN`; shared PR [#573](https://github.com/Noahlw/efcc/pull/573) is published against `rescue/ui-control-recovery` and awaits human workshop-fidelity/qualification review; do not merge |
+| Merge frontier | Shared T07/#512 PR [#573](https://github.com/Noahlw/efcc/pull/573) is `OPEN` against `rescue/ui-control-recovery`; human workshop-fidelity/qualification approval is pending; no merge or child-issue closure is authorized |
 | Review status | #572 exact-head closeout qualification and author self-review passed; T07.1/#566 through T07.6/#571 machine Standards/Spec reviews PASS; T07.6 human workshop-fidelity/qualification review remains pending |
 | Owner approval | Existing T05 functional-acceptance / sustained-runtime-risk approval remains valid for its rescue-development scope; it does not authorize T07 implementation, a runtime fix, or a production-release claim |
 | Required evidence | Real Worker/D1 live-ui `2/2`; same-fixture before/after artifact; responsive `92`; shell geometry `28`; role-hierarchy `49`; focused governance `105/105`; full/release governance; typecheck; precommit; diff-check |
 | Active blocker | B-003 remains `OPEN` sustained-runtime residual risk: independent five-minute canary failed at revision `04f346c9e53db2bb6601bf4fdb2420adf80de764` after 141 completed scenarios with HTTP 500; artifact `test-results/programs-runtime-canary/20260905t083708030z/run.json`. This is not a finite-gate blocker under the approved amendment; no runtime fix or production-release claim is made |
-| Next safe action | Publish one shared #512 PR from `rescue/t07-storybook-foundation`, link #566–#571, and leave it open for human workshop-fidelity/qualification review; do not merge or close issues |
+| Next safe action | Review shared PR [#573](https://github.com/Noahlw/efcc/pull/573) at the representative Story URLs, provide owner ApprovalPackage evidence, and leave the PR/issues open; do not merge |
 
 > Historical T01–T05 execution logs and provenance remain below. The snapshot above is the active control-plane state for the next session.
 ## 5. Phase overview
@@ -778,7 +778,7 @@ T07 start snapshots; those snapshots remain historical provenance.
 - **Fast CI:** cheap Storybook/catalog integrity runs for frontend-capable or uncertain changes; clearly non-frontend/backend-only changes may skip; unknown comparison scope fails closed; `rescue/**` promotion branches are included.
 - **Human gate:** representative review of each catalog family at `390`, `799`, `800`, and `1440` where relevant, followed by owner ApprovalPackage evidence. No human approval or ApprovalPackage approval is fabricated here.
 - **Scope guard:** no universal pixel baseline, hardware/camera/native-print claim, `STACK_GREEN`, merge, or child-issue closure is claimed. The five-minute Programs canary was not rerun; B-003 remains `OPEN` independently.
-- **Next safe action:** publish one shared #512 PR and leave it open for human workshop-fidelity/qualification review.
+- **Next safe action:** human workshop-fidelity/qualification review of shared PR [#573](https://github.com/Noahlw/efcc/pull/573) with owner ApprovalPackage evidence; do not merge.
 
 ## 15. Human approval queue
 
@@ -908,11 +908,11 @@ For the T05 layered-testing rework, D-004 is the explicit owner-approved excepti
 
 ## 20. Next safe action
 
-Current disposition: T07.1/#566 through T07.5/#570 are `CHECKPOINT_GREEN`; T07.6/#571 is `MACHINE_GREEN / WAITING_HUMAN` after full machine qualification. Preserve all six owning checkpoints; the shared T07/#512 PR is not `STACK_GREEN` and must not be merged before human approval.
+Current disposition: T07.1/#566 through T07.5/#570 are `CHECKPOINT_GREEN`; T07.6/#571 is `MACHINE_GREEN / WAITING_HUMAN` after full machine qualification. Shared PR [#573](https://github.com/Noahlw/efcc/pull/573) is open and not `STACK_GREEN`; preserve all six owning checkpoints and await human approval.
 
 1. T06/#511 qualification, required finite gates, and independent Standards/Spec review are PASS; preserve their evidence and review provenance.
 2. PR [#550](https://github.com/Noahlw/efcc/pull/550) is verified `MERGED_RESCUE` parent-first into `rescue/ui-control-recovery` at `ffef73087c3cc985f1b314e8017cfdf973e26d58`; `main` remains untouched.
 3. Phase 0 exit is complete through T06. Retain B-003 `OPEN` as residual sustained-runtime risk; this is not a runtime-fix or production-release claim.
 4. The planning-only Phase 1 Storybook authority is promoted by PR #572 at `d877aef8cbf05c2cfd6a5693186d43323b907de5`; T07/#512 remains active, and T07.1/#566 plus T07.2/#567 are `CHECKPOINT_GREEN` on `rescue/t07-storybook-foundation`.
-5. Publish the single shared #512 PR from `rescue/t07-storybook-foundation`, link #566–#571, and leave it open for human workshop-fidelity/qualification review; do not merge or close issues.
+5. Review shared PR [#573](https://github.com/Noahlw/efcc/pull/573) at the representative Story URLs and provide owner workshop-fidelity/qualification evidence; do not merge or close issues.
 6. Retain all later ticket, human-approval, T33/#538, T35/#540, and final `main` gates for the owner’s future replacement plan.
