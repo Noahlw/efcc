@@ -146,6 +146,8 @@ export interface ApprovalPackage {
   readonly kind?: ApprovalKind;
   readonly presentationPsns?: readonly string[];
   readonly routeScenarioRefs?: readonly string[];
+  /** Whether this package proves a real-app RouteScenario integration seam. */
+  readonly realAppIntegration?: boolean;
   readonly supersedes?: readonly string[];
   readonly status: "approved" | "superseded" | "revoked";
 }

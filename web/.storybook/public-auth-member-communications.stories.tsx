@@ -11,7 +11,6 @@ import SettingsPage from "@/app/profile/settings/page";
 import RegisterPage from "@/app/register/page";
 
 import { publicAuthMemberCommunicationsHandlers } from "./public-auth-member-communications-fixtures";
-import { PUBLIC_AUTH_MEMBER_COMMUNICATIONS_PRESENTATION as PRESENTATION } from "./public-auth-member-communications.story-contract";
 
 const clearAuthHint = () => {
   if (typeof window === "undefined") {
@@ -56,7 +55,15 @@ export const SignIn: Story = {
   parameters: {
     presentation: {
       screenId: "auth-sign-in",
-      psn: PRESENTATION.signIn.psn,
+      psn: "PSN-AUTH-SIGN-IN-DEFAULT",
+      productFamily: "public-auth-member-communications",
+      lifecycle: "active",
+      baseline: "primary",
+      route: "/",
+      intent: null,
+      state: "default",
+      gap: null,
+      supersedes: [],
     },
     nextjs: {
       appDirectory: true,
@@ -80,7 +87,15 @@ export const Register: Story = {
   parameters: {
     presentation: {
       screenId: "auth-register",
-      psn: PRESENTATION.register.psn,
+      psn: "PSN-AUTH-REGISTER-DEFAULT",
+      productFamily: "public-auth-member-communications",
+      lifecycle: "active",
+      baseline: "primary",
+      route: "/register",
+      intent: null,
+      state: "default",
+      gap: null,
+      supersedes: [],
     },
     nextjs: {
       appDirectory: true,
@@ -102,7 +117,15 @@ export const Home: Story = {
   parameters: {
     presentation: {
       screenId: "member-home",
-      psn: PRESENTATION.home.psn,
+      psn: "PSN-MEMBER-HOME-DEFAULT",
+      productFamily: "public-auth-member-communications",
+      lifecycle: "active",
+      baseline: "primary",
+      route: "/home",
+      intent: null,
+      state: "default",
+      gap: null,
+      supersedes: [],
     },
     msw: authenticatedHandlers,
     nextjs: {
@@ -124,7 +147,15 @@ export const Profile: Story = {
   parameters: {
     presentation: {
       screenId: "member-profile",
-      psn: PRESENTATION.profile.psn,
+      psn: "PSN-MEMBER-PROFILE-DEFAULT",
+      productFamily: "public-auth-member-communications",
+      lifecycle: "active",
+      baseline: "primary",
+      route: "/profile",
+      intent: null,
+      state: "default",
+      gap: null,
+      supersedes: [],
     },
     msw: authenticatedHandlers,
     nextjs: {
@@ -146,7 +177,15 @@ export const AccountSettings: Story = {
   parameters: {
     presentation: {
       screenId: "member-account-settings",
-      psn: PRESENTATION.accountSettings.psn,
+      psn: "PSN-MEMBER-ACCOUNT-SETTINGS",
+      productFamily: "public-auth-member-communications",
+      lifecycle: "active",
+      baseline: "primary",
+      route: "/profile/settings",
+      intent: null,
+      state: "default",
+      gap: null,
+      supersedes: [],
     },
     msw: authenticatedHandlers,
     nextjs: {
@@ -168,7 +207,15 @@ export const Notices: Story = {
   parameters: {
     presentation: {
       screenId: "communications-notices",
-      psn: PRESENTATION.notices.psn,
+      psn: "PSN-COMMS-NOTICES-DEFAULT",
+      productFamily: "public-auth-member-communications",
+      lifecycle: "active",
+      baseline: "primary",
+      route: "/notices",
+      intent: null,
+      state: "default",
+      gap: null,
+      supersedes: [],
     },
     msw: authenticatedHandlers,
     nextjs: {
@@ -191,7 +238,15 @@ export const Messages: Story = {
   parameters: {
     presentation: {
       screenId: "communications-messages",
-      psn: PRESENTATION.messages.psn,
+      psn: "PSN-COMMS-MESSAGES-DEFAULT",
+      productFamily: "public-auth-member-communications",
+      lifecycle: "active",
+      baseline: "primary",
+      route: "/messages",
+      intent: null,
+      state: "default",
+      gap: null,
+      supersedes: [],
     },
     msw: authenticatedHandlers,
     nextjs: {
@@ -214,7 +269,15 @@ export const NotFound: Story = {
   parameters: {
     presentation: {
       screenId: "public-not-found",
-      psn: PRESENTATION.notFound.psn,
+      psn: "PSN-PUBLIC-NOT-FOUND",
+      productFamily: "public-auth-member-communications",
+      lifecycle: "active",
+      baseline: "primary",
+      route: "/not-found",
+      intent: null,
+      state: "default",
+      gap: null,
+      supersedes: [],
     },
     nextjs: {
       appDirectory: true,

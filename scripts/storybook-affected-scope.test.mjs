@@ -2,15 +2,15 @@ import { describe, expect, test } from "vitest";
 
 import {
   classifyAffectedPaths,
-  isClearlyNonFrontendPath,
+  isClearlyNonPresentationPath,
 } from "./storybook-affected-scope.mjs";
 
 describe("Storybook affected scope", () => {
-  test("skips a change set that is clearly non-frontend or backend-only", () => {
+  test("skips a change set that is clearly non-presentation", () => {
     expect(
       classifyAffectedPaths([
         "docs/implementation/ui-control-recovery-plan.md",
-        "web/lib/identity/role-hierarchy.ts",
+        "web/migrations/0001_identity.sql",
       ])
     ).toStrictEqual({
       run: false,
@@ -40,11 +40,15 @@ describe("Storybook affected scope", () => {
     });
   });
 
-  test("keeps the backend-only allowlist narrow", () => {
-    expect(isClearlyNonFrontendPath("web/lib/identity/roles.ts")).toBe(true);
-    expect(isClearlyNonFrontendPath("web/lib/programs/program-api.ts")).toBe(
+  test("keeps the non-presentation allowlist narrow", () => {
+    expect(isClearlyNonPresentationPath("web/lib/identity/roles.ts")).toBe(
       false
     );
-    expect(isClearlyNonFrontendPath("web/.storybook/main.ts")).toBe(false);
+    expect(isClearlyNonPresentationPath("web/migrations/roles.sql")).toBe(true);
+    expect(isClearlyNonPresentationPath("web/worker.ts")).toBe(false);
+    expect(
+      isClearlyNonPresentationPath("web/lib/programs/program-api.ts")
+    ).toBe(false);
+    expect(isClearlyNonPresentationPath("web/.storybook/main.ts")).toBe(false);
   });
 });

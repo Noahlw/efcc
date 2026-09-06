@@ -4,6 +4,14 @@
 **Scope:** Baseline Storybook catalog only; no route redesign, backend change, or T07.3–T07.6 work.
 **Status:** `CHECKPOINT_GREEN`
 
+## Auth credential-upgrade classification
+
+`web/app/page.tsx` renders the legacy-PIN to new-credential flow as the
+transient `view.kind === "UPGRADE"` state inside the `/` `LoginPage`. It is
+not a separately routable meaningful screen, so the Screen Catalog does not
+create a second PSN for it; the sign-in boundary remains the owning
+presentation authority.
+
 ## Authority and intended seams
 
 The baseline Stories use the shipped route/page components and the existing

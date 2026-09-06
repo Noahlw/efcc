@@ -1,3 +1,4 @@
+/* Served only by the local Storybook presentation workshop. */
 /* eslint-disable */
 /* tslint:disable */
 

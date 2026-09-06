@@ -3,16 +3,19 @@ import { appendFileSync } from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 
-const CLEARLY_NON_FRONTEND_PATHS = [
+// Keep this allowlist deliberately narrow. In particular, web/lib/identity
+// contains production presentation panels and must remain fail-closed.
+const CLEARLY_NON_PRESENTATION_PATHS = [
   /^docs\//u,
   /^(?:README|CHANGELOG|LICENSE)(?:\.|$)/u,
-  /^web\/lib\/identity\//u,
-  /^web\/workers?\//u,
+  /^web\/migrations\//u,
 ];
 
-export function isClearlyNonFrontendPath(filePath) {
+export function isClearlyNonPresentationPath(filePath) {
   const normalized = filePath.replaceAll("\\", "/");
-  return CLEARLY_NON_FRONTEND_PATHS.some((pattern) => pattern.test(normalized));
+  return CLEARLY_NON_PRESENTATION_PATHS.some((pattern) =>
+    pattern.test(normalized)
+  );
 }
 
 export function classifyAffectedPaths(filePaths) {
@@ -22,7 +25,7 @@ export function classifyAffectedPaths(filePaths) {
     return { run: false, reason: "No changed paths were found." };
   }
 
-  if (paths.every(isClearlyNonFrontendPath)) {
+  if (paths.every(isClearlyNonPresentationPath)) {
     return {
       run: false,
       reason: "Changed paths are clearly non-frontend or backend-only.",

@@ -1,41 +1,6 @@
-import {
-  AttendanceOperator,
-  AttendanceOperatorRoster,
-  AssistedCheckIn,
-  GuestCheckIn,
-  ScannerBoundary,
-} from "./attendance-scanner-guest.stories";
-import { ATTENDANCE_SCANNER_GUEST_PRESENTATION as PRESENTATION } from "./attendance-scanner-guest.story-contract";
+// @ts-expect-error This manifest intentionally inspects the TSX CSF module at runtime.
+import * as stories from "./attendance-scanner-guest.stories";
+import { discoverStoryDeclarations } from "./presentation-meta";
 
-export const attendanceScannerGuestStoryDeclarations = [
-  {
-    psn: PRESENTATION.guestCheckIn.psn,
-    state: "default",
-    storyId: PRESENTATION.guestCheckIn.storyId,
-    story: GuestCheckIn,
-  },
-  {
-    psn: PRESENTATION.scannerBoundary.psn,
-    state: "boundary-self",
-    storyId: PRESENTATION.scannerBoundary.storyId,
-    story: ScannerBoundary,
-  },
-  {
-    psn: PRESENTATION.assistedCheckIn.psn,
-    state: "assisted",
-    storyId: PRESENTATION.assistedCheckIn.storyId,
-    story: AssistedCheckIn,
-  },
-  {
-    psn: PRESENTATION.operator.psn,
-    state: "chooser",
-    storyId: PRESENTATION.operator.storyId,
-    story: AttendanceOperator,
-  },
-  {
-    psn: PRESENTATION.operatorRoster.psn,
-    state: "roster",
-    storyId: PRESENTATION.operatorRoster.storyId,
-    story: AttendanceOperatorRoster,
-  },
-] as const;
+export const attendanceScannerGuestStoryDeclarations =
+  discoverStoryDeclarations(stories);

@@ -14,7 +14,6 @@ import {
   managementHubLoadingHandler,
   managementHubRecoverableErrorHandler,
 } from "./management-hub-fixtures";
-import { MANAGEMENT_HUB_PRESENTATION } from "./management-hub.story-contract";
 
 const withManagementPresentation: Decorator = (Story) => {
   if (typeof window !== "undefined") {
@@ -55,7 +54,15 @@ type Story = StoryObj<typeof meta>;
 
 const defaultPresentation = {
   screenId: "management-hub",
-  psn: MANAGEMENT_HUB_PRESENTATION.default.psn,
+  psn: "PSN-MGMT-HUB-DEFAULT",
+  productFamily: "management",
+  lifecycle: "active",
+  baseline: "primary",
+  route: "/management",
+  intent: null,
+  state: "default",
+  gap: null,
+  supersedes: [],
 };
 
 export const Default: Story = {
@@ -86,7 +93,15 @@ export const Loading: Story = {
   parameters: {
     presentation: {
       screenId: "management-hub",
-      psn: MANAGEMENT_HUB_PRESENTATION.loading.psn,
+      psn: "PSN-MGMT-HUB-LOADING",
+      productFamily: "management",
+      lifecycle: "active",
+      baseline: "supporting",
+      route: "/management",
+      intent: null,
+      state: "loading",
+      gap: null,
+      supersedes: [],
     },
     msw: [authMeHandler, managementHubLoadingHandler],
   },
@@ -101,7 +116,15 @@ export const Empty: Story = {
   parameters: {
     presentation: {
       screenId: "management-hub",
-      psn: MANAGEMENT_HUB_PRESENTATION.empty.psn,
+      psn: "PSN-MGMT-HUB-EMPTY",
+      productFamily: "management",
+      lifecycle: "active",
+      baseline: "supporting",
+      route: "/management",
+      intent: null,
+      state: "empty",
+      gap: null,
+      supersedes: [],
     },
     msw: [authMeHandler, managementHubHandler(MANAGEMENT_HUB_EMPTY)],
   },
@@ -119,7 +142,15 @@ export const RecoverableError: Story = {
   parameters: {
     presentation: {
       screenId: "management-hub",
-      psn: MANAGEMENT_HUB_PRESENTATION.recoverableError.psn,
+      psn: "PSN-MGMT-HUB-RECOVERABLE-ERROR",
+      productFamily: "management",
+      lifecycle: "active",
+      baseline: "supporting",
+      route: "/management",
+      intent: null,
+      state: "recoverable-error",
+      gap: null,
+      supersedes: [],
     },
     msw: [authMeHandler, managementHubRecoverableErrorHandler],
   },

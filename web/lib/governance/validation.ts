@@ -915,6 +915,17 @@ export function validateRegistries(
 
   // 3. Validate Approval Packages
   const approvalIds = new Set<string>();
+  const seenApprovalIds = new Set<string>();
+  for (const approval of approvals) {
+    if (
+      isRecord(approval) &&
+      typeof approval.id === "string" &&
+      approval.id.trim() !== ""
+    ) {
+      approvalIds.add(approval.id);
+    }
+  }
+
   for (const approval of approvals) {
     if (!isRecord(approval)) {
       errors.push({
@@ -952,7 +963,7 @@ export function validateRegistries(
       });
     }
 
-    if (approvalIds.has(approval.id)) {
+    if (seenApprovalIds.has(approval.id)) {
       errors.push({
         code: "DUPLICATE_IDENTIFIER",
         message: `Duplicate approval identifier "${approval.id}" found in approval package registry`,
@@ -962,7 +973,7 @@ export function validateRegistries(
         severity: "error",
       });
     } else {
-      approvalIds.add(approval.id);
+      seenApprovalIds.add(approval.id);
     }
 
     if (approval.kind !== undefined && !isApprovalKind(approval.kind)) {
@@ -1023,19 +1034,46 @@ export function validateRegistries(
       }
     }
 
-    if (isApprovalKind(approval.kind)) {
-      for (const field of ["presentationPsns", "routeScenarioRefs"] as const) {
-        if (approval[field] === undefined) {
-          errors.push({
-            code: "INVALID_REGISTRY_FIELD",
-            message: `Approval package "${approval.id}" of kind "${approval.kind}" must provide ${field}`,
-            registry: "approvals",
-            entryId: approval.id,
-            field,
-            severity: "error",
-          });
-        }
-      }
+    if (
+      isApprovalKind(approval.kind) &&
+      approval.presentationPsns === undefined
+    ) {
+      errors.push({
+        code: "INVALID_REGISTRY_FIELD",
+        message: `Approval package "${approval.id}" of kind "${approval.kind}" must provide presentationPsns`,
+        registry: "approvals",
+        entryId: approval.id,
+        field: "presentationPsns",
+        severity: "error",
+      });
+    }
+
+    if (
+      approval.realAppIntegration !== undefined &&
+      typeof approval.realAppIntegration !== "boolean"
+    ) {
+      errors.push({
+        code: "INVALID_REGISTRY_FIELD",
+        message: `Approval package "${approval.id}" realAppIntegration must be boolean`,
+        registry: "approvals",
+        entryId: approval.id,
+        field: "realAppIntegration",
+        severity: "error",
+      });
+    }
+
+    if (
+      approval.realAppIntegration === true &&
+      approval.routeScenarioRefs === undefined
+    ) {
+      errors.push({
+        code: "INVALID_REGISTRY_FIELD",
+        message: `Approval package "${approval.id}" with realAppIntegration must provide routeScenarioRefs`,
+        registry: "approvals",
+        entryId: approval.id,
+        field: "routeScenarioRefs",
+        severity: "error",
+      });
     }
 
     const presentationPsns: readonly unknown[] = Array.isArray(

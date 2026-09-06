@@ -526,7 +526,11 @@ export const ApprovalQueue = () => {
                 type="button"
                 role="tab"
                 id="approval-pending-tab"
-                aria-controls="approval-queue-panel"
+                aria-controls={
+                  state.kind === "ready" && filteredRegistrations.length > 0
+                    ? "approval-queue-panel"
+                    : undefined
+                }
                 aria-selected={activeStatus === "Pending"}
                 className={`min-h-11 ${
                   activeStatus === "Pending"
@@ -549,7 +553,11 @@ export const ApprovalQueue = () => {
                 type="button"
                 role="tab"
                 id="approval-processed-tab"
-                aria-controls="approval-queue-panel"
+                aria-controls={
+                  state.kind === "ready" && filteredRegistrations.length > 0
+                    ? "approval-queue-panel"
+                    : undefined
+                }
                 aria-selected={activeStatus === "Processed"}
                 className={`min-h-11 ${
                   activeStatus === "Processed"

@@ -9,7 +9,7 @@ Validated 2026-09-06 before installation for `Noahlw/efcc`:
 | Vitest integration | `@storybook/addon-vitest@10.6.0`, `@vitest/browser@4.1.10`, `@vitest/browser-playwright@4.1.10` | Official addon/plugin path. The addon peers support Vitest 4 and the Playwright browser provider; the repo already uses Vitest `4.1.10`. |
 | Accessibility | `@storybook/addon-a11y@10.6.0` | Official Storybook accessibility addon; it uses `axe-core` and shares the Storybook 10.6 peer. |
 | HTTP boundary | `msw-storybook-addon@3.0.0` with the repo’s `msw@2.15.0` | Official MSW Storybook addon; published peers require MSW `>=2` and Storybook `>=9`. Handlers stay at the browser HTTP boundary. |
-| Portable/browser mechanism | Storybook CSF Story exports and the direct Story iframe URL; Playwright resolves IDs from the owning Story contract | The browser contract opens the same Story presentation truth rather than a second test page. |
+| Portable/browser mechanism | Storybook CSF Story exports and the direct Story iframe URL; Playwright uses a Node-safe stable Story ID bridge verified against the actual CSF declarations | The browser contract opens the same Story presentation truth rather than a second test page. |
 
 Official references:
 

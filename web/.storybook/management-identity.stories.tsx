@@ -1,10 +1,10 @@
 import type { Decorator, Meta, StoryObj } from "@storybook/nextjs-vite";
-import { expect, within } from "storybook/test";
+import { expect, waitFor, within } from "storybook/test";
 
 import ManagementPage from "@/app/management/page";
 
 import { managementIdentityHandlers } from "./management-identity-fixtures";
-import { MANAGEMENT_IDENTITY_PRESENTATION as PRESENTATION } from "./management-identity.story-contract";
+import type { PresentationMetadata } from "./presentation-meta";
 
 const withManagerIdentity: Decorator = (Story) => {
   if (typeof window !== "undefined") {
@@ -24,79 +24,222 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
-const assertManagementScreen = async (canvasElement: HTMLElement) => {
-  const canvas = within(canvasElement);
-  await expect(canvas.findByRole("main")).resolves.toBeVisible();
+const assertManagementScreen = async (
+  canvasElement: HTMLElement,
+  marker: string
+) => {
+  const heading = await waitFor(async () => {
+    const headings = await within(canvasElement).findAllByRole("heading");
+    const match = headings.find((candidate) => candidate.matches(marker));
+    if (!match) {
+      throw new Error(`Expected management heading ${marker} was not rendered`);
+    }
+    return match;
+  });
+  await expect(heading).toHaveAttribute("id", marker.slice(1));
 };
 
 const story = (
-  screenId: string,
-  psn: string,
-  query: Record<string, string>
+  presentation: PresentationMetadata,
+  query: Record<string, string>,
+  marker: string
 ): Story => ({
   decorators: [withManagerIdentity],
   render: () => <ManagementPage />,
   parameters: {
-    presentation: { screenId, psn },
+    presentation,
     msw: managementIdentityHandlers,
     nextjs: {
       appDirectory: true,
       navigation: { pathname: "/management", query },
     },
   },
-  play: ({ canvasElement }) => assertManagementScreen(canvasElement),
+  play: ({ canvasElement }) => assertManagementScreen(canvasElement, marker),
 });
 
 export const AccountDirectory = story(
-  "management-account-directory",
-  PRESENTATION.accountDirectory.psn,
-  { module: "accounts" }
+  {
+    screenId: "management-account-directory",
+    productFamily: "management-identity",
+    lifecycle: "active",
+    baseline: "primary",
+    psn: "PSN-MGMT-ACCOUNT-DIRECTORY",
+    route: "/management",
+    intent: "module=accounts",
+    state: "default",
+    gap: null,
+    supersedes: [],
+  },
+  { module: "accounts" },
+  "#account-directory-title"
 );
+
 export const AccountAccess = story(
-  "management-account-access",
-  PRESENTATION.accountAccess.psn,
-  { module: "accounts", account: "t07-4-account", view: "access" }
+  {
+    screenId: "management-account-access",
+    productFamily: "management-identity",
+    lifecycle: "active",
+    baseline: "primary",
+    psn: "PSN-MGMT-ACCOUNT-ACCESS",
+    route: "/management",
+    intent: "module=accounts&account=t07-4-account&view=access",
+    state: "default",
+    gap: null,
+    supersedes: [],
+  },
+  { module: "accounts", account: "t07-4-account", view: "access" },
+  "#account-access-title"
 );
+
 export const ApprovalQueue = story(
-  "management-approval-queue",
-  PRESENTATION.approvalQueue.psn,
-  { module: "approvals" }
+  {
+    screenId: "management-approval-queue",
+    productFamily: "management-identity",
+    lifecycle: "active",
+    baseline: "primary",
+    psn: "PSN-MGMT-APPROVAL-QUEUE",
+    route: "/management",
+    intent: "module=approvals",
+    state: "default",
+    gap: null,
+    supersedes: [],
+  },
+  { module: "approvals" },
+  "#approval-queue-title"
 );
+
 export const ApprovalDetail = story(
-  "management-approval-detail",
-  PRESENTATION.approvalDetail.psn,
-  { module: "approvals", request: "t07-4-registration" }
+  {
+    screenId: "management-approval-detail",
+    productFamily: "management-identity",
+    lifecycle: "active",
+    baseline: "primary",
+    psn: "PSN-MGMT-APPROVAL-DETAIL",
+    route: "/management",
+    intent: "module=approvals&request=t07-4-registration",
+    state: "default",
+    gap: null,
+    supersedes: [],
+  },
+  { module: "approvals", request: "t07-4-registration" },
+  "#approval-detail-title"
 );
+
 export const MemberDirectory = story(
-  "management-member-directory",
-  PRESENTATION.memberDirectory.psn,
-  { module: "members" }
+  {
+    screenId: "management-member-directory",
+    productFamily: "management-identity",
+    lifecycle: "active",
+    baseline: "primary",
+    psn: "PSN-MGMT-MEMBER-DIRECTORY",
+    route: "/management",
+    intent: "module=members",
+    state: "default",
+    gap: null,
+    supersedes: [],
+  },
+  { module: "members" },
+  "#member-directory-title"
 );
-export const HomeCms = story("management-home-cms", PRESENTATION.homeCms.psn, {
-  module: "home-content",
-});
+
+export const HomeCms = story(
+  {
+    screenId: "management-home-cms",
+    productFamily: "management-identity",
+    lifecycle: "active",
+    baseline: "primary",
+    psn: "PSN-MGMT-HOME-CMS",
+    route: "/management",
+    intent: "module=home-content",
+    state: "default",
+    gap: null,
+    supersedes: [],
+  },
+  { module: "home-content" },
+  "#home-cms-editor-title"
+);
+
 export const PermissionEditor = story(
-  "identity-permission-editor",
-  PRESENTATION.permissionEditor.psn,
-  { module: "permissions" }
+  {
+    screenId: "identity-permission-editor",
+    productFamily: "management-identity",
+    lifecycle: "active",
+    baseline: "primary",
+    psn: "PSN-IDENTITY-PERMISSION-EDITOR",
+    route: "/management",
+    intent: "module=permissions",
+    state: "default",
+    gap: null,
+    supersedes: [],
+  },
+  { module: "permissions" },
+  "#permission-editor-title"
 );
+
 export const RoleHierarchy = story(
-  "identity-role-hierarchy",
-  PRESENTATION.roleHierarchy.psn,
-  { module: "roles" }
+  {
+    screenId: "identity-role-hierarchy",
+    productFamily: "management-identity",
+    lifecycle: "active",
+    baseline: "primary",
+    psn: "PSN-IDENTITY-ROLE-HIERARCHY",
+    route: "/management",
+    intent: "module=roles",
+    state: "default",
+    gap: null,
+    supersedes: [],
+  },
+  { module: "roles" },
+  "#role-hierarchy-title"
 );
+
 export const SettingsHub = story(
-  "management-settings-hub",
-  PRESENTATION.settingsHub.psn,
-  { module: "settings" }
+  {
+    screenId: "management-settings-hub",
+    productFamily: "management-identity",
+    lifecycle: "active",
+    baseline: "primary",
+    psn: "PSN-MGMT-SETTINGS-HUB",
+    route: "/management",
+    intent: "module=settings",
+    state: "default",
+    gap: null,
+    supersedes: [],
+  },
+  { module: "settings" },
+  "#settings-title"
 );
+
 export const CheckinSettings = story(
-  "management-checkin-settings",
-  PRESENTATION.checkinSettings.psn,
-  { module: "checkin-settings" }
+  {
+    screenId: "management-checkin-settings",
+    productFamily: "management-identity",
+    lifecycle: "active",
+    baseline: "primary",
+    psn: "PSN-MGMT-CHECKIN-SETTINGS",
+    route: "/management",
+    intent: "module=checkin-settings",
+    state: "default",
+    gap: null,
+    supersedes: [],
+  },
+  { module: "checkin-settings" },
+  "#checkin-settings-title"
 );
+
 export const TimezoneSettings = story(
-  "management-timezone-settings",
-  PRESENTATION.timezoneSettings.psn,
-  { module: "timezone-settings" }
+  {
+    screenId: "management-timezone-settings",
+    productFamily: "management-identity",
+    lifecycle: "active",
+    baseline: "primary",
+    psn: "PSN-MGMT-TIMEZONE-SETTINGS",
+    route: "/management",
+    intent: "module=timezone-settings",
+    state: "default",
+    gap: null,
+    supersedes: [],
+  },
+  { module: "timezone-settings" },
+  "#timezone-settings-title"
 );

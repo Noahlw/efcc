@@ -7,7 +7,6 @@ import ScannerPage from "@/app/scanner/page";
 import { COPY } from "@/lib/copy";
 
 import { attendanceScannerGuestHandlers } from "./attendance-scanner-guest-fixtures";
-import { ATTENDANCE_SCANNER_GUEST_PRESENTATION as PRESENTATION } from "./attendance-scanner-guest.story-contract";
 
 const withAuthenticatedPresentation: Decorator = (Story, context) => {
   if (typeof window !== "undefined") {
@@ -47,7 +46,15 @@ export const GuestCheckIn: Story = {
   parameters: {
     presentation: {
       screenId: "attendance-guest-check-in",
-      psn: PRESENTATION.guestCheckIn.psn,
+      psn: "PSN-ATTENDANCE-GUEST-CHECK-IN",
+      productFamily: "attendance-scanner-guest",
+      lifecycle: "active",
+      baseline: "primary",
+      route: "/guest-check-in",
+      intent: null,
+      state: "default",
+      gap: null,
+      supersedes: [],
     },
     msw: attendanceScannerGuestHandlers,
     nextjs: {
@@ -69,7 +76,15 @@ export const ScannerBoundary: Story = {
   parameters: {
     presentation: {
       screenId: "attendance-scanner-boundary",
-      psn: PRESENTATION.scannerBoundary.psn,
+      psn: "PSN-ATTENDANCE-SCANNER-BOUNDARY",
+      productFamily: "attendance-scanner-guest",
+      lifecycle: "active",
+      baseline: "primary",
+      route: "/scanner",
+      intent: "mode=self",
+      state: "boundary-self",
+      gap: null,
+      supersedes: [],
     },
     msw: attendanceScannerGuestHandlers,
     nextjs: {
@@ -92,7 +107,15 @@ export const AssistedCheckIn: Story = {
   parameters: {
     presentation: {
       screenId: "attendance-assisted-check-in",
-      psn: PRESENTATION.assistedCheckIn.psn,
+      psn: "PSN-ATTENDANCE-ASSISTED-CHECK-IN",
+      productFamily: "attendance-scanner-guest",
+      lifecycle: "active",
+      baseline: "primary",
+      route: "/scanner",
+      intent: "mode=assisted&event=t07-5-event",
+      state: "assisted",
+      gap: null,
+      supersedes: [],
     },
     msw: attendanceScannerGuestHandlers,
     nextjs: {
@@ -117,7 +140,15 @@ export const AttendanceOperator: Story = {
   parameters: {
     presentation: {
       screenId: "attendance-operator",
-      psn: PRESENTATION.operator.psn,
+      psn: "PSN-ATTENDANCE-OPERATOR",
+      productFamily: "attendance-scanner-guest",
+      lifecycle: "active",
+      baseline: "primary",
+      route: "/events",
+      intent: null,
+      state: "chooser",
+      gap: null,
+      supersedes: [],
     },
     msw: attendanceScannerGuestHandlers,
     nextjs: {
@@ -139,7 +170,15 @@ export const AttendanceOperatorRoster: Story = {
   parameters: {
     presentation: {
       screenId: "attendance-operator-roster",
-      psn: PRESENTATION.operatorRoster.psn,
+      psn: "PSN-ATTENDANCE-OPERATOR-ROSTER",
+      productFamily: "attendance-scanner-guest",
+      lifecycle: "active",
+      baseline: "primary",
+      route: "/events",
+      intent: "event=t07-5-event",
+      state: "roster",
+      gap: null,
+      supersedes: [],
     },
     msw: attendanceScannerGuestHandlers,
     nextjs: {

@@ -7,6 +7,8 @@ import os from "node:os";
 import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 
+import { parseStorybookPort } from "./storybook-port.mjs";
+
 const scriptDirectory = import.meta.dirname;
 const webRoot = path.resolve(scriptDirectory, "..");
 const repositoryRoot = path.resolve(webRoot, "..");
@@ -21,12 +23,14 @@ const markerPath = path.join(markerDirectory, markerName);
 
 function parseArgs(args) {
   const portIndex = args.indexOf("--port");
-  const port = portIndex === -1 ? undefined : Number(args[portIndex + 1]);
+  const port =
+    portIndex === -1
+      ? undefined
+      : parseStorybookPort(args[portIndex + 1], "--port");
 
   return {
     printPort: args.includes("--print-port"),
-    port:
-      Number.isInteger(port) && port > 0 && port < 65_536 ? port : undefined,
+    port,
   };
 }
 
@@ -161,12 +165,11 @@ function printUrls(port) {
 }
 
 async function waitForOwnedProcess(pid) {
-  if (!processIsAlive(pid)) {
-    return;
+  while (processIsAlive(pid)) {
+    // The owned process must be observed sequentially until it exits.
+    // eslint-disable-next-line no-await-in-loop
+    await delay(500);
   }
-
-  await delay(500);
-  await waitForOwnedProcess(pid);
 }
 
 async function startStorybook(port) {
@@ -223,13 +226,11 @@ async function startStorybook(port) {
 }
 
 const { printPort, port: requestedPort } = parseArgs(process.argv.slice(2));
-const preferredPort =
-  requestedPort ?? Number(process.env.STORYBOOK_PORT ?? defaultPort);
-const { marker, port } = await selectPort(
-  Number.isInteger(preferredPort) && preferredPort > 0
-    ? preferredPort
-    : defaultPort
+const preferredPort = parseStorybookPort(
+  requestedPort ?? process.env.STORYBOOK_PORT ?? defaultPort,
+  requestedPort === undefined ? "STORYBOOK_PORT" : "--port"
 );
+const { marker, port } = await selectPort(preferredPort);
 
 if (printPort) {
   console.log(port);

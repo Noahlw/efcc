@@ -272,8 +272,8 @@ This is a historical Phase 0 snapshot taken before T07.1 implementation. It is r
 
 | Field | Value |
 |---|---|
-| Phase status | `IN_PROGRESS — Phase 0 complete; Storybook planning authority is promoted; T07/#512 remains active; T07.1/#566, T07.2/#567, T07.3/#568, and T07.4/#569 are CHECKPOINT_GREEN on the shared T07 branch; T07.5–T07.6 remain blocked.` |
-| T07 Storybook workshop/catalog | `IN_PROGRESS`; T07.1 tracer, T07.2 baseline catalog, T07.3 Programs catalog, and T07.4 Management/Identity catalog checkpoints are green; T07.5–T07.6 fan-out remains unstarted |
+| Phase status | `IN_PROGRESS — Phase 0 complete; Storybook planning authority is promoted; T07/#512 remains active; T07.1/#566 through T07.5/#570 are CHECKPOINT_GREEN; T07.6/#571 is MACHINE_GREEN / WAITING_HUMAN on the shared T07 branch; PR #573 remains open and not STACK_GREEN.` |
+| T07 Storybook workshop/catalog | `IN_PROGRESS`; T07.1–T07.5 child checkpoints are green and T07.6 is machine-green waiting for human workshop-fidelity/qualification review; no child issue is closed |
 | Active Screen Catalog gaps | — |
 | T08 control approval | — |
 | T09 surface/overlay approval | — |
@@ -311,7 +311,7 @@ Targeted future notes already published with the downstream banners are authorit
 - #539 / T34 requires current ApprovalPackage/PSN/Story references for presentation review while retaining separate real-device, assistive-technology, camera, touch, safe-area, and native-print evidence.
 - #541 / T36 reconciles the final active UI authority chain and keeps historical UI Lab or generic scenario-registry wording as provenance only.
 
-After PR #572 promotion, this planning-only activation marked T07/#512 and T07.1/#566 as `FRONTIER`; the shared T07 implementation worktree now exists for T07.1. T07.1 is the only active implementation child. T07.2–T07.6 and T08–T12 remain blocked by their defined dependency graphs. No separate child implementation worktree or branch exists.
+Historical activation record: after PR #572 promotion, this planning-only activation marked T07/#512 and T07.1/#566 as `FRONTIER`; the shared T07 implementation worktree was then created for T07.1. The later checkpoint records below supersede that initial frontier snapshot: T07.1–T07.5 are now `CHECKPOINT_GREEN` and T07.6 is `MACHINE_GREEN / WAITING_HUMAN`. No separate child implementation worktree or branch exists.
 
 # 8. Phase 2 — Programs Route Family
 
@@ -452,19 +452,19 @@ The tracker separates the implementation frontier from the merge frontier. `STAC
 | Phase | Phase 1 — Executable UI Foundation |
 | Rescue base SHA | `a1a40d12d7a334183951604ae1adec509015474c` — current verified rescue/T07 implementation base after planning activation |
 | Stack root | `rescue/ui-control-recovery` at `a1a40d12d7a334183951604ae1adec509015474c`; T07 shared implementation branch starts here |
-| Stack tip | `rescue/t07-storybook-foundation` at this T07.3 checkpoint; T07.1/#566, T07.2/#567, and T07.3/#568 checkpoints are green; worktree remains the sole shared T07 implementation worktree |
-| Implementation frontier | T07/#512 remains active; T07.1/#566, T07.2/#567, and T07.3/#568 are `CHECKPOINT_GREEN`; next frontier is #569 on the same shared worktree |
-| Merge frontier | No implementation PR exists yet; the future T07 child commits will share one PR linked to #512 |
-| Review status | T07.1/#566 and T07.2/#567 Standards/Spec reviews are PASS; #572 planning qualification and author self-review remain passed |
-| Human approval | No T07 workshop-fidelity approval has been recorded; it remains a future T07.6 gate. T07.1/#566 and T07.2/#567 are machine checkpoints only and are not `MERGE_READY` without required approval/evidence |
-| Descendants requiring restack | None — T07 is a shared branch; #569–#571 remain blocked and do not get separate worktrees or branches |
-| Next safe action | Continue only #569 in the existing shared T07 worktree; use `/implement` for that child and preserve the single shared #512 PR topology |
+| Stack tip | `rescue/t07-storybook-foundation` carries T07.1–T07.5 checkpoint commits and the T07.6 aggregate qualification; the worktree remains the sole shared T07 implementation worktree and PR #573 is open |
+| Implementation frontier | T07/#512 remains active; T07.1/#566 through T07.5/#570 are `CHECKPOINT_GREEN`; T07.6/#571 is `MACHINE_GREEN / WAITING_HUMAN`; shared PR [#573](https://github.com/Noahlw/efcc/pull/573) awaits human workshop-fidelity/qualification review |
+| Merge frontier | Shared PR [#573](https://github.com/Noahlw/efcc/pull/573) is open against `rescue/ui-control-recovery`; no merge or child-issue closure is authorized |
+| Review status | T07.1/#566 through T07.6/#571 focused Standards/Spec reviews and machine qualification are PASS; T07.6 human workshop-fidelity/qualification review remains pending |
+| Human approval | No T07 workshop-fidelity approval has been recorded; T07.1–T07.5 are implementation checkpoints and T07.6 is waiting for owner review, not `MERGE_READY` |
+| Descendants requiring restack | None — T07 is one shared branch/PR; no child worktree, child branch, or child PR exists |
+| Next safe action | Review shared PR #573 at representative Story URLs and record owner ApprovalPackage evidence; do not merge or close issues |
 
 ### Stack map
 
-Current stack disposition: T07.1/#566, T07.2/#567, T07.3/#568, and T07.4/#569 are `CHECKPOINT_GREEN` on the shared `rescue/t07-storybook-foundation` branch; #570–#571 remain blocked and the shared #512 PR is not `STACK_GREEN`.
+Current stack disposition: T07.1/#566 through T07.5/#570 are `CHECKPOINT_GREEN`; T07.6/#571 is `MACHINE_GREEN / WAITING_HUMAN` on shared `rescue/t07-storybook-foundation`; shared #512 PR #573 is open and not `STACK_GREEN`.
 
-Current review disposition: T07.1/#566, T07.2/#567, T07.3/#568, and T07.4/#569 Standards/Spec review and focused verification passed; all four owning checkpoint commits are present. No human workshop-fidelity approval or shared-PR `STACK_GREEN` claim is made.
+Current review disposition: T07.1/#566 through T07.6/#571 Standards/Spec review and focused machine verification passed; all six owning checkpoint commits are present. No human workshop-fidelity approval or shared-PR `STACK_GREEN` claim is made.
 
 | Pos | Ticket | Logical blockers | Stack parent | Branch | Worktree | PR base | PR | State | Reviewed implementation SHA | Human gate | Rollback boundary |
 |---:|---|---|---|---|---|---|---|---|---|---|---|
@@ -774,7 +774,7 @@ T07 start snapshots; those snapshots remain historical provenance.
 
 - **Status:** `MACHINE_GREEN / WAITING_HUMAN` for T07.6 / #571.
 - **Owning commit:** this T07.6 checkpoint commit on `rescue/t07-storybook-foundation`.
-- **Machine evidence:** `verify:programs` returned `functional-passed` at the reviewed revision; Worker Contract, browser acceptance, Responsive Matrix, and non-browser precommit stages passed. Storybook catalog is 34 screens / 37 declarations; aggregate foundation is 4 files / 14 tests; Storybook browser coverage is 5 files / 37 tests; Storybook build, full governance, affected governance, and full precommit passed; T07 Storybook Playwright is 8/8 passed; affected-scope resolver is 5/5 passed.
+- **Machine evidence:** `verify:programs` returned `functional-passed` at the reviewed revision; Worker Contract, browser acceptance, Responsive Matrix, and non-browser precommit stages passed. Storybook catalog is 34 screens / 37 declarations; aggregate foundation is 6 files / 32 tests; Storybook browser coverage is 5 files / 37 tests; Storybook build, full governance, affected governance, and full precommit passed; T07 Storybook Playwright is 8/8 passed; affected-scope resolver is 5/5 passed. Story-owned PSN metadata, strict non-asset MSW handling, Storybook-only worker placement, additive ApprovalPackage validation, and worktree-safe port parsing are covered by the current checkpoint.
 - **Fast CI:** cheap Storybook/catalog integrity runs for frontend-capable or uncertain changes; clearly non-frontend/backend-only changes may skip; unknown comparison scope fails closed; `rescue/**` promotion branches are included.
 - **Human gate:** representative review of each catalog family at `390`, `799`, `800`, and `1440` where relevant, followed by owner ApprovalPackage evidence. No human approval or ApprovalPackage approval is fabricated here.
 - **Scope guard:** no universal pixel baseline, hardware/camera/native-print claim, `STACK_GREEN`, merge, or child-issue closure is claimed. The five-minute Programs canary was not rerun; B-003 remains `OPEN` independently.
@@ -808,7 +808,7 @@ Keep links here so new sessions do not need to rediscover them.
 | T05 layered-testing authority | T05 / #510 | [#505 architecture amendment](https://github.com/Noahlw/efcc/issues/505#issuecomment-5538740674), [#505 finite-gate / sustained-runtime-risk amendment](https://github.com/Noahlw/efcc/issues/505#issuecomment-5550498028), [#510 amended routing](https://github.com/Noahlw/efcc/issues/510#issuecomment-5550848597), child tracers [#551–#557](https://github.com/Noahlw/efcc/issues/551), and replacement [#565](https://github.com/Noahlw/efcc/pull/565); T05 `STACK_GREEN`, B-003 remains `OPEN`, one replacement PR model |
 | Scenario Registry | T03 / #508 | `web/lib/governance/registries.ts` — created with 16 route scenarios and exact contract references; validated by `governance.test.ts` |
 | UI Contract Registry | T03 / #508 | `web/lib/governance/registries.ts` — created with 17 executable contracts/probe definitions; live token, safe-area, navigation, and scanner sources covered |
-| Storybook workshop + Screen Catalog | T07 / #512, #566–#571 | [`ADR-0045`](../adr/0045-local-storybook-presentation-authority.md), #505 Phase 1 amendment, and PR #572 `MERGED_RESCUE` at `d877aef8cbf05c2cfd6a5693186d43323b907de5`; T07/#512 remains active on `rescue/t07-storybook-foundation`, T07.1/#566, T07.2/#567, #568, and #569 are `CHECKPOINT_GREEN`, and #570–#571 remain blocked |
+| Storybook workshop + Screen Catalog | T07 / #512, #566–#571 | [`ADR-0045`](../adr/0045-local-storybook-presentation-authority.md), #505 Phase 1 amendment, and PR #572 `MERGED_RESCUE` at `d877aef8cbf05c2cfd6a5693186d43323b907de5`; T07/#512 remains active on `rescue/t07-storybook-foundation`, T07.1/#566 through #570 are `CHECKPOINT_GREEN`, and T07.6/#571 is `MACHINE_GREEN / WAITING_HUMAN` pending owner workshop-fidelity/qualification review |
 | Approval package index | T03 / #508 | `web/lib/governance/registries.ts` — created with 4 status/owner/baseline/evidence packages; strict approval metadata validation active |
 | T12 rescue decision | T12 / #517 | `UNDECIDED` |
 | Historical finding reconciliation | T01, route tickets, T33 | Not complete |
@@ -913,6 +913,6 @@ Current disposition: T07.1/#566 through T07.5/#570 are `CHECKPOINT_GREEN`; T07.6
 1. T06/#511 qualification, required finite gates, and independent Standards/Spec review are PASS; preserve their evidence and review provenance.
 2. PR [#550](https://github.com/Noahlw/efcc/pull/550) is verified `MERGED_RESCUE` parent-first into `rescue/ui-control-recovery` at `ffef73087c3cc985f1b314e8017cfdf973e26d58`; `main` remains untouched.
 3. Phase 0 exit is complete through T06. Retain B-003 `OPEN` as residual sustained-runtime risk; this is not a runtime-fix or production-release claim.
-4. The planning-only Phase 1 Storybook authority is promoted by PR #572 at `d877aef8cbf05c2cfd6a5693186d43323b907de5`; T07/#512 remains active, and T07.1/#566 plus T07.2/#567 are `CHECKPOINT_GREEN` on `rescue/t07-storybook-foundation`.
+4. The planning-only Phase 1 Storybook authority is promoted by PR #572 at `d877aef8cbf05c2cfd6a5693186d43323b907de5`; T07/#512 remains active, T07.1/#566 through T07.5/#570 are `CHECKPOINT_GREEN`, and T07.6/#571 is `MACHINE_GREEN / WAITING_HUMAN` on `rescue/t07-storybook-foundation`.
 5. Review shared PR [#573](https://github.com/Noahlw/efcc/pull/573) at the representative Story URLs and provide owner workshop-fidelity/qualification evidence; do not merge or close issues.
 6. Retain all later ticket, human-approval, T33/#538, T35/#540, and final `main` gates for the owner’s future replacement plan.

@@ -5,14 +5,17 @@ import { storybookTest } from "@storybook/addon-vitest/vitest-plugin";
 import { playwright } from "@vitest/browser-playwright";
 import { defineConfig } from "vitest/config";
 
+import { parseStorybookPort } from "./scripts/storybook-port.mjs";
+
 const dirname = process.cwd();
 const storybookLauncher = path.join(dirname, "scripts/storybook-worktree.mjs");
-const storybookPort = Number(
+const storybookPort = parseStorybookPort(
   process.env.STORYBOOK_PORT ??
     execFileSync(process.execPath, [storybookLauncher, "--print-port"], {
       cwd: dirname,
       encoding: "utf-8",
-    }).trim()
+    }).trim(),
+  "STORYBOOK_PORT"
 );
 
 export default defineConfig({

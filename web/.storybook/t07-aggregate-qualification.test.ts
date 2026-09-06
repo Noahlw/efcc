@@ -1,4 +1,4 @@
-import { readFileSync, readdirSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
 
 import { describe, expect, test } from "vitest";
@@ -53,6 +53,17 @@ describe("T07.6 aggregate presentation qualification", () => {
       );
       expect(source).not.toMatch(forbidden);
     }
+  });
+
+  test("keeps the MSW worker out of the shipped application public root", () => {
+    expect(
+      existsSync(
+        path.join(import.meta.dirname, "../public/mockServiceWorker.js")
+      )
+    ).toBeFalsy();
+    expect(
+      existsSync(path.join(import.meta.dirname, "public/mockServiceWorker.js"))
+    ).toBeTruthy();
   });
 
   test("keeps the deliberately broken contract harness test-only", () => {

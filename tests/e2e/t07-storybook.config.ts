@@ -3,18 +3,21 @@ import path from "node:path";
 
 import { defineConfig, devices } from "@playwright/test";
 
+import { parseStorybookPort } from "../../web/scripts/storybook-port.mjs";
+
 const dirname = import.meta.dirname;
 const repositoryRoot = path.resolve(dirname, "../..");
 const storybookLauncher = path.join(
   repositoryRoot,
   "web/scripts/storybook-worktree.mjs"
 );
-const port = Number(
+const port = parseStorybookPort(
   process.env.STORYBOOK_PORT ??
     execFileSync(process.execPath, [storybookLauncher, "--print-port"], {
       cwd: repositoryRoot,
       encoding: "utf-8",
-    }).trim()
+    }).trim(),
+  "STORYBOOK_PORT"
 );
 const baseURL = `http://127.0.0.1:${port}`;
 process.env.STORYBOOK_PORT = String(port);

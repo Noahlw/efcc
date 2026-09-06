@@ -16,7 +16,7 @@ const config: StorybookConfig = {
     name: "@storybook/nextjs-vite",
     options: {},
   },
-  staticDirs: ["../public"],
+  staticDirs: ["./public"],
   viteFinal: (viteConfig) => {
     const existingAlias = viteConfig.resolve?.alias;
     const alias = Array.isArray(existingAlias)

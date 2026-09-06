@@ -14,7 +14,6 @@ import {
   programsManagementHandlers,
   programsParticipantHandlers,
 } from "./programs-fixtures";
-import { PROGRAMS_PRESENTATION as PRESENTATION } from "./programs.story-contract";
 
 const noop = () => null;
 
@@ -75,7 +74,15 @@ export const ParticipantDirectory: Story = {
   parameters: {
     presentation: {
       screenId: "programs-participant-directory",
-      psn: PRESENTATION.participantDirectory.psn,
+      psn: "PSN-PROGRAMS-PARTICIPANT-DIRECTORY",
+      productFamily: "programs",
+      lifecycle: "active",
+      baseline: "primary",
+      route: "/programs",
+      intent: null,
+      state: "default",
+      gap: null,
+      supersedes: [],
     },
     msw: programsParticipantHandlers,
     nextjs: {
@@ -104,7 +111,15 @@ export const ParticipantProgramDetail: Story = {
   parameters: {
     presentation: {
       screenId: "programs-participant-program-detail",
-      psn: PRESENTATION.participantProgramDetail.psn,
+      psn: "PSN-PROGRAMS-PARTICIPANT-PROGRAM-DETAIL",
+      productFamily: "programs",
+      lifecycle: "active",
+      baseline: "primary",
+      route: "/programs",
+      intent: "program=t07-3-program",
+      state: "default",
+      gap: null,
+      supersedes: [],
     },
     msw: programsParticipantHandlers,
     nextjs: {
@@ -132,7 +147,15 @@ export const ParticipantEventDetail: Story = {
   parameters: {
     presentation: {
       screenId: "programs-participant-event-detail",
-      psn: PRESENTATION.participantEventDetail.psn,
+      psn: "PSN-PROGRAMS-PARTICIPANT-EVENT-DETAIL",
+      productFamily: "programs",
+      lifecycle: "active",
+      baseline: "primary",
+      route: "/programs",
+      intent: "program=t07-3-program&event=t07-3-event",
+      state: "default",
+      gap: null,
+      supersedes: [],
     },
     msw: programsParticipantHandlers,
     nextjs: {
@@ -156,7 +179,15 @@ export const ManagementDirectory: Story = {
   parameters: {
     presentation: {
       screenId: "programs-management-directory",
-      psn: PRESENTATION.managementDirectory.psn,
+      psn: "PSN-PROGRAMS-MANAGEMENT-DIRECTORY",
+      productFamily: "programs",
+      lifecycle: "active",
+      baseline: "primary",
+      route: "/programs",
+      intent: "mode=management",
+      state: "default",
+      gap: null,
+      supersedes: [],
     },
     msw: programsManagementHandlers,
     nextjs: {
@@ -181,7 +212,15 @@ export const WorkspaceOverview: Story = {
   parameters: {
     presentation: {
       screenId: "programs-workspace-overview",
-      psn: PRESENTATION.workspaceOverview.psn,
+      psn: "PSN-PROGRAMS-WORKSPACE-OVERVIEW",
+      productFamily: "programs",
+      lifecycle: "active",
+      baseline: "primary",
+      route: "/programs",
+      intent: "mode=management&program=t07-3-program",
+      state: "default",
+      gap: null,
+      supersedes: [],
     },
     msw: programsManagementHandlers,
     nextjs: {
@@ -210,7 +249,15 @@ export const WorkspaceEvents: Story = {
   parameters: {
     presentation: {
       screenId: "programs-workspace-events",
-      psn: PRESENTATION.workspaceEvents.psn,
+      psn: "PSN-PROGRAMS-WORKSPACE-EVENTS",
+      productFamily: "programs",
+      lifecycle: "active",
+      baseline: "primary",
+      route: "/programs",
+      intent: "mode=management&program=t07-3-program&task=events",
+      state: "default",
+      gap: null,
+      supersedes: [],
     },
     msw: programsManagementHandlers,
     nextjs: {
@@ -239,7 +286,15 @@ export const WorkspaceParticipants: Story = {
   parameters: {
     presentation: {
       screenId: "programs-workspace-participants",
-      psn: PRESENTATION.workspaceParticipants.psn,
+      psn: "PSN-PROGRAMS-WORKSPACE-PARTICIPANTS",
+      productFamily: "programs",
+      lifecycle: "active",
+      baseline: "primary",
+      route: "/programs",
+      intent: "mode=management&program=t07-3-program&task=participants",
+      state: "default",
+      gap: null,
+      supersedes: [],
     },
     msw: programsManagementHandlers,
     nextjs: {
@@ -272,7 +327,15 @@ export const WorkspaceSettings: Story = {
   parameters: {
     presentation: {
       screenId: "programs-workspace-settings",
-      psn: PRESENTATION.workspaceSettings.psn,
+      psn: "PSN-PROGRAMS-WORKSPACE-SETTINGS",
+      productFamily: "programs",
+      lifecycle: "active",
+      baseline: "primary",
+      route: "/programs",
+      intent: "mode=management&program=t07-3-program&task=settings",
+      state: "default",
+      gap: null,
+      supersedes: [],
     },
     msw: programsManagementHandlers,
     nextjs: {
@@ -309,7 +372,15 @@ export const WorkspaceNotifications: Story = {
   parameters: {
     presentation: {
       screenId: "programs-workspace-notifications",
-      psn: PRESENTATION.workspaceNotifications.psn,
+      psn: "PSN-PROGRAMS-WORKSPACE-NOTIFICATIONS",
+      productFamily: "programs",
+      lifecycle: "active",
+      baseline: "primary",
+      route: "/programs",
+      intent: "mode=management&program=t07-3-program&task=notifications",
+      state: "default",
+      gap: null,
+      supersedes: [],
     },
     msw: programsManagementHandlers,
     nextjs: {

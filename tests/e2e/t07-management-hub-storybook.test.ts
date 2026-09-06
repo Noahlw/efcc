@@ -1,23 +1,8 @@
 import { expect as pwExpect, test as pwTest } from "@playwright/test";
 
-import { MANAGEMENT_HUB_PRESENTATION_DECLARATIONS } from "../../web/.storybook/management-hub.story-contract";
+import { MANAGEMENT_HUB_STORY_IDS } from "../../web/.storybook/management-hub-story-ids";
 
-const storyIdFor = (state: string) => {
-  const declaration = MANAGEMENT_HUB_PRESENTATION_DECLARATIONS.find(
-    (candidate) => candidate.state === state
-  );
-  if (!declaration) {
-    throw new Error(`Missing Management Hub Story for ${state}`);
-  }
-  return declaration.storyId;
-};
-
-const STORY_IDS = {
-  default: storyIdFor("default"),
-  loading: storyIdFor("loading"),
-  empty: storyIdFor("empty"),
-  recoverableError: storyIdFor("recoverable-error"),
-} as const;
+const STORY_IDS = MANAGEMENT_HUB_STORY_IDS;
 
 const storybookBaseUrl =
   process.env.STORYBOOK_BASE_URL ?? "http://127.0.0.1:6006";

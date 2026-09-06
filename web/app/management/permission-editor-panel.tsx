@@ -872,7 +872,7 @@ export const PermissionEditorPanel = () => {
   const headerLead = detail ? DETAIL_LEAD : LIST_LEAD;
 
   return (
-    <main
+    <section
       aria-busy={state.kind === "loading" || busy}
       className="mx-auto w-full min-w-0 max-w-6xl px-4 py-5 pb-[calc(6rem+env(safe-area-inset-bottom,0px))] sm:px-6 lg:px-8"
     >
@@ -1001,6 +1001,6 @@ export const PermissionEditorPanel = () => {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </main>
+    </section>
   );
 };
