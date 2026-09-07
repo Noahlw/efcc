@@ -1,5 +1,17 @@
 # EFCC UI Control Recovery — Ticket-Driven Implementation Tracker
 
+> **Current owner-approved T07 checkpoint — 2026-09-07:** `APV-T07-WORKSHOP-FIDELITY-5D22835D` records genuine workshop-fidelity approval against reviewed revision `5d22835de0d3b1802e2ae84b774066edc5e24a2f`. T07/#512 and T07.6/#571 are `STACK_GREEN`; T07.1/#566 through T07.5/#570 remain `CHECKPOINT_GREEN`; PR #573 is `OPEN / MERGEABLE / CLEAN` and not merged. T08–T12 remain blocked and B-003 remains `OPEN`. Historical checkpoint snapshots below are retained for provenance.
+
+### Current owner-approved live status
+
+| Scope | Status | Evidence / boundary |
+|---|---|---|
+| T07 / #512 shared PR | `STACK_GREEN` | Owner ApprovalPackage `APV-T07-WORKSHOP-FIDELITY-5D22835D`; PR #573 remains open, mergeable, clean, and unmerged |
+| T07.1–T07.5 / #566–#570 | `CHECKPOINT_GREEN` | Existing child commits and current-head qualification remain preserved |
+| T07.6 / #571 | `STACK_GREEN` | Current reviewed implementation `5d22835de0d3b1802e2ae84b774066edc5e24a2f`; approval-sensitive governance passed |
+| T08–T12 / #513–#517 | `BLOCKED` | Existing dependency graph; no implementation started |
+| B-003 | `OPEN` | Independent sustained-runtime residual risk; not rerun or reinterpreted |
+
 > **Purpose:** Track execution across separate phase sessions without duplicating the Spec or GitHub tickets.  
 > **Source of truth:** Parent Spec [#505](https://github.com/Noahlw/efcc/issues/505) and the current GitHub ticket body/comments.  
 > **Update rule:** Every phase session reads this file at the start and updates it before ending.  

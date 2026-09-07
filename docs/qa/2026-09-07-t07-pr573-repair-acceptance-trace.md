@@ -1,5 +1,9 @@
 # T07 / PR #573 repair acceptance trace
 
+## Owner approval closeout — 2026-09-07
+
+ApprovalPackage `APV-T07-WORKSHOP-FIDELITY-5D22835D` is approved by Noah Wong / Repository Owner against reviewed revision `5d22835de0d3b1802e2ae84b774066edc5e24a2f`. T07/#512 and T07.6/#571 are now `STACK_GREEN`; PR #573 remains open and unmerged. T08+ remain not started and B-003 remains open.
+
 **Scope:** R1–R6 correction pass for the existing shared T07 branch and PR #573.
 
 **Authority:** `EFCC_T07_PR573_FIX_HANDOFF.md` supplied by the owner. This is a repair trace; it does not replace the original T07.1–T07.6 checkpoint provenance or grant human approval.
