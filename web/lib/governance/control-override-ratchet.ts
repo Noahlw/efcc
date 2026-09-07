@@ -25,6 +25,19 @@ const CONTROL_EXPORTS = new Set([
 
 const SAFE_LAYOUT_CLASSES = new Set(["min-w-0", "w-auto", "w-fit", "w-full"]);
 
+const GIT_ENV_VARS = new Set([
+  "GIT_DIR",
+  "GIT_WORK_TREE",
+  "GIT_COMMON_DIR",
+  "GIT_INDEX_FILE",
+  "GIT_OBJECT_DIRECTORY",
+  "GIT_ALTERNATE_OBJECT_DIRECTORIES",
+  "GIT_PREFIX",
+  "GIT_GRAFT_FILE",
+  "GIT_NAMESPACE",
+  "GIT_SHALLOW_FILE",
+]);
+
 export interface ControlOverrideRatchetOptions {
   readonly rootDir?: string;
   readonly baseRef?: string;
@@ -32,21 +45,12 @@ export interface ControlOverrideRatchetOptions {
 }
 
 function git(rootDir: string, args: readonly string[]): string {
-  const env = { ...process.env };
-  for (const variable of [
-    "GIT_DIR",
-    "GIT_WORK_TREE",
-    "GIT_COMMON_DIR",
-    "GIT_INDEX_FILE",
-    "GIT_OBJECT_DIRECTORY",
-    "GIT_ALTERNATE_OBJECT_DIRECTORIES",
-    "GIT_PREFIX",
-    "GIT_GRAFT_FILE",
-    "GIT_NAMESPACE",
-    "GIT_SHALLOW_FILE",
-  ]) {
-    delete env[variable];
-  }
+  const env = {
+    NODE_ENV: process.env.NODE_ENV,
+    ...Object.fromEntries(
+      Object.entries(process.env).filter(([key]) => !GIT_ENV_VARS.has(key))
+    ),
+  };
   return execFileSync("git", args, {
     cwd: rootDir,
     encoding: "utf-8",

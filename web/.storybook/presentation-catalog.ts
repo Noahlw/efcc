@@ -196,12 +196,14 @@ export function validateScreenCatalog(
       );
     }
     obligationByScreen.set(obligation.screenId, obligation);
-    if (obligation.lifecycle === "active" && obligation.gap !== null) {
-      if (!obligation.gap.startsWith("APV-")) {
-        errors.push(
-          `${obligation.screenId} gap must reference an owner approval package`
-        );
-      }
+    if (
+      obligation.lifecycle === "active" &&
+      obligation.gap !== null &&
+      !obligation.gap.startsWith("APV-")
+    ) {
+      errors.push(
+        `${obligation.screenId} gap must reference an owner approval package`
+      );
     }
   }
 
@@ -212,9 +214,7 @@ export function validateScreenCatalog(
     catalogScreenIds.add(entry.screenId);
 
     const obligation = obligationByScreen.get(entry.screenId);
-    if (!obligation) {
-      errors.push(`Unknown Screen Catalog screen: ${entry.screenId}`);
-    } else {
+    if (obligation) {
       for (const field of [
         "productFamily",
         "lifecycle",
@@ -234,6 +234,8 @@ export function validateScreenCatalog(
           `${entry.screenId} supersession metadata does not match its independent obligation`
         );
       }
+    } else {
+      errors.push(`Unknown Screen Catalog screen: ${entry.screenId}`);
     }
 
     const screenDeclarations = declarationsByScreen.get(entry.screenId);

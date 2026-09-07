@@ -35,6 +35,9 @@ describe("T08 primitive-owned geometry", () => {
     expect(screen.getByRole("button", { name: "default" }).className).toMatch(
       /wrap-anywhere/u
     );
+    expect(screen.getByRole("button", { name: "default" }).className).toContain(
+      "rounded-[var(--control-radius)]"
+    );
   });
 
   test("keeps Input, Checkbox, Switch and Select roots at the shared floor", () => {
@@ -59,6 +62,9 @@ describe("T08 primitive-owned geometry", () => {
     expect(screen.getByRole("textbox", { name: "name" }).className).toMatch(
       /min-h-11/u
     );
+    expect(screen.getByRole("textbox", { name: "name" }).className).toContain(
+      "rounded-[var(--control-radius)]"
+    );
     expect(screen.getByRole("checkbox", { name: "checked" }).className).toMatch(
       /size-11/u
     );
@@ -69,6 +75,7 @@ describe("T08 primitive-owned geometry", () => {
     expect(trigger.className.split(" ")).toStrictEqual(
       expect.arrayContaining(["min-h-11", "max-w-full", "overflow-hidden"])
     );
+    expect(trigger.className).toContain("rounded-[var(--control-radius)]");
   });
 
   test("keeps Textarea multiline semantics and useful minimum", () => {
@@ -76,5 +83,6 @@ describe("T08 primitive-owned geometry", () => {
     const textarea = screen.getByRole("textbox", { name: "description" });
     expect(textarea).toHaveAttribute("rows", "4");
     expect(textarea.className).toMatch(/min-h-16/u);
+    expect(textarea.className).toContain("rounded-[var(--control-radius)]");
   });
 });

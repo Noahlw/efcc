@@ -1,3 +1,4 @@
+/* oxlint-disable vitest/prefer-importing-vitest-globals */
 import { expect, test } from "@playwright/test";
 import type { Locator, Page } from "@playwright/test";
 
@@ -34,7 +35,7 @@ test("Button and icon controls keep target floor, wrapping, and no overflow", as
   const buttons = page.locator('[data-slot="button"]');
   const count = await buttons.count();
   expect(count).toBeGreaterThanOrEqual(8);
-  for (let index = 0; index < count; index++) {
+  for (let index = 0; index < count; index += 1) {
     await expectFloor(buttons.nth(index), `button ${index}`);
   }
   const longTc = page.locator('[data-testid="t08-button-long-tc"]');

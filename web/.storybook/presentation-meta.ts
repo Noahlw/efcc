@@ -59,8 +59,8 @@ function asRecord(value: unknown): RecordValue | null {
 
 function storyIdPart(exportName: string): string {
   return exportName
-    .replaceAll(/([a-z0-9])([A-Z])/gu, "$1-$2")
-    .replaceAll(/([A-Z])([A-Z][a-z])/gu, "$1-$2")
+    .replaceAll(/[a-z0-9][A-Z]/gu, (match) => `${match[0]}-${match[1]}`)
+    .replaceAll(/[A-Z][A-Z][a-z]/gu, (match) => `${match[0]}-${match.slice(1)}`)
     .replaceAll(/[_\s]+/gu, "-")
     .toLowerCase();
 }

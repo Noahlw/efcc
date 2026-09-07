@@ -15,17 +15,19 @@ import {
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 
-afterEach(() => {
-  cleanup();
-});
-
 describe("T08 control public contracts", () => {
+  afterEach(() => {
+    cleanup();
+  });
+
   test("Button preserves click, disabled, busy, submit, and asChild semantics", async () => {
     const user = userEvent.setup();
-    const onClick = vi.fn();
-    const onSubmit = vi.fn((event: React.FormEvent<HTMLFormElement>) => {
-      event.preventDefault();
-    });
+    const onClick = vi.fn<() => void>();
+    const onSubmit = vi.fn<(event: React.FormEvent<HTMLFormElement>) => void>(
+      (event) => {
+        event.preventDefault();
+      }
+    );
 
     render(
       <form onSubmit={onSubmit}>
@@ -41,8 +43,8 @@ describe("T08 control public contracts", () => {
     );
 
     await user.click(screen.getByRole("button", { name: "儲存" }));
-    expect(onClick).toHaveBeenCalledTimes(1);
-    expect(onSubmit).toHaveBeenCalledTimes(1);
+    expect(onClick).toHaveBeenCalledOnce();
+    expect(onSubmit).toHaveBeenCalledOnce();
     expect(screen.getByRole("button", { name: "停用" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "處理中…" })).toHaveAttribute(
       "aria-busy",
@@ -140,7 +142,7 @@ describe("T08 control public contracts", () => {
 
   test("Select preserves selected value and keyboard option semantics", async () => {
     const user = userEvent.setup();
-    const onValueChange = vi.fn();
+    const onValueChange = vi.fn<(value: string) => void>();
 
     render(
       <Select defaultValue="weekly" onValueChange={onValueChange}>

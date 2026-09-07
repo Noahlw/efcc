@@ -23,18 +23,18 @@ const buttonVariants = cva(
       size: {
         default:
           "min-h-11 gap-1.5 px-3 py-2 has-data-[icon=inline-end]:pr-2.5 has-data-[icon=inline-start]:pl-2.5",
-        xs: "min-h-11 gap-1 rounded-[min(var(--radius-md),10px)] px-2 py-2 text-xs in-data-[slot=button-group]:rounded-lg has-data-[icon=inline-end]:pr-1.5 has-data-[icon=inline-start]:pl-1.5 [&_svg:not([class*='size-'])]:size-3",
-        sm: "min-h-11 gap-1 rounded-[min(var(--radius-md),12px)] px-2.5 py-2 text-[0.8rem] in-data-[slot=button-group]:rounded-lg has-data-[icon=inline-end]:pr-1.5 has-data-[icon=inline-start]:pl-1.5 [&_svg:not([class*='size-'])]:size-3.5",
+        xs: "min-h-11 gap-1 px-2 py-2 text-xs in-data-[slot=button-group]:rounded-[var(--control-radius)] has-data-[icon=inline-end]:pr-1.5 has-data-[icon=inline-start]:pl-1.5 [&_svg:not([class*='size-'])]:size-3",
+        sm: "min-h-11 gap-1 px-2.5 py-2 text-[0.8rem] in-data-[slot=button-group]:rounded-[var(--control-radius)] has-data-[icon=inline-end]:pr-1.5 has-data-[icon=inline-start]:pl-1.5 [&_svg:not([class*='size-'])]:size-3.5",
         lg: "min-h-11 gap-1.5 px-3 py-2 has-data-[icon=inline-end]:pr-2.5 has-data-[icon=inline-start]:pl-2.5",
         icon: "size-11",
         "icon-xs":
-          "size-11 rounded-[min(var(--radius-md),10px)] in-data-[slot=button-group]:rounded-lg [&_svg:not([class*='size-'])]:size-3",
+          "size-11 in-data-[slot=button-group]:rounded-[var(--control-radius)] [&_svg:not([class*='size-'])]:size-3",
         "icon-sm":
-          "size-11 rounded-[min(var(--radius-md),12px)] in-data-[slot=button-group]:rounded-lg",
+          "size-11 in-data-[slot=button-group]:rounded-[var(--control-radius)]",
         "icon-lg": "size-11",
       },
       shape: {
-        default: "rounded-lg",
+        default: "rounded-[var(--control-radius)]",
         circle: "rounded-full",
       },
     },

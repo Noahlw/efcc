@@ -1,4 +1,5 @@
-import { cva, type VariantProps } from "class-variance-authority";
+import { cva } from "class-variance-authority";
+import type { VariantProps } from "class-variance-authority";
 
 export const directoryFrameVariants = cva(
   "mx-auto min-w-0 w-full px-[var(--space-4)] pt-[var(--space-6)] pb-[var(--space-9)]",
