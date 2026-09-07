@@ -14,7 +14,7 @@ test("does not accept the shared AppShell main landmark as a settled Programs sc
     '<main><section id="programs-catalog-state" aria-busy="true"></section></main>';
 
   await expect(assertProgramsScreen(document.body, readiness)).rejects.toThrow(
-    "Expected settled Programs marker"
+    "Programs presentation is still loading"
   );
 });
 

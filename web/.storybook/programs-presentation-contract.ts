@@ -12,6 +12,9 @@ export async function assertProgramsScreen(
   const canvas = within(canvasElement);
   await expect(canvas.findByRole("main")).resolves.toBeVisible();
   const marker = await waitFor(() => {
+    if (canvasElement.querySelector('[aria-busy="true"]')) {
+      throw new Error("Programs presentation is still loading");
+    }
     const element = canvasElement.querySelector(readiness.selector);
     if (!element || !element.textContent?.includes(readiness.text)) {
       throw new Error(

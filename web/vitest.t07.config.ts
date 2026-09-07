@@ -10,6 +10,6 @@ export default defineConfig({
   },
   test: {
     environment: "node",
-    include: [".storybook/*.test.ts"],
+    include: [".storybook/*.test.ts", ".storybook/*.test.tsx"],
   },
 });

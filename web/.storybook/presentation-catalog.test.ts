@@ -1,7 +1,10 @@
 import { describe, expect, test } from "vitest";
 
 import { PRESENTATION_SCREEN_CATALOG } from "@/lib/governance/presentation-screen-catalog";
-import { parseProgramsIntent } from "@/lib/programs/programs-intent";
+import {
+  buildProgramsHref,
+  parseProgramsIntent,
+} from "@/lib/programs/programs-intent";
 
 import { MANAGEMENT_HUB_STORY_IDS } from "./management-hub-story-ids";
 import {
@@ -15,6 +18,7 @@ import {
   createScreenCatalog,
   validateScreenCatalog,
 } from "./presentation-catalog";
+import { WorkspaceNotifications } from "./programs.stories";
 
 const psnsFor = (screenId: string) =>
   SCREEN_CATALOG.find((entry) => entry.screenId === screenId)?.psns ?? [];
@@ -273,6 +277,33 @@ describe("T07 Screen Catalog foundation", () => {
     });
     expect(SCREEN_CATALOG).toHaveLength(35);
     expect(ALL_PRESENTATION_DECLARATIONS).toHaveLength(39);
+  });
+
+  test("keeps Notifications Story metadata and navigation parser-backed", () => {
+    const story = WorkspaceNotifications as unknown as {
+      parameters: {
+        nextjs: { navigation: { query: Record<string, string> } };
+        presentation: { intent: string | null };
+      };
+    };
+    const query = story.parameters.nextjs.navigation.query;
+    const parsed = parseProgramsIntent(
+      `?${new URLSearchParams(query).toString()}`
+    );
+    expect(parsed).toMatchObject({
+      malformed: false,
+      mode: "management",
+      programId: null,
+      task: "notifications",
+    });
+    const href = buildProgramsHref({
+      mode: parsed.mode,
+      programId: parsed.programId,
+      task: parsed.task,
+    });
+    expect(new URL(href, "http://localhost").search.slice(1)).toBe(
+      story.parameters.presentation.intent
+    );
   });
 
   test("validates the aggregate catalog against Story-owned metadata", () => {
