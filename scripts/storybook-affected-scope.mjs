@@ -11,6 +11,14 @@ const CLEARLY_NON_PRESENTATION_PATHS = [
   /^web\/migrations\//u,
 ];
 
+function gitEnvironment() {
+  const environment = { ...process.env };
+  delete environment.GIT_DIR;
+  delete environment.GIT_INDEX_FILE;
+  delete environment.GIT_WORK_TREE;
+  return environment;
+}
+
 export function isClearlyNonPresentationPath(filePath) {
   const normalized = filePath.replaceAll("\\", "/");
   return CLEARLY_NON_PRESENTATION_PATHS.some((pattern) =>
@@ -50,15 +58,10 @@ export function readChangedPaths(
 
   const output = execFileSync(
     "git",
-    [
-      "diff",
-      "--name-only",
-      "--diff-filter=ACMRTUXB",
-      `${baseRef}...${headRef}`,
-    ],
-    { cwd, encoding: "utf-8" }
+    ["diff", "--no-renames", "--name-only", "-z", `${baseRef}...${headRef}`],
+    { cwd, encoding: "utf-8", env: gitEnvironment() }
   );
-  return output.split(/\r?\n/u).filter(Boolean);
+  return output.split("\0").filter(Boolean);
 }
 
 function writeGitHubOutput(result) {
