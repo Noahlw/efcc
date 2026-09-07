@@ -259,4 +259,55 @@ export function Example() {
       fs.rmSync(fixture.rootDir, { recursive: true, force: true });
     }
   });
+
+  test("does not reclassify unchanged control styling when another attribute is added", () => {
+    const fixture = createFixture();
+    try {
+      fs.writeFileSync(
+        path.join(fixture.rootDir, "web/app/example.tsx"),
+        `import { Button } from "@/components/ui/button";
+
+export function Example() {
+  return (
+    <Button
+      className="min-h-8"
+    >
+      welcome
+    </Button>
+  );
+}
+`,
+        "utf-8"
+      );
+      git(fixture.rootDir, "add", ".");
+      git(fixture.rootDir, "commit", "-qm", "historical control styling");
+      const historicalBase = git(fixture.rootDir, "rev-parse", "HEAD");
+
+      fs.writeFileSync(
+        path.join(fixture.rootDir, "web/app/example.tsx"),
+        `import { Button } from "@/components/ui/button";
+
+export function Example() {
+  return (
+    <Button
+      className="min-h-8"
+      aria-label="welcome"
+    >
+      welcome
+    </Button>
+  );
+}
+`,
+        "utf-8"
+      );
+      expect(
+        auditNewControlOverrides({
+          rootDir: fixture.rootDir,
+          baseRef: historicalBase,
+        })
+      ).toStrictEqual([]);
+    } finally {
+      fs.rmSync(fixture.rootDir, { recursive: true, force: true });
+    }
+  });
 });

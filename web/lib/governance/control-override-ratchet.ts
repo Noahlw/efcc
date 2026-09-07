@@ -1,5 +1,3 @@
-/* oxlint-disable eslint/prefer-named-capture-group -- this package targets ES2017; captures are destructured by position. */
-
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
@@ -225,7 +223,6 @@ function isControlModule(modulePath: string): boolean {
   return moduleName === "" || CONTROL_MODULES.has(moduleName);
 }
 
-// oxlint-disable-next-line eslint/complexity -- finite import and wrapper binding parser
 function importedControls(source: string): ControlBindings {
   const elements = new Set<string>();
   const recipes = new Set<string>();
@@ -384,8 +381,13 @@ function findRecipeUses(
 function attributes(
   source: string,
   name: string
-): { value: string; offset: number; dynamic: boolean }[] {
-  const result: { value: string; offset: number; dynamic: boolean }[] = [];
+): { value: string; offset: number; endOffset: number; dynamic: boolean }[] {
+  const result: {
+    value: string;
+    offset: number;
+    endOffset: number;
+    dynamic: boolean;
+  }[] = [];
   const marker = new RegExp(
     String.raw`${name}\s*(?:=|:)\s*(?:"[^"]*"|'[^']*'|\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\})`,
     "gu"
@@ -401,6 +403,7 @@ function attributes(
     result.push({
       value: raw.slice(1, -1),
       offset: match.index ?? 0,
+      endOffset: (match.index ?? 0) + full.length,
       dynamic: raw.startsWith("{"),
     });
   }
@@ -520,29 +523,41 @@ function violation(
   };
 }
 
+function hasAddedLineInRange(
+  source: string,
+  start: number,
+  end: number,
+  added: ReadonlySet<number>
+): boolean {
+  const startLine = lineNumberAt(source, start);
+  const endLine = lineNumberAt(source, end);
+  for (let line = startLine; line <= endLine; line += 1) {
+    if (added.has(line)) {
+      return true;
+    }
+  }
+  return false;
+}
+
 function inspectElement(
   file: string,
   source: string,
   element: OpeningElement,
   added: ReadonlySet<number>
 ): AuditViolation[] {
-  const startLine = lineNumberAt(source, element.start);
-  const endLine = lineNumberAt(source, element.end);
-  let changed = false;
-  for (let line = startLine; line <= endLine; line += 1) {
-    if (added.has(line)) {
-      changed = true;
-      break;
-    }
-  }
-  if (!changed) {
-    return [];
-  }
-
   const violations: AuditViolation[] = [];
-  const line = startLine;
+  const line = lineNumberAt(source, element.start);
 
-  if (/\{\s*\.\.\./u.test(element.source)) {
+  const spreadOffset = element.source.search(/\{\s*\.\.\./u);
+  if (
+    spreadOffset !== -1 &&
+    hasAddedLineInRange(
+      source,
+      element.start + spreadOffset,
+      element.start + spreadOffset + 3,
+      added
+    )
+  ) {
     violations.push(
       violation(
         file,
@@ -554,6 +569,16 @@ function inspectElement(
   }
 
   for (const attr of attributes(element.source, "style")) {
+    if (
+      !hasAddedLineInRange(
+        source,
+        element.start + attr.offset,
+        element.start + attr.endOffset,
+        added
+      )
+    ) {
+      continue;
+    }
     violations.push(
       violation(
         file,
@@ -565,6 +590,16 @@ function inspectElement(
   }
 
   for (const attr of attributes(element.source, "className")) {
+    if (
+      !hasAddedLineInRange(
+        source,
+        element.start + attr.offset,
+        element.start + attr.endOffset,
+        added
+      )
+    ) {
+      continue;
+    }
     const attrLine = lineNumberAt(source, element.start + attr.offset);
     if (!attr.dynamic) {
       for (const token of staticClassTokens(attr.value)) {

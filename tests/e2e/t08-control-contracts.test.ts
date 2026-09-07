@@ -1,4 +1,3 @@
-/* oxlint-disable vitest/prefer-importing-vitest-globals */
 import { expect, test } from "@playwright/test";
 import type { Locator, Page } from "@playwright/test";
 

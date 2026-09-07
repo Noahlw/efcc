@@ -35,9 +35,7 @@ const directoryFrameVariants = cva(
   }
 );
 
-export type DirectoryFrameVariants = VariantProps<
-  typeof directoryFrameVariants
->;
+type DirectoryFrameVariants = VariantProps<typeof directoryFrameVariants>;
 
 export type DirectoryFrameState =
   | "idle"
