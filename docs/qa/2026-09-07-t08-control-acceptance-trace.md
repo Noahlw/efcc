@@ -10,7 +10,7 @@ handoff package.
 - Effective fixed base: `af4857e8e3a86f5979840c70f06999f569e9ed1a`
 - Original start base: `af4857e8e3a86f5979840c70f06999f569e9ed1a`
 - Branch / worktree / PR: `rescue/t08-control-contracts` / `/Users/noah.wong/Desktop/code/EFCC-dev/.worktrees/t08-control-contracts` / [PR #574](https://github.com/Noahlw/efcc/pull/574) (`DRAFT / OPEN / MERGEABLE`, target `rescue/t07-storybook-foundation`)
-- Current implementation HEAD: `4c134bc229ae97dead6f8b2ae595fdcc54c54337` (latest clean evidence/tracker checkpoint)
+- Last production implementation HEAD: `2d056bb88603afac4930158949b18f9ce50972eb` (exploratory Story/test checkpoint); later branch commits are evidence-only.
 - Parent eligibility: live `Noahlw/efcc` PR #573 is OPEN, unmerged, mergeable, head `rescue/t07-storybook-foundation` at `af4857e8e3a86f5979840c70f06999f569e9ed1a`, base `rescue/ui-control-recovery`; T07 ApprovalPackage is `APV-T07-WORKSHOP-FIDELITY-5D22835D`.
 - Dirty-worktree status / included changes: clean before this checkpoint; only this trace, the caller disposition record, and the canonical tracker update are intended for the first commit.
 - #513 body/version checked: live issue is OPEN, updated `2026-09-05T14:11:23Z`, 0 comments; the 16 acceptance criteria remain the scope.
@@ -65,6 +65,7 @@ handoff package.
 | `2d056bb8` | read-only browser geometry diagnostic at 390×844 | Chromium, live HMR Storybook | 0 / diagnostic | Button 32px, icon 32×32, Input 32px, Switch 32×18.39px; Checkbox 44×44, Textarea 66px, Select 44px high/477.31px long trigger | owner decision required before shared mapping change |
 | `7b8f8bf2` | `fnm exec --using 22.18.0 pnpm --dir web storybook:build` | Node `22.18.0`, Storybook `10.6.0` | 0 / build completed | none | actual six exploratory Story entries built |
 | `7b8f8bf2` | `fnm exec --using 22.18.0 pnpm --dir web storybook:verify-index` | Node `22.18.0`, built index | 1 / fail closed | unexpected entries: `t08-controls--button-states`, `t08-controls--input-states`, `t08-controls--textarea-states`, `t08-controls--checkbox-states`, `t08-controls--switch-states`, `t08-controls--select-states` | expected until D1 control-subject metadata/catalog decision |
+| `d5ad5a4f` | GitHub Actions Fast CI run `34095746303` | live PR #574 head | success | no failed jobs reported | no completed review/approval yet |
 
 ## Current findings / caller dispositions
 
@@ -72,21 +73,27 @@ See [`2026-09-07-t08-caller-dispositions.md`](2026-09-07-t08-caller-dispositions
 The record distinguishes static occurrences from rendered instances and keeps
 unresolved/dynamic/ancestor cases explicit.
 
+## Review checkpoints
+
+- Standards: separate manual pass against `git diff af4857e8e3a86f5979840c70f06999f569e9ed1a...HEAD`; no hard documented-standard finding in the exploratory slice; parallel review agents were attempted but returned no report, so no independent-agent PASS is claimed.
+- Spec: separate manual pass against live #513 and this handoff; exploratory Stories/tests are useful but AC-01/05/07–10/12–16 remain unimplemented or owner-pending; no scope creep beyond the review slice.
+- Review state: exploratory-slice PASS only; full T08 Standards/Spec qualification remains NOT_READY.
+
 ## Standards
 
 - Fixed point / diff command: not applicable before implementation; fixed base is `af4857e8e3a86f5979840c70f06999f569e9ed1a`.
-- Review method: NOT_RUN; final review will be a separate Standards pass against the T08 incremental diff.
+- Review method: separate manual Standards pass recorded above; final protected-scope review remains pending.
 - Hard findings: none yet.
 - Heuristics: unresolved class expressions and ancestor candidates are review inputs, not automatic approvals.
 - Fixes / evidence: —
-- Outcome: NOT_RUN
+- Outcome: PASS for exploratory slice only; NOT_READY for full T08
 
 ## Spec
 
 - Source / full AC coverage: live #513 plus existing governance/design/testing authority; implementation not started.
 - Missing / partial / wrong / out-of-scope behavior: all T08 implementation evidence pending.
 - Fixes / evidence: —
-- Outcome: NOT_RUN
+- Outcome: NOT_READY / OWNER_DECISION_REQUIRED
 
 ## Human / promotion
 

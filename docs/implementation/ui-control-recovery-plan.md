@@ -19,6 +19,8 @@
 
 > **Latest T08 evidence — 2026-09-07:** Current clean HEAD is `4c134bc229ae97dead6f8b2ae595fdcc54c54337`; PR #574 live head matches it. The Storybook build passed, the screen-only index check correctly failed closed on six exploratory control IDs, and the next owner action is the exact D1/D2/D3 decision in the linked decision record.
 
+> **Final handoff boundary — 2026-09-07:** PR #574 remains `DRAFT / OPEN / MERGEABLE` and Fast CI run `34095746303` completed successfully at the live PR head. T08 remains `OWNER_DECISION_REQUIRED`; the exploratory-slice Standards/Spec pass is not a full T08 qualification, and genuine design approval is still absent.
+
 - **Status:** `IN_PROGRESS` — Batch A audit closeout and pre-implementation acceptance trace are recorded in [`docs/qa/2026-09-07-t08-control-acceptance-trace.md`](../qa/2026-09-07-t08-control-acceptance-trace.md).
 - **Parent:** live PR #573 is OPEN/unmerged/mergeable at `af4857e8e3a86f5979840c70f06999f569e9ed1a`; T08 branch is ticket-isolated from that exact head.
 - **Census:** 183 parsed source files, 586 static JSX occurrences, supplied 30-record register dispositioned; unresolved dynamic/ancestor cases remain explicit.
