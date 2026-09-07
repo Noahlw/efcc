@@ -9,11 +9,12 @@ the handoff package, and it does not grant final design approval.
 - Effective qualification comparison base: `af4857e8e3a86f5979840c70f06999f569e9ed1a`.
 - Original T08 implementation base: `af4857e8e3a86f5979840c70f06999f569e9ed1a`.
 - Production implementation HEAD: `1fbb4d64a93be2e7d5c8d381f66c88e1b9896c76` (`fix(t08): close review regressions`). The later acceptance-trace update is documentation/evidence only.
+- Evidence closeout commit: `9ed1e5bbeb40e258f94dfd30ec3928c8e086f3a4` (documentation-only; no production code).
 - Branch/worktree: `rescue/t08-control-contracts` / `/Users/noah.wong/Desktop/code/EFCC-dev/.worktrees/t08-control-contracts`.
 - PR: [#574](https://github.com/Noahlw/efcc/pull/574), target `rescue/t07-storybook-foundation`, kept DRAFT and OPEN.
 - Immediate parent: PR [#573](https://github.com/Noahlw/efcc/pull/573), OPEN/unmerged/mergeable, head `af4857e8e3a86f5979840c70f06999f569e9ed1a`.
 - Owner contract checkpoint: PR #574 at `abf0914b06f6b62d605b683f98bc66fe14579255`; D1, D2, and D3 were approved with conditions for continued implementation only.
-- Current local state before documentation closeout: implementation is committed at `1fbb4d64a93be2e7d5c8d381f66c88e1b9896c76`; generated `web/storybook-static/` was moved out of the worktree and the acceptance-trace update is the only remaining closeout change.
+- Current local state: implementation and evidence closeout are committed; generated `web/storybook-static/` was moved out of the worktree and is not tracked.
 - T07 preservation: `SCREEN_PRESENTATION_DECLARATIONS` remains 39, `SCREEN_CATALOG` remains 35 obligations, and the existing screen PSNs/Stories remain in the T07 catalog path.
 - T08 control presentation: seven real production-primitive Stories use durable control PSNs and `subject: "control"`; controls have stable `controlId`, `route: null`, and `intent: null`, and do not enter the Screen Catalog.
 - Live HMR: `http://127.0.0.1:6007/`.
@@ -108,13 +109,13 @@ unexpected 0, flaky 0, with all 20 individual tests passed.
 
 - Fixed point: review the implementation diff `af4857e8e3a86f5979840c70f06999f569e9ed1a...1fbb4d64a93be2e7d5c8d381f66c88e1b9896c76`; the subsequent trace commit is documentation-only.
 - Standards sources: `AGENTS.md`, `web/AGENTS.md`, `DESIGN.md`, `TESTING.md`, `docs/implementation/ui-control-recovery-governance.md`, ADR-0043, ADR-0045, and `web/COMPONENT_INVENTORY.md`.
-- Result: PASS at `af4857e8e3a86f5979840c70f06999f569e9ed1a...1fbb4d64a93be2e7d5c8d381f66c88e1b9896c76`; no documented-standard breach, no parallel control layer, and no source/API boundary violation. Any Fowler smell observations remain judgement-call heuristics and do not block qualification.
+- Result: PASS at `af4857e8e3a86f5979840c70f06999f569e9ed1a...1fbb4d64a93be2e7d5c8d381f66c88e1b9896c76`; no hard documented-standard breach, no parallel control layer, and no source/API boundary violation. The review checked preserved public exports and the D3 `endOffset`/`hasAddedLineInRange` fix with its historical-attribute regression. One test-only duplicated-assertion smell was recorded as a non-actionable judgement call because the layered Storybook/Vitest/Playwright seams are required by the repo testing authority.
 
 ## Spec review
 
 - Fixed point: review the implementation diff `af4857e8e3a86f5979840c70f06999f569e9ed1a...1fbb4d64a93be2e7d5c8d381f66c88e1b9896c76`; the subsequent trace commit is documentation-only.
 - Sources: live #513 (OPEN, current issue body), `references/ISSUE_513_SNAPSHOT.md`, the T08 execution/verification/closeout handoff documents, and the owner D1/D2/D3 decision.
-- Result: PASS at `af4857e8e3a86f5979840c70f06999f569e9ed1a...1fbb4d64a93be2e7d5c8d381f66c88e1b9896c76`; no hard missing, extra, or wrong requirement against live #513 and D1/D2/D3. The owner decision remains implementation authorization, not final T08 design approval.
+- Result: PASS at `af4857e8e3a86f5979840c70f06999f569e9ed1a...1fbb4d64a93be2e7d5c8d381f66c88e1b9896c76`; no missing/partial, unrequested, or implemented-but-wrong requirement against live #513, the handoff, and D1/D2/D3. The owner decision remains implementation authorization, not final T08 design approval.
 - Qualification boundary: AC-14 remains `OWNER_PENDING`; no APV, design reviewer, timestamp, visual baseline, merge, issue closure, or T09 authorization is inferred.
 
 ## Human / promotion state
