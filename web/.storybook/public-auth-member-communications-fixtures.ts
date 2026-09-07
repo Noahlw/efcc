@@ -97,6 +97,17 @@ const ANNOUNCEMENTS = [
 const envelope = <T>(data: T) =>
   HttpResponse.json({ requestId: REQUEST_ID, data });
 
+const legacyCredentialLoginHandler = http.post("/api/v1/auth/login", () =>
+  envelope({
+    userId: "t07-2-upgrade-member",
+    name: "T07.2 Synthetic Upgrade Member",
+    status: "active",
+    mustSetNewCredential: true,
+  })
+);
+
+export const credentialUpgradeHandlers = [legacyCredentialLoginHandler];
+
 export const publicAuthMemberCommunicationsHandlers = [
   memberAuthMeHandler,
   http.get("/api/v1/home", () => envelope(HOME_DATA)),

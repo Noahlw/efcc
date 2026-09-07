@@ -2,6 +2,7 @@ import type { Decorator, Meta, StoryObj } from "@storybook/nextjs-vite";
 import { expect, waitFor, within } from "storybook/test";
 
 import ManagementPage from "@/app/management/page";
+import RegistrationsPage from "@/app/registrations/page";
 
 import { managementIdentityHandlers } from "./management-identity-fixtures";
 import type { PresentationMetadata } from "./presentation-meta";
@@ -243,3 +244,35 @@ export const TimezoneSettings = story(
   { module: "timezone-settings" },
   "#timezone-settings-title"
 );
+
+export const RegistrationsFallback: Story = {
+  decorators: [withManagerIdentity],
+  render: () => <RegistrationsPage />,
+  parameters: {
+    presentation: {
+      screenId: "management-registrations-fallback",
+      productFamily: "management-identity",
+      lifecycle: "active",
+      baseline: "primary",
+      psn: "PSN-MGMT-REGISTRATIONS-FALLBACK",
+      route: "/registrations",
+      intent: null,
+      state: "redirect-fallback",
+      gap: null,
+      supersedes: [],
+    },
+    nextjs: {
+      appDirectory: true,
+      navigation: { pathname: "/registrations", query: {} },
+    },
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(
+      canvas.findByRole("heading", { name: "正在前往註冊審批…" })
+    ).resolves.toBeVisible();
+    await expect(
+      canvas.findByRole("link", { name: "前往註冊審批" })
+    ).resolves.toHaveAttribute("href", "/management?module=approvals");
+  },
+};

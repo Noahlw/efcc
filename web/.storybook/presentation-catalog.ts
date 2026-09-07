@@ -1,3 +1,8 @@
+import {
+  PRESENTATION_SCREEN_CATALOG,
+  type PresentationScreenCatalogEntry,
+} from "@/lib/governance/presentation-screen-catalog";
+
 import { attendanceScannerGuestStoryDeclarations } from "./attendance-scanner-guest.story-manifest";
 import { managementHubStoryDeclarations } from "./management-hub.story-manifest";
 import { managementIdentityStoryDeclarations } from "./management-identity.story-manifest";
@@ -54,64 +59,40 @@ export const ALL_PRESENTATION_DECLARATIONS = [
   ...ATTENDANCE_SCANNER_GUEST_PRESENTATION_DECLARATIONS,
 ] as const;
 
-export interface ScreenCatalogEntry {
-  readonly screenId: string;
-  readonly productFamily: string;
-  readonly lifecycle: PresentationMetadata["lifecycle"];
-  readonly primaryBaselinePsn: string;
-  readonly route: string;
-  readonly intent: string | null;
-  readonly gap: string | null;
-  readonly supersedes: readonly string[];
+export interface ScreenCatalogEntry extends PresentationScreenCatalogEntry {
   readonly psns: readonly string[];
   readonly storyIds: readonly string[];
 }
 
-type MutableScreenCatalogEntry = Omit<
-  ScreenCatalogEntry,
-  "psns" | "storyIds" | "primaryBaselinePsn"
-> & {
-  primaryBaselinePsn: string;
-  psns: string[];
-  storyIds: string[];
-};
-
 export function createScreenCatalog(
-  declarations: readonly PresentationDeclaration[]
+  declarations: readonly PresentationDeclaration[],
+  obligations: readonly PresentationScreenCatalogEntry[] = PRESENTATION_SCREEN_CATALOG
 ): readonly ScreenCatalogEntry[] {
-  const entries = new Map<string, MutableScreenCatalogEntry>();
-
+  const declarationsByScreen = new Map<
+    string,
+    readonly PresentationDeclaration[]
+  >();
   for (const declaration of declarations) {
-    const current = entries.get(declaration.screenId);
-    if (!current) {
-      entries.set(declaration.screenId, {
-        screenId: declaration.screenId,
-        productFamily: declaration.productFamily,
-        lifecycle: declaration.lifecycle,
-        primaryBaselinePsn:
-          declaration.baseline === "primary" ? declaration.psn : "",
-        route: declaration.route,
-        intent: declaration.intent,
-        gap: declaration.gap,
-        supersedes: [...declaration.supersedes],
-        psns: [declaration.psn],
-        storyIds: [declaration.storyId],
-      });
-      continue;
-    }
-
-    if (declaration.baseline === "primary") {
-      current.primaryBaselinePsn = declaration.psn;
-    }
-    current.psns.push(declaration.psn);
-    current.storyIds.push(declaration.storyId);
+    declarationsByScreen.set(declaration.screenId, [
+      ...(declarationsByScreen.get(declaration.screenId) ?? []),
+      declaration,
+    ]);
   }
 
-  return [...entries.values()];
+  return obligations.map((obligation) => {
+    const screenDeclarations =
+      declarationsByScreen.get(obligation.screenId) ?? [];
+    return {
+      ...obligation,
+      psns: screenDeclarations.map(({ psn }) => psn),
+      storyIds: screenDeclarations.map(({ storyId }) => storyId),
+    };
+  });
 }
 
 export const SCREEN_CATALOG = createScreenCatalog(
-  ALL_PRESENTATION_DECLARATIONS
+  ALL_PRESENTATION_DECLARATIONS,
+  PRESENTATION_SCREEN_CATALOG
 );
 
 function sameStrings(
@@ -127,7 +108,8 @@ function sameStrings(
 // eslint-disable-next-line complexity -- one validator keeps catalog invariants atomic.
 export function validateScreenCatalog(
   catalog: readonly ScreenCatalogEntry[],
-  declarations: readonly PresentationDeclaration[]
+  declarations: readonly PresentationDeclaration[],
+  obligations: readonly PresentationScreenCatalogEntry[] = PRESENTATION_SCREEN_CATALOG
 ): string[] {
   const errors: string[] = [];
   const psns = new Set<string>();
@@ -148,7 +130,7 @@ export function validateScreenCatalog(
     if (!declaration.psn.startsWith("PSN-")) {
       errors.push(`Invalid PSN declaration: ${declaration.psn}`);
     }
-    if (!declaration.route.startsWith("/")) {
+    if (declaration.route !== null && !declaration.route.startsWith("/")) {
       errors.push(
         `Invalid route for ${declaration.screenId}: ${declaration.route}`
       );
@@ -163,6 +145,23 @@ export function validateScreenCatalog(
   const catalogScreenIds = new Set<string>();
   const catalogPsnRefs = new Set<string>();
   const catalogStoryRefs = new Set<string>();
+  const obligationByScreen = new Map<string, PresentationScreenCatalogEntry>();
+
+  for (const obligation of obligations) {
+    if (obligationByScreen.has(obligation.screenId)) {
+      errors.push(
+        `Duplicate Screen Catalog obligation: ${obligation.screenId}`
+      );
+    }
+    obligationByScreen.set(obligation.screenId, obligation);
+    if (obligation.lifecycle === "active" && obligation.gap !== null) {
+      if (!obligation.gap.startsWith("APV-")) {
+        errors.push(
+          `${obligation.screenId} gap must reference an owner approval package`
+        );
+      }
+    }
+  }
 
   for (const entry of catalog) {
     if (catalogScreenIds.has(entry.screenId)) {
@@ -170,9 +169,38 @@ export function validateScreenCatalog(
     }
     catalogScreenIds.add(entry.screenId);
 
+    const obligation = obligationByScreen.get(entry.screenId);
+    if (!obligation) {
+      errors.push(`Unknown Screen Catalog screen: ${entry.screenId}`);
+    } else {
+      for (const field of [
+        "productFamily",
+        "lifecycle",
+        "primaryBaselinePsn",
+        "route",
+        "intent",
+        "gap",
+      ] as const) {
+        if (entry[field] !== obligation[field]) {
+          errors.push(
+            `${entry.screenId} ${field} does not match its independent obligation`
+          );
+        }
+      }
+      if (!sameStrings(entry.supersedes, obligation.supersedes)) {
+        errors.push(
+          `${entry.screenId} supersession metadata does not match its independent obligation`
+        );
+      }
+    }
+
     const screenDeclarations = declarationsByScreen.get(entry.screenId);
     if (!screenDeclarations || screenDeclarations.length === 0) {
-      errors.push(`Unknown Screen Catalog screen: ${entry.screenId}`);
+      if (obligation?.gap === null) {
+        errors.push(
+          `Missing baseline Story for active screen: ${entry.screenId}`
+        );
+      }
       continue;
     }
 
@@ -186,7 +214,10 @@ export function validateScreenCatalog(
     }
     const primary = primaryDeclarations[0] ?? screenDeclarations[0];
 
-    if (entry.primaryBaselinePsn !== primary.psn) {
+    if (
+      primaryDeclarations.length === 1 &&
+      entry.primaryBaselinePsn !== primary.psn
+    ) {
       errors.push(
         `${entry.screenId} primary baseline PSN does not match its Story metadata`
       );
@@ -198,13 +229,16 @@ export function validateScreenCatalog(
       "intent",
       "gap",
     ] as const) {
-      if (entry[field] !== primary[field]) {
+      if (primaryDeclarations.length === 1 && entry[field] !== primary[field]) {
         errors.push(
           `${entry.screenId} ${field} does not match its Story metadata`
         );
       }
     }
-    if (!sameStrings(entry.supersedes, primary.supersedes)) {
+    if (
+      primaryDeclarations.length === 1 &&
+      !sameStrings(entry.supersedes, primary.supersedes)
+    ) {
       errors.push(
         `${entry.screenId} supersession metadata does not match its Story metadata`
       );
@@ -244,9 +278,36 @@ export function validateScreenCatalog(
         `${entry.screenId} primary baseline PSN is not in its PSN set`
       );
     }
+
+    const knownSupersessionTargets = new Set([
+      ...obligations.map(({ screenId }) => screenId),
+      ...declarations.map(({ psn }) => psn),
+    ]);
+    for (const target of entry.supersedes) {
+      if (
+        target === entry.screenId ||
+        target === entry.primaryBaselinePsn ||
+        !knownSupersessionTargets.has(target)
+      ) {
+        errors.push(
+          `${entry.screenId} has an invalid supersession target: ${target}`
+        );
+      }
+    }
+  }
+
+  for (const obligation of obligations) {
+    if (!catalogScreenIds.has(obligation.screenId)) {
+      errors.push(`Missing Screen Catalog obligation: ${obligation.screenId}`);
+    }
   }
 
   for (const declaration of declarations) {
+    if (!obligationByScreen.has(declaration.screenId)) {
+      errors.push(
+        `Story declaration has no Screen Catalog obligation: ${declaration.screenId}`
+      );
+    }
     if (!catalogPsnRefs.has(declaration.psn)) {
       errors.push(`Uncataloged PSN declaration: ${declaration.psn}`);
     }

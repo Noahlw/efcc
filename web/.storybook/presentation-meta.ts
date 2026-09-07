@@ -7,7 +7,7 @@ export interface PresentationMetadata {
   readonly lifecycle: PresentationLifecycle;
   readonly baseline: PresentationBaseline;
   readonly psn: string;
-  readonly route: string;
+  readonly route: string | null;
   readonly intent: string | null;
   readonly state: string;
   readonly gap: string | null;
@@ -29,8 +29,8 @@ function asRecord(value: unknown): RecordValue | null {
 
 function storyIdPart(exportName: string): string {
   return exportName
-    .replaceAll(/(?<lower>[a-z0-9])(?<upper>[A-Z])/gu, "$<lower>-$<upper>")
-    .replaceAll(/(?<first>[A-Z])(?<rest>[A-Z][a-z])/gu, "$<first>-$<rest>")
+    .replaceAll(/([a-z0-9])([A-Z])/gu, "$1-$2")
+    .replaceAll(/([A-Z])([A-Z][a-z])/gu, "$1-$2")
     .replaceAll(/[_\s]+/gu, "-")
     .toLowerCase();
 }
@@ -50,13 +50,15 @@ function readPresentation(
     "screenId",
     "productFamily",
     "psn",
-    "route",
     "state",
   ] as const;
   for (const field of requiredStrings) {
     if (typeof presentation[field] !== "string" || presentation[field] === "") {
       throw new Error(`Story metadata ${field} is invalid: ${storyId}`);
     }
+  }
+  if (presentation.route !== null && typeof presentation.route !== "string") {
+    throw new Error(`Story metadata route is invalid: ${storyId}`);
   }
   if (
     presentation.lifecycle !== "active" &&

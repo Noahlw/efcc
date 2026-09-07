@@ -1,5 +1,5 @@
 import type { Decorator, Meta, StoryObj } from "@storybook/nextjs-vite";
-import { expect, within } from "storybook/test";
+import { expect } from "storybook/test";
 
 import { AppShell } from "@/lib/app-shell";
 import { ManagementDirectory as ManagementDirectoryComponent } from "@/lib/programs/management-directory";
@@ -14,8 +14,9 @@ import {
   programsManagementHandlers,
   programsParticipantHandlers,
 } from "./programs-fixtures";
+import { assertProgramsScreen } from "./programs-presentation-contract";
 
-const noop = () => null;
+const noop = () => {};
 
 const withMemberIdentity: Decorator = (Story) => {
   if (typeof window !== "undefined") {
@@ -37,16 +38,20 @@ const meta = {
   id: "t07-3-programs",
   title: "T07.3/Programs",
   component: ParticipantDirectoryComponent,
+  args: {
+    programId: null,
+    canManage: false,
+    managementHref: "/programs?mode=management",
+    programHref: (programId) => `/programs?program=${programId}`,
+    homeHref: "/home",
+  },
   parameters: { a11y: { test: "error" } },
 } satisfies Meta<typeof ParticipantDirectoryComponent>;
 
 export default meta;
 type Story = StoryObj<typeof meta>;
 
-const assertProgramsScreen = async (canvasElement: HTMLElement) => {
-  const canvas = within(canvasElement);
-  await expect(canvas.findByRole("main")).resolves.toBeVisible();
-};
+const PROGRAMS_WORKSHOP_NAME = "Storybook Programs Workshop";
 
 const workspace = (children: React.ReactNode) => (
   <AppShell>
@@ -90,7 +95,11 @@ export const ParticipantDirectory: Story = {
       navigation: { pathname: "/programs", query: {} },
     },
   },
-  play: ({ canvasElement }) => assertProgramsScreen(canvasElement),
+  play: ({ canvasElement }) =>
+    assertProgramsScreen(canvasElement, {
+      selector: "[data-program-name]",
+      text: PROGRAMS_WORKSHOP_NAME,
+    }),
 };
 
 export const ParticipantProgramDetail: Story = {
@@ -130,7 +139,11 @@ export const ParticipantProgramDetail: Story = {
       },
     },
   },
-  play: ({ canvasElement }) => assertProgramsScreen(canvasElement),
+  play: ({ canvasElement }) =>
+    assertProgramsScreen(canvasElement, {
+      selector: "#program-detail-title",
+      text: PROGRAMS_WORKSHOP_NAME,
+    }),
 };
 
 export const ParticipantEventDetail: Story = {
@@ -166,7 +179,11 @@ export const ParticipantEventDetail: Story = {
       },
     },
   },
-  play: ({ canvasElement }) => assertProgramsScreen(canvasElement),
+  play: ({ canvasElement }) =>
+    assertProgramsScreen(canvasElement, {
+      selector: "#participant-event-title",
+      text: "Storybook management event",
+    }),
 };
 
 export const ManagementDirectory: Story = {
@@ -195,7 +212,11 @@ export const ManagementDirectory: Story = {
       navigation: { pathname: "/programs", query: { mode: "management" } },
     },
   },
-  play: ({ canvasElement }) => assertProgramsScreen(canvasElement),
+  play: ({ canvasElement }) =>
+    assertProgramsScreen(canvasElement, {
+      selector: "#programs-management-directory-title",
+      text: "管理課程目錄",
+    }),
 };
 
 export const WorkspaceOverview: Story = {
@@ -231,7 +252,11 @@ export const WorkspaceOverview: Story = {
       },
     },
   },
-  play: ({ canvasElement }) => assertProgramsScreen(canvasElement),
+  play: ({ canvasElement }) =>
+    assertProgramsScreen(canvasElement, {
+      selector: "#programs-workspace-title",
+      text: PROGRAMS_WORKSHOP_NAME,
+    }),
 };
 
 export const WorkspaceEvents: Story = {
@@ -268,7 +293,11 @@ export const WorkspaceEvents: Story = {
       },
     },
   },
-  play: ({ canvasElement }) => assertProgramsScreen(canvasElement),
+  play: ({ canvasElement }) =>
+    assertProgramsScreen(canvasElement, {
+      selector: "#programs-workspace-events-title",
+      text: "聚會",
+    }),
 };
 
 export const WorkspaceParticipants: Story = {
@@ -309,7 +338,11 @@ export const WorkspaceParticipants: Story = {
       },
     },
   },
-  play: ({ canvasElement }) => assertProgramsScreen(canvasElement),
+  play: ({ canvasElement }) =>
+    assertProgramsScreen(canvasElement, {
+      selector: "#programs-workspace-participants-title",
+      text: "參與者",
+    }),
 };
 
 export const WorkspaceSettings: Story = {
@@ -350,7 +383,11 @@ export const WorkspaceSettings: Story = {
       },
     },
   },
-  play: ({ canvasElement }) => assertProgramsScreen(canvasElement),
+  play: ({ canvasElement }) =>
+    assertProgramsScreen(canvasElement, {
+      selector: "#program-settings-title",
+      text: "課程設定",
+    }),
 };
 
 export const WorkspaceNotifications: Story = {
@@ -377,7 +414,7 @@ export const WorkspaceNotifications: Story = {
       lifecycle: "active",
       baseline: "primary",
       route: "/programs",
-      intent: "mode=management&program=t07-3-program&task=notifications",
+      intent: "mode=management&task=notifications",
       state: "default",
       gap: null,
       supersedes: [],
@@ -391,5 +428,9 @@ export const WorkspaceNotifications: Story = {
       },
     },
   },
-  play: ({ canvasElement }) => assertProgramsScreen(canvasElement),
+  play: ({ canvasElement }) =>
+    assertProgramsScreen(canvasElement, {
+      selector: "#programs-notifications-title",
+      text: "管理通知",
+    }),
 };

@@ -1,5 +1,8 @@
 import { describe, expect, test } from "vitest";
 
+import { PRESENTATION_SCREEN_CATALOG } from "@/lib/governance/presentation-screen-catalog";
+import { parseProgramsIntent } from "@/lib/programs/programs-intent";
+
 import { MANAGEMENT_HUB_STORY_IDS } from "./management-hub-story-ids";
 import {
   ALL_PRESENTATION_DECLARATIONS,
@@ -9,6 +12,7 @@ import {
   PUBLIC_AUTH_MEMBER_COMMUNICATIONS_PRESENTATION_DECLARATIONS,
   PROGRAMS_PRESENTATION_DECLARATIONS,
   SCREEN_CATALOG,
+  createScreenCatalog,
   validateScreenCatalog,
 } from "./presentation-catalog";
 
@@ -46,7 +50,7 @@ describe("T07 Screen Catalog foundation", () => {
   test("catalogs every T07.2 baseline screen and its route", () => {
     expect(
       PUBLIC_AUTH_MEMBER_COMMUNICATIONS_PRESENTATION_DECLARATIONS
-    ).toHaveLength(8);
+    ).toHaveLength(9);
     expect([
       ["auth-sign-in", psnsFor("auth-sign-in")],
       ["auth-register", psnsFor("auth-register")],
@@ -57,7 +61,10 @@ describe("T07 Screen Catalog foundation", () => {
       ["communications-messages", psnsFor("communications-messages")],
       ["public-not-found", psnsFor("public-not-found")],
     ]).toStrictEqual([
-      ["auth-sign-in", ["PSN-AUTH-SIGN-IN-DEFAULT"]],
+      [
+        "auth-sign-in",
+        ["PSN-AUTH-SIGN-IN-DEFAULT", "PSN-AUTH-SIGN-IN-CREDENTIAL-UPGRADE"],
+      ],
       ["auth-register", ["PSN-AUTH-REGISTER-DEFAULT"]],
       ["member-home", ["PSN-MEMBER-HOME-DEFAULT"]],
       ["member-profile", ["PSN-MEMBER-PROFILE-DEFAULT"]],
@@ -74,7 +81,7 @@ describe("T07 Screen Catalog foundation", () => {
       intent: null,
       primaryBaselinePsn: "PSN-AUTH-SIGN-IN-DEFAULT",
     });
-    expect(ALL_PRESENTATION_DECLARATIONS).toHaveLength(37);
+    expect(ALL_PRESENTATION_DECLARATIONS).toHaveLength(39);
   });
 
   test("classifies the credential/PIN upgrade as a transient sign-in state", () => {
@@ -110,12 +117,136 @@ describe("T07 Screen Catalog foundation", () => {
       )
     ).toMatchObject({
       route: "/programs",
-      intent: "mode=management&program=t07-3-program&task=notifications",
+      intent: "mode=management&task=notifications",
     });
   });
 
+  test("keeps NotFound as a framework fallback, not a product route", () => {
+    expect(
+      SCREEN_CATALOG.find((entry) => entry.screenId === "public-not-found")
+    ).toMatchObject({ route: null });
+  });
+
+  test("keeps the independent obligation list separate from Story discovery", () => {
+    expect(PRESENTATION_SCREEN_CATALOG).toHaveLength(35);
+    expect(SCREEN_CATALOG.map(({ screenId }) => screenId)).toStrictEqual(
+      PRESENTATION_SCREEN_CATALOG.map(({ screenId }) => screenId)
+    );
+    expect(
+      SCREEN_CATALOG.find((entry) => entry.screenId === "management-hub")?.psns
+    ).toHaveLength(4);
+  });
+
+  test("fails when an independent baseline Story is deleted", () => {
+    const declarations = ALL_PRESENTATION_DECLARATIONS.filter(
+      ({ psn }) => psn !== "PSN-MGMT-HUB-DEFAULT"
+    );
+    const errors = validateScreenCatalog(
+      createScreenCatalog(declarations),
+      declarations
+    );
+
+    expect(errors).toEqual(
+      expect.arrayContaining([
+        expect.stringContaining("must have exactly one primary baseline Story"),
+        expect.stringContaining("references unknown primary baseline PSN"),
+      ])
+    );
+  });
+
+  test("fails when a referenced baseline PSN is renamed without supersession", () => {
+    const declarations = ALL_PRESENTATION_DECLARATIONS.map((declaration) =>
+      declaration.psn === "PSN-MGMT-HUB-DEFAULT"
+        ? { ...declaration, psn: "PSN-MGMT-HUB-RENAMED" }
+        : declaration
+    );
+    const errors = validateScreenCatalog(
+      createScreenCatalog(declarations),
+      declarations
+    );
+
+    expect(errors).toEqual(
+      expect.arrayContaining([
+        expect.stringContaining(
+          "primary baseline PSN does not match its Story metadata"
+        ),
+        expect.stringContaining("references unknown primary baseline PSN"),
+      ])
+    );
+  });
+
+  test("rejects duplicate primary, orphan references, and invalid supersession", () => {
+    const hub = ALL_PRESENTATION_DECLARATIONS.find(
+      ({ psn }) => psn === "PSN-MGMT-HUB-DEFAULT"
+    );
+    if (!hub) {
+      throw new Error("Management Hub baseline declaration is missing");
+    }
+    const duplicateDeclarations = [
+      ...ALL_PRESENTATION_DECLARATIONS,
+      {
+        ...hub,
+        psn: "PSN-MGMT-HUB-DUPLICATE",
+        storyId: "t07-1-management-hub--duplicate",
+      },
+    ];
+    const duplicateErrors = validateScreenCatalog(
+      createScreenCatalog(duplicateDeclarations),
+      duplicateDeclarations
+    );
+    expect(duplicateErrors).toContain(
+      "management-hub must have exactly one primary baseline Story"
+    );
+
+    const orphanCatalog = SCREEN_CATALOG.map((entry) =>
+      entry.screenId === "management-hub"
+        ? { ...entry, psns: ["PSN-NOT-REGISTERED"] }
+        : entry
+    );
+    expect(
+      validateScreenCatalog(orphanCatalog, ALL_PRESENTATION_DECLARATIONS)
+    ).toEqual(
+      expect.arrayContaining([
+        expect.stringContaining("references unknown PSN"),
+      ])
+    );
+
+    const invalidObligations = PRESENTATION_SCREEN_CATALOG.map((entry) =>
+      entry.screenId === "management-hub"
+        ? { ...entry, supersedes: ["management-hub"] }
+        : entry
+    );
+    expect(
+      validateScreenCatalog(
+        createScreenCatalog(ALL_PRESENTATION_DECLARATIONS, invalidObligations),
+        ALL_PRESENTATION_DECLARATIONS,
+        invalidObligations
+      )
+    ).toEqual(
+      expect.arrayContaining([
+        expect.stringContaining("invalid supersession target"),
+      ])
+    );
+  });
+
+  test("proves Notifications intent through the production parser", () => {
+    expect(
+      parseProgramsIntent("?mode=management&task=notifications")
+    ).toMatchObject({
+      mode: "management",
+      programId: null,
+      task: "notifications",
+      malformed: false,
+    });
+    expect(
+      parseProgramsIntent(
+        "?mode=management&program=t07-3-program&task=notifications"
+      ).malformed
+    ).toBe(true);
+  });
+
   test("catalogs every T07.4 Management/Identity composition", () => {
-    expect(MANAGEMENT_IDENTITY_PRESENTATION_DECLARATIONS).toHaveLength(11);
+    expect(MANAGEMENT_IDENTITY_PRESENTATION_DECLARATIONS).toHaveLength(12);
     expect(
       SCREEN_CATALOG.find(
         (entry) => entry.screenId === "management-account-access"
@@ -140,8 +271,8 @@ describe("T07 Screen Catalog foundation", () => {
       intent: "mode=assisted&event=t07-5-event",
       primaryBaselinePsn: "PSN-ATTENDANCE-ASSISTED-CHECK-IN",
     });
-    expect(SCREEN_CATALOG).toHaveLength(34);
-    expect(ALL_PRESENTATION_DECLARATIONS).toHaveLength(37);
+    expect(SCREEN_CATALOG).toHaveLength(35);
+    expect(ALL_PRESENTATION_DECLARATIONS).toHaveLength(39);
   });
 
   test("validates the aggregate catalog against Story-owned metadata", () => {

@@ -14,6 +14,7 @@
     "test:components": "vitest run --config vitest.components.config.ts",
     "storybook": "node scripts/storybook-worktree.mjs",
     "storybook:build": "storybook build",
+    "storybook:verify-index": "../node_modules/.bin/tsx scripts/verify-storybook-index.ts",
     "test:storybook": "vitest run --config vitest.storybook.config.ts",
     "test:t07:foundation": "vitest run --config vitest.t07.config.ts"
   },

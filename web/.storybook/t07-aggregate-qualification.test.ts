@@ -24,8 +24,8 @@ describe("T07.6 aggregate presentation qualification", () => {
     expect(
       validateScreenCatalog(SCREEN_CATALOG, ALL_PRESENTATION_DECLARATIONS)
     ).toStrictEqual([]);
-    expect(SCREEN_CATALOG).toHaveLength(34);
-    expect(ALL_PRESENTATION_DECLARATIONS).toHaveLength(37);
+    expect(SCREEN_CATALOG).toHaveLength(35);
+    expect(ALL_PRESENTATION_DECLARATIONS).toHaveLength(39);
   });
 
   test("keeps canonical governance and historical approval provenance valid", () => {
