@@ -502,7 +502,6 @@ export const ApprovalQueue = () => {
                 <Button
                   type="button"
                   onClick={() => void load(activeStatus)}
-                  className="min-h-11"
                   disabled={busy}
                   aria-busy={state.kind === "loading"}
                   size="lg"
@@ -532,7 +531,7 @@ export const ApprovalQueue = () => {
                     : undefined
                 }
                 aria-selected={activeStatus === "Pending"}
-                className={`min-h-11 ${
+                className={`${
                   activeStatus === "Pending"
                     ? "border-b-2 border-[var(--accent)] font-extrabold text-[var(--ink)]"
                     : "text-[var(--ink-muted)]"
@@ -559,7 +558,7 @@ export const ApprovalQueue = () => {
                     : undefined
                 }
                 aria-selected={activeStatus === "Processed"}
-                className={`min-h-11 ${
+                className={`${
                   activeStatus === "Processed"
                     ? "border-b-2 border-[var(--accent)] font-extrabold text-[var(--ink)]"
                     : "text-[var(--ink-muted)]"
@@ -593,7 +592,7 @@ export const ApprovalQueue = () => {
               value={query}
               onChange={(event) => setQuery(event.target.value)}
               placeholder={APPROVAL_UI_COPY.searchPlaceholder}
-              className="h-12 min-h-12 w-full min-w-0 rounded-[8px] border border-[var(--line-strong)] bg-[var(--surface-raised)] px-3 text-base text-[var(--ink)]"
+              className="w-full min-w-0 border border-[var(--line-strong)] bg-[var(--surface-raised)] text-base text-[var(--ink)]"
               autoComplete="off"
             />
           </div>
@@ -620,7 +619,7 @@ export const ApprovalQueue = () => {
             >
               <p className="m-0 text-base font-extrabold">{state.message}</p>
               <Button
-                className="mx-auto min-h-11 border-[var(--accent)] bg-[var(--accent)] px-4 font-extrabold text-white hover:bg-[var(--accent-deep)]"
+                className="mx-auto border-[var(--accent)] bg-[var(--accent)] font-extrabold text-white hover:bg-[var(--accent-deep)]"
                 onClick={() => void load(activeStatus)}
                 type="button"
               >
@@ -731,7 +730,7 @@ export const ApprovalQueue = () => {
                           onCheckedChange={() => toggleSelection(item)}
                           disabled={busy}
                           aria-label={`選取 ${item.name}`}
-                          className="size-11 shrink-0"
+                          className="shrink-0"
                         />
                       )}
                       <div className="grid min-w-0 gap-1 wrap-anywhere">
@@ -817,7 +816,6 @@ export const ApprovalQueue = () => {
                   </strong>
                   <Button
                     type="button"
-                    className="min-h-11"
                     onClick={() => setTrayOpen((open) => !open)}
                     aria-expanded={trayOpen}
                     disabled={busy}
@@ -832,7 +830,6 @@ export const ApprovalQueue = () => {
                 <div className="flex items-center gap-3">
                   <Button
                     type="button"
-                    className="min-h-11"
                     onClick={clearSelection}
                     disabled={busy}
                     size="lg"
@@ -843,7 +840,6 @@ export const ApprovalQueue = () => {
                   <AlertDialogTrigger asChild>
                     <Button
                       type="button"
-                      className="min-h-11"
                       onClick={beginBatchConfirmation}
                       disabled={busy}
                       aria-busy={busy}
@@ -876,7 +872,7 @@ export const ApprovalQueue = () => {
                       </span>
                       <Button
                         type="button"
-                        className="size-11 min-h-11 min-w-11 shrink-0 p-0 text-sm"
+                        className="shrink-0"
                         onClick={() => removeSelection(item.requestId)}
                         disabled={busy}
                         aria-label={APPROVAL_UI_COPY.remove(item.name)}

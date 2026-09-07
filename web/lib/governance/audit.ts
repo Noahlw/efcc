@@ -777,6 +777,10 @@ export function auditFileContent(
     normalizedPath === "web/out" ||
     normalizedPath.startsWith("web/out/") ||
     normalizedPath.includes("dist/") ||
+    normalizedPath === "storybook-static" ||
+    normalizedPath.startsWith("storybook-static/") ||
+    normalizedPath === "web/storybook-static" ||
+    normalizedPath.startsWith("web/storybook-static/") ||
     normalizedPath.includes("coverage/") ||
     normalizedPath.includes(".scratch/")
   ) {

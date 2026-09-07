@@ -1,6 +1,5 @@
 "use client";
 
-import { cva } from "class-variance-authority";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -40,6 +39,11 @@ import {
   updateRoleDefinitionGrants,
 } from "@/lib/identity/role-hierarchy-api";
 import { announce } from "@/lib/live-region";
+import {
+  permissionRowVariants,
+  roleButtonVariants,
+  stateSurfaceVariants,
+} from "@/lib/permission-editor-variants";
 import { useAsyncResource } from "@/lib/programs/use-async-resource";
 import { rememberDeepLink } from "@/lib/session";
 import { cn } from "@/lib/utils";
@@ -79,46 +83,6 @@ const HIGH_RISK_KEYS = new Set([
   "registration.approval.manage",
   "home.publish",
 ]);
-
-const roleButtonVariants = cva(
-  "flex h-auto min-h-14 w-full min-w-0 items-center justify-between gap-3 rounded-lg border bg-background px-4 py-3 text-left whitespace-normal outline-none hover:bg-muted focus-visible:ring-3 focus-visible:ring-ring/50",
-  {
-    variants: {
-      state: {
-        active: "border-primary",
-        default: "border-border",
-      },
-    },
-    defaultVariants: { state: "default" },
-  }
-);
-
-const permissionRowVariants = cva(
-  "grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 rounded-lg border bg-background p-3",
-  {
-    variants: {
-      state: {
-        clean: "border-border",
-        changed: "border-primary bg-primary/5",
-      },
-      disabled: {
-        true: "opacity-70",
-        false: "",
-      },
-    },
-    defaultVariants: { state: "clean", disabled: false },
-  }
-);
-
-const stateSurfaceVariants = cva("mt-6 rounded-lg border p-4", {
-  variants: {
-    kind: {
-      loading: "block border-border",
-      error: "grid gap-3 border-destructive bg-destructive/10",
-      forbidden: "border-destructive bg-destructive/10",
-    },
-  },
-});
 
 type Draft = Record<string, boolean>;
 type ReviewKind = "sheet" | "dedicated" | null;
@@ -702,7 +666,6 @@ export const PermissionEditorPanel = () => {
             <label className="grid gap-2" htmlFor="permission-search">
               <span className="text-sm font-medium">{SEARCH_LABEL}</span>
               <Input
-                className="min-h-11"
                 id="permission-search"
                 onChange={(event) => setQuery(event.target.value)}
                 placeholder={SEARCH_PLACEHOLDER}
@@ -723,7 +686,6 @@ export const PermissionEditorPanel = () => {
                 )}
                 {saveState === "conflict" && (
                   <Button
-                    className="min-h-11"
                     onClick={discardAndRestart}
                     type="button"
                     variant="outline"
@@ -801,7 +763,6 @@ export const PermissionEditorPanel = () => {
                             aria-label={permission.label}
                             aria-busy={busy || undefined}
                             checked={value}
-                            className="min-h-11 min-w-11"
                             disabled={disabled}
                             id={id}
                             onCheckedChange={(checked) =>
@@ -841,7 +802,6 @@ export const PermissionEditorPanel = () => {
                   : `版本 ${detail.revision}`}
               </span>
               <Button
-                className="min-h-11"
                 disabled={
                   changes.length === 0 || busy || saveState === "conflict"
                 }
@@ -902,12 +862,7 @@ export const PermissionEditorPanel = () => {
           tabIndex={-1}
         >
           <p>{state.message}</p>
-          <Button
-            className="min-h-11"
-            onClick={retryLoad}
-            type="button"
-            variant="outline"
-          >
+          <Button onClick={retryLoad} type="button" variant="outline">
             重試連接
           </Button>
         </section>
@@ -950,7 +905,6 @@ export const PermissionEditorPanel = () => {
           </div>
           <SheetFooter>
             <Button
-              className="min-h-11"
               disabled={busy}
               onClick={closeReview}
               type="button"
@@ -959,7 +913,6 @@ export const PermissionEditorPanel = () => {
               {REVIEW_CANCEL}
             </Button>
             <Button
-              className="min-h-11"
               disabled={busy}
               onClick={() => void submitChanges()}
               type="button"

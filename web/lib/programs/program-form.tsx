@@ -32,7 +32,7 @@ const styles = {
   programDetailMuted:
     "m-0 text-sm leading-6 text-[var(--ink-muted)] [overflow-wrap:anywhere]",
   secondaryButton:
-    "min-h-11 min-w-11 w-fit rounded-lg border border-[var(--line-strong)] bg-transparent px-4 py-2 text-[var(--ink)] whitespace-normal hover:bg-[var(--surface)]",
+    "w-fit border border-[var(--line-strong)] bg-transparent text-[var(--ink)] hover:bg-[var(--surface)]",
   panelError:
     "grid min-w-0 gap-2 rounded-lg border border-[var(--error-border)] bg-[var(--error-surface)] p-3 text-[var(--error)] [overflow-wrap:anywhere]",
   panelNotice:
@@ -41,14 +41,13 @@ const styles = {
   field: "grid min-w-0 gap-1.5",
   fieldLabel: "grid min-w-0 gap-1.5 text-sm font-bold text-[var(--ink)]",
   select:
-    "min-h-11 min-w-0 w-full rounded-lg border border-[var(--line-strong)] bg-[var(--surface-raised)] px-3 text-base text-[var(--ink)]",
+    "min-w-0 w-full border border-[var(--line-strong)] bg-[var(--surface-raised)] text-base text-[var(--ink)]",
   input:
-    "min-h-11 min-w-0 rounded-lg border-[var(--line-strong)] bg-[var(--surface-raised)] text-base",
+    "min-w-0 border-[var(--line-strong)] bg-[var(--surface-raised)] text-base",
   textarea:
-    "min-h-11 min-w-0 rounded-lg border-[var(--line-strong)] bg-[var(--surface-raised)] text-base",
+    "min-w-0 border-[var(--line-strong)] bg-[var(--surface-raised)] text-base",
   workspaceActions: "flex min-w-0 flex-wrap items-center gap-3",
-  button:
-    "min-h-11 min-w-11 w-fit rounded-lg bg-[var(--accent)] px-4 py-2 text-white whitespace-normal hover:bg-[var(--accent-deep)]",
+  button: "w-fit bg-[var(--accent)] text-white hover:bg-[var(--accent-deep)]",
 } as const;
 
 interface FormValues {

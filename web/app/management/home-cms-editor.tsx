@@ -602,7 +602,7 @@ export function HomeContentEditor() {
             <Button
               id="home-cms-template-a"
               className={cn(
-                "min-h-[44px] rounded-md px-4 py-2 text-sm font-bold transition-colors focus-visible:outline-[3px]! focus-visible:outline-[var(--focus)]! focus-visible:outline-offset-[3px]!",
+                "text-sm font-bold transition-colors",
                 form.templateType === "A"
                   ? "bg-[var(--accent)] text-white shadow-xs"
                   : "border border-[var(--line)] bg-[var(--surface-raised)] text-[var(--ink)] hover:bg-[var(--surface)]"
@@ -617,7 +617,7 @@ export function HomeContentEditor() {
             <Button
               id="home-cms-template-b"
               className={cn(
-                "min-h-[44px] rounded-md px-4 py-2 text-sm font-bold transition-colors focus-visible:outline-[3px]! focus-visible:outline-[var(--focus)]! focus-visible:outline-offset-[3px]!",
+                "text-sm font-bold transition-colors",
                 form.templateType === "B"
                   ? "bg-[var(--accent)] text-white shadow-xs"
                   : "border border-[var(--line)] bg-[var(--surface-raised)] text-[var(--ink)] hover:bg-[var(--surface)]"
@@ -663,7 +663,7 @@ export function HomeContentEditor() {
                   </span>
                   <Input
                     id="home-cms-featured-event"
-                    className="min-h-[44px] w-full rounded-md border border-[var(--line-strong)] bg-[var(--surface-raised)] px-3 py-2 text-base text-[var(--ink)] placeholder:text-[var(--ink-muted)] focus-visible:border-[var(--focus)] focus-visible:outline-[3px]! focus-visible:outline-[var(--focus)]! focus-visible:outline-offset-[3px]! disabled:opacity-50"
+                    className="border-[var(--line-strong)] bg-[var(--surface-raised)] text-base text-[var(--ink)] placeholder:text-[var(--ink-muted)]"
                     value={form.featuredEventId}
                     onChange={(event) =>
                       updateField("featuredEventId", event.target.value)
@@ -708,7 +708,7 @@ export function HomeContentEditor() {
                   </span>
                   <Input
                     id="home-cms-title"
-                    className="min-h-[44px] w-full rounded-md border border-[var(--line-strong)] bg-[var(--surface-raised)] px-3 py-2 text-base text-[var(--ink)] placeholder:text-[var(--ink-muted)] focus-visible:border-[var(--focus)] focus-visible:outline-[3px]! focus-visible:outline-[var(--focus)]! focus-visible:outline-offset-[3px]! disabled:opacity-50"
+                    className="border-[var(--line-strong)] bg-[var(--surface-raised)] text-base text-[var(--ink)] placeholder:text-[var(--ink-muted)]"
                     value={form.title}
                     onChange={(event) =>
                       updateField("title", event.target.value)
@@ -722,7 +722,7 @@ export function HomeContentEditor() {
                   </span>
                   <Textarea
                     id="home-cms-summary"
-                    className="min-h-[88px] w-full rounded-md border border-[var(--line-strong)] bg-[var(--surface-raised)] px-3 py-2 text-base text-[var(--ink)] placeholder:text-[var(--ink-muted)] focus-visible:border-[var(--focus)] focus-visible:outline-[3px]! focus-visible:outline-[var(--focus)]! focus-visible:outline-offset-[3px]! disabled:opacity-50"
+                    className="border-[var(--line-strong)] bg-[var(--surface-raised)] text-base text-[var(--ink)] placeholder:text-[var(--ink-muted)]"
                     value={form.summary}
                     onChange={(event) =>
                       updateField("summary", event.target.value)
@@ -737,7 +737,7 @@ export function HomeContentEditor() {
                   </span>
                   <Textarea
                     id="home-cms-body"
-                    className="min-h-[160px] w-full rounded-md border border-[var(--line-strong)] bg-[var(--surface-raised)] px-3 py-2 text-base text-[var(--ink)] placeholder:text-[var(--ink-muted)] focus-visible:border-[var(--focus)] focus-visible:outline-[3px]! focus-visible:outline-[var(--focus)]! focus-visible:outline-offset-[3px]! disabled:opacity-50"
+                    className="border-[var(--line-strong)] bg-[var(--surface-raised)] text-base text-[var(--ink)] placeholder:text-[var(--ink-muted)]"
                     value={form.bodyMarkdown}
                     onChange={(event) =>
                       updateField("bodyMarkdown", event.target.value)
@@ -753,7 +753,7 @@ export function HomeContentEditor() {
                     </span>
                     <Input
                       id="home-cms-cta-label"
-                      className="min-h-[44px] w-full rounded-md border border-[var(--line-strong)] bg-[var(--surface-raised)] px-3 py-2 text-base text-[var(--ink)] placeholder:text-[var(--ink-muted)] focus-visible:border-[var(--focus)] focus-visible:outline-[3px]! focus-visible:outline-[var(--focus)]! focus-visible:outline-offset-[3px]! disabled:opacity-50"
+                      className="border-[var(--line-strong)] bg-[var(--surface-raised)] text-base text-[var(--ink)] placeholder:text-[var(--ink-muted)]"
                       value={form.ctaLabel}
                       onChange={(event) =>
                         updateField("ctaLabel", event.target.value)
@@ -767,7 +767,7 @@ export function HomeContentEditor() {
                     </span>
                     <Input
                       id="home-cms-cta-url"
-                      className="min-h-[44px] w-full rounded-md border border-[var(--line-strong)] bg-[var(--surface-raised)] px-3 py-2 text-base text-[var(--ink)] placeholder:text-[var(--ink-muted)] focus-visible:border-[var(--focus)] focus-visible:outline-[3px]! focus-visible:outline-[var(--focus)]! focus-visible:outline-offset-[3px]! disabled:opacity-50"
+                      className="border-[var(--line-strong)] bg-[var(--surface-raised)] text-base text-[var(--ink)] placeholder:text-[var(--ink-muted)]"
                       type="url"
                       value={form.ctaUrl}
                       onChange={(event) =>
@@ -784,7 +784,7 @@ export function HomeContentEditor() {
                     </span>
                     <Input
                       id="home-cms-image-url"
-                      className="min-h-[44px] w-full rounded-md border border-[var(--line-strong)] bg-[var(--surface-raised)] px-3 py-2 text-base text-[var(--ink)] placeholder:text-[var(--ink-muted)] focus-visible:border-[var(--focus)] focus-visible:outline-[3px]! focus-visible:outline-[var(--focus)]! focus-visible:outline-offset-[3px]! disabled:opacity-50"
+                      className="border-[var(--line-strong)] bg-[var(--surface-raised)] text-base text-[var(--ink)] placeholder:text-[var(--ink-muted)]"
                       type="url"
                       value={form.imageUrl}
                       onChange={(event) =>
@@ -799,7 +799,7 @@ export function HomeContentEditor() {
                     </span>
                     <Input
                       id="home-cms-image-alt"
-                      className="min-h-[44px] w-full rounded-md border border-[var(--line-strong)] bg-[var(--surface-raised)] px-3 py-2 text-base text-[var(--ink)] placeholder:text-[var(--ink-muted)] focus-visible:border-[var(--focus)] focus-visible:outline-[3px]! focus-visible:outline-[var(--focus)]! focus-visible:outline-offset-[3px]! disabled:opacity-50"
+                      className="border-[var(--line-strong)] bg-[var(--surface-raised)] text-base text-[var(--ink)] placeholder:text-[var(--ink-muted)]"
                       value={form.imageAlt}
                       onChange={(event) =>
                         updateField("imageAlt", event.target.value)
@@ -967,7 +967,7 @@ export function HomeContentEditor() {
                 <Button
                   id="home-cms-preview-phone"
                   className={cn(
-                    "min-h-[44px] rounded-md px-4 py-2 text-sm font-bold transition-colors focus-visible:outline-[3px]! focus-visible:outline-[var(--focus)]! focus-visible:outline-offset-[3px]!",
+                    "text-sm font-bold transition-colors",
                     previewViewport === "phone"
                       ? "bg-[var(--accent)] text-white shadow-xs"
                       : "border border-[var(--line)] bg-[var(--surface-raised)] text-[var(--ink)] hover:bg-[var(--surface)]"
@@ -981,7 +981,7 @@ export function HomeContentEditor() {
                 <Button
                   id="home-cms-preview-desktop"
                   className={cn(
-                    "min-h-[44px] rounded-md px-4 py-2 text-sm font-bold transition-colors focus-visible:outline-[3px]! focus-visible:outline-[var(--focus)]! focus-visible:outline-offset-[3px]!",
+                    "text-sm font-bold transition-colors",
                     previewViewport === "desktop"
                       ? "bg-[var(--accent)] text-white shadow-xs"
                       : "border border-[var(--line)] bg-[var(--surface-raised)] text-[var(--ink)] hover:bg-[var(--surface)]"

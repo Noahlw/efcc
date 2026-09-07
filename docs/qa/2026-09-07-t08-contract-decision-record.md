@@ -1,7 +1,9 @@
 # T08 / #513 contract decision record
 
-**Status: PROPOSED.** This record is a concise owner checkpoint. It does not
-approve any contract, waiver, baseline, tolerance, or design review.
+**Status: OWNER DECISION RECORDED.** The proposal below is superseded only by
+the exact owner decision recorded at the end of this document. It does not
+create final T08 design approval, a waiver, a baseline promotion, merge
+approval, or issue closure.
 
 ## D1 — Control Story subject and PSN interface
 
@@ -35,15 +37,15 @@ approve any contract, waiver, baseline, tolerance, or design review.
 - Replacement proof / negative test: new equivalent Button/Input/Switch owned-property caller class fails, while an outer `absolute`/grid/full-width layout class and an approved native/hidden exception do not.
 - Rollback checkpoint: revert only the ratchet integration; preserve the census/disposition record and existing governance rules.
 
-## Owner decision (leave blank until real response)
+## Owner decision
 
-- Result: PENDING
-- Decider:
-- Date/time:
-- Exact decision source:
-- Approved scope:
-- Rejected / deferred scope:
-- Conditions:
+- Result: `APPROVED WITH CONDITIONS` for D1, D2, and D3.
+- Decider: owner; the source message does not provide a personal identifier.
+- Date/time: not supplied; no timestamp is inferred.
+- Exact decision source: owner message for T08 / #513 in this task, reviewing PR #574 at checkpoint HEAD `abf0914b06f6b62d605b683f98bc66fe14579255`.
+- Approved scope: D1 additive discriminated screen/control presentation subject model; D2 shared Button, Icon Button, Input, Textarea, Checkbox, Switch, Select/native-select contract; D3 incremental caller-override ratchet using the supplied/current comparison base.
+- Conditions: preserve all T07 screen metadata, 35 independent screen obligations, 39 screen Stories and PSNs; controls require stable `controlId` with `route`/`intent` null and no invented `screenId`; preserve primitive public/API/Radix/form/asChild/domain behavior; app-facing targets remain at least 44px; resolve all current census cases; keep PR #574 draft on `rescue/t08-control-contracts`; do not open another T08 PR.
+- Explicit non-approval: this is not final T08 human design approval, `STACK_GREEN`, merge approval, issue closure, T09 authorization, or a B-003 change. B-003 remains open.
 
 This is not final rendered design approval and does not authorize merge or
 issue closure.

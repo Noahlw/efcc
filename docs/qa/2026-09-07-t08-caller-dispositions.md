@@ -54,9 +54,81 @@
 | CALL-29 | `web/lib/governance/registries.ts` attendance radio chooser | `NATIVE_EXCEPTION` | Keep approved GOV.UK fieldset/radio semantics. |
 | CALL-30 | `web/lib/governance/registries.ts` Programs notification dialog | `NOT_T08` | Existing owner-approved native dialog/route boundary remains with #514/#521. |
 
-## Remaining local manual census
+## Complete pinned census closure
 
-- The 81 unresolved Button class expressions are concentrated in Home CMS, Permission Editor, Role Hierarchy, AlertDialog, Approval Queue, Attendance, scanner routes, and Programs callers. They remain source-review inputs; unresolved dynamic class expressions are not silently treated as valid or invalid.
-- The two spread flags are the production Input/Textarea implementations forwarding native props. This is required API forwarding, not a caller escape.
-- The 15 ancestor candidates remain manual ownership review. `absolute` placement, full-width/grid/flex composition, status spans, and route arrangement are not primitive-owned by name alone.
-- No new allowlist, waiver, baseline, or blanket `UNCLASSIFIED` exemption is created by this record. Any new equivalent caller override must fail the incremental governance ratchet once implemented.
+The supplied census reports 83 `unresolvedClassExpression` flags: 81 Button
+expressions and the two native primitive implementations below. The line
+numbers are from the pinned `af4857e8e3a86f5979840c70f06999f569e9ed1a`
+revision; current implementation edits may move them. Every flagged occurrence
+has an explicit disposition. A bounded disposition is a named later
+owner/property boundary, not a route-wide exemption.
+
+### Button expressions (81 total)
+
+| Census group | Pinned source lines | Count | Final disposition | Exact owner / resolution |
+|---|---:|---:|---|---|
+| CEN-B01 | `web/app/management/home-cms-editor.tsx:602,617,967,981` | 4 | `MIGRATE_NOW` | #529 Home Content; current HEAD removes duplicate target, padding, radius, and focus classes while preserving template/viewport behavior. |
+| CEN-B02 | `web/app/management/permission-editor-panel.tsx:597` | 1 | `MIGRATE_NOW` | #531 Permission Editor role-link surface; Button owns target and the link keeps href, label, and selection behavior. |
+| CEN-B03 | `web/app/management/role-hierarchy-panel.tsx:1158,1182,1212,1245,1266,1372,1387,1403,1422,1519,1528,1637,1646,1730,1740,1875,1884` | 17 | `BOUNDED_LATER_DEBT` | #530 Role hierarchy; `categoryToggleVariants`, `roleButtonVariants`, `orderButtonVariants`, and `actionButtonVariants` are the exact later helper/property boundary. `size="lg"` already supplies the Button floor. |
+| CEN-B04 | `web/components/ui/alert-dialog.tsx:172,191` | 2 | `MIGRATE_NOW` | Shared AlertDialog primitive; current HEAD removes duplicate `min-h-11` wrapper styling and preserves Slot/ref/focus/action/cancel semantics. |
+| CEN-B05 | `web/lib/approval-queue.tsx:525,552` | 2 | `MIGRATE_NOW` | #528 Approval Queue tab triggers; current HEAD removes duplicate `min-h-11` and keeps tab selection, active styling, and `aria-selected`. |
+| CEN-B06 | `web/lib/assisted-scanner-panel.tsx:281,297,352` | 3 | `BOUNDED_LATER_DEBT` | #535/#536 scanner journeys; `attendanceButtonVariants` remains the later owner while camera/search/form state stays local. |
+| CEN-B07 | `web/lib/attendance-operator-panel.tsx:104,309,356,367,434,450,505,515,601,610,971,985,1026` | 13 | `BOUNDED_LATER_DEBT` | #536 attendance operations/print; `attendanceButtonVariants` is the exact later owner without moving print/domain behavior. |
+| CEN-B08 | `web/lib/attendance-panel.tsx:92,251,350,370` | 4 | `BOUNDED_LATER_DEBT` | #533 Guest Check-In; `attendanceButtonVariants` is the exact later owner; credential, validation, submit, and navigation semantics remain. |
+| CEN-B09 | `web/lib/attendance-scanner-ui.tsx:144,154,215,309,345,456,523,534,544,599,605,729,736` | 13 | `BOUNDED_LATER_DEBT` | #534/#535 scanner journeys; `attendanceButtonVariants` is the later owner. The camera-stop `absolute` placement is caller layout. |
+| CEN-B10 | `web/lib/nav-bar.tsx:105` | 1 | `BOUNDED_LATER_DEBT` | #516 authenticated shell; `.nav-item` is the existing navigation boundary, not a new T08 route patch. |
+| CEN-B11 | `web/lib/programs/event-detail.tsx:665` | 1 | `BOUNDED_LATER_DEBT` | #520 Programs Events task; action-bar styles remain the later owner, with event check-in href/state unchanged. |
+| CEN-B12 | `web/lib/programs/participant-enrollment.tsx:178,200,228,249,274,293` | 6 | `BOUNDED_LATER_DEBT` | #518 participant enrollment; `enrollmentActionVariants` is the later owner, with request/cancel/re-enroll state unchanged. |
+| CEN-B13 | `web/lib/programs/programs-manager.tsx:681` | 1 | `BOUNDED_LATER_DEBT` | #519/#521 Programs management/settings; `styles.toggle` remains the exact owner for module-toggle presentation and mutation flow. |
+| CEN-B14 | `web/lib/programs/workspace-task.tsx:263,305,330,380,398` | 5 | `BOUNDED_LATER_DEBT` | #520 Programs workspace; `styles.button`, `styles.directoryCard`, and `styles.workspaceTaskRow` remain exact later properties. |
+| CEN-B15 | `web/lib/scanner-boundary.tsx:59,261,274,296,314` | 5 | `BOUNDED_LATER_DEBT` | #534/#535 scanner boundary; mode-tab, retry, and recovery composition stay with the scanner owner. |
+| CEN-B16 | `web/lib/self-check-in-panel.tsx:420,430,564` | 3 | `BOUNDED_LATER_DEBT` | #534 authenticated Self scanner; `attendanceButtonVariants` is the later owner, with busy/camera/return behavior unchanged. |
+
+Tally: `MIGRATE_NOW` 9; `BOUNDED_LATER_DEBT` 72; total Button flags 81.
+The current implementation completed every T08-authorized `MIGRATE_NOW` row.
+The 72 bounded rows retain named ticket/property ownership and are not
+silently classified as compliant or waived.
+
+### Primitive spread flags (2 total)
+
+| Census case | Pinned source | Final disposition | Proof |
+|---|---|---|---|
+| CEN-S01 | `web/components/ui/input.tsx:7` | `PROVEN_FALSE_POSITIVE` | `...props` forwards the native Input public API after the primitive-owned class; it is not a caller styling escape. |
+| CEN-S02 | `web/components/ui/textarea.tsx:7` | `PROVEN_FALSE_POSITIVE` | `...props` forwards native Textarea attributes/ref semantics after the primitive-owned class; it is not a caller styling escape. |
+
+### Ancestor-style candidates (15 total)
+
+| Census group | Pinned source lines | Count | Final disposition | Ownership proof |
+|---|---:|---:|---|---|
+| CEN-A01 | `web/app/guest-check-in/page.tsx:50` | 1 | `VALID_CALLER_LAYOUT` | Native navigation anchor; target/focus/placement belongs to the guest surface, not the Button primitive. |
+| CEN-A02 | `web/app/management/management-action-framework.tsx:25,27` | 2 | `PROVEN_FALSE_POSITIVE` | Current selectors target descendant anchors only; Button/Input/Select/Textarea focus is not overridden by the ancestor. |
+| CEN-A03 | `web/app/profile/page.tsx:124` | 1 | `NOT_T08` | QR rendering container and descendant SVG/text layout; noninteractive profile presentation. |
+| CEN-A04 | `web/components/ui/badge.tsx:8` | 1 | `NOT_T08` | Badge icon geometry belongs to the noninteractive Badge primitive outside the T08 family. |
+| CEN-A05 | `web/components/ui/button.tsx:8,26,27,31` | 4 | `PRIMITIVE_OWNER` | Button-owned visual icon sizing; the interactive root remains at least 44px and no caller override is created. |
+| CEN-A06 | `web/components/ui/checkbox.tsx:41` | 1 | `PRIMITIVE_OWNER` | Checkbox indicator SVG geometry inside the existing 44×44 root; Radix state semantics remain unchanged. |
+| CEN-A07 | `web/components/ui/select.tsx:11,134,172,190` | 4 | `PRIMITIVE_OWNER` | Select trigger/item/scroll-control icon geometry inside the Radix primitive; trigger, selected-value, and option contracts are tested separately. |
+| CEN-A08 | `web/components/ui/tabs.tsx:66` | 1 | `NOT_T08` | Tabs is an adjacent primitive, not a T08 Button/control subject. |
+
+Tally: `VALID_CALLER_LAYOUT` 1; `PROVEN_FALSE_POSITIVE` 2;
+`NOT_T08` 3; `PRIMITIVE_OWNER` 9; total ancestor candidates 15.
+
+No open or `UNCLASSIFIED` census case, blanket allowlist, waiver, route
+exemption, or new baseline is used to close this census. Future equivalent styling added
+after the supplied/current comparison base is evaluated by the incremental
+ratchet and fails closed when it cannot be classified safely.
+
+## Additional caller review after D1–D3 approval
+
+These shared-control callsites were reviewed after the pinned census and are
+listed explicitly because their static classes were already resolvable rather
+than part of the 83 unresolved flags.
+
+| ID | Source / scope | Final disposition | Evidence / boundary |
+|---|---|---|---|
+| CEN-I01 | `web/app/management/home-cms-editor.tsx:664,709,754,768,785,800` `Input` fields | `MIGRATE_NOW` | Removed caller-owned min-height, padding, radius, focus, disabled-geometry, and duplicate width classes; retained field palette and text meaning. Native form values and busy disable behavior remain caller-controlled. |
+| CEN-T01 | `web/app/management/home-cms-editor.tsx:723,738` `Textarea` fields | `MIGRATE_NOW` | Removed caller-owned min-height, padding, radius, focus, disabled-geometry, and duplicate width classes; retained `rows={3}`/`rows={7}` multiline intent and field palette. The primitive continues to own its useful `min-h-16` minimum and resize semantics. |
+| CEN-SL01 | `SelectTrigger` primitive base in `web/components/ui/select.tsx` | `PRIMITIVE_OWNER` with `VALID_CALLER_LAYOUT` override allowed | `w-full min-w-0 max-w-full overflow-hidden` is the bounded closed-value contract; explicit caller width intent such as `w-fit` remains layout-owned and may override width without redefining target, padding, radius, or focus. |
+| CEN-N01 | `web/app/management/home-cms-editor.tsx:859,878` native `datetime-local` inputs | `NATIVE_EXCEPTION` | Existing CMS native controls remain native; their value, form, keyboard, and platform picker behavior is outside the Radix/Input migration. |
+
+The additional review leaves no `UNKNOWN`, `UNCLASSIFIED`, or silently retained
+Home CMS shared-owned override in the current T08 scope.

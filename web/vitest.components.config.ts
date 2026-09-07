@@ -31,6 +31,8 @@ export default defineProject({
       "lib/management-action-framework.test.tsx",
       "lib/ui-primitives.test.tsx",
       "lib/t08-control-contracts.test.tsx",
+      "lib/t08-control-geometry.test.tsx",
+      ".storybook/t08-presentation-contract.test.ts",
       "lib/management-route-redirects.test.tsx",
       "lib/settings-hub.test.tsx",
       "lib/account-access-panel.test.tsx",

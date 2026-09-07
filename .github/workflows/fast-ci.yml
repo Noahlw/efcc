@@ -71,3 +71,6 @@ jobs:
 
       - name: Typecheck (root + web)
         run: pnpm verify:fast
+
+      - name: Incremental control override ratchet
+        run: pnpm verify:governance:affected --control-base="${{ github.event.pull_request.base.sha || github.event.before }}"

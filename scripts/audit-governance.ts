@@ -22,6 +22,7 @@ import path from "node:path";
 
 import {
   auditSourceCode,
+  auditNewControlOverrides,
   getCanonicalRegistries,
   resolveRepoRoot,
   validateRegistries,
@@ -44,14 +45,22 @@ export interface CliOptions {
   readonly targetFiles?: readonly string[];
   readonly rootDir?: string;
   readonly now?: Date | string | number;
+  readonly controlOverrideBase?: string;
 }
 
 export function parseCliArgs(args: readonly string[]): CliOptions {
   let mode: AuditMode = "full";
   const targetFiles: string[] = [];
+  let controlOverrideBase: string | undefined;
 
   for (const arg of args) {
-    if (arg.startsWith("--mode=")) {
+    if (arg.startsWith("--control-base=")) {
+      const base = arg.slice("--control-base=".length).trim();
+      if (!base) {
+        throw new Error("--control-base requires a non-empty git ref");
+      }
+      controlOverrideBase = base;
+    } else if (arg.startsWith("--mode=")) {
       const parsedMode = arg.slice(7).trim().toLowerCase();
       if ((VALID_AUDIT_MODES as readonly string[]).includes(parsedMode)) {
         mode = parsedMode as AuditMode;
@@ -88,6 +97,7 @@ export function parseCliArgs(args: readonly string[]): CliOptions {
   return {
     mode,
     targetFiles: targetFiles.length > 0 ? targetFiles : undefined,
+    ...(controlOverrideBase ? { controlOverrideBase } : {}),
   };
 }
 
@@ -490,13 +500,23 @@ export function runGovernanceAudit(options: CliOptions): {
   // Full and release modes evaluate historical waivers as designed.
   const activeWaivers = options.mode === "affected" ? [] : registries.waivers;
 
-  const auditResult = auditSourceCode({
+  const sourceAuditResult = auditSourceCode({
     rootDir: repoRoot,
     targetFiles,
     waivers: activeWaivers,
     nativeExceptions: registries.nativeExceptions,
     now: options.now,
   });
+  const controlOverrideViolations = auditNewControlOverrides({
+    rootDir: repoRoot,
+    baseRef: options.controlOverrideBase,
+    targetFiles,
+  });
+  const auditResult: AuditResult = {
+    ...sourceAuditResult,
+    passed: sourceAuditResult.passed && controlOverrideViolations.length === 0,
+    violations: [...sourceAuditResult.violations, ...controlOverrideViolations],
+  };
 
   console.log(`  - Files Scanned:       ${auditResult.scannedFilesCount}`);
   console.log(`  - Active Violations:   ${auditResult.violations.length}`);
