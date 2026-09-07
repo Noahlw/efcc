@@ -9,8 +9,8 @@ handoff package.
 
 - Effective fixed base: `af4857e8e3a86f5979840c70f06999f569e9ed1a`
 - Original start base: `af4857e8e3a86f5979840c70f06999f569e9ed1a`
-- Branch / worktree / PR: `rescue/t08-control-contracts` / `/Users/noah.wong/Desktop/code/EFCC-dev/.worktrees/t08-control-contracts` / draft PR pending push
-- Current implementation HEAD: `2d056bb88603afac4930158949b18f9ce50972eb` (exploratory Story/test checkpoint)
+- Branch / worktree / PR: `rescue/t08-control-contracts` / `/Users/noah.wong/Desktop/code/EFCC-dev/.worktrees/t08-control-contracts` / [PR #574](https://github.com/Noahlw/efcc/pull/574) (`DRAFT / OPEN / MERGEABLE`, target `rescue/t07-storybook-foundation`)
+- Current implementation HEAD: `7b8f8bf2fca4af9c99cfa431ddb69cad2f0cfa05` (exploratory Story/test/decision checkpoint)
 - Parent eligibility: live `Noahlw/efcc` PR #573 is OPEN, unmerged, mergeable, head `rescue/t07-storybook-foundation` at `af4857e8e3a86f5979840c70f06999f569e9ed1a`, base `rescue/ui-control-recovery`; T07 ApprovalPackage is `APV-T07-WORKSHOP-FIDELITY-5D22835D`.
 - Dirty-worktree status / included changes: clean before this checkpoint; only this trace, the caller disposition record, and the canonical tracker update are intended for the first commit.
 - #513 body/version checked: live issue is OPEN, updated `2026-09-05T14:11:23Z`, 0 comments; the 16 acceptance criteria remain the scope.
@@ -63,6 +63,8 @@ handoff package.
 | `2d056bb8` | `fnm exec --using 22.18.0 pnpm --dir web test:components` | isolated T08 worktree | 0 / 61 files, 896 tests passed | none | exploratory public-contract coverage |
 | `2d056bb8` | `fnm exec --using 22.18.0 pnpm --dir web typecheck` | Node `22.18.0` | 0 | none | exploratory Stories typecheck |
 | `2d056bb8` | read-only browser geometry diagnostic at 390×844 | Chromium, live HMR Storybook | 0 / diagnostic | Button 32px, icon 32×32, Input 32px, Switch 32×18.39px; Checkbox 44×44, Textarea 66px, Select 44px high/477.31px long trigger | owner decision required before shared mapping change |
+| `7b8f8bf2` | `fnm exec --using 22.18.0 pnpm --dir web storybook:build` | Node `22.18.0`, Storybook `10.6.0` | 0 / build completed | none | actual six exploratory Story entries built |
+| `7b8f8bf2` | `fnm exec --using 22.18.0 pnpm --dir web storybook:verify-index` | Node `22.18.0`, built index | 1 / fail closed | unexpected entries: `t08-controls--button-states`, `t08-controls--input-states`, `t08-controls--textarea-states`, `t08-controls--checkbox-states`, `t08-controls--switch-states`, `t08-controls--select-states` | expected until D1 control-subject metadata/catalog decision |
 
 ## Current findings / caller dispositions
 

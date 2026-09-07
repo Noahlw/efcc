@@ -9,11 +9,13 @@
 | T07 / #512 shared PR | `STACK_GREEN` | Owner ApprovalPackage `APV-T07-WORKSHOP-FIDELITY-5D22835D`; PR #573 remains open, mergeable, clean, and unmerged |
 | T07.1–T07.5 / #566–#570 | `CHECKPOINT_GREEN` | Existing child commits and current-head qualification remain preserved |
 | T07.6 / #571 | `STACK_GREEN` | Current reviewed implementation `5d22835de0d3b1802e2ae84b774066edc5e24a2f`; approval-sensitive governance passed |
-| T08 / #513 | `IN_PROGRESS` | `rescue/t08-control-contracts` from live T07 head `af4857e8e3a86f5979840c70f06999f569e9ed1a`; one incremental PR pending; design approval not yet recorded |
+| T08 / #513 | `OWNER_DECISION_REQUIRED` | [`PR #574`](https://github.com/Noahlw/efcc/pull/574) is DRAFT/OPEN/MERGEABLE from `rescue/t08-control-contracts` to `rescue/t07-storybook-foundation`; D1/D2/D3 owner decision pending |
 | T09–T12 / #514–#517 | `BLOCKED` | T08/#513 remains the logical parent; no implementation started |
 | B-003 | `OPEN` | Independent sustained-runtime residual risk; not rerun or reinterpreted |
 
 ### Current T08 implementation — 2026-09-07
+
+> **Current update — 2026-09-07:** Exploratory control Stories/tests and the D1/D2/D3 proposal record are committed on `rescue/t08-control-contracts`; [PR #574](https://github.com/Noahlw/efcc/pull/574) is `DRAFT / OPEN / MERGEABLE` against `rescue/t07-storybook-foundation`. T08 is `OWNER_DECISION_REQUIRED`; no protected control mapping, design approval, merge, issue closure, B-003 change, or T09+ work is claimed.
 
 - **Status:** `IN_PROGRESS` — Batch A audit closeout and pre-implementation acceptance trace are recorded in [`docs/qa/2026-09-07-t08-control-acceptance-trace.md`](../qa/2026-09-07-t08-control-acceptance-trace.md).
 - **Parent:** live PR #573 is OPEN/unmerged/mergeable at `af4857e8e3a86f5979840c70f06999f569e9ed1a`; T08 branch is ticket-isolated from that exact head.
@@ -283,7 +285,7 @@ This is a historical Phase 0 snapshot taken before T07.1 implementation. It is r
 | T07.4 | [#569](https://github.com/Noahlw/efcc/issues/569) | Management/Identity baseline catalog | T07.1 / #566 | `CHECKPOINT_GREEN` | shared #512 PR | — | T07.6 representative fidelity review |
 | T07.5 | [#570](https://github.com/Noahlw/efcc/issues/570) | Attendance/Scanner/Guest baseline catalog | T07.1 / #566 | `CHECKPOINT_GREEN` | shared #512 PR | — | T07.6 representative fidelity review |
 | T07.6 | [#571](https://github.com/Noahlw/efcc/issues/571) | Catalog qualification, fidelity approval, developer workflow | T07.2 / #567, T07.3 / #568, T07.4 / #569, T07.5 / #570 | `MACHINE_GREEN / WAITING_HUMAN` | shared #512 PR | — | Human workshop-fidelity / qualification gate required; do not close child issues yet |
-| T08 | [#513](https://github.com/Noahlw/efcc/issues/513) | Storybook-approved app-facing control contracts | T07 | `IN_PROGRESS` | `rescue/t08-control-contracts` | — | Design approval required |
+| T08 | [#513](https://github.com/Noahlw/efcc/issues/513) | Storybook-approved app-facing control contracts | T07 | `OWNER_DECISION_REQUIRED` | [#574](https://github.com/Noahlw/efcc/pull/574) | — | D1/D2/D3 contract decision, then design approval required |
 | T09 | [#514](https://github.com/Noahlw/efcc/issues/514) | Storybook-approved surface/feedback/overlay contracts | T08 | `BLOCKED` | — | — | Design approval required |
 | T10 | [#515](https://github.com/Noahlw/efcc/issues/515) | Canonical EFCC composition grammar | T09 | `BLOCKED` | — | — | Design approval required |
 | T11 | [#516](https://github.com/Noahlw/efcc/issues/516) | Authenticated shell and route-header boundary | T05, T10 | `BLOCKED` | — | — | Design approval required |
