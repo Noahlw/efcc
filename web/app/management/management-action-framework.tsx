@@ -1,4 +1,6 @@
 "use client";
+import { cva } from "class-variance-authority";
+import type { VariantProps } from "class-variance-authority";
 import { XIcon } from "lucide-react";
 import Link from "next/link";
 import { useCallback, useEffect, useRef } from "react";
@@ -13,13 +15,33 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
-import { actionSurfaceVariants } from "@/lib/management-action-variants";
-import type { ActionSurfaceState as ActionSurfaceStateType } from "@/lib/management-action-variants";
 import { cn } from "@/lib/utils";
 
 import { BackIcon } from "./settings-ui";
 
-export type { ActionSurfaceState } from "@/lib/management-action-variants";
+const actionSurfaceVariants = cva(
+  "static isolate grid min-h-11 w-full min-w-0 max-h-[min(48dvh,420px)] gap-[var(--space-3)] mt-[var(--space-4)] overflow-y-auto overscroll-contain rounded-[var(--radius-md)] border bg-[var(--surface-raised)] p-[var(--space-3)] pb-[calc(var(--space-3)+env(safe-area-inset-bottom,0px))] text-sm shadow-[var(--shadow-dock)] scroll-mb-[calc(84px+env(safe-area-inset-bottom,0px))] data-disabled:opacity-70 [&_:is(a):focus-visible]:outline-[3px]! [&_:is(a):focus-visible]:outline-[var(--focus)]! [&_:is(a):focus-visible]:outline-offset-[3px]!",
+  {
+    variants: {
+      state: {
+        dirty: "border-input",
+        selection: "border-input",
+        review: "border-ring",
+        save: "border-primary",
+        busy: "border-input",
+        failure: "border-[var(--error-border)] bg-[var(--error-surface)]",
+        conflict: "border-[var(--error-border)] bg-[var(--error-surface)]",
+      },
+    },
+    defaultVariants: {
+      state: "selection",
+    },
+  }
+);
+
+export type ActionSurfaceState = NonNullable<
+  VariantProps<typeof actionSurfaceVariants>["state"]
+>;
 
 const focusVisibleOutline =
   "focus-visible:outline-[3px]! focus-visible:outline-[var(--focus)]! focus-visible:outline-offset-[3px]!";
@@ -33,7 +55,7 @@ export type ActionSurfaceProps = Omit<
   children: ReactNode;
   disabled?: boolean;
   label: string;
-  state?: ActionSurfaceStateType;
+  state?: ActionSurfaceState;
   busy?: boolean;
 };
 
@@ -147,7 +169,7 @@ export const ManagementStickyActionBar = ({
 }: {
   children: ReactNode;
   label: string;
-  state?: ActionSurfaceStateType;
+  state?: ActionSurfaceState;
   busy?: boolean;
   disabled?: boolean;
 }) => (

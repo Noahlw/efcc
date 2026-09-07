@@ -104,6 +104,68 @@ describe("T08 incremental control override ratchet", () => {
     }
   });
 
+  test("tracks every added line in a multiline control element", () => {
+    const fixture = createFixture();
+    try {
+      fs.writeFileSync(
+        path.join(fixture.rootDir, "web/app/example.tsx"),
+        `import { Button } from "@/components/ui/button";
+
+export function Example() {
+  return (
+    <Button
+      aria-label="welcome"
+      className="min-h-8"
+    >
+      welcome
+    </Button>
+  );
+}
+`,
+        "utf-8"
+      );
+      expect(
+        auditNewControlOverrides({
+          rootDir: fixture.rootDir,
+          baseRef: fixture.baseRef,
+        }).map(({ message }) => message)
+      ).toStrictEqual([expect.stringContaining("min-h-8")]);
+    } finally {
+      fs.rmSync(fixture.rootDir, { recursive: true, force: true });
+    }
+  });
+
+  test("fails closed when a conditional class branch is not a literal", () => {
+    const fixture = createFixture();
+    try {
+      fs.writeFileSync(
+        path.join(fixture.rootDir, "web/app/example.tsx"),
+        `import { Button } from "@/components/ui/button";
+
+const condition = true;
+const unknownClass = "text-muted-foreground";
+
+export function Example() {
+  return (
+    <Button className={condition ? "text-sm" : unknownClass}>
+      welcome
+    </Button>
+  );
+}
+`,
+        "utf-8"
+      );
+      const violations = auditNewControlOverrides({
+        rootDir: fixture.rootDir,
+        baseRef: fixture.baseRef,
+      });
+      expect(violations).toHaveLength(1);
+      expect(violations[0].message).toMatch(/not statically classifiable/u);
+    } finally {
+      fs.rmSync(fixture.rootDir, { recursive: true, force: true });
+    }
+  });
+
   test("does not audit generated Storybook output as production source", () => {
     expect(
       auditFileContent(

@@ -90,9 +90,26 @@ export function resolveControlOverrideBase(
 
   const baseRef = process.env.GITHUB_BASE_REF?.trim();
   if (baseRef) {
-    const remoteRef = `origin/${baseRef}`;
-    if (tryGit(rootDir, ["rev-parse", "--verify", remoteRef])) {
-      return remoteRef;
+    for (const candidate of [`origin/${baseRef}`, baseRef]) {
+      const mergeBase = tryGit(rootDir, ["merge-base", candidate, "HEAD"]);
+      if (mergeBase) {
+        return mergeBase;
+      }
+      if (tryGit(rootDir, ["rev-parse", "--verify", candidate])) {
+        return candidate;
+      }
+    }
+  }
+
+  const upstreamMergeBase = tryGit(rootDir, ["merge-base", "@{u}", "HEAD"]);
+  if (upstreamMergeBase) {
+    return upstreamMergeBase;
+  }
+
+  for (const candidate of ["origin/main", "main", "origin/master", "master"]) {
+    const mergeBase = tryGit(rootDir, ["merge-base", candidate, "HEAD"]);
+    if (mergeBase) {
+      return mergeBase;
     }
   }
 
@@ -112,7 +129,7 @@ function addedLines(diff: string): Set<number> {
     if (/^@@ -\d+(?:,\d+)? \+\d+(?:,\d+)? @@/u.test(line)) {
       const plus = line.indexOf("+");
       const end = line.indexOf(" ", plus);
-      nextLine = Number(line.slice(plus + 1, end));
+      nextLine = Number(line.slice(plus + 1, end).split(",", 1)[0]);
       continue;
     }
     if (line.startsWith("+++")) {
@@ -120,6 +137,7 @@ function addedLines(diff: string): Set<number> {
     }
     if (line.startsWith("+")) {
       result.add(nextLine);
+      nextLine += 1;
     } else if (!line.startsWith("-")) {
       nextLine += 1;
     }
@@ -282,6 +300,46 @@ function staticClassTokens(value: string): string[] {
   return value.split(/\s+/u).filter(Boolean);
 }
 
+function isQuotedString(value: string): boolean {
+  const trimmed = value.trim();
+  return (
+    (trimmed.startsWith('"') && trimmed.endsWith('"')) ||
+    (trimmed.startsWith("'") && trimmed.endsWith("'"))
+  );
+}
+
+function isIdentifierExpression(value: string): boolean {
+  return /^!?[A-Za-z_$][\w$]*(?:\??\.[A-Za-z_$][\w$]*)*$/u.test(value.trim());
+}
+
+function isStaticallyClassifiableExpression(value: string): boolean {
+  const expression = value.trim();
+  if (isQuotedString(expression)) {
+    return true;
+  }
+
+  const question = expression.indexOf("?");
+  const colon = expression.indexOf(":", question + 1);
+  if (
+    question > 0 &&
+    colon > question &&
+    !expression.includes("?", question + 1)
+  ) {
+    return (
+      isQuotedString(expression.slice(question + 1, colon)) &&
+      isQuotedString(expression.slice(colon + 1))
+    );
+  }
+
+  const and = expression.indexOf("&&");
+  return (
+    and > 0 &&
+    !expression.includes("&&", and + 2) &&
+    isIdentifierExpression(expression.slice(0, and)) &&
+    isQuotedString(expression.slice(and + 2))
+  );
+}
+
 function ownedProperty(token: string): string | undefined {
   const normalized = token.replace(/!$/u, "").split(":").at(-1) ?? token;
   if (SAFE_LAYOUT_CLASSES.has(normalized)) {
@@ -405,7 +463,10 @@ function inspectElement(
     );
     const dynamicTokens = literals.flatMap(staticClassTokens);
     const unsafe = dynamicTokens.filter((token) => ownedProperty(token));
-    if (hasCall && unsafe.length === 0) {
+    if (
+      (hasCall || !isStaticallyClassifiableExpression(attr.value)) &&
+      unsafe.length === 0
+    ) {
       violations.push(
         violation(
           file,

@@ -531,11 +531,7 @@ export const ApprovalQueue = () => {
                     : undefined
                 }
                 aria-selected={activeStatus === "Pending"}
-                className={`${
-                  activeStatus === "Pending"
-                    ? "border-b-2 border-[var(--accent)] font-extrabold text-[var(--ink)]"
-                    : "text-[var(--ink-muted)]"
-                }`}
+                className="text-[var(--ink-muted)] aria-selected:border-b-2 aria-selected:border-[var(--accent)] aria-selected:font-extrabold aria-selected:text-[var(--ink)]"
                 onClick={() => handleTab("Pending")}
                 disabled={busy}
                 size="lg"
@@ -558,11 +554,7 @@ export const ApprovalQueue = () => {
                     : undefined
                 }
                 aria-selected={activeStatus === "Processed"}
-                className={`${
-                  activeStatus === "Processed"
-                    ? "border-b-2 border-[var(--accent)] font-extrabold text-[var(--ink)]"
-                    : "text-[var(--ink-muted)]"
-                }`}
+                className="text-[var(--ink-muted)] aria-selected:border-b-2 aria-selected:border-[var(--accent)] aria-selected:font-extrabold aria-selected:text-[var(--ink)]"
                 onClick={() => handleTab("Processed")}
                 disabled={busy}
                 size="lg"
