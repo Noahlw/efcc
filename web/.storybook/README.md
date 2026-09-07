@@ -26,3 +26,21 @@ This record is compatibility evidence, not a new runtime authority. Storybook re
 Run `pnpm storybook` from `web/`. The launcher records the owning worktree and process in a temporary, worktree-keyed marker. A later invocation reuses that process only when the marker still points to a live Storybook launcher from the same worktree; otherwise it selects the preferred `6006` port when free or an ephemeral free port. It never kills a process owned by another worktree.
 
 Startup prints the actual Storybook URL and the direct Management Hub Story URL. The launched Storybook process remains attached for HMR. The Playwright bridge uses the same selector and reuses only a live current-worktree server.
+
+## Current repair-qualified workflow
+
+The canonical workshop commands are run from the repository root with Node `22.18.0` and pnpm `11.7.0`:
+
+```sh
+fnm exec --using 22.18.0 pnpm --dir web storybook
+fnm exec --using 22.18.0 pnpm --dir web test:t07:foundation
+fnm exec --using 22.18.0 pnpm --dir web test:storybook
+fnm exec --using 22.18.0 pnpm --dir web storybook:build
+fnm exec --using 22.18.0 pnpm --dir web storybook:verify-index
+```
+
+`storybook:verify-index` must run after `storybook:build`; it checks the actual generated `storybook-static/index.json`, all discovered Story IDs, all primary baseline PSNs, and the independent Screen Catalog obligations. The current catalog is **35 screen obligations / 39 Stories**. The credential upgrade Story is supporting coverage for `auth-sign-in`; the registrations fallback is a directly reviewable Management/Identity redirect boundary.
+
+Use the printed URL and direct Story URL rather than assuming port `6006`. The stable reference is the PSN, for example `PSN-MGMT-HUB-DEFAULT`; the Storybook slug is only a runtime locator. HMR is available while the same-worktree launcher remains attached. Review named Stories at `390`, `799`, `800`, and `1440`; a Controls state is not approval evidence.
+
+Troubleshooting: an occupied port selects a free port; a stale marker is ignored unless it names a live launcher from this worktree; missing HTTP is handled by the Story's system-boundary MSW fixture; a missing baseline or import is fixed in the real CSF/catalog declaration. Do not kill another worktree's process, add a fake Story, or treat workshop fidelity as design or backend approval.

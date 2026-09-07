@@ -1,5 +1,9 @@
 # T07.4 Management/Identity Storybook acceptance trace
 
+## Current repair addendum — 2026-09-07
+
+The shipped `/registrations` redirect boundary is classified with the Management/Identity family, not Programs. `RegistrationsFallback` is a directly reviewable supporting production page composition with `PSN-MGMT-REGISTRATIONS-FALLBACK`; the destination remains `/management?module=approvals` and no product behavior was added.
+
 **Ticket:** T07.4 / #569
 **Scope:** Management/Identity presentation catalog only; no redesign,
 permission/domain migration, backend change, or Attendance/T07.5 coverage.

@@ -56,7 +56,7 @@ The repository has two independent pnpm install boundaries with separate lockfil
 
 ### Fast CI — the single automatic gate
 
-The only automatic workflow is **Fast CI** (`.github/workflows/fast-ci.yml`): one job that runs `pnpm verify:fast` — root and `web/` typechecks. It is the single required status check on `main`.
+The only automatic workflow is **Fast CI** (`.github/workflows/fast-ci.yml`): it runs the affected-scope regression, runs the cheap Storybook/catalog foundation check for frontend-capable or uncertain changes, and then runs `pnpm verify:fast` — root and `web/` typechecks. It is the single required status check on `main`; backend-only changes may skip the catalog check, while uncertain shared changes fail closed and run it.
 
 All other deterministic, credential-free checks run locally before commits through the pre-commit hook and `pnpm verify:precommit`:
 

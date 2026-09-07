@@ -780,6 +780,18 @@ T07 start snapshots; those snapshots remain historical provenance.
 - **Scope guard:** no universal pixel baseline, hardware/camera/native-print claim, `STACK_GREEN`, merge, or child-issue closure is claimed. The five-minute Programs canary was not rerun; B-003 remains `OPEN` independently.
 - **Next safe action:** human workshop-fidelity/qualification review of shared PR [#573](https://github.com/Noahlw/efcc/pull/573) with owner ApprovalPackage evidence; do not merge.
 
+#### T07 PR #573 repair qualification — 2026-09-07
+
+- **Status:** `MACHINE_GREEN / WAITING_HUMAN`; PR #573 remains `OPEN`, not merged and not `STACK_GREEN`.
+- **Current implementation SHA:** `3d94c972` plus repair documentation/evidence commits as recorded by the live branch; original T07.1–T07.6 checkpoint provenance remains unchanged.
+- **Repair commits:** `ea286792` — affected-scope deletion/rename fail-closed regression; `3d94c972` — independent Screen Catalog, parser-backed route intent, settled-state contracts, credential-upgrade/registrations dispositions, and actual Storybook index reconciliation.
+- **Current catalog:** 35 independent Screen Catalog obligations and 39 discovered/generated Storybook entries. `storybook:verify-index` reconciles the generated `storybook-static/index.json` after build.
+- **Negative regressions:** deletion/rename and invalid-base scope fixtures; independent baseline deletion/rename/orphan/supersession catalog fixtures; production `parseProgramsIntent()` proof for Notifications; Programs loading-shell rejection plus settled semantic/data markers.
+- **Current evidence:** T07 foundation `7 files / 40 tests`; Storybook/Vitest `5 files / 39 tests`; Storybook build `10.6.0`; generated index reconciliation `39 Stories / 35 obligations`; root pre-commit aggregate `60 files / 891 tests`; governance full audit `Active Violations: 0`.
+- **Disposition:** S1/P1–P5 are fixed with focused regression evidence. P6 durable workflow documentation is updated in the same repair pass. S2/S3 remain non-blocking heuristics with no broad refactor. B-003 remains `OPEN` and was not rerun or reinterpreted.
+- **Owner decisions still required:** representative workshop-fidelity review at `390`, `799`, `800`, and `1440`; genuine ApprovalPackage evidence with reviewer, reviewed SHA, PSNs, viewports, and artifact references; any remaining taxonomy/gap decision. No agent approval is fabricated.
+- **Next safe action:** owner review of PR #573 at the representative Story URLs; do not merge, close issues, claim `STACK_GREEN`, or begin T08+.
+
 ## 15. Human approval queue
 
 | Ticket | Scenario / surface | SHA | Viewports / browser / device | Status | Owner note | Approval artifact |

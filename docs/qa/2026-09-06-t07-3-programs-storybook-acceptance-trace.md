@@ -1,5 +1,9 @@
 # T07.3 Programs Storybook acceptance trace
 
+## Current repair addendum — 2026-09-07
+
+Every Programs baseline now requires a screen-specific settled semantic/data marker. A representative loading-shell fixture is a negative control and cannot satisfy readiness; the shared `<main>` landmark alone is no longer accepted. Notifications intent is validated through production `parseProgramsIntent()` and is programless.
+
 **Ticket:** T07.3 / #568
 **Scope:** Programs presentation catalog only; no T12 migration, redesign,
 backend/domain change, hardware proof, or `/prototype` reuse.

@@ -1,5 +1,9 @@
 # T07.2 Public/Auth/Member/Communications Storybook acceptance trace
 
+## Current repair addendum — 2026-09-07
+
+The legacy-PIN credential upgrade remains owned by `auth-sign-in` and is not a second route. Current repair coverage adds the supporting `PSN-AUTH-SIGN-IN-CREDENTIAL-UPGRADE` Story, which reaches the real production upgrade form through a synthetic system-boundary login response. The independent Screen Catalog still has one `auth-sign-in` obligation and retains the stable primary `PSN-AUTH-SIGN-IN-DEFAULT`.
+
 **Ticket:** T07.2 / #567
 **Scope:** Baseline Storybook catalog only; no route redesign, backend change, or T07.3–T07.6 work.
 **Status:** `CHECKPOINT_GREEN`
