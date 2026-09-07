@@ -9,12 +9,13 @@ the handoff package, and it does not grant final design approval.
 - Effective qualification comparison base: `af4857e8e3a86f5979840c70f06999f569e9ed1a`.
 - Original T08 implementation base: `af4857e8e3a86f5979840c70f06999f569e9ed1a`.
 - Production implementation HEAD: `1fbb4d64a93be2e7d5c8d381f66c88e1b9896c76` (`fix(t08): close review regressions`). The later acceptance-trace update is documentation/evidence only.
-- Evidence closeout commits through the verified PR head: `9ed1e5bb` (acceptance evidence), `37951c11` (review outcomes), and `c77dc1da` (canonical tracker); all are documentation-only after the production implementation.
+- Evidence closeout commits: `9ed1e5bb` (acceptance evidence), `37951c11` (review outcomes), and `c77dc1da` (canonical tracker). The latest qualification/tooling fix is `1efa3b1f3a8ac9e3c4794003a7961a13653d2266` (`fix(governance): preserve unchanged affected waivers`), which is separate from the production control implementation.
+- Latest verified PR head: `1efa3b1f3a8ac9e3c4794003a7961a13653d2266`.
 - Branch/worktree: `rescue/t08-control-contracts` / `/Users/noah.wong/Desktop/code/EFCC-dev/.worktrees/t08-control-contracts`.
 - PR: [#574](https://github.com/Noahlw/efcc/pull/574), target `rescue/t07-storybook-foundation`, kept DRAFT and OPEN.
 - Immediate parent: PR [#573](https://github.com/Noahlw/efcc/pull/573), OPEN/unmerged/mergeable, head `af4857e8e3a86f5979840c70f06999f569e9ed1a`.
 - Owner contract checkpoint: PR #574 at `abf0914b06f6b62d605b683f98bc66fe14579255`; D1, D2, and D3 were approved with conditions for continued implementation only.
-- Current local state: implementation and evidence closeout are committed; generated `web/storybook-static/` was moved out of the worktree and is not tracked.
+- Current local state: implementation, evidence closeout, and the qualification fix are committed; generated `web/storybook-static/` was moved out of the worktree and is not tracked.
 - T07 preservation: `SCREEN_PRESENTATION_DECLARATIONS` remains 39, `SCREEN_CATALOG` remains 35 obligations, and the existing screen PSNs/Stories remain in the T07 catalog path.
 - T08 control presentation: seven real production-primitive Stories use durable control PSNs and `subject: "control"`; controls have stable `controlId`, `route: null`, and `intent: null`, and do not enter the Screen Catalog.
 - Live HMR: `http://127.0.0.1:6007/`.
@@ -48,7 +49,7 @@ required `kind: design` ApprovalPackage.
 | AC-07 | PASS | Standards source review found CVA axes are semantic (`variant`, `size`, approved `shape`) and route/domain vocabulary did not move into primitives. CVA definitions remain colocated with their management components; public exports remain unchanged. |
 | AC-08 | PASS | Button/Input/Textarea/Select shared padding/radius/focus and target ownership, compact Switch visual track/thumb geometry, and Icon Button target geometry are asserted in `web/lib/t08-control-geometry.test.tsx`, `web/lib/t08-control-contracts.test.tsx`, and the browser suite. |
 | AC-09 | PASS | Pinned audit receipt: 183 parsed files, 135 excluded, 586 static JSX occurrences, 81 unresolved Button class expressions and 15 ancestor-style candidates for manual review. `docs/qa/2026-09-07-t08-caller-dispositions.md` resolves all of them: 30-record register, 9 `MIGRATE_NOW`, 72 explicit `BOUNDED_LATER_DEBT`, 2 proven-false-positive spreads, and no `UNKNOWN` or `UNCLASSIFIED` debt. |
-| AC-10 | PASS | The focused contract/geometry/ratchet run passed 3 files / 17 tests; `control-override-ratchet.test.ts` passed 9/9, including owned-geometry rejection, multiline added-line coverage, mixed dynamic-branch fail-closed behavior, supplied-base resolution, generated-output exclusion, and the historical-attribute regression. Pinned-base release audit passed with 0 active violations. |
+| AC-10 | PASS | The focused contract/geometry/ratchet run passed 3 files / 17 tests; `control-override-ratchet.test.ts` passed 9/9, including owned-geometry rejection, multiline added-line coverage, mixed dynamic-branch fail-closed behavior, supplied-base resolution, generated-output exclusion, and the historical-attribute regression. The affected governance audit now preserves unchanged baseline findings while keeping newly added violations active; pinned-base release audit passed with 0 active violations. |
 | AC-11 | PASS | Affected Storybook scope passed 13/13; T07 foundation passed 9 files / 44 tests; Storybook/Vitest passed 6 files / 46 tests; Storybook build `10.6.0` passed; built-index reconciliation passed with 46/35/7. |
 | AC-12 | PASS | `pnpm test:t08:controls` passed 20/20 at 390/799/800/1440 with zero retries and zero skips. JSON artifact: `tests/e2e/test-results/t08-control-contracts/storybook.json`. |
 | AC-13 | PASS (no baseline promoted) | No selective visual baseline was added or promoted. Promotion remains intentionally deferred until a stable, high-leverage baseline is earned and owner-approved. |
@@ -64,6 +65,7 @@ required `kind: design` ApprovalPackage.
 | Duplicate/deleted/renamed PSN or baseline fails closed | PASS | Existing T07 catalog negative tests remain green; the control metadata negative test rejects invented `screenId`, non-null route, and non-null intent. |
 | Story/index discovery | PASS | Built `storybook-static/index.json` reconciled by `storybook:verify-index`; generated output is not shipped or tracked. |
 | Broken control contract | PASS | T08 Playwright disposable undersized fixture fails the target-floor assertion as expected; it is not an active Story or shipped control. |
+| Affected governance baseline | PASS | The CI-equivalent affected audit against `af4857e8...` scanned 36 files, reported 0 active violations, and retained 3 unchanged route-CVA findings as waivers; the focused regression also proves a newly added inline style remains active. |
 | Composition | PASS | Focused component tests cover `asChild`, native form submit, Dialog/AlertDialog action/cancel wrappers, Checkbox/Switch labels and keyboard, and Select keyboard/typeahead/Escape/focus return. |
 | Caller ownership | PASS | Census disposition record distinguishes layout/placement, noninteractive status, hidden input, native exceptions, and later ticket-owned contextual controls from primitive-owned styling. |
 | Retained T07 scope | PASS | T07 suite remains 9 files / 44 tests; 39 screen declarations and 35 independent obligations continue to validate. No T07 history was rewritten. |
@@ -78,10 +80,11 @@ required `kind: design` ApprovalPackage.
 
 ## Actual run ledger
 
-All current-head rows below ran against the working-tree contents committed as
-implementation HEAD `1fbb4d64a93be2e7d5c8d381f66c88e1b9896c76`; the later
-acceptance-trace update is documentation-only. Node `22.18.0` and pnpm
-`11.7.0` were used unless noted.
+UI rows below ran against production implementation HEAD
+`1fbb4d64a93be2e7d5c8d381f66c88e1b9896c76`; governance-fix rows and the final
+aggregate ran against qualification HEAD
+`1efa3b1f3a8ac9e3c4794003a7961a13653d2266`. Node `22.18.0` and pnpm `11.7.0`
+were used unless noted.
 
 | Command | Result / artifact |
 |---|---|
@@ -94,13 +97,15 @@ acceptance-trace update is documentation-only. Node `22.18.0` and pnpm
 | `pnpm test:t08:controls` | PASS, 20/20; 0 retries, 0 skips, four viewport projects; JSON artifact at `tests/e2e/test-results/t08-control-contracts/storybook.json` |
 | `pnpm --dir web test:components` | PASS, 64 files / 910 tests; jsdom emitted existing diagnostics, with no failed tests |
 | `pnpm --dir web exec vitest run --config vitest.components.config.ts lib/t08-control-contracts.test.tsx lib/t08-control-geometry.test.tsx lib/governance/control-override-ratchet.test.ts` | PASS, 3 files / 17 tests; ratchet 9/9 |
-| `pnpm verify:fast` | PASS, root and web TypeScript checks |
+| `pnpm test:governance` | PASS, 19/19 governance tests, including unchanged affected-waiver preservation and new-violation detection |
+| `GITHUB_BASE_SHA=af4857e8e3a86f5979840c70f06999f569e9ed1a pnpm verify:governance:affected --control-base=af4857e8e3a86f5979840c70f06999f569e9ed1a` | PASS, 36 files scanned / 0 active violations / 3 unchanged baseline waivers |
+| `pnpm verify:fast` | PASS at qualification HEAD, root and web TypeScript checks |
 | `pnpm verify:governance:release` | PASS, 379 files scanned / 0 active violations / 69 historical waivers |
 | `pnpm exec tsx scripts/audit-governance.ts --mode=release --control-base=af4857e8e3a86f5979840c70f06999f569e9ed1a` | PASS, pinned D3 comparison; 379 files scanned / 0 active violations |
 | Separate Standards review | PASS, final implementation diff reviewed from `af4857e8e3a86f5979840c70f06999f569e9ed1a` to `1fbb4d64a93be2e7d5c8d381f66c88e1b9896c76`; no documented-standard breach. |
 | Separate Spec review | PASS, final implementation diff reviewed against live #513 plus D1/D2/D3; no hard missing, extra, or wrong requirement. |
 | `pnpm verify:precommit` | PASS, full existing pre-commit aggregate completed with exit 0 after the review fixes. |
-| `pnpm verify:programs` | PASS at current PR head `c77dc1da23a88bf03de8e3763188546136ce7e35`; `functional-passed`, all four stages passed; artifact at `test-results/programs-promotion/20260907t180328424z`. |
+| `pnpm verify:programs` | PASS at qualification HEAD `1efa3b1f3a8ac9e3c4794003a7961a13653d2266`; `functional-passed`, all four stages passed; artifact at `test-results/programs-promotion/20260907t182236490z`. |
 
 The T08 browser run's JSON result reports expected 20, skipped 0,
 unexpected 0, flaky 0, with all 20 individual tests passed.
@@ -123,7 +128,7 @@ unexpected 0, flaky 0, with all 20 individual tests passed.
 - Contract decision record: [`2026-09-07-t08-contract-decision-record.md`](2026-09-07-t08-contract-decision-record.md), with the owner result `APPROVED WITH CONDITIONS` for D1/D2/D3.
 - Design-review packet: the seven-row durable PSN/Story table above plus the current machine evidence; ready for genuine owner review.
 - ApprovalPackage ID: NONE YET. T07's APV is not reused.
-- Current qualification state after the final aggregate Programs command: `functional-passed` at `c77dc1da23a88bf03de8e3763188546136ce7e35`; Worker Contract, Browser Acceptance, Responsive Matrix, and non-browser precommit all passed. This is machine qualification only; retain the human gate and do not promote.
+- Current qualification state after the final aggregate Programs command: `functional-passed` at `1efa3b1f3a8ac9e3c4794003a7961a13653d2266`; Worker Contract, Browser Acceptance, Responsive Matrix, and non-browser precommit all passed. This is machine qualification only; retain the human gate and do not promote.
 - Merge authorization: NOT GIVEN.
 - Actual merge / issue reconciliation: NOT DONE.
 - B-003: remains OPEN and independent; no runtime fix or relabel is claimed.
