@@ -8,12 +8,12 @@ the handoff package, and it does not grant final design approval.
 
 - Effective qualification comparison base: `af4857e8e3a86f5979840c70f06999f569e9ed1a`.
 - Original T08 implementation base: `af4857e8e3a86f5979840c70f06999f569e9ed1a`.
-- Production implementation HEAD: `30fbd79df0afa255498eb700f8d572f264140469` (`fix(t08): co-locate variants and close ratchet gaps`). Later closeout changes are documentation/evidence only.
+- Production implementation HEAD: `1fbb4d64a93be2e7d5c8d381f66c88e1b9896c76` (`fix(t08): close review regressions`). The later acceptance-trace update is documentation/evidence only.
 - Branch/worktree: `rescue/t08-control-contracts` / `/Users/noah.wong/Desktop/code/EFCC-dev/.worktrees/t08-control-contracts`.
 - PR: [#574](https://github.com/Noahlw/efcc/pull/574), target `rescue/t07-storybook-foundation`, kept DRAFT and OPEN.
 - Immediate parent: PR [#573](https://github.com/Noahlw/efcc/pull/573), OPEN/unmerged/mergeable, head `af4857e8e3a86f5979840c70f06999f569e9ed1a`.
 - Owner contract checkpoint: PR #574 at `abf0914b06f6b62d605b683f98bc66fe14579255`; D1, D2, and D3 were approved with conditions for continued implementation only.
-- Current local state before documentation closeout: branch was three commits ahead of the remote PR head; only generated `web/storybook-static/` was untracked.
+- Current local state before documentation closeout: implementation is committed at `1fbb4d64a93be2e7d5c8d381f66c88e1b9896c76`; generated `web/storybook-static/` was moved out of the worktree and the acceptance-trace update is the only remaining closeout change.
 - T07 preservation: `SCREEN_PRESENTATION_DECLARATIONS` remains 39, `SCREEN_CATALOG` remains 35 obligations, and the existing screen PSNs/Stories remain in the T07 catalog path.
 - T08 control presentation: seven real production-primitive Stories use durable control PSNs and `subject: "control"`; controls have stable `controlId`, `route: null`, and `intent: null`, and do not enter the Screen Catalog.
 - Live HMR: `http://127.0.0.1:6007/`.
@@ -22,13 +22,13 @@ the handoff package, and it does not grant final design approval.
 
 | Control | PSN | Direct Story URL |
 |---|---|---|
-| Button | `PSN-CONTROL-BUTTON` | [Controls / Button States](http://127.0.0.1:6007/iframe.html?id=controls-button--states&viewMode=story) |
-| Icon Button | `PSN-CONTROL-ICON-BUTTON` | [Controls / Icon Button States](http://127.0.0.1:6007/iframe.html?id=controls-icon-button--states&viewMode=story) |
-| Input | `PSN-CONTROL-INPUT` | [Controls / Input States](http://127.0.0.1:6007/iframe.html?id=controls-input--states&viewMode=story) |
-| Textarea | `PSN-CONTROL-TEXTAREA` | [Controls / Textarea States](http://127.0.0.1:6007/iframe.html?id=controls-textarea--states&viewMode=story) |
-| Checkbox | `PSN-CONTROL-CHECKBOX` | [Controls / Checkbox States](http://127.0.0.1:6007/iframe.html?id=controls-checkbox--states&viewMode=story) |
-| Switch | `PSN-CONTROL-SWITCH` | [Controls / Switch States](http://127.0.0.1:6007/iframe.html?id=controls-switch--states&viewMode=story) |
-| Select | `PSN-CONTROL-SELECT` | [Controls / Select States](http://127.0.0.1:6007/iframe.html?id=controls-select--states&viewMode=story) |
+| Button | `PSN-CONTROL-BUTTON` | [Controls / Button States](http://127.0.0.1:6007/iframe.html?id=controls--button-states&viewMode=story) |
+| Icon Button | `PSN-CONTROL-ICON-BUTTON` | [Controls / Icon Button States](http://127.0.0.1:6007/iframe.html?id=controls--icon-button-states&viewMode=story) |
+| Input | `PSN-CONTROL-INPUT` | [Controls / Input States](http://127.0.0.1:6007/iframe.html?id=controls--input-states&viewMode=story) |
+| Textarea | `PSN-CONTROL-TEXTAREA` | [Controls / Textarea States](http://127.0.0.1:6007/iframe.html?id=controls--textarea-states&viewMode=story) |
+| Checkbox | `PSN-CONTROL-CHECKBOX` | [Controls / Checkbox States](http://127.0.0.1:6007/iframe.html?id=controls--checkbox-states&viewMode=story) |
+| Switch | `PSN-CONTROL-SWITCH` | [Controls / Switch States](http://127.0.0.1:6007/iframe.html?id=controls--switch-states&viewMode=story) |
+| Select | `PSN-CONTROL-SELECT` | [Controls / Select States](http://127.0.0.1:6007/iframe.html?id=controls--select-states&viewMode=story) |
 
 These URLs are genuine HMR Storybook locators for owner review. They are not
 human design approval evidence until an owner reviews them and supplies the
@@ -43,17 +43,17 @@ required `kind: design` ApprovalPackage.
 | AC-03 | PASS | Real browser Stories cover Traditional Chinese and Latin Button wrapping, native single-line Input behavior, multiline Textarea reflow, and bounded long Select values/open options. T08 Playwright passed at 390, 799, 800, and 1440 widths. |
 | AC-04 | PASS | Story/unit and browser coverage exercises Button disabled/busy/destructive/icon states, Input invalid/disabled, Textarea invalid/disabled, Checkbox checked/unchecked/indeterminate/disabled, Switch on/off/disabled, and Select placeholder/selected/open states. |
 | AC-05 | PASS | Primitive geometry tests and browser measurements enforce the approved 44px app-facing floor; Textarea retains its larger multiline minimum. The browser includes a deliberately undersized disposable fixture and proves the detector fails it. |
-| AC-06 | PASS | `pnpm --dir web test:components` passed 64 files / 906 tests; public ref/attribute, form, `asChild`, Checkbox label/Space, Switch keyboard, and Radix Select selection/Escape/focus-return contracts are covered. |
+| AC-06 | PASS | `pnpm --dir web test:components` passed 64 files / 910 tests; public ref/attribute, form, `asChild`, Checkbox label/Space, Switch keyboard, and Radix Select selection/Escape/focus-return contracts are covered. |
 | AC-07 | PASS | Standards source review found CVA axes are semantic (`variant`, `size`, approved `shape`) and route/domain vocabulary did not move into primitives. CVA definitions remain colocated with their management components; public exports remain unchanged. |
 | AC-08 | PASS | Button/Input/Textarea/Select shared padding/radius/focus and target ownership, compact Switch visual track/thumb geometry, and Icon Button target geometry are asserted in `web/lib/t08-control-geometry.test.tsx`, `web/lib/t08-control-contracts.test.tsx`, and the browser suite. |
 | AC-09 | PASS | Pinned audit receipt: 183 parsed files, 135 excluded, 586 static JSX occurrences, 81 unresolved Button class expressions and 15 ancestor-style candidates for manual review. `docs/qa/2026-09-07-t08-caller-dispositions.md` resolves all of them: 30-record register, 9 `MIGRATE_NOW`, 72 explicit `BOUNDED_LATER_DEBT`, 2 proven-false-positive spreads, and no `UNKNOWN` or `UNCLASSIFIED` debt. |
-| AC-10 | PASS | `control-override-ratchet.test.ts` passed 1 file / 5 tests, including new owned-geometry rejection, multiline added-line coverage, mixed dynamic-branch fail-closed behavior, supplied-base resolution, and generated-output exclusion. Pinned-base release audit passed with 0 active violations. |
+| AC-10 | PASS | The focused contract/geometry/ratchet run passed 3 files / 17 tests; `control-override-ratchet.test.ts` passed 9/9, including owned-geometry rejection, multiline added-line coverage, mixed dynamic-branch fail-closed behavior, supplied-base resolution, generated-output exclusion, and the historical-attribute regression. Pinned-base release audit passed with 0 active violations. |
 | AC-11 | PASS | Affected Storybook scope passed 13/13; T07 foundation passed 9 files / 44 tests; Storybook/Vitest passed 6 files / 46 tests; Storybook build `10.6.0` passed; built-index reconciliation passed with 46/35/7. |
 | AC-12 | PASS | `pnpm test:t08:controls` passed 20/20 at 390/799/800/1440 with zero retries and zero skips. JSON artifact: `tests/e2e/test-results/t08-control-contracts/storybook.json`. |
 | AC-13 | PASS (no baseline promoted) | No selective visual baseline was added or promoted. Promotion remains intentionally deferred until a stable, high-leverage baseline is earned and owner-approved. |
 | AC-14 | OWNER_PENDING | The seven durable PSNs, Story locators, contracts, viewports, and machine evidence are ready for review. No T08 design ApprovalPackage, APV ID, reviewer, or approval timestamp has been fabricated. |
 | AC-15 | PASS | Source review and focused public-contract tests preserve production exports, props, refs, native attributes, Radix behavior, form behavior, `asChild`, caller-supplied `aria-busy`, and domain/permission/API/URL boundaries. |
-| AC-16 | PASS | Standards and Spec reviews were run as separate fixed-base passes against `af4857e8...HEAD`; both reports are recorded below. Final machine gates are complete before the human design gate. |
+| AC-16 | PASS | Fresh Standards and Spec passes against `af4857e8...1fbb4d64` found no documented-standard breach and no hard missing, extra, or wrong requirement. Fowler smell observations, if any, remain non-blocking judgement calls. |
 
 ## Negative and integrity checks
 
@@ -77,9 +77,10 @@ required `kind: design` ApprovalPackage.
 
 ## Actual run ledger
 
-All rows below ran against implementation HEAD
-`30fbd79df0afa255498eb700f8d572f264140469`, before documentation-only closeout
-changes. Node `22.18.0` and pnpm `11.7.0` were used unless noted.
+All current-head rows below ran against the working-tree contents committed as
+implementation HEAD `1fbb4d64a93be2e7d5c8d381f66c88e1b9896c76`; the later
+acceptance-trace update is documentation-only. Node `22.18.0` and pnpm
+`11.7.0` were used unless noted.
 
 | Command | Result / artifact |
 |---|---|
@@ -90,15 +91,14 @@ changes. Node `22.18.0` and pnpm `11.7.0` were used unless noted.
 | `pnpm --dir web storybook:build` | PASS, Storybook `10.6.0`; generated `web/storybook-static/` removed before closeout |
 | `pnpm --dir web storybook:verify-index` | PASS, 46 Stories / 35 Screen Catalog obligations / 7 control Stories; all baselines resolvable |
 | `pnpm test:t08:controls` | PASS, 20/20; 0 retries, 0 skips, four viewport projects; JSON artifact at `tests/e2e/test-results/t08-control-contracts/storybook.json` |
-| `pnpm --dir web test:components` | PASS, 64 files / 906 tests; jsdom emitted existing `navigation to another Document` and `Window.scrollTo()` diagnostics, with no failed tests |
-| `pnpm --dir web exec vitest run --config vitest.components.config.ts lib/t08-control-contracts.test.tsx lib/t08-control-geometry.test.tsx` | PASS, 2 files / 8 tests |
-| `pnpm --dir web exec vitest run --config vitest.components.config.ts lib/governance/control-override-ratchet.test.ts` | PASS, 1 file / 5 tests |
+| `pnpm --dir web test:components` | PASS, 64 files / 910 tests; jsdom emitted existing diagnostics, with no failed tests |
+| `pnpm --dir web exec vitest run --config vitest.components.config.ts lib/t08-control-contracts.test.tsx lib/t08-control-geometry.test.tsx lib/governance/control-override-ratchet.test.ts` | PASS, 3 files / 17 tests; ratchet 9/9 |
 | `pnpm verify:fast` | PASS, root and web TypeScript checks |
 | `pnpm verify:governance:release` | PASS, 379 files scanned / 0 active violations / 69 historical waivers |
 | `pnpm exec tsx scripts/audit-governance.ts --mode=release --control-base=af4857e8e3a86f5979840c70f06999f569e9ed1a` | PASS, pinned D3 comparison; 379 files scanned / 0 active violations |
-| Separate Standards review | PASS; no documented-standard violation. Any smell notes are heuristics only. |
-| Separate Spec review | PASS; no hard missing/extra/wrong requirement found against #513 and D1/D2/D3. |
-| `pnpm verify:precommit` | PASS, full existing pre-commit aggregate; browser/responsive runner unit 44 files / 606 tests and all remaining configured stages completed with exit 0. |
+| Separate Standards review | PASS, final implementation diff reviewed from `af4857e8e3a86f5979840c70f06999f569e9ed1a` to `1fbb4d64a93be2e7d5c8d381f66c88e1b9896c76`; no documented-standard breach. |
+| Separate Spec review | PASS, final implementation diff reviewed against live #513 plus D1/D2/D3; no hard missing, extra, or wrong requirement. |
+| `pnpm verify:precommit` | PASS, full existing pre-commit aggregate completed with exit 0 after the review fixes. |
 | `pnpm verify:programs` | Pending; required last command in the final current-head matrix. |
 
 The T08 browser run's JSON result reports expected 20, skipped 0,
@@ -106,15 +106,15 @@ unexpected 0, flaky 0, with all 20 individual tests passed.
 
 ## Standards review
 
-- Fixed point: `git diff af4857e8e3a86f5979840c70f06999f569e9ed1a...HEAD`.
+- Fixed point: review the implementation diff `af4857e8e3a86f5979840c70f06999f569e9ed1a...1fbb4d64a93be2e7d5c8d381f66c88e1b9896c76`; the subsequent trace commit is documentation-only.
 - Standards sources: `AGENTS.md`, `web/AGENTS.md`, `DESIGN.md`, `TESTING.md`, `docs/implementation/ui-control-recovery-governance.md`, ADR-0043, ADR-0045, and `web/COMPONENT_INVENTORY.md`.
-- Result: PASS. The independent review found no documented-standard breach, no parallel AppButton/EFCCButton layer, no source/API boundary violation, and no helper-variant leakage. Any Fowler smell observations were judgement-call heuristics and did not block qualification.
+- Result: PASS at `af4857e8e3a86f5979840c70f06999f569e9ed1a...1fbb4d64a93be2e7d5c8d381f66c88e1b9896c76`; no documented-standard breach, no parallel control layer, and no source/API boundary violation. Any Fowler smell observations remain judgement-call heuristics and do not block qualification.
 
 ## Spec review
 
-- Fixed point: `git diff af4857e8e3a86f5979840c70f06999f569e9ed1a...HEAD`.
+- Fixed point: review the implementation diff `af4857e8e3a86f5979840c70f06999f569e9ed1a...1fbb4d64a93be2e7d5c8d381f66c88e1b9896c76`; the subsequent trace commit is documentation-only.
 - Sources: live #513 (OPEN, current issue body), `references/ISSUE_513_SNAPSHOT.md`, the T08 execution/verification/closeout handoff documents, and the owner D1/D2/D3 decision.
-- Result: PASS for the implemented machine scope. The independent review found no hard missing, extra, or incorrect T08 requirement. It separately confirmed that the D1/D2/D3 owner decision is implementation authorization, not final T08 design approval.
+- Result: PASS at `af4857e8e3a86f5979840c70f06999f569e9ed1a...1fbb4d64a93be2e7d5c8d381f66c88e1b9896c76`; no hard missing, extra, or wrong requirement against live #513 and D1/D2/D3. The owner decision remains implementation authorization, not final T08 design approval.
 - Qualification boundary: AC-14 remains `OWNER_PENDING`; no APV, design reviewer, timestamp, visual baseline, merge, issue closure, or T09 authorization is inferred.
 
 ## Human / promotion state
@@ -122,7 +122,7 @@ unexpected 0, flaky 0, with all 20 individual tests passed.
 - Contract decision record: [`2026-09-07-t08-contract-decision-record.md`](2026-09-07-t08-contract-decision-record.md), with the owner result `APPROVED WITH CONDITIONS` for D1/D2/D3.
 - Design-review packet: the seven-row durable PSN/Story table above plus the current machine evidence; ready for genuine owner review.
 - ApprovalPackage ID: NONE YET. T07's APV is not reused.
-- Current qualification state before the final aggregate Programs command: `MACHINE_QUALIFIED / WAITING_HUMAN` pending that required last command; retain any actual failure and do not promote.
+- Current qualification state before the final aggregate Programs command: machine evidence is green so far, with `verify:programs` still pending; retain any actual failure and do not promote.
 - Merge authorization: NOT GIVEN.
 - Actual merge / issue reconciliation: NOT DONE.
 - B-003: remains OPEN and independent; no runtime fix or relabel is claimed.

@@ -132,3 +132,19 @@ than part of the 83 unresolved flags.
 
 The additional review leaves no `UNKNOWN`, `UNCLASSIFIED`, or silently retained
 Home CMS shared-owned override in the current T08 scope.
+
+## Pre-existing route-CVA findings in the implementation diff
+
+The fixed implementation diff still reports three route-level CVA findings that
+predate T08. They are covered by the exact active waiver
+`WVR-HISTORICAL-MANAGEMENT-PANEL-CVA`; they are not new T08 caller overrides,
+and the waiver does not authorize adding equivalent findings:
+
+| Finding | Existing source line | Disposition | Waiver boundary |
+|---|---|---|---|
+| `RULE-NO-ROUTE-CVA` | `web/app/management/directory-frame.tsx:3` | `WVR-HISTORICAL-MANAGEMENT-PANEL-CVA` | Existing management pattern CVA; T08 changed Button caller geometry/API exposure only. |
+| `RULE-NO-ROUTE-CVA` | `web/app/management/management-action-framework.tsx:2` | `WVR-HISTORICAL-MANAGEMENT-PANEL-CVA` | Existing management pattern CVA; T08 preserves its ActionSurface/overlay ownership. |
+| `RULE-NO-ROUTE-CVA` | `web/app/management/permission-editor-panel.tsx:3` | `WVR-HISTORICAL-MANAGEMENT-PANEL-CVA` | Existing management pattern CVA; T08 removes shared-owned Button geometry while preserving permission workflow. |
+
+The registry also contains the same historical waiver entries for unchanged
+management files; those are not part of this three-finding T08 diff disposition.
