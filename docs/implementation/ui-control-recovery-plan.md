@@ -17,6 +17,8 @@
 
 > **Current update — 2026-09-07:** Exploratory control Stories/tests and the D1/D2/D3 proposal record are committed on `rescue/t08-control-contracts`; [PR #574](https://github.com/Noahlw/efcc/pull/574) is `DRAFT / OPEN / MERGEABLE` against `rescue/t07-storybook-foundation`. T08 is `OWNER_DECISION_REQUIRED`; no protected control mapping, design approval, merge, issue closure, B-003 change, or T09+ work is claimed.
 
+> **Latest T08 evidence — 2026-09-07:** Current clean HEAD is `4c134bc229ae97dead6f8b2ae595fdcc54c54337`; PR #574 live head matches it. The Storybook build passed, the screen-only index check correctly failed closed on six exploratory control IDs, and the next owner action is the exact D1/D2/D3 decision in the linked decision record.
+
 - **Status:** `IN_PROGRESS` — Batch A audit closeout and pre-implementation acceptance trace are recorded in [`docs/qa/2026-09-07-t08-control-acceptance-trace.md`](../qa/2026-09-07-t08-control-acceptance-trace.md).
 - **Parent:** live PR #573 is OPEN/unmerged/mergeable at `af4857e8e3a86f5979840c70f06999f569e9ed1a`; T08 branch is ticket-isolated from that exact head.
 - **Census:** 183 parsed source files, 586 static JSX occurrences, supplied 30-record register dispositioned; unresolved dynamic/ancestor cases remain explicit.

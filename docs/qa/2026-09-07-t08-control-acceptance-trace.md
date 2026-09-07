@@ -10,7 +10,7 @@ handoff package.
 - Effective fixed base: `af4857e8e3a86f5979840c70f06999f569e9ed1a`
 - Original start base: `af4857e8e3a86f5979840c70f06999f569e9ed1a`
 - Branch / worktree / PR: `rescue/t08-control-contracts` / `/Users/noah.wong/Desktop/code/EFCC-dev/.worktrees/t08-control-contracts` / [PR #574](https://github.com/Noahlw/efcc/pull/574) (`DRAFT / OPEN / MERGEABLE`, target `rescue/t07-storybook-foundation`)
-- Current implementation HEAD: `7b8f8bf2fca4af9c99cfa431ddb69cad2f0cfa05` (exploratory Story/test/decision checkpoint)
+- Current implementation HEAD: `4c134bc229ae97dead6f8b2ae595fdcc54c54337` (latest clean evidence/tracker checkpoint)
 - Parent eligibility: live `Noahlw/efcc` PR #573 is OPEN, unmerged, mergeable, head `rescue/t07-storybook-foundation` at `af4857e8e3a86f5979840c70f06999f569e9ed1a`, base `rescue/ui-control-recovery`; T07 ApprovalPackage is `APV-T07-WORKSHOP-FIDELITY-5D22835D`.
 - Dirty-worktree status / included changes: clean before this checkpoint; only this trace, the caller disposition record, and the canonical tracker update are intended for the first commit.
 - #513 body/version checked: live issue is OPEN, updated `2026-09-05T14:11:23Z`, 0 comments; the 16 acceptance criteria remain the scope.
