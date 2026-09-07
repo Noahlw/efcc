@@ -9,23 +9,22 @@
 | T07 / #512 shared PR | `STACK_GREEN` | Owner ApprovalPackage `APV-T07-WORKSHOP-FIDELITY-5D22835D`; PR #573 remains open, mergeable, clean, and unmerged |
 | T07.1–T07.5 / #566–#570 | `CHECKPOINT_GREEN` | Existing child commits and current-head qualification remain preserved |
 | T07.6 / #571 | `STACK_GREEN` | Current reviewed implementation `5d22835de0d3b1802e2ae84b774066edc5e24a2f`; approval-sensitive governance passed |
-| T08 / #513 | `OWNER_DECISION_REQUIRED` | [`PR #574`](https://github.com/Noahlw/efcc/pull/574) is DRAFT/OPEN/MERGEABLE from `rescue/t08-control-contracts` to `rescue/t07-storybook-foundation`; D1/D2/D3 owner decision pending |
+| T08 / #513 | `MACHINE_QUALIFIED / WAITING_HUMAN` | [`PR #574`](https://github.com/Noahlw/efcc/pull/574) remains DRAFT/OPEN on `rescue/t08-control-contracts` to `rescue/t07-storybook-foundation`; D1/D2/D3 implementation conditions are satisfied and final design ApprovalPackage is pending |
 | T09–T12 / #514–#517 | `BLOCKED` | T08/#513 remains the logical parent; no implementation started |
 | B-003 | `OPEN` | Independent sustained-runtime residual risk; not rerun or reinterpreted |
 
-### Current T08 implementation — 2026-09-07
+### Current T08 implementation — 2026-09-08
 
-> **Current update — 2026-09-07:** Exploratory control Stories/tests and the D1/D2/D3 proposal record are committed on `rescue/t08-control-contracts`; [PR #574](https://github.com/Noahlw/efcc/pull/574) is `DRAFT / OPEN / MERGEABLE` against `rescue/t07-storybook-foundation`. T08 is `OWNER_DECISION_REQUIRED`; no protected control mapping, design approval, merge, issue closure, B-003 change, or T09+ work is claimed.
+> **Current update — 2026-09-08:** D1, D2, and D3 owner conditions are implemented on the separately isolated `rescue/t08-control-contracts` branch. PR [#574](https://github.com/Noahlw/efcc/pull/574) remains `DRAFT / OPEN / MERGEABLE` against `rescue/t07-storybook-foundation`. No T07 history was rewritten, and no merge, issue closure, B-003 change, or T09+ work is claimed.
 
-> **Latest T08 evidence — 2026-09-07:** Current clean HEAD is `4c134bc229ae97dead6f8b2ae595fdcc54c54337`; PR #574 live head matches it. The Storybook build passed, the screen-only index check correctly failed closed on six exploratory control IDs, and the next owner action is the exact D1/D2/D3 decision in the linked decision record.
+> **Machine qualification — 2026-09-08:** Implementation HEAD is `30fbd79df0afa255498eb700f8d572f264140469`; the current acceptance trace records the complete census dispositions, seven durable control PSNs/Stories, current-head verification, and separate Standards/Spec reviews. T08 is `MACHINE_QUALIFIED / WAITING_HUMAN` with AC-14 design approval still pending.
 
-> **Final handoff boundary — 2026-09-07:** PR #574 remains `DRAFT / OPEN / MERGEABLE` and Fast CI run `34095746303` completed successfully at the live PR head. T08 remains `OWNER_DECISION_REQUIRED`; the exploratory-slice Standards/Spec pass is not a full T08 qualification, and genuine design approval is still absent.
-
-- **Status:** `IN_PROGRESS` — Batch A audit closeout and pre-implementation acceptance trace are recorded in [`docs/qa/2026-09-07-t08-control-acceptance-trace.md`](../qa/2026-09-07-t08-control-acceptance-trace.md).
-- **Parent:** live PR #573 is OPEN/unmerged/mergeable at `af4857e8e3a86f5979840c70f06999f569e9ed1a`; T08 branch is ticket-isolated from that exact head.
-- **Census:** 183 parsed source files, 586 static JSX occurrences, supplied 30-record register dispositioned; unresolved dynamic/ancestor cases remain explicit.
-- **PR:** not created before implementation; no merge, issue closure, B-003 change, or T09+ work is authorized.
-- **Next safe action:** continue Batch B–G on the T08 branch, maintain the acceptance trace, and stop at `MACHINE_QUALIFIED / WAITING_HUMAN` until genuine T08 design approval is recorded.
+- **Parent:** live PR #573 is OPEN/unmerged/mergeable at `af4857e8e3a86f5979840c70f06999f569e9ed1a`; T08 remains ticket-isolated from that exact eligible head.
+- **Contract:** screen metadata remains backward-compatible and cataloged through the existing 35-obligation/39-Story screen path; control metadata requires `controlId`, null route/intent, durable PSNs, and no Screen Catalog obligation.
+- **Census:** supplied pinned audit reports 183 parsed source files and 586 static JSX occurrences; the 81 Button expressions and 15 ancestor candidates are all explicitly dispositioned, with no `UNKNOWN` or `UNCLASSIFIED` debt.
+- **Evidence:** current trace records Storybook/Vitest, T07 preservation, browser geometry/semantics, built index reconciliation, pinned-base D3 ratchet, governance, and caller-migration results.
+- **Human gate:** owner must review the seven durable Control Stories at representative 390/799/800/1440 viewports and provide a genuine T08 `kind: design` ApprovalPackage for the exact reviewed implementation SHA before any `STACK_GREEN` claim.
+- **Next safe action:** wait for that owner design review; if the owner requests an implementation change, revise only the affected T08 scope and rerun the affected current-head matrix.
 
 > **Purpose:** Track execution across separate phase sessions without duplicating the Spec or GitHub tickets.  
 > **Source of truth:** Parent Spec [#505](https://github.com/Noahlw/efcc/issues/505) and the current GitHub ticket body/comments.  
