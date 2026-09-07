@@ -17,7 +17,7 @@
 
 > **Current update — 2026-09-08:** D1, D2, and D3 owner conditions are implemented on the separately isolated `rescue/t08-control-contracts` branch. PR [#574](https://github.com/Noahlw/efcc/pull/574) remains `DRAFT / OPEN / MERGEABLE` against `rescue/t07-storybook-foundation`. No T07 history was rewritten, and no merge, issue closure, B-003 change, or T09+ work is claimed.
 
-> **Machine qualification — 2026-09-08:** Implementation HEAD is `30fbd79df0afa255498eb700f8d572f264140469`; the current acceptance trace records the complete census dispositions, seven durable control PSNs/Stories, current-head verification, and separate Standards/Spec reviews. T08 is `MACHINE_QUALIFIED / WAITING_HUMAN` with AC-14 design approval still pending.
+> **Machine qualification — 2026-09-08:** Production implementation HEAD is `1fbb4d64a93be2e7d5c8d381f66c88e1b9896c76`; evidence closeout is recorded through `37951c11` in the current acceptance trace, which includes the complete census dispositions, seven durable control PSNs/Stories, current-head verification, and separate Standards/Spec reviews. T08 is `MACHINE_QUALIFIED / WAITING_HUMAN` with AC-14 design approval still pending.
 
 - **Parent:** live PR #573 is OPEN/unmerged/mergeable at `af4857e8e3a86f5979840c70f06999f569e9ed1a`; T08 remains ticket-isolated from that exact eligible head.
 - **Contract:** screen metadata remains backward-compatible and cataloged through the existing 35-obligation/39-Story screen path; control metadata requires `controlId`, null route/intent, durable PSNs, and no Screen Catalog obligation.
