@@ -452,5 +452,104 @@ describe("Governance CLI", () => {
         0
       );
     });
+
+    it("applies an exact historical waiver only when the same finding exists in the fixed base", () => {
+      const tempRoot = fs.mkdtempSync(
+        path.join("/tmp", "efcc-governance-baseline-waiver-")
+      );
+      const relativeFile = "web/app/management/directory-frame.tsx";
+      const filePath = path.join(tempRoot, relativeFile);
+      const baseSource = [
+        '"use client";',
+        'import { cva } from "class-variance-authority";',
+        'import { Button } from "@/components/ui/button";',
+        'const directoryFrameVariants = cva("grid");',
+        "export function DirectoryFrame() {",
+        "  return <Button>Open</Button>;",
+        "}",
+        "",
+      ].join("\n");
+      const changedSource = baseSource.replace(
+        "<Button>Open</Button>",
+        '<Button className="w-fit">Open</Button>'
+      );
+
+      const git = (args: string) =>
+        execSync(`git ${args}`, {
+          cwd: tempRoot,
+          encoding: "utf8",
+          env: {
+            ...getSanitizedGitEnv(process.env, tempRoot),
+            GIT_CEILING_DIRECTORIES: tempRoot,
+          },
+          stdio: ["ignore", "pipe", "pipe"],
+        });
+
+      try {
+        git("init -q");
+        git("config user.email governance@example.invalid");
+        git("config user.name Governance");
+        fs.mkdirSync(path.dirname(filePath), { recursive: true });
+        fs.writeFileSync(filePath, baseSource, "utf8");
+        git("add .");
+        git("commit -qm base");
+        const baseRef = git("rev-parse HEAD").trim();
+
+        fs.writeFileSync(filePath, changedSource, "utf8");
+        const historicalOnly = runGovernanceAudit({
+          mode: "affected",
+          rootDir: tempRoot,
+          targetFiles: [relativeFile],
+          controlOverrideBase: baseRef,
+          now: "2026-09-03T00:00:00Z",
+        });
+
+        expect(historicalOnly.success).toBe(true);
+        expect(historicalOnly.auditResult?.violations).toHaveLength(0);
+        expect(historicalOnly.auditResult?.waivedViolations).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({
+              ruleId: "RULE-NO-ROUTE-CVA",
+              waiverId: "WVR-HISTORICAL-MANAGEMENT-PANEL-CVA",
+            }),
+          ])
+        );
+
+        const newViolationSource = changedSource
+          .replace(
+            "return <Button",
+            'return <div style={{ color: "red" }}><Button'
+          )
+          .replace("Open</Button>;", "Open</Button></div>;");
+        fs.writeFileSync(filePath, newViolationSource, "utf8");
+        const mixed = runGovernanceAudit({
+          mode: "affected",
+          rootDir: tempRoot,
+          targetFiles: [relativeFile],
+          controlOverrideBase: baseRef,
+          now: "2026-09-03T00:00:00Z",
+        });
+
+        expect(mixed.success).toBe(false);
+        expect(mixed.auditResult?.violations).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({
+              ruleId: "RULE-NO-INLINE-STYLES",
+              file: relativeFile,
+            }),
+          ])
+        );
+        expect(mixed.auditResult?.waivedViolations).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({
+              ruleId: "RULE-NO-ROUTE-CVA",
+              waiverId: "WVR-HISTORICAL-MANAGEMENT-PANEL-CVA",
+            }),
+          ])
+        );
+      } finally {
+        fs.rmSync(tempRoot, { recursive: true, force: true });
+      }
+    });
   });
 });

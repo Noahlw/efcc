@@ -16,18 +16,21 @@
  *   pnpm verify:governance:fast
  */
 
-import { execSync } from "node:child_process";
+import { execFileSync, execSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 
 import {
   auditSourceCode,
+  auditFileContent,
   auditNewControlOverrides,
   getCanonicalRegistries,
   resolveRepoRoot,
+  resolveControlOverrideBase,
   validateRegistries,
   type AuditResult,
   type AuditScanError,
+  type AuditViolation,
   type GovernanceValidationResult,
 } from "../web/lib/governance/index";
 
@@ -366,12 +369,149 @@ export function getAffectedFiles(rootDir: string): string[] {
 
   return Array.from(affectedSet);
 }
+
+function normalizeRepoRelativePath(rootDir: string, file: string): string {
+  const resolvedRoot = path.resolve(rootDir);
+  const resolvedFile = path.isAbsolute(file)
+    ? path.resolve(file)
+    : path.resolve(resolvedRoot, file);
+  const relative = path.relative(resolvedRoot, resolvedFile);
+  return relative.replaceAll(path.sep, "/");
+}
+
+function readCommittedFile(
+  rootDir: string,
+  baseRef: string,
+  file: string
+): string | undefined {
+  const relativeFile = normalizeRepoRelativePath(rootDir, file);
+  if (!relativeFile || relativeFile.startsWith("../")) {
+    return undefined;
+  }
+
+  try {
+    return execFileSync("git", ["show", `${baseRef}:${relativeFile}`], {
+      cwd: path.resolve(rootDir),
+      encoding: "utf-8",
+      env: getSanitizedGitEnv(process.env, rootDir),
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+  } catch {
+    return undefined;
+  }
+}
+
+function violationIdentity(violation: AuditViolation): string {
+  return JSON.stringify([
+    violation.ruleId,
+    violation.file,
+    violation.sourceFingerprint ?? null,
+    violation.snippet ?? null,
+    violation.sourceFingerprint === undefined && violation.snippet === undefined
+      ? (violation.line ?? null)
+      : null,
+  ]);
+}
+
+function getBaselineViolationIdentities(
+  rootDir: string,
+  baseRef: string,
+  targetFiles: readonly string[] | undefined,
+  nativeExceptions: ReturnType<
+    typeof getCanonicalRegistries
+  >["nativeExceptions"]
+): Set<string> {
+  const identities = new Set<string>();
+  for (const file of targetFiles ?? []) {
+    const relativeFile = normalizeRepoRelativePath(rootDir, file);
+    const content = readCommittedFile(rootDir, baseRef, file);
+    if (content === undefined) {
+      continue;
+    }
+    for (const violation of auditFileContent(relativeFile, content, {
+      rootDir,
+      nativeExceptions,
+    })) {
+      identities.add(violationIdentity(violation));
+    }
+  }
+  return identities;
+}
+
+function auditAffectedSourceCode(
+  rootDir: string,
+  targetFiles: readonly string[] | undefined,
+  baseRef: string | undefined,
+  registries: ReturnType<typeof getCanonicalRegistries>,
+  now: CliOptions["now"]
+): AuditResult {
+  const current = auditSourceCode({
+    rootDir,
+    targetFiles,
+    waivers: [],
+    nativeExceptions: registries.nativeExceptions,
+    now,
+  });
+
+  if (!baseRef) {
+    return current;
+  }
+
+  // A changed file must not make a new violation disappear behind an old
+  // waiver. Resolve waivers separately, then retain only findings whose exact
+  // source identity was already present in the fixed comparison base.
+  const waiverResolution = auditSourceCode({
+    rootDir,
+    targetFiles,
+    waivers: registries.waivers,
+    nativeExceptions: registries.nativeExceptions,
+    now,
+  });
+  const baselineIdentities = getBaselineViolationIdentities(
+    rootDir,
+    baseRef,
+    targetFiles,
+    registries.nativeExceptions
+  );
+  const resolvedWaivers = new Map(
+    waiverResolution.waivedViolations.map((violation) => [
+      violationIdentity(violation),
+      violation,
+    ])
+  );
+  const violations: AuditViolation[] = [];
+  const waivedViolations: AuditViolation[] = [];
+
+  for (const violation of current.violations) {
+    const identity = violationIdentity(violation);
+    const resolved = resolvedWaivers.get(identity);
+    if (resolved && baselineIdentities.has(identity)) {
+      waivedViolations.push({
+        ...violation,
+        waived: true,
+        waiverId: resolved.waiverId,
+      });
+    } else {
+      violations.push(violation);
+    }
+  }
+
+  return {
+    ...current,
+    passed: violations.length === 0 && (current.scanErrors?.length ?? 0) === 0,
+    violations,
+    waivedViolations,
+  };
+}
+
 export function runGovernanceAudit(options: CliOptions): {
   success: boolean;
   validationResult: GovernanceValidationResult;
   auditResult?: AuditResult;
 } {
   const repoRoot = options.rootDir ?? resolveRepoRoot();
+  const discoversAffectedFiles =
+    options.mode === "affected" && options.targetFiles === undefined;
   const registries = getCanonicalRegistries();
 
   if (options.mode === "release" && options.targetFiles !== undefined) {
@@ -496,17 +636,30 @@ export function runGovernanceAudit(options: CliOptions): {
     console.log(`\n[2/2] Static Source Audit (Full Repository Scope):`);
   }
 
-  // In affected mode, do NOT let historical waivers hide newly changed UI.
+  // In affected mode, historical waivers may resolve only an exact finding
+  // proven present in the fixed comparison base; new findings stay active.
   // Full and release modes evaluate historical waivers as designed.
-  const activeWaivers = options.mode === "affected" ? [] : registries.waivers;
-
-  const sourceAuditResult = auditSourceCode({
-    rootDir: repoRoot,
-    targetFiles,
-    waivers: activeWaivers,
-    nativeExceptions: registries.nativeExceptions,
-    now: options.now,
-  });
+  const affectedBaseRef =
+    options.mode === "affected" &&
+    (options.controlOverrideBase !== undefined || discoversAffectedFiles)
+      ? resolveControlOverrideBase(repoRoot, options.controlOverrideBase)
+      : undefined;
+  const sourceAuditResult =
+    options.mode === "affected"
+      ? auditAffectedSourceCode(
+          repoRoot,
+          targetFiles,
+          affectedBaseRef,
+          registries,
+          options.now
+        )
+      : auditSourceCode({
+          rootDir: repoRoot,
+          targetFiles,
+          waivers: registries.waivers,
+          nativeExceptions: registries.nativeExceptions,
+          now: options.now,
+        });
   const controlOverrideViolations = auditNewControlOverrides({
     rootDir: repoRoot,
     baseRef: options.controlOverrideBase,
