@@ -174,4 +174,89 @@ export function Example() {
       )
     ).toStrictEqual([]);
   });
+
+  test("audits namespace aliases for app-facing controls", () => {
+    const fixture = createFixture();
+    try {
+      fs.writeFileSync(
+        path.join(fixture.rootDir, "web/app/example.tsx"),
+        `import * as UI from "@/components/ui/button";
+
+export function Example() {
+  return <UI.Button className="min-h-8">welcome</UI.Button>;
+}
+`,
+        "utf-8"
+      );
+      const violations = auditNewControlOverrides({
+        rootDir: fixture.rootDir,
+        baseRef: fixture.baseRef,
+      });
+      expect(violations).toHaveLength(1);
+      expect(violations[0].message).toContain("min-h-8");
+    } finally {
+      fs.rmSync(fixture.rootDir, { recursive: true, force: true });
+    }
+  });
+
+  test("audits wrapped control aliases and createElement factories", () => {
+    const fixture = createFixture();
+    try {
+      fs.writeFileSync(
+        path.join(fixture.rootDir, "web/app/example.tsx"),
+        `import { Button } from "@/components/ui/button";
+import * as React from "react";
+
+const WrappedButton = withTracking(Button);
+
+export function Example() {
+  return (
+    <>
+      <WrappedButton className="rounded-md">wrapped</WrappedButton>
+      {React.createElement(Button, { className: "px-2" })}
+    </>
+  );
+}
+`,
+        "utf-8"
+      );
+      const violations = auditNewControlOverrides({
+        rootDir: fixture.rootDir,
+        baseRef: fixture.baseRef,
+      });
+      expect(violations.map(({ message }) => message)).toStrictEqual([
+        expect.stringContaining("rounded-md"),
+        expect.stringContaining("px-2"),
+      ]);
+    } finally {
+      fs.rmSync(fixture.rootDir, { recursive: true, force: true });
+    }
+  });
+
+  test("fails closed for imported control recipes only", () => {
+    const fixture = createFixture();
+    try {
+      fs.writeFileSync(
+        path.join(fixture.rootDir, "web/app/example.tsx"),
+        `import { buttonVariants } from "@/components/ui/button";
+
+const unrelated = condition ? "min-h-8" : "text-sm";
+
+export function Example() {
+  return <div className={buttonVariants({ size: "sm" })}>{unrelated}</div>;
+}
+`,
+        "utf-8"
+      );
+      const violations = auditNewControlOverrides({
+        rootDir: fixture.rootDir,
+        baseRef: fixture.baseRef,
+      });
+      expect(violations).toHaveLength(1);
+      expect(violations[0].message).toMatch(/imported control recipe/u);
+      expect(violations[0].message).not.toContain("min-h-8");
+    } finally {
+      fs.rmSync(fixture.rootDir, { recursive: true, force: true });
+    }
+  });
 });

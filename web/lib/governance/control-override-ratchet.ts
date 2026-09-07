@@ -1,3 +1,5 @@
+/* oxlint-disable eslint/prefer-named-capture-group -- this package targets ES2017; captures are destructured by position. */
+
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
@@ -21,6 +23,11 @@ const CONTROL_EXPORTS = new Set([
   "SelectTrigger",
   "Switch",
   "Textarea",
+]);
+
+const CONTROL_RECIPE_EXPORTS = new Set([
+  "buttonVariants",
+  "selectTriggerVariants",
 ]);
 
 const SAFE_LAYOUT_CLASSES = new Set(["min-w-0", "w-auto", "w-fit", "w-full"]);
@@ -153,16 +160,24 @@ interface OpeningElement {
   readonly source: string;
 }
 
+interface ControlBindings {
+  readonly elements: Set<string>;
+  readonly recipes: Set<string>;
+}
+
 function findOpeningElements(
   source: string,
   names: ReadonlySet<string>
 ): OpeningElement[] {
   const elements: OpeningElement[] = [];
-  const opening = /<[A-Z][A-Za-z0-9_]*\b/gu;
+  const opening = /<[A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)?\b/gu;
   let match: RegExpExecArray | null;
 
   while ((match = opening.exec(source)) !== null) {
     const name = match[0].slice(1);
+    if (!name) {
+      continue;
+    }
     if (!names.has(name)) {
       continue;
     }
@@ -203,31 +218,23 @@ function findOpeningElements(
   return elements;
 }
 
-function importedControls(source: string): Set<string> {
-  const names = new Set<string>();
-  const imports =
-    /import\s*\{[\s\S]*?\}\s*from\s*["']@\/components\/ui\/[^"']+["']/gu;
+function isControlModule(modulePath: string): boolean {
+  const moduleName = modulePath
+    .slice("@/components/ui".length)
+    .replace(/^\//u, "");
+  return moduleName === "" || CONTROL_MODULES.has(moduleName);
+}
 
-  for (const match of source.matchAll(imports)) {
-    const [statement] = match;
-    if (!statement) {
-      continue;
-    }
-    const open = statement.indexOf("{");
-    const close = statement.lastIndexOf("}");
-    const specifiers = statement.slice(open + 1, close);
-    const modulePrefix = "@/components/ui/";
-    const moduleStart = statement.indexOf(modulePrefix) + modulePrefix.length;
-    const doubleEnd = statement.indexOf('"', moduleStart);
-    const singleEnd = statement.indexOf("'", moduleStart);
-    const moduleEnd =
-      doubleEnd === -1
-        ? singleEnd
-        : singleEnd === -1
-          ? doubleEnd
-          : Math.min(doubleEnd, singleEnd);
+// oxlint-disable-next-line eslint/complexity -- finite import and wrapper binding parser
+function importedControls(source: string): ControlBindings {
+  const elements = new Set<string>();
+  const recipes = new Set<string>();
+  const namedImports =
+    /import\s*\{([\s\S]*?)\}\s*from\s*["'](@\/components\/ui(?:\/[^"']+)?)["']/gu;
 
-    if (!CONTROL_MODULES.has(statement.slice(moduleStart, moduleEnd))) {
+  for (const match of source.matchAll(namedImports)) {
+    const [, specifiers, modulePath] = match;
+    if (!specifiers || !modulePath || !isControlModule(modulePath)) {
       continue;
     }
     for (const specifier of specifiers.split(",")) {
@@ -235,12 +242,143 @@ function importedControls(source: string): Set<string> {
       const imported = parts[0]?.trim();
       const local = parts[1]?.trim() || imported;
       if (imported && local && CONTROL_EXPORTS.has(imported)) {
-        names.add(local);
+        elements.add(local);
+      }
+      if (imported && local && CONTROL_RECIPE_EXPORTS.has(imported)) {
+        recipes.add(local);
       }
     }
   }
 
-  return names;
+  const namespaceImports =
+    /import\s+\*\s+as\s+([A-Za-z_$][\w$]*)\s+from\s*["'](@\/components\/ui(?:\/[^"']+)?)["']/gu;
+  for (const match of source.matchAll(namespaceImports)) {
+    const [, namespace, modulePath] = match;
+    if (!namespace || !modulePath || !isControlModule(modulePath)) {
+      continue;
+    }
+    for (const name of CONTROL_EXPORTS) {
+      elements.add(`${namespace}.${name}`);
+    }
+    for (const name of CONTROL_RECIPE_EXPORTS) {
+      recipes.add(`${namespace}.${name}`);
+    }
+  }
+
+  // Resolve common component-wrapper/factory aliases while keeping unrelated
+  // dynamic class expressions outside the known-control scope.
+  const aliases =
+    /\b(?:const|let|var)\s+([A-Z][A-Za-z0-9_]*)\s*=\s*(?:(?:[A-Za-z_$][\w$]*\.)*[A-Za-z_$][\w$]*\s*\(\s*)?([A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)?)/gu;
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const match of source.matchAll(aliases)) {
+      const [, local, target] = match;
+      if (local && target && elements.has(target) && !elements.has(local)) {
+        elements.add(local);
+        changed = true;
+      }
+    }
+  }
+
+  // A named factory result is still an app-facing control even when the
+  // factory hides its source binding from the simple alias pattern.
+  const namedFactories =
+    /\b(?:const|let|var)\s+([A-Z][A-Za-z0-9_]*(?:Button|Checkbox|Input|Select|Switch|Textarea))\s*=\s*[A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*\s*\(/gu;
+  for (const match of source.matchAll(namedFactories)) {
+    const [, local] = match;
+    if (local) {
+      elements.add(local);
+    }
+  }
+
+  return { elements, recipes };
+}
+
+function balancedCallEnd(source: string, openIndex: number): number {
+  let depth = 0;
+  let quote: "'" | '"' | "`" | null = null;
+
+  for (let index = openIndex; index < source.length; index += 1) {
+    const char = source[index];
+    if (quote !== null) {
+      if (char === "\\") {
+        index += 1;
+      } else if (char === quote) {
+        quote = null;
+      }
+      continue;
+    }
+    if (char === "'" || char === '"' || char === "`") {
+      quote = char;
+    } else if (char === "(") {
+      depth += 1;
+    } else if (char === ")") {
+      depth -= 1;
+      if (depth === 0) {
+        return index + 1;
+      }
+    }
+  }
+
+  return source.length;
+}
+
+function findFactoryElements(
+  source: string,
+  names: ReadonlySet<string>
+): OpeningElement[] {
+  const elements: OpeningElement[] = [];
+  const calls =
+    /(?:React\.)?(?:createElement|jsx|jsxs)\s*\(\s*([A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)?)/gu;
+
+  for (const match of source.matchAll(calls)) {
+    const [, name] = match;
+    if (!name || !names.has(name) || match.index === undefined) {
+      continue;
+    }
+    const openIndex = source.indexOf("(", match.index);
+    if (openIndex === -1) {
+      continue;
+    }
+    const end = balancedCallEnd(source, openIndex);
+    elements.push({
+      name,
+      start: match.index,
+      end,
+      source: source.slice(match.index, end),
+    });
+  }
+
+  return elements;
+}
+
+function findRecipeUses(
+  source: string,
+  names: ReadonlySet<string>
+): OpeningElement[] {
+  const elements: OpeningElement[] = [];
+  const calls = /([A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)?)\s*\(/gu;
+
+  for (const match of source.matchAll(calls)) {
+    const [, name] = match;
+    if (!name || !names.has(name) || match.index === undefined) {
+      continue;
+    }
+    const openIndex = source.indexOf("(", match.index);
+    if (openIndex === -1) {
+      continue;
+    }
+    const end = balancedCallEnd(source, openIndex);
+    elements.push({
+      name,
+      start: match.index,
+      end,
+      source: source.slice(match.index, end),
+    });
+  }
+
+  return elements;
 }
 
 function attributes(
@@ -249,7 +387,7 @@ function attributes(
 ): { value: string; offset: number; dynamic: boolean }[] {
   const result: { value: string; offset: number; dynamic: boolean }[] = [];
   const marker = new RegExp(
-    String.raw`${name}\s*=\s*(?:"[^"]*"|'[^']*'|\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\})`,
+    String.raw`${name}\s*(?:=|:)\s*(?:"[^"]*"|'[^']*'|\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\})`,
     "gu"
   );
 
@@ -258,8 +396,8 @@ function attributes(
     if (!full) {
       continue;
     }
-    const equals = full.indexOf("=");
-    const raw = full.slice(equals + 1).trim();
+    const separator = full.search(/[=:]/u);
+    const raw = full.slice(separator + 1).trim();
     result.push({
       value: raw.slice(1, -1),
       offset: match.index ?? 0,
@@ -495,6 +633,29 @@ function inspectElement(
   return violations;
 }
 
+function inspectRecipeUse(
+  file: string,
+  source: string,
+  recipe: OpeningElement,
+  added: ReadonlySet<number>
+): AuditViolation[] {
+  const startLine = lineNumberAt(source, recipe.start);
+  const endLine = lineNumberAt(source, recipe.end);
+  for (let line = startLine; line <= endLine; line += 1) {
+    if (added.has(line)) {
+      return [
+        violation(
+          file,
+          startLine,
+          `${recipe.name} imported control recipe was added in app-facing code; classify primitive-owned styling through the control instead`,
+          recipe.source.trim()
+        ),
+      ];
+    }
+  }
+  return [];
+}
+
 function productionPath(file: string): boolean {
   return (
     file.startsWith("web/") &&
@@ -584,13 +745,20 @@ export function auditNewControlOverrides(
       continue;
     }
     const source = fs.readFileSync(fullPath, "utf-8");
-    const names = importedControls(source);
-    if (names.size === 0) {
+    const bindings = importedControls(source);
+    if (bindings.elements.size === 0 && bindings.recipes.size === 0) {
       continue;
     }
     const added = addedLines(fileDiff);
-    for (const element of findOpeningElements(source, names)) {
+    const elements = [
+      ...findOpeningElements(source, bindings.elements),
+      ...findFactoryElements(source, bindings.elements),
+    ];
+    for (const element of elements) {
       violations.push(...inspectElement(file, source, element, added));
+    }
+    for (const recipe of findRecipeUses(source, bindings.recipes)) {
+      violations.push(...inspectRecipeUse(file, source, recipe, added));
     }
   }
 

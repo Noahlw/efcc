@@ -154,6 +154,18 @@ export const InputStates: Story = {
         <span>停用欄位</span>
         <Input id="t08-input-disabled" disabled value="不可編輯" readOnly />
       </label>
+      <label className="grid gap-1" htmlFor="t08-input-search">
+        <span>搜尋欄位</span>
+        <Input id="t08-input-search" type="search" placeholder="搜尋活動" />
+      </label>
+      <label className="grid gap-1" htmlFor="t08-input-password">
+        <span>密碼欄位</span>
+        <Input id="t08-input-password" type="password" />
+      </label>
+      <label className="grid gap-1" htmlFor="t08-input-readonly">
+        <span>唯讀欄位</span>
+        <Input id="t08-input-readonly" readOnly value="只供檢視" />
+      </label>
     </div>
   ),
   play: async ({ canvasElement }) => {
@@ -167,6 +179,14 @@ export const InputStates: Story = {
     await expect(
       canvasElement.querySelector("#t08-input-disabled")
     ).toBeDisabled();
+    await expect(
+      canvas.getByRole("searchbox", { name: "搜尋欄位" })
+    ).toBeVisible();
+    await expect(canvas.getByLabelText("密碼欄位")).toHaveAttribute(
+      "type",
+      "password"
+    );
+    await expect(canvas.getByLabelText("唯讀欄位")).toHaveAttribute("readonly");
   },
 };
 
@@ -228,24 +248,39 @@ export const CheckboxStates: Story = {
     presentation: controlPresentation("checkbox", "PSN-CONTROL-CHECKBOX"),
   },
   render: () => (
-    <fieldset className="grid gap-2">
-      <legend>選取項目</legend>
-      <label className="flex items-center gap-2" htmlFor="t08-checkbox-mixed">
-        <Checkbox id="t08-checkbox-mixed" checked="indeterminate" />
-        <span>全選目前結果</span>
-      </label>
-      <label className="flex items-center gap-2" htmlFor="t08-checkbox-row">
-        <Checkbox id="t08-checkbox-row" />
-        <span>選取目前項目</span>
-      </label>
-      <label
-        className="flex items-center gap-2"
-        htmlFor="t08-checkbox-disabled"
-      >
-        <Checkbox id="t08-checkbox-disabled" disabled />
-        <span>停用項目</span>
-      </label>
-    </fieldset>
+    <form
+      aria-label="選取項目表單"
+      className="grid gap-3"
+      onSubmit={(event) => event.preventDefault()}
+    >
+      <fieldset className="grid gap-2">
+        <legend>選取項目</legend>
+        <label className="flex items-center gap-2" htmlFor="t08-checkbox-mixed">
+          <Checkbox id="t08-checkbox-mixed" checked="indeterminate" />
+          <span>全選目前結果</span>
+        </label>
+        <label className="flex items-center gap-2" htmlFor="t08-checkbox-row">
+          <Checkbox id="t08-checkbox-row" />
+          <span>選取目前項目</span>
+        </label>
+        <label
+          className="flex max-w-[18rem] items-start gap-2"
+          htmlFor="t08-checkbox-long"
+        >
+          <Checkbox id="t08-checkbox-long" />
+          <span className="min-w-0 wrap-anywhere">
+            一個需要安全換行的超長繁體中文項目名稱
+          </span>
+        </label>
+        <label
+          className="flex items-center gap-2"
+          htmlFor="t08-checkbox-disabled"
+        >
+          <Checkbox id="t08-checkbox-disabled" disabled />
+          <span>停用項目</span>
+        </label>
+      </fieldset>
+    </form>
   ),
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
@@ -255,6 +290,15 @@ export const CheckboxStates: Story = {
     await expect(
       canvas.getByRole("checkbox", { name: "停用項目" })
     ).toBeDisabled();
+    await expect(
+      canvas.getByRole("form", { name: "選取項目表單" })
+    ).toBeInTheDocument();
+    const longLabelCheckbox = canvas.getByRole("checkbox", {
+      name: "一個需要安全換行的超長繁體中文項目名稱",
+    });
+    longLabelCheckbox.focus();
+    await userEvent.keyboard(" ");
+    await expect(longLabelCheckbox).toBeChecked();
     await userEvent.click(
       canvas.getByRole("checkbox", { name: "選取目前項目" })
     );
@@ -282,6 +326,15 @@ export const SwitchStates: Story = {
         <Switch id="t08-switch-disabled" disabled />
         <span>受保護設定</span>
       </label>
+      <label
+        className="flex max-w-[18rem] items-start gap-2"
+        htmlFor="t08-switch-long"
+      >
+        <Switch id="t08-switch-long" />
+        <span className="min-w-0 wrap-anywhere">
+          一個需要安全換行的超長繁體中文切換設定名稱
+        </span>
+      </label>
     </div>
   ),
   play: async ({ canvasElement }) => {
@@ -295,6 +348,12 @@ export const SwitchStates: Story = {
     await expect(
       canvas.getByRole("switch", { name: "受保護設定" })
     ).toBeDisabled();
+    const longLabelSwitch = canvas.getByRole("switch", {
+      name: "一個需要安全換行的超長繁體中文切換設定名稱",
+    });
+    longLabelSwitch.focus();
+    await userEvent.keyboard(" ");
+    await expect(longLabelSwitch).toBeChecked();
     await userEvent.click(canvas.getByRole("switch", { name: "背景同步" }));
     await expect(
       canvas.getByRole("switch", { name: "背景同步" })
@@ -334,6 +393,15 @@ export const SelectStates: Story = {
           </SelectItem>
         </SelectContent>
       </Select>
+      <Select>
+        <SelectTrigger aria-label="未選擇活動類型">
+          <SelectValue placeholder="選擇活動類型" />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="workshop">Workshop session / 工作坊</SelectItem>
+          <SelectItem value="retreat">Retreat / 退修會</SelectItem>
+        </SelectContent>
+      </Select>
     </label>
   ),
   play: async ({ canvasElement }) => {
@@ -353,5 +421,18 @@ export const SelectStates: Story = {
     await expect(
       canvas.getByRole("combobox", { name: "長活動類型" })
     ).toHaveTextContent("一次性活動");
+    const placeholder = canvas.getByRole("combobox", {
+      name: "未選擇活動類型",
+    });
+    await expect(placeholder).toHaveTextContent("選擇活動類型");
+    await userEvent.click(placeholder);
+    const workshop = within(document.body).getByRole("option", {
+      name: "Workshop session / 工作坊",
+    });
+    await userEvent.keyboard("w");
+    await expect(workshop).toHaveAttribute("data-highlighted");
+    await userEvent.keyboard("{Escape}");
+    await expect(placeholder).toHaveAttribute("aria-expanded", "false");
+    await expect(placeholder).toHaveFocus();
   },
 };
