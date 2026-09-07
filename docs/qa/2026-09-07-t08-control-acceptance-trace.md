@@ -9,8 +9,8 @@ handoff package.
 
 - Effective fixed base: `af4857e8e3a86f5979840c70f06999f569e9ed1a`
 - Original start base: `af4857e8e3a86f5979840c70f06999f569e9ed1a`
-- Branch / worktree / PR: `rescue/t08-control-contracts` / `/Users/noah.wong/Desktop/code/EFCC-dev/.worktrees/t08-control-contracts` / not created yet
-- Current implementation HEAD: `af4857e8e3a86f5979840c70f06999f569e9ed1a` (docs-only checkpoint)
+- Branch / worktree / PR: `rescue/t08-control-contracts` / `/Users/noah.wong/Desktop/code/EFCC-dev/.worktrees/t08-control-contracts` / draft PR pending push
+- Current implementation HEAD: `2d056bb88603afac4930158949b18f9ce50972eb` (exploratory Story/test checkpoint)
 - Parent eligibility: live `Noahlw/efcc` PR #573 is OPEN, unmerged, mergeable, head `rescue/t07-storybook-foundation` at `af4857e8e3a86f5979840c70f06999f569e9ed1a`, base `rescue/ui-control-recovery`; T07 ApprovalPackage is `APV-T07-WORKSHOP-FIDELITY-5D22835D`.
 - Dirty-worktree status / included changes: clean before this checkpoint; only this trace, the caller disposition record, and the canonical tracker update are intended for the first commit.
 - #513 body/version checked: live issue is OPEN, updated `2026-09-05T14:11:23Z`, 0 comments; the 16 acceptance criteria remain the scope.
@@ -59,6 +59,10 @@ handoff package.
 | `af4857e8` | supplied `t08-control-census.mjs --repo ... --ref af4857e8...` | Node `22.18.0`, pnpm `11.7.0`; output outside repo | 0 / 586 JSX occurrences | none | Manual disposition below; keep unresolved expressions visible |
 | `af4857e8` | `fnm exec --using 22.18.0 pnpm --dir web test:t07:foundation` | isolated T08 worktree | 0 / 8 files, 42 tests passed | none | baseline preserved |
 | `af4857e8` | `fnm exec --using 22.18.0 pnpm --dir web test:storybook` | isolated T08 worktree | 0 / 5 files, 39 tests passed | none | baseline preserved |
+| `2d056bb8` | `fnm exec --using 22.18.0 pnpm --dir web test:storybook` | isolated T08 worktree, Chromium | 0 / 6 Stories, 45 tests passed | none | exploratory only; no PSN/catalog qualification |
+| `2d056bb8` | `fnm exec --using 22.18.0 pnpm --dir web test:components` | isolated T08 worktree | 0 / 61 files, 896 tests passed | none | exploratory public-contract coverage |
+| `2d056bb8` | `fnm exec --using 22.18.0 pnpm --dir web typecheck` | Node `22.18.0` | 0 | none | exploratory Stories typecheck |
+| `2d056bb8` | read-only browser geometry diagnostic at 390×844 | Chromium, live HMR Storybook | 0 / diagnostic | Button 32px, icon 32×32, Input 32px, Switch 32×18.39px; Checkbox 44×44, Textarea 66px, Select 44px high/477.31px long trigger | owner decision required before shared mapping change |
 
 ## Current findings / caller dispositions
 
@@ -84,13 +88,13 @@ unresolved/dynamic/ancestor cases explicit.
 
 ## Human / promotion
 
-- Contract decision source(s): `02_CONTRACT_DECISIONS.md` proposals; no new owner decision recorded.
+- Contract decision source(s): [`2026-09-07-t08-contract-decision-record.md`](2026-09-07-t08-contract-decision-record.md); D1/D2/D3 are PROPOSED and no new owner decision is recorded.
 - Design-review packet / actual reviewed scope: PENDING; not yet prepared.
 - ApprovalPackage ID: NONE YET (T07's APV is not reused).
 - Reviewed implementation SHA vs approval-record commit: NOT APPLICABLE.
 - Required final checks: pending completion of A–G and current `TESTING.md` gates.
-- Current qualification state: `IN_PROGRESS`; not `MACHINE_QUALIFIED` yet.
+- Current qualification state: `OWNER_DECISION_REQUIRED`; exploratory machine checks are green, but T08 implementation/acceptance is not qualified.
 - Merge authorization: NOT GIVEN BY THIS TRACE.
 - Actual merge / issue reconciliation: NOT DONE.
 - B-003 disposition: retain existing OPEN record; no runtime fix claimed.
-- Next safe action: implement the approved-safe control foundation and necessary caller migrations, then run the negative and wide-blast gates; stop at `MACHINE_QUALIFIED / WAITING_HUMAN` if only design approval remains.
+- Next safe action: owner approves/adjusts D1/D2/D3 exact scope in the decision record; then implement only that scope, finish A–G, and stop at `MACHINE_QUALIFIED / WAITING_HUMAN` if only design approval remains.
