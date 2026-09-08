@@ -377,7 +377,7 @@ describe("MemberDirectoryPanel", () => {
     expect(document.activeElement).toBe(search);
   });
 
-  test("renders ManagementPageHeader title and description inside DirectoryFrame", () => {
+  test("renders RouteHeader title and description inside DirectoryFrame", () => {
     render(<MemberDirectoryPanel />);
     expect(
       screen.getByRole("heading", { level: 1, name: MEMBERS.membersTitle })

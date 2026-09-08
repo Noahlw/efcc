@@ -6,12 +6,12 @@ import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { RpcError } from "@/lib/api";
-import { ContextualTaskHeader } from "@/lib/contextual-task-header";
 import { COPY, errorCopyFor } from "@/lib/copy";
 import { announce } from "@/lib/live-region";
 import { searchManagementMembers } from "@/lib/programs/program-api";
 import type { MemberDirectoryMember } from "@/lib/programs/program-api";
 import { useAsyncResource } from "@/lib/programs/use-async-resource";
+import { RouteHeader } from "@/lib/route-header";
 import { rememberDeepLink } from "@/lib/session";
 
 import { DirectoryFrame } from "./directory-frame";
@@ -330,7 +330,7 @@ export const MemberDirectoryPanel = () => {
       hasDetail={Boolean(selected)}
       hasResults={hasResults}
       header={
-        <ContextualTaskHeader
+        <RouteHeader
           backHref={returnHref}
           backLabel={MEMBERS.backToManagement}
           headingId="member-directory-title"

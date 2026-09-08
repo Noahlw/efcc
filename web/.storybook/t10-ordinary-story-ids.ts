@@ -3,4 +3,7 @@
  * Keep them out of the durable PSN/Screen Catalog join while still checking
  * that the direct Storybook URLs remain present in the built index.
  */
-export const T10_ORDINARY_STORY_IDS = ["t10-composition--page-frame"] as const;
+export const T10_ORDINARY_STORY_IDS = [
+  "t10-composition--page-frame",
+  "t10-composition--route-header-story",
+] as const;

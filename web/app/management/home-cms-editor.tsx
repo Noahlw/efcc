@@ -28,13 +28,11 @@ import type {
   HomeTemplateType,
 } from "@/lib/home-cms-api";
 import { announce } from "@/lib/live-region";
+import { RouteHeader } from "@/lib/route-header";
 import { rememberDeepLink } from "@/lib/session";
 import { cn } from "@/lib/utils";
 
-import {
-  ActionSurface,
-  ManagementPageHeader,
-} from "./management-action-framework";
+import { ActionSurface } from "./management-action-framework";
 
 const copy = COPY.homeEditor;
 
@@ -514,12 +512,12 @@ export function HomeContentEditor() {
       aria-labelledby="home-cms-editor-title"
       aria-busy={busy || previewLoading}
     >
-      <ManagementPageHeader
+      <RouteHeader
         backHref="/management"
         backLabel={COPY.management.backHome}
         lead={copy.previewLead}
         title={copy.editorTitle}
-        titleId="home-cms-editor-title"
+        headingId="home-cms-editor-title"
         action={
           loadState === "ready" ? (
             <span
