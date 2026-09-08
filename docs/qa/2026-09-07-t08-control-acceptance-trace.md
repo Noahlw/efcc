@@ -15,6 +15,7 @@ the handoff package, and it does not grant final design approval.
 - PR: [#574](https://github.com/Noahlw/efcc/pull/574), target `rescue/t07-storybook-foundation`, kept DRAFT and OPEN.
 - Immediate parent: PR [#573](https://github.com/Noahlw/efcc/pull/573), OPEN/unmerged/mergeable, head `af4857e8e3a86f5979840c70f06999f569e9ed1a`.
 - Owner contract checkpoint: PR #574 at `abf0914b06f6b62d605b683f98bc66fe14579255`; D1, D2, and D3 were approved with conditions for continued implementation only.
+- Design ApprovalPackage: `APV-T08-CONTROL-DESIGN-1FBB4D64`, approved by Noah Wong / Repository Owner for production implementation `1fbb4d64a93be2e7d5c8d381f66c88e1b9896c76`; evidence is [`2026-09-08-t08-design-approval.md`](2026-09-08-t08-design-approval.md).
 - Current local state: implementation, evidence closeout, and the qualification fix are committed; generated `web/storybook-static/` was moved out of the worktree and is not tracked.
 - T07 preservation: `SCREEN_PRESENTATION_DECLARATIONS` remains 39, `SCREEN_CATALOG` remains 35 obligations, and the existing screen PSNs/Stories remain in the T07 catalog path.
 - T08 control presentation: seven real production-primitive Stories use durable control PSNs and `subject: "control"`; controls have stable `controlId`, `route: null`, and `intent: null`, and do not enter the Screen Catalog.
@@ -32,9 +33,9 @@ the handoff package, and it does not grant final design approval.
 | Switch | `PSN-CONTROL-SWITCH` | [Controls / Switch States](http://127.0.0.1:6007/iframe.html?id=controls--switch-states&viewMode=story) |
 | Select | `PSN-CONTROL-SELECT` | [Controls / Select States](http://127.0.0.1:6007/iframe.html?id=controls--select-states&viewMode=story) |
 
-These URLs are genuine HMR Storybook locators for owner review. They are not
-human design approval evidence until an owner reviews them and supplies the
-required `kind: design` ApprovalPackage.
+These URLs are genuine HMR Storybook locators for the recorded owner review.
+The required `kind: design` ApprovalPackage is recorded in
+[`2026-09-08-t08-design-approval.md`](2026-09-08-t08-design-approval.md).
 
 ## Acceptance criteria
 
@@ -53,7 +54,7 @@ required `kind: design` ApprovalPackage.
 | AC-11 | PASS | Affected Storybook scope passed 13/13; T07 foundation passed 9 files / 44 tests; Storybook/Vitest passed 6 files / 46 tests; Storybook build `10.6.0` passed; built-index reconciliation passed with 46/35/7. |
 | AC-12 | PASS | `pnpm test:t08:controls` passed 20/20 at 390/799/800/1440 with zero retries and zero skips. JSON artifact: `tests/e2e/test-results/t08-control-contracts/storybook.json`. |
 | AC-13 | PASS (no baseline promoted) | No selective visual baseline was added or promoted. Promotion remains intentionally deferred until a stable, high-leverage baseline is earned and owner-approved. |
-| AC-14 | OWNER_PENDING | The seven durable PSNs, Story locators, contracts, viewports, and machine evidence are ready for review. No T08 design ApprovalPackage, APV ID, reviewer, or approval timestamp has been fabricated. |
+| AC-14 | PASS | The owner approved all seven durable PSNs/Stories at `390`, `799`, `800`, and `1440`; `APV-T08-CONTROL-DESIGN-1FBB4D64` records the genuine `kind: design` package for exact production implementation SHA `1fbb4d64a93be2e7d5c8d381f66c88e1b9896c76`. |
 | AC-15 | PASS | Source review and focused public-contract tests preserve production exports, props, refs, native attributes, Radix behavior, form behavior, `asChild`, caller-supplied `aria-busy`, and domain/permission/API/URL boundaries. |
 | AC-16 | PASS | Fresh Standards and Spec passes against `af4857e8...1fbb4d64` found no documented-standard breach and no hard missing, extra, or wrong requirement. Fowler smell observations, if any, remain non-blocking judgement calls. |
 
@@ -120,16 +121,16 @@ unexpected 0, flaky 0, with all 20 individual tests passed.
 
 - Fixed point: review the implementation diff `af4857e8e3a86f5979840c70f06999f569e9ed1a...1fbb4d64a93be2e7d5c8d381f66c88e1b9896c76`; the subsequent trace commit is documentation-only.
 - Sources: live #513 (OPEN, current issue body), `references/ISSUE_513_SNAPSHOT.md`, the T08 execution/verification/closeout handoff documents, and the owner D1/D2/D3 decision.
-- Result: PASS at `af4857e8e3a86f5979840c70f06999f569e9ed1a...1fbb4d64a93be2e7d5c8d381f66c88e1b9896c76`; no missing/partial, unrequested, or implemented-but-wrong requirement against live #513, the handoff, and D1/D2/D3. The owner decision remains implementation authorization, not final T08 design approval.
-- Qualification boundary: AC-14 remains `OWNER_PENDING`; no APV, design reviewer, timestamp, visual baseline, merge, issue closure, or T09 authorization is inferred.
+- Result: PASS at `af4857e8e3a86f5979840c70f06999f569e9ed1a...1fbb4d64a93be2e7d5c8d381f66c88e1b9896c76`; no missing/partial, unrequested, or implemented-but-wrong requirement against live #513, the handoff, and D1/D2/D3. The owner decision is now recorded separately as the final T08 design approval.
+- Qualification boundary: AC-14 is `PASS` through `APV-T08-CONTROL-DESIGN-1FBB4D64`; no visual baseline promotion, merge, issue closure, or T09 authorization is inferred.
 
 ## Human / promotion state
 
 - Contract decision record: [`2026-09-07-t08-contract-decision-record.md`](2026-09-07-t08-contract-decision-record.md), with the owner result `APPROVED WITH CONDITIONS` for D1/D2/D3.
-- Design-review packet: the seven-row durable PSN/Story table above plus the current machine evidence; ready for genuine owner review.
-- ApprovalPackage ID: NONE YET. T07's APV is not reused.
-- Current qualification state after the final aggregate Programs command: `functional-passed` at `1efa3b1f3a8ac9e3c4794003a7961a13653d2266`; Worker Contract, Browser Acceptance, Responsive Matrix, and non-browser precommit all passed. This is machine qualification only; retain the human gate and do not promote.
+- Design-review packet: the seven-row durable PSN/Story table above plus the current machine evidence; owner approval is recorded in [`2026-09-08-t08-design-approval.md`](2026-09-08-t08-design-approval.md).
+- ApprovalPackage ID: `APV-T08-CONTROL-DESIGN-1FBB4D64`; T07's APV is not reused.
+- Current qualification state after the final aggregate Programs command: `functional-passed` at `1578d606362332edd006e0e681834b5810b16f36`; Worker Contract, Browser Acceptance, Responsive Matrix, and non-browser precommit all passed. With AC-14 approved, T08 is `STACK_GREEN`; merge authorization remains NOT GIVEN.
 - Merge authorization: NOT GIVEN.
 - Actual merge / issue reconciliation: NOT DONE.
 - B-003: remains OPEN and independent; no runtime fix or relabel is claimed.
-- Next safe action: owner visually reviews all seven durable Control Stories at representative 390/799/800/1440 viewports and supplies a genuine T08 `ApprovalPackage` with `kind: design`, exact reviewed implementation SHA, reviewer/timestamp, PSNs/contracts, viewports, and evidence. Only then may the approved human gate be recorded and T08 reconsidered for `STACK_GREEN`.
+- Next safe action: retain PR #574 OPEN/DRAFT/unmerged until an explicit merge and issue-reconciliation decision is given; do not close #513, change B-003, or start T09+ work.

@@ -9,7 +9,7 @@
 | T07 / #512 shared PR | `STACK_GREEN` | Owner ApprovalPackage `APV-T07-WORKSHOP-FIDELITY-5D22835D`; PR #573 remains open, mergeable, clean, and unmerged |
 | T07.1–T07.5 / #566–#570 | `CHECKPOINT_GREEN` | Existing child commits and current-head qualification remain preserved |
 | T07.6 / #571 | `STACK_GREEN` | Current reviewed implementation `5d22835de0d3b1802e2ae84b774066edc5e24a2f`; approval-sensitive governance passed |
-| T08 / #513 | `MACHINE_QUALIFIED / WAITING_HUMAN` | [`PR #574`](https://github.com/Noahlw/efcc/pull/574) remains DRAFT/OPEN on `rescue/t08-control-contracts` to `rescue/t07-storybook-foundation`; D1/D2/D3 implementation conditions are satisfied and final design ApprovalPackage is pending |
+| T08 / #513 | `STACK_GREEN` | [`PR #574`](https://github.com/Noahlw/efcc/pull/574) remains DRAFT/OPEN/UNMERGED on `rescue/t08-control-contracts` to `rescue/t07-storybook-foundation`; `APV-T08-CONTROL-DESIGN-1FBB4D64` records owner design approval for production SHA `1fbb4d64`, while merge authorization is still not given |
 | T09–T12 / #514–#517 | `BLOCKED` | T08/#513 remains the logical parent; no implementation started |
 | B-003 | `OPEN` | Independent sustained-runtime residual risk; not rerun or reinterpreted |
 
@@ -17,14 +17,14 @@
 
 > **Current update — 2026-09-08:** D1, D2, and D3 owner conditions are implemented on the separately isolated `rescue/t08-control-contracts` branch. PR [#574](https://github.com/Noahlw/efcc/pull/574) remains `DRAFT / OPEN / MERGEABLE` against `rescue/t07-storybook-foundation`. No T07 history was rewritten, and no merge, issue closure, B-003 change, or T09+ work is claimed.
 
-> **Machine qualification — 2026-09-08:** Production implementation HEAD is `1fbb4d64a93be2e7d5c8d381f66c88e1b9896c76`; qualification fix HEAD is `1efa3b1f3a8ac9e3c4794003a7961a13653d2266`, adding baseline-aware affected-governance waiver preservation. The final aggregate `verify:programs` run passed at qualification HEAD `1efa3b1f3a8ac9e3c4794003a7961a13653d2266` with `functional-passed` across Worker Contract, Browser Acceptance, Responsive Matrix, and non-browser precommit; artifact `test-results/programs-promotion/20260907t182236490z`. The current acceptance trace includes the complete census dispositions, seven durable control PSNs/Stories, current-head verification, and separate Standards/Spec reviews. T08 is `MACHINE_QUALIFIED / WAITING_HUMAN` with AC-14 design approval still pending.
+> **Machine and design qualification — 2026-09-08:** Production implementation HEAD is `1fbb4d64a93be2e7d5c8d381f66c88e1b9896c76`; qualification fix HEAD is `1efa3b1f3a8ac9e3c4794003a7961a13653d2266`, adding baseline-aware affected-governance waiver preservation. The final aggregate `verify:programs` run passed at qualification/evidence HEAD `1578d606362332edd006e0e681834b5810b16f36` with `functional-passed` across Worker Contract, Browser Acceptance, Responsive Matrix, and non-browser precommit; artifact `test-results/programs-promotion/20260907t182826352z`. `APV-T08-CONTROL-DESIGN-1FBB4D64` records the owner's design approval for the exact production implementation SHA. T08 is now `STACK_GREEN`; merge authorization remains not given.
 
 - **Parent:** live PR #573 is OPEN/unmerged/mergeable at `af4857e8e3a86f5979840c70f06999f569e9ed1a`; T08 remains ticket-isolated from that exact eligible head.
 - **Contract:** screen metadata remains backward-compatible and cataloged through the existing 35-obligation/39-Story screen path; control metadata requires `controlId`, null route/intent, durable PSNs, and no Screen Catalog obligation.
 - **Census:** supplied pinned audit reports 183 parsed source files and 586 static JSX occurrences; the 81 Button expressions and 15 ancestor candidates are all explicitly dispositioned, with no `UNKNOWN` or `UNCLASSIFIED` debt.
 - **Evidence:** current trace records Storybook/Vitest, T07 preservation, browser geometry/semantics, built index reconciliation, pinned-base D3 ratchet, baseline-aware affected/release governance, caller-migration results, and the final `verify:programs` promotion result.
-- **Human gate:** owner must review the seven durable Control Stories at representative 390/799/800/1440 viewports and provide a genuine T08 `kind: design` ApprovalPackage for the exact reviewed implementation SHA before any `STACK_GREEN` claim.
-- **Next safe action:** wait for that owner design review; if the owner requests an implementation change, revise only the affected T08 scope and rerun the affected current-head matrix.
+- **Human gate:** satisfied by `APV-T08-CONTROL-DESIGN-1FBB4D64`, which records review of all seven durable Control Stories at representative 390/799/800/1440 viewports against the exact production implementation SHA.
+- **Next safe action:** retain PR #574 OPEN/DRAFT/unmerged pending explicit merge and issue-reconciliation authorization; if the owner requests an implementation change, revise only the affected T08 scope and rerun the affected current-head matrix.
 
 > **Purpose:** Track execution across separate phase sessions without duplicating the Spec or GitHub tickets.  
 > **Source of truth:** Parent Spec [#505](https://github.com/Noahlw/efcc/issues/505) and the current GitHub ticket body/comments.  
