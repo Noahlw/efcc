@@ -26,8 +26,8 @@ machine evidence, and final human design gate separate.
   not final T09 design approval, `STACK_GREEN`, merge approval, issue closure,
   T10 authorization, or a B-003 disposition change.
 - Initial implementation state: `MACHINE_QUALIFICATION_PENDING`
-- Current machine state: `MACHINE_QUALIFICATION_PENDING` while final Standards
-  and Spec reviews are rerun against `a6bfe191df785700b7d011c00ce93917d8e0b619`
+- Current machine state: `MACHINE_QUALIFIED` after final Standards and Spec
+  reviews against implementation head `14301749befe693311e166553d2d523539a6a049c`
 - Human design state: `WAITING_FOR_LATER_HUMAN_REVIEW`
 
 ## Acceptance scope
@@ -84,8 +84,8 @@ node scripts/t09-frontier-census.mjs --check       PASS at T09.0 checkpoint `928
 pnpm --dir web test:components                     PASS (64 files / 922 tests)
 pnpm --dir web exec vitest run --config vitest.components.config.ts lib/governance/control-override-ratchet.test.ts
                                                       PASS (1 file / 15 tests)
-/code-review Standards                            PENDING against `a6bfe191`
-/code-review Spec                                PENDING against `a6bfe191`
+/code-review Standards                            PASS against `14301749`
+/code-review Spec                                PASS for implementation defects against `14301749`
 pnpm --dir web test:storybook                      PASS (7 files / 58 tests)
 pnpm --dir web storybook:build                     PASS
 pnpm --dir web storybook:verify-index              PASS (58 Stories / 35 Screen obligations / 7 controls / 12 foundations)
@@ -103,6 +103,10 @@ The census `--check` is intentionally evaluated at the T09.0 checkpoint;
 running that guard at the implementation HEAD correctly fails its protected
 production-diff invariant and is not a current T09 qualification check.
 
+The final two-axis review found no hard Standards violation and no
+implemented-but-wrong Spec behavior. It records the still-pending human design
+approval and presentation-evidence questions separately; `MACHINE_QUALIFIED`
+does not make T09 `STACK_GREEN`.
 The T09 browser run used the repository's local Storybook launcher; no
 Cloudflare account or production host was touched. The launcher resolves the
 worktree's local package runtime on Ubuntu where `fnm` is not available.
