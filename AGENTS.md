@@ -36,7 +36,7 @@
 - The UI Playground is the architectural role for focused presentation work; Storybook is the current renderer. Every shipped screen keeps a Screen Catalog entry and representative baseline Story that passes W7.
 - Add only material additional presentation states. Preserve existing T07–T09 PSNs; promote new PSNs or CTRs only for durable references or shared/high-risk machine rules. SCN is for durable real-app integration.
 - Ordinary implementation agents MUST NOT lower expectations, widen tolerances, change baselines, add skips/allowlists/suppressions, remove coverage, extend waivers, or use `!important` as routine containment.
-- Any token, primitive/pattern contract, scenario, tolerance, baseline, coverage, native exception, waiver, or approval requirement is a human-approved **CONTRACT CHANGE**.
+- A token, primitive/pattern contract, promoted SCN/CTR, durable baseline, required coverage, native exception, waiver, or approval requirement is a human-approved **CONTRACT CHANGE**. Exploratory Playground Stories and synthetic fixtures may evolve normally; preserve existing or promoted PSNs/SCNs/CTRs/baselines and never weaken a promoted or required contract to make a check pass.
 - Use dependency-aware blocking and one branch/PR per ordinary ticket; T07 remains the scoped shared-PR exception. A dependent ticket may start from a `STACK_GREEN` parent without waiting for merge.
 - Do not mix visual rescue with unrelated backend, schema, feature, lint, or data work. Do not treat screenshots or headless geometry as human or device approval.
 - Storybook fixtures are deterministic and synthetic; production must not import Storybook code. Real-app Playwright, Worker/D1 tests, and platform/human checks retain their separate truthful seams.
