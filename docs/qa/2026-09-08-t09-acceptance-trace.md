@@ -13,6 +13,9 @@ machine evidence, and final human design gate separate.
 - T09.0 checkpoint: `9285420a4829264577fae002382a07795091ca39`
 - T09 implementation checkpoint: `a8b5033d6c7e9b2e54aa0fe253a6bb7518d03db2`
 - T09 review-fix / reviewed production checkpoint: `1530c7aeb66abe4ad429912346ac2bfb26097488`
+- T09 acceptance-proof checkpoint: `00b3c52a283773cf92ca5e71d107273265ef38da`
+  (two-way focus cycling, bottom-sheet safe-area coverage, and inverse
+  announcement-ownership ratchet proof)
 - Owner contract: D1 approved; D2 and D3 approved with changes in the owner
   decision supplied for T09 / #514. This authorizes implementation only; it is
   not final T09 design approval, `STACK_GREEN`, merge approval, issue closure,
@@ -64,11 +67,13 @@ The exact commands and results are appended as checkpoint commits complete:
 
 ```text
 node scripts/t09-frontier-census.mjs --check       PASS at T09.0 checkpoint
-pnpm --dir web test:components                     PASS (64 files / 916 tests)
+pnpm --dir web test:components                     PASS (64 files / 917 tests)
+pnpm --dir web exec vitest run --config vitest.components.config.ts lib/governance/control-override-ratchet.test.ts
+                                                      PASS (1 file / 12 tests)
 pnpm --dir web test:storybook                      PASS (7 files / 51 tests)
 pnpm --dir web storybook:build                     PASS
 pnpm --dir web storybook:verify-index              PASS (51 Stories / 35 Screen obligations / 7 controls / 5 foundations)
-pnpm test:t09:foundations                           PASS (20 tests, 390/799/800/1440, retries 0; overlay interaction checks included)
+pnpm test:t09:foundations                           PASS (20 tests, 390/799/800/1440, retries 0; two-way focus cycling and bottom-sheet safe-area checks included)
 pnpm test:storybook:scope                           PASS (1 file / 13 tests)
 pnpm --dir web test:t07:foundation                  PASS (10 files / 47 tests)
 pnpm verify:governance:affected                     PASS (43 files, 0 active violations, 4 waived)
