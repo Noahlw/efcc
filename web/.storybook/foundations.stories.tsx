@@ -267,7 +267,7 @@ export const SheetOverlay: Story = {
           <SheetTrigger asChild>
             <Button data-testid="sheet-trigger">開啟篩選面板</Button>
           </SheetTrigger>
-          <SheetContent side="right" showCloseButton={false}>
+          <SheetContent side="bottom" showCloseButton={false}>
             <SheetHeader>
               <SheetTitle>篩選條件</SheetTitle>
               <SheetDescription>選擇要顯示的資料。</SheetDescription>

@@ -319,6 +319,67 @@ export function Example() {
     }
   });
 
+  test("catches a new visible Alert beside an unchanged announcer", () => {
+    const fixture = createFixture();
+    try {
+      fs.writeFileSync(
+        path.join(fixture.rootDir, "web/app/example.tsx"),
+        `import { Alert } from "@/components/ui/alert";
+import { announce } from "@/lib/live-region";
+
+export function Example() {
+  announce("saved");
+  return <div>saved</div>;
+}
+`,
+        "utf-8"
+      );
+      git(fixture.rootDir, "add", ".");
+      git(fixture.rootDir, "commit", "-qm", "existing announcement");
+      const baseRef = git(fixture.rootDir, "rev-parse", "HEAD");
+
+      fs.writeFileSync(
+        path.join(fixture.rootDir, "web/app/example.tsx"),
+        `import { Alert } from "@/components/ui/alert";
+
+export function Example() {
+  return <Alert>saved</Alert>;
+}
+`,
+        "utf-8"
+      );
+      expect(
+        auditNewPresentationOverrides({ rootDir: fixture.rootDir, baseRef })
+      ).toStrictEqual([]);
+
+      fs.writeFileSync(
+        path.join(fixture.rootDir, "web/app/example.tsx"),
+        `import { Alert } from "@/components/ui/alert";
+import { announce } from "@/lib/live-region";
+
+export function Example() {
+  announce("saved");
+  return (
+    <>
+      <div>saved</div>
+      <Alert>saved</Alert>
+    </>
+  );
+}
+`,
+        "utf-8"
+      );
+      expect(
+        auditNewPresentationOverrides({
+          rootDir: fixture.rootDir,
+          baseRef,
+        }).map(({ message }) => message)
+      ).toStrictEqual([expect.stringContaining("announce() remains")]);
+    } finally {
+      fs.rmSync(fixture.rootDir, { recursive: true, force: true });
+    }
+  });
+
   test("fails closed for imported control recipes only", () => {
     const fixture = createFixture();
     try {

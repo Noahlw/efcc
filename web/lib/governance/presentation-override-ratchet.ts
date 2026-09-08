@@ -854,7 +854,8 @@ function inspectFeedbackOwnership(
   file: string,
   source: string,
   feedbackElements: readonly OpeningElement[],
-  added: ReadonlySet<number>
+  added: ReadonlySet<number>,
+  previousByName: ReadonlyMap<string, readonly OpeningElement[]>
 ): AuditViolation[] {
   const violations: AuditViolation[] = [];
   const liveElements = feedbackElements.filter(
@@ -886,12 +887,19 @@ function inspectFeedbackOwnership(
   if (liveElements.length === 0) {
     return violations;
   }
-  const addedAnnouncementLines = source
+  const occurrences = new Map<string, number>();
+  const newlyAddedLiveElements = liveElements.filter((element) => {
+    const occurrence = occurrences.get(element.name) ?? 0;
+    occurrences.set(element.name, occurrence + 1);
+    return !previousByName.get(element.name)?.[occurrence];
+  });
+  const announcementLines = source
     .split("\n")
     .map((line, index) => ({ line, number: index + 1 }))
-    .filter(
-      ({ line, number }) => added.has(number) && /\bannounce\s*\(/u.test(line)
-    );
+    .filter(({ line }) => /\bannounce\s*\(/u.test(line));
+  const addedAnnouncementLines = announcementLines.filter(({ number }) =>
+    added.has(number)
+  );
   for (const { line, number } of addedAnnouncementLines) {
     violations.push(
       violation(
@@ -901,6 +909,18 @@ function inspectFeedbackOwnership(
         line.trim()
       )
     );
+  }
+  if (announcementLines.length > 0 && addedAnnouncementLines.length === 0) {
+    for (const element of newlyAddedLiveElements) {
+      violations.push(
+        violation(
+          file,
+          lineNumberAt(source, element.start),
+          "visible Alert was added while announce() remains in the same ownership scope; choose exactly one announcement owner",
+          element.source.trim()
+        )
+      );
+    }
   }
   return violations;
 }
@@ -1101,7 +1121,8 @@ export function auditNewPresentationOverrides(
         file,
         source,
         elements.filter((element) => bindings.feedback.has(element.name)),
-        added
+        added,
+        previousByName
       )
     );
     violations.push(

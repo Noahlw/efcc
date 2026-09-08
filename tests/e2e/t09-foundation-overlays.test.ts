@@ -126,6 +126,15 @@ for (const [storyId, roleName] of [
     await expectWithinViewport(page, footer, `${storyId} footer`);
     await expectNoHorizontalOverflow(page, storyId);
 
+    if (storyId === "foundations--sheet-overlay") {
+      await expect(content).toHaveAttribute("data-side", "bottom");
+      await expect(content).toHaveClass(/safe-area-inset-bottom/u);
+      const paddingBottom = await content.evaluate(
+        (element) => getComputedStyle(element).paddingBottom
+      );
+      expect(paddingBottom).toMatch(/px$/u);
+    }
+
     const trigger = page.getByTestId(
       roleName === "alertdialog"
         ? "alert-dialog-trigger"
@@ -137,12 +146,16 @@ for (const [storyId, roleName] of [
     // tree while the overlay is open; it becomes the focus-return target on
     // dismissal.
     await expect(trigger).toBeAttached();
+    const focusable = content.locator(
+      'button:not(:disabled), a[href], input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex]:not([tabindex="-1"])'
+    );
+    await expect(focusable).not.toHaveCount(0);
+    await focusable.last().focus();
     await page.keyboard.press("Tab");
-    await expect
-      .poll(() =>
-        content.evaluate((element) => element.contains(document.activeElement))
-      )
-      .toBe(true);
+    await expect(focusable.first()).toBeFocused();
+    await focusable.first().focus();
+    await page.keyboard.press("Shift+Tab");
+    await expect(focusable.last()).toBeFocused();
 
     if (roleName === "alertdialog") {
       await page.getByRole("button", { name: "取消" }).click();
