@@ -8,6 +8,7 @@ import { describe, expect, test } from "vitest";
 import { auditFileContent } from "./audit";
 import {
   auditNewControlOverrides,
+  auditNewPresentationOverrides,
   resolveControlOverrideBase,
 } from "./control-override-ratchet";
 
@@ -228,6 +229,91 @@ export function Example() {
         expect.stringContaining("rounded-md"),
         expect.stringContaining("px-2"),
       ]);
+    } finally {
+      fs.rmSync(fixture.rootDir, { recursive: true, force: true });
+    }
+  });
+
+  test("audits T09 surface and overlay ownership while preserving the neutral API", () => {
+    const fixture = createFixture();
+    try {
+      fs.writeFileSync(
+        path.join(fixture.rootDir, "web/app/example.tsx"),
+        `import { Card } from "@/components/ui/card";
+import { DialogContent } from "@/components/ui/dialog";
+
+export function Example() {
+  return (
+    <>
+      <Card className="border-0 bg-transparent shadow-none">surface</Card>
+      <DialogContent className="max-h-[60dvh] overflow-y-auto pb-[env(safe-area-inset-bottom)]">
+        <div className="z-[9999]">overlay</div>
+      </DialogContent>
+    </>
+  );
+}
+`,
+        "utf-8"
+      );
+      const violations = auditNewPresentationOverrides({
+        rootDir: fixture.rootDir,
+        baseRef: fixture.baseRef,
+      });
+      expect(violations.map(({ message }) => message)).toStrictEqual(
+        expect.arrayContaining([
+          expect.stringContaining("surface/background"),
+          expect.stringContaining("overlay/containment"),
+          expect.stringContaining("overlay/safe-area"),
+          expect.stringContaining("raw z-index"),
+        ])
+      );
+    } finally {
+      fs.rmSync(fixture.rootDir, { recursive: true, force: true });
+    }
+  });
+
+  test("requires exactly one feedback announcement owner", () => {
+    const fixture = createFixture();
+    try {
+      fs.writeFileSync(
+        path.join(fixture.rootDir, "web/app/example.tsx"),
+        `import { Alert } from "@/components/ui/alert";
+import { announce } from "@/lib/live-region";
+
+export function Example() {
+  announce("saved");
+  return <Alert>saved</Alert>;
+}
+`,
+        "utf-8"
+      );
+      expect(
+        auditNewPresentationOverrides({
+          rootDir: fixture.rootDir,
+          baseRef: fixture.baseRef,
+        }).map(({ message }) => message)
+      ).toStrictEqual([
+        expect.stringContaining("exactly one announcement owner"),
+      ]);
+
+      fs.writeFileSync(
+        path.join(fixture.rootDir, "web/app/example.tsx"),
+        `import { Alert } from "@/components/ui/alert";
+import { announce } from "@/lib/live-region";
+
+export function Example() {
+  announce("saved");
+  return <Alert announcement="none">saved</Alert>;
+}
+`,
+        "utf-8"
+      );
+      expect(
+        auditNewPresentationOverrides({
+          rootDir: fixture.rootDir,
+          baseRef: fixture.baseRef,
+        })
+      ).toStrictEqual([]);
     } finally {
       fs.rmSync(fixture.rootDir, { recursive: true, force: true });
     }

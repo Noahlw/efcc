@@ -70,7 +70,8 @@ const LoginPage = () => {
   // Flash notices carry different tones: errors (failed logout) vs success
   // (account updated) vs neutral instructions (legacy-PIN upgrade gate).
   // Session expiry is its own dedicated screen (SESSION_EXPIRED), not a
-  // flash notice on this form. All keep role="alert" for announcement.
+  // flash notice on this form. Visual tone and announcement urgency are
+  // independent; the visible Alert owns each notice announcement.
   const [noticeKind, setNoticeKind] = useState<"error" | "info" | "success">(
     "info"
   );
@@ -137,7 +138,6 @@ const LoginPage = () => {
       // Only show the restoring state when a session may actually be stored;
       // cold boot (no hint) renders Login directly without a restore call.
       setView({ kind: "RESTORING" });
-      announce(COPY.restore.loading);
     }
     try {
       const bootstrap = await restoreBootstrap();
@@ -163,7 +163,6 @@ const LoginPage = () => {
             ? errorCopyFor(error.problem.code, error.problem.detail)
             : COPY.error.networkError;
         setView({ kind: "RECOVERABLE_ERROR", error: msg, retry: doRestore });
-        announce(msg);
       }
     }
   }, [navigateAfterLogin, handleExpiry]);
@@ -186,13 +185,11 @@ const LoginPage = () => {
   // On mount, surface any flash notice unrelated to session expiry.
   useEffect(() => {
     if (sessionStorage.getItem(LOGOUT_FAILED_KEY) === "1") {
-      announce(COPY.logout.failedNotice);
       setNotice(COPY.logout.failedNotice);
       setNoticeKind("error");
       sessionStorage.removeItem(LOGOUT_FAILED_KEY);
     }
     if (sessionStorage.getItem(ACCOUNT_UPDATED_KEY) === "1") {
-      announce(COPY.account.updatedNotice);
       setNotice(COPY.account.updatedNotice);
       setNoticeKind("success");
       sessionStorage.removeItem(ACCOUNT_UPDATED_KEY);
@@ -212,7 +209,6 @@ const LoginPage = () => {
       }
       setInvalidFields(nextInvalidFields);
       setView({ kind: "ERROR", error: COPY.login.missingFields });
-      announce(COPY.login.missingFields);
       if (missingUsername) {
         usernameRef.current?.focus();
       } else {
@@ -237,7 +233,6 @@ const LoginPage = () => {
         setView({ kind: "UPGRADE" });
         setNotice(COPY.login.upgradeRequired);
         setNoticeKind("info");
-        announce(COPY.login.upgradeRequired);
         return;
       }
       setAuthHint();
@@ -259,7 +254,6 @@ const LoginPage = () => {
           : COPY.login.networkError;
       setInvalidFields([]);
       setView({ kind: "ERROR", error: msg });
-      announce(msg);
       clearAuthHint();
     }
   }, [username, password, navigateAfterLogin]);
@@ -278,7 +272,6 @@ const LoginPage = () => {
         setNoticeKind("error");
         setNotice(msg);
         setView({ kind: "SIGNED_OUT" });
-        announce(msg);
         return;
       }
       const bootstrap = buildBootstrap(me.user, me.sections, me.navigation);
@@ -295,11 +288,9 @@ const LoginPage = () => {
         setNoticeKind("error");
         setNotice(msg);
         setView({ kind: "SIGNED_OUT" });
-        announce(msg);
         return;
       }
       setView({ kind: "RECOVERABLE_ERROR", error: msg, retry: finishUpgrade });
-      announce(msg);
     }
   }, [navigateAfterLogin, username]);
 
@@ -311,7 +302,6 @@ const LoginPage = () => {
       setInvalidFields(["legacyPin"]);
       setNotice(COPY.login.upgradeLegacyPinInvalid);
       setNoticeKind("error");
-      announce(COPY.login.upgradeLegacyPinInvalid);
       legacyPinRef.current?.focus();
       return;
     }
@@ -319,7 +309,6 @@ const LoginPage = () => {
       setInvalidFields(["newCredential"]);
       setNotice(COPY.login.upgradePasswordTooShort);
       setNoticeKind("error");
-      announce(COPY.login.upgradePasswordTooShort);
       newCredentialRef.current?.focus();
       return;
     }
@@ -327,7 +316,6 @@ const LoginPage = () => {
       setInvalidFields(["confirmCredential"]);
       setNotice(COPY.login.upgradePasswordMismatch);
       setNoticeKind("error");
-      announce(COPY.login.upgradePasswordMismatch);
       confirmCredentialRef.current?.focus();
       return;
     }
@@ -355,7 +343,6 @@ const LoginPage = () => {
         setView({ kind: "UPGRADE" });
         setNoticeKind("error");
         setNotice(msg);
-        announce(msg);
         clearAuthHint();
         return;
       }
@@ -377,7 +364,6 @@ const LoginPage = () => {
           setNoticeKind("error");
           setNotice(COPY.login.upgradeNetworkError);
           setView({ kind: "SIGNED_OUT" });
-          announce(COPY.login.upgradeNetworkError);
           return;
         }
         const bootstrap = buildBootstrap(me.user, me.sections, me.navigation);
@@ -395,7 +381,6 @@ const LoginPage = () => {
           setView({ kind: "UPGRADE" });
           setNoticeKind("error");
           setNotice(msg);
-          announce(msg);
           clearAuthHint();
           return;
         }
@@ -434,7 +419,14 @@ const LoginPage = () => {
           className="size-8 rounded-full bg-[var(--skeleton)]"
           aria-hidden="true"
         />
-        <p className="text-[var(--ink-muted)]">{COPY.restore.loading}</p>
+        <Alert
+          announcement="polite"
+          aria-label={COPY.restore.loading}
+          className="w-full max-w-[22rem] text-center"
+          tone="pending"
+        >
+          {COPY.restore.loading}
+        </Alert>
       </main>
     );
   }
@@ -453,7 +445,7 @@ const LoginPage = () => {
     return (
       <main className="flex min-h-screen items-center justify-center bg-[var(--surface)] p-4">
         <Card
-          className="w-full max-w-[400px] min-w-0 gap-0 overflow-visible border border-[var(--line)] bg-[var(--surface-raised)] p-[1.875rem_1.375rem] text-center shadow-none ring-0"
+          className="w-full max-w-[400px] min-w-0 gap-0 text-center"
           role="article"
         >
           <h1
@@ -506,7 +498,7 @@ const LoginPage = () => {
           <div className="grid w-full max-w-[860px] items-center gap-[clamp(2rem,5vw,3.5rem)] max-[799px]:grid-cols-1 min-[800px]:grid-cols-2">
             <Card
               id="login"
-              className="order-first w-full max-w-[400px] min-w-0 gap-0 overflow-visible border border-[var(--line)] bg-[var(--surface-raised)] p-7 shadow-none ring-0 max-[799px]:order-first max-[799px]:max-w-none max-[799px]:p-4 min-[800px]:order-2 min-[800px]:justify-self-end"
+              className="order-first w-full max-w-[400px] min-w-0 gap-0 max-[799px]:order-first max-[799px]:max-w-none min-[800px]:order-2 min-[800px]:justify-self-end"
               role="region"
               aria-labelledby="login-title"
             >
@@ -529,14 +521,11 @@ const LoginPage = () => {
                 >
                   <Alert
                     id="login-notice"
-                    variant={noticeKind === "error" ? "destructive" : "default"}
-                    className={`mb-0 text-[0.92rem] leading-[1.5] ${
-                      noticeKind === "error"
-                        ? "border-[var(--error-border)] bg-[var(--error-surface)] text-[var(--error)]"
-                        : noticeKind === "success"
-                          ? "border-[var(--success-border)] bg-[var(--success-surface)] text-[var(--ink)]"
-                          : "border-[var(--line)] bg-[var(--surface-raised)] text-[var(--ink)]"
-                    }`}
+                    announcement={
+                      noticeKind === "error" ? "assertive" : "polite"
+                    }
+                    className="mb-0 text-[0.92rem] leading-[1.5]"
+                    tone={noticeKind}
                   >
                     {notice}
                   </Alert>
@@ -777,8 +766,8 @@ const LoginPage = () => {
                   <Alert
                     id="login-error"
                     aria-label={view.error}
-                    variant="destructive"
-                    className="border-[var(--error-border)] bg-[var(--error-surface)] text-[var(--error)]"
+                    announcement="assertive"
+                    tone="error"
                   >
                     {view.error}
                   </Alert>

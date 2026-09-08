@@ -40,6 +40,9 @@
   --accent: #9c302c;
   --accent-deep: #76231f;
   --focus: #176a87;
+  --info: #176a87;
+  --info-surface: #edf5f8;
+  --info-border: #a9c9d6;
   --success: #2e6b37;
   --success-surface: #eef4ef;
   --success-border: #b9cfbe;
@@ -49,6 +52,12 @@
   --pending: #8a5b16;
   --pending-surface: #f3eee8;
   --pending-border: #c1ad95;
+  --warning: #78551a;
+  --warning-surface: #fbf2df;
+  --warning-border: #d8bd7b;
+  --conflict: #6b4a8f;
+  --conflict-surface: #f3eff8;
+  --conflict-border: #c9b8d9;
   --skeleton: #e3e0e1;
   --font-sans:
     -apple-system, BlinkMacSystemFont, "PingFang TC", "Noto Sans TC",
@@ -146,7 +155,9 @@
   --layer-dock: 100;
   --layer-rail: 90;
   --layer-offline-banner: 95;
-  --layer-overlay: 200;
+  --layer-overlay-backdrop: 200;
+  --layer-overlay-content: 210;
+  --layer-overlay: var(--layer-overlay-content);
 
   /* Motion (reduced-motion consumers may disable) */
   --duration-fast: 0.15s;
@@ -459,7 +470,7 @@
   }
 }
 .attention-panel__overlay {
-  z-index: var(--layer-overlay);
+  z-index: var(--layer-overlay-backdrop);
 }
 
 .attention-panel__header {

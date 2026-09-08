@@ -746,7 +746,7 @@ export const ParticipantEnrollment = ({
         }}
       >
         <AlertDialogContent
-          className="min-w-0 max-w-[32rem] border-[var(--line-strong)] bg-[var(--surface-raised)] p-5"
+          className="min-w-0 max-w-[32rem]"
           data-confirm-dialog
           aria-labelledby="participant-confirm-title"
           aria-describedby="participant-confirm-body"

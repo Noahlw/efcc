@@ -1,7 +1,8 @@
-import userEvent from "@testing-library/user-event";
 import { cleanup, render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, test, vi } from "vitest";
 
+import { Alert } from "@/components/ui/alert";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -13,6 +14,7 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
   Select,
@@ -36,6 +38,65 @@ afterEach(() => {
 });
 
 describe("local primitive contracts", () => {
+  test("Card owns shared surface chrome without clipping content", () => {
+    const { rerender } = render(
+      <Card data-testid="surface-card">
+        <p>Long content remains visible outside an arbitrary clipping box.</p>
+      </Card>
+    );
+
+    const card = screen.getByTestId("surface-card");
+    expect(card).toHaveAttribute("data-size", "default");
+    expect(card.className).toContain("p-(--card-spacing)");
+    expect(card.className).toContain("border-[var(--line)]");
+    expect(card.className).toContain("rounded-[var(--radius-md)]");
+    expect(card.className).toContain("bg-[var(--surface-raised)]");
+    expect(card.className).not.toContain("overflow-hidden");
+
+    rerender(<Card data-testid="surface-card" size="sm" />);
+    expect(screen.getByTestId("surface-card")).toHaveAttribute(
+      "data-size",
+      "sm"
+    );
+  });
+
+  test("Alert separates visual tone from announcement ownership", () => {
+    render(
+      <div>
+        <Alert data-testid="alert-info" tone="info" announcement="none" />
+        <Alert
+          data-testid="alert-success"
+          tone="success"
+          announcement="polite"
+        />
+        <Alert
+          data-testid="alert-error"
+          variant="destructive"
+          announcement="assertive"
+        />
+      </div>
+    );
+
+    expect(screen.getByTestId("alert-info")).not.toHaveAttribute("role");
+    expect(screen.getByTestId("alert-info")).toHaveAttribute(
+      "data-tone",
+      "info"
+    );
+    expect(screen.getByTestId("alert-success")).toHaveAttribute(
+      "role",
+      "status"
+    );
+    expect(screen.getByTestId("alert-success")).toHaveAttribute(
+      "aria-live",
+      "polite"
+    );
+    expect(screen.getByTestId("alert-error")).toHaveAttribute(
+      "data-tone",
+      "error"
+    );
+    expect(screen.getByTestId("alert-error")).toHaveAttribute("role", "alert");
+  });
+
   test("Checkbox exposes checked, unchecked, mixed, disabled, keyboard, and names", async () => {
     const user = userEvent.setup();
     const onCheckedChange = vi.fn();

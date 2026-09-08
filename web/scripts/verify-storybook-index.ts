@@ -4,6 +4,7 @@ import path from "node:path";
 import {
   ALL_PRESENTATION_DECLARATIONS,
   CONTROL_PRESENTATION_DECLARATIONS,
+  FOUNDATION_PRESENTATION_DECLARATIONS,
   SCREEN_CATALOG,
   validateScreenCatalog,
 } from "../.storybook/presentation-catalog";
@@ -67,5 +68,5 @@ if (
 }
 
 console.log(
-  `Storybook index reconciliation: ${actualStoryIds.size} Stories / ${SCREEN_CATALOG.length} Screen Catalog obligations / ${CONTROL_PRESENTATION_DECLARATIONS.length} control Stories; all baselines resolvable.`
+  `Storybook index reconciliation: ${actualStoryIds.size} Stories / ${SCREEN_CATALOG.length} Screen Catalog obligations / ${CONTROL_PRESENTATION_DECLARATIONS.length} control Stories / ${FOUNDATION_PRESENTATION_DECLARATIONS.length} foundation Stories; all baselines resolvable.`
 );

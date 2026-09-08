@@ -67,7 +67,7 @@ export const AttendanceChooser = ({
 }: AttendanceChooserProps) => {
   return (
     <Card
-      className="grid gap-[1.125rem] p-5 bg-[var(--surface-raised)] border border-[var(--line-strong)] rounded-[var(--radius-md)] print:hidden"
+      className="grid print:hidden"
       role="region"
       aria-labelledby="attendance-chooser-title"
     >
@@ -919,7 +919,7 @@ export const AttendanceOperatorPanel = ({
   return (
     <div className="mx-auto w-[min(100%,760px)] px-4 py-8 pb-12 print:p-0 print:m-0 print:w-full">
       <Card
-        className="grid gap-[1.125rem] p-5 bg-[var(--surface-raised)] border border-[var(--line-strong)] rounded-[var(--radius-md)] print:border-0 print:shadow-none print:p-0 print:bg-transparent"
+        className="grid print:border-0 print:shadow-none print:p-0 print:bg-transparent"
         role={rosterVisible ? "region" : undefined}
         aria-labelledby={rosterVisible ? "attendance-roster-title" : undefined}
         aria-busy={busy || chooserLoading}

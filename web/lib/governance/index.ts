@@ -14,4 +14,4 @@ export * from "./registries";
 export * from "./validation";
 export * from "./failure-reporter";
 export * from "./audit";
-export * from "./control-override-ratchet";
+export * from "./presentation-override-ratchet";

@@ -224,7 +224,7 @@ export const ManagementFilterSheet = ({
     >
       <SheetContent
         aria-label={label}
-        className="max-h-[82dvh] w-full overflow-y-auto rounded-t-[18px] border border-[var(--line)] bg-[var(--surface-raised)] p-[1.2rem] pb-[calc(1rem+env(safe-area-inset-bottom,0px))] text-[var(--ink)] sm:inset-x-auto sm:top-1/2 sm:right-auto sm:bottom-auto sm:left-1/2 sm:h-auto sm:w-[min(640px,calc(100%-2rem))] sm:-translate-x-1/2 sm:-translate-y-1/2 sm:rounded-2xl"
+        className="w-full text-[var(--ink)] sm:inset-x-auto sm:top-1/2 sm:right-auto sm:bottom-auto sm:left-1/2 sm:h-auto sm:w-[min(640px,calc(100%-2rem))] sm:-translate-x-1/2 sm:-translate-y-1/2"
         onCloseAutoFocus={(event) => {
           event.preventDefault();
           restoreFocus();

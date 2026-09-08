@@ -507,10 +507,7 @@ export const SelfCheckInPanel = ({
         className="mx-auto w-[min(100%,760px)] px-4 py-8 pb-12"
         data-scanner-state="desktop-manual"
       >
-        <Card
-          className="grid gap-[1.125rem] p-5 bg-[var(--surface-raised)] border border-[var(--line-strong)] rounded-[var(--radius-md)]"
-          aria-labelledby="attendance-title"
-        >
+        <Card className="grid" aria-labelledby="attendance-title">
           <h1
             id="attendance-title"
             ref={scanHeadingRef}
@@ -540,7 +537,7 @@ export const SelfCheckInPanel = ({
         data-scanner-state="fallback"
       >
         <Card
-          className="grid gap-[1.125rem] p-5 [@media(max-height:640px)]:p-3 [@media(max-height:640px)]:gap-3 bg-[var(--surface-raised)] border border-[var(--line-strong)] rounded-[var(--radius-md)]"
+          className="grid [@media(max-height:640px)]:gap-3"
           aria-labelledby="fallback-methods-title"
         >
           <h1

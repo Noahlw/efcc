@@ -59,7 +59,7 @@ const GuestCheckinResult = ({
   headingRef: RefObject<HTMLHeadingElement | null>;
 }) => (
   <Card
-    className="grid gap-[1.125rem] p-5 bg-[var(--surface-raised)] border border-[var(--line-strong)] rounded-[var(--radius-md)] text-center"
+    className="grid text-center"
     role="region"
     aria-labelledby="guest-result-title"
   >
@@ -244,7 +244,7 @@ export const AttendancePanel = () => {
       data-surface="guest-check-in"
     >
       <Card
-        className="grid gap-[1.125rem] p-5 [@media(max-height:640px)]:p-3 [@media(max-height:640px)]:gap-2 bg-[var(--surface-raised)] border border-[var(--line-strong)] rounded-[var(--radius-md)]"
+        className="grid [@media(max-height:640px)]:gap-2"
         role="region"
         aria-labelledby="attendance-title"
       >

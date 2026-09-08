@@ -107,7 +107,7 @@ const ProfileContent = () => {
       </div>
 
       <Card
-        className="min-w-0 gap-0 overflow-visible rounded-[12px] border border-[var(--line)] bg-[var(--surface-raised)] p-6 text-center shadow-none ring-0 max-[799px]:p-5"
+        className="min-w-0 gap-0 text-center"
         role="article"
         aria-labelledby="profile-qr-title"
       >
@@ -155,7 +155,7 @@ const ProfileContent = () => {
       </Card>
 
       <Card
-        className="mt-3 min-w-0 gap-0 overflow-visible rounded-[12px] border border-[var(--line)] bg-[var(--surface-raised)] p-5 shadow-none ring-0 max-[799px]:p-4"
+        className="mt-3 min-w-0 gap-0"
         role="region"
         aria-labelledby="profile-details-title"
       >
@@ -187,7 +187,7 @@ const ProfileContent = () => {
 
       {identities.length > 0 && (
         <Card
-          className="mt-3 min-w-0 gap-0 overflow-visible rounded-[12px] border border-[var(--line)] bg-[var(--surface-raised)] p-5 shadow-none ring-0 max-[799px]:p-4"
+          className="mt-3 min-w-0 gap-0"
           role="region"
           aria-labelledby="profile-identities-title"
         >
