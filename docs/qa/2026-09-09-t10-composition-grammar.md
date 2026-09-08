@@ -2,11 +2,12 @@
 
 ## Status
 
-`IMPLEMENTATION_GREEN — TICKET 03 COMPLETE`
+`IMPLEMENTATION_GREEN — TICKET 03 COMPLETE; FINAL QUALIFICATION IN ACCEPTANCE TRACE`
 
-This record closes the supporting grammar against the live T10 candidate at
-`8fe49350`. It records ownership decisions; it does not create a second
-component registry or claim owner L2 approval.
+This record closes the supporting grammar against the live T10 candidate. It
+records ownership decisions; final machine qualification is recorded in
+[`2026-09-09-t10-acceptance-trace.md`](2026-09-09-t10-acceptance-trace.md).
+It does not create a second component registry or claim owner L2 approval.
 
 ## Live grammar disposition
 

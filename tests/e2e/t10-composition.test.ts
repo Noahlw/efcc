@@ -100,6 +100,7 @@ test("Route Header keeps content and actions reachable across W7", async ({
   const lead = header.locator("p");
   const back = header.getByRole("link", { name: "返回管理工作" });
   const action = header.locator("[data-route-header-actions]");
+  const main = header.locator("[data-route-header-main]");
   const save = header.getByRole("button", { name: "儲存已編輯內容" });
   const status = header.getByRole("status");
   const viewport = page.viewportSize();
@@ -117,6 +118,10 @@ test("Route Header keeps content and actions reachable across W7", async ({
   const headingBox = await rect(heading);
   const leadBox = await rect(lead);
   const actionBox = await rect(action);
+  const mainLayout = await main.evaluate((element: HTMLElement) => ({
+    flexDirection: window.getComputedStyle(element).flexDirection,
+    below799: window.matchMedia("(width < 799px)").matches,
+  }));
   expect(
     headerBox.left,
     "Route Header left containment"
@@ -133,6 +138,8 @@ test("Route Header keeps content and actions reachable across W7", async ({
   if ((viewport?.width ?? 0) <= 414) {
     expect(actionBox.left).toBeGreaterThanOrEqual(headerBox.left - 1);
     expect(actionBox.top).toBeGreaterThanOrEqual(leadBox.bottom - 1);
+    expect(mainLayout.flexDirection).toBe("column");
+    expect(mainLayout.below799).toBe(true);
     expect(
       headingBox.height,
       "long title wraps at narrow widths"
@@ -140,7 +147,14 @@ test("Route Header keeps content and actions reachable across W7", async ({
     expect(leadBox.height, "long lead wraps at narrow widths").toBeGreaterThan(
       32
     );
-  } else if ((viewport?.width ?? 0) === 799 || (viewport?.width ?? 0) === 800) {
+  } else if ((viewport?.width ?? 0) === 799) {
+    expect(mainLayout.flexDirection).toBe("row");
+    expect(mainLayout.below799).toBe(false);
+    expect(actionBox.top).toBeLessThanOrEqual(headingBox.bottom + 1);
+    expect(actionBox.left).toBeGreaterThanOrEqual(headingBox.right - 1);
+  } else if ((viewport?.width ?? 0) === 800) {
+    expect(mainLayout.flexDirection).toBe("row");
+    expect(mainLayout.below799).toBe(false);
     expect(actionBox.top).toBeLessThanOrEqual(headingBox.bottom + 1);
     expect(actionBox.left).toBeGreaterThanOrEqual(headingBox.right - 1);
   }
