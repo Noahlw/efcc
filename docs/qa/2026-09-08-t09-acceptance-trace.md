@@ -12,8 +12,9 @@ machine evidence, and final human design gate separate.
 - Fixed T08 parent: `6ab0561f9d79b32e2ca5345325a5cb46f01d2e13`
 - T09.0 checkpoint: `9285420a4829264577fae002382a07795091ca39`
 - T09 implementation checkpoint: `a8b5033d6c7e9b2e54aa0fe253a6bb7518d03db2`
-- T09 review-fix / reviewed production checkpoint: `1530c7aeb66abe4ad429912346ac2bfb26097488`
-- T09 acceptance-proof checkpoint: `00b3c52a283773cf92ca5e71d107273265ef38da`
+- T09 prior review-fix checkpoint: `1530c7aeb66abe4ad429912346ac2bfb26097488`
+- T09 reviewed production / acceptance-proof checkpoint:
+  `00b3c52a283773cf92ca5e71d107273265ef38da`
   (two-way focus cycling, bottom-sheet safe-area coverage, and inverse
   announcement-ownership ratchet proof)
 - Owner contract: D1 approved; D2 and D3 approved with changes in the owner
@@ -21,6 +22,8 @@ machine evidence, and final human design gate separate.
   not final T09 design approval, `STACK_GREEN`, merge approval, issue closure,
   T10 authorization, or a B-003 disposition change.
 - Initial implementation state: `MACHINE_QUALIFICATION_PENDING`
+- Current machine state: `MACHINE_QUALIFIED` after fresh Standards and Spec
+  reviews against `00b3c52a283773cf92ca5e71d107273265ef38da`
 - Human design state: `WAITING_FOR_LATER_HUMAN_REVIEW`
 
 ## Acceptance scope
@@ -70,6 +73,8 @@ node scripts/t09-frontier-census.mjs --check       PASS at T09.0 checkpoint
 pnpm --dir web test:components                     PASS (64 files / 917 tests)
 pnpm --dir web exec vitest run --config vitest.components.config.ts lib/governance/control-override-ratchet.test.ts
                                                       PASS (1 file / 12 tests)
+/code-review Standards                            PASS (reviewed `00b3c52a`)
+/code-review Spec                                PASS (reviewed `00b3c52a`)
 pnpm --dir web test:storybook                      PASS (7 files / 51 tests)
 pnpm --dir web storybook:build                     PASS
 pnpm --dir web storybook:verify-index              PASS (51 Stories / 35 Screen obligations / 7 controls / 5 foundations)
