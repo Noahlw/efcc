@@ -17,13 +17,17 @@ machine evidence, and final human design gate separate.
   `00b3c52a283773cf92ca5e71d107273265ef38da`
   (two-way focus cycling, bottom-sheet safe-area coverage, and inverse
   announcement-ownership ratchet proof)
+- T09 repair checkpoint: `a6bfe191df785700b7d011c00ce93917d8e0b619`
+  (function-scoped feedback ownership, nested overlay z-index proof, explicit
+  Alert announcement defaults, CardFooter containment, and deterministic
+  supporting long-content/busy Stories)
 - Owner contract: D1 approved; D2 and D3 approved with changes in the owner
   decision supplied for T09 / #514. This authorizes implementation only; it is
   not final T09 design approval, `STACK_GREEN`, merge approval, issue closure,
   T10 authorization, or a B-003 disposition change.
 - Initial implementation state: `MACHINE_QUALIFICATION_PENDING`
-- Current machine state: `MACHINE_QUALIFIED` after fresh Standards and Spec
-  reviews against `00b3c52a283773cf92ca5e71d107273265ef38da`
+- Current machine state: `MACHINE_QUALIFICATION_PENDING` while final Standards
+  and Spec reviews are rerun against `a6bfe191df785700b7d011c00ce93917d8e0b619`
 - Human design state: `WAITING_FOR_LATER_HUMAN_REVIEW`
 
 ## Acceptance scope
@@ -46,10 +50,17 @@ Stable PSNs and direct URLs are filled after the first local Storybook build.
 | Foundation | PSN | Story ID / URL | Human review |
 |---|---|---|---|
 | Surface | `PSN-FOUNDATION-SURFACE` | [`foundations--surface`](http://127.0.0.1:6006/iframe.html?id=foundations--surface&viewMode=story) | pending |
+| Surface / CardFooter | `PSN-FOUNDATION-SURFACE-CARD-FOOTER` | [`foundations--surface-card-footer`](http://127.0.0.1:6006/iframe.html?id=foundations--surface-card-footer&viewMode=story) | pending |
 | Feedback | `PSN-FOUNDATION-FEEDBACK` | [`foundations--feedback`](http://127.0.0.1:6006/iframe.html?id=foundations--feedback&viewMode=story) | pending |
 | Dialog | `PSN-FOUNDATION-DIALOG` | [`foundations--dialog-overlay`](http://127.0.0.1:6006/iframe.html?id=foundations--dialog-overlay&viewMode=story) | pending |
+| Dialog / long content | `PSN-FOUNDATION-DIALOG-LONG-CONTENT` | [`foundations--dialog-long-content`](http://127.0.0.1:6006/iframe.html?id=foundations--dialog-long-content&viewMode=story) | pending |
+| Dialog / busy disabled | `PSN-FOUNDATION-DIALOG-BUSY-DISABLED` | [`foundations--dialog-busy-disabled`](http://127.0.0.1:6006/iframe.html?id=foundations--dialog-busy-disabled&viewMode=story) | pending |
 | AlertDialog | `PSN-FOUNDATION-ALERT-DIALOG` | [`foundations--alert-dialog-overlay`](http://127.0.0.1:6006/iframe.html?id=foundations--alert-dialog-overlay&viewMode=story) | pending |
+| AlertDialog / long content | `PSN-FOUNDATION-ALERT-DIALOG-LONG-CONTENT` | [`foundations--alert-dialog-long-content`](http://127.0.0.1:6006/iframe.html?id=foundations--alert-dialog-long-content&viewMode=story) | pending |
+| AlertDialog / busy disabled | `PSN-FOUNDATION-ALERT-DIALOG-BUSY-DISABLED` | [`foundations--alert-dialog-busy-disabled`](http://127.0.0.1:6006/iframe.html?id=foundations--alert-dialog-busy-disabled&viewMode=story) | pending |
 | Sheet | `PSN-FOUNDATION-SHEET` | [`foundations--sheet-overlay`](http://127.0.0.1:6006/iframe.html?id=foundations--sheet-overlay&viewMode=story) | pending |
+| Sheet / long content | `PSN-FOUNDATION-SHEET-LONG-CONTENT` | [`foundations--sheet-long-content`](http://127.0.0.1:6006/iframe.html?id=foundations--sheet-long-content&viewMode=story) | pending |
+| Sheet / busy disabled | `PSN-FOUNDATION-SHEET-BUSY-DISABLED` | [`foundations--sheet-busy-disabled`](http://127.0.0.1:6006/iframe.html?id=foundations--sheet-busy-disabled&viewMode=story) | pending |
 
 ## Required browser matrix
 
@@ -69,24 +80,28 @@ canonical four-width matrix.
 The exact commands and results are appended as checkpoint commits complete:
 
 ```text
-node scripts/t09-frontier-census.mjs --check       PASS at T09.0 checkpoint
-pnpm --dir web test:components                     PASS (64 files / 917 tests)
+node scripts/t09-frontier-census.mjs --check       PASS at T09.0 checkpoint `9285420a`
+pnpm --dir web test:components                     PASS (64 files / 922 tests)
 pnpm --dir web exec vitest run --config vitest.components.config.ts lib/governance/control-override-ratchet.test.ts
-                                                      PASS (1 file / 12 tests)
-/code-review Standards                            PASS (reviewed `00b3c52a`)
-/code-review Spec                                PASS (reviewed `00b3c52a`)
-pnpm --dir web test:storybook                      PASS (7 files / 51 tests)
+                                                      PASS (1 file / 15 tests)
+/code-review Standards                            PENDING against `a6bfe191`
+/code-review Spec                                PENDING against `a6bfe191`
+pnpm --dir web test:storybook                      PASS (7 files / 58 tests)
 pnpm --dir web storybook:build                     PASS
-pnpm --dir web storybook:verify-index              PASS (51 Stories / 35 Screen obligations / 7 controls / 5 foundations)
-pnpm test:t09:foundations                           PASS (20 tests, 390/799/800/1440, retries 0; two-way focus cycling and bottom-sheet safe-area checks included)
+pnpm --dir web storybook:verify-index              PASS (58 Stories / 35 Screen obligations / 7 controls / 12 foundations)
+pnpm test:t09:foundations                           PASS (48/48, 390/799/800/1440, one worker, retries 0; two-way focus cycling and bottom-sheet safe-area checks included)
 pnpm test:storybook:scope                           PASS (1 file / 13 tests)
 pnpm --dir web test:t07:foundation                  PASS (10 files / 47 tests)
-pnpm verify:governance:affected                     PASS (43 files, 0 active violations, 4 waived)
+pnpm verify:governance:affected                     PASS (59 files, 0 active violations, 0 waived)
 pnpm verify:governance:full                         PASS (335 files, 0 active violations, 69 waived items)
 pnpm verify:governance:release                      PASS (335 files, 0 active violations, 6 active waivers)
 pnpm verify:fast                                    PASS
 pnpm verify:precommit                               PASS (complete aggregate)
 ```
+
+The census `--check` is intentionally evaluated at the T09.0 checkpoint;
+running that guard at the implementation HEAD correctly fails its protected
+production-diff invariant and is not a current T09 qualification check.
 
 The T09 browser run used the repository's local Storybook launcher; no
 Cloudflare account or production host was touched. The launcher resolves the
