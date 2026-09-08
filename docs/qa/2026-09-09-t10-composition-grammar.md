@@ -34,7 +34,7 @@ pattern. They are explicitly deferred to route-family owners:
 | T13–T16 Programs route family | `CEN-026`, `CEN-059`–`CEN-068` | `DEFERRED_TO_ROUTE_FAMILY`; the nested detail, participant, boundary and workspace surfaces remain with Programs owners. |
 | T17 Profile / Account Settings | `CEN-051` | `DEFERRED_TO_ROUTE_FAMILY`; preserve Account Settings behavior and copy. |
 | T18 public auth / registration | `CEN-052`, `CEN-069` | `DEFERRED_TO_ROUTE_FAMILY`; preserve registration state, validation and recovery behavior. |
-| T20–T27 management / identity | `CEN-031`–`CEN-055` | `DEFERRED_TO_ROUTE_FAMILY`; keep management hub, directory, CMS, role, access and approval surfaces with their route owners. |
+| T20–T27 management / identity | `CEN-031`–`CEN-050`, `CEN-053`–`CEN-055` | `DEFERRED_TO_ROUTE_FAMILY`; keep management hub, directory, CMS, role, access and approval surfaces with their route owners. |
 | T28–T31 attendance | `CEN-056`, `CEN-057` | `DEFERRED_TO_ROUTE_FAMILY`; camera and confirmation composition stays with the attendance owners. |
 
 No residual record is silently treated as fixed, and no route-specific debt is

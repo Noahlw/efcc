@@ -40,7 +40,31 @@ test("Page Frame keeps shared gutter and content contained across W7", async ({
   const frameBox = await rect(frame);
   const contentBox = await rect(content);
   const viewport = page.viewportSize();
+  const frameStyle = await frame.evaluate((element: HTMLElement) => {
+    const style = window.getComputedStyle(element);
+    return {
+      paddingBottom: Number.parseFloat(style.paddingBottom),
+      paddingLeft: Number.parseFloat(style.paddingLeft),
+      paddingRight: Number.parseFloat(style.paddingRight),
+      paddingTop: Number.parseFloat(style.paddingTop),
+    };
+  });
   expect(viewport).not.toBeNull();
+  const expectedFrameWidth = Math.min(viewport?.width ?? 0, 1180);
+  expect(frameBox.width, "Page Frame width boundary").toBeGreaterThanOrEqual(
+    expectedFrameWidth - 1
+  );
+  expect(frameBox.width, "Page Frame width boundary").toBeLessThanOrEqual(
+    expectedFrameWidth + 1
+  );
+  expect(frameStyle.paddingLeft, "Page Frame shared gutter").toBeGreaterThan(0);
+  expect(frameStyle.paddingRight, "Page Frame shared gutter").toBe(
+    frameStyle.paddingLeft
+  );
+  expect(frameStyle.paddingTop, "Page Frame top reserve").toBeGreaterThan(0);
+  expect(frameStyle.paddingBottom, "Page Frame bottom reserve").toBeGreaterThan(
+    0
+  );
   expect(frameBox.left, "Page Frame left containment").toBeGreaterThanOrEqual(
     -1
   );
@@ -55,6 +79,14 @@ test("Page Frame keeps shared gutter and content contained across W7", async ({
     contentBox.right,
     "content stays inside Page Frame"
   ).toBeLessThanOrEqual(frameBox.right + 1);
+  expect(contentBox.left - frameBox.left).toBeCloseTo(
+    frameStyle.paddingLeft,
+    0
+  );
+  expect(frameBox.right - contentBox.right).toBeCloseTo(
+    frameStyle.paddingRight,
+    0
+  );
   expect(frameBox.width).toBeGreaterThan(0);
   await expectNoHorizontalOverflow(page);
 });
@@ -98,21 +130,19 @@ test("Route Header keeps content and actions reachable across W7", async ({
   ).toBeLessThanOrEqual((viewport?.width ?? 0) + 1);
   expect(actionBox.width).toBeGreaterThan(0);
 
-  if ((viewport?.width ?? 0) <= 799) {
+  if ((viewport?.width ?? 0) <= 414) {
     expect(actionBox.left).toBeGreaterThanOrEqual(headerBox.left - 1);
-    expect(actionBox.top).toBeGreaterThanOrEqual(headingBox.top);
-    if ((viewport?.width ?? 0) <= 414) {
-      expect(
-        headingBox.height,
-        "long title wraps at narrow widths"
-      ).toBeGreaterThan(48);
-      expect(
-        leadBox.height,
-        "long lead wraps at narrow widths"
-      ).toBeGreaterThan(32);
-    }
-  } else if ((viewport?.width ?? 0) === 800) {
+    expect(actionBox.top).toBeGreaterThanOrEqual(leadBox.bottom - 1);
+    expect(
+      headingBox.height,
+      "long title wraps at narrow widths"
+    ).toBeGreaterThan(48);
+    expect(leadBox.height, "long lead wraps at narrow widths").toBeGreaterThan(
+      32
+    );
+  } else if ((viewport?.width ?? 0) === 799 || (viewport?.width ?? 0) === 800) {
     expect(actionBox.top).toBeLessThanOrEqual(headingBox.bottom + 1);
+    expect(actionBox.left).toBeGreaterThanOrEqual(headingBox.right - 1);
   }
 
   await expectNoHorizontalOverflow(page);
