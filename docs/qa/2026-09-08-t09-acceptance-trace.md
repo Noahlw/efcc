@@ -11,8 +11,7 @@ machine evidence, and final human design gate separate.
   `rescue/t08-control-contracts`
 - Fixed T08 parent: `6ab0561f9d79b32e2ca5345325a5cb46f01d2e13`
 - T09.0 checkpoint: `9285420a4829264577fae002382a07795091ca39`
-- T09 implementation checkpoint: pending commit (this trace update is part of
-  the implementation checkpoint)
+- T09 implementation checkpoint: `a8b5033d`
 - Owner contract: D1 approved; D2 and D3 approved with changes in the owner
   decision supplied for T09 / #514. This authorizes implementation only; it is
   not final T09 design approval, `STACK_GREEN`, merge approval, issue closure,
@@ -75,7 +74,7 @@ pnpm verify:governance:affected                     PASS (43 files, 0 active vio
 pnpm verify:governance:full                         PASS (335 files, 0 active violations, 69 waived items)
 pnpm verify:governance:release                      PASS (335 files, 0 active violations, 6 active waivers)
 pnpm verify:fast                                    PASS
-pnpm verify:precommit                               PENDING
+pnpm verify:precommit                               PASS (complete aggregate)
 ```
 
 The T09 browser run used the repository's local Storybook launcher; no
