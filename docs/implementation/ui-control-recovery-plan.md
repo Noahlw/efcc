@@ -15,8 +15,8 @@ This file tracks progress, dependencies, branch/PR boundaries, and evidence. It 
 | T07 / #512 and T07 children | Complete foundation | Storybook/Playground, Screen Catalog, and workshop assets are grandfathered |
 | T08 / #513 | Complete foundation | Controls and contracts are grandfathered; retain their existing approval/evidence history |
 | T09 / #514 | Complete foundation | Surface, feedback, and overlay contracts are grandfathered at the completed rescue head |
-| Post-T09 authority rewrite | In progress on this planning branch | #505, ADR-0046, governance, TESTING, tracker, future tickets, and PR skill are reconciled before T10 |
-| T10–T36 / #515–#541 | Not started | Start only after the authority rewrite is reviewed and the ticket's dependency edges are satisfied |
+| Post-T09 authority rewrite | Complete on this planning branch | #505, ADR-0046, governance, TESTING, tracker, future tickets, and PR skill are reconciled before T10 |
+| T10–T36 / #515–#541 | Ready in dependency order | Start after this planning authority is accepted and each ticket's dependency edges are satisfied |
 | B-003 | Open residual risk | The sustained-runtime canary remains independently reported and is not silently reclassified |
 
 ## Delivery rules for future tickets
