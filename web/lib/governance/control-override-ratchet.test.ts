@@ -319,6 +319,95 @@ export function Example() {
     }
   });
 
+  test("scopes feedback ownership to the owning function", () => {
+    const fixture = createFixture();
+    try {
+      fs.writeFileSync(
+        path.join(fixture.rootDir, "web/app/example.tsx"),
+        `import { Alert } from "@/components/ui/alert";
+import { announce } from "@/lib/live-region";
+
+export function UnrelatedAnnouncement() {
+  announce("saved");
+  return <div>saved</div>;
+}
+
+export function VisibleState() {
+  return <Alert>saved</Alert>;
+}
+`,
+        "utf-8"
+      );
+
+      expect(
+        auditNewPresentationOverrides({
+          rootDir: fixture.rootDir,
+          baseRef: fixture.baseRef,
+        })
+      ).toStrictEqual([]);
+    } finally {
+      fs.rmSync(fixture.rootDir, { recursive: true, force: true });
+    }
+  });
+
+  test("limits raw z-index checks to descendants of an overlay element", () => {
+    const fixture = createFixture();
+    try {
+      fs.writeFileSync(
+        path.join(fixture.rootDir, "web/app/example.tsx"),
+        `import { DialogContent } from "@/components/ui/dialog";
+
+export function Example() {
+  return (
+    <>
+      <div className="z-[1]">unrelated layer</div>
+      <DialogContent>
+        <div className="z-[9999]">overlay child</div>
+      </DialogContent>
+    </>
+  );
+}
+`,
+        "utf-8"
+      );
+
+      const rawZIndexViolations = auditNewPresentationOverrides({
+        rootDir: fixture.rootDir,
+        baseRef: fixture.baseRef,
+      }).filter(({ message }) => message.includes("raw z-index"));
+      expect(rawZIndexViolations).toHaveLength(1);
+      expect(rawZIndexViolations[0]?.snippet).toContain("z-[9999]");
+      expect(rawZIndexViolations[0]?.snippet).not.toContain("z-[1]");
+    } finally {
+      fs.rmSync(fixture.rootDir, { recursive: true, force: true });
+    }
+  });
+
+  test("ignores unrelated z-index when an overlay primitive is only imported", () => {
+    const fixture = createFixture();
+    try {
+      fs.writeFileSync(
+        path.join(fixture.rootDir, "web/app/example.tsx"),
+        `import { DialogContent } from "@/components/ui/dialog";
+
+export function Example() {
+  return <div className="z-[1]">unrelated layer</div>;
+}
+`,
+        "utf-8"
+      );
+
+      expect(
+        auditNewPresentationOverrides({
+          rootDir: fixture.rootDir,
+          baseRef: fixture.baseRef,
+        }).filter(({ message }) => message.includes("raw z-index"))
+      ).toStrictEqual([]);
+    } finally {
+      fs.rmSync(fixture.rootDir, { recursive: true, force: true });
+    }
+  });
+
   test("catches a new visible Alert beside an unchanged announcer", () => {
     const fixture = createFixture();
     try {

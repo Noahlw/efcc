@@ -13,7 +13,13 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import {
   Dialog,
   DialogContent,
@@ -37,13 +43,14 @@ import type { FoundationPresentationMetadata } from "./presentation-meta";
 const foundationPresentation = (
   foundationId: string,
   psn: string,
-  state: string
+  state: string,
+  baseline: FoundationPresentationMetadata["baseline"] = "primary"
 ): FoundationPresentationMetadata => ({
   subject: "foundation",
   foundationId,
   productFamily: "foundations",
   lifecycle: "active",
-  baseline: "primary",
+  baseline,
   psn,
   route: null,
   intent: null,
@@ -76,7 +83,7 @@ export const Surface: Story = {
   render: () => (
     <div
       className="grid min-h-80 w-full max-w-xl gap-3 p-6"
-      data-foundation-state="default compact long narrow-mobile"
+      data-foundation-state="default compact"
     >
       <Card className="w-full" data-testid="foundation-surface-card">
         <CardHeader>
@@ -96,6 +103,33 @@ export const Surface: Story = {
       </Card>
       <Card size="sm" data-testid="foundation-surface-card-sm">
         <CardContent>小型 surface 保留相同的共享 chrome。</CardContent>
+      </Card>
+    </div>
+  ),
+};
+
+export const SurfaceCardFooter: Story = {
+  parameters: {
+    presentation: foundationPresentation(
+      "surface",
+      "PSN-FOUNDATION-SURFACE-CARD-FOOTER",
+      "card-footer-full-bleed",
+      "supporting"
+    ),
+  },
+  render: () => (
+    <div className="w-full max-w-xl p-6">
+      <Card data-testid="foundation-card-footer-card">
+        <CardHeader>
+          <CardTitle>操作摘要</CardTitle>
+        </CardHeader>
+        <CardContent>
+          Footer chrome should reach the Card boundary without escaping it.
+        </CardContent>
+        <CardFooter data-testid="foundation-card-footer">
+          <span className="min-w-0 flex-1">最後更新：剛剛</span>
+          <Button size="sm">查看</Button>
+        </CardFooter>
       </Card>
     </div>
   ),
@@ -166,124 +200,241 @@ const longOverlayCopy = (label: string): ReactNode => (
   </>
 );
 
+type DialogFoundationState = "default" | "long-content" | "busy-disabled";
+
+function DialogFoundationStory({ state }: { state: DialogFoundationState }) {
+  const [open, setOpen] = useState(true);
+  return (
+    <div
+      className="grid min-h-80 place-items-center p-6"
+      data-foundation-state={state}
+    >
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogTrigger asChild>
+          <Button data-testid="dialog-trigger">開啟一般對話框</Button>
+        </DialogTrigger>
+        <DialogContent showCloseButton={false}>
+          <DialogTitle>一般對話框</DialogTitle>
+          <DialogDescription asChild>
+            <div>
+              {state === "long-content" ? (
+                longOverlayCopy("對話框")
+              ) : (
+                <p>確認資料後可以完成這項操作。</p>
+              )}
+            </div>
+          </DialogDescription>
+          <DialogFooter className="flex-wrap">
+            {state === "busy-disabled" && (
+              <Button disabled aria-busy="true">
+                儲存中…
+              </Button>
+            )}
+            <Button type="button" onClick={() => setOpen(false)}>
+              完成
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
+
 export const DialogOverlay: Story = {
   parameters: {
     presentation: foundationPresentation(
       "dialog",
       "PSN-FOUNDATION-DIALOG",
-      "default-long-busy-narrow-mobile"
+      "default"
     ),
   },
-  render: function DialogOverlayStory() {
-    const [open, setOpen] = useState(true);
-    return (
-      <div
-        className="grid min-h-80 place-items-center p-6"
-        data-foundation-state="default long busy narrow-mobile"
-      >
-        <Dialog open={open} onOpenChange={setOpen}>
-          <DialogTrigger asChild>
-            <Button data-testid="dialog-trigger">開啟一般對話框</Button>
-          </DialogTrigger>
-          <DialogContent showCloseButton={false}>
-            <DialogTitle>一般對話框</DialogTitle>
-            <DialogDescription asChild>
-              <div>{longOverlayCopy("對話框")}</div>
-            </DialogDescription>
-            <DialogFooter className="flex-wrap">
-              <Button disabled aria-busy="true">
-                儲存中…
-              </Button>
-              <Button type="button" onClick={() => setOpen(false)}>
-                完成
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
-      </div>
-    );
-  },
+  render: () => <DialogFoundationStory state="default" />,
 };
+
+export const DialogLongContent: Story = {
+  parameters: {
+    presentation: foundationPresentation(
+      "dialog",
+      "PSN-FOUNDATION-DIALOG-LONG-CONTENT",
+      "long-content",
+      "supporting"
+    ),
+  },
+  render: () => <DialogFoundationStory state="long-content" />,
+};
+
+export const DialogBusyDisabled: Story = {
+  parameters: {
+    presentation: foundationPresentation(
+      "dialog",
+      "PSN-FOUNDATION-DIALOG-BUSY-DISABLED",
+      "busy-disabled",
+      "supporting"
+    ),
+  },
+  render: () => <DialogFoundationStory state="busy-disabled" />,
+};
+
+type AlertDialogFoundationState =
+  | "review-destructive"
+  | "long-content"
+  | "busy-disabled";
+
+function AlertDialogFoundationStory({
+  state,
+}: {
+  state: AlertDialogFoundationState;
+}) {
+  const [open, setOpen] = useState(true);
+  return (
+    <div
+      className="grid min-h-80 place-items-center p-6"
+      data-foundation-state={state}
+    >
+      <AlertDialog open={open} onOpenChange={setOpen}>
+        <AlertDialogTrigger asChild>
+          <Button data-testid="alert-dialog-trigger">開啟確認對話框</Button>
+        </AlertDialogTrigger>
+        <AlertDialogContent>
+          <AlertDialogTitle>確認刪除</AlertDialogTitle>
+          <AlertDialogDescription asChild>
+            <div>
+              {state === "long-content" ? (
+                longOverlayCopy("確認對話框")
+              ) : (
+                <p>此操作會刪除資料，請確認後再繼續。</p>
+              )}
+            </div>
+          </AlertDialogDescription>
+          {state === "review-destructive" && (
+            <p data-testid="alert-dialog-review-state">
+              review state：請確認所有變更後再繼續。
+            </p>
+          )}
+          <AlertDialogFooter className="flex-wrap">
+            <AlertDialogCancel>取消</AlertDialogCancel>
+            {state === "busy-disabled" && (
+              <Button disabled aria-busy="true">
+                處理中…
+              </Button>
+            )}
+            <AlertDialogAction variant="destructive">
+              確認刪除
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </div>
+  );
+}
 
 export const AlertDialogOverlay: Story = {
   parameters: {
     presentation: foundationPresentation(
       "alert-dialog",
       "PSN-FOUNDATION-ALERT-DIALOG",
-      "destructive-review-long-busy-narrow-mobile"
+      "review-destructive"
     ),
   },
-  render: function AlertDialogOverlayStory() {
-    const [open, setOpen] = useState(true);
-    return (
-      <div
-        className="grid min-h-80 place-items-center p-6"
-        data-foundation-state="destructive review long busy narrow-mobile"
-      >
-        <AlertDialog open={open} onOpenChange={setOpen}>
-          <AlertDialogTrigger asChild>
-            <Button data-testid="alert-dialog-trigger">開啟確認對話框</Button>
-          </AlertDialogTrigger>
-          <AlertDialogContent>
-            <AlertDialogTitle>確認刪除</AlertDialogTitle>
-            <AlertDialogDescription asChild>
-              <div>{longOverlayCopy("確認對話框")}</div>
-            </AlertDialogDescription>
-            <p data-testid="alert-dialog-review-state">
-              review state：請確認所有變更後再繼續。
-            </p>
-            <AlertDialogFooter className="flex-wrap">
-              <AlertDialogCancel>取消</AlertDialogCancel>
-              <Button disabled aria-busy="true">
-                處理中…
-              </Button>
-              <AlertDialogAction variant="destructive">
-                確認刪除
-              </AlertDialogAction>
-            </AlertDialogFooter>
-          </AlertDialogContent>
-        </AlertDialog>
-      </div>
-    );
-  },
+  render: () => <AlertDialogFoundationStory state="review-destructive" />,
 };
+
+export const AlertDialogLongContent: Story = {
+  parameters: {
+    presentation: foundationPresentation(
+      "alert-dialog",
+      "PSN-FOUNDATION-ALERT-DIALOG-LONG-CONTENT",
+      "long-content",
+      "supporting"
+    ),
+  },
+  render: () => <AlertDialogFoundationStory state="long-content" />,
+};
+
+export const AlertDialogBusyDisabled: Story = {
+  parameters: {
+    presentation: foundationPresentation(
+      "alert-dialog",
+      "PSN-FOUNDATION-ALERT-DIALOG-BUSY-DISABLED",
+      "busy-disabled",
+      "supporting"
+    ),
+  },
+  render: () => <AlertDialogFoundationStory state="busy-disabled" />,
+};
+
+type SheetFoundationState = "default" | "long-content" | "busy-disabled";
+
+function SheetFoundationStory({ state }: { state: SheetFoundationState }) {
+  const [open, setOpen] = useState(true);
+  return (
+    <div
+      className="grid min-h-80 place-items-center p-6"
+      data-foundation-state={state}
+    >
+      <Sheet open={open} onOpenChange={setOpen}>
+        <SheetTrigger asChild>
+          <Button data-testid="sheet-trigger">開啟篩選面板</Button>
+        </SheetTrigger>
+        <SheetContent side="bottom" showCloseButton={false}>
+          <SheetHeader>
+            <SheetTitle>篩選條件</SheetTitle>
+            <SheetDescription>選擇要顯示的資料。</SheetDescription>
+          </SheetHeader>
+          <div className="grid gap-3 px-4">
+            {state === "long-content" ? (
+              longOverlayCopy("側邊面板")
+            ) : (
+              <p>選擇條件後套用篩選。</p>
+            )}
+          </div>
+          <SheetFooter className="flex-wrap">
+            {state === "busy-disabled" && (
+              <Button disabled aria-busy="true">
+                套用中…
+              </Button>
+            )}
+            <Button type="button" onClick={() => setOpen(false)}>
+              套用篩選
+            </Button>
+          </SheetFooter>
+        </SheetContent>
+      </Sheet>
+    </div>
+  );
+}
 
 export const SheetOverlay: Story = {
   parameters: {
     presentation: foundationPresentation(
       "sheet",
       "PSN-FOUNDATION-SHEET",
-      "default-long-busy-narrow-mobile"
+      "default"
     ),
   },
-  render: function SheetOverlayStory() {
-    const [open, setOpen] = useState(true);
-    return (
-      <div
-        className="grid min-h-80 place-items-center p-6"
-        data-foundation-state="default long busy narrow-mobile"
-      >
-        <Sheet open={open} onOpenChange={setOpen}>
-          <SheetTrigger asChild>
-            <Button data-testid="sheet-trigger">開啟篩選面板</Button>
-          </SheetTrigger>
-          <SheetContent side="bottom" showCloseButton={false}>
-            <SheetHeader>
-              <SheetTitle>篩選條件</SheetTitle>
-              <SheetDescription>選擇要顯示的資料。</SheetDescription>
-            </SheetHeader>
-            <div className="grid gap-3 px-4">{longOverlayCopy("側邊面板")}</div>
-            <SheetFooter className="flex-wrap">
-              <Button disabled aria-busy="true">
-                套用中…
-              </Button>
-              <Button type="button" onClick={() => setOpen(false)}>
-                套用篩選
-              </Button>
-            </SheetFooter>
-          </SheetContent>
-        </Sheet>
-      </div>
-    );
+  render: () => <SheetFoundationStory state="default" />,
+};
+
+export const SheetLongContent: Story = {
+  parameters: {
+    presentation: foundationPresentation(
+      "sheet",
+      "PSN-FOUNDATION-SHEET-LONG-CONTENT",
+      "long-content",
+      "supporting"
+    ),
   },
+  render: () => <SheetFoundationStory state="long-content" />,
+};
+
+export const SheetBusyDisabled: Story = {
+  parameters: {
+    presentation: foundationPresentation(
+      "sheet",
+      "PSN-FOUNDATION-SHEET-BUSY-DISABLED",
+      "busy-disabled",
+      "supporting"
+    ),
+  },
+  render: () => <SheetFoundationStory state="busy-disabled" />,
 };

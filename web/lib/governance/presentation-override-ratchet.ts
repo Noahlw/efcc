@@ -2,6 +2,8 @@ import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 
+import * as ts from "typescript";
+
 import type { AuditViolation } from "./types";
 
 const CONTROL_MODULES = new Set([
@@ -180,6 +182,95 @@ interface OpeningElement {
   readonly start: number;
   readonly end: number;
   readonly source: string;
+}
+
+interface SourceRange {
+  readonly start: number;
+  readonly end: number;
+}
+
+interface PresentationStructure {
+  readonly functionScopes: readonly SourceRange[];
+  readonly overlayScopes: readonly SourceRange[];
+}
+
+function findPresentationStructure(
+  source: string,
+  overlayNames: ReadonlySet<string>
+): PresentationStructure {
+  const sourceFile = ts.createSourceFile(
+    "presentation.tsx",
+    source,
+    ts.ScriptTarget.Latest,
+    true,
+    ts.ScriptKind.TSX
+  );
+  const functionScopes: SourceRange[] = [];
+  const overlayScopes: SourceRange[] = [];
+
+  const visit = (node: ts.Node) => {
+    const functionBody = ts.isFunctionLike(node)
+      ? (node as ts.Node & { body?: ts.Node }).body
+      : undefined;
+    if (functionBody) {
+      functionScopes.push({
+        start: node.getStart(sourceFile),
+        end: functionBody.end,
+      });
+    }
+
+    if (ts.isJsxElement(node)) {
+      const name = node.openingElement.tagName.getText(sourceFile);
+      if (overlayNames.has(name)) {
+        overlayScopes.push({
+          start: node.getStart(sourceFile),
+          end: node.end,
+        });
+      }
+    } else if (ts.isJsxSelfClosingElement(node)) {
+      const name = node.tagName.getText(sourceFile);
+      if (overlayNames.has(name)) {
+        overlayScopes.push({
+          start: node.getStart(sourceFile),
+          end: node.end,
+        });
+      }
+    }
+
+    ts.forEachChild(node, visit);
+  };
+  visit(sourceFile);
+
+  return { functionScopes, overlayScopes };
+}
+
+function scopeForOffset(
+  offset: number,
+  functionScopes: readonly SourceRange[]
+): string {
+  const containing = functionScopes.filter(
+    ({ start, end }) => offset >= start && offset < end
+  );
+  if (containing.length === 0) {
+    return "module";
+  }
+  const outermost = containing.reduce((current, candidate) =>
+    candidate.start < current.start ? candidate : current
+  );
+  return `function:${outermost.start}`;
+}
+
+function sourceLines(source: string): readonly {
+  readonly line: string;
+  readonly number: number;
+  readonly offset: number;
+}[] {
+  let offset = 0;
+  return source.split("\n").map((line, index) => {
+    const current = { line, number: index + 1, offset };
+    offset += line.length + 1;
+    return current;
+  });
 }
 
 interface ControlBindings {
@@ -824,9 +915,10 @@ type AnnouncementMode = "none" | "live" | "unknown";
 function feedbackAnnouncementMode(element: OpeningElement): AnnouncementMode {
   const announcement = attributes(element.source, "announcement")[0];
   if (!announcement) {
-    // Alert defaults to assertive, so an omitted prop is still a visible live
-    // owner.
-    return "live";
+    // Semantic tone callers derive a silent owner unless they opt into an
+    // explicit announcement. The omitted-tone form retains the legacy alert
+    // owner for compatibility.
+    return attributes(element.source, "tone").length > 0 ? "none" : "live";
   }
   if (!announcement.dynamic) {
     return announcement.value === "none" ? "none" : "live";
@@ -855,7 +947,7 @@ function inspectFeedbackOwnership(
   source: string,
   feedbackElements: readonly OpeningElement[],
   added: ReadonlySet<number>,
-  previousByName: ReadonlyMap<string, readonly OpeningElement[]>
+  functionScopes: readonly SourceRange[]
 ): AuditViolation[] {
   const violations: AuditViolation[] = [];
   const liveElements = feedbackElements.filter(
@@ -887,39 +979,83 @@ function inspectFeedbackOwnership(
   if (liveElements.length === 0) {
     return violations;
   }
-  const occurrences = new Map<string, number>();
-  const newlyAddedLiveElements = liveElements.filter((element) => {
-    const occurrence = occurrences.get(element.name) ?? 0;
-    occurrences.set(element.name, occurrence + 1);
-    return !previousByName.get(element.name)?.[occurrence];
-  });
-  const announcementLines = source
-    .split("\n")
-    .map((line, index) => ({ line, number: index + 1 }))
-    .filter(({ line }) => /\bannounce\s*\(/u.test(line));
-  const addedAnnouncementLines = announcementLines.filter(({ number }) =>
-    added.has(number)
-  );
-  for (const { line, number } of addedAnnouncementLines) {
-    violations.push(
-      violation(
-        file,
-        number,
-        "visible Alert and announce() were added in the same ownership scope; choose exactly one announcement owner",
-        line.trim()
-      )
-    );
+
+  type OwnershipScope = {
+    readonly liveElements: OpeningElement[];
+    readonly newlyAddedLiveElements: OpeningElement[];
+    readonly announcementLines: {
+      readonly line: string;
+      readonly number: number;
+      readonly offset: number;
+    }[];
+    readonly addedAnnouncementLines: {
+      readonly line: string;
+      readonly number: number;
+      readonly offset: number;
+    }[];
+  };
+  const scopes = new Map<string, OwnershipScope>();
+  const getScope = (scopeId: string): OwnershipScope => {
+    const existing = scopes.get(scopeId);
+    if (existing) {
+      return existing;
+    }
+    const created: OwnershipScope = {
+      liveElements: [],
+      newlyAddedLiveElements: [],
+      announcementLines: [],
+      addedAnnouncementLines: [],
+    };
+    scopes.set(scopeId, created);
+    return created;
+  };
+
+  for (const element of liveElements) {
+    const scope = getScope(scopeForOffset(element.start, functionScopes));
+    scope.liveElements.push(element);
+    if (hasAddedLineInRange(source, element.start, element.end, added)) {
+      scope.newlyAddedLiveElements.push(element);
+    }
   }
-  if (announcementLines.length > 0 && addedAnnouncementLines.length === 0) {
-    for (const element of newlyAddedLiveElements) {
-      violations.push(
-        violation(
-          file,
-          lineNumberAt(source, element.start),
-          "visible Alert was added while announce() remains in the same ownership scope; choose exactly one announcement owner",
-          element.source.trim()
-        )
-      );
+
+  for (const entry of sourceLines(source).filter(({ line }) =>
+    /\bannounce\s*\(/u.test(line)
+  )) {
+    const scope = getScope(scopeForOffset(entry.offset, functionScopes));
+    scope.announcementLines.push(entry);
+    if (added.has(entry.number)) {
+      scope.addedAnnouncementLines.push(entry);
+    }
+  }
+
+  for (const scope of scopes.values()) {
+    if (scope.liveElements.length === 0) {
+      continue;
+    }
+    if (scope.addedAnnouncementLines.length > 0) {
+      for (const { line, number } of scope.addedAnnouncementLines) {
+        violations.push(
+          violation(
+            file,
+            number,
+            "visible Alert and announce() share the same ownership scope; choose exactly one announcement owner",
+            line.trim()
+          )
+        );
+      }
+      continue;
+    }
+    if (scope.announcementLines.length > 0) {
+      for (const element of scope.newlyAddedLiveElements) {
+        violations.push(
+          violation(
+            file,
+            lineNumberAt(source, element.start),
+            "visible Alert was added while announce() remains in the same ownership scope; choose exactly one announcement owner",
+            element.source.trim()
+          )
+        );
+      }
     }
   }
   return violations;
@@ -929,13 +1065,11 @@ function inspectRawOverlayZIndex(
   file: string,
   source: string,
   overlayElements: readonly OpeningElement[],
+  overlayScopes: readonly SourceRange[],
   added: ReadonlySet<number>
 ): AuditViolation[] {
   const violations: AuditViolation[] = [];
-  const lines = source.split("\n");
-  for (let index = 0; index < lines.length; index += 1) {
-    const line = lines[index] ?? "";
-    const lineNumber = index + 1;
+  for (const { line, number: lineNumber, offset } of sourceLines(source)) {
     if (
       !added.has(lineNumber) ||
       !/\bclassName\s*=/u.test(line) ||
@@ -951,14 +1085,18 @@ function inspectRawOverlayZIndex(
     if (belongsToPrimitive) {
       continue;
     }
-    violations.push(
-      violation(
-        file,
-        lineNumber,
-        "new raw z-index class in overlay scope bypasses primitive layer ownership",
-        line.trim()
-      )
-    );
+    if (
+      overlayScopes.some(({ start, end }) => offset >= start && offset < end)
+    ) {
+      violations.push(
+        violation(
+          file,
+          lineNumber,
+          "new raw z-index class in overlay scope bypasses primitive layer ownership",
+          line.trim()
+        )
+      );
+    }
   }
   return violations;
 }
@@ -1084,6 +1222,7 @@ export function auditNewPresentationOverrides(
       ...findOpeningElements(source, bindings.elements),
       ...findFactoryElements(source, bindings.elements),
     ];
+    const structure = findPresentationStructure(source, bindings.overlays);
     const previousSource = tryGit(rootDir, ["show", `${baseRef}:${file}`]);
     const previousBindings = previousSource
       ? importedControls(previousSource)
@@ -1122,7 +1261,7 @@ export function auditNewPresentationOverrides(
         source,
         elements.filter((element) => bindings.feedback.has(element.name)),
         added,
-        previousByName
+        structure.functionScopes
       )
     );
     violations.push(
@@ -1130,6 +1269,7 @@ export function auditNewPresentationOverrides(
         file,
         source,
         elements.filter((element) => bindings.overlays.has(element.name)),
+        structure.overlayScopes,
         added
       )
     );

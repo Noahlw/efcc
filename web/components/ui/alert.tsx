@@ -54,14 +54,16 @@ type AlertProps = React.ComponentProps<"div"> &
   };
 
 const Alert = React.forwardRef<HTMLDivElement, AlertProps>(function Alert(
-  { className, tone, announcement = "assertive", variant, ...props },
+  { className, tone, announcement, variant, ...props },
   ref
 ) {
   const resolvedTone = tone ?? (variant === "destructive" ? "error" : "info");
+  const resolvedAnnouncement =
+    announcement ?? (tone !== undefined ? "none" : "assertive");
   const role =
-    announcement === "assertive"
+    resolvedAnnouncement === "assertive"
       ? "alert"
-      : announcement === "polite"
+      : resolvedAnnouncement === "polite"
         ? "status"
         : undefined;
 
@@ -71,11 +73,17 @@ const Alert = React.forwardRef<HTMLDivElement, AlertProps>(function Alert(
       {...props}
       data-slot="alert"
       data-tone={resolvedTone}
-      data-announcement={announcement}
+      data-announcement={resolvedAnnouncement}
       role={role}
-      aria-live={announcement === "none" ? undefined : announcement}
+      aria-live={
+        resolvedAnnouncement === "none" ? undefined : resolvedAnnouncement
+      }
       className={cn(
-        alertVariants({ tone: resolvedTone, announcement, variant }),
+        alertVariants({
+          tone: resolvedTone,
+          announcement: resolvedAnnouncement,
+          variant,
+        }),
         className
       )}
     />
