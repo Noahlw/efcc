@@ -21,6 +21,7 @@ export default defineProject({
       "lib/section-view.test.tsx",
       "lib/account-settings.test.tsx",
       "lib/contextual-task-header.test.tsx",
+      "lib/page-frame.test.tsx",
       "lib/programs/use-async-resource.test.tsx",
       "lib/home.test.tsx",
       "lib/feed-presentation.test.tsx",
