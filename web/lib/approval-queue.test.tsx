@@ -22,12 +22,14 @@ import { QUEUE_COPY } from "./registration-copy";
 
 const mocks = vi.hoisted(() => ({
   searchParams: new URLSearchParams(),
+  announce: vi.fn(),
 }));
 
 vi.mock(import("next/navigation"), () => ({
   useSearchParams: () =>
     mocks.searchParams as unknown as ReadonlyURLSearchParams,
 }));
+vi.mock("./live-region", () => ({ announce: mocks.announce }));
 if (!HTMLElement.prototype.hasPointerCapture) {
   HTMLElement.prototype.hasPointerCapture = () => false;
   HTMLElement.prototype.setPointerCapture = () => {};
@@ -57,6 +59,7 @@ afterEach(() => {
   cleanup();
   server.resetHandlers();
   mocks.searchParams = new URLSearchParams();
+  mocks.announce.mockReset();
 });
 
 afterAll(() => server.close());
@@ -184,6 +187,32 @@ describe(ApprovalQueue, () => {
     });
     expect(selectAll).toHaveAttribute("aria-checked", "mixed");
     expect(selectAll).toHaveAttribute("data-state", "indeterminate");
+  });
+
+  test("uses the visible assertive notice as the only owner when select-all hits the batch cap", async () => {
+    const rows = Array.from({ length: 101 }, (_, index) => ({
+      ...PENDING_ONE[0],
+      requestId: `req-${index + 1}`,
+      name: `Member ${index + 1}`,
+    }));
+    server.use(
+      http.get("/api/v1/auth/registrations", () =>
+        HttpResponse.json({
+          requestId: "rid-batch-cap",
+          data: { registrations: rows },
+        })
+      )
+    );
+
+    const user = userEvent.setup();
+    render(<ApprovalQueue />);
+    await user.click(
+      await screen.findByRole("checkbox", { name: "全選目前結果" })
+    );
+
+    const notice = await screen.findByRole("alert");
+    expect(notice).toHaveTextContent("一次最多核准 100 位申請。");
+    expect(mocks.announce).not.toHaveBeenCalled();
   });
 
   test("bulk approve waits for one explicit confirmation, then reloads the list", async () => {

@@ -2,7 +2,7 @@ import { cleanup, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, test, vi } from "vitest";
 
-import { Alert } from "@/components/ui/alert";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -95,6 +95,21 @@ describe("local primitive contracts", () => {
       "error"
     );
     expect(screen.getByTestId("alert-error")).toHaveAttribute("role", "alert");
+  });
+
+  test("AlertDescription inherits the Alert tone instead of resetting to muted text", () => {
+    render(
+      <Alert tone="success" announcement="none">
+        <AlertDescription data-testid="alert-description">
+          已完成
+        </AlertDescription>
+      </Alert>
+    );
+
+    expect(screen.getByTestId("alert-description")).toHaveClass("text-current");
+    expect(screen.getByTestId("alert-description")).not.toHaveClass(
+      "text-muted-foreground"
+    );
   });
 
   test("Checkbox exposes checked, unchecked, mixed, disabled, keyboard, and names", async () => {

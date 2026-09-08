@@ -346,11 +346,13 @@ export const ApprovalQueue = () => {
       setNotice(APPROVAL_UI_COPY.batchLimit);
       setNoticeKind("error");
     }
-    announce(
-      APPROVAL_UI_COPY.selectedAnnouncement(
-        new Set([...selectedIds, ...idsToAdd]).size
-      )
-    );
+    if (idsToAdd.length === availableIds.length) {
+      announce(
+        APPROVAL_UI_COPY.selectedAnnouncement(
+          new Set([...selectedIds, ...idsToAdd]).size
+        )
+      );
+    }
   };
 
   const removeSelection = (requestId: string) => {

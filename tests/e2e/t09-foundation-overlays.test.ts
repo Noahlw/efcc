@@ -55,26 +55,48 @@ test("Surface owns readable chrome without clipping long content", async ({
   page,
 }) => {
   await openStory(page, "foundations--surface");
+  await expect(page.locator("[data-foundation-state]")).toHaveAttribute(
+    "data-foundation-state",
+    /default.*compact.*long.*narrow-mobile/u
+  );
   const card = page.locator('[data-testid="foundation-surface-card"]');
   await expect(card).toBeVisible();
   await expectWithinViewport(page, card, "surface card");
   await expect(card).toHaveClass(/overflow-visible/u);
+  await expect(
+    page.locator('[data-testid="foundation-surface-card-sm"]')
+  ).toHaveAttribute("data-size", "sm");
   await expectNoHorizontalOverflow(page, "Surface Story");
 });
 
-test("Feedback exposes six tones with explicit silent presentation state", async ({
+test("Feedback exposes six tones and independent announcement ownership", async ({
   page,
 }) => {
   await openStory(page, "foundations--feedback");
   const alerts = page.locator('[data-slot="alert"]');
-  await expect(alerts).toHaveCount(6);
+  await expect(alerts).toHaveCount(9);
   await expect(alerts.nth(0)).toHaveAttribute("data-tone", "info");
   await expect(alerts.nth(1)).toHaveAttribute("data-tone", "success");
   await expect(alerts.nth(2)).toHaveAttribute("data-tone", "pending");
   await expect(alerts.nth(3)).toHaveAttribute("data-tone", "warning");
   await expect(alerts.nth(4)).toHaveAttribute("data-tone", "conflict");
   await expect(alerts.nth(5)).toHaveAttribute("data-tone", "error");
-  expect(await page.locator("[aria-live]").count()).toBe(0);
+  const ownership = page.locator(
+    '[data-testid="foundation-feedback-announcement-states"]'
+  );
+  await expect(ownership.getByRole("status")).toHaveAttribute(
+    "data-tone",
+    "success"
+  );
+  await expect(ownership.getByRole("status")).toHaveAttribute(
+    "aria-live",
+    "polite"
+  );
+  await expect(ownership.getByRole("alert")).toHaveAttribute(
+    "data-tone",
+    "error"
+  );
+  expect(await ownership.locator('[data-announcement="none"]').count()).toBe(1);
   await expectNoHorizontalOverflow(page, "Feedback Story");
 });
 
@@ -103,5 +125,33 @@ for (const [storyId, roleName] of [
     await expect(footer).toBeVisible();
     await expectWithinViewport(page, footer, `${storyId} footer`);
     await expectNoHorizontalOverflow(page, storyId);
+
+    const trigger = page.getByTestId(
+      roleName === "alertdialog"
+        ? "alert-dialog-trigger"
+        : storyId === "foundations--sheet-overlay"
+          ? "sheet-trigger"
+          : "dialog-trigger"
+    );
+    // Modal primitives intentionally hide their trigger from the accessible
+    // tree while the overlay is open; it becomes the focus-return target on
+    // dismissal.
+    await expect(trigger).toBeAttached();
+    await page.keyboard.press("Tab");
+    await expect
+      .poll(() =>
+        content.evaluate((element) => element.contains(document.activeElement))
+      )
+      .toBe(true);
+
+    if (roleName === "alertdialog") {
+      await page.getByRole("button", { name: "取消" }).click();
+    } else {
+      await page.keyboard.press("Escape");
+    }
+    await expect(content).not.toBeVisible();
+    await expect(trigger).toBeFocused();
+    await trigger.press("Enter");
+    await expect(content).toBeVisible();
   });
 }
