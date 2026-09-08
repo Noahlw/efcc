@@ -10,7 +10,7 @@
 `1fbb4d64a93be2e7d5c8d381f66c88e1b9896c76`
 
 **Qualification revision:**
-`1578d606362332edd006e0e681834b5810b16f36`
+`8db6e58c66c69463f9930ac15e7a7ee0b78b2fd5`
 
 **PR:** [#574](https://github.com/Noahlw/efcc/pull/574)
 
@@ -45,8 +45,8 @@ authorize merge, issue closure, release, T09+ work, or any B-003 disposition.
 - **App-facing route scope:** `/*` (shared control usage; no route behavior changed)
 - **Contracts:** `CTR-TK-01`, `CTR-TK-07`, `CTR-TK-10`
 - **Machine evidence:** `verify:programs` returned `functional-passed` at
-  `1578d606362332edd006e0e681834b5810b16f36`; artifact
-  `test-results/programs-promotion/20260907t182826352z`
+  `8db6e58c66c69463f9930ac15e7a7ee0b78b2fd5`; artifact
+  `test-results/programs-promotion/20260908t022633886z`
 
 This document records the owner decision and does not promote a visual
 baseline or grant merge authorization.

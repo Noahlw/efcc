@@ -10,7 +10,7 @@ the handoff package, and it does not grant final design approval.
 - Original T08 implementation base: `af4857e8e3a86f5979840c70f06999f569e9ed1a`.
 - Production implementation HEAD: `1fbb4d64a93be2e7d5c8d381f66c88e1b9896c76` (`fix(t08): close review regressions`). The later acceptance-trace update is documentation/evidence only.
 - Evidence closeout commits: `9ed1e5bb` (acceptance evidence), `37951c11` (review outcomes), and `c77dc1da` (canonical tracker). The latest qualification/tooling fix is `1efa3b1f3a8ac9e3c4794003a7961a13653d2266` (`fix(governance): preserve unchanged affected waivers`), which is separate from the production control implementation.
-- Latest verified PR head: `1efa3b1f3a8ac9e3c4794003a7961a13653d2266`.
+- Latest verified PR head: `8db6e58c66c69463f9930ac15e7a7ee0b78b2fd5`.
 - Branch/worktree: `rescue/t08-control-contracts` / `/Users/noah.wong/Desktop/code/EFCC-dev/.worktrees/t08-control-contracts`.
 - PR: [#574](https://github.com/Noahlw/efcc/pull/574), target `rescue/t07-storybook-foundation`, kept DRAFT and OPEN.
 - Immediate parent: PR [#573](https://github.com/Noahlw/efcc/pull/573), OPEN/unmerged/mergeable, head `af4857e8e3a86f5979840c70f06999f569e9ed1a`.
@@ -83,9 +83,9 @@ The required `kind: design` ApprovalPackage is recorded in
 
 UI rows below ran against production implementation HEAD
 `1fbb4d64a93be2e7d5c8d381f66c88e1b9896c76`; governance-fix rows and the final
-aggregate ran against qualification HEAD
-`1efa3b1f3a8ac9e3c4794003a7961a13653d2266`. Node `22.18.0` and pnpm `11.7.0`
-were used unless noted.
+governance/approval rows and the final aggregate ran against qualification HEAD
+`8db6e58c66c69463f9930ac15e7a7ee0b78b2fd5`. Node `22.18.0` and pnpm
+`11.7.0` were used unless noted.
 
 | Command | Result / artifact |
 |---|---|
@@ -106,7 +106,7 @@ were used unless noted.
 | Separate Standards review | PASS, final implementation diff reviewed from `af4857e8e3a86f5979840c70f06999f569e9ed1a` to `1fbb4d64a93be2e7d5c8d381f66c88e1b9896c76`; no documented-standard breach. |
 | Separate Spec review | PASS, final implementation diff reviewed against live #513 plus D1/D2/D3; no hard missing, extra, or wrong requirement. |
 | `pnpm verify:precommit` | PASS, full existing pre-commit aggregate completed with exit 0 after the review fixes. |
-| `pnpm verify:programs` | PASS at qualification HEAD `1efa3b1f3a8ac9e3c4794003a7961a13653d2266`; `functional-passed`, all four stages passed; artifact at `test-results/programs-promotion/20260907t182236490z`. |
+| `pnpm verify:programs` | PASS at qualification HEAD `8db6e58c66c69463f9930ac15e7a7ee0b78b2fd5`; `functional-passed`, all four stages passed; artifact at `test-results/programs-promotion/20260908t022633886z`. |
 
 The T08 browser run's JSON result reports expected 20, skipped 0,
 unexpected 0, flaky 0, with all 20 individual tests passed.
@@ -129,7 +129,7 @@ unexpected 0, flaky 0, with all 20 individual tests passed.
 - Contract decision record: [`2026-09-07-t08-contract-decision-record.md`](2026-09-07-t08-contract-decision-record.md), with the owner result `APPROVED WITH CONDITIONS` for D1/D2/D3.
 - Design-review packet: the seven-row durable PSN/Story table above plus the current machine evidence; owner approval is recorded in [`2026-09-08-t08-design-approval.md`](2026-09-08-t08-design-approval.md).
 - ApprovalPackage ID: `APV-T08-CONTROL-DESIGN-1FBB4D64`; T07's APV is not reused.
-- Current qualification state after the final aggregate Programs command: `functional-passed` at `1578d606362332edd006e0e681834b5810b16f36`; Worker Contract, Browser Acceptance, Responsive Matrix, and non-browser precommit all passed. With AC-14 approved, T08 is `STACK_GREEN`; merge authorization remains NOT GIVEN.
+- Current qualification state after the final aggregate Programs command: `functional-passed` at `8db6e58c66c69463f9930ac15e7a7ee0b78b2fd5`; Worker Contract, Browser Acceptance, Responsive Matrix, and non-browser precommit all passed. With AC-14 approved, T08 is `STACK_GREEN`; merge authorization remains NOT GIVEN.
 - Merge authorization: NOT GIVEN.
 - Actual merge / issue reconciliation: NOT DONE.
 - B-003: remains OPEN and independent; no runtime fix or relabel is claimed.
