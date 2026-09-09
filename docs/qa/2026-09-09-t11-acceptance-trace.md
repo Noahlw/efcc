@@ -2,7 +2,7 @@
 
 ## Status
 
-`T11 IMPLEMENTATION_GREEN — WAITING_OWNER_L2` — T11 implementation and focused
+`T11 MACHINE_GREEN — READY_FOR_OWNER_L2` — T11 implementation and machine
 qualification are complete; human owner L2 review remains explicitly open. The
 implementation agent does not claim that approval.
 
@@ -31,14 +31,14 @@ implementation agent does not claim that approval.
 | T11-A04 | Notices and Messages retain a visible, semantic local route H1 at phone widths after shell title ownership is removed. | Route component tests + existing member Stories + 390px browser evidence. |
 | T11-A05 | Existing route copy, URLs, Back/history behavior, domain state, mutations, permissions, auth/session and server-projected navigation remain unchanged. | Focused regression tests + affected/full verification + diff review. |
 | T11-A06 | Exactly one `nav#main-navigation` landmark renders server-projected destinations with prefix-aware active state. | Shell/Nav component tests + shell browser suite. |
-| T11-A07 | `#shell-content` is the sole authenticated-shell scroll outlet and owns shell dock/rail reserve and safe-area clearance; route content rhythm remains route-owned. | W7 Chromium numeric geometry evidence. |
+| T11-A07 | `#shell-content` is the sole authenticated-shell page/content outlet and owns shell dock/rail reserve and safe-area clearance; route-local nested scroll regions remain route-owned. | W7 Chromium numeric geometry evidence + structural-owner regression probe. |
 | T11-A08 | W7 is exactly 320/375/390/414/799/800/1440, with compact behavior below 800px and desktop behavior at/above 800px. | Shell geometry runner and committed config/results. |
 | T11-A09 | Skip link, main-content reachability, offline/recovery behavior, attention focus trap/Escape/restoration, and scanner navigation remain reachable. | Existing shell component tests + W7 browser evidence. |
-| T11-A10 | Existing shipped-screen Stories remain directly openable and truthful for member, management, and scanner shell modes; no ordinary helper Story gains a PSN. | Storybook index/catalog checks + direct locators + visual inspection. |
+| T11-A10 | Existing shipped-screen Stories remain directly openable and truthful for member, management, and scanner shell modes; no ordinary helper Story gains a PSN. | Storybook index/catalog checks + committed Storybook W7 runner + implementation-agent self-review. |
 | T11-A11 | Representative Firefox/WebKit shell qualification passes at 390px and 800px without changing Fast CI or multiplying full W7 across engines. | Explicit local cross-browser run/results. |
 | T11-A12 | CEN-030 and CEN-058 are inspected and explicitly dispositioned; later route-family debt stays out of T11. | Live census output + final disposition entry. |
 | T11-A13 | Each ticket has focused tests/typechecking, a two-axis Standards/Spec review with no unresolved blocker, and a commit on the same T11 branch. | Per-ticket logs, review notes, and commit history. |
-| T11-A14 | Final state is `T11 IMPLEMENTATION_GREEN — WAITING_OWNER_L2`; the implementation agent does not self-approve the owner L2 gate. | Final trace update and handoff. |
+| T11-A14 | Final machine state is `T11 MACHINE_GREEN — READY_FOR_OWNER_L2`; the implementation agent does not self-approve the owner L2 gate. | Final trace update and handoff. |
 
 ## Planned seams
 
@@ -63,7 +63,7 @@ No Worker/D1 journey is added solely for shell presentation.
   suite had previously passed 32 tests with 3 pre-existing desktop skips.
 - Fast typecheck: `pnpm verify:fast` passed for root and `web/` TypeScript.
 - Storybook/catalog scope check: `pnpm test:storybook:scope` passed (13 tests).
-- Owner Storybook spot-check at 390px: existing Notices and Messages member
+- Implementation-agent Storybook self-review at 390px: existing Notices and Messages member
   baselines show local H1s and global `顯恩堂` chrome; Management Account
   Directory retains identity and attention bell; Scanner Boundary retains the
   authenticated dock while suppressing the top shell header. No Story or PSN was
@@ -100,7 +100,9 @@ No Worker/D1 journey is added solely for shell presentation.
 - Ownership disposition: live W7 produced no shell overlap, overflow, duplicate
   reserve or second content scroll owner, so no production CSS was changed and
   no route-owned bottom rhythm was removed. Existing `.shell-content` remains
-  the shell source of truth; route padding remains route-owned.
+  the shell source of truth; route padding remains route-owned. The committed
+  probe adds a nested `overflow-y:auto` route panel that passes, then makes
+  `.shell-body` scrollable and confirms the structural-owner assertion fails.
 - Ticket 02 review: Standards found no hard violation; Spec’s initial proof gap
   was closed by the shell-frame/document overflow assertions and the existing
   CDP safe-area evidence. Cross-browser qualification remains Ticket 03 scope.
@@ -113,7 +115,7 @@ No Worker/D1 journey is added solely for shell presentation.
   does not expand Fast CI or multiply W7 across additional engines; the
   breakpoint assertion now parses the width from suffixed project names, so
   cross-browser 390/800 runs exercise the same responsive contract.
-- Implementation-owner Storybook spot-check and live self-review used the
+- Implementation-agent Storybook self-review and live self-review used the
   existing production baselines and direct locators at 390/799/800:
   - `t07-2-public-auth-member-communications--home` — global brand-only
     header, visible member content, fixed dock below 800px, rail at 800px.
@@ -122,7 +124,7 @@ No Worker/D1 journey is added solely for shell presentation.
     the breakpoint.
   - `t07-5-attendance-scanner-guest--scanner-boundary` — top shell header is
     suppressed while authenticated navigation remains present at every width.
-  Full-page captures were inspected for each mode at the breakpoint widths;
+  Full-page captures were inspected by the implementation agent for each mode at the breakpoint widths;
   no in-scope overlap, clipped title, duplicate reserve, or long-content
   containment defect required an integration repair.
 - W7 presentation spot-check expanded to 320/375/390/414/799/800/1440 for
@@ -156,3 +158,19 @@ No Worker/D1 journey is added solely for shell presentation.
   implementation finding. Ticket 03 is committed as `33db2a73`
   (`fix(t11): qualify authenticated shell`). Human L2 owner review is not
   claimed by the implementation agent.
+
+## Review-fix qualification
+
+- Shell-owner contract narrowed to the structural `.shell`, `.shell-body`, and
+  `#shell-content` elements; arbitrary descendants of `#shell-content` are
+  route composition and are no longer treated as competing shell owners.
+- Storybook W7 runner: `pnpm test:t11:storybook` — 35 passed across the
+  existing Home, Notices, Messages, Account Directory, and Scanner Boundary
+  baselines at exactly 320/375/390/414/799/800/1440px. Assertions cover one
+  navigation landmark, one shell outlet, containment, member branding,
+  route-owned Notices/Messages H1s, management identity/attention, scanner
+  header suppression, and the 799/800 dock/rail switch.
+- The visual evidence above is implementation-agent/AI Storybook self-review.
+  Owner Storybook spot-check: PENDING. L2 human review: PENDING.
+- No new Story, PSN, Screen Catalog declaration, production shell abstraction,
+  skip, allowlist, or tolerance widening was added.

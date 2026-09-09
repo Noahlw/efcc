@@ -99,6 +99,26 @@ const isPhone = (projectName: string) =>
   projectName.startsWith("w-") &&
   Number.parseInt(projectName.slice(2), 10) < 800;
 
+const readShellScrollOwners = async (page: Page) =>
+  page.evaluate(() => {
+    const structuralElements = [
+      document.querySelector<HTMLElement>(".shell"),
+      document.querySelector<HTMLElement>(".shell-body"),
+      document.querySelector<HTMLElement>("#shell-content"),
+    ].filter((element): element is HTMLElement => element !== null);
+
+    return structuralElements
+      .filter((element) => {
+        const overflowY = getComputedStyle(element).overflowY;
+        return overflowY === "auto" || overflowY === "scroll";
+      })
+      .map((element) => element.id || element.classList[0] || element.tagName);
+  });
+
+const assertSoleShellContentScrollOwner = (owners: string[]) => {
+  expect(owners).toEqual(["shell-content"]);
+};
+
 test("shell critical anchors render at the pinned width with no overflow or obstruction", async ({
   page,
 }, testInfo) => {
@@ -133,24 +153,11 @@ test("shell critical anchors render at the pinned width with no overflow or obst
     const nav = document.querySelector<HTMLElement>("#main-navigation");
     const navStyle = nav ? getComputedStyle(nav) : null;
     const mainEl = document.querySelector<HTMLElement>("#shell-content");
-    const shell = document.querySelector<HTMLElement>(".shell");
     const headerEl = document.querySelector<HTMLElement>(
       "header[data-shell-header]"
     );
     const headerBox = headerEl?.getBoundingClientRect();
     const navBox = nav?.getBoundingClientRect();
-    const shellOwnedElements = shell
-      ? [shell, ...shell.querySelectorAll<HTMLElement>("*")]
-      : [];
-    const contentScrollOwners = shellOwnedElements
-      // The desktop rail may scroll its own navigation chrome; it is not the
-      // authenticated content outlet being proved here.
-      .filter((element) => !element.closest("#main-navigation"))
-      .filter((element) => {
-        const overflowY = getComputedStyle(element).overflowY;
-        return overflowY === "auto" || overflowY === "scroll";
-      })
-      .map((element) => element.id || element.className.toString());
 
     const visibleControls = [
       ...document.querySelectorAll<HTMLElement>(
@@ -206,12 +213,18 @@ test("shell critical anchors render at the pinned width with no overflow or obst
           document.documentElement.scrollHeight,
           document.body.scrollHeight
         ) - viewportHeight,
-      contentScrollOwners,
       undersized: visibleControls.filter((c) => c.width < 44 || c.height < 44),
     };
   });
 
-  await attachNumericEvidence(testInfo, "shell-geometry", geometry);
+  const contentScrollOwners = await readShellScrollOwners(page);
+  const geometryWithScrollOwners = { ...geometry, contentScrollOwners };
+
+  await attachNumericEvidence(
+    testInfo,
+    "shell-geometry",
+    geometryWithScrollOwners
+  );
 
   const phone = isPhone(testInfo.project.name);
 
@@ -222,7 +235,9 @@ test("shell critical anchors render at the pinned width with no overflow or obst
   ).toBeLessThanOrEqual(1);
   expect(geometry.mainContentOverflow).toBeLessThanOrEqual(1);
   expect(geometry.documentVerticalOverflow).toBeLessThanOrEqual(1);
-  expect(geometry.contentScrollOwners).toEqual(["shell-content"]);
+  expect(geometryWithScrollOwners.contentScrollOwners).toEqual([
+    "shell-content",
+  ]);
   await expect(page.locator("nav#main-navigation")).toHaveCount(1);
 
   // Shell presentation matches the breakpoint side.
@@ -266,6 +281,31 @@ test("shell critical anchors render at the pinned width with no overflow or obst
     geometry.undersized.length,
     `undersized controls: ${JSON.stringify(geometry.undersized)}`
   ).toBe(0);
+
+  // Route composition may add a nested scroll panel without becoming a
+  // second shell owner. A structural shell owner must still be rejected.
+  await main.evaluate((element) => {
+    const panel = document.createElement("div");
+    panel.dataset.t11NestedRouteScroll = "true";
+    panel.style.cssText = "height: 24px; overflow-y: auto;";
+
+    const overflowingContent = document.createElement("div");
+    overflowingContent.style.height = "48px";
+    panel.append(overflowingContent);
+    element.append(panel);
+  });
+
+  const nestedRouteOwners = await readShellScrollOwners(page);
+  assertSoleShellContentScrollOwner(nestedRouteOwners);
+
+  const shellBody = page.locator(".shell-body");
+  await shellBody.evaluate((element) => {
+    element.style.overflowY = "auto";
+  });
+
+  const invalidShellOwners = await readShellScrollOwners(page);
+  expect(invalidShellOwners).toEqual(["shell-body", "shell-content"]);
+  expect(() => assertSoleShellContentScrollOwner(invalidShellOwners)).toThrow();
 });
 
 test("member route keeps its visible H1 when shell chrome is global brand only", async ({
