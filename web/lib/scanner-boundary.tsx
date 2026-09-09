@@ -4,9 +4,13 @@ import { usePathname, useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { RefObject } from "react";
 
+import { Alert } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
 import { RpcError } from "@/lib/api";
 import { AssistedScannerPanel } from "@/lib/assisted-scanner-panel";
 import type { AttendanceEventSummary } from "@/lib/attendance";
+import { attendanceButtonVariants } from "@/lib/attendance-scanner-ui";
 import { COPY, errorCopyFor } from "@/lib/copy";
 import { announce } from "@/lib/live-region";
 import { listScannerEvents } from "@/lib/programs/program-api";
@@ -14,8 +18,6 @@ import { buildScannerHref, parseScannerIntent } from "@/lib/scanner-intent";
 import type { ScannerMode } from "@/lib/scanner-intent";
 import { SelfCheckInPanel } from "@/lib/self-check-in-panel";
 import { clearAuthHint, rememberDeepLink } from "@/lib/session";
-
-import styles from "./attendance-panel.module.css";
 
 type EventState =
   | { kind: "loading" }
@@ -34,28 +36,37 @@ const ScannerState = ({
   onAction?: () => void;
   tone: "info" | "error";
 }) => (
-  <section
-    className={styles.card}
+  <Card
+    className="grid gap-[1.125rem] p-5 bg-[var(--surface-raised)] border border-[var(--line-strong)] rounded-[var(--radius-md)]"
+    role="region"
     aria-labelledby="scanner-state-title"
     tabIndex={-1}
   >
-    <h1 id="scanner-state-title" className={styles.title}>
+    <h1
+      id="scanner-state-title"
+      className="text-2xl font-extrabold leading-tight tracking-[0.01em] text-[var(--ink)]"
+    >
       {COPY.sections.scanner}
     </h1>
-    <output className={styles.status} data-tone={tone} aria-live="polite">
+    <output
+      className="rounded-[var(--radius-sm)] border border-[var(--line-strong)] p-3 text-base"
+      data-tone={tone}
+      aria-live="polite"
+    >
       {message}
     </output>
     {actionLabel && onAction && (
-      <button
-        className={styles.buttonSecondary}
+      <Button
+        variant="outline"
+        className={attendanceButtonVariants({ variant: "secondary" })}
         type="button"
         ref={actionRef}
         onClick={onAction}
       >
         {actionLabel}
-      </button>
+      </Button>
     )}
-  </section>
+  </Card>
 );
 const AssistedAccessState = ({
   actionRef,
@@ -232,20 +243,25 @@ export const ScannerBoundary = () => {
   );
 
   if (accessStateVisible) {
-    return <div className={styles.page}>{accessState}</div>;
+    return (
+      <div className="mx-auto w-[min(100%,760px)] px-4 py-8 pb-12">
+        {accessState}
+      </div>
+    );
   }
 
   return (
     <>
       {showModeTabs && (
         <div
-          className={styles.modeSwitch}
+          className="mx-auto grid w-[min(100%,760px)] grid-cols-2 gap-2 px-4 pt-4"
           role="tablist"
           aria-label={COPY.attendance.modeLabel}
         >
-          <button
+          <Button
+            variant="outline"
+            className={attendanceButtonVariants({ variant: "modeTab" })}
             id="scanner-self-tab"
-            className={styles.modeButton}
             type="button"
             role="tab"
             aria-selected={intent.mode === "self"}
@@ -254,10 +270,11 @@ export const ScannerBoundary = () => {
             onClick={() => navigate("self")}
           >
             {COPY.attendance.selfMode}
-          </button>
-          <button
+          </Button>
+          <Button
+            variant="outline"
+            className={attendanceButtonVariants({ variant: "modeTab" })}
             id="scanner-assisted-tab"
-            className={styles.modeButton}
             type="button"
             role="tab"
             aria-selected={intent.mode === "assisted"}
@@ -266,33 +283,43 @@ export const ScannerBoundary = () => {
             onClick={() => navigate("assisted")}
           >
             {COPY.attendance.operatorMode}
-          </button>
+          </Button>
         </div>
       )}
       {!assistedRequested && eventsState.kind === "error" && (
-        <div className={styles.status} data-tone="error" role="alert">
+        <Alert
+          variant="destructive"
+          className="rounded-[var(--radius-sm)] border border-[var(--line-strong)] p-3 text-base"
+          data-tone="error"
+        >
           <span>{eventsState.message}</span>
-          <button
-            className={styles.buttonSecondary}
+          <Button
+            variant="outline"
+            className={attendanceButtonVariants({ variant: "secondary" })}
             type="button"
             ref={retryRef}
             onClick={retryEvents}
           >
             {COPY.attendance.assistedRetry}
-          </button>
-        </div>
+          </Button>
+        </Alert>
       )}
       {malformed && (
-        <div className={styles.status} data-tone="error" role="alert">
+        <Alert
+          variant="destructive"
+          className="rounded-[var(--radius-sm)] border border-[var(--line-strong)] p-3 text-base"
+          data-tone="error"
+        >
           {COPY.attendance.assistedContextStale}
-          <button
-            className={styles.buttonSecondary}
+          <Button
+            variant="outline"
+            className={attendanceButtonVariants({ variant: "secondary" })}
             type="button"
             onClick={recoverToSelf}
           >
             {COPY.attendance.assistedBackToSelf}
-          </button>
-        </div>
+          </Button>
+        </Alert>
       )}
       <div
         id="scanner-mode-panel"

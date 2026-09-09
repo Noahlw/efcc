@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
+import { Button } from "@/components/ui/button";
 import { useApp } from "@/lib/app-context";
 import { COPY } from "@/lib/copy";
 
@@ -89,9 +90,8 @@ const CANONICAL_SECTION_HREFS: Record<string, string> = {
   management: "/management",
 };
 
-const canonicalHrefForSection = (key: string): string => 
-  CANONICAL_SECTION_HREFS[key] ?? `/${key}`
-;
+const canonicalHrefForSection = (key: string): string =>
+  CANONICAL_SECTION_HREFS[key] ?? `/${key}`;
 
 const NavigationLink = ({
   section,
@@ -102,19 +102,35 @@ const NavigationLink = ({
 }) => {
   const isScanner = section.key === "scanner";
   return (
-    <Link
-      href={canonicalHrefForSection(section.key)}
+    <Button
+      asChild
+      variant="ghost"
       className={`nav-item${isScanner ? " nav-item--scan" : ""}`}
-      aria-current={section.key === current ? "page" : undefined}
     >
-      <span className="nav-icon">
-        <NavIcon section={section.key} />
-      </span>
-      <span className="nav-label">{section.label}</span>
-    </Link>
+      <Link
+        href={canonicalHrefForSection(section.key)}
+        aria-current={section.key === current ? "page" : undefined}
+      >
+        <span className="nav-icon">
+          <NavIcon section={section.key} />
+        </span>
+        <span className="nav-label">{section.label}</span>
+      </Link>
+    </Button>
   );
 };
 
+/**
+ * Authenticated primary navigation (TK-04/TK-05).
+ *
+ * One `<nav>` landmark (`#main-navigation`) renders the server-projected
+ * sections once. The phone dock and the desktop rail are the same DOM list
+ * presented by the global shell CSS at the named 800px breakpoint — exactly
+ * one navigation landmark for screen readers at every width. The profile
+ * section doubles as the account affordance on the rail; the header carries
+ * the separate account actions (bell/sign-out) so the dock keeps its five
+ * server-projected slots.
+ */
 export const NavBar = () => {
   const { bootstrap } = useApp();
   const pathname = usePathname();
@@ -126,27 +142,14 @@ export const NavBar = () => {
   // the owning section (review P2 aria-current finding).
   const current = pathname.replace(/^\//u, "").split("/")[0] || "profile";
   return (
-    <>
-      <nav aria-label={COPY.nav.label} className="nav-phone">
-        {bootstrap.navigation.map((section) => (
-          <NavigationLink
-            key={section.key}
-            section={section}
-            current={current}
-          />
-        ))}
-      </nav>
-      <nav aria-label={COPY.nav.label} className="nav-desktop">
-        <div className="nav-desktop__list">
-          {bootstrap.navigation.map((section) => (
-            <NavigationLink
-              key={section.key}
-              section={section}
-              current={current}
-            />
-          ))}
-        </div>
-      </nav>
-    </>
+    <nav id="main-navigation" aria-label={COPY.nav.label} className="nav-phone">
+      {bootstrap.navigation.map((section) => (
+        <NavigationLink
+          key={section.key}
+          section={section}
+          current={current}
+        />
+      ))}
+    </nav>
   );
 };

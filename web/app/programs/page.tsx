@@ -1,10 +1,9 @@
 import { Suspense } from "react";
 
+import { Skeleton } from "@/components/ui/skeleton";
 import { AppShell } from "@/lib/app-shell";
 import { COPY } from "@/lib/copy";
 import { ProgramsBoundary } from "@/lib/programs/programs-boundary";
-
-import styles from "./programs.module.css";
 
 /**
  * Participant-default Programs boundary (PUI-01 / Issue #245). The browser
@@ -12,20 +11,24 @@ import styles from "./programs.module.css";
  * management mode; directory, detail, enrollment, and workspace surfaces stay
  * outside this entry slice.
  */
-export default function ProgramsPage() {
-  return (
-    <AppShell>
-      <div className={styles.page}>
-        <Suspense
-          fallback={
-            <div className={styles.boundaryState} role="status" aria-busy="true">
-              {COPY.programs.accessLoading}
-            </div>
-          }
-        >
-          <ProgramsBoundary />
-        </Suspense>
-      </div>
-    </AppShell>
-  );
-}
+const ProgramsPage = () => (
+  <AppShell>
+    <div className="flex min-w-0 justify-center px-5 py-[clamp(1.5rem,4vh,2.5rem)] max-[799px]:px-4">
+      <Suspense
+        fallback={
+          <output
+            className="block w-full max-w-[60ch] min-w-0 rounded-[var(--radius-sm)] border border-[var(--line)] bg-[var(--surface)] p-4 text-[var(--ink)] [overflow-wrap:anywhere]"
+            aria-busy="true"
+          >
+            {COPY.programs.accessLoading}
+            <Skeleton className="mt-3 h-8 w-full" aria-hidden="true" />
+          </output>
+        }
+      >
+        <ProgramsBoundary />
+      </Suspense>
+    </div>
+  </AppShell>
+);
+
+export default ProgramsPage;

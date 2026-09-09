@@ -10,6 +10,8 @@ export type ProgramsOrigin = "home" | "notices" | "messages" | "programs";
 export interface ProgramsIntent {
   mode: ProgramsMode;
   programId: string | null;
+  /** Management directory department context. */
+  departmentId?: string;
   hash: string | null;
   /** Management task carried by a direct Program workspace link. */
   task?: ProgramsTask;
@@ -25,6 +27,8 @@ export interface ProgramsIntent {
 export interface ProgramsHrefIntent {
   mode: ProgramsMode;
   programId?: string | null;
+  /** Management directory department context. */
+  departmentId?: string | null;
   task?: ProgramsTask | null;
   eventId?: string | null;
   hash?: string | null;
@@ -89,6 +93,27 @@ function parseProgramIntent(
       rawProgram.duplicate ||
       rawProgramId.duplicate ||
       (rawProgram.value !== null && rawProgramId.value !== null),
+  };
+}
+
+function parseDepartmentIntent(
+  rawDepartment: { value: string | null; duplicate: boolean },
+  mode: ProgramsMode
+): {
+  id: string | null;
+  malformed: boolean;
+  supplied: string | null;
+  duplicate: boolean;
+} {
+  const parsed = parseProgramIntent(rawDepartment, {
+    value: null,
+    duplicate: false,
+  });
+  return {
+    ...parsed,
+    malformed:
+      parsed.malformed ||
+      (mode !== "management" && rawDepartment.value !== null),
   };
 }
 
@@ -183,10 +208,10 @@ function parseCreated(
       (rawCreated.value !== null && (!value || rawCreated.value !== "1")),
   };
 }
-
 function hasMalformedIntent({
   rawMode,
   program,
+  department,
   hash,
   rawTask,
   task,
@@ -197,6 +222,7 @@ function hasMalformedIntent({
 }: {
   rawMode: { value: string | null; duplicate: boolean };
   program: { malformed: boolean; duplicate: boolean };
+  department: { malformed: boolean; duplicate: boolean };
   hash: { malformed: boolean };
   rawTask: { duplicate: boolean };
   task: { malformed: boolean };
@@ -212,6 +238,8 @@ function hasMalformedIntent({
       rawMode.value !== "management") ||
     program.malformed ||
     program.duplicate ||
+    department.malformed ||
+    department.duplicate ||
     hash.malformed ||
     rawTask.duplicate ||
     task.malformed ||
@@ -231,6 +259,7 @@ export function parseProgramsIntent(search: string): ProgramsIntent {
   const rawMode = singleParam(params, "mode");
   const rawProgram = singleParam(params, "program");
   const rawProgramId = singleParam(params, "programId");
+  const rawDepartment = singleParam(params, "department");
   const rawTask = singleParam(params, "task");
   const rawEventId = singleParam(params, "event");
   const rawCreated = singleParam(params, "created");
@@ -238,6 +267,7 @@ export function parseProgramsIntent(search: string): ProgramsIntent {
   const mode: ProgramsMode =
     rawMode.value === "management" ? "management" : "participant";
   const program = parseProgramIntent(rawProgram, rawProgramId);
+  const department = parseDepartmentIntent(rawDepartment, mode);
   const hash = parseHash(rawHash);
   const origin = parseOrigin(rawFrom, mode, program.id);
   const task = parseTask(rawTask.value, mode, program.id);
@@ -246,6 +276,7 @@ export function parseProgramsIntent(search: string): ProgramsIntent {
   const malformed = hasMalformedIntent({
     rawMode,
     program,
+    department,
     hash,
     rawTask,
     task,
@@ -258,12 +289,17 @@ export function parseProgramsIntent(search: string): ProgramsIntent {
   const originField =
     origin.value === undefined ? {} : { origin: origin.value };
 
+  const departmentField =
+    mode === "management" && department.id !== null
+      ? { departmentId: department.id }
+      : {};
   if (task.value !== undefined && !malformed) {
     return {
       mode,
       programId: program.id,
       hash: hash.value,
       task: task.value,
+      ...departmentField,
       ...(event.value === undefined ? {} : { eventId: event.value }),
       ...creationField,
       ...originField,
@@ -275,6 +311,7 @@ export function parseProgramsIntent(search: string): ProgramsIntent {
     programId: program.id,
     hash: hash.value,
     ...(event.value === undefined ? {} : { eventId: event.value }),
+    ...departmentField,
     ...creationField,
     ...originField,
     malformed,
@@ -368,6 +405,7 @@ function appendEvent(
 export function buildProgramsHref({
   mode,
   programId,
+  departmentId,
   task,
   eventId,
   hash,
@@ -377,6 +415,13 @@ export function buildProgramsHref({
   const params = new URLSearchParams();
   if (mode === "management") {
     params.set("mode", "management");
+  }
+  if (
+    mode === "management" &&
+    departmentId &&
+    SAFE_PROGRAM_ID.test(departmentId)
+  ) {
+    params.set("department", departmentId);
   }
   appendCreated(params, mode, programId, created);
   appendProgram(params, programId, task);

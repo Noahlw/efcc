@@ -54,6 +54,10 @@ export interface Department {
     publish: boolean;
     module_configure: boolean;
     manager_assign?: boolean;
+    /** Whether the caller may enter the scoped Account Access destination. */
+    role_read?: boolean;
+    role_assign?: boolean;
+    role_revoke?: boolean;
   };
 }
 
@@ -90,6 +94,10 @@ export interface Program {
     publish: boolean;
     enroll: boolean;
     leader_assign: boolean;
+    /** Whether the caller may enter the scoped Account Access destination. */
+    role_read?: boolean;
+    role_assign?: boolean;
+    role_revoke?: boolean;
   };
 }
 export type ManagementProgram = Omit<
@@ -108,29 +116,6 @@ export type ManagementProgramSettings = ManagementProgram &
 export interface ManagementDirectory {
   departments: Department[];
   programs: ManagementProgram[];
-}
-export type AccountPermissionRoleKey = "admin" | "department-manager" | "staff";
-
-export interface AccountPermissionAccount {
-  userId: string;
-  name: string;
-  role: AccountPermissionRoleKey;
-  departments: Array<{
-    id: string;
-    name: string;
-  }>;
-}
-
-export interface AccountPermissionRole {
-  key: AccountPermissionRoleKey;
-  label: string;
-  scope: string;
-  assignmentState: "assigned" | "assignable";
-}
-
-export interface AccountPermissionsView {
-  accounts: AccountPermissionAccount[];
-  roles: AccountPermissionRole[];
 }
 
 export interface ManagementCockpitNextEvent {
@@ -406,7 +391,7 @@ export interface ProgramEvent {
 }
 export interface EventDetail {
   event: ProgramEvent;
-  leaders: ProgramLeader[];
+  leaders: ProgramIdentityAssignment[];
   participant_summary: {
     active_enrollments: number;
     checked_in: number;
@@ -448,25 +433,20 @@ export interface EnrollmentSnapshot {
 }
 
 export type EnrollmentDecision = "Approved" | "Rejected";
-export interface ProgramLeader {
+
+export interface ProgramIdentityAssignment {
   program_id: string;
   user_id: string;
-  granted_by: string;
+  role_definition_id: string;
+  label: string;
+  scope_kind: "Global" | "Department" | "Program";
+  scope_id: string | null;
   granted_at: string;
-  revoked_by: string | null;
-  revoked_at: string | null;
   user_name?: string;
   username?: string;
-}
-export interface DepartmentManager {
-  department_id: string;
-  user_id: string;
-  granted_by: string;
-  granted_at: string;
-  revoked_by: string | null;
-  revoked_at: string | null;
-  user_name?: string;
-  username?: string;
+  granted_by?: string;
+  revoked_by?: string | null;
+  revoked_at?: string | null;
 }
 
 export interface MemberOption {
@@ -475,21 +455,47 @@ export interface MemberOption {
   username: string;
 }
 /** Server-scoped Member Directory result (Management Hub, Spec 087 US 13-15). */
-export type MemberDirectoryRole = "Admin" | "Staff" | "Member";
-
 export interface MemberDirectoryDepartment {
   id: string;
   name: string;
+}
+
+export interface AccountIdentitySummary {
+  id: string;
+  label: string;
+  stableKey: string;
+  scopeKind: "Global" | "Department" | "Program";
+  scopeId: string | null;
 }
 
 export interface MemberDirectoryMember {
   userId: string;
   name: string;
   phone: string | null;
-  role: MemberDirectoryRole;
-  status: "Active";
+  identities: AccountIdentitySummary[];
+  status: "Pending" | "Active" | "Suspended" | "Deactivated";
   departments: MemberDirectoryDepartment[];
 }
+
+export interface AccountDirectoryMember extends MemberDirectoryMember {
+  username: string | null;
+  canOpenAccess: boolean;
+}
+
+export interface AccountDirectorySummary {
+  total: number;
+  active: number;
+  elevated: number;
+  pending: number;
+}
+
+export interface AccountDirectoryView {
+  accounts: AccountDirectoryMember[];
+  nextCursor: string | null;
+  summary: AccountDirectorySummary;
+}
+
+export type AccountDirectoryDetail = AccountDirectoryMember;
 
 export interface GenerateResult {
   run_id: string;
@@ -654,12 +660,14 @@ async function programsFetch<T>(
 
 /** POST /api/v1/programs/:programId/enrollment-requests */
 export function submitEnrollmentRequest(
-  programId: string
+  programId: string,
+  idempotencyKey?: string
 ): Promise<{ request: EnrollmentRequest }> {
   return programsFetch(
     `/api/v1/programs/${programId}/enrollment-requests`,
     "POST",
-    {}
+    {},
+    { idempotencyKey }
   );
 }
 /** GET /api/v1/programs/:programId/enrollment-requests */
@@ -707,12 +715,14 @@ export function decideEnrollmentRequest(
 /** POST /api/v1/programs/:programId/enrollment-requests/:requestId/withdraw */
 export function withdrawEnrollmentRequest(
   programId: string,
-  requestId: string
+  requestId: string,
+  idempotencyKey?: string
 ): Promise<{ request: EnrollmentRequest }> {
   return programsFetch(
     `/api/v1/programs/${programId}/enrollment-requests/${requestId}/withdraw`,
     "POST",
-    {}
+    {},
+    { idempotencyKey }
   );
 }
 
@@ -733,48 +743,16 @@ export function listEnrollments(
   return programsFetch(`/api/v1/programs/${programId}/enrollments`, "GET");
 }
 
-/** POST /api/v1/programs/:programId/enrollments/:enrollmentId/cancel */
 export function cancelEnrollment(
   programId: string,
-  enrollmentId: string
+  enrollmentId: string,
+  idempotencyKey?: string
 ): Promise<{ enrollment: Enrollment }> {
   return programsFetch(
     `/api/v1/programs/${programId}/enrollments/${enrollmentId}/cancel`,
     "POST",
-    {}
-  );
-}
-
-/** GET /api/v1/programs/:programId/leaders */
-export function listProgramLeaders(
-  programId: string
-): Promise<{ leaders: ProgramLeader[] }> {
-  return programsFetch(`/api/v1/programs/${programId}/leaders`, "GET");
-}
-
-/** POST /api/v1/programs/:programId/leaders */
-export function assignProgramLeader(
-  programId: string,
-  userId: string
-): Promise<{ leader: ProgramLeader }> {
-  return programsFetch(
-    `/api/v1/programs/${programId}/leaders`,
-    "POST",
-    { user_id: userId },
-    { idempotencyKey: null }
-  );
-}
-
-/** POST /api/v1/programs/:programId/leaders/:userId/revoke */
-export function revokeProgramLeader(
-  programId: string,
-  userId: string
-): Promise<{ leader: ProgramLeader }> {
-  return programsFetch(
-    `/api/v1/programs/${programId}/leaders/${userId}/revoke`,
-    "POST",
     {},
-    { idempotencyKey: null }
+    { idempotencyKey }
   );
 }
 
@@ -851,22 +829,6 @@ export function getManagementHub(): Promise<ManagementHubView> {
   return programsFetch("/api/v1/programs/hub", "GET", undefined, {
     cache: "no-store",
   });
-}
-
-/**
- * GET /api/v1/programs/account-permissions — Admin/Staff-only Account
- * Permissions matrix (087-03 #320). `no-store`: role changes must be
- * reflected on the next load.
- */
-export function getAccountPermissions(): Promise<AccountPermissionsView> {
-  return programsFetch(
-    "/api/v1/programs/account-permissions",
-    "GET",
-    undefined,
-    {
-      cache: "no-store",
-    }
-  );
 }
 
 // ponytail: in-memory catalog cache for F-C01 warming — no contract change,
@@ -992,52 +954,6 @@ export function createProgram(
     input
   );
 }
-/** GET /api/v1/programs/departments/:id/managers */
-export function listDepartmentManagers(departmentId: string): Promise<{
-  managers: DepartmentManager[];
-}> {
-  return programsFetch(
-    `/api/v1/programs/departments/${encodeURIComponent(departmentId)}/managers`,
-    "GET"
-  );
-}
-
-/** GET /api/v1/programs/departments/:id/member-options?q=... */
-export function searchDepartmentMemberOptions(
-  departmentId: string,
-  query: string
-): Promise<{ members: MemberOption[] }> {
-  return programsFetch(
-    `/api/v1/programs/departments/${encodeURIComponent(departmentId)}/member-options?q=${encodeURIComponent(query)}`,
-    "GET"
-  );
-}
-
-/** POST /api/v1/programs/departments/:id/managers */
-export function assignDepartmentManager(
-  departmentId: string,
-  userId: string
-): Promise<{ manager: DepartmentManager }> {
-  return programsFetch(
-    `/api/v1/programs/departments/${encodeURIComponent(departmentId)}/managers`,
-    "POST",
-    { user_id: userId },
-    { idempotencyKey: null }
-  );
-}
-
-/** POST /api/v1/programs/departments/:id/managers/:userId/revoke */
-export function revokeDepartmentManager(
-  departmentId: string,
-  userId: string
-): Promise<{ manager: DepartmentManager }> {
-  return programsFetch(
-    `/api/v1/programs/departments/${encodeURIComponent(departmentId)}/managers/${encodeURIComponent(userId)}/revoke`,
-    "POST",
-    {},
-    { idempotencyKey: null }
-  );
-}
 
 /** PATCH /api/v1/programs/:id */
 export function updateProgram(
@@ -1076,6 +992,42 @@ export function searchManagementMembers(
     params.set("limit", String(options.limit));
   }
   return programsFetch(`/api/v1/programs/members?${params.toString()}`, "GET");
+}
+
+/** GET /api/v1/programs/accounts?q=...&status=... — Account Directory. */
+export function searchAccountDirectory(
+  query: string,
+  options?: {
+    cursor?: string;
+    department?: string;
+    limit?: number;
+    status?: AccountDirectoryMember["status"];
+  }
+): Promise<AccountDirectoryView> {
+  const params = new URLSearchParams({ q: query });
+  if (options?.limit !== undefined) {
+    params.set("limit", String(options.limit));
+  }
+  if (options?.cursor !== undefined) {
+    params.set("cursor", options.cursor);
+  }
+  if (options?.department !== undefined) {
+    params.set("department", options.department);
+  }
+  if (options?.status !== undefined) {
+    params.set("status", options.status);
+  }
+  return programsFetch(`/api/v1/programs/accounts?${params.toString()}`, "GET");
+}
+
+/** GET /api/v1/programs/accounts/:id — authorized Account Detail. */
+export function getAccountDirectoryDetail(
+  userId: string
+): Promise<AccountDirectoryDetail> {
+  return programsFetch(
+    `/api/v1/programs/accounts/${encodeURIComponent(userId)}`,
+    "GET"
+  );
 }
 
 /** POST /api/v1/programs/departments/:id/modules/:key/(enable|disable) */

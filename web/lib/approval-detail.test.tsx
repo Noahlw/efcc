@@ -1,3 +1,10 @@
+import {
+  cleanup,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 // 087-02 (#319) — component tests for the routable Approval Detail screen.
 // MSW intercepts the Worker detail + decide endpoints (same seam as
 // lib/approval-queue.test.tsx). Fixtures carry no credential material.
@@ -5,16 +12,32 @@
 // required-note 拒絕, read-only outcome after a decision, back-nav to the
 // approvals list, and the guarded/error states.
 import userEvent from "@testing-library/user-event";
-import { cleanup, render, screen } from "@testing-library/react";
 import { http, HttpResponse } from "msw";
 import { setupServer } from "msw/node";
-import { afterAll, afterEach, beforeAll, describe, expect, test } from "vitest";
+import type { ReadonlyURLSearchParams } from "next/navigation";
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  describe,
+  expect,
+  test,
+  vi,
+} from "vitest";
 
 import { ApprovalDetail } from "./approval-detail";
 import { COPY } from "./copy";
-import { QUEUE_COPY } from "./registration-copy";
 import type { RegistrationDetail } from "./registration-client";
+import { QUEUE_COPY } from "./registration-copy";
 
+const mocks = vi.hoisted(() => ({
+  searchParams: new URLSearchParams(),
+}));
+
+vi.mock(import("next/navigation"), () => ({
+  useSearchParams: () =>
+    mocks.searchParams as unknown as ReadonlyURLSearchParams,
+}));
 const server = setupServer();
 
 const PENDING: RegistrationDetail = {
@@ -23,7 +46,6 @@ const PENDING: RegistrationDetail = {
   name: "Dave Ng",
   phone: "9123 4567",
   status: "Pending",
-  role: "Member",
   submittedAt: 1_700_000_000_000,
   decidedAt: null,
   decisionNote: null,
@@ -41,10 +63,12 @@ beforeAll(() => server.listen({ onUnhandledRequest: "error" }));
 afterEach(() => {
   cleanup();
   server.resetHandlers();
+  mocks.searchParams = new URLSearchParams();
 });
+
 afterAll(() => server.close());
 
-describe("ApprovalDetail", () => {
+describe(ApprovalDetail, () => {
   test("deep-links: fetches the request by id on mount and shows name/contact/status", async () => {
     let requestedPath: string | null = null;
     server.use(
@@ -55,11 +79,11 @@ describe("ApprovalDetail", () => {
     );
     render(<ApprovalDetail requestId="req-1" />);
 
-    expect(
-      await screen.findByRole("heading", {
+    await expect(
+      screen.findByRole("heading", {
         name: COPY.approvals.approvalDetailTitle,
       })
-    ).toBeInTheDocument();
+    ).resolves.toBeInTheDocument();
     expect(screen.getByText("Dave Ng")).toBeInTheDocument();
     expect(screen.getByText("dave")).toBeInTheDocument();
     expect(screen.getByText("9123 4567")).toBeInTheDocument();
@@ -82,9 +106,9 @@ describe("ApprovalDetail", () => {
     );
     render(<ApprovalDetail requestId="req-1" />);
 
-    expect(
-      await screen.findByText(COPY.approvals.statusRejected)
-    ).toBeInTheDocument();
+    await expect(
+      screen.findByText(COPY.approvals.statusRejected)
+    ).resolves.toBeInTheDocument();
     expect(screen.getByText("資料不完整")).toBeInTheDocument();
     expect(screen.getByText(COPY.approvals.decisionMade)).toBeInTheDocument();
     // Read-only: no decision controls are offered for a decided request.
@@ -100,10 +124,19 @@ describe("ApprovalDetail", () => {
     let detail: RegistrationDetail = PENDING;
     const approveCalls: { idempotency: string | null }[] = [];
     server.use(
-      http.get("/api/v1/auth/registrations/req-1", () => detailResponse(detail)),
+      http.get("/api/v1/auth/registrations/req-1", () =>
+        detailResponse(detail)
+      ),
       http.post("/api/v1/auth/registrations/req-1/approve", ({ request }) => {
-        approveCalls.push({ idempotency: request.headers.get("idempotency-key") });
-        detail = { ...detail, status: "Active", decidedAt: 1_700_000_300_000, decision: "Approved" };
+        approveCalls.push({
+          idempotency: request.headers.get("idempotency-key"),
+        });
+        detail = {
+          ...detail,
+          status: "Active",
+          decidedAt: 1_700_000_300_000,
+          decision: "Approved",
+        };
         return HttpResponse.json({
           requestId: "rid-approve",
           data: { accountStatus: "active" },
@@ -113,15 +146,28 @@ describe("ApprovalDetail", () => {
     const user = userEvent.setup();
     render(<ApprovalDetail requestId="req-1" />);
 
-    await user.click(
-      await screen.findByRole("button", { name: COPY.approvals.approve })
-    );
+    const approveButton = await screen.findByRole("button", {
+      name: COPY.approvals.approve,
+    });
+    await user.click(approveButton);
+
+    expect(approveCalls).toHaveLength(0);
+    expect(
+      screen.getByRole("alertdialog", { name: "確認核准申請" })
+    ).toBeInTheDocument();
+    expect(screen.getByText(/Dave Ng.*Active Account/u)).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "取消" }));
+    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+    expect(approveButton).toHaveFocus();
+    expect(approveCalls).toHaveLength(0);
+    await user.click(approveButton);
+    await user.click(screen.getByRole("button", { name: "確認核准" }));
 
     // The decision posts with an Idempotency-Key and the detail reloads to
     // the read-only Approved outcome (atomic: one round-trip, then locked).
-    expect(
-      await screen.findByText(COPY.approvals.statusApproved)
-    ).toBeInTheDocument();
+    await expect(
+      screen.findByText(COPY.approvals.statusApproved)
+    ).resolves.toBeInTheDocument();
     expect(approveCalls[0]?.idempotency).toBeTruthy();
     // 已處理申請。 appears both as the success notice and as the read-only
     // outcome marker on the locked detail.
@@ -140,7 +186,9 @@ describe("ApprovalDetail", () => {
     let detail: RegistrationDetail = PENDING;
     let rejectPosts = 0;
     server.use(
-      http.get("/api/v1/auth/registrations/req-1", () => detailResponse(detail)),
+      http.get("/api/v1/auth/registrations/req-1", () =>
+        detailResponse(detail)
+      ),
       http.post("/api/v1/auth/registrations/req-1/reject", () => {
         rejectPosts += 1;
         detail = { ...detail, status: "Rejected", decision: "Rejected" };
@@ -157,15 +205,131 @@ describe("ApprovalDetail", () => {
       await screen.findByRole("button", { name: COPY.approvals.reject })
     );
 
+    expect(
+      screen.getByRole("alertdialog", { name: "確認拒絕申請" })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "確認拒絕" })
+    ).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "確認拒絕" }));
+
     // Client-side gate: the required-note error is announced inline and no
     // POST leaves the browser (the server also 422s, but this must not fire).
-    expect(
-      await screen.findByText(COPY.approvals.rejectionNoteRequired)
-    ).toBeInTheDocument();
+    await expect(
+      screen.findByText(COPY.approvals.rejectionNoteRequired)
+    ).resolves.toBeInTheDocument();
     expect(rejectPosts).toBe(0);
     expect(
-      screen.getByRole("button", { name: COPY.approvals.reject })
+      screen.getByRole("alertdialog", { name: "確認拒絕申請" })
     ).toBeInTheDocument();
+    const noteInput = screen.getByRole("textbox", {
+      name: COPY.approvals.decisionNote,
+    });
+    expect(noteInput).toHaveAttribute("aria-invalid", "true");
+    expect(noteInput).toHaveFocus();
+  });
+
+  test("retrying a load failure restores the detail and focuses the error", async () => {
+    let attempts = 0;
+    server.use(
+      http.get("/api/v1/auth/registrations/req-retry", () => {
+        attempts += 1;
+        return attempts === 1
+          ? HttpResponse.json(
+              { code: "UNAVAILABLE", detail: "temporary" },
+              { status: 500 }
+            )
+          : detailResponse({ ...PENDING, requestId: "req-retry" });
+      })
+    );
+    const user = userEvent.setup();
+    render(<ApprovalDetail requestId="req-retry" />);
+
+    const error = await screen.findByRole("alert");
+    await waitFor(() => expect(error).toHaveFocus());
+    expect(error).toHaveAttribute("tabindex", "-1");
+    await user.click(screen.getByRole("button", { name: "重試連接" }));
+    await expect(screen.findByText("Dave Ng")).resolves.toBeInTheDocument();
+    expect(attempts).toBe(2);
+  });
+
+  test("conflict failure keeps pending decisions available with conflict styling", async () => {
+    server.use(
+      http.get("/api/v1/auth/registrations/req-1", () =>
+        detailResponse(PENDING)
+      ),
+      http.post("/api/v1/auth/registrations/req-1/approve", () =>
+        HttpResponse.json(
+          { requestId: "rid-detail-conflict", code: "CONFLICT" },
+          { status: 409 }
+        )
+      )
+    );
+    const user = userEvent.setup();
+    render(<ApprovalDetail requestId="req-1" />);
+    const approveButton = await screen.findByRole("button", {
+      name: COPY.approvals.approve,
+    });
+    await user.click(approveButton);
+    await user.click(screen.getByRole("button", { name: "確認核准" }));
+
+    const conflict = await screen.findByRole("alert", {
+      name: "",
+    });
+    expect(conflict).toHaveTextContent(QUEUE_COPY.conflict);
+    expect(
+      screen.getByRole("region", { name: "申請處理操作" })
+    ).toHaveAttribute("data-state", "conflict");
+    expect(
+      screen.getByRole("button", { name: COPY.approvals.approve })
+    ).toBeInTheDocument();
+  });
+
+  test("decision busy state locks the Action Surface until the server resolves", async () => {
+    let release!: () => void;
+    let detail: RegistrationDetail = PENDING;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    server.use(
+      http.get("/api/v1/auth/registrations/req-1", () =>
+        detailResponse(detail)
+      ),
+      http.post("/api/v1/auth/registrations/req-1/approve", async () => {
+        await gate;
+        detail = {
+          ...detail,
+          status: "Active",
+          decision: "Approved",
+          decidedAt: 1_700_000_500_000,
+        };
+        return HttpResponse.json({
+          requestId: "rid-detail-busy",
+          data: { accountStatus: "active" },
+        });
+      })
+    );
+    const user = userEvent.setup();
+    render(<ApprovalDetail requestId="req-1" />);
+    const approveButton = await screen.findByRole("button", {
+      name: COPY.approvals.approve,
+    });
+    await user.click(approveButton);
+    await user.click(screen.getByRole("button", { name: "確認核准" }));
+
+    await waitFor(() => expect(approveButton).toBeDisabled());
+    expect(approveButton).toHaveAttribute("aria-busy", "true");
+    expect(
+      screen.getByRole("region", { name: COPY.approvals.approvalDetailTitle })
+    ).toHaveAttribute("aria-busy", "true");
+    expect(
+      screen.getByRole("region", { name: "申請處理操作" })
+    ).toHaveAttribute("data-state", "busy");
+
+    release();
+    await expect(
+      screen.findByText(COPY.approvals.statusApproved)
+    ).resolves.toBeInTheDocument();
   });
 
   test("reject with a note commits atomically with the note and shows it read-only", async () => {
@@ -173,38 +337,46 @@ describe("ApprovalDetail", () => {
     const rejectCalls: { decisionNote?: string; idempotency: string | null }[] =
       [];
     server.use(
-      http.get("/api/v1/auth/registrations/req-1", () => detailResponse(detail)),
-      http.post("/api/v1/auth/registrations/req-1/reject", async ({ request }) => {
-        const body = (await request.json()) as { decisionNote?: string };
-        rejectCalls.push({
-          decisionNote: body.decisionNote,
-          idempotency: request.headers.get("idempotency-key"),
-        });
-        detail = {
-          ...detail,
-          status: "Rejected",
-          decidedAt: 1_700_000_400_000,
-          decisionNote: body.decisionNote ?? null,
-          decision: "Rejected",
-        };
-        return HttpResponse.json({
-          requestId: "rid-reject-note",
-          data: { accountStatus: "rejected" },
-        });
-      })
+      http.get("/api/v1/auth/registrations/req-1", () =>
+        detailResponse(detail)
+      ),
+      http.post(
+        "/api/v1/auth/registrations/req-1/reject",
+        async ({ request }) => {
+          const body = (await request.json()) as { decisionNote?: string };
+          rejectCalls.push({
+            decisionNote: body.decisionNote,
+            idempotency: request.headers.get("idempotency-key"),
+          });
+          detail = {
+            ...detail,
+            status: "Rejected",
+            decidedAt: 1_700_000_400_000,
+            decisionNote: body.decisionNote ?? null,
+            decision: "Rejected",
+          };
+          return HttpResponse.json({
+            requestId: "rid-reject-note",
+            data: { accountStatus: "rejected" },
+          });
+        }
+      )
     );
     const user = userEvent.setup();
     render(<ApprovalDetail requestId="req-1" />);
 
+    await user.click(
+      await screen.findByRole("button", { name: COPY.approvals.reject })
+    );
     await user.type(
       await screen.findByLabelText(COPY.approvals.decisionNote),
       "資料不完整"
     );
-    await user.click(screen.getByRole("button", { name: COPY.approvals.reject }));
+    await user.click(screen.getByRole("button", { name: "確認拒絕" }));
 
-    expect(
-      await screen.findByText(COPY.approvals.statusRejected)
-    ).toBeInTheDocument();
+    await expect(
+      screen.findByText(COPY.approvals.statusRejected)
+    ).resolves.toBeInTheDocument();
     expect(rejectCalls[0]?.decisionNote).toBe("資料不完整");
     expect(rejectCalls[0]?.idempotency).toBeTruthy();
     // Terminal + auditable: the recorded note is visible on the read-only
@@ -220,7 +392,9 @@ describe("ApprovalDetail", () => {
 
   test("back-navigation returns to the approvals list with prior state intact", async () => {
     server.use(
-      http.get("/api/v1/auth/registrations/req-1", () => detailResponse(PENDING))
+      http.get("/api/v1/auth/registrations/req-1", () =>
+        detailResponse(PENDING)
+      )
     );
     render(<ApprovalDetail requestId="req-1" />);
 
@@ -230,6 +404,24 @@ describe("ApprovalDetail", () => {
     // The canonical hub sub-route: same module URL, no request param, so the
     // list remounts with its own loaded state (browser back preserves it).
     expect(back).toHaveAttribute("href", "/management?module=approvals");
+  });
+
+  test("exposes a busy root, live result, and focused detail heading", async () => {
+    server.use(
+      http.get("/api/v1/auth/registrations/req-1", () =>
+        detailResponse(PENDING)
+      )
+    );
+    render(<ApprovalDetail requestId="req-1" />);
+    const heading = await screen.findByRole("heading", {
+      name: COPY.approvals.approvalDetailTitle,
+    });
+    expect(heading).toHaveAttribute("tabindex", "-1");
+    await waitFor(() => expect(heading).toHaveFocus());
+    expect(
+      screen.getByRole("region", { name: COPY.approvals.approvalDetailTitle })
+    ).toHaveAttribute("aria-busy", "false");
+    expect(screen.getByRole("status")).toHaveAttribute("aria-live", "polite");
   });
 
   test("shows the S13 forbidden state for a non-Admin/Staff caller (403)", async () => {
@@ -243,7 +435,10 @@ describe("ApprovalDetail", () => {
             code: "FORBIDDEN",
             requestId: "rid-403",
           },
-          { status: 403, headers: { "Content-Type": "application/problem+json" } }
+          {
+            status: 403,
+            headers: { "Content-Type": "application/problem+json" },
+          }
         )
       )
     );
@@ -267,12 +462,57 @@ describe("ApprovalDetail", () => {
             code: "NOT_FOUND",
             requestId: "rid-404",
           },
-          { status: 404, headers: { "Content-Type": "application/problem+json" } }
+          {
+            status: 404,
+            headers: { "Content-Type": "application/problem+json" },
+          }
         )
       )
     );
     render(<ApprovalDetail requestId="req-unknown" />);
 
-    expect(await screen.findByText(QUEUE_COPY.notFound)).toBeInTheDocument();
+    await expect(
+      screen.findByText(QUEUE_COPY.notFound)
+    ).resolves.toBeInTheDocument();
+  });
+
+  test("preserves custom safe return target in the back link", async () => {
+    mocks.searchParams = new URLSearchParams(
+      "module=approvals&request=req-1&return=%2Fmanagement%3Fmodule%3Dsettings"
+    );
+    server.use(
+      http.get("/api/v1/auth/registrations/req-1", () =>
+        detailResponse(PENDING)
+      )
+    );
+    render(<ApprovalDetail requestId="req-1" />);
+    await screen.findByText("Dave Ng");
+    const backLink = screen.getByRole("link", { name: "設定" });
+    expect(backLink).toHaveAttribute("href", "/management?module=settings");
+  });
+
+  test("reject dialog cancels without submitting and restores focus to reject trigger", async () => {
+    const user = userEvent.setup();
+    server.use(
+      http.get("/api/v1/auth/registrations/req-1", () =>
+        detailResponse(PENDING)
+      )
+    );
+    render(<ApprovalDetail requestId="req-1" />);
+    await screen.findByText("Dave Ng");
+
+    const rejectButton = screen.getByRole("button", {
+      name: QUEUE_COPY.reject,
+    });
+    await user.click(rejectButton);
+    const dialog = screen.getByRole("alertdialog");
+    expect(dialog).toBeInTheDocument();
+
+    const cancelButton = within(dialog).getByRole("button", {
+      name: "取消",
+    });
+    await user.click(cancelButton);
+    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+    expect(document.activeElement).toBe(rejectButton);
   });
 });

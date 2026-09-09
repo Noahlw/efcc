@@ -73,6 +73,7 @@ describe("useQrCamera lifecycle", () => {
     detectorDetection = Promise.resolve([]);
     Reflect.deleteProperty(window, "BarcodeDetector");
     Reflect.deleteProperty(navigator, "mediaDevices");
+    Reflect.deleteProperty(window, "matchMedia");
   });
 
   test("reports denied permission separately without keeping a camera stream", async () => {
@@ -338,5 +339,62 @@ describe("useQrCamera lifecycle", () => {
     await Promise.resolve();
     expect(onDetect).not.toHaveBeenCalled();
     expect(stop).toHaveBeenCalledOnce();
+  });
+
+  test("reports unsupported when getUserMedia throws non-denied device error", async () => {
+    const onUnavailable = vi.fn<() => void>();
+    const onDenied = vi.fn<() => void>();
+    const onUnsupported = vi.fn<() => void>();
+    const getUserMedia = vi
+      .fn<() => Promise<MediaStream>>()
+      .mockRejectedValue(new DOMException("device not found", "NotFoundError"));
+    installDetector();
+    Object.defineProperty(navigator, "mediaDevices", {
+      configurable: true,
+      value: { getUserMedia },
+    });
+    const user = userEvent.setup();
+    render(
+      <CameraProbe
+        onDetect={() => {}}
+        onUnavailable={onUnavailable}
+        onDenied={onDenied}
+        onUnsupported={onUnsupported}
+      />
+    );
+
+    await user.click(screen.getByRole("button", { name: "start" }));
+    expect(onUnsupported).toHaveBeenCalledOnce();
+    expect(onDenied).not.toHaveBeenCalled();
+  });
+
+  test("immediately settles camera unavailable on desktop with phoneOnly: true", () => {
+    try {
+      Object.defineProperty(window, "matchMedia", {
+        configurable: true,
+        value: vi.fn().mockImplementation((query: string) => ({
+          matches: query === "(min-width: 800px)",
+          media: query,
+          onchange: null,
+          addListener: vi.fn(),
+          removeListener: vi.fn(),
+          addEventListener: vi.fn(),
+          removeEventListener: vi.fn(),
+          dispatchEvent: vi.fn(),
+        })),
+      });
+      const onUnsupported = vi.fn<() => void>();
+      render(
+        <CameraProbe
+          onDetect={() => {}}
+          onUnavailable={() => {}}
+          onUnsupported={onUnsupported}
+          reportUnavailableOnMount
+        />
+      );
+      expect(screen.queryByTestId("camera-video")).toBeNull();
+    } finally {
+      Reflect.deleteProperty(window, "matchMedia");
+    }
   });
 });

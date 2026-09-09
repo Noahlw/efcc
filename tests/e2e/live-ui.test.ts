@@ -21,7 +21,7 @@
 // account-settings-copy.ts; the suite asserts observable DOM state, never
 // client-side gating alone.
 import { expect, test } from "@playwright/test";
-import type { Page } from "@playwright/test";
+import type { Page, TestInfo } from "@playwright/test";
 
 import { DEV_ADMIN, DEV_MEMBER, DEV_STAFF } from "./dev-fixtures";
 
@@ -29,6 +29,8 @@ const configuredTarget = process.env.AUTH_UI_TARGET_URL;
 const localTarget =
   !configuredTarget ||
   ["localhost", "127.0.0.1"].includes(new URL(configuredTarget).hostname);
+const TARGET_ORIGIN = new URL(configuredTarget ?? "http://127.0.0.1:8787")
+  .origin;
 const ADMIN_USER =
   process.env.PROGRAMS_ADMIN_USERNAME ??
   (localTarget ? DEV_ADMIN.username : undefined);
@@ -70,7 +72,7 @@ const ROLE_FIXTURES = [
 ] as const;
 
 const COPY = {
-  appFullName: "中國基督教播道會顯恩堂",
+  appFullName: "顯恩堂",
   loginSubmit: "登入",
   loginError: "用戶名稱或密碼不正確。",
   registerTitle: "註冊帳戶",
@@ -78,30 +80,34 @@ const COPY = {
   registerPassword: "密碼",
   registerName: "姓名",
   registerSubmit: "提交註冊申請",
-  accountSettingsTitle: "帳戶資料",
-  currentPassword: "目前密碼",
+  accountSettingsTitle: "帳戶設定",
+  currentPassword: "現時密碼",
   newPassword: "新密碼",
-  settingsUsername: "新用戶名稱",
-  passwordHint: "密碼須至少 8 個字元。",
-  confirmationPassword: "確認密碼",
-  qrCode: "QR Code",
+  settingsUsername: "新登入名稱",
+  passwordHint: "最少 8 個字元。",
+  confirmationPassword: "確認新密碼",
+  qrCode: "會員二維碼 · 預覽",
   phone: "電話",
-  registrationPhone: "電話（選填）",
+  registrationPhone: "電話",
   status: "狀態",
-  profileSection: "個人檔案",
+  homeSection: "首頁",
+  profileSection: "帳戶",
   programsSection: "課程與活動",
-  eventsSection: "聚會管理",
-  scannerSection: "掃描簽到",
-  careSection: "關懷儀表板",
-  permissionsSection: "權限管理",
+  scannerSection: "掃描",
+  managementSection: "管理",
+  noticesSection: "通知",
   approvalTitle: "註冊審批",
-  approvalCount: /\d+ 筆待審核/,
+  approvalCount: /待審批 \d+/,
   approvalEmpty: "目前沒有待審批的申請。",
-  approve: "批准",
+  approve: "核准",
   reject: "拒絕",
+  approvalDetailTitle: "註冊審批 · 詳情",
+  decisionNote: "決定備註",
+  confirmReject: "確認拒絕",
+  statusRejected: "已拒絕",
   forbidden: "您沒有權限執行此操作。",
   registerDone: "申請已提交",
-  passwordSubmit: "更新密碼",
+  passwordSubmit: "更改密碼",
   accountUpdatedNotice: "帳戶資料已更新，請重新登入。",
   // 084-04 Settings hub (mirrors web/lib/copy.ts settings + profile blocks).
   settingsEntry: "設定",
@@ -135,23 +141,12 @@ const COPY = {
   timezoneLead: "聚會、報名及發佈時間均以香港時間顯示。",
   gmt8: "香港時間（GMT+8）",
   gmt8Value: "GMT+8",
-  // 087-03 Account Permissions matrix (mirrors COPY.permissions).
-  permissionsTitle: "帳戶與權限",
-  permissionsLead:
-    "管理員帳戶可指派角色及部門授權。角色變更會即時反映；部門管理者不能自行授予管理者權限。",
-  accountsSection: "管理員帳戶",
-  rolesSection: "角色定義",
-  accountName: "姓名",
-  accountRole: "角色",
-  accountDepartment: "部門",
+  // Normalized Permission Editor copy.
+  permissionsTitle: "權限管理",
+  permissionsLead: "選擇一個身份組，查看及編輯其有效權限。",
+  rolesSection: "身份組列表",
   roleAdmin: "管理員",
-  roleAdminScope: "全部範圍",
-  roleDepartmentManager: "部門管理者",
-  roleDepartmentManagerScope: "所屬部門課程、聚會及出席",
   roleStaff: "同工",
-  roleStaffScope: "部門範圍內協助工作",
-  stateAssigned: "已設",
-  stateAssignable: "可指派",
 } as const;
 
 const TARGET_PATH = process.env.AUTH_UI_TARGET_URL
@@ -181,6 +176,56 @@ async function loginAs(
   await page.getByRole("button", { name: COPY.loginSubmit }).click();
   // The landing page navigates to the first permitted section on success.
   await page.waitForURL((url) => url.pathname !== SIGNED_OUT_PATH);
+}
+
+type CascadeGeometry = {
+  paddingBottom: number;
+  paddingInlineEnd: number;
+  paddingInlineStart: number;
+  paddingTop: number;
+  rect: { height: number; width: number; x: number; y: number };
+};
+
+async function readCascadeGeometry(
+  page: Page,
+  selector: string
+): Promise<CascadeGeometry> {
+  const element = page.locator(selector).first();
+  await expect(element).toBeVisible();
+  return element.evaluate((node) => {
+    const style = getComputedStyle(node);
+    const rect = node.getBoundingClientRect();
+    const pixels = (value: string): number => {
+      const parsed = Number.parseFloat(value);
+      return Number.isFinite(parsed) ? parsed : 0;
+    };
+    return {
+      paddingBottom: pixels(style.paddingBottom),
+      paddingInlineEnd: pixels(style.paddingInlineEnd),
+      paddingInlineStart: pixels(style.paddingInlineStart),
+      paddingTop: pixels(style.paddingTop),
+      rect: { height: rect.height, width: rect.width, x: rect.x, y: rect.y },
+    };
+  });
+}
+
+async function readProfileActionClearance(page: Page) {
+  return page
+    .getByRole("button", { name: "登出", exact: true })
+    .evaluate((action) => {
+      const shell = action.closest<HTMLElement>("#shell-content");
+      if (!shell) {
+        throw new Error("Profile logout action is outside #shell-content");
+      }
+      const shellRect = shell.getBoundingClientRect();
+      const actionRect = action.getBoundingClientRect();
+      const style = getComputedStyle(shell);
+      return {
+        actionBottom: actionRect.bottom,
+        scrollTail: shell.scrollHeight - (actionRect.bottom - shellRect.top),
+        shellPaddingBottom: Number.parseFloat(style.paddingBottom) || 0,
+      };
+    });
 }
 
 test.beforeAll(() => {
@@ -227,12 +272,12 @@ test.describe("UI-04 Next frontend trace", () => {
     );
     await page.goto(appPath("/profile"));
     await expect(page.getByText(COPY.appFullName).first()).toBeVisible();
+    await page.getByText("帳戶資料", { exact: true }).click();
     await expect(
       page.getByText(required("PROGRAMS_ADMIN_USERNAME", ADMIN_USER), {
         exact: true,
       })
     ).toBeVisible();
-    await expect(page.getByText("Admin", { exact: true })).toBeVisible();
     const qr = page.getByRole("img", { name: COPY.qrCode });
     await expect(qr).toBeVisible();
     await expect(qr).toHaveAttribute("aria-label", COPY.qrCode);
@@ -241,8 +286,11 @@ test.describe("UI-04 Next frontend trace", () => {
     const qrBox = await qr.boundingBox();
     expect(qrBox?.width).toBe(220);
     expect(qrBox?.height).toBe(220);
-    await expect(page.getByText(COPY.phone, { exact: true })).toBeVisible();
-    await expect(page.getByText(COPY.status, { exact: true })).toBeVisible();
+    await expect(page.getByText(COPY.phone, { exact: true })).toHaveCount(0);
+    await expect(page.getByText("program.enroll", { exact: true })).toHaveCount(
+      0
+    );
+    await expect(page.getByText("role.manage", { exact: true })).toHaveCount(0);
   });
 
   test("staff login renders the shell and Profile identity", async ({
@@ -253,16 +301,31 @@ test.describe("UI-04 Next frontend trace", () => {
       required("PROGRAMS_STAFF_USERNAME", STAFF_USER),
       required("PROGRAMS_STAFF_CREDENTIAL", STAFF_CRED)
     );
-    await page.goto(appPath("/profile"));
     await expect(page.getByText(COPY.appFullName).first()).toBeVisible();
-    await expect(page.getByText("Staff", { exact: true })).toBeVisible();
+    await page.goto(appPath("/profile"));
+    await page.getByText("帳戶資料", { exact: true }).click();
+    const profileDetails = page.getByRole("region", {
+      name: "帳戶資料",
+    });
+    await expect(
+      profileDetails.getByText(
+        required("PROGRAMS_STAFF_USERNAME", STAFF_USER),
+        { exact: true }
+      )
+    ).toBeVisible();
+    await expect(
+      profileDetails.getByText(COPY.phone, { exact: true })
+    ).toHaveCount(0);
     for (const section of [
-      COPY.profileSection,
+      COPY.homeSection,
       COPY.programsSection,
-      COPY.eventsSection,
       COPY.scannerSection,
+      COPY.managementSection,
+      COPY.profileSection,
     ]) {
-      await expect(page.getByRole("link", { name: section })).toBeVisible();
+      await expect(
+        page.getByRole("link", { name: section, exact: true })
+      ).toBeVisible();
     }
   });
 
@@ -275,8 +338,17 @@ test.describe("UI-04 Next frontend trace", () => {
       required("PROGRAMS_MEMBER_CREDENTIAL", MEMBER_CRED)
     );
     await page.goto(appPath("/profile"));
-    await expect(page.getByText(COPY.appFullName).first()).toBeVisible();
-    await expect(page.getByText("Member", { exact: true })).toBeVisible();
+    await page.getByText("帳戶資料", { exact: true }).click();
+    const profileDetails = page.getByRole("region", { name: "帳戶資料" });
+    await expect(
+      profileDetails.getByText(
+        required("PROGRAMS_MEMBER_USERNAME", MEMBER_USER),
+        { exact: true }
+      )
+    ).toBeVisible();
+    await expect(
+      profileDetails.getByText(COPY.phone, { exact: true })
+    ).toHaveCount(0);
   });
 
   test("member shell keeps stable navigation and omits unauthorized sections", async ({
@@ -288,12 +360,14 @@ test.describe("UI-04 Next frontend trace", () => {
       required("PROGRAMS_MEMBER_CREDENTIAL", MEMBER_CRED)
     );
     await page.goto(appPath("/profile"));
-    for (const section of [COPY.eventsSection, COPY.scannerSection]) {
-      await expect(page.getByRole("link", { name: section })).toBeVisible();
+    for (const section of [COPY.scannerSection, COPY.noticesSection]) {
+      await expect(
+        page.getByRole("link", { name: section, exact: true })
+      ).toBeVisible();
     }
-    for (const section of [COPY.careSection, COPY.permissionsSection]) {
-      await expect(page.getByRole("link", { name: section })).toHaveCount(0);
-    }
+    await expect(
+      page.getByRole("link", { name: COPY.managementSection, exact: true })
+    ).toHaveCount(0);
   });
 
   test("member direct links to restricted sections render the shared forbidden state", async ({
@@ -304,7 +378,7 @@ test.describe("UI-04 Next frontend trace", () => {
       required("PROGRAMS_MEMBER_USERNAME", MEMBER_USER),
       required("PROGRAMS_MEMBER_CRED", MEMBER_CRED)
     );
-    for (const path of ["/events", "/care", "/permissions", "/registrations"]) {
+    for (const path of ["/events", "/permissions", "/registrations"]) {
       await page.goto(appPath(path));
       await expect(
         page.getByRole("alert").filter({ hasText: COPY.forbidden })
@@ -328,6 +402,25 @@ test.describe("UI-04 Next frontend trace", () => {
     ).toBeVisible();
   });
 
+  test("blank registration focuses its first invalid field with an associated error", async ({
+    page,
+  }) => {
+    await page.goto(appPath("/register"));
+    await page.getByRole("button", { name: COPY.registerSubmit }).click();
+    const username = page.getByLabel(COPY.registerUsername);
+    await expect(username).toBeFocused();
+    await expect(username).toHaveAttribute("aria-invalid", "true");
+    await expect(username).toHaveAttribute(
+      "aria-describedby",
+      "registration-error"
+    );
+    await expect(
+      page.getByRole("alert", {
+        name: "請完成所有資料，密碼最少 8 個字元。",
+      })
+    ).toBeVisible();
+  });
+
   test("Account Settings surface renders credential-change fields", async ({
     page,
   }) => {
@@ -342,15 +435,19 @@ test.describe("UI-04 Next frontend trace", () => {
     ).toBeVisible();
     await expect(page.getByLabel(COPY.settingsUsername)).toBeVisible();
     await expect(page.getByLabel(COPY.currentPassword)).toBeVisible();
-    await expect(page.getByLabel(COPY.newPassword)).toBeVisible();
+    await expect(
+      page.getByLabel(COPY.newPassword, { exact: true })
+    ).toBeVisible();
     await expect(
       page.getByText(COPY.passwordHint, { exact: true })
     ).toBeVisible();
-    await expect(page.getByLabel(COPY.confirmationPassword)).toHaveCount(0);
+    await expect(page.getByLabel(COPY.confirmationPassword)).toBeVisible();
     await expect(page.locator("form")).toHaveCount(2);
   });
 
-  test("approval queue renders for Admin (role-gated)", async ({ page }) => {
+  test("approval queue renders for a capability-bearing identity", async ({
+    page,
+  }) => {
     await loginAs(
       page,
       required("PROGRAMS_ADMIN_USERNAME", ADMIN_USER),
@@ -360,18 +457,23 @@ test.describe("UI-04 Next frontend trace", () => {
     await expect(
       page.getByRole("heading", { name: COPY.approvalTitle })
     ).toBeVisible();
-    await expect(page.getByText(COPY.approvalCount)).toBeVisible();
-    // Approve buttons carry a role-qualified aria-label (批准 Member) so
-    // screen-reader users can disambiguate rows; match it loosely.
-    const approveButtons = page.getByRole("button", {
-      name: new RegExp(`^${COPY.approve}(?: Member)?$`, "u"),
-    });
-    const rejectButtons = page.getByRole("button", { name: COPY.reject });
-    if ((await approveButtons.count()) > 0) {
-      await expect(rejectButtons).toHaveCount(await approveButtons.count());
-    } else {
-      await expect(page.getByText(COPY.approvalEmpty)).toBeVisible();
-    }
+    await expect(page.getByRole("tab", { name: /待審批 \d+/u })).toBeVisible();
+    await expect(
+      page.getByText(COPY.approvalEmpty, { exact: true })
+    ).toBeVisible();
+  });
+  test("registrations redirect rejects an external return", async ({
+    page,
+  }) => {
+    await loginAs(
+      page,
+      required("PROGRAMS_ADMIN_USERNAME", ADMIN_USER),
+      required("PROGRAMS_ADMIN_CREDENTIAL", ADMIN_CRED)
+    );
+    await page.goto(
+      appPath("/registrations?return=https%3A%2F%2Fattacker.example")
+    );
+    await page.waitForURL("**/management?module=approvals");
   });
 
   test("approval queue is forbidden for Member (role-gated)", async ({
@@ -415,17 +517,10 @@ test.describe("UI-04 Next frontend trace", () => {
       required("PROGRAMS_ADMIN_CREDENTIAL", ADMIN_CRED)
     );
     await page.goto(appPath("/profile"));
-    const { width } = page.viewportSize() ?? { width: 0 };
-    const phone = width < 800;
-    const phoneNav = page.locator(".nav-phone").first();
-    const desktopNav = page.locator(".nav-desktop").first();
-    if (phone) {
-      await expect(phoneNav).toBeVisible();
-      await expect(desktopNav).toBeHidden();
-    } else {
-      await expect(desktopNav).toBeVisible();
-      await expect(phoneNav).toBeHidden();
-    }
+    const phone = (page.viewportSize()?.width ?? 0) < 800;
+    const navigation = page.getByRole("navigation", { name: "主要導航" });
+    await expect(navigation).toBeVisible();
+    await expect(navigation).toHaveCSS("position", phone ? "fixed" : "sticky");
   });
 
   test("registration submit creates a new request the admin queue can reject", async ({
@@ -439,6 +534,7 @@ test.describe("UI-04 Next frontend trace", () => {
     await page.getByLabel(COPY.registerUsername).fill(username);
     await page.getByLabel(COPY.registerPassword).fill("register-pw-123");
     await page.getByLabel(COPY.registerName).fill("E2E Registration");
+    await page.getByLabel(COPY.registrationPhone).fill("555-0199");
     await page.getByRole("button", { name: COPY.registerSubmit }).click();
     await expect(
       page.getByRole("heading", { name: COPY.registerDone })
@@ -449,18 +545,28 @@ test.describe("UI-04 Next frontend trace", () => {
       required("PROGRAMS_ADMIN_USERNAME", ADMIN_USER),
       required("PROGRAMS_ADMIN_CREDENTIAL", ADMIN_CRED)
     );
-    await page.goto(appPath("/registrations"));
-    await expect(
-      page.getByRole("cell", { name: username, exact: true })
-    ).toBeVisible();
-    await page
-      .locator("tr")
-      .filter({ hasText: username })
-      .getByRole("button", { name: COPY.reject })
-      .click();
-    await expect(page.locator("tr").filter({ hasText: username })).toHaveCount(
-      0
+    await page.goto(appPath("/management?module=approvals"));
+    const row = page.getByRole("listitem").filter({ hasText: username });
+    await expect(row).toBeVisible();
+    const detailLink = row.getByRole("link");
+    const detailHref = required(
+      "approval detail href",
+      (await detailLink.getAttribute("href")) ?? undefined
     );
+    const requestId = new URL(detailHref, TARGET_ORIGIN).searchParams.get(
+      "request"
+    );
+    expect(requestId).toBeTruthy();
+    await page.goto(detailHref);
+    await expect(
+      page.getByRole("heading", { name: COPY.approvalDetailTitle })
+    ).toBeVisible();
+    await page.getByRole("button", { name: COPY.reject }).click();
+    await page.getByLabel(COPY.decisionNote).fill("E2E cleanup note");
+    await page.getByRole("button", { name: COPY.confirmReject }).click();
+    await expect(
+      page.getByText(COPY.statusRejected, { exact: true })
+    ).toBeVisible();
   });
 
   test("Settings hub trace: 設定 entry → hub → 簽到設定 → 時區 (read-only)", async ({
@@ -494,8 +600,6 @@ test.describe("UI-04 Next frontend trace", () => {
     await expect(page.getByText(COPY.checkinSettingsRowHint)).toBeVisible();
     await expect(page.getByText(COPY.timezoneRow)).toBeVisible();
     await expect(page.getByText(COPY.timezoneRowHint)).toBeVisible();
-    // 帳戶與權限 (087-03): the row now navigates to the real permissions
-    // matrix — real elevated accounts, fixed role definitions, lead copy.
     const permissionsRow = page.getByRole("link", {
       name: new RegExp(COPY.accountsPermissionsRow),
     });
@@ -509,43 +613,25 @@ test.describe("UI-04 Next frontend trace", () => {
       page.getByRole("heading", { name: COPY.permissionsTitle })
     ).toBeVisible();
     await expect(page.getByText(COPY.permissionsLead)).toBeVisible();
-    // The matrix lists the seeded elevated fixtures (Admin + Staff exist in
-    // the dev D1 baseline; department state may vary across runs, so the
-    // account-table assertion is row-header based and role-state assertions
-    // are limited to the role-fixed copy plus the always-held Admin/Staff
-    // badges).
-    await expect(
-      page.getByRole("table", { name: COPY.accountsSection })
-    ).toBeVisible();
-    await expect(
-      page.getByRole("rowheader", { name: "E2E Admin", exact: true })
-    ).toBeVisible();
-    await expect(
-      page.getByRole("rowheader", { name: "E2E Staff", exact: true })
-    ).toBeVisible();
-    const rolesRegion = page.getByRole("region", {
+    const roleList = page.getByRole("list", {
       name: COPY.rolesSection,
     });
-    await expect(rolesRegion).toBeVisible();
-    await expect(rolesRegion.getByText(COPY.roleAdmin)).toBeVisible();
-    await expect(rolesRegion.getByText(COPY.roleAdminScope)).toBeVisible();
-    await expect(
-      rolesRegion.getByText(COPY.roleDepartmentManager)
-    ).toBeVisible();
-    await expect(
-      rolesRegion.getByText(COPY.roleDepartmentManagerScope)
-    ).toBeVisible();
-    await expect(rolesRegion.getByText(COPY.roleStaff)).toBeVisible();
-    await expect(rolesRegion.getByText(COPY.roleStaffScope)).toBeVisible();
-    // Fixed-state badges hold at every baseline: Admin and Staff fixtures
-    // always exist, so their roles are 已設.
-    await expect(
-      rolesRegion.getByText(COPY.stateAssigned).first()
-    ).toBeVisible();
-    await expect(
-      rolesRegion.getByText(COPY.stateAssigned).nth(1)
-    ).toBeVisible();
-    await page.getByRole("link", { name: COPY.settingsBackToHub }).click();
+    await expect(roleList).toBeVisible();
+    await expect(roleList.getByRole("link")).toHaveCount(5);
+    for (const roleName of [
+      "系統管理員",
+      "同工",
+      "會友基礎",
+      "成人部門管理者",
+      "青少年查經帶領",
+    ]) {
+      await expect(
+        roleList.getByRole("link", {
+          name: new RegExp(roleName, "u"),
+        })
+      ).toBeVisible();
+    }
+    await page.getByRole("link", { name: COPY.settingsBack }).click();
     await expect(page).toHaveURL(/management\?module=settings/u);
 
     // 簽到設定: read-only method badges + fixed window durations, no forms.
@@ -596,6 +682,97 @@ test.describe("UI-04 Next frontend trace", () => {
     ).toBeVisible();
   });
 
+  test("T06 cascade computed-style geometry canaries preserve composition", async ({
+    page,
+  }, testInfo: TestInfo) => {
+    await loginAs(
+      page,
+      required("PROGRAMS_ADMIN_USERNAME", ADMIN_USER),
+      required("PROGRAMS_ADMIN_CREDENTIAL", ADMIN_CRED)
+    );
+
+    const evidence: Record<string, unknown>[] = [];
+    const surfaces = [
+      {
+        path: "/programs",
+        root: "#shell-content > div",
+        surface: 'section[aria-labelledby="programs-title"]',
+      },
+      {
+        path: "/management",
+        root: "#shell-content > section",
+        surface: 'section[aria-labelledby="management-hub-title"]',
+      },
+      {
+        path: "/profile",
+        root: "#shell-content > div",
+        surface: '[data-slot="card"][role="article"]',
+      },
+      {
+        path: "/profile/settings",
+        root: "#shell-content > div",
+        surface: 'form[aria-labelledby="account-settings-username-title"]',
+      },
+    ] as const;
+
+    for (const { path, root, surface } of surfaces) {
+      await page.goto(appPath(path));
+      const rootGeometry = await readCascadeGeometry(page, root);
+      const surfaceGeometry = await readCascadeGeometry(page, surface);
+      expect(rootGeometry.paddingInlineStart).toBeGreaterThan(0);
+      expect(rootGeometry.paddingInlineEnd).toBeGreaterThan(0);
+      expect(surfaceGeometry.paddingInlineStart).toBeGreaterThan(0);
+      expect(surfaceGeometry.paddingTop).toBeGreaterThan(0);
+
+      const record: Record<string, unknown> = {
+        path,
+        root: rootGeometry,
+        surface: surfaceGeometry,
+      };
+      if (path === "/profile/settings") {
+        const inputGeometry = await readCascadeGeometry(page, "#new-username");
+        expect(inputGeometry.paddingInlineStart).toBeGreaterThan(0);
+        record.input = inputGeometry;
+      }
+      if (path === "/programs") {
+        const shellGeometry = await readCascadeGeometry(page, "#shell-content");
+        const viewportWidth = page.viewportSize()?.width ?? 0;
+        const shellCenter = shellGeometry.rect.x + shellGeometry.rect.width / 2;
+        const centerDelta = Math.abs(
+          surfaceGeometry.rect.x + surfaceGeometry.rect.width / 2 - shellCenter
+        );
+        expect(centerDelta).toBeLessThanOrEqual(1);
+        record.centerDelta = { value: centerDelta, shellCenter, viewportWidth };
+      }
+      evidence.push(record);
+    }
+
+    await page.goto(appPath("/management?module=accounts"));
+    const searchGeometry = await readCascadeGeometry(
+      page,
+      "#account-directory-search"
+    );
+    expect(searchGeometry.paddingInlineStart).toBeGreaterThan(0);
+    evidence.push({
+      path: "/management?module=accounts",
+      search: searchGeometry,
+    });
+
+    await page.goto(appPath("/profile"));
+    const actionClearance = await readProfileActionClearance(page);
+    const isPhone = (page.viewportSize()?.width ?? 0) < 800;
+    if (isPhone) {
+      expect(actionClearance.shellPaddingBottom).toBeGreaterThanOrEqual(84);
+      expect(actionClearance.scrollTail).toBeGreaterThanOrEqual(84);
+    }
+    evidence.push({ path: "/profile", actionClearance, isPhone });
+
+    await testInfo.attach("t06-cascade-geometry.json", {
+      body: JSON.stringify(evidence, null, 2),
+      contentType: "application/json",
+    });
+  });
+
   test("admin password rotation revokes the session and restores the fixture", async ({
     page,
   }) => {
@@ -611,7 +788,10 @@ test.describe("UI-04 Next frontend trace", () => {
     // Rotate to the throwaway value; success revokes every session and
     // routes to the login surface with the one-time notice.
     await page.getByLabel(COPY.currentPassword).fill(fixturePassword);
-    await page.getByLabel(COPY.newPassword).fill(rotationPassword);
+    await page
+      .getByLabel(COPY.newPassword, { exact: true })
+      .fill(rotationPassword);
+    await page.getByLabel(COPY.confirmationPassword).fill(rotationPassword);
     await page.getByRole("button", { name: COPY.passwordSubmit }).click();
     await expect(
       page.getByRole("alert").filter({ hasText: COPY.accountUpdatedNotice })
@@ -629,7 +809,10 @@ test.describe("UI-04 Next frontend trace", () => {
 
     // Change back so the fixture ends exactly as it started.
     await page.getByLabel(COPY.currentPassword).fill(rotationPassword);
-    await page.getByLabel(COPY.newPassword).fill(fixturePassword);
+    await page
+      .getByLabel(COPY.newPassword, { exact: true })
+      .fill(fixturePassword);
+    await page.getByLabel(COPY.confirmationPassword).fill(fixturePassword);
     await page.getByRole("button", { name: COPY.passwordSubmit }).click();
     await expect(
       page.getByRole("alert").filter({ hasText: COPY.accountUpdatedNotice })

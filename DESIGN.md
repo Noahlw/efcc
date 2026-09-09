@@ -181,3 +181,13 @@ Flat civic surfaces with hairline borders (`1px solid #d6dcde`). Depth is convey
 - **Don't** add generic SaaS marketing fluff, pricing tables, or fake social proof.
 - **Don't** use neon gradients or drop-shadow halo cards.
 - **Don't** treat the temporary `恩` seal mark as a permanent non-replaceable logo asset.
+
+## Phase F final contract — 2026-09-01
+
+The shipped product keeps Civic Minimal as the visual authority: Cantonese-first copy, cinnabar action emphasis, teal visible focus, light civic surfaces, functional borders, restrained elevation, and phone-first operation. The 800px shell transition remains the only shell breakpoint; layout utilities and the documented token variables express route geometry.
+
+Production route and module styling is Tailwind/token based. `globals.css` is reserved for token declarations, base/document behavior, shell and safe-area platform rules, reduced motion, and irreducible print behavior. The three remaining shipped CSS Module ownership islands were deleted; `/prototype` and historical evidence remain outside this contract.
+
+Local shadcn/Radix primitives are the default for equivalent controls. Camera/video/device APIs, native print, native selects/date inputs, navigation anchors, live regions, and domain-specific radio semantics remain only as the documented native exceptions. Numeric DOM evidence records geometry and behavioral state; it never substitutes for human accessibility, hardware, print-preview, or WCAG review.
+
+The implementation evidence is summarized in `docs/qa/2026-09-01-s4-phase-f-release-evidence.{json,html}` and the current release disposition is recorded in `docs/qa/2026-09-01-s4-phase-f-release-gate.md`.

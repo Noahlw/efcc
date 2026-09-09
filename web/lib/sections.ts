@@ -1,20 +1,40 @@
 import type { Section } from "@/lib/api";
 import { COPY } from "@/lib/copy";
 
-/**
- * Stable authenticated navigation destinations (Issue #241/#242).
- *
- * Stable navigation is a five-slot presentation projection. Events remains an
- * authorized destination for Staff/Admin and for Members with an active
- * management grant, even though it is not one of those five dock slots.
- */
-const ROLE_SECTION_KEYS: Record<string, Section["key"][]> = {
-  Member: ["home", "programs", "scanner", "notices", "profile"],
-  Staff: ["home", "programs", "scanner", "management", "profile", "events"],
-  Admin: ["home", "programs", "scanner", "management", "profile", "events"],
-};
+const MANAGEMENT_CAPABILITIES = [
+  "role.read",
+  "role.assign",
+  "role.revoke",
+  "role.reorder",
+  "role.name.write",
+  "role.permissions.read",
+  "role.permissions.write",
+  "role.scope.read",
+  "role.scope.write",
+  "role.create",
+  "role.delete",
+  "department.manage",
+  "department.publish",
+  "department.module.configure",
+  "department.manager.assign",
+  "program.manage",
+  "program.publish",
+  "program.leader.assign",
+  "account.permissions.read",
+  "account.permissions.write",
+  "account.directory.read",
+  "registration.approval.manage",
+  "home.publish",
+] as const;
 
-function materializeSections(keys: Section["key"][]): Section[] {
+const EVENT_CAPABILITIES = [
+  "department.manage",
+  "department.module.configure",
+  "program.manage",
+  "program.leader.assign",
+] as const;
+
+function materializeSections(keys: readonly Section["key"][]): Section[] {
   const sections = defaultSections();
   return keys.flatMap((key) => {
     const section = sections.find((candidate) => candidate.key === key);
@@ -22,51 +42,40 @@ function materializeSections(keys: Section["key"][]): Section[] {
   });
 }
 
-/** Server-projected stable nav metadata consumed verbatim by the shell. */
-export function stableNavigationSections(
-  role = "Member",
-  hasManagementGrant = false
-): Section[] {
-  const isManagement =
-    role === "Admin" || role === "Staff" || hasManagementGrant;
-  const keys: Section["key"][] = isManagement
-    ? ["home", "programs", "scanner", "management", "profile"]
-    : ["home", "programs", "scanner", "notices", "profile"];
-  return materializeSections(keys);
+function hasCapability(
+  capabilities: Readonly<Record<string, boolean>>,
+  keys: readonly string[]
+): boolean {
+  return keys.some((key) => capabilities[key] === true);
 }
 
-/**
- * Sections authorized for a role. Unknown or absent roles use the stable
- * Member-safe base (Home, Programs, Scanner, Notices, Profile).
- */
-export function sectionsForRole(
-  role: string,
-  hasManagementGrant = false
+/** Project authorized sections without consulting account role strings. */
+export function projectSections(
+  capabilities: Readonly<Record<string, boolean>>
 ): Section[] {
-  const allowed = Object.hasOwn(ROLE_SECTION_KEYS, role)
-    ? ROLE_SECTION_KEYS[role]
-    : undefined;
-  const keys = allowed ?? ROLE_SECTION_KEYS.Member;
-  if (hasManagementGrant && !keys.includes("management")) {
-    const next = [...keys];
-    const noticesIdx = next.indexOf("notices");
-    if (noticesIdx !== -1) {
-      next.splice(noticesIdx, 1, "management");
-    } else {
-      next.push("management");
-    }
-    next.push("events");
-    return materializeSections(next);
+  const management = hasCapability(capabilities, MANAGEMENT_CAPABILITIES);
+  const events = hasCapability(capabilities, EVENT_CAPABILITIES);
+  const keys: Section["key"][] = ["home", "programs", "scanner"];
+  keys.push(management ? "management" : "notices", "profile");
+  if (events) {
+    keys.push("events");
   }
   return materializeSections(keys);
 }
 
-/**
- * Canonical section catalog used to materialize the server projection.
- *
- * Visibility and order come from `sectionsForRole`; this catalog only owns
- * stable labels and capability metadata.
- */
+/** Project stable shell navigation from server-provided capabilities. */
+export function projectNavigation(
+  capabilities: Readonly<Record<string, boolean>>
+): Section[] {
+  const management = hasCapability(capabilities, MANAGEMENT_CAPABILITIES);
+  return materializeSections(
+    management
+      ? ["home", "programs", "scanner", "management", "profile"]
+      : ["home", "programs", "scanner", "notices", "profile"]
+  );
+}
+
+/** Canonical section catalog used to materialize server projections. */
 export function defaultSections(): Section[] {
   return [
     {
@@ -121,8 +130,6 @@ export function defaultSections(): Section[] {
 }
 
 export function firstSection(sections: Section[]): string {
-  // The stable shell presents Home first, but Profile remains the deterministic
-  // login/recovery destination for every non-empty projection.
   return (
     sections.find((section) => section.key === "profile")?.key ??
     sections[0]?.key ??

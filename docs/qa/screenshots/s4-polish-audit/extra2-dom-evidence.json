@@ -1,0 +1,17 @@
+[
+  {
+    "name": "account-directory-forbidden",
+    "url": "http://127.0.0.1:8797/management?module=accounts",
+    "overflow": 0
+  },
+  {
+    "name": "permissions-forbidden",
+    "url": "http://127.0.0.1:8797/management?module=permissions",
+    "overflow": 0
+  },
+  {
+    "name": "approval-pending-detail",
+    "url": "http://127.0.0.1:8797/management?module=approvals&request=602c61b9-6e4c-4d81-bc83-f1a629ec7dfa",
+    "overflow": 0
+  }
+]

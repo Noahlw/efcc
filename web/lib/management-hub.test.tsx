@@ -2,11 +2,12 @@ import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import type { ReadonlyURLSearchParams } from "next/navigation";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
-import ManagementPage from "@/app/management/page";
 import { ManagementHub } from "@/app/management/management-hub";
+import ManagementPage from "@/app/management/page";
+import { RpcError } from "@/lib/api";
 import type { Bootstrap, PublicUser } from "@/lib/api";
 import { COPY } from "@/lib/copy";
-import { sectionsForRole, stableNavigationSections } from "@/lib/sections";
+import { projectSections, projectNavigation } from "@/lib/sections";
 
 // Hub wire contract (087-01, locked): GET /api/v1/programs/hub returns
 // { requestId, data: { groups, entryCard } }; getManagementHub() unwraps to
@@ -52,6 +53,7 @@ const sessionMocks = vi.hoisted(() => ({
   setAuthHintMock: vi.fn<() => void>(),
   hasAuthHintMock: vi.fn<() => boolean>(),
   restoreBootstrapMock: vi.fn<() => Promise<Bootstrap>>(),
+  rememberDeepLinkMock: vi.fn<(target: string) => void>(),
 }));
 
 vi.mock("@/lib/session", () => ({
@@ -60,7 +62,7 @@ vi.mock("@/lib/session", () => ({
   hasAuthHint: sessionMocks.hasAuthHintMock,
   restoreBootstrap: sessionMocks.restoreBootstrapMock,
   clearDeepLink: vi.fn(),
-  rememberDeepLink: vi.fn(),
+  rememberDeepLink: sessionMocks.rememberDeepLinkMock,
 }));
 
 interface HubRow {
@@ -85,7 +87,12 @@ interface HubData {
   entryCard: HubEntryCard | null;
 }
 
-const row = (key: string, label: string, description: string, href: string): HubRow => ({
+const row = (
+  key: string,
+  label: string,
+  description: string,
+  href: string
+): HubRow => ({
   key,
   label,
   description,
@@ -101,24 +108,54 @@ const ADMIN_HUB: HubData = {
       key: "members-and-permissions",
       label: COPY.management.groupMemberPermissions,
       rows: [
-        row("approvals", COPY.management.approvalsRow, COPY.management.approvalsRowHint, "/management?module=approvals"),
-        row("permissions", COPY.management.permissionsRow, COPY.management.permissionsRowHint, "/management?module=permissions"),
+        row(
+          "approvals",
+          COPY.management.approvalsRow,
+          COPY.management.approvalsRowHint,
+          "/management?module=approvals"
+        ),
+        row(
+          "permissions",
+          COPY.management.permissionsRow,
+          COPY.management.permissionsRowHint,
+          "/management?module=permissions"
+        ),
       ],
     },
     {
       key: "ministry-operations",
       label: COPY.management.groupOperations,
       rows: [
-        row("departments", COPY.management.departmentsRow, COPY.management.departmentsRowHint, "/management?module=departments"),
-        row("attendance", COPY.management.attendanceRow, COPY.management.attendanceRowHint, "/management?module=attendance"),
-        row("members", COPY.management.membersRow, COPY.management.membersRowHint, "/management?module=members"),
+        row(
+          "departments",
+          COPY.management.departmentsRow,
+          COPY.management.departmentsRowHint,
+          "/management?module=departments"
+        ),
+        row(
+          "attendance",
+          COPY.management.attendanceRow,
+          COPY.management.attendanceRowHint,
+          "/management?module=attendance"
+        ),
+        row(
+          "members",
+          COPY.management.membersRow,
+          COPY.management.membersRowHint,
+          "/management?module=members"
+        ),
       ],
     },
     {
       key: "content-and-system",
       label: COPY.management.groupContentSystem,
       rows: [
-        row("home-content", COPY.management.homeContentRow, COPY.management.homeContentRowHint, "/management?module=home-content"),
+        row(
+          "home-content",
+          COPY.management.homeContentRow,
+          COPY.management.homeContentRowHint,
+          "/management?module=home-content"
+        ),
       ],
     },
   ],
@@ -139,7 +176,12 @@ const NARROW_HUB: HubData = {
       key: "ministry-operations",
       label: COPY.management.groupOperations,
       rows: [
-        row("departments", COPY.management.departmentsRow, COPY.management.departmentsRowHint, "/management?module=departments"),
+        row(
+          "departments",
+          COPY.management.departmentsRow,
+          COPY.management.departmentsRowHint,
+          "/management?module=departments"
+        ),
       ],
     },
   ],
@@ -152,6 +194,7 @@ const NARROW_HUB: HubData = {
 };
 
 const EMPTY_HUB: HubData = { groups: [], entryCard: null };
+const ENTRY_ONLY_HUB: HubData = { groups: [], entryCard: NARROW_HUB.entryCard };
 
 const ALL_ROWS: HubRow[] = ADMIN_HUB.groups.flatMap((group) => group.rows);
 
@@ -160,15 +203,16 @@ const STAFF_PROFILE: PublicUser = {
   name: "陳同工",
   username: "staff.demo",
   phone: "92345678",
-  role: "Staff",
+  identities: [],
+  capabilities: {},
   status: "Active",
   qrCodeString: "qr:u-staff-201",
 };
 
 const STAFF_BOOTSTRAP: Bootstrap = {
   profile: STAFF_PROFILE,
-  sections: sectionsForRole("Staff"),
-  navigation: stableNavigationSections("Staff"),
+  sections: projectSections({ "program.manage": true }),
+  navigation: projectNavigation({ "program.manage": true }),
 };
 
 const MEMBER_PROFILE: PublicUser = {
@@ -176,23 +220,28 @@ const MEMBER_PROFILE: PublicUser = {
   name: "陳小明",
   username: "member.demo",
   phone: "91234567",
-  role: "Member",
+  identities: [],
+  capabilities: {},
   status: "Active",
   qrCodeString: "qr:u-member-101",
 };
 
 const MEMBER_BOOTSTRAP: Bootstrap = {
   profile: MEMBER_PROFILE,
-  sections: sectionsForRole("Member"),
-  navigation: stableNavigationSections("Member"),
+  sections: projectSections({ "program.enroll": true }),
+  navigation: projectNavigation({ "program.enroll": true }),
 };
 
 beforeEach(() => {
   getManagementHub.mockReset();
   sessionMocks.hasAuthHintMock.mockReset();
   sessionMocks.restoreBootstrapMock.mockReset();
+  sessionMocks.rememberDeepLinkMock.mockReset();
+  mocks.pushMock.mockReset();
+  mocks.replaceMock.mockReset();
   pathnameMock.mockReset();
   pathnameMock.mockReturnValue("/management");
+  window.history.replaceState(null, "", "/management");
 });
 
 afterEach(() => {
@@ -214,9 +263,14 @@ describe("ManagementHub component", () => {
     });
 
     expect(
-      screen.getByRole("heading", { level: 1, name: COPY.management.managementTitle })
+      screen.getByRole("heading", {
+        level: 1,
+        name: COPY.management.managementTitle,
+      })
     ).toBeInTheDocument();
-    expect(screen.getByText(COPY.management.managementLead)).toBeInTheDocument();
+    expect(
+      screen.getByText(COPY.management.managementLead)
+    ).toBeInTheDocument();
 
     const groupHeadings = screen
       .getAllByRole("heading", { level: 2 })
@@ -233,7 +287,9 @@ describe("ManagementHub component", () => {
     render(<ManagementHub />);
 
     await waitFor(() => {
-      expect(screen.getByText(COPY.management.approvalsRow)).toBeInTheDocument();
+      expect(
+        screen.getByText(COPY.management.approvalsRow)
+      ).toBeInTheDocument();
     });
 
     for (const [label, description] of ALL_ROWS.map((r) => [
@@ -250,11 +306,15 @@ describe("ManagementHub component", () => {
     render(<ManagementHub />);
 
     await waitFor(() => {
-      expect(screen.getByRole("link", { name: /註冊審批/u })).toBeInTheDocument();
+      expect(
+        screen.getByRole("link", { name: /註冊審批/u })
+      ).toBeInTheDocument();
     });
 
     for (const row of ALL_ROWS) {
-      const link = screen.getByRole("link", { name: new RegExp(row.label, "u") });
+      const link = screen.getByRole("link", {
+        name: new RegExp(row.label, "u"),
+      });
       expect(link).toHaveAttribute("href", row.href);
     }
   });
@@ -264,14 +324,18 @@ describe("ManagementHub component", () => {
     render(<ManagementHub />);
 
     await waitFor(() => {
-      expect(screen.getByText(COPY.management.anotherEntry)).toBeInTheDocument();
+      expect(
+        screen.getByText(COPY.management.anotherEntry)
+      ).toBeInTheDocument();
     });
 
     const cardLabel = screen.getByRole("link", {
       name: new RegExp(COPY.management.goCourseManagement, "u"),
     });
     expect(cardLabel).toHaveAttribute("href", "/programs?mode=management");
-    expect(screen.getByText(COPY.management.goCourseManagementHint)).toBeInTheDocument();
+    expect(
+      screen.getByText(COPY.management.goCourseManagementHint)
+    ).toBeInTheDocument();
 
     // Prototype placement: between 事工營運 and 內容與系統.
     const operations = screen.getByRole("heading", {
@@ -305,10 +369,10 @@ describe("ManagementHub component", () => {
     });
 
     // The granted row renders with its description.
+    expect(screen.getByRole("link", { name: /部門設定/u })).toBeInTheDocument();
     expect(
-      screen.getByRole("link", { name: /部門設定/u })
+      screen.getByText(COPY.management.departmentsRowHint)
     ).toBeInTheDocument();
-    expect(screen.getByText(COPY.management.departmentsRowHint)).toBeInTheDocument();
 
     // Every ungranted group heading and row is absent — never shown disabled.
     for (const absent of [
@@ -340,7 +404,7 @@ describe("ManagementHub component", () => {
     expect(screen.getByText(COPY.management.emptyTitle)).toBeInTheDocument();
     expect(
       screen.getByRole("link", { name: COPY.management.backHome })
-    ).toBeInTheDocument();
+    ).toHaveAttribute("href", "/");
     // No group section renders for the empty projection (the empty-title h2
     // is the only level-2 heading).
     for (const group of [
@@ -352,6 +416,20 @@ describe("ManagementHub component", () => {
         screen.queryByRole("heading", { level: 2, name: group })
       ).not.toBeInTheDocument();
     }
+  });
+
+  test("entry-card-only projection remains discoverable", async () => {
+    getManagementHub.mockResolvedValue(ENTRY_ONLY_HUB);
+    render(<ManagementHub />);
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("link", {
+          name: new RegExp(COPY.management.goCourseManagement, "u"),
+        })
+      ).toBeInTheDocument();
+    });
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
   });
 
   test("shows a busy loading region while the projection is pending", () => {
@@ -375,6 +453,101 @@ describe("ManagementHub component", () => {
     ).toBeInTheDocument();
   });
 
+  test("unauthenticated response remembers deep link and redirects to root without rendering alert", async () => {
+    getManagementHub.mockRejectedValue(
+      new RpcError({
+        code: "AUTH_REQUIRED",
+        status: 401,
+        title: "Unauthorized",
+      })
+    );
+    render(<ManagementHub />);
+
+    await waitFor(() => {
+      expect(sessionMocks.rememberDeepLinkMock).toHaveBeenCalledWith(
+        "/management"
+      );
+    });
+
+    expect(mocks.replaceMock).toHaveBeenCalledWith("/");
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  test("a forbidden projection surfaces the forbidden alert with retry action", async () => {
+    getManagementHub.mockRejectedValue(
+      new RpcError({
+        code: "FORBIDDEN",
+        status: 403,
+        title: "Forbidden",
+      })
+    );
+    render(<ManagementHub />);
+
+    const alert = await screen.findByRole("alert");
+    expect(alert).toBeInTheDocument();
+
+    expect(
+      screen.getByRole("heading", {
+        level: 2,
+        name: COPY.management.forbidden,
+      })
+    ).toBeInTheDocument();
+    expect(alert).toHaveTextContent(COPY.error.forbidden);
+    expect(
+      screen.getByRole("button", { name: COPY.management.retry })
+    ).toBeInTheDocument();
+  });
+
+  test("recovering from error via retry button re-fetches hub and renders ready state", async () => {
+    getManagementHub
+      .mockRejectedValueOnce(new Error("hub network failure"))
+      .mockResolvedValueOnce(ADMIN_HUB);
+
+    render(<ManagementHub />);
+
+    await waitFor(() => {
+      expect(screen.getByRole("alert")).toBeInTheDocument();
+    });
+
+    const retryButton = screen.getByRole("button", {
+      name: COPY.management.retry,
+    });
+    retryButton.click();
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("heading", {
+          level: 2,
+          name: COPY.management.groupMemberPermissions,
+        })
+      ).toBeInTheDocument();
+    });
+
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(getManagementHub).toHaveBeenCalledTimes(2);
+  });
+
+  test("renders groups and entry card in a responsive grid with 1-column mobile and 2-column desktop composition", async () => {
+    getManagementHub.mockResolvedValue(ADMIN_HUB);
+    const { container } = render(<ManagementHub />);
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("heading", {
+          level: 2,
+          name: COPY.management.groupMemberPermissions,
+        })
+      ).toBeInTheDocument();
+    });
+
+    const grid =
+      container.querySelector('[data-slot="management-hub-grid"]') ||
+      container.querySelector(".grid.grid-cols-1");
+    expect(grid).not.toBeNull();
+    expect(grid?.className).toContain("grid-cols-1");
+    expect(grid?.className).toContain("lg:grid-cols-2");
+  });
+
   test("no Care row renders for any fixture (spec 084 regression)", async () => {
     for (const fixture of [ADMIN_HUB, NARROW_HUB, EMPTY_HUB]) {
       getManagementHub.mockResolvedValue(fixture);
@@ -382,7 +555,9 @@ describe("ManagementHub component", () => {
 
       if (fixture.groups.length > 0) {
         await waitFor(() => {
-          expect(screen.getAllByRole("heading", { level: 2 }).length).toBeGreaterThan(0);
+          expect(
+            screen.getAllByRole("heading", { level: 2 }).length
+          ).toBeGreaterThan(0);
         });
       } else {
         await waitFor(() => {

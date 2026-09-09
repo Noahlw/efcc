@@ -17,6 +17,11 @@ export async function resetParticipantEnrollment(
   panel: Locator,
   copy: ParticipantEnrollmentCleanupCopy
 ): Promise<void> {
+  const dialog = page.getByRole("alertdialog");
+  if ((await dialog.count()) > 0) {
+    await dialog.getByRole("button", { name: "取消", exact: true }).click();
+    await expect(dialog).toHaveCount(0);
+  }
   const active = panel.getByRole("button", {
     name: copy.cancelEnrollment,
   });
@@ -33,7 +38,7 @@ export async function resetParticipantEnrollment(
   if (await active.isVisible()) {
     await active.click();
     await page
-      .getByRole("dialog", { name: copy.cancelConfirmTitle })
+      .getByRole("alertdialog", { name: copy.cancelConfirmTitle })
       .getByRole("button", {
         name: new RegExp(`^${copy.cancelConfirmAccept}$`, "u"),
       })
@@ -44,7 +49,7 @@ export async function resetParticipantEnrollment(
   if (await pending.isVisible()) {
     await pending.click();
     await page
-      .getByRole("dialog", { name: copy.withdrawConfirmTitle })
+      .getByRole("alertdialog", { name: copy.withdrawConfirmTitle })
       .getByRole("button", {
         name: new RegExp(`^${copy.withdrawConfirmAccept}$`, "u"),
       })

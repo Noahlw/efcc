@@ -1,0 +1,101 @@
+# GitHub Actions: manual UI Governance and Contract diagnostics.
+#
+# Machine-enforces UI Governance Authority (#507) and Issue #508 (T03):
+# - fast: registry validation and schema integrity check.
+# - affected: static source audit scoped to changed files in PR.
+# - full: full-repository governance audit and component test suite.
+# - release: strict release gate with waiver expiry verification.
+#
+# Fast CI remains the only automatic gate. This workflow is manual-only.
+
+name: UI Governance & Contract Enforcement
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "Governance audit mode (fast | affected | full | release)"
+        required: true
+        default: "full"
+        type: choice
+        options:
+          - fast
+          - affected
+          - full
+          - release
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ui-governance-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  governance-fast:
+    name: Fast Governance Check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Enable pnpm (corepack)
+        run: corepack enable
+
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: "22.18.0"
+          cache: pnpm
+          cache-dependency-path: |
+            pnpm-lock.yaml
+            web/pnpm-lock.yaml
+
+      - name: Install root dependencies
+        env:
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
+        run: pnpm install --frozen-lockfile
+
+      - name: Install web dependencies
+        run: pnpm --dir web install --frozen-lockfile
+
+      - name: Fast Registry Validation
+        run: pnpm verify:governance:fast
+
+  governance-audit:
+    name: Source Governance Audit
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Enable pnpm (corepack)
+        run: corepack enable
+
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: "22.18.0"
+          cache: pnpm
+          cache-dependency-path: |
+            pnpm-lock.yaml
+            web/pnpm-lock.yaml
+
+      - name: Install root dependencies
+        env:
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
+        run: pnpm install --frozen-lockfile
+
+      - name: Install web dependencies
+        run: pnpm --dir web install --frozen-lockfile
+
+      - name: Run Dispatched Mode (on Workflow Dispatch)
+        run: pnpm tsx scripts/audit-governance.ts --mode=${{ inputs.mode }}
+
+      - name: Run Governance Unit Tests
+        run: pnpm --dir web exec vitest run --config vitest.components.config.ts lib/governance/governance.test.ts
+
+      - name: Run Governance CLI Integration Tests
+        run: pnpm test:governance

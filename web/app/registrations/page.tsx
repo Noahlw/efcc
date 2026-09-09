@@ -1,30 +1,69 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
+import { Suspense, useEffect } from "react";
 
-import { ApprovalQueue } from "@/lib/approval-queue";
+import { safeManagementReturnHref } from "@/app/management/management-action-framework";
 
-import styles from "../auth.module.css";
-import queueStyles from "../../lib/approval-queue.module.css";
+const REGISTRATIONS_FALLBACK = "/management?module=approvals";
 
-/**
- * Staff/Admin registration approval queue page (AUTH-05 #163). Protected on
- * the client (401/403 for non-Admin/Staff callers) and enforced by the
- * Worker's role check on GET /api/v1/auth/registrations.
- */
-export default function RegistrationsPage() {
-  return (
-    <main className={styles.page}>
-      <header className={styles.header}>
-        <Link className={styles.brand} href="/" aria-label="顯恩堂系統首頁">
-          <span>中國基督教播道會顯恩堂</span>
-        </Link>
-      </header>
-      <div className={`${styles.body} ${queueStyles.pageBody}`}>
-        <section className={`${styles.card} ${queueStyles.pageCard}`}>
-          <ApprovalQueue />
-        </section>
-      </div>
-    </main>
+function registrationDestinationFromLocation(): string {
+  return safeManagementReturnHref(
+    typeof window === "undefined"
+      ? null
+      : new URLSearchParams(window.location.search).get("return"),
+    REGISTRATIONS_FALLBACK
   );
 }
+
+const RegistrationsPendingView = ({ destination }: { destination: string }) => (
+  <main
+    className="flex min-h-screen items-center justify-center bg-[var(--surface)] p-4 text-[var(--ink)]"
+    aria-busy="true"
+  >
+    <section className="flex w-full max-w-[32rem] min-w-0 flex-col gap-4 rounded-[12px] border border-[var(--line)] bg-[var(--surface-raised)] p-6">
+      <h1 className="wrap-anywhere text-xl font-extrabold">
+        正在前往註冊審批…
+      </h1>
+      <p className="wrap-anywhere text-[var(--ink-muted)]">
+        如果頁面沒有自動轉換，請使用以下連結繼續。
+      </p>
+      <Link
+        className="inline-flex min-h-11 w-fit items-center rounded-lg px-4 py-2 font-bold text-[var(--accent-deep)] underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-[var(--focus)] motion-reduce:transition-none"
+        href={destination}
+      >
+        前往註冊審批
+      </Link>
+    </section>
+  </main>
+);
+
+const RegistrationsRedirect = () => {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const destination = safeManagementReturnHref(
+    searchParams.get("return"),
+    REGISTRATIONS_FALLBACK
+  );
+
+  useEffect(() => {
+    router.replace(destination);
+  }, [destination, router]);
+
+  return <RegistrationsPendingView destination={destination} />;
+};
+
+const RegistrationsPage = () => (
+  <Suspense
+    fallback={
+      <RegistrationsPendingView
+        destination={registrationDestinationFromLocation()}
+      />
+    }
+  >
+    <RegistrationsRedirect />
+  </Suspense>
+);
+
+export default RegistrationsPage;

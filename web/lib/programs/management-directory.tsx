@@ -1,8 +1,14 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 
+import { Alert } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Skeleton } from "@/components/ui/skeleton";
 import { RpcError } from "@/lib/api";
 import { COPY, errorCopyFor } from "@/lib/copy";
 import { announce } from "@/lib/live-region";
@@ -13,11 +19,51 @@ import type {
   ManagementProgram as ManagementProgramRecord,
 } from "@/lib/programs/program-api";
 import { rememberDeepLink } from "@/lib/session";
+import { cn } from "@/lib/utils";
 
 import { DepartmentSettingsPanel } from "./department-settings-panel";
+import { buildProgramsHref } from "./programs-intent";
 import { useAsyncResource } from "./use-async-resource";
 
-import styles from "@/app/programs/programs.module.css";
+const styles = {
+  directoryCard:
+    "group flex h-auto min-h-11 w-full min-w-0 flex-col items-start gap-2 rounded-lg border border-[var(--line)] bg-[var(--surface-raised)] p-4 text-left whitespace-normal transition-colors hover:border-[var(--accent)] [overflow-wrap:anywhere]",
+  directoryCardTitle:
+    "block min-w-0 text-base font-extrabold leading-6 whitespace-normal [overflow-wrap:anywhere]",
+  directoryCardMeta:
+    "flex min-w-0 flex-wrap items-center gap-2 text-sm leading-6 text-[var(--ink-muted)] whitespace-normal [overflow-wrap:anywhere]",
+  boundaryTitle:
+    "m-0 min-w-0 text-xl font-extrabold leading-tight tracking-[-0.02em] [overflow-wrap:anywhere]",
+  boundaryLead:
+    "mt-1 mb-5 max-w-prose text-base leading-6 text-[var(--ink-muted)] [overflow-wrap:anywhere]",
+  boundaryState:
+    "grid min-w-0 gap-3 rounded-lg border border-[var(--line)] bg-[var(--surface)] p-5 [overflow-wrap:anywhere]",
+  boundaryError:
+    "grid min-w-0 gap-3 rounded-lg border border-[var(--error-border)] bg-[var(--error-surface)] p-4 text-[var(--error)] [overflow-wrap:anywhere]",
+  retry:
+    "min-h-11 min-w-11 w-fit rounded-lg border border-[var(--error-border)] bg-transparent px-4 py-2 text-[var(--error)] whitespace-normal hover:bg-[var(--error-surface)]",
+  moduleSection:
+    "grid min-w-0 gap-3 rounded-lg border border-[var(--line)] bg-[var(--surface-raised)] p-4",
+  sectionLabel:
+    "m-0 text-sm font-bold uppercase tracking-[0.08em] text-[var(--ink-muted)]",
+  fieldHint:
+    "m-0 text-sm leading-6 text-[var(--ink-muted)] [overflow-wrap:anywhere]",
+  deptList: "m-0 mb-7 grid list-none gap-3 p-0",
+  deptItem: "min-w-0 overflow-hidden rounded-lg border border-[var(--line)]",
+  directorySearch: "mb-5 grid min-w-0 gap-2",
+  directorySearchLabel: "text-sm font-bold leading-5 text-[var(--ink)]",
+  directorySearchRow: "flex min-w-0 flex-wrap items-center gap-3",
+  input:
+    "min-h-11 min-w-0 rounded-lg border-[var(--line-strong)] bg-[var(--surface-raised)] text-base",
+  clearButton:
+    "min-h-11 min-w-11 w-fit rounded-lg border border-[var(--line-strong)] bg-transparent px-4 py-2 text-[var(--ink)] whitespace-normal hover:bg-[var(--surface)]",
+  directoryList: "m-0 grid list-none gap-3 p-0",
+  directoryItem: "m-0 min-w-0",
+  directoryCardDescription:
+    "block min-w-0 text-sm leading-6 text-[var(--ink-muted)] [overflow-wrap:anywhere]",
+  directoryMetaItem: "min-w-0 [overflow-wrap:anywhere]",
+  directoryStatus: "shrink-0 whitespace-normal",
+} as const;
 
 export interface ManagementProgram {
   program: ManagementProgramRecord;
@@ -87,10 +133,11 @@ const DepartmentSettingsLauncher = ({
 
   useEffect(() => {
     if (!open) {
-      if (returnFocusPending) {
-        triggerRef.current?.focus();
-        setReturnFocusPending(false);
-      }
+      triggerRef.current?.focus();
+      document
+        .getElementById(`${department.department_id}-settings-trigger`)
+        ?.focus();
+      setReturnFocusPending(false);
       return;
     }
     // getElementById, not querySelector: department_id is a UUID and can
@@ -114,31 +161,60 @@ const DepartmentSettingsLauncher = ({
       onOpenProgram={onOpenProgram}
     />
   ) : (
-    <button
-      ref={triggerRef}
+    <Button
+      id={`${department.department_id}-settings-trigger`}
       className={styles.directoryCard}
       type="button"
-      onClick={() => setOpen(true)}
+      onClick={(event) => {
+        triggerRef.current = event.currentTarget;
+        setOpen(true);
+      }}
     >
       <span className={styles.directoryCardTitle}>{department.name}</span>
       <span className={styles.directoryCardMeta}>
         {department.code} · {COPY.programs.departmentSettings}
       </span>
-    </button>
+    </Button>
   );
 };
 export interface ManagementDirectoryProps {
   onOpenProgram: (programId: string, created?: boolean) => void;
+  /** Optional Department context restored from a safe return URL. */
+  departmentId?: string | null;
+  /** Hash fragment restored with the current Programs intent. */
+  hash?: string | null;
   /** Render only the scoped Departments administration surface. */
   departmentOnly?: boolean;
+  /** Preserve the directory search while a Program workspace is open. */
+  query?: string;
+  onQueryChange?: (query: string) => void;
+  /** Program row to focus after returning from its workspace. */
+  focusProgramId?: string | null;
 }
 export const ManagementDirectory = ({
   onOpenProgram,
+  departmentId = null,
+  hash = null,
   departmentOnly = false,
+  query,
+  onQueryChange,
+  focusProgramId = null,
 }: ManagementDirectoryProps) => {
+  const [localQuery, setLocalQuery] = useState("");
+  const directoryQuery = query ?? localQuery;
+  const updateQuery = (value: string) => {
+    if (onQueryChange) {
+      onQueryChange(value);
+    } else {
+      setLocalQuery(value);
+    }
+  };
   const router = useRouter();
-  const [query, setQuery] = useState("");
-  const { state, run: loadDirectory, retry } = useAsyncResource<
+  const {
+    state,
+    run: loadDirectory,
+    retry,
+  } = useAsyncResource<
     { departments: Department[]; programs: ManagementProgramRecord[] },
     DirectoryState
   >(
@@ -193,11 +269,16 @@ export const ManagementDirectory = ({
     if (state.kind !== "ready") {
       return [];
     }
-    const needle = query.trim().toLocaleLowerCase();
+    const needle = directoryQuery.trim().toLocaleLowerCase();
+    const rows = departmentId
+      ? state.rows.filter(
+          ({ department }) => department.department_id === departmentId
+        )
+      : state.rows;
     if (!needle) {
-      return state.rows;
+      return rows;
     }
-    return state.rows.filter(({ program, department }) =>
+    return rows.filter(({ program, department }) =>
       [
         program.name,
         program.description,
@@ -208,11 +289,23 @@ export const ManagementDirectory = ({
         .filter((value): value is string => Boolean(value))
         .some((value) => value.toLocaleLowerCase().includes(needle))
     );
-
-  }, [query, state]);
+  }, [departmentId, directoryQuery, state]);
+  useEffect(() => {
+    if (state.kind !== "ready" || !focusProgramId) {
+      return;
+    }
+    const row = [
+      ...document.querySelectorAll<HTMLElement>("[data-program-id]"),
+    ].find((candidate) => candidate.dataset.programId === focusProgramId);
+    row?.focus();
+  }, [filteredRows, focusProgramId, state.kind]);
   const scopedDepartments =
     state.kind === "ready"
-      ? state.departments.filter(hasDepartmentManagementScope)
+      ? state.departments.filter(
+          (department) =>
+            hasDepartmentManagementScope(department) &&
+            (!departmentId || department.department_id === departmentId)
+        )
       : [];
   return (
     <section aria-labelledby="programs-management-directory-title">
@@ -237,15 +330,16 @@ export const ManagementDirectory = ({
           aria-busy="true"
         >
           {COPY.programs.managementDirectoryLoading}
+          <Skeleton className="mt-3 h-8 w-full" aria-hidden="true" />
         </output>
       )}
 
       {state.kind === "error" && (
-        <section
+        <Alert
           id="programs-management-directory-state"
           tabIndex={-1}
           className={styles.boundaryError}
-          role="alert"
+          variant="destructive"
         >
           <h3 className={styles.boundaryTitle}>
             {state.failure === "forbidden"
@@ -257,72 +351,68 @@ export const ManagementDirectory = ({
               ? COPY.programs.managementDirectoryForbiddenHint
               : state.message}
           </p>
-          <button className={styles.retry} type="button" onClick={retry}>
+          <Button className={styles.retry} type="button" onClick={retry}>
             {COPY.programs.managementDirectoryRetry}
-          </button>
-        </section>
+          </Button>
+        </Alert>
       )}
       {state.kind === "ready" && scopedDepartments.length > 0 && (
-          <section
-            className={styles.moduleSection}
-            aria-labelledby="programs-management-department-settings"
+        <section
+          className={styles.moduleSection}
+          aria-labelledby="programs-management-department-settings"
+        >
+          <h3
+            id="programs-management-department-settings"
+            className={styles.sectionLabel}
           >
-            <h3
-              id="programs-management-department-settings"
-              className={styles.sectionLabel}
-            >
-              {departmentOnly
-                ? COPY.programs.departments
-                : COPY.programs.managementScopeDepartment}
-            </h3>
-            <p className={styles.fieldHint}>
-              {departmentOnly
-                ? COPY.programs.departmentsLead
-                : COPY.programs.departmentScopeHint}
-            </p>
-            <ul className={styles.deptList}>
-              {scopedDepartments.map((department) => (
-                  <li
-                    key={department.department_id}
-                    className={styles.deptItem}
-                  >
-                    <DepartmentSettingsLauncher
-                      department={department}
-                      onOpenProgram={onOpenProgram}
-                    />
-                  </li>
-                ))}
-            </ul>
-          </section>
-        )}
+            {departmentOnly
+              ? COPY.programs.departments
+              : COPY.programs.managementScopeDepartment}
+          </h3>
+          <p className={styles.fieldHint}>
+            {departmentOnly
+              ? COPY.programs.departmentsLead
+              : COPY.programs.departmentScopeHint}
+          </p>
+          <ul className={styles.deptList}>
+            {scopedDepartments.map((department) => (
+              <li key={department.department_id} className={styles.deptItem}>
+                <DepartmentSettingsLauncher
+                  department={department}
+                  onOpenProgram={onOpenProgram}
+                />
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
 
       {state.kind === "ready" &&
         (departmentOnly
           ? scopedDepartments.length === 0
           : state.rows.length === 0) && (
-        <section
-          id="programs-management-directory-state"
-          tabIndex={-1}
-          className={styles.boundaryState}
-          role="status"
-          aria-live="polite"
-        >
-          <h3 className={styles.boundaryTitle}>
-            {departmentOnly
-              ? COPY.programs.noDepartments
-              : state.departments.length === 0
-                ? COPY.programs.cockpitEmptyScopeTitle
-                : COPY.programs.managementDirectoryEmpty}
-          </h3>
-          <p>
-            {departmentOnly
-              ? COPY.programs.departmentsLead
-              : state.departments.length === 0
-                ? COPY.programs.cockpitEmptyScopeHint
-                : COPY.programs.managementDirectoryEmptyHint}
-          </p>
-        </section>
-      )}
+          <section
+            id="programs-management-directory-state"
+            tabIndex={-1}
+            className={styles.boundaryState}
+            aria-live="polite"
+          >
+            <h3 className={styles.boundaryTitle}>
+              {departmentOnly
+                ? COPY.programs.noDepartments
+                : state.departments.length === 0
+                  ? COPY.programs.cockpitEmptyScopeTitle
+                  : COPY.programs.managementDirectoryEmpty}
+            </h3>
+            <p>
+              {departmentOnly
+                ? COPY.programs.departmentsLead
+                : state.departments.length === 0
+                  ? COPY.programs.cockpitEmptyScopeHint
+                  : COPY.programs.managementDirectoryEmptyHint}
+            </p>
+          </section>
+        )}
 
       {state.kind === "ready" && state.rows.length > 0 && (
         <>
@@ -334,23 +424,23 @@ export const ManagementDirectory = ({
               {COPY.programs.managementDirectorySearchLabel}
             </label>
             <div className={styles.directorySearchRow}>
-              <input
+              <Input
                 id="programs-management-directory-search"
                 className={styles.input}
                 type="search"
-                value={query}
-                onChange={(event) => setQuery(event.target.value)}
+                value={directoryQuery}
+                onChange={(event) => updateQuery(event.target.value)}
                 placeholder={COPY.programs.managementDirectorySearchPlaceholder}
                 autoComplete="off"
               />
-              {query.trim() && (
-                <button
+              {directoryQuery.trim() && (
+                <Button
                   className={styles.clearButton}
                   type="button"
-                  onClick={() => setQuery("")}
+                  onClick={() => updateQuery("")}
                 >
                   {COPY.programs.managementDirectoryClearSearch}
-                </button>
+                </Button>
               )}
             </div>
           </div>
@@ -364,13 +454,13 @@ export const ManagementDirectory = ({
                 {COPY.programs.managementDirectoryNoMatches}
               </h3>
               <p>{COPY.programs.managementDirectoryNoMatchesHint}</p>
-              <button
+              <Button
                 className={styles.retry}
                 type="button"
-                onClick={() => setQuery("")}
+                onClick={() => updateQuery("")}
               >
                 {COPY.programs.managementDirectoryClearSearch}
-              </button>
+              </Button>
             </section>
           ) : (
             <ul
@@ -379,44 +469,74 @@ export const ManagementDirectory = ({
             >
               {filteredRows.map(({ program, department, scope }) => (
                 <li key={program.program_id} className={styles.directoryItem}>
-                  <button
-                    className={styles.directoryCard}
-                    type="button"
-                    onClick={() => onOpenProgram(program.program_id)}
-                  >
-                    <span className={styles.directoryCardTitle}>
-                      {program.name}
-                    </span>
-                    {program.description && (
-                      <span className={styles.directoryCardDescription}>
-                        {program.description}
+                  <Button asChild className={styles.directoryCard}>
+                    <Link
+                      href={buildProgramsHref({
+                        mode: "management",
+                        programId: program.program_id,
+                        departmentId,
+                        hash,
+                      })}
+                      data-program-id={program.program_id}
+                      onClick={(event) => {
+                        if (
+                          event.defaultPrevented ||
+                          event.button !== 0 ||
+                          event.metaKey ||
+                          event.ctrlKey ||
+                          event.shiftKey ||
+                          event.altKey
+                        ) {
+                          return;
+                        }
+                        event.preventDefault();
+                        onOpenProgram(program.program_id);
+                      }}
+                    >
+                      <span className={styles.directoryCardTitle}>
+                        {program.name}
                       </span>
-                    )}
-                    <span className={styles.directoryCardMeta}>
-                      <span className={styles.directoryMetaItem}>
-                        {department.name} · {department.code}
-                      </span>
-                      {program.category && (
-                        <span className={styles.directoryMetaItem}>
-                          {program.category}
+                      {program.description && (
+                        <span className={styles.directoryCardDescription}>
+                          {program.description}
                         </span>
                       )}
-                      <span className={styles.directoryStatus}>
-                        {scope === "department"
-                          ? COPY.programs.managementScopeDepartment
-                          : COPY.programs.managementScopeProgram}
+                      <span className={styles.directoryCardMeta}>
+                        <span className={styles.directoryMetaItem}>
+                          {department.name} · {department.code}
+                        </span>
+                        {program.category && (
+                          <span className={styles.directoryMetaItem}>
+                            {program.category}
+                          </span>
+                        )}
+                        <Badge
+                          className={styles.directoryStatus}
+                          variant="outline"
+                        >
+                          {scope === "department"
+                            ? COPY.programs.managementScopeDepartment
+                            : COPY.programs.managementScopeProgram}
+                        </Badge>
+                        <Badge
+                          className={styles.directoryStatus}
+                          variant={
+                            program.lifecycle === "Active"
+                              ? "default"
+                              : program.lifecycle === "Draft"
+                                ? "secondary"
+                                : "outline"
+                          }
+                        >
+                          {program.lifecycle === "Active"
+                            ? COPY.programs.lifecycleActive
+                            : program.lifecycle === "Draft"
+                              ? COPY.programs.lifecycleDraft
+                              : COPY.programs.lifecycleArchived}
+                        </Badge>
                       </span>
-                      <span
-                        className={`${styles.directoryStatus} ${styles[`directoryStatus${program.lifecycle}`]}`}
-                      >
-                        {program.lifecycle === "Active"
-                          ? COPY.programs.lifecycleActive
-                          : program.lifecycle === "Draft"
-                            ? COPY.programs.lifecycleDraft
-                            : COPY.programs.lifecycleArchived}
-                      </span>
-                    </span>
-                  </button>
+                    </Link>
+                  </Button>
                 </li>
               ))}
             </ul>

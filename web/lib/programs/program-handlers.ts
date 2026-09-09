@@ -1,3 +1,7 @@
+import { findAccountByUserId } from "../auth/accounts";
+import type { AccountRow } from "../auth/accounts";
+import { ACCESS_COOKIE_NAME } from "../auth/cookies";
+import { verifyAccessToken } from "../auth/sessions";
 /**
  * EFCC Programs domain — Worker route handlers for `/api/v1/programs/*`.
  *
@@ -6,11 +10,6 @@
  * format RFC 9457 Problem Details on failures.
  */
 import { COPY } from "../copy";
-
-import { findAccountByUserId } from "../auth/accounts";
-import type { AccountRow } from "../auth/accounts";
-import { ACCESS_COOKIE_NAME } from "../auth/cookies";
-import { verifyAccessToken } from "../auth/sessions";
 import type { ModuleKey } from "./capabilities";
 import {
   AuthorizationDeniedError,
@@ -29,8 +28,6 @@ import type {
 } from "./department-workspace";
 import { isIsoInstant } from "./iso-instant";
 import {
-  DepartmentManagerConflictError,
-  DepartmentManagerNotAssignedError,
   DuplicateDepartmentCodeError,
   DuplicateEnrollmentError,
   DuplicateEventError,
@@ -45,22 +42,16 @@ import {
   EventRescheduleBlockedError,
   InvalidModuleKeyError,
   InvalidProgramLifecycleError,
-  LeaderAccountInactiveError,
-  LeaderNotAssignedError,
   NoScheduleRulesError,
   PreviewPlanNotFoundError,
   ProgramArchiveBlockedError,
   RequestNotDecidableError,
   ScheduleRuleNotApplicableError,
-  SelfDelegationError,
-  SelfDepartmentManagerError,
-  ProgramLeaderConflictError,
   StaleEnrollmentRequestError,
   StalePreviewPlanError,
 } from "./program-errors";
 import { isWallDate, isWallTime } from "./recurrence";
 import type {
-  DepartmentManagerRow,
   DepartmentUpdate,
   ProgramUpdate,
   ScheduleRuleRow,
@@ -72,20 +63,6 @@ export interface ProgramEnv {
   DB: D1Database;
   EFCC_ACCESS_TOKEN_SECRET: string;
 }
-
-function departmentManagerDto(row: DepartmentManagerRow) {
-  return {
-    department_id: row.department_id,
-    user_id: row.user_id,
-    granted_by: row.granted_by,
-    granted_at: row.granted_at,
-    revoked_by: row.revoked_by,
-    revoked_at: row.revoked_at,
-    ...(row.user_name === undefined ? {} : { user_name: row.user_name }),
-    ...(row.username === undefined ? {} : { username: row.username }),
-  };
-}
-
 function departmentDto(row: DepartmentView) {
   return {
     department_id: row.department_id,
@@ -100,10 +77,7 @@ function departmentDto(row: DepartmentView) {
   };
 }
 
-function isOneOf<T extends string>(
-  v: unknown,
-  options: readonly T[]
-): v is T {
+function isOneOf<T extends string>(v: unknown, options: readonly T[]): v is T {
   return typeof v === "string" && (options as readonly string[]).includes(v);
 }
 
@@ -215,26 +189,14 @@ function notFound(requestId: string, detail: string): Response {
  * handler-specific detail) so callers fall through to bespoke handling or
  * rethrow.
  */
-function mapWorkspaceError(
-  error: unknown,
-  requestId: string
-): Response | null {
-  if (
-    error instanceof AuthorizationDeniedError ||
-    error instanceof SelfDepartmentManagerError ||
-    error instanceof SelfDelegationError
-  ) {
+function mapWorkspaceError(error: unknown, requestId: string): Response | null {
+  if (error instanceof AuthorizationDeniedError) {
     return problem(403, "FORBIDDEN", "Forbidden", error.message, requestId);
   }
-  if (
-    error instanceof LeaderAccountInactiveError ||
-    error instanceof EnrollmentAccountInactiveError
-  ) {
+  if (error instanceof EnrollmentAccountInactiveError) {
     return problem(
       422,
-      error instanceof EnrollmentAccountInactiveError
-        ? "ENROLLMENT_ACCOUNT_INACTIVE"
-        : "ACCOUNT_INACTIVE",
+      "ENROLLMENT_ACCOUNT_INACTIVE",
       "Validation failed",
       error.message,
       requestId
@@ -260,22 +222,16 @@ function mapWorkspaceError(
     );
   }
   if (error instanceof PreviewPlanNotFoundError) {
-    return problem(404, "PLAN_NOT_FOUND", "Not found", error.message, requestId);
-  }
-  if (error instanceof StalePreviewPlanError) {
     return problem(
-      409,
-      "STALE_PLAN",
-      "Conflict",
+      404,
+      "PLAN_NOT_FOUND",
+      "Not found",
       error.message,
       requestId
     );
   }
-  if (
-    error instanceof DepartmentManagerNotAssignedError ||
-    error instanceof LeaderNotAssignedError
-  ) {
-    return problem(404, "NOT_FOUND", "Not found", error.message, requestId);
+  if (error instanceof StalePreviewPlanError) {
+    return problem(409, "STALE_PLAN", "Conflict", error.message, requestId);
   }
   if (
     error instanceof DuplicateDepartmentCodeError ||
@@ -283,9 +239,7 @@ function mapWorkspaceError(
     error instanceof DuplicateEventError ||
     error instanceof DuplicateScheduleExceptionError ||
     error instanceof RequestNotDecidableError ||
-    error instanceof EnrollmentDecisionConflictError ||
-    error instanceof DepartmentManagerConflictError ||
-    error instanceof ProgramLeaderConflictError
+    error instanceof EnrollmentDecisionConflictError
   ) {
     return problem(409, "CONFLICT", "Conflict", error.message, requestId);
   }
@@ -424,12 +378,12 @@ async function requireActor(
 
 function getModule(env: ProgramEnv): { workspace: DepartmentWorkspace } {
   const store = new D1WorkspaceStore(env.DB);
-  const authorizer = new D1CapabilityAuthorizer(store);
+  const authorizer = new D1CapabilityAuthorizer(env.DB);
   return { workspace: new DepartmentWorkspace(store, authorizer) };
 }
 
-function ctxFrom(account: AccountRow): AuthorizationContext {
-  return { actorUserId: account.user_id, actorRole: account.role };
+function authorizationContextFor(account: AccountRow): AuthorizationContext {
+  return { actorUserId: account.user_id };
 }
 
 async function parseJson<T>(request: Request): Promise<T | null> {
@@ -481,10 +435,12 @@ export async function handleCreateDepartment(
   }
   if (
     typeof body.lifecycle !== "string" ||
-    !isOneOf(
-      body.lifecycle,
-      ["Draft", "PendingDevelopment", "Active", "Archived"] as const
-    )
+    !isOneOf(body.lifecycle, [
+      "Draft",
+      "PendingDevelopment",
+      "Active",
+      "Archived",
+    ] as const)
   ) {
     return problem(
       422,
@@ -510,7 +466,7 @@ export async function handleCreateDepartment(
   const { workspace } = await getModule(env);
   try {
     const row = await workspace.createDepartment(
-      ctxFrom(auth.account),
+      authorizationContextFor(auth.account),
       {
         code,
         name,
@@ -544,7 +500,9 @@ export async function handleListDepartments(
   }
 
   const { workspace } = await getModule(env);
-  const rows = await workspace.listDepartments(ctxFrom(auth.account));
+  const rows = await workspace.listDepartments(
+    authorizationContextFor(auth.account)
+  );
   return jsonResponse(200, { departments: rows }, requestId);
 }
 
@@ -560,7 +518,9 @@ export async function handleListManagementAccess(
   }
 
   const { workspace } = await getModule(env);
-  const access = await workspace.getManagementAccess(ctxFrom(auth.account));
+  const access = await workspace.getManagementAccess(
+    authorizationContextFor(auth.account)
+  );
   return jsonResponse(200, access, requestId);
 }
 /** GET /api/v1/programs/hub — capability-filtered Management Hub directory. */
@@ -574,32 +534,10 @@ export async function handleGetManagementHub(
     return auth;
   }
   const { workspace } = await getModule(env);
-  const hub = await workspace.getManagementHub(ctxFrom(auth.account));
+  const hub = await workspace.getManagementHub(
+    authorizationContextFor(auth.account)
+  );
   return jsonResponse(200, hub, requestId);
-}
-/** GET /api/v1/programs/account-permissions — Admin/Staff-only permissions matrix. */
-export async function handleGetAccountPermissions(
-  request: Request,
-  env: ProgramEnv
-): Promise<Response> {
-  const requestId = crypto.randomUUID();
-  const auth = await requireActor(request, env, requestId);
-  if (auth instanceof Response) {
-    return auth;
-  }
-  const { workspace } = await getModule(env);
-  try {
-    const permissions = await workspace.getAccountPermissions(
-      ctxFrom(auth.account)
-    );
-    return jsonResponse(200, permissions, requestId);
-  } catch (error) {
-    const mapped = mapWorkspaceError(error, requestId);
-    if (mapped) {
-      return mapped;
-    }
-    throw error;
-  }
 }
 
 /** GET /api/v1/programs/management-directory — scoped, redacted manager rows. */
@@ -614,7 +552,7 @@ export async function handleListManagementDirectory(
   }
   const { workspace } = await getModule(env);
   const directory = await workspace.listManagementDirectory(
-    ctxFrom(auth.account)
+    authorizationContextFor(auth.account)
   );
   return jsonResponse(200, directory, requestId);
 }
@@ -652,12 +590,107 @@ export async function handleSearchManagementMembers(
   const { workspace } = await getModule(env);
   try {
     const members = await workspace.searchManagementMembers(
-      ctxFrom(auth.account),
+      authorizationContextFor(auth.account),
       query,
       limit
     );
     return jsonResponse(200, { members }, requestId);
   } catch (error) {
+    const mapped = mapWorkspaceError(error, requestId);
+    if (mapped) {
+      return mapped;
+    }
+    throw error;
+  }
+}
+
+/** GET /api/v1/programs/accounts?q=... — Account Directory search. */
+export async function handleSearchAccountDirectory(
+  request: Request,
+  env: ProgramEnv
+): Promise<Response> {
+  const requestId = crypto.randomUUID();
+  const auth = await requireActor(request, env, requestId);
+  if (auth instanceof Response) {
+    return auth;
+  }
+  const url = new URL(request.url);
+  const query = url.searchParams.get("q")?.trim() ?? "";
+  const rawLimit = url.searchParams.get("limit");
+  const parsedLimit = rawLimit === null ? 20 : Number(rawLimit);
+  const limit = Number.isFinite(parsedLimit)
+    ? Math.min(50, Math.max(1, Math.floor(parsedLimit)))
+    : 20;
+  const rawCursor = url.searchParams.get("cursor");
+  const cursor = rawCursor === null ? 0 : Number(rawCursor);
+  const rawStatus = url.searchParams.get("status");
+  const rawDepartment = url.searchParams.get("department")?.trim() || undefined;
+  const statuses = ["Pending", "Active", "Suspended", "Deactivated"] as const;
+  if (!Number.isInteger(cursor) || cursor < 0) {
+    return validation(requestId, "Invalid Account Directory cursor.");
+  }
+  if (
+    rawStatus !== null &&
+    !statuses.includes(rawStatus as (typeof statuses)[number])
+  ) {
+    return validation(requestId, "Unknown account status filter.");
+  }
+  if (rawDepartment !== undefined && rawDepartment.length > 80) {
+    return validation(requestId, "Department filter is too long.");
+  }
+  const { workspace } = await getModule(env);
+  try {
+    const directory = await workspace.searchAccountDirectory(
+      authorizationContextFor(auth.account),
+      query,
+      limit,
+      {
+        department: rawDepartment,
+        status:
+          rawStatus === null
+            ? undefined
+            : (rawStatus as (typeof statuses)[number]),
+      },
+      cursor
+    );
+    return jsonResponse(200, directory, requestId);
+  } catch (error) {
+    const mapped = mapWorkspaceError(error, requestId);
+    if (mapped) {
+      return mapped;
+    }
+    throw error;
+  }
+}
+
+/** GET /api/v1/programs/accounts/:id — Account Directory detail. */
+export async function handleGetAccountDirectoryDetail(
+  request: Request,
+  env: ProgramEnv,
+  accountId: string
+): Promise<Response> {
+  const requestId = crypto.randomUUID();
+  const auth = await requireActor(request, env, requestId);
+  if (auth instanceof Response) {
+    return auth;
+  }
+  const { workspace } = await getModule(env);
+  try {
+    const account = await workspace.getAccountDirectoryDetail(
+      authorizationContextFor(auth.account),
+      accountId
+    );
+    return jsonResponse(200, account, requestId);
+  } catch (error) {
+    if (error instanceof WorkspaceNotFoundError) {
+      return problem(
+        404,
+        "NOT_FOUND",
+        "Not found",
+        "Account not found.",
+        requestId
+      );
+    }
     const mapped = mapWorkspaceError(error, requestId);
     if (mapped) {
       return mapped;
@@ -683,7 +716,7 @@ export async function handleGetManagementAttention(
     ? Math.min(50, Math.max(1, Math.floor(parsedLimit)))
     : 5;
   const attention = await workspace.getManagementAttention(
-    ctxFrom(auth.account),
+    authorizationContextFor(auth.account),
     limit
   );
   return jsonResponse(200, attention, requestId);
@@ -707,7 +740,7 @@ export async function handleGetManagementNotifications(
     : 20;
   try {
     const notifications = await workspace.getManagementNotifications(
-      ctxFrom(auth.account),
+      authorizationContextFor(auth.account),
       limit
     );
     return jsonResponse(200, notifications, requestId);
@@ -741,7 +774,10 @@ export async function handleMarkManagementNotificationsRead(
   const seen = new Set<string>();
   for (const raw of body.items) {
     if (typeof raw !== "object" || raw === null) {
-      return validation(requestId, "Each notification source must be an object.");
+      return validation(
+        requestId,
+        "Each notification source must be an object."
+      );
     }
     const sourceKey = (raw as { source_key?: unknown }).source_key;
     const sourceRevision = (raw as { source_revision?: unknown })
@@ -769,7 +805,7 @@ export async function handleMarkManagementNotificationsRead(
   const { workspace } = await getModule(env);
   try {
     const markedCount = await workspace.markManagementNotificationsRead(
-      ctxFrom(auth.account),
+      authorizationContextFor(auth.account),
       items
     );
     return jsonResponse(200, { marked_count: markedCount }, requestId);
@@ -795,7 +831,7 @@ export async function handleGetManagementProgram(
   }
   const { workspace } = await getModule(env);
   const result = await workspace.getManagementProgram(
-    ctxFrom(auth.account),
+    authorizationContextFor(auth.account),
     programId
   );
   if (!result) {
@@ -817,7 +853,7 @@ export async function handleGetManagementCockpit(
   }
   const { workspace } = await getModule(env);
   const result = await workspace.getManagementCockpit(
-    ctxFrom(auth.account),
+    authorizationContextFor(auth.account),
     programId
   );
   if (!result) {
@@ -842,7 +878,9 @@ export async function handleListParticipantCatalog(
   }
 
   const { workspace } = await getModule(env);
-  const catalog = await workspace.listParticipantCatalog(ctxFrom(auth.account));
+  const catalog = await workspace.listParticipantCatalog(
+    authorizationContextFor(auth.account)
+  );
   return jsonResponse(200, { catalog }, requestId);
 }
 /**
@@ -861,7 +899,7 @@ export async function handleGetParticipantProgramDetail(
   }
   const { workspace } = await getModule(env);
   const detail = await workspace.getParticipantProgramDetail(
-    ctxFrom(auth.account),
+    authorizationContextFor(auth.account),
     programId
   );
   if (!detail) {
@@ -884,7 +922,7 @@ export async function handleGetDepartment(
 
   const { workspace } = await getModule(env);
   const row = await workspace.getDepartment(
-    ctxFrom(auth.account),
+    authorizationContextFor(auth.account),
     departmentId
   );
   if (!row) {
@@ -897,7 +935,7 @@ export async function handleGetDepartment(
     );
   }
   const modules = await workspace.listDepartmentModules(
-    ctxFrom(auth.account),
+    authorizationContextFor(auth.account),
     departmentId
   );
   const safeModules = (modules ?? []).map(
@@ -914,136 +952,6 @@ export async function handleGetDepartment(
     requestId
   );
 }
-/** GET /api/v1/programs/departments/:id/managers */
-export async function handleListDepartmentManagers(
-  request: Request,
-  env: ProgramEnv,
-  departmentId: string
-): Promise<Response> {
-  const requestId = crypto.randomUUID();
-  const auth = await requireActor(request, env, requestId);
-  if (auth instanceof Response) {
-    return auth;
-  }
-  const { workspace } = await getModule(env);
-  const managers = await workspace.listDepartmentManagers(
-    ctxFrom(auth.account),
-    departmentId
-  );
-  if (managers === null) {
-    return notFound(requestId, "Unknown department.");
-  }
-  return jsonResponse(
-    200,
-    { managers: managers.map(departmentManagerDto) },
-    requestId
-  );
-}
-
-/** POST /api/v1/programs/departments/:id/managers */
-export async function handleAssignDepartmentManager(
-  request: Request,
-  env: ProgramEnv,
-  departmentId: string
-): Promise<Response> {
-  const requestId = crypto.randomUUID();
-  const correlationId = request.headers.get("Idempotency-Key") ?? requestId;
-  const auth = await requireActor(request, env, requestId);
-  if (auth instanceof Response) {
-    return auth;
-  }
-  const body = await parseJson<{ user_id?: unknown }>(request);
-  if (body === null || typeof body.user_id !== "string" || !body.user_id) {
-    return validation(requestId, "user_id is required.");
-  }
-  const target = await findAccountByUserId(env.DB, body.user_id);
-  if (!target) {
-    return validation(requestId, "Unknown user_id.");
-  }
-  const { workspace } = await getModule(env);
-  try {
-    const manager = await workspace.assignDepartmentManager(
-      ctxFrom(auth.account),
-      departmentId,
-      body.user_id,
-      correlationId
-    );
-    return jsonResponse(
-      200,
-      { manager: departmentManagerDto(manager) },
-      requestId
-    );
-  } catch (error) {
-    const mapped = mapWorkspaceError(error, requestId);
-    if (mapped) {
-      return mapped;
-    }
-    throw error;
-  }
-}
-
-/** POST /api/v1/programs/departments/:id/managers/:userId/revoke */
-export async function handleRevokeDepartmentManager(
-  request: Request,
-  env: ProgramEnv,
-  departmentId: string,
-  userId: string
-): Promise<Response> {
-  const requestId = crypto.randomUUID();
-  const correlationId = request.headers.get("Idempotency-Key") ?? requestId;
-  const auth = await requireActor(request, env, requestId);
-  if (auth instanceof Response) {
-    return auth;
-  }
-  const { workspace } = await getModule(env);
-  try {
-    const manager = await workspace.revokeDepartmentManager(
-      ctxFrom(auth.account),
-      departmentId,
-      userId,
-      correlationId
-    );
-    return jsonResponse(
-      200,
-      { manager: departmentManagerDto(manager) },
-      requestId
-    );
-  } catch (error) {
-    const mapped = mapWorkspaceError(error, requestId);
-    if (mapped) {
-      return mapped;
-    }
-    throw error;
-  }
-}
-
-/** GET /api/v1/programs/departments/:id/member-options?q=... */
-export async function handleSearchDepartmentMemberOptions(
-  request: Request,
-  env: ProgramEnv,
-  departmentId: string
-): Promise<Response> {
-  const requestId = crypto.randomUUID();
-  const auth = await requireActor(request, env, requestId);
-  if (auth instanceof Response) {
-    return auth;
-  }
-  const { workspace } = await getModule(env);
-  const department = await workspace.getDepartment(
-    ctxFrom(auth.account),
-    departmentId
-  );
-  if (!department || department.capabilities.manager_assign !== true) {
-    return notFound(requestId, "Unknown department.");
-  }
-  const query = new URL(request.url).searchParams.get("q")?.trim() ?? "";
-  if (query.length < 2) {
-    return validation(requestId, "Search requires at least two characters.");
-  }
-  const members = await workspace.searchActiveMembers(query, 20);
-  return jsonResponse(200, { members }, requestId);
-}
-
 /** PATCH /api/v1/programs/departments/:id */
 export async function handleUpdateDepartment(
   request: Request,
@@ -1094,10 +1002,12 @@ export async function handleUpdateDepartment(
   }
   if (
     body.lifecycle !== undefined &&
-    !isOneOf(
-      body.lifecycle,
-      ["Draft", "PendingDevelopment", "Active", "Archived"] as const
-    )
+    !isOneOf(body.lifecycle, [
+      "Draft",
+      "PendingDevelopment",
+      "Active",
+      "Archived",
+    ] as const)
   ) {
     return problem(
       422,
@@ -1131,10 +1041,12 @@ export async function handleUpdateDepartment(
     update.description = body.description;
   }
   if (
-    isOneOf(
-      body.lifecycle,
-      ["Draft", "PendingDevelopment", "Active", "Archived"] as const
-    )
+    isOneOf(body.lifecycle, [
+      "Draft",
+      "PendingDevelopment",
+      "Active",
+      "Archived",
+    ] as const)
   ) {
     update.lifecycle = body.lifecycle;
   }
@@ -1144,7 +1056,7 @@ export async function handleUpdateDepartment(
 
   try {
     const row = await workspace.updateDepartment(
-      ctxFrom(auth.account),
+      authorizationContextFor(auth.account),
       departmentId,
       update,
       correlationId
@@ -1226,7 +1138,7 @@ export async function handleCreateProgram(
   const { workspace } = await getModule(env);
   try {
     const row = await workspace.createProgram(
-      ctxFrom(auth.account),
+      authorizationContextFor(auth.account),
       {
         department_id: departmentId,
         name: fields.name as string,
@@ -1282,7 +1194,7 @@ export async function handleListPrograms(
 
   const { workspace } = await getModule(env);
   const rows = await workspace.listPrograms(
-    ctxFrom(auth.account),
+    authorizationContextFor(auth.account),
     departmentId
   );
   return jsonResponse(200, { programs: rows }, requestId);
@@ -1301,7 +1213,10 @@ export async function handleGetProgram(
   }
 
   const { workspace } = await getModule(env);
-  const row = await workspace.getProgram(ctxFrom(auth.account), programId);
+  const row = await workspace.getProgram(
+    authorizationContextFor(auth.account),
+    programId
+  );
   if (!row) {
     return problem(
       404,
@@ -1378,7 +1293,7 @@ export async function handleUpdateProgram(
 
   try {
     const row = await workspace.updateProgram(
-      ctxFrom(auth.account),
+      authorizationContextFor(auth.account),
       programId,
       update,
       correlationId
@@ -1417,7 +1332,10 @@ export async function handleSearchMemberOptions(
     return auth;
   }
   const { workspace } = await getModule(env);
-  const program = await workspace.getProgram(ctxFrom(auth.account), programId);
+  const program = await workspace.getProgram(
+    authorizationContextFor(auth.account),
+    programId
+  );
   if (!program || !program.capabilities.manage) {
     return problem(
       404,
@@ -1465,7 +1383,7 @@ export async function handleSetModule(
   const { workspace } = await getModule(env);
   try {
     const module = await workspace.setDepartmentModule(
-      ctxFrom(auth.account),
+      authorizationContextFor(auth.account),
       {
         department_id: departmentId,
         module_key: moduleKey as ModuleKey,
@@ -1602,12 +1520,15 @@ export async function handleListScheduleRules(
     return auth;
   }
   const { workspace } = await getModule(env);
-  const program = await workspace.getProgram(ctxFrom(auth.account), programId);
+  const program = await workspace.getProgram(
+    authorizationContextFor(auth.account),
+    programId
+  );
   if (!program) {
     return notFound(requestId, "Unknown program.");
   }
   const rules = await workspace.listScheduleRules(
-    ctxFrom(auth.account),
+    authorizationContextFor(auth.account),
     programId
   );
   return jsonResponse(200, { rules }, requestId);
@@ -1626,13 +1547,16 @@ export async function handleListScheduleExceptions(
     return auth;
   }
   const { workspace } = await getModule(env);
-  const rule = await workspace.getScheduleRule(ctxFrom(auth.account), ruleId);
+  const rule = await workspace.getScheduleRule(
+    authorizationContextFor(auth.account),
+    ruleId
+  );
   if (!rule || rule.program_id !== programId) {
     return notFound(requestId, "Unknown schedule rule.");
   }
   try {
     const exceptions = await workspace.listScheduleExceptions(
-      ctxFrom(auth.account),
+      authorizationContextFor(auth.account),
       programId,
       ruleId
     );
@@ -1676,13 +1600,16 @@ export async function handleCreateScheduleRule(
   const { value } = parsed;
 
   const { workspace } = await getModule(env);
-  const program = await workspace.getProgram(ctxFrom(auth.account), programId);
+  const program = await workspace.getProgram(
+    authorizationContextFor(auth.account),
+    programId
+  );
   if (!program) {
     return notFound(requestId, "Unknown program.");
   }
   try {
     const row = await workspace.createScheduleRule(
-      ctxFrom(auth.account),
+      authorizationContextFor(auth.account),
       programId,
       value,
       correlationId
@@ -1748,9 +1675,7 @@ function parseRulePatch(
       return { ok: false, detail: "location must be text or null." };
     }
     update.location =
-      typeof body.location === "string"
-        ? body.location.trim() || null
-        : null;
+      typeof body.location === "string" ? body.location.trim() || null : null;
   }
   const resolvedStart = update.start_time ?? existing.start_time;
   const resolvedEnd = update.end_time ?? existing.end_time;
@@ -1791,7 +1716,7 @@ export async function handleUpdateScheduleRule(
 
   const { workspace } = await getModule(env);
   const existing = await workspace.getScheduleRule(
-    ctxFrom(auth.account),
+    authorizationContextFor(auth.account),
     ruleId
   );
   if (!existing) {
@@ -1808,7 +1733,7 @@ export async function handleUpdateScheduleRule(
 
   try {
     const row = await workspace.updateScheduleRule(
-      ctxFrom(auth.account),
+      authorizationContextFor(auth.account),
       ruleId,
       update,
       correlationId
@@ -1881,7 +1806,10 @@ export async function handleCreateScheduleException(
   }
 
   const { workspace } = await getModule(env);
-  const rule = await workspace.getScheduleRule(ctxFrom(auth.account), ruleId);
+  const rule = await workspace.getScheduleRule(
+    authorizationContextFor(auth.account),
+    ruleId
+  );
   if (!rule) {
     return notFound(requestId, "Unknown schedule rule.");
   }
@@ -1890,7 +1818,7 @@ export async function handleCreateScheduleException(
   }
   try {
     const row = await workspace.createScheduleException(
-      ctxFrom(auth.account),
+      authorizationContextFor(auth.account),
       ruleId,
       {
         override_date: body.override_date,
@@ -1925,14 +1853,14 @@ export async function handleDeleteScheduleException(
   }
   const { workspace } = await getModule(env);
   const exists = await workspace.getScheduleException(
-    ctxFrom(auth.account),
+    authorizationContextFor(auth.account),
     exceptionId
   );
   if (!exists) {
     return notFound(requestId, "Unknown schedule exception.");
   }
   const rule = await workspace.getScheduleRule(
-    ctxFrom(auth.account),
+    authorizationContextFor(auth.account),
     exists.rule_id
   );
   if (!rule || rule.program_id !== programId) {
@@ -1940,7 +1868,7 @@ export async function handleDeleteScheduleException(
   }
   try {
     await workspace.deleteScheduleException(
-      ctxFrom(auth.account),
+      authorizationContextFor(auth.account),
       exceptionId,
       correlationId
     );
@@ -1981,7 +1909,11 @@ export async function handlePreviewEvents(
     } catch {
       return validation(requestId, "請求內容必須是有效的 JSON 物件。");
     }
-    if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+    if (
+      typeof parsed !== "object" ||
+      parsed === null ||
+      Array.isArray(parsed)
+    ) {
       return validation(requestId, "請求內容必須是有效的 JSON 物件。");
     }
     body = parsed as { horizon_days?: unknown };
@@ -2004,13 +1936,16 @@ export async function handlePreviewEvents(
     }
   }
   const { workspace } = await getModule(env);
-  const program = await workspace.getProgram(ctxFrom(auth.account), programId);
+  const program = await workspace.getProgram(
+    authorizationContextFor(auth.account),
+    programId
+  );
   if (!program) {
     return notFound(requestId, "Unknown program.");
   }
   try {
     const result = await workspace.previewEvents(
-      ctxFrom(auth.account),
+      authorizationContextFor(auth.account),
       programId,
       horizonDays,
       correlationId
@@ -2050,13 +1985,16 @@ export async function handleGenerateEvents(
     return validation(requestId, "plan_id is required.");
   }
   const { workspace } = await getModule(env);
-  const program = await workspace.getProgram(ctxFrom(auth.account), programId);
+  const program = await workspace.getProgram(
+    authorizationContextFor(auth.account),
+    programId
+  );
   if (!program) {
     return notFound(requestId, "Unknown program.");
   }
   try {
     const result = await workspace.generateEvents(
-      ctxFrom(auth.account),
+      authorizationContextFor(auth.account),
       programId,
       body.plan_id,
       correlationId
@@ -2123,7 +2061,9 @@ export async function handleCreateEvent(
       body.event_type !== undefined &&
       body.event_type !== null &&
       (typeof body.event_type !== "string" ||
-        !["崇拜", "訓練", "小組", "排練", "外展", "其他"].includes(body.event_type))
+        !["崇拜", "訓練", "小組", "排練", "外展", "其他"].includes(
+          body.event_type
+        ))
     ) {
       return validation(
         requestId,
@@ -2166,13 +2106,16 @@ export async function handleCreateEvent(
     );
   }
   const { workspace } = await getModule(env);
-  const program = await workspace.getProgram(ctxFrom(auth.account), programId);
+  const program = await workspace.getProgram(
+    authorizationContextFor(auth.account),
+    programId
+  );
   if (!program) {
     return notFound(requestId, "Unknown program.");
   }
   try {
     const row = await workspace.createEvent(
-      ctxFrom(auth.account),
+      authorizationContextFor(auth.account),
       programId,
       {
         starts_at: body.starts_at,
@@ -2207,7 +2150,10 @@ export async function handleListEvents(
     return auth;
   }
   const { workspace } = await getModule(env);
-  const rows = await workspace.listEvents(ctxFrom(auth.account), programId);
+  const rows = await workspace.listEvents(
+    authorizationContextFor(auth.account),
+    programId
+  );
   if (rows === null) {
     return notFound(requestId, "Unknown program.");
   }
@@ -2229,7 +2175,7 @@ export async function handleGetEvent(
   const { workspace } = await getModule(env);
   try {
     const detail = await workspace.getEventDetail(
-      ctxFrom(auth.account),
+      authorizationContextFor(auth.account),
       eventId
     );
     if (!detail || detail.event.program_id !== programId) {
@@ -2277,7 +2223,10 @@ export async function handleEventUpdate(
     }
   }
   const { workspace } = await getModule(env);
-  const existing = await workspace.getEvent(ctxFrom(auth.account), eventId);
+  const existing = await workspace.getEvent(
+    authorizationContextFor(auth.account),
+    eventId
+  );
   if (!existing || existing.program_id !== programId) {
     return notFound(requestId, "Unknown event.");
   }
@@ -2286,7 +2235,7 @@ export async function handleEventUpdate(
     const availability = body.availability as EventAvailability;
     try {
       const row = await workspace.setEventAvailability(
-        ctxFrom(auth.account),
+        authorizationContextFor(auth.account),
         eventId,
         { availability, confirm: confirmed },
         correlationId
@@ -2305,7 +2254,7 @@ export async function handleEventUpdate(
       typeof body.reason === "string" ? body.reason.trim() || null : null;
     try {
       const row = await workspace.cancelEvent(
-        ctxFrom(auth.account),
+        authorizationContextFor(auth.account),
         eventId,
         { reason },
         correlationId
@@ -2376,7 +2325,9 @@ export async function handleEventUpdate(
       body.event_type !== undefined &&
       body.event_type !== null &&
       (typeof body.event_type !== "string" ||
-        !["崇拜", "訓練", "小組", "排練", "外展", "其他"].includes(body.event_type))
+        !["崇拜", "訓練", "小組", "排練", "外展", "其他"].includes(
+          body.event_type
+        ))
     ) {
       return validation(
         requestId,
@@ -2424,7 +2375,7 @@ export async function handleEventUpdate(
   }
   try {
     const row = await workspace.updateEvent(
-      ctxFrom(auth.account),
+      authorizationContextFor(auth.account),
       eventId,
       update,
       correlationId
@@ -2452,13 +2403,16 @@ export async function handleCreateEnrollmentRequest(
     return auth;
   }
   const { workspace } = await getModule(env);
-  const program = await workspace.getProgram(ctxFrom(auth.account), programId);
+  const program = await workspace.getProgram(
+    authorizationContextFor(auth.account),
+    programId
+  );
   if (!program) {
     return notFound(requestId, "Unknown program.");
   }
   try {
     const row = await workspace.submitEnrollmentRequest(
-      ctxFrom(auth.account),
+      authorizationContextFor(auth.account),
       programId,
       correlationId
     );
@@ -2485,7 +2439,7 @@ export async function handleListEnrollmentRequests(
   }
   const { workspace } = await getModule(env);
   const rows = await workspace.listEnrollmentRequests(
-    ctxFrom(auth.account),
+    authorizationContextFor(auth.account),
     programId
   );
   if (rows === null) {
@@ -2506,7 +2460,7 @@ export async function handleListEnrollmentSnapshot(
   }
   const { workspace } = await getModule(env);
   const snapshot = await workspace.listEnrollmentSnapshot(
-    ctxFrom(auth.account),
+    authorizationContextFor(auth.account),
     programId
   );
   if (snapshot === null) {
@@ -2554,7 +2508,7 @@ export async function handleDecideEnrollmentRequest(
   const note = typeof body.note === "string" ? body.note.trim() : null;
   const { workspace } = await getModule(env);
   const existing = await workspace.getEnrollmentRequest(
-    ctxFrom(auth.account),
+    authorizationContextFor(auth.account),
     enrollmentRequestId
   );
   if (!existing) {
@@ -2565,7 +2519,7 @@ export async function handleDecideEnrollmentRequest(
   }
   try {
     const result = await workspace.decideEnrollmentRequest(
-      ctxFrom(auth.account),
+      authorizationContextFor(auth.account),
       programId,
       enrollmentRequestId,
       {
@@ -2600,7 +2554,7 @@ export async function handleWithdrawEnrollmentRequest(
   }
   const { workspace } = await getModule(env);
   const existing = await workspace.getEnrollmentRequest(
-    ctxFrom(auth.account),
+    authorizationContextFor(auth.account),
     enrollmentRequestId
   );
   if (!existing) {
@@ -2611,7 +2565,7 @@ export async function handleWithdrawEnrollmentRequest(
   }
   try {
     const row = await workspace.withdrawEnrollmentRequest(
-      ctxFrom(auth.account),
+      authorizationContextFor(auth.account),
       programId,
       enrollmentRequestId,
       correlationId
@@ -2648,13 +2602,16 @@ export async function handleAssistedEnroll(
     return validation(requestId, "member_user_id is required.");
   }
   const { workspace } = await getModule(env);
-  const program = await workspace.getProgram(ctxFrom(auth.account), programId);
+  const program = await workspace.getProgram(
+    authorizationContextFor(auth.account),
+    programId
+  );
   if (!program) {
     return notFound(requestId, "Unknown program.");
   }
   try {
     const row = await workspace.assistedEnroll(
-      ctxFrom(auth.account),
+      authorizationContextFor(auth.account),
       programId,
       { memberUserId },
       correlationId
@@ -2682,7 +2639,7 @@ export async function handleListEnrollments(
   }
   const { workspace } = await getModule(env);
   const rows = await workspace.listEnrollments(
-    ctxFrom(auth.account),
+    authorizationContextFor(auth.account),
     programId
   );
   if (rows === null) {
@@ -2706,7 +2663,7 @@ export async function handleCancelEnrollment(
   }
   const { workspace } = await getModule(env);
   const existing = await workspace.getEnrollment(
-    ctxFrom(auth.account),
+    authorizationContextFor(auth.account),
     enrollmentId
   );
   if (!existing) {
@@ -2717,7 +2674,7 @@ export async function handleCancelEnrollment(
   }
   try {
     const row = await workspace.cancelEnrollment(
-      ctxFrom(auth.account),
+      authorizationContextFor(auth.account),
       programId,
       enrollmentId,
       correlationId
@@ -2730,101 +2687,6 @@ export async function handleCancelEnrollment(
     }
     throw error;
   }
-}
-
-/** POST /api/v1/programs/:programId/leaders */
-export async function handleAssignProgramLeader(
-  request: Request,
-  env: ProgramEnv,
-  programId: string
-): Promise<Response> {
-  const requestId = crypto.randomUUID();
-  const correlationId = request.headers.get("Idempotency-Key") ?? requestId;
-  const auth = await requireActor(request, env, requestId);
-  if (auth instanceof Response) {
-    return auth;
-  }
-  const body = await parseJson<{ user_id?: unknown }>(request);
-  if (body === null) {
-    return validation(requestId, "Body must be JSON.");
-  }
-  const userId = typeof body.user_id === "string" ? body.user_id : "";
-  if (!userId) {
-    return validation(requestId, "user_id is required.");
-  }
-  const target = await findAccountByUserId(env.DB, userId);
-  if (!target) {
-    return validation(requestId, "Unknown user_id.");
-  }
-  const { workspace } = await getModule(env);
-  try {
-    const row = await workspace.assignProgramLeader(
-      ctxFrom(auth.account),
-      programId,
-      userId,
-      correlationId
-    );
-    return jsonResponse(200, { leader: row }, requestId);
-  } catch (error) {
-    const mapped = mapWorkspaceError(error, requestId);
-    if (mapped) {
-      return mapped;
-    }
-    throw error;
-  }
-}
-
-/** POST /api/v1/programs/:programId/leaders/:userId/revoke */
-export async function handleRevokeProgramLeader(
-  request: Request,
-  env: ProgramEnv,
-  programId: string,
-  userId: string
-): Promise<Response> {
-  const requestId = crypto.randomUUID();
-  const correlationId = request.headers.get("Idempotency-Key") ?? requestId;
-  const auth = await requireActor(request, env, requestId);
-  if (auth instanceof Response) {
-    return auth;
-  }
-  const { workspace } = await getModule(env);
-  try {
-    const row = await workspace.revokeProgramLeader(
-      ctxFrom(auth.account),
-      programId,
-      userId,
-      correlationId
-    );
-    return jsonResponse(200, { leader: row }, requestId);
-  } catch (error) {
-    const mapped = mapWorkspaceError(error, requestId);
-    if (mapped) {
-      return mapped;
-    }
-    throw error;
-  }
-}
-
-/** GET /api/v1/programs/:programId/leaders */
-export async function handleListProgramLeaders(
-  request: Request,
-  env: ProgramEnv,
-  programId: string
-): Promise<Response> {
-  const requestId = crypto.randomUUID();
-  const auth = await requireActor(request, env, requestId);
-  if (auth instanceof Response) {
-    return auth;
-  }
-  const { workspace } = await getModule(env);
-  const leaders = await workspace.listProgramLeaders(
-    ctxFrom(auth.account),
-    programId
-  );
-  if (leaders === null) {
-    return notFound(requestId, "Unknown program.");
-  }
-  return jsonResponse(200, { leaders }, requestId);
 }
 
 /**
@@ -2844,7 +2706,7 @@ export async function handleListParticipantNotices(
   const { workspace } = await getModule(env);
   try {
     const notices = await workspace.listParticipantNotices(
-      ctxFrom(auth.account),
+      authorizationContextFor(auth.account),
       auth.account.user_id
     );
     return jsonResponse(200, notices, requestId);
@@ -2870,7 +2732,7 @@ export async function handleMarkParticipantNoticesRead(
   const { workspace } = await getModule(env);
   try {
     const markedCount = await workspace.markAllParticipantNoticesRead(
-      ctxFrom(auth.account),
+      authorizationContextFor(auth.account),
       auth.account.user_id
     );
     return jsonResponse(200, { marked_count: markedCount }, requestId);
@@ -2924,10 +2786,7 @@ export async function handleCreateParticipantNotice(
     body.program_id !== null &&
     typeof body.program_id !== "string"
   ) {
-    return validation(
-      requestId,
-      "program_id must be a string when provided."
-    );
+    return validation(requestId, "program_id must be a string when provided.");
   }
   if (
     body.event_id !== undefined &&
@@ -2947,7 +2806,7 @@ export async function handleCreateParticipantNotice(
   const { workspace } = await getModule(env);
   try {
     const notice = await workspace.createParticipantNotice(
-      ctxFrom(auth.account),
+      authorizationContextFor(auth.account),
       {
         member_user_id: memberUserId,
         kind: body.kind,

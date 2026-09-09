@@ -3,12 +3,32 @@
 
 import { useEffect, useState } from "react";
 
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { COPY } from "@/lib/copy";
 import { announce } from "@/lib/live-region";
 import { searchMemberOptions } from "@/lib/programs/program-api";
 import type { MemberOption } from "@/lib/programs/program-api";
 
-import styles from "@/app/programs/programs.module.css";
+const styles = {
+  picker: "grid min-w-0 gap-3",
+  field: "grid min-w-0 gap-1.5",
+  fieldLabel: "grid min-w-0 gap-1.5 text-sm font-bold text-[var(--ink)]",
+  input:
+    "min-h-11 min-w-0 rounded-lg border-[var(--line-strong)] bg-[var(--surface-raised)] text-base",
+  fieldHint:
+    "m-0 text-sm leading-6 text-[var(--ink-muted)] [overflow-wrap:anywhere]",
+  retry:
+    "min-h-11 min-w-11 w-fit rounded-lg border border-[var(--error-border)] bg-transparent px-4 py-2 text-[var(--error)] whitespace-normal hover:bg-[var(--error-surface)]",
+  selectedMember:
+    "flex min-w-0 flex-wrap items-center justify-between gap-3 rounded-lg border border-[var(--line)] bg-[var(--surface)] p-3 [overflow-wrap:anywhere]",
+  clearSelection:
+    "min-h-11 min-w-11 w-fit rounded-lg border border-[var(--line-strong)] bg-transparent px-4 py-2 text-[var(--ink)] whitespace-normal hover:bg-[var(--surface-raised)]",
+  memberOptions:
+    "m-0 grid min-w-0 list-none gap-1 rounded-lg border border-[var(--line)] bg-[var(--surface-raised)] p-2",
+  memberOption:
+    "flex h-auto min-h-11 w-full min-w-0 flex-wrap items-center justify-between gap-2 rounded-lg border border-transparent bg-transparent px-3 py-2 text-left text-[var(--ink)] whitespace-normal [overflow-wrap:anywhere] hover:bg-[var(--surface)]",
+} as const;
 
 export const MemberPicker = ({
   programId,
@@ -113,7 +133,7 @@ export const MemberPicker = ({
     <div className={styles.picker}>
       <label className={styles.field}>
         <span className={styles.fieldLabel}>{label}</span>
-        <input
+        <Input
           className={styles.input}
           type="search"
           value={query}
@@ -143,18 +163,18 @@ export const MemberPicker = ({
                 : COPY.programs.memberSearchHint}
       </p>
       {searchError && (
-        <button
+        <Button
           type="button"
           className={styles.retry}
           onClick={() => setRetryToken((value) => value + 1)}
         >
           {COPY.programs.memberSearchRetry}
-        </button>
+        </Button>
       )}
       {selected !== null && (
         <div className={styles.selectedMember}>
           <span>{`${selected.name} (${selected.username})`}</span>
-          <button
+          <Button
             type="button"
             className={styles.clearSelection}
             onClick={() => {
@@ -163,7 +183,7 @@ export const MemberPicker = ({
             }}
           >
             {COPY.programs.clearMember}
-          </button>
+          </Button>
         </div>
       )}
       {options.length > 0 && (
@@ -180,7 +200,7 @@ export const MemberPicker = ({
               role="option"
               aria-selected={activeIndex === index}
             >
-              <button
+              <Button
                 type="button"
                 className={styles.memberOption}
                 onClick={() => {
@@ -189,7 +209,7 @@ export const MemberPicker = ({
               >
                 <strong>{member.name}</strong>
                 <span>{member.username}</span>
-              </button>
+              </Button>
             </li>
           ))}
         </ul>

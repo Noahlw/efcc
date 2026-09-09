@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 /**
  * EFCC dev-testing D1 seeder (PRG-05 #224).
  *
@@ -53,12 +54,12 @@ async function buildInsert(
     "INSERT INTO accounts (",
     "  user_id, name, username, username_normalized,",
     "  credential_hash, credential_kind, credential_version,",
-    "  account_status, role, qr_code_string, requires_upgrade, created_at, updated_at",
+    "  account_status, qr_code_string, requires_upgrade, created_at, updated_at",
     ") VALUES (",
     `  ${sqlLiteral(account.userId)}, ${sqlLiteral(FIXTURE_NAMES[account.userId])},`,
     `  ${sqlLiteral(account.username)}, ${sqlLiteral(normalizeUsername(account.username))},`,
     `  ${sqlLiteral(credentialHash)}, 'password', 1,`,
-    `  'Active', '${account.role}', ${sqlLiteral(qrCodeString)}, 0, ${now}, ${now}`,
+    `  'Active', ${sqlLiteral(qrCodeString)}, 0, ${now}, ${now}`,
     ")",
     "ON CONFLICT(user_id) DO UPDATE SET",
     "  name = excluded.name,",
@@ -68,8 +69,7 @@ async function buildInsert(
     "  credential_kind = excluded.credential_kind,",
     "  credential_version = excluded.credential_version,",
     "  account_status = excluded.account_status,",
-    "  role = excluded.role,",
-    "  phone = NULL,",
+      "  phone = NULL,",
     "  qr_code_string = excluded.qr_code_string,",
     "  legacy_pin_hash = NULL,",
     "  requires_upgrade = 0,",
@@ -88,12 +88,12 @@ async function buildLegacyInsert(now: number): Promise<string> {
     "INSERT OR IGNORE INTO accounts (",
     "  user_id, name, username, username_normalized,",
     "  credential_hash, credential_kind, credential_version,",
-    "  account_status, role, qr_code_string, legacy_pin_hash,",
+    "  account_status, qr_code_string, legacy_pin_hash,",
     "  requires_upgrade, created_at, updated_at",
     ") VALUES (",
     `  ${sqlLiteral(DEV_LEGACY.userId)}, ${sqlLiteral(FIXTURE_NAMES[DEV_LEGACY.userId])},`,
     `  ${sqlLiteral(DEV_LEGACY.username)}, ${sqlLiteral(normalizeUsername(DEV_LEGACY.username))},`,
-    `  NULL, 'legacy_pin', 1, 'Active', '${DEV_LEGACY.role}',`,
+    `  NULL, 'legacy_pin', 1, 'Active',`,
     `  ${sqlLiteral(qrCodeString)}, ${sqlLiteral(legacyPinHash)}, 1, ${now}, ${now}`,
     ");",
   ].join("\n");
@@ -107,12 +107,125 @@ async function buildLegacyReset(now: number): Promise<string> {
     `  username = ${sqlLiteral(DEV_LEGACY.username)},`,
     `  username_normalized = ${sqlLiteral(normalizeUsername(DEV_LEGACY.username))},`,
     "  credential_hash = NULL, credential_kind = 'legacy_pin',",
-    `  credential_version = 1, account_status = 'Active', role = '${DEV_LEGACY.role}',`,
+    `  credential_version = 1, account_status = 'Active',`,
     `  qr_code_string = ${sqlLiteral(qrCodeString)},`,
     `  legacy_pin_hash = ${sqlLiteral(legacyPinHash)}, requires_upgrade = 1,`,
     "  lock_level = 0, failed_attempts = 0, locked_until = NULL, lock_since = NULL,",
     `  updated_at = ${now} WHERE user_id = ${sqlLiteral(DEV_LEGACY.userId)};`,
   ].join("\n");
+}
+function buildNormalizedIdentitySeed(now: number): string {
+  const definitions = [
+    [
+      "018f3b8a-0000-7000-8000-000000000a01",
+      "admin",
+      "系統管理員",
+      "全教會唯一可改變授權政策、發佈首頁內容的身份。",
+      0,
+      1,
+    ],
+    [
+      "018f3b8a-0000-7000-8000-000000000a02",
+      "staff",
+      "同工",
+      "全教會同工，可管理部門、課程與指派負責人，但不可變更授權政策。",
+      1,
+      0,
+    ],
+    [
+      "018f3b8a-0000-7000-8000-000000000a03",
+      "member",
+      "會友基礎",
+      "每位正式會友皆持有的最低限度身份，僅含提交課程報名。",
+      999,
+      1,
+    ],
+  ] as const;
+  const statements = definitions.map(
+    ([id, stableKey, label, description, position, protectedState]) =>
+      [
+        "INSERT OR IGNORE INTO role_definitions (",
+        "  role_definition_id, category_key, stable_key, label, description,",
+        "  scope_kind, scope_id, position, is_protected, is_archived,",
+        "  created_by, created_at, updated_by, updated_at",
+        ") VALUES (",
+        `  ${sqlLiteral(id)}, 'Global', ${sqlLiteral(stableKey)}, ${sqlLiteral(label)}, ${sqlLiteral(description)},`,
+        `  'Global', NULL, ${position}, ${protectedState}, 0, NULL, ${now}, NULL, ${now}`,
+        ");",
+      ].join("\n")
+  );
+  statements.push(
+    [
+      "WITH catalog(capability) AS (",
+      "  VALUES",
+      ...[
+        "role.read",
+        "role.assign",
+        "role.revoke",
+        "role.reorder",
+        "role.name.write",
+        "role.permissions.read",
+        "role.permissions.write",
+        "role.scope.read",
+        "role.scope.write",
+        "role.create",
+        "role.delete",
+        "department.manage",
+        "department.publish",
+        "department.module.configure",
+        "department.manager.assign",
+        "program.manage",
+        "program.publish",
+        "program.enroll",
+        "program.leader.assign",
+        "account.permissions.read",
+        "account.directory.read",
+        "registration.approval.manage",
+      ].map(
+        (capability, index, values) =>
+          `    ('${capability}')${index === values.length - 1 ? "" : ","}`
+      ),
+      ")",
+      "INSERT OR IGNORE INTO role_definition_grants",
+      "  (role_definition_id, capability, granted_by, granted_at)",
+      `SELECT role_definition_id, capability, NULL, ${now}`,
+      "  FROM role_definitions CROSS JOIN catalog",
+      " WHERE role_definitions.stable_key = 'staff' AND role_definitions.is_archived = 0;",
+    ].join("\n")
+  );
+  statements.push(
+    [
+      "INSERT OR IGNORE INTO role_assignments",
+      "  (assignment_id, account_user_id, role_definition_id, granted_by,",
+      "   granted_at, scope_kind, scope_id)",
+      `SELECT ${sqlLiteral(`dev-assignment-admin-${randomUUID()}`)}, 'U-E2E-ADMIN', rd.role_definition_id,`,
+      `  'U-E2E-ADMIN', ${now}, rd.scope_kind, rd.scope_id`,
+      "  FROM role_definitions AS rd",
+      " WHERE rd.stable_key = 'admin'",
+      "   AND rd.is_archived = 0",
+      "   AND NOT EXISTS (",
+      "     SELECT 1 FROM role_assignments AS current",
+      "      WHERE current.account_user_id = 'U-E2E-ADMIN'",
+      "        AND current.role_definition_id = rd.role_definition_id",
+      "        AND current.revoked_at IS NULL",
+      "   );",
+      "INSERT OR IGNORE INTO role_assignments",
+      "  (assignment_id, account_user_id, role_definition_id, granted_by,",
+      "   granted_at, scope_kind, scope_id)",
+      `SELECT ${sqlLiteral(`dev-assignment-staff-${randomUUID()}`)}, 'U-E2E-STAFF', rd.role_definition_id,`,
+      `  'U-E2E-ADMIN', ${now}, rd.scope_kind, rd.scope_id`,
+      "  FROM role_definitions AS rd",
+      " WHERE rd.stable_key = 'staff'",
+      "   AND rd.is_archived = 0",
+      "   AND NOT EXISTS (",
+      "     SELECT 1 FROM role_assignments AS current",
+      "      WHERE current.account_user_id = 'U-E2E-STAFF'",
+      "        AND current.role_definition_id = rd.role_definition_id",
+      "        AND current.revoked_at IS NULL",
+      "   );",
+    ].join("\n")
+  );
+  return statements.join("\n");
 }
 
 async function main(): Promise<void> {
@@ -138,40 +251,52 @@ async function main(): Promise<void> {
 
   if (reset) {
     // Standing dev-testing D1 accumulates E2E_ rows across runs (departments,
-    // programs, leaders, requests, enrollments, events, registration
-    // requests). Delete children before parents (FKs are ON DELETE RESTRICT);
-    // audit_events carries no FK and is left as history. GLOB treats the
-    // underscore in the E2E_ prefix literally; LIKE would treat it as a
-    // single-character wildcard.
+    // programs, identity assignments, requests, enrollments, events,
+    // registration requests). Delete children before parents (FKs are
+    // ON DELETE RESTRICT); audit_events carries no FK and is left as history.
+    // Revoked assignments are immutable terminal history; only active fixture
+    // assignments are reset here.
+    // GLOB treats the underscore in the E2E_ prefix literally; LIKE would
+    // treat it as a single-character wildcard.
     const e2eProgramIds =
       "(SELECT p.program_id FROM programs AS p LEFT JOIN departments AS d ON d.department_id = p.department_id WHERE p.name GLOB 'E2E_*' OR d.code GLOB 'E2E_*' OR d.name GLOB 'E2E_*')";
+    const filterAccountIds =
+      "(SELECT user_id FROM accounts WHERE username GLOB 'E2E_filter_*')";
     process.stdout.write(
       [
         "-- EFCC dev-testing D1 reset (PRG-05 #224). Deletes all E2E_ rows.",
         "-- Includes registration requests (no FK, deleted last).",
         "-- Run before each suite run so consecutive runs stay green:",
         "--   pnpm exec wrangler d1 execute efcc-dev-testing --remote --file=<this output>",
-        // EVT-02 (#252): preview plans and generation runs reference
-        // programs/rules/events with ON DELETE RESTRICT, so they must be
-        // deleted before their parents (children first, mirroring the
-        // reset's FK ordering contract).
         `DELETE FROM program_generation_run_items WHERE run_id IN (SELECT run_id FROM program_generation_runs WHERE program_id IN ${e2eProgramIds});`,
         `DELETE FROM program_generation_runs WHERE program_id IN ${e2eProgramIds};`,
         `DELETE FROM program_preview_occurrences WHERE plan_id IN (SELECT plan_id FROM program_preview_plans WHERE program_id IN ${e2eProgramIds});`,
         `DELETE FROM program_preview_plans WHERE program_id IN ${e2eProgramIds};`,
         `DELETE FROM program_schedule_exceptions WHERE rule_id IN (SELECT rule_id FROM program_schedule_rules WHERE program_id IN ${e2eProgramIds});`,
         `DELETE FROM program_schedule_rules WHERE program_id IN ${e2eProgramIds};`,
+        `DELETE FROM sessions WHERE user_id IN ${filterAccountIds};`,
+        `DELETE FROM attendances WHERE member_user_id IN ${filterAccountIds};`,
+        `DELETE FROM enrollments WHERE member_user_id IN ${filterAccountIds};`,
+        `DELETE FROM enrollment_requests WHERE member_user_id IN ${filterAccountIds};`,
+        `DELETE FROM account_events WHERE actor_user_id IN ${filterAccountIds};`,
+        `DELETE FROM program_notification_reads WHERE user_id IN ${filterAccountIds};`,
+        `DELETE FROM participant_notices WHERE member_user_id IN ${filterAccountIds};`,
+        "DELETE FROM role_assignments WHERE account_user_id IN (SELECT user_id FROM accounts WHERE username GLOB 'E2E_*') AND revoked_at IS NULL;",
+        `DELETE FROM role_assignments WHERE role_definition_id IN (SELECT role_definition_id FROM role_definitions WHERE scope_kind = 'Program' AND scope_id IN ${e2eProgramIds}) AND revoked_at IS NULL;`,
+        `DELETE FROM role_assignments WHERE role_definition_id IN (SELECT role_definition_id FROM role_definitions WHERE scope_kind = 'Department' AND scope_id IN (SELECT department_id FROM departments WHERE code GLOB 'E2E_*' OR name GLOB 'E2E_*')) AND revoked_at IS NULL;`,
+        `DELETE FROM accounts WHERE user_id IN ${filterAccountIds};`,
         `DELETE FROM attendances WHERE event_id IN (SELECT event_id FROM events WHERE program_id IN ${e2eProgramIds});`,
         `DELETE FROM events WHERE program_id IN ${e2eProgramIds};`,
         `DELETE FROM enrollments WHERE program_id IN ${e2eProgramIds};`,
         `DELETE FROM enrollment_requests WHERE program_id IN ${e2eProgramIds};`,
-        `DELETE FROM program_leaders WHERE program_id IN ${e2eProgramIds};`,
         `DELETE FROM programs WHERE program_id IN ${e2eProgramIds};`,
         "DELETE FROM department_modules WHERE department_id IN (SELECT department_id FROM departments WHERE code GLOB 'E2E_*' OR name GLOB 'E2E_*');",
-        "DELETE FROM department_managers WHERE department_id IN (SELECT department_id FROM departments WHERE code GLOB 'E2E_*' OR name GLOB 'E2E_*');",
         "DELETE FROM departments WHERE code GLOB 'E2E_*' OR name GLOB 'E2E_*';",
         "DELETE FROM program_notification_reads WHERE user_id IN (SELECT user_id FROM accounts WHERE username GLOB 'E2E_*');",
         "DELETE FROM participant_notices WHERE member_user_id IN (SELECT user_id FROM accounts WHERE username GLOB 'E2E_*');",
+        "-- Home CMS reset only removes E2E-marked disposable content versions.",
+        "DELETE FROM home_content WHERE content_id = 'home' AND (title GLOB 'E2E_*' OR title GLOB 'E2E *');",
+        "DELETE FROM registration_requests WHERE username GLOB 'e2e-s4-*';",
         "DELETE FROM registration_requests WHERE username GLOB 'E2E_*';",
         "",
       ].join("\n")
@@ -183,6 +308,7 @@ async function main(): Promise<void> {
   const statements = await Promise.all([
     ...DEV_ACCOUNTS.map((account) => buildInsert(account, now)),
     buildLegacyInsert(now),
+    buildNormalizedIdentitySeed(now),
   ]);
   if (resetLegacy) {
     statements.unshift(await buildLegacyReset(now));

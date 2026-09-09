@@ -1,0 +1,17 @@
+{
+  "status": "passed",
+  "command": "fnm exec --using 22.18.0 pnpm exec playwright test -c tests/e2e/t07-storybook.config.ts",
+  "exitCode": 0,
+  "storybookVersion": "10.6.0",
+  "browser": "chromium",
+  "viewports": [390, 799, 800, 1440],
+  "testCount": 8,
+  "storyIds": [
+    "t07-1-management-hub--default",
+    "t07-1-management-hub--loading",
+    "t07-1-management-hub--empty",
+    "t07-1-management-hub--recoverable-error"
+  ],
+  "storybookUrl": "http://127.0.0.1:6006",
+  "managementHubStoryUrl": "http://127.0.0.1:6006/iframe.html?id=t07-1-management-hub--default&viewMode=story"
+}

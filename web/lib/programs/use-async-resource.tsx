@@ -20,6 +20,17 @@ export interface AsyncResourceOptions<T, S extends { kind: string }> {
   /** aria-live message announced when a load succeeds; `undefined` stays silent. */
   announceReady?: (data: T) => string | undefined;
   /**
+   * Optional single owner for announcing a visible error state. Call sites
+   * that render `role="alert"` should omit this callback to avoid duplication.
+   */
+  announceError?: (error: unknown) => string | undefined;
+  /**
+   * Narrow auth handoff: route adapters classify the domain error and own the
+   * destination/deep-link; the lifecycle only invokes the callback.
+   */
+  isAuthRequired?: (error: unknown) => boolean;
+  onAuthRequired?: (error: unknown) => void;
+  /**
    * Selector of the panel focused when a retried load settles on an error
    * (shared "focus the error panel after a failed retry" behavior). Sites
    * with a bespoke focus policy leave this out and manage focus themselves.
@@ -27,10 +38,15 @@ export interface AsyncResourceOptions<T, S extends { kind: string }> {
   focusTarget?: string;
 }
 
-export interface AsyncResource<T, S extends { kind: string }> {
+export interface AsyncResource<_T, S extends { kind: string }> {
   state: S;
   /** Run a load; pass a `{ cancelled }` token to drop the run when it flips. */
   run: (request?: { cancelled: boolean }) => Promise<void>;
+  /**
+   * Refresh without replacing the current state with loading; rejects the
+   * request error so the caller can keep its local action feedback mounted.
+   */
+  refresh: (request?: { cancelled: boolean }) => Promise<void>;
   /** Re-run the load (and focus `focusTarget` when it fails again). */
   retry: () => void;
 }
@@ -71,14 +87,19 @@ export function useAsyncResource<T, S extends { kind: string }>(
     };
   }, []);
 
-  const run = useCallback(
-    async (request?: { cancelled: boolean }) => {
+  const execute = useCallback(
+    async (
+      request: { cancelled: boolean } | undefined,
+      mode: "load" | "refresh"
+    ) => {
       requestId.current += 1;
       const currentRequest = requestId.current;
-      const current = optionsRef.current;
-      setState(current.toLoading());
-      if (current.announceLoading) {
-        announce(current.announceLoading);
+      const { current } = optionsRef;
+      if (mode === "load") {
+        setState(current.toLoading());
+        if (current.announceLoading) {
+          announce(current.announceLoading);
+        }
       }
       try {
         const data = await loadRef.current(request);
@@ -90,9 +111,11 @@ export function useAsyncResource<T, S extends { kind: string }>(
           return;
         }
         setState(current.toReady(data));
-        const readyMessage = current.announceReady?.(data);
-        if (readyMessage) {
-          announce(readyMessage);
+        if (mode === "load") {
+          const readyMessage = current.announceReady?.(data);
+          if (readyMessage) {
+            announce(readyMessage);
+          }
         }
       } catch (error) {
         if (
@@ -102,16 +125,40 @@ export function useAsyncResource<T, S extends { kind: string }>(
         ) {
           return;
         }
+        if (current.onAuthRequired && current.isAuthRequired?.(error)) {
+          current.onAuthRequired(error);
+          if (mode === "refresh") {
+            throw error;
+          }
+          return;
+        }
+        if (mode === "refresh") {
+          throw error;
+        }
         const outcome = current.onError(error);
         if (outcome === null) {
           return;
         }
         setState(outcome);
+        const errorMessage = current.announceError?.(error);
+        if (errorMessage) {
+          announce(errorMessage);
+        }
       }
     },
-    // `deps` intentionally drives run identity (mirrors each call site's
-    // previous useCallback deps); load/options are read through refs.
+    // `deps` intentionally drives resource identity; load/options are read
+    // through refs so each caller controls its own request lifecycle.
     deps
+  );
+
+  const run = useCallback(
+    (request?: { cancelled: boolean }) => execute(request, "load"),
+    [execute]
+  );
+
+  const refresh = useCallback(
+    (request?: { cancelled: boolean }) => execute(request, "refresh"),
+    [execute]
   );
 
   const retry = useCallback(() => {
@@ -138,5 +185,5 @@ export function useAsyncResource<T, S extends { kind: string }>(
     retryFocusPending.current = false;
   }, [state.kind]);
 
-  return { state, run, retry };
+  return { state, run, refresh, retry };
 }

@@ -6,7 +6,6 @@
  * this module.
  */
 
-import { ROLE } from "../auth/accounts";
 import { COPY } from "../copy";
 import {
   CAPABILITY,
@@ -19,8 +18,6 @@ import type {
   DepartmentCapabilities,
   ModuleKey,
 } from "./capabilities";
-import type { ProgramEvent } from "./program-api";
-
 import { AuthorizationDeniedError } from "./capability-authorizer";
 import type {
   AuthorizationContext,
@@ -33,9 +30,8 @@ import type {
   ManagementHubView,
 } from "./hub-types";
 import { parseIsoInstant } from "./iso-instant";
+import type { ProgramEvent } from "./program-api";
 import {
-  DepartmentManagerConflictError,
-  DepartmentManagerNotAssignedError,
   DuplicateDepartmentCodeError,
   DuplicateEnrollmentError,
   DuplicateEventError,
@@ -49,16 +45,11 @@ import {
   EventAvailabilityConfirmationRequiredError,
   InvalidModuleKeyError,
   InvalidProgramLifecycleError,
-  LeaderAccountInactiveError,
-  LeaderNotAssignedError,
   NoScheduleRulesError,
   PreviewPlanNotFoundError,
   ProgramArchiveBlockedError,
-  ProgramLeaderConflictError,
   RequestNotDecidableError,
   ScheduleRuleNotApplicableError,
-  SelfDelegationError,
-  SelfDepartmentManagerError,
   StaleEnrollmentRequestError,
   StalePreviewPlanError,
 } from "./program-errors";
@@ -77,7 +68,6 @@ import type {
   AuditInput,
   AuditOutcome,
   DepartmentLifecycle,
-  DepartmentManagerRow,
   DepartmentRow,
   DepartmentUpdate,
   EnrollmentRequestRow,
@@ -96,13 +86,15 @@ import type {
   DepartmentModuleRow,
   MemberOptionRow,
   ProgramRow,
-  ProgramLeaderRow,
+  ProgramIdentityAssignmentRow,
   ManagementAttentionEventRow,
   NotificationReadStateInput,
   ParticipantNoticeCreateInput,
   ParticipantNoticeKind,
   ParticipantNoticeRow,
   ProgramUpdate,
+  AccountDirectorySearchFilters,
+  AccountDirectorySummary,
   ScheduleExceptionRow,
   ScheduleRuleRow,
   WorkspaceStore,
@@ -119,6 +111,10 @@ export interface ProgramCapabilities {
   publish: boolean;
   enroll: boolean;
   leader_assign: boolean;
+  /** Whether the caller may enter the scoped Account Access destination. */
+  role_read?: boolean;
+  role_assign?: boolean;
+  role_revoke?: boolean;
 }
 
 export type DepartmentView = DepartmentRow & {
@@ -286,7 +282,7 @@ export interface ManagementProgramWorkspaceView {
 }
 export interface EventDetailView {
   event: ProgramEvent;
-  leaders: ProgramLeaderRow[];
+  leaders: ProgramIdentityAssignmentRow[];
   participant_summary: {
     active_enrollments: number;
     checked_in: number;
@@ -309,50 +305,37 @@ export interface ManagementAccessView {
   programScopes: number;
 }
 
-// ---------------------------------------------------------------------------
-// Account Permissions matrix (087-03 #320 / Spec 087 US 9-12). The Worker
-// projects every elevated account (Admin / Staff-with-DM-grant / Staff) with
-// name, effective role, and department context; role labels/scopes come from
-// the centralized COPY.permissions block and the browser renders the
-// projection verbatim — never a client-side role branch.
-// ---------------------------------------------------------------------------
-
-/** Effective elevated role key; mirrors roles[].key. */
-export type AccountPermissionRoleKey = "admin" | "department-manager" | "staff";
-
-export interface AccountPermissionAccount {
-  userId: string;
-  name: string;
-  role: AccountPermissionRoleKey;
-  /** Active Department Manager grant context; empty when none. */
-  departments: Array<{ id: string; name: string }>;
-}
-
-export interface AccountPermissionRole {
-  key: AccountPermissionRoleKey;
-  label: string;
-  scope: string;
-  /** 已設 when ≥1 projected account holds the role, 可指派 otherwise. */
-  assignmentState: "assigned" | "assignable";
-}
-
-export interface AccountPermissionsView {
-  accounts: AccountPermissionAccount[];
-  roles: AccountPermissionRole[];
-}
-
 /**
  * One Member Directory result (087-04 #321 / Spec 087 US 13-15): identity,
  * contact, role, and the departments of the member's Active enrollments
  * (restricted to the actor's managed departments for a Department Manager).
  */
+export interface ManagementMemberIdentity {
+  id: string;
+  label: string;
+  stableKey: string;
+  scopeKind: "Global" | "Department" | "Program";
+  scopeId: string | null;
+}
+
 export interface ManagementMemberView {
   userId: string;
   name: string;
   phone: string | null;
-  role: string;
+  identities: ManagementMemberIdentity[];
   status: string;
   departments: Array<{ id: string; name: string }>;
+}
+
+export interface AccountDirectoryMember extends ManagementMemberView {
+  username: string | null;
+  canOpenAccess: boolean;
+}
+
+export interface AccountDirectoryView {
+  accounts: AccountDirectoryMember[];
+  nextCursor: string | null;
+  summary: AccountDirectorySummary;
 }
 
 // ---------------------------------------------------------------------------
@@ -378,6 +361,12 @@ export const MANAGEMENT_HUB_GROUPS: readonly ManagementHubGroup[] = [
     key: "members-and-permissions",
     label: HUB_COPY.groupMemberPermissions,
     rows: [
+      {
+        key: "accounts",
+        label: HUB_COPY.accountsRow,
+        description: HUB_COPY.accountsRowHint,
+        href: "/management?module=accounts",
+      },
       {
         key: "approvals",
         label: HUB_COPY.approvalsRow,
@@ -565,10 +554,7 @@ export function participantSelfCheckInAvailable(
   const opensAt = parseIsoInstant(event.check_in_window_opens_at);
   const closesAt = parseIsoInstant(event.check_in_window_closes_at);
   return (
-    opensAt !== null &&
-    closesAt !== null &&
-    now >= opensAt &&
-    now <= closesAt
+    opensAt !== null && closesAt !== null && now >= opensAt && now <= closesAt
   );
 }
 
@@ -716,9 +702,22 @@ export class DepartmentWorkspace {
     this.authorizer = authorizer;
   }
 
+  private async canOpenAccountAccess(
+    ctx: AuthorizationContext
+  ): Promise<boolean> {
+    // An empty scope asks the normalized resolver whether the actor has this
+    // assignment capability in any declared scope; Account Access applies
+    // target eligibility and assignment-scope filtering afterward.
+    const [canAssign, canRevoke] = await Promise.all([
+      this.authorizer.can(ctx, CAPABILITY.ROLE_ASSIGN, {}),
+      this.authorizer.can(ctx, CAPABILITY.ROLE_REVOKE, {}),
+    ]);
+    return canAssign || canRevoke;
+  }
+
   private async ensure(
     ctx: AuthorizationContext,
-    capability: (typeof CAPABILITY)[keyof typeof CAPABILITY],
+    capability: Capability,
     scope: { departmentId?: string; programId?: string } | null = null
   ): Promise<void> {
     if (!(await this.authorizer.can(ctx, capability, scope))) {
@@ -1231,17 +1230,14 @@ export class DepartmentWorkspace {
   }
 
   /**
-   * 085-07 (#324) — create one participant notice for a member. Admin/Staff
-   * role gate (like the other church-wide admin operations); the notice is
-   * created unread unless the caller pins read_at.
+   * 085-07 (#324) — create one participant notice for a member. This
+   * church-wide mutation requires the normalized global Program capability.
    */
   async createParticipantNotice(
     ctx: AuthorizationContext,
     input: CreateParticipantNoticeInput
   ): Promise<ParticipantNoticeView> {
-    if (ctx.actorRole !== ROLE.ADMIN && ctx.actorRole !== ROLE.STAFF) {
-      throw new AuthorizationDeniedError(CAPABILITY.PROGRAM_MANAGE);
-    }
+    await this.ensure(ctx, CAPABILITY.PROGRAM_MANAGE);
     const row = await this.store.createParticipantNotice({
       notice_id: crypto.randomUUID(),
       member_user_id: input.member_user_id,
@@ -1450,94 +1446,6 @@ export class DepartmentWorkspace {
   }
 
   /**
-   * GET /api/v1/programs/account-permissions — Account Permissions matrix
-   * (Spec 087 US 9-12 / ticket 087-03 #320).
-   *
-   * Admin/Staff-only read: the capability authorizer denies Department
-   * Managers and Members server-side (migration 0013 seeds
-   * `account.permissions.read` for Admin + Staff only; a DM grant is an
-   * effective scoped profile, never a role row). The projection lists every
-   * admin-capable account — Admin, plain Staff, and Staff with an active
-   * Department Manager grant — with its effective role key
-   * (admin / department-manager / staff) and department context, plus the
-   * fixed three role definitions with a real assignment-state indicator
-   * (已設 when ≥1 projected account holds the role, 可指派 otherwise). Role
-   * labels/scopes come from the centralized COPY.permissions block; the
-   * browser renders the projection verbatim.
-   */
-  async getAccountPermissions(
-    ctx: AuthorizationContext
-  ): Promise<AccountPermissionsView> {
-    await this.ensure(ctx, CAPABILITY.ACCOUNT_PERMISSIONS_READ);
-    const rows = await this.store.listElevatedAccounts();
-
-    const accountsByUser = new Map<string, AccountPermissionAccount>();
-    for (const row of rows) {
-      let account = accountsByUser.get(row.user_id);
-      if (!account) {
-        account = {
-          userId: row.user_id,
-          name: row.name,
-          role:
-            row.role === ROLE.ADMIN
-              ? "admin"
-              : row.department_id !== null
-                ? "department-manager"
-                : "staff",
-          departments: [],
-        };
-        accountsByUser.set(row.user_id, account);
-      }
-      if (row.department_id !== null && row.department_name !== null) {
-        account.departments.push({
-          id: row.department_id,
-          name: row.department_name,
-        });
-      }
-    }
-    const accounts = [...accountsByUser.values()];
-    const heldRoles: Record<string, true> = {};
-    // Assignment indicators describe each fixed role independently. A Staff
-    // account with a Department Manager grant has the effective account role
-    // department-manager, but still holds the global Staff role.
-    for (const row of rows) {
-      if (row.role === ROLE.ADMIN) {
-        heldRoles["admin"] = true;
-      }
-      if (row.role === ROLE.STAFF) {
-        heldRoles["staff"] = true;
-      }
-      if (row.department_id !== null) {
-        heldRoles["department-manager"] = true;
-      }
-    }
-    const permissionsCopy = COPY.permissions;
-    const roles: AccountPermissionRole[] = [
-      {
-        key: "admin",
-        label: permissionsCopy.roleAdmin,
-        scope: permissionsCopy.roleAdminScope,
-        assignmentState: heldRoles["admin"] ? "assigned" : "assignable",
-      },
-      {
-        key: "department-manager",
-        label: permissionsCopy.roleDepartmentManager,
-        scope: permissionsCopy.roleDepartmentManagerScope,
-        assignmentState: heldRoles["department-manager"]
-          ? "assigned"
-          : "assignable",
-      },
-      {
-        key: "staff",
-        label: permissionsCopy.roleStaff,
-        scope: permissionsCopy.roleStaffScope,
-        assignmentState: heldRoles["staff"] ? "assigned" : "assignable",
-      },
-    ];
-    return { accounts, roles };
-  }
-
-  /**
    * GET /api/v1/programs/hub — Management Hub directory (087-01 #310).
    *
    * Server-projected rows/groups: ungranted rows and empty groups are omitted
@@ -1555,11 +1463,6 @@ export class DepartmentWorkspace {
     const hasDepartmentManageScope = departmentScopes.some(
       (department) => department.capabilities.manage
     );
-    // Registration approvals and account permissions are Admin/Staff role
-    // surfaces (spec 087 US 4/9); Members never see them, grant or not.
-    const isAdminOrStaff =
-      ctx.actorRole === ROLE.ADMIN || ctx.actorRole === ROLE.STAFF;
-
     // Attendance row: effective program.manage scope over a program whose
     // department runs the attendance module (086-04 gate family, same effective
     // scope the manageable-events chooser resolves for the actor).
@@ -1571,6 +1474,15 @@ export class DepartmentWorkspace {
           }
           return this.store.listProgramAccessRows(department_id);
         })
+      )
+    ).flat();
+    // Identity management is independent of product-module enablement. Load
+    // every Program scope so a scoped role manager always gets a real entry.
+    const allProgramRows = (
+      await Promise.all(
+        departments.map(({ department_id }) =>
+          this.store.listProgramAccessRows(department_id)
+        )
       )
     ).flat();
     const hasAttendanceScope = (
@@ -1589,20 +1501,96 @@ export class DepartmentWorkspace {
       )
     ).some(Boolean);
 
-    // Home Content publish: role-policy capability (Admin via migration 0010;
-    // a Staff/Member row in role_capabilities grants it the same way). Home is
-    // church-wide, so no department/program scope expansion applies.
+    // Home Content publish is church-wide and resolves through the same
+    // normalized capability adapter as every other management operation.
     const canPublishHome = await this.authorizer.can(
       ctx,
       CAPABILITY.HOME_PUBLISH,
       null
     );
+    const canReadAccountDirectory = await this.authorizer.can(
+      ctx,
+      CAPABILITY.ACCOUNT_DIRECTORY_READ,
+      null
+    );
+    const canManageRegistrationApprovals = await this.authorizer.can(
+      ctx,
+      CAPABILITY.REGISTRATION_APPROVAL_MANAGE,
+      null
+    );
+    const canReadRoleTree = await this.authorizer.can(
+      ctx,
+      CAPABILITY.ROLE_READ,
+      null
+    );
+    const canReadPermissionsGlobally = await this.authorizer.can(
+      ctx,
+      "role.permissions.read",
+      null
+    );
+
+    const scopedRoleManagement = await Promise.all(
+      [
+        ...departments.map(({ department_id }) => ({
+          scopeKind: "Department" as const,
+          scopeId: department_id,
+          scope: { departmentId: department_id },
+        })),
+        ...allProgramRows.map(({ department_id, program_id }) => ({
+          scopeKind: "Program" as const,
+          scopeId: program_id,
+          scope: { departmentId: department_id, programId: program_id },
+        })),
+      ].map(async ({ scopeKind, scopeId, scope }) => {
+        const [roleRead, roleAssign, roleRevoke, permissionRead] =
+          await Promise.all([
+            this.authorizer.can(ctx, CAPABILITY.ROLE_READ, scope),
+            this.authorizer.can(ctx, CAPABILITY.ROLE_ASSIGN, scope),
+            this.authorizer.can(ctx, CAPABILITY.ROLE_REVOKE, scope),
+            this.authorizer.can(ctx, "role.permissions.read", scope),
+          ]);
+        if (!roleRead) {
+          return null;
+        }
+        return {
+          scopeKind,
+          scopeId,
+          canReadPermissions: permissionRead,
+          canOpenAccess: roleAssign || roleRevoke,
+        };
+      })
+    );
+    const scopedPermissionDestination =
+      scopedRoleManagement.find(
+        (destination) => destination?.canReadPermissions === true
+      ) ?? null;
+    const scopedAssignmentDestination =
+      scopedRoleManagement.find(
+        (destination) => destination?.canOpenAccess === true
+      ) ?? null;
+    const canReadScopedRoleTree = scopedRoleManagement.some(
+      (destination) => destination !== null
+    );
+    const canOpenPermissionEditor =
+      (canReadRoleTree && canReadPermissionsGlobally) ||
+      scopedPermissionDestination?.canReadPermissions === true;
+    const permissionsHref = canOpenPermissionEditor
+      ? "/management?module=permissions"
+      : scopedAssignmentDestination
+        ? `/management?module=accounts&view=access&scopeKind=${scopedAssignmentDestination.scopeKind}&scopeId=${encodeURIComponent(scopedAssignmentDestination.scopeId)}`
+        : canReadRoleTree || canReadScopedRoleTree
+          ? "/management?module=roles"
+          : null;
 
     const granted = new Set<string>();
-    if (isAdminOrStaff) {
+    if (canReadAccountDirectory) {
+      granted.add("accounts");
+    }
+    if (canManageRegistrationApprovals) {
       granted.add("approvals");
+    }
+    if (permissionsHref) {
       granted.add("permissions");
-      granted.add("members");
     }
     if (hasDepartmentManageScope) {
       granted.add("departments");
@@ -1618,7 +1606,13 @@ export class DepartmentWorkspace {
     const groups = MANAGEMENT_HUB_GROUPS.map((group) => ({
       key: group.key,
       label: group.label,
-      rows: group.rows.filter((row) => granted.has(row.key)),
+      rows: group.rows
+        .filter((row) => granted.has(row.key))
+        .map((row) =>
+          row.key === "permissions" && permissionsHref
+            ? { ...row, href: permissionsHref }
+            : row
+        ),
     })).filter((group) => group.rows.length > 0);
 
     // 另一個工作入口: any management capability (department scope OR program
@@ -1655,22 +1649,6 @@ export class DepartmentWorkspace {
       return null;
     }
     return this.departmentView(ctx, row);
-  }
-
-  async listDepartmentManagers(
-    ctx: AuthorizationContext,
-    departmentId: string
-  ): Promise<DepartmentManagerRow[] | null> {
-    const department = await this.store.findDepartmentById(departmentId);
-    if (
-      !department ||
-      !(await this.authorizer.can(ctx, CAPABILITY.DEPARTMENT_MANAGER_ASSIGN, {
-        departmentId,
-      }))
-    ) {
-      return null;
-    }
-    return this.store.listDepartmentManagers(departmentId);
   }
 
   async updateDepartment(
@@ -2181,7 +2159,9 @@ export class DepartmentWorkspace {
     };
   }
 
-  private participantNoticeView(row: ParticipantNoticeRow): ParticipantNoticeView {
+  private participantNoticeView(
+    row: ParticipantNoticeRow
+  ): ParticipantNoticeView {
     return {
       notice_id: row.notice_id,
       kind: row.kind,
@@ -2478,22 +2458,37 @@ export class DepartmentWorkspace {
     ctx: AuthorizationContext,
     row: DepartmentRow
   ): Promise<DepartmentView> {
-    const [manage, publish, moduleConfigure, managerAssign] = await Promise.all(
-      [
-        this.authorizer.can(ctx, CAPABILITY.DEPARTMENT_MANAGE, {
-          departmentId: row.department_id,
-        }),
-        this.authorizer.can(ctx, CAPABILITY.DEPARTMENT_PUBLISH, {
-          departmentId: row.department_id,
-        }),
-        this.authorizer.can(ctx, CAPABILITY.DEPARTMENT_MODULE_CONFIGURE, {
-          departmentId: row.department_id,
-        }),
-        this.authorizer.can(ctx, CAPABILITY.DEPARTMENT_MANAGER_ASSIGN, {
-          departmentId: row.department_id,
-        }),
-      ]
-    );
+    const [
+      manage,
+      publish,
+      moduleConfigure,
+      managerAssign,
+      roleRead,
+      roleAssign,
+      roleRevoke,
+    ] = await Promise.all([
+      this.authorizer.can(ctx, CAPABILITY.DEPARTMENT_MANAGE, {
+        departmentId: row.department_id,
+      }),
+      this.authorizer.can(ctx, CAPABILITY.DEPARTMENT_PUBLISH, {
+        departmentId: row.department_id,
+      }),
+      this.authorizer.can(ctx, CAPABILITY.DEPARTMENT_MODULE_CONFIGURE, {
+        departmentId: row.department_id,
+      }),
+      this.authorizer.can(ctx, CAPABILITY.DEPARTMENT_MANAGER_ASSIGN, {
+        departmentId: row.department_id,
+      }),
+      this.authorizer.can(ctx, CAPABILITY.ROLE_READ, {
+        departmentId: row.department_id,
+      }),
+      this.authorizer.can(ctx, CAPABILITY.ROLE_ASSIGN, {
+        departmentId: row.department_id,
+      }),
+      this.authorizer.can(ctx, CAPABILITY.ROLE_REVOKE, {
+        departmentId: row.department_id,
+      }),
+    ]);
     return {
       ...row,
       capabilities: {
@@ -2501,6 +2496,9 @@ export class DepartmentWorkspace {
         publish,
         module_configure: moduleConfigure,
         manager_assign: managerAssign,
+        role_read: roleRead,
+        role_assign: roleAssign,
+        role_revoke: roleRevoke,
       },
     };
   }
@@ -2513,17 +2511,31 @@ export class DepartmentWorkspace {
       departmentId: row.department_id,
       programId: row.program_id,
     };
-    const [manage, publish, enroll, leaderAssign] = await Promise.all([
+    const [
+      manage,
+      publish,
+      enroll,
+      leaderAssign,
+      roleRead,
+      roleAssign,
+      roleRevoke,
+    ] = await Promise.all([
       this.authorizer.can(ctx, CAPABILITY.PROGRAM_MANAGE, scope),
       this.authorizer.can(ctx, CAPABILITY.PROGRAM_PUBLISH, scope),
       this.authorizer.can(ctx, CAPABILITY.PROGRAM_ENROLL, scope),
       this.authorizer.can(ctx, CAPABILITY.PROGRAM_LEADER_ASSIGN, scope),
+      this.authorizer.can(ctx, CAPABILITY.ROLE_READ, scope),
+      this.authorizer.can(ctx, CAPABILITY.ROLE_ASSIGN, scope),
+      this.authorizer.can(ctx, CAPABILITY.ROLE_REVOKE, scope),
     ]);
     return {
       manage,
       publish,
       enroll,
       leader_assign: leaderAssign,
+      role_read: roleRead,
+      role_assign: roleAssign,
+      role_revoke: roleRevoke,
     };
   }
 
@@ -2638,12 +2650,9 @@ export class DepartmentWorkspace {
       { programId: program.program_id }
     );
     if (operatorScoped) {
-      await this.requireModuleEnabled(
-        program.department_id,
-        MODULE_KEY.EVENTS
-      );
+      await this.requireModuleEnabled(program.department_id, MODULE_KEY.EVENTS);
       const [leaders, participant_summary, rules] = await Promise.all([
-        this.store.listProgramLeaders(program.program_id),
+        this.store.listProgramIdentityAssignments(program.program_id),
         this.store.getEventParticipantSummary(
           event.event_id,
           program.program_id
@@ -2653,7 +2662,9 @@ export class DepartmentWorkspace {
       const exceptions =
         rules.length === 0
           ? []
-          : await this.store.listScheduleExceptions(rules.map((r) => r.rule_id));
+          : await this.store.listScheduleExceptions(
+              rules.map((r) => r.rule_id)
+            );
       const exception =
         (exceptionForEvent(
           event,
@@ -3775,15 +3786,13 @@ export class DepartmentWorkspace {
   }
 
   /**
-   * GET /api/v1/programs/members — Member Directory search (Spec 087 US
-   * 13-15 / ticket 087-04 #321).
+   * GET /api/v1/programs/members — Member Directory search (Spec 087
+   * US 13-15 / ticket 087-04 #321).
    *
-   * Admin/Staff roles resolve church-wide over all Active accounts; a
-   * Department Manager (any role holding active department_managers grants)
-   * resolves only over members with an Active enrollment in a program of one
-   * of their assigned departments. Anyone else is denied (403) — an
-   * unrelated department's enrolled members are never visible. The browser
-   * never sees a scope branch; this projection is the only surface.
+   * Global identity assignments resolve church-wide. Scoped assignments
+   * resolve only over members with an Active enrollment in one of the actor's
+   * exact Department scopes. Anyone else is denied and no unrelated member
+   * data is disclosed.
    */
   async searchManagementMembers(
     ctx: AuthorizationContext,
@@ -3812,7 +3821,7 @@ export class DepartmentWorkspace {
           userId: row.user_id,
           name: row.name,
           phone: row.phone,
-          role: row.role,
+          identities: [],
           status: row.account_status,
           departments: [],
         };
@@ -3828,8 +3837,141 @@ export class DepartmentWorkspace {
           name: row.department_name,
         });
       }
+      if (
+        row.identity_id !== null &&
+        row.identity_label !== null &&
+        row.identity_stable_key !== null &&
+        row.identity_scope_kind !== null &&
+        !member.identities.some(({ id }) => id === row.identity_id)
+      ) {
+        member.identities.push({
+          id: row.identity_id,
+          label: row.identity_label,
+          stableKey: row.identity_stable_key,
+          scopeKind: row.identity_scope_kind,
+          scopeId: row.identity_scope_id,
+        });
+      }
     }
     return [...members.values()];
+  }
+
+  async searchAccountDirectory(
+    ctx: AuthorizationContext,
+    query: string,
+    limit: number,
+    filters: AccountDirectorySearchFilters = {},
+    offset = 0
+  ): Promise<AccountDirectoryView> {
+    await this.ensure(ctx, CAPABILITY.ACCOUNT_DIRECTORY_READ);
+    const [rows, summary, canOpenAccountAccess] = await Promise.all([
+      this.store.searchAccountDirectory(query, limit + 1, filters, offset),
+      this.store.countAccountDirectory(query, filters),
+      this.canOpenAccountAccess(ctx),
+    ]);
+    const accounts = new Map<string, AccountDirectoryMember>();
+    for (const row of rows) {
+      let account = accounts.get(row.user_id);
+      if (!account) {
+        account = {
+          userId: row.user_id,
+          name: row.name,
+          username: row.username,
+          phone: row.phone,
+          identities: [],
+          status: row.account_status,
+          canOpenAccess:
+            canOpenAccountAccess &&
+            row.is_admin !== 1 &&
+            row.user_id !== ctx.actorUserId &&
+            row.account_status === "Active",
+          departments: [],
+        };
+        accounts.set(row.user_id, account);
+      }
+      if (
+        row.department_id !== null &&
+        row.department_name !== null &&
+        !account.departments.some(({ id }) => id === row.department_id)
+      ) {
+        account.departments.push({
+          id: row.department_id,
+          name: row.department_name,
+        });
+      }
+      if (
+        row.identity_id !== null &&
+        row.identity_label !== null &&
+        row.identity_stable_key !== null &&
+        row.identity_scope_kind !== null &&
+        !account.identities.some(({ id }) => id === row.identity_id)
+      ) {
+        account.identities.push({
+          id: row.identity_id,
+          label: row.identity_label,
+          stableKey: row.identity_stable_key,
+          scopeKind: row.identity_scope_kind,
+          scopeId: row.identity_scope_id,
+        });
+      }
+    }
+    const page = [...accounts.values()];
+    const hasNextPage = page.length > limit;
+    return {
+      accounts: page.slice(0, limit),
+      nextCursor: hasNextPage ? String(offset + limit) : null,
+      summary,
+    };
+  }
+
+  async getAccountDirectoryDetail(
+    ctx: AuthorizationContext,
+    userId: string
+  ): Promise<AccountDirectoryMember> {
+    await this.ensure(ctx, CAPABILITY.ACCOUNT_DIRECTORY_READ);
+    const rows = await this.store.getAccountDirectoryAccount(userId);
+    const first = rows[0];
+    if (!first) {
+      throw new WorkspaceNotFoundError("account", userId);
+    }
+    const departments = new Map<string, { id: string; name: string }>();
+    const identities = new Map<string, ManagementMemberIdentity>();
+    for (const row of rows) {
+      if (row.department_id !== null && row.department_name !== null) {
+        departments.set(row.department_id, {
+          id: row.department_id,
+          name: row.department_name,
+        });
+      }
+      if (
+        row.identity_id !== null &&
+        row.identity_label !== null &&
+        row.identity_stable_key !== null &&
+        row.identity_scope_kind !== null
+      ) {
+        identities.set(row.identity_id, {
+          id: row.identity_id,
+          label: row.identity_label,
+          stableKey: row.identity_stable_key,
+          scopeKind: row.identity_scope_kind,
+          scopeId: row.identity_scope_id,
+        });
+      }
+    }
+    return {
+      userId: first.user_id,
+      name: first.name,
+      username: first.username,
+      phone: first.phone,
+      identities: [...identities.values()],
+      status: first.account_status,
+      canOpenAccess:
+        (await this.canOpenAccountAccess(ctx)) &&
+        first.is_admin !== 1 &&
+        first.user_id !== ctx.actorUserId &&
+        first.account_status === "Active",
+      departments: [...departments.values()],
+    };
   }
 
   getEnrollment(
@@ -4497,456 +4639,5 @@ export class DepartmentWorkspace {
       correlationId
     );
     return cancelled;
-  }
-
-  async assignProgramLeader(
-    ctx: AuthorizationContext,
-    programId: string,
-    userId: string,
-    correlationId: string | null
-  ): Promise<ProgramLeaderRow> {
-    await this.requireProgramFor(
-      ctx,
-      programId,
-      CAPABILITY.PROGRAM_LEADER_ASSIGN
-    );
-    if (userId === ctx.actorUserId) {
-      await this.audit(
-        ctx,
-        "PROGRAM_LEADER_GRANT",
-        "program_leader",
-        programId,
-        "DENIED",
-        null,
-        { user_id: userId, reason: "self_delegation" },
-        correlationId
-      );
-      throw new SelfDelegationError(userId);
-    }
-    if (!(await this.store.isAccountActive(userId))) {
-      await this.audit(
-        ctx,
-        "PROGRAM_LEADER_GRANT",
-        "program_leader",
-        programId,
-        "DENIED",
-        null,
-        { user_id: userId, reason: "target_account_not_active" },
-        correlationId
-      );
-      throw new LeaderAccountInactiveError(userId);
-    }
-    const existing = await this.store.findProgramLeader(programId, userId);
-    if (existing?.revoked_at === null) {
-      const outcome =
-        existing.granted_by === ctx.actorUserId ? "DUPLICATE" : "CONFLICT";
-      await this.audit(
-        ctx,
-        "PROGRAM_LEADER_GRANT",
-        "program_leader",
-        programId,
-        outcome,
-        existing,
-        existing,
-        correlationId
-      );
-      if (outcome === "CONFLICT") {
-        throw new ProgramLeaderConflictError(programId, userId);
-      }
-      return existing;
-    }
-    let row: ProgramLeaderRow;
-    try {
-      row = await this.store.assignProgramLeader({
-        program_id: programId,
-        user_id: userId,
-        granted_by: ctx.actorUserId,
-        granted_at: new Date().toISOString(),
-      });
-    } catch (error) {
-      await this.audit(
-        ctx,
-        "PROGRAM_LEADER_GRANT",
-        "program_leader",
-        programId,
-        "FAILED",
-        existing,
-        { user_id: userId, reason: "store_error" },
-        correlationId
-      );
-      throw error;
-    }
-    if (row.granted_by !== ctx.actorUserId || row.revoked_at !== null) {
-      await this.audit(
-        ctx,
-        "PROGRAM_LEADER_GRANT",
-        "program_leader",
-        programId,
-        "CONFLICT",
-        existing,
-        row,
-        correlationId
-      );
-      throw new ProgramLeaderConflictError(programId, userId);
-    }
-    await this.audit(
-      ctx,
-      "PROGRAM_LEADER_GRANT",
-      "program_leader",
-      programId,
-      "SUCCESS",
-      existing,
-      row,
-      correlationId
-    );
-    return row;
-  }
-
-  async revokeProgramLeader(
-    ctx: AuthorizationContext,
-    programId: string,
-    userId: string,
-    correlationId: string | null
-  ): Promise<ProgramLeaderRow | null> {
-    await this.requireProgramFor(
-      ctx,
-      programId,
-      CAPABILITY.PROGRAM_LEADER_ASSIGN
-    );
-    const existing = await this.store.findProgramLeader(programId, userId);
-    if (!existing) {
-      await this.audit(
-        ctx,
-        "PROGRAM_LEADER_REVOKE",
-        "program_leader",
-        programId,
-        "DENIED",
-        null,
-        { user_id: userId, reason: "leader_not_assigned" },
-        correlationId
-      );
-      throw new LeaderNotAssignedError(programId, userId);
-    }
-    if (existing.revoked_at !== null) {
-      const outcome =
-        existing.revoked_by === ctx.actorUserId ? "DUPLICATE" : "CONFLICT";
-      await this.audit(
-        ctx,
-        "PROGRAM_LEADER_REVOKE",
-        "program_leader",
-        programId,
-        outcome,
-        existing,
-        existing,
-        correlationId
-      );
-      if (outcome === "CONFLICT") {
-        throw new ProgramLeaderConflictError(programId, userId);
-      }
-      return existing;
-    }
-    let revoked: ProgramLeaderRow | null;
-    try {
-      revoked = await this.store.revokeProgramLeader({
-        program_id: programId,
-        user_id: userId,
-        revoked_by: ctx.actorUserId,
-        revoked_at: new Date().toISOString(),
-      });
-    } catch (error) {
-      await this.audit(
-        ctx,
-        "PROGRAM_LEADER_REVOKE",
-        "program_leader",
-        programId,
-        "FAILED",
-        existing,
-        { user_id: userId, reason: "store_error" },
-        correlationId
-      );
-      throw error;
-    }
-    if (!revoked) {
-      await this.audit(
-        ctx,
-        "PROGRAM_LEADER_REVOKE",
-        "program_leader",
-        programId,
-        "CONFLICT",
-        existing,
-        null,
-        correlationId
-      );
-      throw new ProgramLeaderConflictError(programId, userId);
-    }
-    if (revoked.revoked_by !== ctx.actorUserId || revoked.revoked_at === null) {
-      await this.audit(
-        ctx,
-        "PROGRAM_LEADER_REVOKE",
-        "program_leader",
-        programId,
-        "CONFLICT",
-        existing,
-        revoked,
-        correlationId
-      );
-      throw new ProgramLeaderConflictError(programId, userId);
-    }
-    await this.audit(
-      ctx,
-      "PROGRAM_LEADER_REVOKE",
-      "program_leader",
-      programId,
-      "SUCCESS",
-      existing,
-      revoked,
-      correlationId
-    );
-    return revoked;
-  }
-
-  async listProgramLeaders(
-    ctx: AuthorizationContext,
-    programId: string
-  ): Promise<ProgramLeaderRow[] | null> {
-    const program = await this.store.findProgramById(programId);
-    if (!program || !(await this.isModuleEnabled(program.department_id))) {
-      return null;
-    }
-    const canView = await this.authorizer.can(ctx, CAPABILITY.PROGRAM_MANAGE, {
-      departmentId: program.department_id,
-      programId: program.program_id,
-    });
-    if (!canView) {
-      return null;
-    }
-    return this.store.listProgramLeaders(programId);
-  }
-  async assignDepartmentManager(
-    ctx: AuthorizationContext,
-    departmentId: string,
-    userId: string,
-    correlationId: string | null
-  ): Promise<DepartmentManagerRow> {
-    const department = await this.store.findDepartmentById(departmentId);
-    if (!department) {
-      throw new AuthorizationDeniedError(CAPABILITY.DEPARTMENT_MANAGER_ASSIGN);
-    }
-    await this.ensure(ctx, CAPABILITY.DEPARTMENT_MANAGER_ASSIGN, {
-      departmentId,
-    });
-    if (userId === ctx.actorUserId) {
-      await this.audit(
-        ctx,
-        "DEPARTMENT_MANAGER_GRANT",
-        "department_manager",
-        `${departmentId}:${userId}`,
-        "DENIED",
-        null,
-        {
-          department_id: departmentId,
-          user_id: userId,
-          reason: "self_assignment",
-        },
-        correlationId
-      );
-      throw new SelfDepartmentManagerError(userId);
-    }
-    if (!(await this.store.isAccountActive(userId))) {
-      await this.audit(
-        ctx,
-        "DEPARTMENT_MANAGER_GRANT",
-        "department_manager",
-        `${departmentId}:${userId}`,
-        "DENIED",
-        null,
-        {
-          department_id: departmentId,
-          user_id: userId,
-          reason: "target_account_not_active",
-        },
-        correlationId
-      );
-      throw new LeaderAccountInactiveError(userId, "Department Manager");
-    }
-    const existing = await this.store.findDepartmentManager(
-      departmentId,
-      userId
-    );
-    if (existing?.revoked_at === null) {
-      const outcome =
-        existing.granted_by === ctx.actorUserId ? "DUPLICATE" : "CONFLICT";
-      await this.audit(
-        ctx,
-        "DEPARTMENT_MANAGER_GRANT",
-        "department_manager",
-        `${departmentId}:${userId}`,
-        outcome,
-        existing,
-        existing,
-        correlationId
-      );
-      if (outcome === "CONFLICT") {
-        throw new DepartmentManagerConflictError(departmentId, userId);
-      }
-      return existing;
-    }
-    let row: DepartmentManagerRow;
-    try {
-      row = await this.store.assignDepartmentManager({
-        department_id: departmentId,
-        user_id: userId,
-        granted_by: ctx.actorUserId,
-        granted_at: new Date().toISOString(),
-      });
-    } catch (error) {
-      await this.audit(
-        ctx,
-        "DEPARTMENT_MANAGER_GRANT",
-        "department_manager",
-        `${departmentId}:${userId}`,
-        "FAILED",
-        existing,
-        { user_id: userId, reason: "store_error" },
-        correlationId
-      );
-      throw error;
-    }
-    if (row.granted_by !== ctx.actorUserId || row.revoked_at !== null) {
-      await this.audit(
-        ctx,
-        "DEPARTMENT_MANAGER_GRANT",
-        "department_manager",
-        `${departmentId}:${userId}`,
-        "CONFLICT",
-        existing,
-        row,
-        correlationId
-      );
-      throw new DepartmentManagerConflictError(departmentId, userId);
-    }
-    await this.audit(
-      ctx,
-      "DEPARTMENT_MANAGER_GRANT",
-      "department_manager",
-      `${departmentId}:${userId}`,
-      "SUCCESS",
-      existing,
-      row,
-      correlationId
-    );
-    return row;
-  }
-
-  async revokeDepartmentManager(
-    ctx: AuthorizationContext,
-    departmentId: string,
-    userId: string,
-    correlationId: string | null
-  ): Promise<DepartmentManagerRow> {
-    const department = await this.store.findDepartmentById(departmentId);
-    if (!department) {
-      throw new AuthorizationDeniedError(CAPABILITY.DEPARTMENT_MANAGER_ASSIGN);
-    }
-    await this.ensure(ctx, CAPABILITY.DEPARTMENT_MANAGER_ASSIGN, {
-      departmentId,
-    });
-    const existing = await this.store.findDepartmentManager(
-      departmentId,
-      userId
-    );
-    if (!existing) {
-      await this.audit(
-        ctx,
-        "DEPARTMENT_MANAGER_REVOKE",
-        "department_manager",
-        `${departmentId}:${userId}`,
-        "DENIED",
-        null,
-        {
-          department_id: departmentId,
-          user_id: userId,
-          reason: "manager_not_assigned",
-        },
-        correlationId
-      );
-      throw new DepartmentManagerNotAssignedError(departmentId, userId);
-    }
-    if (existing.revoked_at !== null) {
-      const outcome =
-        existing.revoked_by === ctx.actorUserId ? "DUPLICATE" : "CONFLICT";
-      await this.audit(
-        ctx,
-        "DEPARTMENT_MANAGER_REVOKE",
-        "department_manager",
-        `${departmentId}:${userId}`,
-        outcome,
-        existing,
-        existing,
-        correlationId
-      );
-      if (outcome === "CONFLICT") {
-        throw new DepartmentManagerConflictError(departmentId, userId);
-      }
-      return existing;
-    }
-    let row: DepartmentManagerRow | null;
-    try {
-      row = await this.store.revokeDepartmentManager({
-        department_id: departmentId,
-        user_id: userId,
-        revoked_by: ctx.actorUserId,
-        revoked_at: new Date().toISOString(),
-      });
-    } catch (error) {
-      await this.audit(
-        ctx,
-        "DEPARTMENT_MANAGER_REVOKE",
-        "department_manager",
-        `${departmentId}:${userId}`,
-        "FAILED",
-        existing,
-        { user_id: userId, reason: "store_error" },
-        correlationId
-      );
-      throw error;
-    }
-    if (!row) {
-      await this.audit(
-        ctx,
-        "DEPARTMENT_MANAGER_REVOKE",
-        "department_manager",
-        `${departmentId}:${userId}`,
-        "CONFLICT",
-        existing,
-        null,
-        correlationId
-      );
-      throw new DepartmentManagerConflictError(departmentId, userId);
-    }
-    if (row.revoked_by !== ctx.actorUserId || row.revoked_at === null) {
-      await this.audit(
-        ctx,
-        "DEPARTMENT_MANAGER_REVOKE",
-        "department_manager",
-        `${departmentId}:${userId}`,
-        "CONFLICT",
-        existing,
-        row,
-        correlationId
-      );
-      throw new DepartmentManagerConflictError(departmentId, userId);
-    }
-    await this.audit(
-      ctx,
-      "DEPARTMENT_MANAGER_REVOKE",
-      "department_manager",
-      `${departmentId}:${userId}`,
-      "SUCCESS",
-      existing,
-      row,
-      correlationId
-    );
-    return row;
   }
 }

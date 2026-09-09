@@ -1,11 +1,4 @@
-/**
- * EFCC Programs domain — capability vocabulary (PRG-01 #197).
- *
- * Capabilities are coarse-grained domain verbs. The authorization seam
- * (capability-authorizer.ts) resolves whether an actor's effective policy
- * grants a capability for a given scope. No capability is implied by another;
- * the domain module composes them when an operation needs multiple powers.
- */
+import type { Capability as IdentityCapability } from "../identity/capability-catalog";
 
 export const DEPARTMENT_CAPABILITY = {
   MANAGE: "department.manage",
@@ -30,36 +23,30 @@ export const CAPABILITY = {
   PROGRAM_PUBLISH: PROGRAM_CAPABILITY.PUBLISH,
   PROGRAM_ENROLL: PROGRAM_CAPABILITY.ENROLL,
   PROGRAM_LEADER_ASSIGN: PROGRAM_CAPABILITY.LEADER_ASSIGN,
-  // Home Content CMS publish power (087-05). Role-policy seeded for Admin in
-  // migration 0010 (`role_capabilities`); not scope-expandable via
-  // department/program grants (Home is church-wide, not department-scoped).
-  HOME_PUBLISH: "home.publish",
-  // Account Permissions matrix read (087-03 #320). Role-policy seeded for
-  // Admin + Staff in migration 0013; Department Manager is an effective
-  // scoped profile with no role row, so DM-only actors are denied server-side.
+  ROLE_READ: "role.read",
+  ROLE_ASSIGN: "role.assign",
+  ROLE_REVOKE: "role.revoke",
   ACCOUNT_PERMISSIONS_READ: "account.permissions.read",
-} as const;
+  ACCOUNT_DIRECTORY_READ: "account.directory.read",
+  REGISTRATION_APPROVAL_MANAGE: "registration.approval.manage",
+  ACCOUNT_PERMISSIONS_WRITE: "account.permissions.write",
+  HOME_PUBLISH: "home.publish",
+} as const satisfies Record<string, IdentityCapability>;
 
-export type Capability = (typeof CAPABILITY)[keyof typeof CAPABILITY];
+export type Capability = IdentityCapability;
 
-/**
- * Department-level capability flags as served to the client and used by the
- * domain module. `manager_assign` is optional because only management
- * projections carry it.
- */
 export interface DepartmentCapabilities {
   manage: boolean;
   publish: boolean;
   module_configure: boolean;
   manager_assign?: boolean;
+  /** Whether the caller may enter the scoped Account Access destination. */
+  role_read?: boolean;
+  role_assign?: boolean;
+  role_revoke?: boolean;
 }
 
-/**
- * Canonical department-level management scope rule (shared by the server
- * module and the client projections). Any department capability exposes the
- * department's Programs in the management directory; keep this in lockstep
- * with the scope the server uses to serve management rows.
- */
+/** A Department capability exposes its Programs in the management directory. */
 export function hasDepartmentManagementScope(department: {
   capabilities: DepartmentCapabilities;
 }): boolean {
@@ -71,7 +58,6 @@ export function hasDepartmentManagementScope(department: {
   );
 }
 
-/** Approved product modules that may be enabled per Department. */
 export const MODULE_KEY = {
   PROGRAM_CATALOG: "program_catalog",
   ENROLLMENT: "enrollment",

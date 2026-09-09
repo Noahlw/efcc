@@ -2,22 +2,24 @@
 #
 # The rebuilt login boundary is a Cloudflare Worker backed by D1. This
 # workflow no longer drives the retired Apps Script /exec role-nav suite or
-# decodes Google storage-state cookies. Pull requests run the deterministic
-# workerd contract; an operator can run the deployed Worker smoke manually
-# after provisioning an isolated D1 database and seeded acceptance accounts.
+# decodes Google storage-state cookies. It is manual-only: an operator
+# dispatches it to run the workerd D1 auth contract or the deployed Worker
+# smoke after provisioning an isolated D1 database and seeded acceptance
+# accounts. Fast CI is the single automatic gate.
 #
 # The browser UI still uses the legacy /api/v1/rpc surface in this branch, so
 # the deployed job targets the Worker auth API directly with Playwright's
 # request context. It proves the actual cookie boundary without pretending the
 # legacy Apps Script iframe is the new login implementation.
 
+# Manual only (Fast CI is the single automatic gate): neither job runs on
+# push or pull request, and neither is a required merge check. An operator
+# dispatches this workflow to run the workerd D1 auth contract or the
+# isolated deployed smoke; both jobs keep their fail-closed behavior.
+
 name: D1 auth acceptance gate
 
 on:
-  push:
-    branches: [main, master]
-  pull_request:
-    branches: [main, master, "feat/**"]
   workflow_dispatch:
 
 permissions:

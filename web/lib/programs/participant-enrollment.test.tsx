@@ -7,7 +7,7 @@ import {
   within,
 } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import type { ComponentProps } from "react";
+import { useState, type ComponentProps } from "react";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
 import { RpcError } from "@/lib/api";
@@ -17,8 +17,6 @@ import type {
   ParticipantEnrollmentSnapshot,
   ProgramSummary,
 } from "@/lib/programs/program-api";
-
-import styles from "@/app/programs/programs.module.css";
 
 const mocks = vi.hoisted(() => ({
   cancelEnrollment: vi.fn(),
@@ -152,12 +150,229 @@ describe("PUI-04 participant Enrollment", () => {
       screen.getByRole("button", { name: COPY.programs.enroll })
     );
     await waitFor(() => {
-      expect(mocks.submitEnrollmentRequest).toHaveBeenCalledWith("program-1");
+      expect(mocks.submitEnrollmentRequest).toHaveBeenCalledWith(
+        "program-1",
+        expect.any(String)
+      );
       expect(onRefresh).toHaveBeenCalledOnce();
       expect(
         screen.getByText(COPY.programs.requestSubmitted)
       ).toBeInTheDocument();
     });
+  });
+  test("retries a failed mutation with the same idempotency key", async () => {
+    const user = userEvent.setup();
+    const onRefresh = vi.fn<() => Promise<void>>().mockResolvedValue();
+    mocks.submitEnrollmentRequest
+      .mockRejectedValueOnce(new Error("response lost"))
+      .mockResolvedValueOnce({});
+    renderEnrollment({ onRefresh });
+
+    await user.click(
+      screen.getByRole("button", { name: COPY.programs.enroll })
+    );
+    await user.click(
+      await screen.findByRole("button", { name: COPY.error.retry })
+    );
+
+    await waitFor(() => {
+      expect(mocks.submitEnrollmentRequest).toHaveBeenCalledTimes(2);
+      expect(mocks.submitEnrollmentRequest.mock.calls[1]?.[1]).toBe(
+        mocks.submitEnrollmentRequest.mock.calls[0]?.[1]
+      );
+      expect(onRefresh).toHaveBeenCalledTimes(2);
+      expect(
+        screen.getByText(COPY.programs.requestSubmitted)
+      ).toBeInTheDocument();
+    });
+  });
+
+  test("refresh failure after a committed mutation retries only the read", async () => {
+    const user = userEvent.setup();
+    const onRefresh = vi
+      .fn<() => Promise<void>>()
+      .mockRejectedValueOnce(new Error("read failed"))
+      .mockResolvedValueOnce();
+    renderEnrollment({ onRefresh });
+
+    await user.click(
+      screen.getByRole("button", { name: COPY.programs.enroll })
+    );
+    await waitFor(() => {
+      expect(mocks.submitEnrollmentRequest).toHaveBeenCalledOnce();
+      expect(
+        screen.getByRole("button", { name: COPY.error.retry })
+      ).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByRole("button", { name: COPY.error.retry }));
+    await waitFor(() => {
+      expect(onRefresh).toHaveBeenCalledTimes(2);
+      expect(mocks.submitEnrollmentRequest).toHaveBeenCalledOnce();
+      expect(
+        screen.queryByRole("button", { name: COPY.error.retry })
+      ).not.toBeInTheDocument();
+      expect(
+        screen.getByText(COPY.programs.requestSubmitted)
+      ).toBeInTheDocument();
+    });
+  });
+  test("shows success feedback when a committed mutation loses its response", async () => {
+    const user = userEvent.setup();
+    let setCurrentEnrollment:
+      | ((value: ParticipantEnrollmentSnapshot) => void)
+      | undefined;
+    const onRefresh = vi.fn<() => Promise<void>>(async () => {
+      setCurrentEnrollment?.(pendingSnapshot());
+    });
+    mocks.submitEnrollmentRequest.mockRejectedValueOnce(
+      new Error("response lost after commit")
+    );
+    const ReconciledEnrollment = () => {
+      const [enrollment, setEnrollment] = useState(snapshot());
+      setCurrentEnrollment = setEnrollment;
+      return (
+        <ParticipantEnrollment
+          program={program()}
+          enrollment={enrollment}
+          enrollmentAccess="Eligible"
+          scheduleRules={[]}
+          events={[]}
+          onRefresh={onRefresh}
+        />
+      );
+    };
+    render(<ReconciledEnrollment />);
+
+    await user.click(
+      screen.getByRole("button", { name: COPY.programs.enroll })
+    );
+    await waitFor(() => {
+      expect(onRefresh).toHaveBeenCalledOnce();
+      expect(
+        screen.getByText(COPY.programs.requestSubmitted)
+      ).toBeInTheDocument();
+    });
+    expect(
+      screen.queryByRole("button", { name: COPY.error.retry })
+    ).not.toBeInTheDocument();
+  });
+  test("reconciles a duplicate response after an ambiguous request retry", async () => {
+    const user = userEvent.setup();
+    let setCurrentEnrollment:
+      | ((value: ParticipantEnrollmentSnapshot) => void)
+      | undefined;
+    let refreshCount = 0;
+    const onRefresh = vi.fn<() => Promise<void>>(async () => {
+      refreshCount += 1;
+      if (refreshCount === 1) {
+        throw new Error("read failed");
+      }
+      setCurrentEnrollment?.(pendingSnapshot());
+    });
+    mocks.submitEnrollmentRequest
+      .mockRejectedValueOnce(new Error("response lost after commit"))
+      .mockRejectedValueOnce(
+        new RpcError({
+          code: "ENROLLMENT_DUPLICATE",
+          status: 409,
+          detail: COPY.programs.enrollmentDuplicate,
+        })
+      );
+    const ReconciledEnrollment = () => {
+      const [enrollment, setEnrollment] = useState(snapshot());
+      setCurrentEnrollment = setEnrollment;
+      return (
+        <ParticipantEnrollment
+          program={program()}
+          enrollment={enrollment}
+          enrollmentAccess="Eligible"
+          scheduleRules={[]}
+          events={[]}
+          onRefresh={onRefresh}
+        />
+      );
+    };
+    render(<ReconciledEnrollment />);
+
+    await user.click(
+      screen.getByRole("button", { name: COPY.programs.enroll })
+    );
+    await user.click(
+      await screen.findByRole("button", { name: COPY.error.retry })
+    );
+    await waitFor(() => {
+      expect(mocks.submitEnrollmentRequest).toHaveBeenCalledTimes(2);
+      expect(onRefresh).toHaveBeenCalledTimes(2);
+      expect(
+        screen.getByText(COPY.programs.requestSubmitted)
+      ).toBeInTheDocument();
+    });
+  });
+  test("does not mistake an old approved request for a re-enrollment", async () => {
+    const user = userEvent.setup();
+    const onRefresh = vi.fn<() => Promise<void>>().mockResolvedValue();
+    mocks.submitEnrollmentRequest.mockRejectedValueOnce(
+      new Error("response lost")
+    );
+    renderEnrollment({
+      enrollment: snapshot({
+        requests: [
+          {
+            request_id: "request-old",
+            status: "Approved",
+            submitted_at: "2099-03-01T00:00:00.000Z",
+            decided_at: "2099-03-02T00:00:00.000Z",
+          },
+        ],
+        enrollments: [
+          {
+            enrollment_id: "enrollment-old",
+            status: "Cancelled",
+            enrolled_at: "2099-03-02T00:00:00.000Z",
+            cancelled_at: "2099-03-03T00:00:00.000Z",
+          },
+        ],
+      }),
+      onRefresh,
+    });
+
+    await user.click(
+      screen.getByRole("button", { name: COPY.programs.reEnroll })
+    );
+    await expect(
+      screen.findByText(COPY.error.networkError)
+    ).resolves.toBeInTheDocument();
+    expect(onRefresh).toHaveBeenCalledOnce();
+    expect(
+      screen.getByRole("button", { name: COPY.error.retry })
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText(COPY.programs.requestSubmitted)
+    ).not.toBeInTheDocument();
+  });
+
+  test("keeps a definitive enrollment conflict visible without reconciling", async () => {
+    const user = userEvent.setup();
+    const { onRefresh } = renderEnrollment();
+    mocks.submitEnrollmentRequest.mockRejectedValueOnce(
+      new RpcError({
+        code: "ENROLLMENT_DUPLICATE",
+        status: 409,
+        detail: COPY.programs.enrollmentDuplicate,
+      })
+    );
+
+    await user.click(
+      screen.getByRole("button", { name: COPY.programs.enroll })
+    );
+    await expect(
+      screen.findByText(COPY.programs.enrollmentDuplicate)
+    ).resolves.toBeInTheDocument();
+    expect(onRefresh).not.toHaveBeenCalled();
+    expect(
+      screen.getByRole("button", { name: COPY.error.retry })
+    ).toBeInTheDocument();
   });
 
   test("pending member confirms the withdraw dialog to cancel the request", async () => {
@@ -173,14 +388,19 @@ describe("PUI-04 participant Enrollment", () => {
     expect(
       screen.getByRole("button", { name: COPY.programs.withdrawRequest })
         .parentElement
-    ).toHaveClass(styles.actionBarCard);
+    ).toHaveAttribute("data-enrollment-action-surface");
     await user.click(
       screen.getByRole("button", { name: COPY.programs.withdrawRequest })
     );
 
-    const dialog = screen.getByRole("dialog", {
+    const dialog = screen.getByRole("alertdialog", {
       name: COPY.programs.withdrawConfirmTitle,
     });
+    expect(
+      within(dialog).getByRole("button", {
+        name: COPY.programs.withdrawConfirmAccept,
+      })
+    ).toHaveAttribute("data-tone", "caution");
     expect(
       within(dialog).getByText(COPY.programs.withdrawConfirmBody)
     ).toBeInTheDocument();
@@ -193,7 +413,8 @@ describe("PUI-04 participant Enrollment", () => {
     await waitFor(() => {
       expect(mocks.withdrawEnrollmentRequest).toHaveBeenCalledWith(
         "program-1",
-        "request-1"
+        "request-1",
+        expect.any(String)
       );
       expect(onRefresh).toHaveBeenCalledOnce();
       expect(
@@ -212,7 +433,7 @@ describe("PUI-04 participant Enrollment", () => {
     await user.click(
       screen.getByRole("button", { name: COPY.programs.withdrawRequest })
     );
-    const dialog = screen.getByRole("dialog", {
+    const dialog = screen.getByRole("alertdialog", {
       name: COPY.programs.withdrawConfirmTitle,
     });
     await user.click(
@@ -220,7 +441,9 @@ describe("PUI-04 participant Enrollment", () => {
     );
 
     expect(
-      screen.queryByRole("dialog", { name: COPY.programs.withdrawConfirmTitle })
+      screen.queryByRole("alertdialog", {
+        name: COPY.programs.withdrawConfirmTitle,
+      })
     ).not.toBeInTheDocument();
     expect(mocks.withdrawEnrollmentRequest).not.toHaveBeenCalled();
     expect(onRefresh).not.toHaveBeenCalled();
@@ -248,12 +471,12 @@ describe("PUI-04 participant Enrollment", () => {
     expect(
       screen.getByRole("button", { name: COPY.programs.cancelEnrollment })
         .parentElement
-    ).toHaveClass(styles.actionBarCard);
+    ).toHaveAttribute("data-enrollment-action-surface");
     await user.click(
       screen.getByRole("button", { name: COPY.programs.cancelEnrollment })
     );
 
-    const dialog = screen.getByRole("dialog", {
+    const dialog = screen.getByRole("alertdialog", {
       name: COPY.programs.cancelConfirmTitle,
     });
     expect(
@@ -268,7 +491,8 @@ describe("PUI-04 participant Enrollment", () => {
     await waitFor(() => {
       expect(mocks.cancelEnrollment).toHaveBeenCalledWith(
         "program-1",
-        "enrollment-1"
+        "enrollment-1",
+        expect.any(String)
       );
       expect(onRefresh).toHaveBeenCalledOnce();
       expect(
@@ -287,7 +511,7 @@ describe("PUI-04 participant Enrollment", () => {
     await user.click(
       screen.getByRole("button", { name: COPY.programs.cancelEnrollment })
     );
-    const dialog = screen.getByRole("dialog", {
+    const dialog = screen.getByRole("alertdialog", {
       name: COPY.programs.cancelConfirmTitle,
     });
     await user.click(
@@ -330,7 +554,10 @@ describe("PUI-04 participant Enrollment", () => {
       screen.getByRole("button", { name: COPY.programs.reEnroll })
     );
     await waitFor(() => {
-      expect(mocks.submitEnrollmentRequest).toHaveBeenCalledWith("program-1");
+      expect(mocks.submitEnrollmentRequest).toHaveBeenCalledWith(
+        "program-1",
+        expect.any(String)
+      );
       expect(onRefresh).toHaveBeenCalledOnce();
       expect(
         screen.getByText(COPY.programs.requestSubmitted)
@@ -369,7 +596,10 @@ describe("PUI-04 participant Enrollment", () => {
       screen.getByRole("button", { name: COPY.programs.reEnroll })
     );
     await waitFor(() => {
-      expect(mocks.submitEnrollmentRequest).toHaveBeenCalledWith("program-1");
+      expect(mocks.submitEnrollmentRequest).toHaveBeenCalledWith(
+        "program-1",
+        expect.any(String)
+      );
       expect(onRefresh).toHaveBeenCalledOnce();
       expect(
         screen.getByText(COPY.programs.requestSubmitted)
@@ -400,7 +630,10 @@ describe("PUI-04 participant Enrollment", () => {
       screen.getByRole("button", { name: COPY.programs.reEnroll })
     );
     await waitFor(() => {
-      expect(mocks.submitEnrollmentRequest).toHaveBeenCalledWith("program-1");
+      expect(mocks.submitEnrollmentRequest).toHaveBeenCalledWith(
+        "program-1",
+        expect.any(String)
+      );
       expect(onRefresh).toHaveBeenCalledOnce();
       expect(
         screen.getByText(COPY.programs.requestSubmitted)
@@ -485,13 +718,17 @@ describe("PUI-04 participant Enrollment", () => {
     expect(
       screen.getByRole("button", { name: COPY.programs.enroll })
     ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: COPY.error.retry })
+    ).toBeInTheDocument();
 
     setOnline(true);
-    await user.click(
-      screen.getByRole("button", { name: COPY.programs.enroll })
-    );
+    await user.click(screen.getByRole("button", { name: COPY.error.retry }));
     await waitFor(() => {
-      expect(mocks.submitEnrollmentRequest).toHaveBeenCalledWith("program-1");
+      expect(mocks.submitEnrollmentRequest).toHaveBeenCalledWith(
+        "program-1",
+        expect.any(String)
+      );
       expect(onRefresh).toHaveBeenCalledOnce();
       expect(
         screen.getByText(COPY.programs.requestSubmitted)
@@ -499,7 +736,50 @@ describe("PUI-04 participant Enrollment", () => {
     });
   });
 
-  test("recovers from duplicate conflict with centralized ProblemDetails copy", async () => {
+  test("offline pending withdrawal exposes a localized exact-mutation retry", async () => {
+    const user = userEvent.setup();
+    const { onRefresh } = renderEnrollment({
+      enrollment: pendingSnapshot(),
+      scheduleRules: [],
+    });
+
+    setOnline(false);
+    await user.click(
+      screen.getByRole("button", { name: COPY.programs.withdrawRequest })
+    );
+
+    expect(mocks.withdrawEnrollmentRequest).not.toHaveBeenCalled();
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      COPY.programs.enrollmentOfflineError
+    );
+    expect(
+      screen.getByRole("button", { name: COPY.error.retry })
+    ).toBeInTheDocument();
+    expect(onRefresh).not.toHaveBeenCalled();
+
+    setOnline(true);
+    await user.click(screen.getByRole("button", { name: COPY.error.retry }));
+    const dialog = screen.getByRole("alertdialog", {
+      name: COPY.programs.withdrawConfirmTitle,
+    });
+    expect(mocks.withdrawEnrollmentRequest).not.toHaveBeenCalled();
+    await user.click(
+      within(dialog).getByRole("button", {
+        name: COPY.programs.withdrawConfirmAccept,
+      })
+    );
+    await waitFor(() => {
+      expect(mocks.withdrawEnrollmentRequest).toHaveBeenCalledOnce();
+      expect(mocks.withdrawEnrollmentRequest).toHaveBeenCalledWith(
+        "program-1",
+        "request-1",
+        expect.any(String)
+      );
+      expect(onRefresh).toHaveBeenCalledOnce();
+    });
+  });
+
+  test("keeps definitive duplicate conflicts visible without reconciliation", async () => {
     const user = userEvent.setup();
     const onRefresh = vi.fn<() => Promise<void>>().mockResolvedValue();
     mocks.submitEnrollmentRequest.mockRejectedValue(
@@ -514,7 +794,7 @@ describe("PUI-04 participant Enrollment", () => {
       expect(screen.getByRole("alert")).toHaveTextContent(
         COPY.programs.enrollmentDuplicate
       );
-      expect(onRefresh).toHaveBeenCalledOnce();
+      expect(onRefresh).not.toHaveBeenCalled();
     });
   });
 

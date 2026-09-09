@@ -3,8 +3,6 @@
 import { AttendancePanel } from "@/lib/attendance-panel";
 import { LANDING } from "@/lib/copy";
 
-import styles from "./guest-check-in.module.css";
-
 /** Squar-cut seal mark (恩) — same interim brand mark as the login surface. */
 const SealMark = ({ size = 28 }: { size?: number }) => (
   <svg
@@ -46,14 +44,18 @@ const SealMark = ({ size = 28 }: { size?: number }) => (
  * church itself, not a bare form.
  */
 const GuestCheckInPage = () => (
-  <div className={styles.page}>
-    <header className={styles.header}>
-      <a className={styles.brand} href="/" aria-label={LANDING.homeLabel}>
+  <div className="[--seal:var(--accent)] min-h-screen flex flex-col bg-[var(--surface)] text-[var(--ink)] font-sans antialiased">
+    <header className="flex items-center p-[1rem_clamp(1.25rem,4vw,2.5rem)] border-b border-[var(--line)] bg-[var(--surface-raised)]">
+      <a
+        className="inline-flex items-center gap-[0.625rem] min-h-[44px] text-[var(--ink)] font-extrabold text-base tracking-[0.01em] no-underline focus-visible:outline focus-visible:outline-3 focus-visible:outline-[var(--focus)] focus-visible:outline-offset-2 focus-visible:rounded-[4px] [&>svg]:rounded-[6px]"
+        href="/"
+        aria-label={LANDING.homeLabel}
+      >
         <SealMark />
         <span>{LANDING.brandFull}</span>
       </a>
     </header>
-    <main>
+    <main className="w-[min(100%,480px)] mx-auto min-[800px]:pt-12">
       <AttendancePanel />
     </main>
   </div>

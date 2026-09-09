@@ -3,6 +3,11 @@
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 
+import { Alert } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Skeleton } from "@/components/ui/skeleton";
 import { RpcError } from "@/lib/api";
 import { COPY, errorMessage } from "@/lib/copy";
 import {
@@ -21,7 +26,7 @@ import type {
   EventDetail as EventDetailData,
   EventType,
   ProgramEvent,
-  ProgramLeader,
+  ProgramIdentityAssignment,
 } from "@/lib/programs/program-api";
 import {
   HK_UTC_OFFSET_MINUTES,
@@ -31,7 +36,91 @@ import {
 import { buildProgramsHref } from "./programs-intent";
 import type { ProgramsOrigin } from "./programs-intent";
 
-import styles from "@/app/programs/programs.module.css";
+const styles = {
+  programDetailFactIcon:
+    "size-5 shrink-0 fill-none stroke-current stroke-[1.8] [stroke-linecap:round] [stroke-linejoin:round]",
+  workspaceTask: "grid min-w-0 gap-4",
+  boundaryTitle:
+    "m-0 min-w-0 wrap-anywhere text-xl font-extrabold leading-tight tracking-[-0.02em] outline-none focus-visible:ring-3 focus-visible:ring-[var(--focus)]",
+  panelError:
+    "grid min-w-0 gap-2 border-[var(--error-border)] bg-[var(--error-surface)] text-[var(--error)]",
+  programDetailActions: "flex min-w-0 flex-wrap gap-3",
+  retry:
+    "h-auto min-h-11 min-w-11 w-fit whitespace-normal rounded-lg border border-[var(--line-strong)] bg-transparent px-4 py-2 text-[var(--ink)] hover:bg-[var(--surface)]",
+  secondaryButton:
+    "h-auto min-h-11 min-w-11 w-fit whitespace-normal rounded-lg border border-[var(--line-strong)] bg-transparent px-4 py-2 text-[var(--ink)] hover:bg-[var(--surface)]",
+  programDetail:
+    "grid min-w-0 gap-3 pb-[calc(6rem+env(safe-area-inset-bottom,0px))] text-[var(--ink)]",
+  programDetailBack:
+    "inline-flex min-h-11 min-w-11 w-fit items-center gap-2 rounded-lg border border-transparent px-3 py-2 text-[var(--ink-muted)] whitespace-normal hover:border-[var(--line)] hover:bg-[var(--surface)] hover:text-[var(--ink)]",
+  programDetailHeader: "grid min-w-0 gap-2 border-b border-[var(--line)] pb-3",
+  directoryStatus: "shrink-0 whitespace-normal",
+  directoryStatusSuccess:
+    "border-[var(--success-border)] bg-[var(--success-surface)] text-[var(--success)]",
+  programDetailEyebrow:
+    "m-0 min-w-0 wrap-anywhere text-sm font-bold text-[var(--ink-muted)]",
+  programDetailInfoCard:
+    "grid min-w-0 gap-2 rounded-[var(--radius-md)] bg-[var(--surface-raised)] p-4 shadow-[0_1px_3px_color-mix(in_srgb,var(--ink)_6%,transparent)]",
+  programDetailFactRow:
+    "m-0 flex min-w-0 items-start gap-3 wrap-anywhere leading-[1.6]",
+  programDetailFactTime: "font-semibold",
+  programDetailSection: "grid min-w-0 gap-3",
+  programDetailHeading:
+    "m-0 min-w-0 wrap-anywhere text-base font-extrabold leading-6",
+  programDetailDescription:
+    "m-0 min-w-0 max-w-[65ch] wrap-anywhere leading-[1.6] text-[var(--ink-muted)]",
+  exceptionBadge:
+    "shrink-0 whitespace-normal border-[var(--pending-border)] bg-[var(--pending-surface)] text-[var(--pending)]",
+  actionBarCard:
+    "mt-3 grid min-w-0 gap-2 rounded-[var(--radius-md)] bg-[var(--surface-raised)] p-4 shadow-[0_1px_3px_color-mix(in_srgb,var(--ink)_6%,transparent)]",
+  actionBarButton:
+    "h-auto min-h-11 w-full justify-center rounded-lg bg-[var(--accent)] px-4 py-2 text-center text-white whitespace-normal hover:bg-[var(--accent-deep)]",
+  actionBarSecondaryButton:
+    "h-auto min-h-11 w-full justify-center rounded-lg border border-[var(--line-strong)] bg-transparent px-4 py-2 text-center text-[var(--ink)] whitespace-normal hover:bg-[var(--surface)]",
+  panelNotice:
+    "flex min-w-0 flex-wrap items-center gap-3 rounded-lg border border-[var(--success-border)] bg-[var(--success-surface)] p-3 text-[var(--ink)]",
+  successOutline:
+    "h-auto min-h-11 min-w-11 w-fit whitespace-normal rounded-lg border border-[var(--success-border)] bg-transparent px-4 py-2 text-[var(--success)] hover:bg-[var(--success-surface)]",
+  workspaceHeading:
+    "m-0 min-w-0 wrap-anywhere text-lg font-extrabold leading-6 tracking-[-0.02em]",
+  workspaceEventSummary:
+    "flex min-w-0 flex-wrap items-center gap-2 wrap-anywhere text-sm leading-6 text-[var(--ink-muted)]",
+  eventDate: "min-w-0 wrap-anywhere",
+  eventSource: "shrink-0 whitespace-normal",
+  eventCancelled:
+    "border-[var(--error-border)] bg-[var(--error-surface)] text-[var(--error)]",
+  eventActive:
+    "border-[var(--success-border)] bg-[var(--success-surface)] text-[var(--success)]",
+  eventReason:
+    "m-0 min-w-0 wrap-anywhere text-sm leading-6 text-[var(--error)]",
+  workspaceFacts:
+    "grid min-w-0 gap-3 rounded-lg border border-[var(--line)] bg-[var(--surface)] p-4 sm:grid-cols-2",
+  workspaceSection: "grid min-w-0 gap-3",
+  workspaceSubheading:
+    "m-0 min-w-0 wrap-anywhere text-base font-bold leading-6",
+  emptyLine:
+    "m-0 min-w-0 wrap-anywhere text-sm leading-6 text-[var(--ink-muted)]",
+  ruleList: "m-0 grid min-w-0 list-none gap-2 p-0",
+  ruleRow:
+    "flex min-w-0 flex-wrap items-center gap-2 rounded-lg border border-[var(--line)] bg-[var(--surface)] p-3 [overflow-wrap:anywhere]",
+  confirmation:
+    "grid min-w-0 gap-2 rounded-lg border border-[var(--pending-border)] bg-[var(--pending-surface)] p-4 [overflow-wrap:anywhere]",
+  confirmRow: "flex min-w-0 flex-wrap gap-2",
+  dangerButton:
+    "h-auto min-h-11 min-w-11 w-fit whitespace-normal rounded-lg bg-[var(--error)] px-4 py-2 text-white hover:bg-[var(--accent-deep)]",
+  dangerOutline:
+    "h-auto min-h-11 min-w-11 w-fit whitespace-normal rounded-lg border border-[var(--error-border)] bg-transparent px-4 py-2 text-[var(--error)] hover:bg-[var(--error-surface)]",
+  ruleForm: "grid min-w-0 gap-3",
+  ruleField:
+    "grid min-w-0 gap-1.5 text-sm font-bold text-[var(--ink)] [overflow-wrap:anywhere]",
+  formControl:
+    "h-auto min-h-11 min-w-0 w-full rounded-lg border border-[var(--line-strong)] bg-[var(--surface-raised)] px-3 py-2 text-base text-[var(--ink)] focus-visible:border-[var(--focus)] focus-visible:ring-3 focus-visible:ring-[var(--focus)] disabled:opacity-60",
+  programDetailMuted:
+    "m-0 min-w-0 wrap-anywhere text-sm leading-6 text-[var(--ink-muted)]",
+  actionButton:
+    "h-auto min-h-11 min-w-11 w-fit whitespace-normal rounded-lg bg-[var(--accent)] px-4 py-2 text-white hover:bg-[var(--accent-deep)]",
+  cancelForm: "grid min-w-0 gap-2",
+} as const;
 
 const ICON_STROKE = {
   fill: "none",
@@ -135,6 +224,10 @@ export const EventDetail = ({
   eventId,
   canManage,
   origin,
+  departmentId,
+  hash,
+  backHref,
+  backReplace,
   onBack,
   onAttentionRefresh,
   onAuthRequired,
@@ -143,7 +236,11 @@ export const EventDetail = ({
   eventId: string;
   canManage: boolean;
   origin?: ProgramsOrigin;
-  onBack: () => void;
+  departmentId?: string | null;
+  hash?: string | null;
+  backHref: string;
+  backReplace?: boolean;
+  onBack?: React.MouseEventHandler<HTMLAnchorElement>;
   /** NTF-01 (#256): keep shell attention counts fresh after a confirmed mutation. */
   onAttentionRefresh?: () => void;
   onAuthRequired?: () => void;
@@ -186,6 +283,15 @@ export const EventDetail = ({
       cancelConfirmRef.current?.querySelector("button")?.focus();
     }
   }, [confirmingCancel]);
+  useEffect(() => {
+    if (!editing) {
+      return;
+    }
+    const firstInput = document.querySelector<HTMLInputElement>(
+      'form input[name="name"]'
+    );
+    firstInput?.scrollIntoView({ block: "center", inline: "nearest" });
+  }, [editing]);
 
   const load = useCallback(async () => {
     setLoadError(null);
@@ -385,40 +491,69 @@ export const EventDetail = ({
   };
 
   if (detail === null) {
+    const RecoveryHeading = canManage ? "h2" : "h1";
     if (loadError !== null) {
       const programHref = buildProgramsHref({
         mode: canManage ? "management" : "participant",
         programId,
-        ...(canManage ? { task: "events" as const } : {}),
+        ...(canManage ? { departmentId, task: "events" as const } : {}),
         ...(canManage || origin === undefined ? {} : { origin }),
+        hash,
       });
       return (
         <section
           className={styles.workspaceTask}
           aria-label={COPY.programs.eventDetailTitle}
         >
-          <h2 ref={recoveryRef} className={styles.boundaryTitle} tabIndex={-1}>
+          <RecoveryHeading
+            ref={recoveryRef}
+            className={styles.boundaryTitle}
+            tabIndex={-1}
+          >
             {COPY.programs.eventDetailRecoveryTitle}
-          </h2>
-          <p className={styles.panelError} role="alert">
+          </RecoveryHeading>
+          <Alert className={styles.panelError} variant="destructive">
             {loadError}
-          </p>
+          </Alert>
           <div className={styles.programDetailActions}>
-            <button
+            <Button
               type="button"
               className={styles.retry}
               onClick={() => void load()}
             >
               {COPY.error.retry}
-            </button>
+            </Button>
             {programHref !== "/programs" && (
-              <Link href={programHref} className={styles.secondaryButton}>
-                {COPY.programs.eventDetailViewProgram}
-              </Link>
+              <Button
+                asChild
+                className={styles.secondaryButton}
+                variant="outline"
+              >
+                <Link href={programHref}>
+                  {COPY.programs.eventDetailViewProgram}
+                </Link>
+              </Button>
             )}
-            <Link href="/programs" className={styles.secondaryButton}>
-              {COPY.programs.eventDetailBackToCatalog}
-            </Link>
+            {!canManage && (
+              <Button
+                asChild
+                className={styles.secondaryButton}
+                variant="outline"
+              >
+                <Link href={backHref} replace={backReplace} onClick={onBack}>
+                  {COPY.programs.backToOrigin}
+                </Link>
+              </Button>
+            )}
+            <Button
+              asChild
+              className={styles.secondaryButton}
+              variant="outline"
+            >
+              <Link href="/programs">
+                {COPY.programs.eventDetailBackToCatalog}
+              </Link>
+            </Button>
           </div>
         </section>
       );
@@ -429,7 +564,14 @@ export const EventDetail = ({
         aria-busy="true"
         aria-label={COPY.programs.eventDetailTitle}
       >
-        {COPY.programs.eventDetailLoading}
+        <RecoveryHeading
+          ref={recoveryRef}
+          className={styles.boundaryTitle}
+          tabIndex={-1}
+        >
+          {COPY.programs.eventDetailLoading}
+        </RecoveryHeading>
+        <Skeleton className="mt-3 h-16 w-full" aria-hidden="true" />
       </output>
     );
   }
@@ -455,24 +597,25 @@ export const EventDetail = ({
         aria-labelledby="participant-event-title"
         aria-busy={busy}
       >
-        <button
-          type="button"
+        <Link
           className={styles.programDetailBack}
           aria-label={COPY.programs.backToOrigin}
+          href={backHref}
+          replace={backReplace}
           onClick={onBack}
         >
           <EventFactIcon name="back" /> {COPY.programs.backToOrigin}
-        </button>
+        </Link>
         <header className={styles.programDetailHeader}>
           {checkInOpen && (
-            <span
+            <Badge
               className={`${styles.directoryStatus} ${styles.directoryStatusSuccess}`}
-              /* oxlint-disable-next-line jsx-a11y/prefer-tag-over-role -- role=status pill must stay a span to keep rendered markup stable */
+              variant="default"
               role="status"
               aria-label={COPY.programs.checkInAvailable}
             >
               {COPY.programs.checkInAvailable}
-            </span>
+            </Badge>
           )}
           <p className={styles.programDetailEyebrow}>{programName}</p>
           <h1
@@ -518,13 +661,19 @@ export const EventDetail = ({
           </p>
         </section>
 
-        <div className={styles.actionBarCard}>
-          <Link
-            href={scanHref}
-            className={checkInOpen ? styles.button : styles.secondaryButton}
+        <div className={styles.actionBarCard} data-action-bar>
+          <Button
+            asChild
+            className={
+              checkInOpen
+                ? styles.actionBarButton
+                : styles.actionBarSecondaryButton
+            }
+            variant={checkInOpen ? "default" : "outline"}
+            data-action-state={checkInOpen ? "available" : "closed"}
           >
-            {COPY.programs.goToScan}
-          </Link>
+            <Link href={scanHref}>{COPY.programs.goToScan}</Link>
+          </Button>
         </div>
       </section>
     );
@@ -536,32 +685,33 @@ export const EventDetail = ({
       aria-label={COPY.programs.eventDetailTitle}
       aria-busy={busy}
     >
-      <button
-        type="button"
+      <Link
         className={styles.programDetailBack}
+        href={backHref}
+        replace={backReplace}
         onClick={onBack}
       >
         {COPY.programs.eventDetailBack}
-      </button>
+      </Link>
       {notice !== null && (
         <output className={styles.panelNotice} aria-live="polite">
           <span>{notice}</span>
           {undoAvailable && !cancelled && (
-            <button
+            <Button
               type="button"
               className={styles.successOutline}
               disabled={busy}
               onClick={submitActivate}
             >
               {COPY.programs.eventAvailabilityUndo}
-            </button>
+            </Button>
           )}
         </output>
       )}
       {actionError !== null && (
-        <output className={styles.panelError} role="alert">
+        <Alert className={styles.panelError} variant="destructive">
           {actionError}
-        </output>
+        </Alert>
       )}
 
       <div className={styles.programDetailHeader}>
@@ -573,37 +723,49 @@ export const EventDetail = ({
             {hkWallDateTimeLabel(event.starts_at)} —{" "}
             {hkWallDateTimeLabel(event.ends_at)}
           </span>
-          <span className={styles.eventSource}>
+          <Badge className={styles.eventSource} variant="outline">
             {event.source === "SCHEDULE"
               ? COPY.programs.eventScheduleSource
               : COPY.programs.eventManualSource}
-          </span>
-          <span className={styles.eventSource}>
+          </Badge>
+          <Badge className={styles.eventSource} variant="outline">
             {event.event_type ?? COPY.programs.eventTypeOptions[5]}
-          </span>
-          <span className={styles.eventSource}>
+          </Badge>
+          <Badge className={styles.eventSource} variant="outline">
             {COPY.programs.repeatLabel.replace(
               "{tag}",
               event.recurrence_tag ?? COPY.programs.recurrenceNone
             )}
-          </span>
-          <span
+          </Badge>
+          <Badge
             className={cancelled ? styles.eventCancelled : styles.eventActive}
+            variant={cancelled ? "outline" : "default"}
           >
             {STATUS_LABEL[event.status]}
-          </span>
+          </Badge>
           {event.availability !== undefined && (
-            <span
+            <Badge
               className={
                 event.availability === "Active"
                   ? styles.eventActive
                   : styles.eventCancelled
               }
+              variant={event.availability === "Active" ? "default" : "outline"}
             >
               {AVAILABILITY_LABEL[event.availability]}
-            </span>
+            </Badge>
           )}
         </p>
+        {event.exception !== null && event.exception !== undefined && (
+          <Badge className={styles.exceptionBadge} variant="secondary">
+            {event.exception.action === "RESCHEDULE"
+              ? COPY.programs.eventRescheduledBadge.replace(
+                  "{time}",
+                  event.exception.new_start_time ?? ""
+                )
+              : COPY.programs.eventCancelledBadge}
+          </Badge>
+        )}
         {cancelled && event.cancel_reason !== null && (
           <p className={styles.eventReason}>
             {COPY.programs.cancelledReason.replace(
@@ -659,17 +821,24 @@ export const EventDetail = ({
 
       <div className={styles.workspaceSection}>
         <h4 className={styles.workspaceSubheading}>
-          {COPY.programs.eventDetailLeaders}
+          {COPY.programs.identityAssignments}
         </h4>
         {leaders.length === 0 ? (
-          <p className={styles.emptyLine}>{COPY.programs.noLeaders}</p>
+          <p className={styles.emptyLine}>
+            {COPY.programs.noIdentityAssignments}
+          </p>
         ) : (
           <ul className={styles.ruleList}>
-            {leaders.map((leader: ProgramLeader) => (
-              <li key={leader.user_id} className={styles.ruleRow}>
+            {leaders.map((leader: ProgramIdentityAssignment) => (
+              <li
+                key={`${leader.user_id}:${leader.role_definition_id}`}
+                className={styles.ruleRow}
+                aria-label={`${leader.user_name ?? leader.username ?? leader.user_id}，身份組：${leader.label}`}
+              >
                 <span>
                   {leader.user_name ?? leader.username ?? leader.user_id}
                 </span>
+                <span>{leader.label}</span>
               </li>
             ))}
           </ul>
@@ -696,26 +865,26 @@ export const EventDetail = ({
                     )}
                   </p>
                   <div className={styles.confirmRow}>
-                    <button
+                    <Button
                       type="button"
                       className={styles.dangerButton}
                       disabled={busy}
                       onClick={() => submitDeactivate(true)}
                     >
                       {COPY.programs.eventAvailabilityConfirmProceed}
-                    </button>
-                    <button
+                    </Button>
+                    <Button
                       type="button"
                       className={styles.secondaryButton}
                       disabled={busy}
                       onClick={() => setConfirmingDeactivate(false)}
                     >
                       {COPY.programs.keepEvent}
-                    </button>
+                    </Button>
                   </div>
                 </div>
               ) : (
-                <button
+                <Button
                   type="button"
                   className={styles.dangerOutline}
                   disabled={busy}
@@ -734,17 +903,17 @@ export const EventDetail = ({
                   }}
                 >
                   {COPY.programs.eventAvailabilityDeactivate}
-                </button>
+                </Button>
               )
             ) : (
-              <button
+              <Button
                 type="button"
                 className={styles.successOutline}
                 disabled={busy}
                 onClick={submitActivate}
               >
                 {COPY.programs.eventAvailabilityActivate}
-              </button>
+              </Button>
             )}
           </div>
 
@@ -756,7 +925,9 @@ export const EventDetail = ({
               <form className={styles.ruleForm} onSubmit={submitEdit}>
                 <label className={styles.ruleField}>
                   <span>{COPY.programs.eventName}</span>
-                  <input
+                  <Input
+                    autoFocus
+                    className={styles.formControl}
                     type="text"
                     name="name"
                     defaultValue={event.name ?? ""}
@@ -767,6 +938,7 @@ export const EventDetail = ({
                 <label className={styles.ruleField}>
                   <span>{COPY.programs.eventType}</span>
                   <select
+                    className={styles.formControl}
                     name="event_type"
                     defaultValue={
                       event.event_type ?? COPY.programs.eventTypeOptions[0]
@@ -783,6 +955,7 @@ export const EventDetail = ({
                 <label className={styles.ruleField}>
                   <span>{COPY.programs.recurrenceTag}</span>
                   <select
+                    className={styles.formControl}
                     name="recurrence_tag"
                     defaultValue={
                       event.recurrence_tag ?? COPY.programs.recurrenceNone
@@ -806,7 +979,8 @@ export const EventDetail = ({
                 </p>
                 <label className={styles.ruleField}>
                   <span>{COPY.programs.eventLocation}</span>
-                  <input
+                  <Input
+                    className={styles.formControl}
                     type="text"
                     name="location"
                     defaultValue={event.location ?? ""}
@@ -816,7 +990,8 @@ export const EventDetail = ({
                 </label>
                 <label className={styles.ruleField}>
                   <span>{COPY.programs.eventStart}</span>
-                  <input
+                  <Input
+                    className={styles.formControl}
                     type="datetime-local"
                     name="starts_at"
                     required
@@ -826,7 +1001,8 @@ export const EventDetail = ({
                 </label>
                 <label className={styles.ruleField}>
                   <span>{COPY.programs.eventEnd}</span>
-                  <input
+                  <Input
+                    className={styles.formControl}
                     type="datetime-local"
                     name="ends_at"
                     required
@@ -836,7 +1012,8 @@ export const EventDetail = ({
                 </label>
                 <label className={styles.ruleField}>
                   <span>{COPY.programs.eventCheckInWindowOpensAt}</span>
-                  <input
+                  <Input
+                    className={styles.formControl}
                     type="datetime-local"
                     name="opens_at"
                     required={
@@ -851,7 +1028,8 @@ export const EventDetail = ({
                 </label>
                 <label className={styles.ruleField}>
                   <span>{COPY.programs.eventCheckInWindowClosesAt}</span>
-                  <input
+                  <Input
+                    className={styles.formControl}
                     type="datetime-local"
                     name="closes_at"
                     required={
@@ -864,31 +1042,31 @@ export const EventDetail = ({
                     aria-label={COPY.programs.eventCheckInWindowClosesAt}
                   />
                 </label>
-                <button
+                <Button
                   type="submit"
                   disabled={busy}
                   className={styles.actionButton}
                 >
                   {COPY.programs.eventEditSave}
-                </button>
-                <button
+                </Button>
+                <Button
                   type="button"
                   className={styles.secondaryButton}
                   disabled={busy}
                   onClick={() => setEditing(false)}
                 >
                   {COPY.programs.eventEditCancel}
-                </button>
+                </Button>
               </form>
             ) : (
-              <button
+              <Button
                 type="button"
                 className={styles.secondaryButton}
                 disabled={busy}
                 onClick={() => setEditing(true)}
               >
                 {COPY.programs.eventEditTitle}
-              </button>
+              </Button>
             )}
           </div>
 
@@ -909,31 +1087,32 @@ export const EventDetail = ({
                 >
                   <strong>{COPY.programs.cancelMeetingConfirmTitle}</strong>
                   <span>{COPY.programs.cancelMeetingConfirmBody}</span>
-                  <input
+                  <Input
+                    className={styles.formControl}
                     type="text"
                     name="cancel_reason"
                     placeholder={COPY.programs.cancelReasonPlaceholder}
                     aria-label={COPY.programs.cancelReason}
                   />
-                  <button
+                  <Button
                     type="submit"
                     disabled={busy}
                     className={styles.dangerButton}
                   >
                     {COPY.programs.confirmCancel}
-                  </button>
-                  <button
+                  </Button>
+                  <Button
                     type="button"
                     className={styles.secondaryButton}
                     disabled={busy}
                     onClick={() => setConfirmingCancel(false)}
                   >
                     {COPY.programs.keepMeeting}
-                  </button>
+                  </Button>
                 </div>
               </form>
             ) : (
-              <button
+              <Button
                 type="button"
                 className={styles.dangerOutline}
                 disabled={busy}
@@ -948,7 +1127,7 @@ export const EventDetail = ({
                 }}
               >
                 {COPY.programs.cancelEvent}
-              </button>
+              </Button>
             )}
           </div>
         </>

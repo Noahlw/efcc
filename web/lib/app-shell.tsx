@@ -1,8 +1,10 @@
 "use client";
 
+import { cva } from "class-variance-authority";
 import { usePathname, useRouter } from "next/navigation";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect } from "react";
 
+import { Skeleton } from "@/components/ui/skeleton";
 import { authLogout, RpcError } from "@/lib/api";
 import type { Bootstrap } from "@/lib/api";
 import { AppProvider } from "@/lib/app-context";
@@ -12,6 +14,11 @@ import { ForbiddenView } from "@/lib/forbidden-view";
 import { announce } from "@/lib/live-region";
 import { NavBar } from "@/lib/nav-bar";
 import { OfflineBanner } from "@/lib/offline-banner";
+import {
+  clearAccessCache,
+  clearCatalogCache,
+} from "@/lib/programs/program-api";
+import { useAsyncResource } from "@/lib/programs/use-async-resource";
 import { RecoveryView } from "@/lib/recovery-view";
 import {
   clearAuthHint,
@@ -21,9 +28,29 @@ import {
 } from "@/lib/session";
 import { ShellHeader } from "@/lib/shell-header";
 
-import styles from "./auth-shell.module.css";
+const shellBodyVariants = cva("shell-body", {
+  variants: {
+    scanner: {
+      true: "shell-body--scanner",
+      false: "",
+    },
+  },
+  defaultVariants: {
+    scanner: false,
+  },
+});
+
+type ShellState =
+  | { kind: "loading" }
+  | { kind: "ready"; bootstrap: Bootstrap }
+  | { kind: "error"; message: string; code?: string };
 
 const LOGOUT_FAILED_KEY = "efcc_logout_failed";
+const SESSION_EXPIRED_KEY = "efcc_session_expired";
+function clearProgramCaches(): void {
+  clearAccessCache();
+  clearCatalogCache();
+}
 
 const ShellFrame = ({
   bootstrap,
@@ -37,6 +64,7 @@ const ShellFrame = ({
   const isScanner = pathname === "/scanner" || pathname.startsWith("/scanner/");
 
   const handleSignOut = useCallback(async () => {
+    clearProgramCaches();
     let rpcFailed = false;
     try {
       await authLogout();
@@ -56,15 +84,14 @@ const ShellFrame = ({
     <AppProvider bootstrap={bootstrap} onSignOut={handleSignOut}>
       <div className="shell">
         <OfflineBanner />
-        <a className={styles.skipLink} href="#shell-content">
+        <a
+          className="absolute left-4 -top-12 z-[100] inline-flex items-center min-h-11 px-5 py-3 bg-[var(--surface-raised)] text-[var(--accent)] border border-[var(--line)] rounded-[8px] font-semibold transition-[top] duration-150 ease-out motion-reduce:transition-none focus-visible:top-4 focus-visible:outline focus-visible:outline-3 focus-visible:outline-[var(--focus)] focus-visible:outline-offset-0"
+          href="#shell-content"
+        >
           {COPY.skipToContent}
         </a>
         <ShellHeader attentionData={EMPTY_ATTENTION_DATA} />
-        <div
-          className={
-            isScanner ? "shell-body shell-body--scanner" : "shell-body"
-          }
-        >
+        <div className={shellBodyVariants({ scanner: isScanner })}>
           <NavBar />
           <main id="shell-content" className="shell-content">
             {children}
@@ -75,93 +102,80 @@ const ShellFrame = ({
   );
 };
 
-const LoadingShell = () => {
-  useEffect(() => {
-    announce(COPY.restore.loading);
-  }, []);
-
-  return (
-    <main className={styles.state}>
-      <span className={styles.spinner} aria-hidden="true" />
-      <p>{COPY.restore.loading}</p>
-    </main>
-  );
-};
+const LoadingShell = () => (
+  <main
+    className="min-h-[100dvh] flex flex-col items-center justify-center gap-5 p-[2rem_clamp(1rem,4vw,2rem)] text-center bg-[var(--surface)] text-[var(--ink)]"
+    aria-busy="true"
+  >
+    <Skeleton
+      className="h-8 w-8 rounded-full bg-[var(--skeleton)]"
+      aria-hidden="true"
+    />
+    <p>{COPY.restore.loading}</p>
+  </main>
+);
 
 export const AppShell = ({ children }: { children: React.ReactNode }) => {
   const router = useRouter();
   const pathname = usePathname();
-  const [state, setState] = useState<
-    | { kind: "loading" }
-    | { kind: "ready"; bootstrap: Bootstrap }
-    | { kind: "error"; message: string; code?: string }
-  >({ kind: "loading" });
-  const [tick, setTick] = useState(0);
+  const handleAuthRequired = useCallback(() => {
+    clearProgramCaches();
+    clearAuthHint();
+    rememberDeepLink(
+      `${pathname}${window.location.search}${window.location.hash}`
+    );
+    try {
+      sessionStorage.setItem(SESSION_EXPIRED_KEY, "1");
+    } catch {
+      // The sign-in surface remains the safe fallback when storage is blocked.
+    }
+    router.replace("/");
+  }, [pathname, router]);
 
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const bootstrap = await restoreBootstrap();
-        if (cancelled) {
-          return;
-        }
-        if (bootstrap === null) {
-          // No stored session — cold boot straight to login, no restore call.
-          rememberDeepLink(
-            `${pathname}${window.location.search}${window.location.hash}`
-          );
-          router.replace("/");
-          return;
-        }
-        announce(COPY.restore.restored);
-        setState({ kind: "ready", bootstrap });
-      } catch (error) {
-        if (cancelled) {
-          return;
-        }
-        // AUTH_REQUIRED means the refresh cookie is dead (expired or
-        // revoked); clear the presence flag and send the user back to login
-        // so the deep link can be honored after a fresh login. Any other
-        // failure (network, 5xx) is recoverable — offer retry so an
-        // otherwise-valid session isn't lost to a transient blip.
+  const { state, run, retry } = useAsyncResource<Bootstrap | null, ShellState>(
+    async () => {
+      const bootstrap = await restoreBootstrap();
+      if (bootstrap === null) {
+        rememberDeepLink(
+          `${pathname}${window.location.search}${window.location.hash}`
+        );
+        router.replace("/");
+      }
+      return bootstrap;
+    },
+    {
+      toLoading: () => ({ kind: "loading" }),
+      toReady: (bootstrap) =>
+        bootstrap ? { kind: "ready", bootstrap } : { kind: "loading" },
+      onError: (error) => {
         const code = error instanceof RpcError ? error.problem.code : undefined;
-        if (code === "AUTH_REQUIRED") {
-          clearAuthHint();
-          rememberDeepLink(
-            `${pathname}${window.location.search}${window.location.hash}`
-          );
-          sessionStorage.setItem("efcc_session_expired", "1");
-          router.replace("/");
-          return;
-        }
-        const msg =
+        const message =
           error instanceof RpcError
             ? errorCopyFor(code, error.problem.detail)
             : COPY.error.networkError;
-        setState({ kind: "error", message: msg, code });
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- router/pathname are stable; tick triggers retry
-  }, [router, pathname, tick]);
+        return { kind: "error", message, code };
+      },
+      isAuthRequired: (error) =>
+        error instanceof RpcError && error.problem.code === "AUTH_REQUIRED",
+      onAuthRequired: handleAuthRequired,
+      announceLoading: COPY.restore.loading,
+      announceReady: (bootstrap) =>
+        bootstrap ? COPY.restore.restored : undefined,
+    },
+    [handleAuthRequired, pathname, router]
+  );
+
+  useEffect(() => {
+    void run();
+  }, [run]);
 
   if (state.kind === "loading") {
     return <LoadingShell />;
   }
   if (state.kind === "error") {
-    // AUTH_REQUIRED is handled inline (clears hint + redirects). FORBIDDEN is
-    // a hard authorization failure — render the forbidden state (S13), not a
-    // retry. Any other error here is transient (network / 5xx), so retry is
-    // appropriate. Bumping `tick` re-runs the restore effect.
     if (state.code === "FORBIDDEN") {
-      // An authenticated account whose status is no longer Active (403 from
-      // the auth boundary) cannot recover through the profile link — every
-      // restore re-verifies and fails again. Offer a real exit: clear the
-      // presence hint and return to the signed-out surface (review P1).
       const handleForbiddenSignOut = async () => {
+        clearProgramCaches();
         try {
           await authLogout();
         } catch {
@@ -178,11 +192,7 @@ export const AppShell = ({ children }: { children: React.ReactNode }) => {
       );
     }
     return (
-      <RecoveryView
-        message={state.message}
-        safeHref="/"
-        onRetry={() => setTick((t) => t + 1)}
-      />
+      <RecoveryView message={state.message} safeHref="/" onRetry={retry} />
     );
   }
 

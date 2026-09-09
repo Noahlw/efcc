@@ -204,6 +204,32 @@ describe("085-07: Participant Notices", () => {
         })
       )
     );
+    const createdAt = "2026-08-31T00:00:00.000Z";
+    await testDb()
+      .prepare(
+        `INSERT OR IGNORE INTO role_definitions
+          (role_definition_id, category_key, stable_key, label, description,
+           scope_kind, scope_id, position, is_protected, is_archived,
+           created_by, created_at, updated_by, updated_at)
+         VALUES ('NOTICES-ADMIN-IDENTITY', 'Global', 'admin', '系統管理員',
+                 'Participant Notices test administrator', 'Global', NULL, 0, 1, 0,
+                 NULL, ?, NULL, ?)`
+      )
+      .bind(createdAt, createdAt)
+      .run();
+    await testDb()
+      .prepare(
+        `INSERT OR IGNORE INTO role_assignments
+          (assignment_id, account_user_id, role_definition_id,
+           granted_by, granted_at, scope_kind, scope_id)
+         SELECT 'NOTICES-ADMIN-ASSIGNMENT', 'A001', role_definition_id,
+                'A001', ?, scope_kind, scope_id
+           FROM role_definitions
+          WHERE role_definition_id = 'NOTICES-ADMIN-IDENTITY'
+            AND is_archived = 0`
+      )
+      .bind(createdAt)
+      .run();
     adminAccess = await login("notices-admin", "admin-secret");
     memberAAccess = await login("notices-member-a", "member-a-secret");
     memberDAccess = await login("notices-member-d", "member-d-secret");

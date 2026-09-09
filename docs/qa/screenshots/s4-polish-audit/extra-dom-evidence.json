@@ -1,0 +1,32 @@
+[
+  {
+    "name": "account-directory-loading",
+    "url": "http://127.0.0.1:8797/management?module=accounts",
+    "overflow": 0
+  },
+  {
+    "name": "account-directory-error",
+    "url": "http://127.0.0.1:8797/management?module=accounts",
+    "overflow": 0
+  },
+  {
+    "name": "account-directory-empty",
+    "url": "http://127.0.0.1:8797/management?module=accounts",
+    "overflow": 0
+  },
+  {
+    "name": "account-directory-filter-sheet",
+    "url": "http://127.0.0.1:8797/management?module=accounts",
+    "overflow": 0
+  },
+  {
+    "name": "permissions-dirty-review",
+    "url": "http://127.0.0.1:8797/management?module=permissions",
+    "overflow": 0
+  },
+  {
+    "name": "approval-rejection-confirmation",
+    "url": "http://127.0.0.1:8797/management?module=approvals&request=602c61b9-6e4c-4d81-bc83-f1a629ec7dfa",
+    "overflow": 0
+  }
+]

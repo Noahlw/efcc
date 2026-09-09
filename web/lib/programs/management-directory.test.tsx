@@ -14,10 +14,7 @@ import {
   ManagementDirectory,
   projectManagementPrograms,
 } from "@/lib/programs/management-directory";
-import type {
-  Department,
-  Program,
-} from "@/lib/programs/program-api";
+import type { Department, Program } from "@/lib/programs/program-api";
 
 const mocks = vi.hoisted(() => {
   const router = {
@@ -202,38 +199,49 @@ describe(ManagementDirectory, () => {
     const list = await screen.findByRole("list", {
       name: COPY.programs.managementDirectoryListLabel,
     });
-    expect(within(list).getAllByRole("button")).toHaveLength(2);
-    expect(screen.getByRole("button", { name: /查經小組/u })).toHaveTextContent(
+    expect(within(list).getAllByRole("link")).toHaveLength(2);
+    expect(screen.getByRole("link", { name: /查經小組/u })).toHaveTextContent(
       "青年事工"
     );
-    expect(screen.getByRole("button", { name: /社區關懷/u })).toHaveTextContent(
+    expect(screen.getByRole("link", { name: /社區關懷/u })).toHaveTextContent(
       "外展事工"
     );
     expect(
-      screen.queryByRole("button", { name: /公開活動/u })
+      screen.queryByRole("link", { name: /公開活動/u })
     ).not.toBeInTheDocument();
 
     const search = screen.getByRole("searchbox", {
       name: COPY.programs.managementDirectorySearchLabel,
     });
     await userEvent.type(search, "外展");
+    expect(screen.getByRole("link", { name: /社區關懷/u })).toBeInTheDocument();
     expect(
-      screen.getByRole("button", { name: /社區關懷/u })
-    ).toBeInTheDocument();
-    expect(
-      screen.queryByRole("button", { name: /查經小組/u })
+      screen.queryByRole("link", { name: /查經小組/u })
     ).not.toBeInTheDocument();
 
-    await userEvent.click(screen.getByRole("button", { name: /社區關懷/u }));
-    expect(onOpenProgram).toHaveBeenCalledWith("program-leader");
+    expect(screen.getByRole("link", { name: /社區關懷/u })).toHaveAttribute(
+      "href",
+      "/programs?mode=management&program=program-leader"
+    );
+  });
+
+  test("keeps the current Department query in a semantic Program link", async () => {
+    mockDirectory();
+    render(
+      <ManagementDirectory departmentId="dept-youth" onOpenProgram={vi.fn()} />
+    );
+
+    const programLink = await screen.findByRole("link", {
+      name: /查經小組/u,
+    });
+    expect(programLink).toHaveAttribute(
+      "href",
+      "/programs?mode=management&department=dept-youth&program=program-youth"
+    );
   });
   test("does not offer free-floating creation outside a Department detail", async () => {
     mockDirectory();
-    render(
-      <ManagementDirectory
-        onOpenProgram={vi.fn()}
-      />
-    );
+    render(<ManagementDirectory onOpenProgram={vi.fn()} />);
 
     await screen.findByRole("list", {
       name: COPY.programs.managementDirectoryListLabel,
@@ -251,7 +259,7 @@ describe(ManagementDirectory, () => {
       />
     );
 
-    const row = await screen.findByRole("button", { name: /查經小組/u });
+    const row = await screen.findByRole("link", { name: /查經小組/u });
     expect(row).toHaveTextContent("查經小組");
     expect(screen.queryByText("待處理報名")).not.toBeInTheDocument();
     expect(screen.queryByText("暫停聚會")).not.toBeInTheDocument();
@@ -307,12 +315,10 @@ describe(ManagementDirectory, () => {
       departments,
       programs: programsByDepartment.flat(),
     });
-    const { unmount } = render(
-      <ManagementDirectory onOpenProgram={vi.fn()} />
-    );
+    const { unmount } = render(<ManagementDirectory onOpenProgram={vi.fn()} />);
 
     await expect(
-      screen.findByRole("button", { name: /查經小組/u })
+      screen.findByRole("link", { name: /查經小組/u })
     ).resolves.toBeInTheDocument();
     unmount();
 
@@ -328,7 +334,7 @@ describe(ManagementDirectory, () => {
       })
     ).resolves.toBeInTheDocument();
     expect(
-      screen.queryByRole("button", { name: /查經小組/u })
+      screen.queryByRole("link", { name: /查經小組/u })
     ).not.toBeInTheDocument();
   });
 });

@@ -295,6 +295,7 @@ const HK_DATE_TIME_FORMATTER = new Intl.DateTimeFormat("zh-Hant", {
   hour: "2-digit",
   minute: "2-digit",
   hour12: false,
+  hourCycle: "h23",
 });
 
 /** HK wall date+time label ("2026/08/06 08:00") for an ISO-8601 UTC instant. */

@@ -39,7 +39,6 @@ export interface RegistrationRequestRow {
   credential_hash: string;
   credential_kind: string;
   account_status: string;
-  role: string;
   submitted_at: number;
   reviewed_by: string | null;
   reviewed_at: number | null;
@@ -65,7 +64,7 @@ export class RegistrationConflictError extends Error {
 }
 
 const REQUEST_COLUMNS = `request_id, user_id, username, username_normalized,
-  name, phone, credential_hash, credential_kind, account_status, role,
+  name, phone, credential_hash, credential_kind, account_status,
   submitted_at, reviewed_by, reviewed_at, review_decision, rejection_note`;
 
 /** Look up a registration request by its opaque request_id, or null. */
@@ -151,9 +150,9 @@ export async function createRegistrationRequest(
       .prepare(
         `INSERT INTO registration_requests (
            request_id, user_id, username, username_normalized, name, phone,
-           credential_hash, credential_kind, account_status, role, submitted_at
+           credential_hash, credential_kind, account_status, submitted_at
          )
-         SELECT ?, ?, ?, ?, ?, ?, ?, 'password', 'Pending', 'Member', ?
+         SELECT ?, ?, ?, ?, ?, ?, ?, 'password', 'Pending', ?
           WHERE NOT EXISTS (
             SELECT 1 FROM accounts WHERE username_normalized = ?
           )
@@ -199,7 +198,6 @@ export async function createRegistrationRequest(
     credential_hash: options.credentialHash,
     credential_kind: "password",
     account_status: "Pending",
-    role: "Member",
     submitted_at: now,
     reviewed_by: null,
     reviewed_at: null,
@@ -266,15 +264,33 @@ export async function approveRegistration(
           `INSERT INTO accounts (
              user_id, name, username, username_normalized,
              credential_hash, credential_kind, credential_version,
-             account_status, role, phone, created_at, updated_at
+             account_status, phone, created_at, updated_at
            )
            SELECT user_id, name, username, username_normalized,
-                  credential_hash, credential_kind, 1, 'Active', role,
+                  credential_hash, credential_kind, 1, 'Active',
                   phone, ?, ?
              FROM registration_requests
             WHERE request_id = ? AND account_status = 'Pending'`
         )
         .bind(now, now, request.request_id),
+      // H-35: one credential-free immutable audit outcome in the same
+      // transaction as Account creation and request resolution.
+      db
+        .prepare(
+          `INSERT INTO audit_events (
+             audit_id, inserted_at, actor_user_id, action, entity_type,
+             entity_id, old_value_json, new_value_json, outcome
+           )
+           VALUES (lower(hex(randomblob(16))), ?, ?, 'REGISTRATION_APPROVE',
+                   'registration', ?, ?, ?, 'SUCCESS')`
+        )
+        .bind(
+          new Date(now).toISOString(),
+          options.reviewerId,
+          request.request_id,
+          JSON.stringify({ accountStatus: "Pending" }),
+          JSON.stringify({ accountStatus: "Active" })
+        ),
       db
         .prepare(
           `UPDATE registration_requests
@@ -340,17 +356,38 @@ export async function rejectRegistration(
     );
   }
 
-  const result = await db
-    .prepare(
-      `UPDATE registration_requests
-          SET account_status = 'Rejected', reviewed_by = ?, reviewed_at = ?,
-              review_decision = 'Rejected', rejection_note = ?
-        WHERE request_id = ? AND account_status = 'Pending'`
-    )
-    .bind(options.reviewerId, now, options.note.trim(), request.request_id)
-    .run();
+  // H-35: one credential-free immutable audit outcome in the same
+  // transaction as the terminal request transition.
+  const result = await db.batch([
+    db
+      .prepare(
+        `INSERT INTO audit_events (
+           audit_id, inserted_at, actor_user_id, action, entity_type,
+           entity_id, old_value_json, new_value_json, outcome, reason
+         )
+         VALUES (lower(hex(randomblob(16))), ?, ?, 'REGISTRATION_REJECT',
+                 'registration', ?, ?, ?, 'SUCCESS', ?)`
+      )
+      .bind(
+        new Date(now).toISOString(),
+        options.reviewerId,
+        request.request_id,
+        JSON.stringify({ accountStatus: "Pending" }),
+        JSON.stringify({ accountStatus: "Rejected" }),
+        options.note.trim()
+      ),
+    db
+      .prepare(
+        `UPDATE registration_requests
+            SET account_status = 'Rejected', reviewed_by = ?, reviewed_at = ?,
+                review_decision = 'Rejected', rejection_note = ?
+          WHERE request_id = ? AND account_status = 'Pending'`
+      )
+      .bind(options.reviewerId, now, options.note.trim(), request.request_id),
+  ]);
 
-  if ((result.meta?.changes ?? 0) !== 1) {
+  const updateResult = result[1] as D1Result<unknown>;
+  if ((updateResult.meta?.changes ?? 0) !== 1) {
     const current = await requireRequest(db, request.request_id);
     if (current.account_status === "Rejected") {
       return "rejected";
@@ -374,8 +411,8 @@ export async function rejectRegistration(
  * `user_id` — the queue must never expose credential material or the
  * immutable identity key to the browser.
  */
-const QUEUE_COLUMNS = `request_id, username, name, phone, account_status, role,
-  submitted_at, reviewed_by, reviewed_at, review_decision`;
+const QUEUE_COLUMNS = `request_id, username, name, phone, account_status,
+  submitted_at, reviewed_by, reviewed_at, review_decision, rejection_note`;
 
 export interface QueueRegistrationRow {
   request_id: string;
@@ -383,11 +420,18 @@ export interface QueueRegistrationRow {
   name: string;
   phone: string | null;
   account_status: string;
-  role: string;
   submitted_at: number;
   reviewed_by: string | null;
   reviewed_at: number | null;
   review_decision: string | null;
+  rejection_note: string | null;
+}
+
+export type RegistrationQueueStatus = "Pending" | "Processed";
+
+export interface RegistrationBatchApprovalResult {
+  accountStatus: "active";
+  approvedCount: number;
 }
 
 /**
@@ -398,12 +442,197 @@ export interface QueueRegistrationRow {
 export async function listPendingRegistrations(
   db: D1Database
 ): Promise<QueueRegistrationRow[]> {
+  return listRegistrations(db, "Pending");
+}
+
+/**
+ * List safe approval metadata. `Processed` includes Approved and Rejected
+ * requests and remains read-only at the browser boundary.
+ */
+export async function listRegistrations(
+  db: D1Database,
+  status: RegistrationQueueStatus = "Pending"
+): Promise<QueueRegistrationRow[]> {
+  const predicate =
+    status === "Pending"
+      ? "account_status = 'Pending'"
+      : "account_status <> 'Pending'";
   const result = await db
     .prepare(
       `SELECT ${QUEUE_COLUMNS} FROM registration_requests
-        WHERE account_status = 'Pending'
+        WHERE ${predicate}
         ORDER BY submitted_at ASC`
     )
     .all<QueueRegistrationRow>();
   return result.results ?? [];
+}
+
+/**
+ * Approve an explicit set of Pending registration requests atomically.
+ * Idempotency is actor/endpoint/key scoped and stores only a safe response
+ * summary. The CTE guard deliberately violates the positive request_count
+ * CHECK when any selected request is not Pending, forcing D1 to roll back the
+ * whole batch before account/status/audit statements can commit.
+ */
+export async function approveRegistrationsBatch(
+  db: D1Database,
+  options: {
+    idempotencyKey: string;
+    now?: number;
+    requestHash: string;
+    requestIds: readonly string[];
+    reviewerId: string;
+  }
+): Promise<RegistrationBatchApprovalResult> {
+  const ids = [...options.requestIds];
+  const now = options.now ?? Date.now();
+  if (
+    ids.length === 0 ||
+    ids.length > 100 ||
+    new Set(ids).size !== ids.length
+  ) {
+    throw new RegistrationConflictError(
+      "Registration batch selection is invalid."
+    );
+  }
+
+  const existing = await db
+    .prepare(
+      `SELECT request_hash, response_json
+         FROM registration_batch_idempotency
+        WHERE actor_user_id = ?
+          AND endpoint = 'registration.approve-batch'
+          AND idempotency_key = ?`
+    )
+    .bind(options.reviewerId, options.idempotencyKey)
+    .first<{ request_hash: string; response_json: string }>();
+  if (existing) {
+    if (existing.request_hash !== options.requestHash) {
+      throw new RegistrationConflictError(
+        "Idempotency key was already used for another selection."
+      );
+    }
+    return JSON.parse(
+      existing.response_json
+    ) as RegistrationBatchApprovalResult;
+  }
+
+  const idPlaceholders = ids.map(() => "?").join(", ");
+  const response: RegistrationBatchApprovalResult = {
+    accountStatus: "active",
+    approvedCount: ids.length,
+  };
+  const responseJson = JSON.stringify(response);
+  const statements: D1PreparedStatement[] = [
+    db
+      .prepare(
+        `WITH candidate AS (
+                SELECT COUNT(*) AS valid_count
+                  FROM registration_requests
+                 WHERE account_status = 'Pending'
+                   AND request_id IN (${idPlaceholders})
+              )
+         INSERT INTO registration_batch_idempotency (
+           actor_user_id, endpoint, idempotency_key, request_hash,
+           response_json, request_count, created_at
+         )
+         SELECT ?, 'registration.approve-batch', ?, ?, ?,
+                CASE WHEN (SELECT valid_count FROM candidate) = ?
+                     THEN ? ELSE -1 END,
+                ?`
+      )
+      .bind(
+        ...ids,
+        options.reviewerId,
+        options.idempotencyKey,
+        options.requestHash,
+        responseJson,
+        ids.length,
+        ids.length,
+        now
+      ),
+  ];
+
+  // Keep the D1 batch under its statement limit even for the contract's
+  // maximum 100 selected requests: one bulk account insert, one bulk audit
+  // insert, and one compare-and-set update instead of three statements per
+  // request. The guard above makes these predicates stable for the batch.
+  statements.push(
+    db
+      .prepare(
+        `INSERT INTO accounts (
+           user_id, name, username, username_normalized,
+           credential_hash, credential_kind, credential_version,
+           account_status, phone, created_at, updated_at
+         )
+         SELECT user_id, name, username, username_normalized,
+                credential_hash, credential_kind, 1, 'Active',
+                phone, ?, ?
+           FROM registration_requests
+          WHERE request_id IN (${idPlaceholders})
+            AND account_status = 'Pending'`
+      )
+      .bind(now, now, ...ids),
+    db
+      .prepare(
+        `INSERT INTO audit_events (
+           audit_id, inserted_at, actor_user_id, action, entity_type,
+           entity_id, old_value_json, new_value_json, outcome, correlation_id
+         )
+         SELECT lower(hex(randomblob(16))), ?, ?,
+                'REGISTRATION_BATCH_APPROVE', 'registration', request_id,
+                ?, ?, 'SUCCESS', ?
+           FROM registration_requests
+          WHERE request_id IN (${idPlaceholders})
+            AND account_status = 'Pending'`
+      )
+      .bind(
+        new Date(now).toISOString(),
+        options.reviewerId,
+        JSON.stringify({ accountStatus: "Pending" }),
+        JSON.stringify({ accountStatus: "Active" }),
+        options.idempotencyKey,
+        ...ids
+      ),
+    db
+      .prepare(
+        `UPDATE registration_requests
+            SET account_status = 'Active', reviewed_by = ?, reviewed_at = ?,
+                review_decision = 'Approved'
+          WHERE request_id IN (${idPlaceholders})
+            AND account_status = 'Pending'`
+      )
+      .bind(options.reviewerId, now, ...ids)
+  );
+
+  try {
+    await db.batch(statements);
+  } catch (error) {
+    const replay = await db
+      .prepare(
+        `SELECT request_hash, response_json
+           FROM registration_batch_idempotency
+          WHERE actor_user_id = ?
+            AND endpoint = 'registration.approve-batch'
+            AND idempotency_key = ?`
+      )
+      .bind(options.reviewerId, options.idempotencyKey)
+      .first<{ request_hash: string; response_json: string }>();
+    if (replay?.request_hash === options.requestHash) {
+      return JSON.parse(
+        replay.response_json
+      ) as RegistrationBatchApprovalResult;
+    }
+    if (
+      error instanceof Error &&
+      /unique|constraint|check/iu.test(error.message)
+    ) {
+      throw new RegistrationConflictError(
+        "One or more registration requests are no longer pending."
+      );
+    }
+    throw error;
+  }
+
+  return response;
 }

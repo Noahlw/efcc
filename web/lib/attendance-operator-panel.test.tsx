@@ -6,17 +6,27 @@ import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { setupServer } from "msw/node";
-import { afterAll, afterEach, beforeAll, describe, expect, test } from "vitest";
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  describe,
+  expect,
+  test,
+  vi,
+} from "vitest";
 
 import type {
   AttendanceEvent,
   AttendanceMember,
   AttendanceRow,
 } from "@/lib/attendance";
-import { AttendanceOperatorPanel } from "@/lib/attendance-operator-panel";
+import {
+  AttendanceOperatorPanel,
+  type AttendanceOperatorPanelProps,
+} from "@/lib/attendance-operator-panel";
 import { COPY } from "@/lib/copy";
-import { LiveRegion } from "@/lib/live-region";
-
+import { announce, LiveRegion } from "@/lib/live-region";
 const server = setupServer();
 
 const ACTIVE: AttendanceEvent = {
@@ -73,11 +83,11 @@ function rosterHandler(event: AttendanceEvent, rows: AttendanceRow[]) {
   );
 }
 
-function renderWithLiveRegion() {
+function renderWithLiveRegion(props: AttendanceOperatorPanelProps = {}) {
   render(
     <>
       <LiveRegion />
-      <AttendanceOperatorPanel />
+      <AttendanceOperatorPanel {...props} />
     </>
   );
 }
@@ -86,6 +96,7 @@ describe(AttendanceOperatorPanel, () => {
   beforeAll(() => server.listen({ onUnhandledRequest: "error" }));
   afterEach(() => {
     cleanup();
+    announce("");
     window.history.replaceState(null, "", "/");
     server.resetHandlers();
   });
@@ -384,5 +395,25 @@ describe(AttendanceOperatorPanel, () => {
     expect(
       screen.getByRole("button", { name: COPY.attendance.voidAttendance })
     ).toBeEnabled();
+  });
+
+  test("operator panel calls onAuthRequired when loading scanner events returns AUTH_REQUIRED", async () => {
+    const onAuthRequired = vi.fn();
+    server.use(
+      http.get("/api/v1/attendance/scanner-events", () =>
+        HttpResponse.json(
+          {
+            type: "https://efcc.example/problems/auth-required",
+            title: "Auth Required",
+            status: 401,
+            code: "AUTH_REQUIRED",
+            requestId: "rid-auth",
+          },
+          { status: 401 }
+        )
+      )
+    );
+    renderWithLiveRegion({ onAuthRequired });
+    await waitFor(() => expect(onAuthRequired).toHaveBeenCalledOnce());
   });
 });

@@ -120,11 +120,22 @@ test.describe("D1 cookie-only login gate", () => {
     });
 
     expect(login.status()).toBe(200);
-    assertLockedCookies(setCookieHeaders(login));
+    const loginCookies = setCookieHeaders(login);
+    assertLockedCookies(loginCookies);
     assertNoTokenMaterial(await login.json());
+    const cookieHeader = loginCookies
+      .map((header) => header.split(";", 1)[0])
+      .join("; ");
+    const me = await request.get("/api/v1/auth/me", {
+      headers: { Origin: origin, Cookie: cookieHeader },
+    });
+    expect(me.status()).toBe(200);
+    const meBody = await me.json();
+    assertNoTokenMaterial(meBody);
+    expect(meBody).toHaveProperty("data.user");
 
     const logout = await request.post("/api/v1/auth/logout", {
-      headers: { Origin: origin },
+      headers: { Origin: origin, Cookie: cookieHeader },
     });
     expect(logout.status()).toBe(204);
     assertClearedCookies(setCookieHeaders(logout));

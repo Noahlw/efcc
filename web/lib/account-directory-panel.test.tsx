@@ -1,0 +1,578 @@
+import {
+  cleanup,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { http, HttpResponse } from "msw";
+import { setupServer } from "msw/node";
+import type { ReadonlyURLSearchParams } from "next/navigation";
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  describe,
+  expect,
+  test,
+  vi,
+} from "vitest";
+
+import { AccountDirectoryPanel } from "@/app/management/account-directory-panel";
+
+import { COPY } from "./copy";
+
+const mocks = vi.hoisted(() => ({
+  searchParams: new URLSearchParams(),
+  router: {
+    back: vi.fn<() => void>(),
+    forward: vi.fn<() => void>(),
+    refresh: vi.fn<() => void>(),
+    replace: vi.fn<(href: string) => void>(),
+    push: vi.fn<(href: string) => void>(),
+    prefetch: vi.fn<(href: string) => void>(),
+  },
+  rememberDeepLink: vi.fn<(path: string) => void>(),
+}));
+
+vi.mock(import("next/navigation"), () => ({
+  useRouter: () => mocks.router,
+  useSearchParams: () =>
+    mocks.searchParams as unknown as ReadonlyURLSearchParams,
+}));
+vi.mock("@/lib/session", () => ({
+  rememberDeepLink: mocks.rememberDeepLink,
+}));
+
+const server = setupServer();
+const ACCOUNTS = COPY.accountDirectory;
+
+interface AccountRow {
+  userId: string;
+  name: string;
+  username: string;
+  phone: string | null;
+  identities?: {
+    id: string;
+    label: string;
+    scopeKind: "Global" | "Department" | "Program";
+    scopeId: string | null;
+  }[];
+  status: "Pending" | "Active" | "Suspended" | "Deactivated";
+  departments: { id: string; name: string }[];
+  canOpenAccess: boolean;
+}
+
+const ROWS: AccountRow[] = [
+  {
+    userId: "AD-001",
+    name: "陳大文",
+    username: "dai.man.chan",
+    phone: "9123 4567",
+    identities: [
+      { id: "id-1", label: "同工", scopeKind: "Global", scopeId: null },
+    ],
+    status: "Active",
+    departments: [{ id: "dept-grow", name: "培育部" }],
+    canOpenAccess: true,
+  },
+  {
+    userId: "AD-002",
+    name: "王大文",
+    username: "dai.man.wong",
+    phone: null,
+    identities: [
+      { id: "id-2", label: "會友基礎", scopeKind: "Global", scopeId: null },
+    ],
+    status: "Pending",
+    departments: [],
+    canOpenAccess: false,
+  },
+] as const;
+
+function response(
+  accounts: AccountRow[] = ROWS,
+  nextCursor: string | null = null
+) {
+  return HttpResponse.json({
+    requestId: "rid-account-directory",
+    data: {
+      accounts,
+      nextCursor,
+      summary: { total: accounts.length, active: 1, elevated: 1, pending: 1 },
+    },
+  });
+}
+
+describe(AccountDirectoryPanel, () => {
+  beforeAll(() => {
+    HTMLElement.prototype.hasPointerCapture = () => false;
+    HTMLElement.prototype.setPointerCapture = () => undefined;
+    HTMLElement.prototype.releasePointerCapture = () => undefined;
+    HTMLElement.prototype.scrollIntoView = () => undefined;
+    server.listen({ onUnhandledRequest: "error" });
+  });
+  afterEach(() => {
+    cleanup();
+    server.resetHandlers();
+    mocks.searchParams = new URLSearchParams();
+    window.history.replaceState({}, "", "/");
+    vi.clearAllMocks();
+  });
+
+  afterAll(() => server.close());
+
+  test("renders selected B ledger rows, metrics, and read-only detail", async () => {
+    const user = userEvent.setup();
+    server.use(
+      http.get("/api/v1/programs/accounts", () => response()),
+      http.get("/api/v1/programs/accounts/AD-001", () =>
+        HttpResponse.json({
+          requestId: "rid-account-detail",
+          data: ROWS[0],
+        })
+      )
+    );
+    render(<AccountDirectoryPanel />);
+
+    await user.type(screen.getByLabelText(ACCOUNTS.searchLabel), "大文");
+    const row = await screen.findByRole("button", { name: /陳大文/u });
+    expect(within(row).getByText(/同工/u)).toBeTruthy();
+    expect(screen.getByText(String(ROWS.length))).toBeTruthy();
+    await user.click(row);
+    expect(row).toHaveAttribute("aria-pressed", "true");
+    expect(window.location.search).toContain("module=accounts");
+    const accessLink = await screen.findByRole("link", {
+      name: "查看帳戶權限與身份組",
+    });
+    expect(accessLink).toHaveAttribute(
+      "href",
+      "/management?module=accounts&account=AD-001&view=access&return=%2Fmanagement%3Fmodule%3Daccounts%26q%3D%25E5%25A4%25A7%25E6%2596%2587%26account%3DAD-001%26returnFocus%3Daccount-access"
+    );
+  });
+  test("preserves a Programs origin when entering Account Access", async () => {
+    const user = userEvent.setup();
+    mocks.searchParams = new URLSearchParams(
+      "module=accounts&return=%2Fprograms%3Fmode%3Dmanagement%26program%3Dprogram-1%26task%3Dsettings"
+    );
+    server.use(
+      http.get("/api/v1/programs/accounts", () => response()),
+      http.get("/api/v1/programs/accounts/AD-001", () =>
+        HttpResponse.json({
+          requestId: "rid-account-detail",
+          data: ROWS[0],
+        })
+      )
+    );
+    render(<AccountDirectoryPanel />);
+    const row = await screen.findByRole("button", { name: /陳大文/u });
+    await user.click(row);
+    const accessLink = await screen.findByRole("link", {
+      name: "查看帳戶權限與身份組",
+    });
+    expect(accessLink).toHaveAttribute(
+      "href",
+      expect.stringContaining(
+        "return=%2Fprograms%3Fmode%3Dmanagement%26program%3Dprogram-1%26task%3Dsettings"
+      )
+    );
+  });
+
+  test("opens with a populated Account page before search", async () => {
+    let requestedUrl = "";
+    server.use(
+      http.get("/api/v1/programs/accounts", ({ request }) => {
+        requestedUrl = request.url;
+        return response();
+      })
+    );
+    render(<AccountDirectoryPanel />);
+
+    expect(await screen.findByRole("button", { name: /陳大文/u })).toBeTruthy();
+    expect(new URL(requestedUrl).searchParams.get("q")).toBe("");
+  });
+
+  test("appends the next bounded page without replacing existing rows", async () => {
+    const user = userEvent.setup();
+    server.use(
+      http.get("/api/v1/programs/accounts", ({ request }) => {
+        const cursor = new URL(request.url).searchParams.get("cursor");
+        return cursor === "1"
+          ? response(ROWS.slice(1), null)
+          : response(ROWS.slice(0, 1), "1");
+      })
+    );
+    render(<AccountDirectoryPanel />);
+
+    expect(await screen.findByRole("button", { name: /陳大文/u })).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: "載入更多帳戶" }));
+    expect(await screen.findByRole("button", { name: /王大文/u })).toBeTruthy();
+    expect(screen.getByRole("button", { name: /陳大文/u })).toBeTruthy();
+  });
+
+  test("uses one compact status filter sheet with an active count", async () => {
+    const user = userEvent.setup();
+    server.use(http.get("/api/v1/programs/accounts", () => response()));
+    render(<AccountDirectoryPanel />);
+    await screen.findByRole("button", { name: /陳大文/u });
+
+    await user.click(screen.getByRole("button", { name: "篩選" }));
+    const sheet = screen.getByRole("dialog", { name: "篩選帳戶" });
+    const statusSelect = within(sheet).getByRole("combobox", {
+      name: ACCOUNTS.statusLabel,
+    });
+    await user.click(statusSelect);
+    await user.click(
+      await screen.findByRole("option", { name: ACCOUNTS.active })
+    );
+    await user.click(within(sheet).getByRole("button", { name: "套用篩選" }));
+
+    expect(screen.getByRole("button", { name: "篩選 1" })).toBeTruthy();
+  });
+
+  test("forwards status and department filters to the Account Directory seam", async () => {
+    const user = userEvent.setup();
+    let requestedUrl = "";
+    server.use(
+      http.get("/api/v1/programs/accounts", ({ request }) => {
+        requestedUrl = request.url;
+        return response(ROWS.slice(0, 1));
+      })
+    );
+    render(<AccountDirectoryPanel />);
+    await user.type(screen.getByLabelText(ACCOUNTS.searchLabel), "大文");
+    await screen.findByRole("button", { name: /陳大文/u });
+    const statusSelect = screen.getByRole("combobox", {
+      name: ACCOUNTS.statusLabel,
+    });
+    await user.click(statusSelect);
+    await user.click(
+      await screen.findByRole("option", { name: ACCOUNTS.active })
+    );
+    await user.type(screen.getByLabelText(ACCOUNTS.departmentLabel), "培育部");
+    const params = new URL(requestedUrl).searchParams;
+    expect(params.get("role")).toBeNull();
+    expect(params.get("status")).toBe("Active");
+    expect(params.get("department")).toBe("培育部");
+  });
+
+  test("announces a no-match state for a status-only filter", async () => {
+    const user = userEvent.setup();
+    server.use(http.get("/api/v1/programs/accounts", () => response([])));
+    render(<AccountDirectoryPanel />);
+
+    const statusSelect = screen.getByRole("combobox", {
+      name: ACCOUNTS.statusLabel,
+    });
+    await user.click(statusSelect);
+    await user.click(
+      await screen.findByRole("option", { name: ACCOUNTS.active })
+    );
+    expect(await screen.findByText(ACCOUNTS.noResults)).toBeTruthy();
+  });
+
+  test("loads a bookmarked Account Detail without a prior list search", async () => {
+    mocks.searchParams = new URLSearchParams("module=accounts&account=AD-001");
+    server.use(
+      http.get("/api/v1/programs/accounts", () => response([])),
+      http.get("/api/v1/programs/accounts/AD-001", () =>
+        HttpResponse.json({
+          requestId: "rid-account-detail",
+          data: ROWS[0],
+        })
+      )
+    );
+    render(<AccountDirectoryPanel />);
+
+    expect(
+      await screen.findByRole("heading", { name: ROWS[0].name })
+    ).toBeTruthy();
+    expect(screen.getByText(ACCOUNTS.detailReadOnly)).toBeTruthy();
+  });
+
+  test("renders recoverable error and retry", async () => {
+    const user = userEvent.setup();
+    let failed = true;
+    server.use(
+      http.get("/api/v1/programs/accounts", () => {
+        if (failed) {
+          failed = false;
+          return HttpResponse.json({ code: "INTERNAL" }, { status: 500 });
+        }
+        return response(ROWS.slice(0, 1));
+      })
+    );
+    render(<AccountDirectoryPanel />);
+    await expect(screen.findByText(ACCOUNTS.loadError)).resolves.toBeTruthy();
+    await user.click(screen.getByRole("button", { name: ACCOUNTS.retry }));
+    await expect(
+      screen.findByRole("button", { name: /陳大文/u })
+    ).resolves.toBeTruthy();
+    expect(document.activeElement).toBe(
+      screen.getByRole("heading", { name: ACCOUNTS.resultsTitle })
+    );
+  });
+  test("shows visible load-more recovery and retries without duplicate rows", async () => {
+    const user = userEvent.setup();
+    let failed = true;
+    server.use(
+      http.get("/api/v1/programs/accounts", ({ request }) => {
+        const cursor = new URL(request.url).searchParams.get("cursor");
+        if (cursor === "1" && failed) {
+          failed = false;
+          return HttpResponse.json({ code: "INTERNAL" }, { status: 500 });
+        }
+        return cursor === "1"
+          ? response(ROWS.slice(1), null)
+          : response(ROWS.slice(0, 1), "1");
+      })
+    );
+    render(<AccountDirectoryPanel />);
+
+    await screen.findByRole("button", { name: /陳大文/u });
+    await user.click(screen.getByRole("button", { name: "載入更多帳戶" }));
+    expect(await screen.findByText(ACCOUNTS.loadError)).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: ACCOUNTS.retry }));
+    await screen.findByRole("button", { name: /王大文/u });
+    expect(screen.getAllByRole("button", { name: /大文/u })).toHaveLength(2);
+  });
+
+  test("recovers an Account detail error through the selected detail slot", async () => {
+    const user = userEvent.setup();
+    let failed = true;
+    mocks.searchParams = new URLSearchParams("module=accounts&account=AD-001");
+    server.use(
+      http.get("/api/v1/programs/accounts", () => response([])),
+      http.get("/api/v1/programs/accounts/AD-001", () => {
+        if (failed) {
+          failed = false;
+          return HttpResponse.json({ code: "NOT_FOUND" }, { status: 404 });
+        }
+        return HttpResponse.json({
+          requestId: "rid-account-detail",
+          data: ROWS[0],
+        });
+      })
+    );
+    render(<AccountDirectoryPanel />);
+
+    expect(await screen.findByText(COPY.error.notFound)).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: ACCOUNTS.retry }));
+    expect(
+      await screen.findByRole("heading", { name: ROWS[0].name })
+    ).toBeInTheDocument();
+  });
+
+  test("clearing search preserves status and department filters in the safe URL", async () => {
+    const user = userEvent.setup();
+    mocks.searchParams = new URLSearchParams(
+      "module=accounts&q=大文&status=Active&department=培育部"
+    );
+    window.history.replaceState(
+      {},
+      "",
+      "/management?module=accounts&q=%E5%A4%A7%E6%96%87&status=Active&department=%E5%9F%B9%E8%82%B2%E9%83%A8"
+    );
+    server.use(http.get("/api/v1/programs/accounts", () => response()));
+    render(<AccountDirectoryPanel />);
+
+    const search = screen.getByLabelText(ACCOUNTS.searchLabel);
+    await user.clear(search);
+    const params = new URL(window.location.href).searchParams;
+    expect(params.get("q")).toBeNull();
+    expect(params.get("role")).toBeNull();
+    expect(params.get("status")).toBe("Active");
+    expect(params.get("department")).toBe("培育部");
+  });
+
+  test("restores a safe Account deep link and clears selection on same-origin Back", async () => {
+    const deepLink =
+      "/management?module=accounts&q=%E5%A4%A7%E6%96%87&account=AD-001&return=%2Fmanagement%3Fmodule%3Dsettings";
+    mocks.searchParams = new URLSearchParams(
+      "module=accounts&q=大文&account=AD-001&return=%2Fmanagement%3Fmodule%3Dsettings"
+    );
+    window.history.replaceState({}, "", deepLink);
+    server.use(
+      http.get("/api/v1/programs/accounts", () => response()),
+      http.get("/api/v1/programs/accounts/AD-001", () =>
+        HttpResponse.json({
+          requestId: "rid-account-detail",
+          data: ROWS[0],
+        })
+      )
+    );
+    render(<AccountDirectoryPanel />);
+
+    expect(screen.getByLabelText(ACCOUNTS.searchLabel)).toHaveValue("大文");
+    expect(screen.getByRole("link", { name: ACCOUNTS.back })).toHaveAttribute(
+      "href",
+      "/management?module=settings"
+    );
+    expect(
+      await screen.findByRole("heading", { name: ROWS[0].name })
+    ).toBeInTheDocument();
+
+    window.history.replaceState(
+      {},
+      "",
+      "/management?module=accounts&q=%E5%A4%A7%E6%96%87"
+    );
+    window.dispatchEvent(new PopStateEvent("popstate"));
+    await waitFor(() =>
+      expect(screen.queryByRole("heading", { name: ROWS[0].name })).toBeNull()
+    );
+  });
+
+  test("appends 200-plus Account rows through bounded pages", async () => {
+    const user = userEvent.setup();
+    const pageSize = 50;
+    const manyRows = Array.from({ length: 201 }, (_, index) => ({
+      ...ROWS[index % ROWS.length]!,
+      userId: `AD-${String(index + 1).padStart(3, "0")}`,
+      name: `帳戶 ${String(index + 1).padStart(3, "0")}`,
+    }));
+    server.use(
+      http.get("/api/v1/programs/accounts", ({ request }) => {
+        const start = Number(
+          new URL(request.url).searchParams.get("cursor") ?? "0"
+        );
+        const page = manyRows.slice(start, start + pageSize);
+        const nextCursor =
+          start + pageSize < manyRows.length ? String(start + pageSize) : null;
+        return response(page, nextCursor);
+      })
+    );
+    render(<AccountDirectoryPanel />);
+
+    await screen.findByRole("button", { name: /帳戶 001/u });
+    for (let start = pageSize; start < manyRows.length; start += pageSize) {
+      await user.click(screen.getByRole("button", { name: "載入更多帳戶" }));
+      await screen.findByRole("button", {
+        name: new RegExp(
+          `帳戶 ${String(Math.min(start + pageSize, manyRows.length)).padStart(3, "0")}`,
+          "u"
+        ),
+      });
+    }
+    expect(screen.getAllByRole("button", { name: /帳戶 \d{3}/u })).toHaveLength(
+      manyRows.length
+    );
+    expect(screen.queryByRole("button", { name: "載入更多帳戶" })).toBeNull();
+  });
+  test("hands an AUTH_REQUIRED list load back through the deep-link seam", async () => {
+    mocks.searchParams = new URLSearchParams(
+      "module=accounts&q=%E5%A4%A7%E6%96%87"
+    );
+    window.history.replaceState(
+      {},
+      "",
+      "/management?module=accounts&q=%E5%A4%A7%E6%96%87"
+    );
+    server.use(
+      http.get("/api/v1/programs/accounts", () =>
+        HttpResponse.json({ code: "AUTH_REQUIRED" }, { status: 401 })
+      )
+    );
+    render(<AccountDirectoryPanel />);
+
+    await waitFor(() => expect(mocks.router.replace).toHaveBeenCalledWith("/"));
+    expect(mocks.rememberDeepLink).toHaveBeenCalledWith(
+      "/management?module=accounts&q=%E5%A4%A7%E6%96%87"
+    );
+  });
+
+  test("hands an AUTH_REQUIRED detail load back through the deep-link seam", async () => {
+    mocks.searchParams = new URLSearchParams("module=accounts&account=AD-001");
+    window.history.replaceState(
+      {},
+      "",
+      "/management?module=accounts&account=AD-001"
+    );
+    server.use(
+      http.get("/api/v1/programs/accounts", () => response([])),
+      http.get("/api/v1/programs/accounts/AD-001", () =>
+        HttpResponse.json({ code: "AUTH_REQUIRED" }, { status: 401 })
+      )
+    );
+    render(<AccountDirectoryPanel />);
+
+    await waitFor(() => expect(mocks.router.replace).toHaveBeenCalledWith("/"));
+    expect(mocks.rememberDeepLink).toHaveBeenCalledWith(
+      "/management?module=accounts&account=AD-001"
+    );
+  });
+  test("restores focus to the Account Access source action on Back", async () => {
+    mocks.searchParams = new URLSearchParams(
+      "module=accounts&account=AD-001&returnFocus=account-access"
+    );
+    window.history.replaceState(
+      {},
+      "",
+      "/management?module=accounts&account=AD-001&returnFocus=account-access"
+    );
+    server.use(
+      http.get("/api/v1/programs/accounts", () => response()),
+      http.get("/api/v1/programs/accounts/AD-001", () =>
+        HttpResponse.json({
+          requestId: "rid-account-detail",
+          data: ROWS[0],
+        })
+      )
+    );
+    render(<AccountDirectoryPanel />);
+    const accessLink = await screen.findByRole("link", {
+      name: "查看帳戶權限與身份組",
+    });
+    await waitFor(() => expect(document.activeElement).toBe(accessLink));
+  });
+
+  test("shows the forbidden state when the server returns 403 FORBIDDEN", async () => {
+    server.use(
+      http.get("/api/v1/programs/accounts", () =>
+        HttpResponse.json({ code: "FORBIDDEN" }, { status: 403 })
+      )
+    );
+    render(<AccountDirectoryPanel />);
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent(ACCOUNTS.forbidden);
+  });
+
+  test("forwards the 50-account domain search limit parameter to the accounts query", async () => {
+    let requestedUrl = "";
+    server.use(
+      http.get("/api/v1/programs/accounts", ({ request }) => {
+        requestedUrl = request.url;
+        return response();
+      })
+    );
+    render(<AccountDirectoryPanel />);
+    await screen.findByRole("button", { name: /陳大文/u });
+    const params = new URL(requestedUrl).searchParams;
+    expect(params.get("limit")).toBe("50");
+  });
+
+  test("restores focus to the selected row button in the list when detail is dismissed", async () => {
+    const user = userEvent.setup();
+    server.use(
+      http.get("/api/v1/programs/accounts", () => response()),
+      http.get("/api/v1/programs/accounts/AD-001", () =>
+        HttpResponse.json({
+          requestId: "rid-account-detail",
+          data: ROWS[0],
+        })
+      )
+    );
+    render(<AccountDirectoryPanel />);
+    const row = await screen.findByRole("button", { name: /陳大文/u });
+    await user.click(row);
+    await screen.findByRole("heading", { name: ROWS[0].name });
+
+    window.history.replaceState({}, "", "/management?module=accounts");
+    window.dispatchEvent(new PopStateEvent("popstate"));
+    await waitFor(() =>
+      expect(screen.queryByRole("heading", { name: ROWS[0].name })).toBeNull()
+    );
+    await waitFor(() => expect(document.activeElement).toBe(row));
+  });
+});

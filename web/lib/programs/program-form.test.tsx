@@ -1,5 +1,5 @@
-import { cleanup, render, screen, within } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
+import { cleanup, render, screen } from "@testing-library/react";
+import userEvent, { type UserEvent } from "@testing-library/user-event";
 import { afterEach, describe, expect, test, vi } from "vitest";
 
 import { RpcError } from "@/lib/api";
@@ -72,10 +72,19 @@ const program: Program = {
   },
 };
 
+async function chooseSelectOption(
+  user: UserEvent,
+  label: string,
+  option: string
+) {
+  await user.click(screen.getByRole("combobox", { name: label }));
+  await user.click(await screen.findByRole("option", { name: option }));
+}
+
 describe(ProgramForm, () => {
   afterEach(() => {
     cleanup();
-    vi.clearAllMocks();
+    vi.resetAllMocks();
   });
 
   test("creates a permitted recurring or one-off program without unrelated settings", async () => {
@@ -92,16 +101,14 @@ describe(ProgramForm, () => {
     const departmentSelect = screen.getByRole("combobox", {
       name: COPY.programs.workspaceDepartment,
     });
+    await user.click(departmentSelect);
     expect(
-      within(departmentSelect).getByRole("option", {
-        name: "青年事工 · DEPT-1",
-      })
+      screen.getByRole("option", { name: "青年事工 · DEPT-1" })
     ).toBeInTheDocument();
     expect(
-      within(departmentSelect).queryByRole("option", {
-        name: "只讀事工 · DEPT-2",
-      })
+      screen.queryByRole("option", { name: "只讀事工 · DEPT-2" })
     ).not.toBeInTheDocument();
+    await user.keyboard("{Escape}");
     expect(screen.queryByText(/check-in/gu)).not.toBeInTheDocument();
 
     await user.type(
@@ -116,13 +123,15 @@ describe(ProgramForm, () => {
       screen.getByRole("textbox", { name: COPY.programs.programCategory }),
       "領袖訓練"
     );
-    await user.selectOptions(
-      screen.getByRole("combobox", { name: COPY.programs.behaviorType }),
-      "OneOff"
+    await chooseSelectOption(
+      user,
+      COPY.programs.behaviorType,
+      COPY.programs.behaviorOneOff
     );
-    await user.selectOptions(
-      screen.getByRole("combobox", { name: COPY.programs.programLifecycle }),
-      "Active"
+    await chooseSelectOption(
+      user,
+      COPY.programs.programLifecycle,
+      COPY.programs.lifecycleActive
     );
     await user.click(
       screen.getByRole("button", { name: COPY.programs.saveProgram })
@@ -199,7 +208,6 @@ describe(ProgramForm, () => {
     expect(onSaved).toHaveBeenCalledWith("created-draft");
   });
 
-
   test("allows an empty optional category when name and purpose are present", async () => {
     const user = userEvent.setup();
     const onSaved = vi.fn<(programId: string) => void>();
@@ -240,11 +248,11 @@ describe(ProgramForm, () => {
     const lifecycle = screen.getByRole("combobox", {
       name: COPY.programs.programLifecycle,
     });
+    await user.click(lifecycle);
     expect(
-      within(lifecycle).getByRole("option", {
-        name: COPY.programs.lifecycleActive,
-      })
-    ).toBeDisabled();
+      screen.getByRole("option", { name: COPY.programs.lifecycleActive })
+    ).toHaveAttribute("aria-disabled", "true");
+    await user.keyboard("{Escape}");
     expect(
       screen.getByText(COPY.programs.programCreateDraftOnlyHint)
     ).toBeInTheDocument();
@@ -285,15 +293,11 @@ describe(ProgramForm, () => {
 
     render(<ProgramForm initial={program} onSaved={onSaved} />);
 
-    const lifecycle = screen.getByRole("combobox", {
-      name: COPY.programs.programLifecycle,
-    });
-    expect(
-      within(lifecycle).getByRole("option", {
-        name: COPY.programs.lifecycleArchived,
-      })
-    ).toBeInTheDocument();
-    await user.selectOptions(lifecycle, "Archived");
+    await chooseSelectOption(
+      user,
+      COPY.programs.programLifecycle,
+      COPY.programs.lifecycleArchived
+    );
     await user.click(
       screen.getByRole("button", { name: COPY.programs.saveProgram })
     );
@@ -325,11 +329,10 @@ describe(ProgramForm, () => {
 
     render(<ProgramForm initial={program} onSaved={onSaved} />);
 
-    await user.selectOptions(
-      screen.getByRole("combobox", {
-        name: COPY.programs.programLifecycle,
-      }),
-      "Archived"
+    await chooseSelectOption(
+      user,
+      COPY.programs.programLifecycle,
+      COPY.programs.lifecycleArchived
     );
     await user.click(
       screen.getByRole("button", { name: COPY.programs.saveProgram })

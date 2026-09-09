@@ -6,10 +6,7 @@ import { expect, test } from "@playwright/test";
 import type { Route } from "@playwright/test";
 
 import { COPY } from "../../web/lib/copy";
-import {
-  defaultSections,
-  stableNavigationSections,
-} from "../../web/lib/sections";
+import { defaultSections, projectNavigation } from "../../web/lib/sections";
 
 const AUTH_HINT_KEY = "efcc_auth_active";
 
@@ -18,9 +15,16 @@ const MEMBER_USER = {
   name: "Member User",
   username: "member",
   phone: "91234567",
-  role: "Member",
   status: "active",
   qrCodeString: "qr:u-member",
+  identities: [
+    {
+      label: "會友基礎",
+      scopeKind: "Global",
+      scopeLabel: null,
+    },
+  ],
+  capabilities: { "program.manage": false },
 };
 
 const STAFF_USER = {
@@ -28,9 +32,16 @@ const STAFF_USER = {
   name: "Staff User",
   username: "staff",
   phone: "91234568",
-  role: "Staff",
   status: "active",
   qrCodeString: "qr:u-staff",
+  identities: [
+    {
+      label: "同工",
+      scopeKind: "Global",
+      scopeLabel: null,
+    },
+  ],
+  capabilities: { "program.manage": true },
 };
 
 function stubAuthFor(user: typeof MEMBER_USER) {
@@ -48,7 +59,9 @@ function stubAuthFor(user: typeof MEMBER_USER) {
           data: {
             user,
             sections: defaultSections(),
-            navigation: stableNavigationSections(user.role),
+            navigation: projectNavigation({
+              "program.manage": user.capabilities["program.manage"] === true,
+            }),
           },
         }),
       });
@@ -76,7 +89,7 @@ function stubAuthFor(user: typeof MEMBER_USER) {
 test.describe("084-02: 5-slot navigation and shell contract", () => {
   test("Member role receives 5-slot dock with Notices (not Management)", async ({
     page,
-  }, testInfo) => {
+  }) => {
     await page.addInitScript(
       ({ key, value }: { key: string; value: string }) => {
         localStorage.setItem(key, value);
@@ -86,9 +99,7 @@ test.describe("084-02: 5-slot navigation and shell contract", () => {
     await page.route("**/api/v1/auth/**", stubAuthFor(MEMBER_USER));
     await page.goto("/home");
 
-    const nav = testInfo.project.name.startsWith("mobile")
-      ? page.locator("nav.nav-phone")
-      : page.locator("nav.nav-desktop");
+    const nav = page.locator("nav#main-navigation");
     await expect(nav).toBeVisible();
 
     const links = nav.locator("a");
@@ -111,7 +122,7 @@ test.describe("084-02: 5-slot navigation and shell contract", () => {
 
   test("Staff role receives 5-slot dock with Management (not Notices)", async ({
     page,
-  }, testInfo) => {
+  }) => {
     await page.addInitScript(
       ({ key, value }: { key: string; value: string }) => {
         localStorage.setItem(key, value);
@@ -121,9 +132,7 @@ test.describe("084-02: 5-slot navigation and shell contract", () => {
     await page.route("**/api/v1/auth/**", stubAuthFor(STAFF_USER));
     await page.goto("/home");
 
-    const nav = testInfo.project.name.startsWith("mobile")
-      ? page.locator("nav.nav-phone")
-      : page.locator("nav.nav-desktop");
+    const nav = page.locator("nav#main-navigation");
     await expect(nav).toBeVisible();
 
     const links = nav.locator("a");
@@ -223,7 +232,7 @@ test.describe("089-S1: Reconciled shared shell, top bar, and Attention panel con
     await expect(header).toBeVisible();
     await expect(header.getByText(COPY.shell.shortMark)).toBeVisible();
     await expect(header.getByText(STAFF_USER.name)).toBeVisible();
-    await expect(header.getByText(COPY.shell.roleLabels.Staff)).toBeVisible();
+    await expect(header.getByText("同工")).toBeVisible();
 
     const bell = header.getByRole("button", {
       name: new RegExp(COPY.attention.title),
@@ -271,7 +280,7 @@ test.describe("089-S1: Reconciled shared shell, top bar, and Attention panel con
 
   test("On /scanner, top bar is suppressed while dock/rail nav remains mounted", async ({
     page,
-  }, testInfo) => {
+  }) => {
     await page.addInitScript(
       ({ key, value }: { key: string; value: string }) => {
         localStorage.setItem(key, value);
@@ -285,9 +294,7 @@ test.describe("089-S1: Reconciled shared shell, top bar, and Attention panel con
     await expect(page.locator("header")).toHaveCount(0);
 
     // Navigation remains visible
-    const nav = testInfo.project.name.startsWith("mobile")
-      ? page.locator("nav.nav-phone")
-      : page.locator("nav.nav-desktop");
+    const nav = page.locator("nav#main-navigation");
     await expect(nav).toBeVisible();
     await expect(nav.locator(".nav-item--scan")).toBeVisible();
   });

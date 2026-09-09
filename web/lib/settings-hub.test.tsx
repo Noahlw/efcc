@@ -54,11 +54,16 @@ describe(SettingsHub, () => {
     expect(
       screen.getByText(SETTINGS.accountsPermissionsRowHint)
     ).toBeInTheDocument();
-    expect(screen.getByText(SETTINGS.checkinSettingsRowHint)).toBeInTheDocument();
+    expect(
+      screen.getByText(SETTINGS.checkinSettingsRowHint)
+    ).toBeInTheDocument();
     expect(screen.getByText(SETTINGS.timezoneRowHint)).toBeInTheDocument();
 
     expectBefore(rows[0], rows[1]);
     expectBefore(rows[1], rows[2]);
+    expect(
+      document.querySelectorAll('[data-slot="settings-row"]')
+    ).toHaveLength(3);
   });
 
   test("簽到設定 and 時區 rows link to the locked routes", () => {
@@ -97,7 +102,7 @@ describe(SettingsHub, () => {
     });
     expect(permissionsRow).toHaveAttribute(
       "href",
-      "/management?module=permissions"
+      "/management?module=permissions&return=%2Fmanagement%3Fmodule%3Dsettings"
     );
   });
 
@@ -106,6 +111,12 @@ describe(SettingsHub, () => {
 
     const back = screen.getByRole("link", { name: SETTINGS.settingsBack });
     expect(back).toHaveAttribute("href", "/management");
+  });
+
+  test("is a pure read-only navigation screen — no form controls, inputs, or buttons anywhere", () => {
+    render(<SettingsHub />);
+    expectNoFormElements();
+    expect(document.querySelector("button")).toBeNull();
   });
 });
 
@@ -141,11 +152,11 @@ describe(CheckinSettings, () => {
     expect(screen.getByText(SETTINGS.afterEndValue)).toBeInTheDocument();
   });
 
-  test("is a pure read-only screen — no form controls anywhere", () => {
+  test("is a pure read-only screen — no form controls or buttons anywhere", () => {
     render(<CheckinSettings />);
     expectNoFormElements();
+    expect(document.querySelector("button")).toBeNull();
   });
-
   test("back action returns to the settings hub", () => {
     render(<CheckinSettings />);
 
@@ -166,11 +177,11 @@ describe(TimezoneSettings, () => {
     expect(screen.getByText(SETTINGS.gmt8Value)).toBeInTheDocument();
   });
 
-  test("is a pure read-only screen — no form controls anywhere", () => {
+  test("is a pure read-only screen — no form controls or buttons anywhere", () => {
     render(<TimezoneSettings />);
     expectNoFormElements();
+    expect(document.querySelector("button")).toBeNull();
   });
-
   test("back action returns to the settings hub", () => {
     render(<TimezoneSettings />);
 

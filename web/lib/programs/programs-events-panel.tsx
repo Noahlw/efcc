@@ -2,6 +2,17 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 
+import { Alert } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { buildCheckInSheet } from "@/lib/check-in-sheet";
 import { COPY, errorMessage } from "@/lib/copy";
 import { announce } from "@/lib/live-region";
@@ -28,8 +39,58 @@ import {
 } from "@/lib/programs/recurrence";
 import { qrDataUrl } from "@/lib/qr";
 
-import styles from "@/app/programs/programs.module.css";
-
+const styles = {
+  eventsPanel: "grid min-w-0 gap-4",
+  panelHeading:
+    "m-0 text-lg font-extrabold leading-6 tracking-[-0.02em] [overflow-wrap:anywhere]",
+  programDetailMuted:
+    "m-0 text-sm leading-6 text-[var(--ink-muted)] [overflow-wrap:anywhere]",
+  panelNotice:
+    "block rounded-lg border border-[var(--success-border)] bg-[var(--success-surface)] p-3 text-[var(--ink)] [overflow-wrap:anywhere]",
+  panelError:
+    "grid min-w-0 gap-2 rounded-lg border border-[var(--error-border)] bg-[var(--error-surface)] p-3 text-[var(--error)] [overflow-wrap:anywhere]",
+  retry:
+    "min-h-11 min-w-11 w-fit rounded-lg border border-[var(--line-strong)] bg-transparent px-4 py-2 text-[var(--ink)] whitespace-normal hover:bg-[var(--surface)]",
+  select:
+    "min-h-11 min-w-0 w-full rounded-lg border border-[var(--line-strong)] bg-[var(--surface-raised)] px-3 text-base text-[var(--ink)]",
+  ruleForm:
+    "grid min-w-0 gap-3 rounded-lg border border-[var(--line)] bg-[var(--surface)] p-4",
+  input: "min-h-11 min-w-0",
+  eventCreateForm: "grid-cols-1 md:grid-cols-2",
+  workspaceSubheading:
+    "m-0 text-base font-bold leading-6 [overflow-wrap:anywhere]",
+  ruleField: "grid min-w-0 gap-1.5 text-sm font-bold text-[var(--ink)]",
+  actionButton:
+    "inline-flex min-h-11 min-w-11 w-fit items-center justify-center rounded-lg bg-[var(--accent)] px-4 py-2 text-white whitespace-normal hover:bg-[var(--accent-deep)]",
+  timeMarker: "m-0 text-xs text-[var(--ink-muted)]",
+  ruleList: "m-0 grid min-w-0 list-none gap-2 p-0",
+  emptyLine:
+    "m-0 rounded-lg border border-dashed border-[var(--line)] p-4 text-sm text-[var(--ink-muted)] [overflow-wrap:anywhere]",
+  ruleRow:
+    "flex min-w-0 flex-wrap items-center justify-between gap-3 rounded-lg border border-[var(--line)] bg-[var(--surface-raised)] p-3 [overflow-wrap:anywhere]",
+  eventList: "m-0 grid min-w-0 list-none gap-2 p-0",
+  eventRow:
+    "grid min-w-0 gap-2 rounded-lg border border-[var(--line)] bg-[var(--surface-raised)] p-4 [overflow-wrap:anywhere]",
+  eventDate: "min-w-0 text-sm text-[var(--ink-muted)] [overflow-wrap:anywhere]",
+  eventSource: "w-fit whitespace-normal",
+  eventCancelled: "text-[var(--error)]",
+  eventActive: "text-[var(--accent)]",
+  exceptionBadge: "w-fit whitespace-normal text-[var(--pending)]",
+  eventActions: "flex min-w-0 flex-wrap items-center gap-2",
+  secondaryButton:
+    "min-h-11 min-w-11 w-fit rounded-lg border border-[var(--line-strong)] bg-transparent px-4 py-2 text-[var(--ink)] whitespace-normal hover:bg-[var(--surface)]",
+  cancelForm: "flex min-w-0 flex-wrap items-center gap-2",
+  confirmation:
+    "grid min-w-0 gap-2 rounded-lg border border-[var(--pending-border)] bg-[var(--pending-surface)] p-3 [overflow-wrap:anywhere]",
+  dangerButton:
+    "min-h-11 min-w-11 w-fit rounded-lg border border-[var(--error-border)] bg-[var(--error-surface)] px-4 py-2 text-[var(--error)] whitespace-normal",
+  successOutline:
+    "min-h-11 min-w-11 w-fit rounded-lg border border-[var(--success-border)] bg-[var(--success-surface)] px-4 py-2 text-[var(--success)] whitespace-normal",
+  dangerOutline:
+    "min-h-11 min-w-11 w-fit rounded-lg border border-[var(--error-border)] bg-transparent px-4 py-2 text-[var(--error)] whitespace-normal",
+  eventReason:
+    "min-w-0 text-sm text-[var(--ink-muted)] [overflow-wrap:anywhere]",
+} as const;
 const STATUS_LABEL: Record<ProgramEvent["status"], string> = {
   Active: COPY.programs.eventActive,
   Cancelled: COPY.programs.eventCancelled,
@@ -131,11 +192,6 @@ export const EventsPanel = ({
   const [reschedulingEventId, setReschedulingEventId] = useState<string | null>(
     null
   );
-  // Exceptions created this session, keyed by HK wall date. The API exposes
-  // no list-exceptions endpoint, so the 恢復 affordance lives for the session.
-  const [exceptions, setExceptions] = useState<
-    Record<string, ScheduleException>
-  >({});
   const [busy, setBusy] = useState(false);
   const mounted = useRef(true);
 
@@ -171,31 +227,40 @@ export const EventsPanel = ({
     []
   );
 
-  const load = useCallback(async () => {
-    setRules(null);
-    setEvents(null);
-    setActionError(null);
-    setLoadError(false);
-    try {
-      const [rulesResp, eventsResp] = await Promise.all([
-        listScheduleRules(program.program_id),
-        listEvents(program.program_id),
-      ]);
-      if (!mounted.current) {
-        return;
+  const load = useCallback(
+    async (preserve = false): Promise<boolean> => {
+      if (!preserve) {
+        setRules(null);
+        setEvents(null);
       }
-      setRules(rulesResp.rules);
-      setEvents(eventsResp.events);
-    } catch (error) {
-      if (!mounted.current) {
-        return;
+      setActionError(null);
+      setLoadError(false);
+      try {
+        const [rulesResp, eventsResp] = await Promise.all([
+          listScheduleRules(program.program_id),
+          listEvents(program.program_id),
+        ]);
+        if (!mounted.current) {
+          return false;
+        }
+        setRules(rulesResp.rules);
+        setEvents(eventsResp.events);
+        return true;
+      } catch (error) {
+        if (!mounted.current) {
+          return false;
+        }
+        setActionError(errorMessage(error));
+        setLoadError(true);
+        if (!preserve) {
+          setRules([]);
+          setEvents([]);
+        }
+        return false;
       }
-      setActionError(errorMessage(error));
-      setLoadError(true);
-      setRules([]);
-      setEvents([]);
-    }
-  }, [program.program_id]);
+    },
+    [program.program_id]
+  );
 
   useEffect(() => {
     void load();
@@ -205,28 +270,30 @@ export const EventsPanel = ({
     async <T,>(
       fn: () => Promise<T>,
       successCopy: string | ((result: T) => string)
-    ) => {
+    ): Promise<boolean> => {
       setBusy(true);
       setActionError(null);
       try {
         const result = await fn();
         if (!mounted.current) {
-          return;
+          return false;
         }
-        await load();
-        if (!mounted.current) {
-          return;
+        const refreshed = await load(true);
+        if (!refreshed || !mounted.current) {
+          return false;
         }
         const message =
           typeof successCopy === "function" ? successCopy(result) : successCopy;
         setNotice(message);
         announce(message);
+        return true;
       } catch (error) {
         if (!mounted.current) {
-          return;
+          return false;
         }
         setActionError(errorMessage(error));
         announce(errorMessage(error));
+        return false;
       } finally {
         if (mounted.current) {
           setBusy(false);
@@ -296,7 +363,7 @@ export const EventsPanel = ({
   };
 
   const submitCancel =
-    (eventId: string) => (event: React.FormEvent<HTMLFormElement>) => {
+    (eventId: string) => async (event: React.FormEvent<HTMLFormElement>) => {
       event.preventDefault();
       const currentEvent = events?.find(
         (candidate) => candidate.event_id === eventId
@@ -314,31 +381,23 @@ export const EventsPanel = ({
       }
       const form = new FormData(event.currentTarget);
       const reason = String(form.get("cancel_reason") ?? "").trim() || null;
-      void runAction(
+      const succeeded = await runAction(
         () => cancelEvent(program.program_id, eventId, reason),
         COPY.programs.eventCancelledNotice
       );
-      setConfirmingEventId(null);
+      if (succeeded && mounted.current) {
+        setConfirmingEventId(null);
+      }
     };
-
-  const rememberException = (result: {
-    exception: ScheduleException;
-  }): void => {
-    const { exception } = result;
-    setExceptions((previous) => ({
-      ...previous,
-      [exception.override_date]: exception,
-    }));
-  };
 
   const submitReschedule =
     (rule: ScheduleRule, wallDate: string) =>
-    (event: React.FormEvent<HTMLFormElement>) => {
+    async (event: React.FormEvent<HTMLFormElement>) => {
       event.preventDefault();
       const form = new FormData(event.currentTarget);
       const newStartTime = String(form.get("new_start_time") ?? "");
       const newEndTime = String(form.get("new_end_time") ?? "");
-      void runAction(
+      const succeeded = await runAction(
         () =>
           createScheduleException(program.program_id, rule.rule_id, {
             override_date: wallDate,
@@ -346,34 +405,32 @@ export const EventsPanel = ({
             new_start_time: newStartTime,
             new_end_time: newEndTime,
           }),
-        (result) => {
-          rememberException(result);
-          return COPY.programs.exceptionUpdatedNotice;
-        }
+        COPY.programs.exceptionUpdatedNotice
       );
-      setReschedulingEventId(null);
+      if (succeeded && mounted.current) {
+        setReschedulingEventId(null);
+      }
     };
 
   const submitCancelOccurrence =
     (rule: ScheduleRule, wallDate: string, eventId: string) =>
-    (event: React.FormEvent<HTMLFormElement>) => {
+    async (event: React.FormEvent<HTMLFormElement>) => {
       event.preventDefault();
       if (confirmingCancelId !== eventId) {
         setConfirmingCancelId(eventId);
         return;
       }
-      void runAction(
+      const succeeded = await runAction(
         () =>
           createScheduleException(program.program_id, rule.rule_id, {
             override_date: wallDate,
             action: "CANCEL",
           }),
-        (result) => {
-          rememberException(result);
-          return COPY.programs.exceptionUpdatedNotice;
-        }
+        COPY.programs.exceptionUpdatedNotice
       );
-      setConfirmingCancelId(null);
+      if (succeeded && mounted.current) {
+        setConfirmingCancelId(null);
+      }
     };
 
   const removeException = (exception: ScheduleException) => {
@@ -384,13 +441,7 @@ export const EventsPanel = ({
           exception.rule_id,
           exception.exception_id
         ),
-      () => {
-        setExceptions((previous) => {
-          const { [exception.override_date]: _, ...next } = previous;
-          return next;
-        });
-        return COPY.programs.exceptionRemovedNotice;
-      }
+      COPY.programs.exceptionRemovedNotice
     );
   };
   const printSheet = (event: ProgramEvent) => {
@@ -459,18 +510,18 @@ export const EventsPanel = ({
         </output>
       )}
       {actionError !== null && (
-        <output className={styles.panelError} role="alert">
+        <Alert className={styles.panelError} variant="destructive">
           {actionError}
-        </output>
+        </Alert>
       )}
       {loadError && (
-        <button
+        <Button
           type="button"
           className={styles.retry}
           onClick={() => void load()}
         >
           {COPY.error.retry}
-        </button>
+        </Button>
       )}
 
       {canManage && (
@@ -484,13 +535,14 @@ export const EventsPanel = ({
             {COPY.programs.createMeeting}
           </h5>
           {manualError !== null && (
-            <output className={styles.panelError} role="alert">
+            <Alert className={styles.panelError} variant="destructive">
               {manualError}
-            </output>
+            </Alert>
           )}
           <label className={styles.ruleField}>
             <span>{COPY.programs.eventDate}</span>
-            <input
+            <Input
+              className={styles.input}
               type="date"
               name="event_date"
               aria-label={COPY.programs.eventDate}
@@ -499,7 +551,8 @@ export const EventsPanel = ({
           </label>
           <label className={styles.ruleField}>
             <span>{COPY.programs.eventTime}</span>
-            <input
+            <Input
+              className={styles.input}
               type="time"
               name="event_time"
               aria-label={COPY.programs.eventTime}
@@ -508,7 +561,8 @@ export const EventsPanel = ({
           </label>
           <label className={styles.ruleField}>
             <span>{COPY.programs.eventName}</span>
-            <input
+            <Input
+              className={styles.input}
               type="text"
               name="name"
               placeholder={COPY.programs.eventNamePlaceholder}
@@ -518,38 +572,49 @@ export const EventsPanel = ({
           </label>
           <label className={styles.ruleField}>
             <span>{COPY.programs.eventType}</span>
-            <select name="event_type" aria-label={COPY.programs.eventType}>
-              {EVENT_TYPE_OPTIONS.map((type) => (
-                <option key={type} value={type}>
-                  {type}
-                </option>
-              ))}
-            </select>
+            <Select name="event_type" defaultValue={EVENT_TYPE_OPTIONS[0]}>
+              <SelectTrigger
+                className={styles.select}
+                aria-label={COPY.programs.eventType}
+              >
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {EVENT_TYPE_OPTIONS.map((type) => (
+                  <SelectItem key={type} value={type}>
+                    {type}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </label>
           <label className={styles.ruleField}>
             <span>{COPY.programs.recurrenceTag}</span>
-            <select
+            <Select
               name="recurrence_tag"
               defaultValue={COPY.programs.recurrenceNone}
-              aria-label={COPY.programs.recurrenceTag}
             >
-              {RECURRENCE_TAG_OPTIONS.map((tag) => (
-                <option key={tag} value={tag}>
-                  {tag}
-                </option>
-              ))}
-            </select>
+              <SelectTrigger
+                className={styles.select}
+                aria-label={COPY.programs.recurrenceTag}
+              >
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {RECURRENCE_TAG_OPTIONS.map((tag) => (
+                  <SelectItem key={tag} value={tag}>
+                    {tag}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </label>
           <p className={styles.programDetailMuted}>
             {COPY.programs.repeatFormInformational}
           </p>
-          <button
-            type="submit"
-            disabled={busy}
-            className={styles.actionButton}
-          >
+          <Button type="submit" disabled={busy} className={styles.actionButton}>
             {busy ? COPY.programs.submitting : COPY.programs.createMeeting}
-          </button>
+          </Button>
           <p className={styles.timeMarker}>{COPY.programs.hkTimeMarker}</p>
         </form>
       )}
@@ -590,32 +655,45 @@ export const EventsPanel = ({
         <form className={styles.ruleForm} onSubmit={submitRule}>
           <label className={styles.ruleField}>
             <span>{COPY.programs.behaviorType}</span>
-            <select
-              name="recurrence"
-              defaultValue="weekly"
-              aria-label={COPY.programs.behaviorType}
-            >
-              <option value="weekly">{COPY.programs.ruleWeekly}</option>
-              <option value="monthly">{COPY.programs.ruleMonthly}</option>
-            </select>
+            <Select name="recurrence" defaultValue="weekly">
+              <SelectTrigger
+                className={styles.select}
+                aria-label={COPY.programs.behaviorType}
+              >
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="weekly">
+                  {COPY.programs.ruleWeekly}
+                </SelectItem>
+                <SelectItem value="monthly">
+                  {COPY.programs.ruleMonthly}
+                </SelectItem>
+              </SelectContent>
+            </Select>
           </label>
           <label className={styles.ruleField}>
             <span>{COPY.programs.dayOfWeekLabel}</span>
-            <select
-              name="day_of_week"
-              defaultValue={2}
-              aria-label={COPY.programs.dayOfWeekLabel}
-            >
-              {WEEKDAY_LABELS.map((label, index) => (
-                <option key={label} value={index}>
-                  {label}
-                </option>
-              ))}
-            </select>
+            <Select name="day_of_week" defaultValue="2">
+              <SelectTrigger
+                className={styles.select}
+                aria-label={COPY.programs.dayOfWeekLabel}
+              >
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {WEEKDAY_LABELS.map((label, index) => (
+                  <SelectItem key={label} value={String(index)}>
+                    {label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </label>
           <label className={styles.ruleField}>
             <span>{COPY.programs.monthDayLabel}</span>
-            <input
+            <Input
+              className={styles.input}
               type="number"
               name="month_day"
               min={1}
@@ -625,7 +703,8 @@ export const EventsPanel = ({
           </label>
           <label className={styles.ruleField}>
             <span>{COPY.programs.startTime}</span>
-            <input
+            <Input
+              className={styles.input}
               type="time"
               name="start_time"
               required
@@ -634,20 +713,17 @@ export const EventsPanel = ({
           </label>
           <label className={styles.ruleField}>
             <span>{COPY.programs.endTime}</span>
-            <input
+            <Input
+              className={styles.input}
               type="time"
               name="end_time"
               required
               aria-label={COPY.programs.endTime}
             />
           </label>
-          <button
-            type="submit"
-            disabled={busy}
-            className={styles.actionButton}
-          >
+          <Button type="submit" disabled={busy} className={styles.actionButton}>
             {busy ? COPY.programs.submitting : COPY.programs.addRule}
-          </button>
+          </Button>
           <p className={styles.timeMarker}>{COPY.programs.hkTimeMarker}</p>
         </form>
       )}
@@ -664,7 +740,7 @@ export const EventsPanel = ({
           events.map((event) => {
             const wall = hkWallParts(event.starts_at);
             const rule = ruleForEvent(event, rules ?? []);
-            const exception = exceptions[wall.date];
+            const exception = event.exception ?? null;
             const now = Date.now();
             const opensAt = event.check_in_window_opens_at;
             const closesAt = event.check_in_window_closes_at;
@@ -681,43 +757,44 @@ export const EventsPanel = ({
                 </strong>
                 <span className={styles.eventDate}>{wall.date}</span>
                 <span className={styles.eventDate}>{wall.time}</span>
-                <span className={styles.eventSource}>
+                <Badge className={styles.eventSource} variant="outline">
                   {event.event_type ?? COPY.programs.eventTypeOptions[5]}
-                </span>
-                <span className={styles.eventSource}>
+                </Badge>
+                <Badge className={styles.eventSource} variant="outline">
                   {COPY.programs.repeatLabel.replace(
                     "{tag}",
                     eventRecurrenceTag(event, rule)
                   )}
-                </span>
-                <span className={styles.eventSource}>
+                </Badge>
+                <Badge className={styles.eventSource} variant="outline">
                   {event.source === "SCHEDULE"
                     ? COPY.programs.eventScheduleSource
                     : COPY.programs.eventManualSource}
-                </span>
-                <span
+                </Badge>
+                <Badge
                   className={
                     event.status === "Cancelled"
                       ? styles.eventCancelled
                       : styles.eventActive
                   }
+                  variant={event.status === "Cancelled" ? "outline" : "default"}
                 >
                   {STATUS_LABEL[event.status]}
-                </span>
+                </Badge>
                 {event.exception !== null && event.exception !== undefined && (
-                  <span className={styles.exceptionBadge}>
+                  <Badge className={styles.exceptionBadge} variant="secondary">
                     {event.exception.action === "RESCHEDULE"
                       ? COPY.programs.eventRescheduledBadge.replace(
                           "{time}",
                           event.exception.new_start_time ?? ""
                         )
                       : COPY.programs.eventCancelledBadge}
-                  </span>
+                  </Badge>
                 )}
                 {canManage &&
                   event.status === "Active" &&
                   rule !== null &&
-                  (exception === undefined ? (
+                  (exception === null ? (
                     <div className={styles.eventActions}>
                       {reschedulingEventId === event.event_id ? (
                         <form
@@ -725,43 +802,45 @@ export const EventsPanel = ({
                           ref={rescheduleFormRef}
                           onSubmit={submitReschedule(rule, wall.date)}
                         >
-                          <input
+                          <Input
+                            className={styles.input}
                             type="time"
                             name="new_start_time"
                             required
                             aria-label={COPY.programs.rescheduleStart}
                           />
-                          <input
+                          <Input
+                            className={styles.input}
                             type="time"
                             name="new_end_time"
                             required
                             aria-label={COPY.programs.rescheduleEnd}
                           />
-                          <button
+                          <Button
                             type="submit"
                             disabled={busy}
                             className={styles.actionButton}
                           >
                             {COPY.programs.confirmReschedule}
-                          </button>
-                          <button
+                          </Button>
+                          <Button
                             type="button"
                             disabled={busy}
                             className={styles.secondaryButton}
                             onClick={() => setReschedulingEventId(null)}
                           >
                             {COPY.programs.cancelRevoke}
-                          </button>
+                          </Button>
                         </form>
                       ) : (
-                        <button
+                        <Button
                           type="button"
                           disabled={busy}
                           className={styles.secondaryButton}
                           onClick={() => setReschedulingEventId(event.event_id)}
                         >
                           {COPY.programs.rescheduleEvent}
-                        </button>
+                        </Button>
                       )}
                       <form
                         className={styles.cancelForm}
@@ -778,42 +857,42 @@ export const EventsPanel = ({
                             ref={confirmOccurrenceRef}
                           >
                             <span>{COPY.programs.cancelOccurrenceConfirm}</span>
-                            <button
+                            <Button
                               type="submit"
                               disabled={busy}
                               className={styles.dangerButton}
                             >
                               {COPY.programs.confirmCancelOccurrence}
-                            </button>
-                            <button
+                            </Button>
+                            <Button
                               type="button"
                               disabled={busy}
                               className={styles.secondaryButton}
                               onClick={() => setConfirmingCancelId(null)}
                             >
                               {COPY.programs.keepOccurrence}
-                            </button>
+                            </Button>
                           </div>
                         ) : (
-                          <button
+                          <Button
                             type="submit"
                             disabled={busy}
                             className={styles.secondaryButton}
                           >
                             {COPY.programs.cancelOccurrence}
-                          </button>
+                          </Button>
                         )}
                       </form>
                     </div>
                   ) : (
-                    <button
+                    <Button
                       type="button"
                       disabled={busy}
                       className={styles.successOutline}
                       onClick={() => removeException(exception)}
                     >
                       {COPY.programs.restoreOccurrence}
-                    </button>
+                    </Button>
                   ))}
                 {event.status === "Cancelled" &&
                   event.cancel_reason !== null && (
@@ -825,13 +904,13 @@ export const EventsPanel = ({
                     </span>
                   )}
                 {canManage && (
-                  <button
+                  <Button
                     type="button"
                     className={styles.secondaryButton}
                     onClick={() => onOpenEvent?.(event.event_id)}
                   >
                     {COPY.programs.eventDetailOpen}
-                  </button>
+                  </Button>
                 )}
                 {canManage && event.status === "Active" && (
                   <>
@@ -840,20 +919,21 @@ export const EventsPanel = ({
                       noValidate
                       onSubmit={submitCancel(event.event_id)}
                     >
-                      <input
+                      <Input
+                        className={styles.input}
                         type="text"
                         name="cancel_reason"
                         placeholder={COPY.programs.cancelReasonPlaceholder}
                         aria-label={COPY.programs.cancelReason}
                       />
                       {confirmingEventId !== event.event_id && (
-                        <button
+                        <Button
                           type="submit"
                           disabled={busy}
                           className={styles.dangerOutline}
                         >
                           {COPY.programs.cancelEvent}
-                        </button>
+                        </Button>
                       )}
                       {confirmingEventId === event.event_id && (
                         <div
@@ -864,34 +944,32 @@ export const EventsPanel = ({
                           <strong>
                             {COPY.programs.cancelMeetingConfirmTitle}
                           </strong>
-                          <span>
-                            {COPY.programs.cancelMeetingConfirmBody}
-                          </span>
-                          <button
+                          <span>{COPY.programs.cancelMeetingConfirmBody}</span>
+                          <Button
                             type="submit"
                             disabled={busy}
                             className={styles.dangerButton}
                           >
                             {COPY.programs.confirmCancel}
-                          </button>
-                          <button
+                          </Button>
+                          <Button
                             type="button"
                             disabled={busy}
                             className={styles.secondaryButton}
                             onClick={() => setConfirmingEventId(null)}
                           >
                             {COPY.programs.keepMeeting}
-                          </button>
+                          </Button>
                         </div>
                       )}
                     </form>
-                    <button
+                    <Button
                       type="button"
                       className={styles.actionButton}
                       onClick={() => printSheet(event)}
                     >
                       {COPY.attendance.printSheet}
-                    </button>
+                    </Button>
                     <a
                       className={styles.actionButton}
                       href={

@@ -7,26 +7,33 @@ import {
   SettingsDetailRow,
 } from "./settings-ui";
 
-import styles from "./management-settings.module.css";
-
 export function CheckinSettings() {
   return (
-    <section className={styles.page} aria-labelledby="checkin-settings-title">
-      <header className={styles.header}>
+    <section
+      className="mx-auto w-full max-w-[760px] min-w-0 px-4 pb-16 pt-8 text-[var(--ink)] min-[481px]:px-[clamp(1.25rem,4vw,2.75rem)]"
+      aria-labelledby="checkin-settings-title"
+    >
+      <header className="grid gap-1">
         <SettingsBackLink
           href="/management?module=settings"
           label={COPY.settings.settingsBackToHub}
         />
-        <h1 id="checkin-settings-title" className={styles.title}>
+        <h1
+          id="checkin-settings-title"
+          className="mt-1 text-[clamp(1.5rem,5.5vw,1.9rem)] font-extrabold leading-tight tracking-[-0.02em] wrap-anywhere"
+        >
           {COPY.settings.checkinTitle}
         </h1>
       </header>
 
       <section
-        className={styles.section}
+        className="mt-[1.625rem] min-w-0"
         aria-labelledby="checkin-methods-title"
       >
-        <h2 id="checkin-methods-title" className={styles.sectionTitle}>
+        <h2
+          id="checkin-methods-title"
+          className="mb-2 text-[1.1rem] font-bold leading-[1.35] wrap-anywhere"
+        >
           {COPY.settings.checkinMethods}
         </h2>
         <SettingsDetailCard>
@@ -54,10 +61,13 @@ export function CheckinSettings() {
       </section>
 
       <section
-        className={styles.section}
+        className="mt-[1.625rem] min-w-0"
         aria-labelledby="checkin-window-title"
       >
-        <h2 id="checkin-window-title" className={styles.sectionTitle}>
+        <h2
+          id="checkin-window-title"
+          className="mb-2 text-[1.1rem] font-bold leading-[1.35] wrap-anywhere"
+        >
           {COPY.settings.openWindow}
         </h2>
         <SettingsDetailCard>

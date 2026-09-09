@@ -4,6 +4,7 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
@@ -19,10 +20,11 @@ import type {
   PreviewResult,
   Program,
   ProgramEvent,
+  ScheduleException,
   ScheduleRule,
 } from "@/lib/programs/program-api";
 import { ProgramWorkspace } from "@/lib/programs/program-workspace";
-
+import { WorkspaceRouteProvider } from "@/lib/programs/workspace-context";
 const mocks = vi.hoisted(() => ({
   getManagementProgram: vi.fn(),
   listEvents: vi.fn(),
@@ -31,12 +33,15 @@ const mocks = vi.hoisted(() => ({
   listEnrollments: vi.fn(),
   decideEnrollmentRequest: vi.fn(),
   assistedEnroll: vi.fn(),
+  cancelEnrollment: vi.fn(),
   searchMemberOptions: vi.fn(),
   createEvent: vi.fn(),
   getEvent: vi.fn(),
   updateEvent: vi.fn(),
   setEventAvailability: vi.fn(),
   cancelEvent: vi.fn(),
+  createScheduleException: vi.fn(),
+  deleteScheduleException: vi.fn(),
   listScheduleRules: vi.fn(),
   previewEvents: vi.fn(),
   generateEvents: vi.fn(),
@@ -51,12 +56,15 @@ vi.mock(import("@/lib/programs/program-api"), () => ({
   listEnrollments: mocks.listEnrollments,
   decideEnrollmentRequest: mocks.decideEnrollmentRequest,
   assistedEnroll: mocks.assistedEnroll,
+  cancelEnrollment: mocks.cancelEnrollment,
   searchMemberOptions: mocks.searchMemberOptions,
   getEvent: mocks.getEvent,
   createEvent: mocks.createEvent,
   updateEvent: mocks.updateEvent,
   setEventAvailability: mocks.setEventAvailability,
   cancelEvent: mocks.cancelEvent,
+  createScheduleException: mocks.createScheduleException,
+  deleteScheduleException: mocks.deleteScheduleException,
   listScheduleRules: mocks.listScheduleRules,
   previewEvents: mocks.previewEvents,
   generateEvents: mocks.generateEvents,
@@ -248,7 +256,6 @@ function mockWorkspace() {
     requests: [request],
     enrollments: [enrollment],
   });
-
 }
 beforeEach(() => {
   mocks.getManagementProgram.mockReset();
@@ -257,8 +264,12 @@ beforeEach(() => {
   mocks.listEnrollments.mockReset();
   mocks.listEnrollmentSnapshot.mockReset();
   mocks.assistedEnroll.mockReset();
+  mocks.cancelEnrollment.mockReset();
   mocks.searchMemberOptions.mockReset();
   mocks.createEvent.mockReset();
+  mocks.cancelEvent.mockReset();
+  mocks.createScheduleException.mockReset();
+  mocks.deleteScheduleException.mockReset();
   mocks.listScheduleRules.mockReset();
   mocks.previewEvents.mockReset();
   mocks.generateEvents.mockReset();
@@ -313,10 +324,10 @@ describe(ProgramWorkspace, () => {
     ).toBeInTheDocument();
 
     // 前往管理名單 carries event context
-    const rosterButton = screen.getByRole("button", {
+    const rosterLink = screen.getByRole("link", {
       name: COPY.programs.cockpitManageRoster,
     });
-    await userEvent.click(rosterButton);
+    await userEvent.click(rosterLink);
     expect(onEventChange).not.toHaveBeenCalled();
     expect(onTaskChange).toHaveBeenCalledWith("participants", "event-1");
 
@@ -328,13 +339,16 @@ describe(ProgramWorkspace, () => {
       screen.getByText(COPY.programs.cockpitWeeklyWork)
     ).toBeInTheDocument();
     expect(
-      screen.getByRole("button", {
+      screen.getByRole("link", {
         name: new RegExp(`${COPY.programs.cockpitEventsTile}.*5 個聚會`, "u"),
       })
     ).toBeInTheDocument();
     expect(
-      screen.getByRole("button", {
-        name: new RegExp(`${COPY.programs.cockpitParticipantsTile}.*待審批報名 ×3`, "u"),
+      screen.getByRole("link", {
+        name: new RegExp(
+          `${COPY.programs.cockpitParticipantsTile}.*待審批報名 ×3`,
+          "u"
+        ),
       })
     ).toBeInTheDocument();
 
@@ -347,11 +361,14 @@ describe(ProgramWorkspace, () => {
     ).toBeInTheDocument();
     expect(
       screen.getByRole("button", {
-        name: new RegExp(`${COPY.programs.cockpitCourseFacts}.*${COPY.programs.cockpitCourseFactsHint}`, "u"),
+        name: new RegExp(
+          `${COPY.programs.cockpitCourseFacts}.*${COPY.programs.cockpitCourseFactsHint}`,
+          "u"
+        ),
       })
     ).toBeInTheDocument();
     expect(
-      screen.getByRole("button", {
+      screen.getByRole("link", {
         name: new RegExp(COPY.programs.cockpitSettings, "u"),
       })
     ).toBeInTheDocument();
@@ -386,18 +403,21 @@ describe(ProgramWorkspace, () => {
       screen.queryByText(COPY.programs.cockpitNextMeeting)
     ).not.toBeInTheDocument();
     expect(
-      screen.queryByRole("button", { name: COPY.programs.cockpitManageRoster })
+      screen.queryByRole("link", { name: COPY.programs.cockpitManageRoster })
     ).not.toBeInTheDocument();
 
     // Operational tiles still render with live counts
     expect(
-      screen.getByRole("button", {
+      screen.getByRole("link", {
         name: new RegExp(`${COPY.programs.cockpitEventsTile}.*2 個聚會`, "u"),
       })
     ).toBeInTheDocument();
     expect(
-      screen.getByRole("button", {
-        name: new RegExp(`${COPY.programs.cockpitParticipantsTile}.*${COPY.programs.cockpitNoPending}`, "u"),
+      screen.getByRole("link", {
+        name: new RegExp(
+          `${COPY.programs.cockpitParticipantsTile}.*${COPY.programs.cockpitNoPending}`,
+          "u"
+        ),
       })
     ).toBeInTheDocument();
   });
@@ -424,7 +444,7 @@ describe(ProgramWorkspace, () => {
 
     // Click events tile
     await userEvent.click(
-      screen.getByRole("button", {
+      screen.getByRole("link", {
         name: new RegExp(COPY.programs.cockpitEventsTile, "u"),
       })
     );
@@ -436,14 +456,16 @@ describe(ProgramWorkspace, () => {
         name: new RegExp(COPY.programs.cockpitCourseFacts, "u"),
       })
     );
-    expect(
-      await screen.findByRole("heading", {
+    await expect(
+      screen.findByRole("heading", {
         name: COPY.programs.cockpitCourseFacts,
       })
-    ).toBeInTheDocument();
+    ).resolves.toBeInTheDocument();
 
     // Verify all 6 read-only fields
-    expect(screen.getByRole("heading", { name: "查經小組" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: "查經小組" })
+    ).toBeInTheDocument();
     expect(screen.getByText("週三晚上的門徒訓練查經。")).toBeInTheDocument();
     expect(screen.getByText("青年事工")).toBeInTheDocument();
     expect(
@@ -467,11 +489,11 @@ describe(ProgramWorkspace, () => {
     await userEvent.click(
       screen.getByRole("button", { name: COPY.programs.backToOverview })
     );
-    expect(
-      await screen.findByRole("heading", {
+    await expect(
+      screen.findByRole("heading", {
         name: COPY.programs.cockpitOperations,
       })
-    ).toBeInTheDocument();
+    ).resolves.toBeInTheDocument();
   });
 
   test("renders Course Edit from Facts, validates non-empty fields, saves changes, and returns to Facts with updated values", async () => {
@@ -506,21 +528,21 @@ describe(ProgramWorkspace, () => {
         name: new RegExp(COPY.programs.cockpitCourseFacts, "u"),
       })
     );
-    expect(
-      await screen.findByRole("heading", {
+    await expect(
+      screen.findByRole("heading", {
         name: COPY.programs.cockpitCourseFacts,
       })
-    ).toBeInTheDocument();
+    ).resolves.toBeInTheDocument();
 
     // Open Course Edit
     await userEvent.click(
       screen.getByRole("button", { name: COPY.programs.cockpitEditProgram })
     );
-    expect(
-      await screen.findByRole("heading", {
+    await expect(
+      screen.findByRole("heading", {
         name: COPY.programs.cockpitEditProgram,
       })
-    ).toBeInTheDocument();
+    ).resolves.toBeInTheDocument();
 
     // Pre-filled values
     const nameInput = screen.getByRole("textbox", {
@@ -561,11 +583,11 @@ describe(ProgramWorkspace, () => {
     });
 
     // Success returns to Facts with updated values
-    expect(
-      await screen.findByRole("heading", {
+    await expect(
+      screen.findByRole("heading", {
         name: COPY.programs.cockpitCourseFacts,
       })
-    ).toBeInTheDocument();
+    ).resolves.toBeInTheDocument();
     expect(
       screen.getByRole("heading", { name: "門徒進階查經" })
     ).toBeInTheDocument();
@@ -596,11 +618,11 @@ describe(ProgramWorkspace, () => {
     await userEvent.click(
       screen.getByRole("button", { name: COPY.programs.cockpitEditProgram })
     );
-    expect(
-      await screen.findByRole("heading", {
+    await expect(
+      screen.findByRole("heading", {
         name: COPY.programs.cockpitEditProgram,
       })
-    ).toBeInTheDocument();
+    ).resolves.toBeInTheDocument();
 
     // Click back button returns to Facts view
     await userEvent.click(
@@ -611,11 +633,11 @@ describe(ProgramWorkspace, () => {
         ),
       })
     );
-    expect(
-      await screen.findByRole("heading", {
+    await expect(
+      screen.findByRole("heading", {
         name: COPY.programs.cockpitCourseFacts,
       })
-    ).toBeInTheDocument();
+    ).resolves.toBeInTheDocument();
   });
 
   test("handles Course Edit save API error gracefully", async () => {
@@ -656,12 +678,43 @@ describe(ProgramWorkspace, () => {
     );
 
     // Error is displayed and form remains with input intact
-    expect(
-      await screen.findByText(COPY.error.serverError)
-    ).toBeInTheDocument();
+    await expect(
+      screen.findByText(COPY.error.serverError)
+    ).resolves.toBeInTheDocument();
     expect(
       screen.getByRole("textbox", { name: COPY.programs.editNameLabel })
     ).toHaveValue("新名稱");
+  });
+
+  test("resets the course subview when the task route changes in place", async () => {
+    mockWorkspace();
+    const props = {
+      programId: "program-1",
+      onBack: vi.fn(),
+      onTaskChange: vi.fn(),
+    };
+    const { rerender } = render(<ProgramWorkspace {...props} />);
+
+    await expect(
+      screen.findByRole("heading", { name: "查經小組" })
+    ).resolves.toBeInTheDocument();
+    await userEvent.click(
+      screen.getByRole("button", { name: COPY.programs.cockpitEditProgram })
+    );
+    expect(
+      screen.getByRole("textbox", { name: COPY.programs.editNameLabel })
+    ).toBeInTheDocument();
+
+    rerender(<ProgramWorkspace {...props} task="events" />);
+
+    await expect(
+      screen.findByRole("heading", {
+        name: COPY.programs.workspaceTaskEvents,
+      })
+    ).resolves.toBeInTheDocument();
+    expect(
+      screen.queryByRole("textbox", { name: COPY.programs.editNameLabel })
+    ).not.toBeInTheDocument();
   });
 
   test("renders Events with the management create entry point", async () => {
@@ -688,12 +741,49 @@ describe(ProgramWorkspace, () => {
       screen.getByRole("button", { name: COPY.programs.createMeeting })
     ).toBeInTheDocument();
 
-    await userEvent.click(
-      screen.getByRole("link", {
-        name: COPY.programs.workspaceTaskParticipants,
-      })
+    const participantsLink = screen.getByRole("link", {
+      name: COPY.programs.workspaceTaskParticipants,
+    });
+    expect(participantsLink).toHaveAttribute(
+      "href",
+      "/programs?mode=management&program=program-1&task=participants"
     );
+    await userEvent.click(participantsLink);
     expect(onTaskChange).toHaveBeenCalledWith("participants");
+  });
+
+  test("renders the server-projected event exception in the Events task", async () => {
+    mockWorkspace();
+    mocks.listEvents.mockResolvedValue({
+      events: [
+        {
+          ...event,
+          exception: {
+            exception_id: "exception-1",
+            rule_id: "rule-1",
+            override_date: "2030-08-20",
+            action: "RESCHEDULE" as const,
+            new_start_time: "20:30",
+            new_end_time: "22:00",
+            created_at: "2030-08-01T00:00:00.000Z",
+          },
+        },
+      ],
+    });
+    render(
+      <ProgramWorkspace
+        programId="program-1"
+        task="events"
+        onBack={vi.fn()}
+        onTaskChange={vi.fn()}
+      />
+    );
+
+    await expect(
+      screen.findByText(
+        COPY.programs.eventRescheduledBadge.replace("{time}", "20:30")
+      )
+    ).resolves.toBeInTheDocument();
   });
 
   test("shows a privacy-preserving revoked state for an unauthorized direct link", async () => {
@@ -741,6 +831,7 @@ describe(ProgramWorkspace, () => {
     ).resolves.toBeInTheDocument();
     expect(mocks.listEvents).not.toHaveBeenCalled();
   });
+
   test("keeps server denial explicit on a focused task", async () => {
     mockWorkspace();
     mocks.listEvents.mockRejectedValue(
@@ -761,6 +852,155 @@ describe(ProgramWorkspace, () => {
     await waitFor(() =>
       expect(mocks.listEvents).toHaveBeenCalledWith("program-1")
     );
+  });
+
+  test("mounts the focused Settings task with all domain-owned groups", async () => {
+    mockWorkspace();
+    render(
+      <ProgramWorkspace
+        programId="program-1"
+        task="settings"
+        onBack={vi.fn()}
+        onTaskChange={vi.fn()}
+      />
+    );
+
+    await expect(
+      screen.findByRole("heading", {
+        name: COPY.programs.workspaceTaskSettings,
+      })
+    ).resolves.toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: COPY.programs.settingsBasics })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: COPY.programs.settingsEnrollment })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: COPY.programs.settingsSchedule })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: COPY.programs.settingsAttendance })
+    ).toBeInTheDocument();
+  });
+  test("hides identity access without an authorized Account Directory destination", async () => {
+    mockWorkspace();
+    render(
+      <ProgramWorkspace
+        programId="program-1"
+        task="settings"
+        onBack={vi.fn()}
+        onTaskChange={vi.fn()}
+      />
+    );
+    await screen.findByRole("heading", {
+      name: COPY.programs.workspaceTaskSettings,
+    });
+    expect(
+      screen.queryByRole("link", { name: "管理帳戶身份組" })
+    ).not.toBeInTheDocument();
+  });
+  test("routes authorized Program identity access into scoped Account Access", async () => {
+    mocks.getManagementProgram.mockResolvedValue({
+      program: {
+        ...program,
+        program_id: "program-1",
+        capabilities: {
+          ...program.capabilities,
+          role_read: true,
+          role_assign: true,
+        },
+      },
+      department,
+      modules,
+    });
+    render(
+      <ProgramWorkspace
+        programId="program-1"
+        task="settings"
+        onBack={vi.fn()}
+        onTaskChange={vi.fn()}
+      />
+    );
+    const link = await screen.findByRole("link", {
+      name: "管理帳戶身份組",
+    });
+    expect(link).toHaveAttribute(
+      "href",
+      "/management?module=accounts&scopeKind=Program&scopeId=program-1&view=access&return=%2Fprograms%3Fmode%3Dmanagement%26program%3Dprogram-1%26task%3Dsettings"
+    );
+  });
+  test("Program Leader can reach scoped identity access without management tasks", async () => {
+    mocks.getManagementProgram.mockResolvedValue({
+      program: {
+        ...program,
+        capabilities: {
+          ...program.capabilities,
+          manage: false,
+          leader_assign: true,
+          role_read: true,
+          role_assign: true,
+        },
+      },
+      department,
+      modules,
+    });
+    render(
+      <WorkspaceRouteProvider
+        value={{ departmentId: "dept-1", hash: "#overview" }}
+      >
+        <ProgramWorkspace
+          programId="program-1"
+          task="settings"
+          onBack={vi.fn()}
+          onTaskChange={vi.fn()}
+        />
+      </WorkspaceRouteProvider>
+    );
+
+    await expect(
+      screen.findByRole("heading", {
+        name: COPY.programs.workspaceTaskSettings,
+      })
+    ).resolves.toBeInTheDocument();
+    const accessLink = screen.getByRole("link", { name: "管理帳戶身份組" });
+    expect(accessLink).toHaveAttribute(
+      "href",
+      "/management?module=accounts&scopeKind=Program&scopeId=program-1&view=access&return=%2Fprograms%3Fmode%3Dmanagement%26department%3Ddept-1%26program%3Dprogram-1%26task%3Dsettings%23overview"
+    );
+    expect(
+      screen.queryByRole("link", {
+        name: COPY.programs.workspaceTaskEvents,
+      })
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("link", {
+        name: COPY.programs.workspaceTaskParticipants,
+      })
+    ).not.toBeInTheDocument();
+  });
+
+  test("keeps global Notifications out of the program workspace", async () => {
+    mockWorkspace();
+    render(
+      <ProgramWorkspace
+        programId="program-1"
+        onBack={vi.fn()}
+        onTaskChange={vi.fn()}
+      />
+    );
+
+    await screen.findByRole("heading", { name: "查經小組" });
+    expect(
+      screen.queryByRole("button", {
+        name: new RegExp(COPY.programs.notificationsTitle, "u"),
+      })
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("link", {
+        name: COPY.programs.workspaceTaskNotifications,
+      })
+    ).not.toBeInTheDocument();
   });
 });
 describe("ENR-01 participants workspace", () => {
@@ -803,11 +1043,11 @@ describe("ENR-01 participants workspace", () => {
     await waitFor(() =>
       expect(mocks.listEnrollmentSnapshot).toHaveBeenCalledWith("program-1")
     );
-    expect(
-      await screen.findByRole("tab", {
+    await expect(
+      screen.findByRole("tab", {
         name: `${COPY.programs.tabsPending} (1)`,
       })
-    ).toBeInTheDocument();
+    ).resolves.toBeInTheDocument();
     expect(
       screen.getByRole("tab", {
         name: `${COPY.programs.tabsActive} (1)`,
@@ -833,25 +1073,243 @@ describe("ENR-01 participants workspace", () => {
     await userEvent.click(
       screen.getByRole("button", { name: COPY.programs.approve })
     );
-    expect(
-      await screen.findByText(COPY.programs.decisionMade)
-    ).toBeInTheDocument();
-    expect(
-      await screen.findByRole("tab", {
+    await expect(
+      screen.findByText(COPY.programs.decisionMade)
+    ).resolves.toBeInTheDocument();
+    await expect(
+      screen.findByRole("tab", {
         name: `${COPY.programs.tabsActive} (2)`,
       })
-    ).toBeInTheDocument();
+    ).resolves.toBeInTheDocument();
     await userEvent.click(
       screen.getByRole("tab", {
         name: `${COPY.programs.tabsActive} (2)`,
       })
     );
-    expect(await screen.findByText("陳同工")).toBeInTheDocument();
-    expect(await screen.findByText("李同工")).toBeInTheDocument();
+    await expect(screen.findByText("陳同工")).resolves.toBeInTheDocument();
+    await expect(screen.findByText("李同工")).resolves.toBeInTheDocument();
     expect(
       screen.queryByRole("button", { name: COPY.programs.approve })
     ).not.toBeInTheDocument();
   });
+
+  test("cancels an active enrollment and renders refreshed cancellation history", async () => {
+    mockWorkspace();
+    const cancelledEnrollment: Enrollment = {
+      ...enrollment,
+      status: "Cancelled",
+      cancelled_at: "2026-08-05T00:00:00.000Z",
+      cancelled_by: "manager-1",
+    };
+    mocks.listEnrollmentSnapshot
+      .mockResolvedValueOnce({
+        requests: [],
+        enrollments: [enrollment],
+      })
+      .mockResolvedValueOnce({
+        requests: [],
+        enrollments: [cancelledEnrollment],
+      });
+    mocks.cancelEnrollment.mockResolvedValue({
+      enrollment: cancelledEnrollment,
+    });
+    render(
+      <ProgramWorkspace
+        programId="program-1"
+        task="participants"
+        onBack={vi.fn()}
+        onTaskChange={vi.fn()}
+      />
+    );
+
+    await userEvent.click(
+      await screen.findByRole("tab", {
+        name: `${COPY.programs.tabsActive} (1)`,
+      })
+    );
+    await userEvent.click(
+      screen.getByRole("button", { name: COPY.programs.cancelEnrollment })
+    );
+
+    await waitFor(() =>
+      expect(mocks.cancelEnrollment).toHaveBeenCalledWith(
+        "program-1",
+        "enrollment-1",
+        expect.any(String)
+      )
+    );
+    await expect(
+      screen.findByText(COPY.programs.enrollmentCancelledNotice)
+    ).resolves.toBeInTheDocument();
+    await waitFor(() =>
+      expect(mocks.listEnrollmentSnapshot).toHaveBeenCalledTimes(2)
+    );
+    await expect(
+      screen.findByRole("tab", {
+        name: `${COPY.programs.tabsHistory} (1)`,
+      })
+    ).resolves.toBeInTheDocument();
+
+    await userEvent.click(
+      screen.getByRole("tab", {
+        name: `${COPY.programs.tabsHistory} (1)`,
+      })
+    );
+    const history = screen.getByRole("list", {
+      name: COPY.programs.enrollmentHistory,
+    });
+    expect(history).toHaveTextContent("李同工");
+    expect(history).toHaveTextContent(COPY.programs.enrollmentCancelled);
+  });
+
+  test("keeps an active enrollment available when cancellation conflicts", async () => {
+    mockWorkspace();
+    mocks.cancelEnrollment.mockRejectedValue(
+      new RpcError({
+        code: "CONFLICT",
+        status: 409,
+        detail: "enrollment changed",
+      })
+    );
+    render(
+      <ProgramWorkspace
+        programId="program-1"
+        task="participants"
+        onBack={vi.fn()}
+        onTaskChange={vi.fn()}
+      />
+    );
+
+    await userEvent.click(
+      await screen.findByRole("tab", {
+        name: `${COPY.programs.tabsActive} (1)`,
+      })
+    );
+    await userEvent.click(
+      screen.getByRole("button", { name: COPY.programs.cancelEnrollment })
+    );
+
+    await expect(
+      screen.findByText(COPY.programs.workspaceParticipantsConflict)
+    ).resolves.toBeInTheDocument();
+    expect(mocks.listEnrollmentSnapshot).toHaveBeenCalledTimes(1);
+    expect(screen.getByText("李同工")).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: COPY.programs.cancelEnrollment })
+    ).toBeInTheDocument();
+  });
+  test("retries an ambiguous cancellation with the original idempotency key", async () => {
+    mockWorkspace();
+    const cancelledEnrollment: Enrollment = {
+      ...enrollment,
+      status: "Cancelled",
+      cancelled_at: "2026-08-05T00:00:00.000Z",
+      cancelled_by: "manager-1",
+    };
+    mocks.listEnrollmentSnapshot
+      .mockResolvedValueOnce({
+        requests: [],
+        enrollments: [enrollment],
+      })
+      .mockResolvedValueOnce({
+        requests: [],
+        enrollments: [cancelledEnrollment],
+      });
+    mocks.cancelEnrollment
+      .mockRejectedValueOnce(new Error("response lost"))
+      .mockResolvedValueOnce({ enrollment: cancelledEnrollment });
+    render(
+      <ProgramWorkspace
+        programId="program-1"
+        task="participants"
+        onBack={vi.fn()}
+        onTaskChange={vi.fn()}
+      />
+    );
+
+    await userEvent.click(
+      await screen.findByRole("tab", {
+        name: `${COPY.programs.tabsActive} (1)`,
+      })
+    );
+    await userEvent.click(
+      screen.getByRole("button", { name: COPY.programs.cancelEnrollment })
+    );
+    const error = await screen.findByRole("alert");
+    await userEvent.click(
+      within(error).getByRole("button", { name: COPY.error.retry })
+    );
+    await expect(
+      screen.findByText(COPY.programs.enrollmentCancelledNotice)
+    ).resolves.toBeInTheDocument();
+    expect(mocks.cancelEnrollment).toHaveBeenCalledTimes(2);
+    expect(mocks.cancelEnrollment.mock.calls[1]?.[2]).toBe(
+      mocks.cancelEnrollment.mock.calls[0]?.[2]
+    );
+  });
+  test("keeps cancellation disabled until a failed refresh is retried", async () => {
+    mockWorkspace();
+    mocks.listEnrollmentSnapshot
+      .mockResolvedValueOnce({
+        requests: [],
+        enrollments: [enrollment],
+      })
+      .mockRejectedValueOnce(
+        new RpcError({
+          code: "NETWORK",
+          status: 0,
+          detail: "refresh failed",
+        })
+      )
+      .mockResolvedValueOnce({
+        requests: [],
+        enrollments: [enrollment],
+      });
+    mocks.cancelEnrollment.mockResolvedValue({
+      enrollment: { ...enrollment, status: "Cancelled" },
+    });
+    render(
+      <ProgramWorkspace
+        programId="program-1"
+        task="participants"
+        onBack={vi.fn()}
+        onTaskChange={vi.fn()}
+      />
+    );
+
+    await userEvent.click(
+      await screen.findByRole("tab", {
+        name: `${COPY.programs.tabsActive} (1)`,
+      })
+    );
+    await userEvent.click(
+      screen.getByRole("button", { name: COPY.programs.cancelEnrollment })
+    );
+    await expect(
+      screen.findByText(COPY.programs.workspaceParticipantsRefreshFailed)
+    ).resolves.toBeInTheDocument();
+    const cancelButton = screen.getByRole("button", {
+      name: COPY.programs.cancelEnrollment,
+    });
+    expect(cancelButton).toBeDisabled();
+    await userEvent.click(
+      screen.getByRole("button", {
+        name: COPY.programs.workspaceParticipantsRefresh,
+      })
+    );
+    await expect(
+      screen.findByText(COPY.programs.workspaceParticipantsRefreshSuccess)
+    ).resolves.toBeInTheDocument();
+    expect(mocks.listEnrollmentSnapshot).toHaveBeenCalledTimes(3);
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", {
+          name: COPY.programs.cancelEnrollment,
+        })
+      ).not.toBeDisabled()
+    );
+  });
+
   test("rejects a pending request into terminal history", async () => {
     mockWorkspace();
     mocks.listEnrollmentSnapshot
@@ -883,19 +1341,18 @@ describe("ENR-01 participants workspace", () => {
     await userEvent.click(
       await screen.findByRole("button", { name: COPY.programs.reject })
     );
-    expect(
-      await screen.findByText(COPY.programs.decisionMade)
-    ).toBeInTheDocument();
+    await expect(
+      screen.findByText(COPY.programs.decisionMade)
+    ).resolves.toBeInTheDocument();
     const historyTab = await screen.findByRole("tab", {
       name: `${COPY.programs.tabsHistory} (1)`,
     });
     await userEvent.click(historyTab);
-    expect(
-      await screen.findByText(COPY.programs.requestRejected)
-    ).toBeInTheDocument();
+    await expect(
+      screen.findByText(COPY.programs.requestRejected)
+    ).resolves.toBeInTheDocument();
     expect(screen.getByText("名額已滿")).toBeInTheDocument();
   });
-
 
   test("renders an honest empty state for each participant tab", async () => {
     mockWorkspace();
@@ -912,9 +1369,9 @@ describe("ENR-01 participants workspace", () => {
       />
     );
 
-    expect(
-      await screen.findByText(COPY.programs.tabsEmpty.pending)
-    ).toBeInTheDocument();
+    await expect(
+      screen.findByText(COPY.programs.tabsEmpty.pending)
+    ).resolves.toBeInTheDocument();
     await userEvent.click(
       screen.getByRole("tab", { name: `${COPY.programs.tabsActive} (0)` })
     );
@@ -959,9 +1416,9 @@ describe("ENR-01 participants workspace", () => {
         1
       )
     );
-    expect(
-      await screen.findByText(COPY.programs.workspaceParticipantsStale)
-    ).toBeInTheDocument();
+    await expect(
+      screen.findByText(COPY.programs.workspaceParticipantsStale)
+    ).resolves.toBeInTheDocument();
     expect(screen.getByText("陳同工")).toBeInTheDocument();
   });
 
@@ -973,9 +1430,7 @@ describe("ENR-01 participants workspace", () => {
       modules,
     });
     mocks.searchMemberOptions.mockResolvedValue({
-      members: [
-        { user_id: "member-3", name: "王同工", username: "wang" },
-      ],
+      members: [{ user_id: "member-3", name: "王同工", username: "wang" }],
     });
     mocks.assistedEnroll.mockRejectedValue(
       new RpcError({
@@ -997,15 +1452,17 @@ describe("ENR-01 participants workspace", () => {
       name: COPY.programs.memberId,
     });
     await userEvent.type(picker, "王同");
-    await userEvent.click(await screen.findByRole("button", { name: /王同工/ }));
+    await userEvent.click(
+      await screen.findByRole("button", { name: /王同工/ })
+    );
     await userEvent.click(
       screen.getByRole("button", { name: COPY.programs.assistedEnroll })
     );
-    expect(
-      await screen.findByText(
+    await expect(
+      screen.findByText(
         `${COPY.programs.workspaceParticipantsConflict} ${COPY.programs.enrollmentDuplicate}`
       )
-    ).toBeInTheDocument();
+    ).resolves.toBeInTheDocument();
     expect(
       screen.getByRole("tab", {
         name: `${COPY.programs.tabsPending} (1)`,
@@ -1086,9 +1543,9 @@ describe("ENR-01 participants workspace", () => {
     await userEvent.click(
       await screen.findByRole("button", { name: COPY.programs.approve })
     );
-    expect(
-      await screen.findByText(COPY.programs.workspaceParticipantsRefreshFailed)
-    ).toBeInTheDocument();
+    await expect(
+      screen.findByText(COPY.programs.workspaceParticipantsRefreshFailed)
+    ).resolves.toBeInTheDocument();
     expect(
       screen.getByRole("tab", {
         name: `${COPY.programs.tabsPending} (1)`,
@@ -1114,9 +1571,7 @@ describe("ENR-01 participants workspace", () => {
       enrollments: [],
     });
     mocks.searchMemberOptions.mockResolvedValue({
-      members: [
-        { user_id: "member-3", name: "王同工", username: "wang" },
-      ],
+      members: [{ user_id: "member-3", name: "王同工", username: "wang" }],
     });
     mocks.assistedEnroll.mockResolvedValue({
       enrollment: { ...enrollment, member_user_id: "member-3" },
@@ -1134,23 +1589,21 @@ describe("ENR-01 participants workspace", () => {
       name: COPY.programs.memberId,
     });
     await userEvent.type(picker, "王同");
-    await userEvent.click(await screen.findByRole("button", { name: /王同工/ }));
+    await userEvent.click(
+      await screen.findByRole("button", { name: /王同工/ })
+    );
     await userEvent.click(
       screen.getByRole("button", { name: COPY.programs.assistedEnroll })
     );
     await waitFor(() =>
-      expect(mocks.assistedEnroll).toHaveBeenCalledWith(
-        "program-1",
-        "member-3"
-      )
+      expect(mocks.assistedEnroll).toHaveBeenCalledWith("program-1", "member-3")
     );
   });
+
   test("renders assisted enrollment for a MemberRequest program", async () => {
     mockWorkspace();
     mocks.searchMemberOptions.mockResolvedValue({
-      members: [
-        { user_id: "member-3", name: "王同工", username: "wang" },
-      ],
+      members: [{ user_id: "member-3", name: "王同工", username: "wang" }],
     });
     mocks.assistedEnroll.mockResolvedValue({
       enrollment: { ...enrollment, member_user_id: "member-3" },
@@ -1164,22 +1617,21 @@ describe("ENR-01 participants workspace", () => {
       />
     );
 
-    expect(
-      await screen.findByText(COPY.programs.assistedEnrollAck)
-    ).toBeInTheDocument();
+    await expect(
+      screen.findByText(COPY.programs.assistedEnrollAck)
+    ).resolves.toBeInTheDocument();
     const picker = screen.getByRole("combobox", {
       name: COPY.programs.memberId,
     });
     await userEvent.type(picker, "王同");
-    await userEvent.click(await screen.findByRole("button", { name: /王同工/ }));
+    await userEvent.click(
+      await screen.findByRole("button", { name: /王同工/ })
+    );
     await userEvent.click(
       screen.getByRole("button", { name: COPY.programs.assistedEnroll })
     );
     await waitFor(() =>
-      expect(mocks.assistedEnroll).toHaveBeenCalledWith(
-        "program-1",
-        "member-3"
-      )
+      expect(mocks.assistedEnroll).toHaveBeenCalledWith("program-1", "member-3")
     );
   });
 });
@@ -1201,12 +1653,17 @@ describe("EVT-01 workspace Event deep link (#251)", () => {
         onEventChange={onEventChange}
       />
     );
-    const open = await screen.findByRole("button", {
+    const open = await screen.findByRole("link", {
       name: COPY.programs.eventDetailOpen,
     });
+    expect(open).toHaveAttribute(
+      "href",
+      "/programs?mode=management&program=program-1&task=events&event=event-1"
+    );
     await userEvent.click(open);
     expect(onEventChange).toHaveBeenCalledWith("event-1");
   });
+
   test("creates an Event with HK wall-time fields and opens its detail", async () => {
     mockWorkspace();
     mocks.createEvent.mockResolvedValue({
@@ -1236,14 +1693,24 @@ describe("EVT-01 workspace Event deep link (#251)", () => {
       screen.getByLabelText(COPY.programs.eventName),
       "新聚會"
     );
-    fireEvent.change(screen.getByLabelText(COPY.programs.eventType), {
-      target: { value: COPY.programs.eventTypeOptions[1] },
-    });
-    fireEvent.change(screen.getByLabelText(COPY.programs.recurrenceTag), {
-      target: { value: COPY.programs.recurrenceNone },
-    });
     await userEvent.click(
-      screen.getAllByRole("button", { name: COPY.programs.createMeeting }).at(-1)!
+      screen.getByRole("combobox", { name: COPY.programs.eventType })
+    );
+    await userEvent.click(
+      screen.getByRole("option", {
+        name: COPY.programs.eventTypeOptions[1],
+      })
+    );
+    await userEvent.click(
+      screen.getByRole("combobox", { name: COPY.programs.recurrenceTag })
+    );
+    await userEvent.click(
+      screen.getByRole("option", { name: COPY.programs.recurrenceNone })
+    );
+    await userEvent.click(
+      screen
+        .getAllByRole("button", { name: COPY.programs.createMeeting })
+        .at(-1)!
     );
 
     await waitFor(() =>
@@ -1279,9 +1746,14 @@ describe("EVT-01 workspace Event deep link (#251)", () => {
       screen.findByRole("heading", { name: "迎新聚會" })
     ).resolves.toBeInTheDocument();
     expect(mocks.getEvent).toHaveBeenCalledWith("program-1", "event-1");
-    await userEvent.click(
-      screen.getByRole("button", { name: COPY.programs.eventDetailBack })
+    const backLink = screen.getByRole("link", {
+      name: COPY.programs.eventDetailBack,
+    });
+    expect(backLink).toHaveAttribute(
+      "href",
+      "/programs?mode=management&program=program-1&task=events"
     );
+    await userEvent.click(backLink);
     expect(onEventChange).toHaveBeenCalledWith(null);
   });
 });
@@ -1298,6 +1770,225 @@ describe("EVT-02 recurring preview and generation UI (#252)", () => {
       />
     );
   }
+
+  test("reschedules an occurrence and renders the server exception after refetch", async () => {
+    const user = userEvent.setup();
+    const scheduledEvent: ProgramEvent = {
+      ...event,
+      starts_at: "2030-08-21T11:30:00.000Z",
+      ends_at: "2030-08-21T13:00:00.000Z",
+    };
+    const exception: ScheduleException = {
+      exception_id: "exception-1",
+      rule_id: "rule-1",
+      override_date: "2030-08-21",
+      action: "RESCHEDULE",
+      new_start_time: "20:30",
+      new_end_time: "22:00",
+      created_at: "2030-08-01T00:00:00.000Z",
+    };
+    mockWorkspace();
+    mocks.listEvents
+      .mockReset()
+      .mockResolvedValueOnce({ events: [scheduledEvent] })
+      .mockResolvedValueOnce({
+        events: [{ ...scheduledEvent, exception }],
+      });
+    mocks.createScheduleException.mockResolvedValue({ exception });
+    render(
+      <ProgramWorkspace
+        programId="program-1"
+        task="events"
+        onBack={vi.fn()}
+        onTaskChange={vi.fn()}
+      />
+    );
+
+    await user.click(
+      await screen.findByRole("button", {
+        name: COPY.programs.rescheduleEvent,
+      })
+    );
+    await user.type(
+      screen.getByLabelText(COPY.programs.rescheduleStart),
+      "20:30"
+    );
+    await user.type(
+      screen.getByLabelText(COPY.programs.rescheduleEnd),
+      "22:00"
+    );
+    await user.click(
+      screen.getByRole("button", { name: COPY.programs.confirmReschedule })
+    );
+
+    await expect(
+      screen.findByText(COPY.programs.exceptionUpdatedNotice)
+    ).resolves.toBeInTheDocument();
+    expect(mocks.createScheduleException).toHaveBeenCalledWith(
+      "program-1",
+      "rule-1",
+      {
+        override_date: "2030-08-21",
+        action: "RESCHEDULE",
+        new_start_time: "20:30",
+        new_end_time: "22:00",
+      }
+    );
+    expect(mocks.listEvents).toHaveBeenCalledTimes(2);
+    expect(
+      screen.getByText(
+        COPY.programs.eventRescheduledBadge.replace("{time}", "20:30")
+      )
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: COPY.programs.restoreOccurrence })
+    ).toBeInTheDocument();
+  });
+  test("cancels and restores an occurrence through the canonical EventsTask", async () => {
+    const user = userEvent.setup();
+    const scheduledEvent: ProgramEvent = {
+      ...event,
+      starts_at: "2030-08-21T11:30:00.000Z",
+      ends_at: "2030-08-21T13:00:00.000Z",
+    };
+    const exception: ScheduleException = {
+      exception_id: "exception-cancel-1",
+      rule_id: "rule-1",
+      override_date: "2030-08-21",
+      action: "CANCEL",
+      new_start_time: null,
+      new_end_time: null,
+      created_at: "2030-08-01T00:00:00.000Z",
+    };
+    mockWorkspace();
+    mocks.listEvents
+      .mockReset()
+      .mockResolvedValueOnce({ events: [scheduledEvent] })
+      .mockResolvedValueOnce({
+        events: [{ ...scheduledEvent, exception }],
+      })
+      .mockResolvedValueOnce({ events: [scheduledEvent] });
+    mocks.createScheduleException.mockResolvedValue({ exception });
+    mocks.deleteScheduleException.mockResolvedValue({});
+    const onAttentionRefresh = vi.fn();
+    render(
+      <ProgramWorkspace
+        programId="program-1"
+        task="events"
+        onBack={vi.fn()}
+        onTaskChange={vi.fn()}
+        onAttentionRefresh={onAttentionRefresh}
+      />
+    );
+
+    await user.click(
+      await screen.findByRole("button", {
+        name: COPY.programs.cancelOccurrence,
+      })
+    );
+    await user.click(
+      screen.getByRole("button", {
+        name: COPY.programs.confirmCancelOccurrence,
+      })
+    );
+
+    await expect(
+      screen.findByText(COPY.programs.exceptionUpdatedNotice)
+    ).resolves.toBeInTheDocument();
+    expect(mocks.createScheduleException).toHaveBeenCalledWith(
+      "program-1",
+      "rule-1",
+      {
+        override_date: "2030-08-21",
+        action: "CANCEL",
+      }
+    );
+    expect(mocks.listEvents).toHaveBeenCalledTimes(2);
+    expect(
+      screen.getByText(COPY.programs.eventCancelledBadge)
+    ).toBeInTheDocument();
+    expect(onAttentionRefresh).toHaveBeenCalledOnce();
+
+    await user.click(
+      screen.getByRole("button", { name: COPY.programs.restoreOccurrence })
+    );
+    await expect(
+      screen.findByText(COPY.programs.exceptionRemovedNotice)
+    ).resolves.toBeInTheDocument();
+    expect(mocks.deleteScheduleException).toHaveBeenCalledWith(
+      "program-1",
+      "rule-1",
+      "exception-cancel-1"
+    );
+    expect(mocks.listEvents).toHaveBeenCalledTimes(3);
+    expect(
+      screen.queryByText(COPY.programs.eventCancelledBadge)
+    ).not.toBeInTheDocument();
+    expect(onAttentionRefresh).toHaveBeenCalledTimes(2);
+  });
+  test("makes stale event rows read-only while the list refresh is unavailable", async () => {
+    const user = userEvent.setup();
+    const scheduledEvent: ProgramEvent = {
+      ...event,
+      starts_at: "2030-08-21T11:30:00.000Z",
+      ends_at: "2030-08-21T13:00:00.000Z",
+    };
+    const exception: ScheduleException = {
+      exception_id: "exception-refresh-1",
+      rule_id: "rule-1",
+      override_date: "2030-08-21",
+      action: "RESCHEDULE",
+      new_start_time: "20:30",
+      new_end_time: "22:00",
+      created_at: "2030-08-01T00:00:00.000Z",
+    };
+    mockWorkspace();
+    mocks.listEvents
+      .mockReset()
+      .mockResolvedValueOnce({ events: [scheduledEvent] })
+      .mockRejectedValueOnce(
+        new RpcError({
+          code: "NETWORK_ERROR",
+          status: 0,
+          detail: "refresh failed",
+        })
+      );
+    mocks.createScheduleException.mockResolvedValue({ exception });
+    renderEventsTask();
+
+    await user.click(
+      await screen.findByRole("button", {
+        name: COPY.programs.rescheduleEvent,
+      })
+    );
+    await user.type(
+      screen.getByLabelText(COPY.programs.rescheduleStart),
+      "20:30"
+    );
+    await user.type(
+      screen.getByLabelText(COPY.programs.rescheduleEnd),
+      "22:00"
+    );
+    await user.click(
+      screen.getByRole("button", { name: COPY.programs.confirmReschedule })
+    );
+
+    await expect(screen.findByRole("alert")).resolves.toHaveTextContent(
+      COPY.error.networkError
+    );
+    expect(
+      screen.queryByRole("button", { name: COPY.programs.rescheduleEvent })
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: COPY.programs.cancelOccurrence })
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: COPY.programs.cancelEvent })
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("link", { name: COPY.programs.eventDetailOpen })
+    ).toBeInTheDocument();
+  });
 
   test("preview controls are reachable and render an exact plan with exception state", async () => {
     const user = userEvent.setup();
@@ -1342,9 +2033,9 @@ describe("EVT-02 recurring preview and generation UI (#252)", () => {
       screen.getByRole("button", { name: COPY.programs.generateEvents })
     );
 
-    await expect(
-      screen.findByRole("alert")
-    ).resolves.toHaveTextContent(COPY.programs.previewChanged);
+    await expect(screen.findByRole("alert")).resolves.toHaveTextContent(
+      COPY.programs.previewChanged
+    );
     expect(
       screen.queryByRole("button", { name: COPY.programs.generateEvents })
     ).not.toBeInTheDocument();
@@ -1400,9 +2091,9 @@ describe("EVT-02 recurring preview and generation UI (#252)", () => {
       />
     );
     // The failure is communicated by the existing error alert…
-    await expect(
-      screen.findByRole("alert")
-    ).resolves.toHaveTextContent(COPY.error.forbidden);
+    await expect(screen.findByRole("alert")).resolves.toHaveTextContent(
+      COPY.error.forbidden
+    );
     // …but the Preview form must stay reachable (rules stays null on error,
     // so the no-rules empty state is NOT shown and the horizon input lives
     // on). A transient rules-load failure must not masquerade as "no
@@ -1451,9 +2142,7 @@ describe("EVT-02 recurring preview and generation UI (#252)", () => {
         .replace("{skipped}", "0")
         .replace("{failed}", "1")
     );
-    expect(
-      screen.queryByText(COPY.programs.generated)
-    ).not.toBeInTheDocument();
+    expect(screen.queryByText(COPY.programs.generated)).not.toBeInTheDocument();
     // The plan is kept and Generate stays enabled so the operator can
     // immediately retry the failed units on the same plan.
     expect(
@@ -1482,7 +2171,10 @@ describe("EVT-02 recurring preview and generation UI (#252)", () => {
 
   test("preview controls stay hidden without the manage capability", async () => {
     mocks.getManagementProgram.mockResolvedValue({
-      program: { ...program, capabilities: { ...program.capabilities, manage: false } },
+      program: {
+        ...program,
+        capabilities: { ...program.capabilities, manage: false },
+      },
       department,
       modules,
     });

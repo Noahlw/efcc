@@ -19,8 +19,6 @@ import { COPY } from "@/lib/copy";
 import type { Notice } from "@/lib/notices-api";
 import { NoticesPanel } from "@/lib/notices-panel";
 
-import styles from "@/lib/notices-panel.module.css";
-
 const unreadEvent: Notice = {
   notice_id: "notice-event",
   kind: "event",
@@ -150,6 +148,31 @@ describe(NoticesPanel, () => {
     ).not.toBeInTheDocument();
   });
 
+  test("keeps read failure visible and leaves the action available", async () => {
+    const user = userEvent.setup();
+    mocks.listNotices.mockResolvedValue({
+      notices: [unreadEvent],
+      unread_count: 1,
+    });
+    mocks.markAllNoticesRead.mockRejectedValueOnce(new Error("offline"));
+
+    render(<NoticesPanel />);
+    await screen.findByText(unreadEvent.title);
+    await user.click(
+      screen.getByRole("button", { name: COPY.notices.noticesMarkAllRead })
+    );
+
+    await expect(
+      screen.findByText(COPY.notices.noticesMarkAllReadError)
+    ).resolves.toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: COPY.notices.noticesMarkAllRead })
+    ).toBeEnabled();
+    expect(mocks.announce).not.toHaveBeenCalledWith(
+      COPY.notices.noticesMarkAllReadError
+    );
+  });
+
   test("renders the honest empty state", async () => {
     mocks.listNotices.mockResolvedValue({ notices: [], unread_count: 0 });
 
@@ -171,6 +194,18 @@ describe(NoticesPanel, () => {
     render(<NoticesPanel />);
 
     expect(screen.getByText(COPY.notices.noticesLoading)).toBeInTheDocument();
+  });
+
+  test("keeps the global live region as the only announcement owner", async () => {
+    mocks.listNotices.mockResolvedValue({ notices: [], unread_count: 0 });
+
+    render(<NoticesPanel />);
+    await screen.findByText(COPY.notices.noticesEmpty);
+
+    expect(document.querySelectorAll("[aria-live]")).toHaveLength(0);
+    expect(
+      screen.getByRole("region", { name: COPY.notices.noticesListLabel })
+    ).toHaveAttribute("data-feed-announcement-owner", "global-live-region");
   });
 
   test("renders an error and retries the request", async () => {
@@ -253,13 +288,9 @@ describe(NoticesPanel, () => {
     await expect(
       screen.findByText(unreadEvent.title)
     ).resolves.toBeInTheDocument();
-    const toolbar = document.querySelector(`.${styles.toolbar}`);
-    expect(toolbar).not.toBeNull();
-    const children = [...(toolbar?.children ?? [])];
-    expect(children).toHaveLength(2);
-    expect(children.map((child) => child.tagName)).toStrictEqual([
-      "SPAN",
-      "BUTTON",
-    ]);
+    expect(screen.getByText("120 未讀")).toBeVisible();
+    expect(
+      screen.getByRole("button", { name: COPY.notices.noticesMarkAllRead })
+    ).toBeVisible();
   });
 });

@@ -9,10 +9,24 @@ Each Playwright config has a positive `testMatch`; suites must not cross loaders
 | Config | Command | Coverage |
 | --- | --- | --- |
 | `auth-d1.config.ts` | `pnpm exec playwright test -c tests/e2e/auth-d1.config.ts` | Cookie-only password login/logout and disposable legacy-PIN upgrade. |
-| `programs-d1.config.ts` | `pnpm exec playwright test -c tests/e2e/programs-d1.config.ts` | PUI-01 Programs boundary, capability-shaped management entry, URL intent, and recovery at phone/desktop sizes. |
+| `programs-d1.config.ts` | `pnpm exec playwright test -c tests/e2e/programs-d1.config.ts` | Historical diagnostic only; not T05 promotion authority. PUI-01 Programs boundary, capability-shaped management entry, URL intent, and recovery at phone/desktop sizes. |
 | `attendance-d1.config.ts` | `pnpm exec playwright test -c tests/e2e/attendance-d1.config.ts` | ATT-04 attendance flows against the real Worker API and browser UI. |
 | `live-ui.config.ts` | `pnpm exec playwright test -c tests/e2e/live-ui.config.ts` | Rebuilt Next UI shell, Profile, Account Settings, approval flow, and responsive browser states. |
 | `responsive.config.ts` | `pnpm test:shell-responsive` | Deterministic static-shell responsive/accessibility checks with an in-browser RPC stub. |
+| `shell-geometry.config.ts` | `pnpm test:shell-geometry` | Pinned Chromium shell geometry at 320/390/600/799/800/1024/1440 CSS px (TK-09): critical anchors, no overflow/obstruction, numeric CSS-pixel evidence only (TK-12). |
+| `role-hierarchy-geometry.config.ts` | `pnpm test:role-hierarchy-geometry` | #478 H-20 pinned hierarchy/list/detail/rename geometry at 320/390/600/799/800/1024/1440 CSS px; numeric CSS-pixel evidence only (no screenshots). |
+| `programs-participant-acceptance.config.ts` | `pnpm test:programs:browser` | T05.4/T05.5 critical participant and management Browser Acceptance at one representative `phone-390` viewport, zero retries, and unique disposable fixtures. |
+| `programs-responsive-matrix.config.ts` | `pnpm test:programs:responsive` | T05.6 deterministic participant/management responsive proof at exactly 320, 390, and 1280 widths; the canonical runner owns an official Harness, no broad domain replay, and zero retries. |
+
+`pnpm test:programs:browser` and `pnpm test:programs:responsive` start the official Wrangler `createTestHarness()` with `web/wrangler.jsonc`, seed disposable accounts through its D1 binding, run their focused slices, and close the Harness. Direct config invocation remains available for a manually supplied diagnostic target.
+
+The identity 900px seam is covered by the `desktop-900` project in `s4-management-hardening.config.ts`; the focused static identity report is W7-only by design.
+
+`pnpm test:shell-responsive` builds the Next static export and serves it through `tests/e2e/serve-static.ts` on port `4173`. It runs the mobile and desktop projects without a Worker, D1, Google session, or network target.
+
+`pnpm test:shell-geometry` is the pinned-width companion (TK-09): the same static-shell harness at 320, 390, 600, 799, 800, 1024, and 1440 CSS px. Both 799 and 800 are exercised so the 800px shell breakpoint is verified on each side. Evidence is numeric CSS pixels only — no screenshots, image snapshots, or pixel diffs (TK-12). Both suites run locally via `pnpm verify`; they are not part of the automatic CI gate (Fast CI is typecheck-only).
+
+`pnpm test:role-hierarchy-geometry` builds the static export and runs the real category expand, detail, and rename controls at each pinned width. It asserts non-vacuous hierarchy anchors, 44px controls, no horizontal overflow, and phone dock clearance; the command is included in `pnpm verify` and is a local browser check, not part of the automatic CI gate.
 
 The retired Apps Script `/exec` Playwright suite, Google storage-state capture helper, clasp deployment helper, `src/gas/`, and `tests/gas/` VM-harness were removed with the GAS retirement.
 
@@ -32,19 +46,20 @@ Use two terminals:
 pnpm dev:local
 
 # terminal 2
-pnpm db:seed:local       # E2E_ accounts; also restores the legacy-PIN fixture
+pnpm db:seed:local       # E2E_ accounts + disposable identity foundation
+pnpm db:seed:disposable  # role-only rerun; --local and E2E_ rows only
 pnpm db:seed:demo        # E2E_DEMO_ department, programs, and generated events
 pnpm exec playwright test -c tests/e2e/programs-d1.config.ts
 ```
 
-`pnpm dev:local` builds the Next static export, applies local migrations, and starts the Worker. `pnpm db:seed:local` is safe to rerun; it first resets only disposable `E2E_`/`E2E_DEMO_` domain rows, then seeds these local accounts:
+`pnpm dev:local` builds the Next static export and applies local migrations. `pnpm db:seed:local` is safe to rerun; it first resets only disposable `E2E_`/`E2E_DEMO_` domain rows, seeds the account fixtures, and then invokes the local-only `pnpm db:seed:disposable` identity seed. The identity seed is additive (`INSERT OR IGNORE`), contains only `E2E_DISPOSABLE_` rows, and never targets a remote or non-disposable database.
 
-| Username | Credential | Role |
+| Username | Credential | Seeded identity context |
 | --- | --- | --- |
-| `E2E_admin` | `E2E_admin!dev` | Admin |
-| `E2E_staff` | `E2E_staff!dev` | Staff |
-| `E2E_member` | `E2E_member!dev` | Member |
-| `E2E_legacy` | PIN `1234` (upgrade test) | Member |
+| `E2E_admin` | `E2E_admin!dev` | Protected Admin identity |
+| `E2E_staff` | `E2E_staff!dev` | Assignable Staff identity |
+| `E2E_member` | `E2E_member!dev` | Automatic `會友基礎` baseline |
+| `E2E_legacy` | PIN `1234` (upgrade test) | Automatic `會友基礎` after upgrade |
 
 The local auth suite defaults to those fixtures. The account seed resets `E2E_legacy` to its legacy-PIN state so the upgrade test can be rerun. The other D1 suites use the active three accounts by default; `attendance-d1` creates its own disposable domain rows for each run. `db:seed:demo` is local-only and refuses non-loopback targets; it creates one `E2E_DEMO_` department, four programs, and generated events for the recurring program.
 
@@ -73,6 +88,29 @@ pnpm exec tsx tests/e2e/plan-doc-appender.ts \
   --heading="## Executed results — local Programs D1" \
   --target-url=http://127.0.0.1:8787
 ```
+
+## Phase F release evidence
+
+Phase F (#494/#495) keeps the release evidence numeric and local. Geometry suites attach UTF-8 JSON through Playwright `testInfo.attach`; their configs record `metadata.phaseFTargetUrl`, and the renderer rejects image attachments, missing target metadata, and non-loopback target URLs:
+
+```sh
+pnpm verify:contraction
+pnpm exec tsx tests/e2e/render-phase-f-evidence.ts \
+  --input=tests/e2e/test-results/phase-f \
+  --json=docs/qa/2026-09-01-s4-phase-f-release-evidence.json \
+  --html=docs/qa/2026-09-01-s4-phase-f-release-evidence.html
+pnpm exec tsx tests/e2e/plan-doc-appender.ts \
+  --plan=docs/specs/s4-phase-f-acceptance-trace.md \
+  --results=tests/e2e/test-results/phase-f/phase-d-programs-geometry/results.json \
+  --heading="## Executed results" \
+  --target-url=http://127.0.0.1:8787
+```
+
+The explicit post-migration schema smoke is: `pnpm exec tsx tests/e2e/inspect-local-identity-schema.ts` It queries local `sqlite_master` and `PRAGMA` table-valued functions, asserts the seven normalized identity tables plus role-free `accounts` and `registration_requests`, and rejects pre-019 tables and retired role-guard triggers.
+
+Geometry reports live under `tests/e2e/test-results/phase-f/<suite>/results.json`. Route-only reports remain at their suite-specific paths such as `tests/e2e/test-results/auth-d1-results.json`, `live-ui-results.json`, and `attendance-d1-results.json` when those suites pass. The required single-process `programs-d1` journey is represented by its Playwright line reporter and failure-log directory; a missing or failed report is not evidence. The rendered JSON/HTML, the acceptance trace, `docs/qa/2026-09-01-s4-phase-f-release-gate.md`, and `docs/qa/2026-09-01-s4-phase-f-audit-dispositions.md` are the reviewable outputs. Numeric evidence proves DOM/API geometry and state only; it does not claim human keyboard/AT, real-device camera/touch, native print-preview, forced-colors, zoom/reflow, or text-spacing outcomes.
+
+Worker-backed Phase F runs use `http://127.0.0.1:8787`, local D1, pinned Chromium, and disposable `E2E_`, `E2E_DEMO_`, or `E2E_DISPOSABLE_` fixtures. The static-shell suite intentionally runs against its local `4173` server without Worker/D1. No suite mutates Apps Script, Google Sheets, Cloudflare production, remote D1, or a non-disposable account. A complete matrix failure remains a release blocker; unavailable human rows stay `UNCLAIMED`.
 
 ## Static-shell suite
 

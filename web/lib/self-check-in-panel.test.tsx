@@ -118,6 +118,7 @@ describe(SelfCheckInPanel, () => {
     detectedValue = null;
     Reflect.deleteProperty(window, "BarcodeDetector");
     Reflect.deleteProperty(navigator, "mediaDevices");
+    Reflect.deleteProperty(window, "matchMedia");
   });
 
   afterAll(() => server.close());
@@ -1114,5 +1115,81 @@ describe(SelfCheckInPanel, () => {
       screen.findByRole("heading", { name: COPY.attendance.successTitle })
     ).resolves.toBeInTheDocument();
     expect(attempts).toBe(2);
+  });
+
+  test("desktop viewport renders deterministic manual entry without starting camera", async () => {
+    const getUserMedia = vi.mocked(navigator.mediaDevices.getUserMedia);
+    try {
+      Object.defineProperty(window, "matchMedia", {
+        configurable: true,
+        writable: true,
+        value: vi.fn().mockImplementation((query: string) => ({
+          matches: query === "(min-width: 800px)",
+          media: query,
+          onchange: null,
+          addListener: vi.fn(),
+          removeListener: vi.fn(),
+          addEventListener: vi.fn(),
+          removeEventListener: vi.fn(),
+          dispatchEvent: vi.fn(),
+        })),
+      });
+      server.use(resolveHandler({ events: [EVENT] }));
+      const user = userEvent.setup();
+      render(<SelfCheckInPanel />);
+
+      const manualInput = await screen.findByLabelText(
+        new RegExp(COPY.attendance.manualCodeLabel)
+      );
+      expect(manualInput).toBeInTheDocument();
+      expect(screen.queryByTestId("scanner-camera-stage")).toBeNull();
+      expect(getUserMedia).not.toHaveBeenCalled();
+
+      await user.type(manualInput, "123456");
+      await user.click(
+        screen.getByRole("button", { name: COPY.attendance.continue })
+      );
+      await screen.findByRole("heading", {
+        name: COPY.attendance.confirmTitle,
+      });
+    } finally {
+      Reflect.deleteProperty(window, "matchMedia");
+    }
+  });
+
+  test("stopping camera returns to fallback view and opening manual allows 6-digit code entry", async () => {
+    server.use(resolveHandler({ events: [EVENT] }));
+    const user = userEvent.setup();
+    render(<SelfCheckInPanel />);
+
+    const stopButton = await screen.findByRole("button", {
+      name: COPY.attendance.stopScan,
+    });
+    await waitFor(() => expect(stopButton).toBeEnabled());
+    await user.click(stopButton);
+
+    const fallbackHeading = await screen.findByRole("heading", {
+      name: COPY.attendance.fallbackTitle,
+    });
+    expect(fallbackHeading).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", {
+        name: new RegExp(COPY.attendance.manualMethodTitle),
+      })
+    ).toBeInTheDocument();
+
+    await user.click(
+      screen.getByRole("button", {
+        name: new RegExp(COPY.attendance.manualMethodTitle),
+      })
+    );
+    const input = await screen.findByLabelText(
+      new RegExp(COPY.attendance.manualCodeLabel)
+    );
+    await user.type(input, "123456");
+    await user.click(
+      screen.getByRole("button", { name: COPY.attendance.continue })
+    );
+    await screen.findByRole("heading", { name: COPY.attendance.confirmTitle });
   });
 });

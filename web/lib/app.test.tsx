@@ -1,6 +1,4 @@
-/* oxlint-disable vitest/prefer-import-in-mock, vitest/prefer-mock-promise-shorthand, vitest/prefer-called-with, unicorn/prefer-query-selector */
-import { readFileSync } from "node:fs";
-import path from "node:path";
+/* oxlint-disable vitest/prefer-import-in-mock, vitest/prefer-mock-promise-shorthand, vitest/prefer-called-with, unicorn/prefer-query-selector, vitest/max-expects, promise/avoid-new */
 
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -44,8 +42,8 @@ import { RecoveryView } from "@/lib/recovery-view";
 import { REGISTRATION_COPY } from "@/lib/registration-copy";
 import {
   defaultSections,
-  sectionsForRole,
-  stableNavigationSections,
+  projectSections,
+  projectNavigation,
 } from "@/lib/sections";
 import { buildBootstrap, setAuthHint } from "@/lib/session";
 import { ShellHeader } from "@/lib/shell-header";
@@ -77,40 +75,73 @@ vi.mock(import("next/navigation"), () => ({
     ) as unknown as ReadonlyURLSearchParams,
 }));
 
-const MEMBER_SECTIONS = sectionsForRole("Member");
-const STAFF_SECTIONS = sectionsForRole("Staff");
-const NAVIGATION = stableNavigationSections("Member");
+const MEMBER_SECTIONS = projectSections({ "program.enroll": true });
+const STAFF_SECTIONS = projectSections({ "program.manage": true });
+const NAVIGATION = projectNavigation({ "program.enroll": true });
 
 const PUBLIC_USER: PublicUser = {
   userId: "U001",
   name: "測試用",
   username: "test",
   phone: "00000000",
-  role: "Member",
+  identities: [{ label: "會友基礎", scopeKind: "Global", scopeLabel: null }],
+  capabilities: { "program.enroll": true, "role.manage": false },
   status: "Active",
   qrCodeString: "qr-placeholder",
 };
-// Canonical ADR-0025 role strings — D1 stores and the API expose these
-// title-case values; uppercase spellings fall back to the Member set.
-const STAFF_USER: PublicUser = { ...PUBLIC_USER, role: "Staff" };
-const ADMIN_USER: PublicUser = { ...PUBLIC_USER, role: "Admin" };
+const LEGACY_USER: PublicUser = {
+  ...PUBLIC_USER,
+  userId: "U-legacy",
+  username: "legacy",
+};
+const STAFF_USER: PublicUser = {
+  ...PUBLIC_USER,
+  identities: [
+    {
+      label: "同工",
+      scopeKind: "Global",
+      scopeLabel: null,
+    },
+  ],
+};
+const ADMIN_USER: PublicUser = {
+  ...PUBLIC_USER,
+  identities: [
+    {
+      label: "管理員",
+      scopeKind: "Global",
+      scopeLabel: null,
+    },
+  ],
+};
 const PROGRAM_LEADER_USER: PublicUser = {
   ...PUBLIC_USER,
-  role: "Program Leader",
+  identities: [
+    {
+      label: "導師",
+      scopeKind: "Global",
+      scopeLabel: null,
+    },
+  ],
 };
 const DEPARTMENT_MANAGER_USER: PublicUser = {
   ...PUBLIC_USER,
-  role: "Department Manager",
+  identities: [
+    {
+      label: "部長",
+      scopeKind: "Global",
+      scopeLabel: null,
+    },
+  ],
 };
-
 const BOOTSTRAP: Bootstrap = {
   sections: MEMBER_SECTIONS,
   navigation: NAVIGATION,
   profile: PUBLIC_USER,
 };
 const ADMIN_BOOTSTRAP: Bootstrap = {
-  sections: sectionsForRole("Admin"),
-  navigation: stableNavigationSections("Admin"),
+  sections: projectSections({ "home.publish": true }),
+  navigation: projectNavigation({ "home.publish": true }),
   profile: ADMIN_USER,
 };
 
@@ -134,7 +165,6 @@ const DEFAULT_HANDLER = [
         data: {
           userId: "U-test",
           name: "測試用",
-          role: "Member",
           status: "Active",
           mustSetNewCredential: false,
         },
@@ -192,7 +222,7 @@ describe("Shell", () => {
     sessionStorage.clear();
     authCalls.length = 0;
     replaceMock.mockClear();
-    pathnameMock.mockClear();
+    pathnameMock.mockReset().mockReturnValue("/");
   });
 
   afterEach(() => {
@@ -349,7 +379,6 @@ describe("Shell", () => {
             data: {
               userId: "U-legacy",
               name: "舊帳戶",
-              role: "MEMBER",
               status: "Active",
               mustSetNewCredential: true,
             },
@@ -360,7 +389,7 @@ describe("Shell", () => {
           return HttpResponse.json({
             requestId: "r-me",
             data: {
-              user: PUBLIC_USER,
+              user: LEGACY_USER,
               sections: MEMBER_SECTIONS,
               navigation: NAVIGATION,
             },
@@ -380,7 +409,7 @@ describe("Shell", () => {
           });
           return HttpResponse.json({
             requestId: "r-upgraded",
-            data: { user: PUBLIC_USER },
+            data: { user: LEGACY_USER },
           });
         })
       );
@@ -439,7 +468,6 @@ describe("Shell", () => {
             data: {
               userId: "U-legacy",
               name: "舊帳戶",
-              role: "MEMBER",
               status: "Active",
               mustSetNewCredential: true,
             },
@@ -465,7 +493,7 @@ describe("Shell", () => {
           return HttpResponse.json({
             requestId: "r-me",
             data: {
-              user: PUBLIC_USER,
+              user: LEGACY_USER,
               sections: MEMBER_SECTIONS,
               navigation: NAVIGATION,
             },
@@ -476,7 +504,7 @@ describe("Shell", () => {
           await request.json();
           return HttpResponse.json({
             requestId: "r-upgraded",
-            data: { user: PUBLIC_USER },
+            data: { user: LEGACY_USER },
           });
         })
       );
@@ -540,7 +568,6 @@ describe("Shell", () => {
             data: {
               userId: "U-legacy",
               name: "舊帳戶",
-              role: "MEMBER",
               status: "Active",
               mustSetNewCredential: true,
             },
@@ -551,7 +578,7 @@ describe("Shell", () => {
           return HttpResponse.json({
             requestId: "r-me",
             data: {
-              user: PUBLIC_USER,
+              user: LEGACY_USER,
               sections: MEMBER_SECTIONS,
               navigation: NAVIGATION,
             },
@@ -611,7 +638,6 @@ describe("Shell", () => {
             data: {
               userId: "U-legacy",
               name: "舊帳戶",
-              role: "MEMBER",
               status: "Active",
               mustSetNewCredential: true,
             },
@@ -667,6 +693,7 @@ describe("Shell", () => {
           screen.getByRole("heading", { name: COPY.login.upgradeTitle })
         ).toBeInTheDocument();
       });
+      expect(screen.getByRole("alert").parentElement).toHaveFocus();
       expect(replaceMock).not.toHaveBeenCalled();
       expect(localStorage.getItem(AUTH_HINT_KEY)).toBeNull();
     });
@@ -683,7 +710,6 @@ describe("Shell", () => {
             data: {
               userId: "U-legacy",
               name: "舊帳戶",
-              role: "MEMBER",
               status: "Active",
               mustSetNewCredential: true,
             },
@@ -709,7 +735,7 @@ describe("Shell", () => {
           return HttpResponse.json({
             requestId: "r-me",
             data: {
-              user: PUBLIC_USER,
+              user: LEGACY_USER,
               sections: MEMBER_SECTIONS,
               navigation: NAVIGATION,
             },
@@ -769,7 +795,6 @@ describe("Shell", () => {
       ).toHaveLength(1);
       expect(localStorage.getItem(AUTH_HINT_KEY)).toBe("1");
     });
-    /* oxlint-enable vitest/max-expects */
 
     test("stored access session silently restores and redirects on reload", async () => {
       setAuthHint();
@@ -920,6 +945,60 @@ describe("Shell", () => {
       expect(screen.getByText(COPY.login.missingFields)).toBeInTheDocument();
     });
 
+    test("focuses the first invalid login field and associates the error", async () => {
+      const user = userEvent.setup();
+      render(<LoginPage />);
+      await user.click(screen.getByRole("button", { name: COPY.login.submit }));
+      const username = screen.getByLabelText(COPY.login.usernameLabel);
+      expect(username).toHaveFocus();
+      expect(username).toHaveAttribute("aria-invalid", "true");
+      expect(username).toHaveAttribute("aria-describedby", "login-error");
+      expect(
+        screen.getByRole("alert", { name: COPY.login.missingFields })
+      ).toBeInTheDocument();
+    });
+
+    test("marks login controls busy while the auth request is pending", async () => {
+      let release: ((response: Response) => void) | undefined;
+      server.use(
+        http.post(
+          "/api/v1/auth/login",
+          () =>
+            new Promise<Response>((resolve) => {
+              release = resolve;
+            })
+        )
+      );
+      const user = userEvent.setup();
+      render(<LoginPage />);
+      await user.type(screen.getByLabelText(COPY.login.usernameLabel), "test");
+      await user.type(
+        screen.getByLabelText(COPY.login.passwordLabel),
+        "pw-pass"
+      );
+      await user.click(screen.getByRole("button", { name: COPY.login.submit }));
+      const submit = screen.getByRole("button", {
+        name: COPY.login.submitting,
+      });
+      expect(submit).toBeDisabled();
+      expect(submit).toHaveAttribute("aria-busy", "true");
+      expect(screen.getByRole("form")).toHaveAttribute("aria-busy", "true");
+      release?.(
+        HttpResponse.json({
+          requestId: "r-login-busy",
+          data: {
+            userId: "U-test",
+            name: "測試用",
+            status: "Active",
+            mustSetNewCredential: false,
+          },
+        })
+      );
+      await waitFor(() => {
+        expect(replaceMock).toHaveBeenCalledWith("/profile");
+      });
+    });
+
     test("blocks upgrade submission when password is shorter than 8 characters", async () => {
       server.use(
         http.post("/api/v1/auth/login", () =>
@@ -928,7 +1007,6 @@ describe("Shell", () => {
             data: {
               userId: "U-legacy",
               name: "舊帳戶",
-              role: "MEMBER",
               status: "Active",
               mustSetNewCredential: true,
             },
@@ -962,6 +1040,12 @@ describe("Shell", () => {
       expect(
         screen.getByText(COPY.login.upgradePasswordTooShort)
       ).toBeInTheDocument();
+      expect(screen.getByLabelText(COPY.login.newPasswordLabel)).toHaveFocus();
+      expect(
+        screen.getByLabelText(COPY.login.newPasswordLabel)
+      ).toHaveAttribute("aria-describedby", "login-notice");
+      expect(document.querySelectorAll("#login-error")).toHaveLength(0);
+      expect(document.querySelectorAll("#login-notice")).toHaveLength(1);
     });
 
     test("blocks upgrade submission when password and confirm password do not match", async () => {
@@ -972,7 +1056,6 @@ describe("Shell", () => {
             data: {
               userId: "U-legacy",
               name: "舊帳戶",
-              role: "MEMBER",
               status: "Active",
               mustSetNewCredential: true,
             },
@@ -1152,23 +1235,12 @@ describe("Shell", () => {
       return { user, view };
     }
 
-    test("renders the QR identity as an img with a descriptive label and the immutable code", async () => {
+    test("renders the QR identity as a labelled image", async () => {
       renderRestoredProfile();
-      // Await the shell so the profile surface is mounted.
       await screen.findAllByRole("button", { name: COPY.logout.submit });
       const qr = screen.getByRole("img", { name: COPY.profile.qrCode });
       expect(qr).toBeInTheDocument();
-      // The QR slot is a fixed 220px square — no proportional min() clamp
-      // that would shrink the code below scannable size on narrow phones (S5).
-      const css = readFileSync(
-        path.resolve(process.cwd(), "app/profile/profile.module.css"),
-        "utf-8"
-      );
-      const qrSquare =
-        css
-          .split(".qrSquare")[1]
-          ?.slice(0, css.split(".qrSquare")[1]?.indexOf("}") ?? 0) ?? "";
-      expect(qrSquare).not.toContain("min(");
+      expect(qr).toHaveAttribute("aria-label", COPY.profile.qrCode);
     });
 
     test("shows a validated Scanner return link for the Member QR fallback", async () => {
@@ -1176,19 +1248,57 @@ describe("Shell", () => {
       try {
         renderRestoredProfile();
         await screen.findAllByRole("button", { name: COPY.logout.submit });
-        await expect(screen.findByRole("link", { name: COPY.attendance.backToScan })).resolves.toHaveAttribute("href", "/scanner");
+        await expect(
+          screen.findByRole("link", { name: COPY.attendance.backToScan })
+        ).resolves.toHaveAttribute("href", "/scanner");
       } finally {
         window.history.replaceState({}, "", "/profile");
       }
     });
 
-    test("renders the phone and status info grid with their values", async () => {
+    test("renders status and username while keeping contact details private", async () => {
       renderRestoredProfile();
       await screen.findAllByRole("button", { name: COPY.logout.submit });
-      expect(screen.getByText(COPY.profile.phone)).toBeInTheDocument();
-      expect(screen.getByText(PUBLIC_USER.phone)).toBeInTheDocument();
+      expect(screen.getByText(COPY.profile.username)).toBeInTheDocument();
+      expect(screen.getByText(PUBLIC_USER.username)).toBeInTheDocument();
       expect(screen.getByText(COPY.profile.status)).toBeInTheDocument();
       expect(screen.getByText(PUBLIC_USER.status)).toBeInTheDocument();
+      expect(screen.queryByText(COPY.profile.phone)).not.toBeInTheDocument();
+      expect(screen.queryByText(PUBLIC_USER.phone)).not.toBeInTheDocument();
+    });
+
+    test("keeps the account details disclosure and chevron state synchronized", async () => {
+      const { user } = renderRestoredProfile();
+      await screen.findAllByRole("button", { name: COPY.logout.submit });
+      const detailsRegion = screen.getByRole("region", {
+        name: COPY.profile.accountDetails,
+      });
+      const details = detailsRegion.querySelector("details");
+      if (!details) {
+        throw new Error("Expected account details disclosure");
+      }
+      expect(details).not.toHaveAttribute("open");
+      const summary = details.querySelector("summary");
+      if (!summary) {
+        throw new Error("Expected account details summary");
+      }
+      await user.click(summary);
+      expect(details).toHaveAttribute("open");
+      expect(details.querySelector("summary svg")).toBeInTheDocument();
+    });
+
+    test("renders only privacy-safe effective identity summaries", async () => {
+      renderRestoredProfile();
+      await screen.findAllByRole("button", { name: COPY.logout.submit });
+      const identityRegion = screen.getByRole("region", { name: "身份組" });
+      expect(identityRegion).toHaveTextContent("會友基礎");
+      expect(
+        identityRegion.querySelector("[data-scope-kind='Global']")
+      ).toBeInTheDocument();
+      expect(identityRegion).not.toHaveTextContent(PUBLIC_USER.userId);
+      expect(screen.queryByText("program.enroll")).not.toBeInTheDocument();
+      expect(screen.queryByText("Member")).not.toBeInTheDocument();
+      expect(identityRegion).not.toHaveTextContent(PUBLIC_USER.phone);
     });
 
     test("renders the empty state when the profile carries no QR data", async () => {
@@ -1214,6 +1324,47 @@ describe("Shell", () => {
         screen.queryByRole("img", { name: COPY.profile.qrCode })
       ).toBeNull();
     });
+
+    test("does not create an identity section when the server returns none", async () => {
+      server.use(
+        http.get("/api/v1/auth/me", () =>
+          HttpResponse.json({
+            requestId: "r-me-no-identities",
+            data: {
+              user: { ...PUBLIC_USER, identities: [], qrCodeString: "" },
+              sections: MEMBER_SECTIONS,
+              navigation: NAVIGATION,
+            },
+          })
+        )
+      );
+      renderRestoredProfile();
+      await screen.findAllByRole("button", { name: COPY.logout.submit });
+      expect(
+        screen.queryByRole("region", { name: "身份組" })
+      ).not.toBeInTheDocument();
+    });
+
+    test("preserves non-active status copy with an inactive status projection", async () => {
+      server.use(
+        http.get("/api/v1/auth/me", () =>
+          HttpResponse.json({
+            requestId: "r-me-inactive",
+            data: {
+              user: { ...PUBLIC_USER, status: "Suspended" },
+              sections: MEMBER_SECTIONS,
+              navigation: NAVIGATION,
+            },
+          })
+        )
+      );
+      renderRestoredProfile();
+      await screen.findAllByRole("button", { name: COPY.logout.submit });
+      expect(screen.getByRole("status", { name: "Suspended" })).toHaveAttribute(
+        "data-profile-status",
+        "inactive"
+      );
+    });
   });
 
   describe(NavBar, () => {
@@ -1235,9 +1386,9 @@ describe("Shell", () => {
 
     test("renders the stable navigation projection for Member", () => {
       renderWithProvider(
-        sectionsForRole("Member"),
+        projectSections({ "program.enroll": true }),
         "/home",
-        stableNavigationSections("Member")
+        projectNavigation({ "program.enroll": true })
       );
       expect(
         [
@@ -1252,9 +1403,9 @@ describe("Shell", () => {
 
     test("renders the stable navigation projection for Staff with Management", () => {
       renderWithProvider(
-        sectionsForRole("Staff"),
+        projectSections({ "program.manage": true }),
         "/home",
-        stableNavigationSections("Staff")
+        projectNavigation({ "program.manage": true })
       );
       expect(
         [
@@ -1269,9 +1420,9 @@ describe("Shell", () => {
 
     test("highlights current route with aria-current", () => {
       renderWithProvider(
-        sectionsForRole("Member"),
+        projectSections({ "program.enroll": true }),
         "/programs",
-        stableNavigationSections("Member")
+        projectNavigation({ "program.enroll": true })
       );
       const [active] = screen.getAllByRole("link", {
         name: new RegExp(COPY.sections.programs, "u"),
@@ -1323,7 +1474,10 @@ describe("Shell", () => {
     test("renders forbidden view for an unpermitted (absent) section with a safe route back", () => {
       render(
         <AppProvider
-          bootstrap={{ ...BOOTSTRAP, sections: sectionsForRole("Member") }}
+          bootstrap={{
+            ...BOOTSTRAP,
+            sections: projectSections({ "program.enroll": true }),
+          }}
           onSignOut={() => {}}
         >
           <GuardedSection sectionKey="management">
@@ -1478,7 +1632,7 @@ describe("Shell", () => {
       expect(
         screen.getByText(ADMIN_BOOTSTRAP.profile.name ?? "")
       ).toBeInTheDocument();
-      expect(screen.getByText(COPY.shell.roleLabels.Admin)).toBeInTheDocument();
+      expect(screen.getByText("管理員")).toBeInTheDocument();
       const bell = screen.getByRole("button", {
         name: COPY.attention.bellLabel(0),
       });
@@ -1487,6 +1641,21 @@ describe("Shell", () => {
       expect(
         screen.getByRole("dialog", { name: COPY.attention.title })
       ).toBeInTheDocument();
+    });
+
+    test("leaves Programs notification ownership to its Feed-backed control", () => {
+      pathnameMock.mockReturnValue("/programs");
+      render(
+        <AppProvider bootstrap={ADMIN_BOOTSTRAP} onSignOut={() => {}}>
+          <ShellHeader />
+        </AppProvider>
+      );
+      expect(
+        screen.queryByRole("button", { name: COPY.attention.bellLabel(0) })
+      ).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole("dialog", { name: COPY.attention.title })
+      ).not.toBeInTheDocument();
     });
 
     test("renders brand mark on /home, contextual section title elsewhere, no identity block or bell for Member accounts", () => {
@@ -1658,6 +1827,7 @@ describe("Shell", () => {
     test("scanner page renders COPY.sections.scanner title", async () => {
       withAuthRestore(STAFF_USER, STAFF_SECTIONS);
       setAuthHint();
+      pathnameMock.mockReturnValue("/scanner");
       render(<ScannerPage />);
       await waitFor(() => {
         expect(
@@ -1669,6 +1839,7 @@ describe("Shell", () => {
     test("scanner page renders self check-in for a Member", async () => {
       withAuthRestore(PUBLIC_USER);
       setAuthHint();
+      pathnameMock.mockReturnValue("/scanner");
       render(<ScannerPage />);
       await waitFor(() => {
         expect(
@@ -1686,7 +1857,7 @@ describe("Shell", () => {
         ADMIN_USER,
       ];
       for (const user of roleUsers) {
-        withAuthRestore(user, sectionsForRole(user.role));
+        withAuthRestore(user, projectSections(user.capabilities ?? {}));
         setAuthHint();
         pathnameMock.mockReturnValue("/scanner");
         render(<ScannerPage />);
@@ -1731,17 +1902,16 @@ describe("Shell", () => {
       ).toBeInTheDocument();
     });
 
-    test("permissions page renders the S10 permissionsHeading title", async () => {
+    test("legacy permissions page redirects to canonical Role Policy", async () => {
       withAuthRestore(ADMIN_USER, defaultSections());
       setAuthHint();
       render(<PermissionsPage />);
       await waitFor(() => {
-        expect(
-          screen.getByRole("heading", {
-            name: COPY.sections.permissionsHeading,
-          })
-        ).toBeInTheDocument();
+        expect(replaceMock).toHaveBeenCalledWith(
+          "/management?module=permissions"
+        );
       });
+      expect(screen.getByText("正在前往帳戶與權限…")).toBeInTheDocument();
     });
   });
 
@@ -1860,7 +2030,7 @@ describe("Shell", () => {
       // The restore resolves to the authenticated shell.
       await expect(
         screen.findAllByRole("navigation", { name: COPY.nav.label })
-      ).resolves.toHaveLength(2);
+      ).resolves.toHaveLength(1);
     });
 
     test("the authenticated shell leads with a skip link to the main content landmark", async () => {
@@ -2088,7 +2258,7 @@ describe("Shell", () => {
       const freshNavs = await screen.findAllByRole("navigation", {
         name: COPY.nav.label,
       });
-      expect(freshNavs).toHaveLength(2);
+      expect(freshNavs).toHaveLength(1);
       expect(
         screen.queryByText(COPY.error.unavailable)
       ).not.toBeInTheDocument();

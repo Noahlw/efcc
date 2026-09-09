@@ -41,4 +41,14 @@ describe("messages intent", () => {
       "/messages?content=church-msg-1&from=messages"
     );
   });
+
+  test("round-trips the Home origin without accepting arbitrary destinations", () => {
+    const href = buildMessagesHref("home-update", "home");
+    expect(href).toBe("/messages?content=home-update&from=home");
+    expect(parseMessagesIntent(href.slice("/messages".length))).toStrictEqual({
+      contentId: "home-update",
+      origin: "home",
+      malformed: false,
+    });
+  });
 });
