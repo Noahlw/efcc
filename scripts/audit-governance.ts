@@ -23,10 +23,10 @@ import path from "node:path";
 import {
   auditSourceCode,
   auditFileContent,
-  auditNewControlOverrides,
+  auditNewPresentationOverrides,
   getCanonicalRegistries,
   resolveRepoRoot,
-  resolveControlOverrideBase,
+  resolvePresentationOverrideBase,
   validateRegistries,
   type AuditResult,
   type AuditScanError,
@@ -642,7 +642,7 @@ export function runGovernanceAudit(options: CliOptions): {
   const affectedBaseRef =
     options.mode === "affected" &&
     (options.controlOverrideBase !== undefined || discoversAffectedFiles)
-      ? resolveControlOverrideBase(repoRoot, options.controlOverrideBase)
+      ? resolvePresentationOverrideBase(repoRoot, options.controlOverrideBase)
       : undefined;
   const sourceAuditResult =
     options.mode === "affected"
@@ -660,7 +660,7 @@ export function runGovernanceAudit(options: CliOptions): {
           nativeExceptions: registries.nativeExceptions,
           now: options.now,
         });
-  const controlOverrideViolations = auditNewControlOverrides({
+  const controlOverrideViolations = auditNewPresentationOverrides({
     rootDir: repoRoot,
     baseRef: options.controlOverrideBase,
     targetFiles,

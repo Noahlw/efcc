@@ -1917,10 +1917,7 @@ export const AccountAccessPanel = () => {
     >
       <span />
       <Sheet onOpenChange={setReviewOpen} open={reviewOpen}>
-        <SheetContent
-          className="max-h-[calc(100dvh-1rem)] w-full max-w-md overflow-y-auto pb-[calc(1rem+env(safe-area-inset-bottom))]"
-          side="bottom"
-        >
+        <SheetContent className="w-full max-w-md" side="bottom">
           <SheetHeader>
             <SheetTitle>確認新增身份組</SheetTitle>
             <SheetDescription>
@@ -1973,7 +1970,7 @@ export const AccountAccessPanel = () => {
         </SheetContent>
       </Sheet>
       <Dialog onOpenChange={setDetailsOpen} open={detailsOpen}>
-        <DialogContent className="max-h-[calc(100dvh-1rem)] overflow-y-auto">
+        <DialogContent>
           <DialogHeader>
             <DialogTitle>有效權限詳情</DialogTitle>
             <DialogDescription>

@@ -3,6 +3,7 @@ import type { PresentationScreenCatalogEntry } from "@/lib/governance/presentati
 
 import { attendanceScannerGuestStoryDeclarations } from "./attendance-scanner-guest.story-manifest";
 import { controlStoryDeclarations } from "./controls.story-manifest";
+import { foundationStoryDeclarations } from "./foundations.story-manifest";
 import { managementHubStoryDeclarations } from "./management-hub.story-manifest";
 import { managementIdentityStoryDeclarations } from "./management-identity.story-manifest";
 import type { PresentationStoryDeclaration } from "./presentation-meta";
@@ -10,14 +11,16 @@ import { programsStoryDeclarations } from "./programs.story-manifest";
 import { publicAuthMemberCommunicationsStoryDeclarations } from "./public-auth-member-communications.story-manifest";
 
 export type {
+  FoundationPresentationMetadata,
   PresentationMetadata,
   PresentationStoryDeclaration,
 } from "./presentation-meta";
 
 export type PresentationDeclaration =
   | Omit<Extract<PresentationStoryDeclaration, { subject: "screen" }>, "story">
+  | Omit<Extract<PresentationStoryDeclaration, { subject: "control" }>, "story">
   | Omit<
-      Extract<PresentationStoryDeclaration, { subject: "control" }>,
+      Extract<PresentationStoryDeclaration, { subject: "foundation" }>,
       "story"
     >;
 
@@ -46,6 +49,8 @@ export const ATTENDANCE_SCANNER_GUEST_PRESENTATION_DECLARATIONS =
   discoverPresentationDeclarations(attendanceScannerGuestStoryDeclarations);
 export const CONTROL_PRESENTATION_DECLARATIONS =
   discoverPresentationDeclarations(controlStoryDeclarations);
+export const FOUNDATION_PRESENTATION_DECLARATIONS =
+  discoverPresentationDeclarations(foundationStoryDeclarations);
 
 /** All real CSF declarations; screen cataloging remains a separate join. */
 export const ALL_PRESENTATION_DECLARATIONS = [
@@ -55,6 +60,7 @@ export const ALL_PRESENTATION_DECLARATIONS = [
   ...MANAGEMENT_IDENTITY_PRESENTATION_DECLARATIONS,
   ...ATTENDANCE_SCANNER_GUEST_PRESENTATION_DECLARATIONS,
   ...CONTROL_PRESENTATION_DECLARATIONS,
+  ...FOUNDATION_PRESENTATION_DECLARATIONS,
 ] as const;
 
 export const SCREEN_PRESENTATION_DECLARATIONS =
@@ -148,7 +154,7 @@ export function validateScreenCatalog(
         declarationsByScreen.get(declaration.screenId) ?? [];
       screenDeclarations.push(declaration);
       declarationsByScreen.set(declaration.screenId, screenDeclarations);
-    } else {
+    } else if (declaration.subject === "control") {
       if (!declaration.controlId.trim()) {
         errors.push(
           `Control Story has an empty controlId: ${declaration.storyId}`
@@ -165,6 +171,30 @@ export function validateScreenCatalog(
       if (Object.hasOwn(declaration, "screenId")) {
         errors.push(
           `Control Story must not declare screenId: ${declaration.storyId}`
+        );
+      }
+    } else {
+      if (!declaration.foundationId.trim()) {
+        errors.push(
+          `Foundation Story has an empty foundationId: ${declaration.storyId}`
+        );
+      }
+      if ((declaration.route as string | null) !== null) {
+        errors.push(
+          `Foundation Story route must be null: ${declaration.storyId}`
+        );
+      }
+      if ((declaration.intent as string | null) !== null) {
+        errors.push(
+          `Foundation Story intent must be null: ${declaration.storyId}`
+        );
+      }
+      if (
+        Object.hasOwn(declaration, "screenId") ||
+        Object.hasOwn(declaration, "controlId")
+      ) {
+        errors.push(
+          `Foundation Story must not declare screenId or controlId: ${declaration.storyId}`
         );
       }
     }

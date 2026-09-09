@@ -932,7 +932,6 @@ export const PermissionEditorPanel = () => {
             event.preventDefault();
             saveButtonRef.current?.focus();
           }}
-          className="max-h-[min(70dvh,32rem)] pb-[calc(5rem+env(safe-area-inset-bottom,0px))]"
           side="bottom"
         >
           <SheetHeader>
@@ -969,7 +968,6 @@ export const PermissionEditorPanel = () => {
         onOpenChange={(open) => !open && closeReview()}
       >
         <AlertDialogContent
-          className="max-h-[min(80dvh,42rem)] overflow-y-auto pb-[calc(5rem+env(safe-area-inset-bottom,0px))]"
           onCloseAutoFocus={(event) => {
             event.preventDefault();
             saveButtonRef.current?.focus();

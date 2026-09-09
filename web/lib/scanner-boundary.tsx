@@ -37,7 +37,7 @@ const ScannerState = ({
   tone: "info" | "error";
 }) => (
   <Card
-    className="grid gap-[1.125rem] p-5 bg-[var(--surface-raised)] border border-[var(--line-strong)] rounded-[var(--radius-md)]"
+    className="grid"
     role="region"
     aria-labelledby="scanner-state-title"
     tabIndex={-1}

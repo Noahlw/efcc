@@ -13,6 +13,7 @@ import {
   ManagementPageHeader,
   safeManagementReturnHref,
 } from "@/app/management/management-action-framework";
+import { Alert } from "@/components/ui/alert";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -180,14 +181,13 @@ export const ApprovalQueue = () => {
   const mounted = useRef(true);
   const requestSequence = useRef(0);
   const resultHeadingRef = useRef<HTMLHeadingElement>(null);
-  const stateRef = useRef<HTMLParagraphElement>(null);
-  const forbiddenHeadingRef = useRef<HTMLHeadingElement>(null);
+  const stateRef = useRef<HTMLDivElement>(null);
+  const forbiddenHeadingRef = useRef<HTMLDivElement>(null);
   const rowLinkRefs = useRef<Map<string, HTMLAnchorElement>>(new Map());
 
   const load = useCallback(async (status: RegistrationQueueStatus) => {
     const sequence = ++requestSequence.current;
     setState({ kind: "loading", status });
-    announce(QUEUE_COPY.loading);
     try {
       const registrations = await fetchRegistrations(status);
       if (!mounted.current || sequence !== requestSequence.current) {
@@ -215,7 +215,6 @@ export const ApprovalQueue = () => {
       }
       const message = approvalErrorMessage(error);
       setState({ kind: "error", message, status });
-      announce(message);
       return null;
     }
   }, []);
@@ -306,7 +305,6 @@ export const ApprovalQueue = () => {
     if (selectedIds.length >= 100) {
       setNotice(APPROVAL_UI_COPY.batchLimit);
       setNoticeKind("error");
-      announce(APPROVAL_UI_COPY.batchLimit);
       return;
     }
     approvalSelection.set(item.requestId, item);
@@ -347,13 +345,14 @@ export const ApprovalQueue = () => {
     if (idsToAdd.length < availableIds.length) {
       setNotice(APPROVAL_UI_COPY.batchLimit);
       setNoticeKind("error");
-      announce(APPROVAL_UI_COPY.batchLimit);
     }
-    announce(
-      APPROVAL_UI_COPY.selectedAnnouncement(
-        new Set([...selectedIds, ...idsToAdd]).size
-      )
-    );
+    if (idsToAdd.length === availableIds.length) {
+      announce(
+        APPROVAL_UI_COPY.selectedAnnouncement(
+          new Set([...selectedIds, ...idsToAdd]).size
+        )
+      );
+    }
   };
 
   const removeSelection = (requestId: string) => {
@@ -413,7 +412,6 @@ export const ApprovalQueue = () => {
       if (requestIds.length > 100) {
         setNotice(APPROVAL_UI_COPY.batchLimit);
         setNoticeKind("error");
-        announce(APPROVAL_UI_COPY.batchLimit);
         return;
       }
       setBusy(true);
@@ -428,17 +426,14 @@ export const ApprovalQueue = () => {
           `${QUEUE_COPY.done} ${result.approvedCount} Active Accounts 已建立。`
         );
         setNoticeKind("success");
-        announce(QUEUE_COPY.done);
         await load(activeStatus);
       } catch (error) {
         if (!mounted.current) return;
         const message = approvalErrorMessage(error);
         setNotice(message);
         setNoticeKind("error");
-        announce(message);
         if (approvalIsConflict(error)) {
           setNotice(APPROVAL_UI_COPY.staleConflict);
-          announce(APPROVAL_UI_COPY.staleConflict);
           await reconcileConflict(requestIds);
         }
       } finally {
@@ -590,22 +585,23 @@ export const ApprovalQueue = () => {
           </div>
         }
         loading={
-          <p
+          <Alert
             aria-label={QUEUE_COPY.loading}
-            className="mt-4 grid min-w-0 place-items-center gap-2 rounded-[var(--radius-md)] border border-[var(--line)] bg-[var(--surface-raised)] p-6 text-center text-[var(--ink-muted)]"
-            role="status"
-            aria-live="polite"
+            announcement="polite"
+            className="mt-4 min-w-0 place-items-center p-6 text-center"
+            tone="pending"
             tabIndex={-1}
             ref={stateRef}
           >
             {QUEUE_COPY.loading}
-          </p>
+          </Alert>
         }
         error={
           state.kind === "error" ? (
-            <div
-              className="mt-4 grid min-w-0 gap-3 rounded-[var(--radius-md)] border border-[var(--error-border)] bg-[var(--error-surface)] p-6 text-center text-[var(--ink)]"
-              role="alert"
+            <Alert
+              announcement="assertive"
+              className="mt-4 min-w-0 gap-3 p-6 text-center"
+              tone="error"
               tabIndex={-1}
               ref={stateRef}
             >
@@ -617,13 +613,14 @@ export const ApprovalQueue = () => {
               >
                 重試連接
               </Button>
-            </div>
+            </Alert>
           ) : null
         }
         forbidden={
-          <div
-            className="mt-4 grid min-w-0 gap-3 rounded-[var(--radius-md)] border border-[var(--error-border)] bg-[var(--error-surface)] p-6 text-center text-[var(--ink)]"
-            role="alert"
+          <Alert
+            announcement="assertive"
+            className="mt-4 min-w-0 gap-3 p-6 text-center"
+            tone="error"
             tabIndex={-1}
             ref={forbiddenHeadingRef}
           >
@@ -636,7 +633,7 @@ export const ApprovalQueue = () => {
             >
               {COPY.approvals.backToApprovals}
             </Link>
-          </div>
+          </Alert>
         }
         empty={
           <p
@@ -778,17 +775,13 @@ export const ApprovalQueue = () => {
       />
 
       {notice && (
-        <p
-          role={noticeKind === "error" ? "alert" : "status"}
-          aria-live={noticeKind === "error" ? "assertive" : "polite"}
-          className={`mt-4 rounded-[var(--radius-md)] border p-3 text-sm font-bold ${
-            noticeKind === "success"
-              ? "border-[var(--success-border)] bg-[var(--success-surface)] text-[var(--success)]"
-              : "border-[var(--error-border)] bg-[var(--error-surface)] text-[var(--error)]"
-          }`}
+        <Alert
+          announcement={noticeKind === "error" ? "assertive" : "polite"}
+          className="mt-4 text-sm font-bold"
+          tone={noticeKind}
         >
           {notice}
-        </p>
+        </Alert>
       )}
 
       {state.kind === "ready" &&

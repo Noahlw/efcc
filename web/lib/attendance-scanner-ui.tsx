@@ -333,11 +333,7 @@ export const ScannerChooser = ({
   onBack: () => void;
   onSelect: (event: AttendanceEvent) => void;
 }) => (
-  <Card
-    className="grid gap-[1.125rem] p-5 bg-[var(--surface-raised)] border border-[var(--line-strong)] rounded-[var(--radius-md)]"
-    role="region"
-    aria-labelledby="scanner-chooser-title"
-  >
+  <Card className="grid" role="region" aria-labelledby="scanner-chooser-title">
     <header className="flex items-center justify-between gap-2">
       <span className="text-xs font-bold uppercase tracking-wider text-[var(--ink-muted)]">
         {COPY.attendance.chooseEvent}
@@ -446,7 +442,7 @@ export const ScannerConfirmation = ({
   onNotThisEvent: () => void;
 }) => (
   <Card
-    className="grid gap-[1.125rem] p-5 bg-[var(--surface-raised)] border border-[var(--line-strong)] rounded-[var(--radius-md)]"
+    className="grid"
     role="region"
     aria-labelledby="attendance-confirm-title"
   >
@@ -566,7 +562,7 @@ export const ScannerCheckinResult = ({
   onScanAgain: () => void;
 }) => (
   <Card
-    className="grid gap-[1.125rem] p-5 bg-[var(--surface-raised)] border border-[var(--line-strong)] rounded-[var(--radius-md)] text-center"
+    className="grid text-center"
     role="region"
     aria-labelledby="attendance-result-title"
   >
@@ -683,7 +679,7 @@ export const ScannerOutcome = ({
   );
   return (
     <Card
-      className="grid gap-[1.125rem] p-5 bg-[var(--surface-raised)] border border-[var(--line-strong)] rounded-[var(--radius-md)] text-center"
+      className="grid text-center"
       role="region"
       aria-labelledby="scanner-outcome-title"
     >

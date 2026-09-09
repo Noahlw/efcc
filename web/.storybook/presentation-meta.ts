@@ -26,9 +26,17 @@ export interface ControlPresentationMetadata extends PresentationMetadataCommon 
   readonly intent: null;
 }
 
+export interface FoundationPresentationMetadata extends PresentationMetadataCommon {
+  readonly subject: "foundation";
+  readonly foundationId: string;
+  readonly route: null;
+  readonly intent: null;
+}
+
 export type PresentationMetadata =
   | ScreenPresentationMetadata
-  | ControlPresentationMetadata;
+  | ControlPresentationMetadata
+  | FoundationPresentationMetadata;
 
 export type ResolvedScreenPresentationMetadata = Omit<
   ScreenPresentationMetadata,
@@ -37,7 +45,8 @@ export type ResolvedScreenPresentationMetadata = Omit<
 
 export type ResolvedPresentationMetadata =
   | ResolvedScreenPresentationMetadata
-  | ControlPresentationMetadata;
+  | ControlPresentationMetadata
+  | FoundationPresentationMetadata;
 
 export type PresentationStoryDeclaration =
   | (ResolvedScreenPresentationMetadata & {
@@ -45,6 +54,10 @@ export type PresentationStoryDeclaration =
       readonly story: unknown;
     })
   | (ControlPresentationMetadata & {
+      readonly storyId: string;
+      readonly story: unknown;
+    })
+  | (FoundationPresentationMetadata & {
       readonly storyId: string;
       readonly story: unknown;
     });
@@ -163,6 +176,34 @@ function readControlPresentation(
   };
 }
 
+function readFoundationPresentation(
+  presentation: RecordValue,
+  storyId: string,
+  common: PresentationMetadataCommon
+): FoundationPresentationMetadata {
+  if (
+    Object.hasOwn(presentation, "screenId") ||
+    Object.hasOwn(presentation, "controlId") ||
+    typeof presentation.foundationId !== "string" ||
+    presentation.foundationId === ""
+  ) {
+    throw new Error(`Story metadata foundationId is invalid: ${storyId}`);
+  }
+  if (presentation.route !== null) {
+    throw new Error(`Foundation Story route must be null: ${storyId}`);
+  }
+  if (presentation.intent !== null) {
+    throw new Error(`Foundation Story intent must be null: ${storyId}`);
+  }
+  return {
+    ...common,
+    subject: "foundation",
+    foundationId: presentation.foundationId,
+    route: null,
+    intent: null,
+  };
+}
+
 function readPresentation(
   story: unknown,
   storyId: string
@@ -175,13 +216,21 @@ function readPresentation(
   }
 
   const subject = presentation.subject ?? "screen";
-  if (subject !== "screen" && subject !== "control") {
+  if (
+    subject !== "screen" &&
+    subject !== "control" &&
+    subject !== "foundation"
+  ) {
     throw new Error(`Story metadata subject is invalid: ${storyId}`);
   }
   const common = readCommonPresentation(presentation, storyId);
-  return subject === "screen"
-    ? readScreenPresentation(presentation, storyId, common)
-    : readControlPresentation(presentation, storyId, common);
+  if (subject === "screen") {
+    return readScreenPresentation(presentation, storyId, common);
+  }
+  if (subject === "control") {
+    return readControlPresentation(presentation, storyId, common);
+  }
+  return readFoundationPresentation(presentation, storyId, common);
 }
 
 /** Derive declarations from the actual exported CSF Story objects. */

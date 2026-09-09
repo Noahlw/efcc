@@ -41,6 +41,7 @@
     "test:shell-geometry": "playwright test --config=tests/e2e/shell-geometry.config.ts",
     "test:role-hierarchy-geometry": "playwright test --config=tests/e2e/role-hierarchy-geometry.config.ts",
     "test:t08:controls": "playwright test --config=tests/e2e/t08-storybook.config.ts",
+    "test:t09:foundations": "playwright test --config=tests/e2e/t09-storybook.config.ts",
     "build": "echo No root build step; the web app is built and served by the Worker (see web/).",
     "check": "ultracite check",
     "fix": "ultracite fix"

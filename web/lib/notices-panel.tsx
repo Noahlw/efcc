@@ -8,8 +8,11 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { COPY } from "@/lib/copy";
-import { FeedPresentation } from '@/lib/feed-presentation';
-import type { FeedAnnouncement, FeedPresentationState } from '@/lib/feed-presentation';
+import { FeedPresentation } from "@/lib/feed-presentation";
+import type {
+  FeedAnnouncement,
+  FeedPresentationState,
+} from "@/lib/feed-presentation";
 import { hkNoticeListLabel } from "@/lib/hk-time";
 import { listNotices, markAllNoticesRead } from "@/lib/notices-api";
 import type { Notice, NoticesResult } from "@/lib/notices-api";
@@ -228,7 +231,7 @@ export function NoticesPanel() {
     state.kind === "ready" ? (
       <>
         {toolbar}
-        <Card className="border border-[var(--line)] bg-[var(--surface-raised)] p-[2.125rem_1.375rem] text-center shadow-none">
+        <Card className="text-center">
           <h2 className="text-[1.125rem] leading-[1.4]">
             {COPY.notices.noticesEmpty}
           </h2>
