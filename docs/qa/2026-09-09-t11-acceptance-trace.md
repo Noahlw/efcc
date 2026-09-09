@@ -3,8 +3,10 @@
 ## Status
 
 `T11 MACHINE_GREEN — READY_FOR_OWNER_L2` — T11 implementation and machine
-qualification are complete; human owner L2 review remains explicitly open. The
-implementation agent does not claim that approval.
+qualification are complete; human owner L2 review remains explicitly open. This
+is the review-fix label for Ticket 03's normative
+`IMPLEMENTATION_GREEN — WAITING_OWNER_L2` state; both mean machine-qualified
+and owner/L2 pending. The implementation agent does not claim approval.
 
 ## Base and scope
 
@@ -154,12 +156,13 @@ No Worker/D1 journey is added solely for shell presentation.
 - Existing T11 census disposition remains unchanged: CEN-030 and CEN-058 are
   bounded later debt; Home and offline behavior remain untouched, and route
   family debt remains outside this branch.
-- Final two-axis review against `3dd94e842b461461c87ef7687960e23e8198841c`
-  at candidate `ba42a3f6` found no unresolved in-scope Spec finding; the
-  Standards review identified the primary-brand mismatch fixed in the next
-  review-fix commit. Ticket 03 remains committed as `33db2a73`
-  (`fix(t11): qualify authenticated shell`). Human L2 owner review is not
-  claimed by the implementation agent.
+- Final two-axis review against fixed point
+  `3dd94e842b461461c87ef7687960e23e8198841c` at reviewed implementation
+  candidate `126b5e31` found zero unresolved Standards findings and zero
+  unresolved in-scope Spec findings. Ticket 03 remains committed as
+  `1031f13` (`fix(t11): qualify authenticated shell`); the candidate also
+  includes the later structural/Storybook qualification fixes. Human L2 owner
+  review is not claimed by the implementation agent.
 
 ## Review-fix qualification
 
@@ -174,5 +177,10 @@ No Worker/D1 journey is added solely for shell presentation.
   header suppression, and the 799/800 dock/rail switch.
 - The visual evidence above is implementation-agent/AI Storybook self-review.
   Owner Storybook spot-check: PENDING. L2 human review: PENDING.
+- Acceptance chronology is explicit: the contract-only trace was committed as
+  `ad43c557` before the first implementation commit `d6b53a0d`.
+- Review-fix objective resolution: `MACHINE_GREEN — READY_FOR_OWNER_L2` is
+  the current machine-handoff wording; owner Storybook and human L2 remain
+  required before merge.
 - No new Story, PSN, Screen Catalog declaration, production shell abstraction,
   skip, allowlist, or tolerance widening was added.
