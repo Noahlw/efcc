@@ -14,7 +14,6 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { RpcError } from "@/lib/api";
-import { ContextualTaskHeader } from "@/lib/contextual-task-header";
 import { COPY, errorCopyFor } from "@/lib/copy";
 import {
   hkDayPadded,
@@ -28,6 +27,7 @@ import type {
   ParticipantProgramDetail as ParticipantProgramDetailData,
 } from "@/lib/programs/program-api";
 import { formatScheduleRuleLabel } from "@/lib/programs/recurrence";
+import { RouteHeader } from "@/lib/route-header";
 import { rememberDeepLink } from "@/lib/session";
 import { cn } from "@/lib/utils";
 
@@ -556,7 +556,7 @@ export const ParticipantProgramDetail = ({
       className="grid min-w-0 gap-3 pb-[calc(6rem+env(safe-area-inset-bottom,0px))] text-[var(--ink)]"
       aria-labelledby="program-detail-title"
     >
-      <ContextualTaskHeader
+      <RouteHeader
         backHref={backHref}
         backLabel={COPY.programs.detailBack}
         backReplace

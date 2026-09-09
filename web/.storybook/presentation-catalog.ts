@@ -1,27 +1,28 @@
-import {
-  PRESENTATION_SCREEN_CATALOG,
-  type PresentationScreenCatalogEntry,
-} from "@/lib/governance/presentation-screen-catalog";
+import { PRESENTATION_SCREEN_CATALOG } from "@/lib/governance/presentation-screen-catalog";
+import type { PresentationScreenCatalogEntry } from "@/lib/governance/presentation-screen-catalog";
 
 import { attendanceScannerGuestStoryDeclarations } from "./attendance-scanner-guest.story-manifest";
+import { controlStoryDeclarations } from "./controls.story-manifest";
+import { foundationStoryDeclarations } from "./foundations.story-manifest";
 import { managementHubStoryDeclarations } from "./management-hub.story-manifest";
 import { managementIdentityStoryDeclarations } from "./management-identity.story-manifest";
-import type {
-  PresentationMetadata,
-  PresentationStoryDeclaration,
-} from "./presentation-meta";
+import type { PresentationStoryDeclaration } from "./presentation-meta";
 import { programsStoryDeclarations } from "./programs.story-manifest";
 import { publicAuthMemberCommunicationsStoryDeclarations } from "./public-auth-member-communications.story-manifest";
 
 export type {
+  FoundationPresentationMetadata,
   PresentationMetadata,
   PresentationStoryDeclaration,
 } from "./presentation-meta";
 
-export type PresentationDeclaration = Omit<
-  PresentationStoryDeclaration,
-  "story"
->;
+export type PresentationDeclaration =
+  | Omit<Extract<PresentationStoryDeclaration, { subject: "screen" }>, "story">
+  | Omit<Extract<PresentationStoryDeclaration, { subject: "control" }>, "story">
+  | Omit<
+      Extract<PresentationStoryDeclaration, { subject: "foundation" }>,
+      "story"
+    >;
 
 export function discoverPresentationDeclarations(
   stories: readonly PresentationStoryDeclaration[]
@@ -36,28 +37,36 @@ export function discoverPresentationDeclarations(
 
 export const MANAGEMENT_HUB_PRESENTATION_DECLARATIONS =
   discoverPresentationDeclarations(managementHubStoryDeclarations);
-
 export const PUBLIC_AUTH_MEMBER_COMMUNICATIONS_PRESENTATION_DECLARATIONS =
   discoverPresentationDeclarations(
     publicAuthMemberCommunicationsStoryDeclarations
   );
-
 export const PROGRAMS_PRESENTATION_DECLARATIONS =
   discoverPresentationDeclarations(programsStoryDeclarations);
-
 export const MANAGEMENT_IDENTITY_PRESENTATION_DECLARATIONS =
   discoverPresentationDeclarations(managementIdentityStoryDeclarations);
-
 export const ATTENDANCE_SCANNER_GUEST_PRESENTATION_DECLARATIONS =
   discoverPresentationDeclarations(attendanceScannerGuestStoryDeclarations);
+export const CONTROL_PRESENTATION_DECLARATIONS =
+  discoverPresentationDeclarations(controlStoryDeclarations);
+export const FOUNDATION_PRESENTATION_DECLARATIONS =
+  discoverPresentationDeclarations(foundationStoryDeclarations);
 
+/** All real CSF declarations; screen cataloging remains a separate join. */
 export const ALL_PRESENTATION_DECLARATIONS = [
   ...MANAGEMENT_HUB_PRESENTATION_DECLARATIONS,
   ...PUBLIC_AUTH_MEMBER_COMMUNICATIONS_PRESENTATION_DECLARATIONS,
   ...PROGRAMS_PRESENTATION_DECLARATIONS,
   ...MANAGEMENT_IDENTITY_PRESENTATION_DECLARATIONS,
   ...ATTENDANCE_SCANNER_GUEST_PRESENTATION_DECLARATIONS,
+  ...CONTROL_PRESENTATION_DECLARATIONS,
+  ...FOUNDATION_PRESENTATION_DECLARATIONS,
 ] as const;
+
+export const SCREEN_PRESENTATION_DECLARATIONS =
+  ALL_PRESENTATION_DECLARATIONS.filter(
+    (declaration) => declaration.subject === "screen"
+  );
 
 export interface ScreenCatalogEntry extends PresentationScreenCatalogEntry {
   readonly psns: readonly string[];
@@ -72,7 +81,11 @@ export function createScreenCatalog(
     string,
     readonly PresentationDeclaration[]
   >();
+
   for (const declaration of declarations) {
+    if (declaration.subject !== "screen") {
+      continue;
+    }
     declarationsByScreen.set(declaration.screenId, [
       ...(declarationsByScreen.get(declaration.screenId) ?? []),
       declaration,
@@ -130,16 +143,75 @@ export function validateScreenCatalog(
     if (!declaration.psn.startsWith("PSN-")) {
       errors.push(`Invalid PSN declaration: ${declaration.psn}`);
     }
-    if (declaration.route !== null && !declaration.route.startsWith("/")) {
-      errors.push(
-        `Invalid route for ${declaration.screenId}: ${declaration.route}`
-      );
-    }
 
-    const screenDeclarations =
-      declarationsByScreen.get(declaration.screenId) ?? [];
-    screenDeclarations.push(declaration);
-    declarationsByScreen.set(declaration.screenId, screenDeclarations);
+    if (declaration.subject === "screen") {
+      if (declaration.route !== null && !declaration.route.startsWith("/")) {
+        errors.push(
+          `Invalid route for ${declaration.screenId}: ${declaration.route}`
+        );
+      }
+      const screenDeclarations =
+        declarationsByScreen.get(declaration.screenId) ?? [];
+      screenDeclarations.push(declaration);
+      declarationsByScreen.set(declaration.screenId, screenDeclarations);
+    } else if (declaration.subject === "control") {
+      if (!declaration.controlId.trim()) {
+        errors.push(
+          `Control Story has an empty controlId: ${declaration.storyId}`
+        );
+      }
+      if ((declaration.route as string | null) !== null) {
+        errors.push(`Control Story route must be null: ${declaration.storyId}`);
+      }
+      if ((declaration.intent as string | null) !== null) {
+        errors.push(
+          `Control Story intent must be null: ${declaration.storyId}`
+        );
+      }
+      if (Object.hasOwn(declaration, "screenId")) {
+        errors.push(
+          `Control Story must not declare screenId: ${declaration.storyId}`
+        );
+      }
+    } else {
+      if (!declaration.foundationId.trim()) {
+        errors.push(
+          `Foundation Story has an empty foundationId: ${declaration.storyId}`
+        );
+      }
+      if ((declaration.route as string | null) !== null) {
+        errors.push(
+          `Foundation Story route must be null: ${declaration.storyId}`
+        );
+      }
+      if ((declaration.intent as string | null) !== null) {
+        errors.push(
+          `Foundation Story intent must be null: ${declaration.storyId}`
+        );
+      }
+      if (
+        Object.hasOwn(declaration, "screenId") ||
+        Object.hasOwn(declaration, "controlId")
+      ) {
+        errors.push(
+          `Foundation Story must not declare screenId or controlId: ${declaration.storyId}`
+        );
+      }
+    }
+  }
+
+  const knownSupersessionTargets = new Set([
+    ...obligations.map(({ screenId }) => screenId),
+    ...declarations.map(({ psn }) => psn),
+  ]);
+  for (const declaration of declarations) {
+    for (const target of declaration.supersedes) {
+      if (target === declaration.psn || !knownSupersessionTargets.has(target)) {
+        errors.push(
+          `${declaration.storyId} has an invalid supersession target: ${target}`
+        );
+      }
+    }
   }
 
   const catalogScreenIds = new Set<string>();
@@ -154,12 +226,14 @@ export function validateScreenCatalog(
       );
     }
     obligationByScreen.set(obligation.screenId, obligation);
-    if (obligation.lifecycle === "active" && obligation.gap !== null) {
-      if (!obligation.gap.startsWith("APV-")) {
-        errors.push(
-          `${obligation.screenId} gap must reference an owner approval package`
-        );
-      }
+    if (
+      obligation.lifecycle === "active" &&
+      obligation.gap !== null &&
+      !obligation.gap.startsWith("APV-")
+    ) {
+      errors.push(
+        `${obligation.screenId} gap must reference an owner approval package`
+      );
     }
   }
 
@@ -170,9 +244,7 @@ export function validateScreenCatalog(
     catalogScreenIds.add(entry.screenId);
 
     const obligation = obligationByScreen.get(entry.screenId);
-    if (!obligation) {
-      errors.push(`Unknown Screen Catalog screen: ${entry.screenId}`);
-    } else {
+    if (obligation) {
       for (const field of [
         "productFamily",
         "lifecycle",
@@ -192,6 +264,8 @@ export function validateScreenCatalog(
           `${entry.screenId} supersession metadata does not match its independent obligation`
         );
       }
+    } else {
+      errors.push(`Unknown Screen Catalog screen: ${entry.screenId}`);
     }
 
     const screenDeclarations = declarationsByScreen.get(entry.screenId);
@@ -279,10 +353,6 @@ export function validateScreenCatalog(
       );
     }
 
-    const knownSupersessionTargets = new Set([
-      ...obligations.map(({ screenId }) => screenId),
-      ...declarations.map(({ psn }) => psn),
-    ]);
     for (const target of entry.supersedes) {
       if (
         target === entry.screenId ||
@@ -303,6 +373,9 @@ export function validateScreenCatalog(
   }
 
   for (const declaration of declarations) {
+    if (declaration.subject !== "screen") {
+      continue;
+    }
     if (!obligationByScreen.has(declaration.screenId)) {
       errors.push(
         `Story declaration has no Screen Catalog obligation: ${declaration.screenId}`

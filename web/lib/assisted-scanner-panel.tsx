@@ -260,7 +260,7 @@ export const AssistedScannerPanel = ({
   return (
     <div className="mx-auto w-[min(100%,760px)] px-4 py-8 pb-12">
       <Card
-        className="grid gap-[1.125rem] p-5 bg-[var(--surface-raised)] border border-[var(--line-strong)] rounded-[var(--radius-md)]"
+        className="grid"
         role="region"
         aria-labelledby="assisted-scanner-title"
       >

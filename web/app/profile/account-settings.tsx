@@ -13,9 +13,9 @@ import {
 } from "@/lib/account-settings-copy";
 import { authChangePassword, authChangeUsername, RpcError } from "@/lib/api";
 import { useApp } from "@/lib/app-context";
-import { ContextualTaskHeader } from "@/lib/contextual-task-header";
 import { ForbiddenView } from "@/lib/forbidden-view";
 import { announce } from "@/lib/live-region";
+import { RouteHeader } from "@/lib/route-header";
 import { clearAuthHint, rememberDeepLink } from "@/lib/session";
 
 /** One-time flash consumed by the canonical sign-in surface. */
@@ -268,7 +268,7 @@ export const AccountSettings = () => {
   };
 
   const header = (
-    <ContextualTaskHeader
+    <RouteHeader
       backHref="/profile"
       backLabel={ACCOUNT_SETTINGS_COPY.backToProfile}
       title={ACCOUNT_SETTINGS_COPY.sectionTitle}
@@ -323,7 +323,7 @@ export const AccountSettings = () => {
   return (
     <div className="mx-auto flex w-full max-w-[600px] min-w-0 flex-col gap-6 px-4 pb-[calc(2rem+env(safe-area-inset-bottom,0px))] pt-4 text-[var(--ink)] min-[800px]:pb-12 min-[800px]:pt-8">
       {header}
-      <Card className="flex w-full min-w-0 flex-col gap-4 overflow-visible rounded-[12px] border border-[var(--line)] bg-[var(--surface-raised)] p-6 shadow-none ring-0 max-[799px]:p-4">
+      <Card className="flex w-full min-w-0 flex-col gap-4">
         <form
           className="flex min-w-0 flex-col gap-[1.125rem] rounded-[10px] border border-[var(--line)] bg-[var(--surface)] p-5"
           onSubmit={submitUsername}

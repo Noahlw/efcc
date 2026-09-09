@@ -5,7 +5,6 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import {
   ActionSurface,
-  ManagementPageHeader,
   safeManagementReturnHref,
 } from "@/app/management/management-action-framework";
 import {
@@ -30,6 +29,7 @@ import {
   type RegistrationDetail,
 } from "@/lib/registration-client";
 import { QUEUE_COPY, registrationErrorCopy } from "@/lib/registration-copy";
+import { RouteHeader } from "@/lib/route-header";
 
 import { clearApprovalSelection } from "./approval-queue";
 
@@ -76,7 +76,6 @@ function errorCopy(error: unknown): string {
   }
   return QUEUE_COPY.networkError;
 }
-
 
 type ConfirmKind = Decision | null;
 
@@ -282,14 +281,14 @@ export function ApprovalDetail({ requestId }: { requestId: string }) {
         className="mx-auto w-full min-w-0 max-w-4xl px-4 pt-6 pb-9"
         aria-labelledby="approval-detail-title"
       >
-        <ManagementPageHeader
+        <RouteHeader
           backHref={backHref}
           backLabel={backLabel}
           lead={COPY.approvals.approvalsLead}
           title={COPY.approvals.approvalDetailTitle}
-          titleId="approval-detail-title"
-          titleRef={headingRef}
-          onBackClick={() => {
+          headingId="approval-detail-title"
+          headingRef={headingRef}
+          onBack={() => {
             returningToQueue.current = true;
           }}
         />
@@ -311,14 +310,14 @@ export function ApprovalDetail({ requestId }: { requestId: string }) {
       aria-labelledby="approval-detail-title"
       aria-busy={state.kind === "loading" || busy !== null}
     >
-      <ManagementPageHeader
+      <RouteHeader
         backHref={backHref}
         backLabel={backLabel}
         lead={COPY.approvals.approvalsLead}
         title={COPY.approvals.approvalDetailTitle}
-        titleId="approval-detail-title"
-        titleRef={headingRef}
-        onBackClick={() => {
+        headingId="approval-detail-title"
+        headingRef={headingRef}
+        onBack={() => {
           returningToQueue.current = true;
         }}
       />

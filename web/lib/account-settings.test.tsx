@@ -168,7 +168,7 @@ describe(ProfileSettingsPage, () => {
       1
     );
     const backLink = document.querySelector(
-      "[data-contextual-task-header] a[href='/profile']"
+      "[data-route-header] a[href='/profile']"
     );
     expect(backLink).toBeInTheDocument();
     expect(backLink).toHaveAttribute("href", "/profile");

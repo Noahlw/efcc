@@ -30,7 +30,8 @@ const RegisterPage = () => (
     </header>
     <div className="flex flex-1 items-start justify-center px-5 py-2">
       <Card
-        className="w-full max-w-[440px] min-w-0 gap-0 overflow-visible border border-[var(--line)] bg-[var(--surface-raised)] p-3 shadow-none ring-0"
+        className="w-full max-w-[440px] min-w-0 gap-0"
+        size="sm"
         id="register"
         tabIndex={-1}
         role="region"

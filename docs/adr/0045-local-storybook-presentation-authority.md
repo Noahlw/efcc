@@ -1,6 +1,6 @@
 # ADR-0045 — Local Storybook Presentation Authority
 
-- **Status:** Accepted
+- **Status:** Superseded by [ADR-0046](0046-ai-first-ui-playground-delivery.md)
 - **Decider:** Product/release owner
 - **Date:** 2026-09-05
 - **Related:** #505, T07–T12 / #512–#517, ADR-0043, ADR-0044, `DESIGN.md`, `TESTING.md`

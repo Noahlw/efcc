@@ -14,8 +14,11 @@ import { RpcError } from "@/lib/api";
 import { useApp } from "@/lib/app-context";
 import { AppShell } from "@/lib/app-shell";
 import { COPY } from "@/lib/copy";
-import { FeedPresentation } from '@/lib/feed-presentation';
-import type { FeedAnnouncement, FeedPresentationState } from '@/lib/feed-presentation';
+import { FeedPresentation } from "@/lib/feed-presentation";
+import type {
+  FeedAnnouncement,
+  FeedPresentationState,
+} from "@/lib/feed-presentation";
 import {
   hkShortDateLabel,
   hkShortTimeLabel,
@@ -498,10 +501,7 @@ export function HomeView({
       </div>
 
       {event ? (
-        <Card
-          className="min-w-0 rounded-[1.125rem] border-0 bg-[var(--surface-raised)] p-[1.125rem] shadow-[0_1px_3px_color-mix(in_srgb,var(--ink)_6%,transparent)]"
-          data-testid="next-event-card"
-        >
+        <Card className="min-w-0" data-testid="next-event-card">
           <Badge className="inline-flex min-h-6 w-fit items-center rounded-full border-0 bg-[var(--accent)] px-3 py-1 text-xs font-bold tracking-[0.02em] text-white">
             {COPY.home.enrolledBadge}
           </Badge>
@@ -529,10 +529,7 @@ export function HomeView({
           </Button>
         </Card>
       ) : (
-        <Card
-          className="min-w-0 rounded-[1.125rem] border-0 bg-[var(--surface-raised)] p-5 text-center shadow-[0_1px_3px_color-mix(in_srgb,var(--ink)_6%,transparent)]"
-          data-testid="home-empty-state"
-        >
+        <Card className="min-w-0 text-center" data-testid="home-empty-state">
           <h2 className="min-w-0 wrap-anywhere text-[1.0625rem] font-bold leading-[1.4]">
             {COPY.home.emptyTitle}
           </h2>
@@ -600,7 +597,7 @@ export function HomeView({
             className="block min-h-16 min-w-0 rounded-[1.125rem] outline-none focus-visible:ring-3 focus-visible:ring-[var(--focus)]"
             data-testid="explore-card"
           >
-            <Card className="grid min-h-16 min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-3.5 rounded-[1.125rem] border-0 bg-[var(--surface-raised)] p-4 shadow-[0_1px_3px_color-mix(in_srgb,var(--ink)_6%,transparent)] transition-colors hover:bg-[var(--surface)]">
+            <Card className="grid min-h-16 min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center transition-colors hover:bg-[var(--surface)]">
               <span className="min-w-0">
                 <span className="block min-w-0 wrap-anywhere font-semibold leading-[1.45]">
                   {program.name}

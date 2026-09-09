@@ -6,12 +6,11 @@ import { useRef, useEffect } from "react";
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { COPY } from "@/lib/copy";
-import { announce } from "@/lib/live-region";
 
 /**
  * Transient network-error recovery state (matrix S14): alert block + primary
- * `重試連接` action + secondary route home. Announces the message for screen
- * readers and moves focus in so the state is immediately reachable.
+ * `重試連接` action + secondary route home. The visible assertive Alert owns
+ * the announcement and the containing state moves focus in.
  */
 export const RecoveryView = ({
   message,
@@ -28,7 +27,6 @@ export const RecoveryView = ({
 
   useEffect(() => {
     liveRef.current?.focus();
-    announce(message);
   }, [message]);
 
   return (
@@ -38,9 +36,10 @@ export const RecoveryView = ({
       tabIndex={-1}
     >
       <Alert
+        announcement="assertive"
         aria-label={message}
-        variant="destructive"
-        className="w-full max-w-[480px] mx-auto"
+        className="mx-auto w-full max-w-[480px]"
+        tone="error"
       >
         {message}
       </Alert>

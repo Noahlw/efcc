@@ -11,8 +11,11 @@ import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { AnnouncementDetail } from "@/lib/announcement-detail";
 import { COPY } from "@/lib/copy";
-import { FeedPresentation } from '@/lib/feed-presentation';
-import type { FeedAnnouncement, FeedPresentationState } from '@/lib/feed-presentation';
+import { FeedPresentation } from "@/lib/feed-presentation";
+import type {
+  FeedAnnouncement,
+  FeedPresentationState,
+} from "@/lib/feed-presentation";
 import { hkMonthDayLabel } from "@/lib/hk-time";
 import { listAnnouncements } from "@/lib/home-api";
 import type { HomeAnnouncement } from "@/lib/home-api";
@@ -155,7 +158,7 @@ export const MessagesPanel = () => {
                   cameFromListRef.current = true;
                 }}
               >
-                <Card className="block min-w-0 p-[1.125rem] transition-colors hover:bg-[var(--surface)]">
+                <Card className="block min-w-0 transition-colors hover:bg-[var(--surface)]">
                   <div className="mb-2 flex items-center justify-between">
                     {row.publishedAt && (
                       <Badge
@@ -190,7 +193,7 @@ export const MessagesPanel = () => {
     state.kind === "ready" ? (
       <>
         {header}
-        <Card className="border border-[var(--line)] bg-[var(--surface-raised)] p-[2.125rem_1.375rem] text-center shadow-none">
+        <Card className="text-center">
           <h2 className="text-[1.125rem] leading-[1.4]">
             {COPY.home.messagesEmpty}
           </h2>

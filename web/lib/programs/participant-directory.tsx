@@ -515,7 +515,7 @@ export const ParticipantDirectory = ({
           {filtered.length === 0 && (
             <Card
               id="programs-catalog-state"
-              className="grid min-w-0 max-w-[60ch] gap-1.5 border-[var(--line)] bg-[var(--surface)] p-4 text-[var(--ink)]"
+              className="grid min-w-0 max-w-[60ch] gap-1.5 text-[var(--ink)]"
             >
               <h2 className="m-0 wrap-anywhere text-[1.35rem] font-extrabold leading-tight">
                 {programs.length === 0

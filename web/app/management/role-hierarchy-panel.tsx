@@ -29,13 +29,11 @@ import {
   reorderRoleDefinitions,
 } from "@/lib/identity/role-hierarchy-api";
 import { announce } from "@/lib/live-region";
+import { RouteHeader } from "@/lib/route-header";
 import { rememberDeepLink } from "@/lib/session";
 import { cn } from "@/lib/utils";
 
-import {
-  ManagementPageHeader,
-  safeManagementReturnHref,
-} from "./management-action-framework";
+import { safeManagementReturnHref } from "./management-action-framework";
 
 const roleButtonVariants = cva(
   "grid h-auto min-h-16 w-full min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center justify-between gap-2.5 rounded-xl border bg-[var(--surface-raised)] px-2.5 py-2.5 text-left text-base font-normal whitespace-normal text-[var(--ink)] outline-none hover:border-[var(--focus)] hover:bg-[var(--surface-raised)] hover:text-[var(--ink)] focus-visible:border-[var(--focus)] focus-visible:ring-3 focus-visible:ring-[var(--focus)]/30",
@@ -1086,13 +1084,13 @@ export const RoleHierarchyPanel = () => {
       aria-labelledby="role-hierarchy-title"
       className="mx-auto w-full min-w-0 max-w-[var(--width-container)] px-[clamp(1rem,4vw,2rem)] pt-6 pb-[calc(6rem+env(safe-area-inset-bottom,0px))] shell:px-[clamp(1.5rem,4vw,3rem)] shell:pt-8 shell:pb-32 motion-reduce:transition-none motion-reduce:animate-none motion-reduce:[&_*]:transition-none motion-reduce:[&_*]:animate-none"
     >
-      <ManagementPageHeader
+      <RouteHeader
         backHref={returnHref}
         backLabel="返回管理工作"
         lead="按分類檢視身份組；重新命名只可套用於較低順位的身份組。"
         title="身份組"
-        titleId="role-hierarchy-title"
-        titleRef={listHeadingRef}
+        headingId="role-hierarchy-title"
+        headingRef={listHeadingRef}
       />
 
       {state.kind === "loading" && (

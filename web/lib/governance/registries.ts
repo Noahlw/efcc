@@ -815,6 +815,37 @@ export const APPROVAL_PACKAGE_REGISTRY: readonly ApprovalPackage[] = [
     ],
     status: "approved",
   },
+  {
+    id: "APV-T08-CONTROL-DESIGN-1FBB4D64",
+    title: "T08 app-facing control design approval at reviewed revision",
+    rationale:
+      "The repository owner reviewed all seven durable T08 control Stories at the representative viewports and approved the production control implementation revision.",
+    scope: [
+      "T08 / #513",
+      "web/components/ui/*",
+      "web/.storybook/controls.stories.tsx",
+    ],
+    baselineSha: "1fbb4d64a93be2e7d5c8d381f66c88e1b9896c76",
+    approvedBy: "Noah Wong / Repository Owner",
+    approvedAt: "2026-09-08T02:19:39Z",
+    affectedRoutes: ["/*"],
+    viewports: [390, 799, 800, 1440],
+    browsers: ["chromium"],
+    contractIds: ["CTR-TK-01", "CTR-TK-07", "CTR-TK-10"],
+    evidenceRef: "docs/qa/2026-09-08-t08-design-approval.md",
+    kind: "design",
+    realAppIntegration: false,
+    presentationPsns: [
+      "PSN-CONTROL-BUTTON",
+      "PSN-CONTROL-ICON-BUTTON",
+      "PSN-CONTROL-INPUT",
+      "PSN-CONTROL-TEXTAREA",
+      "PSN-CONTROL-CHECKBOX",
+      "PSN-CONTROL-SWITCH",
+      "PSN-CONTROL-SELECT",
+    ],
+    status: "approved",
+  },
 ] as const;
 
 /**

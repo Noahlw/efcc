@@ -10,9 +10,9 @@ import {
 } from "@/app/management/directory-frame";
 import {
   ActionSurface,
-  ManagementPageHeader,
   safeManagementReturnHref,
 } from "@/app/management/management-action-framework";
+import { Alert } from "@/components/ui/alert";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -36,6 +36,7 @@ import {
   type RegistrationQueueStatus,
 } from "@/lib/registration-client";
 import { QUEUE_COPY, registrationErrorCopy } from "@/lib/registration-copy";
+import { RouteHeader } from "@/lib/route-header";
 
 // The queue implementation below owns the S4 selection and batch action state.
 type ApprovalQueueState =
@@ -180,14 +181,13 @@ export const ApprovalQueue = () => {
   const mounted = useRef(true);
   const requestSequence = useRef(0);
   const resultHeadingRef = useRef<HTMLHeadingElement>(null);
-  const stateRef = useRef<HTMLParagraphElement>(null);
-  const forbiddenHeadingRef = useRef<HTMLHeadingElement>(null);
+  const stateRef = useRef<HTMLDivElement>(null);
+  const forbiddenHeadingRef = useRef<HTMLDivElement>(null);
   const rowLinkRefs = useRef<Map<string, HTMLAnchorElement>>(new Map());
 
   const load = useCallback(async (status: RegistrationQueueStatus) => {
     const sequence = ++requestSequence.current;
     setState({ kind: "loading", status });
-    announce(QUEUE_COPY.loading);
     try {
       const registrations = await fetchRegistrations(status);
       if (!mounted.current || sequence !== requestSequence.current) {
@@ -215,7 +215,6 @@ export const ApprovalQueue = () => {
       }
       const message = approvalErrorMessage(error);
       setState({ kind: "error", message, status });
-      announce(message);
       return null;
     }
   }, []);
@@ -306,7 +305,6 @@ export const ApprovalQueue = () => {
     if (selectedIds.length >= 100) {
       setNotice(APPROVAL_UI_COPY.batchLimit);
       setNoticeKind("error");
-      announce(APPROVAL_UI_COPY.batchLimit);
       return;
     }
     approvalSelection.set(item.requestId, item);
@@ -347,13 +345,14 @@ export const ApprovalQueue = () => {
     if (idsToAdd.length < availableIds.length) {
       setNotice(APPROVAL_UI_COPY.batchLimit);
       setNoticeKind("error");
-      announce(APPROVAL_UI_COPY.batchLimit);
     }
-    announce(
-      APPROVAL_UI_COPY.selectedAnnouncement(
-        new Set([...selectedIds, ...idsToAdd]).size
-      )
-    );
+    if (idsToAdd.length === availableIds.length) {
+      announce(
+        APPROVAL_UI_COPY.selectedAnnouncement(
+          new Set([...selectedIds, ...idsToAdd]).size
+        )
+      );
+    }
   };
 
   const removeSelection = (requestId: string) => {
@@ -413,7 +412,6 @@ export const ApprovalQueue = () => {
       if (requestIds.length > 100) {
         setNotice(APPROVAL_UI_COPY.batchLimit);
         setNoticeKind("error");
-        announce(APPROVAL_UI_COPY.batchLimit);
         return;
       }
       setBusy(true);
@@ -428,17 +426,14 @@ export const ApprovalQueue = () => {
           `${QUEUE_COPY.done} ${result.approvedCount} Active Accounts 已建立。`
         );
         setNoticeKind("success");
-        announce(QUEUE_COPY.done);
         await load(activeStatus);
       } catch (error) {
         if (!mounted.current) return;
         const message = approvalErrorMessage(error);
         setNotice(message);
         setNoticeKind("error");
-        announce(message);
         if (approvalIsConflict(error)) {
           setNotice(APPROVAL_UI_COPY.staleConflict);
-          announce(APPROVAL_UI_COPY.staleConflict);
           await reconcileConflict(requestIds);
         }
       } finally {
@@ -497,12 +492,11 @@ export const ApprovalQueue = () => {
         ariaLabelledBy="approval-queue-title"
         header={
           <div className="grid min-w-0 gap-4">
-            <ManagementPageHeader
+            <RouteHeader
               action={
                 <Button
                   type="button"
                   onClick={() => void load(activeStatus)}
-                  className="min-h-11"
                   disabled={busy}
                   aria-busy={state.kind === "loading"}
                   size="lg"
@@ -515,7 +509,7 @@ export const ApprovalQueue = () => {
               backLabel={returnLabel}
               lead={COPY.approvals.approvalsLead}
               title={COPY.approvals.approvalsTitle}
-              titleId="approval-queue-title"
+              headingId="approval-queue-title"
             />
             <div
               className="flex items-center gap-2 border-b border-[var(--line)] pb-2"
@@ -532,11 +526,7 @@ export const ApprovalQueue = () => {
                     : undefined
                 }
                 aria-selected={activeStatus === "Pending"}
-                className={`min-h-11 ${
-                  activeStatus === "Pending"
-                    ? "border-b-2 border-[var(--accent)] font-extrabold text-[var(--ink)]"
-                    : "text-[var(--ink-muted)]"
-                }`}
+                className="text-[var(--ink-muted)] aria-selected:border-b-2 aria-selected:border-[var(--accent)] aria-selected:font-extrabold aria-selected:text-[var(--ink)]"
                 onClick={() => handleTab("Pending")}
                 disabled={busy}
                 size="lg"
@@ -559,11 +549,7 @@ export const ApprovalQueue = () => {
                     : undefined
                 }
                 aria-selected={activeStatus === "Processed"}
-                className={`min-h-11 ${
-                  activeStatus === "Processed"
-                    ? "border-b-2 border-[var(--accent)] font-extrabold text-[var(--ink)]"
-                    : "text-[var(--ink-muted)]"
-                }`}
+                className="text-[var(--ink-muted)] aria-selected:border-b-2 aria-selected:border-[var(--accent)] aria-selected:font-extrabold aria-selected:text-[var(--ink)]"
                 onClick={() => handleTab("Processed")}
                 disabled={busy}
                 size="lg"
@@ -593,46 +579,48 @@ export const ApprovalQueue = () => {
               value={query}
               onChange={(event) => setQuery(event.target.value)}
               placeholder={APPROVAL_UI_COPY.searchPlaceholder}
-              className="h-12 min-h-12 w-full min-w-0 rounded-[8px] border border-[var(--line-strong)] bg-[var(--surface-raised)] px-3 text-base text-[var(--ink)]"
+              className="w-full min-w-0 border border-[var(--line-strong)] bg-[var(--surface-raised)] text-base text-[var(--ink)]"
               autoComplete="off"
             />
           </div>
         }
         loading={
-          <p
+          <Alert
             aria-label={QUEUE_COPY.loading}
-            className="mt-4 grid min-w-0 place-items-center gap-2 rounded-[var(--radius-md)] border border-[var(--line)] bg-[var(--surface-raised)] p-6 text-center text-[var(--ink-muted)]"
-            role="status"
-            aria-live="polite"
+            announcement="polite"
+            className="mt-4 min-w-0 place-items-center p-6 text-center"
+            tone="pending"
             tabIndex={-1}
             ref={stateRef}
           >
             {QUEUE_COPY.loading}
-          </p>
+          </Alert>
         }
         error={
           state.kind === "error" ? (
-            <div
-              className="mt-4 grid min-w-0 gap-3 rounded-[var(--radius-md)] border border-[var(--error-border)] bg-[var(--error-surface)] p-6 text-center text-[var(--ink)]"
-              role="alert"
+            <Alert
+              announcement="assertive"
+              className="mt-4 min-w-0 gap-3 p-6 text-center"
+              tone="error"
               tabIndex={-1}
               ref={stateRef}
             >
               <p className="m-0 text-base font-extrabold">{state.message}</p>
               <Button
-                className="mx-auto min-h-11 border-[var(--accent)] bg-[var(--accent)] px-4 font-extrabold text-white hover:bg-[var(--accent-deep)]"
+                className="mx-auto border-[var(--accent)] bg-[var(--accent)] font-extrabold text-white hover:bg-[var(--accent-deep)]"
                 onClick={() => void load(activeStatus)}
                 type="button"
               >
                 重試連接
               </Button>
-            </div>
+            </Alert>
           ) : null
         }
         forbidden={
-          <div
-            className="mt-4 grid min-w-0 gap-3 rounded-[var(--radius-md)] border border-[var(--error-border)] bg-[var(--error-surface)] p-6 text-center text-[var(--ink)]"
-            role="alert"
+          <Alert
+            announcement="assertive"
+            className="mt-4 min-w-0 gap-3 p-6 text-center"
+            tone="error"
             tabIndex={-1}
             ref={forbiddenHeadingRef}
           >
@@ -645,7 +633,7 @@ export const ApprovalQueue = () => {
             >
               {COPY.approvals.backToApprovals}
             </Link>
-          </div>
+          </Alert>
         }
         empty={
           <p
@@ -731,7 +719,7 @@ export const ApprovalQueue = () => {
                           onCheckedChange={() => toggleSelection(item)}
                           disabled={busy}
                           aria-label={`選取 ${item.name}`}
-                          className="size-11 shrink-0"
+                          className="shrink-0"
                         />
                       )}
                       <div className="grid min-w-0 gap-1 wrap-anywhere">
@@ -787,17 +775,13 @@ export const ApprovalQueue = () => {
       />
 
       {notice && (
-        <p
-          role={noticeKind === "error" ? "alert" : "status"}
-          aria-live={noticeKind === "error" ? "assertive" : "polite"}
-          className={`mt-4 rounded-[var(--radius-md)] border p-3 text-sm font-bold ${
-            noticeKind === "success"
-              ? "border-[var(--success-border)] bg-[var(--success-surface)] text-[var(--success)]"
-              : "border-[var(--error-border)] bg-[var(--error-surface)] text-[var(--error)]"
-          }`}
+        <Alert
+          announcement={noticeKind === "error" ? "assertive" : "polite"}
+          className="mt-4 text-sm font-bold"
+          tone={noticeKind}
         >
           {notice}
-        </p>
+        </Alert>
       )}
 
       {state.kind === "ready" &&
@@ -817,7 +801,6 @@ export const ApprovalQueue = () => {
                   </strong>
                   <Button
                     type="button"
-                    className="min-h-11"
                     onClick={() => setTrayOpen((open) => !open)}
                     aria-expanded={trayOpen}
                     disabled={busy}
@@ -832,7 +815,6 @@ export const ApprovalQueue = () => {
                 <div className="flex items-center gap-3">
                   <Button
                     type="button"
-                    className="min-h-11"
                     onClick={clearSelection}
                     disabled={busy}
                     size="lg"
@@ -843,7 +825,6 @@ export const ApprovalQueue = () => {
                   <AlertDialogTrigger asChild>
                     <Button
                       type="button"
-                      className="min-h-11"
                       onClick={beginBatchConfirmation}
                       disabled={busy}
                       aria-busy={busy}
@@ -876,7 +857,7 @@ export const ApprovalQueue = () => {
                       </span>
                       <Button
                         type="button"
-                        className="size-11 min-h-11 min-w-11 shrink-0 p-0 text-sm"
+                        className="shrink-0"
                         onClick={() => removeSelection(item.requestId)}
                         disabled={busy}
                         aria-label={APPROVAL_UI_COPY.remove(item.name)}

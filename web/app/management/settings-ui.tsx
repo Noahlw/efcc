@@ -119,11 +119,7 @@ export function SettingsDetailCard({
 }: {
   children: React.ReactNode;
 }) {
-  return (
-    <Card className="min-w-0 gap-0 rounded-[10px] border border-[var(--line)] bg-[var(--surface-raised)] p-5 shadow-none ring-0 max-[480px]:p-4">
-      {children}
-    </Card>
-  );
+  return <Card className="min-w-0 gap-0">{children}</Card>;
 }
 
 export function SettingsDetailList({
