@@ -588,12 +588,12 @@ export const ParticipantProgramDetail = ({
           <span className="min-w-0 wrap-anywhere text-xs font-semibold tracking-[0.05em] text-[var(--ink-muted)]">
             {COPY.programs.nextMeeting}
           </span>
-          <h3
+          <h2
             id="program-detail-next-event"
             className="m-0 min-w-0 wrap-anywhere text-[1.0625rem] font-bold leading-[1.35]"
           >
             {eventTitle(nextEvent, 0)}
-          </h3>
+          </h2>
           <Card className="m-0 grid min-w-0 gap-2 border-0 bg-transparent p-0 shadow-none">
             <p className="m-0 flex min-w-0 items-center gap-2 wrap-anywhere text-[0.9375rem] leading-[1.5]">
               <EventFactIcon name="calendar" />

@@ -142,7 +142,28 @@ export interface ApprovalPackage {
   readonly browsers: readonly BrowserEngine[];
   readonly contractIds: readonly string[];
   readonly evidenceRef: string;
+  /** Additive presentation approval metadata; historical packages omit it. */
+  readonly kind?: ApprovalKind;
+  readonly presentationPsns?: readonly string[];
+  readonly routeScenarioRefs?: readonly string[];
+  /** Whether this package proves a real-app RouteScenario integration seam. */
+  readonly realAppIntegration?: boolean;
+  readonly supersedes?: readonly string[];
   readonly status: "approved" | "superseded" | "revoked";
+}
+
+export type ApprovalKind = "workshop-fidelity" | "design";
+
+export const APPROVAL_KINDS: readonly ApprovalKind[] = [
+  "workshop-fidelity",
+  "design",
+] as const;
+
+export function isApprovalKind(value: unknown): value is ApprovalKind {
+  return (
+    typeof value === "string" &&
+    (APPROVAL_KINDS as readonly string[]).includes(value)
+  );
 }
 
 /**
