@@ -70,6 +70,9 @@ describe(MessagesPanel, () => {
       "href",
       "/messages?content=church-msg-1&from=messages"
     );
+    expect(
+      screen.getByRole("heading", { level: 1, name: COPY.home.churchNews })
+    ).toBeVisible();
     expect(row).toHaveTextContent("8月15日");
     expect(screen.getByText(COPY.home.messagesLead)).toBeInTheDocument();
   });

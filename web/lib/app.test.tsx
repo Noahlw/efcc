@@ -1,6 +1,12 @@
 /* oxlint-disable vitest/prefer-import-in-mock, vitest/prefer-mock-promise-shorthand, vitest/prefer-called-with, unicorn/prefer-query-selector, vitest/max-expects, promise/avoid-new */
 
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import {
+  cleanup,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { setupServer } from "msw/node";
@@ -1658,14 +1664,26 @@ describe("Shell", () => {
       ).not.toBeInTheDocument();
     });
 
-    test("renders brand mark on /home, contextual section title elsewhere, no identity block or bell for Member accounts", () => {
+    test("suppresses global shell header on scanner routes", () => {
+      pathnameMock.mockReturnValue("/scanner");
+      render(
+        <AppProvider bootstrap={BOOTSTRAP} onSignOut={() => {}}>
+          <ShellHeader />
+        </AppProvider>
+      );
+      expect(screen.queryByRole("banner")).not.toBeInTheDocument();
+    });
+
+    test("renders global brand chrome on every member route without identity or bell", () => {
       pathnameMock.mockReturnValue("/home");
       const { unmount } = render(
         <AppProvider bootstrap={BOOTSTRAP} onSignOut={() => {}}>
           <ShellHeader />
         </AppProvider>
       );
-      expect(screen.getByText(COPY.shell.shortMark)).toBeInTheDocument();
+      expect(
+        within(screen.getByRole("banner")).getByText(COPY.shell.shortMark)
+      ).toBeInTheDocument();
       expect(
         screen.queryByRole("button", { name: /開啟注意事項/u })
       ).not.toBeInTheDocument();
@@ -1677,8 +1695,13 @@ describe("Shell", () => {
           <ShellHeader />
         </AppProvider>
       );
-      expect(screen.getByText(COPY.sections.programs)).toBeInTheDocument();
-      expect(screen.queryByText(COPY.shell.shortMark)).not.toBeInTheDocument();
+      const header = screen.getByRole("banner");
+      expect(
+        within(header).getByText(COPY.shell.shortMark)
+      ).toBeInTheDocument();
+      expect(
+        within(header).queryByText(COPY.sections.programs)
+      ).not.toBeInTheDocument();
     });
   });
 

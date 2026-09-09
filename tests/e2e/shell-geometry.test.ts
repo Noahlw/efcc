@@ -239,6 +239,28 @@ test("shell critical anchors render at the pinned width with no overflow or obst
   ).toBe(0);
 });
 
+test("member route keeps its visible H1 when shell chrome is global brand only", async ({
+  page,
+}) => {
+  for (const [path, title] of [
+    ["/notices", COPY.sections.notices],
+    ["/messages", COPY.home.churchNews],
+  ] as const) {
+    await page.goto(path);
+
+    const routeHeading = page.getByRole("heading", { level: 1, name: title });
+    await expect(routeHeading).toBeVisible();
+    const routeHeadingBox = await routeHeading.boundingBox();
+    expect(routeHeadingBox?.height ?? 0).toBeGreaterThan(20);
+    await expect(
+      page.locator("header[data-shell-header]").getByText(COPY.shell.shortMark)
+    ).toBeVisible();
+    await expect(
+      page.locator("header[data-shell-header]").getByText(title)
+    ).toHaveCount(0);
+  }
+});
+
 test("799px shows the phone shell; 800px shows the desktop shell", async ({
   page,
 }, testInfo) => {

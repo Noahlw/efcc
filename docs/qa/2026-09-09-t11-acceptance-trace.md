@@ -2,8 +2,10 @@
 
 ## Status
 
-`PROPOSED` — acceptance contracts recorded before implementation. Evidence
-sections will be appended as each ticket is implemented and verified.
+`IN PROGRESS` — Ticket 01 implementation and focused qualification are complete;
+Tickets 02 and 03 remain open. This trace is the acceptance authority for the
+T11 candidate and must be updated with fresh evidence before the implementation
+can reach `T11 IMPLEMENTATION_GREEN — WAITING_OWNER_L2`.
 
 ## Base and scope
 
@@ -48,3 +50,32 @@ sections will be appended as each ticket is implemented and verified.
 - Representative Firefox/WebKit shell geometry at 390px and 800px.
 
 No Worker/D1 journey is added solely for shell presentation.
+
+## Ticket 01 fresh evidence
+
+- TDD red/green: the new phone route-title assertion failed on the pre-change
+  1px clipped H1, then passed after the minimal Notices/Messages class removal.
+- Focused component tests: `pnpm --dir web exec vitest run --config
+  vitest.components.config.ts lib/app.test.tsx lib/messages-panel.test.tsx
+  lib/notices-panel.test.tsx` — 108 passed.
+- Focused shell route-title browser check: Chromium passed at 320, 390, 600,
+  799, 800, 1024 and 1440px; Notices and Messages both retain a visible local
+  H1 and the shell header remains global brand-only. The complete shell geometry
+  suite had previously passed 32 tests with 3 pre-existing desktop skips.
+- Fast typecheck: `pnpm verify:fast` passed for root and `web/` TypeScript.
+- Storybook/catalog scope check: `pnpm test:storybook:scope` passed (13 tests).
+- Owner Storybook spot-check at 390px: existing Notices and Messages member
+  baselines show local H1s and global `顯恩堂` chrome; Management Account
+  Directory retains identity and attention bell; Scanner Boundary retains the
+  authenticated dock while suppressing the top shell header. No Story or PSN was
+  added.
+- Census/disposition: live `node scripts/t09-frontier-census.mjs --json` found
+  CEN-030 (`web/app/home/page.tsx`, loading surface) and CEN-058
+  (`web/lib/offline-banner.tsx`, offline surface), both existing
+  `BOUNDED_LATER_DEBT`; neither is a shell-title defect. Home and offline code
+  were left unchanged and the records remain deferred to their route-family
+  owners.
+- Ticket 01 review: Standards axis found and fixed the temporary prohibited
+  `test.skip`/duplicated width allowlist; Spec axis found no production defect,
+  and the component/browser evidence gaps were closed. Final two-axis review
+  and commit remain to be recorded below.

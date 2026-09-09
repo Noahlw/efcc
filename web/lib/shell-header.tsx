@@ -55,17 +55,6 @@ export const ShellHeader = ({
   const isManagement = bootstrap.navigation.some(
     (section) => section.key === "management"
   );
-  // Sub-pages reached via a link (not a nav-dock item) still want a
-  // contextual header title instead of falling back to the org short mark.
-  const NON_DOCK_SECTION_TITLES: Record<string, string> = {
-    messages: COPY.home.churchNews,
-  };
-  const currentSection = pathname.replace(/^\//u, "").split("/")[0] || "home";
-  const sectionTitle =
-    bootstrap.navigation.find((section) => section.key === currentSection)
-      ?.label ??
-    NON_DOCK_SECTION_TITLES[currentSection] ??
-    COPY.shell.shortMark;
   const displayName = bootstrap.profile.name || bootstrap.profile.username;
   const identityLabel =
     Array.isArray(bootstrap?.profile?.identities) &&
@@ -100,7 +89,7 @@ export const ShellHeader = ({
             </>
           ) : (
             <span className="text-base font-extrabold tracking-[-0.01em] text-[var(--ink)] truncate">
-              {pathname === "/home" ? COPY.shell.shortMark : sectionTitle}
+              {COPY.shell.shortMark}
             </span>
           )}
         </div>
