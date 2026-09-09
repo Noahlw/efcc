@@ -7,7 +7,7 @@ import { cn } from "@/lib/utils";
 
 export interface RouteHeaderProps {
   title: string;
-  lead?: React.ReactNode;
+  lead?: string;
   backHref?: string;
   backLabel?: string;
   status?: React.ReactNode;
