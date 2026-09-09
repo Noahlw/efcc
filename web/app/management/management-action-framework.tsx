@@ -19,15 +19,8 @@ import { cn } from "@/lib/utils";
 
 import { BackIcon } from "./settings-ui";
 
-const focusVisibleOutline =
-  "focus-visible:outline-[3px]! focus-visible:outline-[var(--focus)]! focus-visible:outline-offset-[3px]!";
-const actionSurfaceFocus =
-  "[&_:is(button,a,input,select,textarea):focus-visible]:outline-[3px]! [&_:is(button,a,input,select,textarea):focus-visible]:outline-[var(--focus)]! [&_:is(button,a,input,select,textarea):focus-visible]:outline-offset-[3px]!";
-const headerActionFocus =
-  "[&_:is(button,a):focus-visible]:outline-[3px]! [&_:is(button,a):focus-visible]:outline-[var(--focus)]! [&_:is(button,a):focus-visible]:outline-offset-[3px]!";
-
 export const actionSurfaceVariants = cva(
-  `static isolate grid min-h-11 w-full min-w-0 max-h-[min(48dvh,420px)] gap-[var(--space-3)] mt-[var(--space-4)] overflow-y-auto overscroll-contain rounded-[var(--radius-md)] border bg-[var(--surface-raised)] p-[var(--space-3)] pb-[calc(var(--space-3)+env(safe-area-inset-bottom,0px))] text-sm shadow-[var(--shadow-dock)] scroll-mb-[calc(84px+env(safe-area-inset-bottom,0px))] data-disabled:opacity-70 ${actionSurfaceFocus}`,
+  "static isolate grid min-h-11 w-full min-w-0 max-h-[min(48dvh,420px)] gap-[var(--space-3)] mt-[var(--space-4)] overflow-y-auto overscroll-contain rounded-[var(--radius-md)] border bg-[var(--surface-raised)] p-[var(--space-3)] pb-[calc(var(--space-3)+env(safe-area-inset-bottom,0px))] text-sm shadow-[var(--shadow-dock)] scroll-mb-[calc(84px+env(safe-area-inset-bottom,0px))] data-disabled:opacity-70 [&_:is(a):focus-visible]:outline-[3px]! [&_:is(a):focus-visible]:outline-[var(--focus)]! [&_:is(a):focus-visible]:outline-offset-[3px]!",
   {
     variants: {
       state: {
@@ -49,6 +42,11 @@ export const actionSurfaceVariants = cva(
 export type ActionSurfaceState = NonNullable<
   VariantProps<typeof actionSurfaceVariants>["state"]
 >;
+
+const focusVisibleOutline =
+  "focus-visible:outline-[3px]! focus-visible:outline-[var(--focus)]! focus-visible:outline-offset-[3px]!";
+const headerActionFocus =
+  "[&_:is(a):focus-visible]:outline-[3px]! [&_:is(a):focus-visible]:outline-[var(--focus)]! [&_:is(a):focus-visible]:outline-offset-[3px]!";
 
 export type ActionSurfaceProps = Omit<
   ComponentPropsWithoutRef<"section">,
@@ -245,9 +243,10 @@ export const ManagementFilterSheet = ({
         <SheetClose asChild>
           <Button
             aria-label={`關閉${label}`}
-            className="absolute top-2 right-2 size-11 rounded-full bg-[var(--surface)] text-[var(--ink)]"
+            className="absolute top-2 right-2 bg-[var(--surface)] text-[var(--ink)]"
             ref={closeRef}
             size="icon-sm"
+            shape="circle"
             type="button"
             variant="ghost"
           >

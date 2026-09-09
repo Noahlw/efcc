@@ -142,7 +142,7 @@ const Pagination = ({
           </div>
           {handleRetry && (
             <Button
-              className="min-h-11 w-fit border-[var(--accent)] bg-[var(--accent)] px-4 font-extrabold text-white hover:bg-[var(--accent-deep)]"
+              className="w-fit border-[var(--accent)] bg-[var(--accent)] font-extrabold text-white hover:bg-[var(--accent-deep)]"
               onClick={handleRetry}
               type="button"
             >
@@ -153,7 +153,7 @@ const Pagination = ({
       )}
       {pagination.hasMore && (
         <Button
-          className="min-h-11 border-[var(--line-strong)] bg-[var(--surface-raised)] px-4 font-bold text-[var(--ink)] hover:bg-[var(--surface)]"
+          className="border-[var(--line-strong)] bg-[var(--surface-raised)] font-bold text-[var(--ink)] hover:bg-[var(--surface)]"
           disabled={pagination.loading}
           onClick={handleLoadMore}
           type="button"

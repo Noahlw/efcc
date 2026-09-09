@@ -8,6 +8,7 @@ import { validateRegistries } from "@/lib/governance/validation";
 
 import {
   ALL_PRESENTATION_DECLARATIONS,
+  SCREEN_PRESENTATION_DECLARATIONS,
   SCREEN_CATALOG,
   validateScreenCatalog,
 } from "./presentation-catalog";
@@ -25,7 +26,7 @@ describe("T07.6 aggregate presentation qualification", () => {
       validateScreenCatalog(SCREEN_CATALOG, ALL_PRESENTATION_DECLARATIONS)
     ).toStrictEqual([]);
     expect(SCREEN_CATALOG).toHaveLength(35);
-    expect(ALL_PRESENTATION_DECLARATIONS).toHaveLength(39);
+    expect(SCREEN_PRESENTATION_DECLARATIONS).toHaveLength(39);
   });
 
   test("keeps canonical governance and historical approval provenance valid", () => {

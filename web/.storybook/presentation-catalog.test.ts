@@ -14,6 +14,7 @@ import {
   MANAGEMENT_IDENTITY_PRESENTATION_DECLARATIONS,
   PUBLIC_AUTH_MEMBER_COMMUNICATIONS_PRESENTATION_DECLARATIONS,
   PROGRAMS_PRESENTATION_DECLARATIONS,
+  SCREEN_PRESENTATION_DECLARATIONS,
   SCREEN_CATALOG,
   createScreenCatalog,
   validateScreenCatalog,
@@ -85,7 +86,7 @@ describe("T07 Screen Catalog foundation", () => {
       intent: null,
       primaryBaselinePsn: "PSN-AUTH-SIGN-IN-DEFAULT",
     });
-    expect(ALL_PRESENTATION_DECLARATIONS).toHaveLength(39);
+    expect(SCREEN_PRESENTATION_DECLARATIONS).toHaveLength(39);
   });
 
   test("classifies the credential/PIN upgrade as a transient sign-in state", () => {
@@ -276,7 +277,7 @@ describe("T07 Screen Catalog foundation", () => {
       primaryBaselinePsn: "PSN-ATTENDANCE-ASSISTED-CHECK-IN",
     });
     expect(SCREEN_CATALOG).toHaveLength(35);
-    expect(ALL_PRESENTATION_DECLARATIONS).toHaveLength(39);
+    expect(SCREEN_PRESENTATION_DECLARATIONS).toHaveLength(39);
   });
 
   test("keeps Notifications Story metadata and navigation parser-backed", () => {

@@ -74,12 +74,6 @@ const REVIEW_CANCEL = "返回編輯";
 const DISCARD_RESTART = "捨棄草稿並重新開始";
 const LOCKED = "已鎖定";
 
-const HIGH_RISK_KEYS = new Set([
-  "account.permissions.write",
-  "registration.approval.manage",
-  "home.publish",
-]);
-
 const roleButtonVariants = cva(
   "flex h-auto min-h-14 w-full min-w-0 items-center justify-between gap-3 rounded-lg border bg-background px-4 py-3 text-left whitespace-normal outline-none hover:bg-muted focus-visible:ring-3 focus-visible:ring-ring/50",
   {
@@ -89,7 +83,9 @@ const roleButtonVariants = cva(
         default: "border-border",
       },
     },
-    defaultVariants: { state: "default" },
+    defaultVariants: {
+      state: "default",
+    },
   }
 );
 
@@ -106,7 +102,10 @@ const permissionRowVariants = cva(
         false: "",
       },
     },
-    defaultVariants: { state: "clean", disabled: false },
+    defaultVariants: {
+      state: "clean",
+      disabled: false,
+    },
   }
 );
 
@@ -119,6 +118,12 @@ const stateSurfaceVariants = cva("mt-6 rounded-lg border p-4", {
     },
   },
 });
+
+const HIGH_RISK_KEYS = new Set([
+  "account.permissions.write",
+  "registration.approval.manage",
+  "home.publish",
+]);
 
 type Draft = Record<string, boolean>;
 type ReviewKind = "sheet" | "dedicated" | null;
@@ -702,7 +707,6 @@ export const PermissionEditorPanel = () => {
             <label className="grid gap-2" htmlFor="permission-search">
               <span className="text-sm font-medium">{SEARCH_LABEL}</span>
               <Input
-                className="min-h-11"
                 id="permission-search"
                 onChange={(event) => setQuery(event.target.value)}
                 placeholder={SEARCH_PLACEHOLDER}
@@ -723,7 +727,6 @@ export const PermissionEditorPanel = () => {
                 )}
                 {saveState === "conflict" && (
                   <Button
-                    className="min-h-11"
                     onClick={discardAndRestart}
                     type="button"
                     variant="outline"
@@ -801,7 +804,6 @@ export const PermissionEditorPanel = () => {
                             aria-label={permission.label}
                             aria-busy={busy || undefined}
                             checked={value}
-                            className="min-h-11 min-w-11"
                             disabled={disabled}
                             id={id}
                             onCheckedChange={(checked) =>
@@ -841,7 +843,6 @@ export const PermissionEditorPanel = () => {
                   : `版本 ${detail.revision}`}
               </span>
               <Button
-                className="min-h-11"
                 disabled={
                   changes.length === 0 || busy || saveState === "conflict"
                 }
@@ -902,12 +903,7 @@ export const PermissionEditorPanel = () => {
           tabIndex={-1}
         >
           <p>{state.message}</p>
-          <Button
-            className="min-h-11"
-            onClick={retryLoad}
-            type="button"
-            variant="outline"
-          >
+          <Button onClick={retryLoad} type="button" variant="outline">
             重試連接
           </Button>
         </section>
@@ -950,7 +946,6 @@ export const PermissionEditorPanel = () => {
           </div>
           <SheetFooter>
             <Button
-              className="min-h-11"
               disabled={busy}
               onClick={closeReview}
               type="button"
@@ -959,7 +954,6 @@ export const PermissionEditorPanel = () => {
               {REVIEW_CANCEL}
             </Button>
             <Button
-              className="min-h-11"
               disabled={busy}
               onClick={() => void submitChanges()}
               type="button"

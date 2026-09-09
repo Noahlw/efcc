@@ -335,7 +335,8 @@ export type AuditRuleId =
   | "RULE-NO-ROUTE-GLOBAL-SELECTORS"
   | "RULE-UNDOCUMENTED-NATIVE-EXCEPTION"
   | "RULE-NO-ROUTE-CVA"
-  | "RULE-NO-FORBIDDEN-STYLING-HOOKS";
+  | "RULE-NO-FORBIDDEN-STYLING-HOOKS"
+  | "RULE-NO-NEW-CONTROL-OVERRIDE";
 
 export interface AuditViolation {
   readonly ruleId: AuditRuleId;

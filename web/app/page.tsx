@@ -468,7 +468,7 @@ const LoginPage = () => {
             {COPY.sessionExpired.message}
           </p>
           <Button
-            className="mt-5 min-h-11 w-full rounded-[8px] bg-[var(--accent)] px-6 text-base font-extrabold text-white hover:bg-[var(--accent-deep)]"
+            className="mt-5 w-full bg-[var(--accent)] text-base font-extrabold text-white hover:bg-[var(--accent-deep)]"
             type="button"
             onClick={() => setView({ kind: "SIGNED_OUT" })}
           >
@@ -568,7 +568,7 @@ const LoginPage = () => {
                   <Input
                     ref={usernameRef}
                     id="login-username"
-                    className="min-h-11 rounded-[8px] border-[var(--line-strong)] bg-[var(--surface-raised)] px-3 py-2 text-base text-[var(--ink)] focus-visible:border-[var(--focus)] focus-visible:ring-3 focus-visible:ring-[var(--focus)]"
+                    className="border-[var(--line-strong)] bg-[var(--surface-raised)] text-base text-[var(--ink)]"
                     value={username}
                     onChange={(e) => {
                       setUsername(e.target.value);
@@ -602,7 +602,7 @@ const LoginPage = () => {
                       <Input
                         ref={legacyPinRef}
                         id="legacy-pin"
-                        className="min-h-11 rounded-[8px] border-[var(--line-strong)] bg-[var(--surface-raised)] px-3 py-2 text-base text-[var(--ink)] focus-visible:border-[var(--focus)] focus-visible:ring-3 focus-visible:ring-[var(--focus)]"
+                        className="border-[var(--line-strong)] bg-[var(--surface-raised)] text-base text-[var(--ink)]"
                         type="password"
                         value={legacyPin}
                         onChange={(e) => {
@@ -639,7 +639,7 @@ const LoginPage = () => {
                       <Input
                         ref={newCredentialRef}
                         id="new-credential"
-                        className="min-h-11 rounded-[8px] border-[var(--line-strong)] bg-[var(--surface-raised)] px-3 py-2 text-base text-[var(--ink)] focus-visible:border-[var(--focus)] focus-visible:ring-3 focus-visible:ring-[var(--focus)]"
+                        className="border-[var(--line-strong)] bg-[var(--surface-raised)] text-base text-[var(--ink)]"
                         type="password"
                         value={newCredential}
                         onChange={(e) => {
@@ -673,7 +673,7 @@ const LoginPage = () => {
                       <Input
                         ref={confirmCredentialRef}
                         id="confirm-credential"
-                        className="min-h-11 rounded-[8px] border-[var(--line-strong)] bg-[var(--surface-raised)] px-3 py-2 text-base text-[var(--ink)] focus-visible:border-[var(--focus)] focus-visible:ring-3 focus-visible:ring-[var(--focus)]"
+                        className="border-[var(--line-strong)] bg-[var(--surface-raised)] text-base text-[var(--ink)]"
                         type="password"
                         value={confirmCredential}
                         onChange={(e) => {
@@ -710,7 +710,7 @@ const LoginPage = () => {
                     <Input
                       ref={passwordRef}
                       id="login-password"
-                      className="min-h-11 rounded-[8px] border-[var(--line-strong)] bg-[var(--surface-raised)] px-3 py-2 text-base text-[var(--ink)] focus-visible:border-[var(--focus)] focus-visible:ring-3 focus-visible:ring-[var(--focus)]"
+                      className="border-[var(--line-strong)] bg-[var(--surface-raised)] text-base text-[var(--ink)]"
                       type="password"
                       value={password}
                       onChange={(e) => {
@@ -735,7 +735,7 @@ const LoginPage = () => {
                   </div>
                 )}
                 <Button
-                  className="min-h-11 w-full rounded-[8px] bg-[var(--accent)] px-6 text-base font-extrabold text-white hover:bg-[var(--accent-deep)]"
+                  className="w-full bg-[var(--accent)] text-base font-extrabold text-white hover:bg-[var(--accent-deep)]"
                   type="submit"
                   disabled={busy}
                   aria-busy={busy}
@@ -755,7 +755,7 @@ const LoginPage = () => {
                   <Button
                     asChild
                     variant="link"
-                    className="min-h-11 w-full rounded-[8px] font-bold text-[var(--ink)] hover:text-[var(--accent)]"
+                    className="w-full font-bold text-[var(--ink)] hover:text-[var(--accent)]"
                   >
                     <Link href="/register">{REGISTRATION_COPY.pageTitle}</Link>
                   </Button>
@@ -764,7 +764,7 @@ const LoginPage = () => {
                   <Button
                     asChild
                     variant="outline"
-                    className="min-h-11 w-full rounded-[8px] border-[var(--line-strong)] bg-[var(--surface-raised)] px-3 font-bold text-[var(--ink)] hover:bg-[var(--surface)] hover:text-[var(--ink)]"
+                    className="w-full border-[var(--line-strong)] bg-[var(--surface-raised)] font-bold text-[var(--ink)] hover:bg-[var(--surface)] hover:text-[var(--ink)]"
                   >
                     <Link href="/guest-check-in">
                       {COPY.login.guestCheckIn}
