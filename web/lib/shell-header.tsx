@@ -89,7 +89,7 @@ export const ShellHeader = ({
             </>
           ) : (
             <span className="text-base font-extrabold tracking-[-0.01em] text-[var(--ink)] truncate">
-              {COPY.shell.shortMark}
+              {COPY.appFullName}
             </span>
           )}
         </div>

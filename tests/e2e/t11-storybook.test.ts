@@ -59,7 +59,7 @@ async function expectMemberBrand(page: Page) {
   const header = page.locator("header[data-shell-header]");
   await expect(header).toBeVisible();
   await expect(
-    header.getByText(COPY.shell.shortMark, { exact: true })
+    header.getByText(COPY.appFullName, { exact: true })
   ).toBeVisible();
 }
 
@@ -123,7 +123,9 @@ test("Storybook management Account Directory keeps identity and attention chrome
   await expect(
     header.getByText("T07.1 synthetic manager", { exact: true })
   ).toBeVisible();
-  await expect(header.locator('button[aria-haspopup="dialog"]')).toHaveCount(1);
+  const attentionButton = header.locator('button[aria-haspopup="dialog"]');
+  await expect(attentionButton).toHaveCount(1);
+  await expect(attentionButton).toBeVisible();
 });
 
 test("Storybook Scanner Boundary keeps navigation while suppressing the top header across W7", async ({

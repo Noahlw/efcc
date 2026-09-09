@@ -64,7 +64,7 @@ No Worker/D1 journey is added solely for shell presentation.
 - Fast typecheck: `pnpm verify:fast` passed for root and `web/` TypeScript.
 - Storybook/catalog scope check: `pnpm test:storybook:scope` passed (13 tests).
 - Implementation-agent Storybook self-review at 390px: existing Notices and Messages member
-  baselines show local H1s and global `顯恩堂` chrome; Management Account
+  baselines show local H1s and the full global `中國基督教播道會顯恩堂` chrome; Management Account
   Directory retains identity and attention bell; Scanner Boundary retains the
   authenticated dock while suppressing the top shell header. No Story or PSN was
   added.
@@ -154,8 +154,10 @@ No Worker/D1 journey is added solely for shell presentation.
 - Existing T11 census disposition remains unchanged: CEN-030 and CEN-058 are
   bounded later debt; Home and offline behavior remain untouched, and route
   family debt remains outside this branch.
-- Final two-axis review against `197bdd7e` found no unresolved Standards or Spec
-  implementation finding. Ticket 03 is committed as `33db2a73`
+- Final two-axis review against `3dd94e842b461461c87ef7687960e23e8198841c`
+  at candidate `ba42a3f6` found no unresolved in-scope Spec finding; the
+  Standards review identified the primary-brand mismatch fixed in the next
+  review-fix commit. Ticket 03 remains committed as `33db2a73`
   (`fix(t11): qualify authenticated shell`). Human L2 owner review is not
   claimed by the implementation agent.
 

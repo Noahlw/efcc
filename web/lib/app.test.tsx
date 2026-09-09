@@ -1685,7 +1685,7 @@ describe("Shell", () => {
         </AppProvider>
       );
       expect(
-        within(screen.getByRole("banner")).getByText(COPY.shell.shortMark)
+        within(screen.getByRole("banner")).getByText(COPY.appFullName)
       ).toBeInTheDocument();
       expect(
         screen.queryByRole("button", { name: /開啟注意事項/u })
@@ -1699,9 +1699,7 @@ describe("Shell", () => {
         </AppProvider>
       );
       const header = screen.getByRole("banner");
-      expect(
-        within(header).getByText(COPY.shell.shortMark)
-      ).toBeInTheDocument();
+      expect(within(header).getByText(COPY.appFullName)).toBeInTheDocument();
       expect(
         within(header).queryByText(COPY.sections.programs)
       ).not.toBeInTheDocument();
