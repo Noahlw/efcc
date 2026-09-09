@@ -10,7 +10,6 @@ import {
 } from "@/app/management/directory-frame";
 import {
   ActionSurface,
-  ManagementPageHeader,
   safeManagementReturnHref,
 } from "@/app/management/management-action-framework";
 import { Alert } from "@/components/ui/alert";
@@ -37,6 +36,7 @@ import {
   type RegistrationQueueStatus,
 } from "@/lib/registration-client";
 import { QUEUE_COPY, registrationErrorCopy } from "@/lib/registration-copy";
+import { RouteHeader } from "@/lib/route-header";
 
 // The queue implementation below owns the S4 selection and batch action state.
 type ApprovalQueueState =
@@ -492,7 +492,7 @@ export const ApprovalQueue = () => {
         ariaLabelledBy="approval-queue-title"
         header={
           <div className="grid min-w-0 gap-4">
-            <ManagementPageHeader
+            <RouteHeader
               action={
                 <Button
                   type="button"
@@ -509,7 +509,7 @@ export const ApprovalQueue = () => {
               backLabel={returnLabel}
               lead={COPY.approvals.approvalsLead}
               title={COPY.approvals.approvalsTitle}
-              titleId="approval-queue-title"
+              headingId="approval-queue-title"
             />
             <div
               className="flex items-center gap-2 border-b border-[var(--line)] pb-2"

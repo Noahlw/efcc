@@ -1,41 +1,12 @@
 "use client";
 
-import { cva } from "class-variance-authority";
-import type { VariantProps } from "class-variance-authority";
 import { useEffect, useRef } from "react";
 import type { ReactNode, RefObject } from "react";
 
 import { Button } from "@/components/ui/button";
+import { PageFrame } from "@/lib/page-frame";
+import type { PageFrameWidth } from "@/lib/page-frame";
 import { cn } from "@/lib/utils";
-
-const directoryFrameVariants = cva(
-  "mx-auto min-w-0 w-full px-[var(--space-4)] pt-[var(--space-6)] pb-[var(--space-9)]",
-  {
-    variants: {
-      width: {
-        wide: "max-w-[1180px]",
-        compact: "max-w-[760px]",
-      },
-      content: {
-        list: "",
-        detail: "max-[799px]:pb-[var(--space-8)]",
-      },
-    },
-    compoundVariants: [
-      {
-        width: "wide",
-        content: "detail",
-        class: "min-[1024px]:px-[var(--space-6)]",
-      },
-    ],
-    defaultVariants: {
-      width: "wide",
-      content: "list",
-    },
-  }
-);
-
-type DirectoryFrameVariants = VariantProps<typeof directoryFrameVariants>;
 
 export type DirectoryFrameState =
   | "idle"
@@ -90,9 +61,11 @@ export type DirectoryListSlot =
   | ReactNode
   | ((context: DirectoryListSlotContext) => ReactNode);
 
-export interface DirectoryFrameProps extends DirectoryFrameVariants {
+export interface DirectoryFrameProps {
   ariaLabelledBy?: string;
   className?: string;
+  content?: "list" | "detail";
+  width?: PageFrameWidth;
   header: ReactNode;
   search: ReactNode;
   filter?: ReactNode;
@@ -267,69 +240,76 @@ export const DirectoryFrame = ({
     }
   }, [detailKey, detailRef, selectedId]);
 
+  const frameWidth = width ?? "wide";
+
   return (
-    <section
-      aria-busy={state === "loading"}
-      aria-labelledby={ariaLabelledBy}
+    <PageFrame
       className={cn(
-        directoryFrameVariants({
-          className,
-          content: hasDetail ? "detail" : content,
-          width,
-        })
+        className,
+        (hasDetail || content === "detail") &&
+          "max-[799px]:pb-[var(--space-8)]",
+        frameWidth === "wide" &&
+          (hasDetail || content === "detail") &&
+          "min-[1024px]:px-[var(--space-6)]"
       )}
-      data-directory-frame
-      data-directory-state={state}
+      width={frameWidth}
     >
-      {header}
-
-      <div
-        className="mt-[var(--space-5)] grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-end gap-[var(--space-3)] min-[800px]:grid-cols-[minmax(220px,1fr)_minmax(0,1.35fr)]"
-        data-directory-controls
+      <section
+        aria-busy={state === "loading"}
+        aria-labelledby={ariaLabelledBy}
+        data-directory-frame
+        data-directory-state={state}
       >
-        <div className="min-w-0">{search}</div>
-        {filter && <div className="min-[800px]:hidden">{filter}</div>}
-        {desktopFilters && (
-          <div className="hidden min-w-0 gap-[var(--space-3)] min-[800px]:grid min-[800px]:grid-cols-3">
-            {desktopFilters}
-          </div>
-        )}
-      </div>
+        {header}
 
-      {filterSheet}
-
-      {shouldRenderState && frameStateSlot && (
-        <div data-directory-state-slot>{frameStateSlot}</div>
-      )}
-
-      {showWorkspace && (
         <div
-          className="mt-[var(--space-5)] grid min-w-0 gap-[var(--space-4)] min-[800px]:grid-cols-1 min-[1024px]:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)] min-[1024px]:items-start"
-          data-directory-selected={hasDetail || undefined}
-          data-directory-workspace
+          className="mt-[var(--space-5)] grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-end gap-[var(--space-3)] min-[800px]:grid-cols-[minmax(220px,1fr)_minmax(0,1.35fr)]"
+          data-directory-controls
         >
-          {showList && (
-            <div
-              className={cn("min-w-0", hasDetail && "max-[799px]:hidden")}
-              data-directory-list
-            >
-              {typeof list === "function"
-                ? list({ selection, virtualization })
-                : list}
-              {pagination && <Pagination pagination={pagination} />}
-            </div>
-          )}
-          {hasDetail && (
-            <div
-              className="min-w-0 min-[1024px]:sticky min-[1024px]:top-[88px]"
-              data-directory-detail
-            >
-              {detail}
+          <div className="min-w-0">{search}</div>
+          {filter && <div className="min-[800px]:hidden">{filter}</div>}
+          {desktopFilters && (
+            <div className="hidden min-w-0 gap-[var(--space-3)] min-[800px]:grid min-[800px]:grid-cols-3">
+              {desktopFilters}
             </div>
           )}
         </div>
-      )}
-      {children}
-    </section>
+
+        {filterSheet}
+
+        {shouldRenderState && frameStateSlot && (
+          <div data-directory-state-slot>{frameStateSlot}</div>
+        )}
+
+        {showWorkspace && (
+          <div
+            className="mt-[var(--space-5)] grid min-w-0 gap-[var(--space-4)] min-[800px]:grid-cols-1 min-[1024px]:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)] min-[1024px]:items-start"
+            data-directory-selected={hasDetail || undefined}
+            data-directory-workspace
+          >
+            {showList && (
+              <div
+                className={cn("min-w-0", hasDetail && "max-[799px]:hidden")}
+                data-directory-list
+              >
+                {typeof list === "function"
+                  ? list({ selection, virtualization })
+                  : list}
+                {pagination && <Pagination pagination={pagination} />}
+              </div>
+            )}
+            {hasDetail && (
+              <div
+                className="min-w-0 min-[1024px]:sticky min-[1024px]:top-[88px]"
+                data-directory-detail
+              >
+                {detail}
+              </div>
+            )}
+          </div>
+        )}
+        {children}
+      </section>
+    </PageFrame>
   );
 };

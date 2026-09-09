@@ -6,7 +6,6 @@ import { afterEach, describe, expect, test, vi } from "vitest";
 import {
   ActionSurface,
   ManagementFilterSheet,
-  ManagementPageHeader,
   ManagementStickyActionBar,
   safeManagementReturnHref,
 } from "@/app/management/management-action-framework";
@@ -45,30 +44,6 @@ describe("S4 management action framework", () => {
         "/management"
       )
     ).toBe("/management");
-  });
-
-  test("renders one consistent Back, title, lead, and contextual action", () => {
-    render(
-      <ManagementPageHeader
-        action={<button type="button">重新整理</button>}
-        backHref="/management"
-        backLabel="返回管理工作"
-        lead="處理已授權工作。"
-        title="帳戶名錄"
-      />
-    );
-
-    expect(screen.getByRole("link", { name: "返回管理工作" })).toHaveAttribute(
-      "href",
-      "/management"
-    );
-    expect(
-      screen.getByRole("heading", { level: 1, name: "帳戶名錄" })
-    ).toBeInTheDocument();
-    expect(screen.getByText("處理已授權工作。")).toBeInTheDocument();
-    expect(
-      screen.getByRole("button", { name: "重新整理" })
-    ).toBeInTheDocument();
   });
 
   test("exposes labelled filter Sheet and sticky-action regions", () => {

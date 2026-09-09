@@ -14,7 +14,6 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { RpcError } from "@/lib/api";
-import { ContextualTaskHeader } from "@/lib/contextual-task-header";
 import { COPY, errorCopyFor } from "@/lib/copy";
 import { announce } from "@/lib/live-region";
 import {
@@ -26,6 +25,7 @@ import type {
   AccountDirectoryView,
 } from "@/lib/programs/program-api";
 import { useAsyncResource } from "@/lib/programs/use-async-resource";
+import { RouteHeader } from "@/lib/route-header";
 import { rememberDeepLink } from "@/lib/session";
 
 import { DirectoryFrame } from "./directory-frame";
@@ -835,7 +835,7 @@ export const AccountDirectoryPanel = () => {
       hasDetail={Boolean(selectedId)}
       hasResults={hasResults}
       header={
-        <ContextualTaskHeader
+        <RouteHeader
           backHref={returnHref}
           backLabel={COPY_ACCOUNT.back}
           headingId="account-directory-title"

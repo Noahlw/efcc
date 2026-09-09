@@ -13,9 +13,9 @@ import {
 } from "@/lib/account-settings-copy";
 import { authChangePassword, authChangeUsername, RpcError } from "@/lib/api";
 import { useApp } from "@/lib/app-context";
-import { ContextualTaskHeader } from "@/lib/contextual-task-header";
 import { ForbiddenView } from "@/lib/forbidden-view";
 import { announce } from "@/lib/live-region";
+import { RouteHeader } from "@/lib/route-header";
 import { clearAuthHint, rememberDeepLink } from "@/lib/session";
 
 /** One-time flash consumed by the canonical sign-in surface. */
@@ -268,7 +268,7 @@ export const AccountSettings = () => {
   };
 
   const header = (
-    <ContextualTaskHeader
+    <RouteHeader
       backHref="/profile"
       backLabel={ACCOUNT_SETTINGS_COPY.backToProfile}
       title={ACCOUNT_SETTINGS_COPY.sectionTitle}

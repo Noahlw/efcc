@@ -2,9 +2,8 @@
 import { cva } from "class-variance-authority";
 import type { VariantProps } from "class-variance-authority";
 import { XIcon } from "lucide-react";
-import Link from "next/link";
 import { useCallback, useEffect, useRef } from "react";
-import type { ComponentPropsWithoutRef, ReactNode, Ref } from "react";
+import type { ComponentPropsWithoutRef, ReactNode } from "react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -16,8 +15,6 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
-
-import { BackIcon } from "./settings-ui";
 
 export const actionSurfaceVariants = cva(
   "static isolate grid min-h-11 w-full min-w-0 max-h-[min(48dvh,420px)] gap-[var(--space-3)] mt-[var(--space-4)] overflow-y-auto overscroll-contain rounded-[var(--radius-md)] border bg-[var(--surface-raised)] p-[var(--space-3)] pb-[calc(var(--space-3)+env(safe-area-inset-bottom,0px))] text-sm shadow-[var(--shadow-dock)] scroll-mb-[calc(84px+env(safe-area-inset-bottom,0px))] data-disabled:opacity-70 [&_:is(a):focus-visible]:outline-[3px]! [&_:is(a):focus-visible]:outline-[var(--focus)]! [&_:is(a):focus-visible]:outline-offset-[3px]!",
@@ -42,11 +39,6 @@ export const actionSurfaceVariants = cva(
 export type ActionSurfaceState = NonNullable<
   VariantProps<typeof actionSurfaceVariants>["state"]
 >;
-
-const focusVisibleOutline =
-  "focus-visible:outline-[3px]! focus-visible:outline-[var(--focus)]! focus-visible:outline-offset-[3px]!";
-const headerActionFocus =
-  "[&_:is(a):focus-visible]:outline-[3px]! [&_:is(a):focus-visible]:outline-[var(--focus)]! [&_:is(a):focus-visible]:outline-offset-[3px]!";
 
 export type ActionSurfaceProps = Omit<
   ComponentPropsWithoutRef<"section">,
@@ -107,58 +99,6 @@ export function safeManagementReturnHref(
     return fallback;
   }
 }
-
-export const ManagementPageHeader = ({
-  action,
-  backHref,
-  backLabel,
-  lead,
-  titleId,
-  title,
-  titleRef,
-  onBackClick,
-}: {
-  action?: ReactNode;
-  backHref: string;
-  backLabel: string;
-  lead: string;
-  titleId?: string;
-  title: string;
-  titleRef?: Ref<HTMLHeadingElement>;
-  onBackClick?: () => void;
-}) => (
-  <header className="grid gap-[0.7rem]">
-    <Link
-      className={cn(
-        "inline-flex w-fit min-h-[44px] items-center gap-[0.3rem] text-[var(--ink-muted)] no-underline",
-        focusVisibleOutline
-      )}
-      href={backHref}
-      onClick={onBackClick}
-    >
-      <BackIcon />
-      <span>{backLabel}</span>
-    </Link>
-    <div className="flex min-w-0 items-start justify-between gap-4">
-      <div className="min-w-0">
-        <h1
-          className="m-0 wrap-anywhere text-[clamp(1.75rem,5vw,2.35rem)] tracking-[-0.03em]"
-          id={titleId}
-          ref={titleRef}
-          tabIndex={titleRef ? -1 : undefined}
-        >
-          {title}
-        </h1>
-        <p className="m-0 mt-[0.35rem] max-w-[65ch] text-[var(--ink-muted)] leading-[1.55]">
-          {lead}
-        </p>
-      </div>
-      {action && (
-        <div className={cn("flex-none", headerActionFocus)}>{action}</div>
-      )}
-    </div>
-  </header>
-);
 
 export const ManagementStickyActionBar = ({
   children,

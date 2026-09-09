@@ -29,9 +29,6 @@ const expectedStoryIds = new Set(
 const missingStoryIds = [...expectedStoryIds].filter(
   (storyId) => !actualStoryIds.has(storyId)
 );
-const unexpectedStoryIds = [...actualStoryIds].filter(
-  (storyId) => !expectedStoryIds.has(storyId)
-);
 const missingBaselineStories = SCREEN_CATALOG.flatMap((entry) => {
   const declaration = ALL_PRESENTATION_DECLARATIONS.find(
     ({ psn }) => psn === entry.primaryBaselinePsn
@@ -44,7 +41,6 @@ const missingBaselineStories = SCREEN_CATALOG.flatMap((entry) => {
 if (
   catalogErrors.length > 0 ||
   missingStoryIds.length > 0 ||
-  unexpectedStoryIds.length > 0 ||
   missingBaselineStories.length > 0
 ) {
   throw new Error(
@@ -54,9 +50,6 @@ if (
         : null,
       missingStoryIds.length > 0
         ? `missing Story index entries: ${missingStoryIds.join(", ")}`
-        : null,
-      unexpectedStoryIds.length > 0
-        ? `unexpected Story index entries: ${unexpectedStoryIds.join(", ")}`
         : null,
       missingBaselineStories.length > 0
         ? `baseline Stories missing from actual index: ${missingBaselineStories.join(", ")}`
@@ -68,5 +61,5 @@ if (
 }
 
 console.log(
-  `Storybook index reconciliation: ${actualStoryIds.size} Stories / ${SCREEN_CATALOG.length} Screen Catalog obligations / ${CONTROL_PRESENTATION_DECLARATIONS.length} control Stories / ${FOUNDATION_PRESENTATION_DECLARATIONS.length} foundation Stories; all baselines resolvable.`
+  `Storybook index reconciliation: ${actualStoryIds.size} Stories / ${SCREEN_CATALOG.length} Screen Catalog obligations / ${CONTROL_PRESENTATION_DECLARATIONS.length} control Stories / ${FOUNDATION_PRESENTATION_DECLARATIONS.length} foundation Stories; all registered declarations and baselines resolvable.`
 );

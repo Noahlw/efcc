@@ -517,7 +517,7 @@ describe(ApprovalQueue, () => {
     expect(link).toHaveAttribute("href", "/management?module=approvals");
   });
 
-  test("preserves custom safe return target in the ManagementPageHeader back link", async () => {
+  test("preserves custom safe return target in the RouteHeader back link", async () => {
     mocks.searchParams = new URLSearchParams(
       "module=approvals&return=%2Fmanagement%3Fmodule%3Dsettings"
     );

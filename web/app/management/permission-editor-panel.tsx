@@ -41,12 +41,12 @@ import {
 } from "@/lib/identity/role-hierarchy-api";
 import { announce } from "@/lib/live-region";
 import { useAsyncResource } from "@/lib/programs/use-async-resource";
+import { RouteHeader } from "@/lib/route-header";
 import { rememberDeepLink } from "@/lib/session";
 import { cn } from "@/lib/utils";
 
 import {
   ActionSurface,
-  ManagementPageHeader,
   ManagementStickyActionBar,
   safeManagementReturnHref,
 } from "./management-action-framework";
@@ -877,13 +877,13 @@ export const PermissionEditorPanel = () => {
       aria-busy={state.kind === "loading" || busy}
       className="mx-auto w-full min-w-0 max-w-6xl px-4 py-5 pb-[calc(6rem+env(safe-area-inset-bottom,0px))] sm:px-6 lg:px-8"
     >
-      <ManagementPageHeader
+      <RouteHeader
         backHref={detail ? "/management?module=permissions" : returnHref}
         backLabel={detail ? BACK_TO_ROLES : BACK_TO_MANAGEMENT}
         lead={headerLead}
-        onBackClick={detail ? goToRoleList : undefined}
+        onBack={detail ? goToRoleList : undefined}
         title={headerTitle}
-        titleId="permission-editor-title"
+        headingId="permission-editor-title"
       />
       {state.kind === "loading" && (
         <output
