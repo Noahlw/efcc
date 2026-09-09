@@ -141,6 +141,9 @@ No Worker/D1 journey is added solely for shell presentation.
   skip and 3 failures in the unchanged `tests/e2e/account-settings.test.ts`
   username-flash assertion across its three viewports; this unrelated
   pre-existing failure is preserved and is not claimed as T11 green.
+- Base confirmation: the same three-test username-flash slice was rerun in
+  clean `/home/ubuntu/gh-repo/efcc` at `main` and reproduced 3 failures with
+  the same missing login alert. No T11 file or shell change is involved.
 - T11-focused responsive qualification excluding that unrelated account-settings
   file: `pnpm exec playwright test --config=tests/e2e/responsive.config.ts
   tests/e2e/responsive.test.ts tests/e2e/shell-nav.test.ts` — 62 passed and 1
@@ -149,6 +152,7 @@ No Worker/D1 journey is added solely for shell presentation.
 - Existing T11 census disposition remains unchanged: CEN-030 and CEN-058 are
   bounded later debt; Home and offline behavior remain untouched, and route
   family debt remains outside this branch.
-- Final two-axis review against `197bdd7e` and the Ticket 03 commit are the
-  remaining repository handoff mechanics. Human L2 owner review is not claimed
-  by the implementation agent.
+- Final two-axis review against `197bdd7e` found no unresolved Standards or Spec
+  implementation finding. Ticket 03 is committed as `33db2a73`
+  (`fix(t11): qualify authenticated shell`). Human L2 owner review is not
+  claimed by the implementation agent.
