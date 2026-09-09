@@ -305,10 +305,11 @@ test("799px shows the phone shell; 800px shows the desktop shell", async ({
     projectName: testInfo.project.name,
   });
 
-  if (testInfo.project.name === "w-799") {
+  const projectWidth = Number.parseInt(testInfo.project.name.slice(2), 10);
+  if (projectWidth === 799) {
     expect(position).toBe("fixed");
   }
-  if (testInfo.project.name === "w-800") {
+  if (projectWidth === 800) {
     expect(position).toBe("sticky");
   }
 });
