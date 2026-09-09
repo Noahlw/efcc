@@ -5,7 +5,7 @@
 /**
  * TK-09 — pinned Chromium geometry for the Authenticated Shell.
  *
- * Widths: 320, 390, 600, 799, 800, 1024, 1440 CSS px (project names w-*).
+ * Widths: 320, 375, 390, 414, 799, 800, 1440 CSS px (project names w-*).
  * Proves shell critical anchors (outlet/chrome, skip link, primary nav,
  * dock or rail, main, live region) with no horizontal overflow and no
  * obstruction. Both sides of the 800px breakpoint are exercised (w-799 and
@@ -96,7 +96,8 @@ test.beforeEach(async ({ page }: { page: Page }) => {
 });
 
 const isPhone = (projectName: string) =>
-  ["w-320", "w-390", "w-600", "w-799"].includes(projectName);
+  projectName.startsWith("w-") &&
+  Number.parseInt(projectName.slice(2), 10) < 800;
 
 test("shell critical anchors render at the pinned width with no overflow or obstruction", async ({
   page,
@@ -132,11 +133,24 @@ test("shell critical anchors render at the pinned width with no overflow or obst
     const nav = document.querySelector<HTMLElement>("#main-navigation");
     const navStyle = nav ? getComputedStyle(nav) : null;
     const mainEl = document.querySelector<HTMLElement>("#shell-content");
+    const shell = document.querySelector<HTMLElement>(".shell");
     const headerEl = document.querySelector<HTMLElement>(
       "header[data-shell-header]"
     );
     const headerBox = headerEl?.getBoundingClientRect();
     const navBox = nav?.getBoundingClientRect();
+    const shellOwnedElements = shell
+      ? [shell, ...shell.querySelectorAll<HTMLElement>("*")]
+      : [];
+    const contentScrollOwners = shellOwnedElements
+      // The desktop rail may scroll its own navigation chrome; it is not the
+      // authenticated content outlet being proved here.
+      .filter((element) => !element.closest("#main-navigation"))
+      .filter((element) => {
+        const overflowY = getComputedStyle(element).overflowY;
+        return overflowY === "auto" || overflowY === "scroll";
+      })
+      .map((element) => element.id || element.className.toString());
 
     const visibleControls = [
       ...document.querySelectorAll<HTMLElement>(
@@ -184,6 +198,15 @@ test("shell critical anchors render at the pinned width with no overflow or obst
         ? getComputedStyle(mainEl).overflowY === "auto"
         : false,
       mainPaddingBottom: mainEl ? getComputedStyle(mainEl).paddingBottom : null,
+      mainContentOverflow: mainEl
+        ? mainEl.scrollWidth - mainEl.clientWidth
+        : null,
+      documentVerticalOverflow:
+        Math.max(
+          document.documentElement.scrollHeight,
+          document.body.scrollHeight
+        ) - viewportHeight,
+      contentScrollOwners,
       undersized: visibleControls.filter((c) => c.width < 44 || c.height < 44),
     };
   });
@@ -197,6 +220,10 @@ test("shell critical anchors render at the pinned width with no overflow or obst
     geometry.horizontalOverflow,
     `horizontal overflow at ${geometry.viewportWidth}px`
   ).toBeLessThanOrEqual(1);
+  expect(geometry.mainContentOverflow).toBeLessThanOrEqual(1);
+  expect(geometry.documentVerticalOverflow).toBeLessThanOrEqual(1);
+  expect(geometry.contentScrollOwners).toEqual(["shell-content"]);
+  await expect(page.locator("nav#main-navigation")).toHaveCount(1);
 
   // Shell presentation matches the breakpoint side.
   expect(geometry.navPosition).toBe(phone ? "fixed" : "sticky");
@@ -211,7 +238,9 @@ test("shell critical anchors render at the pinned width with no overflow or obst
     // Dock height ~62px + bottom offset within the viewport.
     expect(geometry.navHeight).toBeGreaterThanOrEqual(44);
     // Outlet reserves the dock height (84px + safe-area) on phone.
-    expect(geometry.mainPaddingBottom).not.toBe("0px");
+    expect(
+      Number.parseFloat(geometry.mainPaddingBottom ?? "0")
+    ).toBeGreaterThanOrEqual(84);
   } else {
     // Rail starts below the header and is persistent (sticky).
     if (

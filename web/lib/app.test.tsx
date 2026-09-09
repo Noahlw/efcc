@@ -1397,6 +1397,9 @@ describe("Shell", () => {
         projectNavigation({ "program.enroll": true })
       );
       expect(
+        screen.getAllByRole("navigation", { name: COPY.nav.label })
+      ).toHaveLength(1);
+      expect(
         [
           COPY.sections.home,
           COPY.sections.programs,

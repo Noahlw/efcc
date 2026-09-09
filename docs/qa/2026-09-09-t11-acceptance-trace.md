@@ -79,3 +79,29 @@ No Worker/D1 journey is added solely for shell presentation.
   `test.skip`/duplicated width allowlist; Spec axis found no production defect,
   and the component/browser evidence gaps were closed. Final two-axis review
   and commit remain to be recorded below.
+
+## Ticket 02 fresh evidence
+
+- Runner reconciliation: `tests/e2e/shell-geometry.config.ts` now contains
+  exactly 320/375/390/414/799/800/1440; stale 600 and 1024 shell-policy
+  projects were removed. The shell breakpoint remains 799 compact / 800
+  desktop.
+- W7 Chromium: `pnpm test:shell-geometry` — 35 passed. The geometry contract
+  now asserts one `nav#main-navigation`, shell-content horizontal containment,
+  no document-level vertical overflow, one shell-frame content scroll owner,
+  and at least 84px phone dock/safe-area reserve.
+- Safe-area qualification: the existing responsive `bottom nav and page outlet
+  reserve safe-area inset` test was run with Chromium CDP safe-area override at
+  375x812, 375x667 and 1280x800 — 3 passed; phone reserve resolved to 118px
+  (84px dock reserve + 34px inset) and desktop reserve remained 0px.
+- Navigation regression: `pnpm exec playwright test --config=tests/e2e/responsive.config.ts
+  tests/e2e/shell-nav.test.ts` — 24 passed at 375x812, 375x667 and 1280x800.
+- Component/type checks: `web/lib/app.test.tsx` — 90 passed; `pnpm verify:fast`
+  passed. The NavBar component now explicitly asserts one navigation landmark.
+- Ownership disposition: live W7 produced no shell overlap, overflow, duplicate
+  reserve or second content scroll owner, so no production CSS was changed and
+  no route-owned bottom rhythm was removed. Existing `.shell-content` remains
+  the shell source of truth; route padding remains route-owned.
+- Ticket 02 review: Standards found no hard violation; Spec’s initial proof gap
+  was closed by the shell-frame/document overflow assertions and the existing
+  CDP safe-area evidence. Cross-browser qualification remains Ticket 03 scope.
