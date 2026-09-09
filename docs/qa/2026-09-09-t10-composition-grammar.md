@@ -2,20 +2,20 @@
 
 ## Status
 
-`T10 IMPLEMENTATION_GREEN — READY FOR OWNER L2`
+`T10 STACK_GREEN — MERGE READY`
 
 This record closes the supporting grammar against qualified executable
-candidate `04066074` on `rescue/t10-composition-grammar`. It records ownership
-decisions; final machine qualification is recorded in
+candidate `f446d606` on `rescue/t10-composition-grammar`. It records ownership
+decisions and the approved human L2 gate; final machine qualification is recorded in
 [`2026-09-09-t10-acceptance-trace.md`](2026-09-09-t10-acceptance-trace.md).
-It does not create a second component registry or claim owner L2 approval.
+It does not create a second component registry or enter T11+ scope.
 
 ## Live grammar disposition
 
 | Concept | Disposition | Live authority / boundary |
 |---|---|---|
 | Page Frame | `PROMOTED` | `web/lib/page-frame.tsx`; shared gutter, width and frame reserve. `DirectoryFrame` and the ordinary T10 Story consume it. |
-| Route Header | `PROMOTED` | `web/lib/route-header.tsx`; H1, optional Back, lead, route status/action slots and wrapping. Route callers retain copy, state and mutation. |
+| Route Header | `PROMOTED` | `web/lib/route-header.tsx`; H1, optional Back, string-only lead, route status/action slots and wrapping. Route callers retain copy, state and mutation. |
 | Section Stack | `MAPPED_TO_EXISTING` | Caller-owned `grid`/`flex` composition. No repeated product-wide ownership proves another wrapper. |
 | Surface | `MAPPED_TO_EXISTING` | `web/components/ui/card.tsx` and its existing Card slots remain the canonical surface foundation. |
 | Form / Field Group | `FEATURE_LOCAL` | Feature forms retain field layout, validation, values and domain semantics. No generic form abstraction is introduced. |
@@ -51,5 +51,7 @@ registry solely for grammar coverage.
 - `web/lib/page-frame.test.tsx` and `web/lib/route-header.test.tsx` cover
   public component behavior; `tests/e2e/t10-composition.test.ts` owns W7
   geometry and reachability.
+- `RouteHeaderProps.lead` is `string` because every live caller supplies string
+  copy; status and action slots retain their existing richer content contract.
 - No additional shared pattern, registry, state framework or route migration
   is introduced by this disposition.
