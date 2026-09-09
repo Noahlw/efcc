@@ -93,7 +93,7 @@ export const RouteHeader = ({
         </Link>
       ) : null}
       <div
-        className="flex min-w-0 items-start justify-between gap-4 max-[799px]:flex-col"
+        className="flex min-w-0 flex-col items-start justify-between gap-4 min-[800px]:flex-row"
         data-route-header-main
       >
         <div className="min-w-0">
@@ -113,7 +113,7 @@ export const RouteHeader = ({
         </div>
         {hasActions && (
           <div
-            className="flex shrink-0 items-center gap-2 max-[799px]:w-full max-[799px]:flex-wrap"
+            className="flex w-full shrink-0 flex-wrap items-center gap-2 min-[800px]:w-auto min-[800px]:flex-nowrap"
             data-route-header-actions
           >
             {status}

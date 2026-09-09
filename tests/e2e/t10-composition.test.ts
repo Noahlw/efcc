@@ -120,7 +120,7 @@ test("Route Header keeps content and actions reachable across W7", async ({
   const actionBox = await rect(action);
   const mainLayout = await main.evaluate((element: HTMLElement) => ({
     flexDirection: window.getComputedStyle(element).flexDirection,
-    below799: window.matchMedia("(width < 799px)").matches,
+    below800: window.matchMedia("(width < 800px)").matches,
   }));
   expect(
     headerBox.left,
@@ -139,7 +139,7 @@ test("Route Header keeps content and actions reachable across W7", async ({
     expect(actionBox.left).toBeGreaterThanOrEqual(headerBox.left - 1);
     expect(actionBox.top).toBeGreaterThanOrEqual(leadBox.bottom - 1);
     expect(mainLayout.flexDirection).toBe("column");
-    expect(mainLayout.below799).toBe(true);
+    expect(mainLayout.below800).toBe(true);
     expect(
       headingBox.height,
       "long title wraps at narrow widths"
@@ -148,13 +148,13 @@ test("Route Header keeps content and actions reachable across W7", async ({
       32
     );
   } else if ((viewport?.width ?? 0) === 799) {
-    expect(mainLayout.flexDirection).toBe("row");
-    expect(mainLayout.below799).toBe(false);
-    expect(actionBox.top).toBeLessThanOrEqual(headingBox.bottom + 1);
-    expect(actionBox.left).toBeGreaterThanOrEqual(headingBox.right - 1);
+    expect(mainLayout.flexDirection).toBe("column");
+    expect(mainLayout.below800).toBe(true);
+    expect(actionBox.left).toBeGreaterThanOrEqual(headerBox.left - 1);
+    expect(actionBox.top).toBeGreaterThanOrEqual(leadBox.bottom - 1);
   } else if ((viewport?.width ?? 0) === 800) {
     expect(mainLayout.flexDirection).toBe("row");
-    expect(mainLayout.below799).toBe(false);
+    expect(mainLayout.below800).toBe(false);
     expect(actionBox.top).toBeLessThanOrEqual(headingBox.bottom + 1);
     expect(actionBox.left).toBeGreaterThanOrEqual(headingBox.right - 1);
   }
