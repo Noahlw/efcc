@@ -146,93 +146,170 @@ test.beforeAll(async ({ playwright }) => {
 });
 
 async function cleanupParticipantFixture(): Promise<void> {
-  if (fixture === null || adminApi === null) {
+  const currentFixture = fixture;
+  const api = adminApi;
+  if (currentFixture === null || api === null) {
     return;
   }
 
-  const { departmentId, programId } = fixture;
-  if (programId !== "") {
-    const requestsResponse = await adminApi.get(
-      `/api/v1/programs/${programId}/enrollment-requests`
-    );
-    expect(requestsResponse.status(), "fixture cleanup request listing").toBe(
-      200
-    );
-    const requestsBody = (await requestsResponse.json()) as {
-      data?: {
-        requests?: Array<{ request_id?: string; status?: string }>;
+  const failures: string[] = [];
+  const attempt = async (
+    step: string,
+    action: () => Promise<void>
+  ): Promise<void> => {
+    try {
+      await action();
+    } catch (error) {
+      failures.push(
+        `${step}: ${error instanceof Error ? error.message : String(error)}`
+      );
+    }
+  };
+
+  const { departmentId, programName } = currentFixture;
+  let programId = currentFixture.programId;
+  if (programId === "") {
+    await attempt("fixture cleanup Program lookup", async () => {
+      const programsResponse = await api.get(
+        `/api/v1/programs/departments/${departmentId}/programs`
+      );
+      expect(programsResponse.status(), "fixture cleanup Program lookup").toBe(
+        200
+      );
+      const programsBody = (await programsResponse.json()) as {
+        data?: {
+          programs?: Array<{ program_id?: string; name?: string }>;
+        };
       };
-    };
-    for (const request of requestsBody.data?.requests ?? []) {
+      const matchedProgram = programsBody.data?.programs?.find(
+        (program) => program.name === programName && program.program_id
+      );
+      if (!matchedProgram?.program_id) {
+        throw new Error("created Program was not found by its unique name");
+      }
+      programId = matchedProgram.program_id;
+    });
+  }
+
+  if (programId !== "") {
+    let requests: Array<{ request_id?: string; status?: string }> = [];
+    await attempt("fixture cleanup request listing", async () => {
+      const requestsResponse = await api.get(
+        `/api/v1/programs/${programId}/enrollment-requests`
+      );
+      expect(requestsResponse.status(), "fixture cleanup request listing").toBe(
+        200
+      );
+      const requestsBody = (await requestsResponse.json()) as {
+        data?: {
+          requests?: Array<{ request_id?: string; status?: string }>;
+        };
+      };
+      requests = requestsBody.data?.requests ?? [];
+    });
+    for (const request of requests) {
       if (request.status !== "Pending" || !request.request_id) {
         continue;
       }
-      const decisionResponse = await adminApi.post(
-        `/api/v1/programs/${programId}/enrollment-requests/${request.request_id}/decision`,
-        {
-          headers: { "Idempotency-Key": `t12-cleanup-${crypto.randomUUID()}` },
-          data: { action: "Rejected" },
+      await attempt(
+        `fixture cleanup pending request ${request.request_id}`,
+        async () => {
+          const decisionResponse = await api.post(
+            `/api/v1/programs/${programId}/enrollment-requests/${request.request_id}/decision`,
+            {
+              headers: {
+                "Idempotency-Key": `t12-cleanup-${crypto.randomUUID()}`,
+              },
+              data: { action: "Rejected" },
+            }
+          );
+          expect(
+            decisionResponse.status(),
+            "fixture cleanup pending request resolution"
+          ).toBe(200);
         }
       );
-      expect(
-        decisionResponse.status(),
-        "fixture cleanup pending request resolution"
-      ).toBe(200);
     }
 
-    const enrollmentsResponse = await adminApi.get(
-      `/api/v1/programs/${programId}/enrollments`
-    );
-    expect(
-      enrollmentsResponse.status(),
-      "fixture cleanup enrollment listing"
-    ).toBe(200);
-    const enrollmentsBody = (await enrollmentsResponse.json()) as {
-      data?: {
-        enrollments?: Array<{ enrollment_id?: string; status?: string }>;
+    let enrollments: Array<{
+      enrollment_id?: string;
+      status?: string;
+    }> = [];
+    await attempt("fixture cleanup enrollment listing", async () => {
+      const enrollmentsResponse = await api.get(
+        `/api/v1/programs/${programId}/enrollments`
+      );
+      expect(
+        enrollmentsResponse.status(),
+        "fixture cleanup enrollment listing"
+      ).toBe(200);
+      const enrollmentsBody = (await enrollmentsResponse.json()) as {
+        data?: {
+          enrollments?: Array<{ enrollment_id?: string; status?: string }>;
+        };
       };
-    };
-    for (const enrollment of enrollmentsBody.data?.enrollments ?? []) {
+      enrollments = enrollmentsBody.data?.enrollments ?? [];
+    });
+    for (const enrollment of enrollments) {
       if (enrollment.status !== "Active" || !enrollment.enrollment_id) {
         continue;
       }
-      const cancelResponse = await adminApi.post(
-        `/api/v1/programs/${programId}/enrollments/${enrollment.enrollment_id}/cancel`,
+      await attempt(
+        `fixture cleanup enrollment ${enrollment.enrollment_id}`,
+        async () => {
+          const cancelResponse = await api.post(
+            `/api/v1/programs/${programId}/enrollments/${enrollment.enrollment_id}/cancel`,
+            {
+              headers: {
+                "Idempotency-Key": `t12-cleanup-${crypto.randomUUID()}`,
+              },
+              data: {},
+            }
+          );
+          expect(
+            cancelResponse.status(),
+            "fixture cleanup active enrollment cancellation"
+          ).toBe(200);
+        }
+      );
+    }
+
+    await attempt("fixture cleanup Program archive", async () => {
+      const archiveProgramResponse = await api.patch(
+        `/api/v1/programs/${programId}`,
         {
-          headers: { "Idempotency-Key": `t12-cleanup-${crypto.randomUUID()}` },
-          data: {},
+          headers: {
+            "Idempotency-Key": `t12-cleanup-${crypto.randomUUID()}`,
+          },
+          data: { lifecycle: "Archived" },
         }
       );
       expect(
-        cancelResponse.status(),
-        "fixture cleanup active enrollment cancellation"
+        archiveProgramResponse.status(),
+        "fixture cleanup Program archive"
       ).toBe(200);
-    }
+    });
+  }
 
-    const archiveProgramResponse = await adminApi.patch(
-      `/api/v1/programs/${programId}`,
+  await attempt("fixture cleanup Department archive", async () => {
+    const archiveDepartmentResponse = await api.patch(
+      `/api/v1/programs/departments/${departmentId}`,
       {
-        headers: { "Idempotency-Key": `t12-cleanup-${crypto.randomUUID()}` },
+        headers: {
+          "Idempotency-Key": `t12-cleanup-${crypto.randomUUID()}`,
+        },
         data: { lifecycle: "Archived" },
       }
     );
     expect(
-      archiveProgramResponse.status(),
-      "fixture cleanup Program archive"
+      archiveDepartmentResponse.status(),
+      "fixture cleanup Department archive"
     ).toBe(200);
-  }
+  });
 
-  const archiveDepartmentResponse = await adminApi.patch(
-    `/api/v1/programs/departments/${departmentId}`,
-    {
-      headers: { "Idempotency-Key": `t12-cleanup-${crypto.randomUUID()}` },
-      data: { lifecycle: "Archived" },
-    }
-  );
-  expect(
-    archiveDepartmentResponse.status(),
-    "fixture cleanup Department archive"
-  ).toBe(200);
+  if (failures.length > 0) {
+    throw new Error(failures.join("; "));
+  }
 }
 
 test.afterAll(async () => {

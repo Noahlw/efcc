@@ -25,6 +25,10 @@ type Fixture = {
   description: string;
 };
 
+type FixtureSetupResult =
+  | { ok: true; fixture: Fixture }
+  | { ok: false; fixture: Fixture; error: string };
+
 async function loginAs(page: Page): Promise<void> {
   await page.goto("/");
   await page.locator('input[autocomplete="username"]').fill(ADMIN.username);
@@ -36,7 +40,14 @@ async function loginAs(page: Page): Promise<void> {
 }
 
 async function createFixture(page: Page, suffix: string): Promise<Fixture> {
-  const fixture = await page.evaluate(async (value) => {
+  const result = (await page.evaluate(async (value) => {
+    const fixture: Fixture = {
+      departmentId: "",
+      programId: "",
+      programName: `E2E_T05M Program ${value}`,
+      description: "Disposable management Browser Acceptance fixture.",
+    };
+
     async function post(path: string, data?: unknown) {
       const response = await fetch(path, {
         method: "POST",
@@ -47,51 +58,150 @@ async function createFixture(page: Page, suffix: string): Promise<Fixture> {
       return { status: response.status, body: await response.json() };
     }
 
-    const department = await post("/api/v1/programs/departments", {
-      code: `E2E_T05M_${value}`,
-      name: `E2E_T05M Management ${value}`,
-      lifecycle: "Active",
-    });
-    if (department.status !== 201) {
-      throw new Error(`department fixture returned HTTP ${department.status}`);
-    }
-    const departmentId = (
-      department.body as { data: { department: { department_id: string } } }
-    ).data.department.department_id;
-    for (const moduleKey of ["program_catalog", "events", "enrollment"]) {
-      const module = await post(
-        `/api/v1/programs/departments/${departmentId}/modules/${moduleKey}/enable`
-      );
-      if (module.status !== 200) {
-        throw new Error(`${moduleKey} fixture returned HTTP ${module.status}`);
-      }
-    }
-    const programName = `E2E_T05M Program ${value}`;
-    const description = "Disposable management Browser Acceptance fixture.";
-    const program = await post(
-      `/api/v1/programs/departments/${departmentId}/programs`,
-      {
-        name: programName,
-        description,
-        category: "T05",
-        behavior_type: "Recurring",
+    try {
+      const department = await post("/api/v1/programs/departments", {
+        code: `E2E_T05M_${value}`,
+        name: `E2E_T05M Management ${value}`,
         lifecycle: "Active",
-        discoverability: "Listed",
-        enrollment_mode: "MemberRequest",
+      });
+      if (department.status !== 201) {
+        throw new Error(
+          `department fixture returned HTTP ${department.status}`
+        );
       }
-    );
-    if (program.status !== 201) {
-      throw new Error(`program fixture returned HTTP ${program.status}`);
+      fixture.departmentId = (
+        department.body as {
+          data: { department: { department_id: string } };
+        }
+      ).data.department.department_id;
+      for (const moduleKey of ["program_catalog", "events", "enrollment"]) {
+        const module = await post(
+          `/api/v1/programs/departments/${fixture.departmentId}/modules/${moduleKey}/enable`
+        );
+        if (module.status !== 200) {
+          throw new Error(
+            `${moduleKey} fixture returned HTTP ${module.status}`
+          );
+        }
+      }
+      const program = await post(
+        `/api/v1/programs/departments/${fixture.departmentId}/programs`,
+        {
+          name: fixture.programName,
+          description: fixture.description,
+          category: "T05",
+          behavior_type: "Recurring",
+          lifecycle: "Active",
+          discoverability: "Listed",
+          enrollment_mode: "MemberRequest",
+        }
+      );
+      if (program.status !== 201) {
+        throw new Error(`program fixture returned HTTP ${program.status}`);
+      }
+      fixture.programId = (
+        program.body as { data: { program: { program_id: string } } }
+      ).data.program.program_id;
+      return { ok: true, fixture };
+    } catch (error) {
+      return {
+        ok: false,
+        fixture,
+        error: error instanceof Error ? error.message : String(error),
+      };
     }
-    return {
-      departmentId,
-      programId: (program.body as { data: { program: { program_id: string } } })
-        .data.program.program_id,
-      programName,
-      description,
+  }, suffix)) as FixtureSetupResult;
+  if (!result.ok) {
+    try {
+      await archivePartialFixture(page, result.fixture);
+    } catch (cleanupError) {
+      throw new Error(
+        `${result.error}; fixture cleanup failed: ${cleanupError instanceof Error ? cleanupError.message : String(cleanupError)}`,
+        { cause: cleanupError }
+      );
+    }
+    throw new Error(result.error);
+  }
+  return result.fixture;
+}
+
+async function archivePartialFixture(
+  page: Page,
+  fixture: Fixture
+): Promise<void> {
+  if (fixture.departmentId === "") {
+    return;
+  }
+  await page.evaluate(async (currentFixture) => {
+    const failures: string[] = [];
+    const attempt = async (
+      step: string,
+      action: () => Promise<void>
+    ): Promise<void> => {
+      try {
+        await action();
+      } catch (error) {
+        failures.push(
+          `${step}: ${error instanceof Error ? error.message : String(error)}`
+        );
+      }
     };
-  }, suffix);
-  return fixture as Fixture;
+    let programId = currentFixture.programId;
+    if (programId === "") {
+      await attempt("Program lookup", async () => {
+        const response = await fetch(
+          `/api/v1/programs/departments/${encodeURIComponent(currentFixture.departmentId)}/programs`
+        );
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}`);
+        }
+        const body = (await response.json()) as {
+          data?: {
+            programs?: Array<{ program_id?: string; name?: string }>;
+          };
+        };
+        const match = body.data?.programs?.find(
+          (program) =>
+            program.name === currentFixture.programName && program.program_id
+        );
+        if (!match?.program_id) {
+          throw new Error("created Program was not found by its unique name");
+        }
+        programId = match.program_id;
+      });
+    }
+    if (programId !== "") {
+      await attempt("Program archive", async () => {
+        const response = await fetch(
+          `/api/v1/programs/${encodeURIComponent(programId)}`,
+          {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ lifecycle: "Archived" }),
+          }
+        );
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}`);
+        }
+      });
+    }
+    await attempt("Department archive", async () => {
+      const response = await fetch(
+        `/api/v1/programs/departments/${encodeURIComponent(currentFixture.departmentId)}`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ lifecycle: "Archived" }),
+        }
+      );
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+    });
+    if (failures.length > 0) {
+      throw new Error(failures.join("; "));
+    }
+  }, fixture);
 }
 
 async function restoreFixture(page: Page, fixture: Fixture): Promise<void> {
@@ -114,8 +224,9 @@ test.describe("T12 management Programs tracer", () => {
     page,
   }) => {
     await loginAs(page);
-    const fixture = await createFixture(page, crypto.randomUUID().slice(0, 8));
+    let fixture: Fixture | null = null;
     try {
+      fixture = await createFixture(page, crypto.randomUUID().slice(0, 8));
       const accessResponsePromise = page.waitForResponse(
         (response) =>
           response.request().method() === "GET" &&
@@ -186,7 +297,9 @@ test.describe("T12 management Programs tracer", () => {
         page.getByRole("textbox", { name: COPY.programDescription })
       ).toHaveValue(updatedDescription);
     } finally {
-      await restoreFixture(page, fixture);
+      if (fixture !== null) {
+        await restoreFixture(page, fixture);
+      }
     }
   });
 });
