@@ -1631,7 +1631,7 @@ describe("Shell", () => {
   });
 
   describe(ShellHeader, () => {
-    test("renders management identity block and bell button for management accounts", async () => {
+    test("renders the brand and bell button for management accounts", async () => {
       const user = userEvent.setup();
       render(
         <AppProvider bootstrap={ADMIN_BOOTSTRAP} onSignOut={() => {}}>
@@ -1640,9 +1640,9 @@ describe("Shell", () => {
       );
       expect(screen.getByText(COPY.shell.shortMark)).toBeInTheDocument();
       expect(
-        screen.getByText(ADMIN_BOOTSTRAP.profile.name ?? "")
-      ).toBeInTheDocument();
-      expect(screen.getByText("管理員")).toBeInTheDocument();
+        screen.queryByText(ADMIN_BOOTSTRAP.profile.name ?? "")
+      ).not.toBeInTheDocument();
+      expect(screen.queryByText("管理員")).not.toBeInTheDocument();
       const bell = screen.getByRole("button", {
         name: COPY.attention.bellLabel(0),
       });
@@ -1724,6 +1724,7 @@ describe("Shell", () => {
       expect(modeLink).toHaveAttribute("data-screen-icon-button", "true");
       expect(modeLink).toHaveAttribute("title", COPY.programs.enterManagement);
       expect(modeLink.textContent).toBe("");
+      expect(modeLink.querySelector("svg")).toHaveClass("lucide-briefcase");
       expect(within(header).getAllByRole("link")).toHaveLength(1);
     });
 
@@ -1759,6 +1760,7 @@ describe("Shell", () => {
       expect(modeLink).toHaveAttribute("href", "/programs");
       expect(modeLink).toHaveAttribute("data-screen-icon-button", "true");
       expect(modeLink.textContent).toBe("");
+      expect(modeLink.querySelector("svg")).toHaveClass("lucide-user-round");
     });
   });
 

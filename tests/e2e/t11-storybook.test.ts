@@ -269,7 +269,7 @@ test("Storybook Messages keeps global brand and local H1 across W7", async ({
   ).toHaveCount(0);
 });
 
-test("Storybook management Account Directory keeps identity and attention chrome across W7", async ({
+test("Storybook management Account Directory keeps brand and attention chrome across W7", async ({
   page,
 }) => {
   await page.goto(story(STORIES.accountDirectory));
@@ -278,11 +278,14 @@ test("Storybook management Account Directory keeps identity and attention chrome
   const header = page.locator("header[data-shell-header]");
   await expect(header).toBeVisible();
   await expect(
-    header.getByText("T07.1 Storybook Manager", { exact: true })
+    header.getByText(COPY.shell.shortMark, { exact: true })
   ).toBeVisible();
   await expect(
+    header.getByText("T07.1 Storybook Manager", { exact: true })
+  ).toHaveCount(0);
+  await expect(
     header.getByText("T07.1 synthetic manager", { exact: true })
-  ).toBeVisible();
+  ).toHaveCount(0);
   const attentionButton = header.locator('button[aria-haspopup="dialog"]');
   await expect(attentionButton).toHaveCount(1);
   await expect(attentionButton).toBeVisible();

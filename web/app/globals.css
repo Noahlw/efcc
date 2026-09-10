@@ -324,15 +324,6 @@
   gap: 4px;
 }
 
-.shell-identity {
-  display: grid;
-  min-width: 0;
-  max-width: min(46vw, 220px);
-  justify-items: end;
-  gap: 1px;
-  text-align: right;
-}
-
 .screen-search-input {
   border-color: var(--screen-line-strong);
   background: var(--screen-surface);

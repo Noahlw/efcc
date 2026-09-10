@@ -1,6 +1,6 @@
 "use client";
 
-import { Bell, Briefcase } from "lucide-react";
+import { Bell, Briefcase, UserRound } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
@@ -47,12 +47,6 @@ export const ShellHeader = ({
   const modeHref =
     currentMode === "management" ? "/programs" : "/programs?mode=management";
   const showModeControl = isPrograms && isManagement;
-  const displayName = bootstrap.profile.name || bootstrap.profile.username;
-  const identityLabel =
-    Array.isArray(bootstrap?.profile?.identities) &&
-    bootstrap.profile.identities.length > 0
-      ? bootstrap.profile.identities.map((entry) => entry.label).join("、")
-      : "會友基礎";
   const unreadNoticeCount = attentionData.notices.filter(
     (notice) => notice.unread
   ).length;
@@ -70,17 +64,6 @@ export const ShellHeader = ({
         </div>
 
         <div className="shell-actions">
-          {isManagement ? (
-            <div className="shell-identity">
-              <span className="overflow-hidden max-w-[min(28vw,220px)] text-[var(--ink)] text-[0.9rem] font-extrabold truncate">
-                {displayName}
-              </span>
-              <span className="text-[var(--ink-muted)] text-xs font-[650] whitespace-nowrap">
-                {identityLabel}
-              </span>
-            </div>
-          ) : null}
-
           {showModeControl ? (
             <ScreenIconButton
               asChild
@@ -96,7 +79,11 @@ export const ShellHeader = ({
               }
             >
               <Link href={modeHref}>
-                <Briefcase aria-hidden="true" />
+                {currentMode === "management" ? (
+                  <UserRound aria-hidden="true" />
+                ) : (
+                  <Briefcase aria-hidden="true" />
+                )}
               </Link>
             </ScreenIconButton>
           ) : null}

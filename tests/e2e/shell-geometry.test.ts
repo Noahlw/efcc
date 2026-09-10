@@ -139,7 +139,7 @@ test("shell critical anchors render at the pinned width with no overflow or obst
     page.locator('output[role="status"][aria-live="polite"]')
   ).toHaveCount(1);
 
-  // Shell header present (Staff role renders identity + bell).
+  // Shell header present for the brand-first shell.
   const header = page.locator("header[data-shell-header]");
   await expect(header).toBeVisible();
 

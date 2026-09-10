@@ -275,7 +275,6 @@ const BoundaryFrame = ({
 const ManagementPanel = ({
   projection,
   intent,
-  onParticipant,
   onRecoverParticipant,
   onOpenProgram,
   onTaskChange,
@@ -287,7 +286,6 @@ const ManagementPanel = ({
 }: {
   projection: ProgramsManagementAccess;
   intent: ProgramsIntent;
-  onParticipant: () => void;
   onRecoverParticipant: () => void;
   onOpenProgram: (programId: string, created?: boolean) => void;
   onTaskChange: (task: ProgramsTask | null, eventId?: string | null) => void;
@@ -446,14 +444,6 @@ const ManagementPanel = ({
         {COPY.programs.managementBoundaryHint}
       </p>
       {intent.task === "notifications" && notificationSurface}
-      <Button
-        variant="outline"
-        className="h-auto min-h-11 w-fit rounded-[var(--radius-sm)] border-[var(--line-strong)] bg-[var(--surface-raised)] px-3 py-2 text-[var(--ink)] whitespace-normal wrap-anywhere hover:bg-[var(--surface)] focus-visible:ring-3 focus-visible:ring-[var(--focus)]"
-        type="button"
-        onClick={onParticipant}
-      >
-        {COPY.programs.enterParticipant}
-      </Button>
       {intent.task === "notifications" ? null : intent.programId ? (
         <WorkspaceRouteProvider
           value={{
@@ -591,7 +581,6 @@ const ProgramsBoundaryBody = ({
         onDirectoryQueryChange={onDirectoryQueryChange}
         directoryFocusProgramId={directoryFocusProgramId}
         intent={intent}
-        onParticipant={() => navigateMode("participant")}
         onRecoverParticipant={() => navigateMode("participant", true)}
         onOpenProgram={openManagementProgram}
         onTaskChange={navigateManagementTask}
