@@ -24,31 +24,12 @@ import type {
   ProgramInput,
   ProgramPatch,
 } from "@/lib/programs/program-api";
-
-const styles = {
-  workspaceTask: "grid min-w-0 gap-4",
-  workspaceHeading:
-    "m-0 min-w-0 text-lg font-extrabold leading-6 tracking-[-0.02em] [overflow-wrap:anywhere]",
-  programDetailMuted:
-    "m-0 text-sm leading-6 text-[var(--ink-muted)] [overflow-wrap:anywhere]",
-  secondaryButton:
-    "w-fit border border-[var(--line-strong)] bg-transparent text-[var(--ink)] hover:bg-[var(--surface)]",
-  panelError:
-    "grid min-w-0 gap-2 rounded-lg border border-[var(--error-border)] bg-[var(--error-surface)] p-3 text-[var(--error)] [overflow-wrap:anywhere]",
-  panelNotice:
-    "block rounded-lg border border-[var(--success-border)] bg-[var(--success-surface)] p-3 text-[var(--ink)] [overflow-wrap:anywhere]",
-  form: "grid min-w-0 gap-4",
-  field: "grid min-w-0 gap-1.5",
-  fieldLabel: "grid min-w-0 gap-1.5 text-sm font-bold text-[var(--ink)]",
-  select:
-    "min-w-0 w-full border border-[var(--line-strong)] bg-[var(--surface-raised)] text-base text-[var(--ink)]",
-  input:
-    "min-w-0 border-[var(--line-strong)] bg-[var(--surface-raised)] text-base",
-  textarea:
-    "min-w-0 border-[var(--line-strong)] bg-[var(--surface-raised)] text-base",
-  workspaceActions: "flex min-w-0 flex-wrap items-center gap-3",
-  button: "w-fit bg-[var(--accent)] text-white hover:bg-[var(--accent-deep)]",
-} as const;
+import {
+  ScreenEditor,
+  ScreenField,
+  ScreenSection,
+  ScreenState,
+} from "@/lib/screen-foundations";
 
 interface FormValues {
   departmentId: string;
@@ -201,258 +182,277 @@ export const ProgramForm = ({
 
   if (!initial && departments.length === 0) {
     return (
-      <section className={styles.workspaceTask} aria-live="polite">
-        <h3 className={styles.workspaceHeading}>
-          {COPY.programs.programCreateTitle}
-        </h3>
-        <p className={styles.programDetailMuted}>
+      <ScreenSection
+        className="min-w-0"
+        title={COPY.programs.programCreateTitle}
+        headingId="program-form-title"
+        aria-live="polite"
+      >
+        <p className="m-0 wrap-anywhere text-sm leading-6 text-[var(--screen-muted)]">
           {COPY.programs.programCreateUnavailable}
         </p>
         {onCancel && (
           <Button
-            className={styles.secondaryButton}
+            variant="outline"
+            className="h-auto w-fit whitespace-normal border-[var(--screen-line-strong)] bg-transparent text-[var(--screen-ink)] hover:bg-[var(--screen-surface-soft)] hover:text-[var(--screen-ink)]"
             type="button"
             onClick={onCancel}
           >
             {COPY.programs.cancelEdit}
           </Button>
         )}
-      </section>
+      </ScreenSection>
     );
   }
 
   return (
-    <section
-      className={styles.workspaceTask}
+    <ScreenSection
+      className="min-w-0"
+      title={
+        initial ? COPY.programs.programEdit : COPY.programs.programCreateTitle
+      }
+      headingId="program-form-title"
       aria-labelledby="program-form-title"
       aria-busy={busy}
     >
-      <h3 id="program-form-title" className={styles.workspaceHeading}>
-        {initial ? COPY.programs.programEdit : COPY.programs.programCreateTitle}
-      </h3>
-      <p className={styles.programDetailMuted}>
+      <p className="m-0 wrap-anywhere text-sm leading-6 text-[var(--screen-muted)]">
         {initial
           ? COPY.programs.programEditLead
           : COPY.programs.programCreateLead}
       </p>
-      {formError && (
-        <Alert className={styles.panelError} variant="destructive">
-          {formError}
+      {formError && <ScreenState kind="error" title={formError} />}
+      {notice && (
+        <Alert tone="success" announcement="polite">
+          {notice}
         </Alert>
       )}
-      {notice && <output className={styles.panelNotice}>{notice}</output>}
-      <form className={styles.form} onSubmit={submit}>
+      <ScreenEditor className="min-w-0" onSubmit={submit}>
         {!initial && (
-          <div className={styles.field}>
-            <label className={styles.fieldLabel}>
-              {COPY.programs.workspaceDepartment}
-              <Select
-                value={values.departmentId}
-                onValueChange={(value) => update("departmentId", value)}
-                disabled={busy}
+          <ScreenField
+            htmlFor="program-form-department"
+            label={COPY.programs.workspaceDepartment}
+          >
+            <Select
+              value={values.departmentId}
+              onValueChange={(value) => update("departmentId", value)}
+              disabled={busy}
+            >
+              <SelectTrigger
+                id="program-form-department"
+                className="min-w-0 w-full border-[var(--screen-line-strong)] bg-[var(--screen-surface)] text-base text-[var(--screen-ink)]"
+                aria-label={COPY.programs.workspaceDepartment}
               >
-                <SelectTrigger
-                  className={styles.select}
-                  aria-label={COPY.programs.workspaceDepartment}
-                >
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {departments
-                    .filter(({ capabilities }) => capabilities.manage)
-                    .map((department) => (
-                      <SelectItem
-                        key={department.department_id}
-                        value={department.department_id}
-                      >
-                        {department.name} · {department.code}
-                      </SelectItem>
-                    ))}
-                </SelectContent>
-              </Select>
-            </label>
-          </div>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {departments
+                  .filter(({ capabilities }) => capabilities.manage)
+                  .map((department) => (
+                    <SelectItem
+                      key={department.department_id}
+                      value={department.department_id}
+                    >
+                      {department.name} · {department.code}
+                    </SelectItem>
+                  ))}
+              </SelectContent>
+            </Select>
+          </ScreenField>
         )}
-        <div className={styles.field}>
-          <label className={styles.fieldLabel}>
-            {COPY.programs.programName}
-            <Input
-              className={styles.input}
-              value={values.name}
-              onChange={(event) => update("name", event.target.value)}
-              required
-              autoComplete="off"
-              disabled={busy}
-            />
-          </label>
-        </div>
-        <div className={styles.field}>
-          <label className={styles.fieldLabel}>
-            {initial
+        <ScreenField
+          htmlFor="program-form-name"
+          label={COPY.programs.programName}
+        >
+          <Input
+            id="program-form-name"
+            className="min-w-0 border-[var(--screen-line-strong)] bg-[var(--screen-surface)] text-base text-[var(--screen-ink)]"
+            value={values.name}
+            onChange={(event) => update("name", event.target.value)}
+            required
+            autoComplete="off"
+            disabled={busy}
+          />
+        </ScreenField>
+        <ScreenField
+          htmlFor="program-form-description"
+          label={
+            initial
               ? COPY.programs.programDescription
-              : COPY.programs.programPurpose}
-            <Textarea
-              className={styles.textarea}
-              value={values.description}
-              onChange={(event) => update("description", event.target.value)}
-              rows={3}
-              disabled={busy}
-              required={!initial}
-            />
-          </label>
-        </div>
-        <div className={styles.field}>
-          <label className={styles.fieldLabel}>
-            {COPY.programs.programCategory}
-            <Input
-              className={styles.input}
-              value={values.category}
-              onChange={(event) => update("category", event.target.value)}
-              autoComplete="off"
-              disabled={busy}
-            />
-          </label>
-        </div>
-        <div className={styles.field}>
-          <label className={styles.fieldLabel}>
-            {COPY.programs.behaviorType}
-            <Select
-              value={values.behaviorType}
-              onValueChange={(value) =>
-                update("behaviorType", value as Program["behavior_type"])
-              }
-              disabled={busy || initial !== undefined}
+              : COPY.programs.programPurpose
+          }
+        >
+          <Textarea
+            id="program-form-description"
+            className="min-w-0 border-[var(--screen-line-strong)] bg-[var(--screen-surface)] text-base text-[var(--screen-ink)]"
+            value={values.description}
+            onChange={(event) => update("description", event.target.value)}
+            rows={3}
+            disabled={busy}
+            required={!initial}
+          />
+        </ScreenField>
+        <ScreenField
+          htmlFor="program-form-category"
+          label={COPY.programs.programCategory}
+        >
+          <Input
+            id="program-form-category"
+            className="min-w-0 border-[var(--screen-line-strong)] bg-[var(--screen-surface)] text-base text-[var(--screen-ink)]"
+            value={values.category}
+            onChange={(event) => update("category", event.target.value)}
+            autoComplete="off"
+            disabled={busy}
+          />
+        </ScreenField>
+        <ScreenField
+          htmlFor="program-form-behavior"
+          label={COPY.programs.behaviorType}
+        >
+          <Select
+            value={values.behaviorType}
+            onValueChange={(value) =>
+              update("behaviorType", value as Program["behavior_type"])
+            }
+            disabled={busy || initial !== undefined}
+          >
+            <SelectTrigger
+              id="program-form-behavior"
+              className="min-w-0 w-full border-[var(--screen-line-strong)] bg-[var(--screen-surface)] text-base text-[var(--screen-ink)]"
+              aria-label={COPY.programs.behaviorType}
             >
-              <SelectTrigger
-                className={styles.select}
-                aria-label={COPY.programs.behaviorType}
-              >
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="Recurring">
-                  {COPY.programs.behaviorRecurring}
-                </SelectItem>
-                <SelectItem value="OneOff">
-                  {COPY.programs.behaviorOneOff}
-                </SelectItem>
-              </SelectContent>
-            </Select>
-          </label>
-        </div>
-        <div className={styles.field}>
-          <label className={styles.fieldLabel}>
-            {COPY.programs.programLifecycle}
-            <Select
-              value={values.lifecycle}
-              onValueChange={(value) =>
-                update("lifecycle", value as Program["lifecycle"])
-              }
-              disabled={busy || initial?.lifecycle === "Archived"}
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="Recurring">
+                {COPY.programs.behaviorRecurring}
+              </SelectItem>
+              <SelectItem value="OneOff">
+                {COPY.programs.behaviorOneOff}
+              </SelectItem>
+            </SelectContent>
+          </Select>
+        </ScreenField>
+        <ScreenField
+          htmlFor="program-form-lifecycle"
+          label={COPY.programs.programLifecycle}
+        >
+          <Select
+            value={values.lifecycle}
+            onValueChange={(value) =>
+              update("lifecycle", value as Program["lifecycle"])
+            }
+            disabled={busy || initial?.lifecycle === "Archived"}
+          >
+            <SelectTrigger
+              id="program-form-lifecycle"
+              className="min-w-0 w-full border-[var(--screen-line-strong)] bg-[var(--screen-surface)] text-base text-[var(--screen-ink)]"
+              aria-label={COPY.programs.programLifecycle}
             >
-              <SelectTrigger
-                className={styles.select}
-                aria-label={COPY.programs.programLifecycle}
-              >
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {(!initial || initial.lifecycle === "Draft") && (
-                  <SelectItem value="Draft">
-                    {COPY.programs.lifecycleDraft}
-                  </SelectItem>
-                )}
-                {(!initial ||
-                  initial.lifecycle === "Draft" ||
-                  initial.lifecycle === "Active") && (
-                  <SelectItem
-                    value="Active"
-                    disabled={
-                      busy ||
-                      (initial === undefined
-                        ? !canActivate
-                        : initial.lifecycle !== "Active" && !canActivate)
-                    }
-                  >
-                    {COPY.programs.lifecycleActive}
-                  </SelectItem>
-                )}
-                {(initial?.lifecycle === "Active" ||
-                  initial?.lifecycle === "Archived") && (
-                  <SelectItem value="Archived">
-                    {COPY.programs.lifecycleArchived}
-                  </SelectItem>
-                )}
-              </SelectContent>
-            </Select>
-          </label>
-        </div>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {(!initial || initial.lifecycle === "Draft") && (
+                <SelectItem value="Draft">
+                  {COPY.programs.lifecycleDraft}
+                </SelectItem>
+              )}
+              {(!initial ||
+                initial.lifecycle === "Draft" ||
+                initial.lifecycle === "Active") && (
+                <SelectItem
+                  value="Active"
+                  disabled={
+                    busy ||
+                    (initial === undefined
+                      ? !canActivate
+                      : initial.lifecycle !== "Active" && !canActivate)
+                  }
+                >
+                  {COPY.programs.lifecycleActive}
+                </SelectItem>
+              )}
+              {(initial?.lifecycle === "Active" ||
+                initial?.lifecycle === "Archived") && (
+                <SelectItem value="Archived">
+                  {COPY.programs.lifecycleArchived}
+                </SelectItem>
+              )}
+            </SelectContent>
+          </Select>
+        </ScreenField>
         {initial === undefined && !canActivate && (
-          <p className={styles.programDetailMuted}>
+          <p className="m-0 wrap-anywhere text-sm leading-6 text-[var(--screen-muted)]">
             {COPY.programs.programCreateDraftOnlyHint}
           </p>
         )}
-        <div className={styles.field}>
-          <label className={styles.fieldLabel}>
-            {COPY.programs.discoverabilityListed}
-            <Select
-              value={values.discoverability}
-              onValueChange={(value) =>
-                update("discoverability", value as Program["discoverability"])
-              }
-              disabled={busy}
+        <ScreenField
+          htmlFor="program-form-discoverability"
+          label={COPY.programs.discoverabilityListed}
+        >
+          <Select
+            value={values.discoverability}
+            onValueChange={(value) =>
+              update("discoverability", value as Program["discoverability"])
+            }
+            disabled={busy}
+          >
+            <SelectTrigger
+              id="program-form-discoverability"
+              className="min-w-0 w-full border-[var(--screen-line-strong)] bg-[var(--screen-surface)] text-base text-[var(--screen-ink)]"
+              aria-label={COPY.programs.discoverabilityListed}
             >
-              <SelectTrigger
-                className={styles.select}
-                aria-label={COPY.programs.discoverabilityListed}
-              >
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="Unlisted">
-                  {COPY.programs.discoverabilityUnlisted}
-                </SelectItem>
-                <SelectItem value="Listed">
-                  {COPY.programs.discoverabilityListed}
-                </SelectItem>
-              </SelectContent>
-            </Select>
-          </label>
-        </div>
-        <div className={styles.field}>
-          <label className={styles.fieldLabel}>
-            {COPY.programs.programEnrollmentMode}
-            <Select
-              value={values.enrollmentMode}
-              onValueChange={(value) =>
-                update("enrollmentMode", value as Program["enrollment_mode"])
-              }
-              disabled={busy}
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="Unlisted">
+                {COPY.programs.discoverabilityUnlisted}
+              </SelectItem>
+              <SelectItem value="Listed">
+                {COPY.programs.discoverabilityListed}
+              </SelectItem>
+            </SelectContent>
+          </Select>
+        </ScreenField>
+        <ScreenField
+          htmlFor="program-form-enrollment-mode"
+          label={COPY.programs.programEnrollmentMode}
+        >
+          <Select
+            value={values.enrollmentMode}
+            onValueChange={(value) =>
+              update("enrollmentMode", value as Program["enrollment_mode"])
+            }
+            disabled={busy}
+          >
+            <SelectTrigger
+              id="program-form-enrollment-mode"
+              className="min-w-0 w-full border-[var(--screen-line-strong)] bg-[var(--screen-surface)] text-base text-[var(--screen-ink)]"
+              aria-label={COPY.programs.programEnrollmentMode}
             >
-              <SelectTrigger
-                className={styles.select}
-                aria-label={COPY.programs.programEnrollmentMode}
-              >
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="MemberRequest">
-                  {COPY.programs.enrollmentModeMemberRequest}
-                </SelectItem>
-                <SelectItem value="ManagerOnly">
-                  {COPY.programs.enrollmentModeManagerOnly}
-                </SelectItem>
-              </SelectContent>
-            </Select>
-          </label>
-        </div>
-        <div className={styles.workspaceActions}>
-          <Button className={styles.button} type="submit" disabled={busy}>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="MemberRequest">
+                {COPY.programs.enrollmentModeMemberRequest}
+              </SelectItem>
+              <SelectItem value="ManagerOnly">
+                {COPY.programs.enrollmentModeManagerOnly}
+              </SelectItem>
+            </SelectContent>
+          </Select>
+        </ScreenField>
+        <div className="flex min-w-0 flex-wrap items-center gap-3">
+          <Button
+            className="h-auto w-fit whitespace-normal bg-[var(--screen-accent)] text-white hover:bg-[var(--screen-accent-deep)]"
+            type="submit"
+            disabled={busy}
+          >
             {busy ? COPY.programs.submitting : COPY.programs.saveProgram}
           </Button>
           {onCancel && (
             <Button
-              className={styles.secondaryButton}
+              variant="outline"
+              className="h-auto w-fit whitespace-normal border-[var(--screen-line-strong)] bg-transparent text-[var(--screen-ink)] hover:bg-[var(--screen-surface-soft)] hover:text-[var(--screen-ink)]"
               type="button"
               onClick={onCancel}
               disabled={busy}
@@ -461,7 +461,7 @@ export const ProgramForm = ({
             </Button>
           )}
         </div>
-      </form>
-    </section>
+      </ScreenEditor>
+    </ScreenSection>
   );
 };

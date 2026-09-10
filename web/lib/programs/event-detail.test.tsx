@@ -124,6 +124,7 @@ describe("EVT-01 event detail", () => {
     ).toBeInTheDocument();
     expect(mocks.getEvent).toHaveBeenCalledWith("program-1", "event-1");
   });
+
   test("renders the server-projected schedule exception", async () => {
     const exception = {
       exception_id: "exception-1",
@@ -720,6 +721,7 @@ describe("EVT-01 event detail", () => {
       screen.findByRole("heading", { name: "迎新聚會" })
     ).resolves.toBeInTheDocument();
   });
+
   test("management recovery preserves the scoped Program return", async () => {
     mocks.getEvent.mockRejectedValue(
       new RpcError({ code: "NOT_FOUND", status: 404, title: "Not found" })
@@ -832,7 +834,7 @@ describe("EVT-01 event detail", () => {
     expect(icons).toHaveLength(2);
     for (const icon of icons) {
       expect(icon).toHaveAttribute("viewBox", "0 0 24 24");
-      expect(icon.querySelector("[stroke-width='1.8']")).not.toBeNull();
+      expect(icon).toHaveAttribute("stroke-width", "1.8");
     }
     expect(
       screen.queryByText(COPY.programs.detailEventTime)

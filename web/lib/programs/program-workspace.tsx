@@ -1,14 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { FormEvent } from "react";
+import type { FormEvent, MouseEvent } from "react";
 
-import { Alert } from "@/components/ui/alert";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Skeleton } from "@/components/ui/skeleton";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { RpcError } from "@/lib/api";
 import { COPY, errorCopyFor } from "@/lib/copy";
@@ -28,6 +24,16 @@ import type {
   Program,
   ProgramEvent,
 } from "@/lib/programs/program-api";
+import {
+  ScreenCard,
+  ScreenEditor,
+  ScreenField,
+  ScreenHeader,
+  ScreenLoadingRows,
+  ScreenSection,
+  ScreenState,
+  ScreenStatus,
+} from "@/lib/screen-foundations";
 import { rememberDeepLink } from "@/lib/session";
 
 import { EventDetail } from "./event-detail";
@@ -47,52 +53,6 @@ import {
   type WorkspaceSummaryRead,
   type WorkspaceSummaryState,
 } from "./workspace-task";
-
-const styles = {
-  workspaceSection: "grid min-w-0 gap-4",
-  programDetailBack:
-    "min-h-11 min-w-11 w-fit rounded-lg border border-[var(--line-strong)] bg-transparent px-4 py-2 text-[var(--ink)] whitespace-normal hover:bg-[var(--surface)]",
-  workspaceHeading:
-    "m-0 min-w-0 text-lg font-extrabold leading-6 tracking-[-0.02em] [overflow-wrap:anywhere]",
-  panelNotice:
-    "block rounded-lg border border-[var(--success-border)] bg-[var(--success-surface)] p-3 text-[var(--ink)] [overflow-wrap:anywhere]",
-  panelError:
-    "grid min-w-0 gap-2 rounded-lg border border-[var(--error-border)] bg-[var(--error-surface)] p-3 text-[var(--error)] [overflow-wrap:anywhere]",
-  workspaceFacts:
-    "grid min-w-0 gap-3 rounded-lg border border-[var(--line)] bg-[var(--surface)] p-4 [overflow-wrap:anywhere]",
-  secondaryButton:
-    "min-h-11 min-w-11 w-fit rounded-lg border border-[var(--line-strong)] bg-transparent px-4 py-2 text-[var(--ink)] whitespace-normal hover:bg-[var(--surface)]",
-  workspaceTask: "grid min-w-0 gap-4",
-  form: "grid min-w-0 gap-4",
-  field: "grid min-w-0 gap-1.5",
-  fieldLabel: "grid min-w-0 gap-1.5 text-sm font-bold text-[var(--ink)]",
-  input:
-    "min-h-11 min-w-0 rounded-lg border-[var(--line-strong)] bg-[var(--surface-raised)] text-base",
-  textarea:
-    "min-h-11 min-w-0 rounded-lg border-[var(--line-strong)] bg-[var(--surface-raised)] text-base",
-  workspaceActions: "flex min-w-0 flex-wrap items-center gap-3",
-  button:
-    "min-h-11 min-w-11 w-fit rounded-lg bg-[var(--accent)] px-4 py-2 text-white whitespace-normal hover:bg-[var(--accent-deep)]",
-  boundaryState:
-    "grid min-w-0 gap-3 rounded-lg border border-[var(--line)] bg-[var(--surface)] p-5 [overflow-wrap:anywhere]",
-  boundaryError:
-    "grid min-w-0 gap-3 rounded-lg border border-[var(--error-border)] bg-[var(--error-surface)] p-4 text-[var(--error)] [overflow-wrap:anywhere]",
-  boundaryTitle:
-    "m-0 min-w-0 text-xl font-extrabold leading-tight tracking-[-0.02em] [overflow-wrap:anywhere]",
-  retry:
-    "min-h-11 min-w-11 w-fit rounded-lg border border-[var(--line-strong)] bg-transparent px-4 py-2 text-[var(--ink)] whitespace-normal hover:bg-[var(--surface)]",
-  managementWorkspace: "grid min-w-0 gap-4",
-  workspaceHeader:
-    "flex min-w-0 flex-wrap items-start justify-between gap-3 border-b border-[var(--line)] pb-3",
-  workspaceHeaderMain: "flex min-w-0 flex-1 flex-wrap items-center gap-3",
-  workspaceHeaderMeta: "flex min-w-0 flex-wrap items-center gap-2",
-  directoryStatus: "shrink-0 whitespace-normal",
-  workspaceDepartmentBadge: "min-w-0 max-w-full whitespace-normal",
-  directoryStatusActive: "border-transparent bg-[var(--accent)] text-white",
-  directoryStatusDraft: "border-[var(--line-strong)] bg-[var(--surface)]",
-  directoryStatusArchived:
-    "border-[var(--line-strong)] bg-[var(--surface)] text-[var(--ink-muted)]",
-} as const;
 
 export interface ProgramWorkspaceProps {
   programId: string;
@@ -184,6 +144,10 @@ function lifecycleLabel(value: Program["lifecycle"]): string {
       : COPY.programs.lifecycleArchived;
 }
 
+function lifecycleTone(value: Program["lifecycle"]): "success" | "neutral" {
+  return value === "Active" ? "success" : "neutral";
+}
+
 function behaviorLabel(value: Program["behavior_type"]): string {
   return value === "Recurring"
     ? COPY.programs.detailBehaviorRecurring
@@ -240,74 +204,72 @@ const CourseFacts = ({
   }, []);
 
   return (
-    <section
-      className={styles.workspaceSection}
-      aria-labelledby="programs-workspace-facts-title"
+    <ScreenSection
+      title={COPY.programs.courseFacts}
+      headingId="programs-workspace-facts-title"
+      headingRef={headingRef}
     >
       <div className="flex min-w-0 flex-wrap items-center gap-2">
         <Button
           type="button"
-          className={styles.programDetailBack}
+          className="w-fit border-[var(--screen-line-strong)] bg-transparent text-[var(--screen-ink)] whitespace-normal hover:bg-[var(--screen-surface-soft)]"
           onClick={onBack}
         >
           {COPY.programs.backToOverview}
         </Button>
-        <h4
-          id="programs-workspace-facts-title"
-          className={styles.workspaceHeading}
-          ref={headingRef}
-          tabIndex={-1}
-        >
-          {COPY.programs.courseFacts}
-        </h4>
       </div>
       {notice !== null && (
-        <output className={styles.panelNotice} aria-live="polite">
+        <output
+          className="block rounded-[var(--screen-radius-control)] border border-[var(--screen-success)] bg-[var(--screen-success-surface)] p-3 text-[var(--screen-ink)] [overflow-wrap:anywhere]"
+          aria-live="polite"
+        >
           {notice}
         </output>
       )}
-      <dl className={styles.workspaceFacts}>
-        <div>
-          <dt>{COPY.programs.factsName}</dt>
-          <dd>{program.name}</dd>
-        </div>
-        <div>
-          <dt>{COPY.programs.factsDepartment}</dt>
-          <dd>{department?.name ?? "—"}</dd>
-        </div>
-        <div>
-          <dt>{COPY.programs.factsPurpose}</dt>
-          <dd>
-            {program.description ?? COPY.programs.programDescriptionEmpty}
-          </dd>
-        </div>
-        <div>
-          <dt>{COPY.programs.factsLifecycle}</dt>
-          <dd>{lifecycleLabel(program.lifecycle)}</dd>
-        </div>
-        <div>
-          <dt>{COPY.programs.factsDiscoverability}</dt>
-          <dd>{discoverabilityLabel(program.discoverability)}</dd>
-        </div>
-        <div>
-          <dt>{COPY.programs.factsEnrollmentMode}</dt>
-          <dd>{enrollmentLabel(program.enrollment_mode)}</dd>
-        </div>
-        <div>
-          <dt>{COPY.programs.workspaceBehavior}</dt>
-          <dd>{behaviorLabel(program.behavior_type)}</dd>
-        </div>
-      </dl>
+      <ScreenCard>
+        <dl className="grid min-w-0 gap-3 [overflow-wrap:anywhere]">
+          <div>
+            <dt>{COPY.programs.factsName}</dt>
+            <dd>{program.name}</dd>
+          </div>
+          <div>
+            <dt>{COPY.programs.factsDepartment}</dt>
+            <dd>{department?.name ?? "—"}</dd>
+          </div>
+          <div>
+            <dt>{COPY.programs.factsPurpose}</dt>
+            <dd>
+              {program.description ?? COPY.programs.programDescriptionEmpty}
+            </dd>
+          </div>
+          <div>
+            <dt>{COPY.programs.factsLifecycle}</dt>
+            <dd>{lifecycleLabel(program.lifecycle)}</dd>
+          </div>
+          <div>
+            <dt>{COPY.programs.factsDiscoverability}</dt>
+            <dd>{discoverabilityLabel(program.discoverability)}</dd>
+          </div>
+          <div>
+            <dt>{COPY.programs.factsEnrollmentMode}</dt>
+            <dd>{enrollmentLabel(program.enrollment_mode)}</dd>
+          </div>
+          <div>
+            <dt>{COPY.programs.workspaceBehavior}</dt>
+            <dd>{behaviorLabel(program.behavior_type)}</dd>
+          </div>
+        </dl>
+      </ScreenCard>
       {program.capabilities.manage && (
         <Button
           type="button"
-          className={styles.secondaryButton}
+          className="w-fit border-[var(--screen-line-strong)] bg-transparent text-[var(--screen-ink)] whitespace-normal hover:bg-[var(--screen-surface-soft)]"
           onClick={onEdit}
         >
           {COPY.programs.editTitle}
         </Button>
       )}
-    </section>
+    </ScreenSection>
   );
 };
 
@@ -373,45 +335,36 @@ const CourseEdit = ({
   const invalidPurpose = formError !== null && !purpose.trim();
 
   return (
-    <section
-      className={styles.workspaceTask}
-      aria-labelledby="programs-workspace-course-edit-title"
+    <ScreenSection
+      title={COPY.programs.editTitle}
+      headingId="programs-workspace-course-edit-title"
+      headingRef={headingRef}
     >
       <div className="flex min-w-0 flex-wrap items-center gap-2">
         <Button
           type="button"
-          className={styles.programDetailBack}
+          className="w-fit border-[var(--screen-line-strong)] bg-transparent text-[var(--screen-ink)] whitespace-normal hover:bg-[var(--screen-surface-soft)]"
           onClick={onBack}
           aria-label={COPY.programs.backToOverview}
         >
           {COPY.programs.backToOverview}
         </Button>
-        <h4
-          id="programs-workspace-course-edit-title"
-          className={styles.workspaceHeading}
-          ref={headingRef}
-          tabIndex={-1}
-        >
-          {COPY.programs.editTitle}
-        </h4>
       </div>
       {formError !== null && (
-        <Alert
-          className={styles.panelError}
+        <ScreenState
           id="programs-workspace-course-edit-error"
-          variant="destructive"
-        >
-          {formError}
-        </Alert>
+          kind="error"
+          title={formError}
+        />
       )}
-      <form className={styles.form} onSubmit={submit} noValidate>
-        <div className={styles.field}>
-          <label className={styles.fieldLabel} htmlFor="programs-course-name">
-            {COPY.programs.editNameLabel}
-          </label>
+      <ScreenEditor onSubmit={submit} noValidate>
+        <ScreenField
+          htmlFor="programs-course-name"
+          label={COPY.programs.editNameLabel}
+        >
           <Input
             id="programs-course-name"
-            className={styles.input}
+            className="min-w-0 border-[var(--screen-line-strong)] bg-[var(--screen-surface)] text-base"
             value={name}
             onChange={(event) => setName(event.target.value)}
             required
@@ -423,17 +376,14 @@ const CourseEdit = ({
                 : undefined
             }
           />
-        </div>
-        <div className={styles.field}>
-          <label
-            className={styles.fieldLabel}
-            htmlFor="programs-course-purpose"
-          >
-            {COPY.programs.editPurposeLabel}
-          </label>
+        </ScreenField>
+        <ScreenField
+          htmlFor="programs-course-purpose"
+          label={COPY.programs.editPurposeLabel}
+        >
           <Textarea
             id="programs-course-purpose"
-            className={styles.textarea}
+            className="min-w-0 border-[var(--screen-line-strong)] bg-[var(--screen-surface)] text-base"
             value={purpose}
             onChange={(event) => setPurpose(event.target.value)}
             rows={4}
@@ -446,14 +396,18 @@ const CourseEdit = ({
                 : undefined
             }
           />
-        </div>
-        <div className={styles.workspaceActions}>
-          <Button className={styles.button} type="submit" disabled={busy}>
+        </ScreenField>
+        <div className="flex min-w-0 flex-wrap items-center gap-3">
+          <Button
+            className="w-fit bg-[var(--screen-accent)] text-white whitespace-normal hover:bg-[var(--screen-accent-deep)]"
+            type="submit"
+            disabled={busy}
+          >
             {busy ? COPY.programs.submitting : COPY.programs.saveCourse}
           </Button>
         </div>
-      </form>
-    </section>
+      </ScreenEditor>
+    </ScreenSection>
   );
 };
 export const ProgramWorkspace = ({
@@ -654,47 +608,50 @@ export const ProgramWorkspace = ({
 
   if (state.kind === "loading") {
     return (
-      <output
+      <ScreenLoadingRows
         id="programs-workspace-state"
         tabIndex={-1}
-        className={styles.boundaryState}
-        aria-busy="true"
-      >
-        {COPY.programs.workspaceLoading}
-        <Skeleton className="mt-3 h-8 w-full" aria-hidden="true" />
-      </output>
+        label={COPY.programs.workspaceLoading}
+        density="collection"
+      />
     );
   }
 
   if (state.kind === "error") {
     return (
-      <Alert
+      <ScreenState
         id="programs-workspace-state"
         tabIndex={-1}
-        className={styles.boundaryError}
-        variant="destructive"
-      >
-        <h3 className={styles.boundaryTitle}>
-          {state.failure === "forbidden"
-            ? COPY.programs.workspaceForbidden
-            : state.failure === "unavailable"
-              ? COPY.programs.workspaceUnavailable
-              : COPY.programs.workspaceLoadError}
-        </h3>
-        <p>{state.message}</p>
-        <div className={styles.workspaceActions}>
-          <Button className={styles.retry} type="button" onClick={retry}>
-            {COPY.programs.workspaceRetry}
-          </Button>
-          <Button
-            className={styles.secondaryButton}
-            type="button"
-            onClick={onBack}
-          >
-            {COPY.programs.workspaceBack}
-          </Button>
-        </div>
-      </Alert>
+        kind={state.failure === "forbidden" ? "forbidden" : "error"}
+        title={
+          <h2 className="m-0 wrap-anywhere text-base font-bold">
+            {state.failure === "forbidden"
+              ? COPY.programs.workspaceForbidden
+              : state.failure === "unavailable"
+                ? COPY.programs.workspaceUnavailable
+                : COPY.programs.workspaceLoadError}
+          </h2>
+        }
+        description={state.message}
+        action={
+          <div className="flex min-w-0 flex-wrap items-center gap-3">
+            <Button
+              className="w-fit bg-[var(--screen-accent)] text-white whitespace-normal hover:bg-[var(--screen-accent-deep)]"
+              type="button"
+              onClick={retry}
+            >
+              {COPY.programs.workspaceRetry}
+            </Button>
+            <Button
+              className="w-fit border-[var(--screen-line-strong)] bg-transparent text-[var(--screen-ink)] whitespace-normal hover:bg-[var(--screen-surface-soft)]"
+              type="button"
+              onClick={onBack}
+            >
+              {COPY.programs.workspaceBack}
+            </Button>
+          </div>
+        }
+      />
     );
   }
   const workspaceProgram = courseProgramOverride ?? state.program;
@@ -705,62 +662,109 @@ export const ProgramWorkspace = ({
     task === "settings"
       ? canAccessSettings
       : workspaceProgram.capabilities.manage;
+  const focusedSchedule = task === "schedule";
+
+  const handleWorkspaceBack = (event: MouseEvent<HTMLAnchorElement>) => {
+    if (
+      event.defaultPrevented ||
+      event.button !== 0 ||
+      event.metaKey ||
+      event.ctrlKey ||
+      event.shiftKey ||
+      event.altKey
+    ) {
+      return;
+    }
+    event.preventDefault();
+    if (focusedSchedule) {
+      onTaskChange("events");
+      return;
+    }
+    onBack();
+  };
+  const handleWorkspaceTaskChange = (
+    nextTask: ProgramsTask | null,
+    nextEventId?: string | null
+  ) => {
+    setCourseView("overview");
+    setCourseNotice(null);
+    if (nextEventId === undefined) {
+      onTaskChange(nextTask);
+    } else {
+      onTaskChange(nextTask, nextEventId);
+    }
+  };
 
   return (
     <section
-      className={styles.managementWorkspace}
+      className="grid min-w-0"
       aria-labelledby="programs-workspace-title"
     >
-      <Button
-        className={styles.programDetailBack}
-        type="button"
-        onClick={onBack}
-      >
-        {COPY.programs.workspaceBack}
-      </Button>
-      <header className={styles.workspaceHeader}>
-        <div className={styles.workspaceHeaderMain}>
-          <h3 id="programs-workspace-title" className={styles.boundaryTitle}>
-            {workspaceProgram.name}
-          </h3>
-          {task === undefined &&
-            courseView === "overview" &&
-            workspaceProgram.capabilities.manage && (
-              <Button
-                className={styles.button}
-                type="button"
-                onClick={openCourseEdit}
-              >
-                {COPY.programs.cockpitEditProgram}
-              </Button>
+      <ScreenHeader
+        headingId="programs-workspace-title"
+        level="child"
+        title={
+          focusedSchedule
+            ? COPY.programs.schedulePageTitle
+            : workspaceProgram.name
+        }
+        lead={
+          <>
+            <span>
+              {focusedSchedule
+                ? `${workspaceProgram.name} · ${state.department?.name ?? COPY.programs.workspaceDepartment}`
+                : state.department
+                  ? `${state.department.name} · ${state.department.code}`
+                  : COPY.programs.workspaceDepartment}
+            </span>
+            {!focusedSchedule && (
+              <span aria-hidden="true">
+                {` · ${behaviorLabel(workspaceProgram.behavior_type)}`}
+              </span>
             )}
-        </div>
-        <div className={styles.workspaceHeaderMeta}>
-          <Badge
-            className={`${styles.directoryStatus} ${styles.workspaceDepartmentBadge}`}
-            variant="outline"
-          >
-            {state.department
-              ? `${state.department.name} · ${state.department.code}`
-              : COPY.programs.workspaceDepartment}
-          </Badge>
-          <Badge
-            className={`${styles.directoryStatus} ${styles[`directoryStatus${workspaceProgram.lifecycle}`]}`}
-            variant={
-              workspaceProgram.lifecycle === "Active" ? "default" : "outline"
-            }
-          >
-            {lifecycleLabel(workspaceProgram.lifecycle)}
-          </Badge>
-        </div>
-      </header>
+          </>
+        }
+        backHref={buildProgramsHref({
+          mode: "management",
+          programId: focusedSchedule ? programId : null,
+          departmentId,
+          task: focusedSchedule ? "events" : null,
+          hash,
+        })}
+        backLabel={COPY.programs.workspaceBack}
+        onBack={handleWorkspaceBack}
+        status={
+          focusedSchedule ? undefined : (
+            <ScreenStatus tone={lifecycleTone(workspaceProgram.lifecycle)}>
+              {lifecycleLabel(workspaceProgram.lifecycle)}
+            </ScreenStatus>
+          )
+        }
+        action={
+          !focusedSchedule &&
+          task === undefined &&
+          courseView === "overview" &&
+          workspaceProgram.capabilities.manage ? (
+            <Button
+              className="w-fit bg-[var(--screen-accent)] text-white whitespace-normal hover:bg-[var(--screen-accent-deep)]"
+              type="button"
+              onClick={openCourseEdit}
+            >
+              {COPY.programs.cockpitEditProgram}
+            </Button>
+          ) : undefined
+        }
+      />
 
       {workspaceNotice !== null && (
-        <output className={styles.panelNotice} aria-live="polite">
+        <output
+          className="block rounded-[var(--screen-radius-control)] border border-[var(--screen-success)] bg-[var(--screen-success-surface)] p-3 text-[var(--screen-ink)] [overflow-wrap:anywhere]"
+          aria-live="polite"
+        >
           {workspaceNotice}
         </output>
       )}
-      {task && (
+      {!focusedSchedule && (
         <WorkspaceNavigation
           programId={programId}
           task={task}
@@ -769,11 +773,7 @@ export const ProgramWorkspace = ({
           hash={hash}
           canManage={workspaceProgram.capabilities.manage}
           canAccessSettings={canAccessSettings}
-          onTaskChange={(nextTask) => {
-            setCourseView("overview");
-            setCourseNotice(null);
-            onTaskChange(nextTask);
-          }}
+          onTaskChange={handleWorkspaceTaskChange}
         />
       )}
 
@@ -834,15 +834,7 @@ export const ProgramWorkspace = ({
           hash={hash}
           attention={attention}
           onAttentionRefresh={onAttentionRefresh}
-          onTaskChange={(nextTask, nextEventId) => {
-            setCourseView("overview");
-            setCourseNotice(null);
-            if (nextEventId === undefined) {
-              onTaskChange(nextTask);
-            } else {
-              onTaskChange(nextTask, nextEventId);
-            }
-          }}
+          onTaskChange={handleWorkspaceTaskChange}
           onOpenEvent={onEventChange ? (id) => onEventChange(id) : undefined}
         />
       ) : task ? (
@@ -855,7 +847,7 @@ export const ProgramWorkspace = ({
           onOpenFacts={openCourseFacts}
           departmentId={departmentId}
           hash={hash}
-          onTaskChange={onTaskChange}
+          onTaskChange={handleWorkspaceTaskChange}
         />
       )}
     </section>

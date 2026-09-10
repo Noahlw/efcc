@@ -7,10 +7,12 @@ const ADMIN = {
 
 const COPY = {
   login: "登入",
-  directoryTitle: "管理課程目錄",
+  directoryTitle: "管理課程",
   directorySearch: "搜尋可管理課程",
   directoryList: "可管理課程",
   settings: "課程設定",
+  settingsBasics: "課程基本資料",
+  settingsBasicsHeading: "基本資料",
   programName: "課程名稱",
   programDescription: "課程簡介",
   saveBasics: "儲存基本資料",
@@ -141,6 +143,12 @@ test.describe("T05.5 management Browser Acceptance", () => {
       await expect(
         page.getByRole("heading", { name: COPY.settings })
       ).toBeVisible();
+      await page
+        .getByRole("button", { name: new RegExp(COPY.settingsBasics, "u") })
+        .click();
+      await expect(
+        page.getByRole("heading", { name: COPY.settingsBasicsHeading })
+      ).toBeVisible();
       const nameInput = page.getByRole("textbox", { name: COPY.programName });
       const descriptionInput = page.getByRole("textbox", {
         name: COPY.programDescription,
@@ -160,6 +168,9 @@ test.describe("T05.5 management Browser Acceptance", () => {
       await expect(descriptionInput).toHaveValue(updatedDescription);
 
       await page.reload();
+      await page
+        .getByRole("button", { name: new RegExp(COPY.settingsBasics, "u") })
+        .click();
       await expect(
         page.getByRole("textbox", { name: COPY.programName })
       ).toHaveValue(updatedName);

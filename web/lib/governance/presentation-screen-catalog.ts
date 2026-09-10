@@ -197,6 +197,16 @@ export const PRESENTATION_SCREEN_CATALOG = [
     supersedes: [],
   },
   {
+    screenId: "programs-workspace-schedule",
+    productFamily: "programs",
+    lifecycle: "active",
+    primaryBaselinePsn: "PSN-PROGRAMS-WORKSPACE-SCHEDULE",
+    route: "/programs",
+    intent: "mode=management&program=t07-3-program&task=schedule",
+    gap: null,
+    supersedes: [],
+  },
+  {
     screenId: "management-registrations-fallback",
     productFamily: "management-identity",
     lifecycle: "active",

@@ -425,9 +425,7 @@ test("management directory and workspace remain contained", async ({
   );
   await page.goto(appPath("/programs?mode=management"));
   await expect(page.getByRole("heading", { name: "管理模式" })).toBeVisible();
-  await expect(
-    page.getByRole("heading", { name: "管理課程目錄" })
-  ).toBeVisible();
+  await expect(page.getByRole("heading", { name: "管理課程" })).toBeVisible();
   await assertProgramsGeometry(page, undefined, testInfo);
   const notificationButton = page.getByRole("button", {
     name: "開啟管理通知",

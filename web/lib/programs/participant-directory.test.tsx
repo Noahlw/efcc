@@ -143,6 +143,38 @@ afterEach(() => {
 });
 
 describe("PUI-02 participant directory loading and collection", () => {
+  test("uses the shared screen directory grammar for the settled collection", async () => {
+    mocks.listParticipantCatalog.mockResolvedValue({
+      catalog: catalogFixture([
+        catalogProgram("program-1", "查經小組", {
+          viewerState: "active",
+        }),
+      ]),
+    });
+    renderDirectory();
+
+    await screen.findByRole("link", { name: /查經小組/u });
+
+    expect(
+      screen.getByRole("heading", { level: 1, name: COPY.programs.pageTitle })
+    ).toHaveAttribute("data-screen-heading", "root");
+    expect(
+      screen
+        .getByRole("searchbox", {
+          name: COPY.programs.catalogSearchLabel,
+        })
+        .closest('[data-screen-foundation="search"]')
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("list", { name: COPY.programs.catalogListLabel })
+        .parentElement
+    ).toHaveAttribute("data-screen-foundation", "row-list");
+    expect(screen.getByRole("link", { name: /查經小組/u })).toHaveAttribute(
+      "data-screen-row",
+      "true"
+    );
+  });
+
   test("shows a loading skeleton with aria-label, then flat collection", async () => {
     const pending = Promise.withResolvers<{
       catalog: ParticipantCatalogEntry[];
@@ -538,7 +570,9 @@ describe("PUI-02 participant directory recovery and handoff", () => {
       name: COPY.programs.catalogLoadError,
     });
     await waitFor(() => {
-      expect(document.activeElement).toBe(failedAgain.parentElement);
+      expect(document.activeElement).toBe(
+        failedAgain.closest('[data-screen-foundation="state"]')
+      );
     });
 
     await user.click(
@@ -661,7 +695,7 @@ describe("PUI-02 participant directory recovery and handoff", () => {
     expect(onOpenProgram).toHaveBeenCalledWith("program-2");
   });
 
-  test("management entry appears only with server-projected capability", async () => {
+  test("does not duplicate management navigation inside the participant collection", async () => {
     mocks.listParticipantCatalog.mockResolvedValue({
       catalog: catalogFixture(),
     });
@@ -670,9 +704,9 @@ describe("PUI-02 participant directory recovery and handoff", () => {
       managementHref: "/programs?mode=management",
     });
 
-    const entry = await screen.findByRole("link", {
-      name: COPY.programs.enterManagement,
-    });
-    expect(entry).toHaveAttribute("href", "/programs?mode=management");
+    await screen.findByRole("link", { name: /查經小組/u });
+    expect(
+      screen.queryByRole("link", { name: COPY.programs.enterManagement })
+    ).not.toBeInTheDocument();
   });
 });

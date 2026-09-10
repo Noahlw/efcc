@@ -9,26 +9,15 @@ import { COPY } from "@/lib/copy";
 import { announce } from "@/lib/live-region";
 import { searchMemberOptions } from "@/lib/programs/program-api";
 import type { MemberOption } from "@/lib/programs/program-api";
-
-const styles = {
-  picker: "grid min-w-0 gap-3",
-  field: "grid min-w-0 gap-1.5",
-  fieldLabel: "grid min-w-0 gap-1.5 text-sm font-bold text-[var(--ink)]",
-  input:
-    "min-h-11 min-w-0 rounded-lg border-[var(--line-strong)] bg-[var(--surface-raised)] text-base",
-  fieldHint:
-    "m-0 text-sm leading-6 text-[var(--ink-muted)] [overflow-wrap:anywhere]",
-  retry:
-    "min-h-11 min-w-11 w-fit rounded-lg border border-[var(--error-border)] bg-transparent px-4 py-2 text-[var(--error)] whitespace-normal hover:bg-[var(--error-surface)]",
-  selectedMember:
-    "flex min-w-0 flex-wrap items-center justify-between gap-3 rounded-lg border border-[var(--line)] bg-[var(--surface)] p-3 [overflow-wrap:anywhere]",
-  clearSelection:
-    "min-h-11 min-w-11 w-fit rounded-lg border border-[var(--line-strong)] bg-transparent px-4 py-2 text-[var(--ink)] whitespace-normal hover:bg-[var(--surface-raised)]",
-  memberOptions:
-    "m-0 grid min-w-0 list-none gap-1 rounded-lg border border-[var(--line)] bg-[var(--surface-raised)] p-2",
-  memberOption:
-    "flex h-auto min-h-11 w-full min-w-0 flex-wrap items-center justify-between gap-2 rounded-lg border border-transparent bg-transparent px-3 py-2 text-left text-[var(--ink)] whitespace-normal [overflow-wrap:anywhere] hover:bg-[var(--surface)]",
-} as const;
+import {
+  ScreenCard,
+  ScreenField,
+  ScreenRow,
+  ScreenRowList,
+  ScreenRowMain,
+  ScreenRowMeta,
+  ScreenRowTitle,
+} from "@/lib/screen-foundations";
 
 export const MemberPicker = ({
   programId,
@@ -129,18 +118,39 @@ export const MemberPicker = ({
     };
   }, [programId, query, retryToken, searchOptions, selected, excludeEnrolled]);
 
+  const inputId = `${name}-input`;
+  const hintId = `${name}-hint`;
+  const errorId = `${name}-error`;
+  const helperText = loading
+    ? COPY.programs.memberSearchLoading
+    : query.trim().length > 0 && query.trim().length < 2
+      ? COPY.programs.memberSearchHint
+      : options.length === 0 && query.trim().length >= 2
+        ? COPY.programs.memberSearchEmpty
+        : COPY.programs.memberSearchHint;
+
   return (
-    <div className={styles.picker}>
-      <label className={styles.field}>
-        <span className={styles.fieldLabel}>{label}</span>
+    <div className="grid min-w-0 gap-3">
+      <ScreenField
+        className="min-w-0"
+        error={
+          searchError ? (
+            <span id={errorId}>{COPY.programs.memberSearchError}</span>
+          ) : undefined
+        }
+        help={<span id={hintId}>{helperText}</span>}
+        htmlFor={inputId}
+        label={label}
+      >
         <Input
-          className={styles.input}
+          autoComplete="off"
+          className="min-w-0 border-[var(--screen-line-strong)] bg-[var(--screen-surface)] text-base text-[var(--screen-ink)] placeholder:text-[var(--screen-muted)]"
+          id={inputId}
+          placeholder={placeholder}
+          role="combobox"
           type="search"
           value={query}
-          placeholder={placeholder}
-          autoComplete="off"
-          role="combobox"
-          aria-describedby={`${name}-hint`}
+          aria-describedby={searchError ? `${hintId} ${errorId}` : hintId}
           aria-controls={`${name}-options`}
           aria-expanded={options.length > 0}
           onKeyDown={handleKeyDown}
@@ -149,34 +159,25 @@ export const MemberPicker = ({
           }
           onChange={handleChange}
         />
-      </label>
+      </ScreenField>
       <input type="hidden" name={name} value={selected?.user_id ?? ""} />
-      <p id={`${name}-hint`} className={styles.fieldHint}>
-        {loading
-          ? COPY.programs.memberSearchLoading
-          : searchError
-            ? COPY.programs.memberSearchError
-            : query.trim().length > 0 && query.trim().length < 2
-              ? COPY.programs.memberSearchHint
-              : options.length === 0 && query.trim().length >= 2
-                ? COPY.programs.memberSearchEmpty
-                : COPY.programs.memberSearchHint}
-      </p>
       {searchError && (
         <Button
           type="button"
-          className={styles.retry}
+          variant="outline"
+          className="h-auto min-h-11 w-fit whitespace-normal border-[var(--screen-danger)] bg-transparent text-[var(--screen-danger)] hover:bg-[var(--screen-danger-surface)] hover:text-[var(--screen-danger)]"
           onClick={() => setRetryToken((value) => value + 1)}
         >
           {COPY.programs.memberSearchRetry}
         </Button>
       )}
       {selected !== null && (
-        <div className={styles.selectedMember}>
-          <span>{`${selected.name} (${selected.username})`}</span>
+        <ScreenCard className="flex min-w-0 flex-wrap items-center justify-between gap-3 [overflow-wrap:anywhere]">
+          <span className="min-w-0 wrap-anywhere">{`${selected.name} (${selected.username})`}</span>
           <Button
             type="button"
-            className={styles.clearSelection}
+            variant="outline"
+            className="h-auto min-h-11 w-fit whitespace-normal border-[var(--screen-line-strong)] bg-transparent text-[var(--screen-ink)] hover:bg-[var(--screen-surface-soft)] hover:text-[var(--screen-ink)]"
             onClick={() => {
               setSelected(null);
               setQuery("");
@@ -184,35 +185,47 @@ export const MemberPicker = ({
           >
             {COPY.programs.clearMember}
           </Button>
-        </div>
+        </ScreenCard>
       )}
       {options.length > 0 && (
-        <ul
-          id={`${name}-options`}
-          className={styles.memberOptions}
-          aria-label={label}
-          role="listbox"
-        >
-          {options.map((member, index) => (
-            <li
-              key={member.user_id}
-              id={`${name}-option-${index}`}
-              role="option"
-              aria-selected={activeIndex === index}
-            >
-              <Button
-                type="button"
-                className={styles.memberOption}
-                onClick={() => {
-                  pick(member);
-                }}
+        <ScreenRowList className="min-w-0">
+          <ul
+            id={`${name}-options`}
+            className="m-0 min-w-0 list-none p-0"
+            aria-label={label}
+            role="listbox"
+          >
+            {options.map((member, index) => (
+              <li
+                key={member.user_id}
+                id={`${name}-option-${index}`}
+                className="min-w-0"
+                role="option"
+                aria-selected={activeIndex === index}
               >
-                <strong>{member.name}</strong>
-                <span>{member.username}</span>
-              </Button>
-            </li>
-          ))}
-        </ul>
+                <ScreenRow
+                  asChild
+                  selected={activeIndex === index}
+                  className="rounded-none"
+                >
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    className="h-auto min-h-[var(--screen-row-min-height)] w-full justify-between gap-2 px-3 py-[var(--screen-row-padding-block)] text-left text-[var(--screen-ink)] hover:bg-[var(--screen-surface-soft)] hover:text-[var(--screen-ink)]"
+                    onClick={() => {
+                      pick(member);
+                    }}
+                  >
+                    <ScreenRowMain>
+                      <ScreenRowTitle>{member.name}</ScreenRowTitle>
+                      <ScreenRowMeta>{member.username}</ScreenRowMeta>
+                    </ScreenRowMain>
+                  </Button>
+                </ScreenRow>
+              </li>
+            ))}
+          </ul>
+        </ScreenRowList>
       )}
     </div>
   );

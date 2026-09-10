@@ -215,6 +215,7 @@ describe("PUI-03 participant Program detail", () => {
 
     expect(backLink).toHaveAttribute("href", "/programs");
   });
+
   test("preserves modified and middle event Link clicks for browser behavior", async () => {
     mocks.getParticipantProgramDetail.mockResolvedValue(detailFixture());
     const { onOpenEvent } = renderDetail({ canManage: true });
@@ -230,7 +231,7 @@ describe("PUI-03 participant Program detail", () => {
       ctrlKey: true,
     });
     eventLink.dispatchEvent(modifiedClick);
-    expect(modifiedClick.defaultPrevented).toBe(false);
+    expect(modifiedClick.defaultPrevented).toBeFalsy();
     expect(onOpenEvent).not.toHaveBeenCalled();
 
     const middleClick = new MouseEvent("click", {
@@ -239,7 +240,7 @@ describe("PUI-03 participant Program detail", () => {
       button: 1,
     });
     eventLink.dispatchEvent(middleClick);
-    expect(middleClick.defaultPrevented).toBe(false);
+    expect(middleClick.defaultPrevented).toBeFalsy();
     expect(onOpenEvent).not.toHaveBeenCalled();
   });
 
@@ -701,7 +702,7 @@ describe("PUI-03 participant Program detail", () => {
     }
   );
 
-  test("keeps sticky withdraw below the management entry when the viewer can manage", async () => {
+  test("keeps the sticky withdraw action as the final participant action", async () => {
     mocks.getParticipantProgramDetail.mockResolvedValue(
       detailFixture({ enrollment: enrollmentFor("active") })
     );
@@ -709,26 +710,23 @@ describe("PUI-03 participant Program detail", () => {
 
     await screen.findByRole("heading", { name: "青年門徒小組" });
     expect(
-      screen.getByRole("link", { name: COPY.programs.enterManagement })
-    ).toBeInTheDocument();
+      screen.queryByRole("link", { name: COPY.programs.enterManagement })
+    ).not.toBeInTheDocument();
     const actions = screen.getAllByRole("button");
     expect(actions.at(-1)).toHaveAccessibleName(COPY.programs.cancelEnrollment);
   });
 
-  test("management entry uses a semantic Link when its canonical href is supplied", async () => {
+  test("does not duplicate management navigation inside participant detail", async () => {
     mocks.getParticipantProgramDetail.mockResolvedValue(detailFixture());
     renderDetail({
       canManage: true,
       managementHref: "/programs?mode=management&program=program-1",
     });
 
-    const entry = await screen.findByRole("link", {
-      name: COPY.programs.enterManagement,
-    });
-    expect(entry).toHaveAttribute(
-      "href",
-      "/programs?mode=management&program=program-1"
-    );
+    await screen.findByRole("heading", { name: "青年門徒小組" });
+    expect(
+      screen.queryByRole("link", { name: COPY.programs.enterManagement })
+    ).not.toBeInTheDocument();
   });
 
   test("ManagerOnly renders the 由同工安排 tag, read-only note, and no self-enroll action", async () => {
@@ -879,6 +877,7 @@ describe("PUI-03 participant Program detail", () => {
     ).resolves.toBeInTheDocument();
     view.unmount();
   });
+
   test("focuses the privacy-preserving panel when retry resolves unavailable", async () => {
     mocks.getParticipantProgramDetail
       .mockRejectedValueOnce(new Error("offline"))
@@ -891,7 +890,7 @@ describe("PUI-03 participant Program detail", () => {
     await userEvent.click(
       screen.getByRole("button", { name: COPY.programs.detailRetry })
     );
-    const unavailable = await screen.findByRole("heading", {
+    await screen.findByRole("heading", {
       name: COPY.programs.detailUnavailable,
     });
     expect(document.activeElement).toBe(
