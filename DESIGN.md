@@ -191,3 +191,56 @@ Production route and module styling is Tailwind/token based. `globals.css` is re
 Local shadcn/Radix primitives are the default for equivalent controls. Camera/video/device APIs, native print, native selects/date inputs, navigation anchors, live regions, and domain-specific radio semantics remain only as the documented native exceptions. Numeric DOM evidence records geometry and behavioral state; it never substitutes for human accessibility, hardware, print-preview, or WCAG review.
 
 The implementation evidence is summarized in `docs/qa/2026-09-01-s4-phase-f-release-evidence.{json,html}` and the current release disposition is recorded in `docs/qa/2026-09-01-s4-phase-f-release-gate.md`.
+
+## Programs Screen Foundations — Wave 0 / #587
+
+**Status:** Spec-authorized shared contract; the coded result still requires the owner L2 visual gate. **Authority:** Spec #586 and the frozen HTML reference set at `docs/design/programs-screen-foundations-v1/`, with `00-screen-foundations.html` as the canonical foundation specimen. This is a token and composition evolution, not a redesign or a replacement for domain authority.
+
+The production runtime mapping for this contract is the `--screen-*` token family in `web/app/globals.css`. The existing Civic Minimal aliases remain a compatibility surface for untouched routes; later consumers adopt the screen tokens as their route-family work lands. No route may invent a competing foundation token set.
+
+### Four screen families
+
+Every new screen chooses one recipe, or records an explicit exception before implementation. These are composable responsibilities, not four universal page components:
+
+| Family | Foundation responsibility | Programs examples |
+| --- | --- | --- |
+| **Directory / Collection** | Root title/lead rhythm, search/filter placement, grouped compact rows, and in-family result/recovery states | Participant Directory; Management Directory |
+| **Overview / Detail** | Entity identity, concise metadata/status, summary or next-event block, and ordered secondary sections | Participant Program Detail; Participant Event Detail; Workspace Overview |
+| **Operational Task** | Program/task context, persistent sibling tabs where applicable, action header, local filters, actionable rows, and item feedback | Events; Participants; Notifications |
+| **Settings / Editor** | Grouped settings hub, focused editor fields, help/error rhythm, and dirty-only Save/Discard surface | Program Settings Hub and focused editors |
+
+### Warm Civic Minimal defaults
+
+- Use a slightly warm shell/background (`--screen-shell-bg`) with a near-white content plane (`--screen-canvas`, `--screen-surface`) and functional hairline dividers (`--screen-line`).
+- Keep cinnabar (`--screen-accent`) scarce: primary actions and active indicators only. State colors are semantic, not decorative.
+- The screen itself is not a card. Default composition is a content plane, whitespace, dividers, and compact rows.
+- A **semantic card** is allowed only when it contains one meaningful unit such as a next-event summary, highlighted operational state, task tile, confirmation surface, or overlay. Do not use card-on-card nesting as a default composition.
+- Ordinary rows and semantic cards are shadow-free. Use only the restrained `--screen-shadow-sticky`, `--screen-shadow-dock`, and `--screen-shadow-sheet` tokens for genuinely layered UI.
+- Radius is foundation-owned: control `10px`, surface `14px`, sheet `20px`, and pill `999px`. Callers do not select arbitrary radii.
+- Compact utility density uses the tokenized `8px` utility gap, `10px` collection-row block padding, and `8px` settings-row block padding. Rows are minimums and grow for long Cantonese content.
+
+### Typography, geometry, and controls
+
+The frozen prototype values below are the implementation contract. They are minimums where stated, not fixed boxes:
+
+| Concern | Token | Contract |
+| --- | --- | --- |
+| Phone gutter | `--screen-gutter` | `16px` |
+| Shell / bottom navigation | `--screen-shell-height` / `--screen-bottom-nav-height` | `56px` / `72px` plus safe-area handling |
+| Interactive target | `--screen-touch-target` | `44px` minimum in both dimensions |
+| Root title | `--screen-root-title-size` / `--screen-root-title-leading` | `28px` / `34px` |
+| Child/workspace title | `--screen-child-title-size` / `--screen-child-title-leading` | `24px` / `30px` |
+| Section heading | `--screen-section-title-size` / `--screen-section-title-leading` | `17px` / `24px` |
+| Body | `--screen-body-size` / `--screen-body-leading` | `15px` / `22px` |
+| Metadata | `--screen-meta-size` / `--screen-meta-leading` | `13px` / `18px` |
+| Collection/settings row | `--screen-row-min-height` / `--screen-settings-row-min-height` | `64px` / `56px` minimum; auto-grow |
+| Section rhythm | `--screen-section-gap` | `24px` |
+| Icon | `--screen-icon-size` | `20px` |
+
+The canonical authenticated font stack is `--screen-font-sans`. Touched production UI uses Lucide icons with one consistent outline vocabulary; arbitrary hand-drawn SVG families, emoji, filled/outline mixing, and new icon libraries are not permitted. CVA exposes semantic axes only (`intent`, `tone`, `selected`, `danger`, `disabled`, and equivalent product meanings), never raw padding, radius, font-size, gap, or geometry knobs.
+
+### Presentation ownership and escape hatch
+
+Foundations own gutter/content width, header and Back geometry, title/lead rhythm, section spacing, standard row padding/minimums/dividers, icon sizes, status-pill grammar, action alignment, feedback placement, surface/radius/ shadow defaults, and responsive baseline behavior. Route/domain modules own records and copy, section presence/order, permission truth, mutations, loading/business state, URL destinations, and draft ownership.
+
+Consumers must not repeat foundation-owned visual constants in local Tailwind classes or inline styles. If a real product distinction cannot use an existing semantic variant, the only escape hatch is a **named semantic variant** with a documented reason and affected consumers, or a documented one-off exception approved before implementation. The exception must not become a raw geometry prop or a silent source-order override. Missing or unavailable states stay at their natural family locus; one giant error card is not a substitute for loading, empty, forbidden, conflict, recovery, or validation grammar.
