@@ -14,7 +14,7 @@ import {
 
 describe("T09 additive foundation presentation identity", () => {
   test("discovers durable foundation Stories without creating Screen Catalog obligations", () => {
-    expect(FOUNDATION_PRESENTATION_DECLARATIONS).toHaveLength(12);
+    expect(FOUNDATION_PRESENTATION_DECLARATIONS).toHaveLength(14);
     expect(
       FOUNDATION_PRESENTATION_DECLARATIONS.map(({ foundationId, psn }) => [
         foundationId,
@@ -33,12 +33,14 @@ describe("T09 additive foundation presentation identity", () => {
       ["sheet", "PSN-FOUNDATION-SHEET"],
       ["sheet", "PSN-FOUNDATION-SHEET-LONG-CONTENT"],
       ["sheet", "PSN-FOUNDATION-SHEET-BUSY-DISABLED"],
+      ["screen-foundations", "PSN-SCREEN-FOUNDATIONS-PLAYGROUND"],
+      ["screen-foundations-states", "PSN-SCREEN-FOUNDATIONS-STATES"],
     ]);
     expect(
       FOUNDATION_PRESENTATION_DECLARATIONS.filter(
         ({ baseline }) => baseline === "supporting"
       )
-    ).toHaveLength(7);
+    ).toHaveLength(8);
     expect(SCREEN_PRESENTATION_DECLARATIONS).toHaveLength(39);
     expect(SCREEN_CATALOG).toHaveLength(35);
     expect(
