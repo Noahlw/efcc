@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import type { UserEvent } from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { setupServer } from "msw/node";
+import type { ReadonlyURLSearchParams } from "next/navigation";
 import {
   afterAll,
   afterEach,
@@ -27,6 +28,12 @@ import {
 const mocks = vi.hoisted(() => {
   const replaceMock = vi.fn<(path: string) => void>();
   const pathnameMock = vi.fn<() => string>(() => "/profile/settings");
+  const searchParamsMock = vi.fn<() => ReadonlyURLSearchParams>(
+    () =>
+      new URLSearchParams(
+        window.location.search
+      ) as unknown as ReadonlyURLSearchParams
+  );
   const mockRouter = {
     replace: replaceMock,
     back: vi.fn<() => void>(),
@@ -36,7 +43,13 @@ const mocks = vi.hoisted(() => {
     prefetch: vi.fn<(path: string) => void>(),
   };
   const announceMock = vi.fn<(message: string) => void>();
-  return { replaceMock, pathnameMock, mockRouter, announceMock };
+  return {
+    replaceMock,
+    pathnameMock,
+    searchParamsMock,
+    mockRouter,
+    announceMock,
+  };
 });
 
 const { replaceMock, pathnameMock, mockRouter, announceMock } = mocks;
@@ -44,6 +57,7 @@ const { replaceMock, pathnameMock, mockRouter, announceMock } = mocks;
 vi.mock(import("next/navigation"), () => ({
   useRouter: () => mockRouter,
   usePathname: () => pathnameMock(),
+  useSearchParams: () => mocks.searchParamsMock(),
 }));
 
 vi.mock(import("@/lib/live-region"), () => ({

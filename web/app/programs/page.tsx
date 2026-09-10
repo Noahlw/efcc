@@ -4,6 +4,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { AppShell } from "@/lib/app-shell";
 import { COPY } from "@/lib/copy";
 import { ProgramsBoundary } from "@/lib/programs/programs-boundary";
+import { ScreenPageFrame } from "@/lib/screen-foundations";
 
 /**
  * Participant-default Programs boundary (PUI-01 / Issue #245). The browser
@@ -13,7 +14,7 @@ import { ProgramsBoundary } from "@/lib/programs/programs-boundary";
  */
 const ProgramsPage = () => (
   <AppShell>
-    <div className="flex min-w-0 justify-center px-5 py-[clamp(1.5rem,4vh,2.5rem)] max-[799px]:px-4">
+    <ScreenPageFrame data-screen-route="programs">
       <Suspense
         fallback={
           <output
@@ -27,7 +28,7 @@ const ProgramsPage = () => (
       >
         <ProgramsBoundary />
       </Suspense>
-    </div>
+    </ScreenPageFrame>
   </AppShell>
 );
 

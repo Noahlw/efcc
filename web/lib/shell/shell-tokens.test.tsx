@@ -188,6 +188,27 @@ describe("Civic Minimal token contract (TK-01)", () => {
   });
 });
 
+describe("Programs screen shell geometry (TK-01/TK-06)", () => {
+  test("maps the frozen shell geometry to shared tokens", () => {
+    expect(globals).toMatch(
+      /\.shell-top\s*\{[\s\S]*height:\s*calc\([\s\S]*var\(--screen-shell-height\)/u
+    );
+    expect(globals).toMatch(
+      /#main-navigation\s*\{[\s\S]*height:\s*calc\([\s\S]*var\(--screen-bottom-nav-height\)/u
+    );
+    expect(globals).toContain(
+      "padding: env(safe-area-inset-top, 0px) var(--screen-gutter) 0"
+    );
+    expect(globals).toContain("--screen-touch-target: 44px");
+    expect(globals).toContain("--screen-gutter: 16px");
+  });
+
+  test("keeps the mobile shell from introducing horizontal overflow", () => {
+    expect(globals).toContain("overflow-x: hidden");
+    expect(globals).toContain("min-width: 0");
+  });
+});
+
 describe("Programs Screen Foundations token contract (#587)", () => {
   test.each(Object.entries(SCREEN_FOUNDATION_TOKENS))(
     "%s preserves its frozen Warm Civic Minimal value",

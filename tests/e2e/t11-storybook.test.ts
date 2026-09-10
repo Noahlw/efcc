@@ -14,6 +14,9 @@ const STORIES = {
   notices: "t07-2-public-auth-member-communications--notices",
   messages: "t07-2-public-auth-member-communications--messages",
   accountDirectory: "t07-4-management-identity--account-directory",
+  programsParticipant: "t07-3-programs--participant-directory",
+  programsParticipantDetail: "t07-3-programs--participant-program-detail",
+  programsManagement: "t07-3-programs--management-directory",
   scannerBoundary: "t07-5-attendance-scanner-guest--scanner-boundary",
 } as const;
 
@@ -43,6 +46,14 @@ async function expectShellFrame(page: Page) {
       mainLeft: mainBox?.left ?? Number.NEGATIVE_INFINITY,
       mainRight: mainBox?.right ?? Number.POSITIVE_INFINITY,
       viewportWidth,
+      headerHeight:
+        document
+          .querySelector<HTMLElement>("header[data-shell-header]")
+          ?.getBoundingClientRect().height ?? null,
+      navHeight:
+        document
+          .querySelector<HTMLElement>("nav#main-navigation")
+          ?.getBoundingClientRect().height ?? null,
     };
   });
 
@@ -52,6 +63,12 @@ async function expectShellFrame(page: Page) {
   expect(geometry.mainRight).toBeLessThanOrEqual(geometry.viewportWidth + 1);
 
   const width = Number.parseInt(test.info().project.name.slice(2), 10);
+  if (geometry.headerHeight !== null) {
+    expect(geometry.headerHeight).toBeGreaterThanOrEqual(56);
+  }
+  if (width < 800 && geometry.navHeight !== null) {
+    expect(geometry.navHeight).toBeGreaterThanOrEqual(72);
+  }
   await expect(nav).toHaveCSS("position", width < 800 ? "fixed" : "sticky");
 }
 
@@ -59,7 +76,7 @@ async function expectMemberBrand(page: Page) {
   const header = page.locator("header[data-shell-header]");
   await expect(header).toBeVisible();
   await expect(
-    header.getByText(COPY.appFullName, { exact: true })
+    header.getByText(COPY.shell.shortMark, { exact: true })
   ).toBeVisible();
 }
 
@@ -167,6 +184,51 @@ test("Screen Foundations Playground keeps shared geometry across W7", async ({
   expect(stickyClearance).toBeGreaterThanOrEqual(
     (viewport?.width ?? 0) < 800 ? 71 : -1
   );
+});
+
+test("Programs participant shell keeps the brand-first header and no mode control", async ({
+  page,
+}) => {
+  await page.goto(story(STORIES.programsParticipant));
+  await expectShellFrame(page);
+  await expectMemberBrand(page);
+  await expect(
+    page
+      .locator("header[data-shell-header]")
+      .getByRole("link", { name: COPY.programs.enterManagement })
+  ).toHaveCount(0);
+});
+
+test("Programs management shell exposes one canonical home mode control", async ({
+  page,
+}) => {
+  await page.goto(story(STORIES.programsManagement));
+  await expectShellFrame(page);
+  await expectMemberBrand(page);
+
+  const header = page.locator("header[data-shell-header]");
+  const modeLink = header.getByRole("link", {
+    name: COPY.programs.enterParticipant,
+  });
+  await expect(modeLink).toHaveCount(1);
+  await expect(modeLink).toHaveAttribute("href", "/programs");
+  await expect(modeLink).toHaveAttribute("data-screen-icon-button", "true");
+  await expect(modeLink).toHaveText("");
+});
+
+test("Programs detail uses a route-owned icon-only Back control", async ({
+  page,
+}) => {
+  await page.goto(story(STORIES.programsParticipantDetail));
+  await expectShellFrame(page);
+
+  const back = page.locator(
+    '[data-screen-foundation="header"] [data-screen-icon-button]'
+  );
+  await expect(back).toHaveCount(1);
+  await expect(back).toHaveAttribute("href", "/programs");
+  await expect(back).toHaveAttribute("aria-label", COPY.programs.detailBack);
+  await expect(back).toHaveText("");
 });
 
 test("Storybook Notices keeps global brand and local H1 across W7", async ({

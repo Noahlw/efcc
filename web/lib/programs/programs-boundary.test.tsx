@@ -706,9 +706,7 @@ describe("Programs boundary", () => {
       "href",
       "/programs?mode=management&program=program-1#overview"
     );
-    expect(
-      screen.queryByRole("tab", { name: "參與者模式" })
-    ).not.toBeInTheDocument();
+    expect(screen.queryByRole("tab")).not.toBeInTheDocument();
 
     window.history.pushState(
       {},
@@ -723,14 +721,7 @@ describe("Programs boundary", () => {
     expect(
       screen.getByText(COPY.programs.managementBoundaryHint)
     ).toBeInTheDocument();
-    expect(document.activeElement).toBe(
-      screen.getByRole("tab", { name: "管理模式" })
-    );
-
-    await userEvent.click(screen.getByRole("tab", { name: "參與者模式" }));
-    await expect(
-      screen.findByRole("heading", { name: "查經小組" })
-    ).resolves.toBeInTheDocument();
+    expect(screen.queryByRole("tab")).not.toBeInTheDocument();
   });
 
   test("routes notification overflow to the dedicated management task", async () => {
@@ -780,7 +771,6 @@ describe("Programs boundary", () => {
 
   test("supports keyboard mode entry and return", async () => {
     mocks.getManagementAccess.mockResolvedValue(managementAccess(true));
-    const user = userEvent.setup();
     const { rerender } = render(<ProgramsBoundary />);
 
     const managementLink = await screen.findByRole("link", {
@@ -791,15 +781,8 @@ describe("Programs boundary", () => {
     window.history.pushState({}, "", "/programs?mode=management");
     rerender(<ProgramsBoundary />);
 
-    await expect(
-      screen.findByRole("tab", { name: COPY.programs.managementMode })
-    ).resolves.toHaveAttribute("aria-selected", "true");
-
-    const participantTab = screen.getByRole("tab", {
-      name: COPY.programs.participantMode,
-    });
-    participantTab.focus();
-    await user.keyboard("{Enter}");
+    expect(screen.queryByRole("tab")).not.toBeInTheDocument();
+    expect(screen.queryByRole("tabpanel")).not.toBeInTheDocument();
     await expect(
       screen.findByRole("heading", {
         name: COPY.programs.pageTitle,
@@ -816,12 +799,7 @@ describe("Programs boundary", () => {
     mocks.pathname.mockReturnValue("/programs");
     rerender(<ProgramsBoundary />);
 
-    await expect(
-      screen.findByRole("tab", { name: "管理模式" })
-    ).resolves.toHaveAttribute("aria-selected", "true");
-    expect(document.activeElement).toBe(
-      screen.getByRole("tab", { name: "管理模式" })
-    );
+    expect(screen.queryByRole("tab")).not.toBeInTheDocument();
 
     window.history.pushState({}, "", "/programs");
     rerender(<ProgramsBoundary />);

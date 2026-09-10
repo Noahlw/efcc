@@ -250,12 +250,12 @@ test("shell critical anchors render at the pinned width with no overflow or obst
     if (geometry.navBottom !== null) {
       expect(geometry.navBottom).toBeLessThanOrEqual(geometry.viewportHeight);
     }
-    // Dock height ~62px + bottom offset within the viewport.
+    // Dock height 72px + safe-area padding within the viewport.
     expect(geometry.navHeight).toBeGreaterThanOrEqual(44);
-    // Outlet reserves the dock height (84px + safe-area) on phone.
+    // Outlet reserves the dock height (72px + safe-area) on phone.
     expect(
       Number.parseFloat(geometry.mainPaddingBottom ?? "0")
-    ).toBeGreaterThanOrEqual(84);
+    ).toBeGreaterThanOrEqual(72);
   } else {
     // Rail starts below the header and is persistent (sticky).
     if (

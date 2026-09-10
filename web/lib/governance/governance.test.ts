@@ -153,9 +153,7 @@ describe("Governance Registry Validation", () => {
       expect(dockProbe).toBeDefined();
       expect(dockProbe?.selector).toBe("#main-navigation");
       expect(dockProbe?.property).toBe("bottom");
-      expect(dockProbe?.expected).toBe(
-        "calc(0.625rem + env(safe-area-inset-bottom, 0px))"
-      );
+      expect(dockProbe?.expected).toBe("0px");
 
       const shellContentProbe = contract?.probes.find(
         (p) => p.id === "probe-safe-area-shell-content"
@@ -164,7 +162,7 @@ describe("Governance Registry Validation", () => {
       expect(shellContentProbe?.selector).toBe("#shell-content");
       expect(shellContentProbe?.property).toBe("paddingBottom");
       expect(shellContentProbe?.expected).toBe(
-        "calc(84px + env(safe-area-inset-bottom, 0px))"
+        "calc(var(--screen-bottom-nav-height) + env(safe-area-inset-bottom, 0px))"
       );
 
       // Ground directly in actual globals.css source
@@ -172,11 +170,9 @@ describe("Governance Registry Validation", () => {
         path.join(REPO_ROOT, "web/app/globals.css"),
         "utf-8"
       );
+      expect(globalsCss).toContain("bottom: 0;");
       expect(globalsCss).toContain(
-        "bottom: calc(0.625rem + env(safe-area-inset-bottom, 0px));"
-      );
-      expect(globalsCss).toContain(
-        "padding-bottom: calc(84px + env(safe-area-inset-bottom, 0px));"
+        "var(--screen-bottom-nav-height) + env(safe-area-inset-bottom, 0px)"
       );
     });
 

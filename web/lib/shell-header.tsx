@@ -1,32 +1,16 @@
 "use client";
 
-import { usePathname } from "next/navigation";
+import { Bell, Briefcase } from "lucide-react";
+import Link from "next/link";
+import { usePathname, useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { useApp } from "@/lib/app-context";
 import { AttentionPanel, EMPTY_ATTENTION_DATA } from "@/lib/attention-panel";
 import type { AttentionData } from "@/lib/attention-panel";
 import { COPY } from "@/lib/copy";
-
-const BellIcon = () => (
-  <svg
-    aria-hidden="true"
-    viewBox="0 0 24 24"
-    width="21"
-    height="21"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth="1.8"
-    strokeLinecap="round"
-    strokeLinejoin="round"
-    focusable="false"
-  >
-    <path d="M18 9a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9" />
-    <path d="M10 21h4" />
-  </svg>
-);
+import { ScreenIconButton } from "@/lib/screen-foundations";
 
 export const ShellHeader = ({
   attentionData = EMPTY_ATTENTION_DATA,
@@ -35,6 +19,7 @@ export const ShellHeader = ({
 }) => {
   const { bootstrap } = useApp();
   const pathname = usePathname();
+  const searchParams = useSearchParams();
   const [attentionOpenPath, setAttentionOpenPath] = useState<string | null>(
     null
   );
@@ -55,6 +40,13 @@ export const ShellHeader = ({
   const isManagement = bootstrap.navigation.some(
     (section) => section.key === "management"
   );
+  const isPrograms =
+    pathname === "/programs" || pathname.startsWith("/programs/");
+  const currentMode =
+    searchParams.get("mode") === "management" ? "management" : "participant";
+  const modeHref =
+    currentMode === "management" ? "/programs" : "/programs?mode=management";
+  const showModeControl = isPrograms && isManagement;
   const displayName = bootstrap.profile.name || bootstrap.profile.username;
   const identityLabel =
     Array.isArray(bootstrap?.profile?.identities) &&
@@ -70,45 +62,56 @@ export const ShellHeader = ({
     <>
       <header
         data-shell-header
-        className="shrink-0 flex items-center justify-between gap-4 py-3 px-[clamp(1rem,3vw,1.5rem)] bg-[var(--surface-raised)] border-b border-[var(--line)]"
+        data-screen-foundation="shell-header"
+        className="shell-top shrink-0"
       >
-        <div className="flex items-center gap-[0.65rem] min-w-0">
-          {isManagement ? (
-            <>
-              <span className="shrink-0 text-[var(--accent)] text-base font-[850] tracking-[-0.02em]">
-                {COPY.shell.shortMark}
-              </span>
-              <div className="flex flex-col items-start gap-[0.1rem] min-w-0 p-[0.3rem_0.55rem] rounded-[var(--radius-sm,8px)] text-left">
-                <span className="overflow-hidden max-w-[min(28vw,220px)] text-[var(--ink)] text-[0.9rem] font-extrabold truncate">
-                  {displayName}
-                </span>
-                <span className="text-[var(--ink-muted)] text-xs font-[650] whitespace-nowrap">
-                  {identityLabel}
-                </span>
-              </div>
-            </>
-          ) : (
-            <span className="text-base font-extrabold tracking-[-0.01em] text-[var(--ink)] truncate">
-              {COPY.appFullName}
-            </span>
-          )}
+        <div className="brand min-w-0" aria-label={COPY.shell.shortMark}>
+          {COPY.shell.shortMark}
         </div>
 
-        {isManagement && pathname !== "/programs" ? (
-          <div className="flex shrink-0 items-center gap-2">
-            <Button
+        <div className="shell-actions">
+          {isManagement ? (
+            <div className="shell-identity">
+              <span className="overflow-hidden max-w-[min(28vw,220px)] text-[var(--ink)] text-[0.9rem] font-extrabold truncate">
+                {displayName}
+              </span>
+              <span className="text-[var(--ink-muted)] text-xs font-[650] whitespace-nowrap">
+                {identityLabel}
+              </span>
+            </div>
+          ) : null}
+
+          {showModeControl ? (
+            <ScreenIconButton
+              asChild
+              aria-label={
+                currentMode === "management"
+                  ? COPY.programs.enterParticipant
+                  : COPY.programs.enterManagement
+              }
+              title={
+                currentMode === "management"
+                  ? COPY.programs.enterParticipant
+                  : COPY.programs.enterManagement
+              }
+            >
+              <Link href={modeHref}>
+                <Briefcase aria-hidden="true" />
+              </Link>
+            </ScreenIconButton>
+          ) : null}
+
+          {isManagement && !isPrograms ? (
+            <ScreenIconButton
               ref={bellRef}
               type="button"
-              variant="ghost"
-              size="icon"
-              shape="circle"
               className="relative border border-[var(--line-strong)] text-[var(--ink)] hover:bg-[var(--surface)] hover:text-[var(--accent)]"
               aria-label={COPY.attention.bellLabel(attentionCount)}
               aria-haspopup="dialog"
               aria-expanded={attentionOpen}
               onClick={() => setAttentionOpenPath(pathname)}
             >
-              <BellIcon />
+              <Bell aria-hidden="true" />
               <Badge
                 variant="default"
                 className="absolute -top-[0.2rem] -right-[0.2rem] min-w-[1.15rem] h-[1.15rem] leading-none"
@@ -116,12 +119,12 @@ export const ShellHeader = ({
               >
                 {attentionCount}
               </Badge>
-            </Button>
-          </div>
-        ) : null}
+            </ScreenIconButton>
+          ) : null}
+        </div>
       </header>
 
-      {pathname !== "/programs" && (
+      {!isPrograms && (
         <AttentionPanel
           open={attentionOpen}
           onClose={() => setAttentionOpenPath(null)}

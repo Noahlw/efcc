@@ -7,7 +7,6 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { RpcError } from "@/lib/api";
 import { COPY, errorCopyFor } from "@/lib/copy";
 import { announce } from "@/lib/live-region";
@@ -121,29 +120,6 @@ const TASK_LABEL_BY_TASK: Record<ProgramsTask, string> = {
   notifications: COPY.programs.workspaceTaskNotifications,
 };
 
-/** Which nav-dock tab (if any) should take focus after a mode transition,
- * given the just-requested mode, the mode the URL now resolves to, the
- * previously-focused mode, and whether tabs are even showing. Extracted
- * from ProgramsBoundary's focus effect to keep that function's own
- * complexity down. */
-function resolveFocusMode(
-  requestedMode: ProgramsIntent["mode"] | null,
-  currentMode: ProgramsIntent["mode"],
-  previousMode: ProgramsIntent["mode"] | null,
-  showModeTabs: boolean
-): ProgramsIntent["mode"] | null {
-  if (requestedMode === currentMode) {
-    return requestedMode;
-  }
-  if (previousMode !== null && previousMode !== currentMode) {
-    return currentMode;
-  }
-  if (currentMode === "management" && showModeTabs) {
-    return "management";
-  }
-  return null;
-}
-
 /** Acknowledge a batch of management notifications. Module-level: it only
  * touches imports, never component state, so it doesn't need to live
  * inside ManagementPanel (and shouldn't be recreated on every render). */
@@ -243,14 +219,10 @@ const StatePanel = ({
 const BoundaryFrame = ({
   children,
   intent,
-  onModeChange,
-  showModeTabs,
   detailReady,
 }: {
   children: React.ReactNode;
   intent: ProgramsIntent;
-  onModeChange: (mode: "participant" | "management") => void;
-  showModeTabs: boolean;
   detailReady: boolean;
 }) => {
   // A selected participant program/event renders its own heading and back
@@ -287,51 +259,12 @@ const BoundaryFrame = ({
         <p className="m-0 mb-5 max-w-[65ch] wrap-anywhere text-[var(--ink-muted)] leading-[1.6]">
           {COPY.programs.entryLead}
         </p>
-        {showModeTabs && (
-          <Tabs
-            value={intent.mode}
-            onValueChange={(value) =>
-              onModeChange(value as "participant" | "management")
-            }
-          >
-            <TabsList
-              className="mt-5 w-fit gap-2 rounded-[var(--radius-sm)] border border-[var(--line)] bg-[var(--surface)] p-1"
-              variant="line"
-              aria-label={COPY.programs.modeLabel}
-            >
-              <TabsTrigger
-                id="programs-participant-tab"
-                className="h-auto min-h-11 rounded-[var(--radius-sm)] border-0 px-4 py-2 font-bold whitespace-normal wrap-anywhere text-[var(--ink-muted)] hover:bg-[var(--surface-raised)] hover:text-[var(--ink)] focus-visible:ring-2 focus-visible:ring-[var(--focus)] aria-selected:bg-[var(--accent)] aria-selected:text-[var(--surface-raised)] data-[state=active]:bg-[var(--accent)] data-[state=active]:text-[var(--surface-raised)]"
-                value="participant"
-                aria-controls="programs-mode-panel"
-              >
-                {COPY.programs.participantMode}
-              </TabsTrigger>
-              {intent.mode === "management" && (
-                <TabsTrigger
-                  id="programs-management-tab"
-                  className="h-auto min-h-11 rounded-[var(--radius-sm)] border-0 px-4 py-2 font-bold whitespace-normal wrap-anywhere text-[var(--ink-muted)] hover:bg-[var(--surface-raised)] hover:text-[var(--ink)] focus-visible:ring-2 focus-visible:ring-[var(--focus)] aria-selected:bg-[var(--accent)] aria-selected:text-[var(--surface-raised)] data-[state=active]:bg-[var(--accent)] data-[state=active]:text-[var(--surface-raised)]"
-                  value="management"
-                  aria-controls="programs-mode-panel"
-                >
-                  {COPY.programs.managementMode}
-                </TabsTrigger>
-              )}
-            </TabsList>
-          </Tabs>
-        )}
       </header>
       <div
         id="programs-mode-panel"
         className="min-h-0 pt-6"
-        role={showModeTabs ? "tabpanel" : "region"}
-        aria-labelledby={
-          showModeTabs
-            ? intent.mode === "management"
-              ? "programs-management-tab"
-              : "programs-participant-tab"
-            : "programs-title"
-        }
+        role="region"
+        aria-labelledby="programs-title"
       >
         {children}
       </div>
@@ -761,8 +694,6 @@ export const ProgramsBoundary = () => {
     setManagementDirectoryQuery(query);
     setDirectoryFocusProgramId(null);
   };
-  const previousMode = useRef<ProgramsIntent["mode"] | null>(null);
-  const focusMode = useRef<ProgramsIntent["mode"] | null>(null);
   const retryFocusPending = useRef(false);
   const intent = useMemo(() => parseProgramsIntent(search), [search]);
   const { state: access, run: loadAccess } = useAsyncResource<
@@ -836,8 +767,6 @@ export const ProgramsBoundary = () => {
     intent.malformed ||
     access.kind !== "ready" ||
     (intent.mode === "management" && !managementModeReady);
-  const showModeTabs = intent.mode === "management" && managementModeReady;
-
   useEffect(() => {
     if (!retryFocusPending.current && !boundaryStateVisible) {
       return;
@@ -866,7 +795,6 @@ export const ProgramsBoundary = () => {
       departmentId: mode === "management" ? departmentId : undefined,
       hash,
     });
-    focusMode.current = mode;
     applyProgramsNavigation(router, setSearch, href, replace);
     announce(
       mode === "management"
@@ -986,42 +914,9 @@ export const ProgramsBoundary = () => {
     }
     router.replace(participantOriginHref(intent.origin, intent.hash));
   };
-  useEffect(() => {
-    const mode = resolveFocusMode(
-      focusMode.current,
-      intent.mode,
-      previousMode.current,
-      showModeTabs
-    );
-    if (!locationReady || mode === null) {
-      return;
-    }
-    const tab = document.querySelector<HTMLElement>(
-      mode === "management"
-        ? "#programs-management-tab"
-        : "#programs-participant-tab"
-    );
-    if (!tab) {
-      return;
-    }
-    previousMode.current = intent.mode;
-    tab.focus();
-    queueMicrotask(() => {
-      if (document.contains(tab)) {
-        tab.focus();
-      }
-    });
-    focusMode.current = null;
-  }, [intent.malformed, intent.mode, locationReady, showModeTabs]);
-
   if (intent.malformed) {
     return (
-      <BoundaryFrame
-        intent={intent}
-        onModeChange={navigateMode}
-        showModeTabs={false}
-        detailReady={false}
-      >
+      <BoundaryFrame intent={intent} detailReady={false}>
         <StatePanel
           id="programs-access-state"
           kind="error"
@@ -1035,12 +930,7 @@ export const ProgramsBoundary = () => {
   }
 
   return (
-    <BoundaryFrame
-      intent={intent}
-      onModeChange={navigateMode}
-      showModeTabs={showModeTabs}
-      detailReady={access.kind === "ready"}
-    >
+    <BoundaryFrame intent={intent} detailReady={access.kind === "ready"}>
       <ProgramsBoundaryBody
         access={access}
         intent={intent}

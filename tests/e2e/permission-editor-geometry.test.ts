@@ -366,7 +366,7 @@ test("Permission Editor detail stays contained across the W7 widths", async ({
   if (W7_PHONE_PROJECTS[testInfo.project.name] === true) {
     expect(geometry.dockPosition).toBe("fixed");
     expect(geometry.dock).not.toBeNull();
-    expect(geometry.contentPaddingBottom).toMatch(/84px/);
+    expect(geometry.contentPaddingBottom).toMatch(/72px/);
     expect(geometry.sticky).not.toBeNull();
     if (geometry.dock && geometry.sticky) {
       expect(

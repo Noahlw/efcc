@@ -192,6 +192,7 @@ export const ScreenHeader = ({
   return (
     <header
       className={cn(screenHeaderVariants({ level }), className)}
+      data-route-header
       data-screen-foundation="header"
       data-screen-level={level}
     >
@@ -202,6 +203,7 @@ export const ScreenHeader = ({
             ? "grid-cols-[var(--screen-touch-target)_minmax(0,1fr)_auto]"
             : "grid-cols-[minmax(0,1fr)_auto]"
         )}
+        data-route-header-main
         data-screen-header-main
       >
         {backHref ? (
@@ -235,6 +237,7 @@ export const ScreenHeader = ({
         {hasActions ? (
           <div
             className="flex min-w-0 max-w-[46%] flex-wrap items-center justify-end gap-[var(--screen-utility-gap)]"
+            data-route-header-actions
             data-screen-header-actions
           >
             {status}
@@ -292,25 +295,91 @@ export const ScreenSection = ({
   </section>
 );
 
-export type ScreenSearchProps = Omit<
+type ScreenSearchInputProps = Pick<
   React.ComponentPropsWithoutRef<typeof Input>,
-  "type"
+  | "aria-describedby"
+  | "autoComplete"
+  | "autoFocus"
+  | "defaultValue"
+  | "disabled"
+  | "id"
+  | "inputMode"
+  | "maxLength"
+  | "name"
+  | "onBlur"
+  | "onChange"
+  | "onFocus"
+  | "onKeyDown"
+  | "pattern"
+  | "placeholder"
+  | "readOnly"
+  | "required"
+  | "spellCheck"
+  | "value"
 >;
 
+export type ScreenSearchProps = ScreenSearchInputProps & {
+  "aria-label": string;
+  /** Additional layout classes apply to the search wrapper, not the input primitive. */
+  className?: string;
+};
+
 /** Search control with the frozen 44px field geometry and leading icon. */
-export const ScreenSearch = ({ className, ...props }: ScreenSearchProps) => (
-  <div className="relative min-w-0" data-screen-foundation="search">
+export const ScreenSearch = ({
+  "aria-describedby": ariaDescribedBy,
+  "aria-label": ariaLabel,
+  autoComplete,
+  autoFocus,
+  className,
+  defaultValue,
+  disabled,
+  id,
+  inputMode,
+  maxLength,
+  name,
+  onBlur,
+  onChange,
+  onFocus,
+  onKeyDown,
+  pattern,
+  placeholder,
+  readOnly,
+  required,
+  spellCheck,
+  value,
+}: ScreenSearchProps) => (
+  <div
+    className={cn("relative min-w-0", className)}
+    data-screen-foundation="search"
+  >
     <Search
       aria-hidden="true"
       className="pointer-events-none absolute top-1/2 left-3 size-5 -translate-y-1/2 text-[var(--screen-muted)]"
     />
     <Input
-      {...props}
-      className={cn(
-        "min-h-[var(--screen-touch-target)] rounded-[var(--screen-radius-control)] border-[var(--screen-line-strong)] bg-[var(--screen-surface)] pl-10 text-[var(--screen-ink)] focus-visible:border-[var(--screen-focus)] focus-visible:ring-[var(--screen-focus)]/20",
-        className
-      )}
+      aria-describedby={ariaDescribedBy}
+      aria-label={ariaLabel}
+      autoComplete={autoComplete}
+      autoFocus={autoFocus}
+      className="screen-search-input"
+      data-screen-search-input
+      defaultValue={defaultValue}
+      disabled={disabled}
+      id={id}
+      inputMode={inputMode}
+      maxLength={maxLength}
+      name={name}
+      onBlur={onBlur}
+      onChange={onChange}
+      onFocus={onFocus}
+      onKeyDown={onKeyDown}
+      pattern={pattern}
+      placeholder={placeholder}
+      readOnly={readOnly}
+      required={required}
       type="search"
+      spellCheck={spellCheck}
+      value={value}
     />
   </div>
 );
