@@ -26,6 +26,18 @@ The complete Civic Minimal Tailwind token contract (TK-01) is declared on `:root
 
 The focused token test (`web/lib/shell/shell-tokens.test.ts`) asserts every family is declared and the named 800px breakpoint exists. The shell breakpoint test (`web/lib/shell/shell-breakpoint.test.ts`) asserts the single 800px transition.
 
+### Programs Screen Foundations extension (#587)
+
+`DESIGN.md` and the frozen `docs/design/programs-screen-foundations-v1/00-screen-foundations.html` specimen add the Warm Civic Minimal screen contract. Its runtime values live under the `--screen-*` namespace in `web/app/globals.css`, keeping the foundation-owned geometry explicit while existing Civic Minimal aliases remain available to untouched routes during the later consumer cutover.
+
+| Family | Token contract | Ownership rule |
+| --- | --- | --- |
+| Warm surfaces and semantic states | `--screen-shell-bg`, `--screen-canvas`, `--screen-surface`, `--screen-surface-soft`, `--screen-ink`, `--screen-muted`, `--screen-line`, `--screen-line-strong`, `--screen-accent*`, `--screen-success*`, `--screen-pending*`, `--screen-info*`, `--screen-danger*`, `--screen-focus` | Warm Civic Minimal palette from the frozen foundation specimen; state tones are semantic |
+| Screen geometry and density | `--screen-gutter`, `--screen-shell-height`, `--screen-bottom-nav-height`, `--screen-touch-target`, `--screen-*-title-*`, `--screen-body-*`, `--screen-meta-*`, `--screen-*-row-*`, `--screen-section-gap`, `--screen-utility-gap`, `--screen-*-padding-*`, `--screen-icon-size`, `--screen-font-sans` | Foundation-owned values; minimum rows grow for content and callers do not add raw geometry knobs |
+| Radius and elevation | `--screen-radius-control`, `--screen-radius-surface`, `--screen-radius-sheet`, `--screen-radius-pill`, `--screen-shadow-sticky`, `--screen-shadow-dock`, `--screen-shadow-sheet` | Radii are token-owned; shadows are reserved for genuinely layered UI |
+
+The focused token contract test also checks the frozen literal values for this extension. Later route tickets consume these tokens; this foundation slice does not migrate route presentation or add a second UI runtime.
+
 ### Primitive inventory (TK-02/TK-03)
 
 Only primitives needed by at least one shipped Phase A caller are vendored/used; each entry names the owning caller and the variant in use.
