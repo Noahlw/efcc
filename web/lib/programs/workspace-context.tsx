@@ -13,6 +13,7 @@ import type {
   Program,
 } from "./program-api";
 import type { ProgramsTask } from "./programs-intent";
+
 export interface WorkspaceRouteContextValue {
   departmentId: string | null;
   hash: string | null;
@@ -122,7 +123,9 @@ export function taskLabel(task: ProgramsTask): string {
     ? COPY.programs.workspaceTaskEvents
     : task === "participants"
       ? COPY.programs.workspaceTaskParticipants
-      : task === "settings"
-        ? COPY.programs.workspaceTaskSettings
-        : COPY.programs.workspaceTaskNotifications;
+      : task === "schedule"
+        ? COPY.programs.workspaceTaskSchedule
+        : task === "settings"
+          ? COPY.programs.workspaceTaskSettings
+          : COPY.programs.workspaceTaskNotifications;
 }

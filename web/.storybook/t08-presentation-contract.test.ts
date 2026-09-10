@@ -10,7 +10,7 @@ import {
 
 describe("T08 presentation subject contract", () => {
   test("normalizes legacy screens and keeps controls outside Screen Catalog", () => {
-    expect(SCREEN_PRESENTATION_DECLARATIONS).toHaveLength(39);
+    expect(SCREEN_PRESENTATION_DECLARATIONS).toHaveLength(40);
     expect(
       SCREEN_PRESENTATION_DECLARATIONS.every(
         (declaration) =>

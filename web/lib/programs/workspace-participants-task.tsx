@@ -1,13 +1,21 @@
 "use client";
 
+import { X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { FormEvent } from "react";
 
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Skeleton } from "@/components/ui/skeleton";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  Sheet,
+  SheetClose,
+  SheetContent,
+  SheetDescription,
+  SheetFooter,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
 import { RpcError } from "@/lib/api";
 import { COPY, errorCopyFor } from "@/lib/copy";
 import { announce } from "@/lib/live-region";
@@ -18,6 +26,21 @@ import {
   listEnrollmentSnapshot,
 } from "@/lib/programs/program-api";
 import type { Enrollment, EnrollmentRequest } from "@/lib/programs/program-api";
+import {
+  ScreenEditor,
+  ScreenField,
+  ScreenLoadingRows,
+  ScreenRow,
+  ScreenRowList,
+  ScreenRowMain,
+  ScreenRowMeta,
+  ScreenRowTitle,
+  ScreenSection,
+  ScreenState,
+  ScreenStatus,
+  ScreenTab,
+  ScreenTabs,
+} from "@/lib/screen-foundations";
 
 import { MemberPicker } from "./member-picker";
 import { useAsyncResource } from "./use-async-resource";
@@ -27,48 +50,12 @@ import {
   useWorkspaceTaskContext,
 } from "./workspace-context";
 
-const styles = {
-  programDetailMuted:
-    "m-0 text-sm leading-6 text-[var(--ink-muted)] [overflow-wrap:anywhere]",
-  workspaceTaskList: "m-0 grid min-w-0 list-none gap-2 p-0",
-  workspaceTaskRow:
-    "flex min-w-0 flex-wrap items-center gap-3 rounded-lg border border-[var(--line)] bg-[var(--surface-raised)] p-3 [overflow-wrap:anywhere]",
-  field: "grid min-w-0 gap-1.5",
-  fieldLabel: "grid min-w-0 gap-1.5 text-sm font-bold text-[var(--ink)]",
-  input:
-    "min-h-11 min-w-0 rounded-lg border-[var(--line-strong)] bg-[var(--surface-raised)] text-base",
-  successOutline:
-    "min-h-11 min-w-11 w-fit rounded-lg border border-[var(--success-border)] bg-[var(--success-surface)] px-4 py-2 text-[var(--success)] whitespace-normal",
-  dangerOutline:
-    "min-h-11 min-w-11 w-fit rounded-lg border border-[var(--error-border)] bg-transparent px-4 py-2 text-[var(--error)] whitespace-normal",
-  panelError:
-    "grid min-w-0 gap-2 rounded-lg border border-[var(--error-border)] bg-[var(--error-surface)] p-3 text-[var(--error)] [overflow-wrap:anywhere]",
-  workspaceTask: "grid min-w-0 gap-4",
-  workspaceHeading:
-    "m-0 min-w-0 text-lg font-extrabold leading-6 tracking-[-0.02em] [overflow-wrap:anywhere]",
-  panelNotice:
-    "block rounded-lg border border-[var(--success-border)] bg-[var(--success-surface)] p-3 text-[var(--ink)] [overflow-wrap:anywhere]",
-  ruleForm:
-    "grid min-w-0 gap-3 rounded-lg border border-[var(--line)] bg-[var(--surface)] p-4",
-  actionButton:
-    "min-h-11 min-w-11 w-fit rounded-lg bg-[var(--accent)] px-4 py-2 text-white whitespace-normal hover:bg-[var(--accent-deep)]",
-  boundaryError:
-    "grid min-w-0 gap-3 rounded-lg border border-[var(--error-border)] bg-[var(--error-surface)] p-4 text-[var(--error)] [overflow-wrap:anywhere]",
-  retry:
-    "min-h-11 min-w-11 w-fit rounded-lg border border-[var(--line-strong)] bg-transparent px-4 py-2 text-[var(--ink)] whitespace-normal hover:bg-[var(--surface)]",
-  workspaceActions: "flex min-w-0 flex-wrap items-center gap-3",
-  taskButton:
-    "min-h-11 min-w-11 rounded-lg border border-[var(--line-strong)] bg-transparent px-3 py-2 text-[var(--ink)] whitespace-normal",
-  secondaryButton:
-    "min-h-11 min-w-11 w-fit rounded-lg border border-[var(--line-strong)] bg-transparent px-4 py-2 text-[var(--ink)] whitespace-normal hover:bg-[var(--surface)]",
-} as const;
-
 type ParticipantTab = "pending" | "active" | "history";
 type ParticipantFailure = "forbidden" | "stale" | "conflict" | "server";
-type CancelRetry = {
+interface CancelRetry {
   enrollmentId: string;
   idempotencyKey: string;
-};
+}
 
 type ParticipantsState =
   | { kind: "loading" }
@@ -181,6 +168,8 @@ export const ParticipantsTask = () => {
   const [cancelRetry, setCancelRetry] = useState<CancelRetry | null>(null);
   const [assistedBusy, setAssistedBusy] = useState(false);
   const [assistedError, setAssistedError] = useState<string | null>(null);
+  const [addParticipantOpen, setAddParticipantOpen] = useState(false);
+  const addParticipantWasOpenRef = useRef(false);
   // Most recent successful snapshot: a failed refresh after a successful
   // mutation keeps the queue rendered from the last-known data instead of
   // ejecting the operator into the full-panel error state.
@@ -198,6 +187,14 @@ export const ParticipantsTask = () => {
       lastReadyRef.current = state;
     }
   }, [state]);
+  useEffect(() => {
+    if (addParticipantWasOpenRef.current && !addParticipantOpen) {
+      document
+        .querySelector<HTMLElement>("#programs-add-participant-trigger")
+        ?.focus();
+    }
+    addParticipantWasOpenRef.current = addParticipantOpen;
+  }, [addParticipantOpen]);
   const mutationBusy =
     busyRequestId !== null ||
     busyEnrollmentId !== null ||
@@ -362,6 +359,7 @@ export const ParticipantsTask = () => {
     try {
       await assistedEnroll(programId, memberUserId);
       onAttentionRefresh();
+      setAddParticipantOpen(false);
       setRefreshSuccess(COPY.programs.assistedSubmitted);
       setRefreshingAction("assisted");
       void run();
@@ -387,228 +385,283 @@ export const ParticipantsTask = () => {
   const renderPending = () => {
     if (queue === null || queue.pending.length === 0) {
       return (
-        <p className={styles.programDetailMuted}>
-          {COPY.programs.tabsEmpty.pending}
-        </p>
+        <ScreenState kind="empty" title={COPY.programs.tabsEmpty.pending} />
       );
     }
     return (
-      <ul
-        className={styles.workspaceTaskList}
-        aria-label={COPY.programs.requests}
-      >
-        {queue.pending.map((request) => {
-          const member =
-            request.member_name ??
-            request.member_username ??
-            request.member_user_id;
-          return (
-            <li
-              key={request.request_id}
-              className={styles.workspaceTaskRow}
-              aria-busy={busyRequestId === request.request_id}
-            >
-              <strong>{member}</strong>
-              <span>{requestStatusLabel(request.status)}</span>
-              <span>{formatEventTime(request.submitted_at)}</span>
-              {canManage && (
-                <>
-                  <label className={styles.field}>
-                    <span className={styles.fieldLabel}>
-                      {COPY.programs.decisionNote}
-                    </span>
-                    <Input
-                      className={styles.input}
-                      type="text"
-                      value={notes[request.request_id] ?? ""}
-                      aria-label={COPY.programs.decisionNote}
-                      onChange={(event) =>
-                        setNotes((current) => ({
-                          ...current,
-                          [request.request_id]: event.target.value,
-                        }))
-                      }
-                      disabled={mutationBusy}
-                    />
-                  </label>
-                  <Button
-                    type="button"
-                    className={styles.successOutline}
-                    onClick={() => void handleDecision(request, "Approved")}
-                    disabled={mutationBusy}
-                  >
-                    {COPY.programs.approve}
-                  </Button>
-                  <Button
-                    type="button"
-                    className={styles.dangerOutline}
-                    onClick={() => void handleDecision(request, "Rejected")}
-                    disabled={mutationBusy}
-                  >
-                    {COPY.programs.reject}
-                  </Button>
-                </>
-              )}
-              {actionErrors[request.request_id] && (
-                <Alert className={styles.panelError} variant="destructive">
-                  {actionErrors[request.request_id]}
-                </Alert>
-              )}
-            </li>
-          );
-        })}
-      </ul>
+      <ScreenRowList aria-label={COPY.programs.requests}>
+        <ul className="m-0 grid min-w-0 list-none gap-0 p-0">
+          {queue.pending.map((request) => {
+            const member =
+              request.member_name ??
+              request.member_username ??
+              request.member_user_id;
+            return (
+              <li key={request.request_id} className="min-w-0">
+                <ScreenRow
+                  className="items-start flex-wrap"
+                  aria-busy={busyRequestId === request.request_id}
+                >
+                  <ScreenRowMain className="basis-full">
+                    <ScreenRowTitle>{member}</ScreenRowTitle>
+                    <ScreenRowMeta>
+                      <ScreenStatus tone="pending">
+                        {requestStatusLabel(request.status)}
+                      </ScreenStatus>
+                      <span className="ml-2">
+                        {formatEventTime(request.submitted_at)}
+                      </span>
+                    </ScreenRowMeta>
+                  </ScreenRowMain>
+                  {canManage && (
+                    <div className="flex min-w-0 basis-full flex-wrap items-end gap-[var(--screen-utility-gap)]">
+                      <ScreenField
+                        className="min-w-[min(100%,18rem)] flex-1"
+                        htmlFor={`participants-note-${request.request_id}`}
+                        label={COPY.programs.decisionNote}
+                      >
+                        <Input
+                          id={`participants-note-${request.request_id}`}
+                          className="border-[var(--screen-line-strong)] bg-[var(--screen-surface)] text-base"
+                          type="text"
+                          value={notes[request.request_id] ?? ""}
+                          onChange={(event) =>
+                            setNotes((current) => ({
+                              ...current,
+                              [request.request_id]: event.target.value,
+                            }))
+                          }
+                          disabled={mutationBusy}
+                        />
+                      </ScreenField>
+                      <Button
+                        type="button"
+                        className="w-fit border-[var(--screen-success)] bg-transparent text-[var(--screen-success)] hover:bg-[var(--screen-success-surface)]"
+                        variant="outline"
+                        onClick={() => void handleDecision(request, "Approved")}
+                        disabled={mutationBusy}
+                      >
+                        {COPY.programs.approve}
+                      </Button>
+                      <Button
+                        type="button"
+                        className="w-fit border-[var(--screen-danger)] bg-transparent text-[var(--screen-danger)] hover:bg-[var(--screen-danger-surface)]"
+                        variant="outline"
+                        onClick={() => void handleDecision(request, "Rejected")}
+                        disabled={mutationBusy}
+                      >
+                        {COPY.programs.reject}
+                      </Button>
+                    </div>
+                  )}
+                  {actionErrors[request.request_id] && (
+                    <Alert className="basis-full" variant="destructive">
+                      {actionErrors[request.request_id]}
+                    </Alert>
+                  )}
+                </ScreenRow>
+              </li>
+            );
+          })}
+        </ul>
+      </ScreenRowList>
     );
   };
 
   const renderActive = () => {
     if (queue === null || queue.active.length === 0) {
       return (
-        <p className={styles.programDetailMuted}>
-          {COPY.programs.tabsEmpty.active}
-        </p>
+        <ScreenState kind="empty" title={COPY.programs.tabsEmpty.active} />
       );
     }
     return (
-      <ul
-        className={styles.workspaceTaskList}
-        aria-label={COPY.programs.workspaceActiveParticipants}
-      >
-        {queue.active.map((enrollment) => {
-          const request =
-            state.kind === "ready"
-              ? state.requests.find(
-                  ({ request_id }) => request_id === enrollment.request_id
-                )
-              : undefined;
-          return (
-            <li
-              key={enrollment.enrollment_id}
-              className={styles.workspaceTaskRow}
-              aria-busy={busyEnrollmentId === enrollment.enrollment_id}
-            >
-              <strong>
-                {enrollment.member_name ??
-                  enrollment.member_username ??
-                  enrollment.member_user_id}
-              </strong>
-              <span>{COPY.programs.enrollmentActive}</span>
-              {request && <span>{requestStatusLabel(request.status)}</span>}
-              <span>{formatEventTime(enrollment.enrolled_at)}</span>
-              {canManage && (
-                <Button
-                  type="button"
-                  className={styles.dangerOutline}
-                  onClick={() => void handleCancelEnrollment(enrollment)}
-                  disabled={
-                    mutationBusy ||
-                    cancelRetry?.enrollmentId === enrollment.enrollment_id
-                  }
+      <ScreenRowList>
+        <ul
+          className="m-0 grid min-w-0 list-none gap-0 p-0"
+          aria-label={COPY.programs.workspaceActiveParticipants}
+        >
+          {queue.active.map((enrollment) => {
+            const request =
+              state.kind === "ready"
+                ? state.requests.find(
+                    ({ request_id }) => request_id === enrollment.request_id
+                  )
+                : undefined;
+            return (
+              <li key={enrollment.enrollment_id} className="min-w-0">
+                <ScreenRow
+                  className="items-start flex-wrap"
+                  aria-busy={busyEnrollmentId === enrollment.enrollment_id}
                 >
-                  {COPY.programs.cancelEnrollment}
-                </Button>
-              )}
-              {actionErrors[enrollment.enrollment_id] && (
-                <Alert className={styles.panelError} variant="destructive">
-                  {actionErrors[enrollment.enrollment_id]}
-                  {cancelRetry?.enrollmentId === enrollment.enrollment_id && (
-                    <Button
-                      type="button"
-                      className={styles.retry}
-                      onClick={() =>
-                        void handleCancelEnrollment(
-                          enrollment,
-                          cancelRetry.idempotencyKey
-                        )
-                      }
-                      disabled={mutationBusy}
-                    >
-                      {COPY.error.retry}
-                    </Button>
+                  <ScreenRowMain>
+                    <ScreenRowTitle>
+                      {enrollment.member_name ??
+                        enrollment.member_username ??
+                        enrollment.member_user_id}
+                    </ScreenRowTitle>
+                    <ScreenRowMeta>
+                      <ScreenStatus tone="success">
+                        {COPY.programs.enrollmentActive}
+                      </ScreenStatus>
+                      {request && (
+                        <span className="ml-2">
+                          {requestStatusLabel(request.status)}
+                        </span>
+                      )}
+                      <span className="ml-2">
+                        {formatEventTime(enrollment.enrolled_at)}
+                      </span>
+                    </ScreenRowMeta>
+                  </ScreenRowMain>
+                  {canManage && (
+                    <div className="flex min-w-0 basis-full flex-wrap items-center gap-[var(--screen-utility-gap)]">
+                      <Button
+                        type="button"
+                        className="w-fit border-[var(--screen-danger)] bg-transparent text-[var(--screen-danger)] hover:bg-[var(--screen-danger-surface)]"
+                        variant="outline"
+                        onClick={() => void handleCancelEnrollment(enrollment)}
+                        disabled={
+                          mutationBusy ||
+                          cancelRetry?.enrollmentId === enrollment.enrollment_id
+                        }
+                      >
+                        {COPY.programs.cancelEnrollment}
+                      </Button>
+                    </div>
                   )}
-                </Alert>
-              )}
-            </li>
-          );
-        })}
-      </ul>
+                  {actionErrors[enrollment.enrollment_id] && (
+                    <Alert className="basis-full" variant="destructive">
+                      {actionErrors[enrollment.enrollment_id]}
+                      {cancelRetry?.enrollmentId ===
+                        enrollment.enrollment_id && (
+                        <Button
+                          type="button"
+                          className="mt-2 w-fit border-[var(--screen-line-strong)] bg-transparent text-[var(--screen-ink)] hover:bg-[var(--screen-surface-soft)]"
+                          variant="outline"
+                          onClick={() =>
+                            void handleCancelEnrollment(
+                              enrollment,
+                              cancelRetry.idempotencyKey
+                            )
+                          }
+                          disabled={mutationBusy}
+                        >
+                          {COPY.error.retry}
+                        </Button>
+                      )}
+                    </Alert>
+                  )}
+                </ScreenRow>
+              </li>
+            );
+          })}
+        </ul>
+      </ScreenRowList>
     );
   };
 
   const renderHistory = () => {
     if (queue === null || queue.counts.history === 0) {
       return (
-        <p className={styles.programDetailMuted}>
-          {COPY.programs.tabsEmpty.history}
-        </p>
+        <ScreenState kind="empty" title={COPY.programs.tabsEmpty.history} />
       );
     }
     return (
-      <ul
-        className={styles.workspaceTaskList}
-        aria-label={COPY.programs.enrollmentHistory}
-      >
-        {queue.historyRequests.map((request) => (
-          <li
-            key={`request-${request.request_id}`}
-            className={styles.workspaceTaskRow}
-          >
-            <strong>
-              {request.member_name ??
-                request.member_username ??
-                request.member_user_id}
-            </strong>
-            <span>{requestStatusLabel(request.status)}</span>
-            {request.decision_note && <span>{request.decision_note}</span>}
-            <span>
-              {formatEventTime(request.decided_at ?? request.submitted_at)}
-            </span>
-          </li>
-        ))}
-        {queue.historyEnrollments.map((enrollment) => (
-          <li
-            key={`enrollment-${enrollment.enrollment_id}`}
-            className={styles.workspaceTaskRow}
-          >
-            <strong>
-              {enrollment.member_name ??
-                enrollment.member_username ??
-                enrollment.member_user_id}
-            </strong>
-            <span>{COPY.programs.enrollmentCancelled}</span>
-            <span>
-              {formatEventTime(
-                enrollment.cancelled_at ?? enrollment.enrolled_at
-              )}
-            </span>
-          </li>
-        ))}
-      </ul>
+      <ScreenRowList>
+        <ul
+          className="m-0 grid min-w-0 list-none gap-0 p-0"
+          aria-label={COPY.programs.enrollmentHistory}
+        >
+          {queue.historyRequests.map((request) => (
+            <li key={`request-${request.request_id}`} className="min-w-0">
+              <ScreenRow>
+                <ScreenRowMain>
+                  <ScreenRowTitle>
+                    {request.member_name ??
+                      request.member_username ??
+                      request.member_user_id}
+                  </ScreenRowTitle>
+                  <ScreenRowMeta>
+                    {request.decision_note ??
+                      formatEventTime(
+                        request.decided_at ?? request.submitted_at
+                      )}
+                  </ScreenRowMeta>
+                </ScreenRowMain>
+                <ScreenStatus
+                  tone={request.status === "Rejected" ? "danger" : "neutral"}
+                >
+                  {requestStatusLabel(request.status)}
+                </ScreenStatus>
+              </ScreenRow>
+            </li>
+          ))}
+          {queue.historyEnrollments.map((enrollment) => (
+            <li
+              key={`enrollment-${enrollment.enrollment_id}`}
+              className="min-w-0"
+            >
+              <ScreenRow>
+                <ScreenRowMain>
+                  <ScreenRowTitle>
+                    {enrollment.member_name ??
+                      enrollment.member_username ??
+                      enrollment.member_user_id}
+                  </ScreenRowTitle>
+                  <ScreenRowMeta>
+                    {formatEventTime(
+                      enrollment.cancelled_at ?? enrollment.enrolled_at
+                    )}
+                  </ScreenRowMeta>
+                </ScreenRowMain>
+                <ScreenStatus tone="neutral">
+                  {COPY.programs.enrollmentCancelled}
+                </ScreenStatus>
+              </ScreenRow>
+            </li>
+          ))}
+        </ul>
+      </ScreenRowList>
     );
   };
 
   return (
-    <section
-      className={styles.workspaceTask}
-      aria-labelledby="programs-workspace-participants-title"
+    <ScreenSection
+      title={COPY.programs.workspaceTaskParticipants}
+      headingId="programs-workspace-participants-title"
       aria-busy={state.kind === "loading"}
+      action={
+        canManage ? (
+          <Button
+            id="programs-add-participant-trigger"
+            type="button"
+            className="w-fit bg-[var(--screen-accent)] text-white hover:bg-[var(--screen-accent-deep)]"
+            onClick={() => {
+              setAssistedError(null);
+              setAddParticipantOpen(true);
+            }}
+          >
+            {COPY.programs.workspaceParticipantsAdd}
+          </Button>
+        ) : undefined
+      }
     >
-      <h4
-        id="programs-workspace-participants-title"
-        className={styles.workspaceHeading}
-      >
-        {COPY.programs.workspaceTaskParticipants}
-      </h4>
+      <p className="m-0 wrap-anywhere text-sm leading-6 text-[var(--screen-muted)]">
+        {COPY.programs.workspaceTaskParticipantsLead}
+      </p>
       {notice !== null && (
-        <output className={styles.panelNotice}>{notice}</output>
+        <Alert tone="success" announcement="polite">
+          {notice}
+        </Alert>
       )}
       {state.kind === "error" && lastReadyRef.current !== null && (
-        <div className={styles.workspaceActions}>
-          <output className={styles.panelNotice}>
+        <div className="flex min-w-0 flex-wrap items-center gap-[var(--screen-utility-gap)]">
+          <Alert tone="warning" announcement="polite">
             {COPY.programs.workspaceParticipantsRefreshFailed}
-          </output>
+          </Alert>
           <Button
-            className={styles.retry}
+            className="w-fit border-[var(--screen-line-strong)] bg-transparent text-[var(--screen-ink)] hover:bg-[var(--screen-surface-soft)]"
+            variant="outline"
             type="button"
             onClick={refreshParticipants}
           >
@@ -616,100 +669,121 @@ export const ParticipantsTask = () => {
           </Button>
         </div>
       )}
-      {canManage && (
-        <form className={styles.ruleForm} onSubmit={handleAssisted}>
-          <p className={styles.programDetailMuted}>
-            {COPY.programs.assistedEnrollAck}
-          </p>
-          <MemberPicker
-            programId={programId}
-            name="member_user_id"
-            label={COPY.programs.memberId}
-            placeholder={COPY.programs.memberIdPlaceholder}
-            excludeEnrolled
-          />
-          <Button
-            type="submit"
-            className={styles.actionButton}
-            disabled={mutationBusy}
+      <Sheet open={addParticipantOpen} onOpenChange={setAddParticipantOpen}>
+        <SheetContent
+          side="bottom"
+          showCloseButton={false}
+          className="rounded-t-[var(--screen-radius-sheet)] border-[var(--screen-line)] bg-[var(--screen-surface)] p-0 text-[var(--screen-ink)] shadow-[var(--screen-shadow-sheet)]"
+        >
+          <SheetHeader className="relative border-b border-[var(--screen-line)] px-[var(--screen-gutter)] py-3">
+            <SheetTitle className="pr-12 text-xl font-bold text-[var(--screen-ink)]">
+              {COPY.programs.workspaceParticipantsAdd}
+            </SheetTitle>
+            <SheetDescription className="text-[var(--screen-muted)]">
+              {COPY.programs.assistedEnrollAck}
+            </SheetDescription>
+            <SheetClose asChild>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="absolute top-2 right-2 text-[var(--screen-ink)] hover:bg-[var(--screen-surface-soft)]"
+                aria-label={COPY.attention.close}
+              >
+                <X aria-hidden="true" />
+              </Button>
+            </SheetClose>
+          </SheetHeader>
+          <ScreenEditor
+            className="gap-4 overflow-y-auto px-[var(--screen-gutter)] py-4"
+            onSubmit={handleAssisted}
           >
-            {assistedBusy
-              ? COPY.programs.submitting
-              : COPY.programs.assistedEnroll}
-          </Button>
-          {assistedError !== null && (
-            <Alert className={styles.panelError} variant="destructive">
-              {assistedError}
-            </Alert>
-          )}
-        </form>
-      )}
+            <MemberPicker
+              programId={programId}
+              name="member_user_id"
+              label={COPY.programs.memberId}
+              placeholder={COPY.programs.memberIdPlaceholder}
+              excludeEnrolled
+            />
+            {assistedError !== null && (
+              <Alert variant="destructive">{assistedError}</Alert>
+            )}
+            <SheetFooter className="grid grid-cols-[1fr_1.2fr] gap-[var(--screen-utility-gap)] p-0">
+              <SheetClose asChild>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="border-[var(--screen-line-strong)] bg-transparent text-[var(--screen-ink)] hover:bg-[var(--screen-surface-soft)]"
+                >
+                  {COPY.attention.close}
+                </Button>
+              </SheetClose>
+              <Button
+                type="submit"
+                className="bg-[var(--screen-accent)] text-white hover:bg-[var(--screen-accent-deep)]"
+                disabled={mutationBusy}
+              >
+                {assistedBusy
+                  ? COPY.programs.submitting
+                  : COPY.programs.assistedEnroll}
+              </Button>
+            </SheetFooter>
+          </ScreenEditor>
+        </SheetContent>
+      </Sheet>
       {state.kind === "loading" && (
-        <>
-          <output aria-busy="true">
-            {COPY.programs.workspaceTaskParticipantsLoading}
-          </output>
-          <Skeleton className="h-8 w-full" aria-hidden="true" />
-        </>
+        <ScreenLoadingRows
+          label={COPY.programs.workspaceTaskParticipantsLoading}
+        />
       )}
       {state.kind === "error" && lastReadyRef.current === null && (
-        <Alert className={styles.boundaryError} variant="destructive">
-          <p>{state.message}</p>
-          <Button
-            className={styles.retry}
-            type="button"
-            onClick={() => {
-              setActionErrors({});
-              retry();
-            }}
-          >
-            {COPY.programs.workspaceTaskParticipantsRetry}
-          </Button>
-        </Alert>
+        <ScreenState
+          kind={state.failure === "forbidden" ? "forbidden" : "error"}
+          title={state.message}
+          action={
+            <Button
+              className="w-fit border-[var(--screen-line-strong)] bg-transparent text-[var(--screen-ink)] hover:bg-[var(--screen-surface-soft)]"
+              variant="outline"
+              type="button"
+              onClick={() => {
+                setActionErrors({});
+                retry();
+              }}
+            >
+              {COPY.programs.workspaceTaskParticipantsRetry}
+            </Button>
+          }
+        />
       )}
       {queue !== null && (
         <>
-          <div className={styles.workspaceActions}>
-            <Tabs
-              value={tab}
-              onValueChange={(value) => setTab(value as ParticipantTab)}
-            >
-              <TabsList
-                className={styles.taskButton}
-                variant="line"
-                aria-label={COPY.programs.workspaceTaskParticipants}
+          <ScreenTabs aria-label={COPY.programs.workspaceTaskParticipants}>
+            {(
+              [
+                ["pending", COPY.programs.tabsPending, queue.counts.pending],
+                ["active", COPY.programs.tabsActive, queue.counts.active],
+                ["history", COPY.programs.tabsHistory, queue.counts.history],
+              ] as const
+            ).map(([value, label, count]) => (
+              <ScreenTab
+                key={value}
+                id={`participants-${value}-tab`}
+                role="tab"
+                aria-controls={`participants-${value}-panel`}
+                aria-selected={tab === value}
+                selected={tab === value}
+                onClick={() => setTab(value)}
               >
-                {(
-                  [
-                    [
-                      "pending",
-                      COPY.programs.tabsPending,
-                      queue.counts.pending,
-                    ],
-                    ["active", COPY.programs.tabsActive, queue.counts.active],
-                    [
-                      "history",
-                      COPY.programs.tabsHistory,
-                      queue.counts.history,
-                    ],
-                  ] as const
-                ).map(([value, label, count]) => (
-                  <TabsTrigger
-                    key={value}
-                    value={value}
-                    id={`participants-${value}-tab`}
-                    aria-controls={`participants-${value}-panel`}
-                    className={styles.taskButton}
-                  >
-                    {label} ({count})
-                  </TabsTrigger>
-                ))}
-              </TabsList>
-            </Tabs>
+                {label} ({count})
+              </ScreenTab>
+            ))}
+          </ScreenTabs>
+          <div className="flex min-w-0 flex-wrap items-center justify-end gap-[var(--screen-utility-gap)]">
             {state.kind !== "error" && (
               <Button
                 type="button"
-                className={styles.secondaryButton}
+                className="w-fit border-[var(--screen-line-strong)] bg-transparent text-[var(--screen-ink)] hover:bg-[var(--screen-surface-soft)]"
+                variant="outline"
                 onClick={refreshParticipants}
                 disabled={mutationBusy}
               >
@@ -719,7 +793,7 @@ export const ParticipantsTask = () => {
           </div>
           {queue.counts.pending + queue.counts.active + queue.counts.history ===
             0 && (
-            <p className={styles.programDetailMuted}>
+            <p className="m-0 wrap-anywhere text-sm leading-6 text-[var(--screen-muted)]">
               {COPY.programs.workspaceTaskParticipantsEmpty}
             </p>
           )}
@@ -727,6 +801,7 @@ export const ParticipantsTask = () => {
             id={`participants-${tab}-panel`}
             role="tabpanel"
             aria-labelledby={`participants-${tab}-tab`}
+            tabIndex={0}
           >
             {tab === "pending"
               ? renderPending()
@@ -736,6 +811,6 @@ export const ParticipantsTask = () => {
           </section>
         </>
       )}
-    </section>
+    </ScreenSection>
   );
 };

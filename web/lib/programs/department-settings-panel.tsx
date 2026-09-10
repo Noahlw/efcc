@@ -6,7 +6,6 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import { RpcError } from "@/lib/api";
 import { COPY, errorMessage } from "@/lib/copy";
@@ -21,38 +20,21 @@ import type {
   DepartmentDetail,
   DepartmentModule,
 } from "@/lib/programs/program-api";
+import {
+  ScreenCard,
+  ScreenEditor,
+  ScreenField,
+  ScreenLoadingRows,
+  ScreenRow,
+  ScreenRowList,
+  ScreenRowMain,
+  ScreenRowTitle,
+  ScreenRowTrailing,
+  ScreenSection,
+  ScreenState,
+} from "@/lib/screen-foundations";
 
 import { ProgramForm } from "./program-form";
-
-const styles = {
-  moduleSection:
-    "grid min-w-0 gap-4 rounded-lg border border-[var(--line)] bg-[var(--surface-raised)] p-4 [overflow-wrap:anywhere]",
-  programSummary:
-    "flex min-w-0 flex-wrap items-start justify-between gap-3 border-b border-[var(--line)] pb-3",
-  sectionLabel:
-    "m-0 text-sm font-bold uppercase tracking-[0.08em] text-[var(--ink-muted)]",
-  toggle:
-    "min-h-11 min-w-11 w-fit rounded-lg border border-[var(--line-strong)] bg-transparent px-4 py-2 text-[var(--ink)] whitespace-normal hover:bg-[var(--surface)]",
-  notice:
-    "block rounded-lg border border-[var(--success-border)] bg-[var(--success-surface)] p-3 text-[var(--ink)] [overflow-wrap:anywhere]",
-  error:
-    "rounded-lg border border-[var(--error-border)] bg-[var(--error-surface)] p-3 text-[var(--error)] [overflow-wrap:anywhere]",
-  workspaceActions: "flex min-w-0 flex-wrap items-center gap-3",
-  button:
-    "min-h-11 min-w-11 w-fit rounded-lg bg-[var(--accent)] px-4 py-2 text-white whitespace-normal hover:bg-[var(--accent-deep)]",
-  fieldHint:
-    "m-0 text-sm leading-6 text-[var(--ink-muted)] [overflow-wrap:anywhere]",
-  form: "grid min-w-0 gap-4",
-  field: "grid min-w-0 gap-1.5",
-  fieldLabel: "grid min-w-0 gap-1.5 text-sm font-bold text-[var(--ink)]",
-  input:
-    "min-h-11 min-w-0 rounded-lg border-[var(--line-strong)] bg-[var(--surface-raised)] text-base",
-  panelHeading:
-    "m-0 text-lg font-extrabold leading-6 tracking-[-0.02em] [overflow-wrap:anywhere]",
-  workspaceTaskList: "m-0 grid min-w-0 list-none gap-2 p-0",
-  workspaceTaskRow:
-    "flex min-w-0 flex-wrap items-center justify-between gap-3 rounded-lg border border-[var(--line)] bg-[var(--surface)] p-3 [overflow-wrap:anywhere]",
-} as const;
 
 const MODULE_KEYS: readonly DepartmentModule["module_key"][] = [
   "program_catalog",
@@ -175,45 +157,48 @@ export const DepartmentSettingsPanel = ({
         ).filter((module): module is DepartmentModule => module !== undefined);
 
   return (
-    <section
-      id={`${department.department_id}-settings-panel`}
-      tabIndex={-1}
-      className={styles.moduleSection}
-      aria-labelledby={`${department.department_id}-settings-heading`}
-      aria-busy={busy}
-    >
-      <div className={styles.programSummary}>
-        <div>
-          <h3
-            id={`${department.department_id}-settings-heading`}
-            className={styles.sectionLabel}
-          >
-            {COPY.programs.departmentSettings}: {department.name}
-          </h3>
-        </div>
-        <Button className={styles.toggle} type="button" onClick={onClose}>
-          {COPY.programs.collapse}
-        </Button>
-      </div>
-
-      {notice !== null && (
-        <output className={styles.notice} aria-live="polite">
-          {notice}
-        </output>
-      )}
-      {actionError !== null && (
-        <Alert className={styles.error} variant="destructive">
-          {actionError}
-        </Alert>
-      )}
-      {detail === null ? (
-        <div className="flex items-center gap-2">
-          <p aria-live="polite">{COPY.nav.loading}</p>
-          <Skeleton className="h-6 w-24" aria-hidden="true" />
-        </div>
-      ) : (
-        <>
-          {creating ? (
+    <ScreenCard asChild className="min-w-0">
+      <section
+        id={`${department.department_id}-settings-panel`}
+        tabIndex={-1}
+        aria-labelledby={`${department.department_id}-settings-heading`}
+        aria-busy={busy}
+      >
+        <ScreenSection
+          className="mt-0"
+          title={`${COPY.programs.departmentSettings}: ${department.name}`}
+          headingId={`${department.department_id}-settings-heading`}
+          action={
+            <Button
+              variant="outline"
+              className="h-auto w-fit whitespace-normal border-[var(--screen-line-strong)] bg-transparent text-[var(--screen-ink)] hover:bg-[var(--screen-surface-soft)] hover:text-[var(--screen-ink)]"
+              type="button"
+              onClick={onClose}
+            >
+              {COPY.programs.collapse}
+            </Button>
+          }
+        >
+          {notice !== null && (
+            <Alert tone="success" announcement="polite">
+              {notice}
+            </Alert>
+          )}
+          {actionError !== null && (
+            <ScreenState kind="error" title={actionError} />
+          )}
+          {detail === null ? (
+            <ScreenState
+              kind="loading"
+              title={COPY.nav.loading}
+              description={
+                <div className="grid gap-2 py-2" aria-hidden="true">
+                  <span className="h-4 w-2/3 rounded-[var(--screen-radius-control)] bg-[var(--screen-surface-soft)]" />
+                  <span className="h-12 w-full rounded-[var(--screen-radius-control)] bg-[var(--screen-surface-soft)]" />
+                </div>
+              }
+            />
+          ) : creating ? (
             <ProgramForm
               departments={[department]}
               onSaved={handleProgramSaved}
@@ -222,9 +207,9 @@ export const DepartmentSettingsPanel = ({
           ) : (
             <>
               {department.capabilities.manage && (
-                <div className={styles.workspaceActions}>
+                <div className="flex min-w-0 flex-wrap items-center gap-3">
                   <Button
-                    className={styles.button}
+                    className="h-auto w-fit whitespace-normal bg-[var(--screen-accent)] text-white hover:bg-[var(--screen-accent-deep)]"
                     type="button"
                     onClick={() => {
                       setNotice(null);
@@ -235,125 +220,119 @@ export const DepartmentSettingsPanel = ({
                   >
                     {COPY.programs.createProgram}
                   </Button>
-                  <p className={styles.fieldHint}>
+                  <p className="m-0 wrap-anywhere text-sm leading-6 text-[var(--screen-muted)]">
                     {COPY.programs.createProgramInDepartmentHint}
                   </p>
                 </div>
               )}
               {department.capabilities.manage && (
-                <form className={styles.form} onSubmit={saveDetails}>
-                  <label
-                    className={styles.field}
+                <ScreenEditor className="min-w-0" onSubmit={saveDetails}>
+                  <ScreenField
                     htmlFor={`${department.department_id}-name`}
+                    label={COPY.programs.deptName}
                   >
-                    <span className={styles.fieldLabel}>
-                      {COPY.programs.deptName}
-                    </span>
                     <Input
                       id={`${department.department_id}-name`}
-                      className={styles.input}
+                      className="min-w-0 border-[var(--screen-line-strong)] bg-[var(--screen-surface)] text-base text-[var(--screen-ink)]"
                       name="name"
                       defaultValue={detail.department.name}
                       required
                     />
-                  </label>
-                  <label
-                    className={styles.field}
+                  </ScreenField>
+                  <ScreenField
                     htmlFor={`${department.department_id}-description`}
+                    label={COPY.programs.departmentDetails}
                   >
-                    <span className={styles.fieldLabel}>
-                      {COPY.programs.departmentDetails}
-                    </span>
                     <Textarea
                       id={`${department.department_id}-description`}
-                      className={styles.input}
+                      className="min-w-0 border-[var(--screen-line-strong)] bg-[var(--screen-surface)] text-base text-[var(--screen-ink)]"
                       name="description"
                       defaultValue={detail.department.description ?? ""}
                       rows={3}
                     />
-                  </label>
+                  </ScreenField>
                   <Button
-                    className={styles.button}
+                    className="h-auto w-fit whitespace-normal bg-[var(--screen-accent)] text-white hover:bg-[var(--screen-accent-deep)]"
                     type="submit"
                     disabled={busy}
                   >
                     {COPY.programs.saveDepartment}
                   </Button>
-                </form>
+                </ScreenEditor>
               )}
               {department.capabilities.module_configure && (
-                <section
-                  aria-labelledby={`${department.department_id}-modules-heading`}
+                <ScreenSection
+                  title={COPY.programs.modules}
+                  headingId={`${department.department_id}-modules-heading`}
                 >
-                  <h4
-                    id={`${department.department_id}-modules-heading`}
-                    className={styles.panelHeading}
-                  >
-                    {COPY.programs.modules}
-                  </h4>
-                  <ul className={styles.workspaceTaskList}>
-                    {moduleRows.map((module) => (
-                      <li
-                        key={module.module_key}
-                        className={styles.workspaceTaskRow}
-                      >
-                        <span>{MODULE_LABEL[module.module_key]}</span>
-                        <Button
-                          className={styles.toggle}
-                          type="button"
-                          aria-pressed={module.enabled === 1}
-                          disabled={busy}
-                          onClick={() =>
-                            void runAction(
-                              () =>
-                                setDepartmentModule(
-                                  department.department_id,
-                                  module.module_key,
-                                  module.enabled !== 1
-                                ),
-                              COPY.programs.updated
-                            )
-                          }
-                        >
-                          {module.enabled === 1
-                            ? COPY.programs.disable
-                            : COPY.programs.enable}
-                        </Button>
-                      </li>
-                    ))}
-                  </ul>
-                </section>
+                  <ScreenRowList>
+                    <ul className="m-0 grid min-w-0 list-none gap-0 p-0">
+                      {moduleRows.map((module) => (
+                        <li key={module.module_key} className="min-w-0">
+                          <ScreenRow density="settings">
+                            <ScreenRowMain>
+                              <ScreenRowTitle>
+                                {MODULE_LABEL[module.module_key]}
+                              </ScreenRowTitle>
+                            </ScreenRowMain>
+                            <ScreenRowTrailing>
+                              <Button
+                                variant="outline"
+                                className="h-auto w-fit whitespace-normal border-[var(--screen-line-strong)] bg-transparent text-[var(--screen-ink)] hover:bg-[var(--screen-surface-soft)] hover:text-[var(--screen-ink)]"
+                                type="button"
+                                aria-pressed={module.enabled === 1}
+                                disabled={busy}
+                                onClick={() =>
+                                  void runAction(
+                                    () =>
+                                      setDepartmentModule(
+                                        department.department_id,
+                                        module.module_key,
+                                        module.enabled !== 1
+                                      ),
+                                    COPY.programs.updated
+                                  )
+                                }
+                              >
+                                {module.enabled === 1
+                                  ? COPY.programs.disable
+                                  : COPY.programs.enable}
+                              </Button>
+                            </ScreenRowTrailing>
+                          </ScreenRow>
+                        </li>
+                      ))}
+                    </ul>
+                  </ScreenRowList>
+                </ScreenSection>
               )}
               {department.capabilities.manager_assign &&
                 department.capabilities.role_read === true &&
                 (department.capabilities.role_assign === true ||
                   department.capabilities.role_revoke === true) && (
-                  <section
-                    className="mt-4 grid gap-2"
-                    aria-labelledby={`${department.department_id}-identity-heading`}
+                  <ScreenSection
+                    title="身份組指派"
+                    headingId={`${department.department_id}-identity-heading`}
                   >
-                    <h4
-                      id={`${department.department_id}-identity-heading`}
-                      className={styles.panelHeading}
-                    >
-                      身份組指派
-                    </h4>
-                    <p className={styles.fieldHint}>
+                    <p className="m-0 wrap-anywhere text-sm leading-6 text-[var(--screen-muted)]">
                       帳戶身份組指派及撤銷現由帳戶存取管理統一處理。
                     </p>
-                    <Button asChild className="min-h-11 w-fit">
+                    <Button
+                      asChild
+                      className="h-auto w-fit whitespace-normal bg-[var(--screen-accent)] text-white hover:bg-[var(--screen-accent-deep)]"
+                    >
                       <Link
                         href={`/management?module=accounts&scopeKind=Department&scopeId=${encodeURIComponent(department.department_id)}&view=access&return=${encodeURIComponent(`/programs?mode=management&department=${encodeURIComponent(department.department_id)}`)}`}
                       >
                         管理帳戶身份組
                       </Link>
                     </Button>
-                  </section>
+                  </ScreenSection>
                 )}
             </>
           )}
-        </>
-      )}
-    </section>
+        </ScreenSection>
+      </section>
+    </ScreenCard>
   );
 };

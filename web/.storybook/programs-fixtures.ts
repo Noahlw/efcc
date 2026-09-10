@@ -13,6 +13,8 @@ import type {
   Program,
   ProgramEvent,
   ProgramSummary,
+  PreviewResult,
+  ScheduleRule,
 } from "@/lib/programs/program-api";
 
 import { authMeHandler } from "./management-hub-fixtures";
@@ -230,6 +232,44 @@ const MANAGEMENT_NOTIFICATIONS: ManagementNotifications = {
   has_more: false,
 };
 
+const SCHEDULE_RULE: ScheduleRule = {
+  rule_id: "t07-3-rule",
+  program_id: PROGRAM_ID,
+  recurrence: "WEEKLY",
+  day_of_week: 6,
+  month_day: null,
+  start_time: "18:00",
+  end_time: "19:30",
+  location: "Storybook Hall",
+  created_at: "2099-09-01T00:00:00.000Z",
+  updated_at: "2099-09-01T00:00:00.000Z",
+};
+
+const SCHEDULE_PREVIEW: PreviewResult = {
+  plan: {
+    plan_id: "t07-3-plan",
+    program_id: PROGRAM_ID,
+    plan_hash: "t07-3-plan-hash",
+    horizon_days: 90,
+    from_date: "2099-09-01",
+    rule_count: 1,
+    created_at: "2099-09-01T00:00:00.000Z",
+  },
+  occurrences: [
+    {
+      occurrence_id: "t07-3-rule:2099-09-05",
+      plan_id: "t07-3-plan",
+      rule_id: SCHEDULE_RULE.rule_id,
+      occurs_on: "2099-09-05",
+      starts_at: "2099-09-05T10:00:00.000Z",
+      ends_at: "2099-09-05T11:30:00.000Z",
+      location: SCHEDULE_RULE.location,
+      skip_reason: null,
+      exception_id: null,
+    },
+  ],
+};
+
 const participantProgramHandlers = [
   memberAuthMeHandler,
   http.get("/api/v1/programs/access", () =>
@@ -296,7 +336,27 @@ const managementProgramHandlers = [
     envelope({ requests: [], enrollments: [] })
   ),
   http.get("/api/v1/programs/:programId/schedule-rules", () =>
-    envelope({ rules: [] })
+    envelope({ rules: [SCHEDULE_RULE] })
+  ),
+  http.get(
+    "/api/v1/programs/:programId/schedule-rules/:ruleId/exceptions",
+    () => envelope({ exceptions: [] })
+  ),
+  http.post("/api/v1/programs/:programId/events/preview", () =>
+    envelope(SCHEDULE_PREVIEW)
+  ),
+  http.post("/api/v1/programs/:programId/events/generate", () =>
+    envelope({
+      generated: {
+        run_id: "t07-3-run",
+        plan_id: SCHEDULE_PREVIEW.plan.plan_id,
+        status: "completed" as const,
+        created: 1,
+        skipped: 0,
+        failed: 0,
+        resumed: false,
+      },
+    })
   ),
 ];
 

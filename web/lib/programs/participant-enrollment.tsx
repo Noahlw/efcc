@@ -29,6 +29,11 @@ import type {
   ParticipantScheduleRule,
   ProgramSummary,
 } from "@/lib/programs/program-api";
+import {
+  ScreenCard,
+  ScreenSection,
+  ScreenState,
+} from "@/lib/screen-foundations";
 import { cn } from "@/lib/utils";
 
 export interface ParticipantEnrollmentProps {
@@ -67,22 +72,15 @@ function idempotencyKey(): string {
   return crypto.randomUUID();
 }
 
-const enrollmentPanelVariants = cva(
-  "grid min-w-0 gap-2 pb-[calc(6rem+env(safe-area-inset-bottom,0px))] text-[var(--ink)]"
-);
-
-const actionSurfaceVariants = cva(
-  "mt-3 grid min-w-0 rounded-[1.125rem] bg-[var(--surface-raised)] p-4 shadow-[0_1px_3px_color-mix(in_srgb,var(--ink)_6%,transparent)]"
-);
-
 const enrollmentActionVariants = cva(
   "h-auto min-h-11 w-full whitespace-normal px-4 py-3 text-base font-bold",
   {
     variants: {
       tone: {
-        primary: "",
+        primary:
+          "border-[var(--screen-accent)] bg-[var(--screen-accent)] text-white hover:bg-[var(--screen-accent-deep)] hover:text-white",
         caution:
-          "border-[var(--pending-border)] bg-[var(--pending-surface)] text-[var(--pending)] hover:border-[var(--pending)] hover:bg-[var(--pending-surface)] hover:text-[var(--pending)]",
+          "border-[var(--screen-pending)] bg-[var(--screen-pending-surface)] text-[var(--screen-pending)] hover:border-[var(--screen-pending)] hover:bg-[var(--screen-pending-surface)] hover:text-[var(--screen-pending)]",
       },
     },
     defaultVariants: { tone: "primary" },
@@ -151,7 +149,7 @@ const EnrollmentAction = ({
   onBeginConfirm,
 }: EnrollmentActionProps) => {
   const copyClass =
-    "m-0 min-w-0 wrap-anywhere text-sm leading-[1.6] text-[var(--ink-muted)]";
+    "m-0 min-w-0 wrap-anywhere text-sm leading-[var(--screen-body-leading)] text-[var(--screen-muted)]";
   if (program.lifecycle === "Archived") {
     return <p className={copyClass}>{COPY.programs.archivedNote}</p>;
   }
@@ -171,10 +169,7 @@ const EnrollmentAction = ({
       <>
         <p className={copyClass}>{COPY.programs.enrollmentActive}</p>
         <p className={copyClass}>{COPY.programs.enrollmentActiveHint}</p>
-        <div
-          className={cn(actionSurfaceVariants())}
-          data-enrollment-action-surface
-        >
+        <ScreenCard className="mt-0" data-enrollment-action-surface>
           <Button
             type="button"
             variant="outline"
@@ -184,7 +179,7 @@ const EnrollmentAction = ({
           >
             {busy ? COPY.programs.withdrawing : COPY.programs.cancelEnrollment}
           </Button>
-        </div>
+        </ScreenCard>
       </>
     );
   }
@@ -193,10 +188,7 @@ const EnrollmentAction = ({
       <>
         <p className={copyClass}>{COPY.programs.requestPending}</p>
         <p className={copyClass}>{COPY.programs.requestPendingHint}</p>
-        <div
-          className={cn(actionSurfaceVariants())}
-          data-enrollment-action-surface
-        >
+        <ScreenCard className="mt-0" data-enrollment-action-surface>
           <Button
             type="button"
             variant="outline"
@@ -206,7 +198,7 @@ const EnrollmentAction = ({
           >
             {busy ? COPY.programs.withdrawing : COPY.programs.withdrawRequest}
           </Button>
-        </div>
+        </ScreenCard>
       </>
     );
   }
@@ -221,10 +213,7 @@ const EnrollmentAction = ({
         <>
           <p className={copyClass}>{COPY.programs.requestRejected}</p>
           <p className={copyClass}>{COPY.programs.requestRejectedHint}</p>
-          <div
-            className={cn(actionSurfaceVariants())}
-            data-enrollment-action-surface
-          >
+          <ScreenCard className="mt-0" data-enrollment-action-surface>
             <Button
               type="button"
               className={cn(enrollmentActionVariants({ tone: "primary" }))}
@@ -233,7 +222,7 @@ const EnrollmentAction = ({
             >
               {busy ? COPY.programs.submitting : COPY.programs.reEnroll}
             </Button>
-          </div>
+          </ScreenCard>
         </>
       );
     }
@@ -242,10 +231,7 @@ const EnrollmentAction = ({
         <>
           <p className={copyClass}>{COPY.programs.requestWithdrawn}</p>
           <p className={copyClass}>{COPY.programs.requestWithdrawnHint}</p>
-          <div
-            className={cn(actionSurfaceVariants())}
-            data-enrollment-action-surface
-          >
+          <ScreenCard className="mt-0" data-enrollment-action-surface>
             <Button
               type="button"
               className={cn(enrollmentActionVariants({ tone: "primary" }))}
@@ -254,7 +240,7 @@ const EnrollmentAction = ({
             >
               {busy ? COPY.programs.submitting : COPY.programs.reEnroll}
             </Button>
-          </div>
+          </ScreenCard>
         </>
       );
     }
@@ -267,10 +253,7 @@ const EnrollmentAction = ({
       <>
         <p className={copyClass}>{COPY.programs.enrollmentCancelled}</p>
         <p className={copyClass}>{COPY.programs.enrollmentCancelledHint}</p>
-        <div
-          className={cn(actionSurfaceVariants())}
-          data-enrollment-action-surface
-        >
+        <ScreenCard className="mt-0" data-enrollment-action-surface>
           <Button
             type="button"
             className={cn(enrollmentActionVariants({ tone: "primary" }))}
@@ -279,7 +262,7 @@ const EnrollmentAction = ({
           >
             {busy ? COPY.programs.submitting : COPY.programs.reEnroll}
           </Button>
-        </div>
+        </ScreenCard>
       </>
     );
   }
@@ -289,7 +272,7 @@ const EnrollmentAction = ({
     );
   }
   return (
-    <div className={cn(actionSurfaceVariants())} data-enrollment-action-surface>
+    <ScreenCard className="mt-0" data-enrollment-action-surface>
       <Button
         type="button"
         className={cn(enrollmentActionVariants({ tone: "primary" }))}
@@ -298,7 +281,7 @@ const EnrollmentAction = ({
       >
         {busy ? COPY.programs.submitting : COPY.programs.enroll}
       </Button>
-    </div>
+    </ScreenCard>
   );
 };
 
@@ -665,52 +648,47 @@ export const ParticipantEnrollment = ({
       : COPY.programs.cancelConfirmAccept;
   const actionDisabled = busy || (actionError !== null && retryAction !== null);
   return (
-    <section
-      className={cn(enrollmentPanelVariants())}
+    <ScreenSection
+      className="pb-[calc(var(--screen-bottom-nav-height)+env(safe-area-inset-bottom,0px))]"
+      title={COPY.programs.enrollment}
+      headingId="program-enrollment-title"
       aria-labelledby="program-enrollment-title"
       aria-busy={busy}
       data-enrollment-panel
     >
       {notice !== null && (
-        <output
-          className="min-w-0 wrap-anywhere text-sm font-semibold text-[var(--success)]"
-          role="status"
-          data-enrollment-notice
-        >
+        <Alert tone="success" announcement="polite" data-enrollment-notice>
           {notice}
-        </output>
-      )}
-      {actionError !== null && (
-        <Alert
-          className="grid min-w-0 gap-2 border-[var(--error-border)] bg-[var(--error-surface)] text-[var(--error)]"
-          variant="destructive"
-        >
-          <output
-            ref={errorRef}
-            tabIndex={-1}
-            className="min-w-0 wrap-anywhere leading-[1.5]"
-          >
-            {actionError}
-          </output>
-          {retryAction && (
-            <Button
-              className="h-auto min-h-11 w-full whitespace-normal border-[var(--line-strong)] bg-[var(--surface-raised)] px-4 py-3 text-base font-bold text-[var(--ink)] hover:bg-[var(--surface)] hover:text-[var(--ink)] sm:w-fit"
-              variant="outline"
-              type="button"
-              data-enrollment-retry
-              onClick={retryLastAction}
-            >
-              {COPY.error.retry}
-            </Button>
-          )}
         </Alert>
       )}
-      <h3
-        id="program-enrollment-title"
-        className="m-0 wrap-anywhere text-sm font-bold tracking-[0.04em] text-[var(--ink-muted)]"
-      >
-        {COPY.programs.enrollment}
-      </h3>
+      {actionError !== null && (
+        <ScreenState
+          kind="error"
+          data-enrollment-error
+          title={
+            <output
+              ref={errorRef}
+              tabIndex={-1}
+              className="min-w-0 wrap-anywhere text-[var(--screen-danger)] leading-[1.5]"
+            >
+              {actionError}
+            </output>
+          }
+          action={
+            retryAction ? (
+              <Button
+                className="h-auto min-h-11 w-full whitespace-normal border-[var(--screen-line-strong)] bg-[var(--screen-surface)] px-4 py-3 text-base font-bold text-[var(--screen-ink)] hover:bg-[var(--screen-surface-soft)] hover:text-[var(--screen-ink)] sm:w-fit"
+                variant="outline"
+                type="button"
+                data-enrollment-retry
+                onClick={retryLastAction}
+              >
+                {COPY.error.retry}
+              </Button>
+            ) : undefined
+          }
+        />
+      )}
 
       <EnrollmentAction
         program={program}
@@ -726,13 +704,13 @@ export const ParticipantEnrollment = ({
       />
 
       {showScheduleAdvisory && (
-        <p className="m-0 min-w-0 wrap-anywhere leading-[1.6] text-[var(--ink-muted)]">
+        <p className="m-0 min-w-0 wrap-anywhere leading-[var(--screen-body-leading)] text-[var(--screen-muted)]">
           {COPY.programs.enrollmentScheduleAdvisory}
         </p>
       )}
 
       {showEventDetailAdvisory && canRequest && (
-        <p className="m-0 min-w-0 wrap-anywhere leading-[1.6] text-[var(--ink-muted)]">
+        <p className="m-0 min-w-0 wrap-anywhere leading-[var(--screen-body-leading)] text-[var(--screen-muted)]">
           {COPY.programs.enrollmentEventDetailAdvisory}
         </p>
       )}
@@ -753,13 +731,13 @@ export const ParticipantEnrollment = ({
         >
           <AlertDialogHeader className="min-w-0 gap-2">
             <AlertDialogTitle
-              className="min-w-0 wrap-anywhere text-lg font-extrabold text-[var(--ink)]"
+              className="min-w-0 wrap-anywhere text-lg font-extrabold text-[var(--screen-ink)]"
               id="participant-confirm-title"
             >
               {confirmationTitle}
             </AlertDialogTitle>
             <AlertDialogDescription
-              className="min-w-0 wrap-anywhere text-sm leading-[1.6] text-[var(--ink-muted)]"
+              className="min-w-0 wrap-anywhere text-sm leading-[var(--screen-body-leading)] text-[var(--screen-muted)]"
               id="participant-confirm-body"
             >
               {confirmationBody}
@@ -767,7 +745,7 @@ export const ParticipantEnrollment = ({
           </AlertDialogHeader>
           <AlertDialogFooter className="flex min-w-0 flex-wrap gap-2 max-[799px]:flex-col-reverse [&>*]:h-auto [&>*]:min-h-11 [&>*]:w-full [&>*]:whitespace-normal sm:[&>*]:w-fit">
             <AlertDialogCancel
-              className="min-h-[44px] min-w-[44px] px-4 py-3 text-base font-bold"
+              className="min-h-[var(--screen-touch-target)] min-w-[var(--screen-touch-target)] border-[var(--screen-line-strong)] bg-[var(--screen-surface)] px-4 py-3 text-base font-bold text-[var(--screen-ink)] hover:bg-[var(--screen-surface-soft)] hover:text-[var(--screen-ink)]"
               data-confirm-dismiss
               onClick={closeConfirm}
             >
@@ -777,7 +755,7 @@ export const ParticipantEnrollment = ({
               variant="outline"
               className={cn(
                 enrollmentActionVariants({ tone: "caution" }),
-                "min-h-[44px] px-4 py-3"
+                "min-h-[var(--screen-touch-target)] px-4 py-3"
               )}
               data-confirm-action
               data-tone="caution"
@@ -788,6 +766,6 @@ export const ParticipantEnrollment = ({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </section>
+    </ScreenSection>
   );
 };

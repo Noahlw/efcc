@@ -1,13 +1,12 @@
 "use client";
 
+import { CalendarDays, ChevronLeft, MapPin } from "lucide-react";
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { Alert } from "@/components/ui/alert";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Skeleton } from "@/components/ui/skeleton";
 import { RpcError } from "@/lib/api";
 import { COPY, errorMessage } from "@/lib/copy";
 import {
@@ -32,133 +31,41 @@ import {
   HK_UTC_OFFSET_MINUTES,
   hkWallDateTimeLabel,
 } from "@/lib/programs/recurrence";
+import {
+  ScreenCard,
+  ScreenEditor,
+  ScreenField,
+  ScreenHeader,
+  ScreenLoadingRows,
+  ScreenRow,
+  ScreenRowList,
+  ScreenRowMain,
+  ScreenRowMeta,
+  ScreenRowTitle,
+  ScreenSection,
+  ScreenState,
+  ScreenStatus,
+} from "@/lib/screen-foundations";
 
 import { buildProgramsHref } from "./programs-intent";
 import type { ProgramsOrigin } from "./programs-intent";
-
-const styles = {
-  programDetailFactIcon:
-    "size-5 shrink-0 fill-none stroke-current stroke-[1.8] [stroke-linecap:round] [stroke-linejoin:round]",
-  workspaceTask: "grid min-w-0 gap-4",
-  boundaryTitle:
-    "m-0 min-w-0 wrap-anywhere text-xl font-extrabold leading-tight tracking-[-0.02em] outline-none focus-visible:ring-3 focus-visible:ring-[var(--focus)]",
-  panelError:
-    "grid min-w-0 gap-2 border-[var(--error-border)] bg-[var(--error-surface)] text-[var(--error)]",
-  programDetailActions: "flex min-w-0 flex-wrap gap-3",
-  retry:
-    "h-auto min-h-11 min-w-11 w-fit whitespace-normal rounded-lg border border-[var(--line-strong)] bg-transparent px-4 py-2 text-[var(--ink)] hover:bg-[var(--surface)]",
-  secondaryButton:
-    "h-auto min-h-11 min-w-11 w-fit whitespace-normal rounded-lg border border-[var(--line-strong)] bg-transparent px-4 py-2 text-[var(--ink)] hover:bg-[var(--surface)]",
-  programDetail:
-    "grid min-w-0 gap-3 pb-[calc(6rem+env(safe-area-inset-bottom,0px))] text-[var(--ink)]",
-  programDetailBack:
-    "inline-flex min-h-11 min-w-11 w-fit items-center gap-2 rounded-lg border border-transparent px-3 py-2 text-[var(--ink-muted)] whitespace-normal hover:border-[var(--line)] hover:bg-[var(--surface)] hover:text-[var(--ink)]",
-  programDetailHeader: "grid min-w-0 gap-2 border-b border-[var(--line)] pb-3",
-  directoryStatus: "shrink-0 whitespace-normal",
-  directoryStatusSuccess:
-    "border-[var(--success-border)] bg-[var(--success-surface)] text-[var(--success)]",
-  programDetailEyebrow:
-    "m-0 min-w-0 wrap-anywhere text-sm font-bold text-[var(--ink-muted)]",
-  programDetailInfoCard:
-    "grid min-w-0 gap-2 rounded-[var(--radius-md)] bg-[var(--surface-raised)] p-4 shadow-[0_1px_3px_color-mix(in_srgb,var(--ink)_6%,transparent)]",
-  programDetailFactRow:
-    "m-0 flex min-w-0 items-start gap-3 wrap-anywhere leading-[1.6]",
-  programDetailFactTime: "font-semibold",
-  programDetailSection: "grid min-w-0 gap-3",
-  programDetailHeading:
-    "m-0 min-w-0 wrap-anywhere text-base font-extrabold leading-6",
-  programDetailDescription:
-    "m-0 min-w-0 max-w-[65ch] wrap-anywhere leading-[1.6] text-[var(--ink-muted)]",
-  exceptionBadge:
-    "shrink-0 whitespace-normal border-[var(--pending-border)] bg-[var(--pending-surface)] text-[var(--pending)]",
-  actionBarCard:
-    "mt-3 grid min-w-0 gap-2 rounded-[var(--radius-md)] bg-[var(--surface-raised)] p-4 shadow-[0_1px_3px_color-mix(in_srgb,var(--ink)_6%,transparent)]",
-  actionBarButton:
-    "h-auto min-h-11 w-full justify-center rounded-lg bg-[var(--accent)] px-4 py-2 text-center text-white whitespace-normal hover:bg-[var(--accent-deep)]",
-  actionBarSecondaryButton:
-    "h-auto min-h-11 w-full justify-center rounded-lg border border-[var(--line-strong)] bg-transparent px-4 py-2 text-center text-[var(--ink)] whitespace-normal hover:bg-[var(--surface)]",
-  panelNotice:
-    "flex min-w-0 flex-wrap items-center gap-3 rounded-lg border border-[var(--success-border)] bg-[var(--success-surface)] p-3 text-[var(--ink)]",
-  successOutline:
-    "h-auto min-h-11 min-w-11 w-fit whitespace-normal rounded-lg border border-[var(--success-border)] bg-transparent px-4 py-2 text-[var(--success)] hover:bg-[var(--success-surface)]",
-  workspaceHeading:
-    "m-0 min-w-0 wrap-anywhere text-lg font-extrabold leading-6 tracking-[-0.02em]",
-  workspaceEventSummary:
-    "flex min-w-0 flex-wrap items-center gap-2 wrap-anywhere text-sm leading-6 text-[var(--ink-muted)]",
-  eventDate: "min-w-0 wrap-anywhere",
-  eventSource: "shrink-0 whitespace-normal",
-  eventCancelled:
-    "border-[var(--error-border)] bg-[var(--error-surface)] text-[var(--error)]",
-  eventActive:
-    "border-[var(--success-border)] bg-[var(--success-surface)] text-[var(--success)]",
-  eventReason:
-    "m-0 min-w-0 wrap-anywhere text-sm leading-6 text-[var(--error)]",
-  workspaceFacts:
-    "grid min-w-0 gap-3 rounded-lg border border-[var(--line)] bg-[var(--surface)] p-4 sm:grid-cols-2",
-  workspaceSection: "grid min-w-0 gap-3",
-  workspaceSubheading:
-    "m-0 min-w-0 wrap-anywhere text-base font-bold leading-6",
-  emptyLine:
-    "m-0 min-w-0 wrap-anywhere text-sm leading-6 text-[var(--ink-muted)]",
-  ruleList: "m-0 grid min-w-0 list-none gap-2 p-0",
-  ruleRow:
-    "flex min-w-0 flex-wrap items-center gap-2 rounded-lg border border-[var(--line)] bg-[var(--surface)] p-3 [overflow-wrap:anywhere]",
-  confirmation:
-    "grid min-w-0 gap-2 rounded-lg border border-[var(--pending-border)] bg-[var(--pending-surface)] p-4 [overflow-wrap:anywhere]",
-  confirmRow: "flex min-w-0 flex-wrap gap-2",
-  dangerButton:
-    "h-auto min-h-11 min-w-11 w-fit whitespace-normal rounded-lg bg-[var(--error)] px-4 py-2 text-white hover:bg-[var(--accent-deep)]",
-  dangerOutline:
-    "h-auto min-h-11 min-w-11 w-fit whitespace-normal rounded-lg border border-[var(--error-border)] bg-transparent px-4 py-2 text-[var(--error)] hover:bg-[var(--error-surface)]",
-  ruleForm: "grid min-w-0 gap-3",
-  ruleField:
-    "grid min-w-0 gap-1.5 text-sm font-bold text-[var(--ink)] [overflow-wrap:anywhere]",
-  formControl:
-    "h-auto min-h-11 min-w-0 w-full rounded-lg border border-[var(--line-strong)] bg-[var(--surface-raised)] px-3 py-2 text-base text-[var(--ink)] focus-visible:border-[var(--focus)] focus-visible:ring-3 focus-visible:ring-[var(--focus)] disabled:opacity-60",
-  programDetailMuted:
-    "m-0 min-w-0 wrap-anywhere text-sm leading-6 text-[var(--ink-muted)]",
-  actionButton:
-    "h-auto min-h-11 min-w-11 w-fit whitespace-normal rounded-lg bg-[var(--accent)] px-4 py-2 text-white hover:bg-[var(--accent-deep)]",
-  cancelForm: "grid min-w-0 gap-2",
-} as const;
-
-const ICON_STROKE = {
-  fill: "none",
-  stroke: "currentColor",
-  strokeLinecap: "round" as const,
-  strokeLinejoin: "round" as const,
-  strokeWidth: 1.8,
-};
 
 export const EventFactIcon = ({
   name,
 }: {
   name: "calendar" | "pin" | "back";
-}) => (
-  <svg
-    aria-hidden="true"
-    className={styles.programDetailFactIcon}
-    focusable="false"
-    viewBox="0 0 24 24"
-  >
-    {name === "calendar" && (
-      <>
-        <rect {...ICON_STROKE} x="3" y="5" width="18" height="16" rx="2" />
-        <path {...ICON_STROKE} d="M16 3v4M8 3v4M3 10h18" />
-      </>
-    )}
-    {name === "pin" && (
-      <>
-        <path
-          {...ICON_STROKE}
-          d="M20 10c0 5-8 12-8 12S4 15 4 10a8 8 0 1 1 16 0Z"
-        />
-        <circle {...ICON_STROKE} cx="12" cy="10" r="2.5" />
-      </>
-    )}
-    {name === "back" && <path {...ICON_STROKE} d="m15 18-6-6 6-6" />}
-  </svg>
-);
+}) => {
+  const Icon =
+    name === "calendar" ? CalendarDays : name === "pin" ? MapPin : ChevronLeft;
+  return (
+    <Icon
+      aria-hidden="true"
+      className="size-[var(--screen-icon-size)] shrink-0 fill-none stroke-current stroke-[1.8] [stroke-linecap:round] [stroke-linejoin:round]"
+      focusable="false"
+      strokeWidth={1.8}
+    />
+  );
+};
 
 const STATUS_LABEL: Record<ProgramEvent["status"], string> = {
   Active: COPY.programs.eventActive,
@@ -501,78 +408,81 @@ export const EventDetail = ({
         hash,
       });
       return (
-        <section
-          className={styles.workspaceTask}
+        <ScreenState
+          kind="error"
+          title={
+            <RecoveryHeading
+              ref={recoveryRef}
+              className="m-0 text-base font-bold outline-none focus-visible:ring-3 focus-visible:ring-[var(--screen-focus)]"
+              tabIndex={-1}
+            >
+              {COPY.programs.eventDetailRecoveryTitle}
+            </RecoveryHeading>
+          }
+          description={loadError}
+          action={
+            <div className="flex min-w-0 flex-wrap gap-[var(--screen-utility-gap)]">
+              <Button
+                type="button"
+                className="w-fit border-[var(--screen-line-strong)] bg-transparent text-[var(--screen-ink)] hover:bg-[var(--screen-surface-soft)]"
+                variant="outline"
+                onClick={() => void load()}
+              >
+                {COPY.error.retry}
+              </Button>
+              {programHref !== "/programs" && (
+                <Button
+                  asChild
+                  className="w-fit border-[var(--screen-line-strong)] bg-transparent text-[var(--screen-ink)] hover:bg-[var(--screen-surface-soft)]"
+                  variant="outline"
+                >
+                  <Link href={programHref}>
+                    {COPY.programs.eventDetailViewProgram}
+                  </Link>
+                </Button>
+              )}
+              {!canManage && (
+                <Button
+                  asChild
+                  className="w-fit border-[var(--screen-line-strong)] bg-transparent text-[var(--screen-ink)] hover:bg-[var(--screen-surface-soft)]"
+                  variant="outline"
+                >
+                  <Link href={backHref} replace={backReplace} onClick={onBack}>
+                    {COPY.programs.backToOrigin}
+                  </Link>
+                </Button>
+              )}
+              <Button
+                asChild
+                className="w-fit border-[var(--screen-line-strong)] bg-transparent text-[var(--screen-ink)] hover:bg-[var(--screen-surface-soft)]"
+                variant="outline"
+              >
+                <Link href="/programs">
+                  {COPY.programs.eventDetailBackToCatalog}
+                </Link>
+              </Button>
+            </div>
+          }
           aria-label={COPY.programs.eventDetailTitle}
-        >
-          <RecoveryHeading
-            ref={recoveryRef}
-            className={styles.boundaryTitle}
-            tabIndex={-1}
-          >
-            {COPY.programs.eventDetailRecoveryTitle}
-          </RecoveryHeading>
-          <Alert className={styles.panelError} variant="destructive">
-            {loadError}
-          </Alert>
-          <div className={styles.programDetailActions}>
-            <Button
-              type="button"
-              className={styles.retry}
-              onClick={() => void load()}
-            >
-              {COPY.error.retry}
-            </Button>
-            {programHref !== "/programs" && (
-              <Button
-                asChild
-                className={styles.secondaryButton}
-                variant="outline"
-              >
-                <Link href={programHref}>
-                  {COPY.programs.eventDetailViewProgram}
-                </Link>
-              </Button>
-            )}
-            {!canManage && (
-              <Button
-                asChild
-                className={styles.secondaryButton}
-                variant="outline"
-              >
-                <Link href={backHref} replace={backReplace} onClick={onBack}>
-                  {COPY.programs.backToOrigin}
-                </Link>
-              </Button>
-            )}
-            <Button
-              asChild
-              className={styles.secondaryButton}
-              variant="outline"
-            >
-              <Link href="/programs">
-                {COPY.programs.eventDetailBackToCatalog}
-              </Link>
-            </Button>
-          </div>
-        </section>
+        />
       );
     }
     return (
-      <output
-        className={styles.workspaceTask}
-        aria-busy="true"
+      <ScreenState
+        kind="loading"
+        title={
+          <RecoveryHeading
+            ref={recoveryRef}
+            className="m-0 text-base font-bold outline-none focus-visible:ring-3 focus-visible:ring-[var(--screen-focus)]"
+            tabIndex={-1}
+          >
+            {COPY.programs.eventDetailLoading}
+          </RecoveryHeading>
+        }
         aria-label={COPY.programs.eventDetailTitle}
       >
-        <RecoveryHeading
-          ref={recoveryRef}
-          className={styles.boundaryTitle}
-          tabIndex={-1}
-        >
-          {COPY.programs.eventDetailLoading}
-        </RecoveryHeading>
-        <Skeleton className="mt-3 h-16 w-full" aria-hidden="true" />
-      </output>
+        <ScreenLoadingRows count={2} label={COPY.programs.eventDetailLoading} />
+      </ScreenState>
     );
   }
   const { event, leaders, participant_summary } = detail;
@@ -593,281 +503,270 @@ export const EventDetail = ({
 
     return (
       <section
-        className={styles.programDetail}
+        className="grid min-w-0 gap-3 pb-[calc(6rem+env(safe-area-inset-bottom,0px))] text-[var(--screen-ink)]"
         aria-labelledby="participant-event-title"
         aria-busy={busy}
       >
-        <Link
-          className={styles.programDetailBack}
-          aria-label={COPY.programs.backToOrigin}
-          href={backHref}
-          replace={backReplace}
-          onClick={onBack}
-        >
-          <EventFactIcon name="back" /> {COPY.programs.backToOrigin}
-        </Link>
-        <header className={styles.programDetailHeader}>
-          {checkInOpen && (
-            <Badge
-              className={`${styles.directoryStatus} ${styles.directoryStatusSuccess}`}
-              variant="default"
-              role="status"
-              aria-label={COPY.programs.checkInAvailable}
-            >
-              {COPY.programs.checkInAvailable}
-            </Badge>
-          )}
-          <p className={styles.programDetailEyebrow}>{programName}</p>
-          <h1
-            id="participant-event-title"
-            className={styles.boundaryTitle}
-            tabIndex={-1}
-          >
-            {eventTitle}
-          </h1>
-        </header>
+        <ScreenHeader
+          level="child"
+          backLabel={COPY.programs.backToOrigin}
+          backHref={backHref}
+          backReplace={backReplace}
+          onBack={onBack}
+          title={eventTitle}
+          lead={programName}
+          headingId="participant-event-title"
+          status={
+            checkInOpen ? (
+              <ScreenStatus
+                role="status"
+                tone="success"
+                aria-label={COPY.programs.checkInAvailable}
+              >
+                {COPY.programs.checkInAvailable}
+              </ScreenStatus>
+            ) : null
+          }
+        />
 
-        <article className={styles.programDetailInfoCard}>
-          <p
-            className={`${styles.programDetailFactRow} ${styles.programDetailFactTime}`}
-          >
-            <EventFactIcon name="calendar" />
-            <time dateTime={event.starts_at}>{whenLabel}</time>
-          </p>
-          {event.location && (
-            <p className={styles.programDetailFactRow}>
-              <EventFactIcon name="pin" />
-              <span>{event.location}</span>
+        <ScreenCard asChild>
+          <article>
+            <p className="m-0 flex min-w-0 items-start gap-3 wrap-anywhere font-semibold leading-[1.6]">
+              <EventFactIcon name="calendar" />
+              <time dateTime={event.starts_at}>{whenLabel}</time>
             </p>
-          )}
-        </article>
+            {event.location && (
+              <p className="m-0 flex min-w-0 items-start gap-3 wrap-anywhere leading-[1.6]">
+                <EventFactIcon name="pin" />
+                <span>{event.location}</span>
+              </p>
+            )}
+          </article>
+        </ScreenCard>
 
-        <section
-          className={styles.programDetailSection}
-          aria-labelledby={instructionsHeadingId}
+        <ScreenSection
+          headingId={instructionsHeadingId}
+          title={COPY.programs.checkInInstructionsHeading}
         >
-          <h2
-            id={instructionsHeadingId}
-            className={styles.programDetailHeading}
-          >
-            {COPY.programs.checkInInstructionsHeading}
-          </h2>
-          <p className={styles.programDetailDescription}>
+          <p className="m-0 min-w-0 max-w-[65ch] wrap-anywhere leading-[1.6] text-[var(--screen-muted)]">
             {checkInOpen
               ? COPY.programs.eventInstructions
               : event.check_in_window_opens_at
                 ? `${COPY.programs.eventInstructionsClosed} ${COPY.programs.eventCheckInWindowOpensAt} ${hkShortDateLabel(event.check_in_window_opens_at)} ${hkShortTimeLabel(event.check_in_window_opens_at)}`
                 : COPY.programs.eventInstructionsClosed}
           </p>
-        </section>
+        </ScreenSection>
 
-        <div className={styles.actionBarCard} data-action-bar>
+        <ScreenCard className="mt-0" data-action-bar>
           <Button
             asChild
             className={
               checkInOpen
-                ? styles.actionBarButton
-                : styles.actionBarSecondaryButton
+                ? "h-auto w-full justify-center whitespace-normal bg-[var(--screen-accent)] text-center text-white hover:bg-[var(--screen-accent-deep)]"
+                : "h-auto w-full justify-center whitespace-normal border-[var(--screen-line-strong)] bg-transparent text-center text-[var(--screen-ink)] hover:bg-[var(--screen-surface-soft)]"
             }
             variant={checkInOpen ? "default" : "outline"}
             data-action-state={checkInOpen ? "available" : "closed"}
           >
             <Link href={scanHref}>{COPY.programs.goToScan}</Link>
           </Button>
-        </div>
+        </ScreenCard>
       </section>
     );
   }
 
   return (
     <section
-      className={styles.workspaceTask}
+      className="grid min-w-0 gap-[var(--screen-section-gap)] text-[var(--screen-ink)]"
       aria-label={COPY.programs.eventDetailTitle}
       aria-busy={busy}
     >
-      <Link
-        className={styles.programDetailBack}
-        href={backHref}
-        replace={backReplace}
-        onClick={onBack}
+      <Button
+        asChild
+        variant="ghost"
+        className="w-fit text-[var(--screen-muted)] hover:bg-transparent hover:text-[var(--screen-ink)]"
+        size="row"
       >
-        {COPY.programs.eventDetailBack}
-      </Link>
+        <Link href={backHref} replace={backReplace} onClick={onBack}>
+          {COPY.programs.eventDetailBack}
+        </Link>
+      </Button>
       {notice !== null && (
-        <output className={styles.panelNotice} aria-live="polite">
-          <span>{notice}</span>
-          {undoAvailable && !cancelled && (
-            <Button
-              type="button"
-              className={styles.successOutline}
-              disabled={busy}
-              onClick={submitActivate}
-            >
-              {COPY.programs.eventAvailabilityUndo}
-            </Button>
-          )}
-        </output>
-      )}
-      {actionError !== null && (
-        <Alert className={styles.panelError} variant="destructive">
-          {actionError}
+        <Alert tone="success" announcement="polite">
+          <div className="flex min-w-0 flex-wrap items-center gap-[var(--screen-utility-gap)]">
+            <span>{notice}</span>
+            {undoAvailable && !cancelled && (
+              <Button
+                type="button"
+                variant="outline"
+                className="w-fit border-[var(--screen-success)] bg-transparent text-[var(--screen-success)] hover:bg-[var(--screen-success-surface)]"
+                disabled={busy}
+                onClick={submitActivate}
+              >
+                {COPY.programs.eventAvailabilityUndo}
+              </Button>
+            )}
+          </div>
         </Alert>
       )}
+      {actionError !== null && (
+        <Alert variant="destructive">{actionError}</Alert>
+      )}
 
-      <div className={styles.programDetailHeader}>
-        <h3 className={styles.workspaceHeading}>
-          {event.name ?? hkWallDateTimeLabel(event.starts_at)}
-        </h3>
-        <p className={styles.workspaceEventSummary}>
-          <span className={styles.eventDate}>
+      <ScreenSection
+        title={event.name ?? hkWallDateTimeLabel(event.starts_at)}
+        headingId="management-event-detail-title"
+      >
+        <div className="flex min-w-0 flex-wrap items-center gap-[var(--screen-utility-gap)]">
+          <ScreenRowMeta>
             {hkWallDateTimeLabel(event.starts_at)} —{" "}
             {hkWallDateTimeLabel(event.ends_at)}
-          </span>
-          <Badge className={styles.eventSource} variant="outline">
+          </ScreenRowMeta>
+          <ScreenStatus
+            tone={event.source === "SCHEDULE" ? "accent" : "neutral"}
+          >
             {event.source === "SCHEDULE"
               ? COPY.programs.eventScheduleSource
               : COPY.programs.eventManualSource}
-          </Badge>
-          <Badge className={styles.eventSource} variant="outline">
+          </ScreenStatus>
+          <ScreenStatus tone="neutral">
             {event.event_type ?? COPY.programs.eventTypeOptions[5]}
-          </Badge>
-          <Badge className={styles.eventSource} variant="outline">
+          </ScreenStatus>
+          <ScreenStatus tone="neutral">
             {COPY.programs.repeatLabel.replace(
               "{tag}",
               event.recurrence_tag ?? COPY.programs.recurrenceNone
             )}
-          </Badge>
-          <Badge
-            className={cancelled ? styles.eventCancelled : styles.eventActive}
-            variant={cancelled ? "outline" : "default"}
-          >
+          </ScreenStatus>
+          <ScreenStatus tone={cancelled ? "danger" : "success"}>
             {STATUS_LABEL[event.status]}
-          </Badge>
+          </ScreenStatus>
           {event.availability !== undefined && (
-            <Badge
-              className={
-                event.availability === "Active"
-                  ? styles.eventActive
-                  : styles.eventCancelled
-              }
-              variant={event.availability === "Active" ? "default" : "outline"}
+            <ScreenStatus
+              tone={event.availability === "Active" ? "success" : "danger"}
             >
               {AVAILABILITY_LABEL[event.availability]}
-            </Badge>
+            </ScreenStatus>
           )}
-        </p>
-        {event.exception !== null && event.exception !== undefined && (
-          <Badge className={styles.exceptionBadge} variant="secondary">
-            {event.exception.action === "RESCHEDULE"
-              ? COPY.programs.eventRescheduledBadge.replace(
-                  "{time}",
-                  event.exception.new_start_time ?? ""
-                )
-              : COPY.programs.eventCancelledBadge}
-          </Badge>
-        )}
+          {event.exception !== null && event.exception !== undefined && (
+            <ScreenStatus tone="pending">
+              {event.exception.action === "RESCHEDULE"
+                ? COPY.programs.eventRescheduledBadge.replace(
+                    "{time}",
+                    event.exception.new_start_time ?? ""
+                  )
+                : COPY.programs.eventCancelledBadge}
+            </ScreenStatus>
+          )}
+        </div>
         {cancelled && event.cancel_reason !== null && (
-          <p className={styles.eventReason}>
+          <ScreenRowMeta className="text-[var(--screen-danger)]">
             {COPY.programs.cancelledReason.replace(
               "{reason}",
               event.cancel_reason
             )}
-          </p>
+          </ScreenRowMeta>
         )}
-      </div>
+      </ScreenSection>
 
-      <dl className={styles.workspaceFacts}>
-        {event.location !== null && event.location !== undefined && (
+      <ScreenCard>
+        <dl className="grid min-w-0 gap-3 sm:grid-cols-2">
+          {event.location !== null && event.location !== undefined && (
+            <div>
+              <dt className="text-[length:var(--screen-meta-size)] text-[var(--screen-muted)]">
+                {COPY.programs.eventLocation}
+              </dt>
+              <dd className="m-0 mt-1 wrap-anywhere font-semibold">
+                {event.location}
+              </dd>
+            </div>
+          )}
           <div>
-            <dt>{COPY.programs.eventLocation}</dt>
-            <dd>{event.location}</dd>
+            <dt className="text-[length:var(--screen-meta-size)] text-[var(--screen-muted)]">
+              {COPY.programs.eventCheckInWindow}
+            </dt>
+            <dd className="m-0 mt-1 wrap-anywhere">
+              {event.check_in_window_opens_at !== null &&
+              event.check_in_window_opens_at !== undefined
+                ? `${COPY.programs.eventCheckInWindowOpensAt} ${hkWallDateTimeLabel(event.check_in_window_opens_at)}；${
+                    event.check_in_window_closes_at !== null &&
+                    event.check_in_window_closes_at !== undefined
+                      ? `${COPY.programs.eventCheckInWindowClosesAt} ${hkWallDateTimeLabel(event.check_in_window_closes_at)}`
+                      : COPY.programs.eventCheckInWindowClosesAt
+                  }`
+                : COPY.programs.hkTimeMarker}
+            </dd>
           </div>
-        )}
-        <div>
-          <dt>{COPY.programs.eventCheckInWindow}</dt>
-          <dd>
-            {event.check_in_window_opens_at !== null &&
-            event.check_in_window_opens_at !== undefined
-              ? `${COPY.programs.eventCheckInWindowOpensAt} ${hkWallDateTimeLabel(event.check_in_window_opens_at)}；${
-                  event.check_in_window_closes_at !== null &&
-                  event.check_in_window_closes_at !== undefined
-                    ? `${COPY.programs.eventCheckInWindowClosesAt} ${hkWallDateTimeLabel(event.check_in_window_closes_at)}`
-                    : COPY.programs.eventCheckInWindowClosesAt
-                }`
-              : COPY.programs.hkTimeMarker}
-          </dd>
+        </dl>
+      </ScreenCard>
+
+      <ScreenSection title={COPY.programs.eventDetailParticipantSummary}>
+        <div className="grid grid-cols-2 border-y border-[var(--screen-line)]">
+          <div className="grid gap-0.5 py-3">
+            <ScreenRowMeta>
+              {COPY.programs.eventActiveEnrollments.replace(
+                "{count}",
+                String(participant_summary.active_enrollments)
+              )}
+            </ScreenRowMeta>
+          </div>
+          <div className="grid gap-0.5 border-l border-[var(--screen-line)] py-3 pl-4">
+            <ScreenRowMeta>
+              {COPY.programs.eventCheckedIn.replace(
+                "{count}",
+                String(participant_summary.checked_in)
+              )}
+            </ScreenRowMeta>
+          </div>
         </div>
-      </dl>
+      </ScreenSection>
 
-      <div className={styles.workspaceSection}>
-        <h4 className={styles.workspaceSubheading}>
-          {COPY.programs.eventDetailParticipantSummary}
-        </h4>
-        <p className={styles.workspaceEventSummary}>
-          <span>
-            {COPY.programs.eventActiveEnrollments.replace(
-              "{count}",
-              String(participant_summary.active_enrollments)
-            )}
-          </span>
-          <span>
-            {COPY.programs.eventCheckedIn.replace(
-              "{count}",
-              String(participant_summary.checked_in)
-            )}
-          </span>
-        </p>
-      </div>
-
-      <div className={styles.workspaceSection}>
-        <h4 className={styles.workspaceSubheading}>
-          {COPY.programs.identityAssignments}
-        </h4>
+      <ScreenSection title={COPY.programs.identityAssignments}>
         {leaders.length === 0 ? (
-          <p className={styles.emptyLine}>
-            {COPY.programs.noIdentityAssignments}
-          </p>
+          <ScreenState
+            kind="empty"
+            title={COPY.programs.noIdentityAssignments}
+          />
         ) : (
-          <ul className={styles.ruleList}>
-            {leaders.map((leader: ProgramIdentityAssignment) => (
-              <li
-                key={`${leader.user_id}:${leader.role_definition_id}`}
-                className={styles.ruleRow}
-                aria-label={`${leader.user_name ?? leader.username ?? leader.user_id}，身份組：${leader.label}`}
-              >
-                <span>
-                  {leader.user_name ?? leader.username ?? leader.user_id}
-                </span>
-                <span>{leader.label}</span>
-              </li>
-            ))}
-          </ul>
+          <ScreenRowList>
+            <ul className="m-0 grid min-w-0 list-none gap-0 p-0">
+              {leaders.map((leader: ProgramIdentityAssignment) => (
+                <li
+                  key={`${leader.user_id}:${leader.role_definition_id}`}
+                  className="min-w-0"
+                  aria-label={`${leader.user_name ?? leader.username ?? leader.user_id}，身份組：${leader.label}`}
+                >
+                  <ScreenRow>
+                    <ScreenRowMain>
+                      <ScreenRowTitle>
+                        {leader.user_name ?? leader.username ?? leader.user_id}
+                      </ScreenRowTitle>
+                      <ScreenRowMeta>{leader.label}</ScreenRowMeta>
+                    </ScreenRowMain>
+                  </ScreenRow>
+                </li>
+              ))}
+            </ul>
+          </ScreenRowList>
         )}
-      </div>
+      </ScreenSection>
 
       {canManage && !cancelled && (
         <>
-          <div className={styles.workspaceSection}>
-            <h4 className={styles.workspaceSubheading}>
-              {COPY.programs.eventAvailability}
-            </h4>
+          <ScreenSection title={COPY.programs.eventAvailability}>
             {event.availability === "Active" ? (
               confirmingDeactivate ? (
-                <div
-                  className={styles.confirmation}
-                  role="alert"
-                  ref={confirmRef}
-                >
-                  <p>
+                <ScreenCard role="alert" ref={confirmRef} tone="default">
+                  <p className="m-0 wrap-anywhere">
                     {COPY.programs.eventAvailabilityConfirmBody.replace(
                       "{count}",
                       String(deactivateImpact)
                     )}
                   </p>
-                  <div className={styles.confirmRow}>
+                  <div className="flex min-w-0 flex-wrap gap-[var(--screen-utility-gap)]">
                     <Button
                       type="button"
-                      className={styles.dangerButton}
+                      className="w-fit bg-[var(--screen-danger)] text-white hover:bg-[var(--screen-danger)]"
                       disabled={busy}
                       onClick={() => submitDeactivate(true)}
                     >
@@ -875,25 +774,25 @@ export const EventDetail = ({
                     </Button>
                     <Button
                       type="button"
-                      className={styles.secondaryButton}
+                      variant="outline"
+                      className="w-fit border-[var(--screen-line-strong)] bg-transparent text-[var(--screen-ink)] hover:bg-[var(--screen-surface-soft)]"
                       disabled={busy}
                       onClick={() => setConfirmingDeactivate(false)}
                     >
                       {COPY.programs.keepEvent}
                     </Button>
                   </div>
-                </div>
+                </ScreenCard>
               ) : (
                 <Button
                   type="button"
-                  className={styles.dangerOutline}
+                  variant="outline"
+                  className="w-fit border-[var(--screen-danger)] bg-transparent text-[var(--screen-danger)] hover:bg-[var(--screen-danger-surface)]"
                   disabled={busy}
                   onClick={() => {
                     // AC-4: safe (zero affected operations) deactivation is
                     // immediate with Undo; only consequential deactivation
                     // requires the inline confirm naming the open operations.
-                    // Enrollments are Program-scoped; this Event's own open
-                    // operations are its active check-ins alone.
                     if (participant_summary.checked_in === 0) {
                       submitDeactivate(false);
                     } else {
@@ -908,213 +807,231 @@ export const EventDetail = ({
             ) : (
               <Button
                 type="button"
-                className={styles.successOutline}
+                variant="outline"
+                className="w-fit border-[var(--screen-success)] bg-transparent text-[var(--screen-success)] hover:bg-[var(--screen-success-surface)]"
                 disabled={busy}
                 onClick={submitActivate}
               >
                 {COPY.programs.eventAvailabilityActivate}
               </Button>
             )}
-          </div>
+          </ScreenSection>
 
-          <div className={styles.workspaceSection}>
-            <h4 className={styles.workspaceSubheading}>
-              {COPY.programs.eventEditTitle}
-            </h4>
+          <ScreenSection title={COPY.programs.eventEditTitle}>
             {editing ? (
-              <form className={styles.ruleForm} onSubmit={submitEdit}>
-                <label className={styles.ruleField}>
-                  <span>{COPY.programs.eventName}</span>
-                  <Input
-                    autoFocus
-                    className={styles.formControl}
-                    type="text"
-                    name="name"
-                    defaultValue={event.name ?? ""}
-                    placeholder={COPY.programs.eventNamePlaceholder}
-                    aria-label={COPY.programs.eventName}
-                  />
-                </label>
-                <label className={styles.ruleField}>
-                  <span>{COPY.programs.eventType}</span>
-                  <select
-                    className={styles.formControl}
-                    name="event_type"
-                    defaultValue={
-                      event.event_type ?? COPY.programs.eventTypeOptions[0]
-                    }
-                    aria-label={COPY.programs.eventType}
+              <ScreenCard asChild>
+                <ScreenEditor onSubmit={submitEdit}>
+                  <ScreenField
+                    htmlFor="management-event-name"
+                    label={COPY.programs.eventName}
                   >
-                    {COPY.programs.eventTypeOptions.map((type) => (
-                      <option key={type} value={type}>
-                        {type}
+                    <Input
+                      id="management-event-name"
+                      autoFocus
+                      className="border-[var(--screen-line-strong)] bg-[var(--screen-surface)] text-base"
+                      type="text"
+                      name="name"
+                      defaultValue={event.name ?? ""}
+                      placeholder={COPY.programs.eventNamePlaceholder}
+                    />
+                  </ScreenField>
+                  <ScreenField
+                    htmlFor="management-event-type"
+                    label={COPY.programs.eventType}
+                  >
+                    <select
+                      id="management-event-type"
+                      className="min-h-11 min-w-0 w-full rounded-[var(--screen-radius-control)] border border-[var(--screen-line-strong)] bg-[var(--screen-surface)] px-3 py-2 text-base text-[var(--screen-ink)]"
+                      name="event_type"
+                      defaultValue={
+                        event.event_type ?? COPY.programs.eventTypeOptions[0]
+                      }
+                    >
+                      {COPY.programs.eventTypeOptions.map((type) => (
+                        <option key={type} value={type}>
+                          {type}
+                        </option>
+                      ))}
+                    </select>
+                  </ScreenField>
+                  <ScreenField
+                    htmlFor="management-event-recurrence"
+                    label={COPY.programs.recurrenceTag}
+                  >
+                    <select
+                      id="management-event-recurrence"
+                      className="min-h-11 min-w-0 w-full rounded-[var(--screen-radius-control)] border border-[var(--screen-line-strong)] bg-[var(--screen-surface)] px-3 py-2 text-base text-[var(--screen-ink)]"
+                      name="recurrence_tag"
+                      defaultValue={
+                        event.recurrence_tag ?? COPY.programs.recurrenceNone
+                      }
+                      disabled
+                    >
+                      <option value={COPY.programs.recurrenceNone}>
+                        {COPY.programs.recurrenceNone}
                       </option>
-                    ))}
-                  </select>
-                </label>
-                <label className={styles.ruleField}>
-                  <span>{COPY.programs.recurrenceTag}</span>
-                  <select
-                    className={styles.formControl}
-                    name="recurrence_tag"
-                    defaultValue={
-                      event.recurrence_tag ?? COPY.programs.recurrenceNone
-                    }
-                    aria-label={COPY.programs.recurrenceTag}
-                    disabled
+                      <option value={COPY.programs.recurrenceWeekly}>
+                        {COPY.programs.recurrenceWeekly}
+                      </option>
+                      <option value={COPY.programs.recurrenceMonthly}>
+                        {COPY.programs.recurrenceMonthly}
+                      </option>
+                    </select>
+                    <span className="text-xs leading-[var(--screen-meta-leading)] text-[var(--screen-muted)]">
+                      {COPY.programs.repeatFormInformational}
+                    </span>
+                  </ScreenField>
+                  <ScreenField
+                    htmlFor="management-event-location"
+                    label={COPY.programs.eventLocation}
                   >
-                    <option value={COPY.programs.recurrenceNone}>
-                      {COPY.programs.recurrenceNone}
-                    </option>
-                    <option value={COPY.programs.recurrenceWeekly}>
-                      {COPY.programs.recurrenceWeekly}
-                    </option>
-                    <option value={COPY.programs.recurrenceMonthly}>
-                      {COPY.programs.recurrenceMonthly}
-                    </option>
-                  </select>
-                </label>
-                <p className={styles.programDetailMuted}>
-                  {COPY.programs.repeatFormInformational}
-                </p>
-                <label className={styles.ruleField}>
-                  <span>{COPY.programs.eventLocation}</span>
-                  <Input
-                    className={styles.formControl}
-                    type="text"
-                    name="location"
-                    defaultValue={event.location ?? ""}
-                    placeholder={COPY.programs.eventLocationPlaceholder}
-                    aria-label={COPY.programs.eventLocation}
-                  />
-                </label>
-                <label className={styles.ruleField}>
-                  <span>{COPY.programs.eventStart}</span>
-                  <Input
-                    className={styles.formControl}
-                    type="datetime-local"
-                    name="starts_at"
-                    required
-                    defaultValue={hkWallInputValue(event.starts_at)}
-                    aria-label={COPY.programs.eventStart}
-                  />
-                </label>
-                <label className={styles.ruleField}>
-                  <span>{COPY.programs.eventEnd}</span>
-                  <Input
-                    className={styles.formControl}
-                    type="datetime-local"
-                    name="ends_at"
-                    required
-                    defaultValue={hkWallInputValue(event.ends_at)}
-                    aria-label={COPY.programs.eventEnd}
-                  />
-                </label>
-                <label className={styles.ruleField}>
-                  <span>{COPY.programs.eventCheckInWindowOpensAt}</span>
-                  <Input
-                    className={styles.formControl}
-                    type="datetime-local"
-                    name="opens_at"
-                    required={
-                      event.check_in_window_opens_at !== null &&
-                      event.check_in_window_opens_at !== undefined
-                    }
-                    defaultValue={hkWallInputValue(
-                      event.check_in_window_opens_at
-                    )}
-                    aria-label={COPY.programs.eventCheckInWindowOpensAt}
-                  />
-                </label>
-                <label className={styles.ruleField}>
-                  <span>{COPY.programs.eventCheckInWindowClosesAt}</span>
-                  <Input
-                    className={styles.formControl}
-                    type="datetime-local"
-                    name="closes_at"
-                    required={
-                      event.check_in_window_closes_at !== null &&
-                      event.check_in_window_closes_at !== undefined
-                    }
-                    defaultValue={hkWallInputValue(
-                      event.check_in_window_closes_at
-                    )}
-                    aria-label={COPY.programs.eventCheckInWindowClosesAt}
-                  />
-                </label>
-                <Button
-                  type="submit"
-                  disabled={busy}
-                  className={styles.actionButton}
-                >
-                  {COPY.programs.eventEditSave}
-                </Button>
-                <Button
-                  type="button"
-                  className={styles.secondaryButton}
-                  disabled={busy}
-                  onClick={() => setEditing(false)}
-                >
-                  {COPY.programs.eventEditCancel}
-                </Button>
-              </form>
+                    <Input
+                      id="management-event-location"
+                      className="border-[var(--screen-line-strong)] bg-[var(--screen-surface)] text-base"
+                      type="text"
+                      name="location"
+                      defaultValue={event.location ?? ""}
+                      placeholder={COPY.programs.eventLocationPlaceholder}
+                    />
+                  </ScreenField>
+                  <ScreenField
+                    htmlFor="management-event-start"
+                    label={COPY.programs.eventStart}
+                  >
+                    <Input
+                      id="management-event-start"
+                      className="border-[var(--screen-line-strong)] bg-[var(--screen-surface)] text-base"
+                      type="datetime-local"
+                      name="starts_at"
+                      required
+                      defaultValue={hkWallInputValue(event.starts_at)}
+                    />
+                  </ScreenField>
+                  <ScreenField
+                    htmlFor="management-event-end"
+                    label={COPY.programs.eventEnd}
+                  >
+                    <Input
+                      id="management-event-end"
+                      className="border-[var(--screen-line-strong)] bg-[var(--screen-surface)] text-base"
+                      type="datetime-local"
+                      name="ends_at"
+                      required
+                      defaultValue={hkWallInputValue(event.ends_at)}
+                    />
+                  </ScreenField>
+                  <ScreenField
+                    htmlFor="management-event-opens"
+                    label={COPY.programs.eventCheckInWindowOpensAt}
+                  >
+                    <Input
+                      id="management-event-opens"
+                      className="border-[var(--screen-line-strong)] bg-[var(--screen-surface)] text-base"
+                      type="datetime-local"
+                      name="opens_at"
+                      required={
+                        event.check_in_window_opens_at !== null &&
+                        event.check_in_window_opens_at !== undefined
+                      }
+                      defaultValue={hkWallInputValue(
+                        event.check_in_window_opens_at
+                      )}
+                    />
+                  </ScreenField>
+                  <ScreenField
+                    htmlFor="management-event-closes"
+                    label={COPY.programs.eventCheckInWindowClosesAt}
+                  >
+                    <Input
+                      id="management-event-closes"
+                      className="border-[var(--screen-line-strong)] bg-[var(--screen-surface)] text-base"
+                      type="datetime-local"
+                      name="closes_at"
+                      required={
+                        event.check_in_window_closes_at !== null &&
+                        event.check_in_window_closes_at !== undefined
+                      }
+                      defaultValue={hkWallInputValue(
+                        event.check_in_window_closes_at
+                      )}
+                    />
+                  </ScreenField>
+                  <div className="flex min-w-0 flex-wrap gap-[var(--screen-utility-gap)]">
+                    <Button
+                      type="submit"
+                      disabled={busy}
+                      className="w-fit bg-[var(--screen-accent)] text-white hover:bg-[var(--screen-accent-deep)]"
+                    >
+                      {COPY.programs.eventEditSave}
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="w-fit border-[var(--screen-line-strong)] bg-transparent text-[var(--screen-ink)] hover:bg-[var(--screen-surface-soft)]"
+                      disabled={busy}
+                      onClick={() => setEditing(false)}
+                    >
+                      {COPY.programs.eventEditCancel}
+                    </Button>
+                  </div>
+                </ScreenEditor>
+              </ScreenCard>
             ) : (
               <Button
                 type="button"
-                className={styles.secondaryButton}
+                variant="outline"
+                className="w-fit border-[var(--screen-line-strong)] bg-transparent text-[var(--screen-ink)] hover:bg-[var(--screen-surface-soft)]"
                 disabled={busy}
                 onClick={() => setEditing(true)}
               >
                 {COPY.programs.eventEditTitle}
               </Button>
             )}
-          </div>
+          </ScreenSection>
 
-          <div className={styles.workspaceSection}>
-            <h4 className={styles.workspaceSubheading}>
-              {COPY.programs.cancelEvent}
-            </h4>
+          <ScreenSection title={COPY.programs.cancelEvent}>
             {confirmingCancel ? (
-              <form
-                className={styles.cancelForm}
-                noValidate
-                onSubmit={submitCancel}
-              >
-                <div
-                  ref={cancelConfirmRef}
-                  className={styles.confirmation}
-                  role="alert"
-                >
+              <ScreenEditor noValidate onSubmit={submitCancel}>
+                <ScreenCard role="alert" ref={cancelConfirmRef}>
                   <strong>{COPY.programs.cancelMeetingConfirmTitle}</strong>
                   <span>{COPY.programs.cancelMeetingConfirmBody}</span>
-                  <Input
-                    className={styles.formControl}
-                    type="text"
-                    name="cancel_reason"
-                    placeholder={COPY.programs.cancelReasonPlaceholder}
-                    aria-label={COPY.programs.cancelReason}
-                  />
-                  <Button
-                    type="submit"
-                    disabled={busy}
-                    className={styles.dangerButton}
+                  <ScreenField
+                    htmlFor="management-cancel-reason"
+                    label={COPY.programs.cancelReason}
                   >
-                    {COPY.programs.confirmCancel}
-                  </Button>
-                  <Button
-                    type="button"
-                    className={styles.secondaryButton}
-                    disabled={busy}
-                    onClick={() => setConfirmingCancel(false)}
-                  >
-                    {COPY.programs.keepMeeting}
-                  </Button>
-                </div>
-              </form>
+                    <Input
+                      id="management-cancel-reason"
+                      className="border-[var(--screen-line-strong)] bg-[var(--screen-surface)] text-base"
+                      type="text"
+                      name="cancel_reason"
+                      placeholder={COPY.programs.cancelReasonPlaceholder}
+                    />
+                  </ScreenField>
+                  <div className="flex min-w-0 flex-wrap gap-[var(--screen-utility-gap)]">
+                    <Button
+                      type="submit"
+                      disabled={busy}
+                      className="w-fit bg-[var(--screen-danger)] text-white hover:bg-[var(--screen-danger)]"
+                    >
+                      {COPY.programs.confirmCancel}
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="w-fit border-[var(--screen-line-strong)] bg-transparent text-[var(--screen-ink)] hover:bg-[var(--screen-surface-soft)]"
+                      disabled={busy}
+                      onClick={() => setConfirmingCancel(false)}
+                    >
+                      {COPY.programs.keepMeeting}
+                    </Button>
+                  </div>
+                </ScreenCard>
+              </ScreenEditor>
             ) : (
               <Button
                 type="button"
-                className={styles.dangerOutline}
+                variant="outline"
+                className="w-fit border-[var(--screen-danger)] bg-transparent text-[var(--screen-danger)] hover:bg-[var(--screen-danger-surface)]"
                 disabled={busy}
                 onClick={() => {
                   if (hasAttendance) {
@@ -1129,7 +1046,7 @@ export const EventDetail = ({
                 {COPY.programs.cancelEvent}
               </Button>
             )}
-          </div>
+          </ScreenSection>
         </>
       )}
     </section>

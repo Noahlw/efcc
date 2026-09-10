@@ -57,7 +57,7 @@ const COPY = {
   withdrawRequest: "撤回申請",
   requestPendingHint: "申請已送出，等待課程負責人處理。",
   cancelEnrollment: "取消報名",
-  managementDirectoryTitle: "管理課程目錄",
+  managementDirectoryTitle: "管理課程",
   workspaceTaskEvents: "聚會",
   workspaceTaskParticipants: "參與者",
   workspaceTaskSettings: "課程設定",
@@ -616,7 +616,10 @@ test.describe("Tier 3: Recurrence, Schedule Exceptions, Generation, Queue & Badg
       await page
         .getByRole("link", { name: COPY.workspaceTaskSettings, exact: true })
         .click();
-      await expect(page.getByRole("heading", { name: "時間表" })).toBeVisible();
+      await page.getByRole("link", { name: /聚會排程/u }).click();
+      await expect(
+        page.getByRole("heading", { name: "聚會排程" })
+      ).toBeVisible();
     } finally {
       await adminCtx.close();
     }

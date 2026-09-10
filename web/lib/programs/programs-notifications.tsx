@@ -1,12 +1,10 @@
 "use client";
 
+import { Bell, ChevronRight } from "lucide-react";
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import { Alert } from "@/components/ui/alert";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Skeleton } from "@/components/ui/skeleton";
 import { COPY } from "@/lib/copy";
 import { FeedPresentation } from "@/lib/feed-presentation";
 import type { FeedPresentationProps } from "@/lib/feed-presentation";
@@ -16,46 +14,34 @@ import type {
 } from "@/lib/programs/program-api";
 import { buildProgramsHref } from "@/lib/programs/programs-intent";
 import { hkWallDateTimeLabel } from "@/lib/programs/recurrence";
-import { cn } from "@/lib/utils";
+import {
+  ScreenHeader,
+  ScreenIconButton,
+  ScreenLoadingRows,
+  ScreenRow,
+  ScreenRowList,
+  ScreenRowMain,
+  ScreenRowMeta,
+  ScreenRowTitle,
+  ScreenRowTrailing,
+  ScreenSection,
+  ScreenState,
+  ScreenStatus,
+} from "@/lib/screen-foundations";
 
 const styles = {
-  notificationState:
-    "block min-w-0 rounded-lg border border-[var(--line)] bg-[var(--surface)] p-4 text-sm leading-6 [overflow-wrap:anywhere]",
-  notificationList: "m-0 grid min-w-0 list-none gap-2 p-0",
-  notificationItem:
-    "min-w-0 rounded-lg border border-[var(--line)] bg-[var(--surface-raised)]",
-  notificationRead: "opacity-80",
-  notificationUnread: "border-[var(--success-border)]",
-  notificationItemLink:
-    "flex min-h-11 min-w-0 flex-col gap-1 rounded-lg p-3 text-[var(--ink)] no-underline hover:bg-[var(--surface)] [overflow-wrap:anywhere]",
-  notificationItemTopline:
-    "flex min-w-0 flex-wrap items-center justify-between gap-2 [overflow-wrap:anywhere]",
-  notificationUnreadLabel:
-    "shrink-0 whitespace-normal bg-[var(--error)] text-white",
-  notificationsPage: "grid min-w-0 gap-4",
-  notificationsPageHeader:
-    "flex min-w-0 flex-wrap items-start justify-between gap-3",
-  panelHeading:
-    "m-0 min-w-0 text-lg font-extrabold leading-6 tracking-[-0.02em] [overflow-wrap:anywhere]",
-  notificationsLead:
-    "m-0 mt-1 max-w-prose text-sm leading-6 text-[var(--ink-muted)] [overflow-wrap:anywhere]",
-  badge: "shrink-0 whitespace-normal",
-  badgeActive: "border-transparent bg-[var(--accent)] text-white",
   retry:
-    "min-h-11 min-w-11 w-fit rounded-lg border border-[var(--line-strong)] bg-transparent px-4 py-2 text-[var(--ink)] whitespace-normal hover:bg-[var(--surface)]",
+    "min-h-11 min-w-11 w-fit whitespace-normal border-[var(--screen-line-strong)] bg-transparent px-4 py-2 text-[var(--screen-ink)] hover:bg-[var(--screen-surface-soft)]",
   notificationControl:
     "relative min-w-0 max-[799px]:flex max-[799px]:w-full max-[799px]:justify-end",
-  notificationTrigger:
-    "relative min-h-11 min-w-11 rounded-lg border border-[var(--line-strong)] bg-transparent p-2 text-[var(--ink)] hover:bg-[var(--surface)]",
-  notificationBellIcon: "size-5 fill-none stroke-current stroke-2",
   notificationBadge:
-    "absolute -right-1 -top-1 min-h-5 min-w-5 px-1 text-xs leading-5",
+    "absolute -top-1 -right-1 min-w-6 justify-center px-1 text-xs leading-5",
   notificationPopover:
-    "absolute left-auto right-0 top-full z-[var(--layer-overlay)] grid max-h-[min(32rem,calc(100vh-8rem))] min-w-[min(22rem,calc(100vw-2rem))] max-w-[calc(100vw-2rem)] gap-3 overflow-y-auto overscroll-contain rounded-lg border border-[var(--line-strong)] bg-[var(--surface-raised)] p-4 text-[var(--ink)] shadow-lg",
+    "absolute top-full right-0 z-[var(--layer-overlay)] grid max-h-[min(32rem,calc(100vh-8rem))] min-w-[min(22rem,calc(100vw-2rem))] max-w-[calc(100vw-2rem)] gap-3 overflow-y-auto overscroll-contain rounded-[var(--screen-radius-surface)] border border-[var(--screen-line-strong)] bg-[var(--screen-surface)] p-4 text-[var(--screen-ink)] shadow-lg",
   notificationPopoverHeader:
     "flex min-w-0 flex-wrap items-center justify-between gap-2 [overflow-wrap:anywhere]",
   notificationViewAll:
-    "inline-flex min-h-11 min-w-11 w-fit items-center rounded-lg border border-[var(--line-strong)] bg-transparent px-4 py-2 text-[var(--ink)] whitespace-normal hover:bg-[var(--surface)]",
+    "inline-flex min-h-11 min-w-11 w-fit items-center rounded-[var(--screen-radius-control)] border border-[var(--screen-line-strong)] bg-transparent px-4 py-2 text-[var(--screen-ink)] whitespace-normal hover:bg-[var(--screen-surface-soft)]",
 } as const;
 
 export type ManagementNotificationState =
@@ -105,93 +91,133 @@ function notificationHref(
   );
 }
 
+type NotificationListProps = Pick<
+  ProgramsNotificationsProps,
+  "state" | "onMarkRead" | "hash"
+> & {
+  onNavigate?: () => void;
+};
+
+const NotificationRows = ({
+  items,
+  onMarkRead,
+  onNavigate,
+  hash,
+}: {
+  items: readonly ManagementNotificationItem[];
+  onMarkRead: NotificationListProps["onMarkRead"];
+  onNavigate?: () => void;
+  hash?: string | null;
+}) => (
+  <ScreenRowList aria-label={COPY.programs.notificationsListLabel}>
+    {items.map((item) => {
+      const title =
+        item.kind === "enrollment"
+          ? COPY.programs.notificationsEnrollmentLabel
+          : item.actionable
+            ? COPY.programs.notificationsEventLabel
+            : COPY.programs.notificationsEventInformationalLabel;
+      const detail =
+        item.kind === "enrollment"
+          ? COPY.programs.notificationsEnrollmentCount.replace(
+              "{count}",
+              String(item.count)
+            )
+          : `${item.name ? `${item.name} · ` : ""}${hkWallDateTimeLabel(item.starts_at)}`;
+      return (
+        <ScreenRow key={`${item.source_key}:${item.source_revision}`} asChild>
+          <Link
+            href={notificationHref(item, hash)}
+            onClick={() => {
+              onNavigate?.();
+              void onMarkRead([item]);
+            }}
+          >
+            {item.read || (
+              <span
+                aria-label={COPY.programs.notificationsUnread}
+                className="size-2 shrink-0 rounded-full bg-[var(--screen-accent)]"
+              />
+            )}
+            <ScreenRowMain>
+              <ScreenRowTitle>{title}</ScreenRowTitle>
+              <ScreenRowMeta>
+                {item.program_name} · {item.department_name} · {detail}
+              </ScreenRowMeta>
+            </ScreenRowMain>
+            <ScreenRowTrailing>
+              <ChevronRight
+                aria-hidden="true"
+                className="size-5 text-[var(--screen-muted)]"
+              />
+            </ScreenRowTrailing>
+          </Link>
+        </ScreenRow>
+      );
+    })}
+  </ScreenRowList>
+);
+
 const NotificationList = ({
   state,
   onMarkRead,
   onNavigate,
   hash,
-}: Pick<ProgramsNotificationsProps, "state" | "onMarkRead" | "hash"> & {
-  onNavigate?: () => void;
-}) => {
+}: NotificationListProps) => {
   if (state.kind === "loading") {
     return (
-      <>
-        <output className={styles.notificationState} aria-busy="true">
-          {COPY.programs.notificationsLoading}
-        </output>
-        <Skeleton className={styles.notificationState} aria-hidden="true" />
-      </>
+      <ScreenState kind="loading" title={COPY.programs.notificationsLoading}>
+        <ScreenLoadingRows
+          count={2}
+          label={COPY.programs.notificationsLoading}
+        />
+      </ScreenState>
     );
   }
   if (state.kind === "error") {
-    return (
-      <Alert className={styles.notificationState} variant="destructive">
-        {state.message}
-      </Alert>
-    );
+    return <ScreenState kind="error" title={state.message} />;
   }
   if (state.notifications.items.length === 0) {
     return (
-      <output className={styles.notificationState}>
-        {COPY.programs.notificationsEmpty}
-      </output>
+      <ScreenState kind="empty" title={COPY.programs.notificationsEmpty} />
     );
   }
+
+  const unread = state.notifications.items.filter((item) => !item.read);
+  const earlier = state.notifications.items.filter((item) => item.read);
   return (
-    <ul
-      className={styles.notificationList}
+    <div
+      className="grid min-w-0 gap-5"
       aria-label={COPY.programs.notificationsListLabel}
     >
-      {state.notifications.items.map((item) => {
-        const title =
-          item.kind === "enrollment"
-            ? COPY.programs.notificationsEnrollmentLabel
-            : item.actionable
-              ? COPY.programs.notificationsEventLabel
-              : COPY.programs.notificationsEventInformationalLabel;
-        return (
-          <li
-            key={`${item.source_key}:${item.source_revision}`}
-            className={cn(
-              styles.notificationItem,
-              item.read ? styles.notificationRead : styles.notificationUnread
-            )}
-          >
-            <Link
-              className={styles.notificationItemLink}
-              href={notificationHref(item, hash)}
-              onClick={() => {
-                onNavigate?.();
-                onMarkRead([item]);
-              }}
-            >
-              <span className={styles.notificationItemTopline}>
-                <strong>{title}</strong>
-                {!item.read && (
-                  <Badge
-                    className={styles.notificationUnreadLabel}
-                    variant="destructive"
-                  >
-                    {COPY.programs.notificationsUnread}
-                  </Badge>
-                )}
-              </span>
-              <span>
-                {item.program_name} · {item.department_name}
-              </span>
-              <span>
-                {item.kind === "enrollment"
-                  ? COPY.programs.notificationsEnrollmentCount.replace(
-                      "{count}",
-                      String(item.count)
-                    )
-                  : `${item.name ? `${item.name} · ` : ""}${hkWallDateTimeLabel(item.starts_at)}`}
-              </span>
-            </Link>
-          </li>
-        );
-      })}
-    </ul>
+      {unread.length > 0 ? (
+        <ScreenSection
+          title={COPY.programs.notificationsUnreadSection}
+          action={
+            <ScreenStatus tone="pending">
+              {state.notifications.unread_count}
+            </ScreenStatus>
+          }
+        >
+          <NotificationRows
+            items={unread}
+            onMarkRead={onMarkRead}
+            onNavigate={onNavigate}
+            hash={hash}
+          />
+        </ScreenSection>
+      ) : null}
+      {earlier.length > 0 ? (
+        <ScreenSection title={COPY.programs.notificationsEarlierSection}>
+          <NotificationRows
+            items={earlier}
+            onMarkRead={onMarkRead}
+            onNavigate={onNavigate}
+            hash={hash}
+          />
+        </ScreenSection>
+      ) : null}
+    </div>
   );
 };
 
@@ -406,12 +432,15 @@ export const ProgramsNotifications = ({
   const notificationStatus = readError ? (
     <>
       {status}
-      <Alert className={styles.notificationState} variant="destructive">
-        <p>{COPY.programs.notificationsReadError}</p>
-        <Button className={styles.retry} type="button" onClick={retryRead}>
-          {COPY.programs.notificationsRetry}
-        </Button>
-      </Alert>
+      <ScreenState
+        kind="error"
+        title={COPY.programs.notificationsReadError}
+        action={
+          <Button className={styles.retry} type="button" onClick={retryRead}>
+            {COPY.programs.notificationsRetry}
+          </Button>
+        }
+      />
     </>
   ) : (
     status
@@ -420,30 +449,20 @@ export const ProgramsNotifications = ({
   if (full) {
     return (
       <section
-        className={styles.notificationsPage}
+        className="grid min-w-0 gap-5"
         aria-labelledby="programs-notifications-title"
       >
-        <header className={styles.notificationsPageHeader}>
-          <div className="min-w-0">
-            <h3
-              id="programs-notifications-title"
-              className={styles.panelHeading}
-            >
-              {COPY.programs.notificationsTitle}
-            </h3>
-            <p className={styles.notificationsLead}>
-              {COPY.programs.notificationsLead}
-            </p>
-          </div>
-          {unreadCount > 0 && (
-            <Badge
-              className={`${styles.badge} ${styles.badgeActive}`}
-              variant="default"
-            >
-              {unreadCount}
-            </Badge>
-          )}
-        </header>
+        <ScreenHeader
+          level="child"
+          title={COPY.programs.notificationsScreenTitle}
+          lead={COPY.programs.notificationsScreenLead}
+          headingId="programs-notifications-title"
+          backHref={buildProgramsHref({
+            mode: "management",
+            departmentId,
+            hash,
+          })}
+        />
         <NotificationFeed
           state={effectiveState}
           onMarkRead={markRead}
@@ -463,8 +482,8 @@ export const ProgramsNotifications = ({
       aria-label={COPY.programs.notificationBellLabel}
       data-feed-state={feedStateFor(effectiveState)}
     >
-      <Button
-        className={styles.notificationTrigger}
+      <ScreenIconButton
+        className="relative"
         type="button"
         aria-expanded={open}
         aria-controls="programs-notification-panel"
@@ -481,27 +500,20 @@ export const ProgramsNotifications = ({
           });
         }}
       >
-        <svg
-          className={styles.notificationBellIcon}
-          viewBox="0 0 24 24"
-          aria-hidden="true"
-          focusable="false"
-        >
-          <path d="M18 9a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4" />
-        </svg>
+        <Bell aria-hidden="true" className="size-5" />
         {unreadCount > 0 && (
-          <Badge
-            className={`${styles.badge} ${styles.badgeActive} ${styles.notificationBadge}`}
-            variant="default"
+          <ScreenStatus
+            className={styles.notificationBadge}
+            tone="pending"
             aria-label={COPY.programs.notificationsCount.replace(
               "{count}",
               String(unreadCount)
             )}
           >
             {unreadCount > 99 ? "99+" : unreadCount}
-          </Badge>
+          </ScreenStatus>
         )}
-      </Button>
+      </ScreenIconButton>
       {open && (
         <dialog
           open
@@ -515,7 +527,9 @@ export const ProgramsNotifications = ({
             <h3 className="m-0 text-base font-bold">
               {COPY.programs.notificationsTitle}
             </h3>
-            {unreadCount > 0 && <Badge variant="default">{unreadCount}</Badge>}
+            {unreadCount > 0 ? (
+              <ScreenStatus tone="pending">{unreadCount}</ScreenStatus>
+            ) : null}
           </div>
           <NotificationFeed
             state={effectiveState}

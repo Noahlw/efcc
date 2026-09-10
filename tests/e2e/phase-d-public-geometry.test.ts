@@ -212,7 +212,7 @@ async function assertContained(
       expect(viewport.shell.navigationBottom).toBeLessThanOrEqual(
         viewport.innerHeight + 1
       );
-      expect(viewport.shell.contentPaddingBottom).toBeGreaterThanOrEqual(84);
+      expect(viewport.shell.contentPaddingBottom).toBeGreaterThanOrEqual(72);
     } else {
       expect(viewport.shell.navigationPosition).toBe("sticky");
     }

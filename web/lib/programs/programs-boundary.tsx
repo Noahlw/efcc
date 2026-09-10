@@ -4,9 +4,7 @@ import type { AppRouterInstance } from "next/dist/shared/lib/app-router-context.
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 
-import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
-import { Skeleton } from "@/components/ui/skeleton";
 import { RpcError } from "@/lib/api";
 import { COPY, errorCopyFor } from "@/lib/copy";
 import { announce } from "@/lib/live-region";
@@ -21,6 +19,7 @@ import type {
   ManagementNotificationItem,
   ManagementNotifications,
 } from "@/lib/programs/program-api";
+import { ScreenHeader, ScreenState } from "@/lib/screen-foundations";
 import { rememberDeepLink } from "@/lib/session";
 
 import { ManagementDirectory } from "./management-directory";
@@ -116,6 +115,7 @@ function participantOriginHref(
 const TASK_LABEL_BY_TASK: Record<ProgramsTask, string> = {
   events: COPY.programs.workspaceTaskEvents,
   participants: COPY.programs.workspaceTaskParticipants,
+  schedule: COPY.programs.workspaceTaskSchedule,
   settings: COPY.programs.workspaceTaskSettings,
   notifications: COPY.programs.workspaceTaskNotifications,
 };
@@ -171,106 +171,74 @@ const StatePanel = ({
   actionLabel,
   onAction,
 }: StatePanelProps) => {
-  const content = (
-    <>
-      {title && (
-        <h2 className="m-0 mb-2 min-w-0 wrap-anywhere text-[1.35rem] font-extrabold tracking-[-0.02em] text-[var(--ink)]">
-          {title}
-        </h2>
-      )}
-      <p className="m-0 mb-4 min-w-0 wrap-anywhere leading-[1.6]">{message}</p>
-      {actionLabel && onAction && (
-        <Button
-          variant="outline"
-          className="min-h-11 h-auto rounded-[var(--radius-sm)] border-[var(--accent)] bg-transparent px-[1.125rem] py-[0.5625rem] text-base font-bold text-[var(--accent)] hover:bg-[var(--accent)] hover:text-[var(--surface-raised)] focus-visible:ring-3 focus-visible:ring-[var(--focus)]"
-          type="button"
-          onClick={onAction}
-        >
-          {actionLabel}
-        </Button>
-      )}
-    </>
-  );
   if (kind === "loading") {
     return (
-      <output
+      <ScreenState
         id={id}
         tabIndex={id ? -1 : undefined}
-        className="block max-w-[60ch] min-w-0 rounded-[var(--radius-sm)] border border-[var(--line)] bg-[var(--surface)] p-4 text-[var(--ink)] [overflow-wrap:anywhere]"
-        aria-busy="true"
-      >
-        <Skeleton className="mb-3 h-4 w-2/3" aria-hidden="true" />
-        {content}
-      </output>
+        kind="loading"
+        title={<span className="wrap-anywhere">{message}</span>}
+        description={
+          <div className="grid gap-2 py-2" aria-hidden="true">
+            <span className="h-4 w-2/3 rounded-[var(--screen-radius-control)] bg-[var(--screen-surface-soft)]" />
+            <span className="h-16 w-full rounded-[var(--screen-radius-control)] bg-[var(--screen-surface-soft)]" />
+          </div>
+        }
+      />
     );
   }
   return (
-    <Alert
+    <ScreenState
       id={id}
       tabIndex={id ? -1 : undefined}
-      className="max-w-[60ch] rounded-[var(--radius-sm)] border-[var(--error-border)] bg-[var(--error-surface)] p-4 text-[var(--ink)] [overflow-wrap:anywhere]"
-      variant="destructive"
-    >
-      {content}
-    </Alert>
+      kind="error"
+      title={
+        <h2 className="m-0 wrap-anywhere text-[length:var(--screen-child-title-size)] font-extrabold leading-[var(--screen-child-title-leading)]">
+          {title}
+        </h2>
+      }
+      description={<p className="m-0 wrap-anywhere leading-[1.6]">{message}</p>}
+      action={
+        actionLabel && onAction ? (
+          <Button
+            variant="outline"
+            className="h-auto min-h-11 w-fit whitespace-normal border-[var(--screen-line-strong)] bg-transparent px-4 py-2 text-base font-bold text-[var(--screen-danger)] hover:bg-[var(--screen-danger-surface)] hover:text-[var(--screen-danger)]"
+            type="button"
+            onClick={onAction}
+          >
+            {actionLabel}
+          </Button>
+        ) : undefined
+      }
+    />
   );
 };
 
 const BoundaryFrame = ({
   children,
-  intent,
-  detailReady,
+  showFallbackHeader,
 }: {
   children: React.ReactNode;
-  intent: ProgramsIntent;
-  detailReady: boolean;
-}) => {
-  // A selected participant program/event renders its own heading and back
-  // action once access is ready. Keep the boundary heading while access is
-  // loading or unavailable so every fallback still has a page-level heading.
-  const showCatalogHeader = !(
-    intent.mode === "participant" &&
-    intent.programId &&
-    detailReady
-  );
-
-  if (!showCatalogHeader) {
-    return (
-      <section className="w-full max-w-[760px] min-w-0 rounded-[var(--radius-md)] border border-[var(--line)] bg-[var(--surface-raised)] p-[clamp(1.25rem,3vw,2rem)]">
-        <div id="programs-mode-panel" className="min-h-0 pt-6">
-          {children}
-        </div>
-      </section>
-    );
-  }
-
-  return (
-    <section
-      className="w-full max-w-[760px] min-w-0 rounded-[var(--radius-md)] border border-[var(--line)] bg-[var(--surface-raised)] p-[clamp(1.25rem,3vw,2rem)]"
-      aria-labelledby="programs-title"
-    >
-      <header className="border-b border-[var(--line)] pb-5">
-        <h1
-          id="programs-title"
-          className="m-0 mb-2 min-w-0 wrap-anywhere text-[1.35rem] font-extrabold tracking-[-0.02em] text-[var(--ink)]"
-        >
-          {COPY.programs.pageTitle}
-        </h1>
-        <p className="m-0 mb-5 max-w-[65ch] wrap-anywhere text-[var(--ink-muted)] leading-[1.6]">
-          {COPY.programs.entryLead}
-        </p>
-      </header>
-      <div
-        id="programs-mode-panel"
-        className="min-h-0 pt-6"
-        role="region"
-        aria-labelledby="programs-title"
-      >
-        {children}
-      </div>
-    </section>
-  );
-};
+  showFallbackHeader: boolean;
+}) => (
+  <div
+    id="programs-mode-panel"
+    className="min-h-0 w-full min-w-0"
+    // eslint-disable-next-line jsx-a11y/prefer-tag-over-role -- preserve the Programs region contract
+    role="region"
+    aria-label={showFallbackHeader ? undefined : COPY.programs.pageTitle}
+    aria-labelledby={showFallbackHeader ? "programs-title" : undefined}
+  >
+    <div hidden={!showFallbackHeader} aria-hidden={!showFallbackHeader}>
+      <ScreenHeader
+        headingId="programs-title"
+        title={COPY.programs.pageTitle}
+        lead={showFallbackHeader ? COPY.programs.entryLead : undefined}
+      />
+    </div>
+    {children}
+  </div>
+);
 
 const ManagementPanel = ({
   projection,
@@ -426,24 +394,12 @@ const ManagementPanel = ({
 
   return (
     <>
-      <div className="flex min-w-0 items-start justify-between gap-4 max-[799px]:flex-col">
-        <div className="min-w-0">
-          <h2 className="m-0 mb-2 min-w-0 wrap-anywhere text-[1.35rem] font-extrabold tracking-[-0.02em] text-[var(--ink)]">
-            {COPY.programs.managementMode}
-          </h2>
-          <p className="m-0 max-w-[65ch] wrap-anywhere text-[var(--ink-muted)] leading-[1.6]">
-            {COPY.programs.managementLead}
-          </p>
+      {intent.task === "notifications" ? null : (
+        <div className="mb-5 flex min-w-0 justify-end">
+          {notificationSurface}
         </div>
-        {intent.task !== "notifications" && notificationSurface}
-      </div>
-      <output className="m-0 mb-5 block wrap-anywhere font-bold text-[var(--success)]">
-        {COPY.programs.managementScopeReady}
-      </output>
-      <p className="m-[-0.5rem] mb-5 max-w-[60ch] wrap-anywhere text-[var(--ink-muted)] leading-[1.6]">
-        {COPY.programs.managementBoundaryHint}
-      </p>
-      {intent.task === "notifications" && notificationSurface}
+      )}
+      {intent.task === "notifications" ? notificationSurface : null}
       {intent.task === "notifications" ? null : intent.programId ? (
         <WorkspaceRouteProvider
           value={{
@@ -481,6 +437,7 @@ const ManagementPanel = ({
 /** The BoundaryFrame body once access has resolved (or is loading/erroring)
  * -- extracted out of ProgramsBoundary purely to keep that function's own
  * branch count under the complexity budget; no logic changed. */
+/* oxlint-disable-next-line eslint/complexity -- the boundary is the single route-intent state machine for all participant and management branches. */
 const ProgramsBoundaryBody = ({
   access,
   intent,
@@ -669,16 +626,17 @@ export const ProgramsBoundary = () => {
     string | null
   >(null);
   const participantFocusProgramId = useRef<string | null>(null);
-  useEffect(() => {
-    return () => {
+  useEffect(
+    () => () => {
       if (
         typeof window !== "undefined" &&
         window.location.pathname !== "/programs"
       ) {
         clearParticipantProgramFocus();
       }
-    };
-  }, []);
+    },
+    []
+  );
   const updateManagementDirectoryQuery = (query: string) => {
     setManagementDirectoryQuery(query);
     setDirectoryFocusProgramId(null);
@@ -905,7 +863,7 @@ export const ProgramsBoundary = () => {
   };
   if (intent.malformed) {
     return (
-      <BoundaryFrame intent={intent} detailReady={false}>
+      <BoundaryFrame showFallbackHeader>
         <StatePanel
           id="programs-access-state"
           kind="error"
@@ -919,7 +877,14 @@ export const ProgramsBoundary = () => {
   }
 
   return (
-    <BoundaryFrame intent={intent} detailReady={access.kind === "ready"}>
+    <BoundaryFrame
+      showFallbackHeader={
+        intent.malformed ||
+        access.kind !== "ready" ||
+        (intent.mode === "management" &&
+          !access.projection.hasManagementCapability)
+      }
+    >
       <ProgramsBoundaryBody
         access={access}
         intent={intent}

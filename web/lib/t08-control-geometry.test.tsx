@@ -22,6 +22,9 @@ describe("T08 primitive-owned geometry", () => {
         <Button size="xs">xs</Button>
         <Button size="sm">sm</Button>
         <Button size="lg">lg</Button>
+        <Button size="row" shape="square">
+          row
+        </Button>
         <Button size="icon" aria-label="icon" />
         <Button size="icon-xs" aria-label="icon-xs" />
         <Button size="icon-sm" aria-label="icon-sm" />
