@@ -19,6 +19,7 @@ const COPY = {
 };
 
 type Fixture = {
+  departmentCode: string;
   departmentId: string;
   programId: string;
   programName: string;
@@ -42,6 +43,7 @@ async function loginAs(page: Page): Promise<void> {
 async function createFixture(page: Page, suffix: string): Promise<Fixture> {
   const result = (await page.evaluate(async (value) => {
     const fixture: Fixture = {
+      departmentCode: `E2E_T05M_${value}`,
       departmentId: "",
       programId: "",
       programName: `E2E_T05M Program ${value}`,
@@ -60,7 +62,7 @@ async function createFixture(page: Page, suffix: string): Promise<Fixture> {
 
     try {
       const department = await post("/api/v1/programs/departments", {
-        code: `E2E_T05M_${value}`,
+        code: fixture.departmentCode,
         name: `E2E_T05M Management ${value}`,
         lifecycle: "Active",
       });
@@ -113,7 +115,7 @@ async function createFixture(page: Page, suffix: string): Promise<Fixture> {
   }, suffix)) as FixtureSetupResult;
   if (!result.ok) {
     try {
-      await archivePartialFixture(page, result.fixture);
+      await archiveFixture(page, result.fixture);
     } catch (cleanupError) {
       throw new Error(
         `${result.error}; fixture cleanup failed: ${cleanupError instanceof Error ? cleanupError.message : String(cleanupError)}`,
@@ -125,13 +127,7 @@ async function createFixture(page: Page, suffix: string): Promise<Fixture> {
   return result.fixture;
 }
 
-async function archivePartialFixture(
-  page: Page,
-  fixture: Fixture
-): Promise<void> {
-  if (fixture.departmentId === "") {
-    return;
-  }
+async function archiveFixture(page: Page, fixture: Fixture): Promise<void> {
   await page.evaluate(async (currentFixture) => {
     const failures: string[] = [];
     const attempt = async (
@@ -146,11 +142,39 @@ async function archivePartialFixture(
         );
       }
     };
+    let departmentId = currentFixture.departmentId;
+    if (departmentId === "") {
+      await attempt("Department lookup", async () => {
+        const response = await fetch("/api/v1/programs/departments");
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}`);
+        }
+        const body = (await response.json()) as {
+          data?: {
+            departments?: Array<{
+              department_id?: string;
+              code?: string;
+            }>;
+          };
+        };
+        const match = body.data?.departments?.find(
+          (department) =>
+            department.code === currentFixture.departmentCode &&
+            department.department_id
+        );
+        if (!match?.department_id) {
+          throw new Error(
+            "created Department was not found by its unique code"
+          );
+        }
+        departmentId = match.department_id;
+      });
+    }
     let programId = currentFixture.programId;
-    if (programId === "") {
+    if (departmentId !== "" && programId === "") {
       await attempt("Program lookup", async () => {
         const response = await fetch(
-          `/api/v1/programs/departments/${encodeURIComponent(currentFixture.departmentId)}/programs`
+          `/api/v1/programs/departments/${encodeURIComponent(departmentId)}/programs`
         );
         if (!response.ok) {
           throw new Error(`HTTP ${response.status}`);
@@ -185,36 +209,23 @@ async function archivePartialFixture(
         }
       });
     }
-    await attempt("Department archive", async () => {
-      const response = await fetch(
-        `/api/v1/programs/departments/${encodeURIComponent(currentFixture.departmentId)}`,
-        {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ lifecycle: "Archived" }),
+    if (departmentId !== "") {
+      await attempt("Department archive", async () => {
+        const response = await fetch(
+          `/api/v1/programs/departments/${encodeURIComponent(departmentId)}`,
+          {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ lifecycle: "Archived" }),
+          }
+        );
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}`);
         }
-      );
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`);
-      }
-    });
+      });
+    }
     if (failures.length > 0) {
       throw new Error(failures.join("; "));
-    }
-  }, fixture);
-}
-
-async function restoreFixture(page: Page, fixture: Fixture): Promise<void> {
-  await page.evaluate(async ({ programId, programName, description }) => {
-    const response = await fetch(`/api/v1/programs/${programId}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name: programName, description, category: "T05" }),
-    });
-    if (!response.ok) {
-      throw new Error(
-        `management fixture restore returned HTTP ${response.status}`
-      );
     }
   }, fixture);
 }
@@ -298,7 +309,7 @@ test.describe("T12 management Programs tracer", () => {
       ).toHaveValue(updatedDescription);
     } finally {
       if (fixture !== null) {
-        await restoreFixture(page, fixture);
+        await archiveFixture(page, fixture);
       }
     }
   });

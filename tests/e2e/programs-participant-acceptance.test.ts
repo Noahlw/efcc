@@ -43,6 +43,7 @@ type LoginResult = {
 };
 
 type ParticipantFixture = {
+  departmentCode: string;
   departmentId: string;
   programId: string;
   programName: string;
@@ -99,11 +100,16 @@ test.beforeAll(async ({ playwright }) => {
   const admin = await loginWithPlaywright(playwright, ADMIN);
   adminApi = admin.api;
   const suffix = crypto.randomUUID().slice(0, 8);
+  const departmentCode = `E2E_T05P_${suffix}`;
+  const programName = `E2E_T05P Program ${suffix}`;
+  // Record unique fixture identity before any response parsing so afterAll can
+  // recover a partially-created Department if setup fails after creation.
+  fixture = { departmentCode, departmentId: "", programId: "", programName };
   const departmentResponse = await adminApi.post(
     "/api/v1/programs/departments",
     {
       data: {
-        code: `E2E_T05P_${suffix}`,
+        code: departmentCode,
         name: `E2E_T05P Participant ${suffix}`,
         lifecycle: "Active",
       },
@@ -114,10 +120,7 @@ test.beforeAll(async ({ playwright }) => {
     data: { department: { department_id: string } };
   };
   const departmentId = departmentBody.data.department.department_id;
-  const programName = `E2E_T05P Program ${suffix}`;
-  // Keep the department ID as soon as the fixture exists so afterAll can
-  // archive a partially-created fixture when setup fails later.
-  fixture = { departmentId, programId: "", programName };
+  fixture.departmentId = departmentId;
   for (const moduleKey of ["program_catalog", "events", "enrollment"]) {
     const moduleResponse = await adminApi.post(
       `/api/v1/programs/departments/${departmentId}/modules/${moduleKey}/enable`
@@ -166,9 +169,36 @@ async function cleanupParticipantFixture(): Promise<void> {
     }
   };
 
-  const { departmentId, programName } = currentFixture;
+  const { departmentCode, programName } = currentFixture;
+  let departmentId = currentFixture.departmentId;
+  if (departmentId === "") {
+    await attempt("fixture cleanup Department lookup", async () => {
+      const departmentsResponse = await api.get("/api/v1/programs/departments");
+      expect(
+        departmentsResponse.status(),
+        "fixture cleanup Department lookup"
+      ).toBe(200);
+      const departmentsBody = (await departmentsResponse.json()) as {
+        data?: {
+          departments?: Array<{
+            department_id?: string;
+            code?: string;
+          }>;
+        };
+      };
+      const matchedDepartment = departmentsBody.data?.departments?.find(
+        (department) =>
+          department.code === departmentCode && department.department_id
+      );
+      if (!matchedDepartment?.department_id) {
+        throw new Error("created Department was not found by its unique code");
+      }
+      departmentId = matchedDepartment.department_id;
+    });
+  }
+
   let programId = currentFixture.programId;
-  if (programId === "") {
+  if (departmentId !== "" && programId === "") {
     await attempt("fixture cleanup Program lookup", async () => {
       const programsResponse = await api.get(
         `/api/v1/programs/departments/${departmentId}/programs`
@@ -291,21 +321,23 @@ async function cleanupParticipantFixture(): Promise<void> {
     });
   }
 
-  await attempt("fixture cleanup Department archive", async () => {
-    const archiveDepartmentResponse = await api.patch(
-      `/api/v1/programs/departments/${departmentId}`,
-      {
-        headers: {
-          "Idempotency-Key": `t12-cleanup-${crypto.randomUUID()}`,
-        },
-        data: { lifecycle: "Archived" },
-      }
-    );
-    expect(
-      archiveDepartmentResponse.status(),
-      "fixture cleanup Department archive"
-    ).toBe(200);
-  });
+  if (departmentId !== "") {
+    await attempt("fixture cleanup Department archive", async () => {
+      const archiveDepartmentResponse = await api.patch(
+        `/api/v1/programs/departments/${departmentId}`,
+        {
+          headers: {
+            "Idempotency-Key": `t12-cleanup-${crypto.randomUUID()}`,
+          },
+          data: { lifecycle: "Archived" },
+        }
+      );
+      expect(
+        archiveDepartmentResponse.status(),
+        "fixture cleanup Department archive"
+      ).toBe(200);
+    });
+  }
 
   if (failures.length > 0) {
     throw new Error(failures.join("; "));

@@ -57,7 +57,8 @@ real local `createTestHarness` seam. The member journey must start from the
 ordinary `/programs` route, assert the server projection does not expose the
 management gateway, search the disposable Program, prove a guaranteed
 no-result and clear-search recovery, select `可報名`, open the disposable row,
-observe canonical `/programs?program=...` and `#program-detail-title`, then
+  observe canonical `/programs?program=...&from=programs` and
+  `#program-detail-title`, then
 retain the existing enrollment request, admin approval, read-back, and
 cancellation assertions.
 
@@ -83,7 +84,7 @@ assert the real server projection exposes `進入管理模式`, click that contr
 reach canonical `?mode=management`, observe `管理課程目錄`, search the unique
 disposable Program, open it, and retain the Settings mutation/read-back proof.
 
-The fixture remains disposable and is restored in `finally`. No Storybook prop
+The fixture remains disposable and is archived in `finally`. No Storybook prop
 is used as authorization evidence, and no management lifecycle scope is added.
 
 ### Ticket 03 — qualify, decide, and stop at L2 review
@@ -142,4 +143,3 @@ This plan does not self-approve, merge, claim `PATH_APPROVED`, claim
   dispositions; do not absorb T13–T16 debt into T12.
 - Re-read live branch, PR, remote SHA, dirty diff, and issue state before any
   GitHub write. No PR merge is performed by this plan.
-
