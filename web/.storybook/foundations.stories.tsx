@@ -1,4 +1,14 @@
 import type { Meta, StoryObj } from "@storybook/nextjs-vite";
+import {
+  Bell,
+  CalendarDays,
+  ChevronLeft,
+  ChevronRight,
+  Pencil,
+  Settings2,
+  ShieldCheck,
+  Users,
+} from "lucide-react";
 import { useState, type ReactNode } from "react";
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -28,6 +38,7 @@ import {
   DialogTrigger,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
 import {
   Sheet,
   SheetContent,
@@ -37,6 +48,33 @@ import {
   SheetTitle,
   SheetTrigger,
 } from "@/components/ui/sheet";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  ScreenCard,
+  ScreenEditor,
+  ScreenField,
+  ScreenFilterChip,
+  ScreenFilters,
+  ScreenHeader,
+  ScreenIconButton,
+  ScreenLoadingRows,
+  ScreenPageFrame,
+  ScreenRow,
+  ScreenRowList,
+  ScreenRowMain,
+  ScreenRowMeta,
+  ScreenRowTitle,
+  ScreenRowTrailing,
+  ScreenSection,
+  ScreenState,
+  ScreenStatus,
+  ScreenStickyActions,
+  ScreenTab,
+  ScreenTabs,
+  ScreenTaskGrid,
+  ScreenTaskSurface,
+  ScreenSearch,
+} from "@/lib/screen-foundations";
 
 import type { FoundationPresentationMetadata } from "./presentation-meta";
 
@@ -437,4 +475,261 @@ export const SheetBusyDisabled: Story = {
     ),
   },
   render: () => <SheetFoundationStory state="busy-disabled" />,
+};
+
+export const ScreenFoundationsPlayground: Story = {
+  parameters: {
+    presentation: foundationPresentation(
+      "screen-foundations",
+      "PSN-SCREEN-FOUNDATIONS-PLAYGROUND",
+      "canonical-phone-foundations"
+    ),
+  },
+  render: () => (
+    <div className="min-h-dvh bg-[var(--screen-shell-bg)]">
+      <ScreenPageFrame width="compact">
+        <ScreenHeader
+          action={
+            <ScreenIconButton aria-label="通知">
+              <Bell />
+            </ScreenIconButton>
+          }
+          lead="EFCC 可重用 phone-first UI grammar；數值由 frozen foundation contract 提供。"
+          title="Screen Foundations"
+        />
+
+        <ScreenSection title="Universal utilities">
+          <div className="flex flex-wrap items-center gap-[var(--screen-utility-gap)]">
+            <ScreenIconButton aria-label="返回" tone="soft">
+              <ChevronLeft />
+            </ScreenIconButton>
+            <ScreenIconButton aria-label="設定" tone="soft">
+              <Settings2 />
+            </ScreenIconButton>
+            <span className="text-[length:var(--screen-meta-size)] text-[var(--screen-muted)]">
+              全部 hit target ≥ 44×44
+            </span>
+          </div>
+        </ScreenSection>
+
+        <ScreenSection title="Search and filters">
+          <ScreenSearch aria-label="搜尋課程" placeholder="搜尋課程" />
+          <ScreenFilters aria-label="課程篩選">
+            <ScreenFilterChip selected>全部</ScreenFilterChip>
+            <ScreenFilterChip>可報名</ScreenFilterChip>
+            <ScreenFilterChip>已參加</ScreenFilterChip>
+            <ScreenFilterChip>待審批</ScreenFilterChip>
+          </ScreenFilters>
+        </ScreenSection>
+
+        <ScreenSection title="Workspace tabs">
+          <ScreenTabs aria-label="課程工作區">
+            <ScreenTab asChild selected>
+              <a href="#overview">概覽</a>
+            </ScreenTab>
+            <ScreenTab asChild>
+              <a href="#events">聚會</a>
+            </ScreenTab>
+            <ScreenTab asChild>
+              <a href="#participants">參與者</a>
+            </ScreenTab>
+            <ScreenTab asChild>
+              <a href="#settings">設定</a>
+            </ScreenTab>
+          </ScreenTabs>
+        </ScreenSection>
+
+        <ScreenSection title="Status language">
+          <div className="flex flex-wrap gap-[var(--screen-utility-gap)]">
+            <ScreenStatus tone="success">進行中</ScreenStatus>
+            <ScreenStatus tone="pending">待審批</ScreenStatus>
+            <ScreenStatus tone="accent">可報名</ScreenStatus>
+            <ScreenStatus tone="info">即將開始</ScreenStatus>
+            <ScreenStatus tone="neutral">已完成</ScreenStatus>
+            <ScreenStatus tone="danger">已取消</ScreenStatus>
+          </div>
+        </ScreenSection>
+
+        <ScreenSection title="Collection row">
+          <ScreenRowList>
+            <ScreenRow asChild>
+              <a href="#program-one">
+                <ScreenRowMain>
+                  <ScreenRowTitle>門徒訓練基礎課</ScreenRowTitle>
+                  <ScreenRowMeta>培育部 · 恆常課程</ScreenRowMeta>
+                </ScreenRowMain>
+                <ScreenRowTrailing>
+                  <ScreenStatus tone="success">進行中</ScreenStatus>
+                  <ChevronRight
+                    aria-hidden="true"
+                    className="size-[18px] text-[var(--screen-muted)]"
+                  />
+                </ScreenRowTrailing>
+              </a>
+            </ScreenRow>
+            <ScreenRow asChild>
+              <a href="#program-two">
+                <ScreenRowMain>
+                  <ScreenRowTitle>
+                    較長嘅課程名稱可以自然換行而唔鎖死 64px 高度
+                  </ScreenRowTitle>
+                  <ScreenRowMeta>內容自動增高；64px 只係 minimum</ScreenRowMeta>
+                </ScreenRowMain>
+                <ScreenRowTrailing>
+                  <ScreenStatus tone="pending">待審批</ScreenStatus>
+                  <ChevronRight
+                    aria-hidden="true"
+                    className="size-[18px] text-[var(--screen-muted)]"
+                  />
+                </ScreenRowTrailing>
+              </a>
+            </ScreenRow>
+          </ScreenRowList>
+        </ScreenSection>
+
+        <ScreenSection title="Semantic cards and task surfaces">
+          <ScreenCard tone="emphasis">
+            <div>
+              <strong className="text-base">下一個聚會</strong>
+              <p className="m-0 text-[length:var(--screen-meta-size)] text-[var(--screen-muted)]">
+                週六 14:00 · 禮堂
+              </p>
+            </div>
+            <div className="grid grid-cols-2 border-y border-[var(--screen-line)]">
+              <div className="py-3">
+                <span className="block text-xs text-[var(--screen-muted)]">
+                  出席
+                </span>
+                <strong>12 / 18</strong>
+              </div>
+              <div className="border-l border-[var(--screen-line)] py-3 pl-3">
+                <span className="block text-xs text-[var(--screen-muted)]">
+                  狀態
+                </span>
+                <ScreenStatus tone="info">即將開始</ScreenStatus>
+              </div>
+            </div>
+          </ScreenCard>
+          <ScreenTaskGrid>
+            <ScreenTaskSurface asChild>
+              <a href="#events">
+                <CalendarDays
+                  aria-hidden="true"
+                  className="size-5 text-[var(--screen-accent)]"
+                />
+                <span>
+                  <strong className="block text-sm">聚會</strong>
+                  <span className="text-xs text-[var(--screen-muted)]">
+                    管理課程活動
+                  </span>
+                </span>
+              </a>
+            </ScreenTaskSurface>
+            <ScreenTaskSurface asChild>
+              <a href="#participants">
+                <Users
+                  aria-hidden="true"
+                  className="size-5 text-[var(--screen-accent)]"
+                />
+                <span>
+                  <strong className="block text-sm">參與者</strong>
+                  <span className="text-xs text-[var(--screen-muted)]">
+                    查看報名狀態
+                  </span>
+                </span>
+              </a>
+            </ScreenTaskSurface>
+          </ScreenTaskGrid>
+        </ScreenSection>
+
+        <ScreenSection title="Focused editor">
+          <ScreenEditor aria-label="課程編輯">
+            <ScreenField
+              help="使用清晰嘅課程名稱。"
+              htmlFor="playground-program-name"
+              label="課程名稱"
+            >
+              <Input
+                defaultValue="門徒訓練基礎課"
+                id="playground-program-name"
+              />
+            </ScreenField>
+            <ScreenField
+              help="用簡短句子描述課程內容。"
+              htmlFor="playground-program-description"
+              label="課程描述"
+            >
+              <Textarea
+                className="min-h-[104px] w-full resize-y rounded-[var(--screen-radius-control)] border border-[var(--screen-line-strong)] bg-[var(--screen-surface)] p-3 text-[var(--screen-ink)] outline-none focus-visible:border-[var(--screen-focus)] focus-visible:ring-3 focus-visible:ring-[var(--screen-focus)]/20"
+                defaultValue="以日常操練、同行分享同小組實踐建立穩定信仰生活。"
+                id="playground-program-description"
+              />
+            </ScreenField>
+            <ScreenStickyActions>
+              <Button variant="outline">取消變更</Button>
+              <Button>儲存</Button>
+            </ScreenStickyActions>
+          </ScreenEditor>
+        </ScreenSection>
+      </ScreenPageFrame>
+    </div>
+  ),
+};
+
+export const ScreenFoundationsStates: Story = {
+  parameters: {
+    presentation: foundationPresentation(
+      "screen-foundations-states",
+      "PSN-SCREEN-FOUNDATIONS-STATES",
+      "loading-empty-error",
+      "supporting"
+    ),
+  },
+  render: () => (
+    <div className="min-h-dvh bg-[var(--screen-shell-bg)]">
+      <ScreenPageFrame width="compact">
+        <ScreenHeader
+          lead="狀態留喺自然嘅 family locus，唔用一張巨大 error card 取代所有情況。"
+          title="狀態 grammar"
+        />
+        <ScreenSection title="Loading rows">
+          <ScreenLoadingRows />
+        </ScreenSection>
+        <ScreenSection title="Empty and recovery">
+          <ScreenState
+            description="目前沒有符合條件嘅資料。"
+            kind="empty"
+            title="暫時未有資料"
+          />
+          <ScreenState
+            action={<Button variant="outline">重試</Button>}
+            description="可以保留目前 route context 再次載入。"
+            kind="error"
+            title="載入失敗"
+          />
+        </ScreenSection>
+        <ScreenSection title="Accessible identity">
+          <ScreenCard>
+            <div className="flex items-start gap-3">
+              <ShieldCheck
+                aria-hidden="true"
+                className="size-5 text-[var(--screen-accent)]"
+              />
+              <div>
+                <strong className="block">語意由 route / domain 提供</strong>
+                <p className="m-0 text-sm text-[var(--screen-muted)]">
+                  Foundation fixture 只展示 presentation seam，唔代表
+                  authorization 或 server truth。
+                </p>
+              </div>
+            </div>
+          </ScreenCard>
+          <div className="flex items-center gap-2 text-sm text-[var(--screen-muted)]">
+            <Pencil aria-hidden="true" className="size-4" />
+            editor copy remains synthetic
+          </div>
+        </ScreenSection>
+      </ScreenPageFrame>
+    </div>
+  ),
 };
