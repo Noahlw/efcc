@@ -44,6 +44,7 @@
     "test:t09:foundations": "playwright test --config=tests/e2e/t09-storybook.config.ts",
     "test:t10:composition": "playwright test --config=tests/e2e/t10-storybook.config.ts",
     "test:t11:storybook": "playwright test --config=tests/e2e/t11-storybook.config.ts",
+    "test:t12:programs-storybook": "playwright test --config=tests/e2e/t12-programs-storybook.config.ts",
     "build": "echo No root build step; the web app is built and served by the Worker (see web/).",
     "check": "ultracite check",
     "fix": "ultracite fix"

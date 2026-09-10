@@ -18,6 +18,16 @@ const MEMBER = {
 
 const COPY = {
   login: "登入",
+  catalogSearch: "搜尋課程",
+  catalogClearSearch: "清除搜尋",
+  catalogClearFilters: "清除搜尋與篩選",
+  catalogEmpty: "找不到相關課程",
+  catalogList: "課程目錄",
+  filterGroup: "課程篩選",
+  filterAll: "全部",
+  filterEligible: "可報名",
+  enterManagement: "進入管理模式",
+  detailBack: "課程",
   enrollment: "報名",
   requestEnroll: "報名",
   requestPendingHint: "申請已送出，等待課程負責人處理。",
@@ -34,6 +44,8 @@ type LoginResult = {
 };
 
 type ParticipantFixture = {
+  departmentCode: string;
+  departmentId: string;
   programId: string;
   programName: string;
 };
@@ -89,11 +101,16 @@ test.beforeAll(async ({ playwright }) => {
   const admin = await loginWithPlaywright(playwright, ADMIN);
   adminApi = admin.api;
   const suffix = crypto.randomUUID().slice(0, 8);
+  const departmentCode = `E2E_T05P_${suffix}`;
+  const programName = `E2E_T05P Program ${suffix}`;
+  // Record unique fixture identity before any response parsing so afterAll can
+  // recover a partially-created Department if setup fails after creation.
+  fixture = { departmentCode, departmentId: "", programId: "", programName };
   const departmentResponse = await adminApi.post(
     "/api/v1/programs/departments",
     {
       data: {
-        code: `E2E_T05P_${suffix}`,
+        code: departmentCode,
         name: `E2E_T05P Participant ${suffix}`,
         lifecycle: "Active",
       },
@@ -104,13 +121,13 @@ test.beforeAll(async ({ playwright }) => {
     data: { department: { department_id: string } };
   };
   const departmentId = departmentBody.data.department.department_id;
+  fixture.departmentId = departmentId;
   for (const moduleKey of ["program_catalog", "events", "enrollment"]) {
     const moduleResponse = await adminApi.post(
       `/api/v1/programs/departments/${departmentId}/modules/${moduleKey}/enable`
     );
     expect(moduleResponse.status()).toBe(200);
   }
-  const programName = `E2E_T05P Program ${suffix}`;
   const programResponse = await adminApi.post(
     `/api/v1/programs/departments/${departmentId}/programs`,
     {
@@ -129,33 +146,306 @@ test.beforeAll(async ({ playwright }) => {
   const programBody = (await jsonBody(programResponse)) as {
     data: { program: { program_id: string } };
   };
-  fixture = {
-    programId: programBody.data.program.program_id,
-    programName,
-  };
+  fixture.programId = programBody.data.program.program_id;
 });
+
+async function cleanupParticipantFixture(): Promise<void> {
+  const currentFixture = fixture;
+  const api = adminApi;
+  if (currentFixture === null || api === null) {
+    return;
+  }
+
+  const failures: string[] = [];
+  const attempt = async (
+    step: string,
+    action: () => Promise<void>
+  ): Promise<void> => {
+    try {
+      await action();
+    } catch (error) {
+      failures.push(
+        `${step}: ${error instanceof Error ? error.message : String(error)}`
+      );
+    }
+  };
+
+  const { departmentCode, programName } = currentFixture;
+  let departmentId = currentFixture.departmentId;
+  if (departmentId === "") {
+    await attempt("fixture cleanup Department lookup", async () => {
+      const departmentsResponse = await api.get("/api/v1/programs/departments");
+      expect(
+        departmentsResponse.status(),
+        "fixture cleanup Department lookup"
+      ).toBe(200);
+      const departmentsBody = (await departmentsResponse.json()) as {
+        data?: {
+          departments?: Array<{
+            department_id?: string;
+            code?: string;
+          }>;
+        };
+      };
+      const matchedDepartment = departmentsBody.data?.departments?.find(
+        (department) =>
+          department.code === departmentCode && department.department_id
+      );
+      if (!matchedDepartment?.department_id) {
+        throw new Error("created Department was not found by its unique code");
+      }
+      departmentId = matchedDepartment.department_id;
+    });
+  }
+
+  let programId = currentFixture.programId;
+  if (departmentId !== "" && programId === "") {
+    await attempt("fixture cleanup Program lookup", async () => {
+      const programsResponse = await api.get(
+        `/api/v1/programs/departments/${departmentId}/programs`
+      );
+      expect(programsResponse.status(), "fixture cleanup Program lookup").toBe(
+        200
+      );
+      const programsBody = (await programsResponse.json()) as {
+        data?: {
+          programs?: Array<{ program_id?: string; name?: string }>;
+        };
+      };
+      const matchedProgram = programsBody.data?.programs?.find(
+        (program) => program.name === programName && program.program_id
+      );
+      if (!matchedProgram?.program_id) {
+        throw new Error("created Program was not found by its unique name");
+      }
+      programId = matchedProgram.program_id;
+    });
+  }
+
+  if (programId !== "") {
+    let requests: Array<{ request_id?: string; status?: string }> = [];
+    await attempt("fixture cleanup request listing", async () => {
+      const requestsResponse = await api.get(
+        `/api/v1/programs/${programId}/enrollment-requests`
+      );
+      expect(requestsResponse.status(), "fixture cleanup request listing").toBe(
+        200
+      );
+      const requestsBody = (await requestsResponse.json()) as {
+        data?: {
+          requests?: Array<{ request_id?: string; status?: string }>;
+        };
+      };
+      requests = requestsBody.data?.requests ?? [];
+    });
+    for (const request of requests) {
+      if (request.status !== "Pending" || !request.request_id) {
+        continue;
+      }
+      await attempt(
+        `fixture cleanup pending request ${request.request_id}`,
+        async () => {
+          const decisionResponse = await api.post(
+            `/api/v1/programs/${programId}/enrollment-requests/${request.request_id}/decision`,
+            {
+              headers: {
+                "Idempotency-Key": `t12-cleanup-${crypto.randomUUID()}`,
+              },
+              data: { action: "Rejected" },
+            }
+          );
+          expect(
+            decisionResponse.status(),
+            "fixture cleanup pending request resolution"
+          ).toBe(200);
+        }
+      );
+    }
+
+    let enrollments: Array<{
+      enrollment_id?: string;
+      status?: string;
+    }> = [];
+    await attempt("fixture cleanup enrollment listing", async () => {
+      const enrollmentsResponse = await api.get(
+        `/api/v1/programs/${programId}/enrollments`
+      );
+      expect(
+        enrollmentsResponse.status(),
+        "fixture cleanup enrollment listing"
+      ).toBe(200);
+      const enrollmentsBody = (await enrollmentsResponse.json()) as {
+        data?: {
+          enrollments?: Array<{ enrollment_id?: string; status?: string }>;
+        };
+      };
+      enrollments = enrollmentsBody.data?.enrollments ?? [];
+    });
+    for (const enrollment of enrollments) {
+      if (enrollment.status !== "Active" || !enrollment.enrollment_id) {
+        continue;
+      }
+      await attempt(
+        `fixture cleanup enrollment ${enrollment.enrollment_id}`,
+        async () => {
+          const cancelResponse = await api.post(
+            `/api/v1/programs/${programId}/enrollments/${enrollment.enrollment_id}/cancel`,
+            {
+              headers: {
+                "Idempotency-Key": `t12-cleanup-${crypto.randomUUID()}`,
+              },
+              data: {},
+            }
+          );
+          expect(
+            cancelResponse.status(),
+            "fixture cleanup active enrollment cancellation"
+          ).toBe(200);
+        }
+      );
+    }
+
+    await attempt("fixture cleanup Program archive", async () => {
+      const archiveProgramResponse = await api.patch(
+        `/api/v1/programs/${programId}`,
+        {
+          headers: {
+            "Idempotency-Key": `t12-cleanup-${crypto.randomUUID()}`,
+          },
+          data: { lifecycle: "Archived" },
+        }
+      );
+      expect(
+        archiveProgramResponse.status(),
+        "fixture cleanup Program archive"
+      ).toBe(200);
+    });
+  }
+
+  if (departmentId !== "") {
+    await attempt("fixture cleanup Department archive", async () => {
+      const archiveDepartmentResponse = await api.patch(
+        `/api/v1/programs/departments/${departmentId}`,
+        {
+          headers: {
+            "Idempotency-Key": `t12-cleanup-${crypto.randomUUID()}`,
+          },
+          data: { lifecycle: "Archived" },
+        }
+      );
+      expect(
+        archiveDepartmentResponse.status(),
+        "fixture cleanup Department archive"
+      ).toBe(200);
+    });
+  }
+
+  if (failures.length > 0) {
+    throw new Error(failures.join("; "));
+  }
+}
 
 test.afterAll(async () => {
-  await adminApi?.dispose();
+  try {
+    await cleanupParticipantFixture();
+  } finally {
+    await adminApi?.dispose();
+    adminApi = null;
+  }
 });
 
-test.describe("T05.4 participant Browser Acceptance", () => {
+test.describe("T12 participant Programs tracer", () => {
   test("member submits, gets approved, reads back, and exits a Program", async ({
     page,
   }) => {
     expect(fixture).not.toBeNull();
     const { programId, programName } = fixture!;
     await loginAs(page);
+
+    const accessResponsePromise = page.waitForResponse(
+      (response) =>
+        response.request().method() === "GET" &&
+        response.url().endsWith("/api/v1/programs/access")
+    );
     await page.goto("/programs");
+
+    const accessResponse = await accessResponsePromise;
+    expect(accessResponse.status()).toBe(200);
+    const accessBody = (await accessResponse.json()) as {
+      data: { hasManagementCapability: boolean };
+    };
+    expect(accessBody.data.hasManagementCapability).toBe(false);
+    await expect(
+      page.getByRole("link", { name: COPY.enterManagement, exact: true })
+    ).toHaveCount(0);
+
+    const search = page.getByRole("searchbox", {
+      name: COPY.catalogSearch,
+    });
+    await expect(search).toBeVisible();
+    await expect(
+      page.getByRole("group", { name: COPY.filterGroup })
+    ).toBeVisible();
+
+    const impossibleQuery = `T12-no-match-${crypto.randomUUID()}`;
+    await search.fill(impossibleQuery);
+    await expect(
+      page.getByRole("heading", { name: COPY.catalogEmpty })
+    ).toBeVisible();
+    await expect(page.getByRole("link", { name: programName })).toHaveCount(0);
+    await page
+      .getByRole("button", { name: COPY.catalogClearFilters, exact: true })
+      .click();
+    await expect(search).toHaveValue("");
+
+    const filterGroup = page.getByRole("group", { name: COPY.filterGroup });
+    const allFilter = filterGroup.getByRole("button", {
+      name: COPY.filterAll,
+      exact: true,
+    });
+    const eligibleFilter = filterGroup.getByRole("button", {
+      name: COPY.filterEligible,
+      exact: true,
+    });
+    await expect(allFilter).toHaveAttribute("aria-pressed", "true");
+    await eligibleFilter.click();
+    await expect(eligibleFilter).toHaveAttribute("aria-pressed", "true");
+    await expect(allFilter).toHaveAttribute("aria-pressed", "false");
+
+    await search.fill(programName);
+    const eligibleProgramLink = page
+      .getByRole("list", { name: COPY.catalogList })
+      .getByRole("link", {
+        name: new RegExp(`${COPY.filterEligible}.*${programName}`, "u"),
+      });
+    await expect(eligibleProgramLink).toBeVisible();
+    await page
+      .getByRole("button", { name: COPY.catalogClearSearch, exact: true })
+      .click();
+    await expect(search).toHaveValue("");
+    await expect(eligibleProgramLink).toBeVisible();
+
     const programLink = page.getByRole("link", { name: programName });
     await expect(programLink).toBeVisible();
+    const canonicalHref = `/programs?program=${encodeURIComponent(programId)}&from=programs`;
+    // The directory-origin marker is part of the current canonical intent so
+    // Program Detail can return to this directory. Pin the full href so a
+    // hash, omitted origin, or alternate query is not silently accepted.
+    await expect(programLink).toHaveAttribute("href", canonicalHref);
     await programLink.click();
-    await expect(page).toHaveURL(
-      new RegExp(
-        `/programs\\?program=${programId}(?:&from=programs)?(?:#overview)?$`,
-        "u"
-      )
-    );
+    await expect(page).toHaveURL(new URL(canonicalHref, TARGET_ORIGIN).href);
+    await expect(page.locator("#program-detail-title")).toBeVisible();
+    const detailBack = page.getByRole("link", {
+      name: COPY.detailBack,
+      exact: true,
+    });
+    await expect(detailBack).toHaveCount(1);
+    await expect(detailBack).toHaveAttribute("href", "/programs");
+    await detailBack.click();
+    await expect(page).toHaveURL(new URL("/programs", TARGET_ORIGIN).href);
+    await expect(programLink).toBeVisible();
+    await programLink.click();
+    await expect(page).toHaveURL(new URL(canonicalHref, TARGET_ORIGIN).href);
     await expect(page.locator("#program-detail-title")).toBeVisible();
 
     const enrollmentPanel = page.getByRole("region", {
