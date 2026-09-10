@@ -1,6 +1,6 @@
 # T12 / #517 Programs tracer acceptance trace
 
-**Status:** `IN_PROGRESS — TICKET 00 CONTRACT RECORDED`
+**Status:** `T12 MACHINE_GREEN — PATH_PROPOSED: SALVAGE STACK — READY_FOR_OWNER_L2`
 
 **Issue:** [#517](https://github.com/Noahlw/efcc/issues/517)
 
@@ -14,6 +14,10 @@ new T12 branch at baseline resolution).
 This trace does not change the Programs Screen Catalog, existing T07 PSNs,
 domain behavior, authorization, URL semantics, Worker/D1 behavior, mutation
 semantics, or Preservation Ledger authority.
+
+**Reviewed implementation candidate:**
+`2d00cabb25de099408d8ea16c6c444ee66c6f435` (the three implementation commits
+below; Ticket 03 adds evidence and disposition documentation only).
 
 ## Authority and handoff disposition
 
@@ -34,26 +38,26 @@ issue and current authorities provide the bounded fallback for this ticket.
 | ID | Given | When | Required observable result | Evidence | Status |
 |---|---|---|---|---|---|
 | T12-00 | Branch starts at the exact continuing rescue base | Ticket 00 is recorded | Plan and this trace exist before behavior/test-runner changes; first T12 commit is docs-only | Git commit and `git diff` scope | `RECORDED` |
-| T12-P01 | Disposable local D1 contains a unique listed `MemberRequest` Program | A real member logs in and opens ordinary `/programs` | Authenticated Programs directory renders from the real Worker/D1 journey | Playwright browser artifact | `PENDING` |
-| T12-P02 | The member's real `/api/v1/programs/access` projection has no management capability | Directory settles | `進入管理模式` is absent; no fake Storybook prop can grant it | Browser assertion plus request/response log | `PENDING` |
-| T12-P03 | Participant directory contains the disposable Program | Member searches a unique fixture name | Search returns the disposable row | Browser artifact | `PENDING` |
-| T12-P04 | Directory has a non-matching query | Member enters a guaranteed impossible query | No-result state is visible and the disposable row is not visible | Browser artifact | `PENDING` |
-| T12-P05 | Search is non-empty and no-result state is active | Member clears search/filter | Catalog returns to a usable result state; filter `可報名` is observable and pressed state is truthful | Browser artifact | `PENDING` |
-| T12-P06 | Disposable Program is listed and eligible | Member selects the row under `可報名` | Canonical participant transition reaches `/programs?program=<id>` and visible `#program-detail-title` | URL/title assertions | `PENDING` |
-| T12-P07 | Detail enrollment is `MemberRequest` | Member requests, admin approves, and member reloads | Existing request, approval, read-back, and cancellation journey remains green | Browser artifact and response statuses | `PENDING` |
-| T12-M01 | Disposable local D1 contains a unique manageable Program | A real admin logs in and opens ordinary `/programs` | Real server projection exposes `進入管理模式` | Browser assertion plus access response | `PENDING` |
-| T12-M02 | Management entry is visible | Admin clicks it | Canonical URL is `/programs?mode=management`; `管理課程目錄` is visible | URL/title assertions | `PENDING` |
-| T12-M03 | Management directory has the disposable Program | Admin searches its unique name | Search returns and opens the selected Program | Browser artifact and URL | `PENDING` |
-| T12-M04 | Existing management settings are reachable | Admin edits and reloads | Settings save and read-back remain green; fixture is restored in cleanup | Browser artifact and PATCH status | `PENDING` |
-| T12-S01 | Existing production Stories own the three tracer baselines | T12 Storybook runner opens direct iframe URLs | Only `ParticipantDirectory`, `ParticipantProgramDetail`, and `ManagementDirectory` are qualified | Story IDs and catalog declarations | `PENDING` |
-| T12-S02 | W7 is exactly the established width set | Chromium runner executes | `320 / 375 / 390 / 414 / 799 / 800 / 1440`, one worker, zero retries, all pass | `test-results/t12-programs-storybook/storybook.json` | `PENDING` |
-| T12-S03 | Existing production locators are stable | Storybook renders each baseline | Directory row, `#program-detail-title`, and `#programs-management-directory-title` are visible; shell geometry has no overflow | Direct locator assertions | `PENDING` |
-| T12-S04 | Presentation review covers shell transition risk | Rendered Stories are inspected | `390`, `799`, and `800` are visually inspected; no fake permission authority is inferred | Screenshots/review notes | `PENDING` |
-| T12-R01 | Programs contract and responsive suites remain unchanged in authority | Qualification runs | Worker Contract, responsive, build/index, fast/precommit, Programs verification, and census outcomes are recorded truthfully | Command artifacts | `PENDING` |
-| T12-R02 | Census includes deferred Programs records | Census JSON is inspected | CEN-026 and CEN-059–CEN-068 remain separately dispositioned; T13–T16 debt is not absorbed | Census JSON and notes | `PENDING` |
-| T12-A01 | Current-main merge base is fixed | Standards and Spec review runs | Review uses actual live-main merge base and resolves every real in-scope finding | Review record | `PENDING` |
-| T12-A02 | Fresh evidence compares both rescue paths | Final decision is written | Preservation, ownership/locality, composability, regression confidence, lineage, rollback/reviewability, and failure attribution are explicit; loser is rejected | Final trace section | `PENDING` |
-| T12-A03 | Machine evidence is complete but human design approval is not automated | T12 closes | Exactly one `PATH_PROPOSED ... READY_FOR_OWNER_L2` result is reported; no approval, merge, T13 authorization, or `STACK_GREEN` is claimed | Final report / PR | `PENDING` |
+| T12-P01 | Disposable local D1 contains a unique listed `MemberRequest` Program | A real member logs in and opens ordinary `/programs` | Authenticated Programs directory renders from the real Worker/D1 journey | `test-results/programs-promotion/20260910t054242604z/browser-acceptance/browser-results.json`, 2/2 | `PASS` |
+| T12-P02 | The member's real `/api/v1/programs/access` projection has no management capability | Directory settles | `進入管理模式` is absent; no fake Storybook prop can grant it | Participant response assertion in the same browser artifact | `PASS` |
+| T12-P03 | Participant directory contains the disposable Program | Member searches a unique fixture name | Search returns the disposable row | Participant browser artifact | `PASS` |
+| T12-P04 | Directory has a non-matching query | Member enters a guaranteed impossible query | No-result state is visible and the disposable row is not visible | Participant browser artifact | `PASS` |
+| T12-P05 | Search is non-empty and no-result state is active | Member clears search/filter | Catalog returns to a usable result state; filter `可報名` is observable and pressed state is truthful | Participant browser artifact | `PASS` |
+| T12-P06 | Disposable Program is listed and eligible | Member selects the row under `可報名` | Canonical participant transition reaches `/programs?program=<id>` and visible `#program-detail-title` | URL/title assertions in participant browser artifact | `PASS` |
+| T12-P07 | Detail enrollment is `MemberRequest` | Member requests, admin approves, and member reloads | Existing request, approval, read-back, and cancellation journey remains green | Participant browser artifact; POST 201, decision 200, cancellation/read-back pass | `PASS` |
+| T12-M01 | Disposable local D1 contains a unique manageable Program | A real admin logs in and opens ordinary `/programs` | Real server projection exposes `進入管理模式` | Management response assertion in the same browser artifact | `PASS` |
+| T12-M02 | Management entry is visible | Admin clicks it | Canonical URL is `/programs?mode=management`; `管理課程目錄` is visible | URL/title assertions in management browser artifact | `PASS` |
+| T12-M03 | Management directory has the disposable Program | Admin searches its unique name | Search returns and opens the selected Program | Management browser artifact and canonical URL assertion | `PASS` |
+| T12-M04 | Existing management settings are reachable | Admin edits and reloads | Settings save and read-back remain green; fixture is restored in cleanup | Management browser artifact; PATCH/read-back/cleanup pass | `PASS` |
+| T12-S01 | Existing production Stories own the three tracer baselines | T12 Storybook runner opens direct iframe URLs | Only `ParticipantDirectory`, `ParticipantProgramDetail`, and `ManagementDirectory` are qualified | Existing IDs `t07-3-programs--participant-directory`, `t07-3-programs--participant-program-detail`, `t07-3-programs--management-directory` | `PASS` |
+| T12-S02 | W7 is exactly the established width set | Chromium runner executes | `320 / 375 / 390 / 414 / 799 / 800 / 1440`, one worker, zero retries, all pass | `tests/e2e/test-results/t12-programs-storybook/storybook.json`; 21/21, 7 projects, 1 worker, 0 retries | `PASS` |
+| T12-S03 | Existing production locators are stable | Storybook renders each baseline | Directory row, `#program-detail-title`, and `#programs-management-directory-title` are visible; shell geometry has no overflow | T12 Storybook runner direct locator/geometry assertions | `PASS` |
+| T12-S04 | Presentation review covers shell transition risk | Rendered Stories are inspected | `390`, `799`, and `800` are visually inspected; no fake permission authority is inferred | AI visual self-review of all three baselines at those widths; no production presentation defect found | `PASS` |
+| T12-R01 | Programs contract and responsive suites remain unchanged in authority | Qualification runs | Worker Contract, responsive, build/index, fast/precommit, Programs verification, and census outcomes are recorded truthfully | Promotion `20260910t054242604z` is `functional-passed`; census limitation is separately recorded in T12-R02 | `PASS_WITH_SEPARATE_CENSUS_LIMITATION` |
+| T12-R02 | Census includes deferred Programs records | Census JSON is inspected | CEN-026 and CEN-059–CEN-068 remain separately dispositioned; T13–T16 debt is not absorbed | T10 disposition table keeps these rows `DEFERRED_TO_ROUTE_FAMILY`; required command is blocked before JSON because its deleted historical parent ref is hard-coded | `DEFERRED — TOOLING BLOCKED` |
+| T12-A01 | Current-main merge base is fixed | Standards and Spec review runs | Review uses actual live-main merge base and resolves every real in-scope finding | `origin/main` resolves to `eee8ba18`; two-axis review of `origin/main...HEAD` found no unresolved in-scope finding | `PASS` |
+| T12-A02 | Fresh evidence compares both rescue paths | Final decision is written | Preservation, ownership/locality, composability, regression confidence, lineage, rollback/reviewability, and failure attribution are explicit; loser is rejected | Completed rubric below; no evidence met the selective-replay threshold | `PASS` |
+| T12-A03 | Machine evidence is complete but human design approval is not automated | T12 closes | Exactly one `PATH_PROPOSED ... READY_FOR_OWNER_L2` result is reported; no approval, merge, T13 authorization, or `STACK_GREEN` is claimed | This trace and final handoff; owner spot-check/L2 remain open | `PASS` |
 
 ## Preservation constraints
 
@@ -69,23 +73,75 @@ issue and current authorities provide the bounded fallback for this ticket.
 - Keep B-003 and the Preservation Ledger's `PRESERVE_AND_AUDIT` Programs rows
   separately reported.
 
-## Rescue-path rubric (to complete after fresh evidence)
+## Rescue-path rubric
 
 | Dimension | SALVAGE STACK evidence | SELECTIVE REPLAY evidence | T12 conclusion |
 |---|---|---|---|
-| Preservation | Current deep Programs behavior remains the preserved seam | URL/authz/Worker/mutation stay preserved while only proven presentation seams replay | `PENDING` |
-| Ownership/locality | Existing module ownership is repairable locally | Fresh evidence proves non-local ownership cannot be repaired locally | `PENDING` |
-| Composability with T08–T11 | Incremental rescue composes with existing controls, overlays, shell | Replay is bounded to named presentation/composition modules | `PENDING` |
-| Regression confidence | Existing characterization plus focused tracer and W7 evidence | Expand → migrate → prove → contract adds confidence without widening scope | `PENDING` |
-| Code lineage | Continues from current main/T12 ancestry | Also continues from current main/T12 ancestry; no old-stack restoration | `PENDING` |
-| Rollback/reviewability | Small tracer commits and existing production seams are easy to revert | Named replay modules and checkpoints are independently reviewable | `PENDING` |
-| Evidence/failure attribution | Failures map to existing seams and selective boundaries | Replay is chosen only when it improves attribution materially | `PENDING` |
+| Preservation | No production code changed; real URL/authz/Worker/D1/mutation behavior remains covered by the existing seams and new assertions. | Would preserve those contracts while replacing only a proven presentation seam. | SALVAGE preserves every contract with zero replay risk; no replay evidence exists. |
+| Ownership/locality | Existing `ParticipantDirectory`, `ParticipantProgramDetail`, and `ManagementDirectory` seams expose bounded props and existing locators; no T12 defect required a cross-module repair. | Requires fresh proof of non-local ownership or a presentation seam that cannot be repaired locally. | SALVAGE; the threshold was not met. |
+| Composability with T08–T11 | New evidence composes with the existing shell, controls, Screen Catalog, PSNs, Worker contract, and responsive gates without touching their ownership. | Could be bounded to named presentation modules, but no such module needs replay. | SALVAGE; additive tracer is the smaller composable change. |
+| Regression confidence | 2 real browser tests, Worker Contract, 6 responsive checks, 21 Storybook W7 checks, full precommit and promotion all pass at the source candidate. | Expand → migrate → prove → contract would add a new migration surface and is unnecessary without a defect. | SALVAGE has higher current confidence. |
+| Code lineage | Continues directly from current `main` at `eee8ba18`; commits are docs → participant tracer → management tracer. | Must also continue from current `main`; old Phase-F/S4 restoration is prohibited. | SALVAGE; no old branch/ref was merged, cherry-picked, rebased, or restored. |
+| Rollback/reviewability | Each ticket has a focused commit; reverting the tracer assertions/runner is isolated and production behavior is unchanged. | Named replay checkpoints would be reviewable, but would enlarge the rollback surface. | SALVAGE; easiest rollback and owner review. |
+| Evidence/failure attribution | Assertions map directly to real Worker/D1 authority, route URLs, mutation statuses, and existing Story locators; failure ownership is explicit. | Replay is justified only if it improves attribution materially. | SALVAGE; no attribution gap was found. |
 
 If both paths remain viable, the default proposal is `SALVAGE STACK`. A
 `SELECTIVE REPLAY` proposal requires direct fresh evidence for non-local
 ownership, shotgun change, interface widening, poor rollback, or poor failure
 attribution that local repair cannot address. No path may weaken preserved
 contracts or promote a synthetic Storybook permission state into real authority.
+
+**Losing-path rejection:** `SELECTIVE REPLAY` is rejected for T12 because the
+fresh diff contains no production presentation/composition change and no
+non-local ownership, shotgun change, interface widening, rollback, or failure
+attribution defect. Replay would add migration and rollback surface without a
+proven benefit. If later Programs evidence crosses that threshold, the named
+presentation module must be handled by `expand → migrate → prove → contract`
+from this same rescue base; this T12 proposal does not pre-authorize it.
+
+**Approved replay modules:** none.
+
+**Rollback strategy:** revert the T12 commits in reverse order, or revert the
+individual participant/management tracer commit while retaining the Ticket 00
+contract. Production behavior is unchanged, so rollback does not require a
+Worker/D1 or URL migration.
+
+## Qualification ledger
+
+All commands used Node `22.18.0` because Node 20 cannot load `node:sqlite`.
+The promotion run temporarily stashed and restored the pre-existing dirty
+`web/.storybook/public/mockServiceWorker.js` only to satisfy the clean-worktree
+precondition; that file is not part of T12 and remains untouched in the final
+worktree.
+
+| Command | Result | Evidence |
+|---|---|---|
+| `pnpm test:t12:programs-storybook` | PASS, 21/21 | `tests/e2e/test-results/t12-programs-storybook/storybook.json`; exact W7, 1 worker, 0 retries |
+| `pnpm test:programs:browser` | PASS, 2/2 | `test-results/programs-browser-acceptance/20260910t053730203z/run.json`; target `http://127.0.0.1:51060`, 390px, 0 retries |
+| `pnpm test:programs:contract` | PASS, 1/1 | Included by promotion worker-contract stage; `test-results/programs-promotion/20260910t054242604z/worker-contract.log` |
+| `pnpm test:programs:responsive` | PASS, 6/6 | `test-results/programs-promotion/20260910t054242604z/responsive-results.json`; 320/390/1280 matrix |
+| `pnpm --dir web storybook:build` | PASS | Storybook 10.6.0 build completed; generated output was kept outside the worktree after verification |
+| `pnpm --dir web storybook:verify-index` | PASS | 60 Stories / 35 Screen Catalog obligations; all baselines resolvable |
+| `pnpm verify:fast` | PASS | Root and `web/` typecheck |
+| `pnpm verify:precommit` | PASS | Root 606 tests, web component 924 tests, governance audit 0 active violations |
+| `pnpm verify:programs` | PASS, `functional-passed` | `test-results/programs-promotion/20260910t054242604z/promotion.json`; all four finite stages passed; B-003 remains OPEN/not run |
+| `node scripts/t09-frontier-census.mjs --json` | BLOCKED before JSON | Hard-coded `rescue/t08-control-contracts` ref is absent and expected SHA `6ab0561f` is not in this current-main clone; no old ref was recreated or restored |
+
+The first direct `pnpm verify:programs` attempt under Node 20 failed at
+`node:sqlite`; it was rerun under the required Node 22.18.0 and passed. The
+first clean-gate attempt was also blocked by the preserved generated dirty
+file; the exact file was stashed only for the gate and restored immediately.
+
+## Census and preservation disposition
+
+The required census command cannot currently emit JSON because its T09-era
+script resolves a deleted local branch before it computes records. This is a
+pre-existing census-tooling limitation, not a T12 production or lineage
+failure. The committed T10 disposition was inspected directly: `CEN-026` and
+`CEN-059`–`CEN-068` remain `DEFERRED_TO_ROUTE_FAMILY` for T13–T16 Programs
+owners. They are not absorbed into this tracer. Programs Preservation Ledger
+rows C-05, C-07, C-13, and C-18–C-20 remain `PRESERVE_AND_AUDIT`; B-003 remains
+separately `OPEN`.
 
 ## Review and owner boundary
 
@@ -94,6 +150,46 @@ approval, `PATH_APPROVED`, `STACK_GREEN`, merge readiness, T13 authorization,
 or a release claim. The final T12 status must stop at:
 
 ```text
-T12 MACHINE_GREEN — PATH_PROPOSED: <SALVAGE STACK|SELECTIVE REPLAY> — READY_FOR_OWNER_L2
+T12 MACHINE_GREEN — PATH_PROPOSED: SALVAGE STACK — READY_FOR_OWNER_L2
 ```
 
+## Two-axis review
+
+**Fixed point:** `origin/main` → `eee8ba1872fbb53ffd835063b78e824b8d187e68`.
+The review diff is `git diff origin/main...HEAD`; it contains only the Ticket
+00 plan/trace, participant and management browser assertions, the T12
+Storybook W7 config/spec, and one root package script. No production app or
+component file is changed.
+
+- **Standards:** PASS. No documented-standard violation or unresolved
+  smell-baseline finding; the runner uses the existing Playwright/worktree
+  pattern, one worker/zero retries, direct production Story IDs, and does not
+  weaken a baseline, skip, tolerance, waiver, or contract.
+- **Spec:** PASS. The participant and management journeys prove the required
+  real `/api/v1/programs/access` projection, ordinary `/programs` route,
+  search/no-result/filter/detail transition, existing enrollment/settings
+  mutations, and cleanup. The W7 runner qualifies only the three existing
+  production baselines. The census limitation is disclosed rather than
+  hidden, and no T13–T16 scope or fake permission authority is introduced.
+
+No Firefox/WebKit ceremony was added because T12 changed no production
+presentation/composition code. The AI visual self-review at 390/799/800 is
+complete; the owner Storybook spot-check and human L2 design decision remain
+the explicit next step.
+
+## Final handoff
+
+**T12 MACHINE_GREEN — PATH_PROPOSED: SALVAGE STACK — READY_FOR_OWNER_L2**
+
+- **Branch:** `codex/t12-issue-517`
+- **Continuing rescue base:** `eee8ba1872fbb53ffd835063b78e824b8d187e68`
+- **Commits:** `882c4c32` Ticket 00 contract; `a0029045` participant tracer;
+  `2d00cabb` management tracer; Ticket 03 evidence/disposition commit is the
+  final branch candidate.
+- **Production defects found/repaired:** none; zero production-code diff.
+- **Owner L2 focus:** confirm the three existing Programs baselines at
+  390/799/800, decide whether the disclosed stale T09 census tool needs a
+  separate maintenance ticket, and accept/reject the SALVAGE STACK proposal.
+
+The implementation agent does not claim `PATH_APPROVED`, `STACK_GREEN`, merge
+readiness, T13 authorization, human approval, or release safety.
