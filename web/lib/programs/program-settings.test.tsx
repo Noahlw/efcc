@@ -11,7 +11,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { RpcError } from "@/lib/api";
 import { COPY } from "@/lib/copy";
 import type { Program, ScheduleRule } from "@/lib/programs/program-api";
-import { ProgramSettings } from "@/lib/programs/program-settings";
+import { ProgramSettings, SettingsHub } from "@/lib/programs/program-settings";
 
 const mocks = vi.hoisted(() => ({
   updateProgram: vi.fn(),
@@ -112,6 +112,171 @@ afterEach(() => {
 });
 
 describe(ProgramSettings, () => {
+  test("focused editors expose sticky Save/Discard only after a draft changes", async () => {
+    const user = userEvent.setup();
+    render(
+      <ProgramSettings
+        program={recurringProgram}
+        section="basics"
+        onTaskChange={vi.fn()}
+      />
+    );
+
+    const save = screen.getByRole("button", {
+      name: COPY.programs.settingsSaveBasics,
+    });
+    const discard = screen.getByRole("button", {
+      name: COPY.programs.settingsDiscard,
+    });
+    expect(
+      [save, discard].every((button) => button.hasAttribute("disabled"))
+    ).toBeTruthy();
+    expect(
+      document.querySelector('[data-screen-settings-dirty="true"]')
+    ).not.toBeInTheDocument();
+
+    const name = screen.getByRole("textbox", {
+      name: COPY.programs.programName,
+    });
+    await user.clear(name);
+    await user.type(name, "未儲存名稱");
+
+    expect(screen.getByText(COPY.programs.settingsUnsaved)).toBeInTheDocument();
+    expect(save).toBeEnabled();
+    expect(discard).toBeEnabled();
+  });
+
+  test("focused editor Discard restores the server baseline without mutating", async () => {
+    const user = userEvent.setup();
+    render(
+      <ProgramSettings
+        program={recurringProgram}
+        section="basics"
+        onTaskChange={vi.fn()}
+      />
+    );
+
+    const name = screen.getByRole("textbox", {
+      name: COPY.programs.programName,
+    });
+    await user.clear(name);
+    await user.type(name, "未儲存名稱");
+    const save = screen.getByRole("button", {
+      name: COPY.programs.settingsSaveBasics,
+    });
+    const discard = screen.getByRole("button", {
+      name: COPY.programs.settingsDiscard,
+    });
+
+    await user.click(discard);
+    expect(name).toHaveValue(recurringProgram.name);
+    expect(
+      screen.queryByText(COPY.programs.settingsUnsaved)
+    ).not.toBeInTheDocument();
+    expect(
+      [save, discard].every((button) => button.hasAttribute("disabled"))
+    ).toBeTruthy();
+    expect(mocks.updateProgram).not.toHaveBeenCalled();
+  });
+
+  test("retries an uncertain focused save with the same draft and keeps the editor usable", async () => {
+    const user = userEvent.setup();
+    mocks.updateProgram
+      .mockRejectedValueOnce(new RpcError({ code: "NETWORK_ERROR", status: 0 }))
+      .mockResolvedValueOnce({
+        program: updatedProgram({ name: "重試後名稱" }),
+      });
+    render(
+      <ProgramSettings
+        program={recurringProgram}
+        section="basics"
+        onTaskChange={vi.fn()}
+      />
+    );
+
+    const name = screen.getByRole("textbox", {
+      name: COPY.programs.programName,
+    });
+    await user.clear(name);
+    await user.type(name, "重試後名稱");
+    await user.click(
+      screen.getByRole("button", { name: COPY.programs.settingsSaveBasics })
+    );
+
+    await expect(
+      screen.findByText(COPY.programs.programTransportAmbiguous)
+    ).resolves.toBeInTheDocument();
+    const retry = screen.getByRole("button", {
+      name: COPY.programs.settingsRetrySave,
+    });
+    expect(name).toHaveValue("重試後名稱");
+    await user.click(retry);
+
+    await waitFor(() => expect(mocks.updateProgram).toHaveBeenCalledTimes(2));
+    expect(mocks.updateProgram).toHaveBeenNthCalledWith(2, "program-1", {
+      name: "重試後名稱",
+      description: "週三晚上的門徒訓練查經。",
+      category: "門徒訓練",
+      display_order: 2,
+    });
+    await expect(
+      screen.findByText(COPY.programs.settingsSaved)
+    ).resolves.toBeInTheDocument();
+  });
+
+  test("renders a focused publishing editor and keeps archive atomic", async () => {
+    const user = userEvent.setup();
+    render(
+      <ProgramSettings
+        program={recurringProgram}
+        section="publishing"
+        onTaskChange={vi.fn()}
+      />
+    );
+
+    expect(
+      screen.getByRole("heading", {
+        level: 2,
+        name: COPY.programs.settingsPublishing,
+      })
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("heading", { name: COPY.programs.settingsBasics })
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("heading", { name: COPY.programs.settingsSchedule })
+    ).not.toBeInTheDocument();
+
+    await user.click(
+      screen.getByRole("combobox", { name: COPY.programs.settingsLifecycle })
+    );
+    await user.click(
+      screen.getByRole("option", { name: COPY.programs.lifecycleArchived })
+    );
+    await user.click(
+      screen.getByRole("button", {
+        name: COPY.programs.settingsSavePublishing,
+      })
+    );
+    expect(
+      screen.getByRole("alert", {
+        name: COPY.programs.settingsConfirmPublishing,
+      })
+    ).toBeInTheDocument();
+    expect(mocks.updateProgram).not.toHaveBeenCalled();
+
+    await user.click(
+      screen.getByRole("button", {
+        name: COPY.programs.settingsConfirmPublishingChange,
+      })
+    );
+    await waitFor(() =>
+      expect(mocks.updateProgram).toHaveBeenCalledWith("program-1", {
+        lifecycle: "Archived",
+      })
+    );
+  });
+
   test("shows four scope-owned groups and keeps Event generation out of Settings", async () => {
     render(
       <ProgramSettings program={recurringProgram} onTaskChange={vi.fn()} />
@@ -567,5 +732,77 @@ describe(ProgramSettings, () => {
       "rule-1",
       "exception-existing"
     );
+  });
+});
+
+describe(SettingsHub, () => {
+  test("uses local buttons only for editors and canonical links for destinations", async () => {
+    const onSelect = vi.fn();
+    render(
+      <SettingsHub
+        program={recurringProgram}
+        eventsEnabled
+        attendanceEnabled
+        onSelect={onSelect}
+        accessHref="/management?module=accounts"
+        scheduleHref="/programs?mode=management&program=program-1&task=schedule"
+        notificationsHref="/programs?mode=management&task=notifications"
+      />
+    );
+
+    await userEvent.click(
+      screen.getByRole("button", {
+        name: /課程基本資料名稱、描述同分類/u,
+      })
+    );
+    expect(onSelect).toHaveBeenCalledWith("basics");
+    expect(
+      screen.getByRole("link", { name: COPY.programs.settingsHubAccess })
+    ).toHaveAttribute("href", "/management?module=accounts");
+    expect(
+      screen.getByRole("link", { name: COPY.programs.settingsHubSchedule })
+    ).toHaveAttribute(
+      "href",
+      "/programs?mode=management&program=program-1&task=schedule"
+    );
+    expect(
+      screen.getByRole("link", {
+        name: COPY.programs.settingsHubNotifications,
+      })
+    ).toHaveAttribute("href", "/programs?mode=management&task=notifications");
+    expect(
+      screen.getByRole("button", { name: /發布與顯示狀態同可見範圍/u })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /封存課程停止一般使用/u })
+    ).toBeInTheDocument();
+  });
+
+  test("does not invent schedule or attendance rows when capabilities are absent", () => {
+    render(
+      <SettingsHub
+        program={{
+          ...oneOffProgram,
+          capabilities: { ...oneOffProgram.capabilities, manage: true },
+        }}
+        eventsEnabled={false}
+        attendanceEnabled={false}
+        onSelect={vi.fn()}
+        scheduleHref="/programs?mode=management&program=program-oneoff&task=schedule"
+        notificationsHref="/programs?mode=management&task=notifications"
+      />
+    );
+
+    expect(
+      screen.queryByRole("link", { name: COPY.programs.settingsHubSchedule })
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", {
+        name: COPY.programs.settingsHubAttendance,
+      })
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("link", { name: COPY.programs.settingsHubNotifications })
+    ).toBeInTheDocument();
   });
 });

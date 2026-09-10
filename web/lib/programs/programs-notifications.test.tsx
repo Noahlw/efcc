@@ -15,6 +15,7 @@ import type {
   ManagementNotificationState,
   ProgramsNotificationsProps,
 } from "@/lib/programs/programs-notifications";
+
 afterEach(cleanup);
 
 const notification: ManagementNotifications["items"][number] = {
@@ -80,6 +81,7 @@ describe("management notification control", () => {
       screen.queryByText(COPY.programs.notificationsUnread)
     ).not.toBeInTheDocument();
   });
+
   test("keeps the unread badge when marking read fails", async () => {
     const user = userEvent.setup();
     const onMarkRead = vi
@@ -112,6 +114,7 @@ describe("management notification control", () => {
       screen.queryByText(COPY.programs.notificationsUnread)
     ).not.toBeInTheDocument();
   });
+
   test("renders empty and error states in the same bounded surface", () => {
     const onRetry = vi.fn<ProgramsNotificationsProps["onRetry"]>();
     const { rerender } = render(
@@ -145,6 +148,7 @@ describe("management notification control", () => {
       screen.getByRole("button", { name: COPY.programs.notificationsRetry })
     ).toBeInTheDocument();
   });
+
   test("full Notifications task marks unread items without rendering the compact bell", async () => {
     const user = userEvent.setup();
     const onMarkRead = vi.fn<ProgramsNotificationsProps["onMarkRead"]>();
@@ -169,7 +173,14 @@ describe("management notification control", () => {
     }
     const scoped = within(fullSurface);
     expect(
-      scoped.getByRole("heading", { name: COPY.programs.notificationsTitle })
+      scoped.getByRole("heading", {
+        name: COPY.programs.notificationsScreenTitle,
+      })
+    ).toBeInTheDocument();
+    expect(
+      scoped.getByRole("heading", {
+        name: COPY.programs.notificationsUnreadSection,
+      })
     ).toBeInTheDocument();
     expect(
       scoped.queryByRole("button", {
@@ -191,6 +202,7 @@ describe("management notification control", () => {
     await user.click(scoped.getByRole("link", { name: /青年團契/u }));
     expect(onMarkRead).toHaveBeenCalled();
   });
+
   test("uses a semantic canonical link for the compact view-all action", async () => {
     const user = userEvent.setup();
     render(
@@ -216,6 +228,7 @@ describe("management notification control", () => {
     await user.click(viewAll);
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
+
   test("forwards Feed Presentation status and announcement slots", () => {
     render(
       <ProgramsNotifications

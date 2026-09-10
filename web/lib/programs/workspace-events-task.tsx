@@ -1,11 +1,11 @@
 "use client";
 
+import { ChevronRight } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import type { FormEvent } from "react";
 
 import { Alert } from "@/components/ui/alert";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -15,7 +15,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Skeleton } from "@/components/ui/skeleton";
 import { RpcError } from "@/lib/api";
 import { COPY, errorCopyFor } from "@/lib/copy";
 import { announce } from "@/lib/live-region";
@@ -40,6 +39,21 @@ import {
   hkWallDateTimeLabel,
   wallWeekday,
 } from "@/lib/programs/recurrence";
+import {
+  ScreenCard,
+  ScreenEditor,
+  ScreenField,
+  ScreenLoadingRows,
+  ScreenRow,
+  ScreenRowList,
+  ScreenRowMain,
+  ScreenRowMeta,
+  ScreenRowTitle,
+  ScreenRowTrailing,
+  ScreenSection,
+  ScreenState,
+  ScreenStatus,
+} from "@/lib/screen-foundations";
 
 import { hkWallInputToIso } from "./event-detail";
 import { buildProgramsHref } from "./programs-intent";
@@ -49,57 +63,6 @@ import {
   redirectToLoginIfRequired,
   useWorkspaceTaskContext,
 } from "./workspace-context";
-
-const styles = {
-  input:
-    "h-auto min-h-11 min-w-0 rounded-lg border border-[var(--line-strong)] bg-[var(--surface-raised)] text-base text-[var(--ink)]",
-  workspaceSection: "grid min-w-0 gap-4",
-  workspaceSubheading:
-    "m-0 text-base font-bold leading-6 [overflow-wrap:anywhere]",
-  programDetailMuted:
-    "m-0 text-sm leading-6 text-[var(--ink-muted)] [overflow-wrap:anywhere]",
-  panelError:
-    "grid min-w-0 gap-2 rounded-lg border border-[var(--error-border)] bg-[var(--error-surface)] p-3 text-[var(--error)] [overflow-wrap:anywhere]",
-  ruleForm:
-    "grid min-w-0 gap-3 rounded-lg border border-[var(--line)] bg-[var(--surface)] p-4",
-  ruleField: "grid min-w-0 gap-1.5 text-sm font-bold text-[var(--ink)]",
-  select:
-    "min-h-11 min-w-0 w-full rounded-lg border border-[var(--line-strong)] bg-[var(--surface-raised)] px-3 text-base text-[var(--ink)]",
-  button:
-    "min-h-11 min-w-11 w-fit rounded-lg bg-[var(--accent)] px-4 py-2 text-white whitespace-normal hover:bg-[var(--accent-deep)]",
-  workspaceTaskList: "m-0 grid min-w-0 list-none gap-2 p-0",
-  workspaceTaskRow:
-    "flex min-w-0 flex-wrap items-center gap-3 rounded-lg border border-[var(--line)] bg-[var(--surface-raised)] p-3 [overflow-wrap:anywhere]",
-  eventCancelled: "text-[var(--error)]",
-  exceptionBadge: "w-fit whitespace-normal text-[var(--pending)]",
-  formActions: "flex min-w-0 flex-wrap items-center gap-3",
-  panelNotice:
-    "block rounded-lg border border-[var(--success-border)] bg-[var(--success-surface)] p-3 text-[var(--ink)] [overflow-wrap:anywhere]",
-  workspaceHeading:
-    "m-0 min-w-0 text-lg font-extrabold leading-6 tracking-[-0.02em] [overflow-wrap:anywhere]",
-  badge: "shrink-0 whitespace-normal",
-  badgeActive: "border-transparent bg-[var(--accent)] text-white",
-  eventCreateForm: "grid-cols-1 md:grid-cols-2",
-  secondaryButton:
-    "min-h-11 min-w-11 w-fit rounded-lg border border-[var(--line-strong)] bg-transparent px-4 py-2 text-[var(--ink)] whitespace-normal hover:bg-[var(--surface)]",
-  boundaryError:
-    "grid min-w-0 gap-3 rounded-lg border border-[var(--error-border)] bg-[var(--error-surface)] p-4 text-[var(--error)] [overflow-wrap:anywhere]",
-  retry:
-    "min-h-11 min-w-11 w-fit rounded-lg border border-[var(--line-strong)] bg-transparent px-4 py-2 text-[var(--ink)] whitespace-normal hover:bg-[var(--surface)]",
-  eventActions: "flex min-w-0 flex-wrap items-center gap-2",
-  cancelForm: "grid min-w-0 gap-2",
-  confirmation:
-    "grid min-w-0 gap-2 rounded-lg border border-[var(--pending-border)] bg-[var(--pending-surface)] p-3 [overflow-wrap:anywhere]",
-  dangerButton:
-    "min-h-11 min-w-11 w-fit rounded-lg bg-[var(--error)] px-4 py-2 text-white whitespace-normal hover:opacity-90",
-  dangerOutline:
-    "min-h-11 min-w-11 w-fit rounded-lg border border-[var(--error)] bg-transparent px-4 py-2 text-[var(--error)] whitespace-normal hover:bg-[var(--error-surface)]",
-  successOutline:
-    "min-h-11 min-w-11 w-fit rounded-lg border border-[var(--success-border)] bg-transparent px-4 py-2 text-[var(--success)] whitespace-normal hover:bg-[var(--success-surface)]",
-  eventReason:
-    "min-w-0 text-sm leading-6 text-[var(--ink-muted)] [overflow-wrap:anywhere]",
-  eventDate: "min-w-0 [overflow-wrap:anywhere]",
-} as const;
 
 type EventsState =
   | { kind: "loading" }
@@ -140,7 +103,7 @@ function ruleForEvent(
   return byTime.length === 1 ? byTime[0] : null;
 }
 
-const RecurringSchedulePanel = ({
+export const RecurringSchedulePanel = ({
   programId,
   rules,
   rulesError,
@@ -290,71 +253,61 @@ const RecurringSchedulePanel = ({
   const noRules = rulesReady && rules.length === 0;
 
   return (
-    <section
-      className={styles.workspaceSection}
-      aria-labelledby="programs-workspace-recurring-title"
+    <ScreenSection
+      title={COPY.programs.secondaryGeneratorLabel}
+      headingId="programs-workspace-recurring-title"
     >
-      <h5
-        id="programs-workspace-recurring-title"
-        className={styles.workspaceSubheading}
-      >
-        {COPY.programs.secondaryGeneratorLabel}
-      </h5>
-      <p className={styles.programDetailMuted}>{COPY.programs.previewLead}</p>
-      {rulesError !== null && (
-        <Alert className={styles.panelError} variant="destructive">
-          {rulesError}
-        </Alert>
-      )}
+      <p className="m-0 wrap-anywhere text-sm leading-6 text-[var(--screen-muted)]">
+        {COPY.programs.previewLead}
+      </p>
+      {rulesError !== null && <Alert variant="destructive">{rulesError}</Alert>}
       {noRules ? (
-        <p className={styles.programDetailMuted}>
-          {COPY.programs.settingsScheduleNone}
-        </p>
+        <ScreenState
+          kind="empty"
+          title={`${COPY.programs.schedulePreviewTitle}：${COPY.programs.settingsScheduleNone}`}
+        />
       ) : (
-        <form className={styles.ruleForm} onSubmit={submitPreview}>
-          <label className={styles.ruleField}>
-            <span>{COPY.programs.previewHorizon}</span>
-            <Input
-              className={styles.input}
-              type="number"
-              name="horizon_days"
-              min={1}
-              max={365}
-              defaultValue={90}
-              required
-              aria-label={COPY.programs.previewHorizon}
-            />
-          </label>
-          <Button
-            type="submit"
-            className={styles.button}
-            disabled={previewBusy || generateBusy}
-          >
-            {previewBusy
-              ? COPY.programs.previewing
-              : COPY.programs.previewEvents}
-          </Button>
-        </form>
+        <ScreenCard asChild>
+          <ScreenEditor onSubmit={submitPreview}>
+            <ScreenField
+              htmlFor="programs-preview-horizon"
+              label={COPY.programs.previewHorizon}
+            >
+              <Input
+                id="programs-preview-horizon"
+                className="border-[var(--screen-line-strong)] bg-[var(--screen-surface)] text-base"
+                type="number"
+                name="horizon_days"
+                min={1}
+                max={365}
+                defaultValue={90}
+                required
+              />
+            </ScreenField>
+            <Button
+              type="submit"
+              className="w-fit bg-[var(--screen-accent)] text-white hover:bg-[var(--screen-accent-deep)]"
+              disabled={previewBusy || generateBusy}
+            >
+              {previewBusy
+                ? COPY.programs.previewing
+                : COPY.programs.previewEvents}
+            </Button>
+          </ScreenEditor>
+        </ScreenCard>
       )}
       {preview.kind === "loading" && (
-        <>
-          <output aria-busy="true">{COPY.programs.previewing}</output>
-          <Skeleton className="h-8 w-full" aria-hidden="true" />
-        </>
+        <ScreenLoadingRows count={1} label={COPY.programs.previewing} />
       )}
       {preview.kind === "error" && (
-        <Alert className={styles.panelError} variant="destructive">
-          {preview.message}
-        </Alert>
+        <ScreenState kind="error" title={preview.message} />
       )}
       {preview.kind === "empty" && (
-        <p className={styles.programDetailMuted} aria-live="polite">
-          {COPY.programs.previewEmpty}
-        </p>
+        <ScreenState kind="empty" title={COPY.programs.previewEmpty} />
       )}
       {preview.kind === "ready" && (
-        <>
-          <p className={styles.programDetailMuted}>
+        <ScreenSection title={COPY.programs.schedulePreviewTitle}>
+          <p className="m-0 wrap-anywhere text-sm leading-6 text-[var(--screen-muted)]">
             {COPY.programs.previewPlanLabel.replace(
               "{id}",
               preview.plan.plan.plan_id.slice(0, 8)
@@ -364,52 +317,61 @@ const RecurringSchedulePanel = ({
               .replace("{rules}", String(preview.plan.plan.rule_count))
               .replace("{days}", String(preview.plan.plan.horizon_days))}
           </p>
-          <ul
-            className={styles.workspaceTaskList}
-            aria-label={COPY.programs.previewEvents}
-          >
-            {preview.plan.occurrences.map((occurrence) => {
-              const rule = (rules ?? []).find(
-                (candidate) => candidate.rule_id === occurrence.rule_id
-              );
-              return (
-                <li
-                  key={occurrence.occurrence_id}
-                  className={styles.workspaceTaskRow}
-                >
-                  <strong>{hkWallDateTimeLabel(occurrence.starts_at)}</strong>
-                  <span>
-                    {occurrence.location?.trim()
-                      ? occurrence.location
-                      : COPY.programs.eventLocationPlaceholder}
-                  </span>
-                  <span>
-                    {rule ? formatScheduleRuleLabel(rule) : occurrence.rule_id}
-                  </span>
-                  {occurrence.skip_reason === "CANCEL" && (
-                    <span className={styles.eventCancelled}>
-                      {COPY.programs.previewOccurrenceSkipped}
-                    </span>
-                  )}
-                  {occurrence.skip_reason === "DUPLICATE" && (
-                    <span className={styles.eventCancelled}>
-                      {COPY.programs.previewOccurrenceDuplicate}
-                    </span>
-                  )}
-                  {occurrence.skip_reason === null &&
-                    occurrence.exception_id !== null && (
-                      <span className={styles.exceptionBadge}>
-                        {COPY.programs.previewOccurrenceRescheduled}
-                      </span>
-                    )}
-                </li>
-              );
-            })}
-          </ul>
-          <div className={styles.formActions}>
+          <ScreenRowList>
+            <ul
+              className="m-0 grid min-w-0 list-none gap-0 p-0"
+              aria-label={COPY.programs.previewEvents}
+            >
+              {preview.plan.occurrences.map((occurrence) => {
+                const rule = (rules ?? []).find(
+                  (candidate) => candidate.rule_id === occurrence.rule_id
+                );
+                const skipped = occurrence.skip_reason !== null;
+                return (
+                  <li key={occurrence.occurrence_id} className="min-w-0">
+                    <ScreenRow className="items-start">
+                      <ScreenRowMain>
+                        <ScreenRowTitle>
+                          {hkWallDateTimeLabel(occurrence.starts_at)}
+                        </ScreenRowTitle>
+                        <ScreenRowMeta>
+                          {occurrence.location?.trim()
+                            ? occurrence.location
+                            : COPY.programs.eventLocationPlaceholder}
+                        </ScreenRowMeta>
+                        <ScreenRowMeta>
+                          {rule
+                            ? formatScheduleRuleLabel(rule)
+                            : occurrence.rule_id}
+                        </ScreenRowMeta>
+                      </ScreenRowMain>
+                      <ScreenRowTrailing>
+                        {occurrence.skip_reason === "CANCEL" && (
+                          <ScreenStatus tone="danger">
+                            {COPY.programs.previewOccurrenceSkipped}
+                          </ScreenStatus>
+                        )}
+                        {occurrence.skip_reason === "DUPLICATE" && (
+                          <ScreenStatus tone="danger">
+                            {COPY.programs.previewOccurrenceDuplicate}
+                          </ScreenStatus>
+                        )}
+                        {!skipped && occurrence.exception_id !== null && (
+                          <ScreenStatus tone="pending">
+                            {COPY.programs.previewOccurrenceRescheduled}
+                          </ScreenStatus>
+                        )}
+                      </ScreenRowTrailing>
+                    </ScreenRow>
+                  </li>
+                );
+              })}
+            </ul>
+          </ScreenRowList>
+          <div className="flex min-w-0 flex-wrap items-center gap-[var(--screen-utility-gap)]">
             <Button
               type="button"
-              className={styles.button}
+              className="w-fit bg-[var(--screen-accent)] text-white hover:bg-[var(--screen-accent-deep)]"
               onClick={() => void submitGenerate()}
               disabled={generateBusy || previewBusy}
             >
@@ -419,23 +381,19 @@ const RecurringSchedulePanel = ({
             </Button>
             {generateResult !== null &&
               (generatePartial ? (
-                <Alert className={styles.panelError} variant="destructive">
+                <Alert variant="destructive">{generateResult}</Alert>
+              ) : (
+                <Alert tone="success" announcement="polite">
                   {generateResult}
                 </Alert>
-              ) : (
-                <output className={styles.panelNotice} aria-live="polite">
-                  {generateResult}
-                </output>
               ))}
           </div>
           {generateError !== null && (
-            <Alert className={styles.panelError} variant="destructive">
-              {generateError}
-            </Alert>
+            <Alert variant="destructive">{generateError}</Alert>
           )}
-        </>
+        </ScreenSection>
       )}
-    </section>
+    </ScreenSection>
   );
 };
 
@@ -446,6 +404,7 @@ export const EventsTask = () => {
     departmentId,
     hash,
     onAttentionRefresh,
+    onTaskChange,
     onOpenEvent,
   } = useWorkspaceTaskContext();
   const programId = program.program_id;
@@ -453,13 +412,12 @@ export const EventsTask = () => {
   const recurring = program.behavior_type === "Recurring";
   const mounted = useRef(true);
   const previousEvents = useRef<ProgramEvent[] | null>(null);
-  type EventLoadOutcome = {
+  interface EventLoadOutcome {
     status: "pending" | "success" | "error" | "stale";
-  };
+  }
   const eventLoadOutcomes = useRef(new WeakMap<object, EventLoadOutcome>());
   const latestEventLoadOutcome = useRef<EventLoadOutcome | null>(null);
   const [rules, setRules] = useState<ScheduleRule[] | null>(null);
-  const [rulesError, setRulesError] = useState<string | null>(null);
   const { state, run, retry } = useAsyncResource<ProgramEvent[], EventsState>(
     async (request) => {
       const outcome: EventLoadOutcome = { status: "pending" };
@@ -535,28 +493,28 @@ export const EventsTask = () => {
   useEffect(() => {
     let cancelled = false;
     setRules(null);
-    setRulesError(null);
     if (!canManage || !recurring) {
       return () => {
         cancelled = true;
       };
     }
-    void listScheduleRules(programId)
-      .then(({ rules: nextRules }) => {
+    const loadRules = async () => {
+      try {
+        const { rules: nextRules } = await listScheduleRules(programId);
         if (!cancelled) {
           setRules(nextRules);
         }
-      })
-      .catch((error: unknown) => {
+      } catch {
         if (cancelled) {
           return;
         }
-        setRulesError(
-          error instanceof RpcError
-            ? errorCopyFor(error.problem.code, error.problem.detail)
-            : COPY.error.networkError
-        );
-      });
+        // The focused Schedule task owns the schedule-rule error surface.
+        // Events only uses this resource to decide which occurrence actions
+        // can be shown, so preserve the failure as an empty rule set.
+        setRules([]);
+      }
+    };
+    void loadRules();
     return () => {
       cancelled = true;
     };
@@ -784,58 +742,15 @@ export const EventsTask = () => {
     state.kind === "ready" ? state.events : previousEvents.current;
 
   return (
-    <section
-      aria-labelledby="programs-workspace-events-title"
+    <ScreenSection
+      title={COPY.programs.workspaceTaskEvents}
+      headingId="programs-workspace-events-title"
       aria-busy={createBusy || actionBusy}
-    >
-      <h4
-        id="programs-workspace-events-title"
-        className={styles.workspaceHeading}
-      >
-        {COPY.programs.workspaceTaskEvents}
-      </h4>
-      {notice !== null && (
-        <output className={styles.panelNotice} aria-live="polite">
-          {notice}
-        </output>
-      )}
-      {actionError !== null && (
-        <Alert className={styles.panelError} variant="destructive">
-          {actionError}
-        </Alert>
-      )}
-      {eventAttention && eventAttention.inactive_event_count > 0 && (
-        <Badge
-          className={`${styles.badge} ${styles.badgeActive}`}
-          variant="default"
-          aria-label={COPY.programs.attentionEventCount.replace(
-            "{count}",
-            String(eventAttention.inactive_event_count)
-          )}
-        >
-          {eventAttention.inactive_event_count}
-        </Badge>
-      )}
-      {eventAttention && eventAttention.cancelled_event_count > 0 && (
-        <Badge
-          className={styles.badge}
-          variant="outline"
-          aria-label={COPY.programs.attentionCancelledCount.replace(
-            "{count}",
-            String(eventAttention.cancelled_event_count)
-          )}
-        >
-          {eventAttention.cancelled_event_count}
-        </Badge>
-      )}
-      <p className={styles.programDetailMuted}>
-        {COPY.programs.repeatInformational}
-      </p>
-      {canManage && (
-        <>
+      action={
+        canManage ? (
           <Button
             type="button"
-            className={styles.button}
+            className="w-fit bg-[var(--screen-accent)] text-white hover:bg-[var(--screen-accent-deep)]"
             onClick={() => {
               setCreateOpen((open) => !open);
               setCreateError(null);
@@ -843,432 +758,555 @@ export const EventsTask = () => {
           >
             {COPY.programs.createMeeting}
           </Button>
-          {createOpen && (
-            <form
-              className={`${styles.ruleForm} ${styles.eventCreateForm}`}
-              aria-labelledby="programs-workspace-event-create-title"
-              aria-busy={createBusy}
-              noValidate
-              onSubmit={submitCreate}
-            >
-              <h5
-                id="programs-workspace-event-create-title"
-                className={styles.workspaceSubheading}
-              >
-                {COPY.programs.createMeeting}
-              </h5>
-              {createError !== null && (
-                <Alert className={styles.panelError} variant="destructive">
-                  {createError}
-                </Alert>
-              )}
-              <label className={styles.ruleField}>
-                <span>{COPY.programs.eventDate}</span>
-                <Input
-                  className={styles.input}
-                  type="date"
-                  name="event_date"
-                  aria-label={COPY.programs.eventDate}
-                  aria-required="true"
-                />
-              </label>
-              <label className={styles.ruleField}>
-                <span>{COPY.programs.eventTime}</span>
-                <Input
-                  className={styles.input}
-                  type="time"
-                  name="event_time"
-                  aria-label={COPY.programs.eventTime}
-                  aria-required="true"
-                />
-              </label>
-              <label className={styles.ruleField}>
-                <span>{COPY.programs.eventName}</span>
-                <Input
-                  className={styles.input}
-                  type="text"
-                  name="name"
-                  placeholder={COPY.programs.eventNamePlaceholder}
-                  aria-label={COPY.programs.eventName}
-                  aria-required="true"
-                />
-              </label>
-              <label className={styles.ruleField}>
-                <span>{COPY.programs.eventType}</span>
-                <Select
-                  name="event_type"
-                  defaultValue={COPY.programs.eventTypeOptions[0]}
-                >
-                  <SelectTrigger
-                    className={styles.select}
-                    aria-label={COPY.programs.eventType}
-                  >
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {COPY.programs.eventTypeOptions.map((type) => (
-                      <SelectItem key={type} value={type}>
-                        {type}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </label>
-              <label className={styles.ruleField}>
-                <span>{COPY.programs.recurrenceTag}</span>
-                <Select
-                  name="recurrence_tag"
-                  defaultValue={COPY.programs.recurrenceNone}
-                >
-                  <SelectTrigger
-                    className={styles.select}
-                    aria-label={COPY.programs.recurrenceTag}
-                  >
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value={COPY.programs.recurrenceNone}>
-                      {COPY.programs.recurrenceNone}
-                    </SelectItem>
-                    <SelectItem value={COPY.programs.recurrenceWeekly}>
-                      {COPY.programs.recurrenceWeekly}
-                    </SelectItem>
-                    <SelectItem value={COPY.programs.recurrenceMonthly}>
-                      {COPY.programs.recurrenceMonthly}
-                    </SelectItem>
-                  </SelectContent>
-                </Select>
-              </label>
-              <p className={styles.programDetailMuted}>
-                {COPY.programs.repeatFormInformational}
-              </p>
-              <div className={styles.formActions}>
-                <Button
-                  type="submit"
-                  className={styles.button}
-                  disabled={createBusy}
-                >
-                  {createBusy
-                    ? COPY.programs.submitting
-                    : COPY.programs.createMeeting}
-                </Button>
-                <Button
-                  type="button"
-                  className={styles.secondaryButton}
-                  disabled={createBusy}
-                  onClick={() => {
-                    setCreateOpen(false);
-                    setCreateError(null);
-                  }}
-                >
-                  {COPY.programs.eventCreateCancel}
-                </Button>
-              </div>
-            </form>
-          )}
-        </>
-      )}
-      {canManage && recurring && (
-        <RecurringSchedulePanel
-          programId={programId}
-          rules={rules}
-          rulesError={rulesError}
-          onGenerated={() => {
-            void run();
-          }}
-        />
-      )}
-      {state.kind === "loading" && (
-        <>
-          <output aria-busy="true">
-            {COPY.programs.workspaceTaskEventsLoading}
-          </output>
-          <Skeleton className="h-8 w-full" aria-hidden="true" />
-        </>
-      )}
-      {state.kind === "error" && (
-        <Alert className={styles.boundaryError} variant="destructive">
-          <p>{state.message}</p>
-          <Button className={styles.retry} type="button" onClick={retry}>
-            {COPY.programs.workspaceTaskEventsRetry}
-          </Button>
+        ) : undefined
+      }
+    >
+      <p className="m-0 wrap-anywhere text-sm leading-6 text-[var(--screen-muted)]">
+        {COPY.programs.repeatInformational}
+      </p>
+      {notice !== null && (
+        <Alert tone="success" announcement="polite">
+          {notice}
         </Alert>
       )}
+      {actionError !== null && (
+        <Alert variant="destructive">{actionError}</Alert>
+      )}
+      {(eventAttention?.inactive_event_count ?? 0) > 0 ||
+      (eventAttention?.cancelled_event_count ?? 0) > 0 ? (
+        <div className="flex min-w-0 flex-wrap items-center gap-[var(--screen-utility-gap)]">
+          {(eventAttention?.inactive_event_count ?? 0) > 0 && (
+            <ScreenStatus
+              tone="accent"
+              aria-label={COPY.programs.attentionEventCount.replace(
+                "{count}",
+                String(eventAttention?.inactive_event_count)
+              )}
+            >
+              {eventAttention?.inactive_event_count}
+            </ScreenStatus>
+          )}
+          {(eventAttention?.cancelled_event_count ?? 0) > 0 && (
+            <ScreenStatus
+              tone="danger"
+              aria-label={COPY.programs.attentionCancelledCount.replace(
+                "{count}",
+                String(eventAttention?.cancelled_event_count)
+              )}
+            >
+              {eventAttention?.cancelled_event_count}
+            </ScreenStatus>
+          )}
+        </div>
+      ) : null}
+      {canManage && createOpen && (
+        <ScreenCard asChild>
+          <ScreenEditor
+            aria-labelledby="programs-workspace-event-create-title"
+            aria-busy={createBusy}
+            noValidate
+            onSubmit={submitCreate}
+          >
+            <h3
+              id="programs-workspace-event-create-title"
+              className="m-0 wrap-anywhere text-base font-bold leading-[var(--screen-section-title-leading)]"
+            >
+              {COPY.programs.createMeeting}
+            </h3>
+            {createError !== null && (
+              <Alert variant="destructive">{createError}</Alert>
+            )}
+            <ScreenField
+              htmlFor="programs-event-date"
+              label={COPY.programs.eventDate}
+            >
+              <Input
+                id="programs-event-date"
+                className="border-[var(--screen-line-strong)] bg-[var(--screen-surface)] text-base"
+                type="date"
+                name="event_date"
+                aria-required="true"
+              />
+            </ScreenField>
+            <ScreenField
+              htmlFor="programs-event-time"
+              label={COPY.programs.eventTime}
+            >
+              <Input
+                id="programs-event-time"
+                className="border-[var(--screen-line-strong)] bg-[var(--screen-surface)] text-base"
+                type="time"
+                name="event_time"
+                aria-required="true"
+              />
+            </ScreenField>
+            <ScreenField
+              htmlFor="programs-event-name"
+              label={COPY.programs.eventName}
+            >
+              <Input
+                id="programs-event-name"
+                className="border-[var(--screen-line-strong)] bg-[var(--screen-surface)] text-base"
+                type="text"
+                name="name"
+                placeholder={COPY.programs.eventNamePlaceholder}
+                aria-required="true"
+              />
+            </ScreenField>
+            <ScreenField label={COPY.programs.eventType}>
+              <Select
+                name="event_type"
+                defaultValue={COPY.programs.eventTypeOptions[0]}
+              >
+                <SelectTrigger
+                  className="border-[var(--screen-line-strong)] bg-[var(--screen-surface)] text-base"
+                  aria-label={COPY.programs.eventType}
+                >
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {COPY.programs.eventTypeOptions.map((type) => (
+                    <SelectItem key={type} value={type}>
+                      {type}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </ScreenField>
+            <ScreenField label={COPY.programs.recurrenceTag}>
+              <Select
+                name="recurrence_tag"
+                defaultValue={COPY.programs.recurrenceNone}
+              >
+                <SelectTrigger
+                  className="border-[var(--screen-line-strong)] bg-[var(--screen-surface)] text-base"
+                  aria-label={COPY.programs.recurrenceTag}
+                >
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={COPY.programs.recurrenceNone}>
+                    {COPY.programs.recurrenceNone}
+                  </SelectItem>
+                  <SelectItem value={COPY.programs.recurrenceWeekly}>
+                    {COPY.programs.recurrenceWeekly}
+                  </SelectItem>
+                  <SelectItem value={COPY.programs.recurrenceMonthly}>
+                    {COPY.programs.recurrenceMonthly}
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+            </ScreenField>
+            <p className="m-0 wrap-anywhere text-sm leading-6 text-[var(--screen-muted)]">
+              {COPY.programs.repeatFormInformational}
+            </p>
+            <div className="flex min-w-0 flex-wrap items-center gap-[var(--screen-utility-gap)]">
+              <Button
+                type="submit"
+                className="w-fit bg-[var(--screen-accent)] text-white hover:bg-[var(--screen-accent-deep)]"
+                disabled={createBusy}
+              >
+                {createBusy
+                  ? COPY.programs.submitting
+                  : COPY.programs.createMeeting}
+              </Button>
+              <Button
+                type="button"
+                className="w-fit border-[var(--screen-line-strong)] bg-transparent text-[var(--screen-ink)] hover:bg-[var(--screen-surface-soft)]"
+                variant="outline"
+                disabled={createBusy}
+                onClick={() => {
+                  setCreateOpen(false);
+                  setCreateError(null);
+                }}
+              >
+                {COPY.programs.eventCreateCancel}
+              </Button>
+            </div>
+          </ScreenEditor>
+        </ScreenCard>
+      )}
+      {canManage && recurring && (
+        <ScreenSection
+          title={COPY.programs.settingsSchedule}
+          headingId="programs-workspace-schedule-link-title"
+        >
+          <p className="m-0 wrap-anywhere text-sm leading-6 text-[var(--screen-muted)]">
+            {COPY.programs.settingsScheduleLead}
+          </p>
+          <ScreenRowList>
+            <ScreenRow asChild density="settings">
+              <Link
+                href={buildProgramsHref({
+                  mode: "management",
+                  programId,
+                  departmentId,
+                  task: "schedule",
+                  hash,
+                })}
+                onClick={(event) => {
+                  if (
+                    event.defaultPrevented ||
+                    event.button !== 0 ||
+                    event.metaKey ||
+                    event.ctrlKey ||
+                    event.shiftKey ||
+                    event.altKey
+                  ) {
+                    return;
+                  }
+                  event.preventDefault();
+                  onTaskChange("schedule");
+                }}
+              >
+                <ScreenRowMain>
+                  <ScreenRowTitle>
+                    {COPY.programs.settingsScheduleEventsLink}
+                  </ScreenRowTitle>
+                  <ScreenRowMeta>
+                    {COPY.programs.settingsScheduleLead}
+                  </ScreenRowMeta>
+                </ScreenRowMain>
+                <ScreenRowTrailing>
+                  <ChevronRight
+                    aria-hidden="true"
+                    className="size-[var(--screen-icon-size)] text-[var(--screen-muted)]"
+                    strokeWidth={1.8}
+                  />
+                </ScreenRowTrailing>
+              </Link>
+            </ScreenRow>
+          </ScreenRowList>
+        </ScreenSection>
+      )}
+      {state.kind === "loading" && (
+        <ScreenLoadingRows
+          count={2}
+          label={COPY.programs.workspaceTaskEventsLoading}
+        />
+      )}
+      {state.kind === "error" && (
+        <ScreenState
+          kind="error"
+          title={state.message}
+          action={
+            <Button
+              className="w-fit border-[var(--screen-line-strong)] bg-transparent text-[var(--screen-ink)] hover:bg-[var(--screen-surface-soft)]"
+              variant="outline"
+              type="button"
+              onClick={retry}
+            >
+              {COPY.programs.workspaceTaskEventsRetry}
+            </Button>
+          }
+        />
+      )}
       {state.kind === "ready" && state.events.length === 0 && (
-        <p className={styles.programDetailMuted}>
-          {COPY.programs.workspaceTaskEventsEmpty}
-        </p>
+        <ScreenState
+          kind="empty"
+          title={COPY.programs.workspaceTaskEventsEmpty}
+        />
       )}
       {eventsForDisplay !== null && eventsForDisplay.length > 0 && (
-        <ul
-          className={styles.workspaceTaskList}
-          aria-label={COPY.programs.workspaceTaskEvents}
-        >
-          {(eventsForDisplay ?? []).map((event) => {
-            const wall = eventWallParts(event.starts_at);
-            const rule = ruleForEvent(event, rules ?? []);
-            const exception = event.exception ?? null;
-            const canEditOccurrence =
-              canManage &&
-              dataReady &&
-              event.status === "Active" &&
-              event.source === "SCHEDULE" &&
-              (exception !== null || rule !== null);
-            return (
-              <li
-                key={event.event_id}
-                className={styles.workspaceTaskRow}
-                data-event-id={event.event_id}
-              >
-                <strong>
-                  {event.name ?? hkWallDateTimeLabel(event.starts_at)}
-                </strong>
-                <span className={styles.eventDate}>{wall.date}</span>
-                <span className={styles.eventDate}>{wall.time}</span>
-                <span>
-                  {event.event_type ?? COPY.programs.eventTypeOptions[5]}
-                </span>
-                <span>
-                  {COPY.programs.repeatLabel.replace(
-                    "{tag}",
-                    event.recurrence_tag ?? COPY.programs.recurrenceNone
-                  )}
-                </span>
-                <span>
-                  {event.status === "Active"
-                    ? COPY.programs.eventActive
-                    : COPY.programs.eventCancelled}
-                </span>
-                <span>
-                  {event.source === "SCHEDULE"
-                    ? COPY.programs.eventScheduleSource
-                    : COPY.programs.eventManualSource}
-                </span>
-                {exception !== null && (
-                  <Badge className={styles.exceptionBadge} variant="secondary">
-                    {exception.action === "RESCHEDULE"
-                      ? COPY.programs.eventRescheduledBadge.replace(
-                          "{time}",
-                          exception.new_start_time ?? ""
-                        )
-                      : COPY.programs.eventCancelledBadge}
-                  </Badge>
-                )}
-                {event.availability !== undefined &&
-                  event.availability !== "Active" && (
-                    <Badge className={styles.eventCancelled} variant="outline">
-                      {COPY.programs.eventUnavailable}
-                    </Badge>
-                  )}
-                {canEditOccurrence && (
-                  <div className={styles.eventActions}>
-                    {exception !== null ? (
-                      <Button
-                        type="button"
-                        className={styles.successOutline}
-                        disabled={actionBusy}
-                        onClick={() => removeException(exception)}
-                      >
-                        {COPY.programs.restoreOccurrence}
-                      </Button>
-                    ) : rule !== null ? (
-                      <>
-                        {reschedulingEventId === event.event_id ? (
-                          <form
-                            className={styles.ruleForm}
-                            ref={rescheduleFormRef}
-                            onSubmit={submitReschedule(rule, wall.date)}
-                          >
-                            <Input
-                              className={styles.input}
-                              type="time"
-                              name="new_start_time"
-                              required
-                              disabled={actionBusy}
-                              aria-label={COPY.programs.rescheduleStart}
-                            />
-                            <Input
-                              className={styles.input}
-                              type="time"
-                              name="new_end_time"
-                              required
-                              disabled={actionBusy}
-                              aria-label={COPY.programs.rescheduleEnd}
-                            />
-                            <Button
-                              type="submit"
-                              disabled={actionBusy}
-                              className={styles.button}
-                            >
-                              {COPY.programs.confirmReschedule}
-                            </Button>
-                            <Button
-                              type="button"
-                              disabled={actionBusy}
-                              className={styles.secondaryButton}
-                              onClick={() => setReschedulingEventId(null)}
-                            >
-                              {COPY.programs.cancelRevoke}
-                            </Button>
-                          </form>
+        <ScreenRowList>
+          <ul
+            className="m-0 grid min-w-0 list-none gap-0 p-0"
+            aria-label={COPY.programs.workspaceTaskEvents}
+          >
+            {(eventsForDisplay ?? []).map((event) => {
+              const wall = eventWallParts(event.starts_at);
+              const rule = ruleForEvent(event, rules ?? []);
+              const exception = event.exception ?? null;
+              const canEditOccurrence =
+                canManage &&
+                dataReady &&
+                event.status === "Active" &&
+                event.source === "SCHEDULE" &&
+                (exception !== null || rule !== null);
+              return (
+                <li
+                  key={event.event_id}
+                  className="min-w-0"
+                  data-event-id={event.event_id}
+                >
+                  <ScreenRow
+                    className="items-start flex-wrap"
+                    aria-busy={actionBusy}
+                  >
+                    <ScreenRowMain className="basis-full">
+                      <ScreenRowTitle>
+                        {event.name ?? hkWallDateTimeLabel(event.starts_at)}
+                      </ScreenRowTitle>
+                      <ScreenRowMeta>
+                        {wall.date} · {wall.time} ·{" "}
+                        {event.event_type ?? COPY.programs.eventTypeOptions[5]}{" "}
+                        ·{" "}
+                        {COPY.programs.repeatLabel.replace(
+                          "{tag}",
+                          event.recurrence_tag ?? COPY.programs.recurrenceNone
+                        )}{" "}
+                        ·{" "}
+                        {event.status === "Active"
+                          ? COPY.programs.eventActive
+                          : COPY.programs.eventCancelled}
+                      </ScreenRowMeta>
+                      <div className="flex min-w-0 flex-wrap items-center gap-[var(--screen-utility-gap)]">
+                        <ScreenStatus
+                          tone={
+                            event.source === "SCHEDULE" ? "accent" : "neutral"
+                          }
+                        >
+                          {event.source === "SCHEDULE"
+                            ? COPY.programs.eventScheduleSource
+                            : COPY.programs.eventManualSource}
+                        </ScreenStatus>
+                        {exception !== null && (
+                          <ScreenStatus tone="pending">
+                            {exception.action === "RESCHEDULE"
+                              ? COPY.programs.eventRescheduledBadge.replace(
+                                  "{time}",
+                                  exception.new_start_time ?? ""
+                                )
+                              : COPY.programs.eventCancelledBadge}
+                          </ScreenStatus>
+                        )}
+                        {event.availability !== undefined &&
+                          event.availability !== "Active" && (
+                            <ScreenStatus tone="danger">
+                              {COPY.programs.eventUnavailable}
+                            </ScreenStatus>
+                          )}
+                      </div>
+                      {event.status === "Cancelled" &&
+                        event.cancel_reason !== null && (
+                          <ScreenRowMeta className="text-[var(--screen-danger)]">
+                            {COPY.programs.cancelledReason.replace(
+                              "{reason}",
+                              event.cancel_reason
+                            )}
+                          </ScreenRowMeta>
+                        )}
+                    </ScreenRowMain>
+                    <div className="flex min-w-0 basis-full flex-wrap items-center gap-[var(--screen-utility-gap)]">
+                      {canEditOccurrence &&
+                        (exception === null ? (
+                          rule === null ? null : (
+                            <>
+                              {reschedulingEventId === event.event_id ? (
+                                <ScreenEditor
+                                  className="w-full min-w-0 grid-cols-1 sm:grid-cols-2"
+                                  ref={rescheduleFormRef}
+                                  onSubmit={submitReschedule(rule, wall.date)}
+                                >
+                                  <Input
+                                    className="border-[var(--screen-line-strong)] bg-[var(--screen-surface)] text-base"
+                                    type="time"
+                                    name="new_start_time"
+                                    required
+                                    disabled={actionBusy}
+                                    aria-label={COPY.programs.rescheduleStart}
+                                  />
+                                  <Input
+                                    className="border-[var(--screen-line-strong)] bg-[var(--screen-surface)] text-base"
+                                    type="time"
+                                    name="new_end_time"
+                                    required
+                                    disabled={actionBusy}
+                                    aria-label={COPY.programs.rescheduleEnd}
+                                  />
+                                  <div className="flex min-w-0 flex-wrap items-center gap-[var(--screen-utility-gap)]">
+                                    <Button
+                                      type="submit"
+                                      disabled={actionBusy}
+                                      className="w-fit bg-[var(--screen-accent)] text-white hover:bg-[var(--screen-accent-deep)]"
+                                    >
+                                      {COPY.programs.confirmReschedule}
+                                    </Button>
+                                    <Button
+                                      type="button"
+                                      disabled={actionBusy}
+                                      className="w-fit border-[var(--screen-line-strong)] bg-transparent text-[var(--screen-ink)] hover:bg-[var(--screen-surface-soft)]"
+                                      variant="outline"
+                                      onClick={() =>
+                                        setReschedulingEventId(null)
+                                      }
+                                    >
+                                      {COPY.programs.cancelRevoke}
+                                    </Button>
+                                  </div>
+                                </ScreenEditor>
+                              ) : (
+                                <Button
+                                  type="button"
+                                  disabled={actionBusy}
+                                  className="w-fit border-[var(--screen-line-strong)] bg-transparent text-[var(--screen-ink)] hover:bg-[var(--screen-surface-soft)]"
+                                  variant="outline"
+                                  onClick={() =>
+                                    setReschedulingEventId(event.event_id)
+                                  }
+                                >
+                                  {COPY.programs.rescheduleEvent}
+                                </Button>
+                              )}
+                              <form
+                                className="grid min-w-0 gap-2"
+                                onSubmit={submitCancelOccurrence(
+                                  rule,
+                                  wall.date,
+                                  event.event_id
+                                )}
+                              >
+                                {confirmingOccurrenceId === event.event_id ? (
+                                  <ScreenCard
+                                    className="min-w-0"
+                                    role="alert"
+                                    ref={confirmOccurrenceRef}
+                                  >
+                                    <span>
+                                      {COPY.programs.cancelOccurrenceConfirm}
+                                    </span>
+                                    <div className="flex min-w-0 flex-wrap items-center gap-[var(--screen-utility-gap)]">
+                                      <Button
+                                        type="submit"
+                                        disabled={actionBusy}
+                                        className="w-fit bg-[var(--screen-danger)] text-white hover:bg-[var(--screen-danger)]"
+                                      >
+                                        {COPY.programs.confirmCancelOccurrence}
+                                      </Button>
+                                      <Button
+                                        type="button"
+                                        disabled={actionBusy}
+                                        className="w-fit border-[var(--screen-line-strong)] bg-transparent text-[var(--screen-ink)] hover:bg-[var(--screen-surface-soft)]"
+                                        variant="outline"
+                                        onClick={() =>
+                                          setConfirmingOccurrenceId(null)
+                                        }
+                                      >
+                                        {COPY.programs.keepOccurrence}
+                                      </Button>
+                                    </div>
+                                  </ScreenCard>
+                                ) : (
+                                  <Button
+                                    type="submit"
+                                    disabled={actionBusy}
+                                    className="w-fit border-[var(--screen-line-strong)] bg-transparent text-[var(--screen-ink)] hover:bg-[var(--screen-surface-soft)]"
+                                    variant="outline"
+                                  >
+                                    {COPY.programs.cancelOccurrence}
+                                  </Button>
+                                )}
+                              </form>
+                            </>
+                          )
                         ) : (
                           <Button
                             type="button"
+                            className="w-fit border-[var(--screen-success)] bg-transparent text-[var(--screen-success)] hover:bg-[var(--screen-success-surface)]"
+                            variant="outline"
                             disabled={actionBusy}
-                            className={styles.secondaryButton}
-                            onClick={() =>
-                              setReschedulingEventId(event.event_id)
-                            }
+                            onClick={() => removeException(exception)}
                           >
-                            {COPY.programs.rescheduleEvent}
+                            {COPY.programs.restoreOccurrence}
                           </Button>
-                        )}
-                        <form
-                          className={styles.cancelForm}
-                          onSubmit={submitCancelOccurrence(
-                            rule,
-                            wall.date,
-                            event.event_id
-                          )}
+                        ))}
+                      <Button
+                        asChild
+                        className="w-fit border-[var(--screen-line-strong)] bg-transparent text-[var(--screen-ink)] hover:bg-[var(--screen-surface-soft)]"
+                        variant="outline"
+                      >
+                        <Link
+                          href={buildProgramsHref({
+                            mode: "management",
+                            departmentId,
+                            programId,
+                            task: "events",
+                            eventId: event.event_id,
+                            hash,
+                          })}
+                          aria-label={COPY.programs.eventDetailOpen}
+                          onClick={(clickEvent) => {
+                            if (
+                              !onOpenEvent ||
+                              clickEvent.defaultPrevented ||
+                              clickEvent.button !== 0 ||
+                              clickEvent.metaKey ||
+                              clickEvent.ctrlKey ||
+                              clickEvent.shiftKey ||
+                              clickEvent.altKey
+                            ) {
+                              return;
+                            }
+                            clickEvent.preventDefault();
+                            onOpenEvent(event.event_id);
+                          }}
                         >
-                          {confirmingOccurrenceId === event.event_id ? (
-                            <div
-                              className={styles.confirmation}
+                          {COPY.programs.eventDetailOpen}
+                        </Link>
+                      </Button>
+                      {canManage && dataReady && event.status === "Active" && (
+                        <form
+                          className="grid min-w-0 gap-2"
+                          noValidate
+                          onSubmit={submitCancelEvent(event.event_id)}
+                        >
+                          <Input
+                            className="border-[var(--screen-line-strong)] bg-[var(--screen-surface)] text-base"
+                            type="text"
+                            name="cancel_reason"
+                            placeholder={COPY.programs.cancelReasonPlaceholder}
+                            aria-label={COPY.programs.cancelReason}
+                            disabled={actionBusy}
+                          />
+                          {confirmingEventId === event.event_id ? (
+                            <ScreenCard
+                              className="min-w-0"
                               role="alert"
-                              ref={confirmOccurrenceRef}
+                              ref={confirmEventRef}
                             >
+                              <strong>
+                                {COPY.programs.cancelMeetingConfirmTitle}
+                              </strong>
                               <span>
-                                {COPY.programs.cancelOccurrenceConfirm}
+                                {COPY.programs.cancelMeetingConfirmBody}
                               </span>
                               <Button
                                 type="submit"
                                 disabled={actionBusy}
-                                className={styles.dangerButton}
+                                className="w-fit bg-[var(--screen-danger)] text-white hover:bg-[var(--screen-danger)]"
                               >
-                                {COPY.programs.confirmCancelOccurrence}
+                                {COPY.programs.confirmCancel}
                               </Button>
                               <Button
                                 type="button"
                                 disabled={actionBusy}
-                                className={styles.secondaryButton}
-                                onClick={() => setConfirmingOccurrenceId(null)}
+                                className="w-fit border-[var(--screen-line-strong)] bg-transparent text-[var(--screen-ink)] hover:bg-[var(--screen-surface-soft)]"
+                                variant="outline"
+                                onClick={() => setConfirmingEventId(null)}
                               >
-                                {COPY.programs.keepOccurrence}
+                                {COPY.programs.keepMeeting}
                               </Button>
-                            </div>
+                            </ScreenCard>
                           ) : (
                             <Button
                               type="submit"
                               disabled={actionBusy}
-                              className={styles.secondaryButton}
+                              className="w-fit border-[var(--screen-danger)] bg-transparent text-[var(--screen-danger)] hover:bg-[var(--screen-danger-surface)]"
+                              variant="outline"
                             >
-                              {COPY.programs.cancelOccurrence}
+                              {COPY.programs.cancelEvent}
                             </Button>
                           )}
                         </form>
-                      </>
-                    ) : null}
-                  </div>
-                )}
-                {event.status === "Cancelled" &&
-                  event.cancel_reason !== null && (
-                    <span className={styles.eventReason}>
-                      {COPY.programs.cancelledReason.replace(
-                        "{reason}",
-                        event.cancel_reason
                       )}
-                    </span>
-                  )}
-                <Button
-                  asChild
-                  className={styles.secondaryButton}
-                  variant="outline"
-                >
-                  <Link
-                    href={buildProgramsHref({
-                      mode: "management",
-                      departmentId,
-                      programId,
-                      task: "events",
-                      eventId: event.event_id,
-                      hash,
-                    })}
-                    aria-label={COPY.programs.eventDetailOpen}
-                    onClick={(clickEvent) => {
-                      if (
-                        !onOpenEvent ||
-                        clickEvent.defaultPrevented ||
-                        clickEvent.button !== 0 ||
-                        clickEvent.metaKey ||
-                        clickEvent.ctrlKey ||
-                        clickEvent.shiftKey ||
-                        clickEvent.altKey
-                      ) {
-                        return;
-                      }
-                      clickEvent.preventDefault();
-                      onOpenEvent(event.event_id);
-                    }}
-                  >
-                    {COPY.programs.eventDetailOpen}
-                  </Link>
-                </Button>
-                {canManage && dataReady && event.status === "Active" && (
-                  <form
-                    className={styles.cancelForm}
-                    noValidate
-                    onSubmit={submitCancelEvent(event.event_id)}
-                  >
-                    <Input
-                      className={styles.input}
-                      type="text"
-                      name="cancel_reason"
-                      placeholder={COPY.programs.cancelReasonPlaceholder}
-                      aria-label={COPY.programs.cancelReason}
-                      disabled={actionBusy}
-                    />
-                    {confirmingEventId === event.event_id ? (
-                      <div
-                        className={styles.confirmation}
-                        role="alert"
-                        ref={confirmEventRef}
-                      >
-                        <strong>
-                          {COPY.programs.cancelMeetingConfirmTitle}
-                        </strong>
-                        <span>{COPY.programs.cancelMeetingConfirmBody}</span>
-                        <Button
-                          type="submit"
-                          disabled={actionBusy}
-                          className={styles.dangerButton}
-                        >
-                          {COPY.programs.confirmCancel}
-                        </Button>
-                        <Button
-                          type="button"
-                          disabled={actionBusy}
-                          className={styles.secondaryButton}
-                          onClick={() => setConfirmingEventId(null)}
-                        >
-                          {COPY.programs.keepMeeting}
-                        </Button>
-                      </div>
-                    ) : (
-                      <Button
-                        type="submit"
-                        disabled={actionBusy}
-                        className={styles.dangerOutline}
-                      >
-                        {COPY.programs.cancelEvent}
-                      </Button>
-                    )}
-                  </form>
-                )}
-              </li>
-            );
-          })}
-        </ul>
+                    </div>
+                  </ScreenRow>
+                </li>
+              );
+            })}
+          </ul>
+        </ScreenRowList>
       )}
-    </section>
+    </ScreenSection>
   );
 };

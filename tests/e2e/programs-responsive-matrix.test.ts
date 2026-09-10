@@ -24,10 +24,11 @@ const COPY = {
   managementSettings: "課程設定",
   managementNotifications: "開啟管理通知",
   notificationsDialog: "管理通知",
+  settingsBasics: "課程基本資料",
   programName: "課程名稱",
   programDescription: "課程簡介",
   enroll: "報名",
-  workspace: "課程工作區",
+  workspaceOverview: "概覽",
   workspaceEvents: "聚會",
   workspaceParticipants: "參與者",
 };
@@ -254,7 +255,7 @@ function assertGeometry(geometry: Geometry, scenario: string): void {
     expect(
       geometry.outletPaddingBottom,
       `${label} dock clearance`
-    ).toBeGreaterThanOrEqual(84);
+    ).toBeGreaterThanOrEqual(72);
     expect(geometry.dockTop, `${label} phone dock`).not.toBeNull();
   } else {
     expect(
@@ -345,6 +346,9 @@ test.describe("T05.6 responsive Programs UI matrix", () => {
     await expect(
       page.getByRole("heading", { name: COPY.managementSettings })
     ).toBeVisible();
+    await page
+      .getByRole("button", { name: new RegExp(COPY.settingsBasics, "u") })
+      .click();
     await expect(
       page.getByRole("textbox", { name: COPY.programName })
     ).toBeVisible();
@@ -381,15 +385,13 @@ test.describe("T05.6 responsive Programs UI matrix", () => {
     assertGeometry(await measure(page, viewport.width), "management settings");
 
     await workspaceNavigation
-      .getByRole("link", { name: COPY.workspace, exact: true })
+      .getByRole("link", { name: COPY.workspaceOverview, exact: true })
       .click();
     await expect(page.getByRole("heading", { name: "營運" })).toBeVisible();
     assertGeometry(await measure(page, viewport.width), "management workspace");
 
-    await page
-      .getByRole("link", {
-        name: new RegExp(`^${COPY.workspaceParticipants}`, "u"),
-      })
+    await workspaceNavigation
+      .getByRole("link", { name: COPY.workspaceParticipants, exact: true })
       .click();
     await expect(
       page.getByRole("heading", {

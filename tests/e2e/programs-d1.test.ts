@@ -131,7 +131,7 @@ const COPY = {
   enrollmentScheduleAdvisory:
     "申請前請確認時間是否適合；系統只提供提示，不會因時間重疊自動阻擋。",
   managerOnlyNote: "此課程由同工安排參加",
-  managementDirectoryTitle: "管理課程目錄",
+  managementDirectoryTitle: "管理課程",
   attentionTitle: "管理提示",
   attentionZero: "目前沒有需要處理或檢視的項目。",
   notificationRegion: "管理通知",
@@ -237,7 +237,13 @@ const COPY = {
   enrollmentHistory: "你的報名紀錄",
   workspaceTaskSettings: "課程設定",
   workspaceUnavailable: "課程管理範圍已失效",
+  settingsBackToHub: "返回設定",
   settingsBasics: "基本資料",
+  settingsHubBasics: "課程基本資料",
+  settingsPublishing: "發布與顯示",
+  settingsHubEnrollment: "報名設定",
+  settingsHubSchedule: "聚會排程",
+  settingsHubAttendance: "出席與簽到",
   settingsEnrollment: "報名與可見性",
   settingsSchedule: "時間表",
   settingsAttendance: "出席",
@@ -246,7 +252,12 @@ const COPY = {
   settingsAttendanceOpens: "開始前可簽到分鐘",
   settingsAttendanceCloses: "結束後仍可簽到分鐘",
   settingsSaveBasics: "儲存基本資料",
+  settingsSavePublishing: "儲存發布與顯示",
   settingsSaveAttendance: "儲存出席預設",
+  settingsConfirmPublishing:
+    "確認後會更新課程狀態或課程目錄顯示；封存仍會按現有營運承諾規則檢查。",
+  settingsConfirmPublishingChange: "確認變更",
+  schedulePageTitle: "聚會排程",
   addRule: "新增時間表",
   generateEvents: "產生聚會",
   noManagementScope: "沒有管理範圍",
@@ -1248,8 +1259,10 @@ test.describe("PUI-03 participant Program detail", () => {
     await expect(page).toHaveURL(/\/programs$/u);
     await expect
       .poll(() =>
-        page.evaluate(
-          () => document.activeElement?.getAttribute("data-program-id") ?? null
+        page.evaluate(() =>
+          document.activeElement instanceof HTMLElement
+            ? (document.activeElement.dataset.programId ?? null)
+            : null
         )
       )
       .toBe(programId);
@@ -2797,7 +2810,7 @@ test.describe("MUI-01 management Directory and Workspace", () => {
           )
         ).toBe(true);
         if (width < 800) {
-          expect(geometry.outletPaddingBottom).toBeGreaterThanOrEqual(84);
+          expect(geometry.outletPaddingBottom).toBeGreaterThanOrEqual(72);
           expect(geometry.dockTop).not.toBeNull();
         } else {
           expect(geometry.outletPaddingBottom).toBe(0);
@@ -2808,7 +2821,7 @@ test.describe("MUI-01 management Directory and Workspace", () => {
 });
 
 test.describe("CFG-01 Program Settings", () => {
-  test("renders all scope-owned groups and omits recurring controls for OneOff", async ({
+  test("routes scope-owned settings through focused editors and canonical Schedule", async ({
     page,
   }) => {
     await loginAs(
@@ -2825,29 +2838,73 @@ test.describe("CFG-01 Program Settings", () => {
       `/programs?mode=management&program=${required("recurring id", recurringId)}&task=settings`
     );
     await expect(
+      page.getByRole("heading", { name: COPY.workspaceTaskSettings })
+    ).toBeVisible();
+    await page
+      .getByRole("button", { name: new RegExp(COPY.settingsHubBasics, "u") })
+      .click();
+    await expect(
       page.getByRole("heading", { name: COPY.settingsBasics })
     ).toBeVisible();
+    await page
+      .getByRole("button", { name: COPY.settingsBackToHub, exact: true })
+      .click();
+    await expect(
+      page.getByRole("button", {
+        name: new RegExp(COPY.settingsPublishing, "u"),
+      })
+    ).toBeVisible();
+    await page
+      .getByRole("button", {
+        name: new RegExp(COPY.settingsHubEnrollment, "u"),
+      })
+      .click();
     await expect(
       page.getByRole("heading", { name: COPY.settingsEnrollment })
     ).toBeVisible();
+    await page
+      .getByRole("button", { name: COPY.settingsBackToHub, exact: true })
+      .click();
     await expect(
-      page.getByRole("heading", { name: COPY.settingsSchedule })
+      page.getByRole("link", {
+        name: new RegExp(COPY.settingsHubSchedule, "u"),
+      })
     ).toBeVisible();
+    await page
+      .getByRole("link", { name: new RegExp(COPY.settingsHubSchedule, "u") })
+      .click();
+    await expect(
+      page.getByRole("heading", { name: COPY.schedulePageTitle })
+    ).toBeVisible();
+
+    await page.goto(
+      `/programs?mode=management&program=${required("recurring id", recurringId)}&task=settings`
+    );
+    await page
+      .getByRole("button", {
+        name: new RegExp(COPY.settingsHubAttendance, "u"),
+      })
+      .click();
     await expect(
       page.getByRole("heading", { name: COPY.settingsAttendance })
     ).toBeVisible();
     await expect(
       page.getByRole("spinbutton", { name: COPY.settingsAttendanceOpens })
     ).toBeVisible();
-    await expect(
-      page.getByRole("button", { name: COPY.generateEvents })
-    ).toHaveCount(0);
 
     await page.goto(
       `/programs?mode=management&program=${required("one-off id", oneOffId)}&task=settings`
     );
     await expect(
-      page.getByRole("heading", { name: COPY.settingsSchedule })
+      page.getByRole("link", {
+        name: new RegExp(COPY.settingsHubSchedule, "u"),
+      })
+    ).toHaveCount(0);
+    await page.goto(
+      `/programs?mode=management&program=${required("one-off id", oneOffId)}&task=schedule`
+    );
+    await expect(
+      page.getByRole("heading", { name: COPY.schedulePageTitle })
     ).toBeVisible();
     await expect(page.getByText(COPY.settingsScheduleOneOff)).toBeVisible();
     await expect(page.getByRole("button", { name: COPY.addRule })).toHaveCount(
@@ -2855,7 +2912,7 @@ test.describe("CFG-01 Program Settings", () => {
     );
   });
 
-  test("renders unavailable copy for Schedule and Attendance when their modules are disabled", async ({
+  test("omits Schedule and Attendance settings rows when their modules are disabled", async ({
     page,
   }) => {
     await loginAs(
@@ -2868,6 +2925,17 @@ test.describe("CFG-01 Program Settings", () => {
 
     await page.goto(`/programs?mode=management&program=${id}&task=settings`);
     await expect(
+      page.getByRole("link", {
+        name: new RegExp(COPY.settingsHubSchedule, "u"),
+      })
+    ).toHaveCount(0);
+    await expect(
+      page.getByRole("button", {
+        name: new RegExp(COPY.settingsHubAttendance, "u"),
+      })
+    ).toHaveCount(0);
+    await page.goto(`/programs?mode=management&program=${id}&task=schedule`);
+    await expect(
       page.getByText(COPY.settingsScheduleUnavailable)
     ).toBeVisible();
     await expect(page.getByRole("button", { name: COPY.addRule })).toHaveCount(
@@ -2875,7 +2943,7 @@ test.describe("CFG-01 Program Settings", () => {
     );
     await expect(
       page.getByText(COPY.settingsAttendanceUnavailable)
-    ).toBeVisible();
+    ).toHaveCount(0);
     await expect(
       page.getByRole("spinbutton", { name: COPY.settingsAttendanceOpens })
     ).toHaveCount(0);
@@ -2894,6 +2962,11 @@ test.describe("CFG-01 Program Settings", () => {
 
     try {
       await page.goto(`/programs?mode=management&program=${id}&task=settings`);
+      await page
+        .getByRole("button", {
+          name: new RegExp(COPY.settingsPublishing, "u"),
+        })
+        .click();
       const discoverabilitySelect = page.getByRole("combobox", {
         name: COPY.discoverabilityListed,
       });
@@ -2907,22 +2980,22 @@ test.describe("CFG-01 Program Settings", () => {
         COPY.discoverabilityUnlisted
       );
       await page
-        .getByRole("button", { name: COPY.settingsSaveEnrollment })
+        .getByRole("button", { name: COPY.settingsSavePublishing })
         .click();
       // Submitting a changed value shows the inline confirm instead of
       // saving immediately -- the save button itself is replaced by the
       // confirm row (saveEnrollment sets confirmingEnrollment, it does
       // not mutate yet).
       const confirmAlert = page.getByRole("alert", {
-        name: COPY.settingsConfirmEnrollment,
+        name: COPY.settingsConfirmPublishing,
       });
       await expect(confirmAlert).toBeVisible();
       await expect(
-        page.getByRole("button", { name: COPY.settingsSaveEnrollment })
+        page.getByRole("button", { name: COPY.settingsSavePublishing })
       ).toHaveCount(0);
 
       await confirmAlert
-        .getByRole("button", { name: COPY.settingsConfirmChange })
+        .getByRole("button", { name: COPY.settingsConfirmPublishingChange })
         .click();
       await expect(
         page.getByText(COPY.settingsSaved, { exact: true }).first()
@@ -2938,14 +3011,14 @@ test.describe("CFG-01 Program Settings", () => {
         COPY.discoverabilityListed
       );
       await page
-        .getByRole("button", { name: COPY.settingsSaveEnrollment })
+        .getByRole("button", { name: COPY.settingsSavePublishing })
         .click();
       await expect(
-        page.getByRole("alert", { name: COPY.settingsConfirmEnrollment })
+        page.getByRole("alert", { name: COPY.settingsConfirmPublishing })
       ).toBeVisible();
       await page
-        .getByRole("alert", { name: COPY.settingsConfirmEnrollment })
-        .getByRole("button", { name: COPY.settingsConfirmChange })
+        .getByRole("alert", { name: COPY.settingsConfirmPublishing })
+        .getByRole("button", { name: COPY.settingsConfirmPublishingChange })
         .click();
       await expect(
         page.getByText(COPY.settingsSaved, { exact: true }).first()
@@ -3744,13 +3817,13 @@ test.describe("EVT-01 event operational detail and availability", () => {
             }
             const eventsBody = (await eventsResponse.json()) as {
               data?: {
-                events?: Array<{
+                events?: {
                   event_id?: string;
                   exception?: {
                     exception_id?: string;
                     rule_id?: string;
                   } | null;
-                }>;
+                }[];
               };
             };
             const exception = eventsBody.data?.events?.find(
@@ -4611,9 +4684,7 @@ test.describe("NTF-01 management attention", () => {
         cleanupEventStatuses.push(
           await patchAttentionEvent(page, programId, inactiveEventId, {
             availability: "Active",
-          })
-        );
-        cleanupEventStatuses.push(
+          }),
           await patchAttentionEvent(page, programId, inactiveEventId, {
             starts_at: "2000-01-01T00:00:00.000Z",
             ends_at: "2000-01-01T01:30:00.000Z",

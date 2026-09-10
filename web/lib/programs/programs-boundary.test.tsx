@@ -271,6 +271,31 @@ describe("Programs intent", () => {
         .malformed
     ).toBeTruthy();
   });
+
+  test("keeps the focused Schedule destination addressable without adding a sibling tab", () => {
+    expect(
+      parseProgramsIntent("?mode=management&program=program-1&task=schedule")
+    ).toStrictEqual({
+      mode: "management",
+      programId: "program-1",
+      hash: null,
+      task: "schedule",
+      malformed: false,
+    });
+    expect(
+      buildProgramsHref({
+        mode: "management",
+        programId: "program-1",
+        task: "schedule",
+      })
+    ).toBe("/programs?mode=management&program=program-1&task=schedule");
+    expect(
+      parseProgramsIntent(
+        "?mode=management&program=program-1&task=schedule&event=event-42"
+      ).malformed
+    ).toBeTruthy();
+  });
+
   test("preserves management department context", () => {
     expect(
       parseProgramsIntent("?mode=management&department=department-1")
@@ -288,6 +313,7 @@ describe("Programs intent", () => {
       })
     ).toBe("/programs?mode=management&department=department-1");
   });
+
   test("keeps Department context management-only", () => {
     expect(
       parseProgramsIntent("?mode=participant&department=department-1")
@@ -559,15 +585,9 @@ test.each([
       "role",
       "region"
     );
-    if (hasManagement) {
-      expect(
-        await screen.findByRole("link", { name: "進入管理模式" })
-      ).toBeInTheDocument();
-    } else {
-      expect(
-        screen.queryByRole("link", { name: "進入管理模式" })
-      ).not.toBeInTheDocument();
-    }
+    expect(
+      screen.queryByRole("link", { name: COPY.programs.enterManagement })
+    ).not.toBeInTheDocument();
   }
 );
 
@@ -693,35 +713,16 @@ describe("Programs boundary", () => {
     );
   });
 
-  test("shows a compact accessible management entry from server scope and preserves Program intent", async () => {
+  test("keeps the participant route free of duplicate management navigation", async () => {
     window.history.replaceState({}, "", "/programs?program=program-1#overview");
     mocks.getManagementAccess.mockResolvedValue(managementAccess(true));
 
-    const { rerender } = render(<ProgramsBoundary />);
+    render(<ProgramsBoundary />);
 
-    const managementLink = await screen.findByRole("link", {
-      name: "進入管理模式",
-    });
-    expect(managementLink).toHaveAttribute(
-      "href",
-      "/programs?mode=management&program=program-1#overview"
-    );
-    expect(screen.queryByRole("tab")).not.toBeInTheDocument();
-
-    window.history.pushState(
-      {},
-      "",
-      "/programs?mode=management&program=program-1#overview"
-    );
-    rerender(<ProgramsBoundary />);
-
-    await expect(
-      screen.findByRole("heading", { name: "管理模式" })
-    ).resolves.toBeInTheDocument();
+    await screen.findByRole("heading", { name: COPY.programs.pageTitle });
     expect(
-      screen.getByText(COPY.programs.managementBoundaryHint)
-    ).toBeInTheDocument();
-    expect(screen.queryByRole("tab")).not.toBeInTheDocument();
+      screen.queryByRole("link", { name: COPY.programs.enterManagement })
+    ).not.toBeInTheDocument();
   });
 
   test("routes notification overflow to the dedicated management task", async () => {
@@ -773,11 +774,7 @@ describe("Programs boundary", () => {
     mocks.getManagementAccess.mockResolvedValue(managementAccess(true));
     const { rerender } = render(<ProgramsBoundary />);
 
-    const managementLink = await screen.findByRole("link", {
-      name: COPY.programs.enterManagement,
-    });
-    managementLink.focus();
-    expect(document.activeElement).toBe(managementLink);
+    await screen.findByRole("heading", { name: COPY.programs.pageTitle });
     window.history.pushState({}, "", "/programs?mode=management");
     rerender(<ProgramsBoundary />);
 
@@ -814,17 +811,14 @@ describe("Programs boundary", () => {
     mocks.getManagementAccess.mockResolvedValue(managementAccess(true));
     const { rerender } = render(<ProgramsBoundary />);
 
-    await screen.findByRole("link", { name: "進入管理模式" });
+    await screen.findByRole("heading", { name: COPY.programs.pageTitle });
     window.history.pushState({}, "", "/programs#details");
     rerender(<ProgramsBoundary />);
 
-    const managementLink = await screen.findByRole("link", {
-      name: "進入管理模式",
-    });
-    expect(managementLink).toHaveAttribute(
-      "href",
-      "/programs?mode=management#details"
-    );
+    await screen.findByRole("heading", { name: COPY.programs.pageTitle });
+    expect(
+      screen.queryByRole("link", { name: COPY.programs.enterManagement })
+    ).not.toBeInTheDocument();
   });
 
   test("keeps management data and tabs out of the loading frame", () => {
@@ -858,14 +852,14 @@ describe("Programs boundary", () => {
       </StrictMode>
     );
 
-    const managementEntry = await screen.findByRole("link", {
-      name: "進入管理模式",
+    await screen.findByRole("heading", {
+      name: COPY.programs.pageTitle,
     });
     stale.resolve(managementAccess(false));
     await waitFor(() => {
-      expect(screen.getByRole("link", { name: "進入管理模式" })).toBe(
-        managementEntry
-      );
+      expect(
+        screen.getByRole("heading", { name: COPY.programs.pageTitle })
+      ).toBeInTheDocument();
     });
   });
 

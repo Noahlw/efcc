@@ -27,7 +27,17 @@ const port = parseStorybookPort(
 );
 const baseURL = `http://127.0.0.1:${port}`;
 
-const widths = [320, 375, 390, 414, 799, 800, 1440] as const;
+const viewports = [
+  { width: 320, height: 844 },
+  { width: 360, height: 800 },
+  { width: 375, height: 844 },
+  { width: 390, height: 844 },
+  { width: 402, height: 874 },
+  { width: 414, height: 844 },
+  { width: 799, height: 844 },
+  { width: 800, height: 900 },
+  { width: 1440, height: 900 },
+] as const;
 
 export default defineConfig({
   testDir: dirname,
@@ -47,14 +57,11 @@ export default defineConfig({
     screenshot: "only-on-failure",
     video: "off",
   },
-  projects: widths.map((width) => ({
+  projects: viewports.map(({ width, height }) => ({
     name: `w-${width}`,
     use: {
       ...devices["Desktop Chrome"],
-      viewport: {
-        width,
-        height: width < 800 ? 844 : 900,
-      },
+      viewport: { width, height },
     },
   })),
   webServer: {

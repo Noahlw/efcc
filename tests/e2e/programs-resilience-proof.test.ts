@@ -94,6 +94,8 @@ const COPY = {
   guestSubmit: "確認簽到",
   // COPY.programs.settingsBasics
   settingsBasics: "基本資料",
+  // COPY.programs.settingsHubBasics
+  settingsBasicsEntry: "課程基本資料",
   // COPY.programs.programDescription
   programDescription: "課程簡介",
   // COPY.programs.settingsSaveBasics
@@ -494,6 +496,11 @@ test.describe("Programs resilience proof (REL-01 / #261 Slice C)", () => {
     );
     const settingsUrl = `/programs?mode=management&program=${fixtures.scannerProgramId}&task=settings`;
     await page.goto(settingsUrl);
+    await page
+      .getByRole("button", {
+        name: new RegExp(COPY.settingsBasicsEntry, "u"),
+      })
+      .click();
     await expect(
       page.getByRole("heading", { name: COPY.settingsBasics })
     ).toBeVisible();
@@ -544,6 +551,16 @@ test.describe("Programs resilience proof (REL-01 / #261 Slice C)", () => {
         "u"
       )
     );
+    await expect(
+      page.getByRole("button", {
+        name: new RegExp(COPY.settingsBasicsEntry, "u"),
+      })
+    ).toBeVisible();
+    await page
+      .getByRole("button", {
+        name: new RegExp(COPY.settingsBasicsEntry, "u"),
+      })
+      .click();
     await expect(
       page.getByRole("heading", { name: COPY.settingsBasics })
     ).toBeVisible();
