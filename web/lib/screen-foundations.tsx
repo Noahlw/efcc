@@ -55,6 +55,51 @@ export const ScreenPageFrame = ({
   </div>
 );
 
+const screenIconButtonVariants = cva(
+  "text-[var(--screen-ink)] hover:bg-[var(--screen-surface-soft)] hover:text-[var(--screen-accent)] focus-visible:border-[var(--screen-focus)] focus-visible:ring-[var(--screen-focus)]/20",
+  {
+    variants: {
+      tone: {
+        default: "",
+        soft: "border-[var(--screen-line)] bg-[var(--screen-surface)]",
+        danger:
+          "text-[var(--screen-danger)] hover:bg-[var(--screen-danger-surface)] hover:text-[var(--screen-danger)]",
+      },
+    },
+    defaultVariants: {
+      tone: "default",
+    },
+  }
+);
+
+export type ScreenIconButtonTone = NonNullable<
+  VariantProps<typeof screenIconButtonVariants>["tone"]
+>;
+
+export interface ScreenIconButtonProps extends Omit<
+  React.ComponentProps<typeof Button>,
+  "shape" | "size" | "variant"
+> {
+  tone?: ScreenIconButtonTone;
+  "aria-label": string;
+}
+
+/** Icon-only action with mandatory accessible naming and 44px hit geometry. */
+export const ScreenIconButton = ({
+  className,
+  tone = "default",
+  ...props
+}: ScreenIconButtonProps) => (
+  <Button
+    {...props}
+    className={cn(screenIconButtonVariants({ tone }), className)}
+    data-screen-icon-button="true"
+    shape="circle"
+    size="icon"
+    variant="ghost"
+  />
+);
+
 const screenHeaderVariants = cva("mb-5 grid gap-2", {
   variants: {
     level: {
@@ -840,50 +885,5 @@ export const ScreenStickyActions = ({
     )}
     data-screen-foundation="sticky-actions"
     data-testid="screen-sticky-actions"
-  />
-);
-
-const screenIconButtonVariants = cva(
-  "text-[var(--screen-ink)] hover:bg-[var(--screen-surface-soft)] hover:text-[var(--screen-accent)] focus-visible:border-[var(--screen-focus)] focus-visible:ring-[var(--screen-focus)]/20",
-  {
-    variants: {
-      tone: {
-        default: "",
-        soft: "border-[var(--screen-line)] bg-[var(--screen-surface)]",
-        danger:
-          "text-[var(--screen-danger)] hover:bg-[var(--screen-danger-surface)] hover:text-[var(--screen-danger)]",
-      },
-    },
-    defaultVariants: {
-      tone: "default",
-    },
-  }
-);
-
-export type ScreenIconButtonTone = NonNullable<
-  VariantProps<typeof screenIconButtonVariants>["tone"]
->;
-
-export interface ScreenIconButtonProps extends Omit<
-  React.ComponentProps<typeof Button>,
-  "shape" | "size" | "variant"
-> {
-  tone?: ScreenIconButtonTone;
-  "aria-label": string;
-}
-
-/** Icon-only action with mandatory accessible naming and 44px hit geometry. */
-export const ScreenIconButton = ({
-  className,
-  tone = "default",
-  ...props
-}: ScreenIconButtonProps) => (
-  <Button
-    {...props}
-    className={cn(screenIconButtonVariants({ tone }), className)}
-    data-screen-icon-button="true"
-    shape="circle"
-    size="icon"
-    variant="ghost"
   />
 );
