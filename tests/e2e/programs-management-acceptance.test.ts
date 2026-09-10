@@ -7,6 +7,7 @@ const ADMIN = {
 
 const COPY = {
   login: "登入",
+  enterManagement: "進入管理模式",
   directoryTitle: "管理課程目錄",
   directorySearch: "搜尋可管理課程",
   directoryList: "可管理課程",
@@ -108,14 +109,32 @@ async function restoreFixture(page: Page, fixture: Fixture): Promise<void> {
   }, fixture);
 }
 
-test.describe("T05.5 management Browser Acceptance", () => {
+test.describe("T12 management Programs tracer", () => {
   test("admin opens a scoped Program, saves management data, and reads it back", async ({
     page,
   }) => {
     await loginAs(page);
     const fixture = await createFixture(page, crypto.randomUUID().slice(0, 8));
     try {
-      await page.goto("/programs?mode=management");
+      const accessResponsePromise = page.waitForResponse(
+        (response) =>
+          response.request().method() === "GET" &&
+          response.url().endsWith("/api/v1/programs/access")
+      );
+      await page.goto("/programs");
+      const accessResponse = await accessResponsePromise;
+      expect(accessResponse.status()).toBe(200);
+      const accessBody = (await accessResponse.json()) as {
+        data: { hasManagementCapability: boolean };
+      };
+      expect(accessBody.data.hasManagementCapability).toBe(true);
+      const managementEntry = page.getByRole("link", {
+        name: COPY.enterManagement,
+        exact: true,
+      });
+      await expect(managementEntry).toBeVisible();
+      await managementEntry.click();
+      await expect(page).toHaveURL(/\/programs\?mode=management$/u);
       await expect(
         page.getByRole("heading", { name: COPY.directoryTitle })
       ).toBeVisible();
