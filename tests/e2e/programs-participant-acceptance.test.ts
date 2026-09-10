@@ -18,6 +18,15 @@ const MEMBER = {
 
 const COPY = {
   login: "登入",
+  catalogSearch: "搜尋課程",
+  catalogClearSearch: "清除搜尋",
+  catalogClearFilters: "清除搜尋與篩選",
+  catalogEmpty: "找不到相關課程",
+  catalogList: "課程目錄",
+  filterGroup: "課程篩選",
+  filterAll: "全部",
+  filterEligible: "可報名",
+  enterManagement: "進入管理模式",
   enrollment: "報名",
   requestEnroll: "報名",
   requestPendingHint: "申請已送出，等待課程負責人處理。",
@@ -139,14 +148,77 @@ test.afterAll(async () => {
   await adminApi?.dispose();
 });
 
-test.describe("T05.4 participant Browser Acceptance", () => {
+test.describe("T12 participant Programs tracer", () => {
   test("member submits, gets approved, reads back, and exits a Program", async ({
     page,
   }) => {
     expect(fixture).not.toBeNull();
     const { programId, programName } = fixture!;
     await loginAs(page);
+
+    const accessResponsePromise = page.waitForResponse(
+      (response) =>
+        response.request().method() === "GET" &&
+        response.url().endsWith("/api/v1/programs/access")
+    );
     await page.goto("/programs");
+
+    const accessResponse = await accessResponsePromise;
+    expect(accessResponse.status()).toBe(200);
+    const accessBody = (await accessResponse.json()) as {
+      data: { hasManagementCapability: boolean };
+    };
+    expect(accessBody.data.hasManagementCapability).toBe(false);
+    await expect(
+      page.getByRole("link", { name: COPY.enterManagement, exact: true })
+    ).toHaveCount(0);
+
+    const search = page.getByRole("searchbox", {
+      name: COPY.catalogSearch,
+    });
+    await expect(search).toBeVisible();
+    await expect(
+      page.getByRole("group", { name: COPY.filterGroup })
+    ).toBeVisible();
+
+    const impossibleQuery = `T12-no-match-${crypto.randomUUID()}`;
+    await search.fill(impossibleQuery);
+    await expect(
+      page.getByRole("heading", { name: COPY.catalogEmpty })
+    ).toBeVisible();
+    await expect(page.getByRole("link", { name: programName })).toHaveCount(0);
+    await page
+      .getByRole("button", { name: COPY.catalogClearFilters, exact: true })
+      .click();
+    await expect(search).toHaveValue("");
+
+    const filterGroup = page.getByRole("group", { name: COPY.filterGroup });
+    const allFilter = filterGroup.getByRole("button", {
+      name: COPY.filterAll,
+      exact: true,
+    });
+    const eligibleFilter = filterGroup.getByRole("button", {
+      name: COPY.filterEligible,
+      exact: true,
+    });
+    await expect(allFilter).toHaveAttribute("aria-pressed", "true");
+    await eligibleFilter.click();
+    await expect(eligibleFilter).toHaveAttribute("aria-pressed", "true");
+    await expect(allFilter).toHaveAttribute("aria-pressed", "false");
+
+    await search.fill(programName);
+    const eligibleProgramLink = page
+      .getByRole("list", { name: COPY.catalogList })
+      .getByRole("link", {
+        name: new RegExp(`${COPY.filterEligible}.*${programName}`, "u"),
+      });
+    await expect(eligibleProgramLink).toBeVisible();
+    await page
+      .getByRole("button", { name: COPY.catalogClearSearch, exact: true })
+      .click();
+    await expect(search).toHaveValue("");
+    await expect(eligibleProgramLink).toBeVisible();
+
     const programLink = page.getByRole("link", { name: programName });
     await expect(programLink).toBeVisible();
     await programLink.click();
