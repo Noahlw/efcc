@@ -5,7 +5,7 @@
 /**
  * TK-09 — pinned Chromium geometry for the Authenticated Shell.
  *
- * Widths: 320, 390, 600, 799, 800, 1024, 1440 CSS px (project names w-*).
+ * Widths: 320, 375, 390, 414, 799, 800, 1440 CSS px (project names w-*).
  * Proves shell critical anchors (outlet/chrome, skip link, primary nav,
  * dock or rail, main, live region) with no horizontal overflow and no
  * obstruction. Both sides of the 800px breakpoint are exercised (w-799 and
@@ -96,7 +96,28 @@ test.beforeEach(async ({ page }: { page: Page }) => {
 });
 
 const isPhone = (projectName: string) =>
-  ["w-320", "w-390", "w-600", "w-799"].includes(projectName);
+  projectName.startsWith("w-") &&
+  Number.parseInt(projectName.slice(2), 10) < 800;
+
+const readShellScrollOwners = async (page: Page) =>
+  page.evaluate(() => {
+    const structuralElements = [
+      document.querySelector<HTMLElement>(".shell"),
+      document.querySelector<HTMLElement>(".shell-body"),
+      document.querySelector<HTMLElement>("#shell-content"),
+    ].filter((element): element is HTMLElement => element !== null);
+
+    return structuralElements
+      .filter((element) => {
+        const overflowY = getComputedStyle(element).overflowY;
+        return overflowY === "auto" || overflowY === "scroll";
+      })
+      .map((element) => element.id || element.classList[0] || element.tagName);
+  });
+
+const assertSoleShellContentScrollOwner = (owners: string[]) => {
+  expect(owners).toEqual(["shell-content"]);
+};
 
 test("shell critical anchors render at the pinned width with no overflow or obstruction", async ({
   page,
@@ -184,11 +205,26 @@ test("shell critical anchors render at the pinned width with no overflow or obst
         ? getComputedStyle(mainEl).overflowY === "auto"
         : false,
       mainPaddingBottom: mainEl ? getComputedStyle(mainEl).paddingBottom : null,
+      mainContentOverflow: mainEl
+        ? mainEl.scrollWidth - mainEl.clientWidth
+        : null,
+      documentVerticalOverflow:
+        Math.max(
+          document.documentElement.scrollHeight,
+          document.body.scrollHeight
+        ) - viewportHeight,
       undersized: visibleControls.filter((c) => c.width < 44 || c.height < 44),
     };
   });
 
-  await attachNumericEvidence(testInfo, "shell-geometry", geometry);
+  const contentScrollOwners = await readShellScrollOwners(page);
+  const geometryWithScrollOwners = { ...geometry, contentScrollOwners };
+
+  await attachNumericEvidence(
+    testInfo,
+    "shell-geometry",
+    geometryWithScrollOwners
+  );
 
   const phone = isPhone(testInfo.project.name);
 
@@ -197,6 +233,12 @@ test("shell critical anchors render at the pinned width with no overflow or obst
     geometry.horizontalOverflow,
     `horizontal overflow at ${geometry.viewportWidth}px`
   ).toBeLessThanOrEqual(1);
+  expect(geometry.mainContentOverflow).toBeLessThanOrEqual(1);
+  expect(geometry.documentVerticalOverflow).toBeLessThanOrEqual(1);
+  expect(geometryWithScrollOwners.contentScrollOwners).toEqual([
+    "shell-content",
+  ]);
+  await expect(page.locator("nav#main-navigation")).toHaveCount(1);
 
   // Shell presentation matches the breakpoint side.
   expect(geometry.navPosition).toBe(phone ? "fixed" : "sticky");
@@ -211,7 +253,9 @@ test("shell critical anchors render at the pinned width with no overflow or obst
     // Dock height ~62px + bottom offset within the viewport.
     expect(geometry.navHeight).toBeGreaterThanOrEqual(44);
     // Outlet reserves the dock height (84px + safe-area) on phone.
-    expect(geometry.mainPaddingBottom).not.toBe("0px");
+    expect(
+      Number.parseFloat(geometry.mainPaddingBottom ?? "0")
+    ).toBeGreaterThanOrEqual(84);
   } else {
     // Rail starts below the header and is persistent (sticky).
     if (
@@ -237,6 +281,53 @@ test("shell critical anchors render at the pinned width with no overflow or obst
     geometry.undersized.length,
     `undersized controls: ${JSON.stringify(geometry.undersized)}`
   ).toBe(0);
+
+  // Route composition may add a nested scroll panel without becoming a
+  // second shell owner. A structural shell owner must still be rejected.
+  await main.evaluate((element) => {
+    const panel = document.createElement("div");
+    panel.dataset.t11NestedRouteScroll = "true";
+    panel.style.cssText = "height: 24px; overflow-y: auto;";
+
+    const overflowingContent = document.createElement("div");
+    overflowingContent.style.height = "48px";
+    panel.append(overflowingContent);
+    element.append(panel);
+  });
+
+  const nestedRouteOwners = await readShellScrollOwners(page);
+  assertSoleShellContentScrollOwner(nestedRouteOwners);
+
+  const shellBody = page.locator(".shell-body");
+  await shellBody.evaluate((element) => {
+    element.style.overflowY = "auto";
+  });
+
+  const invalidShellOwners = await readShellScrollOwners(page);
+  expect(invalidShellOwners).toEqual(["shell-body", "shell-content"]);
+  expect(() => assertSoleShellContentScrollOwner(invalidShellOwners)).toThrow();
+});
+
+test("member route keeps its visible H1 when shell chrome is global brand only", async ({
+  page,
+}) => {
+  for (const [path, title] of [
+    ["/notices", COPY.sections.notices],
+    ["/messages", COPY.home.churchNews],
+  ] as const) {
+    await page.goto(path);
+
+    const routeHeading = page.getByRole("heading", { level: 1, name: title });
+    await expect(routeHeading).toBeVisible();
+    const routeHeadingBox = await routeHeading.boundingBox();
+    expect(routeHeadingBox?.height ?? 0).toBeGreaterThan(20);
+    await expect(
+      page.locator("header[data-shell-header]").getByText(COPY.shell.shortMark)
+    ).toBeVisible();
+    await expect(
+      page.locator("header[data-shell-header]").getByText(title)
+    ).toHaveCount(0);
+  }
 });
 
 test("799px shows the phone shell; 800px shows the desktop shell", async ({
@@ -254,10 +345,11 @@ test("799px shows the phone shell; 800px shows the desktop shell", async ({
     projectName: testInfo.project.name,
   });
 
-  if (testInfo.project.name === "w-799") {
+  const projectWidth = Number.parseInt(testInfo.project.name.slice(2), 10);
+  if (projectWidth === 799) {
     expect(position).toBe("fixed");
   }
-  if (testInfo.project.name === "w-800") {
+  if (projectWidth === 800) {
     expect(position).toBe("sticky");
   }
 });
