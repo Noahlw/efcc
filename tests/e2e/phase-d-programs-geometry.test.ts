@@ -155,7 +155,7 @@ async function assertProgramsGeometry(
   }
   if (geometry.viewportWidth < 800) {
     expect(geometry.navigationPosition).toBe("fixed");
-    expect(geometry.contentPaddingBottom).toMatch(/84px/);
+    expect(geometry.contentPaddingBottom).toMatch(/72px/);
     if (
       !geometry.focusedIsDocument &&
       !geometry.focusedInNavigation &&

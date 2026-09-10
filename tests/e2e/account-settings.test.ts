@@ -223,7 +223,7 @@ test.describe("084-03: Account & Account Settings acceptance", () => {
 
     await expect(page).toHaveURL(/\/$/u);
     await expect(
-      page.getByRole("region", { name: COPY.login.title }).getByRole("alert")
+      page.getByRole("region", { name: COPY.login.title }).getByRole("status")
     ).toHaveText(COPY.account.updatedNotice);
   });
 

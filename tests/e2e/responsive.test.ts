@@ -239,7 +239,7 @@ test("bottom nav and page outlet reserve safe-area inset", async ({
 
   // At/above 800px the side rail replaces the fixed bottom nav, so the
   // outlet intentionally reserves nothing (padding-bottom: 0).
-  const expectedShell = isMobile(testInfo.project.name) ? "118px" : "0px";
+  const expectedShell = isMobile(testInfo.project.name) ? "106px" : "0px";
   await attachNumericEvidence(testInfo, "responsive-safe-area", {
     layout,
     expectedShell,
@@ -248,8 +248,8 @@ test("bottom nav and page outlet reserve safe-area inset", async ({
   if (isMobile(testInfo.project.name)) {
     expect(
       layout.navBottom,
-      "floating dock bottom offset must clear the safe-area inset"
-    ).toBe("44px");
+      "fixed dock is anchored to the viewport edge"
+    ).toBe("0px");
   }
   expect(
     layout.shellBottom,

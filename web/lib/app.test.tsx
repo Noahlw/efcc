@@ -226,6 +226,7 @@ describe("Shell", () => {
   beforeEach(() => {
     localStorage.clear();
     sessionStorage.clear();
+    window.history.replaceState({}, "", "/");
     authCalls.length = 0;
     replaceMock.mockClear();
     pathnameMock.mockReset().mockReturnValue("/");
@@ -1630,7 +1631,7 @@ describe("Shell", () => {
   });
 
   describe(ShellHeader, () => {
-    test("renders management identity block and bell button for management accounts", async () => {
+    test("renders the brand and bell button for management accounts", async () => {
       const user = userEvent.setup();
       render(
         <AppProvider bootstrap={ADMIN_BOOTSTRAP} onSignOut={() => {}}>
@@ -1639,9 +1640,9 @@ describe("Shell", () => {
       );
       expect(screen.getByText(COPY.shell.shortMark)).toBeInTheDocument();
       expect(
-        screen.getByText(ADMIN_BOOTSTRAP.profile.name ?? "")
-      ).toBeInTheDocument();
-      expect(screen.getByText("管理員")).toBeInTheDocument();
+        screen.queryByText(ADMIN_BOOTSTRAP.profile.name ?? "")
+      ).not.toBeInTheDocument();
+      expect(screen.queryByText("管理員")).not.toBeInTheDocument();
       const bell = screen.getByRole("button", {
         name: COPY.attention.bellLabel(0),
       });
@@ -1685,7 +1686,7 @@ describe("Shell", () => {
         </AppProvider>
       );
       expect(
-        within(screen.getByRole("banner")).getByText(COPY.appFullName)
+        within(screen.getByRole("banner")).getByText(COPY.shell.shortMark)
       ).toBeInTheDocument();
       expect(
         screen.queryByRole("button", { name: /開啟注意事項/u })
@@ -1699,10 +1700,67 @@ describe("Shell", () => {
         </AppProvider>
       );
       const header = screen.getByRole("banner");
-      expect(within(header).getByText(COPY.appFullName)).toBeInTheDocument();
+      expect(
+        within(header).getByText(COPY.shell.shortMark)
+      ).toBeInTheDocument();
       expect(
         within(header).queryByText(COPY.sections.programs)
       ).not.toBeInTheDocument();
+    });
+
+    test("renders one icon-only mode destination for management-capable Programs", () => {
+      pathnameMock.mockReturnValue("/programs");
+      render(
+        <AppProvider bootstrap={ADMIN_BOOTSTRAP} onSignOut={() => {}}>
+          <ShellHeader />
+        </AppProvider>
+      );
+
+      const header = screen.getByRole("banner");
+      const modeLink = within(header).getByRole("link", {
+        name: COPY.programs.enterManagement,
+      });
+      expect(modeLink).toHaveAttribute("href", "/programs?mode=management");
+      expect(modeLink).toHaveAttribute("data-screen-icon-button", "true");
+      expect(modeLink).toHaveAttribute("title", COPY.programs.enterManagement);
+      expect(modeLink.textContent).toBe("");
+      expect(modeLink.querySelector("svg")).toHaveClass("lucide-briefcase");
+      expect(within(header).getAllByRole("link")).toHaveLength(1);
+    });
+
+    test("does not render a Programs mode destination for participant-only bootstrap", () => {
+      pathnameMock.mockReturnValue("/programs");
+      render(
+        <AppProvider bootstrap={BOOTSTRAP} onSignOut={() => {}}>
+          <ShellHeader />
+        </AppProvider>
+      );
+
+      expect(
+        screen.queryByRole("link", { name: COPY.programs.enterManagement })
+      ).not.toBeInTheDocument();
+    });
+
+    test("returns management-capable Programs to the canonical participant home", () => {
+      pathnameMock.mockReturnValue("/programs");
+      window.history.replaceState(
+        {},
+        "",
+        "/programs?mode=management&program=program-1&task=events"
+      );
+      render(
+        <AppProvider bootstrap={ADMIN_BOOTSTRAP} onSignOut={() => {}}>
+          <ShellHeader />
+        </AppProvider>
+      );
+
+      const modeLink = screen.getByRole("link", {
+        name: COPY.programs.enterParticipant,
+      });
+      expect(modeLink).toHaveAttribute("href", "/programs");
+      expect(modeLink).toHaveAttribute("data-screen-icon-button", "true");
+      expect(modeLink.textContent).toBe("");
+      expect(modeLink.querySelector("svg")).toHaveClass("lucide-user-round");
     });
   });
 

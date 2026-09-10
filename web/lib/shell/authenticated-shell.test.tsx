@@ -255,7 +255,7 @@ describe("Authenticated Shell (TK-04/TK-05/TK-06/TK-07/TK-08)", () => {
     expect(mocks.replaceMock).not.toHaveBeenCalled();
   });
 
-  test("management shell renders identity and the attention dialog is a Radix dialog", async () => {
+  test("management shell renders brand chrome and the attention dialog is a Radix dialog", async () => {
     setAuthHint();
     mocks.pathnameMock.mockReturnValue("/management");
     server.use(

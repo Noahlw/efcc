@@ -234,7 +234,7 @@ test("Account Access remains contained with 44px actions across W7", async ({
   expect(geometry.dock).not.toBeNull();
   if (geometry.viewportWidth <= 799) {
     expect(geometry.dockPosition).toBe("fixed");
-    expect(geometry.paddingBottom).toMatch(/84px/);
+    expect(geometry.paddingBottom).toMatch(/72px/);
   } else {
     expect(geometry.dockPosition).toBe("sticky");
     expect(geometry.paddingBottom).toBe("0px");

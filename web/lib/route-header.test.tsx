@@ -46,6 +46,10 @@ describe(RouteHeader, () => {
     expect(
       screen.getByRole("link", { name: DEFAULT_PROPS.backLabel })
     ).toHaveAttribute("href", DEFAULT_PROPS.backHref);
+    const back = screen.getByRole("link", { name: DEFAULT_PROPS.backLabel });
+    expect(back).toHaveAttribute("data-screen-icon-button", "true");
+    expect(back).toHaveAttribute("title", DEFAULT_PROPS.backLabel);
+    expect(back).not.toHaveTextContent(DEFAULT_PROPS.backLabel ?? "");
     expect(screen.getByRole("status")).toHaveTextContent("已載入");
     expect(screen.getByRole("button", { name: "儲存" })).toBeEnabled();
   });
@@ -122,5 +126,14 @@ describe(RouteHeader, () => {
     expect(
       screen.getByRole("heading", { name: DEFAULT_PROPS.title })
     ).toHaveFocus();
+  });
+
+  test("keeps the route-owned Back destination without a visible label", () => {
+    render(<RouteHeader {...DEFAULT_PROPS} />);
+
+    const back = screen.getByRole("link", { name: DEFAULT_PROPS.backLabel });
+    expect(back).toHaveAttribute("href", DEFAULT_PROPS.backHref);
+    expect(back).toHaveAttribute("data-screen-icon-button", "true");
+    expect(back.textContent).toBe("");
   });
 });
