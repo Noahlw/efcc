@@ -27,6 +27,7 @@ const COPY = {
   filterAll: "全部",
   filterEligible: "可報名",
   enterManagement: "進入管理模式",
+  detailBack: "課程",
   enrollment: "報名",
   requestEnroll: "報名",
   requestPendingHint: "申請已送出，等待課程負責人處理。",
@@ -431,6 +432,18 @@ test.describe("T12 participant Programs tracer", () => {
     // Program Detail can return to this directory. Pin the full href so a
     // hash, omitted origin, or alternate query is not silently accepted.
     await expect(programLink).toHaveAttribute("href", canonicalHref);
+    await programLink.click();
+    await expect(page).toHaveURL(new URL(canonicalHref, TARGET_ORIGIN).href);
+    await expect(page.locator("#program-detail-title")).toBeVisible();
+    const detailBack = page.getByRole("link", {
+      name: COPY.detailBack,
+      exact: true,
+    });
+    await expect(detailBack).toHaveCount(1);
+    await expect(detailBack).toHaveAttribute("href", "/programs");
+    await detailBack.click();
+    await expect(page).toHaveURL(new URL("/programs", TARGET_ORIGIN).href);
+    await expect(programLink).toBeVisible();
     await programLink.click();
     await expect(page).toHaveURL(new URL(canonicalHref, TARGET_ORIGIN).href);
     await expect(page.locator("#program-detail-title")).toBeVisible();

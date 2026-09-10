@@ -58,8 +58,9 @@ ordinary `/programs` route, assert the server projection does not expose the
 management gateway, search the disposable Program, prove a guaranteed
 no-result and clear-search recovery, select `可報名`, open the disposable row,
   observe canonical `/programs?program=...&from=programs` and
-  `#program-detail-title`, then
-retain the existing enrollment request, admin approval, read-back, and
+  `#program-detail-title`, activate the detail back control to return to
+  ordinary `/programs`, then reopen the same row before retaining the existing
+  enrollment request, admin approval, read-back, and
 cancellation assertions.
 
 Add the T12 Storybook W7 runner in the established worktree-aware pattern:
