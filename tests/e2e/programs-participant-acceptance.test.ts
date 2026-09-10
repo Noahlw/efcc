@@ -43,6 +43,7 @@ type LoginResult = {
 };
 
 type ParticipantFixture = {
+  departmentId: string;
   programId: string;
   programName: string;
 };
@@ -113,13 +114,16 @@ test.beforeAll(async ({ playwright }) => {
     data: { department: { department_id: string } };
   };
   const departmentId = departmentBody.data.department.department_id;
+  const programName = `E2E_T05P Program ${suffix}`;
+  // Keep the department ID as soon as the fixture exists so afterAll can
+  // archive a partially-created fixture when setup fails later.
+  fixture = { departmentId, programId: "", programName };
   for (const moduleKey of ["program_catalog", "events", "enrollment"]) {
     const moduleResponse = await adminApi.post(
       `/api/v1/programs/departments/${departmentId}/modules/${moduleKey}/enable`
     );
     expect(moduleResponse.status()).toBe(200);
   }
-  const programName = `E2E_T05P Program ${suffix}`;
   const programResponse = await adminApi.post(
     `/api/v1/programs/departments/${departmentId}/programs`,
     {
@@ -138,14 +142,106 @@ test.beforeAll(async ({ playwright }) => {
   const programBody = (await jsonBody(programResponse)) as {
     data: { program: { program_id: string } };
   };
-  fixture = {
-    programId: programBody.data.program.program_id,
-    programName,
-  };
+  fixture.programId = programBody.data.program.program_id;
 });
 
+async function cleanupParticipantFixture(): Promise<void> {
+  if (fixture === null || adminApi === null) {
+    return;
+  }
+
+  const { departmentId, programId } = fixture;
+  if (programId !== "") {
+    const requestsResponse = await adminApi.get(
+      `/api/v1/programs/${programId}/enrollment-requests`
+    );
+    expect(requestsResponse.status(), "fixture cleanup request listing").toBe(
+      200
+    );
+    const requestsBody = (await requestsResponse.json()) as {
+      data?: {
+        requests?: Array<{ request_id?: string; status?: string }>;
+      };
+    };
+    for (const request of requestsBody.data?.requests ?? []) {
+      if (request.status !== "Pending" || !request.request_id) {
+        continue;
+      }
+      const decisionResponse = await adminApi.post(
+        `/api/v1/programs/${programId}/enrollment-requests/${request.request_id}/decision`,
+        {
+          headers: { "Idempotency-Key": `t12-cleanup-${crypto.randomUUID()}` },
+          data: { action: "Rejected" },
+        }
+      );
+      expect(
+        decisionResponse.status(),
+        "fixture cleanup pending request resolution"
+      ).toBe(200);
+    }
+
+    const enrollmentsResponse = await adminApi.get(
+      `/api/v1/programs/${programId}/enrollments`
+    );
+    expect(
+      enrollmentsResponse.status(),
+      "fixture cleanup enrollment listing"
+    ).toBe(200);
+    const enrollmentsBody = (await enrollmentsResponse.json()) as {
+      data?: {
+        enrollments?: Array<{ enrollment_id?: string; status?: string }>;
+      };
+    };
+    for (const enrollment of enrollmentsBody.data?.enrollments ?? []) {
+      if (enrollment.status !== "Active" || !enrollment.enrollment_id) {
+        continue;
+      }
+      const cancelResponse = await adminApi.post(
+        `/api/v1/programs/${programId}/enrollments/${enrollment.enrollment_id}/cancel`,
+        {
+          headers: { "Idempotency-Key": `t12-cleanup-${crypto.randomUUID()}` },
+          data: {},
+        }
+      );
+      expect(
+        cancelResponse.status(),
+        "fixture cleanup active enrollment cancellation"
+      ).toBe(200);
+    }
+
+    const archiveProgramResponse = await adminApi.patch(
+      `/api/v1/programs/${programId}`,
+      {
+        headers: { "Idempotency-Key": `t12-cleanup-${crypto.randomUUID()}` },
+        data: { lifecycle: "Archived" },
+      }
+    );
+    expect(
+      archiveProgramResponse.status(),
+      "fixture cleanup Program archive"
+    ).toBe(200);
+  }
+
+  const archiveDepartmentResponse = await adminApi.patch(
+    `/api/v1/programs/departments/${departmentId}`,
+    {
+      headers: { "Idempotency-Key": `t12-cleanup-${crypto.randomUUID()}` },
+      data: { lifecycle: "Archived" },
+    }
+  );
+  expect(
+    archiveDepartmentResponse.status(),
+    "fixture cleanup Department archive"
+  ).toBe(200);
+}
+
 test.afterAll(async () => {
-  await adminApi?.dispose();
+  try {
+    await cleanupParticipantFixture();
+  } finally {
+    await adminApi?.dispose();
+    adminApi = null;
+  }
 });
 
 test.describe("T12 participant Programs tracer", () => {
@@ -221,13 +317,13 @@ test.describe("T12 participant Programs tracer", () => {
 
     const programLink = page.getByRole("link", { name: programName });
     await expect(programLink).toBeVisible();
+    const canonicalHref = `/programs?program=${encodeURIComponent(programId)}&from=programs`;
+    // The directory-origin marker is part of the current canonical intent so
+    // Program Detail can return to this directory. Pin the full href so a
+    // hash, omitted origin, or alternate query is not silently accepted.
+    await expect(programLink).toHaveAttribute("href", canonicalHref);
     await programLink.click();
-    await expect(page).toHaveURL(
-      new RegExp(
-        `/programs\\?program=${programId}(?:&from=programs)?(?:#overview)?$`,
-        "u"
-      )
-    );
+    await expect(page).toHaveURL(new URL(canonicalHref, TARGET_ORIGIN).href);
     await expect(page.locator("#program-detail-title")).toBeVisible();
 
     const enrollmentPanel = page.getByRole("region", {
