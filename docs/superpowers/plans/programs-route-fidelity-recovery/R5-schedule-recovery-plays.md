@@ -40,7 +40,7 @@
 
 - [x] **Step 8: Review the R5 diff.** Compare against the R5 start SHA, run `git diff --check`, verify handler state isolation and exact endpoint reuse, and confirm Events has one Schedule destination. Complete when no business rule moved into Story code and no generic readiness callback remains for R5.
 
-- [ ] **Step 9: Commit and close R5.** Check all boxes, append the final checkpoint, update the master ledger, and commit the changed Story/test files plus tracker updates with `test(programs): exercise schedule recovery seams`. Complete when exactly one matching subject exists after the R5 start SHA, R5 is `COMPLETE`, `Active Task` is `NONE`, and the ledger records green gates.
+- [x] **Step 9: Commit and close R5.** Check all boxes, append the final checkpoint, update the master ledger, and commit the changed Story/test files plus tracker updates with `test(programs): exercise schedule recovery seams`. Complete when exactly one matching subject exists after the R5 start SHA, R5 is `COMPLETE`, `Active Task` is `NONE`, and the ledger records green gates.
 
 ## Completion Criterion
 
@@ -73,3 +73,11 @@ R5 is complete only when route-backed Plays prove Events entry, focused-editor r
 - Last command / result: `git diff --check` plus focused diff review against R5 Start SHA — `PASS; stateful handlers are isolated per factory, exact preview/generate POST endpoints are reused, Events has one Schedule destination, and no production code changed`
 - Active finding: all R5 behavior is now covered by named route-backed Plays and fresh fixture state; no production defect was exposed.
 - Next unchecked checkbox: `Step 9 — commit and close R5`
+
+### Checkpoint — 2026-09-11 19:32 HKT
+- Branch / HEAD: `codex/programs-screen-foundations/wave-3` / `90213ebc4e8fbc0799728b3e580591f99f113bde`
+- Dirty paths: this packet and the master tracker (post-commit closeout metadata only)
+- Last completed checkbox: `Step 9 — commit and close R5`
+- Last command / result: `fnm exec --using 22.18.0 git commit -m "test(programs): exercise schedule recovery seams"` — `PASS; pre-commit verification passed, commit 90213ebc; the first concurrent component run had one transient attendance focus failure and the focused rerun plus full retry passed`
+- Active finding: exactly one matching R5 subject exists after Start SHA `b0b6356b`; R5 is machine-green and no production defect was exposed.
+- Next unchecked checkbox: `none; R5 is COMPLETE`
