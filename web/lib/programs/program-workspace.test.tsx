@@ -380,31 +380,31 @@ describe(ProgramWorkspace, () => {
 
     // Sibling navigation stays persistent on the overview and exposes only
     // server-authorized workspace destinations.
-    const workspaceNav = screen.getByRole("navigation", {
+    const workspaceNav = screen.getByRole("tablist", {
       name: COPY.programs.workspaceTaskLabel,
     });
     expect(
-      within(workspaceNav).getByRole("link", {
+      within(workspaceNav).getByRole("tab", {
         name: COPY.programs.workspaceOverviewTab,
       })
     ).toHaveAttribute("aria-current", "page");
     expect(
-      within(workspaceNav).getByRole("link", {
+      within(workspaceNav).getByRole("tab", {
         name: COPY.programs.workspaceTaskEvents,
       })
     ).toBeInTheDocument();
     expect(
-      within(workspaceNav).getByRole("link", {
+      within(workspaceNav).getByRole("tab", {
         name: COPY.programs.workspaceTaskParticipants,
       })
     ).toBeInTheDocument();
     expect(
-      within(workspaceNav).getByRole("link", {
+      within(workspaceNav).getByRole("tab", {
         name: COPY.programs.workspaceSettingsTab,
       })
     ).toBeInTheDocument();
     expect(
-      within(workspaceNav).queryByRole("link", {
+      within(workspaceNav).queryByRole("tab", {
         name: COPY.programs.workspaceTaskNotifications,
       })
     ).not.toBeInTheDocument();
@@ -778,7 +778,7 @@ describe(ProgramWorkspace, () => {
       screen.getByRole("button", { name: COPY.programs.createMeeting })
     ).toBeInTheDocument();
 
-    const participantsLink = screen.getByRole("link", {
+    const participantsLink = screen.getByRole("tab", {
       name: COPY.programs.workspaceTaskParticipants,
     });
     expect(participantsLink).toHaveAttribute(

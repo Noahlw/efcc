@@ -180,7 +180,7 @@ describe("Programs management boundary", () => {
       screen.findByRole("heading", { name: "查經小組" })
     ).resolves.toBeInTheDocument();
     expect(
-      screen.getByRole("link", { name: COPY.programs.workspaceTaskEvents })
+      screen.getByRole("tab", { name: COPY.programs.workspaceTaskEvents })
     ).toBeInTheDocument();
     expect(
       screen.getByRole("link", {

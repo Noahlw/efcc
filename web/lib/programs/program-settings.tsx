@@ -918,7 +918,7 @@ export const ProgramSettings = ({
           ? focusedSection
             ? "program-settings-focused-title"
             : "program-settings-title"
-          : "program-settings-schedule"
+          : undefined
       }
     >
       {showHeading && (

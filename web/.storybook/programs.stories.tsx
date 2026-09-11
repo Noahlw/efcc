@@ -1,21 +1,18 @@
 import type { Decorator, Meta, StoryObj } from "@storybook/nextjs-vite";
+import { useEffect } from "react";
 
-import { AppShell } from "@/lib/app-shell";
-import { ManagementDirectory as ManagementDirectoryComponent } from "@/lib/programs/management-directory";
 import { ParticipantDirectory as ParticipantDirectoryComponent } from "@/lib/programs/participant-directory";
-import { ParticipantEventDetailPage as ParticipantEventDetailPageComponent } from "@/lib/programs/participant-event-detail-page";
-import { ParticipantProgramDetail as ParticipantProgramDetailComponent } from "@/lib/programs/participant-program-detail";
-import { ProgramWorkspace as ProgramWorkspaceComponent } from "@/lib/programs/program-workspace";
-import { ProgramsNotifications as ProgramsNotificationsComponent } from "@/lib/programs/programs-notifications";
-import { WorkspaceRouteProvider } from "@/lib/programs/workspace-context";
+import {
+  clearAccessCache,
+  clearCatalogCache,
+} from "@/lib/programs/program-api";
 
 import {
   programsManagementHandlers,
   programsParticipantHandlers,
 } from "./programs-fixtures";
 import { assertProgramsScreen } from "./programs-presentation-contract";
-
-const noop = () => undefined;
+import { ProgramsStoryHarness } from "./programs-story-harness";
 
 const withMemberIdentity: Decorator = (Story) => {
   if (typeof window !== "undefined") {
@@ -33,6 +30,21 @@ const withManagerIdentity: Decorator = (Story) => {
   return <Story />;
 };
 
+const withProgramsFixtureIsolation: Decorator = (Story) => {
+  clearAccessCache();
+  clearCatalogCache();
+
+  useEffect(
+    () => () => {
+      clearAccessCache();
+      clearCatalogCache();
+    },
+    []
+  );
+
+  return <Story />;
+};
+
 const meta = {
   id: "t07-3-programs",
   title: "T07.3/Programs",
@@ -41,9 +53,10 @@ const meta = {
     programId: null,
     canManage: false,
     managementHref: "/programs?mode=management",
-    programHref: (programId) => `/programs?program=${programId}`,
+    programHref: (programId) => "/programs?program=" + programId,
     homeHref: "/home",
   },
+  decorators: [withProgramsFixtureIsolation],
   parameters: { a11y: { test: "error" } },
 } satisfies Meta<typeof ParticipantDirectoryComponent>;
 
@@ -52,48 +65,46 @@ type Story = StoryObj<typeof meta>;
 
 const PROGRAMS_WORKSHOP_NAME = "Storybook Programs Workshop";
 
-const workspace = (children: React.ReactNode) => (
-  <AppShell>
-    <WorkspaceRouteProvider
-      value={{ departmentId: "t07-3-department", hash: null }}
-    >
-      {children}
-    </WorkspaceRouteProvider>
-  </AppShell>
+const routeStory = (query: Record<string, string>) => (
+  <ProgramsStoryHarness query={query} />
 );
+
+const routeParameters = (
+  screenId: string,
+  psn: string,
+  intent: string | null,
+  query: Record<string, string>,
+  handlers: typeof programsParticipantHandlers
+) => ({
+  presentation: {
+    screenId,
+    psn,
+    productFamily: "programs",
+    lifecycle: "active" as const,
+    baseline: "primary" as const,
+    route: "/programs",
+    intent,
+    state: "default",
+    gap: "ISSUE-#601",
+    supersedes: [],
+  },
+  msw: handlers,
+  nextjs: {
+    appDirectory: true,
+    navigation: { pathname: "/programs", query },
+  },
+});
 
 export const ParticipantDirectory: Story = {
   decorators: [withMemberIdentity],
-  render: () => (
-    <AppShell>
-      <ParticipantDirectoryComponent
-        programId={null}
-        canManage={false}
-        managementHref="/programs?mode=management"
-        programHref={(programId) => `/programs?program=${programId}`}
-        homeHref="/home"
-      />
-    </AppShell>
+  render: () => routeStory({}),
+  parameters: routeParameters(
+    "programs-participant-directory",
+    "PSN-PROGRAMS-PARTICIPANT-DIRECTORY",
+    null,
+    {},
+    programsParticipantHandlers
   ),
-  parameters: {
-    presentation: {
-      screenId: "programs-participant-directory",
-      psn: "PSN-PROGRAMS-PARTICIPANT-DIRECTORY",
-      productFamily: "programs",
-      lifecycle: "active",
-      baseline: "primary",
-      route: "/programs",
-      intent: null,
-      state: "default",
-      gap: null,
-      supersedes: [],
-    },
-    msw: programsParticipantHandlers,
-    nextjs: {
-      appDirectory: true,
-      navigation: { pathname: "/programs", query: {} },
-    },
-  },
   play: ({ canvasElement }) =>
     assertProgramsScreen(canvasElement, {
       selector: "[data-program-name]",
@@ -103,41 +114,14 @@ export const ParticipantDirectory: Story = {
 
 export const ParticipantProgramDetail: Story = {
   decorators: [withMemberIdentity],
-  render: () => (
-    <AppShell>
-      <ParticipantProgramDetailComponent
-        programId="t07-3-program"
-        backHref="/programs"
-        canManage={false}
-        managementHref="/programs?mode=management&program=t07-3-program"
-        eventHref={(eventId) =>
-          `/programs?program=t07-3-program&event=${eventId}`
-        }
-      />
-    </AppShell>
+  render: () => routeStory({ program: "t07-3-program" }),
+  parameters: routeParameters(
+    "programs-participant-program-detail",
+    "PSN-PROGRAMS-PARTICIPANT-PROGRAM-DETAIL",
+    "program=t07-3-program",
+    { program: "t07-3-program" },
+    programsParticipantHandlers
   ),
-  parameters: {
-    presentation: {
-      screenId: "programs-participant-program-detail",
-      psn: "PSN-PROGRAMS-PARTICIPANT-PROGRAM-DETAIL",
-      productFamily: "programs",
-      lifecycle: "active",
-      baseline: "primary",
-      route: "/programs",
-      intent: "program=t07-3-program",
-      state: "default",
-      gap: null,
-      supersedes: [],
-    },
-    msw: programsParticipantHandlers,
-    nextjs: {
-      appDirectory: true,
-      navigation: {
-        pathname: "/programs",
-        query: { program: "t07-3-program" },
-      },
-    },
-  },
   play: ({ canvasElement }) =>
     assertProgramsScreen(canvasElement, {
       selector: "#program-detail-title",
@@ -147,37 +131,14 @@ export const ParticipantProgramDetail: Story = {
 
 export const ParticipantEventDetail: Story = {
   decorators: [withMemberIdentity],
-  render: () => (
-    <AppShell>
-      <ParticipantEventDetailPageComponent
-        programId="t07-3-program"
-        eventId="t07-3-event"
-        origin="programs"
-      />
-    </AppShell>
+  render: () => routeStory({ program: "t07-3-program", event: "t07-3-event" }),
+  parameters: routeParameters(
+    "programs-participant-event-detail",
+    "PSN-PROGRAMS-PARTICIPANT-EVENT-DETAIL",
+    "program=t07-3-program&event=t07-3-event",
+    { program: "t07-3-program", event: "t07-3-event" },
+    programsParticipantHandlers
   ),
-  parameters: {
-    presentation: {
-      screenId: "programs-participant-event-detail",
-      psn: "PSN-PROGRAMS-PARTICIPANT-EVENT-DETAIL",
-      productFamily: "programs",
-      lifecycle: "active",
-      baseline: "primary",
-      route: "/programs",
-      intent: "program=t07-3-program&event=t07-3-event",
-      state: "default",
-      gap: null,
-      supersedes: [],
-    },
-    msw: programsParticipantHandlers,
-    nextjs: {
-      appDirectory: true,
-      navigation: {
-        pathname: "/programs",
-        query: { program: "t07-3-program", event: "t07-3-event" },
-      },
-    },
-  },
   play: ({ canvasElement }) =>
     assertProgramsScreen(canvasElement, {
       selector: "#participant-event-title",
@@ -187,30 +148,14 @@ export const ParticipantEventDetail: Story = {
 
 export const ManagementDirectory: Story = {
   decorators: [withManagerIdentity],
-  render: () => (
-    <AppShell>
-      <ManagementDirectoryComponent onOpenProgram={noop} />
-    </AppShell>
+  render: () => routeStory({ mode: "management" }),
+  parameters: routeParameters(
+    "programs-management-directory",
+    "PSN-PROGRAMS-MANAGEMENT-DIRECTORY",
+    "mode=management",
+    { mode: "management" },
+    programsManagementHandlers
   ),
-  parameters: {
-    presentation: {
-      screenId: "programs-management-directory",
-      psn: "PSN-PROGRAMS-MANAGEMENT-DIRECTORY",
-      productFamily: "programs",
-      lifecycle: "active",
-      baseline: "primary",
-      route: "/programs",
-      intent: "mode=management",
-      state: "default",
-      gap: null,
-      supersedes: [],
-    },
-    msw: programsManagementHandlers,
-    nextjs: {
-      appDirectory: true,
-      navigation: { pathname: "/programs", query: { mode: "management" } },
-    },
-  },
   play: ({ canvasElement }) =>
     assertProgramsScreen(canvasElement, {
       selector: "#programs-management-directory-title",
@@ -220,37 +165,14 @@ export const ManagementDirectory: Story = {
 
 export const WorkspaceOverview: Story = {
   decorators: [withManagerIdentity],
-  render: () =>
-    workspace(
-      <ProgramWorkspaceComponent
-        programId="t07-3-program"
-        onBack={noop}
-        onTaskChange={noop}
-        onEventChange={noop}
-      />
-    ),
-  parameters: {
-    presentation: {
-      screenId: "programs-workspace-overview",
-      psn: "PSN-PROGRAMS-WORKSPACE-OVERVIEW",
-      productFamily: "programs",
-      lifecycle: "active",
-      baseline: "primary",
-      route: "/programs",
-      intent: "mode=management&program=t07-3-program",
-      state: "default",
-      gap: null,
-      supersedes: [],
-    },
-    msw: programsManagementHandlers,
-    nextjs: {
-      appDirectory: true,
-      navigation: {
-        pathname: "/programs",
-        query: { mode: "management", program: "t07-3-program" },
-      },
-    },
-  },
+  render: () => routeStory({ mode: "management", program: "t07-3-program" }),
+  parameters: routeParameters(
+    "programs-workspace-overview",
+    "PSN-PROGRAMS-WORKSPACE-OVERVIEW",
+    "mode=management&program=t07-3-program",
+    { mode: "management", program: "t07-3-program" },
+    programsManagementHandlers
+  ),
   play: ({ canvasElement }) =>
     assertProgramsScreen(canvasElement, {
       selector: "#programs-workspace-title",
@@ -261,37 +183,22 @@ export const WorkspaceOverview: Story = {
 export const WorkspaceEvents: Story = {
   decorators: [withManagerIdentity],
   render: () =>
-    workspace(
-      <ProgramWorkspaceComponent
-        programId="t07-3-program"
-        task="events"
-        onBack={noop}
-        onTaskChange={noop}
-        onEventChange={noop}
-      />
-    ),
-  parameters: {
-    presentation: {
-      screenId: "programs-workspace-events",
-      psn: "PSN-PROGRAMS-WORKSPACE-EVENTS",
-      productFamily: "programs",
-      lifecycle: "active",
-      baseline: "primary",
-      route: "/programs",
-      intent: "mode=management&program=t07-3-program&task=events",
-      state: "default",
-      gap: null,
-      supersedes: [],
+    routeStory({
+      mode: "management",
+      program: "t07-3-program",
+      task: "events",
+    }),
+  parameters: routeParameters(
+    "programs-workspace-events",
+    "PSN-PROGRAMS-WORKSPACE-EVENTS",
+    "mode=management&program=t07-3-program&task=events",
+    {
+      mode: "management",
+      program: "t07-3-program",
+      task: "events",
     },
-    msw: programsManagementHandlers,
-    nextjs: {
-      appDirectory: true,
-      navigation: {
-        pathname: "/programs",
-        query: { mode: "management", program: "t07-3-program", task: "events" },
-      },
-    },
-  },
+    programsManagementHandlers
+  ),
   play: ({ canvasElement }) =>
     assertProgramsScreen(canvasElement, {
       selector: "#programs-workspace-events-title",
@@ -302,41 +209,22 @@ export const WorkspaceEvents: Story = {
 export const WorkspaceParticipants: Story = {
   decorators: [withManagerIdentity],
   render: () =>
-    workspace(
-      <ProgramWorkspaceComponent
-        programId="t07-3-program"
-        task="participants"
-        onBack={noop}
-        onTaskChange={noop}
-        onEventChange={noop}
-      />
-    ),
-  parameters: {
-    presentation: {
-      screenId: "programs-workspace-participants",
-      psn: "PSN-PROGRAMS-WORKSPACE-PARTICIPANTS",
-      productFamily: "programs",
-      lifecycle: "active",
-      baseline: "primary",
-      route: "/programs",
-      intent: "mode=management&program=t07-3-program&task=participants",
-      state: "default",
-      gap: null,
-      supersedes: [],
+    routeStory({
+      mode: "management",
+      program: "t07-3-program",
+      task: "participants",
+    }),
+  parameters: routeParameters(
+    "programs-workspace-participants",
+    "PSN-PROGRAMS-WORKSPACE-PARTICIPANTS",
+    "mode=management&program=t07-3-program&task=participants",
+    {
+      mode: "management",
+      program: "t07-3-program",
+      task: "participants",
     },
-    msw: programsManagementHandlers,
-    nextjs: {
-      appDirectory: true,
-      navigation: {
-        pathname: "/programs",
-        query: {
-          mode: "management",
-          program: "t07-3-program",
-          task: "participants",
-        },
-      },
-    },
-  },
+    programsManagementHandlers
+  ),
   play: ({ canvasElement }) =>
     assertProgramsScreen(canvasElement, {
       selector: "#programs-workspace-participants-title",
@@ -347,41 +235,22 @@ export const WorkspaceParticipants: Story = {
 export const WorkspaceSettings: Story = {
   decorators: [withManagerIdentity],
   render: () =>
-    workspace(
-      <ProgramWorkspaceComponent
-        programId="t07-3-program"
-        task="settings"
-        onBack={noop}
-        onTaskChange={noop}
-        onEventChange={noop}
-      />
-    ),
-  parameters: {
-    presentation: {
-      screenId: "programs-workspace-settings",
-      psn: "PSN-PROGRAMS-WORKSPACE-SETTINGS",
-      productFamily: "programs",
-      lifecycle: "active",
-      baseline: "primary",
-      route: "/programs",
-      intent: "mode=management&program=t07-3-program&task=settings",
-      state: "default",
-      gap: null,
-      supersedes: [],
+    routeStory({
+      mode: "management",
+      program: "t07-3-program",
+      task: "settings",
+    }),
+  parameters: routeParameters(
+    "programs-workspace-settings",
+    "PSN-PROGRAMS-WORKSPACE-SETTINGS",
+    "mode=management&program=t07-3-program&task=settings",
+    {
+      mode: "management",
+      program: "t07-3-program",
+      task: "settings",
     },
-    msw: programsManagementHandlers,
-    nextjs: {
-      appDirectory: true,
-      navigation: {
-        pathname: "/programs",
-        query: {
-          mode: "management",
-          program: "t07-3-program",
-          task: "settings",
-        },
-      },
-    },
-  },
+    programsManagementHandlers
+  ),
   play: ({ canvasElement }) =>
     assertProgramsScreen(canvasElement, {
       selector: "#program-settings-title",
@@ -392,41 +261,22 @@ export const WorkspaceSettings: Story = {
 export const WorkspaceSchedule: Story = {
   decorators: [withManagerIdentity],
   render: () =>
-    workspace(
-      <ProgramWorkspaceComponent
-        programId="t07-3-program"
-        task="schedule"
-        onBack={noop}
-        onTaskChange={noop}
-        onEventChange={noop}
-      />
-    ),
-  parameters: {
-    presentation: {
-      screenId: "programs-workspace-schedule",
-      psn: "PSN-PROGRAMS-WORKSPACE-SCHEDULE",
-      productFamily: "programs",
-      lifecycle: "active",
-      baseline: "primary",
-      route: "/programs",
-      intent: "mode=management&program=t07-3-program&task=schedule",
-      state: "default",
-      gap: null,
-      supersedes: [],
+    routeStory({
+      mode: "management",
+      program: "t07-3-program",
+      task: "schedule",
+    }),
+  parameters: routeParameters(
+    "programs-workspace-schedule",
+    "PSN-PROGRAMS-WORKSPACE-SCHEDULE",
+    "mode=management&program=t07-3-program&task=schedule",
+    {
+      mode: "management",
+      program: "t07-3-program",
+      task: "schedule",
     },
-    msw: programsManagementHandlers,
-    nextjs: {
-      appDirectory: true,
-      navigation: {
-        pathname: "/programs",
-        query: {
-          mode: "management",
-          program: "t07-3-program",
-          task: "schedule",
-        },
-      },
-    },
-  },
+    programsManagementHandlers
+  ),
   play: ({ canvasElement }) =>
     assertProgramsScreen(canvasElement, {
       selector: "#programs-workspace-title",
@@ -436,42 +286,14 @@ export const WorkspaceSchedule: Story = {
 
 export const WorkspaceNotifications: Story = {
   decorators: [withManagerIdentity],
-  render: () => (
-    <AppShell>
-      <ProgramsNotificationsComponent
-        state={{
-          kind: "ready",
-          notifications: { items: [], unread_count: 0, has_more: false },
-        }}
-        status="ready"
-        onRetry={noop}
-        onMarkRead={noop}
-        full
-      />
-    </AppShell>
+  render: () => routeStory({ mode: "management", task: "notifications" }),
+  parameters: routeParameters(
+    "programs-workspace-notifications",
+    "PSN-PROGRAMS-WORKSPACE-NOTIFICATIONS",
+    "mode=management&task=notifications",
+    { mode: "management", task: "notifications" },
+    programsManagementHandlers
   ),
-  parameters: {
-    presentation: {
-      screenId: "programs-workspace-notifications",
-      psn: "PSN-PROGRAMS-WORKSPACE-NOTIFICATIONS",
-      productFamily: "programs",
-      lifecycle: "active",
-      baseline: "primary",
-      route: "/programs",
-      intent: "mode=management&task=notifications",
-      state: "default",
-      gap: null,
-      supersedes: [],
-    },
-    msw: programsManagementHandlers,
-    nextjs: {
-      appDirectory: true,
-      navigation: {
-        pathname: "/programs",
-        query: { mode: "management", task: "notifications" },
-      },
-    },
-  },
   play: ({ canvasElement }) =>
     assertProgramsScreen(canvasElement, {
       selector: "#programs-notifications-title",

@@ -208,11 +208,11 @@ describe("Screen Foundations public contracts", () => {
       </div>
     );
 
-    expect(screen.getByRole("link", { name: "概覽" })).toHaveAttribute(
+    expect(screen.getByRole("tab", { name: "概覽" })).toHaveAttribute(
       "data-selected",
       "true"
     );
-    expect(screen.getByRole("link", { name: "概覽" })).toHaveAttribute(
+    expect(screen.getByRole("tab", { name: "概覽" })).toHaveAttribute(
       "aria-current",
       "page"
     );

@@ -685,8 +685,10 @@ export const ProgramsBoundary = () => {
     [pathname]
   );
   useEffect(() => {
-    const syncSearch = () =>
-      setSearch(`${window.location.search}${window.location.hash}`);
+    const syncSearch = () => {
+      const search = routeQuery ? `?${routeQuery}` : "";
+      setSearch(`${search}${window.location.hash}`);
+    };
     syncSearch();
     setLocationReady(true);
     window.addEventListener("popstate", syncSearch);

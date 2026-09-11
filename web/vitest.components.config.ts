@@ -50,6 +50,7 @@ export default defineProject({
       "lib/programs/programs-enrollment-panel.test.tsx",
       "lib/programs/member-picker.test.tsx",
       "lib/programs/programs-boundary.test.tsx",
+      "lib/programs/programs-route-surface.test.tsx",
       "lib/programs/programs-notifications.test.tsx",
       "lib/programs/participant-directory.test.tsx",
       "lib/programs/management-directory.test.tsx",

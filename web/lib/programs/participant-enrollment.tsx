@@ -80,7 +80,7 @@ const enrollmentActionVariants = cva(
         primary:
           "border-[var(--screen-accent)] bg-[var(--screen-accent)] text-white hover:bg-[var(--screen-accent-deep)] hover:text-white",
         caution:
-          "border-[var(--screen-pending)] bg-[var(--screen-pending-surface)] text-[var(--screen-pending)] hover:border-[var(--screen-pending)] hover:bg-[var(--screen-pending-surface)] hover:text-[var(--screen-pending)]",
+          "border-[var(--screen-pending)] bg-[var(--screen-pending-surface)] text-[color-mix(in_srgb,var(--screen-pending)_98%,black)] hover:border-[var(--screen-pending)] hover:bg-[var(--screen-pending-surface)] hover:text-[color-mix(in_srgb,var(--screen-pending)_98%,black)]",
       },
     },
     defaultVariants: { tone: "primary" },
