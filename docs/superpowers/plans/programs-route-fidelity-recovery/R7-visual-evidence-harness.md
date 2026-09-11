@@ -39,19 +39,19 @@
 
 ## Steps
 
-- [ ] **Step 1: Claim R7 and write output-contract tests.** Run the master preflight and record the start SHA. Create the dedicated spec/config with assertions for the exact 11-case map, two viewports, 22 manifest rows, required fields, and four contact-sheet names. Complete when the test fails because the capture/output implementation is absent, not because Storybook cannot start.
+- [x] **Step 1: Claim R7 and write output-contract tests.** Run the master preflight and record the start SHA. Create the dedicated spec/config with assertions for the exact 11-case map, two viewports, 22 manifest rows, required fields, and four contact-sheet names. Complete when the test fails because the capture/output implementation is absent, not because Storybook cannot start.
 
-- [ ] **Step 2: Run the harness red.** Use a clean task-specific target: `visual_dir=$(mktemp -d /tmp/efcc-programs-visual-r7.XXXXXX); PROGRAMS_CANDIDATE_SHA=$(git rev-parse HEAD) PROGRAMS_VISUAL_ARTIFACT_DIR="$visual_dir" fnm exec --using 22.18.0 pnpm test:programs:visual`. Complete when the checkpoint records the intended missing-output failure and the temp path.
+- [x] **Step 2: Run the harness red.** Use a clean task-specific target: `visual_dir=$(mktemp -d /tmp/efcc-programs-visual-r7.XXXXXX); PROGRAMS_CANDIDATE_SHA=$(git rev-parse HEAD) PROGRAMS_VISUAL_ARTIFACT_DIR="$visual_dir" fnm exec --using 22.18.0 pnpm test:programs:visual`. Complete when the checkpoint records the intended missing-output failure and the temp path.
 
-- [ ] **Step 3: Implement capture and measurements.** Add only Story readiness, frozen `setContent`, screenshots, geometry extraction, prototype hashing, manifest output, and HTML-grid contact-sheet assembly. Complete when all output fields derive from the live capture or exact file rather than hard-coded PASS values.
+- [x] **Step 3: Implement capture and measurements.** Add only Story readiness, frozen `setContent`, screenshots, geometry extraction, prototype hashing, manifest output, and HTML-grid contact-sheet assembly. Complete when all output fields derive from the live capture or exact file rather than hard-coded PASS values.
 
-- [ ] **Step 4: Run the harness green twice.** Run the Step 2 command twice with separate `mktemp` directories and compare manifest row keys, prototype hashes, dimensions, and contact-sheet existence. Timestamps and screenshot bytes may differ; case inventory and measured contract results must agree. Complete when both runs pass independently with 22 rows and four sheets.
+- [x] **Step 4: Run the harness green twice.** Run the Step 2 command twice with separate `mktemp` directories and compare manifest row keys, prototype hashes, dimensions, and contact-sheet existence. Timestamps and screenshot bytes may differ; case inventory and measured contract results must agree. Complete when both runs pass independently with 22 rows and four sheets.
 
-- [ ] **Step 5: Run focused safety.** Run `fnm exec --using 22.18.0 pnpm test:t11:storybook`, `fnm exec --using 22.18.0 pnpm typecheck`, and `fnm exec --using 22.18.0 pnpm --dir web typecheck`. Complete when the existing Storybook route suite and both TypeScript projects pass with the new harness/config.
+- [x] **Step 5: Run focused safety.** Run `fnm exec --using 22.18.0 pnpm test:t11:storybook`, `fnm exec --using 22.18.0 pnpm typecheck`, and `fnm exec --using 22.18.0 pnpm --dir web typecheck`. Complete when the existing Storybook route suite and both TypeScript projects pass with the new harness/config.
 
-- [ ] **Step 6: Review the R7 diff.** Compare against the R7 start SHA, run `git diff --check`, confirm the harness writes only beneath the supplied artifact directory, and verify no dependency/lockfile or production file changed. Complete when every changed line belongs to deterministic evidence generation.
+- [x] **Step 6: Review the R7 diff.** Compare against the R7 start SHA, run `git diff --check`, confirm the harness writes only beneath the supplied artifact directory, and verify no dependency/lockfile or production file changed. Complete when every changed line belongs to deterministic evidence generation.
 
-- [ ] **Step 7: Commit and close R7.** Check all boxes, append the final checkpoint, update the master ledger, and commit the three harness files plus tracker updates with `test(programs): add visual fidelity evidence`. Complete when exactly one matching subject exists after the R7 start SHA, R7 is `COMPLETE`, `Active Task` is `NONE`, and the ledger records green harness/T11/type gates.
+- [x] **Step 7: Commit and close R7.** Check all boxes, append the final checkpoint, update the master ledger, and commit the three harness files plus tracker updates with `test(programs): add visual fidelity evidence`. Complete when exactly one matching subject exists after the R7 start SHA, R7 is `COMPLETE`, `Active Task` is `NONE`, and the ledger records green harness/T11/type gates.
 
 ## Completion Criterion
 
@@ -60,3 +60,43 @@ R7 is complete only when two independent runs produce the same 11-case/two-viewp
 ## Checkpoint Log
 
 - 2026-09-11 plan authoring: R7 procedure created; no implementation attempted; prerequisites are R1–R6 and every inserted packet COMPLETE; next unchecked item is Step 1.
+
+### Checkpoint — 2026-09-11 20:31 HKT
+- Branch / HEAD: `codex/programs-screen-foundations/wave-3` / `54bf903fae79b1a03a2d29e3596f7389f373e340`
+- Dirty paths: tracker, this packet, `package.json`, and the new R7 config/spec
+- Last completed checkbox: `Step 2 — run the harness red`
+- Last command / result: `visual_dir=$(mktemp -d /tmp/efcc-programs-visual-r7.XXXXXX); PROGRAMS_CANDIDATE_SHA=$(git rev-parse HEAD) PROGRAMS_VISUAL_ARTIFACT_DIR="$visual_dir" fnm exec --using 22.18.0 pnpm test:programs:visual` — `EXPECTED FAIL; Storybook started and both viewport tests failed only because /tmp/efcc-programs-visual-r7.EgnGeR/manifest.json was absent`
+- Active finding: R7 output-contract tests and the two-project config are in place; no capture/output implementation has been added yet.
+- Next unchecked checkbox: `Step 3 — implement capture and measurements`
+
+### Checkpoint — 2026-09-11 20:54 HKT
+- Branch / HEAD: `codex/programs-screen-foundations/wave-3` / `54bf903fae79b1a03a2d29e3596f7389f373e340`
+- Dirty paths: tracker, this packet, `package.json`, `tests/e2e/programs-visual-fidelity.config.ts`, and `tests/e2e/programs-visual-fidelity.test.ts`
+- Last completed checkbox: `Step 5 — run focused safety`
+- Last command / result: two fresh visual runs plus manifest comparison; `fnm exec --using 22.18.0 pnpm test:t11:storybook`; root and web typecheck — `PASS; visual runs 2/2 each with 22 rows and 4/4 sheets, comparison keys/hashes/dimensions PASS, T11 117/117, both typechecks pass`
+- Active finding: every manifest measurement comes from the live Story/frozen HTML capture; actual route marker/shell/busy/overflow/44px geometry gates are green, and the only expected frozen 360px sub-44 measurement is recorded without being used as an actual-route gate.
+- Next unchecked checkbox: `Step 6 — review the R7 diff`
+
+### Checkpoint — 2026-09-11 20:46 HKT
+- Branch / HEAD: `codex/programs-screen-foundations/wave-3` / `54bf903fae79b1a03a2d29e3596f7389f373e340`
+- Dirty paths: tracker, this packet, `package.json`, `tests/e2e/programs-visual-fidelity.config.ts`, and `tests/e2e/programs-visual-fidelity.test.ts`
+- Last completed checkbox: `Step 6 — review the R7 diff`
+- Last command / result: latest two-run comparison; `git diff --check`; `oxfmt --check`; `oxlint`; scope scan — `PASS; only R7 packet/tracker, package script, and two harness files changed; no lockfile, production file, or out-of-scope artifact write`
+- Active finding: the harness validates required environment before browser launch, confines all generated manifest/PNG/shard writes through the supplied artifact directory, and emits no hard-coded geometry verdicts.
+- Next unchecked checkbox: `Step 7 — commit and close R7`
+
+### Checkpoint — 2026-09-11 20:47 HKT
+- Branch / HEAD: `codex/programs-screen-foundations/wave-3` / `54bf903fae79b1a03a2d29e3596f7389f373e340`
+- Dirty paths: tracker, this packet, `package.json`, `tests/e2e/programs-visual-fidelity.config.ts`, and `tests/e2e/programs-visual-fidelity.test.ts`
+- Last completed checkbox: `Step 7 — prepare the R7 closeout commit`
+- Last command / result: closeout inventory — `PASS; all R7 acceptance boxes are checked, ledger prepared as R7 COMPLETE / Active Task NONE, and the unique commit subject is ready to run`
+- Active finding: R7 scope is limited to the dedicated visual harness, root script, packet, and tracker; commit is the only remaining local mutation before post-commit identity verification.
+- Next unchecked checkbox: `none; verify the unique R7 commit subject after commit`
+
+### Checkpoint — 2026-09-11 20:27 HKT
+- Branch / HEAD: `codex/programs-screen-foundations/wave-3` / `54bf903fae79b1a03a2d29e3596f7389f373e340`
+- Dirty paths: `clean before claim`
+- Last completed checkbox: `none; R7 claim/preflight`
+- Last command / result: local/remote/PR preflight — `PASS; local HEAD 54bf903f, remote wave-3 9ad90d25, PR #607 OPEN on wave-2 base, no remote write`
+- Active finding: R6 and R6A are COMPLETE with their unique commits; R7 is the only active packet and no visual harness files exist yet.
+- Next unchecked checkbox: `Step 1 — claim R7 and write output-contract tests`
