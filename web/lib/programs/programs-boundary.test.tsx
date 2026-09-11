@@ -667,6 +667,7 @@ describe("Programs boundary", () => {
   });
 
   test("PUI-05: renders the participant Event Detail from a program+event intent", async () => {
+    const now = Date.now();
     window.history.replaceState(
       {},
       "",
@@ -686,8 +687,8 @@ describe("Programs boundary", () => {
         name: "迎新聚會",
         location: "教會禮堂",
         manual_check_in_code: "ABCD1234",
-        check_in_window_opens_at: "2026-09-12T09:30:00.000Z",
-        check_in_window_closes_at: "2026-09-12T12:00:00.000Z",
+        check_in_window_opens_at: new Date(now - 30 * 60_000).toISOString(),
+        check_in_window_closes_at: new Date(now + 90 * 60_000).toISOString(),
         cancel_reason: null,
         created_at: "2026-01-01T00:00:00.000Z",
         updated_at: "2026-01-01T00:00:00.000Z",

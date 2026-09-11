@@ -398,7 +398,7 @@ export const ProgramWorkspace = ({
     >
       <ScreenHeader
         headingId="programs-workspace-title"
-        level="child"
+        level="root"
         title={
           focusedSchedule
             ? COPY.programs.schedulePageTitle

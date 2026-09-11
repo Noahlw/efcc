@@ -135,6 +135,58 @@ afterEach(() => {
 });
 
 describe("PUI-04 participant Enrollment", () => {
+  test.each([
+    ["eligible", snapshot(), "enroll"],
+    ["active", activeSnapshot(), "cancelEnrollment"],
+    ["pending", pendingSnapshot(), "withdrawRequest"],
+    [
+      "rejected",
+      snapshot({
+        requests: [
+          {
+            request_id: "request-1",
+            status: "Rejected",
+            submitted_at: "2099-03-01T00:00:00.000Z",
+            decided_at: "2099-03-02T00:00:00.000Z",
+          },
+        ],
+      }),
+      "reEnroll",
+    ],
+    [
+      "withdrawn",
+      snapshot({
+        requests: [
+          {
+            request_id: "request-1",
+            status: "Withdrawn",
+            submitted_at: "2099-03-01T00:00:00.000Z",
+            decided_at: "2099-03-02T00:00:00.000Z",
+          },
+        ],
+      }),
+      "reEnroll",
+    ],
+  ] as const)(
+    "%s exposes exactly one compact action region with the server-permitted action",
+    (_state, enrollment, actionCopyKey) => {
+      renderEnrollment({ enrollment, scheduleRules: [] });
+
+      const regions = document.querySelectorAll(
+        "[data-enrollment-action-region]"
+      );
+      expect(regions).toHaveLength(1);
+      expect(
+        document.querySelectorAll("[data-enrollment-action-surface]")
+      ).toHaveLength(0);
+      expect(
+        within(regions[0] as HTMLElement).getByRole("button", {
+          name: COPY.programs[actionCopyKey],
+        })
+      ).toBeInTheDocument();
+    }
+  );
+
   test("eligible member selects 報名 and sees the pending toast", async () => {
     const user = userEvent.setup();
     const { onRefresh } = renderEnrollment();
@@ -388,7 +440,7 @@ describe("PUI-04 participant Enrollment", () => {
     expect(
       screen.getByRole("button", { name: COPY.programs.withdrawRequest })
         .parentElement
-    ).toHaveAttribute("data-enrollment-action-surface");
+    ).toHaveAttribute("data-enrollment-action-region");
     await user.click(
       screen.getByRole("button", { name: COPY.programs.withdrawRequest })
     );
@@ -471,7 +523,7 @@ describe("PUI-04 participant Enrollment", () => {
     expect(
       screen.getByRole("button", { name: COPY.programs.cancelEnrollment })
         .parentElement
-    ).toHaveAttribute("data-enrollment-action-surface");
+    ).toHaveAttribute("data-enrollment-action-region");
     await user.click(
       screen.getByRole("button", { name: COPY.programs.cancelEnrollment })
     );

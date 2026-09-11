@@ -63,6 +63,8 @@ export default defineProject({
       "lib/session-deep-link.test.tsx",
       "lib/programs/participant-program-detail.test.tsx",
       "lib/programs/participant-enrollment.test.tsx",
+      "lib/programs/participant-event-detail-page.test.tsx",
+      "lib/programs/workspace-events-task.test.tsx",
       "lib/attendance-panel.test.tsx",
       "lib/attendance-operator-panel.test.tsx",
       "lib/attendance-roster.test.tsx",

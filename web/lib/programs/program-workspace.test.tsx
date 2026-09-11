@@ -20,7 +20,6 @@ import type {
   PreviewResult,
   Program,
   ProgramEvent,
-  ScheduleException,
   ScheduleRule,
 } from "@/lib/programs/program-api";
 import { ProgramWorkspace } from "@/lib/programs/program-workspace";
@@ -677,9 +676,44 @@ describe(ProgramWorkspace, () => {
     await expect(
       screen.findByRole("heading", {
         name: COPY.programs.settingsBasics,
-        level: 2,
       })
     ).resolves.toBeInTheDocument();
+  });
+
+  test("focused Settings uses one shared child header and retains the workspace root header", async () => {
+    mockWorkspace();
+    render(
+      <ProgramWorkspace
+        programId="program-1"
+        task="settings"
+        onBack={vi.fn()}
+        onTaskChange={vi.fn()}
+      />
+    );
+
+    await userEvent.click(
+      await screen.findByRole("button", {
+        name: /基本資料名稱、描述同分類/u,
+      })
+    );
+
+    const headers = document.querySelectorAll(
+      '[data-screen-foundation="header"]'
+    );
+    expect(headers).toHaveLength(2);
+    expect(
+      document.querySelector(
+        '[data-screen-foundation="header"][data-screen-level="root"]'
+      )
+    ).not.toBeNull();
+    expect(
+      document.querySelector(
+        '[data-screen-foundation="header"][data-screen-level="child"]'
+      )
+    ).not.toBeNull();
+    expect(
+      screen.queryByRole("button", { name: COPY.programs.settingsBackToHub })
+    ).not.toBeInTheDocument();
   });
 
   test("hides identity access without an authorized Account Directory destination", async () => {
@@ -1608,213 +1642,12 @@ describe("EVT-02 recurring preview and generation UI (#252)", () => {
     );
   }
 
-  test("reschedules an occurrence and renders the server exception after refetch", async () => {
-    const user = userEvent.setup();
-    const scheduledEvent: ProgramEvent = {
-      ...event,
-      starts_at: "2030-08-21T11:30:00.000Z",
-      ends_at: "2030-08-21T13:00:00.000Z",
-    };
-    const exception: ScheduleException = {
-      exception_id: "exception-1",
-      rule_id: "rule-1",
-      override_date: "2030-08-21",
-      action: "RESCHEDULE",
-      new_start_time: "20:30",
-      new_end_time: "22:00",
-      created_at: "2030-08-01T00:00:00.000Z",
-    };
-    mockWorkspace();
-    mocks.listEvents
-      .mockReset()
-      .mockResolvedValueOnce({ events: [scheduledEvent] })
-      .mockResolvedValueOnce({
-        events: [{ ...scheduledEvent, exception }],
-      });
-    mocks.createScheduleException.mockResolvedValue({ exception });
-    render(
-      <ProgramWorkspace
-        programId="program-1"
-        task="events"
-        onBack={vi.fn()}
-        onTaskChange={vi.fn()}
-      />
-    );
-
-    await user.click(
-      await screen.findByRole("button", {
-        name: COPY.programs.rescheduleEvent,
-      })
-    );
-    await user.type(
-      screen.getByLabelText(COPY.programs.rescheduleStart),
-      "20:30"
-    );
-    await user.type(
-      screen.getByLabelText(COPY.programs.rescheduleEnd),
-      "22:00"
-    );
-    await user.click(
-      screen.getByRole("button", { name: COPY.programs.confirmReschedule })
-    );
-
-    await expect(
-      screen.findByText(COPY.programs.exceptionUpdatedNotice)
-    ).resolves.toBeInTheDocument();
-    expect(mocks.createScheduleException).toHaveBeenCalledWith(
-      "program-1",
-      "rule-1",
-      {
-        override_date: "2030-08-21",
-        action: "RESCHEDULE",
-        new_start_time: "20:30",
-        new_end_time: "22:00",
-      }
-    );
-    expect(mocks.listEvents).toHaveBeenCalledTimes(2);
-    expect(
-      screen.getByText(
-        COPY.programs.eventRescheduledBadge.replace("{time}", "20:30")
-      )
-    ).toBeInTheDocument();
-    expect(
-      screen.getByRole("button", { name: COPY.programs.restoreOccurrence })
-    ).toBeInTheDocument();
-  });
-
-  test("cancels and restores an occurrence through the canonical EventsTask", async () => {
-    const user = userEvent.setup();
-    const scheduledEvent: ProgramEvent = {
-      ...event,
-      starts_at: "2030-08-21T11:30:00.000Z",
-      ends_at: "2030-08-21T13:00:00.000Z",
-    };
-    const exception: ScheduleException = {
-      exception_id: "exception-cancel-1",
-      rule_id: "rule-1",
-      override_date: "2030-08-21",
-      action: "CANCEL",
-      new_start_time: null,
-      new_end_time: null,
-      created_at: "2030-08-01T00:00:00.000Z",
-    };
-    mockWorkspace();
-    mocks.listEvents
-      .mockReset()
-      .mockResolvedValueOnce({ events: [scheduledEvent] })
-      .mockResolvedValueOnce({
-        events: [{ ...scheduledEvent, exception }],
-      })
-      .mockResolvedValueOnce({ events: [scheduledEvent] });
-    mocks.createScheduleException.mockResolvedValue({ exception });
-    mocks.deleteScheduleException.mockResolvedValue({});
-    const onAttentionRefresh = vi.fn();
-    render(
-      <ProgramWorkspace
-        programId="program-1"
-        task="events"
-        onBack={vi.fn()}
-        onTaskChange={vi.fn()}
-        onAttentionRefresh={onAttentionRefresh}
-      />
-    );
-
-    await user.click(
-      await screen.findByRole("button", {
-        name: COPY.programs.cancelOccurrence,
-      })
-    );
-    await user.click(
-      screen.getByRole("button", {
-        name: COPY.programs.confirmCancelOccurrence,
-      })
-    );
-
-    await expect(
-      screen.findByText(COPY.programs.exceptionUpdatedNotice)
-    ).resolves.toBeInTheDocument();
-    expect(mocks.createScheduleException).toHaveBeenCalledWith(
-      "program-1",
-      "rule-1",
-      {
-        override_date: "2030-08-21",
-        action: "CANCEL",
-      }
-    );
-    expect(mocks.listEvents).toHaveBeenCalledTimes(2);
-    expect(
-      screen.getByText(COPY.programs.eventCancelledBadge)
-    ).toBeInTheDocument();
-    expect(onAttentionRefresh).toHaveBeenCalledOnce();
-
-    await user.click(
-      screen.getByRole("button", { name: COPY.programs.restoreOccurrence })
-    );
-    await expect(
-      screen.findByText(COPY.programs.exceptionRemovedNotice)
-    ).resolves.toBeInTheDocument();
-    expect(mocks.deleteScheduleException).toHaveBeenCalledWith(
-      "program-1",
-      "rule-1",
-      "exception-cancel-1"
-    );
-    expect(mocks.listEvents).toHaveBeenCalledTimes(3);
-    expect(
-      screen.queryByText(COPY.programs.eventCancelledBadge)
-    ).not.toBeInTheDocument();
-    expect(onAttentionRefresh).toHaveBeenCalledTimes(2);
-  });
-
-  test("makes stale event rows read-only while the list refresh is unavailable", async () => {
-    const user = userEvent.setup();
-    const scheduledEvent: ProgramEvent = {
-      ...event,
-      starts_at: "2030-08-21T11:30:00.000Z",
-      ends_at: "2030-08-21T13:00:00.000Z",
-    };
-    const exception: ScheduleException = {
-      exception_id: "exception-refresh-1",
-      rule_id: "rule-1",
-      override_date: "2030-08-21",
-      action: "RESCHEDULE",
-      new_start_time: "20:30",
-      new_end_time: "22:00",
-      created_at: "2030-08-01T00:00:00.000Z",
-    };
-    mockWorkspace();
-    mocks.listEvents
-      .mockReset()
-      .mockResolvedValueOnce({ events: [scheduledEvent] })
-      .mockRejectedValueOnce(
-        new RpcError({
-          code: "NETWORK_ERROR",
-          status: 0,
-          detail: "refresh failed",
-        })
-      );
-    mocks.createScheduleException.mockResolvedValue({ exception });
+  test("keeps recurrence operations behind the Schedule destination", async () => {
     renderEventsTask();
 
-    await user.click(
-      await screen.findByRole("button", {
-        name: COPY.programs.rescheduleEvent,
-      })
-    );
-    await user.type(
-      screen.getByLabelText(COPY.programs.rescheduleStart),
-      "20:30"
-    );
-    await user.type(
-      screen.getByLabelText(COPY.programs.rescheduleEnd),
-      "22:00"
-    );
-    await user.click(
-      screen.getByRole("button", { name: COPY.programs.confirmReschedule })
-    );
-
-    await expect(screen.findByRole("alert")).resolves.toHaveTextContent(
-      COPY.error.networkError
-    );
+    await screen.findByRole("link", {
+      name: new RegExp(COPY.programs.settingsScheduleEventsLink, "u"),
+    });
     expect(
       screen.queryByRole("button", { name: COPY.programs.rescheduleEvent })
     ).not.toBeInTheDocument();
@@ -1822,11 +1655,17 @@ describe("EVT-02 recurring preview and generation UI (#252)", () => {
       screen.queryByRole("button", { name: COPY.programs.cancelOccurrence })
     ).not.toBeInTheDocument();
     expect(
-      screen.queryByRole("button", { name: COPY.programs.cancelEvent })
+      screen.queryByRole("button", { name: COPY.programs.restoreOccurrence })
     ).not.toBeInTheDocument();
     expect(
-      screen.getByRole("link", { name: COPY.programs.eventDetailOpen })
-    ).toBeInTheDocument();
+      screen.queryByRole("button", { name: COPY.programs.previewEvents })
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: COPY.programs.generateEvents })
+    ).not.toBeInTheDocument();
+    expect(mocks.listScheduleRules).not.toHaveBeenCalled();
+    expect(mocks.createScheduleException).not.toHaveBeenCalled();
+    expect(mocks.deleteScheduleException).not.toHaveBeenCalled();
   });
 
   test("preview controls are reachable and render an exact plan with exception state", async () => {

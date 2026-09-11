@@ -525,7 +525,15 @@ export const EventDetail = ({
               >
                 {COPY.programs.checkInAvailable}
               </ScreenStatus>
-            ) : null
+            ) : (
+              <ScreenStatus
+                role="status"
+                tone="pending"
+                aria-label={COPY.attendance.eventClosed}
+              >
+                {COPY.attendance.eventClosed}
+              </ScreenStatus>
+            )
           }
         />
 
@@ -557,20 +565,17 @@ export const EventDetail = ({
           </p>
         </ScreenSection>
 
-        <ScreenCard className="mt-0" data-action-bar>
-          <Button
-            asChild
-            className={
-              checkInOpen
-                ? "h-auto w-full justify-center whitespace-normal bg-[var(--screen-accent)] text-center text-white hover:bg-[var(--screen-accent-deep)]"
-                : "h-auto w-full justify-center whitespace-normal border-[var(--screen-line-strong)] bg-transparent text-center text-[var(--screen-ink)] hover:bg-[var(--screen-surface-soft)]"
-            }
-            variant={checkInOpen ? "default" : "outline"}
-            data-action-state={checkInOpen ? "available" : "closed"}
-          >
-            <Link href={scanHref}>{COPY.programs.goToScan}</Link>
-          </Button>
-        </ScreenCard>
+        {checkInOpen && (
+          <ScreenCard className="mt-0" data-action-bar>
+            <Button
+              asChild
+              className="h-auto w-full justify-center whitespace-normal bg-[var(--screen-accent)] text-center text-white hover:bg-[var(--screen-accent-deep)]"
+              data-action-state="available"
+            >
+              <Link href={scanHref}>{COPY.programs.goToScan}</Link>
+            </Button>
+          </ScreenCard>
+        )}
       </section>
     );
   }
@@ -581,16 +586,21 @@ export const EventDetail = ({
       aria-label={COPY.programs.eventDetailTitle}
       aria-busy={busy}
     >
-      <Button
-        asChild
-        variant="ghost"
-        className="w-fit text-[var(--screen-muted)] hover:bg-transparent hover:text-[var(--screen-ink)]"
-        size="row"
-      >
-        <Link href={backHref} replace={backReplace} onClick={onBack}>
-          {COPY.programs.eventDetailBack}
-        </Link>
-      </Button>
+      <ScreenHeader
+        level="child"
+        title={event.name ?? hkWallDateTimeLabel(event.starts_at)}
+        lead={`${hkWallDateTimeLabel(event.starts_at)} — ${hkWallDateTimeLabel(event.ends_at)}`}
+        headingId="management-event-detail-title"
+        backHref={backHref}
+        backLabel={COPY.programs.eventDetailBack}
+        backReplace={backReplace}
+        onBack={onBack}
+        status={
+          <ScreenStatus tone={cancelled ? "danger" : "success"}>
+            {STATUS_LABEL[event.status]}
+          </ScreenStatus>
+        }
+      />
       {notice !== null && (
         <Alert tone="success" announcement="polite">
           <div className="flex min-w-0 flex-wrap items-center gap-[var(--screen-utility-gap)]">
@@ -613,10 +623,7 @@ export const EventDetail = ({
         <Alert variant="destructive">{actionError}</Alert>
       )}
 
-      <ScreenSection
-        title={event.name ?? hkWallDateTimeLabel(event.starts_at)}
-        headingId="management-event-detail-title"
-      >
+      <div className="grid min-w-0 gap-[var(--screen-utility-gap)]">
         <div className="flex min-w-0 flex-wrap items-center gap-[var(--screen-utility-gap)]">
           <ScreenRowMeta>
             {hkWallDateTimeLabel(event.starts_at)} —{" "}
@@ -637,9 +644,6 @@ export const EventDetail = ({
               "{tag}",
               event.recurrence_tag ?? COPY.programs.recurrenceNone
             )}
-          </ScreenStatus>
-          <ScreenStatus tone={cancelled ? "danger" : "success"}>
-            {STATUS_LABEL[event.status]}
           </ScreenStatus>
           {event.availability !== undefined && (
             <ScreenStatus
@@ -667,7 +671,7 @@ export const EventDetail = ({
             )}
           </ScreenRowMeta>
         )}
-      </ScreenSection>
+      </div>
 
       <ScreenCard>
         <dl className="grid min-w-0 gap-3 sm:grid-cols-2">

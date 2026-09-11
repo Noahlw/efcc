@@ -279,6 +279,24 @@ describe(ManagementDirectory, () => {
     );
   });
 
+  test("narrows an explicit Department intent without creating client scope", async () => {
+    mockDirectory();
+    render(
+      <ManagementDirectory departmentId="dept-youth" onOpenProgram={vi.fn()} />
+    );
+
+    const list = await screen.findByRole("list", {
+      name: COPY.programs.managementDirectoryListLabel,
+    });
+    expect(within(list).getAllByRole("link")).toHaveLength(1);
+    expect(
+      within(list).getByRole("link", { name: /查經小組/u })
+    ).toHaveTextContent("青年事工 · DEPT-YOUTH");
+    expect(
+      within(list).queryByRole("link", { name: /社區關懷/u })
+    ).not.toBeInTheDocument();
+  });
+
   test("does not offer free-floating creation outside a Department detail", async () => {
     mockDirectory();
     render(<ManagementDirectory onOpenProgram={vi.fn()} />);
