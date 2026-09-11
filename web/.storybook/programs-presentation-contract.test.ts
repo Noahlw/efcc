@@ -71,6 +71,10 @@ const REQUIRED_BEHAVIOR_PLAY_EXPORTS = [
   "WorkspaceScheduleFocused",
   "WorkspaceScheduleStale",
   "WorkspaceSchedulePartialResume",
+  "WorkspaceSettingsDirty",
+  "WorkspaceSettingsConflict",
+  "NotificationsUnread",
+  "NotificationsEmptyRecoverable",
 ] as const;
 
 const PARTICIPANT_MUTATION_SCENARIOS = [
@@ -113,6 +117,12 @@ const SCHEDULE_STATEFUL_SCENARIOS = [
   "workspace-schedule-partial-resume",
 ] as const;
 
+const SETTINGS_NOTIFICATION_STATEFUL_SCENARIOS = [
+  "workspace-settings-conflict",
+  "notifications-empty-recoverable",
+  "notifications-unread",
+] as const;
+
 const participantDetail = async (
   programId: string
 ): Promise<ParticipantProgramDetail> => {
@@ -136,6 +146,25 @@ const postSchedule = (path: string) =>
   fetch(`http://localhost/api/v1/programs/${path}`, {
     method: "POST",
     body: JSON.stringify({ horizon_days: 90 }),
+  });
+
+const patchProgram = () =>
+  fetch("http://localhost/api/v1/programs/t07-3-program", {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name: "衝突後草稿" }),
+  });
+
+const getNotifications = () =>
+  fetch("http://localhost/api/v1/programs/notifications");
+
+const postNotificationsRead = (
+  items: readonly { source_key: string; source_revision: string }[]
+) =>
+  fetch("http://localhost/api/v1/programs/notifications/read", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ items }),
   });
 
 test("does not accept the shared AppShell main landmark as a settled Programs screen", async () => {
@@ -330,6 +359,80 @@ test("resets partial Schedule resume state per factory invocation", async () => 
   );
   expect(await resetPartialGenerate.json()).toMatchObject({
     data: { generated: { status: "partial", resumed: false } },
+  });
+});
+
+test("resets Settings conflict state per factory invocation", async () => {
+  const scenarioName = SETTINGS_NOTIFICATION_STATEFUL_SCENARIOS[0];
+  const scenario = getProgramsStoryScenario(scenarioName);
+  storyServer.use(...scenario.handlers);
+
+  expect((await patchProgram()).status).toBe(409);
+  expect(await patchProgram()).toHaveProperty("status", 200);
+
+  const freshScenario = getProgramsStoryScenario(scenarioName);
+  storyServer.resetHandlers(...freshScenario.handlers);
+  expect((await patchProgram()).status).toBe(409);
+});
+
+test("resets recoverable Notifications retry state per factory invocation", async () => {
+  const scenarioName = SETTINGS_NOTIFICATION_STATEFUL_SCENARIOS[1];
+  const scenario = getProgramsStoryScenario(scenarioName);
+  storyServer.use(...scenario.handlers);
+
+  expect((await getNotifications()).status).toBe(503);
+  const emptyResponse = await getNotifications();
+  expect(emptyResponse.status).toBe(200);
+  expect(await emptyResponse.json()).toMatchObject({
+    data: { items: [], unread_count: 0 },
+  });
+
+  const freshScenario = getProgramsStoryScenario(scenarioName);
+  storyServer.resetHandlers(...freshScenario.handlers);
+  expect((await getNotifications()).status).toBe(503);
+});
+
+test("projects Notifications read mutations and resets their state per factory invocation", async () => {
+  const scenarioName = SETTINGS_NOTIFICATION_STATEFUL_SCENARIOS[2];
+  const scenario = getProgramsStoryScenario(scenarioName);
+  storyServer.use(...scenario.handlers);
+
+  const initialResponse = await getNotifications();
+  const initialBody = (await initialResponse.json()) as {
+    data: {
+      items: readonly {
+        source_key: string;
+        source_revision: string;
+        read: boolean;
+      }[];
+      unread_count: number;
+    };
+  };
+  expect(initialBody.data.unread_count).toBe(3);
+  const firstUnread = initialBody.data.items.find((item) => !item.read);
+  expect(firstUnread).toBeDefined();
+  if (!firstUnread) {
+    throw new Error("Unread fixture item is missing");
+  }
+
+  await expect(
+    postNotificationsRead([
+      {
+        source_key: firstUnread.source_key,
+        source_revision: firstUnread.source_revision,
+      },
+    ])
+  ).resolves.toHaveProperty("status", 200);
+  const projectedResponse = await getNotifications();
+  expect(await projectedResponse.json()).toMatchObject({
+    data: { unread_count: 2 },
+  });
+
+  const freshScenario = getProgramsStoryScenario(scenarioName);
+  storyServer.resetHandlers(...freshScenario.handlers);
+  const resetResponse = await getNotifications();
+  expect(await resetResponse.json()).toMatchObject({
+    data: { unread_count: 3 },
   });
 });
 

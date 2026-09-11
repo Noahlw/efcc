@@ -12,16 +12,18 @@ const story = (id: string) => `/iframe.html?id=${id}&viewMode=story`;
 async function clickAndAssertHref(link: Locator, href: string) {
   await link.evaluate((element) => {
     const anchor = element as HTMLAnchorElement;
-    anchor.dataset.t11ActivatedHref = "";
-    anchor.addEventListener(
-      "click",
-      (event) => {
-        event.preventDefault();
-        event.stopImmediatePropagation();
-        anchor.dataset.t11ActivatedHref = anchor.getAttribute("href") ?? "";
-      },
-      { capture: true, once: true }
-    );
+    const document = anchor.ownerDocument;
+    const handleClick = (event: MouseEvent) => {
+      const target = event.target;
+      if (!(target instanceof Element) || target.closest("a") !== anchor) {
+        return;
+      }
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      anchor.dataset.t11ActivatedHref = anchor.getAttribute("href") ?? "";
+      document.removeEventListener("click", handleClick, true);
+    };
+    document.addEventListener("click", handleClick, true);
   });
   // DOM activation keeps the route-target assertion deterministic at the
   // narrowest W7 width, where the compact header status can overlap the icon.

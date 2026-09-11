@@ -32,15 +32,15 @@
 
 - [x] **Step 4: Prove Notifications retry and mark-read.** Add one Play for 503 -> Retry -> explicit empty, and one for dense unread -> activate/mark read -> decremented count/read styling. Assert no duplicate bell/resource appears on the full Notifications task. Complete when both server response sequences and visible outcomes are checked.
 
-- [ ] **Step 5: Run Story and focused gates.** Run `fnm exec --using 22.18.0 pnpm --dir web test:t07:foundation`, `fnm exec --using 22.18.0 pnpm --dir web test:storybook`, `fnm exec --using 22.18.0 pnpm test:t11:storybook`, and `fnm exec --using 22.18.0 pnpm --dir web exec vitest run --config vitest.components.config.ts lib/programs/program-settings.test.tsx lib/programs/programs-notifications.test.tsx`. Complete when static inventory, all R6 Plays, focused components, and T11 pass.
+- [x] **Step 5: Run Story and focused gates.** Run `fnm exec --using 22.18.0 pnpm --dir web test:t07:foundation`, `fnm exec --using 22.18.0 pnpm --dir web test:storybook`, `fnm exec --using 22.18.0 pnpm test:t11:storybook`, and `fnm exec --using 22.18.0 pnpm --dir web exec vitest run --config vitest.components.config.ts lib/programs/program-settings.test.tsx lib/programs/programs-notifications.test.tsx`. Complete when static inventory, all R6 Plays, focused components, and T11 pass.
 
 - [x] **Step 6: Handle a production defect by disclosure.** If Step 5 exposes a production contract defect, create the bounded `R6A-settings-back-interception.md` child packet, insert it after R6 in the master ledger, mark R6 `BLOCKED`, and stop. Complete when either production already satisfies the contract or the inserted packet owns one bounded component/test pair, red assertion, gate, and unique commit subject.
 
-- [ ] **Step 7: Run type and one-resource checks.** Run `fnm exec --using 22.18.0 pnpm --dir web typecheck` and inspect the route composition to confirm the full Notifications task omits the compact trigger while other management screens own exactly one compact surface. Complete when typecheck passes and one-resource ownership is evidenced.
+- [x] **Step 7: Run type and one-resource checks.** Run `fnm exec --using 22.18.0 pnpm --dir web typecheck` and inspect the route composition to confirm the full Notifications task omits the compact trigger while other management screens own exactly one compact surface. Complete when typecheck passes and one-resource ownership is evidenced.
 
-- [ ] **Step 8: Review the R6 diff.** Compare against the R6 start SHA, run `git diff --check`, verify factory-local state and exact endpoints, and confirm no conflict resolution or unread count is calculated solely in Story code. Complete when every changed line is Story/test evidence and no generic readiness callback remains for R6.
+- [x] **Step 8: Review the R6 diff.** Compare against the R6 start SHA, run `git diff --check`, verify factory-local state and exact endpoints, and confirm no conflict resolution or unread count is calculated solely in Story code. Complete when every changed line is Story/test evidence and no generic readiness callback remains for R6.
 
-- [ ] **Step 9: Commit and close R6.** Check all boxes, append the final checkpoint, update the master ledger, and commit the changed Story/test files plus tracker updates with `test(programs): exercise settings and notification seams`. Complete when exactly one matching subject exists after the R6 start SHA, R6 is `COMPLETE`, `Active Task` is `NONE`, and the ledger records green gates.
+- [x] **Step 9: Commit and close R6.** Check all boxes, append the final checkpoint, update the master ledger, and commit the changed Story/test files plus tracker updates with `test(programs): exercise settings and notification seams`. Complete when exactly one matching subject exists after the R6 start SHA, R6 is `COMPLETE`, `Active Task` is `NONE`, and the ledger records green gates.
 
 ## Completion Criterion
 
@@ -73,3 +73,11 @@ R6 is complete only when route-backed Plays prove dirty-state return, conflict r
 - Last command / result: R6A bounded diff review plus `git diff --check` — `PASS; child repair is scoped and R6A closeout is ready for its unique commit`
 - Active finding: R6A resolved the shared Back seam and is ready to commit; R6 resumes at its complete Story/focused gate with its existing Start SHA `f32f5082`.
 - Next unchecked checkbox: `Step 5 — run Story and focused gates`
+
+### Checkpoint — 2026-09-11 20:25 HKT
+- Branch / HEAD: `codex/programs-screen-foundations/wave-3` / `4e333cbeabfb5d8c47a7d0dc71f5da4dfc6ab221`
+- Dirty paths: `tests/e2e/t11-storybook.test.ts`; `web/.storybook/programs-fixtures.ts`; `web/.storybook/programs-material-states.stories.tsx`; `web/.storybook/programs-presentation-contract.test.ts`
+- Last completed checkbox: `Step 8 — review the R6 diff`; `Step 9 — prepare the closeout commit`
+- Last command / result: full R6 gates, one-resource source inspection, `git diff f32f5082.. --check`, and bounded diff review — `PASS; T07 foundation 64/64, R6 Plays 4/4, contract 18/18, focused Settings/Notifications 28/28, Storybook 94/94, T11 117/117 across 9 W7 viewports, and web typecheck pass`
+- Active finding: R6 contains only the four scoped Story/fixture/contract/T11 harness files; fixture state is factory-local with exact PATCH/GET/POST endpoints, and the full Notifications route renders the full feed without the compact bell while workspace/directory routes each receive one compact surface.
+- Next unchecked checkbox: `none; verify the unique R6 commit subject after the closeout commit`

@@ -160,16 +160,17 @@ const expectDetailStatus = async (
 
 const clickAndCaptureHref = async (link: HTMLElement, href: string) => {
   let activatedHref: string | null = null;
-  link.addEventListener(
-    "click",
-    (event) => {
-      event.preventDefault();
-      activatedHref = (event.currentTarget as HTMLAnchorElement).getAttribute(
-        "href"
-      );
-    },
-    { capture: true, once: true }
-  );
+  const document = link.ownerDocument;
+  const handleClick = (event: MouseEvent) => {
+    const target = event.target;
+    if (!(target instanceof Element) || target.closest("a") !== link) {
+      return;
+    }
+    event.preventDefault();
+    activatedHref = link.getAttribute("href");
+    document.removeEventListener("click", handleClick, true);
+  };
+  document.addEventListener("click", handleClick, true);
   await userEvent.click(link);
   await expect(activatedHref).toBe(href);
 };
@@ -566,6 +567,166 @@ const workspaceSchedulePartialResumePlay: Story["play"] = async ({
   await expect(canvas.queryByText(partialCopy, { exact: true })).toBeNull();
 };
 
+const workspaceSettingsDirtyPlay: Story["play"] = async ({ canvasElement }) => {
+  await assertProgramsScreen(
+    canvasElement,
+    readinessFor("workspace-settings-dirty")
+  );
+  const canvas = within(canvasElement);
+  const basicsRow = canvas.getByRole("button", {
+    name: /課程基本資料\s+名稱、描述同分類/u,
+  });
+  await userEvent.click(basicsRow);
+  await expect(
+    canvas.getByRole("heading", { name: COPY.programs.settingsBasics })
+  ).toBeVisible();
+
+  const name = canvas.getByRole("textbox", {
+    name: COPY.programs.programName,
+  });
+  await userEvent.clear(name);
+  await userEvent.type(name, "未儲存課程名稱");
+  await expect(
+    canvas.findByText(COPY.programs.settingsUnsaved, { exact: true })
+  ).resolves.toBeVisible();
+  expect(
+    canvasElement.querySelector('[data-screen-settings-dirty="true"]')
+  ).not.toBeNull();
+
+  await userEvent.click(
+    canvas.getByRole("button", { name: COPY.programs.settingsDiscard })
+  );
+  await expect(name).toHaveValue("門徒訓練基礎課");
+  await userEvent.click(
+    canvas.getByRole("link", { name: COPY.programs.settingsBackToHub })
+  );
+  await expect(
+    canvas.getByRole("heading", { name: COPY.programs.settingsHubTitle })
+  ).toBeVisible();
+  await userEvent.click(
+    canvas.getByRole("button", {
+      name: /課程基本資料\s+名稱、描述同分類/u,
+    })
+  );
+  await expect(
+    canvas.getByRole("textbox", { name: COPY.programs.programName })
+  ).toHaveValue("門徒訓練基礎課");
+};
+
+const workspaceSettingsConflictPlay: Story["play"] = async ({
+  canvasElement,
+}) => {
+  await assertProgramsScreen(
+    canvasElement,
+    readinessFor("workspace-settings-conflict")
+  );
+  const canvas = within(canvasElement);
+  const openBasics = async () => {
+    await userEvent.click(
+      canvas.getByRole("button", {
+        name: /課程基本資料\s+名稱、描述同分類/u,
+      })
+    );
+    await expect(
+      canvas.getByRole("heading", { name: COPY.programs.settingsBasics })
+    ).toBeVisible();
+  };
+
+  await openBasics();
+  let name = canvas.getByRole("textbox", { name: COPY.programs.programName });
+  await userEvent.clear(name);
+  await userEvent.type(name, "衝突後草稿");
+  await userEvent.click(
+    canvas.getByRole("button", { name: COPY.programs.settingsSaveBasics })
+  );
+  await expect(
+    canvas.findByText(COPY.programs.programConflict, { exact: true })
+  ).resolves.toBeVisible();
+  await expect(name).toHaveValue("衝突後草稿");
+  await expect(
+    canvas.getByRole("link", { name: COPY.programs.settingsBackToHub })
+  ).toHaveAttribute(
+    "href",
+    "/programs?mode=management&program=t07-3-program&task=settings"
+  );
+
+  await userEvent.click(
+    canvas.getByRole("link", { name: COPY.programs.settingsBackToHub })
+  );
+  await expect(
+    canvas.getByRole("heading", { name: COPY.programs.settingsHubTitle })
+  ).toBeVisible();
+  await openBasics();
+  name = canvas.getByRole("textbox", { name: COPY.programs.programName });
+  await userEvent.clear(name);
+  await userEvent.type(name, "衝突後草稿");
+  await userEvent.click(
+    canvas.getByRole("button", { name: COPY.programs.settingsSaveBasics })
+  );
+  await expect(
+    canvas.findByText(COPY.programs.settingsSaved, { exact: true })
+  ).resolves.toBeVisible();
+};
+
+const notificationsUnreadPlay: Story["play"] = async ({ canvasElement }) => {
+  await assertProgramsScreen(
+    canvasElement,
+    readinessFor("notifications-unread")
+  );
+  const canvas = within(canvasElement);
+  await expect(
+    canvas.queryByRole("button", {
+      name: COPY.programs.notificationBellTitle,
+    })
+  ).toBeNull();
+  await waitFor(() => {
+    expect(
+      canvas.queryByRole("heading", {
+        name: COPY.programs.notificationsUnreadSection,
+      })
+    ).toBeNull();
+  });
+  await expect(
+    canvas.getByRole("heading", {
+      name: COPY.programs.notificationsEarlierSection,
+    })
+  ).toBeVisible();
+  const eventNotification = canvas.getByRole("link", {
+    name: new RegExp(
+      `${COPY.programs.notificationsEventLabel}.*門徒訓練基礎課`,
+      "u"
+    ),
+  });
+  await clickAndCaptureHref(
+    eventNotification,
+    "/programs?mode=management&department=t07-3-department&program=t07-3-program&task=events&event=t07-3-manual-event"
+  );
+};
+
+const notificationsEmptyRecoverablePlay: Story["play"] = async ({
+  canvasElement,
+}) => {
+  await assertProgramsScreen(
+    canvasElement,
+    readinessFor("notifications-empty-recoverable")
+  );
+  const canvas = within(canvasElement);
+  await expect(
+    canvas.findByRole("button", { name: COPY.programs.notificationsRetry })
+  ).resolves.toBeVisible();
+  await userEvent.click(
+    canvas.getByRole("button", { name: COPY.programs.notificationsRetry })
+  );
+  await expect(
+    canvas.findByText(COPY.programs.notificationsEmpty, { exact: true })
+  ).resolves.toBeVisible();
+  await expect(
+    canvas.queryByRole("button", {
+      name: COPY.programs.notificationBellTitle,
+    })
+  ).toBeNull();
+};
+
 export const ParticipantDirectoryMember: Story = materialStory(
   "participant-directory-member"
 );
@@ -619,10 +780,12 @@ export const WorkspaceParticipantsPending: Story = materialStory(
   "workspace-participants-pending"
 );
 export const WorkspaceSettingsDirty: Story = materialStory(
-  "workspace-settings-dirty"
+  "workspace-settings-dirty",
+  workspaceSettingsDirtyPlay
 );
 export const WorkspaceSettingsConflict: Story = materialStory(
-  "workspace-settings-conflict"
+  "workspace-settings-conflict",
+  workspaceSettingsConflictPlay
 );
 export const WorkspaceScheduleFocused: Story = materialStory(
   "workspace-schedule-focused",
@@ -636,7 +799,11 @@ export const WorkspaceSchedulePartialResume: Story = materialStory(
   "workspace-schedule-partial-resume",
   workspaceSchedulePartialResumePlay
 );
-export const NotificationsUnread: Story = materialStory("notifications-unread");
+export const NotificationsUnread: Story = materialStory(
+  "notifications-unread",
+  notificationsUnreadPlay
+);
 export const NotificationsEmptyRecoverable: Story = materialStory(
-  "notifications-empty-recoverable"
+  "notifications-empty-recoverable",
+  notificationsEmptyRecoverablePlay
 );

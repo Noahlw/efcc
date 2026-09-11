@@ -518,6 +518,75 @@ const EMPTY_MANAGEMENT_NOTIFICATIONS: ManagementNotifications = {
   has_more: false,
 };
 
+type NotificationFixtureScenario = "default" | "empty-recoverable";
+
+const copyManagementNotifications = (
+  source: ManagementNotifications
+): ManagementNotifications => ({
+  ...source,
+  items: source.items.map((item) => ({ ...item })),
+});
+
+const createNotificationHandlers = (
+  scenario: NotificationFixtureScenario = "default"
+): readonly RequestHandler[] => {
+  let readState = copyManagementNotifications(
+    scenario === "empty-recoverable"
+      ? EMPTY_MANAGEMENT_NOTIFICATIONS
+      : MANAGEMENT_NOTIFICATIONS
+  );
+  let readAttempts = 0;
+
+  return [
+    http.get(storyApi("/api/v1/programs/notifications"), () => {
+      if (scenario === "empty-recoverable" && readAttempts++ === 0) {
+        return HttpResponse.json(
+          {
+            status: 503,
+            code: "UNAVAILABLE",
+            title: "Unavailable",
+            detail: "通知暫時未能載入，請稍後再試。",
+          },
+          { status: 503 }
+        );
+      }
+      return envelope(readState);
+    }),
+    http.post(
+      storyApi("/api/v1/programs/notifications/read"),
+      async ({ request }) => {
+        const payload = (await request.json()) as {
+          items?: readonly {
+            source_key: string;
+            source_revision: string;
+          }[];
+        };
+        const requested = new Set(
+          (payload.items ?? []).map(
+            ({ source_key, source_revision }) =>
+              `${source_key}:${source_revision}`
+          )
+        );
+        const items = readState.items.map((item) =>
+          requested.has(`${item.source_key}:${item.source_revision}`)
+            ? { ...item, read: true }
+            : item
+        );
+        readState = {
+          ...readState,
+          items,
+          unread_count: items.filter((item) => !item.read).length,
+        };
+        return envelope({
+          marked_count: items.filter((item) =>
+            requested.has(`${item.source_key}:${item.source_revision}`)
+          ).length,
+        });
+      }
+    ),
+  ];
+};
+
 const SCHEDULE_RULE: ScheduleRule = {
   rule_id: "t07-3-rule",
   program_id: PROGRAM_ID,
@@ -803,9 +872,11 @@ const createScheduleHandlers = (
 const createManagementProgramHandlers = ({
   events = MANAGEMENT_EVENTS,
   scheduleScenario = "default",
+  notificationScenario = "default",
 }: {
   events?: readonly ProgramEvent[];
   scheduleScenario?: ScheduleFixtureScenario;
+  notificationScenario?: NotificationFixtureScenario;
 } = {}): readonly RequestHandler[] => [
   authMeHandler,
   http.get("/api/v1/programs/access", () =>
@@ -835,12 +906,7 @@ const createManagementProgramHandlers = ({
     });
   }),
   http.get("/api/v1/programs/attention", () => envelope(MANAGEMENT_ATTENTION)),
-  http.get("/api/v1/programs/notifications", () =>
-    envelope(MANAGEMENT_NOTIFICATIONS)
-  ),
-  http.post("/api/v1/programs/notifications/read", () =>
-    envelope({ notifications: MANAGEMENT_NOTIFICATIONS })
-  ),
+  ...createNotificationHandlers(notificationScenario),
   http.get("/api/v1/programs/:programId/management", () =>
     envelope({
       program: PROGRAM,
@@ -1042,18 +1108,24 @@ const createParticipantBehaviorHandlers = (
   );
 };
 
-const conflictProgramHandler = () =>
-  http.patch("/api/v1/programs/:programId", () =>
-    HttpResponse.json(
-      {
-        status: 409,
-        code: "CONFLICT",
-        title: "Conflict",
-        detail: "伺服器資料已有更新，請重新載入後再儲存。",
-      },
-      { status: 409 }
-    )
-  );
+const conflictProgramHandler = () => {
+  let attempts = 0;
+  return http.patch(storyApi("/api/v1/programs/:programId"), () => {
+    attempts += 1;
+    if (attempts === 1) {
+      return HttpResponse.json(
+        {
+          status: 409,
+          code: "CONFLICT",
+          title: "Conflict",
+          detail: "伺服器資料已有更新，請重新載入後再儲存。",
+        },
+        { status: 409 }
+      );
+    }
+    return envelope({ program: PROGRAM });
+  });
+};
 
 export const programsParticipantHandlers = createParticipantProgramHandlers();
 export const programsManagementHandlers = createManagementProgramHandlers();
@@ -1220,29 +1292,13 @@ const PROGRAMS_STORY_SCENARIO_FACTORIES: Readonly<
       { mode: "management", task: "notifications" },
       createManagementProgramHandlers()
     ),
-  "notifications-empty-recoverable": () => {
-    let attempts = 0;
-    return storyScenario(
+  "notifications-empty-recoverable": () =>
+    storyScenario(
       { mode: "management", task: "notifications" },
-      withScenarioHandlers(
-        createManagementProgramHandlers(),
-        http.get("/api/v1/programs/notifications", () => {
-          attempts += 1;
-          return attempts === 1
-            ? HttpResponse.json(
-                {
-                  status: 503,
-                  code: "UNAVAILABLE",
-                  title: "Unavailable",
-                  detail: "通知暫時未能載入，請稍後再試。",
-                },
-                { status: 503 }
-              )
-            : envelope(EMPTY_MANAGEMENT_NOTIFICATIONS);
-        })
-      )
-    );
-  },
+      createManagementProgramHandlers({
+        notificationScenario: "empty-recoverable",
+      })
+    ),
 };
 
 export function getProgramsStoryScenario(
