@@ -303,6 +303,7 @@ describe(ProgramSettings, () => {
 
   test("keeps focused Schedule on an overview until a new-rule editor is opened", async () => {
     const user = userEvent.setup();
+    expect(COPY.programs.addRule).toBe("新增規則");
     render(
       <ProgramSettings
         program={recurringProgram}

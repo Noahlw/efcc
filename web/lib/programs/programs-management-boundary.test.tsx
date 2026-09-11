@@ -296,7 +296,9 @@ describe("Programs management boundary", () => {
       "/programs?mode=management&department=dept-1"
     );
     render(<ProgramsBoundary />);
-    await screen.findByRole("button", { name: /青年事工.*部門設定/u });
+    await screen.findByRole("button", {
+      name: COPY.programs.departmentSettings,
+    });
     const row = await screen.findByRole("link", { name: /查經小組/u });
     expect(row).toHaveAttribute(
       "href",

@@ -146,7 +146,7 @@ PLANNED -> IN_PROGRESS -> VERIFYING -> REVIEWING -> COMPLETE
 
 ## Active Task
 
-`NONE — R2A closeout prepared; awaiting commit verification`
+`NONE`
 
 ## Task Ledger
 
@@ -155,7 +155,7 @@ PLANNED -> IN_PROGRESS -> VERIFYING -> REVIEWING -> COMPLETE
 | R1 | [Navigation semantics](programs-route-fidelity-recovery/R1-navigation-semantics.md) | COMPLETE | `51baa5d28c2f73b690827f13f2af628933ce3b74` | `fix(programs): restore navigation semantics` | focused components + `test:programs:responsive` | Downstream query corrected; focused 49/49 and full 69 files / 1,020 tests pass; responsive matrix passes at `test-results/programs-responsive/20260911t073743813z`; expanded diff review is clean; append-only commit is ready |
 | R2 | [Truthful route fixtures](programs-route-fidelity-recovery/R2-truthful-route-fixtures.md) | COMPLETE | `8fb468803c03e791645b9b6c81b0c43ab824db0a` | `test(programs): make route fixtures truthful` | Story contracts + T11 | Closeout prepared after Steps 1–10; contract/catalog 23/23, Event component 33/33, Storybook 93/93, T11 99/99 across 9 viewports, typecheck, diff/format/source review all pass; verify the single matching commit subject after commit |
 | R2A | [Shared shell fidelity](programs-route-fidelity-recovery/R2A-shared-shell-fidelity.md) | COMPLETE | `1c92a346ffa3a42feab546d20d234220f0a266ac` | `fix(shell): match programs prototype navigation treatment` | focused shell + responsive + visual comparison | Closeout prepared: red regression reproduced; focused 76/76, shell responsive 92 passed/1 skipped, shell geometry 35/35, Programs responsive passed, full components 69 files/1,021 tests, typecheck, and 402x874/360x800 member+management screenshot/computed-style review all pass; verify one matching commit after Start SHA |
-| R3 | [Directory and copy fidelity](programs-route-fidelity-recovery/R3-directory-and-copy-fidelity.md) | PLANNED | — | `fix(programs): align directory and schedule copy` | focused components + Story contracts | Wait for R2 COMPLETE |
+| R3 | [Directory and copy fidelity](programs-route-fidelity-recovery/R3-directory-and-copy-fidelity.md) | COMPLETE | `a7ed416e639f706e07602d35ea26e85459b45323` | `fix(programs): align directory and schedule copy` | focused components + Story contracts | Focused 38/38, Storybook 93/93, typecheck, live 6006 Management Directory preview, and diff review green; unique append-only closeout commit is included; Active Task is `NONE` pending exact post-commit verification; no remote write authorized |
 | R4 | [Participant behavior Plays](programs-route-fidelity-recovery/R4-participant-behavior-plays.md) | PLANNED | — | `test(programs): exercise participant route seams` | Storybook + participant T11 slice | Wait for R3 COMPLETE |
 | R5 | [Schedule recovery Plays](programs-route-fidelity-recovery/R5-schedule-recovery-plays.md) | PLANNED | — | `test(programs): exercise schedule recovery seams` | focused Schedule components + Storybook/T11 | Wait for R4 COMPLETE |
 | R6 | [Settings and Notifications Plays](programs-route-fidelity-recovery/R6-settings-notifications-plays.md) | PLANNED | — | `test(programs): exercise settings and notification seams` | focused components + Storybook/T11 | Wait for R5 COMPLETE |

@@ -1112,7 +1112,7 @@ export const COPY = {
     monthDayLabel: "每月日子",
     startTime: "開始時間",
     endTime: "結束時間",
-    addRule: "新增時間表",
+    addRule: "新增規則",
     // EVT-02 (#252): recurring preview and generation.
     ruleLocation: "地點",
     ruleLocationPlaceholder: "輸入地點（可留空）",

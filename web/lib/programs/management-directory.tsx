@@ -173,6 +173,116 @@ const DepartmentSettingsLauncher = ({
     </ScreenRow>
   );
 };
+
+const DepartmentSettingsAction = ({
+  departments,
+  onOpenDepartment,
+  settingsOpen,
+}: {
+  departments: readonly Department[];
+  onOpenDepartment: (
+    department: Department,
+    trigger: HTMLButtonElement
+  ) => void;
+  settingsOpen: boolean;
+}) => {
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const triggerRef = useRef<HTMLButtonElement | null>(null);
+  const pickerRef = useRef<HTMLDivElement | null>(null);
+  const returnFocusPending = useRef(false);
+  const pickerId = "programs-management-department-settings-picker";
+
+  useEffect(() => {
+    if (pickerOpen) {
+      pickerRef.current?.focus();
+      return;
+    }
+    if (returnFocusPending.current) {
+      triggerRef.current?.focus();
+      returnFocusPending.current = false;
+    }
+  }, [pickerOpen]);
+
+  if (departments.length === 0) {
+    return null;
+  }
+
+  const closePicker = () => {
+    returnFocusPending.current = true;
+    setPickerOpen(false);
+  };
+
+  const openDepartment = (department: Department) => {
+    const trigger = triggerRef.current;
+    setPickerOpen(false);
+    if (trigger) {
+      onOpenDepartment(department, trigger);
+    }
+  };
+
+  return (
+    <div className="relative inline-block max-w-full">
+      <Button
+        aria-controls={pickerOpen ? pickerId : undefined}
+        aria-expanded={pickerOpen || settingsOpen}
+        aria-haspopup={departments.length > 1 ? "dialog" : undefined}
+        className="h-auto min-h-11 w-fit max-w-full whitespace-normal border-[var(--screen-line-strong)] bg-transparent px-3 py-2 text-left text-[var(--screen-ink)] hover:bg-[var(--screen-surface-soft)] hover:text-[var(--screen-ink)]"
+        type="button"
+        onClick={(event) => {
+          triggerRef.current = event.currentTarget;
+          if (departments.length === 1) {
+            onOpenDepartment(departments[0], event.currentTarget);
+          } else {
+            setPickerOpen(true);
+          }
+        }}
+      >
+        {COPY.programs.departmentSettings}
+      </Button>
+      {pickerOpen && (
+        <div
+          ref={pickerRef}
+          id={pickerId}
+          aria-label={COPY.programs.departmentSettings}
+          className="absolute top-[calc(100%+0.5rem)] right-0 z-20 grid min-w-56 max-w-[calc(100vw-2rem)] gap-3 border border-[var(--screen-line-strong)] bg-[var(--screen-surface)] p-3 text-left text-[var(--screen-ink)] shadow-lg"
+          role="dialog"
+          tabIndex={-1}
+          onKeyDown={(event) => {
+            if (event.key === "Escape") {
+              event.preventDefault();
+              closePicker();
+            }
+          }}
+        >
+          <strong className="wrap-anywhere text-sm font-bold">
+            {COPY.programs.departmentSettings}
+          </strong>
+          <div className="grid gap-1">
+            {departments.map((department) => (
+              <Button
+                key={department.department_id}
+                className="h-auto min-h-11 w-full justify-start whitespace-normal border-[var(--screen-line)] bg-transparent px-3 py-2 text-left text-[var(--screen-ink)] hover:bg-[var(--screen-surface-soft)] hover:text-[var(--screen-ink)]"
+                type="button"
+                variant="outline"
+                onClick={() => openDepartment(department)}
+              >
+                {department.name}
+              </Button>
+            ))}
+          </div>
+          <Button
+            className="h-auto min-h-11 w-fit whitespace-normal border-[var(--screen-line-strong)] bg-transparent px-3 py-2 text-[var(--screen-ink)] hover:bg-[var(--screen-surface-soft)] hover:text-[var(--screen-ink)]"
+            type="button"
+            variant="outline"
+            onClick={closePicker}
+          >
+            {COPY.programs.collapse}
+          </Button>
+        </div>
+      )}
+    </div>
+  );
+};
 export interface ManagementDirectoryProps {
   onOpenProgram: (programId: string, created?: boolean) => void;
   /** Optional Department context restored from a safe return URL. */
@@ -306,6 +416,35 @@ export const ManagementDirectory = ({
             (!departmentId || department.department_id === departmentId)
         )
       : [];
+  const [openDepartmentSettings, setOpenDepartmentSettings] =
+    useState<Department | null>(null);
+  const settingsTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const settingsReturnFocusPending = useRef(false);
+
+  useEffect(() => {
+    if (openDepartmentSettings !== null) {
+      document
+        .getElementById(
+          `${openDepartmentSettings.department_id}-settings-panel`
+        )
+        ?.focus();
+      return;
+    }
+    if (settingsReturnFocusPending.current) {
+      settingsTriggerRef.current?.focus();
+      settingsReturnFocusPending.current = false;
+    }
+  }, [openDepartmentSettings]);
+
+  const openSettings = (department: Department, trigger: HTMLButtonElement) => {
+    settingsTriggerRef.current = trigger;
+    setOpenDepartmentSettings(department);
+  };
+
+  const closeSettings = () => {
+    settingsReturnFocusPending.current = true;
+    setOpenDepartmentSettings(null);
+  };
   return (
     <div className="min-w-0 text-[var(--screen-ink)]">
       <ScreenHeader
@@ -364,20 +503,14 @@ export const ManagementDirectory = ({
       )}
 
       {state.kind === "ready" &&
-        scopedDepartments.length > 0 &&
+        openDepartmentSettings !== null &&
         !departmentOnly && (
-          <div className="mb-5 flex min-w-0 flex-wrap items-center gap-[var(--screen-utility-gap)]">
-            <span className="text-sm text-[var(--screen-muted)]">
-              {COPY.programs.managementScopeDepartment}
-            </span>
-            {scopedDepartments.map((department) => (
-              <DepartmentSettingsLauncher
-                key={department.department_id}
-                department={department}
-                compact
-                onOpenProgram={onOpenProgram}
-              />
-            ))}
+          <div className="mb-5 min-w-0">
+            <DepartmentSettingsPanel
+              department={openDepartmentSettings}
+              onClose={closeSettings}
+              onOpenProgram={onOpenProgram}
+            />
           </div>
         )}
 
@@ -464,7 +597,18 @@ export const ManagementDirectory = ({
             )}
           </div>
 
-          <ScreenSection title={COPY.programs.catalogSectionTitle}>
+          <ScreenSection
+            title={COPY.programs.catalogSectionTitle}
+            action={
+              !departmentOnly && scopedDepartments.length > 0 ? (
+                <DepartmentSettingsAction
+                  departments={scopedDepartments}
+                  onOpenDepartment={openSettings}
+                  settingsOpen={openDepartmentSettings !== null}
+                />
+              ) : undefined
+            }
+          >
             {filteredRows.length === 0 ? (
               <ScreenState
                 id="programs-management-directory-state"
