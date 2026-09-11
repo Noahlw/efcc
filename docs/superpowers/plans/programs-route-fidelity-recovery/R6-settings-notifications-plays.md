@@ -24,17 +24,17 @@
 
 ## Steps
 
-- [ ] **Step 1: Claim R6 and add the Play inventory regression.** Run the master preflight and record the start SHA. Require custom Plays for dirty Settings, conflict Settings, recoverable-empty Notifications, and unread Notifications; associate each with its exact behavior seam. Complete when current generic readiness Plays fail the inventory.
+- [x] **Step 1: Claim R6 and add the Play inventory regression.** Run the master preflight and record the start SHA. Require custom Plays for dirty Settings, conflict Settings, recoverable-empty Notifications, and unread Notifications; associate each with its exact behavior seam. Complete when current generic readiness Plays fail the inventory.
 
-- [ ] **Step 2: Add stateful Settings/Notifications fixture regressions.** Pin a fresh 409 conflict sequence, first-503-then-empty retry sequence, and unread-to-read sequence using existing endpoints and response types. Complete when factories reset between invocations and every mutation/read response has an authoritative subsequent projection.
+- [x] **Step 2: Add stateful Settings/Notifications fixture regressions.** Pin a fresh 409 conflict sequence, first-503-then-empty retry sequence, and unread-to-read sequence using existing endpoints and response types. Complete when factories reset between invocations and every mutation/read response has an authoritative subsequent projection.
 
-- [ ] **Step 3: Prove dirty and conflict Settings.** Add Plays that enter Course Data, edit a field, assert dirty/Back behavior, and separately submit into the 409 path while retaining the draft and exposing the existing recovery control/announcement. Complete when both flows prove behavior after interaction, not just initial headings.
+- [x] **Step 3: Prove dirty and conflict Settings.** Add Plays that enter Course Data, edit a field, assert dirty/Back behavior, and separately submit into the 409 path while retaining the draft and exposing the existing recovery control/announcement. Complete when both flows prove behavior after interaction, not just initial headings.
 
-- [ ] **Step 4: Prove Notifications retry and mark-read.** Add one Play for 503 -> Retry -> explicit empty, and one for dense unread -> activate/mark read -> decremented count/read styling. Assert no duplicate bell/resource appears on the full Notifications task. Complete when both server response sequences and visible outcomes are checked.
+- [x] **Step 4: Prove Notifications retry and mark-read.** Add one Play for 503 -> Retry -> explicit empty, and one for dense unread -> activate/mark read -> decremented count/read styling. Assert no duplicate bell/resource appears on the full Notifications task. Complete when both server response sequences and visible outcomes are checked.
 
 - [ ] **Step 5: Run Story and focused gates.** Run `fnm exec --using 22.18.0 pnpm --dir web test:t07:foundation`, `fnm exec --using 22.18.0 pnpm --dir web test:storybook`, `fnm exec --using 22.18.0 pnpm test:t11:storybook`, and `fnm exec --using 22.18.0 pnpm --dir web exec vitest run --config vitest.components.config.ts lib/programs/program-settings.test.tsx lib/programs/programs-notifications.test.tsx`. Complete when static inventory, all R6 Plays, focused components, and T11 pass.
 
-- [ ] **Step 6: Handle a production defect by disclosure.** If Step 5 exposes a production contract defect, create `R6A-settings-notifications-production-defect.md`, insert it after R6 in the master ledger, mark R6 `BLOCKED`, and stop. Complete when either production already satisfies the contract or the inserted packet owns one bounded component/test pair, red assertion, gate, and unique commit subject.
+- [x] **Step 6: Handle a production defect by disclosure.** If Step 5 exposes a production contract defect, create the bounded `R6A-settings-back-interception.md` child packet, insert it after R6 in the master ledger, mark R6 `BLOCKED`, and stop. Complete when either production already satisfies the contract or the inserted packet owns one bounded component/test pair, red assertion, gate, and unique commit subject.
 
 - [ ] **Step 7: Run type and one-resource checks.** Run `fnm exec --using 22.18.0 pnpm --dir web typecheck` and inspect the route composition to confirm the full Notifications task omits the compact trigger while other management screens own exactly one compact surface. Complete when typecheck passes and one-resource ownership is evidenced.
 
@@ -49,3 +49,27 @@ R6 is complete only when route-backed Plays prove dirty-state return, conflict r
 ## Checkpoint Log
 
 - 2026-09-11 plan authoring: R6 procedure created; no implementation attempted; prerequisite is R5 COMPLETE; next unchecked item is Step 1.
+
+### Checkpoint — 2026-09-11 19:36 HKT
+- Branch / HEAD: `codex/programs-screen-foundations/wave-3` / `f32f5082f1628c0ba7f74b10f14bd4d99cd1b03e`
+- Dirty paths: this packet and the master tracker (claim/update only)
+- Last completed checkbox: `none; R6 claim/preflight`
+- Last command / result: live local/remote/PR preflight — `PASS; local HEAD f32f5082, remote wave-3 9ad90d25, PR #607 OPEN on wave-2 base, worktree clean before claim, no remote write`
+- Active finding: R5 is COMPLETE and R6 is the only active packet; no Settings/Notifications implementation has started.
+- Next unchecked checkbox: `Step 1 — claim R6 and add the Play inventory regression`
+
+### Checkpoint — 2026-09-11 19:52 HKT
+- Branch / HEAD: `codex/programs-screen-foundations/wave-3` / `f32f5082f1628c0ba7f74b10f14bd4d99cd1b03e`
+- Dirty paths: master tracker, this packet, R6A packet, and the three R6 Story/fixture/contract files
+- Last completed checkbox: `Step 4 — prove Notifications retry and mark-read`
+- Last command / result: targeted R6 Storybook Plays, T07 contract, and Screen Foundations component test — `PASS; 4 R6 Plays, 18 contract tests, 9 Screen Foundations tests`; prior Chromium red recorded above
+- Active finding: The shared production `ScreenHeader` Back link now returns Settings to its hub through capture-phase interception; R6A owns the pending review/commit boundary.
+- Next unchecked checkbox: `R6 Step 5 — run the complete Story/focused gate after R6A closes`
+
+### Checkpoint — 2026-09-11 19:58 HKT
+- Branch / HEAD: `codex/programs-screen-foundations/wave-3` / `f32f5082f1628c0ba7f74b10f14bd4d99cd1b03e`
+- Dirty paths: master tracker, this packet, R6A packet, the three R6 Story/fixture/contract files, and the two Screen Foundations production/test files
+- Last completed checkbox: `Step 4 — prove Notifications retry and mark-read`
+- Last command / result: R6A bounded diff review plus `git diff --check` — `PASS; child repair is scoped and R6A closeout is ready for its unique commit`
+- Active finding: R6A resolved the shared Back seam and is ready to commit; R6 resumes at its complete Story/focused gate with its existing Start SHA `f32f5082`.
+- Next unchecked checkbox: `Step 5 — run Story and focused gates`

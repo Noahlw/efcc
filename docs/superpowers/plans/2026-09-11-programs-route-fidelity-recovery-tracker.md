@@ -39,6 +39,7 @@
 | `docs/superpowers/plans/programs-route-fidelity-recovery/R4-participant-behavior-plays.md` | Participant, mode-switch, Event gate, Back, and Department Settings behavior evidence |
 | `docs/superpowers/plans/programs-route-fidelity-recovery/R5-schedule-recovery-plays.md` | Events-to-Schedule and focused/stale/partial/resume behavior evidence |
 | `docs/superpowers/plans/programs-route-fidelity-recovery/R6-settings-notifications-plays.md` | Settings dirty/conflict and Notifications retry/mark-read behavior evidence |
+| `docs/superpowers/plans/programs-route-fidelity-recovery/R6A-settings-back-interception.md` | Bounded production repair for focused Settings Back interception through the shared ScreenHeader |
 | `docs/superpowers/plans/programs-route-fidelity-recovery/R7-visual-evidence-harness.md` | Deterministic actual/frozen capture, geometry manifest, and contact-sheet harness |
 | `docs/superpowers/plans/programs-route-fidelity-recovery/R8-fixed-point-qualification.md` | Full gates, durable visual evidence, base reproduction, fixed-point review, and QA truth |
 
@@ -146,7 +147,7 @@ PLANNED -> IN_PROGRESS -> VERIFYING -> REVIEWING -> COMPLETE
 
 ## Active Task
 
-`NONE`
+`R6`
 
 ## Task Ledger
 
@@ -158,7 +159,8 @@ PLANNED -> IN_PROGRESS -> VERIFYING -> REVIEWING -> COMPLETE
 | R3 | [Directory and copy fidelity](programs-route-fidelity-recovery/R3-directory-and-copy-fidelity.md) | COMPLETE | `a7ed416e639f706e07602d35ea26e85459b45323` | `fix(programs): align directory and schedule copy` | focused components + Story contracts | Post-commit verified: exactly one matching subject at `1529e5f8d51c56c9e2c20aebfe0a3c99f97cb8c3`; full hook passed typecheck, Storybook scope, governance, Programs gates, root/worker suites, and 69 component files / 1,026 tests; worktree clean; remote and PR #607 unchanged; no remote write authorized |
 | R4 | [Participant behavior Plays](programs-route-fidelity-recovery/R4-participant-behavior-plays.md) | COMPLETE | `1529e5f8d51c56c9e2c20aebfe0a3c99f97cb8c3` | `test(programs): exercise participant route seams` | Storybook + participant T11 slice | Committed at `b0b6356b2ba59b599b9844ee016653f7d2c08ad0`; exactly one matching subject after Start SHA; stateful factory regressions, named route Plays, Storybook `94/94`, foundation `59/59`, focused components `51/51`, T11 `108/108` across 9 W7 viewports, full hook, typechecks, formatter, diff check, and review all passed; remote unchanged |
 | R5 | [Schedule recovery Plays](programs-route-fidelity-recovery/R5-schedule-recovery-plays.md) | COMPLETE | `b0b6356b2ba59b599b9844ee016653f7d2c08ad0` | `test(programs): exercise schedule recovery seams` | focused Schedule components + Storybook/T11 | Committed at `90213ebc4e8fbc0799728b3e580591f99f113bde`; exactly one matching subject after Start SHA; stateful fixture isolation, named Events/Schedule Plays, stale re-preview, partial resume, focused components `23/23`, foundation `61/61`, Storybook `94/94`, T11 `117/117` across 9 W7 viewports, root/web typecheck, full pre-commit verification, formatter, diff check, and review all passed; remote and PR #607 unchanged |
-| R6 | [Settings and Notifications Plays](programs-route-fidelity-recovery/R6-settings-notifications-plays.md) | PLANNED | — | `test(programs): exercise settings and notification seams` | focused components + Storybook/T11 | Wait for R5 COMPLETE |
+| R6 | [Settings and Notifications Plays](programs-route-fidelity-recovery/R6-settings-notifications-plays.md) | IN_PROGRESS | `f32f5082f1628c0ba7f74b10f14bd4d99cd1b03e` | `test(programs): exercise settings and notification seams` | focused components + Storybook/T11 | R6A completed the shared ScreenHeader Back repair and reactivated this packet; next action is Step 5 full Story/focused gates, followed by typecheck, review, and the unique R6 commit |
+| R6A | [Settings Back interception](programs-route-fidelity-recovery/R6A-settings-back-interception.md) | COMPLETE | `f32f5082f1628c0ba7f74b10f14bd4d99cd1b03e` | `fix(programs): restore settings back interception` | focused ScreenHeader regression + R6 Settings Plays | Focused Screen Foundations `9/9`, Settings Dirty/Conflict `2/2`, Notifications Unread/Empty `2/2`, and T07 contract `18/18` pass; bounded diff review and `git diff --check` pass; child commit identity is verified from this Start SHA and R6 is reactivated for the remaining full gates |
 | R7 | [Visual evidence harness](programs-route-fidelity-recovery/R7-visual-evidence-harness.md) | PLANNED | — | `test(programs): add visual fidelity evidence` | two deterministic harness runs + T11/typecheck | Wait for R6 COMPLETE |
 | R8 | [Fixed-point qualification](programs-route-fidelity-recovery/R8-fixed-point-qualification.md) | PLANNED | — | `test(programs): requalify route fidelity recovery` | every machine-candidate gate + zero-actionable review | Wait for R7 COMPLETE |
 

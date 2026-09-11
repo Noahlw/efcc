@@ -1,5 +1,7 @@
 import { cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import type NextLink from "next/link";
+import type { ComponentProps } from "react";
 import { afterEach, describe, expect, test, vi } from "vitest";
 
 import {
@@ -25,6 +27,30 @@ import {
   ScreenTaskGrid,
   ScreenTaskSurface,
 } from "@/lib/screen-foundations";
+
+vi.mock(import("next/link"), () => ({
+  default: (({
+    children,
+    onClick,
+    onClickCapture,
+    replace,
+    ...props
+  }: ComponentProps<"a"> & {
+    replace?: boolean;
+  }) => (
+    <a
+      data-link-replace={replace ? "true" : "false"}
+      onClickCapture={onClickCapture}
+      onClick={(event) => {
+        event.preventDefault();
+        onClick?.(event);
+      }}
+      {...props}
+    >
+      {children}
+    </a>
+  )) as unknown as typeof NextLink,
+}));
 
 describe("Screen Foundations public contracts", () => {
   afterEach(() => cleanup());
@@ -85,6 +111,31 @@ describe("Screen Foundations public contracts", () => {
         hitTarget: true,
       },
     });
+  });
+
+  test("runs caller Back interception before delegated Link navigation", async () => {
+    const user = userEvent.setup();
+    const onBack = vi.fn<(event: React.MouseEvent<HTMLAnchorElement>) => void>(
+      (event) => event.preventDefault()
+    );
+    render(
+      <ScreenHeader
+        backHref="/programs?mode=management&task=settings"
+        backLabel="返回設定"
+        backReplace
+        onBack={onBack}
+        title="基本資料"
+      />
+    );
+
+    const back = screen.getByRole("link", { name: "返回設定" });
+    await user.click(back);
+
+    expect(onBack).toHaveBeenCalledOnce();
+    expect(back).toHaveAttribute(
+      "href",
+      "/programs?mode=management&task=settings"
+    );
   });
 
   test("keeps collection and settings rows content-responsive with semantic state", () => {

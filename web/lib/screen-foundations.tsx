@@ -211,7 +211,8 @@ export const ScreenHeader = ({
           <ScreenIconButton aria-label={backLabel} asChild title={backLabel}>
             <Link
               href={backHref}
-              onClick={handleBackClick}
+              onClickCapture={onBack ? handleBackClick : undefined}
+              onClick={onBack ? undefined : handleBackClick}
               replace={backReplace}
             >
               <ChevronLeft aria-hidden="true" />
