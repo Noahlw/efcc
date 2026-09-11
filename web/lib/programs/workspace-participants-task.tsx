@@ -757,7 +757,10 @@ export const ParticipantsTask = () => {
       )}
       {queue !== null && (
         <>
-          <ScreenTabs aria-label={COPY.programs.workspaceTaskParticipants}>
+          <ScreenTabs
+            aria-label={COPY.programs.workspaceTaskParticipants}
+            role="tablist"
+          >
             {(
               [
                 ["pending", COPY.programs.tabsPending, queue.counts.pending],

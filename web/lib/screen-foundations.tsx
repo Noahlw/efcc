@@ -736,7 +736,6 @@ export const ScreenTabs = ({
 }: React.ComponentPropsWithoutRef<"nav">) => (
   <nav
     {...props}
-    role="tablist"
     className={cn(
       "flex min-h-[var(--screen-touch-target)] min-w-0 items-stretch overflow-x-auto border-b border-[var(--screen-line)] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden",
       className
@@ -773,17 +772,18 @@ export const ScreenTab = ({
   className,
   selected = false,
   type = "button",
-  role = "tab",
+  role,
   "aria-selected": ariaSelected,
   ...props
 }: ScreenTabProps) => {
   const Comp = asChild ? Slot.Root : "button";
   const isSelected = selected ?? false;
+  const isTab = role === "tab";
   return (
     <Comp
       {...props}
-      aria-selected={ariaSelected ?? isSelected}
-      aria-current={isSelected ? "page" : undefined}
+      aria-selected={isTab ? (ariaSelected ?? isSelected) : undefined}
+      aria-current={!isTab && isSelected ? "page" : undefined}
       className={cn(screenTabVariants({ selected: isSelected }), className)}
       data-screen-tab
       data-selected={isSelected}

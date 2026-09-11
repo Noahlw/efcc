@@ -365,31 +365,31 @@ describe(ProgramWorkspace, () => {
 
     // Sibling navigation stays persistent on the overview and exposes only
     // server-authorized workspace destinations.
-    const workspaceNav = screen.getByRole("tablist", {
+    const workspaceNav = screen.getByRole("navigation", {
       name: COPY.programs.workspaceTaskLabel,
     });
     expect(
-      within(workspaceNav).getByRole("tab", {
+      within(workspaceNav).getByRole("link", {
         name: COPY.programs.workspaceOverviewTab,
       })
     ).toHaveAttribute("aria-current", "page");
     expect(
-      within(workspaceNav).getByRole("tab", {
+      within(workspaceNav).getByRole("link", {
         name: COPY.programs.workspaceTaskEvents,
       })
     ).toBeInTheDocument();
     expect(
-      within(workspaceNav).getByRole("tab", {
+      within(workspaceNav).getByRole("link", {
         name: COPY.programs.workspaceTaskParticipants,
       })
     ).toBeInTheDocument();
     expect(
-      within(workspaceNav).getByRole("tab", {
+      within(workspaceNav).getByRole("link", {
         name: COPY.programs.workspaceSettingsTab,
       })
     ).toBeInTheDocument();
     expect(
-      within(workspaceNav).queryByRole("tab", {
+      within(workspaceNav).queryByRole("link", {
         name: COPY.programs.workspaceTaskNotifications,
       })
     ).not.toBeInTheDocument();
@@ -462,7 +462,7 @@ describe(ProgramWorkspace, () => {
       })
     ).not.toBeInTheDocument();
     expect(
-      screen.getByRole("tab", { name: COPY.programs.workspaceSettingsTab })
+      screen.getByRole("link", { name: COPY.programs.workspaceSettingsTab })
     ).toBeInTheDocument();
   });
 
@@ -509,7 +509,7 @@ describe(ProgramWorkspace, () => {
       screen.getByRole("button", { name: COPY.programs.createMeeting })
     ).toBeInTheDocument();
 
-    const participantsLink = screen.getByRole("tab", {
+    const participantsLink = screen.getByRole("link", {
       name: COPY.programs.workspaceTaskParticipants,
     });
     expect(participantsLink).toHaveAttribute(

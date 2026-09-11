@@ -1,4 +1,4 @@
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, test, vi } from "vitest";
 
@@ -184,9 +184,7 @@ describe("Screen Foundations public contracts", () => {
     });
   });
 
-  test("exposes selected tabs and filters as keyboard-operable controls", async () => {
-    const user = userEvent.setup();
-    const onFilterChange = vi.fn<(filter: "all" | "joined") => void>();
+  test("separates route navigation from explicit local tabs", () => {
     render(
       <div>
         <ScreenTabs aria-label="課程工作區">
@@ -197,6 +195,37 @@ describe("Screen Foundations public contracts", () => {
             <a href="/programs/one/events">聚會</a>
           </ScreenTab>
         </ScreenTabs>
+        <ScreenTabs aria-label="課程分頁" role="tablist">
+          <ScreenTab role="tab" selected>
+            待審批
+          </ScreenTab>
+          <ScreenTab role="tab">已參加</ScreenTab>
+        </ScreenTabs>
+      </div>
+    );
+
+    const navigation = screen.getByRole("navigation", { name: "課程工作區" });
+    const overview = within(navigation).getByRole("link", { name: "概覽" });
+    expect(overview).toHaveAttribute("aria-current", "page");
+    expect(overview).not.toHaveAttribute("aria-selected");
+    expect(
+      within(navigation).queryByRole("tab", { name: "概覽" })
+    ).not.toBeInTheDocument();
+
+    const localTabs = screen.getByRole("tablist", { name: "課程分頁" });
+    expect(
+      within(localTabs).getByRole("tab", { name: "待審批" })
+    ).toHaveAttribute("aria-selected", "true");
+    expect(
+      within(localTabs).getByRole("tab", { name: "待審批" })
+    ).not.toHaveAttribute("aria-current");
+  });
+
+  test("keeps filters as keyboard-operable controls", async () => {
+    const user = userEvent.setup();
+    const onFilterChange = vi.fn<(filter: "all" | "joined") => void>();
+    render(
+      <div>
         <ScreenFilters aria-label="課程篩選">
           <ScreenFilterChip onClick={() => onFilterChange("all")} selected>
             全部
@@ -208,14 +237,6 @@ describe("Screen Foundations public contracts", () => {
       </div>
     );
 
-    expect(screen.getByRole("tab", { name: "概覽" })).toHaveAttribute(
-      "data-selected",
-      "true"
-    );
-    expect(screen.getByRole("tab", { name: "概覽" })).toHaveAttribute(
-      "aria-current",
-      "page"
-    );
     expect(screen.getByRole("button", { name: "全部" })).toHaveAttribute(
       "aria-pressed",
       "true"
