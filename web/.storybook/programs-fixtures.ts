@@ -21,6 +21,7 @@ import type {
   ProgramEvent,
   ProgramSummary,
   PreviewResult,
+  ScheduleException,
   ScheduleRule,
 } from "@/lib/programs/program-api";
 
@@ -377,6 +378,12 @@ const MANAGEMENT_EVENTS: ProgramEvent[] = [
   CANCELLED_MANAGEMENT_EVENT,
 ];
 
+const MIXED_MANAGEMENT_EVENTS: ProgramEvent[] = [
+  MANUAL_MANAGEMENT_EVENT,
+  CANCELLED_MANAGEMENT_EVENT,
+  MANAGEMENT_EVENT,
+];
+
 const MANAGEMENT_DIRECTORY: ManagementDirectory = {
   departments: DEPARTMENTS,
   programs: PROGRAMS,
@@ -560,6 +567,18 @@ const SCHEDULE_PREVIEW: PreviewResult = {
   ],
 };
 
+const SCHEDULE_EXCEPTIONS: ScheduleException[] = [
+  {
+    exception_id: "t07-3-exception-cancel",
+    rule_id: SCHEDULE_RULE.rule_id,
+    override_date: "2026-09-26",
+    action: "CANCEL",
+    new_start_time: null,
+    new_end_time: null,
+    created_at: "2026-09-04T00:00:00.000Z",
+  },
+];
+
 const PENDING_PARTICIPANT_DETAIL: ParticipantProgramDetail = {
   ...PARTICIPANT_DETAIL,
   enrollment: {
@@ -706,7 +725,88 @@ const createParticipantProgramHandlers = (
   ),
 ];
 
-const createManagementProgramHandlers = (): readonly RequestHandler[] => [
+type ScheduleFixtureScenario = "default" | "stale" | "partial-resume";
+
+const previewWithPlan = (planId: string): PreviewResult => ({
+  ...SCHEDULE_PREVIEW,
+  plan: {
+    ...SCHEDULE_PREVIEW.plan,
+    plan_id: planId,
+    plan_hash: `${planId}-hash`,
+  },
+  occurrences: SCHEDULE_PREVIEW.occurrences.map((occurrence) => ({
+    ...occurrence,
+    plan_id: planId,
+  })),
+});
+
+const createScheduleHandlers = (
+  scenario: ScheduleFixtureScenario = "default"
+): readonly RequestHandler[] => {
+  let previewCount = 0;
+  let currentPlan = SCHEDULE_PREVIEW;
+  let generateCount = 0;
+
+  return [
+    http.post(storyApi("/api/v1/programs/:programId/events/preview"), () => {
+      previewCount += 1;
+      currentPlan =
+        scenario === "stale"
+          ? previewWithPlan(
+              previewCount === 1 ? "t07-3-stale-plan" : "t07-3-fresh-plan"
+            )
+          : SCHEDULE_PREVIEW;
+      return envelope(currentPlan);
+    }),
+    http.post(storyApi("/api/v1/programs/:programId/events/generate"), () => {
+      generateCount += 1;
+      if (scenario === "stale" && previewCount < 2) {
+        return HttpResponse.json(
+          {
+            status: 409,
+            code: "STALE_PLAN",
+            title: "Stale plan",
+            detail: "排程已有更新，請先重新預覽。",
+          },
+          { status: 409 }
+        );
+      }
+      if (scenario === "partial-resume" && generateCount === 1) {
+        return envelope({
+          generated: {
+            run_id: "t07-3-partial-run",
+            plan_id: currentPlan.plan.plan_id,
+            status: "partial" as const,
+            created: 1,
+            skipped: 0,
+            failed: 1,
+            resumed: false,
+          },
+        });
+      }
+      return envelope({
+        generated: {
+          run_id:
+            scenario === "partial-resume" ? "t07-3-partial-run" : "t07-3-run",
+          plan_id: currentPlan.plan.plan_id,
+          status: "completed" as const,
+          created: scenario === "partial-resume" ? 0 : 2,
+          skipped: scenario === "partial-resume" ? 1 : 0,
+          failed: 0,
+          resumed: scenario === "partial-resume",
+        },
+      });
+    }),
+  ];
+};
+
+const createManagementProgramHandlers = ({
+  events = MANAGEMENT_EVENTS,
+  scheduleScenario = "default",
+}: {
+  events?: readonly ProgramEvent[];
+  scheduleScenario?: ScheduleFixtureScenario;
+} = {}): readonly RequestHandler[] => [
   authMeHandler,
   http.get("/api/v1/programs/access", () =>
     envelope({
@@ -749,9 +849,7 @@ const createManagementProgramHandlers = (): readonly RequestHandler[] => [
       cockpit: MANAGEMENT_COCKPIT,
     })
   ),
-  http.get("/api/v1/programs/:programId/events", () =>
-    envelope({ events: MANAGEMENT_EVENTS })
-  ),
+  http.get("/api/v1/programs/:programId/events", () => envelope({ events })),
   http.get("/api/v1/programs/:programId/events/:eventId", () =>
     envelope(EVENT_DETAIL)
   ),
@@ -772,24 +870,9 @@ const createManagementProgramHandlers = (): readonly RequestHandler[] => [
   ),
   http.get(
     "/api/v1/programs/:programId/schedule-rules/:ruleId/exceptions",
-    () => envelope({ exceptions: [] })
+    () => envelope({ exceptions: SCHEDULE_EXCEPTIONS })
   ),
-  http.post("/api/v1/programs/:programId/events/preview", () =>
-    envelope(SCHEDULE_PREVIEW)
-  ),
-  http.post("/api/v1/programs/:programId/events/generate", () =>
-    envelope({
-      generated: {
-        run_id: "t07-3-run",
-        plan_id: SCHEDULE_PREVIEW.plan.plan_id,
-        status: "completed" as const,
-        created: 2,
-        skipped: 0,
-        failed: 0,
-        resumed: false,
-      },
-    })
-  ),
+  ...createScheduleHandlers(scheduleScenario),
 ];
 
 const withScenarioHandlers = (
@@ -972,34 +1055,6 @@ const conflictProgramHandler = () =>
     )
   );
 
-const stalePlanHandler = () =>
-  http.post("/api/v1/programs/:programId/events/generate", () =>
-    HttpResponse.json(
-      {
-        status: 409,
-        code: "STALE_PLAN",
-        title: "Stale plan",
-        detail: "排程已有更新，請先重新預覽。",
-      },
-      { status: 409 }
-    )
-  );
-
-const partialGenerateHandler = () =>
-  http.post("/api/v1/programs/:programId/events/generate", () =>
-    envelope({
-      generated: {
-        run_id: "t07-3-partial-run",
-        plan_id: SCHEDULE_PREVIEW.plan.plan_id,
-        status: "partial" as const,
-        created: 1,
-        skipped: 0,
-        failed: 1,
-        resumed: true,
-      },
-    })
-  );
-
 export const programsParticipantHandlers = createParticipantProgramHandlers();
 export const programsManagementHandlers = createManagementProgramHandlers();
 
@@ -1125,7 +1180,7 @@ const PROGRAMS_STORY_SCENARIO_FACTORIES: Readonly<
   "workspace-events-mixed": () =>
     storyScenario(
       { mode: "management", program: PROGRAM_ID, task: "events" },
-      createManagementProgramHandlers()
+      createManagementProgramHandlers({ events: MIXED_MANAGEMENT_EVENTS })
     ),
   "workspace-participants-pending": () =>
     storyScenario(
@@ -1153,18 +1208,12 @@ const PROGRAMS_STORY_SCENARIO_FACTORIES: Readonly<
   "workspace-schedule-stale": () =>
     storyScenario(
       { mode: "management", program: PROGRAM_ID, task: "schedule" },
-      withScenarioHandlers(
-        createManagementProgramHandlers(),
-        stalePlanHandler()
-      )
+      createManagementProgramHandlers({ scheduleScenario: "stale" })
     ),
   "workspace-schedule-partial-resume": () =>
     storyScenario(
       { mode: "management", program: PROGRAM_ID, task: "schedule" },
-      withScenarioHandlers(
-        createManagementProgramHandlers(),
-        partialGenerateHandler()
-      )
+      createManagementProgramHandlers({ scheduleScenario: "partial-resume" })
     ),
   "notifications-unread": () =>
     storyScenario(

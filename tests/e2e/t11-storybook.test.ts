@@ -65,6 +65,13 @@ const PROGRAMS_R4_MATERIAL_STORIES = [
   "t07-3-programs-material-states--management-directory-mixed",
 ] as const;
 
+const PROGRAMS_R5_MATERIAL_STORIES = [
+  "t07-3-programs-material-states--workspace-events-mixed",
+  "t07-3-programs-material-states--workspace-schedule-focused",
+  "t07-3-programs-material-states--workspace-schedule-stale",
+  "t07-3-programs-material-states--workspace-schedule-partial-resume",
+] as const;
+
 async function expectShellFrame(page: Page) {
   const nav = page.locator("nav#main-navigation");
   const main = page.locator("main#shell-content");
@@ -381,6 +388,70 @@ test("Programs R4 material Stories execute route-backed behavior Plays", async (
     name: COPY.programs.departmentSettings,
   });
   await expect(settings).toBeFocused();
+});
+
+test("Programs R5 material Stories execute Schedule recovery Plays", async ({
+  page,
+}) => {
+  for (const storyId of PROGRAMS_R5_MATERIAL_STORIES) {
+    await page.goto(story(storyId));
+    await expectShellFrame(page);
+    await expect(page.locator('[aria-busy="true"]')).toHaveCount(0);
+  }
+
+  await page.goto(
+    story("t07-3-programs-material-states--workspace-events-mixed")
+  );
+  await expect(
+    page.getByRole("link", { name: COPY.programs.eventDetailOpen })
+  ).toHaveCount(3);
+  await expect(
+    page.getByRole("link", {
+      name: new RegExp(COPY.programs.settingsScheduleEventsLink, "u"),
+    })
+  ).toHaveAttribute(
+    "href",
+    "/programs?mode=management&program=t07-3-program&task=schedule"
+  );
+
+  await page.goto(
+    story("t07-3-programs-material-states--workspace-schedule-focused")
+  );
+  await expect(
+    page.getByRole("heading", { name: COPY.programs.scheduleRulesTitle })
+  ).toBeVisible();
+  await expect(page.getByText("2026-09-26", { exact: false })).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: COPY.programs.previewEvents })
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: COPY.programs.addRule })
+  ).toBeVisible();
+
+  await page.goto(
+    story("t07-3-programs-material-states--workspace-schedule-stale")
+  );
+  await expect(
+    page.getByText(
+      COPY.programs.generated
+        .replace("{created}", "2")
+        .replace("{skipped}", "0"),
+      { exact: true }
+    )
+  ).toBeVisible();
+
+  await page.goto(
+    story("t07-3-programs-material-states--workspace-schedule-partial-resume")
+  );
+  const partialCopy = COPY.programs.generatedPartial
+    .replace("{created}", "1")
+    .replace("{skipped}", "0")
+    .replace("{failed}", "1");
+  const resumedCopy = COPY.programs.generatedResumed
+    .replace("{created}", "0")
+    .replace("{skipped}", "1");
+  await expect(page.getByText(resumedCopy, { exact: true })).toBeVisible();
+  await expect(page.getByText(partialCopy, { exact: true })).toHaveCount(0);
 });
 
 test("all retained Programs baselines use one settled production route composition", async ({

@@ -67,6 +67,10 @@ const REQUIRED_BEHAVIOR_PLAY_EXPORTS = [
   "ParticipantEventDetailOpen",
   "ParticipantEventDetailIneligible",
   "ManagementDirectoryMixed",
+  "WorkspaceEventsMixed",
+  "WorkspaceScheduleFocused",
+  "WorkspaceScheduleStale",
+  "WorkspaceSchedulePartialResume",
 ] as const;
 
 const PARTICIPANT_MUTATION_SCENARIOS = [
@@ -104,6 +108,11 @@ const PARTICIPANT_MUTATION_SCENARIOS = [
   },
 ] as const;
 
+const SCHEDULE_STATEFUL_SCENARIOS = [
+  "workspace-schedule-stale",
+  "workspace-schedule-partial-resume",
+] as const;
+
 const participantDetail = async (
   programId: string
 ): Promise<ParticipantProgramDetail> => {
@@ -122,6 +131,12 @@ const participantStatuses = (detail: ParticipantProgramDetail) => [
   ...(detail.enrollment?.enrollments.map((enrollment) => enrollment.status) ??
     []),
 ];
+
+const postSchedule = (path: string) =>
+  fetch(`http://localhost/api/v1/programs/${path}`, {
+    method: "POST",
+    body: JSON.stringify({ horizon_days: 90 }),
+  });
 
 test("does not accept the shared AppShell main landmark as a settled Programs screen", async () => {
   document.body.innerHTML =
@@ -244,6 +259,79 @@ test.each(PARTICIPANT_MUTATION_SCENARIOS)(
     expect(participantStatuses(reset)).not.toContain(nextStatus);
   }
 );
+
+test("resets stale Schedule preview/generate state per factory invocation", async () => {
+  const scenarioName = SCHEDULE_STATEFUL_SCENARIOS[0];
+  const scenario = getProgramsStoryScenario(scenarioName);
+  storyServer.use(...scenario.handlers);
+
+  const firstPreview = await postSchedule("t07-3-program/events/preview");
+  expect(firstPreview.status).toBe(200);
+  const firstPreviewBody = (await firstPreview.json()) as {
+    data: { plan: { plan_id: string } };
+  };
+  expect(firstPreviewBody.data.plan.plan_id).toBe("t07-3-stale-plan");
+
+  const staleGenerate = await postSchedule("t07-3-program/events/generate");
+  expect(staleGenerate.status).toBe(409);
+  expect((await staleGenerate.json()) as { code: string }).toMatchObject({
+    code: "STALE_PLAN",
+  });
+
+  const freshPreview = await postSchedule("t07-3-program/events/preview");
+  const freshPreviewBody = (await freshPreview.json()) as {
+    data: { plan: { plan_id: string } };
+  };
+  expect(freshPreviewBody.data.plan.plan_id).toBe("t07-3-fresh-plan");
+  const completedGenerate = await postSchedule("t07-3-program/events/generate");
+  expect(completedGenerate.status).toBe(200);
+  expect(
+    (await completedGenerate.json()) as {
+      data: { generated: { status: string } };
+    }
+  ).toMatchObject({ data: { generated: { status: "completed" } } });
+
+  const freshScenario = getProgramsStoryScenario(scenarioName);
+  storyServer.resetHandlers(...freshScenario.handlers);
+  const resetPreview = await postSchedule("t07-3-program/events/preview");
+  expect(
+    ((await resetPreview.json()) as { data: { plan: { plan_id: string } } })
+      .data.plan.plan_id
+  ).toBe("t07-3-stale-plan");
+  expect((await postSchedule("t07-3-program/events/generate")).status).toBe(
+    409
+  );
+});
+
+test("resets partial Schedule resume state per factory invocation", async () => {
+  const scenarioName = SCHEDULE_STATEFUL_SCENARIOS[1];
+  const scenario = getProgramsStoryScenario(scenarioName);
+  storyServer.use(...scenario.handlers);
+
+  await expect(
+    postSchedule("t07-3-program/events/preview")
+  ).resolves.toHaveProperty("status", 200);
+  const partialGenerate = await postSchedule("t07-3-program/events/generate");
+  expect(partialGenerate.status).toBe(200);
+  expect(await partialGenerate.json()).toMatchObject({
+    data: { generated: { status: "partial", resumed: false } },
+  });
+  const resumedGenerate = await postSchedule("t07-3-program/events/generate");
+  expect(resumedGenerate.status).toBe(200);
+  expect(await resumedGenerate.json()).toMatchObject({
+    data: { generated: { status: "completed", resumed: true } },
+  });
+
+  const freshScenario = getProgramsStoryScenario(scenarioName);
+  storyServer.resetHandlers(...freshScenario.handlers);
+  await postSchedule("t07-3-program/events/preview");
+  const resetPartialGenerate = await postSchedule(
+    "t07-3-program/events/generate"
+  );
+  expect(await resetPartialGenerate.json()).toMatchObject({
+    data: { generated: { status: "partial", resumed: false } },
+  });
+});
 
 test("keeps the scenario factory free of complexity suppression", () => {
   const source = readFileSync(

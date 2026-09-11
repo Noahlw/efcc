@@ -24,12 +24,12 @@ export default meta;
 
 type Story = StoryObj<typeof meta>;
 
-type StorybookMswContext = {
+interface StorybookMswContext {
   msw?: {
     resetHandlers: () => void;
     use: (...handlers: RequestHandler[]) => void;
   };
-};
+}
 
 const readinessFor = (name: ProgramsMaterialScenarioName) => {
   if (name === "participant-directory-member") {
@@ -413,6 +413,159 @@ const managementDirectoryMixedPlay: Story["play"] = async ({
   await expect(trigger).toHaveFocus();
 };
 
+const workspaceEventsMixedPlay: Story["play"] = async ({ canvasElement }) => {
+  await assertProgramsScreen(
+    canvasElement,
+    readinessFor("workspace-events-mixed")
+  );
+  const canvas = within(canvasElement);
+  await expect(
+    canvas.getAllByRole("link", { name: COPY.programs.eventDetailOpen })
+  ).toHaveLength(3);
+  const scheduleLink = canvas.getByRole("link", {
+    name: new RegExp(COPY.programs.settingsScheduleEventsLink, "u"),
+  });
+  await clickAndCaptureHref(
+    scheduleLink,
+    "/programs?mode=management&program=t07-3-program&task=schedule"
+  );
+};
+
+const workspaceScheduleFocusedPlay: Story["play"] = async ({
+  canvasElement,
+}) => {
+  await assertProgramsScreen(
+    canvasElement,
+    readinessFor("workspace-schedule-focused")
+  );
+  const canvas = within(canvasElement);
+  await expect(
+    canvas.getByRole("heading", { name: COPY.programs.scheduleRulesTitle })
+  ).toBeVisible();
+  await expect(
+    canvas.findByText("2026-09-26", { exact: false })
+  ).resolves.toBeVisible();
+  await expect(
+    canvas.getByRole("button", { name: COPY.programs.previewEvents })
+  ).toBeVisible();
+
+  await userEvent.click(
+    canvas.getByRole("button", { name: COPY.programs.addRule })
+  );
+  await expect(
+    canvas.getByRole("heading", { name: COPY.programs.addRule })
+  ).toBeVisible();
+  await expect(
+    canvas.queryByRole("heading", { name: COPY.programs.scheduleRulesTitle })
+  ).toBeNull();
+  await expect(
+    canvas.queryByRole("button", { name: COPY.programs.previewEvents })
+  ).toBeNull();
+
+  const back = canvas.getByRole("link", { name: COPY.programs.backToOverview });
+  await expect(back).toHaveAttribute(
+    "href",
+    "/programs?mode=management&program=t07-3-program&task=schedule"
+  );
+  await userEvent.click(
+    canvas.getByRole("button", { name: COPY.programs.settingsRuleCancel })
+  );
+  await expect(
+    canvas.getByRole("heading", { name: COPY.programs.scheduleRulesTitle })
+  ).toBeVisible();
+  await expect(
+    canvas.getByRole("button", { name: COPY.programs.addRule })
+  ).toBeVisible();
+};
+
+const workspaceScheduleStalePlay: Story["play"] = async ({ canvasElement }) => {
+  await assertProgramsScreen(
+    canvasElement,
+    readinessFor("workspace-schedule-stale")
+  );
+  const canvas = within(canvasElement);
+
+  await userEvent.click(
+    canvas.getByRole("button", { name: COPY.programs.previewEvents })
+  );
+  await expect(
+    canvas.findByRole("heading", { name: COPY.programs.schedulePreviewTitle })
+  ).resolves.toBeVisible();
+
+  await userEvent.click(
+    canvas.getByRole("button", { name: COPY.programs.generateEvents })
+  );
+  await expect(
+    canvas.findByText(COPY.programs.previewChanged, { exact: true })
+  ).resolves.toBeVisible();
+  await expect(
+    canvas.queryByRole("button", { name: COPY.programs.generateEvents })
+  ).toBeNull();
+
+  await userEvent.click(
+    canvas.getByRole("button", { name: COPY.programs.previewEvents })
+  );
+  await expect(
+    canvas.findByRole("heading", { name: COPY.programs.schedulePreviewTitle })
+  ).resolves.toBeVisible();
+  await expect(
+    canvas.getByRole("button", { name: COPY.programs.generateEvents })
+  ).toBeVisible();
+
+  await userEvent.click(
+    canvas.getByRole("button", { name: COPY.programs.generateEvents })
+  );
+  await expect(
+    canvas.findByText(
+      COPY.programs.generated
+        .replace("{created}", "2")
+        .replace("{skipped}", "0"),
+      { exact: true }
+    )
+  ).resolves.toBeVisible();
+};
+
+const workspaceSchedulePartialResumePlay: Story["play"] = async ({
+  canvasElement,
+}) => {
+  await assertProgramsScreen(
+    canvasElement,
+    readinessFor("workspace-schedule-partial-resume")
+  );
+  const canvas = within(canvasElement);
+
+  await userEvent.click(
+    canvas.getByRole("button", { name: COPY.programs.previewEvents })
+  );
+  await expect(
+    canvas.findByRole("heading", { name: COPY.programs.schedulePreviewTitle })
+  ).resolves.toBeVisible();
+  await userEvent.click(
+    canvas.getByRole("button", { name: COPY.programs.generateEvents })
+  );
+  const partialCopy = COPY.programs.generatedPartial
+    .replace("{created}", "1")
+    .replace("{skipped}", "0")
+    .replace("{failed}", "1");
+  await expect(
+    canvas.findByText(partialCopy, { exact: true })
+  ).resolves.toBeVisible();
+  await expect(
+    canvas.getByRole("button", { name: COPY.programs.generateEvents })
+  ).toBeEnabled();
+
+  await userEvent.click(
+    canvas.getByRole("button", { name: COPY.programs.generateEvents })
+  );
+  const resumedCopy = COPY.programs.generatedResumed
+    .replace("{created}", "0")
+    .replace("{skipped}", "1");
+  await expect(
+    canvas.findByText(resumedCopy, { exact: true })
+  ).resolves.toBeVisible();
+  await expect(canvas.queryByText(partialCopy, { exact: true })).toBeNull();
+};
+
 export const ParticipantDirectoryMember: Story = materialStory(
   "participant-directory-member"
 );
@@ -459,7 +612,8 @@ export const WorkspaceOverviewZero: Story = materialStory(
   "workspace-overview-zero"
 );
 export const WorkspaceEventsMixed: Story = materialStory(
-  "workspace-events-mixed"
+  "workspace-events-mixed",
+  workspaceEventsMixedPlay
 );
 export const WorkspaceParticipantsPending: Story = materialStory(
   "workspace-participants-pending"
@@ -472,25 +626,15 @@ export const WorkspaceSettingsConflict: Story = materialStory(
 );
 export const WorkspaceScheduleFocused: Story = materialStory(
   "workspace-schedule-focused",
-  async ({ canvasElement }) => {
-    await assertProgramsScreen(
-      canvasElement,
-      readinessFor("workspace-schedule-focused")
-    );
-    const canvas = within(canvasElement);
-    await userEvent.click(
-      canvas.getByRole("button", { name: COPY.programs.addRule })
-    );
-    await expect(
-      canvas.getByRole("heading", { name: COPY.programs.addRule })
-    ).toBeVisible();
-  }
+  workspaceScheduleFocusedPlay
 );
 export const WorkspaceScheduleStale: Story = materialStory(
-  "workspace-schedule-stale"
+  "workspace-schedule-stale",
+  workspaceScheduleStalePlay
 );
 export const WorkspaceSchedulePartialResume: Story = materialStory(
-  "workspace-schedule-partial-resume"
+  "workspace-schedule-partial-resume",
+  workspaceSchedulePartialResumePlay
 );
 export const NotificationsUnread: Story = materialStory("notifications-unread");
 export const NotificationsEmptyRecoverable: Story = materialStory(
