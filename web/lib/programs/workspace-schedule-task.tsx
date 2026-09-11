@@ -2,6 +2,7 @@
 
 import type { ScheduleRule } from "./program-api";
 import { ProgramSettings } from "./program-settings";
+import { buildProgramsHref } from "./programs-intent";
 import { useWorkspaceTaskContext } from "./workspace-context";
 import { RecurringSchedulePanel } from "./workspace-events-task";
 
@@ -44,7 +45,8 @@ const makeScheduleAddon = (programId: string) =>
  * and the Events/Settings entry points own navigation into it.
  */
 export const ScheduleTask = () => {
-  const { program, modules, onTaskChange } = useWorkspaceTaskContext();
+  const { program, modules, onTaskChange, departmentId, hash } =
+    useWorkspaceTaskContext();
   const eventsEnabled = modules.some(
     ({ module_key, enabled }) => module_key === "events" && enabled === 1
   );
@@ -58,6 +60,13 @@ export const ScheduleTask = () => {
         eventsEnabled={eventsEnabled}
         onTaskChange={onTaskChange}
         scheduleAddon={makeScheduleAddon(program.program_id)}
+        scheduleBackHref={buildProgramsHref({
+          mode: "management",
+          programId: program.program_id,
+          departmentId,
+          task: "schedule",
+          hash,
+        })}
       />
     </div>
   );

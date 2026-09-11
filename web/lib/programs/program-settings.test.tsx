@@ -1,10 +1,4 @@
-import {
-  cleanup,
-  render,
-  screen,
-  waitFor,
-  within,
-} from "@testing-library/react";
+import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
@@ -307,6 +301,114 @@ describe(ProgramSettings, () => {
     expect(screen.queryByText("secret-token")).not.toBeInTheDocument();
   });
 
+  test("keeps focused Schedule on an overview until a new-rule editor is opened", async () => {
+    const user = userEvent.setup();
+    render(
+      <ProgramSettings
+        program={recurringProgram}
+        section="schedule"
+        scheduleBackHref="/programs?mode=management&program=program-1&task=schedule"
+        scheduleAddon={() => <output>schedule-preview-addon</output>}
+      />
+    );
+
+    await screen.findByText(
+      `${COPY.programs.ruleWeekly} ${COPY.programs.weekdayWednesday}`
+    );
+    expect(
+      [
+        screen.getByRole("heading", { name: COPY.programs.scheduleRulesTitle }),
+        screen.getByRole("button", { name: COPY.programs.addRule }),
+        screen.getByText("schedule-preview-addon"),
+      ].every(Boolean) &&
+        screen.queryByLabelText(COPY.programs.startTime) === null
+    ).toBeTruthy();
+
+    await user.click(
+      screen.getByRole("button", { name: COPY.programs.addRule })
+    );
+
+    expect(
+      [
+        screen.getByRole("heading", { name: COPY.programs.addRule }),
+        screen.getByLabelText(COPY.programs.startTime),
+        screen.getByLabelText(COPY.programs.endTime),
+      ].every(Boolean) &&
+        screen.queryByRole("heading", {
+          name: COPY.programs.scheduleRulesTitle,
+        }) === null &&
+        screen.queryByText("schedule-preview-addon") === null
+    ).toBeTruthy();
+
+    await user.click(
+      screen.getByRole("link", { name: COPY.programs.backToOverview })
+    );
+
+    expect(
+      Boolean(
+        screen.getByRole("heading", { name: COPY.programs.scheduleRulesTitle })
+      ) &&
+        screen.queryByLabelText(COPY.programs.startTime) === null &&
+        Boolean(screen.getByText("schedule-preview-addon"))
+    ).toBeTruthy();
+  });
+
+  test("uses focused editors for rule edits and exceptions", async () => {
+    const user = userEvent.setup();
+    render(
+      <ProgramSettings
+        program={recurringProgram}
+        section="schedule"
+        scheduleBackHref="/programs?mode=management&program=program-1&task=schedule"
+        scheduleAddon={() => <output>schedule-preview-addon</output>}
+      />
+    );
+
+    const ruleLabel = `${COPY.programs.ruleWeekly} ${COPY.programs.weekdayWednesday}`;
+    await screen.findByText(ruleLabel);
+    await user.click(
+      screen.getByRole("button", { name: COPY.programs.settingsRuleEdit })
+    );
+
+    expect(
+      Boolean(
+        screen.getByRole("heading", { name: COPY.programs.settingsRuleEdit })
+      ) &&
+        (screen.getByLabelText(COPY.programs.startTime) as HTMLInputElement)
+          .value === rule.start_time &&
+        screen.queryByText(ruleLabel) === null &&
+        screen.queryByText("schedule-preview-addon") === null
+    ).toBeTruthy();
+
+    await user.click(
+      screen.getByRole("link", { name: COPY.programs.backToOverview })
+    );
+    await user.click(
+      screen.getByRole("button", {
+        name: COPY.programs.settingsRuleAddException,
+      })
+    );
+
+    expect(
+      Boolean(
+        screen.getByRole("heading", {
+          name: COPY.programs.settingsRuleAddException,
+        })
+      ) &&
+        Boolean(screen.getByLabelText(COPY.programs.settingsExceptionDate)) &&
+        screen.queryByText(ruleLabel) === null &&
+        screen.queryByText("schedule-preview-addon") === null
+    ).toBeTruthy();
+
+    await user.click(
+      screen.getByRole("link", { name: COPY.programs.backToOverview })
+    );
+    expect(
+      Boolean(screen.getByText(ruleLabel)) &&
+        Boolean(screen.getByText("schedule-preview-addon"))
+    ).toBeTruthy();
+  });
+
   test("does not render editable schedule controls for a OneOff Program", async () => {
     render(<ProgramSettings program={oneOffProgram} onTaskChange={vi.fn()} />);
 
@@ -530,12 +632,19 @@ describe(ProgramSettings, () => {
       new RpcError({ code: "CONFLICT", status: 409 })
     );
     render(
-      <ProgramSettings program={recurringProgram} onTaskChange={vi.fn()} />
+      <ProgramSettings
+        program={recurringProgram}
+        section="schedule"
+        onTaskChange={vi.fn()}
+      />
     );
     await screen.findByText(
       `${COPY.programs.ruleWeekly} ${COPY.programs.weekdayWednesday}`
     );
 
+    await user.click(
+      screen.getByRole("button", { name: COPY.programs.addRule })
+    );
     await user.type(screen.getByLabelText(COPY.programs.startTime), "20:00");
     await user.type(screen.getByLabelText(COPY.programs.endTime), "21:30");
     await user.click(
@@ -555,12 +664,19 @@ describe(ProgramSettings, () => {
   test("clears new-rule input only after a confirmed schedule-rule save", async () => {
     const user = userEvent.setup();
     render(
-      <ProgramSettings program={recurringProgram} onTaskChange={vi.fn()} />
+      <ProgramSettings
+        program={recurringProgram}
+        section="schedule"
+        onTaskChange={vi.fn()}
+      />
     );
     await screen.findByText(
       `${COPY.programs.ruleWeekly} ${COPY.programs.weekdayWednesday}`
     );
 
+    await user.click(
+      screen.getByRole("button", { name: COPY.programs.addRule })
+    );
     await user.type(screen.getByLabelText(COPY.programs.startTime), "19:00");
     await user.type(screen.getByLabelText(COPY.programs.endTime), "20:30");
     await user.click(
@@ -570,6 +686,9 @@ describe(ProgramSettings, () => {
     await expect(
       screen.findByText(COPY.programs.settingsSaved)
     ).resolves.toBeInTheDocument();
+    await user.click(
+      screen.getByRole("button", { name: COPY.programs.addRule })
+    );
     expect(screen.getByLabelText(COPY.programs.startTime)).toHaveValue("");
     expect(screen.getByLabelText(COPY.programs.endTime)).toHaveValue("");
   });
@@ -580,40 +699,35 @@ describe(ProgramSettings, () => {
       new RpcError({ code: "CONFLICT", status: 409 })
     );
     render(
-      <ProgramSettings program={recurringProgram} onTaskChange={vi.fn()} />
+      <ProgramSettings
+        program={recurringProgram}
+        section="schedule"
+        onTaskChange={vi.fn()}
+      />
     );
     await screen.findByText(
       `${COPY.programs.ruleWeekly} ${COPY.programs.weekdayWednesday}`
     );
 
-    const row = screen
-      .getByText(
-        `${COPY.programs.ruleWeekly} ${COPY.programs.weekdayWednesday}`
-      )
-      .closest("li") as HTMLElement;
     await user.click(
-      within(row).getByRole("button", { name: COPY.programs.settingsRuleEdit })
+      screen.getByRole("button", { name: COPY.programs.settingsRuleEdit })
     );
-    const startTime = within(row).getByLabelText(COPY.programs.startTime);
+    const startTime = screen.getByLabelText(COPY.programs.startTime);
     await user.clear(startTime);
     await user.type(startTime, "20:00");
     await user.click(
-      within(row).getByRole("button", { name: COPY.programs.settingsRuleSave })
+      screen.getByRole("button", { name: COPY.programs.settingsRuleSave })
     );
 
     await expect(screen.findByRole("alert")).resolves.toHaveTextContent(
       COPY.programs.programConflict
     );
-    expect(within(row).getByLabelText(COPY.programs.startTime)).toHaveValue(
-      "20:00"
-    );
+    expect(screen.getByLabelText(COPY.programs.startTime)).toHaveValue("20:00");
     expect(
-      within(row).getByRole("button", { name: COPY.programs.settingsRuleSave })
+      screen.getByRole("button", { name: COPY.programs.settingsRuleSave })
     ).toBeInTheDocument();
     expect(
-      within(row).queryByRole("button", {
-        name: COPY.programs.settingsRuleEdit,
-      })
+      screen.queryByRole("button", { name: COPY.programs.settingsRuleEdit })
     ).not.toBeInTheDocument();
     expect(
       screen.queryByText(COPY.programs.settingsSaved)
@@ -626,7 +740,11 @@ describe(ProgramSettings, () => {
       new RpcError({ code: "CONFLICT", status: 409 })
     );
     render(
-      <ProgramSettings program={recurringProgram} onTaskChange={vi.fn()} />
+      <ProgramSettings
+        program={recurringProgram}
+        section="schedule"
+        onTaskChange={vi.fn()}
+      />
     );
     await screen.findByText(
       `${COPY.programs.ruleWeekly} ${COPY.programs.weekdayWednesday}`
@@ -670,7 +788,11 @@ describe(ProgramSettings, () => {
       })
     );
     render(
-      <ProgramSettings program={recurringProgram} onTaskChange={vi.fn()} />
+      <ProgramSettings
+        program={recurringProgram}
+        section="schedule"
+        onTaskChange={vi.fn()}
+      />
     );
     await screen.findByText(
       `${COPY.programs.ruleWeekly} ${COPY.programs.weekdayWednesday}`

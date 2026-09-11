@@ -1668,6 +1668,40 @@ describe("EVT-02 recurring preview and generation UI (#252)", () => {
     expect(mocks.deleteScheduleException).not.toHaveBeenCalled();
   });
 
+  test("keeps Schedule overview compact and opens a child rule editor", async () => {
+    const user = userEvent.setup();
+    renderScheduleTask();
+
+    await screen.findByText(
+      `${COPY.programs.ruleWeekly} ${COPY.programs.weekdayWednesday}`
+    );
+    expect(
+      screen.queryByLabelText(COPY.programs.startTime) === null &&
+        Boolean(
+          screen.getByRole("button", { name: COPY.programs.previewEvents })
+        )
+    ).toBeTruthy();
+
+    await user.click(
+      screen.getByRole("button", { name: COPY.programs.addRule })
+    );
+    const back = screen.getByRole("link", {
+      name: COPY.programs.backToOverview,
+    });
+    expect(
+      back.getAttribute("href") ===
+        "/programs?mode=management&program=program-1&task=schedule" &&
+        Boolean(screen.getByRole("heading", { name: COPY.programs.addRule })) &&
+        screen.queryByRole("button", { name: COPY.programs.previewEvents }) ===
+          null
+    ).toBeTruthy();
+
+    await user.click(back);
+    expect(
+      screen.getByRole("button", { name: COPY.programs.previewEvents })
+    ).toBeInTheDocument();
+  });
+
   test("preview controls are reachable and render an exact plan with exception state", async () => {
     const user = userEvent.setup();
     renderScheduleTask();

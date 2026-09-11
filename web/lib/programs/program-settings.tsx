@@ -13,7 +13,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { FormEvent } from "react";
+import type { FormEvent, MouseEventHandler } from "react";
 
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -50,6 +50,7 @@ import {
   ScreenCard,
   ScreenEditor,
   ScreenField,
+  ScreenHeader,
   ScreenLoadingRows,
   ScreenRow,
   ScreenRowList,
@@ -114,6 +115,8 @@ export interface ProgramSettingsProps {
     rules: ScheduleRule[] | null;
     rulesError: string | null;
   }) => React.ReactNode;
+  /** Canonical focused Schedule URL used by the child editor Back affordance. */
+  scheduleBackHref?: string;
 }
 const LIFECYCLE_LABEL: Record<Program["lifecycle"], string> = {
   Draft: COPY.programs.lifecycleDraft,
@@ -481,6 +484,290 @@ export const SettingsHub = ({
   );
 };
 
+type ScheduleEditorTarget =
+  | { kind: "new-rule" }
+  | { kind: "edit-rule"; ruleId: string }
+  | { kind: "new-exception"; ruleId: string }
+  | null;
+
+const ScheduleRuleEditor = ({
+  idPrefix,
+  values,
+  onChange,
+  onSubmit,
+  onCancel,
+  busy,
+  submitLabel,
+}: {
+  idPrefix: string;
+  values: RuleValues;
+  onChange: (values: RuleValues) => void;
+  onSubmit: (event: FormEvent<HTMLFormElement>) => void;
+  onCancel: () => void;
+  busy: boolean;
+  submitLabel?: React.ReactNode;
+}) => (
+  <ScreenEditor onSubmit={onSubmit}>
+    <ScreenField
+      htmlFor={`${idPrefix}-recurrence`}
+      label={COPY.programs.behaviorType}
+    >
+      <Select
+        value={values.recurrence}
+        onValueChange={(value) =>
+          onChange({
+            ...values,
+            recurrence: value as RuleValues["recurrence"],
+          })
+        }
+        disabled={busy}
+      >
+        <SelectTrigger
+          id={`${idPrefix}-recurrence`}
+          className="border-[var(--screen-line-strong)] bg-[var(--screen-surface)] text-base"
+          aria-label={COPY.programs.behaviorType}
+        >
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="WEEKLY">{COPY.programs.ruleWeekly}</SelectItem>
+          <SelectItem value="MONTHLY">{COPY.programs.ruleMonthly}</SelectItem>
+        </SelectContent>
+      </Select>
+    </ScreenField>
+    <ScreenField
+      htmlFor={`${idPrefix}-day-of-week`}
+      label={COPY.programs.dayOfWeekLabel}
+    >
+      <Select
+        value={values.dayOfWeek}
+        onValueChange={(value) => onChange({ ...values, dayOfWeek: value })}
+        disabled={busy}
+      >
+        <SelectTrigger
+          id={`${idPrefix}-day-of-week`}
+          className="border-[var(--screen-line-strong)] bg-[var(--screen-surface)] text-base"
+          aria-label={COPY.programs.dayOfWeekLabel}
+        >
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          {WEEKDAY_LABELS.map((label, index) => (
+            <SelectItem key={label} value={String(index)}>
+              {label}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    </ScreenField>
+    <ScreenField
+      htmlFor={`${idPrefix}-month-day`}
+      label={COPY.programs.monthDayLabel}
+    >
+      <Input
+        id={`${idPrefix}-month-day`}
+        className="border-[var(--screen-line-strong)] bg-[var(--screen-surface)] text-base"
+        type="number"
+        min={1}
+        max={31}
+        value={values.monthDay}
+        onChange={(event) =>
+          onChange({ ...values, monthDay: event.target.value })
+        }
+        disabled={busy}
+      />
+    </ScreenField>
+    <ScreenField
+      htmlFor={`${idPrefix}-start-time`}
+      label={COPY.programs.startTime}
+    >
+      <Input
+        id={`${idPrefix}-start-time`}
+        className="border-[var(--screen-line-strong)] bg-[var(--screen-surface)] text-base"
+        type="time"
+        required
+        value={values.startTime}
+        onChange={(event) =>
+          onChange({ ...values, startTime: event.target.value })
+        }
+        disabled={busy}
+      />
+    </ScreenField>
+    <ScreenField htmlFor={`${idPrefix}-end-time`} label={COPY.programs.endTime}>
+      <Input
+        id={`${idPrefix}-end-time`}
+        className="border-[var(--screen-line-strong)] bg-[var(--screen-surface)] text-base"
+        type="time"
+        required
+        value={values.endTime}
+        onChange={(event) =>
+          onChange({ ...values, endTime: event.target.value })
+        }
+        disabled={busy}
+      />
+    </ScreenField>
+    <ScreenField
+      htmlFor={`${idPrefix}-location`}
+      label={COPY.programs.ruleLocation}
+    >
+      <Input
+        id={`${idPrefix}-location`}
+        className="border-[var(--screen-line-strong)] bg-[var(--screen-surface)] text-base"
+        type="text"
+        value={values.location}
+        placeholder={COPY.programs.ruleLocationPlaceholder}
+        onChange={(event) =>
+          onChange({ ...values, location: event.target.value })
+        }
+        disabled={busy}
+      />
+    </ScreenField>
+    <div className="flex min-w-0 flex-wrap items-center gap-[var(--screen-utility-gap)]">
+      <Button
+        className="w-fit bg-[var(--screen-accent)] text-white hover:bg-[var(--screen-accent-deep)]"
+        type="submit"
+        disabled={busy}
+      >
+        {submitLabel ?? COPY.programs.settingsRuleSave}
+      </Button>
+      <Button
+        className="w-fit border-[var(--screen-line-strong)] bg-transparent text-[var(--screen-ink)] hover:bg-[var(--screen-surface-soft)]"
+        type="button"
+        variant="outline"
+        onClick={onCancel}
+        disabled={busy}
+      >
+        {COPY.programs.settingsRuleCancel}
+      </Button>
+    </div>
+  </ScreenEditor>
+);
+ScheduleRuleEditor.displayName = "ScheduleRuleEditor";
+
+const ScheduleExceptionEditor = ({
+  ruleId,
+  values,
+  onChange,
+  onSubmit,
+  onCancel,
+  busy,
+}: {
+  ruleId: string;
+  values: ExceptionValues;
+  onChange: (values: ExceptionValues) => void;
+  onSubmit: (event: FormEvent<HTMLFormElement>) => void;
+  onCancel: () => void;
+  busy: boolean;
+}) => (
+  <ScreenEditor onSubmit={onSubmit}>
+    <ScreenField
+      htmlFor={`program-settings-exception-${ruleId}-date`}
+      label={COPY.programs.settingsExceptionDate}
+    >
+      <Input
+        id={`program-settings-exception-${ruleId}-date`}
+        className="border-[var(--screen-line-strong)] bg-[var(--screen-surface)] text-base"
+        type="date"
+        required
+        value={values.overrideDate}
+        onChange={(event) =>
+          onChange({ ...values, overrideDate: event.target.value })
+        }
+        onInput={(event) =>
+          onChange({ ...values, overrideDate: event.currentTarget.value })
+        }
+        disabled={busy}
+      />
+    </ScreenField>
+    <ScreenField
+      htmlFor={`program-settings-exception-${ruleId}-action`}
+      label={COPY.programs.settingsExceptionAction}
+    >
+      <Select
+        value={values.action}
+        onValueChange={(value) =>
+          onChange({
+            ...values,
+            action: value as ExceptionValues["action"],
+          })
+        }
+        disabled={busy}
+      >
+        <SelectTrigger
+          id={`program-settings-exception-${ruleId}-action`}
+          className="border-[var(--screen-line-strong)] bg-[var(--screen-surface)] text-base"
+          aria-label={COPY.programs.settingsExceptionAction}
+        >
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="CANCEL">
+            {COPY.programs.settingsExceptionCancel}
+          </SelectItem>
+          <SelectItem value="RESCHEDULE">
+            {COPY.programs.settingsExceptionReschedule}
+          </SelectItem>
+        </SelectContent>
+      </Select>
+    </ScreenField>
+    {values.action === "RESCHEDULE" && (
+      <>
+        <ScreenField
+          htmlFor={`program-settings-exception-${ruleId}-new-start`}
+          label={COPY.programs.settingsExceptionNewStart}
+        >
+          <Input
+            id={`program-settings-exception-${ruleId}-new-start`}
+            className="border-[var(--screen-line-strong)] bg-[var(--screen-surface)] text-base"
+            type="time"
+            required
+            value={values.newStartTime}
+            onChange={(event) =>
+              onChange({ ...values, newStartTime: event.target.value })
+            }
+            disabled={busy}
+          />
+        </ScreenField>
+        <ScreenField
+          htmlFor={`program-settings-exception-${ruleId}-new-end`}
+          label={COPY.programs.settingsExceptionNewEnd}
+        >
+          <Input
+            id={`program-settings-exception-${ruleId}-new-end`}
+            className="border-[var(--screen-line-strong)] bg-[var(--screen-surface)] text-base"
+            type="time"
+            required
+            value={values.newEndTime}
+            onChange={(event) =>
+              onChange({ ...values, newEndTime: event.target.value })
+            }
+            disabled={busy}
+          />
+        </ScreenField>
+      </>
+    )}
+    <div className="flex min-w-0 flex-wrap items-center gap-[var(--screen-utility-gap)]">
+      <Button
+        className="w-fit bg-[var(--screen-accent)] text-white hover:bg-[var(--screen-accent-deep)]"
+        type="submit"
+        disabled={busy}
+      >
+        {COPY.programs.settingsExceptionSave}
+      </Button>
+      <Button
+        className="w-fit border-[var(--screen-line-strong)] bg-transparent text-[var(--screen-ink)] hover:bg-[var(--screen-surface-soft)]"
+        type="button"
+        variant="outline"
+        onClick={onCancel}
+        disabled={busy}
+      >
+        {COPY.programs.settingsRuleCancel}
+      </Button>
+    </div>
+  </ScreenEditor>
+);
+ScheduleExceptionEditor.displayName = "ScheduleExceptionEditor";
+
 // oxlint-disable-next-line eslint/complexity
 export const ProgramSettings = ({
   program,
@@ -490,6 +777,7 @@ export const ProgramSettings = ({
   section = "all",
   showHeading = true,
   scheduleAddon,
+  scheduleBackHref,
 }: ProgramSettingsProps) => {
   const [currentProgram, setCurrentProgram] = useState(program);
   const [basics, setBasics] = useState(() => basicsFrom(program));
@@ -504,7 +792,8 @@ export const ProgramSettings = ({
       : []
   );
   const [ruleError, setRuleError] = useState<string | null>(null);
-  const [editingRuleId, setEditingRuleId] = useState<string | null>(null);
+  const [scheduleEditor, setScheduleEditor] =
+    useState<ScheduleEditorTarget>(null);
   const [ruleDrafts, setRuleDrafts] = useState<Record<string, RuleValues>>({});
   const [newRule, setNewRule] = useState<RuleValues>({
     recurrence: "WEEKLY",
@@ -514,7 +803,6 @@ export const ProgramSettings = ({
     endTime: "",
     location: "",
   });
-  const [exceptionRuleId, setExceptionRuleId] = useState<string | null>(null);
   const [exceptionDrafts, setExceptionDrafts] = useState<
     Record<string, ExceptionValues>
   >({});
@@ -532,12 +820,14 @@ export const ProgramSettings = ({
   const canManage = currentProgram.capabilities.manage;
   const focusedSection = section !== "all";
   const focusedSchedule = section === "schedule";
+  const showSchedule = !focusedSection || focusedSchedule;
+  const scheduleEditorActive = focusedSchedule && scheduleEditor !== null;
+  const showScheduleOverview = showSchedule && !scheduleEditorActive;
   const focusedEditor = focusedSection && !focusedSchedule;
   const showStickyActions = focusedEditor && canManage;
   const showBasics = !focusedSection || section === "basics";
   const showPublishing = section === "publishing";
   const showEnrollment = !focusedSection || section === "enrollment";
-  const showSchedule = !focusedSection || focusedSchedule;
   const showAttendance = !focusedSection || section === "attendance";
   const basicsDirty =
     JSON.stringify(basics) !== JSON.stringify(basicsFrom(currentProgram));
@@ -810,13 +1100,19 @@ export const ProgramSettings = ({
       () =>
         createScheduleRule(currentProgram.program_id, ruleInputFrom(newRule)),
       COPY.programs.settingsSaved,
-      () =>
-        setNewRule((previous) => ({ ...previous, startTime: "", endTime: "" }))
+      () => {
+        setNewRule((previous) => ({
+          ...previous,
+          startTime: "",
+          endTime: "",
+        }));
+        setScheduleEditor(null);
+      }
     );
   };
 
   const beginRuleEdit = (rule: ScheduleRule) => {
-    setEditingRuleId(rule.rule_id);
+    setScheduleEditor({ kind: "edit-rule", ruleId: rule.rule_id });
     setRuleDrafts((previous) => ({
       ...previous,
       [rule.rule_id]: ruleValuesFrom(rule),
@@ -835,7 +1131,7 @@ export const ProgramSettings = ({
             ruleInputFrom(draft)
           ),
         COPY.programs.settingsSaved,
-        () => setEditingRuleId(null)
+        () => setScheduleEditor(null)
       );
     };
 
@@ -872,7 +1168,7 @@ export const ProgramSettings = ({
           }
         },
         COPY.programs.settingsSaved,
-        () => setExceptionRuleId(null)
+        () => setScheduleEditor(null)
       );
     };
 
@@ -892,6 +1188,52 @@ export const ProgramSettings = ({
       });
     }, COPY.programs.settingsSaved);
   };
+
+  const beginNewRule = () => {
+    setScheduleEditor({ kind: "new-rule" });
+    setActionError(null);
+    setNotice(null);
+  };
+
+  const beginException = (rule: ScheduleRule) => {
+    setScheduleEditor({ kind: "new-exception", ruleId: rule.rule_id });
+    setExceptionDrafts((previous) => ({
+      ...previous,
+      [rule.rule_id]: exceptionDraftFor(rule.rule_id),
+    }));
+    setActionError(null);
+    setNotice(null);
+  };
+
+  const exitScheduleEditor = () => {
+    setScheduleEditor(null);
+    setActionError(null);
+    setNotice(null);
+  };
+
+  const handleScheduleEditorBack: MouseEventHandler<HTMLAnchorElement> = (
+    event
+  ) => {
+    if (
+      event.defaultPrevented ||
+      event.button !== 0 ||
+      event.metaKey ||
+      event.ctrlKey ||
+      event.shiftKey ||
+      event.altKey
+    ) {
+      return;
+    }
+    event.preventDefault();
+    exitScheduleEditor();
+  };
+
+  const scheduleEditorRule =
+    scheduleEditor && scheduleEditor.kind !== "new-rule"
+      ? (rules ?? []).find(
+          (candidate) => candidate.rule_id === scheduleEditor.ruleId
+        )
+      : undefined;
 
   const discardFocusedChanges = () => {
     if (section === "basics") {
@@ -1347,7 +1689,7 @@ export const ProgramSettings = ({
             </ScreenSection>
           )}
 
-          {showSchedule && (
+          {showScheduleOverview && (
             <ScreenSection
               className="mt-0"
               headingId="program-settings-schedule"
@@ -1355,6 +1697,18 @@ export const ProgramSettings = ({
                 focusedSchedule
                   ? COPY.programs.scheduleRulesTitle
                   : COPY.programs.settingsSchedule
+              }
+              action={
+                focusedSchedule ? (
+                  <Button
+                    className="w-fit bg-[var(--screen-accent)] text-white hover:bg-[var(--screen-accent-deep)]"
+                    type="button"
+                    onClick={beginNewRule}
+                    disabled={busy}
+                  >
+                    {COPY.programs.addRule}
+                  </Button>
+                ) : undefined
               }
             >
               <p className="m-0 wrap-anywhere text-sm leading-6 text-[var(--screen-muted)]">
@@ -1404,8 +1758,6 @@ export const ProgramSettings = ({
                           aria-label={COPY.programs.settingsSchedule}
                         >
                           {rules.map((rule) => {
-                            const draft =
-                              ruleDrafts[rule.rule_id] ?? ruleValuesFrom(rule);
                             const ruleExceptions =
                               exceptions[rule.rule_id] ?? [];
                             return (
@@ -1417,487 +1769,82 @@ export const ProgramSettings = ({
                                   className="items-start flex-wrap border-b-0"
                                   aria-busy={busy}
                                 >
-                                  {editingRuleId === rule.rule_id ? (
-                                    <ScreenEditor
-                                      className="basis-full"
-                                      onSubmit={submitRuleEdit(rule)}
-                                    >
-                                      <ScreenField
-                                        htmlFor={`program-settings-rule-${rule.rule_id}-recurrence`}
-                                        label={COPY.programs.behaviorType}
+                                  <ScreenRowMain>
+                                    <ScreenRowTitle>
+                                      {rule.recurrence === "WEEKLY"
+                                        ? `${COPY.programs.ruleWeekly} ${WEEKDAY_LABELS[rule.day_of_week ?? 0]}`
+                                        : `${COPY.programs.ruleMonthly} ${rule.month_day}`}
+                                    </ScreenRowTitle>
+                                    <ScreenRowMeta>
+                                      {rule.start_time}–{rule.end_time}
+                                      {rule.location
+                                        ? ` · ${rule.location}`
+                                        : ""}
+                                    </ScreenRowMeta>
+                                  </ScreenRowMain>
+                                  {focusedSchedule && (
+                                    <ScreenRowTrailing>
+                                      <Button
+                                        className="w-fit border-[var(--screen-line-strong)] bg-transparent text-[var(--screen-ink)] hover:bg-[var(--screen-surface-soft)]"
+                                        type="button"
+                                        variant="outline"
+                                        onClick={() => beginRuleEdit(rule)}
+                                        disabled={busy}
                                       >
-                                        <Select
-                                          value={draft.recurrence}
-                                          onValueChange={(value) =>
-                                            setRuleDrafts((previous) => ({
-                                              ...previous,
-                                              [rule.rule_id]: {
-                                                ...draft,
-                                                recurrence:
-                                                  value as RuleValues["recurrence"],
-                                              },
-                                            }))
-                                          }
-                                        >
-                                          <SelectTrigger
-                                            id={`program-settings-rule-${rule.rule_id}-recurrence`}
-                                            className="border-[var(--screen-line-strong)] bg-[var(--screen-surface)] text-base"
-                                            aria-label={
-                                              COPY.programs.behaviorType
-                                            }
-                                          >
-                                            <SelectValue />
-                                          </SelectTrigger>
-                                          <SelectContent>
-                                            <SelectItem value="WEEKLY">
-                                              {COPY.programs.ruleWeekly}
-                                            </SelectItem>
-                                            <SelectItem value="MONTHLY">
-                                              {COPY.programs.ruleMonthly}
-                                            </SelectItem>
-                                          </SelectContent>
-                                        </Select>
-                                      </ScreenField>
-                                      <ScreenField
-                                        htmlFor={`program-settings-rule-${rule.rule_id}-day-of-week`}
-                                        label={COPY.programs.dayOfWeekLabel}
+                                        {COPY.programs.settingsRuleEdit}
+                                      </Button>
+                                      <Button
+                                        className="w-fit border-[var(--screen-line-strong)] bg-transparent text-[var(--screen-ink)] hover:bg-[var(--screen-surface-soft)]"
+                                        type="button"
+                                        variant="outline"
+                                        onClick={() => beginException(rule)}
+                                        disabled={busy}
                                       >
-                                        <Select
-                                          value={draft.dayOfWeek}
-                                          onValueChange={(value) =>
-                                            setRuleDrafts((previous) => ({
-                                              ...previous,
-                                              [rule.rule_id]: {
-                                                ...draft,
-                                                dayOfWeek: value,
-                                              },
-                                            }))
-                                          }
-                                        >
-                                          <SelectTrigger
-                                            id={`program-settings-rule-${rule.rule_id}-day-of-week`}
-                                            className="border-[var(--screen-line-strong)] bg-[var(--screen-surface)] text-base"
-                                            aria-label={
-                                              COPY.programs.dayOfWeekLabel
-                                            }
-                                          >
-                                            <SelectValue />
-                                          </SelectTrigger>
-                                          <SelectContent>
-                                            {WEEKDAY_LABELS.map(
-                                              (label, index) => (
-                                                <SelectItem
-                                                  key={label}
-                                                  value={String(index)}
-                                                >
-                                                  {label}
-                                                </SelectItem>
-                                              )
-                                            )}
-                                          </SelectContent>
-                                        </Select>
-                                      </ScreenField>
-                                      <ScreenField
-                                        htmlFor={`program-settings-rule-${rule.rule_id}-month-day`}
-                                        label={COPY.programs.monthDayLabel}
-                                      >
-                                        <Input
-                                          id={`program-settings-rule-${rule.rule_id}-month-day`}
-                                          className="border-[var(--screen-line-strong)] bg-[var(--screen-surface)] text-base"
-                                          type="number"
-                                          min={1}
-                                          max={31}
-                                          value={draft.monthDay}
-                                          onChange={(event) =>
-                                            setRuleDrafts((previous) => ({
-                                              ...previous,
-                                              [rule.rule_id]: {
-                                                ...draft,
-                                                monthDay: event.target.value,
-                                              },
-                                            }))
-                                          }
-                                        />
-                                      </ScreenField>
-                                      <ScreenField
-                                        htmlFor={`program-settings-rule-${rule.rule_id}-start-time`}
-                                        label={COPY.programs.startTime}
-                                      >
-                                        <Input
-                                          id={`program-settings-rule-${rule.rule_id}-start-time`}
-                                          className="border-[var(--screen-line-strong)] bg-[var(--screen-surface)] text-base"
-                                          type="time"
-                                          required
-                                          value={draft.startTime}
-                                          onChange={(event) =>
-                                            setRuleDrafts((previous) => ({
-                                              ...previous,
-                                              [rule.rule_id]: {
-                                                ...draft,
-                                                startTime: event.target.value,
-                                              },
-                                            }))
-                                          }
-                                        />
-                                      </ScreenField>
-                                      <ScreenField
-                                        htmlFor={`program-settings-rule-${rule.rule_id}-end-time`}
-                                        label={COPY.programs.endTime}
-                                      >
-                                        <Input
-                                          id={`program-settings-rule-${rule.rule_id}-end-time`}
-                                          className="border-[var(--screen-line-strong)] bg-[var(--screen-surface)] text-base"
-                                          type="time"
-                                          required
-                                          value={draft.endTime}
-                                          onChange={(event) =>
-                                            setRuleDrafts((previous) => ({
-                                              ...previous,
-                                              [rule.rule_id]: {
-                                                ...draft,
-                                                endTime: event.target.value,
-                                              },
-                                            }))
-                                          }
-                                        />
-                                      </ScreenField>
-                                      <ScreenField
-                                        htmlFor={`program-settings-rule-${rule.rule_id}-location`}
-                                        label={COPY.programs.ruleLocation}
-                                      >
-                                        <Input
-                                          id={`program-settings-rule-${rule.rule_id}-location`}
-                                          className="border-[var(--screen-line-strong)] bg-[var(--screen-surface)] text-base"
-                                          type="text"
-                                          value={draft.location}
-                                          placeholder={
-                                            COPY.programs
-                                              .ruleLocationPlaceholder
-                                          }
-                                          onChange={(event) =>
-                                            setRuleDrafts((previous) => ({
-                                              ...previous,
-                                              [rule.rule_id]: {
-                                                ...draft,
-                                                location: event.target.value,
-                                              },
-                                            }))
-                                          }
-                                        />
-                                      </ScreenField>
-                                      <div className="flex min-w-0 flex-wrap items-center gap-[var(--screen-utility-gap)]">
-                                        <Button
-                                          className="w-fit bg-[var(--screen-accent)] text-white hover:bg-[var(--screen-accent-deep)]"
-                                          type="submit"
-                                          disabled={busy}
-                                        >
-                                          {COPY.programs.settingsRuleSave}
-                                        </Button>
-                                        <Button
-                                          className="w-fit border-[var(--screen-line-strong)] bg-transparent text-[var(--screen-ink)] hover:bg-[var(--screen-surface-soft)]"
-                                          type="button"
-                                          variant="outline"
-                                          onClick={() => setEditingRuleId(null)}
-                                          disabled={busy}
-                                        >
-                                          {COPY.programs.settingsRuleCancel}
-                                        </Button>
-                                      </div>
-                                    </ScreenEditor>
-                                  ) : (
-                                    <>
-                                      <ScreenRowMain>
-                                        <ScreenRowTitle>
-                                          {rule.recurrence === "WEEKLY"
-                                            ? `${COPY.programs.ruleWeekly} ${WEEKDAY_LABELS[rule.day_of_week ?? 0]}`
-                                            : `${COPY.programs.ruleMonthly} ${rule.month_day}`}
-                                        </ScreenRowTitle>
-                                        <ScreenRowMeta>
-                                          {rule.start_time}–{rule.end_time}
-                                          {rule.location
-                                            ? ` · ${rule.location}`
-                                            : ""}
-                                        </ScreenRowMeta>
-                                      </ScreenRowMain>
-                                      <ScreenRowTrailing>
-                                        <Button
-                                          className="w-fit border-[var(--screen-line-strong)] bg-transparent text-[var(--screen-ink)] hover:bg-[var(--screen-surface-soft)]"
-                                          type="button"
-                                          variant="outline"
-                                          onClick={() => beginRuleEdit(rule)}
-                                          disabled={busy}
-                                        >
-                                          {COPY.programs.settingsRuleEdit}
-                                        </Button>
-                                        <Button
-                                          className="w-fit border-[var(--screen-line-strong)] bg-transparent text-[var(--screen-ink)] hover:bg-[var(--screen-surface-soft)]"
-                                          type="button"
-                                          variant="outline"
-                                          onClick={() => {
-                                            setExceptionRuleId(rule.rule_id);
-                                            setExceptionDrafts((previous) => ({
-                                              ...previous,
-                                              [rule.rule_id]: exceptionDraftFor(
-                                                rule.rule_id
-                                              ),
-                                            }));
-                                          }}
-                                          disabled={busy}
-                                        >
-                                          {
-                                            COPY.programs
-                                              .settingsRuleAddException
-                                          }
-                                        </Button>
-                                      </ScreenRowTrailing>
-                                    </>
+                                        {COPY.programs.settingsRuleAddException}
+                                      </Button>
+                                    </ScreenRowTrailing>
                                   )}
                                 </ScreenRow>
-                                {editingRuleId !== rule.rule_id && (
-                                  <>
-                                    {ruleExceptions.length > 0 && (
-                                      <ScreenRowList className="border-t-0 pl-4">
-                                        <ul
-                                          className="m-0 grid min-w-0 list-none gap-0 p-0"
-                                          aria-label={
-                                            COPY.programs
-                                              .settingsExistingExceptions
-                                          }
+                                {ruleExceptions.length > 0 && (
+                                  <ScreenRowList className="border-t-0 pl-4">
+                                    <ul
+                                      className="m-0 grid min-w-0 list-none gap-0 p-0"
+                                      aria-label={
+                                        COPY.programs.settingsExistingExceptions
+                                      }
+                                    >
+                                      {ruleExceptions.map((exception) => (
+                                        <li
+                                          key={exception.exception_id}
+                                          className="flex min-w-0 flex-wrap items-center justify-between gap-[var(--screen-utility-gap)] border-b border-[var(--screen-line)] py-2 last:border-b-0"
                                         >
-                                          {ruleExceptions.map((exception) => (
-                                            <li
-                                              key={exception.exception_id}
-                                              className="flex min-w-0 flex-wrap items-center justify-between gap-[var(--screen-utility-gap)] border-b border-[var(--screen-line)] py-2 last:border-b-0"
-                                            >
-                                              <ScreenRowMeta>
-                                                {exception.override_date} ·{" "}
-                                                {exception.action === "CANCEL"
-                                                  ? COPY.programs
-                                                      .settingsExceptionCancel
-                                                  : COPY.programs
-                                                      .settingsExceptionReschedule}
-                                              </ScreenRowMeta>
-                                              <Button
-                                                className="w-fit border-[var(--screen-success)] bg-transparent text-[var(--screen-success)] hover:bg-[var(--screen-success-surface)]"
-                                                type="button"
-                                                variant="outline"
-                                                onClick={() =>
-                                                  removeException(exception)
-                                                }
-                                                disabled={busy}
-                                                aria-label={`${COPY.programs.settingsExceptionRestore} ${exception.override_date}`}
-                                              >
-                                                {
-                                                  COPY.programs
-                                                    .settingsExceptionRestore
-                                                }
-                                              </Button>
-                                            </li>
-                                          ))}
-                                        </ul>
-                                      </ScreenRowList>
-                                    )}
-                                    {exceptionRuleId === rule.rule_id && (
-                                      <ScreenEditor
-                                        className="basis-full px-4 pb-4"
-                                        onSubmit={submitException(rule)}
-                                      >
-                                        <ScreenField
-                                          htmlFor={`program-settings-exception-${rule.rule_id}-date`}
-                                          label={
-                                            COPY.programs.settingsExceptionDate
-                                          }
-                                        >
-                                          <Input
-                                            id={`program-settings-exception-${rule.rule_id}-date`}
-                                            className="border-[var(--screen-line-strong)] bg-[var(--screen-surface)] text-base"
-                                            type="date"
-                                            required
-                                            value={
-                                              exceptionDraftFor(rule.rule_id)
-                                                .overrideDate
-                                            }
-                                            onChange={(event) =>
-                                              setExceptionDrafts(
-                                                (previous) => ({
-                                                  ...previous,
-                                                  [rule.rule_id]: {
-                                                    ...exceptionDraftFor(
-                                                      rule.rule_id
-                                                    ),
-                                                    overrideDate:
-                                                      event.target.value,
-                                                  },
-                                                })
-                                              )
-                                            }
-                                            onInput={(event) => {
-                                              const overrideDate =
-                                                event.currentTarget.value;
-                                              setExceptionDrafts(
-                                                (previous) => ({
-                                                  ...previous,
-                                                  [rule.rule_id]: {
-                                                    ...exceptionDraftFor(
-                                                      rule.rule_id
-                                                    ),
-                                                    overrideDate,
-                                                  },
-                                                })
-                                              );
-                                            }}
-                                          />
-                                        </ScreenField>
-                                        <ScreenField
-                                          htmlFor={`program-settings-exception-${rule.rule_id}-action`}
-                                          label={
-                                            COPY.programs
-                                              .settingsExceptionAction
-                                          }
-                                        >
-                                          <Select
-                                            value={
-                                              exceptionDraftFor(rule.rule_id)
-                                                .action
-                                            }
-                                            onValueChange={(value) =>
-                                              setExceptionDrafts(
-                                                (previous) => ({
-                                                  ...previous,
-                                                  [rule.rule_id]: {
-                                                    ...exceptionDraftFor(
-                                                      rule.rule_id
-                                                    ),
-                                                    action:
-                                                      value as ExceptionValues["action"],
-                                                  },
-                                                })
-                                              )
-                                            }
-                                          >
-                                            <SelectTrigger
-                                              id={`program-settings-exception-${rule.rule_id}-action`}
-                                              className="border-[var(--screen-line-strong)] bg-[var(--screen-surface)] text-base"
-                                              aria-label={
-                                                COPY.programs
-                                                  .settingsExceptionAction
-                                              }
-                                            >
-                                              <SelectValue />
-                                            </SelectTrigger>
-                                            <SelectContent>
-                                              <SelectItem value="CANCEL">
-                                                {
-                                                  COPY.programs
-                                                    .settingsExceptionCancel
-                                                }
-                                              </SelectItem>
-                                              <SelectItem value="RESCHEDULE">
-                                                {
-                                                  COPY.programs
-                                                    .settingsExceptionReschedule
-                                                }
-                                              </SelectItem>
-                                            </SelectContent>
-                                          </Select>
-                                        </ScreenField>
-                                        {exceptionDraftFor(rule.rule_id)
-                                          .action === "RESCHEDULE" && (
-                                          <>
-                                            <ScreenField
-                                              htmlFor={`program-settings-exception-${rule.rule_id}-new-start`}
-                                              label={
-                                                COPY.programs
-                                                  .settingsExceptionNewStart
-                                              }
-                                            >
-                                              <Input
-                                                id={`program-settings-exception-${rule.rule_id}-new-start`}
-                                                className="border-[var(--screen-line-strong)] bg-[var(--screen-surface)] text-base"
-                                                type="time"
-                                                required
-                                                value={
-                                                  exceptionDraftFor(
-                                                    rule.rule_id
-                                                  ).newStartTime
-                                                }
-                                                onChange={(event) =>
-                                                  setExceptionDrafts(
-                                                    (previous) => ({
-                                                      ...previous,
-                                                      [rule.rule_id]: {
-                                                        ...exceptionDraftFor(
-                                                          rule.rule_id
-                                                        ),
-                                                        newStartTime:
-                                                          event.target.value,
-                                                      },
-                                                    })
-                                                  )
-                                                }
-                                              />
-                                            </ScreenField>
-                                            <ScreenField
-                                              htmlFor={`program-settings-exception-${rule.rule_id}-new-end`}
-                                              label={
-                                                COPY.programs
-                                                  .settingsExceptionNewEnd
-                                              }
-                                            >
-                                              <Input
-                                                id={`program-settings-exception-${rule.rule_id}-new-end`}
-                                                className="border-[var(--screen-line-strong)] bg-[var(--screen-surface)] text-base"
-                                                type="time"
-                                                required
-                                                value={
-                                                  exceptionDraftFor(
-                                                    rule.rule_id
-                                                  ).newEndTime
-                                                }
-                                                onChange={(event) =>
-                                                  setExceptionDrafts(
-                                                    (previous) => ({
-                                                      ...previous,
-                                                      [rule.rule_id]: {
-                                                        ...exceptionDraftFor(
-                                                          rule.rule_id
-                                                        ),
-                                                        newEndTime:
-                                                          event.target.value,
-                                                      },
-                                                    })
-                                                  )
-                                                }
-                                              />
-                                            </ScreenField>
-                                          </>
-                                        )}
-                                        <div className="flex min-w-0 flex-wrap items-center gap-[var(--screen-utility-gap)]">
+                                          <ScreenRowMeta>
+                                            {exception.override_date} ·{" "}
+                                            {exception.action === "CANCEL"
+                                              ? COPY.programs
+                                                  .settingsExceptionCancel
+                                              : COPY.programs
+                                                  .settingsExceptionReschedule}
+                                          </ScreenRowMeta>
                                           <Button
-                                            className="w-fit bg-[var(--screen-accent)] text-white hover:bg-[var(--screen-accent-deep)]"
-                                            type="submit"
-                                            disabled={busy}
-                                          >
-                                            {
-                                              COPY.programs
-                                                .settingsExceptionSave
-                                            }
-                                          </Button>
-                                          <Button
-                                            className="w-fit border-[var(--screen-line-strong)] bg-transparent text-[var(--screen-ink)] hover:bg-[var(--screen-surface-soft)]"
+                                            className="w-fit border-[var(--screen-success)] bg-transparent text-[var(--screen-success)] hover:bg-[var(--screen-success-surface)]"
                                             type="button"
                                             variant="outline"
                                             onClick={() =>
-                                              setExceptionRuleId(null)
+                                              removeException(exception)
                                             }
                                             disabled={busy}
+                                            aria-label={`${COPY.programs.settingsExceptionRestore} ${exception.override_date}`}
                                           >
-                                            {COPY.programs.settingsRuleCancel}
+                                            {
+                                              COPY.programs
+                                                .settingsExceptionRestore
+                                            }
                                           </Button>
-                                        </div>
-                                      </ScreenEditor>
-                                    )}
-                                  </>
+                                        </li>
+                                      ))}
+                                    </ul>
+                                  </ScreenRowList>
                                 )}
                               </li>
                             );
@@ -1911,155 +1858,6 @@ export const ProgramSettings = ({
                       {COPY.programs.settingsExceptionsLoadError}
                     </Alert>
                   )}
-                  <ScreenEditor onSubmit={submitNewRule}>
-                    <ScreenField
-                      htmlFor="program-settings-new-rule-recurrence"
-                      label={COPY.programs.behaviorType}
-                    >
-                      <Select
-                        value={newRule.recurrence}
-                        onValueChange={(value) =>
-                          setNewRule((previous) => ({
-                            ...previous,
-                            recurrence: value as RuleValues["recurrence"],
-                          }))
-                        }
-                        disabled={busy}
-                      >
-                        <SelectTrigger
-                          id="program-settings-new-rule-recurrence"
-                          className="border-[var(--screen-line-strong)] bg-[var(--screen-surface)] text-base"
-                          aria-label={COPY.programs.behaviorType}
-                        >
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="WEEKLY">
-                            {COPY.programs.ruleWeekly}
-                          </SelectItem>
-                          <SelectItem value="MONTHLY">
-                            {COPY.programs.ruleMonthly}
-                          </SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </ScreenField>
-                    <ScreenField
-                      htmlFor="program-settings-new-rule-day-of-week"
-                      label={COPY.programs.dayOfWeekLabel}
-                    >
-                      <Select
-                        value={newRule.dayOfWeek}
-                        onValueChange={(value) =>
-                          setNewRule((previous) => ({
-                            ...previous,
-                            dayOfWeek: value,
-                          }))
-                        }
-                        disabled={busy}
-                      >
-                        <SelectTrigger
-                          id="program-settings-new-rule-day-of-week"
-                          className="border-[var(--screen-line-strong)] bg-[var(--screen-surface)] text-base"
-                          aria-label={COPY.programs.dayOfWeekLabel}
-                        >
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {WEEKDAY_LABELS.map((label, index) => (
-                            <SelectItem key={label} value={String(index)}>
-                              {label}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </ScreenField>
-                    <ScreenField
-                      htmlFor="program-settings-new-rule-month-day"
-                      label={COPY.programs.monthDayLabel}
-                    >
-                      <Input
-                        id="program-settings-new-rule-month-day"
-                        className="border-[var(--screen-line-strong)] bg-[var(--screen-surface)] text-base"
-                        type="number"
-                        min={1}
-                        max={31}
-                        value={newRule.monthDay}
-                        onChange={(event) =>
-                          setNewRule((previous) => ({
-                            ...previous,
-                            monthDay: event.target.value,
-                          }))
-                        }
-                        disabled={busy}
-                      />
-                    </ScreenField>
-                    <ScreenField
-                      htmlFor="program-settings-new-rule-start-time"
-                      label={COPY.programs.startTime}
-                    >
-                      <Input
-                        id="program-settings-new-rule-start-time"
-                        className="border-[var(--screen-line-strong)] bg-[var(--screen-surface)] text-base"
-                        type="time"
-                        required
-                        value={newRule.startTime}
-                        onChange={(event) =>
-                          setNewRule((previous) => ({
-                            ...previous,
-                            startTime: event.target.value,
-                          }))
-                        }
-                        disabled={busy}
-                      />
-                    </ScreenField>
-                    <ScreenField
-                      htmlFor="program-settings-new-rule-end-time"
-                      label={COPY.programs.endTime}
-                    >
-                      <Input
-                        id="program-settings-new-rule-end-time"
-                        className="border-[var(--screen-line-strong)] bg-[var(--screen-surface)] text-base"
-                        type="time"
-                        required
-                        value={newRule.endTime}
-                        onChange={(event) =>
-                          setNewRule((previous) => ({
-                            ...previous,
-                            endTime: event.target.value,
-                          }))
-                        }
-                        disabled={busy}
-                      />
-                    </ScreenField>
-                    <ScreenField
-                      htmlFor="program-settings-new-rule-location"
-                      label={COPY.programs.ruleLocation}
-                    >
-                      <Input
-                        id="program-settings-new-rule-location"
-                        className="border-[var(--screen-line-strong)] bg-[var(--screen-surface)] text-base"
-                        type="text"
-                        value={newRule.location}
-                        placeholder={COPY.programs.ruleLocationPlaceholder}
-                        onChange={(event) =>
-                          setNewRule((previous) => ({
-                            ...previous,
-                            location: event.target.value,
-                          }))
-                        }
-                        disabled={busy}
-                      />
-                    </ScreenField>
-                    <div className="flex min-w-0 flex-wrap items-center gap-[var(--screen-utility-gap)]">
-                      <Button
-                        className="w-fit bg-[var(--screen-accent)] text-white hover:bg-[var(--screen-accent-deep)]"
-                        type="submit"
-                        disabled={busy}
-                      >
-                        {COPY.programs.addRule}
-                      </Button>
-                    </div>
-                  </ScreenEditor>
                   <div className="flex min-w-0 flex-wrap items-center gap-[var(--screen-utility-gap)]">
                     {onTaskChange && (
                       <Button
@@ -2078,6 +1876,75 @@ export const ProgramSettings = ({
                 </>
               )}
             </ScreenSection>
+          )}
+          {scheduleEditorActive && scheduleEditor && (
+            <section
+              className="grid min-w-0 gap-[var(--screen-section-gap)]"
+              aria-labelledby="program-settings-schedule-editor-title"
+            >
+              <ScreenHeader
+                level="child"
+                title={
+                  scheduleEditor.kind === "new-rule"
+                    ? COPY.programs.addRule
+                    : scheduleEditor.kind === "edit-rule"
+                      ? COPY.programs.settingsRuleEdit
+                      : COPY.programs.settingsRuleAddException
+                }
+                lead={COPY.programs.settingsScheduleLead}
+                headingId="program-settings-schedule-editor-title"
+                backHref={scheduleBackHref ?? "#schedule-overview"}
+                backLabel={COPY.programs.backToOverview}
+                onBack={handleScheduleEditorBack}
+              />
+              {scheduleEditor.kind === "new-rule" ? (
+                <ScheduleRuleEditor
+                  idPrefix="program-settings-new-rule"
+                  values={newRule}
+                  onChange={setNewRule}
+                  onSubmit={submitNewRule}
+                  onCancel={exitScheduleEditor}
+                  busy={busy}
+                  submitLabel={COPY.programs.addRule}
+                />
+              ) : scheduleEditorRule === undefined ? (
+                <ScreenState
+                  kind="error"
+                  title={COPY.programs.settingsScheduleLoadError}
+                />
+              ) : scheduleEditor.kind === "edit-rule" ? (
+                <ScheduleRuleEditor
+                  idPrefix={`program-settings-rule-${scheduleEditor.ruleId}`}
+                  values={
+                    ruleDrafts[scheduleEditor.ruleId] ??
+                    ruleValuesFrom(scheduleEditorRule)
+                  }
+                  onChange={(values) =>
+                    setRuleDrafts((previous) => ({
+                      ...previous,
+                      [scheduleEditor.ruleId]: values,
+                    }))
+                  }
+                  onSubmit={submitRuleEdit(scheduleEditorRule)}
+                  onCancel={exitScheduleEditor}
+                  busy={busy}
+                />
+              ) : (
+                <ScheduleExceptionEditor
+                  ruleId={scheduleEditor.ruleId}
+                  values={exceptionDraftFor(scheduleEditor.ruleId)}
+                  onChange={(values) =>
+                    setExceptionDrafts((previous) => ({
+                      ...previous,
+                      [scheduleEditor.ruleId]: values,
+                    }))
+                  }
+                  onSubmit={submitException(scheduleEditorRule)}
+                  onCancel={exitScheduleEditor}
+                  busy={busy}
+                />
+              )}
+            </section>
           )}
           {showAttendance && (
             <ScreenSection
@@ -2166,6 +2033,7 @@ export const ProgramSettings = ({
         </div>
       )}
       {focusedSchedule &&
+        !scheduleEditorActive &&
         canManage &&
         currentProgram.behavior_type === "Recurring" &&
         eventsEnabled &&
