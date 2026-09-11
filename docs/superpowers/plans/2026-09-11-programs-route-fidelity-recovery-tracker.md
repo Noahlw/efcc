@@ -34,6 +34,7 @@
 | `docs/superpowers/plans/2026-09-11-programs-route-fidelity-recovery-tracker.md` | Sole mutable task ledger, global constraints, cold-resume protocol, and final completion gate |
 | `docs/superpowers/plans/programs-route-fidelity-recovery/R1-navigation-semantics.md` | Navigation landmark versus local-tab semantics recovery |
 | `docs/superpowers/plans/programs-route-fidelity-recovery/R2-truthful-route-fixtures.md` | Dense Cantonese baseline data, correct scenario dispatch, and Story wiring |
+| `docs/superpowers/plans/programs-route-fidelity-recovery/R2A-shared-shell-fidelity.md` | Frozen mobile Programs Bottom Nav treatment and role-specific destinations |
 | `docs/superpowers/plans/programs-route-fidelity-recovery/R3-directory-and-copy-fidelity.md` | Compact Department Settings action/picker and Schedule copy correction |
 | `docs/superpowers/plans/programs-route-fidelity-recovery/R4-participant-behavior-plays.md` | Participant, mode-switch, Event gate, Back, and Department Settings behavior evidence |
 | `docs/superpowers/plans/programs-route-fidelity-recovery/R5-schedule-recovery-plays.md` | Events-to-Schedule and focused/stale/partial/resume behavior evidence |
@@ -47,6 +48,7 @@
 | --- | --- | --- |
 | R1 | `web/lib/screen-foundations.tsx`, `web/lib/programs/workspace-participants-task.tsx`, focused component/E2E tests | Restore workspace `navigation`/`link` semantics while preserving explicit local `tablist`/`tab` behavior |
 | R2 | `web/.storybook/programs-fixtures.ts`, route Story files, Story contracts, T11 | Replace sparse English/year-2099 data; fix scenario meanings and baseline handler selection |
+| R2A | `web/app/globals.css`, `web/lib/shell/shell-breakpoint.test.tsx`, shell geometry tests if required | Match the frozen phone Bottom Nav indicator treatment while preserving role-specific destinations and desktop rail behavior |
 | R3 | `web/lib/programs/management-directory.tsx`, `web/lib/copy.ts`, focused tests | Remove the persistent scope-launcher row, add one compact Department Settings action/picker, use `新增規則` |
 | R4 | participant material Stories, stateful MSW handlers, Story/T11 contracts | Prove mode switch, Back, enroll/cancel/withdraw, Event CTA gate, and Department Settings selection |
 | R5 | Schedule/Events material Stories and focused production/tests if red | Prove Events entry, editor Back, preview, stale recovery, partial generation, and resume |
@@ -144,7 +146,7 @@ PLANNED -> IN_PROGRESS -> VERIFYING -> REVIEWING -> COMPLETE
 
 ## Active Task
 
-`NONE — R2 complete; awaiting the next sequential packet claim`
+`NONE — R2A closeout prepared; awaiting commit verification`
 
 ## Task Ledger
 
@@ -152,6 +154,7 @@ PLANNED -> IN_PROGRESS -> VERIFYING -> REVIEWING -> COMPLETE
 | --- | --- | --- | --- | --- | --- | --- |
 | R1 | [Navigation semantics](programs-route-fidelity-recovery/R1-navigation-semantics.md) | COMPLETE | `51baa5d28c2f73b690827f13f2af628933ce3b74` | `fix(programs): restore navigation semantics` | focused components + `test:programs:responsive` | Downstream query corrected; focused 49/49 and full 69 files / 1,020 tests pass; responsive matrix passes at `test-results/programs-responsive/20260911t073743813z`; expanded diff review is clean; append-only commit is ready |
 | R2 | [Truthful route fixtures](programs-route-fidelity-recovery/R2-truthful-route-fixtures.md) | COMPLETE | `8fb468803c03e791645b9b6c81b0c43ab824db0a` | `test(programs): make route fixtures truthful` | Story contracts + T11 | Closeout prepared after Steps 1–10; contract/catalog 23/23, Event component 33/33, Storybook 93/93, T11 99/99 across 9 viewports, typecheck, diff/format/source review all pass; verify the single matching commit subject after commit |
+| R2A | [Shared shell fidelity](programs-route-fidelity-recovery/R2A-shared-shell-fidelity.md) | COMPLETE | `1c92a346ffa3a42feab546d20d234220f0a266ac` | `fix(shell): match programs prototype navigation treatment` | focused shell + responsive + visual comparison | Closeout prepared: red regression reproduced; focused 76/76, shell responsive 92 passed/1 skipped, shell geometry 35/35, Programs responsive passed, full components 69 files/1,021 tests, typecheck, and 402x874/360x800 member+management screenshot/computed-style review all pass; verify one matching commit after Start SHA |
 | R3 | [Directory and copy fidelity](programs-route-fidelity-recovery/R3-directory-and-copy-fidelity.md) | PLANNED | — | `fix(programs): align directory and schedule copy` | focused components + Story contracts | Wait for R2 COMPLETE |
 | R4 | [Participant behavior Plays](programs-route-fidelity-recovery/R4-participant-behavior-plays.md) | PLANNED | — | `test(programs): exercise participant route seams` | Storybook + participant T11 slice | Wait for R3 COMPLETE |
 | R5 | [Schedule recovery Plays](programs-route-fidelity-recovery/R5-schedule-recovery-plays.md) | PLANNED | — | `test(programs): exercise schedule recovery seams` | focused Schedule components + Storybook/T11 | Wait for R4 COMPLETE |
