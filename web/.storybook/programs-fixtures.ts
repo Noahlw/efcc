@@ -536,10 +536,14 @@ const createNotificationHandlers = (
       : MANAGEMENT_NOTIFICATIONS
   );
   let readAttempts = 0;
+  if (typeof document !== "undefined" && document.body) {
+    delete document.body.dataset.programsNotificationsReadPayload;
+  }
 
   return [
     http.get(storyApi("/api/v1/programs/notifications"), () => {
-      if (scenario === "empty-recoverable" && readAttempts++ === 0) {
+      if (scenario === "empty-recoverable" && readAttempts === 0) {
+        readAttempts += 1;
         return HttpResponse.json(
           {
             status: 503,
@@ -561,6 +565,15 @@ const createNotificationHandlers = (
             source_revision: string;
           }[];
         };
+        if (typeof document !== "undefined" && document.body) {
+          document.body.dataset.programsNotificationsReadPayload =
+            JSON.stringify(
+              (payload.items ?? []).map(({ source_key, source_revision }) => ({
+                source_key,
+                source_revision,
+              }))
+            );
+        }
         const requested = new Set(
           (payload.items ?? []).map(
             ({ source_key, source_revision }) =>
@@ -815,6 +828,29 @@ const createScheduleHandlers = (
   let previewCount = 0;
   let currentPlan = SCHEDULE_PREVIEW;
   let generateCount = 0;
+  let generateRequests: {
+    requestPlanId: string;
+    responsePlanId: string;
+    runId: string;
+  }[] = [];
+  if (typeof document !== "undefined" && document.body) {
+    delete document.body.dataset.programsScheduleGenerateRequests;
+  }
+
+  const recordGenerateRequest = (
+    requestPlanId: string,
+    responsePlanId: string,
+    runId: string
+  ) => {
+    generateRequests = [
+      ...generateRequests,
+      { requestPlanId, responsePlanId, runId },
+    ];
+    if (typeof document !== "undefined" && document.body) {
+      document.body.dataset.programsScheduleGenerateRequests =
+        JSON.stringify(generateRequests);
+    }
+  };
 
   return [
     http.post(storyApi("/api/v1/programs/:programId/events/preview"), () => {
@@ -827,45 +863,60 @@ const createScheduleHandlers = (
           : SCHEDULE_PREVIEW;
       return envelope(currentPlan);
     }),
-    http.post(storyApi("/api/v1/programs/:programId/events/generate"), () => {
-      generateCount += 1;
-      if (scenario === "stale" && previewCount < 2) {
-        return HttpResponse.json(
-          {
-            status: 409,
-            code: "STALE_PLAN",
-            title: "Stale plan",
-            detail: "排程已有更新，請先重新預覽。",
-          },
-          { status: 409 }
+    http.post(
+      storyApi("/api/v1/programs/:programId/events/generate"),
+      async ({ request }) => {
+        const payload = (await request.json()) as { plan_id?: string };
+        generateCount += 1;
+        if (scenario === "stale" && previewCount < 2) {
+          return HttpResponse.json(
+            {
+              status: 409,
+              code: "STALE_PLAN",
+              title: "Stale plan",
+              detail: "排程已有更新，請先重新預覽。",
+            },
+            { status: 409 }
+          );
+        }
+        if (scenario === "partial-resume" && generateCount === 1) {
+          recordGenerateRequest(
+            payload.plan_id ?? "<missing>",
+            currentPlan.plan.plan_id,
+            "t07-3-partial-run"
+          );
+          return envelope({
+            generated: {
+              run_id: "t07-3-partial-run",
+              plan_id: currentPlan.plan.plan_id,
+              status: "partial" as const,
+              created: 1,
+              skipped: 0,
+              failed: 1,
+              resumed: false,
+            },
+          });
+        }
+        const runId =
+          scenario === "partial-resume" ? "t07-3-partial-run" : "t07-3-run";
+        recordGenerateRequest(
+          payload.plan_id ?? "<missing>",
+          currentPlan.plan.plan_id,
+          runId
         );
-      }
-      if (scenario === "partial-resume" && generateCount === 1) {
         return envelope({
           generated: {
-            run_id: "t07-3-partial-run",
+            run_id: runId,
             plan_id: currentPlan.plan.plan_id,
-            status: "partial" as const,
-            created: 1,
-            skipped: 0,
-            failed: 1,
-            resumed: false,
+            status: "completed" as const,
+            created: scenario === "partial-resume" ? 0 : 2,
+            skipped: scenario === "partial-resume" ? 1 : 0,
+            failed: 0,
+            resumed: scenario === "partial-resume",
           },
         });
       }
-      return envelope({
-        generated: {
-          run_id:
-            scenario === "partial-resume" ? "t07-3-partial-run" : "t07-3-run",
-          plan_id: currentPlan.plan.plan_id,
-          status: "completed" as const,
-          created: scenario === "partial-resume" ? 0 : 2,
-          skipped: scenario === "partial-resume" ? 1 : 0,
-          failed: 0,
-          resumed: scenario === "partial-resume",
-        },
-      });
-    }),
+    ),
   ];
 };
 

@@ -579,6 +579,22 @@ const workspaceSchedulePartialResumePlay: Story["play"] = async ({
   expect(resumedResult?.dataset.generationRunId).toBe(partialRunId);
   expect(resumedResult?.dataset.generationPlanId).toBe(partialPlanId);
   expect(
+    canvasElement.ownerDocument.body.dataset.programsScheduleGenerateRequests
+  ).toBe(
+    JSON.stringify([
+      {
+        requestPlanId: partialPlanId,
+        responsePlanId: partialPlanId,
+        runId: "t07-3-partial-run",
+      },
+      {
+        requestPlanId: partialPlanId,
+        responsePlanId: partialPlanId,
+        runId: "t07-3-partial-run",
+      },
+    ])
+  );
+  expect(
     canvasElement.querySelectorAll('[data-generation-result="true"]')
   ).toHaveLength(1);
 };
@@ -719,6 +735,10 @@ const notificationsUnreadPlay: Story["play"] = async ({ canvasElement }) => {
       "u"
     ),
   });
+  const unreadSection = eventNotification.closest<HTMLElement>("section");
+  if (!unreadSection) {
+    throw new Error("notification event row is not inside the unread section");
+  }
   await clickAndCaptureHref(
     eventNotification,
     "/programs?mode=management&department=t07-3-department&program=t07-3-program&task=events&event=t07-3-manual-event"
@@ -731,6 +751,35 @@ const notificationsUnreadPlay: Story["play"] = async ({ canvasElement }) => {
       name: COPY.programs.notificationsEarlierSection,
     })
   ).resolves.toBeVisible();
+  const earlierSection = canvas
+    .getByRole("heading", { name: COPY.programs.notificationsEarlierSection })
+    .closest<HTMLElement>("section");
+  if (!earlierSection) {
+    throw new Error("notification earlier section is missing");
+  }
+  await expect(
+    within(earlierSection).findByRole("link", {
+      name: new RegExp(
+        `${COPY.programs.notificationsEventLabel}.*門徒訓練基礎課`,
+        "u"
+      ),
+    })
+  ).resolves.toBeVisible();
+  expect(
+    within(unreadSection).queryByRole("link", {
+      name: new RegExp(
+        `${COPY.programs.notificationsEventLabel}.*門徒訓練基礎課`,
+        "u"
+      ),
+    })
+  ).toBeNull();
+  expect(
+    canvasElement.ownerDocument.body.dataset.programsNotificationsReadPayload
+  ).toBe(
+    JSON.stringify([
+      { source_key: "t07-3-notification-2", source_revision: "1" },
+    ])
+  );
   expect(
     canvas.queryByText("3", {
       exact: true,
