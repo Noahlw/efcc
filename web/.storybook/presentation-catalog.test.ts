@@ -109,6 +109,41 @@ describe("T07 Screen Catalog foundation", () => {
   test("catalogs every T07.3 Programs composition with truthful intent", () => {
     expect(PROGRAMS_PRESENTATION_DECLARATIONS).toHaveLength(10);
     expect(
+      PROGRAMS_PRESENTATION_DECLARATIONS.map(({ screenId, intent }) => [
+        screenId,
+        intent,
+      ])
+    ).toStrictEqual([
+      ["programs-participant-directory", null],
+      ["programs-participant-program-detail", "program=t07-3-program"],
+      [
+        "programs-participant-event-detail",
+        "program=t07-3-program&event=t07-3-event",
+      ],
+      ["programs-management-directory", "mode=management"],
+      ["programs-workspace-overview", "mode=management&program=t07-3-program"],
+      [
+        "programs-workspace-events",
+        "mode=management&program=t07-3-program&task=events",
+      ],
+      [
+        "programs-workspace-participants",
+        "mode=management&program=t07-3-program&task=participants",
+      ],
+      [
+        "programs-workspace-settings",
+        "mode=management&program=t07-3-program&task=settings",
+      ],
+      [
+        "programs-workspace-schedule",
+        "mode=management&program=t07-3-program&task=schedule",
+      ],
+      [
+        "programs-workspace-notifications",
+        "mode=management&task=notifications",
+      ],
+    ]);
+    expect(
       PROGRAMS_PRESENTATION_DECLARATIONS.every(
         ({ gap }) => gap === "ISSUE-#601"
       )

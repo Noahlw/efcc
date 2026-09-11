@@ -1,4 +1,5 @@
 import { http, HttpResponse } from "msw";
+import type { RequestHandler } from "msw";
 
 import type {
   Department,
@@ -270,6 +271,73 @@ const SCHEDULE_PREVIEW: PreviewResult = {
   ],
 };
 
+const PENDING_PARTICIPANT_DETAIL: ParticipantProgramDetail = {
+  ...PARTICIPANT_DETAIL,
+  enrollment: {
+    requests: [
+      {
+        request_id: "t07-3-pending-request",
+        status: "Pending",
+        submitted_at: "2099-09-02T00:00:00.000Z",
+        decided_at: null,
+      },
+    ],
+    enrollments: [],
+  },
+};
+
+const REJECTED_PARTICIPANT_DETAIL: ParticipantProgramDetail = {
+  ...PARTICIPANT_DETAIL,
+  enrollment: {
+    requests: [
+      {
+        request_id: "t07-3-rejected-request",
+        status: "Rejected",
+        submitted_at: "2099-08-28T00:00:00.000Z",
+        decided_at: "2099-08-29T00:00:00.000Z",
+      },
+    ],
+    enrollments: [],
+  },
+};
+
+const OPEN_EVENT_DETAIL: EventDetail = {
+  ...EVENT_DETAIL,
+  event: {
+    ...EVENT_DETAIL.event,
+    check_in_window_opens_at: "2026-09-01T00:00:00.000Z",
+    check_in_window_closes_at: "2099-09-30T00:00:00.000Z",
+  },
+};
+
+const INELIGIBLE_EVENT_DETAIL: EventDetail = {
+  ...EVENT_DETAIL,
+  event: {
+    ...EVENT_DETAIL.event,
+    availability: "Inactive",
+  },
+};
+
+const UNREAD_NOTIFICATIONS: ManagementNotifications = {
+  items: [
+    {
+      kind: "enrollment",
+      source_key: "t07-3-notification",
+      source_revision: "1",
+      read: false,
+      actionable: true,
+      count: 2,
+      latest_submitted_at: "2099-09-02T00:00:00.000Z",
+      program_id: PROGRAM_ID,
+      program_name: PROGRAM.name,
+      department_id: DEPARTMENT_ID,
+      department_name: DEPARTMENT.name,
+    },
+  ],
+  unread_count: 1,
+  has_more: false,
+};
+
 const participantProgramHandlers = [
   memberAuthMeHandler,
   http.get("/api/v1/programs/access", () =>
@@ -360,5 +428,308 @@ const managementProgramHandlers = [
   ),
 ];
 
+const withScenarioHandlers = (
+  base: readonly RequestHandler[],
+  ...overrides: RequestHandler[]
+): readonly RequestHandler[] => [...overrides, ...base];
+
+const conflictProgramHandler = http.patch("/api/v1/programs/:programId", () =>
+  HttpResponse.json(
+    {
+      status: 409,
+      code: "CONFLICT",
+      title: "Conflict",
+      detail: "The program changed on the server.",
+    },
+    { status: 409 }
+  )
+);
+
+const stalePlanHandler = http.post(
+  "/api/v1/programs/:programId/events/generate",
+  () =>
+    HttpResponse.json(
+      {
+        status: 409,
+        code: "STALE_PLAN",
+        title: "Stale plan",
+        detail: "The schedule changed; preview again.",
+      },
+      { status: 409 }
+    )
+);
+
+const partialGenerateHandler = http.post(
+  "/api/v1/programs/:programId/events/generate",
+  () =>
+    envelope({
+      generated: {
+        run_id: "t07-3-partial-run",
+        plan_id: SCHEDULE_PREVIEW.plan.plan_id,
+        status: "partial" as const,
+        created: 1,
+        skipped: 0,
+        failed: 1,
+        resumed: true,
+      },
+    })
+);
+
 export const programsParticipantHandlers = participantProgramHandlers;
 export const programsManagementHandlers = managementProgramHandlers;
+
+export const PROGRAMS_MATERIAL_SCENARIO_NAMES = [
+  "participant-directory-member",
+  "participant-directory-capable",
+  "participant-program-detail-active",
+  "participant-program-detail-pending",
+  "participant-program-detail-rejected",
+  "participant-event-detail-closed",
+  "participant-event-detail-open",
+  "participant-event-detail-ineligible",
+  "management-directory-mixed",
+  "workspace-overview-populated",
+  "workspace-overview-zero",
+  "workspace-events-mixed",
+  "workspace-participants-pending",
+  "workspace-settings-dirty",
+  "workspace-settings-conflict",
+  "workspace-schedule-focused",
+  "workspace-schedule-stale",
+  "workspace-schedule-partial-resume",
+  "notifications-unread",
+  "notifications-empty-recoverable",
+] as const;
+
+export type ProgramsMaterialScenarioName =
+  (typeof PROGRAMS_MATERIAL_SCENARIO_NAMES)[number];
+
+export interface ProgramsStoryScenario {
+  readonly pathname: "/programs";
+  readonly query: Readonly<Record<string, string>>;
+  readonly handlers: readonly RequestHandler[];
+}
+
+const storyScenario = (
+  query: Readonly<Record<string, string>>,
+  handlers: readonly RequestHandler[]
+): ProgramsStoryScenario => ({
+  pathname: "/programs",
+  query,
+  handlers,
+});
+
+// oxlint-disable-next-line complexity -- the named matrix intentionally keeps each route state explicit.
+export function getProgramsStoryScenario(
+  name: ProgramsMaterialScenarioName
+): ProgramsStoryScenario {
+  switch (name) {
+    case "participant-directory-member": {
+      return storyScenario({}, programsParticipantHandlers);
+    }
+    case "participant-directory-capable":
+    case "management-directory-mixed": {
+      return storyScenario({ mode: "management" }, programsManagementHandlers);
+    }
+    case "participant-program-detail-active": {
+      return storyScenario(
+        { program: PROGRAM_ID },
+        programsParticipantHandlers
+      );
+    }
+    case "participant-program-detail-pending": {
+      return storyScenario(
+        { program: PROGRAM_ID },
+        withScenarioHandlers(
+          programsParticipantHandlers,
+          http.get("/api/v1/programs/:programId/participant-detail", () =>
+            envelope({ detail: PENDING_PARTICIPANT_DETAIL })
+          )
+        )
+      );
+    }
+    case "participant-program-detail-rejected": {
+      return storyScenario(
+        { program: PROGRAM_ID },
+        withScenarioHandlers(
+          programsParticipantHandlers,
+          http.get("/api/v1/programs/:programId/participant-detail", () =>
+            envelope({ detail: REJECTED_PARTICIPANT_DETAIL })
+          )
+        )
+      );
+    }
+    case "participant-event-detail-closed": {
+      return storyScenario(
+        { event: EVENT_ID, program: PROGRAM_ID },
+        programsParticipantHandlers
+      );
+    }
+    case "participant-event-detail-open": {
+      return storyScenario(
+        { event: EVENT_ID, program: PROGRAM_ID },
+        withScenarioHandlers(
+          programsParticipantHandlers,
+          http.get("/api/v1/programs/:programId/events/:eventId", () =>
+            envelope(OPEN_EVENT_DETAIL)
+          )
+        )
+      );
+    }
+    case "participant-event-detail-ineligible": {
+      return storyScenario(
+        { event: EVENT_ID, program: PROGRAM_ID },
+        withScenarioHandlers(
+          programsParticipantHandlers,
+          http.get("/api/v1/programs/:programId/events/:eventId", () =>
+            envelope(INELIGIBLE_EVENT_DETAIL)
+          )
+        )
+      );
+    }
+    case "workspace-overview-populated": {
+      return storyScenario(
+        { mode: "management", program: PROGRAM_ID },
+        programsManagementHandlers
+      );
+    }
+    case "workspace-overview-zero": {
+      return storyScenario(
+        { mode: "management", program: PROGRAM_ID },
+        withScenarioHandlers(
+          programsManagementHandlers,
+          http.get("/api/v1/programs/:programId/management", () =>
+            envelope({
+              program: PROGRAM,
+              department: DEPARTMENT,
+              modules: MODULES,
+              cockpit: {
+                ...MANAGEMENT_COCKPIT,
+                next_event: null,
+                active_event_count: 0,
+                pending_enrollment_count: 0,
+              },
+            })
+          )
+        )
+      );
+    }
+    case "workspace-events-mixed": {
+      return storyScenario(
+        { mode: "management", program: PROGRAM_ID, task: "events" },
+        withScenarioHandlers(
+          programsManagementHandlers,
+          http.get("/api/v1/programs/:programId/events", () =>
+            envelope({
+              events: [
+                MANAGEMENT_EVENT,
+                {
+                  ...MANAGEMENT_EVENT,
+                  event_id: "t07-3-cancelled-event",
+                  status: "Cancelled" as const,
+                  availability: "Inactive" as const,
+                  cancel_reason: "Venue unavailable",
+                },
+              ],
+            })
+          )
+        )
+      );
+    }
+    case "workspace-participants-pending": {
+      return storyScenario(
+        { mode: "management", program: PROGRAM_ID, task: "participants" },
+        withScenarioHandlers(
+          programsManagementHandlers,
+          http.get("/api/v1/programs/:programId/enrollment-snapshot", () =>
+            envelope({
+              requests: [
+                {
+                  request_id: "t07-3-pending-request",
+                  program_id: PROGRAM_ID,
+                  member_user_id: "t07-3-member",
+                  status: "Pending" as const,
+                  submitted_at: "2099-09-02T00:00:00.000Z",
+                  decided_by: null,
+                  decided_at: null,
+                  decision_note: null,
+                  request_version: 1,
+                  member_name: "陳小明",
+                  member_username: "chan.ming",
+                },
+              ],
+              enrollments: [],
+            })
+          )
+        )
+      );
+    }
+    case "workspace-settings-dirty": {
+      return storyScenario(
+        { mode: "management", program: PROGRAM_ID, task: "settings" },
+        programsManagementHandlers
+      );
+    }
+    case "workspace-settings-conflict": {
+      return storyScenario(
+        { mode: "management", program: PROGRAM_ID, task: "settings" },
+        withScenarioHandlers(programsManagementHandlers, conflictProgramHandler)
+      );
+    }
+    case "workspace-schedule-focused": {
+      return storyScenario(
+        { mode: "management", program: PROGRAM_ID, task: "schedule" },
+        programsManagementHandlers
+      );
+    }
+    case "workspace-schedule-stale": {
+      return storyScenario(
+        { mode: "management", program: PROGRAM_ID, task: "schedule" },
+        withScenarioHandlers(programsManagementHandlers, stalePlanHandler)
+      );
+    }
+    case "workspace-schedule-partial-resume": {
+      return storyScenario(
+        { mode: "management", program: PROGRAM_ID, task: "schedule" },
+        withScenarioHandlers(programsManagementHandlers, partialGenerateHandler)
+      );
+    }
+    case "notifications-unread": {
+      return storyScenario(
+        { mode: "management", task: "notifications" },
+        withScenarioHandlers(
+          programsManagementHandlers,
+          http.get("/api/v1/programs/notifications", () =>
+            envelope(UNREAD_NOTIFICATIONS)
+          )
+        )
+      );
+    }
+    case "notifications-empty-recoverable": {
+      let attempts = 0;
+      return storyScenario(
+        { mode: "management", task: "notifications" },
+        withScenarioHandlers(
+          programsManagementHandlers,
+          http.get("/api/v1/programs/notifications", () => {
+            attempts += 1;
+            return attempts === 1
+              ? HttpResponse.json(
+                  {
+                    status: 503,
+                    code: "UNAVAILABLE",
+                    title: "Unavailable",
+                    detail: "Notifications are temporarily unavailable.",
+                  },
+                  { status: 503 }
+                )
+              : envelope(MANAGEMENT_NOTIFICATIONS);
+          })
+        )
+      );
+    }
+    default: {
+      throw new Error(`Unknown Programs material scenario: ${name}`);
+    }
+  }
+}

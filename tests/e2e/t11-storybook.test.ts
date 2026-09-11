@@ -20,6 +20,19 @@ const STORIES = {
   scannerBoundary: "t07-5-attendance-scanner-guest--scanner-boundary",
 } as const;
 
+const PROGRAMS_BASELINE_STORIES = [
+  "t07-3-programs--participant-directory",
+  "t07-3-programs--participant-program-detail",
+  "t07-3-programs--participant-event-detail",
+  "t07-3-programs--management-directory",
+  "t07-3-programs--workspace-overview",
+  "t07-3-programs--workspace-events",
+  "t07-3-programs--workspace-participants",
+  "t07-3-programs--workspace-settings",
+  "t07-3-programs--workspace-schedule",
+  "t07-3-programs--workspace-notifications",
+] as const;
+
 async function expectShellFrame(page: Page) {
   const nav = page.locator("nav#main-navigation");
   const main = page.locator("main#shell-content");
@@ -229,6 +242,21 @@ test("Programs detail uses a route-owned icon-only Back control", async ({
   await expect(back).toHaveAttribute("href", "/programs");
   await expect(back).toHaveAttribute("aria-label", COPY.programs.detailBack);
   await expect(back).toHaveText("");
+});
+
+test("all retained Programs baselines use one settled production route composition", async ({
+  page,
+}) => {
+  for (const storyId of PROGRAMS_BASELINE_STORIES) {
+    await page.goto(story(storyId));
+    await expectShellFrame(page);
+    const frame = page.locator(
+      '[data-screen-foundation="page-frame"][data-screen-route="programs"]'
+    );
+    await expect(frame).toHaveCount(1);
+    await expect(frame).toBeVisible();
+    await expect(page.locator('[aria-busy="true"]')).toHaveCount(0);
+  }
 });
 
 test("Storybook Notices keeps global brand and local H1 across W7", async ({
