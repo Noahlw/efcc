@@ -259,6 +259,119 @@ test("all retained Programs baselines use one settled production route compositi
   }
 });
 
+test("Programs baselines expose dense Cantonese 2026 server-shaped fixtures", async ({
+  page,
+}) => {
+  await page.goto(story(STORIES.programsParticipant));
+  await expectShellFrame(page);
+  const frame = page.locator(
+    '[data-screen-foundation="page-frame"][data-screen-route="programs"]'
+  );
+  await expect(frame.locator("[data-program-name]")).toHaveCount(5);
+  for (const name of [
+    "門徒訓練基礎課",
+    "同行成長小組",
+    "信仰探索班",
+    "家庭同行系列",
+    "青年領袖培訓",
+  ]) {
+    await expect(frame.getByText(name, { exact: true })).toBeVisible();
+  }
+  for (const status of ["可報名", "待審批", "已封存"]) {
+    await expect(
+      frame.locator('[data-screen-status="true"]').filter({ hasText: status })
+    ).toBeVisible();
+  }
+
+  await page.goto(story(STORIES.programsManagement));
+  await expectShellFrame(page);
+  const managementFrame = page.locator(
+    '[data-screen-foundation="page-frame"][data-screen-route="programs"]'
+  );
+  for (const department of [
+    "培育部",
+    "牧養部",
+    "福音部",
+    "家庭事工",
+    "青年部",
+  ]) {
+    await expect(managementFrame).toContainText(department);
+  }
+  await expect(managementFrame).toContainText("啟用");
+  await expect(managementFrame).toContainText("草稿");
+  await expect(managementFrame).toContainText("已存檔");
+
+  await page.goto(story("t07-3-programs--workspace-overview"));
+  await expectShellFrame(page);
+  const overviewFrame = page.locator(
+    '[data-screen-foundation="page-frame"][data-screen-route="programs"]'
+  );
+  await expect(
+    overviewFrame.getByText("12 個聚會", { exact: true })
+  ).toBeVisible();
+  await expect(
+    overviewFrame.getByText("待審批報名 ×2", { exact: true })
+  ).toBeVisible();
+
+  await page.goto(story("t07-3-programs--workspace-events"));
+  await expectShellFrame(page);
+  const eventsFrame = page.locator(
+    '[data-screen-foundation="page-frame"][data-screen-route="programs"]'
+  );
+  for (const eventName of [
+    "門徒訓練週會",
+    "門徒分享聚會",
+    "家庭同行特別聚會",
+  ]) {
+    await expect(
+      eventsFrame.getByText(eventName, { exact: true })
+    ).toBeVisible();
+  }
+
+  await page.goto(story("t07-3-programs--workspace-participants"));
+  await expectShellFrame(page);
+  const participantsFrame = page.locator(
+    '[data-screen-foundation="page-frame"][data-screen-route="programs"]'
+  );
+  await expect(
+    participantsFrame.getByText("陳小明", { exact: true })
+  ).toBeVisible();
+  await expect(
+    participantsFrame.getByText("李欣怡", { exact: true })
+  ).toBeVisible();
+  await participantsFrame.getByRole("tab", { name: /使用中/u }).click();
+  await expect(
+    participantsFrame.getByText("王恩慈", { exact: true })
+  ).toBeVisible();
+  await participantsFrame.getByRole("tab", { name: /歷史/u }).click();
+  await expect(
+    participantsFrame.getByText("黃志成", { exact: true })
+  ).toBeVisible();
+
+  await page.goto(story("t07-3-programs--workspace-notifications"));
+  await expectShellFrame(page);
+  const notificationsFrame = page.locator(
+    '[data-screen-foundation="page-frame"][data-screen-route="programs"]'
+  );
+  await expect(
+    notificationsFrame.getByText("較早通知", { exact: true })
+  ).toBeVisible();
+  await expect(notificationsFrame.locator("[data-screen-row]")).toHaveCount(4);
+  for (const notification of [
+    "門徒訓練基礎課",
+    "門徒分享聚會",
+    "家庭同行特別聚會",
+    "同行成長小組",
+  ]) {
+    await expect(
+      notificationsFrame
+        .locator("[data-screen-row]")
+        .filter({ hasText: notification })
+        .first()
+    ).toBeVisible();
+  }
+});
+
 test("Storybook Notices keeps global brand and local H1 across W7", async ({
   page,
 }) => {

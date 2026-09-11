@@ -20,7 +20,18 @@ import {
   isPresentationGapReference,
   validateScreenCatalog,
 } from "./presentation-catalog";
-import { WorkspaceNotifications } from "./programs.stories";
+import {
+  ManagementDirectory,
+  ParticipantDirectory,
+  ParticipantEventDetail,
+  ParticipantProgramDetail,
+  WorkspaceEvents,
+  WorkspaceNotifications,
+  WorkspaceOverview,
+  WorkspaceParticipants,
+  WorkspaceSchedule,
+  WorkspaceSettings,
+} from "./programs.stories";
 
 const psnsFor = (screenId: string) =>
   SCREEN_CATALOG.find((entry) => entry.screenId === screenId)?.psns ?? [];
@@ -164,6 +175,36 @@ describe("T07 Screen Catalog foundation", () => {
     ).toMatchObject({
       route: "/programs",
       intent: "mode=management&task=notifications",
+    });
+  });
+
+  test("pins the exact route baseline to material scenario mapping", () => {
+    const scenarioFor = (story: unknown) =>
+      (story as { parameters?: { programsScenario?: string } }).parameters
+        ?.programsScenario;
+
+    expect({
+      ParticipantDirectory: scenarioFor(ParticipantDirectory),
+      ParticipantProgramDetail: scenarioFor(ParticipantProgramDetail),
+      ParticipantEventDetail: scenarioFor(ParticipantEventDetail),
+      ManagementDirectory: scenarioFor(ManagementDirectory),
+      WorkspaceOverview: scenarioFor(WorkspaceOverview),
+      WorkspaceEvents: scenarioFor(WorkspaceEvents),
+      WorkspaceParticipants: scenarioFor(WorkspaceParticipants),
+      WorkspaceSettings: scenarioFor(WorkspaceSettings),
+      WorkspaceSchedule: scenarioFor(WorkspaceSchedule),
+      WorkspaceNotifications: scenarioFor(WorkspaceNotifications),
+    }).toStrictEqual({
+      ParticipantDirectory: "participant-directory-member",
+      ParticipantProgramDetail: "participant-program-detail-active",
+      ParticipantEventDetail: "participant-event-detail-closed",
+      ManagementDirectory: "management-directory-mixed",
+      WorkspaceOverview: "workspace-overview-populated",
+      WorkspaceEvents: "workspace-events-mixed",
+      WorkspaceParticipants: "workspace-participants-pending",
+      WorkspaceSettings: "workspace-settings-dirty",
+      WorkspaceSchedule: "workspace-schedule-focused",
+      WorkspaceNotifications: "notifications-unread",
     });
   });
 

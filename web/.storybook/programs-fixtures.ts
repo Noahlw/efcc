@@ -10,6 +10,8 @@ import type {
   ManagementDirectory,
   ManagementNotifications,
   ParticipantCatalogEntry,
+  ParticipantCatalogProgram,
+  ParticipantEventSummary,
   ParticipantProgramDetail,
   Program,
   ProgramEvent,
@@ -25,6 +27,10 @@ const REQUEST_ID = "t07-3-storybook";
 const PROGRAM_ID = "t07-3-program";
 const DEPARTMENT_ID = "t07-3-department";
 const EVENT_ID = "t07-3-event";
+const ELIGIBLE_PROGRAM_ID = "t07-3-eligible-program";
+const EXPLORATION_PROGRAM_ID = "t07-3-exploration-program";
+const FAMILY_PROGRAM_ID = "t07-3-family-program";
+const YOUTH_PROGRAM_ID = "t07-3-youth-program";
 
 const envelope = <T>(data: T) =>
   HttpResponse.json({ requestId: REQUEST_ID, data });
@@ -32,12 +38,12 @@ const envelope = <T>(data: T) =>
 const DEPARTMENT: Department = {
   department_id: DEPARTMENT_ID,
   code: "T073",
-  name: "Storybook Programs Department",
-  description: "Synthetic management scope for T07.3.",
+  name: "培育部",
+  description: "負責門徒培育及基礎訓練。",
   lifecycle: "Active",
   display_order: 1,
-  created_at: "2099-09-01T00:00:00.000Z",
-  updated_at: "2099-09-01T00:00:00.000Z",
+  created_at: "2026-01-08T00:00:00.000Z",
+  updated_at: "2026-09-01T00:00:00.000Z",
   capabilities: {
     manage: true,
     publish: true,
@@ -48,6 +54,54 @@ const DEPARTMENT: Department = {
   },
 };
 
+const DEPARTMENTS: Department[] = [
+  DEPARTMENT,
+  {
+    department_id: "t07-3-department-牧養",
+    code: "T074",
+    name: "牧養部",
+    description: "負責小組同行及牧養關顧。",
+    lifecycle: "Active",
+    display_order: 2,
+    created_at: "2026-01-08T00:00:00.000Z",
+    updated_at: "2026-09-01T00:00:00.000Z",
+    capabilities: { manage: true, publish: true, module_configure: true },
+  },
+  {
+    department_id: "t07-3-department-福音",
+    code: "T075",
+    name: "福音部",
+    description: "負責福音探索及社區接觸。",
+    lifecycle: "Active",
+    display_order: 3,
+    created_at: "2026-01-08T00:00:00.000Z",
+    updated_at: "2026-09-01T00:00:00.000Z",
+    capabilities: { manage: true, publish: true, module_configure: true },
+  },
+  {
+    department_id: "t07-3-department-家庭",
+    code: "T076",
+    name: "家庭事工",
+    description: "支援家庭在生活與信仰上的同行。",
+    lifecycle: "Active",
+    display_order: 4,
+    created_at: "2026-01-08T00:00:00.000Z",
+    updated_at: "2026-09-01T00:00:00.000Z",
+    capabilities: { manage: true, publish: true, module_configure: true },
+  },
+  {
+    department_id: "t07-3-department-青年",
+    code: "T077",
+    name: "青年部",
+    description: "負責青年領袖培訓及同行。",
+    lifecycle: "Active",
+    display_order: 5,
+    created_at: "2026-01-08T00:00:00.000Z",
+    updated_at: "2026-09-01T00:00:00.000Z",
+    capabilities: { manage: true, publish: true, module_configure: true },
+  },
+];
+
 const MODULES: DepartmentModule[] = [
   "program_catalog",
   "enrollment",
@@ -57,22 +111,22 @@ const MODULES: DepartmentModule[] = [
   department_id: DEPARTMENT_ID,
   module_key: module_key as DepartmentModule["module_key"],
   enabled: 1,
-  enabled_at: "2099-09-01T00:00:00.000Z",
+  enabled_at: "2026-09-01T00:00:00.000Z",
 }));
 
 const PROGRAM: Program = {
   program_id: PROGRAM_ID,
   department_id: DEPARTMENT_ID,
-  name: "Storybook Programs Workshop",
-  description: "Synthetic programme for the Programs presentation catalog.",
-  category: "Community",
+  name: "門徒訓練基礎課",
+  description: "以福音根基、靈命操練及教會生活為主的基礎課程。",
+  category: "門徒培育",
   behavior_type: "Recurring",
   lifecycle: "Active",
   discoverability: "Listed",
   enrollment_mode: "MemberRequest",
   display_order: 1,
-  created_at: "2099-09-01T00:00:00.000Z",
-  updated_at: "2099-09-01T00:00:00.000Z",
+  created_at: "2026-01-10T00:00:00.000Z",
+  updated_at: "2026-09-03T00:00:00.000Z",
   capabilities: {
     manage: true,
     publish: true,
@@ -84,64 +138,126 @@ const PROGRAM: Program = {
   },
 };
 
-const PROGRAM_SUMMARY: ProgramSummary = {
-  program_id: PROGRAM_ID,
-  department_id: DEPARTMENT_ID,
-  name: PROGRAM.name,
-  description: PROGRAM.description,
-  category: PROGRAM.category,
-  behavior_type: PROGRAM.behavior_type,
-  lifecycle: PROGRAM.lifecycle,
-  discoverability: PROGRAM.discoverability,
-  enrollment_mode: PROGRAM.enrollment_mode,
-  display_order: PROGRAM.display_order,
-  created_at: PROGRAM.created_at,
-  updated_at: PROGRAM.updated_at,
-};
-
-const PARTICIPANT_EVENT = {
-  event_id: EVENT_ID,
-  program_id: PROGRAM_ID,
-  starts_at: "2099-09-12T10:00:00.000Z",
-  ends_at: "2099-09-12T11:30:00.000Z",
-  status: "Active" as const,
-  source: "SCHEDULE" as const,
-  name: "Storybook participant gathering",
-  location: "Storybook Hall",
-  self_check_in_available: true,
-};
-
-const PARTICIPANT_CATALOG: ParticipantCatalogEntry[] = [
+const PROGRAMS: Program[] = [
+  PROGRAM,
   {
-    department: {
-      department_id: DEPARTMENT_ID,
-      code: DEPARTMENT.code,
-      name: DEPARTMENT.name,
-      description: DEPARTMENT.description,
-      lifecycle: DEPARTMENT.lifecycle,
-      display_order: DEPARTMENT.display_order,
-    },
-    programs: [
-      {
-        ...PROGRAM_SUMMARY,
-        viewerState: "active",
-        nextEventStartsAt: PARTICIPANT_EVENT.starts_at,
-        upcomingEventCount: 1,
-      },
-    ],
+    ...PROGRAM,
+    program_id: ELIGIBLE_PROGRAM_ID,
+    department_id: "t07-3-department-牧養",
+    name: "同行成長小組",
+    description: "以小組同行建立穩定的靈性操練及彼此支持。",
+    category: "小組同行",
+    display_order: 2,
+  },
+  {
+    ...PROGRAM,
+    program_id: EXPLORATION_PROGRAM_ID,
+    department_id: "t07-3-department-福音",
+    name: "信仰探索班",
+    description: "讓對信仰有興趣的朋友循序認識福音。",
+    category: "福音探索",
+    behavior_type: "OneOff",
+    lifecycle: "Draft",
+    display_order: 3,
+  },
+  {
+    ...PROGRAM,
+    program_id: FAMILY_PROGRAM_ID,
+    department_id: "t07-3-department-家庭",
+    name: "家庭同行系列",
+    description: "支援家庭在生活與信仰上的同行。",
+    category: "家庭事工",
+    lifecycle: "Archived",
+    discoverability: "Unlisted",
+    display_order: 4,
+  },
+  {
+    ...PROGRAM,
+    program_id: YOUTH_PROGRAM_ID,
+    department_id: "t07-3-department-青年",
+    name: "青年領袖培訓",
+    description: "裝備青年領袖承擔教會服事及同行工作。",
+    category: "青年事工",
+    enrollment_mode: "ManagerOnly",
+    display_order: 5,
   },
 ];
 
+const programSummary = (program: Program): ProgramSummary => ({
+  program_id: program.program_id,
+  department_id: program.department_id,
+  name: program.name,
+  description: program.description,
+  category: program.category,
+  behavior_type: program.behavior_type,
+  lifecycle: program.lifecycle,
+  discoverability: program.discoverability,
+  enrollment_mode: program.enrollment_mode,
+  display_order: program.display_order,
+  created_at: program.created_at,
+  updated_at: program.updated_at,
+});
+
+const departmentSummary = (department: Department) => ({
+  department_id: department.department_id,
+  code: department.code,
+  name: department.name,
+  description: department.description,
+  lifecycle: department.lifecycle,
+  display_order: department.display_order,
+});
+
+const PROGRAM_SUMMARY = programSummary(PROGRAM);
+const ELIGIBLE_PROGRAM_SUMMARY = programSummary(
+  PROGRAMS.find((program) => program.program_id === ELIGIBLE_PROGRAM_ID) ??
+    PROGRAM
+);
+
+const PARTICIPANT_EVENT: ParticipantEventSummary = {
+  event_id: EVENT_ID,
+  program_id: PROGRAM_ID,
+  starts_at: "2026-09-12T10:00:00.000Z",
+  ends_at: "2026-09-12T11:30:00.000Z",
+  status: "Active" as const,
+  source: "SCHEDULE" as const,
+  name: "門徒訓練聚會",
+  location: "培育室",
+  self_check_in_available: false,
+};
+
+const PARTICIPANT_NEXT_EVENT_DATES = [
+  "2026-09-12",
+  "2026-09-19",
+  "2026-09-26",
+  null,
+  "2026-10-03",
+] as const;
+
+const PARTICIPANT_CATALOG: ParticipantCatalogEntry[] = PROGRAMS.map(
+  (program, index) => ({
+    department: departmentSummary(DEPARTMENTS[index] ?? DEPARTMENT),
+    programs: [
+      {
+        ...programSummary(program),
+        viewerState: [
+          "active",
+          "eligible",
+          "pending",
+          "archived",
+          "managerOnly",
+        ][index] as ParticipantCatalogProgram["viewerState"],
+        nextEventStartsAt: PARTICIPANT_NEXT_EVENT_DATES[index]
+          ? `${PARTICIPANT_NEXT_EVENT_DATES[index]}T10:00:00.000Z`
+          : null,
+        upcomingEventCount: index === 3 ? 0 : index === 2 ? 2 : 1,
+      },
+    ],
+  })
+);
+
 const PARTICIPANT_DETAIL: ParticipantProgramDetail = {
   program: PROGRAM_SUMMARY,
-  department: {
-    department_id: DEPARTMENT_ID,
-    code: DEPARTMENT.code,
-    name: DEPARTMENT.name,
-    description: DEPARTMENT.description,
-    lifecycle: DEPARTMENT.lifecycle,
-    display_order: DEPARTMENT.display_order,
-  },
+  department: departmentSummary(DEPARTMENT),
   schedule_rules: [
     {
       rule_id: "t07-3-rule",
@@ -159,11 +275,41 @@ const PARTICIPANT_DETAIL: ParticipantProgramDetail = {
       {
         enrollment_id: "t07-3-enrollment",
         status: "Active",
-        enrolled_at: "2099-09-02T00:00:00.000Z",
+        enrolled_at: "2026-09-02T00:00:00.000Z",
         cancelled_at: null,
       },
     ],
   },
+  enrollment_access: "Eligible",
+};
+
+const ELIGIBLE_PARTICIPANT_DETAIL: ParticipantProgramDetail = {
+  program: ELIGIBLE_PROGRAM_SUMMARY,
+  department: departmentSummary(
+    DEPARTMENTS.find(
+      (department) => department.department_id === "t07-3-department-牧養"
+    ) ?? DEPARTMENT
+  ),
+  schedule_rules: [
+    {
+      rule_id: "t07-3-eligible-rule",
+      recurrence: "WEEKLY",
+      day_of_week: 2,
+      month_day: null,
+      start_time: "19:30",
+      end_time: "21:00",
+    },
+  ],
+  events: [
+    {
+      ...PARTICIPANT_EVENT,
+      event_id: "t07-3-eligible-event",
+      program_id: ELIGIBLE_PROGRAM_ID,
+      name: "同行小組聚會",
+      location: "牧養室",
+    },
+  ],
+  enrollment: null,
   enrollment_access: "Eligible",
 };
 
@@ -176,15 +322,15 @@ const MANAGEMENT_EVENT: ProgramEvent = {
   status: "Active",
   availability: "Active",
   source: "SCHEDULE",
-  name: "Storybook management event",
+  name: "門徒訓練週會",
   event_type: "訓練",
-  location: "Storybook Hall",
+  location: "培育室",
   manual_check_in_code: null,
   check_in_window_opens_at: null,
   check_in_window_closes_at: null,
   cancel_reason: null,
-  created_at: "2099-09-01T00:00:00.000Z",
-  updated_at: "2099-09-01T00:00:00.000Z",
+  created_at: "2026-09-01T00:00:00.000Z",
+  updated_at: "2026-09-03T00:00:00.000Z",
   exception: null,
   recurrence_tag: "每週",
   has_attendance: false,
@@ -196,10 +342,39 @@ const EVENT_DETAIL: EventDetail = {
   participant_summary: { active_enrollments: 3, checked_in: 1 },
 };
 
-const MANAGEMENT_DIRECTORY = {
-  departments: [DEPARTMENT],
-  programs: [PROGRAM],
-} as unknown as ManagementDirectory;
+const MANUAL_MANAGEMENT_EVENT: ProgramEvent = {
+  ...MANAGEMENT_EVENT,
+  event_id: "t07-3-manual-event",
+  starts_at: "2026-09-19T10:00:00.000Z",
+  ends_at: "2026-09-19T11:30:00.000Z",
+  source: "MANUAL",
+  name: "門徒分享聚會",
+  event_type: "小組",
+  recurrence_tag: "無",
+};
+
+const CANCELLED_MANAGEMENT_EVENT: ProgramEvent = {
+  ...MANAGEMENT_EVENT,
+  event_id: "t07-3-cancelled-event",
+  starts_at: "2026-09-26T10:00:00.000Z",
+  ends_at: "2026-09-26T11:30:00.000Z",
+  status: "Cancelled",
+  availability: "Inactive",
+  name: "家庭同行特別聚會",
+  event_type: "其他",
+  cancel_reason: "場地安排調整",
+};
+
+const MANAGEMENT_EVENTS: ProgramEvent[] = [
+  MANAGEMENT_EVENT,
+  MANUAL_MANAGEMENT_EVENT,
+  CANCELLED_MANAGEMENT_EVENT,
+];
+
+const MANAGEMENT_DIRECTORY: ManagementDirectory = {
+  departments: DEPARTMENTS,
+  programs: PROGRAMS,
+};
 
 const MANAGEMENT_COCKPIT: ManagementCockpitView = {
   program_id: PROGRAM_ID,
@@ -216,18 +391,115 @@ const MANAGEMENT_COCKPIT: ManagementCockpitView = {
     checked_in_count: 1,
     roster_count: 3,
   },
-  active_event_count: 1,
-  pending_enrollment_count: 0,
+  active_event_count: 12,
+  pending_enrollment_count: 2,
 };
 
 const MANAGEMENT_ATTENTION: ManagementAttention = {
-  programs: [],
-  items: [],
-  total_actionable_count: 0,
+  programs: PROGRAMS.map((program, index) => ({
+    program_id: program.program_id,
+    department_id: program.department_id,
+    pending_enrollment_count: index === 0 ? 2 : 0,
+    inactive_event_count: index === 3 ? 1 : 0,
+    cancelled_event_count: index === 3 ? 1 : 0,
+    actionable_count: index === 0 || index === 3 ? 2 : 0,
+  })),
+  items: [
+    {
+      kind: "enrollment",
+      actionable: true,
+      count: 2,
+      program_id: PROGRAM_ID,
+      program_name: PROGRAM.name,
+      department_id: DEPARTMENT_ID,
+      department_name: DEPARTMENT.name,
+    },
+    {
+      kind: "event",
+      actionable: true,
+      event_id: CANCELLED_MANAGEMENT_EVENT.event_id,
+      program_id: PROGRAM_ID,
+      program_name: PROGRAM.name,
+      department_id: DEPARTMENT_ID,
+      department_name: DEPARTMENT.name,
+      starts_at: CANCELLED_MANAGEMENT_EVENT.starts_at,
+      status: "Cancelled",
+      availability: "Inactive",
+      name: CANCELLED_MANAGEMENT_EVENT.name ?? null,
+    },
+  ],
+  total_actionable_count: 4,
   has_more: false,
 };
 
 const MANAGEMENT_NOTIFICATIONS: ManagementNotifications = {
+  items: [
+    {
+      kind: "enrollment",
+      source_key: "t07-3-notification-1",
+      source_revision: "1",
+      read: false,
+      actionable: true,
+      count: 2,
+      latest_submitted_at: "2026-09-09T02:00:00.000Z",
+      program_id: PROGRAM_ID,
+      program_name: PROGRAM.name,
+      department_id: DEPARTMENT_ID,
+      department_name: DEPARTMENT.name,
+    },
+    {
+      kind: "event",
+      source_key: "t07-3-notification-2",
+      source_revision: "1",
+      read: false,
+      actionable: true,
+      event_id: MANUAL_MANAGEMENT_EVENT.event_id,
+      program_id: PROGRAM_ID,
+      program_name: PROGRAM.name,
+      department_id: DEPARTMENT_ID,
+      department_name: DEPARTMENT.name,
+      starts_at: MANUAL_MANAGEMENT_EVENT.starts_at,
+      status: "Active",
+      availability: "Active",
+      name: MANUAL_MANAGEMENT_EVENT.name ?? null,
+      updated_at: "2026-09-05T00:00:00.000Z",
+    },
+    {
+      kind: "event",
+      source_key: "t07-3-notification-3",
+      source_revision: "1",
+      read: false,
+      actionable: false,
+      event_id: CANCELLED_MANAGEMENT_EVENT.event_id,
+      program_id: PROGRAM_ID,
+      program_name: PROGRAM.name,
+      department_id: DEPARTMENT_ID,
+      department_name: DEPARTMENT.name,
+      starts_at: CANCELLED_MANAGEMENT_EVENT.starts_at,
+      status: "Cancelled",
+      availability: "Inactive",
+      name: CANCELLED_MANAGEMENT_EVENT.name ?? null,
+      updated_at: "2026-09-06T00:00:00.000Z",
+    },
+    {
+      kind: "enrollment",
+      source_key: "t07-3-notification-read",
+      source_revision: "1",
+      read: true,
+      actionable: true,
+      count: 1,
+      latest_submitted_at: "2026-09-01T02:00:00.000Z",
+      program_id: ELIGIBLE_PROGRAM_ID,
+      program_name: "同行成長小組",
+      department_id: "t07-3-department-牧養",
+      department_name: "牧養部",
+    },
+  ],
+  unread_count: 3,
+  has_more: false,
+};
+
+const EMPTY_MANAGEMENT_NOTIFICATIONS: ManagementNotifications = {
   items: [],
   unread_count: 0,
   has_more: false,
@@ -241,9 +513,9 @@ const SCHEDULE_RULE: ScheduleRule = {
   month_day: null,
   start_time: "18:00",
   end_time: "19:30",
-  location: "Storybook Hall",
-  created_at: "2099-09-01T00:00:00.000Z",
-  updated_at: "2099-09-01T00:00:00.000Z",
+  location: "培育室",
+  created_at: "2026-09-01T00:00:00.000Z",
+  updated_at: "2026-09-03T00:00:00.000Z",
 };
 
 const SCHEDULE_PREVIEW: PreviewResult = {
@@ -252,18 +524,29 @@ const SCHEDULE_PREVIEW: PreviewResult = {
     program_id: PROGRAM_ID,
     plan_hash: "t07-3-plan-hash",
     horizon_days: 90,
-    from_date: "2099-09-01",
-    rule_count: 1,
-    created_at: "2099-09-01T00:00:00.000Z",
+    from_date: "2026-09-12",
+    rule_count: 2,
+    created_at: "2026-09-03T00:00:00.000Z",
   },
   occurrences: [
     {
-      occurrence_id: "t07-3-rule:2099-09-05",
+      occurrence_id: "t07-3-rule:2026-09-12",
       plan_id: "t07-3-plan",
       rule_id: SCHEDULE_RULE.rule_id,
-      occurs_on: "2099-09-05",
-      starts_at: "2099-09-05T10:00:00.000Z",
-      ends_at: "2099-09-05T11:30:00.000Z",
+      occurs_on: "2026-09-12",
+      starts_at: "2026-09-12T10:00:00.000Z",
+      ends_at: "2026-09-12T11:30:00.000Z",
+      location: SCHEDULE_RULE.location,
+      skip_reason: null,
+      exception_id: null,
+    },
+    {
+      occurrence_id: "t07-3-rule:2026-09-19",
+      plan_id: "t07-3-plan",
+      rule_id: SCHEDULE_RULE.rule_id,
+      occurs_on: "2026-09-19",
+      starts_at: "2026-09-19T10:00:00.000Z",
+      ends_at: "2026-09-19T11:30:00.000Z",
       location: SCHEDULE_RULE.location,
       skip_reason: null,
       exception_id: null,
@@ -278,7 +561,7 @@ const PENDING_PARTICIPANT_DETAIL: ParticipantProgramDetail = {
       {
         request_id: "t07-3-pending-request",
         status: "Pending",
-        submitted_at: "2099-09-02T00:00:00.000Z",
+        submitted_at: "2026-09-09T02:00:00.000Z",
         decided_at: null,
       },
     ],
@@ -293,8 +576,8 @@ const REJECTED_PARTICIPANT_DETAIL: ParticipantProgramDetail = {
       {
         request_id: "t07-3-rejected-request",
         status: "Rejected",
-        submitted_at: "2099-08-28T00:00:00.000Z",
-        decided_at: "2099-08-29T00:00:00.000Z",
+        submitted_at: "2026-08-28T02:00:00.000Z",
+        decided_at: "2026-08-29T02:00:00.000Z",
       },
     ],
     enrollments: [],
@@ -306,72 +589,129 @@ const OPEN_EVENT_DETAIL: EventDetail = {
   event: {
     ...EVENT_DETAIL.event,
     check_in_window_opens_at: "2026-09-01T00:00:00.000Z",
-    check_in_window_closes_at: "2099-09-30T00:00:00.000Z",
+    check_in_window_closes_at: "2026-09-30T00:00:00.000Z",
   },
 };
 
-const INELIGIBLE_EVENT_DETAIL: EventDetail = {
-  ...EVENT_DETAIL,
-  event: {
-    ...EVENT_DETAIL.event,
-    availability: "Inactive",
+const forbiddenEventHandler = () =>
+  http.get("/api/v1/programs/:programId/events/:eventId", () =>
+    HttpResponse.json(
+      {
+        type: "about:blank",
+        title: "Forbidden",
+        status: 403,
+        code: "FORBIDDEN",
+        detail: "你未獲授權參與此聚會。",
+        requestId: REQUEST_ID,
+      },
+      {
+        status: 403,
+        headers: { "X-Request-Id": REQUEST_ID },
+      }
+    )
+  );
+
+const PARTICIPANT_REQUESTS = [
+  {
+    request_id: "t07-3-pending-request-1",
+    program_id: PROGRAM_ID,
+    member_user_id: "t07-3-member-1",
+    status: "Pending" as const,
+    submitted_at: "2026-09-09T02:00:00.000Z",
+    decided_by: null,
+    decided_at: null,
+    decision_note: null,
+    request_version: 1,
+    member_name: "陳小明",
+    member_username: "chan.ming",
   },
-};
+  {
+    request_id: "t07-3-pending-request-2",
+    program_id: PROGRAM_ID,
+    member_user_id: "t07-3-member-2",
+    status: "Pending" as const,
+    submitted_at: "2026-09-08T02:00:00.000Z",
+    decided_by: null,
+    decided_at: null,
+    decision_note: null,
+    request_version: 1,
+    member_name: "李欣怡",
+    member_username: "lee.yan",
+  },
+];
 
-const UNREAD_NOTIFICATIONS: ManagementNotifications = {
-  items: [
-    {
-      kind: "enrollment",
-      source_key: "t07-3-notification",
-      source_revision: "1",
-      read: false,
-      actionable: true,
-      count: 2,
-      latest_submitted_at: "2099-09-02T00:00:00.000Z",
-      program_id: PROGRAM_ID,
-      program_name: PROGRAM.name,
-      department_id: DEPARTMENT_ID,
-      department_name: DEPARTMENT.name,
-    },
-  ],
-  unread_count: 1,
-  has_more: false,
-};
+const PARTICIPANT_ENROLLMENTS = [
+  {
+    enrollment_id: "t07-3-enrollment-1",
+    program_id: PROGRAM_ID,
+    member_user_id: "t07-3-member-3",
+    request_id: null,
+    status: "Active" as const,
+    enrolled_at: "2026-08-20T02:00:00.000Z",
+    cancelled_at: null,
+    cancelled_by: null,
+    created_by: "t07-3-manager",
+    created_at: "2026-08-20T02:00:00.000Z",
+    member_name: "王恩慈",
+    member_username: "wong.grace",
+  },
+  {
+    enrollment_id: "t07-3-enrollment-2",
+    program_id: PROGRAM_ID,
+    member_user_id: "t07-3-member-4",
+    request_id: null,
+    status: "Cancelled" as const,
+    enrolled_at: "2026-07-20T02:00:00.000Z",
+    cancelled_at: "2026-08-30T02:00:00.000Z",
+    cancelled_by: "t07-3-manager",
+    created_by: "t07-3-manager",
+    created_at: "2026-07-20T02:00:00.000Z",
+    member_name: "黃志成",
+    member_username: "wong.chi",
+  },
+];
 
-const participantProgramHandlers = [
+const createParticipantProgramHandlers = (
+  hasManagementCapability = false
+): readonly RequestHandler[] => [
   memberAuthMeHandler,
   http.get("/api/v1/programs/access", () =>
     envelope({
-      hasManagementCapability: false,
-      departmentScopes: 0,
-      programScopes: 0,
+      hasManagementCapability,
+      departmentScopes: hasManagementCapability ? 1 : 0,
+      programScopes: hasManagementCapability ? 1 : 0,
     })
   ),
   http.get("/api/v1/programs/catalog", () =>
     envelope({ catalog: PARTICIPANT_CATALOG })
   ),
-  http.get("/api/v1/programs/:programId/participant-detail", () =>
-    envelope({ detail: PARTICIPANT_DETAIL })
+  http.get("/api/v1/programs/:programId/participant-detail", ({ params }) =>
+    envelope({
+      detail:
+        String(params.programId) === ELIGIBLE_PROGRAM_ID
+          ? ELIGIBLE_PARTICIPANT_DETAIL
+          : PARTICIPANT_DETAIL,
+    })
   ),
   http.get("/api/v1/programs/:programId/events/:eventId", () =>
     envelope(EVENT_DETAIL)
   ),
 ];
 
-const managementProgramHandlers = [
+const createManagementProgramHandlers = (): readonly RequestHandler[] => [
   authMeHandler,
   http.get("/api/v1/programs/access", () =>
     envelope({
       hasManagementCapability: true,
-      departmentScopes: 1,
-      programScopes: 1,
+      departmentScopes: 5,
+      programScopes: 5,
     })
   ),
   http.get("/api/v1/programs/management-directory", () =>
     envelope(MANAGEMENT_DIRECTORY)
   ),
   http.get("/api/v1/programs/departments", () =>
-    envelope({ departments: [DEPARTMENT] })
+    envelope({ departments: DEPARTMENTS })
   ),
   http.get("/api/v1/programs/attention", () => envelope(MANAGEMENT_ATTENTION)),
   http.get("/api/v1/programs/notifications", () =>
@@ -389,19 +729,22 @@ const managementProgramHandlers = [
     })
   ),
   http.get("/api/v1/programs/:programId/events", () =>
-    envelope({ events: [MANAGEMENT_EVENT] })
+    envelope({ events: MANAGEMENT_EVENTS })
   ),
   http.get("/api/v1/programs/:programId/events/:eventId", () =>
     envelope(EVENT_DETAIL)
   ),
   http.get("/api/v1/programs/:programId/enrollment-requests", () =>
-    envelope({ requests: [] })
+    envelope({ requests: PARTICIPANT_REQUESTS })
   ),
   http.get("/api/v1/programs/:programId/enrollments", () =>
-    envelope({ enrollments: [] })
+    envelope({ enrollments: PARTICIPANT_ENROLLMENTS })
   ),
   http.get("/api/v1/programs/:programId/enrollment-snapshot", () =>
-    envelope({ requests: [], enrollments: [] })
+    envelope({
+      requests: PARTICIPANT_REQUESTS,
+      enrollments: PARTICIPANT_ENROLLMENTS,
+    })
   ),
   http.get("/api/v1/programs/:programId/schedule-rules", () =>
     envelope({ rules: [SCHEDULE_RULE] })
@@ -419,7 +762,7 @@ const managementProgramHandlers = [
         run_id: "t07-3-run",
         plan_id: SCHEDULE_PREVIEW.plan.plan_id,
         status: "completed" as const,
-        created: 1,
+        created: 2,
         skipped: 0,
         failed: 0,
         resumed: false,
@@ -433,35 +776,34 @@ const withScenarioHandlers = (
   ...overrides: RequestHandler[]
 ): readonly RequestHandler[] => [...overrides, ...base];
 
-const conflictProgramHandler = http.patch("/api/v1/programs/:programId", () =>
-  HttpResponse.json(
-    {
-      status: 409,
-      code: "CONFLICT",
-      title: "Conflict",
-      detail: "The program changed on the server.",
-    },
-    { status: 409 }
-  )
-);
+const conflictProgramHandler = () =>
+  http.patch("/api/v1/programs/:programId", () =>
+    HttpResponse.json(
+      {
+        status: 409,
+        code: "CONFLICT",
+        title: "Conflict",
+        detail: "伺服器資料已有更新，請重新載入後再儲存。",
+      },
+      { status: 409 }
+    )
+  );
 
-const stalePlanHandler = http.post(
-  "/api/v1/programs/:programId/events/generate",
-  () =>
+const stalePlanHandler = () =>
+  http.post("/api/v1/programs/:programId/events/generate", () =>
     HttpResponse.json(
       {
         status: 409,
         code: "STALE_PLAN",
         title: "Stale plan",
-        detail: "The schedule changed; preview again.",
+        detail: "排程已有更新，請先重新預覽。",
       },
       { status: 409 }
     )
-);
+  );
 
-const partialGenerateHandler = http.post(
-  "/api/v1/programs/:programId/events/generate",
-  () =>
+const partialGenerateHandler = () =>
+  http.post("/api/v1/programs/:programId/events/generate", () =>
     envelope({
       generated: {
         run_id: "t07-3-partial-run",
@@ -473,15 +815,16 @@ const partialGenerateHandler = http.post(
         resumed: true,
       },
     })
-);
+  );
 
-export const programsParticipantHandlers = participantProgramHandlers;
-export const programsManagementHandlers = managementProgramHandlers;
+export const programsParticipantHandlers = createParticipantProgramHandlers();
+export const programsManagementHandlers = createManagementProgramHandlers();
 
 export const PROGRAMS_MATERIAL_SCENARIO_NAMES = [
   "participant-directory-member",
   "participant-directory-capable",
   "participant-program-detail-active",
+  "participant-program-detail-eligible",
   "participant-program-detail-pending",
   "participant-program-detail-rejected",
   "participant-event-detail-closed",
@@ -519,217 +862,166 @@ const storyScenario = (
   handlers,
 });
 
-// oxlint-disable-next-line complexity -- the named matrix intentionally keeps each route state explicit.
+const PROGRAMS_STORY_SCENARIO_FACTORIES: Readonly<
+  Record<ProgramsMaterialScenarioName, () => ProgramsStoryScenario>
+> = {
+  "participant-directory-member": () =>
+    storyScenario({}, createParticipantProgramHandlers()),
+  "participant-directory-capable": () =>
+    storyScenario({}, createParticipantProgramHandlers(true)),
+  "participant-program-detail-active": () =>
+    storyScenario({ program: PROGRAM_ID }, createParticipantProgramHandlers()),
+  "participant-program-detail-eligible": () =>
+    storyScenario(
+      { program: ELIGIBLE_PROGRAM_ID },
+      createParticipantProgramHandlers()
+    ),
+  "participant-program-detail-pending": () =>
+    storyScenario(
+      { program: PROGRAM_ID },
+      withScenarioHandlers(
+        createParticipantProgramHandlers(),
+        http.get("/api/v1/programs/:programId/participant-detail", () =>
+          envelope({ detail: PENDING_PARTICIPANT_DETAIL })
+        )
+      )
+    ),
+  "participant-program-detail-rejected": () =>
+    storyScenario(
+      { program: PROGRAM_ID },
+      withScenarioHandlers(
+        createParticipantProgramHandlers(),
+        http.get("/api/v1/programs/:programId/participant-detail", () =>
+          envelope({ detail: REJECTED_PARTICIPANT_DETAIL })
+        )
+      )
+    ),
+  "participant-event-detail-closed": () =>
+    storyScenario(
+      { event: EVENT_ID, program: PROGRAM_ID },
+      createParticipantProgramHandlers()
+    ),
+  "participant-event-detail-open": () =>
+    storyScenario(
+      { event: EVENT_ID, program: PROGRAM_ID },
+      withScenarioHandlers(
+        createParticipantProgramHandlers(),
+        http.get("/api/v1/programs/:programId/events/:eventId", () =>
+          envelope(OPEN_EVENT_DETAIL)
+        )
+      )
+    ),
+  "participant-event-detail-ineligible": () =>
+    storyScenario(
+      { event: EVENT_ID, program: PROGRAM_ID },
+      withScenarioHandlers(
+        createParticipantProgramHandlers(),
+        forbiddenEventHandler()
+      )
+    ),
+  "management-directory-mixed": () =>
+    storyScenario({ mode: "management" }, createManagementProgramHandlers()),
+  "workspace-overview-populated": () =>
+    storyScenario(
+      { mode: "management", program: PROGRAM_ID },
+      createManagementProgramHandlers()
+    ),
+  "workspace-overview-zero": () =>
+    storyScenario(
+      { mode: "management", program: PROGRAM_ID },
+      withScenarioHandlers(
+        createManagementProgramHandlers(),
+        http.get("/api/v1/programs/:programId/management", () =>
+          envelope({
+            program: PROGRAM,
+            department: DEPARTMENT,
+            modules: MODULES,
+            cockpit: {
+              ...MANAGEMENT_COCKPIT,
+              next_event: null,
+              active_event_count: 0,
+              pending_enrollment_count: 0,
+            },
+          })
+        )
+      )
+    ),
+  "workspace-events-mixed": () =>
+    storyScenario(
+      { mode: "management", program: PROGRAM_ID, task: "events" },
+      createManagementProgramHandlers()
+    ),
+  "workspace-participants-pending": () =>
+    storyScenario(
+      { mode: "management", program: PROGRAM_ID, task: "participants" },
+      createManagementProgramHandlers()
+    ),
+  "workspace-settings-dirty": () =>
+    storyScenario(
+      { mode: "management", program: PROGRAM_ID, task: "settings" },
+      createManagementProgramHandlers()
+    ),
+  "workspace-settings-conflict": () =>
+    storyScenario(
+      { mode: "management", program: PROGRAM_ID, task: "settings" },
+      withScenarioHandlers(
+        createManagementProgramHandlers(),
+        conflictProgramHandler()
+      )
+    ),
+  "workspace-schedule-focused": () =>
+    storyScenario(
+      { mode: "management", program: PROGRAM_ID, task: "schedule" },
+      createManagementProgramHandlers()
+    ),
+  "workspace-schedule-stale": () =>
+    storyScenario(
+      { mode: "management", program: PROGRAM_ID, task: "schedule" },
+      withScenarioHandlers(
+        createManagementProgramHandlers(),
+        stalePlanHandler()
+      )
+    ),
+  "workspace-schedule-partial-resume": () =>
+    storyScenario(
+      { mode: "management", program: PROGRAM_ID, task: "schedule" },
+      withScenarioHandlers(
+        createManagementProgramHandlers(),
+        partialGenerateHandler()
+      )
+    ),
+  "notifications-unread": () =>
+    storyScenario(
+      { mode: "management", task: "notifications" },
+      createManagementProgramHandlers()
+    ),
+  "notifications-empty-recoverable": () => {
+    let attempts = 0;
+    return storyScenario(
+      { mode: "management", task: "notifications" },
+      withScenarioHandlers(
+        createManagementProgramHandlers(),
+        http.get("/api/v1/programs/notifications", () => {
+          attempts += 1;
+          return attempts === 1
+            ? HttpResponse.json(
+                {
+                  status: 503,
+                  code: "UNAVAILABLE",
+                  title: "Unavailable",
+                  detail: "通知暫時未能載入，請稍後再試。",
+                },
+                { status: 503 }
+              )
+            : envelope(EMPTY_MANAGEMENT_NOTIFICATIONS);
+        })
+      )
+    );
+  },
+};
+
 export function getProgramsStoryScenario(
   name: ProgramsMaterialScenarioName
 ): ProgramsStoryScenario {
-  switch (name) {
-    case "participant-directory-member": {
-      return storyScenario({}, programsParticipantHandlers);
-    }
-    case "participant-directory-capable":
-    case "management-directory-mixed": {
-      return storyScenario({ mode: "management" }, programsManagementHandlers);
-    }
-    case "participant-program-detail-active": {
-      return storyScenario(
-        { program: PROGRAM_ID },
-        programsParticipantHandlers
-      );
-    }
-    case "participant-program-detail-pending": {
-      return storyScenario(
-        { program: PROGRAM_ID },
-        withScenarioHandlers(
-          programsParticipantHandlers,
-          http.get("/api/v1/programs/:programId/participant-detail", () =>
-            envelope({ detail: PENDING_PARTICIPANT_DETAIL })
-          )
-        )
-      );
-    }
-    case "participant-program-detail-rejected": {
-      return storyScenario(
-        { program: PROGRAM_ID },
-        withScenarioHandlers(
-          programsParticipantHandlers,
-          http.get("/api/v1/programs/:programId/participant-detail", () =>
-            envelope({ detail: REJECTED_PARTICIPANT_DETAIL })
-          )
-        )
-      );
-    }
-    case "participant-event-detail-closed": {
-      return storyScenario(
-        { event: EVENT_ID, program: PROGRAM_ID },
-        programsParticipantHandlers
-      );
-    }
-    case "participant-event-detail-open": {
-      return storyScenario(
-        { event: EVENT_ID, program: PROGRAM_ID },
-        withScenarioHandlers(
-          programsParticipantHandlers,
-          http.get("/api/v1/programs/:programId/events/:eventId", () =>
-            envelope(OPEN_EVENT_DETAIL)
-          )
-        )
-      );
-    }
-    case "participant-event-detail-ineligible": {
-      return storyScenario(
-        { event: EVENT_ID, program: PROGRAM_ID },
-        withScenarioHandlers(
-          programsParticipantHandlers,
-          http.get("/api/v1/programs/:programId/events/:eventId", () =>
-            envelope(INELIGIBLE_EVENT_DETAIL)
-          )
-        )
-      );
-    }
-    case "workspace-overview-populated": {
-      return storyScenario(
-        { mode: "management", program: PROGRAM_ID },
-        programsManagementHandlers
-      );
-    }
-    case "workspace-overview-zero": {
-      return storyScenario(
-        { mode: "management", program: PROGRAM_ID },
-        withScenarioHandlers(
-          programsManagementHandlers,
-          http.get("/api/v1/programs/:programId/management", () =>
-            envelope({
-              program: PROGRAM,
-              department: DEPARTMENT,
-              modules: MODULES,
-              cockpit: {
-                ...MANAGEMENT_COCKPIT,
-                next_event: null,
-                active_event_count: 0,
-                pending_enrollment_count: 0,
-              },
-            })
-          )
-        )
-      );
-    }
-    case "workspace-events-mixed": {
-      return storyScenario(
-        { mode: "management", program: PROGRAM_ID, task: "events" },
-        withScenarioHandlers(
-          programsManagementHandlers,
-          http.get("/api/v1/programs/:programId/events", () =>
-            envelope({
-              events: [
-                MANAGEMENT_EVENT,
-                {
-                  ...MANAGEMENT_EVENT,
-                  event_id: "t07-3-cancelled-event",
-                  status: "Cancelled" as const,
-                  availability: "Inactive" as const,
-                  cancel_reason: "Venue unavailable",
-                },
-              ],
-            })
-          )
-        )
-      );
-    }
-    case "workspace-participants-pending": {
-      return storyScenario(
-        { mode: "management", program: PROGRAM_ID, task: "participants" },
-        withScenarioHandlers(
-          programsManagementHandlers,
-          http.get("/api/v1/programs/:programId/enrollment-snapshot", () =>
-            envelope({
-              requests: [
-                {
-                  request_id: "t07-3-pending-request",
-                  program_id: PROGRAM_ID,
-                  member_user_id: "t07-3-member",
-                  status: "Pending" as const,
-                  submitted_at: "2099-09-02T00:00:00.000Z",
-                  decided_by: null,
-                  decided_at: null,
-                  decision_note: null,
-                  request_version: 1,
-                  member_name: "陳小明",
-                  member_username: "chan.ming",
-                },
-              ],
-              enrollments: [],
-            })
-          )
-        )
-      );
-    }
-    case "workspace-settings-dirty": {
-      return storyScenario(
-        { mode: "management", program: PROGRAM_ID, task: "settings" },
-        programsManagementHandlers
-      );
-    }
-    case "workspace-settings-conflict": {
-      return storyScenario(
-        { mode: "management", program: PROGRAM_ID, task: "settings" },
-        withScenarioHandlers(programsManagementHandlers, conflictProgramHandler)
-      );
-    }
-    case "workspace-schedule-focused": {
-      return storyScenario(
-        { mode: "management", program: PROGRAM_ID, task: "schedule" },
-        programsManagementHandlers
-      );
-    }
-    case "workspace-schedule-stale": {
-      return storyScenario(
-        { mode: "management", program: PROGRAM_ID, task: "schedule" },
-        withScenarioHandlers(programsManagementHandlers, stalePlanHandler)
-      );
-    }
-    case "workspace-schedule-partial-resume": {
-      return storyScenario(
-        { mode: "management", program: PROGRAM_ID, task: "schedule" },
-        withScenarioHandlers(programsManagementHandlers, partialGenerateHandler)
-      );
-    }
-    case "notifications-unread": {
-      return storyScenario(
-        { mode: "management", task: "notifications" },
-        withScenarioHandlers(
-          programsManagementHandlers,
-          http.get("/api/v1/programs/notifications", () =>
-            envelope(UNREAD_NOTIFICATIONS)
-          )
-        )
-      );
-    }
-    case "notifications-empty-recoverable": {
-      let attempts = 0;
-      return storyScenario(
-        { mode: "management", task: "notifications" },
-        withScenarioHandlers(
-          programsManagementHandlers,
-          http.get("/api/v1/programs/notifications", () => {
-            attempts += 1;
-            return attempts === 1
-              ? HttpResponse.json(
-                  {
-                    status: 503,
-                    code: "UNAVAILABLE",
-                    title: "Unavailable",
-                    detail: "Notifications are temporarily unavailable.",
-                  },
-                  { status: 503 }
-                )
-              : envelope(MANAGEMENT_NOTIFICATIONS);
-          })
-        )
-      );
-    }
-    default: {
-      throw new Error(`Unknown Programs material scenario: ${name}`);
-    }
-  }
+  return PROGRAMS_STORY_SCENARIO_FACTORIES[name]();
 }

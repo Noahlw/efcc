@@ -1,49 +1,14 @@
-import type { Decorator, Meta, StoryObj } from "@storybook/nextjs-vite";
-import { useEffect } from "react";
+import type { Meta, StoryObj } from "@storybook/nextjs-vite";
 
 import { ParticipantDirectory as ParticipantDirectoryComponent } from "@/lib/programs/participant-directory";
-import {
-  clearAccessCache,
-  clearCatalogCache,
-} from "@/lib/programs/program-api";
 
-import {
-  programsManagementHandlers,
-  programsParticipantHandlers,
-} from "./programs-fixtures";
+import { getProgramsStoryScenario } from "./programs-fixtures";
+import type { ProgramsMaterialScenarioName } from "./programs-fixtures";
 import { assertProgramsScreen } from "./programs-presentation-contract";
-import { ProgramsStoryHarness } from "./programs-story-harness";
-
-const withMemberIdentity: Decorator = (Story) => {
-  if (typeof window !== "undefined") {
-    window.localStorage.setItem("efcc_auth_active", "1");
-    window.sessionStorage.removeItem("efcc_session_expired");
-  }
-  return <Story />;
-};
-
-const withManagerIdentity: Decorator = (Story) => {
-  if (typeof window !== "undefined") {
-    window.localStorage.setItem("efcc_auth_active", "1");
-    window.sessionStorage.removeItem("efcc_session_expired");
-  }
-  return <Story />;
-};
-
-const withProgramsFixtureIsolation: Decorator = (Story) => {
-  clearAccessCache();
-  clearCatalogCache();
-
-  useEffect(
-    () => () => {
-      clearAccessCache();
-      clearCatalogCache();
-    },
-    []
-  );
-
-  return <Story />;
-};
+import {
+  ProgramsStoryHarness,
+  withProgramsFixtureIsolation,
+} from "./programs-story-harness";
 
 const meta = {
   id: "t07-3-programs",
@@ -63,47 +28,51 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
-const PROGRAMS_WORKSHOP_NAME = "Storybook Programs Workshop";
+const PROGRAMS_WORKSHOP_NAME = "門徒訓練基礎課";
 
-const routeStory = (query: Record<string, string>) => (
-  <ProgramsStoryHarness query={query} />
-);
+const routeStory = (scenarioName: ProgramsMaterialScenarioName) => {
+  const scenario = getProgramsStoryScenario(scenarioName);
+  return <ProgramsStoryHarness query={{ ...scenario.query }} />;
+};
 
 const routeParameters = (
   screenId: string,
   psn: string,
   intent: string | null,
   query: Record<string, string>,
-  handlers: typeof programsParticipantHandlers
-) => ({
-  presentation: {
-    screenId,
-    psn,
-    productFamily: "programs",
-    lifecycle: "active" as const,
-    baseline: "primary" as const,
-    route: "/programs",
-    intent,
-    state: "default",
-    gap: "ISSUE-#601",
-    supersedes: [],
-  },
-  msw: handlers,
-  nextjs: {
-    appDirectory: true,
-    navigation: { pathname: "/programs", query },
-  },
-});
+  scenarioName: ProgramsMaterialScenarioName
+) => {
+  const scenario = getProgramsStoryScenario(scenarioName);
+  return {
+    presentation: {
+      screenId,
+      psn,
+      productFamily: "programs",
+      lifecycle: "active" as const,
+      baseline: "primary" as const,
+      route: "/programs",
+      intent,
+      state: "default",
+      gap: "ISSUE-#601",
+      supersedes: [],
+    },
+    programsScenario: scenarioName,
+    msw: scenario.handlers,
+    nextjs: {
+      appDirectory: true,
+      navigation: { pathname: scenario.pathname, query },
+    },
+  };
+};
 
 export const ParticipantDirectory: Story = {
-  decorators: [withMemberIdentity],
-  render: () => routeStory({}),
+  render: () => routeStory("participant-directory-member"),
   parameters: routeParameters(
     "programs-participant-directory",
     "PSN-PROGRAMS-PARTICIPANT-DIRECTORY",
     null,
     {},
-    programsParticipantHandlers
+    "participant-directory-member"
   ),
   play: ({ canvasElement }) =>
     assertProgramsScreen(canvasElement, {
@@ -113,14 +82,13 @@ export const ParticipantDirectory: Story = {
 };
 
 export const ParticipantProgramDetail: Story = {
-  decorators: [withMemberIdentity],
-  render: () => routeStory({ program: "t07-3-program" }),
+  render: () => routeStory("participant-program-detail-active"),
   parameters: routeParameters(
     "programs-participant-program-detail",
     "PSN-PROGRAMS-PARTICIPANT-PROGRAM-DETAIL",
     "program=t07-3-program",
     { program: "t07-3-program" },
-    programsParticipantHandlers
+    "participant-program-detail-active"
   ),
   play: ({ canvasElement }) =>
     assertProgramsScreen(canvasElement, {
@@ -130,31 +98,29 @@ export const ParticipantProgramDetail: Story = {
 };
 
 export const ParticipantEventDetail: Story = {
-  decorators: [withMemberIdentity],
-  render: () => routeStory({ program: "t07-3-program", event: "t07-3-event" }),
+  render: () => routeStory("participant-event-detail-closed"),
   parameters: routeParameters(
     "programs-participant-event-detail",
     "PSN-PROGRAMS-PARTICIPANT-EVENT-DETAIL",
     "program=t07-3-program&event=t07-3-event",
     { program: "t07-3-program", event: "t07-3-event" },
-    programsParticipantHandlers
+    "participant-event-detail-closed"
   ),
   play: ({ canvasElement }) =>
     assertProgramsScreen(canvasElement, {
       selector: "#participant-event-title",
-      text: "Storybook management event",
+      text: "門徒訓練週會",
     }),
 };
 
 export const ManagementDirectory: Story = {
-  decorators: [withManagerIdentity],
-  render: () => routeStory({ mode: "management" }),
+  render: () => routeStory("management-directory-mixed"),
   parameters: routeParameters(
     "programs-management-directory",
     "PSN-PROGRAMS-MANAGEMENT-DIRECTORY",
     "mode=management",
     { mode: "management" },
-    programsManagementHandlers
+    "management-directory-mixed"
   ),
   play: ({ canvasElement }) =>
     assertProgramsScreen(canvasElement, {
@@ -164,14 +130,13 @@ export const ManagementDirectory: Story = {
 };
 
 export const WorkspaceOverview: Story = {
-  decorators: [withManagerIdentity],
-  render: () => routeStory({ mode: "management", program: "t07-3-program" }),
+  render: () => routeStory("workspace-overview-populated"),
   parameters: routeParameters(
     "programs-workspace-overview",
     "PSN-PROGRAMS-WORKSPACE-OVERVIEW",
     "mode=management&program=t07-3-program",
     { mode: "management", program: "t07-3-program" },
-    programsManagementHandlers
+    "workspace-overview-populated"
   ),
   play: ({ canvasElement }) =>
     assertProgramsScreen(canvasElement, {
@@ -181,13 +146,7 @@ export const WorkspaceOverview: Story = {
 };
 
 export const WorkspaceEvents: Story = {
-  decorators: [withManagerIdentity],
-  render: () =>
-    routeStory({
-      mode: "management",
-      program: "t07-3-program",
-      task: "events",
-    }),
+  render: () => routeStory("workspace-events-mixed"),
   parameters: routeParameters(
     "programs-workspace-events",
     "PSN-PROGRAMS-WORKSPACE-EVENTS",
@@ -197,7 +156,7 @@ export const WorkspaceEvents: Story = {
       program: "t07-3-program",
       task: "events",
     },
-    programsManagementHandlers
+    "workspace-events-mixed"
   ),
   play: ({ canvasElement }) =>
     assertProgramsScreen(canvasElement, {
@@ -207,13 +166,7 @@ export const WorkspaceEvents: Story = {
 };
 
 export const WorkspaceParticipants: Story = {
-  decorators: [withManagerIdentity],
-  render: () =>
-    routeStory({
-      mode: "management",
-      program: "t07-3-program",
-      task: "participants",
-    }),
+  render: () => routeStory("workspace-participants-pending"),
   parameters: routeParameters(
     "programs-workspace-participants",
     "PSN-PROGRAMS-WORKSPACE-PARTICIPANTS",
@@ -223,7 +176,7 @@ export const WorkspaceParticipants: Story = {
       program: "t07-3-program",
       task: "participants",
     },
-    programsManagementHandlers
+    "workspace-participants-pending"
   ),
   play: ({ canvasElement }) =>
     assertProgramsScreen(canvasElement, {
@@ -233,13 +186,7 @@ export const WorkspaceParticipants: Story = {
 };
 
 export const WorkspaceSettings: Story = {
-  decorators: [withManagerIdentity],
-  render: () =>
-    routeStory({
-      mode: "management",
-      program: "t07-3-program",
-      task: "settings",
-    }),
+  render: () => routeStory("workspace-settings-dirty"),
   parameters: routeParameters(
     "programs-workspace-settings",
     "PSN-PROGRAMS-WORKSPACE-SETTINGS",
@@ -249,7 +196,7 @@ export const WorkspaceSettings: Story = {
       program: "t07-3-program",
       task: "settings",
     },
-    programsManagementHandlers
+    "workspace-settings-dirty"
   ),
   play: ({ canvasElement }) =>
     assertProgramsScreen(canvasElement, {
@@ -259,13 +206,7 @@ export const WorkspaceSettings: Story = {
 };
 
 export const WorkspaceSchedule: Story = {
-  decorators: [withManagerIdentity],
-  render: () =>
-    routeStory({
-      mode: "management",
-      program: "t07-3-program",
-      task: "schedule",
-    }),
+  render: () => routeStory("workspace-schedule-focused"),
   parameters: routeParameters(
     "programs-workspace-schedule",
     "PSN-PROGRAMS-WORKSPACE-SCHEDULE",
@@ -275,7 +216,7 @@ export const WorkspaceSchedule: Story = {
       program: "t07-3-program",
       task: "schedule",
     },
-    programsManagementHandlers
+    "workspace-schedule-focused"
   ),
   play: ({ canvasElement }) =>
     assertProgramsScreen(canvasElement, {
@@ -285,14 +226,13 @@ export const WorkspaceSchedule: Story = {
 };
 
 export const WorkspaceNotifications: Story = {
-  decorators: [withManagerIdentity],
-  render: () => routeStory({ mode: "management", task: "notifications" }),
+  render: () => routeStory("notifications-unread"),
   parameters: routeParameters(
     "programs-workspace-notifications",
     "PSN-PROGRAMS-WORKSPACE-NOTIFICATIONS",
     "mode=management&task=notifications",
     { mode: "management", task: "notifications" },
-    programsManagementHandlers
+    "notifications-unread"
   ),
   play: ({ canvasElement }) =>
     assertProgramsScreen(canvasElement, {

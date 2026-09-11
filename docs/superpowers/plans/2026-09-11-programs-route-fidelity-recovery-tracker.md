@@ -144,14 +144,14 @@ PLANNED -> IN_PROGRESS -> VERIFYING -> REVIEWING -> COMPLETE
 
 ## Active Task
 
-`NONE — R1 complete; awaiting the next sequential packet claim`
+`NONE — R2 complete; awaiting the next sequential packet claim`
 
 ## Task Ledger
 
 | ID | Packet | Status | Start SHA | Unique commit subject | Required gate | Evidence / blocker / next action |
 | --- | --- | --- | --- | --- | --- | --- |
 | R1 | [Navigation semantics](programs-route-fidelity-recovery/R1-navigation-semantics.md) | COMPLETE | `51baa5d28c2f73b690827f13f2af628933ce3b74` | `fix(programs): restore navigation semantics` | focused components + `test:programs:responsive` | Downstream query corrected; focused 49/49 and full 69 files / 1,020 tests pass; responsive matrix passes at `test-results/programs-responsive/20260911t073743813z`; expanded diff review is clean; append-only commit is ready |
-| R2 | [Truthful route fixtures](programs-route-fidelity-recovery/R2-truthful-route-fixtures.md) | PLANNED | — | `test(programs): make route fixtures truthful` | Story contracts + T11 | Wait for R1 COMPLETE |
+| R2 | [Truthful route fixtures](programs-route-fidelity-recovery/R2-truthful-route-fixtures.md) | COMPLETE | `8fb468803c03e791645b9b6c81b0c43ab824db0a` | `test(programs): make route fixtures truthful` | Story contracts + T11 | Closeout prepared after Steps 1–10; contract/catalog 23/23, Event component 33/33, Storybook 93/93, T11 99/99 across 9 viewports, typecheck, diff/format/source review all pass; verify the single matching commit subject after commit |
 | R3 | [Directory and copy fidelity](programs-route-fidelity-recovery/R3-directory-and-copy-fidelity.md) | PLANNED | — | `fix(programs): align directory and schedule copy` | focused components + Story contracts | Wait for R2 COMPLETE |
 | R4 | [Participant behavior Plays](programs-route-fidelity-recovery/R4-participant-behavior-plays.md) | PLANNED | — | `test(programs): exercise participant route seams` | Storybook + participant T11 slice | Wait for R3 COMPLETE |
 | R5 | [Schedule recovery Plays](programs-route-fidelity-recovery/R5-schedule-recovery-plays.md) | PLANNED | — | `test(programs): exercise schedule recovery seams` | focused Schedule components + Storybook/T11 | Wait for R4 COMPLETE |

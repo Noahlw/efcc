@@ -1,36 +1,21 @@
-import type { Decorator, Meta, StoryObj } from "@storybook/nextjs-vite";
-import { useEffect } from "react";
+import type { Meta, StoryObj } from "@storybook/nextjs-vite";
 import { expect, userEvent, within } from "storybook/test";
 
 import { COPY } from "@/lib/copy";
 import { ParticipantDirectory as ParticipantDirectoryComponent } from "@/lib/programs/participant-directory";
-import {
-  clearAccessCache,
-  clearCatalogCache,
-} from "@/lib/programs/program-api";
 
 import { getProgramsStoryScenario } from "./programs-fixtures";
 import type { ProgramsMaterialScenarioName } from "./programs-fixtures";
 import { assertProgramsScreen } from "./programs-presentation-contract";
-import { ProgramsStoryHarness } from "./programs-story-harness";
+import {
+  ProgramsStoryHarness,
+  withProgramsFixtureIsolation,
+} from "./programs-story-harness";
 
 const meta = {
   title: "T07.3/Programs Material States",
   component: ParticipantDirectoryComponent,
-  decorators: [
-    ((Story) => {
-      clearAccessCache();
-      clearCatalogCache();
-      useEffect(
-        () => () => {
-          clearAccessCache();
-          clearCatalogCache();
-        },
-        []
-      );
-      return <Story />;
-    }) satisfies Decorator,
-  ],
+  decorators: [withProgramsFixtureIsolation],
   parameters: { a11y: { test: "error" } },
 } satisfies Meta<typeof ParticipantDirectoryComponent>;
 
@@ -42,33 +27,45 @@ const readinessFor = (name: ProgramsMaterialScenarioName) => {
   if (name === "participant-directory-member") {
     return {
       selector: "[data-program-name]",
-      text: "Storybook Programs Workshop",
+      text: "門徒訓練基礎課",
     };
   }
   if (
     name === "participant-program-detail-active" ||
+    name === "participant-program-detail-eligible" ||
     name === "participant-program-detail-pending" ||
     name === "participant-program-detail-rejected"
   ) {
     return {
       selector: "#program-detail-title",
-      text: "Storybook Programs Workshop",
+      text:
+        name === "participant-program-detail-eligible"
+          ? "同行成長小組"
+          : "門徒訓練基礎課",
     };
   }
   if (
     name === "participant-event-detail-closed" ||
-    name === "participant-event-detail-open" ||
-    name === "participant-event-detail-ineligible"
+    name === "participant-event-detail-open"
   ) {
     return {
       selector: "#participant-event-title",
-      text: "Storybook management event",
+      text: "門徒訓練週會",
     };
   }
-  if (
-    name === "participant-directory-capable" ||
-    name === "management-directory-mixed"
-  ) {
+  if (name === "participant-event-detail-ineligible") {
+    return {
+      selector: '[data-screen-foundation="state"][data-screen-state="error"]',
+      text: COPY.programs.eventDetailRecoveryTitle,
+    };
+  }
+  if (name === "participant-directory-capable") {
+    return {
+      selector: "[data-program-name]",
+      text: "門徒訓練基礎課",
+    };
+  }
+  if (name === "management-directory-mixed") {
     return {
       selector: "#programs-management-directory-title",
       text: "管理課程",
@@ -80,7 +77,7 @@ const readinessFor = (name: ProgramsMaterialScenarioName) => {
   ) {
     return {
       selector: "#programs-workspace-title",
-      text: "Storybook Programs Workshop",
+      text: "門徒訓練基礎課",
     };
   }
   if (name === "workspace-events-mixed") {
@@ -115,15 +112,6 @@ const materialStory = (
   const scenario = getProgramsStoryScenario(name);
   const readiness = readinessFor(name);
   return {
-    decorators: [
-      ((Story) => {
-        if (typeof window !== "undefined") {
-          window.localStorage.setItem("efcc_auth_active", "1");
-          window.sessionStorage.removeItem("efcc_session_expired");
-        }
-        return <Story />;
-      }) satisfies Decorator,
-    ],
     render: () => <ProgramsStoryHarness query={{ ...scenario.query }} />,
     parameters: {
       msw: scenario.handlers,

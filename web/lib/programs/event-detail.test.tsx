@@ -920,6 +920,9 @@ describe("EVT-01 event detail", () => {
       screen.findByText(COPY.error.forbidden)
     ).resolves.toBeInTheDocument();
     expect(
+      screen.getByRole("link", { name: COPY.programs.backToOrigin })
+    ).toHaveAttribute("href", "/programs");
+    expect(
       screen.queryByRole("link", { name: COPY.programs.goToScan })
     ).not.toBeInTheDocument();
   });
