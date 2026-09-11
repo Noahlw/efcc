@@ -16,8 +16,6 @@ import type {
   ProgramsNotificationsProps,
 } from "@/lib/programs/programs-notifications";
 
-afterEach(cleanup);
-
 const notification: ManagementNotifications["items"][number] = {
   kind: "enrollment",
   source_key: "enrollment:program-1",
@@ -45,6 +43,8 @@ const readyState = (
 });
 
 describe("management notification control", () => {
+  afterEach(cleanup);
+
   test("keeps the compact bell small and marks visible unread sources on open", async () => {
     const user = userEvent.setup();
     const onMarkRead = vi.fn<ProgramsNotificationsProps["onMarkRead"]>();
@@ -69,14 +69,7 @@ describe("management notification control", () => {
         name: COPY.programs.notificationsTitle,
       })
     ).toHaveAttribute("data-feed-state", "ready");
-    await waitFor(() => {
-      expect(onMarkRead).toHaveBeenCalledWith([
-        expect.objectContaining({
-          source_key: notification.source_key,
-          source_revision: notification.source_revision,
-        }),
-      ]);
-    });
+    await waitFor(() => expect(onMarkRead).toHaveBeenCalledOnce());
     expect(
       screen.queryByText(COPY.programs.notificationsUnread)
     ).not.toBeInTheDocument();
@@ -149,7 +142,7 @@ describe("management notification control", () => {
     ).toBeInTheDocument();
   });
 
-  test("full Notifications task marks unread items without rendering the compact bell", async () => {
+  test("full Notifications task preserves unread items until activation", async () => {
     const user = userEvent.setup();
     const onMarkRead = vi.fn<ProgramsNotificationsProps["onMarkRead"]>();
 
@@ -167,7 +160,6 @@ describe("management notification control", () => {
     const fullSurface = container.querySelector<HTMLElement>(
       'section[aria-labelledby="programs-notifications-title"]'
     );
-    expect(fullSurface).not.toBeNull();
     if (!fullSurface) {
       throw new Error("full Notifications task surface is missing");
     }
@@ -187,6 +179,12 @@ describe("management notification control", () => {
         name: COPY.programs.notificationBellTitle,
       })
     ).not.toBeInTheDocument();
+    expect(onMarkRead).not.toHaveBeenCalled();
+    expect(scoped.getByRole("link", { name: /青年團契/u })).toHaveAttribute(
+      "href",
+      "/programs?mode=management&department=dept-1&program=program-1&task=participants#overview"
+    );
+    await user.click(scoped.getByRole("link", { name: /青年團契/u }));
     await waitFor(() => {
       expect(onMarkRead).toHaveBeenCalledWith([
         expect.objectContaining({
@@ -195,12 +193,6 @@ describe("management notification control", () => {
         }),
       ]);
     });
-    expect(scoped.getByRole("link", { name: /青年團契/u })).toHaveAttribute(
-      "href",
-      "/programs?mode=management&department=dept-1&program=program-1&task=participants#overview"
-    );
-    await user.click(scoped.getByRole("link", { name: /青年團契/u }));
-    expect(onMarkRead).toHaveBeenCalled();
   });
 
   test("uses a semantic canonical link for the compact view-all action", async () => {

@@ -551,6 +551,14 @@ const workspaceSchedulePartialResumePlay: Story["play"] = async ({
   await expect(
     canvas.findByText(partialCopy, { exact: true })
   ).resolves.toBeVisible();
+  const partialResult = canvasElement.querySelector<HTMLElement>(
+    '[data-generation-result="true"]'
+  );
+  expect(partialResult).not.toBeNull();
+  const partialRunId = partialResult?.dataset.generationRunId;
+  const partialPlanId = partialResult?.dataset.generationPlanId;
+  expect(partialRunId).toBe("t07-3-partial-run");
+  expect(partialPlanId).toBe("t07-3-plan");
   await expect(
     canvas.getByRole("button", { name: COPY.programs.generateEvents })
   ).toBeEnabled();
@@ -565,6 +573,14 @@ const workspaceSchedulePartialResumePlay: Story["play"] = async ({
     canvas.findByText(resumedCopy, { exact: true })
   ).resolves.toBeVisible();
   await expect(canvas.queryByText(partialCopy, { exact: true })).toBeNull();
+  const resumedResult = canvasElement.querySelector<HTMLElement>(
+    '[data-generation-result="true"]'
+  );
+  expect(resumedResult?.dataset.generationRunId).toBe(partialRunId);
+  expect(resumedResult?.dataset.generationPlanId).toBe(partialPlanId);
+  expect(
+    canvasElement.querySelectorAll('[data-generation-result="true"]')
+  ).toHaveLength(1);
 };
 
 const workspaceSettingsDirtyPlay: Story["play"] = async ({ canvasElement }) => {
@@ -594,10 +610,6 @@ const workspaceSettingsDirtyPlay: Story["play"] = async ({ canvasElement }) => {
   ).not.toBeNull();
 
   await userEvent.click(
-    canvas.getByRole("button", { name: COPY.programs.settingsDiscard })
-  );
-  await expect(name).toHaveValue("門徒訓練基礎課");
-  await userEvent.click(
     canvas.getByRole("link", { name: COPY.programs.settingsBackToHub })
   );
   await expect(
@@ -611,6 +623,15 @@ const workspaceSettingsDirtyPlay: Story["play"] = async ({ canvasElement }) => {
   await expect(
     canvas.getByRole("textbox", { name: COPY.programs.programName })
   ).toHaveValue("門徒訓練基礎課");
+  const reopenedName = canvas.getByRole("textbox", {
+    name: COPY.programs.programName,
+  });
+  await userEvent.clear(reopenedName);
+  await userEvent.type(reopenedName, "再次未儲存課程名稱");
+  await userEvent.click(
+    canvas.getByRole("button", { name: COPY.programs.settingsDiscard })
+  );
+  await expect(reopenedName).toHaveValue("門徒訓練基礎課");
 };
 
 const workspaceSettingsConflictPlay: Story["play"] = async ({
@@ -675,17 +696,18 @@ const notificationsUnreadPlay: Story["play"] = async ({ canvasElement }) => {
   );
   const canvas = within(canvasElement);
   await expect(
-    canvas.queryByRole("button", {
+    canvas.getByRole("heading", {
+      name: COPY.programs.notificationsUnreadSection,
+    })
+  ).toBeVisible();
+  await expect(
+    canvas.findByText("3", { exact: true, selector: "[data-screen-status]" })
+  ).resolves.toBeVisible();
+  expect(
+    canvas.queryAllByRole("button", {
       name: COPY.programs.notificationBellTitle,
     })
-  ).toBeNull();
-  await waitFor(() => {
-    expect(
-      canvas.queryByRole("heading", {
-        name: COPY.programs.notificationsUnreadSection,
-      })
-    ).toBeNull();
-  });
+  ).toHaveLength(0);
   await expect(
     canvas.getByRole("heading", {
       name: COPY.programs.notificationsEarlierSection,
@@ -701,6 +723,20 @@ const notificationsUnreadPlay: Story["play"] = async ({ canvasElement }) => {
     eventNotification,
     "/programs?mode=management&department=t07-3-department&program=t07-3-program&task=events&event=t07-3-manual-event"
   );
+  await expect(
+    canvas.findByText("2", { exact: true, selector: "[data-screen-status]" })
+  ).resolves.toBeVisible();
+  await expect(
+    canvas.findByRole("heading", {
+      name: COPY.programs.notificationsEarlierSection,
+    })
+  ).resolves.toBeVisible();
+  expect(
+    canvas.queryByText("3", {
+      exact: true,
+      selector: "[data-screen-status]",
+    })
+  ).toBeNull();
 };
 
 const notificationsEmptyRecoverablePlay: Story["play"] = async ({

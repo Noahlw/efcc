@@ -89,6 +89,10 @@ export const RecurringSchedulePanel = ({
   const [previewBusy, setPreviewBusy] = useState(false);
   const [generateBusy, setGenerateBusy] = useState(false);
   const [generateResult, setGenerateResult] = useState<string | null>(null);
+  const [generationIdentity, setGenerationIdentity] = useState<{
+    runId: string;
+    planId: string;
+  } | null>(null);
   const [generatePartial, setGeneratePartial] = useState(false);
   const [generateError, setGenerateError] = useState<string | null>(null);
   const mounted = useRef(true);
@@ -118,6 +122,7 @@ export const RecurringSchedulePanel = ({
     setPreviewBusy(true);
     setPreview({ kind: "loading" });
     setGenerateResult(null);
+    setGenerationIdentity(null);
     setGenerateError(null);
     try {
       const plan = await previewEvents(programId, horizonDays);
@@ -191,6 +196,10 @@ export const RecurringSchedulePanel = ({
       // whatever partial progress exists.
       setGeneratePartial(generated.failed > 0);
       setGenerateResult(result);
+      setGenerationIdentity({
+        runId: generated.run_id,
+        planId: generated.plan_id,
+      });
       announce(result);
       onGenerated();
     } catch (error) {
@@ -351,9 +360,22 @@ export const RecurringSchedulePanel = ({
             </Button>
             {generateResult !== null &&
               (generatePartial ? (
-                <Alert variant="destructive">{generateResult}</Alert>
+                <Alert
+                  data-generation-plan-id={generationIdentity?.planId}
+                  data-generation-result="true"
+                  data-generation-run-id={generationIdentity?.runId}
+                  variant="destructive"
+                >
+                  {generateResult}
+                </Alert>
               ) : (
-                <Alert tone="success" announcement="polite">
+                <Alert
+                  data-generation-plan-id={generationIdentity?.planId}
+                  data-generation-result="true"
+                  data-generation-run-id={generationIdentity?.runId}
+                  announcement="polite"
+                  tone="success"
+                >
                   {generateResult}
                 </Alert>
               ))}

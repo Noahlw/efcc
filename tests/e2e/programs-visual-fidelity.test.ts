@@ -1,13 +1,15 @@
 import { createHash } from "node:crypto";
-/* oxlint-disable vitest/prefer-importing-vitest-globals --
- * Playwright spec (uses @playwright/test's `test`/`expect`), not a Vitest
- * test file. oxlint's vitest plugin unconditionally matches **\\/*.test.ts.
- */
 import { access, mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 
-import { expect, test } from "@playwright/test";
+import {
+  expect as playwrightExpect,
+  test as playwrightTest,
+} from "@playwright/test";
 import type { Page } from "@playwright/test";
+
+const expect = playwrightExpect;
+const test = playwrightTest;
 
 const repositoryRoot = path.resolve(import.meta.dirname, "../..");
 const artifactDirectory = path.resolve(

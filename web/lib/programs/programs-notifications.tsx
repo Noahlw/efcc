@@ -392,7 +392,7 @@ export const ProgramsNotifications = ({
   }, []);
 
   useEffect(() => {
-    if (!expanded) {
+    if (full || !open) {
       readKeyRef.current = null;
       return;
     }
@@ -416,7 +416,7 @@ export const ProgramsNotifications = ({
     if (unread.length > 0) {
       void markRead(unread);
     }
-  }, [expanded, effectiveState, markRead, readError, state]);
+  }, [effectiveState, full, markRead, open, readError, state]);
 
   useEffect(() => {
     if (!focusReadyRef.current) {

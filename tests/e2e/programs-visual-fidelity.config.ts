@@ -17,10 +17,13 @@ const candidateSha = requiredEnvironment("PROGRAMS_CANDIDATE_SHA");
 if (!/^[0-9a-f]{40}$/u.test(candidateSha)) {
   throw new Error("PROGRAMS_CANDIDATE_SHA must be a 40-character git SHA.");
 }
-requiredEnvironment("PROGRAMS_VISUAL_ARTIFACT_DIR");
+const artifactDirectoryInput = requiredEnvironment(
+  "PROGRAMS_VISUAL_ARTIFACT_DIR"
+);
 
 const dirname = import.meta.dirname;
 const repositoryRoot = path.resolve(dirname, "../..");
+const artifactDirectory = path.resolve(repositoryRoot, artifactDirectoryInput);
 const storybookLauncher = path.join(
   repositoryRoot,
   "web/scripts/storybook-worktree.mjs"
@@ -51,10 +54,7 @@ export default defineConfig({
   retries: 0,
   reporter: [
     ["list"],
-    [
-      "json",
-      { outputFile: "test-results/programs-visual-fidelity/storybook.json" },
-    ],
+    ["json", { outputFile: path.join(artifactDirectory, "storybook.json") }],
   ],
   use: {
     baseURL,
