@@ -394,11 +394,6 @@ const ManagementPanel = ({
 
   return (
     <>
-      {intent.task === "notifications" ? null : (
-        <div className="mb-5 flex min-w-0 justify-end">
-          {notificationSurface}
-        </div>
-      )}
       {intent.task === "notifications" ? notificationSurface : null}
       {intent.task === "notifications" ? null : intent.programId ? (
         <WorkspaceRouteProvider
@@ -415,6 +410,7 @@ const ManagementPanel = ({
             created={intent.created}
             attention={attention}
             onAttentionRefresh={refreshAttention}
+            headerAction={notificationSurface}
             onBack={onBackDirectory}
             onTaskChange={onTaskChange}
             onEventChange={onEventChange}
@@ -427,6 +423,7 @@ const ManagementPanel = ({
           query={directoryQuery}
           onQueryChange={onDirectoryQueryChange}
           focusProgramId={directoryFocusProgramId}
+          headerAction={notificationSurface}
           onOpenProgram={onOpenProgram}
         />
       )}

@@ -168,7 +168,6 @@ export const WorkspaceOverview = ({
   summary,
   departmentId,
   hash,
-  onOpenFacts,
   onTaskChange,
 }: {
   program: Program;
@@ -176,7 +175,6 @@ export const WorkspaceOverview = ({
   summary: WorkspaceSummaryState;
   departmentId?: string | null;
   hash?: string | null;
-  onOpenFacts: () => void;
   onTaskChange: (task: ProgramsTask | null, eventId?: string | null) => void;
 }) => {
   const eventRead =
@@ -398,30 +396,6 @@ export const WorkspaceOverview = ({
         }
       >
         <ScreenRowList>
-          <ScreenRow asChild density="settings">
-            <Button
-              className="rounded-none border-0 bg-transparent px-0 text-left hover:bg-[var(--screen-surface-soft)] hover:text-[var(--screen-ink)]"
-              type="button"
-              onClick={onOpenFacts}
-            >
-              <Settings
-                aria-hidden="true"
-                className="size-[var(--screen-icon-size)] text-[var(--screen-muted)]"
-                strokeWidth={1.8}
-              />
-              <ScreenRowMain>
-                <ScreenRowTitle>
-                  {COPY.programs.cockpitCourseFacts}
-                </ScreenRowTitle>
-                <ScreenRowMeta>
-                  {COPY.programs.cockpitCourseFactsHint}
-                </ScreenRowMeta>
-              </ScreenRowMain>
-              <ScreenRowTrailing>
-                <Chevron />
-              </ScreenRowTrailing>
-            </Button>
-          </ScreenRow>
           {(program.capabilities.manage ||
             program.capabilities.leader_assign) && (
             <ScreenRow asChild density="settings">

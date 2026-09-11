@@ -4,6 +4,7 @@ import { ChevronRight } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
+import type { ReactNode } from "react";
 
 import { Button } from "@/components/ui/button";
 import { RpcError } from "@/lib/api";
@@ -93,9 +94,11 @@ type DirectoryState =
 const DepartmentSettingsLauncher = ({
   department,
   onOpenProgram,
+  compact = false,
 }: {
   department: Department;
   onOpenProgram: (programId: string, created?: boolean) => void;
+  compact?: boolean;
 }) => {
   const [open, setOpen] = useState(false);
   const triggerRef = useRef<HTMLButtonElement | null>(null);
@@ -130,6 +133,18 @@ const DepartmentSettingsLauncher = ({
       onClose={close}
       onOpenProgram={onOpenProgram}
     />
+  ) : compact ? (
+    <Button
+      id={`${department.department_id}-settings-trigger`}
+      className="h-auto min-h-11 w-fit max-w-full whitespace-normal border-[var(--screen-line-strong)] bg-transparent px-3 py-2 text-left text-[var(--screen-ink)] hover:bg-[var(--screen-surface-soft)]"
+      type="button"
+      onClick={(event) => {
+        triggerRef.current = event.currentTarget;
+        setOpen(true);
+      }}
+    >
+      {department.name} · {COPY.programs.departmentSettings}
+    </Button>
   ) : (
     <ScreenRow asChild density="settings">
       <Button
@@ -171,6 +186,8 @@ export interface ManagementDirectoryProps {
   onQueryChange?: (query: string) => void;
   /** Program row to focus after returning from its workspace. */
   focusProgramId?: string | null;
+  /** Compact action rendered in the shared route header. */
+  headerAction?: ReactNode;
 }
 export const ManagementDirectory = ({
   onOpenProgram,
@@ -180,6 +197,7 @@ export const ManagementDirectory = ({
   query,
   onQueryChange,
   focusProgramId = null,
+  headerAction,
 }: ManagementDirectoryProps) => {
   const [localQuery, setLocalQuery] = useState("");
   const directoryQuery = query ?? localQuery;
@@ -302,6 +320,7 @@ export const ManagementDirectory = ({
             ? COPY.programs.departmentsTitle
             : COPY.programs.managementPageTitle
         }
+        action={headerAction}
       />
 
       {state.kind === "loading" && (
@@ -344,33 +363,53 @@ export const ManagementDirectory = ({
         />
       )}
 
-      {state.kind === "ready" && scopedDepartments.length > 0 && (
-        <ScreenSection
-          title={
-            departmentOnly
-              ? COPY.programs.departments
-              : COPY.programs.managementScopeDepartment
-          }
-        >
-          <p className="m-0 -mt-1 wrap-anywhere text-sm leading-6 text-[var(--screen-muted)]">
-            {departmentOnly
-              ? COPY.programs.departmentsLead
-              : COPY.programs.departmentScopeHint}
-          </p>
-          <ScreenRowList>
-            <ul className="m-0 grid list-none gap-0 p-0">
-              {scopedDepartments.map((department) => (
-                <li key={department.department_id} className="min-w-0">
-                  <DepartmentSettingsLauncher
-                    department={department}
-                    onOpenProgram={onOpenProgram}
-                  />
-                </li>
-              ))}
-            </ul>
-          </ScreenRowList>
-        </ScreenSection>
-      )}
+      {state.kind === "ready" &&
+        scopedDepartments.length > 0 &&
+        !departmentOnly && (
+          <div className="mb-5 flex min-w-0 flex-wrap items-center gap-[var(--screen-utility-gap)]">
+            <span className="text-sm text-[var(--screen-muted)]">
+              {COPY.programs.managementScopeDepartment}
+            </span>
+            {scopedDepartments.map((department) => (
+              <DepartmentSettingsLauncher
+                key={department.department_id}
+                department={department}
+                compact
+                onOpenProgram={onOpenProgram}
+              />
+            ))}
+          </div>
+        )}
+
+      {state.kind === "ready" &&
+        departmentOnly &&
+        scopedDepartments.length > 0 && (
+          <ScreenSection
+            title={
+              departmentOnly
+                ? COPY.programs.departments
+                : COPY.programs.managementScopeDepartment
+            }
+          >
+            <p className="m-0 -mt-1 wrap-anywhere text-sm leading-6 text-[var(--screen-muted)]">
+              {departmentOnly
+                ? COPY.programs.departmentsLead
+                : COPY.programs.departmentScopeHint}
+            </p>
+            <ScreenRowList>
+              <ul className="m-0 grid list-none gap-0 p-0">
+                {scopedDepartments.map((department) => (
+                  <li key={department.department_id} className="min-w-0">
+                    <DepartmentSettingsLauncher
+                      department={department}
+                      onOpenProgram={onOpenProgram}
+                    />
+                  </li>
+                ))}
+              </ul>
+            </ScreenRowList>
+          </ScreenSection>
+        )}
 
       {state.kind === "ready" &&
         (departmentOnly

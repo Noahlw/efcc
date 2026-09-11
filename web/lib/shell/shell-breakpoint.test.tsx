@@ -42,4 +42,21 @@ describe("named 800px shell breakpoint (TK-06)", () => {
       /@media \(min-width: 800px\)[\s\S]*#shell-content[\s\S]*padding-bottom: 0/u
     );
   });
+
+  test("phone active navigation uses accent text and a thin indicator", () => {
+    const phoneDock = globals.match(
+      /@media \(max-width: 799\.98px\)[\s\S]*?(?=\/\* Desktop rail)/u
+    )?.[0];
+
+    expect(phoneDock).toBeDefined();
+    expect(phoneDock).toMatch(
+      /#main-navigation \.nav-item\[aria-current="page"\][\s\S]*?color: var\(--accent\);[\s\S]*?background: var\(--surface\);[\s\S]*?box-shadow: inset 0 -2px 0 var\(--accent\);/u
+    );
+    expect(phoneDock).not.toMatch(
+      /#main-navigation \.nav-item\[aria-current="page"\][\s\S]*?background: var\(--accent\);/u
+    );
+    expect(phoneDock).toMatch(
+      /#main-navigation \.nav-item--scan\[aria-current="page"\][\s\S]*?color: var\(--accent\);[\s\S]*?background: var\(--surface\);[\s\S]*?box-shadow: inset 0 -2px 0 var\(--accent\);/u
+    );
+  });
 });

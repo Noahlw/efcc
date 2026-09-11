@@ -1,11 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { FormEvent, MouseEvent } from "react";
+import type { MouseEvent, ReactNode } from "react";
 
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
 import { RpcError } from "@/lib/api";
 import { COPY, errorCopyFor } from "@/lib/copy";
 import { announce } from "@/lib/live-region";
@@ -14,7 +12,6 @@ import {
   listEnrollmentRequests,
   listEnrollments,
   listEvents,
-  updateProgram,
 } from "@/lib/programs/program-api";
 import type {
   Department,
@@ -25,12 +22,8 @@ import type {
   ProgramEvent,
 } from "@/lib/programs/program-api";
 import {
-  ScreenCard,
-  ScreenEditor,
-  ScreenField,
   ScreenHeader,
   ScreenLoadingRows,
-  ScreenSection,
   ScreenState,
   ScreenStatus,
 } from "@/lib/screen-foundations";
@@ -64,6 +57,8 @@ export interface ProgramWorkspaceProps {
   /** NTF-01 (#256): fresh server-shaped attention counts from the shell. */
   attention?: ManagementAttention | null;
   onAttentionRefresh?: () => void;
+  /** Compact route-level action rendered in the shared ScreenHeader. */
+  headerAction?: ReactNode;
   onBack: () => void;
   onTaskChange: (task: ProgramsTask | null, eventId?: string | null) => void;
   /** EVT-01 (#251): navigate the Event deep link; null returns to the list. */
@@ -154,262 +149,6 @@ function behaviorLabel(value: Program["behavior_type"]): string {
     : COPY.programs.detailBehaviorOneOff;
 }
 
-function discoverabilityLabel(value: Program["discoverability"]): string {
-  return value === "Listed"
-    ? COPY.programs.discoverabilityListed
-    : COPY.programs.discoverabilityUnlisted;
-}
-
-function enrollmentLabel(value: Program["enrollment_mode"]): string {
-  return value === "MemberRequest"
-    ? COPY.programs.detailParticipationMemberRequest
-    : COPY.programs.detailParticipationManagerOnly;
-}
-
-function courseMutationError(caught: unknown): string {
-  if (!(caught instanceof RpcError)) {
-    return COPY.programs.programTransportAmbiguous;
-  }
-  if (
-    caught.problem.code === "NETWORK_ERROR" ||
-    caught.problem.code === "MALFORMED_RESPONSE" ||
-    caught.problem.code === "MALFORMED_REQUEST" ||
-    caught.problem.code === "UNAVAILABLE"
-  ) {
-    return COPY.programs.programTransportAmbiguous;
-  }
-  if (caught.problem.code === "CONFLICT") {
-    return COPY.programs.programConflict;
-  }
-  return errorCopyFor(caught.problem.code, caught.problem.detail);
-}
-
-const CourseFacts = ({
-  program,
-  department,
-  notice,
-  onBack,
-  onEdit,
-}: {
-  program: Program;
-  department: Department | null;
-  notice: string | null;
-  onBack: () => void;
-  onEdit: () => void;
-}) => {
-  const headingRef = useRef<HTMLHeadingElement>(null);
-
-  useEffect(() => {
-    headingRef.current?.focus();
-  }, []);
-
-  return (
-    <ScreenSection
-      title={COPY.programs.courseFacts}
-      headingId="programs-workspace-facts-title"
-      headingRef={headingRef}
-    >
-      <div className="flex min-w-0 flex-wrap items-center gap-2">
-        <Button
-          type="button"
-          className="w-fit border-[var(--screen-line-strong)] bg-transparent text-[var(--screen-ink)] whitespace-normal hover:bg-[var(--screen-surface-soft)]"
-          onClick={onBack}
-        >
-          {COPY.programs.backToOverview}
-        </Button>
-      </div>
-      {notice !== null && (
-        <output
-          className="block rounded-[var(--screen-radius-control)] border border-[var(--screen-success)] bg-[var(--screen-success-surface)] p-3 text-[var(--screen-ink)] [overflow-wrap:anywhere]"
-          aria-live="polite"
-        >
-          {notice}
-        </output>
-      )}
-      <ScreenCard>
-        <dl className="grid min-w-0 gap-3 [overflow-wrap:anywhere]">
-          <div>
-            <dt>{COPY.programs.factsName}</dt>
-            <dd>{program.name}</dd>
-          </div>
-          <div>
-            <dt>{COPY.programs.factsDepartment}</dt>
-            <dd>{department?.name ?? "—"}</dd>
-          </div>
-          <div>
-            <dt>{COPY.programs.factsPurpose}</dt>
-            <dd>
-              {program.description ?? COPY.programs.programDescriptionEmpty}
-            </dd>
-          </div>
-          <div>
-            <dt>{COPY.programs.factsLifecycle}</dt>
-            <dd>{lifecycleLabel(program.lifecycle)}</dd>
-          </div>
-          <div>
-            <dt>{COPY.programs.factsDiscoverability}</dt>
-            <dd>{discoverabilityLabel(program.discoverability)}</dd>
-          </div>
-          <div>
-            <dt>{COPY.programs.factsEnrollmentMode}</dt>
-            <dd>{enrollmentLabel(program.enrollment_mode)}</dd>
-          </div>
-          <div>
-            <dt>{COPY.programs.workspaceBehavior}</dt>
-            <dd>{behaviorLabel(program.behavior_type)}</dd>
-          </div>
-        </dl>
-      </ScreenCard>
-      {program.capabilities.manage && (
-        <Button
-          type="button"
-          className="w-fit border-[var(--screen-line-strong)] bg-transparent text-[var(--screen-ink)] whitespace-normal hover:bg-[var(--screen-surface-soft)]"
-          onClick={onEdit}
-        >
-          {COPY.programs.editTitle}
-        </Button>
-      )}
-    </ScreenSection>
-  );
-};
-
-const CourseEdit = ({
-  program,
-  onBack,
-  onSaved,
-}: {
-  program: Program;
-  onBack: () => void;
-  onSaved: (program: Program) => void;
-}) => {
-  const [name, setName] = useState(program.name);
-  const [purpose, setPurpose] = useState(program.description ?? "");
-  const [busy, setBusy] = useState(false);
-  const [formError, setFormError] = useState<string | null>(null);
-  const headingRef = useRef<HTMLHeadingElement>(null);
-  const mounted = useRef(true);
-
-  useEffect(() => {
-    headingRef.current?.focus();
-    return () => {
-      mounted.current = false;
-    };
-  }, []);
-
-  const submit = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    const trimmedName = name.trim();
-    const trimmedPurpose = purpose.trim();
-    if (!trimmedName || !trimmedPurpose) {
-      setFormError(COPY.programs.editRequired);
-      announce(COPY.programs.editRequired);
-      return;
-    }
-    setBusy(true);
-    setFormError(null);
-    try {
-      const result = await updateProgram(program.program_id, {
-        name: trimmedName,
-        description: trimmedPurpose,
-      });
-      if (mounted.current) {
-        onSaved(result.program);
-      }
-    } catch (error) {
-      if (redirectToLoginIfRequired(error)) {
-        return;
-      }
-      if (mounted.current) {
-        const message = courseMutationError(error);
-        setFormError(message);
-        announce(message);
-      }
-    } finally {
-      if (mounted.current) {
-        setBusy(false);
-      }
-    }
-  };
-
-  const invalidName = formError !== null && !name.trim();
-  const invalidPurpose = formError !== null && !purpose.trim();
-
-  return (
-    <ScreenSection
-      title={COPY.programs.editTitle}
-      headingId="programs-workspace-course-edit-title"
-      headingRef={headingRef}
-    >
-      <div className="flex min-w-0 flex-wrap items-center gap-2">
-        <Button
-          type="button"
-          className="w-fit border-[var(--screen-line-strong)] bg-transparent text-[var(--screen-ink)] whitespace-normal hover:bg-[var(--screen-surface-soft)]"
-          onClick={onBack}
-          aria-label={COPY.programs.backToOverview}
-        >
-          {COPY.programs.backToOverview}
-        </Button>
-      </div>
-      {formError !== null && (
-        <ScreenState
-          id="programs-workspace-course-edit-error"
-          kind="error"
-          title={formError}
-        />
-      )}
-      <ScreenEditor onSubmit={submit} noValidate>
-        <ScreenField
-          htmlFor="programs-course-name"
-          label={COPY.programs.editNameLabel}
-        >
-          <Input
-            id="programs-course-name"
-            className="min-w-0 border-[var(--screen-line-strong)] bg-[var(--screen-surface)] text-base"
-            value={name}
-            onChange={(event) => setName(event.target.value)}
-            required
-            disabled={busy}
-            aria-invalid={invalidName || undefined}
-            aria-describedby={
-              formError !== null
-                ? "programs-workspace-course-edit-error"
-                : undefined
-            }
-          />
-        </ScreenField>
-        <ScreenField
-          htmlFor="programs-course-purpose"
-          label={COPY.programs.editPurposeLabel}
-        >
-          <Textarea
-            id="programs-course-purpose"
-            className="min-w-0 border-[var(--screen-line-strong)] bg-[var(--screen-surface)] text-base"
-            value={purpose}
-            onChange={(event) => setPurpose(event.target.value)}
-            rows={4}
-            required
-            disabled={busy}
-            aria-invalid={invalidPurpose || undefined}
-            aria-describedby={
-              formError !== null
-                ? "programs-workspace-course-edit-error"
-                : undefined
-            }
-          />
-        </ScreenField>
-        <div className="flex min-w-0 flex-wrap items-center gap-3">
-          <Button
-            className="w-fit bg-[var(--screen-accent)] text-white whitespace-normal hover:bg-[var(--screen-accent-deep)]"
-            type="submit"
-            disabled={busy}
-          >
-            {busy ? COPY.programs.submitting : COPY.programs.saveCourse}
-          </Button>
-        </div>
-      </ScreenEditor>
-    </ScreenSection>
-  );
-};
 export const ProgramWorkspace = ({
   programId,
   task,
@@ -417,6 +156,7 @@ export const ProgramWorkspace = ({
   created = false,
   attention = null,
   onAttentionRefresh = () => {},
+  headerAction,
   onBack,
   onTaskChange,
   onEventChange,
@@ -425,13 +165,7 @@ export const ProgramWorkspace = ({
   const [summary, setSummary] = useState<WorkspaceSummaryState>(() =>
     initialSummary()
   );
-  const [courseView, setCourseView] = useState<"overview" | "facts" | "edit">(
-    "overview"
-  );
-  const [courseProgramOverride, setCourseProgramOverride] =
-    useState<Program | null>(null);
-  const [courseNotice, setCourseNotice] = useState<string | null>(null);
-  const createdFlash = created && courseView === "overview" && !task;
+  const createdFlash = created && !task;
   const [workspaceNotice, setWorkspaceNotice] = useState<string | null>(
     createdFlash ? COPY.programs.programCreatedNotice : null
   );
@@ -443,19 +177,10 @@ export const ProgramWorkspace = ({
     };
   }, []);
   useEffect(() => {
-    setCourseView("overview");
-    setCourseProgramOverride(null);
-    setCourseNotice(null);
-    setWorkspaceNotice(created ? COPY.programs.programCreatedNotice : null);
-  }, [programId]);
-  useEffect(() => {
-    setCourseView("overview");
-    setCourseProgramOverride(null);
-    setCourseNotice(null);
-    if (task) {
-      setWorkspaceNotice(null);
-    }
-  }, [task]);
+    setWorkspaceNotice(
+      created && !task ? COPY.programs.programCreatedNotice : null
+    );
+  }, [created, programId, task]);
   const {
     state,
     run: loadWorkspace,
@@ -579,33 +304,6 @@ export const ProgramWorkspace = ({
     }
     void loadSummary(state.modules);
   }, [loadSummary, state, task]);
-  const openCourseFacts = () => {
-    setCourseNotice(null);
-    setCourseView("facts");
-    announce(COPY.programs.courseFacts);
-  };
-  const openCourseEdit = () => {
-    setCourseNotice(null);
-    setCourseView("edit");
-    announce(COPY.programs.editTitle);
-  };
-  const returnToCockpit = () => {
-    setCourseNotice(null);
-    setCourseView("overview");
-    announce(COPY.programs.workspaceTitle);
-  };
-  const returnToFacts = () => {
-    setCourseNotice(null);
-    setCourseView("facts");
-    announce(COPY.programs.courseFacts);
-  };
-  const handleCourseSaved = (updatedProgram: Program) => {
-    setCourseProgramOverride(updatedProgram);
-    setCourseNotice(COPY.programs.courseSaved);
-    setCourseView("facts");
-    announce(COPY.programs.courseSaved);
-  };
-
   if (state.kind === "loading") {
     return (
       <ScreenLoadingRows
@@ -654,7 +352,7 @@ export const ProgramWorkspace = ({
       />
     );
   }
-  const workspaceProgram = courseProgramOverride ?? state.program;
+  const workspaceProgram = state.program;
   const canAccessSettings =
     workspaceProgram.capabilities.manage ||
     workspaceProgram.capabilities.leader_assign;
@@ -686,8 +384,6 @@ export const ProgramWorkspace = ({
     nextTask: ProgramsTask | null,
     nextEventId?: string | null
   ) => {
-    setCourseView("overview");
-    setCourseNotice(null);
     if (nextEventId === undefined) {
       onTaskChange(nextTask);
     } else {
@@ -740,20 +436,7 @@ export const ProgramWorkspace = ({
             </ScreenStatus>
           )
         }
-        action={
-          !focusedSchedule &&
-          task === undefined &&
-          courseView === "overview" &&
-          workspaceProgram.capabilities.manage ? (
-            <Button
-              className="w-fit bg-[var(--screen-accent)] text-white whitespace-normal hover:bg-[var(--screen-accent-deep)]"
-              type="button"
-              onClick={openCourseEdit}
-            >
-              {COPY.programs.cockpitEditProgram}
-            </Button>
-          ) : undefined
-        }
+        action={headerAction}
       />
 
       {workspaceNotice !== null && (
@@ -777,24 +460,10 @@ export const ProgramWorkspace = ({
         />
       )}
 
-      {courseView === "facts" ? (
-        <CourseFacts
-          program={workspaceProgram}
-          department={state.department}
-          notice={courseNotice}
-          onBack={returnToCockpit}
-          onEdit={openCourseEdit}
-        />
-      ) : courseView === "edit" ? (
-        <CourseEdit
-          program={workspaceProgram}
-          onBack={returnToFacts}
-          onSaved={handleCourseSaved}
-        />
-      ) : task &&
-        task === "events" &&
-        eventId &&
-        workspaceProgram.capabilities.manage ? (
+      {task &&
+      task === "events" &&
+      eventId &&
+      workspaceProgram.capabilities.manage ? (
         <EventDetail
           programId={programId}
           eventId={eventId}
@@ -844,7 +513,6 @@ export const ProgramWorkspace = ({
           program={workspaceProgram}
           cockpit={state.cockpit}
           summary={summary}
-          onOpenFacts={openCourseFacts}
           departmentId={departmentId}
           hash={hash}
           onTaskChange={handleWorkspaceTaskChange}

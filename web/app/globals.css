@@ -431,14 +431,14 @@
   }
 
   #main-navigation .nav-item[aria-current="page"] {
-    color: var(--surface-raised);
-    background: var(--accent);
-    box-shadow: none;
+    color: var(--accent);
+    background: var(--surface);
+    box-shadow: inset 0 -2px 0 var(--accent);
     font-weight: 700;
   }
 
   #main-navigation .nav-item[aria-current="page"] .nav-icon {
-    color: var(--surface-raised);
+    color: var(--accent);
   }
 
   #main-navigation .nav-item--scan {
@@ -461,9 +461,9 @@
   }
 
   #main-navigation .nav-item--scan[aria-current="page"] {
-    color: var(--surface-raised);
-    background: var(--accent);
-    box-shadow: none;
+    color: var(--accent);
+    background: var(--surface);
+    box-shadow: inset 0 -2px 0 var(--accent);
   }
 
   #main-navigation .nav-item--scan .nav-label {

@@ -47,7 +47,6 @@ const mocks = vi.hoisted(() => ({
   listScheduleRules: vi.fn(),
   previewEvents: vi.fn(),
   generateEvents: vi.fn(),
-  updateProgram: vi.fn(),
 }));
 
 vi.mock(import("@/lib/programs/program-api"), () => ({
@@ -71,7 +70,6 @@ vi.mock(import("@/lib/programs/program-api"), () => ({
   listScheduleRules: mocks.listScheduleRules,
   previewEvents: mocks.previewEvents,
   generateEvents: mocks.generateEvents,
-  updateProgram: mocks.updateProgram,
 }));
 
 const program: Program = {
@@ -277,7 +275,6 @@ beforeEach(() => {
   mocks.listScheduleRules.mockReset();
   mocks.previewEvents.mockReset();
   mocks.generateEvents.mockReset();
-  mocks.updateProgram.mockReset();
   mocks.listScheduleRules.mockResolvedValue({ rules: [rule] });
   mocks.listScheduleExceptions.mockResolvedValue({ exceptions: [] });
 });
@@ -304,13 +301,10 @@ describe(ProgramWorkspace, () => {
       />
     );
 
-    // Header with quiet edit button and pills
+    // Header with title, department context, and lifecycle pill
     await expect(
       screen.findByRole("heading", { name: "查經小組" })
     ).resolves.toBeInTheDocument();
-    expect(
-      screen.getByRole("button", { name: COPY.programs.cockpitEditProgram })
-    ).toBeInTheDocument();
     expect(screen.getByText("青年事工 · YOUTH")).toBeInTheDocument();
     expect(screen.getByText(COPY.programs.lifecycleActive)).toBeInTheDocument();
 
@@ -363,14 +357,6 @@ describe(ProgramWorkspace, () => {
     ).toBeInTheDocument();
     expect(
       screen.getByText(COPY.programs.cockpitLowFrequency)
-    ).toBeInTheDocument();
-    expect(
-      screen.getByRole("button", {
-        name: new RegExp(
-          `${COPY.programs.cockpitCourseFacts}.*${COPY.programs.cockpitCourseFactsHint}`,
-          "u"
-        ),
-      })
     ).toBeInTheDocument();
     expect(
       screen.getByRole("link", {
@@ -453,305 +439,51 @@ describe(ProgramWorkspace, () => {
     ).toBeInTheDocument();
   });
 
-  test("navigates to tasks and renders Course Facts view with all 6 read-only fields and back navigation to Cockpit", async () => {
-    mocks.getManagementProgram.mockResolvedValue({
-      program,
-      department,
-      modules,
-      cockpit: cockpitWithNext,
-    });
-    const onTaskChange = vi.fn();
-    render(
-      <ProgramWorkspace
-        programId="program-1"
-        onBack={vi.fn()}
-        onTaskChange={onTaskChange}
-      />
-    );
-
-    await expect(
-      screen.findByRole("heading", { name: "查經小組" })
-    ).resolves.toBeInTheDocument();
-
-    // Click events tile
-    await userEvent.click(
-      screen.getByRole("link", {
-        name: new RegExp(
-          `${COPY.programs.cockpitEventsTile}.*${COPY.programs.cockpitEventsCount.replace(
-            "{count}",
-            String(cockpitWithNext.active_event_count)
-          )}`,
-          "u"
-        ),
-      })
-    );
-    expect(onTaskChange).toHaveBeenCalledWith("events");
-
-    // Click course facts quiet row
-    await userEvent.click(
-      screen.getByRole("button", {
-        name: new RegExp(COPY.programs.cockpitCourseFacts, "u"),
-      })
-    );
-    await expect(
-      screen.findByRole("heading", {
-        name: COPY.programs.cockpitCourseFacts,
-      })
-    ).resolves.toBeInTheDocument();
-
-    // Verify all 6 read-only fields
-    expect(
-      screen.getByRole("heading", { name: "查經小組" })
-    ).toBeInTheDocument();
-    expect(screen.getByText("週三晚上的門徒訓練查經。")).toBeInTheDocument();
-    expect(screen.getByText("青年事工")).toBeInTheDocument();
-    expect(
-      screen.getAllByText(COPY.programs.lifecycleActive).length
-    ).toBeGreaterThanOrEqual(1);
-    expect(
-      screen.getByText(COPY.programs.discoverabilityListed)
-    ).toBeInTheDocument();
-    expect(
-      screen.getByText(COPY.programs.detailParticipationMemberRequest)
-    ).toBeInTheDocument();
-    // Verify Facts screen has NO editable inputs
-    expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
-
-    // Verify 編輯課程 button is present on Facts
-    expect(
-      screen.getByRole("button", { name: COPY.programs.cockpitEditProgram })
-    ).toBeInTheDocument();
-
-    // Return to Cockpit
-    await userEvent.click(
-      screen.getByRole("button", { name: COPY.programs.backToOverview })
-    );
-    await expect(
-      screen.findByRole("heading", {
-        name: COPY.programs.cockpitOperations,
-      })
-    ).resolves.toBeInTheDocument();
-  });
-
-  test("renders Course Edit from Facts, validates non-empty fields, saves changes, and returns to Facts with updated values", async () => {
-    const updatedProgram: Program = {
-      ...program,
-      name: "門徒進階查經",
-      description: "進階查經課程簡介。",
-    };
-    mocks.getManagementProgram.mockResolvedValue({
-      program,
-      department,
-      modules,
-      cockpit: cockpitWithNext,
-    });
-    mocks.updateProgram.mockResolvedValue({ program: updatedProgram });
-
-    render(
-      <ProgramWorkspace
-        programId="program-1"
-        onBack={vi.fn()}
-        onTaskChange={vi.fn()}
-      />
-    );
-
-    await expect(
-      screen.findByRole("heading", { name: "查經小組" })
-    ).resolves.toBeInTheDocument();
-
-    // Open Course Facts
-    await userEvent.click(
-      screen.getByRole("button", {
-        name: new RegExp(COPY.programs.cockpitCourseFacts, "u"),
-      })
-    );
-    await expect(
-      screen.findByRole("heading", {
-        name: COPY.programs.cockpitCourseFacts,
-      })
-    ).resolves.toBeInTheDocument();
-
-    // Open Course Edit
-    await userEvent.click(
-      screen.getByRole("button", { name: COPY.programs.cockpitEditProgram })
-    );
-    await expect(
-      screen.findByRole("heading", {
-        name: COPY.programs.cockpitEditProgram,
-      })
-    ).resolves.toBeInTheDocument();
-
-    // Pre-filled values
-    const nameInput = screen.getByRole("textbox", {
-      name: COPY.programs.editNameLabel,
-    });
-    const purposeInput = screen.getByRole("textbox", {
-      name: COPY.programs.editPurposeLabel,
-    });
-    expect(nameInput).toHaveValue("查經小組");
-    expect(purposeInput).toHaveValue("週三晚上的門徒訓練查經。");
-
-    // Validation 1: empty name blocks save
-    await userEvent.clear(nameInput);
-    await userEvent.click(
-      screen.getByRole("button", { name: COPY.programs.saveCourse })
-    );
-    expect(screen.getByText(COPY.programs.editRequired)).toBeInTheDocument();
-    expect(mocks.updateProgram).not.toHaveBeenCalled();
-
-    // Validation 2: empty purpose blocks save
-    await userEvent.type(nameInput, "門徒進階查經");
-    await userEvent.clear(purposeInput);
-    await userEvent.click(
-      screen.getByRole("button", { name: COPY.programs.saveCourse })
-    );
-    expect(screen.getByText(COPY.programs.editRequired)).toBeInTheDocument();
-    expect(mocks.updateProgram).not.toHaveBeenCalled();
-
-    // Fill valid purpose and save
-    await userEvent.type(purposeInput, "進階查經課程簡介。");
-    await userEvent.click(
-      screen.getByRole("button", { name: COPY.programs.saveCourse })
-    );
-
-    expect(mocks.updateProgram).toHaveBeenCalledWith("program-1", {
-      name: "門徒進階查經",
-      description: "進階查經課程簡介。",
-    });
-
-    // Success returns to Facts with updated values
-    await expect(
-      screen.findByRole("heading", {
-        name: COPY.programs.cockpitCourseFacts,
-      })
-    ).resolves.toBeInTheDocument();
-    expect(
-      screen.getByRole("heading", { name: "門徒進階查經" })
-    ).toBeInTheDocument();
-    expect(screen.getByText("進階查經課程簡介。")).toBeInTheDocument();
-  });
-
-  test("renders Course Edit from Cockpit edit button and allows back navigation to Facts", async () => {
-    mocks.getManagementProgram.mockResolvedValue({
-      program,
-      department,
-      modules,
-      cockpit: cockpitWithNext,
-    });
-
-    render(
-      <ProgramWorkspace
-        programId="program-1"
-        onBack={vi.fn()}
-        onTaskChange={vi.fn()}
-      />
-    );
-
-    await expect(
-      screen.findByRole("heading", { name: "查經小組" })
-    ).resolves.toBeInTheDocument();
-
-    // Click 編輯課程 in Cockpit header
-    await userEvent.click(
-      screen.getByRole("button", { name: COPY.programs.cockpitEditProgram })
-    );
-    await expect(
-      screen.findByRole("heading", {
-        name: COPY.programs.cockpitEditProgram,
-      })
-    ).resolves.toBeInTheDocument();
-
-    // Click back button returns to Facts view
-    await userEvent.click(
-      screen.getByRole("button", {
-        name: new RegExp(
-          `${COPY.programs.courseFacts}|${COPY.programs.backToOverview}`,
-          "u"
-        ),
-      })
-    );
-    await expect(
-      screen.findByRole("heading", {
-        name: COPY.programs.cockpitCourseFacts,
-      })
-    ).resolves.toBeInTheDocument();
-  });
-
-  test("handles Course Edit save API error gracefully", async () => {
-    mocks.getManagementProgram.mockResolvedValue({
-      program,
-      department,
-      modules,
-      cockpit: cockpitWithNext,
-    });
-    mocks.updateProgram.mockRejectedValue(
-      new RpcError({ code: "INTERNAL_ERROR", detail: "未能儲存課程資料" })
-    );
-
-    render(
-      <ProgramWorkspace
-        programId="program-1"
-        onBack={vi.fn()}
-        onTaskChange={vi.fn()}
-      />
-    );
-
-    await expect(
-      screen.findByRole("heading", { name: "查經小組" })
-    ).resolves.toBeInTheDocument();
-
-    // Open Edit directly
-    await userEvent.click(
-      screen.getByRole("button", { name: COPY.programs.cockpitEditProgram })
-    );
-    const nameInput = screen.getByRole("textbox", {
-      name: COPY.programs.editNameLabel,
-    });
-    await userEvent.clear(nameInput);
-    await userEvent.type(nameInput, "新名稱");
-
-    await userEvent.click(
-      screen.getByRole("button", { name: COPY.programs.saveCourse })
-    );
-
-    // Error is displayed and form remains with input intact
-    await expect(
-      screen.findByText(COPY.error.serverError)
-    ).resolves.toBeInTheDocument();
-    expect(
-      screen.getByRole("textbox", { name: COPY.programs.editNameLabel })
-    ).toHaveValue("新名稱");
-  });
-
-  test("resets the course subview when the task route changes in place", async () => {
+  test("keeps Overview read-only and places course editing under Settings", async () => {
     mockWorkspace();
-    const props = {
-      programId: "program-1",
-      onBack: vi.fn(),
-      onTaskChange: vi.fn(),
-    };
-    const { rerender } = render(<ProgramWorkspace {...props} />);
+    render(
+      <ProgramWorkspace
+        programId="program-1"
+        onBack={vi.fn()}
+        onTaskChange={vi.fn()}
+      />
+    );
 
     await expect(
       screen.findByRole("heading", { name: "查經小組" })
     ).resolves.toBeInTheDocument();
-    await userEvent.click(
-      screen.getByRole("button", { name: COPY.programs.cockpitEditProgram })
-    );
     expect(
-      screen.getByRole("textbox", { name: COPY.programs.editNameLabel })
-    ).toBeInTheDocument();
-
-    rerender(<ProgramWorkspace {...props} task="events" />);
-
-    await expect(
-      screen.findByRole("heading", {
-        name: COPY.programs.workspaceTaskEvents,
+      screen.queryByRole("button", {
+        name: COPY.programs.cockpitEditProgram,
       })
-    ).resolves.toBeInTheDocument();
-    expect(
-      screen.queryByRole("textbox", { name: COPY.programs.editNameLabel })
     ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", {
+        name: new RegExp(COPY.programs.cockpitCourseFacts, "u"),
+      })
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("tab", { name: COPY.programs.workspaceSettingsTab })
+    ).toBeInTheDocument();
+  });
+
+  test("renders the contextual notification action in the shared header", async () => {
+    mockWorkspace();
+    render(
+      <ProgramWorkspace
+        programId="program-1"
+        onBack={vi.fn()}
+        onTaskChange={vi.fn()}
+        headerAction={<button type="button">通知</button>}
+      />
+    );
+
+    await screen.findByRole("heading", { name: "查經小組" });
+    const actions = document.querySelector("[data-route-header-actions]");
+    expect(actions).not.toBeNull();
+    expect(
+      within(actions as HTMLElement).getByRole("button", { name: "通知" })
+    ).toBeInTheDocument();
   });
 
   test("renders Events with the management create entry point", async () => {
@@ -1121,6 +853,11 @@ describe("ENR-01 participants workspace", () => {
         name: `${COPY.programs.tabsPending} (1)`,
       })
     ).resolves.toBeInTheDocument();
+    expect(
+      screen.getByRole("tab", {
+        name: `${COPY.programs.tabsPending} (1)`,
+      })
+    ).toHaveAttribute("aria-selected", "true");
     expect(
       screen.getByRole("tab", {
         name: `${COPY.programs.tabsActive} (1)`,

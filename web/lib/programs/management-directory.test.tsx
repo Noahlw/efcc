@@ -225,6 +225,45 @@ describe(ManagementDirectory, () => {
     );
   });
 
+  test("keeps the management directory focused on aggregated Programs", async () => {
+    mockDirectory();
+    render(<ManagementDirectory onOpenProgram={vi.fn()} />);
+
+    await screen.findByRole("list", {
+      name: COPY.programs.managementDirectoryListLabel,
+    });
+    expect(
+      screen.queryByRole("heading", {
+        name: COPY.programs.managementScopeDepartment,
+      })
+    ).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /查經小組/u })).toHaveTextContent(
+      "青年事工"
+    );
+    expect(screen.getByRole("link", { name: /社區關懷/u })).toHaveTextContent(
+      "外展事工"
+    );
+  });
+
+  test("renders a contextual action in the shared ScreenHeader", async () => {
+    mockDirectory();
+    render(
+      <ManagementDirectory
+        onOpenProgram={vi.fn()}
+        headerAction={<button type="button">通知</button>}
+      />
+    );
+
+    await screen.findByRole("list", {
+      name: COPY.programs.managementDirectoryListLabel,
+    });
+    const actions = document.querySelector("[data-route-header-actions]");
+    expect(actions).not.toBeNull();
+    expect(
+      within(actions as HTMLElement).getByRole("button", { name: "通知" })
+    ).toBeInTheDocument();
+  });
+
   test("keeps the current Department query in a semantic Program link", async () => {
     mockDirectory();
     render(
@@ -239,6 +278,7 @@ describe(ManagementDirectory, () => {
       "/programs?mode=management&department=dept-youth&program=program-youth"
     );
   });
+
   test("does not offer free-floating creation outside a Department detail", async () => {
     mockDirectory();
     render(<ManagementDirectory onOpenProgram={vi.fn()} />);

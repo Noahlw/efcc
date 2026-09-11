@@ -24,6 +24,8 @@ const mocks = vi.hoisted(() => {
     getManagementAccess: vi.fn(),
     getManagementDirectory: vi.fn(),
     getManagementProgram: vi.fn(),
+    getManagementNotifications: vi.fn(),
+    markManagementNotificationsRead: vi.fn(),
     listEvents: vi.fn(),
     listEnrollmentRequests: vi.fn(),
     listEnrollments: vi.fn(),
@@ -37,6 +39,8 @@ vi.mock(import("@/lib/programs/program-api"), () => ({
   getManagementAccess: mocks.getManagementAccess,
   getManagementDirectory: mocks.getManagementDirectory,
   getManagementProgram: mocks.getManagementProgram,
+  getManagementNotifications: mocks.getManagementNotifications,
+  markManagementNotificationsRead: mocks.markManagementNotificationsRead,
   listEvents: mocks.listEvents,
   listEnrollmentRequests: mocks.listEnrollmentRequests,
   listEnrollments: mocks.listEnrollments,
@@ -129,6 +133,8 @@ beforeEach(() => {
   mocks.getManagementAccess.mockReset();
   mocks.getManagementDirectory.mockReset();
   mocks.getManagementProgram.mockReset();
+  mocks.getManagementNotifications.mockReset();
+  mocks.markManagementNotificationsRead.mockReset();
   mocks.listEvents.mockReset();
   mocks.listEnrollmentRequests.mockReset();
   mocks.listEnrollments.mockReset();
@@ -150,6 +156,12 @@ beforeEach(() => {
     modules,
     cockpit,
   });
+  mocks.getManagementNotifications.mockResolvedValue({
+    items: [],
+    unread_count: 0,
+    has_more: false,
+  });
+  mocks.markManagementNotificationsRead.mockResolvedValue({ ok: true });
   mocks.listEnrollmentRequests.mockResolvedValue({ requests: [] });
   mocks.listEnrollments.mockResolvedValue({ enrollments: [] });
   mocks.listScheduleRules.mockResolvedValue({ rules: [] });
@@ -160,6 +172,34 @@ afterEach(() => {
 });
 
 describe("Programs management boundary", () => {
+  test("places one compact bell in route headers and none on full Notifications", async () => {
+    const view = render(<ProgramsBoundary />);
+
+    await screen.findByRole("list", {
+      name: COPY.programs.managementDirectoryListLabel,
+    });
+    expect(
+      screen.getAllByRole("button", {
+        name: COPY.programs.notificationBellTitle,
+      })
+    ).toHaveLength(1);
+
+    window.history.replaceState(
+      {},
+      "",
+      "/programs?mode=management&task=notifications"
+    );
+    view.rerender(<ProgramsBoundary />);
+    await screen.findByRole("heading", {
+      name: COPY.programs.notificationsScreenTitle,
+    });
+    expect(
+      screen.queryByRole("button", {
+        name: COPY.programs.notificationBellTitle,
+      })
+    ).not.toBeInTheDocument();
+  });
+
   test("routes from scoped Directory into a status-first Program Cockpit and focused task", async () => {
     const view = render(<ProgramsBoundary />);
 
