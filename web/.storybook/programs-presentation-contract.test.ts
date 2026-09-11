@@ -3,13 +3,30 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
-import { expect, test } from "vitest";
+import { setupServer } from "msw/node";
+import { afterAll, afterEach, beforeAll, expect, test } from "vitest";
+
+import type { ParticipantProgramDetail } from "@/lib/programs/program-api";
 
 import {
   PROGRAMS_MATERIAL_SCENARIO_NAMES,
   getProgramsStoryScenario,
 } from "./programs-fixtures";
 import { assertProgramsScreen } from "./programs-presentation-contract";
+
+const storyServer = setupServer();
+
+beforeAll(() => {
+  storyServer.listen({ onUnhandledRequest: "error" });
+});
+
+afterEach(() => {
+  storyServer.resetHandlers();
+});
+
+afterAll(() => {
+  storyServer.close();
+});
 
 const readiness = {
   selector: "[data-program-name]",
@@ -39,6 +56,72 @@ const EXPECTED_PROGRAMS_MATERIAL_SCENARIO_NAMES = [
   "notifications-unread",
   "notifications-empty-recoverable",
 ] as const;
+
+const REQUIRED_BEHAVIOR_PLAY_EXPORTS = [
+  "ParticipantDirectoryCapable",
+  "ParticipantProgramDetailEligible",
+  "ParticipantProgramDetailActive",
+  "ParticipantProgramDetailPending",
+  "ParticipantProgramDetailRejected",
+  "ParticipantEventDetailClosed",
+  "ParticipantEventDetailOpen",
+  "ParticipantEventDetailIneligible",
+  "ManagementDirectoryMixed",
+] as const;
+
+const PARTICIPANT_MUTATION_SCENARIOS = [
+  {
+    scenario: "participant-program-detail-eligible",
+    programId: "t07-3-eligible-program",
+    mutationPath: "enrollment-requests",
+    responseKey: "request",
+    initialStatus: null,
+    nextStatus: "Pending",
+  },
+  {
+    scenario: "participant-program-detail-active",
+    programId: "t07-3-program",
+    mutationPath: "enrollments/t07-3-enrollment/cancel",
+    responseKey: "enrollment",
+    initialStatus: "Active",
+    nextStatus: "Cancelled",
+  },
+  {
+    scenario: "participant-program-detail-pending",
+    programId: "t07-3-program",
+    mutationPath: "enrollment-requests/t07-3-pending-request/withdraw",
+    responseKey: "request",
+    initialStatus: "Pending",
+    nextStatus: "Withdrawn",
+  },
+  {
+    scenario: "participant-program-detail-rejected",
+    programId: "t07-3-program",
+    mutationPath: "enrollment-requests",
+    responseKey: "request",
+    initialStatus: "Rejected",
+    nextStatus: "Pending",
+  },
+] as const;
+
+const participantDetail = async (
+  programId: string
+): Promise<ParticipantProgramDetail> => {
+  const response = await fetch(
+    `http://localhost/api/v1/programs/${programId}/participant-detail`
+  );
+  expect(response.status).toBe(200);
+  const body = (await response.json()) as {
+    data: { detail: ParticipantProgramDetail };
+  };
+  return body.data.detail;
+};
+
+const participantStatuses = (detail: ParticipantProgramDetail) => [
+  ...(detail.enrollment?.requests.map((request) => request.status) ?? []),
+  ...(detail.enrollment?.enrollments.map((enrollment) => enrollment.status) ??
+    []),
+];
 
 test("does not accept the shared AppShell main landmark as a settled Programs screen", async () => {
   document.body.innerHTML =
@@ -74,6 +157,93 @@ test("pins the exhaustive named Programs material-state inventory", () => {
     expect(scenario.handlers.length).toBeGreaterThan(0);
   }
 });
+
+test("requires route-backed material states to define named behavior Plays", () => {
+  const storySource = readFileSync(
+    join(process.cwd(), ".storybook/programs-material-states.stories.tsx"),
+    "utf8"
+  );
+
+  for (const exportName of REQUIRED_BEHAVIOR_PLAY_EXPORTS) {
+    const exportStart = `export const ${exportName}: Story = materialStory(`;
+    const start = storySource.indexOf(exportStart);
+    expect(start, `${exportName} export is missing`).toBeGreaterThanOrEqual(0);
+
+    const nextExport = storySource.indexOf("\nexport const ", start + 1);
+    const declaration = storySource.slice(
+      start,
+      nextExport === -1 ? storySource.length : nextExport
+    );
+
+    expect(
+      declaration,
+      `${exportName} must pass a named behavior Play`
+    ).toMatch(/,\s*[A-Za-z_$][\w$]*Play\s*\)\s*;?\s*$/u);
+  }
+});
+
+test("installs mutable Programs handlers per Story invocation", () => {
+  const storySource = readFileSync(
+    join(process.cwd(), ".storybook/programs-material-states.stories.tsx"),
+    "utf8"
+  );
+
+  expect(storySource).toMatch(/loaders:\s*\[/u);
+  expect(storySource).toContain("worker.resetHandlers()");
+  expect(storySource).toContain(
+    "worker.use(...getProgramsStoryScenario(name).handlers)"
+  );
+  expect(storySource).not.toContain("msw: scenario.handlers");
+});
+
+test.each(PARTICIPANT_MUTATION_SCENARIOS)(
+  "$scenario owns a resettable server-backed mutation projection",
+  async ({
+    scenario: scenarioName,
+    programId,
+    mutationPath,
+    responseKey,
+    initialStatus,
+    nextStatus,
+  }) => {
+    const scenario = getProgramsStoryScenario(
+      scenarioName as (typeof PROGRAMS_MATERIAL_SCENARIO_NAMES)[number]
+    );
+    storyServer.use(...scenario.handlers);
+
+    const initial = await participantDetail(programId);
+    expect(
+      initialStatus === null ? initial.enrollment : participantStatuses(initial)
+    ).toEqual(
+      initialStatus === null ? null : expect.arrayContaining([initialStatus])
+    );
+
+    const mutation = await fetch(
+      `http://localhost/api/v1/programs/${programId}/${mutationPath}`,
+      { method: "POST" }
+    );
+    expect(mutation.status).toBe(200);
+    const mutationBody = (await mutation.json()) as {
+      data: Record<string, { status: string }>;
+    };
+    expect(mutationBody.data[responseKey]?.status).toBe(nextStatus);
+
+    const projected = await participantDetail(programId);
+    expect(participantStatuses(projected)).toContain(nextStatus);
+
+    const freshScenario = getProgramsStoryScenario(
+      scenarioName as (typeof PROGRAMS_MATERIAL_SCENARIO_NAMES)[number]
+    );
+    storyServer.resetHandlers(...freshScenario.handlers);
+    const reset = await participantDetail(programId);
+    expect(
+      initialStatus === null ? reset.enrollment : participantStatuses(reset)
+    ).toEqual(
+      initialStatus === null ? null : expect.arrayContaining([initialStatus])
+    );
+    expect(participantStatuses(reset)).not.toContain(nextStatus);
+  }
+);
 
 test("keeps the scenario factory free of complexity suppression", () => {
   const source = readFileSync(

@@ -3,11 +3,31 @@
  * test file. oxlint's vitest plugin unconditionally matches **\\/*.test.ts.
  */
 import { expect, test } from "@playwright/test";
-import type { Page } from "@playwright/test";
+import type { Locator, Page } from "@playwright/test";
 
 import { COPY } from "../../web/lib/copy";
 
 const story = (id: string) => `/iframe.html?id=${id}&viewMode=story`;
+
+async function clickAndAssertHref(link: Locator, href: string) {
+  await link.evaluate((element) => {
+    const anchor = element as HTMLAnchorElement;
+    anchor.dataset.t11ActivatedHref = "";
+    anchor.addEventListener(
+      "click",
+      (event) => {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        anchor.dataset.t11ActivatedHref = anchor.getAttribute("href") ?? "";
+      },
+      { capture: true, once: true }
+    );
+  });
+  // DOM activation keeps the route-target assertion deterministic at the
+  // narrowest W7 width, where the compact header status can overlap the icon.
+  await link.evaluate((element) => (element as HTMLAnchorElement).click());
+  await expect(link).toHaveAttribute("data-t11-activated-href", href);
+}
 
 const STORIES = {
   home: "t07-2-public-auth-member-communications--home",
@@ -31,6 +51,18 @@ const PROGRAMS_BASELINE_STORIES = [
   "t07-3-programs--workspace-settings",
   "t07-3-programs--workspace-schedule",
   "t07-3-programs--workspace-notifications",
+] as const;
+
+const PROGRAMS_R4_MATERIAL_STORIES = [
+  "t07-3-programs-material-states--participant-directory-capable",
+  "t07-3-programs-material-states--participant-program-detail-eligible",
+  "t07-3-programs-material-states--participant-program-detail-active",
+  "t07-3-programs-material-states--participant-program-detail-pending",
+  "t07-3-programs-material-states--participant-program-detail-rejected",
+  "t07-3-programs-material-states--participant-event-detail-closed",
+  "t07-3-programs-material-states--participant-event-detail-open",
+  "t07-3-programs-material-states--participant-event-detail-ineligible",
+  "t07-3-programs-material-states--management-directory-mixed",
 ] as const;
 
 async function expectShellFrame(page: Page) {
@@ -242,6 +274,113 @@ test("Programs detail uses a route-owned icon-only Back control", async ({
   await expect(back).toHaveAttribute("href", "/programs");
   await expect(back).toHaveAttribute("aria-label", COPY.programs.detailBack);
   await expect(back).toHaveText("");
+});
+
+test("Programs R4 material Stories execute route-backed behavior Plays", async ({
+  page,
+}) => {
+  for (const storyId of PROGRAMS_R4_MATERIAL_STORIES) {
+    await page.goto(story(storyId));
+    await expectShellFrame(page);
+    await expect(page.locator('[aria-busy="true"]')).toHaveCount(0);
+  }
+
+  await page.goto(
+    story("t07-3-programs-material-states--participant-directory-capable")
+  );
+  await clickAndAssertHref(
+    page.getByRole("link", { name: COPY.programs.enterManagement }),
+    "/programs?mode=management"
+  );
+
+  await page.goto(
+    story("t07-3-programs-material-states--participant-program-detail-eligible")
+  );
+  await expect(
+    page
+      .locator('[data-enrollment-notice="true"]')
+      .filter({ hasText: COPY.programs.requestSubmitted })
+  ).toBeVisible();
+  await expect(
+    page
+      .locator('[data-screen-status="true"]')
+      .filter({ hasText: COPY.programs.statusPending })
+  ).toBeVisible();
+
+  await page.goto(
+    story("t07-3-programs-material-states--participant-program-detail-active")
+  );
+  await expect(
+    page
+      .locator('[data-enrollment-notice="true"]')
+      .filter({ hasText: COPY.programs.enrollmentCancelledNotice })
+  ).toBeVisible();
+  await expect(
+    page
+      .locator('[data-screen-status="true"]')
+      .filter({ hasText: COPY.programs.statusCancelled })
+  ).toBeVisible();
+
+  await page.goto(
+    story("t07-3-programs-material-states--participant-program-detail-pending")
+  );
+  await expect(
+    page
+      .locator('[data-enrollment-notice="true"]')
+      .filter({ hasText: COPY.programs.requestWithdrawnNotice })
+  ).toBeVisible();
+  await expect(
+    page
+      .locator('[data-screen-status="true"]')
+      .filter({ hasText: COPY.programs.statusWithdrawn })
+  ).toBeVisible();
+
+  await page.goto(
+    story("t07-3-programs-material-states--participant-program-detail-rejected")
+  );
+  await clickAndAssertHref(
+    page.locator('[data-screen-foundation="header"] [data-screen-icon-button]'),
+    "/programs"
+  );
+
+  await page.goto(
+    story("t07-3-programs-material-states--participant-event-detail-closed")
+  );
+  await expect(
+    page.getByRole("link", { name: COPY.programs.goToScan })
+  ).toHaveCount(0);
+  await clickAndAssertHref(
+    page.locator('[data-screen-foundation="header"] [data-screen-icon-button]'),
+    "/programs?program=t07-3-program&from=programs"
+  );
+
+  await page.goto(
+    story("t07-3-programs-material-states--participant-event-detail-open")
+  );
+  await expect(
+    page.getByRole("link", { name: COPY.programs.goToScan })
+  ).toHaveCount(1);
+  await expect(
+    page.getByRole("link", { name: COPY.programs.goToScan })
+  ).toHaveAttribute("href", "/scanner?event=t07-3-event");
+
+  await page.goto(
+    story("t07-3-programs-material-states--participant-event-detail-ineligible")
+  );
+  await expect(
+    page.getByText(COPY.programs.eventDetailRecoveryTitle, { exact: true })
+  ).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: COPY.programs.goToScan })
+  ).toHaveCount(0);
+
+  await page.goto(
+    story("t07-3-programs-material-states--management-directory-mixed")
+  );
+  const settings = page.getByRole("button", {
+    name: COPY.programs.departmentSettings,
+  });
+  await expect(settings).toBeFocused();
 });
 
 test("all retained Programs baselines use one settled production route composition", async ({

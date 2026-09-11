@@ -4,6 +4,8 @@ import type { RequestHandler } from "msw";
 import type {
   Department,
   DepartmentModule,
+  Enrollment,
+  EnrollmentRequest,
   EventDetail,
   ManagementAttention,
   ManagementCockpitView,
@@ -12,6 +14,8 @@ import type {
   ParticipantCatalogEntry,
   ParticipantCatalogProgram,
   ParticipantEventSummary,
+  ParticipantEnrollment,
+  ParticipantEnrollmentRequest,
   ParticipantProgramDetail,
   Program,
   ProgramEvent,
@@ -31,6 +35,8 @@ const ELIGIBLE_PROGRAM_ID = "t07-3-eligible-program";
 const EXPLORATION_PROGRAM_ID = "t07-3-exploration-program";
 const FAMILY_PROGRAM_ID = "t07-3-family-program";
 const YOUTH_PROGRAM_ID = "t07-3-youth-program";
+
+const storyApi = (path: string) => `*${path}`;
 
 const envelope = <T>(data: T) =>
   HttpResponse.json({ requestId: REQUEST_ID, data });
@@ -674,26 +680,28 @@ const PARTICIPANT_ENROLLMENTS = [
 const createParticipantProgramHandlers = (
   hasManagementCapability = false
 ): readonly RequestHandler[] => [
-  memberAuthMeHandler,
-  http.get("/api/v1/programs/access", () =>
+  hasManagementCapability ? authMeHandler : memberAuthMeHandler,
+  http.get(storyApi("/api/v1/programs/access"), () =>
     envelope({
       hasManagementCapability,
       departmentScopes: hasManagementCapability ? 1 : 0,
       programScopes: hasManagementCapability ? 1 : 0,
     })
   ),
-  http.get("/api/v1/programs/catalog", () =>
+  http.get(storyApi("/api/v1/programs/catalog"), () =>
     envelope({ catalog: PARTICIPANT_CATALOG })
   ),
-  http.get("/api/v1/programs/:programId/participant-detail", ({ params }) =>
-    envelope({
-      detail:
-        String(params.programId) === ELIGIBLE_PROGRAM_ID
-          ? ELIGIBLE_PARTICIPANT_DETAIL
-          : PARTICIPANT_DETAIL,
-    })
+  http.get(
+    storyApi("/api/v1/programs/:programId/participant-detail"),
+    ({ params }) =>
+      envelope({
+        detail:
+          String(params.programId) === ELIGIBLE_PROGRAM_ID
+            ? ELIGIBLE_PARTICIPANT_DETAIL
+            : PARTICIPANT_DETAIL,
+      })
   ),
-  http.get("/api/v1/programs/:programId/events/:eventId", () =>
+  http.get(storyApi("/api/v1/programs/:programId/events/:eventId"), () =>
     envelope(EVENT_DETAIL)
   ),
 ];
@@ -713,6 +721,19 @@ const createManagementProgramHandlers = (): readonly RequestHandler[] => [
   http.get("/api/v1/programs/departments", () =>
     envelope({ departments: DEPARTMENTS })
   ),
+  http.get("/api/v1/programs/departments/:departmentId", ({ params }) => {
+    const department =
+      DEPARTMENTS.find(
+        (candidate) => candidate.department_id === String(params.departmentId)
+      ) ?? DEPARTMENT;
+    return envelope({
+      department,
+      modules: MODULES.map((module) => ({
+        ...module,
+        department_id: department.department_id,
+      })),
+    });
+  }),
   http.get("/api/v1/programs/attention", () => envelope(MANAGEMENT_ATTENTION)),
   http.get("/api/v1/programs/notifications", () =>
     envelope(MANAGEMENT_NOTIFICATIONS)
@@ -775,6 +796,168 @@ const withScenarioHandlers = (
   base: readonly RequestHandler[],
   ...overrides: RequestHandler[]
 ): readonly RequestHandler[] => [...overrides, ...base];
+
+type ParticipantMutationScenario =
+  | "eligible"
+  | "active"
+  | "pending"
+  | "rejected";
+
+const participantRequestView = (
+  request: EnrollmentRequest
+): ParticipantEnrollmentRequest => ({
+  request_id: request.request_id,
+  status: request.status,
+  submitted_at: request.submitted_at,
+  decided_at: request.decided_at,
+});
+
+const participantEnrollmentView = (
+  enrollment: Enrollment
+): ParticipantEnrollment => ({
+  enrollment_id: enrollment.enrollment_id,
+  status: enrollment.status,
+  enrolled_at: enrollment.enrolled_at,
+  cancelled_at: enrollment.cancelled_at,
+});
+
+const createParticipantBehaviorHandlers = (
+  scenario: ParticipantMutationScenario
+): readonly RequestHandler[] => {
+  const programId = scenario === "eligible" ? ELIGIBLE_PROGRAM_ID : PROGRAM_ID;
+  const initialDetail =
+    scenario === "eligible"
+      ? ELIGIBLE_PARTICIPANT_DETAIL
+      : scenario === "pending"
+        ? PENDING_PARTICIPANT_DETAIL
+        : scenario === "rejected"
+          ? REJECTED_PARTICIPANT_DETAIL
+          : PARTICIPANT_DETAIL;
+  let detail = structuredClone(initialDetail);
+
+  const detailHandler = http.get(
+    storyApi("/api/v1/programs/:programId/participant-detail"),
+    ({ params }) =>
+      String(params.programId) === programId
+        ? envelope({ detail })
+        : HttpResponse.json({ status: 404 }, { status: 404 })
+  );
+
+  if (scenario === "eligible" || scenario === "rejected") {
+    const request: EnrollmentRequest = {
+      request_id:
+        scenario === "eligible"
+          ? "t07-3-eligible-request"
+          : "t07-3-reenrollment-request",
+      program_id: programId,
+      member_user_id: "t07-3-member",
+      status: "Pending",
+      submitted_at: "2026-09-11T02:00:00.000Z",
+      decided_by: null,
+      decided_at: null,
+      decision_note: null,
+      request_version: 1,
+    };
+    return withScenarioHandlers(
+      createParticipantProgramHandlers(),
+      detailHandler,
+      http.post(
+        storyApi("/api/v1/programs/:programId/enrollment-requests"),
+        ({ params }) => {
+          if (String(params.programId) !== programId) {
+            return HttpResponse.json({ status: 404 }, { status: 404 });
+          }
+          detail = {
+            ...detail,
+            enrollment: {
+              requests: [
+                ...(detail.enrollment?.requests ?? []),
+                participantRequestView(request),
+              ],
+              enrollments: detail.enrollment?.enrollments ?? [],
+            },
+          };
+          return envelope({ request });
+        }
+      )
+    );
+  }
+
+  if (scenario === "pending") {
+    const request: EnrollmentRequest = {
+      request_id: "t07-3-pending-request",
+      program_id: programId,
+      member_user_id: "t07-3-member",
+      status: "Withdrawn",
+      submitted_at: "2026-09-09T02:00:00.000Z",
+      decided_by: "t07-3-member",
+      decided_at: "2026-09-11T02:00:00.000Z",
+      decision_note: null,
+      request_version: 2,
+    };
+    return withScenarioHandlers(
+      createParticipantProgramHandlers(),
+      detailHandler,
+      http.post(
+        storyApi(
+          "/api/v1/programs/:programId/enrollment-requests/:requestId/withdraw"
+        ),
+        ({ params }) => {
+          if (
+            String(params.programId) !== programId ||
+            String(params.requestId) !== request.request_id
+          ) {
+            return HttpResponse.json({ status: 404 }, { status: 404 });
+          }
+          detail = {
+            ...detail,
+            enrollment: {
+              requests: [participantRequestView(request)],
+              enrollments: detail.enrollment?.enrollments ?? [],
+            },
+          };
+          return envelope({ request });
+        }
+      )
+    );
+  }
+
+  const enrollment: Enrollment = {
+    enrollment_id: "t07-3-enrollment",
+    program_id: programId,
+    member_user_id: "t07-3-member",
+    request_id: null,
+    status: "Cancelled",
+    enrolled_at: "2026-09-02T00:00:00.000Z",
+    cancelled_at: "2026-09-11T02:00:00.000Z",
+    cancelled_by: "t07-3-member",
+    created_by: "t07-3-manager",
+    created_at: "2026-09-02T00:00:00.000Z",
+  };
+  return withScenarioHandlers(
+    createParticipantProgramHandlers(),
+    detailHandler,
+    http.post(
+      storyApi("/api/v1/programs/:programId/enrollments/:enrollmentId/cancel"),
+      ({ params }) => {
+        if (
+          String(params.programId) !== programId ||
+          String(params.enrollmentId) !== enrollment.enrollment_id
+        ) {
+          return HttpResponse.json({ status: 404 }, { status: 404 });
+        }
+        detail = {
+          ...detail,
+          enrollment: {
+            requests: detail.enrollment?.requests ?? [],
+            enrollments: [participantEnrollmentView(enrollment)],
+          },
+        };
+        return envelope({ enrollment });
+      }
+    )
+  );
+};
 
 const conflictProgramHandler = () =>
   http.patch("/api/v1/programs/:programId", () =>
@@ -870,31 +1053,24 @@ const PROGRAMS_STORY_SCENARIO_FACTORIES: Readonly<
   "participant-directory-capable": () =>
     storyScenario({}, createParticipantProgramHandlers(true)),
   "participant-program-detail-active": () =>
-    storyScenario({ program: PROGRAM_ID }, createParticipantProgramHandlers()),
+    storyScenario(
+      { program: PROGRAM_ID },
+      createParticipantBehaviorHandlers("active")
+    ),
   "participant-program-detail-eligible": () =>
     storyScenario(
       { program: ELIGIBLE_PROGRAM_ID },
-      createParticipantProgramHandlers()
+      createParticipantBehaviorHandlers("eligible")
     ),
   "participant-program-detail-pending": () =>
     storyScenario(
       { program: PROGRAM_ID },
-      withScenarioHandlers(
-        createParticipantProgramHandlers(),
-        http.get("/api/v1/programs/:programId/participant-detail", () =>
-          envelope({ detail: PENDING_PARTICIPANT_DETAIL })
-        )
-      )
+      createParticipantBehaviorHandlers("pending")
     ),
   "participant-program-detail-rejected": () =>
     storyScenario(
       { program: PROGRAM_ID },
-      withScenarioHandlers(
-        createParticipantProgramHandlers(),
-        http.get("/api/v1/programs/:programId/participant-detail", () =>
-          envelope({ detail: REJECTED_PARTICIPANT_DETAIL })
-        )
-      )
+      createParticipantBehaviorHandlers("rejected")
     ),
   "participant-event-detail-closed": () =>
     storyScenario(
