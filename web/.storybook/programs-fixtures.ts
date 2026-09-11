@@ -831,7 +831,7 @@ const createScheduleHandlers = (
   let generateRequests: {
     requestPlanId: string;
     responsePlanId: string;
-    runId: string;
+    responseRunId: string;
   }[] = [];
   if (typeof document !== "undefined" && document.body) {
     delete document.body.dataset.programsScheduleGenerateRequests;
@@ -840,11 +840,11 @@ const createScheduleHandlers = (
   const recordGenerateRequest = (
     requestPlanId: string,
     responsePlanId: string,
-    runId: string
+    responseRunId: string
   ) => {
     generateRequests = [
       ...generateRequests,
-      { requestPlanId, responsePlanId, runId },
+      { requestPlanId, responsePlanId, responseRunId },
     ];
     if (typeof document !== "undefined" && document.body) {
       document.body.dataset.programsScheduleGenerateRequests =
@@ -1161,8 +1161,14 @@ const createParticipantBehaviorHandlers = (
 
 const conflictProgramHandler = () => {
   let attempts = 0;
+  if (typeof document !== "undefined" && document.body) {
+    delete document.body.dataset.programsSettingsPatchAttempts;
+  }
   return http.patch(storyApi("/api/v1/programs/:programId"), () => {
     attempts += 1;
+    if (typeof document !== "undefined" && document.body) {
+      document.body.dataset.programsSettingsPatchAttempts = String(attempts);
+    }
     if (attempts === 1) {
       return HttpResponse.json(
         {

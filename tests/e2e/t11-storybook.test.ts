@@ -74,6 +74,13 @@ const PROGRAMS_R5_MATERIAL_STORIES = [
   "t07-3-programs-material-states--workspace-schedule-partial-resume",
 ] as const;
 
+const PROGRAMS_R6_MATERIAL_STORIES = [
+  "t07-3-programs-material-states--workspace-settings-dirty",
+  "t07-3-programs-material-states--workspace-settings-conflict",
+  "t07-3-programs-material-states--notifications-unread",
+  "t07-3-programs-material-states--notifications-empty-recoverable",
+] as const;
+
 async function expectShellFrame(page: Page) {
   const nav = page.locator("nav#main-navigation");
   const main = page.locator("main#shell-content");
@@ -454,6 +461,44 @@ test("Programs R5 material Stories execute Schedule recovery Plays", async ({
     .replace("{skipped}", "1");
   await expect(page.getByText(resumedCopy, { exact: true })).toBeVisible();
   await expect(page.getByText(partialCopy, { exact: true })).toHaveCount(0);
+});
+
+test("Programs R6 material Stories execute Settings and Notifications Plays", async ({
+  page,
+}) => {
+  for (const storyId of PROGRAMS_R6_MATERIAL_STORIES) {
+    await page.goto(story(storyId));
+    await expectShellFrame(page);
+    await expect(page.locator('[aria-busy="true"]')).toHaveCount(0);
+  }
+
+  await page.goto(
+    story("t07-3-programs-material-states--workspace-settings-dirty")
+  );
+  await expect(
+    page.getByRole("textbox", { name: COPY.programs.programName })
+  ).toHaveValue("門徒訓練基礎課");
+
+  await page.goto(
+    story("t07-3-programs-material-states--workspace-settings-conflict")
+  );
+  await expect(
+    page.getByText(COPY.programs.settingsSaved, { exact: true })
+  ).toBeVisible();
+
+  await page.goto(
+    story("t07-3-programs-material-states--notifications-unread")
+  );
+  await expect(
+    page.locator('[data-screen-status="true"]').filter({ hasText: /^2$/u })
+  ).toBeVisible();
+
+  await page.goto(
+    story("t07-3-programs-material-states--notifications-empty-recoverable")
+  );
+  await expect(
+    page.getByText(COPY.programs.notificationsEmpty, { exact: true })
+  ).toBeVisible();
 });
 
 test("all retained Programs baselines use one settled production route composition", async ({

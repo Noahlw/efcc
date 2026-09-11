@@ -585,12 +585,12 @@ const workspaceSchedulePartialResumePlay: Story["play"] = async ({
       {
         requestPlanId: partialPlanId,
         responsePlanId: partialPlanId,
-        runId: "t07-3-partial-run",
+        responseRunId: "t07-3-partial-run",
       },
       {
         requestPlanId: partialPlanId,
         responsePlanId: partialPlanId,
-        runId: "t07-3-partial-run",
+        responseRunId: "t07-3-partial-run",
       },
     ])
   );
@@ -695,6 +695,7 @@ const workspaceSettingsConflictPlay: Story["play"] = async ({
   ).toBeVisible();
   await openBasics();
   name = canvas.getByRole("textbox", { name: COPY.programs.programName });
+  await expect(name).toHaveValue("門徒訓練基礎課");
   await userEvent.clear(name);
   await userEvent.type(name, "衝突後草稿");
   await userEvent.click(
@@ -703,6 +704,9 @@ const workspaceSettingsConflictPlay: Story["play"] = async ({
   await expect(
     canvas.findByText(COPY.programs.settingsSaved, { exact: true })
   ).resolves.toBeVisible();
+  expect(
+    canvasElement.ownerDocument.body.dataset.programsSettingsPatchAttempts
+  ).toBe("2");
 };
 
 const notificationsUnreadPlay: Story["play"] = async ({ canvasElement }) => {
