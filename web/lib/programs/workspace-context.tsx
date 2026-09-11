@@ -48,6 +48,8 @@ export interface WorkspaceTaskContextValue {
   departmentId?: string | null;
   hash?: string | null;
   onAttentionRefresh: () => void;
+  /** Reload the route-owned workspace after an explicit Settings conflict action. */
+  onWorkspaceRefresh?: () => void;
   onTaskChange: (task: ProgramsTask | null, eventId?: string | null) => void;
   onOpenEvent?: (eventId: string) => void;
 }

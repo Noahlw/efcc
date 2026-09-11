@@ -106,6 +106,8 @@ export interface ProgramSettingsProps {
   eventsEnabled?: boolean;
   attendanceEnabled?: boolean;
   onTaskChange?: (task: "events" | "schedule" | null) => void;
+  /** Explicitly reload the route-owned workspace after a 409 conflict. */
+  onReload?: () => void;
   /** Render one focused editor, or all legacy editor groups for direct callers. */
   section?: "all" | ProgramSettingsSection;
   /** Let a route-owned ScreenHeader provide the page title for a focused editor. */
@@ -774,6 +776,7 @@ export const ProgramSettings = ({
   eventsEnabled = true,
   attendanceEnabled = true,
   onTaskChange,
+  onReload,
   section = "all",
   showHeading = true,
   scheduleAddon,
@@ -816,6 +819,7 @@ export const ProgramSettings = ({
   const [notice, setNotice] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [retryPatch, setRetryPatch] = useState<ProgramPatch | null>(null);
+  const [reloadRequired, setReloadRequired] = useState(false);
   const mounted = useRef(true);
   const canManage = currentProgram.capabilities.manage;
   const focusedSection = section !== "all";
@@ -944,6 +948,7 @@ export const ProgramSettings = ({
       setBusy(true);
       setActionError(null);
       setNotice(null);
+      setReloadRequired(false);
       try {
         const result = await updateProgram(currentProgram.program_id, patch);
         if (!mounted.current) {
@@ -959,7 +964,10 @@ export const ProgramSettings = ({
         }
         const message = settingsErrorMessage(error);
         const retryable = isRetryableSettingsMutation(error);
+        const conflict =
+          error instanceof RpcError && error.problem.code === "CONFLICT";
         setRetryPatch(retryable ? patch : null);
+        setReloadRequired(conflict && onReload !== undefined);
         setActionError(
           retryable ? COPY.programs.programTransportAmbiguous : message
         );
@@ -970,7 +978,7 @@ export const ProgramSettings = ({
         }
       }
     },
-    [applyProgram, currentProgram]
+    [applyProgram, currentProgram, onReload]
   );
 
   const saveBasics = (event: FormEvent<HTMLFormElement>) => {
@@ -1248,6 +1256,7 @@ export const ProgramSettings = ({
       setAttendance(attendanceFrom(currentProgram));
     }
     setRetryPatch(null);
+    setReloadRequired(false);
     setActionError(null);
     setNotice(null);
   };
@@ -1319,6 +1328,19 @@ export const ProgramSettings = ({
                 disabled={busy}
               >
                 {COPY.programs.settingsRetrySave}
+              </Button>
+            ) : reloadRequired && onReload !== undefined ? (
+              <Button
+                className="w-fit border-[var(--screen-line-strong)] bg-transparent text-[var(--screen-ink)] hover:bg-[var(--screen-surface-soft)]"
+                variant="outline"
+                type="button"
+                onClick={() => {
+                  setReloadRequired(false);
+                  onReload();
+                }}
+                disabled={busy}
+              >
+                {COPY.homeEditor.conflictReload}
               </Button>
             ) : undefined
           }

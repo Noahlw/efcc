@@ -503,6 +503,7 @@ export const ProgramWorkspace = ({
           hash={hash}
           attention={attention}
           onAttentionRefresh={onAttentionRefresh}
+          onWorkspaceRefresh={retry}
           onTaskChange={handleWorkspaceTaskChange}
           onOpenEvent={onEventChange ? (id) => onEventChange(id) : undefined}
         />

@@ -455,6 +455,7 @@ export const WorkspaceTask = ({
   departmentId,
   hash,
   onAttentionRefresh,
+  onWorkspaceRefresh,
   onTaskChange,
   onOpenEvent,
 }: WorkspaceTaskProps) => {
@@ -465,6 +466,7 @@ export const WorkspaceTask = ({
     departmentId,
     hash,
     onAttentionRefresh,
+    onWorkspaceRefresh,
     onTaskChange,
     onOpenEvent,
   };

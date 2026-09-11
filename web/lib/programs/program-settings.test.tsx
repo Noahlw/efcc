@@ -561,11 +561,16 @@ describe(ProgramSettings, () => {
 
   test("preserves edited Basics input when the server rejects the mutation", async () => {
     const user = userEvent.setup();
+    const onReload = vi.fn();
     mocks.updateProgram.mockRejectedValueOnce(
       new RpcError({ code: "CONFLICT", status: 409 })
     );
     render(
-      <ProgramSettings program={recurringProgram} onTaskChange={vi.fn()} />
+      <ProgramSettings
+        program={recurringProgram}
+        onTaskChange={vi.fn()}
+        onReload={onReload}
+      />
     );
 
     const name = screen.getByRole("textbox", {
@@ -580,6 +585,13 @@ describe(ProgramSettings, () => {
     await expect(screen.findByRole("alert")).resolves.toHaveTextContent(
       COPY.programs.programConflict
     );
+    expect(name).toHaveValue("尚未確認的名稱");
+    const reload = screen.getByRole("button", {
+      name: COPY.homeEditor.conflictReload,
+    });
+    expect(reload).toBeInTheDocument();
+    await user.click(reload);
+    expect(onReload).toHaveBeenCalledTimes(1);
     expect(name).toHaveValue("尚未確認的名稱");
   });
 

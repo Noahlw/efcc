@@ -12,8 +12,14 @@ import { buildProgramsHref } from "./programs-intent";
 import { hasModule, useWorkspaceTaskContext } from "./workspace-context";
 
 export const SettingsTask = () => {
-  const { program, modules, onTaskChange, departmentId, hash } =
-    useWorkspaceTaskContext();
+  const {
+    program,
+    modules,
+    onTaskChange,
+    onWorkspaceRefresh,
+    departmentId,
+    hash,
+  } = useWorkspaceTaskContext();
   const [section, setSection] = useState<ProgramSettingsSection | null>(null);
   const returnHref = buildProgramsHref({
     mode: "management",
@@ -109,6 +115,7 @@ export const SettingsTask = () => {
         eventsEnabled={hasModule(modules, "events")}
         attendanceEnabled={hasModule(modules, "attendance")}
         onTaskChange={onTaskChange}
+        onReload={onWorkspaceRefresh}
         showHeading={false}
       />
     </section>

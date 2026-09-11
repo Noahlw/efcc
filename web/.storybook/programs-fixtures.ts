@@ -1159,29 +1159,49 @@ const createParticipantBehaviorHandlers = (
   );
 };
 
-const conflictProgramHandler = () => {
+const CONFLICT_REFRESHED_PROGRAM: Program = {
+  ...PROGRAM,
+  name: "伺服器最新課程",
+  updated_at: "2026-09-12T00:00:00.000Z",
+};
+
+const conflictProgramHandlers = (): readonly RequestHandler[] => {
   let attempts = 0;
+  let authoritativeProgram = PROGRAM;
   if (typeof document !== "undefined" && document.body) {
     delete document.body.dataset.programsSettingsPatchAttempts;
   }
-  return http.patch(storyApi("/api/v1/programs/:programId"), () => {
-    attempts += 1;
-    if (typeof document !== "undefined" && document.body) {
-      document.body.dataset.programsSettingsPatchAttempts = String(attempts);
-    }
-    if (attempts === 1) {
-      return HttpResponse.json(
-        {
-          status: 409,
-          code: "CONFLICT",
-          title: "Conflict",
-          detail: "伺服器資料已有更新，請重新載入後再儲存。",
-        },
-        { status: 409 }
-      );
-    }
-    return envelope({ program: PROGRAM });
-  });
+  return [
+    http.get("/api/v1/programs/:programId/management", () =>
+      envelope({
+        program: authoritativeProgram,
+        department: DEPARTMENT,
+        modules: MODULES,
+        cockpit: MANAGEMENT_COCKPIT,
+      })
+    ),
+    http.patch(storyApi("/api/v1/programs/:programId"), async ({ request }) => {
+      attempts += 1;
+      if (typeof document !== "undefined" && document.body) {
+        document.body.dataset.programsSettingsPatchAttempts = String(attempts);
+      }
+      if (attempts === 1) {
+        authoritativeProgram = CONFLICT_REFRESHED_PROGRAM;
+        return HttpResponse.json(
+          {
+            status: 409,
+            code: "CONFLICT",
+            title: "Conflict",
+            detail: "伺服器資料已有更新，請重新載入後再儲存。",
+          },
+          { status: 409 }
+        );
+      }
+      const patch = (await request.json()) as Partial<Program>;
+      authoritativeProgram = { ...authoritativeProgram, ...patch };
+      return envelope({ program: authoritativeProgram });
+    }),
+  ];
 };
 
 export const programsParticipantHandlers = createParticipantProgramHandlers();
@@ -1326,7 +1346,7 @@ const PROGRAMS_STORY_SCENARIO_FACTORIES: Readonly<
       { mode: "management", program: PROGRAM_ID, task: "settings" },
       withScenarioHandlers(
         createManagementProgramHandlers(),
-        conflictProgramHandler()
+        ...conflictProgramHandlers()
       )
     ),
   "workspace-schedule-focused": () =>

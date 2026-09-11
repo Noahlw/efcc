@@ -688,14 +688,15 @@ const workspaceSettingsConflictPlay: Story["play"] = async ({
   );
 
   await userEvent.click(
-    canvas.getByRole("link", { name: COPY.programs.settingsBackToHub })
+    canvas.getByRole("button", { name: COPY.homeEditor.conflictReload })
   );
   await expect(
-    canvas.getByRole("heading", { name: COPY.programs.settingsHubTitle })
-  ).toBeVisible();
+    canvas.findByRole("heading", { name: COPY.programs.settingsHubTitle })
+  ).resolves.toBeVisible();
   await openBasics();
   name = canvas.getByRole("textbox", { name: COPY.programs.programName });
-  await expect(name).toHaveValue("門徒訓練基礎課");
+  await expect(name).toHaveValue("伺服器最新課程");
+
   await userEvent.clear(name);
   await userEvent.type(name, "衝突後草稿");
   await userEvent.click(
