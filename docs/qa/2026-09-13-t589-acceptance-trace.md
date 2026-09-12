@@ -28,7 +28,9 @@ approval, merge, release, or issue closure.
 - Checkout: `/Users/noah.wong/Desktop/code/efcc`.
 - Branch: `codex/programs-screen-foundations/wave-3`.
 - Starting candidate: `3ab586fe8021f1e20533dc1238d7216249f72aa6`.
-- Final candidate: `14ad82aa2c98b6117f411da7b3d76374873c3027`.
+- Code verification fixed point: `14ad82aa2c98b6117f411da7b3d76374873c3027`.
+- Evidence lineage: `83048427` (documentation-only; later trace wording
+  correction is also documentation-only).
 - Implementation commits: `02d33718` and `14ad82aa`.
 - Required runtime: Node `22.18.0` via `fnm`; pnpm `11.7.0`.
 - Existing local correction commits and unrelated dirty paths are preserved;
