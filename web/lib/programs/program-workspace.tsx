@@ -165,6 +165,7 @@ export const ProgramWorkspace = ({
   const [summary, setSummary] = useState<WorkspaceSummaryState>(() =>
     initialSummary()
   );
+  const [settingsEditorFocused, setSettingsEditorFocused] = useState(false);
   const createdFlash = created && !task;
   const [workspaceNotice, setWorkspaceNotice] = useState<string | null>(
     createdFlash ? COPY.programs.programCreatedNotice : null
@@ -181,6 +182,12 @@ export const ProgramWorkspace = ({
       created && !task ? COPY.programs.programCreatedNotice : null
     );
   }, [created, programId, task]);
+  useEffect(() => {
+    if (task !== "settings") {
+      setSettingsEditorFocused(false);
+    }
+  }, [task]);
+  const focusedSettingsEditor = task === "settings" && settingsEditorFocused;
   const {
     state,
     run: loadWorkspace,
@@ -396,48 +403,50 @@ export const ProgramWorkspace = ({
       className="grid min-w-0"
       aria-labelledby="programs-workspace-title"
     >
-      <ScreenHeader
-        headingId="programs-workspace-title"
-        level="root"
-        title={
-          focusedSchedule
-            ? COPY.programs.schedulePageTitle
-            : workspaceProgram.name
-        }
-        lead={
-          <>
-            <span>
-              {focusedSchedule
-                ? `${workspaceProgram.name} · ${state.department?.name ?? COPY.programs.workspaceDepartment}`
-                : state.department
-                  ? `${state.department.name} · ${state.department.code}`
-                  : COPY.programs.workspaceDepartment}
-            </span>
-            {!focusedSchedule && (
-              <span aria-hidden="true">
-                {` · ${behaviorLabel(workspaceProgram.behavior_type)}`}
+      {!focusedSettingsEditor && (
+        <ScreenHeader
+          headingId="programs-workspace-title"
+          level="root"
+          title={
+            focusedSchedule
+              ? COPY.programs.schedulePageTitle
+              : workspaceProgram.name
+          }
+          lead={
+            <>
+              <span>
+                {focusedSchedule
+                  ? `${workspaceProgram.name} · ${state.department?.name ?? COPY.programs.workspaceDepartment}`
+                  : state.department
+                    ? `${state.department.name} · ${state.department.code}`
+                    : COPY.programs.workspaceDepartment}
               </span>
-            )}
-          </>
-        }
-        backHref={buildProgramsHref({
-          mode: "management",
-          programId: focusedSchedule ? programId : null,
-          departmentId,
-          task: focusedSchedule ? "events" : null,
-          hash,
-        })}
-        backLabel={COPY.programs.workspaceBack}
-        onBack={handleWorkspaceBack}
-        status={
-          focusedSchedule ? undefined : (
-            <ScreenStatus tone={lifecycleTone(workspaceProgram.lifecycle)}>
-              {lifecycleLabel(workspaceProgram.lifecycle)}
-            </ScreenStatus>
-          )
-        }
-        action={headerAction}
-      />
+              {!focusedSchedule && (
+                <span aria-hidden="true">
+                  {` · ${behaviorLabel(workspaceProgram.behavior_type)}`}
+                </span>
+              )}
+            </>
+          }
+          backHref={buildProgramsHref({
+            mode: "management",
+            programId: focusedSchedule ? programId : null,
+            departmentId,
+            task: focusedSchedule ? "events" : null,
+            hash,
+          })}
+          backLabel={COPY.programs.workspaceBack}
+          onBack={handleWorkspaceBack}
+          status={
+            focusedSchedule ? undefined : (
+              <ScreenStatus tone={lifecycleTone(workspaceProgram.lifecycle)}>
+                {lifecycleLabel(workspaceProgram.lifecycle)}
+              </ScreenStatus>
+            )
+          }
+          action={headerAction}
+        />
+      )}
 
       {workspaceNotice !== null && (
         <output
@@ -506,6 +515,8 @@ export const ProgramWorkspace = ({
           onWorkspaceRefresh={retry}
           onTaskChange={handleWorkspaceTaskChange}
           onOpenEvent={onEventChange ? (id) => onEventChange(id) : undefined}
+          onSettingsFocusChange={setSettingsEditorFocused}
+          headerAction={headerAction}
         />
       ) : task ? (
         <TaskUnavailable task={task} />

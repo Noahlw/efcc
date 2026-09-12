@@ -680,7 +680,7 @@ describe(ProgramWorkspace, () => {
     ).resolves.toBeInTheDocument();
   });
 
-  test("focused Settings uses one shared child header and retains the workspace root header", async () => {
+  test("focused Settings uses one task header and Back without a duplicate root header", async () => {
     mockWorkspace();
     render(
       <ProgramWorkspace
@@ -688,6 +688,7 @@ describe(ProgramWorkspace, () => {
         task="settings"
         onBack={vi.fn()}
         onTaskChange={vi.fn()}
+        headerAction={<button type="button">通知</button>}
       />
     );
 
@@ -700,20 +701,28 @@ describe(ProgramWorkspace, () => {
     const headers = document.querySelectorAll(
       '[data-screen-foundation="header"]'
     );
-    expect(headers).toHaveLength(2);
+    expect(headers).toHaveLength(1);
     expect(
       document.querySelector(
         '[data-screen-foundation="header"][data-screen-level="root"]'
       )
-    ).not.toBeNull();
+    ).toBeNull();
     expect(
       document.querySelector(
         '[data-screen-foundation="header"][data-screen-level="child"]'
       )
     ).not.toBeNull();
     expect(
+      screen.getByRole("link", { name: COPY.programs.settingsBackToHub })
+    ).toBeInTheDocument();
+    expect(
       screen.queryByRole("button", { name: COPY.programs.settingsBackToHub })
     ).not.toBeInTheDocument();
+    const actions = document.querySelector("[data-route-header-actions]");
+    expect(actions).not.toBeNull();
+    expect(
+      within(actions as HTMLElement).getByRole("button", { name: "通知" })
+    ).toBeInTheDocument();
   });
 
   test("hides identity access without an authorized Account Directory destination", async () => {

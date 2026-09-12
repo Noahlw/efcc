@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import type { MouseEventHandler } from "react";
+import type { MouseEventHandler, ReactNode } from "react";
 
 import { COPY } from "@/lib/copy";
 import { ScreenHeader } from "@/lib/screen-foundations";
@@ -11,7 +11,13 @@ import type { ProgramSettingsSection } from "./program-settings";
 import { buildProgramsHref } from "./programs-intent";
 import { hasModule, useWorkspaceTaskContext } from "./workspace-context";
 
-export const SettingsTask = () => {
+export const SettingsTask = ({
+  onFocusChange,
+  headerAction,
+}: {
+  onFocusChange?: (focused: boolean) => void;
+  headerAction?: ReactNode;
+} = {}) => {
   const {
     program,
     modules,
@@ -81,7 +87,13 @@ export const SettingsTask = () => {
       return;
     }
     event.preventDefault();
+    onFocusChange?.(false);
     setSection(null);
+  };
+
+  const handleSectionSelect = (nextSection: ProgramSettingsSection) => {
+    onFocusChange?.(true);
+    setSection(nextSection);
   };
 
   return section === null ? (
@@ -89,7 +101,7 @@ export const SettingsTask = () => {
       program={program}
       eventsEnabled={hasModule(modules, "events")}
       attendanceEnabled={hasModule(modules, "attendance")}
-      onSelect={setSection}
+      onSelect={handleSectionSelect}
       accessHref={accessAvailable ? accessHref : undefined}
       scheduleHref={scheduleHref}
       notificationsHref={notificationsHref}
@@ -108,6 +120,7 @@ export const SettingsTask = () => {
         backLabel={COPY.programs.settingsBackToHub}
         backReplace
         onBack={handleFocusedBack}
+        action={headerAction}
       />
       <ProgramSettings
         program={program}

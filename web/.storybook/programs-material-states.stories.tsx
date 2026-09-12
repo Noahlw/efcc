@@ -612,6 +612,16 @@ const workspaceSettingsDirtyPlay: Story["play"] = async ({ canvasElement }) => {
   await expect(
     canvas.getByRole("heading", { name: COPY.programs.settingsBasics })
   ).toBeVisible();
+  const visibleHeaders = Array.from(
+    canvasElement.querySelectorAll<HTMLElement>(
+      '[data-screen-foundation="header"]'
+    )
+  ).filter((header) => header.closest("[hidden]") === null);
+  expect(visibleHeaders).toHaveLength(1);
+  expect(visibleHeaders[0]).toHaveAttribute("data-screen-level", "child");
+  await expect(
+    canvas.getByRole("button", { name: COPY.programs.notificationBellTitle })
+  ).toBeVisible();
 
   const name = canvas.getByRole("textbox", {
     name: COPY.programs.programName,

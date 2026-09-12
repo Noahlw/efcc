@@ -3,7 +3,7 @@
 import { CalendarDays, ChevronRight, Settings, Users } from "lucide-react";
 import Link from "next/link";
 import { useMemo } from "react";
-import type { MouseEventHandler } from "react";
+import type { MouseEventHandler, ReactNode } from "react";
 
 import { Button } from "@/components/ui/button";
 import { COPY } from "@/lib/copy";
@@ -436,6 +436,10 @@ export const WorkspaceOverview = ({
 
 export interface WorkspaceTaskProps extends WorkspaceTaskContextValue {
   task: ProgramsTask;
+  /** Let a focused Settings editor take ownership of the route header. */
+  onSettingsFocusChange?: (focused: boolean) => void;
+  /** Keep the route-owned utility action with whichever header is visible. */
+  headerAction?: ReactNode;
 }
 
 export const TaskUnavailable = ({ task }: { task: ProgramsTask }) => (
@@ -458,6 +462,8 @@ export const WorkspaceTask = ({
   onWorkspaceRefresh,
   onTaskChange,
   onOpenEvent,
+  onSettingsFocusChange,
+  headerAction,
 }: WorkspaceTaskProps) => {
   const value: WorkspaceTaskContextValue = {
     program,
@@ -486,7 +492,10 @@ export const WorkspaceTask = ({
           <TaskUnavailable task={task} />
         )
       ) : task === "settings" ? (
-        <SettingsTask />
+        <SettingsTask
+          onFocusChange={onSettingsFocusChange}
+          headerAction={headerAction}
+        />
       ) : task === "schedule" ? (
         <ScheduleTask />
       ) : (
