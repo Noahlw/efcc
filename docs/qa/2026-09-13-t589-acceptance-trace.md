@@ -28,6 +28,8 @@ approval, merge, release, or issue closure.
 - Checkout: `/Users/noah.wong/Desktop/code/efcc`.
 - Branch: `codex/programs-screen-foundations/wave-3`.
 - Starting candidate: `3ab586fe8021f1e20533dc1238d7216249f72aa6`.
+- Final candidate: `14ad82aa2c98b6117f411da7b3d76374873c3027`.
+- Implementation commits: `02d33718` and `14ad82aa`.
 - Required runtime: Node `22.18.0` via `fnm`; pnpm `11.7.0`.
 - Existing local correction commits and unrelated dirty paths are preserved;
   only owned #589 files and this trace may be changed.
@@ -83,26 +85,33 @@ approval, merge, release, and issue closure.
 - Storybook interaction suite: 10 files, 94/94 tests.
 - Programs contract: 1/1 test.
 - Authenticated local Worker/D1 browser acceptance: 2/2 journeys; latest
-  target `http://127.0.0.1:62490`; artifact
-  `test-results/programs-browser-acceptance/20260912t173715100z`.
-- Programs responsive matrix: 6/6 scenarios; latest target
-  `http://127.0.0.1:62031`.
-- Storybook W7 matrix: 126/126 tests across 320, 360, 375, 390, 402, 414,
-  799, 800, and 1440 widths. This included Programs R4/R5/R6 material Plays.
+  target `http://127.0.0.1:54415`; artifact
+  `test-results/programs-browser-acceptance/20260912t180121097z`.
+- Programs responsive matrix: 6/6 scenarios; final sequential rerun target
+  `http://127.0.0.1:54595`; artifact
+  `test-results/programs-responsive/20260912t180207115z`.
+- Storybook W7 matrix: final-HEAD rerun exited 0 across 320, 360, 375, 390,
+  402, 414, 799, 800, and 1440 widths; the same suite was previously
+  enumerated as 126/126 and included Programs R4/R5/R6 material Plays.
 - Programs visual fidelity: 22/22 route/viewport rows across 402×874 and
-  360×800. Fresh artifact `/private/tmp/efcc-t589-visual-20260913-final`
+  360×800. Fresh final-HEAD artifact
+  `/private/tmp/efcc-t589-visual-20260913-final2`
   recorded one route marker, one shell main, zero busy states, zero horizontal
   or main-content overflow, and minimum visible target 44px at both viewports.
 - Web typecheck, Storybook build, Storybook index reconciliation, and
   `git diff --check` passed. The build emitted only the existing non-blocking
   chunk-size warning. Index result: 94 Stories / 36 Screen Catalog obligations
-  / 7 control Stories / 14 foundation Stories.
+  / 7 control Stories / 14 foundation Stories. Both final commits also passed
+  the pinned Node 22 pre-commit verification hook.
 
 ### Failed or unrun
 
 - The first post-change responsive run failed 3/6 because hiding the outer
   header also hid `開啟管理通知`; the focused repair above restored the action
   and the rerun passed 6/6.
+- A concurrent browser/responsive launch produced a harness-only Next build
+  lock failure (`Another next build process is already running`); the
+  sequential responsive rerun above passed 6/6.
 - Runtime canary was retried twice. Both attempts failed as external Worker /
   Miniflare transport failures (`HTTP 500: Network connection lost`) during an
   enrollment-request decision, with no causal runtime signal; one stopped at
@@ -111,5 +120,10 @@ approval, merge, release, and issue closure.
 - No separate Programs camera/device-proof suite was run; it covers attendance
   camera behavior rather than #589. No real-device camera/download/print proof
   was claimed.
+- The two-axis `/code-review` completed read-only. The Spec review's stale
+  landmark-label finding was fixed in `14ad82aa`; the Standards review found
+  no code-rule violation but flagged that this trace is committed alongside
+  the implementation, so the trace-before-edit process point remains an owner
+  judgment.
 - Human owner Storybook spot-check and L1/L2/L3 approval remain pending. No
   push, merge, release, or issue close was performed.
