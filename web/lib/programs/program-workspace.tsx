@@ -401,7 +401,9 @@ export const ProgramWorkspace = ({
   return (
     <section
       className="grid min-w-0"
-      aria-labelledby="programs-workspace-title"
+      aria-labelledby={
+        focusedSettingsEditor ? undefined : "programs-workspace-title"
+      }
     >
       {!focusedSettingsEditor && (
         <ScreenHeader

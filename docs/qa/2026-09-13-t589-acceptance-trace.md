@@ -67,6 +67,8 @@ approval, merge, release, and issue closure.
 - The focused Settings editor now owns the only visible task header and Back
   control. The outer workspace header is suppressed only after a Settings
   section is opened; returning to the Settings hub restores the root header.
+- When the root heading unmounts, the outer workspace wrapper drops its stale
+  label and the focused child section remains the single named landmark.
 - The route-owned management notification action follows the visible header,
   so the focused editor retains notification reachability without reintroducing
   a duplicate root header. Dirty Save/Discard/conflict behavior and the

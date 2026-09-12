@@ -713,6 +713,16 @@ describe(ProgramWorkspace, () => {
       )
     ).not.toBeNull();
     expect(
+      document.querySelector(
+        'section[aria-labelledby="program-settings-focused-title"]'
+      )
+    ).not.toBeNull();
+    expect(
+      document.querySelector(
+        'section[aria-labelledby="programs-workspace-title"]'
+      )
+    ).toBeNull();
+    expect(
       screen.getByRole("link", { name: COPY.programs.settingsBackToHub })
     ).toBeInTheDocument();
     expect(

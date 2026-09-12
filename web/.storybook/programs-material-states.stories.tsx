@@ -619,6 +619,16 @@ const workspaceSettingsDirtyPlay: Story["play"] = async ({ canvasElement }) => {
   ).filter((header) => header.closest("[hidden]") === null);
   expect(visibleHeaders).toHaveLength(1);
   expect(visibleHeaders[0]).toHaveAttribute("data-screen-level", "child");
+  expect(
+    canvasElement.querySelector(
+      'section[aria-labelledby="program-settings-focused-title"]'
+    )
+  ).not.toBeNull();
+  expect(
+    canvasElement.querySelector(
+      'section[aria-labelledby="programs-workspace-title"]'
+    )
+  ).toBeNull();
   await expect(
     canvas.getByRole("button", { name: COPY.programs.notificationBellTitle })
   ).toBeVisible();
