@@ -1868,6 +1868,40 @@ describe("Shell", () => {
       expect(modeLink.querySelector("svg")).toHaveClass("lucide-user-round");
     });
 
+    test("uses the native Programs history seam to reset a management URL to participant home", async () => {
+      const user = userEvent.setup();
+      pathnameMock.mockReturnValue("/programs");
+      window.history.replaceState(
+        {},
+        "",
+        "/programs?mode=management&program=program-1&task=settings"
+      );
+      server.use(
+        http.get("/api/v1/programs/access", () =>
+          programsAccessResponse(PROGRAMS_MANAGEMENT_ACCESS)
+        )
+      );
+      render(
+        <AppProvider
+          bootstrap={PROGRAMS_CAPABLE_BOOTSTRAP}
+          onSignOut={() => {}}
+        >
+          <ShellHeader />
+        </AppProvider>
+      );
+
+      const modeLink = await screen.findByRole("link", {
+        name: COPY.programs.enterParticipant,
+      });
+      await user.click(modeLink);
+
+      expect(window.location.pathname).toBe("/programs");
+      expect(window.location.search).toBe("");
+      expect(window.history.state).toStrictEqual({ efccSection: "programs" });
+      expect(mockRouter.push).not.toHaveBeenCalled();
+      expect(modeLink).toHaveAttribute("href", "/programs");
+    });
+
     test("does not expose the mode destination while Programs access is pending", async () => {
       const pending = Promise.withResolvers<ProgramsManagementAccess>();
       pathnameMock.mockReturnValue("/programs");

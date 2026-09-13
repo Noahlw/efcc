@@ -23,6 +23,7 @@ const COPY = {
   workspaceOverview: "概覽",
   enterManagement: "進入管理模式",
   enterParticipant: "返回參與者模式",
+  participantDirectory: "課程",
 };
 
 type Fixture = {
@@ -247,10 +248,19 @@ test.describe("T05.5 management Browser Acceptance", () => {
       await page.evaluate(() => window.scrollTo(0, 480));
       await page.getByRole("link", { name: COPY.enterParticipant }).click();
       await expect(page).toHaveURL(/\/programs$/u);
+      await expect(
+        page.getByRole("heading", {
+          name: COPY.participantDirectory,
+          exact: true,
+        })
+      ).toBeVisible();
 
       await page.evaluate(() => window.scrollTo(0, 480));
       await page.getByRole("link", { name: COPY.enterManagement }).click();
       await expect(page).toHaveURL(/\/programs\?mode=management$/u);
+      await expect(
+        page.getByRole("heading", { name: COPY.directoryTitle, exact: true })
+      ).toBeVisible();
     } finally {
       await restoreFixture(page, fixture);
     }

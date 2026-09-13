@@ -477,7 +477,26 @@ test("Programs R6 material Stories execute Settings and Notifications Plays", as
   );
   await expect(
     page.getByRole("textbox", { name: COPY.programs.programName })
+  ).toHaveValue("未儲存課程名稱");
+  await expect(
+    page.locator('[data-screen-settings-dirty="true"]')
+  ).toContainText(COPY.programs.settingsUnsaved);
+  await expect(
+    page.getByRole("button", { name: COPY.programs.settingsSaveBasics })
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: COPY.programs.settingsDiscard })
+  ).toBeVisible();
+
+  await page
+    .getByRole("button", { name: COPY.programs.settingsDiscard })
+    .click();
+  await expect(
+    page.getByRole("textbox", { name: COPY.programs.programName })
   ).toHaveValue("門徒訓練基礎課");
+  await expect(page.locator('[data-screen-settings-dirty="true"]')).toHaveCount(
+    0
+  );
 
   await page.goto(
     story("t07-3-programs-material-states--workspace-settings-conflict")

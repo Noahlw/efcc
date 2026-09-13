@@ -4,6 +4,7 @@ import { Bell, Briefcase, UserRound } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
+import type { MouseEvent } from "react";
 
 import { Badge } from "@/components/ui/badge";
 import { useApp } from "@/lib/app-context";
@@ -21,6 +22,28 @@ type ProgramsAccessState =
   | { kind: "loading" }
   | { kind: "ready"; projection: ProgramsManagementAccess }
   | { kind: "error" };
+
+function navigateProgramsMode(
+  event: MouseEvent<HTMLAnchorElement>,
+  href: string
+): void {
+  const target = event.currentTarget.getAttribute("target");
+  if (
+    event.defaultPrevented ||
+    event.button !== 0 ||
+    event.metaKey ||
+    event.ctrlKey ||
+    event.shiftKey ||
+    event.altKey ||
+    (target !== null && target !== "" && target !== "_self") ||
+    event.currentTarget.hasAttribute("download")
+  ) {
+    return;
+  }
+
+  event.preventDefault();
+  window.history.pushState({ efccSection: "programs" }, "", href);
+}
 
 export const ShellHeader = ({
   attentionData = EMPTY_ATTENTION_DATA,
@@ -62,6 +85,19 @@ export const ShellHeader = ({
     },
     [programsRouteKey]
   );
+  const [visibleProgramsAccess, setVisibleProgramsAccess] =
+    useState<ProgramsManagementAccess | null>(null);
+  useEffect(() => {
+    if (!isPrograms) {
+      setVisibleProgramsAccess(null);
+      return;
+    }
+    if (programsAccess.kind === "ready") {
+      setVisibleProgramsAccess(programsAccess.projection);
+    } else if (programsAccess.kind === "error") {
+      setVisibleProgramsAccess(null);
+    }
+  }, [isPrograms, programsAccess]);
   useEffect(() => {
     if (!isPrograms) {
       return;
@@ -81,9 +117,7 @@ export const ShellHeader = ({
     (section) => section.key === "management"
   );
   const showModeControl =
-    isPrograms &&
-    programsAccess.kind === "ready" &&
-    programsAccess.projection.hasManagementCapability;
+    isPrograms && visibleProgramsAccess?.hasManagementCapability === true;
   const unreadNoticeCount = attentionData.notices.filter(
     (notice) => notice.unread
   ).length;
@@ -115,7 +149,10 @@ export const ShellHeader = ({
                   : COPY.programs.enterManagement
               }
             >
-              <Link href={modeHref}>
+              <Link
+                href={modeHref}
+                onClick={(event) => navigateProgramsMode(event, modeHref)}
+              >
                 {currentMode === "management" ? (
                   <UserRound aria-hidden="true" />
                 ) : (
