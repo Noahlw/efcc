@@ -44,6 +44,10 @@ import { GuardedSection } from "@/lib/guarded-section";
 import { writeGuestCredential } from "@/lib/guest-context";
 import { announce } from "@/lib/live-region";
 import { NavBar } from "@/lib/nav-bar";
+import {
+  clearAccessCache,
+  type ProgramsManagementAccess,
+} from "@/lib/programs/program-api";
 import { RecoveryView } from "@/lib/recovery-view";
 import { REGISTRATION_COPY } from "@/lib/registration-copy";
 import {
@@ -150,6 +154,45 @@ const ADMIN_BOOTSTRAP: Bootstrap = {
   navigation: projectNavigation({ "home.publish": true }),
   profile: ADMIN_USER,
 };
+const PROGRAMS_CAPABLE_BOOTSTRAP: Bootstrap = {
+  sections: MEMBER_SECTIONS,
+  navigation: NAVIGATION,
+  profile: PROGRAM_LEADER_USER,
+};
+
+const NO_PROGRAMS_MANAGEMENT_ACCESS: ProgramsManagementAccess = {
+  hasManagementCapability: false,
+  departmentScopes: 0,
+  programScopes: 0,
+};
+const PROGRAMS_MANAGEMENT_ACCESS: ProgramsManagementAccess = {
+  hasManagementCapability: true,
+  departmentScopes: 0,
+  programScopes: 1,
+};
+
+function programsAccessResponse(data: ProgramsManagementAccess) {
+  return HttpResponse.json({
+    requestId: "r-programs-access",
+    data,
+  });
+}
+
+function programsAccessErrorResponse() {
+  return HttpResponse.json(
+    {
+      status: 503,
+      code: "UNAVAILABLE",
+      title: "Unavailable",
+      detail: "暫時無法確認課程權限。",
+      requestId: "r-programs-access-error",
+    },
+    {
+      status: 503,
+      headers: { "Content-Type": "application/problem+json" },
+    }
+  );
+}
 
 const AUTH_HINT_KEY = "efcc_auth_active";
 const LEGACY_STORAGE_KEY = "efcc_session";
@@ -216,6 +259,9 @@ const DEFAULT_HANDLER = [
       },
     })
   ),
+  http.get("/api/v1/programs/access", () =>
+    programsAccessResponse(NO_PROGRAMS_MANAGEMENT_ACCESS)
+  ),
 ];
 
 const server = setupServer(...DEFAULT_HANDLER);
@@ -227,6 +273,7 @@ describe("Shell", () => {
     localStorage.clear();
     sessionStorage.clear();
     window.history.replaceState({}, "", "/");
+    clearAccessCache();
     authCalls.length = 0;
     replaceMock.mockClear();
     pathnameMock.mockReset().mockReturnValue("/");
@@ -234,6 +281,7 @@ describe("Shell", () => {
 
   afterEach(() => {
     server.resetHandlers();
+    clearAccessCache();
     localStorage.clear();
     cleanup();
   });
@@ -1708,16 +1756,24 @@ describe("Shell", () => {
       ).not.toBeInTheDocument();
     });
 
-    test("renders one icon-only mode destination for management-capable Programs", () => {
+    test("renders one icon-only mode destination for Programs capability without global management navigation", async () => {
       pathnameMock.mockReturnValue("/programs");
+      server.use(
+        http.get("/api/v1/programs/access", () =>
+          programsAccessResponse(PROGRAMS_MANAGEMENT_ACCESS)
+        )
+      );
       render(
-        <AppProvider bootstrap={ADMIN_BOOTSTRAP} onSignOut={() => {}}>
+        <AppProvider
+          bootstrap={PROGRAMS_CAPABLE_BOOTSTRAP}
+          onSignOut={() => {}}
+        >
           <ShellHeader />
         </AppProvider>
       );
 
       const header = screen.getByRole("banner");
-      const modeLink = within(header).getByRole("link", {
+      const modeLink = await within(header).findByRole("link", {
         name: COPY.programs.enterManagement,
       });
       expect(modeLink).toHaveAttribute("href", "/programs?mode=management");
@@ -1728,25 +1784,43 @@ describe("Shell", () => {
       expect(within(header).getAllByRole("link")).toHaveLength(1);
     });
 
-    test("does not render a Programs mode destination for participant-only bootstrap", () => {
+    test("does not render a Programs mode destination for participant-only access after projection settles", async () => {
+      const projection = Promise.withResolvers<ProgramsManagementAccess>();
+      let responseSettled = false;
       pathnameMock.mockReturnValue("/programs");
+      server.use(
+        http.get("/api/v1/programs/access", async () => {
+          const data = await projection.promise;
+          responseSettled = true;
+          return programsAccessResponse(data);
+        })
+      );
       render(
         <AppProvider bootstrap={BOOTSTRAP} onSignOut={() => {}}>
           <ShellHeader />
         </AppProvider>
       );
 
+      projection.resolve(NO_PROGRAMS_MANAGEMENT_ACCESS);
+      await act(async () => {
+        await waitFor(() => expect(responseSettled).toBe(true));
+        await Promise.resolve();
+      });
       expect(
         screen.queryByRole("link", { name: COPY.programs.enterManagement })
       ).not.toBeInTheDocument();
     });
 
-    test("returns management-capable Programs to the canonical participant home", () => {
+    test("does not render a Programs mode destination for global management without Programs access after projection settles", async () => {
+      const projection = Promise.withResolvers<ProgramsManagementAccess>();
+      let responseSettled = false;
       pathnameMock.mockReturnValue("/programs");
-      window.history.replaceState(
-        {},
-        "",
-        "/programs?mode=management&program=program-1&task=events"
+      server.use(
+        http.get("/api/v1/programs/access", async () => {
+          const data = await projection.promise;
+          responseSettled = true;
+          return programsAccessResponse(data);
+        })
       );
       render(
         <AppProvider bootstrap={ADMIN_BOOTSTRAP} onSignOut={() => {}}>
@@ -1754,13 +1828,222 @@ describe("Shell", () => {
         </AppProvider>
       );
 
-      const modeLink = screen.getByRole("link", {
+      projection.resolve(NO_PROGRAMS_MANAGEMENT_ACCESS);
+      await act(async () => {
+        await waitFor(() => expect(responseSettled).toBe(true));
+        await Promise.resolve();
+      });
+      expect(
+        screen.queryByRole("link", { name: COPY.programs.enterManagement })
+      ).not.toBeInTheDocument();
+    });
+
+    test("returns Programs management to the canonical participant home", async () => {
+      pathnameMock.mockReturnValue("/programs");
+      window.history.replaceState(
+        {},
+        "",
+        "/programs?mode=management&program=program-1&task=events"
+      );
+      server.use(
+        http.get("/api/v1/programs/access", () =>
+          programsAccessResponse(PROGRAMS_MANAGEMENT_ACCESS)
+        )
+      );
+      render(
+        <AppProvider
+          bootstrap={PROGRAMS_CAPABLE_BOOTSTRAP}
+          onSignOut={() => {}}
+        >
+          <ShellHeader />
+        </AppProvider>
+      );
+
+      const modeLink = await screen.findByRole("link", {
         name: COPY.programs.enterParticipant,
       });
       expect(modeLink).toHaveAttribute("href", "/programs");
       expect(modeLink).toHaveAttribute("data-screen-icon-button", "true");
       expect(modeLink.textContent).toBe("");
       expect(modeLink.querySelector("svg")).toHaveClass("lucide-user-round");
+    });
+
+    test("does not expose the mode destination while Programs access is pending", async () => {
+      const pending = Promise.withResolvers<ProgramsManagementAccess>();
+      pathnameMock.mockReturnValue("/programs");
+      server.use(
+        http.get("/api/v1/programs/access", async () =>
+          programsAccessResponse(await pending.promise)
+        )
+      );
+      render(
+        <AppProvider
+          bootstrap={PROGRAMS_CAPABLE_BOOTSTRAP}
+          onSignOut={() => {}}
+        >
+          <ShellHeader />
+        </AppProvider>
+      );
+
+      expect(
+        screen.queryByRole("link", { name: COPY.programs.enterManagement })
+      ).not.toBeInTheDocument();
+      pending.resolve(PROGRAMS_MANAGEMENT_ACCESS);
+      await screen.findByRole("link", { name: COPY.programs.enterManagement });
+    });
+
+    test("removes a ready mode destination after a Programs access request fails", async () => {
+      const failure = Promise.withResolvers<void>();
+      let requestCount = 0;
+      let errorResponseSettled = false;
+      pathnameMock.mockReturnValue("/programs");
+      server.use(
+        http.get("/api/v1/programs/access", async () => {
+          requestCount += 1;
+          if (requestCount === 1) {
+            return programsAccessResponse(PROGRAMS_MANAGEMENT_ACCESS);
+          }
+          await failure.promise;
+          errorResponseSettled = true;
+          return programsAccessErrorResponse();
+        })
+      );
+      const view = render(
+        <AppProvider
+          bootstrap={PROGRAMS_CAPABLE_BOOTSTRAP}
+          onSignOut={() => {}}
+        >
+          <ShellHeader />
+        </AppProvider>
+      );
+      await screen.findByRole("link", { name: COPY.programs.enterManagement });
+
+      // `getManagementAccess` reuses successful data for 30s; clear it so
+      // this route transition must observe the deferred failing request.
+      clearAccessCache();
+      window.history.replaceState({}, "", "/programs?mode=management");
+      view.rerender(
+        <AppProvider
+          bootstrap={PROGRAMS_CAPABLE_BOOTSTRAP}
+          onSignOut={() => {}}
+        >
+          <ShellHeader />
+        </AppProvider>
+      );
+      await waitFor(() => expect(requestCount).toBe(2));
+      failure.resolve();
+      await act(async () => {
+        await waitFor(() => expect(errorResponseSettled).toBe(true));
+        await Promise.resolve();
+      });
+      expect(
+        screen.queryByRole("link", { name: COPY.programs.enterParticipant })
+      ).not.toBeInTheDocument();
+    });
+
+    test("removes the mode destination after a reloaded Programs projection revokes access", async () => {
+      const revoked = Promise.withResolvers<ProgramsManagementAccess>();
+      let requestCount = 0;
+      let revokedResponseSettled = false;
+      pathnameMock.mockReturnValue("/programs");
+      server.use(
+        http.get("/api/v1/programs/access", async () => {
+          requestCount += 1;
+          if (requestCount === 1) {
+            return programsAccessResponse(PROGRAMS_MANAGEMENT_ACCESS);
+          }
+          const projection = await revoked.promise;
+          revokedResponseSettled = true;
+          return programsAccessResponse(projection);
+        })
+      );
+      const view = render(
+        <AppProvider
+          bootstrap={PROGRAMS_CAPABLE_BOOTSTRAP}
+          onSignOut={() => {}}
+        >
+          <ShellHeader />
+        </AppProvider>
+      );
+      await screen.findByRole("link", { name: COPY.programs.enterManagement });
+
+      // Bypass the existing 30s in-memory success cache before reloading the
+      // projection; the first response above intentionally established ready state.
+      clearAccessCache();
+      window.history.replaceState({}, "", "/programs?mode=management");
+      view.rerender(
+        <AppProvider
+          bootstrap={PROGRAMS_CAPABLE_BOOTSTRAP}
+          onSignOut={() => {}}
+        >
+          <ShellHeader />
+        </AppProvider>
+      );
+
+      await waitFor(() => expect(requestCount).toBe(2));
+      revoked.resolve(NO_PROGRAMS_MANAGEMENT_ACCESS);
+      await act(async () => {
+        await waitFor(() => expect(revokedResponseSettled).toBe(true));
+        await Promise.resolve();
+      });
+      expect(
+        screen.queryByRole("link", { name: COPY.programs.enterParticipant })
+      ).not.toBeInTheDocument();
+    });
+
+    test("ignores a stale Programs projection after a newer access load", async () => {
+      const first = Promise.withResolvers<ProgramsManagementAccess>();
+      const second = Promise.withResolvers<ProgramsManagementAccess>();
+      let requestCount = 0;
+      let firstResponseReady = false;
+      let secondResponseReady = false;
+      pathnameMock.mockReturnValue("/programs");
+      server.use(
+        http.get("/api/v1/programs/access", async () => {
+          requestCount += 1;
+          if (requestCount === 1) {
+            const projection = await first.promise;
+            firstResponseReady = true;
+            return programsAccessResponse(projection);
+          }
+          const projection = await second.promise;
+          secondResponseReady = true;
+          return programsAccessResponse(projection);
+        })
+      );
+      const view = render(
+        <AppProvider
+          bootstrap={PROGRAMS_CAPABLE_BOOTSTRAP}
+          onSignOut={() => {}}
+        >
+          <ShellHeader />
+        </AppProvider>
+      );
+
+      window.history.replaceState({}, "", "/programs?mode=management");
+      view.rerender(
+        <AppProvider
+          bootstrap={PROGRAMS_CAPABLE_BOOTSTRAP}
+          onSignOut={() => {}}
+        >
+          <ShellHeader />
+        </AppProvider>
+      );
+      await waitFor(() => expect(requestCount).toBe(2));
+      second.resolve(NO_PROGRAMS_MANAGEMENT_ACCESS);
+      await act(async () => {
+        await waitFor(() => expect(secondResponseReady).toBe(true));
+      });
+      expect(
+        screen.queryByRole("link", { name: COPY.programs.enterParticipant })
+      ).not.toBeInTheDocument();
+      first.resolve(PROGRAMS_MANAGEMENT_ACCESS);
+      await act(async () => {
+        await waitFor(() => expect(firstResponseReady).toBe(true));
+      });
+      expect(
+        screen.queryByRole("link", { name: COPY.programs.enterParticipant })
+      ).not.toBeInTheDocument();
     });
   });
 

@@ -649,25 +649,23 @@ const workspaceSettingsDirtyPlay: Story["play"] = async ({ canvasElement }) => {
     canvas.getByRole("link", { name: COPY.programs.settingsBackToHub })
   );
   await expect(
-    canvas.getByRole("heading", { name: COPY.programs.settingsHubTitle })
+    canvas.getByRole("heading", { name: COPY.programs.settingsBasics })
   ).toBeVisible();
-  await userEvent.click(
-    canvas.getByRole("button", {
-      name: /課程基本資料\s+名稱、描述同分類/u,
-    })
-  );
   await expect(
     canvas.getByRole("textbox", { name: COPY.programs.programName })
-  ).toHaveValue("門徒訓練基礎課");
-  const reopenedName = canvas.getByRole("textbox", {
-    name: COPY.programs.programName,
-  });
-  await userEvent.clear(reopenedName);
-  await userEvent.type(reopenedName, "再次未儲存課程名稱");
-  await userEvent.click(
+  ).toHaveValue("未儲存課程名稱");
+  await expect(
+    canvas.getByText(
+      `${COPY.programs.settingsUnsaved} ${COPY.programs.settingsSaveBasics} / ${COPY.programs.settingsDiscard}`,
+      { exact: true }
+    )
+  ).toBeVisible();
+  await expect(
+    canvas.getByRole("button", { name: COPY.programs.settingsSaveBasics })
+  ).toBeEnabled();
+  await expect(
     canvas.getByRole("button", { name: COPY.programs.settingsDiscard })
-  );
-  await expect(reopenedName).toHaveValue("門徒訓練基礎課");
+  ).toBeEnabled();
 };
 
 const workspaceSettingsConflictPlay: Story["play"] = async ({

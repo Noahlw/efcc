@@ -13,10 +13,16 @@ const COPY = {
   settings: "課程設定",
   settingsBasics: "課程基本資料",
   settingsBasicsHeading: "基本資料",
+  settingsBack: "返回設定",
+  settingsUnsaved: "有未儲存變更。",
+  settingsDiscard: "捨棄變更",
   programName: "課程名稱",
   programDescription: "課程簡介",
   saveBasics: "儲存基本資料",
   saved: "課程設定已儲存。",
+  workspaceOverview: "概覽",
+  enterManagement: "進入管理模式",
+  enterParticipant: "返回參與者模式",
 };
 
 type Fixture = {
@@ -156,6 +162,60 @@ test.describe("T05.5 management Browser Acceptance", () => {
       await expect(nameInput).toHaveValue(fixture.programName);
       await expect(descriptionInput).toHaveValue(fixture.description);
 
+      const draftName = `${fixture.programName} Draft`;
+      await nameInput.fill(draftName);
+      const dirtySettingsUrl = page.url();
+      await page.getByRole("link", { name: COPY.enterParticipant }).click();
+      await expect(page).toHaveURL(dirtySettingsUrl);
+      await expect(nameInput).toHaveValue(draftName);
+      await expect(
+        page.locator('[data-screen-settings-dirty="true"]')
+      ).toContainText(COPY.settingsUnsaved);
+      await expect(
+        page.getByRole("button", { name: COPY.saveBasics })
+      ).toBeVisible();
+      await expect(
+        page.getByRole("button", { name: COPY.settingsDiscard })
+      ).toBeVisible();
+
+      await page.getByRole("link", { name: COPY.settingsBack }).click();
+      await expect(
+        page.getByRole("heading", { name: COPY.settingsBasicsHeading })
+      ).toBeVisible();
+      await expect(nameInput).toHaveValue(draftName);
+
+      await page.getByRole("link", { name: COPY.workspaceOverview }).click();
+      await expect(nameInput).toHaveValue(draftName);
+      await expect(
+        page.locator('[data-screen-settings-dirty="true"]')
+      ).toContainText(COPY.settingsUnsaved);
+      await expect(
+        page.getByRole("button", { name: COPY.settingsDiscard })
+      ).toBeVisible();
+
+      await page.getByRole("button", { name: COPY.settingsDiscard }).click();
+      await expect(nameInput).toHaveValue(fixture.programName);
+      await expect(
+        page.locator('[data-screen-settings-dirty="true"]')
+      ).toHaveCount(0);
+      await page.getByRole("link", { name: COPY.settingsBack }).click();
+      await expect(
+        page.getByRole("heading", { name: COPY.settings })
+      ).toBeVisible();
+
+      await page
+        .getByRole("button", { name: new RegExp(COPY.settingsBasics, "u") })
+        .click();
+      await page.getByRole("link", { name: COPY.settingsBack }).click();
+      await expect(
+        page.getByRole("heading", { name: COPY.settings })
+      ).toBeVisible();
+
+      await page
+        .getByRole("button", { name: new RegExp(COPY.settingsBasics, "u") })
+        .click();
+      await expect(nameInput).toHaveValue(fixture.programName);
+
       const updatedName = `${fixture.programName} Updated`;
       const updatedDescription = `${fixture.description} Updated`;
       await nameInput.fill(updatedName);
@@ -177,6 +237,20 @@ test.describe("T05.5 management Browser Acceptance", () => {
       await expect(
         page.getByRole("textbox", { name: COPY.programDescription })
       ).toHaveValue(updatedDescription);
+
+      await page.goto(
+        `/programs?mode=management&program=${fixture.programId}&task=settings`
+      );
+      await expect(
+        page.getByRole("heading", { name: COPY.settings })
+      ).toBeVisible();
+      await page.evaluate(() => window.scrollTo(0, 480));
+      await page.getByRole("link", { name: COPY.enterParticipant }).click();
+      await expect(page).toHaveURL(/\/programs$/u);
+
+      await page.evaluate(() => window.scrollTo(0, 480));
+      await page.getByRole("link", { name: COPY.enterManagement }).click();
+      await expect(page).toHaveURL(/\/programs\?mode=management$/u);
     } finally {
       await restoreFixture(page, fixture);
     }

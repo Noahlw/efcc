@@ -166,6 +166,9 @@ export const ProgramWorkspace = ({
     initialSummary()
   );
   const [settingsEditorFocused, setSettingsEditorFocused] = useState(false);
+  const [settingsEditorDirty, setSettingsEditorDirty] = useState(false);
+  const [settingsNavigationBlocked, setSettingsNavigationBlocked] =
+    useState(false);
   const createdFlash = created && !task;
   const [workspaceNotice, setWorkspaceNotice] = useState<string | null>(
     createdFlash ? COPY.programs.programCreatedNotice : null
@@ -185,6 +188,8 @@ export const ProgramWorkspace = ({
   useEffect(() => {
     if (task !== "settings") {
       setSettingsEditorFocused(false);
+      setSettingsEditorDirty(false);
+      setSettingsNavigationBlocked(false);
     }
   }, [task]);
   const focusedSettingsEditor = task === "settings" && settingsEditorFocused;
@@ -381,6 +386,11 @@ export const ProgramWorkspace = ({
       return;
     }
     event.preventDefault();
+    if (settingsEditorFocused && settingsEditorDirty) {
+      setSettingsNavigationBlocked(true);
+      announce(COPY.programs.settingsUnsaved);
+      return;
+    }
     if (focusedSchedule) {
       onTaskChange("events");
       return;
@@ -391,6 +401,11 @@ export const ProgramWorkspace = ({
     nextTask: ProgramsTask | null,
     nextEventId?: string | null
   ) => {
+    if (settingsEditorFocused && settingsEditorDirty) {
+      setSettingsNavigationBlocked(true);
+      announce(COPY.programs.settingsUnsaved);
+      return;
+    }
     if (nextEventId === undefined) {
       onTaskChange(nextTask);
     } else {
@@ -518,6 +533,9 @@ export const ProgramWorkspace = ({
           onTaskChange={handleWorkspaceTaskChange}
           onOpenEvent={onEventChange ? (id) => onEventChange(id) : undefined}
           onSettingsFocusChange={setSettingsEditorFocused}
+          onSettingsDirtyChange={setSettingsEditorDirty}
+          settingsNavigationBlocked={settingsNavigationBlocked}
+          onSettingsNavigationBlocked={setSettingsNavigationBlocked}
           headerAction={headerAction}
         />
       ) : task ? (

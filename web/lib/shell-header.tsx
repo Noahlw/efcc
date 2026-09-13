@@ -10,7 +10,17 @@ import { useApp } from "@/lib/app-context";
 import { AttentionPanel, EMPTY_ATTENTION_DATA } from "@/lib/attention-panel";
 import type { AttentionData } from "@/lib/attention-panel";
 import { COPY } from "@/lib/copy";
+import {
+  getManagementAccess,
+  type ProgramsManagementAccess,
+} from "@/lib/programs/program-api";
+import { useAsyncResource } from "@/lib/programs/use-async-resource";
 import { ScreenIconButton } from "@/lib/screen-foundations";
+
+type ProgramsAccessState =
+  | { kind: "loading" }
+  | { kind: "ready"; projection: ProgramsManagementAccess }
+  | { kind: "error" };
 
 export const ShellHeader = ({
   attentionData = EMPTY_ATTENTION_DATA,
@@ -33,6 +43,36 @@ export const ShellHeader = ({
   const bellRef = useRef<HTMLButtonElement>(null);
 
   const isScanner = pathname === "/scanner" || pathname.startsWith("/scanner/");
+  const isPrograms =
+    pathname === "/programs" || pathname.startsWith("/programs/");
+  const currentMode =
+    searchParams.get("mode") === "management" ? "management" : "participant";
+  const modeHref =
+    currentMode === "management" ? "/programs" : "/programs?mode=management";
+  const programsRouteKey = `${pathname}?${searchParams.toString()}`;
+  const { state: programsAccess, run: loadProgramsAccess } = useAsyncResource<
+    ProgramsManagementAccess,
+    ProgramsAccessState
+  >(
+    () => getManagementAccess(),
+    {
+      toLoading: () => ({ kind: "loading" }),
+      toReady: (projection) => ({ kind: "ready", projection }),
+      onError: () => ({ kind: "error" }),
+    },
+    [programsRouteKey]
+  );
+  useEffect(() => {
+    if (!isPrograms) {
+      return;
+    }
+    const request = { cancelled: false };
+    void loadProgramsAccess(request);
+    return () => {
+      request.cancelled = true;
+    };
+  }, [isPrograms, loadProgramsAccess]);
+
   if (isScanner) {
     return null;
   }
@@ -40,13 +80,10 @@ export const ShellHeader = ({
   const isManagement = bootstrap.navigation.some(
     (section) => section.key === "management"
   );
-  const isPrograms =
-    pathname === "/programs" || pathname.startsWith("/programs/");
-  const currentMode =
-    searchParams.get("mode") === "management" ? "management" : "participant";
-  const modeHref =
-    currentMode === "management" ? "/programs" : "/programs?mode=management";
-  const showModeControl = isPrograms && isManagement;
+  const showModeControl =
+    isPrograms &&
+    programsAccess.kind === "ready" &&
+    programsAccess.projection.hasManagementCapability;
   const unreadNoticeCount = attentionData.notices.filter(
     (notice) => notice.unread
   ).length;

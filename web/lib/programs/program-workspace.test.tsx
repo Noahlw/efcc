@@ -27,6 +27,7 @@ import { WorkspaceRouteProvider } from "@/lib/programs/workspace-context";
 
 const mocks = vi.hoisted(() => ({
   getManagementProgram: vi.fn(),
+  updateProgram: vi.fn(),
   listEvents: vi.fn(),
   listEnrollmentRequests: vi.fn(),
   listEnrollmentSnapshot: vi.fn(),
@@ -50,6 +51,7 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock(import("@/lib/programs/program-api"), () => ({
   getManagementProgram: mocks.getManagementProgram,
+  updateProgram: mocks.updateProgram,
   listEvents: mocks.listEvents,
   listEnrollmentRequests: mocks.listEnrollmentRequests,
   listEnrollmentSnapshot: mocks.listEnrollmentSnapshot,
@@ -249,6 +251,7 @@ function mockWorkspace() {
     department,
     modules,
   });
+  mocks.updateProgram.mockResolvedValue({ program });
   mocks.listEvents.mockResolvedValue({ events: [event] });
   mocks.listEnrollmentRequests.mockResolvedValue({ requests: [request] });
   mocks.listEnrollments.mockResolvedValue({ enrollments: [enrollment] });
@@ -259,6 +262,7 @@ function mockWorkspace() {
 }
 beforeEach(() => {
   mocks.getManagementProgram.mockReset();
+  mocks.updateProgram.mockReset();
   mocks.listEvents.mockReset();
   mocks.listEnrollmentRequests.mockReset();
   mocks.listEnrollments.mockReset();
@@ -733,6 +737,360 @@ describe(ProgramWorkspace, () => {
     expect(
       within(actions as HTMLElement).getByRole("button", { name: "通知" })
     ).toBeInTheDocument();
+  });
+
+  test("protects dirty Settings navigation until the draft is discarded", async () => {
+    mockWorkspace();
+    const user = userEvent.setup();
+    const onBack = vi.fn();
+    const onTaskChange = vi.fn();
+    render(
+      <ProgramWorkspace
+        programId="program-1"
+        task="settings"
+        onBack={onBack}
+        onTaskChange={onTaskChange}
+      />
+    );
+
+    await user.click(
+      await screen.findByRole("button", {
+        name: /基本資料名稱、描述同分類/u,
+      })
+    );
+    const name = screen.getByRole("textbox", {
+      name: COPY.programs.programName,
+    });
+    await user.clear(name);
+    await user.type(name, "未儲存名稱");
+
+    await user.click(
+      screen.getByRole("link", { name: COPY.programs.settingsBackToHub })
+    );
+
+    expect(
+      screen.getByRole("heading", { name: COPY.programs.settingsBasics })
+    ).toBeInTheDocument();
+    expect(name).toHaveValue("未儲存名稱");
+    expect(onBack).not.toHaveBeenCalled();
+    expect(onTaskChange).not.toHaveBeenCalled();
+    expect(
+      screen.getByText(
+        `${COPY.programs.settingsUnsaved} ${COPY.programs.settingsSaveBasics} / ${COPY.programs.settingsDiscard}`
+      )
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: COPY.programs.settingsSaveBasics })
+    ).toBeEnabled();
+    expect(
+      screen.getByRole("button", { name: COPY.programs.settingsDiscard })
+    ).toBeEnabled();
+    await user.click(
+      screen.getByRole("link", {
+        name: COPY.programs.workspaceOverviewTab,
+      })
+    );
+    expect(
+      screen.getByRole("heading", { name: COPY.programs.settingsBasics })
+    ).toBeInTheDocument();
+    expect(onTaskChange).not.toHaveBeenCalled();
+
+    await user.click(
+      screen.getByRole("button", { name: COPY.programs.settingsDiscard })
+    );
+    await waitFor(() => expect(name).toHaveValue(program.name));
+    expect(
+      document.querySelector('[data-screen-settings-dirty="true"]')
+    ).not.toBeInTheDocument();
+
+    await user.click(
+      screen.getByRole("link", { name: COPY.programs.settingsBackToHub })
+    );
+    await expect(
+      screen.findByRole("heading", { name: COPY.programs.settingsHubTitle })
+    ).resolves.toBeInTheDocument();
+
+    await user.click(
+      screen.getByRole("button", {
+        name: /基本資料名稱、描述同分類/u,
+      })
+    );
+    await user.click(
+      screen.getByRole("link", { name: COPY.programs.settingsBackToHub })
+    );
+    await expect(
+      screen.findByRole("heading", { name: COPY.programs.settingsHubTitle })
+    ).resolves.toBeInTheDocument();
+  });
+
+  test("shows Save/Discard guidance when a dirty draft blocks the first tab escape", async () => {
+    mockWorkspace();
+    const user = userEvent.setup();
+    const onTaskChange = vi.fn();
+    render(
+      <ProgramWorkspace
+        programId="program-1"
+        task="settings"
+        onBack={vi.fn()}
+        onTaskChange={onTaskChange}
+      />
+    );
+
+    await user.click(
+      await screen.findByRole("button", {
+        name: /基本資料名稱、描述同分類/u,
+      })
+    );
+    const name = screen.getByRole("textbox", {
+      name: COPY.programs.programName,
+    });
+    await user.clear(name);
+    await user.type(name, "首次 Tab 未儲存名稱");
+
+    await user.click(
+      screen.getByRole("link", {
+        name: COPY.programs.workspaceOverviewTab,
+      })
+    );
+
+    expect(
+      screen.getByRole("heading", { name: COPY.programs.settingsBasics })
+    ).toBeInTheDocument();
+    expect(name).toHaveValue("首次 Tab 未儲存名稱");
+    expect(onTaskChange).not.toHaveBeenCalled();
+    expect(
+      screen.getByText(
+        `${COPY.programs.settingsUnsaved} ${COPY.programs.settingsSaveBasics} / ${COPY.programs.settingsDiscard}`
+      )
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: COPY.programs.settingsSaveBasics })
+    ).toBeEnabled();
+    expect(
+      screen.getByRole("button", { name: COPY.programs.settingsDiscard })
+    ).toBeEnabled();
+  });
+
+  test("protects external mode and global links while dirty and cleans up", async () => {
+    mockWorkspace();
+    const user = userEvent.setup();
+    const modeClick = vi.fn();
+    const globalClick = vi.fn();
+    render(
+      <>
+        <a
+          href="/programs?mode=participant"
+          onClick={(event) => {
+            modeClick();
+            event.preventDefault();
+          }}
+        >
+          模式
+        </a>
+        <a
+          href="/home"
+          onClick={(event) => {
+            globalClick();
+            event.preventDefault();
+          }}
+        >
+          首頁
+        </a>
+      </>
+    );
+    const { unmount } = render(
+      <ProgramWorkspace
+        programId="program-1"
+        task="settings"
+        onBack={vi.fn()}
+        onTaskChange={vi.fn()}
+      />
+    );
+
+    await user.click(
+      await screen.findByRole("button", {
+        name: /基本資料名稱、描述同分類/u,
+      })
+    );
+    const name = screen.getByRole("textbox", {
+      name: COPY.programs.programName,
+    });
+    await user.clear(name);
+    await user.type(name, "外部連結未儲存名稱");
+
+    const beforeUnload = new Event("beforeunload", { cancelable: true });
+    expect(window.dispatchEvent(beforeUnload)).toBe(false);
+    await user.click(screen.getByRole("link", { name: "模式" }));
+    await user.click(screen.getByRole("link", { name: "首頁" }));
+    expect(modeClick).not.toHaveBeenCalled();
+    expect(globalClick).not.toHaveBeenCalled();
+    expect(name).toHaveValue("外部連結未儲存名稱");
+    expect(
+      screen.getByText(
+        `${COPY.programs.settingsUnsaved} ${COPY.programs.settingsSaveBasics} / ${COPY.programs.settingsDiscard}`
+      )
+    ).toBeInTheDocument();
+
+    await user.click(
+      screen.getByRole("button", { name: COPY.programs.settingsDiscard })
+    );
+    await waitFor(() =>
+      expect(
+        document.querySelector('[data-screen-settings-dirty="true"]')
+      ).not.toBeInTheDocument()
+    );
+    await user.click(screen.getByRole("link", { name: "模式" }));
+    await user.click(screen.getByRole("link", { name: "首頁" }));
+    expect(modeClick).toHaveBeenCalledOnce();
+    expect(globalClick).toHaveBeenCalledOnce();
+    const cleanBeforeUnload = new Event("beforeunload", {
+      cancelable: true,
+    });
+    expect(window.dispatchEvent(cleanBeforeUnload)).toBe(true);
+
+    await user.clear(name);
+    await user.type(name, "卸載前未儲存名稱");
+    unmount();
+    await user.click(screen.getByRole("link", { name: "模式" }));
+    expect(modeClick).toHaveBeenCalledTimes(2);
+    const unmountedBeforeUnload = new Event("beforeunload", {
+      cancelable: true,
+    });
+    expect(window.dispatchEvent(unmountedBeforeUnload)).toBe(true);
+  });
+
+  test("passes through modified, new-tab, download, and hash links while dirty", async () => {
+    mockWorkspace();
+    const user = userEvent.setup();
+    const modifiedClick = vi.fn();
+    const newTabClick = vi.fn();
+    const downloadClick = vi.fn();
+    const hashClick = vi.fn();
+    const preventNavigation =
+      (callback: () => void) =>
+      (event: React.MouseEvent<HTMLAnchorElement>) => {
+        callback();
+        event.preventDefault();
+      };
+    render(
+      <>
+        <a href="/home" onClick={preventNavigation(modifiedClick)}>
+          修改鍵
+        </a>
+        <a
+          href="/home"
+          target="_blank"
+          onClick={preventNavigation(newTabClick)}
+        >
+          新分頁
+        </a>
+        <a
+          href="/program.csv"
+          download="program.csv"
+          onClick={preventNavigation(downloadClick)}
+        >
+          下載
+        </a>
+        <a href="#details" onClick={preventNavigation(hashClick)}>
+          錨點
+        </a>
+        <ProgramWorkspace
+          programId="program-1"
+          task="settings"
+          onBack={vi.fn()}
+          onTaskChange={vi.fn()}
+        />
+      </>
+    );
+
+    await user.click(
+      await screen.findByRole("button", {
+        name: /基本資料名稱、描述同分類/u,
+      })
+    );
+    const name = screen.getByRole("textbox", {
+      name: COPY.programs.programName,
+    });
+    await user.clear(name);
+    await user.type(name, "保留連結語意的未儲存名稱");
+
+    fireEvent.click(screen.getByRole("link", { name: "修改鍵" }), {
+      ctrlKey: true,
+    });
+    await user.click(screen.getByRole("link", { name: "新分頁" }));
+    await user.click(screen.getByRole("link", { name: "下載" }));
+    await user.click(screen.getByRole("link", { name: "錨點" }));
+
+    expect(modifiedClick).toHaveBeenCalledOnce();
+    expect(newTabClick).toHaveBeenCalledOnce();
+    expect(downloadClick).toHaveBeenCalledOnce();
+    expect(hashClick).toHaveBeenCalledOnce();
+    expect(name).toHaveValue("保留連結語意的未儲存名稱");
+    expect(
+      document.querySelector('[data-screen-settings-dirty="true"]')
+    ).toBeInTheDocument();
+  });
+
+  test("releases navigation guards after a successful Basics save", async () => {
+    mockWorkspace();
+    mocks.updateProgram.mockResolvedValueOnce({
+      program: { ...program, name: "儲存後名稱" },
+    });
+    const user = userEvent.setup();
+    const exitClick = vi.fn();
+    render(
+      <>
+        <a
+          href="/home"
+          onClick={(event) => {
+            exitClick();
+            event.preventDefault();
+          }}
+        >
+          離開
+        </a>
+        <ProgramWorkspace
+          programId="program-1"
+          task="settings"
+          onBack={vi.fn()}
+          onTaskChange={vi.fn()}
+        />
+      </>
+    );
+
+    await user.click(
+      await screen.findByRole("button", {
+        name: /基本資料名稱、描述同分類/u,
+      })
+    );
+    const name = screen.getByRole("textbox", {
+      name: COPY.programs.programName,
+    });
+    await user.clear(name);
+    await user.type(name, "儲存後名稱");
+    expect(
+      document.querySelector('[data-screen-settings-dirty="true"]')
+    ).toBeInTheDocument();
+
+    await user.click(
+      screen.getByRole("button", { name: COPY.programs.settingsSaveBasics })
+    );
+    await waitFor(() => expect(mocks.updateProgram).toHaveBeenCalledOnce());
+    await expect(
+      screen.findByText(COPY.programs.settingsSaved)
+    ).resolves.toBeInTheDocument();
+    await waitFor(() =>
+      expect(
+        document.querySelector('[data-screen-settings-dirty="true"]')
+      ).not.toBeInTheDocument()
+    );
+
+    await user.click(screen.getByRole("link", { name: "離開" }));
+    expect(exitClick).toHaveBeenCalledOnce();
+    const cleanBeforeUnload = new Event("beforeunload", {
+      cancelable: true,
+    });
+    expect(window.dispatchEvent(cleanBeforeUnload)).toBe(true);
   });
 
   test("hides identity access without an authorized Account Directory destination", async () => {

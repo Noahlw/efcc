@@ -438,6 +438,11 @@ export interface WorkspaceTaskProps extends WorkspaceTaskContextValue {
   task: ProgramsTask;
   /** Let a focused Settings editor take ownership of the route header. */
   onSettingsFocusChange?: (focused: boolean) => void;
+  /** Let the workspace protect route navigation from focused Settings drafts. */
+  onSettingsDirtyChange?: (dirty: boolean) => void;
+  /** Surface the shared Settings navigation-blocked guidance. */
+  settingsNavigationBlocked?: boolean;
+  onSettingsNavigationBlocked?: (blocked: boolean) => void;
   /** Keep the route-owned utility action with whichever header is visible. */
   headerAction?: ReactNode;
 }
@@ -463,6 +468,9 @@ export const WorkspaceTask = ({
   onTaskChange,
   onOpenEvent,
   onSettingsFocusChange,
+  onSettingsDirtyChange,
+  settingsNavigationBlocked,
+  onSettingsNavigationBlocked,
   headerAction,
 }: WorkspaceTaskProps) => {
   const value: WorkspaceTaskContextValue = {
@@ -494,6 +502,9 @@ export const WorkspaceTask = ({
       ) : task === "settings" ? (
         <SettingsTask
           onFocusChange={onSettingsFocusChange}
+          onDirtyChange={onSettingsDirtyChange}
+          navigationBlocked={settingsNavigationBlocked}
+          onNavigationBlocked={onSettingsNavigationBlocked}
           headerAction={headerAction}
         />
       ) : task === "schedule" ? (

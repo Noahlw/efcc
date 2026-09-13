@@ -106,6 +106,10 @@ export interface ProgramSettingsProps {
   eventsEnabled?: boolean;
   attendanceEnabled?: boolean;
   onTaskChange?: (task: "events" | "schedule" | null) => void;
+  /** Let the route owner protect navigation while a focused draft is dirty. */
+  onDirtyChange?: (dirty: boolean) => void;
+  /** Show the existing editor actions when navigation is blocked by a draft. */
+  navigationBlocked?: boolean;
   /** Explicitly reload the route-owned workspace after a 409 conflict. */
   onReload?: () => void;
   /** Render one focused editor, or all legacy editor groups for direct callers. */
@@ -776,6 +780,8 @@ export const ProgramSettings = ({
   eventsEnabled = true,
   attendanceEnabled = true,
   onTaskChange,
+  onDirtyChange,
+  navigationBlocked = false,
   onReload,
   section = "all",
   showHeading = true,
@@ -865,6 +871,11 @@ export const ProgramSettings = ({
         : section === "enrollment"
           ? COPY.programs.settingsSaveEnrollment
           : COPY.programs.settingsSaveAttendance;
+
+  useEffect(() => {
+    onDirtyChange?.(focusedEditor && focusedDirty);
+    return () => onDirtyChange?.(false);
+  }, [focusedDirty, focusedEditor, onDirtyChange]);
 
   useEffect(
     () => () => {
@@ -1272,6 +1283,12 @@ export const ProgramSettings = ({
           : undefined
       }
     >
+      {focusedEditor && navigationBlocked && focusedDirty && (
+        <Alert tone="warning" announcement="none">
+          {COPY.programs.settingsUnsaved} {focusedSaveLabel} /{" "}
+          {COPY.programs.settingsDiscard}
+        </Alert>
+      )}
       {showHeading && (
         <div>
           <h2
