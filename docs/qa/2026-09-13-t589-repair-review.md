@@ -1,16 +1,17 @@
 # #589 repair review — 2026-09-13
 
-Status: **IMPLEMENTED CANDIDATE; INTEGRATION REPAIR IN PROGRESS**. Not production-ready, not owner-approved, not pushed/merged/released.
+Status: **SCOPED FUNCTIONAL REPAIRS VERIFIED; VISUAL/OWNER ACCEPTANCE OPEN**. This is not full Programs production-readiness, owner approval, push, merge or release.
 
 ## Candidate
 
 - Base: `98f3c61f3442f19d80ba0cf1e007e7dba1e00054`.
 - Local repair commit: `4a78aa7d4af9eb36cf298782c045890184aed6f6`.
+- Final code fixed point: `1bbb8f82618c548d2de4e7381c836a93a85fef4c` (append-only follow-up).
 - Luna max implemented; parent independently reviewed actual source, component runs, Storybook interaction and browser artifacts.
 - Preserved the four pre-existing tracked dirty docs. No reset, push, merge, issue closure or skill changes.
 - One integration-only test stabilization in `approval-detail.test.tsx` waits for loaded public data instead of an already-visible loading header. Approval production code unchanged.
 
-## Observed evidence
+## Historical first-candidate evidence (4a78aa7d)
 
 | Check | Result and scope |
 | --- | --- |
@@ -24,10 +25,10 @@ Status: **IMPLEMENTED CANDIDATE; INTEGRATION REPAIR IN PROGRESS**. Not productio
 | Visual harness | 2 output-contract tests passed, producing11 baseline pairs at two widths. This is **not**22 visual-fidelity assertions or focused-editor coverage. |
 | W7 | Interrupted after observed stale outer dirty-Story expectation failures at402/414. Not passed; no aggregate JSON was produced before interruption. |
 
-## Integration findings still open
+## Historical integration findings (resolved by follow-up)
 
-1. Real clean Settings hub mode click did not commit `/programs` URL; browser stayed at management Program Settings. Correct href is present, dirty editor absent from failure snapshot. Root cause is under investigation; do not classify as an external500 or assume dirty interception.
-2. `t11-storybook.test.ts` still expects the dirty Story to end with the original name; the updated material Story deliberately retains its unsaved draft. Luna is aligning the outer assertion with the accepted behavior, preserving Save/Discard and retained-draft checks.
+1. Real clean Settings hub mode click did not commit `/programs` URL; browser stayed at management Program Settings. Follow-up aligned the header's same-route action with the existing Programs History API pattern; final browser checks prove both canonical URLs and rendered destination directories.
+2. `t11-storybook.test.ts` expected the dirty Story to end with the original name. Follow-up verifies the retained draft and visible actions, then explicitly discards before leaving the Story. Final R6 checks passed across all nine W7 widths.
 
 ## Durable artifacts
 
@@ -44,7 +45,7 @@ These are local evidence locators, not uploaded tracker attachments. Browser tra
 
 Existing Programs access API has a30-second in-memory success cache; this repair does not establish instantaneous revocation. UI eligibility is not backend authorization.
 
-Repair clean mode navigation and W7 assertion; create an append-only candidate; rerun real browser, responsive and relevant fixed-point checks; publish/read back honest tracker evidence. Remaining #586 packages, final visual owner judgment, real-device camera/download/print and release remain separate. No full-workset green claim.
+The reviewed functional defects are repaired and verified below. Remaining #586 packages, final visual owner judgment, real-device keyboard/native browser Back/camera/download/print and release remain separate. The full126-case W7 suite was not rerun to completion; the relevant36 cases were. No standalone live canary was rerun. No full-workset green claim.
 
 ## Follow-up repair checkpoint
 
@@ -55,3 +56,22 @@ Luna aligned the header mode action with Programs' existing native History API n
 - Real browser pre-commit repair check passed at `docs/qa/artifacts/t589-mode-native-candidate/browser/`. This run used the working-tree follow-up patch over4a78aa7d; it must not be attributed to unmodified4a78aa7d.
 - Parent's corrected R6 W7 matrix passed9/9 at `docs/qa/artifacts/t589-r6-matrix/result.json`. It checks retained dirty state, then explicit discard cleanup before navigating to another Story.
 - A Luna diagnostic attempt used Node20 and failed at setup; its Node22 retry was interrupted before reaching browser diagnosis. Neither is acceptance evidence; artifacts remain separate under `t589-mode-diagnosis/`.
+
+## Final verification at 1bbb8f82
+
+Production and test sources remained clean throughout the final runs; only the four pre-existing unrelated documentation edits remained. Any later commit for this review is documentation-only and does not change this code fixed point.
+
+| Check | Result | Durable locator or provenance |
+| --- | --- | --- |
+| Canonical real browser | 2/2 passed; retries0, no skipped/flaky tests | `docs/qa/artifacts/t589-repair-1bbb8f82/browser/run.json` and `browser-results.json`; both URL and destination-heading assertions included |
+| Canonical responsive | 6/6 passed; retries0, no skipped/flaky tests | `docs/qa/artifacts/t589-repair-1bbb8f82/responsive/run.json` and `responsive-results.json` |
+| Relevant W7 | 36/36 passed; retries0, no skipped/flaky tests; nine widths320–1440 | `docs/qa/artifacts/t589-repair-1bbb8f82/w7/result.json`; participant shell, management mode control, detail Back and R6 Settings/Notifications |
+| Storybook interactions | 94/94 passed on final code | Parent final command `fnm exec --using 22.18.0 pnpm --dir web test:storybook`, exit0 |
+| Full pre-commit gate | Passed | Components1038/1038; Worker606/606; identity98/98; Programs contract1/1; typechecks and governance0 active violations; final code commit hook exit0 |
+| Focused regression integration | 167/167 passed before final commit formatting | Parent Shell/Settings/Workspace run; final hook reran the complete component suite after formatting |
+
+The two canonical run manifests explicitly record the full final SHA. Raw reports were reopened and their counts/retries checked, not inferred from HTTP200 or a worker summary. W7 ran against the same clean code fixed point.
+
+Visual captures at4a78aa7d remain historical references. Parent directly inspected actual/frozen Management Directory402px and Settings360px pairs and observed density/spacing/title-wrap differences; these captures do not grant frozen-fidelity approval. The follow-up changes navigation and tests, not visual styles. Remaining user-facing internal wording and broader screen polish must be handled through the applicable #586 packages, not hidden by this repair verdict.
+
+Remote #607 was rechecked: OPEN at `9ad90d253bfd50bf2bbcea85f39c18c1587b1f88`, unchanged by this session. Tracker publication records local-only delivery; no raw trace upload, push, merge or issue close.
