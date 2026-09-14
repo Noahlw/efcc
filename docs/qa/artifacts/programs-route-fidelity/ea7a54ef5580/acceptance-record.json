@@ -4,6 +4,12 @@
   "candidateSha": "ea7a54ef5580f399d0db2c2c67795ce4689f71b0",
   "status": "MACHINE_GREEN / WAITING_INDEPENDENT_REVIEW",
   "productionCandidateIsImmutable": true,
+  "qualificationHarness": {
+    "commit": "d4165463c663f7b11d8e12eebc69b6d9df933b19",
+    "commitSubject": "test(programs): scope material detail back assertion",
+    "scope": "Storybook material Play locator only; production candidate unchanged",
+    "refreshedW7": "126/126 passed after a fresh Storybook restart"
+  },
   "criteria": [
     {
       "id": "589-SHELL-01",

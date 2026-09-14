@@ -15,6 +15,7 @@ The accepted 2026-09-14 CEO Review amendment governs this ledger. The frozen Pro
 
 - Production candidate at S1 fixed point: `ea7a54ef5580f399d0db2c2c67795ce4689f71b0`
 - Evidence-only commit: `ed4e484ee565c6bcdb13484a88b3aa1de892c994` — `test(programs): record #589 salvage evidence`
+- Qualification harness commit: `d4165463c663f7b11d8e12eebc69b6d9df933b19` — `test(programs): scope material detail back assertion`; Storybook material Play locator only, with no production-candidate change
 - PR: #607, OPEN, base `codex/programs-screen-foundations/wave-2`, remote head `9ad90d253bfd50bf2bbcea85f39c18c1587b1f88`
 - Local branch: `codex/programs-screen-foundations/wave-3`, ahead of its remote by 27 commits
 - Pre-existing dirty paths preserved at claim: `CONTEXT.md`; `docs/qa/2026-09-11-programs-route-fidelity-correction.md`; `docs/superpowers/plans/2026-09-11-programs-route-fidelity-recovery-tracker.md`; `docs/superpowers/plans/programs-route-fidelity-recovery/R8-fixed-point-qualification.md`
@@ -132,13 +133,15 @@ No database/schema/index or backend/API contract changes; permission-model redes
 ### Checkpoint — 2026-09-14 HKT
 
 - Candidate remained immutable at `ea7a54ef5580f399d0db2c2c67795ce4689f71b0`; no production file changed after S1.
+- A discarded pre-qualification material Play probe found a blocking duplicate accessible-name assertion after the shared nav label became `課程`; the first scope attempt also selected the outer Programs header without a Back link. The final route-owned semantic Back locator is fixed in harness commit `d4165463c663f7b11d8e12eebc69b6d9df933b19`. These were blocking assertion failures in discarded probes and are disclosed separately; they are not reclassified as advisory.
 - Focused candidate checks: **PASS — 151/151** across the four in-scope component files; root/e2e typecheck and web/Worker typecheck both passed.
-- Ordered machine gates: **PASS** — canonical browser first (`3/3`, target `http://127.0.0.1:50856`), responsive second (`18/18`, target `http://127.0.0.1:52440`), and W7/Storybook third (`126/126`, single worker, 9 widths). No accepted run had a skipped, unexpected, flaky, assertion, navigation, DOM, application, or regression failure.
+- Ordered machine gates: **PASS** — canonical browser first (`3/3`, target `http://127.0.0.1:50856`), responsive second (`18/18`, target `http://127.0.0.1:52440`), and W7/Storybook third (`126/126`, single worker, 9 widths). W7 was refreshed after a fresh Storybook restart and harness commit `d4165463c663f7b11d8e12eebc69b6d9df933b19`; no accepted run had a skipped, unexpected, flaky, assertion, navigation, DOM, application, or regression failure.
 - Cold-load request gate: **PASS — 1/1** `GET /api/v1/programs/access`; the S1 loader dedupe remains the smallest measured repair and no provider architecture was introduced.
 - Computed shell gate: **PASS** — responsive checks cover fixed/sticky placement, safe-area/content clearance, 44px targets, equal circle geometry, active indicator `18x2` with radius `2`, and no horizontal overflow across the nine matrix widths.
 - Shell visual gate: **PASS — 2/2** at `402x874` and `360x800`; each committed contact sheet contains Frozen/Actual columns for exactly Participant Directory, Management Directory, Workspace Settings overview, and Workspace Settings dirty/focused editor. The generated harness manifest records 8 candidate-bound shell rows; raw full-page output remains local.
 - Compact evidence: `docs/qa/artifacts/programs-route-fidelity/ea7a54ef5580/manifest.json`, `acceptance-record.json`, `checksums.sha256`, `shell-402x874.png`, and `shell-360x800.png`. This evidence commit does not change the production candidate.
 - Evidence commit checkpoint: `ed4e484ee565c6bcdb13484a88b3aa1de892c994`; post-commit `shasum -a 256 -c checksums.sha256` passed for all four listed files. HEAD now includes the evidence-only commit; the production candidate remains `ea7a54ef5580f399d0db2c2c67795ce4689f71b0`.
+- Qualification refresh checkpoint: harness-only commit `d4165463c663f7b11d8e12eebc69b6d9df933b19`; refreshed W7 `126/126` passed after a fresh server restart. The contact-sheet bytes and production candidate remain unchanged.
 - S2 gate: **MACHINE_GREEN / WAITING_INDEPENDENT_REVIEW**. Independent review is the next packet; owner approval remains pending and #590–#601 remain locked.
 
 ## Gate policy

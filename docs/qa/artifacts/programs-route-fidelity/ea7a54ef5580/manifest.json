@@ -8,7 +8,12 @@
     "pullRequest": 607,
     "baseBranch": "codex/programs-screen-foundations/wave-2"
   },
-  "generatedAt": "2026-09-14T05:36:17Z",
+  "qualificationHarness": {
+    "commit": "d4165463c663f7b11d8e12eebc69b6d9df933b19",
+    "commitSubject": "test(programs): scope material detail back assertion",
+    "scope": "Storybook material Play locator only; production candidate unchanged"
+  },
+  "generatedAt": "2026-09-14T06:07:49Z",
   "authority": {
     "visual": "docs/design/programs-screen-foundations-v1/",
     "comparison": "shell-only",
@@ -136,6 +141,7 @@
       "gate": "w7-storybook",
       "status": "PASS",
       "summary": "126 tests passed; skipped 0, unexpected 0, flaky 0; sequential single-worker run",
+      "qualificationHarnessCommit": "d4165463c663f7b11d8e12eebc69b6d9df933b19",
       "viewports": [
         "320x844",
         "360x800",
@@ -159,6 +165,22 @@
   "failureClassification": {
     "blockingFailures": [],
     "advisoryFailures": [],
+    "preQualificationFailures": [
+      {
+        "classification": "blocking-storybook-assertion-resolved",
+        "scope": "discarded direct probe before the accepted W7 run",
+        "cause": "The participant detail Play used an unscoped accessible-name lookup after the shared Programs nav label became 課程, so the nav link and route-owned Back link matched.",
+        "resolution": "The Play now selects the route-owned Back link by its semantic icon-button marker and exact /programs destination, then asserts its accessible name; fixed in d4165463c663f7b11d8e12eebc69b6d9df933b19.",
+        "impact": "The failure was resolved before the accepted fresh-server W7 run; the refreshed run passed 126/126."
+      },
+      {
+        "classification": "blocking-storybook-assertion-resolved",
+        "scope": "discarded direct probe after the first locator scope attempt",
+        "cause": "The first scope attempt selected the outer Programs route header, which has no Back link, while the detail header is a second route header.",
+        "resolution": "The locator was narrowed to the route-owned semantic Back link itself and retained the accessible-name assertion; the same harness commit d4165463c663f7b11d8e12eebc69b6d9df933b19 contains the final correction.",
+        "impact": "The failure was resolved before the accepted fresh-server W7 run; the refreshed run passed 126/126."
+      }
+    ],
     "nonGateDiagnostics": [
       {
         "classification": "stale-storybook-server",
