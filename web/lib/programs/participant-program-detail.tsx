@@ -12,12 +12,15 @@ import { RpcError } from "@/lib/api";
 import { COPY, errorCopyFor } from "@/lib/copy";
 import {
   hkDayPadded,
+  hkMonthDayLabel,
   hkMonthWeekdayLabel,
   hkShortDateLabel,
   hkShortTimeRange,
 } from "@/lib/hk-time";
 import { getParticipantProgramDetail } from "@/lib/programs/program-api";
 import type {
+  ParticipantEnrollmentRequest,
+  ParticipantEnrollmentSnapshot,
   ParticipantEventSummary,
   ParticipantProgramDetail as ParticipantProgramDetailData,
 } from "@/lib/programs/program-api";
@@ -96,6 +99,9 @@ function statusForDetail(detail: ParticipantProgramDetailData): {
   if (program.lifecycle === "Archived") {
     return { label: COPY.programs.statusArchived, kind: "neutral" };
   }
+  if (program.lifecycle === "Draft") {
+    return { label: COPY.programs.lifecycleDraft, kind: "neutral" };
+  }
   const active = enrollment?.enrollments.find(
     (item) => item.status === "Active"
   );
@@ -173,6 +179,111 @@ function conflictNote(
       )
     : null;
 }
+
+interface EnrollmentHistoryItem {
+  id: string;
+  label: string;
+  at: string;
+}
+
+function requestHistoryLabel(
+  status: ParticipantEnrollmentRequest["status"]
+): string | null {
+  switch (status) {
+    case "Pending": {
+      return COPY.programs.requestPending;
+    }
+    case "Rejected": {
+      return COPY.programs.requestRejected;
+    }
+    case "Withdrawn": {
+      return COPY.programs.requestWithdrawn;
+    }
+    case "Approved": {
+      // The corresponding enrollment record is the authoritative visible
+      // record for an approved request, so do not show it twice.
+      return null;
+    }
+    default: {
+      return null;
+    }
+  }
+}
+
+function buildEnrollmentHistory(
+  enrollment: ParticipantEnrollmentSnapshot | null
+): EnrollmentHistoryItem[] {
+  if (!enrollment) {
+    return [];
+  }
+
+  return [
+    ...enrollment.requests.flatMap((request) => {
+      const label = requestHistoryLabel(request.status);
+      return label === null
+        ? []
+        : [
+            {
+              id: `request-${request.request_id}`,
+              label,
+              at: request.decided_at ?? request.submitted_at,
+            },
+          ];
+    }),
+    ...enrollment.enrollments.map((item) => ({
+      id: `enrollment-${item.enrollment_id}`,
+      label:
+        item.status === "Active"
+          ? COPY.programs.enrollmentActive
+          : COPY.programs.enrollmentCancelled,
+      at: item.cancelled_at ?? item.enrolled_at,
+    })),
+  ].toSorted((a, b) => b.at.localeCompare(a.at));
+}
+
+interface ParticipantEnrollmentHistoryProps {
+  enrollment: ParticipantEnrollmentSnapshot | null;
+}
+
+const ParticipantEnrollmentHistory = ({
+  enrollment,
+}: ParticipantEnrollmentHistoryProps) => {
+  const history = buildEnrollmentHistory(enrollment);
+  if (history.length === 0) {
+    return null;
+  }
+
+  return (
+    <ScreenSection
+      title={COPY.programs.enrollmentHistory}
+      headingId="program-enrollment-history-title"
+    >
+      <ScreenRowList data-enrollment-history>
+        <ul
+          className="m-0 grid min-w-0 list-none gap-0 p-0"
+          aria-label={COPY.programs.enrollmentHistory}
+        >
+          {history.map((item) => (
+            <li key={item.id} className="min-w-0">
+              <ScreenRow>
+                <span
+                  className="size-2 shrink-0 rounded-full bg-[var(--screen-muted)]"
+                  aria-hidden="true"
+                />
+                <ScreenRowMain>
+                  <ScreenRowTitle>{item.label}</ScreenRowTitle>
+                  <ScreenRowMeta>
+                    <time dateTime={item.at}>{hkMonthDayLabel(item.at)}</time>
+                  </ScreenRowMeta>
+                </ScreenRowMain>
+              </ScreenRow>
+            </li>
+          ))}
+        </ul>
+      </ScreenRowList>
+    </ScreenSection>
+  );
+};
 
 interface ParticipantScheduleProps {
   program: ParticipantProgramDetailData["program"];
@@ -525,6 +636,12 @@ export const ParticipantProgramDetail = ({
   const status = statusForDetail(state.detail);
   const nextEvent = scheduledEvents[0] ?? null;
   const nextLocation = nextEvent ? eventLocation(nextEvent) : null;
+  const programContext = [state.detail.department.name, program.category]
+    .map((value) => (typeof value === "string" ? value.trim() : ""))
+    .filter(Boolean)
+    .join(" · ");
+  const programDescription =
+    program.description ?? COPY.programs.programDescriptionEmpty;
   const hasActiveEnrollment =
     enrollment?.enrollments.some((item) => item.status === "Active") ?? false;
   const canOpenEventDetail = canManage || hasActiveEnrollment;
@@ -549,7 +666,18 @@ export const ParticipantProgramDetail = ({
         backReplace
         onBack={handleBack}
         title={program.name}
-        lead={program.description ?? COPY.programs.programDescriptionEmpty}
+        lead={
+          <>
+            {programContext ? (
+              <span className="block min-w-0 wrap-anywhere">
+                {programContext}
+              </span>
+            ) : null}
+            <span className="mt-1 block min-w-0 wrap-anywhere">
+              {programDescription}
+            </span>
+          </>
+        }
         headingId="program-detail-title"
         status={
           <ScreenStatus tone={status.kind} role="status">
@@ -658,6 +786,8 @@ export const ParticipantProgramDetail = ({
         totalEventCount={scheduledEvents.length}
         onExpandAll={() => setEventLimit(Number.MAX_SAFE_INTEGER)}
       />
+
+      <ParticipantEnrollmentHistory enrollment={enrollment} />
 
       <ParticipantEnrollment
         program={program}
