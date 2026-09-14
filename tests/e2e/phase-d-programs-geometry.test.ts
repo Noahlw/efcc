@@ -439,6 +439,42 @@ test("management directory and workspace remain contained", async ({
     0
   );
 
+  const modeControlTreatment = await page
+    .getByRole("link", { name: "切換至參與者模式" })
+    .evaluate((element) => {
+      const style = getComputedStyle(element);
+      return {
+        backgroundColor: style.backgroundColor,
+        borderColor: style.borderTopColor,
+      };
+    });
+  const notificationControlTreatment = await notificationLink.evaluate(
+    (element) => {
+      const style = getComputedStyle(element);
+      return {
+        backgroundColor: style.backgroundColor,
+        borderColor: style.borderTopColor,
+      };
+    }
+  );
+  const transparentColor = "rgba(0, 0, 0, 0)";
+  expect(
+    modeControlTreatment.backgroundColor,
+    "management mode switch must use the soft shell treatment"
+  ).not.toBe(transparentColor);
+  expect(
+    modeControlTreatment.borderColor,
+    "management mode switch must expose the soft shell border"
+  ).not.toBe(transparentColor);
+  expect(
+    notificationControlTreatment.backgroundColor,
+    "management notification link must remain a transparent shell action"
+  ).toBe(transparentColor);
+  expect(
+    notificationControlTreatment.borderColor,
+    "management notification link must not expose a shell border"
+  ).toBe(transparentColor);
+
   const programLink = page
     .getByRole("link")
     .filter({ hasText: "E2E_DEMO_成人查經" })

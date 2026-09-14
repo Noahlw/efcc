@@ -140,6 +140,7 @@ export const ShellHeader = ({
           {showModeControl ? (
             <ScreenIconButton
               asChild
+              tone="soft"
               aria-label={
                 currentMode === "management"
                   ? COPY.programs.enterParticipant
@@ -169,7 +170,7 @@ export const ShellHeader = ({
               asChild
               aria-label={COPY.programs.notificationBellTitle}
               title={COPY.programs.notificationBellTitle}
-              className="relative border border-[var(--screen-line-strong)] text-[var(--screen-ink)] hover:bg-[var(--screen-surface)] hover:text-[var(--screen-accent)]"
+              className="relative"
             >
               <Link
                 href={programsNotificationHref}
