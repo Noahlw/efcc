@@ -64,6 +64,13 @@ export default defineConfig({
       },
     },
     {
+      name: "phone-360",
+      use: {
+        ...devices["Pixel 5"],
+        viewport: { width: 360, height: 800 },
+      },
+    },
+    {
       name: "phone-390",
       use: {
         ...devices["Pixel 5"],
@@ -71,10 +78,45 @@ export default defineConfig({
       },
     },
     {
-      name: "desktop-1280",
+      name: "phone-402",
+      use: {
+        ...devices["Pixel 5"],
+        viewport: { width: 402, height: 874 },
+      },
+    },
+    {
+      name: "phone-600",
+      use: {
+        ...devices["Pixel 5"],
+        viewport: { width: 600, height: 844 },
+      },
+    },
+    {
+      name: "phone-799",
+      use: {
+        ...devices["Pixel 5"],
+        viewport: { width: 799, height: 900 },
+      },
+    },
+    {
+      name: "desktop-800",
       use: {
         ...devices["Desktop Chrome"],
-        viewport: { width: 1280, height: 720 },
+        viewport: { width: 800, height: 900 },
+      },
+    },
+    {
+      name: "desktop-1024",
+      use: {
+        ...devices["Desktop Chrome"],
+        viewport: { width: 1024, height: 900 },
+      },
+    },
+    {
+      name: "desktop-1440",
+      use: {
+        ...devices["Desktop Chrome"],
+        viewport: { width: 1440, height: 900 },
       },
     },
   ],

@@ -427,14 +427,17 @@ test("management directory and workspace remain contained", async ({
   await expect(page.getByRole("heading", { name: "管理模式" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "管理課程" })).toBeVisible();
   await assertProgramsGeometry(page, undefined, testInfo);
-  const notificationButton = page.getByRole("button", {
+  const notificationLink = page.getByRole("link", {
     name: "開啟管理通知",
   });
-  await expect(notificationButton).toBeVisible();
-  await notificationButton.click();
-  await expect(page.getByRole("dialog", { name: "管理通知" })).toBeVisible();
-  await assertProgramsGeometry(page, undefined, testInfo);
-  await notificationButton.click();
+  await expect(notificationLink).toBeVisible();
+  await expect(notificationLink).toHaveAttribute(
+    "href",
+    "/programs?mode=management&task=notifications"
+  );
+  await expect(page.getByRole("button", { name: "開啟管理通知" })).toHaveCount(
+    0
+  );
 
   const programLink = page
     .getByRole("link")

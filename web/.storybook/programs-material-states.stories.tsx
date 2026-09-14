@@ -629,9 +629,14 @@ const workspaceSettingsDirtyPlay: Story["play"] = async ({ canvasElement }) => {
       'section[aria-labelledby="programs-workspace-title"]'
     )
   ).toBeNull();
-  await expect(
-    canvas.getByRole("button", { name: COPY.programs.notificationBellTitle })
-  ).toBeVisible();
+  const shellNotification = canvas.getByRole("link", {
+    name: COPY.programs.notificationBellTitle,
+  });
+  await expect(shellNotification).toBeVisible();
+  expect(shellNotification).toHaveAttribute(
+    "href",
+    "/programs?mode=management&task=notifications"
+  );
 
   const name = canvas.getByRole("textbox", {
     name: COPY.programs.programName,

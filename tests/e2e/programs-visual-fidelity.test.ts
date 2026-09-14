@@ -74,6 +74,33 @@ const VISUAL_CASES = [
   ],
 ] as const;
 
+const SHELL_VISUAL_CASES = [
+  {
+    caseKey: "participant-directory",
+    label: "Participant Directory",
+    storyId: "t07-3-programs-material-states--participant-directory-capable",
+    prototypeName: "01-participant-directory-capable.html",
+  },
+  {
+    caseKey: "management-directory",
+    label: "Management Directory",
+    storyId: "t07-3-programs--management-directory",
+    prototypeName: "04-management-directory.html",
+  },
+  {
+    caseKey: "workspace-settings-overview",
+    label: "Workspace Settings overview",
+    storyId: "t07-3-programs--workspace-settings",
+    prototypeName: "09-management-settings.html",
+  },
+  {
+    caseKey: "workspace-settings-dirty",
+    label: "Workspace Settings dirty / focused editor",
+    storyId: "t07-3-programs-material-states--workspace-settings-dirty",
+    prototypeName: "09-management-settings.html",
+  },
+] as const;
+
 const VIEWPORTS = [
   { width: 402, height: 874 },
   { width: 360, height: 800 },
@@ -86,10 +113,33 @@ const CONTACT_SHEETS = [
   "frozen-360x800.png",
 ] as const;
 
+const SHELL_CONTACT_SHEETS = [
+  "shell-402x874.png",
+  "shell-360x800.png",
+] as const;
+
 const manifestPath = path.join(artifactDirectory, "manifest.json");
 
 type VisualCase = (typeof VISUAL_CASES)[number];
+type ShellVisualCase = (typeof SHELL_VISUAL_CASES)[number];
 type Viewport = (typeof VIEWPORTS)[number];
+
+type ShellFragmentKey = "shellHeader" | "routeHeader" | "mainNavigation";
+
+type ShellFragmentSet = Record<ShellFragmentKey, string>;
+
+interface ShellVisualManifestRow {
+  caseKey: string;
+  label: string;
+  storyId: string;
+  candidateSha: string;
+  viewport: Viewport;
+  prototypePath: string;
+  prototypeSha256: string;
+  actualFragments: ShellFragmentSet;
+  frozenFragments: ShellFragmentSet;
+  capturedAt: string;
+}
 
 interface PageMeasurements {
   routeMarkerCount: number;
@@ -130,8 +180,10 @@ interface VisualManifest {
   candidateSha: string;
   viewports: readonly Viewport[];
   caseCount: number;
-  contactSheets: readonly string[];
+  fullPageContactSheets: readonly string[];
+  shellContactSheets: readonly string[];
   rows: VisualManifestRow[];
+  shellRows: ShellVisualManifestRow[];
   generatedAt: string;
 }
 
@@ -259,6 +311,39 @@ async function capturePage(
   return pngDimensions(await readFile(outputPath));
 }
 
+const SHELL_SELECTORS = {
+  actual: {
+    shellHeader: "header[data-shell-header]",
+    routeHeader: "[data-route-header]:visible",
+    mainNavigation: "#main-navigation",
+  },
+  frozen: {
+    shellHeader: ".shell-top",
+    routeHeader: ".route-head",
+    mainNavigation: ".bottom-nav",
+  },
+} as const;
+
+async function captureShellFragments(
+  page: Page,
+  filePrefix: string,
+  selectors: Record<ShellFragmentKey, string>
+): Promise<ShellFragmentSet> {
+  const fragments = {} as ShellFragmentSet;
+  for (const [key, selector] of Object.entries(selectors) as [
+    ShellFragmentKey,
+    string,
+  ][]) {
+    const fragment = page.locator(selector);
+    await expect(fragment).toHaveCount(1);
+    await expect(fragment).toBeVisible();
+    const fileName = `${filePrefix}-${key}.png`;
+    await fragment.screenshot({ path: artifactPath(fileName) });
+    fragments[key] = fileName;
+  }
+  return fragments;
+}
+
 async function exists(filePath: string) {
   return access(filePath)
     .then(() => true)
@@ -314,17 +399,76 @@ async function renderContactSheet(
   await page.screenshot({ path: artifactPath(fileName), fullPage: true });
 }
 
+async function renderShellContactSheet(
+  page: Page,
+  fileName: string,
+  rows: readonly ShellVisualManifestRow[]
+) {
+  const fragmentKeys: readonly ShellFragmentKey[] = [
+    "shellHeader",
+    "routeHeader",
+    "mainNavigation",
+  ];
+  const cards = await Promise.all(
+    rows.map(async (row) => {
+      const sideMarkup = await Promise.all([
+        ["Frozen", row.frozenFragments],
+        ["Actual", row.actualFragments],
+      ] as const).then(async (sides) =>
+        Promise.all(
+          sides.map(async ([label, fragments]) => {
+            const fragmentMarkup = await Promise.all(
+              fragmentKeys.map(async (key) => {
+                const image = (
+                  await readFile(artifactPath(fragments[key]))
+                ).toString("base64");
+                const fragmentLabel =
+                  key === "shellHeader"
+                    ? "Global shell header"
+                    : key === "routeHeader"
+                      ? "Route header"
+                      : "Fixed primary navigation";
+                return `<figure class="fragment"><figcaption>${escapeHtml(
+                  fragmentLabel
+                )}</figcaption><img src="data:image/png;base64,${image}" alt="${escapeHtml(
+                  `${label} ${fragmentLabel}`
+                )}"></figure>`;
+              })
+            );
+            return `<section class="side"><h3>${escapeHtml(label)}</h3>${fragmentMarkup.join("")}</section>`;
+          })
+        )
+      );
+      return `<article class="card"><h2>${escapeHtml(
+        row.label
+      )}</h2><div class="pair">${sideMarkup.join("")}</div></article>`;
+    })
+  );
+  await page.setViewportSize({ width: 1600, height: 1200 });
+  await page.setContent(
+    `<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><style>
+*{box-sizing:border-box}html,body{margin:0;background:#ebe8e2;color:#1b1d1f;font-family:system-ui,sans-serif}body{padding:24px}.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px}.card{min-width:0;padding:14px;background:#fff;border:1px solid #d7d1c8;border-radius:12px;box-shadow:0 2px 8px rgba(0,0,0,.08)}h2{margin:0 0 12px;font-size:18px;line-height:24px}.pair{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.side{min-width:0;border:1px solid #d7d1c8;border-radius:8px;overflow:hidden;background:#f7f5f1}.side h3{margin:0;padding:8px 10px;background:#f0ece5;font-size:13px;line-height:18px}.fragment{margin:0;border-top:1px solid #d7d1c8;background:#fff}.fragment:first-of-type{border-top:0}.fragment figcaption{padding:5px 8px 4px;color:#6d6a64;font-size:10px;line-height:14px;font-weight:700}.fragment img{display:block;width:100%;height:auto;max-width:100%;background:#f7f5f1}
+</style></head><body><main class="grid">${cards.join("")}</main></body></html>`,
+    { waitUntil: "load" }
+  );
+  await settle(page);
+  await page.screenshot({ path: artifactPath(fileName), fullPage: true });
+}
+
 async function finalizeArtifacts(page: Page) {
   const shardRows = await Promise.all(
     VIEWPORTS.map(async (viewport) => {
       const shardPath = artifactPath(`rows-${viewportLabel(viewport)}.json`);
       const shard = JSON.parse(await readFile(shardPath, "utf-8")) as {
         rows: VisualManifestRow[];
+        shellRows: ShellVisualManifestRow[];
       };
-      return shard.rows;
+      return shard;
     })
   );
-  const rows = shardRows.flat();
+  const rows = shardRows.flatMap((shard) => shard.rows);
+  const shellRows = shardRows.flatMap((shard) => shard.shellRows);
   rows.sort((left, right) => {
     const leftViewport = viewportLabel(left.viewport);
     const rightViewport = viewportLabel(right.viewport);
@@ -341,6 +485,7 @@ async function finalizeArtifacts(page: Page) {
   });
 
   expect(rows).toHaveLength(VISUAL_CASES.length * VIEWPORTS.length);
+  expect(shellRows).toHaveLength(SHELL_VISUAL_CASES.length * VIEWPORTS.length);
   const actualSheets = VIEWPORTS.map((viewport) => ({
     viewport,
     rows: rows.filter(
@@ -360,6 +505,13 @@ async function finalizeArtifacts(page: Page) {
       viewportRows,
       "frozenImage"
     );
+    await renderShellContactSheet(
+      page,
+      `shell-${viewportLabel(viewport)}.png`,
+      shellRows.filter(
+        (row) => viewportLabel(row.viewport) === viewportLabel(viewport)
+      )
+    );
   }
 
   await writeJson(manifestPath, {
@@ -367,8 +519,10 @@ async function finalizeArtifacts(page: Page) {
     candidateSha,
     viewports: VIEWPORTS,
     caseCount: VISUAL_CASES.length,
-    contactSheets: CONTACT_SHEETS,
+    fullPageContactSheets: CONTACT_SHEETS,
+    shellContactSheets: SHELL_CONTACT_SHEETS,
     rows,
+    shellRows,
     generatedAt: new Date().toISOString(),
   } satisfies VisualManifest);
 }
@@ -382,7 +536,11 @@ async function assertManifestContract() {
   expect(manifest.caseCount).toBe(VISUAL_CASES.length);
   expect(manifest.viewports).toEqual(VIEWPORTS);
   expect(manifest.rows).toHaveLength(VISUAL_CASES.length * VIEWPORTS.length);
-  expect(manifest.contactSheets).toEqual([...CONTACT_SHEETS]);
+  expect(manifest.fullPageContactSheets).toEqual([...CONTACT_SHEETS]);
+  expect(manifest.shellContactSheets).toEqual([...SHELL_CONTACT_SHEETS]);
+  expect(manifest.shellRows).toHaveLength(
+    SHELL_VISUAL_CASES.length * VIEWPORTS.length
+  );
 
   const expectedKeys = new Set(
     VIEWPORTS.flatMap((viewport) =>
@@ -396,6 +554,20 @@ async function assertManifestContract() {
       )
     )
   ).toEqual(expectedKeys);
+  const expectedShellKeys = new Set(
+    VIEWPORTS.flatMap((viewport) =>
+      SHELL_VISUAL_CASES.map(
+        ({ caseKey }) => `${caseKey}@${viewportLabel(viewport)}`
+      )
+    )
+  );
+  expect(
+    new Set(
+      manifest.shellRows.map(
+        (row) => `${row.caseKey}@${viewportLabel(row.viewport)}`
+      )
+    )
+  ).toEqual(expectedShellKeys);
   for (const row of manifest.rows) {
     expect(row.candidateSha).toBe(candidateSha);
     expect(row.prototypePath).toMatch(
@@ -415,7 +587,23 @@ async function assertManifestContract() {
     expect(row.frozen.horizontalOverflow).toBeLessThanOrEqual(1);
     expect(row.frozen.mainContentOverflow).toBeLessThanOrEqual(1);
   }
+  for (const row of manifest.shellRows) {
+    expect(row.candidateSha).toBe(candidateSha);
+    expect(row.prototypePath).toMatch(
+      /^docs\/design\/programs-screen-foundations-v1\/.*\.html$/u
+    );
+    expect(row.prototypeSha256).toMatch(/^[0-9a-f]{64}$/u);
+    for (const fileName of [
+      ...Object.values(row.actualFragments),
+      ...Object.values(row.frozenFragments),
+    ]) {
+      expect(await exists(artifactPath(fileName))).toBe(true);
+    }
+  }
   for (const sheet of CONTACT_SHEETS) {
+    expect(await exists(artifactPath(sheet))).toBe(true);
+  }
+  for (const sheet of SHELL_CONTACT_SHEETS) {
     expect(await exists(artifactPath(sheet))).toBe(true);
   }
 }
@@ -480,10 +668,58 @@ test("Programs visual harness satisfies its output contract", async ({
     });
   }
 
+  const shellRows: ShellVisualManifestRow[] = [];
+  for (const shellCase of SHELL_VISUAL_CASES as readonly ShellVisualCase[]) {
+    await page.goto(storyUrl(shellCase.storyId), {
+      waitUntil: "domcontentloaded",
+    });
+    const routeMarker = page.locator(
+      '[data-screen-foundation="page-frame"][data-screen-route="programs"]'
+    );
+    await expect(routeMarker).toHaveCount(1);
+    await expect(page.locator("main#shell-content")).toHaveCount(1);
+    await expect(page.locator('[aria-busy="true"]')).toHaveCount(0);
+    await settle(page);
+    const actualFragments = await captureShellFragments(
+      page,
+      `actual-shell-${shellCase.caseKey}-${viewportLabel(viewport)}`,
+      SHELL_SELECTORS.actual
+    );
+
+    const prototypeBuffer = await readFile(
+      prototypeFile(shellCase.prototypeName)
+    );
+    await page.setContent(prototypeBuffer.toString("utf-8"), {
+      waitUntil: "load",
+    });
+    await settle(page);
+    const frozenFragments = await captureShellFragments(
+      page,
+      `frozen-shell-${shellCase.caseKey}-${viewportLabel(viewport)}`,
+      SHELL_SELECTORS.frozen
+    );
+    shellRows.push({
+      caseKey: shellCase.caseKey,
+      label: shellCase.label,
+      storyId: shellCase.storyId,
+      candidateSha,
+      viewport,
+      prototypePath: path.relative(
+        repositoryRoot,
+        prototypeFile(shellCase.prototypeName)
+      ),
+      prototypeSha256: sha256(prototypeBuffer),
+      actualFragments,
+      frozenFragments,
+      capturedAt: new Date().toISOString(),
+    });
+  }
+
   await writeJson(artifactPath(`rows-${viewportLabel(viewport)}.json`), {
     candidateSha,
     viewport,
     rows,
+    shellRows,
   });
 
   const allShardsReady = await Promise.all(

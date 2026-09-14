@@ -136,8 +136,14 @@ async function main() {
           reportPath,
           {
             "phone-320": { width: 320, height: 812 },
+            "phone-360": { width: 360, height: 800 },
             "phone-390": { width: 390, height: 844 },
-            "desktop-1280": { width: 1280, height: 720 },
+            "phone-402": { width: 402, height: 874 },
+            "phone-600": { width: 600, height: 844 },
+            "phone-799": { width: 799, height: 900 },
+            "desktop-800": { width: 800, height: 900 },
+            "desktop-1024": { width: 1024, height: 900 },
+            "desktop-1440": { width: 1440, height: 900 },
           },
           {
             route: "/programs (participant and management responsive states)",
@@ -175,8 +181,14 @@ async function main() {
         reportPath,
         {
           "phone-320": { width: 320, height: 812 },
+          "phone-360": { width: 360, height: 800 },
           "phone-390": { width: 390, height: 844 },
-          "desktop-1280": { width: 1280, height: 720 },
+          "phone-402": { width: 402, height: 874 },
+          "phone-600": { width: 600, height: 844 },
+          "phone-799": { width: 799, height: 900 },
+          "desktop-800": { width: 800, height: 900 },
+          "desktop-1024": { width: 1024, height: 900 },
+          "desktop-1440": { width: 1440, height: 900 },
         },
         {
           route: "/programs (participant and management responsive states)",

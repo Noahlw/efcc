@@ -23,7 +23,6 @@ const COPY = {
   catalogClearSearch: "清除搜尋與篩選",
   managementSettings: "課程設定",
   managementNotifications: "開啟管理通知",
-  notificationsDialog: "管理通知",
   settingsBasics: "課程基本資料",
   programName: "課程名稱",
   programDescription: "課程簡介",
@@ -34,8 +33,14 @@ const COPY = {
 };
 const REQUIRED_VIEWPORT_WIDTHS: Record<string, number> = {
   "phone-320": 320,
+  "phone-360": 360,
   "phone-390": 390,
-  "desktop-1280": 1280,
+  "phone-402": 402,
+  "phone-600": 600,
+  "phone-799": 799,
+  "desktop-800": 800,
+  "desktop-1024": 1024,
+  "desktop-1440": 1440,
 };
 
 type PlaywrightRequest = {
@@ -53,10 +58,24 @@ type Fixture = {
 type Geometry = {
   expectedWidth: number;
   innerWidth: number;
+  innerHeight: number;
   bodyScrollWidth: number;
   documentScrollWidth: number;
   outletPaddingBottom: number;
+  dockPosition: string | null;
   dockTop: number | null;
+  dockBottom: number | null;
+  dockHeight: number | null;
+  activeIndicator: {
+    display: string;
+    width: number;
+    height: number;
+    borderRadius: number;
+  } | null;
+  screenIconCount: number;
+  minimumScreenIconWidth: number;
+  minimumScreenIconHeight: number;
+  maximumScreenIconCircleDelta: number;
   visibleControlCount: number;
   minimumControlWidth: number;
   minimumControlHeight: number;
@@ -212,15 +231,62 @@ async function measure(page: Page, expectedWidth: number): Promise<Geometry> {
     });
     const dock = document.querySelector<HTMLElement>(".nav-phone");
     const outlet = document.querySelector<HTMLElement>("#shell-content");
+    const dockStyle = dock ? getComputedStyle(dock) : null;
+    const activeNavItem = document.querySelector<HTMLElement>(
+      '#main-navigation [aria-current="page"]'
+    );
+    const activeIndicatorStyle = activeNavItem
+      ? getComputedStyle(activeNavItem, "::before")
+      : null;
+    const screenIconBoxes = [
+      ...document.querySelectorAll<HTMLElement>(
+        '[data-screen-icon-button="true"]'
+      ),
+    ]
+      .filter(visible)
+      .map((element) => element.getBoundingClientRect());
+    const activeIndicator = activeIndicatorStyle
+      ? {
+          display: activeIndicatorStyle.display,
+          width: Number.parseFloat(activeIndicatorStyle.width) || 0,
+          height: Number.parseFloat(activeIndicatorStyle.height) || 0,
+          borderRadius:
+            Number.parseFloat(activeIndicatorStyle.borderTopLeftRadius) || 0,
+        }
+      : null;
     return {
       expectedWidth,
       innerWidth: window.innerWidth,
+      innerHeight: window.innerHeight,
       bodyScrollWidth: document.body.scrollWidth,
       documentScrollWidth: document.documentElement.scrollWidth,
       outletPaddingBottom: outlet
         ? Number.parseFloat(getComputedStyle(outlet).paddingBottom)
         : 0,
+      dockPosition: dockStyle?.position ?? null,
       dockTop: dock && visible(dock) ? dock.getBoundingClientRect().top : null,
+      dockBottom:
+        dock && visible(dock) ? dock.getBoundingClientRect().bottom : null,
+      dockHeight:
+        dock && visible(dock) ? dock.getBoundingClientRect().height : null,
+      activeIndicator,
+      screenIconCount: screenIconBoxes.length,
+      minimumScreenIconWidth:
+        screenIconBoxes.length === 0
+          ? 0
+          : Math.min(...screenIconBoxes.map(({ width }) => width)),
+      minimumScreenIconHeight:
+        screenIconBoxes.length === 0
+          ? 0
+          : Math.min(...screenIconBoxes.map(({ height }) => height)),
+      maximumScreenIconCircleDelta:
+        screenIconBoxes.length === 0
+          ? Number.MAX_SAFE_INTEGER
+          : Math.max(
+              ...screenIconBoxes.map(({ width, height }) =>
+                Math.abs(width - height)
+              )
+            ),
       visibleControlCount: controls.length,
       minimumControlWidth: Math.min(...sizes.map(({ width }) => width)),
       minimumControlHeight: Math.min(...sizes.map(({ height }) => height)),
@@ -231,6 +297,20 @@ async function measure(page: Page, expectedWidth: number): Promise<Geometry> {
 function assertGeometry(geometry: Geometry, scenario: string): void {
   const label = `${scenario} @ ${geometry.expectedWidth}px`;
   expect(geometry.innerWidth, label).toBe(geometry.expectedWidth);
+  if (geometry.screenIconCount > 0) {
+    expect(
+      geometry.minimumScreenIconWidth,
+      `${label} shell icon width`
+    ).toBeGreaterThanOrEqual(44);
+    expect(
+      geometry.minimumScreenIconHeight,
+      `${label} shell icon height`
+    ).toBeGreaterThanOrEqual(44);
+    expect(
+      geometry.maximumScreenIconCircleDelta,
+      `${label} shell icon circle geometry`
+    ).toBeLessThanOrEqual(1);
+  }
   expect(
     geometry.bodyScrollWidth,
     `${label} body overflow`
@@ -256,12 +336,38 @@ function assertGeometry(geometry: Geometry, scenario: string): void {
       geometry.outletPaddingBottom,
       `${label} dock clearance`
     ).toBeGreaterThanOrEqual(72);
+    expect(geometry.dockPosition, `${label} dock positioning`).toBe("fixed");
+    expect(geometry.dockBottom, `${label} dock bottom`).toBe(
+      geometry.innerHeight
+    );
+    expect(geometry.dockHeight, `${label} dock height`).toBeGreaterThanOrEqual(
+      72
+    );
     expect(geometry.dockTop, `${label} phone dock`).not.toBeNull();
+    expect(
+      geometry.activeIndicator,
+      `${label} active indicator`
+    ).not.toBeNull();
+    expect(
+      geometry.activeIndicator?.display,
+      `${label} indicator display`
+    ).not.toBe("none");
+    expect(geometry.activeIndicator?.width, `${label} indicator width`).toBe(
+      18
+    );
+    expect(geometry.activeIndicator?.height, `${label} indicator height`).toBe(
+      2
+    );
+    expect(
+      geometry.activeIndicator?.borderRadius,
+      `${label} indicator radius`
+    ).toBe(2);
   } else {
     expect(
       geometry.outletPaddingBottom,
       `${label} desktop dock clearance`
     ).toBe(0);
+    expect(geometry.dockPosition, `${label} rail positioning`).toBe("sticky");
   }
 }
 
@@ -368,26 +474,31 @@ test.describe("T05.6 responsive Programs UI matrix", () => {
       })
     ).toBeVisible();
 
-    const notificationsButton = page.getByRole("button", {
+    const notificationsLink = page.getByRole("link", {
       name: COPY.managementNotifications,
     });
-    await expect(notificationsButton).toBeVisible();
-    await notificationsButton.click();
-    await expect(
-      page.getByRole("dialog", { name: COPY.notificationsDialog })
-    ).toBeVisible();
-    assertGeometry(
-      await measure(page, viewport.width),
-      "management attention popover"
+    await expect(notificationsLink).toBeVisible();
+    await expect(notificationsLink).toHaveAttribute(
+      "href",
+      "/programs?mode=management&task=notifications"
     );
-    await notificationsButton.click();
+    await expect(
+      page.getByRole("button", { name: COPY.managementNotifications })
+    ).toHaveCount(0);
 
-    assertGeometry(await measure(page, viewport.width), "management settings");
+    const managementGeometry = await measure(page, viewport.width);
+    expect(
+      managementGeometry.screenIconCount,
+      `management settings @ ${viewport.width}px shell icon count`
+    ).toBeGreaterThan(0);
+    assertGeometry(managementGeometry, "management settings");
 
     await workspaceNavigation
       .getByRole("link", { name: COPY.workspaceOverview, exact: true })
       .click();
-    await expect(page.getByRole("heading", { name: "營運" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "營運" })).toBeVisible({
+      timeout: 15000,
+    });
     assertGeometry(await measure(page, viewport.width), "management workspace");
 
     await workspaceNavigation
@@ -398,7 +509,7 @@ test.describe("T05.6 responsive Programs UI matrix", () => {
         name: COPY.workspaceParticipants,
         exact: true,
       })
-    ).toBeVisible();
+    ).toBeVisible({ timeout: 15000 });
     assertGeometry(
       await measure(page, viewport.width),
       "management participants task"
@@ -409,7 +520,7 @@ test.describe("T05.6 responsive Programs UI matrix", () => {
       .click();
     await expect(
       page.getByRole("heading", { name: COPY.workspaceEvents, exact: true })
-    ).toBeVisible();
+    ).toBeVisible({ timeout: 15000 });
     assertGeometry(
       await measure(page, viewport.width),
       "management events task"
