@@ -954,10 +954,38 @@ export class D1WorkspaceStore implements WorkspaceStore {
     return row;
   }
 
+  async retireScheduleRule(
+    ruleId: string,
+    retiredBy: string,
+    retiredAt: string
+  ): Promise<ScheduleRuleRow> {
+    await this.db
+      .prepare(
+        `UPDATE program_schedule_rules
+            SET retired_at = ?, retired_by = ?
+          WHERE rule_id = ? AND retired_at IS NULL`
+      )
+      .bind(retiredAt, retiredBy, ruleId)
+      .run();
+    const row = await this.findScheduleRule(ruleId);
+    if (!row) {
+      throw new WorkspaceNotFoundError("schedule_rule", ruleId);
+    }
+    return row;
+  }
+
   async listScheduleRules(programId: string): Promise<ScheduleRuleRow[]> {
     const result = await this.db
       .prepare(
-        "SELECT * FROM program_schedule_rules WHERE program_id = ? ORDER BY created_at ASC"
+        `SELECT rules.*,
+                EXISTS (
+                  SELECT 1
+                    FROM events
+                   WHERE events.schedule_rule_id = rules.rule_id
+                ) AS has_generated_events
+           FROM program_schedule_rules rules
+          WHERE rules.program_id = ?
+          ORDER BY rules.created_at ASC`
       )
       .bind(programId)
       .all<ScheduleRuleRow>();
@@ -966,7 +994,16 @@ export class D1WorkspaceStore implements WorkspaceStore {
 
   async findScheduleRule(ruleId: string): Promise<ScheduleRuleRow | null> {
     const row = await this.db
-      .prepare("SELECT * FROM program_schedule_rules WHERE rule_id = ?")
+      .prepare(
+        `SELECT rules.*,
+                EXISTS (
+                  SELECT 1
+                    FROM events
+                   WHERE events.schedule_rule_id = rules.rule_id
+                ) AS has_generated_events
+           FROM program_schedule_rules rules
+          WHERE rules.rule_id = ?`
+      )
       .bind(ruleId)
       .first<ScheduleRuleRow>();
     return row ?? null;
@@ -1053,10 +1090,11 @@ export class D1WorkspaceStore implements WorkspaceStore {
         // Program's minutes-before/after config, exactly like the migration
         // backfill so fresh rows are check-in capable on day one.
         `INSERT INTO events (event_id, program_id, starts_at, ends_at, status,
-           availability, source, name, event_type, location, cancel_reason, manual_check_in_code,
+           availability, source, schedule_rule_id, occurrence_date, name,
+           event_type, location, cancel_reason, manual_check_in_code,
            check_in_window_opens_at, check_in_window_closes_at,
            created_by, created_at, updated_by, updated_at)
-        SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+        SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
            upper(substr(hex(randomblob(4)), 1, 8)),
            COALESCE(?, strftime('%Y-%m-%dT%H:%M:%SZ', ?,
              printf('-%d minutes', (SELECT check_in_opens_at_minutes_before_start
@@ -1074,6 +1112,8 @@ export class D1WorkspaceStore implements WorkspaceStore {
         input.status,
         input.availability,
         input.source,
+        input.schedule_rule_id ?? null,
+        input.occurrence_date ?? null,
         input.name,
         input.event_type ?? null,
         input.location,
@@ -1101,10 +1141,11 @@ export class D1WorkspaceStore implements WorkspaceStore {
     const result = await this.db
       .prepare(
         `INSERT OR IGNORE INTO events (event_id, program_id, starts_at, ends_at,
-         status, availability, source, name, event_type, location, cancel_reason, manual_check_in_code,
+         status, availability, source, schedule_rule_id, occurrence_date, name,
+         event_type, location, cancel_reason, manual_check_in_code,
          check_in_window_opens_at, check_in_window_closes_at,
          created_by, created_at, updated_by, updated_at)
-      SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+      SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
          upper(substr(hex(randomblob(4)), 1, 8)),
          COALESCE(?, strftime('%Y-%m-%dT%H:%M:%SZ', ?,
            printf('-%d minutes', (SELECT check_in_opens_at_minutes_before_start
@@ -1122,6 +1163,8 @@ export class D1WorkspaceStore implements WorkspaceStore {
         input.status,
         input.availability,
         input.source,
+        input.schedule_rule_id ?? null,
+        input.occurrence_date ?? null,
         input.name,
         input.event_type ?? null,
         input.location,

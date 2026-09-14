@@ -357,6 +357,7 @@ export default {
         handleListScheduleExceptions,
         handleCreateScheduleRule,
         handleUpdateScheduleRule,
+        handleRetireScheduleRule,
         handleCreateScheduleException,
         handleDeleteScheduleException,
         handlePreviewEvents,
@@ -582,6 +583,17 @@ export default {
           request,
           programEnv,
           scheduleRules.groups?.id ?? ""
+        );
+      }
+      const scheduleRuleRetire = url.pathname.match(
+        /^\/api\/v1\/programs\/(?<id>[^/]+)\/schedule-rules\/(?<ruleId>[^/]+)\/retire$/u
+      );
+      if (scheduleRuleRetire && request.method === "POST") {
+        return handleRetireScheduleRule(
+          request,
+          programEnv,
+          scheduleRuleRetire.groups?.id ?? "",
+          scheduleRuleRetire.groups?.ruleId ?? ""
         );
       }
       const scheduleRule = url.pathname.match(

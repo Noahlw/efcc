@@ -359,6 +359,9 @@ export interface ScheduleRule {
   location: string | null;
   effective_start_date?: string | null;
   effective_end_date?: string | null;
+  retired_at?: string | null;
+  retired_by?: string | null;
+  has_generated_events?: number | boolean;
   created_at: string;
   updated_at: string;
 }
@@ -387,6 +390,8 @@ export interface ProgramEvent {
   /** Independent operational availability; absent only in legacy test fixtures. */
   availability?: "Active" | "Inactive";
   source: "SCHEDULE" | "MANUAL";
+  schedule_rule_id?: string | null;
+  occurrence_date?: string | null;
   name?: string | null;
   event_type?: EventType | null;
   location?: string | null;
@@ -1131,6 +1136,17 @@ export function updateScheduleRule(
     `/api/v1/programs/${encodeURIComponent(programId)}/schedule-rules/${encodeURIComponent(ruleId)}`,
     "PATCH",
     patch
+  );
+}
+
+/** POST /api/v1/programs/:id/schedule-rules/:ruleId/retire */
+export function retireScheduleRule(
+  programId: string,
+  ruleId: string
+): Promise<{ rule: ScheduleRule }> {
+  return programsFetch(
+    `/api/v1/programs/${encodeURIComponent(programId)}/schedule-rules/${encodeURIComponent(ruleId)}/retire`,
+    "POST"
   );
 }
 

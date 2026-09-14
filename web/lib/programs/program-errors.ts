@@ -63,6 +63,16 @@ export class ScheduleRuleNotApplicableError extends Error {
 }
 
 // oxlint-disable-next-line eslint/max-classes-per-file
+export class ScheduleRuleRetiredError extends Error {
+  constructor(ruleId: string) {
+    super(
+      `Schedule rule ${ruleId} is retired and cannot be changed; create a new rule for future occurrences.`
+    );
+    this.name = "ScheduleRuleRetiredError";
+  }
+}
+
+// oxlint-disable-next-line eslint/max-classes-per-file
 export class NoScheduleRulesError extends Error {
   constructor() {
     // Stable, non-identifying message: this surfaces verbatim as the

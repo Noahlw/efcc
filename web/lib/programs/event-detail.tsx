@@ -646,6 +646,11 @@ export const EventDetail = ({
               event.recurrence_tag ?? COPY.programs.recurrenceNone
             )}
           </ScreenStatus>
+          {event.source === "SCHEDULE" && event.occurrence_date && (
+            <ScreenStatus tone="neutral">
+              {COPY.programs.eventOriginalOccurrence}: {event.occurrence_date}
+            </ScreenStatus>
+          )}
           {event.availability !== undefined && (
             <ScreenStatus
               tone={event.availability === "Active" ? "success" : "danger"}

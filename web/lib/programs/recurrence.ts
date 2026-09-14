@@ -28,6 +28,8 @@ export interface ScheduleRuleLike {
   effective_start_date?: string | null;
   /** Inclusive HK wall end; null/omitted means ongoing. */
   effective_end_date?: string | null;
+  /** Retired rules remain readable history but produce no future candidates. */
+  retired_at?: string | null;
 }
 
 export type ScheduleExceptionAction = "CANCEL" | "RESCHEDULE";
@@ -138,6 +140,9 @@ export function wallDaySpan(fromDate: string, toDate: string): number {
 }
 
 function isWithinRuleLifetime(rule: ScheduleRuleLike, date: string): boolean {
+  if (rule.retired_at !== undefined && rule.retired_at !== null) {
+    return false;
+  }
   return (
     (rule.effective_start_date === undefined ||
       rule.effective_start_date === null ||
@@ -278,6 +283,54 @@ export function previewOccurrencesForRule(
 export interface EventLike {
   starts_at: string;
   source: string;
+  /** Persisted provenance is authoritative when present. */
+  schedule_rule_id?: string | null;
+  /** Original HK wall occurrence date, retained across Event reschedules. */
+  occurrence_date?: string | null;
+}
+
+function legacyRuleForEvent(
+  event: EventLike,
+  rules: ScheduleRuleLike[]
+): ScheduleRuleLike | null {
+  const date = hkWallDateOf(event.starts_at);
+  const time = new Date(
+    new Date(event.starts_at).getTime() + HK_UTC_OFFSET_MINUTES * 60_000
+  )
+    .toISOString()
+    .slice(11, 16);
+  const byDate = rules.filter((rule) =>
+    rule.recurrence === "WEEKLY"
+      ? rule.day_of_week === wallWeekday(date)
+      : rule.month_day === Number(date.slice(8, 10))
+  );
+  return byDate.length === 1
+    ? byDate[0]
+    : (byDate.find((rule) => rule.start_time === time) ?? null);
+}
+
+/**
+ * Resolve an Event's producing rule. New rows use immutable provenance and
+ * never consult date/time heuristics; only legacy SCHEDULE rows without a
+ * persisted rule id use the compatibility resolver.
+ */
+export function ruleForEvent(
+  event: EventLike,
+  rules: ScheduleRuleLike[]
+): ScheduleRuleLike | null {
+  if (event.source !== "SCHEDULE") {
+    return null;
+  }
+  if (event.schedule_rule_id !== undefined && event.schedule_rule_id !== null) {
+    return (
+      rules.find((rule) => rule.rule_id === event.schedule_rule_id) ?? null
+    );
+  }
+  return legacyRuleForEvent(event, rules);
+}
+
+function eventOccurrenceDate(event: EventLike): string {
+  return event.occurrence_date ?? hkWallDateOf(event.starts_at);
 }
 
 /**
@@ -296,21 +349,8 @@ export function exceptionForEvent(
   if (event.source !== "SCHEDULE") {
     return null;
   }
-  const date = hkWallDateOf(event.starts_at);
-  const time = new Date(
-    new Date(event.starts_at).getTime() + HK_UTC_OFFSET_MINUTES * 60_000
-  )
-    .toISOString()
-    .slice(11, 16);
-  const byDate = rules.filter((rule) =>
-    rule.recurrence === "WEEKLY"
-      ? rule.day_of_week === wallWeekday(date)
-      : rule.month_day === Number(date.slice(8, 10))
-  );
-  const rule =
-    byDate.length === 1
-      ? byDate[0]
-      : (byDate.find((r) => r.start_time === time) ?? null);
+  const date = eventOccurrenceDate(event);
+  const rule = ruleForEvent(event, rules);
   if (!rule) {
     return null;
   }
@@ -334,23 +374,16 @@ export function recurrenceTagForEvent(
   if (event.source !== "SCHEDULE") {
     return "無";
   }
-  const date = hkWallDateOf(event.starts_at);
-  const time = new Date(
-    new Date(event.starts_at).getTime() + HK_UTC_OFFSET_MINUTES * 60_000
-  )
-    .toISOString()
-    .slice(11, 16);
-  const byDate = rules.filter((rule) =>
-    rule.recurrence === "WEEKLY"
-      ? rule.day_of_week === wallWeekday(date)
-      : rule.month_day === Number(date.slice(8, 10))
-  );
-  const rule =
-    byDate.length === 1
-      ? byDate[0]
-      : (byDate.find((r) => r.start_time === time) ?? byDate[0] ?? null);
+  const rule = ruleForEvent(event, rules);
   if (!rule) {
-    if (rules.length === 1) {
+    // A persisted id that no longer resolves is an integrity problem, not a
+    // reason to guess from the Event's edited date/time. Singleton fallback
+    // is retained only for legacy rows that predate provenance.
+    if (
+      (event.schedule_rule_id === undefined ||
+        event.schedule_rule_id === null) &&
+      rules.length === 1
+    ) {
       return rules[0].recurrence === "WEEKLY" ? "每週" : "每月";
     }
     return "無";

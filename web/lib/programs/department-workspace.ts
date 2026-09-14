@@ -49,6 +49,7 @@ import {
   PreviewPlanNotFoundError,
   ProgramArchiveBlockedError,
   RequestNotDecidableError,
+  ScheduleRuleRetiredError,
   ScheduleRuleNotApplicableError,
   StaleEnrollmentRequestError,
   StalePreviewPlanError,
@@ -156,12 +157,12 @@ export interface ManagementAttentionProgramView {
   actionable_count: number;
 }
 
-type ManagementAttentionItemBase = {
+interface ManagementAttentionItemBase {
   program_id: string;
   program_name: string;
   department_id: string;
   department_name: string;
-};
+}
 
 export type ManagementAttentionItem =
   | (ManagementAttentionItemBase & {
@@ -326,7 +327,7 @@ export interface ManagementMemberView {
   phone: string | null;
   identities: ManagementMemberIdentity[];
   status: string;
-  departments: Array<{ id: string; name: string }>;
+  departments: { id: string; name: string }[];
 }
 
 export interface AccountDirectoryMember extends ManagementMemberView {
@@ -1888,16 +1889,12 @@ export class DepartmentWorkspace {
         viewerState = "pending";
       } else {
         const latestRequest =
-          userRequests.length > 0
-            ? userRequests[userRequests.length - 1]
-            : null;
+          userRequests.length > 0 ? userRequests.at(-1) : null;
         const cancelledEnrollments = userEnrollments.filter(
           (e) => e.status === "Cancelled"
         );
         const latestCancelledEnrollment =
-          cancelledEnrollments.length > 0
-            ? cancelledEnrollments[cancelledEnrollments.length - 1]
-            : null;
+          cancelledEnrollments.length > 0 ? cancelledEnrollments.at(-1) : null;
 
         if (latestRequest?.status === "Rejected") {
           const reqTime = Date.parse(
@@ -1997,7 +1994,7 @@ export class DepartmentWorkspace {
       this.listEvents(ctx, programId),
       this.participantEnrollmentSnapshot(ctx, view),
     ]);
-    const hasActiveEnrollment = enrollmentState.hasActiveEnrollment;
+    const { hasActiveEnrollment } = enrollmentState;
     return {
       program: this.programSummary(view),
       department: this.departmentSummary(department),
@@ -2265,10 +2262,7 @@ export class DepartmentWorkspace {
         update.check_in_opens_at_minutes_before_start === undefined &&
         update.check_in_closes_at_minutes_after_end === undefined;
       if (old.lifecycle === "Archived") {
-        if (!onlyLifecycle) {
-          // Metadata edits on an archived program are still allowed; fall
-          // through to the generic update path below.
-        } else {
+        if (onlyLifecycle) {
           // Terminal repeat: same-actor is a quiet DUPLICATE (never silent),
           // a different actor observes a CONFLICT against the archived row.
           const sameActor = old.updated_by === ctx.actorUserId;
@@ -2289,10 +2283,11 @@ export class DepartmentWorkspace {
             );
           }
           throw new ProgramArchiveBlockedError(id, ["already_archived"]);
+        } else {
+          // Metadata edits on an archived program are still allowed; fall
+          // through to the generic update path below.
         }
-      } else if (old.lifecycle !== "Active") {
-        throw new InvalidProgramLifecycleError(old.lifecycle, "Archived");
-      } else {
+      } else if (old.lifecycle === "Active") {
         const row = await this.store.archiveProgramIfClear(
           id,
           updateWithAudit,
@@ -2367,6 +2362,8 @@ export class DepartmentWorkspace {
           row,
           await this.programCapabilities(ctx, row)
         );
+      } else {
+        throw new InvalidProgramLifecycleError(old.lifecycle, "Archived");
       }
     }
     if (update.lifecycle !== undefined && update.lifecycle !== old.lifecycle) {
@@ -2791,6 +2788,9 @@ export class DepartmentWorkspace {
       CAPABILITY.PROGRAM_MANAGE
     );
     await this.requireModuleEnabled(program.department_id, MODULE_KEY.EVENTS);
+    if (rule.retired_at !== undefined && rule.retired_at !== null) {
+      throw new ScheduleRuleRetiredError(ruleId);
+    }
     const row = await this.store.updateScheduleRule(ruleId, {
       ...cmd,
       updated_by: ctx.actorUserId,
@@ -2809,6 +2809,52 @@ export class DepartmentWorkspace {
     return row;
   }
 
+  async retireScheduleRule(
+    ctx: AuthorizationContext,
+    ruleId: string,
+    correlationId: string | null
+  ): Promise<ScheduleRuleRow> {
+    const rule = await this.store.findScheduleRule(ruleId);
+    if (!rule) {
+      throw new AuthorizationDeniedError(CAPABILITY.PROGRAM_MANAGE);
+    }
+    const program = await this.requireProgramFor(
+      ctx,
+      rule.program_id,
+      CAPABILITY.PROGRAM_MANAGE
+    );
+    await this.requireModuleEnabled(program.department_id, MODULE_KEY.EVENTS);
+    if (rule.retired_at !== undefined && rule.retired_at !== null) {
+      await this.audit(
+        ctx,
+        "SCHEDULE_RULE_RETIRE",
+        "schedule_rule",
+        ruleId,
+        "DUPLICATE",
+        rule,
+        { ...rule, reason: "already_retired" },
+        correlationId
+      );
+      return rule;
+    }
+    const retired = await this.store.retireScheduleRule(
+      ruleId,
+      ctx.actorUserId,
+      new Date().toISOString()
+    );
+    await this.audit(
+      ctx,
+      "SCHEDULE_RULE_RETIRE",
+      "schedule_rule",
+      ruleId,
+      "SUCCESS",
+      rule,
+      retired,
+      correlationId
+    );
+    return retired;
+  }
+
   async createScheduleException(
     ctx: AuthorizationContext,
     ruleId: string,
@@ -2825,6 +2871,9 @@ export class DepartmentWorkspace {
       CAPABILITY.PROGRAM_MANAGE
     );
     await this.requireModuleEnabled(program.department_id, MODULE_KEY.EVENTS);
+    if (rule.retired_at !== undefined && rule.retired_at !== null) {
+      throw new ScheduleRuleRetiredError(ruleId);
+    }
     const existing = (await this.store.listScheduleExceptions([ruleId])).find(
       (e) => e.override_date === cmd.override_date
     );
@@ -2893,6 +2942,9 @@ export class DepartmentWorkspace {
       CAPABILITY.PROGRAM_MANAGE
     );
     await this.requireModuleEnabled(program.department_id, MODULE_KEY.EVENTS);
+    if (rule.retired_at !== undefined && rule.retired_at !== null) {
+      throw new ScheduleRuleRetiredError(rule.rule_id);
+    }
     await this.store.deleteScheduleException(exceptionId);
     await this.audit(
       ctx,
@@ -2933,6 +2985,7 @@ export class DepartmentWorkspace {
           location: rule.location ?? null,
           effective_start_date: rule.effective_start_date ?? null,
           effective_end_date: rule.effective_end_date ?? null,
+          retired_at: rule.retired_at ?? null,
         })),
       exceptions: [...exceptions]
         .sort((a, b) =>
@@ -3312,6 +3365,8 @@ export class DepartmentWorkspace {
         status: "Active",
         availability: "Active",
         source: "SCHEDULE",
+        schedule_rule_id: occurrence.rule_id,
+        occurrence_date: occurrence.occurs_on,
         name: null,
         location: occurrence.location,
         check_in_window_opens_at: null,

@@ -35,6 +35,7 @@ import {
   deleteScheduleException,
   listScheduleExceptions,
   listScheduleRules,
+  retireScheduleRule,
   updateProgram,
   updateScheduleRule,
 } from "@/lib/programs/program-api";
@@ -64,6 +65,7 @@ import {
   ScreenRowTrailing,
   ScreenSection,
   ScreenState,
+  ScreenStatus,
 } from "@/lib/screen-foundations";
 
 interface BasicsValues {
@@ -900,6 +902,9 @@ export const ProgramSettings = ({
     Record<string, ScheduleException[]>
   >({});
   const [exceptionError, setExceptionError] = useState<string | null>(null);
+  const [confirmingRetireRuleId, setConfirmingRetireRuleId] = useState<
+    string | null
+  >(null);
   const [confirmingPublishing, setConfirmingPublishing] = useState(false);
   const [confirmingEnrollment, setConfirmingEnrollment] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -1287,6 +1292,24 @@ export const ProgramSettings = ({
         return next;
       });
     }, COPY.programs.settingsSaved);
+  };
+
+  const beginRetireRule = (rule: ScheduleRule) => {
+    setConfirmingRetireRuleId(rule.rule_id);
+    setActionError(null);
+    setNotice(null);
+  };
+
+  const cancelRetireRule = () => {
+    setConfirmingRetireRuleId(null);
+  };
+
+  const confirmRetireRule = (rule: ScheduleRule) => {
+    void runScheduleMutation(
+      () => retireScheduleRule(currentProgram.program_id, rule.rule_id),
+      COPY.programs.settingsRuleRetired,
+      () => setConfirmingRetireRuleId(null)
+    );
   };
 
   const beginNewRule = () => {
@@ -1904,6 +1927,11 @@ export const ProgramSettings = ({
                                       {rule.effective_start_date ?? "—"}–
                                       {rule.effective_end_date ?? "∞"}
                                     </ScreenRowMeta>
+                                    {rule.retired_at && (
+                                      <ScreenStatus tone="neutral">
+                                        {COPY.programs.settingsRuleRetired}
+                                      </ScreenStatus>
+                                    )}
                                   </ScreenRowMain>
                                   {focusedSchedule && (
                                     <ScreenRowTrailing>
@@ -1912,7 +1940,11 @@ export const ProgramSettings = ({
                                         type="button"
                                         variant="outline"
                                         onClick={() => beginRuleEdit(rule)}
-                                        disabled={busy}
+                                        disabled={
+                                          busy ||
+                                          (rule.retired_at !== null &&
+                                            rule.retired_at !== undefined)
+                                        }
                                       >
                                         {COPY.programs.settingsRuleEdit}
                                       </Button>
@@ -1921,13 +1953,69 @@ export const ProgramSettings = ({
                                         type="button"
                                         variant="outline"
                                         onClick={() => beginException(rule)}
-                                        disabled={busy}
+                                        disabled={
+                                          busy ||
+                                          (rule.retired_at !== null &&
+                                            rule.retired_at !== undefined)
+                                        }
                                       >
                                         {COPY.programs.settingsRuleAddException}
                                       </Button>
+                                      {Boolean(rule.has_generated_events) &&
+                                        !rule.retired_at &&
+                                        confirmingRetireRuleId !==
+                                          rule.rule_id && (
+                                          <Button
+                                            className="w-fit border-[var(--screen-danger)] bg-transparent text-[var(--screen-danger)] hover:bg-[var(--screen-danger-surface)]"
+                                            type="button"
+                                            variant="outline"
+                                            onClick={() =>
+                                              beginRetireRule(rule)
+                                            }
+                                            disabled={busy}
+                                          >
+                                            {COPY.programs.settingsRuleRetire}
+                                          </Button>
+                                        )}
                                     </ScreenRowTrailing>
                                   )}
                                 </ScreenRow>
+                                {focusedSchedule &&
+                                  confirmingRetireRuleId === rule.rule_id && (
+                                    <Alert
+                                      className="mx-4 mb-3 grid min-w-0 gap-[var(--screen-utility-gap)]"
+                                      tone="warning"
+                                      announcement="none"
+                                    >
+                                      <span>
+                                        {COPY.programs.settingsRuleRetireHint}
+                                      </span>
+                                      <div className="flex min-w-0 flex-wrap gap-[var(--screen-utility-gap)]">
+                                        <Button
+                                          type="button"
+                                          className="w-fit bg-[var(--screen-danger)] text-white hover:bg-[var(--screen-danger)]"
+                                          onClick={() =>
+                                            confirmRetireRule(rule)
+                                          }
+                                          disabled={busy}
+                                        >
+                                          {
+                                            COPY.programs
+                                              .settingsRuleRetireConfirm
+                                          }
+                                        </Button>
+                                        <Button
+                                          type="button"
+                                          variant="outline"
+                                          className="w-fit border-[var(--screen-line-strong)] bg-transparent text-[var(--screen-ink)] hover:bg-[var(--screen-surface-soft)]"
+                                          onClick={cancelRetireRule}
+                                          disabled={busy}
+                                        >
+                                          {COPY.programs.settingsRuleCancel}
+                                        </Button>
+                                      </div>
+                                    </Alert>
+                                  )}
                                 {ruleExceptions.length > 0 && (
                                   <ScreenRowList className="border-t-0 pl-4">
                                     <ul

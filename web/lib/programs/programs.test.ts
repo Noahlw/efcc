@@ -1100,7 +1100,7 @@ describe("MUI-01: capability-aware management reads", () => {
       };
     };
 
-    const cockpit = cockpitData.data.cockpit;
+    const { cockpit } = cockpitData.data;
     assert.strictEqual(cockpit.program_id, program.program_id);
     assert.strictEqual(cockpit.active_event_count, 3); // 3 active events (past, next, later)
     assert.strictEqual(cockpit.pending_enrollment_count, 1);
@@ -1439,6 +1439,7 @@ describe("NTF-01: management attention", () => {
       "rejection leaves the inactive Event source"
     );
   });
+
   test("filters scoped leadership and honors enrollment and events module gates", async () => {
     const adminAccess = await accessCookieFor("alice", "alice-secret");
     const memberAccess = await accessCookieFor("bob", "bob-secret");
@@ -1565,6 +1566,7 @@ describe("NTF-01: management attention", () => {
     );
     assert.ok(pending.request_id);
   });
+
   test("revoking a Program Leader's capability drops the program from their attention aggregate", async () => {
     const adminAccess = await accessCookieFor("alice", "alice-secret");
     const leaderAccess = await accessCookieFor("bob", "bob-secret");
@@ -1659,6 +1661,7 @@ describe("PRG-01: programs", () => {
     assert.ok(program.program_id);
     assert.strictEqual(program.name, "Test Program");
   });
+
   test("requires a non-empty purpose and accepts a valid purpose without a category", async () => {
     const adminAccess = await accessCookieFor("alice", "alice-secret");
     const dept = await createDepartment(adminAccess, {
@@ -2456,6 +2459,8 @@ async function listEventsFor(
     ends_at: string;
     status: string;
     source: string;
+    schedule_rule_id: string | null;
+    occurrence_date: string | null;
     manual_check_in_code: string | null;
     check_in_window_opens_at: string | null;
     check_in_window_closes_at: string | null;
@@ -2479,6 +2484,8 @@ async function listEventsFor(
         ends_at: string;
         status: string;
         source: string;
+        schedule_rule_id: string | null;
+        occurrence_date: string | null;
         exception: {
           exception_id: string;
           rule_id: string;
@@ -2721,6 +2728,159 @@ describe("PRG-02: schedule rules", () => {
     }
   });
 
+  test("#620 preserves generated provenance through Event reschedule and Rule retirement", async () => {
+    const adminAccess = await accessCookieFor("alice", "alice-secret");
+    const program = await createProgram(adminAccess, deptId, {
+      name: "Provenance Retirement Program",
+      behavior_type: "Recurring",
+      discoverability: "Listed",
+    });
+    const rule = await createRule(adminAccess, program.program_id, {
+      recurrence: "WEEKLY",
+      day_of_week: 2,
+      start_time: "19:30",
+      end_time: "21:00",
+    });
+    await generate(adminAccess, program.program_id, 14);
+    const before = await listEventsFor(adminAccess, program.program_id);
+    assert.strictEqual(before.length, 2);
+    const target = before[0];
+    assert.ok(target);
+    assert.strictEqual(target.schedule_rule_id, rule.rule_id);
+    const originalOccurrence = target.occurrence_date;
+    assert.ok(originalOccurrence);
+
+    const shiftedStarts = new Date(
+      Date.parse(target.starts_at) + 60 * 60_000
+    ).toISOString();
+    const shiftedEnds = new Date(
+      Date.parse(target.ends_at) + 60 * 60_000
+    ).toISOString();
+    const rescheduled = await worker.fetch(
+      programsRequest(
+        `/api/v1/programs/${program.program_id}/events/${target.event_id}`,
+        {
+          method: "PATCH",
+          headers: {
+            Origin: HOST,
+            Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
+            "Content-Type": "application/json",
+          },
+          body: { starts_at: shiftedStarts, ends_at: shiftedEnds },
+        }
+      ),
+      testEnv()
+    );
+    assert.strictEqual(rescheduled.status, 200);
+    const rescheduledBody = (await assertCorrelated(rescheduled)) as {
+      data: {
+        event: {
+          schedule_rule_id: string | null;
+          occurrence_date: string | null;
+          starts_at: string;
+        };
+      };
+    };
+    assert.strictEqual(
+      rescheduledBody.data.event.schedule_rule_id,
+      rule.rule_id
+    );
+    assert.strictEqual(
+      rescheduledBody.data.event.occurrence_date,
+      originalOccurrence
+    );
+    assert.strictEqual(rescheduledBody.data.event.starts_at, shiftedStarts);
+
+    // The database trigger is the last line of defense: provenance cannot be
+    // rewritten even by a direct SQL caller outside the Worker service.
+    await assert.rejects(
+      () =>
+        testDb()
+          .prepare("UPDATE events SET occurrence_date = ? WHERE event_id = ?")
+          .bind("2099-12-31", target.event_id)
+          .run(),
+      /event schedule provenance is immutable/u
+    );
+
+    const retire = await worker.fetch(
+      programsRequest(
+        `/api/v1/programs/${program.program_id}/schedule-rules/${rule.rule_id}/retire`,
+        {
+          method: "POST",
+          headers: {
+            Origin: HOST,
+            Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
+            "Idempotency-Key": "provenance-retire-1",
+          },
+        }
+      ),
+      testEnv()
+    );
+    assert.strictEqual(retire.status, 200);
+    const retireBody = (await assertCorrelated(retire)) as {
+      data: { rule: { retired_at: string | null; retired_by: string | null } };
+    };
+    assert.ok(retireBody.data.rule.retired_at);
+    assert.strictEqual(retireBody.data.rule.retired_by, "U001");
+
+    // Retirement is idempotent and leaves the same historical marker.
+    const repeatRetire = await worker.fetch(
+      programsRequest(
+        `/api/v1/programs/${program.program_id}/schedule-rules/${rule.rule_id}/retire`,
+        {
+          method: "POST",
+          headers: {
+            Origin: HOST,
+            Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
+            "Idempotency-Key": "provenance-retire-1",
+          },
+        }
+      ),
+      testEnv()
+    );
+    assert.strictEqual(repeatRetire.status, 200);
+
+    const update = await worker.fetch(
+      programsRequest(
+        `/api/v1/programs/${program.program_id}/schedule-rules/${rule.rule_id}`,
+        {
+          method: "PATCH",
+          headers: {
+            Origin: HOST,
+            Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
+            "Content-Type": "application/json",
+          },
+          body: { start_time: "20:00", end_time: "21:00" },
+        }
+      ),
+      testEnv()
+    );
+    assert.strictEqual(update.status, 409);
+    assert.strictEqual((await problemOf(update)).code, "SCHEDULE_RULE_RETIRED");
+
+    const future = await preview(adminAccess, program.program_id, 14);
+    assert.strictEqual(future.rule_count, 1);
+    assert.deepStrictEqual(future.occurrences, []);
+    const after = await listEventsFor(adminAccess, program.program_id);
+    const retained = after.find(({ event_id }) => event_id === target.event_id);
+    assert.strictEqual(retained?.starts_at, shiftedStarts);
+    assert.strictEqual(retained?.schedule_rule_id, rule.rule_id);
+    assert.strictEqual(retained?.occurrence_date, originalOccurrence);
+
+    const retireAudits = await testDb()
+      .prepare(
+        `SELECT outcome FROM audit_events
+         WHERE action = 'SCHEDULE_RULE_RETIRE' AND entity_id = ?
+         ORDER BY inserted_at ASC`
+      )
+      .bind(rule.rule_id)
+      .all<{ outcome: string }>();
+    assert.deepStrictEqual(
+      (retireAudits.results ?? []).map(({ outcome }) => outcome),
+      ["SUCCESS", "DUPLICATE"]
+    );
+  });
+
   test("PATCH rule enforces recurrence cross-field invariants", async () => {
     const adminAccess = await accessCookieFor("alice", "alice-secret");
     const weekly = await createRule(adminAccess, recurringId, {
@@ -2816,11 +2976,11 @@ describe("PRG-02: schedule rules", () => {
     assert.strictEqual(rulesResponse.status, 200);
     const rulesResult = (await assertCorrelated(rulesResponse)) as {
       data: {
-        rules: Array<{
+        rules: {
           rule_id: string;
           effective_start_date: string | null;
           effective_end_date: string | null;
-        }>;
+        }[];
       };
     };
     const stored = rulesResult.data.rules.find(
@@ -2860,7 +3020,7 @@ describe("PRG-02: schedule rules", () => {
           to_date: string;
           horizon_days: number;
         };
-        occurrences: Array<{ occurs_on: string }>;
+        occurrences: { occurs_on: string }[];
       };
     };
     assert.deepStrictEqual(
@@ -2932,6 +3092,16 @@ describe("PRG-02: generation", () => {
     for (const [index, event] of events.entries()) {
       assert.strictEqual(event.status, "Active");
       assert.strictEqual(event.source, "SCHEDULE");
+      assert.strictEqual(
+        event.schedule_rule_id,
+        rule.rule_id,
+        "generated Event keeps its producing Rule identity"
+      );
+      assert.strictEqual(
+        event.occurrence_date,
+        expectedDates[index],
+        "generated Event keeps its original HK wall occurrence date"
+      );
       assert.strictEqual(
         event.starts_at,
         `${expectedDates[index]}T11:30:00.000Z`
@@ -5059,6 +5229,8 @@ async function createEventFor(
   status: string;
   availability: string;
   source: string;
+  schedule_rule_id: string | null;
+  occurrence_date: string | null;
   name: string | null;
   location: string | null;
   manual_check_in_code: string | null;
@@ -5084,6 +5256,8 @@ async function createEventFor(
     status: string;
     availability: string;
     source: string;
+    schedule_rule_id: string | null;
+    occurrence_date: string | null;
     name: string | null;
     location: string | null;
     manual_check_in_code: string | null;
@@ -5122,6 +5296,8 @@ describe("EVT-01: event operations (#251)", () => {
     assert.strictEqual(event.status, "Active");
     assert.strictEqual(event.availability, "Active");
     assert.strictEqual(event.source, "MANUAL");
+    assert.strictEqual(event.schedule_rule_id, null);
+    assert.strictEqual(event.occurrence_date, null);
     assert.strictEqual(event.name, "迎新聚會");
     assert.strictEqual(event.location, "教會禮堂");
     assert.ok(event.manual_check_in_code, "event carries a check-in code");
@@ -6374,6 +6550,7 @@ describe("PRG-03: enrollment requests", () => {
     assert.strictEqual(decisionNew.status, "Rejected");
     assert.strictEqual(decisionNew.request_version, 2);
   });
+
   test("REQ-5A stale request versions and opposite terminal decisions fail closed", async () => {
     const staleProgramId = await freshRequestProgram("REQ-5A Stale Program");
     const staleRequest = await submitRequest(memberAccess, staleProgramId);
@@ -6611,6 +6788,7 @@ describe("PRG-03: enrollment requests", () => {
       )
     );
   });
+
   test("REQ-8A manager enrollment snapshot returns the request and atomic enrollment result", async () => {
     const programId = await freshRequestProgram("REQ-8A Snapshot Program");
     const request = await submitRequest(memberAccess, programId);
@@ -7638,6 +7816,7 @@ describe("PUI-02: participant catalog", () => {
       "module-disabled Department must be omitted"
     );
   });
+
   test("projects viewerState per program across all viewer states", async () => {
     const adminAccess = await accessCookieFor("alice", "alice-secret");
     const memberAccess = await accessCookieFor("bob", "bob-secret");

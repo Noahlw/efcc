@@ -208,6 +208,11 @@ export interface ScheduleRuleRow {
   location: string | null;
   effective_start_date?: string | null;
   effective_end_date?: string | null;
+  /** A retired rule remains historical and cannot generate future events. */
+  retired_at?: string | null;
+  retired_by?: string | null;
+  /** Server-derived history marker used by the management Schedule surface. */
+  has_generated_events?: number | boolean;
   created_by: string | null;
   created_at: string;
   updated_by: string | null;
@@ -247,6 +252,10 @@ export interface EventInput {
   status: EventStatus;
   availability: EventAvailability;
   source: EventSource;
+  /** Immutable provenance for generated schedule Events; null for manual Events. */
+  schedule_rule_id?: string | null;
+  /** Original HK wall occurrence date; never changes on Event reschedule. */
+  occurrence_date?: string | null;
   name: string | null;
   event_type?: EventType | null;
   location: string | null;
@@ -267,6 +276,10 @@ export interface EventRow {
   status: EventStatus;
   availability: EventAvailability;
   source: EventSource;
+  /** Immutable Schedule Rule provenance for generated Events. */
+  schedule_rule_id?: string | null;
+  /** Original HK wall occurrence date in Church Time. */
+  occurrence_date?: string | null;
   name: string | null;
   event_type: EventType | null;
   location: string | null;
@@ -589,6 +602,11 @@ export interface WorkspaceStore {
     ruleId: string,
     update: ScheduleRuleUpdate
   ) => Promise<ScheduleRuleRow>;
+  retireScheduleRule: (
+    ruleId: string,
+    retiredBy: string,
+    retiredAt: string
+  ) => Promise<ScheduleRuleRow>;
   listScheduleRules: (programId: string) => Promise<ScheduleRuleRow[]>;
   findScheduleRule: (ruleId: string) => Promise<ScheduleRuleRow | null>;
 
@@ -613,16 +631,16 @@ export interface WorkspaceStore {
   listEvents: (programId: string) => Promise<EventRow[]>;
   countPendingEnrollmentRequests: (
     programIds: readonly string[]
-  ) => Promise<Array<{ program_id: string; count: number }>>;
+  ) => Promise<{ program_id: string; count: number }[]>;
   countManagementEventAttention: (
     programIds: readonly string[],
     startsAtOrAfter: string
   ) => Promise<
-    Array<{
+    {
       program_id: string;
       inactive_event_count: number;
       cancelled_event_count: number;
-    }>
+    }[]
   >;
   listManagementEventAttention: (
     programIds: readonly string[],

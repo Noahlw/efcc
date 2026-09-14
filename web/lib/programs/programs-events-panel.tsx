@@ -34,7 +34,7 @@ import type {
 import {
   HK_UTC_OFFSET_MINUTES,
   hkWallDateTimeLabel,
-  wallWeekday,
+  ruleForEvent as resolveRuleForEvent,
   WEEKDAY_LABELS,
 } from "@/lib/programs/recurrence";
 import { qrDataUrl } from "@/lib/qr";
@@ -141,30 +141,15 @@ function hkWallParts(iso: string): { date: string; time: string } {
   };
 }
 
-/**
- * The rule whose schedule produced this event, when attribution is
- * unambiguous: a single rule firing on the event's HK wall date wins; a
- * time match breaks ties among same-date rules. Events carry no rule_id,
- * so exception controls hide when attribution is ambiguous.
- */
+/** Resolve through persisted provenance, with recurrence's legacy fallback. */
 function ruleForEvent(
   event: ProgramEvent,
   rules: ScheduleRule[]
 ): ScheduleRule | null {
-  if (event.source !== "SCHEDULE") {
-    return null;
-  }
-  const { date, time } = hkWallParts(event.starts_at);
-  const byDate = rules.filter((rule) =>
-    rule.recurrence === "WEEKLY"
-      ? rule.day_of_week === wallWeekday(date)
-      : rule.month_day === Number(date.slice(8, 10))
-  );
-  if (byDate.length === 1) {
-    return byDate[0];
-  }
-  const byTime = byDate.filter((rule) => rule.start_time === time);
-  return byTime.length === 1 ? byTime[0] : null;
+  const resolved = resolveRuleForEvent(event, rules);
+  return resolved
+    ? (rules.find((rule) => rule.rule_id === resolved.rule_id) ?? null)
+    : null;
 }
 
 export const EventsPanel = ({
@@ -740,6 +725,7 @@ export const EventsPanel = ({
           events.map((event) => {
             const wall = hkWallParts(event.starts_at);
             const rule = ruleForEvent(event, rules ?? []);
+            const occurrenceDate = event.occurrence_date ?? wall.date;
             const exception = event.exception ?? null;
             const now = Date.now();
             const opensAt = event.check_in_window_opens_at;
@@ -757,6 +743,11 @@ export const EventsPanel = ({
                 </strong>
                 <span className={styles.eventDate}>{wall.date}</span>
                 <span className={styles.eventDate}>{wall.time}</span>
+                {event.source === "SCHEDULE" && event.occurrence_date && (
+                  <span className={styles.eventDate}>
+                    {COPY.programs.eventOriginalOccurrence}: {occurrenceDate}
+                  </span>
+                )}
                 <Badge className={styles.eventSource} variant="outline">
                   {event.event_type ?? COPY.programs.eventTypeOptions[5]}
                 </Badge>
@@ -800,7 +791,7 @@ export const EventsPanel = ({
                         <form
                           className={styles.ruleForm}
                           ref={rescheduleFormRef}
-                          onSubmit={submitReschedule(rule, wall.date)}
+                          onSubmit={submitReschedule(rule, occurrenceDate)}
                         >
                           <Input
                             className={styles.input}
@@ -846,7 +837,7 @@ export const EventsPanel = ({
                         className={styles.cancelForm}
                         onSubmit={submitCancelOccurrence(
                           rule,
-                          wall.date,
+                          occurrenceDate,
                           event.event_id
                         )}
                       >

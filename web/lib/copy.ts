@@ -870,6 +870,12 @@ export const COPY = {
     settingsScheduleRetry: "重試載入時間表",
     settingsScheduleNone: "目前尚未設定時間表規則。",
     settingsRuleEdit: "編輯規則",
+    settingsRuleRetired: "已停用",
+    settingsRuleRetire: "停用規則",
+    settingsRuleRetireConfirm: "確認停用規則",
+    settingsRuleRetireHint:
+      "停用後不會再生成新的聚會；已建立的聚會及出席紀錄不會改變。",
+    settingsRuleRetiredError: "這條規則已停用，請建立新規則作日後排程。",
     settingsRuleCancel: "取消編輯",
     settingsRuleSave: "儲存規則",
     settingsRuleAddException: "新增例外",
@@ -1347,6 +1353,7 @@ export const COPY = {
     eventCheckInWindow: "簽到時間",
     eventCheckInWindowOpensAt: "開放簽到",
     eventCheckInWindowClosesAt: "結束簽到",
+    eventOriginalOccurrence: "原定排程日期",
   },
 } as const;
 
@@ -1367,6 +1374,7 @@ const ERROR_COPY_BY_CODE: Record<string, string> = {
   STALE_PLAN: COPY.programs.previewChanged,
   PLAN_NOT_FOUND: COPY.programs.previewNone,
   EVENT_UNAVAILABLE: COPY.programs.eventUnavailableCheckIn,
+  SCHEDULE_RULE_RETIRED: COPY.programs.settingsRuleRetiredError,
   UNAVAILABLE: COPY.error.unavailable,
   INTERNAL_ERROR: COPY.error.serverError,
   MALFORMED_RESPONSE: COPY.error.malformed,

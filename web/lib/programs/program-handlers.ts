@@ -46,6 +46,7 @@ import {
   PreviewPlanNotFoundError,
   ProgramArchiveBlockedError,
   RequestNotDecidableError,
+  ScheduleRuleRetiredError,
   ScheduleRuleNotApplicableError,
   StaleEnrollmentRequestError,
   StalePreviewPlanError,
@@ -224,6 +225,15 @@ function mapWorkspaceError(error: unknown, requestId: string): Response | null {
       422,
       "VALIDATION",
       "Validation failed",
+      error.message,
+      requestId
+    );
+  }
+  if (error instanceof ScheduleRuleRetiredError) {
+    return problem(
+      409,
+      "SCHEDULE_RULE_RETIRED",
+      "Conflict",
       error.message,
       requestId
     );
@@ -1762,13 +1772,13 @@ function parseRulePatch(
     return { ok: false, detail: invariantError };
   }
   const resolvedEffectiveStart =
-    update.effective_start_date !== undefined
-      ? update.effective_start_date
-      : (existing.effective_start_date ?? null);
+    update.effective_start_date === undefined
+      ? (existing.effective_start_date ?? null)
+      : update.effective_start_date;
   const resolvedEffectiveEnd =
-    update.effective_end_date !== undefined
-      ? update.effective_end_date
-      : (existing.effective_end_date ?? null);
+    update.effective_end_date === undefined
+      ? (existing.effective_end_date ?? null)
+      : update.effective_end_date;
   if (
     typeof resolvedEffectiveStart === "string" &&
     typeof resolvedEffectiveEnd === "string" &&
@@ -1831,6 +1841,43 @@ export async function handleUpdateScheduleRule(
       authorizationContextFor(auth.account),
       ruleId,
       update,
+      correlationId
+    );
+    return jsonResponse(200, { rule: row }, requestId);
+  } catch (error) {
+    const mapped = mapWorkspaceError(error, requestId);
+    if (mapped) {
+      return mapped;
+    }
+    throw error;
+  }
+}
+
+/** POST /api/v1/programs/:programId/schedule-rules/:ruleId/retire */
+export async function handleRetireScheduleRule(
+  request: Request,
+  env: ProgramEnv,
+  programId: string,
+  ruleId: string
+): Promise<Response> {
+  const requestId = crypto.randomUUID();
+  const correlationId = request.headers.get("Idempotency-Key") ?? requestId;
+  const auth = await requireActor(request, env, requestId);
+  if (auth instanceof Response) {
+    return auth;
+  }
+  const { workspace } = await getModule(env);
+  const existing = await workspace.getScheduleRule(
+    authorizationContextFor(auth.account),
+    ruleId
+  );
+  if (!existing || existing.program_id !== programId) {
+    return notFound(requestId, "Unknown schedule rule.");
+  }
+  try {
+    const row = await workspace.retireScheduleRule(
+      authorizationContextFor(auth.account),
+      ruleId,
       correlationId
     );
     return jsonResponse(200, { rule: row }, requestId);
@@ -2192,10 +2239,14 @@ export async function handleCreateEvent(
     value: unknown,
     field: string
   ): string | null | undefined => {
-    if (value === undefined) return undefined;
-    if (value === null) return null;
+    if (value === undefined) {
+      return undefined;
+    }
+    if (value === null) {
+      return null;
+    }
     if (typeof value !== "string") {
-      throw new Error(`${field} must be text.`);
+      throw new TypeError(`${field} must be text.`);
     }
     return value.trim() || null;
   };
@@ -2430,10 +2481,14 @@ export async function handleEventUpdate(
     return validation(requestId, "Unknown event field.");
   }
   const parseOptionalText = (value: unknown, field: string) => {
-    if (value === undefined) return undefined;
-    if (value === null) return null;
+    if (value === undefined) {
+      return undefined;
+    }
+    if (value === null) {
+      return null;
+    }
     if (typeof value !== "string") {
-      throw new Error(`${field} must be text.`);
+      throw new TypeError(`${field} must be text.`);
     }
     return value.trim() || null;
   };

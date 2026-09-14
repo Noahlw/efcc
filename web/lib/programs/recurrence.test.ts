@@ -3,9 +3,13 @@ import { describe, expect, test } from "vitest";
 import {
   addWallDays,
   addWallMonths,
+  exceptionForEvent,
   hkWallDateTimeLabel,
+  hkWallToUtc,
   isValidWallDate,
   previewOccurrencesForRule,
+  recurrenceTagForEvent,
+  ruleForEvent,
   wallDaySpan,
 } from "@/lib/programs/recurrence";
 
@@ -35,7 +39,7 @@ describe("bounded schedule recurrence", () => {
       []
     );
 
-    expect(occurrences.map(({ occurs_on }) => occurs_on)).toEqual([
+    expect(occurrences.map(({ occurs_on }) => occurs_on)).toStrictEqual([
       "2026-09-07",
       "2026-09-14",
       "2026-09-21",
@@ -59,7 +63,7 @@ describe("bounded schedule recurrence", () => {
       []
     );
 
-    expect(occurrences.map(({ occurs_on }) => occurs_on)).toEqual([
+    expect(occurrences.map(({ occurs_on }) => occurs_on)).toStrictEqual([
       "2026-01-31",
       "2026-03-31",
     ]);
@@ -102,7 +106,67 @@ describe("bounded schedule recurrence", () => {
     expect(addWallMonths("2026-01-31", 1)).toBe("2026-02-28");
     expect(addWallDays(addWallMonths("2026-09-15", 3), -1)).toBe("2026-12-14");
     expect(wallDaySpan("2026-09-15", "2026-12-14")).toBe(91);
-    expect(isValidWallDate("2026-02-28")).toBe(true);
-    expect(isValidWallDate("2026-02-29")).toBe(false);
+    expect(isValidWallDate("2026-02-28")).toBeTruthy();
+    expect(isValidWallDate("2026-02-29")).toBeFalsy();
+  });
+
+  test("retired rules produce no future candidates", () => {
+    const occurrences = previewOccurrencesForRule(
+      {
+        rule_id: "retired-rule",
+        recurrence: "WEEKLY",
+        day_of_week: 2,
+        month_day: null,
+        start_time: "10:00",
+        end_time: "11:00",
+        retired_at: "2026-09-01T00:00:00.000Z",
+      },
+      "2026-09-01",
+      14,
+      []
+    );
+
+    expect(occurrences).toStrictEqual([]);
+  });
+
+  test("persisted Event provenance wins over edited date and time heuristics", () => {
+    const rules = [
+      {
+        rule_id: "weekly-rule",
+        recurrence: "WEEKLY" as const,
+        day_of_week: 2,
+        month_day: null,
+        start_time: "10:00",
+        end_time: "11:00",
+      },
+      {
+        rule_id: "other-rule",
+        recurrence: "WEEKLY" as const,
+        day_of_week: 4,
+        month_day: null,
+        start_time: "14:00",
+        end_time: "15:00",
+      },
+    ];
+    const event = {
+      source: "SCHEDULE",
+      starts_at: hkWallToUtc("2026-09-10", "14:00"),
+      schedule_rule_id: "weekly-rule",
+      occurrence_date: "2026-09-08",
+    };
+    const exception = {
+      exception_id: "exception-1",
+      rule_id: "weekly-rule",
+      override_date: "2026-09-08",
+      action: "RESCHEDULE" as const,
+      new_start_time: "14:00",
+      new_end_time: "15:00",
+    };
+
+    expect(ruleForEvent(event, rules)?.rule_id).toBe("weekly-rule");
+    expect(exceptionForEvent(event, rules, [exception])).toStrictEqual(
+      exception
+    );
+    expect(recurrenceTagForEvent(event, rules)).toBe("每週");
   });
 });
