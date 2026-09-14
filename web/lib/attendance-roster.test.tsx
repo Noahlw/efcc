@@ -202,6 +202,37 @@ describe("AttendanceRoster", () => {
     expect(screen.getByText("尚未簽到會員")).toBeVisible();
   });
 
+  test("keeps filters available when nobody is pending", async () => {
+    const user = userEvent.setup();
+    const presentRow: AttendanceExpectedRow = {
+      ...EXPECTED_ROW,
+      member_name: "已完成會員",
+      state: "Present",
+      attendance: MEMBER_ROW,
+    };
+    render(
+      <AttendanceRoster
+        event={EVENT}
+        rows={[MEMBER_ROW]}
+        expectedRows={[presentRow]}
+        counts={{
+          expected: 1,
+          present: 1,
+          not_yet: 0,
+          absent: 0,
+          excused: 0,
+          guests: 0,
+        }}
+      />
+    );
+
+    expect(screen.getByRole("tab", { name: /未簽到 \(0\)/u })).toBeVisible();
+    expect(screen.getByText(COPY.attendance.rosterFilterEmpty)).toBeVisible();
+
+    await user.click(screen.getByRole("tab", { name: /已簽到 \(1\)/u }));
+    expect(screen.getByText("已完成會員")).toBeVisible();
+  });
+
   test("requires a void reason before calling the mutation", async () => {
     const user = userEvent.setup();
     const onVoid = vi.fn().mockResolvedValue(true);
