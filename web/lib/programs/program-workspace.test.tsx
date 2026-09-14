@@ -780,6 +780,9 @@ describe(ProgramWorkspace, () => {
       )
     ).toBeInTheDocument();
     expect(
+      screen.getByTestId("program-settings-dirty-actions")
+    ).toBeInTheDocument();
+    expect(
       screen.getByRole("button", { name: COPY.programs.settingsSaveBasics })
     ).toBeEnabled();
     expect(
@@ -801,6 +804,9 @@ describe(ProgramWorkspace, () => {
     await waitFor(() => expect(name).toHaveValue(program.name));
     expect(
       document.querySelector('[data-screen-settings-dirty="true"]')
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByTestId("program-settings-dirty-actions")
     ).not.toBeInTheDocument();
 
     await user.click(

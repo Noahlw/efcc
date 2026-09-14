@@ -60,7 +60,6 @@ import {
   ScreenRowTrailing,
   ScreenSection,
   ScreenState,
-  ScreenStickyActions,
 } from "@/lib/screen-foundations";
 
 interface BasicsValues {
@@ -834,7 +833,6 @@ export const ProgramSettings = ({
   const scheduleEditorActive = focusedSchedule && scheduleEditor !== null;
   const showScheduleOverview = showSchedule && !scheduleEditorActive;
   const focusedEditor = focusedSection && !focusedSchedule;
-  const showStickyActions = focusedEditor && canManage;
   const showBasics = !focusedSection || section === "basics";
   const showPublishing = section === "publishing";
   const showEnrollment = !focusedSection || section === "enrollment";
@@ -860,6 +858,7 @@ export const ProgramSettings = ({
           : section === "attendance"
             ? attendanceDirty
             : false;
+  const showDirtyActions = focusedEditor && focusedDirty && canManage;
   const focusedFormId = focusedEditor
     ? `program-settings-${section}-form`
     : undefined;
@@ -1274,7 +1273,7 @@ export const ProgramSettings = ({
 
   return (
     <section
-      className={`grid min-w-0 gap-4 ${showStickyActions ? "pb-[calc(var(--screen-bottom-nav-height)+env(safe-area-inset-bottom,0px))]" : ""}`}
+      className="grid min-w-0 gap-4"
       aria-labelledby={
         showHeading
           ? focusedSection
@@ -2077,24 +2076,26 @@ export const ProgramSettings = ({
         currentProgram.behavior_type === "Recurring" &&
         eventsEnabled &&
         scheduleAddon?.({ rules, rulesError: ruleError })}
-      {showStickyActions && (
+      {showDirtyActions && (
         <>
-          {focusedDirty && (
-            <output
-              className="m-0 wrap-anywhere text-sm leading-6 text-[var(--screen-muted)]"
-              data-screen-settings-dirty="true"
-              aria-live="polite"
-            >
-              {COPY.programs.settingsUnsaved}
-            </output>
-          )}
-          <ScreenStickyActions>
+          <output
+            className="m-0 wrap-anywhere text-sm leading-6 text-[var(--screen-muted)]"
+            data-screen-settings-dirty="true"
+            aria-live="polite"
+          >
+            {COPY.programs.settingsUnsaved}
+          </output>
+          <div
+            className="grid min-w-0 grid-cols-[1fr_1.35fr] gap-[var(--screen-utility-gap)] border-t border-[var(--screen-line)] pt-2.5"
+            data-screen-foundation="program-settings-dirty-actions"
+            data-testid="program-settings-dirty-actions"
+          >
             <Button
               className="w-full border-[var(--screen-line-strong)] bg-transparent text-[var(--screen-ink)] hover:bg-[var(--screen-surface-soft)]"
               type="button"
               variant="outline"
               onClick={discardFocusedChanges}
-              disabled={!focusedDirty || busy}
+              disabled={busy}
             >
               {COPY.programs.settingsDiscard}
             </Button>
@@ -2102,11 +2103,11 @@ export const ProgramSettings = ({
               className="w-full bg-[var(--screen-accent)] text-white hover:bg-[var(--screen-accent-deep)]"
               type="submit"
               form={focusedFormId}
-              disabled={!focusedDirty || busy}
+              disabled={busy}
             >
               {focusedSaveLabel}
             </Button>
-          </ScreenStickyActions>
+          </div>
         </>
       )}
       {!focusedSection && (

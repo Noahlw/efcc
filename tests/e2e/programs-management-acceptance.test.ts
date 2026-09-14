@@ -244,6 +244,53 @@ test.describe("T05.5 management Browser Acceptance", () => {
       await expect(
         page.getByRole("button", { name: COPY.settingsDiscard })
       ).toBeVisible();
+      const dirtyActionGeometry = await page.evaluate(() => {
+        const action = document.querySelector<HTMLElement>(
+          "[data-testid=program-settings-dirty-actions]"
+        );
+        const form = document.querySelector<HTMLElement>(
+          "#program-settings-basics-form"
+        );
+        const fields = form
+          ? [
+              ...form.querySelectorAll<HTMLElement>(
+                "input, textarea, [role=combobox]"
+              ),
+            ].filter((field) => {
+              const box = field.getBoundingClientRect();
+              return box.width > 0 && box.height > 0;
+            })
+          : [];
+        const actionBox = action?.getBoundingClientRect();
+        const targets = [
+          ...(action?.querySelectorAll<HTMLElement>("button") ?? []),
+        ].map((target) => target.getBoundingClientRect());
+
+        return {
+          actionTop: actionBox?.top ?? Number.NEGATIVE_INFINITY,
+          fieldBottom: Math.max(
+            ...fields.map((field) => field.getBoundingClientRect().bottom),
+            Number.NEGATIVE_INFINITY
+          ),
+          minimumTarget: Math.min(
+            ...targets.map((box) => Math.min(box.width, box.height))
+          ),
+          overflow:
+            Math.max(
+              document.documentElement.scrollWidth,
+              document.body.scrollWidth
+            ) - window.innerWidth,
+          position: action ? getComputedStyle(action).position : null,
+          bottom: action ? getComputedStyle(action).bottom : null,
+        };
+      });
+      expect(dirtyActionGeometry.position).toBe("static");
+      expect(dirtyActionGeometry.bottom).toBe("auto");
+      expect(dirtyActionGeometry.actionTop).toBeGreaterThanOrEqual(
+        dirtyActionGeometry.fieldBottom - 1
+      );
+      expect(dirtyActionGeometry.minimumTarget).toBeGreaterThanOrEqual(44);
+      expect(dirtyActionGeometry.overflow).toBeLessThanOrEqual(1);
 
       await page.getByRole("link", { name: COPY.settingsBack }).click();
       await expect(

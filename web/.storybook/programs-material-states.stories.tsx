@@ -655,6 +655,19 @@ const workspaceSettingsDirtyPlay: Story["play"] = async ({ canvasElement }) => {
   expect(
     canvasElement.querySelector('[data-screen-settings-dirty="true"]')
   ).not.toBeNull();
+  const dirtyActions = canvas.getByTestId("program-settings-dirty-actions");
+  expect(dirtyActions).toHaveAttribute(
+    "data-screen-foundation",
+    "program-settings-dirty-actions"
+  );
+  expect(getComputedStyle(dirtyActions).position).toBe("static");
+  expect(getComputedStyle(dirtyActions).bottom).toBe("auto");
+  await expect(
+    canvas.getByRole("button", { name: COPY.programs.settingsDiscard })
+  ).toBeEnabled();
+  await expect(
+    canvas.getByRole("button", { name: COPY.programs.settingsSaveBasics })
+  ).toBeEnabled();
 
   await userEvent.click(
     canvas.getByRole("link", { name: COPY.programs.settingsBackToHub })

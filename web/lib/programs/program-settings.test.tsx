@@ -106,7 +106,7 @@ afterEach(() => {
 });
 
 describe(ProgramSettings, () => {
-  test("focused editors expose sticky Save/Discard only after a draft changes", async () => {
+  test("focused editors expose dirty Save/Discard only after a draft changes", async () => {
     const user = userEvent.setup();
     render(
       <ProgramSettings
@@ -116,15 +116,15 @@ describe(ProgramSettings, () => {
       />
     );
 
-    const save = screen.getByRole("button", {
-      name: COPY.programs.settingsSaveBasics,
-    });
-    const discard = screen.getByRole("button", {
-      name: COPY.programs.settingsDiscard,
-    });
     expect(
-      [save, discard].every((button) => button.hasAttribute("disabled"))
-    ).toBeTruthy();
+      screen.queryByTestId("program-settings-dirty-actions")
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: COPY.programs.settingsSaveBasics })
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: COPY.programs.settingsDiscard })
+    ).not.toBeInTheDocument();
     expect(
       document.querySelector('[data-screen-settings-dirty="true"]')
     ).not.toBeInTheDocument();
@@ -136,6 +136,17 @@ describe(ProgramSettings, () => {
     await user.type(name, "未儲存名稱");
 
     expect(screen.getByText(COPY.programs.settingsUnsaved)).toBeInTheDocument();
+    const actions = screen.getByTestId("program-settings-dirty-actions");
+    expect(actions).toHaveAttribute(
+      "data-screen-foundation",
+      "program-settings-dirty-actions"
+    );
+    const save = screen.getByRole("button", {
+      name: COPY.programs.settingsSaveBasics,
+    });
+    const discard = screen.getByRole("button", {
+      name: COPY.programs.settingsDiscard,
+    });
     expect(save).toBeEnabled();
     expect(discard).toBeEnabled();
   });
@@ -155,9 +166,6 @@ describe(ProgramSettings, () => {
     });
     await user.clear(name);
     await user.type(name, "未儲存名稱");
-    const save = screen.getByRole("button", {
-      name: COPY.programs.settingsSaveBasics,
-    });
     const discard = screen.getByRole("button", {
       name: COPY.programs.settingsDiscard,
     });
@@ -168,8 +176,14 @@ describe(ProgramSettings, () => {
       screen.queryByText(COPY.programs.settingsUnsaved)
     ).not.toBeInTheDocument();
     expect(
-      [save, discard].every((button) => button.hasAttribute("disabled"))
-    ).toBeTruthy();
+      screen.queryByTestId("program-settings-dirty-actions")
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: COPY.programs.settingsSaveBasics })
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: COPY.programs.settingsDiscard })
+    ).not.toBeInTheDocument();
     expect(mocks.updateProgram).not.toHaveBeenCalled();
   });
 
@@ -216,6 +230,11 @@ describe(ProgramSettings, () => {
     await expect(
       screen.findByText(COPY.programs.settingsSaved)
     ).resolves.toBeInTheDocument();
+    await waitFor(() =>
+      expect(
+        screen.queryByTestId("program-settings-dirty-actions")
+      ).not.toBeInTheDocument()
+    );
   });
 
   test("renders a focused publishing editor and keeps archive atomic", async () => {
@@ -468,6 +487,11 @@ describe(ProgramSettings, () => {
     await expect(
       screen.findByText(COPY.programs.settingsSaved)
     ).resolves.toBeInTheDocument();
+    await waitFor(() =>
+      expect(
+        screen.queryByTestId("program-settings-dirty-actions")
+      ).not.toBeInTheDocument()
+    );
   });
 
   test("explains and confirms consequential enrollment changes", async () => {

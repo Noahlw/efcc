@@ -488,6 +488,119 @@ test("Programs R6 material Stories execute Settings and Notifications Plays", as
     page.getByRole("button", { name: COPY.programs.settingsDiscard })
   ).toBeVisible();
 
+  const dirtyActions = page.locator(
+    '[data-testid="program-settings-dirty-actions"]'
+  );
+  await expect(dirtyActions).toBeVisible();
+  const dirtyGeometry = await dirtyActions.evaluate((element) => {
+    const actionElement = element as HTMLElement;
+    const settingsSection = actionElement.closest<HTMLElement>(
+      'section[aria-labelledby="program-settings-focused-title"]'
+    );
+    const form = settingsSection?.querySelector<HTMLElement>(
+      "#program-settings-basics-form"
+    );
+    const fields = form
+      ? [
+          ...form.querySelectorAll<HTMLElement>(
+            "input, textarea, [role=combobox]"
+          ),
+        ].filter((field) => {
+          const box = field.getBoundingClientRect();
+          return box.width > 0 && box.height > 0;
+        })
+      : [];
+    const actionBox = actionElement.getBoundingClientRect();
+    const fieldBottom = Math.max(
+      ...fields.map((field) => field.getBoundingClientRect().bottom),
+      Number.NEGATIVE_INFINITY
+    );
+    const targets = [
+      ...actionElement.querySelectorAll<HTMLElement>("button"),
+    ].map((target) => target.getBoundingClientRect());
+    const scroller = actionElement.closest<HTMLElement>("#shell-content");
+
+    return {
+      actionBottom: actionBox.bottom,
+      actionTop: actionBox.top,
+      fieldBottom,
+      minimumTarget: Math.min(
+        ...targets.map((box) => Math.min(box.width, box.height))
+      ),
+      overflow:
+        Math.max(
+          document.documentElement.scrollWidth,
+          document.body.scrollWidth
+        ) - window.innerWidth,
+      position: getComputedStyle(actionElement).position,
+      bottom: getComputedStyle(actionElement).bottom,
+      scrollerHeight: scroller?.scrollHeight ?? 0,
+      scrollerClientHeight: scroller?.clientHeight ?? 0,
+    };
+  });
+  expect(dirtyGeometry.position).toBe("static");
+  expect(dirtyGeometry.bottom).toBe("auto");
+  expect(dirtyGeometry.actionTop).toBeGreaterThanOrEqual(
+    dirtyGeometry.fieldBottom - 1
+  );
+  expect(dirtyGeometry.minimumTarget).toBeGreaterThanOrEqual(44);
+  expect(dirtyGeometry.overflow).toBeLessThanOrEqual(1);
+  expect(dirtyGeometry.scrollerHeight).toBeGreaterThanOrEqual(
+    dirtyGeometry.scrollerClientHeight
+  );
+
+  await page.locator("#shell-content").evaluate((element) => {
+    element.scrollTo(0, element.scrollHeight);
+  });
+  const endGeometry = await page.evaluate(() => {
+    const action = document.querySelector<HTMLElement>(
+      "[data-testid=program-settings-dirty-actions]"
+    );
+    const output = document.querySelector<HTMLElement>(
+      "[data-screen-settings-dirty=true]"
+    );
+    const form = document.querySelector<HTMLElement>(
+      "#program-settings-basics-form"
+    );
+    const fields = form
+      ? [
+          ...form.querySelectorAll<HTMLElement>(
+            "input, textarea, [role=combobox]"
+          ),
+        ].filter((field) => {
+          const box = field.getBoundingClientRect();
+          return box.width > 0 && box.height > 0;
+        })
+      : [];
+    const actionBox = action?.getBoundingClientRect();
+    const navBox = document
+      .querySelector<HTMLElement>("#main-navigation")
+      ?.getBoundingClientRect();
+
+    return {
+      actionBottom: actionBox?.bottom ?? Number.POSITIVE_INFINITY,
+      actionTop: actionBox?.top ?? Number.NEGATIVE_INFINITY,
+      fieldBottom: Math.max(
+        ...fields.map((field) => field.getBoundingClientRect().bottom),
+        Number.NEGATIVE_INFINITY
+      ),
+      navTop: navBox?.top ?? Number.POSITIVE_INFINITY,
+      outputBottom:
+        output?.getBoundingClientRect().bottom ?? Number.NEGATIVE_INFINITY,
+    };
+  });
+  expect(endGeometry.fieldBottom).toBeLessThanOrEqual(
+    endGeometry.actionTop + 1
+  );
+  expect(endGeometry.outputBottom).toBeLessThanOrEqual(
+    endGeometry.actionTop + 1
+  );
+  if ((page.viewportSize()?.width ?? 0) < 800) {
+    expect(endGeometry.actionBottom).toBeLessThanOrEqual(
+      endGeometry.navTop + 1
+    );
+  }
+
   await page
     .getByRole("button", { name: COPY.programs.settingsDiscard })
     .click();
