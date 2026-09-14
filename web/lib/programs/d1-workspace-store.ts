@@ -2258,15 +2258,17 @@ export class D1WorkspaceStore implements WorkspaceStore {
   async cancelEnrollment(
     id: string,
     cancelledBy: string,
-    cancelledAt: string
+    cancelledAt: string,
+    cancellationReason: string | null = null
   ): Promise<EnrollmentRow | null> {
     const result = await this.db
       .prepare(
         `UPDATE enrollments
-         SET status = 'Cancelled', cancelled_by = ?, cancelled_at = ?
+         SET status = 'Cancelled', cancelled_by = ?, cancelled_at = ?,
+             cancellation_reason = ?
          WHERE enrollment_id = ? AND status = 'Active'`
       )
-      .bind(cancelledBy, cancelledAt, id)
+      .bind(cancelledBy, cancelledAt, cancellationReason, id)
       .run();
     if ((result.meta?.changes ?? 0) === 0) {
       return null;

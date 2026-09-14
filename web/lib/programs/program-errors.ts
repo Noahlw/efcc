@@ -183,6 +183,16 @@ export class EnrollmentAccountInactiveError extends Error {
 }
 
 // oxlint-disable-next-line eslint/max-classes-per-file
+export class EnrollmentCancellationReasonRequiredError extends Error {
+  constructor() {
+    super(
+      "A reason is required when a manager cancels another member's enrollment."
+    );
+    this.name = "EnrollmentCancellationReasonRequiredError";
+  }
+}
+
+// oxlint-disable-next-line eslint/max-classes-per-file
 export class StaleEnrollmentRequestError extends Error {
   constructor(requestId: string) {
     super(`Enrollment request ${requestId} is stale; reload before deciding.`);

@@ -38,6 +38,7 @@ import {
   DuplicateProgramNameError,
   DuplicateScheduleExceptionError,
   EnrollmentAccountInactiveError,
+  EnrollmentCancellationReasonRequiredError,
   EnrollmentDecisionConflictError,
   EmptyPreviewPlanError,
   EnrollmentNotAllowedError,
@@ -4671,7 +4672,8 @@ export class DepartmentWorkspace {
     ctx: AuthorizationContext,
     programId: string,
     enrollmentId: string,
-    correlationId: string | null
+    correlationId: string | null,
+    cancellationReason: string | null = null
   ): Promise<EnrollmentRow> {
     const enrollment = await this.store.findEnrollmentById(enrollmentId);
     if (!enrollment || enrollment.program_id !== programId) {
@@ -4687,10 +4689,15 @@ export class DepartmentWorkspace {
       program.department_id,
       MODULE_KEY.ENROLLMENT
     );
+    const reason = cancellationReason?.trim() || null;
+    if (!isOwner && enrollment.status === "Active" && !reason) {
+      throw new EnrollmentCancellationReasonRequiredError();
+    }
     const cancelled = await this.store.cancelEnrollment(
       enrollmentId,
       ctx.actorUserId,
-      new Date().toISOString()
+      new Date().toISOString(),
+      reason
     );
     if (!cancelled) {
       await this.audit(
@@ -4715,6 +4722,19 @@ export class DepartmentWorkspace {
       cancelled,
       correlationId
     );
+    if (!isOwner) {
+      await this.store.createParticipantNotice({
+        notice_id: crypto.randomUUID(),
+        member_user_id: enrollment.member_user_id,
+        kind: "program",
+        title: "課程報名已被取消",
+        body: `你在「${program.name}」的報名已被管理員取消。原因：${reason}`,
+        program_id: programId,
+        event_id: null,
+        read_at: null,
+        created_at: Date.now(),
+      });
+    }
     return cancelled;
   }
 }

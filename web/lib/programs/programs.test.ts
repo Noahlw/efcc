@@ -6188,7 +6188,8 @@ async function listEnrollmentsFor(
 function cancelEnrollmentFor(
   access: string,
   programId: string,
-  enrollmentId: string
+  enrollmentId: string,
+  reason?: string
 ): Promise<Response> {
   return worker.fetch(
     programsRequest(
@@ -6200,7 +6201,7 @@ function cancelEnrollmentFor(
           Cookie: `${ACCESS_COOKIE_NAME}=${access}`,
           "Content-Type": "application/json",
         },
-        body: {},
+        body: reason === undefined ? {} : { reason },
       }
     ),
     testEnv()
@@ -7091,7 +7092,8 @@ describe("PRG-03: enrollments", () => {
     const managerCancel = await cancelEnrollmentFor(
       adminAccess,
       managerOnlyId,
-      carolEnrollment.enrollment_id
+      carolEnrollment.enrollment_id,
+      "課程安排調整"
     );
     assert.strictEqual(managerCancel.status, 200);
   });
@@ -7133,6 +7135,94 @@ describe("PRG-03: enrollments", () => {
       .bind(cancelledId)
       .first<{ status: string }>();
     assert.strictEqual(oldRow?.status, "Cancelled", "old record never reopens");
+  });
+
+  test("ENR-6 manager cancellation requires and preserves a reason, notice, and audit history", async () => {
+    const enrolled = await assistedEnrollFor(
+      adminAccess,
+      managerOnlyId,
+      "U003"
+    );
+    assert.strictEqual(enrolled.status, 201);
+    const enrolledBody = (await assertCorrelated(enrolled)) as {
+      data: { enrollment: { enrollment_id: string } };
+    };
+
+    const missingReason = await cancelEnrollmentFor(
+      adminAccess,
+      managerOnlyId,
+      enrolledBody.data.enrollment.enrollment_id
+    );
+    assert.strictEqual(missingReason.status, 422);
+    const missingReasonProblem = await problemOf(missingReason);
+    assert.strictEqual(missingReasonProblem.code, "VALIDATION");
+
+    const cancelled = await cancelEnrollmentFor(
+      adminAccess,
+      managerOnlyId,
+      enrolledBody.data.enrollment.enrollment_id,
+      "本季小組安排調整"
+    );
+    assert.strictEqual(cancelled.status, 200);
+    const cancelledBody = (await assertCorrelated(cancelled)) as {
+      data: {
+        enrollment: {
+          status: string;
+          cancellation_reason: string;
+        };
+      };
+    };
+    assert.strictEqual(cancelledBody.data.enrollment.status, "Cancelled");
+    assert.strictEqual(
+      cancelledBody.data.enrollment.cancellation_reason,
+      "本季小組安排調整"
+    );
+
+    const stored = await testDb()
+      .prepare(
+        "SELECT cancellation_reason FROM enrollments WHERE enrollment_id = ?"
+      )
+      .bind(enrolledBody.data.enrollment.enrollment_id)
+      .first<{ cancellation_reason: string }>();
+    assert.strictEqual(stored?.cancellation_reason, "本季小組安排調整");
+
+    const audit = await testDb()
+      .prepare(
+        `SELECT new_value_json FROM audit_events
+         WHERE action = 'ENROLLMENT_CANCEL' AND outcome = 'SUCCESS'
+           AND entity_id = ? ORDER BY inserted_at DESC LIMIT 1`
+      )
+      .bind(enrolledBody.data.enrollment.enrollment_id)
+      .first<{ new_value_json: string }>();
+    assert.ok(audit);
+    assert.strictEqual(
+      JSON.parse(audit.new_value_json).cancellation_reason,
+      "本季小組安排調整"
+    );
+
+    const carolMemberAccess = await accessCookieFor("carol", "carol-secret");
+    const notices = await worker.fetch(
+      programsRequest("/api/v1/programs/notices", {
+        headers: {
+          Origin: HOST,
+          Cookie: `${ACCESS_COOKIE_NAME}=${carolMemberAccess}`,
+        },
+      }),
+      testEnv()
+    );
+    assert.strictEqual(notices.status, 200);
+    const noticesBody = (await assertCorrelated(notices)) as {
+      data: {
+        notices: { program_id: string | null; title: string; body: string }[];
+      };
+    };
+    const cancellationNotice = noticesBody.data.notices.find(
+      (notice) =>
+        notice.program_id === managerOnlyId &&
+        notice.title === "課程報名已被取消"
+    );
+    assert.ok(cancellationNotice);
+    assert.match(cancellationNotice.body, /本季小組安排調整/u);
   });
 
   test("ENR-6 members see their own rows; managers see all; Unlisted is invisible to members", async () => {

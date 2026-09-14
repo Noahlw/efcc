@@ -1115,7 +1115,7 @@ describe(ProgramWorkspace, () => {
     await user.type(name, "外部連結未儲存名稱");
 
     const beforeUnload = new Event("beforeunload", { cancelable: true });
-    expect(window.dispatchEvent(beforeUnload)).toBe(false);
+    expect(window.dispatchEvent(beforeUnload)).toBeFalsy();
     await user.click(screen.getByRole("link", { name: "模式" }));
     await user.click(screen.getByRole("link", { name: "首頁" }));
     expect(modeClick).not.toHaveBeenCalled();
@@ -1142,7 +1142,7 @@ describe(ProgramWorkspace, () => {
     const cleanBeforeUnload = new Event("beforeunload", {
       cancelable: true,
     });
-    expect(window.dispatchEvent(cleanBeforeUnload)).toBe(true);
+    expect(window.dispatchEvent(cleanBeforeUnload)).toBeTruthy();
 
     await user.clear(name);
     await user.type(name, "卸載前未儲存名稱");
@@ -1152,7 +1152,7 @@ describe(ProgramWorkspace, () => {
     const unmountedBeforeUnload = new Event("beforeunload", {
       cancelable: true,
     });
-    expect(window.dispatchEvent(unmountedBeforeUnload)).toBe(true);
+    expect(window.dispatchEvent(unmountedBeforeUnload)).toBeTruthy();
   });
 
   test("passes through modified, new-tab, download, and hash links while dirty", async () => {
@@ -1286,7 +1286,7 @@ describe(ProgramWorkspace, () => {
     const cleanBeforeUnload = new Event("beforeunload", {
       cancelable: true,
     });
-    expect(window.dispatchEvent(cleanBeforeUnload)).toBe(true);
+    expect(window.dispatchEvent(cleanBeforeUnload)).toBeTruthy();
   });
 
   test("hides identity access without an authorized Account Directory destination", async () => {
@@ -1510,6 +1510,88 @@ describe("ENR-01 participants workspace", () => {
     ).not.toBeInTheDocument();
   });
 
+  test("reviews selected requests and preserves a successful approval beside a stale item", async () => {
+    mockWorkspace();
+    const secondRequest: EnrollmentRequest = {
+      ...request,
+      request_id: "request-2",
+      member_user_id: "member-3",
+      member_name: "王小明",
+    };
+    const approvedEnrollment: Enrollment = {
+      ...enrollment,
+      enrollment_id: "enrollment-approved",
+      member_user_id: request.member_user_id,
+      request_id: request.request_id,
+      member_name: request.member_name,
+    };
+    mocks.listEnrollmentSnapshot
+      .mockResolvedValueOnce({
+        requests: [request, secondRequest],
+        enrollments: [],
+      })
+      .mockResolvedValueOnce({
+        requests: [{ ...request, status: "Approved" }, secondRequest],
+        enrollments: [approvedEnrollment],
+      });
+    const decisions: unknown[][] = [];
+    mocks.decideEnrollmentRequest.mockImplementation(
+      async (...args: unknown[]) => {
+        decisions.push(args);
+        if (args[1] === secondRequest.request_id) {
+          throw new RpcError({
+            code: "STALE",
+            status: 409,
+            detail: "request changed",
+          });
+        }
+        return {
+          request: { ...request, status: "Approved" },
+          enrollment: approvedEnrollment,
+        };
+      }
+    );
+
+    render(
+      <ProgramWorkspace
+        programId="program-1"
+        task="participants"
+        onBack={vi.fn()}
+        onTaskChange={vi.fn()}
+      />
+    );
+
+    const firstSelection = await screen.findByRole("checkbox", {
+      name: /選取.*陳同工/u,
+    });
+    const secondSelection = screen.getByRole("checkbox", {
+      name: /選取.*王小明/u,
+    });
+    await userEvent.click(firstSelection);
+    await userEvent.click(secondSelection);
+    expect(screen.getByText("已選 2 位")).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "檢視所選" }));
+    const review = screen.getByRole("alertdialog", {
+      name: "確認核准所選報名",
+    });
+    expect(review).toHaveTextContent("陳同工");
+    expect(review).toHaveTextContent("王小明");
+    await userEvent.click(screen.getByRole("button", { name: "確認核准" }));
+
+    await waitFor(() => expect(decisions).toHaveLength(2));
+    expect(decisions[0]?.[1]).toBe(request.request_id);
+    expect(decisions[1]?.[1]).toBe(secondRequest.request_id);
+    expect(decisions[0]?.[5]).toStrictEqual(expect.any(String));
+    expect(decisions[1]?.[5]).toStrictEqual(expect.any(String));
+    expect(decisions[0]?.[5]).not.toBe(decisions[1]?.[5]);
+    expect(screen.getByText("已核准")).toBeInTheDocument();
+    expect(
+      screen.getByText(COPY.programs.workspaceParticipantsStale)
+    ).toBeInTheDocument();
+    expect(screen.queryByText("全部完成")).not.toBeInTheDocument();
+  });
+
   test("cancels an active enrollment and renders refreshed cancellation history", async () => {
     mockWorkspace();
     const cancelledEnrollment: Enrollment = {
@@ -1547,12 +1629,23 @@ describe("ENR-01 participants workspace", () => {
     await userEvent.click(
       screen.getByRole("button", { name: COPY.programs.cancelEnrollment })
     );
+    const dialog = await screen.findByRole("alertdialog", {
+      name: "取消成員報名？",
+    });
+    await userEvent.type(
+      within(dialog).getByRole("textbox", { name: "取消原因" }),
+      "課程安排調整"
+    );
+    await userEvent.click(
+      within(dialog).getByRole("button", { name: "確認取消" })
+    );
 
     await waitFor(() =>
       expect(mocks.cancelEnrollment).toHaveBeenCalledWith(
         "program-1",
         "enrollment-1",
-        expect.any(String)
+        expect.any(String),
+        "課程安排調整"
       )
     );
     await expect(
@@ -1605,6 +1698,16 @@ describe("ENR-01 participants workspace", () => {
     await userEvent.click(
       screen.getByRole("button", { name: COPY.programs.cancelEnrollment })
     );
+    const dialog = await screen.findByRole("alertdialog", {
+      name: "取消成員報名？",
+    });
+    await userEvent.type(
+      within(dialog).getByRole("textbox", { name: "取消原因" }),
+      "名單修訂"
+    );
+    await userEvent.click(
+      within(dialog).getByRole("button", { name: "確認取消" })
+    );
 
     await expect(
       screen.findByText(COPY.programs.workspaceParticipantsConflict)
@@ -1652,6 +1755,16 @@ describe("ENR-01 participants workspace", () => {
     );
     await userEvent.click(
       screen.getByRole("button", { name: COPY.programs.cancelEnrollment })
+    );
+    const dialog = await screen.findByRole("alertdialog", {
+      name: "取消成員報名？",
+    });
+    await userEvent.type(
+      within(dialog).getByRole("textbox", { name: "取消原因" }),
+      "回應逾時重試"
+    );
+    await userEvent.click(
+      within(dialog).getByRole("button", { name: "確認取消" })
     );
     const error = await screen.findByRole("alert");
     await userEvent.click(
@@ -1703,6 +1816,16 @@ describe("ENR-01 participants workspace", () => {
     );
     await userEvent.click(
       screen.getByRole("button", { name: COPY.programs.cancelEnrollment })
+    );
+    const dialog = await screen.findByRole("alertdialog", {
+      name: "取消成員報名？",
+    });
+    await userEvent.type(
+      within(dialog).getByRole("textbox", { name: "取消原因" }),
+      "名單修訂"
+    );
+    await userEvent.click(
+      within(dialog).getByRole("button", { name: "確認取消" })
     );
     await expect(
       screen.findByText(COPY.programs.workspaceParticipantsRefreshFailed)

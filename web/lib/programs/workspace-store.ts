@@ -474,6 +474,8 @@ export interface EnrollmentRow {
   enrolled_at: string;
   cancelled_at: string | null;
   cancelled_by: string | null;
+  /** Required for manager cancellation; null for self-exit or uncancelled rows. */
+  cancellation_reason?: string | null;
   created_by: string | null;
   created_at: string;
   member_name?: string;
@@ -809,7 +811,8 @@ export interface WorkspaceStore {
   cancelEnrollment: (
     id: string,
     cancelledBy: string,
-    cancelledAt: string
+    cancelledAt: string,
+    cancellationReason?: string | null
   ) => Promise<EnrollmentRow | null>;
   listProgramIdentityAssignments: (
     programId: string

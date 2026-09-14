@@ -34,6 +34,7 @@ import {
   DuplicateProgramNameError,
   DuplicateScheduleExceptionError,
   EnrollmentAccountInactiveError,
+  EnrollmentCancellationReasonRequiredError,
   EnrollmentDecisionConflictError,
   EmptyPreviewPlanError,
   EnrollmentNotAllowedError,
@@ -217,6 +218,7 @@ function mapWorkspaceError(error: unknown, requestId: string): Response | null {
     error instanceof InvalidProgramLifecycleError ||
     error instanceof InvalidModuleKeyError ||
     error instanceof EnrollmentNotAllowedError ||
+    error instanceof EnrollmentCancellationReasonRequiredError ||
     error instanceof ScheduleRuleNotApplicableError ||
     error instanceof NoScheduleRulesError ||
     error instanceof EmptyPreviewPlanError
@@ -2482,7 +2484,7 @@ export async function handleEventUpdate(
   }
   const parseOptionalText = (value: unknown, field: string) => {
     if (value === undefined) {
-      return undefined;
+      return;
     }
     if (value === null) {
       return null;
@@ -2865,6 +2867,14 @@ export async function handleCancelEnrollment(
   if (auth instanceof Response) {
     return auth;
   }
+  const body = await parseJson<{ reason?: unknown }>(request);
+  if (body === null) {
+    return validation(requestId, "Body must be JSON.");
+  }
+  const reason = typeof body.reason === "string" ? body.reason.trim() : null;
+  if (reason !== null && reason.length > 500) {
+    return validation(requestId, "reason must be 500 characters or fewer.");
+  }
   const { workspace } = await getModule(env);
   const existing = await workspace.getEnrollment(
     authorizationContextFor(auth.account),
@@ -2881,7 +2891,8 @@ export async function handleCancelEnrollment(
       authorizationContextFor(auth.account),
       programId,
       enrollmentId,
-      correlationId
+      correlationId,
+      reason
     );
     return jsonResponse(200, { enrollment: row }, requestId);
   } catch (error) {

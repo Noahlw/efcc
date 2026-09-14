@@ -440,6 +440,7 @@ export interface Enrollment {
   enrolled_at: string;
   cancelled_at: string | null;
   cancelled_by: string | null;
+  cancellation_reason?: string | null;
   created_by: string | null;
   created_at: string;
   member_name?: string;
@@ -720,7 +721,8 @@ export function decideEnrollmentRequest(
   requestId: string,
   action: EnrollmentDecision,
   note?: string,
-  requestVersion?: number
+  requestVersion?: number,
+  idempotencyKey?: string
 ): Promise<{
   request: EnrollmentRequest;
   enrollment: Enrollment | null;
@@ -732,7 +734,8 @@ export function decideEnrollmentRequest(
       action,
       note: note?.trim() ? note.trim() : null,
       request_version: requestVersion ?? null,
-    }
+    },
+    { idempotencyKey }
   );
 }
 
@@ -770,12 +773,13 @@ export function listEnrollments(
 export function cancelEnrollment(
   programId: string,
   enrollmentId: string,
-  idempotencyKey?: string
+  idempotencyKey?: string,
+  cancellationReason?: string | null
 ): Promise<{ enrollment: Enrollment }> {
   return programsFetch(
     `/api/v1/programs/${programId}/enrollments/${enrollmentId}/cancel`,
     "POST",
-    {},
+    { reason: cancellationReason?.trim() || null },
     { idempotencyKey }
   );
 }

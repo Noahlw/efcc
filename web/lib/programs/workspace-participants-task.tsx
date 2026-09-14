@@ -2,10 +2,21 @@
 
 import { X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { FormEvent } from "react";
+import type { FormEvent, MouseEvent } from "react";
 
 import { Alert } from "@/components/ui/alert";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import {
   Sheet,
@@ -16,6 +27,7 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
+import { Textarea } from "@/components/ui/textarea";
 import { RpcError } from "@/lib/api";
 import { COPY, errorCopyFor } from "@/lib/copy";
 import { announce } from "@/lib/live-region";
@@ -55,7 +67,65 @@ type ParticipantFailure = "forbidden" | "stale" | "conflict" | "server";
 interface CancelRetry {
   enrollmentId: string;
   idempotencyKey: string;
+  reason: string;
 }
+
+type ApprovalItemStatus =
+  | "queued"
+  | "processing"
+  | "approved"
+  | "stale"
+  | "denied"
+  | "already_processed"
+  | "error";
+
+interface ApprovalRunItem {
+  request: EnrollmentRequest;
+  status: ApprovalItemStatus;
+  message?: string;
+}
+
+interface ApprovalRun {
+  items: ApprovalRunItem[];
+}
+
+const APPROVAL_COPY = {
+  searchLabel: "搜尋待審批報名",
+  searchPlaceholder: "姓名、用戶名稱或成員 ID",
+  noSearchMatches: "找不到符合的待審批報名。",
+  selectVisible: "選取目前顯示的待審批報名",
+  select: "選取",
+  deselect: "取消選取",
+  selected: (count: number) => `已選 ${count} 位`,
+  reviewSelected: "檢視所選",
+  clear: "清除",
+  selectedList: "所選報名",
+  reviewTitle: "確認核准所選報名",
+  reviewBody: (count: number) =>
+    `你選擇了 ${count} 位成員。系統會逐一核准，個別結果會保留。`,
+  confirmApprove: "確認核准",
+  processing: (completed: number, total: number) =>
+    `處理中 ${completed}/${total} 項`,
+  complete: "全部完成",
+  partial: (completed: number, total: number, unresolved: number) =>
+    `已處理 ${completed}/${total} 項，仍有 ${unresolved} 項未完成。請重新整理後繼續。`,
+  queued: "等待處理",
+  processingItem: "處理中",
+  approved: "已核准",
+  stale: "資料已更新",
+  denied: "未獲授權",
+  alreadyProcessed: "已處理",
+  error: "未完成",
+  details: "查看詳情",
+  hideDetails: "收起詳情",
+  managerCancelTitle: "取消成員報名？",
+  managerCancelBody: (member: string) =>
+    `你即將取消 ${member} 的課程報名。取消後會保留報名歷史，並通知成員。`,
+  managerCancelReason: "取消原因",
+  managerCancelReasonPlaceholder: "請輸入取消原因",
+  managerCancelReasonRequired: "取消成員報名前必須填寫原因。",
+  managerCancelConfirm: "確認取消",
+} as const;
 
 type ParticipantsState =
   | { kind: "loading" }
@@ -104,6 +174,77 @@ function participantIssue(error: unknown): {
         : COPY.error.networkError,
   };
 }
+
+function memberLabel(
+  member: Pick<
+    EnrollmentRequest,
+    "member_name" | "member_username" | "member_user_id"
+  >
+): string {
+  return member.member_name ?? member.member_username ?? member.member_user_id;
+}
+
+function approvalStatusTone(
+  status: ApprovalItemStatus
+): "success" | "pending" | "accent" | "info" | "neutral" | "danger" {
+  if (status === "approved") {
+    return "success";
+  }
+  if (status === "processing") {
+    return "accent";
+  }
+  if (status === "stale") {
+    return "pending";
+  }
+  if (status === "denied" || status === "error") {
+    return "danger";
+  }
+  return "neutral";
+}
+
+function approvalStatusMessage(status: ApprovalItemStatus): string {
+  if (status === "queued") {
+    return APPROVAL_COPY.queued;
+  }
+  if (status === "processing") {
+    return APPROVAL_COPY.processingItem;
+  }
+  if (status === "approved") {
+    return APPROVAL_COPY.approved;
+  }
+  if (status === "stale") {
+    return APPROVAL_COPY.stale;
+  }
+  if (status === "denied") {
+    return APPROVAL_COPY.denied;
+  }
+  if (status === "already_processed") {
+    return APPROVAL_COPY.alreadyProcessed;
+  }
+  return APPROVAL_COPY.error;
+}
+
+function approvalError(error: unknown): {
+  status: ApprovalItemStatus;
+  message: string;
+} {
+  const issue = participantIssue(error);
+  if (issue.failure === "stale") {
+    return { status: "stale", message: issue.message };
+  }
+  if (issue.failure === "forbidden") {
+    return { status: "denied", message: issue.message };
+  }
+  if (issue.failure === "conflict") {
+    return { status: "already_processed", message: issue.message };
+  }
+  return { status: "error", message: issue.message };
+}
+
+function approvalRetryable(status: ApprovalItemStatus): boolean {
+  return status === "stale" || status === "denied" || status === "error";
+}
+
 function isAmbiguousCancelError(error: unknown): boolean {
   if (!(error instanceof RpcError)) {
     return true;
@@ -130,11 +271,12 @@ function requestStatusLabel(status: EnrollmentRequest["status"]): string {
   return COPY.programs.requestWithdrawn;
 }
 
+// oxlint-disable-next-line eslint/complexity -- this task owns selection, per-item approval, cancellation, and recovery states.
 export const ParticipantsTask = () => {
   const { program, onAttentionRefresh } = useWorkspaceTaskContext();
   const programId = program.program_id;
   const canManage = program.capabilities.manage;
-  const { state, run, retry } = useAsyncResource<
+  const { state, run, refresh, retry } = useAsyncResource<
     { requests: EnrollmentRequest[]; enrollments: Enrollment[] },
     ParticipantsState
   >(
@@ -166,6 +308,20 @@ export const ParticipantsTask = () => {
   const [notice, setNotice] = useState<string | null>(null);
   const [refreshingAction, setRefreshingAction] = useState<string | null>(null);
   const [cancelRetry, setCancelRetry] = useState<CancelRetry | null>(null);
+  const [cancelTarget, setCancelTarget] = useState<Enrollment | null>(null);
+  const [cancelReason, setCancelReason] = useState("");
+  const [cancelReasonError, setCancelReasonError] = useState<string | null>(
+    null
+  );
+  const [pendingQuery, setPendingQuery] = useState("");
+  const [selectedRequestIds, setSelectedRequestIds] = useState<string[]>([]);
+  const [expandedRequestIds, setExpandedRequestIds] = useState<string[]>([]);
+  const [approvalReviewOpen, setApprovalReviewOpen] = useState(false);
+  const [approvalBusy, setApprovalBusy] = useState(false);
+  const [approvalRun, setApprovalRun] = useState<ApprovalRun | null>(null);
+  const [approvalRefreshError, setApprovalRefreshError] = useState<
+    string | null
+  >(null);
   const [assistedBusy, setAssistedBusy] = useState(false);
   const [assistedError, setAssistedError] = useState<string | null>(null);
   const [addParticipantOpen, setAddParticipantOpen] = useState(false);
@@ -199,6 +355,7 @@ export const ParticipantsTask = () => {
     busyRequestId !== null ||
     busyEnrollmentId !== null ||
     assistedBusy ||
+    approvalBusy ||
     refreshingAction !== null;
 
   useEffect(() => {
@@ -214,6 +371,39 @@ export const ParticipantsTask = () => {
       setNotice(null);
     }
   }, [refreshSuccess, refreshingAction, state]);
+
+  useEffect(() => {
+    if (!approvalRun || approvalBusy || state.kind !== "ready") {
+      return;
+    }
+    const latestById = new Map(
+      state.requests.map((request) => [request.request_id, request])
+    );
+    let changed = false;
+    const reconciledItems = approvalRun.items.map((item) => {
+      if (!approvalRetryable(item.status)) {
+        return item;
+      }
+      const latest = latestById.get(item.request.request_id);
+      if (latest && latest.status !== "Pending") {
+        changed = true;
+        return {
+          ...item,
+          status: "already_processed" as const,
+          message: APPROVAL_COPY.alreadyProcessed,
+        };
+      }
+      return item;
+    });
+    if (changed) {
+      setApprovalRun({ items: reconciledItems });
+    }
+    setSelectedRequestIds((current) =>
+      current.filter(
+        (requestId) => latestById.get(requestId)?.status === "Pending"
+      )
+    );
+  }, [approvalBusy, approvalRun, state]);
 
   const queue = useMemo(() => {
     const snapshot =
@@ -260,6 +450,143 @@ export const ParticipantsTask = () => {
     };
   }, [state]);
 
+  const visiblePending = useMemo(() => {
+    if (!queue) {
+      return [];
+    }
+    const query = pendingQuery.trim().toLocaleLowerCase();
+    if (!query) {
+      return queue.pending;
+    }
+    return queue.pending.filter((request) =>
+      [request.member_name, request.member_username, request.member_user_id]
+        .filter((value): value is string => Boolean(value))
+        .some((value) => value.toLocaleLowerCase().includes(query))
+    );
+  }, [pendingQuery, queue]);
+
+  const selectedPendingRequests = useMemo(() => {
+    if (!queue) {
+      return [];
+    }
+    const selected = new Set(selectedRequestIds);
+    return queue.pending.filter((request) => selected.has(request.request_id));
+  }, [queue, selectedRequestIds]);
+
+  const toggleRequestSelection = (requestId: string, selected: boolean) => {
+    setSelectedRequestIds((current) => {
+      if (selected) {
+        return current.includes(requestId) ? current : [...current, requestId];
+      }
+      return current.filter((id) => id !== requestId);
+    });
+  };
+
+  const toggleVisibleSelection = (selected: boolean) => {
+    const visibleIds = visiblePending.map((request) => request.request_id);
+    setSelectedRequestIds((current) => {
+      const next = new Set(current);
+      for (const requestId of visibleIds) {
+        if (selected) {
+          next.add(requestId);
+        } else {
+          next.delete(requestId);
+        }
+      }
+      return [...next];
+    });
+  };
+
+  const updateApprovalRun = (items: ApprovalRunItem[]) => {
+    setApprovalRun({ items });
+  };
+
+  const handleApproveSelected = async () => {
+    if (selectedPendingRequests.length === 0) {
+      return;
+    }
+    const items: ApprovalRunItem[] = selectedPendingRequests.map((request) => ({
+      request,
+      status: "queued",
+    }));
+    setApprovalRun({ items });
+    setApprovalReviewOpen(false);
+    setApprovalBusy(true);
+    setApprovalRefreshError(null);
+    setSelectedRequestIds([]);
+    setNotice(null);
+    const results = items.map((item) => ({ ...item }));
+    try {
+      for (let index = 0; index < results.length; index += 1) {
+        const item = results[index];
+        if (!item) {
+          continue;
+        }
+        results[index] = { ...item, status: "processing", message: undefined };
+        updateApprovalRun([...results]);
+        const idempotencyKey = crypto.randomUUID();
+        try {
+          // Each request must settle before the next one starts so progress,
+          // conflicts, and retry keys remain independently attributable.
+          // oxlint-disable-next-line eslint/no-await-in-loop -- sequential approval is an explicit product invariant.
+          await decideEnrollmentRequest(
+            programId,
+            item.request.request_id,
+            "Approved",
+            undefined,
+            item.request.request_version,
+            idempotencyKey
+          );
+          results[index] = { ...item, status: "approved", message: undefined };
+          onAttentionRefresh();
+        } catch (error) {
+          if (redirectToLoginIfRequired(error)) {
+            results[index] = {
+              ...item,
+              status: "denied",
+              message: APPROVAL_COPY.denied,
+            };
+          } else {
+            const failure = approvalError(error);
+            results[index] = { ...item, ...failure };
+          }
+        }
+        updateApprovalRun([...results]);
+      }
+      setSelectedRequestIds(
+        results
+          .filter((item) => approvalRetryable(item.status))
+          .map((item) => item.request.request_id)
+      );
+      const unresolved = results.filter((item) =>
+        approvalRetryable(item.status)
+      );
+      if (unresolved.length === 0) {
+        setNotice(APPROVAL_COPY.complete);
+        announce(APPROVAL_COPY.complete);
+      } else {
+        const message = APPROVAL_COPY.partial(
+          results.length - unresolved.length,
+          results.length,
+          unresolved.length
+        );
+        setNotice(message);
+        announce(message);
+      }
+      try {
+        await refresh();
+      } catch (error) {
+        setApprovalRefreshError(
+          error instanceof RpcError
+            ? errorCopyFor(error.problem.code, error.problem.detail)
+            : COPY.error.networkError
+        );
+      }
+    } finally {
+      setApprovalBusy(false);
+    }
+  };
+
   const handleDecision = async (
     request: EnrollmentRequest,
     action: "Approved" | "Rejected"
@@ -277,6 +604,9 @@ export const ParticipantsTask = () => {
         action,
         notes[request.request_id],
         request.request_version
+      );
+      setSelectedRequestIds((current) =>
+        current.filter((id) => id !== request.request_id)
       );
       onAttentionRefresh();
       setRefreshSuccess(COPY.programs.decisionMade);
@@ -298,6 +628,7 @@ export const ParticipantsTask = () => {
   };
   const handleCancelEnrollment = async (
     enrollment: Enrollment,
+    reason: string,
     retryKey?: string
   ) => {
     const idempotencyKey =
@@ -308,6 +639,7 @@ export const ParticipantsTask = () => {
     setCancelRetry({
       enrollmentId: enrollment.enrollment_id,
       idempotencyKey,
+      reason,
     });
     setBusyEnrollmentId(enrollment.enrollment_id);
     setNotice(null);
@@ -319,7 +651,8 @@ export const ParticipantsTask = () => {
       await cancelEnrollment(
         programId,
         enrollment.enrollment_id,
-        idempotencyKey
+        idempotencyKey,
+        reason
       );
       onAttentionRefresh();
       setRefreshSuccess(COPY.programs.enrollmentCancelledNotice);
@@ -342,6 +675,32 @@ export const ParticipantsTask = () => {
     } finally {
       setBusyEnrollmentId(null);
     }
+  };
+
+  const openCancelDialog = (enrollment: Enrollment) => {
+    setCancelTarget(enrollment);
+    setCancelReason(
+      cancelRetry?.enrollmentId === enrollment.enrollment_id
+        ? cancelRetry.reason
+        : ""
+    );
+    setCancelReasonError(null);
+  };
+
+  const confirmCancelEnrollment = (event: MouseEvent<HTMLButtonElement>) => {
+    const enrollment = cancelTarget;
+    const reason = cancelReason.trim();
+    if (!enrollment) {
+      return;
+    }
+    if (!reason) {
+      event.preventDefault();
+      setCancelReasonError(APPROVAL_COPY.managerCancelReasonRequired);
+      return;
+    }
+    setCancelTarget(null);
+    setCancelReasonError(null);
+    void handleCancelEnrollment(enrollment, reason);
   };
 
   const handleAssisted = async (event: FormEvent<HTMLFormElement>) => {
@@ -377,6 +736,7 @@ export const ParticipantsTask = () => {
   const refreshParticipants = () => {
     setActionErrors({});
     setNotice(null);
+    setApprovalRefreshError(null);
     setRefreshSuccess(COPY.programs.workspaceParticipantsRefreshSuccess);
     setRefreshingAction("refresh");
     void run();
@@ -388,83 +748,200 @@ export const ParticipantsTask = () => {
         <ScreenState kind="empty" title={COPY.programs.tabsEmpty.pending} />
       );
     }
+    const visibleIds = visiblePending.map((request) => request.request_id);
+    const selectedVisibleCount = visibleIds.filter((requestId) =>
+      selectedRequestIds.includes(requestId)
+    ).length;
+    const allVisibleSelected =
+      visibleIds.length > 0 && selectedVisibleCount === visibleIds.length;
     return (
-      <ScreenRowList aria-label={COPY.programs.requests}>
-        <ul className="m-0 grid min-w-0 list-none gap-0 p-0">
-          {queue.pending.map((request) => {
-            const member =
-              request.member_name ??
-              request.member_username ??
-              request.member_user_id;
-            return (
-              <li key={request.request_id} className="min-w-0">
-                <ScreenRow
-                  className="items-start flex-wrap"
-                  aria-busy={busyRequestId === request.request_id}
+      <div className="grid min-w-0 gap-3">
+        {canManage && (
+          <div className="grid min-w-0 gap-3 rounded-[var(--screen-radius-card)] border border-[var(--screen-line)] bg-[var(--screen-surface-soft)] p-3">
+            <ScreenField
+              htmlFor="participants-pending-search"
+              label={APPROVAL_COPY.searchLabel}
+            >
+              <Input
+                id="participants-pending-search"
+                className="border-[var(--screen-line-strong)] bg-[var(--screen-surface)] text-base"
+                type="search"
+                value={pendingQuery}
+                placeholder={APPROVAL_COPY.searchPlaceholder}
+                onChange={(event) => setPendingQuery(event.target.value)}
+                disabled={approvalBusy}
+              />
+            </ScreenField>
+            <div className="flex min-w-0 flex-wrap items-center gap-3">
+              <Checkbox
+                checked={
+                  allVisibleSelected
+                    ? true
+                    : selectedVisibleCount > 0
+                      ? "indeterminate"
+                      : false
+                }
+                aria-label={APPROVAL_COPY.selectVisible}
+                onCheckedChange={(checked) =>
+                  toggleVisibleSelection(checked === true)
+                }
+                disabled={approvalBusy || visibleIds.length === 0}
+              />
+              <span className="min-w-0 wrap-anywhere text-sm text-[var(--screen-muted)]">
+                {APPROVAL_COPY.selectVisible} ({selectedVisibleCount}/
+                {visibleIds.length})
+              </span>
+              {selectedPendingRequests.length > 0 && (
+                <span className="ml-auto min-w-0 wrap-anywhere text-sm font-semibold text-[var(--screen-ink)]">
+                  {APPROVAL_COPY.selected(selectedPendingRequests.length)}
+                </span>
+              )}
+            </div>
+            {selectedPendingRequests.length > 0 && (
+              <div className="flex min-w-0 flex-wrap items-center gap-[var(--screen-utility-gap)]">
+                <Button
+                  type="button"
+                  className="w-fit bg-[var(--screen-accent)] text-white hover:bg-[var(--screen-accent-deep)]"
+                  onClick={() => setApprovalReviewOpen(true)}
+                  disabled={mutationBusy}
                 >
-                  <ScreenRowMain className="basis-full">
-                    <ScreenRowTitle>{member}</ScreenRowTitle>
-                    <ScreenRowMeta>
-                      <ScreenStatus tone="pending">
-                        {requestStatusLabel(request.status)}
-                      </ScreenStatus>
-                      <span className="ml-2">
-                        {formatEventTime(request.submitted_at)}
-                      </span>
-                    </ScreenRowMeta>
-                  </ScreenRowMain>
-                  {canManage && (
-                    <div className="flex min-w-0 basis-full flex-wrap items-end gap-[var(--screen-utility-gap)]">
-                      <ScreenField
-                        className="min-w-[min(100%,18rem)] flex-1"
-                        htmlFor={`participants-note-${request.request_id}`}
-                        label={COPY.programs.decisionNote}
-                      >
-                        <Input
-                          id={`participants-note-${request.request_id}`}
-                          className="border-[var(--screen-line-strong)] bg-[var(--screen-surface)] text-base"
-                          type="text"
-                          value={notes[request.request_id] ?? ""}
-                          onChange={(event) =>
-                            setNotes((current) => ({
-                              ...current,
-                              [request.request_id]: event.target.value,
-                            }))
+                  {APPROVAL_COPY.reviewSelected}
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="w-fit border-[var(--screen-line-strong)] bg-transparent text-[var(--screen-ink)] hover:bg-[var(--screen-surface)]"
+                  onClick={() => setSelectedRequestIds([])}
+                  disabled={mutationBusy}
+                >
+                  {APPROVAL_COPY.clear}
+                </Button>
+              </div>
+            )}
+          </div>
+        )}
+        {visiblePending.length === 0 ? (
+          <ScreenState kind="empty" title={APPROVAL_COPY.noSearchMatches} />
+        ) : (
+          <ScreenRowList aria-label={COPY.programs.requests}>
+            <ul className="m-0 grid min-w-0 list-none gap-0 p-0">
+              {visiblePending.map((request) => {
+                const member = memberLabel(request);
+                const selected = selectedRequestIds.includes(
+                  request.request_id
+                );
+                const expanded = expandedRequestIds.includes(
+                  request.request_id
+                );
+                return (
+                  <li key={request.request_id} className="min-w-0">
+                    <ScreenRow
+                      className="items-start flex-wrap"
+                      aria-busy={busyRequestId === request.request_id}
+                    >
+                      {canManage && (
+                        <Checkbox
+                          checked={selected}
+                          aria-label={`${selected ? APPROVAL_COPY.deselect : APPROVAL_COPY.select} ${member}`}
+                          onCheckedChange={(checked) =>
+                            toggleRequestSelection(
+                              request.request_id,
+                              checked === true
+                            )
                           }
                           disabled={mutationBusy}
                         />
-                      </ScreenField>
-                      <Button
-                        type="button"
-                        className="w-fit border-[var(--screen-success)] bg-transparent text-[var(--screen-success)] hover:bg-[var(--screen-success-surface)]"
-                        variant="outline"
-                        onClick={() => void handleDecision(request, "Approved")}
-                        disabled={mutationBusy}
-                      >
-                        {COPY.programs.approve}
-                      </Button>
-                      <Button
-                        type="button"
-                        className="w-fit border-[var(--screen-danger)] bg-transparent text-[var(--screen-danger)] hover:bg-[var(--screen-danger-surface)]"
-                        variant="outline"
-                        onClick={() => void handleDecision(request, "Rejected")}
-                        disabled={mutationBusy}
-                      >
-                        {COPY.programs.reject}
-                      </Button>
-                    </div>
-                  )}
-                  {actionErrors[request.request_id] && (
-                    <Alert className="basis-full" variant="destructive">
-                      {actionErrors[request.request_id]}
-                    </Alert>
-                  )}
-                </ScreenRow>
-              </li>
-            );
-          })}
-        </ul>
-      </ScreenRowList>
+                      )}
+                      <ScreenRowMain className="min-w-0 flex-1">
+                        <ScreenRowTitle>{member}</ScreenRowTitle>
+                        <ScreenRowMeta>
+                          <ScreenStatus tone="pending">
+                            {requestStatusLabel(request.status)}
+                          </ScreenStatus>
+                          <span className="ml-2">
+                            {formatEventTime(request.submitted_at)}
+                          </span>
+                        </ScreenRowMeta>
+                      </ScreenRowMain>
+                      {canManage && (
+                        <div className="flex min-w-0 basis-full flex-wrap items-center gap-[var(--screen-utility-gap)]">
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            className="w-fit text-[var(--screen-ink)] hover:bg-[var(--screen-surface-soft)]"
+                            aria-expanded={expanded}
+                            onClick={() =>
+                              setExpandedRequestIds((current) =>
+                                expanded
+                                  ? current.filter(
+                                      (id) => id !== request.request_id
+                                    )
+                                  : [...current, request.request_id]
+                              )
+                            }
+                            disabled={mutationBusy}
+                          >
+                            {expanded
+                              ? APPROVAL_COPY.hideDetails
+                              : APPROVAL_COPY.details}
+                          </Button>
+                          <Button
+                            type="button"
+                            className="w-fit border-[var(--screen-success)] bg-transparent text-[var(--screen-success)] hover:bg-[var(--screen-success-surface)]"
+                            variant="outline"
+                            onClick={() =>
+                              void handleDecision(request, "Approved")
+                            }
+                            disabled={mutationBusy}
+                          >
+                            {COPY.programs.approve}
+                          </Button>
+                          <Button
+                            type="button"
+                            className="w-fit border-[var(--screen-danger)] bg-transparent text-[var(--screen-danger)] hover:bg-[var(--screen-danger-surface)]"
+                            variant="outline"
+                            onClick={() =>
+                              void handleDecision(request, "Rejected")
+                            }
+                            disabled={mutationBusy}
+                          >
+                            {COPY.programs.reject}
+                          </Button>
+                        </div>
+                      )}
+                      {expanded && canManage && (
+                        <ScreenField
+                          className="basis-full"
+                          htmlFor={`participants-note-${request.request_id}`}
+                          label={COPY.programs.decisionNote}
+                        >
+                          <Textarea
+                            id={`participants-note-${request.request_id}`}
+                            className="border-[var(--screen-line-strong)] bg-[var(--screen-surface)] text-base"
+                            value={notes[request.request_id] ?? ""}
+                            onChange={(event) =>
+                              setNotes((current) => ({
+                                ...current,
+                                [request.request_id]: event.target.value,
+                              }))
+                            }
+                            disabled={mutationBusy}
+                          />
+                        </ScreenField>
+                      )}
+                      {actionErrors[request.request_id] && (
+                        <Alert className="basis-full" variant="destructive">
+                          {actionErrors[request.request_id]}
+                        </Alert>
+                      )}
+                    </ScreenRow>
+                  </li>
+                );
+              })}
+            </ul>
+          </ScreenRowList>
+        )}
+      </div>
     );
   };
 
@@ -519,7 +996,7 @@ export const ParticipantsTask = () => {
                         type="button"
                         className="w-fit border-[var(--screen-danger)] bg-transparent text-[var(--screen-danger)] hover:bg-[var(--screen-danger-surface)]"
                         variant="outline"
-                        onClick={() => void handleCancelEnrollment(enrollment)}
+                        onClick={() => openCancelDialog(enrollment)}
                         disabled={
                           mutationBusy ||
                           cancelRetry?.enrollmentId === enrollment.enrollment_id
@@ -541,6 +1018,7 @@ export const ParticipantsTask = () => {
                           onClick={() =>
                             void handleCancelEnrollment(
                               enrollment,
+                              cancelRetry.reason,
                               cancelRetry.idempotencyKey
                             )
                           }
@@ -625,6 +1103,75 @@ export const ParticipantsTask = () => {
     );
   };
 
+  const renderApprovalRun = () => {
+    if (approvalRun === null) {
+      return null;
+    }
+    const completed = approvalRun.items.filter(
+      ({ status }) => status !== "queued" && status !== "processing"
+    ).length;
+    const unresolved = approvalRun.items.filter(({ status }) =>
+      approvalRetryable(status)
+    ).length;
+    const progress = approvalBusy
+      ? APPROVAL_COPY.processing(completed, approvalRun.items.length)
+      : unresolved > 0
+        ? APPROVAL_COPY.partial(completed, approvalRun.items.length, unresolved)
+        : APPROVAL_COPY.complete;
+    return (
+      <section
+        className="grid min-w-0 gap-3 rounded-[var(--screen-radius-card)] border border-[var(--screen-line)] bg-[var(--screen-surface-soft)] p-3"
+        aria-label="報名審批結果"
+      >
+        <p
+          className="m-0 wrap-anywhere text-sm font-semibold text-[var(--screen-ink)]"
+          aria-live="polite"
+        >
+          {progress}
+        </p>
+        <ul
+          className="m-0 grid min-w-0 list-none gap-2 p-0"
+          aria-label={APPROVAL_COPY.selectedList}
+        >
+          {approvalRun.items.map((item) => (
+            <li
+              key={item.request.request_id}
+              className="flex min-w-0 flex-wrap items-start gap-2"
+            >
+              <span className="min-w-0 flex-1 wrap-anywhere text-sm text-[var(--screen-ink)]">
+                {memberLabel(item.request)}
+              </span>
+              <ScreenStatus tone={approvalStatusTone(item.status)}>
+                {approvalStatusMessage(item.status)}
+              </ScreenStatus>
+              {item.message && (
+                <span className="basis-full wrap-anywhere text-sm text-[var(--screen-muted)]">
+                  {item.message}
+                </span>
+              )}
+            </li>
+          ))}
+        </ul>
+        {approvalRefreshError !== null && (
+          <div className="flex min-w-0 flex-wrap items-center gap-[var(--screen-utility-gap)]">
+            <Alert tone="warning" announcement="polite">
+              {approvalRefreshError}
+            </Alert>
+            <Button
+              type="button"
+              variant="outline"
+              className="w-fit border-[var(--screen-line-strong)] bg-transparent text-[var(--screen-ink)] hover:bg-[var(--screen-surface)]"
+              onClick={refreshParticipants}
+              disabled={mutationBusy}
+            >
+              {COPY.programs.workspaceParticipantsRefresh}
+            </Button>
+          </div>
+        )}
+      </section>
+    );
+  };
+
   return (
     <ScreenSection
       title={COPY.programs.workspaceTaskParticipants}
@@ -654,6 +1201,7 @@ export const ParticipantsTask = () => {
           {notice}
         </Alert>
       )}
+      {renderApprovalRun()}
       {state.kind === "error" && lastReadyRef.current !== null && (
         <div className="flex min-w-0 flex-wrap items-center gap-[var(--screen-utility-gap)]">
           <Alert tone="warning" announcement="polite">
@@ -669,6 +1217,85 @@ export const ParticipantsTask = () => {
           </Button>
         </div>
       )}
+      <AlertDialog
+        open={approvalReviewOpen}
+        onOpenChange={setApprovalReviewOpen}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{APPROVAL_COPY.reviewTitle}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {APPROVAL_COPY.reviewBody(selectedPendingRequests.length)}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <ul
+            className="m-0 grid min-w-0 list-none gap-2 p-0"
+            aria-label={APPROVAL_COPY.selectedList}
+          >
+            {selectedPendingRequests.map((request) => (
+              <li
+                key={request.request_id}
+                className="min-w-0 wrap-anywhere text-sm text-[var(--screen-ink)]"
+              >
+                {memberLabel(request)}
+              </li>
+            ))}
+          </ul>
+          <AlertDialogFooter>
+            <AlertDialogCancel>{COPY.attention.close}</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => void handleApproveSelected()}
+              disabled={selectedPendingRequests.length === 0}
+            >
+              {APPROVAL_COPY.confirmApprove}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+      <AlertDialog
+        open={cancelTarget !== null}
+        onOpenChange={(open) => {
+          if (!open) {
+            setCancelTarget(null);
+            setCancelReasonError(null);
+          }
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {APPROVAL_COPY.managerCancelTitle}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {cancelTarget
+                ? APPROVAL_COPY.managerCancelBody(memberLabel(cancelTarget))
+                : ""}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <ScreenField
+            htmlFor="participants-manager-cancel-reason"
+            label={APPROVAL_COPY.managerCancelReason}
+          >
+            <Textarea
+              id="participants-manager-cancel-reason"
+              className="border-[var(--screen-line-strong)] bg-[var(--screen-surface)] text-base"
+              placeholder={APPROVAL_COPY.managerCancelReasonPlaceholder}
+              value={cancelReason}
+              onChange={(event) => setCancelReason(event.target.value)}
+              aria-invalid={cancelReasonError !== null}
+            />
+          </ScreenField>
+          {cancelReasonError !== null && (
+            <Alert variant="destructive">{cancelReasonError}</Alert>
+          )}
+          <AlertDialogFooter>
+            <AlertDialogCancel>{COPY.attention.close}</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmCancelEnrollment}>
+              {APPROVAL_COPY.managerCancelConfirm}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
       <Sheet open={addParticipantOpen} onOpenChange={setAddParticipantOpen}>
         <SheetContent
           side="bottom"
