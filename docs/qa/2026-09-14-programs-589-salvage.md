@@ -212,7 +212,8 @@ Canonical Programs browser, responsive, and W7 failures are blocking. Assertion,
 - Candidate-bound shell visual gate: **PASS — 2/2** at `402x874` and `360x800`, exact four-state shell set and 8 rows. Fresh generated manifest: `/private/tmp/efcc-589-visual-s4-c4d10c74/manifest.json`, SHA-256 `9dda5ca6726502c7167eaa00986dfd5add5c9f558cbe30f729d1c089a673ba20`; durable contact sheets are under `docs/qa/artifacts/programs-route-fidelity/c4d10c746432/`.
 - Direct Storybook computed-shell probe: **PASS** at both approval viewports. Mode switch measured background `rgb(255,255,255)`, border `rgb(226,221,213)`, circular radius, and `44x44`; notification measured transparent background/border, circular radius, and `44x44`; responsive overflow was `0`.
 - The standalone Phase-D management geometry probe remains a non-gate setup diagnostic: both bounded local Worker/Miniflare `createTestHarness`/D1 attempts stalled after build/bundle before assertions. No Phase-D assertion pass is claimed. Canonical browser, responsive, W7, direct Storybook, and visual gates completed independently.
-- Current state remains **MACHINE_GREEN / WAITING_INDEPENDENT_REVIEW**. Candidate-bound durable manifest, acceptance record, checksums, and the two contact sheets are the next evidence-only append; owner approval remains `PENDING`, and #590–#601 remain locked.
+- Candidate-bound durable manifest, acceptance record, checksums, and the two contact sheets were committed in evidence-only commit `f52dbe8ad9906d084645b043485c4143b9b10e11`; the production candidate remains `c4d10c7464325d548105e449f5be4614b026ff7b`. Post-commit checksums pass for all four listed artifacts.
+- Current state remains **MACHINE_GREEN / WAITING_INDEPENDENT_REVIEW**. Owner approval remains `PENDING`, and #590–#601 remain locked.
 
 ## S4 fresh-review working note
 
