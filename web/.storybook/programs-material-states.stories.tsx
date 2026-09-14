@@ -329,7 +329,13 @@ const participantProgramDetailRejectedPlay: Story["play"] = async ({
   await expect(
     canvas.queryByRole("button", { name: COPY.programs.reEnroll })
   ).toBeNull();
-  const back = canvas.getByRole("link", { name: COPY.programs.detailBack });
+  const back = canvasElement.querySelector(
+    '[data-route-header] a[data-screen-icon-button][href="/programs"]'
+  );
+  if (!(back instanceof HTMLElement)) {
+    throw new Error("participant detail Back link is not rendered");
+  }
+  await expect(back).toHaveAccessibleName(COPY.programs.detailBack);
   await clickAndCaptureHref(back, "/programs");
 };
 
