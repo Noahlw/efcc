@@ -6,8 +6,10 @@ import {
   CalendarDays,
   ChevronRight,
   Clock3,
+  Download,
   Eye,
   Pencil,
+  Printer,
   ShieldCheck,
   Users,
 } from "lucide-react";
@@ -16,6 +18,16 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { FormEvent, MouseEventHandler } from "react";
 
 import { Alert } from "@/components/ui/alert";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -33,14 +45,17 @@ import {
   createScheduleException,
   createScheduleRule,
   deleteScheduleException,
+  getProgramAttendanceArtifact,
   listScheduleExceptions,
   listScheduleRules,
   retireScheduleRule,
+  rotateProgramAttendanceArtifact,
   updateProgram,
   updateScheduleRule,
 } from "@/lib/programs/program-api";
 import type {
   Program,
+  ProgramAttendanceArtifact,
   ProgramPatch,
   ScheduleException,
   ScheduleRule,
@@ -51,6 +66,7 @@ import {
   isValidWallDate,
   WEEKDAY_LABELS,
 } from "@/lib/programs/recurrence";
+import { qrDataUrl } from "@/lib/qr";
 import {
   ScreenCard,
   ScreenEditor,
@@ -210,6 +226,186 @@ function attendanceFieldError(value: string): string | undefined {
     ? undefined
     : COPY.programs.settingsAttendanceValidation;
 }
+
+function programCheckInUrl(token: string): string {
+  const path = `/guest-check-in?program_token=${encodeURIComponent(token)}`;
+  return typeof window === "undefined"
+    ? path
+    : `${window.location.origin}${path}`;
+}
+
+function programArtifactFileName(programName: string): string {
+  const safeName = programName
+    .trim()
+    .replaceAll(/[^\p{L}\p{N}]+/gu, "-")
+    .replace(/^-+|-+$/gu, "")
+    .slice(0, 48);
+  return `${safeName || "program"}-qr.svg`;
+}
+
+const ProgramAttendanceQrCard = ({
+  artifact,
+  busy,
+  onRotate,
+}: {
+  artifact: ProgramAttendanceArtifact;
+  busy: boolean;
+  onRotate: () => void;
+}) => {
+  const [qr, setQr] = useState<string | null>(null);
+  const [rotateOpen, setRotateOpen] = useState(false);
+  const checkInUrl = programCheckInUrl(artifact.check_in_token);
+
+  useEffect(() => {
+    let active = true;
+    setQr(null);
+    void qrDataUrl(checkInUrl)
+      .then((dataUrl) => {
+        if (active) {
+          setQr(dataUrl);
+        }
+      })
+      .catch(() => {
+        if (active) {
+          setQr(null);
+        }
+      });
+    return () => {
+      active = false;
+    };
+  }, [checkInUrl]);
+
+  function downloadQr() {
+    if (!qr) {
+      return;
+    }
+    const link = document.createElement("a");
+    link.href = qr;
+    link.download = programArtifactFileName(artifact.program_name);
+    link.click();
+  }
+
+  function printSign() {
+    if (!qr) {
+      return;
+    }
+    const printWindow = window.open("", "_blank", "popup,width=640,height=720");
+    if (!printWindow) {
+      return;
+    }
+    const doc = printWindow.document;
+    doc.open();
+    doc.write(
+      "<!doctype html><html><head><title>EFCC Program QR</title></head><body></body></html>"
+    );
+    const style = doc.createElement("style");
+    style.textContent =
+      "body{font-family:system-ui,sans-serif;display:grid;place-items:center;min-height:100vh;margin:0;padding:32px;box-sizing:border-box;text-align:center}main{max-width:520px}img{display:block;width:min(100%,360px);height:auto;margin:24px auto}h1{font-size:32px;margin:0 0 12px}p{font-size:18px;line-height:1.5;margin:8px 0}@media print{body{padding:0}}";
+    doc.head.append(style);
+    const main = doc.createElement("main");
+    const title = doc.createElement("h1");
+    title.textContent = artifact.program_name;
+    const lead = doc.createElement("p");
+    lead.textContent = COPY.programs.settingsAttendanceQrLabel;
+    const image = doc.createElement("img");
+    image.src = qr;
+    image.alt = COPY.programs.settingsAttendanceQrLabel;
+    const instruction = doc.createElement("p");
+    instruction.textContent = COPY.programs.settingsAttendanceQrLead;
+    main.append(title, lead, image, instruction);
+    doc.body.append(main);
+    doc.close();
+    printWindow.focus();
+    printWindow.print();
+  }
+
+  return (
+    <ScreenCard
+      className="grid min-w-0 gap-3"
+      data-testid="program-attendance-qr"
+    >
+      <div className="grid min-w-0 gap-1">
+        <h3 className="m-0 wrap-anywhere text-base font-bold">
+          {COPY.programs.settingsAttendanceQrTitle}
+        </h3>
+        <p className="m-0 wrap-anywhere text-sm leading-6 text-[var(--screen-muted)]">
+          {COPY.programs.settingsAttendanceQrLead}
+        </p>
+      </div>
+      {qr ? (
+        <img
+          src={qr}
+          alt={COPY.programs.settingsAttendanceQrLabel}
+          className="mx-auto size-56 max-w-full rounded border border-[var(--screen-line)] bg-white p-2"
+        />
+      ) : (
+        <output
+          className="text-sm text-[var(--screen-muted)]"
+          aria-live="polite"
+        >
+          {COPY.programs.settingsAttendanceQrLoading}
+        </output>
+      )}
+      <p className="m-0 wrap-anywhere text-center text-sm font-semibold">
+        {artifact.program_name}
+      </p>
+      <div className="flex min-w-0 flex-wrap gap-[var(--screen-utility-gap)]">
+        <Button
+          type="button"
+          variant="outline"
+          className="w-fit"
+          disabled={!qr || busy}
+          onClick={downloadQr}
+        >
+          <Download aria-hidden="true" />
+          {COPY.programs.settingsAttendanceQrDownload}
+        </Button>
+        <Button
+          type="button"
+          variant="outline"
+          className="w-fit"
+          disabled={!qr || busy}
+          onClick={printSign}
+        >
+          <Printer aria-hidden="true" />
+          {COPY.programs.settingsAttendanceQrPrint}
+        </Button>
+        {artifact.can_rotate && (
+          <Button
+            type="button"
+            variant="outline"
+            className="w-fit border-[var(--screen-danger)] text-[var(--screen-danger)] hover:bg-[var(--screen-danger-surface)]"
+            disabled={busy}
+            onClick={() => setRotateOpen(true)}
+          >
+            {COPY.programs.settingsAttendanceQrRotate}
+          </Button>
+        )}
+      </div>
+      <AlertDialog open={rotateOpen} onOpenChange={setRotateOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {COPY.programs.settingsAttendanceQrRotateTitle}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {COPY.programs.settingsAttendanceQrRotateBody}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>
+              {COPY.programs.settingsAttendanceQrRotateCancel}
+            </AlertDialogCancel>
+            <AlertDialogAction onClick={onRotate}>
+              {COPY.programs.settingsAttendanceQrRotateConfirm}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </ScreenCard>
+  );
+};
+ProgramAttendanceQrCard.displayName = "ProgramAttendanceQrCard";
 
 function ruleValuesFrom(rule: ScheduleRule): RuleValues {
   return {
@@ -926,6 +1122,16 @@ export const ProgramSettings = ({
   const [confirmingPublishing, setConfirmingPublishing] = useState(false);
   const [confirmingEnrollment, setConfirmingEnrollment] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [attendanceArtifact, setAttendanceArtifact] =
+    useState<ProgramAttendanceArtifact | null>(null);
+  const [attendanceArtifactLoading, setAttendanceArtifactLoading] =
+    useState(false);
+  const [attendanceArtifactError, setAttendanceArtifactError] = useState<
+    string | null
+  >(null);
+  const [attendanceArtifactBusy, setAttendanceArtifactBusy] = useState(false);
+  const [attendanceArtifactReload, setAttendanceArtifactReload] = useState(0);
+  const attendanceRotationKey = useRef<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [retryPatch, setRetryPatch] = useState<ProgramPatch | null>(null);
@@ -1049,6 +1255,42 @@ export const ProgramSettings = ({
     }
     void loadRules();
   }, [focusedSchedule, focusedSection, loadRules]);
+
+  useEffect(() => {
+    if (section !== "attendance" || !canManage || !attendanceEnabled) {
+      setAttendanceArtifact(null);
+      setAttendanceArtifactError(null);
+      return;
+    }
+    let active = true;
+    setAttendanceArtifactLoading(true);
+    setAttendanceArtifactError(null);
+    void getProgramAttendanceArtifact(currentProgram.program_id)
+      .then(({ artifact }) => {
+        if (active) {
+          setAttendanceArtifact(artifact);
+        }
+      })
+      .catch((error) => {
+        if (active) {
+          setAttendanceArtifactError(errorMessage(error));
+        }
+      })
+      .finally(() => {
+        if (active) {
+          setAttendanceArtifactLoading(false);
+        }
+      });
+    return () => {
+      active = false;
+    };
+  }, [
+    attendanceArtifactReload,
+    attendanceEnabled,
+    canManage,
+    currentProgram.program_id,
+    section,
+  ]);
 
   const applyProgram = useCallback((next: Program) => {
     setCurrentProgram(next);
@@ -1185,6 +1427,36 @@ export const ProgramSettings = ({
       check_in_opens_at_minutes_before_start: opensBefore,
       check_in_closes_at_minutes_after_end: closesAfter,
     });
+  };
+
+  const rotateAttendanceArtifact = async () => {
+    if (!attendanceArtifact || attendanceArtifactBusy) {
+      return;
+    }
+    const key = attendanceRotationKey.current ?? crypto.randomUUID();
+    attendanceRotationKey.current = key;
+    setAttendanceArtifactBusy(true);
+    setActionError(null);
+    setNotice(null);
+    try {
+      const { rotation } = await rotateProgramAttendanceArtifact(
+        currentProgram.program_id,
+        key
+      );
+      setAttendanceArtifact((current) =>
+        current
+          ? { ...current, check_in_token: rotation.check_in_token }
+          : current
+      );
+      attendanceRotationKey.current = null;
+      setNotice(COPY.programs.settingsAttendanceQrRotated);
+      announce(COPY.programs.settingsAttendanceQrRotated);
+    } catch (error) {
+      setActionError(settingsErrorMessage(error));
+      announce(settingsErrorMessage(error));
+    } finally {
+      setAttendanceArtifactBusy(false);
+    }
   };
 
   const runScheduleMutation = useCallback(
@@ -2289,6 +2561,48 @@ export const ProgramSettings = ({
                       disabled={busy}
                     />
                   </ScreenField>
+                  {section === "attendance" && (
+                    <div className="grid min-w-0 gap-3">
+                      {attendanceArtifactLoading && (
+                        <output
+                          className="text-sm text-[var(--screen-muted)]"
+                          aria-live="polite"
+                        >
+                          {COPY.programs.settingsAttendanceQrLoading}
+                        </output>
+                      )}
+                      {attendanceArtifactError !== null && (
+                        <ScreenState
+                          kind="error"
+                          title={
+                            attendanceArtifactError ||
+                            COPY.programs.settingsAttendanceQrUnavailable
+                          }
+                          action={
+                            <Button
+                              type="button"
+                              variant="outline"
+                              onClick={() =>
+                                setAttendanceArtifactReload(
+                                  (current) => current + 1
+                                )
+                              }
+                              disabled={attendanceArtifactLoading}
+                            >
+                              {COPY.programs.settingsAttendanceQrRetry}
+                            </Button>
+                          }
+                        />
+                      )}
+                      {attendanceArtifact !== null && (
+                        <ProgramAttendanceQrCard
+                          artifact={attendanceArtifact}
+                          busy={busy || attendanceArtifactBusy}
+                          onRotate={() => void rotateAttendanceArtifact()}
+                        />
+                      )}
+                    </div>
+                  )}
                   {!focusedEditor && (
                     <div className="flex min-w-0 flex-wrap items-center gap-[var(--screen-utility-gap)]">
                       <Button

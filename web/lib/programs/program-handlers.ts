@@ -46,6 +46,7 @@ import {
   NoScheduleRulesError,
   PreviewPlanNotFoundError,
   ProgramArchiveBlockedError,
+  ProgramTokenRotationConflictError,
   RequestNotDecidableError,
   ScheduleRuleRetiredError,
   ScheduleRuleNotApplicableError,
@@ -260,6 +261,9 @@ function mapWorkspaceError(error: unknown, requestId: string): Response | null {
     error instanceof RequestNotDecidableError ||
     error instanceof EnrollmentDecisionConflictError
   ) {
+    return problem(409, "CONFLICT", "Conflict", error.message, requestId);
+  }
+  if (error instanceof ProgramTokenRotationConflictError) {
     return problem(409, "CONFLICT", "Conflict", error.message, requestId);
   }
   if (error instanceof DuplicateEnrollmentError) {
@@ -857,6 +861,65 @@ export async function handleGetManagementProgram(
     return notFound(requestId, "Unknown program.");
   }
   return jsonResponse(200, result, requestId);
+}
+
+/** GET /api/v1/programs/:id/attendance-artifact — scoped Program QR read. */
+export async function handleGetProgramAttendanceArtifact(
+  request: Request,
+  env: ProgramEnv,
+  programId: string
+): Promise<Response> {
+  const requestId = crypto.randomUUID();
+  const auth = await requireActor(request, env, requestId);
+  if (auth instanceof Response) {
+    return auth;
+  }
+  const { workspace } = await getModule(env);
+  const artifact = await workspace.getProgramAttendanceArtifact(
+    authorizationContextFor(auth.account),
+    programId
+  );
+  if (!artifact) {
+    return notFound(requestId, "Unknown program.");
+  }
+  return jsonResponse(200, { artifact }, requestId);
+}
+
+/** POST /api/v1/programs/:id/attendance-artifact/rotate — emergency rotation. */
+export async function handleRotateProgramAttendanceArtifact(
+  request: Request,
+  env: ProgramEnv,
+  programId: string
+): Promise<Response> {
+  const requestId = crypto.randomUUID();
+  const idempotencyKey = request.headers.get("Idempotency-Key")?.trim();
+  if (idempotencyKey !== undefined && idempotencyKey.length > 200) {
+    return validation(requestId, "Idempotency-Key is too long.");
+  }
+  const correlationId = idempotencyKey || requestId;
+  const auth = await requireActor(request, env, requestId);
+  if (auth instanceof Response) {
+    return auth;
+  }
+  const { workspace } = await getModule(env);
+  try {
+    const rotation = await workspace.rotateProgramCheckInToken(
+      authorizationContextFor(auth.account),
+      programId,
+      idempotencyKey || requestId,
+      correlationId
+    );
+    return jsonResponse(200, { rotation }, requestId);
+  } catch (error) {
+    if (error instanceof WorkspaceNotFoundError) {
+      return notFound(requestId, "Unknown program.");
+    }
+    const mapped = mapWorkspaceError(error, requestId);
+    if (mapped) {
+      return mapped;
+    }
+    throw error;
+  }
 }
 
 /** GET /api/v1/programs/:id/cockpit — scoped management cockpit projection. */

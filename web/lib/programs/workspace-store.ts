@@ -81,6 +81,21 @@ export interface ProgramUpdate {
   updated_at: string;
 }
 
+export interface ProgramTokenRotationInput {
+  program_id: string;
+  actor_user_id: string;
+  idempotency_key: string;
+  request_fingerprint: string;
+  now: string;
+  audit_id: string;
+  correlation_id: string | null;
+}
+
+export interface ProgramTokenRotationResult {
+  program: ProgramRow;
+  idempotent: boolean;
+}
+
 export type ProgramBehaviorType = "Recurring" | "OneOff";
 export type ProgramLifecycle = "Draft" | "Active" | "Archived";
 export type ProgramDiscoverability = "Listed" | "Unlisted";
@@ -551,6 +566,9 @@ export interface WorkspaceStore {
   findProgramById: (id: string) => Promise<ProgramRow | null>;
   listProgramAccessRows: (departmentId: string) => Promise<ProgramAccessRow[]>;
   updateProgram: (id: string, update: ProgramUpdate) => Promise<ProgramRow>;
+  rotateProgramCheckInToken: (
+    input: ProgramTokenRotationInput
+  ) => Promise<ProgramTokenRotationResult>;
   archiveProgramIfClear: (
     id: string,
     update: ProgramUpdate,

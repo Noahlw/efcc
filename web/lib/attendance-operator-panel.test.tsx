@@ -199,6 +199,59 @@ describe(AttendanceOperatorPanel, () => {
     ).not.toBeInTheDocument();
   });
 
+  test("does not materialize a snapshot as a side effect of roster GET", async () => {
+    let materializeCalls = 0;
+    server.use(
+      http.get("/api/v1/attendance/scanner-events", () =>
+        HttpResponse.json({
+          requestId: "rid-list",
+          data: { events: [ACTIVE] },
+        })
+      ),
+      http.get(`/api/v1/attendance/events/${ACTIVE.event_id}/roster`, () =>
+        HttpResponse.json({
+          requestId: "rid-roster",
+          data: {
+            event: ACTIVE,
+            attendances: [],
+            expected: [],
+            guests: [],
+            snapshot: null,
+            counts: {
+              expected: 0,
+              present: 0,
+              not_yet: 0,
+              absent: 0,
+              excused: 0,
+              guests: 0,
+            },
+            materialization_required: true,
+          },
+        })
+      ),
+      http.post(
+        `/api/v1/attendance/events/${ACTIVE.event_id}/materialize`,
+        () => {
+          materializeCalls += 1;
+          return HttpResponse.json({
+            requestId: "rid-materialize",
+            data: {},
+          });
+        }
+      )
+    );
+    const user = userEvent.setup();
+    renderWithLiveRegion();
+
+    await user.click(await screen.findByRole("button", { name: /週六聚會/u }));
+    expect(
+      await screen.findByRole("button", {
+        name: COPY.attendance.rosterMaterialize,
+      })
+    ).toBeVisible();
+    expect(materializeCalls).toBe(0);
+  });
+
   test("operator voids an active attendance row with reason", async () => {
     let voided = false;
     server.use(

@@ -384,6 +384,7 @@ describe("PRG-01: schema", () => {
       "enrollments",
       "program_notification_reads",
       "attendances",
+      "program_check_in_token_rotations",
       "audit_events",
     ] as const;
     const rows = await Promise.all(
@@ -1167,6 +1168,200 @@ describe("MUI-01: capability-aware management reads", () => {
       .bind(department.department_id)
       .run();
     assert.deepStrictEqual(mgmtData.data.cockpit, cockpit);
+  });
+});
+describe("#611/#621: Program QR artifact and emergency rotation", () => {
+  test("reads the scoped artifact, rotates atomically, rejects leader rotation, and invalidates the old token", async () => {
+    const adminAccess = await accessCookieFor("alice", "alice-secret");
+    const department = await createDepartment(adminAccess, {
+      code: `QR-${crypto.randomUUID().slice(0, 8)}`,
+      name: "QR Artifact Department",
+    });
+    const moduleResponse = await worker.fetch(
+      programsRequest(
+        `/api/v1/programs/departments/${department.department_id}/modules/attendance/enable`,
+        {
+          method: "POST",
+          headers: {
+            Origin: HOST,
+            Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
+          },
+        }
+      ),
+      testEnv()
+    );
+    assert.strictEqual(moduleResponse.status, 200);
+    const program = await createProgram(adminAccess, department.department_id, {
+      name: "QR Artifact Program",
+      behavior_type: "Recurring",
+      lifecycle: "Active",
+      discoverability: "Listed",
+    });
+    const oldToken = program.check_in_token;
+    assert.ok(oldToken);
+
+    const artifactResponse = await worker.fetch(
+      programsRequest(
+        `/api/v1/programs/${program.program_id}/attendance-artifact`,
+        {
+          headers: {
+            Origin: HOST,
+            Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
+          },
+        }
+      ),
+      testEnv()
+    );
+    assert.strictEqual(artifactResponse.status, 200);
+    const artifactBody = (await assertCorrelated(artifactResponse)) as {
+      data: {
+        artifact: {
+          check_in_token: string;
+          can_rotate: boolean;
+        };
+      };
+    };
+    assert.strictEqual(artifactBody.data.artifact.check_in_token, oldToken);
+    assert.strictEqual(artifactBody.data.artifact.can_rotate, true);
+
+    const rotationKey = `qr-rotation-${crypto.randomUUID()}`;
+    const rotateRequest = () =>
+      worker.fetch(
+        programsRequest(
+          `/api/v1/programs/${program.program_id}/attendance-artifact/rotate`,
+          {
+            method: "POST",
+            headers: {
+              Origin: HOST,
+              Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
+              "Idempotency-Key": rotationKey,
+            },
+            body: {},
+          }
+        ),
+        testEnv()
+      );
+    const rotated = await rotateRequest();
+    assert.strictEqual(rotated.status, 200);
+    const rotatedBody = (await assertCorrelated(rotated)) as {
+      data: {
+        rotation: {
+          check_in_token: string;
+          idempotent: boolean;
+        };
+      };
+    };
+    const newToken = rotatedBody.data.rotation.check_in_token;
+    assert.notStrictEqual(newToken, oldToken);
+    assert.strictEqual(rotatedBody.data.rotation.idempotent, false);
+
+    const replay = await rotateRequest();
+    assert.strictEqual(replay.status, 200);
+    const replayBody = (await assertCorrelated(replay)) as {
+      data: { rotation: { check_in_token: string; idempotent: boolean } };
+    };
+    assert.strictEqual(replayBody.data.rotation.check_in_token, newToken);
+    assert.strictEqual(replayBody.data.rotation.idempotent, true);
+
+    const eventStart = new Date(Date.now() - 30 * 60_000).toISOString();
+    const eventEnd = new Date(Date.now() + 30 * 60_000).toISOString();
+    const event = await createEventFor(adminAccess, program.program_id, {
+      starts_at: eventStart,
+      ends_at: eventEnd,
+      name: "QR rotation event",
+      check_in_window_opens_at: new Date(
+        Date.parse(eventStart) - 15 * 60_000
+      ).toISOString(),
+      check_in_window_closes_at: new Date(
+        Date.parse(eventEnd) + 15 * 60_000
+      ).toISOString(),
+    });
+    const oldResolution = await worker.fetch(
+      programsRequest(
+        `/api/v1/attendance/resolve?program_token=${encodeURIComponent(oldToken)}`,
+        { headers: { Origin: HOST } }
+      ),
+      testEnv()
+    );
+    assert.strictEqual(oldResolution.status, 200);
+    const oldResolutionBody = (await assertCorrelated(oldResolution)) as {
+      data: { events: unknown[]; latest: unknown };
+    };
+    assert.deepStrictEqual(oldResolutionBody.data.events, []);
+    assert.strictEqual(oldResolutionBody.data.latest, null);
+    const newResolution = await worker.fetch(
+      programsRequest(
+        `/api/v1/attendance/resolve?program_token=${encodeURIComponent(newToken)}`,
+        { headers: { Origin: HOST } }
+      ),
+      testEnv()
+    );
+    assert.strictEqual(newResolution.status, 200);
+    const newResolutionBody = (await assertCorrelated(newResolution)) as {
+      data: { events: { event_id: string }[] };
+    };
+    assert.deepStrictEqual(
+      newResolutionBody.data.events.map(({ event_id }) => event_id),
+      [event.event_id]
+    );
+
+    const leaderRole = await grantProgramIdentity(program.program_id, "U002");
+    const leaderAccess = await accessCookieFor("bob", "bob-secret");
+    const leaderArtifact = await worker.fetch(
+      programsRequest(
+        `/api/v1/programs/${program.program_id}/attendance-artifact`,
+        {
+          headers: {
+            Origin: HOST,
+            Cookie: `${ACCESS_COOKIE_NAME}=${leaderAccess}`,
+          },
+        }
+      ),
+      testEnv()
+    );
+    assert.strictEqual(leaderArtifact.status, 200);
+    const leaderArtifactBody = (await assertCorrelated(leaderArtifact)) as {
+      data: { artifact: { can_rotate: boolean } };
+    };
+    assert.strictEqual(leaderArtifactBody.data.artifact.can_rotate, false);
+    const deniedRotation = await worker.fetch(
+      programsRequest(
+        `/api/v1/programs/${program.program_id}/attendance-artifact/rotate`,
+        {
+          method: "POST",
+          headers: {
+            Origin: HOST,
+            Cookie: `${ACCESS_COOKIE_NAME}=${leaderAccess}`,
+            "Idempotency-Key": `qr-leader-${crypto.randomUUID()}`,
+          },
+          body: {},
+        }
+      ),
+      testEnv()
+    );
+    assert.strictEqual(deniedRotation.status, 403);
+    await revokeProgramIdentity(leaderRole, "U002");
+
+    const auditRows = await testDb()
+      .prepare(
+        `SELECT actor_user_id, correlation_id, old_value_json, new_value_json
+           FROM audit_events
+          WHERE action = 'PROGRAM_CHECK_IN_TOKEN_ROTATE'
+            AND entity_id = ? AND outcome = 'SUCCESS'`
+      )
+      .bind(program.program_id)
+      .all<{
+        actor_user_id: string;
+        correlation_id: string;
+        old_value_json: string;
+        new_value_json: string;
+      }>();
+    assert.strictEqual(auditRows.results?.length, 1);
+    const audit = auditRows.results?.[0];
+    assert.strictEqual(audit?.actor_user_id, "U001");
+    assert.strictEqual(audit?.correlation_id, rotationKey);
+    assert.ok(!audit?.old_value_json.includes(oldToken));
+    assert.ok(!audit?.new_value_json.includes(newToken));
   });
 });
 describe("NTF-01: management attention", () => {

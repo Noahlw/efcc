@@ -111,6 +111,13 @@ export interface Program {
     role_revoke?: boolean;
   };
 }
+
+export interface ProgramAttendanceArtifact {
+  program_id: string;
+  program_name: string;
+  check_in_token: string;
+  can_rotate: boolean;
+}
 export type ManagementProgram = Omit<
   Program,
   | "check_in_token"
@@ -984,6 +991,37 @@ export function getManagementProgram(programId: string): Promise<{
     "GET",
     undefined,
     { cache: "no-store" }
+  );
+}
+
+/** GET /api/v1/programs/:id/attendance-artifact — scoped Program QR read. */
+export function getProgramAttendanceArtifact(programId: string): Promise<{
+  artifact: ProgramAttendanceArtifact;
+}> {
+  return programsFetch(
+    `/api/v1/programs/${encodeURIComponent(programId)}/attendance-artifact`,
+    "GET",
+    undefined,
+    { cache: "no-store" }
+  );
+}
+
+/** POST /api/v1/programs/:id/attendance-artifact/rotate. */
+export function rotateProgramAttendanceArtifact(
+  programId: string,
+  idempotencyKey?: string
+): Promise<{
+  rotation: {
+    program_id: string;
+    check_in_token: string;
+    idempotent: boolean;
+  };
+}> {
+  return programsFetch(
+    `/api/v1/programs/${encodeURIComponent(programId)}/attendance-artifact/rotate`,
+    "POST",
+    {},
+    { idempotencyKey }
   );
 }
 

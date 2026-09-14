@@ -25,6 +25,16 @@ export class DuplicateProgramNameError extends Error {
 }
 
 // oxlint-disable-next-line eslint/max-classes-per-file
+export class ProgramTokenRotationConflictError extends Error {
+  constructor() {
+    super(
+      "The idempotency key was already used for a different Program QR rotation request."
+    );
+    this.name = "ProgramTokenRotationConflictError";
+  }
+}
+
+// oxlint-disable-next-line eslint/max-classes-per-file
 export class InvalidProgramLifecycleError extends Error {
   constructor(
     from: ProgramLifecycle,

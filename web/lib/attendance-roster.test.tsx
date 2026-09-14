@@ -215,6 +215,28 @@ describe("AttendanceRoster", () => {
     expect(onExcuse).toHaveBeenCalledWith(EXPECTED_ROW, "家庭原因");
   });
 
+  test("keeps the roster read-only while offline and offers the last-known state", () => {
+    render(
+      <AttendanceRoster
+        event={EVENT}
+        rows={[MEMBER_ROW]}
+        readOnly
+        offline
+        lastUpdatedAt={Date.parse("2026-08-13T11:40:00.000Z")}
+        onRefresh={vi.fn()}
+        onVoid={vi.fn()}
+      />
+    );
+
+    expect(screen.getByText(COPY.attendance.rosterOffline)).toBeVisible();
+    expect(
+      screen.getByRole("button", { name: COPY.attendance.voidAttendance })
+    ).toBeDisabled();
+    expect(
+      screen.getByRole("button", { name: COPY.management.retry })
+    ).toBeDisabled();
+  });
+
   test("requires a correction reason and preserves old/new guest values for the audit callback", async () => {
     const user = userEvent.setup();
     const onCorrectGuest = vi.fn().mockResolvedValue(true);

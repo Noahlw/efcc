@@ -344,6 +344,8 @@ export default {
         handleListParticipantCatalog,
         handleGetParticipantProgramDetail,
         handleGetManagementProgram,
+        handleGetProgramAttendanceArtifact,
+        handleRotateProgramAttendanceArtifact,
         handleGetManagementCockpit,
         handleGetDepartment,
         handleUpdateDepartment,
@@ -465,6 +467,26 @@ export default {
           request,
           programEnv,
           managementProgram.groups?.id ?? ""
+        );
+      }
+      const attendanceArtifact = url.pathname.match(
+        /^\/api\/v1\/programs\/(?<id>[^/]+)\/attendance-artifact$/u
+      );
+      if (attendanceArtifact && request.method === "GET") {
+        return handleGetProgramAttendanceArtifact(
+          request,
+          programEnv,
+          attendanceArtifact.groups?.id ?? ""
+        );
+      }
+      const attendanceArtifactRotation = url.pathname.match(
+        /^\/api\/v1\/programs\/(?<id>[^/]+)\/attendance-artifact\/rotate$/u
+      );
+      if (attendanceArtifactRotation && request.method === "POST") {
+        return handleRotateProgramAttendanceArtifact(
+          request,
+          programEnv,
+          attendanceArtifactRotation.groups?.id ?? ""
         );
       }
       const cockpit = url.pathname.match(

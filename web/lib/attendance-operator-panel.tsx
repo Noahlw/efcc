@@ -37,6 +37,8 @@ import { clearAuthHint, rememberDeepLink } from "@/lib/session";
 import { useQrCamera } from "@/lib/use-qr-camera";
 import { cn } from "@/lib/utils";
 
+import { EventCheckInSheet } from "./programs/event-check-in-sheet";
+
 const eventButtonControl =
   "flex w-full min-h-11 flex-col items-start justify-between rounded-[var(--radius-sm)] border border-[var(--line-strong)] bg-[var(--surface-raised)] p-3 text-left text-base font-normal text-[var(--ink)] hover:bg-[var(--surface)] hover:text-[var(--ink)] sm:flex-row sm:items-center motion-reduce:transition-none";
 
@@ -192,7 +194,15 @@ export interface AttendanceRosterProps {
   counts?: AttendanceRosterCounts;
   memberDirectory?: MemberDirectory;
   busy?: boolean;
+  readOnly?: boolean;
+  offline?: boolean;
+  stale?: boolean;
+  lastUpdatedAt?: number | null;
+  materializationRequired?: boolean;
   onBack?: () => void;
+  onRefresh?: () => void;
+  onMaterialize?: () => void;
+  onOpenCheckInSheet?: () => void;
   onVoid?: (row: AttendanceRow, reason: string) => Promise<boolean> | boolean;
   onCorrectGuest?: (
     row: AttendanceRow,
@@ -262,7 +272,15 @@ export const AttendanceRoster = ({
   counts,
   memberDirectory = EMPTY_MEMBER_DIRECTORY,
   busy = false,
+  readOnly = false,
+  offline = false,
+  stale = false,
+  lastUpdatedAt = null,
+  materializationRequired = false,
   onBack,
+  onRefresh,
+  onMaterialize,
+  onOpenCheckInSheet,
   onVoid,
   onCorrectGuest,
   onExcuse,
@@ -313,6 +331,10 @@ export const AttendanceRoster = ({
   const eventTitle = event.name?.trim() || event.program_name;
   const checkedInCount = counts?.present ?? activeRows.length;
   const expectedCount = counts?.expected ?? rows.length;
+  const lastUpdatedLabel = lastUpdatedAt
+    ? hkWallLabel(new Date(lastUpdatedAt).toISOString())
+    : null;
+  const writeDisabled = busy || readOnly;
 
   async function submitVoid(row: AttendanceRow) {
     const reason = voidReason.trim();
@@ -409,7 +431,64 @@ export const AttendanceRoster = ({
             )}
           </p>
         </div>
+        {(offline || stale) && (
+          <Alert
+            variant={offline ? "default" : "destructive"}
+            className="grid gap-2"
+            role="status"
+          >
+            <p className="min-w-0 whitespace-normal [overflow-wrap:anywhere]">
+              {offline
+                ? COPY.attendance.rosterOffline
+                : COPY.attendance.rosterStale(
+                    lastUpdatedLabel ?? COPY.management.loading
+                  )}
+            </p>
+            {onRefresh && (
+              <Button
+                variant="outline"
+                type="button"
+                onClick={onRefresh}
+                disabled={busy || offline}
+              >
+                {COPY.management.retry}
+              </Button>
+            )}
+          </Alert>
+        )}
+        {lastUpdatedLabel && !offline && !stale && (
+          <p className="text-xs text-[var(--ink-muted)]" aria-live="polite">
+            {COPY.attendance.rosterLastUpdated(lastUpdatedLabel)}
+          </p>
+        )}
+        {materializationRequired && onMaterialize && (
+          <Alert className="grid gap-2">
+            <p className="min-w-0 whitespace-normal [overflow-wrap:anywhere]">
+              {COPY.attendance.rosterMaterializeHint}
+            </p>
+            <Button
+              variant="default"
+              type="button"
+              onClick={onMaterialize}
+              disabled={writeDisabled || offline}
+            >
+              {busy
+                ? COPY.attendance.rosterMaterializing
+                : COPY.attendance.rosterMaterialize}
+            </Button>
+          </Alert>
+        )}
         <div className="flex flex-wrap gap-3 mt-2">
+          {onOpenCheckInSheet && event.manual_check_in_code && (
+            <Button
+              variant="outline"
+              type="button"
+              onClick={onOpenCheckInSheet}
+              disabled={busy}
+            >
+              {COPY.attendance.eventCheckInSheetOpen}
+            </Button>
+          )}
           {onPrint && (
             <Button
               variant="outline"
@@ -510,7 +589,7 @@ export const AttendanceRoster = ({
                           <Button
                             variant="destructive"
                             type="button"
-                            disabled={busy}
+                            disabled={writeDisabled}
                             onClick={() => {
                               setVoidingId(attendance.attendance_id);
                               setVoidReason("");
@@ -520,11 +599,11 @@ export const AttendanceRoster = ({
                             {COPY.attendance.voidAttendance}
                           </Button>
                         )}
-                        {onExcuse && !row.disposition && (
+                        {onExcuse && !readOnly && !row.disposition && (
                           <Button
                             variant="outline"
                             type="button"
-                            disabled={busy}
+                            disabled={writeDisabled}
                             onClick={() => {
                               setExcusingId(expectedKey);
                               setExcuseReason("");
@@ -538,7 +617,7 @@ export const AttendanceRoster = ({
                       </div>
                     )}
 
-                    {isVoiding && attendance && (
+                    {isVoiding && attendance && !readOnly && (
                       <form
                         className="grid gap-3 p-4 rounded-[var(--radius-sm)] border border-[var(--line-strong)] bg-[var(--surface)] mt-2"
                         onSubmit={(formEvent) => {
@@ -572,7 +651,7 @@ export const AttendanceRoster = ({
                           <Button
                             variant="destructive"
                             type="submit"
-                            disabled={busy}
+                            disabled={writeDisabled}
                           >
                             {COPY.attendance.voidConfirm}
                           </Button>
@@ -580,7 +659,7 @@ export const AttendanceRoster = ({
                             variant="outline"
                             type="button"
                             onClick={() => setVoidingId(null)}
-                            disabled={busy}
+                            disabled={writeDisabled}
                           >
                             {COPY.attendance.chooseEvent}
                           </Button>
@@ -588,7 +667,7 @@ export const AttendanceRoster = ({
                       </form>
                     )}
 
-                    {isExcusing && onExcuse && (
+                    {isExcusing && onExcuse && !readOnly && (
                       <form
                         className="grid gap-3 p-4 rounded-[var(--radius-sm)] border border-[var(--line-strong)] bg-[var(--surface)] mt-2"
                         onSubmit={(formEvent) => {
@@ -622,7 +701,7 @@ export const AttendanceRoster = ({
                           <Button
                             variant="default"
                             type="submit"
-                            disabled={busy}
+                            disabled={writeDisabled}
                           >
                             {EXCUSE_COPY.confirm}
                           </Button>
@@ -630,7 +709,7 @@ export const AttendanceRoster = ({
                             variant="outline"
                             type="button"
                             onClick={() => setExcusingId(null)}
-                            disabled={busy}
+                            disabled={writeDisabled}
                           >
                             {EXCUSE_COPY.cancel}
                           </Button>
@@ -693,7 +772,7 @@ export const AttendanceRoster = ({
                         <Button
                           variant="destructive"
                           type="button"
-                          disabled={busy}
+                          disabled={writeDisabled}
                           onClick={() => {
                             setVoidingId(row.attendance_id);
                             setVoidReason("");
@@ -702,11 +781,11 @@ export const AttendanceRoster = ({
                         >
                           {COPY.attendance.voidAttendance}
                         </Button>
-                        {row.member_user_id === null && (
+                        {row.member_user_id === null && !readOnly && (
                           <Button
                             variant="outline"
                             type="button"
-                            disabled={busy}
+                            disabled={writeDisabled}
                             onClick={() => {
                               setCorrectionId(row.attendance_id);
                               setCorrectionName(row.guest_name ?? "");
@@ -721,7 +800,7 @@ export const AttendanceRoster = ({
                       </div>
                     )}
 
-                    {isVoiding && (
+                    {isVoiding && !readOnly && (
                       <form
                         className="grid gap-3 p-4 rounded-[var(--radius-sm)] border border-[var(--line-strong)] bg-[var(--surface)] mt-2"
                         onSubmit={(formEvent) => {
@@ -758,7 +837,7 @@ export const AttendanceRoster = ({
                           <Button
                             variant="destructive"
                             type="submit"
-                            disabled={busy}
+                            disabled={writeDisabled}
                           >
                             {COPY.attendance.voidConfirm}
                           </Button>
@@ -766,7 +845,7 @@ export const AttendanceRoster = ({
                             variant="outline"
                             type="button"
                             onClick={() => setVoidingId(null)}
-                            disabled={busy}
+                            disabled={writeDisabled}
                           >
                             {COPY.attendance.chooseEvent}
                           </Button>
@@ -774,7 +853,7 @@ export const AttendanceRoster = ({
                       </form>
                     )}
 
-                    {isCorrecting && (
+                    {isCorrecting && !readOnly && (
                       <form
                         className="grid gap-3 p-4 rounded-[var(--radius-sm)] border border-[var(--line-strong)] bg-[var(--surface)] mt-2"
                         onSubmit={(formEvent) => {
@@ -848,7 +927,7 @@ export const AttendanceRoster = ({
                           <Button
                             variant="default"
                             type="submit"
-                            disabled={busy}
+                            disabled={writeDisabled}
                           >
                             {COPY.attendance.saveCorrection}
                           </Button>
@@ -856,7 +935,7 @@ export const AttendanceRoster = ({
                             variant="outline"
                             type="button"
                             onClick={() => setCorrectionId(null)}
-                            disabled={busy}
+                            disabled={writeDisabled}
                           >
                             {COPY.attendance.chooseEvent}
                           </Button>
@@ -893,6 +972,7 @@ export const AttendanceOperatorPanel = ({
     Record<string, AttendanceMember>
   >({});
   const [event, setEvent] = useState<AttendanceEvent | null>(null);
+  const [showCheckInSheet, setShowCheckInSheet] = useState(false);
   const [rows, setRows] = useState<AttendanceRow[]>([]);
   const [expectedRows, setExpectedRows] = useState<AttendanceExpectedRow[]>([]);
   const [rosterCounts, setRosterCounts] =
@@ -900,6 +980,18 @@ export const AttendanceOperatorPanel = ({
   const [status, setStatus] = useState("");
   const [tone, setTone] = useState<StatusTone>("info");
   const [busy, setBusy] = useState(false);
+  const [online, setOnline] = useState(
+    () => typeof navigator === "undefined" || navigator.onLine !== false
+  );
+  const [pageVisible, setPageVisible] = useState(
+    () =>
+      typeof document === "undefined" || document.visibilityState === "visible"
+  );
+  const [stale, setStale] = useState(false);
+  const [lastUpdatedAt, setLastUpdatedAt] = useState<number | null>(null);
+  const [materializationRequired, setMaterializationRequired] = useState(false);
+  const selectedEventIdRef = useRef<string | null>(null);
+  const rosterRequestRef = useRef(false);
 
   function handleAuthRequired() {
     if (onAuthRequired) {
@@ -935,6 +1027,11 @@ export const AttendanceOperatorPanel = ({
   }
 
   async function loadChooser() {
+    if (!online) {
+      setChooserLoading(false);
+      setChooserError(COPY.attendance.rosterOffline);
+      return;
+    }
     setChooserLoading(true);
     setChooserError(null);
     try {
@@ -956,38 +1053,101 @@ export const AttendanceOperatorPanel = ({
     }
   }
 
-  async function loadRoster(id: string) {
+  interface RosterLoadOptions {
+    silent?: boolean;
+  }
+
+  function applyRosterResult(
+    id: string,
+    result: Awaited<ReturnType<typeof listAttendanceRoster>>
+  ) {
+    if (selectedEventIdRef.current !== id) {
+      return false;
+    }
+    setEvent(result.event);
+    setRows(result.attendances ?? []);
+    setExpectedRows(result.expected ?? []);
+    setRosterCounts(result.counts ?? null);
+    setMaterializationRequired(
+      Boolean(result.materialization_required && !result.snapshot)
+    );
+    setStale(false);
+    setLastUpdatedAt(Date.now());
+    updateAttendanceEventUrl(id);
+    return true;
+  }
+
+  async function loadRoster(
+    id: string,
+    { silent = false }: RosterLoadOptions = {}
+  ): Promise<boolean> {
+    if (rosterRequestRef.current) {
+      return false;
+    }
+    rosterRequestRef.current = true;
+    if (!silent) {
+      setBusy(true);
+    }
+    try {
+      const result = await listAttendanceRoster(id);
+      return applyRosterResult(id, result);
+    } catch (error) {
+      if (error instanceof RpcError && error.problem.code === "AUTH_REQUIRED") {
+        handleAuthRequired();
+      } else if (silent) {
+        setStale(true);
+      } else {
+        showError(error);
+      }
+      return false;
+    } finally {
+      rosterRequestRef.current = false;
+      if (!silent) {
+        setBusy(false);
+      }
+    }
+  }
+
+  async function materializeRoster() {
+    const id = selectedEventIdRef.current;
+    if (!id || !online || rosterRequestRef.current) {
+      return;
+    }
+    rosterRequestRef.current = true;
     setBusy(true);
     try {
-      let result = await listAttendanceRoster(id);
-      if (result.materialization_required) {
-        await materializeAttendanceSnapshot(id);
-        result = await listAttendanceRoster(id);
-      }
-      setEvent(result.event);
-      setRows(result.attendances ?? []);
-      setExpectedRows(result.expected ?? []);
-      setRosterCounts(result.counts ?? null);
-      updateAttendanceEventUrl(id);
+      const result = await materializeAttendanceSnapshot(id);
+      applyRosterResult(id, result);
+      const message = COPY.attendance.rosterMaterialize;
+      showStatus(message, "success");
+      announce(message);
     } catch (error) {
       showError(error);
     } finally {
+      rosterRequestRef.current = false;
       setBusy(false);
     }
   }
 
   async function selectEvent(nextEventId: string) {
+    selectedEventIdRef.current = nextEventId;
     setEventId(nextEventId);
+    setShowCheckInSheet(false);
     await loadRoster(nextEventId);
     setStatus("");
   }
 
   function backToChooser() {
+    selectedEventIdRef.current = null;
     setEventId(null);
     setEvent(null);
+    setShowCheckInSheet(false);
     setRows([]);
     setExpectedRows([]);
     setRosterCounts(null);
+    setMaterializationRequired(false);
+    setStale(false);
+    setLastUpdatedAt(null);
     setMembers([]);
     setQuery("");
     setStatus("");
@@ -997,7 +1157,7 @@ export const AttendanceOperatorPanel = ({
 
   async function searchMembers() {
     const trimmed = query.trim();
-    if (!eventId || !trimmed) {
+    if (!online || !eventId || !trimmed) {
       return;
     }
     setBusy(true);
@@ -1029,7 +1189,7 @@ export const AttendanceOperatorPanel = ({
     member: AttendanceMember,
     method: "leader_qr_scan" | "leader_manual_search" = "leader_manual_search"
   ) {
-    if (!eventId) {
+    if (!online || !eventId) {
       return;
     }
     setBusy(true);
@@ -1053,6 +1213,10 @@ export const AttendanceOperatorPanel = ({
     row: AttendanceRow,
     reason: string
   ): Promise<boolean> {
+    if (!online) {
+      showStatus(COPY.attendance.rosterOffline, "error");
+      return false;
+    }
     setBusy(true);
     try {
       await voidAttendance(row.attendance_id, reason);
@@ -1074,6 +1238,10 @@ export const AttendanceOperatorPanel = ({
     row: AttendanceRow,
     input: { name: string; phone: string; reason: string }
   ): Promise<boolean> {
+    if (!online) {
+      showStatus(COPY.attendance.rosterOffline, "error");
+      return false;
+    }
     setBusy(true);
     try {
       await correctGuestAttendance(row.attendance_id, input);
@@ -1095,6 +1263,10 @@ export const AttendanceOperatorPanel = ({
     row: AttendanceExpectedRow,
     reason: string
   ): Promise<boolean> {
+    if (!online) {
+      showStatus(COPY.attendance.rosterOffline, "error");
+      return false;
+    }
     setBusy(true);
     try {
       await recordExcusedAttendance(row.event_id, row.enrollment_id, reason);
@@ -1113,8 +1285,12 @@ export const AttendanceOperatorPanel = ({
   }
 
   const { videoRef, cameraOpen, startCamera, stopCamera } = useQrCamera({
-    onDetect: (qrString) => {
+    onDetect: async (qrString) => {
       stopCamera();
+      if (!online) {
+        showStatus(COPY.attendance.rosterOffline, "error");
+        return;
+      }
       const match = members.find(
         (m) => m.qr_code_string?.trim() === qrString.trim()
       );
@@ -1125,23 +1301,24 @@ export const AttendanceOperatorPanel = ({
       if (!eventId) {
         return;
       }
-      void searchAttendanceMembers(eventId, qrString)
-        .then((result) => {
-          const list = result.members ?? [];
-          if (list.length === 1) {
-            void checkIn(list[0], "leader_qr_scan");
-          } else if (list.length > 1) {
-            setMembers(list);
-            const message = COPY.attendance.assistedMemberSearchAmbiguous;
-            showStatus(message, "error");
-            announce(message);
-          } else {
-            const message = COPY.attendance.memberSearchEmpty;
-            showStatus(message, "error");
-            announce(message);
-          }
-        })
-        .catch(showError);
+      try {
+        const result = await searchAttendanceMembers(eventId, qrString);
+        const list = result.members ?? [];
+        if (list.length === 1) {
+          await checkIn(list[0], "leader_qr_scan");
+        } else if (list.length > 1) {
+          setMembers(list);
+          const message = COPY.attendance.assistedMemberSearchAmbiguous;
+          showStatus(message, "error");
+          announce(message);
+        } else {
+          const message = COPY.attendance.memberSearchEmpty;
+          showStatus(message, "error");
+          announce(message);
+        }
+      } catch (error) {
+        showError(error);
+      }
     },
     onUnavailable: () => {
       const message = COPY.attendance.cameraUnavailable;
@@ -1183,6 +1360,7 @@ export const AttendanceOperatorPanel = ({
     const params = new URLSearchParams(window.location.search);
     const deepLinkedEventId = params.get("event") ?? params.get("eventId");
     if (deepLinkedEventId) {
+      selectedEventIdRef.current = deepLinkedEventId;
       setEventId(deepLinkedEventId);
       void loadRoster(deepLinkedEventId);
     }
@@ -1190,6 +1368,81 @@ export const AttendanceOperatorPanel = ({
     // are driven by the chooser and the roster actions.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    const handleOnline = () => {
+      setOnline(true);
+      const id = selectedEventIdRef.current;
+      if (id) {
+        void loadRoster(id);
+      }
+    };
+    const handleOffline = () => {
+      setOnline(false);
+      if (selectedEventIdRef.current) {
+        setStale(true);
+      }
+    };
+    window.addEventListener("online", handleOnline);
+    window.addEventListener("offline", handleOffline);
+    return () => {
+      window.removeEventListener("online", handleOnline);
+      window.removeEventListener("offline", handleOffline);
+    };
+    // The listeners intentionally use refs so a reconnect cannot race a
+    // stale render's event selection.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    const handleVisibility = () => {
+      const visible = document.visibilityState === "visible";
+      setPageVisible(visible);
+      if (visible && online && selectedEventIdRef.current) {
+        void loadRoster(selectedEventIdRef.current);
+      }
+    };
+    document.addEventListener("visibilitychange", handleVisibility);
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibility);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [online]);
+
+  useEffect(() => {
+    if (!eventId || !online || !pageVisible) {
+      return;
+    }
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let failureCount = 0;
+
+    const poll = async () => {
+      if (cancelled || document.visibilityState !== "visible") {
+        return;
+      }
+      const succeeded = await loadRoster(eventId, { silent: true });
+      if (cancelled) {
+        return;
+      }
+      failureCount = succeeded ? 0 : Math.min(failureCount + 1, 3);
+      const delay = succeeded
+        ? 10_000
+        : Math.min(10_000 * 2 ** failureCount, 60_000);
+      timer = setTimeout(() => void poll(), delay);
+    };
+
+    timer = setTimeout(() => void poll(), 10_000);
+    return () => {
+      cancelled = true;
+      if (timer) {
+        clearTimeout(timer);
+      }
+    };
+    // The polling loop is intentionally scoped to the selected event and
+    // connection/visibility state; loadRoster uses a ref to prevent overlap.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [eventId, online, pageVisible]);
 
   const rosterVisible = Boolean(event && eventId);
   return (
@@ -1226,13 +1479,32 @@ export const AttendanceOperatorPanel = ({
                   counts={rosterCounts ?? undefined}
                   memberDirectory={memberDirectory}
                   busy={busy}
+                  readOnly={!online}
+                  offline={!online}
+                  stale={stale}
+                  lastUpdatedAt={lastUpdatedAt}
+                  materializationRequired={materializationRequired}
                   onBack={backToChooser}
+                  onRefresh={() => {
+                    if (eventId) {
+                      void loadRoster(eventId);
+                    }
+                  }}
+                  onMaterialize={() => void materializeRoster()}
+                  onOpenCheckInSheet={() => setShowCheckInSheet(true)}
                   onVoid={handleVoid}
                   onCorrectGuest={handleCorrection}
                   onExcuse={handleExcuse}
                   onPrint={printAttendanceRoster}
                   onExport={exportRoster}
                 />
+                {showCheckInSheet && (
+                  <EventCheckInSheet
+                    event={event}
+                    onClose={() => setShowCheckInSheet(false)}
+                    onAuthRequired={onAuthRequired}
+                  />
+                )}
               </div>
 
               {event.status === "Active" && event.availability === "Active" && (
@@ -1250,7 +1522,7 @@ export const AttendanceOperatorPanel = ({
                     <Button
                       variant="outline"
                       type="button"
-                      disabled={busy}
+                      disabled={busy || !online}
                       onClick={() => void startCamera()}
                     >
                       {cameraOpen
@@ -1285,6 +1557,7 @@ export const AttendanceOperatorPanel = ({
                         id="member-search"
                         className="bg-[var(--surface-raised)] text-base text-[var(--ink)] placeholder:text-[var(--ink-muted)]"
                         value={query}
+                        disabled={busy || !online}
                         onChange={(changeEvent) =>
                           setQuery(changeEvent.target.value)
                         }
@@ -1299,7 +1572,7 @@ export const AttendanceOperatorPanel = ({
                     <Button
                       variant="outline"
                       type="button"
-                      disabled={busy}
+                      disabled={busy || !online}
                       onClick={() => void searchMembers()}
                     >
                       {COPY.attendance.search}
@@ -1316,7 +1589,7 @@ export const AttendanceOperatorPanel = ({
                             variant="outline"
                             className={eventButtonControl}
                             type="button"
-                            disabled={busy}
+                            disabled={busy || !online}
                             onClick={() => void checkIn(member)}
                           >
                             <strong>{member.name}</strong>

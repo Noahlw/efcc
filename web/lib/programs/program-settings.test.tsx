@@ -9,6 +9,8 @@ import { ProgramSettings, SettingsHub } from "@/lib/programs/program-settings";
 
 const mocks = vi.hoisted(() => ({
   updateProgram: vi.fn(),
+  getProgramAttendanceArtifact: vi.fn(),
+  rotateProgramAttendanceArtifact: vi.fn(),
   listScheduleRules: vi.fn(),
   createScheduleRule: vi.fn(),
   updateScheduleRule: vi.fn(),
@@ -19,6 +21,8 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock(import("@/lib/programs/program-api"), () => ({
   updateProgram: mocks.updateProgram,
+  getProgramAttendanceArtifact: mocks.getProgramAttendanceArtifact,
+  rotateProgramAttendanceArtifact: mocks.rotateProgramAttendanceArtifact,
   listScheduleRules: mocks.listScheduleRules,
   createScheduleRule: mocks.createScheduleRule,
   updateScheduleRule: mocks.updateScheduleRule,
@@ -76,6 +80,8 @@ function updatedProgram(overrides: Partial<Program> = {}): Program {
 
 beforeEach(() => {
   mocks.updateProgram.mockReset();
+  mocks.getProgramAttendanceArtifact.mockReset();
+  mocks.rotateProgramAttendanceArtifact.mockReset();
   mocks.listScheduleRules.mockReset();
   mocks.createScheduleRule.mockReset();
   mocks.updateScheduleRule.mockReset();
@@ -84,6 +90,21 @@ beforeEach(() => {
   mocks.deleteScheduleException.mockReset();
   mocks.listScheduleRules.mockResolvedValue({ rules: [rule] });
   mocks.updateProgram.mockResolvedValue({ program: updatedProgram() });
+  mocks.getProgramAttendanceArtifact.mockResolvedValue({
+    artifact: {
+      program_id: recurringProgram.program_id,
+      program_name: recurringProgram.name,
+      check_in_token: recurringProgram.check_in_token ?? "secret-token",
+      can_rotate: false,
+    },
+  });
+  mocks.rotateProgramAttendanceArtifact.mockResolvedValue({
+    rotation: {
+      program_id: recurringProgram.program_id,
+      check_in_token: "rotated-token",
+      idempotent: false,
+    },
+  });
   mocks.createScheduleRule.mockResolvedValue({ rule });
   mocks.updateScheduleRule.mockResolvedValue({ rule });
   mocks.listScheduleExceptions.mockResolvedValue({ exceptions: [] });
@@ -619,6 +640,64 @@ describe(ProgramSettings, () => {
     expect(
       screen.getAllByText(COPY.programs.settingsAttendanceValidation)
     ).toHaveLength(2);
+  });
+
+  test("shows the permanent Program QR and requires confirmation before rotation", async () => {
+    mocks.getProgramAttendanceArtifact.mockResolvedValueOnce({
+      artifact: {
+        program_id: recurringProgram.program_id,
+        program_name: recurringProgram.name,
+        check_in_token: "stable-program-token",
+        can_rotate: true,
+      },
+    });
+    mocks.rotateProgramAttendanceArtifact.mockResolvedValueOnce({
+      rotation: {
+        program_id: recurringProgram.program_id,
+        check_in_token: "replacement-program-token",
+        idempotent: false,
+      },
+    });
+    const user = userEvent.setup();
+    render(
+      <ProgramSettings
+        program={recurringProgram}
+        section="attendance"
+        onTaskChange={vi.fn()}
+      />
+    );
+
+    expect(
+      await screen.findByTestId("program-attendance-qr")
+    ).toBeInTheDocument();
+    await user.click(
+      screen.getByRole("button", {
+        name: COPY.programs.settingsAttendanceQrRotate,
+      })
+    );
+    expect(
+      screen.getByRole("alertdialog", {
+        name: COPY.programs.settingsAttendanceQrRotateTitle,
+      })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(COPY.programs.settingsAttendanceQrRotateBody)
+    ).toBeVisible();
+    await user.click(
+      screen.getByRole("button", {
+        name: COPY.programs.settingsAttendanceQrRotateConfirm,
+      })
+    );
+
+    await waitFor(() =>
+      expect(
+        screen.getByText(COPY.programs.settingsAttendanceQrRotated)
+      ).toBeVisible()
+    );
+    expect(mocks.rotateProgramAttendanceArtifact).toHaveBeenCalledWith(
+      recurringProgram.program_id,
+      expect.any(String)
+    );
   });
 
   test("keeps focused Attendance dirty-only actions and reads back saved defaults", async () => {

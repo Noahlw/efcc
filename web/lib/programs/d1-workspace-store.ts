@@ -4,6 +4,7 @@
 
 import { MODULE_KEYS } from "./capabilities";
 import type { ModuleKey } from "./capabilities";
+import { ProgramTokenRotationConflictError } from "./program-errors";
 import type {
   AuditInput,
   GenerationRunItemInput,
@@ -31,6 +32,8 @@ import type {
   PreviewPlanRow,
   ProgramInput,
   ProgramRow,
+  ProgramTokenRotationInput,
+  ProgramTokenRotationResult,
   ProgramUpdate,
   AccountDirectorySearchFilters,
   AccountDirectorySummary,
@@ -51,6 +54,15 @@ function chunk<T>(items: readonly T[], size = 50): T[][] {
     chunks.push(items.slice(i, i + size) as T[]);
   }
   return chunks;
+}
+
+interface ProgramTokenRotationRow {
+  idempotency_key: string;
+  request_fingerprint: string;
+  actor_user_id: string;
+  program_id: string;
+  resulting_token: string;
+  created_at: string;
 }
 
 /**
@@ -795,6 +807,128 @@ export class D1WorkspaceStore implements WorkspaceStore {
       .bind(...values, id)
       .run();
     return this.requireProgram(id);
+  }
+
+  async rotateProgramCheckInToken(
+    input: ProgramTokenRotationInput
+  ): Promise<ProgramTokenRotationResult> {
+    const existing = await this.db
+      .prepare(
+        `SELECT idempotency_key, request_fingerprint, actor_user_id,
+                program_id, resulting_token, created_at
+           FROM program_check_in_token_rotations
+          WHERE idempotency_key = ?`
+      )
+      .bind(input.idempotency_key)
+      .first<ProgramTokenRotationRow>();
+    if (existing) {
+      if (
+        existing.request_fingerprint !== input.request_fingerprint ||
+        existing.actor_user_id !== input.actor_user_id ||
+        existing.program_id !== input.program_id
+      ) {
+        throw new ProgramTokenRotationConflictError();
+      }
+      const current = await this.requireProgram(input.program_id);
+      return {
+        program: { ...current, check_in_token: existing.resulting_token },
+        idempotent: true,
+      };
+    }
+
+    const nextToken = crypto.randomUUID().replaceAll("-", "");
+    const auditValues = [
+      input.audit_id,
+      input.now,
+      input.actor_user_id,
+      "PROGRAM_CHECK_IN_TOKEN_ROTATE",
+      "program",
+      input.program_id,
+      JSON.stringify({ credential: "permanent_program_qr" }),
+      JSON.stringify({ credential: "permanent_program_qr" }),
+      "emergency_rotation",
+      "SUCCESS",
+      input.correlation_id,
+    ] as const;
+    const results = await this.db.batch([
+      this.db
+        .prepare(
+          `INSERT OR IGNORE INTO program_check_in_token_rotations
+             (idempotency_key, request_fingerprint, actor_user_id,
+              program_id, resulting_token, created_at)
+           VALUES (?, ?, ?, ?, ?, ?)`
+        )
+        .bind(
+          input.idempotency_key,
+          input.request_fingerprint,
+          input.actor_user_id,
+          input.program_id,
+          nextToken,
+          input.now
+        ),
+      this.db
+        .prepare(
+          `UPDATE programs
+              SET check_in_token = ?, updated_by = ?, updated_at = ?
+            WHERE program_id = ?
+              AND EXISTS (
+                SELECT 1
+                  FROM program_check_in_token_rotations
+                 WHERE idempotency_key = ?
+                   AND request_fingerprint = ?
+                   AND actor_user_id = ?
+                   AND program_id = ?
+                   AND resulting_token = ?
+              )`
+        )
+        .bind(
+          nextToken,
+          input.actor_user_id,
+          input.now,
+          input.program_id,
+          input.idempotency_key,
+          input.request_fingerprint,
+          input.actor_user_id,
+          input.program_id,
+          nextToken
+        ),
+      this.db
+        .prepare(
+          `INSERT INTO audit_events
+             (audit_id, inserted_at, actor_user_id, action, entity_type,
+              entity_id, old_value_json, new_value_json, reason, outcome,
+              correlation_id)
+           SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+            WHERE changes() > 0`
+        )
+        .bind(...auditValues),
+    ]);
+    const record = await this.db
+      .prepare(
+        `SELECT idempotency_key, request_fingerprint, actor_user_id,
+                program_id, resulting_token, created_at
+           FROM program_check_in_token_rotations
+          WHERE idempotency_key = ?`
+      )
+      .bind(input.idempotency_key)
+      .first<ProgramTokenRotationRow>();
+    if (!record) {
+      throw new Error(
+        "Program token rotation did not reserve an idempotency record."
+      );
+    }
+    if (
+      record.request_fingerprint !== input.request_fingerprint ||
+      record.actor_user_id !== input.actor_user_id ||
+      record.program_id !== input.program_id
+    ) {
+      throw new ProgramTokenRotationConflictError();
+    }
+    const current = await this.requireProgram(input.program_id);
+    return {
+      program: { ...current, check_in_token: record.resulting_token },
+      idempotent: (results[1]?.meta?.changes ?? 0) === 0,
+    };
   }
 
   async archiveProgramIfClear(

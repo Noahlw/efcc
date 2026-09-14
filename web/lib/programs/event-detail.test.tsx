@@ -14,6 +14,7 @@ const mocks = vi.hoisted(() => ({
   updateEvent: vi.fn(),
   setEventAvailability: vi.fn(),
   cancelEvent: vi.fn(),
+  getProgramAttendanceArtifact: vi.fn(),
 }));
 
 vi.mock(import("@/lib/programs/program-api"), () => ({
@@ -21,6 +22,7 @@ vi.mock(import("@/lib/programs/program-api"), () => ({
   updateEvent: mocks.updateEvent,
   setEventAvailability: mocks.setEventAvailability,
   cancelEvent: mocks.cancelEvent,
+  getProgramAttendanceArtifact: mocks.getProgramAttendanceArtifact,
 }));
 
 const detailFixture = (
@@ -129,6 +131,44 @@ describe("EVT-01 event detail", () => {
       })
     ).toBeInTheDocument();
     expect(mocks.getEvent).toHaveBeenCalledWith("program-1", "event-1");
+  });
+
+  test("opens a current Event Check-In Sheet with Program QR and manual code", async () => {
+    mocks.getEvent.mockResolvedValue(detailFixture());
+    mocks.getProgramAttendanceArtifact.mockResolvedValue({
+      artifact: {
+        program_id: "program-1",
+        program_name: "顯恩堂主日學",
+        check_in_token: "program-token-1",
+        can_rotate: false,
+      },
+    });
+    const user = userEvent.setup();
+    render(
+      <EventDetail
+        programId="program-1"
+        eventId="event-1"
+        canManage
+        onBack={() => {}}
+        backHref="/programs"
+      />
+    );
+
+    await user.click(
+      await screen.findByRole("button", {
+        name: COPY.attendance.eventCheckInSheetOpen,
+      })
+    );
+    expect(
+      await screen.findByTestId("event-check-in-sheet")
+    ).toBeInTheDocument();
+    expect(
+      await screen.findByAltText(COPY.attendance.eventCheckInSheetQrLabel)
+    ).toBeVisible();
+    expect(screen.getByText("ABCD1234")).toBeVisible();
+    expect(mocks.getProgramAttendanceArtifact).toHaveBeenCalledWith(
+      "program-1"
+    );
   });
 
   test("renders the server-projected schedule exception", async () => {

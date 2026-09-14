@@ -7,6 +7,13 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { RpcError } from "@/lib/api";
 import { COPY, errorMessage } from "@/lib/copy";
 import {
@@ -47,6 +54,7 @@ import {
   ScreenStatus,
 } from "@/lib/screen-foundations";
 
+import { EventCheckInSheet } from "./event-check-in-sheet";
 import { buildProgramsHref } from "./programs-intent";
 import type { ProgramsOrigin } from "./programs-intent";
 
@@ -160,10 +168,14 @@ export const EventDetail = ({
   const [notice, setNotice] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [editing, setEditing] = useState(false);
+  const [editingEventType, setEditingEventType] = useState<EventType>(
+    COPY.programs.eventTypeOptions[0] as EventType
+  );
   // Inline confirmations replace the control that opened them; hand focus to
   // the replacement so keyboard users land on the new affordance.
   const [confirmingDeactivate, setConfirmingDeactivate] = useState(false);
   const [confirmingCancel, setConfirmingCancel] = useState(false);
+  const [showCheckInSheet, setShowCheckInSheet] = useState(false);
   const [undoAvailable, setUndoAvailable] = useState(false);
   // Affected-operation count shown in the deactivation confirm; sourced
   // from the loaded summary or, on a server refusal, the server's fresh
@@ -291,8 +303,7 @@ export const EventDetail = ({
         updateEvent(programId, eventId, {
           name: String(form.get("name") ?? "").trim() || null,
           location: String(form.get("location") ?? "").trim() || null,
-          event_type: (String(form.get("event_type") ?? "") ||
-            null) as EventType | null,
+          event_type: editingEventType,
           starts_at: hkWallInputToIso(startsAt) ?? undefined,
           ends_at: hkWallInputToIso(endsAt) ?? undefined,
           check_in_window_opens_at: hkWallInputToIso(
@@ -745,6 +756,25 @@ export const EventDetail = ({
             {COPY.attendance.eventAttendanceOpen}
           </Link>
         </Button>
+        {!cancelled && event.manual_check_in_code && (
+          <>
+            <Button
+              type="button"
+              variant="outline"
+              className="w-fit"
+              onClick={() => setShowCheckInSheet((current) => !current)}
+            >
+              {COPY.attendance.eventCheckInSheetOpen}
+            </Button>
+            {showCheckInSheet && (
+              <EventCheckInSheet
+                event={event}
+                onClose={() => setShowCheckInSheet(false)}
+                onAuthRequired={onAuthRequired}
+              />
+            )}
+          </>
+        )}
       </ScreenSection>
 
       <ScreenSection title={COPY.programs.identityAssignments}>
@@ -865,44 +895,57 @@ export const EventDetail = ({
                     htmlFor="management-event-type"
                     label={COPY.programs.eventType}
                   >
-                    <select
-                      id="management-event-type"
-                      className="min-h-11 min-w-0 w-full rounded-[var(--screen-radius-control)] border border-[var(--screen-line-strong)] bg-[var(--screen-surface)] px-3 py-2 text-base text-[var(--screen-ink)]"
-                      name="event_type"
-                      defaultValue={
-                        event.event_type ?? COPY.programs.eventTypeOptions[0]
+                    <Select
+                      value={editingEventType}
+                      onValueChange={(value) =>
+                        setEditingEventType(value as EventType)
                       }
                     >
-                      {COPY.programs.eventTypeOptions.map((type) => (
-                        <option key={type} value={type}>
-                          {type}
-                        </option>
-                      ))}
-                    </select>
+                      <SelectTrigger
+                        id="management-event-type"
+                        className="border-[var(--screen-line-strong)] bg-[var(--screen-surface)] text-base"
+                        aria-label={COPY.programs.eventType}
+                      >
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {COPY.programs.eventTypeOptions.map((type) => (
+                          <SelectItem key={type} value={type}>
+                            {type}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </ScreenField>
                   <ScreenField
                     htmlFor="management-event-recurrence"
                     label={COPY.programs.recurrenceTag}
                   >
-                    <select
-                      id="management-event-recurrence"
-                      className="min-h-11 min-w-0 w-full rounded-[var(--screen-radius-control)] border border-[var(--screen-line-strong)] bg-[var(--screen-surface)] px-3 py-2 text-base text-[var(--screen-ink)]"
-                      name="recurrence_tag"
-                      defaultValue={
+                    <Select
+                      value={
                         event.recurrence_tag ?? COPY.programs.recurrenceNone
                       }
                       disabled
                     >
-                      <option value={COPY.programs.recurrenceNone}>
-                        {COPY.programs.recurrenceNone}
-                      </option>
-                      <option value={COPY.programs.recurrenceWeekly}>
-                        {COPY.programs.recurrenceWeekly}
-                      </option>
-                      <option value={COPY.programs.recurrenceMonthly}>
-                        {COPY.programs.recurrenceMonthly}
-                      </option>
-                    </select>
+                      <SelectTrigger
+                        id="management-event-recurrence"
+                        className="border-[var(--screen-line-strong)] bg-[var(--screen-surface)] text-base"
+                        aria-label={COPY.programs.recurrenceTag}
+                      >
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value={COPY.programs.recurrenceNone}>
+                          {COPY.programs.recurrenceNone}
+                        </SelectItem>
+                        <SelectItem value={COPY.programs.recurrenceWeekly}>
+                          {COPY.programs.recurrenceWeekly}
+                        </SelectItem>
+                        <SelectItem value={COPY.programs.recurrenceMonthly}>
+                          {COPY.programs.recurrenceMonthly}
+                        </SelectItem>
+                      </SelectContent>
+                    </Select>
                     <span className="text-xs leading-[var(--screen-meta-leading)] text-[var(--screen-muted)]">
                       {COPY.programs.repeatFormInformational}
                     </span>
@@ -1008,7 +1051,13 @@ export const EventDetail = ({
                 variant="outline"
                 className="w-fit border-[var(--screen-line-strong)] bg-transparent text-[var(--screen-ink)] hover:bg-[var(--screen-surface-soft)]"
                 disabled={busy}
-                onClick={() => setEditing(true)}
+                onClick={() => {
+                  setEditingEventType(
+                    event.event_type ??
+                      (COPY.programs.eventTypeOptions[0] as EventType)
+                  );
+                  setEditing(true);
+                }}
               >
                 {COPY.programs.eventEditTitle}
               </Button>

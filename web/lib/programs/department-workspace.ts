@@ -50,6 +50,7 @@ import {
   NoScheduleRulesError,
   PreviewPlanNotFoundError,
   ProgramArchiveBlockedError,
+  ProgramTokenRotationConflictError,
   RequestNotDecidableError,
   ScheduleRuleRetiredError,
   ScheduleRuleNotApplicableError,
@@ -91,6 +92,8 @@ import type {
   DepartmentModuleRow,
   MemberOptionRow,
   ProgramRow,
+  ProgramTokenRotationInput,
+  ProgramTokenRotationResult,
   ProgramIdentityAssignmentRow,
   ManagementAttentionEventRow,
   NotificationReadStateInput,
@@ -120,6 +123,19 @@ export interface ProgramCapabilities {
   role_read?: boolean;
   role_assign?: boolean;
   role_revoke?: boolean;
+}
+
+export interface ProgramAttendanceArtifactView {
+  program_id: string;
+  program_name: string;
+  check_in_token: string;
+  can_rotate: boolean;
+}
+
+export interface ProgramTokenRotationView {
+  program_id: string;
+  check_in_token: string;
+  idempotent: boolean;
 }
 
 export type DepartmentView = DepartmentRow & {
@@ -2142,6 +2158,118 @@ export class DepartmentWorkspace {
     // defaults for managers, but never the check-in secret.
     return this.managementProgramSettings(row, capabilities);
   }
+
+  async getProgramAttendanceArtifact(
+    ctx: AuthorizationContext,
+    id: string
+  ): Promise<ProgramAttendanceArtifactView | null> {
+    const row = await this.store.findProgramById(id);
+    if (
+      !row ||
+      row.lifecycle === "Archived" ||
+      !(await this.isModuleEnabled(row.department_id, MODULE_KEY.ATTENDANCE))
+    ) {
+      return null;
+    }
+    const capabilities = await this.programCapabilities(ctx, row);
+    if (!capabilities.manage || !row.check_in_token) {
+      return null;
+    }
+    return {
+      program_id: row.program_id,
+      program_name: row.name,
+      check_in_token: row.check_in_token,
+      can_rotate: await this.authorizer.can(ctx, CAPABILITY.DEPARTMENT_MANAGE, {
+        departmentId: row.department_id,
+      }),
+    };
+  }
+
+  async rotateProgramCheckInToken(
+    ctx: AuthorizationContext,
+    id: string,
+    idempotencyKey: string,
+    correlationId: string | null
+  ): Promise<ProgramTokenRotationView> {
+    const row = await this.store.findProgramById(id);
+    const action = "PROGRAM_CHECK_IN_TOKEN_ROTATE";
+    const safeProgram = { program_id: id };
+    if (
+      !row ||
+      row.lifecycle === "Archived" ||
+      !(await this.isModuleEnabled(row.department_id, MODULE_KEY.ATTENDANCE))
+    ) {
+      await this.audit(
+        ctx,
+        action,
+        "program",
+        id,
+        "DENIED",
+        safeProgram,
+        safeProgram,
+        correlationId
+      );
+      throw new AuthorizationDeniedError(CAPABILITY.DEPARTMENT_MANAGE);
+    }
+    const canRotate = await this.authorizer.can(
+      ctx,
+      CAPABILITY.DEPARTMENT_MANAGE,
+      {
+        departmentId: row.department_id,
+      }
+    );
+    if (!canRotate) {
+      await this.audit(
+        ctx,
+        action,
+        "program",
+        id,
+        "DENIED",
+        safeProgram,
+        safeProgram,
+        correlationId
+      );
+      throw new AuthorizationDeniedError(CAPABILITY.DEPARTMENT_MANAGE);
+    }
+
+    const input: ProgramTokenRotationInput = {
+      program_id: id,
+      actor_user_id: ctx.actorUserId,
+      idempotency_key: idempotencyKey,
+      request_fingerprint: `program-check-in-token-rotate:${id}`,
+      now: new Date().toISOString(),
+      audit_id: crypto.randomUUID(),
+      correlation_id: correlationId,
+    };
+    let result: ProgramTokenRotationResult;
+    try {
+      result = await this.store.rotateProgramCheckInToken(input);
+    } catch (error) {
+      if (error instanceof ProgramTokenRotationConflictError) {
+        await this.audit(
+          ctx,
+          action,
+          "program",
+          id,
+          "CONFLICT",
+          safeProgram,
+          safeProgram,
+          correlationId
+        );
+      }
+      throw error;
+    }
+    const token = result.program.check_in_token;
+    if (!token) {
+      throw new Error("Program token rotation returned an empty token.");
+    }
+    return {
+      program_id: result.program.program_id,
+      check_in_token: token,
+      idempotent: result.idempotent,
+    };
+  }
+
   private managementDepartment(view: DepartmentView): ManagementDepartmentView {
     return {
       department_id: view.department_id,
