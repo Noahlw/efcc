@@ -158,6 +158,50 @@ describe("AttendanceRoster", () => {
     expect(screen.getByText("重複簽到")).toBeVisible();
   });
 
+  test("defaults to not-yet and switches between checked-in and all", async () => {
+    const user = userEvent.setup();
+    const notYetRow: AttendanceExpectedRow = {
+      ...EXPECTED_ROW,
+      member_user_id: "member-not-yet",
+      member_name: "尚未簽到會員",
+      state: "Not Yet",
+    };
+    const checkedInRow: AttendanceExpectedRow = {
+      ...EXPECTED_ROW,
+      expected_attendance_id: "expected-checked-in",
+      enrollment_id: "enrollment-checked-in",
+      member_user_id: "member-checked-in",
+      member_name: "已簽到會員",
+      state: "Present",
+      attendance: MEMBER_ROW,
+    };
+    render(
+      <AttendanceRoster
+        event={EVENT}
+        rows={[MEMBER_ROW]}
+        expectedRows={[notYetRow, checkedInRow]}
+        counts={{
+          expected: 2,
+          present: 1,
+          not_yet: 1,
+          absent: 0,
+          excused: 0,
+          guests: 0,
+        }}
+      />
+    );
+
+    expect(screen.getByText("尚未簽到會員")).toBeVisible();
+    expect(screen.queryByText("已簽到會員")).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("tab", { name: /已簽到 \(1\)/u }));
+    expect(screen.getByText("已簽到會員")).toBeVisible();
+    expect(screen.queryByText("尚未簽到會員")).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("tab", { name: /全部 \(2\)/u }));
+    expect(screen.getByText("尚未簽到會員")).toBeVisible();
+  });
+
   test("requires a void reason before calling the mutation", async () => {
     const user = userEvent.setup();
     const onVoid = vi.fn().mockResolvedValue(true);

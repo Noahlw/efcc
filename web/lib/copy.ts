@@ -137,6 +137,12 @@ export const COPY = {
     rosterMaterializing: "正在建立現場名單…",
     rosterMaterializeHint:
       "聚會已開始。建立後會固定今次應到成員，方便查看未簽到及缺席狀態。",
+    rosterFilterLabel: "出席名單檢視",
+    rosterFilterNotYet: "未簽到",
+    rosterFilterCheckedIn: "已簽到",
+    rosterFilterAll: "全部",
+    rosterFilterHint: "預設顯示尚未有有效簽到的成員；缺席及請假狀態仍會保留。",
+    rosterFilterEmpty: "此檢視目前沒有記錄。",
     rosterOffline:
       "現時沒有網絡。你仍可查看最近一次資料；重新連線後才可作出記錄。",
     rosterStale: (lastUpdated: string) =>
