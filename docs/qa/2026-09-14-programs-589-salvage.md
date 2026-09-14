@@ -219,3 +219,11 @@ Canonical Programs browser, responsive, and W7 failures are blocking. Assertion,
 
 - Self-contained packet-v4: `/private/tmp/efcc-589-review-packet-c4d10c746432-v4.md`, `38615` bytes, SHA-256 `2a92b0eac12fc1ba16c2fd3eb713ae197654af7aae9cb21a9c8d50bf8339144f`.
 - Packet-v4 embeds the complete verified CEO Review, material accepted #586 R01–R25 clauses, the active S0-S4 tracker boundary, Gibbs and Goodall findings plus repairs, exact c4d candidate/harness ranges, current c4d compact evidence identities, and the terminal-result contract. It is immutable and read-only; no heavy suites are requested from the reviewer.
+
+## S4 external-review boundary checkpoint
+
+### Checkpoint — 2026-09-14 HKT
+
+- Packet-v4 and its candidate/evidence inputs were available for review. Kant (`01a09f2b-0d66-7b42-b34c-c5afc8f11e1f`) received two bounded `300000ms` waits and returned no status/verdict; it was closed as `TIMEOUT_NO_VERDICT`.
+- Kierkegaard (`01a09f35-165b-7b42-b34c-c5afc8f11e1f`) received one bounded `300000ms` wait and returned no status/verdict; it was closed as `TIMEOUT_NO_VERDICT`.
+- These timeouts are not `CLEAN`, `FINDINGS`, or `REVIEW_BLOCKED`, and no source/evidence access failure was reported. Therefore `589-REVIEW-01` remains pending and owner approval remains blocked. The machine-green candidate/evidence state is unchanged; #590–#601 remain locked.

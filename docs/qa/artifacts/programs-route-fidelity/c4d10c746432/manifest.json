@@ -94,7 +94,25 @@
       "path": "/private/tmp/efcc-589-review-packet-c4d10c746432-v4.md",
       "bytes": 38615,
       "sha256": "2a92b0eac12fc1ba16c2fd3eb713ae197654af7aae9cb21a9c8d50bf8339144f"
-    }
+    },
+    "freshReviewAttempts": [
+      {
+        "reviewer": "Kant",
+        "agentId": "01a09f2b-0d66-7b02-ba7e-82feea1a5275",
+        "outcome": "TIMEOUT_NO_VERDICT",
+        "boundedWaits": 2,
+        "waitDurationMsEach": 300000,
+        "closedAfterTimeout": true
+      },
+      {
+        "reviewer": "Kierkegaard",
+        "agentId": "01a09f35-165b-7b42-b34c-c5afc8f11e1f",
+        "outcome": "TIMEOUT_NO_VERDICT",
+        "boundedWaits": 1,
+        "waitDurationMsEach": 300000,
+        "closedAfterTimeout": true
+      }
+    ]
   },
   "visualEvidence": {
     "approvalViewports": [
