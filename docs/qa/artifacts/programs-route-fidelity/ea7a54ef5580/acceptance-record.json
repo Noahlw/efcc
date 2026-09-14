@@ -63,10 +63,28 @@
     }
   ],
   "independentReview": {
-    "status": "PENDING",
+    "status": "BLOCKED_EXTERNAL_REVIEW",
     "reviewer": null,
     "candidateSha": "ea7a54ef5580f399d0db2c2c67795ce4689f71b0",
-    "zeroActionableFindings": null
+    "zeroActionableFindings": null,
+    "attempts": [
+      {
+        "agentId": "01a09e8c-347f-7be2-84e5-31f80632b652",
+        "outcome": "shutdown_after_timeout",
+        "completedSourceAndEvidenceReview": false
+      },
+      {
+        "agentId": "01a09e98-ef36-7d82-a624-791285a69317",
+        "outcome": "REVIEW_INCOMPLETE",
+        "completedSourceAndEvidenceReview": false
+      },
+      {
+        "agentId": "01a09e9b-fe92-7a80-8f6f-01c4e9f3a5d2",
+        "outcome": "REVIEW_INCOMPLETE",
+        "completedSourceAndEvidenceReview": false
+      }
+    ],
+    "note": "No independent source/diff/evidence verdict was obtained. This external availability blocker prevents #589 owner approval; it is not a code finding or an approval."
   },
   "ownerDecision": {
     "status": "PENDING",

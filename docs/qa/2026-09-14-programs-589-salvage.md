@@ -51,7 +51,7 @@ No database/schema/index or backend/API contract changes; permission-model redes
 | S0 Audit and fresh evidence | `COMPLETE` | `0ca965214da9f1be41746435ad0f847ca2e6a977` | Fresh actual/frozen four-state baseline, lint measurement, and Storybook request-count probe complete; real Worker/D1 setup limitation recorded |
 | S1 Verified #589 fixes | `COMPLETE` | `ea7a54ef5580f399d0db2c2c67795ce4689f71b0` | Append-only production fixed point committed; full pre-commit hook passed, including 69 component files / 1039 tests |
 | S2 Sequential qualification/evidence | `MACHINE_GREEN / WAITING_INDEPENDENT_REVIEW` | `ea7a54ef5580f399d0db2c2c67795ce4689f71b0` | Browser, responsive, W7, computed geometry, request-count, and shell-only evidence pass; compact artifacts are committed without changing the production candidate |
-| S3 Independent review | `PLANNED` | — | Fresh-context review; delivery owner cannot self-approve |
+| S3 Independent review | `BLOCKED_EXTERNAL_REVIEW` | — | Three delegated read-only attempts did not complete the exact source/diff/evidence review; no `CLEAN` verdict exists |
 | S4 Owner decision | `PLANNED` | — | Remains `WAITING_OWNER_L2` until explicit owner decision |
 
 ## S0 baseline observations
@@ -68,7 +68,7 @@ No database/schema/index or backend/API contract changes; permission-model redes
 - Candidate-bound shell visual qualification: **PASS** — 2/2 Playwright projects, 8 shell rows for the exact four-state set, with committed sheets under `docs/qa/artifacts/programs-route-fidelity/ea7a54ef5580/`; local full-page matrix remains supporting evidence only at `/private/tmp/efcc-589-visual-s2-ea7a54ef/`.
 - Candidate-bound cold-load access request count: **PASS** — exactly 1 `GET /api/v1/programs/access` on the management cold load; browser report `/private/tmp/efcc-589-browser-s2-ea7a54ef/browser-results.json`.
 - S2 failure classification: **PASS** — no blocking or advisory runtime failures in the accepted runs. The stale-server diagnostic and an initial wrong-directory Vitest invocation are recorded as non-gate diagnostics in the compact manifest.
-- Independent review: `PENDING`
+- Independent review: `BLOCKED_EXTERNAL_REVIEW` — no source/diff/evidence verdict was obtained from the delegated reviewer service
 - Owner approval: `PENDING`
 
 ## S0 fresh evidence locators
@@ -143,6 +143,14 @@ No database/schema/index or backend/API contract changes; permission-model redes
 - Evidence commit checkpoint: `ed4e484ee565c6bcdb13484a88b3aa1de892c994`; post-commit `shasum -a 256 -c checksums.sha256` passed for all four listed files. HEAD now includes the evidence-only commit; the production candidate remains `ea7a54ef5580f399d0db2c2c67795ce4689f71b0`.
 - Qualification refresh checkpoint: harness-only commit `d4165463c663f7b11d8e12eebc69b6d9df933b19`; refreshed W7 `126/126` passed after a fresh server restart. Evidence refresh commit `180e047550c30f8c4b4f7517dfc3b0f3512eb588` records the refreshed manifest/ledger/checksums. The contact-sheet bytes and production candidate remain unchanged.
 - S2 gate: **MACHINE_GREEN / WAITING_INDEPENDENT_REVIEW**. Independent review is the next packet; owner approval remains pending and #590–#601 remain locked.
+
+## S3 independent review checkpoint
+
+### Checkpoint — 2026-09-14 HKT
+
+- Three delegated read-only review attempts were made for the exact production candidate `ea7a54ef5580f399d0db2c2c67795ce4689f71b0` and compact evidence bundle: one timed out and was shut down; two returned `REVIEW_INCOMPLETE` after bounded interrupt requests.
+- The attempts did not complete the required source/diff/evidence audit. No `CLEAN` verdict and no zero-actionable-findings result exists; the incomplete reviewer output is not treated as a code finding or approval.
+- S3 status: **BLOCKED_EXTERNAL_REVIEW**. The last safe state remains **MACHINE_GREEN / WAITING_INDEPENDENT_REVIEW**; owner approval and #590–#601 unlock remain blocked until a completed independent review is available.
 
 ## Gate policy
 

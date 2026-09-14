@@ -19,6 +19,13 @@
     "comparison": "shell-only",
     "ownerApprovalSurface": "the two committed shell contact sheets"
   },
+  "independentReview": {
+    "status": "BLOCKED_EXTERNAL_REVIEW",
+    "candidateSha": "ea7a54ef5580f399d0db2c2c67795ce4689f71b0",
+    "completed": false,
+    "ownerApprovalBlocked": true,
+    "note": "Three delegated read-only review attempts did not complete the exact source/diff/evidence audit; no CLEAN verdict was obtained."
+  },
   "visualEvidence": {
     "approvalViewports": [
       { "width": 402, "height": 874 },
