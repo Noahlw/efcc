@@ -7,6 +7,12 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { RpcError } from "@/lib/api";
 import { COPY, errorCopyFor } from "@/lib/copy";
 import { announce } from "@/lib/live-region";
@@ -33,6 +39,7 @@ import {
 import { rememberDeepLink } from "@/lib/session";
 
 import { DepartmentSettingsPanel } from "./department-settings-panel";
+import { ProgramForm } from "./program-form";
 import { buildProgramsHref } from "./programs-intent";
 import { useAsyncResource } from "./use-async-resource";
 
@@ -192,17 +199,6 @@ const DepartmentSettingsAction = ({
   const returnFocusPending = useRef(false);
   const pickerId = "programs-management-department-settings-picker";
 
-  useEffect(() => {
-    if (pickerOpen) {
-      pickerRef.current?.focus();
-      return;
-    }
-    if (returnFocusPending.current) {
-      triggerRef.current?.focus();
-      returnFocusPending.current = false;
-    }
-  }, [pickerOpen]);
-
   if (departments.length === 0) {
     return null;
   }
@@ -239,29 +235,38 @@ const DepartmentSettingsAction = ({
       >
         {COPY.programs.departmentSettings}
       </Button>
-      {pickerOpen && (
-        <div
+      <Dialog
+        open={pickerOpen}
+        onOpenChange={(open) => {
+          if (!open) {
+            closePicker();
+          }
+        }}
+      >
+        <DialogContent
           ref={pickerRef}
           id={pickerId}
-          aria-label={COPY.programs.departmentSettings}
-          className="absolute top-[calc(100%+0.5rem)] right-0 z-20 grid min-w-56 max-w-[calc(100vw-2rem)] gap-3 border border-[var(--screen-line-strong)] bg-[var(--screen-surface)] p-3 text-left text-[var(--screen-ink)] shadow-lg"
-          role="dialog"
+          showCloseButton={false}
           tabIndex={-1}
-          onKeyDown={(event) => {
-            if (event.key === "Escape") {
-              event.preventDefault();
-              closePicker();
+          onOpenAutoFocus={(event) => {
+            event.preventDefault();
+            pickerRef.current?.focus();
+          }}
+          onCloseAutoFocus={(event) => {
+            event.preventDefault();
+            if (returnFocusPending.current) {
+              triggerRef.current?.focus();
+              returnFocusPending.current = false;
             }
           }}
         >
-          <strong className="wrap-anywhere text-sm font-bold">
-            {COPY.programs.departmentSettings}
-          </strong>
+          <DialogHeader>
+            <DialogTitle>{COPY.programs.departmentSettings}</DialogTitle>
+          </DialogHeader>
           <div className="grid gap-1">
             {departments.map((department) => (
               <Button
                 key={department.department_id}
-                className="h-auto min-h-11 w-full justify-start whitespace-normal border-[var(--screen-line)] bg-transparent px-3 py-2 text-left text-[var(--screen-ink)] hover:bg-[var(--screen-surface-soft)] hover:text-[var(--screen-ink)]"
                 type="button"
                 variant="outline"
                 onClick={() => openDepartment(department)}
@@ -270,16 +275,11 @@ const DepartmentSettingsAction = ({
               </Button>
             ))}
           </div>
-          <Button
-            className="h-auto min-h-11 w-fit whitespace-normal border-[var(--screen-line-strong)] bg-transparent px-3 py-2 text-[var(--screen-ink)] hover:bg-[var(--screen-surface-soft)] hover:text-[var(--screen-ink)]"
-            type="button"
-            variant="outline"
-            onClick={closePicker}
-          >
+          <Button type="button" variant="outline" onClick={closePicker}>
             {COPY.programs.collapse}
           </Button>
-        </div>
-      )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
@@ -310,6 +310,7 @@ export const ManagementDirectory = ({
   headerAction,
 }: ManagementDirectoryProps) => {
   const [localQuery, setLocalQuery] = useState("");
+  const [creatingProgram, setCreatingProgram] = useState(false);
   const directoryQuery = query ?? localQuery;
   const updateQuery = (value: string) => {
     if (onQueryChange) {
@@ -416,6 +417,11 @@ export const ManagementDirectory = ({
             (!departmentId || department.department_id === departmentId)
         )
       : [];
+  const creatableDepartments =
+    state.kind === "ready"
+      ? state.departments.filter(({ capabilities }) => capabilities.manage)
+      : [];
+  const canCreateProgram = !departmentOnly && creatableDepartments.length > 0;
   const [openDepartmentSettings, setOpenDepartmentSettings] =
     useState<Department | null>(null);
   const settingsTriggerRef = useRef<HTMLButtonElement | null>(null);
@@ -445,6 +451,11 @@ export const ManagementDirectory = ({
     settingsReturnFocusPending.current = true;
     setOpenDepartmentSettings(null);
   };
+
+  const showDirectoryHeaderAction =
+    (canCreateProgram && !creatingProgram) || headerAction !== undefined;
+  const showDirectory = !creatingProgram || !canCreateProgram;
+
   return (
     <div className="min-w-0 text-[var(--screen-ink)]">
       <ScreenHeader
@@ -459,10 +470,34 @@ export const ManagementDirectory = ({
             ? COPY.programs.departmentsTitle
             : COPY.programs.managementPageTitle
         }
-        action={headerAction}
+        action={
+          showDirectoryHeaderAction ? (
+            <>
+              {canCreateProgram && !creatingProgram && (
+                <Button
+                  className="h-auto min-h-11 w-fit whitespace-normal bg-[var(--screen-accent)] px-3 py-2 text-white hover:bg-[var(--screen-accent-deep)]"
+                  type="button"
+                  onClick={() => setCreatingProgram(true)}
+                >
+                  {COPY.programs.createProgram}
+                </Button>
+              )}
+              {headerAction}
+            </>
+          ) : undefined
+        }
       />
 
-      {state.kind === "loading" && (
+      {creatingProgram && canCreateProgram && (
+        <ProgramForm
+          departments={creatableDepartments}
+          defaultDepartmentId={departmentId}
+          onSaved={(programId) => onOpenProgram(programId, true)}
+          onCancel={() => setCreatingProgram(false)}
+        />
+      )}
+
+      {showDirectory && state.kind === "loading" && (
         <ScreenLoadingRows
           id="programs-management-directory-state"
           tabIndex={-1}
@@ -471,7 +506,7 @@ export const ManagementDirectory = ({
         />
       )}
 
-      {state.kind === "error" && (
+      {showDirectory && state.kind === "error" && (
         <ScreenState
           id="programs-management-directory-state"
           tabIndex={-1}
@@ -502,7 +537,8 @@ export const ManagementDirectory = ({
         />
       )}
 
-      {state.kind === "ready" &&
+      {showDirectory &&
+        state.kind === "ready" &&
         openDepartmentSettings !== null &&
         !departmentOnly && (
           <div className="mb-5 min-w-0">
@@ -514,7 +550,8 @@ export const ManagementDirectory = ({
           </div>
         )}
 
-      {state.kind === "ready" &&
+      {showDirectory &&
+        state.kind === "ready" &&
         departmentOnly &&
         scopedDepartments.length > 0 && (
           <ScreenSection
@@ -544,7 +581,8 @@ export const ManagementDirectory = ({
           </ScreenSection>
         )}
 
-      {state.kind === "ready" &&
+      {showDirectory &&
+        state.kind === "ready" &&
         (departmentOnly
           ? scopedDepartments.length === 0
           : state.rows.length === 0) && (
@@ -573,7 +611,7 @@ export const ManagementDirectory = ({
           />
         )}
 
-      {state.kind === "ready" && state.rows.length > 0 && (
+      {showDirectory && state.kind === "ready" && state.rows.length > 0 && (
         <>
           <div className="mb-5 flex min-w-0 gap-2 max-[799px]:flex-col">
             <ScreenSearch

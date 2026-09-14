@@ -1,5 +1,6 @@
 import { cleanup, render, screen } from "@testing-library/react";
-import userEvent, { type UserEvent } from "@testing-library/user-event";
+import userEvent from "@testing-library/user-event";
+import type { UserEvent } from "@testing-library/user-event";
 import { afterEach, describe, expect, test, vi } from "vitest";
 
 import { RpcError } from "@/lib/api";
@@ -109,8 +110,6 @@ describe(ProgramForm, () => {
       screen.queryByRole("option", { name: "只讀事工 · DEPT-2" })
     ).not.toBeInTheDocument();
     await user.keyboard("{Escape}");
-    expect(screen.queryByText(/check-in/gu)).not.toBeInTheDocument();
-
     await user.type(
       screen.getByRole("textbox", { name: COPY.programs.programName }),
       "  單次培訓  "
@@ -128,11 +127,6 @@ describe(ProgramForm, () => {
       COPY.programs.behaviorType,
       COPY.programs.behaviorOneOff
     );
-    await chooseSelectOption(
-      user,
-      COPY.programs.programLifecycle,
-      COPY.programs.lifecycleActive
-    );
     await user.click(
       screen.getByRole("button", { name: COPY.programs.saveProgram })
     );
@@ -142,12 +136,13 @@ describe(ProgramForm, () => {
       description: "單次培訓目的",
       category: "領袖訓練",
       behavior_type: "OneOff",
-      lifecycle: "Active",
+      lifecycle: "Draft",
       discoverability: "Unlisted",
       enrollment_mode: "MemberRequest",
     });
     expect(onSaved).toHaveBeenCalledWith("created-1");
   });
+
   test("requires a non-empty name and purpose before creating a program", async () => {
     const user = userEvent.setup();
     const onSaved = vi.fn<(programId: string) => void>();
@@ -233,11 +228,19 @@ describe(ProgramForm, () => {
       screen.getByRole("button", { name: COPY.programs.saveProgram })
     );
 
-    expect(mocks.createProgram).toHaveBeenCalled();
+    expect(mocks.createProgram).toHaveBeenCalledWith("dept-1", {
+      name: "單次培訓",
+      description: "培訓目的",
+      category: undefined,
+      behavior_type: "Recurring",
+      lifecycle: "Draft",
+      discoverability: "Unlisted",
+      enrollment_mode: "MemberRequest",
+    });
     expect(onSaved).toHaveBeenCalledWith("created-no-category");
   });
 
-  test("disables Active lifecycle and shows a draft-only hint without publish", async () => {
+  test("does not expose creation lifecycle or discoverability overrides", async () => {
     const user = userEvent.setup();
     const onSaved = vi.fn<(programId: string) => void>();
     const readOnly = department("dept-1", "青年事工", true);
@@ -245,17 +248,14 @@ describe(ProgramForm, () => {
 
     render(<ProgramForm departments={[readOnly]} onSaved={onSaved} />);
 
-    const lifecycle = screen.getByRole("combobox", {
-      name: COPY.programs.programLifecycle,
-    });
-    await user.click(lifecycle);
     expect(
-      screen.getByRole("option", { name: COPY.programs.lifecycleActive })
-    ).toHaveAttribute("aria-disabled", "true");
-    await user.keyboard("{Escape}");
+      screen.queryByRole("combobox", { name: COPY.programs.programLifecycle })
+    ).not.toBeInTheDocument();
     expect(
-      screen.getByText(COPY.programs.programCreateDraftOnlyHint)
-    ).toBeInTheDocument();
+      screen.queryByRole("combobox", {
+        name: COPY.programs.discoverabilityListed,
+      })
+    ).not.toBeInTheDocument();
 
     await user.type(
       screen.getByRole("textbox", { name: COPY.programs.programName }),
@@ -282,6 +282,25 @@ describe(ProgramForm, () => {
       discoverability: "Unlisted",
       enrollment_mode: "MemberRequest",
     });
+  });
+
+  test("renders a truthful unavailable state without a manageable Department", async () => {
+    const onSaved = vi.fn<(programId: string) => void>();
+
+    render(
+      <ProgramForm
+        departments={[department("dept-1", "只讀事工", false)]}
+        onSaved={onSaved}
+      />
+    );
+
+    await expect(
+      screen.findByText(COPY.programs.programCreateUnavailable)
+    ).resolves.toBeInTheDocument();
+    expect(
+      screen.queryByRole("textbox", { name: COPY.programs.programName })
+    ).not.toBeInTheDocument();
+    expect(onSaved).not.toHaveBeenCalled();
   });
 
   test("edits lifecycle and shows the archive commitment conflict", async () => {

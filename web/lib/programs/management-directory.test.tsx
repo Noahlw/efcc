@@ -14,7 +14,11 @@ import {
   ManagementDirectory,
   projectManagementPrograms,
 } from "@/lib/programs/management-directory";
-import type { Department, Program } from "@/lib/programs/program-api";
+import type {
+  Department,
+  Program,
+  ProgramInput,
+} from "@/lib/programs/program-api";
 
 const mocks = vi.hoisted(() => {
   const router = {
@@ -26,6 +30,13 @@ const mocks = vi.hoisted(() => {
     prefetch: vi.fn(),
   };
   return {
+    createProgram:
+      vi.fn<
+        (
+          departmentId: string,
+          input: ProgramInput
+        ) => Promise<{ program: Program }>
+      >(),
     getManagementDirectory: vi.fn(),
     getDepartment: vi.fn(),
     setDepartmentModule: vi.fn(),
@@ -36,6 +47,7 @@ const mocks = vi.hoisted(() => {
 });
 
 vi.mock(import("@/lib/programs/program-api"), () => ({
+  createProgram: mocks.createProgram,
   getManagementDirectory: mocks.getManagementDirectory,
   getDepartment: mocks.getDepartment,
   setDepartmentModule: mocks.setDepartmentModule,
@@ -391,13 +403,70 @@ describe(ManagementDirectory, () => {
     ).not.toBeInTheDocument();
   });
 
-  test("does not offer free-floating creation outside a Department detail", async () => {
+  test("offers top-level creation and opens the new Program workspace", async () => {
+    const user = userEvent.setup();
+    const onOpenProgram =
+      vi.fn<(programId: string, created?: boolean) => void>();
     mockDirectory();
-    render(<ManagementDirectory onOpenProgram={vi.fn()} />);
-
-    await screen.findByRole("list", {
-      name: COPY.programs.managementDirectoryListLabel,
+    mocks.createProgram.mockResolvedValueOnce({
+      program: program(
+        "program-created",
+        "dept-youth",
+        "新課程",
+        programScope,
+        { lifecycle: "Draft", discoverability: "Unlisted" }
+      ),
     });
+    render(<ManagementDirectory onOpenProgram={onOpenProgram} />);
+
+    await user.click(
+      await screen.findByRole("button", { name: COPY.programs.createProgram })
+    );
+    expect(
+      screen.getByRole("heading", { name: COPY.programs.programCreateTitle })
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("list", {
+        name: COPY.programs.managementDirectoryListLabel,
+      })
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("combobox", { name: COPY.programs.programLifecycle })
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("combobox", {
+        name: COPY.programs.discoverabilityListed,
+      })
+    ).not.toBeInTheDocument();
+
+    await user.type(
+      screen.getByRole("textbox", { name: COPY.programs.programName }),
+      "新課程"
+    );
+    await user.type(
+      screen.getByRole("textbox", { name: COPY.programs.programPurpose }),
+      "新課程目的"
+    );
+    await user.click(
+      screen.getByRole("button", { name: COPY.programs.saveProgram })
+    );
+
+    await waitFor(() =>
+      expect(onOpenProgram).toHaveBeenCalledWith("program-created", true)
+    );
+  });
+
+  test("keeps top-level creation unavailable for a Program-only scope", async () => {
+    mockDirectory([departments[1]], [programsByDepartment[1][0]]);
+    render(
+      <ManagementDirectory
+        onOpenProgram={vi.fn<(programId: string) => void>()}
+      />
+    );
+
+    await expect(
+      screen.findByRole("link", { name: /社區關懷/u })
+    ).resolves.toBeInTheDocument();
     expect(
       screen.queryByRole("button", { name: COPY.programs.createProgram })
     ).not.toBeInTheDocument();

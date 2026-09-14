@@ -44,6 +44,8 @@ interface FormValues {
 
 export interface ProgramFormProps {
   departments?: readonly Department[];
+  /** Preserve an existing management-directory Department context on create. */
+  defaultDepartmentId?: string | null;
   initial?: Program;
   onSaved: (programId: string) => void;
   onCancel?: () => void;
@@ -53,10 +55,15 @@ const EMPTY_DEPARTMENTS: readonly Department[] = [];
 
 function initialValues(
   departments: readonly Department[],
-  initial?: Program
+  initial?: Program,
+  defaultDepartmentId?: string | null
 ): FormValues {
   const defaults: FormValues = {
     departmentId:
+      departments.find(
+        ({ department_id, capabilities }) =>
+          department_id === defaultDepartmentId && capabilities.manage
+      )?.department_id ??
       departments.find(({ capabilities }) => capabilities.manage)
         ?.department_id ??
       departments[0]?.department_id ??
@@ -110,8 +117,8 @@ function inputFrom(values: FormValues): ProgramInput {
     description: values.description.trim() || undefined,
     category: values.category.trim() || undefined,
     behavior_type: values.behaviorType,
-    lifecycle: values.lifecycle,
-    discoverability: values.discoverability,
+    lifecycle: "Draft",
+    discoverability: "Unlisted",
     enrollment_mode: values.enrollmentMode,
   };
 }
@@ -130,29 +137,29 @@ function patchFrom(values: FormValues): ProgramPatch {
 // oxlint-disable-next-line eslint/complexity
 export const ProgramForm = ({
   departments = EMPTY_DEPARTMENTS,
+  defaultDepartmentId = null,
   initial,
   onSaved,
   onCancel,
 }: ProgramFormProps) => {
   const [values, setValues] = useState(() =>
-    initialValues(departments, initial)
+    initialValues(departments, initial, defaultDepartmentId)
   );
   const [busy, setBusy] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
-  const canCreate = departments.some(({ capabilities }) => capabilities.manage);
-  const canActivate = initial
-    ? (initial.capabilities.publish ?? false)
-    : (departments.find(
-        (department) => department.department_id === values.departmentId
-      )?.capabilities.publish ?? false);
+  const canCreate = departments.some(
+    ({ department_id, capabilities }) =>
+      department_id === values.departmentId && capabilities.manage
+  );
+  const canActivate = initial ? (initial.capabilities.publish ?? false) : false;
 
   const update = <K extends keyof FormValues>(key: K, value: FormValues[K]) =>
     setValues((current) => ({ ...current, [key]: value }));
 
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (!initial && !canCreate) {
+    if (!initial && (!values.departmentId || !canCreate)) {
       setFormError(COPY.programs.programCreateForbidden);
       return;
     }
@@ -180,7 +187,10 @@ export const ProgramForm = ({
     }
   };
 
-  if (!initial && departments.length === 0) {
+  if (
+    !initial &&
+    !departments.some(({ capabilities }) => capabilities.manage)
+  ) {
     return (
       <ScreenSection
         className="min-w-0"
@@ -226,7 +236,7 @@ export const ProgramForm = ({
           {notice}
         </Alert>
       )}
-      <ScreenEditor className="min-w-0" onSubmit={submit}>
+      <ScreenEditor className="min-w-0" noValidate onSubmit={submit}>
         {!initial && (
           <ScreenField
             htmlFor="program-form-department"
@@ -332,87 +342,82 @@ export const ProgramForm = ({
             </SelectContent>
           </Select>
         </ScreenField>
-        <ScreenField
-          htmlFor="program-form-lifecycle"
-          label={COPY.programs.programLifecycle}
-        >
-          <Select
-            value={values.lifecycle}
-            onValueChange={(value) =>
-              update("lifecycle", value as Program["lifecycle"])
-            }
-            disabled={busy || initial?.lifecycle === "Archived"}
+        {initial && (
+          <ScreenField
+            htmlFor="program-form-lifecycle"
+            label={COPY.programs.programLifecycle}
           >
-            <SelectTrigger
-              id="program-form-lifecycle"
-              className="min-w-0 w-full border-[var(--screen-line-strong)] bg-[var(--screen-surface)] text-base text-[var(--screen-ink)]"
-              aria-label={COPY.programs.programLifecycle}
+            <Select
+              value={values.lifecycle}
+              onValueChange={(value) =>
+                update("lifecycle", value as Program["lifecycle"])
+              }
+              disabled={busy || initial.lifecycle === "Archived"}
             >
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {(!initial || initial.lifecycle === "Draft") && (
-                <SelectItem value="Draft">
-                  {COPY.programs.lifecycleDraft}
-                </SelectItem>
-              )}
-              {(!initial ||
-                initial.lifecycle === "Draft" ||
-                initial.lifecycle === "Active") && (
-                <SelectItem
-                  value="Active"
-                  disabled={
-                    busy ||
-                    (initial === undefined
-                      ? !canActivate
-                      : initial.lifecycle !== "Active" && !canActivate)
-                  }
-                >
-                  {COPY.programs.lifecycleActive}
-                </SelectItem>
-              )}
-              {(initial?.lifecycle === "Active" ||
-                initial?.lifecycle === "Archived") && (
-                <SelectItem value="Archived">
-                  {COPY.programs.lifecycleArchived}
-                </SelectItem>
-              )}
-            </SelectContent>
-          </Select>
-        </ScreenField>
-        {initial === undefined && !canActivate && (
-          <p className="m-0 wrap-anywhere text-sm leading-6 text-[var(--screen-muted)]">
-            {COPY.programs.programCreateDraftOnlyHint}
-          </p>
+              <SelectTrigger
+                id="program-form-lifecycle"
+                className="min-w-0 w-full border-[var(--screen-line-strong)] bg-[var(--screen-surface)] text-base text-[var(--screen-ink)]"
+                aria-label={COPY.programs.programLifecycle}
+              >
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {initial.lifecycle === "Draft" && (
+                  <SelectItem value="Draft">
+                    {COPY.programs.lifecycleDraft}
+                  </SelectItem>
+                )}
+                {(initial.lifecycle === "Draft" ||
+                  initial.lifecycle === "Active") && (
+                  <SelectItem
+                    value="Active"
+                    disabled={
+                      busy || (initial.lifecycle !== "Active" && !canActivate)
+                    }
+                  >
+                    {COPY.programs.lifecycleActive}
+                  </SelectItem>
+                )}
+                {(initial.lifecycle === "Active" ||
+                  initial.lifecycle === "Archived") && (
+                  <SelectItem value="Archived">
+                    {COPY.programs.lifecycleArchived}
+                  </SelectItem>
+                )}
+              </SelectContent>
+            </Select>
+          </ScreenField>
         )}
-        <ScreenField
-          htmlFor="program-form-discoverability"
-          label={COPY.programs.discoverabilityListed}
-        >
-          <Select
-            value={values.discoverability}
-            onValueChange={(value) =>
-              update("discoverability", value as Program["discoverability"])
-            }
-            disabled={busy}
+        {initial && (
+          <ScreenField
+            htmlFor="program-form-discoverability"
+            label={COPY.programs.discoverabilityListed}
           >
-            <SelectTrigger
-              id="program-form-discoverability"
-              className="min-w-0 w-full border-[var(--screen-line-strong)] bg-[var(--screen-surface)] text-base text-[var(--screen-ink)]"
-              aria-label={COPY.programs.discoverabilityListed}
+            <Select
+              value={values.discoverability}
+              onValueChange={(value) =>
+                update("discoverability", value as Program["discoverability"])
+              }
+              disabled={busy}
             >
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="Unlisted">
-                {COPY.programs.discoverabilityUnlisted}
-              </SelectItem>
-              <SelectItem value="Listed">
-                {COPY.programs.discoverabilityListed}
-              </SelectItem>
-            </SelectContent>
-          </Select>
-        </ScreenField>
+              <SelectTrigger
+                id="program-form-discoverability"
+                className="min-w-0 w-full border-[var(--screen-line-strong)] bg-[var(--screen-surface)] text-base text-[var(--screen-ink)]"
+                aria-label={COPY.programs.discoverabilityListed}
+              >
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="Unlisted">
+                  {COPY.programs.discoverabilityUnlisted}
+                </SelectItem>
+                <SelectItem value="Listed">
+                  {COPY.programs.discoverabilityListed}
+                </SelectItem>
+              </SelectContent>
+            </Select>
+          </ScreenField>
+        )}
         <ScreenField
           htmlFor="program-form-enrollment-mode"
           label={COPY.programs.programEnrollmentMode}
