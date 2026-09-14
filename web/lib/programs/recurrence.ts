@@ -24,6 +24,10 @@ export interface ScheduleRuleLike {
   end_time: string;
   /** Optional default venue materialized onto preview rows and generated events. */
   location?: string | null;
+  /** Inclusive HK wall start; legacy rows may omit it. */
+  effective_start_date?: string | null;
+  /** Inclusive HK wall end; null/omitted means ongoing. */
+  effective_end_date?: string | null;
 }
 
 export type ScheduleExceptionAction = "CANCEL" | "RESCHEDULE";
@@ -69,6 +73,20 @@ export function isWallDate(v: unknown): v is string {
   return typeof v === "string" && WALL_DATE_RE.test(v);
 }
 
+/** A calendar-valid HK wall date, not merely a YYYY-MM-DD-shaped string. */
+export function isValidWallDate(v: unknown): v is string {
+  if (!isWallDate(v)) {
+    return false;
+  }
+  const [year, month, day] = v.split("-").map(Number);
+  const date = new Date(Date.UTC(year, month - 1, day));
+  return (
+    date.getUTCFullYear() === year &&
+    date.getUTCMonth() === month - 1 &&
+    date.getUTCDate() === day
+  );
+}
+
 export function isWallTime(v: unknown): v is string {
   return typeof v === "string" && WALL_TIME_RE.test(v);
 }
@@ -87,6 +105,45 @@ export function addWallDays(wallDate: string, days: number): string {
     String(shifted.getUTCMonth() + 1).padStart(2, "0"),
     String(shifted.getUTCDate()).padStart(2, "0"),
   ].join("-");
+}
+
+/** Shift a HK wall date by calendar months, clamping only the arithmetic date. */
+export function addWallMonths(wallDate: string, months: number): string {
+  const [year, month, day] = wallDate.split("-").map(Number);
+  const target = new Date(Date.UTC(year, month - 1 + months, 1));
+  const lastDay = new Date(
+    Date.UTC(target.getUTCFullYear(), target.getUTCMonth() + 1, 0)
+  ).getUTCDate();
+  target.setUTCDate(Math.min(day, lastDay));
+  return [
+    target.getUTCFullYear(),
+    String(target.getUTCMonth() + 1).padStart(2, "0"),
+    String(target.getUTCDate()).padStart(2, "0"),
+  ].join("-");
+}
+
+/** Inclusive count of calendar days in a HK wall-date range. */
+export function wallDaySpan(fromDate: string, toDate: string): number {
+  const [fromYear, fromMonth, fromDay] = fromDate.split("-").map(Number);
+  const [toYear, toMonth, toDay] = toDate.split("-").map(Number);
+  return (
+    Math.round(
+      (Date.UTC(toYear, toMonth - 1, toDay) -
+        Date.UTC(fromYear, fromMonth - 1, fromDay)) /
+        86_400_000
+    ) + 1
+  );
+}
+
+function isWithinRuleLifetime(rule: ScheduleRuleLike, date: string): boolean {
+  return (
+    (rule.effective_start_date === undefined ||
+      rule.effective_start_date === null ||
+      date >= rule.effective_start_date) &&
+    (rule.effective_end_date === undefined ||
+      rule.effective_end_date === null ||
+      date <= rule.effective_end_date)
+  );
 }
 
 /** 0 = Sunday .. 6 = Saturday on the HK wall calendar. */
@@ -110,6 +167,9 @@ export function occurrencesForRule(
   );
   for (let i = 0; i < horizonDays; i += 1) {
     const date = addWallDays(fromDate, i);
+    if (!isWithinRuleLifetime(rule, date)) {
+      continue;
+    }
     const matches =
       rule.recurrence === "WEEKLY"
         ? wallWeekday(date) === rule.day_of_week
@@ -169,6 +229,9 @@ export function previewOccurrencesForRule(
   );
   for (let i = 0; i < horizonDays; i += 1) {
     const date = addWallDays(fromDate, i);
+    if (!isWithinRuleLifetime(rule, date)) {
+      continue;
+    }
     const matches =
       rule.recurrence === "WEEKLY"
         ? wallWeekday(date) === rule.day_of_week

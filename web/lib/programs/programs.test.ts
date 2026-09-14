@@ -25,7 +25,13 @@ import { applyMigrations, testDb } from "../auth/test-bootstrap";
 import { completeCredentialUpgrade } from "../auth/upgrade";
 import { CAPABILITY_CATALOG } from "../identity/capability-catalog";
 import { participantSelfCheckInAvailable } from "./department-workspace";
-import { addWallDays, hkTodayWallDate, wallWeekday } from "./recurrence";
+import {
+  addWallDays,
+  addWallMonths,
+  hkTodayWallDate,
+  wallDaySpan,
+  wallWeekday,
+} from "./recurrence";
 
 const SECRET = "test-access-token-secret";
 const HEADER = [
@@ -2327,6 +2333,8 @@ async function createRule(
     start_time: string;
     end_time: string;
     location?: string;
+    effective_start_date?: string;
+    effective_end_date?: string | null;
   }
 ): Promise<{ rule_id: string }> {
   const res = await worker.fetch(
@@ -2778,6 +2786,95 @@ describe("PRG-02: schedule rules", () => {
     };
     assert.strictEqual(rule.data.rule.recurrence, "WEEKLY");
     assert.strictEqual(rule.data.rule.day_of_week, 1);
+  });
+
+  test("#596 persists inclusive rule bounds and accepts an exact date-range preview", async () => {
+    const adminAccess = await accessCookieFor("alice", "alice-secret");
+    const program = await createProgram(adminAccess, deptId, {
+      name: "Bounded Schedule Program",
+      behavior_type: "Recurring",
+      discoverability: "Listed",
+    });
+    const created = await createRule(adminAccess, program.program_id, {
+      recurrence: "WEEKLY",
+      day_of_week: 1,
+      start_time: "10:00",
+      end_time: "11:00",
+      effective_start_date: "2026-10-05",
+      effective_end_date: "2026-11-30",
+    });
+
+    const rulesResponse = await worker.fetch(
+      programsRequest(`/api/v1/programs/${program.program_id}/schedule-rules`, {
+        headers: {
+          Origin: HOST,
+          Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
+        },
+      }),
+      testEnv()
+    );
+    assert.strictEqual(rulesResponse.status, 200);
+    const rulesResult = (await assertCorrelated(rulesResponse)) as {
+      data: {
+        rules: Array<{
+          rule_id: string;
+          effective_start_date: string | null;
+          effective_end_date: string | null;
+        }>;
+      };
+    };
+    const stored = rulesResult.data.rules.find(
+      ({ rule_id }) => rule_id === created.rule_id
+    );
+    assert.deepStrictEqual(
+      {
+        effective_start_date: stored?.effective_start_date,
+        effective_end_date: stored?.effective_end_date,
+      },
+      {
+        effective_start_date: "2026-10-05",
+        effective_end_date: "2026-11-30",
+      }
+    );
+
+    const previewResponse = await worker.fetch(
+      programsRequest(`/api/v1/programs/${program.program_id}/events/preview`, {
+        method: "POST",
+        headers: {
+          Origin: HOST,
+          Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
+          "Content-Type": "application/json",
+        },
+        body: {
+          from_date: "2026-10-01",
+          until_date: "2026-10-31",
+        },
+      }),
+      testEnv()
+    );
+    assert.strictEqual(previewResponse.status, 200);
+    const previewResult = (await assertCorrelated(previewResponse)) as {
+      data: {
+        plan: {
+          from_date: string;
+          to_date: string;
+          horizon_days: number;
+        };
+        occurrences: Array<{ occurs_on: string }>;
+      };
+    };
+    assert.deepStrictEqual(
+      {
+        from: previewResult.data.plan.from_date,
+        to: previewResult.data.plan.to_date,
+        days: previewResult.data.plan.horizon_days,
+      },
+      { from: "2026-10-01", to: "2026-10-31", days: 31 }
+    );
+    assert.deepStrictEqual(
+      previewResult.data.occurrences.map(({ occurs_on }) => occurs_on),
+      ["2026-10-05", "2026-10-12", "2026-10-19", "2026-10-26"]
+    );
   });
 });
 
@@ -4083,7 +4180,7 @@ describe("EVT-02: recurring preview and generation (#252)", () => {
     );
   });
 
-  test("EVT-02.4 a malformed or non-object preview body is rejected before any write; an empty body defaults to 90 days", async () => {
+  test("EVT-02.4 a malformed or non-object preview body is rejected before any write; an empty body defaults to three calendar months", async () => {
     const programId = await freshProgram("EVT-02 Malformed Preview Body");
     await createRule(adminAccess, programId, {
       recurrence: "WEEKLY",
@@ -4135,7 +4232,8 @@ describe("EVT-02: recurring preview and generation (#252)", () => {
       "no EVENT_PREVIEW audit row is written"
     );
 
-    // Empty body (no Content-Length) keeps the existing 90-day default.
+    // Empty body (no Content-Length) defaults to the next three calendar
+    // months, represented as an inclusive HK wall-date range.
     const empty = await worker.fetch(
       programsRequest(previewPath, {
         method: "POST",
@@ -4149,8 +4247,11 @@ describe("EVT-02: recurring preview and generation (#252)", () => {
     };
     assert.strictEqual(
       result.data.plan.horizon_days,
-      90,
-      "empty body defaults to 90 days"
+      wallDaySpan(
+        hkTodayWallDate(),
+        addWallDays(addWallMonths(hkTodayWallDate(), 3), -1)
+      ),
+      "empty body defaults to three calendar months"
     );
     assert.ok(
       result.data.plan.rule_count >= 1,

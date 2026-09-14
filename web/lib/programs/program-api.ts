@@ -357,6 +357,8 @@ export interface ScheduleRule {
   start_time: string;
   end_time: string;
   location: string | null;
+  effective_start_date?: string | null;
+  effective_end_date?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -538,6 +540,7 @@ export interface PreviewPlan {
   plan_hash: string;
   horizon_days: number;
   from_date: string;
+  to_date?: string | null;
   rule_count: number;
   created_at: string;
 }
@@ -554,6 +557,8 @@ export interface ScheduleRuleInput {
   start_time: string;
   end_time: string;
   location?: string | null;
+  effective_start_date?: string | null;
+  effective_end_date?: string | null;
 }
 
 export interface ProgramInput {
@@ -1162,12 +1167,19 @@ export function deleteScheduleException(
  */
 export function previewEvents(
   programId: string,
-  horizonDays: number
+  range:
+    | number
+    | {
+        from_date: string;
+        until_date: string;
+      }
 ): Promise<PreviewResult> {
   return programsFetch(
     `/api/v1/programs/${encodeURIComponent(programId)}/events/preview`,
     "POST",
-    { horizon_days: horizonDays }
+    typeof range === "number"
+      ? { horizon_days: range }
+      : { from_date: range.from_date, until_date: range.until_date }
   );
 }
 

@@ -45,7 +45,11 @@ import type {
   ScheduleRule,
   ScheduleRuleInput,
 } from "@/lib/programs/program-api";
-import { isWallDate, WEEKDAY_LABELS } from "@/lib/programs/recurrence";
+import {
+  hkTodayWallDate,
+  isWallDate,
+  WEEKDAY_LABELS,
+} from "@/lib/programs/recurrence";
 import {
   ScreenCard,
   ScreenEditor,
@@ -91,6 +95,8 @@ interface RuleValues {
   startTime: string;
   endTime: string;
   location: string;
+  effectiveStartDate: string;
+  effectiveEndDate: string;
 }
 
 interface ExceptionValues {
@@ -195,6 +201,8 @@ function ruleValuesFrom(rule: ScheduleRule): RuleValues {
     startTime: rule.start_time,
     endTime: rule.end_time,
     location: rule.location ?? "",
+    effectiveStartDate: rule.effective_start_date ?? hkTodayWallDate(),
+    effectiveEndDate: rule.effective_end_date ?? "",
   };
 }
 
@@ -217,6 +225,8 @@ function ruleInputFrom(values: RuleValues): ScheduleRuleInput {
     start_time: values.startTime,
     end_time: values.endTime,
     location: values.location.trim() || null,
+    effective_start_date: values.effectiveStartDate,
+    effective_end_date: values.effectiveEndDate || null,
   };
 }
 
@@ -540,48 +550,52 @@ const ScheduleRuleEditor = ({
         </SelectContent>
       </Select>
     </ScreenField>
-    <ScreenField
-      htmlFor={`${idPrefix}-day-of-week`}
-      label={COPY.programs.dayOfWeekLabel}
-    >
-      <Select
-        value={values.dayOfWeek}
-        onValueChange={(value) => onChange({ ...values, dayOfWeek: value })}
-        disabled={busy}
+    {values.recurrence === "WEEKLY" && (
+      <ScreenField
+        htmlFor={`${idPrefix}-day-of-week`}
+        label={COPY.programs.dayOfWeekLabel}
       >
-        <SelectTrigger
-          id={`${idPrefix}-day-of-week`}
-          className="border-[var(--screen-line-strong)] bg-[var(--screen-surface)] text-base"
-          aria-label={COPY.programs.dayOfWeekLabel}
+        <Select
+          value={values.dayOfWeek}
+          onValueChange={(value) => onChange({ ...values, dayOfWeek: value })}
+          disabled={busy}
         >
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent>
-          {WEEKDAY_LABELS.map((label, index) => (
-            <SelectItem key={label} value={String(index)}>
-              {label}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
-    </ScreenField>
-    <ScreenField
-      htmlFor={`${idPrefix}-month-day`}
-      label={COPY.programs.monthDayLabel}
-    >
-      <Input
-        id={`${idPrefix}-month-day`}
-        className="border-[var(--screen-line-strong)] bg-[var(--screen-surface)] text-base"
-        type="number"
-        min={1}
-        max={31}
-        value={values.monthDay}
-        onChange={(event) =>
-          onChange({ ...values, monthDay: event.target.value })
-        }
-        disabled={busy}
-      />
-    </ScreenField>
+          <SelectTrigger
+            id={`${idPrefix}-day-of-week`}
+            className="border-[var(--screen-line-strong)] bg-[var(--screen-surface)] text-base"
+            aria-label={COPY.programs.dayOfWeekLabel}
+          >
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {WEEKDAY_LABELS.map((label, index) => (
+              <SelectItem key={label} value={String(index)}>
+                {label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </ScreenField>
+    )}
+    {values.recurrence === "MONTHLY" && (
+      <ScreenField
+        htmlFor={`${idPrefix}-month-day`}
+        label={COPY.programs.monthDayLabel}
+      >
+        <Input
+          id={`${idPrefix}-month-day`}
+          className="border-[var(--screen-line-strong)] bg-[var(--screen-surface)] text-base"
+          type="number"
+          min={1}
+          max={31}
+          value={values.monthDay}
+          onChange={(event) =>
+            onChange({ ...values, monthDay: event.target.value })
+          }
+          disabled={busy}
+        />
+      </ScreenField>
+    )}
     <ScreenField
       htmlFor={`${idPrefix}-start-time`}
       label={COPY.programs.startTime}
@@ -607,6 +621,39 @@ const ScheduleRuleEditor = ({
         value={values.endTime}
         onChange={(event) =>
           onChange({ ...values, endTime: event.target.value })
+        }
+        disabled={busy}
+      />
+    </ScreenField>
+    <ScreenField
+      htmlFor={`${idPrefix}-effective-start-date`}
+      label={COPY.programs.settingsRuleStartDate}
+    >
+      <Input
+        id={`${idPrefix}-effective-start-date`}
+        className="border-[var(--screen-line-strong)] bg-[var(--screen-surface)] text-base"
+        type="date"
+        required
+        value={values.effectiveStartDate}
+        onChange={(event) =>
+          onChange({ ...values, effectiveStartDate: event.target.value })
+        }
+        disabled={busy}
+      />
+    </ScreenField>
+    <ScreenField
+      htmlFor={`${idPrefix}-effective-end-date`}
+      label={COPY.programs.settingsRuleEndDate}
+      help={COPY.programs.settingsRuleOngoing}
+    >
+      <Input
+        id={`${idPrefix}-effective-end-date`}
+        className="border-[var(--screen-line-strong)] bg-[var(--screen-surface)] text-base"
+        type="date"
+        min={values.effectiveStartDate}
+        value={values.effectiveEndDate}
+        onChange={(event) =>
+          onChange({ ...values, effectiveEndDate: event.target.value })
         }
         disabled={busy}
       />
@@ -810,6 +857,8 @@ export const ProgramSettings = ({
     startTime: "",
     endTime: "",
     location: "",
+    effectiveStartDate: hkTodayWallDate(),
+    effectiveEndDate: "",
   });
   const [exceptionDrafts, setExceptionDrafts] = useState<
     Record<string, ExceptionValues>
@@ -1818,6 +1867,9 @@ export const ProgramSettings = ({
                                       {rule.location
                                         ? ` · ${rule.location}`
                                         : ""}
+                                      {" · "}
+                                      {rule.effective_start_date ?? "—"}–
+                                      {rule.effective_end_date ?? "∞"}
                                     </ScreenRowMeta>
                                   </ScreenRowMain>
                                   {focusedSchedule && (

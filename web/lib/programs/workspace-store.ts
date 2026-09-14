@@ -174,6 +174,10 @@ export interface ScheduleRuleInput {
   start_time: string;
   end_time: string;
   location?: string | null;
+  /** Inclusive HK wall start; omitted only for legacy callers. */
+  effective_start_date?: string | null;
+  /** Inclusive HK wall end; null means the rule is ongoing. */
+  effective_end_date?: string | null;
   created_by: string | null;
   created_at: string;
   updated_by: string | null;
@@ -187,6 +191,8 @@ export interface ScheduleRuleUpdate {
   start_time?: string;
   end_time?: string;
   location?: string | null;
+  effective_start_date?: string | null;
+  effective_end_date?: string | null;
   updated_by: string;
   updated_at: string;
 }
@@ -200,6 +206,8 @@ export interface ScheduleRuleRow {
   start_time: string;
   end_time: string;
   location: string | null;
+  effective_start_date?: string | null;
+  effective_end_date?: string | null;
   created_by: string | null;
   created_at: string;
   updated_by: string | null;
@@ -360,6 +368,8 @@ export interface PreviewPlanRow {
   plan_hash: string;
   horizon_days: number;
   from_date: string;
+  /** Exact inclusive selected end date; nullable for pre-0028 plans. */
+  to_date?: string | null;
   rule_count: number;
   created_by: string | null;
   created_at: string;

@@ -54,9 +54,11 @@ import {
   StalePreviewPlanError,
 } from "./program-errors";
 import {
+  addWallDays,
   exceptionForEvent,
   recurrenceTagForEvent,
   hkTodayWallDate,
+  wallDaySpan,
   previewOccurrencesForRule,
 } from "./recurrence";
 import type {
@@ -437,6 +439,7 @@ export interface PreviewPlanView {
   plan_hash: string;
   horizon_days: number;
   from_date: string;
+  to_date: string;
   rule_count: number;
   created_at: string;
 }
@@ -448,6 +451,7 @@ function previewPlanView(plan: PreviewPlanRow): PreviewPlanView {
     plan_hash: plan.plan_hash,
     horizon_days: plan.horizon_days,
     from_date: plan.from_date,
+    to_date: plan.to_date ?? addWallDays(plan.from_date, plan.horizon_days - 1),
     rule_count: plan.rule_count,
     created_at: plan.created_at,
   };
@@ -624,6 +628,8 @@ export interface CreateScheduleRuleCommand {
   start_time: string;
   end_time: string;
   location?: string | null;
+  effective_start_date?: string | null;
+  effective_end_date?: string | null;
 }
 
 export interface UpdateScheduleRuleCommand {
@@ -633,6 +639,8 @@ export interface UpdateScheduleRuleCommand {
   start_time?: string;
   end_time?: string;
   location?: string | null;
+  effective_start_date?: string | null;
+  effective_end_date?: string | null;
 }
 
 export interface CreateScheduleExceptionCommand {
@@ -2750,6 +2758,8 @@ export class DepartmentWorkspace {
       created_at: now,
       updated_by: ctx.actorUserId,
       updated_at: now,
+      effective_start_date: cmd.effective_start_date ?? hkTodayWallDate(),
+      effective_end_date: cmd.effective_end_date ?? null,
     });
     await this.audit(
       ctx,
@@ -2920,6 +2930,8 @@ export class DepartmentWorkspace {
           start_time: rule.start_time,
           end_time: rule.end_time,
           location: rule.location ?? null,
+          effective_start_date: rule.effective_start_date ?? null,
+          effective_end_date: rule.effective_end_date ?? null,
         })),
       exceptions: [...exceptions]
         .sort((a, b) =>
@@ -2955,7 +2967,8 @@ export class DepartmentWorkspace {
     ctx: AuthorizationContext,
     programId: string,
     horizonDays: number,
-    correlationId: string | null
+    correlationId: string | null,
+    range?: { fromDate: string; untilDate: string }
   ): Promise<{
     plan: PreviewPlanView;
     occurrences: PreviewOccurrenceRow[];
@@ -2986,11 +2999,16 @@ export class DepartmentWorkspace {
     const exceptions = await this.store.listScheduleExceptions(
       rules.map((rule) => rule.rule_id)
     );
-    const fromDate = hkTodayWallDate();
+    const fromDate = range?.fromDate ?? hkTodayWallDate();
+    const untilDate =
+      range?.untilDate ?? addWallDays(fromDate, horizonDays - 1);
+    const resolvedHorizonDays = range
+      ? wallDaySpan(fromDate, untilDate)
+      : horizonDays;
     const candidates = this.materializeOccurrences(
       rules,
       fromDate,
-      horizonDays,
+      resolvedHorizonDays,
       exceptions
     );
     // Preview-time duplicate signal: mark occurrences whose starts_at is
@@ -3004,7 +3022,7 @@ export class DepartmentWorkspace {
     const planHash = await this.computePlanHash(
       rules,
       exceptions,
-      horizonDays,
+      resolvedHorizonDays,
       fromDate
     );
     const now = new Date().toISOString();
@@ -3016,8 +3034,9 @@ export class DepartmentWorkspace {
       plan_id: `pln_${programId}_${planHash.slice(0, 24)}`,
       program_id: programId,
       plan_hash: planHash,
-      horizon_days: horizonDays,
+      horizon_days: resolvedHorizonDays,
       from_date: fromDate,
+      to_date: untilDate,
       rule_count: rules.length,
       created_by: ctx.actorUserId,
       created_at: now,

@@ -50,7 +50,15 @@ import {
   StaleEnrollmentRequestError,
   StalePreviewPlanError,
 } from "./program-errors";
-import { isWallDate, isWallTime } from "./recurrence";
+import {
+  addWallDays,
+  addWallMonths,
+  hkTodayWallDate,
+  isValidWallDate,
+  isWallDate,
+  isWallTime,
+  wallDaySpan,
+} from "./recurrence";
 import type {
   DepartmentUpdate,
   ProgramUpdate,
@@ -1463,6 +1471,8 @@ function parseRuleBody(body: {
   start_time?: unknown;
   end_time?: unknown;
   location?: unknown;
+  effective_start_date?: unknown;
+  effective_end_date?: unknown;
 }): RuleBodyResult {
   if (!isOneOf(body.recurrence, ["WEEKLY", "MONTHLY"] as const)) {
     return { ok: false, detail: "recurrence must be WEEKLY or MONTHLY." };
@@ -1488,6 +1498,38 @@ function parseRuleBody(body: {
   ) {
     return { ok: false, detail: "location must be text or null." };
   }
+  if (
+    body.effective_start_date !== undefined &&
+    !isValidWallDate(body.effective_start_date)
+  ) {
+    return { ok: false, detail: "effective_start_date must be YYYY-MM-DD." };
+  }
+  if (
+    body.effective_end_date !== undefined &&
+    body.effective_end_date !== null &&
+    !isValidWallDate(body.effective_end_date)
+  ) {
+    return {
+      ok: false,
+      detail: "effective_end_date must be YYYY-MM-DD or null.",
+    };
+  }
+  const effectiveStart =
+    body.effective_start_date === undefined
+      ? undefined
+      : body.effective_start_date;
+  const effectiveEnd =
+    body.effective_end_date === undefined ? undefined : body.effective_end_date;
+  if (
+    typeof effectiveStart === "string" &&
+    typeof effectiveEnd === "string" &&
+    effectiveEnd < effectiveStart
+  ) {
+    return {
+      ok: false,
+      detail: "effective_end_date must be on or after effective_start_date.",
+    };
+  }
   return {
     ok: true,
     value: {
@@ -1504,6 +1546,12 @@ function parseRuleBody(body: {
                 ? body.location.trim() || null
                 : null,
           }),
+      ...(effectiveStart === undefined
+        ? {}
+        : { effective_start_date: effectiveStart }),
+      ...(effectiveEnd === undefined
+        ? {}
+        : { effective_end_date: effectiveEnd }),
     },
   };
 }
@@ -1589,6 +1637,8 @@ export async function handleCreateScheduleRule(
     start_time?: unknown;
     end_time?: unknown;
     location?: unknown;
+    effective_start_date?: unknown;
+    effective_end_date?: unknown;
   }>(request);
   if (body === null) {
     return validation(requestId, "Body must be JSON.");
@@ -1636,6 +1686,8 @@ function parseRulePatch(
     start_time?: unknown;
     end_time?: unknown;
     location?: unknown;
+    effective_start_date?: unknown;
+    effective_end_date?: unknown;
   },
   existing: ScheduleRuleRow
 ): RulePatchResult {
@@ -1677,6 +1729,30 @@ function parseRulePatch(
     update.location =
       typeof body.location === "string" ? body.location.trim() || null : null;
   }
+  if (body.effective_start_date !== undefined) {
+    if (
+      body.effective_start_date !== null &&
+      !isValidWallDate(body.effective_start_date)
+    ) {
+      return {
+        ok: false,
+        detail: "effective_start_date must be YYYY-MM-DD or null.",
+      };
+    }
+    update.effective_start_date = body.effective_start_date as string | null;
+  }
+  if (body.effective_end_date !== undefined) {
+    if (
+      body.effective_end_date !== null &&
+      !isValidWallDate(body.effective_end_date)
+    ) {
+      return {
+        ok: false,
+        detail: "effective_end_date must be YYYY-MM-DD or null.",
+      };
+    }
+    update.effective_end_date = body.effective_end_date as string | null;
+  }
   const resolvedStart = update.start_time ?? existing.start_time;
   const resolvedEnd = update.end_time ?? existing.end_time;
   if (resolvedEnd <= resolvedStart) {
@@ -1685,6 +1761,24 @@ function parseRulePatch(
   const invariantError = resolvedRuleInvariantError(update, existing);
   if (invariantError !== null) {
     return { ok: false, detail: invariantError };
+  }
+  const resolvedEffectiveStart =
+    update.effective_start_date !== undefined
+      ? update.effective_start_date
+      : (existing.effective_start_date ?? null);
+  const resolvedEffectiveEnd =
+    update.effective_end_date !== undefined
+      ? update.effective_end_date
+      : (existing.effective_end_date ?? null);
+  if (
+    typeof resolvedEffectiveStart === "string" &&
+    typeof resolvedEffectiveEnd === "string" &&
+    resolvedEffectiveEnd < resolvedEffectiveStart
+  ) {
+    return {
+      ok: false,
+      detail: "effective_end_date must be on or after effective_start_date.",
+    };
   }
   return { ok: true, update };
 }
@@ -1709,6 +1803,8 @@ export async function handleUpdateScheduleRule(
     start_time?: unknown;
     end_time?: unknown;
     location?: unknown;
+    effective_start_date?: unknown;
+    effective_end_date?: unknown;
   }>(request);
   if (body === null) {
     return validation(requestId, "Body must be JSON.");
@@ -1901,7 +1997,11 @@ export async function handlePreviewEvents(
   // any non-empty body must parse as a non-null, non-array JSON object or
   // the request is rejected before any write (EVT-02.4 acceptance).
   const rawBody = await request.text();
-  let body: { horizon_days?: unknown } | null = null;
+  let body: {
+    horizon_days?: unknown;
+    from_date?: unknown;
+    until_date?: unknown;
+  } | null = null;
   if (rawBody.trim().length > 0) {
     let parsed: unknown;
     try {
@@ -1916,9 +2016,16 @@ export async function handlePreviewEvents(
     ) {
       return validation(requestId, "請求內容必須是有效的 JSON 物件。");
     }
-    body = parsed as { horizon_days?: unknown };
+    body = parsed as {
+      horizon_days?: unknown;
+      from_date?: unknown;
+      until_date?: unknown;
+    };
   }
-  let horizonDays = 90;
+  const defaultFromDate = hkTodayWallDate();
+  let fromDate = defaultFromDate;
+  let untilDate = addWallDays(addWallMonths(fromDate, 3), -1);
+  let horizonDays: number | null = null;
   if (body !== null) {
     const raw = body.horizon_days;
     if (
@@ -1934,6 +2041,36 @@ export async function handlePreviewEvents(
         "產生範圍的天數必須是 1 至 365 之間的整數。"
       );
     }
+    if (body.from_date !== undefined && !isValidWallDate(body.from_date)) {
+      return validation(requestId, "from_date must be YYYY-MM-DD.");
+    }
+    if (body.until_date !== undefined && !isValidWallDate(body.until_date)) {
+      return validation(requestId, "until_date must be YYYY-MM-DD.");
+    }
+    if (body.from_date !== undefined) {
+      fromDate = body.from_date;
+      if (horizonDays === null && body.until_date === undefined) {
+        untilDate = addWallDays(addWallMonths(fromDate, 3), -1);
+      }
+    }
+    if (horizonDays !== null && body.until_date !== undefined) {
+      return validation(
+        requestId,
+        "請使用 horizon_days 或 from_date/until_date 其中一種範圍格式。"
+      );
+    }
+    if (horizonDays !== null) {
+      untilDate = addWallDays(fromDate, horizonDays - 1);
+    } else if (body.until_date !== undefined) {
+      untilDate = body.until_date;
+    }
+  }
+  if (untilDate < fromDate) {
+    return validation(requestId, "until_date must be on or after from_date.");
+  }
+  horizonDays = wallDaySpan(fromDate, untilDate);
+  if (horizonDays < 1 || horizonDays > 365) {
+    return validation(requestId, "預覽範圍必須在 1 至 365 個香港時間日內。");
   }
   const { workspace } = await getModule(env);
   const program = await workspace.getProgram(
@@ -1948,7 +2085,8 @@ export async function handlePreviewEvents(
       authorizationContextFor(auth.account),
       programId,
       horizonDays,
-      correlationId
+      correlationId,
+      { fromDate, untilDate }
     );
     return jsonResponse(
       200,

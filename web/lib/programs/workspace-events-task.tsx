@@ -32,8 +32,13 @@ import type {
   ScheduleRule,
 } from "@/lib/programs/program-api";
 import {
+  addWallDays,
+  addWallMonths,
   formatScheduleRuleLabel,
+  hkTodayWallDate,
   hkWallDateTimeLabel,
+  isValidWallDate,
+  wallDaySpan,
 } from "@/lib/programs/recurrence";
 import {
   ScreenCard,
@@ -85,6 +90,12 @@ export const RecurringSchedulePanel = ({
   /** Invoked after a successful generation so the event list refreshes. */
   onGenerated: () => void;
 }) => {
+  const [previewFromDate, setPreviewFromDate] = useState(() =>
+    hkTodayWallDate()
+  );
+  const [previewUntilDate, setPreviewUntilDate] = useState(() =>
+    addWallDays(addWallMonths(hkTodayWallDate(), 3), -1)
+  );
   const [preview, setPreview] = useState<PreviewState>({ kind: "idle" });
   const [previewBusy, setPreviewBusy] = useState(false);
   const [generateBusy, setGenerateBusy] = useState(false);
@@ -107,10 +118,15 @@ export const RecurringSchedulePanel = ({
   const submitPreview = async (formEvent: FormEvent<HTMLFormElement>) => {
     formEvent.preventDefault();
     const form = new FormData(formEvent.currentTarget);
-    const raw = form.get("horizon_days");
-    const horizonDays = Number(raw);
+    const fromDate = String(form.get("from_date") ?? "").trim();
+    const untilDate = String(form.get("until_date") ?? "").trim();
+    const horizonDays =
+      isValidWallDate(fromDate) && isValidWallDate(untilDate)
+        ? wallDaySpan(fromDate, untilDate)
+        : 0;
     if (
-      !Number.isInteger(horizonDays) ||
+      !isValidWallDate(fromDate) ||
+      !isValidWallDate(untilDate) ||
       horizonDays < 1 ||
       horizonDays > 365
     ) {
@@ -125,7 +141,10 @@ export const RecurringSchedulePanel = ({
     setGenerationIdentity(null);
     setGenerateError(null);
     try {
-      const plan = await previewEvents(programId, horizonDays);
+      const plan = await previewEvents(programId, {
+        from_date: fromDate,
+        until_date: untilDate,
+      });
       if (!mounted.current) {
         return;
       }
@@ -248,21 +267,47 @@ export const RecurringSchedulePanel = ({
       ) : (
         <ScreenCard asChild>
           <ScreenEditor onSubmit={submitPreview}>
-            <ScreenField
-              htmlFor="programs-preview-horizon"
-              label={COPY.programs.previewHorizon}
-            >
-              <Input
-                id="programs-preview-horizon"
-                className="border-[var(--screen-line-strong)] bg-[var(--screen-surface)] text-base"
-                type="number"
-                name="horizon_days"
-                min={1}
-                max={365}
-                defaultValue={90}
-                required
-              />
-            </ScreenField>
+            <fieldset className="grid min-w-0 gap-2">
+              <legend className="text-sm font-semibold text-[var(--screen-ink)]">
+                {COPY.programs.previewHorizon}
+              </legend>
+              <div className="grid min-w-0 gap-2 sm:grid-cols-2">
+                <ScreenField
+                  htmlFor="programs-preview-from-date"
+                  label={COPY.programs.previewFromDate}
+                >
+                  <Input
+                    id="programs-preview-from-date"
+                    className="border-[var(--screen-line-strong)] bg-[var(--screen-surface)] text-base"
+                    type="date"
+                    name="from_date"
+                    value={previewFromDate}
+                    onChange={(event) => setPreviewFromDate(event.target.value)}
+                    required
+                  />
+                </ScreenField>
+                <ScreenField
+                  htmlFor="programs-preview-until-date"
+                  label={COPY.programs.previewUntilDate}
+                >
+                  <Input
+                    id="programs-preview-until-date"
+                    className="border-[var(--screen-line-strong)] bg-[var(--screen-surface)] text-base"
+                    type="date"
+                    name="until_date"
+                    min={previewFromDate}
+                    value={previewUntilDate}
+                    onChange={(event) =>
+                      setPreviewUntilDate(event.target.value)
+                    }
+                    required
+                  />
+                </ScreenField>
+              </div>
+              <p className="m-0 text-xs leading-[var(--screen-meta-leading)] text-[var(--screen-muted)]">
+                {COPY.programs.hkTimeMarker}
+              </p>
+            </fieldset>
             <Button
               type="submit"
               className="w-fit bg-[var(--screen-accent)] text-white hover:bg-[var(--screen-accent-deep)]"
@@ -294,8 +339,34 @@ export const RecurringSchedulePanel = ({
             {" · "}
             {COPY.programs.previewPlanMeta
               .replace("{rules}", String(preview.plan.plan.rule_count))
+              .replace("{from}", preview.plan.plan.from_date)
+              .replace(
+                "{to}",
+                preview.plan.plan.to_date ??
+                  addWallDays(
+                    preview.plan.plan.from_date,
+                    preview.plan.plan.horizon_days - 1
+                  )
+              )
               .replace("{days}", String(preview.plan.plan.horizon_days))}
           </p>
+          {rules?.some(
+            (rule) =>
+              rule.recurrence === "MONTHLY" && (rule.month_day ?? 0) >= 29
+          ) && (
+            <p className="m-0 text-xs leading-[var(--screen-meta-leading)] text-[var(--screen-muted)]">
+              {COPY.programs.previewMonthlyOmission.replace(
+                "{day}",
+                String(
+                  rules.find(
+                    (rule) =>
+                      rule.recurrence === "MONTHLY" &&
+                      (rule.month_day ?? 0) >= 29
+                  )?.month_day ?? ""
+                )
+              )}
+            </p>
+          )}
           <ScreenRowList>
             <ul
               className="m-0 grid min-w-0 list-none gap-0 p-0"

@@ -23,6 +23,11 @@ import type {
   ScheduleRule,
 } from "@/lib/programs/program-api";
 import { ProgramWorkspace } from "@/lib/programs/program-workspace";
+import {
+  addWallDays,
+  addWallMonths,
+  hkTodayWallDate,
+} from "@/lib/programs/recurrence";
 import { WorkspaceRouteProvider } from "@/lib/programs/workspace-context";
 
 const mocks = vi.hoisted(() => ({
@@ -2279,7 +2284,10 @@ describe("EVT-02 recurring preview and generation UI (#252)", () => {
     await user.click(
       screen.getByRole("button", { name: COPY.programs.previewEvents })
     );
-    expect(mocks.previewEvents).toHaveBeenCalledWith("program-1", 90);
+    expect(mocks.previewEvents).toHaveBeenCalledWith("program-1", {
+      from_date: hkTodayWallDate(),
+      until_date: addWallDays(addWallMonths(hkTodayWallDate(), 3), -1),
+    });
 
     await expect(
       screen.findByText(
@@ -2382,7 +2390,7 @@ describe("EVT-02 recurring preview and generation UI (#252)", () => {
       screen.getByRole("button", { name: COPY.programs.previewEvents })
     ).toBeInTheDocument();
     expect(
-      screen.getByLabelText(COPY.programs.previewHorizon)
+      screen.getByLabelText(COPY.programs.previewFromDate)
     ).toBeInTheDocument();
     expect(
       screen.queryByText(COPY.programs.settingsScheduleNone)

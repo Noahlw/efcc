@@ -876,9 +876,10 @@ export class D1WorkspaceStore implements WorkspaceStore {
     await this.db
       .prepare(
         `INSERT INTO program_schedule_rules (rule_id, program_id, recurrence,
-           day_of_week, month_day, start_time, end_time, location, created_by,
-           created_at, updated_by, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+           day_of_week, month_day, start_time, end_time, location,
+           effective_start_date, effective_end_date, created_by, created_at,
+           updated_by, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       )
       .bind(
         ruleId,
@@ -889,6 +890,8 @@ export class D1WorkspaceStore implements WorkspaceStore {
         input.start_time,
         input.end_time,
         input.location ?? null,
+        input.effective_start_date ?? null,
+        input.effective_end_date ?? null,
         input.created_by,
         input.created_at,
         input.updated_by,
@@ -910,6 +913,8 @@ export class D1WorkspaceStore implements WorkspaceStore {
     // distinguishable from an absent field (keep). A sentinel flag drives a
     // CASE; COALESCE would silently ignore the clear.
     const locationProvided = update.location !== undefined;
+    const effectiveStartProvided = update.effective_start_date !== undefined;
+    const effectiveEndProvided = update.effective_end_date !== undefined;
     await this.db
       .prepare(
         `UPDATE program_schedule_rules SET
@@ -919,6 +924,8 @@ export class D1WorkspaceStore implements WorkspaceStore {
            start_time = COALESCE(?, start_time),
            end_time = COALESCE(?, end_time),
            location = CASE WHEN ? = 1 THEN ? ELSE location END,
+           effective_start_date = CASE WHEN ? = 1 THEN ? ELSE effective_start_date END,
+           effective_end_date = CASE WHEN ? = 1 THEN ? ELSE effective_end_date END,
            updated_by = ?,
            updated_at = ?
          WHERE rule_id = ?`
@@ -931,6 +938,10 @@ export class D1WorkspaceStore implements WorkspaceStore {
         update.end_time ?? null,
         locationProvided ? 1 : 0,
         update.location ?? null,
+        effectiveStartProvided ? 1 : 0,
+        update.effective_start_date ?? null,
+        effectiveEndProvided ? 1 : 0,
+        update.effective_end_date ?? null,
         update.updated_by,
         update.updated_at,
         ruleId
@@ -1603,8 +1614,9 @@ export class D1WorkspaceStore implements WorkspaceStore {
     const planStatement = this.db
       .prepare(
         `INSERT OR IGNORE INTO program_preview_plans (plan_id, program_id,
-           plan_hash, horizon_days, from_date, rule_count, created_by, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+           plan_hash, horizon_days, from_date, rule_count, created_by, created_at,
+           to_date)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
       )
       .bind(
         plan.plan_id,
@@ -1614,7 +1626,8 @@ export class D1WorkspaceStore implements WorkspaceStore {
         plan.from_date,
         plan.rule_count,
         plan.created_by,
-        plan.created_at
+        plan.created_at,
+        plan.to_date ?? null
       );
     const occurrenceStatements = (rows: PreviewOccurrenceRow[]) =>
       rows.map((occurrence) =>
