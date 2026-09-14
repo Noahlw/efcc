@@ -1,0 +1,117 @@
+{
+  "schemaVersion": 1,
+  "package": "Programs #589 Salvage Convergence",
+  "candidateSha": "c4d10c7464325d548105e449f5be4614b026ff7b",
+  "previousCandidateSha": "6fc65cc4bd762ce5d1d8a16f80c53ba97cce5924",
+  "status": "MACHINE_GREEN / WAITING_INDEPENDENT_REVIEW",
+  "productionCandidateIsImmutable": true,
+  "repair": {
+    "reviewFinding": "Goodall P1: global access in-flight dedupe was keyed by route query, so a Home prefetch could race with Programs shell callers.",
+    "commit": "c4d10c7464325d548105e449f5be4614b026ff7b",
+    "files": [
+      "tests/e2e/programs-management-acceptance.test.ts",
+      "web/lib/app.test.tsx",
+      "web/lib/programs/program-api.ts",
+      "web/lib/programs/programs-boundary.tsx",
+      "web/lib/shell-header.tsx"
+    ],
+    "verification": "All access callers now share one module-level pending request regardless of route key; the Home-to-Programs race regression observes one GET before release, the explicit-clear stale-response test remains covered, and the existing shell computed probe passes at both approval viewports."
+  },
+  "criteria": [
+    {
+      "id": "589-SHELL-01",
+      "status": "PASS",
+      "evidence": ["manifest.json", "programs-browser", "w7-storybook"]
+    },
+    {
+      "id": "589-SHELL-02",
+      "status": "PASS",
+      "evidence": ["manifest.json", "shell-402x874.png", "shell-360x800.png", "w7-storybook"]
+    },
+    {
+      "id": "589-SHELL-03",
+      "status": "PASS",
+      "evidence": ["candidate-hook"]
+    },
+    {
+      "id": "589-SHELL-04",
+      "status": "PASS",
+      "evidence": ["manifest.json", "programs-browser", "computed-shell-treatment-probe", "shell-402x874.png", "shell-360x800.png"]
+    },
+    {
+      "id": "589-SHELL-05",
+      "status": "PASS",
+      "evidence": ["programs-responsive", "w7-storybook", "computed-shell-treatment-probe", "shell-402x874.png", "shell-360x800.png"]
+    },
+    {
+      "id": "589-SHELL-06",
+      "status": "PASS",
+      "evidence": ["programs-browser", "cross-route-access-prefetch", "manifest.json"]
+    },
+    {
+      "id": "589-SHELL-07",
+      "status": "PASS",
+      "evidence": ["candidate-hook", "programs-browser", "w7-storybook"]
+    },
+    {
+      "id": "589-EVIDENCE-01",
+      "status": "PASS",
+      "evidence": ["manifest.json", "checksums.sha256", "shell-402x874.png", "shell-360x800.png"]
+    },
+    {
+      "id": "589-REVIEW-01",
+      "status": "PENDING_FRESH_REVIEW",
+      "evidence": []
+    },
+    {
+      "id": "589-OWNER-01",
+      "status": "PENDING",
+      "evidence": []
+    }
+  ],
+  "independentReview": {
+    "status": "PENDING_FRESH_REVIEW",
+    "reviewer": null,
+    "candidateSha": "c4d10c7464325d548105e449f5be4614b026ff7b",
+    "zeroActionableFindings": null,
+    "priorFinding": {
+      "reviewer": "Gibbs",
+      "agentId": "01a09eb6-2467-79d2-a58b-c16f9097722d",
+      "outcome": "FINDINGS",
+      "severity": "P1",
+      "repaired": true
+    },
+    "latestFinding": {
+      "reviewer": "Goodall",
+      "agentId": "01a09ef2-1e4c-7172-8220-30300a9d18bb",
+      "outcome": "FINDINGS",
+      "severity": "P1",
+      "finding": "Global /api/v1/programs/access in-flight dedupe was keyed by route query, so Home prefetch could race with Programs shell callers.",
+      "repaired": true,
+      "repairCandidateSha": "c4d10c7464325d548105e449f5be4614b026ff7b"
+    },
+    "freshReviewAttempts": [],
+    "freshReviewPacket": {
+      "path": "/private/tmp/efcc-589-review-packet-c4d10c746432-v4.md",
+      "bytes": 38615,
+      "sha256": "2a92b0eac12fc1ba16c2fd3eb713ae197654af7aae9cb21a9c8d50bf8339144f"
+    },
+    "note": "No owner approval is inferred from machine evidence or the prior review. A fresh self-contained review must return CLEAN before owner decision."
+  },
+  "ownerDecision": {
+    "status": "PENDING",
+    "approved": false,
+    "candidateSha": "c4d10c7464325d548105e449f5be4614b026ff7b",
+    "decidedAt": null,
+    "decision": null,
+    "requestedFollowUp": null
+  },
+  "scopeLock": {
+    "activePackage": "#589 shared shell",
+    "downstreamPackagesLocked": ["#590", "#591", "#592", "#593", "#594", "#595", "#596", "#597", "#598", "#599", "#600", "#601"],
+    "push": false,
+    "merge": false,
+    "issueClosure": false,
+    "downstreamAuthorization": false
+  }
+}

@@ -5,7 +5,7 @@
 **Delivery owner:** This chat session
 **Implementor boundary:** Luna Max, bounded packets only; no self-approval
 **Current status:** `MACHINE_GREEN / WAITING_INDEPENDENT_REVIEW`
-**Current candidate:** `6fc65cc4bd762ce5d1d8a16f80c53ba97cce5924`
+**Current candidate:** `c4d10c7464325d548105e449f5be4614b026ff7b`
 **Owner decision:** `PENDING`
 
 ## Authority and scope
@@ -15,6 +15,7 @@ The accepted 2026-09-14 CEO Review amendment governs this ledger. The frozen Pro
 ## Candidate identity
 
 - Production candidate at S1 fixed point: `ea7a54ef5580f399d0db2c2c67795ce4689f71b0`
+- Current production candidate at S4 repair: `c4d10c7464325d548105e449f5be4614b026ff7b` — `fix(programs): dedupe access prefetch across routes`; parent candidate `6fc65cc4bd762ce5d1d8a16f80c53ba97cce5924`
 - Evidence-only commit: `ed4e484ee565c6bcdb13484a88b3aa1de892c994` — `test(programs): record #589 salvage evidence`
 - Qualification harness commit: `d4165463c663f7b11d8e12eebc69b6d9df933b19` — `test(programs): scope material detail back assertion`; Storybook material Play locator only, with no production-candidate change
 - PR: #607, OPEN, base `codex/programs-screen-foundations/wave-2`, remote head `9ad90d253bfd50bf2bbcea85f39c18c1587b1f88`
@@ -189,3 +190,31 @@ Canonical Programs browser, responsive, and W7 failures are blocking. Assertion,
 
 - Self-contained packet-v3: `/private/tmp/efcc-589-review-packet-6fc65cc4bd76-v3.md`, `37316` bytes, SHA-256 `4109fe37ff14f9458e572913a1ff01e4757389ad8dccfa75ff0704c28c1807d3`.
 - Packet-v3 embeds the complete verified CEO Review, material accepted #586 R01–R25 clauses, the active S0-S4 tracker excerpt, the Gibbs finding and repair, exact candidate/harness ranges, current compact evidence identities, and the four terminal S3 questions. It is immutable and read-only; no heavy suites are requested from the reviewer.
+
+## S4 finding and repair checkpoint
+
+### Checkpoint — 2026-09-14 HKT
+
+- Fresh independent reviewer Goodall completed packet-v3 for candidate `6fc65cc4bd762ce5d1d8a16f80c53ba97cce5924` and returned one actionable P1 finding. The review was read-only and did not constitute owner approval.
+- Finding: `getManagementAccess()` reused an in-flight request only when route-query keys matched. Home used the default `programs` key while ShellHeader and ProgramsBoundary used pathname/query keys, so a pending Home prefetch could race with the Programs shell and issue two identical `GET /api/v1/programs/access` requests. The prior 3-test browser result did not exercise this cross-route race.
+- The red browser regression held the Home access request while navigating to `/programs` and observed `2` requests before the fix. The route was then corrected explicitly with `await page.goto("/home")` so the test proves the intended Home-prefetch race rather than a same-route load.
+- The smallest repair was made append-only at candidate `c4d10c7464325d548105e449f5be4614b026ff7b`, subject `fix(programs): dedupe access prefetch across routes`. `getManagementAccess()` now shares one module-level pending request regardless of route key; route keys remain only as local `useAsyncResource` lifecycle dependencies. The focused app stale-response contract was updated to use an explicit newer access load, and the browser regression is committed in the five-file repair delta.
+- The repair changes no backend/API contract, permission model, provider architecture, or downstream screen body. All `6fc65cc4bd76` candidate-bound evidence is stale after this production change and is retained only as historical evidence.
+
+## S4 sequential qualification checkpoint
+
+### Checkpoint — 2026-09-14 HKT
+
+- The c4d10c74 production commit hook passed under Node `22.18.0`: root/web typechecks, governance, worker checks, web unit `606/606`, and component suite `69 files / 1039 tests`.
+- Sequential canonical Programs browser gate: **PASS — 4/4**, retries `0`, target `http://127.0.0.1:56053`; the Home-to-Programs pending-prefetch regression observed exactly one `GET /api/v1/programs/access` before release. Report: `/private/tmp/efcc-589-browser-s4-c4d10c74/browser-results.json`, SHA-256 `2158aa8901f0eefe57fa2c7371bebb767ed523ece83c528f538f01c103a34adc`.
+- Sequential responsive gate: **PASS — 18/18**, skipped/unexpected/flaky `0/0/0`, one worker, across `320x812`, `360x800`, `390x844`, `402x874`, `600x844`, `799x900`, `800x900`, `1024x900`, and `1440x900`; target `http://127.0.0.1:56243`. Report: `/private/tmp/efcc-589-responsive-s4-c4d10c74/responsive-results.json`, SHA-256 `447774b7daeaaac20d1f9f192db6515391ad16aefdb6427eb0acd63db4a6faf4`.
+- Sequential fresh-server W7 gate: **PASS — 126/126**, skipped/unexpected/flaky `0/0/0`, one worker, Storybook port `6017`, with unchanged qualification harness commit `d4165463c663f7b11d8e12eebc69b6d9df933b19`. Report: `tests/e2e/test-results/t11-storybook/storybook.json`, SHA-256 `4c1ae99e35d45d69bc276671477e996d1b913bbc459fca0aeb2ef07df303b35c`.
+- Candidate-bound shell visual gate: **PASS — 2/2** at `402x874` and `360x800`, exact four-state shell set and 8 rows. Fresh generated manifest: `/private/tmp/efcc-589-visual-s4-c4d10c74/manifest.json`, SHA-256 `9dda5ca6726502c7167eaa00986dfd5add5c9f558cbe30f729d1c089a673ba20`; durable contact sheets are under `docs/qa/artifacts/programs-route-fidelity/c4d10c746432/`.
+- Direct Storybook computed-shell probe: **PASS** at both approval viewports. Mode switch measured background `rgb(255,255,255)`, border `rgb(226,221,213)`, circular radius, and `44x44`; notification measured transparent background/border, circular radius, and `44x44`; responsive overflow was `0`.
+- The standalone Phase-D management geometry probe remains a non-gate setup diagnostic: both bounded local Worker/Miniflare `createTestHarness`/D1 attempts stalled after build/bundle before assertions. No Phase-D assertion pass is claimed. Canonical browser, responsive, W7, direct Storybook, and visual gates completed independently.
+- Current state remains **MACHINE_GREEN / WAITING_INDEPENDENT_REVIEW**. Candidate-bound durable manifest, acceptance record, checksums, and the two contact sheets are the next evidence-only append; owner approval remains `PENDING`, and #590–#601 remain locked.
+
+## S4 fresh-review working note
+
+- Self-contained packet-v4: `/private/tmp/efcc-589-review-packet-c4d10c746432-v4.md`, `38615` bytes, SHA-256 `2a92b0eac12fc1ba16c2fd3eb713ae197654af7aae9cb21a9c8d50bf8339144f`.
+- Packet-v4 embeds the complete verified CEO Review, material accepted #586 R01–R25 clauses, the active S0-S4 tracker boundary, Gibbs and Goodall findings plus repairs, exact c4d candidate/harness ranges, current c4d compact evidence identities, and the terminal-result contract. It is immutable and read-only; no heavy suites are requested from the reviewer.
