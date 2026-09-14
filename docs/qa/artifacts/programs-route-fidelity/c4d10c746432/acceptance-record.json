@@ -3,7 +3,7 @@
   "package": "Programs #589 Salvage Convergence",
   "candidateSha": "c4d10c7464325d548105e449f5be4614b026ff7b",
   "previousCandidateSha": "6fc65cc4bd762ce5d1d8a16f80c53ba97cce5924",
-  "status": "MACHINE_GREEN / WAITING_INDEPENDENT_REVIEW",
+  "status": "WAITING_OWNER_L2",
   "productionCandidateIsImmutable": true,
   "repair": {
     "reviewFinding": "Goodall P1: global access in-flight dedupe was keyed by route query, so a Home prefetch could race with Programs shell callers.",
@@ -60,8 +60,8 @@
     },
     {
       "id": "589-REVIEW-01",
-      "status": "PENDING_FRESH_REVIEW",
-      "evidence": []
+      "status": "PASS",
+      "evidence": ["independent-review-clean", "c4d10c7464325d548105e449f5be4614b026ff7b"]
     },
     {
       "id": "589-OWNER-01",
@@ -70,10 +70,34 @@
     }
   ],
   "independentReview": {
-    "status": "PENDING_FRESH_REVIEW",
-    "reviewer": null,
+    "status": "CLEAN",
+    "reviewer": "Fresh user-authorized top-level Codex reviewer",
+    "reviewerAgentId": "01a09f5e-65ea-7451-9fd2-d0e7f6404e9c",
+    "route": "independent",
+    "readOnly": true,
+    "separateFromImplementor": true,
+    "separateFromDeliveryOwner": true,
     "candidateSha": "c4d10c7464325d548105e449f5be4614b026ff7b",
-    "zeroActionableFindings": null,
+    "zeroActionableFindings": true,
+    "terminalVerdict": "CLEAN",
+    "verifiedAfterHarnessRepair": {
+      "repairCommit": "61556a9922bc610522f08c501f671a1bf3f3de62",
+      "ledgerRepairRecord": "b835008bd6696abe3975b5809f6553e611117149",
+      "productionCandidateUnchanged": true,
+      "liveUiScenario": {
+        "result": "2 passed in 2.3s",
+        "projects": ["phone-375x667", "desktop-1280x720"],
+        "workers": 1,
+        "retries": 0,
+        "exactRoleLinkAssertionExecuted": true
+      }
+    },
+    "remainingLimitations": [
+      "Unchanged pre-existing root TypeScript API errors outside the candidate dependency changes",
+      "Standalone Phase-D runner remains unverified after setup stall while responsive/direct computed evidence exists",
+      "Pre-existing no-capability management negative-network behavior remains unverified",
+      "No owner spot-check, device/AT validation, L2/L3 approval, merge, release, or downstream authorization"
+    ],
     "priorFinding": {
       "reviewer": "Gibbs",
       "agentId": "01a09eb6-2467-79d2-a58b-c16f9097722d",
@@ -113,7 +137,7 @@
         "closedAfterTimeout": true
       }
     ],
-    "note": "No owner approval is inferred from machine evidence or the prior review. A fresh self-contained review must return CLEAN before owner decision."
+    "note": "Independent review is CLEAN for the exact candidate after harness-only repair. No owner approval is inferred; owner decision remains PENDING."
   },
   "ownerDecision": {
     "status": "PENDING",

@@ -4,9 +4,10 @@
 **Scope:** #589 shared shell only
 **Delivery owner:** This chat session
 **Implementor boundary:** Luna Max, bounded packets only; no self-approval
-**Current status:** `MACHINE_GREEN / WAITING_INDEPENDENT_REVIEW`
+**Current status:** `WAITING_OWNER_L2`
 **Current candidate:** `c4d10c7464325d548105e449f5be4614b026ff7b`
 **Owner decision:** `PENDING`
+**Independent review:** `CLEAN` for the exact candidate; owner decision still required
 
 ## Authority and scope
 
@@ -53,8 +54,8 @@ No database/schema/index or backend/API contract changes; permission-model redes
 | S0 Audit and fresh evidence | `COMPLETE` | `0ca965214da9f1be41746435ad0f847ca2e6a977` | Fresh actual/frozen four-state baseline, lint measurement, and Storybook request-count probe complete; real Worker/D1 setup limitation recorded |
 | S1 Verified #589 fixes | `COMPLETE` | `ea7a54ef5580f399d0db2c2c67795ce4689f71b0` | Append-only production fixed point committed; full pre-commit hook passed, including 69 component files / 1039 tests |
 | S2 Sequential qualification/evidence | `MACHINE_GREEN / WAITING_INDEPENDENT_REVIEW` | `ea7a54ef5580f399d0db2c2c67795ce4689f71b0` | Browser, responsive, W7, computed geometry, request-count, and shell-only evidence pass; compact artifacts are committed without changing the production candidate |
-| S3 Independent review | `BLOCKED_EXTERNAL_REVIEW` | — | Three delegated read-only attempts did not complete the exact source/diff/evidence review; no `CLEAN` verdict exists |
-| S4 Owner decision | `PLANNED` | — | Remains `WAITING_OWNER_L2` until explicit owner decision |
+| S3 Independent review | `COMPLETE / CLEAN` | `c4d10c7464325d548105e449f5be4614b026ff7b` | Fresh top-level reviewer `01a09f5e-65ea-7451-9fd2-d0e7f6404e9c` verified the repaired harness and found zero actionable issues; owner approval remains separate |
+| S4 Owner decision | `WAITING_OWNER_L2` | `c4d10c7464325d548105e449f5be4614b026ff7b` | Approval packet requests `APPROVE #589`, `REQUEST CHANGES`, or `KEEP PENDING`; #589 is not accepted yet |
 
 ## S0 baseline observations
 
@@ -237,3 +238,14 @@ Canonical Programs browser, responsive, and W7 failures are blocking. Assertion,
 - Affected live-ui command: `fnm exec --using 22.18.0 pnpm exec playwright test --config=tests/e2e/live-ui.config.ts --grep "member shell keeps stable navigation"`. Both configured projects attempted `http://127.0.0.1:8787/` and failed at `page.goto` with `net::ERR_CONNECTION_REFUSED` before the route assertion. This is an external Worker-target setup boundary; the affected live-ui assertion is **UNRUN/BLOCKED**, not a pass.
 - Focused checks: `oxfmt --check tests/e2e/live-ui.test.ts` and `git diff --check` passed. Direct `oxlint tests/e2e/live-ui.test.ts` still reports the pre-existing `typescript(consistent-type-definitions)` at line 181 (`CascadeGeometry`), introduced before this one-line repair; no unrelated lint cleanup was absorbed. The append-only commit hook exited successfully.
 - The prior independent S3 result remains **FINDINGS** pending verification by the existing independent top-level reviewer against this repaired harness. No new `CLEAN` or acceptance claim is made; owner approval remains blocked. Browser/responsive/W7/visual evidence for the unchanged production candidate was not rerun because this repair is test-fixture-only. #590–#601 remain locked.
+
+## S3 clean review / S4 owner handoff checkpoint
+
+### Checkpoint — 2026-09-14 HKT
+
+- The existing independent top-level reviewer task `01a09f5e-65ea-7451-9fd2-d0e7f6404e9c` completed a fresh, user-authorized, read-only review separate from the implementor and delivery owner, and returned terminal `CLEAN` for the exact production candidate `c4d10c7464325d548105e449f5be4614b026ff7b` after the harness-only repair. This is independent review evidence, not owner approval.
+- The harness repair remains separate at `61556a9922bc610522f08c501f671a1bf3f3de62`; its exact one-line diff is `tests/e2e/live-ui.test.ts:95`, `programsSection` `課程與活動` → `課程`. No production source changed after c4d. Prior ledger repair record is `b835008bd6696abe3975b5809f6553e611117149`.
+- The affected real-boundary live-ui scenario passed `2/2` in `2.3s`: `phone-375x667` and `desktop-1280x720`, one worker, zero retries. The exact role-link assertion remained active and executed.
+- Existing c4d machine evidence remains unchanged: canonical browser `4/4`; responsive `18/18`; W7 `126/126`; shell visual `2/2`; direct computed shell evidence remains candidate-bound. Browser/responsive/W7/visual evidence was not rerun because this repair is test-fixture-only.
+- Remaining limitations, not candidate findings: unchanged pre-existing root TypeScript API errors outside the candidate dependency changes; standalone Phase-D runner unverified after setup stall while responsive/direct computed evidence exists; pre-existing no-capability management negative-network behavior unverified; and no owner spot-check, device/AT validation, L2/L3 approval, merge, release, or downstream authorization inferred.
+- Current state is **WAITING_OWNER_L2**. The explicit owner decision requested is exactly one of `APPROVE #589`, `REQUEST CHANGES`, or `KEEP PENDING`. #589 remains unaccepted and #590–#601 remain locked.

@@ -353,10 +353,10 @@ The following packets supersede the historical R1–R8 execution sequence. Each 
 
 **Steps:**
 
-- [ ] Give the independent reviewer the candidate SHA, diff range, acceptance contract, exact four-state contact sheets, machine checks, and known advisory runtime condition—without asking it to trust the delivery owner's conclusion.
-- [ ] Require review of #589 scope only: shell fidelity against frozen authority, capability/root/header/Back/notification semantics, computed geometry, dirty-save invariants, request-count evidence, and accidental downstream scope.
-- [ ] Record reviewer identity/context, candidate SHA, files/artifacts reviewed, findings with severity, and exact verdict. A review that is unavailable, stale, or self-authored is not a pass.
-- [ ] If actionable findings exist, mark S3 blocked, return to the smallest S1 repair, create a new production candidate, and repeat S2/S3. Do not silently amend the reviewed candidate.
+- [x] Give the independent reviewer the candidate SHA, diff range, acceptance contract, exact four-state contact sheets, machine checks, and known advisory runtime condition—without asking it to trust the delivery owner's conclusion.
+- [x] Require review of #589 scope only: shell fidelity against frozen authority, capability/root/header/Back/notification semantics, computed geometry, dirty-save invariants, request-count evidence, and accidental downstream scope.
+- [x] Record reviewer identity/context, candidate SHA, files/artifacts reviewed, findings with severity, and exact verdict. A review that is unavailable, stale, or self-authored is not a pass.
+- [x] If actionable findings exist, mark S3 blocked, return to the smallest S1 repair, create a new production candidate, and repeat S2/S3. Do not silently amend the reviewed candidate.
 
 **Gate:** Independent review records zero actionable findings for the exact candidate and compact evidence bundle. Then set the ledger to `WAITING_OWNER_L2`; do not mark #589 accepted yet.
 
@@ -377,7 +377,7 @@ The following packets supersede the historical R1–R8 execution sequence. Each 
 
 ## Active Task
 
-`S3`
+`S4`
 
 ## Salvage Task Ledger
 
@@ -386,8 +386,16 @@ The following packets supersede the historical R1–R8 execution sequence. Each 
 | S0 | Audit and fresh evidence | COMPLETE | `0ca965214da9f1be41746435ad0f847ca2e6a977` | `—` | Fresh four-state shell baseline, lint/request-count probe, acceptance trace | Complete; Storybook proves two concurrent access GETs and frozen comparison proves nav/header mismatches; real Worker/D1 setup limitation recorded |
 | S1 | Verified #589 fixes | COMPLETE | `0ca965214da9f1be41746435ad0f847ca2e6a977` | `ea7a54ef5580f399d0db2c2c67795ce4689f71b0` — `fix(programs): salvage shared shell acceptance seams` | Focused behavior tests + touched-file lint + bounded diff | Complete at the append-only production fixed point; hook passed the full required repository gates, including 69 component files / 1039 tests |
 | S2 | Sequential qualification/evidence | MACHINE_GREEN / WAITING_INDEPENDENT_REVIEW | `ea7a54ef5580f399d0db2c2c67795ce4689f71b0` | `ed4e484ee565c6bcdb13484a88b3aa1de892c994` — `test(programs): record #589 salvage evidence`; refresh `180e047550c30f8c4b4f7517dfc3b0f3512eb588` | Browser `3/3` → responsive `18/18` → W7 `126/126`, computed geometry, request count `1/1`, shell contact sheets | Compact candidate evidence committed; harness-only Story Play repair `d4165463c663f7b11d8e12eebc69b6d9df933b19` followed by fresh-server W7 `126/126`; production candidate remains `ea7a54ef...`; no accepted blocking/advisory failures |
-| S3 | Independent review | BLOCKED | `ea7a54ef5580f399d0db2c2c67795ce4689f71b0` | `—` | Fresh-context zero-actionable review | Three delegated read-only attempts did not complete source/diff/evidence review; no `CLEAN` verdict; next action is a completed independent review, with owner approval blocked |
-| S4 | Owner decision | PLANNED | `—` | `—` | Explicit owner approval for exact candidate | Remains `WAITING_OWNER_L2` until user decides |
+| S3 | Independent review | COMPLETE | `c4d10c7464325d548105e449f5be4614b026ff7b` | `61556a9922bc610522f08c501f671a1bf3f3de62` — `test(programs): align live UI navigation fixture` | Fresh-context zero-actionable review | Independent top-level reviewer `01a09f5e-65ea-7451-9fd2-d0e7f6404e9c` returned `CLEAN` for c4d after verifying the one-line harness repair; affected live-ui scenario passed `2/2` on phone/desktop with one worker and zero retries. Remaining limitations are recorded in the acceptance ledger; owner approval is still required. |
+| S4 | Owner decision | WAITING_OWNER_L2 | `c4d10c7464325d548105e449f5be4614b026ff7b` | `—` | Explicit owner approval for exact candidate | Approval packet is prepared for `APPROVE #589`, `REQUEST CHANGES`, or `KEEP PENDING`; #589 is not accepted and #590–#601 remain locked. |
+
+### S3 CLEAN / S4 owner handoff checkpoint — 2026-09-14 HKT
+
+- S3 is complete for the immutable production candidate `c4d10c7464325d548105e449f5be4614b026ff7b`. The fresh user-authorized top-level reviewer task `01a09f5e-65ea-7451-9fd2-d0e7f6404e9c` was read-only and separate from the implementor/delivery owner, and returned terminal `CLEAN`.
+- The only post-candidate repair is harness/test-only commit `61556a9922bc610522f08c501f671a1bf3f3de62`; no production source changed after c4d. Its exact one-line diff changes `tests/e2e/live-ui.test.ts` `programsSection` from `課程與活動` to `課程`.
+- The affected real-boundary live-ui scenario passed `2/2` in `2.3s` across `phone-375x667` and `desktop-1280x720`, one worker, zero retries; the exact role-link assertion remained active and executed.
+- Existing c4d machine evidence remains separate and unchanged: browser `4/4`, responsive `18/18`, W7 `126/126`, and shell visual `2/2`. No owner spot-check, device/AT validation, L2/L3 approval, merge, release, or downstream authorization is inferred.
+- Remaining disclosed limitations are unchanged pre-existing root TypeScript API errors outside the candidate dependency changes; the standalone Phase-D runner remains unverified after its setup stall while responsive/direct computed evidence exists; and pre-existing no-capability management negative-network behavior remains unverified. These are limitations, not new candidate findings.
 
 ## Historical Active Task (superseded)
 
