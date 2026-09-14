@@ -660,7 +660,7 @@ export const ProgramsBoundary = () => {
     ProgramsManagementAccess,
     AccessState
   >(
-    () => getManagementAccess(accessRequestKey),
+    () => getManagementAccess(),
     {
       toLoading: () => ({ kind: "loading" }),
       toReady: (projection) => ({ kind: "ready", projection }),

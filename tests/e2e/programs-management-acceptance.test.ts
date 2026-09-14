@@ -142,6 +142,48 @@ test.describe("T05.5 management Browser Acceptance", () => {
     expect(accessRequests).toHaveLength(1);
   });
 
+  test("shares a pending Home access prefetch with the Programs route", async ({
+    page,
+  }) => {
+    let releaseAccess!: () => void;
+    // The E2E config targets ES2022, so Promise.withResolvers is unavailable.
+    // oxlint-disable-next-line promise/avoid-new -- a manually released request gate is required for this race proof
+    const accessReleased = new Promise<void>((resolve) => {
+      releaseAccess = resolve;
+    });
+    let accessRequests = 0;
+    const accessRoute = "**/api/v1/programs/access";
+
+    await page.route(accessRoute, async (route) => {
+      accessRequests += 1;
+      if (accessRequests === 1) {
+        await accessReleased;
+      }
+      await route.continue();
+    });
+
+    try {
+      await loginAs(page);
+      await page.goto("/home");
+      const programsLink = page.locator('a[href="/programs"]').first();
+      await expect(programsLink).toBeVisible();
+      await expect.poll(() => accessRequests).toBe(1);
+
+      await programsLink.click();
+      await page.waitForURL((url) => url.pathname === "/programs");
+      await page.waitForTimeout(100);
+
+      expect(accessRequests).toBe(1);
+      releaseAccess();
+      await expect(
+        page.getByRole("heading", { name: COPY.participantDirectory })
+      ).toBeVisible();
+    } finally {
+      releaseAccess();
+      await page.unroute(accessRoute);
+    }
+  });
+
   test("admin opens a scoped Program, saves management data, and reads it back", async ({
     page,
   }) => {

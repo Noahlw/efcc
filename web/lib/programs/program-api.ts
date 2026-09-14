@@ -801,21 +801,21 @@ export function markManagementNotificationsRead(
 
 let accessCache: { data: ProgramsManagementAccess; at: number } | null = null;
 let accessRequest: {
-  key: string;
   marker: symbol;
   promise: Promise<ProgramsManagementAccess>;
 } | null = null;
 const ACCESS_TTL_MS = 30_000;
-const DEFAULT_ACCESS_REQUEST_KEY = "programs";
+
+function isCurrentAccessRequest(marker: symbol): boolean {
+  return accessRequest?.marker === marker;
+}
 
 /** GET /api/v1/programs/access — capability-only entry projection. */
-export function getManagementAccess(
-  requestKey = DEFAULT_ACCESS_REQUEST_KEY
-): Promise<ProgramsManagementAccess> {
+export function getManagementAccess(): Promise<ProgramsManagementAccess> {
   if (accessCache && Date.now() - accessCache.at < ACCESS_TTL_MS) {
     return Promise.resolve(accessCache.data);
   }
-  if (accessRequest?.key === requestKey) {
+  if (accessRequest) {
     return accessRequest.promise;
   }
   const marker = Symbol("programs-access-request");
@@ -825,18 +825,18 @@ export function getManagementAccess(
         "/api/v1/programs/access",
         "GET"
       );
-      if (accessRequest?.marker === marker) {
+      if (isCurrentAccessRequest(marker)) {
         accessCache = { data, at: Date.now() };
         accessRequest = null;
       }
       return data;
     } finally {
-      if (accessRequest?.marker === marker) {
+      if (isCurrentAccessRequest(marker)) {
         accessRequest = null;
       }
     }
   })();
-  accessRequest = { key: requestKey, marker, promise: request };
+  accessRequest = { marker, promise: request };
   return request;
 }
 

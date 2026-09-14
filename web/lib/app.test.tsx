@@ -2053,7 +2053,7 @@ describe("Shell", () => {
       ).not.toBeInTheDocument();
     });
 
-    test("ignores a stale Programs projection after a newer access load", async () => {
+    test("ignores a stale Programs projection after an explicit newer access load", async () => {
       const first = Promise.withResolvers<ProgramsManagementAccess>();
       const second = Promise.withResolvers<ProgramsManagementAccess>();
       let requestCount = 0;
@@ -2082,6 +2082,11 @@ describe("Shell", () => {
         </AppProvider>
       );
 
+      await waitFor(() => expect(requestCount).toBe(1));
+      // Route changes share the global in-flight request. Explicitly clear the
+      // cache to model a newer access load while keeping this stale-response
+      // assertion independent from route-key deduplication.
+      clearAccessCache();
       window.history.replaceState({}, "", "/programs?mode=management");
       view.rerender(
         <AppProvider

@@ -75,7 +75,7 @@ export const ShellHeader = ({
     ProgramsManagementAccess,
     ProgramsAccessState
   >(
-    () => getManagementAccess(programsRouteKey),
+    () => getManagementAccess(),
     {
       toLoading: () => ({ kind: "loading" }),
       toReady: (projection) => ({ kind: "ready", projection }),
