@@ -14,7 +14,7 @@ The accepted 2026-09-14 CEO Review amendment governs this ledger. The frozen Pro
 ## Candidate identity
 
 - Production candidate at S1 fixed point: `ea7a54ef5580f399d0db2c2c67795ce4689f71b0`
-- Evidence-only commit: the compact S2 evidence commit is being recorded in the next append-only checkpoint
+- Evidence-only commit: `ed4e484ee565c6bcdb13484a88b3aa1de892c994` — `test(programs): record #589 salvage evidence`
 - PR: #607, OPEN, base `codex/programs-screen-foundations/wave-2`, remote head `9ad90d253bfd50bf2bbcea85f39c18c1587b1f88`
 - Local branch: `codex/programs-screen-foundations/wave-3`, ahead of its remote by 27 commits
 - Pre-existing dirty paths preserved at claim: `CONTEXT.md`; `docs/qa/2026-09-11-programs-route-fidelity-correction.md`; `docs/superpowers/plans/2026-09-11-programs-route-fidelity-recovery-tracker.md`; `docs/superpowers/plans/programs-route-fidelity-recovery/R8-fixed-point-qualification.md`
@@ -138,6 +138,7 @@ No database/schema/index or backend/API contract changes; permission-model redes
 - Computed shell gate: **PASS** — responsive checks cover fixed/sticky placement, safe-area/content clearance, 44px targets, equal circle geometry, active indicator `18x2` with radius `2`, and no horizontal overflow across the nine matrix widths.
 - Shell visual gate: **PASS — 2/2** at `402x874` and `360x800`; each committed contact sheet contains Frozen/Actual columns for exactly Participant Directory, Management Directory, Workspace Settings overview, and Workspace Settings dirty/focused editor. The generated harness manifest records 8 candidate-bound shell rows; raw full-page output remains local.
 - Compact evidence: `docs/qa/artifacts/programs-route-fidelity/ea7a54ef5580/manifest.json`, `acceptance-record.json`, `checksums.sha256`, `shell-402x874.png`, and `shell-360x800.png`. This evidence commit does not change the production candidate.
+- Evidence commit checkpoint: `ed4e484ee565c6bcdb13484a88b3aa1de892c994`; post-commit `shasum -a 256 -c checksums.sha256` passed for all four listed files. HEAD now includes the evidence-only commit; the production candidate remains `ea7a54ef5580f399d0db2c2c67795ce4689f71b0`.
 - S2 gate: **MACHINE_GREEN / WAITING_INDEPENDENT_REVIEW**. Independent review is the next packet; owner approval remains pending and #590–#601 remain locked.
 
 ## Gate policy
