@@ -583,6 +583,157 @@ describe(ProgramSettings, () => {
     expect(screen.queryByText("secret-token")).not.toBeInTheDocument();
   });
 
+  test("validates each focused Attendance default field inline", async () => {
+    const user = userEvent.setup();
+    render(
+      <ProgramSettings
+        program={recurringProgram}
+        section="attendance"
+        onTaskChange={vi.fn()}
+      />
+    );
+
+    const opens = screen.getByRole("spinbutton", {
+      name: COPY.programs.settingsAttendanceOpens,
+    });
+    const closes = screen.getByRole("spinbutton", {
+      name: COPY.programs.settingsAttendanceCloses,
+    });
+    await user.clear(opens);
+    await user.clear(closes);
+    await user.click(
+      screen.getByRole("button", { name: COPY.programs.settingsSaveAttendance })
+    );
+
+    expect(mocks.updateProgram).not.toHaveBeenCalled();
+    expect(opens).toHaveAttribute("aria-invalid", "true");
+    expect(opens).toHaveAttribute(
+      "aria-describedby",
+      "program-settings-attendance-opens-error"
+    );
+    expect(closes).toHaveAttribute("aria-invalid", "true");
+    expect(closes).toHaveAttribute(
+      "aria-describedby",
+      "program-settings-attendance-closes-error"
+    );
+    expect(
+      screen.getAllByText(COPY.programs.settingsAttendanceValidation)
+    ).toHaveLength(2);
+  });
+
+  test("keeps focused Attendance dirty-only actions and reads back saved defaults", async () => {
+    const user = userEvent.setup();
+    mocks.updateProgram.mockResolvedValueOnce({
+      program: updatedProgram({
+        check_in_opens_at_minutes_before_start: 30,
+        check_in_closes_at_minutes_after_end: 10,
+      }),
+    });
+    render(
+      <ProgramSettings
+        program={recurringProgram}
+        section="attendance"
+        onTaskChange={vi.fn()}
+      />
+    );
+
+    expect(
+      screen.queryByTestId("program-settings-dirty-actions")
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", {
+        name: COPY.programs.settingsSaveAttendance,
+      })
+    ).not.toBeInTheDocument();
+
+    const opens = screen.getByRole("spinbutton", {
+      name: COPY.programs.settingsAttendanceOpens,
+    });
+    const closes = screen.getByRole("spinbutton", {
+      name: COPY.programs.settingsAttendanceCloses,
+    });
+    await user.clear(opens);
+    await user.type(opens, "30");
+    await user.clear(closes);
+    await user.type(closes, "10");
+
+    expect(
+      screen.getByTestId("program-settings-dirty-actions")
+    ).toBeInTheDocument();
+    await user.click(
+      screen.getByRole("button", { name: COPY.programs.settingsSaveAttendance })
+    );
+
+    await waitFor(() =>
+      expect(mocks.updateProgram).toHaveBeenCalledWith("program-1", {
+        check_in_opens_at_minutes_before_start: 30,
+        check_in_closes_at_minutes_after_end: 10,
+      })
+    );
+    await expect(
+      screen.findByText(COPY.programs.settingsSaved)
+    ).resolves.toBeInTheDocument();
+    expect(opens).toHaveValue(30);
+    expect(closes).toHaveValue(10);
+    expect(
+      screen.queryByTestId("program-settings-dirty-actions")
+    ).not.toBeInTheDocument();
+  });
+
+  test("preserves and retries a focused Attendance draft after an uncertain save", async () => {
+    const user = userEvent.setup();
+    mocks.updateProgram
+      .mockRejectedValueOnce(new RpcError({ code: "NETWORK_ERROR", status: 0 }))
+      .mockResolvedValueOnce({
+        program: updatedProgram({
+          check_in_opens_at_minutes_before_start: 45,
+          check_in_closes_at_minutes_after_end: 5,
+        }),
+      });
+    render(
+      <ProgramSettings
+        program={recurringProgram}
+        section="attendance"
+        onTaskChange={vi.fn()}
+      />
+    );
+
+    const opens = screen.getByRole("spinbutton", {
+      name: COPY.programs.settingsAttendanceOpens,
+    });
+    const closes = screen.getByRole("spinbutton", {
+      name: COPY.programs.settingsAttendanceCloses,
+    });
+    await user.clear(opens);
+    await user.type(opens, "45");
+    await user.clear(closes);
+    await user.type(closes, "5");
+    await user.click(
+      screen.getByRole("button", { name: COPY.programs.settingsSaveAttendance })
+    );
+
+    await expect(
+      screen.findByText(COPY.programs.programTransportAmbiguous)
+    ).resolves.toBeInTheDocument();
+    expect(opens).toHaveValue(45);
+    expect(closes).toHaveValue(5);
+
+    await user.click(
+      screen.getByRole("button", { name: COPY.programs.settingsRetrySave })
+    );
+    await waitFor(() => expect(mocks.updateProgram).toHaveBeenCalledTimes(2));
+    expect(mocks.updateProgram).toHaveBeenNthCalledWith(2, "program-1", {
+      check_in_opens_at_minutes_before_start: 45,
+      check_in_closes_at_minutes_after_end: 5,
+    });
+    await expect(
+      screen.findByText(COPY.programs.settingsSaved)
+    ).resolves.toBeInTheDocument();
+    expect(
+      screen.queryByTestId("program-settings-dirty-actions")
+    ).not.toBeInTheDocument();
+  });
+
   test("preserves edited Basics input when the server rejects the mutation", async () => {
     const user = userEvent.setup();
     const onReload = vi.fn();
@@ -963,5 +1114,43 @@ describe(SettingsHub, () => {
     expect(
       screen.getByRole("link", { name: COPY.programs.settingsHubNotifications })
     ).toBeInTheDocument();
+  });
+
+  test("gives a leader-assignment-only Program only scoped Account Access", () => {
+    render(
+      <SettingsHub
+        program={{
+          ...recurringProgram,
+          capabilities: {
+            ...recurringProgram.capabilities,
+            manage: false,
+            leader_assign: true,
+            role_read: true,
+            role_assign: true,
+          },
+        }}
+        eventsEnabled
+        attendanceEnabled
+        onSelect={vi.fn()}
+        accessHref="/management?module=accounts&scopeKind=Program&scopeId=program-1"
+        scheduleHref="/programs?mode=management&program=program-1&task=schedule"
+        notificationsHref="/programs?mode=management&task=notifications"
+      />
+    );
+
+    expect(
+      screen.getByRole("link", { name: COPY.programs.settingsHubAccess })
+    ).toBeInTheDocument();
+    for (const title of [
+      COPY.programs.settingsHubBasics,
+      COPY.programs.settingsHubPublishing,
+      COPY.programs.settingsHubEnrollment,
+      COPY.programs.settingsHubSchedule,
+      COPY.programs.settingsHubAttendance,
+      COPY.programs.settingsHubNotifications,
+      COPY.programs.settingsHubArchive,
+    ]) {
+      expect(screen.queryByText(title)).not.toBeInTheDocument();
+    }
   });
 });

@@ -90,6 +90,11 @@ interface AttendanceValues {
   closesAfter: string;
 }
 
+interface AttendanceErrors {
+  opensBefore?: string;
+  closesAfter?: string;
+}
+
 interface RuleValues {
   recurrence: ScheduleRuleInput["recurrence"];
   dayOfWeek: string;
@@ -194,6 +199,16 @@ function attendanceFrom(program: Program): AttendanceValues {
     opensBefore: String(program.check_in_opens_at_minutes_before_start ?? 15),
     closesAfter: String(program.check_in_closes_at_minutes_after_end ?? 0),
   };
+}
+
+function attendanceFieldError(value: string): string | undefined {
+  if (value.trim() === "") {
+    return COPY.programs.settingsAttendanceValidation;
+  }
+  const minutes = Number(value);
+  return Number.isSafeInteger(minutes) && minutes >= 0
+    ? undefined
+    : COPY.programs.settingsAttendanceValidation;
 }
 
 function ruleValuesFrom(rule: ScheduleRule): RuleValues {
@@ -874,6 +889,9 @@ export const ProgramSettings = ({
   const [publishing, setPublishing] = useState(() => publishingFrom(program));
   const [enrollment, setEnrollment] = useState(() => enrollmentFrom(program));
   const [attendance, setAttendance] = useState(() => attendanceFrom(program));
+  const [attendanceErrors, setAttendanceErrors] = useState<AttendanceErrors>(
+    {}
+  );
   const [rules, setRules] = useState<ScheduleRule[] | null>(
     program.behavior_type === "Recurring" &&
       program.capabilities.manage &&
@@ -1038,6 +1056,7 @@ export const ProgramSettings = ({
     setPublishing(publishingFrom(next));
     setEnrollment(enrollmentFrom(next));
     setAttendance(attendanceFrom(next));
+    setAttendanceErrors({});
   }, []);
 
   const runProgramMutation = useCallback(
@@ -1147,17 +1166,21 @@ export const ProgramSettings = ({
   const saveAttendance = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setRetryPatch(null);
-    const opensBefore = Number(attendance.opensBefore);
-    const closesAfter = Number(attendance.closesAfter);
-    if (
-      !Number.isSafeInteger(opensBefore) ||
-      opensBefore < 0 ||
-      !Number.isSafeInteger(closesAfter) ||
-      closesAfter < 0
-    ) {
-      setActionError(COPY.programs.settingsAttendanceValidation);
+    setActionError(null);
+    setNotice(null);
+    setReloadRequired(false);
+    const opensBeforeError = attendanceFieldError(attendance.opensBefore);
+    const closesAfterError = attendanceFieldError(attendance.closesAfter);
+    setAttendanceErrors({
+      ...(opensBeforeError ? { opensBefore: opensBeforeError } : {}),
+      ...(closesAfterError ? { closesAfter: closesAfterError } : {}),
+    });
+    if (opensBeforeError || closesAfterError) {
+      announce(COPY.programs.settingsAttendanceValidation);
       return;
     }
+    const opensBefore = Number(attendance.opensBefore);
+    const closesAfter = Number(attendance.closesAfter);
     void runProgramMutation({
       check_in_opens_at_minutes_before_start: opensBefore,
       check_in_closes_at_minutes_after_end: closesAfter,
@@ -1369,6 +1392,7 @@ export const ProgramSettings = ({
       setConfirmingEnrollment(false);
     } else if (section === "attendance") {
       setAttendance(attendanceFrom(currentProgram));
+      setAttendanceErrors({});
     }
     setRetryPatch(null);
     setReloadRequired(false);
@@ -2182,9 +2206,17 @@ export const ProgramSettings = ({
               ) : (
                 <ScreenEditor
                   id="program-settings-attendance-form"
+                  noValidate
                   onSubmit={saveAttendance}
                 >
                   <ScreenField
+                    error={
+                      attendanceErrors.opensBefore ? (
+                        <span id="program-settings-attendance-opens-error">
+                          {attendanceErrors.opensBefore}
+                        </span>
+                      ) : undefined
+                    }
                     htmlFor="program-settings-attendance-opens"
                     label={COPY.programs.settingsAttendanceOpens}
                     help={COPY.programs.settingsAttendanceUnits}
@@ -2194,20 +2226,37 @@ export const ProgramSettings = ({
                       className="border-[var(--screen-line-strong)] bg-[var(--screen-surface)] text-base"
                       type="number"
                       aria-label={COPY.programs.settingsAttendanceOpens}
+                      aria-describedby={
+                        attendanceErrors.opensBefore
+                          ? "program-settings-attendance-opens-error"
+                          : undefined
+                      }
+                      aria-invalid={attendanceErrors.opensBefore !== undefined}
                       min={0}
                       step={1}
                       required
                       value={attendance.opensBefore}
-                      onChange={(event) =>
+                      onChange={(event) => {
                         setAttendance((previous) => ({
                           ...previous,
                           opensBefore: event.target.value,
-                        }))
-                      }
+                        }));
+                        setAttendanceErrors((previous) => ({
+                          ...previous,
+                          opensBefore: undefined,
+                        }));
+                      }}
                       disabled={busy}
                     />
                   </ScreenField>
                   <ScreenField
+                    error={
+                      attendanceErrors.closesAfter ? (
+                        <span id="program-settings-attendance-closes-error">
+                          {attendanceErrors.closesAfter}
+                        </span>
+                      ) : undefined
+                    }
                     htmlFor="program-settings-attendance-closes"
                     label={COPY.programs.settingsAttendanceCloses}
                     help={COPY.programs.settingsAttendanceUnits}
@@ -2217,16 +2266,26 @@ export const ProgramSettings = ({
                       className="border-[var(--screen-line-strong)] bg-[var(--screen-surface)] text-base"
                       type="number"
                       aria-label={COPY.programs.settingsAttendanceCloses}
+                      aria-describedby={
+                        attendanceErrors.closesAfter
+                          ? "program-settings-attendance-closes-error"
+                          : undefined
+                      }
+                      aria-invalid={attendanceErrors.closesAfter !== undefined}
                       min={0}
                       step={1}
                       required
                       value={attendance.closesAfter}
-                      onChange={(event) =>
+                      onChange={(event) => {
                         setAttendance((previous) => ({
                           ...previous,
                           closesAfter: event.target.value,
-                        }))
-                      }
+                        }));
+                        setAttendanceErrors((previous) => ({
+                          ...previous,
+                          closesAfter: undefined,
+                        }));
+                      }}
                       disabled={busy}
                     />
                   </ScreenField>
