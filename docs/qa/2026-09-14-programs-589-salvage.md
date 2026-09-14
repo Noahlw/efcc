@@ -141,7 +141,7 @@ No database/schema/index or backend/API contract changes; permission-model redes
 - Shell visual gate: **PASS — 2/2** at `402x874` and `360x800`; each committed contact sheet contains Frozen/Actual columns for exactly Participant Directory, Management Directory, Workspace Settings overview, and Workspace Settings dirty/focused editor. The generated harness manifest records 8 candidate-bound shell rows; raw full-page output remains local.
 - Compact evidence: `docs/qa/artifacts/programs-route-fidelity/ea7a54ef5580/manifest.json`, `acceptance-record.json`, `checksums.sha256`, `shell-402x874.png`, and `shell-360x800.png`. This evidence commit does not change the production candidate.
 - Evidence commit checkpoint: `ed4e484ee565c6bcdb13484a88b3aa1de892c994`; post-commit `shasum -a 256 -c checksums.sha256` passed for all four listed files. HEAD now includes the evidence-only commit; the production candidate remains `ea7a54ef5580f399d0db2c2c67795ce4689f71b0`.
-- Qualification refresh checkpoint: harness-only commit `d4165463c663f7b11d8e12eebc69b6d9df933b19`; refreshed W7 `126/126` passed after a fresh server restart. The contact-sheet bytes and production candidate remain unchanged.
+- Qualification refresh checkpoint: harness-only commit `d4165463c663f7b11d8e12eebc69b6d9df933b19`; refreshed W7 `126/126` passed after a fresh server restart. Evidence refresh commit `180e047550c30f8c4b4f7517dfc3b0f3512eb588` records the refreshed manifest/ledger/checksums. The contact-sheet bytes and production candidate remain unchanged.
 - S2 gate: **MACHINE_GREEN / WAITING_INDEPENDENT_REVIEW**. Independent review is the next packet; owner approval remains pending and #590–#601 remain locked.
 
 ## Gate policy
