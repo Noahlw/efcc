@@ -1868,6 +1868,34 @@ describe("Shell", () => {
       expect(modeLink.querySelector("svg")).toHaveClass("lucide-user-round");
     });
 
+    test("places the management notification action in the global Programs shell", async () => {
+      pathnameMock.mockReturnValue("/programs");
+      window.history.replaceState({}, "", "/programs?mode=management");
+      server.use(
+        http.get("/api/v1/programs/access", () =>
+          programsAccessResponse(PROGRAMS_MANAGEMENT_ACCESS)
+        )
+      );
+      render(
+        <AppProvider
+          bootstrap={PROGRAMS_CAPABLE_BOOTSTRAP}
+          onSignOut={() => {}}
+        >
+          <ShellHeader />
+        </AppProvider>
+      );
+
+      const header = screen.getByRole("banner");
+      const notification = await within(header).findByRole("link", {
+        name: COPY.programs.notificationBellTitle,
+      });
+      expect(notification).toHaveAttribute(
+        "href",
+        "/programs?mode=management&task=notifications"
+      );
+      expect(notification).toHaveAttribute("data-screen-icon-button", "true");
+    });
+
     test("uses the native Programs history seam to reset a management URL to participant home", async () => {
       const user = userEvent.setup();
       pathnameMock.mockReturnValue("/programs");

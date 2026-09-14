@@ -308,7 +308,7 @@ export const COPY = {
   sections: {
     home: "首頁",
     profile: "帳戶",
-    programs: "課程與活動",
+    programs: "課程",
     events: "聚會管理",
     scanner: "掃描",
     notices: "通知",

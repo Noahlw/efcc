@@ -581,10 +581,9 @@ test.each([
       screen.queryByRole("heading", { name: COPY.programs.participantMode })
     ).not.toBeInTheDocument();
     expect(screen.getByText(COPY.programs.entryLead)).toBeInTheDocument();
-    expect(document.querySelector("#programs-mode-panel")).toHaveAttribute(
-      "role",
-      "region"
-    );
+    const panel = document.querySelector("section#programs-mode-panel");
+    expect(panel).toBeInTheDocument();
+    expect(panel).toHaveAccessibleName(COPY.programs.pageTitle);
     expect(
       screen.queryByRole("link", { name: COPY.programs.enterManagement })
     ).not.toBeInTheDocument();
@@ -726,7 +725,7 @@ describe("Programs boundary", () => {
     ).not.toBeInTheDocument();
   });
 
-  test("routes notification overflow to the dedicated management task", async () => {
+  test("keeps the compact management notification action in the shared shell", async () => {
     window.history.replaceState({}, "", "/programs?mode=management");
     mocks.getManagementAccess.mockResolvedValue(managementAccess(true));
     mocks.getManagementNotifications.mockResolvedValue({
@@ -755,18 +754,11 @@ describe("Programs boundary", () => {
       expect(mocks.getManagementNotifications).toHaveBeenCalledWith();
     });
     expect(mocks.getManagementAttention).not.toHaveBeenCalled();
-    await userEvent.click(
-      await screen.findByRole("button", {
+    expect(
+      screen.queryByRole("button", {
         name: COPY.programs.notificationBellTitle,
       })
-    );
-    const viewAll = await screen.findByRole("link", {
-      name: COPY.programs.notificationsViewAll,
-    });
-    expect(viewAll).toHaveAttribute(
-      "href",
-      "/programs?mode=management&task=notifications"
-    );
+    ).not.toBeInTheDocument();
     expect(window.location.search).toBe("?mode=management");
     expect(mocks.push).not.toHaveBeenCalled();
   });
@@ -991,12 +983,13 @@ describe("Programs boundary", () => {
     ).resolves.toBeInTheDocument();
     expect(mocks.getManagementAccess).not.toHaveBeenCalled();
 
-    const malformedPanel = screen
-      .getAllByRole("region", { name: COPY.programs.pageTitle })
-      .find((element) => element.id === "programs-mode-panel");
+    const malformedPanel = document.querySelector(
+      "section#programs-mode-panel"
+    );
     if (!malformedPanel) {
-      throw new Error("malformed Programs panel is not exposed as a region");
+      throw new Error("malformed Programs panel is not a semantic section");
     }
+    expect(malformedPanel).toHaveAccessibleName(COPY.programs.pageTitle);
     expect(malformedPanel).toHaveAttribute("aria-labelledby", "programs-title");
     expect(screen.queryByRole("tabpanel")).not.toBeInTheDocument();
 

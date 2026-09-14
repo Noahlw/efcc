@@ -11,10 +11,8 @@ import { useApp } from "@/lib/app-context";
 import { AttentionPanel, EMPTY_ATTENTION_DATA } from "@/lib/attention-panel";
 import type { AttentionData } from "@/lib/attention-panel";
 import { COPY } from "@/lib/copy";
-import {
-  getManagementAccess,
-  type ProgramsManagementAccess,
-} from "@/lib/programs/program-api";
+import { getManagementAccess } from "@/lib/programs/program-api";
+import type { ProgramsManagementAccess } from "@/lib/programs/program-api";
 import { useAsyncResource } from "@/lib/programs/use-async-resource";
 import { ScreenIconButton } from "@/lib/screen-foundations";
 
@@ -77,7 +75,7 @@ export const ShellHeader = ({
     ProgramsManagementAccess,
     ProgramsAccessState
   >(
-    () => getManagementAccess(),
+    () => getManagementAccess(programsRouteKey),
     {
       toLoading: () => ({ kind: "loading" }),
       toReady: (projection) => ({ kind: "ready", projection }),
@@ -118,6 +116,10 @@ export const ShellHeader = ({
   );
   const showModeControl =
     isPrograms && visibleProgramsAccess?.hasManagementCapability === true;
+  const showProgramsNotification =
+    showModeControl && currentMode === "management";
+  const programsNotificationHref =
+    "/programs?mode=management&task=notifications";
   const unreadNoticeCount = attentionData.notices.filter(
     (notice) => notice.unread
   ).length;
@@ -158,6 +160,24 @@ export const ShellHeader = ({
                 ) : (
                   <Briefcase aria-hidden="true" />
                 )}
+              </Link>
+            </ScreenIconButton>
+          ) : null}
+
+          {showProgramsNotification ? (
+            <ScreenIconButton
+              asChild
+              aria-label={COPY.programs.notificationBellTitle}
+              title={COPY.programs.notificationBellTitle}
+              className="relative border border-[var(--screen-line-strong)] text-[var(--screen-ink)] hover:bg-[var(--screen-surface)] hover:text-[var(--screen-accent)]"
+            >
+              <Link
+                href={programsNotificationHref}
+                onClick={(event) =>
+                  navigateProgramsMode(event, programsNotificationHref)
+                }
+              >
+                <Bell aria-hidden="true" />
               </Link>
             </ScreenIconButton>
           ) : null}

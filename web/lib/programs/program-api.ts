@@ -12,7 +12,6 @@ import type {
   AttendanceEvent as AttendanceEventType,
   AttendanceEventSummary as AttendanceEventSummaryType,
   AttendanceMember as AttendanceMemberType,
-  AttendanceResolveLatest as AttendanceResolveLatestType,
   AttendanceResolveResult as AttendanceResolveResultType,
   AttendanceRow as AttendanceRowType,
 } from "@/lib/attendance";
@@ -801,24 +800,49 @@ export function markManagementNotificationsRead(
 }
 
 let accessCache: { data: ProgramsManagementAccess; at: number } | null = null;
+let accessRequest: {
+  key: string;
+  marker: symbol;
+  promise: Promise<ProgramsManagementAccess>;
+} | null = null;
 const ACCESS_TTL_MS = 30_000;
+const DEFAULT_ACCESS_REQUEST_KEY = "programs";
 
 /** GET /api/v1/programs/access — capability-only entry projection. */
-export function getManagementAccess(): Promise<ProgramsManagementAccess> {
+export function getManagementAccess(
+  requestKey = DEFAULT_ACCESS_REQUEST_KEY
+): Promise<ProgramsManagementAccess> {
   if (accessCache && Date.now() - accessCache.at < ACCESS_TTL_MS) {
     return Promise.resolve(accessCache.data);
   }
-  return programsFetch<ProgramsManagementAccess>(
-    "/api/v1/programs/access",
-    "GET"
-  ).then((data) => {
-    accessCache = { data, at: Date.now() };
-    return data;
-  });
+  if (accessRequest?.key === requestKey) {
+    return accessRequest.promise;
+  }
+  const marker = Symbol("programs-access-request");
+  const request = (async () => {
+    try {
+      const data = await programsFetch<ProgramsManagementAccess>(
+        "/api/v1/programs/access",
+        "GET"
+      );
+      if (accessRequest?.marker === marker) {
+        accessCache = { data, at: Date.now() };
+        accessRequest = null;
+      }
+      return data;
+    } finally {
+      if (accessRequest?.marker === marker) {
+        accessRequest = null;
+      }
+    }
+  })();
+  accessRequest = { key: requestKey, marker, promise: request };
+  return request;
 }
 
 export function clearAccessCache(): void {
   accessCache = null;
+  accessRequest = null;
 }
 
 /**
@@ -842,7 +866,9 @@ export function primeCatalogCache(catalog: ParticipantCatalogEntry[]): void {
 }
 
 export function getCachedCatalog(): ParticipantCatalogEntry[] | null {
-  if (!catalogCache) return null;
+  if (!catalogCache) {
+    return null;
+  }
   if (Date.now() - catalogCache.at > CATALOG_TTL_MS) {
     catalogCache = null;
     return null;

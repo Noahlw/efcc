@@ -118,6 +118,30 @@ async function restoreFixture(page: Page, fixture: Fixture): Promise<void> {
 }
 
 test.describe("T05.5 management Browser Acceptance", () => {
+  test("cold management load makes one access request", async ({ page }) => {
+    await loginAs(page);
+    const accessRequests: string[] = [];
+    page.on("request", (request) => {
+      if (
+        request.method() === "GET" &&
+        new URL(request.url()).pathname === "/api/v1/programs/access"
+      ) {
+        accessRequests.push(request.url());
+      }
+    });
+
+    await page.goto("/programs?mode=management");
+    await expect(
+      page.getByRole("heading", { name: COPY.directoryTitle })
+    ).toBeVisible();
+    await expect
+      .poll(() => accessRequests.length, { timeout: 5000 })
+      .toBeGreaterThan(0);
+    await page.waitForTimeout(100);
+
+    expect(accessRequests).toHaveLength(1);
+  });
+
   test("admin opens a scoped Program, saves management data, and reads it back", async ({
     page,
   }) => {

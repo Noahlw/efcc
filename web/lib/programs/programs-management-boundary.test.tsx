@@ -172,17 +172,17 @@ afterEach(() => {
 });
 
 describe("Programs management boundary", () => {
-  test("places one compact bell in route headers and none on full Notifications", async () => {
+  test("keeps the compact notification action out of route-owned content", async () => {
     const view = render(<ProgramsBoundary />);
 
     await screen.findByRole("list", {
       name: COPY.programs.managementDirectoryListLabel,
     });
     expect(
-      screen.getAllByRole("button", {
+      screen.queryByRole("button", {
         name: COPY.programs.notificationBellTitle,
       })
-    ).toHaveLength(1);
+    ).not.toBeInTheDocument();
 
     window.history.replaceState(
       {},

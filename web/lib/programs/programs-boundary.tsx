@@ -221,11 +221,9 @@ const BoundaryFrame = ({
   children: React.ReactNode;
   showFallbackHeader: boolean;
 }) => (
-  <div
+  <section
     id="programs-mode-panel"
     className="min-h-0 w-full min-w-0"
-    // eslint-disable-next-line jsx-a11y/prefer-tag-over-role -- preserve the Programs region contract
-    role="region"
     aria-label={showFallbackHeader ? undefined : COPY.programs.pageTitle}
     aria-labelledby={showFallbackHeader ? "programs-title" : undefined}
   >
@@ -237,7 +235,7 @@ const BoundaryFrame = ({
       />
     </div>
     {children}
-  </div>
+  </section>
 );
 
 const ManagementPanel = ({
@@ -410,7 +408,6 @@ const ManagementPanel = ({
             created={intent.created}
             attention={attention}
             onAttentionRefresh={refreshAttention}
-            headerAction={notificationSurface}
             onBack={onBackDirectory}
             onTaskChange={onTaskChange}
             onEventChange={onEventChange}
@@ -423,7 +420,6 @@ const ManagementPanel = ({
           query={directoryQuery}
           onQueryChange={onDirectoryQueryChange}
           focusProgramId={directoryFocusProgramId}
-          headerAction={notificationSurface}
           onOpenProgram={onOpenProgram}
         />
       )}
@@ -431,10 +427,68 @@ const ManagementPanel = ({
   );
 };
 
-/** The BoundaryFrame body once access has resolved (or is loading/erroring)
- * -- extracted out of ProgramsBoundary purely to keep that function's own
- * branch count under the complexity budget; no logic changed. */
-/* oxlint-disable-next-line eslint/complexity -- the boundary is the single route-intent state machine for all participant and management branches. */
+const AccessStatePanels = ({
+  access,
+  intent,
+  retryAccess,
+  onHome,
+  onRecoverParticipant,
+}: {
+  access: AccessState;
+  intent: ProgramsIntent;
+  retryAccess: () => void;
+  onHome: () => void;
+  onRecoverParticipant: () => void;
+}) => (
+  <>
+    {access.kind === "loading" && (
+      <StatePanel
+        id="programs-access-state"
+        kind="loading"
+        message={COPY.programs.accessLoading}
+      />
+    )}
+    {access.kind === "error" &&
+      access.failure === "forbidden" &&
+      intent.mode === "participant" && (
+        <StatePanel
+          id="programs-access-state"
+          kind="error"
+          title={COPY.error.forbidden}
+          message={COPY.nav.unauthorized}
+          actionLabel={COPY.nav.backToHome}
+          onAction={onHome}
+        />
+      )}
+    {access.kind === "error" &&
+      (intent.mode === "management" || access.failure === "recoverable") && (
+        <StatePanel
+          id="programs-access-state"
+          kind="error"
+          title={
+            access.failure === "forbidden"
+              ? COPY.programs.managementForbidden
+              : COPY.error.unavailable
+          }
+          message={
+            access.failure === "forbidden"
+              ? COPY.programs.managementForbiddenHint
+              : access.message
+          }
+          actionLabel={
+            access.failure === "forbidden"
+              ? COPY.programs.enterParticipant
+              : COPY.programs.retryAccess
+          }
+          onAction={
+            access.failure === "forbidden" ? onRecoverParticipant : retryAccess
+          }
+        />
+      )}
+  </>
+);
+
+/** The BoundaryFrame body once access has resolved (or is loading/erroring). */
 const ProgramsBoundaryBody = ({
   access,
   intent,
@@ -482,52 +536,13 @@ const ProgramsBoundaryBody = ({
   onParticipantProgramFocus: () => void;
 }) => (
   <>
-    {access.kind === "loading" && (
-      <StatePanel
-        id="programs-access-state"
-        kind="loading"
-        message={COPY.programs.accessLoading}
-      />
-    )}
-    {access.kind === "error" &&
-      access.failure === "forbidden" &&
-      intent.mode === "participant" && (
-        <StatePanel
-          id="programs-access-state"
-          kind="error"
-          title={COPY.error.forbidden}
-          message={COPY.nav.unauthorized}
-          actionLabel={COPY.nav.backToHome}
-          onAction={onHome}
-        />
-      )}
-    {access.kind === "error" &&
-      (intent.mode === "management" || access.failure === "recoverable") && (
-        <StatePanel
-          id="programs-access-state"
-          kind="error"
-          title={
-            access.failure === "forbidden"
-              ? COPY.programs.managementForbidden
-              : COPY.error.unavailable
-          }
-          message={
-            access.failure === "forbidden"
-              ? COPY.programs.managementForbiddenHint
-              : access.message
-          }
-          actionLabel={
-            access.failure === "forbidden"
-              ? COPY.programs.enterParticipant
-              : COPY.programs.retryAccess
-          }
-          onAction={
-            access.failure === "forbidden"
-              ? () => navigateMode("participant", true)
-              : retryAccess
-          }
-        />
-      )}
+    <AccessStatePanels
+      access={access}
+      intent={intent}
+      retryAccess={retryAccess}
+      onHome={onHome}
+      onRecoverParticipant={() => navigateMode("participant", true)}
+    />
     {access.kind === "ready" && intent.mode === "management" && (
       <ManagementPanel
         projection={access.projection}
@@ -640,11 +655,12 @@ export const ProgramsBoundary = () => {
   };
   const retryFocusPending = useRef(false);
   const intent = useMemo(() => parseProgramsIntent(search), [search]);
+  const accessRequestKey = `${pathname}?${routeQuery}`;
   const { state: access, run: loadAccess } = useAsyncResource<
     ProgramsManagementAccess,
     AccessState
   >(
-    () => getManagementAccess(),
+    () => getManagementAccess(accessRequestKey),
     {
       toLoading: () => ({ kind: "loading" }),
       toReady: (projection) => ({ kind: "ready", projection }),
@@ -679,12 +695,12 @@ export const ProgramsBoundary = () => {
           ? COPY.programs.managementScopeReady
           : undefined,
     },
-    [pathname]
+    [accessRequestKey]
   );
   useEffect(() => {
     const syncSearch = () => {
-      const search = routeQuery ? `?${routeQuery}` : "";
-      setSearch(`${search}${window.location.hash}`);
+      const nextSearch = routeQuery ? `?${routeQuery}` : "";
+      setSearch(`${nextSearch}${window.location.hash}`);
     };
     syncSearch();
     setLocationReady(true);
@@ -694,7 +710,7 @@ export const ProgramsBoundary = () => {
       window.removeEventListener("popstate", syncSearch);
       window.removeEventListener("hashchange", syncSearch);
     };
-  }, [routeKey]);
+  }, [routeKey, routeQuery]);
 
   useEffect(() => {
     if (!locationReady || intent.malformed) {
