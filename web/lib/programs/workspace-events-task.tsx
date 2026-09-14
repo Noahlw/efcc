@@ -1,12 +1,20 @@
 "use client";
 
-import { ChevronRight } from "lucide-react";
+import { ChevronRight, MoreHorizontal } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import type { FormEvent } from "react";
 
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -58,7 +66,8 @@ import {
   ScreenStatus,
 } from "@/lib/screen-foundations";
 
-import { hkWallInputToIso } from "./event-detail";
+import { hkWallInputToIso, hkWallInputValue } from "./event-detail";
+import { ProgramDatePicker } from "./program-date-picker";
 import { buildProgramsHref } from "./programs-intent";
 import { useAsyncResource } from "./use-async-resource";
 import {
@@ -821,6 +830,17 @@ export const EventsTask = () => {
   const [createOpen, setCreateOpen] = useState(false);
   const [createBusy, setCreateBusy] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
+  const [createDate, setCreateDate] = useState("");
+  const [createStartTime, setCreateStartTime] = useState("");
+  const [createEndTime, setCreateEndTime] = useState("");
+  const [createEndAuto, setCreateEndAuto] = useState(true);
+  const [createLocation, setCreateLocation] = useState("");
+  const [createEventType, setCreateEventType] = useState<EventType>(
+    COPY.programs.eventTypeOptions[0]
+  );
+  const [createWindowOverride, setCreateWindowOverride] = useState(false);
+  const [createWindowOpens, setCreateWindowOpens] = useState("");
+  const [createWindowCloses, setCreateWindowCloses] = useState("");
   const [actionBusy, setActionBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -849,9 +869,62 @@ export const EventsTask = () => {
   const eventAttention = attention?.programs.find(
     ({ program_id }) => program_id === programId
   );
+  const resetCreateForm = () => {
+    setCreateDate(hkTodayWallDate());
+    setCreateStartTime("");
+    setCreateEndTime("");
+    setCreateEndAuto(true);
+    setCreateLocation("");
+    setCreateEventType(COPY.programs.eventTypeOptions[0]);
+    setCreateWindowOverride(false);
+    setCreateWindowOpens("");
+    setCreateWindowCloses("");
+  };
+  const toggleCreateForm = (open: boolean) => {
+    if (open) {
+      resetCreateForm();
+    }
+    setCreateOpen(open);
+    setCreateError(null);
+  };
+  const changeCreateStartTime = (value: string) => {
+    setCreateStartTime(value);
+    if (!createEndAuto) {
+      return;
+    }
+    const startsAt = hkWallInputToIso(`${createDate}T${value}`);
+    if (!startsAt) {
+      setCreateEndTime("");
+      return;
+    }
+    setCreateEndTime(
+      hkWallTimeOf(
+        new Date(new Date(startsAt).getTime() + 60 * 60_000).toISOString()
+      )
+    );
+  };
   const eventsForActions =
     state.kind === "ready" ? state.events : (previousEvents.current ?? []);
   const dataReady = state.kind === "ready";
+  const defaultWindow = (() => {
+    const startsAt = hkWallInputToIso(`${createDate}T${createStartTime}`);
+    const endsAt = hkWallInputToIso(`${createDate}T${createEndTime}`);
+    if (!startsAt || !endsAt) {
+      return null;
+    }
+    const opens = new Date(
+      new Date(startsAt).getTime() -
+        (program.check_in_opens_at_minutes_before_start ?? 15) * 60_000
+    );
+    const closes = new Date(
+      new Date(endsAt).getTime() +
+        (program.check_in_closes_at_minutes_after_end ?? 0) * 60_000
+    );
+    return {
+      opensAt: opens.toISOString(),
+      closesAt: closes.toISOString(),
+    };
+  })();
   const runEventAction = async (
     action: () => Promise<unknown>,
     successMessage: string
@@ -928,43 +1001,58 @@ export const EventsTask = () => {
   const submitCreate = async (formEvent: FormEvent<HTMLFormElement>) => {
     formEvent.preventDefault();
     const form = new FormData(formEvent.currentTarget);
-    const date = String(form.get("event_date") ?? "").trim();
-    const time = String(form.get("event_time") ?? "").trim();
     const name = String(form.get("name") ?? "").trim();
-    if (!date || !time || !name) {
+    if (!createDate || !createStartTime || !createEndTime || !name) {
       const message = COPY.programs.createMeetingValidation;
       setCreateError(message);
       announce(message);
       return;
     }
-    const startsAt = hkWallInputToIso(`${date}T${time}`);
-    if (!startsAt) {
+    const startsAt = hkWallInputToIso(`${createDate}T${createStartTime}`);
+    const endsAt = hkWallInputToIso(`${createDate}T${createEndTime}`);
+    if (!startsAt || !endsAt || endsAt <= startsAt) {
       const message = COPY.programs.createMeetingValidation;
       setCreateError(message);
       announce(message);
       return;
     }
-    const eventType = String(
-      form.get("event_type") ?? COPY.programs.eventTypeOptions[0]
-    ) as EventType;
+    const overrideOpens = createWindowOverride
+      ? hkWallInputToIso(createWindowOpens)
+      : null;
+    const overrideCloses = createWindowOverride
+      ? hkWallInputToIso(createWindowCloses)
+      : null;
+    if (
+      createWindowOverride &&
+      (!overrideOpens || !overrideCloses || overrideCloses <= overrideOpens)
+    ) {
+      const message = COPY.programs.createMeetingValidation;
+      setCreateError(message);
+      announce(message);
+      return;
+    }
     setCreateBusy(true);
     setCreateError(null);
     try {
       const { event } = await createEvent(programId, {
         name,
-        event_type: eventType,
+        event_type: createEventType,
         starts_at: startsAt,
-        ends_at: new Date(
-          new Date(startsAt).getTime() + 60 * 60_000
-        ).toISOString(),
+        ends_at: endsAt,
+        location: createLocation.trim() || null,
+        check_in_window_opens_at: overrideOpens,
+        check_in_window_closes_at: overrideCloses,
       });
       announce(COPY.programs.eventCreatedNotice);
-      setCreateOpen(false);
-      await run();
+      toggleCreateForm(false);
       if (!mounted.current) {
         return;
       }
-      onOpenEvent?.(event.event_id);
+      if (onOpenEvent) {
+        onOpenEvent(event.event_id);
+      } else {
+        await run();
+      }
     } catch (error: unknown) {
       if (redirectToLoginIfRequired(error)) {
         return;
@@ -992,10 +1080,7 @@ export const EventsTask = () => {
           <Button
             type="button"
             className="w-fit bg-[var(--screen-accent)] text-white hover:bg-[var(--screen-accent-deep)]"
-            onClick={() => {
-              setCreateOpen((open) => !open);
-              setCreateError(null);
-            }}
+            onClick={() => toggleCreateForm(!createOpen)}
           >
             {COPY.programs.createMeeting}
           </Button>
@@ -1061,12 +1146,14 @@ export const EventsTask = () => {
               htmlFor="programs-event-date"
               label={COPY.programs.eventDate}
             >
-              <Input
+              <ProgramDatePicker
                 id="programs-event-date"
-                className="border-[var(--screen-line-strong)] bg-[var(--screen-surface)] text-base"
-                type="date"
                 name="event_date"
-                aria-required="true"
+                label={COPY.programs.eventDate}
+                placeholder={COPY.programs.eventDate}
+                value={createDate}
+                onChange={setCreateDate}
+                disabled={createBusy}
               />
             </ScreenField>
             <ScreenField
@@ -1078,7 +1165,28 @@ export const EventsTask = () => {
                 className="border-[var(--screen-line-strong)] bg-[var(--screen-surface)] text-base"
                 type="time"
                 name="event_time"
+                value={createStartTime}
+                onChange={(event) => changeCreateStartTime(event.target.value)}
                 aria-required="true"
+                disabled={createBusy}
+              />
+            </ScreenField>
+            <ScreenField
+              htmlFor="programs-event-end-time"
+              label={COPY.programs.eventEnd}
+            >
+              <Input
+                id="programs-event-end-time"
+                className="border-[var(--screen-line-strong)] bg-[var(--screen-surface)] text-base"
+                type="time"
+                name="event_end_time"
+                value={createEndTime}
+                onChange={(event) => {
+                  setCreateEndTime(event.target.value);
+                  setCreateEndAuto(false);
+                }}
+                aria-required="true"
+                disabled={createBusy}
               />
             </ScreenField>
             <ScreenField
@@ -1092,14 +1200,23 @@ export const EventsTask = () => {
                 name="name"
                 placeholder={COPY.programs.eventNamePlaceholder}
                 aria-required="true"
+                disabled={createBusy}
               />
             </ScreenField>
-            <ScreenField label={COPY.programs.eventType}>
+            <ScreenField
+              htmlFor="programs-event-type"
+              label={COPY.programs.eventType}
+            >
               <Select
                 name="event_type"
-                defaultValue={COPY.programs.eventTypeOptions[0]}
+                value={createEventType}
+                onValueChange={(value) =>
+                  setCreateEventType(value as EventType)
+                }
+                disabled={createBusy}
               >
                 <SelectTrigger
+                  id="programs-event-type"
                   className="border-[var(--screen-line-strong)] bg-[var(--screen-surface)] text-base"
                   aria-label={COPY.programs.eventType}
                 >
@@ -1114,33 +1231,88 @@ export const EventsTask = () => {
                 </SelectContent>
               </Select>
             </ScreenField>
-            <ScreenField label={COPY.programs.recurrenceTag}>
-              <Select
-                name="recurrence_tag"
-                defaultValue={COPY.programs.recurrenceNone}
-              >
-                <SelectTrigger
-                  className="border-[var(--screen-line-strong)] bg-[var(--screen-surface)] text-base"
-                  aria-label={COPY.programs.recurrenceTag}
-                >
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value={COPY.programs.recurrenceNone}>
-                    {COPY.programs.recurrenceNone}
-                  </SelectItem>
-                  <SelectItem value={COPY.programs.recurrenceWeekly}>
-                    {COPY.programs.recurrenceWeekly}
-                  </SelectItem>
-                  <SelectItem value={COPY.programs.recurrenceMonthly}>
-                    {COPY.programs.recurrenceMonthly}
-                  </SelectItem>
-                </SelectContent>
-              </Select>
+            <ScreenField
+              htmlFor="programs-event-location"
+              label={COPY.programs.eventLocation}
+            >
+              <Input
+                id="programs-event-location"
+                className="border-[var(--screen-line-strong)] bg-[var(--screen-surface)] text-base"
+                type="text"
+                name="location"
+                value={createLocation}
+                onChange={(event) => setCreateLocation(event.target.value)}
+                placeholder={COPY.programs.eventLocationPlaceholder}
+                disabled={createBusy}
+              />
             </ScreenField>
-            <p className="m-0 wrap-anywhere text-sm leading-6 text-[var(--screen-muted)]">
-              {COPY.programs.repeatFormInformational}
-            </p>
+            <div className="grid min-w-0 gap-2 rounded-[var(--screen-radius-card)] border border-[var(--screen-line)] bg-[var(--screen-surface-soft)] p-3">
+              <div className="flex min-w-0 items-start gap-3">
+                <Checkbox
+                  id="programs-event-window-override"
+                  checked={createWindowOverride}
+                  onCheckedChange={(checked) => {
+                    const next = checked === true;
+                    setCreateWindowOverride(next);
+                    if (next && defaultWindow) {
+                      setCreateWindowOpens(
+                        hkWallInputValue(defaultWindow.opensAt)
+                      );
+                      setCreateWindowCloses(
+                        hkWallInputValue(defaultWindow.closesAt)
+                      );
+                    }
+                  }}
+                  disabled={createBusy}
+                />
+                <label
+                  className="min-w-0 cursor-pointer text-sm leading-6 text-[var(--screen-ink)]"
+                  htmlFor="programs-event-window-override"
+                >
+                  {COPY.programs.eventCheckInWindowOverride}
+                </label>
+              </div>
+              {createWindowOverride ? (
+                <div className="grid min-w-0 gap-3 sm:grid-cols-2">
+                  <ScreenField
+                    htmlFor="programs-event-window-opens"
+                    label={COPY.programs.eventCheckInWindowOpensAt}
+                  >
+                    <Input
+                      id="programs-event-window-opens"
+                      className="border-[var(--screen-line-strong)] bg-[var(--screen-surface)] text-base"
+                      type="datetime-local"
+                      value={createWindowOpens}
+                      onChange={(event) =>
+                        setCreateWindowOpens(event.target.value)
+                      }
+                      disabled={createBusy}
+                    />
+                  </ScreenField>
+                  <ScreenField
+                    htmlFor="programs-event-window-closes"
+                    label={COPY.programs.eventCheckInWindowClosesAt}
+                  >
+                    <Input
+                      id="programs-event-window-closes"
+                      className="border-[var(--screen-line-strong)] bg-[var(--screen-surface)] text-base"
+                      type="datetime-local"
+                      value={createWindowCloses}
+                      onChange={(event) =>
+                        setCreateWindowCloses(event.target.value)
+                      }
+                      disabled={createBusy}
+                    />
+                  </ScreenField>
+                </div>
+              ) : (
+                <p className="m-0 wrap-anywhere text-sm leading-6 text-[var(--screen-muted)]">
+                  {defaultWindow
+                    ? `${COPY.programs.eventCheckInWindowOpensAt} ${hkWallDateTimeLabel(defaultWindow.opensAt)}；${COPY.programs.eventCheckInWindowClosesAt} ${hkWallDateTimeLabel(defaultWindow.closesAt)}`
+                    : COPY.programs.eventCheckInWindowCalculated}
+                </p>
+              )}
+            </div>
             <div className="flex min-w-0 flex-wrap items-center gap-[var(--screen-utility-gap)]">
               <Button
                 type="submit"
@@ -1157,8 +1329,7 @@ export const EventsTask = () => {
                 variant="outline"
                 disabled={createBusy}
                 onClick={() => {
-                  setCreateOpen(false);
-                  setCreateError(null);
+                  toggleCreateForm(false);
                 }}
               >
                 {COPY.programs.eventCreateCancel}
@@ -1204,6 +1375,14 @@ export const EventsTask = () => {
             {(eventsForDisplay ?? []).map((event) => {
               const wall = eventWallParts(event.starts_at);
               const exception = event.exception ?? null;
+              const eventHref = buildProgramsHref({
+                mode: "management",
+                departmentId,
+                programId,
+                task: "events",
+                eventId: event.event_id,
+                hash,
+              });
               return (
                 <li
                   key={event.event_id}
@@ -1275,14 +1454,7 @@ export const EventsTask = () => {
                         variant="outline"
                       >
                         <Link
-                          href={buildProgramsHref({
-                            mode: "management",
-                            departmentId,
-                            programId,
-                            task: "events",
-                            eventId: event.event_id,
-                            hash,
-                          })}
+                          href={eventHref}
                           aria-label={COPY.programs.eventDetailOpen}
                           onClick={(clickEvent) => {
                             if (
@@ -1303,21 +1475,76 @@ export const EventsTask = () => {
                           {COPY.programs.eventDetailOpen}
                         </Link>
                       </Button>
-                      {canManage && dataReady && event.status === "Active" && (
-                        <form
-                          className="grid min-w-0 gap-2"
-                          noValidate
-                          onSubmit={submitCancelEvent(event.event_id)}
-                        >
-                          <Input
-                            className="border-[var(--screen-line-strong)] bg-[var(--screen-surface)] text-base"
-                            type="text"
-                            name="cancel_reason"
-                            placeholder={COPY.programs.cancelReasonPlaceholder}
-                            aria-label={COPY.programs.cancelReason}
-                            disabled={actionBusy}
-                          />
-                          {confirmingEventId === event.event_id ? (
+                      {canManage && (
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="icon"
+                              aria-label={COPY.programs.eventMoreActions}
+                              disabled={actionBusy}
+                              className="border-[var(--screen-line-strong)] bg-transparent text-[var(--screen-ink)] hover:bg-[var(--screen-surface-soft)]"
+                            >
+                              <MoreHorizontal aria-hidden="true" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem
+                              disabled={!onOpenEvent}
+                              onSelect={() => onOpenEvent?.(event.event_id)}
+                            >
+                              {COPY.programs.eventEdit}
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              disabled={!onOpenEvent}
+                              onSelect={() => onOpenEvent?.(event.event_id)}
+                            >
+                              {COPY.programs.eventReschedule}
+                            </DropdownMenuItem>
+                            {dataReady && event.status === "Active" && (
+                              <>
+                                <DropdownMenuSeparator />
+                                <DropdownMenuItem
+                                  variant="destructive"
+                                  onSelect={() => {
+                                    if (event.has_attendance) {
+                                      const message =
+                                        COPY.programs
+                                          .cancelBlockedWithAttendance;
+                                      setActionError(message);
+                                      announce(message);
+                                      return;
+                                    }
+                                    setConfirmingEventId(event.event_id);
+                                  }}
+                                >
+                                  {COPY.programs.cancelEvent}
+                                </DropdownMenuItem>
+                              </>
+                            )}
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      )}
+                      {canManage &&
+                        dataReady &&
+                        event.status === "Active" &&
+                        confirmingEventId === event.event_id && (
+                          <form
+                            className="grid min-w-0 basis-full gap-2"
+                            noValidate
+                            onSubmit={submitCancelEvent(event.event_id)}
+                          >
+                            <Input
+                              className="border-[var(--screen-line-strong)] bg-[var(--screen-surface)] text-base"
+                              type="text"
+                              name="cancel_reason"
+                              placeholder={
+                                COPY.programs.cancelReasonPlaceholder
+                              }
+                              aria-label={COPY.programs.cancelReason}
+                              disabled={actionBusy}
+                            />
                             <ScreenCard
                               className="min-w-0"
                               role="alert"
@@ -1346,18 +1573,8 @@ export const EventsTask = () => {
                                 {COPY.programs.keepMeeting}
                               </Button>
                             </ScreenCard>
-                          ) : (
-                            <Button
-                              type="submit"
-                              disabled={actionBusy}
-                              className="w-fit border-[var(--screen-danger)] bg-transparent text-[var(--screen-danger)] hover:bg-[var(--screen-danger-surface)]"
-                              variant="outline"
-                            >
-                              {COPY.programs.cancelEvent}
-                            </Button>
-                          )}
-                        </form>
-                      )}
+                          </form>
+                        )}
                     </div>
                   </ScreenRow>
                 </li>

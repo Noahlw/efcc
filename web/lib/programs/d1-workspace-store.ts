@@ -1594,6 +1594,16 @@ export class D1WorkspaceStore implements WorkspaceStore {
     return Number(row?.count ?? 0);
   }
 
+  async hasAttendanceSnapshot(eventId: string): Promise<boolean> {
+    const row = await this.db
+      .prepare(
+        "SELECT 1 AS present FROM event_attendance_snapshots WHERE event_id = ?"
+      )
+      .bind(eventId)
+      .first<{ present: number }>();
+    return row !== null;
+  }
+
   // --- EVT-02 (#252): preview plans and generation runs ---
 
   async findPreviewPlan(planId: string): Promise<PreviewPlanRow | null> {

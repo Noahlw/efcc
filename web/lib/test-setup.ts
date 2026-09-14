@@ -30,3 +30,14 @@ if (typeof HTMLElement !== "undefined") {
     HTMLElement.prototype.scrollIntoView = () => undefined;
   }
 }
+
+// Radix overlay primitives observe their trigger/content dimensions. jsdom
+// does not provide ResizeObserver, so keep the browser contract available to
+// component tests without making production code depend on a test polyfill.
+if (typeof ResizeObserver === "undefined") {
+  globalThis.ResizeObserver = class ResizeObserver {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  };
+}

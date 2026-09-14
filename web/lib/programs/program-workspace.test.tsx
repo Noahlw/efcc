@@ -2238,9 +2238,15 @@ describe("EVT-01 workspace Event deep link (#251)", () => {
     await userEvent.click(
       await screen.findByRole("button", { name: COPY.programs.createMeeting })
     );
-    fireEvent.change(screen.getByLabelText(COPY.programs.eventDate), {
-      target: { value: "2026-09-13" },
-    });
+    await userEvent.click(
+      screen.getByRole("button", { name: COPY.programs.eventDate })
+    );
+    const calendar = await screen.findByRole("grid");
+    const dayButton = calendar.querySelector<HTMLButtonElement>(
+      '[data-day="2026-09-13"] button'
+    );
+    expect(dayButton).not.toBeNull();
+    await userEvent.click(dayButton!);
     fireEvent.change(screen.getByLabelText(COPY.programs.eventTime), {
       target: { value: "18:00" },
     });
@@ -2257,12 +2263,6 @@ describe("EVT-01 workspace Event deep link (#251)", () => {
       })
     );
     await userEvent.click(
-      screen.getByRole("combobox", { name: COPY.programs.recurrenceTag })
-    );
-    await userEvent.click(
-      screen.getByRole("option", { name: COPY.programs.recurrenceNone })
-    );
-    await userEvent.click(
       screen
         .getAllByRole("button", { name: COPY.programs.createMeeting })
         .at(-1)!
@@ -2274,6 +2274,9 @@ describe("EVT-01 workspace Event deep link (#251)", () => {
         event_type: COPY.programs.eventTypeOptions[1],
         starts_at: "2026-09-13T10:00:00.000Z",
         ends_at: "2026-09-13T11:00:00.000Z",
+        location: null,
+        check_in_window_opens_at: null,
+        check_in_window_closes_at: null,
       })
     );
     expect(onEventChange).toHaveBeenCalledWith("event-created");

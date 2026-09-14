@@ -116,7 +116,8 @@ export function hkWallInputToIso(
   if (!value) {
     return null;
   }
-  return new Date(`${value}:00+08:00`).toISOString();
+  const parsed = new Date(`${value}:00+08:00`);
+  return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString();
 }
 
 /**

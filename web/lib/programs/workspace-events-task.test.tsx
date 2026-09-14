@@ -1,4 +1,5 @@
 import { cleanup, render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
 import { COPY } from "@/lib/copy";
@@ -113,5 +114,38 @@ describe("EventsTask operations-first composition", () => {
       screen.queryByRole("button", { name: COPY.programs.cancelOccurrence })
     ).not.toBeInTheDocument();
     expect(mocks.listScheduleRules).not.toHaveBeenCalled();
+  });
+
+  test("keeps edit, reschedule, and cancel behind a More menu", async () => {
+    renderTask();
+    const user = userEvent.setup();
+
+    await user.click(
+      await screen.findByRole("button", {
+        name: COPY.programs.eventMoreActions,
+      })
+    );
+    expect(
+      screen.getByRole("menuitem", { name: COPY.programs.eventEdit })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("menuitem", { name: COPY.programs.eventReschedule })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("menuitem", { name: COPY.programs.cancelEvent })
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("textbox", { name: COPY.programs.cancelReason })
+    ).not.toBeInTheDocument();
+
+    await user.click(
+      screen.getByRole("menuitem", { name: COPY.programs.cancelEvent })
+    );
+    expect(
+      screen.getByRole("textbox", { name: COPY.programs.cancelReason })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: COPY.programs.keepMeeting })
+    ).toBeInTheDocument();
   });
 });

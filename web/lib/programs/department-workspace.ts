@@ -44,6 +44,7 @@ import {
   EnrollmentNotAllowedError,
   EventCancellationBlockedError,
   EventAvailabilityConfirmationRequiredError,
+  EventRescheduleBlockedError,
   InvalidModuleKeyError,
   InvalidProgramLifecycleError,
   NoScheduleRulesError,
@@ -3636,25 +3637,59 @@ export class DepartmentWorkspace {
       CAPABILITY.PROGRAM_MANAGE
     );
     await this.requireModuleEnabled(program.department_id, MODULE_KEY.EVENTS);
-    // Spec US 12: edits when attendance already exists must succeed and be
-    // recorded (no data loss; audit trail preserved).
-    if (cmd.starts_at !== undefined && cmd.starts_at !== event.starts_at) {
-      const duplicate = await this.store.findEventByStart(
-        event.program_id,
-        cmd.starts_at
-      );
-      if (duplicate && duplicate.event_id !== event.event_id) {
+    // Identity edits remain safe after an Event starts. A schedule change is
+    // a new operational Event once the original has started, has Attendance,
+    // or has a durable expected-roster snapshot.
+    const startsChanged =
+      cmd.starts_at !== undefined && cmd.starts_at !== event.starts_at;
+    const endsChanged =
+      cmd.ends_at !== undefined && cmd.ends_at !== event.ends_at;
+    if (startsChanged || endsChanged) {
+      const started =
+        Number.isFinite(Date.parse(event.starts_at)) &&
+        Date.parse(event.starts_at) <= Date.now();
+      const hasSnapshot = await this.store.hasAttendanceSnapshot(eventId);
+      const activeAttendanceCount =
+        await this.store.countActiveAttendance(eventId);
+      if (started || hasSnapshot || activeAttendanceCount > 0) {
         await this.audit(
           ctx,
           "EVENT_UPDATE",
           "event",
-          duplicate.event_id,
+          eventId,
           "CONFLICT",
           event,
-          { starts_at: cmd.starts_at },
+          {
+            starts_at: cmd.starts_at ?? event.starts_at,
+            reason: started
+              ? "event_started"
+              : hasSnapshot
+                ? "attendance_snapshot_exists"
+                : "active_attendance_exists",
+          },
           correlationId
         );
-        throw new DuplicateEventError(cmd.starts_at);
+        throw new EventRescheduleBlockedError(eventId);
+      }
+      if (cmd.starts_at !== undefined && cmd.starts_at !== event.starts_at) {
+        const requestedStart = cmd.starts_at;
+        const duplicate = await this.store.findEventByStart(
+          event.program_id,
+          requestedStart
+        );
+        if (duplicate && duplicate.event_id !== event.event_id) {
+          await this.audit(
+            ctx,
+            "EVENT_UPDATE",
+            "event",
+            duplicate.event_id,
+            "CONFLICT",
+            event,
+            { starts_at: requestedStart },
+            correlationId
+          );
+          throw new DuplicateEventError(requestedStart);
+        }
       }
     }
     const updated = await this.store.updateEvent(

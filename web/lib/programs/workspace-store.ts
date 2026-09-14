@@ -706,6 +706,7 @@ export interface WorkspaceStore {
     checked_in: number;
   }>;
   countActiveAttendance: (eventId: string) => Promise<number>;
+  hasAttendanceSnapshot: (eventId: string) => Promise<boolean>;
   listActiveAttendanceEventIds: (
     eventIds: readonly string[]
   ) => Promise<Set<string>>;
