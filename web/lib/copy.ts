@@ -96,6 +96,8 @@ export const COPY = {
     rateLimited: "請求過於頻繁，請稍後再試。",
     loginForMember: "登入後以成員身份簽到",
     operatorTitle: "聚會簽到管理",
+    eventAttendanceOpen: "開啟出席點名",
+    eventAttendanceLead: "查看此聚會的出席名單、處理代簽，或列印此聚會簽到表。",
     eventId: "聚會 ID",
     memberSearch: "搜尋已報名成員",
     memberSearchEmpty: "找不到符合的成員。",

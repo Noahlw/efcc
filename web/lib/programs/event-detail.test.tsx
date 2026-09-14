@@ -108,6 +108,12 @@ describe("EVT-01 event detail", () => {
     expect(
       screen.getByText(COPY.programs.eventCheckedIn.replace("{count}", "2"))
     ).toBeInTheDocument();
+    expect(
+      screen.getByRole("link", { name: COPY.attendance.eventAttendanceOpen })
+    ).toHaveAttribute("href", "/events?eventId=event-1");
+    expect(
+      screen.getByText(COPY.attendance.eventAttendanceLead)
+    ).toBeInTheDocument();
     expect(screen.getAllByText("陳大文")).toHaveLength(2);
     expect(screen.getByText("課程管理身份組")).toBeInTheDocument();
     expect(screen.getByText("另一個課程身份組")).toBeInTheDocument();
@@ -899,6 +905,9 @@ describe("EVT-01 event detail", () => {
     expect(screen.getByText(/簽到時間尚未開始/u)).toBeInTheDocument();
     expect(
       screen.queryByRole("link", { name: COPY.programs.goToScan })
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("link", { name: COPY.attendance.eventAttendanceOpen })
     ).not.toBeInTheDocument();
   });
 

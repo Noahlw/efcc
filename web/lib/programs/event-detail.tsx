@@ -489,6 +489,7 @@ export const EventDetail = ({
   const cancelled = event.status === "Cancelled";
   const hasAttendance =
     event.has_attendance === true || participant_summary.checked_in > 0;
+  const attendanceHref = `/events?eventId=${encodeURIComponent(event.event_id)}`;
   if (!canManage) {
     const programName = event.program_name ?? event.program_id;
     const checkInOpen = checkInWindowIsOpen(event);
@@ -723,6 +724,21 @@ export const EventDetail = ({
             </ScreenRowMeta>
           </div>
         </div>
+      </ScreenSection>
+
+      <ScreenSection title={COPY.attendance.rosterTitle}>
+        <p className="m-0 min-w-0 max-w-[65ch] wrap-anywhere leading-[1.6] text-[var(--screen-muted)]">
+          {COPY.attendance.eventAttendanceLead}
+        </p>
+        <Button
+          asChild
+          className="w-fit bg-[var(--screen-accent)] text-white hover:bg-[var(--screen-accent-deep)]"
+          data-action-state="available"
+        >
+          <Link href={attendanceHref}>
+            {COPY.attendance.eventAttendanceOpen}
+          </Link>
+        </Button>
       </ScreenSection>
 
       <ScreenSection title={COPY.programs.identityAssignments}>
