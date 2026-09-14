@@ -427,11 +427,11 @@ describe(ProgramWorkspace, () => {
     ).not.toBeInTheDocument();
 
     // Operational tiles still render with live counts
-    expect(
-      screen.getByRole("link", {
+    await expect(
+      screen.findByRole("link", {
         name: new RegExp(`${COPY.programs.cockpitEventsTile}.*2 個聚會`, "u"),
       })
-    ).toBeInTheDocument();
+    ).resolves.toBeInTheDocument();
     expect(
       screen.getByRole("link", {
         name: new RegExp(
@@ -440,6 +440,191 @@ describe(ProgramWorkspace, () => {
         ),
       })
     ).toBeInTheDocument();
+  });
+
+  test("keeps unavailable summary counts explicit and retries the failed read", async () => {
+    mocks.getManagementProgram.mockResolvedValue({
+      program,
+      department,
+      modules,
+      cockpit: cockpitWithNext,
+    });
+    mocks.listEvents.mockResolvedValue({ events: [event] });
+    mocks.listEnrollmentRequests.mockResolvedValue({ requests: [] });
+    mocks.listEnrollments
+      .mockRejectedValueOnce(new RpcError({ code: "FORBIDDEN", status: 403 }))
+      .mockResolvedValue({ enrollments: [enrollment] });
+    render(
+      <ProgramWorkspace
+        programId="program-1"
+        onBack={vi.fn()}
+        onTaskChange={vi.fn()}
+      />
+    );
+
+    await expect(
+      screen.findByRole("heading", { name: "查經小組" })
+    ).resolves.toBeInTheDocument();
+    const activeMetric = screen.getByText(
+      COPY.programs.cockpitActiveParticipants
+    ).parentElement as HTMLElement;
+    expect(within(activeMetric).getByText("—")).toBeInTheDocument();
+    await expect(
+      screen.findByText(COPY.error.forbidden)
+    ).resolves.toBeInTheDocument();
+
+    await userEvent.click(
+      screen.getByRole("button", { name: COPY.programs.workspaceRetry })
+    );
+    await waitFor(() => {
+      expect(mocks.listEnrollments).toHaveBeenCalledTimes(2);
+      expect(within(activeMetric).getByText("1")).toBeInTheDocument();
+    });
+  });
+
+  test("retries an unavailable cockpit through the workspace loader", async () => {
+    mocks.getManagementProgram
+      .mockResolvedValueOnce({
+        program,
+        department,
+        modules,
+        cockpit: null,
+      })
+      .mockResolvedValue({
+        program,
+        department,
+        modules,
+        cockpit: cockpitWithNext,
+      });
+    mocks.listEvents.mockResolvedValue({ events: [event] });
+    mocks.listEnrollmentRequests.mockResolvedValue({ requests: [] });
+    mocks.listEnrollments.mockResolvedValue({ enrollments: [enrollment] });
+    render(
+      <ProgramWorkspace
+        programId="program-1"
+        onBack={vi.fn()}
+        onTaskChange={vi.fn()}
+      />
+    );
+
+    await expect(
+      screen.findByRole("heading", { name: "查經小組" })
+    ).resolves.toBeInTheDocument();
+    await screen.findAllByText(COPY.programs.workspaceSummaryUnavailable);
+    expect(
+      screen.getAllByRole("button", { name: COPY.programs.workspaceRetry })
+    ).toHaveLength(1);
+
+    await userEvent.click(
+      screen.getByRole("button", { name: COPY.programs.workspaceRetry })
+    );
+    await waitFor(() => {
+      expect(mocks.getManagementProgram).toHaveBeenCalledTimes(2);
+      expect(
+        screen.getByRole("link", {
+          name: COPY.programs.cockpitManageRoster,
+        })
+      ).toBeInTheDocument();
+    });
+  });
+
+  test("filters unavailable Events and carries exact Program plus Event context", async () => {
+    const earliestEvent: ProgramEvent = {
+      ...event,
+      event_id: "event-earliest",
+      name: "最早聚會",
+      starts_at: "2099-08-20T11:00:00.000Z",
+      ends_at: "2099-08-20T13:00:00.000Z",
+      location: "小組室",
+      availability: "Active",
+    };
+    const laterEvent: ProgramEvent = {
+      ...earliestEvent,
+      event_id: "event-later",
+      name: "較後聚會",
+      starts_at: "2099-08-27T11:00:00.000Z",
+      ends_at: "2099-08-27T13:00:00.000Z",
+    };
+    const unavailableEvent: ProgramEvent = {
+      ...earliestEvent,
+      event_id: "event-unavailable",
+      name: "不可用聚會",
+      starts_at: "2099-08-13T11:00:00.000Z",
+      ends_at: "2099-08-13T13:00:00.000Z",
+      availability: "Inactive",
+    };
+    mocks.getManagementProgram.mockResolvedValue({
+      program,
+      department,
+      modules,
+    });
+    mocks.listEvents.mockResolvedValue({
+      events: [laterEvent, unavailableEvent, earliestEvent],
+    });
+    mocks.listEnrollmentRequests.mockResolvedValue({ requests: [] });
+    mocks.listEnrollments.mockResolvedValue({ enrollments: [] });
+    const onTaskChange = vi.fn();
+    render(
+      <ProgramWorkspace
+        programId="program-1"
+        onBack={vi.fn()}
+        onTaskChange={onTaskChange}
+      />
+    );
+
+    await expect(
+      screen.findByRole("heading", { name: "查經小組" })
+    ).resolves.toBeInTheDocument();
+    await waitFor(() =>
+      expect(mocks.listEvents).toHaveBeenCalledWith("program-1")
+    );
+    expect(screen.queryByText("不可用聚會")).not.toBeInTheDocument();
+    await expect(
+      screen.findByRole("link", {
+        name: new RegExp(`${COPY.programs.cockpitEventsTile}.*2 個聚會`, "u"),
+      })
+    ).resolves.toBeInTheDocument();
+
+    const rosterLink = screen.getByRole("link", {
+      name: COPY.programs.cockpitManageRoster,
+    });
+    expect(rosterLink).toHaveAttribute(
+      "href",
+      "/programs?mode=management&program=program-1&task=participants&event=event-earliest"
+    );
+    await userEvent.click(rosterLink);
+    expect(onTaskChange).toHaveBeenCalledWith("participants", "event-earliest");
+  });
+
+  test("renders an authoritative zero Event count without inventing a next Event", async () => {
+    mocks.getManagementProgram.mockResolvedValue({
+      program,
+      department,
+      modules,
+      cockpit: {
+        ...cockpitNoNext,
+        active_event_count: 0,
+      },
+    });
+    render(
+      <ProgramWorkspace
+        programId="program-1"
+        onBack={vi.fn()}
+        onTaskChange={vi.fn()}
+      />
+    );
+
+    await expect(
+      screen.findByRole("heading", { name: "查經小組" })
+    ).resolves.toBeInTheDocument();
+    expect(
+      screen.getByRole("link", {
+        name: new RegExp(`${COPY.programs.cockpitEventsTile}.*0 個聚會`, "u"),
+      })
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText(COPY.programs.cockpitNextMeeting)
+    ).not.toBeInTheDocument();
   });
 
   test("keeps Overview read-only and places course editing under Settings", async () => {

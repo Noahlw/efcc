@@ -153,6 +153,109 @@ export const WorkspaceNavigation = ({
 const summaryValue = (read: WorkspaceSummaryRead<number>): string =>
   read.status === "ready" ? String(read.value) : "—";
 
+type WorkspaceNextEvent = ManagementCockpitView["next_event"];
+
+function summaryStateText(read: WorkspaceSummaryRead<unknown>): string {
+  if (read.status === "loading") {
+    return COPY.programs.workspaceSummaryLoading;
+  }
+
+  return read.status === "unavailable" ? read.message : "";
+}
+
+const SummaryMetric = ({
+  label,
+  read,
+}: {
+  label: string;
+  read: WorkspaceSummaryRead<number>;
+}) => (
+  <div
+    className="grid min-w-0 gap-0.5 py-3"
+    aria-busy={read.status === "loading"}
+  >
+    <strong className="text-[22px] leading-7 tracking-[-0.03em]">
+      {summaryValue(read)}
+    </strong>
+    <span className="min-w-0 wrap-anywhere text-[length:var(--screen-meta-size)] leading-[var(--screen-meta-leading)] text-[var(--screen-muted)]">
+      {label}
+    </span>
+    {read.status !== "ready" && (
+      <span className="min-w-0 wrap-anywhere text-xs leading-[var(--screen-meta-leading)] text-[var(--screen-muted)]">
+        {summaryStateText(read)}
+      </span>
+    )}
+  </div>
+);
+
+function availableEvent(event: ProgramEvent): boolean {
+  return event.status === "Active" && event.availability !== "Inactive";
+}
+
+function summaryReadAsNumber<T>(
+  read: WorkspaceSummaryRead<T>,
+  project: (value: T) => number
+): WorkspaceSummaryRead<number> {
+  if (read.status === "ready") {
+    return { status: "ready", value: project(read.value) };
+  }
+  return read;
+}
+
+function fallbackNextEvent(
+  read: WorkspaceSummaryRead<ProgramEvent[]>,
+  program: Program
+): WorkspaceSummaryRead<WorkspaceNextEvent> {
+  if (read.status !== "ready") {
+    return read;
+  }
+
+  const activeEvents = read.value.filter(availableEvent);
+  const futureEvents = activeEvents
+    .filter((event) => {
+      const startsAt = Date.parse(event.starts_at);
+      return Number.isFinite(startsAt) && startsAt >= Date.now();
+    })
+    .sort(
+      (left, right) => Date.parse(left.starts_at) - Date.parse(right.starts_at)
+    );
+  const event = futureEvents[0] ?? activeEvents[0];
+  if (!event) {
+    return { status: "ready", value: null };
+  }
+
+  return {
+    status: "ready",
+    value: {
+      event_id: event.event_id,
+      program_id: program.program_id,
+      title: event.name ?? null,
+      name: event.name ?? null,
+      starts_at: event.starts_at,
+      ends_at: event.ends_at,
+      location: event.location ?? null,
+      source: event.source,
+      is_recurring:
+        program.behavior_type === "Recurring" || event.source === "SCHEDULE",
+      checked_in_count: 0,
+      roster_count: 0,
+    },
+  };
+}
+
+function retryAction(onRetry: (() => void) | undefined) {
+  return onRetry ? (
+    <Button
+      className="w-fit whitespace-normal"
+      type="button"
+      onClick={onRetry}
+      variant="outline"
+    >
+      {COPY.programs.workspaceRetry}
+    </Button>
+  ) : undefined;
+}
+
 const Chevron = () => (
   <ChevronRight
     aria-hidden="true"
@@ -169,6 +272,7 @@ export const WorkspaceOverview = ({
   departmentId,
   hash,
   onTaskChange,
+  onSummaryRetry,
 }: {
   program: Program;
   cockpit?: ManagementCockpitView | null;
@@ -176,136 +280,192 @@ export const WorkspaceOverview = ({
   departmentId?: string | null;
   hash?: string | null;
   onTaskChange: (task: ProgramsTask | null, eventId?: string | null) => void;
+  onSummaryRetry?: () => void;
 }) => {
-  const eventRead =
-    summary.events.status === "ready" ? summary.events.value : null;
-  const fallbackNearestEvent = useMemo(
-    () =>
-      eventRead?.find(
-        ({ status, starts_at }) =>
-          status === "Active" && new Date(starts_at).getTime() >= Date.now()
-      ) ?? eventRead?.find(({ status }) => status === "Active"),
-    [eventRead]
-  );
+  const nextEventRead = useMemo(() => {
+    if (cockpit === undefined) {
+      return fallbackNextEvent(summary.events, program);
+    }
+    if (cockpit === null) {
+      return {
+        status: "unavailable",
+        message: COPY.programs.workspaceSummaryUnavailable,
+      } satisfies WorkspaceSummaryRead<WorkspaceNextEvent>;
+    }
+    if (cockpit.program_id !== program.program_id) {
+      return {
+        status: "unavailable",
+        message: COPY.programs.workspaceSummaryUnavailable,
+      } satisfies WorkspaceSummaryRead<WorkspaceNextEvent>;
+    }
+    return {
+      status: "ready",
+      value: cockpit.next_event,
+    } satisfies WorkspaceSummaryRead<WorkspaceNextEvent>;
+  }, [cockpit, program, summary.events]);
+
+  const eventsCountRead = useMemo(() => {
+    if (cockpit === undefined) {
+      return summaryReadAsNumber(
+        summary.events,
+        (events) => events.filter(availableEvent).length
+      );
+    }
+    if (cockpit === null || cockpit.program_id !== program.program_id) {
+      return {
+        status: "unavailable",
+        message: COPY.programs.workspaceSummaryUnavailable,
+      } satisfies WorkspaceSummaryRead<number>;
+    }
+    return {
+      status: "ready",
+      value: cockpit.active_event_count,
+    } satisfies WorkspaceSummaryRead<number>;
+  }, [cockpit, program.program_id, summary.events]);
+
+  const pendingCountRead = useMemo(() => {
+    if (cockpit === undefined) {
+      return summary.pendingRequests;
+    }
+    if (cockpit === null || cockpit.program_id !== program.program_id) {
+      return {
+        status: "unavailable",
+        message: COPY.programs.workspaceSummaryUnavailable,
+      } satisfies WorkspaceSummaryRead<number>;
+    }
+    return {
+      status: "ready",
+      value: cockpit.pending_enrollment_count,
+    } satisfies WorkspaceSummaryRead<number>;
+  }, [cockpit, program.program_id, summary.pendingRequests]);
 
   const nextEvent =
-    cockpit === undefined
-      ? fallbackNearestEvent
-        ? {
-            event_id: fallbackNearestEvent.event_id,
-            program_id: program.program_id,
-            title: null,
-            name: null,
-            starts_at: fallbackNearestEvent.starts_at,
-            ends_at: fallbackNearestEvent.ends_at,
-            location: null,
-            source: fallbackNearestEvent.source,
-            is_recurring: program.behavior_type === "Recurring",
-            checked_in_count: 0,
-            roster_count: 0,
-          }
-        : null
-      : cockpit?.next_event;
-  const eventsCount =
-    cockpit === undefined
-      ? summary.events.status === "ready"
-        ? summary.events.value.filter((e) => e.status === "Active").length
-        : 0
-      : (cockpit?.active_event_count ?? 0);
-
-  const pendingCount =
-    cockpit === undefined
-      ? summary.pendingRequests.status === "ready"
-        ? summary.pendingRequests.value
-        : 0
-      : (cockpit?.pending_enrollment_count ?? 0);
+    nextEventRead.status === "ready" ? nextEventRead.value : null;
+  const summaryNeedsRetry = [
+    summary.activeParticipants,
+    eventsCountRead,
+    pendingCountRead,
+    nextEventRead,
+  ].some(
+    (read) =>
+      read.status === "unavailable" &&
+      read.message !== COPY.programs.workspaceTaskUnavailable
+  );
+  const nextEventOwnsRetry =
+    program.capabilities.manage && nextEventRead.status !== "ready";
 
   return (
     <div className="grid min-w-0">
       <ScreenSection title={COPY.programs.cockpitSummary}>
         <div className="grid grid-cols-2 border-y border-[var(--screen-line)]">
-          <div className="grid gap-0.5 py-3">
-            <strong className="text-[22px] leading-7 tracking-[-0.03em]">
-              {summaryValue(summary.activeParticipants)}
-            </strong>
-            <span className="text-[length:var(--screen-meta-size)] leading-[var(--screen-meta-leading)] text-[var(--screen-muted)]">
-              {COPY.programs.cockpitActiveParticipants}
-            </span>
-          </div>
-          <div className="grid gap-0.5 border-l border-[var(--screen-line)] py-3 pl-4">
-            <strong className="text-[22px] leading-7 tracking-[-0.03em]">
-              {summaryValue(summary.pendingRequests)}
-            </strong>
-            <span className="text-[length:var(--screen-meta-size)] leading-[var(--screen-meta-leading)] text-[var(--screen-muted)]">
-              {COPY.programs.cockpitPendingRequests}
-            </span>
+          <SummaryMetric
+            label={COPY.programs.cockpitActiveParticipants}
+            read={summary.activeParticipants}
+          />
+          <div className="min-w-0 border-l border-[var(--screen-line)] pl-4">
+            <SummaryMetric
+              label={COPY.programs.cockpitPendingRequests}
+              read={pendingCountRead}
+            />
           </div>
         </div>
+        {summaryNeedsRetry && !nextEventOwnsRetry && (
+          <div className="flex min-w-0 flex-wrap items-center gap-[var(--screen-utility-gap)] pt-3">
+            <span className="min-w-0 wrap-anywhere text-sm text-[var(--screen-muted)]">
+              {COPY.programs.workspaceSummaryUnavailable}
+            </span>
+            {retryAction(onSummaryRetry)}
+          </div>
+        )}
       </ScreenSection>
 
-      {program.capabilities.manage && nextEvent && (
-        <ScreenSection
-          title={COPY.programs.cockpitNextMeeting}
-          action={
-            <ScreenStatus tone="info">
-              {COPY.programs.cockpitUpcomingStatus}
-            </ScreenStatus>
-          }
-        >
-          <ScreenCard tone="emphasis">
-            <div className="flex min-w-0 flex-wrap items-start justify-between gap-3">
-              <div className="min-w-0">
-                <h3 className="m-0 min-w-0 wrap-anywhere text-base font-bold leading-[22px]">
-                  {nextEvent.title || nextEvent.name || program.name}
-                </h3>
-                <p className="m-0 mt-0.5 min-w-0 wrap-anywhere text-[length:var(--screen-meta-size)] leading-[var(--screen-meta-leading)] text-[var(--screen-muted)]">
-                  {formatEventTime(nextEvent.starts_at)}
-                  {nextEvent.location ? ` · ${nextEvent.location}` : ""}
-                </p>
-                {(nextEvent.is_recurring ||
-                  nextEvent.source === "SCHEDULE") && (
-                  <ScreenStatus className="mt-1" tone="accent">
-                    {COPY.programs.cockpitAutoScheduled}
-                  </ScreenStatus>
-                )}
-              </div>
-              {(nextEvent.checked_in_count > 0 ||
-                nextEvent.roster_count > 0) && (
-                <div className="shrink-0 text-right">
-                  <strong className="text-base font-bold">
-                    {nextEvent.checked_in_count}/{nextEvent.roster_count}
-                  </strong>
-                  <span className="block text-[length:var(--screen-meta-size)] leading-[var(--screen-meta-leading)] text-[var(--screen-muted)]">
-                    {COPY.programs.cockpitCheckedIn}
-                  </span>
+      {program.capabilities.manage &&
+        (nextEventRead.status !== "ready" || nextEvent !== null) && (
+          <ScreenSection
+            title={COPY.programs.cockpitNextMeeting}
+            action={
+              nextEventRead.status === "ready" ? (
+                <ScreenStatus tone="info">
+                  {COPY.programs.cockpitUpcomingStatus}
+                </ScreenStatus>
+              ) : undefined
+            }
+          >
+            {nextEventRead.status === "ready" && nextEvent ? (
+              <ScreenCard tone="emphasis">
+                <div className="flex min-w-0 flex-wrap items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <h3 className="m-0 min-w-0 wrap-anywhere text-base font-bold leading-[22px]">
+                      {nextEvent.title || nextEvent.name || program.name}
+                    </h3>
+                    <p className="m-0 mt-0.5 min-w-0 wrap-anywhere text-[length:var(--screen-meta-size)] leading-[var(--screen-meta-leading)] text-[var(--screen-muted)]">
+                      {formatEventTime(nextEvent.starts_at)}
+                      {nextEvent.location ? ` · ${nextEvent.location}` : ""}
+                    </p>
+                    {(nextEvent.is_recurring ||
+                      nextEvent.source === "SCHEDULE") && (
+                      <ScreenStatus className="mt-1" tone="accent">
+                        {COPY.programs.cockpitAutoScheduled}
+                      </ScreenStatus>
+                    )}
+                  </div>
+                  {(nextEvent.checked_in_count > 0 ||
+                    nextEvent.roster_count > 0) && (
+                    <div className="shrink-0 text-right">
+                      <strong className="text-base font-bold">
+                        {nextEvent.checked_in_count}/{nextEvent.roster_count}
+                      </strong>
+                      <span className="block text-[length:var(--screen-meta-size)] leading-[var(--screen-meta-leading)] text-[var(--screen-muted)]">
+                        {COPY.programs.cockpitCheckedIn}
+                      </span>
+                    </div>
+                  )}
                 </div>
-              )}
-            </div>
-            <Button
-              asChild
-              className="min-h-[var(--screen-touch-target)] w-full rounded-[var(--screen-radius-control)] bg-[var(--screen-accent)] px-4 py-2 text-white hover:bg-[var(--screen-accent-deep)]"
-            >
-              <Link
-                href={buildProgramsHref({
-                  mode: "management",
-                  programId: program.program_id,
-                  departmentId,
-                  task: "participants",
-                  eventId: nextEvent.event_id,
-                  hash,
-                })}
-                onClick={taskLinkClick(
-                  onTaskChange,
-                  "participants",
-                  nextEvent.event_id
-                )}
-              >
-                {COPY.programs.cockpitManageRoster}
-              </Link>
-            </Button>
-          </ScreenCard>
-        </ScreenSection>
-      )}
+                <Button
+                  asChild
+                  className="min-h-[var(--screen-touch-target)] w-full rounded-[var(--screen-radius-control)] bg-[var(--screen-accent)] px-4 py-2 text-white hover:bg-[var(--screen-accent-deep)]"
+                >
+                  <Link
+                    href={buildProgramsHref({
+                      mode: "management",
+                      programId: program.program_id,
+                      departmentId,
+                      task: "participants",
+                      eventId: nextEvent.event_id,
+                      hash,
+                    })}
+                    onClick={taskLinkClick(
+                      onTaskChange,
+                      "participants",
+                      nextEvent.event_id
+                    )}
+                  >
+                    {COPY.programs.cockpitManageRoster}
+                  </Link>
+                </Button>
+              </ScreenCard>
+            ) : (
+              <ScreenState
+                kind={nextEventRead.status === "loading" ? "loading" : "error"}
+                title={
+                  nextEventRead.status === "loading"
+                    ? COPY.programs.workspaceSummaryLoading
+                    : COPY.programs.workspaceSummaryUnavailable
+                }
+                description={
+                  nextEventRead.status === "unavailable"
+                    ? nextEventRead.message
+                    : undefined
+                }
+                action={
+                  nextEventRead.status === "unavailable"
+                    ? retryAction(onSummaryRetry)
+                    : undefined
+                }
+              />
+            )}
+          </ScreenSection>
+        )}
 
       <ScreenSection
         title={COPY.programs.cockpitOperations}
@@ -341,9 +501,14 @@ export const WorkspaceOverview = ({
                     <span className="min-w-0 wrap-anywhere text-[length:var(--screen-meta-size)] leading-[var(--screen-meta-leading)] text-[var(--screen-muted)]">
                       {COPY.programs.cockpitEventsCount.replace(
                         "{count}",
-                        String(eventsCount)
+                        summaryValue(eventsCountRead)
                       )}
                     </span>
+                    {eventsCountRead.status !== "ready" && (
+                      <span className="min-w-0 wrap-anywhere text-xs leading-[var(--screen-meta-leading)] text-[var(--screen-muted)]">
+                        {summaryStateText(eventsCountRead)}
+                      </span>
+                    )}
                   </div>
                 </Link>
               </ScreenTaskSurface>
@@ -368,15 +533,21 @@ export const WorkspaceOverview = ({
                       {COPY.programs.cockpitParticipantsTile}
                     </strong>
                     <span className="flex min-w-0 flex-wrap items-center gap-2 text-[length:var(--screen-meta-size)] leading-[var(--screen-meta-leading)] text-[var(--screen-muted)]">
-                      {pendingCount > 0 ? (
+                      {pendingCountRead.status === "ready" &&
+                      pendingCountRead.value > 0 ? (
                         <ScreenStatus tone="pending">
                           {COPY.programs.cockpitPendingLabel.replace(
                             "{count}",
-                            String(pendingCount)
+                            String(pendingCountRead.value)
                           )}
                         </ScreenStatus>
-                      ) : (
+                      ) : pendingCountRead.status === "ready" ? (
                         <span>{COPY.programs.cockpitNoPending}</span>
+                      ) : (
+                        <span className="min-w-0 wrap-anywhere">
+                          {summaryValue(pendingCountRead)} ·{" "}
+                          {summaryStateText(pendingCountRead)}
+                        </span>
                       )}
                     </span>
                   </div>

@@ -81,27 +81,25 @@ type WorkspaceState =
     };
 
 function initialSummary(
-  modules: readonly DepartmentModule[] = []
+  modules?: readonly DepartmentModule[]
 ): WorkspaceSummaryState {
+  const modulesKnown = modules !== undefined;
+  const available = (moduleKey: DepartmentModule["module_key"]) =>
+    modulesKnown && hasModule(modules, moduleKey);
+  const unavailable = (moduleKey: DepartmentModule["module_key"]) =>
+    available(moduleKey)
+      ? { status: "loading" as const }
+      : modulesKnown
+        ? {
+            status: "unavailable" as const,
+            message: COPY.programs.workspaceTaskUnavailable,
+          }
+        : { status: "loading" as const };
+
   return {
-    events: hasModule(modules, "events")
-      ? { status: "loading" }
-      : {
-          status: "unavailable",
-          message: COPY.programs.workspaceTaskUnavailable,
-        },
-    pendingRequests: hasModule(modules, "enrollment")
-      ? { status: "loading" }
-      : {
-          status: "unavailable",
-          message: COPY.programs.workspaceTaskUnavailable,
-        },
-    activeParticipants: hasModule(modules, "enrollment")
-      ? { status: "loading" }
-      : {
-          status: "unavailable",
-          message: COPY.programs.workspaceTaskUnavailable,
-        },
+    events: unavailable("events"),
+    pendingRequests: unavailable("enrollment"),
+    activeParticipants: unavailable("enrollment"),
   };
 }
 
@@ -174,6 +172,7 @@ export const ProgramWorkspace = ({
     createdFlash ? COPY.programs.programCreatedNotice : null
   );
   const mounted = useRef(true);
+  const summaryRequestId = useRef(0);
   useEffect(() => {
     mounted.current = true;
     return () => {
@@ -267,6 +266,7 @@ export const ProgramWorkspace = ({
 
   const loadSummary = useCallback(
     async (modules: readonly DepartmentModule[]) => {
+      const requestId = ++summaryRequestId.current;
       const events = hasModule(modules, "events")
         ? readSummary(listEvents(programId), ({ events: value }) => value)
         : Promise.resolve(
@@ -298,7 +298,7 @@ export const ProgramWorkspace = ({
         pendingRequests,
         activeParticipants,
       ]);
-      if (!mounted.current) {
+      if (!mounted.current || summaryRequestId.current !== requestId) {
         return;
       }
       setSummary({
@@ -309,6 +309,20 @@ export const ProgramWorkspace = ({
     },
     [programId]
   );
+
+  const retrySummary = useCallback(() => {
+    if (state.kind !== "ready") {
+      return;
+    }
+    if (
+      state.cockpit === null ||
+      (state.cockpit && state.cockpit.program_id !== programId)
+    ) {
+      retry();
+      return;
+    }
+    void loadSummary(state.modules);
+  }, [loadSummary, programId, retry, state]);
 
   useEffect(() => {
     if (state.kind !== "ready" || task !== undefined) {
@@ -548,6 +562,7 @@ export const ProgramWorkspace = ({
           departmentId={departmentId}
           hash={hash}
           onTaskChange={handleWorkspaceTaskChange}
+          onSummaryRetry={retrySummary}
         />
       )}
     </section>
