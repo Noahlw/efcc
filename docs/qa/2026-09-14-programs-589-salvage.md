@@ -184,3 +184,8 @@ Canonical Programs browser, responsive, and W7 failures are blocking. Assertion,
 - Two standalone Phase-D attempts (with and without the optional fixture) again stalled before the test assertion during local `createTestHarness`/D1 setup after build/bundle. They are recorded as non-gate setup diagnostics only; no unrun assertion is claimed as pass. Canonical browser/responsive/W7 and direct Storybook probes completed independently.
 - Compact candidate-bound evidence is under `docs/qa/artifacts/programs-route-fidelity/6fc65cc4bd76/`; its checksums pass. The self-contained packet-v3 will bind this candidate, these artifacts, the verified CEO Review, the accepted amendment clauses, and the active S0-S4 tracker excerpt.
 - Current state remains **MACHINE_GREEN / WAITING_INDEPENDENT_REVIEW**. A fresh independent review is required; owner approval remains `PENDING`, and #590–#601 remain locked.
+
+### S3 fresh-review working note
+
+- Self-contained packet-v3: `/private/tmp/efcc-589-review-packet-6fc65cc4bd76-v3.md`, `37316` bytes, SHA-256 `4109fe37ff14f9458e572913a1ff01e4757389ad8dccfa75ff0704c28c1807d3`.
+- Packet-v3 embeds the complete verified CEO Review, material accepted #586 R01–R25 clauses, the active S0-S4 tracker excerpt, the Gibbs finding and repair, exact candidate/harness ranges, current compact evidence identities, and the four terminal S3 questions. It is immutable and read-only; no heavy suites are requested from the reviewer.

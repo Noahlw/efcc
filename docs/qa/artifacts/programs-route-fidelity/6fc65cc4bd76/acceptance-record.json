@@ -79,6 +79,11 @@
       "repaired": true
     },
     "freshReviewAttempts": [],
+    "freshReviewPacket": {
+      "path": "/private/tmp/efcc-589-review-packet-6fc65cc4bd76-v3.md",
+      "bytes": 37316,
+      "sha256": "4109fe37ff14f9458e572913a1ff01e4757389ad8dccfa75ff0704c28c1807d3"
+    },
     "note": "No owner approval is inferred from machine evidence or the prior review. A fresh self-contained review must return CLEAN before owner decision."
   },
   "ownerDecision": {
