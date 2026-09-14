@@ -92,7 +92,7 @@ const COPY = {
   status: "狀態",
   homeSection: "首頁",
   profileSection: "帳戶",
-  programsSection: "課程與活動",
+  programsSection: "課程",
   scannerSection: "掃描",
   managementSection: "管理",
   noticesSection: "通知",
