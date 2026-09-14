@@ -1,0 +1,263 @@
+{
+  "schemaVersion": 1,
+  "package": "Programs #589 Salvage Convergence",
+  "candidateSha": "6fc65cc4bd762ce5d1d8a16f80c53ba97cce5924",
+  "previousCandidateSha": "ea7a54ef5580f399d0db2c2c67795ce4689f71b0",
+  "productionFixedPoint": {
+    "commitSubject": "fix(programs): restore frozen shell action treatments",
+    "parentCandidate": "ea7a54ef5580f399d0db2c2c67795ce4689f71b0",
+    "repairDelta": "ea7a54ef5580f399d0db2c2c67795ce4689f71b0..6fc65cc4bd762ce5d1d8a16f80c53ba97cce5924",
+    "branch": "codex/programs-screen-foundations/wave-3",
+    "pullRequest": 607,
+    "baseBranch": "codex/programs-screen-foundations/wave-2",
+    "changedFiles": [
+      "web/lib/shell-header.tsx",
+      "tests/e2e/phase-d-programs-geometry.test.ts"
+    ]
+  },
+  "qualificationHarness": {
+    "commit": "d4165463c663f7b11d8e12eebc69b6d9df933b19",
+    "commitSubject": "test(programs): scope material detail back assertion",
+    "scope": "Storybook material Play locator only; unchanged by this repair"
+  },
+  "generatedAt": "2026-09-14T07:40:50Z",
+  "authority": {
+    "order": [
+      "#589 and the accepted #586 amendment define product acceptance",
+      "The accepted CEO Review defines HOLD-SCOPE delivery interpretation",
+      "The active S0-S4 tracker operationalizes both",
+      "The ledger and evidence reports record observations only"
+    ],
+    "ceoReview": {
+      "path": "memory/2026-09-14-programs-t589-ceo-review.md",
+      "bytes": 7285,
+      "sha256": "6d3d6cd4401eaefc195779552ec6363f93332cd31dcfcaf83ec57e08dfbfc738"
+    },
+    "acceptedAmendment": {
+      "path": "docs/design/2026-09-12-programs-ux-spec-amendment.md",
+      "bytes": 26029,
+      "sha256": "5325d81263d8326ca85d7aa3c3b00add9bdc7c2f85714e90f71188196b15b617",
+      "materialClauses": ["R01", "R02", "R03", "R24", "R25"]
+    },
+    "activeTracker": {
+      "path": "docs/superpowers/plans/2026-09-11-programs-route-fidelity-recovery-tracker.md",
+      "sha256AtReview": "e205ef81e389b39276208bcf7a484e3a497fcb628987886224f5b0af8a881864",
+      "materialLines": "39-72",
+      "note": "The self-contained review packet embeds the exact operational excerpt; this working-tree plan is not acceptance authority by itself."
+    },
+    "frozenPrototypes": [
+      {
+        "path": "docs/design/programs-screen-foundations-v1/01-participant-directory-capable.html",
+        "sha256": "1c4ad6e3a2453eb9a21b9c851dc39ef7f4e916e8729c49dd27861a901ef559fb"
+      },
+      {
+        "path": "docs/design/programs-screen-foundations-v1/04-management-directory.html",
+        "sha256": "4ea56d6af1ce5a083ff8cc82fe8b60bf502844632231399390951f95b917b229"
+      },
+      {
+        "path": "docs/design/programs-screen-foundations-v1/09-management-settings.html",
+        "sha256": "d42b5a22aee88c000c9aa59c7e6ca49b4751b36262cf39588fb5207142da7770"
+      }
+    ]
+  },
+  "reviewFindingRepair": {
+    "reviewer": "Gibbs",
+    "reviewerAgentId": "01a09eb6-2467-79d2-a58b-c16f9097722d",
+    "previousCandidateSha": "ea7a54ef5580f399d0db2c2c67795ce4689f71b0",
+    "severity": "P1",
+    "finding": "The management mode switch lacked the frozen soft circular treatment while the Programs notification action exposed a border, reversing the frozen shell treatment.",
+    "rootCause": "ShellHeader left the mode ScreenIconButton at the default tone and added explicit soft-border styling to the notification action.",
+    "repair": "The mode switch now uses ScreenIconButton tone=soft; the Programs notification action keeps only relative positioning and the default transparent shell treatment.",
+    "repairCandidateSha": "6fc65cc4bd762ce5d1d8a16f80c53ba97cce5924",
+    "oldEvidenceDisposition": "All ea7a54ef candidate-bound evidence is stale after the production change and is retained only as historical evidence; it is not reused for approval."
+  },
+  "independentReview": {
+    "status": "PENDING_FRESH_REVIEW",
+    "candidateSha": "6fc65cc4bd762ce5d1d8a16f80c53ba97cce5924",
+    "completed": false,
+    "ownerApprovalBlocked": true,
+    "priorReview": "Gibbs FINDINGS was actionable and repaired; a fresh self-contained read-only review is required for this candidate.",
+    "freshReviewPacket": "pending packet-v3"
+  },
+  "visualEvidence": {
+    "approvalViewports": [
+      { "width": 402, "height": 874 },
+      { "width": 360, "height": 800 }
+    ],
+    "requiredStates": [
+      {
+        "caseKey": "participant-directory",
+        "label": "Participant Directory",
+        "actualStoryId": "t07-3-programs-material-states--participant-directory-capable",
+        "frozenPrototypePath": "docs/design/programs-screen-foundations-v1/01-participant-directory-capable.html",
+        "frozenPrototypeSha256": "1c4ad6e3a2453eb9a21b9c851dc39ef7f4e916e8729c49dd27861a901ef559fb",
+        "comparedFragments": ["shellHeader", "routeHeader", "mainNavigation"]
+      },
+      {
+        "caseKey": "management-directory",
+        "label": "Management Directory",
+        "actualStoryId": "t07-3-programs--management-directory",
+        "frozenPrototypePath": "docs/design/programs-screen-foundations-v1/04-management-directory.html",
+        "frozenPrototypeSha256": "4ea56d6af1ce5a083ff8cc82fe8b60bf502844632231399390951f95b917b2294",
+        "comparedFragments": ["shellHeader", "routeHeader", "mainNavigation"]
+      },
+      {
+        "caseKey": "workspace-settings-overview",
+        "label": "Workspace Settings overview",
+        "actualStoryId": "t07-3-programs--workspace-settings",
+        "frozenPrototypePath": "docs/design/programs-screen-foundations-v1/09-management-settings.html",
+        "frozenPrototypeSha256": "d42b5a22aee88c000c9aa59c7e6ca49b4751b36262cf39588fb5207142da7770",
+        "comparedFragments": ["shellHeader", "routeHeader", "mainNavigation"]
+      },
+      {
+        "caseKey": "workspace-settings-dirty",
+        "label": "Workspace Settings dirty / focused editor",
+        "actualStoryId": "t07-3-programs-material-states--workspace-settings-dirty",
+        "frozenPrototypePath": "docs/design/programs-screen-foundations-v1/09-management-settings.html",
+        "frozenPrototypeSha256": "d42b5a22aee88c000c9aa59c7e6ca49b4751b36262cf39588fb5207142da7770",
+        "comparedFragments": ["shellHeader", "routeHeader", "mainNavigation"]
+      }
+    ],
+    "contactSheets": [
+      {
+        "path": "shell-402x874.png",
+        "viewport": "402x874",
+        "sha256": "7451d9ef24ed57cc9b211602039c6362876976d7dad0492ad8966c8a9d9b777a",
+        "cards": 4,
+        "columns": ["Frozen", "Actual"]
+      },
+      {
+        "path": "shell-360x800.png",
+        "viewport": "360x800",
+        "sha256": "96102197a7a6fd69aa48f3eb31c7edbf198283a934ec5dbe848777ee4eda4668",
+        "cards": 4,
+        "columns": ["Frozen", "Actual"]
+      }
+    ],
+    "harnessManifest": {
+      "path": "/private/tmp/efcc-589-visual-s2-6fc65cc4/manifest.json",
+      "sha256": "5dc2185c981321bc30bd4f9e5b52639776a84f7d91f7dc68ee6d28b4d3df817f",
+      "candidateSha": "6fc65cc4bd762ce5d1d8a16f80c53ba97cce5924",
+      "shellRowCount": 8,
+      "fullPageDisposition": "local-only"
+    },
+    "fullPageMatrix": {
+      "disposition": "local-only",
+      "directory": "/private/tmp/efcc-589-visual-s2-6fc65cc4",
+      "notApprovalSurface": true
+    }
+  },
+  "machineEvidence": [
+    {
+      "gate": "candidate-hook",
+      "status": "PASS",
+      "summary": "Node 22.18.0 commit hook passed root/web typechecks, governance, worker checks, web unit 606/606, and component suite 69 files/1039 tests"
+    },
+    {
+      "gate": "programs-browser",
+      "status": "PASS",
+      "summary": "3 tests passed; retries 0; cold management load observed exactly 1 access request",
+      "target": "http://127.0.0.1:53655",
+      "requestCount": {
+        "method": "GET",
+        "path": "/api/v1/programs/access",
+        "observed": 1,
+        "expected": 1
+      },
+      "localEvidence": "/private/tmp/efcc-589-browser-s2-6fc65cc4/browser-results.json",
+      "sha256": "c41d41d66dfcc220bc50460c1f750331c05b2be74080bba6b44c3548f9de8ad1"
+    },
+    {
+      "gate": "programs-responsive",
+      "status": "PASS",
+      "summary": "18 expected checks passed; skipped 0, unexpected 0, flaky 0; one worker",
+      "viewports": [
+        "320x812",
+        "360x800",
+        "390x844",
+        "402x874",
+        "600x844",
+        "799x900",
+        "800x900",
+        "1024x900",
+        "1440x900"
+      ],
+      "target": "http://127.0.0.1:53807",
+      "localEvidence": "/private/tmp/efcc-589-responsive-s2-6fc65cc4/responsive-results.json",
+      "sha256": "e70882cdb2cc59f9386e473414d500de6121c7c1ec96a717ee5dfedadde8da99"
+    },
+    {
+      "gate": "w7-storybook",
+      "status": "PASS",
+      "summary": "126 tests passed; skipped 0, unexpected 0, flaky 0; sequential single-worker run",
+      "qualificationHarnessCommit": "d4165463c663f7b11d8e12eebc69b6d9df933b19",
+      "storybookPort": 6017,
+      "viewports": [
+        "320x844",
+        "360x800",
+        "375x844",
+        "390x844",
+        "402x874",
+        "414x844",
+        "799x844",
+        "800x900",
+        "1440x900"
+      ],
+      "localEvidence": "tests/e2e/test-results/t11-storybook/storybook.json",
+      "sha256": "a0067f5ee750d8df0a5ffb6016a54e7ec2de0cb40909b0cd5244aece8e5587a7"
+    },
+    {
+      "gate": "shell-visual",
+      "status": "PASS",
+      "summary": "2/2 visual projects passed; 8 shell rows across the exact 4 required states and 2 approval viewports",
+      "localEvidence": "/private/tmp/efcc-589-visual-s2-6fc65cc4/manifest.json",
+      "sha256": "5dc2185c981321bc30bd4f9e5b52639776a84f7d91f7dc68ee6d28b4d3df817f"
+    },
+    {
+      "gate": "computed-shell-treatment-probe",
+      "status": "PASS",
+      "summary": "Direct Storybook browser probe at 402x874 and 360x800: mode background rgb(255,255,255), border rgb(226,221,213), 44x44; notification background/border transparent, 44x44"
+    }
+  ],
+  "failureClassification": {
+    "blockingFailures": [],
+    "advisoryFailures": [],
+    "nonGateDiagnostics": [
+      {
+        "classification": "local-worker-miniflare-harness-setup-stalled",
+        "scope": "standalone phase-d management geometry probe after the repair",
+        "attempts": [
+          {
+            "withFixture": true,
+            "artifactDirectory": "/private/tmp/efcc-589-phase-d-s2-6fc65cc4",
+            "result": "Build and bundle completed; createTestHarness/D1 setup did not return a prepared target before bounded manual termination."
+          },
+          {
+            "withFixture": false,
+            "artifactDirectory": "/private/tmp/efcc-589-phase-d-s2-6fc65cc4-v2",
+            "result": "Build and bundle completed; createTestHarness/D1 setup did not return a prepared target before bounded manual termination."
+          }
+        ],
+        "impact": "No phase-d assertion result was claimed. Canonical browser, responsive, W7, direct Storybook computed probe, and visual gates ran independently and passed."
+      }
+    ]
+  },
+  "committedArtifacts": [
+    "manifest.json",
+    "acceptance-record.json",
+    "checksums.sha256",
+    "shell-402x874.png",
+    "shell-360x800.png"
+  ],
+  "checksumsFile": "checksums.sha256",
+  "acceptanceLedger": "docs/qa/2026-09-14-programs-589-salvage.md",
+  "ownerDecisionRecord": "acceptance-record.json",
+  "scopeLock": {
+    "activePackage": "#589 shared shell",
+    "downstreamPackagesLocked": ["#590", "#591", "#592", "#593", "#594", "#595", "#596", "#597", "#598", "#599", "#600", "#601"],
+    "push": false,
+    "merge": false,
+    "issueClosure": false,
+    "downstreamAuthorization": false
+  }
+}

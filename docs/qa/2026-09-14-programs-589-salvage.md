@@ -5,6 +5,7 @@
 **Delivery owner:** This chat session
 **Implementor boundary:** Luna Max, bounded packets only; no self-approval
 **Current status:** `MACHINE_GREEN / WAITING_INDEPENDENT_REVIEW`
+**Current candidate:** `6fc65cc4bd762ce5d1d8a16f80c53ba97cce5924`
 **Owner decision:** `PENDING`
 
 ## Authority and scope
@@ -159,3 +160,27 @@ Canonical Programs browser, responsive, and W7 failures are blocking. Assertion,
 ## Owner decision
 
 `PENDING` — no owner approval has been inferred from the CEO Review plan decision, prior machine evidence, or this ledger.
+
+## S3 finding and repair checkpoint
+
+### Checkpoint — 2026-09-14 HKT
+
+- Fresh independent reviewer Gibbs completed the exact self-contained packet-v2 review for candidate `ea7a54ef5580f399d0db2c2c67795ce4689f71b0` and returned one actionable P1 finding. The review was read-only and did not constitute owner approval.
+- Finding: `web/lib/shell-header.tsx` left the management mode switch on the default transparent treatment while the Programs notification action exposed the soft border; this reversed the frozen prototype treatment and violated `589-SHELL-02` / `589-SHELL-04`.
+- Root cause was confirmed against the frozen management-directory/settings CSS and the candidate source. The smallest repair was made append-only: mode `ScreenIconButton` now uses `tone="soft"`; the Programs notification action now retains only `className="relative"` and the default transparent shell treatment.
+- Repair candidate: `6fc65cc4bd762ce5d1d8a16f80c53ba97cce5924`, subject `fix(programs): restore frozen shell action treatments`. Changed paths are limited to `web/lib/shell-header.tsx` and the computed-style regression proof in `tests/e2e/phase-d-programs-geometry.test.ts`.
+- All `ea7a54ef` candidate-bound evidence was invalidated by the production change. The prior artifact directory remains untouched as historical evidence and is not reused for approval.
+
+## S2 refresh after S3 repair
+
+### Checkpoint — 2026-09-14 HKT
+
+- Node `22.18.0` commit-hook qualification passed: root/web typechecks, governance, worker checks, web unit `606/606`, and component suite `69 files / 1039 tests`.
+- Sequential canonical browser gate: **PASS — 3/3**, retries `0`, target `http://127.0.0.1:53655`; cold management load observed exactly one `GET /api/v1/programs/access`.
+- Sequential responsive gate: **PASS — 18/18**, skipped/unexpected/flaky `0/0/0`, one worker, across `320x812`, `360x800`, `390x844`, `402x874`, `600x844`, `799x900`, `800x900`, `1024x900`, and `1440x900`; target `http://127.0.0.1:53807`.
+- Sequential fresh-server W7 gate: **PASS — 126/126**, skipped/unexpected/flaky `0/0/0`, one worker, Storybook port `6017`, with the unchanged qualification harness commit `d4165463c663f7b11d8e12eebc69b6d9df933b19`.
+- Candidate-bound visual gate: **PASS — 2/2** at `402x874` and `360x800`; exact four-state shell set and 8 shell rows. New primary owner sheets are `docs/qa/artifacts/programs-route-fidelity/6fc65cc4bd76/shell-402x874.png` and `shell-360x800.png`. Full-page output remains local supporting evidence only.
+- Supplemental direct Storybook computed-style probe: **PASS** at both approval viewports. Mode switch measured `rgb(255,255,255)` background, `rgb(226,221,213)` border, and `44x44`; notification measured transparent background/border and `44x44`.
+- Two standalone Phase-D attempts (with and without the optional fixture) again stalled before the test assertion during local `createTestHarness`/D1 setup after build/bundle. They are recorded as non-gate setup diagnostics only; no unrun assertion is claimed as pass. Canonical browser/responsive/W7 and direct Storybook probes completed independently.
+- Compact candidate-bound evidence is under `docs/qa/artifacts/programs-route-fidelity/6fc65cc4bd76/`; its checksums pass. The self-contained packet-v3 will bind this candidate, these artifacts, the verified CEO Review, the accepted amendment clauses, and the active S0-S4 tracker excerpt.
+- Current state remains **MACHINE_GREEN / WAITING_INDEPENDENT_REVIEW**. A fresh independent review is required; owner approval remains `PENDING`, and #590–#601 remain locked.
