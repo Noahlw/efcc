@@ -979,9 +979,9 @@ export class D1WorkspaceStore implements WorkspaceStore {
     await this.db
       .prepare(
         `INSERT INTO program_schedule_exceptions (exception_id, rule_id,
-           override_date, action, new_start_time, new_end_time, created_by,
-           created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+           override_date, action, new_start_time, new_end_time, new_date,
+           created_by, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
       )
       .bind(
         exceptionId,
@@ -990,6 +990,7 @@ export class D1WorkspaceStore implements WorkspaceStore {
         input.action,
         input.new_start_time,
         input.new_end_time,
+        input.new_date ?? null,
         input.created_by,
         input.created_at
       )

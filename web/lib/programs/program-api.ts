@@ -373,6 +373,7 @@ export interface ScheduleException {
   action: "CANCEL" | "RESCHEDULE";
   new_start_time: string | null;
   new_end_time: string | null;
+  new_date?: string | null;
   created_at: string;
 }
 
@@ -532,6 +533,8 @@ export interface PreviewOccurrence {
   location: string | null;
   skip_reason: "CANCEL" | "DUPLICATE" | null;
   exception_id: string | null;
+  /** Replacement HK wall date; the original occurrence remains occurs_on. */
+  replacement_date?: string | null;
 }
 
 export interface PreviewPlan {
@@ -1138,6 +1141,7 @@ export function createScheduleException(
   input: {
     override_date: string;
     action: "CANCEL" | "RESCHEDULE";
+    new_date?: string;
     new_start_time?: string;
     new_end_time?: string;
   }

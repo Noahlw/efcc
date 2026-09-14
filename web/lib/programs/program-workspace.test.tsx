@@ -2304,6 +2304,41 @@ describe("EVT-02 recurring preview and generation UI (#252)", () => {
     ).toBeInTheDocument();
   });
 
+  test("preview occurrence actions distinguish an unsaved draft from the saved exception", async () => {
+    const user = userEvent.setup();
+    renderScheduleTask();
+    await screen.findByRole("button", { name: COPY.programs.previewEvents });
+    mocks.previewEvents.mockResolvedValue(plan);
+
+    await user.click(
+      screen.getByRole("button", { name: COPY.programs.previewEvents })
+    );
+    await waitFor(() =>
+      expect(
+        screen.getAllByText(COPY.programs.previewSkipOccurrence).length
+      ).toBeGreaterThan(0)
+    );
+    await user.click(
+      screen.getAllByRole("button", {
+        name: COPY.programs.previewSkipOccurrence,
+      })[0]
+    );
+    expect(
+      screen.getByText(COPY.programs.previewExceptionDraft)
+    ).toBeInTheDocument();
+
+    await user.click(
+      screen.getByRole("button", { name: COPY.programs.previewSaveException })
+    );
+    await waitFor(() =>
+      expect(mocks.createScheduleException).toHaveBeenCalledWith(
+        "program-1",
+        "rule-1",
+        { override_date: "2026-08-19", action: "CANCEL" }
+      )
+    );
+  });
+
   test("a stale plan error surfaces, clears the plan, and requires a new preview", async () => {
     const user = userEvent.setup();
     renderScheduleTask();

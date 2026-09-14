@@ -21,6 +21,8 @@ import { announce } from "@/lib/live-region";
 import {
   cancelEvent,
   createEvent,
+  createScheduleException,
+  deleteScheduleException,
   generateEvents,
   listEvents,
   previewEvents,
@@ -78,6 +80,19 @@ type PreviewState =
   | { kind: "empty" }
   | { kind: "error"; message: string; stale: boolean };
 
+type ExceptionDraft = {
+  action: "CANCEL" | "RESCHEDULE";
+  newDate: string;
+  newStartTime: string;
+  newEndTime: string;
+};
+
+function hkWallTimeOf(iso: string): string {
+  return new Date(new Date(iso).getTime() + 8 * 60 * 60_000)
+    .toISOString()
+    .slice(11, 16);
+}
+
 export const RecurringSchedulePanel = ({
   programId,
   rules,
@@ -106,6 +121,10 @@ export const RecurringSchedulePanel = ({
   } | null>(null);
   const [generatePartial, setGeneratePartial] = useState(false);
   const [generateError, setGenerateError] = useState<string | null>(null);
+  const [exceptionDrafts, setExceptionDrafts] = useState<
+    Record<string, ExceptionDraft>
+  >({});
+  const [exceptionBusy, setExceptionBusy] = useState(false);
   const mounted = useRef(true);
 
   useEffect(() => {
@@ -115,11 +134,7 @@ export const RecurringSchedulePanel = ({
     };
   }, []);
 
-  const submitPreview = async (formEvent: FormEvent<HTMLFormElement>) => {
-    formEvent.preventDefault();
-    const form = new FormData(formEvent.currentTarget);
-    const fromDate = String(form.get("from_date") ?? "").trim();
-    const untilDate = String(form.get("until_date") ?? "").trim();
+  const loadPreview = async (fromDate: string, untilDate: string) => {
     const horizonDays =
       isValidWallDate(fromDate) && isValidWallDate(untilDate)
         ? wallDaySpan(fromDate, untilDate)
@@ -176,6 +191,124 @@ export const RecurringSchedulePanel = ({
     } finally {
       if (mounted.current) {
         setPreviewBusy(false);
+      }
+    }
+  };
+
+  const submitPreview = async (formEvent: FormEvent<HTMLFormElement>) => {
+    formEvent.preventDefault();
+    const form = new FormData(formEvent.currentTarget);
+    const fromDate = String(form.get("from_date") ?? "").trim();
+    const untilDate = String(form.get("until_date") ?? "").trim();
+    await loadPreview(fromDate, untilDate);
+  };
+
+  const startExceptionDraft = (
+    occurrence: PreviewResult["occurrences"][number],
+    action: ExceptionDraft["action"]
+  ) => {
+    const rule = (rules ?? []).find(
+      (candidate) => candidate.rule_id === occurrence.rule_id
+    );
+    setExceptionDrafts((previous) => ({
+      ...previous,
+      [occurrence.occurrence_id]: {
+        action,
+        newDate: occurrence.replacement_date ?? occurrence.occurs_on,
+        newStartTime: rule?.start_time ?? hkWallTimeOf(occurrence.starts_at),
+        newEndTime: rule?.end_time ?? hkWallTimeOf(occurrence.ends_at),
+      },
+    }));
+    setGenerateError(null);
+  };
+
+  const clearExceptionDraft = (occurrenceId: string) => {
+    setExceptionDrafts((previous) => {
+      const next = { ...previous };
+      delete next[occurrenceId];
+      return next;
+    });
+  };
+
+  const saveExceptionDraft = async (
+    occurrence: PreviewResult["occurrences"][number]
+  ) => {
+    const draft = exceptionDrafts[occurrence.occurrence_id];
+    if (!draft) {
+      return;
+    }
+    setExceptionBusy(true);
+    setGenerateError(null);
+    try {
+      await createScheduleException(programId, occurrence.rule_id, {
+        override_date: occurrence.occurs_on,
+        action: draft.action,
+        ...(draft.action === "RESCHEDULE"
+          ? {
+              ...(draft.newDate && draft.newDate !== occurrence.occurs_on
+                ? { new_date: draft.newDate }
+                : {}),
+              new_start_time: draft.newStartTime,
+              new_end_time: draft.newEndTime,
+            }
+          : {}),
+      });
+      clearExceptionDraft(occurrence.occurrence_id);
+      await loadPreview(previewFromDate, previewUntilDate);
+    } catch (error) {
+      if (!mounted.current) {
+        return;
+      }
+      if (redirectToLoginIfRequired(error)) {
+        return;
+      }
+      const message =
+        error instanceof RpcError
+          ? errorCopyFor(error.problem.code, error.problem.detail)
+          : COPY.error.networkError;
+      setGenerateError(message);
+      announce(message);
+    } finally {
+      if (mounted.current) {
+        setExceptionBusy(false);
+      }
+    }
+  };
+
+  const removeSavedException = async (
+    occurrence: PreviewResult["occurrences"][number]
+  ) => {
+    const rule = (rules ?? []).find(
+      (candidate) => candidate.rule_id === occurrence.rule_id
+    );
+    if (!rule || !occurrence.exception_id) {
+      return;
+    }
+    setExceptionBusy(true);
+    setGenerateError(null);
+    try {
+      await deleteScheduleException(
+        programId,
+        rule.rule_id,
+        occurrence.exception_id
+      );
+      await loadPreview(previewFromDate, previewUntilDate);
+    } catch (error) {
+      if (!mounted.current) {
+        return;
+      }
+      if (redirectToLoginIfRequired(error)) {
+        return;
+      }
+      const message =
+        error instanceof RpcError
+          ? errorCopyFor(error.problem.code, error.problem.detail)
+          : COPY.error.networkError;
+      setGenerateError(message);
+      announce(message);
+    } finally {
+      if (mounted.current) {
+        setExceptionBusy(false);
       }
     }
   };
@@ -377,6 +510,7 @@ export const RecurringSchedulePanel = ({
                   (candidate) => candidate.rule_id === occurrence.rule_id
                 );
                 const skipped = occurrence.skip_reason !== null;
+                const draft = exceptionDrafts[occurrence.occurrence_id];
                 return (
                   <li key={occurrence.occurrence_id} className="min-w-0">
                     <ScreenRow className="items-start">
@@ -394,6 +528,20 @@ export const RecurringSchedulePanel = ({
                             ? formatScheduleRuleLabel(rule)
                             : occurrence.rule_id}
                         </ScreenRowMeta>
+                        {occurrence.replacement_date !== null &&
+                          occurrence.replacement_date !== undefined && (
+                            <ScreenRowMeta>
+                              {COPY.programs.previewOccurrenceOriginal.replace(
+                                "{date}",
+                                occurrence.occurs_on
+                              )}{" "}
+                              ·{" "}
+                              {COPY.programs.previewOccurrenceReplacement.replace(
+                                "{date}",
+                                occurrence.replacement_date
+                              )}
+                            </ScreenRowMeta>
+                          )}
                       </ScreenRowMain>
                       <ScreenRowTrailing>
                         {occurrence.skip_reason === "CANCEL" && (
@@ -413,6 +561,154 @@ export const RecurringSchedulePanel = ({
                         )}
                       </ScreenRowTrailing>
                     </ScreenRow>
+                    {occurrence.skip_reason !== "DUPLICATE" && (
+                      <div className="grid min-w-0 gap-2 border-t border-[var(--screen-line)] p-3">
+                        {draft ? (
+                          <fieldset className="grid min-w-0 gap-2">
+                            <legend className="text-sm font-semibold text-[var(--screen-ink)]">
+                              {COPY.programs.previewExceptionDraft}
+                            </legend>
+                            {draft.action === "RESCHEDULE" && (
+                              <div className="grid min-w-0 gap-2 sm:grid-cols-3">
+                                <ScreenField
+                                  htmlFor={`preview-exception-${occurrence.occurrence_id}-date`}
+                                  label={COPY.programs.settingsExceptionNewDate}
+                                >
+                                  <Input
+                                    id={`preview-exception-${occurrence.occurrence_id}-date`}
+                                    className="border-[var(--screen-line-strong)] bg-[var(--screen-surface)] text-base"
+                                    type="date"
+                                    value={draft.newDate}
+                                    onChange={(event) =>
+                                      setExceptionDrafts((previous) => ({
+                                        ...previous,
+                                        [occurrence.occurrence_id]: {
+                                          ...draft,
+                                          newDate: event.target.value,
+                                        },
+                                      }))
+                                    }
+                                    disabled={exceptionBusy}
+                                  />
+                                </ScreenField>
+                                <ScreenField
+                                  htmlFor={`preview-exception-${occurrence.occurrence_id}-start`}
+                                  label={
+                                    COPY.programs.settingsExceptionNewStart
+                                  }
+                                >
+                                  <Input
+                                    id={`preview-exception-${occurrence.occurrence_id}-start`}
+                                    className="border-[var(--screen-line-strong)] bg-[var(--screen-surface)] text-base"
+                                    type="time"
+                                    value={draft.newStartTime}
+                                    onChange={(event) =>
+                                      setExceptionDrafts((previous) => ({
+                                        ...previous,
+                                        [occurrence.occurrence_id]: {
+                                          ...draft,
+                                          newStartTime: event.target.value,
+                                        },
+                                      }))
+                                    }
+                                    disabled={exceptionBusy}
+                                  />
+                                </ScreenField>
+                                <ScreenField
+                                  htmlFor={`preview-exception-${occurrence.occurrence_id}-end`}
+                                  label={COPY.programs.settingsExceptionNewEnd}
+                                >
+                                  <Input
+                                    id={`preview-exception-${occurrence.occurrence_id}-end`}
+                                    className="border-[var(--screen-line-strong)] bg-[var(--screen-surface)] text-base"
+                                    type="time"
+                                    value={draft.newEndTime}
+                                    onChange={(event) =>
+                                      setExceptionDrafts((previous) => ({
+                                        ...previous,
+                                        [occurrence.occurrence_id]: {
+                                          ...draft,
+                                          newEndTime: event.target.value,
+                                        },
+                                      }))
+                                    }
+                                    disabled={exceptionBusy}
+                                  />
+                                </ScreenField>
+                              </div>
+                            )}
+                            {rule?.effective_end_date &&
+                              draft.newDate > rule.effective_end_date && (
+                                <Alert tone="warning" announcement="polite">
+                                  {COPY.programs.settingsExceptionBeyondRuleEnd}
+                                </Alert>
+                              )}
+                            <div className="flex min-w-0 flex-wrap items-center gap-[var(--screen-utility-gap)]">
+                              <Button
+                                type="button"
+                                className="w-fit bg-[var(--screen-accent)] text-white hover:bg-[var(--screen-accent-deep)]"
+                                onClick={() =>
+                                  void saveExceptionDraft(occurrence)
+                                }
+                                disabled={exceptionBusy}
+                              >
+                                {exceptionBusy
+                                  ? COPY.programs.submitting
+                                  : COPY.programs.previewSaveException}
+                              </Button>
+                              <Button
+                                type="button"
+                                variant="outline"
+                                className="w-fit border-[var(--screen-line-strong)] bg-transparent text-[var(--screen-ink)] hover:bg-[var(--screen-surface-soft)]"
+                                onClick={() =>
+                                  clearExceptionDraft(occurrence.occurrence_id)
+                                }
+                                disabled={exceptionBusy}
+                              >
+                                {COPY.programs.previewCancelDraft}
+                              </Button>
+                            </div>
+                          </fieldset>
+                        ) : occurrence.exception_id !== null ? (
+                          <Button
+                            type="button"
+                            variant="outline"
+                            className="w-fit border-[var(--screen-success)] bg-transparent text-[var(--screen-success)] hover:bg-[var(--screen-success-surface)]"
+                            onClick={() =>
+                              void removeSavedException(occurrence)
+                            }
+                            disabled={exceptionBusy}
+                          >
+                            {COPY.programs.previewRemoveException}
+                          </Button>
+                        ) : (
+                          <div className="flex min-w-0 flex-wrap items-center gap-[var(--screen-utility-gap)]">
+                            <Button
+                              type="button"
+                              variant="outline"
+                              className="w-fit border-[var(--screen-line-strong)] bg-transparent text-[var(--screen-ink)] hover:bg-[var(--screen-surface-soft)]"
+                              onClick={() =>
+                                startExceptionDraft(occurrence, "CANCEL")
+                              }
+                              disabled={exceptionBusy}
+                            >
+                              {COPY.programs.previewSkipOccurrence}
+                            </Button>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              className="w-fit border-[var(--screen-line-strong)] bg-transparent text-[var(--screen-ink)] hover:bg-[var(--screen-surface-soft)]"
+                              onClick={() =>
+                                startExceptionDraft(occurrence, "RESCHEDULE")
+                              }
+                              disabled={exceptionBusy}
+                            >
+                              {COPY.programs.previewRescheduleOccurrence}
+                            </Button>
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </li>
                 );
               })}

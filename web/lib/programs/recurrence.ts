@@ -39,6 +39,8 @@ export interface ScheduleExceptionLike {
   action: ScheduleExceptionAction;
   new_start_time: string | null;
   new_end_time: string | null;
+  /** Replacement HK wall date for a single occurrence, when rescheduled. */
+  new_date?: string | null;
 }
 
 export interface Occurrence {
@@ -181,11 +183,12 @@ export function occurrencesForRule(
     if (exception?.action === "CANCEL") {
       continue;
     }
+    const occurrenceDate = exception?.new_date ?? date;
     const start = exception?.new_start_time ?? rule.start_time;
     const end = exception?.new_end_time ?? rule.end_time;
     result.push({
-      starts_at: hkWallToUtc(date, start),
-      ends_at: hkWallToUtc(date, end),
+      starts_at: hkWallToUtc(occurrenceDate, start),
+      ends_at: hkWallToUtc(occurrenceDate, end),
     });
   }
   return result;
@@ -206,6 +209,8 @@ export interface PreviewOccurrenceCandidate {
   location: string | null;
   skip_reason: "CANCEL" | "DUPLICATE" | null;
   exception_id: string | null;
+  /** Replacement HK wall date; occurs_on remains the original occurrence. */
+  replacement_date: string | null;
 }
 
 /**
@@ -249,19 +254,22 @@ export function previewOccurrencesForRule(
         location: rule.location ?? null,
         skip_reason: "CANCEL",
         exception_id: exception.exception_id,
+        replacement_date: null,
       });
       continue;
     }
+    const replacementDate = exception?.new_date ?? date;
     const start = exception?.new_start_time ?? rule.start_time;
     const end = exception?.new_end_time ?? rule.end_time;
     result.push({
       rule_id: rule.rule_id,
       occurs_on: date,
-      starts_at: hkWallToUtc(date, start),
-      ends_at: hkWallToUtc(date, end),
+      starts_at: hkWallToUtc(replacementDate, start),
+      ends_at: hkWallToUtc(replacementDate, end),
       location: rule.location ?? null,
       skip_reason: null,
       exception_id: exception?.exception_id ?? null,
+      replacement_date: exception?.new_date ?? null,
     });
   }
   return result;

@@ -55,7 +55,6 @@ import {
   addWallMonths,
   hkTodayWallDate,
   isValidWallDate,
-  isWallDate,
   isWallTime,
   wallDaySpan,
 } from "./recurrence";
@@ -1861,13 +1860,14 @@ export async function handleCreateScheduleException(
   const body = await parseJson<{
     override_date?: unknown;
     action?: unknown;
+    new_date?: unknown;
     new_start_time?: unknown;
     new_end_time?: unknown;
   }>(request);
   if (body === null) {
     return validation(requestId, "Body must be JSON.");
   }
-  if (!isWallDate(body.override_date)) {
+  if (!isValidWallDate(body.override_date)) {
     return validation(requestId, "override_date must be YYYY-MM-DD.");
   }
   if (!isOneOf(body.action, ["CANCEL", "RESCHEDULE"] as const)) {
@@ -1877,6 +1877,13 @@ export async function handleCreateScheduleException(
     typeof body.new_start_time === "string" ? body.new_start_time : null;
   const newEnd =
     typeof body.new_end_time === "string" ? body.new_end_time : null;
+  const newDate =
+    body.new_date === undefined || body.new_date === null
+      ? null
+      : body.new_date;
+  if (newDate !== null && !isValidWallDate(newDate)) {
+    return validation(requestId, "new_date must be YYYY-MM-DD or null.");
+  }
   if (newStart !== null && !isWallTime(newStart)) {
     return validation(requestId, "new_start_time must be HH:MM.");
   }
@@ -1891,6 +1898,9 @@ export async function handleCreateScheduleException(
   }
   if (body.action === "CANCEL" && (newStart !== null || newEnd !== null)) {
     return validation(requestId, "CANCEL must not include new times.");
+  }
+  if (body.action === "CANCEL" && newDate !== null) {
+    return validation(requestId, "CANCEL must not include new_date.");
   }
   if (
     body.action === "RESCHEDULE" &&
@@ -1919,6 +1929,7 @@ export async function handleCreateScheduleException(
       {
         override_date: body.override_date,
         action: body.action,
+        new_date: newDate,
         new_start_time: newStart,
         new_end_time: newEnd,
       },

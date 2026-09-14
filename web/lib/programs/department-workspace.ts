@@ -648,6 +648,7 @@ export interface CreateScheduleExceptionCommand {
   action: ScheduleExceptionAction;
   new_start_time: string | null;
   new_end_time: string | null;
+  new_date?: string | null;
 }
 
 export interface CreateEventCommand {
@@ -2945,6 +2946,7 @@ export class DepartmentWorkspace {
           action: exception.action,
           new_start_time: exception.new_start_time,
           new_end_time: exception.new_end_time,
+          new_date: exception.new_date ?? null,
         })),
     });
     const digest = await crypto.subtle.digest(
@@ -3431,6 +3433,7 @@ export class DepartmentWorkspace {
       location: candidate.location,
       skip_reason: candidate.skip_reason,
       exception_id: candidate.exception_id,
+      replacement_date: candidate.replacement_date,
     };
   }
 

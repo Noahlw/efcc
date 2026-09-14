@@ -220,6 +220,8 @@ export interface ScheduleExceptionInput {
   action: ScheduleExceptionAction;
   new_start_time: string | null;
   new_end_time: string | null;
+  /** Replacement HK wall date; null keeps the original occurrence date. */
+  new_date?: string | null;
   created_by: string | null;
   created_at: string;
 }
@@ -231,6 +233,7 @@ export interface ScheduleExceptionRow {
   action: ScheduleExceptionAction;
   new_start_time: string | null;
   new_end_time: string | null;
+  new_date?: string | null;
   created_by: string | null;
   created_at: string;
 }
@@ -387,6 +390,8 @@ export interface PreviewOccurrenceRow {
   location: string | null;
   skip_reason: PreviewSkipReason | null;
   exception_id: string | null;
+  /** Replacement HK wall date; occurs_on remains the original occurrence. */
+  replacement_date?: string | null;
 }
 
 export type GenerationRunStatus = "completed" | "partial" | "failed";

@@ -47,7 +47,7 @@ import type {
 } from "@/lib/programs/program-api";
 import {
   hkTodayWallDate,
-  isWallDate,
+  isValidWallDate,
   WEEKDAY_LABELS,
 } from "@/lib/programs/recurrence";
 import {
@@ -102,6 +102,7 @@ interface RuleValues {
 interface ExceptionValues {
   overrideDate: string;
   action: ScheduleException["action"];
+  newDate: string;
   newStartTime: string;
   newEndTime: string;
 }
@@ -210,6 +211,7 @@ function defaultExceptionValues(): ExceptionValues {
   return {
     overrideDate: "",
     action: "CANCEL",
+    newDate: "",
     newStartTime: "",
     newEndTime: "",
   };
@@ -233,6 +235,7 @@ function ruleInputFrom(values: RuleValues): ScheduleRuleInput {
 function exceptionInputFrom(values: ExceptionValues): {
   override_date: string;
   action: ScheduleException["action"];
+  new_date?: string;
   new_start_time?: string;
   new_end_time?: string;
 } {
@@ -241,6 +244,7 @@ function exceptionInputFrom(values: ExceptionValues): {
     action: values.action,
     ...(values.action === "RESCHEDULE"
       ? {
+          ...(values.newDate ? { new_date: values.newDate } : {}),
           new_start_time: values.newStartTime,
           new_end_time: values.newEndTime,
         }
@@ -697,6 +701,7 @@ const ScheduleRuleEditor = ({
 ScheduleRuleEditor.displayName = "ScheduleRuleEditor";
 
 const ScheduleExceptionEditor = ({
+  rule,
   ruleId,
   values,
   onChange,
@@ -704,6 +709,7 @@ const ScheduleExceptionEditor = ({
   onCancel,
   busy,
 }: {
+  rule: ScheduleRule;
   ruleId: string;
   values: ExceptionValues;
   onChange: (values: ExceptionValues) => void;
@@ -764,6 +770,33 @@ const ScheduleExceptionEditor = ({
     </ScreenField>
     {values.action === "RESCHEDULE" && (
       <>
+        <ScreenField
+          htmlFor={`program-settings-exception-${ruleId}-new-date`}
+          label={COPY.programs.settingsExceptionNewDate}
+          help={
+            rule.effective_end_date
+              ? `${COPY.programs.settingsExceptionBeyondRuleEnd} (${rule.effective_end_date})`
+              : undefined
+          }
+        >
+          <Input
+            id={`program-settings-exception-${ruleId}-new-date`}
+            className="border-[var(--screen-line-strong)] bg-[var(--screen-surface)] text-base"
+            type="date"
+            min={values.overrideDate || undefined}
+            value={values.newDate}
+            onChange={(event) =>
+              onChange({ ...values, newDate: event.target.value })
+            }
+            disabled={busy}
+          />
+        </ScreenField>
+        {rule.effective_end_date &&
+          values.newDate > rule.effective_end_date && (
+            <Alert tone="warning" announcement="polite">
+              {COPY.programs.settingsExceptionBeyondRuleEnd}
+            </Alert>
+          )}
         <ScreenField
           htmlFor={`program-settings-exception-${ruleId}-new-start`}
           label={COPY.programs.settingsExceptionNewStart}
@@ -1209,7 +1242,7 @@ export const ProgramSettings = ({
     (rule: ScheduleRule) => (event: FormEvent<HTMLFormElement>) => {
       event.preventDefault();
       const draft = exceptionDraftFor(rule.rule_id);
-      if (!isWallDate(draft.overrideDate)) {
+      if (!isValidWallDate(draft.overrideDate)) {
         setActionError(COPY.programs.settingsExceptionDateValidation);
         announce(COPY.programs.settingsExceptionDateValidation);
         return;
@@ -1915,6 +1948,9 @@ export const ProgramSettings = ({
                                                   .settingsExceptionCancel
                                               : COPY.programs
                                                   .settingsExceptionReschedule}
+                                            {exception.new_date
+                                              ? ` → ${exception.new_date}`
+                                              : ""}
                                           </ScreenRowMeta>
                                           <Button
                                             className="w-fit border-[var(--screen-success)] bg-transparent text-[var(--screen-success)] hover:bg-[var(--screen-success-surface)]"
@@ -2021,6 +2057,7 @@ export const ProgramSettings = ({
                 />
               ) : (
                 <ScheduleExceptionEditor
+                  rule={scheduleEditorRule}
                   ruleId={scheduleEditor.ruleId}
                   values={exceptionDraftFor(scheduleEditor.ruleId)}
                   onChange={(values) =>

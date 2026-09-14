@@ -3031,7 +3031,7 @@ describe("PRG-02: generation", () => {
     assert.strictEqual(events.length, 1, "the other occurrence remains");
   });
 
-  test("RESCHEDULE exception moves an occurrence and DELETE restores it", async () => {
+  test("RESCHEDULE exception moves an occurrence to a new HK date and DELETE restores the rule occurrence", async () => {
     const programId = await freshProgram("RESCHEDULE Program");
     const rule = await createRule(adminAccess, programId, {
       recurrence: "WEEKLY",
@@ -3049,6 +3049,7 @@ describe("PRG-02: generation", () => {
       }
     }
     assert.ok(rescheduleDate);
+    const replacementDate = addWallDays(rescheduleDate, 3);
 
     const created = await worker.fetch(
       programsRequest(
@@ -3063,6 +3064,7 @@ describe("PRG-02: generation", () => {
           body: {
             override_date: rescheduleDate,
             action: "RESCHEDULE",
+            new_date: replacementDate,
             new_start_time: "20:30",
             new_end_time: "22:00",
           },
@@ -3082,8 +3084,8 @@ describe("PRG-02: generation", () => {
     const moved = await listEventsFor(adminAccess, programId);
     assert.strictEqual(moved.length, 2);
     assert.ok(
-      moved.some((e) => e.starts_at === `${rescheduleDate}T12:30:00.000Z`),
-      "rescheduled occurrence must use the new wall time"
+      moved.some((e) => e.starts_at === `${replacementDate}T12:30:00.000Z`),
+      "rescheduled occurrence must use the new wall date and time"
     );
 
     const removed = await worker.fetch(
@@ -3110,7 +3112,7 @@ describe("PRG-02: generation", () => {
     const restored = await listEventsFor(adminAccess, programId);
     assert.strictEqual(restored.length, 3);
     assert.ok(
-      restored.some((e) => e.starts_at === `${rescheduleDate}T12:30:00.000Z`),
+      restored.some((e) => e.starts_at === `${replacementDate}T12:30:00.000Z`),
       "previously generated event is untouched by exception removal"
     );
     assert.ok(
@@ -3383,6 +3385,7 @@ describe("EVT-02: recurring preview and generation (#252)", () => {
     body: {
       override_date: string;
       action: "CANCEL" | "RESCHEDULE";
+      new_date?: string;
       new_start_time?: string;
       new_end_time?: string;
     }

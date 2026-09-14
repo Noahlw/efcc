@@ -65,6 +65,39 @@ describe("bounded schedule recurrence", () => {
     ]);
   });
 
+  test("keeps the original occurrence while previewing a replacement date", () => {
+    const occurrences = previewOccurrencesForRule(
+      {
+        rule_id: "rule-reschedule",
+        recurrence: "WEEKLY",
+        day_of_week: 1,
+        month_day: null,
+        start_time: "10:00",
+        end_time: "11:00",
+      },
+      "2026-09-07",
+      1,
+      [
+        {
+          exception_id: "exception-1",
+          rule_id: "rule-reschedule",
+          override_date: "2026-09-07",
+          action: "RESCHEDULE",
+          new_date: "2026-09-10",
+          new_start_time: "14:00",
+          new_end_time: "15:00",
+        },
+      ]
+    );
+
+    expect(occurrences[0]).toMatchObject({
+      occurs_on: "2026-09-07",
+      replacement_date: "2026-09-10",
+      starts_at: "2026-09-10T06:00:00.000Z",
+      ends_at: "2026-09-10T07:00:00.000Z",
+    });
+  });
+
   test("provides calendar-month defaults and inclusive date spans", () => {
     expect(addWallMonths("2026-01-31", 1)).toBe("2026-02-28");
     expect(addWallDays(addWallMonths("2026-09-15", 3), -1)).toBe("2026-12-14");
