@@ -264,9 +264,13 @@ describe("Screen Foundations public contracts", () => {
     ).not.toBeInTheDocument();
 
     const localTabs = screen.getByRole("tablist", { name: "課程分頁" });
+    expect(localTabs).toHaveAttribute("data-slot", "tabs-list");
     expect(
       within(localTabs).getByRole("tab", { name: "待審批" })
     ).toHaveAttribute("aria-selected", "true");
+    expect(
+      within(localTabs).getByRole("tab", { name: "待審批" })
+    ).toHaveAttribute("data-slot", "tabs-trigger");
     expect(
       within(localTabs).getByRole("tab", { name: "待審批" })
     ).not.toHaveAttribute("aria-current");
@@ -319,6 +323,7 @@ describe("Screen Foundations public contracts", () => {
       "data-screen-card-tone",
       "emphasis"
     );
+    expect(screen.getByText("下一個聚會")).toHaveAttribute("data-slot", "card");
   });
 
   test("renders natural-locus loading and recoverable error states", () => {
@@ -343,6 +348,11 @@ describe("Screen Foundations public contracts", () => {
       "aria-busy",
       "true"
     );
+    expect(
+      document.querySelectorAll(
+        '[data-screen-loading-row] [data-slot="skeleton"]'
+      )
+    ).toHaveLength(6);
     expect(screen.getByRole("alert")).toHaveTextContent("載入失敗");
     expect(screen.getByRole("button", { name: "重試" })).toBeEnabled();
     expect(screen.getByText("暫時未有資料")).toBeInTheDocument();
@@ -352,6 +362,7 @@ describe("Screen Foundations public contracts", () => {
     render(
       <ScreenEditor aria-label="課程編輯">
         <ScreenField
+          error="請輸入課程名稱。"
           help="使用清晰嘅課程名稱。"
           htmlFor="program-name"
           label="課程名稱"
@@ -375,6 +386,14 @@ describe("Screen Foundations public contracts", () => {
     expect(screen.getByLabelText("課程名稱")).toHaveAttribute(
       "id",
       "program-name"
+    );
+    expect(screen.getByText("使用清晰嘅課程名稱。")).toHaveAttribute(
+      "data-slot",
+      "field-description"
+    );
+    expect(screen.getByText("請輸入課程名稱。")).toHaveAttribute(
+      "data-slot",
+      "field-error"
     );
     expect(screen.getByTestId("screen-sticky-actions")).toHaveAttribute(
       "data-screen-foundation",

@@ -7,8 +7,21 @@ import Link from "next/link";
 import { Slot } from "radix-ui";
 import * as React from "react";
 
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+  Field,
+  FieldDescription,
+  FieldError,
+  FieldLabel,
+} from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import {
+  ScreenCardPrimitive,
+  screenCardPrimitiveVariants,
+} from "@/components/ui/screen-card";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
 
 const screenPageFrameVariants = cva(
@@ -620,37 +633,27 @@ export const ScreenStatus = ({
   tone = "neutral",
   ...props
 }: ScreenStatusProps) => (
-  <span
+  <Badge
     {...props}
-    className={cn(screenStatusVariants({ tone }), className)}
+    className={cn(
+      screenStatusVariants({ tone }),
+      "h-auto min-h-6 w-fit shrink-0 gap-0 overflow-visible rounded-[var(--screen-radius-pill)] px-[9px] py-0.5 text-xs leading-4 font-bold",
+      className
+    )}
     data-screen-status
     data-tone={tone}
+    variant="outline"
   />
 );
 
-const screenCardVariants = cva(
-  "grid gap-[var(--screen-utility-gap)] rounded-[var(--screen-radius-surface)] border border-[var(--screen-line)] bg-[var(--screen-surface)] p-[var(--screen-surface-padding)] text-[var(--screen-ink)]",
-  {
-    variants: {
-      tone: {
-        default: "",
-        emphasis: "border-[#d8d0c6] bg-[#fffdfa]",
-      },
-    },
-    defaultVariants: {
-      tone: "default",
-    },
-  }
-);
-
 export type ScreenCardTone = NonNullable<
-  VariantProps<typeof screenCardVariants>["tone"]
+  VariantProps<typeof screenCardPrimitiveVariants>["tone"]
 >;
 
 export interface ScreenCardProps
   extends
     React.ComponentPropsWithoutRef<"div">,
-    VariantProps<typeof screenCardVariants> {
+    VariantProps<typeof screenCardPrimitiveVariants> {
   asChild?: boolean;
 }
 
@@ -660,17 +663,32 @@ export const ScreenCard = React.forwardRef<HTMLDivElement, ScreenCardProps>(
     { asChild = false, children, className, tone = "default", ...props },
     ref
   ) => {
-    const Comp = asChild ? Slot.Root : "div";
+    if (asChild) {
+      return (
+        <Slot.Root
+          {...props}
+          className={cn(screenCardPrimitiveVariants({ tone }), className)}
+          data-slot="card"
+          data-screen-card-tone={tone}
+          data-screen-foundation="card"
+          ref={ref}
+        >
+          {children}
+        </Slot.Root>
+      );
+    }
+
     return (
-      <Comp
+      <ScreenCardPrimitive
         {...props}
-        className={cn(screenCardVariants({ tone }), className)}
+        className={className}
         data-screen-card-tone={tone}
         data-screen-foundation="card"
+        tone={tone}
         ref={ref}
       >
         {children}
-      </Comp>
+      </ScreenCardPrimitive>
     );
   }
 );
@@ -732,18 +750,76 @@ export const ScreenTaskGrid = ({
 );
 
 export const ScreenTabs = ({
+  children,
   className,
+  role,
   ...props
-}: React.ComponentPropsWithoutRef<"nav">) => (
-  <nav
-    {...props}
-    className={cn(
-      "flex min-h-[var(--screen-touch-target)] min-w-0 items-stretch overflow-x-auto border-b border-[var(--screen-line)] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden",
-      className
-    )}
-    data-screen-foundation="tabs"
-  />
-);
+}: React.ComponentPropsWithoutRef<"nav">) => {
+  const tabsClassName = cn(
+    "flex min-h-[var(--screen-touch-target)] min-w-0 items-stretch overflow-x-auto border-b border-[var(--screen-line)] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden",
+    className
+  );
+
+  if (role !== "tablist") {
+    return (
+      <nav {...props} className={tabsClassName} data-screen-foundation="tabs">
+        {children}
+      </nav>
+    );
+  }
+
+  const childItems = React.Children.toArray(children);
+  const tabValues = childItems.map((child, index) => {
+    if (!isScreenTabElement(child)) {
+      return null;
+    }
+
+    const value = child.props.value;
+    if (typeof value === "string" && value.length > 0) {
+      return value;
+    }
+    if (typeof child.props.id === "string" && child.props.id.length > 0) {
+      return child.props.id;
+    }
+    if (
+      typeof child.props["aria-controls"] === "string" &&
+      child.props["aria-controls"].length > 0
+    ) {
+      return child.props["aria-controls"];
+    }
+    return `screen-tab-${index}`;
+  });
+  const selectedValue = childItems.reduce<string>((selected, child, index) => {
+    if (selected || !isScreenTabElement(child) || !child.props.selected) {
+      return selected;
+    }
+    return tabValues[index] ?? "";
+  }, "");
+
+  return (
+    <Tabs className="contents gap-0" value={selectedValue}>
+      <TabsList asChild variant="line">
+        <nav
+          {...props}
+          className={tabsClassName}
+          data-screen-foundation="tabs"
+          role={role}
+        >
+          <screenTabsStatefulContext.Provider value>
+            {childItems.map((child, index) => {
+              if (!isScreenTabElement(child)) {
+                return child;
+              }
+              return React.cloneElement(child, {
+                value: tabValues[index] ?? `screen-tab-${index}`,
+              });
+            })}
+          </screenTabsStatefulContext.Provider>
+        </nav>
+      </TabsList>
+    </Tabs>
+  );
+};
 
 const screenTabVariants = cva(
   "relative inline-flex min-h-[var(--screen-touch-target)] shrink-0 items-center justify-center border-0 bg-transparent px-3.5 text-sm font-bold whitespace-nowrap text-[var(--screen-muted)] no-underline outline-none transition-colors after:absolute after:right-2.5 after:bottom-[-1px] after:left-2.5 after:h-0.5 after:rounded-sm after:bg-[var(--screen-accent)] after:opacity-0 after:transition-opacity hover:text-[var(--screen-ink)] focus-visible:ring-3 focus-visible:ring-inset focus-visible:ring-[var(--screen-focus)]",
@@ -767,6 +843,13 @@ export interface ScreenTabProps
   asChild?: boolean;
 }
 
+const screenTabsStatefulContext = React.createContext(false);
+
+const isScreenTabElement = (
+  child: React.ReactNode
+): child is React.ReactElement<ScreenTabProps> =>
+  React.isValidElement<ScreenTabProps>(child) && child.type === ScreenTab;
+
 export const ScreenTab = ({
   asChild = false,
   children,
@@ -775,22 +858,41 @@ export const ScreenTab = ({
   type = "button",
   role,
   "aria-selected": ariaSelected,
+  value,
   ...props
 }: ScreenTabProps) => {
-  const Comp = asChild ? Slot.Root : "button";
   const isSelected = selected ?? false;
   const isTab = role === "tab";
+  const isInStatefulTabs = React.useContext(screenTabsStatefulContext);
+  const useTabsPrimitive = !asChild && isTab && isInStatefulTabs;
+  const tabValue =
+    typeof value === "string" && value.length > 0
+      ? value
+      : typeof value === "number"
+        ? String(value)
+        : "screen-tab";
+  const sharedProps = {
+    ...props,
+    "aria-selected": isTab ? (ariaSelected ?? isSelected) : undefined,
+    "aria-current": !isTab && isSelected ? ("page" as const) : undefined,
+    className: cn(screenTabVariants({ selected: isSelected }), className),
+    "data-screen-tab": true,
+    "data-selected": isSelected,
+    role,
+    type,
+  };
+
+  if (useTabsPrimitive) {
+    return (
+      <TabsTrigger {...sharedProps} value={tabValue}>
+        {children}
+      </TabsTrigger>
+    );
+  }
+
+  const Comp = asChild ? Slot.Root : "button";
   return (
-    <Comp
-      {...props}
-      aria-selected={isTab ? (ariaSelected ?? isSelected) : undefined}
-      aria-current={!isTab && isSelected ? "page" : undefined}
-      className={cn(screenTabVariants({ selected: isSelected }), className)}
-      data-screen-tab
-      data-selected={isSelected}
-      role={role}
-      type={type}
-    >
+    <Comp {...sharedProps} value={value}>
       {children}
     </Comp>
   );
@@ -907,8 +1009,8 @@ export const ScreenLoadingRows = ({
         data-screen-loading-row
         key={index}
       >
-        <span className="h-4 w-2/3 rounded-[var(--screen-radius-control)] bg-[var(--screen-surface-soft)]" />
-        <span className="h-3 w-1/2 rounded-[var(--screen-radius-control)] bg-[var(--screen-surface-soft)]" />
+        <Skeleton className="h-4 w-2/3 rounded-[var(--screen-radius-control)] bg-[var(--screen-surface-soft)]" />
+        <Skeleton className="h-3 w-1/2 rounded-[var(--screen-radius-control)] bg-[var(--screen-surface-soft)]" />
       </div>
     ))}
   </output>
@@ -944,29 +1046,22 @@ export const ScreenField = ({
   label,
   ...props
 }: ScreenFieldProps) => (
-  <fieldset
-    {...props}
-    className={cn("grid gap-1.5", className)}
-    data-screen-field
-  >
-    <label className="text-sm font-semibold" htmlFor={htmlFor}>
+  <Field {...props} className={cn("grid gap-1.5", className)} data-screen-field>
+    <FieldLabel className="text-sm font-semibold" htmlFor={htmlFor}>
       {label}
-    </label>
+    </FieldLabel>
     {children}
     {help ? (
-      <small className="text-xs leading-[var(--screen-meta-leading)] text-[var(--screen-muted)]">
+      <FieldDescription className="text-xs leading-[var(--screen-meta-leading)] text-[var(--screen-muted)]">
         {help}
-      </small>
+      </FieldDescription>
     ) : null}
     {error ? (
-      <small
-        className="text-xs leading-[var(--screen-meta-leading)] text-[var(--screen-danger)]"
-        role="alert"
-      >
+      <FieldError className="text-xs leading-[var(--screen-meta-leading)] text-[var(--screen-danger)]">
         {error}
-      </small>
+      </FieldError>
     ) : null}
-  </fieldset>
+  </Field>
 );
 
 export const ScreenStickyActions = ({
