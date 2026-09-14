@@ -5,6 +5,7 @@ import { afterEach, describe, expect, test, vi } from "vitest";
 import type {
   AttendanceEvent,
   AttendanceEventSummary,
+  AttendanceExpectedRow,
   AttendanceRow,
 } from "@/lib/attendance";
 import {
@@ -76,6 +77,19 @@ const GUEST_ROW: AttendanceRow = {
   guest_phone: "91234567",
   guest_phone_normalized: "hk:85291234567",
   method: "guest_manual_code",
+};
+
+const EXPECTED_ROW: AttendanceExpectedRow = {
+  expected_attendance_id: "expected-1",
+  event_id: EVENT.event_id,
+  enrollment_id: "enrollment-1",
+  member_user_id: "member-3",
+  member_name: "會員三",
+  member_phone: "95556666",
+  source: "event_start",
+  state: "Absent",
+  attendance: null,
+  disposition: null,
 };
 
 afterEach(() => cleanup());
@@ -167,6 +181,38 @@ describe("AttendanceRoster", () => {
       screen.getByRole("button", { name: COPY.attendance.voidConfirm })
     );
     expect(onVoid).toHaveBeenCalledWith(MEMBER_ROW, "重複簽到");
+  });
+
+  test("renders durable expected state and requires an Excused reason", async () => {
+    const user = userEvent.setup();
+    const onExcuse = vi
+      .fn<(row: AttendanceExpectedRow, reason: string) => Promise<boolean>>()
+      .mockResolvedValue(true);
+    render(
+      <AttendanceRoster
+        event={EVENT}
+        rows={[]}
+        expectedRows={[EXPECTED_ROW]}
+        counts={{
+          expected: 1,
+          present: 0,
+          not_yet: 0,
+          absent: 1,
+          excused: 0,
+          guests: 0,
+        }}
+        onExcuse={onExcuse}
+      />
+    );
+
+    expect(screen.getByText("缺席")).toBeVisible();
+    await user.click(screen.getByRole("button", { name: "標記請假" }));
+    await user.click(screen.getByRole("button", { name: "確認請假" }));
+    expect(onExcuse).not.toHaveBeenCalled();
+
+    await user.type(screen.getByLabelText("請假原因"), "家庭原因");
+    await user.click(screen.getByRole("button", { name: "確認請假" }));
+    expect(onExcuse).toHaveBeenCalledWith(EXPECTED_ROW, "家庭原因");
   });
 
   test("requires a correction reason and preserves old/new guest values for the audit callback", async () => {

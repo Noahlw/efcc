@@ -10,10 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { RpcError } from "@/lib/api";
 import { attendanceEventName } from "@/lib/attendance-display";
-import {
-  attendanceButtonVariants,
-  ScannerStatusOutput,
-} from "@/lib/attendance-scanner-ui";
+import { ScannerStatusOutput } from "@/lib/attendance-scanner-ui";
 import { COPY, errorCopyFor } from "@/lib/copy";
 import { hkWallLabel } from "@/lib/hk-time";
 import { announce } from "@/lib/live-region";
@@ -22,25 +19,44 @@ import {
   correctGuestAttendance,
   listAttendanceRoster,
   listScannerEvents,
+  materializeAttendanceSnapshot,
+  recordExcusedAttendance,
   searchAttendanceMembers,
   voidAttendance,
 } from "@/lib/programs/program-api";
 import type {
   AttendanceEvent,
   AttendanceEventSummary,
+  AttendanceExpectedRow,
   AttendanceMember,
+  AttendanceRosterCounts,
   AttendanceRow,
+  AttendanceState,
 } from "@/lib/programs/program-api";
 import { clearAuthHint, rememberDeepLink } from "@/lib/session";
 import { useQrCamera } from "@/lib/use-qr-camera";
 import { cn } from "@/lib/utils";
 
-const inputControl =
-  "min-h-11 h-auto rounded-[var(--radius-sm)] border border-[var(--line-strong)] bg-[var(--surface-raised)] px-3 py-3 text-base text-[var(--ink)] placeholder:text-[var(--ink-muted)] focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50";
 const eventButtonControl =
   "flex w-full min-h-11 flex-col items-start justify-between rounded-[var(--radius-sm)] border border-[var(--line-strong)] bg-[var(--surface-raised)] p-3 text-left text-base font-normal text-[var(--ink)] hover:bg-[var(--surface)] hover:text-[var(--ink)] sm:flex-row sm:items-center motion-reduce:transition-none";
 
 type StatusTone = "info" | "success" | "error";
+
+const ATTENDANCE_STATE_LABEL: Record<AttendanceState, string> = {
+  Present: "已出席",
+  "Not Yet": "未簽到",
+  Absent: "缺席",
+  Excused: "請假",
+  Cancelled: "聚會已取消",
+};
+
+const EXCUSE_COPY = {
+  action: "標記請假",
+  reason: "請假原因",
+  confirm: "確認請假",
+  cancel: "取消",
+  saved: "已記錄請假",
+} as const;
 
 type MemberDirectory = Readonly<Record<string, AttendanceMember>>;
 
@@ -103,7 +119,6 @@ export const AttendanceChooser = ({
           {onRetry && (
             <Button
               variant="outline"
-              className={attendanceButtonVariants({ variant: "secondary" })}
               type="button"
               onClick={onRetry}
               disabled={busy}
@@ -173,6 +188,8 @@ export const AttendanceChooser = ({
 export interface AttendanceRosterProps {
   event: AttendanceEvent;
   rows: readonly AttendanceRow[];
+  expectedRows?: readonly AttendanceExpectedRow[];
+  counts?: AttendanceRosterCounts;
   memberDirectory?: MemberDirectory;
   busy?: boolean;
   onBack?: () => void;
@@ -180,6 +197,10 @@ export interface AttendanceRosterProps {
   onCorrectGuest?: (
     row: AttendanceRow,
     input: { name: string; phone: string; reason: string }
+  ) => Promise<boolean> | boolean;
+  onExcuse?: (
+    row: AttendanceExpectedRow,
+    reason: string
   ) => Promise<boolean> | boolean;
   onPrint?: () => void;
   onExport?: () => void;
@@ -237,11 +258,14 @@ function printAttendanceRoster() {
 export const AttendanceRoster = ({
   event,
   rows,
+  expectedRows = [],
+  counts,
   memberDirectory = EMPTY_MEMBER_DIRECTORY,
   busy = false,
   onBack,
   onVoid,
   onCorrectGuest,
+  onExcuse,
   onPrint,
   onExport,
 }: AttendanceRosterProps) => {
@@ -251,8 +275,11 @@ export const AttendanceRoster = ({
   const [correctionName, setCorrectionName] = useState("");
   const [correctionPhone, setCorrectionPhone] = useState("");
   const [correctionReason, setCorrectionReason] = useState("");
+  const [excusingId, setExcusingId] = useState<string | null>(null);
+  const [excuseReason, setExcuseReason] = useState("");
   const voidInputRef = useRef<HTMLInputElement>(null);
   const correctionHeadingRef = useRef<HTMLHeadingElement>(null);
+  const excuseInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (voidingId) {
@@ -266,10 +293,26 @@ export const AttendanceRoster = ({
     }
   }, [correctionId]);
 
+  useEffect(() => {
+    if (excusingId) {
+      excuseInputRef.current?.focus();
+    }
+  }, [excusingId]);
+
   const activeRows = rows.filter((row) => row.status === "Active");
+  const expectedAttendanceIds = new Set(
+    expectedRows.flatMap(({ attendance }) =>
+      attendance ? [attendance.attendance_id] : []
+    )
+  );
+  const additionalRows = rows.filter(
+    (row) => !expectedAttendanceIds.has(row.attendance_id)
+  );
   const statusIsOpen =
     event.status === "Active" && event.availability === "Active";
   const eventTitle = event.name?.trim() || event.program_name;
+  const checkedInCount = counts?.present ?? activeRows.length;
+  const expectedCount = counts?.expected ?? rows.length;
 
   async function submitVoid(row: AttendanceRow) {
     const reason = voidReason.trim();
@@ -301,6 +344,18 @@ export const AttendanceRoster = ({
     }
   }
 
+  async function submitExcuse(row: AttendanceExpectedRow) {
+    const reason = excuseReason.trim();
+    if (!reason || !onExcuse) {
+      return;
+    }
+    const saved = await onExcuse(row, reason);
+    if (saved) {
+      setExcusingId(null);
+      setExcuseReason("");
+    }
+  }
+
   return (
     <>
       <header className="grid gap-2 pb-4 border-b border-[var(--line)] print:hidden">
@@ -308,7 +363,7 @@ export const AttendanceRoster = ({
           {onBack && (
             <Button
               variant="link"
-              className={attendanceButtonVariants({ variant: "back" })}
+              className="w-fit text-[var(--accent-deep)]"
               type="button"
               onClick={onBack}
               disabled={busy}
@@ -347,15 +402,17 @@ export const AttendanceRoster = ({
             aria-live="polite"
           >
             <strong>
-              {COPY.attendance.checkedInCount(activeRows.length, rows.length)}
+              {COPY.attendance.checkedInCount(checkedInCount, expectedCount)}
             </strong>
+            {counts && counts.guests > 0 && (
+              <span className="ml-2">· 訪客 {counts.guests}</span>
+            )}
           </p>
         </div>
         <div className="flex flex-wrap gap-3 mt-2">
           {onPrint && (
             <Button
               variant="outline"
-              className={attendanceButtonVariants({ variant: "secondary" })}
               type="button"
               onClick={onPrint}
               disabled={busy}
@@ -366,7 +423,6 @@ export const AttendanceRoster = ({
           {onExport && (
             <Button
               variant="outline"
-              className={attendanceButtonVariants({ variant: "secondary" })}
               type="button"
               onClick={onExport}
               disabled={busy}
@@ -377,7 +433,7 @@ export const AttendanceRoster = ({
         </div>
       </header>
 
-      {rows.length === 0 ? (
+      {rows.length === 0 && expectedRows.length === 0 ? (
         <output
           className="text-base text-[var(--ink-muted)] py-4 text-center block print:hidden"
           aria-live="polite"
@@ -385,246 +441,434 @@ export const AttendanceRoster = ({
           {COPY.programs.eventNoParticipants}
         </output>
       ) : (
-        <ul
-          className="grid gap-3 list-none p-0 mt-4 print:hidden"
-          aria-label={COPY.attendance.rosterTitle}
-        >
-          {rows.map((row) => {
-            const phone = rowPhone(row, memberDirectory);
-            const displayPhone =
-              phone && row.member_user_id
-                ? COPY.attendance.maskedPhone(phone)
-                : phone;
-            const isVoiding = voidingId === row.attendance_id;
-            const isCorrecting = correctionId === row.attendance_id;
-            return (
-              <li
-                className="grid gap-3 p-4 rounded-[var(--radius-sm)] border border-[var(--line-strong)] bg-[var(--surface-raised)]"
-                key={row.attendance_id}
-              >
-                <div className="flex items-start justify-between gap-2">
-                  <div>
-                    <strong className="text-base font-bold text-[var(--ink)] [overflow-wrap:anywhere] min-w-0 max-w-full">
-                      {rowLabel(row, memberDirectory)}
-                    </strong>
-                    <p className="text-sm text-[var(--ink-muted)]">
-                      {displayPhone ?? COPY.attendance.method[row.method]}
-                    </p>
-                  </div>
-                  <Badge
-                    variant="outline"
-                    className={`px-2 py-0.5 text-xs font-semibold rounded-full ${
-                      row.status === "Active"
-                        ? "border-[var(--success-border)] bg-[var(--success-surface)] text-[var(--success)]"
-                        : "border-[var(--line-strong)] bg-[var(--surface)] text-[var(--ink-muted)]"
-                    }`}
+        <>
+          {expectedRows.length > 0 && (
+            <ul
+              className="grid gap-3 list-none p-0 mt-4 print:hidden"
+              aria-label="預期出席名單"
+            >
+              {expectedRows.map((row) => {
+                const { attendance } = row;
+                const expectedKey =
+                  row.expected_attendance_id ?? row.enrollment_id;
+                const phone =
+                  row.member_phone ??
+                  memberDirectory[row.member_user_id]?.phone ??
+                  null;
+                const displayPhone = phone
+                  ? COPY.attendance.maskedPhone(phone)
+                  : null;
+                const isVoiding =
+                  attendance?.status === "Active" &&
+                  voidingId === attendance.attendance_id;
+                const isExcusing = excusingId === expectedKey;
+                const statusClass =
+                  row.state === "Present"
+                    ? "border-[var(--success-border)] bg-[var(--success-surface)] text-[var(--success)]"
+                    : row.state === "Excused"
+                      ? "border-[var(--accent-border)] bg-[var(--accent-surface)] text-[var(--accent-deep)]"
+                      : "border-[var(--line-strong)] bg-[var(--surface)] text-[var(--ink-muted)]";
+                return (
+                  <li
+                    className="grid gap-3 p-4 rounded-[var(--radius-sm)] border border-[var(--line-strong)] bg-[var(--surface-raised)]"
+                    key={expectedKey}
                   >
-                    {COPY.attendance.status[row.status]}
-                  </Badge>
-                </div>
-
-                {row.status === "Voided" && row.void_reason && (
-                  <p className="text-xs text-[var(--error)] bg-[var(--error-surface)] border border-[var(--error-border)] p-2 rounded-[var(--radius-sm)]">
-                    {row.void_reason}
-                  </p>
-                )}
-
-                {row.status === "Active" && (
-                  <div className="flex flex-wrap gap-3 mt-2">
-                    <Button
-                      variant="outline"
-                      className={attendanceButtonVariants({
-                        variant: "danger",
-                      })}
-                      type="button"
-                      disabled={busy}
-                      onClick={() => {
-                        setVoidingId(row.attendance_id);
-                        setVoidReason("");
-                        setCorrectionId(null);
-                      }}
-                    >
-                      {COPY.attendance.voidAttendance}
-                    </Button>
-                    {row.member_user_id === null && (
-                      <Button
+                    <div className="flex items-start justify-between gap-2">
+                      <div>
+                        <strong className="text-base font-bold text-[var(--ink)] [overflow-wrap:anywhere] min-w-0 max-w-full">
+                          {row.member_name ||
+                            memberDirectory[row.member_user_id]?.name ||
+                            row.member_user_id}
+                        </strong>
+                        <p className="text-sm text-[var(--ink-muted)]">
+                          {displayPhone ?? "會員"}
+                        </p>
+                      </div>
+                      <Badge
                         variant="outline"
-                        className={attendanceButtonVariants({
-                          variant: "secondary",
-                        })}
-                        type="button"
-                        disabled={busy}
-                        onClick={() => {
-                          setCorrectionId(row.attendance_id);
-                          setCorrectionName(row.guest_name ?? "");
-                          setCorrectionPhone(row.guest_phone ?? "");
-                          setCorrectionReason("");
-                          setVoidingId(null);
+                        className={`px-2 py-0.5 text-xs font-semibold rounded-full ${statusClass}`}
+                      >
+                        {ATTENDANCE_STATE_LABEL[row.state]}
+                      </Badge>
+                    </div>
+
+                    {row.disposition && (
+                      <p className="text-xs text-[var(--accent-deep)] bg-[var(--accent-surface)] border border-[var(--accent-border)] p-2 rounded-[var(--radius-sm)]">
+                        {row.disposition.reason}
+                      </p>
+                    )}
+                    {attendance?.status === "Voided" &&
+                      attendance.void_reason && (
+                        <p className="text-xs text-[var(--error)] bg-[var(--error-surface)] border border-[var(--error-border)] p-2 rounded-[var(--radius-sm)]">
+                          {attendance.void_reason}
+                        </p>
+                      )}
+
+                    {row.state !== "Cancelled" && (
+                      <div className="flex flex-wrap gap-3 mt-2">
+                        {attendance?.status === "Active" && (
+                          <Button
+                            variant="destructive"
+                            type="button"
+                            disabled={busy}
+                            onClick={() => {
+                              setVoidingId(attendance.attendance_id);
+                              setVoidReason("");
+                              setExcusingId(null);
+                            }}
+                          >
+                            {COPY.attendance.voidAttendance}
+                          </Button>
+                        )}
+                        {onExcuse && !row.disposition && (
+                          <Button
+                            variant="outline"
+                            type="button"
+                            disabled={busy}
+                            onClick={() => {
+                              setExcusingId(expectedKey);
+                              setExcuseReason("");
+                              setVoidingId(null);
+                              setCorrectionId(null);
+                            }}
+                          >
+                            {EXCUSE_COPY.action}
+                          </Button>
+                        )}
+                      </div>
+                    )}
+
+                    {isVoiding && attendance && (
+                      <form
+                        className="grid gap-3 p-4 rounded-[var(--radius-sm)] border border-[var(--line-strong)] bg-[var(--surface)] mt-2"
+                        onSubmit={(formEvent) => {
+                          formEvent.preventDefault();
+                          void submitVoid(attendance);
                         }}
                       >
-                        {COPY.attendance.correctGuest}
-                      </Button>
+                        <h2 className="text-lg font-bold text-[var(--ink)]">
+                          {COPY.attendance.voidAttendance}
+                        </h2>
+                        <label
+                          className="grid gap-1.5"
+                          htmlFor={`expected-void-reason-${expectedKey}`}
+                        >
+                          <span className="text-sm font-bold leading-normal text-[var(--ink)]">
+                            {COPY.attendance.voidReason}
+                          </span>
+                          <Input
+                            ref={voidInputRef}
+                            id={`expected-void-reason-${expectedKey}`}
+                            className="bg-[var(--surface-raised)] text-base text-[var(--ink)] placeholder:text-[var(--ink-muted)]"
+                            value={voidReason}
+                            onChange={(eventChange) =>
+                              setVoidReason(eventChange.target.value)
+                            }
+                            required
+                            autoComplete="off"
+                          />
+                        </label>
+                        <div className="flex flex-wrap gap-3 mt-2">
+                          <Button
+                            variant="destructive"
+                            type="submit"
+                            disabled={busy}
+                          >
+                            {COPY.attendance.voidConfirm}
+                          </Button>
+                          <Button
+                            variant="outline"
+                            type="button"
+                            onClick={() => setVoidingId(null)}
+                            disabled={busy}
+                          >
+                            {COPY.attendance.chooseEvent}
+                          </Button>
+                        </div>
+                      </form>
                     )}
-                  </div>
-                )}
 
-                {isVoiding && (
-                  <form
-                    className="grid gap-3 p-4 rounded-[var(--radius-sm)] border border-[var(--line-strong)] bg-[var(--surface)] mt-2"
-                    onSubmit={(formEvent) => {
-                      formEvent.preventDefault();
-                      void submitVoid(row);
-                    }}
-                  >
-                    <h2 className="text-lg font-bold text-[var(--ink)]">
-                      {COPY.attendance.voidAttendance}
-                    </h2>
-                    <p className="text-sm text-[var(--ink-muted)]">
-                      {COPY.attendance.voidLead}
-                    </p>
-                    <label
-                      className="grid gap-1.5"
-                      htmlFor={`void-reason-${row.attendance_id}`}
-                    >
-                      <span className="text-sm font-bold leading-normal text-[var(--ink)]">
-                        {COPY.attendance.voidReason}
-                      </span>
-                      <Input
-                        ref={voidInputRef}
-                        id={`void-reason-${row.attendance_id}`}
-                        className={inputControl}
-                        value={voidReason}
-                        onChange={(eventChange) =>
-                          setVoidReason(eventChange.target.value)
-                        }
-                        required
-                        autoComplete="off"
-                      />
-                    </label>
-                    <div className="flex flex-wrap gap-3 mt-2">
-                      <Button
-                        variant="outline"
-                        className={attendanceButtonVariants({
-                          variant: "danger",
-                        })}
-                        type="submit"
-                        disabled={busy}
+                    {isExcusing && onExcuse && (
+                      <form
+                        className="grid gap-3 p-4 rounded-[var(--radius-sm)] border border-[var(--line-strong)] bg-[var(--surface)] mt-2"
+                        onSubmit={(formEvent) => {
+                          formEvent.preventDefault();
+                          void submitExcuse(row);
+                        }}
                       >
-                        {COPY.attendance.voidConfirm}
-                      </Button>
-                      <Button
-                        variant="outline"
-                        className={attendanceButtonVariants({
-                          variant: "secondary",
-                        })}
-                        type="button"
-                        onClick={() => setVoidingId(null)}
-                        disabled={busy}
-                      >
-                        {COPY.attendance.chooseEvent}
-                      </Button>
-                    </div>
-                  </form>
-                )}
+                        <h2 className="text-lg font-bold text-[var(--ink)]">
+                          {EXCUSE_COPY.action}
+                        </h2>
+                        <label
+                          className="grid gap-1.5"
+                          htmlFor={`excuse-reason-${expectedKey}`}
+                        >
+                          <span className="text-sm font-bold leading-normal text-[var(--ink)]">
+                            {EXCUSE_COPY.reason}
+                          </span>
+                          <Input
+                            ref={excuseInputRef}
+                            id={`excuse-reason-${expectedKey}`}
+                            className="bg-[var(--surface-raised)] text-base text-[var(--ink)] placeholder:text-[var(--ink-muted)]"
+                            value={excuseReason}
+                            onChange={(eventChange) =>
+                              setExcuseReason(eventChange.target.value)
+                            }
+                            required
+                            autoComplete="off"
+                          />
+                        </label>
+                        <div className="flex flex-wrap gap-3 mt-2">
+                          <Button
+                            variant="default"
+                            type="submit"
+                            disabled={busy}
+                          >
+                            {EXCUSE_COPY.confirm}
+                          </Button>
+                          <Button
+                            variant="outline"
+                            type="button"
+                            onClick={() => setExcusingId(null)}
+                            disabled={busy}
+                          >
+                            {EXCUSE_COPY.cancel}
+                          </Button>
+                        </div>
+                      </form>
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
+          )}
 
-                {isCorrecting && (
-                  <form
-                    className="grid gap-3 p-4 rounded-[var(--radius-sm)] border border-[var(--line-strong)] bg-[var(--surface)] mt-2"
-                    onSubmit={(formEvent) => {
-                      formEvent.preventDefault();
-                      void submitCorrection(row);
-                    }}
+          {additionalRows.length > 0 && (
+            <ul
+              className="grid gap-3 list-none p-0 mt-4 print:hidden"
+              aria-label={COPY.attendance.rosterTitle}
+            >
+              {additionalRows.map((row) => {
+                const phone = rowPhone(row, memberDirectory);
+                const displayPhone =
+                  phone && row.member_user_id
+                    ? COPY.attendance.maskedPhone(phone)
+                    : phone;
+                const isVoiding = voidingId === row.attendance_id;
+                const isCorrecting = correctionId === row.attendance_id;
+                return (
+                  <li
+                    className="grid gap-3 p-4 rounded-[var(--radius-sm)] border border-[var(--line-strong)] bg-[var(--surface-raised)]"
+                    key={row.attendance_id}
                   >
-                    <h2
-                      ref={correctionHeadingRef}
-                      className="text-lg font-bold text-[var(--ink)]"
-                      tabIndex={-1}
-                    >
-                      {COPY.attendance.guestCorrection}
-                    </h2>
-                    <p className="text-sm text-[var(--ink-muted)]">
-                      {COPY.attendance.correctionLead}
-                    </p>
-                    <label
-                      className="grid gap-1.5"
-                      htmlFor={`correction-name-${row.attendance_id}`}
-                    >
-                      <span className="text-sm font-bold leading-normal text-[var(--ink)]">
-                        {COPY.attendance.guestName}
-                      </span>
-                      <Input
-                        id={`correction-name-${row.attendance_id}`}
-                        className={inputControl}
-                        value={correctionName}
-                        onChange={(eventChange) =>
-                          setCorrectionName(eventChange.target.value)
-                        }
-                        maxLength={80}
-                        required
-                      />
-                    </label>
-                    <label
-                      className="grid gap-1.5"
-                      htmlFor={`correction-phone-${row.attendance_id}`}
-                    >
-                      <span className="text-sm font-bold leading-normal text-[var(--ink)]">
-                        {COPY.attendance.guestPhone}
-                      </span>
-                      <Input
-                        id={`correction-phone-${row.attendance_id}`}
-                        className={inputControl}
-                        value={correctionPhone}
-                        onChange={(eventChange) =>
-                          setCorrectionPhone(eventChange.target.value)
-                        }
-                        required
-                      />
-                    </label>
-                    <label
-                      className="grid gap-1.5"
-                      htmlFor={`correction-reason-${row.attendance_id}`}
-                    >
-                      <span className="text-sm font-bold leading-normal text-[var(--ink)]">
-                        {COPY.attendance.correctionReason}
-                      </span>
-                      <Input
-                        id={`correction-reason-${row.attendance_id}`}
-                        className={inputControl}
-                        value={correctionReason}
-                        onChange={(eventChange) =>
-                          setCorrectionReason(eventChange.target.value)
-                        }
-                        required
-                      />
-                    </label>
-                    <div className="flex flex-wrap gap-3 mt-2">
-                      <Button
-                        className={attendanceButtonVariants({
-                          variant: "primaryFit",
-                        })}
-                        type="submit"
-                        disabled={busy}
-                      >
-                        {COPY.attendance.saveCorrection}
-                      </Button>
-                      <Button
+                    <div className="flex items-start justify-between gap-2">
+                      <div>
+                        <strong className="text-base font-bold text-[var(--ink)] [overflow-wrap:anywhere] min-w-0 max-w-full">
+                          {rowLabel(row, memberDirectory)}
+                        </strong>
+                        <p className="text-sm text-[var(--ink-muted)]">
+                          {displayPhone ?? COPY.attendance.method[row.method]}
+                        </p>
+                      </div>
+                      <Badge
                         variant="outline"
-                        className={attendanceButtonVariants({
-                          variant: "secondary",
-                        })}
-                        type="button"
-                        onClick={() => setCorrectionId(null)}
-                        disabled={busy}
+                        className={`px-2 py-0.5 text-xs font-semibold rounded-full ${
+                          row.status === "Active"
+                            ? "border-[var(--success-border)] bg-[var(--success-surface)] text-[var(--success)]"
+                            : "border-[var(--line-strong)] bg-[var(--surface)] text-[var(--ink-muted)]"
+                        }`}
                       >
-                        {COPY.attendance.chooseEvent}
-                      </Button>
+                        {COPY.attendance.status[row.status]}
+                      </Badge>
                     </div>
-                  </form>
-                )}
-              </li>
-            );
-          })}
-        </ul>
+
+                    {row.status === "Voided" && row.void_reason && (
+                      <p className="text-xs text-[var(--error)] bg-[var(--error-surface)] border border-[var(--error-border)] p-2 rounded-[var(--radius-sm)]">
+                        {row.void_reason}
+                      </p>
+                    )}
+
+                    {row.status === "Active" && (
+                      <div className="flex flex-wrap gap-3 mt-2">
+                        <Button
+                          variant="destructive"
+                          type="button"
+                          disabled={busy}
+                          onClick={() => {
+                            setVoidingId(row.attendance_id);
+                            setVoidReason("");
+                            setCorrectionId(null);
+                          }}
+                        >
+                          {COPY.attendance.voidAttendance}
+                        </Button>
+                        {row.member_user_id === null && (
+                          <Button
+                            variant="outline"
+                            type="button"
+                            disabled={busy}
+                            onClick={() => {
+                              setCorrectionId(row.attendance_id);
+                              setCorrectionName(row.guest_name ?? "");
+                              setCorrectionPhone(row.guest_phone ?? "");
+                              setCorrectionReason("");
+                              setVoidingId(null);
+                            }}
+                          >
+                            {COPY.attendance.correctGuest}
+                          </Button>
+                        )}
+                      </div>
+                    )}
+
+                    {isVoiding && (
+                      <form
+                        className="grid gap-3 p-4 rounded-[var(--radius-sm)] border border-[var(--line-strong)] bg-[var(--surface)] mt-2"
+                        onSubmit={(formEvent) => {
+                          formEvent.preventDefault();
+                          void submitVoid(row);
+                        }}
+                      >
+                        <h2 className="text-lg font-bold text-[var(--ink)]">
+                          {COPY.attendance.voidAttendance}
+                        </h2>
+                        <p className="text-sm text-[var(--ink-muted)]">
+                          {COPY.attendance.voidLead}
+                        </p>
+                        <label
+                          className="grid gap-1.5"
+                          htmlFor={`void-reason-${row.attendance_id}`}
+                        >
+                          <span className="text-sm font-bold leading-normal text-[var(--ink)]">
+                            {COPY.attendance.voidReason}
+                          </span>
+                          <Input
+                            ref={voidInputRef}
+                            id={`void-reason-${row.attendance_id}`}
+                            className="bg-[var(--surface-raised)] text-base text-[var(--ink)] placeholder:text-[var(--ink-muted)]"
+                            value={voidReason}
+                            onChange={(eventChange) =>
+                              setVoidReason(eventChange.target.value)
+                            }
+                            required
+                            autoComplete="off"
+                          />
+                        </label>
+                        <div className="flex flex-wrap gap-3 mt-2">
+                          <Button
+                            variant="destructive"
+                            type="submit"
+                            disabled={busy}
+                          >
+                            {COPY.attendance.voidConfirm}
+                          </Button>
+                          <Button
+                            variant="outline"
+                            type="button"
+                            onClick={() => setVoidingId(null)}
+                            disabled={busy}
+                          >
+                            {COPY.attendance.chooseEvent}
+                          </Button>
+                        </div>
+                      </form>
+                    )}
+
+                    {isCorrecting && (
+                      <form
+                        className="grid gap-3 p-4 rounded-[var(--radius-sm)] border border-[var(--line-strong)] bg-[var(--surface)] mt-2"
+                        onSubmit={(formEvent) => {
+                          formEvent.preventDefault();
+                          void submitCorrection(row);
+                        }}
+                      >
+                        <h2
+                          ref={correctionHeadingRef}
+                          className="text-lg font-bold text-[var(--ink)]"
+                          tabIndex={-1}
+                        >
+                          {COPY.attendance.guestCorrection}
+                        </h2>
+                        <p className="text-sm text-[var(--ink-muted)]">
+                          {COPY.attendance.correctionLead}
+                        </p>
+                        <label
+                          className="grid gap-1.5"
+                          htmlFor={`correction-name-${row.attendance_id}`}
+                        >
+                          <span className="text-sm font-bold leading-normal text-[var(--ink)]">
+                            {COPY.attendance.guestName}
+                          </span>
+                          <Input
+                            id={`correction-name-${row.attendance_id}`}
+                            className="bg-[var(--surface-raised)] text-base text-[var(--ink)] placeholder:text-[var(--ink-muted)]"
+                            value={correctionName}
+                            onChange={(eventChange) =>
+                              setCorrectionName(eventChange.target.value)
+                            }
+                            maxLength={80}
+                            required
+                          />
+                        </label>
+                        <label
+                          className="grid gap-1.5"
+                          htmlFor={`correction-phone-${row.attendance_id}`}
+                        >
+                          <span className="text-sm font-bold leading-normal text-[var(--ink)]">
+                            {COPY.attendance.guestPhone}
+                          </span>
+                          <Input
+                            id={`correction-phone-${row.attendance_id}`}
+                            className="bg-[var(--surface-raised)] text-base text-[var(--ink)] placeholder:text-[var(--ink-muted)]"
+                            value={correctionPhone}
+                            onChange={(eventChange) =>
+                              setCorrectionPhone(eventChange.target.value)
+                            }
+                            required
+                          />
+                        </label>
+                        <label
+                          className="grid gap-1.5"
+                          htmlFor={`correction-reason-${row.attendance_id}`}
+                        >
+                          <span className="text-sm font-bold leading-normal text-[var(--ink)]">
+                            {COPY.attendance.correctionReason}
+                          </span>
+                          <Input
+                            id={`correction-reason-${row.attendance_id}`}
+                            className="bg-[var(--surface-raised)] text-base text-[var(--ink)] placeholder:text-[var(--ink-muted)]"
+                            value={correctionReason}
+                            onChange={(eventChange) =>
+                              setCorrectionReason(eventChange.target.value)
+                            }
+                            required
+                          />
+                        </label>
+                        <div className="flex flex-wrap gap-3 mt-2">
+                          <Button
+                            variant="default"
+                            type="submit"
+                            disabled={busy}
+                          >
+                            {COPY.attendance.saveCorrection}
+                          </Button>
+                          <Button
+                            variant="outline"
+                            type="button"
+                            onClick={() => setCorrectionId(null)}
+                            disabled={busy}
+                          >
+                            {COPY.attendance.chooseEvent}
+                          </Button>
+                        </div>
+                      </form>
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </>
       )}
     </>
   );
@@ -650,6 +894,9 @@ export const AttendanceOperatorPanel = ({
   >({});
   const [event, setEvent] = useState<AttendanceEvent | null>(null);
   const [rows, setRows] = useState<AttendanceRow[]>([]);
+  const [expectedRows, setExpectedRows] = useState<AttendanceExpectedRow[]>([]);
+  const [rosterCounts, setRosterCounts] =
+    useState<AttendanceRosterCounts | null>(null);
   const [status, setStatus] = useState("");
   const [tone, setTone] = useState<StatusTone>("info");
   const [busy, setBusy] = useState(false);
@@ -712,9 +959,15 @@ export const AttendanceOperatorPanel = ({
   async function loadRoster(id: string) {
     setBusy(true);
     try {
-      const result = await listAttendanceRoster(id);
+      let result = await listAttendanceRoster(id);
+      if (result.materialization_required) {
+        await materializeAttendanceSnapshot(id);
+        result = await listAttendanceRoster(id);
+      }
       setEvent(result.event);
-      setRows(result.attendances);
+      setRows(result.attendances ?? []);
+      setExpectedRows(result.expected ?? []);
+      setRosterCounts(result.counts ?? null);
       updateAttendanceEventUrl(id);
     } catch (error) {
       showError(error);
@@ -733,6 +986,8 @@ export const AttendanceOperatorPanel = ({
     setEventId(null);
     setEvent(null);
     setRows([]);
+    setExpectedRows([]);
+    setRosterCounts(null);
     setMembers([]);
     setQuery("");
     setStatus("");
@@ -824,6 +1079,27 @@ export const AttendanceOperatorPanel = ({
       await correctGuestAttendance(row.attendance_id, input);
       showStatus(COPY.attendance.correctionSaved, "success");
       announce(COPY.attendance.correctionSaved);
+      if (eventId) {
+        await loadRoster(eventId);
+      }
+      return true;
+    } catch (error) {
+      showError(error);
+      return false;
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleExcuse(
+    row: AttendanceExpectedRow,
+    reason: string
+  ): Promise<boolean> {
+    setBusy(true);
+    try {
+      await recordExcusedAttendance(row.event_id, row.enrollment_id, reason);
+      showStatus(EXCUSE_COPY.saved, "success");
+      announce(EXCUSE_COPY.saved);
       if (eventId) {
         await loadRoster(eventId);
       }
@@ -946,11 +1222,14 @@ export const AttendanceOperatorPanel = ({
                 <AttendanceRoster
                   event={event}
                   rows={rows}
+                  expectedRows={expectedRows}
+                  counts={rosterCounts ?? undefined}
                   memberDirectory={memberDirectory}
                   busy={busy}
                   onBack={backToChooser}
                   onVoid={handleVoid}
                   onCorrectGuest={handleCorrection}
+                  onExcuse={handleExcuse}
                   onPrint={printAttendanceRoster}
                   onExport={exportRoster}
                 />
@@ -970,9 +1249,6 @@ export const AttendanceOperatorPanel = ({
                   <div className="flex flex-wrap gap-3 mt-2">
                     <Button
                       variant="outline"
-                      className={attendanceButtonVariants({
-                        variant: "secondary",
-                      })}
                       type="button"
                       disabled={busy}
                       onClick={() => void startCamera()}
@@ -984,9 +1260,6 @@ export const AttendanceOperatorPanel = ({
                     {cameraOpen && (
                       <Button
                         variant="outline"
-                        className={attendanceButtonVariants({
-                          variant: "secondary",
-                        })}
                         type="button"
                         onClick={stopCamera}
                       >
@@ -1010,7 +1283,7 @@ export const AttendanceOperatorPanel = ({
                       </span>
                       <Input
                         id="member-search"
-                        className={inputControl}
+                        className="bg-[var(--surface-raised)] text-base text-[var(--ink)] placeholder:text-[var(--ink-muted)]"
                         value={query}
                         onChange={(changeEvent) =>
                           setQuery(changeEvent.target.value)
@@ -1025,9 +1298,6 @@ export const AttendanceOperatorPanel = ({
                     </label>
                     <Button
                       variant="outline"
-                      className={attendanceButtonVariants({
-                        variant: "secondary",
-                      })}
                       type="button"
                       disabled={busy}
                       onClick={() => void searchMembers()}

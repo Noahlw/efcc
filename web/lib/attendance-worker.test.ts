@@ -2490,4 +2490,499 @@ describe("attendance Worker routes", () => {
     const conflictBody = await json(conflictResp);
     assert.strictEqual(conflictBody.code, "VALIDATION");
   });
+
+  test("materializes a durable expected roster across start, early, and late enrollment boundaries", async () => {
+    const admin = await accessCookieFor("att-admin", "att-admin-password");
+    const eventId = "ATT-SNAPSHOT-BOUNDARY";
+    const start = new Date(Date.now() - 2 * 60 * 60_000);
+    const end = new Date(Date.now() - 60 * 60_000);
+    const opens = new Date(start.getTime() - 60 * 60_000);
+    const initialClose = new Date(Date.now() + 60 * 60_000);
+    const createdAt = new Date().toISOString();
+    const startEnrollment = "ATT-SNAPSHOT-START-ENROLLMENT";
+    const earlyEnrollment = "ATT-SNAPSHOT-EARLY-ENROLLMENT";
+    const lateEnrollment = "ATT-SNAPSHOT-LATE-ENROLLMENT";
+    await testDb()
+      .prepare(
+        `INSERT INTO events
+          (event_id, program_id, starts_at, ends_at, status, availability,
+           source, manual_check_in_code, check_in_window_opens_at,
+           check_in_window_closes_at, created_at, updated_at)
+         VALUES (?, ?, ?, ?, 'Active', 'Active', 'MANUAL', ?, ?, ?, ?, ?)`
+      )
+      .bind(
+        eventId,
+        PROGRAM2,
+        start.toISOString(),
+        end.toISOString(),
+        "ATT-SNAPSHOT-CODE",
+        opens.toISOString(),
+        initialClose.toISOString(),
+        createdAt,
+        createdAt
+      )
+      .run();
+    await testDb()
+      .prepare(
+        `INSERT INTO enrollments
+          (enrollment_id, program_id, member_user_id, status, enrolled_at,
+           created_at)
+         VALUES (?, ?, 'ATT-INACTIVE', 'Active', ?, ?)`
+      )
+      .bind(
+        startEnrollment,
+        PROGRAM2,
+        new Date(start.getTime() - 30 * 60_000).toISOString(),
+        createdAt
+      )
+      .run();
+    await testDb()
+      .prepare(
+        `INSERT INTO enrollments
+          (enrollment_id, program_id, member_user_id, status, enrolled_at,
+           cancelled_at, cancelled_by, created_at)
+         VALUES (?, ?, 'ATT-MEMBER', 'Cancelled', ?, ?, 'ATT-ADMIN', ?)`
+      )
+      .bind(
+        earlyEnrollment,
+        PROGRAM2,
+        new Date(start.getTime() - 20 * 60_000).toISOString(),
+        new Date(start.getTime() - 5 * 60_000).toISOString(),
+        createdAt
+      )
+      .run();
+    await testDb()
+      .prepare(
+        `INSERT INTO attendances
+          (attendance_id, event_id, member_user_id, method, status,
+           checked_in_at, checked_in_by)
+         VALUES (?, ?, 'ATT-MEMBER', 'self_manual_code', 'Active', ?, 'ATT-ADMIN')`
+      )
+      .bind(
+        "ATT-SNAPSHOT-EARLY-ATTENDANCE",
+        eventId,
+        new Date(start.getTime() - 10 * 60_000).toISOString()
+      )
+      .run();
+
+    const first = await worker.fetch(
+      request(`/api/v1/attendance/events/${eventId}/materialize`, {
+        method: "POST",
+        headers: { Cookie: `${ACCESS_COOKIE_NAME}=${admin}` },
+      }),
+      testEnv()
+    );
+    assert.strictEqual(first.status, 200);
+    const firstBody = await json(first);
+    const firstData = firstBody.data as {
+      materialization: { materialized: boolean; added_expected: number };
+      expected: { enrollment_id: string; source: string }[];
+    };
+    assert.strictEqual(firstData.materialization.materialized, true);
+    assert.strictEqual(firstData.materialization.added_expected, 2);
+    assert.deepStrictEqual(
+      firstData.expected
+        .map(({ enrollment_id, source }) => ({ enrollment_id, source }))
+        .sort((a, b) => a.enrollment_id.localeCompare(b.enrollment_id)),
+      [
+        { enrollment_id: earlyEnrollment, source: "early_attendance" },
+        { enrollment_id: startEnrollment, source: "event_start" },
+      ]
+    );
+
+    await testDb()
+      .prepare(
+        `INSERT INTO enrollments
+          (enrollment_id, program_id, member_user_id, status, enrolled_at,
+           created_at)
+         VALUES (?, ?, 'ATT-ADMIN', 'Active', ?, ?)`
+      )
+      .bind(
+        lateEnrollment,
+        PROGRAM2,
+        new Date(start.getTime() + 20 * 60_000).toISOString(),
+        createdAt
+      )
+      .run();
+    const second = await worker.fetch(
+      request(`/api/v1/attendance/events/${eventId}/materialize`, {
+        method: "POST",
+        headers: { Cookie: `${ACCESS_COOKIE_NAME}=${admin}` },
+      }),
+      testEnv()
+    );
+    assert.strictEqual(second.status, 200);
+    const secondBody = await json(second);
+    const secondData = secondBody.data as {
+      materialization: { added_expected: number };
+    };
+    assert.strictEqual(secondData.materialization.added_expected, 1);
+
+    const repeat = await worker.fetch(
+      request(`/api/v1/attendance/events/${eventId}/materialize`, {
+        method: "POST",
+        headers: { Cookie: `${ACCESS_COOKIE_NAME}=${admin}` },
+      }),
+      testEnv()
+    );
+    assert.strictEqual(repeat.status, 200);
+    const repeatBody = await json(repeat);
+    assert.strictEqual(
+      (repeatBody.data as { materialization: { added_expected: number } })
+        .materialization.added_expected,
+      0
+    );
+
+    await testDb()
+      .prepare(
+        `UPDATE enrollments
+            SET status = 'Cancelled', cancelled_at = ?, cancelled_by = 'ATT-ADMIN'
+          WHERE enrollment_id = ?`
+      )
+      .bind(new Date().toISOString(), startEnrollment)
+      .run();
+    await testDb()
+      .prepare(
+        `UPDATE events SET check_in_window_closes_at = ? WHERE event_id = ?`
+      )
+      .bind(new Date(Date.now() - 1000).toISOString(), eventId)
+      .run();
+
+    const roster = await worker.fetch(
+      request(`/api/v1/attendance/events/${eventId}/roster`, {
+        headers: { Cookie: `${ACCESS_COOKIE_NAME}=${admin}` },
+      }),
+      testEnv()
+    );
+    assert.strictEqual(roster.status, 200);
+    const rosterBody = await json(roster);
+    const rosterData = rosterBody.data as {
+      expected: {
+        enrollment_id: string;
+        member_user_id: string;
+        state: string;
+        disposition: unknown;
+      }[];
+      counts: {
+        expected: number;
+        present: number;
+        absent: number;
+        excused: number;
+      };
+      snapshot: { snapshot_id: string } | null;
+      materialization_required: boolean;
+    };
+    assert.ok(rosterData.snapshot?.snapshot_id);
+    assert.strictEqual(rosterData.materialization_required, true);
+    assert.deepStrictEqual(
+      rosterData.expected
+        .map(({ enrollment_id, state }) => ({ enrollment_id, state }))
+        .sort((a, b) => a.enrollment_id.localeCompare(b.enrollment_id)),
+      [
+        { enrollment_id: earlyEnrollment, state: "Present" },
+        { enrollment_id: lateEnrollment, state: "Absent" },
+        { enrollment_id: startEnrollment, state: "Absent" },
+      ]
+    );
+    assert.deepStrictEqual(
+      {
+        expected: rosterData.counts.expected,
+        present: rosterData.counts.present,
+        absent: rosterData.counts.absent,
+        excused: rosterData.counts.excused,
+      },
+      { expected: 3, present: 1, absent: 2, excused: 0 }
+    );
+
+    const excuseStart = await worker.fetch(
+      request(`/api/v1/attendance/events/${eventId}/excused`, {
+        method: "POST",
+        headers: { Cookie: `${ACCESS_COOKIE_NAME}=${admin}` },
+        body: JSON.stringify({
+          enrollment_id: startEnrollment,
+          reason: "照顧家人",
+        }),
+      }),
+      testEnv()
+    );
+    assert.strictEqual(excuseStart.status, 201);
+    const excuseStartBody = await json(excuseStart);
+    const excuseStartData = excuseStartBody.data as {
+      outcome: string;
+      disposition_id: string;
+    };
+    assert.strictEqual(excuseStartData.outcome, "excused");
+    assert.ok(excuseStartData.disposition_id);
+
+    const duplicateExcuse = await worker.fetch(
+      request(`/api/v1/attendance/events/${eventId}/excused`, {
+        method: "POST",
+        headers: { Cookie: `${ACCESS_COOKIE_NAME}=${admin}` },
+        body: JSON.stringify({
+          enrollment_id: startEnrollment,
+          reason: "照顧家人",
+        }),
+      }),
+      testEnv()
+    );
+    assert.strictEqual(duplicateExcuse.status, 200);
+    const duplicateExcuseBody = await json(duplicateExcuse);
+    assert.strictEqual(
+      (duplicateExcuseBody.data as { outcome: string }).outcome,
+      "already_excused"
+    );
+
+    const assisted = await worker.fetch(
+      request(`/api/v1/attendance/events/${eventId}/check-in`, {
+        method: "POST",
+        headers: { Cookie: `${ACCESS_COOKIE_NAME}=${admin}` },
+        body: JSON.stringify({
+          member_user_id: "ATT-ADMIN",
+          method: "leader_manual_search",
+        }),
+      }),
+      testEnv()
+    );
+    assert.strictEqual(assisted.status, 201);
+    const assistedBody = await json(assisted);
+    const lateAttendanceId = (assistedBody.data as { attendance_id: string })
+      .attendance_id;
+    const checkInRoster = await worker.fetch(
+      request(`/api/v1/attendance/events/${eventId}/roster`, {
+        headers: { Cookie: `${ACCESS_COOKIE_NAME}=${admin}` },
+      }),
+      testEnv()
+    );
+    const checkInRosterBody = await json(checkInRoster);
+    const checkInRosterData = checkInRosterBody.data as {
+      expected: { enrollment_id: string; source: string; state: string }[];
+    };
+    const autoMaterializedLate = checkInRosterData.expected.find(
+      (row) => row.enrollment_id === lateEnrollment
+    );
+    assert.strictEqual(autoMaterializedLate?.source, "late_approval");
+    assert.strictEqual(autoMaterializedLate?.state, "Present");
+
+    const excuseLate = await worker.fetch(
+      request(`/api/v1/attendance/events/${eventId}/excused`, {
+        method: "POST",
+        headers: { Cookie: `${ACCESS_COOKIE_NAME}=${admin}` },
+        body: JSON.stringify({
+          enrollment_id: lateEnrollment,
+          reason: "臨時請假",
+        }),
+      }),
+      testEnv()
+    );
+    assert.strictEqual(excuseLate.status, 201);
+    const presentWithExcuse = await worker.fetch(
+      request(`/api/v1/attendance/events/${eventId}/roster`, {
+        headers: { Cookie: `${ACCESS_COOKIE_NAME}=${admin}` },
+      }),
+      testEnv()
+    );
+    const presentWithExcuseBody = await json(presentWithExcuse);
+    const presentData = presentWithExcuseBody.data as {
+      expected: { enrollment_id: string; state: string }[];
+    };
+    assert.strictEqual(
+      presentData.expected.find((row) => row.enrollment_id === lateEnrollment)
+        ?.state,
+      "Present"
+    );
+
+    const voidResponse = await worker.fetch(
+      request(`/api/v1/attendance/${lateAttendanceId}/void`, {
+        method: "POST",
+        headers: { Cookie: `${ACCESS_COOKIE_NAME}=${admin}` },
+        body: JSON.stringify({ reason: "測試作廢" }),
+      }),
+      testEnv()
+    );
+    assert.strictEqual(voidResponse.status, 200);
+    const excusedAfterVoid = await worker.fetch(
+      request(`/api/v1/attendance/events/${eventId}/roster`, {
+        headers: { Cookie: `${ACCESS_COOKIE_NAME}=${admin}` },
+      }),
+      testEnv()
+    );
+    const excusedAfterVoidBody = await json(excusedAfterVoid);
+    const excusedAfterVoidData = excusedAfterVoidBody.data as {
+      expected: {
+        enrollment_id: string;
+        state: string;
+        disposition: { reason: string } | null;
+      }[];
+      counts: { absent: number; excused: number };
+    };
+    const lateAfterVoid = excusedAfterVoidData.expected.find(
+      (row) => row.enrollment_id === lateEnrollment
+    );
+    assert.strictEqual(lateAfterVoid?.state, "Excused");
+    assert.strictEqual(lateAfterVoid?.disposition?.reason, "臨時請假");
+    assert.deepStrictEqual(excusedAfterVoidData.counts, {
+      expected: 3,
+      present: 1,
+      not_yet: 0,
+      absent: 0,
+      excused: 2,
+      guests: 0,
+    });
+
+    await testDb()
+      .prepare("UPDATE events SET status = 'Cancelled' WHERE event_id = ?")
+      .bind(eventId)
+      .run();
+    const cancelledRoster = await worker.fetch(
+      request(`/api/v1/attendance/events/${eventId}/roster`, {
+        headers: { Cookie: `${ACCESS_COOKIE_NAME}=${admin}` },
+      }),
+      testEnv()
+    );
+    assert.strictEqual(cancelledRoster.status, 200);
+    const cancelledRosterBody = await json(cancelledRoster);
+    const cancelledData = cancelledRosterBody.data as {
+      expected: { enrollment_id: string; state: string }[];
+      counts: { present: number; absent: number; excused: number };
+    };
+    assert.strictEqual(cancelledData.expected.length, 3);
+    assert.ok(cancelledData.expected.every((row) => row.state === "Cancelled"));
+    assert.deepStrictEqual(cancelledData.counts, {
+      expected: 3,
+      present: 0,
+      not_yet: 0,
+      absent: 0,
+      excused: 0,
+      guests: 0,
+    });
+  });
+
+  test("participant attendance is self-only while the operator roster remains scoped", async () => {
+    const member = await accessCookieFor("att-member", "att-member-password");
+    const own = await worker.fetch(
+      request(`/api/v1/attendance/events/${EVENT}/me`, {
+        headers: { Cookie: `${ACCESS_COOKIE_NAME}=${member}` },
+      }),
+      testEnv()
+    );
+    assert.strictEqual(own.status, 200);
+    const ownBody = await json(own);
+    const ownData = ownBody.data as {
+      event: Record<string, unknown>;
+      state: string;
+      attendance: { status: string } | null;
+    };
+    assert.strictEqual(ownData.state, "Present");
+    assert.strictEqual(ownData.attendance?.status, "Active");
+    assert.strictEqual("manual_check_in_code" in ownData.event, false);
+    assert.strictEqual("attendances" in ownData, false);
+    assert.strictEqual("guests" in ownData, false);
+
+    const roster = await worker.fetch(
+      request(`/api/v1/attendance/events/${EVENT}/roster`, {
+        headers: { Cookie: `${ACCESS_COOKIE_NAME}=${member}` },
+      }),
+      testEnv()
+    );
+    assert.strictEqual(roster.status, 403);
+    const rosterBody = await json(roster);
+    assert.strictEqual(rosterBody.code, "FORBIDDEN");
+  });
+
+  test("pre-start Excused history survives cancellation without creating a snapshot row", async () => {
+    const admin = await accessCookieFor("att-admin", "att-admin-password");
+    const eventId = "ATT-SNAPSHOT-PRESTART";
+    const enrollmentId = "ATT-SNAPSHOT-PRESTART-ENROLLMENT";
+    const now = Date.now();
+    const startsAt = new Date(now + 2 * 60 * 60_000).toISOString();
+    const createdAt = new Date(now).toISOString();
+    await testDb()
+      .prepare(
+        `INSERT INTO events
+          (event_id, program_id, starts_at, ends_at, status, availability,
+           source, manual_check_in_code, check_in_window_opens_at,
+           check_in_window_closes_at, created_at, updated_at)
+         VALUES (?, ?, ?, ?, 'Active', 'Active', 'MANUAL', ?, ?, ?, ?, ?)`
+      )
+      .bind(
+        eventId,
+        PROGRAM,
+        startsAt,
+        new Date(now + 3 * 60 * 60_000).toISOString(),
+        "ATT-SNAPSHOT-PRESTART-CODE",
+        new Date(now + 60 * 60_000).toISOString(),
+        new Date(now + 4 * 60 * 60_000).toISOString(),
+        createdAt,
+        createdAt
+      )
+      .run();
+    await testDb()
+      .prepare(
+        `INSERT INTO enrollments
+          (enrollment_id, program_id, member_user_id, status, enrolled_at,
+           created_at)
+         VALUES (?, ?, 'ATT-ADMIN', 'Active', ?, ?)`
+      )
+      .bind(enrollmentId, PROGRAM, createdAt, createdAt)
+      .run();
+
+    const excused = await worker.fetch(
+      request(`/api/v1/attendance/events/${eventId}/excused`, {
+        method: "POST",
+        headers: { Cookie: `${ACCESS_COOKIE_NAME}=${admin}` },
+        body: JSON.stringify({
+          enrollment_id: enrollmentId,
+          reason: "預先請假",
+        }),
+      }),
+      testEnv()
+    );
+    assert.strictEqual(excused.status, 201);
+    await testDb()
+      .prepare(
+        `UPDATE enrollments
+            SET status = 'Cancelled', cancelled_at = ?, cancelled_by = 'ATT-ADMIN'
+          WHERE enrollment_id = ?`
+      )
+      .bind(new Date(now + 90 * 60_000).toISOString(), enrollmentId)
+      .run();
+
+    const roster = await worker.fetch(
+      request(`/api/v1/attendance/events/${eventId}/roster`, {
+        headers: { Cookie: `${ACCESS_COOKIE_NAME}=${admin}` },
+      }),
+      testEnv()
+    );
+    assert.strictEqual(roster.status, 200);
+    const rosterBody = await json(roster);
+    const data = rosterBody.data as {
+      expected: unknown[];
+      snapshot: unknown;
+    };
+    assert.strictEqual(
+      data.expected.some(
+        (row) =>
+          (row as { enrollment_id?: string }).enrollment_id === enrollmentId
+      ),
+      false
+    );
+    assert.strictEqual(data.snapshot, null);
+    const disposition = await testDb()
+      .prepare(
+        `SELECT disposition, reason, recorded_by, recorded_at
+           FROM event_attendance_dispositions
+          WHERE event_id = ? AND enrollment_id = ?`
+      )
+      .bind(eventId, enrollmentId)
+      .first<{
+        disposition: string;
+        reason: string;
+        recorded_by: string;
+        recorded_at: string;
+      }>();
+    assert.strictEqual(disposition?.disposition, "Excused");
+    assert.strictEqual(disposition?.reason, "預先請假");
+    assert.strictEqual(disposition?.recorded_by, "ATT-ADMIN");
+    assert.ok(disposition?.recorded_at);
+  });
 });

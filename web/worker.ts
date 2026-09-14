@@ -781,9 +781,12 @@ export default {
         handleAssistedCheckIn,
         handleCorrectGuest,
         handleGuestCheckIn,
+        handleListOwnAttendance,
         handleListManageableEvents,
         handleListRoster,
         handleListScannerEvents,
+        handleMaterializeAttendance,
+        handleRecordExcused,
         handleSearchMembers,
         handleResolve,
         handleSelfCheckIn,
@@ -823,13 +826,43 @@ export default {
         return handleGuestCheckIn(request, attendanceEnv);
       }
       const eventAttendance = url.pathname.match(
-        /^\/api\/v1\/attendance\/events\/(?<eventId>[^/]+)\/(?<action>check-in|roster|members)$/u
+        /^\/api\/v1\/attendance\/events\/(?<eventId>[^/]+)\/(?<action>check-in|roster|members|materialize|excused|me)$/u
       );
       if (
         eventAttendance?.groups?.action === "roster" &&
         request.method === "GET"
       ) {
         return handleListRoster(
+          request,
+          attendanceEnv,
+          eventAttendance.groups.eventId ?? ""
+        );
+      }
+      if (
+        eventAttendance?.groups?.action === "materialize" &&
+        request.method === "POST"
+      ) {
+        return handleMaterializeAttendance(
+          request,
+          attendanceEnv,
+          eventAttendance.groups.eventId ?? ""
+        );
+      }
+      if (
+        eventAttendance?.groups?.action === "excused" &&
+        request.method === "POST"
+      ) {
+        return handleRecordExcused(
+          request,
+          attendanceEnv,
+          eventAttendance.groups.eventId ?? ""
+        );
+      }
+      if (
+        eventAttendance?.groups?.action === "me" &&
+        request.method === "GET"
+      ) {
+        return handleListOwnAttendance(
           request,
           attendanceEnv,
           eventAttendance.groups.eventId ?? ""

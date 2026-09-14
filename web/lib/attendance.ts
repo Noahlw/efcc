@@ -54,6 +54,19 @@ export interface AttendanceResolveResult {
   latest?: AttendanceResolveLatest | null;
   enrolled?: boolean;
 }
+
+export type AttendanceState =
+  | "Present"
+  | "Not Yet"
+  | "Absent"
+  | "Excused"
+  | "Cancelled";
+
+export type AttendanceExpectedSource =
+  | "event_start"
+  | "early_attendance"
+  | "late_approval"
+  | "preview";
 /** Explicitly safe fields for chooser/context projections; credentials stay server-side. */
 export interface AttendanceEventSummary {
   event_id: string;
@@ -83,6 +96,99 @@ export interface AttendanceRow {
   voided_by: string | null;
   voided_at: string | null;
   void_reason: string | null;
+}
+
+/** Current Excused projection; every write is also recorded in audit_events. */
+export interface AttendanceDisposition {
+  disposition_id: string;
+  event_id: string;
+  enrollment_id: string;
+  member_user_id: string;
+  disposition: "Excused";
+  reason: string;
+  recorded_by: string;
+  recorded_at: string;
+}
+
+/** Durable marker for the Event's expected-roster capture. */
+export interface AttendanceSnapshot {
+  snapshot_id: string;
+  event_id: string;
+  materialized_at: string;
+  last_materialized_at: string;
+}
+
+export interface AttendanceExpectedRow {
+  expected_attendance_id: string | null;
+  event_id: string;
+  enrollment_id: string;
+  member_user_id: string;
+  member_name: string;
+  member_phone: string | null;
+  source: AttendanceExpectedSource;
+  state: AttendanceState;
+  attendance: AttendanceRow | null;
+  disposition: AttendanceDisposition | null;
+}
+
+export interface AttendanceRosterCounts {
+  expected: number;
+  present: number;
+  not_yet: number;
+  absent: number;
+  excused: number;
+  guests: number;
+}
+
+export interface AttendanceRosterResponse {
+  event: AttendanceEvent;
+  attendances: AttendanceRow[];
+  guests: AttendanceRow[];
+  expected: AttendanceExpectedRow[];
+  snapshot: AttendanceSnapshot | null;
+  counts: AttendanceRosterCounts;
+  /** True means a caller may explicitly POST materialize before this read. */
+  materialization_required: boolean;
+}
+
+export interface AttendanceMaterializationResult {
+  materialized: boolean;
+  added_expected: number;
+  snapshot: AttendanceSnapshot | null;
+}
+
+export interface AttendanceMaterializeResponse extends AttendanceRosterResponse {
+  materialization: AttendanceMaterializationResult;
+}
+
+export interface AttendanceParticipantEvent {
+  event_id: string;
+  program_id: string;
+  program_name: string;
+  name: string | null;
+  location: string | null;
+  starts_at: string;
+  ends_at: string;
+  check_in_window_opens_at: string;
+  check_in_window_closes_at: string;
+  status: "Active" | "Cancelled";
+  availability: "Active" | "Inactive";
+}
+
+export interface AttendanceSelfRow {
+  attendance_id: string;
+  status: "Active" | "Voided";
+  checked_in_at: string;
+}
+
+export interface AttendanceParticipantView {
+  event: AttendanceParticipantEvent;
+  state: AttendanceState | null;
+  attendance: AttendanceSelfRow | null;
+  disposition: Pick<
+    AttendanceDisposition,
+    "disposition" | "reason" | "recorded_at"
+  > | null;
 }
 
 export interface AttendanceMember {
@@ -519,6 +625,492 @@ async function audit(
     .run();
 }
 
+type DurableExpectedSource = Exclude<AttendanceExpectedSource, "preview">;
+
+interface SnapshotCandidate {
+  enrollment_id: string;
+  member_user_id: string;
+  source: DurableExpectedSource;
+}
+
+interface PreviewCandidate {
+  enrollment_id: string;
+  member_user_id: string;
+  source: AttendanceExpectedSource;
+}
+
+async function findAttendanceSnapshot(
+  db: D1Database,
+  eventId: string
+): Promise<AttendanceSnapshot | null> {
+  return (
+    (await db
+      .prepare(
+        `SELECT snapshot_id, event_id, materialized_at, last_materialized_at
+           FROM event_attendance_snapshots
+          WHERE event_id = ?`
+      )
+      .bind(eventId)
+      .first<AttendanceSnapshot>()) ?? null
+  );
+}
+
+function eventHasStarted(event: AttendanceEvent, now = new Date()): boolean {
+  const startsAt = Date.parse(event.starts_at);
+  return Number.isFinite(startsAt) && now.getTime() >= startsAt;
+}
+
+function eventWindowHasClosed(
+  event: AttendanceEvent,
+  now = new Date()
+): boolean {
+  const closesAt = Date.parse(event.check_in_window_closes_at);
+  return Number.isFinite(closesAt) && now.getTime() > closesAt;
+}
+
+function dedupeSnapshotCandidates<
+  T extends SnapshotCandidate | PreviewCandidate,
+>(candidates: readonly T[]): T[] {
+  const seenMembers = new Set<string>();
+  return candidates.filter((candidate) => {
+    if (seenMembers.has(candidate.member_user_id)) {
+      return false;
+    }
+    seenMembers.add(candidate.member_user_id);
+    return true;
+  });
+}
+
+async function listSnapshotCandidates(
+  db: D1Database,
+  event: AttendanceEvent
+): Promise<SnapshotCandidate[]> {
+  const atStart = await db
+    .prepare(
+      `SELECT enrollment_id, member_user_id, 'event_start' AS source
+         FROM enrollments
+        WHERE program_id = ?
+          AND enrolled_at <= ?
+          AND (cancelled_at IS NULL OR cancelled_at > ?)
+        ORDER BY enrolled_at ASC, enrollment_id ASC`
+    )
+    .bind(event.program_id, event.starts_at, event.starts_at)
+    .all<SnapshotCandidate>();
+
+  // An early member check-in is a durable fact even if its Enrollment was
+  // cancelled before Event start. Resolve the Enrollment that was active at
+  // the check-in instant instead of using today's Enrollment status.
+  const earlyAttendance = await db
+    .prepare(
+      `SELECT a.member_user_id, en.enrollment_id,
+              'early_attendance' AS source
+         FROM attendances a
+         JOIN enrollments en
+           ON en.program_id = ?
+          AND en.member_user_id = a.member_user_id
+          AND en.enrolled_at <= a.checked_in_at
+          AND (en.cancelled_at IS NULL OR en.cancelled_at > a.checked_in_at)
+        WHERE a.event_id = ?
+          AND a.member_user_id IS NOT NULL
+          AND a.status = 'Active'
+          AND a.checked_in_at >= ?
+          AND a.checked_in_at < ?
+        ORDER BY a.member_user_id ASC, en.enrolled_at DESC,
+                 en.enrollment_id ASC`
+    )
+    .bind(
+      event.program_id,
+      event.event_id,
+      event.check_in_window_opens_at,
+      event.starts_at
+    )
+    .all<SnapshotCandidate>();
+
+  // Late approvals are append-only Event history. A later Enrollment
+  // cancellation must not erase one that was activated before the window
+  // closed, so this query intentionally does not filter on current status.
+  const lateApprovals = await db
+    .prepare(
+      `SELECT enrollment_id, member_user_id, 'late_approval' AS source
+         FROM enrollments
+        WHERE program_id = ?
+          AND enrolled_at > ?
+          AND enrolled_at <= ?
+        ORDER BY enrolled_at ASC, enrollment_id ASC`
+    )
+    .bind(event.program_id, event.starts_at, event.check_in_window_closes_at)
+    .all<SnapshotCandidate>();
+
+  return dedupeSnapshotCandidates([
+    ...(atStart.results ?? []),
+    ...(earlyAttendance.results ?? []),
+    ...(lateApprovals.results ?? []),
+  ]);
+}
+
+async function listPreviewCandidates(
+  db: D1Database,
+  event: AttendanceEvent,
+  now: string
+): Promise<PreviewCandidate[]> {
+  const activeEnrollments = await db
+    .prepare(
+      `SELECT enrollment_id, member_user_id, 'preview' AS source
+         FROM enrollments
+        WHERE program_id = ?
+          AND status = 'Active'
+          AND enrolled_at <= ?
+        ORDER BY enrolled_at ASC, enrollment_id ASC`
+    )
+    .bind(event.program_id, now)
+    .all<PreviewCandidate>();
+  const earlyAttendance = await db
+    .prepare(
+      `SELECT a.member_user_id, en.enrollment_id,
+              'early_attendance' AS source
+         FROM attendances a
+         JOIN enrollments en
+           ON en.program_id = ?
+          AND en.member_user_id = a.member_user_id
+          AND en.enrolled_at <= a.checked_in_at
+          AND (en.cancelled_at IS NULL OR en.cancelled_at > a.checked_in_at)
+        WHERE a.event_id = ?
+          AND a.member_user_id IS NOT NULL
+          AND a.status = 'Active'
+          AND a.checked_in_at >= ?
+          AND a.checked_in_at < ?
+        ORDER BY a.member_user_id ASC, en.enrolled_at DESC,
+                 en.enrollment_id ASC`
+    )
+    .bind(
+      event.program_id,
+      event.event_id,
+      event.check_in_window_opens_at,
+      event.starts_at
+    )
+    .all<PreviewCandidate>();
+  return dedupeSnapshotCandidates([
+    ...(activeEnrollments.results ?? []),
+    ...(earlyAttendance.results ?? []),
+  ]);
+}
+
+/**
+ * Explicit, retry-safe snapshot materialization. This helper is also called
+ * from check-in mutations, but ordinary roster GET never calls it.
+ */
+export async function materializeAttendanceSnapshot(
+  db: D1Database,
+  event: AttendanceEvent
+): Promise<AttendanceMaterializationResult> {
+  if (!eventHasStarted(event)) {
+    return { materialized: false, added_expected: 0, snapshot: null };
+  }
+
+  const now = new Date().toISOString();
+  let snapshot = await findAttendanceSnapshot(db, event.event_id);
+  if (!snapshot) {
+    await db
+      .prepare(
+        `INSERT OR IGNORE INTO event_attendance_snapshots
+          (snapshot_id, event_id, materialized_at, last_materialized_at)
+         VALUES (?, ?, ?, ?)`
+      )
+      .bind(crypto.randomUUID(), event.event_id, now, now)
+      .run();
+    snapshot = await findAttendanceSnapshot(db, event.event_id);
+  }
+  if (!snapshot) {
+    throw new Error("Attendance snapshot could not be materialized");
+  }
+  const materializedSnapshot = snapshot;
+
+  const candidates = await listSnapshotCandidates(db, event);
+  const inserts = candidates.map((candidate) =>
+    db
+      .prepare(
+        `INSERT OR IGNORE INTO event_expected_attendance
+          (expected_attendance_id, event_id, snapshot_id, enrollment_id,
+           member_user_id, source, captured_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`
+      )
+      .bind(
+        crypto.randomUUID(),
+        event.event_id,
+        materializedSnapshot.snapshot_id,
+        candidate.enrollment_id,
+        candidate.member_user_id,
+        candidate.source,
+        now
+      )
+  );
+  const results = inserts.length > 0 ? await db.batch(inserts) : [];
+  const addedExpected = results.reduce(
+    (count, result) => count + Number(result.meta?.changes ?? 0),
+    0
+  );
+
+  await db
+    .prepare(
+      `UPDATE event_attendance_snapshots
+          SET last_materialized_at = ?
+        WHERE snapshot_id = ?`
+    )
+    .bind(now, materializedSnapshot.snapshot_id)
+    .run();
+  snapshot = await findAttendanceSnapshot(db, event.event_id);
+  return {
+    materialized: true,
+    added_expected: addedExpected,
+    snapshot,
+  };
+}
+
+async function ensureAttendanceSnapshot(
+  env: AttendanceEnv,
+  event: AttendanceEvent,
+  actorUserId: string | null,
+  action: string,
+  correlationId: string
+): Promise<Response | null> {
+  try {
+    await materializeAttendanceSnapshot(env.DB, event);
+    return null;
+  } catch {
+    await audit(env.DB, {
+      actorUserId,
+      action,
+      entityType: "Event",
+      entityId: event.event_id,
+      outcome: "FAILED",
+      reason: "SNAPSHOT_MATERIALIZATION_FAILED",
+      correlationId,
+    });
+    return problem(503, "UNAVAILABLE", "暫時無法更新出席名單。", correlationId);
+  }
+}
+
+function ensureAttendanceSnapshotForCheckIn(
+  env: AttendanceEnv,
+  event: AttendanceEvent,
+  actorUserId: string | null,
+  memberUserId: string | null,
+  correlationId: string
+): Promise<Response | null> {
+  if (memberUserId === null || !eventHasStarted(event)) {
+    return Promise.resolve(null);
+  }
+  return ensureAttendanceSnapshot(
+    env,
+    event,
+    actorUserId,
+    "attendance.check_in",
+    correlationId
+  );
+}
+
+function preferredAttendance(
+  rows: readonly AttendanceRow[]
+): AttendanceRow | null {
+  return (
+    rows.find((row) => row.status === "Active") ??
+    [...rows].sort((left, right) => {
+      const leftAt = left.voided_at ?? left.checked_in_at;
+      const rightAt = right.voided_at ?? right.checked_in_at;
+      return rightAt.localeCompare(leftAt);
+    })[0] ??
+    null
+  );
+}
+
+async function loadAttendanceRoster(
+  db: D1Database,
+  event: AttendanceEvent
+): Promise<Omit<AttendanceRosterResponse, "event">> {
+  const [snapshot, attendanceResult, dispositionResult] = await Promise.all([
+    findAttendanceSnapshot(db, event.event_id),
+    db
+      .prepare(
+        `SELECT * FROM attendances
+          WHERE event_id = ?
+          ORDER BY checked_in_at ASC, attendance_id ASC`
+      )
+      .bind(event.event_id)
+      .all<AttendanceRow>(),
+    db
+      .prepare(
+        `SELECT disposition_id, event_id, enrollment_id, member_user_id,
+                disposition, reason, recorded_by, recorded_at
+           FROM event_attendance_dispositions
+          WHERE event_id = ?
+          ORDER BY recorded_at ASC, disposition_id ASC`
+      )
+      .bind(event.event_id)
+      .all<AttendanceDisposition>(),
+  ]);
+  const attendances = attendanceResult.results ?? [];
+  const dispositions = dispositionResult.results ?? [];
+  const dispositionByEnrollment = new Map(
+    dispositions.map((disposition) => [disposition.enrollment_id, disposition])
+  );
+
+  let expectedRecords: {
+    expected_attendance_id: string | null;
+    event_id: string;
+    enrollment_id: string;
+    member_user_id: string;
+    member_name: string;
+    member_phone: string | null;
+    source: AttendanceExpectedSource;
+  }[] = [];
+  if (snapshot) {
+    const result = await db
+      .prepare(
+        `SELECT expected.expected_attendance_id,
+                expected.event_id, expected.enrollment_id,
+                expected.member_user_id, expected.source,
+                accounts.name AS member_name, accounts.phone AS member_phone
+           FROM event_expected_attendance expected
+           JOIN accounts ON accounts.user_id = expected.member_user_id
+          WHERE expected.event_id = ?
+          ORDER BY accounts.name ASC, expected.member_user_id ASC`
+      )
+      .bind(event.event_id)
+      .all<
+        Omit<AttendanceExpectedRow, "state" | "attendance" | "disposition">
+      >();
+    expectedRecords = result.results ?? [];
+  } else if (!eventHasStarted(event) && event.status !== "Cancelled") {
+    const preview = await listPreviewCandidates(
+      db,
+      event,
+      new Date().toISOString()
+    );
+    const memberIds = preview.map((candidate) => candidate.member_user_id);
+    if (memberIds.length > 0) {
+      const placeholders = memberIds.map(() => "?").join(", ");
+      const result = await db
+        .prepare(
+          `SELECT user_id AS member_user_id, name AS member_name,
+                  phone AS member_phone
+             FROM accounts
+            WHERE user_id IN (${placeholders})`
+        )
+        .bind(...memberIds)
+        .all<{
+          member_user_id: string;
+          member_name: string;
+          member_phone: string | null;
+        }>();
+      const members = new Map(
+        (result.results ?? []).map((member) => [member.member_user_id, member])
+      );
+      expectedRecords = preview.flatMap((candidate) => {
+        const member = members.get(candidate.member_user_id);
+        return member
+          ? [
+              {
+                expected_attendance_id: null,
+                event_id: event.event_id,
+                enrollment_id: candidate.enrollment_id,
+                member_user_id: candidate.member_user_id,
+                member_name: member.member_name,
+                member_phone: member.member_phone,
+                source: candidate.source,
+              },
+            ]
+          : [];
+      });
+    }
+  }
+
+  const attendancesByMember = new Map<string, AttendanceRow[]>();
+  for (const attendance of attendances) {
+    if (!attendance.member_user_id) {
+      continue;
+    }
+    const rows = attendancesByMember.get(attendance.member_user_id) ?? [];
+    rows.push(attendance);
+    attendancesByMember.set(attendance.member_user_id, rows);
+  }
+
+  const expected = expectedRecords.map((record) => {
+    const attendance = preferredAttendance(
+      attendancesByMember.get(record.member_user_id) ?? []
+    );
+    const disposition =
+      dispositionByEnrollment.get(record.enrollment_id) ?? null;
+    const state: AttendanceState =
+      event.status === "Cancelled"
+        ? "Cancelled"
+        : attendance?.status === "Active"
+          ? "Present"
+          : disposition
+            ? "Excused"
+            : eventWindowHasClosed(event)
+              ? "Absent"
+              : "Not Yet";
+    return { ...record, state, attendance, disposition };
+  });
+
+  const counts: AttendanceRosterCounts = {
+    expected: expected.length,
+    present: 0,
+    not_yet: 0,
+    absent: 0,
+    excused: 0,
+    guests: attendances.filter(
+      (attendance) =>
+        attendance.member_user_id === null && attendance.status === "Active"
+    ).length,
+  };
+  if (event.status !== "Cancelled") {
+    for (const row of expected) {
+      if (row.state === "Present") {
+        counts.present += 1;
+      }
+      if (row.state === "Not Yet") {
+        counts.not_yet += 1;
+      }
+      if (row.state === "Absent") {
+        counts.absent += 1;
+      }
+      if (row.state === "Excused") {
+        counts.excused += 1;
+      }
+    }
+  }
+
+  return {
+    attendances,
+    guests: attendances.filter(
+      (attendance) => attendance.member_user_id === null
+    ),
+    expected,
+    snapshot,
+    counts,
+    // A started Event always permits an explicit retry/reconciliation call.
+    // This is a read hint only; GET itself remains write-free.
+    materialization_required: eventHasStarted(event),
+  };
+}
+
+function participantEvent(event: AttendanceEvent): AttendanceParticipantEvent {
+  return {
+    event_id: event.event_id,
+    program_id: event.program_id,
+    program_name: event.program_name,
+    name: event.name,
+    location: event.location,
+    starts_at: event.starts_at,
+    ends_at: event.ends_at,
+    check_in_window_opens_at: event.check_in_window_opens_at,
+    check_in_window_closes_at: event.check_in_window_closes_at,
+    status: event.status,
+    availability: event.availability,
+  };
+}
+
 /**
  * Scanner deep-link resolver. Looks up the event by id and mirrors the
  * existing resolveLookup contract: returns the open event when eligible,
@@ -682,6 +1274,7 @@ async function checkInGate(
   return null;
 }
 
+// oxlint-disable-next-line eslint/complexity -- check-in keeps gate, duplicate, audit, and snapshot branches together at the mutation boundary.
 async function insertAttendance(
   env: AttendanceEnv,
   event: AttendanceEvent,
@@ -700,6 +1293,16 @@ async function insertAttendance(
   const gated = await checkInGate(env, event, input, id, windowGated);
   if (gated) {
     return gated;
+  }
+  const snapshotFailure = await ensureAttendanceSnapshotForCheckIn(
+    env,
+    event,
+    input.actor?.user_id ?? null,
+    input.memberUserId,
+    id
+  );
+  if (snapshotFailure) {
+    return snapshotFailure;
   }
   const attendanceId = crypto.randomUUID();
   try {
@@ -1065,12 +1668,338 @@ export async function handleListRoster(
     return operator;
   }
   const { event } = operator;
-  const result = await env.DB.prepare(
-    `SELECT * FROM attendances WHERE event_id = ? ORDER BY checked_in_at ASC`
+  const roster = await loadAttendanceRoster(env.DB, event);
+  return json(200, { event, ...roster }, id);
+}
+
+/** POST /api/v1/attendance/events/:eventId/materialize */
+export async function handleMaterializeAttendance(
+  request: Request,
+  env: AttendanceEnv,
+  eventId: string
+): Promise<Response> {
+  const id = requestId();
+  const operator = await requireEventOperator(
+    request,
+    env,
+    eventId,
+    id,
+    "attendance.snapshot_materialize"
+  );
+  if (operator instanceof Response) {
+    return operator;
+  }
+  const { event, current } = operator;
+  const materialization = await materializeAttendanceSnapshot(env.DB, event);
+  await audit(env.DB, {
+    actorUserId: current.user_id,
+    action: "attendance.snapshot_materialize",
+    entityType: "Event",
+    entityId: event.event_id,
+    outcome: "SUCCESS",
+    newValue: {
+      snapshot_id: materialization.snapshot?.snapshot_id ?? null,
+      added_expected: materialization.added_expected,
+    },
+    correlationId: id,
+  });
+  const roster = await loadAttendanceRoster(env.DB, event);
+  return json(200, { event, ...roster, materialization }, id);
+}
+
+async function parseExcuseInput(
+  request: Request,
+  id: string
+): Promise<{ enrollmentId: string; reason: string } | Response> {
+  const input = await body<{
+    enrollment_id?: unknown;
+    reason?: unknown;
+  }>(request);
+  if (
+    !input ||
+    typeof input.enrollment_id !== "string" ||
+    !input.enrollment_id.trim() ||
+    typeof input.reason !== "string" ||
+    !input.reason.trim()
+  ) {
+    return problem(422, "VALIDATION", "請輸入請假原因。", id);
+  }
+  const enrollmentId = input.enrollment_id.trim();
+  const reason = input.reason.trim();
+  if (reason.length > 500) {
+    return problem(422, "VALIDATION", "請假原因不可超過 500 個字元。", id);
+  }
+  return { enrollmentId, reason };
+}
+
+/** POST /api/v1/attendance/events/:eventId/excused */
+export async function handleRecordExcused(
+  request: Request,
+  env: AttendanceEnv,
+  eventId: string
+): Promise<Response> {
+  const id = requestId();
+  const operator = await requireEventOperator(
+    request,
+    env,
+    eventId,
+    id,
+    "attendance.excused"
+  );
+  if (operator instanceof Response) {
+    return operator;
+  }
+  const { current, event } = operator;
+  const input = await parseExcuseInput(request, id);
+  if (input instanceof Response) {
+    return input;
+  }
+  const { enrollmentId, reason } = input;
+  if (event.status === "Cancelled") {
+    return problem(409, "EVENT_CANCELLED", "已取消的聚會不能記錄請假。", id);
+  }
+
+  const started = eventHasStarted(event);
+  if (started) {
+    const snapshotFailure = await ensureAttendanceSnapshot(
+      env,
+      event,
+      current.user_id,
+      "attendance.excused",
+      id
+    );
+    if (snapshotFailure) {
+      return snapshotFailure;
+    }
+  }
+
+  const enrollment = await env.DB.prepare(
+    `SELECT enrollment_id, program_id, member_user_id, status, enrolled_at,
+            cancelled_at
+       FROM enrollments
+      WHERE enrollment_id = ? AND program_id = ?`
   )
-    .bind(eventId)
-    .all<AttendanceRow>();
-  return json(200, { event, attendances: result.results ?? [] }, id);
+    .bind(enrollmentId, event.program_id)
+    .first<{
+      enrollment_id: string;
+      program_id: string;
+      member_user_id: string;
+      status: "Active" | "Cancelled";
+      enrolled_at: string;
+      cancelled_at: string | null;
+    }>();
+  if (!enrollment) {
+    return problem(404, "NOT_FOUND", "找不到此聚會的報名記錄。", id);
+  }
+  if (!started && enrollment.status !== "Active") {
+    await audit(env.DB, {
+      actorUserId: current.user_id,
+      action: "attendance.excused",
+      entityType: "AttendanceDisposition",
+      entityId: enrollmentId,
+      outcome: "DENIED",
+      reason: "ENROLLMENT_NOT_ACTIVE",
+      correlationId: id,
+    });
+    return problem(409, "ENROLLMENT_REQUIRED", "此成員目前未報名此課程。", id);
+  }
+
+  if (started) {
+    const expected = await env.DB.prepare(
+      `SELECT expected_attendance_id
+         FROM event_expected_attendance
+        WHERE event_id = ? AND enrollment_id = ?`
+    )
+      .bind(event.event_id, enrollmentId)
+      .first<{ expected_attendance_id: string }>();
+    if (!expected) {
+      await audit(env.DB, {
+        actorUserId: current.user_id,
+        action: "attendance.excused",
+        entityType: "AttendanceDisposition",
+        entityId: enrollmentId,
+        outcome: "DENIED",
+        reason: "NOT_EXPECTED",
+        correlationId: id,
+      });
+      return problem(409, "CONFLICT", "此報名記錄不在聚會預期名單內。", id);
+    }
+  }
+
+  const existing = await env.DB.prepare(
+    `SELECT disposition_id, event_id, enrollment_id, member_user_id,
+            disposition, reason, recorded_by, recorded_at
+       FROM event_attendance_dispositions
+      WHERE event_id = ? AND enrollment_id = ?`
+  )
+    .bind(event.event_id, enrollmentId)
+    .first<AttendanceDisposition>();
+  if (existing?.reason === reason) {
+    await audit(env.DB, {
+      actorUserId: current.user_id,
+      action: "attendance.excused",
+      entityType: "AttendanceDisposition",
+      entityId: existing.disposition_id,
+      outcome: "DUPLICATE",
+      reason,
+      correlationId: id,
+    });
+    return json(
+      200,
+      {
+        outcome: "already_excused",
+        disposition_id: existing.disposition_id,
+        enrollment_id: enrollmentId,
+      },
+      id
+    );
+  }
+
+  const dispositionId = existing?.disposition_id ?? crypto.randomUUID();
+  const recordedAt = new Date().toISOString();
+  await env.DB.prepare(
+    `INSERT INTO event_attendance_dispositions
+      (disposition_id, event_id, enrollment_id, member_user_id, disposition,
+       reason, recorded_by, recorded_at)
+     VALUES (?, ?, ?, ?, 'Excused', ?, ?, ?)
+     ON CONFLICT(event_id, enrollment_id) DO UPDATE SET
+       member_user_id = excluded.member_user_id,
+       disposition = excluded.disposition,
+       reason = excluded.reason,
+       recorded_by = excluded.recorded_by,
+       recorded_at = excluded.recorded_at`
+  )
+    .bind(
+      dispositionId,
+      event.event_id,
+      enrollmentId,
+      enrollment.member_user_id,
+      reason,
+      current.user_id,
+      recordedAt
+    )
+    .run();
+  await audit(env.DB, {
+    actorUserId: current.user_id,
+    action: "attendance.excused",
+    entityType: "AttendanceDisposition",
+    entityId: dispositionId,
+    outcome: "SUCCESS",
+    oldValue: existing
+      ? {
+          disposition: existing.disposition,
+          reason: existing.reason,
+          recorded_by: existing.recorded_by,
+          recorded_at: existing.recorded_at,
+        }
+      : undefined,
+    newValue: {
+      disposition: "Excused",
+      reason,
+      recorded_by: current.user_id,
+      recorded_at: recordedAt,
+      enrollment_id: enrollmentId,
+    },
+    reason,
+    correlationId: id,
+  });
+  return json(
+    existing ? 200 : 201,
+    {
+      outcome: "excused",
+      disposition_id: dispositionId,
+      enrollment_id: enrollmentId,
+    },
+    id
+  );
+}
+
+/** GET /api/v1/attendance/events/:eventId/me — participant self projection. */
+export async function handleListOwnAttendance(
+  request: Request,
+  env: AttendanceEnv,
+  eventId: string
+): Promise<Response> {
+  const id = requestId();
+  const current = await requireActor(request, env, id);
+  if (current instanceof Response) {
+    return current;
+  }
+  const event = await findEvent(env.DB, eventId);
+  if (!event) {
+    return problem(404, "NOT_FOUND", "找不到聚會。", id);
+  }
+  const [attendanceResult, snapshot] = await Promise.all([
+    env.DB.prepare(
+      `SELECT attendance_id, status, checked_in_at
+           FROM attendances
+          WHERE event_id = ? AND member_user_id = ?
+          ORDER BY checked_in_at DESC, attendance_id DESC`
+    )
+      .bind(event.event_id, current.user_id)
+      .all<AttendanceSelfRow>(),
+    findAttendanceSnapshot(env.DB, event.event_id),
+  ]);
+  const attendanceHistory = attendanceResult.results ?? [];
+  const activeAttendance =
+    attendanceHistory.find((attendance) => attendance.status === "Active") ??
+    null;
+  let enrollmentId: string | null = null;
+  if (snapshot) {
+    const expected = await env.DB.prepare(
+      `SELECT enrollment_id
+         FROM event_expected_attendance
+        WHERE event_id = ? AND member_user_id = ?`
+    )
+      .bind(event.event_id, current.user_id)
+      .first<{ enrollment_id: string }>();
+    enrollmentId = expected?.enrollment_id ?? null;
+  } else if (!eventHasStarted(event) && event.status !== "Cancelled") {
+    const enrollment = await env.DB.prepare(
+      `SELECT enrollment_id
+         FROM enrollments
+        WHERE program_id = ? AND member_user_id = ? AND status = 'Active'
+        ORDER BY enrolled_at DESC, enrollment_id DESC LIMIT 1`
+    )
+      .bind(event.program_id, current.user_id)
+      .first<{ enrollment_id: string }>();
+    enrollmentId = enrollment?.enrollment_id ?? null;
+  }
+  if (!activeAttendance && !enrollmentId) {
+    return problem(403, "FORBIDDEN", "你沒有此聚會的出席資料。", id);
+  }
+
+  const disposition = enrollmentId
+    ? await env.DB.prepare(
+        `SELECT disposition, reason, recorded_at
+           FROM event_attendance_dispositions
+          WHERE event_id = ? AND enrollment_id = ?`
+      )
+        .bind(event.event_id, enrollmentId)
+        .first<
+          Pick<AttendanceDisposition, "disposition" | "reason" | "recorded_at">
+        >()
+    : null;
+  const state: AttendanceState =
+    event.status === "Cancelled"
+      ? "Cancelled"
+      : activeAttendance
+        ? "Present"
+        : disposition
+          ? "Excused"
+          : eventWindowHasClosed(event)
+            ? "Absent"
+            : "Not Yet";
+  return json(
+    200,
+    {
+      event: participantEvent(event),
+      state,
+      attendance: activeAttendance,
+      disposition: disposition ?? null,
+    } satisfies AttendanceParticipantView,
+    id
+  );
 }
 
 export async function handleAssistedCheckIn(

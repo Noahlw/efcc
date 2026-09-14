@@ -9,11 +9,12 @@
 import { RpcError } from "@/lib/api";
 import type { ProblemDetails } from "@/lib/api";
 import type {
-  AttendanceEvent as AttendanceEventType,
   AttendanceEventSummary as AttendanceEventSummaryType,
   AttendanceMember as AttendanceMemberType,
+  AttendanceMaterializeResponse as AttendanceMaterializeResponseType,
+  AttendanceParticipantView as AttendanceParticipantViewType,
   AttendanceResolveResult as AttendanceResolveResultType,
-  AttendanceRow as AttendanceRowType,
+  AttendanceRosterResponse as AttendanceRosterResponseType,
 } from "@/lib/attendance";
 
 import type { ManagementHubView } from "./hub-types";
@@ -31,12 +32,23 @@ export type {
 // Attendance contracts are owned by the Worker handler module (`@/lib/attendance.ts`).
 // Re-export under the original names so the browser surface has one shared shape.
 export type {
+  AttendanceDisposition,
   AttendanceEvent,
   AttendanceEventSummary,
+  AttendanceExpectedRow,
   AttendanceMember,
+  AttendanceMaterializationResult,
+  AttendanceMaterializeResponse,
+  AttendanceParticipantEvent,
+  AttendanceParticipantView,
   AttendanceResolveLatest,
   AttendanceResolveResult,
+  AttendanceRosterCounts,
+  AttendanceRosterResponse,
   AttendanceRow,
+  AttendanceSelfRow,
+  AttendanceSnapshot,
+  AttendanceState,
 } from "@/lib/attendance";
 
 export interface Department {
@@ -1263,11 +1275,19 @@ export function cancelEvent(
 // --- Attendance client (Spec 081) ---
 
 export interface AttendanceResult {
-  outcome: "success" | "duplicate" | "already_voided" | "voided" | "corrected";
+  outcome:
+    | "success"
+    | "duplicate"
+    | "already_voided"
+    | "voided"
+    | "corrected"
+    | "excused"
+    | "already_excused";
   /** Present on success/void/correction; deliberately ABSENT on duplicate
    *  (Spec #244 dec 14: duplicate responses must not echo the existing
    *  record's id — it would be an identity oracle for public guests). */
   attendance_id?: string;
+  disposition_id?: string;
 }
 
 /** GET /api/v1/attendance/resolve */
@@ -1359,9 +1379,42 @@ export function assistedCheckIn(
 /** GET /api/v1/attendance/events/:eventId/roster */
 export function listAttendanceRoster(
   eventId: string
-): Promise<{ event: AttendanceEventType; attendances: AttendanceRowType[] }> {
+): Promise<AttendanceRosterResponseType> {
   return programsFetch(
     `/api/v1/attendance/events/${encodeURIComponent(eventId)}/roster`,
+    "GET"
+  );
+}
+
+/** POST /api/v1/attendance/events/:eventId/materialize */
+export function materializeAttendanceSnapshot(
+  eventId: string
+): Promise<AttendanceMaterializeResponseType> {
+  return programsFetch(
+    `/api/v1/attendance/events/${encodeURIComponent(eventId)}/materialize`,
+    "POST"
+  );
+}
+
+/** POST /api/v1/attendance/events/:eventId/excused */
+export function recordExcusedAttendance(
+  eventId: string,
+  enrollmentId: string,
+  reason: string
+): Promise<AttendanceResult> {
+  return programsFetch(
+    `/api/v1/attendance/events/${encodeURIComponent(eventId)}/excused`,
+    "POST",
+    { enrollment_id: enrollmentId, reason }
+  );
+}
+
+/** GET /api/v1/attendance/events/:eventId/me — participant self projection. */
+export function getOwnAttendance(
+  eventId: string
+): Promise<AttendanceParticipantViewType> {
+  return programsFetch(
+    `/api/v1/attendance/events/${encodeURIComponent(eventId)}/me`,
     "GET"
   );
 }
