@@ -30,6 +30,24 @@ const notification: ManagementNotifications["items"][number] = {
   department_name: "青年事工",
 };
 
+const eventNotification: ManagementNotifications["items"][number] = {
+  kind: "event",
+  source_key: "event:event-1",
+  source_revision: "v1:Active:Inactive:2026-08-14T11:00:00.000Z",
+  read: false,
+  actionable: true,
+  event_id: "event-1",
+  program_id: "program-1",
+  program_name: "青年團契",
+  department_id: "dept-1",
+  department_name: "青年事工",
+  starts_at: "2026-08-21T11:30:00.000Z",
+  status: "Active",
+  availability: "Inactive",
+  name: "青年團契週會",
+  updated_at: "2026-08-14T11:00:00.000Z",
+};
+
 const readyState = (
   overrides: Partial<ManagementNotifications> = {}
 ): ManagementNotificationState => ({
@@ -45,7 +63,7 @@ const readyState = (
 describe("management notification control", () => {
   afterEach(cleanup);
 
-  test("keeps the compact bell small and marks visible unread sources on open", async () => {
+  test("keeps the compact bell small without marking unread sources on open", async () => {
     const user = userEvent.setup();
     const onMarkRead = vi.fn<ProgramsNotificationsProps["onMarkRead"]>();
 
@@ -69,10 +87,88 @@ describe("management notification control", () => {
         name: COPY.programs.notificationsTitle,
       })
     ).toHaveAttribute("data-feed-state", "ready");
-    await waitFor(() => expect(onMarkRead).toHaveBeenCalledOnce());
+    expect(onMarkRead).not.toHaveBeenCalled();
     expect(
-      screen.queryByText(COPY.programs.notificationsUnread)
-    ).not.toBeInTheDocument();
+      screen.getByLabelText(COPY.programs.notificationsUnread)
+    ).toBeInTheDocument();
+  });
+
+  test("marks only loaded unread items after an explicit Mark All action", async () => {
+    const user = userEvent.setup();
+    const onMarkRead = vi
+      .fn<ProgramsNotificationsProps["onMarkRead"]>()
+      .mockResolvedValue();
+    render(
+      <ProgramsNotifications
+        state={readyState({
+          items: [notification, eventNotification],
+          unread_count: 2,
+        })}
+        onRetry={vi.fn<ProgramsNotificationsProps["onRetry"]>()}
+        onMarkRead={onMarkRead}
+      />
+    );
+
+    await user.click(
+      screen.getByRole("button", {
+        name: COPY.programs.notificationBellTitle,
+      })
+    );
+    expect(onMarkRead).not.toHaveBeenCalled();
+
+    await user.click(
+      screen.getByRole("button", { name: COPY.notices.noticesMarkAllRead })
+    );
+
+    await waitFor(() => expect(onMarkRead).toHaveBeenCalledOnce());
+    expect(onMarkRead).toHaveBeenCalledWith([
+      expect.objectContaining({
+        source_key: notification.source_key,
+        source_revision: notification.source_revision,
+      }),
+      expect.objectContaining({
+        source_key: eventNotification.source_key,
+        source_revision: eventNotification.source_revision,
+      }),
+    ]);
+    expect(
+      screen.queryAllByLabelText(COPY.programs.notificationsUnread)
+    ).toHaveLength(0);
+  });
+
+  test("keeps Mark All busy until the read write settles", async () => {
+    const user = userEvent.setup();
+    const { promise: pendingRead, resolve: resolveRead } =
+      Promise.withResolvers<void>();
+    const onMarkRead = vi
+      .fn<ProgramsNotificationsProps["onMarkRead"]>()
+      .mockReturnValue(pendingRead);
+
+    render(
+      <ProgramsNotifications
+        state={readyState()}
+        onRetry={vi.fn<ProgramsNotificationsProps["onRetry"]>()}
+        onMarkRead={onMarkRead}
+      />
+    );
+
+    await user.click(
+      screen.getByRole("button", {
+        name: COPY.programs.notificationBellTitle,
+      })
+    );
+    const markAll = screen.getByRole("button", {
+      name: COPY.notices.noticesMarkAllRead,
+    });
+    await user.click(markAll);
+
+    expect(markAll).toBeDisabled();
+    expect(markAll).toHaveAttribute("aria-busy", "true");
+    resolveRead();
+    await waitFor(() => {
+      expect(markAll).toBeDisabled();
+      expect(markAll).toHaveAttribute("aria-busy", "false");
+    });
   });
 
   test("keeps the unread badge when marking read fails", async () => {
@@ -94,9 +190,15 @@ describe("management notification control", () => {
         name: COPY.programs.notificationBellTitle,
       })
     );
+    await user.click(
+      screen.getByRole("button", { name: COPY.notices.noticesMarkAllRead })
+    );
     await waitFor(() => expect(onMarkRead).toHaveBeenCalledOnce());
     const readAlert = screen.getByRole("alert");
     expect(readAlert).toHaveTextContent(COPY.programs.notificationsReadError);
+    expect(
+      screen.getByLabelText(COPY.programs.notificationsUnread)
+    ).toBeInTheDocument();
     await user.click(
       within(readAlert).getByRole("button", {
         name: COPY.programs.notificationsRetry,
@@ -104,8 +206,40 @@ describe("management notification control", () => {
     );
     await waitFor(() => expect(onMarkRead).toHaveBeenCalledTimes(2));
     expect(
-      screen.queryByText(COPY.programs.notificationsUnread)
+      screen.queryByLabelText(COPY.programs.notificationsUnread)
     ).not.toBeInTheDocument();
+  });
+
+  test("waits for an item read to settle before closing the compact panel", async () => {
+    const user = userEvent.setup();
+    const { promise: pendingRead, resolve: resolveRead } =
+      Promise.withResolvers<void>();
+    const onMarkRead = vi
+      .fn<ProgramsNotificationsProps["onMarkRead"]>()
+      .mockReturnValue(pendingRead);
+
+    render(
+      <ProgramsNotifications
+        state={readyState()}
+        onRetry={vi.fn<ProgramsNotificationsProps["onRetry"]>()}
+        onMarkRead={onMarkRead}
+      />
+    );
+
+    await user.click(
+      screen.getByRole("button", {
+        name: COPY.programs.notificationBellTitle,
+      })
+    );
+    await user.click(screen.getByRole("link", { name: /青年團契/u }));
+
+    expect(onMarkRead).toHaveBeenCalledOnce();
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+
+    resolveRead();
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument()
+    );
   });
 
   test("renders empty and error states in the same bounded surface", () => {
@@ -148,7 +282,10 @@ describe("management notification control", () => {
 
     const { container } = render(
       <ProgramsNotifications
-        state={readyState()}
+        state={readyState({
+          items: [notification, eventNotification],
+          unread_count: 2,
+        })}
         onRetry={vi.fn<ProgramsNotificationsProps["onRetry"]>()}
         onMarkRead={onMarkRead}
         full
@@ -174,18 +311,17 @@ describe("management notification control", () => {
         name: COPY.programs.notificationsUnreadSection,
       })
     ).toBeInTheDocument();
-    expect(
-      scoped.queryByRole("button", {
-        name: COPY.programs.notificationBellTitle,
-      })
-    ).not.toBeInTheDocument();
     expect(onMarkRead).not.toHaveBeenCalled();
-    expect(scoped.getByRole("link", { name: /青年團契/u })).toHaveAttribute(
+    const enrollmentLink = scoped.getByRole("link", {
+      name: new RegExp(COPY.programs.notificationsEnrollmentLabel, "u"),
+    });
+    expect(enrollmentLink).toHaveAttribute(
       "href",
       "/programs?mode=management&department=dept-1&program=program-1&task=participants#overview"
     );
-    await user.click(scoped.getByRole("link", { name: /青年團契/u }));
+    await user.click(enrollmentLink);
     await waitFor(() => {
+      expect(onMarkRead).toHaveBeenCalledOnce();
       expect(onMarkRead).toHaveBeenCalledWith([
         expect.objectContaining({
           source_key: notification.source_key,
@@ -193,6 +329,9 @@ describe("management notification control", () => {
         }),
       ]);
     });
+    expect(
+      scoped.getAllByLabelText(COPY.programs.notificationsUnread)
+    ).toHaveLength(1);
   });
 
   test("uses a semantic canonical link for the compact view-all action", async () => {

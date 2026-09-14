@@ -42,6 +42,8 @@ const styles = {
     "flex min-w-0 flex-wrap items-center justify-between gap-2 [overflow-wrap:anywhere]",
   notificationViewAll:
     "inline-flex min-h-11 min-w-11 w-fit items-center rounded-[var(--screen-radius-control)] border border-[var(--screen-line-strong)] bg-transparent px-4 py-2 text-[var(--screen-ink)] whitespace-normal hover:bg-[var(--screen-surface-soft)]",
+  markAll:
+    "min-h-11 w-fit whitespace-normal border-[var(--screen-line-strong)] bg-transparent px-4 py-2 text-[var(--screen-ink)] hover:bg-[var(--screen-surface-soft)]",
 } as const;
 
 export type ManagementNotificationState =
@@ -53,6 +55,16 @@ type ReadableNotification = Pick<
   ManagementNotificationItem,
   "source_key" | "source_revision"
 >;
+
+type NotificationReadHandler = (
+  items: readonly ReadableNotification[],
+  afterSuccess?: () => void
+) => void | Promise<unknown>;
+
+interface ReadAttempt {
+  items: readonly ReadableNotification[];
+  afterSuccess?: () => void;
+}
 
 export interface ProgramsNotificationsProps extends Pick<
   FeedPresentationProps,
@@ -93,8 +105,9 @@ function notificationHref(
 
 type NotificationListProps = Pick<
   ProgramsNotificationsProps,
-  "state" | "onMarkRead" | "hash"
+  "state" | "hash"
 > & {
+  onMarkRead: NotificationReadHandler;
   onNavigate?: () => void;
 };
 
@@ -105,58 +118,71 @@ const NotificationRows = ({
   hash,
 }: {
   items: readonly ManagementNotificationItem[];
-  onMarkRead: NotificationListProps["onMarkRead"];
+  onMarkRead: NotificationReadHandler;
   onNavigate?: () => void;
   hash?: string | null;
-}) => (
-  <ScreenRowList aria-label={COPY.programs.notificationsListLabel}>
-    {items.map((item) => {
-      const title =
-        item.kind === "enrollment"
-          ? COPY.programs.notificationsEnrollmentLabel
-          : item.actionable
-            ? COPY.programs.notificationsEventLabel
-            : COPY.programs.notificationsEventInformationalLabel;
-      const detail =
-        item.kind === "enrollment"
-          ? COPY.programs.notificationsEnrollmentCount.replace(
-              "{count}",
-              String(item.count)
-            )
-          : `${item.name ? `${item.name} · ` : ""}${hkWallDateTimeLabel(item.starts_at)}`;
-      return (
-        <ScreenRow key={`${item.source_key}:${item.source_revision}`} asChild>
-          <Link
-            href={notificationHref(item, hash)}
-            onClick={() => {
-              onNavigate?.();
-              void onMarkRead([item]);
-            }}
-          >
-            {item.read || (
-              <span
-                aria-label={COPY.programs.notificationsUnread}
-                className="size-2 shrink-0 rounded-full bg-[var(--screen-accent)]"
-              />
-            )}
-            <ScreenRowMain>
-              <ScreenRowTitle>{title}</ScreenRowTitle>
-              <ScreenRowMeta>
-                {item.program_name} · {item.department_name} · {detail}
-              </ScreenRowMeta>
-            </ScreenRowMain>
-            <ScreenRowTrailing>
-              <ChevronRight
-                aria-hidden="true"
-                className="size-5 text-[var(--screen-muted)]"
-              />
-            </ScreenRowTrailing>
-          </Link>
-        </ScreenRow>
-      );
-    })}
-  </ScreenRowList>
-);
+}) => {
+  const navigationBypassRef = useRef<Set<string>>(new Set());
+
+  return (
+    <ScreenRowList aria-label={COPY.programs.notificationsListLabel}>
+      {items.map((item) => {
+        const itemKey = `${item.source_key}:${item.source_revision}`;
+        const title =
+          item.kind === "enrollment"
+            ? COPY.programs.notificationsEnrollmentLabel
+            : item.actionable
+              ? COPY.programs.notificationsEventLabel
+              : COPY.programs.notificationsEventInformationalLabel;
+        const detail =
+          item.kind === "enrollment"
+            ? COPY.programs.notificationsEnrollmentCount.replace(
+                "{count}",
+                String(item.count)
+              )
+            : `${item.name ? `${item.name} · ` : ""}${hkWallDateTimeLabel(item.starts_at)}`;
+        return (
+          <ScreenRow key={itemKey} asChild>
+            <Link
+              href={notificationHref(item, hash)}
+              onClick={(event) => {
+                if (navigationBypassRef.current.delete(itemKey)) {
+                  return;
+                }
+                event.preventDefault();
+                const link = event.currentTarget;
+                void onMarkRead([item], () => {
+                  navigationBypassRef.current.add(itemKey);
+                  onNavigate?.();
+                  link.click();
+                });
+              }}
+            >
+              {item.read || (
+                <span
+                  aria-label={COPY.programs.notificationsUnread}
+                  className="size-2 shrink-0 rounded-full bg-[var(--screen-accent)]"
+                />
+              )}
+              <ScreenRowMain>
+                <ScreenRowTitle>{title}</ScreenRowTitle>
+                <ScreenRowMeta>
+                  {item.program_name} · {item.department_name} · {detail}
+                </ScreenRowMeta>
+              </ScreenRowMain>
+              <ScreenRowTrailing>
+                <ChevronRight
+                  aria-hidden="true"
+                  className="size-5 text-[var(--screen-muted)]"
+                />
+              </ScreenRowTrailing>
+            </Link>
+          </ScreenRow>
+        );
+      })}
+    </ScreenRowList>
+  );
+};
 
 const NotificationList = ({
   state,
@@ -245,7 +271,7 @@ const NotificationFeed = ({
   hash,
 }: {
   state: ManagementNotificationState;
-  onMarkRead: (items: readonly ReadableNotification[]) => void | Promise<void>;
+  onMarkRead: NotificationReadHandler;
   onRetry: () => void;
   onNavigate?: () => void;
   className?: string;
@@ -327,7 +353,6 @@ export const ProgramsNotifications = ({
   const triggerRef = useRef<HTMLButtonElement | null>(null);
   const panelRef = useRef<HTMLDialogElement | null>(null);
   const focusReadyRef = useRef(false);
-  const readKeyRef = useRef<string | null>(null);
   const [readError, setReadError] = useState(false);
   const [readOverrides, setReadOverrides] = useState<Set<string>>(
     () => new Set()
@@ -360,63 +385,71 @@ export const ProgramsNotifications = ({
       },
     };
   }, [readOverrides, state]);
+  const unreadItems = useMemo(
+    () =>
+      effectiveState.kind === "ready"
+        ? effectiveState.notifications.items.filter((item) => !item.read)
+        : [],
+    [effectiveState]
+  );
   const unreadCount =
     effectiveState.kind === "ready"
       ? effectiveState.notifications.unread_count
       : 0;
+  const readAttemptRef = useRef<ReadAttempt | null>(null);
+  const readBusyRef = useRef(false);
+  const [readBusy, setReadBusy] = useState(false);
   const markRead = useCallback(
-    async (items: readonly ReadableNotification[]) => {
-      if (items.length === 0) {
-        return;
+    async (
+      items: readonly ReadableNotification[],
+      afterSuccess?: () => void
+    ): Promise<boolean> => {
+      if (items.length === 0 || readBusyRef.current) {
+        return false;
       }
+      readBusyRef.current = true;
+      setReadBusy(true);
+      setReadError(false);
+      readAttemptRef.current = { items, afterSuccess };
       try {
-        await onMarkRead(items);
-        setReadError(false);
-      } catch {
-        setReadError(true);
-        return;
-      }
-      setReadOverrides((current) => {
-        const next = new Set(current);
-        for (const item of items) {
-          next.add(`${item.source_key}:${item.source_revision}`);
+        try {
+          await onMarkRead(items);
+        } catch {
+          setReadError(true);
+          return false;
         }
-        return next;
-      });
+        setReadOverrides((current) => {
+          const next = new Set(current);
+          for (const item of items) {
+            next.add(`${item.source_key}:${item.source_revision}`);
+          }
+          return next;
+        });
+        setReadError(false);
+        const continuation = readAttemptRef.current?.afterSuccess;
+        readAttemptRef.current = null;
+        continuation?.();
+        return true;
+      } finally {
+        readBusyRef.current = false;
+        setReadBusy(false);
+      }
     },
     [onMarkRead]
   );
   const retryRead = useCallback(() => {
-    readKeyRef.current = null;
-    setReadError(false);
-  }, []);
-
-  useEffect(() => {
-    if (full || !open) {
-      readKeyRef.current = null;
+    const attempt = readAttemptRef.current;
+    if (!attempt) {
       return;
     }
-    if (readError || effectiveState.kind !== "ready") {
+    void markRead(attempt.items, attempt.afterSuccess);
+  }, [markRead]);
+  const markAllRead = useCallback(() => {
+    if (unreadItems.length === 0) {
       return;
     }
-    const visible = effectiveState.notifications.items;
-    const readKey = visible
-      .map(
-        ({ source_key, source_revision }) => `${source_key}:${source_revision}`
-      )
-      .join("|");
-    if (readKey === readKeyRef.current) {
-      return;
-    }
-    readKeyRef.current = readKey;
-    const unread =
-      state.kind === "ready"
-        ? state.notifications.items.filter((item) => !item.read)
-        : [];
-    if (unread.length > 0) {
-      void markRead(unread);
-    }
-  }, [effectiveState, full, markRead, open, readError, state]);
+    void markRead(unreadItems);
+  }, [markRead, unreadItems]);
 
   useEffect(() => {
     if (!focusReadyRef.current) {
@@ -436,7 +469,13 @@ export const ProgramsNotifications = ({
         kind="error"
         title={COPY.programs.notificationsReadError}
         action={
-          <Button className={styles.retry} type="button" onClick={retryRead}>
+          <Button
+            className={styles.retry}
+            type="button"
+            onClick={retryRead}
+            disabled={readBusy}
+            aria-busy={readBusy}
+          >
             {COPY.programs.notificationsRetry}
           </Button>
         }
@@ -445,6 +484,18 @@ export const ProgramsNotifications = ({
   ) : (
     status
   );
+  const markAllButton =
+    effectiveState.kind === "ready" ? (
+      <Button
+        className={styles.markAll}
+        type="button"
+        onClick={() => void markAllRead()}
+        disabled={readBusy || unreadItems.length === 0}
+        aria-busy={readBusy}
+      >
+        {COPY.notices.noticesMarkAllRead}
+      </Button>
+    ) : null;
 
   if (full) {
     return (
@@ -463,6 +514,9 @@ export const ProgramsNotifications = ({
             hash,
           })}
         />
+        <div className="flex min-w-0 flex-wrap justify-end gap-2">
+          {markAllButton}
+        </div>
         <NotificationFeed
           state={effectiveState}
           onMarkRead={markRead}
@@ -527,9 +581,12 @@ export const ProgramsNotifications = ({
             <h3 className="m-0 text-base font-bold">
               {COPY.programs.notificationsTitle}
             </h3>
-            {unreadCount > 0 ? (
-              <ScreenStatus tone="pending">{unreadCount}</ScreenStatus>
-            ) : null}
+            <div className="flex min-w-0 flex-wrap items-center justify-end gap-2">
+              {unreadCount > 0 ? (
+                <ScreenStatus tone="pending">{unreadCount}</ScreenStatus>
+              ) : null}
+              {markAllButton}
+            </div>
           </div>
           <NotificationFeed
             state={effectiveState}
