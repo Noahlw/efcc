@@ -342,7 +342,9 @@ export const ProgramWorkspace = ({
     setWorkspaceFreshness("refreshing");
     try {
       const refreshed = await refreshWorkspaceResource();
-      if (mounted.current) {
+      // A newer load may supersede this refresh.  An ignored response is not
+      // evidence that the displayed workspace became fresh.
+      if (mounted.current && refreshed !== undefined) {
         setWorkspaceFreshness("fresh");
       }
       return refreshed?.program;

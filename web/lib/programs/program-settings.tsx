@@ -1129,6 +1129,7 @@ export const ProgramSettings = ({
   const [reloadRequired, setReloadRequired] = useState(false);
   const mounted = useRef(true);
   const canManage = currentProgram.capabilities.manage;
+  const mutationBlocked = busy || reloadRequired;
   const focusedSection = section !== "all";
   const focusedSchedule = section === "schedule";
   const showSchedule = !focusedSection || focusedSchedule;
@@ -1304,9 +1305,13 @@ export const ProgramSettings = ({
       if (!mounted.current) {
         return;
       }
-      if (refreshed) {
-        applyProgram(refreshed);
+      if (!refreshed) {
+        setReloadRequired(true);
+        setActionError(COPY.programs.programTransportAmbiguous);
+        announce(COPY.programs.programTransportAmbiguous);
+        return;
       }
+      applyProgram(refreshed);
       setReloadRequired(false);
       setNotice(COPY.programs.workspaceReconciled);
       announce(COPY.programs.workspaceReconciled);
@@ -1326,10 +1331,12 @@ export const ProgramSettings = ({
 
   const runProgramMutation = useCallback(
     async (patch: Parameters<typeof updateProgram>[1]) => {
+      if (reloadRequired) {
+        return;
+      }
       setBusy(true);
       setActionError(null);
       setNotice(null);
-      setReloadRequired(false);
       try {
         const result = await updateProgram(currentProgram.program_id, patch);
         if (!mounted.current) {
@@ -1369,7 +1376,7 @@ export const ProgramSettings = ({
         }
       }
     },
-    [applyProgram, currentProgram, onReload]
+    [applyProgram, currentProgram, onReload, reloadRequired]
   );
 
   const saveBasics = (event: FormEvent<HTMLFormElement>) => {
@@ -1439,7 +1446,6 @@ export const ProgramSettings = ({
     event.preventDefault();
     setActionError(null);
     setNotice(null);
-    setReloadRequired(false);
     const opensBeforeError = attendanceFieldError(attendance.opensBefore);
     const closesAfterError = attendanceFieldError(attendance.closesAfter);
     setAttendanceErrors({
@@ -1459,7 +1465,7 @@ export const ProgramSettings = ({
   };
 
   const rotateAttendanceArtifact = async () => {
-    if (!attendanceArtifact || attendanceArtifactBusy) {
+    if (!attendanceArtifact || attendanceArtifactBusy || reloadRequired) {
       return;
     }
     const key = attendanceRotationKey.current ?? crypto.randomUUID();
@@ -1494,6 +1500,9 @@ export const ProgramSettings = ({
       success: string,
       afterSuccess?: () => void
     ) => {
+      if (reloadRequired) {
+        return;
+      }
       setBusy(true);
       setActionError(null);
       setRuleError(null);
@@ -1536,7 +1545,7 @@ export const ProgramSettings = ({
         }
       }
     },
-    [loadRules, onReload]
+    [loadRules, onReload, reloadRequired]
   );
 
   const submitNewRule = (event: FormEvent<HTMLFormElement>) => {
@@ -1719,7 +1728,6 @@ export const ProgramSettings = ({
       setAttendance(attendanceFrom(currentProgram));
       setAttendanceErrors({});
     }
-    setReloadRequired(false);
     setActionError(null);
     setNotice(null);
   };
@@ -1839,7 +1847,7 @@ export const ProgramSettings = ({
                       }))
                     }
                     required
-                    disabled={busy}
+                    disabled={mutationBlocked}
                   />
                 </ScreenField>
                 <ScreenField
@@ -1857,7 +1865,7 @@ export const ProgramSettings = ({
                       }))
                     }
                     rows={3}
-                    disabled={busy}
+                    disabled={mutationBlocked}
                   />
                 </ScreenField>
                 <ScreenField
@@ -1874,7 +1882,7 @@ export const ProgramSettings = ({
                         category: event.target.value,
                       }))
                     }
-                    disabled={busy}
+                    disabled={mutationBlocked}
                   />
                 </ScreenField>
                 <ScreenField
@@ -1894,7 +1902,7 @@ export const ProgramSettings = ({
                         displayOrder: event.target.value,
                       }))
                     }
-                    disabled={busy}
+                    disabled={mutationBlocked}
                   />
                 </ScreenField>
                 {!focusedEditor && (
@@ -1902,7 +1910,7 @@ export const ProgramSettings = ({
                     <Button
                       className="w-fit bg-[var(--screen-accent)] text-white hover:bg-[var(--screen-accent-deep)]"
                       type="submit"
-                      disabled={busy}
+                      disabled={mutationBlocked}
                     >
                       {COPY.programs.settingsSaveBasics}
                     </Button>
@@ -1941,7 +1949,7 @@ export const ProgramSettings = ({
                         lifecycle: value as Program["lifecycle"],
                       }))
                     }
-                    disabled={busy}
+                    disabled={mutationBlocked}
                   >
                     <SelectTrigger
                       id="program-settings-publishing-lifecycle"
@@ -1975,7 +1983,7 @@ export const ProgramSettings = ({
                         discoverability: value as Program["discoverability"],
                       }))
                     }
-                    disabled={busy}
+                    disabled={mutationBlocked}
                   >
                     <SelectTrigger
                       id="program-settings-publishing-discoverability"
@@ -2002,7 +2010,7 @@ export const ProgramSettings = ({
                     <Button
                       className="w-fit bg-[var(--screen-accent)] text-white hover:bg-[var(--screen-accent-deep)]"
                       type="submit"
-                      disabled={busy}
+                      disabled={mutationBlocked}
                     >
                       {COPY.programs.settingsSavePublishing}
                     </Button>
@@ -2017,7 +2025,7 @@ export const ProgramSettings = ({
                       <Button
                         className="w-fit bg-[var(--screen-accent)] text-white hover:bg-[var(--screen-accent-deep)]"
                         type="button"
-                        disabled={busy}
+                        disabled={mutationBlocked}
                         onClick={confirmPublishing}
                       >
                         {COPY.programs.settingsConfirmPublishingChange}
@@ -2025,7 +2033,7 @@ export const ProgramSettings = ({
                       <Button
                         className="w-fit border-[var(--screen-line-strong)] bg-transparent text-[var(--screen-ink)] hover:bg-[var(--screen-surface-soft)]"
                         type="button"
-                        disabled={busy}
+                        disabled={mutationBlocked}
                         onClick={() => setConfirmingPublishing(false)}
                       >
                         {COPY.programs.settingsKeepPublishing}
@@ -2077,7 +2085,7 @@ export const ProgramSettings = ({
                         discoverability: value as Program["discoverability"],
                       }))
                     }
-                    disabled={busy}
+                    disabled={mutationBlocked}
                   >
                     <SelectTrigger
                       id="program-settings-enrollment-discoverability"
@@ -2108,7 +2116,7 @@ export const ProgramSettings = ({
                         enrollmentMode: value as Program["enrollment_mode"],
                       }))
                     }
-                    disabled={busy}
+                    disabled={mutationBlocked}
                   >
                     <SelectTrigger
                       id="program-settings-enrollment-mode"
@@ -2132,7 +2140,7 @@ export const ProgramSettings = ({
                     <Button
                       className="w-fit bg-[var(--screen-accent)] text-white hover:bg-[var(--screen-accent-deep)]"
                       type="submit"
-                      disabled={busy}
+                      disabled={mutationBlocked}
                     >
                       {COPY.programs.settingsSaveEnrollment}
                     </Button>
@@ -2147,7 +2155,7 @@ export const ProgramSettings = ({
                       <Button
                         className="w-fit bg-[var(--screen-accent)] text-white hover:bg-[var(--screen-accent-deep)]"
                         type="button"
-                        disabled={busy}
+                        disabled={mutationBlocked}
                         onClick={confirmEnrollment}
                       >
                         {COPY.programs.settingsConfirmChange}
@@ -2155,7 +2163,7 @@ export const ProgramSettings = ({
                       <Button
                         className="w-fit border-[var(--screen-line-strong)] bg-transparent text-[var(--screen-ink)] hover:bg-[var(--screen-surface-soft)]"
                         type="button"
-                        disabled={busy}
+                        disabled={mutationBlocked}
                         onClick={() => setConfirmingEnrollment(false)}
                       >
                         {COPY.programs.settingsKeepCurrent}
@@ -2182,7 +2190,7 @@ export const ProgramSettings = ({
                     className="w-fit bg-[var(--screen-accent)] text-white hover:bg-[var(--screen-accent-deep)]"
                     type="button"
                     onClick={beginNewRule}
-                    disabled={busy}
+                    disabled={mutationBlocked}
                   >
                     {COPY.programs.addRule}
                   </Button>
@@ -2219,10 +2227,12 @@ export const ProgramSettings = ({
                     </Alert>
                   )}
                   {rules === null ? (
-                    <ScreenLoadingRows
-                      density="settings"
-                      label={COPY.programs.settingsScheduleLoading}
-                    />
+                    ruleError === null ? (
+                      <ScreenLoadingRows
+                        density="settings"
+                        label={COPY.programs.settingsScheduleLoading}
+                      />
+                    ) : null
                   ) : (
                     <ScreenRowList>
                       {rules.length === 0 ? (
@@ -2276,7 +2286,7 @@ export const ProgramSettings = ({
                                         variant="outline"
                                         onClick={() => beginRuleEdit(rule)}
                                         disabled={
-                                          busy ||
+                                          mutationBlocked ||
                                           (rule.retired_at !== null &&
                                             rule.retired_at !== undefined)
                                         }
@@ -2289,7 +2299,7 @@ export const ProgramSettings = ({
                                         variant="outline"
                                         onClick={() => beginException(rule)}
                                         disabled={
-                                          busy ||
+                                          mutationBlocked ||
                                           (rule.retired_at !== null &&
                                             rule.retired_at !== undefined)
                                         }
@@ -2307,7 +2317,7 @@ export const ProgramSettings = ({
                                             onClick={() =>
                                               beginRetireRule(rule)
                                             }
-                                            disabled={busy}
+                                            disabled={mutationBlocked}
                                           >
                                             {COPY.programs.settingsRuleRetire}
                                           </Button>
@@ -2332,7 +2342,7 @@ export const ProgramSettings = ({
                                           onClick={() =>
                                             confirmRetireRule(rule)
                                           }
-                                          disabled={busy}
+                                          disabled={mutationBlocked}
                                         >
                                           {
                                             COPY.programs
@@ -2344,7 +2354,7 @@ export const ProgramSettings = ({
                                           variant="outline"
                                           className="w-fit border-[var(--screen-line-strong)] bg-transparent text-[var(--screen-ink)] hover:bg-[var(--screen-surface-soft)]"
                                           onClick={cancelRetireRule}
-                                          disabled={busy}
+                                          disabled={mutationBlocked}
                                         >
                                           {COPY.programs.settingsRuleCancel}
                                         </Button>
@@ -2382,7 +2392,7 @@ export const ProgramSettings = ({
                                             onClick={() =>
                                               removeException(exception)
                                             }
-                                            disabled={busy}
+                                            disabled={mutationBlocked}
                                             aria-label={`${COPY.programs.settingsExceptionRestore} ${exception.override_date}`}
                                           >
                                             {
@@ -2560,7 +2570,7 @@ export const ProgramSettings = ({
                           opensBefore: undefined,
                         }));
                       }}
-                      disabled={busy}
+                      disabled={mutationBlocked}
                     />
                   </ScreenField>
                   <ScreenField
@@ -2600,7 +2610,7 @@ export const ProgramSettings = ({
                           closesAfter: undefined,
                         }));
                       }}
-                      disabled={busy}
+                      disabled={mutationBlocked}
                     />
                   </ScreenField>
                   {section === "attendance" && (
@@ -2639,7 +2649,7 @@ export const ProgramSettings = ({
                       {attendanceArtifact !== null && (
                         <ProgramAttendanceQrCard
                           artifact={attendanceArtifact}
-                          busy={busy || attendanceArtifactBusy}
+                          busy={mutationBlocked || attendanceArtifactBusy}
                           onRotate={() => void rotateAttendanceArtifact()}
                         />
                       )}
@@ -2650,7 +2660,7 @@ export const ProgramSettings = ({
                       <Button
                         className="w-fit bg-[var(--screen-accent)] text-white hover:bg-[var(--screen-accent-deep)]"
                         type="submit"
-                        disabled={busy}
+                        disabled={mutationBlocked}
                       >
                         {COPY.programs.settingsSaveAttendance}
                       </Button>
@@ -2695,7 +2705,7 @@ export const ProgramSettings = ({
               className="w-full bg-[var(--screen-accent)] text-white hover:bg-[var(--screen-accent-deep)]"
               type="submit"
               form={focusedFormId}
-              disabled={busy}
+              disabled={mutationBlocked}
             >
               {focusedSaveLabel}
             </Button>

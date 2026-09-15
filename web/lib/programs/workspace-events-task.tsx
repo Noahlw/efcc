@@ -1299,6 +1299,12 @@ export const EventsTask = () => {
   const eventsForActions =
     state.kind === "ready" ? state.events : (previousEvents.current ?? []);
   const dataReady = state.kind === "ready";
+  const openEvent = (eventId: string) => {
+    if (eventsOutcomeUnknown) {
+      return;
+    }
+    onOpenEvent?.(eventId);
+  };
   const defaultWindow = (() => {
     const startsAt = hkWallInputToIso(`${createDate}T${createStartTime}`);
     const endsAt = hkWallInputToIso(`${createDate}T${createEndTime}`);
@@ -1915,6 +1921,10 @@ export const EventsTask = () => {
                           href={eventHref}
                           aria-label={COPY.programs.eventDetailOpen}
                           onClick={(clickEvent) => {
+                            if (eventsOutcomeUnknown) {
+                              clickEvent.preventDefault();
+                              return;
+                            }
                             if (
                               !onOpenEvent ||
                               clickEvent.defaultPrevented ||
@@ -1927,8 +1937,9 @@ export const EventsTask = () => {
                               return;
                             }
                             clickEvent.preventDefault();
-                            onOpenEvent(event.event_id);
+                            openEvent(event.event_id);
                           }}
+                          aria-disabled={eventsOutcomeUnknown}
                         >
                           {COPY.programs.eventDetailOpen}
                         </Link>
@@ -1949,14 +1960,14 @@ export const EventsTask = () => {
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
                             <DropdownMenuItem
-                              disabled={!onOpenEvent}
-                              onSelect={() => onOpenEvent?.(event.event_id)}
+                              disabled={!onOpenEvent || eventsOutcomeUnknown}
+                              onSelect={() => openEvent(event.event_id)}
                             >
                               {COPY.programs.eventEdit}
                             </DropdownMenuItem>
                             <DropdownMenuItem
-                              disabled={!onOpenEvent}
-                              onSelect={() => onOpenEvent?.(event.event_id)}
+                              disabled={!onOpenEvent || eventsOutcomeUnknown}
+                              onSelect={() => openEvent(event.event_id)}
                             >
                               {COPY.programs.eventReschedule}
                             </DropdownMenuItem>

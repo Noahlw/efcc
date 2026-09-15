@@ -345,6 +345,15 @@ export const EventDetail = ({
     }
   }, [load]);
 
+  const retryConfirmedRead = useCallback(async () => {
+    const refreshed = await load();
+    if (refreshed && mounted.current) {
+      setActionError(null);
+      setNotice(COPY.programs.workspaceReconciled);
+      announce(COPY.programs.workspaceReconciled);
+    }
+  }, [load]);
+
   const runAction = useCallback(
     async (
       fn: () => Promise<unknown>,
@@ -825,12 +834,16 @@ export const EventDetail = ({
       {actionError !== null && (
         <div className="flex min-w-0 flex-wrap items-center gap-[var(--screen-utility-gap)]">
           <Alert variant="destructive">{actionError}</Alert>
-          {mutationOutcomeUnknown && (
+          {(mutationOutcomeUnknown || loadError !== null) && (
             <Button
               type="button"
               variant="outline"
               className="w-fit border-[var(--screen-line-strong)] bg-transparent text-[var(--screen-ink)] hover:bg-[var(--screen-surface-soft)]"
-              onClick={() => void reconcileMutationOutcome()}
+              onClick={() =>
+                void (mutationOutcomeUnknown
+                  ? reconcileMutationOutcome()
+                  : retryConfirmedRead())
+              }
               disabled={busy}
             >
               {COPY.programs.workspaceRetryRefresh}

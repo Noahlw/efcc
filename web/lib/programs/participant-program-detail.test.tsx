@@ -344,6 +344,29 @@ describe("PUI-03 participant Program detail", () => {
     }
   });
 
+  test("keeps an active meeting visible while it is already in progress", async () => {
+    const base = detailFixture();
+    const startsAt = new Date(Date.now() - 30 * 60_000).toISOString();
+    const endsAt = new Date(Date.now() + 30 * 60_000).toISOString();
+    mocks.getParticipantProgramDetail.mockResolvedValue(
+      detailFixture({
+        events: [
+          {
+            ...base.events[0],
+            starts_at: startsAt,
+            ends_at: endsAt,
+          },
+        ],
+      })
+    );
+
+    renderDetail();
+
+    await expect(
+      screen.findByRole("heading", { name: "第三課聚會" })
+    ).resolves.toBeInTheDocument();
+  });
+
   test("hides empty schedule groups and keeps the empty state truthful", async () => {
     mocks.getParticipantProgramDetail.mockResolvedValue(
       detailFixture({ schedule_rules: [], events: [] })

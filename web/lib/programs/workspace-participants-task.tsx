@@ -364,6 +364,7 @@ export const ParticipantsTask = () => {
     assistedBusy ||
     approvalBusy ||
     refreshingAction !== null;
+  const hasUnknownMutation = Object.values(unknownMutationIds).some(Boolean);
 
   useEffect(() => {
     if (refreshingAction === null || state.kind === "loading") {
@@ -512,7 +513,7 @@ export const ParticipantsTask = () => {
   };
 
   const handleApproveSelected = async () => {
-    if (selectedPendingRequests.length === 0) {
+    if (selectedPendingRequests.length === 0 || hasUnknownMutation) {
       return;
     }
     const items: ApprovalRunItem[] = selectedPendingRequests.map((request) => ({
@@ -556,6 +557,21 @@ export const ParticipantsTask = () => {
               status: "denied",
               message: APPROVAL_COPY.denied,
             };
+          } else if (isUnknownMutationOutcome(error)) {
+            // Stop the batch: the next approval must not run until this
+            // request has been reconciled against the authoritative snapshot.
+            results[index] = {
+              ...item,
+              status: "error",
+              message: COPY.programs.programTransportAmbiguous,
+            };
+            setUnknownMutationIds((current) => ({
+              ...current,
+              [item.request.request_id]: true,
+            }));
+            updateApprovalRun([...results]);
+            announce(COPY.programs.programTransportAmbiguous);
+            break;
           } else {
             const failure = approvalError(error);
             results[index] = { ...item, ...failure };
@@ -602,7 +618,7 @@ export const ParticipantsTask = () => {
     request: EnrollmentRequest,
     action: "Approved" | "Rejected"
   ) => {
-    if (unknownMutationIds[request.request_id]) {
+    if (hasUnknownMutation || unknownMutationIds[request.request_id]) {
       return;
     }
     setBusyRequestId(request.request_id);
@@ -661,7 +677,7 @@ export const ParticipantsTask = () => {
     reason: string,
     retryKey?: string
   ) => {
-    if (unknownMutationIds[enrollment.enrollment_id]) {
+    if (hasUnknownMutation || unknownMutationIds[enrollment.enrollment_id]) {
       return;
     }
     const idempotencyKey =
@@ -755,7 +771,7 @@ export const ParticipantsTask = () => {
 
   const handleAssisted = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (unknownMutationIds.assisted) {
+    if (hasUnknownMutation || unknownMutationIds.assisted) {
       return;
     }
     const memberUserId = String(
@@ -957,6 +973,7 @@ export const ParticipantsTask = () => {
                             }
                             disabled={
                               mutationBusy ||
+                              hasUnknownMutation ||
                               unknownMutationIds[request.request_id] === true
                             }
                           >
@@ -971,6 +988,7 @@ export const ParticipantsTask = () => {
                             }
                             disabled={
                               mutationBusy ||
+                              hasUnknownMutation ||
                               unknownMutationIds[request.request_id] === true
                             }
                           >
@@ -1068,6 +1086,7 @@ export const ParticipantsTask = () => {
                         onClick={() => openCancelDialog(enrollment)}
                         disabled={
                           mutationBusy ||
+                          hasUnknownMutation ||
                           cancelRetry?.enrollmentId ===
                             enrollment.enrollment_id ||
                           unknownMutationIds[enrollment.enrollment_id] === true
@@ -1258,6 +1277,7 @@ export const ParticipantsTask = () => {
               setAssistedError(null);
               setAddParticipantOpen(true);
             }}
+            disabled={mutationBusy || hasUnknownMutation}
           >
             {COPY.programs.workspaceParticipantsAdd}
           </Button>
@@ -1316,7 +1336,9 @@ export const ParticipantsTask = () => {
             <AlertDialogCancel>{COPY.attention.close}</AlertDialogCancel>
             <AlertDialogAction
               onClick={() => void handleApproveSelected()}
-              disabled={selectedPendingRequests.length === 0}
+              disabled={
+                selectedPendingRequests.length === 0 || hasUnknownMutation
+              }
             >
               {APPROVAL_COPY.confirmApprove}
             </AlertDialogAction>
@@ -1419,7 +1441,11 @@ export const ParticipantsTask = () => {
               <Button
                 type="submit"
                 className="bg-[var(--screen-accent)] text-white hover:bg-[var(--screen-accent-deep)]"
-                disabled={mutationBusy || unknownMutationIds.assisted === true}
+                disabled={
+                  mutationBusy ||
+                  hasUnknownMutation ||
+                  unknownMutationIds.assisted === true
+                }
               >
                 {assistedBusy
                   ? COPY.programs.submitting

@@ -514,6 +514,52 @@ describe("EVT-01 event detail", () => {
     ).toBeInTheDocument();
   });
 
+  test("keeps a committed mutation successful and retries a failed readback", async () => {
+    mocks.getEvent
+      .mockResolvedValueOnce(
+        detailFixture({
+          participant_summary: { active_enrollments: 3, checked_in: 0 },
+        })
+      )
+      .mockRejectedValueOnce(new Error("readback unavailable"));
+    mocks.setEventAvailability.mockResolvedValue({
+      event: { ...detailFixture().event, availability: "Inactive" },
+    });
+    const user = userEvent.setup();
+    render(
+      <EventDetail
+        programId="program-1"
+        eventId="event-1"
+        canManage
+        onBack={() => {}}
+        backHref="/programs"
+      />
+    );
+
+    await user.click(
+      await screen.findByRole("button", {
+        name: COPY.programs.eventAvailabilityDeactivate,
+      })
+    );
+    await expect(
+      screen.findByText(COPY.programs.eventAvailabilityNotice)
+    ).resolves.toBeInTheDocument();
+    expect(
+      screen.getByText(COPY.programs.workspaceEventsSavedStale)
+    ).toBeInTheDocument();
+    const retry = screen.getByRole("button", {
+      name: COPY.programs.workspaceRetryRefresh,
+    });
+
+    mocks.getEvent.mockResolvedValueOnce(detailFixture());
+    await user.click(retry);
+    await expect(
+      screen.findByText(COPY.programs.workspaceReconciled)
+    ).resolves.toBeInTheDocument();
+    expect(mocks.setEventAvailability).toHaveBeenCalledOnce();
+    expect(mocks.getEvent).toHaveBeenCalledTimes(3);
+  });
+
   test("an unrelated edit retires a stale availability Undo", async () => {
     mocks.getEvent.mockResolvedValue(detailFixture());
     mocks.setEventAvailability.mockResolvedValue({

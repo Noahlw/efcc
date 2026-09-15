@@ -405,6 +405,29 @@ describe(ProgramSettings, () => {
     ).toBeTruthy();
   });
 
+  test("settles Schedule on a read error without showing loading rows", async () => {
+    mocks.listScheduleRules.mockRejectedValue(
+      new RpcError({ code: "FORBIDDEN", status: 403 })
+    );
+    render(
+      <ProgramSettings
+        program={recurringProgram}
+        section="schedule"
+        scheduleBackHref="/programs?mode=management&program=program-1&task=schedule"
+      />
+    );
+
+    await expect(
+      screen.findByText(COPY.error.forbidden)
+    ).resolves.toBeVisible();
+    expect(
+      screen.getByRole("button", { name: COPY.programs.settingsScheduleRetry })
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText(COPY.programs.settingsScheduleLoading)
+    ).not.toBeInTheDocument();
+  });
+
   test("uses focused editors for rule edits and exceptions", async () => {
     const user = userEvent.setup();
     render(

@@ -1499,10 +1499,13 @@ export const AttendanceOperatorPanel = ({
   }
 
   async function selectEvent(nextEventId: string) {
+    if (mutationOutcomeUnknown) {
+      showStatus(COPY.attendance.transportAmbiguous, "error");
+      return;
+    }
     selectedEventIdRef.current = nextEventId;
     setEventId(nextEventId);
     setShowCheckInSheet(false);
-    setMutationOutcomeUnknown(false);
     const loaded = await loadRoster(nextEventId);
     if (loaded) {
       setStatus("");
@@ -1510,6 +1513,10 @@ export const AttendanceOperatorPanel = ({
   }
 
   function backToChooser() {
+    if (mutationOutcomeUnknown) {
+      showStatus(COPY.attendance.transportAmbiguous, "error");
+      return;
+    }
     selectedEventIdRef.current = null;
     setEventId(null);
     setEvent(null);
@@ -1872,7 +1879,7 @@ export const AttendanceOperatorPanel = ({
             <AttendanceChooser
               events={chooserEvents}
               loading={chooserLoading}
-              busy={busy}
+              busy={busy || mutationOutcomeUnknown}
               error={chooserError}
               onSelect={(nextEventId) => void selectEvent(nextEventId)}
               onRetry={() => void loadChooser()}

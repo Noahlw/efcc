@@ -82,8 +82,8 @@ type DetailConflictView = ParticipantProgramDetailData & {
   has_schedule_conflict?: boolean;
 };
 
-function eventIsUpcoming(startsAt: string): boolean {
-  const timestamp = Date.parse(startsAt);
+function eventIsCurrentOrUpcoming(endsAt: string): boolean {
+  const timestamp = Date.parse(endsAt);
   return Number.isFinite(timestamp) && timestamp >= Date.now();
 }
 
@@ -526,10 +526,14 @@ export const ParticipantProgramDetail = ({
     if (state.kind !== "ready") {
       return [];
     }
-    return state.detail.events
-      .filter((event) => event.status === "Active")
-      .filter((event) => eventIsUpcoming(event.starts_at))
-      .toSorted((a, b) => Date.parse(a.starts_at) - Date.parse(b.starts_at));
+    return (
+      state.detail.events
+        .filter((event) => event.status === "Active")
+        // An active meeting remains relevant after its start until it ends.
+        // Filtering only by starts_at hides an open check-in window in progress.
+        .filter((event) => eventIsCurrentOrUpcoming(event.ends_at))
+        .toSorted((a, b) => Date.parse(a.starts_at) - Date.parse(b.starts_at))
+    );
   }, [state]);
 
   const visibleEvents = useMemo(

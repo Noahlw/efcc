@@ -1777,7 +1777,7 @@ describe("ENR-01 participants workspace", () => {
       )
     );
     await expect(
-      screen.findByText(COPY.programs.workspaceReconciled)
+      screen.findByText(COPY.programs.enrollmentCancelledNotice)
     ).resolves.toBeInTheDocument();
     await waitFor(() =>
       expect(mocks.listEnrollmentSnapshot).toHaveBeenCalledTimes(2)
@@ -1895,7 +1895,7 @@ describe("ENR-01 participants workspace", () => {
       within(dialog).getByRole("button", { name: "確認取消" })
     );
     await expect(
-      screen.findByText(COPY.programs.enrollmentCancelledNotice)
+      screen.findByText(COPY.programs.workspaceReconciled)
     ).resolves.toBeInTheDocument();
     expect(mocks.cancelEnrollment).toHaveBeenCalledTimes(1);
   });
