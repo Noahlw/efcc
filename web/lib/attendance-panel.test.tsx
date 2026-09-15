@@ -17,7 +17,10 @@ import {
   vi,
 } from "vitest";
 
-import type { AttendanceEvent } from "@/lib/attendance";
+import type {
+  AttendanceEvent,
+  AttendanceResolveLatest,
+} from "@/lib/attendance";
 import { AttendancePanel } from "@/lib/attendance-panel";
 import { COPY } from "@/lib/copy";
 import { clearGuestCredential, readGuestCredential } from "@/lib/guest-context";
@@ -219,6 +222,78 @@ describe(AttendancePanel, () => {
       expect(
         screen.getByRole("link", { name: COPY.attendance.guestDone })
       ).toHaveAttribute("href", "/");
+    });
+
+    test("guest closed-event resolve shows an explicit window outcome", async () => {
+      const latest: AttendanceResolveLatest = {
+        status: "Active",
+        availability: "Active",
+        starts_at: "2026-08-13T11:30:00.000Z",
+        check_in_window_opens_at: "2026-08-13T10:30:00.000Z",
+        program_id: "prog-1",
+        program_name: "週六團契",
+      };
+      server.use(
+        http.get("/api/v1/attendance/resolve", () =>
+          HttpResponse.json({
+            requestId: "rid-closed-guest",
+            data: { events: [], latest, enrolled: false },
+          })
+        )
+      );
+      const user = userEvent.setup();
+      render(<AttendancePanel />);
+      await fillGuestForm(user, "ATTCLOSED");
+      await user.click(
+        screen.getByRole("button", { name: COPY.attendance.guestSubmit })
+      );
+
+      const outcomeHeading = await screen.findByRole("heading", {
+        name: COPY.attendance.outcomeWindowTitle,
+      });
+      expect(outcomeHeading).toBeVisible();
+      expect(outcomeHeading).toHaveFocus();
+      expect(screen.getByText(COPY.attendance.outcomeHeader)).toBeVisible();
+      expect(
+        screen.queryByLabelText(COPY.attendance.guestCode)
+      ).not.toBeInTheDocument();
+    });
+
+    test("guest cancelled-event resolve shows the cancellation outcome", async () => {
+      const latest: AttendanceResolveLatest = {
+        status: "Cancelled",
+        availability: "Active",
+        starts_at: "2026-08-13T11:30:00.000Z",
+        check_in_window_opens_at: "2026-08-13T10:30:00.000Z",
+        program_id: "prog-1",
+        program_name: "週六團契",
+      };
+      server.use(
+        http.get("/api/v1/attendance/resolve", () =>
+          HttpResponse.json({
+            requestId: "rid-cancelled-guest",
+            data: { events: [], latest, enrolled: false },
+          })
+        )
+      );
+      const user = userEvent.setup();
+      render(<AttendancePanel />);
+      await fillGuestForm(user, "ATTCANCEL");
+      await user.click(
+        screen.getByRole("button", { name: COPY.attendance.guestSubmit })
+      );
+
+      const cancelledHeading = await screen.findByRole("heading", {
+        name: COPY.attendance.outcomeCancelledTitle,
+      });
+      expect(cancelledHeading).toBeVisible();
+      expect(cancelledHeading).toHaveFocus();
+      expect(
+        screen.getByText(COPY.attendance.outcomeCancelledBody)
+      ).toBeVisible();
+      expect(
+        screen.queryByLabelText(COPY.attendance.guestCode)
+      ).not.toBeInTheDocument();
     });
 
     test("invalid phone stays inline, focuses the phone field, and does not complete", async () => {

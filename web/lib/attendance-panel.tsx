@@ -3,23 +3,27 @@
 import { useEffect, useRef, useState } from "react";
 import type { RefObject } from "react";
 
+import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { RpcError } from "@/lib/api";
 import type { AttendanceEvent } from "@/lib/attendance";
+import { attendanceEventLabel } from "@/lib/attendance-display";
 import { entryFromValue } from "@/lib/attendance-entry";
 import {
   attendanceButtonVariants,
   CheckinConfirmationIcon,
   ScannerEventPicker,
+  ScannerOutcome,
   ScannerStatusOutput,
 } from "@/lib/attendance-scanner-ui";
 import { COPY, errorCopyFor } from "@/lib/copy";
 import { writeGuestCredential } from "@/lib/guest-context";
-import { hkDayPeriodFromIso } from "@/lib/hk-time";
+import { hkDayPeriodFromIso, hkWallLabel } from "@/lib/hk-time";
 import { announce } from "@/lib/live-region";
 import { guestCheckIn } from "@/lib/programs/program-api";
+import { buildProgramsHref } from "@/lib/programs/programs-intent";
 import { useAttendanceFlow } from "@/lib/use-attendance-flow";
 
 const inputControl =
@@ -28,6 +32,7 @@ const inputControl =
 interface GuestResult {
   kind: "success" | "duplicate";
   event: AttendanceEvent;
+  checkedInAt?: string;
 }
 
 function guestSubmitErrorCopy(error: unknown): string {
@@ -88,6 +93,15 @@ const GuestCheckinResult = ({
           )
         : COPY.attendance.guestDuplicate}
     </p>
+    <p className="text-sm text-[var(--ink-muted)] leading-relaxed">
+      {result.event.program_name} · {attendanceEventLabel(result.event)} ·{" "}
+      {hkWallLabel(result.event.starts_at)}
+    </p>
+    {result.kind === "success" && result.checkedInAt && (
+      <p className="text-sm text-[var(--ink-muted)] leading-relaxed">
+        {COPY.attendance.checkedInAt}：{hkWallLabel(result.checkedInAt)}
+      </p>
+    )}
     <div className="mt-2 grid gap-3">
       <Button
         asChild
@@ -112,9 +126,11 @@ export const AttendancePanel = () => {
   const phoneRef = useRef<HTMLInputElement>(null);
   const chooserHeadingRef = useRef<HTMLHeadingElement>(null);
   const resultHeadingRef = useRef<HTMLHeadingElement>(null);
+  const outcomeHeadingRef = useRef<HTMLHeadingElement>(null);
   const flow = useAttendanceFlow(inputRef, {
     cameraFirst: false,
     cameraEnabled: false,
+    guestFlow: true,
     invalidEntryMessage: COPY.attendance.invalidEntryCode,
     offlineResolveMessage: COPY.attendance.offlineResolve,
   });
@@ -131,8 +147,20 @@ export const AttendancePanel = () => {
     }
   }, [awaitingSelection]);
 
+  useEffect(() => {
+    if (flow.view === "outcome") {
+      outcomeHeadingRef.current?.focus();
+    }
+  }, [flow.outcome, flow.view]);
+
   const clearFormStatus = () => {
     setValidationError("");
+  };
+
+  const backToScan = () => {
+    setAwaitingSelection(false);
+    setValidationError("");
+    flow.resetToScan();
   };
 
   const validate = (): boolean => {
@@ -175,6 +203,7 @@ export const AttendancePanel = () => {
       setResult({
         kind: guestResult.outcome === "duplicate" ? "duplicate" : "success",
         event,
+        checkedInAt: guestResult.checked_in_at,
       });
       flow.showStatus("");
     } catch (error) {
@@ -211,6 +240,7 @@ export const AttendancePanel = () => {
   }
 
   const selectEvent = (event: AttendanceEvent) => {
+    flow.setSelected(event);
     const shouldSubmit =
       awaitingSelection ||
       (flow.input.trim().length > 0 &&
@@ -234,9 +264,28 @@ export const AttendancePanel = () => {
     );
   }
 
+  if (flow.view === "outcome" && flow.outcome) {
+    return (
+      <div
+        className="mx-auto w-[min(100%,760px)] px-4 py-8 [@media(max-height:640px)]:py-4 pb-[calc(3rem+env(safe-area-inset-bottom,0px))] [@media(max-height:640px)]:pb-[calc(1.5rem+env(safe-area-inset-bottom,0px))]"
+        data-surface="guest-check-in"
+      >
+        <ScannerOutcome
+          kind={flow.outcome.kind}
+          latest={flow.outcome.latest}
+          programHref={buildProgramsHref({
+            mode: "participant",
+            programId: flow.outcome.latest.program_id,
+          })}
+          headingRef={outcomeHeadingRef}
+          onBack={backToScan}
+        />
+      </div>
+    );
+  }
+
   const submitBusy = flow.busy || submitting;
-  const guestStatus =
-    flow.status || (flow.outcome ? COPY.attendance.noEvents : "");
+  const guestStatus = flow.status;
 
   return (
     <div
@@ -264,6 +313,29 @@ export const AttendancePanel = () => {
         <p className="-mt-1.5 text-base leading-relaxed text-[var(--ink-muted)] min-w-0 whitespace-normal [overflow-wrap:anywhere]">
           {COPY.attendance.guestLead}
         </p>
+        {flow.intendedEvent && (
+          <Card className="grid gap-1">
+            <strong className="text-sm text-[var(--accent-deep)]">
+              {COPY.attendance.eventContextTitle}
+            </strong>
+            <span className="text-base font-bold text-[var(--ink)]">
+              {flow.intendedEvent.program_name} ·{" "}
+              {attendanceEventLabel(flow.intendedEvent)}
+            </span>
+            <span className="text-sm text-[var(--ink-muted)]">
+              {hkWallLabel(flow.intendedEvent.starts_at)} –{" "}
+              {hkWallLabel(flow.intendedEvent.ends_at)}
+            </span>
+          </Card>
+        )}
+        {flow.mismatchEvent && (
+          <Alert variant="destructive">
+            {COPY.attendance.eventCredentialMismatch.replace(
+              "{event}",
+              attendanceEventLabel(flow.mismatchEvent)
+            )}
+          </Alert>
+        )}
         {guestStatus && (
           <ScannerStatusOutput
             message={guestStatus}
@@ -383,6 +455,13 @@ export const AttendancePanel = () => {
                         ? "program_token"
                         : "manual_code",
                     value: entry.value,
+                    ...(flow.selected?.event_id || flow.intendedEvent?.event_id
+                      ? {
+                          eventId:
+                            flow.selected?.event_id ??
+                            flow.intendedEvent?.event_id,
+                        }
+                      : {}),
                   });
                 }
               }}

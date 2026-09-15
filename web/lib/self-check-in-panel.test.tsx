@@ -53,6 +53,11 @@ const EVENT_TWO: AttendanceEvent = {
   ends_at: "2026-08-14T13:00:00.000Z",
 };
 
+const CLOSED_OTHER_EVENT: AttendanceEvent = {
+  ...EVENT_TWO,
+  manual_check_in_code: "654321",
+};
+
 function FakeBarcodeDetector() {
   return {
     detect: () =>
@@ -222,7 +227,7 @@ describe(SelfCheckInPanel, () => {
     ).toBeInTheDocument();
   });
 
-  test("event deep link resolves and pre-selects the requested event", async () => {
+  test("event deep link preserves context and still requires an entry credential", async () => {
     const resolveRequest: { url: URL | null } = { url: null };
     const getUserMedia = vi.mocked(navigator.mediaDevices.getUserMedia);
     server.use(
@@ -237,14 +242,74 @@ describe(SelfCheckInPanel, () => {
     window.history.pushState({}, "", "/scanner?event=evt-1");
     try {
       render(<SelfCheckInPanel />);
-      await screen.findByRole("heading", {
-        name: COPY.attendance.confirmTitle,
-      });
+      await expect(
+        screen.findByText(COPY.attendance.eventContextTitle)
+      ).resolves.toBeVisible();
       expect(resolveRequest.url?.searchParams.get("event")).toBe("evt-1");
+      expect(screen.getByText(/週六團契.*週六聚會/u)).toBeInTheDocument();
       expect(
-        screen.getByRole("heading", { name: "週六聚會" })
-      ).toBeInTheDocument();
-      expect(getUserMedia).not.toHaveBeenCalled();
+        screen.queryByRole("heading", { name: COPY.attendance.confirmTitle })
+      ).not.toBeInTheDocument();
+      expect(getUserMedia).toHaveBeenCalled();
+    } finally {
+      window.history.replaceState({}, "", "/scanner");
+    }
+  });
+
+  test("event deep link reports a closed credential mismatch without switching Events", async () => {
+    let resolveCalls = 0;
+    server.use(
+      http.get("/api/v1/attendance/resolve", () => {
+        resolveCalls += 1;
+        if (resolveCalls === 1) {
+          return HttpResponse.json({
+            requestId: "rid-resolve-event-context",
+            data: { events: [EVENT], latest: null, enrolled: true },
+          });
+        }
+        return HttpResponse.json({
+          requestId: "rid-resolve-closed-other",
+          data: {
+            events: [],
+            latest: {
+              event_id: CLOSED_OTHER_EVENT.event_id,
+              event_name: CLOSED_OTHER_EVENT.name,
+              location: CLOSED_OTHER_EVENT.location,
+              ends_at: CLOSED_OTHER_EVENT.ends_at,
+              status: "Active",
+              availability: "Active",
+              starts_at: CLOSED_OTHER_EVENT.starts_at,
+              check_in_window_opens_at:
+                CLOSED_OTHER_EVENT.check_in_window_opens_at,
+              program_id: CLOSED_OTHER_EVENT.program_id,
+              program_name: CLOSED_OTHER_EVENT.program_name,
+            },
+            enrolled: true,
+          },
+        });
+      })
+    );
+    window.history.pushState({}, "", "/scanner?event=evt-1");
+    try {
+      render(<SelfCheckInPanel />);
+      await screen.findByText(COPY.attendance.eventContextTitle);
+      await openManualEntry();
+      const input = screen.getByLabelText(
+        new RegExp(COPY.attendance.manualCodeLabel)
+      );
+      const user = userEvent.setup();
+      await user.type(input, CLOSED_OTHER_EVENT.manual_check_in_code);
+      await user.click(
+        screen.getByRole("button", { name: COPY.attendance.continue })
+      );
+
+      expect(
+        await screen.findByText(new RegExp("呢個碼對應聚會 週日崇拜", "u"))
+      ).toBeVisible();
+      expect(
+        screen.queryByRole("heading", { name: COPY.attendance.confirmTitle })
+      ).not.toBeInTheDocument();
+      expect(resolveCalls).toBe(2);
     } finally {
       window.history.replaceState({}, "", "/scanner");
     }
@@ -345,7 +410,11 @@ describe(SelfCheckInPanel, () => {
         checkInBody = (await request.json()) as Record<string, unknown>;
         return HttpResponse.json({
           requestId: "rid-self",
-          data: { outcome: "success", attendance_id: "att-1" },
+          data: {
+            outcome: "success",
+            attendance_id: "att-1",
+            checked_in_at: "2026-08-13T11:31:00.000Z",
+          },
         });
       })
     );
@@ -395,7 +464,7 @@ describe(SelfCheckInPanel, () => {
 
     await user.click(confirmButton);
 
-    // Success result: identity plus 返回首頁 and 再次簽到 actions.
+    // Success result: persistent identity/time plus Event Detail and 再次簽到 actions.
     const resultHeading = await screen.findByRole("heading", {
       name: COPY.attendance.successTitle,
     });
@@ -406,10 +475,14 @@ describe(SelfCheckInPanel, () => {
     ).toBeInTheDocument();
     expect(screen.getByText("週六團契")).toBeInTheDocument();
     expect(screen.getByText("週六聚會")).toBeInTheDocument();
-    const backHome = screen.getByRole("link", {
-      name: COPY.attendance.backHome,
+    expect(screen.getByText(/記錄時間：/u)).toBeInTheDocument();
+    const eventDetail = screen.getByRole("link", {
+      name: COPY.attendance.returnToEvent,
     });
-    expect(backHome).toHaveAttribute("href", "/");
+    expect(eventDetail).toHaveAttribute(
+      "href",
+      "/programs?program=prog-1&from=programs&event=evt-1"
+    );
     expect(
       screen.getByRole("button", { name: COPY.attendance.scanAgain })
     ).toBeInTheDocument();
@@ -843,10 +916,13 @@ describe(SelfCheckInPanel, () => {
     expect(screen.queryByRole("alert")).toBeNull();
     expect(screen.queryByText(COPY.attendance.submitFailure)).toBeNull();
     expect(screen.queryByText("att-1")).toBeNull();
-    // Same two result actions as the success screen.
+    // The duplicate outcome keeps the same persistent Event Detail action.
     expect(
-      screen.getByRole("link", { name: COPY.attendance.backHome })
-    ).toHaveAttribute("href", "/");
+      screen.getByRole("link", { name: COPY.attendance.returnToEvent })
+    ).toHaveAttribute(
+      "href",
+      "/programs?program=prog-1&from=programs&event=evt-1"
+    );
     expect(
       screen.getByRole("button", { name: COPY.attendance.scanAgain })
     ).toBeInTheDocument();

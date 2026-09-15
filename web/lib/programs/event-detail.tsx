@@ -25,12 +25,14 @@ import { announce } from "@/lib/live-region";
 import {
   cancelEvent,
   getEvent,
+  getOwnAttendance,
   setEventAvailability,
   updateEvent,
 } from "@/lib/programs/program-api";
 import type {
   EventDetail as EventDetailData,
   EventType,
+  AttendanceParticipantView,
   ProgramEvent,
   ProgramIdentityAssignment,
 } from "@/lib/programs/program-api";
@@ -106,6 +108,28 @@ function checkInWindowIsOpen(event: ProgramEvent, now = Date.now()): boolean {
   );
 }
 
+function participantAttendanceLabel(
+  state: AttendanceParticipantView["state"]
+): string {
+  switch (state) {
+    case "Present": {
+      return COPY.programs.participantAttendancePresent;
+    }
+    case "Excused": {
+      return COPY.programs.participantAttendanceExcused;
+    }
+    case "Absent": {
+      return COPY.programs.participantAttendanceAbsent;
+    }
+    case "Cancelled": {
+      return COPY.programs.participantAttendanceCancelled;
+    }
+    default: {
+      return COPY.programs.participantAttendanceNotYet;
+    }
+  }
+}
+
 /** HK wall "YYYY-MM-DDTHH:MM" value for a datetime-local input. */
 export function hkWallInputValue(iso: string | null | undefined): string {
   if (!iso) {
@@ -176,6 +200,12 @@ export const EventDetail = ({
   const [confirmingDeactivate, setConfirmingDeactivate] = useState(false);
   const [confirmingCancel, setConfirmingCancel] = useState(false);
   const [showCheckInSheet, setShowCheckInSheet] = useState(false);
+  const [ownAttendance, setOwnAttendance] =
+    useState<AttendanceParticipantView | null>(null);
+  const [ownAttendanceLoading, setOwnAttendanceLoading] = useState(false);
+  const [ownAttendanceError, setOwnAttendanceError] = useState<string | null>(
+    null
+  );
   const [undoAvailable, setUndoAvailable] = useState(false);
   // Affected-operation count shown in the deactivation confirm; sourced
   // from the loaded summary or, on a server refusal, the server's fresh
@@ -237,6 +267,44 @@ export const EventDetail = ({
   useEffect(() => {
     void load();
   }, [load]);
+
+  useEffect(() => {
+    if (canManage || detail === null || detail.event.event_id !== eventId) {
+      return;
+    }
+    let cancelled = false;
+    setOwnAttendance(null);
+    setOwnAttendanceError(null);
+    setOwnAttendanceLoading(true);
+    void (async () => {
+      try {
+        const next = await getOwnAttendance(eventId);
+        if (!cancelled) {
+          setOwnAttendance(next);
+        }
+      } catch (error: unknown) {
+        if (cancelled) {
+          return;
+        }
+        if (
+          error instanceof RpcError &&
+          (error.problem.code === "FORBIDDEN" ||
+            error.problem.code === "NOT_FOUND")
+        ) {
+          setOwnAttendance(null);
+          return;
+        }
+        setOwnAttendanceError(COPY.programs.participantAttendanceError);
+      } finally {
+        if (!cancelled) {
+          setOwnAttendanceLoading(false);
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [canManage, detail, eventId]);
   useEffect(() => {
     if (!canManage && detail !== null) {
       /* oxlint-disable-next-line unicorn/prefer-query-selector -- exact id lookup on participant-event-title */
@@ -295,6 +363,14 @@ export const EventDetail = ({
     const form = new FormData(event.currentTarget);
     const startsAt = String(form.get("starts_at") ?? "");
     const endsAt = String(form.get("ends_at") ?? "");
+    const startsAtIso = hkWallInputToIso(startsAt);
+    const endsAtIso = hkWallInputToIso(endsAt);
+    if (!startsAtIso || !endsAtIso || endsAtIso <= startsAtIso) {
+      const message = COPY.programs.eventInvalidInterval;
+      setActionError(message);
+      announce(message);
+      return;
+    }
     const hasAttendance =
       detail?.event.has_attendance === true ||
       (detail?.participant_summary.checked_in ?? 0) > 0;
@@ -304,8 +380,8 @@ export const EventDetail = ({
           name: String(form.get("name") ?? "").trim() || null,
           location: String(form.get("location") ?? "").trim() || null,
           event_type: editingEventType,
-          starts_at: hkWallInputToIso(startsAt) ?? undefined,
-          ends_at: hkWallInputToIso(endsAt) ?? undefined,
+          starts_at: startsAtIso,
+          ends_at: endsAtIso,
           check_in_window_opens_at: hkWallInputToIso(
             String(form.get("opens_at") ?? "")
           ),
@@ -513,6 +589,12 @@ export const EventDetail = ({
         : hkWallDateTimeLabel(event.starts_at));
     const whenLabel = `${hkShortDateLabel(event.starts_at)}${hkShortTimeRange(event.starts_at, event.ends_at)}`;
     const instructionsHeadingId = "participant-event-instructions";
+    const participantAttendanceTone =
+      ownAttendance?.state === "Present"
+        ? "success"
+        : ownAttendance?.state === "Cancelled"
+          ? "danger"
+          : "pending";
 
     return (
       <section
@@ -530,7 +612,15 @@ export const EventDetail = ({
           lead={programName}
           headingId="participant-event-title"
           status={
-            checkInOpen ? (
+            cancelled ? (
+              <ScreenStatus
+                role="status"
+                tone="danger"
+                aria-label={COPY.attendance.eventCancelled}
+              >
+                {COPY.attendance.eventCancelled}
+              </ScreenStatus>
+            ) : checkInOpen ? (
               <ScreenStatus
                 role="status"
                 tone="success"
@@ -565,16 +655,51 @@ export const EventDetail = ({
           </article>
         </ScreenCard>
 
+        <ScreenSection title={COPY.programs.participantAttendance}>
+          {ownAttendanceLoading ? (
+            <output className="text-[var(--screen-muted)]" aria-live="polite">
+              {COPY.programs.participantAttendanceLoading}
+            </output>
+          ) : ownAttendanceError ? (
+            <Alert variant="destructive">{ownAttendanceError}</Alert>
+          ) : ownAttendance ? (
+            <div className="grid min-w-0 gap-2">
+              <ScreenStatus tone={participantAttendanceTone}>
+                {participantAttendanceLabel(ownAttendance.state)}
+              </ScreenStatus>
+              {ownAttendance.attendance?.checked_in_at && (
+                <ScreenRowMeta>
+                  {COPY.programs.participantAttendanceTime}：
+                  {hkWallDateTimeLabel(ownAttendance.attendance.checked_in_at)}
+                </ScreenRowMeta>
+              )}
+              {ownAttendance.disposition?.reason && (
+                <ScreenRowMeta>
+                  {COPY.programs.participantAttendanceReason}：
+                  {ownAttendance.disposition.reason}
+                </ScreenRowMeta>
+              )}
+            </div>
+          ) : (
+            <ScreenState
+              kind="empty"
+              title={COPY.programs.participantAttendanceUnavailable}
+            />
+          )}
+        </ScreenSection>
+
         <ScreenSection
           headingId={instructionsHeadingId}
           title={COPY.programs.checkInInstructionsHeading}
         >
           <p className="m-0 min-w-0 max-w-[65ch] wrap-anywhere leading-[1.6] text-[var(--screen-muted)]">
-            {checkInOpen
-              ? COPY.programs.eventInstructions
-              : event.check_in_window_opens_at
-                ? `${COPY.programs.eventInstructionsClosed} ${COPY.programs.eventCheckInWindowOpensAt} ${hkShortDateLabel(event.check_in_window_opens_at)} ${hkShortTimeLabel(event.check_in_window_opens_at)}`
-                : COPY.programs.eventInstructionsClosed}
+            {cancelled
+              ? COPY.attendance.eventCancelled
+              : checkInOpen
+                ? COPY.programs.eventInstructions
+                : event.check_in_window_opens_at
+                  ? `${COPY.programs.eventInstructionsClosed} ${COPY.programs.eventCheckInWindowOpensAt} ${hkShortDateLabel(event.check_in_window_opens_at)} ${hkShortTimeLabel(event.check_in_window_opens_at)}`
+                  : COPY.programs.eventInstructionsClosed}
           </p>
         </ScreenSection>
 

@@ -336,7 +336,7 @@ describe(ProgramWorkspace, () => {
     });
     await userEvent.click(rosterLink);
     expect(onEventChange).not.toHaveBeenCalled();
-    expect(onTaskChange).toHaveBeenCalledWith("participants", "event-1");
+    expect(onTaskChange).toHaveBeenCalledWith("events", "event-1");
 
     // 2-up operational tiles
     expect(
@@ -595,10 +595,10 @@ describe(ProgramWorkspace, () => {
     });
     expect(rosterLink).toHaveAttribute(
       "href",
-      "/programs?mode=management&program=program-1&task=participants&event=event-earliest"
+      "/programs?mode=management&program=program-1&task=events&event=event-earliest"
     );
     await userEvent.click(rosterLink);
-    expect(onTaskChange).toHaveBeenCalledWith("participants", "event-earliest");
+    expect(onTaskChange).toHaveBeenCalledWith("events", "event-earliest");
   });
 
   test("renders an authoritative zero Event count without inventing a next Event", async () => {
@@ -2329,14 +2329,14 @@ describe("EVT-02 recurring preview and generation UI (#252)", () => {
     );
   }
 
-  function renderScheduleTask() {
+  function renderScheduleTask(onTaskChange = vi.fn()) {
     mockWorkspace();
     return render(
       <ProgramWorkspace
         programId="program-1"
         task="schedule"
         onBack={vi.fn()}
-        onTaskChange={vi.fn()}
+        onTaskChange={onTaskChange}
       />
     );
   }
@@ -2441,13 +2441,18 @@ describe("EVT-02 recurring preview and generation UI (#252)", () => {
     );
     await waitFor(() =>
       expect(
-        screen.getAllByText(COPY.programs.previewSkipOccurrence).length
+        screen.getAllByRole("button", {
+          name: COPY.programs.previewAdjustOccurrence,
+        }).length
       ).toBeGreaterThan(0)
     );
     await user.click(
       screen.getAllByRole("button", {
-        name: COPY.programs.previewSkipOccurrence,
+        name: COPY.programs.previewAdjustOccurrence,
       })[0]
+    );
+    await user.click(
+      screen.getByRole("button", { name: COPY.programs.previewSkipOccurrence })
     );
     expect(
       screen.getByText(COPY.programs.previewExceptionDraft)
@@ -2492,10 +2497,11 @@ describe("EVT-02 recurring preview and generation UI (#252)", () => {
 
   test("generation reports deterministic counts and refreshes the event list", async () => {
     const user = userEvent.setup();
-    renderScheduleTask();
+    const onTaskChange = vi.fn();
+    renderScheduleTask(onTaskChange);
     await screen.findByRole("button", { name: COPY.programs.previewEvents });
     mocks.previewEvents.mockResolvedValue(plan);
-    mocks.generateEvents.mockResolvedValue({
+    mocks.generateEvents.mockResolvedValueOnce({
       generated: {
         run_id: "run-1",
         plan_id: "plan-abc123",
@@ -2504,6 +2510,7 @@ describe("EVT-02 recurring preview and generation UI (#252)", () => {
         skipped: 1,
         failed: 0,
         resumed: false,
+        created_event_ids: ["event-created"],
       },
     });
 
@@ -2524,6 +2531,10 @@ describe("EVT-02 recurring preview and generation UI (#252)", () => {
         "plan-abc123"
       )
     );
+    await user.click(
+      screen.getByRole("button", { name: COPY.programs.generatedCreatedEvent })
+    );
+    expect(onTaskChange).toHaveBeenCalledWith("events", "event-created");
   });
 
   test("a schedule-rules load failure keeps the Preview form reachable next to the error alert", async () => {
@@ -2563,17 +2574,30 @@ describe("EVT-02 recurring preview and generation UI (#252)", () => {
     renderScheduleTask();
     await screen.findByRole("button", { name: COPY.programs.previewEvents });
     mocks.previewEvents.mockResolvedValue(plan);
-    mocks.generateEvents.mockResolvedValue({
-      generated: {
-        run_id: "run-1",
-        plan_id: "plan-abc123",
-        status: "partial",
-        created: 1,
-        skipped: 0,
-        failed: 1,
-        resumed: false,
-      },
-    });
+    mocks.generateEvents
+      .mockResolvedValueOnce({
+        generated: {
+          run_id: "run-1",
+          plan_id: "plan-abc123",
+          status: "partial",
+          created: 1,
+          skipped: 0,
+          failed: 1,
+          resumed: false,
+        },
+      })
+      .mockResolvedValueOnce({
+        generated: {
+          run_id: "run-1",
+          plan_id: "plan-abc123",
+          status: "completed",
+          created: 1,
+          skipped: 0,
+          failed: 0,
+          resumed: true,
+          created_event_ids: ["event-1"],
+        },
+      });
 
     await user.click(
       screen.getByRole("button", { name: COPY.programs.previewEvents })
@@ -2592,11 +2616,69 @@ describe("EVT-02 recurring preview and generation UI (#252)", () => {
         .replace("{failed}", "1")
     );
     expect(screen.queryByText(COPY.programs.generated)).not.toBeInTheDocument();
-    // The plan is kept and Generate stays enabled so the operator can
-    // immediately retry the failed units on the same plan.
+    // The plan is kept, but a retry is gated until the operator acknowledges
+    // the server's unresolved units.
     expect(
       screen.getByRole("button", { name: COPY.programs.generateEvents })
-    ).toBeEnabled();
+    ).toBeDisabled();
+    await user.click(
+      screen.getByRole("button", { name: COPY.programs.generatedReconcile })
+    );
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: COPY.programs.generateEvents })
+      ).toBeEnabled()
+    );
+    expect(mocks.generateEvents).toHaveBeenCalledTimes(2);
+  });
+
+  test("an unknown generation response is reconciled before retry is enabled", async () => {
+    const user = userEvent.setup();
+    renderScheduleTask();
+    await screen.findByRole("button", { name: COPY.programs.previewEvents });
+    mocks.previewEvents.mockResolvedValue(plan);
+    mocks.generateEvents
+      .mockRejectedValueOnce(new TypeError("request lost"))
+      .mockResolvedValueOnce({
+        generated: {
+          run_id: "run-unknown",
+          plan_id: "plan-abc123",
+          status: "completed",
+          created: 1,
+          skipped: 1,
+          failed: 0,
+          resumed: true,
+          created_event_ids: ["event-reconciled"],
+        },
+      });
+
+    await user.click(
+      screen.getByRole("button", { name: COPY.programs.previewEvents })
+    );
+    await screen.findByRole("button", { name: COPY.programs.generateEvents });
+    await user.click(
+      screen.getByRole("button", { name: COPY.programs.generateEvents })
+    );
+
+    expect(await screen.findByText(COPY.error.networkError)).toBeVisible();
+    expect(
+      screen.getByRole("button", {
+        name: COPY.programs.generatedReconcileUnknown,
+      })
+    ).toBeVisible();
+    expect(
+      screen.getByRole("button", { name: COPY.programs.generateEvents })
+    ).toBeDisabled();
+
+    await user.click(
+      screen.getByRole("button", {
+        name: COPY.programs.generatedReconcileUnknown,
+      })
+    );
+    await expect(
+      screen.findByText("已接續上次產生，新增 1 場，跳過 1 場。")
+    ).resolves.toBeVisible();
+    expect(mocks.generateEvents).toHaveBeenCalledTimes(2);
   });
 
   test("an empty schedule hides preview controls behind an explicit empty state", async () => {

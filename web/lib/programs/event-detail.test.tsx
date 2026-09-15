@@ -15,6 +15,7 @@ const mocks = vi.hoisted(() => ({
   setEventAvailability: vi.fn(),
   cancelEvent: vi.fn(),
   getProgramAttendanceArtifact: vi.fn(),
+  getOwnAttendance: vi.fn(),
 }));
 
 vi.mock(import("@/lib/programs/program-api"), () => ({
@@ -23,6 +24,7 @@ vi.mock(import("@/lib/programs/program-api"), () => ({
   setEventAvailability: mocks.setEventAvailability,
   cancelEvent: mocks.cancelEvent,
   getProgramAttendanceArtifact: mocks.getProgramAttendanceArtifact,
+  getOwnAttendance: mocks.getOwnAttendance,
 }));
 
 const detailFixture = (
@@ -949,6 +951,44 @@ describe("EVT-01 event detail", () => {
     expect(
       screen.queryByRole("link", { name: COPY.attendance.eventAttendanceOpen })
     ).not.toBeInTheDocument();
+  });
+
+  test("participant projection keeps cancelled Event history explicit without a scanner CTA", async () => {
+    mocks.getEvent.mockResolvedValue(
+      detailFixture({
+        event: {
+          ...detailFixture().event,
+          status: "Cancelled",
+          cancel_reason: "場地維修",
+          check_in_window_opens_at: "2026-09-12T09:30:00.000Z",
+          check_in_window_closes_at: "2026-09-12T12:00:00.000Z",
+        },
+      })
+    );
+    mocks.getOwnAttendance.mockResolvedValue(null);
+    render(
+      <EventDetail
+        programId="program-1"
+        eventId="event-1"
+        canManage={false}
+        onBack={() => {}}
+        backHref="/programs"
+      />
+    );
+
+    await expect(
+      screen.findByRole("status", {
+        name: COPY.attendance.eventCancelled,
+      })
+    ).resolves.toBeVisible();
+    expect(
+      screen.getAllByText(COPY.attendance.eventCancelled).length
+    ).toBeGreaterThanOrEqual(2);
+    expect(screen.getByText(COPY.programs.participantAttendance)).toBeVisible();
+    expect(
+      screen.queryByRole("link", { name: COPY.programs.goToScan })
+    ).not.toBeInTheDocument();
+    expect(mocks.getOwnAttendance).toHaveBeenCalledWith("event-1");
   });
 
   test("participant projection keeps forbidden detail opaque and exposes no scanner CTA", async () => {

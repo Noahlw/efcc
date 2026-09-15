@@ -9,7 +9,6 @@ import { RpcError } from "@/lib/api";
 import { COPY, errorMessage } from "@/lib/copy";
 import { qrDataUrl } from "@/lib/qr";
 
-import { buildCheckInSheet } from "../check-in-sheet";
 import { ScreenCard } from "../screen-foundations";
 import { getProgramAttendanceArtifact, type ProgramEvent } from "./program-api";
 import { hkWallDateTimeLabel } from "./recurrence";
@@ -39,19 +38,39 @@ function checkInUrl(token: string): string {
     : `${window.location.origin}${path}`;
 }
 
+function escapeSvgText(value: string): string {
+  return value
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;");
+}
+
+function eventQrImage(
+  event: EventCheckInSheetEvent,
+  qr: string,
+  manualCode: string
+): string {
+  const title = escapeSvgText(event.name?.trim() || event.program_name);
+  const program = escapeSvgText(event.program_name);
+  const time = escapeSvgText(hkWallDateTimeLabel(event.starts_at));
+  const end = escapeSvgText(hkWallDateTimeLabel(event.ends_at));
+  const location = event.location ? escapeSvgText(event.location) : "";
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="900" height="1120" viewBox="0 0 900 1120" role="img" aria-labelledby="title desc"><title id="title">Event QR code</title><desc id="desc">${title} ${time} ${escapeSvgText(manualCode)}</desc><rect width="900" height="1120" fill="#fffdf8"/><text x="450" y="78" text-anchor="middle" font-family="system-ui,sans-serif" font-size="28" font-weight="700" fill="#263331">Event QR code</text><text x="450" y="140" text-anchor="middle" font-family="system-ui,sans-serif" font-size="42" font-weight="800" fill="#172021">${title}</text><text x="450" y="188" text-anchor="middle" font-family="system-ui,sans-serif" font-size="24" fill="#586a67">${program}</text><text x="450" y="232" text-anchor="middle" font-family="system-ui,sans-serif" font-size="23" fill="#586a67">${time} — ${end}</text>${location ? `<text x="450" y="272" text-anchor="middle" font-family="system-ui,sans-serif" font-size="23" fill="#586a67">${location}</text>` : ""}<rect x="180" y="310" width="540" height="540" rx="20" fill="#fff" stroke="#cbd6d2" stroke-width="4"/><image href="${qr}" x="200" y="330" width="500" height="500" preserveAspectRatio="xMidYMid meet"/><text x="450" y="902" text-anchor="middle" font-family="system-ui,sans-serif" font-size="24" fill="#586a67">${escapeSvgText(COPY.attendance.sheetManualCode)}</text><text x="450" y="970" text-anchor="middle" font-family="system-ui,sans-serif" font-size="54" font-weight="800" letter-spacing="8" fill="#172021">${escapeSvgText(manualCode)}</text><text x="450" y="1035" text-anchor="middle" font-family="system-ui,sans-serif" font-size="21" fill="#586a67">${escapeSvgText(COPY.attendance.sheetScanInstruction)}</text></svg>`;
+}
+
 function printEventSheet(
   event: EventCheckInSheetEvent,
   qr: string,
   manualCode: string
-) {
+): boolean {
   const printWindow = window.open("", "_blank", "popup,width=640,height=720");
   if (!printWindow) {
-    return;
+    return false;
   }
   const doc = printWindow.document;
   doc.open();
   doc.write(
-    "<!doctype html><html><head><title>EFCC Event Check-In Sheet</title></head><body></body></html>"
+    "<!doctype html><html><head><title>Event QR code</title></head><body></body></html>"
   );
   const style = doc.createElement("style");
   style.textContent =
@@ -60,8 +79,10 @@ function printEventSheet(
   const main = doc.createElement("main");
   const title = doc.createElement("h1");
   title.textContent = event.name?.trim() || event.program_name;
+  const program = doc.createElement("p");
+  program.textContent = event.program_name;
   const time = doc.createElement("p");
-  time.textContent = hkWallDateTimeLabel(event.starts_at);
+  time.textContent = `${hkWallDateTimeLabel(event.starts_at)} — ${hkWallDateTimeLabel(event.ends_at)}`;
   if (event.location) {
     time.append(` · ${event.location}`);
   }
@@ -75,11 +96,12 @@ function printEventSheet(
   const code = doc.createElement("strong");
   code.textContent = manualCode;
   codeLabel.append(code);
-  main.append(title, time, image, instruction, codeLabel);
+  main.append(title, program, time, image, instruction, codeLabel);
   doc.body.append(main);
   doc.close();
   printWindow.focus();
   printWindow.print();
+  return true;
 }
 
 export const EventCheckInSheet = ({
@@ -90,12 +112,14 @@ export const EventCheckInSheet = ({
   const [token, setToken] = useState<string | null>(null);
   const [qr, setQr] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     let active = true;
     setLoading(true);
     setLoadError(null);
+    setActionError(null);
     setToken(null);
     void getProgramAttendanceArtifact(event.program_id)
       .then(({ artifact }) => {
@@ -148,27 +172,40 @@ export const EventCheckInSheet = ({
   }, [event.manual_check_in_code, token]);
 
   function downloadQr() {
-    if (!qr) {
+    if (!qr || !event.manual_check_in_code) {
+      setActionError(COPY.attendance.eventQrCodeDownloadError);
       return;
     }
+    const svg = eventQrImage(event, qr, event.manual_check_in_code);
     const link = document.createElement("a");
-    link.href = qr;
-    link.download = `${event.event_id}-check-in-qr.svg`;
+    const objectUrl = URL.createObjectURL
+      ? URL.createObjectURL(new Blob([svg], { type: "image/svg+xml" }))
+      : `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
+    link.href = objectUrl;
+    link.download = `${event.event_id}-event-qr-code.svg`;
+    document.body.append(link);
     link.click();
+    link.remove();
+    if (objectUrl.startsWith("blob:") && URL.revokeObjectURL) {
+      window.setTimeout(() => URL.revokeObjectURL(objectUrl), 0);
+    }
+    setActionError(null);
   }
 
-  async function printSheet() {
+  function printSheet() {
     if (!qr || !event.manual_check_in_code) {
+      setActionError(COPY.attendance.eventQrCodePrintError);
       return;
     }
-    const sheet = await buildCheckInSheet({
-      programName: event.name?.trim() || event.program_name,
-      startsAtLabel: hkWallDateTimeLabel(event.starts_at),
-      checkInUrl: checkInUrl(token ?? ""),
-      manualCode: event.manual_check_in_code,
-      renderQr: qrDataUrl,
-    });
-    printEventSheet(event, sheet.qrDataUrl, sheet.manualCode);
+    try {
+      setActionError(
+        printEventSheet(event, qr, event.manual_check_in_code)
+          ? null
+          : COPY.attendance.eventQrCodePrintError
+      );
+    } catch {
+      setActionError(COPY.attendance.eventQrCodePrintError);
+    }
   }
 
   return (
@@ -208,6 +245,7 @@ export const EventCheckInSheet = ({
       {loadError && !loading && (
         <Alert variant="destructive">{loadError}</Alert>
       )}
+      {actionError && <Alert variant="destructive">{actionError}</Alert>}
       {!event.manual_check_in_code && !loading && (
         <Alert variant="destructive">
           {COPY.attendance.eventCheckInSheetUnavailable}
@@ -216,6 +254,9 @@ export const EventCheckInSheet = ({
       {qr && event.manual_check_in_code && (
         <>
           <div className="grid min-w-0 gap-1 text-sm">
+            <strong className="wrap-anywhere text-[var(--screen-muted)]">
+              {COPY.attendance.eventQrCodeFacts}
+            </strong>
             <strong className="wrap-anywhere">
               {event.name?.trim() || event.program_name}
             </strong>

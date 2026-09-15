@@ -35,6 +35,16 @@ export class ProgramTokenRotationConflictError extends Error {
 }
 
 // oxlint-disable-next-line eslint/max-classes-per-file
+export class ScheduleRuleIdempotencyConflictError extends Error {
+  constructor() {
+    super(
+      "The idempotency key was already used for a different Schedule Rule request."
+    );
+    this.name = "ScheduleRuleIdempotencyConflictError";
+  }
+}
+
+// oxlint-disable-next-line eslint/max-classes-per-file
 export class InvalidProgramLifecycleError extends Error {
   constructor(
     from: ProgramLifecycle,

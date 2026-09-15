@@ -1132,6 +1132,7 @@ export const ProgramSettings = ({
   const [attendanceArtifactBusy, setAttendanceArtifactBusy] = useState(false);
   const [attendanceArtifactReload, setAttendanceArtifactReload] = useState(0);
   const attendanceRotationKey = useRef<string | null>(null);
+  const scheduleRuleCreateKey = useRef<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [retryPatch, setRetryPatch] = useState<ProgramPatch | null>(null);
@@ -1496,11 +1497,17 @@ export const ProgramSettings = ({
 
   const submitNewRule = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    const idempotencyKey = scheduleRuleCreateKey.current ?? crypto.randomUUID();
+    scheduleRuleCreateKey.current = idempotencyKey;
+    const input = ruleInputFrom(newRule);
     void runScheduleMutation(
       () =>
-        createScheduleRule(currentProgram.program_id, ruleInputFrom(newRule)),
+        createScheduleRule(currentProgram.program_id, input, {
+          idempotencyKey,
+        }),
       COPY.programs.settingsSaved,
       () => {
+        scheduleRuleCreateKey.current = null;
         setNewRule((previous) => ({
           ...previous,
           startTime: "",
@@ -1608,6 +1615,7 @@ export const ProgramSettings = ({
   };
 
   const beginNewRule = () => {
+    scheduleRuleCreateKey.current = null;
     setScheduleEditor({ kind: "new-rule" });
     setActionError(null);
     setNotice(null);
@@ -1624,6 +1632,7 @@ export const ProgramSettings = ({
   };
 
   const exitScheduleEditor = () => {
+    scheduleRuleCreateKey.current = null;
     setScheduleEditor(null);
     setActionError(null);
     setNotice(null);
@@ -2411,7 +2420,10 @@ export const ProgramSettings = ({
                 <ScheduleRuleEditor
                   idPrefix="program-settings-new-rule"
                   values={newRule}
-                  onChange={setNewRule}
+                  onChange={(values) => {
+                    scheduleRuleCreateKey.current = null;
+                    setNewRule(values);
+                  }}
                   onSubmit={submitNewRule}
                   onCancel={exitScheduleEditor}
                   busy={busy}

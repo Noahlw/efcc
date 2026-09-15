@@ -49,6 +49,7 @@ import {
   ProgramTokenRotationConflictError,
   RequestNotDecidableError,
   ScheduleRuleRetiredError,
+  ScheduleRuleIdempotencyConflictError,
   ScheduleRuleNotApplicableError,
   StaleEnrollmentRequestError,
   StalePreviewPlanError,
@@ -236,6 +237,15 @@ function mapWorkspaceError(error: unknown, requestId: string): Response | null {
     return problem(
       409,
       "SCHEDULE_RULE_RETIRED",
+      "Conflict",
+      error.message,
+      requestId
+    );
+  }
+  if (error instanceof ScheduleRuleIdempotencyConflictError) {
+    return problem(
+      409,
+      "SCHEDULE_RULE_IDEMPOTENCY_CONFLICT",
       "Conflict",
       error.message,
       requestId
@@ -1642,11 +1652,7 @@ export async function handleListScheduleRules(
     return auth;
   }
   const { workspace } = await getModule(env);
-  const program = await workspace.getProgram(
-    authorizationContextFor(auth.account),
-    programId
-  );
-  if (!program) {
+  if (!(await workspace.programExists(programId))) {
     return notFound(requestId, "Unknown program.");
   }
   const rules = await workspace.listScheduleRules(
@@ -1699,7 +1705,8 @@ export async function handleCreateScheduleRule(
   programId: string
 ): Promise<Response> {
   const requestId = crypto.randomUUID();
-  const correlationId = request.headers.get("Idempotency-Key") ?? requestId;
+  const idempotencyKey = request.headers.get("Idempotency-Key")?.trim() || null;
+  const correlationId = idempotencyKey ?? requestId;
   const auth = await requireActor(request, env, requestId);
   if (auth instanceof Response) {
     return auth;
@@ -1724,21 +1731,22 @@ export async function handleCreateScheduleRule(
   const { value } = parsed;
 
   const { workspace } = await getModule(env);
-  const program = await workspace.getProgram(
-    authorizationContextFor(auth.account),
-    programId
-  );
-  if (!program) {
+  if (!(await workspace.programExists(programId))) {
     return notFound(requestId, "Unknown program.");
   }
   try {
-    const row = await workspace.createScheduleRule(
+    const result = await workspace.createScheduleRule(
       authorizationContextFor(auth.account),
       programId,
       value,
-      correlationId
+      correlationId,
+      idempotencyKey
     );
-    return jsonResponse(201, { rule: row }, requestId);
+    return jsonResponse(
+      result.idempotent ? 200 : 201,
+      { rule: result.rule, idempotent: result.idempotent },
+      requestId
+    );
   } catch (error) {
     const mapped = mapWorkspaceError(error, requestId);
     if (mapped) {
@@ -2196,11 +2204,7 @@ export async function handlePreviewEvents(
     return validation(requestId, "預覽範圍必須在 1 至 365 個香港時間日內。");
   }
   const { workspace } = await getModule(env);
-  const program = await workspace.getProgram(
-    authorizationContextFor(auth.account),
-    programId
-  );
-  if (!program) {
+  if (!(await workspace.programExists(programId))) {
     return notFound(requestId, "Unknown program.");
   }
   try {
@@ -2246,11 +2250,7 @@ export async function handleGenerateEvents(
     return validation(requestId, "plan_id is required.");
   }
   const { workspace } = await getModule(env);
-  const program = await workspace.getProgram(
-    authorizationContextFor(auth.account),
-    programId
-  );
-  if (!program) {
+  if (!(await workspace.programExists(programId))) {
     return notFound(requestId, "Unknown program.");
   }
   try {
@@ -2371,11 +2371,7 @@ export async function handleCreateEvent(
     );
   }
   const { workspace } = await getModule(env);
-  const program = await workspace.getProgram(
-    authorizationContextFor(auth.account),
-    programId
-  );
-  if (!program) {
+  if (!(await workspace.programExists(programId))) {
     return notFound(requestId, "Unknown program.");
   }
   try {
@@ -2672,11 +2668,7 @@ export async function handleCreateEnrollmentRequest(
     return auth;
   }
   const { workspace } = await getModule(env);
-  const program = await workspace.getProgram(
-    authorizationContextFor(auth.account),
-    programId
-  );
-  if (!program) {
+  if (!(await workspace.programExists(programId))) {
     return notFound(requestId, "Unknown program.");
   }
   try {
@@ -2871,11 +2863,7 @@ export async function handleAssistedEnroll(
     return validation(requestId, "member_user_id is required.");
   }
   const { workspace } = await getModule(env);
-  const program = await workspace.getProgram(
-    authorizationContextFor(auth.account),
-    programId
-  );
-  if (!program) {
+  if (!(await workspace.programExists(programId))) {
     return notFound(requestId, "Unknown program.");
   }
   try {

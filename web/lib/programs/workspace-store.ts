@@ -197,6 +197,14 @@ export interface ScheduleRuleInput {
   created_at: string;
   updated_by: string | null;
   updated_at: string;
+  /** Present for retry-safe HTTP creates; omitted by legacy callers. */
+  idempotency_key?: string | null;
+  request_fingerprint?: string | null;
+}
+
+export interface ScheduleRuleCreationResult {
+  rule: ScheduleRuleRow;
+  idempotent: boolean;
 }
 
 export interface ScheduleRuleUpdate {
@@ -387,6 +395,21 @@ export interface GenerateResult {
   skipped: number;
   failed: number;
   resumed: boolean;
+  created_event_ids: string[];
+  skipped_occurrences: GenerateSkippedOccurrence[];
+  unresolved_occurrences: GenerateUnresolvedOccurrence[];
+}
+
+export interface GenerateSkippedOccurrence {
+  occurrence_id: string;
+  starts_at: string;
+  reason: "CANCEL" | "DUPLICATE";
+}
+
+export interface GenerateUnresolvedOccurrence {
+  occurrence_id: string;
+  starts_at: string;
+  detail: string | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -617,7 +640,9 @@ export interface WorkspaceStore {
     departmentId: string
   ) => Promise<DepartmentModuleRow[]>;
 
-  createScheduleRule: (input: ScheduleRuleInput) => Promise<ScheduleRuleRow>;
+  createScheduleRule: (
+    input: ScheduleRuleInput
+  ) => Promise<ScheduleRuleCreationResult>;
   updateScheduleRule: (
     ruleId: string,
     update: ScheduleRuleUpdate

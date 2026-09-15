@@ -430,13 +430,13 @@ export const WorkspaceOverview = ({
                       mode: "management",
                       programId: program.program_id,
                       departmentId,
-                      task: "participants",
+                      task: "events",
                       eventId: nextEvent.event_id,
                       hash,
                     })}
                     onClick={taskLinkClick(
                       onTaskChange,
-                      "participants",
+                      "events",
                       nextEvent.event_id
                     )}
                   >

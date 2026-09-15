@@ -23,6 +23,15 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  Sheet,
+  SheetClose,
+  SheetContent,
+  SheetDescription,
+  SheetFooter,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
 import { RpcError } from "@/lib/api";
 import { COPY, errorCopyFor } from "@/lib/copy";
 import { announce } from "@/lib/live-region";
@@ -37,6 +46,7 @@ import {
 } from "@/lib/programs/program-api";
 import type {
   EventType,
+  GenerateResult,
   PreviewResult,
   ProgramEvent,
   ScheduleRule,
@@ -89,12 +99,12 @@ type PreviewState =
   | { kind: "empty" }
   | { kind: "error"; message: string; stale: boolean };
 
-type ExceptionDraft = {
+interface ExceptionDraft {
   action: "CANCEL" | "RESCHEDULE";
   newDate: string;
   newStartTime: string;
   newEndTime: string;
-};
+}
 
 function hkWallTimeOf(iso: string): string {
   return new Date(new Date(iso).getTime() + 8 * 60 * 60_000)
@@ -107,12 +117,15 @@ export const RecurringSchedulePanel = ({
   rules,
   rulesError,
   onGenerated,
+  onOpenEvent,
 }: {
   programId: string;
   rules: ScheduleRule[] | null;
   rulesError: string | null;
   /** Invoked after a successful generation so the event list refreshes. */
   onGenerated: () => void;
+  /** Opens an exact generated Event when the parent owns Event navigation. */
+  onOpenEvent?: (eventId: string) => void;
 }) => {
   const [previewFromDate, setPreviewFromDate] = useState(() =>
     hkTodayWallDate()
@@ -129,11 +142,19 @@ export const RecurringSchedulePanel = ({
     planId: string;
   } | null>(null);
   const [generatePartial, setGeneratePartial] = useState(false);
+  const [generationData, setGenerationData] = useState<GenerateResult | null>(
+    null
+  );
+  const [generationNeedsReconciliation, setGenerationNeedsReconciliation] =
+    useState(false);
   const [generateError, setGenerateError] = useState<string | null>(null);
   const [exceptionDrafts, setExceptionDrafts] = useState<
     Record<string, ExceptionDraft>
   >({});
   const [exceptionBusy, setExceptionBusy] = useState(false);
+  const [adjustingOccurrenceId, setAdjustingOccurrenceId] = useState<
+    string | null
+  >(null);
   const mounted = useRef(true);
 
   useEffect(() => {
@@ -163,6 +184,8 @@ export const RecurringSchedulePanel = ({
     setPreview({ kind: "loading" });
     setGenerateResult(null);
     setGenerationIdentity(null);
+    setGenerationData(null);
+    setGenerationNeedsReconciliation(false);
     setGenerateError(null);
     try {
       const plan = await previewEvents(programId, {
@@ -231,6 +254,15 @@ export const RecurringSchedulePanel = ({
     setGenerateError(null);
   };
 
+  const openExceptionEditor = (
+    occurrence: PreviewResult["occurrences"][number]
+  ) => {
+    if (!exceptionDrafts[occurrence.occurrence_id]) {
+      startExceptionDraft(occurrence, "RESCHEDULE");
+    }
+    setAdjustingOccurrenceId(occurrence.occurrence_id);
+  };
+
   const clearExceptionDraft = (occurrenceId: string) => {
     setExceptionDrafts((previous) => {
       const next = { ...previous };
@@ -263,6 +295,7 @@ export const RecurringSchedulePanel = ({
           : {}),
       });
       clearExceptionDraft(occurrence.occurrence_id);
+      setAdjustingOccurrenceId(null);
       await loadPreview(previewFromDate, previewUntilDate);
     } catch (error) {
       if (!mounted.current) {
@@ -301,6 +334,7 @@ export const RecurringSchedulePanel = ({
         rule.rule_id,
         occurrence.exception_id
       );
+      setAdjustingOccurrenceId(null);
       await loadPreview(previewFromDate, previewUntilDate);
     } catch (error) {
       if (!mounted.current) {
@@ -322,8 +356,34 @@ export const RecurringSchedulePanel = ({
     }
   };
 
+  const applyGenerationResult = (generated: GenerateResult) => {
+    const result =
+      generated.failed === 0
+        ? generated.resumed
+          ? COPY.programs.generatedResumed
+              .replace("{created}", String(generated.created))
+              .replace("{skipped}", String(generated.skipped))
+          : COPY.programs.generated
+              .replace("{created}", String(generated.created))
+              .replace("{skipped}", String(generated.skipped))
+        : COPY.programs.generatedPartial
+            .replace("{created}", String(generated.created))
+            .replace("{skipped}", String(generated.skipped))
+            .replace("{failed}", String(generated.failed));
+    setGeneratePartial(generated.failed > 0);
+    setGenerationData(generated);
+    setGenerationNeedsReconciliation(generated.failed > 0);
+    setGenerateResult(result);
+    setGenerationIdentity({
+      runId: generated.run_id,
+      planId: generated.plan_id,
+    });
+    announce(result);
+    onGenerated();
+  };
+
   const submitGenerate = async () => {
-    if (preview.kind !== "ready") {
+    if (preview.kind !== "ready" || generationNeedsReconciliation) {
       return;
     }
     const planId = preview.plan.plan.plan_id;
@@ -331,38 +391,13 @@ export const RecurringSchedulePanel = ({
     setGenerateError(null);
     setGenerateResult(null);
     setGeneratePartial(false);
+    setGenerationData(null);
     try {
       const { generated } = await generateEvents(programId, planId);
       if (!mounted.current) {
         return;
       }
-      const result =
-        generated.failed === 0
-          ? generated.resumed
-            ? COPY.programs.generatedResumed
-                .replace("{created}", String(generated.created))
-                .replace("{skipped}", String(generated.skipped))
-            : COPY.programs.generated
-                .replace("{created}", String(generated.created))
-                .replace("{skipped}", String(generated.skipped))
-          : COPY.programs.generatedPartial
-              .replace("{created}", String(generated.created))
-              .replace("{skipped}", String(generated.skipped))
-              .replace("{failed}", String(generated.failed));
-      // A partial/failed run is NOT a full success: surface the same text
-      // through the alert treatment so the operator sees generation is
-      // incomplete and can re-click Generate on the same plan to resume the
-      // failed units (the server run is resumable by design). Keep the plan
-      // and preview state untouched; only refresh the event directory with
-      // whatever partial progress exists.
-      setGeneratePartial(generated.failed > 0);
-      setGenerateResult(result);
-      setGenerationIdentity({
-        runId: generated.run_id,
-        planId: generated.plan_id,
-      });
-      announce(result);
-      onGenerated();
+      applyGenerationResult(generated);
     } catch (error) {
       if (!mounted.current) {
         return;
@@ -378,7 +413,55 @@ export const RecurringSchedulePanel = ({
         // The schedule changed under the plan; require a fresh preview
         // before generation can run again.
         setPreview({ kind: "error", message, stale: true });
+        setGenerationNeedsReconciliation(false);
       } else {
+        const networkFailure =
+          (typeof navigator !== "undefined" && !navigator.onLine) ||
+          !(error instanceof RpcError) ||
+          error.problem.code === "NETWORK_ERROR" ||
+          error.problem.code === "UNAVAILABLE";
+        setGenerationNeedsReconciliation(networkFailure);
+        setGenerateError(message);
+      }
+      announce(message);
+    } finally {
+      if (mounted.current) {
+        setGenerateBusy(false);
+      }
+    }
+  };
+
+  const reconcileGeneration = async () => {
+    const planId =
+      generationIdentity?.planId ??
+      (preview.kind === "ready" ? preview.plan.plan.plan_id : null);
+    if (!planId) {
+      return;
+    }
+    setGenerateBusy(true);
+    setGenerateError(null);
+    try {
+      const { generated } = await generateEvents(programId, planId);
+      if (!mounted.current) {
+        return;
+      }
+      applyGenerationResult(generated);
+    } catch (error) {
+      if (!mounted.current) {
+        return;
+      }
+      if (redirectToLoginIfRequired(error)) {
+        return;
+      }
+      const message =
+        error instanceof RpcError
+          ? errorCopyFor(error.problem.code, error.problem.detail)
+          : COPY.error.networkError;
+      if (error instanceof RpcError && error.problem.code === "STALE_PLAN") {
+        setPreview({ kind: "error", message, stale: true });
+        setGenerationNeedsReconciliation(false);
+      } else {
+        setGenerationNeedsReconciliation(true);
         setGenerateError(message);
       }
       announce(message);
@@ -391,377 +474,562 @@ export const RecurringSchedulePanel = ({
 
   const rulesReady = rules !== null;
   const noRules = rulesReady && rules.length === 0;
+  const adjustingOccurrence =
+    preview.kind === "ready" && adjustingOccurrenceId !== null
+      ? (preview.plan.occurrences.find(
+          (occurrence) => occurrence.occurrence_id === adjustingOccurrenceId
+        ) ?? null)
+      : null;
+  const adjustingDraft = adjustingOccurrence
+    ? (exceptionDrafts[adjustingOccurrence.occurrence_id] ?? null)
+    : null;
+  const adjustingRule = adjustingOccurrence
+    ? ((rules ?? []).find(
+        (candidate) => candidate.rule_id === adjustingOccurrence.rule_id
+      ) ?? null)
+    : null;
+  const createdEventIds = generationData?.created_event_ids ?? [];
+  const skippedOccurrences = generationData?.skipped_occurrences ?? [];
+  const unresolvedOccurrences = generationData?.unresolved_occurrences ?? [];
+  const unresolvedCount =
+    generationData?.failed ?? unresolvedOccurrences.length;
 
   return (
-    <ScreenSection
-      title={COPY.programs.secondaryGeneratorLabel}
-      headingId="programs-workspace-recurring-title"
+    <Sheet
+      open={adjustingOccurrence !== null}
+      onOpenChange={(open) => {
+        if (!open) {
+          setAdjustingOccurrenceId(null);
+        }
+      }}
     >
-      <p className="m-0 wrap-anywhere text-sm leading-6 text-[var(--screen-muted)]">
-        {COPY.programs.previewLead}
-      </p>
-      {rulesError !== null && <Alert variant="destructive">{rulesError}</Alert>}
-      {noRules ? (
-        <ScreenState
-          kind="empty"
-          title={`${COPY.programs.schedulePreviewTitle}：${COPY.programs.settingsScheduleNone}`}
-        />
-      ) : (
-        <ScreenCard asChild>
-          <ScreenEditor onSubmit={submitPreview}>
-            <fieldset className="grid min-w-0 gap-2">
-              <legend className="text-sm font-semibold text-[var(--screen-ink)]">
-                {COPY.programs.previewHorizon}
-              </legend>
-              <div className="grid min-w-0 gap-2 sm:grid-cols-2">
-                <ScreenField
-                  htmlFor="programs-preview-from-date"
-                  label={COPY.programs.previewFromDate}
-                >
-                  <Input
-                    id="programs-preview-from-date"
-                    className="border-[var(--screen-line-strong)] bg-[var(--screen-surface)] text-base"
-                    type="date"
-                    name="from_date"
-                    value={previewFromDate}
-                    onChange={(event) => setPreviewFromDate(event.target.value)}
-                    required
-                  />
-                </ScreenField>
-                <ScreenField
-                  htmlFor="programs-preview-until-date"
-                  label={COPY.programs.previewUntilDate}
-                >
-                  <Input
-                    id="programs-preview-until-date"
-                    className="border-[var(--screen-line-strong)] bg-[var(--screen-surface)] text-base"
-                    type="date"
-                    name="until_date"
-                    min={previewFromDate}
-                    value={previewUntilDate}
-                    onChange={(event) =>
-                      setPreviewUntilDate(event.target.value)
-                    }
-                    required
-                  />
-                </ScreenField>
-              </div>
-              <p className="m-0 text-xs leading-[var(--screen-meta-leading)] text-[var(--screen-muted)]">
-                {COPY.programs.hkTimeMarker}
-              </p>
-            </fieldset>
-            <Button
-              type="submit"
-              className="w-fit bg-[var(--screen-accent)] text-white hover:bg-[var(--screen-accent-deep)]"
-              disabled={previewBusy || generateBusy}
-            >
-              {previewBusy
-                ? COPY.programs.previewing
-                : COPY.programs.previewEvents}
-            </Button>
-          </ScreenEditor>
-        </ScreenCard>
-      )}
-      {preview.kind === "loading" && (
-        <ScreenLoadingRows count={1} label={COPY.programs.previewing} />
-      )}
-      {preview.kind === "error" && (
-        <ScreenState kind="error" title={preview.message} />
-      )}
-      {preview.kind === "empty" && (
-        <ScreenState kind="empty" title={COPY.programs.previewEmpty} />
-      )}
-      {preview.kind === "ready" && (
-        <ScreenSection title={COPY.programs.schedulePreviewTitle}>
+      <>
+        <ScreenSection
+          title={COPY.programs.secondaryGeneratorLabel}
+          headingId="programs-workspace-recurring-title"
+        >
           <p className="m-0 wrap-anywhere text-sm leading-6 text-[var(--screen-muted)]">
-            {COPY.programs.previewPlanLabel.replace(
-              "{id}",
-              preview.plan.plan.plan_id.slice(0, 8)
-            )}
-            {" · "}
-            {COPY.programs.previewPlanMeta
-              .replace("{rules}", String(preview.plan.plan.rule_count))
-              .replace("{from}", preview.plan.plan.from_date)
-              .replace(
-                "{to}",
-                preview.plan.plan.to_date ??
-                  addWallDays(
-                    preview.plan.plan.from_date,
-                    preview.plan.plan.horizon_days - 1
-                  )
-              )
-              .replace("{days}", String(preview.plan.plan.horizon_days))}
+            {COPY.programs.previewLead}
           </p>
-          {rules?.some(
-            (rule) =>
-              rule.recurrence === "MONTHLY" && (rule.month_day ?? 0) >= 29
-          ) && (
-            <p className="m-0 text-xs leading-[var(--screen-meta-leading)] text-[var(--screen-muted)]">
-              {COPY.programs.previewMonthlyOmission.replace(
-                "{day}",
-                String(
-                  rules.find(
-                    (rule) =>
-                      rule.recurrence === "MONTHLY" &&
-                      (rule.month_day ?? 0) >= 29
-                  )?.month_day ?? ""
-                )
-              )}
-            </p>
+          {rulesError !== null && (
+            <Alert variant="destructive">{rulesError}</Alert>
           )}
-          <ScreenRowList>
-            <ul
-              className="m-0 grid min-w-0 list-none gap-0 p-0"
-              aria-label={COPY.programs.previewEvents}
-            >
-              {preview.plan.occurrences.map((occurrence) => {
-                const rule = (rules ?? []).find(
-                  (candidate) => candidate.rule_id === occurrence.rule_id
-                );
-                const skipped = occurrence.skip_reason !== null;
-                const draft = exceptionDrafts[occurrence.occurrence_id];
-                return (
-                  <li key={occurrence.occurrence_id} className="min-w-0">
-                    <ScreenRow className="items-start">
-                      <ScreenRowMain>
-                        <ScreenRowTitle>
-                          {hkWallDateTimeLabel(occurrence.starts_at)}
-                        </ScreenRowTitle>
-                        <ScreenRowMeta>
-                          {occurrence.location?.trim()
-                            ? occurrence.location
-                            : COPY.programs.eventLocationPlaceholder}
-                        </ScreenRowMeta>
-                        <ScreenRowMeta>
-                          {rule
-                            ? formatScheduleRuleLabel(rule)
-                            : occurrence.rule_id}
-                        </ScreenRowMeta>
-                        {occurrence.replacement_date !== null &&
-                          occurrence.replacement_date !== undefined && (
+          {noRules ? (
+            <ScreenState
+              kind="empty"
+              title={`${COPY.programs.schedulePreviewTitle}：${COPY.programs.settingsScheduleNone}`}
+            />
+          ) : (
+            <ScreenCard asChild>
+              <ScreenEditor onSubmit={submitPreview}>
+                <fieldset className="grid min-w-0 gap-2">
+                  <legend className="text-sm font-semibold text-[var(--screen-ink)]">
+                    {COPY.programs.previewHorizon}
+                  </legend>
+                  <div className="grid min-w-0 gap-2 sm:grid-cols-2">
+                    <ScreenField
+                      htmlFor="programs-preview-from-date"
+                      label={COPY.programs.previewFromDate}
+                    >
+                      <Input
+                        id="programs-preview-from-date"
+                        className="border-[var(--screen-line-strong)] bg-[var(--screen-surface)] text-base"
+                        type="date"
+                        name="from_date"
+                        value={previewFromDate}
+                        onChange={(event) =>
+                          setPreviewFromDate(event.target.value)
+                        }
+                        required
+                      />
+                    </ScreenField>
+                    <ScreenField
+                      htmlFor="programs-preview-until-date"
+                      label={COPY.programs.previewUntilDate}
+                    >
+                      <Input
+                        id="programs-preview-until-date"
+                        className="border-[var(--screen-line-strong)] bg-[var(--screen-surface)] text-base"
+                        type="date"
+                        name="until_date"
+                        min={previewFromDate}
+                        value={previewUntilDate}
+                        onChange={(event) =>
+                          setPreviewUntilDate(event.target.value)
+                        }
+                        required
+                      />
+                    </ScreenField>
+                  </div>
+                  <p className="m-0 text-xs leading-[var(--screen-meta-leading)] text-[var(--screen-muted)]">
+                    {COPY.programs.hkTimeMarker}
+                  </p>
+                </fieldset>
+                <Button
+                  type="submit"
+                  className="w-fit bg-[var(--screen-accent)] text-white hover:bg-[var(--screen-accent-deep)]"
+                  disabled={previewBusy || generateBusy}
+                >
+                  {previewBusy
+                    ? COPY.programs.previewing
+                    : COPY.programs.previewEvents}
+                </Button>
+              </ScreenEditor>
+            </ScreenCard>
+          )}
+          {preview.kind === "loading" && (
+            <ScreenLoadingRows count={1} label={COPY.programs.previewing} />
+          )}
+          {preview.kind === "error" && (
+            <ScreenState kind="error" title={preview.message} />
+          )}
+          {preview.kind === "empty" && (
+            <ScreenState kind="empty" title={COPY.programs.previewEmpty} />
+          )}
+          {preview.kind === "ready" && (
+            <ScreenSection title={COPY.programs.schedulePreviewTitle}>
+              <p className="m-0 wrap-anywhere text-sm leading-6 text-[var(--screen-muted)]">
+                {COPY.programs.previewPlanLabel.replace(
+                  "{id}",
+                  preview.plan.plan.plan_id.slice(0, 8)
+                )}
+                {" · "}
+                {COPY.programs.previewPlanMeta
+                  .replace("{rules}", String(preview.plan.plan.rule_count))
+                  .replace("{from}", preview.plan.plan.from_date)
+                  .replace(
+                    "{to}",
+                    preview.plan.plan.to_date ??
+                      addWallDays(
+                        preview.plan.plan.from_date,
+                        preview.plan.plan.horizon_days - 1
+                      )
+                  )
+                  .replace("{days}", String(preview.plan.plan.horizon_days))}
+              </p>
+              {rules?.some(
+                (rule) =>
+                  rule.recurrence === "MONTHLY" && (rule.month_day ?? 0) >= 29
+              ) && (
+                <p className="m-0 text-xs leading-[var(--screen-meta-leading)] text-[var(--screen-muted)]">
+                  {COPY.programs.previewMonthlyOmission.replace(
+                    "{day}",
+                    String(
+                      rules.find(
+                        (rule) =>
+                          rule.recurrence === "MONTHLY" &&
+                          (rule.month_day ?? 0) >= 29
+                      )?.month_day ?? ""
+                    )
+                  )}
+                </p>
+              )}
+              <ScreenRowList>
+                <ul
+                  className="m-0 grid min-w-0 list-none gap-0 p-0"
+                  aria-label={COPY.programs.previewEvents}
+                >
+                  {preview.plan.occurrences.map((occurrence) => {
+                    const rule = (rules ?? []).find(
+                      (candidate) => candidate.rule_id === occurrence.rule_id
+                    );
+                    const skipped = occurrence.skip_reason !== null;
+                    const draft = exceptionDrafts[occurrence.occurrence_id];
+                    return (
+                      <li key={occurrence.occurrence_id} className="min-w-0">
+                        <ScreenRow className="items-start">
+                          <ScreenRowMain>
+                            <ScreenRowTitle>
+                              {hkWallDateTimeLabel(occurrence.starts_at)}
+                            </ScreenRowTitle>
                             <ScreenRowMeta>
-                              {COPY.programs.previewOccurrenceOriginal.replace(
-                                "{date}",
-                                occurrence.occurs_on
-                              )}{" "}
-                              ·{" "}
-                              {COPY.programs.previewOccurrenceReplacement.replace(
-                                "{date}",
-                                occurrence.replacement_date
-                              )}
+                              {occurrence.location?.trim()
+                                ? occurrence.location
+                                : COPY.programs.eventLocationPlaceholder}
                             </ScreenRowMeta>
-                          )}
-                      </ScreenRowMain>
-                      <ScreenRowTrailing>
-                        {occurrence.skip_reason === "CANCEL" && (
-                          <ScreenStatus tone="danger">
-                            {COPY.programs.previewOccurrenceSkipped}
-                          </ScreenStatus>
-                        )}
-                        {occurrence.skip_reason === "DUPLICATE" && (
-                          <ScreenStatus tone="danger">
-                            {COPY.programs.previewOccurrenceDuplicate}
-                          </ScreenStatus>
-                        )}
-                        {!skipped && occurrence.exception_id !== null && (
-                          <ScreenStatus tone="pending">
-                            {COPY.programs.previewOccurrenceRescheduled}
-                          </ScreenStatus>
-                        )}
-                      </ScreenRowTrailing>
-                    </ScreenRow>
-                    {occurrence.skip_reason !== "DUPLICATE" && (
-                      <div className="grid min-w-0 gap-2 border-t border-[var(--screen-line)] p-3">
-                        {draft ? (
-                          <fieldset className="grid min-w-0 gap-2">
-                            <legend className="text-sm font-semibold text-[var(--screen-ink)]">
-                              {COPY.programs.previewExceptionDraft}
-                            </legend>
-                            {draft.action === "RESCHEDULE" && (
-                              <div className="grid min-w-0 gap-2 sm:grid-cols-3">
-                                <ScreenField
-                                  htmlFor={`preview-exception-${occurrence.occurrence_id}-date`}
-                                  label={COPY.programs.settingsExceptionNewDate}
-                                >
-                                  <Input
-                                    id={`preview-exception-${occurrence.occurrence_id}-date`}
-                                    className="border-[var(--screen-line-strong)] bg-[var(--screen-surface)] text-base"
-                                    type="date"
-                                    value={draft.newDate}
-                                    onChange={(event) =>
-                                      setExceptionDrafts((previous) => ({
-                                        ...previous,
-                                        [occurrence.occurrence_id]: {
-                                          ...draft,
-                                          newDate: event.target.value,
-                                        },
-                                      }))
-                                    }
-                                    disabled={exceptionBusy}
-                                  />
-                                </ScreenField>
-                                <ScreenField
-                                  htmlFor={`preview-exception-${occurrence.occurrence_id}-start`}
-                                  label={
-                                    COPY.programs.settingsExceptionNewStart
-                                  }
-                                >
-                                  <Input
-                                    id={`preview-exception-${occurrence.occurrence_id}-start`}
-                                    className="border-[var(--screen-line-strong)] bg-[var(--screen-surface)] text-base"
-                                    type="time"
-                                    value={draft.newStartTime}
-                                    onChange={(event) =>
-                                      setExceptionDrafts((previous) => ({
-                                        ...previous,
-                                        [occurrence.occurrence_id]: {
-                                          ...draft,
-                                          newStartTime: event.target.value,
-                                        },
-                                      }))
-                                    }
-                                    disabled={exceptionBusy}
-                                  />
-                                </ScreenField>
-                                <ScreenField
-                                  htmlFor={`preview-exception-${occurrence.occurrence_id}-end`}
-                                  label={COPY.programs.settingsExceptionNewEnd}
-                                >
-                                  <Input
-                                    id={`preview-exception-${occurrence.occurrence_id}-end`}
-                                    className="border-[var(--screen-line-strong)] bg-[var(--screen-surface)] text-base"
-                                    type="time"
-                                    value={draft.newEndTime}
-                                    onChange={(event) =>
-                                      setExceptionDrafts((previous) => ({
-                                        ...previous,
-                                        [occurrence.occurrence_id]: {
-                                          ...draft,
-                                          newEndTime: event.target.value,
-                                        },
-                                      }))
-                                    }
-                                    disabled={exceptionBusy}
-                                  />
-                                </ScreenField>
-                              </div>
-                            )}
-                            {rule?.effective_end_date &&
-                              draft.newDate > rule.effective_end_date && (
-                                <Alert tone="warning" announcement="polite">
-                                  {COPY.programs.settingsExceptionBeyondRuleEnd}
-                                </Alert>
+                            <ScreenRowMeta>
+                              {rule
+                                ? formatScheduleRuleLabel(rule)
+                                : occurrence.rule_id}
+                            </ScreenRowMeta>
+                            {occurrence.replacement_date !== null &&
+                              occurrence.replacement_date !== undefined && (
+                                <ScreenRowMeta>
+                                  {COPY.programs.previewOccurrenceOriginal.replace(
+                                    "{date}",
+                                    occurrence.occurs_on
+                                  )}{" "}
+                                  ·{" "}
+                                  {COPY.programs.previewOccurrenceReplacement.replace(
+                                    "{date}",
+                                    occurrence.replacement_date
+                                  )}
+                                </ScreenRowMeta>
                               )}
-                            <div className="flex min-w-0 flex-wrap items-center gap-[var(--screen-utility-gap)]">
-                              <Button
-                                type="button"
-                                className="w-fit bg-[var(--screen-accent)] text-white hover:bg-[var(--screen-accent-deep)]"
-                                onClick={() =>
-                                  void saveExceptionDraft(occurrence)
-                                }
-                                disabled={exceptionBusy}
-                              >
-                                {exceptionBusy
-                                  ? COPY.programs.submitting
-                                  : COPY.programs.previewSaveException}
-                              </Button>
-                              <Button
-                                type="button"
-                                variant="outline"
-                                className="w-fit border-[var(--screen-line-strong)] bg-transparent text-[var(--screen-ink)] hover:bg-[var(--screen-surface-soft)]"
-                                onClick={() =>
-                                  clearExceptionDraft(occurrence.occurrence_id)
-                                }
-                                disabled={exceptionBusy}
-                              >
-                                {COPY.programs.previewCancelDraft}
-                              </Button>
-                            </div>
-                          </fieldset>
-                        ) : occurrence.exception_id !== null ? (
-                          <Button
-                            type="button"
-                            variant="outline"
-                            className="w-fit border-[var(--screen-success)] bg-transparent text-[var(--screen-success)] hover:bg-[var(--screen-success-surface)]"
-                            onClick={() =>
-                              void removeSavedException(occurrence)
-                            }
-                            disabled={exceptionBusy}
-                          >
-                            {COPY.programs.previewRemoveException}
-                          </Button>
-                        ) : (
-                          <div className="flex min-w-0 flex-wrap items-center gap-[var(--screen-utility-gap)]">
+                          </ScreenRowMain>
+                          <ScreenRowTrailing>
+                            {occurrence.skip_reason === "CANCEL" && (
+                              <ScreenStatus tone="danger">
+                                {COPY.programs.previewOccurrenceSkipped}
+                              </ScreenStatus>
+                            )}
+                            {occurrence.skip_reason === "DUPLICATE" && (
+                              <ScreenStatus tone="danger">
+                                {COPY.programs.previewOccurrenceDuplicate}
+                              </ScreenStatus>
+                            )}
+                            {!skipped && occurrence.exception_id !== null && (
+                              <ScreenStatus tone="pending">
+                                {COPY.programs.previewOccurrenceRescheduled}
+                              </ScreenStatus>
+                            )}
+                          </ScreenRowTrailing>
+                        </ScreenRow>
+                        {occurrence.skip_reason !== "DUPLICATE" && (
+                          <div className="flex min-w-0 flex-wrap items-center gap-[var(--screen-utility-gap)] border-t border-[var(--screen-line)] p-3">
+                            {draft && (
+                              <ScreenStatus tone="pending">
+                                {COPY.programs.previewExceptionDraft}
+                              </ScreenStatus>
+                            )}
                             <Button
                               type="button"
                               variant="outline"
                               className="w-fit border-[var(--screen-line-strong)] bg-transparent text-[var(--screen-ink)] hover:bg-[var(--screen-surface-soft)]"
-                              onClick={() =>
-                                startExceptionDraft(occurrence, "CANCEL")
-                              }
+                              onClick={() => openExceptionEditor(occurrence)}
                               disabled={exceptionBusy}
                             >
-                              {COPY.programs.previewSkipOccurrence}
-                            </Button>
-                            <Button
-                              type="button"
-                              variant="outline"
-                              className="w-fit border-[var(--screen-line-strong)] bg-transparent text-[var(--screen-ink)] hover:bg-[var(--screen-surface-soft)]"
-                              onClick={() =>
-                                startExceptionDraft(occurrence, "RESCHEDULE")
-                              }
-                              disabled={exceptionBusy}
-                            >
-                              {COPY.programs.previewRescheduleOccurrence}
+                              {COPY.programs.previewAdjustOccurrence}
                             </Button>
                           </div>
                         )}
-                      </div>
-                    )}
-                  </li>
-                );
-              })}
-            </ul>
-          </ScreenRowList>
-          <div className="flex min-w-0 flex-wrap items-center gap-[var(--screen-utility-gap)]">
-            <Button
-              type="button"
-              className="w-fit bg-[var(--screen-accent)] text-white hover:bg-[var(--screen-accent-deep)]"
-              onClick={() => void submitGenerate()}
-              disabled={generateBusy || previewBusy}
-            >
-              {generateBusy
-                ? COPY.programs.generating
-                : COPY.programs.generateEvents}
-            </Button>
-            {generateResult !== null &&
-              (generatePartial ? (
-                <Alert
-                  data-generation-plan-id={generationIdentity?.planId}
-                  data-generation-result="true"
-                  data-generation-run-id={generationIdentity?.runId}
-                  variant="destructive"
+                      </li>
+                    );
+                  })}
+                </ul>
+              </ScreenRowList>
+              <div className="flex min-w-0 flex-wrap items-center gap-[var(--screen-utility-gap)]">
+                <Button
+                  type="button"
+                  className="w-fit bg-[var(--screen-accent)] text-white hover:bg-[var(--screen-accent-deep)]"
+                  onClick={() => void submitGenerate()}
+                  disabled={
+                    generateBusy || previewBusy || generationNeedsReconciliation
+                  }
                 >
-                  {generateResult}
-                </Alert>
-              ) : (
-                <Alert
-                  data-generation-plan-id={generationIdentity?.planId}
-                  data-generation-result="true"
-                  data-generation-run-id={generationIdentity?.runId}
-                  announcement="polite"
-                  tone="success"
+                  {generateBusy
+                    ? COPY.programs.generating
+                    : COPY.programs.generateEvents}
+                </Button>
+                {generateResult !== null &&
+                  (generatePartial ? (
+                    <Alert
+                      data-generation-plan-id={generationIdentity?.planId}
+                      data-generation-result="true"
+                      data-generation-run-id={generationIdentity?.runId}
+                      variant="destructive"
+                    >
+                      {generateResult}
+                    </Alert>
+                  ) : (
+                    <Alert
+                      data-generation-plan-id={generationIdentity?.planId}
+                      data-generation-result="true"
+                      data-generation-run-id={generationIdentity?.runId}
+                      announcement="polite"
+                      tone="success"
+                    >
+                      {generateResult}
+                    </Alert>
+                  ))}
+              </div>
+              {generationData !== null && (
+                <ScreenCard
+                  className="grid min-w-0 gap-3"
+                  data-generation-summary="true"
                 >
-                  {generateResult}
-                </Alert>
-              ))}
-          </div>
-          {generateError !== null && (
-            <Alert variant="destructive">{generateError}</Alert>
+                  <dl className="grid min-w-0 grid-cols-3 gap-2 text-center">
+                    <div className="grid min-w-0 gap-1 rounded-[var(--screen-radius-control)] border border-[var(--screen-line)] p-2">
+                      <dt className="wrap-anywhere text-xs text-[var(--screen-muted)]">
+                        {COPY.programs.generatedCreatedLabel}
+                      </dt>
+                      <dd className="m-0 text-lg font-bold text-[var(--screen-ink)]">
+                        {generationData.created}
+                      </dd>
+                    </div>
+                    <div className="grid min-w-0 gap-1 rounded-[var(--screen-radius-control)] border border-[var(--screen-line)] p-2">
+                      <dt className="wrap-anywhere text-xs text-[var(--screen-muted)]">
+                        {COPY.programs.generatedSkippedLabel}
+                      </dt>
+                      <dd className="m-0 text-lg font-bold text-[var(--screen-ink)]">
+                        {generationData.skipped}
+                      </dd>
+                    </div>
+                    <div className="grid min-w-0 gap-1 rounded-[var(--screen-radius-control)] border border-[var(--screen-line)] p-2">
+                      <dt className="wrap-anywhere text-xs text-[var(--screen-muted)]">
+                        {COPY.programs.generatedUnresolvedLabel}
+                      </dt>
+                      <dd className="m-0 text-lg font-bold text-[var(--screen-ink)]">
+                        {unresolvedCount}
+                      </dd>
+                    </div>
+                  </dl>
+                  {unresolvedCount > 0 ? (
+                    <details open>
+                      <summary className="cursor-pointer font-bold text-[var(--screen-danger)]">
+                        {COPY.programs.generatedUnresolvedTitle}
+                      </summary>
+                      {unresolvedOccurrences.length > 0 ? (
+                        <ul className="m-0 mt-2 grid min-w-0 list-none gap-2 p-0">
+                          {unresolvedOccurrences.map((occurrence) => (
+                            <li
+                              key={occurrence.occurrence_id}
+                              className="wrap-anywhere text-sm text-[var(--screen-danger)]"
+                            >
+                              {hkWallDateTimeLabel(occurrence.starts_at)}
+                              {occurrence.detail
+                                ? ` · ${occurrence.detail}`
+                                : ""}
+                            </li>
+                          ))}
+                        </ul>
+                      ) : (
+                        <p className="m-0 mt-2 text-sm text-[var(--screen-danger)]">
+                          {COPY.programs.generatedUnresolvedFallback}
+                        </p>
+                      )}
+                      <Button
+                        type="button"
+                        className="mt-3 w-fit bg-[var(--screen-danger)] text-white hover:bg-[var(--screen-danger)]"
+                        onClick={() => void reconcileGeneration()}
+                        disabled={generateBusy}
+                      >
+                        {COPY.programs.generatedReconcile}
+                      </Button>
+                    </details>
+                  ) : (
+                    <details>
+                      <summary className="cursor-pointer font-bold text-[var(--screen-ink)]">
+                        {COPY.programs.generatedCompletedDetails}
+                      </summary>
+                      {skippedOccurrences.length > 0 && (
+                        <ul className="m-0 mt-2 grid min-w-0 list-none gap-2 p-0">
+                          {skippedOccurrences.map((occurrence) => (
+                            <li
+                              key={occurrence.occurrence_id}
+                              className="wrap-anywhere text-sm text-[var(--screen-muted)]"
+                            >
+                              {hkWallDateTimeLabel(occurrence.starts_at)} ·{" "}
+                              {occurrence.reason === "DUPLICATE"
+                                ? COPY.programs.previewOccurrenceDuplicate
+                                : COPY.programs.previewOccurrenceSkipped}
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </details>
+                  )}
+                  {createdEventIds.length > 0 && onOpenEvent && (
+                    <Button
+                      type="button"
+                      className="w-fit bg-[var(--screen-accent)] text-white hover:bg-[var(--screen-accent-deep)]"
+                      onClick={() => onOpenEvent(createdEventIds[0])}
+                    >
+                      {COPY.programs.generatedCreatedEvent}
+                    </Button>
+                  )}
+                </ScreenCard>
+              )}
+              {generateError !== null && (
+                <div className="grid min-w-0 gap-3">
+                  <Alert variant="destructive">{generateError}</Alert>
+                  {generationNeedsReconciliation && generationData === null && (
+                    <Button
+                      type="button"
+                      className="w-fit bg-[var(--screen-danger)] text-white hover:bg-[var(--screen-danger)]"
+                      onClick={() => void reconcileGeneration()}
+                      disabled={generateBusy}
+                    >
+                      {COPY.programs.generatedReconcileUnknown}
+                    </Button>
+                  )}
+                </div>
+              )}
+            </ScreenSection>
           )}
         </ScreenSection>
-      )}
-    </ScreenSection>
+        <SheetContent side="bottom">
+          {adjustingOccurrence && adjustingDraft && (
+            <>
+              <SheetHeader className="border-b border-[var(--screen-line)]">
+                <SheetTitle className="text-xl font-bold text-[var(--screen-ink)]">
+                  {COPY.programs.previewAdjustSheetTitle}
+                </SheetTitle>
+                <SheetDescription>
+                  {hkWallDateTimeLabel(adjustingOccurrence.starts_at)} ·{" "}
+                  {adjustingOccurrence.location ??
+                    COPY.programs.eventLocationPlaceholder}
+                  <br />
+                  {COPY.programs.previewAdjustSheetLead}
+                </SheetDescription>
+              </SheetHeader>
+              <div className="grid min-w-0 gap-4 px-4">
+                <div className="flex min-w-0 flex-wrap gap-[var(--screen-utility-gap)]">
+                  <Button
+                    type="button"
+                    variant={
+                      adjustingDraft.action === "CANCEL" ? "default" : "outline"
+                    }
+                    onClick={() =>
+                      setExceptionDrafts((previous) => ({
+                        ...previous,
+                        [adjustingOccurrence.occurrence_id]: {
+                          ...adjustingDraft,
+                          action: "CANCEL",
+                        },
+                      }))
+                    }
+                    disabled={exceptionBusy}
+                  >
+                    {COPY.programs.previewSkipOccurrence}
+                  </Button>
+                  <Button
+                    type="button"
+                    variant={
+                      adjustingDraft.action === "RESCHEDULE"
+                        ? "default"
+                        : "outline"
+                    }
+                    onClick={() =>
+                      setExceptionDrafts((previous) => ({
+                        ...previous,
+                        [adjustingOccurrence.occurrence_id]: {
+                          ...adjustingDraft,
+                          action: "RESCHEDULE",
+                        },
+                      }))
+                    }
+                    disabled={exceptionBusy}
+                  >
+                    {COPY.programs.previewRescheduleOccurrence}
+                  </Button>
+                </div>
+                {adjustingDraft.action === "RESCHEDULE" && (
+                  <div className="grid min-w-0 gap-2 sm:grid-cols-3">
+                    <ScreenField
+                      htmlFor={`preview-adjust-${adjustingOccurrence.occurrence_id}-date`}
+                      label={COPY.programs.settingsExceptionNewDate}
+                    >
+                      <Input
+                        id={`preview-adjust-${adjustingOccurrence.occurrence_id}-date`}
+                        className="border-[var(--screen-line-strong)] bg-[var(--screen-surface)] text-base"
+                        type="date"
+                        value={adjustingDraft.newDate}
+                        onChange={(event) =>
+                          setExceptionDrafts((previous) => ({
+                            ...previous,
+                            [adjustingOccurrence.occurrence_id]: {
+                              ...adjustingDraft,
+                              newDate: event.target.value,
+                            },
+                          }))
+                        }
+                        disabled={exceptionBusy}
+                      />
+                    </ScreenField>
+                    <ScreenField
+                      htmlFor={`preview-adjust-${adjustingOccurrence.occurrence_id}-start`}
+                      label={COPY.programs.settingsExceptionNewStart}
+                    >
+                      <Input
+                        id={`preview-adjust-${adjustingOccurrence.occurrence_id}-start`}
+                        className="border-[var(--screen-line-strong)] bg-[var(--screen-surface)] text-base"
+                        type="time"
+                        value={adjustingDraft.newStartTime}
+                        onChange={(event) =>
+                          setExceptionDrafts((previous) => ({
+                            ...previous,
+                            [adjustingOccurrence.occurrence_id]: {
+                              ...adjustingDraft,
+                              newStartTime: event.target.value,
+                            },
+                          }))
+                        }
+                        disabled={exceptionBusy}
+                      />
+                    </ScreenField>
+                    <ScreenField
+                      htmlFor={`preview-adjust-${adjustingOccurrence.occurrence_id}-end`}
+                      label={COPY.programs.settingsExceptionNewEnd}
+                    >
+                      <Input
+                        id={`preview-adjust-${adjustingOccurrence.occurrence_id}-end`}
+                        className="border-[var(--screen-line-strong)] bg-[var(--screen-surface)] text-base"
+                        type="time"
+                        value={adjustingDraft.newEndTime}
+                        onChange={(event) =>
+                          setExceptionDrafts((previous) => ({
+                            ...previous,
+                            [adjustingOccurrence.occurrence_id]: {
+                              ...adjustingDraft,
+                              newEndTime: event.target.value,
+                            },
+                          }))
+                        }
+                        disabled={exceptionBusy}
+                      />
+                    </ScreenField>
+                  </div>
+                )}
+                {adjustingRule?.effective_end_date &&
+                  adjustingDraft.action === "RESCHEDULE" &&
+                  adjustingDraft.newDate > adjustingRule.effective_end_date && (
+                    <Alert tone="warning" announcement="polite">
+                      {COPY.programs.settingsExceptionBeyondRuleEnd}
+                    </Alert>
+                  )}
+                {adjustingOccurrence.exception_id !== null && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="w-fit border-[var(--screen-success)] bg-transparent text-[var(--screen-success)] hover:bg-[var(--screen-success-surface)]"
+                    onClick={() =>
+                      void removeSavedException(adjustingOccurrence)
+                    }
+                    disabled={exceptionBusy}
+                  >
+                    {COPY.programs.previewRemoveException}
+                  </Button>
+                )}
+              </div>
+              <SheetFooter>
+                <div className="flex min-w-0 flex-wrap gap-[var(--screen-utility-gap)]">
+                  <Button
+                    type="button"
+                    className="w-fit bg-[var(--screen-accent)] text-white hover:bg-[var(--screen-accent-deep)]"
+                    onClick={() => void saveExceptionDraft(adjustingOccurrence)}
+                    disabled={exceptionBusy}
+                  >
+                    {exceptionBusy
+                      ? COPY.programs.submitting
+                      : COPY.programs.previewSaveException}
+                  </Button>
+                  <SheetClose asChild>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="w-fit border-[var(--screen-line-strong)] bg-transparent text-[var(--screen-ink)] hover:bg-[var(--screen-surface-soft)]"
+                    >
+                      {COPY.programs.previewCancelDraft}
+                    </Button>
+                  </SheetClose>
+                </div>
+              </SheetFooter>
+            </>
+          )}
+        </SheetContent>
+      </>
+    </Sheet>
   );
 };
 
@@ -1011,7 +1279,7 @@ export const EventsTask = () => {
     const startsAt = hkWallInputToIso(`${createDate}T${createStartTime}`);
     const endsAt = hkWallInputToIso(`${createDate}T${createEndTime}`);
     if (!startsAt || !endsAt || endsAt <= startsAt) {
-      const message = COPY.programs.createMeetingValidation;
+      const message = COPY.programs.eventInvalidInterval;
       setCreateError(message);
       announce(message);
       return;

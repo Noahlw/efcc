@@ -4,7 +4,10 @@
 
 import { MODULE_KEYS } from "./capabilities";
 import type { ModuleKey } from "./capabilities";
-import { ProgramTokenRotationConflictError } from "./program-errors";
+import {
+  ProgramTokenRotationConflictError,
+  ScheduleRuleIdempotencyConflictError,
+} from "./program-errors";
 import type {
   AuditInput,
   GenerationRunItemInput,
@@ -62,6 +65,15 @@ interface ProgramTokenRotationRow {
   actor_user_id: string;
   program_id: string;
   resulting_token: string;
+  created_at: string;
+}
+
+interface ScheduleRuleIdempotencyRow {
+  idempotency_key: string;
+  request_fingerprint: string;
+  actor_user_id: string;
+  program_id: string;
+  rule_id: string;
   created_at: string;
 }
 
@@ -1005,8 +1017,122 @@ export class D1WorkspaceStore implements WorkspaceStore {
     return result.results ?? [];
   }
 
-  async createScheduleRule(input: ScheduleRuleInput): Promise<ScheduleRuleRow> {
+  async createScheduleRule(
+    input: ScheduleRuleInput
+  ): Promise<{ rule: ScheduleRuleRow; idempotent: boolean }> {
+    const idempotencyKey = input.idempotency_key?.trim() || null;
+    const fingerprint = input.request_fingerprint ?? "";
+    if (idempotencyKey) {
+      const existing = await this.db
+        .prepare(
+          `SELECT idempotency_key, request_fingerprint, actor_user_id,
+                  program_id, rule_id, created_at
+             FROM program_schedule_rule_idempotency
+            WHERE idempotency_key = ?`
+        )
+        .bind(idempotencyKey)
+        .first<ScheduleRuleIdempotencyRow>();
+      if (existing) {
+        if (
+          existing.request_fingerprint !== fingerprint ||
+          existing.actor_user_id !== input.created_by ||
+          existing.program_id !== input.program_id
+        ) {
+          throw new ScheduleRuleIdempotencyConflictError();
+        }
+        const row = await this.findScheduleRule(existing.rule_id);
+        if (!row) {
+          throw new Error("Schedule Rule idempotency record has no rule row.");
+        }
+        return { rule: row, idempotent: true };
+      }
+    }
+
     const ruleId = crypto.randomUUID();
+    const ruleValues = [
+      ruleId,
+      input.program_id,
+      input.recurrence,
+      input.day_of_week,
+      input.month_day,
+      input.start_time,
+      input.end_time,
+      input.location ?? null,
+      input.effective_start_date ?? null,
+      input.effective_end_date ?? null,
+      input.created_by,
+      input.created_at,
+      input.updated_by,
+      input.updated_at,
+    ] as const;
+    if (idempotencyKey) {
+      await this.db.batch([
+        this.db
+          .prepare(
+            `INSERT OR IGNORE INTO program_schedule_rule_idempotency
+               (idempotency_key, request_fingerprint, actor_user_id,
+                program_id, rule_id, created_at)
+             VALUES (?, ?, ?, ?, ?, ?)`
+          )
+          .bind(
+            idempotencyKey,
+            fingerprint,
+            input.created_by,
+            input.program_id,
+            ruleId,
+            input.created_at
+          ),
+        this.db
+          .prepare(
+            `INSERT INTO program_schedule_rules
+              (rule_id, program_id, recurrence, day_of_week, month_day,
+               start_time, end_time, location, effective_start_date,
+               effective_end_date, created_by, created_at, updated_by, updated_at)
+             SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+              WHERE EXISTS (
+                SELECT 1 FROM program_schedule_rule_idempotency
+                 WHERE idempotency_key = ?
+                   AND request_fingerprint = ?
+                   AND actor_user_id = ?
+                   AND program_id = ?
+                   AND rule_id = ?
+              )`
+          )
+          .bind(
+            ...ruleValues,
+            idempotencyKey,
+            fingerprint,
+            input.created_by,
+            input.program_id,
+            ruleId
+          ),
+      ]);
+      const reservation = await this.db
+        .prepare(
+          `SELECT idempotency_key, request_fingerprint, actor_user_id,
+                  program_id, rule_id, created_at
+             FROM program_schedule_rule_idempotency
+            WHERE idempotency_key = ?`
+        )
+        .bind(idempotencyKey)
+        .first<ScheduleRuleIdempotencyRow>();
+      if (!reservation) {
+        throw new Error("Schedule Rule idempotency record was not reserved.");
+      }
+      if (
+        reservation.request_fingerprint !== fingerprint ||
+        reservation.actor_user_id !== input.created_by ||
+        reservation.program_id !== input.program_id
+      ) {
+        throw new ScheduleRuleIdempotencyConflictError();
+      }
+      const row = await this.findScheduleRule(reservation.rule_id);
+      if (!row) {
+        throw new Error("Schedule Rule idempotency record has no rule row.");
+      }
+      return { rule: row, idempotent: reservation.rule_id !== ruleId };
+    }
+
     await this.db
       .prepare(
         `INSERT INTO program_schedule_rules (rule_id, program_id, recurrence,
@@ -1015,28 +1141,13 @@ export class D1WorkspaceStore implements WorkspaceStore {
            updated_by, updated_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       )
-      .bind(
-        ruleId,
-        input.program_id,
-        input.recurrence,
-        input.day_of_week,
-        input.month_day,
-        input.start_time,
-        input.end_time,
-        input.location ?? null,
-        input.effective_start_date ?? null,
-        input.effective_end_date ?? null,
-        input.created_by,
-        input.created_at,
-        input.updated_by,
-        input.updated_at
-      )
+      .bind(...ruleValues)
       .run();
     const row = await this.findScheduleRule(ruleId);
     if (!row) {
       throw new WorkspaceNotFoundError("schedule_rule", ruleId);
     }
-    return row;
+    return { rule: row, idempotent: false };
   }
 
   async updateScheduleRule(
@@ -2417,6 +2528,24 @@ export class D1WorkspaceStore implements WorkspaceStore {
     if ((result.meta?.changes ?? 0) === 0) {
       return null;
     }
+    // A pre-start Excused row is a current projection only while the member
+    // is still enrolled. The original attendance.excused audit row remains
+    // immutable history; remove only dispositions for Events that had not
+    // started at the moment this enrollment was cancelled. Started Events
+    // keep their durable attendance meaning.
+    await this.db
+      .prepare(
+        `DELETE FROM event_attendance_dispositions
+          WHERE enrollment_id = ?
+            AND EXISTS (
+              SELECT 1
+                FROM events
+               WHERE events.event_id = event_attendance_dispositions.event_id
+                 AND julianday(events.starts_at) > julianday(?)
+            )`
+      )
+      .bind(id, cancelledAt)
+      .run();
     return this.findEnrollmentById(id);
   }
 

@@ -42,8 +42,24 @@ BEGIN
   SELECT RAISE(ABORT, 'event schedule provenance rule is invalid');
 END;
 
+-- The same logical reference must hold when a caller changes the Event's
+-- Program, source, or Rule identity after insertion. Without an UPDATE guard,
+-- a source-only edit could bypass both provenance invariants.
+CREATE TRIGGER events_schedule_provenance_reference_update
+BEFORE UPDATE OF program_id, source, schedule_rule_id ON events
+WHEN NEW.schedule_rule_id IS NOT NULL
+  AND NOT EXISTS (
+    SELECT 1
+      FROM program_schedule_rules rule
+     WHERE rule.rule_id = NEW.schedule_rule_id
+       AND rule.program_id = NEW.program_id
+  )
+BEGIN
+  SELECT RAISE(ABORT, 'event schedule provenance rule is invalid');
+END;
+
 CREATE TRIGGER events_schedule_provenance_shape_update
-BEFORE UPDATE OF schedule_rule_id, occurrence_date ON events
+BEFORE UPDATE OF source, program_id, schedule_rule_id, occurrence_date ON events
 WHEN (
     (NEW.schedule_rule_id IS NULL AND NEW.occurrence_date IS NOT NULL)
     OR (NEW.schedule_rule_id IS NOT NULL AND NEW.occurrence_date IS NULL)

@@ -21,12 +21,11 @@ import type {
   AttendanceMember,
   AttendanceRow,
 } from "@/lib/attendance";
-import {
-  AttendanceOperatorPanel,
-  type AttendanceOperatorPanelProps,
-} from "@/lib/attendance-operator-panel";
+import { AttendanceOperatorPanel } from "@/lib/attendance-operator-panel";
+import type { AttendanceOperatorPanelProps } from "@/lib/attendance-operator-panel";
 import { COPY } from "@/lib/copy";
 import { announce, LiveRegion } from "@/lib/live-region";
+
 const server = setupServer();
 
 const ACTIVE: AttendanceEvent = {
@@ -154,10 +153,27 @@ describe(AttendanceOperatorPanel, () => {
     await screen.findByText(MEMBER.name);
 
     await user.click(screen.getByRole("button", { name: /替成員簽到/u }));
+    expect(
+      screen.getByRole("heading", {
+        name: COPY.attendance.assistedCheckInConfirmTitle,
+      })
+    ).toBeVisible();
+    expect(
+      screen.getByText(COPY.attendance.assistedCheckInConfirmLead)
+    ).toBeVisible();
+    await user.click(
+      screen.getByRole("button", {
+        name: COPY.attendance.assistedCheckInConfirm,
+      })
+    );
     // The silent roster reload must NOT overwrite the visible success…
     await waitFor(() => expect(rosterCalls).toBeGreaterThanOrEqual(2));
     // Both the panel output and the sr-only live region carry the notice.
-    const successOutputs = await screen.findAllByText(COPY.attendance.success);
+    const successMessage = COPY.attendance.assistedCheckInSuccess(
+      MEMBER.name,
+      ACTIVE.name ?? ACTIVE.program_name
+    );
+    const successOutputs = await screen.findAllByText(successMessage);
     expect(successOutputs.length).toBeGreaterThanOrEqual(2);
     expect(
       screen.queryByText(`${1} ${COPY.attendance.roster}`)
@@ -165,9 +181,7 @@ describe(AttendanceOperatorPanel, () => {
 
     // …and the sr-only live region announced it for screen readers.
     const live = document.querySelector('output[role="status"]');
-    await waitFor(() =>
-      expect(live?.textContent).toBe(COPY.attendance.success)
-    );
+    await waitFor(() => expect(live?.textContent).toBe(successMessage));
   });
 
   test("cancelled event: chooser suffix, notice, and no check-in controls", async () => {
@@ -244,11 +258,11 @@ describe(AttendanceOperatorPanel, () => {
     renderWithLiveRegion();
 
     await user.click(await screen.findByRole("button", { name: /週六聚會/u }));
-    expect(
-      await screen.findByRole("button", {
+    await expect(
+      screen.findByRole("button", {
         name: COPY.attendance.rosterMaterialize,
       })
-    ).toBeVisible();
+    ).resolves.toBeVisible();
     expect(materializeCalls).toBe(0);
   });
 
@@ -302,7 +316,7 @@ describe(AttendanceOperatorPanel, () => {
     );
 
     await waitFor(() => {
-      expect(voided).toBe(true);
+      expect(voided).toBeTruthy();
       expect(screen.getAllByText(COPY.attendance.voidSuccess)[0]).toBeVisible();
     });
   });
@@ -395,6 +409,7 @@ describe(AttendanceOperatorPanel, () => {
       expect(screen.getAllByText("9222 3333")[0]).toBeVisible();
     });
   });
+
   test("operator panel surfaces error tone and recovers when void fails", async () => {
     server.use(
       http.get("/api/v1/attendance/scanner-events", () =>

@@ -94,7 +94,7 @@ const EXPECTED_ROW: AttendanceExpectedRow = {
 
 afterEach(() => cleanup());
 
-describe("AttendanceChooser", () => {
+describe(AttendanceChooser, () => {
   test("renders the real open-meeting list and selects the exact row", async () => {
     const user = userEvent.setup();
     const onSelect = vi.fn();
@@ -122,7 +122,7 @@ describe("AttendanceChooser", () => {
   });
 });
 
-describe("AttendanceRoster", () => {
+describe(AttendanceRoster, () => {
   test("shows status, title, live checked-in count, and preserves voided rows", () => {
     render(
       <AttendanceRoster
@@ -258,7 +258,7 @@ describe("AttendanceRoster", () => {
     expect(onVoid).toHaveBeenCalledWith(MEMBER_ROW, "重複簽到");
   });
 
-  test("renders durable expected state and requires an Excused reason", async () => {
+  test("renders durable expected state and saves a structured Excused reason", async () => {
     const user = userEvent.setup();
     const onExcuse = vi
       .fn<(row: AttendanceExpectedRow, reason: string) => Promise<boolean>>()
@@ -285,9 +285,64 @@ describe("AttendanceRoster", () => {
     await user.click(screen.getByRole("button", { name: "確認請假" }));
     expect(onExcuse).not.toHaveBeenCalled();
 
-    await user.type(screen.getByLabelText("請假原因"), "家庭原因");
+    await user.click(screen.getByRole("combobox", { name: "請假原因" }));
+    await user.click(screen.getByRole("option", { name: "家庭事務" }));
     await user.click(screen.getByRole("button", { name: "確認請假" }));
-    expect(onExcuse).toHaveBeenCalledWith(EXPECTED_ROW, "家庭原因");
+    expect(onExcuse).toHaveBeenCalledWith(EXPECTED_ROW, "家庭事務");
+  });
+
+  test("requires details when the Other Excused reason is selected", async () => {
+    const user = userEvent.setup();
+    const onExcuse = vi.fn().mockResolvedValue(true);
+    render(
+      <AttendanceRoster
+        event={EVENT}
+        rows={[]}
+        expectedRows={[EXPECTED_ROW]}
+        onExcuse={onExcuse}
+      />
+    );
+
+    await user.click(screen.getByRole("button", { name: "標記請假" }));
+    await user.click(screen.getByRole("combobox", { name: "請假原因" }));
+    await user.click(screen.getByRole("option", { name: "其他" }));
+    const confirm = screen.getByRole("button", { name: "確認請假" });
+    expect(confirm).toBeDisabled();
+    await user.type(screen.getByLabelText(/補充說明/u), "需要照顧家人");
+    expect(confirm).toBeEnabled();
+    await user.click(confirm);
+    expect(onExcuse).toHaveBeenCalledWith(EXPECTED_ROW, "其他：需要照顧家人");
+  });
+
+  test("opens participant detail with status, history, and context actions", async () => {
+    const user = userEvent.setup();
+    const onVoid = vi.fn();
+    render(
+      <AttendanceRoster
+        event={EVENT}
+        rows={[]}
+        expectedRows={[
+          {
+            ...EXPECTED_ROW,
+            state: "Present",
+            attendance: MEMBER_ROW,
+          },
+        ]}
+        onVoid={onVoid}
+      />
+    );
+
+    await user.click(screen.getByRole("tab", { name: /已簽到 \(1\)/u }));
+    await user.click(screen.getByRole("button", { name: "會員三" }));
+    expect(screen.getByRole("heading", { name: "參與者詳情" })).toBeVisible();
+    expect(
+      screen.getByText("週六團契 · 週六聚會 · 2026/08/13 19:30")
+    ).toBeVisible();
+    expect(screen.getAllByText("已出席")).not.toHaveLength(0);
+    expect(screen.getByText(/簽到時間：/u)).toBeVisible();
+    expect(
+      screen.getByRole("button", { name: COPY.attendance.voidAttendance })
+    ).toBeVisible();
   });
 
   test("keeps the roster read-only while offline and offers the last-known state", () => {

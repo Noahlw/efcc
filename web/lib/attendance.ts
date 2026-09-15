@@ -41,10 +41,15 @@ export interface AttendanceEvent {
 }
 
 export interface AttendanceResolveLatest {
+  event_id?: string;
+  event_name?: string | null;
+  location?: string | null;
+  ends_at?: string | null;
   status: "Active" | "Cancelled";
   availability: "Active" | "Inactive";
   starts_at: string | null;
   check_in_window_opens_at: string | null;
+  check_in_window_closes_at?: string | null;
   program_id: string;
   program_name: string;
 }
@@ -197,6 +202,13 @@ export interface AttendanceMember {
   phone: string | null;
   qr_code_string: string | null;
 }
+
+const EXCUSE_CATEGORIES = new Set([
+  "身體不適",
+  "工作或上課",
+  "家庭事務",
+  "其他",
+]);
 
 export function normalizeGuestPhone(input: string): string | null {
   const compact = input.trim().replaceAll(/[\s().-]/gu, "");
@@ -367,9 +379,11 @@ async function eventMatchesEntry(
     .prepare(
       isQr
         ? `SELECT 1 FROM events e JOIN programs p ON p.program_id = e.program_id
-            WHERE e.event_id = ? AND p.check_in_token = ?`
-        : `SELECT 1 FROM events
-            WHERE event_id = ? AND manual_check_in_code = ?`
+            WHERE e.event_id = ? AND p.lifecycle = 'Active'
+              AND p.check_in_token = ?`
+        : `SELECT 1 FROM events e JOIN programs p ON p.program_id = e.program_id
+            WHERE e.event_id = ? AND p.lifecycle = 'Active'
+              AND e.manual_check_in_code = ?`
     )
     .bind(eventId, isQr ? programToken : manualCode)
     .first();
@@ -510,6 +524,7 @@ async function openEvents(
               e.check_in_window_closes_at, e.status, e.availability
          FROM events e JOIN programs p ON p.program_id = e.program_id
         WHERE ${entryWhere(byProgramToken)}
+          AND p.lifecycle = 'Active'
           AND e.status = 'Active' AND e.availability = 'Active'
         ORDER BY e.starts_at ASC`
     )
@@ -525,10 +540,12 @@ async function matchingEventState(
 ): Promise<AttendanceResolveLatest | null> {
   const row = await db
     .prepare(
-      `SELECT e.status, e.availability, e.starts_at, e.check_in_window_opens_at,
+      `SELECT e.event_id, e.name AS event_name, e.location, e.ends_at,
+              e.status, e.availability, e.starts_at, e.check_in_window_opens_at,
+              e.check_in_window_closes_at,
               p.program_id, p.name AS program_name
          FROM events e JOIN programs p ON p.program_id = e.program_id
-        WHERE ${entryWhere(byProgramToken)}
+        WHERE p.lifecycle = 'Active' AND ${entryWhere(byProgramToken)}
         ORDER BY e.starts_at DESC LIMIT 1`
     )
     .bind(value)
@@ -803,7 +820,7 @@ export async function materializeAttendanceSnapshot(
   db: D1Database,
   event: AttendanceEvent
 ): Promise<AttendanceMaterializationResult> {
-  if (!eventHasStarted(event)) {
+  if (event.status === "Cancelled" || !eventHasStarted(event)) {
     return { materialized: false, added_expected: 0, snapshot: null };
   }
 
@@ -1091,7 +1108,8 @@ async function loadAttendanceRoster(
     counts,
     // A started Event always permits an explicit retry/reconciliation call.
     // This is a read hint only; GET itself remains write-free.
-    materialization_required: eventHasStarted(event),
+    materialization_required:
+      event.status === "Active" && eventHasStarted(event),
   };
 }
 
@@ -1127,7 +1145,7 @@ async function resolveByEventId(
               e.manual_check_in_code, e.check_in_window_opens_at,
               e.check_in_window_closes_at, e.status, e.availability
          FROM events e JOIN programs p ON p.program_id = e.program_id
-        WHERE e.event_id = ?
+        WHERE p.lifecycle = 'Active' AND e.event_id = ?
         ORDER BY e.starts_at ASC`
     )
     .bind(eventId)
@@ -1146,10 +1164,12 @@ async function matchingEventStateById(
 ): Promise<AttendanceResolveLatest | null> {
   const row = await db
     .prepare(
-      `SELECT e.status, e.availability, e.starts_at, e.check_in_window_opens_at,
+      `SELECT e.event_id, e.name AS event_name, e.location, e.ends_at,
+              e.status, e.availability, e.starts_at, e.check_in_window_opens_at,
+              e.check_in_window_closes_at,
               p.program_id, p.name AS program_name
          FROM events e JOIN programs p ON p.program_id = e.program_id
-        WHERE e.event_id = ?`
+        WHERE p.lifecycle = 'Active' AND e.event_id = ?`
     )
     .bind(eventId)
     .first<AttendanceResolveLatest>();
@@ -1215,6 +1235,23 @@ async function checkInGate(
   id: string,
   windowGated = true
 ): Promise<Response | null> {
+  const program = await env.DB.prepare(
+    "SELECT lifecycle FROM programs WHERE program_id = ?"
+  )
+    .bind(event.program_id)
+    .first<{ lifecycle: string }>();
+  if (program?.lifecycle !== "Active") {
+    await audit(env.DB, {
+      actorUserId: input.actor?.user_id ?? null,
+      action: "attendance.check_in",
+      entityType: "Event",
+      entityId: event.event_id,
+      outcome: "DENIED",
+      reason: "PROGRAM_INACTIVE",
+      correlationId: id,
+    });
+    return problem(403, "FORBIDDEN", "此課程目前不可簽到。", id);
+  }
   if (event.status === "Cancelled") {
     await audit(env.DB, {
       actorUserId: input.actor?.user_id ?? null,
@@ -1305,6 +1342,7 @@ async function insertAttendance(
     return snapshotFailure;
   }
   const attendanceId = crypto.randomUUID();
+  const checkedInAt = new Date().toISOString();
   try {
     await env.DB.prepare(
       `INSERT INTO attendances
@@ -1320,7 +1358,7 @@ async function insertAttendance(
         input.guestPhone ?? null,
         input.guestPhoneNormalized ?? null,
         input.method,
-        new Date().toISOString(),
+        checkedInAt,
         input.actor?.user_id ?? null
       )
       .run();
@@ -1382,7 +1420,15 @@ async function insertAttendance(
     outcome: "SUCCESS",
     correlationId: id,
   });
-  return json(201, { outcome: "success", attendance_id: attendanceId }, id);
+  return json(
+    201,
+    {
+      outcome: "success",
+      attendance_id: attendanceId,
+      checked_in_at: checkedInAt,
+    },
+    id
+  );
 }
 
 export async function handleSelfCheckIn(
@@ -1690,7 +1736,55 @@ export async function handleMaterializeAttendance(
     return operator;
   }
   const { event, current } = operator;
-  const materialization = await materializeAttendanceSnapshot(env.DB, event);
+  const program = await env.DB.prepare(
+    "SELECT lifecycle FROM programs WHERE program_id = ?"
+  )
+    .bind(event.program_id)
+    .first<{ lifecycle: string }>();
+  if (program?.lifecycle !== "Active") {
+    await audit(env.DB, {
+      actorUserId: current.user_id,
+      action: "attendance.snapshot_materialize",
+      entityType: "Event",
+      entityId: event.event_id,
+      outcome: "DENIED",
+      reason: "PROGRAM_INACTIVE",
+      correlationId: id,
+    });
+    return problem(403, "FORBIDDEN", "此課程目前不可建立出席名單。", id);
+  }
+  if (event.status === "Cancelled") {
+    await audit(env.DB, {
+      actorUserId: current.user_id,
+      action: "attendance.snapshot_materialize",
+      entityType: "Event",
+      entityId: event.event_id,
+      outcome: "DENIED",
+      reason: "EVENT_CANCELLED",
+      correlationId: id,
+    });
+    return problem(
+      409,
+      "EVENT_CANCELLED",
+      "已取消的聚會不能建立出席名單。",
+      id
+    );
+  }
+  let materialization: AttendanceMaterializationResult;
+  try {
+    materialization = await materializeAttendanceSnapshot(env.DB, event);
+  } catch {
+    await audit(env.DB, {
+      actorUserId: current.user_id,
+      action: "attendance.snapshot_materialize",
+      entityType: "Event",
+      entityId: event.event_id,
+      outcome: "FAILED",
+      reason: "SNAPSHOT_MATERIALIZATION_FAILED",
+      correlationId: id,
+    });
+    return problem(503, "UNAVAILABLE", "暫時無法更新出席名單。", id);
+  }
   await audit(env.DB, {
     actorUserId: current.user_id,
     action: "attendance.snapshot_materialize",
@@ -1703,7 +1797,21 @@ export async function handleMaterializeAttendance(
     },
     correlationId: id,
   });
-  const roster = await loadAttendanceRoster(env.DB, event);
+  let roster: Awaited<ReturnType<typeof loadAttendanceRoster>>;
+  try {
+    roster = await loadAttendanceRoster(env.DB, event);
+  } catch {
+    await audit(env.DB, {
+      actorUserId: current.user_id,
+      action: "attendance.snapshot_materialize",
+      entityType: "Event",
+      entityId: event.event_id,
+      outcome: "FAILED",
+      reason: "SNAPSHOT_ROSTER_READ_FAILED",
+      correlationId: id,
+    });
+    return problem(503, "UNAVAILABLE", "暫時無法更新出席名單。", id);
+  }
   return json(200, { event, ...roster, materialization }, id);
 }
 
@@ -1729,7 +1837,18 @@ async function parseExcuseInput(
   if (reason.length > 500) {
     return problem(422, "VALIDATION", "請假原因不可超過 500 個字元。", id);
   }
-  return { enrollmentId, reason };
+  const separator = reason.indexOf("：");
+  const category = (
+    separator === -1 ? reason : reason.slice(0, separator)
+  ).trim();
+  const details = separator === -1 ? "" : reason.slice(separator + 1).trim();
+  if (!EXCUSE_CATEGORIES.has(category) || (category === "其他" && !details)) {
+    return problem(422, "VALIDATION", "請選擇有效的請假原因。", id);
+  }
+  return {
+    enrollmentId,
+    reason: details ? `${category}：${details}` : category,
+  };
 }
 
 /** POST /api/v1/attendance/events/:eventId/excused */
@@ -1954,7 +2073,7 @@ export async function handleListOwnAttendance(
       .bind(event.event_id, current.user_id)
       .first<{ enrollment_id: string }>();
     enrollmentId = expected?.enrollment_id ?? null;
-  } else if (!eventHasStarted(event) && event.status !== "Cancelled") {
+  } else if (!eventHasStarted(event) || event.status === "Cancelled") {
     const enrollment = await env.DB.prepare(
       `SELECT enrollment_id
          FROM enrollments
@@ -2058,10 +2177,11 @@ export async function handleAssistedCheckIn(
       publicDuplicateMessage: "此成員已完成簽到。",
     },
     id,
-    // Assisted check-in is capability-gated only (Spec 081 L88): an operator
-    // may still record attendance after the window closes (US 25 recovery).
-    // Cancelled/Inactive events remain rejected by checkInGate regardless.
-    false
+    // The accepted mobile contract keeps assisted check-in within the same
+    // Event window as self/guest check-in. Permission and enrollment remain
+    // server-authoritative; this flag does not create a post-window recovery
+    // path.
+    true
   );
 }
 
@@ -2081,15 +2201,14 @@ export async function handleSearchMembers(
     return operator;
   }
   const { current, event } = operator;
-  // Member search is window-exempt (US 25 recovery): the operator must be
-  // able to find the member for a post-window recording. Cancelled and
-  // Inactive events remain rejected — check-in on those can never succeed.
+  // Search follows the same open Event boundary as the assisted mutation, so
+  // a closed Event cannot expose a misleading path to a later write.
   const gate = await checkInGate(
     env,
     event,
     { actor: current, memberUserId: null },
     id,
-    false
+    true
   );
   if (gate) {
     return gate;
@@ -2350,9 +2469,9 @@ export async function handleVoidAttendance(
       id
     );
   }
-  await env.DB.prepare(
+  const updateResult = await env.DB.prepare(
     `UPDATE attendances SET status = 'Voided', voided_by = ?, voided_at = ?, void_reason = ?
-      WHERE attendance_id = ? AND status = 'Active'`
+        WHERE attendance_id = ? AND status = 'Active'`
   )
     .bind(
       current.user_id,
@@ -2361,6 +2480,30 @@ export async function handleVoidAttendance(
       attendanceId
     )
     .run();
+  if ((updateResult.meta?.changes ?? 0) === 0) {
+    const latest = await env.DB.prepare(
+      "SELECT status FROM attendances WHERE attendance_id = ?"
+    )
+      .bind(attendanceId)
+      .first<{ status: "Active" | "Voided" }>();
+    if (latest?.status === "Voided") {
+      await audit(env.DB, {
+        actorUserId: current.user_id,
+        action: "attendance.void",
+        entityType: "Attendance",
+        entityId: attendanceId,
+        outcome: "DUPLICATE",
+        reason: "ALREADY_VOIDED",
+        correlationId: id,
+      });
+      return json(
+        200,
+        { outcome: "already_voided", attendance_id: attendanceId },
+        id
+      );
+    }
+    return problem(404, "NOT_FOUND", "找不到簽到記錄。", id);
+  }
   await audit(env.DB, {
     actorUserId: current.user_id,
     action: "attendance.void",

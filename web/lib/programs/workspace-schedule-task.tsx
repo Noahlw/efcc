@@ -18,9 +18,11 @@ const noop = (): void => {
 const ScheduleAddon = ({
   programId,
   rules,
+  onOpenEvent,
 }: {
   programId: string;
   rules: ScheduleRule[] | null;
+  onOpenEvent?: (eventId: string) => void;
 }) => (
   <RecurringSchedulePanel
     programId={programId}
@@ -30,13 +32,23 @@ const ScheduleAddon = ({
     // controls.
     rulesError={null}
     onGenerated={noop}
+    onOpenEvent={onOpenEvent}
   />
 );
 ScheduleAddon.displayName = "ScheduleAddon";
 
-const makeScheduleAddon = (programId: string) =>
+const makeScheduleAddon = (
+  programId: string,
+  onOpenEvent?: (eventId: string) => void
+) =>
   function renderScheduleAddon({ rules }: ScheduleAddonResource) {
-    return <ScheduleAddon programId={programId} rules={rules} />;
+    return (
+      <ScheduleAddon
+        programId={programId}
+        rules={rules}
+        onOpenEvent={onOpenEvent}
+      />
+    );
   };
 
 /**
@@ -59,7 +71,9 @@ export const ScheduleTask = () => {
         showHeading={false}
         eventsEnabled={eventsEnabled}
         onTaskChange={onTaskChange}
-        scheduleAddon={makeScheduleAddon(program.program_id)}
+        scheduleAddon={makeScheduleAddon(program.program_id, (eventId) =>
+          onTaskChange("events", eventId)
+        )}
         scheduleBackHref={buildProgramsHref({
           mode: "management",
           programId: program.program_id,

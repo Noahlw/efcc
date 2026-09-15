@@ -1,10 +1,12 @@
 import assert from "node:assert/strict";
 
+import type { D1Database } from "@cloudflare/workers-types";
 import { env } from "cloudflare:workers";
 import { beforeAll, describe, test, vi } from "vitest";
 
 import worker from "../worker";
 import type { Env } from "../worker";
+import { handleMaterializeAttendance } from "./attendance";
 import { importLegacyUsers } from "./auth/accounts";
 import { ACCESS_COOKIE_NAME } from "./auth/cookies";
 import { applyMigrations, testDb } from "./auth/test-bootstrap";
@@ -1011,7 +1013,7 @@ describe("attendance Worker routes", () => {
     assert.strictEqual(after?.count, before?.count);
   });
 
-  test("assisted member search stays available after the window closes (US 25 recovery)", async () => {
+  test("assisted member search closes with the Event window", async () => {
     const admin = await accessCookieFor("att-admin", "att-admin-password");
     const response = await worker.fetch(
       request(
@@ -1022,17 +1024,12 @@ describe("attendance Worker routes", () => {
       ),
       testEnv()
     );
-    // Assisted check-in is capability-gated only (Spec 081 L88), so the
-    // operator must still be able to find the member for a post-window
-    // recording.
-    assert.strictEqual(response.status, 200);
+    assert.strictEqual(response.status, 409);
     const body = await json(response);
-    const { members } = body.data as { members: { user_id: string }[] };
-    assert.strictEqual(members.length, 1);
-    assert.strictEqual(members[0].user_id, "ATT-MEMBER");
+    assert.strictEqual(body.code, "CHECK_IN_CLOSED");
   });
 
-  test("assisted check-in still records attendance after the window closes (US 25 recovery)", async () => {
+  test("assisted check-in rejects attendance after the window closes", async () => {
     const admin = await accessCookieFor("att-admin", "att-admin-password");
     const before = await testDb()
       .prepare(
@@ -1051,17 +1048,16 @@ describe("attendance Worker routes", () => {
       }),
       testEnv()
     );
-    // Assisted check-in is capability-gated only (Spec 081 L88): an operator
-    // may record attendance after the window closes (US 25 recovery). This is
-    // the regression test for that path — it must record, not reject.
-    assert.strictEqual(response.status, 201);
+    assert.strictEqual(response.status, 409);
+    const body = await json(response);
+    assert.strictEqual(body.code, "CHECK_IN_CLOSED");
     const after = await testDb()
       .prepare(
         "SELECT COUNT(*) AS count FROM attendances WHERE event_id = ? AND status = 'Active'"
       )
       .bind(CLOSED_EVENT)
       .first<{ count: number }>();
-    assert.strictEqual(after?.count, (before?.count ?? 0) + 1);
+    assert.strictEqual(after?.count, before?.count ?? 0);
   });
 
   test("assisted check-in revalidates the active Program boundary", async () => {
@@ -2479,6 +2475,38 @@ describe("attendance Worker routes", () => {
     assert.deepStrictEqual(unknownData.events, []);
     assert.strictEqual(unknownData.latest, null);
 
+    // An Event under an Archived Program is not a valid scanner target and
+    // must not leak its identity through the latest/outcome projection.
+    await testDb()
+      .prepare(
+        "UPDATE programs SET lifecycle = 'Archived' WHERE program_id = ?"
+      )
+      .bind(PROGRAM)
+      .run();
+    try {
+      const archivedResp = await worker.fetch(
+        request(
+          `/api/v1/attendance/resolve?event=${encodeURIComponent(EVENT)}`
+        ),
+        testEnv()
+      );
+      assert.strictEqual(archivedResp.status, 200);
+      const archivedBody = await json(archivedResp);
+      const archivedData = archivedBody.data as {
+        events: unknown[];
+        latest: unknown;
+      };
+      assert.deepStrictEqual(archivedData.events, []);
+      assert.strictEqual(archivedData.latest, null);
+    } finally {
+      await testDb()
+        .prepare(
+          "UPDATE programs SET lifecycle = 'Active' WHERE program_id = ?"
+        )
+        .bind(PROGRAM)
+        .run();
+    }
+
     // ?event with another explicit credential is rejected as ambiguous.
     const conflictResp = await worker.fetch(
       request(
@@ -2700,7 +2728,7 @@ describe("attendance Worker routes", () => {
         headers: { Cookie: `${ACCESS_COOKIE_NAME}=${admin}` },
         body: JSON.stringify({
           enrollment_id: startEnrollment,
-          reason: "照顧家人",
+          reason: "家庭事務",
         }),
       }),
       testEnv()
@@ -2720,7 +2748,7 @@ describe("attendance Worker routes", () => {
         headers: { Cookie: `${ACCESS_COOKIE_NAME}=${admin}` },
         body: JSON.stringify({
           enrollment_id: startEnrollment,
-          reason: "照顧家人",
+          reason: "家庭事務",
         }),
       }),
       testEnv()
@@ -2731,6 +2759,15 @@ describe("attendance Worker routes", () => {
       (duplicateExcuseBody.data as { outcome: string }).outcome,
       "already_excused"
     );
+
+    // The assisted success path is exercised while the Event is still open;
+    // the dedicated closed-window tests cover the later denial boundary.
+    await testDb()
+      .prepare(
+        "UPDATE events SET check_in_window_closes_at = ? WHERE event_id = ?"
+      )
+      .bind(initialClose.toISOString(), eventId)
+      .run();
 
     const assisted = await worker.fetch(
       request(`/api/v1/attendance/events/${eventId}/check-in`, {
@@ -2747,6 +2784,12 @@ describe("attendance Worker routes", () => {
     const assistedBody = await json(assisted);
     const lateAttendanceId = (assistedBody.data as { attendance_id: string })
       .attendance_id;
+    await testDb()
+      .prepare(
+        "UPDATE events SET check_in_window_closes_at = ? WHERE event_id = ?"
+      )
+      .bind(new Date(Date.now() - 1000).toISOString(), eventId)
+      .run();
     const checkInRoster = await worker.fetch(
       request(`/api/v1/attendance/events/${eventId}/roster`, {
         headers: { Cookie: `${ACCESS_COOKIE_NAME}=${admin}` },
@@ -2769,7 +2812,7 @@ describe("attendance Worker routes", () => {
         headers: { Cookie: `${ACCESS_COOKIE_NAME}=${admin}` },
         body: JSON.stringify({
           enrollment_id: lateEnrollment,
-          reason: "臨時請假",
+          reason: "其他：臨時請假",
         }),
       }),
       testEnv()
@@ -2819,7 +2862,7 @@ describe("attendance Worker routes", () => {
       (row) => row.enrollment_id === lateEnrollment
     );
     assert.strictEqual(lateAfterVoid?.state, "Excused");
-    assert.strictEqual(lateAfterVoid?.disposition?.reason, "臨時請假");
+    assert.strictEqual(lateAfterVoid?.disposition?.reason, "其他：臨時請假");
     assert.deepStrictEqual(excusedAfterVoidData.counts, {
       expected: 3,
       present: 1,
@@ -2878,6 +2921,21 @@ describe("attendance Worker routes", () => {
     assert.strictEqual("attendances" in ownData, false);
     assert.strictEqual("guests" in ownData, false);
 
+    const cancelledOwn = await worker.fetch(
+      request(`/api/v1/attendance/events/${CANCELLED_EVENT}/me`, {
+        headers: { Cookie: `${ACCESS_COOKIE_NAME}=${member}` },
+      }),
+      testEnv()
+    );
+    assert.strictEqual(cancelledOwn.status, 200);
+    const cancelledOwnBody = await json(cancelledOwn);
+    const cancelledOwnData = cancelledOwnBody.data as {
+      state: string;
+      event: { status: string };
+    };
+    assert.strictEqual(cancelledOwnData.state, "Cancelled");
+    assert.strictEqual(cancelledOwnData.event.status, "Cancelled");
+
     const roster = await worker.fetch(
       request(`/api/v1/attendance/events/${EVENT}/roster`, {
         headers: { Cookie: `${ACCESS_COOKIE_NAME}=${member}` },
@@ -2889,7 +2947,110 @@ describe("attendance Worker routes", () => {
     assert.strictEqual(rosterBody.code, "FORBIDDEN");
   });
 
-  test("pre-start Excused history survives cancellation without creating a snapshot row", async () => {
+  test("materialization failure is retryable and never reports a false success", async () => {
+    const admin = await accessCookieFor("att-admin", "att-admin-password");
+    const eventId = `ATT-SNAPSHOT-FAILURE-${crypto.randomUUID()}`;
+    const enrollmentId = `ATT-SNAPSHOT-FAILURE-ENROLLMENT-${crypto.randomUUID()}`;
+    const now = Date.now();
+    const startsAt = new Date(now - 2 * 60 * 60_000).toISOString();
+    const endsAt = new Date(now - 60 * 60_000).toISOString();
+    const createdAt = new Date(now).toISOString();
+    await testDb()
+      .prepare(
+        `INSERT INTO events
+          (event_id, program_id, starts_at, ends_at, status, availability,
+           source, manual_check_in_code, check_in_window_opens_at,
+           check_in_window_closes_at, created_at, updated_at)
+         VALUES (?, ?, ?, ?, 'Active', 'Active', 'MANUAL', ?, ?, ?, ?, ?)`
+      )
+      .bind(
+        eventId,
+        EMPTY_PROGRAM,
+        startsAt,
+        endsAt,
+        `ATT-SNAPSHOT-FAILURE-CODE-${crypto.randomUUID()}`,
+        new Date(now - 3 * 60 * 60_000).toISOString(),
+        new Date(now + 60 * 60_000).toISOString(),
+        createdAt,
+        createdAt
+      )
+      .run();
+    await testDb()
+      .prepare(
+        `INSERT INTO enrollments
+          (enrollment_id, program_id, member_user_id, status, enrolled_at,
+           created_at)
+         VALUES (?, ?, 'ATT-ADMIN', 'Active', ?, ?)`
+      )
+      .bind(
+        enrollmentId,
+        EMPTY_PROGRAM,
+        new Date(now - 3 * 60 * 60_000).toISOString(),
+        createdAt
+      )
+      .run();
+
+    const failingDb = new Proxy(testDb(), {
+      get(target, property, receiver) {
+        if (property === "batch") {
+          return () => {
+            throw new Error("injected D1 snapshot failure");
+          };
+        }
+        const value = Reflect.get(target, property, receiver);
+        return typeof value === "function" ? value.bind(target) : value;
+      },
+    }) as unknown as D1Database;
+    const failed = await handleMaterializeAttendance(
+      request(`/api/v1/attendance/events/${eventId}/materialize`, {
+        method: "POST",
+        headers: { Cookie: `${ACCESS_COOKIE_NAME}=${admin}` },
+      }),
+      {
+        DB: failingDb,
+        EFCC_ACCESS_TOKEN_SECRET: SECRET,
+      },
+      eventId
+    );
+    assert.strictEqual(failed.status, 503);
+    const failedBody = await json(failed);
+    assert.strictEqual(failedBody.code, "UNAVAILABLE");
+    const failedAudit = await testDb()
+      .prepare(
+        `SELECT outcome, reason FROM audit_events WHERE correlation_id = ?`
+      )
+      .bind(failedBody.requestId)
+      .first<{ outcome: string; reason: string }>();
+    assert.deepStrictEqual(failedAudit, {
+      outcome: "FAILED",
+      reason: "SNAPSHOT_MATERIALIZATION_FAILED",
+    });
+    const expectedAfterFailure = await testDb()
+      .prepare(
+        "SELECT COUNT(*) AS count FROM event_expected_attendance WHERE event_id = ?"
+      )
+      .bind(eventId)
+      .first<{ count: number }>();
+    assert.strictEqual(expectedAfterFailure?.count, 0);
+
+    const retry = await worker.fetch(
+      request(`/api/v1/attendance/events/${eventId}/materialize`, {
+        method: "POST",
+        headers: { Cookie: `${ACCESS_COOKIE_NAME}=${admin}` },
+      }),
+      testEnv()
+    );
+    assert.strictEqual(retry.status, 200);
+    const expectedAfterRetry = await testDb()
+      .prepare(
+        "SELECT expected_attendance_id FROM event_expected_attendance WHERE event_id = ? AND enrollment_id = ?"
+      )
+      .bind(eventId, enrollmentId)
+      .first<{ expected_attendance_id: string }>();
+    assert.ok(expectedAfterRetry?.expected_attendance_id);
+  });
+
+  test("pre-start Excused history stays audit-only without creating a snapshot row", async () => {
     const admin = await accessCookieFor("att-admin", "att-admin-password");
     const eventId = "ATT-SNAPSHOT-PRESTART";
     const enrollmentId = "ATT-SNAPSHOT-PRESTART-ENROLLMENT";
@@ -2932,7 +3093,7 @@ describe("attendance Worker routes", () => {
         headers: { Cookie: `${ACCESS_COOKIE_NAME}=${admin}` },
         body: JSON.stringify({
           enrollment_id: enrollmentId,
-          reason: "預先請假",
+          reason: "其他：預先請假",
         }),
       }),
       testEnv()
@@ -2981,7 +3142,7 @@ describe("attendance Worker routes", () => {
         recorded_at: string;
       }>();
     assert.strictEqual(disposition?.disposition, "Excused");
-    assert.strictEqual(disposition?.reason, "預先請假");
+    assert.strictEqual(disposition?.reason, "其他：預先請假");
     assert.strictEqual(disposition?.recorded_by, "ATT-ADMIN");
     assert.ok(disposition?.recorded_at);
   });

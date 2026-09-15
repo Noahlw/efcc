@@ -53,6 +53,7 @@ import {
   ProgramTokenRotationConflictError,
   RequestNotDecidableError,
   ScheduleRuleRetiredError,
+  ScheduleRuleIdempotencyConflictError,
   ScheduleRuleNotApplicableError,
   StaleEnrollmentRequestError,
   StalePreviewPlanError,
@@ -82,6 +83,7 @@ import type {
   EventRow,
   EventType,
   GenerateResult,
+  GenerationRunRow,
   GenerationRunItemRow,
   PreviewOccurrenceRow,
   PreviewPlanRow,
@@ -104,6 +106,7 @@ import type {
   AccountDirectorySearchFilters,
   AccountDirectorySummary,
   ScheduleExceptionRow,
+  ScheduleRuleCreationResult,
   ScheduleRuleRow,
   WorkspaceStore,
 } from "./workspace-store";
@@ -751,6 +754,34 @@ export class DepartmentWorkspace {
     if (!(await this.authorizer.can(ctx, capability, scope))) {
       throw new AuthorizationDeniedError(capability);
     }
+  }
+
+  private async hasParticipantProgramHistory(
+    ctx: AuthorizationContext,
+    programId: string
+  ): Promise<boolean> {
+    const snapshot = await this.store.listParticipantEnrollmentSnapshot(
+      programId,
+      ctx.actorUserId
+    );
+    return snapshot.requests.length > 0 || snapshot.enrollments.length > 0;
+  }
+
+  private async canViewParticipantProgram(
+    ctx: AuthorizationContext,
+    row: ProgramRow,
+    capabilities: ProgramCapabilities
+  ): Promise<boolean> {
+    if (capabilities.manage) {
+      return true;
+    }
+    if (row.lifecycle === "Active" && row.discoverability === "Listed") {
+      return true;
+    }
+    // Unlisted Active Programs, and Draft/Archived Programs, are reachable
+    // only through an existing participant relationship/history. A directory
+    // row must never become an implicit direct-context authorization.
+    return this.hasParticipantProgramHistory(ctx, row.program_id);
   }
 
   private buildAuditRow(
@@ -1787,11 +1818,15 @@ export class DepartmentWorkspace {
         capabilities: await this.programCapabilities(ctx, row),
       }))
     );
-    return views
-      .filter(
-        ({ row, capabilities }) =>
-          row.discoverability === "Listed" || capabilities.manage
-      )
+    const visible = await Promise.all(
+      views.map(async ({ row, capabilities }) => ({
+        row,
+        capabilities,
+        visible: await this.canViewParticipantProgram(ctx, row, capabilities),
+      }))
+    );
+    return visible
+      .filter(({ visible: isVisible }) => isVisible)
       .map(({ row, capabilities }) => this.programView(row, capabilities));
   }
 
@@ -1804,20 +1839,31 @@ export class DepartmentWorkspace {
       return null;
     }
     const capabilities = await this.programCapabilities(ctx, row);
-    if (row.discoverability === "Unlisted" && !capabilities.manage) {
+    if (!(await this.canViewParticipantProgram(ctx, row, capabilities))) {
       return null;
     }
     return this.programView(row, capabilities);
   }
 
   /**
+   * Return whether a Program is addressable by a route-level existence check.
+   * Participant visibility is intentionally not part of this probe: mutation
+   * handlers need to distinguish an unknown resource (404) from a known
+   * resource on which the actor lacks the required capability (403).
+   */
+  async programExists(id: string): Promise<boolean> {
+    const row = await this.store.findProgramById(id);
+    return row !== null && (await this.isModuleEnabled(row.department_id));
+  }
+
+  /**
    * Participant Programs directory (PUI-02 / Issue #246): narrow, grouped
    * catalog projection over production D1. Visibility keeps the incumbent
-   * server policy — Listed rows are public, Unlisted rows appear only through
-   * scoped `program.manage` effective access — and module-disabled Departments
-   * are excluded. Lifecycle is surfaced as status; Draft/Archived rows are
-   * never silently filtered. Departments with zero visible Programs are
-   * omitted so the landing's empty state means a truly empty catalog.
+   * server policy — Active+Listed rows are public, while unlisted, Draft, and
+   * Archived rows appear only through an authorized relationship/history or
+   * scoped `program.manage` access. Module-disabled Departments are excluded.
+   * Departments with zero visible Programs are omitted so the landing's empty
+   * state means a truly empty catalog.
    */
   async listParticipantCatalog(
     ctx: AuthorizationContext
@@ -1833,15 +1879,20 @@ export class DepartmentWorkspace {
         );
         const visible = (
           await Promise.all(
-            rows.map(async (row) => ({
-              row,
-              capabilities: await this.programCapabilities(ctx, row),
-            }))
+            rows.map(async (row) => {
+              const capabilities = await this.programCapabilities(ctx, row);
+              return {
+                row,
+                capabilities,
+                visible: await this.canViewParticipantProgram(
+                  ctx,
+                  row,
+                  capabilities
+                ),
+              };
+            })
           )
-        ).filter(
-          ({ row, capabilities }) =>
-            row.discoverability === "Listed" || capabilities.manage
-        );
+        ).filter(({ visible }) => visible);
         if (visible.length === 0) {
           return null;
         }
@@ -2073,6 +2124,32 @@ export class DepartmentWorkspace {
       return {
         access: "Unavailable",
         snapshot: null,
+        hasActiveEnrollment,
+      };
+    }
+    if (view.lifecycle !== "Active") {
+      return {
+        access: "Unavailable",
+        snapshot: {
+          requests: requests
+            .filter((request) => request.member_user_id === ctx.actorUserId)
+            .map((request) => ({
+              request_id: request.request_id,
+              status: request.status,
+              submitted_at: request.submitted_at,
+              decided_at: request.decided_at,
+            })),
+          enrollments: enrollments
+            .filter(
+              (enrollment) => enrollment.member_user_id === ctx.actorUserId
+            )
+            .map((enrollment) => ({
+              enrollment_id: enrollment.enrollment_id,
+              status: enrollment.status,
+              enrolled_at: enrollment.enrolled_at,
+              cancelled_at: enrollment.cancelled_at,
+            })),
+        },
         hasActiveEnrollment,
       };
     }
@@ -2820,14 +2897,11 @@ export class DepartmentWorkspace {
         participant_summary,
       };
     }
-    // Participant projection: enrolled Active member may read any
-    // Active + Available event on their enrolled program (past, present,
-    // or future — the check-in window is irrelevant for detail browsing).
-    // Cancelled and Inactive events stay operator-only.
-    if (
-      event.status !== "Active" ||
-      (event.availability ?? "Active") !== "Active"
-    ) {
+    // Participant projection: an enrolled member may read any Available
+    // event on their enrolled program (past, present, future, or cancelled).
+    // Cancellation remains visible as history, but the participant projection
+    // never includes a credential and therefore cannot create attendance.
+    if ((event.availability ?? "Active") !== "Active") {
       return null;
     }
     const enrolled = await this.store.hasActiveEnrollment(
@@ -2867,8 +2941,9 @@ export class DepartmentWorkspace {
     ctx: AuthorizationContext,
     programId: string,
     cmd: CreateScheduleRuleCommand,
-    correlationId: string | null
-  ): Promise<ScheduleRuleRow> {
+    correlationId: string | null,
+    idempotencyKey: string | null = null
+  ): Promise<ScheduleRuleCreationResult> {
     const program = await this.requireProgramFor(
       ctx,
       programId,
@@ -2879,27 +2954,59 @@ export class DepartmentWorkspace {
       throw new ScheduleRuleNotApplicableError(programId);
     }
     const now = new Date().toISOString();
-    const row = await this.store.createScheduleRule({
+    const effectiveStartDate = cmd.effective_start_date ?? hkTodayWallDate();
+    const effectiveEndDate = cmd.effective_end_date ?? null;
+    const requestFingerprint = JSON.stringify({
       program_id: programId,
-      ...cmd,
-      created_by: ctx.actorUserId,
-      created_at: now,
-      updated_by: ctx.actorUserId,
-      updated_at: now,
-      effective_start_date: cmd.effective_start_date ?? hkTodayWallDate(),
-      effective_end_date: cmd.effective_end_date ?? null,
+      recurrence: cmd.recurrence,
+      day_of_week: cmd.day_of_week,
+      month_day: cmd.month_day,
+      start_time: cmd.start_time,
+      end_time: cmd.end_time,
+      location: cmd.location ?? null,
+      effective_start_date: effectiveStartDate,
+      effective_end_date: effectiveEndDate,
     });
+    let result: ScheduleRuleCreationResult;
+    try {
+      result = await this.store.createScheduleRule({
+        program_id: programId,
+        ...cmd,
+        created_by: ctx.actorUserId,
+        created_at: now,
+        updated_by: ctx.actorUserId,
+        updated_at: now,
+        effective_start_date: effectiveStartDate,
+        effective_end_date: effectiveEndDate,
+        idempotency_key: idempotencyKey,
+        request_fingerprint: requestFingerprint,
+      });
+    } catch (error) {
+      if (error instanceof ScheduleRuleIdempotencyConflictError) {
+        await this.audit(
+          ctx,
+          "SCHEDULE_RULE_CREATE",
+          "schedule_rule",
+          programId,
+          "CONFLICT",
+          null,
+          { idempotency_key: idempotencyKey },
+          correlationId
+        );
+      }
+      throw error;
+    }
     await this.audit(
       ctx,
       "SCHEDULE_RULE_CREATE",
       "schedule_rule",
-      row.rule_id,
-      "SUCCESS",
+      result.rule.rule_id,
+      result.idempotent ? "DUPLICATE" : "SUCCESS",
       null,
-      row,
+      result.rule,
       correlationId
     );
-    return row;
+    return result;
   }
 
   async updateScheduleRule(
@@ -3369,15 +3476,12 @@ export class DepartmentWorkspace {
         },
         correlationId
       );
-      return {
-        run_id: run.run_id,
-        plan_id: planId,
-        status: "completed",
+      return this.generationResult(run, occurrences, true, {
         created: 0,
         skipped,
         failed: 0,
-        resumed: true,
-      };
+        createdEventIds: [],
+      });
     }
     // Each occurrence gets exactly one durable attempt row; repeated and
     // concurrent requests converge on the same rows (INSERT … ON CONFLICT
@@ -3418,14 +3522,65 @@ export class DepartmentWorkspace {
       },
       correlationId
     );
+    return this.generationResult(settled, occurrences, resumed);
+  }
+
+  private async generationResult(
+    run: GenerationRunRow,
+    occurrences: readonly PreviewOccurrenceRow[],
+    resumed: boolean,
+    overrides: {
+      created: number;
+      skipped: number;
+      failed: number;
+      createdEventIds?: string[];
+    } | null = null
+  ): Promise<GenerateResult> {
+    const items = await this.store.listGenerationRunItems(run.run_id);
+    const occurrenceIds = new Set(
+      occurrences.map((occurrence) => occurrence.occurrence_id)
+    );
     return {
-      run_id: settled.run_id,
-      plan_id: planId,
-      status: settled.status,
-      created: settled.created,
-      skipped: settled.skipped,
-      failed: settled.failed,
+      run_id: run.run_id,
+      plan_id: run.plan_id,
+      status: run.status,
+      created: overrides?.created ?? run.created,
+      skipped: overrides?.skipped ?? run.skipped,
+      failed: overrides?.failed ?? run.failed,
       resumed,
+      created_event_ids:
+        overrides?.createdEventIds ??
+        items
+          .filter(
+            (item) =>
+              item.outcome === "created" &&
+              item.event_id !== null &&
+              occurrenceIds.has(item.occurrence_id)
+          )
+          .map((item) => item.event_id as string),
+      skipped_occurrences: items
+        .filter(
+          (item) =>
+            item.outcome === "skipped" && occurrenceIds.has(item.occurrence_id)
+        )
+        .map((item) => ({
+          occurrence_id: item.occurrence_id,
+          starts_at: item.starts_at,
+          reason:
+            item.detail === "CANCEL"
+              ? ("CANCEL" as const)
+              : ("DUPLICATE" as const),
+        })),
+      unresolved_occurrences: items
+        .filter(
+          (item) =>
+            item.outcome === "failed" && occurrenceIds.has(item.occurrence_id)
+        )
+        .map((item) => ({
+          occurrence_id: item.occurrence_id,
+          starts_at: item.starts_at,
+          detail: item.detail,
+        })),
     };
   }
 
@@ -3526,6 +3681,7 @@ export class DepartmentWorkspace {
         if (existing) {
           outcome = "skipped";
           eventId = existing.event_id;
+          detail = "DUPLICATE";
         } else {
           outcome = "failed";
           detail = "event insert ignored without creating an event row";
@@ -4236,6 +4392,9 @@ export class DepartmentWorkspace {
       program.department_id,
       MODULE_KEY.ENROLLMENT
     );
+    if (program.lifecycle !== "Active") {
+      throw new AuthorizationDeniedError(CAPABILITY.PROGRAM_ENROLL);
+    }
     if (program.enrollment_mode !== "MemberRequest") {
       throw new EnrollmentNotAllowedError(programId, "MemberRequest");
     }

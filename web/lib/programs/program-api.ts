@@ -533,6 +533,17 @@ export interface GenerateResult {
   failed: number;
   /** True when the request resumed an already-started run (retry/concurrent). */
   resumed: boolean;
+  created_event_ids?: string[];
+  skipped_occurrences?: {
+    occurrence_id: string;
+    starts_at: string;
+    reason: "CANCEL" | "DUPLICATE";
+  }[];
+  unresolved_occurrences?: {
+    occurrence_id: string;
+    starts_at: string;
+    detail: string | null;
+  }[];
 }
 
 /** One materialized occurrence row of a server-owned preview plan. */
@@ -1148,12 +1159,14 @@ export function listScheduleRules(
 /** POST /api/v1/programs/:id/schedule-rules */
 export function createScheduleRule(
   programId: string,
-  input: ScheduleRuleInput
-): Promise<{ rule: ScheduleRule }> {
+  input: ScheduleRuleInput,
+  options: { idempotencyKey?: string | null } = {}
+): Promise<{ rule: ScheduleRule; idempotent?: boolean }> {
   return programsFetch(
     `/api/v1/programs/${encodeURIComponent(programId)}/schedule-rules`,
     "POST",
-    input
+    input,
+    options
   );
 }
 
@@ -1361,6 +1374,7 @@ export interface AttendanceResult {
    *  (Spec #244 dec 14: duplicate responses must not echo the existing
    *  record's id — it would be an identity oracle for public guests). */
   attendance_id?: string;
+  checked_in_at?: string;
   disposition_id?: string;
 }
 

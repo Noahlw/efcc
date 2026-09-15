@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { RpcError } from "@/lib/api";
-import type { AttendanceEvent } from "@/lib/attendance";
+import type { AttendanceEvent, AttendanceEventSummary } from "@/lib/attendance";
 import { attendanceEventLabel } from "@/lib/attendance-display";
 import {
   attendanceButtonVariants,
@@ -19,6 +19,7 @@ import {
   ScannerStatusOutput,
 } from "@/lib/attendance-scanner-ui";
 import { COPY, errorCopyFor } from "@/lib/copy";
+import { hkWallLabel } from "@/lib/hk-time";
 import { announce } from "@/lib/live-region";
 import { selfCheckIn } from "@/lib/programs/program-api";
 import { buildProgramsHref } from "@/lib/programs/programs-intent";
@@ -31,6 +32,7 @@ const methodControl =
 interface CheckinResult {
   kind: "success" | "duplicate";
   event: AttendanceEvent;
+  checkedInAt?: string;
 }
 
 const KNOWN_SUBMIT_ERROR_CODES = [
@@ -51,6 +53,29 @@ function replaceWithPlainScanner() {
   window.history.replaceState(null, "", "/scanner");
   window.dispatchEvent(new PopStateEvent("popstate"));
 }
+
+const EventContextCard = ({ event }: { event: AttendanceEvent }) => (
+  <Card className="grid gap-1" aria-label={COPY.attendance.eventContextTitle}>
+    <strong className="text-sm text-[var(--accent-deep)]">
+      {COPY.attendance.eventContextTitle}
+    </strong>
+    <span className="text-base font-bold text-[var(--ink)]">
+      {event.program_name} · {attendanceEventLabel(event)}
+    </span>
+    <span className="text-sm text-[var(--ink-muted)]">
+      {hkWallLabel(event.starts_at)} – {hkWallLabel(event.ends_at)}
+    </span>
+  </Card>
+);
+
+const EventMismatchAlert = ({ event }: { event: AttendanceEventSummary }) => (
+  <Alert variant="destructive">
+    {COPY.attendance.eventCredentialMismatch.replace(
+      "{event}",
+      attendanceEventLabel(event)
+    )}
+  </Alert>
+);
 
 export const SelfCheckInPanel = ({
   title = COPY.attendance.scanTitle,
@@ -99,12 +124,10 @@ export const SelfCheckInPanel = ({
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
+    // An Event-only link is context, not a credential. It still uses the
+    // phone camera-first entry and collects a QR/code before confirmation.
     setHasDeepLink(
-      Boolean(
-        params.get("event") ||
-        params.get("program_token") ||
-        params.get("manual_code")
-      )
+      Boolean(params.get("program_token") || params.get("manual_code"))
     );
     setDeepLinkChecked(true);
   }, []);
@@ -116,6 +139,7 @@ export const SelfCheckInPanel = ({
       scanStopped ||
       flow.cameraUnavailable ||
       flow.cameraAvailable !== true ||
+      flow.busy ||
       autoStartRef.current
     ) {
       return;
@@ -130,6 +154,7 @@ export const SelfCheckInPanel = ({
   }, [
     flow.cameraAvailable,
     flow.cameraUnavailable,
+    flow.busy,
     deepLinkChecked,
     hasDeepLink,
     isPhone,
@@ -262,7 +287,11 @@ export const SelfCheckInPanel = ({
         ...credential,
       });
       const kind = result.outcome === "duplicate" ? "duplicate" : "success";
-      setCheckinResult({ kind, event: selected });
+      setCheckinResult({
+        kind,
+        event: selected,
+        checkedInAt: result.checked_in_at,
+      });
       announce(
         kind === "duplicate"
           ? `${COPY.attendance.duplicateTitle} ${COPY.attendance.duplicateBody}`
@@ -370,6 +399,8 @@ export const SelfCheckInPanel = ({
         handleResolve();
       }}
     >
+      {flow.intendedEvent && <EventContextCard event={flow.intendedEvent} />}
+      {flow.mismatchEvent && <EventMismatchAlert event={flow.mismatchEvent} />}
       {withHeading && (
         <>
           <h1
@@ -458,6 +489,13 @@ export const SelfCheckInPanel = ({
         <ScannerCheckinResult
           event={checkinResult.event}
           kind={checkinResult.kind}
+          checkedInAt={checkinResult.checkedInAt}
+          eventHref={buildProgramsHref({
+            mode: "participant",
+            programId: checkinResult.event.program_id,
+            eventId: checkinResult.event.event_id,
+            origin: "programs",
+          })}
           headingRef={resultHeadingRef}
           onScanAgain={backToScan}
         />
@@ -530,7 +568,12 @@ export const SelfCheckInPanel = ({
     );
   }
 
-  if (scanStopped || flow.cameraUnavailable || flow.cameraAvailable === false) {
+  if (
+    flow.mismatchEvent ||
+    scanStopped ||
+    flow.cameraUnavailable ||
+    flow.cameraAvailable === false
+  ) {
     return (
       <div
         className="mx-auto w-[min(100%,760px)] px-4 py-8 [@media(max-height:640px)]:py-4 pb-[calc(3rem+env(safe-area-inset-bottom,0px))] [@media(max-height:640px)]:pb-[calc(1.5rem+env(safe-area-inset-bottom,0px))]"
@@ -540,6 +583,12 @@ export const SelfCheckInPanel = ({
           className="grid [@media(max-height:640px)]:gap-3"
           aria-labelledby="fallback-methods-title"
         >
+          {flow.intendedEvent && (
+            <EventContextCard event={flow.intendedEvent} />
+          )}
+          {flow.mismatchEvent && (
+            <EventMismatchAlert event={flow.mismatchEvent} />
+          )}
           <h1
             ref={fallbackHeadingRef}
             id="fallback-methods-title"
@@ -607,11 +656,14 @@ export const SelfCheckInPanel = ({
   }
 
   return (
-    <CameraFirstScanner
-      cameraOpen={flow.cameraOpen}
-      opening={flow.cameraAvailable !== true || !flow.cameraReady}
-      videoRef={flow.videoRef}
-      onStop={stopScanning}
-    />
+    <div className="grid gap-3">
+      {flow.intendedEvent && <EventContextCard event={flow.intendedEvent} />}
+      <CameraFirstScanner
+        cameraOpen={flow.cameraOpen}
+        opening={flow.cameraAvailable !== true || !flow.cameraReady}
+        videoRef={flow.videoRef}
+        onStop={stopScanning}
+      />
+    </div>
   );
 };
