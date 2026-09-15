@@ -1,6 +1,6 @@
 # Programs mobile UX refinement acceptance trace
 
-Status: `MACHINE QUALIFIED — finite functional gates passed; B-003 canary remains open; human/device/owner gates remain`
+Status: `FINITE MACHINE GREEN — candidate aceac1a4; B-003 canary, device, owner, independent-review, merge, and release gates remain open`
 
 This ledger is the candidate-bound acceptance inventory for the approved local
 plan at `docs/design/2026-09-15-programs-mobile-ux-refinement.md`. It is not
@@ -15,15 +15,27 @@ domain/spec authority.
 | Branch | `codex/programs-production/ds1` |
 | Base | `e46cf616fc690f3d191fa435232ba73609b24f79` (`origin/main`) |
 | Initial candidate | `e1339aebee5177f252499a4f98d5defa5ac62b5b` |
-| Implementation candidate | `51ca2871f7019a2906f9474539c38fd44eeb081b` |
+| Implementation candidate | `aceac1a463e7e89693d5245aaaffef58782e5cc9` |
 | Remote comparison | `origin/main` = `e46cf616…`; PR #607 head = `9ad90d25…` and does not contain this local candidate |
 | Runtime required | Node `22.18.0`, pnpm `11.7.0`; verified from this repository before implementation |
 | Acceptance profile | `complex` |
 | Review risk | `high` — permissions, durable attendance meaning, navigation/recovery, QR artifacts, shared UI and real route seams |
-| Review route | Fresh independent Standards/Spec/Acceptance review dispatched for implementation candidate `51ca2871…`; result remains a separate gate |
+| Review route | Focused self-review at `aceac1a4…`; no independent reviewer result is available, so independent acceptance remains unverified |
 | UI authority | `docs/implementation/ui-control-recovery-governance.md`, `DESIGN.md`, local shadcn/Radix primitives and existing Screen Foundations |
 | Domain authority | `CONTEXT.md`, Spec 081, accepted Programs UX contract and the approved local plan |
 | Context7 record | `2026-09-15`: `/shadcn-ui/ui` and `/joe-bell/cva`; queried Sheet/Dialog/Button/Input/Field controlled APIs, accessibility attributes, and typed CVA variants before UI edits |
+
+## Updated-plan E0 preflight
+
+The refreshed decision record supplied on 2026-09-15 is the current local
+implementation authority (attachment SHA-256
+`34f67cc7d279600eeca3abed31547885d990e69483c5d471de79bdb56026a463`). It
+reopens CR-01–CR-10 and the real-route, durable Schedule-exception, Event
+Draft-recovery, roster-scale, and independent-review requirements. The final
+code-changing fixed point is `aceac1a4…`; `bdc9de11` is documentation only.
+Historical machine results below remain bound to their recorded predecessor;
+the current-candidate requalification section at the end is authoritative for
+the final candidate.
 
 ## Dirty-work boundary
 
@@ -51,6 +63,10 @@ candidate-SHA QA convention and must record their actual paths.
 - `rendered`: real route or Storybook presentation evidence at named viewport/state.
 - `device`: physical camera/touch/keyboard/assistive-tech/native-print proof; not available from ordinary headless checks.
 - `unverified`: required evidence could not be obtained; retain the exact blocker.
+
+The inventory rows below preserve the earlier candidate-bound snapshot for
+audit history. Do not reuse those predecessor claims for the final candidate;
+use the requalification record at the end of this ledger.
 
 ## Screen acceptance inventory
 
@@ -118,9 +134,9 @@ a clean tracked disposable checkout or remain `unverified` with that exact
 precondition; the seven dirty documentation files are not to be staged or
 discarded for this purpose.
 
-## Current-candidate machine evidence
+## Historical candidate machine evidence (superseded)
 
-The implementation candidate is `51ca2871f7019a2906f9474539c38fd44eeb081b`.
+The historical implementation candidate was `51ca2871f7019a2906f9474539c38fd44eeb081b`.
 The aggregate was run in a clean detached worktree at that candidate with the
 local-only `web/.dev.vars` copied into the disposable target. The governance
 comparison against `origin/main` hits the repository's existing `git`
@@ -165,3 +181,71 @@ Physical camera permission/decoder, downloaded QR rescan, touch/safe-area,
 virtual keyboard, assistive technology, and native print remain separate
 `device`/human gates. Owner approval, push/PR/merge, deployment and release are
 not implied by any machine result.
+
+## Final candidate requalification — 2026-09-15
+
+The final candidate is `aceac1a463e7e89693d5245aaaffef58782e5cc9`. It contains
+the implementation fixed point plus two append-only test/fixture corrections:
+the management Overview test now asserts the shared attendance-roster route,
+and the sustained canary explicitly publishes its Draft+Unlisted fixture
+before the member catalog read.
+
+The earlier `51ca2871…` inventory remains historical. The results below are
+the current candidate-bound evidence and were produced in a clean detached
+checkout with `GITHUB_BASE_SHA=bdc9de110466b008665bd72204ed53e7b2bae816`
+(the implementation parent). The repository's unusually large
+`origin/main` comparison still exceeds the local `git` `ENOBUFS` limit, so
+official origin-base affected-scope evidence remains unverified.
+
+### CR disposition
+
+- `CR-01`–`CR-05`: implemented and covered by current Worker/D1 and component
+  suites; cancellation/check-in races, protected Event identity edits,
+  Draft+Unlisted creation, required Event names, and truthful materialization
+  states are included in the final full-suite pass.
+- `CR-06`: existing Schedule exception/date/provenance implementation retained
+  and requalified by the current Worker/D1 suite; full route preview reload
+  remains unverified.
+- `CR-07`–`CR-09`: implemented and covered by current component/browser/
+  responsive/visual evidence; the desktop polish explicitly remains deferred
+  by the approved plan.
+- `CR-10`: machine evidence is recorded below. Device, owner, independent
+  review, merge, and release remain separate gates.
+
+### Current machine evidence
+
+| Command / layer | Result | Evidence |
+| --- | --- | --- |
+| `pnpm verify:fast` | pass | Included in the final non-browser precommit stage. |
+| Worker/D1 full suite | 44 files / 633 tests passed | [non-browser-precommit.log](/Users/noah.wong/Desktop/code/efcc/docs/qa/artifacts/programs-mobile-ux-refinement/aceac1a4/promotion-20260915t102522020z/non-browser-precommit.log) |
+| Web component full suite | 69 files / 1,077 tests passed | [non-browser-precommit.log](/Users/noah.wong/Desktop/code/efcc/docs/qa/artifacts/programs-mobile-ux-refinement/aceac1a4/promotion-20260915t102522020z/non-browser-precommit.log) |
+| Programs contract / canary-unit / runner-unit / promotion contracts | 1/1, 5/5, 5/5, 9/9 passed | [non-browser-precommit.log](/Users/noah.wong/Desktop/code/efcc/docs/qa/artifacts/programs-mobile-ux-refinement/aceac1a4/promotion-20260915t102522020z/non-browser-precommit.log) |
+| Worker contract stage | 1/1 passed | [worker-contract.log](/Users/noah.wong/Desktop/code/efcc/docs/qa/artifacts/programs-mobile-ux-refinement/aceac1a4/promotion-20260915t102522020z/worker-contract.log) |
+| Browser acceptance | 4/4 passed, zero retries | [browser-results.json](/Users/noah.wong/Desktop/code/efcc/docs/qa/artifacts/programs-mobile-ux-refinement/aceac1a4/promotion-20260915t102522020z/browser-results.json) |
+| Responsive matrix | 18/18 passed, zero retries | [responsive-results.json](/Users/noah.wong/Desktop/code/efcc/docs/qa/artifacts/programs-mobile-ux-refinement/aceac1a4/promotion-20260915t102522020z/responsive-results.json) |
+| Visual harness | 2/2 passed at `402×874` and `360×800`; 22 rows | [visual manifest](/Users/noah.wong/Desktop/code/efcc/docs/qa/artifacts/programs-mobile-ux-refinement/aceac1a4/visual/manifest.json) |
+| Finite promotion aggregate | `functional-passed`; all four finite stages passed | [promotion manifest](/Users/noah.wong/Desktop/code/efcc/docs/qa/artifacts/programs-mobile-ux-refinement/aceac1a4/promotion-20260915t102522020z/promotion.json) |
+| Migration ledger check | participant 26 rows / management 37 rows; executable mappings complete | [promotion manifest](/Users/noah.wong/Desktop/code/efcc/docs/qa/artifacts/programs-mobile-ux-refinement/aceac1a4/promotion-20260915t102522020z/promotion.json) |
+
+The visual harness exposes the direct Storybook route
+`http://127.0.0.1:6006/iframe.html?id=t07-3-programs--participant-directory&viewMode=story`;
+all captured story IDs and prototype hashes are in the visual manifest.
+
+The separate `pnpm test:programs:canary` reached 83 scenarios before the
+known local Miniflare transport failure at the admin enrollment decision:
+HTTP 500 `Network connection lost` without `X-Request-Id`. This is the open
+`B-003` diagnostic risk, not a failure of the finite promotion gate. Its
+candidate-bound evidence is [canary run.json](/Users/noah.wong/Desktop/code/efcc/docs/qa/artifacts/programs-mobile-ux-refinement/aceac1a4/runtime-canary-20260915t102408904z/run.json).
+
+### Remaining gates
+
+Focused self-review found no new actionable issue in the final diff, but no
+independent reviewer result is available. Full scanner write/readback,
+Overview-to-roster on a real authenticated route, approximately 30-person
+offline/reconnect roster behavior, durable mixed batch route behavior,
+signed-out guest-login revalidation, rotation readback, physical camera/
+touch/safe-area/keyboard/assistive-tech/native-print checks, owner L2 visual
+approval, merge, deployment, and release remain open. A standalone repo-wide
+`pnpm check` also retains its previously observed baseline failures in
+unrelated files; targeted changed-file formatting and the aggregate
+non-browser precommit passed.
