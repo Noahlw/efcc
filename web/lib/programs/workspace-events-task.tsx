@@ -395,7 +395,6 @@ export const RecurringSchedulePanel = ({
     if (!workspaceReconciled) {
       setGenerationNeedsReconciliation(true);
       setGenerateError(COPY.programs.workspaceSavedStale);
-      onMutationBlockChange?.(true);
     } else {
       onMutationBlockChange?.(false);
     }
@@ -475,6 +474,13 @@ export const RecurringSchedulePanel = ({
         setGenerationNeedsReconciliation(true);
         setGenerateError(COPY.programs.programTransportAmbiguous);
         onMutationBlockChange?.(true);
+        return;
+      }
+      if (generationData !== null && generationData.failed === 0) {
+        setGenerationNeedsReconciliation(false);
+        setGenerateError(null);
+        onMutationBlockChange?.(false);
+        announce(COPY.programs.workspaceReconciled);
         return;
       }
       const { generated } = await generateEvents(programId, planId);
@@ -820,6 +826,17 @@ export const RecurringSchedulePanel = ({
                       </dd>
                     </div>
                   </dl>
+                  {generationNeedsReconciliation && unresolvedCount === 0 && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="w-fit border-[var(--screen-line-strong)] bg-transparent text-[var(--screen-ink)] hover:bg-[var(--screen-surface-soft)]"
+                      onClick={() => void reconcileGeneration()}
+                      disabled={generateBusy}
+                    >
+                      {COPY.programs.workspaceRetryRefresh}
+                    </Button>
+                  )}
                   {unresolvedCount > 0 ? (
                     <details open>
                       <summary className="cursor-pointer font-bold text-[var(--screen-danger)]">

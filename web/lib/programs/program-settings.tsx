@@ -1395,7 +1395,6 @@ export const ProgramSettings = ({
           // The PATCH is already authoritative. A failed follow-up GET must
           // remain a refresh problem, never a false failed-save state.
           setReloadRequired(onReload !== undefined);
-          onMutationBlockChange?.(onReload !== undefined);
           setActionError(COPY.programs.workspaceSavedStale);
           announce(COPY.programs.workspaceSavedStale);
         }
@@ -1575,7 +1574,6 @@ export const ProgramSettings = ({
         setNotice(success);
         if (refreshFailed) {
           setReloadRequired(onReload !== undefined);
-          onMutationBlockChange?.(true);
           setActionError(COPY.programs.workspaceSavedStale);
         }
         announce(success);

@@ -1464,6 +1464,7 @@ export const AttendanceOperatorPanel = ({
       showStatus(COPY.programs.workspaceReconciled, "info");
       announce(COPY.programs.workspaceReconciled);
     } else {
+      setStale(true);
       setMutationOutcomeUnknown(true);
       showStatus(COPY.attendance.transportAmbiguous, "error");
       announce(COPY.attendance.transportAmbiguous);

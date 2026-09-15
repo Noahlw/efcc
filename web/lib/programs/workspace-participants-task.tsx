@@ -648,9 +648,7 @@ export const ParticipantsTask = () => {
         setNotice(message);
         announce(message);
       }
-      if (!(await refreshSharedWorkspace())) {
-        onMutationBlockChange?.(true);
-      }
+      await refreshSharedWorkspace();
       try {
         await refresh();
       } catch (error) {
@@ -690,9 +688,7 @@ export const ParticipantsTask = () => {
         current.filter((id) => id !== request.request_id)
       );
       onAttentionRefresh();
-      if (!(await refreshSharedWorkspace())) {
-        onMutationBlockChange?.(true);
-      }
+      await refreshSharedWorkspace();
       setRefreshSuccess(COPY.programs.decisionMade);
       setRefreshingAction(request.request_id);
       void run();
@@ -758,9 +754,7 @@ export const ParticipantsTask = () => {
         reason
       );
       onAttentionRefresh();
-      if (!(await refreshSharedWorkspace())) {
-        onMutationBlockChange?.(true);
-      }
+      await refreshSharedWorkspace();
       setRefreshSuccess(COPY.programs.enrollmentCancelledNotice);
       setRefreshingAction(enrollment.enrollment_id);
       void run();
@@ -844,9 +838,7 @@ export const ParticipantsTask = () => {
     try {
       await assistedEnroll(programId, memberUserId);
       onAttentionRefresh();
-      if (!(await refreshSharedWorkspace())) {
-        onMutationBlockChange?.(true);
-      }
+      await refreshSharedWorkspace();
       setAddParticipantOpen(false);
       setRefreshSuccess(COPY.programs.assistedSubmitted);
       setRefreshingAction("assisted");
@@ -884,9 +876,9 @@ export const ParticipantsTask = () => {
     setRefreshingAction("refresh");
     const snapshot = await run();
     const workspaceReconciled = await refreshSharedWorkspace();
-    onMutationBlockChange?.(
-      workspaceReconciled && snapshot !== undefined ? false : true
-    );
+    if (workspaceReconciled && snapshot !== undefined) {
+      onMutationBlockChange?.(false);
+    }
   };
 
   const renderPending = () => {
