@@ -1322,6 +1322,7 @@ export const AttendanceOperatorPanel = ({
   const [materializationRequired, setMaterializationRequired] = useState(false);
   const selectedEventIdRef = useRef<string | null>(null);
   const rosterRequestRef = useRef(false);
+  const rosterRequestPromiseRef = useRef<Promise<boolean> | null>(null);
   const staleRef = useRef(false);
   const mutationOutcomeUnknownRef = useRef(false);
 
@@ -1424,17 +1425,10 @@ export const AttendanceOperatorPanel = ({
     return true;
   }
 
-  async function loadRoster(
+  async function performRosterRead(
     id: string,
     { silent = false }: RosterLoadOptions = {}
   ): Promise<boolean> {
-    if (silent && (staleRef.current || mutationOutcomeUnknownRef.current)) {
-      return false;
-    }
-    if (rosterRequestRef.current) {
-      return false;
-    }
-    rosterRequestRef.current = true;
     if (!silent) {
       setBusy(true);
     }
@@ -1451,9 +1445,40 @@ export const AttendanceOperatorPanel = ({
       }
       return false;
     } finally {
-      rosterRequestRef.current = false;
       if (!silent) {
         setBusy(false);
+      }
+    }
+  }
+
+  async function loadRoster(
+    id: string,
+    options: RosterLoadOptions = {}
+  ): Promise<boolean> {
+    const { silent = false } = options;
+    if (silent && (staleRef.current || mutationOutcomeUnknownRef.current)) {
+      return false;
+    }
+    if (rosterRequestRef.current) {
+      if (silent) {
+        return false;
+      }
+      const activeRequest = rosterRequestPromiseRef.current;
+      if (!activeRequest) {
+        return false;
+      }
+      await activeRequest;
+      return loadRoster(id, options);
+    }
+    rosterRequestRef.current = true;
+    const request = performRosterRead(id, options);
+    rosterRequestPromiseRef.current = request;
+    try {
+      return await request;
+    } finally {
+      rosterRequestRef.current = false;
+      if (rosterRequestPromiseRef.current === request) {
+        rosterRequestPromiseRef.current = null;
       }
     }
   }
@@ -1881,7 +1906,14 @@ export const AttendanceOperatorPanel = ({
   }, [online]);
 
   useEffect(() => {
-    if (!eventId || !online || !pageVisible || busy) {
+    if (
+      !eventId ||
+      !online ||
+      !pageVisible ||
+      busy ||
+      stale ||
+      mutationOutcomeUnknown
+    ) {
       return;
     }
     let cancelled = false;
@@ -1894,6 +1926,9 @@ export const AttendanceOperatorPanel = ({
       }
       const succeeded = await loadRoster(eventId, { silent: true });
       if (cancelled) {
+        return;
+      }
+      if (staleRef.current || mutationOutcomeUnknownRef.current) {
         return;
       }
       failureCount = succeeded ? 0 : Math.min(failureCount + 1, 3);
@@ -1913,7 +1948,7 @@ export const AttendanceOperatorPanel = ({
     // The polling loop pauses while writes/recovery are busy; loadRoster also
     // uses a ref to prevent overlap and discards stale recovery responses.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [busy, eventId, online, pageVisible]);
+  }, [busy, eventId, mutationOutcomeUnknown, online, pageVisible, stale]);
 
   const rosterVisible = Boolean(event && eventId);
   return (

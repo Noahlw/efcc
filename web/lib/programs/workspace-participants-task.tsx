@@ -371,7 +371,8 @@ export const ParticipantsTask = () => {
     approvalBusy ||
     refreshingAction !== null;
   const hasUnknownMutation = Object.values(unknownMutationIds).some(Boolean);
-  const mutationBlocked = hasUnknownMutation || participantsStale;
+  const mutationBlocked =
+    state.kind !== "ready" || hasUnknownMutation || participantsStale;
 
   const refreshSharedWorkspace = async (): Promise<boolean> => {
     if (!onWorkspaceRefresh) {

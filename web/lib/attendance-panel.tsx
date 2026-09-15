@@ -222,16 +222,13 @@ export const AttendancePanel = () => {
     } catch (error) {
       const unknown = isUnknownMutationOutcome(error);
       const message = guestSubmitErrorCopy(error);
-      const visibleMessage = message;
       setGuestOutcomeUnknown(unknown);
       if (!unknown) {
         guestSubmitKeyRef.current = null;
       }
-      flow.showStatus(visibleMessage, "error");
+      flow.showStatus(message, "error");
       announce(
-        unknown
-          ? `${visibleMessage} ${COPY.attendance.transportAmbiguous}`
-          : visibleMessage
+        unknown ? `${message} ${COPY.attendance.transportAmbiguous}` : message
       );
       if (error instanceof RpcError && error.problem.code === "VALIDATION") {
         if (error.problem.detail?.includes(COPY.attendance.guestPhoneLabel)) {
@@ -392,8 +389,6 @@ export const AttendancePanel = () => {
               onChange={(event) => {
                 setAwaitingSelection(false);
                 clearFormStatus();
-                setGuestOutcomeUnknown(false);
-                guestSubmitKeyRef.current = null;
                 flow.setInput(event.target.value);
               }}
               placeholder={COPY.attendance.guestCodePlaceholder}
@@ -415,8 +410,6 @@ export const AttendancePanel = () => {
               value={name}
               onChange={(event) => {
                 clearFormStatus();
-                setGuestOutcomeUnknown(false);
-                guestSubmitKeyRef.current = null;
                 setName(event.target.value);
               }}
               autoComplete="name"
@@ -437,8 +430,6 @@ export const AttendancePanel = () => {
               value={phone}
               onChange={(event) => {
                 clearFormStatus();
-                setGuestOutcomeUnknown(false);
-                guestSubmitKeyRef.current = null;
                 setPhone(event.target.value);
               }}
               type="tel"
@@ -473,6 +464,16 @@ export const AttendancePanel = () => {
             disabled={submitting}
             onSelect={selectEvent}
           />
+        )}
+        {guestOutcomeUnknown && (
+          <Button
+            type="button"
+            variant="outline"
+            className={attendanceButtonVariants({ variant: "secondary" })}
+            onClick={backToScan}
+          >
+            {COPY.attendance.guestBack}
+          </Button>
         )}
         <div className="mt-4 grid gap-3">
           <Button
