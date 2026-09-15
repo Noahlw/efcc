@@ -21,7 +21,11 @@ import {
 import { COPY, errorCopyFor } from "@/lib/copy";
 import { hkWallLabel } from "@/lib/hk-time";
 import { announce } from "@/lib/live-region";
-import { selfCheckIn } from "@/lib/programs/program-api";
+import {
+  getOwnAttendance,
+  isUnknownMutationOutcome,
+  selfCheckIn,
+} from "@/lib/programs/program-api";
 import { buildProgramsHref } from "@/lib/programs/programs-intent";
 import { useAttendanceFlow } from "@/lib/use-attendance-flow";
 
@@ -92,6 +96,7 @@ export const SelfCheckInPanel = ({
   const retryRef = useRef<HTMLButtonElement>(null);
   const cameraAnnouncementRef = useRef<"opening" | "live" | null>(null);
   const autoStartRef = useRef(false);
+  const submitKeyRef = useRef<string | null>(null);
   const [isPhone, setIsPhone] = useState(false);
   const [hasDeepLink, setHasDeepLink] = useState(false);
   const [deepLinkChecked, setDeepLinkChecked] = useState(false);
@@ -104,6 +109,8 @@ export const SelfCheckInPanel = ({
   );
   const [showChooser, setShowChooser] = useState(false);
   const [retryAvailable, setRetryAvailable] = useState(false);
+  const [retryNeedsReconciliation, setRetryNeedsReconciliation] =
+    useState(false);
   const flow = useAttendanceFlow(inputRef, {
     cameraFirst: true,
     phoneOnly: true,
@@ -234,6 +241,8 @@ export const SelfCheckInPanel = ({
     setCheckinResult(null);
     setConfirmationError("");
     setRetryAvailable(false);
+    setRetryNeedsReconciliation(false);
+    submitKeyRef.current = null;
     setShowChooser(false);
     if (!flow.fromQr && !/^\d{6}$/u.test(flow.input)) {
       const message = COPY.attendance.invalidManualCode;
@@ -249,6 +258,8 @@ export const SelfCheckInPanel = ({
     setCheckinResult(null);
     setConfirmationError("");
     setRetryAvailable(false);
+    setRetryNeedsReconciliation(false);
+    submitKeyRef.current = null;
     setShowChooser(false);
     const shellContent = document.getElementById("shell-content");
     if (shellContent) {
@@ -270,6 +281,8 @@ export const SelfCheckInPanel = ({
     }
     if (!isRetry) {
       setRetryAvailable(false);
+      setRetryNeedsReconciliation(false);
+      submitKeyRef.current = crypto.randomUUID();
     }
     setConfirmationError("");
     // No offline pre-check here (F-03/F-11): an offline submit flows into
@@ -278,20 +291,53 @@ export const SelfCheckInPanel = ({
     setSubmitting(true);
     flow.stopCamera();
     try {
+      if (isRetry && retryNeedsReconciliation) {
+        try {
+          const current = await getOwnAttendance(selected.event_id);
+          if (current.attendance?.status === "Active") {
+            setCheckinResult({
+              kind: "success",
+              event: selected,
+              checkedInAt: current.attendance.checked_in_at,
+            });
+            setRetryAvailable(false);
+            setRetryNeedsReconciliation(false);
+            submitKeyRef.current = null;
+            announce(
+              `${COPY.attendance.successTitle} ${selected.program_name} · ${attendanceEventLabel(selected)}`
+            );
+            return;
+          }
+          setRetryNeedsReconciliation(false);
+        } catch {
+          const message = COPY.attendance.transportAmbiguous;
+          setRetryAvailable(true);
+          setConfirmationError(message);
+          announce(message);
+          return;
+        }
+      }
       const credential = flow.fromQr
         ? { program_token: flow.input }
         : { entry: flow.input };
-      const result = await selfCheckIn({
-        event_id: selected.event_id,
-        method: flow.fromQr ? "self_qr_scan" : "self_manual_code",
-        ...credential,
-      });
+      submitKeyRef.current ??= crypto.randomUUID();
+      const result = await selfCheckIn(
+        {
+          event_id: selected.event_id,
+          method: flow.fromQr ? "self_qr_scan" : "self_manual_code",
+          ...credential,
+        },
+        submitKeyRef.current
+      );
       const kind = result.outcome === "duplicate" ? "duplicate" : "success";
       setCheckinResult({
         kind,
         event: selected,
         checkedInAt: result.checked_in_at,
       });
+      setRetryAvailable(false);
+      setRetryNeedsReconciliation(false);
+      submitKeyRef.current = null;
       announce(
         kind === "duplicate"
           ? `${COPY.attendance.duplicateTitle} ${COPY.attendance.duplicateBody}`
@@ -312,9 +358,14 @@ export const SelfCheckInPanel = ({
         : hasSpecificCopy && error instanceof RpcError
           ? errorCopyFor(error.problem.code, error.problem.detail)
           : COPY.attendance.submitFailure;
+      const unknown = isUnknownMutationOutcome(error);
       setRetryAvailable(true);
-      setConfirmationError(message);
-      announce(message);
+      setRetryNeedsReconciliation(unknown);
+      const visibleMessage = unknown
+        ? `${message} ${COPY.attendance.transportAmbiguous}`
+        : message;
+      setConfirmationError(visibleMessage);
+      announce(visibleMessage);
     } finally {
       setSubmitting(false);
     }
@@ -331,6 +382,8 @@ export const SelfCheckInPanel = ({
     setCheckinResult(null);
     setConfirmationError("");
     setRetryAvailable(false);
+    setRetryNeedsReconciliation(false);
+    submitKeyRef.current = null;
     flow.resetToScan();
   };
 
@@ -374,6 +427,8 @@ export const SelfCheckInPanel = ({
     setCheckinResult(null);
     setConfirmationError("");
     setRetryAvailable(false);
+    setRetryNeedsReconciliation(false);
+    submitKeyRef.current = null;
     if (flow.events.length > 1) {
       flow.setSelected(null);
       setShowChooser(true);

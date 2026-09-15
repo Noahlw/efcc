@@ -392,11 +392,11 @@ export const RecurringSchedulePanel = ({
     });
     announce(result);
     const workspaceReconciled = await onGenerated();
-    if (!workspaceReconciled) {
+    if (workspaceReconciled) {
+      onMutationBlockChange?.(false);
+    } else {
       setGenerationNeedsReconciliation(true);
       setGenerateError(COPY.programs.workspaceSavedStale);
-    } else {
-      onMutationBlockChange?.(false);
     }
   };
 

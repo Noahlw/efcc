@@ -1383,7 +1383,6 @@ export const ProgramSettings = ({
           const refreshed = await onReload?.();
           if (onReload !== undefined && refreshed === undefined) {
             setReloadRequired(true);
-            onMutationBlockChange?.(true);
             setActionError(COPY.programs.workspaceSavedStale);
             announce(COPY.programs.workspaceSavedStale);
           } else if (refreshed) {

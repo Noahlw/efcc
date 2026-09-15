@@ -115,6 +115,19 @@ describe(SelfCheckInPanel, () => {
     detectedValue = null;
     installCamera();
     vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue();
+    server.use(
+      http.get("/api/v1/attendance/events/:eventId/me", () =>
+        HttpResponse.json({
+          requestId: "rid-own-attendance",
+          data: {
+            event: EVENT,
+            state: null,
+            attendance: null,
+            disposition: null,
+          },
+        })
+      )
+    );
   });
   afterEach(() => {
     cleanup();

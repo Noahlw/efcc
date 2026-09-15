@@ -1322,6 +1322,13 @@ export const AttendanceOperatorPanel = ({
   const [materializationRequired, setMaterializationRequired] = useState(false);
   const selectedEventIdRef = useRef<string | null>(null);
   const rosterRequestRef = useRef(false);
+  const staleRef = useRef(false);
+  const mutationOutcomeUnknownRef = useRef(false);
+
+  useEffect(() => {
+    staleRef.current = stale;
+    mutationOutcomeUnknownRef.current = mutationOutcomeUnknown;
+  }, [mutationOutcomeUnknown, stale]);
 
   function handleAuthRequired() {
     if (onAuthRequired) {
@@ -1389,9 +1396,16 @@ export const AttendanceOperatorPanel = ({
 
   function applyRosterResult(
     id: string,
-    result: Awaited<ReturnType<typeof listAttendanceRoster>>
+    result: Awaited<ReturnType<typeof listAttendanceRoster>>,
+    clearRecovery = true
   ) {
     if (selectedEventIdRef.current !== id) {
+      return false;
+    }
+    if (
+      !clearRecovery &&
+      (staleRef.current || mutationOutcomeUnknownRef.current)
+    ) {
       return false;
     }
     setEvent(result.event);
@@ -1401,8 +1415,10 @@ export const AttendanceOperatorPanel = ({
     setMaterializationRequired(
       Boolean(result.materialization_required && !result.snapshot)
     );
-    setStale(false);
-    setMutationOutcomeUnknown(false);
+    if (clearRecovery) {
+      setStale(false);
+      setMutationOutcomeUnknown(false);
+    }
     setLastUpdatedAt(Date.now());
     updateAttendanceEventUrl(id);
     return true;
@@ -1412,6 +1428,9 @@ export const AttendanceOperatorPanel = ({
     id: string,
     { silent = false }: RosterLoadOptions = {}
   ): Promise<boolean> {
+    if (silent && (staleRef.current || mutationOutcomeUnknownRef.current)) {
+      return false;
+    }
     if (rosterRequestRef.current) {
       return false;
     }
@@ -1421,7 +1440,7 @@ export const AttendanceOperatorPanel = ({
     }
     try {
       const result = await listAttendanceRoster(id);
-      return applyRosterResult(id, result);
+      return applyRosterResult(id, result, !silent);
     } catch (error) {
       if (error instanceof RpcError && error.problem.code === "AUTH_REQUIRED") {
         handleAuthRequired();
@@ -1579,7 +1598,13 @@ export const AttendanceOperatorPanel = ({
     member: AttendanceMember,
     method: "leader_qr_scan" | "leader_manual_search" = "leader_manual_search"
   ) {
-    if (!online || !eventId || mutationOutcomeUnknown || stale) {
+    if (
+      !online ||
+      !eventId ||
+      rosterRequestRef.current ||
+      mutationOutcomeUnknown ||
+      stale
+    ) {
       return;
     }
     setPendingCheckIn(null);
@@ -1623,7 +1648,12 @@ export const AttendanceOperatorPanel = ({
     row: AttendanceRow,
     reason: string
   ): Promise<boolean> {
-    if (!online || mutationOutcomeUnknown || stale) {
+    if (
+      !online ||
+      mutationOutcomeUnknown ||
+      stale ||
+      rosterRequestRef.current
+    ) {
       showStatus(COPY.attendance.rosterOffline, "error");
       return false;
     }
@@ -1655,7 +1685,12 @@ export const AttendanceOperatorPanel = ({
     row: AttendanceRow,
     input: { name: string; phone: string; reason: string }
   ): Promise<boolean> {
-    if (!online || mutationOutcomeUnknown || stale) {
+    if (
+      !online ||
+      mutationOutcomeUnknown ||
+      stale ||
+      rosterRequestRef.current
+    ) {
       showStatus(COPY.attendance.rosterOffline, "error");
       return false;
     }
@@ -1687,7 +1722,12 @@ export const AttendanceOperatorPanel = ({
     row: AttendanceExpectedRow,
     reason: string
   ): Promise<boolean> {
-    if (!online || mutationOutcomeUnknown || stale) {
+    if (
+      !online ||
+      mutationOutcomeUnknown ||
+      stale ||
+      rosterRequestRef.current
+    ) {
       showStatus(COPY.attendance.rosterOffline, "error");
       return false;
     }
@@ -1841,7 +1881,7 @@ export const AttendanceOperatorPanel = ({
   }, [online]);
 
   useEffect(() => {
-    if (!eventId || !online || !pageVisible) {
+    if (!eventId || !online || !pageVisible || busy) {
       return;
     }
     let cancelled = false;
@@ -1870,10 +1910,10 @@ export const AttendanceOperatorPanel = ({
         clearTimeout(timer);
       }
     };
-    // The polling loop is intentionally scoped to the selected event and
-    // connection/visibility state; loadRoster uses a ref to prevent overlap.
+    // The polling loop pauses while writes/recovery are busy; loadRoster also
+    // uses a ref to prevent overlap and discards stale recovery responses.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [eventId, online, pageVisible]);
+  }, [busy, eventId, online, pageVisible]);
 
   const rosterVisible = Boolean(event && eventId);
   return (

@@ -1420,27 +1420,37 @@ export function resolveAttendance(input: {
 }
 
 /** POST /api/v1/attendance/self */
-export function selfCheckIn(input: {
-  event_id: string;
-  method: "self_qr_scan" | "self_manual_code";
-  program_token?: string;
-  manual_code?: string;
-  entry?: string;
-}): Promise<AttendanceResult> {
-  return programsFetch("/api/v1/attendance/self", "POST", input);
+export function selfCheckIn(
+  input: {
+    event_id: string;
+    method: "self_qr_scan" | "self_manual_code";
+    program_token?: string;
+    manual_code?: string;
+    entry?: string;
+  },
+  idempotencyKey?: string
+): Promise<AttendanceResult> {
+  return programsFetch("/api/v1/attendance/self", "POST", input, {
+    idempotencyKey,
+  });
 }
 
 /** POST /api/v1/attendance/guest */
-export function guestCheckIn(input: {
-  event_id: string;
-  method: "guest_qr_scan" | "guest_manual_code";
-  name: string;
-  phone: string;
-  program_token?: string;
-  manual_code?: string;
-  entry?: string;
-}): Promise<AttendanceResult> {
-  return programsFetch("/api/v1/attendance/guest", "POST", input);
+export function guestCheckIn(
+  input: {
+    event_id: string;
+    method: "guest_qr_scan" | "guest_manual_code";
+    name: string;
+    phone: string;
+    program_token?: string;
+    manual_code?: string;
+    entry?: string;
+  },
+  idempotencyKey?: string
+): Promise<AttendanceResult> {
+  return programsFetch("/api/v1/attendance/guest", "POST", input, {
+    idempotencyKey,
+  });
 }
 
 /** GET /api/v1/attendance/events — legacy operator chooser */

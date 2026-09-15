@@ -22,7 +22,10 @@ import { COPY, errorCopyFor } from "@/lib/copy";
 import { writeGuestCredential } from "@/lib/guest-context";
 import { hkDayPeriodFromIso, hkWallLabel } from "@/lib/hk-time";
 import { announce } from "@/lib/live-region";
-import { guestCheckIn } from "@/lib/programs/program-api";
+import {
+  guestCheckIn,
+  isUnknownMutationOutcome,
+} from "@/lib/programs/program-api";
 import { buildProgramsHref } from "@/lib/programs/programs-intent";
 import { useAttendanceFlow } from "@/lib/use-attendance-flow";
 
@@ -121,9 +124,11 @@ export const AttendancePanel = () => {
   const [awaitingSelection, setAwaitingSelection] = useState(false);
   const [validationError, setValidationError] = useState("");
   const [result, setResult] = useState<GuestResult | null>(null);
+  const [guestOutcomeUnknown, setGuestOutcomeUnknown] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const nameRef = useRef<HTMLInputElement>(null);
   const phoneRef = useRef<HTMLInputElement>(null);
+  const guestSubmitKeyRef = useRef<string | null>(null);
   const chooserHeadingRef = useRef<HTMLHeadingElement>(null);
   const resultHeadingRef = useRef<HTMLHeadingElement>(null);
   const outcomeHeadingRef = useRef<HTMLHeadingElement>(null);
@@ -160,6 +165,8 @@ export const AttendancePanel = () => {
   const backToScan = () => {
     setAwaitingSelection(false);
     setValidationError("");
+    setGuestOutcomeUnknown(false);
+    guestSubmitKeyRef.current = null;
     flow.resetToScan();
   };
 
@@ -191,25 +198,41 @@ export const AttendancePanel = () => {
     setSubmitting(true);
     try {
       const credentialValue = flow.input.trim();
-      const guestResult = await guestCheckIn({
-        event_id: event.event_id,
-        method: fromQr ? "guest_qr_scan" : "guest_manual_code",
-        name,
-        phone,
-        ...(fromQr
-          ? { program_token: credentialValue }
-          : { entry: credentialValue }),
-      });
+      guestSubmitKeyRef.current ??= crypto.randomUUID();
+      const guestResult = await guestCheckIn(
+        {
+          event_id: event.event_id,
+          method: fromQr ? "guest_qr_scan" : "guest_manual_code",
+          name,
+          phone,
+          ...(fromQr
+            ? { program_token: credentialValue }
+            : { entry: credentialValue }),
+        },
+        guestSubmitKeyRef.current
+      );
       setResult({
         kind: guestResult.outcome === "duplicate" ? "duplicate" : "success",
         event,
         checkedInAt: guestResult.checked_in_at,
       });
+      setGuestOutcomeUnknown(false);
+      guestSubmitKeyRef.current = null;
       flow.showStatus("");
     } catch (error) {
+      const unknown = isUnknownMutationOutcome(error);
       const message = guestSubmitErrorCopy(error);
-      flow.showStatus(message, "error");
-      announce(message);
+      const visibleMessage = message;
+      setGuestOutcomeUnknown(unknown);
+      if (!unknown) {
+        guestSubmitKeyRef.current = null;
+      }
+      flow.showStatus(visibleMessage, "error");
+      announce(
+        unknown
+          ? `${visibleMessage} ${COPY.attendance.transportAmbiguous}`
+          : visibleMessage
+      );
       if (error instanceof RpcError && error.problem.code === "VALIDATION") {
         if (error.problem.detail?.includes(COPY.attendance.guestPhoneLabel)) {
           phoneRef.current?.focus();
@@ -223,7 +246,7 @@ export const AttendancePanel = () => {
   }
 
   async function submit() {
-    if (!validate()) {
+    if (guestOutcomeUnknown || !validate()) {
       return;
     }
     setSubmitting(true);
@@ -240,6 +263,8 @@ export const AttendancePanel = () => {
   }
 
   const selectEvent = (event: AttendanceEvent) => {
+    setGuestOutcomeUnknown(false);
+    guestSubmitKeyRef.current = null;
     flow.setSelected(event);
     const shouldSubmit =
       awaitingSelection ||
@@ -342,6 +367,11 @@ export const AttendancePanel = () => {
             tone={flow.status ? flow.tone : "info"}
           />
         )}
+        {guestOutcomeUnknown && (
+          <Alert variant="destructive">
+            {COPY.attendance.transportAmbiguous}
+          </Alert>
+        )}
         <form
           className="grid gap-3"
           noValidate
@@ -362,6 +392,8 @@ export const AttendancePanel = () => {
               onChange={(event) => {
                 setAwaitingSelection(false);
                 clearFormStatus();
+                setGuestOutcomeUnknown(false);
+                guestSubmitKeyRef.current = null;
                 flow.setInput(event.target.value);
               }}
               placeholder={COPY.attendance.guestCodePlaceholder}
@@ -383,6 +415,8 @@ export const AttendancePanel = () => {
               value={name}
               onChange={(event) => {
                 clearFormStatus();
+                setGuestOutcomeUnknown(false);
+                guestSubmitKeyRef.current = null;
                 setName(event.target.value);
               }}
               autoComplete="name"
@@ -403,6 +437,8 @@ export const AttendancePanel = () => {
               value={phone}
               onChange={(event) => {
                 clearFormStatus();
+                setGuestOutcomeUnknown(false);
+                guestSubmitKeyRef.current = null;
                 setPhone(event.target.value);
               }}
               type="tel"
@@ -422,7 +458,7 @@ export const AttendancePanel = () => {
           <Button
             className={attendanceButtonVariants({ variant: "primary" })}
             type="submit"
-            disabled={submitBusy || awaitingSelection}
+            disabled={submitBusy || awaitingSelection || guestOutcomeUnknown}
             aria-busy={submitBusy}
           >
             {submitBusy
