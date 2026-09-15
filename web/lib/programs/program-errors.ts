@@ -143,6 +143,31 @@ export class DuplicateEventError extends Error {
     this.name = "DuplicateEventError";
   }
 }
+
+// oxlint-disable-next-line eslint/max-classes-per-file
+export class EventNameRequiredError extends Error {
+  constructor() {
+    super("Event name is required.");
+    this.name = "EventNameRequiredError";
+  }
+}
+
+// oxlint-disable-next-line eslint/max-classes-per-file
+export class EventIdentityChangeReasonRequiredError extends Error {
+  constructor() {
+    super("A reason is required when changing an Event after attendance.");
+    this.name = "EventIdentityChangeReasonRequiredError";
+  }
+}
+
+// oxlint-disable-next-line eslint/max-classes-per-file
+export class EventCancelledReadOnlyError extends Error {
+  constructor() {
+    super("Cancelled Events are read-only.");
+    this.name = "EventCancelledReadOnlyError";
+  }
+}
+
 // oxlint-disable-next-line eslint/max-classes-per-file
 export class EventRescheduleBlockedError extends Error {
   readonly eventId: string;

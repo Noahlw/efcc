@@ -52,6 +52,8 @@ export interface WorkspaceTaskContextValue {
   onWorkspaceRefresh?: () => void;
   onTaskChange: (task: ProgramsTask | null, eventId?: string | null) => void;
   onOpenEvent?: (eventId: string) => void;
+  /** The active task has an unsaved local draft that the shell must protect. */
+  onWorkspaceDirtyChange?: (dirty: boolean) => void;
 }
 
 const WorkspaceTaskContext = createContext<WorkspaceTaskContextValue | null>(

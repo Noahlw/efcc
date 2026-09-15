@@ -183,6 +183,13 @@ async function createFixture(
   const programBody = (await programResponse.json()) as {
     data: { program: { program_id: string } };
   };
+  const promotionResponse = await api.patch(
+    `/api/v1/programs/${programBody.data.program.program_id}`,
+    {
+      data: { lifecycle: "Active", discoverability: "Listed" },
+    }
+  );
+  expect(promotionResponse.status()).toBe(200);
   const eventResponse = await api.post(
     `/api/v1/programs/${programBody.data.program.program_id}/events`,
     {

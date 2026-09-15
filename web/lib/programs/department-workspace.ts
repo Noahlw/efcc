@@ -44,6 +44,9 @@ import {
   EnrollmentNotAllowedError,
   EventCancellationBlockedError,
   EventAvailabilityConfirmationRequiredError,
+  EventCancelledReadOnlyError,
+  EventIdentityChangeReasonRequiredError,
+  EventNameRequiredError,
   EventRescheduleBlockedError,
   InvalidModuleKeyError,
   InvalidProgramLifecycleError,
@@ -691,6 +694,7 @@ export interface UpdateEventCommand {
   event_type?: EventType | null;
   check_in_window_opens_at?: string | null;
   check_in_window_closes_at?: string | null;
+  reason?: string | null;
 }
 
 export interface SetEventAvailabilityCommand {
@@ -792,7 +796,8 @@ export class DepartmentWorkspace {
     outcome: AuditOutcome,
     oldValue: unknown,
     newValue: unknown,
-    correlationId: string | null
+    correlationId: string | null,
+    reason: string | null = null
   ): AuditInput {
     return {
       audit_id: crypto.randomUUID(),
@@ -803,7 +808,7 @@ export class DepartmentWorkspace {
       entity_id: entityId,
       old_value_json: oldValue ? JSON.stringify(oldValue) : null,
       new_value_json: newValue ? JSON.stringify(newValue) : null,
-      reason: null,
+      reason,
       outcome,
       correlation_id: correlationId,
     };
@@ -817,7 +822,8 @@ export class DepartmentWorkspace {
     outcome: AuditOutcome,
     oldValue: unknown,
     newValue: unknown,
-    correlationId: string | null
+    correlationId: string | null,
+    reason: string | null = null
   ): Promise<void> {
     await this.store.audit(
       this.buildAuditRow(
@@ -828,7 +834,8 @@ export class DepartmentWorkspace {
         outcome,
         oldValue,
         newValue,
-        correlationId
+        correlationId,
+        reason
       )
     );
   }
@@ -1782,8 +1789,8 @@ export class DepartmentWorkspace {
     const now = new Date().toISOString();
     const row = await this.store.createProgram({
       ...cmd,
-      lifecycle: cmd.lifecycle ?? "Draft",
-      discoverability: cmd.discoverability ?? "Unlisted",
+      lifecycle: "Draft",
+      discoverability: "Unlisted",
       enrollment_mode: cmd.enrollment_mode ?? "MemberRequest",
       display_order: cmd.display_order ?? 0,
       created_by: ctx.actorUserId,
@@ -3586,9 +3593,9 @@ export class DepartmentWorkspace {
 
   /**
    * Durably attempt every occurrence of a run. Attempts are independent and
-   * run in parallel; each attempt row is durable, so a crash mid-run leaves
-   * a resumable partial state and retries resume from the item table.
-   * Failed units are retried; created/skipped rows are terminal.
+   * run with bounded concurrency; each attempt row is durable, so a crash
+   * mid-run leaves a resumable partial state and retries resume from the item
+   * table. Failed units are retried; created/skipped rows are terminal.
    */
   private async processGenerationOccurrences(
     runId: string,
@@ -3601,18 +3608,30 @@ export class DepartmentWorkspace {
     const processed = new Map(
       runItems.map((item) => [item.occurrence_id, item])
     );
-    await Promise.all(
-      occurrences.map((occurrence) =>
-        this.attemptGenerationOccurrence(
+    const concurrency = Math.min(8, Math.max(1, occurrences.length));
+    let nextIndex = 0;
+    const worker = async (): Promise<void> => {
+      while (true) {
+        const occurrence = occurrences[nextIndex];
+        nextIndex += 1;
+        if (!occurrence) {
+          return;
+        }
+        // Each attempt is an independent durable unit; the concurrency cap
+        // prevents a large preview from flooding D1 while preserving retry
+        // and per-occurrence provenance.
+        // oxlint-disable-next-line no-await-in-loop
+        await this.attemptGenerationOccurrence(
           runId,
           programId,
           occurrence,
           actorUserId,
           now,
           processed
-        )
-      )
-    );
+        );
+      }
+    };
+    await Promise.all(Array.from({ length: concurrency }, () => worker()));
   }
 
   private async attemptGenerationOccurrence(
@@ -3784,6 +3803,9 @@ export class DepartmentWorkspace {
     cmd: CreateEventCommand,
     correlationId: string | null
   ): Promise<EventRow> {
+    if (!cmd.name?.trim()) {
+      throw new EventNameRequiredError();
+    }
     const program = await this.requireProgramFor(
       ctx,
       programId,
@@ -3815,7 +3837,7 @@ export class DepartmentWorkspace {
       status: "Active",
       availability: "Active",
       source: "MANUAL",
-      name: cmd.name,
+      name: cmd.name.trim(),
       event_type: cmd.event_type ?? null,
       location: cmd.location,
       check_in_window_opens_at: cmd.check_in_window_opens_at,
@@ -3921,6 +3943,68 @@ export class DepartmentWorkspace {
       CAPABILITY.PROGRAM_MANAGE
     );
     await this.requireModuleEnabled(program.department_id, MODULE_KEY.EVENTS);
+    if (event.status === "Cancelled") {
+      await this.audit(
+        ctx,
+        "EVENT_UPDATE",
+        "event",
+        eventId,
+        "DENIED",
+        event,
+        null,
+        correlationId,
+        cmd.reason ?? null
+      );
+      throw new EventCancelledReadOnlyError();
+    }
+    const identityChanged =
+      (cmd.name !== undefined && cmd.name !== event.name) ||
+      (cmd.location !== undefined && cmd.location !== event.location) ||
+      (cmd.event_type !== undefined && cmd.event_type !== event.event_type);
+    const attemptedIdentity = {
+      name: cmd.name !== undefined ? cmd.name : event.name,
+      location: cmd.location !== undefined ? cmd.location : event.location,
+      event_type:
+        cmd.event_type !== undefined ? cmd.event_type : event.event_type,
+    };
+    const activeAttendanceCount = identityChanged
+      ? await this.store.countActiveAttendance(eventId)
+      : 0;
+    if (identityChanged && activeAttendanceCount > 0) {
+      if (!cmd.reason?.trim()) {
+        await this.audit(
+          ctx,
+          "EVENT_UPDATE",
+          "event",
+          eventId,
+          "DENIED",
+          event,
+          {
+            ...attemptedIdentity,
+            active_attendance_count: activeAttendanceCount,
+          },
+          correlationId
+        );
+        throw new EventIdentityChangeReasonRequiredError();
+      }
+      if (!(await this.store.isGlobalStaffOrAdmin(ctx.actorUserId))) {
+        await this.audit(
+          ctx,
+          "EVENT_UPDATE",
+          "event",
+          eventId,
+          "DENIED",
+          event,
+          {
+            ...attemptedIdentity,
+            active_attendance_count: activeAttendanceCount,
+          },
+          correlationId,
+          cmd.reason.trim()
+        );
+        throw new AuthorizationDeniedError(CAPABILITY.PROGRAM_MANAGE);
+      }
+    }
     // Identity edits remain safe after an Event starts. A schedule change is
     // a new operational Event once the original has started, has Attendance,
     // or has a durable expected-roster snapshot.
@@ -3933,9 +4017,9 @@ export class DepartmentWorkspace {
         Number.isFinite(Date.parse(event.starts_at)) &&
         Date.parse(event.starts_at) <= Date.now();
       const hasSnapshot = await this.store.hasAttendanceSnapshot(eventId);
-      const activeAttendanceCount =
+      const scheduleAttendanceCount =
         await this.store.countActiveAttendance(eventId);
-      if (started || hasSnapshot || activeAttendanceCount > 0) {
+      if (started || hasSnapshot || scheduleAttendanceCount > 0) {
         await this.audit(
           ctx,
           "EVENT_UPDATE",
@@ -3983,6 +4067,21 @@ export class DepartmentWorkspace {
       new Date().toISOString()
     );
     if (!updated) {
+      const current = await this.store.findEventById(eventId);
+      if (current?.status === "Cancelled") {
+        await this.audit(
+          ctx,
+          "EVENT_UPDATE",
+          "event",
+          eventId,
+          "DENIED",
+          current,
+          null,
+          correlationId,
+          cmd.reason?.trim() ?? null
+        );
+        throw new EventCancelledReadOnlyError();
+      }
       throw new AuthorizationDeniedError(CAPABILITY.PROGRAM_MANAGE);
     }
     await this.audit(
@@ -3993,7 +4092,10 @@ export class DepartmentWorkspace {
       "SUCCESS",
       event,
       updated,
-      correlationId
+      correlationId,
+      identityChanged && activeAttendanceCount > 0
+        ? (cmd.reason?.trim() ?? null)
+        : null
     );
     return updated;
   }
@@ -4014,6 +4116,19 @@ export class DepartmentWorkspace {
       CAPABILITY.PROGRAM_MANAGE
     );
     await this.requireModuleEnabled(program.department_id, MODULE_KEY.EVENTS);
+    if (event.status === "Cancelled") {
+      await this.audit(
+        ctx,
+        "EVENT_AVAILABILITY",
+        "event",
+        eventId,
+        "DENIED",
+        event,
+        null,
+        correlationId
+      );
+      throw new EventCancelledReadOnlyError();
+    }
     if (event.availability === cmd.availability) {
       await this.audit(
         ctx,
@@ -4065,6 +4180,20 @@ export class DepartmentWorkspace {
       new Date().toISOString()
     );
     if (!updated) {
+      const current = await this.store.findEventById(eventId);
+      if (current?.status === "Cancelled") {
+        await this.audit(
+          ctx,
+          "EVENT_AVAILABILITY",
+          "event",
+          eventId,
+          "DENIED",
+          current,
+          null,
+          correlationId
+        );
+        throw new EventCancelledReadOnlyError();
+      }
       throw new AuthorizationDeniedError(CAPABILITY.PROGRAM_MANAGE);
     }
     await this.audit(

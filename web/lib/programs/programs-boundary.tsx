@@ -245,6 +245,7 @@ const ManagementPanel = ({
   onOpenProgram,
   onTaskChange,
   onEventChange,
+  onOpenAttendance,
   onBackDirectory,
   directoryQuery,
   onDirectoryQueryChange,
@@ -256,6 +257,7 @@ const ManagementPanel = ({
   onOpenProgram: (programId: string, created?: boolean) => void;
   onTaskChange: (task: ProgramsTask | null, eventId?: string | null) => void;
   onEventChange: (eventId: string | null) => void;
+  onOpenAttendance?: (eventId: string) => void;
   onBackDirectory: () => void;
   directoryQuery: string;
   onDirectoryQueryChange: (query: string) => void;
@@ -411,6 +413,7 @@ const ManagementPanel = ({
             onBack={onBackDirectory}
             onTaskChange={onTaskChange}
             onEventChange={onEventChange}
+            onOpenAttendance={onOpenAttendance}
           />
         </WorkspaceRouteProvider>
       ) : (
@@ -498,6 +501,7 @@ const ProgramsBoundaryBody = ({
   openManagementProgram,
   navigateManagementTask,
   navigateManagementEvent,
+  navigateManagementAttendance,
   navigateParticipantEvent,
   navigateParticipantBack,
   navigateParticipantEventBack,
@@ -525,6 +529,7 @@ const ProgramsBoundaryBody = ({
     eventId?: string | null
   ) => void;
   navigateManagementEvent: (eventId: string | null) => void;
+  navigateManagementAttendance: (eventId: string) => void;
   navigateParticipantEvent: (eventId: string | null) => void;
   navigateParticipantBack: () => void;
   navigateParticipantEventBack: () => void;
@@ -554,6 +559,7 @@ const ProgramsBoundaryBody = ({
         onOpenProgram={openManagementProgram}
         onTaskChange={navigateManagementTask}
         onEventChange={navigateManagementEvent}
+        onOpenAttendance={navigateManagementAttendance}
         onBackDirectory={() =>
           navigateMode(
             "management",
@@ -819,6 +825,10 @@ export const ProgramsBoundary = () => {
       eventId === null ? COPY.programs.events : COPY.programs.eventDetailTitle
     );
   };
+  const navigateManagementAttendance = (eventId: string) => {
+    router.push(`/events?eventId=${encodeURIComponent(eventId)}`);
+    announce(COPY.attendance.rosterTitle);
+  };
   // PUI-05 (#323): participant Event Detail deep links carry program + event
   // on the participant boundary; null returns to the Program detail.
   const navigateParticipantEvent = (eventId: string | null) => {
@@ -909,6 +919,7 @@ export const ProgramsBoundary = () => {
         openManagementProgram={openManagementProgram}
         navigateManagementTask={navigateManagementTask}
         navigateManagementEvent={navigateManagementEvent}
+        navigateManagementAttendance={navigateManagementAttendance}
         navigateParticipantEvent={navigateParticipantEvent}
         navigateParticipantBack={navigateParticipantBack}
         navigateParticipantEventBack={navigateParticipantEventBack}

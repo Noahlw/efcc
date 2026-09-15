@@ -604,6 +604,8 @@ export interface WorkspaceStore {
   ) => Promise<MemberOptionRow[]>;
   /** Department ids the user actively manages (revoked_at IS NULL). */
   listManagedDepartmentIds: (userId: string) => Promise<string[]>;
+  /** True only for an active Global Staff/Admin identity assignment. */
+  isGlobalStaffOrAdmin: (userId: string) => Promise<boolean>;
   /**
    * Active accounts matching identity/contact fields, optionally constrained
    * to Active enrollments under the supplied departments. Rows are flattened

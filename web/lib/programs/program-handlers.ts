@@ -40,6 +40,9 @@ import {
   EnrollmentNotAllowedError,
   EventCancellationBlockedError,
   EventAvailabilityConfirmationRequiredError,
+  EventCancelledReadOnlyError,
+  EventIdentityChangeReasonRequiredError,
+  EventNameRequiredError,
   EventRescheduleBlockedError,
   InvalidModuleKeyError,
   InvalidProgramLifecycleError,
@@ -322,6 +325,21 @@ function mapWorkspaceError(error: unknown, requestId: string): Response | null {
       "EVENT_CANCEL_BLOCKED",
       "Conflict",
       COPY.programs.cancelBlockedWithAttendance,
+      requestId
+    );
+  }
+  if (error instanceof EventNameRequiredError) {
+    return validation(requestId, error.message);
+  }
+  if (error instanceof EventIdentityChangeReasonRequiredError) {
+    return validation(requestId, error.message);
+  }
+  if (error instanceof EventCancelledReadOnlyError) {
+    return problem(
+      409,
+      "EVENT_CANCELLED",
+      "Conflict",
+      error.message,
       requestId
     );
   }
@@ -2321,6 +2339,9 @@ export async function handleCreateEvent(
   let closes: string | null | undefined;
   try {
     name = textField(body.name, "name");
+    if (name === undefined || name === null) {
+      return validation(requestId, "name is required.");
+    }
     location = textField(body.location, "location");
     if (
       body.event_type !== undefined &&
@@ -2474,15 +2495,27 @@ export async function handleEventUpdate(
       return validation(requestId, "availability must be Active or Inactive.");
     }
   }
-  if ("reason" in body) {
-    if (
-      body.reason !== null &&
-      body.reason !== undefined &&
-      (typeof body.reason !== "string" || !body.reason.trim())
-    ) {
-      return validation(requestId, "reason must be text when provided.");
-    }
+  if (
+    "reason" in body &&
+    body.reason !== null &&
+    body.reason !== undefined &&
+    (typeof body.reason !== "string" || !body.reason.trim())
+  ) {
+    return validation(requestId, "reason must be text when provided.");
   }
+  const ALLOWED_EVENT_UPDATE_FIELDS: Record<string, true> = {
+    starts_at: true,
+    ends_at: true,
+    name: true,
+    location: true,
+    event_type: true,
+    check_in_window_opens_at: true,
+    check_in_window_closes_at: true,
+    reason: true,
+  };
+  const isCancellationPayload =
+    "reason" in body &&
+    Object.keys(body).every((key) => key === "reason" || key === "confirm");
   const { workspace } = await getModule(env);
   const existing = await workspace.getEvent(
     authorizationContextFor(auth.account),
@@ -2510,7 +2543,7 @@ export async function handleEventUpdate(
       throw error;
     }
   }
-  if ("reason" in body) {
+  if (isCancellationPayload) {
     const reason =
       typeof body.reason === "string" ? body.reason.trim() || null : null;
     try {
@@ -2529,17 +2562,11 @@ export async function handleEventUpdate(
       throw error;
     }
   }
-  const ALLOWED_EVENT_UPDATE_FIELDS: Record<string, true> = {
-    starts_at: true,
-    ends_at: true,
-    name: true,
-    location: true,
-    event_type: true,
-    check_in_window_opens_at: true,
-    check_in_window_closes_at: true,
-  };
   if (Object.keys(body).some((key) => !ALLOWED_EVENT_UPDATE_FIELDS[key])) {
     return validation(requestId, "Unknown event field.");
+  }
+  if ("name" in body && (typeof body.name !== "string" || !body.name.trim())) {
+    return validation(requestId, "name is required.");
   }
   const parseOptionalText = (value: unknown, field: string) => {
     if (value === undefined) {
@@ -2618,7 +2645,9 @@ export async function handleEventUpdate(
       ...(ends === undefined ? {} : { ends_at: ends }),
       ...(body.name === undefined
         ? {}
-        : { name: parseOptionalText(body.name, "name") }),
+        : {
+            name: parseOptionalText(body.name, "name"),
+          }),
       ...(body.event_type === undefined
         ? {}
         : { event_type: (body.event_type as EventType | null) ?? null }),
@@ -2631,6 +2660,14 @@ export async function handleEventUpdate(
       ...(body.check_in_window_closes_at === undefined
         ? {}
         : { check_in_window_closes_at: closes }),
+      ...(body.reason === undefined
+        ? {}
+        : {
+            reason:
+              typeof body.reason === "string"
+                ? body.reason.trim() || null
+                : null,
+          }),
     };
   } catch (error) {
     return validation(

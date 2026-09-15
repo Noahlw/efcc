@@ -129,6 +129,13 @@ test.beforeAll(async ({ playwright }) => {
   const programBody = (await jsonBody(programResponse)) as {
     data: { program: { program_id: string } };
   };
+  const promotionResponse = await adminApi.patch(
+    `/api/v1/programs/${programBody.data.program.program_id}`,
+    {
+      data: { lifecycle: "Active", discoverability: "Listed" },
+    }
+  );
+  expect(promotionResponse.status()).toBe(200);
   fixture = {
     programId: programBody.data.program.program_id,
     programName,

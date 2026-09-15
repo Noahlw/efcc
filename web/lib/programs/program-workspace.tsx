@@ -61,6 +61,8 @@ export interface ProgramWorkspaceProps {
   headerAction?: ReactNode;
   onBack: () => void;
   onTaskChange: (task: ProgramsTask | null, eventId?: string | null) => void;
+  /** Opens the shared focused attendance roster for an exact Event. */
+  onOpenAttendance?: (eventId: string) => void;
   /** EVT-01 (#251): navigate the Event deep link; null returns to the list. */
   onEventChange?: (eventId: string | null) => void;
 }
@@ -157,6 +159,7 @@ export const ProgramWorkspace = ({
   headerAction,
   onBack,
   onTaskChange,
+  onOpenAttendance,
   onEventChange,
 }: ProgramWorkspaceProps) => {
   const { departmentId, hash } = useWorkspaceRouteContext();
@@ -167,6 +170,14 @@ export const ProgramWorkspace = ({
   const [settingsEditorDirty, setSettingsEditorDirty] = useState(false);
   const [settingsNavigationBlocked, setSettingsNavigationBlocked] =
     useState(false);
+  const [eventDraftDirty, setEventDraftDirty] = useState(false);
+  const [eventNavigationBlocked, setEventNavigationBlocked] = useState(false);
+  const handleEventDraftDirtyChange = useCallback((dirty: boolean) => {
+    setEventDraftDirty(dirty);
+    if (!dirty) {
+      setEventNavigationBlocked(false);
+    }
+  }, []);
   const createdFlash = created && !task;
   const [workspaceNotice, setWorkspaceNotice] = useState<string | null>(
     createdFlash ? COPY.programs.programCreatedNotice : null
@@ -191,6 +202,65 @@ export const ProgramWorkspace = ({
       setSettingsNavigationBlocked(false);
     }
   }, [task]);
+
+  useEffect(() => {
+    if (task !== "events" || !eventDraftDirty) {
+      return;
+    }
+    const handleDocumentClick = (event: globalThis.MouseEvent) => {
+      if (
+        event.defaultPrevented ||
+        event.button !== 0 ||
+        event.metaKey ||
+        event.ctrlKey ||
+        event.shiftKey ||
+        event.altKey
+      ) {
+        return;
+      }
+      const { target } = event;
+      if (!(target instanceof Element)) {
+        return;
+      }
+      const anchor = target.closest("a[href]");
+      if (!(anchor instanceof HTMLAnchorElement)) {
+        return;
+      }
+      const rawHref = anchor.getAttribute("href");
+      if (
+        rawHref?.startsWith("#") ||
+        anchor.hasAttribute("download") ||
+        (anchor.getAttribute("target") ?? "").toLowerCase() === "_blank"
+      ) {
+        return;
+      }
+      const currentUrl = new URL(window.location.href);
+      const nextUrl = new URL(anchor.href, currentUrl);
+      if (
+        (nextUrl.protocol !== "http:" && nextUrl.protocol !== "https:") ||
+        nextUrl.origin !== currentUrl.origin ||
+        (nextUrl.pathname === currentUrl.pathname &&
+          nextUrl.search === currentUrl.search &&
+          nextUrl.hash !== currentUrl.hash)
+      ) {
+        return;
+      }
+      event.preventDefault();
+      event.stopPropagation();
+      setEventNavigationBlocked(true);
+      announce(COPY.programs.eventCreateUnsaved);
+    };
+    const handleBeforeUnload = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    document.addEventListener("click", handleDocumentClick, true);
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => {
+      document.removeEventListener("click", handleDocumentClick, true);
+      window.removeEventListener("beforeunload", handleBeforeUnload);
+    };
+  }, [eventDraftDirty, task]);
   const focusedSettingsEditor = task === "settings" && settingsEditorFocused;
   const {
     state,
@@ -405,6 +475,11 @@ export const ProgramWorkspace = ({
       announce(COPY.programs.settingsUnsaved);
       return;
     }
+    if (eventDraftDirty) {
+      setEventNavigationBlocked(true);
+      announce(COPY.programs.eventCreateUnsaved);
+      return;
+    }
     if (focusedSchedule) {
       onTaskChange("events");
       return;
@@ -420,13 +495,17 @@ export const ProgramWorkspace = ({
       announce(COPY.programs.settingsUnsaved);
       return;
     }
+    if (eventDraftDirty) {
+      setEventNavigationBlocked(true);
+      announce(COPY.programs.eventCreateUnsaved);
+      return;
+    }
     if (nextEventId === undefined) {
       onTaskChange(nextTask);
     } else {
       onTaskChange(nextTask, nextEventId);
     }
   };
-
   return (
     <section
       className="grid min-w-0"
@@ -485,6 +564,15 @@ export const ProgramWorkspace = ({
           aria-live="polite"
         >
           {workspaceNotice}
+        </output>
+      )}
+      {eventNavigationBlocked && eventDraftDirty && (
+        <output
+          className="block rounded-[var(--screen-radius-control)] border border-[var(--screen-pending)] bg-[var(--screen-pending-surface)] p-3 text-sm text-[var(--screen-ink)] [overflow-wrap:anywhere]"
+          aria-live="polite"
+          data-testid="program-event-draft-navigation-blocked"
+        >
+          {COPY.programs.eventCreateUnsaved}
         </output>
       )}
       {!focusedSchedule && (
@@ -548,6 +636,7 @@ export const ProgramWorkspace = ({
           onOpenEvent={onEventChange ? (id) => onEventChange(id) : undefined}
           onSettingsFocusChange={setSettingsEditorFocused}
           onSettingsDirtyChange={setSettingsEditorDirty}
+          onWorkspaceDirtyChange={handleEventDraftDirtyChange}
           settingsNavigationBlocked={settingsNavigationBlocked}
           onSettingsNavigationBlocked={setSettingsNavigationBlocked}
           headerAction={headerAction}
@@ -562,6 +651,7 @@ export const ProgramWorkspace = ({
           departmentId={departmentId}
           hash={hash}
           onTaskChange={handleWorkspaceTaskChange}
+          onOpenAttendance={onOpenAttendance}
           onSummaryRetry={retrySummary}
         />
       )}

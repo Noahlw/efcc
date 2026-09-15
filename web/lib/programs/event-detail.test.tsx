@@ -330,6 +330,10 @@ describe("EVT-01 event detail", () => {
     const nameInput = await screen.findByLabelText(COPY.programs.eventName);
     await user.clear(nameInput);
     await user.type(nameInput, "改名聚會");
+    await user.type(
+      screen.getByLabelText(COPY.programs.eventIdentityChangeReason),
+      "更正聚會資料"
+    );
     await user.click(
       screen.getByRole("button", { name: COPY.programs.eventEditSave })
     );
@@ -345,6 +349,7 @@ describe("EVT-01 event detail", () => {
       check_in_window_opens_at: "2026-09-12T09:30:00.000Z",
       check_in_window_closes_at: "2026-09-12T12:00:00.000Z",
       event_type: "崇拜",
+      reason: "更正聚會資料",
     });
   });
 
@@ -379,6 +384,10 @@ describe("EVT-01 event detail", () => {
     const nameInput = await screen.findByLabelText(COPY.programs.eventName);
     await user.clear(nameInput);
     await user.type(nameInput, "改名聚會");
+    await user.type(
+      screen.getByLabelText(COPY.programs.eventIdentityChangeReason),
+      "補充聚會資料"
+    );
     await user.click(
       screen.getByRole("button", { name: COPY.programs.eventEditSave })
     );
@@ -395,6 +404,7 @@ describe("EVT-01 event detail", () => {
       check_in_window_opens_at: null,
       check_in_window_closes_at: null,
       event_type: "崇拜",
+      reason: "補充聚會資料",
     });
   });
 
@@ -544,6 +554,10 @@ describe("EVT-01 event detail", () => {
     const nameInput = await screen.findByLabelText(COPY.programs.eventName);
     await user.clear(nameInput);
     await user.type(nameInput, "改名聚會");
+    await user.type(
+      screen.getByLabelText(COPY.programs.eventIdentityChangeReason),
+      "更新聚會識別資料"
+    );
     await user.click(
       screen.getByRole("button", { name: COPY.programs.eventEditSave })
     );
@@ -1175,6 +1189,10 @@ describe("EVT-01 event detail", () => {
     const nameInput = screen.getByLabelText(COPY.programs.eventName);
     await user.clear(nameInput);
     await user.type(nameInput, "更正後聚會");
+    await user.type(
+      screen.getByLabelText(COPY.programs.eventIdentityChangeReason),
+      "記錄出席後更正原因"
+    );
     await user.click(
       screen.getByRole("button", { name: COPY.programs.eventEditSave })
     );

@@ -30,6 +30,11 @@ import {
 } from "@/lib/programs/recurrence";
 import { WorkspaceRouteProvider } from "@/lib/programs/workspace-context";
 
+import {
+  clearEventCreateDraft,
+  readEventCreateDraft,
+} from "./event-create-draft";
+
 const mocks = vi.hoisted(() => ({
   getManagementProgram: vi.fn(),
   updateProgram: vi.fn(),
@@ -266,6 +271,7 @@ function mockWorkspace() {
   });
 }
 beforeEach(() => {
+  clearEventCreateDraft("program-1");
   mocks.getManagementProgram.mockReset();
   mocks.updateProgram.mockReset();
   mocks.listEvents.mockReset();
@@ -287,6 +293,7 @@ beforeEach(() => {
   mocks.listScheduleExceptions.mockResolvedValue({ exceptions: [] });
 });
 afterEach(() => {
+  clearEventCreateDraft("program-1");
   cleanup();
 });
 
@@ -300,12 +307,14 @@ describe(ProgramWorkspace, () => {
     });
     const onTaskChange = vi.fn();
     const onEventChange = vi.fn();
+    const onOpenAttendance = vi.fn();
     render(
       <ProgramWorkspace
         programId="program-1"
         onBack={vi.fn()}
         onTaskChange={onTaskChange}
         onEventChange={onEventChange}
+        onOpenAttendance={onOpenAttendance}
       />
     );
 
@@ -336,7 +345,9 @@ describe(ProgramWorkspace, () => {
     });
     await userEvent.click(rosterLink);
     expect(onEventChange).not.toHaveBeenCalled();
-    expect(onTaskChange).toHaveBeenCalledWith("events", "event-1");
+    expect(onTaskChange).not.toHaveBeenCalled();
+    expect(onOpenAttendance).toHaveBeenCalledExactlyOnceWith("event-1");
+    expect(rosterLink).toHaveAttribute("href", "/events?eventId=event-1");
 
     // 2-up operational tiles
     expect(
@@ -371,6 +382,20 @@ describe(ProgramWorkspace, () => {
         name: new RegExp(COPY.programs.workspaceTaskSettingsLead, "u"),
       })
     ).toBeInTheDocument();
+    const scheduleLink = screen.getByRole("link", {
+      name: new RegExp(COPY.programs.workspaceTaskSchedule, "u"),
+    });
+    expect(scheduleLink).toHaveAttribute(
+      "href",
+      expect.stringContaining("task=schedule")
+    );
+    const addEventLink = screen.getByRole("link", {
+      name: new RegExp(COPY.programs.cockpitAddEvent, "u"),
+    });
+    expect(addEventLink).toHaveAttribute(
+      "href",
+      expect.stringContaining("#create-event")
+    );
 
     // Sibling navigation stays persistent on the overview and exposes only
     // server-authorized workspace destinations.
@@ -1017,6 +1042,51 @@ describe(ProgramWorkspace, () => {
     await expect(
       screen.findByRole("heading", { name: COPY.programs.settingsHubTitle })
     ).resolves.toBeInTheDocument();
+  });
+
+  test("protects workspace navigation while an Event creation draft is dirty", async () => {
+    mockWorkspace();
+    const user = userEvent.setup();
+    const onTaskChange = vi.fn();
+    render(
+      <ProgramWorkspace
+        programId="program-1"
+        task="events"
+        onBack={vi.fn()}
+        onTaskChange={onTaskChange}
+      />
+    );
+
+    await user.click(
+      await screen.findByRole("button", { name: COPY.programs.createMeeting })
+    );
+    const name = screen.getByRole("textbox", {
+      name: COPY.programs.eventName,
+    });
+    await user.type(name, "未儲存聚會");
+    await waitFor(() => {
+      expect(readEventCreateDraft("program-1")?.name).toBe("未儲存聚會");
+    });
+
+    await user.click(
+      screen.getByRole("link", { name: COPY.programs.workspaceOverviewTab })
+    );
+    expect(onTaskChange).not.toHaveBeenCalled();
+    expect(
+      screen.getByTestId("program-event-draft-navigation-blocked")
+    ).toHaveTextContent(COPY.programs.eventCreateUnsaved);
+    expect(name).toHaveValue("未儲存聚會");
+
+    await user.click(
+      screen.getByRole("button", { name: COPY.programs.eventCreateCancel })
+    );
+    await waitFor(() => {
+      expect(readEventCreateDraft("program-1")).toBeNull();
+    });
+    await user.click(
+      screen.getByRole("link", { name: COPY.programs.workspaceOverviewTab })
+    );
+    expect(onTaskChange).toHaveBeenCalledWith(null);
   });
 
   test("shows Save/Discard guidance when a dirty draft blocks the first tab escape", async () => {

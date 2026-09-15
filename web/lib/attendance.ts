@@ -157,6 +157,7 @@ export interface AttendanceRosterResponse {
 }
 
 export interface AttendanceMaterializationResult {
+  status: "materialized" | "not_started" | "cancelled";
   materialized: boolean;
   added_expected: number;
   snapshot: AttendanceSnapshot | null;
@@ -820,29 +821,58 @@ export async function materializeAttendanceSnapshot(
   db: D1Database,
   event: AttendanceEvent
 ): Promise<AttendanceMaterializationResult> {
-  if (event.status === "Cancelled" || !eventHasStarted(event)) {
-    return { materialized: false, added_expected: 0, snapshot: null };
+  const currentEvent = await findEvent(db, event.event_id);
+  if (!currentEvent) {
+    throw new Error("Event not found while materializing attendance snapshot");
+  }
+  if (currentEvent.status === "Cancelled") {
+    return {
+      status: "cancelled",
+      materialized: false,
+      added_expected: 0,
+      snapshot: null,
+    };
+  }
+  if (!eventHasStarted(currentEvent)) {
+    return {
+      status: "not_started",
+      materialized: false,
+      added_expected: 0,
+      snapshot: null,
+    };
   }
 
   const now = new Date().toISOString();
-  let snapshot = await findAttendanceSnapshot(db, event.event_id);
+  let snapshot = await findAttendanceSnapshot(db, currentEvent.event_id);
   if (!snapshot) {
     await db
       .prepare(
         `INSERT OR IGNORE INTO event_attendance_snapshots
           (snapshot_id, event_id, materialized_at, last_materialized_at)
-         VALUES (?, ?, ?, ?)`
+         SELECT ?, ?, ?, ?
+          WHERE EXISTS (
+            SELECT 1 FROM events
+             WHERE event_id = ? AND status = 'Active'
+               AND julianday(starts_at) <= julianday(?)
+          )`
       )
-      .bind(crypto.randomUUID(), event.event_id, now, now)
+      .bind(
+        crypto.randomUUID(),
+        currentEvent.event_id,
+        now,
+        now,
+        currentEvent.event_id,
+        now
+      )
       .run();
-    snapshot = await findAttendanceSnapshot(db, event.event_id);
+    snapshot = await findAttendanceSnapshot(db, currentEvent.event_id);
   }
   if (!snapshot) {
     throw new Error("Attendance snapshot could not be materialized");
   }
   const materializedSnapshot = snapshot;
 
-  const candidates = await listSnapshotCandidates(db, event);
+  const candidates = await listSnapshotCandidates(db, currentEvent);
   const inserts = candidates.map((candidate) =>
     db
       .prepare(
@@ -853,7 +883,7 @@ export async function materializeAttendanceSnapshot(
       )
       .bind(
         crypto.randomUUID(),
-        event.event_id,
+        currentEvent.event_id,
         materializedSnapshot.snapshot_id,
         candidate.enrollment_id,
         candidate.member_user_id,
@@ -875,8 +905,9 @@ export async function materializeAttendanceSnapshot(
     )
     .bind(now, materializedSnapshot.snapshot_id)
     .run();
-  snapshot = await findAttendanceSnapshot(db, event.event_id);
+  snapshot = await findAttendanceSnapshot(db, currentEvent.event_id);
   return {
+    status: "materialized",
     materialized: true,
     added_expected: addedExpected,
     snapshot,
@@ -891,7 +922,15 @@ async function ensureAttendanceSnapshot(
   correlationId: string
 ): Promise<Response | null> {
   try {
-    await materializeAttendanceSnapshot(env.DB, event);
+    const result = await materializeAttendanceSnapshot(env.DB, event);
+    if (result.status === "cancelled") {
+      return problem(
+        410,
+        "EVENT_CANCELLED",
+        "此聚會已取消，不能建立出席名單。",
+        correlationId
+      );
+    }
     return null;
   } catch {
     await audit(env.DB, {
@@ -1344,11 +1383,13 @@ async function insertAttendance(
   const attendanceId = crypto.randomUUID();
   const checkedInAt = new Date().toISOString();
   try {
-    await env.DB.prepare(
+    const insertResult = await env.DB.prepare(
       `INSERT INTO attendances
         (attendance_id, event_id, member_user_id, guest_name, guest_phone,
          guest_phone_normalized, method, status, checked_in_at, checked_in_by)
-       VALUES (?, ?, ?, ?, ?, ?, ?, 'Active', ?, ?)`
+       SELECT ?, ?, ?, ?, ?, ?, ?, 'Active', ?, ?
+        FROM events
+       WHERE event_id = ? AND status = 'Active' AND availability = 'Active'`
     )
       .bind(
         attendanceId,
@@ -1359,9 +1400,57 @@ async function insertAttendance(
         input.guestPhoneNormalized ?? null,
         input.method,
         checkedInAt,
-        input.actor?.user_id ?? null
+        input.actor?.user_id ?? null,
+        event.event_id
       )
       .run();
+    if ((insertResult.meta?.changes ?? 0) === 0) {
+      const currentEvent = await findEvent(env.DB, event.event_id);
+      if (currentEvent?.status === "Cancelled") {
+        await audit(env.DB, {
+          actorUserId: input.actor?.user_id ?? null,
+          action: "attendance.check_in",
+          entityType: "Event",
+          entityId: event.event_id,
+          outcome: "DENIED",
+          reason: "EVENT_CANCELLED",
+          correlationId: id,
+        });
+        return problem(410, "EVENT_CANCELLED", "此聚會已取消，不能簽到。", id);
+      }
+      if (currentEvent?.availability === "Inactive") {
+        await audit(env.DB, {
+          actorUserId: input.actor?.user_id ?? null,
+          action: "attendance.check_in",
+          entityType: "Event",
+          entityId: event.event_id,
+          outcome: "DENIED",
+          reason: "EVENT_UNAVAILABLE",
+          correlationId: id,
+        });
+        return problem(
+          409,
+          "EVENT_UNAVAILABLE",
+          "此聚會已暫停開放，不能簽到。",
+          id
+        );
+      }
+      await audit(env.DB, {
+        actorUserId: input.actor?.user_id ?? null,
+        action: "attendance.check_in",
+        entityType: "Event",
+        entityId: event.event_id,
+        outcome: "CONFLICT",
+        reason: "EVENT_STATE_CHANGED",
+        correlationId: id,
+      });
+      return problem(
+        409,
+        "CHECK_IN_CONFLICT",
+        "聚會狀態已改變，請重新嘗試。",
+        id
+      );
+    }
   } catch (error) {
     if (
       !(error instanceof Error) ||
@@ -1785,12 +1874,33 @@ export async function handleMaterializeAttendance(
     });
     return problem(503, "UNAVAILABLE", "暫時無法更新出席名單。", id);
   }
+  if (materialization.status === "cancelled") {
+    await audit(env.DB, {
+      actorUserId: current.user_id,
+      action: "attendance.snapshot_materialize",
+      entityType: "Event",
+      entityId: event.event_id,
+      outcome: "DENIED",
+      reason: "EVENT_CANCELLED",
+      correlationId: id,
+    });
+    return problem(
+      409,
+      "EVENT_CANCELLED",
+      "已取消的聚會不能建立出席名單。",
+      id
+    );
+  }
   await audit(env.DB, {
     actorUserId: current.user_id,
     action: "attendance.snapshot_materialize",
     entityType: "Event",
     entityId: event.event_id,
-    outcome: "SUCCESS",
+    outcome: materialization.status === "materialized" ? "SUCCESS" : "CONFLICT",
+    reason:
+      materialization.status === "not_started"
+        ? "EVENT_NOT_STARTED"
+        : undefined,
     newValue: {
       snapshot_id: materialization.snapshot?.snapshot_id ?? null,
       added_expected: materialization.added_expected,

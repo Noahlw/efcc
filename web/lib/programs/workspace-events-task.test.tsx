@@ -1,4 +1,4 @@
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
@@ -9,10 +9,16 @@ import type {
   ScheduleRule,
 } from "@/lib/programs/program-api";
 
+import {
+  clearEventCreateDraft,
+  readEventCreateDraft,
+  writeEventCreateDraft,
+} from "./event-create-draft";
 import { WorkspaceTaskProvider } from "./workspace-context";
 import { EventsTask } from "./workspace-events-task";
 
 const mocks = vi.hoisted(() => ({
+  createEvent: vi.fn<() => Promise<{ event: ProgramEvent }>>(),
   listEvents: vi.fn<() => Promise<{ events: ProgramEvent[] }>>(),
   listScheduleRules: vi.fn<() => Promise<{ rules: ScheduleRule[] }>>(),
 }));
@@ -21,6 +27,7 @@ vi.mock(import("@/lib/programs/program-api"), async (importOriginal) => {
   const actual = await importOriginal();
   return {
     ...actual,
+    createEvent: mocks.createEvent,
     listEvents: mocks.listEvents,
     listScheduleRules: mocks.listScheduleRules,
   };
@@ -65,7 +72,11 @@ const event: ProgramEvent = {
   exception: null,
 };
 
-function renderTask() {
+function renderTask(
+  onWorkspaceDirtyChange: (dirty: boolean) => void = vi.fn<
+    (dirty: boolean) => void
+  >()
+) {
   return render(
     <WorkspaceTaskProvider
       value={{
@@ -77,6 +88,7 @@ function renderTask() {
         onAttentionRefresh: vi.fn<() => void>(),
         onTaskChange: vi.fn<() => void>(),
         onOpenEvent: vi.fn<() => void>(),
+        onWorkspaceDirtyChange,
       }}
     >
       <EventsTask />
@@ -86,11 +98,14 @@ function renderTask() {
 
 describe("EventsTask operations-first composition", () => {
   beforeEach(() => {
+    clearEventCreateDraft(program.program_id);
+    mocks.createEvent.mockReset();
     mocks.listEvents.mockReset().mockResolvedValue({ events: [event] });
     mocks.listScheduleRules.mockReset().mockResolvedValue({ rules: [] });
   });
 
   afterEach(() => {
+    clearEventCreateDraft(program.program_id);
     cleanup();
   });
 
@@ -134,10 +149,6 @@ describe("EventsTask operations-first composition", () => {
     expect(
       screen.getByRole("menuitem", { name: COPY.programs.cancelEvent })
     ).toBeInTheDocument();
-    expect(
-      screen.queryByRole("textbox", { name: COPY.programs.cancelReason })
-    ).not.toBeInTheDocument();
-
     await user.click(
       screen.getByRole("menuitem", { name: COPY.programs.cancelEvent })
     );
@@ -147,5 +158,112 @@ describe("EventsTask operations-first composition", () => {
     expect(
       screen.getByRole("button", { name: COPY.programs.keepMeeting })
     ).toBeInTheDocument();
+  });
+
+  test("restores an Event creation draft and reports the shell dirty state", async () => {
+    const onWorkspaceDirtyChange = vi.fn<(dirty: boolean) => void>();
+    writeEventCreateDraft(program.program_id, {
+      version: 1,
+      date: "2026-09-22",
+      startTime: "19:30",
+      endTime: "20:30",
+      endAuto: true,
+      name: "保留中的聚會",
+      location: "副堂",
+      eventType: "訓練",
+      windowOverride: false,
+      windowOpens: "",
+      windowCloses: "",
+    });
+
+    renderTask(onWorkspaceDirtyChange);
+
+    await expect(
+      screen.findByRole("heading", { name: COPY.programs.createMeeting })
+    ).resolves.toBeInTheDocument();
+    expect(
+      screen.getByRole("textbox", { name: COPY.programs.eventName })
+    ).toHaveValue("保留中的聚會");
+    expect(screen.getByLabelText(COPY.programs.eventTime)).toHaveValue("19:30");
+    expect(screen.getByLabelText(COPY.programs.eventEnd)).toHaveValue("20:30");
+    await waitFor(() =>
+      expect(onWorkspaceDirtyChange).toHaveBeenCalledWith(true)
+    );
+  });
+
+  test("persists edited fields and clears the draft on explicit discard", async () => {
+    const user = userEvent.setup();
+    const onWorkspaceDirtyChange = vi.fn<(dirty: boolean) => void>();
+    renderTask(onWorkspaceDirtyChange);
+
+    await user.click(
+      await screen.findByRole("button", { name: COPY.programs.createMeeting })
+    );
+    const name = screen.getByRole("textbox", {
+      name: COPY.programs.eventName,
+    });
+    await user.type(name, "暫存聚會");
+    await waitFor(() => {
+      expect(readEventCreateDraft(program.program_id)?.name).toBe("暫存聚會");
+      expect(onWorkspaceDirtyChange).toHaveBeenCalledWith(true);
+    });
+
+    await user.click(
+      screen.getByRole("button", { name: COPY.programs.eventCreateCancel })
+    );
+    await waitFor(() => {
+      expect(readEventCreateDraft(program.program_id)).toBeNull();
+      expect(onWorkspaceDirtyChange).toHaveBeenCalledWith(false);
+    });
+  });
+
+  test("keeps the draft after a failed create and clears it after success", async () => {
+    const user = userEvent.setup();
+    const onWorkspaceDirtyChange = vi.fn<(dirty: boolean) => void>();
+    writeEventCreateDraft(program.program_id, {
+      version: 1,
+      date: "2026-09-22",
+      startTime: "19:30",
+      endTime: "20:30",
+      endAuto: true,
+      name: "失敗後仍保留",
+      location: "副堂",
+      eventType: "小組",
+      windowOverride: false,
+      windowOpens: "",
+      windowCloses: "",
+    });
+    mocks.createEvent.mockRejectedValueOnce(new Error("offline"));
+    renderTask(onWorkspaceDirtyChange);
+
+    await screen.findByRole("heading", { name: COPY.programs.createMeeting });
+    const submit = screen
+      .getAllByRole("button", { name: COPY.programs.createMeeting })
+      .at(-1);
+    expect(submit).toBeDefined();
+    if (!submit) {
+      throw new Error("create submit button was not rendered");
+    }
+    await user.click(submit);
+    await screen.findByRole("alert");
+    expect(
+      screen.getByRole("textbox", { name: COPY.programs.eventName })
+    ).toHaveValue("失敗後仍保留");
+    expect(readEventCreateDraft(program.program_id)?.name).toBe("失敗後仍保留");
+
+    mocks.createEvent.mockResolvedValueOnce({
+      event: { ...event, event_id: "event-created" },
+    });
+    const retrySubmit = screen
+      .getAllByRole("button", { name: COPY.programs.createMeeting })
+      .at(-1);
+    if (!retrySubmit) {
+      throw new Error("create retry button was not rendered");
+    }
+    await user.click(retrySubmit);
+    await waitFor(() => {
+      expect(readEventCreateDraft(program.program_id)).toBeNull();
+      expect(onWorkspaceDirtyChange).toHaveBeenCalledWith(false);
+    });
   });
 });

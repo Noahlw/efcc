@@ -262,8 +262,11 @@ export class D1WorkspaceStore implements WorkspaceStore {
         input.description ?? null,
         input.category ?? null,
         input.behavior_type,
-        input.lifecycle,
-        input.discoverability,
+        // Program creation is deliberately non-publishable/non-discoverable.
+        // Promotion and listing are separate governed mutations, so alternate
+        // create payloads cannot bypass that boundary.
+        "Draft",
+        "Unlisted",
         input.enrollment_mode,
         input.display_order ?? 0,
         input.created_by,
@@ -363,6 +366,30 @@ export class D1WorkspaceStore implements WorkspaceStore {
       .bind(userId)
       .all<{ department_id: string }>()
       .then((result) => (result.results ?? []).map((row) => row.department_id));
+  }
+
+  async isGlobalStaffOrAdmin(userId: string): Promise<boolean> {
+    if (!userId) {
+      return false;
+    }
+    const row = await this.db
+      .prepare(
+        `SELECT 1 AS present
+           FROM role_assignments ra
+           JOIN role_definitions rd
+             ON rd.role_definition_id = ra.role_definition_id
+          WHERE ra.account_user_id = ?
+            AND ra.revoked_at IS NULL
+            AND ra.scope_kind = 'Global'
+            AND ra.scope_id IS NULL
+            AND rd.category_key = 'Global'
+            AND rd.stable_key IN ('admin', 'staff')
+            AND rd.is_archived = 0
+          LIMIT 1`
+      )
+      .bind(userId)
+      .first<{ present: number }>();
+    return row !== null;
   }
 
   /**
@@ -1781,10 +1808,16 @@ export class D1WorkspaceStore implements WorkspaceStore {
     }
     fields.push("updated_by = ?", "updated_at = ?");
     values.push(updatedBy, updatedAt, id);
-    await this.db
-      .prepare(`UPDATE events SET ${fields.join(", ")} WHERE event_id = ?`)
+    const result = await this.db
+      .prepare(
+        `UPDATE events SET ${fields.join(", ")}
+          WHERE event_id = ? AND status = 'Active'`
+      )
       .bind(...values)
       .run();
+    if ((result.meta?.changes ?? 0) === 0) {
+      return null;
+    }
     return this.findEventById(id);
   }
 

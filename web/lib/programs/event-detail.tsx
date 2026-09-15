@@ -195,6 +195,7 @@ export const EventDetail = ({
   const [editingEventType, setEditingEventType] = useState<EventType>(
     COPY.programs.eventTypeOptions[0] as EventType
   );
+  const [editReason, setEditReason] = useState("");
   // Inline confirmations replace the control that opened them; hand focus to
   // the replacement so keyboard users land on the new affordance.
   const [confirmingDeactivate, setConfirmingDeactivate] = useState(false);
@@ -374,12 +375,31 @@ export const EventDetail = ({
     const hasAttendance =
       detail?.event.has_attendance === true ||
       (detail?.participant_summary.checked_in ?? 0) > 0;
+    const name = String(form.get("name") ?? "").trim();
+    const location = String(form.get("location") ?? "").trim();
+    const eventType = editingEventType;
+    const identityChanged =
+      name !== (detail?.event.name ?? "") ||
+      location !== (detail?.event.location ?? "") ||
+      eventType !== detail?.event.event_type;
+    if (!name) {
+      const message = COPY.programs.eventNameRequired;
+      setActionError(message);
+      announce(message);
+      return;
+    }
+    if (hasAttendance && identityChanged && !editReason.trim()) {
+      const message = COPY.programs.eventIdentityChangeReasonRequired;
+      setActionError(message);
+      announce(message);
+      return;
+    }
     void runAction(
       () =>
         updateEvent(programId, eventId, {
-          name: String(form.get("name") ?? "").trim() || null,
-          location: String(form.get("location") ?? "").trim() || null,
-          event_type: editingEventType,
+          name,
+          location: location || null,
+          event_type: eventType,
           starts_at: startsAtIso,
           ends_at: endsAtIso,
           check_in_window_opens_at: hkWallInputToIso(
@@ -388,6 +408,9 @@ export const EventDetail = ({
           check_in_window_closes_at: hkWallInputToIso(
             String(form.get("closes_at") ?? "")
           ),
+          ...(hasAttendance && identityChanged
+            ? { reason: editReason.trim() }
+            : {}),
         }),
       () => {
         setEditing(false);
@@ -1016,6 +1039,25 @@ export const EventDetail = ({
                       placeholder={COPY.programs.eventNamePlaceholder}
                     />
                   </ScreenField>
+                  {hasAttendance && (
+                    <ScreenField
+                      htmlFor="management-event-edit-reason"
+                      label={COPY.programs.eventIdentityChangeReason}
+                    >
+                      <Input
+                        id="management-event-edit-reason"
+                        className="border-[var(--screen-line-strong)] bg-[var(--screen-surface)] text-base"
+                        type="text"
+                        name="edit_reason"
+                        value={editReason}
+                        onChange={(event) => setEditReason(event.target.value)}
+                        placeholder={
+                          COPY.programs.eventIdentityChangeReasonPlaceholder
+                        }
+                        required={false}
+                      />
+                    </ScreenField>
+                  )}
                   <ScreenField
                     htmlFor="management-event-type"
                     label={COPY.programs.eventType}
@@ -1181,6 +1223,7 @@ export const EventDetail = ({
                     event.event_type ??
                       (COPY.programs.eventTypeOptions[0] as EventType)
                   );
+                  setEditReason("");
                   setEditing(true);
                 }}
               >

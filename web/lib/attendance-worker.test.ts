@@ -2054,6 +2054,119 @@ describe("attendance Worker routes", () => {
     assert.strictEqual(audit?.reason, "ALREADY_VOIDED");
   });
 
+  test("concurrent void attempts commit one state transition and audit the loser as DUPLICATE", async () => {
+    const [admin, member] = await Promise.all([
+      accessCookieFor("att-admin", "att-admin-password"),
+      accessCookieFor("att-member", "att-member-password"),
+    ]);
+    const eventId = `ATT-CONCURRENT-VOID-EVENT-${crypto.randomUUID()}`;
+    const attendanceId = `ATT-CONCURRENT-VOID-${crypto.randomUUID()}`;
+    const assignmentId = `ATT-CONCURRENT-VOID-ASSIGNMENT-${crypto.randomUUID()}`;
+    const now = new Date().toISOString();
+    await testDb()
+      .prepare(
+        `INSERT INTO events
+          (event_id, program_id, starts_at, ends_at, status, source,
+           name, created_at, updated_at)
+         VALUES (?, ?, ?, ?, 'Active', 'MANUAL', ?, ?, ?)`
+      )
+      .bind(
+        eventId,
+        PROGRAM,
+        now,
+        new Date(Date.parse(now) + 60_000).toISOString(),
+        "並行作廢測試",
+        now,
+        now
+      )
+      .run();
+    await testDb()
+      .prepare(
+        `INSERT INTO attendances
+          (attendance_id, event_id, member_user_id, method, status,
+           checked_in_at, checked_in_by)
+         VALUES (?, ?, 'ATT-MEMBER', 'leader_manual_search', 'Active', ?, 'ATT-MEMBER')`
+      )
+      .bind(attendanceId, eventId, now)
+      .run();
+    await assignIdentity(PROGRAM_IDENTITY, "ATT-MEMBER", assignmentId);
+
+    try {
+      const [adminVoid, memberVoid] = await Promise.all([
+        worker.fetch(
+          request(`/api/v1/attendance/${attendanceId}/void`, {
+            method: "POST",
+            headers: { Cookie: `${ACCESS_COOKIE_NAME}=${admin}` },
+            body: JSON.stringify({ reason: "管理員並行作廢" }),
+          }),
+          testEnv()
+        ),
+        worker.fetch(
+          request(`/api/v1/attendance/${attendanceId}/void`, {
+            method: "POST",
+            headers: { Cookie: `${ACCESS_COOKIE_NAME}=${member}` },
+            body: JSON.stringify({ reason: "操作員並行作廢" }),
+          }),
+          testEnv()
+        ),
+      ]);
+      assert.strictEqual(adminVoid.status, 200);
+      assert.strictEqual(memberVoid.status, 200);
+      const responses = await Promise.all([json(adminVoid), json(memberVoid)]);
+      const outcomes = responses.map(
+        (response) => (response.data as { outcome: string }).outcome
+      );
+      assert.deepStrictEqual([...outcomes].sort(), [
+        "already_voided",
+        "voided",
+      ]);
+
+      const row = await testDb()
+        .prepare(
+          "SELECT status, voided_by, void_reason FROM attendances WHERE attendance_id = ?"
+        )
+        .bind(attendanceId)
+        .first<{ status: string; voided_by: string; void_reason: string }>();
+      assert.strictEqual(row?.status, "Voided");
+      assert.ok(row?.voided_by);
+      assert.ok(row?.void_reason);
+
+      for (const response of responses) {
+        const audit = await testDb()
+          .prepare(
+            "SELECT action, outcome, actor_user_id FROM audit_events WHERE correlation_id = ?"
+          )
+          .bind(response.requestId)
+          .first<{
+            action: string;
+            outcome: string;
+            actor_user_id: string;
+          }>();
+        assert.strictEqual(audit?.action, "attendance.void");
+        assert.ok(
+          audit?.outcome === "SUCCESS" || audit?.outcome === "DUPLICATE"
+        );
+        assert.ok(
+          audit?.actor_user_id === "ATT-ADMIN" ||
+            audit?.actor_user_id === "ATT-MEMBER"
+        );
+      }
+    } finally {
+      await testDb()
+        .prepare("DELETE FROM role_assignments WHERE assignment_id = ?")
+        .bind(assignmentId)
+        .run();
+      await testDb()
+        .prepare("DELETE FROM attendances WHERE attendance_id = ?")
+        .bind(attendanceId)
+        .run();
+      await testDb()
+        .prepare("DELETE FROM events WHERE event_id = ?")
+        .bind(eventId)
+        .run();
+    }
+  });
+
   test("cross-scope operator and ordinary member are denied on roster, void, and guest correction (403 FORBIDDEN)", async () => {
     const member = await accessCookieFor("att-member", "att-member-password");
     const attendanceId = "ATT-P2-GUEST-CROSS-SCOPE";
@@ -3048,6 +3161,301 @@ describe("attendance Worker routes", () => {
       .bind(eventId, enrollmentId)
       .first<{ expected_attendance_id: string }>();
     assert.ok(expectedAfterRetry?.expected_attendance_id);
+  });
+
+  test("explicit materialization reports not-started without creating roster rows", async () => {
+    const admin = await accessCookieFor("att-admin", "att-admin-password");
+    const eventId = `ATT-SNAPSHOT-NOT-STARTED-${crypto.randomUUID()}`;
+    const now = Date.now();
+    const createdAt = new Date(now).toISOString();
+    await testDb()
+      .prepare(
+        `INSERT INTO events
+          (event_id, program_id, starts_at, ends_at, status, availability,
+           source, name, manual_check_in_code, check_in_window_opens_at,
+           check_in_window_closes_at, created_at, updated_at)
+         VALUES (?, ?, ?, ?, 'Active', 'Active', 'MANUAL', ?, ?, ?, ?, ?, ?)`
+      )
+      .bind(
+        eventId,
+        PROGRAM,
+        new Date(now + 2 * 60 * 60_000).toISOString(),
+        new Date(now + 3 * 60 * 60_000).toISOString(),
+        "未開始聚會",
+        `ATT-NOT-STARTED-CODE-${crypto.randomUUID()}`,
+        new Date(now + 60 * 60_000).toISOString(),
+        new Date(now + 4 * 60 * 60_000).toISOString(),
+        createdAt,
+        createdAt
+      )
+      .run();
+
+    const response = await worker.fetch(
+      request(`/api/v1/attendance/events/${eventId}/materialize`, {
+        method: "POST",
+        headers: { Cookie: `${ACCESS_COOKIE_NAME}=${admin}` },
+      }),
+      testEnv()
+    );
+    assert.strictEqual(response.status, 200);
+    const responseBody = await json(response);
+    const materialization = (
+      responseBody.data as {
+        materialization: {
+          status: string;
+          materialized: boolean;
+          added_expected: number;
+          snapshot: unknown;
+        };
+      }
+    ).materialization;
+    assert.deepStrictEqual(materialization, {
+      status: "not_started",
+      materialized: false,
+      added_expected: 0,
+      snapshot: null,
+    });
+
+    const rows = await testDb()
+      .prepare(
+        "SELECT COUNT(*) AS count FROM event_expected_attendance WHERE event_id = ?"
+      )
+      .bind(eventId)
+      .first<{ count: number }>();
+    assert.strictEqual(rows?.count, 0);
+    const audit = await testDb()
+      .prepare(
+        `SELECT outcome, reason FROM audit_events
+          WHERE action = 'attendance.snapshot_materialize' AND entity_id = ?
+          ORDER BY inserted_at DESC LIMIT 1`
+      )
+      .bind(eventId)
+      .first<{ outcome: string; reason: string | null }>();
+    assert.deepStrictEqual(audit, {
+      outcome: "CONFLICT",
+      reason: "EVENT_NOT_STARTED",
+    });
+  });
+
+  test("cancelled materialization is rejected without a snapshot or false success audit", async () => {
+    const admin = await accessCookieFor("att-admin", "att-admin-password");
+    const eventId = `ATT-SNAPSHOT-CANCELLED-${crypto.randomUUID()}`;
+    const now = Date.now();
+    const createdAt = new Date(now).toISOString();
+    await testDb()
+      .prepare(
+        `INSERT INTO events
+          (event_id, program_id, starts_at, ends_at, status, availability,
+           source, name, manual_check_in_code, check_in_window_opens_at,
+           check_in_window_closes_at, created_at, updated_at)
+         VALUES (?, ?, ?, ?, 'Cancelled', 'Active', 'MANUAL', ?, ?, ?, ?, ?, ?)`
+      )
+      .bind(
+        eventId,
+        PROGRAM,
+        new Date(now - 2 * 60 * 60_000).toISOString(),
+        new Date(now - 60 * 60_000).toISOString(),
+        "已取消聚會",
+        `ATT-CANCELLED-MATERIALIZE-CODE-${crypto.randomUUID()}`,
+        new Date(now - 3 * 60 * 60_000).toISOString(),
+        new Date(now + 60 * 60_000).toISOString(),
+        createdAt,
+        createdAt
+      )
+      .run();
+
+    const response = await worker.fetch(
+      request(`/api/v1/attendance/events/${eventId}/materialize`, {
+        method: "POST",
+        headers: { Cookie: `${ACCESS_COOKIE_NAME}=${admin}` },
+      }),
+      testEnv()
+    );
+    assert.strictEqual(response.status, 409);
+    const responseBody = await json(response);
+    assert.strictEqual(responseBody.code, "EVENT_CANCELLED");
+    const snapshot = await testDb()
+      .prepare(
+        "SELECT snapshot_id FROM event_attendance_snapshots WHERE event_id = ?"
+      )
+      .bind(eventId)
+      .first();
+    const expected = await testDb()
+      .prepare(
+        "SELECT expected_attendance_id FROM event_expected_attendance WHERE event_id = ?"
+      )
+      .bind(eventId)
+      .first();
+    assert.strictEqual(snapshot, null);
+    assert.strictEqual(expected, null);
+    const audit = await testDb()
+      .prepare(
+        `SELECT outcome, reason FROM audit_events
+          WHERE action = 'attendance.snapshot_materialize' AND entity_id = ?
+          ORDER BY inserted_at DESC LIMIT 1`
+      )
+      .bind(eventId)
+      .first<{ outcome: string; reason: string | null }>();
+    assert.deepStrictEqual(audit, {
+      outcome: "DENIED",
+      reason: "EVENT_CANCELLED",
+    });
+  });
+
+  test("concurrent cancellation and self check-in cannot persist a cancelled Event with active attendance", async () => {
+    const admin = await accessCookieFor("att-admin", "att-admin-password");
+    const member = await accessCookieFor("att-member", "att-member-password");
+    const eventId = `ATT-CANCEL-CHECKIN-RACE-${crypto.randomUUID()}`;
+    const now = Date.now();
+    const createdAt = new Date(now).toISOString();
+    const manualCode = `ATT-RACE-CODE-${crypto.randomUUID()}`;
+    const departmentId = "018f3b8a-0000-7000-8000-000000000001";
+    const adminRole = await testDb()
+      .prepare(
+        "SELECT role_definition_id FROM role_definitions WHERE stable_key = 'admin'"
+      )
+      .first<{ role_definition_id: string }>();
+    assert.ok(adminRole, "canonical Admin identity must exist");
+    await assignIdentity(
+      adminRole.role_definition_id,
+      "ATT-ADMIN",
+      `ATT-ADMIN-PROGRAM-RACE-${crypto.randomUUID()}`
+    );
+    await testDb().batch([
+      testDb()
+        .prepare(
+          `INSERT OR IGNORE INTO departments
+            (department_id, code, name, lifecycle, display_order,
+             created_by, created_at, updated_by, updated_at)
+           VALUES (?, ?, ?, 'Active', 0, 'ATT-ADMIN', ?, 'ATT-ADMIN', ?)`
+        )
+        .bind(
+          departmentId,
+          `ATT-RACE-DEPT-${crypto.randomUUID()}`,
+          "Attendance Race Department",
+          createdAt,
+          createdAt
+        ),
+      ...(["program_catalog", "enrollment", "events"] as const).map(
+        (moduleKey) =>
+          testDb()
+            .prepare(
+              `INSERT INTO department_modules
+                (department_id, module_key, enabled, enabled_by, enabled_at)
+               VALUES (?, ?, 1, 'ATT-ADMIN', ?)
+               ON CONFLICT(department_id, module_key) DO UPDATE SET
+                 enabled = excluded.enabled,
+                 enabled_by = excluded.enabled_by,
+                 enabled_at = excluded.enabled_at`
+            )
+            .bind(departmentId, moduleKey, createdAt)
+      ),
+      testDb()
+        .prepare(
+          `INSERT OR IGNORE INTO role_definition_grants
+            (role_definition_id, capability, granted_by, granted_at)
+           VALUES (?, 'program.manage', 'ATT-ADMIN', ?)`
+        )
+        .bind(adminRole.role_definition_id, createdAt),
+    ]);
+    await testDb()
+      .prepare(
+        `INSERT INTO events
+          (event_id, program_id, starts_at, ends_at, status, availability,
+           source, name, manual_check_in_code, check_in_window_opens_at,
+           check_in_window_closes_at, created_at, updated_at)
+         VALUES (?, ?, ?, ?, 'Active', 'Active', 'MANUAL', ?, ?, ?, ?, ?, ?)`
+      )
+      .bind(
+        eventId,
+        PROGRAM,
+        new Date(now - 5 * 60_000).toISOString(),
+        new Date(now + 55 * 60_000).toISOString(),
+        "取消簽到競速",
+        manualCode,
+        new Date(now - 20 * 60_000).toISOString(),
+        new Date(now + 60 * 60_000).toISOString(),
+        createdAt,
+        createdAt
+      )
+      .run();
+
+    const [cancel, checkIn] = await Promise.all([
+      worker.fetch(
+        request(`/api/v1/programs/${PROGRAM}/events/${eventId}`, {
+          method: "PATCH",
+          headers: {
+            Cookie: `${ACCESS_COOKIE_NAME}=${admin}`,
+          },
+          body: JSON.stringify({ reason: "競速測試取消" }),
+        }),
+        testEnv()
+      ),
+      worker.fetch(
+        request("/api/v1/attendance/self", {
+          method: "POST",
+          headers: { Cookie: `${ACCESS_COOKIE_NAME}=${member}` },
+          body: JSON.stringify({
+            event_id: eventId,
+            method: "self_manual_code",
+            manual_code: manualCode,
+          }),
+        }),
+        testEnv()
+      ),
+    ]);
+    const cancelBody = await json(cancel);
+    const checkInBody = await json(checkIn);
+    assert.ok(
+      [200, 409].includes(cancel.status),
+      `unexpected cancellation status ${cancel.status} (${String(cancelBody.code)}: ${String(cancelBody.detail)}); check-in status ${checkIn.status} (${String(checkInBody.code)})`
+    );
+    assert.ok(
+      [201, 409, 410].includes(checkIn.status),
+      `unexpected check-in status ${checkIn.status} (${String(checkInBody.code)}); cancellation status ${cancel.status} (${String(cancelBody.code)})`
+    );
+    assert.ok(
+      cancel.status === 200 || checkIn.status === 201,
+      "one operation must win the serialized final boundary"
+    );
+
+    const stored = await testDb()
+      .prepare(
+        `SELECT e.status, COUNT(a.attendance_id) AS active_attendance
+           FROM events e
+           LEFT JOIN attendances a
+             ON a.event_id = e.event_id AND a.status = 'Active'
+          WHERE e.event_id = ?
+          GROUP BY e.event_id, e.status`
+      )
+      .bind(eventId)
+      .first<{ status: string; active_attendance: number }>();
+    assert.ok(stored);
+    assert.ok(
+      !(stored.status === "Cancelled" && stored.active_attendance > 0),
+      "cancelled Event must never retain newly accepted active Attendance"
+    );
+    const outcomes = await testDb()
+      .prepare(
+        `SELECT action, outcome, reason FROM audit_events
+          WHERE correlation_id IN (?, ?)
+          ORDER BY inserted_at ASC`
+      )
+      .bind(cancelBody.requestId, checkInBody.requestId)
+      .all<{ action: string; outcome: string; reason: string | null }>();
+    assert.ok(
+      (outcomes.results ?? []).some(
+        ({ action, outcome }) =>
+          action === "EVENT_CANCEL" && ["SUCCESS", "CONFLICT"].includes(outcome)
+      )
+    );
+    assert.ok(
+      (outcomes.results ?? []).some(
+        ({ action, outcome }) =>
+          action === "attendance.check_in" &&
+          ["SUCCESS", "DENIED", "CONFLICT"].includes(outcome)
+      )
+    );
   });
 
   test("pre-start Excused history stays audit-only without creating a snapshot row", async () => {

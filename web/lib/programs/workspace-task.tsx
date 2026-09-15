@@ -1,6 +1,12 @@
 "use client";
 
-import { CalendarDays, ChevronRight, Settings, Users } from "lucide-react";
+import {
+  CalendarDays,
+  ChevronRight,
+  Plus,
+  Settings,
+  Users,
+} from "lucide-react";
 import Link from "next/link";
 import { useMemo } from "react";
 import type { MouseEventHandler, ReactNode } from "react";
@@ -272,6 +278,7 @@ export const WorkspaceOverview = ({
   departmentId,
   hash,
   onTaskChange,
+  onOpenAttendance,
   onSummaryRetry,
 }: {
   program: Program;
@@ -280,6 +287,8 @@ export const WorkspaceOverview = ({
   departmentId?: string | null;
   hash?: string | null;
   onTaskChange: (task: ProgramsTask | null, eventId?: string | null) => void;
+  /** Open the shared focused attendance roster for the next Event. */
+  onOpenAttendance?: (eventId: string) => void;
   onSummaryRetry?: () => void;
 }) => {
   const nextEventRead = useMemo(() => {
@@ -426,19 +435,40 @@ export const WorkspaceOverview = ({
                   className="min-h-[var(--screen-touch-target)] w-full rounded-[var(--screen-radius-control)] bg-[var(--screen-accent)] px-4 py-2 text-white hover:bg-[var(--screen-accent-deep)]"
                 >
                   <Link
-                    href={buildProgramsHref({
-                      mode: "management",
-                      programId: program.program_id,
-                      departmentId,
-                      task: "events",
-                      eventId: nextEvent.event_id,
-                      hash,
-                    })}
-                    onClick={taskLinkClick(
-                      onTaskChange,
-                      "events",
-                      nextEvent.event_id
-                    )}
+                    href={
+                      onOpenAttendance
+                        ? `/events?eventId=${encodeURIComponent(nextEvent.event_id)}`
+                        : buildProgramsHref({
+                            mode: "management",
+                            programId: program.program_id,
+                            departmentId,
+                            task: "events",
+                            eventId: nextEvent.event_id,
+                            hash,
+                          })
+                    }
+                    onClick={(event) => {
+                      if (!onOpenAttendance) {
+                        taskLinkClick(
+                          onTaskChange,
+                          "events",
+                          nextEvent.event_id
+                        )(event);
+                        return;
+                      }
+                      if (
+                        event.defaultPrevented ||
+                        event.button !== 0 ||
+                        event.metaKey ||
+                        event.ctrlKey ||
+                        event.shiftKey ||
+                        event.altKey
+                      ) {
+                        return;
+                      }
+                      event.preventDefault();
+                      onOpenAttendance(nextEvent.event_id);
+                    }}
                   >
                     {COPY.programs.cockpitManageRoster}
                   </Link>
@@ -518,6 +548,31 @@ export const WorkspaceOverview = ({
                     mode: "management",
                     programId: program.program_id,
                     departmentId,
+                    task: "events",
+                    hash: "#create-event",
+                  })}
+                >
+                  <Plus
+                    aria-hidden="true"
+                    className="size-[var(--screen-icon-size)] text-[var(--screen-accent)]"
+                    strokeWidth={1.8}
+                  />
+                  <div className="grid min-w-0 gap-0.5">
+                    <strong className="min-w-0 wrap-anywhere text-[length:var(--screen-body-size)] leading-[21px]">
+                      {COPY.programs.cockpitAddEvent}
+                    </strong>
+                    <span className="min-w-0 wrap-anywhere text-[length:var(--screen-meta-size)] leading-[var(--screen-meta-leading)] text-[var(--screen-muted)]">
+                      {COPY.programs.cockpitAddEventHint}
+                    </span>
+                  </div>
+                </Link>
+              </ScreenTaskSurface>
+              <ScreenTaskSurface asChild>
+                <Link
+                  href={buildProgramsHref({
+                    mode: "management",
+                    programId: program.program_id,
+                    departmentId,
                     task: "participants",
                     hash,
                   })}
@@ -567,6 +622,37 @@ export const WorkspaceOverview = ({
         }
       >
         <ScreenRowList>
+          {program.capabilities.manage && (
+            <ScreenRow asChild density="settings">
+              <Link
+                href={buildProgramsHref({
+                  mode: "management",
+                  programId: program.program_id,
+                  departmentId,
+                  task: "schedule",
+                  hash,
+                })}
+                onClick={taskLinkClick(onTaskChange, "schedule")}
+              >
+                <CalendarDays
+                  aria-hidden="true"
+                  className="size-[var(--screen-icon-size)] text-[var(--screen-muted)]"
+                  strokeWidth={1.8}
+                />
+                <ScreenRowMain>
+                  <ScreenRowTitle>
+                    {COPY.programs.workspaceTaskSchedule}
+                  </ScreenRowTitle>
+                  <ScreenRowMeta>
+                    {COPY.programs.schedulePageLead}
+                  </ScreenRowMeta>
+                </ScreenRowMain>
+                <ScreenRowTrailing>
+                  <Chevron />
+                </ScreenRowTrailing>
+              </Link>
+            </ScreenRow>
+          )}
           {(program.capabilities.manage ||
             program.capabilities.leader_assign) && (
             <ScreenRow asChild density="settings">
@@ -611,6 +697,8 @@ export interface WorkspaceTaskProps extends WorkspaceTaskContextValue {
   onSettingsFocusChange?: (focused: boolean) => void;
   /** Let the workspace protect route navigation from focused Settings drafts. */
   onSettingsDirtyChange?: (dirty: boolean) => void;
+  /** Protect navigation while the Events task owns an unsaved create draft. */
+  onWorkspaceDirtyChange?: (dirty: boolean) => void;
   /** Surface the shared Settings navigation-blocked guidance. */
   settingsNavigationBlocked?: boolean;
   onSettingsNavigationBlocked?: (blocked: boolean) => void;
@@ -640,6 +728,7 @@ export const WorkspaceTask = ({
   onOpenEvent,
   onSettingsFocusChange,
   onSettingsDirtyChange,
+  onWorkspaceDirtyChange,
   settingsNavigationBlocked,
   onSettingsNavigationBlocked,
   headerAction,
@@ -654,6 +743,7 @@ export const WorkspaceTask = ({
     onWorkspaceRefresh,
     onTaskChange,
     onOpenEvent,
+    onWorkspaceDirtyChange,
   };
 
   return (

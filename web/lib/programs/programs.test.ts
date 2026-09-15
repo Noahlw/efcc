@@ -216,6 +216,41 @@ async function createProgram(
       };
     };
   };
+  const requestedLifecycle = body.lifecycle ?? "Draft";
+  const requestedDiscoverability = body.discoverability ?? "Unlisted";
+  if (
+    requestedLifecycle === "Active" ||
+    requestedDiscoverability === "Listed"
+  ) {
+    const promote = await worker.fetch(
+      programsRequest(`/api/v1/programs/${result.data.program.program_id}`, {
+        method: "PATCH",
+        headers: {
+          Origin: HOST,
+          Cookie: `${ACCESS_COOKIE_NAME}=${access}`,
+          "Content-Type": "application/json",
+        },
+        body: {
+          ...(requestedLifecycle === "Active" ? { lifecycle: "Active" } : {}),
+          ...(requestedDiscoverability === "Listed"
+            ? { discoverability: "Listed" }
+            : {}),
+        },
+      }),
+      testEnv()
+    );
+    assert.strictEqual(promote.status, 200);
+    const promoted = (await assertCorrelated(promote)) as {
+      data: {
+        program: {
+          program_id: string;
+          name: string;
+          check_in_token: string | null;
+        };
+      };
+    };
+    return { ...result.data.program, ...promoted.data.program };
+  }
   return result.data.program;
 }
 async function grantProgramIdentity(
@@ -2064,7 +2099,7 @@ describe("PRG-01: programs", () => {
         };
       };
     };
-    assert.strictEqual(result.data.program.discoverability, "Listed");
+    assert.strictEqual(result.data.program.discoverability, "Unlisted");
     assert.strictEqual(result.data.program.enrollment_mode, "MemberRequest");
     assert.strictEqual(result.data.program.display_order, 0);
 
@@ -4098,7 +4133,7 @@ describe("EVT-02: recurring preview and generation (#252)", () => {
         body: {
           starts_at: existingStarts,
           ends_at: seeded.occurrences[0].ends_at,
-          name: null,
+          name: "已有聚會",
           location: null,
           check_in_window_opens_at: null,
           check_in_window_closes_at: null,
@@ -5163,7 +5198,7 @@ describe("EVT-02: recurring preview and generation (#252)", () => {
         body: {
           starts_at: plan.occurrences[0].starts_at,
           ends_at: plan.occurrences[0].ends_at,
-          name: null,
+          name: "已有重複聚會",
           location: null,
           check_in_window_opens_at: null,
           check_in_window_closes_at: null,
@@ -5236,6 +5271,7 @@ describe("PRG-02: events", () => {
           "Content-Type": "application/json",
         },
         body: {
+          name: "管理員建立聚會",
           starts_at: "2026-09-01T10:00:00.000Z",
           ends_at: "2026-09-01T11:00:00.000Z",
         },
@@ -5259,6 +5295,7 @@ describe("PRG-02: events", () => {
           "Content-Type": "application/json",
         },
         body: {
+          name: "會員嘗試建立聚會",
           starts_at: "2026-09-02T10:00:00.000Z",
           ends_at: "2026-09-02T11:00:00.000Z",
         },
@@ -5278,7 +5315,11 @@ describe("PRG-02: events", () => {
           Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
           "Content-Type": "application/json",
         },
-        body: { starts_at: "not-a-date", ends_at: "2026-09-01T11:00:00.000Z" },
+        body: {
+          name: "無效日期聚會",
+          starts_at: "not-a-date",
+          ends_at: "2026-09-01T11:00:00.000Z",
+        },
       }),
       testEnv()
     );
@@ -5293,6 +5334,7 @@ describe("PRG-02: events", () => {
           "Content-Type": "application/json",
         },
         body: {
+          name: "倒轉時間聚會",
           starts_at: "2026-09-03T12:00:00.000Z",
           ends_at: "2026-09-03T11:00:00.000Z",
         },
@@ -5310,6 +5352,7 @@ describe("PRG-02: events", () => {
           "Content-Type": "application/json",
         },
         body: {
+          name: "重複時間聚會",
           starts_at: "2026-09-01T10:00:00.000Z",
           ends_at: "2026-09-01T11:00:00.000Z",
         },
@@ -5332,6 +5375,7 @@ describe("PRG-02: events", () => {
           "Content-Type": "application/json",
         },
         body: {
+          name: "取消保留歷史聚會",
           starts_at: "2026-10-05T10:00:00.000Z",
           ends_at: "2026-10-05T11:00:00.000Z",
         },
@@ -5403,6 +5447,7 @@ describe("PRG-02: events", () => {
           "Content-Type": "application/json",
         },
         body: {
+          name: "無出席取消聚會",
           starts_at: "2026-10-06T10:00:00.000Z",
           ends_at: "2026-10-06T11:00:00.000Z",
         },
@@ -5500,6 +5545,7 @@ describe("PRG-02: events", () => {
           "Content-Type": "application/json",
         },
         body: {
+          name: "憑證保護聚會",
           starts_at: "2026-11-02T10:00:00.000Z",
           ends_at: "2026-11-02T11:00:00.000Z",
         },
@@ -5582,7 +5628,13 @@ async function createEventFor(
         Cookie: `${ACCESS_COOKIE_NAME}=${access}`,
         "Content-Type": "application/json",
       },
-      body,
+      body: {
+        name:
+          body.name === undefined
+            ? `測試聚會-${crypto.randomUUID().slice(0, 8)}`
+            : body.name,
+        ...body,
+      },
     }),
     testEnv()
   );
@@ -5856,6 +5908,280 @@ describe("EVT-01: event operations (#251)", () => {
     assert.strictEqual(conflictBody.code, "CONFLICT");
   });
 
+  test("post-attendance identity edits require a reason and global Staff/Admin authorization", async () => {
+    const event = await createEventFor(adminAccess, programId, {
+      starts_at: "2030-09-14T20:00:00.000Z",
+      ends_at: "2030-09-14T21:00:00.000Z",
+      name: "出席後原名",
+    });
+    await testDb()
+      .prepare(
+        "INSERT INTO attendances (attendance_id, event_id, member_user_id, status, checked_in_at) VALUES (?, ?, 'U002', 'Active', ?)"
+      )
+      .bind(crypto.randomUUID(), event.event_id, new Date().toISOString())
+      .run();
+
+    const missingReason = await worker.fetch(
+      programsRequest(
+        `/api/v1/programs/${programId}/events/${event.event_id}`,
+        {
+          method: "PATCH",
+          headers: {
+            Origin: HOST,
+            Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
+            "Content-Type": "application/json",
+          },
+          body: { name: "缺少理由" },
+        }
+      ),
+      testEnv()
+    );
+    assert.strictEqual(missingReason.status, 422);
+    const missingReasonBody = await problemOf(missingReason);
+    assert.strictEqual(missingReasonBody.code, "VALIDATION");
+    const missingReasonAudit = await testDb()
+      .prepare(
+        `SELECT actor_user_id, outcome, reason, old_value_json, new_value_json
+           FROM audit_events
+          WHERE action = 'EVENT_UPDATE' AND entity_id = ?
+          ORDER BY inserted_at DESC LIMIT 1`
+      )
+      .bind(event.event_id)
+      .first<{
+        actor_user_id: string;
+        outcome: string;
+        reason: string | null;
+        old_value_json: string;
+        new_value_json: string;
+      }>();
+    assert.strictEqual(missingReasonAudit?.actor_user_id, "U001");
+    assert.strictEqual(missingReasonAudit?.outcome, "DENIED");
+    assert.strictEqual(missingReasonAudit?.reason, null);
+
+    const scopedRole = await grantProgramIdentity(programId, "U002");
+    const memberReason = await worker.fetch(
+      programsRequest(
+        `/api/v1/programs/${programId}/events/${event.event_id}`,
+        {
+          method: "PATCH",
+          headers: {
+            Origin: HOST,
+            Cookie: `${ACCESS_COOKIE_NAME}=${memberAccess}`,
+            "Content-Type": "application/json",
+          },
+          body: {
+            name: "非全域身份不可改",
+            reason: "有理由但權限不足",
+          },
+        }
+      ),
+      testEnv()
+    );
+    assert.strictEqual(memberReason.status, 403);
+    const memberReasonBody = await problemOf(memberReason);
+    assert.strictEqual(memberReasonBody.code, "FORBIDDEN");
+    const memberReasonAudit = await testDb()
+      .prepare(
+        `SELECT actor_user_id, outcome, reason
+           FROM audit_events
+          WHERE action = 'EVENT_UPDATE' AND entity_id = ?
+          ORDER BY inserted_at DESC LIMIT 1`
+      )
+      .bind(event.event_id)
+      .first<{
+        actor_user_id: string;
+        outcome: string;
+        reason: string | null;
+      }>();
+    assert.deepStrictEqual(memberReasonAudit, {
+      actor_user_id: "U002",
+      outcome: "DENIED",
+      reason: "有理由但權限不足",
+    });
+
+    const staffAccess = await accessCookieFor("staff", "staff-secret");
+    const allowed = await worker.fetch(
+      programsRequest(
+        `/api/v1/programs/${programId}/events/${event.event_id}`,
+        {
+          method: "PATCH",
+          headers: {
+            Origin: HOST,
+            Cookie: `${ACCESS_COOKIE_NAME}=${staffAccess}`,
+            "Content-Type": "application/json",
+          },
+          body: {
+            name: "全域同工修正後名",
+            location: "副堂",
+            reason: "出席後更正聚會識別資料",
+          },
+        }
+      ),
+      testEnv()
+    );
+    assert.strictEqual(allowed.status, 200);
+    const allowedBody = (await assertCorrelated(allowed)) as {
+      data: { event: { name: string; location: string } };
+    };
+    assert.strictEqual(allowedBody.data.event.name, "全域同工修正後名");
+    assert.strictEqual(allowedBody.data.event.location, "副堂");
+    const allowedAudit = await testDb()
+      .prepare(
+        `SELECT actor_user_id, outcome, reason, old_value_json, new_value_json
+           FROM audit_events
+          WHERE action = 'EVENT_UPDATE' AND entity_id = ?
+          ORDER BY inserted_at DESC LIMIT 1`
+      )
+      .bind(event.event_id)
+      .first<{
+        actor_user_id: string;
+        outcome: string;
+        reason: string | null;
+        old_value_json: string;
+        new_value_json: string;
+      }>();
+    assert.strictEqual(allowedAudit?.actor_user_id, "U005");
+    assert.strictEqual(allowedAudit?.outcome, "SUCCESS");
+    assert.strictEqual(allowedAudit?.reason, "出席後更正聚會識別資料");
+    assert.strictEqual(
+      (JSON.parse(allowedAudit?.old_value_json ?? "{}") as { name?: string })
+        .name,
+      "出席後原名"
+    );
+    assert.strictEqual(
+      (JSON.parse(allowedAudit?.new_value_json ?? "{}") as { name?: string })
+        .name,
+      "全域同工修正後名"
+    );
+
+    await revokeProgramIdentity(scopedRole, "U002");
+  });
+
+  test("cancelled Events are read-only at the public mutation boundary", async () => {
+    const event = await createEventFor(adminAccess, programId, {
+      starts_at: "2030-09-16T20:00:00.000Z",
+      ends_at: "2030-09-16T21:00:00.000Z",
+      name: "取消後不可改",
+    });
+    const cancelled = await worker.fetch(
+      programsRequest(
+        `/api/v1/programs/${programId}/events/${event.event_id}`,
+        {
+          method: "PATCH",
+          headers: {
+            Origin: HOST,
+            Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
+            "Content-Type": "application/json",
+          },
+          body: { reason: "場地取消" },
+        }
+      ),
+      testEnv()
+    );
+    assert.strictEqual(cancelled.status, 200);
+
+    const identityAttempt = await worker.fetch(
+      programsRequest(
+        `/api/v1/programs/${programId}/events/${event.event_id}`,
+        {
+          method: "PATCH",
+          headers: {
+            Origin: HOST,
+            Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
+            "Content-Type": "application/json",
+          },
+          body: { name: "不應寫入", reason: "嘗試更改取消聚會" },
+        }
+      ),
+      testEnv()
+    );
+    assert.strictEqual(identityAttempt.status, 409);
+    const identityProblem = await problemOf(identityAttempt);
+    assert.strictEqual(identityProblem.code, "EVENT_CANCELLED");
+
+    const availabilityAttempt = await worker.fetch(
+      programsRequest(
+        `/api/v1/programs/${programId}/events/${event.event_id}`,
+        {
+          method: "PATCH",
+          headers: {
+            Origin: HOST,
+            Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
+            "Content-Type": "application/json",
+          },
+          body: { availability: "Inactive" },
+        }
+      ),
+      testEnv()
+    );
+    assert.strictEqual(availabilityAttempt.status, 409);
+    const availabilityProblem = await problemOf(availabilityAttempt);
+    assert.strictEqual(availabilityProblem.code, "EVENT_CANCELLED");
+
+    const stored = await testDb()
+      .prepare(
+        "SELECT status, name, availability FROM events WHERE event_id = ?"
+      )
+      .bind(event.event_id)
+      .first<{ status: string; name: string; availability: string }>();
+    assert.deepStrictEqual(stored, {
+      status: "Cancelled",
+      name: "取消後不可改",
+      availability: "Active",
+    });
+  });
+
+  test("Event create and edit reject a blank name at the public boundary", async () => {
+    const blankCreate = await worker.fetch(
+      programsRequest(`/api/v1/programs/${programId}/events`, {
+        method: "POST",
+        headers: {
+          Origin: HOST,
+          Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
+          "Content-Type": "application/json",
+        },
+        body: {
+          name: "   ",
+          starts_at: "2030-09-18T20:00:00.000Z",
+          ends_at: "2030-09-18T21:00:00.000Z",
+        },
+      }),
+      testEnv()
+    );
+    assert.strictEqual(blankCreate.status, 422);
+    const blankCreateProblem = await problemOf(blankCreate);
+    assert.strictEqual(blankCreateProblem.code, "VALIDATION");
+
+    const event = await createEventFor(adminAccess, programId, {
+      starts_at: "2030-09-19T20:00:00.000Z",
+      ends_at: "2030-09-19T21:00:00.000Z",
+      name: "編輯前具名",
+    });
+    const blankEdit = await worker.fetch(
+      programsRequest(
+        `/api/v1/programs/${programId}/events/${event.event_id}`,
+        {
+          method: "PATCH",
+          headers: {
+            Origin: HOST,
+            Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
+            "Content-Type": "application/json",
+          },
+          body: { name: "   " },
+        }
+      ),
+      testEnv()
+    );
+    assert.strictEqual(blankEdit.status, 422);
+    const blankEditProblem = await problemOf(blankEdit);
+    assert.strictEqual(blankEditProblem.code, "VALIDATION");
+    const retained = await testDb()
+      .prepare("SELECT name FROM events WHERE event_id = ?")
+      .bind(event.event_id)
+      .first<{ name: string }>();
+    assert.strictEqual(retained?.name, "編輯前具名");
+  });
+
   test("PATCH edits schedule and identity fields when attendance exists", async () => {
     const event = await createEventFor(adminAccess, programId, {
       starts_at: "2030-09-15T20:00:00.000Z",
@@ -5920,7 +6246,11 @@ describe("EVT-01: event operations (#251)", () => {
             Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
             "Content-Type": "application/json",
           },
-          body: { name: "改名但不改時間", location: "副堂" },
+          body: {
+            name: "改名但不改時間",
+            location: "副堂",
+            reason: "記錄出席後修正聚會識別資料",
+          },
         }
       ),
       testEnv()
@@ -7966,6 +8296,7 @@ describe("PRG-03: enrollments", () => {
           "Content-Type": "application/json",
         },
         body: {
+          name: "重複取消聚會",
           starts_at: "2026-12-01T10:00:00.000Z",
           ends_at: "2026-12-01T11:00:00.000Z",
         },
@@ -9194,6 +9525,7 @@ describe("PUI-03: participant Program detail", () => {
           "Content-Type": "application/json",
         },
         body: {
+          name: "Legacy title will be cleared",
           starts_at: "2099-05-06T11:30:00.000Z",
           ends_at: "2099-05-06T13:00:00.000Z",
         },
@@ -9201,6 +9533,13 @@ describe("PUI-03: participant Program detail", () => {
       testEnv()
     );
     assert.strictEqual(event.status, 201);
+    const eventBody = (await assertCorrelated(event)) as {
+      data: { event: { event_id: string } };
+    };
+    await testDb()
+      .prepare("UPDATE events SET name = NULL WHERE event_id = ?")
+      .bind(eventBody.data.event.event_id)
+      .run();
 
     const memberAccess = await accessCookieFor("bob", "bob-secret");
     const body = await detailOf(memberAccess, created.program_id);
@@ -9234,7 +9573,11 @@ describe("PUI-03: participant Program detail", () => {
             Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
             "Content-Type": "application/json",
           },
-          body: { starts_at, ends_at },
+          body: {
+            name: `OneOff participant event ${starts_at}`,
+            starts_at,
+            ends_at,
+          },
         }),
         testEnv()
       );

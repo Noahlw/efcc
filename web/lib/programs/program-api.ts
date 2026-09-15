@@ -1323,6 +1323,7 @@ export function updateEvent(
     location?: string | null;
     check_in_window_opens_at?: string | null;
     check_in_window_closes_at?: string | null;
+    reason?: string | null;
   }
 ): Promise<{ event: ProgramEvent }> {
   return programsFetch(

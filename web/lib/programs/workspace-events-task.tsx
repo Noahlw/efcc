@@ -76,6 +76,11 @@ import {
   ScreenStatus,
 } from "@/lib/screen-foundations";
 
+import {
+  clearEventCreateDraft,
+  readEventCreateDraft,
+  writeEventCreateDraft,
+} from "./event-create-draft";
 import { hkWallInputToIso, hkWallInputValue } from "./event-detail";
 import { ProgramDatePicker } from "./program-date-picker";
 import { buildProgramsHref } from "./programs-intent";
@@ -1042,10 +1047,12 @@ export const EventsTask = () => {
     onAttentionRefresh,
     onTaskChange,
     onOpenEvent,
+    onWorkspaceDirtyChange,
   } = useWorkspaceTaskContext();
   const programId = program.program_id;
   const canManage = program.capabilities.manage;
   const recurring = program.behavior_type === "Recurring";
+  const initialDraft = readEventCreateDraft(programId);
   const mounted = useRef(true);
   const previousEvents = useRef<ProgramEvent[] | null>(null);
   interface EventLoadOutcome {
@@ -1095,20 +1102,35 @@ export const EventsTask = () => {
     },
     [programId]
   );
-  const [createOpen, setCreateOpen] = useState(false);
+  const [createOpen, setCreateOpen] = useState(() => initialDraft !== null);
   const [createBusy, setCreateBusy] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
-  const [createDate, setCreateDate] = useState("");
-  const [createStartTime, setCreateStartTime] = useState("");
-  const [createEndTime, setCreateEndTime] = useState("");
-  const [createEndAuto, setCreateEndAuto] = useState(true);
-  const [createLocation, setCreateLocation] = useState("");
-  const [createEventType, setCreateEventType] = useState<EventType>(
-    COPY.programs.eventTypeOptions[0]
+  const [createDate, setCreateDate] = useState(initialDraft?.date ?? "");
+  const [createStartTime, setCreateStartTime] = useState(
+    initialDraft?.startTime ?? ""
   );
-  const [createWindowOverride, setCreateWindowOverride] = useState(false);
-  const [createWindowOpens, setCreateWindowOpens] = useState("");
-  const [createWindowCloses, setCreateWindowCloses] = useState("");
+  const [createEndTime, setCreateEndTime] = useState(
+    initialDraft?.endTime ?? ""
+  );
+  const [createEndAuto, setCreateEndAuto] = useState(
+    initialDraft?.endAuto ?? true
+  );
+  const [createName, setCreateName] = useState(initialDraft?.name ?? "");
+  const [createLocation, setCreateLocation] = useState(
+    initialDraft?.location ?? ""
+  );
+  const [createEventType, setCreateEventType] = useState<EventType>(
+    initialDraft?.eventType ?? COPY.programs.eventTypeOptions[0]
+  );
+  const [createWindowOverride, setCreateWindowOverride] = useState(
+    initialDraft?.windowOverride ?? false
+  );
+  const [createWindowOpens, setCreateWindowOpens] = useState(
+    initialDraft?.windowOpens ?? ""
+  );
+  const [createWindowCloses, setCreateWindowCloses] = useState(
+    initialDraft?.windowCloses ?? ""
+  );
   const [actionBusy, setActionBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -1134,6 +1156,47 @@ export const EventsTask = () => {
     }
   }, [confirmingEventId]);
 
+  useEffect(() => {
+    if (!createOpen) {
+      clearEventCreateDraft(programId);
+      onWorkspaceDirtyChange?.(false);
+      return;
+    }
+    writeEventCreateDraft(programId, {
+      version: 1,
+      date: createDate,
+      startTime: createStartTime,
+      endTime: createEndTime,
+      endAuto: createEndAuto,
+      name: createName,
+      location: createLocation,
+      eventType: createEventType,
+      windowOverride: createWindowOverride,
+      windowOpens: createWindowOpens,
+      windowCloses: createWindowCloses,
+    });
+    onWorkspaceDirtyChange?.(true);
+  }, [
+    createDate,
+    createEndAuto,
+    createEndTime,
+    createEventType,
+    createLocation,
+    createName,
+    createOpen,
+    createStartTime,
+    createWindowCloses,
+    createWindowOpens,
+    createWindowOverride,
+    onWorkspaceDirtyChange,
+    programId,
+  ]);
+
+  useEffect(
+    () => () => onWorkspaceDirtyChange?.(false),
+    [onWorkspaceDirtyChange]
+  );
+
   const eventAttention = attention?.programs.find(
     ({ program_id }) => program_id === programId
   );
@@ -1142,6 +1205,7 @@ export const EventsTask = () => {
     setCreateStartTime("");
     setCreateEndTime("");
     setCreateEndAuto(true);
+    setCreateName("");
     setCreateLocation("");
     setCreateEventType(COPY.programs.eventTypeOptions[0]);
     setCreateWindowOverride(false);
@@ -1150,11 +1214,24 @@ export const EventsTask = () => {
   };
   const toggleCreateForm = (open: boolean) => {
     if (open) {
-      resetCreateForm();
+      if (!readEventCreateDraft(programId)) {
+        resetCreateForm();
+      }
+    } else {
+      clearEventCreateDraft(programId);
     }
     setCreateOpen(open);
     setCreateError(null);
   };
+  useEffect(() => {
+    if (hash !== "#create-event" || !canManage || createOpen) {
+      return;
+    }
+    if (!readEventCreateDraft(programId)) {
+      resetCreateForm();
+    }
+    setCreateOpen(true);
+  }, [canManage, createOpen, hash, programId]);
   const changeCreateStartTime = (value: string) => {
     setCreateStartTime(value);
     if (!createEndAuto) {
@@ -1163,6 +1240,21 @@ export const EventsTask = () => {
     const startsAt = hkWallInputToIso(`${createDate}T${value}`);
     if (!startsAt) {
       setCreateEndTime("");
+      return;
+    }
+    setCreateEndTime(
+      hkWallTimeOf(
+        new Date(new Date(startsAt).getTime() + 60 * 60_000).toISOString()
+      )
+    );
+  };
+  const changeCreateDate = (value: string) => {
+    setCreateDate(value);
+    if (!createEndAuto || !createStartTime) {
+      return;
+    }
+    const startsAt = hkWallInputToIso(`${value}T${createStartTime}`);
+    if (!startsAt) {
       return;
     }
     setCreateEndTime(
@@ -1312,6 +1404,7 @@ export const EventsTask = () => {
         check_in_window_closes_at: overrideCloses,
       });
       announce(COPY.programs.eventCreatedNotice);
+      clearEventCreateDraft(programId);
       toggleCreateForm(false);
       if (!mounted.current) {
         return;
@@ -1420,7 +1513,7 @@ export const EventsTask = () => {
                 label={COPY.programs.eventDate}
                 placeholder={COPY.programs.eventDate}
                 value={createDate}
-                onChange={setCreateDate}
+                onChange={changeCreateDate}
                 disabled={createBusy}
               />
             </ScreenField>
@@ -1468,6 +1561,9 @@ export const EventsTask = () => {
                 name="name"
                 placeholder={COPY.programs.eventNamePlaceholder}
                 aria-required="true"
+                required
+                value={createName}
+                onChange={(event) => setCreateName(event.target.value)}
                 disabled={createBusy}
               />
             </ScreenField>
