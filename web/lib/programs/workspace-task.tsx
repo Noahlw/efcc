@@ -198,6 +198,17 @@ function availableEvent(event: ProgramEvent): boolean {
   return event.status === "Active" && event.availability !== "Inactive";
 }
 
+function openCheckInEvent(event: ProgramEvent, now = Date.now()): boolean {
+  const opensAt = Date.parse(event.check_in_window_opens_at ?? "");
+  const closesAt = Date.parse(event.check_in_window_closes_at ?? "");
+  return (
+    Number.isFinite(opensAt) &&
+    Number.isFinite(closesAt) &&
+    now >= opensAt &&
+    now <= closesAt
+  );
+}
+
 function summaryReadAsNumber<T>(
   read: WorkspaceSummaryRead<T>,
   project: (value: T) => number
@@ -217,6 +228,11 @@ function fallbackNextEvent(
   }
 
   const activeEvents = read.value.filter(availableEvent);
+  const openEvents = activeEvents
+    .filter((event) => openCheckInEvent(event))
+    .sort(
+      (left, right) => Date.parse(left.starts_at) - Date.parse(right.starts_at)
+    );
   const futureEvents = activeEvents
     .filter((event) => {
       const startsAt = Date.parse(event.starts_at);
@@ -225,7 +241,7 @@ function fallbackNextEvent(
     .sort(
       (left, right) => Date.parse(left.starts_at) - Date.parse(right.starts_at)
     );
-  const event = futureEvents[0] ?? activeEvents[0];
+  const event = openEvents[0] ?? futureEvents[0] ?? activeEvents[0];
   if (!event) {
     return { status: "ready", value: null };
   }
@@ -350,6 +366,10 @@ export const WorkspaceOverview = ({
 
   const nextEvent =
     nextEventRead.status === "ready" ? nextEventRead.value : null;
+  const openEventChoices =
+    cockpit?.program_id === program.program_id
+      ? (cockpit.open_events ?? [])
+      : [];
   const summaryNeedsRetry = [
     summary.activeParticipants,
     eventsCountRead,
@@ -391,7 +411,11 @@ export const WorkspaceOverview = ({
       {program.capabilities.manage &&
         (nextEventRead.status !== "ready" || nextEvent !== null) && (
           <ScreenSection
-            title={COPY.programs.cockpitNextMeeting}
+            title={
+              openEventChoices.length > 1
+                ? COPY.programs.cockpitOpenMeetings
+                : COPY.programs.cockpitNextMeeting
+            }
             action={
               nextEventRead.status === "ready" ? (
                 <ScreenStatus tone="info">
@@ -401,79 +425,138 @@ export const WorkspaceOverview = ({
             }
           >
             {nextEventRead.status === "ready" && nextEvent ? (
-              <ScreenCard tone="emphasis">
-                <div className="flex min-w-0 flex-wrap items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <h3 className="m-0 min-w-0 wrap-anywhere text-base font-bold leading-[22px]">
-                      {nextEvent.title || nextEvent.name || program.name}
-                    </h3>
-                    <p className="m-0 mt-0.5 min-w-0 wrap-anywhere text-[length:var(--screen-meta-size)] leading-[var(--screen-meta-leading)] text-[var(--screen-muted)]">
-                      {formatEventTime(nextEvent.starts_at)}
-                      {nextEvent.location ? ` · ${nextEvent.location}` : ""}
-                    </p>
-                    {(nextEvent.is_recurring ||
-                      nextEvent.source === "SCHEDULE") && (
-                      <ScreenStatus className="mt-1" tone="accent">
-                        {COPY.programs.cockpitAutoScheduled}
-                      </ScreenStatus>
+              openEventChoices.length > 1 ? (
+                <ScreenRowList>
+                  <p className="m-0 px-3 pb-2 text-sm text-[var(--screen-muted)]">
+                    {COPY.programs.cockpitChooseMeeting}
+                  </p>
+                  {openEventChoices.map((openEvent) => (
+                    <ScreenRow asChild key={openEvent.event_id}>
+                      <Link
+                        href={buildProgramsHref({
+                          mode: "management",
+                          programId: program.program_id,
+                          departmentId,
+                          task: "events",
+                          eventId: openEvent.event_id,
+                          hash,
+                        })}
+                        onClick={(event) => {
+                          if (onOpenAttendance) {
+                            if (
+                              event.defaultPrevented ||
+                              event.button !== 0 ||
+                              event.metaKey ||
+                              event.ctrlKey ||
+                              event.shiftKey ||
+                              event.altKey
+                            ) {
+                              return;
+                            }
+                            event.preventDefault();
+                            onOpenAttendance(openEvent.event_id);
+                            return;
+                          }
+                          taskLinkClick(
+                            onTaskChange,
+                            "events",
+                            openEvent.event_id
+                          )(event);
+                        }}
+                      >
+                        <ScreenRowMain>
+                          <ScreenRowTitle>
+                            {openEvent.title || openEvent.name || program.name}
+                          </ScreenRowTitle>
+                          <ScreenRowMeta>
+                            {formatEventTime(openEvent.starts_at)}
+                            {openEvent.location
+                              ? ` · ${openEvent.location}`
+                              : ""}
+                          </ScreenRowMeta>
+                        </ScreenRowMain>
+                        <ScreenRowTrailing>
+                          <Chevron />
+                        </ScreenRowTrailing>
+                      </Link>
+                    </ScreenRow>
+                  ))}
+                </ScreenRowList>
+              ) : (
+                <ScreenCard tone="emphasis">
+                  <div className="flex min-w-0 flex-wrap items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <h3 className="m-0 min-w-0 wrap-anywhere text-base font-bold leading-[22px]">
+                        {nextEvent.title || nextEvent.name || program.name}
+                      </h3>
+                      <p className="m-0 mt-0.5 min-w-0 wrap-anywhere text-[length:var(--screen-meta-size)] leading-[var(--screen-meta-leading)] text-[var(--screen-muted)]">
+                        {formatEventTime(nextEvent.starts_at)}
+                        {nextEvent.location ? ` · ${nextEvent.location}` : ""}
+                      </p>
+                      {(nextEvent.is_recurring ||
+                        nextEvent.source === "SCHEDULE") && (
+                        <ScreenStatus className="mt-1" tone="accent">
+                          {COPY.programs.cockpitAutoScheduled}
+                        </ScreenStatus>
+                      )}
+                    </div>
+                    {(nextEvent.checked_in_count > 0 ||
+                      nextEvent.roster_count > 0) && (
+                      <div className="shrink-0 text-right">
+                        <strong className="text-base font-bold">
+                          {nextEvent.checked_in_count}/{nextEvent.roster_count}
+                        </strong>
+                        <span className="block text-[length:var(--screen-meta-size)] leading-[var(--screen-meta-leading)] text-[var(--screen-muted)]">
+                          {COPY.programs.cockpitCheckedIn}
+                        </span>
+                      </div>
                     )}
                   </div>
-                  {(nextEvent.checked_in_count > 0 ||
-                    nextEvent.roster_count > 0) && (
-                    <div className="shrink-0 text-right">
-                      <strong className="text-base font-bold">
-                        {nextEvent.checked_in_count}/{nextEvent.roster_count}
-                      </strong>
-                      <span className="block text-[length:var(--screen-meta-size)] leading-[var(--screen-meta-leading)] text-[var(--screen-muted)]">
-                        {COPY.programs.cockpitCheckedIn}
-                      </span>
-                    </div>
-                  )}
-                </div>
-                <Button
-                  asChild
-                  className="min-h-[var(--screen-touch-target)] w-full rounded-[var(--screen-radius-control)] bg-[var(--screen-accent)] px-4 py-2 text-white hover:bg-[var(--screen-accent-deep)]"
-                >
-                  <Link
-                    href={
-                      onOpenAttendance
-                        ? `/events?eventId=${encodeURIComponent(nextEvent.event_id)}`
-                        : buildProgramsHref({
-                            mode: "management",
-                            programId: program.program_id,
-                            departmentId,
-                            task: "events",
-                            eventId: nextEvent.event_id,
-                            hash,
-                          })
-                    }
-                    onClick={(event) => {
-                      if (!onOpenAttendance) {
-                        taskLinkClick(
-                          onTaskChange,
-                          "events",
-                          nextEvent.event_id
-                        )(event);
-                        return;
-                      }
-                      if (
-                        event.defaultPrevented ||
-                        event.button !== 0 ||
-                        event.metaKey ||
-                        event.ctrlKey ||
-                        event.shiftKey ||
-                        event.altKey
-                      ) {
-                        return;
-                      }
-                      event.preventDefault();
-                      onOpenAttendance(nextEvent.event_id);
-                    }}
+                  <Button
+                    asChild
+                    className="min-h-[var(--screen-touch-target)] w-full rounded-[var(--screen-radius-control)] bg-[var(--screen-accent)] px-4 py-2 text-white hover:bg-[var(--screen-accent-deep)]"
                   >
-                    {COPY.programs.cockpitManageRoster}
-                  </Link>
-                </Button>
-              </ScreenCard>
+                    <Link
+                      href={
+                        onOpenAttendance
+                          ? `/events?eventId=${encodeURIComponent(nextEvent.event_id)}`
+                          : buildProgramsHref({
+                              mode: "management",
+                              programId: program.program_id,
+                              departmentId,
+                              task: "events",
+                              eventId: nextEvent.event_id,
+                              hash,
+                            })
+                      }
+                      onClick={(event) => {
+                        if (!onOpenAttendance) {
+                          taskLinkClick(
+                            onTaskChange,
+                            "events",
+                            nextEvent.event_id
+                          )(event);
+                          return;
+                        }
+                        if (
+                          event.defaultPrevented ||
+                          event.button !== 0 ||
+                          event.metaKey ||
+                          event.ctrlKey ||
+                          event.shiftKey ||
+                          event.altKey
+                        ) {
+                          return;
+                        }
+                        event.preventDefault();
+                        onOpenAttendance(nextEvent.event_id);
+                      }}
+                    >
+                      {COPY.programs.cockpitManageRoster}
+                    </Link>
+                  </Button>
+                </ScreenCard>
+              )
             ) : (
               <ScreenState
                 kind={nextEventRead.status === "loading" ? "loading" : "error"}
@@ -724,6 +807,7 @@ export const WorkspaceTask = ({
   hash,
   onAttentionRefresh,
   onWorkspaceRefresh,
+  workspaceFreshness,
   onTaskChange,
   onOpenEvent,
   onSettingsFocusChange,
@@ -741,6 +825,7 @@ export const WorkspaceTask = ({
     hash,
     onAttentionRefresh,
     onWorkspaceRefresh,
+    workspaceFreshness,
     onTaskChange,
     onOpenEvent,
     onWorkspaceDirtyChange,

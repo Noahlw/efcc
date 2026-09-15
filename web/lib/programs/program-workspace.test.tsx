@@ -57,6 +57,18 @@ const mocks = vi.hoisted(() => ({
   listScheduleRules: vi.fn(),
   previewEvents: vi.fn(),
   generateEvents: vi.fn(),
+  isUnknownMutationOutcome: vi.fn<(error: unknown) => boolean>((error) => {
+    const problem = (error as { problem?: { code?: string; status?: number } })
+      .problem;
+    return (
+      problem === undefined ||
+      problem.status === 0 ||
+      problem.code === "NETWORK_ERROR" ||
+      problem.code === "MALFORMED_RESPONSE" ||
+      problem.code === "MALFORMED_REQUEST" ||
+      problem.code === "UNAVAILABLE"
+    );
+  }),
 }));
 
 vi.mock(import("@/lib/programs/program-api"), () => ({
@@ -81,6 +93,7 @@ vi.mock(import("@/lib/programs/program-api"), () => ({
   listScheduleRules: mocks.listScheduleRules,
   previewEvents: mocks.previewEvents,
   generateEvents: mocks.generateEvents,
+  isUnknownMutationOutcome: mocks.isUnknownMutationOutcome,
 }));
 
 const program: Program = {
@@ -655,6 +668,51 @@ describe(ProgramWorkspace, () => {
     expect(
       screen.queryByText(COPY.programs.cockpitNextMeeting)
     ).not.toBeInTheDocument();
+  });
+
+  test("offers a truthful choice when more than one Event is open for check-in", async () => {
+    const openA = {
+      ...cockpitWithNext.next_event,
+      event_id: "event-open-a",
+      title: "開放聚會 A",
+      name: "開放聚會 A",
+    };
+    const openB = {
+      ...cockpitWithNext.next_event,
+      event_id: "event-open-b",
+      title: "開放聚會 B",
+      name: "開放聚會 B",
+    };
+    mocks.getManagementProgram.mockResolvedValue({
+      program,
+      department,
+      modules,
+      cockpit: {
+        ...cockpitWithNext,
+        next_event: openA,
+        open_events: [openA, openB],
+      },
+    });
+
+    render(
+      <ProgramWorkspace
+        programId="program-1"
+        onBack={vi.fn()}
+        onTaskChange={vi.fn()}
+      />
+    );
+
+    await screen.findByRole("heading", {
+      name: COPY.programs.cockpitOpenMeetings,
+    });
+    expect(screen.getByRole("link", { name: /開放聚會 A/u })).toHaveAttribute(
+      "href",
+      "/programs?mode=management&program=program-1&task=events&event=event-open-a"
+    );
+    expect(screen.getByRole("link", { name: /開放聚會 B/u })).toHaveAttribute(
+      "href",
+      "/programs?mode=management&program=program-1&task=events&event=event-open-b"
+    );
   });
 
   test("keeps Overview read-only and places course editing under Settings", async () => {
@@ -1719,7 +1777,7 @@ describe("ENR-01 participants workspace", () => {
       )
     );
     await expect(
-      screen.findByText(COPY.programs.enrollmentCancelledNotice)
+      screen.findByText(COPY.programs.workspaceReconciled)
     ).resolves.toBeInTheDocument();
     await waitFor(() =>
       expect(mocks.listEnrollmentSnapshot).toHaveBeenCalledTimes(2)
@@ -1789,7 +1847,7 @@ describe("ENR-01 participants workspace", () => {
     ).toBeInTheDocument();
   });
 
-  test("retries an ambiguous cancellation with the original idempotency key", async () => {
+  test("reconciles an ambiguous cancellation before any retry", async () => {
     mockWorkspace();
     const cancelledEnrollment: Enrollment = {
       ...enrollment,
@@ -1836,17 +1894,10 @@ describe("ENR-01 participants workspace", () => {
     await userEvent.click(
       within(dialog).getByRole("button", { name: "確認取消" })
     );
-    const error = await screen.findByRole("alert");
-    await userEvent.click(
-      within(error).getByRole("button", { name: COPY.error.retry })
-    );
     await expect(
       screen.findByText(COPY.programs.enrollmentCancelledNotice)
     ).resolves.toBeInTheDocument();
-    expect(mocks.cancelEnrollment).toHaveBeenCalledTimes(2);
-    expect(mocks.cancelEnrollment.mock.calls[1]?.[2]).toBe(
-      mocks.cancelEnrollment.mock.calls[0]?.[2]
-    );
+    expect(mocks.cancelEnrollment).toHaveBeenCalledTimes(1);
   });
 
   test("keeps cancellation disabled until a failed refresh is retried", async () => {

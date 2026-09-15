@@ -182,6 +182,9 @@ export const ProgramWorkspace = ({
   const [workspaceNotice, setWorkspaceNotice] = useState<string | null>(
     createdFlash ? COPY.programs.programCreatedNotice : null
   );
+  const [workspaceFreshness, setWorkspaceFreshness] = useState<
+    "fresh" | "refreshing" | "stale"
+  >("fresh");
   const mounted = useRef(true);
   const summaryRequestId = useRef(0);
   useEffect(() => {
@@ -265,6 +268,7 @@ export const ProgramWorkspace = ({
   const {
     state,
     run: loadWorkspace,
+    refresh: refreshWorkspaceResource,
     retry,
   } = useAsyncResource<
     {
@@ -333,6 +337,31 @@ export const ProgramWorkspace = ({
   useEffect(() => {
     void loadWorkspace();
   }, [loadWorkspace]);
+
+  const refreshAuthoritativeWorkspace = useCallback(async () => {
+    setWorkspaceFreshness("refreshing");
+    try {
+      const refreshed = await refreshWorkspaceResource();
+      if (mounted.current) {
+        setWorkspaceFreshness("fresh");
+      }
+      return refreshed?.program;
+    } catch (error) {
+      if (mounted.current) {
+        setWorkspaceFreshness("stale");
+      }
+      throw error;
+    }
+  }, [refreshWorkspaceResource]);
+
+  const retryWorkspaceRefresh = useCallback(async () => {
+    try {
+      await refreshAuthoritativeWorkspace();
+    } catch (error) {
+      // The refresh owner has already recorded the stale state and recovery copy.
+      void error;
+    }
+  }, [refreshAuthoritativeWorkspace]);
 
   const loadSummary = useCallback(
     async (modules: readonly DepartmentModule[]) => {
@@ -566,6 +595,30 @@ export const ProgramWorkspace = ({
           {workspaceNotice}
         </output>
       )}
+      {workspaceFreshness !== "fresh" && (
+        <output
+          className="flex min-w-0 flex-wrap items-center gap-3 rounded-[var(--screen-radius-control)] border border-[var(--screen-pending)] bg-[var(--screen-pending-surface)] p-3 text-sm text-[var(--screen-ink)] [overflow-wrap:anywhere]"
+          aria-live="polite"
+          aria-busy={workspaceFreshness === "refreshing"}
+          data-testid="program-workspace-freshness"
+        >
+          <span>
+            {workspaceFreshness === "refreshing"
+              ? COPY.programs.workspaceRefreshing
+              : COPY.programs.workspaceSavedStale}
+          </span>
+          {workspaceFreshness === "stale" && (
+            <Button
+              type="button"
+              variant="outline"
+              className="w-fit border-[var(--screen-line-strong)] bg-transparent text-[var(--screen-ink)] hover:bg-[var(--screen-surface-soft)]"
+              onClick={() => void retryWorkspaceRefresh()}
+            >
+              {COPY.programs.workspaceRetryRefresh}
+            </Button>
+          )}
+        </output>
+      )}
       {eventNavigationBlocked && eventDraftDirty && (
         <output
           className="block rounded-[var(--screen-radius-control)] border border-[var(--screen-pending)] bg-[var(--screen-pending-surface)] p-3 text-sm text-[var(--screen-ink)] [overflow-wrap:anywhere]"
@@ -606,6 +659,7 @@ export const ProgramWorkspace = ({
             hash,
           })}
           onAttentionRefresh={onAttentionRefresh}
+          onWorkspaceRefresh={refreshAuthoritativeWorkspace}
           onBack={(event) => {
             if (
               event.defaultPrevented ||
@@ -631,7 +685,8 @@ export const ProgramWorkspace = ({
           hash={hash}
           attention={attention}
           onAttentionRefresh={onAttentionRefresh}
-          onWorkspaceRefresh={retry}
+          onWorkspaceRefresh={refreshAuthoritativeWorkspace}
+          workspaceFreshness={workspaceFreshness}
           onTaskChange={handleWorkspaceTaskChange}
           onOpenEvent={onEventChange ? (id) => onEventChange(id) : undefined}
           onSettingsFocusChange={setSettingsEditorFocused}

@@ -75,7 +75,8 @@ const event: ProgramEvent = {
 function renderTask(
   onWorkspaceDirtyChange: (dirty: boolean) => void = vi.fn<
     (dirty: boolean) => void
-  >()
+  >(),
+  onOpenEvent: (() => void) | null = vi.fn<() => void>()
 ) {
   return render(
     <WorkspaceTaskProvider
@@ -87,7 +88,7 @@ function renderTask(
         hash: null,
         onAttentionRefresh: vi.fn<() => void>(),
         onTaskChange: vi.fn<() => void>(),
-        onOpenEvent: vi.fn<() => void>(),
+        onOpenEvent: onOpenEvent ?? undefined,
         onWorkspaceDirtyChange,
       }}
     >
@@ -251,6 +252,11 @@ describe("EventsTask operations-first composition", () => {
     ).toHaveValue("失敗後仍保留");
     expect(readEventCreateDraft(program.program_id)?.name).toBe("失敗後仍保留");
 
+    await user.click(
+      screen.getByRole("button", { name: COPY.programs.workspaceRetryRefresh })
+    );
+    await screen.findByText(COPY.programs.workspaceReconciled);
+
     mocks.createEvent.mockResolvedValueOnce({
       event: { ...event, event_id: "event-created" },
     });
@@ -264,6 +270,49 @@ describe("EventsTask operations-first composition", () => {
     await waitFor(() => {
       expect(readEventCreateDraft(program.program_id)).toBeNull();
       expect(onWorkspaceDirtyChange).toHaveBeenCalledWith(false);
+    });
+  });
+
+  test("keeps confirmed create success visible when Event readback fails", async () => {
+    const user = userEvent.setup();
+    writeEventCreateDraft(program.program_id, {
+      version: 1,
+      date: "2026-09-22",
+      startTime: "19:30",
+      endTime: "20:30",
+      endAuto: true,
+      name: "讀回失敗後仍已建立",
+      location: "副堂",
+      eventType: "小組",
+      windowOverride: false,
+      windowOpens: "",
+      windowCloses: "",
+    });
+    mocks.listEvents
+      .mockReset()
+      .mockResolvedValueOnce({ events: [event] })
+      .mockRejectedValueOnce(new Error("readback"));
+    mocks.createEvent.mockResolvedValueOnce({
+      event: { ...event, event_id: "event-created" },
+    });
+
+    renderTask(vi.fn<(dirty: boolean) => void>(), null);
+    await screen.findByRole("heading", { name: COPY.programs.createMeeting });
+    const submit = screen
+      .getAllByRole("button", { name: COPY.programs.createMeeting })
+      .at(-1);
+    if (!submit) {
+      throw new Error("create submit button was not rendered");
+    }
+    await user.click(submit);
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(COPY.programs.eventCreatedNotice)
+      ).toBeInTheDocument();
+      expect(
+        screen.getByText(COPY.programs.workspaceEventsSavedStale)
+      ).toBeInTheDocument();
     });
   });
 });

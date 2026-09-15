@@ -26,6 +26,7 @@ import {
   cancelEvent,
   getEvent,
   getOwnAttendance,
+  isUnknownMutationOutcome,
   setEventAvailability,
   updateEvent,
 } from "@/lib/programs/program-api";
@@ -33,6 +34,7 @@ import type {
   EventDetail as EventDetailData,
   EventType,
   AttendanceParticipantView,
+  Program,
   ProgramEvent,
   ProgramIdentityAssignment,
 } from "@/lib/programs/program-api";
@@ -59,6 +61,7 @@ import {
 import { EventCheckInSheet } from "./event-check-in-sheet";
 import { buildProgramsHref } from "./programs-intent";
 import type { ProgramsOrigin } from "./programs-intent";
+import { refreshWorkspaceAfterMutation } from "./workspace-context";
 
 export const EventFactIcon = ({
   name,
@@ -170,6 +173,7 @@ export const EventDetail = ({
   backReplace,
   onBack,
   onAttentionRefresh,
+  onWorkspaceRefresh,
   onAuthRequired,
 }: {
   programId: string;
@@ -183,6 +187,8 @@ export const EventDetail = ({
   onBack?: React.MouseEventHandler<HTMLAnchorElement>;
   /** NTF-01 (#256): keep shell attention counts fresh after a confirmed mutation. */
   onAttentionRefresh?: () => void;
+  /** Refresh the authoritative Program/cockpit resource after a write. */
+  onWorkspaceRefresh?: () => void | Promise<Program | void>;
   onAuthRequired?: () => void;
 }) => {
   const [detail, setDetail] = useState<EventDetailData | null>(null);
@@ -191,6 +197,7 @@ export const EventDetail = ({
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [mutationOutcomeUnknown, setMutationOutcomeUnknown] = useState(false);
   const [editing, setEditing] = useState(false);
   const [editingEventType, setEditingEventType] = useState<EventType>(
     COPY.programs.eventTypeOptions[0] as EventType
@@ -244,28 +251,31 @@ export const EventDetail = ({
     firstInput?.scrollIntoView({ block: "center", inline: "nearest" });
   }, [editing]);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (): Promise<boolean> => {
     setLoadError(null);
     try {
       const next = await getEvent(programId, eventId);
       if (!mounted.current) {
-        return;
+        return false;
       }
       setDetail(next);
+      return true;
     } catch (error) {
       if (!mounted.current) {
-        return;
+        return false;
       }
       if (error instanceof RpcError && error.problem.code === "AUTH_REQUIRED") {
         onAuthRequired?.();
-        return;
+        return false;
       }
       setLoadError(errorMessage(error));
-      setDetail(null);
+      // A failed post-write read must not erase the last confirmed Event.
+      return false;
     }
   }, [eventId, onAuthRequired, programId]);
 
   useEffect(() => {
+    setDetail(null);
     void load();
   }, [load]);
 
@@ -318,12 +328,32 @@ export const EventDetail = ({
     }
   }, [loadError, detail]);
 
+  const reconcileMutationOutcome = useCallback(async () => {
+    setBusy(true);
+    const refreshed = await load();
+    if (mounted.current) {
+      if (refreshed) {
+        setMutationOutcomeUnknown(false);
+        setActionError(COPY.programs.workspaceReconciled);
+        announce(COPY.programs.workspaceReconciled);
+      } else {
+        setMutationOutcomeUnknown(true);
+        setActionError(COPY.programs.programTransportAmbiguous);
+        announce(COPY.programs.programTransportAmbiguous);
+      }
+      setBusy(false);
+    }
+  }, [load]);
+
   const runAction = useCallback(
     async (
       fn: () => Promise<unknown>,
       successCopy: string | (() => string),
       onRefused?: (error: unknown) => boolean
     ) => {
+      if (mutationOutcomeUnknown) {
+        return;
+      }
       setBusy(true);
       setActionError(null);
       try {
@@ -332,9 +362,14 @@ export const EventDetail = ({
           return;
         }
         onAttentionRefresh?.();
-        await load();
+        setMutationOutcomeUnknown(false);
+        await refreshWorkspaceAfterMutation(onWorkspaceRefresh);
+        const refreshed = await load();
         if (!mounted.current) {
           return;
+        }
+        if (!refreshed) {
+          setActionError(COPY.programs.workspaceEventsSavedStale);
         }
         const message =
           typeof successCopy === "function" ? successCopy() : successCopy;
@@ -347,6 +382,12 @@ export const EventDetail = ({
         if (onRefused?.(error)) {
           return;
         }
+        if (isUnknownMutationOutcome(error)) {
+          setMutationOutcomeUnknown(true);
+          setActionError(COPY.programs.programTransportAmbiguous);
+          announce(COPY.programs.programTransportAmbiguous);
+          return;
+        }
         const message = errorMessage(error);
         setActionError(message);
         announce(message);
@@ -356,9 +397,10 @@ export const EventDetail = ({
         }
       }
     },
-    [load, onAttentionRefresh]
+    [load, mutationOutcomeUnknown, onAttentionRefresh, onWorkspaceRefresh]
   );
 
+  // oxlint-disable-next-line eslint/complexity -- edit validation and attendance-aware confirmation are one transition boundary
   const submitEdit = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
@@ -781,7 +823,20 @@ export const EventDetail = ({
         </Alert>
       )}
       {actionError !== null && (
-        <Alert variant="destructive">{actionError}</Alert>
+        <div className="flex min-w-0 flex-wrap items-center gap-[var(--screen-utility-gap)]">
+          <Alert variant="destructive">{actionError}</Alert>
+          {mutationOutcomeUnknown && (
+            <Button
+              type="button"
+              variant="outline"
+              className="w-fit border-[var(--screen-line-strong)] bg-transparent text-[var(--screen-ink)] hover:bg-[var(--screen-surface-soft)]"
+              onClick={() => void reconcileMutationOutcome()}
+              disabled={busy}
+            >
+              {COPY.programs.workspaceRetryRefresh}
+            </Button>
+          )}
+        </div>
       )}
 
       <div className="grid min-w-0 gap-[var(--screen-utility-gap)]">

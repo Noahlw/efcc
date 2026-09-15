@@ -46,6 +46,7 @@ import {
   createScheduleRule,
   deleteScheduleException,
   getProgramAttendanceArtifact,
+  isUnknownMutationOutcome,
   listScheduleExceptions,
   listScheduleRules,
   retireScheduleRule,
@@ -56,7 +57,6 @@ import {
 import type {
   Program,
   ProgramAttendanceArtifact,
-  ProgramPatch,
   ScheduleException,
   ScheduleRule,
   ScheduleRuleInput,
@@ -140,7 +140,7 @@ export interface ProgramSettingsProps {
   /** Show the existing editor actions when navigation is blocked by a draft. */
   navigationBlocked?: boolean;
   /** Explicitly reload the route-owned workspace after a 409 conflict. */
-  onReload?: () => void;
+  onReload?: () => void | Promise<Program | void>;
   /** Render one focused editor, or all legacy editor groups for direct callers. */
   section?: "all" | ProgramSettingsSection;
   /** Let a route-owned ScreenHeader provide the page title for a focused editor. */
@@ -175,16 +175,7 @@ function settingsErrorMessage(error: unknown): string {
 }
 
 function isRetryableSettingsMutation(error: unknown): boolean {
-  if (!(error instanceof RpcError)) {
-    return true;
-  }
-  return (
-    error.problem.status === 0 ||
-    error.problem.code === "NETWORK_ERROR" ||
-    error.problem.code === "MALFORMED_RESPONSE" ||
-    error.problem.code === "MALFORMED_REQUEST" ||
-    error.problem.code === "UNAVAILABLE"
-  );
+  return isUnknownMutationOutcome(error);
 }
 
 function basicsFrom(program: Program): BasicsValues {
@@ -1135,7 +1126,6 @@ export const ProgramSettings = ({
   const scheduleRuleCreateKey = useRef<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
-  const [retryPatch, setRetryPatch] = useState<ProgramPatch | null>(null);
   const [reloadRequired, setReloadRequired] = useState(false);
   const mounted = useRef(true);
   const canManage = currentProgram.capabilities.manage;
@@ -1302,6 +1292,38 @@ export const ProgramSettings = ({
     setAttendanceErrors({});
   }, []);
 
+  const reconcileWorkspace = useCallback(async () => {
+    if (!onReload) {
+      return;
+    }
+    setBusy(true);
+    setActionError(null);
+    setNotice(null);
+    try {
+      const refreshed = await onReload();
+      if (!mounted.current) {
+        return;
+      }
+      if (refreshed) {
+        applyProgram(refreshed);
+      }
+      setReloadRequired(false);
+      setNotice(COPY.programs.workspaceReconciled);
+      announce(COPY.programs.workspaceReconciled);
+    } catch {
+      if (!mounted.current) {
+        return;
+      }
+      setReloadRequired(true);
+      setActionError(COPY.programs.programTransportAmbiguous);
+      announce(COPY.programs.programTransportAmbiguous);
+    } finally {
+      if (mounted.current) {
+        setBusy(false);
+      }
+    }
+  }, [applyProgram, onReload]);
+
   const runProgramMutation = useCallback(
     async (patch: Parameters<typeof updateProgram>[1]) => {
       setBusy(true);
@@ -1314,9 +1336,20 @@ export const ProgramSettings = ({
           return;
         }
         applyProgram({ ...currentProgram, ...result.program });
-        setRetryPatch(null);
         setNotice(COPY.programs.settingsSaved);
         announce(COPY.programs.settingsSaved);
+        try {
+          const refreshed = await onReload?.();
+          if (refreshed) {
+            applyProgram(refreshed);
+          }
+        } catch {
+          // The PATCH is already authoritative. A failed follow-up GET must
+          // remain a refresh problem, never a false failed-save state.
+          setReloadRequired(onReload !== undefined);
+          setActionError(COPY.programs.workspaceSavedStale);
+          announce(COPY.programs.workspaceSavedStale);
+        }
       } catch (error) {
         if (!mounted.current) {
           return;
@@ -1325,8 +1358,7 @@ export const ProgramSettings = ({
         const retryable = isRetryableSettingsMutation(error);
         const conflict =
           error instanceof RpcError && error.problem.code === "CONFLICT";
-        setRetryPatch(retryable ? patch : null);
-        setReloadRequired(conflict && onReload !== undefined);
+        setReloadRequired((retryable || conflict) && onReload !== undefined);
         setActionError(
           retryable ? COPY.programs.programTransportAmbiguous : message
         );
@@ -1342,7 +1374,6 @@ export const ProgramSettings = ({
 
   const saveBasics = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    setRetryPatch(null);
     const displayOrder = Number(basics.displayOrder);
     if (
       !basics.name.trim() ||
@@ -1362,7 +1393,6 @@ export const ProgramSettings = ({
 
   const saveEnrollment = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    setRetryPatch(null);
     if (
       enrollment.discoverability === currentProgram.discoverability &&
       enrollment.enrollmentMode === currentProgram.enrollment_mode
@@ -1375,7 +1405,6 @@ export const ProgramSettings = ({
 
   const savePublishing = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    setRetryPatch(null);
     if (
       publishing.lifecycle === currentProgram.lifecycle &&
       publishing.discoverability === currentProgram.discoverability
@@ -1408,7 +1437,6 @@ export const ProgramSettings = ({
 
   const saveAttendance = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    setRetryPatch(null);
     setActionError(null);
     setNotice(null);
     setReloadRequired(false);
@@ -1473,14 +1501,30 @@ export const ProgramSettings = ({
       try {
         await operation();
         await loadRules();
+        let refreshFailed = false;
+        try {
+          await onReload?.();
+        } catch {
+          refreshFailed = true;
+        }
         if (!mounted.current) {
           return;
         }
         afterSuccess?.();
         setNotice(success);
+        if (refreshFailed) {
+          setReloadRequired(onReload !== undefined);
+          setActionError(COPY.programs.workspaceSavedStale);
+        }
         announce(success);
       } catch (error) {
         if (!mounted.current) {
+          return;
+        }
+        if (isUnknownMutationOutcome(error)) {
+          setReloadRequired(onReload !== undefined);
+          setActionError(COPY.programs.programTransportAmbiguous);
+          announce(COPY.programs.programTransportAmbiguous);
           return;
         }
         const message = settingsErrorMessage(error);
@@ -1492,7 +1536,7 @@ export const ProgramSettings = ({
         }
       }
     },
-    [loadRules]
+    [loadRules, onReload]
   );
 
   const submitNewRule = (event: FormEvent<HTMLFormElement>) => {
@@ -1675,7 +1719,6 @@ export const ProgramSettings = ({
       setAttendance(attendanceFrom(currentProgram));
       setAttendanceErrors({});
     }
-    setRetryPatch(null);
     setReloadRequired(false);
     setActionError(null);
     setNotice(null);
@@ -1745,28 +1788,15 @@ export const ProgramSettings = ({
           kind="error"
           title={actionError}
           action={
-            retryPatch !== null ? (
+            reloadRequired && onReload !== undefined ? (
               <Button
                 className="w-fit border-[var(--screen-line-strong)] bg-transparent text-[var(--screen-ink)] hover:bg-[var(--screen-surface-soft)]"
                 variant="outline"
                 type="button"
-                onClick={() => void runProgramMutation(retryPatch)}
+                onClick={() => void reconcileWorkspace()}
                 disabled={busy}
               >
-                {COPY.programs.settingsRetrySave}
-              </Button>
-            ) : reloadRequired && onReload !== undefined ? (
-              <Button
-                className="w-fit border-[var(--screen-line-strong)] bg-transparent text-[var(--screen-ink)] hover:bg-[var(--screen-surface-soft)]"
-                variant="outline"
-                type="button"
-                onClick={() => {
-                  setReloadRequired(false);
-                  onReload();
-                }}
-                disabled={busy}
-              >
-                {COPY.homeEditor.conflictReload}
+                {COPY.programs.workspaceRetryRefresh}
               </Button>
             ) : undefined
           }

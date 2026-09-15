@@ -3,7 +3,10 @@
 import type { ScheduleRule } from "./program-api";
 import { ProgramSettings } from "./program-settings";
 import { buildProgramsHref } from "./programs-intent";
-import { useWorkspaceTaskContext } from "./workspace-context";
+import {
+  refreshWorkspaceAfterMutation,
+  useWorkspaceTaskContext,
+} from "./workspace-context";
 import { RecurringSchedulePanel } from "./workspace-events-task";
 
 interface ScheduleAddonResource {
@@ -11,17 +14,15 @@ interface ScheduleAddonResource {
   rulesError: string | null;
 }
 
-const noop = (): void => {
-  // Focused Schedule has no event list to refresh after generation.
-};
-
 const ScheduleAddon = ({
   programId,
   rules,
+  onGenerated,
   onOpenEvent,
 }: {
   programId: string;
   rules: ScheduleRule[] | null;
+  onGenerated: () => void;
   onOpenEvent?: (eventId: string) => void;
 }) => (
   <RecurringSchedulePanel
@@ -31,7 +32,7 @@ const ScheduleAddon = ({
     // resource must not render a second identical alert beside the preview
     // controls.
     rulesError={null}
-    onGenerated={noop}
+    onGenerated={onGenerated}
     onOpenEvent={onOpenEvent}
   />
 );
@@ -39,6 +40,7 @@ ScheduleAddon.displayName = "ScheduleAddon";
 
 const makeScheduleAddon = (
   programId: string,
+  onGenerated: () => void,
   onOpenEvent?: (eventId: string) => void
 ) =>
   function renderScheduleAddon({ rules }: ScheduleAddonResource) {
@@ -46,6 +48,7 @@ const makeScheduleAddon = (
       <ScheduleAddon
         programId={programId}
         rules={rules}
+        onGenerated={onGenerated}
         onOpenEvent={onOpenEvent}
       />
     );
@@ -57,8 +60,14 @@ const makeScheduleAddon = (
  * and the Events/Settings entry points own navigation into it.
  */
 export const ScheduleTask = () => {
-  const { program, modules, onTaskChange, departmentId, hash } =
-    useWorkspaceTaskContext();
+  const {
+    program,
+    modules,
+    onTaskChange,
+    onWorkspaceRefresh,
+    departmentId,
+    hash,
+  } = useWorkspaceTaskContext();
   const eventsEnabled = modules.some(
     ({ module_key, enabled }) => module_key === "events" && enabled === 1
   );
@@ -71,8 +80,13 @@ export const ScheduleTask = () => {
         showHeading={false}
         eventsEnabled={eventsEnabled}
         onTaskChange={onTaskChange}
-        scheduleAddon={makeScheduleAddon(program.program_id, (eventId) =>
-          onTaskChange("events", eventId)
+        onReload={onWorkspaceRefresh}
+        scheduleAddon={makeScheduleAddon(
+          program.program_id,
+          () => {
+            void refreshWorkspaceAfterMutation(onWorkspaceRefresh);
+          },
+          (eventId) => onTaskChange("events", eventId)
         )}
         scheduleBackHref={buildProgramsHref({
           mode: "management",

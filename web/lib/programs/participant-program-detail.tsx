@@ -796,7 +796,9 @@ export const ParticipantProgramDetail = ({
         scheduleRules={scheduleRules}
         events={state.detail.events}
         showEventDetailAdvisory={showEventDetailAdvisory}
-        onRefresh={refreshDetail}
+        onRefresh={async () => {
+          await refreshDetail();
+        }}
       />
     </article>
   );

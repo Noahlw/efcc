@@ -17,6 +17,18 @@ const mocks = vi.hoisted(() => ({
   listScheduleExceptions: vi.fn(),
   createScheduleException: vi.fn(),
   deleteScheduleException: vi.fn(),
+  isUnknownMutationOutcome: vi.fn<(error: unknown) => boolean>((error) => {
+    const problem = (error as { problem?: { code?: string; status?: number } })
+      .problem;
+    return (
+      problem === undefined ||
+      problem.status === 0 ||
+      problem.code === "NETWORK_ERROR" ||
+      problem.code === "MALFORMED_RESPONSE" ||
+      problem.code === "MALFORMED_REQUEST" ||
+      problem.code === "UNAVAILABLE"
+    );
+  }),
 }));
 
 vi.mock(import("@/lib/programs/program-api"), () => ({
@@ -29,6 +41,7 @@ vi.mock(import("@/lib/programs/program-api"), () => ({
   listScheduleExceptions: mocks.listScheduleExceptions,
   createScheduleException: mocks.createScheduleException,
   deleteScheduleException: mocks.deleteScheduleException,
+  isUnknownMutationOutcome: mocks.isUnknownMutationOutcome,
 }));
 
 const recurringProgram: Program = {
@@ -208,18 +221,20 @@ describe(ProgramSettings, () => {
     expect(mocks.updateProgram).not.toHaveBeenCalled();
   });
 
-  test("retries an uncertain focused save with the same draft and keeps the editor usable", async () => {
+  test("reconciles an uncertain focused save before allowing further edits", async () => {
     const user = userEvent.setup();
-    mocks.updateProgram
-      .mockRejectedValueOnce(new RpcError({ code: "NETWORK_ERROR", status: 0 }))
-      .mockResolvedValueOnce({
-        program: updatedProgram({ name: "重試後名稱" }),
-      });
+    const onReload = vi
+      .fn()
+      .mockResolvedValue(updatedProgram({ name: "伺服器最新名稱" }));
+    mocks.updateProgram.mockRejectedValueOnce(
+      new RpcError({ code: "NETWORK_ERROR", status: 0 })
+    );
     render(
       <ProgramSettings
         program={recurringProgram}
         section="basics"
         onTaskChange={vi.fn()}
+        onReload={onReload}
       />
     );
 
@@ -235,21 +250,17 @@ describe(ProgramSettings, () => {
     await expect(
       screen.findByText(COPY.programs.programTransportAmbiguous)
     ).resolves.toBeInTheDocument();
-    const retry = screen.getByRole("button", {
-      name: COPY.programs.settingsRetrySave,
+    const reconcile = screen.getByRole("button", {
+      name: COPY.programs.workspaceRetryRefresh,
     });
     expect(name).toHaveValue("重試後名稱");
-    await user.click(retry);
+    await user.click(reconcile);
 
-    await waitFor(() => expect(mocks.updateProgram).toHaveBeenCalledTimes(2));
-    expect(mocks.updateProgram).toHaveBeenNthCalledWith(2, "program-1", {
-      name: "重試後名稱",
-      description: "週三晚上的門徒訓練查經。",
-      category: "門徒訓練",
-      display_order: 2,
-    });
+    await waitFor(() => expect(mocks.updateProgram).toHaveBeenCalledTimes(1));
+    expect(onReload).toHaveBeenCalledTimes(1);
+    expect(name).toHaveValue("伺服器最新名稱");
     await expect(
-      screen.findByText(COPY.programs.settingsSaved)
+      screen.findByText(COPY.programs.workspaceReconciled)
     ).resolves.toBeInTheDocument();
     await waitFor(() =>
       expect(
@@ -759,21 +770,23 @@ describe(ProgramSettings, () => {
     ).not.toBeInTheDocument();
   });
 
-  test("preserves and retries a focused Attendance draft after an uncertain save", async () => {
+  test("reconciles a focused Attendance draft after an uncertain save", async () => {
     const user = userEvent.setup();
-    mocks.updateProgram
-      .mockRejectedValueOnce(new RpcError({ code: "NETWORK_ERROR", status: 0 }))
-      .mockResolvedValueOnce({
-        program: updatedProgram({
-          check_in_opens_at_minutes_before_start: 45,
-          check_in_closes_at_minutes_after_end: 5,
-        }),
-      });
+    const onReload = vi.fn().mockResolvedValue(
+      updatedProgram({
+        check_in_opens_at_minutes_before_start: 20,
+        check_in_closes_at_minutes_after_end: 2,
+      })
+    );
+    mocks.updateProgram.mockRejectedValueOnce(
+      new RpcError({ code: "NETWORK_ERROR", status: 0 })
+    );
     render(
       <ProgramSettings
         program={recurringProgram}
         section="attendance"
         onTaskChange={vi.fn()}
+        onReload={onReload}
       />
     );
 
@@ -798,15 +811,14 @@ describe(ProgramSettings, () => {
     expect(closes).toHaveValue(5);
 
     await user.click(
-      screen.getByRole("button", { name: COPY.programs.settingsRetrySave })
+      screen.getByRole("button", { name: COPY.programs.workspaceRetryRefresh })
     );
-    await waitFor(() => expect(mocks.updateProgram).toHaveBeenCalledTimes(2));
-    expect(mocks.updateProgram).toHaveBeenNthCalledWith(2, "program-1", {
-      check_in_opens_at_minutes_before_start: 45,
-      check_in_closes_at_minutes_after_end: 5,
-    });
+    await waitFor(() => expect(mocks.updateProgram).toHaveBeenCalledTimes(1));
+    expect(onReload).toHaveBeenCalledTimes(1);
+    expect(opens).toHaveValue(20);
+    expect(closes).toHaveValue(2);
     await expect(
-      screen.findByText(COPY.programs.settingsSaved)
+      screen.findByText(COPY.programs.workspaceReconciled)
     ).resolves.toBeInTheDocument();
     expect(
       screen.queryByTestId("program-settings-dirty-actions")
@@ -815,7 +827,9 @@ describe(ProgramSettings, () => {
 
   test("preserves edited Basics input when the server rejects the mutation", async () => {
     const user = userEvent.setup();
-    const onReload = vi.fn();
+    const onReload = vi
+      .fn()
+      .mockResolvedValue(updatedProgram({ name: "伺服器最新名稱" }));
     mocks.updateProgram.mockRejectedValueOnce(
       new RpcError({ code: "CONFLICT", status: 409 })
     );
@@ -841,12 +855,12 @@ describe(ProgramSettings, () => {
     );
     expect(name).toHaveValue("尚未確認的名稱");
     const reload = screen.getByRole("button", {
-      name: COPY.homeEditor.conflictReload,
+      name: COPY.programs.workspaceRetryRefresh,
     });
     expect(reload).toBeInTheDocument();
     await user.click(reload);
     expect(onReload).toHaveBeenCalledTimes(1);
-    expect(name).toHaveValue("尚未確認的名稱");
+    expect(name).toHaveValue("伺服器最新名稱");
   });
 
   test("hides groups when the server grants no management capability", () => {

@@ -171,6 +171,8 @@ export const COPY = {
       "現時沒有網絡。你仍可查看最近一次資料；重新連線後才可作出記錄。",
     rosterStale: (lastUpdated: string) =>
       `未能更新，現正顯示 ${lastUpdated} 的最近資料。`,
+    rosterSavedStale:
+      "操作已完成，但出席名單暫時未能更新；為免誤導，請重試確認最新狀態。",
     rosterLastUpdated: (lastUpdated: string) => `最後更新：${lastUpdated}`,
     camera: "使用相機掃描 QR",
     cameraClose: "關閉相機",
@@ -738,6 +740,8 @@ export const COPY = {
     managementScopeDepartment: "部門範圍",
     managementScopeProgram: "指定課程",
     cockpitNextMeeting: "下一聚會",
+    cockpitOpenMeetings: "目前開放簽到的聚會",
+    cockpitChooseMeeting: "選擇要處理的聚會",
     cockpitUpcomingStatus: "即將開始",
     cockpitOperations: "營運",
     cockpitWeeklyWork: "每週工作",
@@ -787,6 +791,11 @@ export const COPY = {
     workspaceUnavailableHint:
       "這個課程目前不可用，或你的管理範圍已被撤回。請返回管理課程目錄。",
     workspaceRetry: "重試載入課程工作區",
+    workspaceRefreshing: "正在更新課程工作區…",
+    workspaceSavedStale:
+      "操作已完成，但最新課程資料暫時未能更新。請按「重試更新」確認目前狀態。",
+    workspaceRetryRefresh: "重試更新課程工作區",
+    workspaceReconciled: "已重新整理最新課程資料，請核對後再繼續。",
     workspaceSummaryLoading: "正在載入工作區摘要…",
     workspaceSummaryUnavailable: "摘要資料暫時不可用。",
     workspaceIdentity: "課程資料",
@@ -980,6 +989,8 @@ export const COPY = {
     workspaceTaskEventsLoading: "正在載入聚會…",
     workspaceTaskEventsError: "無法載入聚會",
     workspaceTaskEventsRetry: "重試載入聚會",
+    workspaceEventsSavedStale:
+      "操作已完成，但聚會清單暫時未能更新；目前仍顯示最近資料。請重試載入。",
     workspaceTaskEventsEmpty: "目前沒有聚會。",
     workspaceTaskParticipantsLoading: "正在載入參與者資料…",
     workspaceTaskParticipantsError: "無法載入參與者資料",
@@ -989,6 +1000,8 @@ export const COPY = {
     workspaceParticipantsRefreshSuccess: "參與者資料已更新。",
     workspaceParticipantsRefreshFailed:
       "更新參與者資料失敗，畫面顯示上次已知結果。",
+    workspaceParticipantsSavedStale:
+      "操作已完成，但參與者資料暫時未能更新；目前仍顯示最近資料。請重試載入。",
     workspaceParticipantsForbidden: "你目前無法操作這個課程的參與者資料。",
     workspaceParticipantsStale: "這項報名資料已過時，請重新整理後再試。",
     workspaceParticipantsConflict: "這項操作與另一項更新衝突，資料未有改變。",

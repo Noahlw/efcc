@@ -1020,9 +1020,12 @@ describe("MUI-01: capability-aware management reads", () => {
     assert.strictEqual(initialBody.data.cockpit.active_event_count, 0);
     assert.strictEqual(initialBody.data.cockpit.pending_enrollment_count, 0);
 
-    // 3. Create events: past, earlier future, later future, cancelled future
+    // 3. Create events: past, open check-in, earlier future, later future,
+    // cancelled future. The open Event must outrank future Events.
     const pastStarts = "2020-01-01T10:00:00.000Z";
     const pastEnds = "2020-01-01T11:00:00.000Z";
+    const openStarts = new Date(Date.now() - 30 * 60_000).toISOString();
+    const openEnds = new Date(Date.now() + 30 * 60_000).toISOString();
     const nextStarts = "2099-06-01T10:00:00.000Z";
     const nextEnds = "2099-06-01T11:00:00.000Z";
     const laterStarts = "2099-06-15T10:00:00.000Z";
@@ -1036,7 +1039,13 @@ describe("MUI-01: capability-aware management reads", () => {
       name: "Past Event",
       location: "Room A",
     });
-    const nextEventRow = await createEventFor(adminAccess, program.program_id, {
+    const openEventRow = await createEventFor(adminAccess, program.program_id, {
+      starts_at: openStarts,
+      ends_at: openEnds,
+      name: "Open Check-In Event",
+      location: "Room Open",
+    });
+    await createEventFor(adminAccess, program.program_id, {
       starts_at: nextStarts,
       ends_at: nextEnds,
       name: "Next Upcoming Event",
@@ -1085,13 +1094,13 @@ describe("MUI-01: capability-aware management reads", () => {
       .bind(program.program_id)
       .run();
 
-    // 1 active check-in for nextEvent
+    // 1 active check-in for the open Event
     await testDb()
       .prepare(
         `INSERT INTO attendances (attendance_id, event_id, member_user_id, method, status, checked_in_at)
          VALUES ('att-1', ?, 'U999', 'self_qr_scan', 'Active', datetime('now'))`
       )
-      .bind(nextEventRow.event_id)
+      .bind(openEventRow.event_id)
       .run();
 
     // 1 pending enrollment request
@@ -1131,6 +1140,7 @@ describe("MUI-01: capability-aware management reads", () => {
             checked_in_count: number;
             roster_count: number;
           } | null;
+          open_events: { event_id: string }[];
           active_event_count: number;
           pending_enrollment_count: number;
         };
@@ -1139,17 +1149,22 @@ describe("MUI-01: capability-aware management reads", () => {
 
     const { cockpit } = cockpitData.data;
     assert.strictEqual(cockpit.program_id, program.program_id);
-    assert.strictEqual(cockpit.active_event_count, 3); // 3 active events (past, next, later)
+    // past, open, next, later
+    assert.strictEqual(cockpit.active_event_count, 4);
     assert.strictEqual(cockpit.pending_enrollment_count, 1);
     assert.ok(cockpit.next_event);
-    assert.strictEqual(cockpit.next_event.event_id, nextEventRow.event_id);
-    assert.strictEqual(cockpit.next_event.title, "Next Upcoming Event");
-    assert.strictEqual(cockpit.next_event.name, "Next Upcoming Event");
-    assert.strictEqual(cockpit.next_event.starts_at, nextStarts);
-    assert.strictEqual(cockpit.next_event.location, "Room B");
+    assert.strictEqual(cockpit.next_event.event_id, openEventRow.event_id);
+    assert.strictEqual(cockpit.next_event.title, "Open Check-In Event");
+    assert.strictEqual(cockpit.next_event.name, "Open Check-In Event");
+    assert.strictEqual(cockpit.next_event.starts_at, openStarts);
+    assert.strictEqual(cockpit.next_event.location, "Room Open");
     assert.strictEqual(cockpit.next_event.is_recurring, true);
     assert.strictEqual(cockpit.next_event.checked_in_count, 1);
     assert.strictEqual(cockpit.next_event.roster_count, 1);
+    assert.deepStrictEqual(
+      cockpit.open_events.map(({ event_id }) => event_id),
+      [openEventRow.event_id]
+    );
     assert.ok(
       !(
         "manual_check_in_code" in
@@ -1181,7 +1196,7 @@ describe("MUI-01: capability-aware management reads", () => {
       .run();
     await testDb()
       .prepare("DELETE FROM attendances WHERE event_id = ?")
-      .bind(nextEventRow.event_id)
+      .bind(openEventRow.event_id)
       .run();
     await testDb()
       .prepare("DELETE FROM enrollments WHERE program_id = ?")

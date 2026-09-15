@@ -34,6 +34,7 @@ import { announce } from "@/lib/live-region";
 import {
   assistedCheckIn,
   correctGuestAttendance,
+  isUnknownMutationOutcome,
   listAttendanceRoster,
   listScannerEvents,
   materializeAttendanceSnapshot,
@@ -1316,6 +1317,7 @@ export const AttendanceOperatorPanel = ({
       typeof document === "undefined" || document.visibilityState === "visible"
   );
   const [stale, setStale] = useState(false);
+  const [mutationOutcomeUnknown, setMutationOutcomeUnknown] = useState(false);
   const [lastUpdatedAt, setLastUpdatedAt] = useState<number | null>(null);
   const [materializationRequired, setMaterializationRequired] = useState(false);
   const selectedEventIdRef = useRef<string | null>(null);
@@ -1400,6 +1402,7 @@ export const AttendanceOperatorPanel = ({
       Boolean(result.materialization_required && !result.snapshot)
     );
     setStale(false);
+    setMutationOutcomeUnknown(false);
     setLastUpdatedAt(Date.now());
     updateAttendanceEventUrl(id);
     return true;
@@ -1436,9 +1439,40 @@ export const AttendanceOperatorPanel = ({
     }
   }
 
+  async function refreshRosterAfterMutation(): Promise<boolean> {
+    const id = selectedEventIdRef.current;
+    if (!id) {
+      return true;
+    }
+    const refreshed = await loadRoster(id);
+    if (!refreshed) {
+      setStale(true);
+      showStatus(COPY.attendance.rosterSavedStale, "error");
+      announce(COPY.attendance.rosterSavedStale);
+    }
+    return refreshed;
+  }
+
+  async function reconcileUnknownAttendance(): Promise<void> {
+    const id = selectedEventIdRef.current;
+    if (!id) {
+      return;
+    }
+    const refreshed = await loadRoster(id);
+    if (refreshed) {
+      setMutationOutcomeUnknown(false);
+      showStatus(COPY.programs.workspaceReconciled, "info");
+      announce(COPY.programs.workspaceReconciled);
+    } else {
+      setMutationOutcomeUnknown(true);
+      showStatus(COPY.attendance.transportAmbiguous, "error");
+      announce(COPY.attendance.transportAmbiguous);
+    }
+  }
+
   async function materializeRoster() {
     const id = selectedEventIdRef.current;
-    if (!id || !online || rosterRequestRef.current) {
+    if (!id || !online || rosterRequestRef.current || mutationOutcomeUnknown) {
       return;
     }
     rosterRequestRef.current = true;
@@ -1450,7 +1484,14 @@ export const AttendanceOperatorPanel = ({
       showStatus(message, "success");
       announce(message);
     } catch (error) {
-      showError(error);
+      if (isUnknownMutationOutcome(error)) {
+        setMutationOutcomeUnknown(true);
+        showStatus(COPY.attendance.transportAmbiguous, "error");
+        announce(COPY.attendance.transportAmbiguous);
+        await reconcileUnknownAttendance();
+      } else {
+        showError(error);
+      }
     } finally {
       rosterRequestRef.current = false;
       setBusy(false);
@@ -1461,8 +1502,11 @@ export const AttendanceOperatorPanel = ({
     selectedEventIdRef.current = nextEventId;
     setEventId(nextEventId);
     setShowCheckInSheet(false);
-    await loadRoster(nextEventId);
-    setStatus("");
+    setMutationOutcomeUnknown(false);
+    const loaded = await loadRoster(nextEventId);
+    if (loaded) {
+      setStatus("");
+    }
   }
 
   function backToChooser() {
@@ -1475,6 +1519,7 @@ export const AttendanceOperatorPanel = ({
     setRosterCounts(null);
     setMaterializationRequired(false);
     setStale(false);
+    setMutationOutcomeUnknown(false);
     setLastUpdatedAt(null);
     setMembers([]);
     setQuery("");
@@ -1517,7 +1562,7 @@ export const AttendanceOperatorPanel = ({
     member: AttendanceMember,
     method: "leader_qr_scan" | "leader_manual_search" = "leader_manual_search"
   ) {
-    if (!online || !eventId) {
+    if (!online || !eventId || mutationOutcomeUnknown) {
       return;
     }
     setPendingCheckIn(null);
@@ -1537,11 +1582,21 @@ export const AttendanceOperatorPanel = ({
               member.name,
               currentEventTitle
             );
-      showStatus(successMessage, "success");
-      announce(successMessage);
-      await loadRoster(eventId);
+      const refreshed = await refreshRosterAfterMutation();
+      const message = refreshed
+        ? successMessage
+        : `${successMessage} ${COPY.attendance.rosterSavedStale}`;
+      showStatus(message, refreshed ? "success" : "error");
+      announce(message);
     } catch (error) {
-      showError(error);
+      if (isUnknownMutationOutcome(error)) {
+        setMutationOutcomeUnknown(true);
+        showStatus(COPY.attendance.transportAmbiguous, "error");
+        announce(COPY.attendance.transportAmbiguous);
+        await reconcileUnknownAttendance();
+      } else {
+        showError(error);
+      }
     } finally {
       setBusy(false);
     }
@@ -1551,21 +1606,28 @@ export const AttendanceOperatorPanel = ({
     row: AttendanceRow,
     reason: string
   ): Promise<boolean> {
-    if (!online) {
+    if (!online || mutationOutcomeUnknown) {
       showStatus(COPY.attendance.rosterOffline, "error");
       return false;
     }
     setBusy(true);
     try {
       await voidAttendance(row.attendance_id, reason);
+      if (!(await refreshRosterAfterMutation())) {
+        return false;
+      }
       showStatus(COPY.attendance.voidSuccess, "success");
       announce(COPY.attendance.voidSuccess);
-      if (eventId) {
-        await loadRoster(eventId);
-      }
       return true;
     } catch (error) {
-      showError(error);
+      if (isUnknownMutationOutcome(error)) {
+        setMutationOutcomeUnknown(true);
+        showStatus(COPY.attendance.transportAmbiguous, "error");
+        announce(COPY.attendance.transportAmbiguous);
+        await reconcileUnknownAttendance();
+      } else {
+        showError(error);
+      }
       return false;
     } finally {
       setBusy(false);
@@ -1576,21 +1638,28 @@ export const AttendanceOperatorPanel = ({
     row: AttendanceRow,
     input: { name: string; phone: string; reason: string }
   ): Promise<boolean> {
-    if (!online) {
+    if (!online || mutationOutcomeUnknown) {
       showStatus(COPY.attendance.rosterOffline, "error");
       return false;
     }
     setBusy(true);
     try {
       await correctGuestAttendance(row.attendance_id, input);
+      if (!(await refreshRosterAfterMutation())) {
+        return false;
+      }
       showStatus(COPY.attendance.correctionSaved, "success");
       announce(COPY.attendance.correctionSaved);
-      if (eventId) {
-        await loadRoster(eventId);
-      }
       return true;
     } catch (error) {
-      showError(error);
+      if (isUnknownMutationOutcome(error)) {
+        setMutationOutcomeUnknown(true);
+        showStatus(COPY.attendance.transportAmbiguous, "error");
+        announce(COPY.attendance.transportAmbiguous);
+        await reconcileUnknownAttendance();
+      } else {
+        showError(error);
+      }
       return false;
     } finally {
       setBusy(false);
@@ -1601,21 +1670,28 @@ export const AttendanceOperatorPanel = ({
     row: AttendanceExpectedRow,
     reason: string
   ): Promise<boolean> {
-    if (!online) {
+    if (!online || mutationOutcomeUnknown) {
       showStatus(COPY.attendance.rosterOffline, "error");
       return false;
     }
     setBusy(true);
     try {
       await recordExcusedAttendance(row.event_id, row.enrollment_id, reason);
+      if (!(await refreshRosterAfterMutation())) {
+        return false;
+      }
       showStatus(EXCUSE_COPY.saved, "success");
       announce(EXCUSE_COPY.saved);
-      if (eventId) {
-        await loadRoster(eventId);
-      }
       return true;
     } catch (error) {
-      showError(error);
+      if (isUnknownMutationOutcome(error)) {
+        setMutationOutcomeUnknown(true);
+        showStatus(COPY.attendance.transportAmbiguous, "error");
+        announce(COPY.attendance.transportAmbiguous);
+        await reconcileUnknownAttendance();
+      } else {
+        showError(error);
+      }
       return false;
     } finally {
       setBusy(false);
@@ -1817,7 +1893,7 @@ export const AttendanceOperatorPanel = ({
                   counts={rosterCounts ?? undefined}
                   memberDirectory={memberDirectory}
                   busy={busy}
-                  readOnly={!online}
+                  readOnly={!online || mutationOutcomeUnknown}
                   offline={!online}
                   stale={stale}
                   lastUpdatedAt={lastUpdatedAt}

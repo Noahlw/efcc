@@ -297,6 +297,8 @@ export interface ManagementCockpitNextEvent {
 export interface ManagementCockpitView {
   program_id: string;
   next_event: ManagementCockpitNextEvent | null;
+  /** Every currently open check-in Event, ordered for operator choice. */
+  open_events: ManagementCockpitNextEvent[];
   active_event_count: number;
   pending_enrollment_count: number;
 }
@@ -1402,6 +1404,7 @@ export class DepartmentWorkspace {
     );
 
     let next_event: ManagementCockpitNextEvent | null = null;
+    let open_events: ManagementCockpitNextEvent[] = [];
     let active_event_count = 0;
 
     if (isEventsEnabled) {
@@ -1411,6 +1414,22 @@ export class DepartmentWorkspace {
       );
       active_event_count = activeEvents.length;
       const now = Date.now();
+      const openEvents = activeEvents
+        .filter((event) => {
+          const opensAt = parseIsoInstant(event.check_in_window_opens_at);
+          const closesAt = parseIsoInstant(event.check_in_window_closes_at);
+          return (
+            opensAt !== null &&
+            closesAt !== null &&
+            now >= opensAt &&
+            now <= closesAt
+          );
+        })
+        .sort(
+          (left, right) =>
+            Date.parse(left.starts_at) - Date.parse(right.starts_at) ||
+            left.event_id.localeCompare(right.event_id)
+        );
       const futureEvents = activeEvents
         .filter(
           (e) =>
@@ -1419,28 +1438,37 @@ export class DepartmentWorkspace {
         )
         .sort((a, b) => a.starts_at.localeCompare(b.starts_at));
 
-      const firstFuture = futureEvents[0] ?? null;
-      if (firstFuture) {
-        const isRecurring =
-          row.behavior_type === "Recurring" ||
-          firstFuture.source === "SCHEDULE";
+      const projectEvent = async (
+        event: EventRow
+      ): Promise<ManagementCockpitNextEvent> => {
         const summary = await this.store.getEventParticipantSummary(
-          firstFuture.event_id,
+          event.event_id,
           row.program_id
         );
-        next_event = {
-          event_id: firstFuture.event_id,
-          program_id: firstFuture.program_id,
-          title: firstFuture.name ?? null,
-          name: firstFuture.name ?? null,
-          starts_at: firstFuture.starts_at,
-          ends_at: firstFuture.ends_at,
-          location: firstFuture.location ?? null,
-          source: firstFuture.source,
-          is_recurring: isRecurring,
+        return {
+          event_id: event.event_id,
+          program_id: event.program_id,
+          title: event.name ?? null,
+          name: event.name ?? null,
+          starts_at: event.starts_at,
+          ends_at: event.ends_at,
+          location: event.location ?? null,
+          source: event.source,
+          is_recurring:
+            row.behavior_type === "Recurring" || event.source === "SCHEDULE",
           checked_in_count: summary.checked_in,
           roster_count: summary.active_enrollments,
         };
+      };
+      const projectedOpenEvents = await Promise.all(
+        openEvents.map((event) => projectEvent(event))
+      );
+      open_events = projectedOpenEvents;
+      const [firstProjectedOpenEvent] = projectedOpenEvents;
+      if (firstProjectedOpenEvent) {
+        next_event = firstProjectedOpenEvent;
+      } else if (futureEvents[0]) {
+        next_event = await projectEvent(futureEvents[0]);
       }
     }
 
@@ -1455,6 +1483,7 @@ export class DepartmentWorkspace {
     return {
       program_id: row.program_id,
       next_event,
+      open_events,
       active_event_count,
       pending_enrollment_count,
     };

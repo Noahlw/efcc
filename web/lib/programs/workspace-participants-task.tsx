@@ -35,6 +35,7 @@ import {
   assistedEnroll,
   cancelEnrollment,
   decideEnrollmentRequest,
+  isUnknownMutationOutcome,
   listEnrollmentSnapshot,
 } from "@/lib/programs/program-api";
 import type { Enrollment, EnrollmentRequest } from "@/lib/programs/program-api";
@@ -59,6 +60,7 @@ import { useAsyncResource } from "./use-async-resource";
 import {
   formatEventTime,
   redirectToLoginIfRequired,
+  refreshWorkspaceAfterMutation,
   useWorkspaceTaskContext,
 } from "./workspace-context";
 
@@ -273,7 +275,8 @@ function requestStatusLabel(status: EnrollmentRequest["status"]): string {
 
 // oxlint-disable-next-line eslint/complexity -- this task owns selection, per-item approval, cancellation, and recovery states.
 export const ParticipantsTask = () => {
-  const { program, onAttentionRefresh } = useWorkspaceTaskContext();
+  const { program, onAttentionRefresh, onWorkspaceRefresh } =
+    useWorkspaceTaskContext();
   const programId = program.program_id;
   const canManage = program.capabilities.manage;
   const { state, run, refresh, retry } = useAsyncResource<
@@ -322,6 +325,9 @@ export const ParticipantsTask = () => {
   const [approvalRefreshError, setApprovalRefreshError] = useState<
     string | null
   >(null);
+  const [unknownMutationIds, setUnknownMutationIds] = useState<
+    Record<string, boolean>
+  >({});
   const [assistedBusy, setAssistedBusy] = useState(false);
   const [assistedError, setAssistedError] = useState<string | null>(null);
   const [addParticipantOpen, setAddParticipantOpen] = useState(false);
@@ -341,6 +347,7 @@ export const ParticipantsTask = () => {
   useEffect(() => {
     if (state.kind === "ready") {
       lastReadyRef.current = state;
+      setUnknownMutationIds({});
     }
   }, [state]);
   useEffect(() => {
@@ -367,8 +374,11 @@ export const ParticipantsTask = () => {
       setNotice(refreshSuccess);
       announce(refreshSuccess);
       setRefreshingAction(null);
-    } else {
-      setNotice(null);
+    } else if (lastReadyRef.current !== null) {
+      const staleMessage = `${refreshSuccess} ${COPY.programs.workspaceParticipantsSavedStale}`;
+      setNotice(staleMessage);
+      announce(staleMessage);
+      setRefreshingAction(null);
     }
   }, [refreshSuccess, refreshingAction, state]);
 
@@ -573,6 +583,7 @@ export const ParticipantsTask = () => {
         setNotice(message);
         announce(message);
       }
+      await refreshWorkspaceAfterMutation(onWorkspaceRefresh);
       try {
         await refresh();
       } catch (error) {
@@ -591,6 +602,9 @@ export const ParticipantsTask = () => {
     request: EnrollmentRequest,
     action: "Approved" | "Rejected"
   ) => {
+    if (unknownMutationIds[request.request_id]) {
+      return;
+    }
     setBusyRequestId(request.request_id);
     setNotice(null);
     setActionErrors((current) => {
@@ -609,11 +623,27 @@ export const ParticipantsTask = () => {
         current.filter((id) => id !== request.request_id)
       );
       onAttentionRefresh();
+      await refreshWorkspaceAfterMutation(onWorkspaceRefresh);
       setRefreshSuccess(COPY.programs.decisionMade);
       setRefreshingAction(request.request_id);
       void run();
     } catch (error) {
       if (redirectToLoginIfRequired(error)) {
+        return;
+      }
+      if (isUnknownMutationOutcome(error)) {
+        setUnknownMutationIds((current) => ({
+          ...current,
+          [request.request_id]: true,
+        }));
+        setActionErrors((current) => ({
+          ...current,
+          [request.request_id]: COPY.programs.programTransportAmbiguous,
+        }));
+        setRefreshSuccess(COPY.programs.workspaceReconciled);
+        setRefreshingAction(request.request_id);
+        announce(COPY.programs.programTransportAmbiguous);
+        void run();
         return;
       }
       const issue = participantIssue(error);
@@ -631,6 +661,9 @@ export const ParticipantsTask = () => {
     reason: string,
     retryKey?: string
   ) => {
+    if (unknownMutationIds[enrollment.enrollment_id]) {
+      return;
+    }
     const idempotencyKey =
       retryKey ??
       (cancelRetry?.enrollmentId === enrollment.enrollment_id
@@ -655,12 +688,29 @@ export const ParticipantsTask = () => {
         reason
       );
       onAttentionRefresh();
+      await refreshWorkspaceAfterMutation(onWorkspaceRefresh);
       setRefreshSuccess(COPY.programs.enrollmentCancelledNotice);
       setRefreshingAction(enrollment.enrollment_id);
       void run();
     } catch (error) {
       if (redirectToLoginIfRequired(error)) {
         setCancelRetry(null);
+        return;
+      }
+      if (isUnknownMutationOutcome(error)) {
+        setCancelRetry(null);
+        setUnknownMutationIds((current) => ({
+          ...current,
+          [enrollment.enrollment_id]: true,
+        }));
+        setActionErrors((current) => ({
+          ...current,
+          [enrollment.enrollment_id]: COPY.programs.programTransportAmbiguous,
+        }));
+        setRefreshSuccess(COPY.programs.workspaceReconciled);
+        setRefreshingAction(enrollment.enrollment_id);
+        announce(COPY.programs.programTransportAmbiguous);
+        void run();
         return;
       }
       if (!isAmbiguousCancelError(error)) {
@@ -705,6 +755,9 @@ export const ParticipantsTask = () => {
 
   const handleAssisted = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    if (unknownMutationIds.assisted) {
+      return;
+    }
     const memberUserId = String(
       new FormData(event.currentTarget).get("member_user_id") ?? ""
     ).trim();
@@ -718,12 +771,22 @@ export const ParticipantsTask = () => {
     try {
       await assistedEnroll(programId, memberUserId);
       onAttentionRefresh();
+      await refreshWorkspaceAfterMutation(onWorkspaceRefresh);
       setAddParticipantOpen(false);
       setRefreshSuccess(COPY.programs.assistedSubmitted);
       setRefreshingAction("assisted");
       void run();
     } catch (error) {
       if (redirectToLoginIfRequired(error)) {
+        return;
+      }
+      if (isUnknownMutationOutcome(error)) {
+        setUnknownMutationIds((current) => ({ ...current, assisted: true }));
+        setAssistedError(COPY.programs.programTransportAmbiguous);
+        setRefreshSuccess(COPY.programs.workspaceReconciled);
+        setRefreshingAction("assisted");
+        announce(COPY.programs.programTransportAmbiguous);
+        void run();
         return;
       }
       const issue = participantIssue(error);
@@ -892,7 +955,10 @@ export const ParticipantsTask = () => {
                             onClick={() =>
                               void handleDecision(request, "Approved")
                             }
-                            disabled={mutationBusy}
+                            disabled={
+                              mutationBusy ||
+                              unknownMutationIds[request.request_id] === true
+                            }
                           >
                             {COPY.programs.approve}
                           </Button>
@@ -903,7 +969,10 @@ export const ParticipantsTask = () => {
                             onClick={() =>
                               void handleDecision(request, "Rejected")
                             }
-                            disabled={mutationBusy}
+                            disabled={
+                              mutationBusy ||
+                              unknownMutationIds[request.request_id] === true
+                            }
                           >
                             {COPY.programs.reject}
                           </Button>
@@ -999,7 +1068,9 @@ export const ParticipantsTask = () => {
                         onClick={() => openCancelDialog(enrollment)}
                         disabled={
                           mutationBusy ||
-                          cancelRetry?.enrollmentId === enrollment.enrollment_id
+                          cancelRetry?.enrollmentId ===
+                            enrollment.enrollment_id ||
+                          unknownMutationIds[enrollment.enrollment_id] === true
                         }
                       >
                         {COPY.programs.cancelEnrollment}
@@ -1348,7 +1419,7 @@ export const ParticipantsTask = () => {
               <Button
                 type="submit"
                 className="bg-[var(--screen-accent)] text-white hover:bg-[var(--screen-accent-deep)]"
-                disabled={mutationBusy}
+                disabled={mutationBusy || unknownMutationIds.assisted === true}
               >
                 {assistedBusy
                   ? COPY.programs.submitting

@@ -49,7 +49,9 @@ export interface WorkspaceTaskContextValue {
   hash?: string | null;
   onAttentionRefresh: () => void;
   /** Reload the route-owned workspace after an explicit Settings conflict action. */
-  onWorkspaceRefresh?: () => void;
+  onWorkspaceRefresh?: () => void | Promise<Program | void>;
+  /** Freshness of the single route-owned Program/cockpit resource. */
+  workspaceFreshness?: "fresh" | "refreshing" | "stale";
   onTaskChange: (task: ProgramsTask | null, eventId?: string | null) => void;
   onOpenEvent?: (eventId: string) => void;
   /** The active task has an unsaved local draft that the shell must protect. */
@@ -78,6 +80,22 @@ export function useWorkspaceTaskContext(): WorkspaceTaskContextValue {
     throw new Error("Workspace task must render inside WorkspaceTaskProvider");
   }
   return value;
+}
+
+/**
+ * A confirmed mutation must not become a false failure when its follow-up
+ * workspace read is unavailable. ProgramWorkspace owns the stale indicator;
+ * task-level callers only need a safe, non-rejecting invalidation boundary.
+ */
+export async function refreshWorkspaceAfterMutation(
+  refresh?: () => void | Promise<Program | void>
+): Promise<Program | void> {
+  try {
+    return await refresh?.();
+  } catch (error) {
+    void error;
+    return undefined;
+  }
 }
 
 export function hasModule(

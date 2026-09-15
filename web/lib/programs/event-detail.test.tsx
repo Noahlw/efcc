@@ -16,6 +16,7 @@ const mocks = vi.hoisted(() => ({
   cancelEvent: vi.fn(),
   getProgramAttendanceArtifact: vi.fn(),
   getOwnAttendance: vi.fn(),
+  isUnknownMutationOutcome: vi.fn(() => false),
 }));
 
 vi.mock(import("@/lib/programs/program-api"), () => ({
@@ -25,6 +26,7 @@ vi.mock(import("@/lib/programs/program-api"), () => ({
   cancelEvent: mocks.cancelEvent,
   getProgramAttendanceArtifact: mocks.getProgramAttendanceArtifact,
   getOwnAttendance: mocks.getOwnAttendance,
+  isUnknownMutationOutcome: mocks.isUnknownMutationOutcome,
 }));
 
 const detailFixture = (

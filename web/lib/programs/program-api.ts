@@ -153,6 +153,8 @@ export interface ManagementCockpitNextEvent {
 export interface ManagementCockpitView {
   program_id: string;
   next_event: ManagementCockpitNextEvent | null;
+  /** Every currently open check-in Event, ordered for operator choice. */
+  open_events?: ManagementCockpitNextEvent[];
   active_event_count: number;
   pending_enrollment_count: number;
 }
@@ -622,6 +624,20 @@ function idempotencyHeaders(
     return {};
   }
   return { "Idempotency-Key": key ?? crypto.randomUUID() };
+}
+
+/** A transport failure cannot prove whether a non-GET mutation committed. */
+export function isUnknownMutationOutcome(error: unknown): boolean {
+  if (!(error instanceof RpcError)) {
+    return true;
+  }
+  return (
+    error.problem.status === 0 ||
+    error.problem.code === "NETWORK_ERROR" ||
+    error.problem.code === "MALFORMED_RESPONSE" ||
+    error.problem.code === "MALFORMED_REQUEST" ||
+    error.problem.code === "UNAVAILABLE"
+  );
 }
 
 /** One fetch to the cookie-only programs surface. Never builds auth headers. */

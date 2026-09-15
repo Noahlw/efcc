@@ -41,6 +41,7 @@ import {
   createScheduleException,
   deleteScheduleException,
   generateEvents,
+  isUnknownMutationOutcome,
   listEvents,
   previewEvents,
 } from "@/lib/programs/program-api";
@@ -88,6 +89,7 @@ import { useAsyncResource } from "./use-async-resource";
 import {
   eventWallParts,
   redirectToLoginIfRequired,
+  refreshWorkspaceAfterMutation,
   useWorkspaceTaskContext,
 } from "./workspace-context";
 
@@ -1038,6 +1040,7 @@ export const RecurringSchedulePanel = ({
   );
 };
 
+// oxlint-disable-next-line eslint/complexity -- this task keeps create, list, action, stale, and recovery states together
 export const EventsTask = () => {
   const {
     program,
@@ -1045,6 +1048,7 @@ export const EventsTask = () => {
     departmentId,
     hash,
     onAttentionRefresh,
+    onWorkspaceRefresh,
     onTaskChange,
     onOpenEvent,
     onWorkspaceDirtyChange,
@@ -1134,6 +1138,8 @@ export const EventsTask = () => {
   const [actionBusy, setActionBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [eventsStale, setEventsStale] = useState(false);
+  const [eventsOutcomeUnknown, setEventsOutcomeUnknown] = useState(false);
   const [confirmingEventId, setConfirmingEventId] = useState<string | null>(
     null
   );
@@ -1149,6 +1155,33 @@ export const EventsTask = () => {
   useEffect(() => {
     void run();
   }, [run]);
+
+  useEffect(() => {
+    if (state.kind === "ready") {
+      setEventsStale(false);
+    } else if (state.kind === "error" && previousEvents.current !== null) {
+      setEventsStale(true);
+    }
+  }, [state.kind]);
+
+  const reconcileEvents = async () => {
+    const request = { cancelled: false };
+    await run(request);
+    const outcome = eventLoadOutcomes.current.get(request);
+    if (!mounted.current) {
+      return;
+    }
+    if (outcome?.status === "success") {
+      setEventsOutcomeUnknown(false);
+      setEventsStale(false);
+      setActionError(COPY.programs.workspaceReconciled);
+      announce(COPY.programs.workspaceReconciled);
+    } else {
+      setEventsStale(true);
+      setActionError(COPY.programs.programTransportAmbiguous);
+      announce(COPY.programs.programTransportAmbiguous);
+    }
+  };
 
   useEffect(() => {
     if (confirmingEventId !== null) {
@@ -1289,6 +1322,9 @@ export const EventsTask = () => {
     action: () => Promise<unknown>,
     successMessage: string
   ): Promise<boolean> => {
+    if (eventsOutcomeUnknown) {
+      return false;
+    }
     setActionBusy(true);
     setActionError(null);
     setNotice(null);
@@ -1299,11 +1335,16 @@ export const EventsTask = () => {
         return false;
       }
       onAttentionRefresh();
+      await refreshWorkspaceAfterMutation(onWorkspaceRefresh);
       await run(request);
       const outcome = eventLoadOutcomes.current.get(request);
-      if (!mounted.current || outcome?.status !== "success") {
+      if (!mounted.current) {
         return false;
       }
+      if (outcome?.status !== "success") {
+        setEventsStale(true);
+      }
+      setEventsOutcomeUnknown(false);
       setNotice(successMessage);
       announce(successMessage);
       return true;
@@ -1312,6 +1353,13 @@ export const EventsTask = () => {
         return false;
       }
       if (redirectToLoginIfRequired(error)) {
+        return false;
+      }
+      if (isUnknownMutationOutcome(error)) {
+        setEventsOutcomeUnknown(true);
+        setEventsStale(true);
+        setActionError(COPY.programs.programTransportAmbiguous);
+        announce(COPY.programs.programTransportAmbiguous);
         return false;
       }
       const message =
@@ -1358,7 +1406,11 @@ export const EventsTask = () => {
       })();
     };
 
+  // oxlint-disable-next-line eslint/complexity -- create validation and optional check-in-window overrides are one form boundary
   const submitCreate = async (formEvent: FormEvent<HTMLFormElement>) => {
+    if (eventsOutcomeUnknown) {
+      return;
+    }
     formEvent.preventDefault();
     const form = new FormData(formEvent.currentTarget);
     const name = String(form.get("name") ?? "").trim();
@@ -1409,6 +1461,9 @@ export const EventsTask = () => {
       if (!mounted.current) {
         return;
       }
+      onAttentionRefresh();
+      await refreshWorkspaceAfterMutation(onWorkspaceRefresh);
+      setNotice(COPY.programs.eventCreatedNotice);
       if (onOpenEvent) {
         onOpenEvent(event.event_id);
       } else {
@@ -1416,6 +1471,13 @@ export const EventsTask = () => {
       }
     } catch (error: unknown) {
       if (redirectToLoginIfRequired(error)) {
+        return;
+      }
+      if (isUnknownMutationOutcome(error)) {
+        setEventsOutcomeUnknown(true);
+        setEventsStale(true);
+        setActionError(COPY.programs.programTransportAmbiguous);
+        announce(COPY.programs.programTransportAmbiguous);
         return;
       }
       const message =
@@ -1442,6 +1504,7 @@ export const EventsTask = () => {
             type="button"
             className="w-fit bg-[var(--screen-accent)] text-white hover:bg-[var(--screen-accent-deep)]"
             onClick={() => toggleCreateForm(!createOpen)}
+            disabled={eventsOutcomeUnknown}
           >
             {COPY.programs.createMeeting}
           </Button>
@@ -1457,7 +1520,20 @@ export const EventsTask = () => {
         </Alert>
       )}
       {actionError !== null && (
-        <Alert variant="destructive">{actionError}</Alert>
+        <div className="flex min-w-0 flex-wrap items-center gap-[var(--screen-utility-gap)]">
+          <Alert variant="destructive">{actionError}</Alert>
+          {eventsOutcomeUnknown && (
+            <Button
+              type="button"
+              variant="outline"
+              className="w-fit border-[var(--screen-line-strong)] bg-transparent text-[var(--screen-ink)] hover:bg-[var(--screen-surface-soft)]"
+              onClick={() => void reconcileEvents()}
+              disabled={actionBusy}
+            >
+              {COPY.programs.workspaceRetryRefresh}
+            </Button>
+          )}
+        </div>
       )}
       {(eventAttention?.inactive_event_count ?? 0) > 0 ||
       (eventAttention?.cancelled_event_count ?? 0) > 0 ? (
@@ -1681,7 +1757,7 @@ export const EventsTask = () => {
               <Button
                 type="submit"
                 className="w-fit bg-[var(--screen-accent)] text-white hover:bg-[var(--screen-accent-deep)]"
-                disabled={createBusy}
+                disabled={createBusy || eventsOutcomeUnknown}
               >
                 {createBusy
                   ? COPY.programs.submitting
@@ -1723,6 +1799,24 @@ export const EventsTask = () => {
             </Button>
           }
         />
+      )}
+      {eventsStale && (
+        <div className="flex min-w-0 flex-wrap items-center gap-[var(--screen-utility-gap)]">
+          <Alert tone="warning" announcement="polite">
+            {COPY.programs.workspaceEventsSavedStale}
+          </Alert>
+          {!eventsOutcomeUnknown && (
+            <Button
+              type="button"
+              variant="outline"
+              className="w-fit border-[var(--screen-line-strong)] bg-transparent text-[var(--screen-ink)] hover:bg-[var(--screen-surface-soft)]"
+              onClick={() => void reconcileEvents()}
+              disabled={actionBusy}
+            >
+              {COPY.programs.workspaceRetryRefresh}
+            </Button>
+          )}
+        </div>
       )}
       {state.kind === "ready" && state.events.length === 0 && (
         <ScreenState

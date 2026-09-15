@@ -38,15 +38,15 @@ export interface AsyncResourceOptions<T, S extends { kind: string }> {
   focusTarget?: string;
 }
 
-export interface AsyncResource<_T, S extends { kind: string }> {
+export interface AsyncResource<T, S extends { kind: string }> {
   state: S;
   /** Run a load; pass a `{ cancelled }` token to drop the run when it flips. */
-  run: (request?: { cancelled: boolean }) => Promise<void>;
+  run: (request?: { cancelled: boolean }) => Promise<T | undefined>;
   /**
    * Refresh without replacing the current state with loading; rejects the
    * request error so the caller can keep its local action feedback mounted.
    */
-  refresh: (request?: { cancelled: boolean }) => Promise<void>;
+  refresh: (request?: { cancelled: boolean }) => Promise<T | undefined>;
   /** Re-run the load (and focus `focusTarget` when it fails again). */
   retry: () => void;
 }
@@ -88,10 +88,11 @@ export function useAsyncResource<T, S extends { kind: string }>(
   }, []);
 
   const execute = useCallback(
+    // oxlint-disable-next-line eslint/complexity -- one shared state machine owns settled load, refresh, auth, and stale-request outcomes
     async (
       request: { cancelled: boolean } | undefined,
       mode: "load" | "refresh"
-    ) => {
+    ): Promise<T | undefined> => {
       requestId.current += 1;
       const currentRequest = requestId.current;
       const { current } = optionsRef;
@@ -108,7 +109,7 @@ export function useAsyncResource<T, S extends { kind: string }>(
           request?.cancelled ||
           requestId.current !== currentRequest
         ) {
-          return;
+          return undefined;
         }
         setState(current.toReady(data));
         if (mode === "load") {
@@ -117,37 +118,40 @@ export function useAsyncResource<T, S extends { kind: string }>(
             announce(readyMessage);
           }
         }
+        return data;
       } catch (error) {
         if (
           !mounted.current ||
           request?.cancelled ||
           requestId.current !== currentRequest
         ) {
-          return;
+          return undefined;
         }
         if (current.onAuthRequired && current.isAuthRequired?.(error)) {
           current.onAuthRequired(error);
           if (mode === "refresh") {
             throw error;
           }
-          return;
+          return undefined;
         }
         if (mode === "refresh") {
           throw error;
         }
         const outcome = current.onError(error);
         if (outcome === null) {
-          return;
+          return undefined;
         }
         setState(outcome);
         const errorMessage = current.announceError?.(error);
         if (errorMessage) {
           announce(errorMessage);
         }
+        return undefined;
       }
     },
     // `deps` intentionally drives resource identity; load/options are read
     // through refs so each caller controls its own request lifecycle.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- callers provide the resource identity tuple intentionally
     deps
   );
 
