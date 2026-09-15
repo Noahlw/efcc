@@ -309,7 +309,7 @@ describe("Programs management boundary", () => {
     ).not.toBeInTheDocument();
   });
 
-  test("carries the next meeting event into the Event detail task", async () => {
+  test("opens the next meeting in the shared attendance roster", async () => {
     window.history.replaceState(
       {},
       "",
@@ -327,8 +327,8 @@ describe("Programs management boundary", () => {
       })
     );
 
-    expect(window.location.search).toBe(
-      "?mode=management&program=program-1&task=events&event=event-1"
+    expect(mocks.router.push).toHaveBeenCalledExactlyOnceWith(
+      "/events?eventId=event-1"
     );
   });
 
