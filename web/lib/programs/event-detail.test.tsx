@@ -135,7 +135,7 @@ describe("EVT-01 event detail", () => {
     expect(mocks.getEvent).toHaveBeenCalledWith("program-1", "event-1");
   });
 
-  test("opens a current Event Check-In Sheet with Program QR and manual code", async () => {
+  test("opens the current Event QR code with Program QR and manual code", async () => {
     mocks.getEvent.mockResolvedValue(detailFixture());
     mocks.getProgramAttendanceArtifact.mockResolvedValue({
       artifact: {
@@ -171,6 +171,91 @@ describe("EVT-01 event detail", () => {
     expect(mocks.getProgramAttendanceArtifact).toHaveBeenCalledWith(
       "program-1"
     );
+  });
+
+  test("keeps current Event facts in downloaded and printed QR artifacts", async () => {
+    mocks.getEvent.mockResolvedValue(detailFixture());
+    mocks.getProgramAttendanceArtifact.mockResolvedValue({
+      artifact: {
+        program_id: "program-1",
+        program_name: "顯恩堂主日學",
+        check_in_token: "program-token-1",
+        can_rotate: false,
+      },
+    });
+    const user = userEvent.setup();
+    const downloaded: Blob[] = [];
+    const originalCreateObjectUrl = URL.createObjectURL;
+    const originalRevokeObjectUrl = URL.revokeObjectURL;
+    Object.defineProperty(URL, "createObjectURL", {
+      configurable: true,
+      value: vi.fn((value: Blob) => {
+        downloaded.push(value);
+        return "blob:event-qr";
+      }),
+    });
+    Object.defineProperty(URL, "revokeObjectURL", {
+      configurable: true,
+      value: vi.fn(),
+    });
+    vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
+    const printDocument = document.implementation.createHTMLDocument();
+    const print = vi.fn();
+    vi.spyOn(window, "open").mockReturnValue({
+      document: printDocument,
+      focus: vi.fn(),
+      print,
+    } as unknown as Window);
+
+    try {
+      render(
+        <EventDetail
+          programId="program-1"
+          eventId="event-1"
+          canManage
+          onBack={() => {}}
+          backHref="/programs"
+        />
+      );
+
+      await user.click(
+        await screen.findByRole("button", {
+          name: COPY.attendance.eventCheckInSheetOpen,
+        })
+      );
+      await screen.findByAltText(COPY.attendance.eventCheckInSheetQrLabel);
+      await user.click(
+        screen.getByRole("button", {
+          name: COPY.attendance.eventCheckInSheetDownload,
+        })
+      );
+      expect(downloaded).toHaveLength(1);
+      const downloadedSvg = await downloaded[0]?.text();
+      expect(downloadedSvg).toContain("迎新聚會");
+      expect(downloadedSvg).toContain("顯恩堂主日學");
+      expect(downloadedSvg).toContain("教會禮堂");
+      expect(downloadedSvg).toContain("ABCD1234");
+
+      await user.click(
+        screen.getByRole("button", {
+          name: COPY.attendance.eventCheckInSheetPrint,
+        })
+      );
+      expect(printDocument.body.textContent).toContain("迎新聚會");
+      expect(printDocument.body.textContent).toContain("顯恩堂主日學");
+      expect(printDocument.body.textContent).toContain("教會禮堂");
+      expect(printDocument.body.textContent).toContain("ABCD1234");
+      expect(print).toHaveBeenCalledOnce();
+    } finally {
+      Object.defineProperty(URL, "createObjectURL", {
+        configurable: true,
+        value: originalCreateObjectUrl,
+      });
+      Object.defineProperty(URL, "revokeObjectURL", {
+        configurable: true,
+        value: originalRevokeObjectUrl,
+      });
+    }
   });
 
   test("renders the server-projected schedule exception", async () => {
