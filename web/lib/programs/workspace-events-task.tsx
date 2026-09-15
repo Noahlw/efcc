@@ -89,7 +89,6 @@ import { useAsyncResource } from "./use-async-resource";
 import {
   eventWallParts,
   redirectToLoginIfRequired,
-  refreshWorkspaceAfterMutation,
   useWorkspaceTaskContext,
 } from "./workspace-context";
 
@@ -463,9 +462,22 @@ export const RecurringSchedulePanel = ({
       }
     }
     try {
+      if (!workspaceReconciled) {
+        setGenerationNeedsReconciliation(true);
+        setGenerateError(COPY.programs.programTransportAmbiguous);
+        onMutationBlockChange?.(true);
+        return;
+      }
       const { generated } = await generateEvents(programId, planId);
       if (!mounted.current) {
         return;
+      }
+      if (onWorkspaceRefresh) {
+        try {
+          workspaceReconciled = (await onWorkspaceRefresh()) !== undefined;
+        } catch {
+          workspaceReconciled = false;
+        }
       }
       if (!workspaceReconciled) {
         setGenerationNeedsReconciliation(true);
@@ -1378,13 +1390,20 @@ export const EventsTask = () => {
         return false;
       }
       onAttentionRefresh();
-      await refreshWorkspaceAfterMutation(onWorkspaceRefresh);
+      let workspaceReconciled = true;
+      if (onWorkspaceRefresh) {
+        try {
+          workspaceReconciled = (await onWorkspaceRefresh()) !== undefined;
+        } catch {
+          workspaceReconciled = false;
+        }
+      }
       await run(request);
       const outcome = eventLoadOutcomes.current.get(request);
       if (!mounted.current) {
         return false;
       }
-      if (outcome?.status !== "success") {
+      if (!workspaceReconciled || outcome?.status !== "success") {
         setEventsStale(true);
         setActionError(COPY.programs.workspaceEventsSavedStale);
       }
@@ -1507,7 +1526,20 @@ export const EventsTask = () => {
         return;
       }
       onAttentionRefresh();
-      await refreshWorkspaceAfterMutation(onWorkspaceRefresh);
+      let workspaceReconciled = true;
+      if (onWorkspaceRefresh) {
+        try {
+          workspaceReconciled = (await onWorkspaceRefresh()) !== undefined;
+        } catch {
+          workspaceReconciled = false;
+        }
+      }
+      if (!workspaceReconciled) {
+        setEventsStale(true);
+        setActionError(COPY.programs.workspaceEventsSavedStale);
+        setNotice(COPY.programs.eventCreatedNotice);
+        return;
+      }
       setNotice(COPY.programs.eventCreatedNotice);
       if (onOpenEvent) {
         onOpenEvent(event.event_id);

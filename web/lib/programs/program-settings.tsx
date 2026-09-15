@@ -1194,13 +1194,13 @@ export const ProgramSettings = ({
     []
   );
 
-  const loadRules = useCallback(async () => {
+  const loadRules = useCallback(async (): Promise<boolean> => {
     if (
       currentProgram.behavior_type !== "Recurring" ||
       !canManage ||
       !eventsEnabled
     ) {
-      return;
+      return true;
     }
     setRules(null);
     setRuleError(null);
@@ -1209,7 +1209,7 @@ export const ProgramSettings = ({
     try {
       const result = await listScheduleRules(currentProgram.program_id);
       if (!mounted.current) {
-        return;
+        return false;
       }
       setRules(result.rules);
       try {
@@ -1223,24 +1223,28 @@ export const ProgramSettings = ({
           })
         );
         if (!mounted.current) {
-          return;
+          return false;
         }
         setExceptions(Object.fromEntries(exceptionEntries));
+        return true;
       } catch (error) {
         if (!mounted.current) {
-          return;
+          return false;
         }
         setExceptionError(settingsErrorMessage(error));
+        setRules(null);
+        return false;
       }
     } catch (error) {
       if (!mounted.current) {
-        return;
+        return false;
       }
       setRuleError(settingsErrorMessage(error));
       // Keep the editor in an unresolved state after a failed read. An empty
       // list is reserved for an authoritative successful response with no
       // configured rules, so recovery never lies with a "no rules" state.
       setRules(null);
+      return false;
     }
   }, [
     canManage,
@@ -1301,44 +1305,65 @@ export const ProgramSettings = ({
     setAttendanceErrors({});
   }, []);
 
-  const reconcileWorkspace = useCallback(async () => {
-    if (!onReload) {
-      return;
-    }
-    setBusy(true);
-    setActionError(null);
-    setNotice(null);
-    try {
-      const refreshed = await onReload();
-      if (!mounted.current) {
-        return;
-      }
-      if (!refreshed) {
+  const reconcileWorkspace = useCallback(
+    async (forceScheduleRead = false) => {
+      setBusy(true);
+      setActionError(null);
+      setNotice(null);
+      try {
+        const rulesReady =
+          forceScheduleRead || scheduleMutationBlocked
+            ? await loadRules()
+            : true;
+        let workspaceRead = onReload === undefined && scheduleMutationBlocked;
+        let refreshed: Program | void = undefined;
+        if (onReload) {
+          try {
+            refreshed = await onReload();
+            workspaceRead = refreshed !== undefined;
+          } catch {
+            workspaceRead = false;
+          }
+        }
+        if (!mounted.current) {
+          return;
+        }
+        if (!rulesReady || !workspaceRead) {
+          setReloadRequired(true);
+          onMutationBlockChange?.(true);
+          setActionError(COPY.programs.programTransportAmbiguous);
+          announce(COPY.programs.programTransportAmbiguous);
+          return;
+        }
+        if (refreshed) {
+          applyProgram(refreshed);
+        }
+        setReloadRequired(false);
+        onMutationBlockChange?.(false);
+        setNotice(COPY.programs.workspaceReconciled);
+        announce(COPY.programs.workspaceReconciled);
+      } catch {
+        if (!mounted.current) {
+          return;
+        }
         setReloadRequired(true);
         onMutationBlockChange?.(true);
         setActionError(COPY.programs.programTransportAmbiguous);
         announce(COPY.programs.programTransportAmbiguous);
-        return;
+      } finally {
+        if (mounted.current) {
+          setBusy(false);
+        }
       }
-      applyProgram(refreshed);
-      setReloadRequired(false);
-      onMutationBlockChange?.(false);
-      setNotice(COPY.programs.workspaceReconciled);
-      announce(COPY.programs.workspaceReconciled);
-    } catch {
-      if (!mounted.current) {
-        return;
-      }
-      setReloadRequired(true);
-      onMutationBlockChange?.(true);
-      setActionError(COPY.programs.programTransportAmbiguous);
-      announce(COPY.programs.programTransportAmbiguous);
-    } finally {
-      if (mounted.current) {
-        setBusy(false);
-      }
-    }
-  }, [applyProgram, onMutationBlockChange, onReload]);
+    },
+    [
+      applyProgram,
+      loadRules,
+      onMutationBlockChange,
+      onReload,
+      scheduleMutationBlocked,
+    ]
+  );
 
   const runProgramMutation = useCallback(
     async (patch: Parameters<typeof updateProgram>[1]) => {
@@ -1555,6 +1580,7 @@ export const ProgramSettings = ({
           setReloadRequired(onReload !== undefined);
           setActionError(COPY.programs.programTransportAmbiguous);
           announce(COPY.programs.programTransportAmbiguous);
+          await reconcileWorkspace(true);
           return;
         }
         const message = settingsErrorMessage(error);
@@ -1570,6 +1596,7 @@ export const ProgramSettings = ({
       loadRules,
       onMutationBlockChange,
       onReload,
+      reconcileWorkspace,
       reloadRequired,
       scheduleMutationBlocked,
     ]
@@ -1828,7 +1855,7 @@ export const ProgramSettings = ({
                 className="w-fit border-[var(--screen-line-strong)] bg-transparent text-[var(--screen-ink)] hover:bg-[var(--screen-surface-soft)]"
                 variant="outline"
                 type="button"
-                onClick={() => void reconcileWorkspace()}
+                onClick={() => void reconcileWorkspace(focusedSchedule)}
                 disabled={busy}
               >
                 {COPY.programs.workspaceRetryRefresh}

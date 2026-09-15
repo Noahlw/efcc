@@ -559,7 +559,7 @@ export const AttendanceRoster = ({
                 variant="outline"
                 type="button"
                 onClick={onOpenCheckInSheet}
-                disabled={busy}
+                disabled={busy || readOnly}
               >
                 {COPY.attendance.eventCheckInSheetOpen}
               </Button>
@@ -1472,7 +1472,13 @@ export const AttendanceOperatorPanel = ({
 
   async function materializeRoster() {
     const id = selectedEventIdRef.current;
-    if (!id || !online || rosterRequestRef.current || mutationOutcomeUnknown) {
+    if (
+      !id ||
+      !online ||
+      rosterRequestRef.current ||
+      mutationOutcomeUnknown ||
+      stale
+    ) {
       return;
     }
     rosterRequestRef.current = true;
@@ -1572,7 +1578,7 @@ export const AttendanceOperatorPanel = ({
     member: AttendanceMember,
     method: "leader_qr_scan" | "leader_manual_search" = "leader_manual_search"
   ) {
-    if (!online || !eventId || mutationOutcomeUnknown) {
+    if (!online || !eventId || mutationOutcomeUnknown || stale) {
       return;
     }
     setPendingCheckIn(null);
@@ -1616,7 +1622,7 @@ export const AttendanceOperatorPanel = ({
     row: AttendanceRow,
     reason: string
   ): Promise<boolean> {
-    if (!online || mutationOutcomeUnknown) {
+    if (!online || mutationOutcomeUnknown || stale) {
       showStatus(COPY.attendance.rosterOffline, "error");
       return false;
     }
@@ -1648,7 +1654,7 @@ export const AttendanceOperatorPanel = ({
     row: AttendanceRow,
     input: { name: string; phone: string; reason: string }
   ): Promise<boolean> {
-    if (!online || mutationOutcomeUnknown) {
+    if (!online || mutationOutcomeUnknown || stale) {
       showStatus(COPY.attendance.rosterOffline, "error");
       return false;
     }
@@ -1680,7 +1686,7 @@ export const AttendanceOperatorPanel = ({
     row: AttendanceExpectedRow,
     reason: string
   ): Promise<boolean> {
-    if (!online || mutationOutcomeUnknown) {
+    if (!online || mutationOutcomeUnknown || stale) {
       showStatus(COPY.attendance.rosterOffline, "error");
       return false;
     }
@@ -1903,7 +1909,7 @@ export const AttendanceOperatorPanel = ({
                   counts={rosterCounts ?? undefined}
                   memberDirectory={memberDirectory}
                   busy={busy}
-                  readOnly={!online || mutationOutcomeUnknown}
+                  readOnly={!online || mutationOutcomeUnknown || stale}
                   offline={!online}
                   stale={stale}
                   lastUpdatedAt={lastUpdatedAt}
@@ -1946,7 +1952,7 @@ export const AttendanceOperatorPanel = ({
                     <Button
                       variant="outline"
                       type="button"
-                      disabled={busy || !online}
+                      disabled={busy || !online || stale}
                       onClick={() => void startCamera()}
                     >
                       {cameraOpen
@@ -2037,7 +2043,7 @@ export const AttendanceOperatorPanel = ({
                       <div className="flex flex-wrap gap-3">
                         <Button
                           type="button"
-                          disabled={busy || !online}
+                          disabled={busy || !online || stale}
                           onClick={() =>
                             void checkIn(
                               pendingCheckIn.member,

@@ -61,7 +61,6 @@ import {
 import { EventCheckInSheet } from "./event-check-in-sheet";
 import { buildProgramsHref } from "./programs-intent";
 import type { ProgramsOrigin } from "./programs-intent";
-import { refreshWorkspaceAfterMutation } from "./workspace-context";
 
 export const EventFactIcon = ({
   name,
@@ -201,6 +200,9 @@ export const EventDetail = ({
   const [notice, setNotice] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [mutationOutcomeUnknown, setMutationOutcomeUnknown] = useState(false);
+  const [detailStale, setDetailStale] = useState(false);
+  const eventActionBlocked =
+    busy || detailStale || loadError !== null || mutationOutcomeUnknown;
   const [editing, setEditing] = useState(false);
   const [editingEventType, setEditingEventType] = useState<EventType>(
     COPY.programs.eventTypeOptions[0] as EventType
@@ -345,6 +347,7 @@ export const EventDetail = ({
     if (mounted.current) {
       if (workspaceReconciled && refreshed) {
         setMutationOutcomeUnknown(false);
+        setDetailStale(false);
         onMutationBlockChange?.(false);
         setActionError(COPY.programs.workspaceReconciled);
         announce(COPY.programs.workspaceReconciled);
@@ -358,13 +361,27 @@ export const EventDetail = ({
   }, [load, onMutationBlockChange, onWorkspaceRefresh]);
 
   const retryConfirmedRead = useCallback(async () => {
+    let workspaceReconciled = true;
+    if (onWorkspaceRefresh) {
+      try {
+        workspaceReconciled = (await onWorkspaceRefresh()) !== undefined;
+      } catch {
+        workspaceReconciled = false;
+      }
+    }
     const refreshed = await load();
-    if (refreshed && mounted.current) {
+    if (workspaceReconciled && refreshed && mounted.current) {
+      setDetailStale(false);
+      onMutationBlockChange?.(false);
       setActionError(null);
       setNotice(COPY.programs.workspaceReconciled);
       announce(COPY.programs.workspaceReconciled);
+    } else if (mounted.current) {
+      setDetailStale(true);
+      onMutationBlockChange?.(true);
+      setActionError(COPY.programs.workspaceEventsSavedStale);
     }
-  }, [load]);
+  }, [load, onMutationBlockChange, onWorkspaceRefresh]);
 
   const runAction = useCallback(
     async (
@@ -372,7 +389,7 @@ export const EventDetail = ({
       successCopy: string | (() => string),
       onRefused?: (error: unknown) => boolean
     ) => {
-      if (mutationOutcomeUnknown) {
+      if (mutationOutcomeUnknown || detailStale || loadError !== null) {
         return;
       }
       setBusy(true);
@@ -384,13 +401,25 @@ export const EventDetail = ({
         }
         onAttentionRefresh?.();
         setMutationOutcomeUnknown(false);
-        await refreshWorkspaceAfterMutation(onWorkspaceRefresh);
+        let workspaceReconciled = true;
+        if (onWorkspaceRefresh) {
+          try {
+            workspaceReconciled = (await onWorkspaceRefresh()) !== undefined;
+          } catch {
+            workspaceReconciled = false;
+          }
+        }
         const refreshed = await load();
         if (!mounted.current) {
           return;
         }
-        if (!refreshed) {
+        if (!workspaceReconciled || !refreshed) {
+          setDetailStale(true);
+          onMutationBlockChange?.(true);
           setActionError(COPY.programs.workspaceEventsSavedStale);
+        } else {
+          setDetailStale(false);
+          onMutationBlockChange?.(false);
         }
         const message =
           typeof successCopy === "function" ? successCopy() : successCopy;
@@ -423,6 +452,8 @@ export const EventDetail = ({
       load,
       mutationOutcomeUnknown,
       onAttentionRefresh,
+      detailStale,
+      loadError,
       onMutationBlockChange,
       onWorkspaceRefresh,
     ]
@@ -841,7 +872,7 @@ export const EventDetail = ({
                 type="button"
                 variant="outline"
                 className="w-fit border-[var(--screen-success)] bg-transparent text-[var(--screen-success)] hover:bg-[var(--screen-success-surface)]"
-                disabled={busy}
+                disabled={eventActionBlocked}
                 onClick={submitActivate}
               >
                 {COPY.programs.eventAvailabilityUndo}
@@ -853,7 +884,7 @@ export const EventDetail = ({
       {actionError !== null && (
         <div className="flex min-w-0 flex-wrap items-center gap-[var(--screen-utility-gap)]">
           <Alert variant="destructive">{actionError}</Alert>
-          {(mutationOutcomeUnknown || loadError !== null) && (
+          {(mutationOutcomeUnknown || detailStale || loadError !== null) && (
             <Button
               type="button"
               variant="outline"
@@ -1058,7 +1089,7 @@ export const EventDetail = ({
                     <Button
                       type="button"
                       className="w-fit bg-[var(--screen-danger)] text-white hover:bg-[var(--screen-danger)]"
-                      disabled={busy}
+                      disabled={eventActionBlocked}
                       onClick={() => submitDeactivate(true)}
                     >
                       {COPY.programs.eventAvailabilityConfirmProceed}
@@ -1067,7 +1098,7 @@ export const EventDetail = ({
                       type="button"
                       variant="outline"
                       className="w-fit border-[var(--screen-line-strong)] bg-transparent text-[var(--screen-ink)] hover:bg-[var(--screen-surface-soft)]"
-                      disabled={busy}
+                      disabled={eventActionBlocked}
                       onClick={() => setConfirmingDeactivate(false)}
                     >
                       {COPY.programs.keepEvent}
@@ -1079,7 +1110,7 @@ export const EventDetail = ({
                   type="button"
                   variant="outline"
                   className="w-fit border-[var(--screen-danger)] bg-transparent text-[var(--screen-danger)] hover:bg-[var(--screen-danger-surface)]"
-                  disabled={busy}
+                  disabled={eventActionBlocked}
                   onClick={() => {
                     // AC-4: safe (zero affected operations) deactivation is
                     // immediate with Undo; only consequential deactivation
@@ -1100,7 +1131,7 @@ export const EventDetail = ({
                 type="button"
                 variant="outline"
                 className="w-fit border-[var(--screen-success)] bg-transparent text-[var(--screen-success)] hover:bg-[var(--screen-success-surface)]"
-                disabled={busy}
+                disabled={eventActionBlocked}
                 onClick={submitActivate}
               >
                 {COPY.programs.eventAvailabilityActivate}
@@ -1282,7 +1313,7 @@ export const EventDetail = ({
                   <div className="flex min-w-0 flex-wrap gap-[var(--screen-utility-gap)]">
                     <Button
                       type="submit"
-                      disabled={busy}
+                      disabled={eventActionBlocked}
                       className="w-fit bg-[var(--screen-accent)] text-white hover:bg-[var(--screen-accent-deep)]"
                     >
                       {COPY.programs.eventEditSave}
@@ -1291,7 +1322,7 @@ export const EventDetail = ({
                       type="button"
                       variant="outline"
                       className="w-fit border-[var(--screen-line-strong)] bg-transparent text-[var(--screen-ink)] hover:bg-[var(--screen-surface-soft)]"
-                      disabled={busy}
+                      disabled={eventActionBlocked}
                       onClick={() => setEditing(false)}
                     >
                       {COPY.programs.eventEditCancel}
@@ -1304,7 +1335,7 @@ export const EventDetail = ({
                 type="button"
                 variant="outline"
                 className="w-fit border-[var(--screen-line-strong)] bg-transparent text-[var(--screen-ink)] hover:bg-[var(--screen-surface-soft)]"
-                disabled={busy}
+                disabled={eventActionBlocked}
                 onClick={() => {
                   setEditingEventType(
                     event.event_type ??
@@ -1340,7 +1371,7 @@ export const EventDetail = ({
                   <div className="flex min-w-0 flex-wrap gap-[var(--screen-utility-gap)]">
                     <Button
                       type="submit"
-                      disabled={busy}
+                      disabled={eventActionBlocked}
                       className="w-fit bg-[var(--screen-danger)] text-white hover:bg-[var(--screen-danger)]"
                     >
                       {COPY.programs.confirmCancel}
@@ -1349,7 +1380,7 @@ export const EventDetail = ({
                       type="button"
                       variant="outline"
                       className="w-fit border-[var(--screen-line-strong)] bg-transparent text-[var(--screen-ink)] hover:bg-[var(--screen-surface-soft)]"
-                      disabled={busy}
+                      disabled={eventActionBlocked}
                       onClick={() => setConfirmingCancel(false)}
                     >
                       {COPY.programs.keepMeeting}
@@ -1362,7 +1393,7 @@ export const EventDetail = ({
                 type="button"
                 variant="outline"
                 className="w-fit border-[var(--screen-danger)] bg-transparent text-[var(--screen-danger)] hover:bg-[var(--screen-danger-surface)]"
-                disabled={busy}
+                disabled={eventActionBlocked}
                 onClick={() => {
                   if (hasAttendance) {
                     const message = COPY.programs.cancelBlockedWithAttendance;
