@@ -142,11 +142,13 @@ base-comparison claim is kept separate below.
 | `PROGRAMS_CANDIDATE_SHA=51ca2871… pnpm test:programs:visual` | pass: 2/2 | Storybook visual harness at 402×874 and 360×800. Artifact: `test-results/programs-visual/20260915t0615/`. |
 | `pnpm test:programs:canary` | failed diagnostic | Final candidate reached 244 scenarios, then local Miniflare returned HTTP 500 `Network connection lost` without `X-Request-Id`; artifact: `test-results/programs-runtime-canary/20260915t061416976z/`. This is B-003 residual risk, not a functional-pass failure. |
 
-The independent reviewer is a separate gate and is currently running against
-the implementation candidate. Real-route gaps still include the full scanner
-write/readback journey, Overview-to-roster navigation, the approximately
-30-person offline/reconnect roster, mixed batch durability, signed-out guest
-login revalidation, and rotation readback. Physical camera permission/decoder,
+The independent reviewer is a separate gate. A fresh read-only verifier was
+attempted against the implementation candidate, but did not return a report
+after bounded waits and was shut down; independent acceptance remains
+unverified. Real-route gaps still include the full scanner write/readback
+journey, Overview-to-roster navigation, the approximately 30-person
+offline/reconnect roster, mixed batch durability, signed-out guest login
+revalidation, and rotation readback. Physical camera permission/decoder,
 downloaded QR rescan, touch/safe-area, virtual keyboard, assistive technology,
 and native print remain `device`/human gates. Owner approval, push, PR merge,
 deployment, and release are not granted by these machine results.
