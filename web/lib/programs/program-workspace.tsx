@@ -189,7 +189,7 @@ export const ProgramWorkspace = ({
     useState(false);
   const mounted = useRef(true);
   const summaryRequestId = useRef(0);
-  const workspaceRefreshSequence = useRef(0);
+  const workspaceRefreshQueue = useRef(Promise.resolve());
   useEffect(() => {
     mounted.current = true;
     return () => {
@@ -345,22 +345,31 @@ export const ProgramWorkspace = ({
   }, [loadWorkspace]);
 
   const refreshAuthoritativeWorkspace = useCallback(async () => {
-    const sequence = ++workspaceRefreshSequence.current;
-    setWorkspaceFreshness("refreshing");
-    try {
-      const refreshed = await refreshWorkspaceResource();
-      if (mounted.current && workspaceRefreshSequence.current === sequence) {
-        // A superseded response is not evidence that the displayed workspace
-        // became fresh; settle it as stale so Retry Refresh remains available.
-        setWorkspaceFreshness(refreshed === undefined ? "stale" : "fresh");
+    const previousRefresh = workspaceRefreshQueue.current;
+    const currentRefresh = (async () => {
+      await previousRefresh;
+      setWorkspaceFreshness("refreshing");
+      try {
+        const refreshed = await refreshWorkspaceResource();
+        if (mounted.current) {
+          setWorkspaceFreshness(refreshed === undefined ? "stale" : "fresh");
+        }
+        return refreshed?.program;
+      } catch (error) {
+        if (mounted.current) {
+          setWorkspaceFreshness("stale");
+        }
+        throw error;
       }
-      return refreshed?.program;
-    } catch (error) {
-      if (mounted.current && workspaceRefreshSequence.current === sequence) {
-        setWorkspaceFreshness("stale");
+    })();
+    workspaceRefreshQueue.current = (async () => {
+      try {
+        await currentRefresh;
+      } catch (error) {
+        void error;
       }
-      throw error;
-    }
+    })();
+    return currentRefresh;
   }, [refreshWorkspaceResource]);
 
   const retryWorkspaceRefresh = useCallback(async () => {

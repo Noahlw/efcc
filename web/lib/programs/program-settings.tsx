@@ -1330,7 +1330,6 @@ export const ProgramSettings = ({
         }
         if (!rulesReady || !workspaceRead) {
           setReloadRequired(true);
-          onMutationBlockChange?.(true);
           setActionError(COPY.programs.programTransportAmbiguous);
           announce(COPY.programs.programTransportAmbiguous);
           return;
@@ -1347,7 +1346,6 @@ export const ProgramSettings = ({
           return;
         }
         setReloadRequired(true);
-        onMutationBlockChange?.(true);
         setActionError(COPY.programs.programTransportAmbiguous);
         announce(COPY.programs.programTransportAmbiguous);
       } finally {

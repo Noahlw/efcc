@@ -297,6 +297,9 @@ interface ParticipantScheduleProps {
   events: ParticipantProgramDetailData["events"];
   totalEventCount?: number;
   onExpandAll?: () => void;
+  canOpenEventDetail?: boolean;
+  onOpenEvent?: (eventId: string) => void;
+  eventHref?: (eventId: string) => string;
 }
 
 const ParticipantSchedule = ({
@@ -305,6 +308,9 @@ const ParticipantSchedule = ({
   events,
   totalEventCount = 0,
   onExpandAll,
+  canOpenEventDetail = false,
+  onOpenEvent,
+  eventHref,
 }: ParticipantScheduleProps) => (
   <ScreenSection title={COPY.programs.scheduleTitle}>
     {scheduleRules.length > 0 && (
@@ -345,6 +351,11 @@ const ParticipantSchedule = ({
               event.self_check_in_available === true &&
               program.lifecycle !== "Archived" &&
               program.enrollment_mode !== "ManagerOnly";
+            const canOpenThisEvent =
+              canOpenEventDetail &&
+              index > 0 &&
+              (eventHref !== undefined || onOpenEvent !== undefined);
+            const eventActionLabel = `${COPY.programs.viewEventDetail}: ${eventTitle(event, index)}`;
             return (
               <li key={event.event_id} className="min-w-0">
                 <ScreenRow>
@@ -373,17 +384,59 @@ const ParticipantSchedule = ({
                       {COPY.programs.eventActive}
                     </span>
                   </ScreenRowMain>
-                  {selfCheckInAvailable ? (
+                  {(selfCheckInAvailable || canOpenThisEvent) && (
                     <ScreenRowTrailing>
-                      <ScreenStatus
-                        role="status"
-                        tone="neutral"
-                        aria-label={COPY.programs.checkInAvailable}
-                      >
-                        {COPY.programs.checkInAvailable}
-                      </ScreenStatus>
+                      {canOpenThisEvent &&
+                        (eventHref ? (
+                          <Button
+                            asChild
+                            className="h-auto min-h-11 w-fit whitespace-normal border-[var(--screen-line-strong)] bg-[var(--screen-surface)] px-3 py-2 text-left text-sm font-bold text-[var(--screen-ink)] hover:bg-[var(--screen-surface-soft)] hover:text-[var(--screen-ink)]"
+                            variant="outline"
+                          >
+                            <Link
+                              href={eventHref(event.event_id)}
+                              aria-label={eventActionLabel}
+                              onClick={(clickEvent) => {
+                                if (
+                                  !onOpenEvent ||
+                                  clickEvent.defaultPrevented ||
+                                  clickEvent.button !== 0 ||
+                                  clickEvent.metaKey ||
+                                  clickEvent.ctrlKey ||
+                                  clickEvent.shiftKey ||
+                                  clickEvent.altKey
+                                ) {
+                                  return;
+                                }
+                                clickEvent.preventDefault();
+                                onOpenEvent(event.event_id);
+                              }}
+                            >
+                              {COPY.programs.viewEventDetail}
+                            </Link>
+                          </Button>
+                        ) : (
+                          <Button
+                            type="button"
+                            className="h-auto min-h-11 w-fit whitespace-normal border-[var(--screen-line-strong)] bg-[var(--screen-surface)] px-3 py-2 text-left text-sm font-bold text-[var(--screen-ink)] hover:bg-[var(--screen-surface-soft)] hover:text-[var(--screen-ink)]"
+                            variant="outline"
+                            onClick={() => onOpenEvent?.(event.event_id)}
+                            aria-label={eventActionLabel}
+                          >
+                            {COPY.programs.viewEventDetail}
+                          </Button>
+                        ))}
+                      {selfCheckInAvailable && (
+                        <ScreenStatus
+                          role="status"
+                          tone="neutral"
+                          aria-label={COPY.programs.checkInAvailable}
+                        >
+                          {COPY.programs.checkInAvailable}
+                        </ScreenStatus>
+                      )}
                     </ScreenRowTrailing>
-                  ) : null}
+                  )}
                 </ScreenRow>
               </li>
             );
@@ -795,6 +848,9 @@ export const ParticipantProgramDetail = ({
         events={visibleEvents}
         totalEventCount={scheduledEvents.length}
         onExpandAll={() => setEventLimit(Number.MAX_SAFE_INTEGER)}
+        canOpenEventDetail={canOpenEventDetail}
+        onOpenEvent={onOpenEvent}
+        eventHref={eventHref}
       />
 
       <ParticipantEnrollmentHistory enrollment={enrollment} />

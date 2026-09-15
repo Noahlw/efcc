@@ -473,7 +473,6 @@ export const RecurringSchedulePanel = ({
       if (!workspaceReconciled) {
         setGenerationNeedsReconciliation(true);
         setGenerateError(COPY.programs.programTransportAmbiguous);
-        onMutationBlockChange?.(true);
         return;
       }
       if (generationData !== null && generationData.failed === 0) {
@@ -487,13 +486,7 @@ export const RecurringSchedulePanel = ({
       if (!mounted.current) {
         return;
       }
-      if (!workspaceReconciled) {
-        setGenerationNeedsReconciliation(true);
-        setGenerateError(COPY.programs.programTransportAmbiguous);
-        onMutationBlockChange?.(true);
-      } else {
-        await applyGenerationResult(generated);
-      }
+      await applyGenerationResult(generated);
     } catch (error) {
       if (!mounted.current) {
         return;
@@ -513,7 +506,9 @@ export const RecurringSchedulePanel = ({
         }
       } else {
         setGenerationNeedsReconciliation(true);
-        onMutationBlockChange?.(true);
+        if (isUnknownMutationOutcome(error)) {
+          onMutationBlockChange?.(true);
+        }
         setGenerateError(message);
       }
       announce(message);
@@ -1221,7 +1216,9 @@ export const EventsTask = () => {
       }
     } else if (state.kind === "error" && previousEvents.current !== null) {
       setEventsStale(true);
-      onMutationBlockChange?.(true);
+      if (eventsOutcomeUnknown) {
+        onMutationBlockChange?.(true);
+      }
     }
   }, [eventsOutcomeUnknown, onMutationBlockChange, state.kind]);
 
@@ -1247,7 +1244,6 @@ export const EventsTask = () => {
       setActionError(COPY.programs.workspaceReconciled);
       announce(COPY.programs.workspaceReconciled);
     } else {
-      onMutationBlockChange?.(true);
       setEventsStale(true);
       setActionError(COPY.programs.programTransportAmbiguous);
       announce(COPY.programs.programTransportAmbiguous);
@@ -1427,7 +1423,6 @@ export const EventsTask = () => {
       }
       if (!workspaceReconciled || outcome?.status !== "success") {
         setEventsStale(true);
-        onMutationBlockChange?.(true);
         setActionError(COPY.programs.workspaceEventsSavedStale);
       }
       setEventsOutcomeUnknown(false);
@@ -1559,7 +1554,6 @@ export const EventsTask = () => {
       }
       if (!workspaceReconciled) {
         setEventsStale(true);
-        onMutationBlockChange?.(true);
         setActionError(COPY.programs.workspaceEventsSavedStale);
         setNotice(COPY.programs.eventCreatedNotice);
         return;

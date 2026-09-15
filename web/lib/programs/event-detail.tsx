@@ -378,7 +378,6 @@ export const EventDetail = ({
       announce(COPY.programs.workspaceReconciled);
     } else if (mounted.current) {
       setDetailStale(true);
-      onMutationBlockChange?.(true);
       setActionError(COPY.programs.workspaceEventsSavedStale);
     }
   }, [load, onMutationBlockChange, onWorkspaceRefresh]);
@@ -415,7 +414,6 @@ export const EventDetail = ({
         }
         if (!workspaceReconciled || !refreshed) {
           setDetailStale(true);
-          onMutationBlockChange?.(true);
           setActionError(COPY.programs.workspaceEventsSavedStale);
         } else {
           setDetailStale(false);

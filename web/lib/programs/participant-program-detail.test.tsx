@@ -223,6 +223,11 @@ describe("PUI-03 participant Program detail", () => {
     });
     expect(within(schedule).getByText("第三課聚會")).toBeInTheDocument();
     expect(within(schedule).getByText("第四課聚會")).toBeInTheDocument();
+    const secondEventLink = within(schedule).getByRole("link", {
+      name: `${COPY.programs.viewEventDetail}: 第四課聚會`,
+    });
+    await userEvent.click(secondEventLink);
+    expect(onOpenEvent).toHaveBeenLastCalledWith("event-2");
 
     const backLink = screen.getByRole("link", {
       name: COPY.programs.detailBack,
