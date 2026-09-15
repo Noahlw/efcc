@@ -185,8 +185,11 @@ export const ProgramWorkspace = ({
   const [workspaceFreshness, setWorkspaceFreshness] = useState<
     "fresh" | "refreshing" | "stale"
   >("fresh");
+  const [workspaceMutationBlocked, setWorkspaceMutationBlocked] =
+    useState(false);
   const mounted = useRef(true);
   const summaryRequestId = useRef(0);
+  const workspaceRefreshSequence = useRef(0);
   useEffect(() => {
     mounted.current = true;
     return () => {
@@ -205,6 +208,9 @@ export const ProgramWorkspace = ({
       setSettingsNavigationBlocked(false);
     }
   }, [task]);
+  useEffect(() => {
+    setWorkspaceMutationBlocked(false);
+  }, [eventId, programId, task]);
 
   useEffect(() => {
     if (task !== "events" || !eventDraftDirty) {
@@ -339,17 +345,18 @@ export const ProgramWorkspace = ({
   }, [loadWorkspace]);
 
   const refreshAuthoritativeWorkspace = useCallback(async () => {
+    const sequence = ++workspaceRefreshSequence.current;
     setWorkspaceFreshness("refreshing");
     try {
       const refreshed = await refreshWorkspaceResource();
-      // A newer load may supersede this refresh.  An ignored response is not
-      // evidence that the displayed workspace became fresh.
-      if (mounted.current && refreshed !== undefined) {
-        setWorkspaceFreshness("fresh");
+      if (mounted.current && workspaceRefreshSequence.current === sequence) {
+        // A superseded response is not evidence that the displayed workspace
+        // became fresh; settle it as stale so Retry Refresh remains available.
+        setWorkspaceFreshness(refreshed === undefined ? "stale" : "fresh");
       }
       return refreshed?.program;
     } catch (error) {
-      if (mounted.current) {
+      if (mounted.current && workspaceRefreshSequence.current === sequence) {
         setWorkspaceFreshness("stale");
       }
       throw error;
@@ -500,6 +507,11 @@ export const ProgramWorkspace = ({
     ) {
       return;
     }
+    if (workspaceMutationBlocked) {
+      event.preventDefault();
+      announce(COPY.programs.programTransportAmbiguous);
+      return;
+    }
     event.preventDefault();
     if (settingsEditorFocused && settingsEditorDirty) {
       setSettingsNavigationBlocked(true);
@@ -521,6 +533,10 @@ export const ProgramWorkspace = ({
     nextTask: ProgramsTask | null,
     nextEventId?: string | null
   ) => {
+    if (workspaceMutationBlocked) {
+      announce(COPY.programs.programTransportAmbiguous);
+      return;
+    }
     if (settingsEditorFocused && settingsEditorDirty) {
       setSettingsNavigationBlocked(true);
       announce(COPY.programs.settingsUnsaved);
@@ -662,6 +678,7 @@ export const ProgramWorkspace = ({
           })}
           onAttentionRefresh={onAttentionRefresh}
           onWorkspaceRefresh={refreshAuthoritativeWorkspace}
+          onMutationBlockChange={setWorkspaceMutationBlocked}
           onBack={(event) => {
             if (
               event.defaultPrevented ||
@@ -672,6 +689,11 @@ export const ProgramWorkspace = ({
               event.altKey ||
               !onEventChange
             ) {
+              return;
+            }
+            if (workspaceMutationBlocked) {
+              event.preventDefault();
+              announce(COPY.programs.programTransportAmbiguous);
               return;
             }
             event.preventDefault();
@@ -688,6 +710,7 @@ export const ProgramWorkspace = ({
           attention={attention}
           onAttentionRefresh={onAttentionRefresh}
           onWorkspaceRefresh={refreshAuthoritativeWorkspace}
+          onMutationBlockChange={setWorkspaceMutationBlocked}
           workspaceFreshness={workspaceFreshness}
           onTaskChange={handleWorkspaceTaskChange}
           onOpenEvent={onEventChange ? (id) => onEventChange(id) : undefined}

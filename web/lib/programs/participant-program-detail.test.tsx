@@ -367,6 +367,30 @@ describe("PUI-03 participant Program detail", () => {
     ).resolves.toBeInTheDocument();
   });
 
+  test("keeps a post-event meeting visible while participant check-in stays open", async () => {
+    const base = detailFixture();
+    const startsAt = new Date(Date.now() - 2 * 60 * 60_000).toISOString();
+    const endsAt = new Date(Date.now() - 30 * 60_000).toISOString();
+    mocks.getParticipantProgramDetail.mockResolvedValue(
+      detailFixture({
+        events: [
+          {
+            ...base.events[0],
+            starts_at: startsAt,
+            ends_at: endsAt,
+            self_check_in_available: true,
+          },
+        ],
+      })
+    );
+
+    renderDetail();
+
+    await expect(
+      screen.findByRole("heading", { name: "第三課聚會" })
+    ).resolves.toBeInTheDocument();
+  });
+
   test("hides empty schedule groups and keeps the empty state truthful", async () => {
     mocks.getParticipantProgramDetail.mockResolvedValue(
       detailFixture({ schedule_rules: [], events: [] })

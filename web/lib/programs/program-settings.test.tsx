@@ -424,6 +424,9 @@ describe(ProgramSettings, () => {
       screen.getByRole("button", { name: COPY.programs.settingsScheduleRetry })
     ).toBeInTheDocument();
     expect(
+      screen.getByRole("button", { name: COPY.programs.addRule })
+    ).toBeDisabled();
+    expect(
       screen.queryByText(COPY.programs.settingsScheduleLoading)
     ).not.toBeInTheDocument();
   });

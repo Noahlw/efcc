@@ -52,6 +52,8 @@ export interface WorkspaceTaskContextValue {
   onWorkspaceRefresh?: () => void | Promise<Program | void>;
   /** Freshness of the single route-owned Program/cockpit resource. */
   workspaceFreshness?: "fresh" | "refreshing" | "stale";
+  /** Block cross-task navigation while a write outcome is being reconciled. */
+  onMutationBlockChange?: (blocked: boolean) => void;
   onTaskChange: (task: ProgramsTask | null, eventId?: string | null) => void;
   onOpenEvent?: (eventId: string) => void;
   /** The active task has an unsaved local draft that the shell must protect. */

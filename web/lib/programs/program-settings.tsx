@@ -141,6 +141,8 @@ export interface ProgramSettingsProps {
   navigationBlocked?: boolean;
   /** Explicitly reload the route-owned workspace after a 409 conflict. */
   onReload?: () => void | Promise<Program | void>;
+  /** Block workspace navigation while a write outcome is unknown. */
+  onMutationBlockChange?: (blocked: boolean) => void;
   /** Render one focused editor, or all legacy editor groups for direct callers. */
   section?: "all" | ProgramSettingsSection;
   /** Let a route-owned ScreenHeader provide the page title for a focused editor. */
@@ -1066,6 +1068,7 @@ export const ProgramSettings = ({
   onDirtyChange,
   navigationBlocked = false,
   onReload,
+  onMutationBlockChange,
   section = "all",
   showHeading = true,
   scheduleAddon,
@@ -1133,6 +1136,11 @@ export const ProgramSettings = ({
   const focusedSection = section !== "all";
   const focusedSchedule = section === "schedule";
   const showSchedule = !focusedSection || focusedSchedule;
+  const scheduleMutationBlocked =
+    showSchedule &&
+    currentProgram.behavior_type === "Recurring" &&
+    eventsEnabled &&
+    rules === null;
   const scheduleEditorActive = focusedSchedule && scheduleEditor !== null;
   const showScheduleOverview = showSchedule && !scheduleEditorActive;
   const focusedEditor = focusedSection && !focusedSchedule;
@@ -1307,12 +1315,14 @@ export const ProgramSettings = ({
       }
       if (!refreshed) {
         setReloadRequired(true);
+        onMutationBlockChange?.(true);
         setActionError(COPY.programs.programTransportAmbiguous);
         announce(COPY.programs.programTransportAmbiguous);
         return;
       }
       applyProgram(refreshed);
       setReloadRequired(false);
+      onMutationBlockChange?.(false);
       setNotice(COPY.programs.workspaceReconciled);
       announce(COPY.programs.workspaceReconciled);
     } catch {
@@ -1320,6 +1330,7 @@ export const ProgramSettings = ({
         return;
       }
       setReloadRequired(true);
+      onMutationBlockChange?.(true);
       setActionError(COPY.programs.programTransportAmbiguous);
       announce(COPY.programs.programTransportAmbiguous);
     } finally {
@@ -1327,7 +1338,7 @@ export const ProgramSettings = ({
         setBusy(false);
       }
     }
-  }, [applyProgram, onReload]);
+  }, [applyProgram, onMutationBlockChange, onReload]);
 
   const runProgramMutation = useCallback(
     async (patch: Parameters<typeof updateProgram>[1]) => {
@@ -1365,6 +1376,9 @@ export const ProgramSettings = ({
         const retryable = isRetryableSettingsMutation(error);
         const conflict =
           error instanceof RpcError && error.problem.code === "CONFLICT";
+        if (retryable) {
+          onMutationBlockChange?.(true);
+        }
         setReloadRequired((retryable || conflict) && onReload !== undefined);
         setActionError(
           retryable ? COPY.programs.programTransportAmbiguous : message
@@ -1376,7 +1390,13 @@ export const ProgramSettings = ({
         }
       }
     },
-    [applyProgram, currentProgram, onReload, reloadRequired]
+    [
+      applyProgram,
+      currentProgram,
+      onMutationBlockChange,
+      onReload,
+      reloadRequired,
+    ]
   );
 
   const saveBasics = (event: FormEvent<HTMLFormElement>) => {
@@ -1500,7 +1520,7 @@ export const ProgramSettings = ({
       success: string,
       afterSuccess?: () => void
     ) => {
-      if (reloadRequired) {
+      if (reloadRequired || scheduleMutationBlocked) {
         return;
       }
       setBusy(true);
@@ -1531,6 +1551,7 @@ export const ProgramSettings = ({
           return;
         }
         if (isUnknownMutationOutcome(error)) {
+          onMutationBlockChange?.(true);
           setReloadRequired(onReload !== undefined);
           setActionError(COPY.programs.programTransportAmbiguous);
           announce(COPY.programs.programTransportAmbiguous);
@@ -1545,7 +1566,13 @@ export const ProgramSettings = ({
         }
       }
     },
-    [loadRules, onReload, reloadRequired]
+    [
+      loadRules,
+      onMutationBlockChange,
+      onReload,
+      reloadRequired,
+      scheduleMutationBlocked,
+    ]
   );
 
   const submitNewRule = (event: FormEvent<HTMLFormElement>) => {
@@ -2190,7 +2217,7 @@ export const ProgramSettings = ({
                     className="w-fit bg-[var(--screen-accent)] text-white hover:bg-[var(--screen-accent-deep)]"
                     type="button"
                     onClick={beginNewRule}
-                    disabled={mutationBlocked}
+                    disabled={mutationBlocked || scheduleMutationBlocked}
                   >
                     {COPY.programs.addRule}
                   </Button>

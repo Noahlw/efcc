@@ -174,6 +174,7 @@ export const EventDetail = ({
   onBack,
   onAttentionRefresh,
   onWorkspaceRefresh,
+  onMutationBlockChange,
   onAuthRequired,
 }: {
   programId: string;
@@ -189,6 +190,8 @@ export const EventDetail = ({
   onAttentionRefresh?: () => void;
   /** Refresh the authoritative Program/cockpit resource after a write. */
   onWorkspaceRefresh?: () => void | Promise<Program | void>;
+  /** Keep the parent from navigating away before an unknown write is read back. */
+  onMutationBlockChange?: (blocked: boolean) => void;
   onAuthRequired?: () => void;
 }) => {
   const [detail, setDetail] = useState<EventDetailData | null>(null);
@@ -330,10 +333,19 @@ export const EventDetail = ({
 
   const reconcileMutationOutcome = useCallback(async () => {
     setBusy(true);
+    let workspaceReconciled = true;
+    if (onWorkspaceRefresh) {
+      try {
+        workspaceReconciled = (await onWorkspaceRefresh()) !== undefined;
+      } catch {
+        workspaceReconciled = false;
+      }
+    }
     const refreshed = await load();
     if (mounted.current) {
-      if (refreshed) {
+      if (workspaceReconciled && refreshed) {
         setMutationOutcomeUnknown(false);
+        onMutationBlockChange?.(false);
         setActionError(COPY.programs.workspaceReconciled);
         announce(COPY.programs.workspaceReconciled);
       } else {
@@ -343,7 +355,7 @@ export const EventDetail = ({
       }
       setBusy(false);
     }
-  }, [load]);
+  }, [load, onMutationBlockChange, onWorkspaceRefresh]);
 
   const retryConfirmedRead = useCallback(async () => {
     const refreshed = await load();
@@ -393,6 +405,7 @@ export const EventDetail = ({
         }
         if (isUnknownMutationOutcome(error)) {
           setMutationOutcomeUnknown(true);
+          onMutationBlockChange?.(true);
           setActionError(COPY.programs.programTransportAmbiguous);
           announce(COPY.programs.programTransportAmbiguous);
           return;
@@ -406,7 +419,13 @@ export const EventDetail = ({
         }
       }
     },
-    [load, mutationOutcomeUnknown, onAttentionRefresh, onWorkspaceRefresh]
+    [
+      load,
+      mutationOutcomeUnknown,
+      onAttentionRefresh,
+      onMutationBlockChange,
+      onWorkspaceRefresh,
+    ]
   );
 
   // oxlint-disable-next-line eslint/complexity -- edit validation and attendance-aware confirmation are one transition boundary

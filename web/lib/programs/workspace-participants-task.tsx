@@ -275,8 +275,12 @@ function requestStatusLabel(status: EnrollmentRequest["status"]): string {
 
 // oxlint-disable-next-line eslint/complexity -- this task owns selection, per-item approval, cancellation, and recovery states.
 export const ParticipantsTask = () => {
-  const { program, onAttentionRefresh, onWorkspaceRefresh } =
-    useWorkspaceTaskContext();
+  const {
+    program,
+    onAttentionRefresh,
+    onWorkspaceRefresh,
+    onMutationBlockChange,
+  } = useWorkspaceTaskContext();
   const programId = program.program_id;
   const canManage = program.capabilities.manage;
   const { state, run, refresh, retry } = useAsyncResource<
@@ -347,7 +351,6 @@ export const ParticipantsTask = () => {
   useEffect(() => {
     if (state.kind === "ready") {
       lastReadyRef.current = state;
-      setUnknownMutationIds({});
     }
   }, [state]);
   useEffect(() => {
@@ -365,6 +368,40 @@ export const ParticipantsTask = () => {
     approvalBusy ||
     refreshingAction !== null;
   const hasUnknownMutation = Object.values(unknownMutationIds).some(Boolean);
+
+  const reconcileUnknownParticipants = async (ids: string[]) => {
+    let workspaceReconciled = true;
+    if (onWorkspaceRefresh) {
+      try {
+        workspaceReconciled = (await onWorkspaceRefresh()) !== undefined;
+      } catch {
+        workspaceReconciled = false;
+      }
+    }
+    const snapshot = await run();
+    const reconciled = workspaceReconciled && snapshot !== undefined;
+    setUnknownMutationIds((current) => {
+      const next = { ...current };
+      if (reconciled) {
+        for (const id of ids) {
+          delete next[id];
+        }
+      } else {
+        for (const id of ids) {
+          next[id] = true;
+        }
+      }
+      return next;
+    });
+    onMutationBlockChange?.(reconciled ? false : true);
+    if (reconciled) {
+      setNotice(COPY.programs.workspaceReconciled);
+      announce(COPY.programs.workspaceReconciled);
+    } else {
+      setApprovalRefreshError(COPY.programs.programTransportAmbiguous);
+      announce(COPY.programs.programTransportAmbiguous);
+    }
+  };
 
   useEffect(() => {
     if (refreshingAction === null || state.kind === "loading") {
@@ -571,6 +608,7 @@ export const ParticipantsTask = () => {
             }));
             updateApprovalRun([...results]);
             announce(COPY.programs.programTransportAmbiguous);
+            await reconcileUnknownParticipants([item.request.request_id]);
             break;
           } else {
             const failure = approvalError(error);
@@ -659,7 +697,7 @@ export const ParticipantsTask = () => {
         setRefreshSuccess(COPY.programs.workspaceReconciled);
         setRefreshingAction(request.request_id);
         announce(COPY.programs.programTransportAmbiguous);
-        void run();
+        void reconcileUnknownParticipants([request.request_id]);
         return;
       }
       const issue = participantIssue(error);
@@ -726,7 +764,7 @@ export const ParticipantsTask = () => {
         setRefreshSuccess(COPY.programs.workspaceReconciled);
         setRefreshingAction(enrollment.enrollment_id);
         announce(COPY.programs.programTransportAmbiguous);
-        void run();
+        void reconcileUnknownParticipants([enrollment.enrollment_id]);
         return;
       }
       if (!isAmbiguousCancelError(error)) {
@@ -802,7 +840,7 @@ export const ParticipantsTask = () => {
         setRefreshSuccess(COPY.programs.workspaceReconciled);
         setRefreshingAction("assisted");
         announce(COPY.programs.programTransportAmbiguous);
-        void run();
+        void reconcileUnknownParticipants(["assisted"]);
         return;
       }
       const issue = participantIssue(error);
@@ -813,6 +851,10 @@ export const ParticipantsTask = () => {
     }
   };
   const refreshParticipants = () => {
+    if (hasUnknownMutation) {
+      void reconcileUnknownParticipants(Object.keys(unknownMutationIds));
+      return;
+    }
     setActionErrors({});
     setNotice(null);
     setApprovalRefreshError(null);

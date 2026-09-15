@@ -1049,6 +1049,7 @@ export const EventsTask = () => {
     hash,
     onAttentionRefresh,
     onWorkspaceRefresh,
+    onMutationBlockChange,
     onTaskChange,
     onOpenEvent,
     onWorkspaceDirtyChange,
@@ -1165,18 +1166,28 @@ export const EventsTask = () => {
   }, [state.kind]);
 
   const reconcileEvents = async () => {
+    let workspaceReconciled = true;
+    if (onWorkspaceRefresh) {
+      try {
+        workspaceReconciled = (await onWorkspaceRefresh()) !== undefined;
+      } catch {
+        workspaceReconciled = false;
+      }
+    }
     const request = { cancelled: false };
     await run(request);
     const outcome = eventLoadOutcomes.current.get(request);
     if (!mounted.current) {
       return;
     }
-    if (outcome?.status === "success") {
+    if (workspaceReconciled && outcome?.status === "success") {
       setEventsOutcomeUnknown(false);
       setEventsStale(false);
+      onMutationBlockChange?.(false);
       setActionError(COPY.programs.workspaceReconciled);
       announce(COPY.programs.workspaceReconciled);
     } else {
+      onMutationBlockChange?.(true);
       setEventsStale(true);
       setActionError(COPY.programs.programTransportAmbiguous);
       announce(COPY.programs.programTransportAmbiguous);
@@ -1363,6 +1374,7 @@ export const EventsTask = () => {
       }
       if (isUnknownMutationOutcome(error)) {
         setEventsOutcomeUnknown(true);
+        onMutationBlockChange?.(true);
         setEventsStale(true);
         setActionError(COPY.programs.programTransportAmbiguous);
         announce(COPY.programs.programTransportAmbiguous);
@@ -1481,6 +1493,7 @@ export const EventsTask = () => {
       }
       if (isUnknownMutationOutcome(error)) {
         setEventsOutcomeUnknown(true);
+        onMutationBlockChange?.(true);
         setEventsStale(true);
         setActionError(COPY.programs.programTransportAmbiguous);
         announce(COPY.programs.programTransportAmbiguous);

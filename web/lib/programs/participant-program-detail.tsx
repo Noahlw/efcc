@@ -87,6 +87,12 @@ function eventIsCurrentOrUpcoming(endsAt: string): boolean {
   return Number.isFinite(timestamp) && timestamp >= Date.now();
 }
 
+function eventIsOpenOrCurrent(event: ParticipantEventSummary): boolean {
+  return (
+    event.self_check_in_available || eventIsCurrentOrUpcoming(event.ends_at)
+  );
+}
+
 const MOBILE_EVENT_CAP = 4;
 const DESKTOP_EVENT_CAP = 8;
 const DESKTOP_EVENT_MEDIA_QUERY = "(min-width: 800px)";
@@ -529,9 +535,9 @@ export const ParticipantProgramDetail = ({
     return (
       state.detail.events
         .filter((event) => event.status === "Active")
-        // An active meeting remains relevant after its start until it ends.
-        // Filtering only by starts_at hides an open check-in window in progress.
-        .filter((event) => eventIsCurrentOrUpcoming(event.ends_at))
+        // Keep a meeting visible while it runs, and while the server says its
+        // participant check-in window is still open after the meeting ends.
+        .filter(eventIsOpenOrCurrent)
         .toSorted((a, b) => Date.parse(a.starts_at) - Date.parse(b.starts_at))
     );
   }, [state]);

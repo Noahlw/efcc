@@ -30,6 +30,7 @@ export const SettingsTask = ({
     modules,
     onTaskChange,
     onWorkspaceRefresh,
+    onMutationBlockChange,
     departmentId,
     hash,
   } = useWorkspaceTaskContext();
@@ -230,6 +231,7 @@ export const SettingsTask = ({
         onDirtyChange={handleDirtyChange}
         navigationBlocked={navigationBlocked}
         onReload={onWorkspaceRefresh}
+        onMutationBlockChange={onMutationBlockChange}
         showHeading={false}
       />
     </section>
