@@ -19,11 +19,15 @@ const ScheduleAddon = ({
   rules,
   onGenerated,
   onOpenEvent,
+  onMutationBlockChange,
+  onWorkspaceRefresh,
 }: {
   programId: string;
   rules: ScheduleRule[] | null;
   onGenerated: () => void;
   onOpenEvent?: (eventId: string) => void;
+  onMutationBlockChange?: (blocked: boolean) => void;
+  onWorkspaceRefresh?: () => void | Promise<unknown>;
 }) => (
   <RecurringSchedulePanel
     programId={programId}
@@ -34,6 +38,8 @@ const ScheduleAddon = ({
     rulesError={null}
     onGenerated={onGenerated}
     onOpenEvent={onOpenEvent}
+    onMutationBlockChange={onMutationBlockChange}
+    onWorkspaceRefresh={onWorkspaceRefresh}
   />
 );
 ScheduleAddon.displayName = "ScheduleAddon";
@@ -41,7 +47,9 @@ ScheduleAddon.displayName = "ScheduleAddon";
 const makeScheduleAddon = (
   programId: string,
   onGenerated: () => void,
-  onOpenEvent?: (eventId: string) => void
+  onOpenEvent?: (eventId: string) => void,
+  onMutationBlockChange?: (blocked: boolean) => void,
+  onWorkspaceRefresh?: () => void | Promise<unknown>
 ) =>
   function renderScheduleAddon({ rules }: ScheduleAddonResource) {
     return (
@@ -50,6 +58,8 @@ const makeScheduleAddon = (
         rules={rules}
         onGenerated={onGenerated}
         onOpenEvent={onOpenEvent}
+        onMutationBlockChange={onMutationBlockChange}
+        onWorkspaceRefresh={onWorkspaceRefresh}
       />
     );
   };
@@ -65,6 +75,7 @@ export const ScheduleTask = () => {
     modules,
     onTaskChange,
     onWorkspaceRefresh,
+    onMutationBlockChange,
     departmentId,
     hash,
   } = useWorkspaceTaskContext();
@@ -81,12 +92,15 @@ export const ScheduleTask = () => {
         eventsEnabled={eventsEnabled}
         onTaskChange={onTaskChange}
         onReload={onWorkspaceRefresh}
+        onMutationBlockChange={onMutationBlockChange}
         scheduleAddon={makeScheduleAddon(
           program.program_id,
           () => {
             void refreshWorkspaceAfterMutation(onWorkspaceRefresh);
           },
-          (eventId) => onTaskChange("events", eventId)
+          (eventId) => onTaskChange("events", eventId),
+          onMutationBlockChange,
+          onWorkspaceRefresh
         )}
         scheduleBackHref={buildProgramsHref({
           mode: "management",

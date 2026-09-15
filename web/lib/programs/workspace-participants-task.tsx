@@ -597,6 +597,7 @@ export const ParticipantsTask = () => {
           } else if (isUnknownMutationOutcome(error)) {
             // Stop the batch: the next approval must not run until this
             // request has been reconciled against the authoritative snapshot.
+            onMutationBlockChange?.(true);
             results[index] = {
               ...item,
               status: "error",
@@ -686,6 +687,7 @@ export const ParticipantsTask = () => {
         return;
       }
       if (isUnknownMutationOutcome(error)) {
+        onMutationBlockChange?.(true);
         setUnknownMutationIds((current) => ({
           ...current,
           [request.request_id]: true,
@@ -752,6 +754,7 @@ export const ParticipantsTask = () => {
         return;
       }
       if (isUnknownMutationOutcome(error)) {
+        onMutationBlockChange?.(true);
         setCancelRetry(null);
         setUnknownMutationIds((current) => ({
           ...current,
@@ -835,6 +838,7 @@ export const ParticipantsTask = () => {
         return;
       }
       if (isUnknownMutationOutcome(error)) {
+        onMutationBlockChange?.(true);
         setUnknownMutationIds((current) => ({ ...current, assisted: true }));
         setAssistedError(COPY.programs.programTransportAmbiguous);
         setRefreshSuccess(COPY.programs.workspaceReconciled);

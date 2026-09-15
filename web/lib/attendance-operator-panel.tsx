@@ -1488,6 +1488,9 @@ export const AttendanceOperatorPanel = ({
         setMutationOutcomeUnknown(true);
         showStatus(COPY.attendance.transportAmbiguous, "error");
         announce(COPY.attendance.transportAmbiguous);
+        // The mutation has settled; release the write lock before the
+        // authoritative roster read, otherwise reconciliation self-blocks.
+        rosterRequestRef.current = false;
         await reconcileUnknownAttendance();
       } else {
         showError(error);

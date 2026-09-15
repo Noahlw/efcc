@@ -125,6 +125,8 @@ export const RecurringSchedulePanel = ({
   rulesError,
   onGenerated,
   onOpenEvent,
+  onMutationBlockChange,
+  onWorkspaceRefresh,
 }: {
   programId: string;
   rules: ScheduleRule[] | null;
@@ -133,6 +135,8 @@ export const RecurringSchedulePanel = ({
   onGenerated: () => void;
   /** Opens an exact generated Event when the parent owns Event navigation. */
   onOpenEvent?: (eventId: string) => void;
+  onMutationBlockChange?: (blocked: boolean) => void;
+  onWorkspaceRefresh?: () => void | Promise<unknown>;
 }) => {
   const [previewFromDate, setPreviewFromDate] = useState(() =>
     hkTodayWallDate()
@@ -428,6 +432,9 @@ export const RecurringSchedulePanel = ({
           error.problem.code === "NETWORK_ERROR" ||
           error.problem.code === "UNAVAILABLE";
         setGenerationNeedsReconciliation(networkFailure);
+        if (networkFailure) {
+          onMutationBlockChange?.(true);
+        }
         setGenerateError(message);
       }
       announce(message);
@@ -447,12 +454,27 @@ export const RecurringSchedulePanel = ({
     }
     setGenerateBusy(true);
     setGenerateError(null);
+    let workspaceReconciled = true;
+    if (onWorkspaceRefresh) {
+      try {
+        workspaceReconciled = (await onWorkspaceRefresh()) !== undefined;
+      } catch {
+        workspaceReconciled = false;
+      }
+    }
     try {
       const { generated } = await generateEvents(programId, planId);
       if (!mounted.current) {
         return;
       }
-      applyGenerationResult(generated);
+      if (!workspaceReconciled) {
+        setGenerationNeedsReconciliation(true);
+        setGenerateError(COPY.programs.programTransportAmbiguous);
+        onMutationBlockChange?.(true);
+      } else {
+        applyGenerationResult(generated);
+        onMutationBlockChange?.(false);
+      }
     } catch (error) {
       if (!mounted.current) {
         return;
@@ -467,8 +489,12 @@ export const RecurringSchedulePanel = ({
       if (error instanceof RpcError && error.problem.code === "STALE_PLAN") {
         setPreview({ kind: "error", message, stale: true });
         setGenerationNeedsReconciliation(false);
+        if (workspaceReconciled) {
+          onMutationBlockChange?.(false);
+        }
       } else {
         setGenerationNeedsReconciliation(true);
+        onMutationBlockChange?.(true);
         setGenerateError(message);
       }
       announce(message);
@@ -1311,7 +1337,7 @@ export const EventsTask = () => {
     state.kind === "ready" ? state.events : (previousEvents.current ?? []);
   const dataReady = state.kind === "ready";
   const openEvent = (eventId: string) => {
-    if (eventsOutcomeUnknown) {
+    if (eventsOutcomeUnknown || eventsStale) {
       return;
     }
     onOpenEvent?.(eventId);
@@ -1339,7 +1365,7 @@ export const EventsTask = () => {
     action: () => Promise<unknown>,
     successMessage: string
   ): Promise<boolean> => {
-    if (eventsOutcomeUnknown) {
+    if (eventsOutcomeUnknown || eventsStale) {
       return false;
     }
     setActionBusy(true);
@@ -1360,6 +1386,7 @@ export const EventsTask = () => {
       }
       if (outcome?.status !== "success") {
         setEventsStale(true);
+        setActionError(COPY.programs.workspaceEventsSavedStale);
       }
       setEventsOutcomeUnknown(false);
       setNotice(successMessage);
@@ -1426,7 +1453,7 @@ export const EventsTask = () => {
 
   // oxlint-disable-next-line eslint/complexity -- create validation and optional check-in-window overrides are one form boundary
   const submitCreate = async (formEvent: FormEvent<HTMLFormElement>) => {
-    if (eventsOutcomeUnknown) {
+    if (eventsOutcomeUnknown || eventsStale) {
       return;
     }
     formEvent.preventDefault();
@@ -1523,7 +1550,7 @@ export const EventsTask = () => {
             type="button"
             className="w-fit bg-[var(--screen-accent)] text-white hover:bg-[var(--screen-accent-deep)]"
             onClick={() => toggleCreateForm(!createOpen)}
-            disabled={eventsOutcomeUnknown}
+            disabled={eventsOutcomeUnknown || eventsStale}
           >
             {COPY.programs.createMeeting}
           </Button>
@@ -1541,7 +1568,7 @@ export const EventsTask = () => {
       {actionError !== null && (
         <div className="flex min-w-0 flex-wrap items-center gap-[var(--screen-utility-gap)]">
           <Alert variant="destructive">{actionError}</Alert>
-          {eventsOutcomeUnknown && (
+          {(eventsOutcomeUnknown || eventsStale) && (
             <Button
               type="button"
               variant="outline"
@@ -1776,7 +1803,7 @@ export const EventsTask = () => {
               <Button
                 type="submit"
                 className="w-fit bg-[var(--screen-accent)] text-white hover:bg-[var(--screen-accent-deep)]"
-                disabled={createBusy || eventsOutcomeUnknown}
+                disabled={createBusy || eventsOutcomeUnknown || eventsStale}
               >
                 {createBusy
                   ? COPY.programs.submitting
@@ -1934,7 +1961,7 @@ export const EventsTask = () => {
                           href={eventHref}
                           aria-label={COPY.programs.eventDetailOpen}
                           onClick={(clickEvent) => {
-                            if (eventsOutcomeUnknown) {
+                            if (eventsOutcomeUnknown || eventsStale) {
                               clickEvent.preventDefault();
                               return;
                             }
@@ -1952,7 +1979,7 @@ export const EventsTask = () => {
                             clickEvent.preventDefault();
                             openEvent(event.event_id);
                           }}
-                          aria-disabled={eventsOutcomeUnknown}
+                          aria-disabled={eventsOutcomeUnknown || eventsStale}
                         >
                           {COPY.programs.eventDetailOpen}
                         </Link>
@@ -1965,7 +1992,11 @@ export const EventsTask = () => {
                               variant="outline"
                               size="icon"
                               aria-label={COPY.programs.eventMoreActions}
-                              disabled={actionBusy}
+                              disabled={
+                                actionBusy ||
+                                eventsOutcomeUnknown ||
+                                eventsStale
+                              }
                               className="border-[var(--screen-line-strong)] bg-transparent text-[var(--screen-ink)] hover:bg-[var(--screen-surface-soft)]"
                             >
                               <MoreHorizontal aria-hidden="true" />
@@ -1973,13 +2004,21 @@ export const EventsTask = () => {
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
                             <DropdownMenuItem
-                              disabled={!onOpenEvent || eventsOutcomeUnknown}
+                              disabled={
+                                !onOpenEvent ||
+                                eventsOutcomeUnknown ||
+                                eventsStale
+                              }
                               onSelect={() => openEvent(event.event_id)}
                             >
                               {COPY.programs.eventEdit}
                             </DropdownMenuItem>
                             <DropdownMenuItem
-                              disabled={!onOpenEvent || eventsOutcomeUnknown}
+                              disabled={
+                                !onOpenEvent ||
+                                eventsOutcomeUnknown ||
+                                eventsStale
+                              }
                               onSelect={() => openEvent(event.event_id)}
                             >
                               {COPY.programs.eventReschedule}
@@ -1989,6 +2028,7 @@ export const EventsTask = () => {
                                 <DropdownMenuSeparator />
                                 <DropdownMenuItem
                                   variant="destructive"
+                                  disabled={eventsOutcomeUnknown || eventsStale}
                                   onSelect={() => {
                                     if (event.has_attendance) {
                                       const message =
