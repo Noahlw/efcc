@@ -1018,7 +1018,15 @@ export const EventDetail = ({
           className="w-fit bg-[var(--screen-accent)] text-white hover:bg-[var(--screen-accent-deep)]"
           data-action-state="available"
         >
-          <Link href={attendanceHref}>
+          <Link
+            href={attendanceHref}
+            aria-disabled={eventActionBlocked}
+            onClick={(clickEvent) => {
+              if (eventActionBlocked) {
+                clickEvent.preventDefault();
+              }
+            }}
+          >
             {COPY.attendance.eventAttendanceOpen}
           </Link>
         </Button>
@@ -1028,6 +1036,7 @@ export const EventDetail = ({
               type="button"
               variant="outline"
               className="w-fit"
+              disabled={eventActionBlocked}
               onClick={() => setShowCheckInSheet((current) => !current)}
             >
               {COPY.attendance.eventCheckInSheetOpen}

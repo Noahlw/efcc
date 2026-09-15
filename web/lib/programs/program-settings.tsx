@@ -1383,13 +1383,19 @@ export const ProgramSettings = ({
         announce(COPY.programs.settingsSaved);
         try {
           const refreshed = await onReload?.();
-          if (refreshed) {
+          if (onReload !== undefined && refreshed === undefined) {
+            setReloadRequired(true);
+            onMutationBlockChange?.(true);
+            setActionError(COPY.programs.workspaceSavedStale);
+            announce(COPY.programs.workspaceSavedStale);
+          } else if (refreshed) {
             applyProgram(refreshed);
           }
         } catch {
           // The PATCH is already authoritative. A failed follow-up GET must
           // remain a refresh problem, never a false failed-save state.
           setReloadRequired(onReload !== undefined);
+          onMutationBlockChange?.(onReload !== undefined);
           setActionError(COPY.programs.workspaceSavedStale);
           announce(COPY.programs.workspaceSavedStale);
         }
@@ -1554,10 +1560,11 @@ export const ProgramSettings = ({
       setNotice(null);
       try {
         await operation();
-        await loadRules();
-        let refreshFailed = false;
+        const rulesReady = await loadRules();
+        let refreshFailed = !rulesReady;
         try {
-          await onReload?.();
+          const refreshed = await onReload?.();
+          refreshFailed ||= onReload !== undefined && refreshed === undefined;
         } catch {
           refreshFailed = true;
         }
@@ -1568,6 +1575,7 @@ export const ProgramSettings = ({
         setNotice(success);
         if (refreshFailed) {
           setReloadRequired(onReload !== undefined);
+          onMutationBlockChange?.(true);
           setActionError(COPY.programs.workspaceSavedStale);
         }
         announce(success);

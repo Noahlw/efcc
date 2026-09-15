@@ -131,7 +131,7 @@ export const RecurringSchedulePanel = ({
   rules: ScheduleRule[] | null;
   rulesError: string | null;
   /** Invoked after a successful generation so the event list refreshes. */
-  onGenerated: () => void;
+  onGenerated: () => boolean | Promise<boolean>;
   /** Opens an exact generated Event when the parent owns Event navigation. */
   onOpenEvent?: (eventId: string) => void;
   onMutationBlockChange?: (blocked: boolean) => void;
@@ -366,7 +366,9 @@ export const RecurringSchedulePanel = ({
     }
   };
 
-  const applyGenerationResult = (generated: GenerateResult) => {
+  const applyGenerationResult = async (
+    generated: GenerateResult
+  ): Promise<void> => {
     const result =
       generated.failed === 0
         ? generated.resumed
@@ -389,7 +391,14 @@ export const RecurringSchedulePanel = ({
       planId: generated.plan_id,
     });
     announce(result);
-    onGenerated();
+    const workspaceReconciled = await onGenerated();
+    if (!workspaceReconciled) {
+      setGenerationNeedsReconciliation(true);
+      setGenerateError(COPY.programs.workspaceSavedStale);
+      onMutationBlockChange?.(true);
+    } else {
+      onMutationBlockChange?.(false);
+    }
   };
 
   const submitGenerate = async () => {
@@ -407,7 +416,7 @@ export const RecurringSchedulePanel = ({
       if (!mounted.current) {
         return;
       }
-      applyGenerationResult(generated);
+      await applyGenerationResult(generated);
     } catch (error) {
       if (!mounted.current) {
         return;
@@ -472,20 +481,12 @@ export const RecurringSchedulePanel = ({
       if (!mounted.current) {
         return;
       }
-      if (onWorkspaceRefresh) {
-        try {
-          workspaceReconciled = (await onWorkspaceRefresh()) !== undefined;
-        } catch {
-          workspaceReconciled = false;
-        }
-      }
       if (!workspaceReconciled) {
         setGenerationNeedsReconciliation(true);
         setGenerateError(COPY.programs.programTransportAmbiguous);
         onMutationBlockChange?.(true);
       } else {
-        applyGenerationResult(generated);
-        onMutationBlockChange?.(false);
+        await applyGenerationResult(generated);
       }
     } catch (error) {
       if (!mounted.current) {
@@ -1198,10 +1199,14 @@ export const EventsTask = () => {
   useEffect(() => {
     if (state.kind === "ready") {
       setEventsStale(false);
+      if (!eventsOutcomeUnknown) {
+        onMutationBlockChange?.(false);
+      }
     } else if (state.kind === "error" && previousEvents.current !== null) {
       setEventsStale(true);
+      onMutationBlockChange?.(true);
     }
-  }, [state.kind]);
+  }, [eventsOutcomeUnknown, onMutationBlockChange, state.kind]);
 
   const reconcileEvents = async () => {
     let workspaceReconciled = true;
@@ -1405,6 +1410,7 @@ export const EventsTask = () => {
       }
       if (!workspaceReconciled || outcome?.status !== "success") {
         setEventsStale(true);
+        onMutationBlockChange?.(true);
         setActionError(COPY.programs.workspaceEventsSavedStale);
       }
       setEventsOutcomeUnknown(false);
@@ -1536,6 +1542,7 @@ export const EventsTask = () => {
       }
       if (!workspaceReconciled) {
         setEventsStale(true);
+        onMutationBlockChange?.(true);
         setActionError(COPY.programs.workspaceEventsSavedStale);
         setNotice(COPY.programs.eventCreatedNotice);
         return;

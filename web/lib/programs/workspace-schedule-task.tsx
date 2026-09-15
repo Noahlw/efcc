@@ -3,10 +3,7 @@
 import type { ScheduleRule } from "./program-api";
 import { ProgramSettings } from "./program-settings";
 import { buildProgramsHref } from "./programs-intent";
-import {
-  refreshWorkspaceAfterMutation,
-  useWorkspaceTaskContext,
-} from "./workspace-context";
+import { useWorkspaceTaskContext } from "./workspace-context";
 import { RecurringSchedulePanel } from "./workspace-events-task";
 
 interface ScheduleAddonResource {
@@ -24,7 +21,7 @@ const ScheduleAddon = ({
 }: {
   programId: string;
   rules: ScheduleRule[] | null;
-  onGenerated: () => void;
+  onGenerated: () => boolean | Promise<boolean>;
   onOpenEvent?: (eventId: string) => void;
   onMutationBlockChange?: (blocked: boolean) => void;
   onWorkspaceRefresh?: () => void | Promise<unknown>;
@@ -46,7 +43,7 @@ ScheduleAddon.displayName = "ScheduleAddon";
 
 const makeScheduleAddon = (
   programId: string,
-  onGenerated: () => void,
+  onGenerated: () => boolean | Promise<boolean>,
   onOpenEvent?: (eventId: string) => void,
   onMutationBlockChange?: (blocked: boolean) => void,
   onWorkspaceRefresh?: () => void | Promise<unknown>
@@ -95,8 +92,15 @@ export const ScheduleTask = () => {
         onMutationBlockChange={onMutationBlockChange}
         scheduleAddon={makeScheduleAddon(
           program.program_id,
-          () => {
-            void refreshWorkspaceAfterMutation(onWorkspaceRefresh);
+          async () => {
+            if (!onWorkspaceRefresh) {
+              return true;
+            }
+            try {
+              return (await onWorkspaceRefresh()) !== undefined;
+            } catch {
+              return false;
+            }
           },
           (eventId) => onTaskChange("events", eventId),
           onMutationBlockChange,
