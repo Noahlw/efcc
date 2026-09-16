@@ -2362,7 +2362,7 @@ export const EventsTask = () => {
                         <Link
                           href={eventHref}
                           aria-label={`${eventTitle} · ${wall.date} · ${COPY.programs.eventDetailOpen}`}
-                          className="min-w-0 wrap-anywhere text-[length:var(--screen-body-size)] leading-[21px] font-semibold hover:underline focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-[var(--screen-focus)]"
+                          className="inline-flex min-w-0 min-h-11 items-center wrap-anywhere text-[length:var(--screen-body-size)] leading-[21px] font-semibold hover:underline focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-[var(--screen-focus)]"
                           onClick={(clickEvent) => {
                             if (eventsOutcomeUnknown || eventsStale) {
                               clickEvent.preventDefault();
@@ -2438,7 +2438,7 @@ export const EventsTask = () => {
                           )}
                       </ScreenRowMain>
                       <div className="flex min-w-0 basis-full flex-wrap items-center gap-[var(--screen-utility-gap)]">
-                        {actionPhase !== "future" && (
+                        {(actionPhase === "open" || actionPhase === "past") && (
                           <Button
                             asChild
                             className="w-fit border-[var(--screen-line-strong)] bg-transparent text-[var(--screen-ink)] hover:bg-[var(--screen-surface-soft)]"
@@ -2446,11 +2446,16 @@ export const EventsTask = () => {
                           >
                             <Link
                               href={`/events?eventId=${encodeURIComponent(event.event_id)}`}
+                              aria-disabled={
+                                eventsOutcomeUnknown || eventsStale
+                              }
                               onClick={(clickEvent) => {
+                                if (eventsOutcomeUnknown || eventsStale) {
+                                  clickEvent.preventDefault();
+                                  return;
+                                }
                                 if (
                                   !onOpenAttendance ||
-                                  eventsOutcomeUnknown ||
-                                  eventsStale ||
                                   clickEvent.defaultPrevented ||
                                   clickEvent.button !== 0 ||
                                   clickEvent.metaKey ||

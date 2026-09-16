@@ -711,10 +711,14 @@ describe("attendance Worker routes", () => {
 
       const storedProof = await testDb()
         .prepare(
-          "SELECT proof_hash, request_fingerprint FROM attendance_guest_reconcile_proofs WHERE event_id = ?"
+          "SELECT proof_hash, request_fingerprint, attendance_id FROM attendance_guest_reconcile_proofs WHERE event_id = ?"
         )
         .bind(EVENT)
-        .first<{ proof_hash: string; request_fingerprint: string }>();
+        .first<{
+          proof_hash: string;
+          request_fingerprint: string;
+          attendance_id: string;
+        }>();
       assert.ok(storedProof);
       assert.strictEqual(storedProof.proof_hash.length, 64);
       assert.notStrictEqual(storedProof.proof_hash, idempotencyKey);
@@ -732,6 +736,29 @@ describe("attendance Worker routes", () => {
       const duplicateRetryBody = await json(duplicateRetry);
       assert.deepStrictEqual(duplicateRetryBody.data, {
         outcome: "duplicate",
+      });
+      const replayAudit = await testDb()
+        .prepare(
+          `SELECT action, entity_type, entity_id, outcome, reason, correlation_id
+             FROM audit_events
+            WHERE correlation_id = ?`
+        )
+        .bind(duplicateRetryBody.requestId)
+        .first<{
+          action: string;
+          entity_type: string;
+          entity_id: string;
+          outcome: string;
+          reason: string;
+          correlation_id: string;
+        }>();
+      assert.deepStrictEqual(replayAudit, {
+        action: "attendance.check_in",
+        entity_type: "Attendance",
+        entity_id: storedProof.attendance_id,
+        outcome: "DUPLICATE",
+        reason: "IDEMPOTENCY_REPLAY",
+        correlation_id: duplicateRetryBody.requestId,
       });
 
       await testDb()
@@ -949,6 +976,80 @@ describe("attendance Worker routes", () => {
       )
       .bind(new Date().toISOString(), committedAttendanceId)
       .run();
+  });
+
+  test("guest reconciliation proof trigger binds an active guest attendance", async () => {
+    const now = new Date().toISOString();
+    const guestAttendanceId = "ATT-PROOF-GUEST";
+    const memberAttendanceId = "ATT-PROOF-MEMBER";
+    await testDb()
+      .prepare(
+        `INSERT INTO attendances
+          (attendance_id, event_id, member_user_id, guest_name, guest_phone,
+           guest_phone_normalized, method, status, checked_in_at, checked_in_by)
+         VALUES (?, ?, NULL, '證明訪客', '6444 0001', 'hk:85264440001',
+                 'guest_manual_code', 'Active', ?, NULL)`
+      )
+      .bind(guestAttendanceId, EVENT, now)
+      .run();
+    await testDb()
+      .prepare(
+        `INSERT INTO attendances
+          (attendance_id, event_id, member_user_id, guest_name, guest_phone,
+           guest_phone_normalized, method, status, checked_in_at, checked_in_by)
+         VALUES (?, ?, 'ATT-MEMBER', NULL, NULL, NULL,
+                 'leader_manual_search', 'Active', ?, 'ATT-ADMIN')`
+      )
+      .bind(memberAttendanceId, QR_EVENT, now)
+      .run();
+
+    try {
+      await assert.rejects(
+        testDb()
+          .prepare(
+            `INSERT INTO attendance_guest_reconcile_proofs
+              (proof_hash, request_fingerprint, program_id, event_id,
+               attendance_id, request_id, created_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?)`
+          )
+          .bind(
+            "proof-cross-event",
+            "fingerprint-cross-event",
+            PROGRAM,
+            QR_EVENT,
+            guestAttendanceId,
+            "request-cross-event",
+            now
+          )
+          .run(),
+        /guest reconciliation proof target mismatch/u
+      );
+      await assert.rejects(
+        testDb()
+          .prepare(
+            `INSERT INTO attendance_guest_reconcile_proofs
+              (proof_hash, request_fingerprint, program_id, event_id,
+               attendance_id, request_id, created_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?)`
+          )
+          .bind(
+            "proof-member-attendance",
+            "fingerprint-member-attendance",
+            PROGRAM,
+            QR_EVENT,
+            memberAttendanceId,
+            "request-member-attendance",
+            now
+          )
+          .run(),
+        /guest reconciliation proof target mismatch/u
+      );
+    } finally {
+      await testDb()
+        .prepare("DELETE FROM attendances WHERE attendance_id IN (?, ?)")
+        .bind(guestAttendanceId, memberAttendanceId)
+        .run();
+    }
   });
 
   test("guest reconciliation uses a separate rate-limit bucket before identity lookup", async () => {

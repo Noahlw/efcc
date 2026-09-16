@@ -81,6 +81,13 @@ const EXCUSE_OPTIONS = ["身體不適", "工作或上課", "家庭事務", "其�
 type ExcuseCategory = (typeof EXCUSE_OPTIONS)[number];
 
 type MemberDirectory = Readonly<Record<string, AttendanceMember>>;
+type PendingAttendanceMutation =
+  | { kind: "check-in"; memberUserId: string }
+  | { kind: "void"; attendanceId: string }
+  | { kind: "correction"; attendanceId: string; name: string; phone: string }
+  | { kind: "excuse"; enrollmentId: string }
+  | { kind: "materialize" };
+
 type LiveAttendanceRosterFilter = "not-yet" | "checked-in" | "all";
 type PostEventAttendanceRosterFilter =
   | "all"
@@ -393,6 +400,44 @@ function updateAttendanceEventUrl(nextEventId: string | null) {
   window.history.replaceState(null, "", url);
 }
 
+type AttendanceRosterRead = Awaited<ReturnType<typeof listAttendanceRoster>>;
+
+function rosterSettlesMutation(
+  roster: AttendanceRosterRead,
+  mutation: PendingAttendanceMutation
+): boolean {
+  const rows = [...(roster.attendances ?? []), ...(roster.guests ?? [])];
+  switch (mutation.kind) {
+    case "check-in":
+      return rows.some(
+        (row) =>
+          row.member_user_id === mutation.memberUserId &&
+          row.status === "Active"
+      );
+    case "void":
+      return rows.some(
+        (row) =>
+          row.attendance_id === mutation.attendanceId && row.status === "Voided"
+      );
+    case "correction":
+      return rows.some(
+        (row) =>
+          row.attendance_id === mutation.attendanceId &&
+          row.status === "Active" &&
+          row.guest_name === mutation.name &&
+          row.guest_phone === mutation.phone
+      );
+    case "excuse":
+      return (roster.expected ?? []).some(
+        (row) =>
+          row.enrollment_id === mutation.enrollmentId &&
+          row.disposition?.disposition === "Excused"
+      );
+    case "materialize":
+      return roster.snapshot !== null || !roster.materialization_required;
+  }
+}
+
 function printAttendanceRoster() {
   if (typeof window !== "undefined") {
     window.print();
@@ -464,6 +509,14 @@ export const AttendanceRoster = ({
       excuseInputRef.current?.focus();
     }
   }, [excusingId]);
+
+  useEffect(() => {
+    if (readOnly) {
+      setVoidingId(null);
+      setCorrectionId(null);
+      setExcusingId(null);
+    }
+  }, [readOnly]);
 
   useLayoutEffect(() => {
     const target = sheetFocusTargetRef.current;
@@ -1650,10 +1703,12 @@ export const AttendanceRoster = ({
 
 export interface AttendanceOperatorPanelProps {
   onAuthRequired?: () => void;
+  onMutationBlockChange?: (blocked: boolean) => void;
 }
 
 export const AttendanceOperatorPanel = ({
   onAuthRequired,
+  onMutationBlockChange,
 }: AttendanceOperatorPanelProps = {}) => {
   const [eventId, setEventId] = useState<string | null>(null);
   const [chooserEvents, setChooserEvents] = useState<AttendanceEventSummary[]>(
@@ -1696,6 +1751,8 @@ export const AttendanceOperatorPanel = ({
   const selectedEventIdRef = useRef<string | null>(null);
   const rosterRequestRef = useRef(false);
   const rosterRequestPromiseRef = useRef<Promise<boolean> | null>(null);
+  const latestRosterResultRef = useRef<AttendanceRosterRead | null>(null);
+  const pendingMutationRef = useRef<PendingAttendanceMutation | null>(null);
   const staleRef = useRef(false);
   const mutationOutcomeUnknownRef = useRef(false);
 
@@ -1703,6 +1760,97 @@ export const AttendanceOperatorPanel = ({
     staleRef.current = stale;
     mutationOutcomeUnknownRef.current = mutationOutcomeUnknown;
   }, [mutationOutcomeUnknown, stale]);
+
+  useEffect(() => {
+    onMutationBlockChange?.(mutationOutcomeUnknown);
+    return () => onMutationBlockChange?.(false);
+  }, [mutationOutcomeUnknown, onMutationBlockChange]);
+
+  useEffect(() => {
+    if (!mutationOutcomeUnknown || typeof window === "undefined") {
+      return;
+    }
+    const blockedHref = window.location.href;
+    const guardToken = crypto.randomUUID();
+    const historyState =
+      typeof window.history.state === "object" && window.history.state !== null
+        ? (window.history.state as Record<string, unknown>)
+        : {};
+    const guardedState = {
+      ...historyState,
+      efccAttendanceMutationGuard: guardToken,
+    };
+    window.history.pushState(guardedState, "", blockedHref);
+    const announceBlocked = () => {
+      const message = COPY.attendance.transportAmbiguous;
+      setStatus(message);
+      setTone("error");
+      announce(message);
+    };
+    const handleDocumentClick = (clickEvent: globalThis.MouseEvent) => {
+      if (
+        clickEvent.defaultPrevented ||
+        clickEvent.button !== 0 ||
+        clickEvent.metaKey ||
+        clickEvent.ctrlKey ||
+        clickEvent.shiftKey ||
+        clickEvent.altKey
+      ) {
+        return;
+      }
+      const target = clickEvent.target;
+      if (!(target instanceof Element)) {
+        return;
+      }
+      if (target.closest("[data-attendance-operator-root='true']")) {
+        return;
+      }
+      const anchor = target.closest("a[href]");
+      const button = target.closest("button");
+      if (!anchor && !button) {
+        return;
+      }
+      if (anchor instanceof HTMLAnchorElement) {
+        const rawHref = anchor.getAttribute("href");
+        if (
+          rawHref?.startsWith("#") ||
+          anchor.hasAttribute("download") ||
+          (anchor.getAttribute("target") ?? "").toLowerCase() === "_blank"
+        ) {
+          return;
+        }
+      }
+      if (button instanceof HTMLButtonElement && button.disabled) {
+        return;
+      }
+      clickEvent.preventDefault();
+      clickEvent.stopPropagation();
+      announceBlocked();
+    };
+    const handleBeforeUnload = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    const handlePopState = () => {
+      window.history.pushState(guardedState, "", blockedHref);
+      announceBlocked();
+    };
+    document.addEventListener("click", handleDocumentClick, true);
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    window.addEventListener("popstate", handlePopState);
+    return () => {
+      document.removeEventListener("click", handleDocumentClick, true);
+      window.removeEventListener("beforeunload", handleBeforeUnload);
+      window.removeEventListener("popstate", handlePopState);
+      if (
+        window.location.href === blockedHref &&
+        (window.history.state as Record<string, unknown> | null)
+          ?.efccAttendanceMutationGuard === guardToken
+      ) {
+        window.history.back();
+      }
+    };
+  }, [mutationOutcomeUnknown]);
 
   function handleAuthRequired() {
     if (onAuthRequired) {
@@ -1722,6 +1870,13 @@ export const AttendanceOperatorPanel = ({
   function showStatus(message: string, nextTone: StatusTone = "info") {
     setStatus(message);
     setTone(nextTone);
+  }
+
+  function markUnknownMutation(mutation: PendingAttendanceMutation) {
+    pendingMutationRef.current = mutation;
+    setMutationOutcomeUnknown(true);
+    showStatus(COPY.attendance.transportAmbiguous, "error");
+    announce(COPY.attendance.transportAmbiguous);
   }
 
   function showError(error: unknown) {
@@ -1766,22 +1921,27 @@ export const AttendanceOperatorPanel = ({
 
   interface RosterLoadOptions {
     silent?: boolean;
+    clearRecovery?: boolean;
+    allowRecovery?: boolean;
   }
 
   function applyRosterResult(
     id: string,
     result: Awaited<ReturnType<typeof listAttendanceRoster>>,
-    clearRecovery = true
+    clearRecovery = true,
+    allowRecovery = false
   ) {
     if (selectedEventIdRef.current !== id) {
       return false;
     }
     if (
       !clearRecovery &&
+      !allowRecovery &&
       (staleRef.current || mutationOutcomeUnknownRef.current)
     ) {
       return false;
     }
+    latestRosterResultRef.current = result;
     setEvent(result.event);
     setRows(result.attendances ?? []);
     setExpectedRows(result.expected ?? []);
@@ -1802,14 +1962,23 @@ export const AttendanceOperatorPanel = ({
 
   async function performRosterRead(
     id: string,
-    { silent = false }: RosterLoadOptions = {}
+    {
+      silent = false,
+      clearRecovery,
+      allowRecovery = false,
+    }: RosterLoadOptions = {}
   ): Promise<boolean> {
     if (!silent) {
       setBusy(true);
     }
     try {
       const result = await listAttendanceRoster(id);
-      return applyRosterResult(id, result, !silent);
+      return applyRosterResult(
+        id,
+        result,
+        clearRecovery ?? !silent,
+        allowRecovery
+      );
     } catch (error) {
       if (selectedEventIdRef.current !== id) {
         return false;
@@ -1887,9 +2056,22 @@ export const AttendanceOperatorPanel = ({
     if (!id) {
       return;
     }
-    const refreshed = await loadRoster(id);
-    if (refreshed) {
+    const refreshed = await loadRoster(id, {
+      allowRecovery: true,
+      clearRecovery: false,
+    });
+    const pendingMutation = pendingMutationRef.current;
+    const roster = latestRosterResultRef.current;
+    if (
+      refreshed &&
+      roster &&
+      pendingMutation &&
+      rosterSettlesMutation(roster, pendingMutation)
+    ) {
+      pendingMutationRef.current = null;
+      setStale(false);
       setMutationOutcomeUnknown(false);
+      setRosterReadError(null);
       showStatus(COPY.programs.workspaceReconciled, "info");
       announce(COPY.programs.workspaceReconciled);
     } else {
@@ -1916,14 +2098,13 @@ export const AttendanceOperatorPanel = ({
     try {
       const result = await materializeAttendanceSnapshot(id);
       applyRosterResult(id, result);
+      pendingMutationRef.current = null;
       const message = COPY.attendance.rosterMaterialize;
       showStatus(message, "success");
       announce(message);
     } catch (error) {
       if (isUnknownMutationOutcome(error)) {
-        setMutationOutcomeUnknown(true);
-        showStatus(COPY.attendance.transportAmbiguous, "error");
-        announce(COPY.attendance.transportAmbiguous);
+        markUnknownMutation({ kind: "materialize" });
         // The mutation has settled; release the write lock before the
         // authoritative roster read, otherwise reconciliation self-blocks.
         rosterRequestRef.current = false;
@@ -1943,6 +2124,8 @@ export const AttendanceOperatorPanel = ({
       return;
     }
     selectedEventIdRef.current = nextEventId;
+    pendingMutationRef.current = null;
+    latestRosterResultRef.current = null;
     setEventId(nextEventId);
     setEvent(null);
     setRows([]);
@@ -1965,6 +2148,8 @@ export const AttendanceOperatorPanel = ({
       return;
     }
     selectedEventIdRef.current = null;
+    pendingMutationRef.current = null;
+    latestRosterResultRef.current = null;
     setEventId(null);
     setEvent(null);
     setShowCheckInSheet(false);
@@ -2052,9 +2237,10 @@ export const AttendanceOperatorPanel = ({
       announce(message);
     } catch (error) {
       if (isUnknownMutationOutcome(error)) {
-        setMutationOutcomeUnknown(true);
-        showStatus(COPY.attendance.transportAmbiguous, "error");
-        announce(COPY.attendance.transportAmbiguous);
+        markUnknownMutation({
+          kind: "check-in",
+          memberUserId: member.user_id,
+        });
         await reconcileUnknownAttendance();
       } else {
         showError(error);
@@ -2088,9 +2274,10 @@ export const AttendanceOperatorPanel = ({
       return true;
     } catch (error) {
       if (isUnknownMutationOutcome(error)) {
-        setMutationOutcomeUnknown(true);
-        showStatus(COPY.attendance.transportAmbiguous, "error");
-        announce(COPY.attendance.transportAmbiguous);
+        markUnknownMutation({
+          kind: "void",
+          attendanceId: row.attendance_id,
+        });
         await reconcileUnknownAttendance();
       } else {
         showError(error);
@@ -2125,9 +2312,12 @@ export const AttendanceOperatorPanel = ({
       return true;
     } catch (error) {
       if (isUnknownMutationOutcome(error)) {
-        setMutationOutcomeUnknown(true);
-        showStatus(COPY.attendance.transportAmbiguous, "error");
-        announce(COPY.attendance.transportAmbiguous);
+        markUnknownMutation({
+          kind: "correction",
+          attendanceId: row.attendance_id,
+          name: input.name,
+          phone: input.phone,
+        });
         await reconcileUnknownAttendance();
       } else {
         showError(error);
@@ -2162,9 +2352,10 @@ export const AttendanceOperatorPanel = ({
       return true;
     } catch (error) {
       if (isUnknownMutationOutcome(error)) {
-        setMutationOutcomeUnknown(true);
-        showStatus(COPY.attendance.transportAmbiguous, "error");
-        announce(COPY.attendance.transportAmbiguous);
+        markUnknownMutation({
+          kind: "excuse",
+          enrollmentId: row.enrollment_id,
+        });
         await reconcileUnknownAttendance();
       } else {
         showError(error);
@@ -2510,7 +2701,10 @@ export const AttendanceOperatorPanel = ({
       </section>
     ) : null;
   return (
-    <div className="mx-auto w-[min(100%,760px)] px-4 py-8 pb-12 print:p-0 print:m-0 print:w-full">
+    <div
+      className="mx-auto w-[min(100%,760px)] px-4 py-8 pb-12 print:p-0 print:m-0 print:w-full"
+      data-attendance-operator-root="true"
+    >
       <Card
         className="grid print:border-0 print:shadow-none print:p-0 print:bg-transparent"
         role={rosterVisible ? "region" : undefined}
@@ -2560,7 +2754,9 @@ export const AttendanceOperatorPanel = ({
                   onBack={backToChooser}
                   onRefresh={() => {
                     if (eventId) {
-                      void loadRoster(eventId);
+                      void (mutationOutcomeUnknown
+                        ? reconcileUnknownAttendance()
+                        : loadRoster(eventId));
                     }
                   }}
                   onMaterialize={() => void materializeRoster()}

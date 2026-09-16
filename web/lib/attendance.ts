@@ -330,10 +330,19 @@ async function findGuestReconciliationProof(
   return (
     (await db
       .prepare(
-        `SELECT proof_hash, request_fingerprint, program_id, event_id,
-                attendance_id, request_id, created_at
-           FROM attendance_guest_reconcile_proofs
-          WHERE proof_hash = ?`
+        `SELECT proof.proof_hash, proof.request_fingerprint, proof.program_id,
+                proof.event_id, proof.attendance_id, proof.request_id,
+                proof.created_at
+           FROM attendance_guest_reconcile_proofs proof
+           JOIN attendances attendance
+             ON attendance.attendance_id = proof.attendance_id
+            AND attendance.event_id = proof.event_id
+           JOIN events event
+             ON event.event_id = proof.event_id
+            AND event.program_id = proof.program_id
+          WHERE proof.proof_hash = ?
+            AND attendance.member_user_id IS NULL
+            AND attendance.guest_phone_normalized IS NOT NULL`
       )
       .bind(proofHash)
       .first<GuestReconciliationProofRow>()) ?? null
@@ -521,7 +530,8 @@ async function prepareGuestProof(
     credential: string;
   },
   idempotencyKey: string | null,
-  id: string
+  id: string,
+  actorUserId: string | null
 ): Promise<GuestReconciliationProof | Response | undefined> {
   if (!idempotencyKey) {
     return undefined;
@@ -536,9 +546,28 @@ async function prepareGuestProof(
   if (!existing) {
     return proof;
   }
-  return proofMatchesEvent(existing, event, proof.requestFingerprint)
-    ? json(200, { outcome: "duplicate" }, id)
-    : problem(409, "CONFLICT", "此提交識別碼已用於其他簽到。", id);
+  if (proofMatchesEvent(existing, event, proof.requestFingerprint)) {
+    await audit(db, {
+      actorUserId,
+      action: "attendance.check_in",
+      entityType: "Attendance",
+      entityId: existing.attendance_id,
+      outcome: "DUPLICATE",
+      reason: "IDEMPOTENCY_REPLAY",
+      correlationId: id,
+    });
+    return json(200, { outcome: "duplicate" }, id);
+  }
+  await audit(db, {
+    actorUserId,
+    action: "attendance.check_in",
+    entityType: "Attendance",
+    entityId: existing.attendance_id,
+    outcome: "CONFLICT",
+    reason: "IDEMPOTENCY_KEY_REUSED",
+    correlationId: id,
+  });
+  return problem(409, "CONFLICT", "此提交識別碼已用於其他簽到。", id);
 }
 
 async function guestProofExists(
@@ -549,11 +578,19 @@ async function guestProofExists(
   const row = await db
     .prepare(
       `SELECT 1 AS found
-         FROM attendance_guest_reconcile_proofs
-        WHERE proof_hash = ?
-          AND program_id = ?
-          AND event_id = ?
-          AND request_fingerprint = ?
+         FROM attendance_guest_reconcile_proofs proof
+         JOIN attendances attendance
+           ON attendance.attendance_id = proof.attendance_id
+          AND attendance.event_id = proof.event_id
+         JOIN events event
+           ON event.event_id = proof.event_id
+          AND event.program_id = proof.program_id
+        WHERE proof.proof_hash = ?
+          AND proof.program_id = ?
+          AND proof.event_id = ?
+          AND proof.request_fingerprint = ?
+          AND attendance.member_user_id IS NULL
+          AND attendance.guest_phone_normalized IS NOT NULL
         LIMIT 1`
     )
     .bind(
@@ -2097,7 +2134,8 @@ export async function handleGuestCheckIn(
       credential: guestCredential(input, method),
     },
     idempotencyKey,
-    id
+    id,
+    current?.user_id ?? null
   );
   if (guestProofResult instanceof Response) {
     return guestProofResult;

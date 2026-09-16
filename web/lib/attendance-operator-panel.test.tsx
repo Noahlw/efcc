@@ -774,6 +774,105 @@ describe(AttendanceOperatorPanel, () => {
     ).toBeEnabled();
   });
 
+  test("unknown void outcome blocks navigation until the target settles on Retry", async () => {
+    let rosterCalls = 0;
+    const onMutationBlockChange = vi.fn<(blocked: boolean) => void>();
+    const voidedRow: AttendanceRow = {
+      ...ROW,
+      status: "Voided",
+      voided_by: "U-ADMIN",
+      voided_at: "2026-08-13T11:40:00.000Z",
+      void_reason: "網絡中斷前已提交",
+    };
+    server.use(
+      http.get("/api/v1/attendance/scanner-events", () =>
+        HttpResponse.json({
+          requestId: "rid-list",
+          data: { events: [ACTIVE] },
+        })
+      ),
+      http.get(`/api/v1/attendance/events/${ACTIVE.event_id}/roster`, () => {
+        rosterCalls += 1;
+        if (rosterCalls === 1) {
+          return HttpResponse.json({
+            requestId: "rid-roster",
+            data: { event: ACTIVE, attendances: [ROW] },
+          });
+        }
+        if (rosterCalls === 2) {
+          return HttpResponse.json(
+            {
+              type: "about:blank",
+              title: "Unavailable",
+              status: 503,
+              code: "UNAVAILABLE",
+              detail: "暫時無法確認最新簽到狀態。",
+            },
+            { status: 503 }
+          );
+        }
+        return HttpResponse.json({
+          requestId: "rid-reconciled",
+          data: { event: ACTIVE, attendances: [voidedRow] },
+        });
+      }),
+      http.post(`/api/v1/attendance/${ROW.attendance_id}/void`, () =>
+        HttpResponse.json(
+          {
+            type: "about:blank",
+            title: "Unavailable",
+            status: 503,
+            code: "UNAVAILABLE",
+            detail: "暫時無法確認簽到是否已作廢。",
+          },
+          { status: 503 }
+        )
+      )
+    );
+    const user = userEvent.setup();
+    renderWithLiveRegion({ onMutationBlockChange });
+
+    await user.click(await screen.findByRole("button", { name: /週六聚會/u }));
+    await screen.findAllByText(MEMBER.user_id);
+    await user.click(
+      screen.getByRole("button", { name: COPY.attendance.voidAttendance })
+    );
+    await user.type(
+      screen.getByLabelText(COPY.attendance.voidReason),
+      "網絡中斷前已提交"
+    );
+    await user.click(
+      screen.getByRole("button", { name: COPY.attendance.voidConfirm })
+    );
+
+    await screen.findAllByText(COPY.attendance.transportAmbiguous);
+    expect(onMutationBlockChange).toHaveBeenCalledWith(true);
+    const outsideLink = document.createElement("a");
+    outsideLink.href = "/home";
+    outsideLink.textContent = "Home";
+    document.body.append(outsideLink);
+    const navigation = new MouseEvent("click", {
+      bubbles: true,
+      cancelable: true,
+      button: 0,
+    });
+    outsideLink.dispatchEvent(navigation);
+    expect(navigation.defaultPrevented).toBe(true);
+    const beforeUnload = new Event("beforeunload", { cancelable: true });
+    window.dispatchEvent(beforeUnload);
+    expect(beforeUnload.defaultPrevented).toBe(true);
+    outsideLink.remove();
+
+    await user.click(
+      screen.getByRole("button", { name: COPY.management.retry })
+    );
+    await screen.findAllByText(COPY.programs.workspaceReconciled);
+    expect(onMutationBlockChange).toHaveBeenLastCalledWith(false);
+    expect(
+      screen.queryByRole("button", { name: COPY.attendance.voidAttendance })
+    ).not.toBeInTheDocument();
+  });
+
   test("operator panel calls onAuthRequired when loading scanner events returns AUTH_REQUIRED", async () => {
     const onAuthRequired = vi.fn<() => void>();
     server.use(

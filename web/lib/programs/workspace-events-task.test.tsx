@@ -192,6 +192,7 @@ describe("EventsTask operations-first composition", () => {
     const eventLink = await screen.findByRole("link", {
       name: /週三查經.*詳情/u,
     });
+    expect(eventLink).toHaveClass("min-h-11");
     const scheduleLink = screen.getByRole("link", {
       name: new RegExp(COPY.programs.settingsScheduleEventsLink, "u"),
     });
@@ -386,6 +387,11 @@ describe("EventsTask operations-first composition", () => {
     expect(
       within(cancelledRow as HTMLElement).queryByRole("button", {
         name: COPY.programs.eventMoreActions,
+      })
+    ).not.toBeInTheDocument();
+    expect(
+      within(cancelledRow as HTMLElement).queryByRole("link", {
+        name: COPY.programs.eventAttendanceViewRecord,
       })
     ).not.toBeInTheDocument();
   });
