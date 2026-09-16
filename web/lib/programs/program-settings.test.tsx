@@ -943,6 +943,11 @@ describe(ProgramSettings, () => {
         program={recurringProgram}
         section="schedule"
         onTaskChange={vi.fn()}
+        scheduleAddon={({ scheduleMutationVersion }) => (
+          <output data-testid="schedule-mutation-version">
+            {scheduleMutationVersion}
+          </output>
+        )}
       />
     );
     await screen.findByText(
@@ -966,6 +971,9 @@ describe(ProgramSettings, () => {
     expect(
       screen.queryByText(COPY.programs.settingsSaved)
     ).not.toBeInTheDocument();
+    expect(screen.getByTestId("schedule-mutation-version")).toHaveTextContent(
+      "1"
+    );
   });
 
   test("clears new-rule input only after a confirmed schedule-rule save", async () => {

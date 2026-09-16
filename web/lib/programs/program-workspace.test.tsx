@@ -2707,6 +2707,45 @@ describe("EVT-02 recurring preview and generation UI (#252)", () => {
     ).toBeDisabled();
   });
 
+  test("a failed settings exception save keeps the reviewed Plan stale", async () => {
+    const user = userEvent.setup();
+    mocks.previewEvents.mockResolvedValue(plan);
+    mocks.createScheduleException.mockRejectedValueOnce(
+      new RpcError({ code: "CONFLICT", status: 409 })
+    );
+    renderScheduleTask();
+    await screen.findByRole("button", { name: COPY.programs.previewEvents });
+
+    await user.click(
+      screen.getByRole("button", { name: COPY.programs.previewEvents })
+    );
+    await screen.findByRole("button", { name: COPY.programs.generateEvents });
+    await user.click(
+      screen.getByRole("button", {
+        name: COPY.programs.settingsRuleAddException,
+      })
+    );
+    await user.type(
+      screen.getByLabelText(COPY.programs.settingsExceptionDate),
+      "2026-08-13"
+    );
+    await user.click(
+      screen.getByRole("button", { name: COPY.programs.settingsExceptionSave })
+    );
+    await expect(screen.findByRole("alert")).resolves.toHaveTextContent(
+      COPY.programs.programConflict
+    );
+    await user.click(
+      screen.getByRole("link", { name: COPY.programs.backToOverview })
+    );
+    expect(
+      screen.getByRole("button", {
+        name: COPY.programs.generateEvents,
+        hidden: true,
+      })
+    ).toBeDisabled();
+  });
+
   test("a stale plan stays visible, disables Generate, and requires a new preview", async () => {
     const user = userEvent.setup();
     renderScheduleTask();

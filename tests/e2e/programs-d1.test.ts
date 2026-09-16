@@ -260,6 +260,8 @@ const COPY = {
   schedulePageTitle: "聚會排程",
   addRule: "新增時間表",
   generateEvents: "產生聚會",
+  previewFromDate: "由（香港時間）",
+  previewUntilDate: "至（香港時間）",
   previewReviewAgain: "重新預覽",
   noManagementScope: "沒有管理範圍",
   workspaceBack: "返回管理課程目錄",
@@ -4919,6 +4921,50 @@ test.describe("EVT-02 recurring preview and generation", () => {
       page.getByText(/^已接續上次產生，新增 0 場，跳過 \d+ 場。$/u).first()
     ).toBeVisible();
     expect(await eventCount(page, id)).toBeGreaterThan(before);
+  });
+
+  test("changing the visible range requires Review Again before generation", async ({
+    page,
+  }) => {
+    await loginAs(
+      page,
+      required("PROGRAMS_ADMIN_USERNAME", ADMIN_USER),
+      required("PROGRAMS_ADMIN_CREDENTIAL", ADMIN_CRED)
+    );
+    const id = await createRecurringProgram(page, "E2E_EVT02_範圍");
+    await openScheduleTask(page, id);
+    const before = await eventCount(page, id);
+
+    await page.getByRole("button", { name: previewEvents }).click();
+    await expect(
+      page.getByRole("button", { name: COPY.generateEvents })
+    ).toBeEnabled();
+
+    const fromDate = page.getByLabel(COPY.previewFromDate);
+    const nextFromDate = await fromDate.evaluate((input) => {
+      const value = (input as HTMLInputElement).value;
+      const date = new Date(`${value}T00:00:00Z`);
+      date.setUTCDate(date.getUTCDate() + 1);
+      return date.toISOString().slice(0, 10);
+    });
+    await fromDate.fill(nextFromDate);
+
+    await expect(
+      page.getByRole("alert").filter({ hasText: previewChanged })
+    ).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: COPY.generateEvents })
+    ).toBeDisabled();
+
+    await page.getByRole("button", { name: COPY.previewReviewAgain }).click();
+    await expect(
+      page.getByRole("button", { name: COPY.generateEvents })
+    ).toBeEnabled();
+    await page.getByRole("button", { name: COPY.generateEvents }).click();
+    await expect(
+      page.getByText(/^已產生 \d+ 場聚會，跳過 \d+ 場重複。$/u).first()
+    ).toBeVisible();
+    await expect.poll(async () => eventCount(page, id)).toBeGreaterThan(before);
   });
 
   test("a stale plan is rejected before writes and requires a fresh preview", async ({

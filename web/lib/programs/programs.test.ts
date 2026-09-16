@@ -2622,10 +2622,13 @@ async function createRule(
 async function preview(
   access: string,
   programId: string,
-  horizonDays = 14
+  horizonDays = 14,
+  range?: { from_date: string; until_date: string }
 ): Promise<{
   plan_id: string;
   rule_count: number;
+  from_date: string;
+  to_date: string;
   occurrences: {
     occurrence_id: string;
     rule_id: string;
@@ -2645,14 +2648,19 @@ async function preview(
         Cookie: `${ACCESS_COOKIE_NAME}=${access}`,
         "Content-Type": "application/json",
       },
-      body: { horizon_days: horizonDays },
+      body: range ?? { horizon_days: horizonDays },
     }),
     testEnv()
   );
   assert.strictEqual(res.status, 200);
   const result = (await assertCorrelated(res)) as {
     data: {
-      plan: { plan_id: string; rule_count: number };
+      plan: {
+        plan_id: string;
+        rule_count: number;
+        from_date: string;
+        to_date: string;
+      };
       occurrences: {
         occurrence_id: string;
         rule_id: string;
@@ -2668,6 +2676,8 @@ async function preview(
   return {
     plan_id: result.data.plan.plan_id,
     rule_count: result.data.plan.rule_count,
+    from_date: result.data.plan.from_date,
+    to_date: result.data.plan.to_date,
     occurrences: result.data.occurrences,
   };
 }
@@ -4422,6 +4432,45 @@ describe("EVT-02: recurring preview and generation (#252)", () => {
     const stale = await generateRequest(programId, plan.plan_id);
     assert.strictEqual(stale.status, 409);
     assert.strictEqual((await problemOf(stale)).code, "STALE_PLAN");
+  });
+
+  test("EVT-02.2 changing the reviewed visible range invalidates the old plan", async () => {
+    const programId = await freshProgram("EVT-02 Range Revision");
+    await createRule(adminAccess, programId, {
+      recurrence: "WEEKLY",
+      day_of_week: 3,
+      start_time: "19:30",
+      end_time: "21:00",
+    });
+    const fromDate = hkTodayWallDate();
+    const rangeA = {
+      from_date: fromDate,
+      until_date: addWallDays(fromDate, 13),
+    };
+    const rangeB = {
+      from_date: addWallDays(fromDate, 1),
+      until_date: addWallDays(fromDate, 14),
+    };
+    const first = await preview(adminAccess, programId, 14, rangeA);
+    const before = await testDb()
+      .prepare("SELECT COUNT(*) AS count FROM events WHERE program_id = ?")
+      .bind(programId)
+      .first<{ count: number }>();
+    const second = await preview(adminAccess, programId, 14, rangeB);
+    assert.strictEqual(first.from_date, rangeA.from_date);
+    assert.strictEqual(first.to_date, rangeA.until_date);
+    assert.strictEqual(second.from_date, rangeB.from_date);
+    assert.strictEqual(second.to_date, rangeB.until_date);
+    assert.notStrictEqual(first.plan_id, second.plan_id);
+
+    const stale = await generateRequest(programId, first.plan_id);
+    assert.strictEqual(stale.status, 409);
+    assert.strictEqual((await problemOf(stale)).code, "STALE_PLAN");
+    const after = await testDb()
+      .prepare("SELECT COUNT(*) AS count FROM events WHERE program_id = ?")
+      .bind(programId)
+      .first<{ count: number }>();
+    assert.strictEqual(after?.count, before?.count);
   });
 
   test("EVT-02.2 replacing a saved exception invalidates its reviewed plan", async () => {

@@ -102,7 +102,12 @@ type EventsState =
 type PreviewState =
   | { kind: "idle" }
   | { kind: "loading" }
-  | { kind: "ready"; plan: PreviewResult; inputFingerprint: string }
+  | {
+      kind: "ready";
+      plan: PreviewResult;
+      inputFingerprint: string;
+      scheduleMutationVersion: number;
+    }
   | { kind: "empty" }
   | { kind: "error"; message: string; stale: boolean };
 
@@ -168,6 +173,7 @@ export const RecurringSchedulePanel = ({
   programId,
   rules,
   exceptions = {},
+  scheduleMutationVersion = 0,
   rulesError,
   onGenerated,
   onOpenEvent,
@@ -177,6 +183,7 @@ export const RecurringSchedulePanel = ({
   programId: string;
   rules: ScheduleRule[] | null;
   exceptions?: Record<string, ScheduleException[]>;
+  scheduleMutationVersion?: number;
   rulesError: string | null;
   /** Invoked after a successful generation so the event list refreshes. */
   onGenerated: () => boolean | Promise<boolean>;
@@ -272,6 +279,7 @@ export const RecurringSchedulePanel = ({
         kind: "ready",
         plan,
         inputFingerprint: scheduleInputFingerprint(rules, localExceptions),
+        scheduleMutationVersion,
       });
       announce(
         COPY.programs.previewed.replace(
@@ -653,6 +661,7 @@ export const RecurringSchedulePanel = ({
       hasExceptionDrafts ||
       exceptionBusy ||
       preview.inputFingerprint !== currentInputFingerprint ||
+      preview.scheduleMutationVersion !== scheduleMutationVersion ||
       preview.plan.plan.from_date !== previewFromDate ||
       (preview.plan.plan.to_date ??
         addWallDays(

@@ -152,6 +152,7 @@ export interface ProgramSettingsProps {
     rules: ScheduleRule[] | null;
     rulesError: string | null;
     exceptions: Record<string, ScheduleException[]>;
+    scheduleMutationVersion: number;
   }) => React.ReactNode;
   /** Canonical focused Schedule URL used by the child editor Back affordance. */
   scheduleBackHref?: string;
@@ -1131,6 +1132,7 @@ export const ProgramSettings = ({
   const [notice, setNotice] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [reloadRequired, setReloadRequired] = useState(false);
+  const [scheduleMutationVersion, setScheduleMutationVersion] = useState(0);
   const mounted = useRef(true);
   const canManage = currentProgram.capabilities.manage;
   const mutationBlocked = busy || reloadRequired;
@@ -1551,6 +1553,7 @@ export const ProgramSettings = ({
       if (reloadRequired || scheduleMutationBlocked) {
         return;
       }
+      setScheduleMutationVersion((version) => version + 1);
       setBusy(true);
       setActionError(null);
       setRuleError(null);
@@ -2740,6 +2743,7 @@ export const ProgramSettings = ({
               rules,
               rulesError: ruleError,
               exceptions,
+              scheduleMutationVersion,
             })}
           </div>
         )}
