@@ -399,9 +399,28 @@ const workspaceEventsMixedPlay: Story["play"] = async ({ canvasElement }) => {
     readinessFor("workspace-events-mixed")
   );
   const canvas = within(canvasElement);
+  const visibleEventIds = () =>
+    [...canvasElement.querySelectorAll<HTMLElement>("[data-event-id]")].map(
+      (row) => row.dataset.eventId
+    );
+  await expect(visibleEventIds()).toStrictEqual(["t07-3-manual-event"]);
   await expect(
     canvas.getAllByRole("link", { name: COPY.programs.eventDetailOpen })
-  ).toHaveLength(3);
+  ).toHaveLength(1);
+  await userEvent.click(
+    canvas.getByRole("button", { name: COPY.programs.eventsFilterPast })
+  );
+  await expect(visibleEventIds()).toStrictEqual(["t07-3-event"]);
+  await userEvent.click(
+    canvas.getByRole("button", { name: COPY.programs.eventsFilterCancelled })
+  );
+  await expect(visibleEventIds()).toStrictEqual(["t07-3-cancelled-event"]);
+  await expect(
+    canvas.findByText(
+      COPY.programs.cancelledReason.replace("{reason}", "場地安排調整"),
+      { exact: true }
+    )
+  ).resolves.toBeVisible();
   const scheduleLink = canvas.getByRole("link", {
     name: new RegExp(COPY.programs.settingsScheduleEventsLink, "u"),
   });
