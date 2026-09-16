@@ -1700,16 +1700,18 @@ export async function handleListScheduleExceptions(
     return auth;
   }
   const { workspace } = await getModule(env);
-  const rule = await workspace.getScheduleRule(
-    authorizationContextFor(auth.account),
-    ruleId
-  );
-  if (!rule || rule.program_id !== programId) {
+  if (!(await workspace.programExists(programId))) {
     return notFound(requestId, "Unknown schedule rule.");
   }
   try {
+    const ctx = authorizationContextFor(auth.account);
+    await workspace.assertProgramManagement(ctx, programId);
+    const rule = await workspace.getScheduleRule(ctx, ruleId);
+    if (!rule || rule.program_id !== programId) {
+      return notFound(requestId, "Unknown schedule rule.");
+    }
     const exceptions = await workspace.listScheduleExceptions(
-      authorizationContextFor(auth.account),
+      ctx,
       programId,
       ruleId
     );

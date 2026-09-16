@@ -2392,8 +2392,9 @@ export class D1WorkspaceStore implements WorkspaceStore {
    * partial/failed — a retry that fixes previously-failed items must be
    * able to update the run's counts/status even though `finished_at` was
    * already written by the first settlement — and locks the row only once
-   * every occurrence genuinely reached a terminal created/skipped outcome
-   * (matching `generateEvents`'s `status === "completed"` short-circuit).
+   * every occurrence in the durable Preview Plan genuinely reached a
+   * terminal created/skipped outcome (matching `generateEvents`'s
+   * `status === "completed"` short-circuit).
    * The UPDATE recomputes every column idempotently from the item table,
    * so repeat/concurrent finishers always converge on the same counts.
    */
@@ -2413,11 +2414,21 @@ export class D1WorkspaceStore implements WorkspaceStore {
           status = CASE
             WHEN (SELECT COUNT(*) FROM program_generation_run_items
                   WHERE run_id = ?1 AND outcome = 'failed') = 0
+             AND (SELECT COUNT(DISTINCT occurrence_id)
+                  FROM program_generation_run_items
+                  WHERE run_id = ?1 AND outcome IN ('created','skipped')) =
+                 (SELECT COUNT(*) FROM program_preview_occurrences
+                  WHERE plan_id = (SELECT plan_id
+                                   FROM program_generation_runs
+                                   WHERE run_id = ?1))
               THEN 'completed'
             WHEN (SELECT COUNT(*) FROM program_generation_run_items
-                  WHERE run_id = ?1 AND outcome IN ('created','skipped')) > 0
-              THEN 'partial'
-            ELSE 'failed'
+                  WHERE run_id = ?1 AND outcome = 'failed') > 0
+             AND (SELECT COUNT(DISTINCT occurrence_id)
+                  FROM program_generation_run_items
+                  WHERE run_id = ?1 AND outcome IN ('created','skipped')) = 0
+              THEN 'failed'
+            ELSE 'partial'
           END,
           finished_at = ?2
         WHERE run_id = ?1 AND status != 'completed'`

@@ -3329,10 +3329,12 @@ describe("PRG-02: schedule rules", () => {
 
 describe("PRG-02: generation", () => {
   let adminAccess = "";
+  let memberAccess = "";
   let deptId = "";
 
   beforeAll(async () => {
     adminAccess = await accessCookieFor("alice", "alice-secret");
+    memberAccess = await accessCookieFor("bob", "bob-secret");
     const dept = await createDepartment(adminAccess, {
       code: "PRG-02-GEN",
       name: "Generation Test Department",
@@ -3623,6 +3625,36 @@ describe("PRG-02: generation", () => {
       data?: { exceptions?: { exception_id: string }[] };
     };
     assert.strictEqual(listedBody.data?.exceptions?.length, 1);
+
+    const memberExistingRule = await worker.fetch(
+      programsRequest(
+        `/api/v1/programs/${programId}/schedule-rules/${rule.rule_id}/exceptions`,
+        {
+          headers: {
+            Origin: HOST,
+            Cookie: `${ACCESS_COOKIE_NAME}=${memberAccess}`,
+          },
+        }
+      ),
+      testEnv()
+    );
+    assert.strictEqual(memberExistingRule.status, 403);
+    assert.strictEqual((await problemOf(memberExistingRule)).code, "FORBIDDEN");
+
+    const memberMissingRule = await worker.fetch(
+      programsRequest(
+        `/api/v1/programs/${programId}/schedule-rules/${crypto.randomUUID()}/exceptions`,
+        {
+          headers: {
+            Origin: HOST,
+            Cookie: `${ACCESS_COOKIE_NAME}=${memberAccess}`,
+          },
+        }
+      ),
+      testEnv()
+    );
+    assert.strictEqual(memberMissingRule.status, 403);
+    assert.strictEqual((await problemOf(memberMissingRule)).code, "FORBIDDEN");
 
     const result = await generate(adminAccess, programId, 14);
     assert.strictEqual(result.created, 1, "one of two occurrences suppressed");
@@ -5224,6 +5256,64 @@ describe("EVT-02: recurring preview and generation (#252)", () => {
       plan.occurrences.length,
       "run counts account for every occurrence"
     );
+  });
+
+  test("EVT-02.4 settlement stays partial until every Plan occurrence is terminal", async () => {
+    const programId = await freshProgram("EVT-02 Incomplete Settlement");
+    await createRule(adminAccess, programId, {
+      recurrence: "WEEKLY",
+      day_of_week: 0,
+      start_time: "09:30",
+      end_time: "10:30",
+    });
+    const plan = await preview(adminAccess, programId, 14);
+    assert.strictEqual(plan.occurrences.length, 2);
+
+    const store = new D1WorkspaceStore(testDb());
+    const runId = "evt02-incomplete-settlement";
+    const { run } = await store.createGenerationRun({
+      run_id: runId,
+      program_id: programId,
+      plan_id: plan.plan_id,
+      started_at: new Date().toISOString(),
+      created_by: "U001",
+      correlation_id: null,
+    });
+    const [firstOccurrence, secondOccurrence] = plan.occurrences;
+    await store.recordGenerationRunItem({
+      item_id: `${runId}:${firstOccurrence.occurrence_id}`,
+      run_id: runId,
+      occurrence_id: firstOccurrence.occurrence_id,
+      starts_at: firstOccurrence.starts_at,
+      outcome: "created",
+      event_id: null,
+      detail: null,
+    });
+
+    const incomplete = await store.finishGenerationRun(
+      run.run_id,
+      new Date().toISOString()
+    );
+    assert.strictEqual(incomplete.status, "partial");
+    assert.strictEqual(incomplete.created, 1);
+
+    await store.recordGenerationRunItem({
+      item_id: `${runId}:${secondOccurrence.occurrence_id}`,
+      run_id: runId,
+      occurrence_id: secondOccurrence.occurrence_id,
+      starts_at: secondOccurrence.starts_at,
+      outcome: "skipped",
+      event_id: null,
+      detail: "DUPLICATE",
+    });
+    const complete = await store.finishGenerationRun(
+      run.run_id,
+      new Date().toISOString()
+    );
+    assert.strictEqual(complete.status, "completed");
+    assert.strictEqual(complete.created, 1);
+    assert.strictEqual(complete.skipped, 1);
+    assert.strictEqual(complete.failed, 0);
   });
 
   test("EVT-02.4 malformed or unknown plans are rejected before writes", async () => {
