@@ -24,6 +24,7 @@ import type {
   ScheduleException,
   ScheduleRule,
 } from "@/lib/programs/program-api";
+import { wallDaySpan } from "@/lib/programs/recurrence";
 
 import { authMeHandler } from "./management-hub-fixtures";
 import { memberAuthMeHandler } from "./public-auth-member-communications-fixtures";
@@ -814,12 +815,19 @@ const createParticipantProgramHandlers = (
 
 type ScheduleFixtureScenario = "default" | "stale" | "partial-resume";
 
-const previewWithPlan = (planId: string): PreviewResult => ({
+const previewWithPlan = (
+  planId: string,
+  fromDate = STORY_PREVIEW_FROM,
+  toDate = STORY_PREVIEW_TO
+): PreviewResult => ({
   ...SCHEDULE_PREVIEW,
   plan: {
     ...SCHEDULE_PREVIEW.plan,
     plan_id: planId,
     plan_hash: `${planId}-hash`,
+    from_date: fromDate,
+    to_date: toDate,
+    horizon_days: wallDaySpan(fromDate, toDate),
   },
   occurrences: SCHEDULE_PREVIEW.occurrences.map((occurrence) => ({
     ...occurrence,
@@ -858,16 +866,33 @@ const createScheduleHandlers = (
   };
 
   return [
-    http.post(storyApi("/api/v1/programs/:programId/events/preview"), () => {
-      previewCount += 1;
-      currentPlan =
-        scenario === "stale"
-          ? previewWithPlan(
-              previewCount === 1 ? "t07-3-stale-plan" : "t07-3-fresh-plan"
-            )
-          : SCHEDULE_PREVIEW;
-      return envelope(currentPlan);
-    }),
+    http.post(
+      storyApi("/api/v1/programs/:programId/events/preview"),
+      async ({ request }) => {
+        const payload = (await request.json().catch(() => ({}))) as {
+          from_date?: unknown;
+          until_date?: unknown;
+        };
+        const fromDate =
+          typeof payload.from_date === "string"
+            ? payload.from_date
+            : STORY_PREVIEW_FROM;
+        const toDate =
+          typeof payload.until_date === "string"
+            ? payload.until_date
+            : STORY_PREVIEW_TO;
+        previewCount += 1;
+        currentPlan =
+          scenario === "stale"
+            ? previewWithPlan(
+                previewCount === 1 ? "t07-3-stale-plan" : "t07-3-fresh-plan",
+                fromDate,
+                toDate
+              )
+            : previewWithPlan("t07-3-plan", fromDate, toDate);
+        return envelope(currentPlan);
+      }
+    ),
     http.post(
       storyApi("/api/v1/programs/:programId/events/generate"),
       async ({ request }) => {
