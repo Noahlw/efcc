@@ -658,40 +658,49 @@ export interface ScreenCardProps
 }
 
 /** Semantic containment for one meaningful unit; not a default page wrapper. */
-export const ScreenCard = React.forwardRef<HTMLDivElement, ScreenCardProps>(
-  (
-    { asChild = false, children, className, tone = "default", ...props },
-    ref
-  ) => {
-    if (asChild) {
-      return (
-        <Slot.Root
-          {...props}
-          className={cn(screenCardPrimitiveVariants({ tone }), className)}
-          data-slot="card"
-          data-screen-card-tone={tone}
-          data-screen-foundation="card"
-          ref={ref}
-        >
-          {children}
-        </Slot.Root>
-      );
-    }
-
+const ScreenCardImpl = (
+  {
+    asChild = false,
+    children,
+    className,
+    tone = "default",
+    ...props
+  }: ScreenCardProps,
+  ref: React.ForwardedRef<HTMLDivElement>
+) => {
+  if (asChild) {
     return (
-      <ScreenCardPrimitive
+      <Slot.Root
         {...props}
-        className={className}
+        className={cn(screenCardPrimitiveVariants({ tone }), className)}
+        data-slot="card"
         data-screen-card-tone={tone}
         data-screen-foundation="card"
-        tone={tone}
         ref={ref}
       >
         {children}
-      </ScreenCardPrimitive>
+      </Slot.Root>
     );
   }
+
+  return (
+    <ScreenCardPrimitive
+      {...props}
+      className={className}
+      data-screen-card-tone={tone}
+      data-screen-foundation="card"
+      tone={tone}
+      ref={ref}
+    >
+      {children}
+    </ScreenCardPrimitive>
+  );
+};
+
+export const ScreenCard = React.forwardRef<HTMLDivElement, ScreenCardProps>(
+  ScreenCardImpl
 );
+ScreenCard.displayName = "ScreenCard";
 
 const screenTaskSurfaceVariants = cva(
   "group/screen-task grid min-h-[92px] content-between gap-[var(--screen-utility-gap)] rounded-[var(--screen-radius-surface)] border border-[var(--screen-line)] bg-[var(--screen-surface)] p-[13px] text-[var(--screen-ink)] no-underline outline-none focus-visible:ring-3 focus-visible:ring-inset focus-visible:ring-[var(--screen-focus)]",
@@ -749,7 +758,10 @@ export const ScreenTaskGrid = ({
   />
 );
 
+const screenTabsStatefulContext = React.createContext(false);
+
 export interface ScreenTabsProps extends React.ComponentPropsWithoutRef<"nav"> {
+  value?: string;
   onValueChange?: (value: string) => void;
 }
 
@@ -758,6 +770,7 @@ export const ScreenTabs = ({
   className,
   onValueChange,
   role,
+  value,
   ...props
 }: ScreenTabsProps) => {
   const tabsClassName = cn(
@@ -773,39 +786,11 @@ export const ScreenTabs = ({
     );
   }
 
-  const childItems = React.Children.toArray(children);
-  const tabValues = childItems.map((child, index) => {
-    if (!isScreenTabElement(child)) {
-      return null;
-    }
-
-    const value = child.props.value;
-    if (typeof value === "string" && value.length > 0) {
-      return value;
-    }
-    if (typeof child.props.id === "string" && child.props.id.length > 0) {
-      return child.props.id;
-    }
-    if (
-      typeof child.props["aria-controls"] === "string" &&
-      child.props["aria-controls"].length > 0
-    ) {
-      return child.props["aria-controls"];
-    }
-    return `screen-tab-${index}`;
-  });
-  const selectedValue = childItems.reduce<string>((selected, child, index) => {
-    if (selected || !isScreenTabElement(child) || !child.props.selected) {
-      return selected;
-    }
-    return tabValues[index] ?? "";
-  }, "");
-
   return (
     <Tabs
       className="contents gap-0"
-      value={selectedValue}
       onValueChange={onValueChange}
+      value={value}
     >
       <TabsList asChild variant="line">
         <nav
@@ -815,14 +800,7 @@ export const ScreenTabs = ({
           role={role}
         >
           <screenTabsStatefulContext.Provider value>
-            {childItems.map((child, index) => {
-              if (!isScreenTabElement(child)) {
-                return child;
-              }
-              return React.cloneElement(child, {
-                value: tabValues[index] ?? `screen-tab-${index}`,
-              });
-            })}
+            {children}
           </screenTabsStatefulContext.Provider>
         </nav>
       </TabsList>
@@ -852,13 +830,6 @@ export interface ScreenTabProps
   asChild?: boolean;
 }
 
-const screenTabsStatefulContext = React.createContext(false);
-
-const isScreenTabElement = (
-  child: React.ReactNode
-): child is React.ReactElement<ScreenTabProps> =>
-  React.isValidElement<ScreenTabProps>(child) && child.type === ScreenTab;
-
 export const ScreenTab = ({
   asChild = false,
   children,
@@ -879,7 +850,12 @@ export const ScreenTab = ({
       ? value
       : typeof value === "number"
         ? String(value)
-        : "screen-tab";
+        : typeof props.id === "string" && props.id.length > 0
+          ? props.id
+          : typeof props["aria-controls"] === "string" &&
+              props["aria-controls"].length > 0
+            ? props["aria-controls"]
+            : "screen-tab";
   const sharedProps = {
     ...props,
     "aria-selected": isTab ? (ariaSelected ?? isSelected) : undefined,
@@ -1025,19 +1001,23 @@ export const ScreenLoadingRows = ({
   </output>
 );
 
+const ScreenEditorImpl = (
+  { className, ...props }: React.ComponentPropsWithoutRef<"form">,
+  ref: React.ForwardedRef<HTMLFormElement>
+) => (
+  <form
+    {...props}
+    className={cn("grid gap-4", className)}
+    data-screen-foundation="editor"
+    ref={ref}
+  />
+);
+
 export const ScreenEditor = React.forwardRef<
   HTMLFormElement,
   React.ComponentPropsWithoutRef<"form">
->(({ className, ...props }, ref) => {
-  return (
-    <form
-      {...props}
-      className={cn("grid gap-4", className)}
-      data-screen-foundation="editor"
-      ref={ref}
-    />
-  );
-});
+>(ScreenEditorImpl);
+ScreenEditor.displayName = "ScreenEditor";
 
 export interface ScreenFieldProps extends React.ComponentPropsWithoutRef<"fieldset"> {
   label: React.ReactNode;

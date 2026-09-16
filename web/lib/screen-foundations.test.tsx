@@ -246,11 +246,11 @@ describe("Screen Foundations public contracts", () => {
             <a href="/programs/one/events">聚會</a>
           </ScreenTab>
         </ScreenTabs>
-        <ScreenTabs aria-label="課程分頁" role="tablist">
-          <ScreenTab role="tab" selected>
+        <ScreenTabs aria-label="課程分頁" role="tablist" value="pending">
+          <ScreenTab role="tab" selected value="pending">
             待審批
           </ScreenTab>
-          <ScreenTab role="tab">已參加</ScreenTab>
+          <ScreenTab role="tab" value="joined">已參加</ScreenTab>
         </ScreenTabs>
       </div>
     );

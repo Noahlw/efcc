@@ -1934,6 +1934,16 @@ export const ParticipantsTask = () => {
         <>
           <ScreenTabs
             aria-label={COPY.programs.workspaceTaskParticipants}
+            value={tab}
+            onValueChange={(value) => {
+              if (
+                value === "pending" ||
+                value === "active" ||
+                value === "history"
+              ) {
+                setTab(value);
+              }
+            }}
             role="tablist"
           >
             {(
@@ -1950,7 +1960,7 @@ export const ParticipantsTask = () => {
                 aria-controls={`participants-${value}-panel`}
                 aria-selected={tab === value}
                 selected={tab === value}
-                onClick={() => setTab(value)}
+                value={value}
               >
                 {label} ({count})
               </ScreenTab>

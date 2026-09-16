@@ -3213,6 +3213,102 @@ describe("attendance Worker routes", () => {
     assert.strictEqual(rosterBody.code, "FORBIDDEN");
   });
 
+  test("open Event self projection resolves an active enrollment before materialization", async () => {
+    const member = await accessCookieFor("att-member", "att-member-password");
+    const eventId = `ATT-OPEN-NO-SNAPSHOT-${crypto.randomUUID()}`;
+    const enrollmentId = `ATT-OPEN-NO-SNAPSHOT-ENROLLMENT-${crypto.randomUUID()}`;
+    const now = Date.now();
+    const createdAt = new Date(now).toISOString();
+    await testDb()
+      .prepare(
+        `INSERT INTO events
+          (event_id, program_id, starts_at, ends_at, status, availability,
+           source, name, manual_check_in_code, check_in_window_opens_at,
+           check_in_window_closes_at, created_at, updated_at)
+         VALUES (?, ?, ?, ?, 'Active', 'Active', 'MANUAL', ?, ?, ?, ?, ?, ?)`
+      )
+      .bind(
+        eventId,
+        EMPTY_PROGRAM,
+        new Date(now - 30 * 60_000).toISOString(),
+        new Date(now + 60 * 60_000).toISOString(),
+        "未建立快照的開放聚會",
+        `ATT-OPEN-NO-SNAPSHOT-CODE-${crypto.randomUUID()}`,
+        new Date(now - 60 * 60_000).toISOString(),
+        new Date(now + 30 * 60_000).toISOString(),
+        createdAt,
+        createdAt
+      )
+      .run();
+    await testDb()
+      .prepare(
+        `INSERT INTO enrollments
+          (enrollment_id, program_id, member_user_id, status, enrolled_at,
+           created_at)
+         VALUES (?, ?, 'ATT-MEMBER', 'Active', ?, ?)`
+      )
+      .bind(
+        enrollmentId,
+        EMPTY_PROGRAM,
+        new Date(now - 2 * 60 * 60_000).toISOString(),
+        createdAt
+      )
+      .run();
+
+    const beforeSnapshot = await testDb()
+      .prepare(
+        "SELECT snapshot_id FROM event_attendance_snapshots WHERE event_id = ?"
+      )
+      .bind(eventId)
+      .first();
+    assert.strictEqual(beforeSnapshot, null);
+
+    const own = await worker.fetch(
+      request(`/api/v1/attendance/events/${eventId}/me`, {
+        headers: { Cookie: `${ACCESS_COOKIE_NAME}=${member}` },
+      }),
+      testEnv()
+    );
+    assert.strictEqual(own.status, 200);
+    const ownBody = await json(own);
+    const ownData = ownBody.data as {
+      state: string;
+      attendance: unknown;
+      disposition: unknown;
+    };
+    assert.deepStrictEqual(
+      {
+        state: ownData.state,
+        attendance: ownData.attendance,
+        disposition: ownData.disposition,
+      },
+      {
+        state: "Not Yet",
+        attendance: null,
+        disposition: null,
+      }
+    );
+
+    const outsider = await accessCookieFor("att-admin", "att-admin-password");
+    const forbidden = await worker.fetch(
+      request(`/api/v1/attendance/events/${eventId}/me`, {
+        headers: { Cookie: `${ACCESS_COOKIE_NAME}=${outsider}` },
+      }),
+      testEnv()
+    );
+    assert.strictEqual(forbidden.status, 403);
+    const forbiddenBody = await json(forbidden);
+    assert.strictEqual(forbiddenBody.code, "FORBIDDEN");
+
+    const afterSnapshot = await testDb()
+      .prepare(
+        "SELECT snapshot_id FROM event_attendance_snapshots WHERE event_id = ?"
+      )
+      .bind(eventId)
+      .first();
+    assert.strictEqual(afterSnapshot, null);
+  });
+
   test("materialization failure is retryable and never reports a false success", async () => {
     const admin = await accessCookieFor("att-admin", "att-admin-password");
     const eventId = `ATT-SNAPSHOT-FAILURE-${crypto.randomUUID()}`;

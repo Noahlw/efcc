@@ -459,6 +459,9 @@ export const AttendanceRoster = ({
         row.member_user_id === null ||
         row.status === "Active")
   );
+  const guestRows = additionalRows.filter(
+    (row) => row.member_user_id === null
+  );
   const statusIsOpen = attendanceWindowIsOpen(event);
   const eventQrAvailable = statusIsOpen;
   const eventEnded =
@@ -510,7 +513,9 @@ export const AttendanceRoster = ({
   const visibleAdditionalRows = hasExpectedProjection
     ? isPostEventRoster
       ? rosterFilter === "all" || rosterFilter === "guest"
-        ? additionalRows
+        ? rosterFilter === "guest"
+          ? guestRows
+          : additionalRows
         : []
       : rosterFilter === "all"
         ? additionalRows
@@ -534,7 +539,7 @@ export const AttendanceRoster = ({
     present: expectedRows.filter((row) => row.state === "Present").length,
     excused: expectedRows.filter((row) => row.state === "Excused").length,
     absent: expectedRows.filter((row) => row.state === "Absent").length,
-    guest: additionalRows.length,
+    guest: guestRows.length,
   } satisfies Record<PostEventAttendanceRosterFilter, number>;
   const countForRosterFilter = (value: AttendanceRosterFilter) =>
     isPostEventRoster
@@ -779,6 +784,7 @@ export const AttendanceRoster = ({
                 </p>
                 <ScreenTabs
                   aria-label={COPY.attendance.rosterFilterLabel}
+                  value={rosterFilter}
                   onValueChange={(value) =>
                     setRosterFilter(value as AttendanceRosterFilter)
                   }

@@ -1466,6 +1466,39 @@ describe("EVT-01 event detail", () => {
     ).not.toBeInTheDocument();
   });
 
+  test("participant open Event keeps the scan CTA with a pre-materialization Not Yet projection", async () => {
+    const now = Date.now();
+    mocks.getEvent.mockResolvedValue(
+      detailFixture({
+        event: {
+          ...detailFixture().event,
+          check_in_window_opens_at: new Date(now - 60 * 60_000).toISOString(),
+          check_in_window_closes_at: new Date(now + 30 * 60_000).toISOString(),
+        } as EventDetailData["event"],
+      })
+    );
+    mocks.getOwnAttendance.mockResolvedValueOnce({
+      state: "Not Yet",
+      attendance: null,
+      disposition: null,
+    });
+
+    render(
+      <EventDetail
+        programId="program-1"
+        eventId="event-1"
+        canManage={false}
+        onBack={() => {}}
+        backHref="/programs"
+      />
+    );
+
+    await expect(
+      screen.findByRole("link", { name: COPY.programs.goToScan })
+    ).resolves.toHaveAttribute("href", "/scanner?event=event-1");
+    expect(mocks.getOwnAttendance).toHaveBeenCalledWith("event-1");
+  });
+
   test("participant projection omits the 可簽到 badge when the window is closed", async () => {
     mocks.getEvent.mockResolvedValue(
       detailFixture({

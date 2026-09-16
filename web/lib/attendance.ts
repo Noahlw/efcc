@@ -2333,6 +2333,20 @@ export async function handleListOwnAttendance(
       .bind(event.program_id, current.user_id)
       .first<{ enrollment_id: string }>();
     enrollmentId = enrollment?.enrollment_id ?? null;
+  } else if (isOpen(event)) {
+    // A started/open Event may not have been materialized by an operator yet.
+    // Resolve only the member's current enrollment at this read boundary;
+    // ended Events continue to require their durable snapshot/history.
+    const enrollment = await env.DB.prepare(
+      `SELECT enrollment_id
+         FROM enrollments
+        WHERE program_id = ? AND member_user_id = ?
+          AND status = 'Active' AND enrolled_at <= ?
+        ORDER BY enrolled_at DESC, enrollment_id DESC LIMIT 1`
+    )
+      .bind(event.program_id, current.user_id, new Date().toISOString())
+      .first<{ enrollment_id: string }>();
+    enrollmentId = enrollment?.enrollment_id ?? null;
   }
   if (!activeAttendance && !enrollmentId) {
     return problem(403, "FORBIDDEN", "你沒有此聚會的出席資料。", id);

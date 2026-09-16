@@ -360,6 +360,77 @@ describe(AttendanceRoster, () => {
     expect(screen.getByText("舊訪客")).toBeVisible();
   });
 
+  test("post-event Guest filter excludes unexpected member attendance but preserves both histories", async () => {
+    const user = userEvent.setup();
+    const presentRow: AttendanceExpectedRow = {
+      ...EXPECTED_ROW,
+      expected_attendance_id: "expected-member-present",
+      enrollment_id: "enrollment-member-present",
+      member_name: "已出席會員",
+      state: "Present",
+      attendance: { ...MEMBER_ROW, event_id: POST_EVENT.event_id },
+    };
+    const absentRow = {
+      ...EXPECTED_ROW,
+      event_id: POST_EVENT.event_id,
+      member_name: "缺席會員",
+    };
+    const unexpectedMemberRow: AttendanceRow = {
+      ...MEMBER_ROW,
+      event_id: POST_EVENT.event_id,
+      attendance_id: "att-unexpected-member",
+      member_user_id: "member-unexpected",
+      checked_in_at: "2026-08-13T11:45:00.000Z",
+    };
+    const guestRow = { ...GUEST_ROW, event_id: POST_EVENT.event_id };
+
+    render(
+      <AttendanceRoster
+        event={POST_EVENT}
+        rows={[presentRow.attendance as AttendanceRow, unexpectedMemberRow, guestRow]}
+        expectedRows={[absentRow, presentRow]}
+        counts={{
+          expected: 2,
+          present: 1,
+          not_yet: 0,
+          absent: 1,
+          excused: 0,
+          guests: 1,
+        }}
+        memberDirectory={{
+          "member-unexpected": {
+            user_id: "member-unexpected",
+            name: "臨時加入會員",
+            phone: "95556666",
+            qr_code_string: null,
+          },
+        }}
+        onVoid={vi.fn()}
+        onCorrectGuest={vi.fn()}
+      />
+    );
+
+    await user.click(screen.getByRole("tab", { name: /訪客 \(1\)/u }));
+    expect(screen.getByText("舊訪客")).toBeVisible();
+    expect(screen.queryByText("臨時加入會員")).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("tab", { name: /全部 \(4\)/u }));
+    expect(screen.getByText("臨時加入會員")).toBeVisible();
+    await user.click(screen.getByRole("button", { name: "臨時加入會員" }));
+    expect(
+      screen.getByText(COPY.attendance.participantDetailHistory)
+    ).toBeVisible();
+    expect(
+      screen.getByRole("button", { name: COPY.attendance.voidAttendance })
+    ).toBeVisible();
+
+    await user.keyboard("{Escape}");
+    await user.click(screen.getByRole("button", { name: "舊訪客" }));
+    expect(
+      screen.getByRole("button", { name: COPY.attendance.correctGuest })
+    ).toBeVisible();
+  });
+
   test("Arrow keys switch post-event Absent, Present, Excused, and Guest panels", async () => {
     const user = userEvent.setup();
     const presentRow: AttendanceExpectedRow = {
