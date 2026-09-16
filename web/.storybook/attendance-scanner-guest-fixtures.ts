@@ -3,7 +3,9 @@ import { http, HttpResponse } from "msw";
 import type {
   AttendanceEvent,
   AttendanceEventSummary,
+  AttendanceExpectedRow,
   AttendanceMember,
+  AttendanceRosterCounts,
   AttendanceRow,
 } from "@/lib/attendance";
 
@@ -31,6 +33,8 @@ export const ATTENDANCE_EVENT_SUMMARY: AttendanceEventSummary = {
 export const ATTENDANCE_EVENT: AttendanceEvent = {
   ...ATTENDANCE_EVENT_SUMMARY,
   manual_check_in_code: "570570",
+  check_in_window_opens_at: "2020-01-01T00:00:00.000Z",
+  check_in_window_closes_at: "2099-12-31T23:59:59.000Z",
 };
 
 export const ATTENDANCE_MEMBER: AttendanceMember = {
@@ -54,6 +58,79 @@ export const ATTENDANCE_ROW: AttendanceRow = {
   voided_by: null,
   voided_at: null,
   void_reason: null,
+};
+
+const GUEST_ROW: AttendanceRow = {
+  attendance_id: "t07-5-guest-attendance",
+  event_id: ATTENDANCE_EVENT.event_id,
+  member_user_id: null,
+  guest_name: "訪客 林寶怡",
+  guest_phone: "9123 4567",
+  guest_phone_normalized: "hk:85291234567",
+  method: "guest_manual_code",
+  status: "Active",
+  checked_in_at: "2099-09-01T10:08:00.000Z",
+  checked_in_by: null,
+  voided_by: null,
+  voided_at: null,
+  void_reason: null,
+};
+
+const PARTICIPANT_NAMES = [
+  "陳嘉敏",
+  "黃子軒",
+  "李欣怡",
+  "張芷晴",
+  "劉俊謙",
+  "鄭樂瑤",
+  "何卓謙",
+  "周雅雯",
+  "林浩然",
+  "梁曉彤",
+  "吳梓謙",
+  "許心怡",
+  "蔡承恩",
+  "葉詠晴",
+  "鄧宇軒",
+  "蘇婉儀",
+  "曾俊傑",
+  "羅雅芝",
+  "鍾浩文",
+  "馮詩敏",
+  "謝朗軒",
+  "邱可欣",
+  "杜文傑",
+  "余凱琳",
+  "方皓恩",
+  "彭思穎",
+  "鄺志豪",
+  "馬嘉怡",
+  "黎俊豪",
+  "郭曉琳",
+] as const;
+
+const ATTENDANCE_EXPECTED_ROWS: AttendanceExpectedRow[] = PARTICIPANT_NAMES.map(
+  (member_name, index) => ({
+    expected_attendance_id: index === 0 ? ATTENDANCE_ROW.attendance_id : null,
+    event_id: ATTENDANCE_EVENT.event_id,
+    enrollment_id: `t07-5-enrollment-${index + 1}`,
+    member_user_id: `t07-5-member-${index + 1}`,
+    member_name,
+    member_phone: null,
+    source: "event_start",
+    state: index === 0 ? "Present" : "Not Yet",
+    attendance: index === 0 ? ATTENDANCE_ROW : null,
+    disposition: null,
+  })
+);
+
+const ATTENDANCE_COUNTS: AttendanceRosterCounts = {
+  expected: ATTENDANCE_EXPECTED_ROWS.length,
+  present: 1,
+  not_yet: ATTENDANCE_EXPECTED_ROWS.length - 1,
+  absent: 0,
+  excused: 0,
+  guests: 1,
 };
 
 const result = (outcome: "success" | "duplicate" = "success") =>
@@ -82,7 +159,20 @@ export const attendanceScannerGuestHandlers = [
     envelope({ events: [ATTENDANCE_EVENT_SUMMARY] })
   ),
   http.get("/api/v1/attendance/events/:eventId/roster", () =>
-    envelope({ event: ATTENDANCE_EVENT, attendances: [ATTENDANCE_ROW] })
+    envelope({
+      event: ATTENDANCE_EVENT,
+      attendances: [ATTENDANCE_ROW, GUEST_ROW],
+      guests: [GUEST_ROW],
+      expected: ATTENDANCE_EXPECTED_ROWS,
+      snapshot: {
+        snapshot_id: "t07-5-snapshot",
+        event_id: ATTENDANCE_EVENT.event_id,
+        materialized_at: "2099-09-01T10:00:00.000Z",
+        last_materialized_at: "2099-09-01T10:00:00.000Z",
+      },
+      counts: ATTENDANCE_COUNTS,
+      materialization_required: false,
+    })
   ),
   http.get("/api/v1/attendance/events/:eventId/members", () =>
     envelope({ members: [ATTENDANCE_MEMBER] })

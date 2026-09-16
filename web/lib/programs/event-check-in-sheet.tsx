@@ -1,7 +1,7 @@
 "use client";
 
 import { Download, Printer, X } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -10,10 +10,11 @@ import { COPY, errorMessage } from "@/lib/copy";
 import { qrDataUrl } from "@/lib/qr";
 
 import { ScreenCard } from "../screen-foundations";
-import { getProgramAttendanceArtifact, type ProgramEvent } from "./program-api";
+import { getProgramAttendanceArtifact } from "./program-api";
+import type { ProgramEvent } from "./program-api";
 import { hkWallDateTimeLabel } from "./recurrence";
 
-export interface EventCheckInSheetEvent extends Pick<
+export type EventCheckInSheetEvent = Pick<
   ProgramEvent,
   | "event_id"
   | "program_id"
@@ -23,7 +24,7 @@ export interface EventCheckInSheetEvent extends Pick<
   | "ends_at"
   | "location"
   | "manual_check_in_code"
-> {}
+>;
 
 export interface EventCheckInSheetProps {
   event: EventCheckInSheetEvent;
@@ -109,26 +110,40 @@ export const EventCheckInSheet = ({
   onClose,
   onAuthRequired,
 }: EventCheckInSheetProps) => {
-  const [token, setToken] = useState<string | null>(null);
   const [qr, setQr] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [actionNotice, setActionNotice] = useState<string | null>(null);
+  const [lastAction, setLastAction] = useState<"download" | "print" | null>(
+    null
+  );
+  const [actionBusy, setActionBusy] = useState<"download" | "print" | null>(
+    null
+  );
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    let active = true;
-    setLoading(true);
-    setLoadError(null);
-    setActionError(null);
-    setToken(null);
-    void getProgramAttendanceArtifact(event.program_id)
-      .then(({ artifact }) => {
-        if (active) {
-          setToken(artifact.check_in_token);
+  const loadArtifact = useCallback(
+    async (isActive: () => boolean = () => true) => {
+      setLoading(true);
+      setLoadError(null);
+      setActionError(null);
+      setActionNotice(null);
+      setQr(null);
+      try {
+        const { artifact } = await getProgramAttendanceArtifact(
+          event.program_id
+        );
+        if (!isActive()) {
+          return;
         }
-      })
-      .catch((error) => {
-        if (!active) {
+        if (event.manual_check_in_code) {
+          const dataUrl = await qrDataUrl(checkInUrl(artifact.check_in_token));
+          if (isActive()) {
+            setQr(dataUrl);
+          }
+        }
+      } catch (error) {
+        if (!isActive()) {
           return;
         }
         if (
@@ -137,74 +152,77 @@ export const EventCheckInSheet = ({
         ) {
           onAuthRequired?.();
         }
-        setLoadError(errorMessage(error));
-      })
-      .finally(() => {
-        if (active) {
+        setLoadError(
+          error instanceof RpcError
+            ? errorMessage(error)
+            : COPY.attendance.eventQrCodeGenerateError
+        );
+      } finally {
+        if (isActive()) {
           setLoading(false);
         }
-      });
-    return () => {
-      active = false;
-    };
-  }, [event.program_id, onAuthRequired]);
+      }
+    },
+    [event.manual_check_in_code, event.program_id, onAuthRequired]
+  );
 
   useEffect(() => {
-    if (!token || !event.manual_check_in_code) {
-      setQr(null);
-      return;
-    }
     let active = true;
-    void qrDataUrl(checkInUrl(token))
-      .then((dataUrl) => {
-        if (active) {
-          setQr(dataUrl);
-        }
-      })
-      .catch(() => {
-        if (active) {
-          setQr(null);
-        }
-      });
+    void loadArtifact(() => active);
     return () => {
       active = false;
     };
-  }, [event.manual_check_in_code, token]);
+  }, [loadArtifact]);
 
   function downloadQr() {
+    setLastAction("download");
+    setActionNotice(null);
     if (!qr || !event.manual_check_in_code) {
       setActionError(COPY.attendance.eventQrCodeDownloadError);
       return;
     }
-    const svg = eventQrImage(event, qr, event.manual_check_in_code);
-    const link = document.createElement("a");
-    const objectUrl = URL.createObjectURL
-      ? URL.createObjectURL(new Blob([svg], { type: "image/svg+xml" }))
-      : `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
-    link.href = objectUrl;
-    link.download = `${event.event_id}-event-qr-code.svg`;
-    document.body.append(link);
-    link.click();
-    link.remove();
-    if (objectUrl.startsWith("blob:") && URL.revokeObjectURL) {
-      window.setTimeout(() => URL.revokeObjectURL(objectUrl), 0);
+    setActionBusy("download");
+    try {
+      const svg = eventQrImage(event, qr, event.manual_check_in_code);
+      const link = document.createElement("a");
+      const objectUrl = URL.createObjectURL
+        ? URL.createObjectURL(new Blob([svg], { type: "image/svg+xml" }))
+        : `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
+      link.href = objectUrl;
+      link.download = `${event.event_id}-event-qr-code.svg`;
+      document.body.append(link);
+      link.click();
+      link.remove();
+      if (objectUrl.startsWith("blob:") && URL.revokeObjectURL) {
+        window.setTimeout(() => URL.revokeObjectURL(objectUrl), 0);
+      }
+      setActionError(null);
+      setActionNotice(COPY.attendance.eventQrCodeDownloadSuccess);
+    } catch {
+      setActionError(COPY.attendance.eventQrCodeDownloadError);
+    } finally {
+      setActionBusy(null);
     }
-    setActionError(null);
   }
 
   function printSheet() {
+    setLastAction("print");
+    setActionNotice(null);
     if (!qr || !event.manual_check_in_code) {
       setActionError(COPY.attendance.eventQrCodePrintError);
       return;
     }
+    setActionBusy("print");
     try {
-      setActionError(
-        printEventSheet(event, qr, event.manual_check_in_code)
-          ? null
-          : COPY.attendance.eventQrCodePrintError
-      );
+      if (!printEventSheet(event, qr, event.manual_check_in_code)) {
+        throw new Error("print-window-blocked");
+      }
+      setActionError(null);
+      setActionNotice(COPY.attendance.eventQrCodePrintSuccess);
     } catch {
       setActionError(COPY.attendance.eventQrCodePrintError);
+    } finally {
+      setActionBusy(null);
     }
   }
 
@@ -243,9 +261,40 @@ export const EventCheckInSheet = ({
         </output>
       )}
       {loadError && !loading && (
-        <Alert variant="destructive">{loadError}</Alert>
+        <Alert variant="destructive" className="grid gap-2">
+          <span>{loadError}</span>
+          <Button
+            type="button"
+            variant="outline"
+            className="w-fit"
+            onClick={() => void loadArtifact()}
+            disabled={loading}
+          >
+            {COPY.error.retry}
+          </Button>
+        </Alert>
       )}
-      {actionError && <Alert variant="destructive">{actionError}</Alert>}
+      {actionError && (
+        <Alert variant="destructive" className="grid gap-2">
+          <span>{actionError}</span>
+          <Button
+            type="button"
+            variant="outline"
+            className="w-fit"
+            onClick={() =>
+              lastAction === "print" ? printSheet() : downloadQr()
+            }
+            disabled={actionBusy !== null}
+          >
+            {COPY.error.retry}
+          </Button>
+        </Alert>
+      )}
+      {actionNotice && (
+        <Alert tone="success" announcement="polite">
+          {actionNotice}
+        </Alert>
+      )}
       {!event.manual_check_in_code && !loading && (
         <Alert variant="destructive">
           {COPY.attendance.eventCheckInSheetUnavailable}
@@ -278,7 +327,12 @@ export const EventCheckInSheet = ({
             </strong>
           </p>
           <div className="flex min-w-0 flex-wrap gap-[var(--screen-utility-gap)]">
-            <Button type="button" variant="outline" onClick={downloadQr}>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={downloadQr}
+              disabled={actionBusy !== null}
+            >
               <Download aria-hidden="true" />
               {COPY.attendance.eventCheckInSheetDownload}
             </Button>
@@ -286,6 +340,7 @@ export const EventCheckInSheet = ({
               type="button"
               variant="outline"
               onClick={() => void printSheet()}
+              disabled={actionBusy !== null}
             >
               <Printer aria-hidden="true" />
               {COPY.attendance.eventCheckInSheetPrint}

@@ -1,5 +1,5 @@
 import type { Decorator, Meta, StoryObj } from "@storybook/nextjs-vite";
-import { expect, within } from "storybook/test";
+import { expect, userEvent, within } from "storybook/test";
 
 import EventsPage from "@/app/events/page";
 import GuestCheckInPage from "@/app/guest-check-in/page";
@@ -191,5 +191,18 @@ export const AttendanceOperatorRoster: Story = {
     await expect(
       canvas.findByRole("heading", { level: 1 })
     ).resolves.toBeVisible();
+    await expect(
+      canvas.findByRole("heading", { name: COPY.attendance.operatorTitle })
+    ).resolves.toBeVisible();
+    await expect(
+      canvas.findByRole("textbox", { name: COPY.attendance.memberSearch })
+    ).resolves.toBeVisible();
+    await userEvent.click(canvas.getByRole("tab", { name: /全部/u }));
+    await expect(
+      canvas.findByRole("heading", {
+        name: COPY.attendance.rosterAdditionalTitle,
+      })
+    ).resolves.toBeVisible();
+    await expect(canvas.findAllByText("訪客 林寶怡")).resolves.toHaveLength(2);
   },
 };

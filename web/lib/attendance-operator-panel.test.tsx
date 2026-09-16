@@ -18,15 +18,25 @@ import {
 
 import type {
   AttendanceEvent,
+  AttendanceExpectedRow,
   AttendanceMember,
   AttendanceRow,
 } from "@/lib/attendance";
-import { AttendanceOperatorPanel } from "@/lib/attendance-operator-panel";
+import {
+  AttendanceOperatorPanel,
+  AttendanceRoster,
+} from "@/lib/attendance-operator-panel";
 import type { AttendanceOperatorPanelProps } from "@/lib/attendance-operator-panel";
 import { COPY } from "@/lib/copy";
 import { announce, LiveRegion } from "@/lib/live-region";
 
 const server = setupServer();
+const ACTIVE_STARTS_AT = new Date(Date.now() - 30 * 60_000).toISOString();
+const ACTIVE_ENDS_AT = new Date(Date.now() + 90 * 60_000).toISOString();
+const ACTIVE_WINDOW_OPENS_AT = new Date(Date.now() - 45 * 60_000).toISOString();
+const ACTIVE_WINDOW_CLOSES_AT = new Date(
+  Date.now() + 30 * 60_000
+).toISOString();
 
 const ACTIVE: AttendanceEvent = {
   event_id: "evt-1",
@@ -34,11 +44,11 @@ const ACTIVE: AttendanceEvent = {
   program_name: "週六團契",
   name: "週六聚會",
   location: "主堂",
-  starts_at: "2026-08-13T11:30:00.000Z",
-  ends_at: "2026-08-13T13:00:00.000Z",
+  starts_at: ACTIVE_STARTS_AT,
+  ends_at: ACTIVE_ENDS_AT,
   manual_check_in_code: "ATT1234",
-  check_in_window_opens_at: "2026-08-13T10:30:00.000Z",
-  check_in_window_closes_at: "2026-08-13T13:30:00.000Z",
+  check_in_window_opens_at: ACTIVE_WINDOW_OPENS_AT,
+  check_in_window_closes_at: ACTIVE_WINDOW_CLOSES_AT,
   status: "Active",
   availability: "Active",
 };
@@ -73,6 +83,19 @@ const ROW: AttendanceRow = {
   void_reason: null,
 };
 
+const EXPECTED_NOT_YET: AttendanceExpectedRow = {
+  expected_attendance_id: null,
+  event_id: ACTIVE.event_id,
+  enrollment_id: "enrollment-1",
+  member_user_id: "U-E2E-EXPECTED",
+  member_name: "陳小明",
+  member_phone: "9000 0000",
+  source: "event_start",
+  state: "Not Yet",
+  attendance: null,
+  disposition: null,
+};
+
 function rosterHandler(event: AttendanceEvent, rows: AttendanceRow[]) {
   return http.get(`/api/v1/attendance/events/${event.event_id}/roster`, () =>
     HttpResponse.json({
@@ -101,6 +124,54 @@ describe(AttendanceOperatorPanel, () => {
   });
 
   afterAll(() => server.close());
+
+  test("open roster exposes row check-in and reason actions through Sheets", async () => {
+    const onCheckIn = vi.fn<(row: AttendanceExpectedRow) => void>();
+    const onExcuse = vi
+      .fn<(row: AttendanceExpectedRow, reason: string) => Promise<boolean>>()
+      .mockResolvedValue(true);
+    const user = userEvent.setup();
+    render(
+      <AttendanceRoster
+        event={ACTIVE}
+        rows={[]}
+        expectedRows={[EXPECTED_NOT_YET]}
+        onCheckIn={onCheckIn}
+        onExcuse={onExcuse}
+      />
+    );
+
+    await user.click(
+      screen.getByRole("button", { name: COPY.attendance.checkInMember })
+    );
+    expect(onCheckIn).toHaveBeenCalledWith(EXPECTED_NOT_YET);
+
+    await user.click(screen.getByRole("button", { name: /標記請假/u }));
+    expect(screen.getByRole("dialog")).toBeVisible();
+    expect(screen.getByRole("combobox", { name: /請假原因/u })).toBeVisible();
+  });
+
+  test("void reason is collected in a Sheet instead of expanding the row", async () => {
+    const onVoid = vi
+      .fn<(row: AttendanceRow, reason: string) => Promise<boolean>>()
+      .mockResolvedValue(true);
+    const user = userEvent.setup();
+    render(<AttendanceRoster event={ACTIVE} rows={[ROW]} onVoid={onVoid} />);
+
+    await user.click(
+      screen.getByRole("button", { name: COPY.attendance.voidAttendance })
+    );
+    const sheet = screen.getByRole("dialog");
+    expect(sheet).toBeVisible();
+    await user.type(
+      screen.getByRole("textbox", { name: COPY.attendance.voidReason }),
+      "輸入錯誤"
+    );
+    await user.click(
+      screen.getByRole("button", { name: COPY.attendance.voidConfirm })
+    );
+    await waitFor(() => expect(onVoid).toHaveBeenCalledWith(ROW, "輸入錯誤"));
+  });
 
   test("assisted check-in announces success and keeps the notice after roster reload", async () => {
     let rosterCalls = 0;
@@ -152,7 +223,7 @@ describe(AttendanceOperatorPanel, () => {
     );
     await screen.findByText(MEMBER.name);
 
-    await user.click(screen.getByRole("button", { name: /替成員簽到/u }));
+    await user.click(screen.getByRole("button", { name: /新增並簽到/u }));
     expect(
       screen.getByRole("heading", {
         name: COPY.attendance.assistedCheckInConfirmTitle,
@@ -198,11 +269,9 @@ describe(AttendanceOperatorPanel, () => {
     const user = userEvent.setup();
     renderWithLiveRegion();
 
-    const cancelledButton = (
-      await screen.findAllByRole("button", {
-        name: /週六聚會/u,
-      })
-    )[1];
+    const [, cancelledButton] = await screen.findAllByRole("button", {
+      name: /週六聚會/u,
+    });
     await user.click(cancelledButton);
     await screen.findByText(COPY.attendance.eventCancelled);
     expect(
@@ -461,12 +530,12 @@ describe(AttendanceOperatorPanel, () => {
     expect(visibleOutput).toBeDefined();
     expect(screen.getAllByText(MEMBER.user_id)[0]).toBeVisible();
     expect(
-      screen.getByRole("button", { name: COPY.attendance.voidAttendance })
+      screen.getByRole("button", { name: COPY.attendance.voidConfirm })
     ).toBeEnabled();
   });
 
   test("operator panel calls onAuthRequired when loading scanner events returns AUTH_REQUIRED", async () => {
-    const onAuthRequired = vi.fn();
+    const onAuthRequired = vi.fn<() => void>();
     server.use(
       http.get("/api/v1/attendance/scanner-events", () =>
         HttpResponse.json(

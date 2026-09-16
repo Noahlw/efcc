@@ -811,6 +811,14 @@ const createParticipantProgramHandlers = (
   http.get(storyApi("/api/v1/programs/:programId/events/:eventId"), () =>
     envelope(EVENT_DETAIL)
   ),
+  http.get(storyApi("/api/v1/attendance/events/:eventId/me"), () =>
+    envelope({
+      event: EVENT_DETAIL.event,
+      state: "Not Yet",
+      attendance: null,
+      disposition: null,
+    })
+  ),
 ];
 
 type ScheduleFixtureScenario = "default" | "stale" | "partial-resume";

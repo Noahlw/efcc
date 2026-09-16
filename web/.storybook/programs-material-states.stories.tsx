@@ -32,33 +32,16 @@ interface StorybookMswContext {
 }
 
 const readinessFor = (name: ProgramsMaterialScenarioName) => {
-  if (name === "participant-directory-member") {
+  if (name.startsWith("participant-directory")) {
     return {
       selector: "[data-program-name]",
       text: "門徒訓練基礎課",
     };
   }
-  if (
-    name === "participant-program-detail-active" ||
-    name === "participant-program-detail-eligible" ||
-    name === "participant-program-detail-pending" ||
-    name === "participant-program-detail-rejected"
-  ) {
+  if (name.startsWith("participant-program-detail")) {
     return {
       selector: "#program-detail-title",
-      text:
-        name === "participant-program-detail-eligible"
-          ? "同行成長小組"
-          : "門徒訓練基礎課",
-    };
-  }
-  if (
-    name === "participant-event-detail-closed" ||
-    name === "participant-event-detail-open"
-  ) {
-    return {
-      selector: "#participant-event-title",
-      text: "門徒訓練週會",
+      text: name.endsWith("eligible") ? "同行成長小組" : "門徒訓練基礎課",
     };
   }
   if (name === "participant-event-detail-ineligible") {
@@ -67,10 +50,10 @@ const readinessFor = (name: ProgramsMaterialScenarioName) => {
       text: COPY.programs.eventDetailRecoveryTitle,
     };
   }
-  if (name === "participant-directory-capable") {
+  if (name.startsWith("participant-event-detail")) {
     return {
-      selector: "[data-program-name]",
-      text: "門徒訓練基礎課",
+      selector: "#participant-event-title",
+      text: "門徒訓練週會",
     };
   }
   if (name === "management-directory-mixed") {
@@ -79,10 +62,7 @@ const readinessFor = (name: ProgramsMaterialScenarioName) => {
       text: "管理課程",
     };
   }
-  if (
-    name === "workspace-overview-populated" ||
-    name === "workspace-overview-zero"
-  ) {
+  if (name.startsWith("workspace-overview")) {
     return {
       selector: "#programs-workspace-title",
       text: "門徒訓練基礎課",
@@ -97,17 +77,10 @@ const readinessFor = (name: ProgramsMaterialScenarioName) => {
       text: "參與者",
     };
   }
-  if (
-    name === "workspace-settings-dirty" ||
-    name === "workspace-settings-conflict"
-  ) {
+  if (name.startsWith("workspace-settings")) {
     return { selector: "#program-settings-title", text: "課程設定" };
   }
-  if (
-    name === "workspace-schedule-focused" ||
-    name === "workspace-schedule-stale" ||
-    name === "workspace-schedule-partial-resume"
-  ) {
+  if (name.startsWith("workspace-schedule")) {
     return { selector: "#programs-workspace-title", text: "聚會排程" };
   }
   return { selector: "#programs-notifications-title", text: "通知" };
@@ -122,7 +95,7 @@ const materialStory = (
   return {
     render: () => <ProgramsStoryHarness query={{ ...scenario.query }} />,
     loaders: [
-      async (context) => {
+      (context) => {
         const worker = (context as StorybookMswContext).msw;
         if (!worker) {
           throw new Error("Programs Storybook MSW worker is not initialized");
@@ -162,7 +135,7 @@ const clickAndCaptureHref = async (link: HTMLElement, href: string) => {
   let activatedHref: string | null = null;
   const document = link.ownerDocument;
   const handleClick = (event: MouseEvent) => {
-    const target = event.target;
+    const { target } = event;
     if (!(target instanceof Element) || target.closest("a") !== link) {
       return;
     }
@@ -365,7 +338,7 @@ const participantEventDetailOpenPlay: Story["play"] = async ({
     readinessFor("participant-event-detail-open")
   );
   const canvas = within(canvasElement);
-  const scanLinks = canvas.getAllByRole("link", {
+  const scanLinks = await canvas.findAllByRole("link", {
     name: COPY.programs.goToScan,
   });
   await expect(scanLinks).toHaveLength(1);
@@ -629,11 +602,11 @@ const workspaceSettingsDirtyPlay: Story["play"] = async ({ canvasElement }) => {
   await expect(
     canvas.getByRole("heading", { name: COPY.programs.settingsBasics })
   ).toBeVisible();
-  const visibleHeaders = Array.from(
-    canvasElement.querySelectorAll<HTMLElement>(
+  const visibleHeaders = [
+    ...canvasElement.querySelectorAll<HTMLElement>(
       '[data-screen-foundation="header"]'
-    )
-  ).filter((header) => header.closest("[hidden]") === null);
+    ),
+  ].filter((header) => header.closest("[hidden]") === null);
   expect(visibleHeaders).toHaveLength(1);
   expect(visibleHeaders[0]).toHaveAttribute("data-screen-level", "child");
   expect(

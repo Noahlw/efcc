@@ -110,6 +110,7 @@ export const COPY = {
     assistedCheckInConfirmTitle: "確認替成員簽到",
     assistedCheckInConfirmLead: "請核對成員資料及目前聚會，再確認簽到。",
     assistedCheckInConfirm: "確認簽到",
+    addAndCheckIn: "新增並簽到",
     assistedCheckInCancel: "取消",
     assistedCheckInSuccess: (name: string, event: string) =>
       `${name} 已在「${event}」簽到。`,
@@ -170,6 +171,7 @@ export const COPY = {
     rosterFilterAll: "全部",
     rosterFilterHint: "預設顯示尚未有有效簽到的成員；缺席及請假狀態仍會保留。",
     rosterFilterEmpty: "此檢視目前沒有記錄。",
+    rosterAdditionalTitle: "訪客／額外記錄",
     rosterOffline:
       "現時沒有網絡。你仍可查看最近一次資料；重新連線後才可作出記錄。",
     rosterStale: (lastUpdated: string) =>
@@ -287,6 +289,10 @@ export const COPY = {
     eventQrCodeManualCode: "今次聚會手動代碼",
     eventQrCodeDownloadError: "未能下載 Event QR code，請重試。",
     eventQrCodePrintError: "未能開啟列印視窗，請允許彈出視窗後重試。",
+    eventQrCodeGenerateError: "未能準備 Event QR code，請重試。",
+    eventQrCodeReady: "Event QR code 已準備好。",
+    eventQrCodeDownloadSuccess: "Event QR code 圖片已下載。",
+    eventQrCodePrintSuccess: "列印視窗已開啟。",
   },
   profile: {
     title: "我的帳戶",
@@ -1424,6 +1430,9 @@ export const COPY = {
     eventDetailBack: "返回聚會列表",
     eventDetailTitle: "聚會詳情",
     checkInAvailable: "可簽到",
+    eventNotStarted: "尚未開始",
+    eventEnded: "已結束",
+    eventAttendanceViewRecord: "查看出席紀錄",
     checkInInstructionsHeading: "簽到說明",
     participantAttendance: "我的出席",
     participantAttendanceLoading: "正在載入你的出席狀態…",
@@ -1436,8 +1445,10 @@ export const COPY = {
     participantAttendanceTime: "簽到時間",
     participantAttendanceReason: "請假原因",
     participantAttendanceError: "未能載入你的出席狀態，請稍後再試。",
+    participantAttendanceRecorded: "你的出席狀態已記錄，無需再次掃描。",
     eventInstructions: "請於簽到時間內前往掃描，確認聚會後完成簽到。",
     eventInstructionsClosed: "簽到時間尚未開始，屆時可前往掃描完成簽到。",
+    eventInstructionsEnded: "簽到時間已結束；如需更正，請聯絡聚會負責人。",
     goToScan: "前往掃描",
     backToOrigin: "返回",
     eventDetailNotFound: "找不到此聚會。",

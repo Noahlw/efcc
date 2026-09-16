@@ -1,7 +1,7 @@
 /* oxlint-disable vitest/max-expects, vitest/require-mock-type-parameters, vitest/require-top-level-describe, vitest/prefer-called-with, vitest/prefer-mock-promise-shorthand, eslint/require-await */
 import { cleanup, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { afterEach, describe, expect, test, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
 import { RpcError } from "@/lib/api";
 import type { ProblemDetails } from "@/lib/api";
@@ -90,7 +90,25 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 
+async function clickMoreAction(
+  user: ReturnType<typeof userEvent.setup>,
+  name: string | RegExp
+) {
+  await user.click(
+    await screen.findByRole("button", { name: COPY.programs.eventMoreActions })
+  );
+  await user.click(await screen.findByRole("menuitem", { name }));
+}
+
 describe("EVT-01 event detail", () => {
+  beforeEach(() => {
+    mocks.getOwnAttendance.mockResolvedValue({
+      state: "Not Yet",
+      attendance: null,
+      disposition: null,
+    });
+  });
+
   test("loads and projects identity, participant summary, and leaders", async () => {
     mocks.getEvent.mockResolvedValue(detailFixture());
     render(
@@ -115,7 +133,9 @@ describe("EVT-01 event detail", () => {
       screen.getByText(COPY.programs.eventCheckedIn.replace("{count}", "2"))
     ).toBeInTheDocument();
     expect(
-      screen.getByRole("link", { name: COPY.attendance.eventAttendanceOpen })
+      screen.getByRole("link", {
+        name: COPY.programs.eventAttendanceViewRecord,
+      })
     ).toHaveAttribute("href", "/events?eventId=event-1");
     expect(
       screen.getByText(COPY.attendance.eventAttendanceLead)
@@ -135,6 +155,74 @@ describe("EVT-01 event detail", () => {
       })
     ).toBeInTheDocument();
     expect(mocks.getEvent).toHaveBeenCalledWith("program-1", "event-1");
+  });
+
+  test("manager primary action follows future, open, past, and cancelled phases", async () => {
+    const now = Date.now();
+    const future = {
+      ...detailFixture().event,
+      event_id: "future-event",
+      starts_at: new Date(now + 2 * 60 * 60_000).toISOString(),
+      ends_at: new Date(now + 3 * 60 * 60_000).toISOString(),
+      check_in_window_opens_at: new Date(now + 90 * 60_000).toISOString(),
+      check_in_window_closes_at: new Date(now + 3 * 60 * 60_000).toISOString(),
+    };
+    const open = {
+      ...future,
+      event_id: "open-event",
+      starts_at: new Date(now - 30 * 60_000).toISOString(),
+      ends_at: new Date(now + 60 * 60_000).toISOString(),
+      check_in_window_opens_at: new Date(now - 45 * 60_000).toISOString(),
+      check_in_window_closes_at: new Date(now + 30 * 60_000).toISOString(),
+    };
+    const cancelled = {
+      ...future,
+      event_id: "cancelled-event",
+      status: "Cancelled" as const,
+    };
+    const mount = async (event: EventDetailData["event"]) => {
+      cleanup();
+      mocks.getEvent.mockResolvedValue(detailFixture({ event }));
+      render(
+        <EventDetail
+          programId="program-1"
+          eventId={event.event_id}
+          canManage
+          onBack={() => {}}
+          backHref="/programs"
+        />
+      );
+      await screen.findByRole("heading", { name: event.name ?? "" });
+    };
+
+    await mount(future);
+    expect(
+      screen.getByRole("button", {
+        name: COPY.attendance.eventCheckInSheetOpen,
+      })
+    ).toBeInTheDocument();
+
+    await mount(open);
+    expect(
+      screen.getByRole("link", { name: COPY.attendance.eventAttendanceOpen })
+    ).toHaveAttribute("href", "/events?eventId=open-event");
+
+    await mount(detailFixture().event);
+    expect(
+      screen.getByRole("link", {
+        name: COPY.programs.eventAttendanceViewRecord,
+      })
+    ).toHaveAttribute("href", "/events?eventId=event-1");
+
+    await mount(cancelled);
+    expect(
+      screen.queryByRole("button", { name: COPY.programs.eventMoreActions })
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", {
+        name: COPY.attendance.eventCheckInSheetOpen,
+      })
+    ).not.toBeInTheDocument();
   });
 
   test("opens the current Event QR code with Program QR and manual code", async () => {
@@ -158,17 +246,13 @@ describe("EVT-01 event detail", () => {
       />
     );
 
-    await user.click(
-      await screen.findByRole("button", {
-        name: COPY.attendance.eventCheckInSheetOpen,
-      })
-    );
-    expect(
-      await screen.findByTestId("event-check-in-sheet")
-    ).toBeInTheDocument();
-    expect(
-      await screen.findByAltText(COPY.attendance.eventCheckInSheetQrLabel)
-    ).toBeVisible();
+    await clickMoreAction(user, COPY.attendance.eventCheckInSheetOpen);
+    await expect(
+      screen.findByTestId("event-check-in-sheet")
+    ).resolves.toBeInTheDocument();
+    await expect(
+      screen.findByAltText(COPY.attendance.eventCheckInSheetQrLabel)
+    ).resolves.toBeVisible();
     expect(screen.getByText("ABCD1234")).toBeVisible();
     expect(mocks.getProgramAttendanceArtifact).toHaveBeenCalledWith(
       "program-1"
@@ -220,11 +304,7 @@ describe("EVT-01 event detail", () => {
         />
       );
 
-      await user.click(
-        await screen.findByRole("button", {
-          name: COPY.attendance.eventCheckInSheetOpen,
-        })
-      );
+      await clickMoreAction(user, COPY.attendance.eventCheckInSheetOpen);
       await screen.findByAltText(COPY.attendance.eventCheckInSheetQrLabel);
       await user.click(
         screen.getByRole("button", {
@@ -258,6 +338,40 @@ describe("EVT-01 event detail", () => {
         value: originalRevokeObjectUrl,
       });
     }
+  });
+
+  test("Event QR generation exposes a retryable failure", async () => {
+    mocks.getEvent.mockResolvedValue(detailFixture());
+    mocks.getProgramAttendanceArtifact
+      .mockRejectedValueOnce(new Error("QR unavailable"))
+      .mockResolvedValueOnce({
+        artifact: {
+          program_id: "program-1",
+          program_name: "顯恩堂主日學",
+          check_in_token: "program-token-1",
+          can_rotate: false,
+        },
+      });
+    const user = userEvent.setup();
+    render(
+      <EventDetail
+        programId="program-1"
+        eventId="event-1"
+        canManage
+        onBack={() => {}}
+        backHref="/programs"
+      />
+    );
+
+    await clickMoreAction(user, COPY.attendance.eventCheckInSheetOpen);
+    await expect(
+      screen.findByText(COPY.attendance.eventQrCodeGenerateError)
+    ).resolves.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: COPY.error.retry }));
+    await expect(
+      screen.findByAltText(COPY.attendance.eventCheckInSheetQrLabel)
+    ).resolves.toBeVisible();
+    expect(mocks.getProgramAttendanceArtifact).toHaveBeenCalledTimes(2);
   });
 
   test("renders the server-projected schedule exception", async () => {
@@ -326,9 +440,7 @@ describe("EVT-01 event detail", () => {
         onAttentionRefresh={onAttentionRefresh}
       />
     );
-    await user.click(
-      await screen.findByRole("button", { name: COPY.programs.eventEditTitle })
-    );
+    await clickMoreAction(user, COPY.programs.eventEditTitle);
     const nameInput = await screen.findByLabelText(COPY.programs.eventName);
     await user.clear(nameInput);
     await user.type(nameInput, "改名聚會");
@@ -380,9 +492,7 @@ describe("EVT-01 event detail", () => {
         backHref="/programs"
       />
     );
-    await user.click(
-      await screen.findByRole("button", { name: COPY.programs.eventEditTitle })
-    );
+    await clickMoreAction(user, COPY.programs.eventEditTitle);
     const nameInput = await screen.findByLabelText(COPY.programs.eventName);
     await user.clear(nameInput);
     await user.type(nameInput, "改名聚會");
@@ -425,10 +535,7 @@ describe("EVT-01 event detail", () => {
         backHref="/programs"
       />
     );
-    const deactivate = await screen.findByRole("button", {
-      name: COPY.programs.eventAvailabilityDeactivate,
-    });
-    await user.click(deactivate);
+    await clickMoreAction(user, COPY.programs.eventAvailabilityDeactivate);
     // Inline confirmation replaces the button and takes focus. The count
     // names THIS event's open operations (active check-ins), not the
     // Program-wide enrollment count (3 in the fixture).
@@ -488,11 +595,7 @@ describe("EVT-01 event detail", () => {
       />
     );
 
-    await user.click(
-      await screen.findByRole("button", {
-        name: COPY.programs.eventAvailabilityDeactivate,
-      })
-    );
+    await clickMoreAction(user, COPY.programs.eventAvailabilityDeactivate);
     expect(
       screen.queryByRole("button", {
         name: COPY.programs.eventAvailabilityConfirmProceed,
@@ -536,11 +639,7 @@ describe("EVT-01 event detail", () => {
       />
     );
 
-    await user.click(
-      await screen.findByRole("button", {
-        name: COPY.programs.eventAvailabilityDeactivate,
-      })
-    );
+    await clickMoreAction(user, COPY.programs.eventAvailabilityDeactivate);
     await expect(
       screen.findByText(COPY.programs.eventAvailabilityNotice)
     ).resolves.toBeInTheDocument();
@@ -578,11 +677,7 @@ describe("EVT-01 event detail", () => {
         backHref="/programs"
       />
     );
-    await user.click(
-      await screen.findByRole("button", {
-        name: COPY.programs.eventAvailabilityDeactivate,
-      })
-    );
+    await clickMoreAction(user, COPY.programs.eventAvailabilityDeactivate);
     await user.click(
       screen.getByRole("button", {
         name: COPY.programs.eventAvailabilityConfirmProceed,
@@ -596,9 +691,7 @@ describe("EVT-01 event detail", () => {
 
     // An unrelated identity edit must not leave the stale Undo clickable —
     // it would silently re-open availability the user never asked for.
-    await user.click(
-      screen.getByRole("button", { name: COPY.programs.eventEditTitle })
-    );
+    await clickMoreAction(user, COPY.programs.eventEditTitle);
     const nameInput = await screen.findByLabelText(COPY.programs.eventName);
     await user.clear(nameInput);
     await user.type(nameInput, "改名聚會");
@@ -642,9 +735,7 @@ describe("EVT-01 event detail", () => {
         backHref="/programs"
       />
     );
-    await user.click(
-      await screen.findByRole("button", { name: COPY.programs.cancelEvent })
-    );
+    await clickMoreAction(user, COPY.programs.cancelEvent);
     await expect(
       screen.findByText(COPY.programs.cancelMeetingConfirmTitle)
     ).resolves.toBeInTheDocument();
@@ -717,11 +808,7 @@ describe("EVT-01 event detail", () => {
         backHref="/programs"
       />
     );
-    await user.click(
-      await screen.findByRole("button", {
-        name: COPY.programs.eventAvailabilityDeactivate,
-      })
-    );
+    await clickMoreAction(user, COPY.programs.eventAvailabilityDeactivate);
     await user.click(
       screen.getByRole("button", {
         name: COPY.programs.eventAvailabilityConfirmProceed,
@@ -760,11 +847,7 @@ describe("EVT-01 event detail", () => {
         backHref="/programs"
       />
     );
-    await user.click(
-      await screen.findByRole("button", {
-        name: COPY.programs.eventAvailabilityDeactivate,
-      })
-    );
+    await clickMoreAction(user, COPY.programs.eventAvailabilityDeactivate);
     // The loaded summary looked safe, so the first attempt went out
     // without confirmation; the server's fresh count says otherwise.
     expect(mocks.setEventAvailability).toHaveBeenNthCalledWith(
@@ -838,19 +921,13 @@ describe("EVT-01 event detail", () => {
         backHref="/programs"
       />
     );
-    await user.click(
-      await screen.findByRole("button", {
-        name: COPY.programs.eventAvailabilityDeactivate,
-      })
-    );
+    await clickMoreAction(user, COPY.programs.eventAvailabilityDeactivate);
     await expect(
       screen.findByRole("button", {
         name: COPY.programs.eventAvailabilityUndo,
       })
     ).resolves.toBeInTheDocument();
-    await user.click(
-      screen.getByRole("button", { name: COPY.programs.cancelEvent })
-    );
+    await clickMoreAction(user, COPY.programs.cancelEvent);
     await user.type(
       screen.getByLabelText(COPY.programs.cancelReason),
       "場地維修"
@@ -1042,12 +1119,12 @@ describe("EVT-01 event detail", () => {
         name: COPY.programs.checkInInstructionsHeading,
       })
     ).toBeInTheDocument();
-    expect(
-      screen.getByText(COPY.programs.eventInstructions)
-    ).toBeInTheDocument();
+    await expect(
+      screen.findByText(COPY.programs.eventInstructions)
+    ).resolves.toBeInTheDocument();
 
     // 前往掃描 CTA is sticky, full-width, and points at this event.
-    const cta = screen.getByRole("link", {
+    const cta = await screen.findByRole("link", {
       name: COPY.programs.goToScan,
     });
     expect(cta).toHaveAttribute("href", "/scanner?event=event-1");
@@ -1089,14 +1166,86 @@ describe("EVT-01 event detail", () => {
       screen.queryByRole("status", { name: COPY.programs.checkInAvailable })
     ).not.toBeInTheDocument();
     expect(
-      screen.getByRole("status", { name: COPY.attendance.eventClosed })
+      screen.getByRole("status", { name: COPY.programs.eventNotStarted })
     ).toBeInTheDocument();
-    expect(screen.getByText(/簽到時間尚未開始/u)).toBeInTheDocument();
+    await expect(
+      screen.findByText(/簽到時間尚未開始/u)
+    ).resolves.toBeInTheDocument();
     expect(
       screen.queryByRole("link", { name: COPY.programs.goToScan })
     ).not.toBeInTheDocument();
     expect(
       screen.queryByRole("link", { name: COPY.attendance.eventAttendanceOpen })
+    ).not.toBeInTheDocument();
+  });
+
+  test("participant Present state suppresses the scanner CTA", async () => {
+    const now = Date.now();
+    mocks.getEvent.mockResolvedValue(
+      detailFixture({
+        event: {
+          ...detailFixture().event,
+          check_in_window_opens_at: new Date(now - 30 * 60_000).toISOString(),
+          check_in_window_closes_at: new Date(now + 30 * 60_000).toISOString(),
+        },
+      })
+    );
+    mocks.getOwnAttendance.mockResolvedValue({
+      state: "Present",
+      attendance: { checked_in_at: new Date(now - 5 * 60_000).toISOString() },
+      disposition: null,
+    });
+    render(
+      <EventDetail
+        programId="program-1"
+        eventId="event-1"
+        canManage={false}
+        onBack={() => {}}
+        backHref="/programs"
+      />
+    );
+
+    await expect(
+      screen.findByText(COPY.programs.participantAttendancePresent)
+    ).resolves.toBeInTheDocument();
+    expect(
+      screen.queryByRole("link", { name: COPY.programs.goToScan })
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByText(COPY.programs.participantAttendanceRecorded)
+    ).toBeInTheDocument();
+  });
+
+  test("participant ended state does not show opening instructions", async () => {
+    mocks.getEvent.mockResolvedValue(
+      detailFixture({
+        event: {
+          ...detailFixture().event,
+          starts_at: "2026-09-12T10:00:00.000Z",
+          ends_at: "2026-09-12T11:30:00.000Z",
+          check_in_window_opens_at: "2026-09-12T09:30:00.000Z",
+          check_in_window_closes_at: "2026-09-12T12:00:00.000Z",
+        },
+      })
+    );
+    render(
+      <EventDetail
+        programId="program-1"
+        eventId="event-1"
+        canManage={false}
+        onBack={() => {}}
+        backHref="/programs"
+      />
+    );
+
+    await expect(
+      screen.findByText(COPY.programs.eventInstructionsEnded)
+    ).resolves.toBeInTheDocument();
+    expect(
+      screen.queryByText(COPY.programs.eventInstructionsClosed)
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("link", { name: COPY.programs.goToScan })
     ).not.toBeInTheDocument();
   });
 
@@ -1233,7 +1382,7 @@ describe("EVT-01 event detail", () => {
         backHref="/programs"
       />
     );
-    await user.click(await screen.findByRole("button", { name: /編輯聚會/u }));
+    await clickMoreAction(user, /編輯聚會/u);
     const nameInput = screen.getByLabelText(COPY.programs.eventName);
     await user.clear(nameInput);
     await user.type(nameInput, "更正後聚會");
@@ -1270,9 +1419,7 @@ describe("EVT-01 event detail", () => {
         backHref="/programs"
       />
     );
-    await user.click(
-      await screen.findByRole("button", { name: COPY.programs.cancelEvent })
-    );
+    await clickMoreAction(user, COPY.programs.cancelEvent);
     await expect(
       screen.findByText(COPY.programs.cancelBlockedWithAttendance)
     ).resolves.toBeInTheDocument();
@@ -1308,9 +1455,7 @@ describe("EVT-01 event detail", () => {
         backHref="/programs"
       />
     );
-    await user.click(
-      await screen.findByRole("button", { name: COPY.programs.cancelEvent })
-    );
+    await clickMoreAction(user, COPY.programs.cancelEvent);
     await expect(
       screen.findByText(COPY.programs.cancelMeetingConfirmTitle)
     ).resolves.toBeInTheDocument();
@@ -1330,9 +1475,7 @@ describe("EVT-01 event detail", () => {
         backHref="/programs"
       />
     );
-    await user.click(
-      await screen.findByRole("button", { name: COPY.programs.cancelEvent })
-    );
+    await clickMoreAction(user, COPY.programs.cancelEvent);
     await user.click(
       screen.getByRole("button", { name: COPY.programs.confirmCancel })
     );

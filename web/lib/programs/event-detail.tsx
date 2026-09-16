@@ -6,6 +6,13 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -110,10 +117,33 @@ function checkInWindowIsOpen(event: ProgramEvent, now = Date.now()): boolean {
   );
 }
 
+type EventPhase = "future" | "open" | "past" | "cancelled";
+
+function eventPhase(event: ProgramEvent, now = Date.now()): EventPhase {
+  if (event.status === "Cancelled") {
+    return "cancelled";
+  }
+  if (checkInWindowIsOpen(event, now)) {
+    return "open";
+  }
+  const opensAt = event.check_in_window_opens_at
+    ? Date.parse(event.check_in_window_opens_at)
+    : Number.NaN;
+  const startsAt = Date.parse(event.starts_at);
+  return [opensAt, startsAt].some(
+    (timestamp) => Number.isFinite(timestamp) && timestamp > now
+  )
+    ? "future"
+    : "past";
+}
+
 function participantAttendanceLabel(
   state: AttendanceParticipantView["state"]
 ): string {
   switch (state) {
+    case null: {
+      return COPY.programs.participantAttendanceUnavailable;
+    }
     case "Present": {
       return COPY.programs.participantAttendancePresent;
     }
@@ -215,6 +245,8 @@ export const EventDetail = ({
   const [showCheckInSheet, setShowCheckInSheet] = useState(false);
   const [ownAttendance, setOwnAttendance] =
     useState<AttendanceParticipantView | null>(null);
+  const [ownAttendanceUnavailable, setOwnAttendanceUnavailable] =
+    useState(false);
   const [ownAttendanceLoading, setOwnAttendanceLoading] = useState(false);
   const [ownAttendanceError, setOwnAttendanceError] = useState<string | null>(
     null
@@ -226,6 +258,7 @@ export const EventDetail = ({
   const [deactivateImpact, setDeactivateImpact] = useState(0);
   const confirmRef = useRef<HTMLDivElement>(null);
   const cancelConfirmRef = useRef<HTMLDivElement>(null);
+  const menuFocusTargetRef = useRef<"deactivate" | "cancel" | null>(null);
   const mounted = useRef(true);
 
   useEffect(
@@ -237,13 +270,19 @@ export const EventDetail = ({
 
   useEffect(() => {
     if (confirmingDeactivate) {
-      confirmRef.current?.querySelector("button")?.focus();
+      const focusReplacement = window.setTimeout(() => {
+        confirmRef.current?.querySelector("button")?.focus();
+      }, 0);
+      return () => window.clearTimeout(focusReplacement);
     }
   }, [confirmingDeactivate]);
 
   useEffect(() => {
     if (confirmingCancel) {
-      cancelConfirmRef.current?.querySelector("button")?.focus();
+      const focusReplacement = window.setTimeout(() => {
+        cancelConfirmRef.current?.querySelector("button")?.focus();
+      }, 0);
+      return () => window.clearTimeout(focusReplacement);
     }
   }, [confirmingCancel]);
   useEffect(() => {
@@ -290,6 +329,7 @@ export const EventDetail = ({
     }
     let cancelled = false;
     setOwnAttendance(null);
+    setOwnAttendanceUnavailable(false);
     setOwnAttendanceError(null);
     setOwnAttendanceLoading(true);
     void (async () => {
@@ -297,6 +337,7 @@ export const EventDetail = ({
         const next = await getOwnAttendance(eventId);
         if (!cancelled) {
           setOwnAttendance(next);
+          setOwnAttendanceUnavailable(next === null || next.state === null);
         }
       } catch (error: unknown) {
         if (cancelled) {
@@ -308,6 +349,7 @@ export const EventDetail = ({
             error.problem.code === "NOT_FOUND")
         ) {
           setOwnAttendance(null);
+          setOwnAttendanceUnavailable(true);
           return;
         }
         setOwnAttendanceError(COPY.programs.participantAttendanceError);
@@ -697,12 +739,13 @@ export const EventDetail = ({
   }
   const { event, leaders, participant_summary } = detail;
   const cancelled = event.status === "Cancelled";
+  const phase = eventPhase(event);
   const hasAttendance =
     event.has_attendance === true || participant_summary.checked_in > 0;
   const attendanceHref = `/events?eventId=${encodeURIComponent(event.event_id)}`;
   if (!canManage) {
     const programName = event.program_name ?? event.program_id;
-    const checkInOpen = checkInWindowIsOpen(event);
+    const checkInOpen = phase === "open";
     const scanHref = `/scanner?event=${encodeURIComponent(event.event_id)}`;
     const eventTitle =
       event.name ??
@@ -717,6 +760,24 @@ export const EventDetail = ({
         : ownAttendance?.state === "Cancelled"
           ? "danger"
           : "pending";
+    const participantCanScan =
+      checkInOpen && ownAttendance?.state === "Not Yet";
+    const participantInstruction = cancelled
+      ? COPY.attendance.eventCancelled
+      : ownAttendanceError ||
+          ownAttendanceUnavailable ||
+          !ownAttendance ||
+          ownAttendance.state === null
+        ? COPY.programs.participantAttendanceUnavailable
+        : ownAttendance.state === "Not Yet"
+          ? checkInOpen
+            ? COPY.programs.eventInstructions
+            : phase === "future"
+              ? event.check_in_window_opens_at
+                ? `${COPY.programs.eventInstructionsClosed} ${COPY.programs.eventCheckInWindowOpensAt} ${hkShortDateLabel(event.check_in_window_opens_at)} ${hkShortTimeLabel(event.check_in_window_opens_at)}`
+                : COPY.programs.eventInstructionsClosed
+              : COPY.programs.eventInstructionsEnded
+          : COPY.programs.participantAttendanceRecorded;
 
     return (
       <section
@@ -742,7 +803,7 @@ export const EventDetail = ({
               >
                 {COPY.attendance.eventCancelled}
               </ScreenStatus>
-            ) : checkInOpen ? (
+            ) : phase === "open" ? (
               <ScreenStatus
                 role="status"
                 tone="success"
@@ -754,9 +815,15 @@ export const EventDetail = ({
               <ScreenStatus
                 role="status"
                 tone="pending"
-                aria-label={COPY.attendance.eventClosed}
+                aria-label={
+                  phase === "future"
+                    ? COPY.programs.eventNotStarted
+                    : COPY.programs.eventEnded
+                }
               >
-                {COPY.attendance.eventClosed}
+                {phase === "future"
+                  ? COPY.programs.eventNotStarted
+                  : COPY.programs.eventEnded}
               </ScreenStatus>
             )
           }
@@ -784,7 +851,7 @@ export const EventDetail = ({
             </output>
           ) : ownAttendanceError ? (
             <Alert variant="destructive">{ownAttendanceError}</Alert>
-          ) : ownAttendance ? (
+          ) : ownAttendance && ownAttendance.state !== null ? (
             <div className="grid min-w-0 gap-2">
               <ScreenStatus tone={participantAttendanceTone}>
                 {participantAttendanceLabel(ownAttendance.state)}
@@ -815,17 +882,11 @@ export const EventDetail = ({
           title={COPY.programs.checkInInstructionsHeading}
         >
           <p className="m-0 min-w-0 max-w-[65ch] wrap-anywhere leading-[1.6] text-[var(--screen-muted)]">
-            {cancelled
-              ? COPY.attendance.eventCancelled
-              : checkInOpen
-                ? COPY.programs.eventInstructions
-                : event.check_in_window_opens_at
-                  ? `${COPY.programs.eventInstructionsClosed} ${COPY.programs.eventCheckInWindowOpensAt} ${hkShortDateLabel(event.check_in_window_opens_at)} ${hkShortTimeLabel(event.check_in_window_opens_at)}`
-                  : COPY.programs.eventInstructionsClosed}
+            {participantInstruction}
           </p>
         </ScreenSection>
 
-        {checkInOpen && (
+        {participantCanScan && (
           <ScreenCard className="mt-0" data-action-bar>
             <Button
               asChild
@@ -840,6 +901,84 @@ export const EventDetail = ({
     );
   }
 
+  const beginEdit = () => {
+    setEditingEventType(
+      event.event_type ?? (COPY.programs.eventTypeOptions[0] as EventType)
+    );
+    setEditReason("");
+    setEditing(true);
+  };
+  const requestDeactivate = () => {
+    if (event.availability === "Active" && participant_summary.checked_in > 0) {
+      menuFocusTargetRef.current = "deactivate";
+      setDeactivateImpact(participant_summary.checked_in);
+      setConfirmingDeactivate(true);
+      return;
+    }
+    if (event.availability === "Active") {
+      submitDeactivate(false);
+      return;
+    }
+    submitActivate();
+  };
+  const requestCancel = () => {
+    if (hasAttendance) {
+      const message = COPY.programs.cancelBlockedWithAttendance;
+      setActionError(message);
+      announce(message);
+      return;
+    }
+    menuFocusTargetRef.current = "cancel";
+    setConfirmingCancel(true);
+  };
+  const primaryAction =
+    phase === "future" && event.manual_check_in_code ? (
+      <Button
+        type="button"
+        className="w-fit bg-[var(--screen-accent)] text-white hover:bg-[var(--screen-accent-deep)]"
+        disabled={eventActionBlocked}
+        onClick={() => setShowCheckInSheet(true)}
+      >
+        {COPY.attendance.eventCheckInSheetOpen}
+      </Button>
+    ) : phase === "open" ? (
+      <Button
+        asChild
+        className="w-fit bg-[var(--screen-accent)] text-white hover:bg-[var(--screen-accent-deep)]"
+        data-action-state="available"
+      >
+        <Link
+          href={attendanceHref}
+          aria-disabled={eventActionBlocked}
+          onClick={(clickEvent) => {
+            if (eventActionBlocked) {
+              clickEvent.preventDefault();
+            }
+          }}
+        >
+          {COPY.attendance.eventAttendanceOpen}
+        </Link>
+      </Button>
+    ) : phase === "past" ? (
+      <Button
+        asChild
+        className="w-fit bg-[var(--screen-accent)] text-white hover:bg-[var(--screen-accent-deep)]"
+        data-action-state="available"
+      >
+        <Link
+          href={attendanceHref}
+          aria-disabled={eventActionBlocked}
+          onClick={(clickEvent) => {
+            if (eventActionBlocked) {
+              clickEvent.preventDefault();
+            }
+          }}
+        >
+          {COPY.programs.eventAttendanceViewRecord}
+        </Link>
+      </Button>
+    ) : null;
+
   return (
     <section
       className="grid min-w-0 gap-[var(--screen-section-gap)] text-[var(--screen-ink)]"
@@ -849,18 +988,84 @@ export const EventDetail = ({
       <ScreenHeader
         level="child"
         title={event.name ?? hkWallDateTimeLabel(event.starts_at)}
-        lead={`${hkWallDateTimeLabel(event.starts_at)} — ${hkWallDateTimeLabel(event.ends_at)}`}
+        lead={event.program_name}
         headingId="management-event-detail-title"
         backHref={backHref}
         backLabel={COPY.programs.eventDetailBack}
         backReplace={backReplace}
         onBack={onBack}
         status={
-          <ScreenStatus tone={cancelled ? "danger" : "success"}>
-            {STATUS_LABEL[event.status]}
+          <ScreenStatus
+            tone={
+              cancelled ? "danger" : phase === "open" ? "success" : "pending"
+            }
+          >
+            {cancelled
+              ? STATUS_LABEL[event.status]
+              : phase === "open"
+                ? COPY.programs.checkInAvailable
+                : phase === "future"
+                  ? COPY.programs.eventNotStarted
+                  : COPY.programs.eventEnded}
           </ScreenStatus>
         }
       />
+      {!cancelled && (
+        <div className="flex min-w-0 flex-wrap items-center gap-[var(--screen-utility-gap)]">
+          {primaryAction}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                type="button"
+                variant="outline"
+                disabled={eventActionBlocked}
+              >
+                {COPY.programs.eventMoreActions}
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent
+              align="end"
+              onCloseAutoFocus={(focusEvent) => {
+                const target = menuFocusTargetRef.current;
+                if (!target) {
+                  return;
+                }
+                focusEvent.preventDefault();
+                menuFocusTargetRef.current = null;
+                window.setTimeout(() => {
+                  (target === "deactivate"
+                    ? confirmRef.current
+                    : cancelConfirmRef.current
+                  )
+                    ?.querySelector("button")
+                    ?.focus();
+                }, 0);
+              }}
+            >
+              {phase !== "future" && event.manual_check_in_code && (
+                <DropdownMenuItem onSelect={() => setShowCheckInSheet(true)}>
+                  {COPY.attendance.eventCheckInSheetOpen}
+                </DropdownMenuItem>
+              )}
+              <DropdownMenuItem onSelect={beginEdit}>
+                {COPY.programs.eventEdit}
+              </DropdownMenuItem>
+              <DropdownMenuItem onSelect={beginEdit}>
+                {COPY.programs.eventReschedule}
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onSelect={requestDeactivate}>
+                {event.availability === "Active"
+                  ? COPY.programs.eventAvailabilityDeactivate
+                  : COPY.programs.eventAvailabilityActivate}
+              </DropdownMenuItem>
+              <DropdownMenuItem variant="destructive" onSelect={requestCancel}>
+                {COPY.programs.cancelEvent}
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+      )}
       {notice !== null && (
         <Alert tone="success" announcement="polite">
           <div className="flex min-w-0 flex-wrap items-center gap-[var(--screen-utility-gap)]">
@@ -1011,44 +1216,23 @@ export const EventDetail = ({
         <p className="m-0 min-w-0 max-w-[65ch] wrap-anywhere leading-[1.6] text-[var(--screen-muted)]">
           {COPY.attendance.eventAttendanceLead}
         </p>
-        <Button
-          asChild
-          className="w-fit bg-[var(--screen-accent)] text-white hover:bg-[var(--screen-accent-deep)]"
-          data-action-state="available"
-        >
-          <Link
-            href={attendanceHref}
-            aria-disabled={eventActionBlocked}
-            onClick={(clickEvent) => {
-              if (eventActionBlocked) {
-                clickEvent.preventDefault();
-              }
-            }}
-          >
-            {COPY.attendance.eventAttendanceOpen}
-          </Link>
-        </Button>
-        {!cancelled && event.manual_check_in_code && (
-          <>
-            <Button
-              type="button"
-              variant="outline"
-              className="w-fit"
-              disabled={eventActionBlocked}
-              onClick={() => setShowCheckInSheet((current) => !current)}
-            >
-              {COPY.attendance.eventCheckInSheetOpen}
-            </Button>
-            {showCheckInSheet && (
-              <EventCheckInSheet
-                event={event}
-                onClose={() => setShowCheckInSheet(false)}
-                onAuthRequired={onAuthRequired}
-              />
-            )}
-          </>
+        {!cancelled && (
+          <ScreenRowMeta>
+            {phase === "open"
+              ? COPY.attendance.eventAttendanceOpen
+              : phase === "future"
+                ? COPY.attendance.eventCheckInSheetOpen
+                : COPY.programs.eventAttendanceViewRecord}
+          </ScreenRowMeta>
         )}
       </ScreenSection>
+      {showCheckInSheet && !cancelled && event.manual_check_in_code && (
+        <EventCheckInSheet
+          event={event}
+          onClose={() => setShowCheckInSheet(false)}
+          onAuthRequired={onAuthRequired}
+        />
+      )}
 
       <ScreenSection title={COPY.programs.identityAssignments}>
         {leaders.length === 0 ? (
@@ -1083,66 +1267,40 @@ export const EventDetail = ({
       {canManage && !cancelled && (
         <>
           <ScreenSection title={COPY.programs.eventAvailability}>
-            {event.availability === "Active" ? (
-              confirmingDeactivate ? (
-                <ScreenCard role="alert" ref={confirmRef} tone="default">
-                  <p className="m-0 wrap-anywhere">
-                    {COPY.programs.eventAvailabilityConfirmBody.replace(
-                      "{count}",
-                      String(deactivateImpact)
-                    )}
-                  </p>
-                  <div className="flex min-w-0 flex-wrap gap-[var(--screen-utility-gap)]">
-                    <Button
-                      type="button"
-                      className="w-fit bg-[var(--screen-danger)] text-white hover:bg-[var(--screen-danger)]"
-                      disabled={eventActionBlocked}
-                      onClick={() => submitDeactivate(true)}
-                    >
-                      {COPY.programs.eventAvailabilityConfirmProceed}
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      className="w-fit border-[var(--screen-line-strong)] bg-transparent text-[var(--screen-ink)] hover:bg-[var(--screen-surface-soft)]"
-                      disabled={eventActionBlocked}
-                      onClick={() => setConfirmingDeactivate(false)}
-                    >
-                      {COPY.programs.keepEvent}
-                    </Button>
-                  </div>
-                </ScreenCard>
-              ) : (
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="w-fit border-[var(--screen-danger)] bg-transparent text-[var(--screen-danger)] hover:bg-[var(--screen-danger-surface)]"
-                  disabled={eventActionBlocked}
-                  onClick={() => {
-                    // AC-4: safe (zero affected operations) deactivation is
-                    // immediate with Undo; only consequential deactivation
-                    // requires the inline confirm naming the open operations.
-                    if (participant_summary.checked_in === 0) {
-                      submitDeactivate(false);
-                    } else {
-                      setDeactivateImpact(participant_summary.checked_in);
-                      setConfirmingDeactivate(true);
-                    }
-                  }}
-                >
-                  {COPY.programs.eventAvailabilityDeactivate}
-                </Button>
-              )
+            {confirmingDeactivate ? (
+              <ScreenCard role="alert" ref={confirmRef} tone="default">
+                <p className="m-0 wrap-anywhere">
+                  {COPY.programs.eventAvailabilityConfirmBody.replace(
+                    "{count}",
+                    String(deactivateImpact)
+                  )}
+                </p>
+                <div className="flex min-w-0 flex-wrap gap-[var(--screen-utility-gap)]">
+                  <Button
+                    type="button"
+                    className="w-fit bg-[var(--screen-danger)] text-white hover:bg-[var(--screen-danger)]"
+                    disabled={eventActionBlocked}
+                    onClick={() => submitDeactivate(true)}
+                  >
+                    {COPY.programs.eventAvailabilityConfirmProceed}
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="w-fit border-[var(--screen-line-strong)] bg-transparent text-[var(--screen-ink)] hover:bg-[var(--screen-surface-soft)]"
+                    disabled={eventActionBlocked}
+                    onClick={() => setConfirmingDeactivate(false)}
+                  >
+                    {COPY.programs.keepEvent}
+                  </Button>
+                </div>
+              </ScreenCard>
             ) : (
-              <Button
-                type="button"
-                variant="outline"
-                className="w-fit border-[var(--screen-success)] bg-transparent text-[var(--screen-success)] hover:bg-[var(--screen-success-surface)]"
-                disabled={eventActionBlocked}
-                onClick={submitActivate}
-              >
-                {COPY.programs.eventAvailabilityActivate}
-              </Button>
+              <ScreenRowMeta>
+                {event.availability === "Active"
+                  ? COPY.programs.eventAvailable
+                  : COPY.programs.eventUnavailable}
+              </ScreenRowMeta>
             )}
           </ScreenSection>
 
@@ -1175,7 +1333,9 @@ export const EventDetail = ({
                         type="text"
                         name="edit_reason"
                         value={editReason}
-                        onChange={(event) => setEditReason(event.target.value)}
+                        onChange={(changeEvent) =>
+                          setEditReason(changeEvent.target.value)
+                        }
                         placeholder={
                           COPY.programs.eventIdentityChangeReasonPlaceholder
                         }
@@ -1338,22 +1498,7 @@ export const EventDetail = ({
                 </ScreenEditor>
               </ScreenCard>
             ) : (
-              <Button
-                type="button"
-                variant="outline"
-                className="w-fit border-[var(--screen-line-strong)] bg-transparent text-[var(--screen-ink)] hover:bg-[var(--screen-surface-soft)]"
-                disabled={eventActionBlocked}
-                onClick={() => {
-                  setEditingEventType(
-                    event.event_type ??
-                      (COPY.programs.eventTypeOptions[0] as EventType)
-                  );
-                  setEditReason("");
-                  setEditing(true);
-                }}
-              >
-                {COPY.programs.eventEditTitle}
-              </Button>
+              <ScreenRowMeta>{COPY.programs.eventEdit}</ScreenRowMeta>
             )}
           </ScreenSection>
 
@@ -1396,23 +1541,7 @@ export const EventDetail = ({
                 </ScreenCard>
               </ScreenEditor>
             ) : (
-              <Button
-                type="button"
-                variant="outline"
-                className="w-fit border-[var(--screen-danger)] bg-transparent text-[var(--screen-danger)] hover:bg-[var(--screen-danger-surface)]"
-                disabled={eventActionBlocked}
-                onClick={() => {
-                  if (hasAttendance) {
-                    const message = COPY.programs.cancelBlockedWithAttendance;
-                    setActionError(message);
-                    announce(message);
-                    return;
-                  }
-                  setConfirmingCancel(true);
-                }}
-              >
-                {COPY.programs.cancelEvent}
-              </Button>
+              <ScreenRowMeta>{COPY.programs.eventMoreActions}</ScreenRowMeta>
             )}
           </ScreenSection>
         </>

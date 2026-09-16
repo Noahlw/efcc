@@ -1,6 +1,7 @@
 import type { Decorator, Meta, StoryObj } from "@storybook/nextjs-vite";
 
 import { AppShell } from "@/lib/app-shell";
+import { EventDetail as EventDetailComponent } from "@/lib/programs/event-detail";
 import { ManagementDirectory as ManagementDirectoryComponent } from "@/lib/programs/management-directory";
 import { ParticipantDirectory as ParticipantDirectoryComponent } from "@/lib/programs/participant-directory";
 import { ParticipantEventDetailPage as ParticipantEventDetailPageComponent } from "@/lib/programs/participant-event-detail-page";
@@ -14,7 +15,9 @@ import {
   programsParticipantHandlers,
 } from "./programs-fixtures";
 
-const noop = () => undefined;
+const noop = () => {
+  // Component-only Story callbacks intentionally have no side effect.
+};
 
 const withMemberIdentity: Decorator = (Story) => {
   if (typeof window !== "undefined") {
@@ -61,7 +64,7 @@ export const ParticipantDirectoryLeaf: Story = {
         programId={null}
         canManage={false}
         managementHref="/programs?mode=management"
-        programHref={(programId) => "/programs?program=" + programId}
+        programHref={(programId) => `/programs?program=${programId}`}
         homeHref="/home"
       />
     </AppShell>
@@ -80,7 +83,7 @@ export const ParticipantProgramDetailLeaf: Story = {
         canManage={false}
         managementHref="/programs?mode=management&program=t07-3-program"
         eventHref={(eventId) =>
-          "/programs?program=t07-3-program&event=" + eventId
+          `/programs?program=t07-3-program&event=${eventId}`
         }
       />
     </AppShell>
@@ -101,6 +104,23 @@ export const ParticipantEventDetailLeaf: Story = {
     </AppShell>
   ),
   parameters: { msw: programsParticipantHandlers },
+};
+
+export const ManagerEventDetailLeaf: Story = {
+  tags: ["component-only"],
+  decorators: [withManagerIdentity],
+  render: () => (
+    <AppShell>
+      <EventDetailComponent
+        programId="t07-3-program"
+        eventId="t07-3-event"
+        canManage
+        departmentId="t07-3-department"
+        backHref="/programs?mode=management&program=t07-3-program&task=events"
+      />
+    </AppShell>
+  ),
+  parameters: { msw: programsManagementHandlers },
 };
 
 export const ManagementDirectoryLeaf: Story = {
