@@ -4,6 +4,16 @@ import { cva, type VariantProps } from "class-variance-authority";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 
 import { Alert } from "@/components/ui/alert";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -1767,6 +1777,8 @@ export const AttendanceOperatorPanel = ({
   const pendingMutationRef = useRef<PendingAttendanceMutation | null>(
     restoredAttendanceRecovery?.mutation ?? null
   );
+  const assistedCheckInConfirmRef = useRef<HTMLButtonElement>(null);
+  const assistedCheckInTriggerRef = useRef<HTMLButtonElement | null>(null);
   const staleRef = useRef(false);
   const mutationOutcomeUnknownRef = useRef(false);
   const reconciliationEpochRef = useRef(0);
@@ -2719,57 +2731,80 @@ export const AttendanceOperatorPanel = ({
             {COPY.attendance.search}
           </Button>
         </div>
-        {pendingCheckIn && (
-          <Card
-            className="grid gap-3"
-            role="dialog"
-            aria-labelledby="assisted-check-in-confirm-title"
-          >
-            <div className="grid gap-1">
-              <h3
-                id="assisted-check-in-confirm-title"
-                className="text-lg font-bold text-[var(--ink)]"
-              >
-                {COPY.attendance.assistedCheckInConfirmTitle}
-              </h3>
-              <p className="text-sm text-[var(--ink-muted)]">
-                {COPY.attendance.assistedCheckInConfirmLead}
-              </p>
-            </div>
-            <div className="grid gap-1 text-sm text-[var(--ink)]">
-              <strong>{pendingCheckIn.member.name}</strong>
-              <span className="text-[var(--ink-muted)]">
-                {pendingCheckIn.member.phone
-                  ? COPY.attendance.maskedPhone(pendingCheckIn.member.phone)
-                  : pendingCheckIn.member.user_id}
-              </span>
-              <span className="text-[var(--ink-muted)]">
-                {event.program_name} ·{" "}
-                {event.name?.trim() || event.program_name} ·{" "}
-                {hkWallLabel(event.starts_at)}
-              </span>
-            </div>
-            <div className="flex flex-wrap gap-3">
-              <Button
-                type="button"
-                disabled={busy || !online || stale}
-                onClick={() =>
-                  void checkIn(pendingCheckIn.member, pendingCheckIn.method)
+        <AlertDialog
+          open={pendingCheckIn !== null}
+          onOpenChange={(open) => {
+            if (!open && !busy) {
+              setPendingCheckIn(null);
+            }
+          }}
+        >
+          {pendingCheckIn && (
+            <AlertDialogContent
+              aria-labelledby="assisted-check-in-confirm-title"
+              aria-describedby="assisted-check-in-confirm-description"
+              aria-modal="true"
+              onOpenAutoFocus={(focusEvent) => {
+                focusEvent.preventDefault();
+                assistedCheckInConfirmRef.current?.focus();
+              }}
+              onCloseAutoFocus={(focusEvent) => {
+                focusEvent.preventDefault();
+                const trigger = assistedCheckInTriggerRef.current;
+                if (trigger?.isConnected && !trigger.disabled) {
+                  trigger.focus();
+                  return;
                 }
-              >
-                {COPY.attendance.assistedCheckInConfirm}
-              </Button>
-              <Button
-                variant="outline"
-                type="button"
-                disabled={busy}
-                onClick={() => setPendingCheckIn(null)}
-              >
-                {COPY.attendance.assistedCheckInCancel}
-              </Button>
-            </div>
-          </Card>
-        )}
+                document.getElementById("member-search")?.focus();
+              }}
+            >
+              <AlertDialogHeader className="place-items-start text-left">
+                <AlertDialogTitle
+                  id="assisted-check-in-confirm-title"
+                  className="text-lg font-bold text-[var(--ink)]"
+                >
+                  {COPY.attendance.assistedCheckInConfirmTitle}
+                </AlertDialogTitle>
+                <AlertDialogDescription
+                  id="assisted-check-in-confirm-description"
+                  className="text-sm text-[var(--ink-muted)]"
+                >
+                  {COPY.attendance.assistedCheckInConfirmLead}
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <div className="grid gap-1 text-sm text-[var(--ink)]">
+                <strong>{pendingCheckIn.member.name}</strong>
+                <span className="text-[var(--ink-muted)]">
+                  {pendingCheckIn.member.phone
+                    ? COPY.attendance.maskedPhone(pendingCheckIn.member.phone)
+                    : pendingCheckIn.member.user_id}
+                </span>
+                <span className="text-[var(--ink-muted)]">
+                  {event.program_name} ·{" "}
+                  {event.name?.trim() || event.program_name} ·{" "}
+                  {hkWallLabel(event.starts_at)}
+                </span>
+              </div>
+              <AlertDialogFooter className="-mx-4 -mb-4 flex flex-wrap justify-end">
+                <AlertDialogCancel
+                  disabled={busy}
+                  onClick={() => setPendingCheckIn(null)}
+                >
+                  {COPY.attendance.assistedCheckInCancel}
+                </AlertDialogCancel>
+                <AlertDialogAction
+                  ref={assistedCheckInConfirmRef}
+                  disabled={busy || !online || stale}
+                  onClick={() =>
+                    void checkIn(pendingCheckIn.member, pendingCheckIn.method)
+                  }
+                >
+                  {COPY.attendance.assistedCheckInConfirm}
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          )}
+        </AlertDialog>
         {members.length > 0 && (
           <ul
             className="mt-2 grid gap-2 list-none p-0 min-w-0"
@@ -2786,12 +2821,14 @@ export const AttendanceOperatorPanel = ({
                     type="button"
                     data-search-member-kind={expected ? "expected" : "addition"}
                     disabled={busy || !online}
-                    onClick={() =>
+                    onClick={(clickEvent) => {
+                      assistedCheckInTriggerRef.current =
+                        clickEvent.currentTarget;
                       setPendingCheckIn({
                         member,
                         method: "leader_manual_search",
-                      })
-                    }
+                      });
+                    }}
                   >
                     <strong>{member.name}</strong>
                     <span className="text-sm text-[var(--ink-muted)]">

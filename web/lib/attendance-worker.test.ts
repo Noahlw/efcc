@@ -907,6 +907,131 @@ describe("attendance Worker routes", () => {
     }
   });
 
+  test("guest reconciliation ignores voided proofs without breaking re-check-in", async () => {
+    const firstKey = "guest-voided-proof";
+    const retryKey = "guest-voided-proof-retry";
+    const payload = {
+      event_id: EVENT,
+      method: "guest_manual_code",
+      manual_code: "ATT1234",
+      name: "訪客作廢重試",
+      phone: "9123 4588",
+    } as const;
+    const admin = await accessCookieFor("att-admin", "att-admin-password");
+    let firstAttendanceId: string | null = null;
+    let retryAttendanceId: string | null = null;
+
+    try {
+      const first = await worker.fetch(
+        request("/api/v1/attendance/guest", {
+          method: "POST",
+          headers: { "Idempotency-Key": firstKey },
+          body: JSON.stringify(payload),
+        }),
+        testEnv()
+      );
+      assert.strictEqual(first.status, 201);
+      const firstBody = await json(first);
+      firstAttendanceId = (firstBody.data as { attendance_id: string })
+        .attendance_id;
+      assert.ok(firstAttendanceId);
+
+      const activeProof = await worker.fetch(
+        request("/api/v1/attendance/guest/reconcile", {
+          method: "POST",
+          headers: { "Idempotency-Key": firstKey },
+          body: JSON.stringify(payload),
+        }),
+        testEnv()
+      );
+      assert.strictEqual(activeProof.status, 200);
+      assert.deepStrictEqual((await json(activeProof)).data, {
+        outcome: "found",
+      });
+
+      const voided = await worker.fetch(
+        request(`/api/v1/attendance/${firstAttendanceId}/void`, {
+          method: "POST",
+          headers: { Cookie: `${ACCESS_COOKIE_NAME}=${admin}` },
+          body: JSON.stringify({ reason: "測試作廢" }),
+        }),
+        testEnv()
+      );
+      assert.strictEqual(voided.status, 200);
+
+      const afterVoid = await worker.fetch(
+        request("/api/v1/attendance/guest/reconcile", {
+          method: "POST",
+          headers: { "Idempotency-Key": firstKey },
+          body: JSON.stringify(payload),
+        }),
+        testEnv()
+      );
+      assert.strictEqual(afterVoid.status, 200);
+      const afterVoidBody = await json(afterVoid);
+      assert.deepStrictEqual(afterVoidBody.data, { outcome: "not_found" });
+      const reconciliationAudit = await testDb()
+        .prepare("SELECT 1 AS found FROM audit_events WHERE correlation_id = ?")
+        .bind(afterVoidBody.requestId)
+        .first<{ found: number }>();
+      assert.strictEqual(reconciliationAudit, null);
+
+      const sameKeyReplay = await worker.fetch(
+        request("/api/v1/attendance/guest", {
+          method: "POST",
+          headers: { "Idempotency-Key": firstKey },
+          body: JSON.stringify(payload),
+        }),
+        testEnv()
+      );
+      assert.strictEqual(sameKeyReplay.status, 200);
+      assert.deepStrictEqual((await json(sameKeyReplay)).data, {
+        outcome: "duplicate",
+      });
+
+      const retry = await worker.fetch(
+        request("/api/v1/attendance/guest", {
+          method: "POST",
+          headers: { "Idempotency-Key": retryKey },
+          body: JSON.stringify(payload),
+        }),
+        testEnv()
+      );
+      assert.strictEqual(retry.status, 201);
+      retryAttendanceId = (
+        (await json(retry)).data as { attendance_id: string }
+      ).attendance_id;
+
+      const recoveredRetry = await worker.fetch(
+        request("/api/v1/attendance/guest/reconcile", {
+          method: "POST",
+          headers: { "Idempotency-Key": retryKey },
+          body: JSON.stringify(payload),
+        }),
+        testEnv()
+      );
+      assert.strictEqual(recoveredRetry.status, 200);
+      assert.deepStrictEqual((await json(recoveredRetry)).data, {
+        outcome: "found",
+      });
+    } finally {
+      for (const attendanceId of [firstAttendanceId, retryAttendanceId]) {
+        if (!attendanceId) {
+          continue;
+        }
+        const cleanup = await worker.fetch(
+          request(`/api/v1/attendance/${attendanceId}/void`, {
+            method: "POST",
+            headers: { Cookie: `${ACCESS_COOKIE_NAME}=${admin}` },
+            body: JSON.stringify({ reason: "測試清理" }),
+          }),
+          testEnv()
+        );
+        assert.ok(cleanup.status === 200);
+      }
+    }
+  });
+
   test("concurrent reuse of one guest key commits one attendance and one proof", async () => {
     const idempotencyKey = "guest-race-proof";
     const payload = {

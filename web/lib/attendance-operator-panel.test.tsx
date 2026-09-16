@@ -8,6 +8,7 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
@@ -445,19 +446,43 @@ describe(AttendanceOperatorPanel, () => {
       name: /E2E Addition.*新增並簽到/u,
     });
 
-    await user.click(
-      screen.getByRole("button", { name: /E2E Member.*替成員簽到/u })
-    );
+    const memberCheckInButton = screen.getByRole("button", {
+      name: /E2E Member.*替成員簽到/u,
+    });
+    await user.click(memberCheckInButton);
     expect(
-      screen.getByRole("dialog", {
+      screen.getByRole("alertdialog", {
         name: COPY.attendance.assistedCheckInConfirmTitle,
       })
     ).toHaveTextContent(COPY.attendance.assistedCheckInConfirmLead);
-    await user.click(
-      screen.getByRole("button", {
+    const confirmation = screen.getByRole("alertdialog", {
+      name: COPY.attendance.assistedCheckInConfirmTitle,
+    });
+    expect(confirmation).toHaveAttribute("aria-modal", "true");
+    expect(confirmation).toHaveAttribute(
+      "aria-describedby",
+      "assisted-check-in-confirm-description"
+    );
+    expect(
+      within(confirmation).getByRole("button", {
         name: COPY.attendance.assistedCheckInConfirm,
       })
+    ).toHaveFocus();
+    await user.keyboard("{Escape}");
+    await waitFor(() =>
+      expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument()
     );
+    expect(memberCheckInButton).toHaveFocus();
+
+    await user.click(memberCheckInButton);
+    const reopenedConfirmation = screen.getByRole("alertdialog", {
+      name: COPY.attendance.assistedCheckInConfirmTitle,
+    });
+    const confirmButton = within(reopenedConfirmation).getByRole("button", {
+      name: COPY.attendance.assistedCheckInConfirm,
+    });
+    expect(confirmButton).toHaveFocus();
+    await user.keyboard("{Enter}");
     // The silent roster reload must NOT overwrite the visible success…
     await waitFor(() => expect(rosterCalls).toBeGreaterThanOrEqual(2));
     // Both the panel output and the sr-only live region carry the notice.

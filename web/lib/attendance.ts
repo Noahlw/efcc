@@ -591,6 +591,7 @@ async function guestProofExists(
           AND proof.request_fingerprint = ?
           AND attendance.member_user_id IS NULL
           AND attendance.guest_phone_normalized IS NOT NULL
+          AND attendance.status = 'Active'
         LIMIT 1`
     )
     .bind(
