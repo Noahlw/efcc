@@ -2847,6 +2847,13 @@ export class DepartmentWorkspace {
     return this.store.listScheduleRules(programId);
   }
 
+  async assertProgramManagement(
+    ctx: AuthorizationContext,
+    programId: string
+  ): Promise<void> {
+    await this.requireProgramFor(ctx, programId, CAPABILITY.PROGRAM_MANAGE);
+  }
+
   async listScheduleExceptions(
     ctx: AuthorizationContext,
     programId: string,

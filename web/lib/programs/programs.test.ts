@@ -2817,6 +2817,18 @@ describe("PRG-02: schedule rules", () => {
     assert.ok(rule.rule_id);
 
     const memberAccess = await accessCookieFor("bob", "bob-secret");
+    const listed = await worker.fetch(
+      programsRequest(`/api/v1/programs/${recurringId}/schedule-rules`, {
+        headers: {
+          Origin: HOST,
+          Cookie: `${ACCESS_COOKIE_NAME}=${memberAccess}`,
+        },
+      }),
+      testEnv()
+    );
+    assert.strictEqual(listed.status, 403);
+    assert.strictEqual((await problemOf(listed)).code, "FORBIDDEN");
+
     const res = await worker.fetch(
       programsRequest(`/api/v1/programs/${recurringId}/schedule-rules`, {
         method: "POST",

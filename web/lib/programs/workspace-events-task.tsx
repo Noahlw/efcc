@@ -664,7 +664,11 @@ export const RecurringSchedulePanel = ({
     const planId =
       generationIdentity?.planId ??
       (preview.kind === "ready" ? preview.plan.plan.plan_id : null);
-    if (!planId || previewIsStale || generationRequiresReview) {
+    const canRefreshAfterReview =
+      generationRequiresReview &&
+      generationData !== null &&
+      onWorkspaceRefresh !== undefined;
+    if (!planId || (previewIsStale && !canRefreshAfterReview)) {
       return;
     }
     setGenerateBusy(true);
@@ -681,6 +685,13 @@ export const RecurringSchedulePanel = ({
       if (!workspaceReconciled) {
         setGenerationNeedsReconciliation(true);
         setGenerateError(COPY.programs.scheduleTransportAmbiguous);
+        return;
+      }
+      if (generationRequiresReview) {
+        setGenerationNeedsReconciliation(false);
+        setGenerateError(null);
+        onMutationBlockChange?.(false);
+        announce(COPY.programs.workspaceReconciled);
         return;
       }
       if (generationData !== null && generationData.failed === 0) {
@@ -1060,6 +1071,20 @@ export const RecurringSchedulePanel = ({
                       </dd>
                     </div>
                   </dl>
+                  {onWorkspaceRefresh &&
+                    generationRequiresReview &&
+                    generationNeedsReconciliation &&
+                    generationData !== null && (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="w-fit border-[var(--screen-line-strong)] bg-transparent text-[var(--screen-ink)] hover:bg-[var(--screen-surface-soft)]"
+                        onClick={() => void reconcileGeneration()}
+                        disabled={generateBusy}
+                      >
+                        {COPY.programs.workspaceRetryRefresh}
+                      </Button>
+                    )}
                   {generationNeedsReconciliation &&
                     !generationRequiresReview &&
                     unresolvedCount === 0 && (

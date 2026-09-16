@@ -4,6 +4,8 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
 import { COPY } from "@/lib/copy";
 import type {
+  GenerateResult,
+  PreviewResult,
   Program,
   ProgramEvent,
   ScheduleRule,
@@ -14,13 +16,27 @@ import {
   readEventCreateDraft,
   writeEventCreateDraft,
 } from "./event-create-draft";
+import {
+  addWallDays,
+  addWallMonths,
+  hkTodayWallDate,
+  wallDaySpan,
+} from "./recurrence";
 import { WorkspaceTaskProvider } from "./workspace-context";
-import { EventsTask } from "./workspace-events-task";
+import { EventsTask, RecurringSchedulePanel } from "./workspace-events-task";
 
 const mocks = vi.hoisted(() => ({
   createEvent: vi.fn<() => Promise<{ event: ProgramEvent }>>(),
   listEvents: vi.fn<() => Promise<{ events: ProgramEvent[] }>>(),
   listScheduleRules: vi.fn<() => Promise<{ rules: ScheduleRule[] }>>(),
+  previewEvents: vi.fn<() => Promise<PreviewResult>>(),
+  generateEvents:
+    vi.fn<
+      (
+        programId: string,
+        planId: string
+      ) => Promise<{ generated: GenerateResult }>
+    >(),
 }));
 
 vi.mock(import("@/lib/programs/program-api"), async (importOriginal) => {
@@ -30,6 +46,8 @@ vi.mock(import("@/lib/programs/program-api"), async (importOriginal) => {
     createEvent: mocks.createEvent,
     listEvents: mocks.listEvents,
     listScheduleRules: mocks.listScheduleRules,
+    previewEvents: mocks.previewEvents,
+    generateEvents: mocks.generateEvents,
   };
 });
 
@@ -72,6 +90,48 @@ const event: ProgramEvent = {
   exception: null,
 };
 
+const rule: ScheduleRule = {
+  rule_id: "rule-1",
+  program_id: "program-1",
+  recurrence: "WEEKLY",
+  day_of_week: 3,
+  month_day: null,
+  start_time: "19:30",
+  end_time: "21:00",
+  location: "主堂",
+  created_at: "2026-01-01T00:00:00.000Z",
+  updated_at: "2026-01-01T00:00:00.000Z",
+};
+
+const preview: PreviewResult = {
+  plan: {
+    plan_id: "plan-1",
+    program_id: "program-1",
+    plan_hash: "hash-1",
+    horizon_days: wallDaySpan(
+      hkTodayWallDate(),
+      addWallDays(addWallMonths(hkTodayWallDate(), 3), -1)
+    ),
+    from_date: hkTodayWallDate(),
+    to_date: addWallDays(addWallMonths(hkTodayWallDate(), 3), -1),
+    rule_count: 1,
+    created_at: "2026-09-16T00:00:00.000Z",
+  },
+  occurrences: [
+    {
+      occurrence_id: "occ-1",
+      plan_id: "plan-1",
+      rule_id: "rule-1",
+      occurs_on: "2026-09-16",
+      starts_at: "2026-09-16T11:30:00.000Z",
+      ends_at: "2026-09-16T13:00:00.000Z",
+      location: "主堂",
+      skip_reason: null,
+      exception_id: null,
+    },
+  ],
+};
+
 function renderTask(
   onWorkspaceDirtyChange: (dirty: boolean) => void = vi.fn<
     (dirty: boolean) => void
@@ -103,6 +163,8 @@ describe("EventsTask operations-first composition", () => {
     mocks.createEvent.mockReset();
     mocks.listEvents.mockReset().mockResolvedValue({ events: [event] });
     mocks.listScheduleRules.mockReset().mockResolvedValue({ rules: [] });
+    mocks.previewEvents.mockReset().mockResolvedValue(preview);
+    mocks.generateEvents.mockReset();
   });
 
   afterEach(() => {
@@ -313,6 +375,88 @@ describe("EventsTask operations-first composition", () => {
       expect(
         screen.getByText(COPY.programs.workspaceEventsSavedStale)
       ).toBeInTheDocument();
+    });
+  });
+});
+
+describe("Schedule generation recovery", () => {
+  beforeEach(() => {
+    mocks.previewEvents.mockReset().mockResolvedValue(preview);
+    mocks.generateEvents.mockReset();
+  });
+
+  afterEach(cleanup);
+
+  test("a confirmed stale generation can retry read-only refresh without replaying", async () => {
+    const user = userEvent.setup();
+    const onGenerated = vi
+      .fn<() => Promise<boolean>>()
+      .mockResolvedValue(false);
+    const onWorkspaceRefresh = vi
+      .fn<() => Promise<unknown>>()
+      .mockRejectedValueOnce(new Error("readback unavailable"))
+      .mockResolvedValueOnce({});
+    mocks.generateEvents.mockResolvedValueOnce({
+      generated: {
+        run_id: "run-stale",
+        plan_id: "plan-1",
+        status: "completed",
+        created: 1,
+        skipped: 0,
+        failed: 0,
+        resumed: false,
+        requires_review: true,
+        created_event_ids: ["event-created"],
+      },
+    });
+
+    render(
+      <RecurringSchedulePanel
+        programId="program-1"
+        rules={[rule]}
+        rulesError={null}
+        onGenerated={onGenerated}
+        onWorkspaceRefresh={onWorkspaceRefresh}
+        onScheduleRefresh={vi
+          .fn<() => Promise<boolean>>()
+          .mockResolvedValue(true)}
+      />
+    );
+
+    await user.click(
+      await screen.findByRole("button", { name: COPY.programs.previewEvents })
+    );
+    await user.click(
+      await screen.findByRole("button", { name: COPY.programs.generateEvents })
+    );
+
+    await expect(
+      screen.findByText(COPY.programs.workspaceSavedStale)
+    ).resolves.toBeVisible();
+
+    await user.click(
+      screen.getByRole("button", { name: COPY.programs.workspaceRetryRefresh })
+    );
+    await expect(
+      screen.findByText(COPY.programs.scheduleTransportAmbiguous)
+    ).resolves.toBeVisible();
+
+    await user.click(
+      screen.getByRole("button", { name: COPY.programs.workspaceRetryRefresh })
+    );
+    await waitFor(() => expect(onWorkspaceRefresh).toHaveBeenCalledTimes(2));
+    expect({
+      generateCalls: mocks.generateEvents.mock.calls.length,
+      generateDisabled: screen
+        .getByRole("button", { name: COPY.programs.generateEvents })
+        .hasAttribute("disabled"),
+      reviewAgainVisible: Boolean(
+        screen.getByRole("button", { name: COPY.programs.previewReviewAgain })
+      ),
+    }).toStrictEqual({
+      generateCalls: 1,
+      generateDisabled: true,
+      reviewAgainVisible: true,
     });
   });
 });

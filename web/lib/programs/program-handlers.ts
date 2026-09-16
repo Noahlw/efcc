@@ -1673,11 +1673,18 @@ export async function handleListScheduleRules(
   if (!(await workspace.programExists(programId))) {
     return notFound(requestId, "Unknown program.");
   }
-  const rules = await workspace.listScheduleRules(
-    authorizationContextFor(auth.account),
-    programId
-  );
-  return jsonResponse(200, { rules }, requestId);
+  try {
+    const ctx = authorizationContextFor(auth.account);
+    await workspace.assertProgramManagement(ctx, programId);
+    const rules = await workspace.listScheduleRules(ctx, programId);
+    return jsonResponse(200, { rules }, requestId);
+  } catch (error) {
+    const mapped = mapWorkspaceError(error, requestId);
+    if (mapped) {
+      return mapped;
+    }
+    throw error;
+  }
 }
 
 /** GET /api/v1/programs/:programId/schedule-rules/:ruleId/exceptions */
