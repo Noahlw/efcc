@@ -687,10 +687,8 @@ describe("attendance Worker routes", () => {
         testEnv()
       );
       assert.strictEqual(reconciled.status, 200);
-      const reconciledData = (await json(reconciled)).data as Record<
-        string,
-        unknown
-      >;
+      const reconciledBody = await json(reconciled);
+      const reconciledData = reconciledBody.data as Record<string, unknown>;
       assert.strictEqual(reconciledData.outcome, "found");
       assert.ok(reconciledData.checked_in_at);
       assert.strictEqual("attendance_id" in reconciledData, false);
@@ -703,7 +701,8 @@ describe("attendance Worker routes", () => {
         testEnv()
       );
       assert.strictEqual(wrongGuest.status, 200);
-      assert.deepStrictEqual((await json(wrongGuest)).data, {
+      const wrongGuestBody = await json(wrongGuest);
+      assert.deepStrictEqual(wrongGuestBody.data, {
         outcome: "not_found",
       });
     } finally {
