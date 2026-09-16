@@ -507,10 +507,10 @@ const workspaceScheduleStalePlay: Story["play"] = async ({ canvasElement }) => {
   ).resolves.toBeVisible();
   await expect(
     canvas.queryByRole("button", { name: COPY.programs.generateEvents })
-  ).toBeNull();
+  ).toBeDisabled();
 
   await userEvent.click(
-    canvas.getByRole("button", { name: COPY.programs.previewEvents })
+    canvas.getByRole("button", { name: COPY.programs.previewReviewAgain })
   );
   await expect(
     canvas.findByRole("heading", { name: COPY.programs.schedulePreviewTitle })
@@ -565,12 +565,16 @@ const workspaceSchedulePartialResumePlay: Story["play"] = async ({
   const partialPlanId = partialResult?.dataset.generationPlanId;
   expect(partialRunId).toBe("t07-3-partial-run");
   expect(partialPlanId).toBe("t07-3-plan");
+  await waitFor(() =>
+    expect(
+      canvas.getByRole("button", { name: COPY.programs.generatedReconcile })
+    ).toBeEnabled()
+  );
   await expect(
     canvas.getByRole("button", { name: COPY.programs.generateEvents })
-  ).toBeEnabled();
-
+  ).toBeDisabled();
   await userEvent.click(
-    canvas.getByRole("button", { name: COPY.programs.generateEvents })
+    canvas.getByRole("button", { name: COPY.programs.generatedReconcile })
   );
   const resumedCopy = COPY.programs.generatedResumed
     .replace("{created}", "0")
@@ -578,6 +582,11 @@ const workspaceSchedulePartialResumePlay: Story["play"] = async ({
   await expect(
     canvas.findByText(resumedCopy, { exact: true })
   ).resolves.toBeVisible();
+  await waitFor(() =>
+    expect(
+      canvas.getByRole("button", { name: COPY.programs.generateEvents })
+    ).toBeEnabled()
+  );
   await expect(canvas.queryByText(partialCopy, { exact: true })).toBeNull();
   const resumedResult = canvasElement.querySelector<HTMLElement>(
     '[data-generation-result="true"]'

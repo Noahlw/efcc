@@ -1260,6 +1260,7 @@ export const COPY = {
     previewNone: "尚未預覽。請先按「預覽聚會」產生未來聚會清單。",
     previewEmpty: "此範圍內沒有符合時間表的聚會。",
     previewChanged: "時間表已變更，請重新預覽。",
+    previewReviewAgain: "重新預覽",
     generateRequiresPreview: "請先預覽時間表再產生聚會。",
     generatedPartial:
       "已產生 {created} 場，跳過 {skipped} 場，{failed} 場失敗。",

@@ -212,9 +212,10 @@ const plan: PreviewResult = {
     program_id: "program-1",
     plan_hash: "hash-abc123",
     horizon_days: 14,
-    from_date: "2026-08-13",
+    from_date: hkTodayWallDate(),
+    to_date: addWallDays(addWallMonths(hkTodayWallDate(), 3), -1),
     rule_count: 1,
-    created_at: "2026-08-13T00:00:00.000Z",
+    created_at: "2026-09-16T00:00:00.000Z",
   },
   occurrences: [
     {
@@ -2551,6 +2552,56 @@ describe("EVT-02 recurring preview and generation UI (#252)", () => {
     ).toBeInTheDocument();
   });
 
+  test("changing the visible range keeps the old Preview but requires Review Again", async () => {
+    const user = userEvent.setup();
+    renderScheduleTask();
+    await screen.findByRole("button", { name: COPY.programs.previewEvents });
+    mocks.previewEvents.mockImplementation(
+      async (
+        _programId: string,
+        range: { from_date: string; until_date: string }
+      ) => ({
+        ...plan,
+        plan: {
+          ...plan.plan,
+          from_date: range.from_date,
+          to_date: range.until_date,
+        },
+      })
+    );
+
+    await user.click(
+      screen.getByRole("button", { name: COPY.programs.previewEvents })
+    );
+    await screen.findByText(
+      COPY.programs.previewPlanLabel.replace("{id}", "plan-abc"),
+      { exact: false }
+    );
+
+    fireEvent.change(screen.getByLabelText(COPY.programs.previewUntilDate), {
+      target: { value: addWallDays(hkTodayWallDate(), 7) },
+    });
+    await expect(screen.findByRole("alert")).resolves.toHaveTextContent(
+      COPY.programs.previewChanged
+    );
+    expect(
+      screen.getByRole("button", {
+        name: COPY.programs.generateEvents,
+        hidden: true,
+      })
+    ).toBeDisabled();
+
+    await user.click(
+      screen.getByRole("button", { name: COPY.programs.previewReviewAgain })
+    );
+    await waitFor(() => expect(mocks.previewEvents).toHaveBeenCalledTimes(2));
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: COPY.programs.generateEvents })
+      ).toBeEnabled()
+    );
+  });
+
   test("preview occurrence actions distinguish an unsaved draft from the saved exception", async () => {
     const user = userEvent.setup();
     renderScheduleTask();
@@ -2578,6 +2629,12 @@ describe("EVT-02 recurring preview and generation UI (#252)", () => {
     expect(
       screen.getByText(COPY.programs.previewExceptionDraft)
     ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", {
+        name: COPY.programs.generateEvents,
+        hidden: true,
+      })
+    ).toBeDisabled();
 
     await user.click(
       screen.getByRole("button", { name: COPY.programs.previewSaveException })
@@ -2589,9 +2646,68 @@ describe("EVT-02 recurring preview and generation UI (#252)", () => {
         { override_date: "2026-08-19", action: "CANCEL" }
       )
     );
+    expect(
+      screen.getByRole("button", {
+        name: COPY.programs.generateEvents,
+        hidden: true,
+      })
+    ).toBeDisabled();
   });
 
-  test("a stale plan error surfaces, clears the plan, and requires a new preview", async () => {
+  test("a pending exception save keeps Generate disabled until it settles", async () => {
+    const user = userEvent.setup();
+    const pending = Promise.withResolvers<unknown>();
+    renderScheduleTask();
+    await screen.findByRole("button", { name: COPY.programs.previewEvents });
+    mocks.previewEvents.mockResolvedValue(plan);
+    mocks.createScheduleException.mockReturnValueOnce(pending.promise);
+
+    await user.click(
+      screen.getByRole("button", { name: COPY.programs.previewEvents })
+    );
+    await user.click(
+      (
+        await screen.findAllByRole("button", {
+          name: COPY.programs.previewAdjustOccurrence,
+        })
+      )[0]
+    );
+    await user.click(
+      screen.getByRole("button", { name: COPY.programs.previewSkipOccurrence })
+    );
+    await user.click(
+      screen.getByRole("button", { name: COPY.programs.previewSaveException })
+    );
+
+    expect(
+      screen.getByRole("button", {
+        name: COPY.programs.generateEvents,
+        hidden: true,
+      })
+    ).toBeDisabled();
+    expect(
+      screen.getByRole("button", { name: COPY.programs.submitting })
+    ).toBeDisabled();
+    pending.resolve({
+      exception: {
+        exception_id: "exception-1",
+        rule_id: "rule-1",
+        override_date: "2026-08-19",
+        action: "CANCEL",
+        new_start_time: null,
+        new_end_time: null,
+        created_at: "2026-09-16T00:00:00.000Z",
+      },
+    });
+    await waitFor(() =>
+      expect(mocks.createScheduleException).toHaveBeenCalledTimes(1)
+    );
+    expect(
+      screen.getByRole("button", { name: COPY.programs.generateEvents })
+    ).toBeDisabled();
+  });
+
+  test("a stale plan stays visible, disables Generate, and requires a new preview", async () => {
     const user = userEvent.setup();
     renderScheduleTask();
     await screen.findByRole("button", { name: COPY.programs.previewEvents });
@@ -2612,8 +2728,16 @@ describe("EVT-02 recurring preview and generation UI (#252)", () => {
       COPY.programs.previewChanged
     );
     expect(
-      screen.queryByRole("button", { name: COPY.programs.generateEvents })
-    ).not.toBeInTheDocument();
+      screen.getByRole("button", { name: COPY.programs.generateEvents })
+    ).toBeDisabled();
+    await user.click(
+      screen.getByRole("button", { name: COPY.programs.previewReviewAgain })
+    );
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: COPY.programs.generateEvents })
+      ).toBeEnabled()
+    );
   });
 
   test("generation reports deterministic counts and refreshes the event list", async () => {

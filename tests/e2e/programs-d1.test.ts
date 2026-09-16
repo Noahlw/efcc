@@ -260,6 +260,7 @@ const COPY = {
   schedulePageTitle: "聚會排程",
   addRule: "新增時間表",
   generateEvents: "產生聚會",
+  previewReviewAgain: "重新預覽",
   noManagementScope: "沒有管理範圍",
   workspaceBack: "返回管理課程目錄",
   workspaceTitle: "課程工作區",
@@ -4726,12 +4727,15 @@ test.describe("EVT-02 recurring preview and generation", () => {
   const previewLead =
     "預覽會依目前時間表產生未來聚會清單，不會寫入任何聚會記錄。";
 
-  async function openEventsTask(page: Page, programId: string): Promise<void> {
+  async function openScheduleTask(
+    page: Page,
+    programId: string
+  ): Promise<void> {
     await page.goto(
-      `/programs?mode=management&program=${encodeURIComponent(programId)}&task=events`
+      `/programs?mode=management&program=${encodeURIComponent(programId)}&task=schedule`
     );
     await expect(
-      page.getByRole("heading", { name: COPY.workspaceTaskEvents, exact: true })
+      page.getByRole("heading", { name: COPY.schedulePageTitle, exact: true })
     ).toBeVisible();
   }
 
@@ -4863,7 +4867,7 @@ test.describe("EVT-02 recurring preview and generation", () => {
     );
     const [programId] = await catalogProgramIds(page, "E2E_DEMO_成人查經");
     const id = required("fixture program id", programId);
-    await openEventsTask(page, id);
+    await openScheduleTask(page, id);
 
     const before = await eventCount(page, id);
     await expect(
@@ -4895,7 +4899,7 @@ test.describe("EVT-02 recurring preview and generation", () => {
       required("PROGRAMS_ADMIN_CREDENTIAL", ADMIN_CRED)
     );
     const id = await createRecurringProgram(page, "E2E_EVT02_產生");
-    await openEventsTask(page, id);
+    await openScheduleTask(page, id);
     const before = await eventCount(page, id);
     expect(before).toBe(0);
     await page.getByRole("button", { name: previewEvents }).click();
@@ -4930,7 +4934,7 @@ test.describe("EVT-02 recurring preview and generation", () => {
     const rule = rules[0];
     expect(rule).toBeTruthy();
 
-    await openEventsTask(page, id);
+    await openScheduleTask(page, id);
     const before = await eventCount(page, id);
     await page.getByRole("button", { name: previewEvents }).click();
     await expect(
@@ -4948,11 +4952,23 @@ test.describe("EVT-02 recurring preview and generation", () => {
       hasText: previewChanged,
     });
     await expect(staleAlert).toBeVisible();
-    // The stale plan is cleared; the UI requires a new preview.
+    // The old plan remains visible for comparison but is no longer actionable.
     await expect(
       page.getByRole("button", { name: COPY.generateEvents })
-    ).toHaveCount(0);
+    ).toBeDisabled();
     expect(await eventCount(page, id)).toBe(before);
+
+    // A fresh matching Preview restores Generate, and only then may the
+    // bounded generation write Events.
+    await page.getByRole("button", { name: COPY.previewReviewAgain }).click();
+    await expect(
+      page.getByRole("button", { name: COPY.generateEvents })
+    ).toBeEnabled();
+    await page.getByRole("button", { name: COPY.generateEvents }).click();
+    await expect(
+      page.getByText(/^已產生 \d+ 場聚會，跳過 \d+ 場重複。$/u).first()
+    ).toBeVisible();
+    await expect.poll(async () => eventCount(page, id)).toBeGreaterThan(before);
   });
 
   test("preview/generate controls are unreachable without the manage capability", async ({

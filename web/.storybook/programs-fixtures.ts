@@ -24,6 +24,11 @@ import type {
   ScheduleException,
   ScheduleRule,
 } from "@/lib/programs/program-api";
+import {
+  addWallDays,
+  addWallMonths,
+  hkTodayWallDate,
+} from "@/lib/programs/recurrence";
 
 import { authMeHandler } from "./management-hub-fixtures";
 import { memberAuthMeHandler } from "./public-auth-member-communications-fixtures";
@@ -36,6 +41,8 @@ const ELIGIBLE_PROGRAM_ID = "t07-3-eligible-program";
 const EXPLORATION_PROGRAM_ID = "t07-3-exploration-program";
 const FAMILY_PROGRAM_ID = "t07-3-family-program";
 const YOUTH_PROGRAM_ID = "t07-3-youth-program";
+const STORY_PREVIEW_FROM = hkTodayWallDate();
+const STORY_PREVIEW_TO = addWallDays(addWallMonths(STORY_PREVIEW_FROM, 3), -1);
 
 const storyApi = (path: string) => `*${path}`;
 
@@ -619,7 +626,8 @@ const SCHEDULE_PREVIEW: PreviewResult = {
     program_id: PROGRAM_ID,
     plan_hash: "t07-3-plan-hash",
     horizon_days: 90,
-    from_date: "2026-09-12",
+    from_date: STORY_PREVIEW_FROM,
+    to_date: STORY_PREVIEW_TO,
     rule_count: 2,
     created_at: "2026-09-03T00:00:00.000Z",
   },

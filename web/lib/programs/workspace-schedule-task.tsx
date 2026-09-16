@@ -1,6 +1,6 @@
 "use client";
 
-import type { ScheduleRule } from "./program-api";
+import type { ScheduleException, ScheduleRule } from "./program-api";
 import { ProgramSettings } from "./program-settings";
 import { buildProgramsHref } from "./programs-intent";
 import { useWorkspaceTaskContext } from "./workspace-context";
@@ -9,11 +9,13 @@ import { RecurringSchedulePanel } from "./workspace-events-task";
 interface ScheduleAddonResource {
   rules: ScheduleRule[] | null;
   rulesError: string | null;
+  exceptions: Record<string, ScheduleException[]>;
 }
 
 const ScheduleAddon = ({
   programId,
   rules,
+  exceptions,
   onGenerated,
   onOpenEvent,
   onMutationBlockChange,
@@ -21,6 +23,7 @@ const ScheduleAddon = ({
 }: {
   programId: string;
   rules: ScheduleRule[] | null;
+  exceptions: Record<string, ScheduleException[]>;
   onGenerated: () => boolean | Promise<boolean>;
   onOpenEvent?: (eventId: string) => void;
   onMutationBlockChange?: (blocked: boolean) => void;
@@ -29,6 +32,7 @@ const ScheduleAddon = ({
   <RecurringSchedulePanel
     programId={programId}
     rules={rules}
+    exceptions={exceptions}
     // ProgramSettings already owns the rule-load alert. Reusing the same
     // resource must not render a second identical alert beside the preview
     // controls.
@@ -48,11 +52,12 @@ const makeScheduleAddon = (
   onMutationBlockChange?: (blocked: boolean) => void,
   onWorkspaceRefresh?: () => void | Promise<unknown>
 ) =>
-  function renderScheduleAddon({ rules }: ScheduleAddonResource) {
+  function renderScheduleAddon({ rules, exceptions }: ScheduleAddonResource) {
     return (
       <ScheduleAddon
         programId={programId}
         rules={rules}
+        exceptions={exceptions}
         onGenerated={onGenerated}
         onOpenEvent={onOpenEvent}
         onMutationBlockChange={onMutationBlockChange}

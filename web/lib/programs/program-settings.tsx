@@ -151,6 +151,7 @@ export interface ProgramSettingsProps {
   scheduleAddon?: (resource: {
     rules: ScheduleRule[] | null;
     rulesError: string | null;
+    exceptions: Record<string, ScheduleException[]>;
   }) => React.ReactNode;
   /** Canonical focused Schedule URL used by the child editor Back affordance. */
   scheduleBackHref?: string;
@@ -1211,7 +1212,6 @@ export const ProgramSettings = ({
       if (!mounted.current) {
         return false;
       }
-      setRules(result.rules);
       try {
         const exceptionEntries = await Promise.all(
           result.rules.map(async (rule) => {
@@ -1226,6 +1226,7 @@ export const ProgramSettings = ({
           return false;
         }
         setExceptions(Object.fromEntries(exceptionEntries));
+        setRules(result.rules);
         return true;
       } catch (error) {
         if (!mounted.current) {
@@ -2730,11 +2731,18 @@ export const ProgramSettings = ({
         </div>
       )}
       {focusedSchedule &&
-        !scheduleEditorActive &&
         canManage &&
         currentProgram.behavior_type === "Recurring" &&
         eventsEnabled &&
-        scheduleAddon?.({ rules, rulesError: ruleError })}
+        scheduleAddon && (
+          <div hidden={scheduleEditorActive}>
+            {scheduleAddon({
+              rules,
+              rulesError: ruleError,
+              exceptions,
+            })}
+          </div>
+        )}
       {showDirtyActions && (
         <>
           <output

@@ -50,6 +50,7 @@ import type {
   GenerateResult,
   PreviewResult,
   ProgramEvent,
+  ScheduleException,
   ScheduleRule,
 } from "@/lib/programs/program-api";
 import {
@@ -101,7 +102,7 @@ type EventsState =
 type PreviewState =
   | { kind: "idle" }
   | { kind: "loading" }
-  | { kind: "ready"; plan: PreviewResult }
+  | { kind: "ready"; plan: PreviewResult; inputFingerprint: string }
   | { kind: "empty" }
   | { kind: "error"; message: string; stale: boolean };
 
@@ -118,10 +119,55 @@ function hkWallTimeOf(iso: string): string {
     .slice(11, 16);
 }
 
+function scheduleInputFingerprint(
+  rules: ScheduleRule[] | null,
+  exceptions: Record<string, ScheduleException[]>
+): string {
+  if (rules === null) {
+    return "unresolved";
+  }
+  return JSON.stringify({
+    rules: [...rules]
+      .sort((left, right) => left.rule_id.localeCompare(right.rule_id))
+      .map((rule) => ({
+        rule_id: rule.rule_id,
+        recurrence: rule.recurrence,
+        day_of_week: rule.day_of_week,
+        month_day: rule.month_day,
+        start_time: rule.start_time,
+        end_time: rule.end_time,
+        location: rule.location ?? null,
+        effective_start_date: rule.effective_start_date ?? null,
+        effective_end_date: rule.effective_end_date ?? null,
+        retired_at: rule.retired_at ?? null,
+        version: rule.updated_at,
+      })),
+    exceptions: Object.entries(exceptions)
+      .flatMap(([ruleId, rows]) =>
+        rows.map((exception) => ({
+          exception_id: exception.exception_id,
+          rule_id: ruleId,
+          override_date: exception.override_date,
+          action: exception.action,
+          new_start_time: exception.new_start_time,
+          new_end_time: exception.new_end_time,
+          new_date: exception.new_date ?? null,
+          version: exception.created_at,
+        }))
+      )
+      .sort((left, right) =>
+        `${left.rule_id}:${left.exception_id}`.localeCompare(
+          `${right.rule_id}:${right.exception_id}`
+        )
+      ),
+  });
+}
+
 // oxlint-disable-next-line eslint/complexity -- this panel owns preview, exception, generation, and recovery state transitions.
 export const RecurringSchedulePanel = ({
   programId,
   rules,
+  exceptions = {},
   rulesError,
   onGenerated,
   onOpenEvent,
@@ -130,6 +176,7 @@ export const RecurringSchedulePanel = ({
 }: {
   programId: string;
   rules: ScheduleRule[] | null;
+  exceptions?: Record<string, ScheduleException[]>;
   rulesError: string | null;
   /** Invoked after a successful generation so the event list refreshes. */
   onGenerated: () => boolean | Promise<boolean>;
@@ -145,6 +192,7 @@ export const RecurringSchedulePanel = ({
     addWallDays(addWallMonths(hkTodayWallDate(), 3), -1)
   );
   const [preview, setPreview] = useState<PreviewState>({ kind: "idle" });
+  const [previewInvalidated, setPreviewInvalidated] = useState(false);
   const [previewBusy, setPreviewBusy] = useState(false);
   const [generateBusy, setGenerateBusy] = useState(false);
   const [generateResult, setGenerateResult] = useState<string | null>(null);
@@ -162,6 +210,7 @@ export const RecurringSchedulePanel = ({
   const [exceptionDrafts, setExceptionDrafts] = useState<
     Record<string, ExceptionDraft>
   >({});
+  const [localExceptions, setLocalExceptions] = useState(exceptions);
   const [exceptionBusy, setExceptionBusy] = useState(false);
   const [adjustingOccurrenceId, setAdjustingOccurrenceId] = useState<
     string | null
@@ -175,6 +224,10 @@ export const RecurringSchedulePanel = ({
     };
   }, []);
 
+  useEffect(() => {
+    setLocalExceptions(exceptions);
+  }, [exceptions]);
+
   const loadPreview = async (fromDate: string, untilDate: string) => {
     const horizonDays =
       isValidWallDate(fromDate) && isValidWallDate(untilDate)
@@ -187,11 +240,13 @@ export const RecurringSchedulePanel = ({
       horizonDays > 365
     ) {
       setPreview({ kind: "idle" });
+      setPreviewInvalidated(true);
       setGenerateError(COPY.programs.previewError);
       announce(COPY.programs.previewError);
       return;
     }
     setPreviewBusy(true);
+    setPreviewInvalidated(true);
     setPreview({ kind: "loading" });
     setGenerateResult(null);
     setGenerationIdentity(null);
@@ -207,11 +262,17 @@ export const RecurringSchedulePanel = ({
         return;
       }
       if (plan.occurrences.length === 0) {
+        setPreviewInvalidated(false);
         setPreview({ kind: "empty" });
         announce(COPY.programs.previewEmpty);
         return;
       }
-      setPreview({ kind: "ready", plan });
+      setPreviewInvalidated(false);
+      setPreview({
+        kind: "ready",
+        plan,
+        inputFingerprint: scheduleInputFingerprint(rules, localExceptions),
+      });
       announce(
         COPY.programs.previewed.replace(
           "{count}",
@@ -289,25 +350,42 @@ export const RecurringSchedulePanel = ({
     if (!draft) {
       return;
     }
+    setPreviewInvalidated(true);
     setExceptionBusy(true);
     setGenerateError(null);
     try {
-      await createScheduleException(programId, occurrence.rule_id, {
-        override_date: occurrence.occurs_on,
-        action: draft.action,
-        ...(draft.action === "RESCHEDULE"
-          ? {
-              ...(draft.newDate && draft.newDate !== occurrence.occurs_on
-                ? { new_date: draft.newDate }
-                : {}),
-              new_start_time: draft.newStartTime,
-              new_end_time: draft.newEndTime,
-            }
-          : {}),
-      });
+      const result = await createScheduleException(
+        programId,
+        occurrence.rule_id,
+        {
+          override_date: occurrence.occurs_on,
+          action: draft.action,
+          ...(draft.action === "RESCHEDULE"
+            ? {
+                ...(draft.newDate && draft.newDate !== occurrence.occurs_on
+                  ? { new_date: draft.newDate }
+                  : {}),
+                new_start_time: draft.newStartTime,
+                new_end_time: draft.newEndTime,
+              }
+            : {}),
+        }
+      );
+      if (result?.exception) {
+        setLocalExceptions((previous) => ({
+          ...previous,
+          [occurrence.rule_id]: [
+            ...(previous[occurrence.rule_id] ?? []).filter(
+              (exception) =>
+                exception.exception_id !== result.exception.exception_id &&
+                exception.override_date !== occurrence.occurs_on
+            ),
+            result.exception,
+          ],
+        }));
+      }
       clearExceptionDraft(occurrence.occurrence_id);
       setAdjustingOccurrenceId(null);
-      await loadPreview(previewFromDate, previewUntilDate);
     } catch (error) {
       if (!mounted.current) {
         return;
@@ -337,6 +415,7 @@ export const RecurringSchedulePanel = ({
     if (!rule || !occurrence.exception_id) {
       return;
     }
+    setPreviewInvalidated(true);
     setExceptionBusy(true);
     setGenerateError(null);
     try {
@@ -345,8 +424,13 @@ export const RecurringSchedulePanel = ({
         rule.rule_id,
         occurrence.exception_id
       );
+      setLocalExceptions((previous) => ({
+        ...previous,
+        [rule.rule_id]: (previous[rule.rule_id] ?? []).filter(
+          (exception) => exception.exception_id !== occurrence.exception_id
+        ),
+      }));
       setAdjustingOccurrenceId(null);
-      await loadPreview(previewFromDate, previewUntilDate);
     } catch (error) {
       if (!mounted.current) {
         return;
@@ -402,7 +486,11 @@ export const RecurringSchedulePanel = ({
   };
 
   const submitGenerate = async () => {
-    if (preview.kind !== "ready" || generationNeedsReconciliation) {
+    if (
+      preview.kind !== "ready" ||
+      previewIsStale ||
+      generationNeedsReconciliation
+    ) {
       return;
     }
     const planId = preview.plan.plan.plan_id;
@@ -430,8 +518,14 @@ export const RecurringSchedulePanel = ({
           : COPY.error.networkError;
       if (error instanceof RpcError && error.problem.code === "STALE_PLAN") {
         // The schedule changed under the plan; require a fresh preview
-        // before generation can run again.
-        setPreview({ kind: "error", message, stale: true });
+        // before generation can run again while retaining the old rows for
+        // comparison.
+        setPreviewInvalidated(true);
+        setPreview((current) =>
+          current.kind === "ready"
+            ? current
+            : { kind: "error", message, stale: true }
+        );
         setGenerationNeedsReconciliation(false);
       } else {
         const networkFailure =
@@ -458,7 +552,7 @@ export const RecurringSchedulePanel = ({
     const planId =
       generationIdentity?.planId ??
       (preview.kind === "ready" ? preview.plan.plan.plan_id : null);
-    if (!planId) {
+    if (!planId || previewIsStale) {
       return;
     }
     setGenerateBusy(true);
@@ -501,7 +595,12 @@ export const RecurringSchedulePanel = ({
           ? errorCopyFor(error.problem.code, error.problem.detail)
           : COPY.error.networkError;
       if (error instanceof RpcError && error.problem.code === "STALE_PLAN") {
-        setPreview({ kind: "error", message, stale: true });
+        setPreviewInvalidated(true);
+        setPreview((current) =>
+          current.kind === "ready"
+            ? current
+            : { kind: "error", message, stale: true }
+        );
         setGenerationNeedsReconciliation(false);
         if (workspaceReconciled) {
           onMutationBlockChange?.(false);
@@ -542,6 +641,26 @@ export const RecurringSchedulePanel = ({
   const unresolvedOccurrences = generationData?.unresolved_occurrences ?? [];
   const unresolvedCount =
     generationData?.failed ?? unresolvedOccurrences.length;
+  const currentInputFingerprint = scheduleInputFingerprint(
+    rules,
+    localExceptions
+  );
+  const hasExceptionDrafts = Object.keys(exceptionDrafts).length > 0;
+  const previewIsStale =
+    preview.kind === "ready" &&
+    (previewInvalidated ||
+      rules === null ||
+      hasExceptionDrafts ||
+      exceptionBusy ||
+      preview.inputFingerprint !== currentInputFingerprint ||
+      preview.plan.plan.from_date !== previewFromDate ||
+      (preview.plan.plan.to_date ??
+        addWallDays(
+          preview.plan.plan.from_date,
+          preview.plan.plan.horizon_days - 1
+        )) !== previewUntilDate);
+  const previewNeedsReview =
+    previewIsStale || (preview.kind === "error" && preview.stale);
 
   return (
     <Sheet
@@ -617,11 +736,13 @@ export const RecurringSchedulePanel = ({
                 <Button
                   type="submit"
                   className="w-fit bg-[var(--screen-accent)] text-white hover:bg-[var(--screen-accent-deep)]"
-                  disabled={previewBusy || generateBusy}
+                  disabled={previewBusy || generateBusy || exceptionBusy}
                 >
                   {previewBusy
                     ? COPY.programs.previewing
-                    : COPY.programs.previewEvents}
+                    : previewNeedsReview
+                      ? COPY.programs.previewReviewAgain
+                      : COPY.programs.previewEvents}
                 </Button>
               </ScreenEditor>
             </ScreenCard>
@@ -629,14 +750,32 @@ export const RecurringSchedulePanel = ({
           {preview.kind === "loading" && (
             <ScreenLoadingRows count={1} label={COPY.programs.previewing} />
           )}
-          {preview.kind === "error" && (
-            <ScreenState kind="error" title={preview.message} />
-          )}
+          {preview.kind === "error" &&
+            (preview.stale ? (
+              <Alert
+                data-preview-stale="true"
+                tone="warning"
+                announcement="assertive"
+              >
+                {preview.message}
+              </Alert>
+            ) : (
+              <ScreenState kind="error" title={preview.message} />
+            ))}
           {preview.kind === "empty" && (
             <ScreenState kind="empty" title={COPY.programs.previewEmpty} />
           )}
           {preview.kind === "ready" && (
             <ScreenSection title={COPY.programs.schedulePreviewTitle}>
+              {previewIsStale && (
+                <Alert
+                  data-preview-stale="true"
+                  tone="warning"
+                  announcement="assertive"
+                >
+                  {COPY.programs.previewChanged}
+                </Alert>
+              )}
               <p className="m-0 wrap-anywhere text-sm leading-6 text-[var(--screen-muted)]">
                 {COPY.programs.previewPlanLabel.replace(
                   "{id}",
@@ -763,7 +902,12 @@ export const RecurringSchedulePanel = ({
                   className="w-fit bg-[var(--screen-accent)] text-white hover:bg-[var(--screen-accent-deep)]"
                   onClick={() => void submitGenerate()}
                   disabled={
-                    generateBusy || previewBusy || generationNeedsReconciliation
+                    generateBusy ||
+                    previewBusy ||
+                    previewIsStale ||
+                    hasExceptionDrafts ||
+                    exceptionBusy ||
+                    generationNeedsReconciliation
                   }
                 >
                   {generateBusy
@@ -1079,6 +1223,9 @@ export const RecurringSchedulePanel = ({
                       type="button"
                       variant="outline"
                       className="w-fit border-[var(--screen-line-strong)] bg-transparent text-[var(--screen-ink)] hover:bg-[var(--screen-surface-soft)]"
+                      onClick={() =>
+                        clearExceptionDraft(adjustingOccurrence.occurrence_id)
+                      }
                     >
                       {COPY.programs.previewCancelDraft}
                     </Button>

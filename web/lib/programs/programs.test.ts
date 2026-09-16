@@ -4392,6 +4392,85 @@ describe("EVT-02: recurring preview and generation (#252)", () => {
     assert.strictEqual(ok.status, 200);
   });
 
+  test("EVT-02.2 a Rule revision invalidates a plan even when values stay the same", async () => {
+    const programId = await freshProgram("EVT-02 Rule Revision");
+    const rule = await createRule(adminAccess, programId, {
+      recurrence: "WEEKLY",
+      day_of_week: 3,
+      start_time: "19:30",
+      end_time: "21:00",
+    });
+    const plan = await preview(adminAccess, programId, 14);
+
+    const patch = await worker.fetch(
+      programsRequest(
+        `/api/v1/programs/${programId}/schedule-rules/${rule.rule_id}`,
+        {
+          method: "PATCH",
+          headers: {
+            Origin: HOST,
+            Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
+            "Content-Type": "application/json",
+          },
+          body: { start_time: "19:30" },
+        }
+      ),
+      testEnv()
+    );
+    assert.strictEqual(patch.status, 200);
+
+    const stale = await generateRequest(programId, plan.plan_id);
+    assert.strictEqual(stale.status, 409);
+    assert.strictEqual((await problemOf(stale)).code, "STALE_PLAN");
+  });
+
+  test("EVT-02.2 replacing a saved exception invalidates its reviewed plan", async () => {
+    const programId = await freshProgram("EVT-02 Exception Revision");
+    const rule = await createRule(adminAccess, programId, {
+      recurrence: "WEEKLY",
+      day_of_week: 3,
+      start_time: "19:30",
+      end_time: "21:00",
+    });
+    const overrideDate = hkTodayWallDate();
+    await createException(programId, rule.rule_id, {
+      override_date: overrideDate,
+      action: "CANCEL",
+    });
+    const plan = await preview(adminAccess, programId, 14);
+    const saved = await testDb()
+      .prepare(
+        `SELECT exception_id FROM program_schedule_exceptions
+         WHERE rule_id = ? AND override_date = ?`
+      )
+      .bind(rule.rule_id, overrideDate)
+      .first<{ exception_id: string }>();
+    assert.ok(saved, "the reviewed exception must be durable");
+
+    const removed = await worker.fetch(
+      programsRequest(
+        `/api/v1/programs/${programId}/schedule-rules/${rule.rule_id}/exceptions/${saved?.exception_id}`,
+        {
+          method: "DELETE",
+          headers: {
+            Origin: HOST,
+            Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
+          },
+        }
+      ),
+      testEnv()
+    );
+    assert.strictEqual(removed.status, 200);
+    await createException(programId, rule.rule_id, {
+      override_date: overrideDate,
+      action: "CANCEL",
+    });
+
+    const stale = await generateRequest(programId, plan.plan_id);
+    assert.strictEqual(stale.status, 409);
+    assert.strictEqual((await problemOf(stale)).code, "STALE_PLAN");
+  });
+
   test("EVT-02.3 generation is idempotent, deterministic, and audited", async () => {
     const programId = await freshProgram("EVT-02 Idempotent");
     await createRule(adminAccess, programId, {

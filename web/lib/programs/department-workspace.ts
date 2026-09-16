@@ -3234,8 +3234,9 @@ export class DepartmentWorkspace {
   /**
    * Deterministic SHA-256 hex over the exact plan inputs (sorted so rule and
    * exception ordering never changes the identity). The hash freezes the
-   * rules/exceptions/horizon/from-date the plan was computed from, which is
-   * what generation re-checks to reject stale plans before any write.
+   * rules/exceptions/horizon/from-date the plan was computed from, including
+   * their authoritative revisions, which is what generation re-checks to
+   * reject stale plans before any write.
    */
   private async computePlanHash(
     rules: ScheduleRuleRow[],
@@ -3259,6 +3260,7 @@ export class DepartmentWorkspace {
           effective_start_date: rule.effective_start_date ?? null,
           effective_end_date: rule.effective_end_date ?? null,
           retired_at: rule.retired_at ?? null,
+          version: rule.updated_at,
         })),
       exceptions: [...exceptions]
         .sort((a, b) =>
@@ -3267,12 +3269,14 @@ export class DepartmentWorkspace {
             : a.rule_id.localeCompare(b.rule_id)
         )
         .map((exception) => ({
+          exception_id: exception.exception_id,
           rule_id: exception.rule_id,
           override_date: exception.override_date,
           action: exception.action,
           new_start_time: exception.new_start_time,
           new_end_time: exception.new_end_time,
           new_date: exception.new_date ?? null,
+          version: exception.created_at,
         })),
     });
     const digest = await crypto.subtle.digest(

@@ -388,9 +388,9 @@ describe(ProgramSettings, () => {
       ].every(Boolean) &&
         screen.queryByRole("heading", {
           name: COPY.programs.scheduleRulesTitle,
-        }) === null &&
-        screen.queryByText("schedule-preview-addon") === null
+        }) === null
     ).toBeTruthy();
+    expect(screen.queryByText("schedule-preview-addon")).not.toBeVisible();
 
     await user.click(
       screen.getByRole("link", { name: COPY.programs.backToOverview })
@@ -454,9 +454,9 @@ describe(ProgramSettings, () => {
       ) &&
         (screen.getByLabelText(COPY.programs.startTime) as HTMLInputElement)
           .value === rule.start_time &&
-        screen.queryByText(ruleLabel) === null &&
-        screen.queryByText("schedule-preview-addon") === null
+        screen.queryByText(ruleLabel) === null
     ).toBeTruthy();
+    expect(screen.queryByText("schedule-preview-addon")).not.toBeVisible();
 
     await user.click(
       screen.getByRole("link", { name: COPY.programs.backToOverview })
@@ -474,9 +474,9 @@ describe(ProgramSettings, () => {
         })
       ) &&
         Boolean(screen.getByLabelText(COPY.programs.settingsExceptionDate)) &&
-        screen.queryByText(ruleLabel) === null &&
-        screen.queryByText("schedule-preview-addon") === null
+        screen.queryByText(ruleLabel) === null
     ).toBeTruthy();
+    expect(screen.queryByText("schedule-preview-addon")).not.toBeVisible();
 
     await user.click(
       screen.getByRole("link", { name: COPY.programs.backToOverview })
