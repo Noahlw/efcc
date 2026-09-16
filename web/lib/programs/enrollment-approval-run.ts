@@ -49,6 +49,11 @@ export interface EnrollmentApprovalRunItemRow extends EnrollmentApprovalRunItem 
   actor_user_id?: string;
 }
 
+export interface EnrollmentApprovalRunClaim {
+  claimed: boolean;
+  item: EnrollmentApprovalRunItemRow | null;
+}
+
 export interface EnrollmentApprovalRunAuthority {
   request_status: EnrollmentRequestStatus;
   request_version: number;

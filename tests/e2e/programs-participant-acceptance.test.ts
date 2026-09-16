@@ -258,11 +258,19 @@ test.describe("T05.4 participant Browser Acceptance", () => {
       { data: {} }
     );
     expect(memberRequestResponse.status()).toBe(201);
+    const memberRequestBody = (await jsonBody(memberRequestResponse)) as {
+      data: { request: { request_id: string } };
+    };
+    const memberRequestId = memberRequestBody.data.request.request_id;
     const staffRequestResponse = await staffApi!.post(
       `/api/v1/programs/${programId}/enrollment-requests`,
       { data: {} }
     );
     expect(staffRequestResponse.status()).toBe(201);
+    const staffRequestBody = (await jsonBody(staffRequestResponse)) as {
+      data: { request: { request_id: string } };
+    };
+    const staffRequestId = staffRequestBody.data.request.request_id;
 
     await loginAsAdmin(page);
     await page.goto(
@@ -279,6 +287,12 @@ test.describe("T05.4 participant Browser Acceptance", () => {
     ).toBeVisible();
 
     let continueRequests = 0;
+    let reconcileRequests = 0;
+    const reconcilePath = `**/api/v1/programs/${programId}/enrollment-approval-runs/*/reconcile`;
+    await page.route(reconcilePath, async (route) => {
+      reconcileRequests += 1;
+      await route.continue();
+    });
     await page.route(
       `**/api/v1/programs/${programId}/enrollment-approval-runs/*/continue`,
       async (route) => {
@@ -306,6 +320,7 @@ test.describe("T05.4 participant Browser Acceptance", () => {
       })
     ).toBeVisible();
     expect(continueRequests).toBe(1);
+    expect(reconcileRequests).toBeGreaterThanOrEqual(1);
 
     await page.reload();
     await expect(
@@ -314,6 +329,7 @@ test.describe("T05.4 participant Browser Acceptance", () => {
       })
     ).toBeVisible();
     expect(continueRequests).toBe(1);
+    expect(reconcileRequests).toBeGreaterThanOrEqual(2);
 
     await participantPanel
       .getByRole("button", { name: "繼續處理餘下項目" })
@@ -321,8 +337,33 @@ test.describe("T05.4 participant Browser Acceptance", () => {
     await expect(participantPanel.getByText("已核准")).toBeVisible();
     await expect(participantPanel.getByText("全部完成").first()).toBeVisible();
     expect(continueRequests).toBe(2);
+    const snapshotResponse = await adminApi!.get(
+      `/api/v1/programs/${programId}/enrollment-snapshot`
+    );
+    expect(snapshotResponse.status()).toBe(200);
+    const snapshotBody = (await jsonBody(snapshotResponse)) as {
+      data: {
+        requests: { request_id: string; status: string }[];
+        enrollments: { request_id: string | null; status: string }[];
+      };
+    };
+    for (const requestId of [memberRequestId, staffRequestId]) {
+      expect(
+        snapshotBody.data.requests.find(
+          (request) => request.request_id === requestId
+        )?.status
+      ).toBe("Approved");
+      expect(
+        snapshotBody.data.enrollments.filter(
+          (enrollment) =>
+            enrollment.request_id === requestId &&
+            enrollment.status === "Active"
+        )
+      ).toHaveLength(1);
+    }
     await page.unroute(
       `**/api/v1/programs/${programId}/enrollment-approval-runs/*/continue`
     );
+    await page.unroute(reconcilePath);
   });
 });

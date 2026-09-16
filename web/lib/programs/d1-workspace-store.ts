@@ -7,8 +7,8 @@ import type { ModuleKey } from "./capabilities";
 import type {
   EnrollmentApprovalRun,
   EnrollmentApprovalRunAuthority,
+  EnrollmentApprovalRunClaim,
   EnrollmentApprovalRunItem,
-  EnrollmentApprovalRunItemRow,
   EnrollmentApprovalRunItemStatus,
   EnrollmentApprovalRunRow,
 } from "./enrollment-approval-run";
@@ -2919,7 +2919,7 @@ export class D1WorkspaceStore implements WorkspaceStore {
     runId: string,
     actorUserId: string,
     startedAt: string
-  ): Promise<EnrollmentApprovalRunItemRow | null> {
+  ): Promise<EnrollmentApprovalRunClaim> {
     return claimNextEnrollmentApprovalRunItem(
       this.db,
       runId,

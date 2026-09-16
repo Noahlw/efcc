@@ -841,14 +841,21 @@ describe("R44: durable Enrollment Approval Runs", () => {
         };
       }
     ).data.run;
-    await testDb()
-      .prepare(
-        `UPDATE enrollment_approval_run_items
-            SET status = 'outcome_unknown', started_at = ?
-          WHERE run_id = ? AND request_id = ?`
-      )
-      .bind(new Date().toISOString(), run.run_id, requestId)
-      .run();
+    const store = new D1WorkspaceStore(testDb());
+    const workspace = new DepartmentWorkspace(
+      store,
+      new D1CapabilityAuthorizer(testDb())
+    );
+    store.approveEnrollmentRequest = async () => {
+      throw new Error("synthetic approval failure before commit");
+    };
+    const interrupted = await workspace.continueEnrollmentApprovalRun(
+      { actorUserId: "U001" },
+      programId,
+      run.run_id,
+      "r44-failure-before-commit"
+    );
+    assert.strictEqual(interrupted?.item?.status, "outcome_unknown");
 
     const reconcile = await runRequest(
       adminAccess,
@@ -892,6 +899,96 @@ describe("R44: durable Enrollment Approval Runs", () => {
     assert.strictEqual(continuedBody.data.item?.status, "completed");
     assert.strictEqual(continuedBody.data.run.status, "completed");
     assert.strictEqual(continuedBody.data.run.items[0]?.status, "completed");
+  });
+
+  test("does not attribute another idempotency attempt to the Approval Run", async () => {
+    const programId = await newProgram("R44 idempotency binding");
+    const [requestId] = await pendingRequests(programId, ["U002"]);
+    const start = await runRequest(
+      adminAccess,
+      `/api/v1/programs/${programId}/enrollment-approval-runs`,
+      "POST",
+      { request_ids: [requestId] }
+    );
+    const run = (
+      (await assertCorrelated(start)) as {
+        data: { run: { run_id: string } };
+      }
+    ).data.run;
+    await testDb()
+      .prepare(
+        `UPDATE enrollment_approval_run_items
+            SET status = 'outcome_unknown', started_at = ?
+          WHERE run_id = ? AND request_id = ?`
+      )
+      .bind(new Date().toISOString(), run.run_id, requestId)
+      .run();
+    const reconciled = await runRequest(
+      adminAccess,
+      `/api/v1/programs/${programId}/enrollment-approval-runs/${run.run_id}/reconcile`,
+      "POST",
+      {},
+      "r44-idempotency-reconcile"
+    );
+    assert.strictEqual(reconciled.status, 200);
+    const reconciledBody = (await assertCorrelated(reconciled)) as {
+      data: { run: { items: { status: string; retryable: boolean }[] } };
+    };
+    assert.deepStrictEqual(
+      {
+        status: reconciledBody.data.run.items[0]?.status,
+        retryable: reconciledBody.data.run.items[0]?.retryable,
+      },
+      { status: "failed", retryable: true }
+    );
+
+    const alternateApproval = await runRequest(
+      adminAccess,
+      `/api/v1/programs/${programId}/enrollment-requests/${requestId}/decision`,
+      "POST",
+      { action: "Approved", request_version: 1 },
+      "r44-idempotency-alternate"
+    );
+    assert.strictEqual(alternateApproval.status, 200);
+
+    const continued = await runRequest(
+      adminAccess,
+      `/api/v1/programs/${programId}/enrollment-approval-runs/${run.run_id}/continue`,
+      "POST",
+      {},
+      "r44-idempotency-original"
+    );
+    assert.strictEqual(continued.status, 200);
+    const continuedBody = (await assertCorrelated(continued)) as {
+      data: {
+        item: {
+          status: string;
+          error_code: string | null;
+          enrollment_id: string | null;
+        } | null;
+        run: { status: string };
+      };
+    };
+    assert.deepStrictEqual(
+      {
+        status: continuedBody.data.item?.status,
+        error_code: continuedBody.data.item?.error_code,
+        enrollment_id: continuedBody.data.item?.enrollment_id,
+      },
+      {
+        status: "failed",
+        error_code: "REQUEST_ALREADY_HANDLED",
+        enrollment_id: null,
+      }
+    );
+    assert.strictEqual(continuedBody.data.run.status, "completed");
+    const enrollmentCount = await testDb()
+      .prepare(
+        "SELECT COUNT(*) AS count FROM enrollments WHERE program_id = ? AND status = 'Active'"
+      )
+      .bind(programId)
+      .first<{ count: number }>();
+    assert.strictEqual(enrollmentCount?.count, 1);
   });
 
   test("rejects an audit collision from another Program or request", async () => {
@@ -1036,12 +1133,37 @@ describe("R44: durable Enrollment Approval Runs", () => {
         data: { run: { run_id: string } };
       }
     ).data.run;
-    await testDb()
-      .prepare(
-        "UPDATE enrollment_requests SET request_version = 2 WHERE request_id = ?"
-      )
-      .bind(requestIds[0])
-      .run();
+    const preparedAt = new Date().toISOString();
+    const existingEnrollmentId = crypto.randomUUID();
+    await testDb().batch([
+      testDb()
+        .prepare(
+          "UPDATE enrollment_requests SET request_version = 2 WHERE request_id = ?"
+        )
+        .bind(requestIds[0]),
+      testDb()
+        .prepare(
+          `INSERT INTO enrollments
+            (enrollment_id, program_id, member_user_id, request_id, status,
+             enrolled_at, created_by, created_at)
+           VALUES (?, ?, ?, NULL, 'Active', ?, 'U001', ?)`
+        )
+        .bind(
+          existingEnrollmentId,
+          programId,
+          memberIds[1],
+          preparedAt,
+          preparedAt
+        ),
+      testDb()
+        .prepare(
+          `UPDATE enrollment_requests
+              SET status = 'Rejected', decided_by = 'U001', decided_at = ?,
+                  decision_note = 'R44 denied fixture', request_version = 2
+            WHERE request_id = ?`
+        )
+        .bind(preparedAt, requestIds[2]),
+    ]);
 
     let last: {
       status: string;
@@ -1069,9 +1191,13 @@ describe("R44: durable Enrollment Approval Runs", () => {
     assert.strictEqual(last.status, "completed");
     assert.strictEqual(last.items[0]?.status, "failed");
     assert.strictEqual(last.items[0]?.error_code, "STALE_REQUEST_VERSION");
+    assert.strictEqual(last.items[1]?.status, "failed");
+    assert.strictEqual(last.items[1]?.error_code, "ENROLLMENT_DUPLICATE");
+    assert.strictEqual(last.items[2]?.status, "failed");
+    assert.strictEqual(last.items[2]?.error_code, "REQUEST_ALREADY_HANDLED");
     assert.strictEqual(
       last.items.filter(({ status }) => status === "completed").length,
-      29
+      27
     );
     const enrollmentCount = await testDb()
       .prepare(
@@ -1079,7 +1205,7 @@ describe("R44: durable Enrollment Approval Runs", () => {
       )
       .bind(programId)
       .first<{ count: number }>();
-    assert.strictEqual(enrollmentCount?.count, 29);
+    assert.strictEqual(enrollmentCount?.count, 28);
 
     const repeated = await runRequest(
       adminAccess,
@@ -1097,7 +1223,7 @@ describe("R44: durable Enrollment Approval Runs", () => {
       )
       .bind(programId)
       .first<{ count: number }>();
-    assert.strictEqual(afterRepeat?.count, 29);
+    assert.strictEqual(afterRepeat?.count, 28);
   });
 
   test("cancel stops future scheduling and members cannot start a run", async () => {
@@ -1171,20 +1297,24 @@ describe("R44: durable Enrollment Approval Runs", () => {
       new D1CapabilityAuthorizer(testDb())
     );
     const gateState: { release?: () => void } = {};
-    let markEntered: (() => void) | null = null;
-    // oxlint-disable-next-line promise/avoid-new -- hold the real approval mutation at the race boundary.
+    let markClaimsEntered: (() => void) | null = null;
+    // oxlint-disable-next-line promise/avoid-new -- hold both real claim attempts before D1 arbitration.
     const gate = new Promise<void>((resolve) => {
       gateState.release = resolve;
     });
-    // oxlint-disable-next-line promise/avoid-new -- deterministically wait until the item is in flight.
-    const entered = new Promise<void>((resolve) => {
-      markEntered = resolve;
+    // oxlint-disable-next-line promise/avoid-new -- deterministically align two pre-claim contenders.
+    const claimsEntered = new Promise<void>((resolve) => {
+      markClaimsEntered = resolve;
     });
-    const originalApprove = store.approveEnrollmentRequest.bind(store);
-    store.approveEnrollmentRequest = async (input) => {
-      markEntered?.();
+    let claimCalls = 0;
+    const originalClaim = store.claimNextEnrollmentApprovalRunItem.bind(store);
+    store.claimNextEnrollmentApprovalRunItem = async (...args) => {
+      claimCalls += 1;
+      if (claimCalls === 2) {
+        markClaimsEntered?.();
+      }
       await gate;
-      return originalApprove(input);
+      return originalClaim(...args);
     };
     const ctx = { actorUserId: "U001" };
     const firstContinue = workspace.continueEnrollmentApprovalRun(
@@ -1193,19 +1323,29 @@ describe("R44: durable Enrollment Approval Runs", () => {
       run.run_id,
       "r44-continue-first"
     );
-    await entered;
-    const secondContinue = await workspace.continueEnrollmentApprovalRun(
+    const secondContinue = workspace.continueEnrollmentApprovalRun(
       ctx,
       programId,
       run.run_id,
       "r44-continue-second"
     );
-    assert.strictEqual(secondContinue?.item, null);
-    assert.strictEqual(secondContinue?.run.items[0]?.status, "in_flight");
+    await claimsEntered;
     gateState.release?.();
-    const completed = await firstContinue;
-    assert.strictEqual(completed?.item?.status, "completed");
-    assert.strictEqual(completed?.run.status, "completed");
+    const results = await Promise.all([firstContinue, secondContinue]);
+    const claimedResults = results.filter((result) => result?.item !== null);
+    assert.strictEqual(claimedResults.length, 1);
+    assert.strictEqual(claimedResults[0]?.item?.status, "completed");
+    assert.strictEqual(
+      results.filter((result) => result?.item === null).length,
+      1
+    );
+    const enrollmentCount = await testDb()
+      .prepare(
+        "SELECT COUNT(*) AS count FROM enrollments WHERE program_id = ? AND status = 'Active'"
+      )
+      .bind(programId)
+      .first<{ count: number }>();
+    assert.strictEqual(enrollmentCount?.count, 1);
   });
 
   test("does not audit a stale Continue transition after a concurrent cancel", async () => {

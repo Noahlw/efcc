@@ -3,6 +3,7 @@ import type { D1Database } from "@cloudflare/workers-types";
 import type {
   EnrollmentApprovalRun,
   EnrollmentApprovalRunAuthority,
+  EnrollmentApprovalRunClaim,
   EnrollmentApprovalRunItem,
   EnrollmentApprovalRunItemRow,
   EnrollmentApprovalRunRow,
@@ -142,7 +143,7 @@ export async function claimNextEnrollmentApprovalRunItem(
   runId: string,
   actorUserId: string,
   startedAt: string
-): Promise<EnrollmentApprovalRunItemRow | null> {
+): Promise<EnrollmentApprovalRunClaim> {
   const update = await db
     .prepare(
       `UPDATE enrollment_approval_run_items
@@ -172,7 +173,7 @@ export async function claimNextEnrollmentApprovalRunItem(
     .bind(startedAt, runId, actorUserId)
     .run();
   if ((update.meta?.changes ?? 0) === 0) {
-    return null;
+    return { claimed: false, item: null };
   }
   const result = await db
     .prepare(
@@ -186,7 +187,10 @@ export async function claimNextEnrollmentApprovalRunItem(
     .bind(runId, actorUserId)
     .all<EnrollmentApprovalRunItemDbRow>();
   const row = result.results?.[0];
-  return row ? itemFromDb(row) : null;
+  return {
+    claimed: row !== undefined,
+    item: row ? itemFromDb(row) : null,
+  };
 }
 
 export async function updateEnrollmentApprovalRunItem(

@@ -9,6 +9,7 @@ import type { ModuleKey } from "./capabilities";
 import type {
   EnrollmentApprovalRun,
   EnrollmentApprovalRunAuthority,
+  EnrollmentApprovalRunClaim,
   EnrollmentApprovalRunItem,
   EnrollmentApprovalRunItemRow,
   EnrollmentApprovalRunItemStatus,
@@ -912,7 +913,7 @@ export interface WorkspaceStore {
     runId: string,
     actorUserId: string,
     startedAt: string
-  ) => Promise<EnrollmentApprovalRunItemRow | null>;
+  ) => Promise<EnrollmentApprovalRunClaim>;
   updateEnrollmentApprovalRunItem: (
     runId: string,
     requestId: string,

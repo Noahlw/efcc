@@ -5183,15 +5183,16 @@ export class DepartmentWorkspace {
     if (!begun) {
       return { run: current, item: null };
     }
-    const claimed = await this.store.claimNextEnrollmentApprovalRunItem(
+    const claim = await this.store.claimNextEnrollmentApprovalRunItem(
       runId,
       ctx.actorUserId,
       begun.item.started_at ?? new Date().toISOString()
     );
-    if (!claimed) {
+    if (!claim.claimed || !claim.item) {
       const latest = await this.store.findEnrollmentApprovalRun(runId);
       return latest ? { run: approvalRunView(latest), item: null } : null;
     }
+    const claimed = claim.item;
     const claimedRun: EnrollmentApprovalRun = {
       ...current,
       items: current.items.map((item) =>
@@ -5205,7 +5206,7 @@ export class DepartmentWorkspace {
     let next: EnrollmentApprovalRun;
     let outcome: "SUCCESS" | "FAILED" = "SUCCESS";
     try {
-      const result = await this.decideEnrollmentRequest(
+      await this.decideEnrollmentRequest(
         ctx,
         programId,
         claimed.request_id,
@@ -5216,29 +5217,18 @@ export class DepartmentWorkspace {
         },
         claimed.idempotency_key
       );
-      if (result.enrollment) {
-        next = settleEnrollmentApprovalItem(claimedRun, claimed.request_id, {
-          status: "completed",
-          enrollment_id: result.enrollment.enrollment_id,
-        });
-      } else {
-        const authority = await this.store.findEnrollmentApprovalAuthority(
-          claimed.program_id,
-          claimed.request_id,
-          claimed.member_user_id,
-          claimed.idempotency_key
-        );
-        next = authority
-          ? reconcileEnrollmentApprovalRun(
-              claimedRun,
-              new Map([[claimed.request_id, authority]])
-            )
-          : claimedRun;
-        const settledItem = next.items.find(
-          (item) => item.request_id === claimed.request_id
-        );
-        if (settledItem?.status === "in_flight") {
-          next = settleEnrollmentApprovalItem(claimedRun, claimed.request_id, {
+      const authority = await this.store.findEnrollmentApprovalAuthority(
+        claimed.program_id,
+        claimed.request_id,
+        claimed.member_user_id,
+        claimed.idempotency_key
+      );
+      next = authority
+        ? reconcileEnrollmentApprovalRun(
+            claimedRun,
+            new Map([[claimed.request_id, authority]])
+          )
+        : settleEnrollmentApprovalItem(claimedRun, claimed.request_id, {
             status: "outcome_unknown",
             failure: {
               code: "OUTCOME_UNKNOWN",
@@ -5246,13 +5236,11 @@ export class DepartmentWorkspace {
               retryable: false,
             },
           });
-        }
-        if (
-          next.items.find((item) => item.request_id === claimed.request_id)
-            ?.status !== "completed"
-        ) {
-          outcome = "FAILED";
-        }
+      if (
+        next.items.find((item) => item.request_id === claimed.request_id)
+          ?.status !== "completed"
+      ) {
+        outcome = "FAILED";
       }
     } catch (error) {
       const failure = approvalRunFailure(error);
