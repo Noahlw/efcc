@@ -144,7 +144,7 @@ export const COPY = {
     voidSuccess: "簽到已作廢",
     correctGuest: "修正訪客資料",
     guestCorrection: "修正訪客資料",
-    correctionReason: "姓名或電話",
+    correctionReason: "修正原因",
     correctionLead: "輸入訪客的正確姓名或電話。",
     saveCorrection: "儲存修正",
     correctionSaved: "訪客資料已修正",
@@ -172,6 +172,7 @@ export const COPY = {
     rosterFilterHint: "預設顯示尚未有有效簽到的成員；缺席及請假狀態仍會保留。",
     rosterFilterEmpty: "此檢視目前沒有記錄。",
     rosterAdditionalTitle: "訪客／額外記錄",
+    excusePresentConflict: "此成員已有有效出席記錄，不能同時標記請假。",
     rosterOffline:
       "現時沒有網絡。你仍可查看最近一次資料；重新連線後才可作出記錄。",
     rosterStale: (lastUpdated: string) =>
@@ -290,9 +291,17 @@ export const COPY = {
     eventQrCodeDownloadError: "未能下載 Event QR code，請重試。",
     eventQrCodePrintError: "未能開啟列印視窗，請允許彈出視窗後重試。",
     eventQrCodeGenerateError: "未能準備 Event QR code，請重試。",
+    eventQrCodeImageError: "Event QR code 圖片未能顯示，請重試。",
     eventQrCodeReady: "Event QR code 已準備好。",
-    eventQrCodeDownloadSuccess: "Event QR code 圖片已下載。",
+    eventQrCodeDownloadSuccess:
+      "Event QR code 下載要求已送出，請在瀏覽器下載項目確認。",
     eventQrCodePrintSuccess: "列印視窗已開啟。",
+    rosterFilterPresent: "已出席",
+    rosterFilterExcused: "請假",
+    rosterFilterAbsent: "缺席",
+    rosterFilterGuest: "訪客",
+    rosterPostEventFilterHint:
+      "聚會已結束；分開查看已出席、請假、缺席及訪客記錄。",
   },
   profile: {
     title: "我的帳戶",
@@ -1437,6 +1446,10 @@ export const COPY = {
     participantAttendance: "我的出席",
     participantAttendanceLoading: "正在載入你的出席狀態…",
     participantAttendanceUnavailable: "目前未有可顯示的出席資料。",
+    participantAttendanceForbidden:
+      "你目前不能查看這個聚會的個人出席資料；請返回課程詳情查看可用安排。",
+    participantAttendanceNotFound:
+      "找不到這個聚會的個人出席資料；請返回課程詳情重新開啟。",
     participantAttendancePresent: "已出席",
     participantAttendanceNotYet: "未簽到",
     participantAttendanceAbsent: "缺席",
@@ -1481,12 +1494,15 @@ export const COPY = {
     eventEditTitle: "編輯聚會資料",
     eventEditSave: "儲存更改",
     eventEditCancel: "取消編輯",
+    eventRescheduleSave: "儲存改期",
+    eventRescheduleCancel: "取消改期",
     eventIdentityChangeReason: "更改原因",
     eventIdentityChangeReasonPlaceholder: "請說明更改聚會資料的原因",
     eventIdentityChangeReasonRequired: "已有出席記錄，請先輸入更改原因。",
     eventInvalidInterval: "結束時間必須晚於開始時間，請修正後再儲存。",
     eventCreateUnsaved: "有未儲存聚會草稿；請先儲存或取消後再離開。",
     eventSavedNotice: "聚會資料已更新。",
+    eventRescheduledNotice: "聚會時間已更新。",
     eventCreatedNotice: "聚會已建立。",
     eventAvailabilityConfirmRequired:
       "此聚會有進行中的操作，需確認後才能暫停。",
@@ -1513,6 +1529,7 @@ const ERROR_COPY_BY_CODE: Record<string, string> = {
   ENROLLMENT_REQUIRED: COPY.attendance.enrollmentRequired,
   RATE_LIMITED: COPY.attendance.rateLimited,
   DUPLICATE_ATTENDANCE: COPY.attendance.guestDuplicate,
+  ATTENDANCE_ALREADY_PRESENT: COPY.attendance.excusePresentConflict,
   CONFIRMATION_REQUIRED: COPY.programs.eventAvailabilityConfirmRequired,
   EVENT_RESCHEDULE_BLOCKED: COPY.programs.eventRescheduleBlocked,
   EVENT_CANCEL_BLOCKED: COPY.programs.cancelBlockedWithAttendance,

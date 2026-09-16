@@ -118,6 +118,8 @@ function checkInWindowIsOpen(event: ProgramEvent, now = Date.now()): boolean {
 }
 
 type EventPhase = "future" | "open" | "past" | "cancelled";
+type EventEditIntent = "edit" | "reschedule";
+type OwnAttendanceUnavailableReason = "forbidden" | "not-found" | null;
 
 function eventPhase(event: ProgramEvent, now = Date.now()): EventPhase {
   if (event.status === "Cancelled") {
@@ -234,6 +236,7 @@ export const EventDetail = ({
   const eventActionBlocked =
     busy || detailStale || loadError !== null || mutationOutcomeUnknown;
   const [editing, setEditing] = useState(false);
+  const [editingIntent, setEditingIntent] = useState<EventEditIntent>("edit");
   const [editingEventType, setEditingEventType] = useState<EventType>(
     COPY.programs.eventTypeOptions[0] as EventType
   );
@@ -247,6 +250,8 @@ export const EventDetail = ({
     useState<AttendanceParticipantView | null>(null);
   const [ownAttendanceUnavailable, setOwnAttendanceUnavailable] =
     useState(false);
+  const [ownAttendanceUnavailableReason, setOwnAttendanceUnavailableReason] =
+    useState<OwnAttendanceUnavailableReason>(null);
   const [ownAttendanceLoading, setOwnAttendanceLoading] = useState(false);
   const [ownAttendanceError, setOwnAttendanceError] = useState<string | null>(
     null
@@ -323,24 +328,21 @@ export const EventDetail = ({
     void load();
   }, [load]);
 
-  useEffect(() => {
-    if (canManage || detail === null || detail.event.event_id !== eventId) {
-      return;
-    }
-    let cancelled = false;
-    setOwnAttendance(null);
-    setOwnAttendanceUnavailable(false);
-    setOwnAttendanceError(null);
-    setOwnAttendanceLoading(true);
-    void (async () => {
+  const loadOwnAttendance = useCallback(
+    async (isActive: () => boolean = () => true) => {
+      setOwnAttendance(null);
+      setOwnAttendanceUnavailable(false);
+      setOwnAttendanceUnavailableReason(null);
+      setOwnAttendanceError(null);
+      setOwnAttendanceLoading(true);
       try {
         const next = await getOwnAttendance(eventId);
-        if (!cancelled) {
+        if (isActive()) {
           setOwnAttendance(next);
           setOwnAttendanceUnavailable(next === null || next.state === null);
         }
       } catch (error: unknown) {
-        if (cancelled) {
+        if (!isActive()) {
           return;
         }
         if (
@@ -348,21 +350,38 @@ export const EventDetail = ({
           (error.problem.code === "FORBIDDEN" ||
             error.problem.code === "NOT_FOUND")
         ) {
-          setOwnAttendance(null);
+          setOwnAttendanceUnavailableReason(
+            error.problem.code === "FORBIDDEN" ? "forbidden" : "not-found"
+          );
           setOwnAttendanceUnavailable(true);
           return;
         }
+        if (
+          error instanceof RpcError &&
+          error.problem.code === "AUTH_REQUIRED"
+        ) {
+          onAuthRequired?.();
+        }
         setOwnAttendanceError(COPY.programs.participantAttendanceError);
       } finally {
-        if (!cancelled) {
+        if (isActive()) {
           setOwnAttendanceLoading(false);
         }
       }
-    })();
+    },
+    [eventId, onAuthRequired]
+  );
+
+  useEffect(() => {
+    if (canManage || detail === null || detail.event.event_id !== eventId) {
+      return;
+    }
+    let cancelled = false;
+    void loadOwnAttendance(() => !cancelled);
     return () => {
       cancelled = true;
     };
-  }, [canManage, detail, eventId]);
+  }, [canManage, detail, eventId, loadOwnAttendance]);
   useEffect(() => {
     if (!canManage && detail !== null) {
       /* oxlint-disable-next-line unicorn/prefer-query-selector -- exact id lookup on participant-event-title */
@@ -503,16 +522,6 @@ export const EventDetail = ({
   const submitEdit = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
-    const startsAt = String(form.get("starts_at") ?? "");
-    const endsAt = String(form.get("ends_at") ?? "");
-    const startsAtIso = hkWallInputToIso(startsAt);
-    const endsAtIso = hkWallInputToIso(endsAt);
-    if (!startsAtIso || !endsAtIso || endsAtIso <= startsAtIso) {
-      const message = COPY.programs.eventInvalidInterval;
-      setActionError(message);
-      announce(message);
-      return;
-    }
     const hasAttendance =
       detail?.event.has_attendance === true ||
       (detail?.participant_summary.checked_in ?? 0) > 0;
@@ -541,14 +550,6 @@ export const EventDetail = ({
           name,
           location: location || null,
           event_type: eventType,
-          starts_at: startsAtIso,
-          ends_at: endsAtIso,
-          check_in_window_opens_at: hkWallInputToIso(
-            String(form.get("opens_at") ?? "")
-          ),
-          check_in_window_closes_at: hkWallInputToIso(
-            String(form.get("closes_at") ?? "")
-          ),
           ...(hasAttendance && identityChanged
             ? { reason: editReason.trim() }
             : {}),
@@ -561,6 +562,37 @@ export const EventDetail = ({
         return hasAttendance
           ? COPY.programs.editWithAttendanceNotice
           : COPY.programs.eventSavedNotice;
+      }
+    );
+  };
+
+  const submitReschedule = (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const startsAtIso = hkWallInputToIso(String(form.get("starts_at") ?? ""));
+    const endsAtIso = hkWallInputToIso(String(form.get("ends_at") ?? ""));
+    if (!startsAtIso || !endsAtIso || endsAtIso <= startsAtIso) {
+      const message = COPY.programs.eventInvalidInterval;
+      setActionError(message);
+      announce(message);
+      return;
+    }
+    void runAction(
+      () =>
+        updateEvent(programId, eventId, {
+          starts_at: startsAtIso,
+          ends_at: endsAtIso,
+          check_in_window_opens_at: hkWallInputToIso(
+            String(form.get("opens_at") ?? "")
+          ),
+          check_in_window_closes_at: hkWallInputToIso(
+            String(form.get("closes_at") ?? "")
+          ),
+        }),
+      () => {
+        setEditing(false);
+        setUndoAvailable(false);
+        return COPY.programs.eventRescheduledNotice;
       }
     );
   };
@@ -752,6 +784,11 @@ export const EventDetail = ({
       (event.program_name
         ? COPY.programs.eventFallbackTitle.replace("{name}", event.program_name)
         : hkWallDateTimeLabel(event.starts_at));
+    const participantProgramHref = buildProgramsHref({
+      mode: "participant",
+      programId,
+      hash,
+    });
     const whenLabel = `${hkShortDateLabel(event.starts_at)}${hkShortTimeRange(event.starts_at, event.ends_at)}`;
     const instructionsHeadingId = "participant-event-instructions";
     const participantAttendanceTone =
@@ -850,7 +887,18 @@ export const EventDetail = ({
               {COPY.programs.participantAttendanceLoading}
             </output>
           ) : ownAttendanceError ? (
-            <Alert variant="destructive">{ownAttendanceError}</Alert>
+            <Alert variant="destructive" className="grid gap-2">
+              <span>{ownAttendanceError}</span>
+              <Button
+                type="button"
+                variant="outline"
+                className="w-fit"
+                onClick={() => void loadOwnAttendance()}
+                disabled={ownAttendanceLoading}
+              >
+                {COPY.error.retry}
+              </Button>
+            </Alert>
           ) : ownAttendance && ownAttendance.state !== null ? (
             <div className="grid min-w-0 gap-2">
               <ScreenStatus tone={participantAttendanceTone}>
@@ -872,7 +920,22 @@ export const EventDetail = ({
           ) : (
             <ScreenState
               kind="empty"
-              title={COPY.programs.participantAttendanceUnavailable}
+              title={
+                ownAttendanceUnavailableReason === "forbidden"
+                  ? COPY.programs.participantAttendanceForbidden
+                  : ownAttendanceUnavailableReason === "not-found"
+                    ? COPY.programs.participantAttendanceNotFound
+                    : COPY.programs.participantAttendanceUnavailable
+              }
+              action={
+                ownAttendanceUnavailable ? (
+                  <Button asChild variant="outline">
+                    <Link href={participantProgramHref}>
+                      {COPY.programs.eventDetailViewProgram}
+                    </Link>
+                  </Button>
+                ) : undefined
+              }
             />
           )}
         </ScreenSection>
@@ -906,6 +969,12 @@ export const EventDetail = ({
       event.event_type ?? (COPY.programs.eventTypeOptions[0] as EventType)
     );
     setEditReason("");
+    setEditingIntent("edit");
+    setEditing(true);
+  };
+  const beginReschedule = () => {
+    setEditReason("");
+    setEditingIntent("reschedule");
     setEditing(true);
   };
   const requestDeactivate = () => {
@@ -932,7 +1001,7 @@ export const EventDetail = ({
     setConfirmingCancel(true);
   };
   const primaryAction =
-    phase === "future" && event.manual_check_in_code ? (
+    phase === "future" ? (
       <Button
         type="button"
         className="w-fit bg-[var(--screen-accent)] text-white hover:bg-[var(--screen-accent-deep)]"
@@ -1050,7 +1119,7 @@ export const EventDetail = ({
               <DropdownMenuItem onSelect={beginEdit}>
                 {COPY.programs.eventEdit}
               </DropdownMenuItem>
-              <DropdownMenuItem onSelect={beginEdit}>
+              <DropdownMenuItem onSelect={beginReschedule}>
                 {COPY.programs.eventReschedule}
               </DropdownMenuItem>
               <DropdownMenuSeparator />
@@ -1226,7 +1295,7 @@ export const EventDetail = ({
           </ScreenRowMeta>
         )}
       </ScreenSection>
-      {showCheckInSheet && !cancelled && event.manual_check_in_code && (
+      {showCheckInSheet && !cancelled && (
         <EventCheckInSheet
           event={event}
           onClose={() => setShowCheckInSheet(false)}
@@ -1304,186 +1373,178 @@ export const EventDetail = ({
             )}
           </ScreenSection>
 
-          <ScreenSection title={COPY.programs.eventEditTitle}>
+          <ScreenSection
+            title={
+              editingIntent === "reschedule"
+                ? COPY.programs.eventReschedule
+                : COPY.programs.eventEditTitle
+            }
+          >
             {editing ? (
               <ScreenCard asChild>
-                <ScreenEditor onSubmit={submitEdit}>
-                  <ScreenField
-                    htmlFor="management-event-name"
-                    label={COPY.programs.eventName}
-                  >
-                    <Input
-                      id="management-event-name"
-                      autoFocus
-                      className="border-[var(--screen-line-strong)] bg-[var(--screen-surface)] text-base"
-                      type="text"
-                      name="name"
-                      defaultValue={event.name ?? ""}
-                      placeholder={COPY.programs.eventNamePlaceholder}
-                    />
-                  </ScreenField>
-                  {hasAttendance && (
-                    <ScreenField
-                      htmlFor="management-event-edit-reason"
-                      label={COPY.programs.eventIdentityChangeReason}
-                    >
-                      <Input
-                        id="management-event-edit-reason"
-                        className="border-[var(--screen-line-strong)] bg-[var(--screen-surface)] text-base"
-                        type="text"
-                        name="edit_reason"
-                        value={editReason}
-                        onChange={(changeEvent) =>
-                          setEditReason(changeEvent.target.value)
-                        }
-                        placeholder={
-                          COPY.programs.eventIdentityChangeReasonPlaceholder
-                        }
-                        required={false}
-                      />
-                    </ScreenField>
+                <ScreenEditor
+                  data-edit-intent={editingIntent}
+                  data-testid="event-edit-form"
+                  onSubmit={
+                    editingIntent === "reschedule"
+                      ? submitReschedule
+                      : submitEdit
+                  }
+                >
+                  {editingIntent === "edit" && (
+                    <>
+                      <ScreenField
+                        htmlFor="management-event-name"
+                        label={COPY.programs.eventName}
+                      >
+                        <Input
+                          id="management-event-name"
+                          autoFocus
+                          className="border-[var(--screen-line-strong)] bg-[var(--screen-surface)] text-base"
+                          type="text"
+                          name="name"
+                          defaultValue={event.name ?? ""}
+                          placeholder={COPY.programs.eventNamePlaceholder}
+                        />
+                      </ScreenField>
+                      {hasAttendance && (
+                        <ScreenField
+                          htmlFor="management-event-edit-reason"
+                          label={COPY.programs.eventIdentityChangeReason}
+                        >
+                          <Input
+                            id="management-event-edit-reason"
+                            className="border-[var(--screen-line-strong)] bg-[var(--screen-surface)] text-base"
+                            type="text"
+                            name="edit_reason"
+                            value={editReason}
+                            onChange={(changeEvent) =>
+                              setEditReason(changeEvent.target.value)
+                            }
+                            placeholder={
+                              COPY.programs.eventIdentityChangeReasonPlaceholder
+                            }
+                            required={false}
+                          />
+                        </ScreenField>
+                      )}
+                      <ScreenField
+                        htmlFor="management-event-type"
+                        label={COPY.programs.eventType}
+                      >
+                        <Select
+                          value={editingEventType}
+                          onValueChange={(value) =>
+                            setEditingEventType(value as EventType)
+                          }
+                        >
+                          <SelectTrigger
+                            id="management-event-type"
+                            className="border-[var(--screen-line-strong)] bg-[var(--screen-surface)] text-base"
+                            aria-label={COPY.programs.eventType}
+                          >
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {COPY.programs.eventTypeOptions.map((type) => (
+                              <SelectItem key={type} value={type}>
+                                {type}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </ScreenField>
+                      <ScreenField
+                        htmlFor="management-event-location"
+                        label={COPY.programs.eventLocation}
+                      >
+                        <Input
+                          id="management-event-location"
+                          className="border-[var(--screen-line-strong)] bg-[var(--screen-surface)] text-base"
+                          type="text"
+                          name="location"
+                          defaultValue={event.location ?? ""}
+                          placeholder={COPY.programs.eventLocationPlaceholder}
+                        />
+                      </ScreenField>
+                    </>
                   )}
-                  <ScreenField
-                    htmlFor="management-event-type"
-                    label={COPY.programs.eventType}
-                  >
-                    <Select
-                      value={editingEventType}
-                      onValueChange={(value) =>
-                        setEditingEventType(value as EventType)
-                      }
-                    >
-                      <SelectTrigger
-                        id="management-event-type"
-                        className="border-[var(--screen-line-strong)] bg-[var(--screen-surface)] text-base"
-                        aria-label={COPY.programs.eventType}
+                  {editingIntent === "reschedule" && (
+                    <>
+                      <ScreenField
+                        htmlFor="management-event-start"
+                        label={COPY.programs.eventStart}
                       >
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {COPY.programs.eventTypeOptions.map((type) => (
-                          <SelectItem key={type} value={type}>
-                            {type}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </ScreenField>
-                  <ScreenField
-                    htmlFor="management-event-recurrence"
-                    label={COPY.programs.recurrenceTag}
-                  >
-                    <Select
-                      value={
-                        event.recurrence_tag ?? COPY.programs.recurrenceNone
-                      }
-                      disabled
-                    >
-                      <SelectTrigger
-                        id="management-event-recurrence"
-                        className="border-[var(--screen-line-strong)] bg-[var(--screen-surface)] text-base"
-                        aria-label={COPY.programs.recurrenceTag}
+                        <Input
+                          id="management-event-start"
+                          autoFocus
+                          className="border-[var(--screen-line-strong)] bg-[var(--screen-surface)] text-base"
+                          type="datetime-local"
+                          name="starts_at"
+                          required
+                          defaultValue={hkWallInputValue(event.starts_at)}
+                        />
+                      </ScreenField>
+                      <ScreenField
+                        htmlFor="management-event-end"
+                        label={COPY.programs.eventEnd}
                       >
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value={COPY.programs.recurrenceNone}>
-                          {COPY.programs.recurrenceNone}
-                        </SelectItem>
-                        <SelectItem value={COPY.programs.recurrenceWeekly}>
-                          {COPY.programs.recurrenceWeekly}
-                        </SelectItem>
-                        <SelectItem value={COPY.programs.recurrenceMonthly}>
-                          {COPY.programs.recurrenceMonthly}
-                        </SelectItem>
-                      </SelectContent>
-                    </Select>
-                    <span className="text-xs leading-[var(--screen-meta-leading)] text-[var(--screen-muted)]">
-                      {COPY.programs.repeatFormInformational}
-                    </span>
-                  </ScreenField>
-                  <ScreenField
-                    htmlFor="management-event-location"
-                    label={COPY.programs.eventLocation}
-                  >
-                    <Input
-                      id="management-event-location"
-                      className="border-[var(--screen-line-strong)] bg-[var(--screen-surface)] text-base"
-                      type="text"
-                      name="location"
-                      defaultValue={event.location ?? ""}
-                      placeholder={COPY.programs.eventLocationPlaceholder}
-                    />
-                  </ScreenField>
-                  <ScreenField
-                    htmlFor="management-event-start"
-                    label={COPY.programs.eventStart}
-                  >
-                    <Input
-                      id="management-event-start"
-                      className="border-[var(--screen-line-strong)] bg-[var(--screen-surface)] text-base"
-                      type="datetime-local"
-                      name="starts_at"
-                      required
-                      defaultValue={hkWallInputValue(event.starts_at)}
-                    />
-                  </ScreenField>
-                  <ScreenField
-                    htmlFor="management-event-end"
-                    label={COPY.programs.eventEnd}
-                  >
-                    <Input
-                      id="management-event-end"
-                      className="border-[var(--screen-line-strong)] bg-[var(--screen-surface)] text-base"
-                      type="datetime-local"
-                      name="ends_at"
-                      required
-                      defaultValue={hkWallInputValue(event.ends_at)}
-                    />
-                  </ScreenField>
-                  <ScreenField
-                    htmlFor="management-event-opens"
-                    label={COPY.programs.eventCheckInWindowOpensAt}
-                  >
-                    <Input
-                      id="management-event-opens"
-                      className="border-[var(--screen-line-strong)] bg-[var(--screen-surface)] text-base"
-                      type="datetime-local"
-                      name="opens_at"
-                      required={
-                        event.check_in_window_opens_at !== null &&
-                        event.check_in_window_opens_at !== undefined
-                      }
-                      defaultValue={hkWallInputValue(
-                        event.check_in_window_opens_at
-                      )}
-                    />
-                  </ScreenField>
-                  <ScreenField
-                    htmlFor="management-event-closes"
-                    label={COPY.programs.eventCheckInWindowClosesAt}
-                  >
-                    <Input
-                      id="management-event-closes"
-                      className="border-[var(--screen-line-strong)] bg-[var(--screen-surface)] text-base"
-                      type="datetime-local"
-                      name="closes_at"
-                      required={
-                        event.check_in_window_closes_at !== null &&
-                        event.check_in_window_closes_at !== undefined
-                      }
-                      defaultValue={hkWallInputValue(
-                        event.check_in_window_closes_at
-                      )}
-                    />
-                  </ScreenField>
+                        <Input
+                          id="management-event-end"
+                          className="border-[var(--screen-line-strong)] bg-[var(--screen-surface)] text-base"
+                          type="datetime-local"
+                          name="ends_at"
+                          required
+                          defaultValue={hkWallInputValue(event.ends_at)}
+                        />
+                      </ScreenField>
+                      <ScreenField
+                        htmlFor="management-event-opens"
+                        label={COPY.programs.eventCheckInWindowOpensAt}
+                      >
+                        <Input
+                          id="management-event-opens"
+                          className="border-[var(--screen-line-strong)] bg-[var(--screen-surface)] text-base"
+                          type="datetime-local"
+                          name="opens_at"
+                          required={
+                            event.check_in_window_opens_at !== null &&
+                            event.check_in_window_opens_at !== undefined
+                          }
+                          defaultValue={hkWallInputValue(
+                            event.check_in_window_opens_at
+                          )}
+                        />
+                      </ScreenField>
+                      <ScreenField
+                        htmlFor="management-event-closes"
+                        label={COPY.programs.eventCheckInWindowClosesAt}
+                      >
+                        <Input
+                          id="management-event-closes"
+                          className="border-[var(--screen-line-strong)] bg-[var(--screen-surface)] text-base"
+                          type="datetime-local"
+                          name="closes_at"
+                          required={
+                            event.check_in_window_closes_at !== null &&
+                            event.check_in_window_closes_at !== undefined
+                          }
+                          defaultValue={hkWallInputValue(
+                            event.check_in_window_closes_at
+                          )}
+                        />
+                      </ScreenField>
+                    </>
+                  )}
                   <div className="flex min-w-0 flex-wrap gap-[var(--screen-utility-gap)]">
                     <Button
                       type="submit"
                       disabled={eventActionBlocked}
                       className="w-fit bg-[var(--screen-accent)] text-white hover:bg-[var(--screen-accent-deep)]"
                     >
-                      {COPY.programs.eventEditSave}
+                      {editingIntent === "reschedule"
+                        ? COPY.programs.eventRescheduleSave
+                        : COPY.programs.eventEditSave}
                     </Button>
                     <Button
                       type="button"
@@ -1492,7 +1553,9 @@ export const EventDetail = ({
                       disabled={eventActionBlocked}
                       onClick={() => setEditing(false)}
                     >
-                      {COPY.programs.eventEditCancel}
+                      {editingIntent === "reschedule"
+                        ? COPY.programs.eventRescheduleCancel
+                        : COPY.programs.eventEditCancel}
                     </Button>
                   </div>
                 </ScreenEditor>

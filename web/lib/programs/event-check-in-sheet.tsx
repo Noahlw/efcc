@@ -46,17 +46,73 @@ function escapeSvgText(value: string): string {
     .replaceAll(">", "&gt;");
 }
 
+function wrapSvgText(value: string, maxCharacters: number): string[] {
+  const characters = [...value];
+  if (characters.length === 0) {
+    return [""];
+  }
+  const lines: string[] = [];
+  for (let index = 0; index < characters.length; index += maxCharacters) {
+    lines.push(characters.slice(index, index + maxCharacters).join(""));
+  }
+  return lines;
+}
+
+function centeredSvgText(
+  value: string,
+  y: number,
+  fontSize: number,
+  maxCharacters: number,
+  lineHeight: number,
+  fill: string,
+  fontWeight?: number
+): string {
+  const weight = fontWeight ? ` font-weight="${fontWeight}"` : "";
+  const lines = wrapSvgText(value, maxCharacters);
+  const tspans = lines
+    .map(
+      (line, index) =>
+        `<tspan x="450" dy="${index === 0 ? 0 : lineHeight}">${escapeSvgText(line)}</tspan>`
+    )
+    .join("");
+  return `<text x="450" y="${y}" text-anchor="middle" font-family="system-ui,sans-serif" font-size="${fontSize}"${weight} fill="${fill}">${tspans}</text>`;
+}
+
 function eventQrImage(
   event: EventCheckInSheetEvent,
   qr: string,
   manualCode: string
 ): string {
-  const title = escapeSvgText(event.name?.trim() || event.program_name);
-  const program = escapeSvgText(event.program_name);
-  const time = escapeSvgText(hkWallDateTimeLabel(event.starts_at));
-  const end = escapeSvgText(hkWallDateTimeLabel(event.ends_at));
-  const location = event.location ? escapeSvgText(event.location) : "";
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="900" height="1120" viewBox="0 0 900 1120" role="img" aria-labelledby="title desc"><title id="title">Event QR code</title><desc id="desc">${title} ${time} ${escapeSvgText(manualCode)}</desc><rect width="900" height="1120" fill="#fffdf8"/><text x="450" y="78" text-anchor="middle" font-family="system-ui,sans-serif" font-size="28" font-weight="700" fill="#263331">Event QR code</text><text x="450" y="140" text-anchor="middle" font-family="system-ui,sans-serif" font-size="42" font-weight="800" fill="#172021">${title}</text><text x="450" y="188" text-anchor="middle" font-family="system-ui,sans-serif" font-size="24" fill="#586a67">${program}</text><text x="450" y="232" text-anchor="middle" font-family="system-ui,sans-serif" font-size="23" fill="#586a67">${time} — ${end}</text>${location ? `<text x="450" y="272" text-anchor="middle" font-family="system-ui,sans-serif" font-size="23" fill="#586a67">${location}</text>` : ""}<rect x="180" y="310" width="540" height="540" rx="20" fill="#fff" stroke="#cbd6d2" stroke-width="4"/><image href="${qr}" x="200" y="330" width="500" height="500" preserveAspectRatio="xMidYMid meet"/><text x="450" y="902" text-anchor="middle" font-family="system-ui,sans-serif" font-size="24" fill="#586a67">${escapeSvgText(COPY.attendance.sheetManualCode)}</text><text x="450" y="970" text-anchor="middle" font-family="system-ui,sans-serif" font-size="54" font-weight="800" letter-spacing="8" fill="#172021">${escapeSvgText(manualCode)}</text><text x="450" y="1035" text-anchor="middle" font-family="system-ui,sans-serif" font-size="21" fill="#586a67">${escapeSvgText(COPY.attendance.sheetScanInstruction)}</text></svg>`;
+  const title = event.name?.trim() || event.program_name;
+  const program = event.program_name;
+  const timeRange = `${hkWallDateTimeLabel(event.starts_at)} — ${hkWallDateTimeLabel(event.ends_at)}`;
+  const location = event.location?.trim() || null;
+  const titleLines = wrapSvgText(title, 18);
+  const programLines = wrapSvgText(program, 24);
+  const timeLines = wrapSvgText(timeRange, 26);
+  const locationLines = location ? wrapSvgText(location, 24) : [];
+  let nextY = 140;
+  const titleBlock = centeredSvgText(title, nextY, 42, 18, 52, "#172021", 800);
+  nextY += titleLines.length * 52 + 20;
+  const programBlock = centeredSvgText(program, nextY, 24, 24, 30, "#586a67");
+  nextY += programLines.length * 30 + 16;
+  const timeBlock = centeredSvgText(timeRange, nextY, 23, 26, 28, "#586a67");
+  nextY += timeLines.length * 28 + 16;
+  const locationBlock = location
+    ? centeredSvgText(location, nextY, 23, 24, 28, "#586a67")
+    : "";
+  nextY += locationLines.length * 28;
+  const qrTop = Math.max(310, nextY + 20);
+  const codeLabelY = qrTop + 592;
+  const codeY = qrTop + 660;
+  const instructionY = qrTop + 725;
+  const height = instructionY + 55;
+  const desc = escapeSvgText(
+    [title, program, timeRange, location, manualCode]
+      .filter((value): value is string => Boolean(value))
+      .join(" ")
+  );
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="900" height="${height}" viewBox="0 0 900 ${height}" role="img" aria-labelledby="title desc"><title id="title">Event QR code</title><desc id="desc">${desc}</desc><rect width="900" height="${height}" fill="#fffdf8"/><text x="450" y="78" text-anchor="middle" font-family="system-ui,sans-serif" font-size="28" font-weight="700" fill="#263331">Event QR code</text>${titleBlock}${programBlock}${timeBlock}${locationBlock}<rect x="180" y="${qrTop}" width="540" height="540" rx="20" fill="#fff" stroke="#cbd6d2" stroke-width="4"/><image href="${qr}" x="200" y="${qrTop + 20}" width="500" height="500" preserveAspectRatio="xMidYMid meet"/><text x="450" y="${codeLabelY}" text-anchor="middle" font-family="system-ui,sans-serif" font-size="24" fill="#586a67">${escapeSvgText(COPY.attendance.sheetManualCode)}</text><text x="450" y="${codeY}" text-anchor="middle" font-family="system-ui,sans-serif" font-size="54" font-weight="800" letter-spacing="8" fill="#172021">${escapeSvgText(manualCode)}</text><text x="450" y="${instructionY}" text-anchor="middle" font-family="system-ui,sans-serif" font-size="21" fill="#586a67">${escapeSvgText(COPY.attendance.sheetScanInstruction)}</text></svg>`;
 }
 
 function printEventSheet(
@@ -111,6 +167,9 @@ export const EventCheckInSheet = ({
   onAuthRequired,
 }: EventCheckInSheetProps) => {
   const [qr, setQr] = useState<string | null>(null);
+  const [qrImageState, setQrImageState] = useState<
+    "loading" | "ready" | "error"
+  >("loading");
   const [loadError, setLoadError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [actionNotice, setActionNotice] = useState<string | null>(null);
@@ -129,6 +188,11 @@ export const EventCheckInSheet = ({
       setActionError(null);
       setActionNotice(null);
       setQr(null);
+      setQrImageState("loading");
+      if (!event.manual_check_in_code) {
+        setLoading(false);
+        return;
+      }
       try {
         const { artifact } = await getProgramAttendanceArtifact(
           event.program_id
@@ -136,11 +200,10 @@ export const EventCheckInSheet = ({
         if (!isActive()) {
           return;
         }
-        if (event.manual_check_in_code) {
-          const dataUrl = await qrDataUrl(checkInUrl(artifact.check_in_token));
-          if (isActive()) {
-            setQr(dataUrl);
-          }
+        const dataUrl = await qrDataUrl(checkInUrl(artifact.check_in_token));
+        if (isActive()) {
+          setQr(dataUrl);
+          setQrImageState("loading");
         }
       } catch (error) {
         if (!isActive()) {
@@ -177,7 +240,7 @@ export const EventCheckInSheet = ({
   function downloadQr() {
     setLastAction("download");
     setActionNotice(null);
-    if (!qr || !event.manual_check_in_code) {
+    if (!qr || !event.manual_check_in_code || qrImageState !== "ready") {
       setActionError(COPY.attendance.eventQrCodeDownloadError);
       return;
     }
@@ -191,6 +254,9 @@ export const EventCheckInSheet = ({
       link.href = objectUrl;
       link.download = `${event.event_id}-event-qr-code.svg`;
       document.body.append(link);
+      // Browsers do not expose download-manager completion to page code. Keep
+      // the notice honest: this confirms the request was sent, not that the
+      // user has saved the file.
       link.click();
       link.remove();
       if (objectUrl.startsWith("blob:") && URL.revokeObjectURL) {
@@ -208,7 +274,7 @@ export const EventCheckInSheet = ({
   function printSheet() {
     setLastAction("print");
     setActionNotice(null);
-    if (!qr || !event.manual_check_in_code) {
+    if (!qr || !event.manual_check_in_code || qrImageState !== "ready") {
       setActionError(COPY.attendance.eventQrCodePrintError);
       return;
     }
@@ -296,8 +362,17 @@ export const EventCheckInSheet = ({
         </Alert>
       )}
       {!event.manual_check_in_code && !loading && (
-        <Alert variant="destructive">
-          {COPY.attendance.eventCheckInSheetUnavailable}
+        <Alert variant="destructive" className="grid gap-2">
+          <span>{COPY.attendance.eventCheckInSheetUnavailable}</span>
+          <Button
+            type="button"
+            variant="outline"
+            className="w-fit"
+            onClick={() => void loadArtifact()}
+            disabled={loading}
+          >
+            {COPY.error.retry}
+          </Button>
         </Alert>
       )}
       {qr && event.manual_check_in_code && (
@@ -315,10 +390,38 @@ export const EventCheckInSheet = ({
               {event.location ? ` · ${event.location}` : ""}
             </span>
           </div>
+          {qrImageState === "loading" && (
+            <output
+              className="text-sm text-[var(--screen-muted)]"
+              aria-live="polite"
+              data-testid="event-qr-image-loading"
+            >
+              {COPY.attendance.eventCheckInSheetLoading}
+            </output>
+          )}
+          {qrImageState === "ready" && (
+            <output
+              className="text-sm text-[var(--screen-success)]"
+              aria-live="polite"
+              data-testid="event-qr-image-ready"
+            >
+              {COPY.attendance.eventQrCodeReady}
+            </output>
+          )}
           <img
             src={qr}
             alt={COPY.attendance.eventCheckInSheetQrLabel}
             className="mx-auto size-56 max-w-full rounded border border-[var(--screen-line)] bg-white p-2"
+            data-qr-state={qrImageState}
+            onError={() => {
+              setQrImageState("error");
+              setLoadError(COPY.attendance.eventQrCodeImageError);
+              setActionError(null);
+            }}
+            onLoad={() => {
+              setQrImageState("ready");
+              setLoadError(null);
+            }}
           />
           <p className="m-0 grid gap-1 text-center text-sm">
             <span>{COPY.attendance.sheetManualCode}</span>
@@ -331,7 +434,7 @@ export const EventCheckInSheet = ({
               type="button"
               variant="outline"
               onClick={downloadQr}
-              disabled={actionBusy !== null}
+              disabled={actionBusy !== null || qrImageState !== "ready"}
             >
               <Download aria-hidden="true" />
               {COPY.attendance.eventCheckInSheetDownload}
@@ -340,7 +443,7 @@ export const EventCheckInSheet = ({
               type="button"
               variant="outline"
               onClick={() => void printSheet()}
-              disabled={actionBusy !== null}
+              disabled={actionBusy !== null || qrImageState !== "ready"}
             >
               <Printer aria-hidden="true" />
               {COPY.attendance.eventCheckInSheetPrint}

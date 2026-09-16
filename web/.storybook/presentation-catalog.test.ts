@@ -98,7 +98,7 @@ describe("T07 Screen Catalog foundation", () => {
       intent: null,
       primaryBaselinePsn: "PSN-AUTH-SIGN-IN-DEFAULT",
     });
-    expect(SCREEN_PRESENTATION_DECLARATIONS).toHaveLength(40);
+    expect(SCREEN_PRESENTATION_DECLARATIONS).toHaveLength(41);
   });
 
   test("classifies the credential/PIN upgrade as a transient sign-in state", () => {
@@ -347,7 +347,7 @@ describe("T07 Screen Catalog foundation", () => {
   });
 
   test("catalogs every T07.5 Attendance/Scanner/Guest composition", () => {
-    expect(ATTENDANCE_SCANNER_GUEST_PRESENTATION_DECLARATIONS).toHaveLength(5);
+    expect(ATTENDANCE_SCANNER_GUEST_PRESENTATION_DECLARATIONS).toHaveLength(6);
     expect(
       SCREEN_CATALOG.find(
         (entry) => entry.screenId === "attendance-assisted-check-in"
@@ -359,7 +359,7 @@ describe("T07 Screen Catalog foundation", () => {
       primaryBaselinePsn: "PSN-ATTENDANCE-ASSISTED-CHECK-IN",
     });
     expect(SCREEN_CATALOG).toHaveLength(36);
-    expect(SCREEN_PRESENTATION_DECLARATIONS).toHaveLength(40);
+    expect(SCREEN_PRESENTATION_DECLARATIONS).toHaveLength(41);
   });
 
   test("keeps Notifications Story metadata and navigation parser-backed", () => {

@@ -95,6 +95,17 @@ const EXPECTED_ROW: AttendanceExpectedRow = {
   disposition: null,
 };
 
+const POST_EVENT: AttendanceEvent = {
+  ...EVENT,
+  event_id: "evt-post",
+  starts_at: new Date(Date.now() - 2 * 60 * 60_000).toISOString(),
+  ends_at: new Date(Date.now() - 60 * 60_000).toISOString(),
+  check_in_window_opens_at: new Date(
+    Date.now() - 3 * 60 * 60_000
+  ).toISOString(),
+  check_in_window_closes_at: new Date(Date.now() - 30 * 60_000).toISOString(),
+};
+
 afterEach(() => cleanup());
 
 describe(AttendanceChooser, () => {
@@ -236,6 +247,82 @@ describe(AttendanceRoster, () => {
     expect(screen.getByText("已完成會員")).toBeVisible();
   });
 
+  test("post-event roster defaults to Absent and keeps Present, Excused, and Guest views distinct", async () => {
+    const user = userEvent.setup();
+    const presentRow: AttendanceExpectedRow = {
+      ...EXPECTED_ROW,
+      expected_attendance_id: "expected-present",
+      enrollment_id: "enrollment-present",
+      member_name: "已出席會員",
+      state: "Present",
+      attendance: { ...MEMBER_ROW, event_id: POST_EVENT.event_id },
+    };
+    const excusedRow: AttendanceExpectedRow = {
+      ...EXPECTED_ROW,
+      expected_attendance_id: "expected-excused",
+      enrollment_id: "enrollment-excused",
+      member_name: "請假會員",
+      state: "Excused",
+      disposition: {
+        disposition_id: "disp-1",
+        event_id: POST_EVENT.event_id,
+        enrollment_id: "enrollment-excused",
+        member_user_id: "member-3",
+        disposition: "Excused",
+        reason: "家庭事務",
+        recorded_by: "admin-1",
+        recorded_at: "2026-08-13T10:00:00.000Z",
+      },
+    };
+    const absentRow = {
+      ...EXPECTED_ROW,
+      event_id: POST_EVENT.event_id,
+      member_name: "缺席會員",
+    };
+    const guestRow = { ...GUEST_ROW, event_id: POST_EVENT.event_id };
+    render(
+      <AttendanceRoster
+        event={POST_EVENT}
+        rows={[presentRow.attendance as AttendanceRow, guestRow]}
+        expectedRows={[absentRow, presentRow, excusedRow]}
+        counts={{
+          expected: 3,
+          present: 1,
+          not_yet: 0,
+          absent: 1,
+          excused: 1,
+          guests: 1,
+        }}
+      />
+    );
+
+    const absentTab = await screen.findByRole("tab", {
+      name: /缺席 \(1\)/u,
+    });
+    expect(absentTab).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByText("缺席會員")).toBeVisible();
+    expect(screen.queryByText("已出席會員")).not.toBeInTheDocument();
+    expect(screen.queryByText("請假會員")).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("tab", { name: /已出席 \(1\)/u }));
+    expect(screen.getByText("已出席會員")).toBeVisible();
+    expect(screen.queryByText("缺席會員")).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("tab", { name: /請假 \(1\)/u }));
+    expect(screen.getByText("請假會員")).toBeVisible();
+    expect(screen.queryByText("缺席會員")).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("tab", { name: /訪客 \(1\)/u }));
+    expect(screen.getByText("舊訪客")).toBeVisible();
+    expect(screen.queryByText("缺席會員")).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("tab", { name: /全部 \(4\)/u }));
+    expect(screen.getByText("缺席會員")).toBeVisible();
+    expect(screen.getByText("已出席會員")).toBeVisible();
+    expect(screen.getByText("請假會員")).toBeVisible();
+    expect(screen.getByText("舊訪客")).toBeVisible();
+  });
+
   test("requires a void reason before calling the mutation", async () => {
     const user = userEvent.setup();
     const onVoid = vi.fn().mockResolvedValue(true);
@@ -320,6 +407,7 @@ describe(AttendanceRoster, () => {
   test("opens participant detail with status, history, and context actions", async () => {
     const user = userEvent.setup();
     const onVoid = vi.fn();
+    const onExcuse = vi.fn();
     render(
       <AttendanceRoster
         event={EVENT}
@@ -332,6 +420,7 @@ describe(AttendanceRoster, () => {
           },
         ]}
         onVoid={onVoid}
+        onExcuse={onExcuse}
       />
     );
 
@@ -346,6 +435,79 @@ describe(AttendanceRoster, () => {
     expect(
       screen.getByRole("button", { name: COPY.attendance.voidAttendance })
     ).toBeVisible();
+    expect(
+      screen.queryByRole("button", { name: /標記請假/u })
+    ).not.toBeInTheDocument();
+  });
+
+  test("opens guest additional history from a 44px name target and preserves guest actions", async () => {
+    const user = userEvent.setup();
+    render(
+      <AttendanceRoster
+        event={EVENT}
+        rows={[GUEST_ROW]}
+        onVoid={vi.fn()}
+        onCorrectGuest={vi.fn()}
+      />
+    );
+
+    const guestName = screen.getByRole("button", { name: "舊訪客" });
+    expect(guestName).toHaveClass("min-h-11");
+    await user.click(guestName);
+    expect(
+      screen.getByRole("heading", {
+        name: COPY.attendance.participantDetailTitle,
+      })
+    ).toBeVisible();
+    expect(
+      screen.getByText(COPY.attendance.participantDetailHistory)
+    ).toBeVisible();
+    expect(screen.queryByText("guest_manual_code")).not.toBeInTheDocument();
+    expect(screen.getByText("訪客手動代碼")).toBeVisible();
+    expect(
+      screen.getByRole("button", { name: COPY.attendance.voidAttendance })
+    ).toBeVisible();
+    await user.click(
+      screen.getByRole("button", { name: COPY.attendance.correctGuest })
+    );
+    expect(
+      screen.getByLabelText(COPY.attendance.correctionReason)
+    ).toBeVisible();
+  });
+
+  test("omits voided member history from Guest/additional rows after re-check-in", async () => {
+    const activeRecheckIn: AttendanceRow = {
+      ...MEMBER_ROW,
+      attendance_id: "att-recheck-in",
+      member_user_id: EXPECTED_ROW.member_user_id,
+      checked_in_at: "2026-08-13T11:50:00.000Z",
+    };
+    const voidedHistory: AttendanceRow = {
+      ...activeRecheckIn,
+      attendance_id: "att-old-voided",
+      status: "Voided",
+      void_reason: "重複簽到",
+      voided_at: "2026-08-13T11:40:00.000Z",
+    };
+    const expectedWithRecheckIn: AttendanceExpectedRow = {
+      ...EXPECTED_ROW,
+      state: "Present",
+      attendance: activeRecheckIn,
+    };
+    const user = userEvent.setup();
+    render(
+      <AttendanceRoster
+        event={EVENT}
+        rows={[activeRecheckIn, voidedHistory, GUEST_ROW]}
+        expectedRows={[expectedWithRecheckIn]}
+      />
+    );
+
+    await user.click(screen.getByRole("tab", { name: /全部 \(2\)/u }));
+    expect(screen.getByText("會員三")).toBeVisible();
+    expect(screen.getByText("舊訪客")).toBeVisible();
+    expect(screen.queryByText("重複簽到")).not.toBeInTheDocument();
+    expect(screen.queryByText("att-old-voided")).not.toBeInTheDocument();
   });
 
   test("keeps the roster read-only while offline and offers the last-known state", () => {

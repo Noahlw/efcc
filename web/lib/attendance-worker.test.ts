@@ -1433,7 +1433,7 @@ describe("attendance Worker routes", () => {
         );
         assert.strictEqual(response.status, 200);
         const body = await json(response);
-        const data = body.data;
+        const { data } = body;
         assert.ok(
           data &&
             typeof data === "object" &&
@@ -1532,6 +1532,7 @@ describe("attendance Worker routes", () => {
         .run();
     }
   });
+
   test("operator chooser filters authorization before applying result limit", async () => {
     const member = await accessCookieFor("att-member", "att-member-password");
     await assignIdentity(
@@ -1575,7 +1576,7 @@ describe("attendance Worker routes", () => {
       );
       assert.strictEqual(response.status, 200);
       const body = await json(response);
-      const data = body.data;
+      const { data } = body;
       assert.ok(
         data &&
           typeof data === "object" &&
@@ -3002,6 +3003,25 @@ describe("attendance Worker routes", () => {
     assert.strictEqual(autoMaterializedLate?.source, "late_approval");
     assert.strictEqual(autoMaterializedLate?.state, "Present");
 
+    // Seed a legacy contradictory row to prove the roster projection keeps
+    // Present and Excused mutually exclusive even before the write guard is
+    // exercised.
+    await testDb()
+      .prepare(
+        `INSERT INTO event_attendance_dispositions
+          (disposition_id, event_id, enrollment_id, member_user_id,
+           disposition, reason, recorded_by, recorded_at)
+         VALUES (?, ?, ?, 'ATT-ADMIN', 'Excused', ?, 'ATT-ADMIN', ?)`
+      )
+      .bind(
+        "ATT-LEGACY-DISPOSITION",
+        eventId,
+        lateEnrollment,
+        "歷史請假資料",
+        new Date(Date.now() - 60_000).toISOString()
+      )
+      .run();
+
     const excuseLate = await worker.fetch(
       request(`/api/v1/attendance/events/${eventId}/excused`, {
         method: "POST",
@@ -3013,7 +3033,7 @@ describe("attendance Worker routes", () => {
       }),
       testEnv()
     );
-    assert.strictEqual(excuseLate.status, 201);
+    assert.strictEqual(excuseLate.status, 409);
     const presentWithExcuse = await worker.fetch(
       request(`/api/v1/attendance/events/${eventId}/roster`, {
         headers: { Cookie: `${ACCESS_COOKIE_NAME}=${admin}` },
@@ -3022,13 +3042,33 @@ describe("attendance Worker routes", () => {
     );
     const presentWithExcuseBody = await json(presentWithExcuse);
     const presentData = presentWithExcuseBody.data as {
-      expected: { enrollment_id: string; state: string }[];
+      expected: {
+        enrollment_id: string;
+        state: string;
+        disposition: { reason: string } | null;
+      }[];
     };
-    assert.strictEqual(
-      presentData.expected.find((row) => row.enrollment_id === lateEnrollment)
-        ?.state,
-      "Present"
+    const contradictoryProjection = presentData.expected.find(
+      (row) => row.enrollment_id === lateEnrollment
     );
+    assert.strictEqual(contradictoryProjection?.state, "Present");
+    assert.strictEqual(contradictoryProjection?.disposition, null);
+    const excuseLateBody = await json(excuseLate);
+    assert.strictEqual(
+      (excuseLateBody as { code: string }).code,
+      "ATTENDANCE_ALREADY_PRESENT"
+    );
+    const excuseConflictAudit = await testDb()
+      .prepare(
+        `SELECT outcome, reason FROM audit_events
+          WHERE action = 'attendance.excused' AND correlation_id = ?`
+      )
+      .bind(excuseLateBody.requestId)
+      .first<{ outcome: string; reason: string | null }>();
+    assert.deepStrictEqual(excuseConflictAudit, {
+      outcome: "CONFLICT",
+      reason: "ACTIVE_ATTENDANCE_EXISTS",
+    });
 
     const voidResponse = await worker.fetch(
       request(`/api/v1/attendance/${lateAttendanceId}/void`, {
@@ -3039,6 +3079,18 @@ describe("attendance Worker routes", () => {
       testEnv()
     );
     assert.strictEqual(voidResponse.status, 200);
+    const excuseAfterVoid = await worker.fetch(
+      request(`/api/v1/attendance/events/${eventId}/excused`, {
+        method: "POST",
+        headers: { Cookie: `${ACCESS_COOKIE_NAME}=${admin}` },
+        body: JSON.stringify({
+          enrollment_id: lateEnrollment,
+          reason: "其他：臨時請假",
+        }),
+      }),
+      testEnv()
+    );
+    assert.strictEqual(excuseAfterVoid.status, 200);
     const excusedAfterVoid = await worker.fetch(
       request(`/api/v1/attendance/events/${eventId}/roster`, {
         headers: { Cookie: `${ACCESS_COOKIE_NAME}=${admin}` },
@@ -3282,16 +3334,14 @@ describe("attendance Worker routes", () => {
     );
     assert.strictEqual(response.status, 200);
     const responseBody = await json(response);
-    const materialization = (
-      responseBody.data as {
-        materialization: {
-          status: string;
-          materialized: boolean;
-          added_expected: number;
-          snapshot: unknown;
-        };
-      }
-    ).materialization;
+    const { materialization } = responseBody.data as {
+      materialization: {
+        status: string;
+        materialized: boolean;
+        added_expected: number;
+        snapshot: unknown;
+      };
+    };
     assert.deepStrictEqual(materialization, {
       status: "not_started",
       materialized: false,

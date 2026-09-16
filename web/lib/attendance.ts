@@ -1096,17 +1096,22 @@ async function loadAttendanceRoster(
     );
     const disposition =
       dispositionByEnrollment.get(record.enrollment_id) ?? null;
+    // An active attendance is authoritative. Do not expose a legacy or raced
+    // Excused row alongside Present; after the attendance is voided the same
+    // disposition can surface again as the truthful post-event state.
+    const projectedDisposition =
+      attendance?.status === "Active" ? null : disposition;
     const state: AttendanceState =
       event.status === "Cancelled"
         ? "Cancelled"
         : attendance?.status === "Active"
           ? "Present"
-          : disposition
+          : projectedDisposition
             ? "Excused"
             : eventWindowHasClosed(event)
               ? "Absent"
               : "Not Yet";
-    return { ...record, state, attendance, disposition };
+    return { ...record, state, attendance, disposition: projectedDisposition };
   });
 
   const counts: AttendanceRosterCounts = {
@@ -2128,6 +2133,33 @@ export async function handleRecordExcused(
     }
   }
 
+  const activeAttendance = await env.DB.prepare(
+    `SELECT attendance_id
+       FROM attendances
+      WHERE event_id = ? AND member_user_id = ? AND status = 'Active'
+      LIMIT 1`
+  )
+    .bind(event.event_id, enrollment.member_user_id)
+    .first<{ attendance_id: string }>();
+  if (activeAttendance) {
+    await audit(env.DB, {
+      actorUserId: current.user_id,
+      action: "attendance.excused",
+      entityType: "AttendanceDisposition",
+      entityId: enrollmentId,
+      outcome: "CONFLICT",
+      reason: "ACTIVE_ATTENDANCE_EXISTS",
+      oldValue: { attendance_id: activeAttendance.attendance_id },
+      correlationId: id,
+    });
+    return problem(
+      409,
+      "ATTENDANCE_ALREADY_PRESENT",
+      "此成員已有有效出席記錄，不能同時標記請假。",
+      id
+    );
+  }
+
   const existing = await env.DB.prepare(
     `SELECT disposition_id, event_id, enrollment_id, member_user_id,
             disposition, reason, recorded_by, recorded_at
@@ -2159,11 +2191,15 @@ export async function handleRecordExcused(
 
   const dispositionId = existing?.disposition_id ?? crypto.randomUUID();
   const recordedAt = new Date().toISOString();
-  await env.DB.prepare(
+  const writeResult = await env.DB.prepare(
     `INSERT INTO event_attendance_dispositions
       (disposition_id, event_id, enrollment_id, member_user_id, disposition,
        reason, recorded_by, recorded_at)
-     VALUES (?, ?, ?, ?, 'Excused', ?, ?, ?)
+     SELECT ?, ?, ?, ?, 'Excused', ?, ?, ?
+      WHERE NOT EXISTS (
+        SELECT 1 FROM attendances
+         WHERE event_id = ? AND member_user_id = ? AND status = 'Active'
+      )
      ON CONFLICT(event_id, enrollment_id) DO UPDATE SET
        member_user_id = excluded.member_user_id,
        disposition = excluded.disposition,
@@ -2178,9 +2214,40 @@ export async function handleRecordExcused(
       enrollment.member_user_id,
       reason,
       current.user_id,
-      recordedAt
+      recordedAt,
+      event.event_id,
+      enrollment.member_user_id
     )
     .run();
+  if (writeResult.meta.changes === 0) {
+    const racedAttendance = await env.DB.prepare(
+      `SELECT attendance_id
+         FROM attendances
+        WHERE event_id = ? AND member_user_id = ? AND status = 'Active'
+        LIMIT 1`
+    )
+      .bind(event.event_id, enrollment.member_user_id)
+      .first<{ attendance_id: string }>();
+    if (racedAttendance) {
+      await audit(env.DB, {
+        actorUserId: current.user_id,
+        action: "attendance.excused",
+        entityType: "AttendanceDisposition",
+        entityId: enrollmentId,
+        outcome: "CONFLICT",
+        reason: "ACTIVE_ATTENDANCE_EXISTS",
+        oldValue: { attendance_id: racedAttendance.attendance_id },
+        correlationId: id,
+      });
+      return problem(
+        409,
+        "ATTENDANCE_ALREADY_PRESENT",
+        "此成員已有有效出席記錄，不能同時標記請假。",
+        id
+      );
+    }
+    throw new Error("Excused attendance disposition was not written.");
+  }
   await audit(env.DB, {
     actorUserId: current.user_id,
     action: "attendance.excused",

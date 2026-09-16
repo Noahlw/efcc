@@ -1,5 +1,5 @@
 /* oxlint-disable vitest/max-expects, vitest/require-mock-type-parameters, vitest/require-top-level-describe, vitest/prefer-called-with, vitest/prefer-mock-promise-shorthand, eslint/require-await */
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
@@ -259,6 +259,45 @@ describe("EVT-01 event detail", () => {
     );
   });
 
+  test("future manager Event with no manual code still exposes one unavailable Event QR state with Retry", async () => {
+    const now = Date.now();
+    const futureEvent = {
+      ...detailFixture().event,
+      starts_at: new Date(now + 2 * 60 * 60_000).toISOString(),
+      ends_at: new Date(now + 3 * 60 * 60_000).toISOString(),
+      check_in_window_opens_at: new Date(now + 90 * 60_000).toISOString(),
+      check_in_window_closes_at: new Date(now + 3 * 60 * 60_000).toISOString(),
+      manual_check_in_code: null,
+    } as EventDetailData["event"];
+    mocks.getEvent.mockResolvedValue(detailFixture({ event: futureEvent }));
+    const user = userEvent.setup();
+    render(
+      <EventDetail
+        programId="program-1"
+        eventId="event-1"
+        canManage
+        onBack={() => {}}
+        backHref="/programs"
+      />
+    );
+
+    const openQr = await screen.findByRole("button", {
+      name: COPY.attendance.eventCheckInSheetOpen,
+    });
+    await user.click(openQr);
+    await expect(
+      screen.findByText(COPY.attendance.eventCheckInSheetUnavailable)
+    ).resolves.toBeVisible();
+    expect(
+      screen.getByRole("button", { name: COPY.error.retry })
+    ).toBeVisible();
+    expect(
+      screen.queryByAltText(COPY.attendance.eventCheckInSheetQrLabel)
+    ).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: COPY.error.retry }));
+    expect(mocks.getProgramAttendanceArtifact).not.toHaveBeenCalled();
+  });
+
   test("keeps current Event facts in downloaded and printed QR artifacts", async () => {
     mocks.getEvent.mockResolvedValue(detailFixture());
     mocks.getProgramAttendanceArtifact.mockResolvedValue({
@@ -284,7 +323,9 @@ describe("EVT-01 event detail", () => {
       configurable: true,
       value: vi.fn(),
     });
-    vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
+    const anchorClick = vi
+      .spyOn(HTMLAnchorElement.prototype, "click")
+      .mockImplementation(() => {});
     const printDocument = document.implementation.createHTMLDocument();
     const print = vi.fn();
     vi.spyOn(window, "open").mockReturnValue({
@@ -305,7 +346,10 @@ describe("EVT-01 event detail", () => {
       );
 
       await clickMoreAction(user, COPY.attendance.eventCheckInSheetOpen);
-      await screen.findByAltText(COPY.attendance.eventCheckInSheetQrLabel);
+      const qrImage = await screen.findByAltText(
+        COPY.attendance.eventCheckInSheetQrLabel
+      );
+      fireEvent.load(qrImage);
       await user.click(
         screen.getByRole("button", {
           name: COPY.attendance.eventCheckInSheetDownload,
@@ -317,6 +361,9 @@ describe("EVT-01 event detail", () => {
       expect(downloadedSvg).toContain("顯恩堂主日學");
       expect(downloadedSvg).toContain("教會禮堂");
       expect(downloadedSvg).toContain("ABCD1234");
+      expect(
+        screen.getByText(COPY.attendance.eventQrCodeDownloadSuccess)
+      ).toBeVisible();
 
       await user.click(
         screen.getByRole("button", {
@@ -337,6 +384,81 @@ describe("EVT-01 event detail", () => {
         configurable: true,
         value: originalRevokeObjectUrl,
       });
+      anchorClick.mockRestore();
+    }
+  });
+
+  test("wraps long Chinese Event facts in the downloaded SVG artifact", async () => {
+    const longEvent = {
+      ...detailFixture().event,
+      name: "門徒訓練週會一二三四五六七八九十甲乙丙丁",
+      program_name: "顯恩堂主日學課程資料及新朋友迎新聚會",
+      location: "九龍長沙灣教會副堂禮堂入口旁集合處",
+    } as EventDetailData["event"];
+    mocks.getEvent.mockResolvedValue(detailFixture({ event: longEvent }));
+    mocks.getProgramAttendanceArtifact.mockResolvedValue({
+      artifact: {
+        program_id: "program-1",
+        program_name: longEvent.program_name,
+        check_in_token: "program-token-1",
+        can_rotate: false,
+      },
+    });
+    const downloaded: Blob[] = [];
+    const originalCreateObjectUrl = URL.createObjectURL;
+    const originalRevokeObjectUrl = URL.revokeObjectURL;
+    const anchorClick = vi
+      .spyOn(HTMLAnchorElement.prototype, "click")
+      .mockImplementation(() => {});
+    Object.defineProperty(URL, "createObjectURL", {
+      configurable: true,
+      value: vi.fn((value: Blob) => {
+        downloaded.push(value);
+        return "blob:long-event-qr";
+      }),
+    });
+    Object.defineProperty(URL, "revokeObjectURL", {
+      configurable: true,
+      value: vi.fn(),
+    });
+    const user = userEvent.setup();
+    try {
+      render(
+        <EventDetail
+          programId="program-1"
+          eventId="event-1"
+          canManage
+          onBack={() => {}}
+          backHref="/programs"
+        />
+      );
+      await clickMoreAction(user, COPY.attendance.eventCheckInSheetOpen);
+      const qrImage = await screen.findByAltText(
+        COPY.attendance.eventCheckInSheetQrLabel
+      );
+      fireEvent.load(qrImage);
+      await user.click(
+        screen.getByRole("button", {
+          name: COPY.attendance.eventCheckInSheetDownload,
+        })
+      );
+      const downloadedSvg = await downloaded[0]?.text();
+      expect(downloadedSvg).toContain('<tspan x="450" dy="52">');
+      expect(downloadedSvg).toContain(longEvent.location);
+      const viewBox = downloadedSvg.match(/viewBox="0 0 900 \d+"/u)?.[0];
+      expect(viewBox).toBeDefined();
+      const height = Number(viewBox?.slice(viewBox.lastIndexOf(" ") + 1, -1));
+      expect(height).toBeGreaterThan(1120);
+    } finally {
+      Object.defineProperty(URL, "createObjectURL", {
+        configurable: true,
+        value: originalCreateObjectUrl,
+      });
+      Object.defineProperty(URL, "revokeObjectURL", {
+        configurable: true,
+        value: originalRevokeObjectUrl,
+      });
+      anchorClick.mockRestore();
     }
   });
 
@@ -368,10 +490,155 @@ describe("EVT-01 event detail", () => {
       screen.findByText(COPY.attendance.eventQrCodeGenerateError)
     ).resolves.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: COPY.error.retry }));
+    const qrImage = await screen.findByAltText(
+      COPY.attendance.eventCheckInSheetQrLabel
+    );
+    fireEvent.load(qrImage);
+    expect(qrImage).toBeVisible();
+    expect(mocks.getProgramAttendanceArtifact).toHaveBeenCalledTimes(2);
+  });
+
+  test("Event QR image error exposes Retry before actions become ready", async () => {
+    mocks.getEvent.mockResolvedValue(detailFixture());
+    mocks.getProgramAttendanceArtifact.mockResolvedValue({
+      artifact: {
+        program_id: "program-1",
+        program_name: "顯恩堂主日學",
+        check_in_token: "program-token-1",
+        can_rotate: false,
+      },
+    });
+    const user = userEvent.setup();
+    render(
+      <EventDetail
+        programId="program-1"
+        eventId="event-1"
+        canManage
+        onBack={() => {}}
+        backHref="/programs"
+      />
+    );
+
+    await clickMoreAction(user, COPY.attendance.eventCheckInSheetOpen);
+    const firstImage = await screen.findByAltText(
+      COPY.attendance.eventCheckInSheetQrLabel
+    );
+    fireEvent.error(firstImage);
     await expect(
-      screen.findByAltText(COPY.attendance.eventCheckInSheetQrLabel)
+      screen.findByText(COPY.attendance.eventQrCodeImageError)
+    ).resolves.toBeVisible();
+    expect(
+      screen.getByRole("button", { name: COPY.error.retry })
+    ).toBeVisible();
+
+    await user.click(screen.getByRole("button", { name: COPY.error.retry }));
+    const retryImage = await screen.findByAltText(
+      COPY.attendance.eventCheckInSheetQrLabel
+    );
+    fireEvent.load(retryImage);
+    await expect(
+      screen.findByTestId("event-qr-image-ready")
     ).resolves.toBeVisible();
     expect(mocks.getProgramAttendanceArtifact).toHaveBeenCalledTimes(2);
+  });
+
+  test("blocked Event QR print exposes Retry and recovers after the popup opens", async () => {
+    mocks.getEvent.mockResolvedValue(detailFixture());
+    mocks.getProgramAttendanceArtifact.mockResolvedValue({
+      artifact: {
+        program_id: "program-1",
+        program_name: "顯恩堂主日學",
+        check_in_token: "program-token-1",
+        can_rotate: false,
+      },
+    });
+    const printDocument = document.implementation.createHTMLDocument();
+    const print = vi.fn();
+    const open = vi
+      .spyOn(window, "open")
+      .mockReturnValueOnce(null)
+      .mockReturnValue({
+        document: printDocument,
+        focus: vi.fn(),
+        print,
+      } as unknown as Window);
+    const user = userEvent.setup();
+    try {
+      render(
+        <EventDetail
+          programId="program-1"
+          eventId="event-1"
+          canManage
+          onBack={() => {}}
+          backHref="/programs"
+        />
+      );
+      await clickMoreAction(user, COPY.attendance.eventCheckInSheetOpen);
+      const qrImage = await screen.findByAltText(
+        COPY.attendance.eventCheckInSheetQrLabel
+      );
+      fireEvent.load(qrImage);
+      await user.click(
+        screen.getByRole("button", {
+          name: COPY.attendance.eventCheckInSheetPrint,
+        })
+      );
+      await expect(
+        screen.findByText(COPY.attendance.eventQrCodePrintError)
+      ).resolves.toBeVisible();
+      await user.click(screen.getByRole("button", { name: COPY.error.retry }));
+      await expect(
+        screen.findByText(COPY.attendance.eventQrCodePrintSuccess)
+      ).resolves.toBeVisible();
+      expect(print).toHaveBeenCalledOnce();
+    } finally {
+      open.mockRestore();
+    }
+  });
+
+  test("cancelled Event QR download request exposes a retryable failure", async () => {
+    mocks.getEvent.mockResolvedValue(detailFixture());
+    mocks.getProgramAttendanceArtifact.mockResolvedValue({
+      artifact: {
+        program_id: "program-1",
+        program_name: "顯恩堂主日學",
+        check_in_token: "program-token-1",
+        can_rotate: false,
+      },
+    });
+    const user = userEvent.setup();
+    let anchorClick: ReturnType<typeof vi.spyOn> | null = null;
+    try {
+      render(
+        <EventDetail
+          programId="program-1"
+          eventId="event-1"
+          canManage
+          onBack={() => {}}
+          backHref="/programs"
+        />
+      );
+      await clickMoreAction(user, COPY.attendance.eventCheckInSheetOpen);
+      const qrImage = await screen.findByAltText(
+        COPY.attendance.eventCheckInSheetQrLabel
+      );
+      fireEvent.load(qrImage);
+      anchorClick = vi
+        .spyOn(HTMLAnchorElement.prototype, "click")
+        .mockImplementation(() => {
+          throw new Error("download-failed");
+        });
+      await user.click(
+        screen.getByRole("button", {
+          name: COPY.attendance.eventCheckInSheetDownload,
+        })
+      );
+      await expect(
+        screen.findByText(COPY.attendance.eventQrCodeDownloadError)
+      ).resolves.toBeVisible();
+    } finally {
+      anchorClick?.mockRestore();
+    }
   });
 
   test("renders the server-projected schedule exception", async () => {
@@ -423,7 +690,7 @@ describe("EVT-01 event detail", () => {
     expect(onBack).toHaveBeenCalledOnce();
   });
 
-  test("edit form saves identity, schedule, and check-in window changes", async () => {
+  test("edit form saves identity changes without changing the schedule", async () => {
     mocks.getEvent.mockResolvedValue(detailFixture());
     mocks.updateEvent.mockResolvedValue({
       event: { ...detailFixture().event, name: "改名聚會" },
@@ -458,12 +725,74 @@ describe("EVT-01 event detail", () => {
     expect(mocks.updateEvent).toHaveBeenCalledWith("program-1", "event-1", {
       name: "改名聚會",
       location: "教會禮堂",
-      starts_at: "2026-09-12T10:00:00.000Z",
-      ends_at: "2026-09-12T11:30:00.000Z",
-      check_in_window_opens_at: "2026-09-12T09:30:00.000Z",
-      check_in_window_closes_at: "2026-09-12T12:00:00.000Z",
       event_type: "崇拜",
       reason: "更正聚會資料",
+    });
+  });
+
+  test("reschedule form sends only schedule fields through its distinct intent", async () => {
+    mocks.getEvent.mockResolvedValue(detailFixture());
+    mocks.updateEvent.mockResolvedValue({
+      event: {
+        ...detailFixture().event,
+        starts_at: "2026-09-13T10:00:00.000Z",
+      },
+    });
+    const user = userEvent.setup();
+    render(
+      <EventDetail
+        programId="program-1"
+        eventId="event-1"
+        canManage
+        onBack={() => {}}
+        backHref="/programs"
+      />
+    );
+
+    await clickMoreAction(user, COPY.programs.eventReschedule);
+    expect(screen.getByTestId("event-edit-form")).toHaveAttribute(
+      "data-edit-intent",
+      "reschedule"
+    );
+    expect(
+      screen.queryByLabelText(COPY.programs.eventName)
+    ).not.toBeInTheDocument();
+    await user.clear(screen.getByLabelText(COPY.programs.eventStart));
+    await user.type(
+      screen.getByLabelText(COPY.programs.eventStart),
+      "2026-09-13T18:00"
+    );
+    await user.clear(screen.getByLabelText(COPY.programs.eventEnd));
+    await user.type(
+      screen.getByLabelText(COPY.programs.eventEnd),
+      "2026-09-13T19:30"
+    );
+    await user.clear(
+      screen.getByLabelText(COPY.programs.eventCheckInWindowOpensAt)
+    );
+    await user.type(
+      screen.getByLabelText(COPY.programs.eventCheckInWindowOpensAt),
+      "2026-09-13T17:30"
+    );
+    await user.clear(
+      screen.getByLabelText(COPY.programs.eventCheckInWindowClosesAt)
+    );
+    await user.type(
+      screen.getByLabelText(COPY.programs.eventCheckInWindowClosesAt),
+      "2026-09-13T20:00"
+    );
+    await user.click(
+      screen.getByRole("button", { name: COPY.programs.eventRescheduleSave })
+    );
+
+    await expect(
+      screen.findByText(COPY.programs.eventRescheduledNotice)
+    ).resolves.toBeInTheDocument();
+    expect(mocks.updateEvent).toHaveBeenCalledWith("program-1", "event-1", {
+      starts_at: "2026-09-13T10:00:00.000Z",
+      ends_at: "2026-09-13T11:30:00.000Z",
+      check_in_window_opens_at: "2026-09-13T09:30:00.000Z",
+      check_in_window_closes_at: "2026-09-13T12:00:00.000Z",
     });
   });
 
@@ -506,15 +835,10 @@ describe("EVT-01 event detail", () => {
     await expect(
       screen.findByText(COPY.programs.editWithAttendanceNotice)
     ).resolves.toBeInTheDocument();
-    // Empty window inputs submit as an explicit null (clear), not as a
-    // required-field block, so the edit reaches the server.
+    // Edit intent owns identity fields only; it does not mutate schedule data.
     expect(mocks.updateEvent).toHaveBeenCalledWith("program-1", "event-1", {
       name: "改名聚會",
       location: null,
-      starts_at: "2026-09-12T10:00:00.000Z",
-      ends_at: "2026-09-12T11:30:00.000Z",
-      check_in_window_opens_at: null,
-      check_in_window_closes_at: null,
       event_type: "崇拜",
       reason: "補充聚會資料",
     });
@@ -1216,6 +1540,91 @@ describe("EVT-01 event detail", () => {
     ).toBeInTheDocument();
   });
 
+  test("participant own-Attendance read failure keeps the CTA unconfirmed until Retry succeeds", async () => {
+    const now = Date.now();
+    mocks.getEvent.mockResolvedValue(
+      detailFixture({
+        event: {
+          ...detailFixture().event,
+          check_in_window_opens_at: new Date(now - 30 * 60_000).toISOString(),
+          check_in_window_closes_at: new Date(now + 30 * 60_000).toISOString(),
+        },
+      })
+    );
+    mocks.getOwnAttendance
+      .mockRejectedValueOnce(new Error("attendance unavailable"))
+      .mockResolvedValueOnce({
+        state: "Not Yet",
+        attendance: null,
+        disposition: null,
+      });
+    const user = userEvent.setup();
+    render(
+      <EventDetail
+        programId="program-1"
+        eventId="event-1"
+        canManage={false}
+        onBack={() => {}}
+        backHref="/programs"
+      />
+    );
+
+    await expect(
+      screen.findByText(COPY.programs.participantAttendanceError)
+    ).resolves.toBeVisible();
+    expect(
+      screen.queryByRole("link", { name: COPY.programs.goToScan })
+    ).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: COPY.error.retry }));
+    await expect(
+      screen.findByRole("link", { name: COPY.programs.goToScan })
+    ).resolves.toBeVisible();
+    expect(mocks.getOwnAttendance).toHaveBeenCalledTimes(2);
+  });
+
+  test.each([
+    ["FORBIDDEN", COPY.programs.participantAttendanceForbidden],
+    ["NOT_FOUND", COPY.programs.participantAttendanceNotFound],
+  ] as const)(
+    "participant own-Attendance %s response explains recovery and links to Program Detail",
+    async (code, message) => {
+      const now = Date.now();
+      mocks.getEvent.mockResolvedValue(
+        detailFixture({
+          event: {
+            ...detailFixture().event,
+            check_in_window_opens_at: new Date(now - 30 * 60_000).toISOString(),
+            check_in_window_closes_at: new Date(
+              now + 30 * 60_000
+            ).toISOString(),
+          },
+        })
+      );
+      mocks.getOwnAttendance.mockRejectedValueOnce(
+        new RpcError({ code, status: code === "FORBIDDEN" ? 403 : 404 })
+      );
+      render(
+        <EventDetail
+          programId="program-1"
+          eventId="event-1"
+          canManage={false}
+          onBack={() => {}}
+          backHref="/programs?program=program-1"
+        />
+      );
+
+      await expect(screen.findByText(message)).resolves.toBeVisible();
+      expect(
+        screen.getByRole("link", {
+          name: COPY.programs.eventDetailViewProgram,
+        })
+      ).toHaveAttribute("href", "/programs?program=program-1");
+      expect(
+        screen.queryByRole("link", { name: COPY.programs.goToScan })
+      ).not.toBeInTheDocument();
+    }
+  );
+
   test("participant ended state does not show opening instructions", async () => {
     mocks.getEvent.mockResolvedValue(
       detailFixture({
@@ -1248,6 +1657,55 @@ describe("EVT-01 event detail", () => {
       screen.queryByRole("link", { name: COPY.programs.goToScan })
     ).not.toBeInTheDocument();
   });
+
+  test.each([
+    ["Absent", COPY.programs.participantAttendanceAbsent],
+    ["Excused", COPY.programs.participantAttendanceExcused],
+  ] as const)(
+    "participant ended %s state stays truthful and has no scan CTA",
+    async (state, label) => {
+      mocks.getEvent.mockResolvedValue(
+        detailFixture({
+          event: {
+            ...detailFixture().event,
+            starts_at: "2026-09-12T10:00:00.000Z",
+            ends_at: "2026-09-12T11:30:00.000Z",
+            check_in_window_opens_at: "2026-09-12T09:30:00.000Z",
+            check_in_window_closes_at: "2026-09-12T12:00:00.000Z",
+          },
+        })
+      );
+      mocks.getOwnAttendance.mockResolvedValueOnce({
+        state,
+        attendance: null,
+        disposition:
+          state === "Excused"
+            ? {
+                disposition: "Excused",
+                reason: "家庭事務",
+                recorded_at: "2026-09-12T09:00:00.000Z",
+              }
+            : null,
+      });
+      render(
+        <EventDetail
+          programId="program-1"
+          eventId="event-1"
+          canManage={false}
+          onBack={() => {}}
+          backHref="/programs"
+        />
+      );
+
+      await expect(screen.findByText(label)).resolves.toBeVisible();
+      await expect(
+        screen.findByText(COPY.programs.participantAttendanceRecorded)
+      ).resolves.toBeVisible();
+      expect(
+        screen.queryByRole("link", { name: COPY.programs.goToScan })
+      ).not.toBeInTheDocument();
+    }
+  );
 
   test("participant projection keeps cancelled Event history explicit without a scanner CTA", async () => {
     mocks.getEvent.mockResolvedValue(

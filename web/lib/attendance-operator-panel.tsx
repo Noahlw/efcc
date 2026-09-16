@@ -83,7 +83,16 @@ const EXCUSE_OPTIONS = ["身體不適", "工作或上課", "家庭事務", "其�
 type ExcuseCategory = (typeof EXCUSE_OPTIONS)[number];
 
 type MemberDirectory = Readonly<Record<string, AttendanceMember>>;
-type AttendanceRosterFilter = "not-yet" | "checked-in" | "all";
+type LiveAttendanceRosterFilter = "not-yet" | "checked-in" | "all";
+type PostEventAttendanceRosterFilter =
+  | "all"
+  | "present"
+  | "excused"
+  | "absent"
+  | "guest";
+type AttendanceRosterFilter =
+  | LiveAttendanceRosterFilter
+  | PostEventAttendanceRosterFilter;
 
 const expectedRowVariants = cva(
   "grid min-w-0 gap-3 border-b border-[var(--line)] py-3 pl-3",
@@ -369,6 +378,8 @@ export const AttendanceRoster = ({
   const [detailRow, setDetailRow] = useState<AttendanceExpectedRow | null>(
     null
   );
+  const [detailAdditionalRow, setDetailAdditionalRow] =
+    useState<AttendanceRow | null>(null);
   const [rosterFilter, setRosterFilter] =
     useState<AttendanceRosterFilter>("not-yet");
   const voidInputRef = useRef<HTMLInputElement>(null);
@@ -393,23 +404,62 @@ export const AttendanceRoster = ({
     }
   }, [excusingId]);
 
-  useEffect(() => {
-    setRosterFilter("not-yet");
-  }, [event.event_id]);
-
   const activeRows = rows.filter((row) => row.status === "Active");
   const expectedAttendanceIds = new Set(
     expectedRows.flatMap(({ attendance }) =>
       attendance ? [attendance.attendance_id] : []
     )
   );
-  const additionalRows = rows.filter(
-    (row) => !expectedAttendanceIds.has(row.attendance_id)
-  );
   const hasExpectedProjection = expectedRows.length > 0;
+  const additionalRows = rows.filter(
+    (row) =>
+      !expectedAttendanceIds.has(row.attendance_id) &&
+      (!hasExpectedProjection ||
+        row.member_user_id === null ||
+        row.status === "Active")
+  );
+  const statusIsOpen = attendanceWindowIsOpen(event);
+  const eventQrAvailable = statusIsOpen;
+  const eventEnded =
+    Number.isFinite(Date.parse(event.ends_at)) &&
+    Date.parse(event.ends_at) <= Date.now();
+  const hasAbsent = expectedRows.some((row) => row.state === "Absent");
+  const isPostEventRoster =
+    hasExpectedProjection &&
+    !statusIsOpen &&
+    (eventEnded ||
+      expectedRows.some(
+        (row) => row.state === "Absent" || row.state === "Excused"
+      ));
+
+  useEffect(() => {
+    setRosterFilter(
+      isPostEventRoster ? (hasAbsent ? "absent" : "all") : "not-yet"
+    );
+  }, [event.event_id, hasAbsent, isPostEventRoster]);
+
   const visibleExpectedRows = expectedRows.filter((row) => {
     if (!hasExpectedProjection || rosterFilter === "all") {
       return true;
+    }
+    if (isPostEventRoster) {
+      switch (rosterFilter) {
+        case "present": {
+          return row.state === "Present";
+        }
+        case "excused": {
+          return row.state === "Excused";
+        }
+        case "absent": {
+          return row.state === "Absent";
+        }
+        case "guest": {
+          return false;
+        }
+        default: {
+          return true;
+        }
+      }
     }
     if (rosterFilter === "checked-in") {
       return row.state === "Present";
@@ -417,13 +467,17 @@ export const AttendanceRoster = ({
     return row.state !== "Present" && row.state !== "Cancelled";
   });
   const visibleAdditionalRows = hasExpectedProjection
-    ? rosterFilter === "all"
-      ? additionalRows
-      : rosterFilter === "checked-in"
-        ? additionalRows.filter((row) => row.status === "Active")
+    ? isPostEventRoster
+      ? rosterFilter === "all" || rosterFilter === "guest"
+        ? additionalRows
         : []
+      : rosterFilter === "all"
+        ? additionalRows
+        : rosterFilter === "checked-in"
+          ? additionalRows.filter((row) => row.status === "Active")
+          : []
     : additionalRows;
-  const rosterFilterCounts = {
+  const liveRosterFilterCounts = {
     "not-yet": expectedRows.filter(
       (row) => row.state !== "Present" && row.state !== "Cancelled"
     ).length,
@@ -433,8 +487,18 @@ export const AttendanceRoster = ({
         ? additionalRows.filter((row) => row.status === "Active").length
         : activeRows.length),
     all: expectedRows.length + additionalRows.length,
-  } satisfies Record<AttendanceRosterFilter, number>;
-  const statusIsOpen = attendanceWindowIsOpen(event);
+  } satisfies Record<LiveAttendanceRosterFilter, number>;
+  const postEventRosterFilterCounts = {
+    all: expectedRows.length + additionalRows.length,
+    present: expectedRows.filter((row) => row.state === "Present").length,
+    excused: expectedRows.filter((row) => row.state === "Excused").length,
+    absent: expectedRows.filter((row) => row.state === "Absent").length,
+    guest: additionalRows.length,
+  } satisfies Record<PostEventAttendanceRosterFilter, number>;
+  const countForRosterFilter = (value: AttendanceRosterFilter) =>
+    isPostEventRoster
+      ? postEventRosterFilterCounts[value as PostEventAttendanceRosterFilter]
+      : liveRosterFilterCounts[value as LiveAttendanceRosterFilter];
   const eventTitle = event.name?.trim() || event.program_name;
   const checkedInCount = counts?.present ?? activeRows.length;
   const expectedCount = counts?.expected ?? rows.length;
@@ -500,6 +564,7 @@ export const AttendanceRoster = ({
     <Sheet
       open={
         detailRow !== null ||
+        detailAdditionalRow !== null ||
         voidingId !== null ||
         correctionId !== null ||
         excusingId !== null
@@ -507,6 +572,7 @@ export const AttendanceRoster = ({
       onOpenChange={(open) => {
         if (!open) {
           setDetailRow(null);
+          setDetailAdditionalRow(null);
           setVoidingId(null);
           setCorrectionId(null);
           setExcusingId(null);
@@ -613,16 +679,18 @@ export const AttendanceRoster = ({
             </Alert>
           )}
           <div className="flex flex-wrap gap-3 mt-2">
-            {onOpenCheckInSheet && event.manual_check_in_code && (
-              <Button
-                variant="outline"
-                type="button"
-                onClick={onOpenCheckInSheet}
-                disabled={busy || readOnly}
-              >
-                {COPY.attendance.eventCheckInSheetOpen}
-              </Button>
-            )}
+            {onOpenCheckInSheet &&
+              event.manual_check_in_code &&
+              eventQrAvailable && (
+                <Button
+                  variant="outline"
+                  type="button"
+                  onClick={onOpenCheckInSheet}
+                  disabled={busy || readOnly}
+                >
+                  {COPY.attendance.eventCheckInSheetOpen}
+                </Button>
+              )}
             {onPrint && (
               <Button
                 variant="outline"
@@ -660,18 +728,27 @@ export const AttendanceRoster = ({
             {hasExpectedProjection && (
               <div className="mt-4 grid min-w-0 gap-2 print:hidden">
                 <p className="m-0 text-sm text-[var(--ink-muted)]">
-                  {COPY.attendance.rosterFilterHint}
+                  {isPostEventRoster
+                    ? COPY.attendance.rosterPostEventFilterHint
+                    : COPY.attendance.rosterFilterHint}
                 </p>
                 <ScreenTabs
                   aria-label={COPY.attendance.rosterFilterLabel}
                   role="tablist"
                 >
-                  {(
-                    [
-                      ["not-yet", COPY.attendance.rosterFilterNotYet],
-                      ["checked-in", COPY.attendance.rosterFilterCheckedIn],
-                      ["all", COPY.attendance.rosterFilterAll],
-                    ] as const
+                  {(isPostEventRoster
+                    ? ([
+                        ["all", COPY.attendance.rosterFilterAll],
+                        ["present", COPY.attendance.rosterFilterPresent],
+                        ["excused", COPY.attendance.rosterFilterExcused],
+                        ["absent", COPY.attendance.rosterFilterAbsent],
+                        ["guest", COPY.attendance.rosterFilterGuest],
+                      ] as const)
+                    : ([
+                        ["not-yet", COPY.attendance.rosterFilterNotYet],
+                        ["checked-in", COPY.attendance.rosterFilterCheckedIn],
+                        ["all", COPY.attendance.rosterFilterAll],
+                      ] as const)
                   ).map(([value, label]) => (
                     <ScreenTab
                       key={value}
@@ -682,7 +759,7 @@ export const AttendanceRoster = ({
                       selected={rosterFilter === value}
                       onClick={() => setRosterFilter(value)}
                     >
-                      {label} ({rosterFilterCounts[value]})
+                      {label} ({countForRosterFilter(value)})
                     </ScreenTab>
                   ))}
                 </ScreenTabs>
@@ -743,9 +820,12 @@ export const AttendanceRoster = ({
                               <div>
                                 <Button
                                   variant="link"
-                                  className="text-left text-base font-bold text-[var(--ink)] [overflow-wrap:anywhere]"
+                                  className="min-h-11 px-0 text-left text-base font-bold text-[var(--ink)] [overflow-wrap:anywhere]"
                                   type="button"
-                                  onClick={() => setDetailRow(row)}
+                                  onClick={() => {
+                                    setDetailRow(row);
+                                    setDetailAdditionalRow(null);
+                                  }}
                                 >
                                   {row.member_name ||
                                     memberDirectory[row.member_user_id]?.name ||
@@ -800,28 +880,33 @@ export const AttendanceRoster = ({
                                       setExcusingId(null);
                                       setCorrectionId(null);
                                       setDetailRow(null);
+                                      setDetailAdditionalRow(null);
                                     }}
                                   >
                                     {COPY.attendance.voidAttendance}
                                   </Button>
                                 )}
-                                {onExcuse && !readOnly && !row.disposition && (
-                                  <Button
-                                    variant="outline"
-                                    type="button"
-                                    disabled={writeDisabled}
-                                    onClick={() => {
-                                      setExcusingId(expectedKey);
-                                      setExcuseCategory("");
-                                      setExcuseDetails("");
-                                      setVoidingId(null);
-                                      setCorrectionId(null);
-                                      setDetailRow(null);
-                                    }}
-                                  >
-                                    {EXCUSE_COPY.action}
-                                  </Button>
-                                )}
+                                {onExcuse &&
+                                  !readOnly &&
+                                  !row.disposition &&
+                                  row.state !== "Present" && (
+                                    <Button
+                                      variant="outline"
+                                      type="button"
+                                      disabled={writeDisabled}
+                                      onClick={() => {
+                                        setExcusingId(expectedKey);
+                                        setExcuseCategory("");
+                                        setExcuseDetails("");
+                                        setVoidingId(null);
+                                        setCorrectionId(null);
+                                        setDetailRow(null);
+                                        setDetailAdditionalRow(null);
+                                      }}
+                                    >
+                                      {EXCUSE_COPY.action}
+                                    </Button>
+                                  )}
                               </div>
                             )}
                           </li>
@@ -832,9 +917,9 @@ export const AttendanceRoster = ({
 
                   {visibleAdditionalRows.length > 0 && (
                     <div className="mt-4 grid min-w-0 gap-2 print:hidden">
-                      <h3 className="m-0 text-base font-bold text-[var(--ink)]">
+                      <h2 className="m-0 text-base font-bold text-[var(--ink)]">
                         {COPY.attendance.rosterAdditionalTitle}
-                      </h3>
+                      </h2>
                       <ul
                         className="grid list-none gap-0 p-0"
                         aria-label={COPY.attendance.rosterAdditionalTitle}
@@ -855,9 +940,17 @@ export const AttendanceRoster = ({
                             >
                               <div className="flex items-start justify-between gap-2">
                                 <div>
-                                  <strong className="text-base font-bold text-[var(--ink)] [overflow-wrap:anywhere] min-w-0 max-w-full">
+                                  <Button
+                                    variant="link"
+                                    className="min-h-11 px-0 text-left text-base font-bold text-[var(--ink)] [overflow-wrap:anywhere]"
+                                    type="button"
+                                    onClick={() => {
+                                      setDetailAdditionalRow(row);
+                                      setDetailRow(null);
+                                    }}
+                                  >
                                     {rowLabel(row, memberDirectory)}
-                                  </strong>
+                                  </Button>
                                   <p className="text-sm text-[var(--ink-muted)]">
                                     {displayPhone ??
                                       COPY.attendance.method[row.method]}
@@ -893,6 +986,7 @@ export const AttendanceRoster = ({
                                       setCorrectionId(null);
                                       setExcusingId(null);
                                       setDetailRow(null);
+                                      setDetailAdditionalRow(null);
                                     }}
                                   >
                                     {COPY.attendance.voidAttendance}
@@ -912,6 +1006,7 @@ export const AttendanceRoster = ({
                                         setVoidingId(null);
                                         setExcusingId(null);
                                         setDetailRow(null);
+                                        setDetailAdditionalRow(null);
                                       }}
                                     >
                                       {COPY.attendance.correctGuest}
@@ -930,7 +1025,10 @@ export const AttendanceRoster = ({
             </section>
           </>
         )}
-        <SheetContent side="bottom">
+        <SheetContent
+          side="bottom"
+          aria-label={COPY.attendance.participantDetailTitle}
+        >
           {detailRow && (
             <>
               <SheetHeader className="border-b border-[var(--line)]">
@@ -1022,6 +1120,7 @@ export const AttendanceRoster = ({
                           );
                           setVoidReason("");
                           setDetailRow(null);
+                          setDetailAdditionalRow(null);
                         }}
                       >
                         {COPY.attendance.voidAttendance}
@@ -1030,6 +1129,7 @@ export const AttendanceRoster = ({
                   {!readOnly &&
                     onExcuse &&
                     !detailRow.disposition &&
+                    detailRow.state !== "Present" &&
                     detailRow.state !== "Cancelled" && (
                       <Button
                         variant="outline"
@@ -1042,9 +1142,118 @@ export const AttendanceRoster = ({
                           setExcuseCategory("");
                           setExcuseDetails("");
                           setDetailRow(null);
+                          setDetailAdditionalRow(null);
                         }}
                       >
                         {EXCUSE_COPY.action}
+                      </Button>
+                    )}
+                  <SheetClose asChild>
+                    <Button variant="outline" type="button">
+                      {COPY.attendance.participantDetailClose}
+                    </Button>
+                  </SheetClose>
+                </div>
+              </SheetFooter>
+            </>
+          )}
+          {detailAdditionalRow && (
+            <>
+              <SheetHeader className="border-b border-[var(--line)]">
+                <SheetTitle className="text-xl font-bold text-[var(--ink)]">
+                  {COPY.attendance.participantDetailTitle}
+                </SheetTitle>
+                <SheetDescription>
+                  {event.program_name} · {eventTitle} ·{" "}
+                  {hkWallLabel(event.starts_at)}
+                </SheetDescription>
+              </SheetHeader>
+              <div className="grid gap-4 px-4 text-sm text-[var(--ink)]">
+                <div className="grid gap-1">
+                  <span className="font-bold text-[var(--ink-muted)]">
+                    {COPY.attendance.participantDetailIdentity}
+                  </span>
+                  <strong className="text-lg">
+                    {rowLabel(detailAdditionalRow, memberDirectory)}
+                  </strong>
+                  <span className="text-[var(--ink-muted)]">
+                    {COPY.attendance.participantDetailPhone}：
+                    {rowPhone(detailAdditionalRow, memberDirectory) ?? "—"}
+                  </span>
+                </div>
+                <div className="grid gap-1">
+                  <span className="font-bold text-[var(--ink-muted)]">
+                    {COPY.attendance.participantDetailStatus}
+                  </span>
+                  <span>
+                    {COPY.attendance.status[detailAdditionalRow.status]}
+                  </span>
+                </div>
+                <div className="grid gap-2">
+                  <h3 className="font-bold text-[var(--ink-muted)]">
+                    {COPY.attendance.participantDetailHistory}
+                  </h3>
+                  <div className="grid gap-1 rounded-[var(--radius-sm)] border border-[var(--line)] bg-[var(--surface)] p-3">
+                    <span>
+                      {COPY.attendance.method[detailAdditionalRow.method]}
+                    </span>
+                    <span className="text-[var(--ink-muted)]">
+                      {COPY.attendance.participantDetailCheckedInAt}：
+                      {hkWallLabel(detailAdditionalRow.checked_in_at)}
+                    </span>
+                    {detailAdditionalRow.status === "Voided" &&
+                      detailAdditionalRow.void_reason && (
+                        <span className="text-[var(--error)]">
+                          {detailAdditionalRow.void_reason}
+                        </span>
+                      )}
+                    {detailAdditionalRow.status === "Voided" &&
+                      detailAdditionalRow.voided_at && (
+                        <span className="text-[var(--ink-muted)]">
+                          {COPY.attendance.participantDetailRecordedAt}：
+                          {hkWallLabel(detailAdditionalRow.voided_at)}
+                        </span>
+                      )}
+                  </div>
+                </div>
+              </div>
+              <SheetFooter>
+                <div className="flex flex-wrap gap-3">
+                  {!readOnly &&
+                    detailAdditionalRow.status === "Active" &&
+                    onVoid && (
+                      <Button
+                        variant="destructive"
+                        type="button"
+                        onClick={() => {
+                          setVoidingId(detailAdditionalRow.attendance_id);
+                          setVoidReason("");
+                          setDetailAdditionalRow(null);
+                        }}
+                      >
+                        {COPY.attendance.voidAttendance}
+                      </Button>
+                    )}
+                  {!readOnly &&
+                    detailAdditionalRow.status === "Active" &&
+                    detailAdditionalRow.member_user_id === null &&
+                    onCorrectGuest && (
+                      <Button
+                        variant="outline"
+                        type="button"
+                        onClick={() => {
+                          setCorrectionId(detailAdditionalRow.attendance_id);
+                          setCorrectionName(
+                            detailAdditionalRow.guest_name ?? ""
+                          );
+                          setCorrectionPhone(
+                            detailAdditionalRow.guest_phone ?? ""
+                          );
+                          setCorrectionReason("");
+                          setDetailAdditionalRow(null);
+                        }}
+                      >
+                        {COPY.attendance.correctGuest}
                       </Button>
                     )}
                   <SheetClose asChild>
@@ -1307,6 +1516,7 @@ export const AttendanceOperatorPanel = ({
   );
   const [chooserLoading, setChooserLoading] = useState(true);
   const [chooserError, setChooserError] = useState<string | null>(null);
+  const [rosterReadError, setRosterReadError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [members, setMembers] = useState<AttendanceMember[]>([]);
   const [pendingCheckIn, setPendingCheckIn] = useState<{
@@ -1435,6 +1645,7 @@ export const AttendanceOperatorPanel = ({
     if (clearRecovery) {
       setStale(false);
       setMutationOutcomeUnknown(false);
+      setRosterReadError(null);
     }
     setLastUpdatedAt(Date.now());
     updateAttendanceEventUrl(id);
@@ -1452,12 +1663,22 @@ export const AttendanceOperatorPanel = ({
       const result = await listAttendanceRoster(id);
       return applyRosterResult(id, result, !silent);
     } catch (error) {
+      if (selectedEventIdRef.current !== id) {
+        return false;
+      }
+      const message =
+        error instanceof RpcError
+          ? errorCopyFor(error.problem.code, error.problem.detail)
+          : COPY.attendance.assistedAccessError;
+      // Keep a confirmed snapshot visible only as an explicitly stale,
+      // read-only projection. A failed read must never look writable.
+      setStale(true);
+      setRosterReadError(message);
       if (error instanceof RpcError && error.problem.code === "AUTH_REQUIRED") {
         handleAuthRequired();
-      } else if (silent) {
-        setStale(true);
-      } else {
-        showError(error);
+      } else if (!silent) {
+        showStatus(message, "error");
+        announce(message);
       }
       return false;
     } finally {
@@ -1575,6 +1796,13 @@ export const AttendanceOperatorPanel = ({
     }
     selectedEventIdRef.current = nextEventId;
     setEventId(nextEventId);
+    setEvent(null);
+    setRows([]);
+    setExpectedRows([]);
+    setRosterCounts(null);
+    setMaterializationRequired(false);
+    setStale(false);
+    setRosterReadError(null);
     setShowCheckInSheet(false);
     const loaded = await loadRoster(nextEventId);
     if (loaded) {
@@ -1596,6 +1824,7 @@ export const AttendanceOperatorPanel = ({
     setRosterCounts(null);
     setMaterializationRequired(false);
     setStale(false);
+    setRosterReadError(null);
     setMutationOutcomeUnknown(false);
     setLastUpdatedAt(null);
     setMembers([]);
@@ -1967,6 +2196,9 @@ export const AttendanceOperatorPanel = ({
   }, [busy, eventId, mutationOutcomeUnknown, online, pageVisible, stale]);
 
   const rosterVisible = Boolean(event && eventId);
+  const expectedMemberIds = new Set(
+    expectedRows.map((row) => row.member_user_id)
+  );
   const operatorContent =
     rosterVisible && event && eventId && attendanceWindowIsOpen(event) ? (
       <section
@@ -2090,32 +2322,38 @@ export const AttendanceOperatorPanel = ({
             className="mt-2 grid gap-2 list-none p-0 min-w-0"
             aria-label={COPY.attendance.memberSearch}
           >
-            {members.map((member) => (
-              <li key={member.user_id}>
-                <Button
-                  variant="outline"
-                  className={eventButtonControl}
-                  type="button"
-                  disabled={busy || !online}
-                  onClick={() =>
-                    setPendingCheckIn({
-                      member,
-                      method: "leader_manual_search",
-                    })
-                  }
-                >
-                  <strong>{member.name}</strong>
-                  <span className="text-sm text-[var(--ink-muted)]">
-                    {member.phone
-                      ? COPY.attendance.maskedPhone(member.phone)
-                      : member.user_id}
-                  </span>
-                  <span className="text-sm font-bold text-[var(--accent)] mt-1 sm:mt-0 shrink-0">
-                    {COPY.attendance.addAndCheckIn}
-                  </span>
-                </Button>
-              </li>
-            ))}
+            {members.map((member) => {
+              const expected = expectedMemberIds.has(member.user_id);
+              return (
+                <li key={member.user_id}>
+                  <Button
+                    variant="outline"
+                    className={eventButtonControl}
+                    type="button"
+                    data-search-member-kind={expected ? "expected" : "addition"}
+                    disabled={busy || !online}
+                    onClick={() =>
+                      setPendingCheckIn({
+                        member,
+                        method: "leader_manual_search",
+                      })
+                    }
+                  >
+                    <strong>{member.name}</strong>
+                    <span className="text-sm text-[var(--ink-muted)]">
+                      {member.phone
+                        ? COPY.attendance.maskedPhone(member.phone)
+                        : member.user_id}
+                    </span>
+                    <span className="text-sm font-bold text-[var(--accent)] mt-1 sm:mt-0 shrink-0">
+                      {expected
+                        ? COPY.attendance.checkInMember
+                        : COPY.attendance.addAndCheckIn}
+                    </span>
+                  </Button>
+                </li>
+              );
+            })}
           </ul>
         )}
       </section>
@@ -2134,9 +2372,12 @@ export const AttendanceOperatorPanel = ({
               events={chooserEvents}
               loading={chooserLoading}
               busy={busy || mutationOutcomeUnknown}
-              error={chooserError}
+              error={rosterReadError ?? chooserError}
               onSelect={(nextEventId) => void selectEvent(nextEventId)}
-              onRetry={() => void loadChooser()}
+              onRetry={() => {
+                const id = selectedEventIdRef.current;
+                void (id ? loadRoster(id) : loadChooser());
+              }}
             />
           )}
 
@@ -2175,14 +2416,18 @@ export const AttendanceOperatorPanel = ({
                       qr_code_string: null,
                     })
                   }
-                  onOpenCheckInSheet={() => setShowCheckInSheet(true)}
+                  onOpenCheckInSheet={
+                    attendanceWindowIsOpen(event)
+                      ? () => setShowCheckInSheet(true)
+                      : undefined
+                  }
                   onVoid={handleVoid}
                   onCorrectGuest={handleCorrection}
                   onExcuse={handleExcuse}
                   onPrint={printAttendanceRoster}
                   onExport={exportRoster}
                 />
-                {showCheckInSheet && (
+                {showCheckInSheet && attendanceWindowIsOpen(event) && (
                   <EventCheckInSheet
                     event={event}
                     onClose={() => setShowCheckInSheet(false)}

@@ -60,11 +60,29 @@ const CANCELLED: AttendanceEvent = {
   status: "Cancelled",
 };
 
+const CLOSED: AttendanceEvent = {
+  ...ACTIVE,
+  event_id: "evt-closed",
+  starts_at: new Date(Date.now() - 2 * 60 * 60_000).toISOString(),
+  ends_at: new Date(Date.now() - 60 * 60_000).toISOString(),
+  check_in_window_opens_at: new Date(
+    Date.now() - 3 * 60 * 60_000
+  ).toISOString(),
+  check_in_window_closes_at: new Date(Date.now() - 30 * 60_000).toISOString(),
+};
+
 const MEMBER: AttendanceMember = {
   user_id: "U-E2E-MEMBER",
   name: "E2E Member",
   phone: "9123 4567",
   qr_code_string: "E2E-MEMBER-U-E2E-MEMBER",
+};
+
+const ADDITION_MEMBER: AttendanceMember = {
+  user_id: "U-E2E-ADDITION",
+  name: "E2E Addition",
+  phone: "9333 4444",
+  qr_code_string: "E2E-ADDITION-U-E2E-ADDITION",
 };
 
 const ROW: AttendanceRow = {
@@ -94,6 +112,12 @@ const EXPECTED_NOT_YET: AttendanceExpectedRow = {
   state: "Not Yet",
   attendance: null,
   disposition: null,
+};
+
+const EXPECTED_MEMBER: AttendanceExpectedRow = {
+  ...EXPECTED_NOT_YET,
+  member_user_id: MEMBER.user_id,
+  member_name: MEMBER.name,
 };
 
 function rosterHandler(event: AttendanceEvent, rows: AttendanceRow[]) {
@@ -151,6 +175,169 @@ describe(AttendanceOperatorPanel, () => {
     expect(screen.getByRole("combobox", { name: /請假原因/u })).toBeVisible();
   });
 
+  test("a failed roster refresh keeps the last snapshot explicitly stale and read-only until Retry succeeds", async () => {
+    let rosterCalls = 0;
+    server.use(
+      http.get("/api/v1/attendance/scanner-events", () =>
+        HttpResponse.json({
+          requestId: "rid-list",
+          data: { events: [ACTIVE] },
+        })
+      ),
+      http.get(`/api/v1/attendance/events/${ACTIVE.event_id}/roster`, () => {
+        rosterCalls += 1;
+        if (rosterCalls === 2) {
+          return HttpResponse.json(
+            {
+              type: "about:blank",
+              title: "Unavailable",
+              status: 503,
+              code: "UNAVAILABLE",
+              detail: "暫時無法更新出席名單。",
+            },
+            { status: 503 }
+          );
+        }
+        return HttpResponse.json({
+          requestId: "rid-roster",
+          data: { event: ACTIVE, attendances: [ROW] },
+        });
+      })
+    );
+    const user = userEvent.setup();
+    renderWithLiveRegion();
+
+    await user.click(await screen.findByRole("button", { name: /週六聚會/u }));
+    await screen.findAllByText(MEMBER.user_id);
+    window.dispatchEvent(new Event("online"));
+    await waitFor(() => expect(rosterCalls).toBe(2));
+    await expect(
+      screen.findByText(/未能更新，現正顯示/u)
+    ).resolves.toBeVisible();
+    expect(
+      screen.getByRole("button", { name: COPY.attendance.voidAttendance })
+    ).toBeDisabled();
+
+    await user.click(
+      screen.getByRole("button", { name: COPY.management.retry })
+    );
+    await waitFor(() => expect(rosterCalls).toBe(3));
+    expect(
+      screen.getByRole("button", { name: COPY.attendance.voidAttendance })
+    ).toBeEnabled();
+  });
+
+  test("a roster auth failure marks the retained snapshot stale before recovery", async () => {
+    let rosterCalls = 0;
+    const onAuthRequired = vi.fn<() => void>();
+    server.use(
+      http.get("/api/v1/attendance/scanner-events", () =>
+        HttpResponse.json({
+          requestId: "rid-list",
+          data: { events: [ACTIVE] },
+        })
+      ),
+      http.get(`/api/v1/attendance/events/${ACTIVE.event_id}/roster`, () => {
+        rosterCalls += 1;
+        if (rosterCalls === 2) {
+          return HttpResponse.json(
+            {
+              type: "about:blank",
+              title: "Authentication required",
+              status: 401,
+              code: "AUTH_REQUIRED",
+            },
+            { status: 401 }
+          );
+        }
+        return HttpResponse.json({
+          requestId: "rid-roster",
+          data: { event: ACTIVE, attendances: [ROW] },
+        });
+      })
+    );
+    const user = userEvent.setup();
+    renderWithLiveRegion({ onAuthRequired });
+
+    await user.click(await screen.findByRole("button", { name: /週六聚會/u }));
+    await screen.findAllByText(MEMBER.user_id);
+    window.dispatchEvent(new Event("online"));
+    await waitFor(() => expect(rosterCalls).toBe(2));
+    expect(onAuthRequired).toHaveBeenCalledOnce();
+    expect(
+      screen.getByRole("button", { name: COPY.attendance.voidAttendance })
+    ).toBeDisabled();
+    expect(
+      screen.getByRole("button", { name: COPY.management.retry })
+    ).toBeVisible();
+  });
+
+  test("a failed deep-linked event read clears the prior event projection and retries into a closed read-only roster", async () => {
+    const closedEvent = { ...CLOSED, name: "已結束聚會" };
+    let closedRosterCalls = 0;
+    server.use(
+      http.get("/api/v1/attendance/scanner-events", () =>
+        HttpResponse.json({
+          requestId: "rid-list",
+          data: { events: [ACTIVE, closedEvent] },
+        })
+      ),
+      rosterHandler(ACTIVE, [ROW]),
+      http.get(
+        `/api/v1/attendance/events/${closedEvent.event_id}/roster`,
+        () => {
+          closedRosterCalls += 1;
+          if (closedRosterCalls === 1) {
+            return HttpResponse.json(
+              {
+                type: "about:blank",
+                title: "Unavailable",
+                status: 503,
+                code: "UNAVAILABLE",
+                detail: "暫時無法更新出席名單。",
+              },
+              { status: 503 }
+            );
+          }
+          return HttpResponse.json({
+            requestId: "rid-closed-roster",
+            data: { event: closedEvent, attendances: [] },
+          });
+        }
+      )
+    );
+    const user = userEvent.setup();
+    renderWithLiveRegion();
+
+    await user.click(await screen.findByRole("button", { name: /^週六聚會/u }));
+    await screen.findAllByText(MEMBER.user_id);
+    await user.click(
+      screen.getByRole("button", { name: COPY.attendance.chooseEvent })
+    );
+    await user.click(
+      await screen.findByRole("button", { name: /^已結束聚會/u })
+    );
+    await waitFor(() =>
+      expect(screen.queryByText(MEMBER.user_id)).not.toBeInTheDocument()
+    );
+    expect(
+      screen.getByRole("button", { name: COPY.management.retry })
+    ).toBeVisible();
+
+    await user.click(
+      screen.getByRole("button", { name: COPY.management.retry })
+    );
+    await expect(
+      screen.findByRole("heading", { name: COPY.attendance.rosterTitle })
+    ).resolves.toBeVisible();
+    expect(closedRosterCalls).toBe(2);
+    expect(
+      screen.queryByRole("button", {
+        name: COPY.attendance.eventCheckInSheetOpen,
+      })
+    ).not.toBeInTheDocument();
+  });
+
   test("void reason is collected in a Sheet instead of expanding the row", async () => {
     const onVoid = vi
       .fn<(row: AttendanceRow, reason: string) => Promise<boolean>>()
@@ -190,13 +377,18 @@ describe(AttendanceOperatorPanel, () => {
           data: {
             event: ACTIVE,
             attendances: rosterCalls === 1 ? [] : [ROW],
+            expected: [
+              rosterCalls === 1
+                ? EXPECTED_MEMBER
+                : { ...EXPECTED_MEMBER, state: "Present", attendance: ROW },
+            ],
           },
         });
       }),
       http.get(`/api/v1/attendance/events/${ACTIVE.event_id}/members`, () =>
         HttpResponse.json({
           requestId: "rid-members",
-          data: { members: [MEMBER] },
+          data: { members: [MEMBER, ADDITION_MEMBER] },
         })
       ),
       http.post(`/api/v1/attendance/events/${ACTIVE.event_id}/check-in`, () =>
@@ -221,17 +413,21 @@ describe(AttendanceOperatorPanel, () => {
     await user.click(
       screen.getByRole("button", { name: COPY.attendance.search })
     );
-    await screen.findByText(MEMBER.name);
+    await screen.findByRole("button", {
+      name: /E2E Member.*替成員簽到/u,
+    });
+    await screen.findByRole("button", {
+      name: /E2E Addition.*新增並簽到/u,
+    });
 
-    await user.click(screen.getByRole("button", { name: /新增並簽到/u }));
+    await user.click(
+      screen.getByRole("button", { name: /E2E Member.*替成員簽到/u })
+    );
     expect(
-      screen.getByRole("heading", {
+      screen.getByRole("dialog", {
         name: COPY.attendance.assistedCheckInConfirmTitle,
       })
-    ).toBeVisible();
-    expect(
-      screen.getByText(COPY.attendance.assistedCheckInConfirmLead)
-    ).toBeVisible();
+    ).toHaveTextContent(COPY.attendance.assistedCheckInConfirmLead);
     await user.click(
       screen.getByRole("button", {
         name: COPY.attendance.assistedCheckInConfirm,
@@ -246,10 +442,6 @@ describe(AttendanceOperatorPanel, () => {
     );
     const successOutputs = await screen.findAllByText(successMessage);
     expect(successOutputs.length).toBeGreaterThanOrEqual(2);
-    expect(
-      screen.queryByText(`${1} ${COPY.attendance.roster}`)
-    ).not.toBeInTheDocument();
-
     // …and the sr-only live region announced it for screen readers.
     const live = document.querySelector('output[role="status"]');
     await waitFor(() => expect(live?.textContent).toBe(successMessage));
@@ -281,6 +473,36 @@ describe(AttendanceOperatorPanel, () => {
       screen.queryByRole("button", { name: COPY.attendance.camera })
     ).not.toBeInTheDocument();
   });
+
+  test.each([CLOSED, CANCELLED])(
+    "direct roster access hides Event QR for closed or cancelled events (%s)",
+    async (selectedEvent) => {
+      window.history.replaceState(
+        null,
+        "",
+        `/events?event=${selectedEvent.event_id}`
+      );
+      server.use(
+        http.get("/api/v1/attendance/scanner-events", () =>
+          HttpResponse.json({
+            requestId: "rid-list",
+            data: { events: [selectedEvent] },
+          })
+        ),
+        rosterHandler(selectedEvent, [])
+      );
+      renderWithLiveRegion();
+
+      await expect(
+        screen.findByRole("heading", { name: COPY.attendance.rosterTitle })
+      ).resolves.toBeVisible();
+      expect(
+        screen.queryByRole("button", {
+          name: COPY.attendance.eventCheckInSheetOpen,
+        })
+      ).not.toBeInTheDocument();
+    }
+  );
 
   test("does not materialize a snapshot as a side effect of roster GET", async () => {
     let materializeCalls = 0;
