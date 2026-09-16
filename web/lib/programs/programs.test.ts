@@ -2851,6 +2851,158 @@ describe("PRG-02: schedule rules", () => {
     assert.strictEqual(problem.code, "FORBIDDEN");
   });
 
+  test("Members cannot enumerate schedule mutation targets before authorization", async () => {
+    const adminAccess = await accessCookieFor("alice", "alice-secret");
+    const rule = await createRule(adminAccess, recurringId, {
+      recurrence: "WEEKLY",
+      day_of_week: 5,
+      start_time: "19:30",
+      end_time: "21:00",
+    });
+    const createdException = await worker.fetch(
+      programsRequest(
+        `/api/v1/programs/${recurringId}/schedule-rules/${rule.rule_id}/exceptions`,
+        {
+          method: "POST",
+          headers: {
+            Origin: HOST,
+            Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
+            "Content-Type": "application/json",
+          },
+          body: { override_date: hkTodayWallDate(), action: "CANCEL" },
+        }
+      ),
+      testEnv()
+    );
+    assert.strictEqual(createdException.status, 201);
+    const {
+      data: { exception },
+    } = (await assertCorrelated(createdException)) as {
+      data: { exception: { exception_id: string } };
+    };
+
+    const memberAccess = await accessCookieFor("bob", "bob-secret");
+    const requests: Promise<Response>[] = [
+      worker.fetch(
+        programsRequest(
+          `/api/v1/programs/${recurringId}/schedule-rules/${rule.rule_id}`,
+          {
+            method: "PATCH",
+            headers: {
+              Origin: HOST,
+              Cookie: `${ACCESS_COOKIE_NAME}=${memberAccess}`,
+              "Content-Type": "application/json",
+            },
+            body: { start_time: "20:00", end_time: "21:30" },
+          }
+        ),
+        testEnv()
+      ),
+      worker.fetch(
+        programsRequest(
+          `/api/v1/programs/${recurringId}/schedule-rules/${crypto.randomUUID()}`,
+          {
+            method: "PATCH",
+            headers: {
+              Origin: HOST,
+              Cookie: `${ACCESS_COOKIE_NAME}=${memberAccess}`,
+              "Content-Type": "application/json",
+            },
+            body: { start_time: "20:00", end_time: "21:30" },
+          }
+        ),
+        testEnv()
+      ),
+      worker.fetch(
+        programsRequest(
+          `/api/v1/programs/${recurringId}/schedule-rules/${rule.rule_id}/retire`,
+          {
+            method: "POST",
+            headers: {
+              Origin: HOST,
+              Cookie: `${ACCESS_COOKIE_NAME}=${memberAccess}`,
+            },
+          }
+        ),
+        testEnv()
+      ),
+      worker.fetch(
+        programsRequest(
+          `/api/v1/programs/${recurringId}/schedule-rules/${crypto.randomUUID()}/retire`,
+          {
+            method: "POST",
+            headers: {
+              Origin: HOST,
+              Cookie: `${ACCESS_COOKIE_NAME}=${memberAccess}`,
+            },
+          }
+        ),
+        testEnv()
+      ),
+      worker.fetch(
+        programsRequest(
+          `/api/v1/programs/${recurringId}/schedule-rules/${rule.rule_id}/exceptions`,
+          {
+            method: "POST",
+            headers: {
+              Origin: HOST,
+              Cookie: `${ACCESS_COOKIE_NAME}=${memberAccess}`,
+              "Content-Type": "application/json",
+            },
+            body: { override_date: hkTodayWallDate(), action: "CANCEL" },
+          }
+        ),
+        testEnv()
+      ),
+      worker.fetch(
+        programsRequest(
+          `/api/v1/programs/${recurringId}/schedule-rules/${crypto.randomUUID()}/exceptions`,
+          {
+            method: "POST",
+            headers: {
+              Origin: HOST,
+              Cookie: `${ACCESS_COOKIE_NAME}=${memberAccess}`,
+              "Content-Type": "application/json",
+            },
+            body: { override_date: hkTodayWallDate(), action: "CANCEL" },
+          }
+        ),
+        testEnv()
+      ),
+      worker.fetch(
+        programsRequest(
+          `/api/v1/programs/${recurringId}/schedule-rules/${rule.rule_id}/exceptions/${exception.exception_id}`,
+          {
+            method: "DELETE",
+            headers: {
+              Origin: HOST,
+              Cookie: `${ACCESS_COOKIE_NAME}=${memberAccess}`,
+            },
+          }
+        ),
+        testEnv()
+      ),
+      worker.fetch(
+        programsRequest(
+          `/api/v1/programs/${recurringId}/schedule-rules/${rule.rule_id}/exceptions/${crypto.randomUUID()}`,
+          {
+            method: "DELETE",
+            headers: {
+              Origin: HOST,
+              Cookie: `${ACCESS_COOKIE_NAME}=${memberAccess}`,
+            },
+          }
+        ),
+        testEnv()
+      ),
+    ];
+
+    for (const response of await Promise.all(requests)) {
+      assert.strictEqual(response.status, 403);
+      assert.strictEqual((await problemOf(response)).code, "FORBIDDEN");
+    }
+  });
+
   test("invalid rule bodies return 422", async () => {
     const adminAccess = await accessCookieFor("alice", "alice-secret");
     const cases: unknown[] = [

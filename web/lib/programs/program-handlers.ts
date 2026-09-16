@@ -1920,25 +1920,21 @@ export async function handleUpdateScheduleRule(
   }
 
   const { workspace } = await getModule(env);
-  const existing = await workspace.getScheduleRule(
-    authorizationContextFor(auth.account),
-    ruleId
-  );
-  if (!existing) {
-    return notFound(requestId, "Unknown schedule rule.");
-  }
-  if (existing.program_id !== programId) {
-    return notFound(requestId, "Unknown schedule rule.");
-  }
-  const parsed = parseRulePatch(body, existing);
-  if (!parsed.ok) {
-    return validation(requestId, parsed.detail);
-  }
-  const { update } = parsed;
+  const ctx = authorizationContextFor(auth.account);
 
   try {
+    await workspace.assertProgramManagement(ctx, programId);
+    const existing = await workspace.getScheduleRule(ctx, ruleId);
+    if (!existing || existing.program_id !== programId) {
+      return notFound(requestId, "Unknown schedule rule.");
+    }
+    const parsed = parseRulePatch(body, existing);
+    if (!parsed.ok) {
+      return validation(requestId, parsed.detail);
+    }
+    const { update } = parsed;
     const row = await workspace.updateScheduleRule(
-      authorizationContextFor(auth.account),
+      ctx,
       ruleId,
       update,
       correlationId
@@ -1967,19 +1963,14 @@ export async function handleRetireScheduleRule(
     return auth;
   }
   const { workspace } = await getModule(env);
-  const existing = await workspace.getScheduleRule(
-    authorizationContextFor(auth.account),
-    ruleId
-  );
-  if (!existing || existing.program_id !== programId) {
-    return notFound(requestId, "Unknown schedule rule.");
-  }
+  const ctx = authorizationContextFor(auth.account);
   try {
-    const row = await workspace.retireScheduleRule(
-      authorizationContextFor(auth.account),
-      ruleId,
-      correlationId
-    );
+    await workspace.assertProgramManagement(ctx, programId);
+    const existing = await workspace.getScheduleRule(ctx, ruleId);
+    if (!existing || existing.program_id !== programId) {
+      return notFound(requestId, "Unknown schedule rule.");
+    }
+    const row = await workspace.retireScheduleRule(ctx, ruleId, correlationId);
     return jsonResponse(200, { rule: row }, requestId);
   } catch (error) {
     const mapped = mapWorkspaceError(error, requestId);
@@ -2059,19 +2050,15 @@ export async function handleCreateScheduleException(
   }
 
   const { workspace } = await getModule(env);
-  const rule = await workspace.getScheduleRule(
-    authorizationContextFor(auth.account),
-    ruleId
-  );
-  if (!rule) {
-    return notFound(requestId, "Unknown schedule rule.");
-  }
-  if (rule.program_id !== programId) {
-    return notFound(requestId, "Unknown schedule rule.");
-  }
+  const ctx = authorizationContextFor(auth.account);
   try {
+    await workspace.assertProgramManagement(ctx, programId);
+    const rule = await workspace.getScheduleRule(ctx, ruleId);
+    if (!rule || rule.program_id !== programId) {
+      return notFound(requestId, "Unknown schedule rule.");
+    }
     const row = await workspace.createScheduleException(
-      authorizationContextFor(auth.account),
+      ctx,
       ruleId,
       {
         override_date: body.override_date,
@@ -2106,26 +2093,18 @@ export async function handleDeleteScheduleException(
     return auth;
   }
   const { workspace } = await getModule(env);
-  const exists = await workspace.getScheduleException(
-    authorizationContextFor(auth.account),
-    exceptionId
-  );
-  if (!exists) {
-    return notFound(requestId, "Unknown schedule exception.");
-  }
-  const rule = await workspace.getScheduleRule(
-    authorizationContextFor(auth.account),
-    exists.rule_id
-  );
-  if (!rule || rule.program_id !== programId) {
-    return notFound(requestId, "Unknown schedule exception.");
-  }
+  const ctx = authorizationContextFor(auth.account);
   try {
-    await workspace.deleteScheduleException(
-      authorizationContextFor(auth.account),
-      exceptionId,
-      correlationId
-    );
+    await workspace.assertProgramManagement(ctx, programId);
+    const exists = await workspace.getScheduleException(ctx, exceptionId);
+    if (!exists) {
+      return notFound(requestId, "Unknown schedule exception.");
+    }
+    const rule = await workspace.getScheduleRule(ctx, exists.rule_id);
+    if (!rule || rule.program_id !== programId) {
+      return notFound(requestId, "Unknown schedule exception.");
+    }
+    await workspace.deleteScheduleException(ctx, exceptionId, correlationId);
     return jsonResponse(200, { deleted: true }, requestId);
   } catch (error) {
     const mapped = mapWorkspaceError(error, requestId);
