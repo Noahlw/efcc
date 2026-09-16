@@ -2156,17 +2156,27 @@ export const EventsTask = () => {
           }}
         >
           <ScreenTab
+            id="programs-events-current-tab"
             role="tab"
+            aria-controls="programs-events-filter-panel"
             value="current"
             selected={eventFilter === "current"}
           >
             {COPY.programs.eventsFilterCurrent}
           </ScreenTab>
-          <ScreenTab role="tab" value="past" selected={eventFilter === "past"}>
+          <ScreenTab
+            id="programs-events-past-tab"
+            role="tab"
+            aria-controls="programs-events-filter-panel"
+            value="past"
+            selected={eventFilter === "past"}
+          >
             {COPY.programs.eventsFilterPast}
           </ScreenTab>
           <ScreenTab
+            id="programs-events-cancelled-tab"
             role="tab"
+            aria-controls="programs-events-filter-panel"
             value="cancelled"
             selected={eventFilter === "cancelled"}
           >
@@ -2468,148 +2478,72 @@ export const EventsTask = () => {
           </Button>
         </div>
       )}
-      {state.kind === "ready" && state.events.length === 0 && (
-        <ScreenState
-          kind="empty"
-          title={COPY.programs.workspaceTaskEventsEmpty}
-        />
-      )}
-      {state.kind === "ready" &&
-        state.events.length > 0 &&
-        visibleEvents !== null &&
-        visibleEvents.length === 0 && (
-          <ScreenState kind="empty" title={COPY.programs.eventsFilterEmpty} />
-        )}
-      {visibleEvents !== null && visibleEvents.length > 0 && (
-        <ScreenRowList>
-          <ul
-            className="m-0 grid min-w-0 list-none gap-0 p-0"
-            aria-label={COPY.programs.workspaceTaskEvents}
-          >
-            {visibleEvents.map(
-              // oxlint-disable-next-line eslint/complexity -- one row owns its operational menu and settled recovery guards.
-              (event) => {
-                const wall = eventWallParts(event.starts_at);
-                const exception = event.exception ?? null;
-                const actionPhase = eventActionPhase(event);
-                const eventTitle =
-                  event.name ?? hkWallDateTimeLabel(event.starts_at);
-                const eventHref = buildProgramsHref({
-                  mode: "management",
-                  departmentId,
-                  programId,
-                  task: "events",
-                  eventId: event.event_id,
-                  hash,
-                });
-                return (
-                  <li
-                    key={event.event_id}
-                    className="min-w-0"
-                    data-event-id={event.event_id}
-                  >
-                    <ScreenRow
-                      className="items-start flex-wrap"
-                      aria-busy={actionBusy}
-                    >
-                      <ScreenRowMain className="basis-full">
-                        <Link
-                          href={eventHref}
-                          aria-label={`${eventTitle} · ${wall.date} · ${COPY.programs.eventDetailOpen}`}
-                          className="inline-flex min-w-0 min-h-11 items-center wrap-anywhere text-[length:var(--screen-body-size)] leading-[21px] font-semibold hover:underline focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-[var(--screen-focus)]"
-                          onClick={(clickEvent) => {
-                            if (eventsOutcomeUnknown || eventsStale) {
-                              clickEvent.preventDefault();
-                              return;
-                            }
-                            if (
-                              !onOpenEvent ||
-                              clickEvent.defaultPrevented ||
-                              clickEvent.button !== 0 ||
-                              clickEvent.metaKey ||
-                              clickEvent.ctrlKey ||
-                              clickEvent.shiftKey ||
-                              clickEvent.altKey
-                            ) {
-                              return;
-                            }
-                            clickEvent.preventDefault();
-                            openEvent(event.event_id);
-                          }}
-                          aria-disabled={eventsOutcomeUnknown || eventsStale}
+      {eventsForDisplay !== null && (
+        <section
+          id="programs-events-filter-panel"
+          role="tabpanel"
+          aria-labelledby={`programs-events-${eventFilter}-tab`}
+          tabIndex={0}
+        >
+          {state.kind === "ready" && state.events.length === 0 && (
+            <ScreenState
+              kind="empty"
+              title={COPY.programs.workspaceTaskEventsEmpty}
+            />
+          )}
+          {state.kind === "ready" &&
+            state.events.length > 0 &&
+            visibleEvents !== null &&
+            visibleEvents.length === 0 && (
+              <ScreenState
+                kind="empty"
+                title={COPY.programs.eventsFilterEmpty}
+              />
+            )}
+          {visibleEvents !== null && visibleEvents.length > 0 && (
+            <ScreenRowList>
+              <ul
+                className="m-0 grid min-w-0 list-none gap-0 p-0"
+                aria-label={COPY.programs.workspaceTaskEvents}
+              >
+                {visibleEvents.map(
+                  // oxlint-disable-next-line eslint/complexity -- one row owns its operational menu and settled recovery guards.
+                  (event) => {
+                    const wall = eventWallParts(event.starts_at);
+                    const exception = event.exception ?? null;
+                    const actionPhase = eventActionPhase(event);
+                    const eventTitle =
+                      event.name ?? hkWallDateTimeLabel(event.starts_at);
+                    const eventHref = buildProgramsHref({
+                      mode: "management",
+                      departmentId,
+                      programId,
+                      task: "events",
+                      eventId: event.event_id,
+                      hash,
+                    });
+                    return (
+                      <li
+                        key={event.event_id}
+                        className="min-w-0"
+                        data-event-id={event.event_id}
+                      >
+                        <ScreenRow
+                          className="items-start flex-wrap"
+                          aria-busy={actionBusy}
                         >
-                          {event.name ?? hkWallDateTimeLabel(event.starts_at)}
-                        </Link>
-                        <ScreenRowMeta>
-                          {wall.date} · {wall.time} ·{" "}
-                          {event.event_type ??
-                            COPY.programs.eventTypeOptions[5]}{" "}
-                          ·{" "}
-                          {COPY.programs.repeatLabel.replace(
-                            "{tag}",
-                            event.recurrence_tag ?? COPY.programs.recurrenceNone
-                          )}{" "}
-                          ·{" "}
-                          {event.status === "Active"
-                            ? COPY.programs.eventActive
-                            : COPY.programs.eventCancelled}
-                        </ScreenRowMeta>
-                        <div className="flex min-w-0 flex-wrap items-center gap-[var(--screen-utility-gap)]">
-                          <ScreenStatus
-                            tone={
-                              event.source === "SCHEDULE" ? "accent" : "neutral"
-                            }
-                          >
-                            {event.source === "SCHEDULE"
-                              ? COPY.programs.eventScheduleSource
-                              : COPY.programs.eventManualSource}
-                          </ScreenStatus>
-                          {exception !== null && (
-                            <ScreenStatus tone="pending">
-                              {exception.action === "RESCHEDULE"
-                                ? COPY.programs.eventRescheduledBadge.replace(
-                                    "{time}",
-                                    exception.new_start_time ?? ""
-                                  )
-                                : COPY.programs.eventCancelledBadge}
-                            </ScreenStatus>
-                          )}
-                          {event.availability !== undefined &&
-                            event.availability !== "Active" && (
-                              <ScreenStatus tone="danger">
-                                {COPY.programs.eventUnavailable}
-                              </ScreenStatus>
-                            )}
-                        </div>
-                        {event.status === "Cancelled" &&
-                          event.cancel_reason !== null && (
-                            <ScreenRowMeta className="text-[var(--screen-danger)]">
-                              {COPY.programs.cancelledReason.replace(
-                                "{reason}",
-                                event.cancel_reason
-                              )}
-                            </ScreenRowMeta>
-                          )}
-                      </ScreenRowMain>
-                      <div className="flex min-w-0 basis-full flex-wrap items-center gap-[var(--screen-utility-gap)]">
-                        {(actionPhase === "open" || actionPhase === "past") && (
-                          <Button
-                            asChild
-                            className="w-fit border-[var(--screen-line-strong)] bg-transparent text-[var(--screen-ink)] hover:bg-[var(--screen-surface-soft)]"
-                            variant="outline"
-                          >
+                          <ScreenRowMain className="basis-full">
                             <Link
-                              href={`/events?eventId=${encodeURIComponent(event.event_id)}`}
-                              aria-disabled={
-                                eventsOutcomeUnknown || eventsStale
-                              }
+                              href={eventHref}
+                              aria-label={`${eventTitle} · ${wall.date} · ${COPY.programs.eventDetailOpen}`}
+                              className="inline-flex min-w-0 min-h-11 items-center wrap-anywhere text-[length:var(--screen-body-size)] leading-[21px] font-semibold hover:underline focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-[var(--screen-focus)]"
                               onClick={(clickEvent) => {
                                 if (eventsOutcomeUnknown || eventsStale) {
                                   clickEvent.preventDefault();
                                   return;
                                 }
                                 if (
-                                  !onOpenAttendance ||
+                                  !onOpenEvent ||
                                   clickEvent.defaultPrevented ||
                                   clickEvent.button !== 0 ||
                                   clickEvent.metaKey ||
@@ -2620,142 +2554,237 @@ export const EventsTask = () => {
                                   return;
                                 }
                                 clickEvent.preventDefault();
-                                onOpenAttendance(event.event_id);
+                                openEvent(event.event_id);
                               }}
+                              aria-disabled={
+                                eventsOutcomeUnknown || eventsStale
+                              }
                             >
-                              {actionPhase === "open"
-                                ? COPY.attendance.eventAttendanceOpen
-                                : COPY.programs.eventAttendanceViewRecord}
+                              {event.name ??
+                                hkWallDateTimeLabel(event.starts_at)}
                             </Link>
-                          </Button>
-                        )}
-                        {canManage && actionPhase !== "cancelled" && (
-                          <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                              <Button
-                                type="button"
-                                variant="outline"
-                                size="icon"
-                                aria-label={COPY.programs.eventMoreActions}
-                                disabled={
-                                  actionBusy ||
-                                  eventsOutcomeUnknown ||
-                                  eventsStale
-                                }
-                                className="border-[var(--screen-line-strong)] bg-transparent text-[var(--screen-ink)] hover:bg-[var(--screen-surface-soft)]"
-                              >
-                                <MoreHorizontal aria-hidden="true" />
-                              </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end">
-                              <DropdownMenuItem
-                                disabled={
-                                  !onOpenEvent ||
-                                  eventsOutcomeUnknown ||
-                                  eventsStale
-                                }
-                                onSelect={() =>
-                                  openEvent(event.event_id, "edit")
+                            <ScreenRowMeta>
+                              {wall.date} · {wall.time} ·{" "}
+                              {event.event_type ??
+                                COPY.programs.eventTypeOptions[5]}{" "}
+                              ·{" "}
+                              {COPY.programs.repeatLabel.replace(
+                                "{tag}",
+                                event.recurrence_tag ??
+                                  COPY.programs.recurrenceNone
+                              )}{" "}
+                              ·{" "}
+                              {event.status === "Active"
+                                ? COPY.programs.eventActive
+                                : COPY.programs.eventCancelled}
+                            </ScreenRowMeta>
+                            <div className="flex min-w-0 flex-wrap items-center gap-[var(--screen-utility-gap)]">
+                              <ScreenStatus
+                                tone={
+                                  event.source === "SCHEDULE"
+                                    ? "accent"
+                                    : "neutral"
                                 }
                               >
-                                {COPY.programs.eventEdit}
-                              </DropdownMenuItem>
-                              <DropdownMenuItem
-                                disabled={
-                                  !onOpenEvent ||
-                                  eventsOutcomeUnknown ||
-                                  eventsStale
-                                }
-                                onSelect={() =>
-                                  openEvent(event.event_id, "reschedule")
-                                }
-                              >
-                                {COPY.programs.eventReschedule}
-                              </DropdownMenuItem>
-                              {dataReady && event.status === "Active" && (
-                                <>
-                                  <DropdownMenuSeparator />
-                                  <DropdownMenuItem
-                                    variant="destructive"
-                                    disabled={
-                                      eventsOutcomeUnknown || eventsStale
-                                    }
-                                    onSelect={() => {
-                                      if (event.has_attendance) {
-                                        const message =
-                                          COPY.programs
-                                            .cancelBlockedWithAttendance;
-                                        setActionError(message);
-                                        announce(message);
-                                        return;
-                                      }
-                                      setConfirmingEventId(event.event_id);
-                                    }}
-                                  >
-                                    {COPY.programs.cancelEvent}
-                                  </DropdownMenuItem>
-                                </>
+                                {event.source === "SCHEDULE"
+                                  ? COPY.programs.eventScheduleSource
+                                  : COPY.programs.eventManualSource}
+                              </ScreenStatus>
+                              {exception !== null && (
+                                <ScreenStatus tone="pending">
+                                  {exception.action === "RESCHEDULE"
+                                    ? COPY.programs.eventRescheduledBadge.replace(
+                                        "{time}",
+                                        exception.new_start_time ?? ""
+                                      )
+                                    : COPY.programs.eventCancelledBadge}
+                                </ScreenStatus>
                               )}
-                            </DropdownMenuContent>
-                          </DropdownMenu>
-                        )}
-                        {canManage &&
-                          dataReady &&
-                          event.status === "Active" &&
-                          confirmingEventId === event.event_id && (
-                            <form
-                              className="grid min-w-0 basis-full gap-2"
-                              noValidate
-                              onSubmit={submitCancelEvent(event.event_id)}
-                            >
-                              <Input
-                                className="border-[var(--screen-line-strong)] bg-[var(--screen-surface)] text-base"
-                                type="text"
-                                name="cancel_reason"
-                                placeholder={
-                                  COPY.programs.cancelReasonPlaceholder
-                                }
-                                aria-label={COPY.programs.cancelReason}
-                                disabled={actionBusy}
-                              />
-                              <ScreenCard
-                                className="min-w-0"
-                                role="alert"
-                                ref={confirmEventRef}
+                              {event.availability !== undefined &&
+                                event.availability !== "Active" && (
+                                  <ScreenStatus tone="danger">
+                                    {COPY.programs.eventUnavailable}
+                                  </ScreenStatus>
+                                )}
+                            </div>
+                            {event.status === "Cancelled" &&
+                              event.cancel_reason !== null && (
+                                <ScreenRowMeta className="text-[var(--screen-danger)]">
+                                  {COPY.programs.cancelledReason.replace(
+                                    "{reason}",
+                                    event.cancel_reason
+                                  )}
+                                </ScreenRowMeta>
+                              )}
+                          </ScreenRowMain>
+                          <div className="flex min-w-0 basis-full flex-wrap items-center gap-[var(--screen-utility-gap)]">
+                            {(actionPhase === "open" ||
+                              actionPhase === "past") && (
+                              <Button
+                                asChild
+                                className="w-fit border-[var(--screen-line-strong)] bg-transparent text-[var(--screen-ink)] hover:bg-[var(--screen-surface-soft)]"
+                                variant="outline"
                               >
-                                <strong>
-                                  {COPY.programs.cancelMeetingConfirmTitle}
-                                </strong>
-                                <span>
-                                  {COPY.programs.cancelMeetingConfirmBody}
-                                </span>
-                                <Button
-                                  type="submit"
-                                  disabled={actionBusy}
-                                  className="w-fit bg-[var(--screen-danger)] text-white hover:bg-[var(--screen-danger)]"
+                                <Link
+                                  href={`/events?eventId=${encodeURIComponent(event.event_id)}`}
+                                  aria-disabled={
+                                    eventsOutcomeUnknown || eventsStale
+                                  }
+                                  onClick={(clickEvent) => {
+                                    if (eventsOutcomeUnknown || eventsStale) {
+                                      clickEvent.preventDefault();
+                                      return;
+                                    }
+                                    if (
+                                      !onOpenAttendance ||
+                                      clickEvent.defaultPrevented ||
+                                      clickEvent.button !== 0 ||
+                                      clickEvent.metaKey ||
+                                      clickEvent.ctrlKey ||
+                                      clickEvent.shiftKey ||
+                                      clickEvent.altKey
+                                    ) {
+                                      return;
+                                    }
+                                    clickEvent.preventDefault();
+                                    onOpenAttendance(event.event_id);
+                                  }}
                                 >
-                                  {COPY.programs.confirmCancel}
-                                </Button>
-                                <Button
-                                  type="button"
-                                  disabled={actionBusy}
-                                  className="w-fit border-[var(--screen-line-strong)] bg-transparent text-[var(--screen-ink)] hover:bg-[var(--screen-surface-soft)]"
-                                  variant="outline"
-                                  onClick={() => setConfirmingEventId(null)}
+                                  {actionPhase === "open"
+                                    ? COPY.attendance.eventAttendanceOpen
+                                    : COPY.programs.eventAttendanceViewRecord}
+                                </Link>
+                              </Button>
+                            )}
+                            {canManage && actionPhase !== "cancelled" && (
+                              <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                  <Button
+                                    type="button"
+                                    variant="outline"
+                                    size="icon"
+                                    aria-label={COPY.programs.eventMoreActions}
+                                    disabled={
+                                      actionBusy ||
+                                      eventsOutcomeUnknown ||
+                                      eventsStale
+                                    }
+                                    className="border-[var(--screen-line-strong)] bg-transparent text-[var(--screen-ink)] hover:bg-[var(--screen-surface-soft)]"
+                                  >
+                                    <MoreHorizontal aria-hidden="true" />
+                                  </Button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="end">
+                                  <DropdownMenuItem
+                                    disabled={
+                                      !onOpenEvent ||
+                                      eventsOutcomeUnknown ||
+                                      eventsStale
+                                    }
+                                    onSelect={() =>
+                                      openEvent(event.event_id, "edit")
+                                    }
+                                  >
+                                    {COPY.programs.eventEdit}
+                                  </DropdownMenuItem>
+                                  <DropdownMenuItem
+                                    disabled={
+                                      !onOpenEvent ||
+                                      eventsOutcomeUnknown ||
+                                      eventsStale
+                                    }
+                                    onSelect={() =>
+                                      openEvent(event.event_id, "reschedule")
+                                    }
+                                  >
+                                    {COPY.programs.eventReschedule}
+                                  </DropdownMenuItem>
+                                  {dataReady && event.status === "Active" && (
+                                    <>
+                                      <DropdownMenuSeparator />
+                                      <DropdownMenuItem
+                                        variant="destructive"
+                                        disabled={
+                                          eventsOutcomeUnknown || eventsStale
+                                        }
+                                        onSelect={() => {
+                                          if (event.has_attendance) {
+                                            const message =
+                                              COPY.programs
+                                                .cancelBlockedWithAttendance;
+                                            setActionError(message);
+                                            announce(message);
+                                            return;
+                                          }
+                                          setConfirmingEventId(event.event_id);
+                                        }}
+                                      >
+                                        {COPY.programs.cancelEvent}
+                                      </DropdownMenuItem>
+                                    </>
+                                  )}
+                                </DropdownMenuContent>
+                              </DropdownMenu>
+                            )}
+                            {canManage &&
+                              dataReady &&
+                              event.status === "Active" &&
+                              confirmingEventId === event.event_id && (
+                                <form
+                                  className="grid min-w-0 basis-full gap-2"
+                                  noValidate
+                                  onSubmit={submitCancelEvent(event.event_id)}
                                 >
-                                  {COPY.programs.keepMeeting}
-                                </Button>
-                              </ScreenCard>
-                            </form>
-                          )}
-                      </div>
-                    </ScreenRow>
-                  </li>
-                );
-              }
-            )}
-          </ul>
-        </ScreenRowList>
+                                  <Input
+                                    className="border-[var(--screen-line-strong)] bg-[var(--screen-surface)] text-base"
+                                    type="text"
+                                    name="cancel_reason"
+                                    placeholder={
+                                      COPY.programs.cancelReasonPlaceholder
+                                    }
+                                    aria-label={COPY.programs.cancelReason}
+                                    disabled={actionBusy}
+                                  />
+                                  <ScreenCard
+                                    className="min-w-0"
+                                    role="alert"
+                                    ref={confirmEventRef}
+                                  >
+                                    <strong>
+                                      {COPY.programs.cancelMeetingConfirmTitle}
+                                    </strong>
+                                    <span>
+                                      {COPY.programs.cancelMeetingConfirmBody}
+                                    </span>
+                                    <Button
+                                      type="submit"
+                                      disabled={actionBusy}
+                                      className="w-fit bg-[var(--screen-danger)] text-white hover:bg-[var(--screen-danger)]"
+                                    >
+                                      {COPY.programs.confirmCancel}
+                                    </Button>
+                                    <Button
+                                      type="button"
+                                      disabled={actionBusy}
+                                      className="w-fit border-[var(--screen-line-strong)] bg-transparent text-[var(--screen-ink)] hover:bg-[var(--screen-surface-soft)]"
+                                      variant="outline"
+                                      onClick={() => setConfirmingEventId(null)}
+                                    >
+                                      {COPY.programs.keepMeeting}
+                                    </Button>
+                                  </ScreenCard>
+                                </form>
+                              )}
+                          </div>
+                        </ScreenRow>
+                      </li>
+                    );
+                  }
+                )}
+              </ul>
+            </ScreenRowList>
+          )}
+        </section>
       )}
       {canManage && recurring && (
         <ScreenSection

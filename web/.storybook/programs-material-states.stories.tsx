@@ -413,11 +413,11 @@ const workspaceEventsMixedPlay: Story["play"] = async ({ canvasElement }) => {
     })
   ).toBeNull();
   await userEvent.click(
-    canvas.getByRole("button", { name: COPY.programs.eventsFilterPast })
+    canvas.getByRole("tab", { name: COPY.programs.eventsFilterPast })
   );
   await expect(visibleEventIds()).toStrictEqual(["t07-3-event"]);
   await userEvent.click(
-    canvas.getByRole("button", { name: COPY.programs.eventsFilterCancelled })
+    canvas.getByRole("tab", { name: COPY.programs.eventsFilterCancelled })
   );
   await expect(visibleEventIds()).toStrictEqual(["t07-3-cancelled-event"]);
   await expect(

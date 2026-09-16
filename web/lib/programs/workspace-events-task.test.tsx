@@ -315,11 +315,18 @@ describe("EventsTask operations-first composition", () => {
     const filters = screen.getByRole("tablist", {
       name: COPY.programs.eventsFilterLabel,
     });
-    expect(
-      within(filters).getByRole("tab", {
-        name: COPY.programs.eventsFilterCurrent,
-      })
-    ).toHaveAttribute("aria-selected", "true");
+    const currentTab = within(filters).getByRole("tab", {
+      name: COPY.programs.eventsFilterCurrent,
+    });
+    expect(currentTab).toHaveAttribute("aria-selected", "true");
+    expect(currentTab).toHaveAttribute(
+      "aria-controls",
+      "programs-events-filter-panel"
+    );
+    expect(screen.getByRole("tabpanel")).toHaveAttribute(
+      "aria-labelledby",
+      currentTab.id
+    );
     expect(
       [...list.querySelectorAll<HTMLElement>("[data-event-id]")].map(
         (row) => row.dataset.eventId
