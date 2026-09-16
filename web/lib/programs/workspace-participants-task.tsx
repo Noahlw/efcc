@@ -388,6 +388,7 @@ export const ParticipantsTask = () => {
   > | null>(null);
   const mountedRef = useRef(true);
   const approvalSequenceRef = useRef(0);
+  const attentionRefreshRef = useRef(onAttentionRefresh);
 
   useEffect(
     () => () => {
@@ -395,6 +396,9 @@ export const ParticipantsTask = () => {
     },
     []
   );
+  useEffect(() => {
+    attentionRefreshRef.current = onAttentionRefresh;
+  }, [onAttentionRefresh]);
 
   useEffect(() => {
     void run();
@@ -447,7 +451,10 @@ export const ParticipantsTask = () => {
   }, [onWorkspaceRefresh]);
 
   const reconcileApprovalRun = useCallback(
-    async (runId: string): Promise<EnrollmentApprovalRun | null> => {
+    async (
+      runId: string,
+      refreshProjections = true
+    ): Promise<EnrollmentApprovalRun | null> => {
       try {
         const result = await reconcileEnrollmentApprovalRun(programId, runId);
         if (!mountedRef.current) {
@@ -465,6 +472,25 @@ export const ParticipantsTask = () => {
           setApprovalRefreshError(null);
           onMutationBlockChange?.(hasUnknownMutation);
         }
+        if (refreshProjections) {
+          let snapshot: Awaited<ReturnType<typeof refresh>> | undefined;
+          try {
+            snapshot = await refresh();
+          } catch {
+            snapshot = undefined;
+          }
+          const workspaceReconciled = await refreshSharedWorkspace();
+          if (!mountedRef.current) {
+            return result.run;
+          }
+          if (workspaceReconciled && snapshot !== undefined) {
+            setParticipantsStale(false);
+            attentionRefreshRef.current();
+          } else {
+            setParticipantsStale(true);
+            onMutationBlockChange?.(true);
+          }
+        }
         return result.run;
       } catch (error) {
         if (mountedRef.current) {
@@ -478,7 +504,13 @@ export const ParticipantsTask = () => {
         return null;
       }
     },
-    [hasUnknownMutation, onMutationBlockChange, programId]
+    [
+      hasUnknownMutation,
+      onMutationBlockChange,
+      programId,
+      refresh,
+      refreshSharedWorkspace,
+    ]
   );
 
   useEffect(() => {
@@ -494,7 +526,11 @@ export const ParticipantsTask = () => {
           return;
         }
         const activeRun =
-          runs.find((candidate) => candidate.status === "active") ?? null;
+          runs.find(
+            (candidate) =>
+              candidate.status === "active" ||
+              approvalRunNeedsReconciliation(candidate)
+          ) ?? null;
         setApprovalRun(activeRun);
         if (activeRun) {
           await reconcileApprovalRun(activeRun.run_id);
@@ -870,7 +906,8 @@ export const ParticipantsTask = () => {
       if (approvalRunNeedsReconciliation(finalRun)) {
         setApprovalRun(finalRun);
         setApprovalRefreshError(APPROVAL_COPY.reconciliationRequired);
-        finalRun = (await reconcileApprovalRun(activeRun.run_id)) ?? finalRun;
+        finalRun =
+          (await reconcileApprovalRun(activeRun.run_id, false)) ?? finalRun;
         if (!mountedRef.current) {
           return;
         }
@@ -906,7 +943,7 @@ export const ParticipantsTask = () => {
         setApprovalRefreshError(APPROVAL_COPY.reconciliationRequired);
         setNotice(APPROVAL_COPY.reconciliationRequired);
         announce(APPROVAL_COPY.reconciliationRequired);
-        const reconciled = await reconcileApprovalRun(activeRun.run_id);
+        const reconciled = await reconcileApprovalRun(activeRun.run_id, false);
         if (!mountedRef.current || !reconciled) {
           return;
         }
@@ -1149,6 +1186,10 @@ export const ParticipantsTask = () => {
       if (!reconciled || approvalRunNeedsReconciliation(reconciled)) {
         return;
       }
+      if (hasUnknownMutation) {
+        await reconcileUnknownParticipants(Object.keys(unknownMutationIds));
+      }
+      return;
     }
     if (hasUnknownMutation) {
       await reconcileUnknownParticipants(Object.keys(unknownMutationIds));

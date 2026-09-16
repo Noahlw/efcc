@@ -620,6 +620,22 @@ describe("R44: durable Enrollment Approval Runs", () => {
     assert.strictEqual(firstBody.data.run.items[0]?.status, "completed");
     assert.strictEqual(firstBody.data.run.items[1]?.status, "not_started");
 
+    const staleSelectionStart = await runRequest(
+      adminAccess,
+      `/api/v1/programs/${programId}/enrollment-approval-runs`,
+      "POST",
+      { request_ids: requestIds },
+      "r44-start-after-progress"
+    );
+    assert.strictEqual(staleSelectionStart.status, 201);
+    const staleSelectionBody = (await assertCorrelated(
+      staleSelectionStart
+    )) as {
+      data: { created: boolean; run: { run_id: string } };
+    };
+    assert.strictEqual(staleSelectionBody.data.created, false);
+    assert.strictEqual(staleSelectionBody.data.run.run_id, run.run_id);
+
     const secondContinue = await runRequest(
       adminAccess,
       `/api/v1/programs/${programId}/enrollment-approval-runs/${run.run_id}/continue`,
@@ -1133,6 +1149,63 @@ describe("R44: durable Enrollment Approval Runs", () => {
     };
     assert.strictEqual(continueBody.data.item, null);
     assert.strictEqual(continueBody.data.run.status, "cancelled");
+  });
+
+  test("does not overlap concurrent Continue calls", async () => {
+    const programId = await newProgram("R44 continue race");
+    const [requestId] = await pendingRequests(programId, ["U002"]);
+    const start = await runRequest(
+      adminAccess,
+      `/api/v1/programs/${programId}/enrollment-approval-runs`,
+      "POST",
+      { request_ids: [requestId] }
+    );
+    const run = (
+      (await assertCorrelated(start)) as {
+        data: { run: { run_id: string } };
+      }
+    ).data.run;
+    const store = new D1WorkspaceStore(testDb());
+    const workspace = new DepartmentWorkspace(
+      store,
+      new D1CapabilityAuthorizer(testDb())
+    );
+    const gateState: { release?: () => void } = {};
+    let markEntered: (() => void) | null = null;
+    // oxlint-disable-next-line promise/avoid-new -- hold the real approval mutation at the race boundary.
+    const gate = new Promise<void>((resolve) => {
+      gateState.release = resolve;
+    });
+    // oxlint-disable-next-line promise/avoid-new -- deterministically wait until the item is in flight.
+    const entered = new Promise<void>((resolve) => {
+      markEntered = resolve;
+    });
+    const originalApprove = store.approveEnrollmentRequest.bind(store);
+    store.approveEnrollmentRequest = async (input) => {
+      markEntered?.();
+      await gate;
+      return originalApprove(input);
+    };
+    const ctx = { actorUserId: "U001" };
+    const firstContinue = workspace.continueEnrollmentApprovalRun(
+      ctx,
+      programId,
+      run.run_id,
+      "r44-continue-first"
+    );
+    await entered;
+    const secondContinue = await workspace.continueEnrollmentApprovalRun(
+      ctx,
+      programId,
+      run.run_id,
+      "r44-continue-second"
+    );
+    assert.strictEqual(secondContinue?.item, null);
+    assert.strictEqual(secondContinue?.run.items[0]?.status, "in_flight");
+    gateState.release?.();
+    const completed = await firstContinue;
+    assert.strictEqual(completed?.item?.status, "completed");
+    assert.strictEqual(completed?.run.status, "completed");
   });
 
   test("does not audit a stale Continue transition after a concurrent cancel", async () => {

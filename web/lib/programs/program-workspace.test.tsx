@@ -2026,7 +2026,80 @@ describe("ENR-01 participants workspace", () => {
       screen.findByRole("button", { name: "重新核對結果" })
     ).resolves.toBeInTheDocument();
     expect(mocks.reconcileEnrollmentApprovalRun).toHaveBeenCalledTimes(2);
-    expect(mocks.listEnrollmentSnapshot).toHaveBeenCalledTimes(2);
+    expect(mocks.listEnrollmentSnapshot).toHaveBeenCalledTimes(3);
+  });
+
+  test("reloads cancelled unresolved Runs and refreshes after explicit Reconcile", async () => {
+    mockWorkspace();
+    const runId = "approval-run-reload-cancelled";
+    const unresolvedRun: EnrollmentApprovalRun = {
+      run_id: runId,
+      program_id: request.program_id,
+      status: "cancelled",
+      created_at: "2026-08-04T00:00:00.000Z",
+      finished_at: null,
+      cancelled_at: "2026-08-04T00:02:00.000Z",
+      items: [
+        {
+          item_id: `${runId}:${request.request_id}`,
+          run_id: runId,
+          sequence: 0,
+          request_id: request.request_id,
+          program_id: request.program_id,
+          member_user_id: request.member_user_id,
+          member_name: request.member_name,
+          member_username: request.member_username,
+          request_version: request.request_version,
+          idempotency_key: "approval-key-reload-cancelled",
+          status: "outcome_unknown",
+          retryable: false,
+          enrollment_id: null,
+          error_code: "OUTCOME_UNKNOWN",
+          detail: "仍未能確認",
+          started_at: "2026-08-04T00:00:00.000Z",
+          settled_at: "2026-08-04T00:03:00.000Z",
+        },
+      ],
+    };
+    const settledRun: EnrollmentApprovalRun = {
+      ...unresolvedRun,
+      items: [
+        {
+          ...unresolvedRun.items[0],
+          status: "completed",
+          retryable: false,
+          enrollment_id: "enrollment-reload-cancelled",
+          error_code: null,
+          detail: null,
+        },
+      ],
+    };
+    mocks.listEnrollmentApprovalRuns.mockResolvedValue({
+      runs: [unresolvedRun],
+    });
+    mocks.reconcileEnrollmentApprovalRun
+      .mockResolvedValueOnce({ run: unresolvedRun })
+      .mockResolvedValueOnce({ run: settledRun });
+    render(
+      <ProgramWorkspace
+        programId="program-1"
+        task="participants"
+        onBack={() => {}}
+        onTaskChange={() => {}}
+      />
+    );
+
+    await waitFor(() =>
+      expect(mocks.reconcileEnrollmentApprovalRun).toHaveBeenCalledOnce()
+    );
+    await userEvent.click(
+      await screen.findByRole("button", { name: "重新核對結果" })
+    );
+    await waitFor(() =>
+      expect(mocks.reconcileEnrollmentApprovalRun).toHaveBeenCalledTimes(2)
+    );
+    expect(mocks.continueEnrollmentApprovalRun).not.toHaveBeenCalled();
+    expect(mocks.listEnrollmentSnapshot).toHaveBeenCalledTimes(3);
   });
 
   test("cancels an active enrollment and renders refreshed cancellation history", async () => {

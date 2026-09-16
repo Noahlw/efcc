@@ -5055,6 +5055,14 @@ export class DepartmentWorkspace {
         "Enrollment Approval Run requires distinct request IDs."
       );
     }
+    const runs = await this.store.listEnrollmentApprovalRuns(
+      ctx.actorUserId,
+      programId
+    );
+    const existing = runs.find((run) => run.status === "active");
+    if (existing) {
+      return { run: approvalRunView(existing), created: false };
+    }
     const requestRows = await this.store.listEnrollmentRequests(programId);
     const requestsById = new Map(
       requestRows.map((request) => [request.request_id, request])
@@ -5071,14 +5079,6 @@ export class DepartmentWorkspace {
       throw new EnrollmentApprovalRunValidationError(
         "Enrollment Approval Run requires current Pending requests from one Program."
       );
-    }
-    const runs = await this.store.listEnrollmentApprovalRuns(
-      ctx.actorUserId,
-      programId
-    );
-    const existing = runs.find((run) => run.status === "active");
-    if (existing) {
-      return { run: approvalRunView(existing), created: false };
     }
     let run: EnrollmentApprovalRun;
     try {
@@ -5178,12 +5178,7 @@ export class DepartmentWorkspace {
     if (!initial) {
       return null;
     }
-    const reconciled = await this.reconcileApprovalRunRow(
-      ctx,
-      initial,
-      correlationId
-    );
-    const current = approvalRunView(reconciled);
+    const current = approvalRunView(initial);
     const begun = beginNextEnrollmentApprovalItem(current);
     if (!begun) {
       return { run: current, item: null };
@@ -5204,7 +5199,7 @@ export class DepartmentWorkspace {
       ),
     };
     const claimedRow: EnrollmentApprovalRunRow = {
-      ...reconciled,
+      ...initial,
       ...claimedRun,
     };
     let next: EnrollmentApprovalRun;
