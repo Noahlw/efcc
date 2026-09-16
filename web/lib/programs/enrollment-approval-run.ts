@@ -315,20 +315,20 @@ export function settleEnrollmentApprovalItem(
 export function reconcileEnrollmentApprovalItem(
   item: EnrollmentApprovalRunItem,
   authority: EnrollmentApprovalRunAuthority,
-  reconciledAt = nowIso()
+  reconciledAt = nowIso(),
+  allowRetry = true
 ): EnrollmentApprovalRunItem {
   if (item.status !== "in_flight" && item.status !== "outcome_unknown") {
     return item;
   }
-  const hasAuthoritativeEnrollment =
+  const hasAuthoritativeCommit =
     authority.request_status === "Approved" &&
+    authority.request_version === item.request_version + 1 &&
     authority.enrollment_id !== null &&
-    authority.enrollment_request_id === item.request_id;
-  const hasSuccessfulEnrollmentAudit =
-    authority.request_status === "Approved" &&
+    authority.enrollment_request_id === item.request_id &&
     authority.enrollment_audit_outcome === "SUCCESS" &&
-    authority.enrollment_audit_entity_id !== null;
-  if (hasAuthoritativeEnrollment || hasSuccessfulEnrollmentAudit) {
+    authority.enrollment_audit_entity_id === authority.enrollment_id;
+  if (hasAuthoritativeCommit) {
     return {
       ...item,
       status: "completed",
@@ -346,10 +346,12 @@ export function reconcileEnrollmentApprovalItem(
   ) {
     return {
       ...item,
-      status: "failed",
-      retryable: true,
-      error_code: "OUTCOME_NOT_COMMITTED",
-      detail: "未找到已核准紀錄，可由操作人員明確繼續。",
+      status: allowRetry ? "failed" : "outcome_unknown",
+      retryable: allowRetry,
+      error_code: allowRetry ? "OUTCOME_NOT_COMMITTED" : "OUTCOME_UNKNOWN",
+      detail: allowRetry
+        ? "未找到已核准紀錄，可由操作人員明確繼續。"
+        : "已取消後續處理，但目前仍未能確認已提交的核准結果。",
       settled_at: reconciledAt,
     };
   }
@@ -377,7 +379,12 @@ export function reconcileEnrollmentApprovalRun(
   const reconciled = run.items.map((item) => {
     const authority = authorityByRequestId.get(item.request_id);
     return authority
-      ? reconcileEnrollmentApprovalItem(item, authority, reconciledAt)
+      ? reconcileEnrollmentApprovalItem(
+          item,
+          authority,
+          reconciledAt,
+          run.status === "active"
+        )
       : item;
   });
   return maybeFinish({ ...run, items: reconciled }, reconciledAt);

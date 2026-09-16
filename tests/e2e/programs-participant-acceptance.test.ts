@@ -40,6 +40,7 @@ type ParticipantFixture = {
 
 let adminApi: APIRequestContext | null = null;
 let memberApi: APIRequestContext | null = null;
+let staffApi: APIRequestContext | null = null;
 let fixture: ParticipantFixture | null = null;
 
 async function loginWithPlaywright(
@@ -103,6 +104,11 @@ test.beforeAll(async ({ playwright }) => {
   adminApi = admin.api;
   const member = await loginWithPlaywright(playwright, MEMBER);
   memberApi = member.api;
+  const staff = await loginWithPlaywright(playwright, {
+    username: "E2E_staff",
+    credential: "E2E_staff!dev",
+  });
+  staffApi = staff.api;
   const suffix = crypto.randomUUID().slice(0, 8);
   const departmentResponse = await adminApi.post(
     "/api/v1/programs/departments",
@@ -160,6 +166,7 @@ test.beforeAll(async ({ playwright }) => {
 test.afterAll(async () => {
   await adminApi?.dispose();
   await memberApi?.dispose();
+  await staffApi?.dispose();
 });
 
 test.describe("T05.4 participant Browser Acceptance", () => {
@@ -246,11 +253,16 @@ test.describe("T05.4 participant Browser Acceptance", () => {
     expect(fixture).not.toBeNull();
     expect(memberApi).not.toBeNull();
     const { programId, programName } = fixture!;
-    const requestResponse = await memberApi!.post(
+    const memberRequestResponse = await memberApi!.post(
       `/api/v1/programs/${programId}/enrollment-requests`,
       { data: {} }
     );
-    expect(requestResponse.status()).toBe(201);
+    expect(memberRequestResponse.status()).toBe(201);
+    const staffRequestResponse = await staffApi!.post(
+      `/api/v1/programs/${programId}/enrollment-requests`,
+      { data: {} }
+    );
+    expect(staffRequestResponse.status()).toBe(201);
 
     await loginAsAdmin(page);
     await page.goto(
@@ -263,7 +275,7 @@ test.describe("T05.4 participant Browser Acceptance", () => {
       name: "參與者",
     });
     await expect(
-      participantPanel.getByRole("tab", { name: /待審批 \(1\)/u })
+      participantPanel.getByRole("tab", { name: /待審批 \(2\)/u })
     ).toBeVisible();
 
     let continueRequests = 0;
@@ -272,6 +284,8 @@ test.describe("T05.4 participant Browser Acceptance", () => {
       async (route) => {
         continueRequests += 1;
         if (continueRequests === 1) {
+          const committedResponse = await route.fetch();
+          expect(committedResponse.status()).toBe(200);
           await route.abort("failed");
           return;
         }
@@ -279,7 +293,7 @@ test.describe("T05.4 participant Browser Acceptance", () => {
       }
     );
     await participantPanel
-      .getByRole("checkbox", { name: /選取.*E2E Member/u })
+      .getByRole("checkbox", { name: "選取目前顯示的待審批報名" })
       .click();
     await participantPanel.getByRole("button", { name: "檢視所選" }).click();
     await page

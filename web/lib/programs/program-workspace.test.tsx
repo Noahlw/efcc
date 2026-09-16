@@ -1736,7 +1736,10 @@ describe("ENR-01 participants workspace", () => {
         itemFor(secondRequest, 1, "failed", false, "STALE_REQUEST_VERSION"),
       ],
     };
-    mocks.startEnrollmentApprovalRun.mockResolvedValue({ run: initialRun });
+    mocks.startEnrollmentApprovalRun.mockResolvedValue({
+      run: initialRun,
+      created: true,
+    });
     mocks.continueEnrollmentApprovalRun
       .mockResolvedValueOnce({ run: firstRun, item: firstRun.items[0] })
       .mockResolvedValueOnce({ run: finalRun, item: finalRun.items[1] });
@@ -1852,7 +1855,10 @@ describe("ENR-01 participants workspace", () => {
           item: EnrollmentApprovalRunItem;
         }) => void)
       | undefined;
-    mocks.startEnrollmentApprovalRun.mockResolvedValue({ run: initialRun });
+    mocks.startEnrollmentApprovalRun.mockResolvedValue({
+      run: initialRun,
+      created: true,
+    });
     mocks.continueEnrollmentApprovalRun.mockImplementation(
       () =>
         // oxlint-disable-next-line promise/avoid-new -- hold the first approval until the task is unmounted.
@@ -1886,6 +1892,141 @@ describe("ENR-01 participants workspace", () => {
     await waitFor(() =>
       expect(mocks.continueEnrollmentApprovalRun).toHaveBeenCalledOnce()
     );
+  });
+
+  test("does not auto-continue an existing active Run returned by Start", async () => {
+    mockWorkspace();
+    mocks.listEnrollmentSnapshot.mockResolvedValue({
+      requests: [request],
+      enrollments: [],
+    });
+    const runId = "approval-run-existing";
+    const existingRun: EnrollmentApprovalRun = {
+      run_id: runId,
+      program_id: request.program_id,
+      status: "active",
+      created_at: "2026-08-04T00:00:00.000Z",
+      finished_at: null,
+      cancelled_at: null,
+      items: [
+        {
+          item_id: `${runId}:${request.request_id}`,
+          run_id: runId,
+          sequence: 0,
+          request_id: request.request_id,
+          program_id: request.program_id,
+          member_user_id: request.member_user_id,
+          member_name: request.member_name,
+          member_username: request.member_username,
+          request_version: request.request_version,
+          idempotency_key: "approval-key-existing",
+          status: "not_started",
+          retryable: true,
+          enrollment_id: null,
+          error_code: null,
+          detail: null,
+          started_at: null,
+          settled_at: null,
+        },
+      ],
+    };
+    mocks.startEnrollmentApprovalRun.mockResolvedValue({
+      run: existingRun,
+      created: false,
+    });
+    render(
+      <ProgramWorkspace
+        programId="program-1"
+        task="participants"
+        onBack={() => {}}
+        onTaskChange={() => {}}
+      />
+    );
+
+    await userEvent.click(
+      await screen.findByRole("checkbox", { name: /選取.*陳同工/u })
+    );
+    await userEvent.click(screen.getByRole("button", { name: "檢視所選" }));
+    await userEvent.click(screen.getByRole("button", { name: "確認核准" }));
+    await expect(
+      screen.findByRole("button", { name: "繼續處理餘下項目" })
+    ).resolves.toBeInTheDocument();
+    expect(mocks.continueEnrollmentApprovalRun).not.toHaveBeenCalled();
+  });
+
+  test("keeps Reconcile available when cancellation leaves an in-flight item", async () => {
+    mockWorkspace();
+    const runId = "approval-run-cancelled-in-flight";
+    const inFlightItem: EnrollmentApprovalRunItem = {
+      item_id: `${runId}:${request.request_id}`,
+      run_id: runId,
+      sequence: 0,
+      request_id: request.request_id,
+      program_id: request.program_id,
+      member_user_id: request.member_user_id,
+      member_name: request.member_name,
+      member_username: request.member_username,
+      request_version: request.request_version,
+      idempotency_key: "approval-key-cancelled-in-flight",
+      status: "in_flight",
+      retryable: false,
+      enrollment_id: null,
+      error_code: null,
+      detail: null,
+      started_at: "2026-08-04T00:00:00.000Z",
+      settled_at: null,
+    };
+    const activeRun: EnrollmentApprovalRun = {
+      run_id: runId,
+      program_id: request.program_id,
+      status: "active",
+      created_at: "2026-08-04T00:00:00.000Z",
+      finished_at: null,
+      cancelled_at: null,
+      items: [inFlightItem],
+    };
+    const cancelledRun: EnrollmentApprovalRun = {
+      ...activeRun,
+      status: "cancelled",
+      cancelled_at: "2026-08-04T00:02:00.000Z",
+    };
+    const reconciledRun: EnrollmentApprovalRun = {
+      ...cancelledRun,
+      items: [
+        {
+          ...inFlightItem,
+          status: "outcome_unknown",
+          error_code: "OUTCOME_UNKNOWN",
+          detail: "仍未能確認",
+          settled_at: "2026-08-04T00:03:00.000Z",
+        },
+      ],
+    };
+    mocks.listEnrollmentApprovalRuns.mockResolvedValue({ runs: [activeRun] });
+    mocks.reconcileEnrollmentApprovalRun
+      .mockResolvedValueOnce({ run: activeRun })
+      .mockResolvedValueOnce({ run: reconciledRun });
+    mocks.cancelEnrollmentApprovalRun.mockResolvedValue({
+      run: cancelledRun,
+    });
+    render(
+      <ProgramWorkspace
+        programId="program-1"
+        task="participants"
+        onBack={() => {}}
+        onTaskChange={() => {}}
+      />
+    );
+
+    await expect(
+      screen.findByRole("button", { name: "取消後續處理" })
+    ).resolves.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "取消後續處理" }));
+    await expect(
+      screen.findByRole("button", { name: "重新核對結果" })
+    ).resolves.toBeInTheDocument();
+    expect(mocks.reconcileEnrollmentApprovalRun).toHaveBeenCalledTimes(2);
+    expect(mocks.listEnrollmentSnapshot).toHaveBeenCalledTimes(2);
   });
 
   test("cancels an active enrollment and renders refreshed cancellation history", async () => {

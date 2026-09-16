@@ -803,7 +803,7 @@ export const ParticipantsTask = () => {
     setSelectedRequestIds([]);
     setNotice(null);
     try {
-      const { run: created } = await startEnrollmentApprovalRun(
+      const started = await startEnrollmentApprovalRun(
         programId,
         selectedPendingRequests.map((request) => request.request_id),
         crypto.randomUUID()
@@ -811,8 +811,10 @@ export const ParticipantsTask = () => {
       if (!mountedRef.current) {
         return;
       }
-      setApprovalRun(created);
-      await runApprovalSequence(created.run_id);
+      setApprovalRun(started.run);
+      if (started.created) {
+        await runApprovalSequence(started.run.run_id);
+      }
     } catch (error) {
       if (!mountedRef.current) {
         return;
@@ -846,12 +848,14 @@ export const ParticipantsTask = () => {
     }
   };
 
+  // oxlint-disable-next-line eslint/complexity -- cancellation also reconciles and refreshes an in-flight run.
   const handleCancelApprovalRun = async () => {
     const activeRun = approvalRun;
     if (!activeRun || activeRun.status !== "active") {
       return;
     }
     approvalSequenceRef.current += 1;
+    setApprovalBusy(true);
     setApprovalRefreshError(null);
     try {
       const result = await cancelEnrollmentApprovalRun(
@@ -862,13 +866,61 @@ export const ParticipantsTask = () => {
       if (!mountedRef.current) {
         return;
       }
-      setApprovalRun(result.run);
-      setApprovalBusy(false);
+      let finalRun = result.run;
+      if (approvalRunNeedsReconciliation(finalRun)) {
+        setApprovalRun(finalRun);
+        setApprovalRefreshError(APPROVAL_COPY.reconciliationRequired);
+        finalRun = (await reconcileApprovalRun(activeRun.run_id)) ?? finalRun;
+        if (!mountedRef.current) {
+          return;
+        }
+      }
+      setApprovalRun(finalRun);
+      if (approvalRunNeedsReconciliation(finalRun)) {
+        setApprovalRefreshError(APPROVAL_COPY.reconciliationRequired);
+      } else {
+        setApprovalRefreshError(null);
+      }
       setNotice(APPROVAL_COPY.cancelled);
       announce(APPROVAL_COPY.cancelled);
-      onMutationBlockChange?.(hasUnknownMutation);
+      onAttentionRefresh();
+      const workspaceReconciled = await refreshSharedWorkspace();
+      if (!mountedRef.current) {
+        return;
+      }
+      const snapshot = await refresh();
+      if (!mountedRef.current) {
+        return;
+      }
+      if (!workspaceReconciled || snapshot === undefined) {
+        setParticipantsStale(true);
+      }
+      onMutationBlockChange?.(
+        approvalRunNeedsReconciliation(finalRun) || hasUnknownMutation
+      );
     } catch (error) {
       if (!mountedRef.current) {
+        return;
+      }
+      if (isUnknownMutationOutcome(error)) {
+        setApprovalRefreshError(APPROVAL_COPY.reconciliationRequired);
+        setNotice(APPROVAL_COPY.reconciliationRequired);
+        announce(APPROVAL_COPY.reconciliationRequired);
+        const reconciled = await reconcileApprovalRun(activeRun.run_id);
+        if (!mountedRef.current || !reconciled) {
+          return;
+        }
+        const workspaceReconciled = await refreshSharedWorkspace();
+        if (!mountedRef.current) {
+          return;
+        }
+        const snapshot = await refresh();
+        if (!mountedRef.current) {
+          return;
+        }
+        if (!workspaceReconciled || snapshot === undefined) {
+          setParticipantsStale(true);
+        }
         return;
       }
       const message =
@@ -877,6 +929,10 @@ export const ParticipantsTask = () => {
           : COPY.error.networkError;
       setApprovalRefreshError(message);
       announce(message);
+    } finally {
+      if (mountedRef.current) {
+        setApprovalBusy(false);
+      }
     }
   };
 
@@ -1567,24 +1623,24 @@ export const ParticipantsTask = () => {
                 {APPROVAL_COPY.continueRemaining}
               </Button>
             )}
-          {approvalRun.status === "active" &&
-            approvalRunNeedsReconciliation(approvalRun) && (
-              <Button
-                type="button"
-                variant="outline"
-                className="w-fit border-[var(--screen-line-strong)] bg-transparent text-[var(--screen-ink)] hover:bg-[var(--screen-surface)]"
-                onClick={() => void reconcileApprovalRun(approvalRun.run_id)}
-                disabled={approvalBusy}
-              >
-                {APPROVAL_COPY.reconcile}
-              </Button>
-            )}
+          {approvalRunNeedsReconciliation(approvalRun) && (
+            <Button
+              type="button"
+              variant="outline"
+              className="w-fit border-[var(--screen-line-strong)] bg-transparent text-[var(--screen-ink)] hover:bg-[var(--screen-surface)]"
+              onClick={() => void reconcileApprovalRun(approvalRun.run_id)}
+              disabled={approvalBusy}
+            >
+              {APPROVAL_COPY.reconcile}
+            </Button>
+          )}
           {approvalRun.status === "active" && (
             <Button
               type="button"
               variant="outline"
               className="w-fit border-[var(--screen-danger)] bg-transparent text-[var(--screen-danger)] hover:bg-[var(--screen-danger-surface)]"
               onClick={() => void handleCancelApprovalRun()}
+              disabled={approvalBusy}
             >
               {APPROVAL_COPY.cancelRun}
             </Button>

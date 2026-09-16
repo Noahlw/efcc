@@ -2791,13 +2791,13 @@ export async function handleStartEnrollmentApprovalRun(
     return notFound(requestId, "Unknown program.");
   }
   try {
-    const run = await workspace.startEnrollmentApprovalRun(
+    const result = await workspace.startEnrollmentApprovalRun(
       authorizationContextFor(auth.account),
       programId,
       body.request_ids,
       correlationId
     );
-    return jsonResponse(201, { run }, requestId);
+    return jsonResponse(201, result, requestId);
   } catch (error) {
     const mapped =
       mapEnrollmentApprovalRunError(error, requestId) ??

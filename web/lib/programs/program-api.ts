@@ -760,7 +760,7 @@ export function startEnrollmentApprovalRun(
   programId: string,
   requestIds: readonly string[],
   idempotencyKey?: string
-): Promise<{ run: EnrollmentApprovalRun }> {
+): Promise<{ run: EnrollmentApprovalRun; created: boolean }> {
   return programsFetch(
     `/api/v1/programs/${programId}/enrollment-approval-runs`,
     "POST",

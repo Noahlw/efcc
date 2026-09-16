@@ -526,6 +526,7 @@ describe("R44: durable Enrollment Approval Runs", () => {
     assert.strictEqual(start.status, 201);
     const started = (await assertCorrelated(start)) as {
       data: {
+        created: boolean;
         run: {
           run_id: string;
           status: string;
@@ -540,6 +541,7 @@ describe("R44: durable Enrollment Approval Runs", () => {
       };
     };
     const run = started.data.run;
+    assert.strictEqual(started.data.created, true);
     assert.strictEqual(run.status, "active");
     assert.deepStrictEqual(
       run.items.map(({ request_id }) => request_id),
@@ -597,8 +599,9 @@ describe("R44: durable Enrollment Approval Runs", () => {
     );
     assert.strictEqual(repeatedStart.status, 201);
     const repeatedBody = (await assertCorrelated(repeatedStart)) as {
-      data: { run: { run_id: string } };
+      data: { created: boolean; run: { run_id: string } };
     };
+    assert.strictEqual(repeatedBody.data.created, false);
     assert.strictEqual(repeatedBody.data.run.run_id, run.run_id);
 
     const firstContinue = await runRequest(
@@ -667,6 +670,28 @@ describe("R44: durable Enrollment Approval Runs", () => {
         ({ run_id, status }) => run_id === run.run_id && status === "completed"
       )
     );
+    const runAudits = await testDb()
+      .prepare(
+        `SELECT action, outcome, reason FROM audit_events
+          WHERE entity_type = 'enrollment_approval_run' AND entity_id = ?
+          ORDER BY inserted_at`
+      )
+      .bind(run.run_id)
+      .all<{ action: string; outcome: string; reason: string | null }>();
+    assert.ok(
+      runAudits.results?.some(
+        ({ action, outcome, reason }) =>
+          action === "ENROLLMENT_APPROVAL_RUN_CREATE" &&
+          outcome === "SUCCESS" &&
+          reason === "selected_pending_requests"
+      )
+    );
+    assert.strictEqual(
+      runAudits.results?.filter(
+        ({ action }) => action === "ENROLLMENT_APPROVAL_RUN_CONTINUE"
+      ).length,
+      2
+    );
   });
 
   test("reconciles an outcome-unknown committed approval without replaying Enrollment", async () => {
@@ -730,6 +755,8 @@ describe("R44: durable Enrollment Approval Runs", () => {
           enrollmentId,
           JSON.stringify({
             enrollment_id: enrollmentId,
+            program_id: programId,
+            member_user_id: "U002",
             request_id: requestId,
           }),
           item.idempotency_key
@@ -777,6 +804,192 @@ describe("R44: durable Enrollment Approval Runs", () => {
       .bind(requestId)
       .first<{ count: number }>();
     assert.strictEqual(count?.count, 1);
+  });
+
+  test("retries an outcome-unknown approval only after Pending proves no commit", async () => {
+    const programId = await newProgram("R44 failure before commit");
+    const [requestId] = await pendingRequests(programId, ["U002"]);
+    const start = await runRequest(
+      adminAccess,
+      `/api/v1/programs/${programId}/enrollment-approval-runs`,
+      "POST",
+      { request_ids: [requestId] }
+    );
+    const run = (
+      (await assertCorrelated(start)) as {
+        data: {
+          run: {
+            run_id: string;
+            items: { idempotency_key: string }[];
+          };
+        };
+      }
+    ).data.run;
+    await testDb()
+      .prepare(
+        `UPDATE enrollment_approval_run_items
+            SET status = 'outcome_unknown', started_at = ?
+          WHERE run_id = ? AND request_id = ?`
+      )
+      .bind(new Date().toISOString(), run.run_id, requestId)
+      .run();
+
+    const reconcile = await runRequest(
+      adminAccess,
+      `/api/v1/programs/${programId}/enrollment-approval-runs/${run.run_id}/reconcile`,
+      "POST"
+    );
+    const reconciled = (await assertCorrelated(reconcile)) as {
+      data: {
+        run: {
+          status: string;
+          items: { status: string; retryable: boolean; error_code: string }[];
+        };
+      };
+    };
+    assert.strictEqual(reconciled.data.run.status, "active");
+    const reconciledItem = reconciled.data.run.items[0];
+    assert.deepStrictEqual(
+      {
+        status: reconciledItem?.status,
+        retryable: reconciledItem?.retryable,
+        error_code: reconciledItem?.error_code,
+      },
+      {
+        status: "failed",
+        retryable: true,
+        error_code: "OUTCOME_NOT_COMMITTED",
+      }
+    );
+
+    const continued = await runRequest(
+      adminAccess,
+      `/api/v1/programs/${programId}/enrollment-approval-runs/${run.run_id}/continue`,
+      "POST"
+    );
+    const continuedBody = (await assertCorrelated(continued)) as {
+      data: {
+        item: { status: string } | null;
+        run: { status: string; items: { status: string }[] };
+      };
+    };
+    assert.strictEqual(continuedBody.data.item?.status, "completed");
+    assert.strictEqual(continuedBody.data.run.status, "completed");
+    assert.strictEqual(continuedBody.data.run.items[0]?.status, "completed");
+  });
+
+  test("rejects an audit collision from another Program or request", async () => {
+    const programId = await newProgram("R44 audit binding");
+    const [requestId] = await pendingRequests(programId, ["U002"]);
+    const otherProgramId = await newProgram("R44 audit collision source");
+    const [otherRequestId] = await pendingRequests(otherProgramId, ["U002"]);
+    const start = await runRequest(
+      adminAccess,
+      `/api/v1/programs/${programId}/enrollment-approval-runs`,
+      "POST",
+      { request_ids: [requestId] }
+    );
+    const run = (
+      (await assertCorrelated(start)) as {
+        data: {
+          run: {
+            run_id: string;
+            items: { idempotency_key: string }[];
+          };
+        };
+      }
+    ).data.run;
+    const item = run.items[0];
+    assert.ok(item);
+    const foreignEnrollmentId = crypto.randomUUID();
+    const now = new Date().toISOString();
+    await testDb().batch([
+      testDb()
+        .prepare(
+          `UPDATE enrollment_approval_run_items
+              SET status = 'outcome_unknown', started_at = ?
+            WHERE run_id = ? AND request_id = ?`
+        )
+        .bind(now, run.run_id, requestId),
+      testDb()
+        .prepare(
+          `UPDATE enrollment_requests
+              SET status = 'Approved', decided_by = 'U001', decided_at = ?,
+                  request_version = 2
+            WHERE request_id = ?`
+        )
+        .bind(now, requestId),
+      testDb()
+        .prepare(
+          `INSERT INTO enrollments
+            (enrollment_id, program_id, member_user_id, request_id, status,
+             enrolled_at, created_by, created_at)
+           VALUES (?, ?, 'U002', ?, 'Active', ?, 'U001', ?)`
+        )
+        .bind(foreignEnrollmentId, otherProgramId, otherRequestId, now, now),
+      testDb()
+        .prepare(
+          `INSERT INTO audit_events
+            (audit_id, inserted_at, actor_user_id, action, entity_type,
+             entity_id, new_value_json, outcome, correlation_id)
+           VALUES (?, ?, 'U001', 'ENROLLMENT_CREATE', 'enrollment', ?, ?,
+                   'SUCCESS', ?)`
+        )
+        .bind(
+          crypto.randomUUID(),
+          now,
+          foreignEnrollmentId,
+          JSON.stringify({
+            enrollment_id: foreignEnrollmentId,
+            program_id: otherProgramId,
+            member_user_id: "U002",
+            request_id: otherRequestId,
+          }),
+          item.idempotency_key
+        ),
+    ]);
+
+    const reconcile = await runRequest(
+      adminAccess,
+      `/api/v1/programs/${programId}/enrollment-approval-runs/${run.run_id}/reconcile`,
+      "POST"
+    );
+    assert.strictEqual(reconcile.status, 200);
+    const body = (await assertCorrelated(reconcile)) as {
+      data: {
+        run: {
+          status: string;
+          items: {
+            status: string;
+            error_code: string | null;
+            enrollment_id: string | null;
+          }[];
+        };
+      };
+    };
+    assert.strictEqual(body.data.run.status, "completed");
+    const resultItem = body.data.run.items[0];
+    assert.deepStrictEqual(
+      {
+        status: resultItem?.status,
+        error_code: resultItem?.error_code,
+        enrollment_id: resultItem?.enrollment_id,
+      },
+      {
+        status: "failed",
+        error_code: "REQUEST_ALREADY_HANDLED",
+        enrollment_id: null,
+      }
+    );
+    await testDb()
+      .prepare(
+        `UPDATE enrollment_requests
+            SET status = 'Rejected', decided_by = 'U001', decided_at = ?,
+                decision_note = 'R44 audit fixture cleanup', request_version = 3
+          WHERE request_id = ?`
+      )
+      .bind(new Date().toISOString(), requestId)
+      .run();
   });
 
   test("keeps approximately 30 outcomes independent and prevents duplicates on repeated Continue", async () => {
@@ -920,6 +1133,84 @@ describe("R44: durable Enrollment Approval Runs", () => {
     };
     assert.strictEqual(continueBody.data.item, null);
     assert.strictEqual(continueBody.data.run.status, "cancelled");
+  });
+
+  test("does not audit a stale Continue transition after a concurrent cancel", async () => {
+    const programId = await newProgram("R44 cancel race");
+    const [requestId] = await pendingRequests(programId, ["U002"]);
+    const start = await runRequest(
+      adminAccess,
+      `/api/v1/programs/${programId}/enrollment-approval-runs`,
+      "POST",
+      { request_ids: [requestId] }
+    );
+    const run = (
+      (await assertCorrelated(start)) as {
+        data: { run: { run_id: string } };
+      }
+    ).data.run;
+    const store = new D1WorkspaceStore(testDb());
+    const workspace = new DepartmentWorkspace(
+      store,
+      new D1CapabilityAuthorizer(testDb())
+    );
+    const gateState: { release?: () => void } = {};
+    let markEntered: (() => void) | null = null;
+    // oxlint-disable-next-line promise/avoid-new -- hold the real approval mutation at the race boundary.
+    const gate = new Promise<void>((resolve) => {
+      gateState.release = resolve;
+    });
+    // oxlint-disable-next-line promise/avoid-new -- deterministically wait until the item is in flight.
+    const entered = new Promise<void>((resolve) => {
+      markEntered = resolve;
+    });
+    const originalApprove = store.approveEnrollmentRequest.bind(store);
+    store.approveEnrollmentRequest = async (input) => {
+      markEntered?.();
+      await gate;
+      return originalApprove(input);
+    };
+    const ctx = { actorUserId: "U001" };
+    const continuePromise = workspace.continueEnrollmentApprovalRun(
+      ctx,
+      programId,
+      run.run_id,
+      "r44-race-continue"
+    );
+    await entered;
+    const cancelled = await workspace.cancelEnrollmentApprovalRun(
+      ctx,
+      programId,
+      run.run_id,
+      "r44-race-cancel"
+    );
+    assert.strictEqual(cancelled?.status, "cancelled");
+    gateState.release?.();
+    const continued = await continuePromise;
+    assert.strictEqual(continued?.run.status, "cancelled");
+    assert.strictEqual(continued?.item?.status, "completed");
+    const stored = await testDb()
+      .prepare(
+        `SELECT r.status AS run_status, i.status AS item_status
+           FROM enrollment_approval_runs r
+           JOIN enrollment_approval_run_items i ON i.run_id = r.run_id
+          WHERE r.run_id = ?`
+      )
+      .bind(run.run_id)
+      .first<{ run_status: string; item_status: string }>();
+    assert.deepStrictEqual(stored, {
+      run_status: "cancelled",
+      item_status: "completed",
+    });
+    const staleAudit = await testDb()
+      .prepare(
+        `SELECT audit_id FROM audit_events
+          WHERE action = 'ENROLLMENT_APPROVAL_RUN_CONTINUE'
+            AND correlation_id = ?`
+      )
+      .bind("r44-race-continue")
+      .first();
+    assert.strictEqual(staleAudit, null);
   });
 });
 

@@ -738,6 +738,11 @@ export interface EnrollmentApprovalRunActionResult {
   item: EnrollmentApprovalRunItem | null;
 }
 
+export interface EnrollmentApprovalRunStartResult {
+  run: EnrollmentApprovalRun;
+  created: boolean;
+}
+
 export interface AssistedEnrollCommand {
   memberUserId: string;
 }
@@ -4915,7 +4920,7 @@ export class DepartmentWorkspace {
   private async persistApprovalRun(
     current: EnrollmentApprovalRunRow,
     next: EnrollmentApprovalRun
-  ): Promise<EnrollmentApprovalRunRow> {
+  ): Promise<{ row: EnrollmentApprovalRunRow; committed: boolean }> {
     const currentByRequestId = new Map(
       current.items.map((item) => [item.request_id, item])
     );
@@ -4947,7 +4952,7 @@ export class DepartmentWorkspace {
         const latest = await this.store.findEnrollmentApprovalRun(
           current.run_id
         );
-        return latest ?? current;
+        return { row: latest ?? current, committed: false };
       }
     }
     if (
@@ -4963,11 +4968,14 @@ export class DepartmentWorkspace {
         const latest = await this.store.findEnrollmentApprovalRun(
           current.run_id
         );
-        return latest ?? current;
+        return { row: latest ?? current, committed: false };
       }
     }
     const latest = await this.store.findEnrollmentApprovalRun(current.run_id);
-    return latest ?? { ...current, ...next };
+    return {
+      row: latest ?? { ...current, ...next },
+      committed: true,
+    };
   }
 
   private async reconcileApprovalRunRow(
@@ -5005,12 +5013,15 @@ export class DepartmentWorkspace {
       )
     );
     const next = reconcileEnrollmentApprovalRun(current, authorityByRequestId);
-    const persisted = await this.persistApprovalRun(row, next);
+    const persistedResult = await this.persistApprovalRun(row, next);
+    const persisted = persistedResult.row;
+    const persistedView = approvalRunView(persisted);
     if (
-      persisted.status !== row.status ||
-      persisted.items.some(
-        (item, index) => item.status !== row.items[index]?.status
-      )
+      persistedResult.committed &&
+      (persisted.status !== row.status ||
+        persisted.items.some(
+          (item, index) => item.status !== row.items[index]?.status
+        ))
     ) {
       await this.audit(
         ctx,
@@ -5019,7 +5030,7 @@ export class DepartmentWorkspace {
         row.run_id,
         "SUCCESS",
         current,
-        next,
+        persistedView,
         correlationId ?? row.correlation_id,
         "authoritative_reconciliation"
       );
@@ -5032,7 +5043,7 @@ export class DepartmentWorkspace {
     programId: string,
     requestIds: readonly string[],
     correlationId: string | null
-  ): Promise<EnrollmentApprovalRun> {
+  ): Promise<EnrollmentApprovalRunStartResult> {
     await this.requireApprovalRunProgram(ctx, programId);
     const ids = requestIds.map((requestId) => requestId.trim());
     if (
@@ -5067,7 +5078,7 @@ export class DepartmentWorkspace {
     );
     const existing = runs.find((run) => run.status === "active");
     if (existing) {
-      return approvalRunView(existing);
+      return { run: approvalRunView(existing), created: false };
     }
     let run: EnrollmentApprovalRun;
     try {
@@ -5100,7 +5111,7 @@ export class DepartmentWorkspace {
         (candidate) => candidate.status === "active"
       );
       if (winner) {
-        return approvalRunView(winner);
+        return { run: approvalRunView(winner), created: false };
       }
       throw error;
     }
@@ -5122,7 +5133,7 @@ export class DepartmentWorkspace {
       correlationId,
       "selected_pending_requests"
     );
-    return run;
+    return { run, created: true };
   }
 
   async listEnrollmentApprovalRuns(
@@ -5257,18 +5268,21 @@ export class DepartmentWorkspace {
         failure,
       });
     }
-    const persisted = await this.persistApprovalRun(claimedRow, next);
-    await this.audit(
-      ctx,
-      "ENROLLMENT_APPROVAL_RUN_CONTINUE",
-      "enrollment_approval_run",
-      runId,
-      outcome,
-      current,
-      next,
-      correlationId ?? claimed.idempotency_key,
-      "explicit_continue"
-    );
+    const persistedResult = await this.persistApprovalRun(claimedRow, next);
+    const persisted = persistedResult.row;
+    if (persistedResult.committed) {
+      await this.audit(
+        ctx,
+        "ENROLLMENT_APPROVAL_RUN_CONTINUE",
+        "enrollment_approval_run",
+        runId,
+        outcome,
+        current,
+        approvalRunView(persisted),
+        correlationId ?? claimed.idempotency_key,
+        "explicit_continue"
+      );
+    }
     const item = persisted.items.find(
       (candidate) => candidate.request_id === claimed.request_id
     );
@@ -5291,18 +5305,21 @@ export class DepartmentWorkspace {
     if (next.status === current.status) {
       return current;
     }
-    const persisted = await this.persistApprovalRun(row, next);
-    await this.audit(
-      ctx,
-      "ENROLLMENT_APPROVAL_RUN_CANCEL",
-      "enrollment_approval_run",
-      runId,
-      "SUCCESS",
-      current,
-      next,
-      correlationId,
-      "operator_cancelled_future_scheduling"
-    );
+    const persistedResult = await this.persistApprovalRun(row, next);
+    const persisted = persistedResult.row;
+    if (persistedResult.committed) {
+      await this.audit(
+        ctx,
+        "ENROLLMENT_APPROVAL_RUN_CANCEL",
+        "enrollment_approval_run",
+        runId,
+        "SUCCESS",
+        current,
+        approvalRunView(persisted),
+        correlationId,
+        "operator_cancelled_future_scheduling"
+      );
+    }
     return approvalRunView(persisted);
   }
 

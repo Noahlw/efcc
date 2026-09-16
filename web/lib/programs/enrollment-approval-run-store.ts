@@ -256,13 +256,19 @@ export async function findEnrollmentApprovalAuthority(
     db
       .prepare(
         `SELECT outcome, entity_id
-           FROM audit_events
-          WHERE action = 'ENROLLMENT_CREATE'
-            AND entity_type = 'enrollment'
-            AND correlation_id = ?
-          ORDER BY inserted_at DESC LIMIT 1`
+           FROM audit_events audit
+           JOIN enrollments audited_enrollment
+             ON audited_enrollment.enrollment_id = audit.entity_id
+            AND audited_enrollment.program_id = ?
+            AND audited_enrollment.member_user_id = ?
+            AND audited_enrollment.request_id = ?
+          WHERE audit.action = 'ENROLLMENT_CREATE'
+            AND audit.entity_type = 'enrollment'
+            AND audit.outcome = 'SUCCESS'
+            AND audit.correlation_id = ?
+          ORDER BY audit.inserted_at DESC LIMIT 1`
       )
-      .bind(idempotencyKey),
+      .bind(programId, memberUserId, requestId, idempotencyKey),
   ]);
   const requestRow = request.results?.[0] as
     | {

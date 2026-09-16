@@ -197,4 +197,41 @@ describe("durable Enrollment Approval Run", () => {
     expect(cancelled.status).toBe("cancelled");
     expect(cancelled.items[1]?.status).toBe("completed");
   });
+
+  test("keeps a cancelled in-flight outcome unknown until it is authoritative", () => {
+    const run = createEnrollmentApprovalRun({
+      run_id: "run-5",
+      program_id: "program-1",
+      created_at: "2026-09-16T00:00:00.000Z",
+      requests,
+    });
+    const first = beginNextEnrollmentApprovalItem(run);
+    if (!first) {
+      throw new Error("expected the first Approval Run item to be claimable");
+    }
+    const cancelled = cancelEnrollmentApprovalRun(first.run);
+    const reconciled = reconcileEnrollmentApprovalRun(
+      cancelled,
+      new Map([
+        [
+          "req-1",
+          {
+            request_status: "Pending" as const,
+            request_version: 3,
+            enrollment_id: null,
+            enrollment_request_id: null,
+            enrollment_audit_outcome: null,
+            enrollment_audit_entity_id: null,
+          },
+        ],
+      ])
+    );
+
+    expect(reconciled.items[0]).toMatchObject({
+      status: "outcome_unknown",
+      retryable: false,
+      error_code: "OUTCOME_UNKNOWN",
+    });
+    expect(beginNextEnrollmentApprovalItem(reconciled)).toBeNull();
+  });
 });
