@@ -41,6 +41,7 @@ const mocks = vi.hoisted(() => {
     getManagementProgram: vi.fn(),
     getParticipantProgramDetail: vi.fn(),
     getEvent: vi.fn(),
+    getOwnAttendance: vi.fn(),
     listParticipantCatalog: vi.fn(),
     pathname: vi.fn(() => "/programs"),
     push: router.push,
@@ -58,6 +59,7 @@ vi.mock(import("@/lib/programs/program-api"), () => ({
   getManagementProgram: mocks.getManagementProgram,
   getParticipantProgramDetail: mocks.getParticipantProgramDetail,
   getEvent: mocks.getEvent,
+  getOwnAttendance: mocks.getOwnAttendance,
   listParticipantCatalog: mocks.listParticipantCatalog,
 }));
 
@@ -550,6 +552,11 @@ beforeEach(() => {
     programs: [],
   });
   mocks.getParticipantProgramDetail.mockResolvedValue(detailFixture());
+  mocks.getOwnAttendance.mockResolvedValue({
+    state: "Not Yet",
+    attendance: null,
+    disposition: null,
+  });
   mocks.push.mockReset();
   mocks.replace.mockReset();
 });
@@ -703,9 +710,9 @@ describe("Programs boundary", () => {
       screen.findByRole("heading", { name: "迎新聚會" })
     ).resolves.toBeInTheDocument();
     expect(mocks.getEvent).toHaveBeenCalledWith("program-1", "event-42");
-    expect(
-      screen.getByRole("link", { name: COPY.programs.goToScan })
-    ).toHaveAttribute("href", "/scanner?event=event-42");
+    await expect(
+      screen.findByRole("link", { name: COPY.programs.goToScan })
+    ).resolves.toHaveAttribute("href", "/scanner?event=event-42");
     const back = screen.getByRole("link", { name: COPY.programs.backToOrigin });
     expect(back).toHaveAttribute(
       "href",

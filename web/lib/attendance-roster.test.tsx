@@ -14,6 +14,9 @@ import {
 } from "@/lib/attendance-operator-panel";
 import { COPY } from "@/lib/copy";
 
+const EVENT_WINDOW_OPENS_AT = new Date(Date.now() - 30 * 60_000).toISOString();
+const EVENT_WINDOW_CLOSES_AT = new Date(Date.now() + 30 * 60_000).toISOString();
+
 const EVENT: AttendanceEvent = {
   event_id: "evt-roster",
   program_id: "program-roster",
@@ -23,8 +26,8 @@ const EVENT: AttendanceEvent = {
   starts_at: "2026-08-13T11:30:00.000Z",
   ends_at: "2026-08-13T13:00:00.000Z",
   manual_check_in_code: "ATT1234",
-  check_in_window_opens_at: "2026-08-13T10:30:00.000Z",
-  check_in_window_closes_at: "2026-08-13T13:30:00.000Z",
+  check_in_window_opens_at: EVENT_WINDOW_OPENS_AT,
+  check_in_window_closes_at: EVENT_WINDOW_CLOSES_AT,
   status: "Active",
   availability: "Active",
 };
