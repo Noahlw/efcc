@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "runtime": "wrangler-dev-local-d1-fallback",
+  "config": "web/wrangler.jsonc",
+  "suite": "tests/e2e/programs-participant-acceptance.config.ts",
+  "revision": "6cc9a5d9c8beb87833a6183f65834d102f3a7215",
+  "layer": "browser-acceptance",
+  "retries": 0,
+  "status": "passed",
+  "target": "http://127.0.0.1:8787",
+  "reportPath": ".delivery/programs-623/artifacts/local-browser-6cc9/browser-results.json",
+  "seed": "pnpm db:seed:local && pnpm db:seed:demo"
+}

@@ -1,0 +1,7 @@
+Candidate: 6cc9a5d9c8beb87833a6183f65834d102f3a7215
+Target: http://127.0.0.1:8787 (wrangler dev + local D1)
+Viewport: desktop project, 1280x720
+Command: PROGRAMS_TARGET_URL=http://127.0.0.1:8787 pnpm exec playwright test --config=tests/e2e/programs-d1.config.ts --project=desktop --grep "changing the visible range|a stale plan is rejected before writes" --retries=0 --workers=1
+Result: 2 passed (9.1s) on the clean rerun
+Scenarios: Preview A -> mutate visible range -> stale state -> Review Again -> Generate; bypassed stale Plan rejected before Event writes.
+Qualification note: the immediately preceding attempt hit the same local preview-settlement timing flake; no source change occurred between attempts.

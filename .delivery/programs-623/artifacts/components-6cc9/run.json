@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "runtime": "vitest-component-local",
+  "suite": "web/vitest.components.config.ts",
+  "revision": "6cc9a5d9c8beb87833a6183f65834d102f3a7215",
+  "layer": "components",
+  "status": "passed",
+  "testFiles": 69,
+  "tests": 1092,
+  "reportPath": ".delivery/programs-623/artifacts/components-6cc9/components-results.json",
+  "command": "pnpm --dir web exec vitest run --config vitest.components.config.ts --reporter=json --outputFile=.delivery/programs-623/artifacts/components-6cc9/components-results.json"
+}

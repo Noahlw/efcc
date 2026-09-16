@@ -1,0 +1,16 @@
+{
+  "revision": "6cc9a5d9c8beb87833a6183f65834d102f3a7215",
+  "layer": "browser-acceptance",
+  "logicalScenario": null,
+  "route": "/programs",
+  "state": "authenticated Program journey",
+  "viewport": {
+    "width": 390,
+    "height": 844
+  },
+  "failureEvidence": [],
+  "message": "Harness D1 migration or fixture setup failed",
+  "firstCausalRuntimeSignal": null,
+  "target": null,
+  "downstreamSymptoms": []
+}

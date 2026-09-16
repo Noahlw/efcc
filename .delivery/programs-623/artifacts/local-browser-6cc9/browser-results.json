@@ -1,0 +1,319 @@
+{
+  "config": {
+    "argv": [
+      "/Users/noah.wong/.local/share/fnm/node-versions/v22.18.0/installation/bin/node",
+      "/Users/noah.wong/.codex/worktrees/25d0/efcc/node_modules/@playwright/test/cli.js",
+      "test",
+      "--config=tests/e2e/programs-participant-acceptance.config.ts",
+      "--retries=0",
+      "--workers=1"
+    ],
+    "configFile": "/Users/noah.wong/.codex/worktrees/25d0/efcc/tests/e2e/programs-participant-acceptance.config.ts",
+    "rootDir": "/Users/noah.wong/.codex/worktrees/25d0/efcc/tests/e2e",
+    "failOnFlakyTests": false,
+    "forbidOnly": false,
+    "fullyParallel": false,
+    "globalSetup": null,
+    "globalTeardown": null,
+    "globalTimeout": 0,
+    "grep": {},
+    "grepInvert": null,
+    "maxFailures": 0,
+    "metadata": {
+      "actualWorkers": 1
+    },
+    "preserveOutput": "always",
+    "projects": [
+      {
+        "outputDir": "/Users/noah.wong/.codex/worktrees/25d0/efcc/.delivery/programs-623/artifacts/local-browser-6cc9/browser-output",
+        "repeatEach": 1,
+        "retries": 0,
+        "metadata": {
+          "actualWorkers": 1
+        },
+        "id": "phone-390",
+        "name": "phone-390",
+        "testDir": "/Users/noah.wong/.codex/worktrees/25d0/efcc/tests/e2e",
+        "testIgnore": [],
+        "testMatch": [
+          "**/programs-participant-acceptance.test.ts",
+          "**/programs-management-acceptance.test.ts"
+        ],
+        "timeout": 60000
+      }
+    ],
+    "quiet": false,
+    "reporter": [
+      [
+        "line",
+        null
+      ],
+      [
+        "json",
+        {
+          "outputFile": "/Users/noah.wong/.codex/worktrees/25d0/efcc/.delivery/programs-623/artifacts/local-browser-6cc9/browser-results.json"
+        }
+      ]
+    ],
+    "reportSlowTests": {
+      "max": 5,
+      "threshold": 300000
+    },
+    "shard": null,
+    "tags": [],
+    "updateSnapshots": "missing",
+    "updateSourceMethod": "patch",
+    "version": "1.62.1",
+    "workers": 1,
+    "webServer": null
+  },
+  "suites": [
+    {
+      "title": "programs-management-acceptance.test.ts",
+      "file": "programs-management-acceptance.test.ts",
+      "column": 0,
+      "line": 0,
+      "specs": [],
+      "suites": [
+        {
+          "title": "T05.5 management Browser Acceptance",
+          "file": "programs-management-acceptance.test.ts",
+          "line": 198,
+          "column": 6,
+          "specs": [
+            {
+              "title": "cold management load makes one access request",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "phone-390",
+                  "projectName": "phone-390",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 957,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-09-16T11:22:33.298Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "520d73e4fc6c985c6169-f264f4d0a8b035bd1751",
+              "file": "programs-management-acceptance.test.ts",
+              "line": 199,
+              "column": 3
+            },
+            {
+              "title": "shares a pending Home access prefetch with the Programs route",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "phone-390",
+                  "projectName": "phone-390",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 637,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-09-16T11:22:34.585Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "520d73e4fc6c985c6169-d2d32d80a98a24c37c57",
+              "file": "programs-management-acceptance.test.ts",
+              "line": 224,
+              "column": 3
+            },
+            {
+              "title": "admin opens a scoped Program, saves management data, and reads it back",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "phone-390",
+                  "projectName": "phone-390",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 2734,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-09-16T11:22:35.230Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "520d73e4fc6c985c6169-3e346d5dc5b5dc95ddbb",
+              "file": "programs-management-acceptance.test.ts",
+              "line": 266,
+              "column": 3
+            },
+            {
+              "title": "keeps a successful Settings write distinct from a failed workspace readback",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "phone-390",
+                  "projectName": "phone-390",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 1031,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-09-16T11:22:37.970Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "520d73e4fc6c985c6169-ef67f9228445b8c2a921",
+              "file": "programs-management-acceptance.test.ts",
+              "line": 477,
+              "column": 3
+            },
+            {
+              "title": "settings, Event, and Enrollment mutations converge in Overview without reload",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "phone-390",
+                  "projectName": "phone-390",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 5065,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-09-16T11:22:39.009Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "520d73e4fc6c985c6169-3de2630e107a4b80647d",
+              "file": "programs-management-acceptance.test.ts",
+              "line": 552,
+              "column": 3
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "programs-participant-acceptance.test.ts",
+      "file": "programs-participant-acceptance.test.ts",
+      "column": 0,
+      "line": 0,
+      "specs": [],
+      "suites": [
+        {
+          "title": "T05.4 participant Browser Acceptance",
+          "file": "programs-participant-acceptance.test.ts",
+          "line": 149,
+          "column": 6,
+          "specs": [
+            {
+              "title": "member submits, gets approved, reads back, and exits a Program",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "phone-390",
+                  "projectName": "phone-390",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 1541,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-09-16T11:22:44.084Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "cbbc179103ede4263b16-1c30359a2c257646c60c",
+              "file": "programs-participant-acceptance.test.ts",
+              "line": 150,
+              "column": 3
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "errors": [],
+  "stats": {
+    "startTime": "2026-09-16T11:22:32.992Z",
+    "duration": 12824.346,
+    "expected": 6,
+    "skipped": 0,
+    "unexpected": 0,
+    "flaky": 0
+  }
+}
