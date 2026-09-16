@@ -634,12 +634,16 @@ describe("Programs boundary", () => {
   test("renders direct Program detail and returns to the directory safely", async () => {
     window.history.replaceState({}, "", "/programs?program=program-1#overview");
     mocks.getManagementAccess.mockResolvedValue(managementAccess(false));
+    // Keep this deep-link test self-contained: another boundary test may leave
+    // a queued detail rejection while its stale request is settling.
+    mocks.getParticipantProgramDetail.mockResolvedValueOnce(detailFixture());
 
     render(<ProgramsBoundary />);
 
     await expect(
       screen.findByRole("heading", { name: "查經小組" })
     ).resolves.toBeInTheDocument();
+    expect(mocks.getParticipantProgramDetail).toHaveBeenCalledWith("program-1");
     expect(
       screen.queryByRole("heading", { name: COPY.programs.detailPurpose })
     ).not.toBeInTheDocument();

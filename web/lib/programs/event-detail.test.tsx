@@ -1,5 +1,5 @@
 /* oxlint-disable vitest/max-expects, vitest/require-mock-type-parameters, vitest/require-top-level-describe, vitest/prefer-called-with, vitest/prefer-mock-promise-shorthand, eslint/require-await */
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
@@ -370,6 +370,12 @@ describe("EVT-01 event detail", () => {
           name: COPY.attendance.eventCheckInSheetPrint,
         })
       );
+      const printImage = printDocument.querySelector("img");
+      expect(printImage).not.toBeNull();
+      printImage?.dispatchEvent(new Event("load"));
+      await expect(
+        screen.findByText(COPY.attendance.eventQrCodePrintSuccess)
+      ).resolves.toBeVisible();
       expect(printDocument.body.textContent).toContain("迎新聚會");
       expect(printDocument.body.textContent).toContain("顯恩堂主日學");
       expect(printDocument.body.textContent).toContain("教會禮堂");
@@ -587,6 +593,131 @@ describe("EVT-01 event detail", () => {
         screen.findByText(COPY.attendance.eventQrCodePrintError)
       ).resolves.toBeVisible();
       await user.click(screen.getByRole("button", { name: COPY.error.retry }));
+      const printImage = printDocument.querySelector("img");
+      expect(printImage).not.toBeNull();
+      printImage?.dispatchEvent(new Event("load"));
+      await expect(
+        screen.findByText(COPY.attendance.eventQrCodePrintSuccess)
+      ).resolves.toBeVisible();
+      expect(print).toHaveBeenCalledOnce();
+    } finally {
+      open.mockRestore();
+    }
+  });
+
+  test("waits for the print-window Event QR image before reporting print success", async () => {
+    mocks.getEvent.mockResolvedValue(detailFixture());
+    mocks.getProgramAttendanceArtifact.mockResolvedValue({
+      artifact: {
+        program_id: "program-1",
+        program_name: "顯恩堂主日學",
+        check_in_token: "program-token-1",
+        can_rotate: false,
+      },
+    });
+    const printDocument = document.implementation.createHTMLDocument();
+    const print = vi.fn();
+    const open = vi.spyOn(window, "open").mockReturnValue({
+      document: printDocument,
+      focus: vi.fn(),
+      print,
+    } as unknown as Window);
+    const user = userEvent.setup();
+
+    try {
+      render(
+        <EventDetail
+          programId="program-1"
+          eventId="event-1"
+          canManage
+          onBack={() => {}}
+          backHref="/programs"
+        />
+      );
+      await clickMoreAction(user, COPY.attendance.eventCheckInSheetOpen);
+      fireEvent.load(
+        await screen.findByAltText(COPY.attendance.eventCheckInSheetQrLabel)
+      );
+      await user.click(
+        screen.getByRole("button", {
+          name: COPY.attendance.eventCheckInSheetPrint,
+        })
+      );
+
+      const printImage = printDocument.querySelector("img");
+      expect(printImage).not.toBeNull();
+      expect(print).not.toHaveBeenCalled();
+      expect(
+        screen.queryByText(COPY.attendance.eventQrCodePrintSuccess)
+      ).not.toBeInTheDocument();
+
+      printImage?.dispatchEvent(new Event("load"));
+      await expect(
+        screen.findByText(COPY.attendance.eventQrCodePrintSuccess)
+      ).resolves.toBeVisible();
+      expect(print).toHaveBeenCalledOnce();
+    } finally {
+      open.mockRestore();
+    }
+  });
+
+  test("exposes Retry when the print-window Event QR image fails, then recovers", async () => {
+    mocks.getEvent.mockResolvedValue(detailFixture());
+    mocks.getProgramAttendanceArtifact.mockResolvedValue({
+      artifact: {
+        program_id: "program-1",
+        program_name: "顯恩堂主日學",
+        check_in_token: "program-token-1",
+        can_rotate: false,
+      },
+    });
+    const failedDocument = document.implementation.createHTMLDocument();
+    const recoveredDocument = document.implementation.createHTMLDocument();
+    const print = vi.fn();
+    let openCount = 0;
+    const open = vi.spyOn(window, "open").mockImplementation(() => {
+      openCount += 1;
+      const document = openCount === 1 ? failedDocument : recoveredDocument;
+      return {
+        document,
+        focus: vi.fn(),
+        print,
+      } as unknown as Window;
+    });
+    const user = userEvent.setup();
+
+    try {
+      render(
+        <EventDetail
+          programId="program-1"
+          eventId="event-1"
+          canManage
+          onBack={() => {}}
+          backHref="/programs"
+        />
+      );
+      await clickMoreAction(user, COPY.attendance.eventCheckInSheetOpen);
+      fireEvent.load(
+        await screen.findByAltText(COPY.attendance.eventCheckInSheetQrLabel)
+      );
+      await user.click(
+        screen.getByRole("button", {
+          name: COPY.attendance.eventCheckInSheetPrint,
+        })
+      );
+
+      const failedImage = failedDocument.querySelector("img");
+      expect(failedImage).not.toBeNull();
+      failedImage?.dispatchEvent(new Event("error"));
+      await expect(
+        screen.findByText(COPY.attendance.eventQrCodePrintError)
+      ).resolves.toBeVisible();
+      expect(print).not.toHaveBeenCalled();
+
+      await user.click(screen.getByRole("button", { name: COPY.error.retry }));
+      const recoveredImage = recoveredDocument.querySelector("img");
+      expect(recoveredImage).not.toBeNull();
+      recoveredImage?.dispatchEvent(new Event("load"));
       await expect(
         screen.findByText(COPY.attendance.eventQrCodePrintSuccess)
       ).resolves.toBeVisible();
@@ -1309,7 +1440,9 @@ describe("EVT-01 event detail", () => {
         name: COPY.programs.eventDetailBackToCatalog,
       })
     ).toHaveAttribute("href", "/programs");
-    mocks.getEvent.mockResolvedValue(detailFixture());
+    const retryDetail = detailFixture();
+    retryDetail.event.event_id = "missing";
+    mocks.getEvent.mockResolvedValue(retryDetail);
     await userEvent.click(
       screen.getByRole("button", { name: COPY.error.retry })
     );
@@ -1769,6 +1902,11 @@ describe("EVT-01 event detail", () => {
       })
     ).resolves.toBeVisible();
     expect(
+      screen.getByText(
+        COPY.programs.cancelledReason.replace("{reason}", "場地維修")
+      )
+    ).toBeVisible();
+    expect(
       screen.getAllByText(COPY.attendance.eventCancelled).length
     ).toBeGreaterThanOrEqual(2);
     expect(screen.getByText(COPY.programs.participantAttendance)).toBeVisible();
@@ -1776,6 +1914,206 @@ describe("EVT-01 event detail", () => {
       screen.queryByRole("link", { name: COPY.programs.goToScan })
     ).not.toBeInTheDocument();
     expect(mocks.getOwnAttendance).toHaveBeenCalledWith("event-1");
+  });
+
+  test("drops late Event A and own-attendance responses after rerendering Event B", async () => {
+    const eventA = detailFixture({
+      event: {
+        ...detailFixture().event,
+        event_id: "event-a",
+        name: "聚會 A",
+      },
+    });
+    const eventB = detailFixture({
+      event: {
+        ...detailFixture().event,
+        event_id: "event-b",
+        name: "聚會 B",
+      },
+    });
+    const eventARequest = Promise.withResolvers<EventDetailData>();
+    const eventBRequest = Promise.withResolvers<EventDetailData>();
+    const attendanceARequest = Promise.withResolvers<{
+      state: "Absent";
+      attendance: null;
+      disposition: null;
+    }>();
+    const attendanceBRequest = Promise.withResolvers<{
+      state: "Present";
+      attendance: { checked_in_at: string };
+      disposition: null;
+    }>();
+    mocks.getEvent.mockReset().mockImplementation((_programId, id) =>
+      id === "event-a" ? eventARequest.promise : eventBRequest.promise
+    );
+    mocks.getOwnAttendance.mockReset().mockImplementation((id) =>
+      id === "event-a" ? attendanceARequest.promise : attendanceBRequest.promise
+    );
+    const { rerender } = render(
+      <EventDetail
+        programId="program-1"
+        eventId="event-a"
+        canManage={false}
+        onBack={() => {}}
+        backHref="/programs"
+      />
+    );
+
+    await act(async () => {
+      eventARequest.resolve(eventA);
+      await eventARequest.promise;
+    });
+    await screen.findByRole("heading", { name: "聚會 A" });
+    await vi.waitFor(() =>
+      expect(mocks.getOwnAttendance).toHaveBeenCalledWith("event-a")
+    );
+
+    rerender(
+      <EventDetail
+        programId="program-1"
+        eventId="event-b"
+        canManage={false}
+        onBack={() => {}}
+        backHref="/programs"
+      />
+    );
+    await vi.waitFor(() =>
+      expect(mocks.getEvent).toHaveBeenCalledWith("program-1", "event-b")
+    );
+    await act(async () => {
+      eventBRequest.resolve(eventB);
+      await eventBRequest.promise;
+    });
+    await screen.findByRole("heading", { name: "聚會 B" });
+    await vi.waitFor(() =>
+      expect(mocks.getOwnAttendance).toHaveBeenCalledWith("event-b")
+    );
+    await act(async () => {
+      attendanceBRequest.resolve({
+        state: "Present",
+        attendance: { checked_in_at: "2026-09-16T10:00:00.000Z" },
+        disposition: null,
+      });
+      await attendanceBRequest.promise;
+      attendanceARequest.resolve({
+        state: "Absent",
+        attendance: null,
+        disposition: null,
+      });
+      await attendanceARequest.promise;
+    });
+
+    expect(screen.getByRole("heading", { name: "聚會 B" })).toBeVisible();
+    expect(
+      screen.getByText(COPY.programs.participantAttendancePresent)
+    ).toBeVisible();
+    expect(
+      screen.queryByText(COPY.programs.participantAttendanceAbsent)
+    ).not.toBeInTheDocument();
+  });
+
+  test("keeps Event B authoritative and targets B-derived values after a late Event A response", async () => {
+    const eventA = detailFixture({
+      event: {
+        ...detailFixture().event,
+        event_id: "event-a",
+        name: "聚會 A",
+      },
+    });
+    const eventB = detailFixture({
+      event: {
+        ...detailFixture().event,
+        event_id: "event-b",
+        name: "聚會 B",
+        location: "B 場地",
+      },
+      participant_summary: { active_enrollments: 0, checked_in: 0 },
+    });
+    const eventARequest = Promise.withResolvers<EventDetailData>();
+    const eventBRequest = Promise.withResolvers<EventDetailData>();
+    mocks.getEvent.mockReset().mockImplementation((_programId, id) =>
+      id === "event-a" ? eventARequest.promise : eventBRequest.promise
+    );
+    mocks.updateEvent.mockResolvedValue({ event: eventB.event });
+    const user = userEvent.setup();
+    const { rerender } = render(
+      <EventDetail
+        programId="program-1"
+        eventId="event-a"
+        canManage
+        onBack={() => {}}
+        backHref="/programs"
+      />
+    );
+
+    rerender(
+      <EventDetail
+        programId="program-1"
+        eventId="event-b"
+        canManage
+        onBack={() => {}}
+        backHref="/programs"
+      />
+    );
+    await vi.waitFor(() =>
+      expect(mocks.getEvent).toHaveBeenCalledWith("program-1", "event-b")
+    );
+    await act(async () => {
+      eventBRequest.resolve(eventB);
+      await eventBRequest.promise;
+    });
+    await screen.findByRole("heading", { name: "聚會 B" });
+    await act(async () => {
+      eventARequest.resolve(eventA);
+      await eventARequest.promise;
+    });
+    expect(screen.queryByRole("heading", { name: "聚會 A" })).not.toBeInTheDocument();
+
+    await clickMoreAction(user, COPY.programs.eventEditTitle);
+    const nameInput = await screen.findByLabelText(COPY.programs.eventName);
+    await user.clear(nameInput);
+    await user.type(nameInput, "聚會 B 更新");
+    await user.click(
+      screen.getByRole("button", { name: COPY.programs.eventEditSave })
+    );
+
+    expect(mocks.updateEvent).toHaveBeenCalledWith(
+      "program-1",
+      "event-b",
+      expect.objectContaining({ name: "聚會 B 更新", location: "B 場地" })
+    );
+  });
+
+  test("participant cancelled Event without a reason keeps unavailable history and no scanner CTA", async () => {
+    mocks.getEvent.mockResolvedValue(
+      detailFixture({
+        event: {
+          ...detailFixture().event,
+          status: "Cancelled",
+          cancel_reason: null,
+        },
+      })
+    );
+    mocks.getOwnAttendance.mockResolvedValue(null);
+    render(
+      <EventDetail
+        programId="program-1"
+        eventId="event-1"
+        canManage={false}
+        onBack={() => {}}
+        backHref="/programs"
+      />
+    );
+
+    await expect(
+      screen.findByRole("status", { name: COPY.attendance.eventCancelled })
+    ).resolves.toBeVisible();
+    expect(
+      screen.queryByText(/^取消原因：/u)
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("link", { name: COPY.programs.goToScan })
+    ).not.toBeInTheDocument();
   });
 
   test("participant projection keeps forbidden detail opaque and exposes no scanner CTA", async () => {

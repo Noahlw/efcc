@@ -1694,14 +1694,15 @@ async function requireAssistedEventOperator(
 async function guestRateLimit(
   env: AttendanceEnv,
   eventId: string,
-  id: string
+  id: string,
+  bucket = "guest"
 ): Promise<Response | null> {
   if (!env.RPC_RATE_LIMITER) {
     return problem(503, "UNAVAILABLE", "系統暫時無法處理請求。", id);
   }
   try {
     const limited = await env.RPC_RATE_LIMITER.limit({
-      key: `guest:${eventId}`,
+      key: `${bucket}:${eventId}`,
     });
     if (!limited.success) {
       return problem(429, "RATE_LIMITED", "請求過於頻繁，請稍後再試。", id);
@@ -1849,6 +1850,15 @@ export async function handleReconcileGuestCheckIn(
   );
   if (derived.method === null) {
     return derived.response;
+  }
+  const limited = await guestRateLimit(
+    env,
+    event.event_id,
+    id,
+    "guest-reconcile"
+  );
+  if (limited instanceof Response) {
+    return limited;
   }
   const row = await env.DB.prepare(
     `SELECT checked_in_at FROM attendances
@@ -2313,41 +2323,34 @@ export async function handleListOwnAttendance(
   const activeAttendance =
     attendanceHistory.find((attendance) => attendance.status === "Active") ??
     null;
-  let enrollmentId: string | null = null;
-  if (snapshot) {
-    const expected = await env.DB.prepare(
-      `SELECT enrollment_id
-         FROM event_expected_attendance
-        WHERE event_id = ? AND member_user_id = ?`
-    )
-      .bind(event.event_id, current.user_id)
-      .first<{ enrollment_id: string }>();
-    enrollmentId = expected?.enrollment_id ?? null;
-  } else if (!eventHasStarted(event) || event.status === "Cancelled") {
-    const enrollment = await env.DB.prepare(
-      `SELECT enrollment_id
-         FROM enrollments
-        WHERE program_id = ? AND member_user_id = ? AND status = 'Active'
-        ORDER BY enrolled_at DESC, enrollment_id DESC LIMIT 1`
-    )
-      .bind(event.program_id, current.user_id)
-      .first<{ enrollment_id: string }>();
-    enrollmentId = enrollment?.enrollment_id ?? null;
-  } else if (isOpen(event)) {
-    // A started/open Event may not have been materialized by an operator yet.
-    // Resolve only the member's current enrollment at this read boundary;
-    // ended Events continue to require their durable snapshot/history.
-    const enrollment = await env.DB.prepare(
-      `SELECT enrollment_id
-         FROM enrollments
-        WHERE program_id = ? AND member_user_id = ?
-          AND status = 'Active' AND enrolled_at <= ?
-        ORDER BY enrolled_at DESC, enrollment_id DESC LIMIT 1`
-    )
-      .bind(event.program_id, current.user_id, new Date().toISOString())
-      .first<{ enrollment_id: string }>();
-    enrollmentId = enrollment?.enrollment_id ?? null;
-  }
+  const enrollmentCutoff =
+    eventHasStarted(event) && event.status !== "Cancelled"
+      ? new Date().toISOString()
+      : null;
+  const enrollment = snapshot
+    ? await env.DB.prepare(
+        `SELECT enrollment_id
+           FROM event_expected_attendance
+          WHERE event_id = ? AND member_user_id = ?`
+      )
+        .bind(event.event_id, current.user_id)
+        .first<{ enrollment_id: string }>()
+    : await env.DB.prepare(
+        `SELECT enrollment_id
+           FROM enrollments
+          WHERE program_id = ? AND member_user_id = ?
+            AND status = 'Active'
+            AND (? IS NULL OR enrolled_at <= ?)
+          ORDER BY enrolled_at DESC, enrollment_id DESC LIMIT 1`
+      )
+        .bind(
+          event.program_id,
+          current.user_id,
+          enrollmentCutoff,
+          enrollmentCutoff
+        )
+        .first<{ enrollment_id: string }>();
+  const enrollmentId = enrollment?.enrollment_id ?? null;
   if (!activeAttendance && !enrollmentId) {
     return problem(403, "FORBIDDEN", "你沒有此聚會的出席資料。", id);
   }

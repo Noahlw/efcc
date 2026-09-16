@@ -460,6 +460,7 @@ describe(AttendanceOperatorPanel, () => {
     );
     const user = userEvent.setup();
     renderWithLiveRegion();
+    expect(document.querySelectorAll('[data-slot="card"]')).toHaveLength(1);
 
     const [, cancelledButton] = await screen.findAllByRole("button", {
       name: /週六聚會/u,

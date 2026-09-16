@@ -740,6 +740,38 @@ describe("attendance Worker routes", () => {
     }
   });
 
+  test("guest reconciliation uses a separate rate-limit bucket before identity lookup", async () => {
+    const limit = vi.fn(() => Promise.resolve({ success: false }));
+    const customEnv: Env = {
+      ...testEnv(),
+      RPC_RATE_LIMITER: { limit } as unknown as Env["RPC_RATE_LIMITER"],
+    };
+    const payload = {
+      event_id: EVENT,
+      method: "guest_manual_code",
+      manual_code: "ATT1234",
+      name: "訪客限流確認",
+      phone: "9111 2233",
+    };
+
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      const response = await worker.fetch(
+        request("/api/v1/attendance/guest/reconcile", {
+          method: "POST",
+          body: JSON.stringify(payload),
+        }),
+        customEnv
+      );
+      assert.strictEqual(response.status, 429);
+      const body = await json(response);
+      assert.strictEqual(body.code, "RATE_LIMITED");
+    }
+    assert.deepStrictEqual(limit.mock.calls, [
+      [{ key: `guest-reconcile:${EVENT}` }],
+      [{ key: `guest-reconcile:${EVENT}` }],
+    ]);
+  });
+
   test("guest check-in respects rate limiting when limiter rejects", async () => {
     const customEnv: Env = {
       ...testEnv(),
@@ -3307,6 +3339,138 @@ describe("attendance Worker routes", () => {
       .bind(eventId)
       .first();
     assert.strictEqual(afterSnapshot, null);
+  });
+
+  test("closed Event self projection keeps final states available before materialization", async () => {
+    const member = await accessCookieFor("att-member", "att-member-password");
+    const eventId = `ATT-CLOSED-NO-SNAPSHOT-${crypto.randomUUID()}`;
+    const enrollmentId = `ATT-CLOSED-NO-SNAPSHOT-ENROLLMENT-${crypto.randomUUID()}`;
+    const attendanceId = `ATT-CLOSED-NO-SNAPSHOT-ATTENDANCE-${crypto.randomUUID()}`;
+    const dispositionId = `ATT-CLOSED-NO-SNAPSHOT-DISPOSITION-${crypto.randomUUID()}`;
+    const now = Date.now();
+    const createdAt = new Date(now).toISOString();
+    await testDb()
+      .prepare(
+        `INSERT INTO events
+          (event_id, program_id, starts_at, ends_at, status, availability,
+           source, name, manual_check_in_code, check_in_window_opens_at,
+           check_in_window_closes_at, created_at, updated_at)
+         VALUES (?, ?, ?, ?, 'Active', 'Active', 'MANUAL', ?, ?, ?, ?, ?, ?)`
+      )
+      .bind(
+        eventId,
+        PROGRAM2,
+        new Date(now - 3 * 60 * 60_000).toISOString(),
+        new Date(now - 2 * 60 * 60_000).toISOString(),
+        "未建立快照的已結束聚會",
+        `ATT-CLOSED-NO-SNAPSHOT-CODE-${crypto.randomUUID()}`,
+        new Date(now - 4 * 60 * 60_000).toISOString(),
+        new Date(now - 90 * 60_000).toISOString(),
+        createdAt,
+        createdAt
+      )
+      .run();
+    await testDb()
+      .prepare(
+        `INSERT INTO enrollments
+          (enrollment_id, program_id, member_user_id, status, enrolled_at,
+           created_at)
+         VALUES (?, ?, 'ATT-MEMBER', 'Active', ?, ?)`
+      )
+      .bind(
+        enrollmentId,
+        PROGRAM2,
+        new Date(now - 5 * 60 * 60_000).toISOString(),
+        createdAt
+      )
+      .run();
+
+    const readOwn = async () =>
+      worker.fetch(
+        request(`/api/v1/attendance/events/${eventId}/me`, {
+          headers: { Cookie: `${ACCESS_COOKIE_NAME}=${member}` },
+        }),
+        testEnv()
+      );
+
+    try {
+      const beforeAttendance = await readOwn();
+      assert.strictEqual(beforeAttendance.status, 200);
+      assert.strictEqual(
+        ((await json(beforeAttendance)).data as { state: string }).state,
+        "Absent"
+      );
+
+      await testDb()
+        .prepare(
+          `INSERT INTO attendances
+            (attendance_id, event_id, member_user_id, method, status,
+             checked_in_at, checked_in_by)
+           VALUES (?, ?, 'ATT-MEMBER', 'self_manual_code', 'Active', ?, 'ATT-MEMBER')`
+        )
+        .bind(
+          attendanceId,
+          eventId,
+          new Date(now - 2 * 60 * 60_000).toISOString()
+        )
+        .run();
+      const present = await readOwn();
+      assert.strictEqual(present.status, 200);
+      assert.strictEqual(
+        ((await json(present)).data as { state: string }).state,
+        "Present"
+      );
+
+      await testDb()
+        .prepare(
+          `UPDATE attendances
+              SET status = 'Voided', voided_by = 'ATT-ADMIN',
+                  voided_at = ?, void_reason = ?
+            WHERE attendance_id = ?`
+        )
+        .bind(new Date(now - 90 * 60_000).toISOString(), "改以請假", attendanceId)
+        .run();
+      await testDb()
+        .prepare(
+          `INSERT INTO event_attendance_dispositions
+            (disposition_id, event_id, enrollment_id, member_user_id,
+             disposition, reason, recorded_by, recorded_at)
+           VALUES (?, ?, ?, 'ATT-MEMBER', 'Excused', ?, 'ATT-ADMIN', ?)`
+        )
+        .bind(
+          dispositionId,
+          eventId,
+          enrollmentId,
+          "其他：改以請假",
+          new Date(now - 80 * 60_000).toISOString()
+        )
+        .run();
+      const excused = await readOwn();
+      assert.strictEqual(excused.status, 200);
+      assert.strictEqual(
+        ((await json(excused)).data as { state: string }).state,
+        "Excused"
+      );
+    } finally {
+      await testDb()
+        .prepare(
+          "DELETE FROM event_attendance_dispositions WHERE disposition_id = ?"
+        )
+        .bind(dispositionId)
+        .run();
+      await testDb()
+        .prepare("DELETE FROM attendances WHERE attendance_id = ?")
+        .bind(attendanceId)
+        .run();
+      await testDb()
+        .prepare("DELETE FROM enrollments WHERE enrollment_id = ?")
+        .bind(enrollmentId)
+        .run();
+      await testDb()
+        .prepare("DELETE FROM events WHERE event_id = ?")
+        .bind(eventId)
+        .run();
+    }
   });
 
   test("materialization failure is retryable and never reports a false success", async () => {

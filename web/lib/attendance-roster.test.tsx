@@ -7,6 +7,7 @@ import type {
   AttendanceEventSummary,
   AttendanceExpectedRow,
   AttendanceRow,
+  AttendanceSnapshot,
 } from "@/lib/attendance";
 import {
   AttendanceChooser,
@@ -104,6 +105,13 @@ const POST_EVENT: AttendanceEvent = {
     Date.now() - 3 * 60 * 60_000
   ).toISOString(),
   check_in_window_closes_at: new Date(Date.now() - 30 * 60_000).toISOString(),
+};
+
+const SNAPSHOT: AttendanceSnapshot = {
+  snapshot_id: "snapshot-roster",
+  event_id: POST_EVENT.event_id,
+  materialized_at: "2026-08-13T13:01:00.000Z",
+  last_materialized_at: "2026-08-13T13:01:00.000Z",
 };
 
 afterEach(() => cleanup());
@@ -360,6 +368,111 @@ describe(AttendanceRoster, () => {
     expect(screen.getByText("舊訪客")).toBeVisible();
   });
 
+  test("uses the close boundary for post-event mode, including the exact close instant", () => {
+    vi.useFakeTimers();
+    const now = Date.parse("2026-08-13T12:00:00.000Z");
+    vi.setSystemTime(now);
+    const event = {
+      ...EVENT,
+      event_id: "evt-close-boundary",
+      starts_at: "2026-08-13T11:30:00.000Z",
+      ends_at: "2026-08-13T13:00:00.000Z",
+      check_in_window_opens_at: "2026-08-13T11:00:00.000Z",
+      check_in_window_closes_at: "2026-08-13T12:00:00.000Z",
+    };
+    const expectedRow = {
+      ...EXPECTED_ROW,
+      event_id: event.event_id,
+      state: "Not Yet" as const,
+    };
+
+    try {
+      render(
+        <AttendanceRoster
+          event={event}
+          rows={[]}
+          expectedRows={[expectedRow]}
+          snapshot={{ ...SNAPSHOT, event_id: event.event_id }}
+        />
+      );
+
+      expect(screen.getByRole("tab", { name: /未簽到 \(1\)/u })).toHaveAttribute(
+        "aria-selected",
+        "true"
+      );
+      expect(
+        screen.queryByRole("tab", { name: /缺席 \(/u })
+      ).not.toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  test("shows post-event filters after the window closes even before Event end when all are Present", () => {
+    vi.useFakeTimers();
+    const now = Date.parse("2026-08-13T12:00:00.000Z");
+    vi.setSystemTime(now);
+    const event = {
+      ...EVENT,
+      event_id: "evt-close-before-end",
+      starts_at: "2026-08-13T11:30:00.000Z",
+      ends_at: "2026-08-13T13:00:00.000Z",
+      check_in_window_opens_at: "2026-08-13T11:00:00.000Z",
+      check_in_window_closes_at: "2026-08-13T11:59:00.000Z",
+    };
+    const presentRow = {
+      ...EXPECTED_ROW,
+      event_id: event.event_id,
+      state: "Present" as const,
+      attendance: { ...MEMBER_ROW, event_id: event.event_id },
+    };
+
+    try {
+      render(
+        <AttendanceRoster
+          event={event}
+          rows={[presentRow.attendance as AttendanceRow]}
+          expectedRows={[presentRow]}
+          snapshot={{ ...SNAPSHOT, event_id: event.event_id }}
+        />
+      );
+
+      expect(screen.getByRole("tab", { name: /全部 \(1\)/u })).toHaveAttribute(
+        "aria-selected",
+        "true"
+      );
+      expect(screen.getByRole("tab", { name: /已出席 \(1\)/u })).toBeVisible();
+      expect(screen.getByRole("tab", { name: /請假 \(0\)/u })).toBeVisible();
+      expect(screen.getByRole("tab", { name: /缺席 \(0\)/u })).toBeVisible();
+      expect(screen.getByRole("tab", { name: /訪客 \(0\)/u })).toBeVisible();
+      expect(
+        screen.queryByRole("tab", { name: /未簽到 \(/u })
+      ).not.toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  test("keeps Guest reachable when a materialized snapshot has zero expected members", async () => {
+    const user = userEvent.setup();
+    const guestRow = { ...GUEST_ROW, event_id: POST_EVENT.event_id };
+    render(
+      <AttendanceRoster
+        event={POST_EVENT}
+        rows={[guestRow]}
+        expectedRows={[]}
+        snapshot={SNAPSHOT}
+      />
+    );
+
+    expect(screen.getByRole("tab", { name: /全部 \(1\)/u })).toHaveAttribute(
+      "aria-selected",
+      "true"
+    );
+    await user.click(screen.getByRole("tab", { name: /訪客 \(1\)/u }));
+    expect(screen.getByText("舊訪客")).toBeVisible();
+  });
+
   test("post-event Guest filter excludes unexpected member attendance but preserves both histories", async () => {
     const user = userEvent.setup();
     const presentRow: AttendanceExpectedRow = {
@@ -413,6 +526,11 @@ describe(AttendanceRoster, () => {
     await user.click(screen.getByRole("tab", { name: /訪客 \(1\)/u }));
     expect(screen.getByText("舊訪客")).toBeVisible();
     expect(screen.queryByText("臨時加入會員")).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("tab", { name: /已出席 \(2\)/u }));
+    expect(screen.getByText("已出席會員")).toBeVisible();
+    expect(screen.getByText("臨時加入會員")).toBeVisible();
+    expect(screen.queryByText("舊訪客")).not.toBeInTheDocument();
 
     await user.click(screen.getByRole("tab", { name: /全部 \(4\)/u }));
     expect(screen.getByText("臨時加入會員")).toBeVisible();

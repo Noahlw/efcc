@@ -115,11 +115,64 @@ function eventQrImage(
   return `<svg xmlns="http://www.w3.org/2000/svg" width="900" height="${height}" viewBox="0 0 900 ${height}" role="img" aria-labelledby="title desc"><title id="title">Event QR code</title><desc id="desc">${desc}</desc><rect width="900" height="${height}" fill="#fffdf8"/><text x="450" y="78" text-anchor="middle" font-family="system-ui,sans-serif" font-size="28" font-weight="700" fill="#263331">Event QR code</text>${titleBlock}${programBlock}${timeBlock}${locationBlock}<rect x="180" y="${qrTop}" width="540" height="540" rx="20" fill="#fff" stroke="#cbd6d2" stroke-width="4"/><image href="${qr}" x="200" y="${qrTop + 20}" width="500" height="500" preserveAspectRatio="xMidYMid meet"/><text x="450" y="${codeLabelY}" text-anchor="middle" font-family="system-ui,sans-serif" font-size="24" fill="#586a67">${escapeSvgText(COPY.attendance.sheetManualCode)}</text><text x="450" y="${codeY}" text-anchor="middle" font-family="system-ui,sans-serif" font-size="54" font-weight="800" letter-spacing="8" fill="#172021">${escapeSvgText(manualCode)}</text><text x="450" y="${instructionY}" text-anchor="middle" font-family="system-ui,sans-serif" font-size="21" fill="#586a67">${escapeSvgText(COPY.attendance.sheetScanInstruction)}</text></svg>`;
 }
 
-function printEventSheet(
+const PRINT_IMAGE_TIMEOUT_MS = 5000;
+
+function waitForPrintImage(image: HTMLImageElement): Promise<void> {
+  // oxlint-disable-next-line promise/avoid-new -- DOM load/error/timeout events need one settling promise.
+  return new Promise((resolve, reject) => {
+    const state = { settled: false, timeoutId: 0 };
+    const callbacks: {
+      cleanup?: () => void;
+      settle?: (error?: Error) => void;
+    } = {};
+    const onLoad = async () => {
+      if (typeof image.decode !== "function") {
+        callbacks.settle?.();
+        return;
+      }
+      try {
+        await image.decode();
+        callbacks.settle?.();
+      } catch {
+        callbacks.settle?.(new Error("print-image-decode-failed"));
+      }
+    };
+    const onError = () => {
+      callbacks.settle?.(new Error("print-image-load-failed"));
+    };
+    callbacks.cleanup = () => {
+      if (state.timeoutId) {
+        window.clearTimeout(state.timeoutId);
+      }
+      image.removeEventListener("load", onLoad);
+      image.removeEventListener("error", onError);
+    };
+    callbacks.settle = (error?: Error) => {
+      if (state.settled) {
+        return;
+      }
+      state.settled = true;
+      callbacks.cleanup?.();
+      if (error) {
+        reject(error);
+      } else {
+        resolve();
+      }
+    };
+    image.addEventListener("load", onLoad, { once: true });
+    image.addEventListener("error", onError, { once: true });
+    state.timeoutId = window.setTimeout(
+      () => callbacks.settle?.(new Error("print-image-timeout")),
+      PRINT_IMAGE_TIMEOUT_MS
+    );
+  });
+}
+
+async function printEventSheet(
   event: EventCheckInSheetEvent,
   qr: string,
   manualCode: string
-): boolean {
+): Promise<boolean> {
   const printWindow = window.open("", "_blank", "popup,width=640,height=720");
   if (!printWindow) {
     return false;
@@ -144,7 +197,6 @@ function printEventSheet(
     time.append(` · ${event.location}`);
   }
   const image = doc.createElement("img");
-  image.src = qr;
   image.alt = COPY.attendance.sheetMethod;
   const instruction = doc.createElement("p");
   instruction.textContent = COPY.attendance.sheetScanInstruction;
@@ -156,9 +208,17 @@ function printEventSheet(
   main.append(title, program, time, image, instruction, codeLabel);
   doc.body.append(main);
   doc.close();
-  printWindow.focus();
-  printWindow.print();
-  return true;
+  try {
+    const imageReady = waitForPrintImage(image);
+    image.src = qr;
+    await imageReady;
+    printWindow.focus();
+    printWindow.print();
+    return true;
+  } catch {
+    printWindow.close?.();
+    return false;
+  }
 }
 
 export const EventCheckInSheet = ({
@@ -271,7 +331,7 @@ export const EventCheckInSheet = ({
     }
   }
 
-  function printSheet() {
+  async function printSheet() {
     setLastAction("print");
     setActionNotice(null);
     if (!qr || !event.manual_check_in_code || qrImageState !== "ready") {
@@ -280,7 +340,7 @@ export const EventCheckInSheet = ({
     }
     setActionBusy("print");
     try {
-      if (!printEventSheet(event, qr, event.manual_check_in_code)) {
+      if (!(await printEventSheet(event, qr, event.manual_check_in_code))) {
         throw new Error("print-window-blocked");
       }
       setActionError(null);
@@ -348,7 +408,7 @@ export const EventCheckInSheet = ({
             variant="outline"
             className="w-fit"
             onClick={() =>
-              lastAction === "print" ? printSheet() : downloadQr()
+              void (lastAction === "print" ? printSheet() : downloadQr())
             }
             disabled={actionBusy !== null}
           >

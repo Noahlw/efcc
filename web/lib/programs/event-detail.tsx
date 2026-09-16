@@ -264,14 +264,18 @@ export const EventDetail = ({
   const confirmRef = useRef<HTMLDivElement>(null);
   const cancelConfirmRef = useRef<HTMLDivElement>(null);
   const menuFocusTargetRef = useRef<"deactivate" | "cancel" | null>(null);
+  const eventIdentityRef = useRef({ programId, eventId });
+  const eventRequestSequenceRef = useRef(0);
+  const ownAttendanceRequestSequenceRef = useRef(0);
+  eventIdentityRef.current = { programId, eventId };
   const mounted = useRef(true);
 
-  useEffect(
-    () => () => {
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
       mounted.current = false;
-    },
-    []
-  );
+    };
+  }, []);
 
   useEffect(() => {
     if (confirmingDeactivate) {
@@ -300,17 +304,36 @@ export const EventDetail = ({
     firstInput?.scrollIntoView({ block: "center", inline: "nearest" });
   }, [editing]);
 
+  const isCurrentEvent = useCallback(
+    (requestProgramId: string, requestEventId: string) =>
+      mounted.current &&
+      eventIdentityRef.current.programId === requestProgramId &&
+      eventIdentityRef.current.eventId === requestEventId,
+    []
+  );
+
   const load = useCallback(async (): Promise<boolean> => {
+    eventRequestSequenceRef.current += 1;
+    const requestSequence = eventRequestSequenceRef.current;
+    const requestProgramId = programId;
+    const requestEventId = eventId;
     setLoadError(null);
     try {
       const next = await getEvent(programId, eventId);
-      if (!mounted.current) {
+      if (
+        !isCurrentEvent(requestProgramId, requestEventId) ||
+        requestSequence !== eventRequestSequenceRef.current ||
+        next.event.event_id !== requestEventId
+      ) {
         return false;
       }
       setDetail(next);
       return true;
     } catch (error) {
-      if (!mounted.current) {
+      if (
+        !isCurrentEvent(requestProgramId, requestEventId) ||
+        requestSequence !== eventRequestSequenceRef.current
+      ) {
         return false;
       }
       if (error instanceof RpcError && error.problem.code === "AUTH_REQUIRED") {
@@ -321,15 +344,48 @@ export const EventDetail = ({
       // A failed post-write read must not erase the last confirmed Event.
       return false;
     }
-  }, [eventId, onAuthRequired, programId]);
+  }, [eventId, isCurrentEvent, onAuthRequired, programId]);
 
   useEffect(() => {
     setDetail(null);
+    setLoadError(null);
+    setNotice(null);
+    setActionError(null);
+    setMutationOutcomeUnknown(false);
+    setDetailStale(false);
+    setBusy(false);
+    setEditing(false);
+    setEditingIntent("edit");
+    setEditingEventType(COPY.programs.eventTypeOptions[0] as EventType);
+    setEditReason("");
+    setConfirmingDeactivate(false);
+    setConfirmingCancel(false);
+    setShowCheckInSheet(false);
+    setOwnAttendance(null);
+    setOwnAttendanceUnavailable(false);
+    setOwnAttendanceUnavailableReason(null);
+    setOwnAttendanceLoading(false);
+    setOwnAttendanceError(null);
+    setUndoAvailable(false);
+    setDeactivateImpact(0);
+    menuFocusTargetRef.current = null;
+    onMutationBlockChange?.(false);
     void load();
-  }, [load]);
+  }, [load, onMutationBlockChange]);
 
   const loadOwnAttendance = useCallback(
     async (isActive: () => boolean = () => true) => {
+      ownAttendanceRequestSequenceRef.current += 1;
+      const requestSequence = ownAttendanceRequestSequenceRef.current;
+      const requestProgramId = programId;
+      const requestEventId = eventId;
+      const isCurrentRequest = () =>
+        isActive() &&
+        isCurrentEvent(requestProgramId, requestEventId) &&
+        requestSequence === ownAttendanceRequestSequenceRef.current;
+      if (!isCurrentRequest()) {
+        return;
+      }
       setOwnAttendance(null);
       setOwnAttendanceUnavailable(false);
       setOwnAttendanceUnavailableReason(null);
@@ -337,12 +393,12 @@ export const EventDetail = ({
       setOwnAttendanceLoading(true);
       try {
         const next = await getOwnAttendance(eventId);
-        if (isActive()) {
+        if (isCurrentRequest()) {
           setOwnAttendance(next);
           setOwnAttendanceUnavailable(next === null || next.state === null);
         }
       } catch (error: unknown) {
-        if (!isActive()) {
+        if (!isCurrentRequest()) {
           return;
         }
         if (
@@ -364,12 +420,12 @@ export const EventDetail = ({
         }
         setOwnAttendanceError(COPY.programs.participantAttendanceError);
       } finally {
-        if (isActive()) {
+        if (isCurrentRequest()) {
           setOwnAttendanceLoading(false);
         }
       }
     },
-    [eventId, onAuthRequired]
+    [eventId, isCurrentEvent, onAuthRequired, programId]
   );
 
   useEffect(() => {
@@ -395,6 +451,11 @@ export const EventDetail = ({
   }, [loadError, detail]);
 
   const reconcileMutationOutcome = useCallback(async () => {
+    const requestProgramId = programId;
+    const requestEventId = eventId;
+    if (!isCurrentEvent(requestProgramId, requestEventId)) {
+      return;
+    }
     setBusy(true);
     let workspaceReconciled = true;
     if (onWorkspaceRefresh) {
@@ -404,8 +465,11 @@ export const EventDetail = ({
         workspaceReconciled = false;
       }
     }
+    if (!isCurrentEvent(requestProgramId, requestEventId)) {
+      return;
+    }
     const refreshed = await load();
-    if (mounted.current) {
+    if (isCurrentEvent(requestProgramId, requestEventId)) {
       if (workspaceReconciled && refreshed) {
         setMutationOutcomeUnknown(false);
         setDetailStale(false);
@@ -419,9 +483,21 @@ export const EventDetail = ({
       }
       setBusy(false);
     }
-  }, [load, onMutationBlockChange, onWorkspaceRefresh]);
+  }, [
+    eventId,
+    isCurrentEvent,
+    load,
+    onMutationBlockChange,
+    onWorkspaceRefresh,
+    programId,
+  ]);
 
   const retryConfirmedRead = useCallback(async () => {
+    const requestProgramId = programId;
+    const requestEventId = eventId;
+    if (!isCurrentEvent(requestProgramId, requestEventId)) {
+      return;
+    }
     let workspaceReconciled = true;
     if (onWorkspaceRefresh) {
       try {
@@ -430,33 +506,53 @@ export const EventDetail = ({
         workspaceReconciled = false;
       }
     }
+    if (!isCurrentEvent(requestProgramId, requestEventId)) {
+      return;
+    }
     const refreshed = await load();
-    if (workspaceReconciled && refreshed && mounted.current) {
+    if (
+      workspaceReconciled &&
+      refreshed &&
+      isCurrentEvent(requestProgramId, requestEventId)
+    ) {
       setDetailStale(false);
       onMutationBlockChange?.(false);
       setActionError(null);
       setNotice(COPY.programs.workspaceReconciled);
       announce(COPY.programs.workspaceReconciled);
-    } else if (mounted.current) {
+    } else if (isCurrentEvent(requestProgramId, requestEventId)) {
       setDetailStale(true);
       setActionError(COPY.programs.workspaceEventsSavedStale);
     }
-  }, [load, onMutationBlockChange, onWorkspaceRefresh]);
+  }, [
+    eventId,
+    isCurrentEvent,
+    load,
+    onMutationBlockChange,
+    onWorkspaceRefresh,
+    programId,
+  ]);
 
   const runAction = useCallback(
+    // oxlint-disable-next-line eslint/complexity -- the mutation boundary keeps identity, refresh, and unknown-outcome guards together.
     async (
       fn: () => Promise<unknown>,
       successCopy: string | (() => string),
       onRefused?: (error: unknown) => boolean
     ) => {
+      const requestProgramId = programId;
+      const requestEventId = eventId;
       if (mutationOutcomeUnknown || detailStale || loadError !== null) {
+        return;
+      }
+      if (!isCurrentEvent(requestProgramId, requestEventId)) {
         return;
       }
       setBusy(true);
       setActionError(null);
       try {
         await fn();
-        if (!mounted.current) {
+        if (!isCurrentEvent(requestProgramId, requestEventId)) {
           return;
         }
         onAttentionRefresh?.();
@@ -469,8 +565,11 @@ export const EventDetail = ({
             workspaceReconciled = false;
           }
         }
+        if (!isCurrentEvent(requestProgramId, requestEventId)) {
+          return;
+        }
         const refreshed = await load();
-        if (!mounted.current) {
+        if (!isCurrentEvent(requestProgramId, requestEventId)) {
           return;
         }
         if (!workspaceReconciled || !refreshed) {
@@ -485,7 +584,7 @@ export const EventDetail = ({
         setNotice(message);
         announce(message);
       } catch (error) {
-        if (!mounted.current) {
+        if (!isCurrentEvent(requestProgramId, requestEventId)) {
           return;
         }
         if (onRefused?.(error)) {
@@ -502,7 +601,7 @@ export const EventDetail = ({
         setActionError(message);
         announce(message);
       } finally {
-        if (mounted.current) {
+        if (isCurrentEvent(requestProgramId, requestEventId)) {
           setBusy(false);
         }
       }
@@ -515,6 +614,9 @@ export const EventDetail = ({
       loadError,
       onMutationBlockChange,
       onWorkspaceRefresh,
+      isCurrentEvent,
+      eventId,
+      programId,
     ]
   );
 
@@ -799,6 +901,7 @@ export const EventDetail = ({
           : "pending";
     const participantCanScan =
       checkInOpen && ownAttendance?.state === "Not Yet";
+    const participantCancelReason = event.cancel_reason?.trim() || null;
     const participantInstruction = cancelled
       ? COPY.attendance.eventCancelled
       : ownAttendanceError ||
@@ -944,9 +1047,19 @@ export const EventDetail = ({
           headingId={instructionsHeadingId}
           title={COPY.programs.checkInInstructionsHeading}
         >
-          <p className="m-0 min-w-0 max-w-[65ch] wrap-anywhere leading-[1.6] text-[var(--screen-muted)]">
-            {participantInstruction}
-          </p>
+          <div className="grid min-w-0 gap-1">
+            <p className="m-0 min-w-0 max-w-[65ch] wrap-anywhere leading-[1.6] text-[var(--screen-muted)]">
+              {participantInstruction}
+            </p>
+            {cancelled && participantCancelReason && (
+              <ScreenRowMeta className="text-[var(--screen-danger)]">
+                {COPY.programs.cancelledReason.replace(
+                  "{reason}",
+                  participantCancelReason
+                )}
+              </ScreenRowMeta>
+            )}
+          </div>
         </ScreenSection>
 
         {participantCanScan && (

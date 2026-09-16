@@ -1,6 +1,6 @@
 "use client";
 
-import { cva } from "class-variance-authority";
+import { cva, type VariantProps } from "class-variance-authority";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 
 import { Alert } from "@/components/ui/alert";
@@ -49,6 +49,7 @@ import type {
   AttendanceMember,
   AttendanceRosterCounts,
   AttendanceRow,
+  AttendanceSnapshot,
   AttendanceState,
 } from "@/lib/programs/program-api";
 import { ScreenTab, ScreenTabs } from "@/lib/screen-foundations";
@@ -123,6 +124,60 @@ const attendanceRowVariants = cva(
   }
 );
 
+const attendanceStatusVariants = cva(
+  "rounded-full border px-2 py-0.5 text-xs font-semibold",
+  {
+    variants: {
+      status: {
+        open: "border-[var(--success-border)] bg-[var(--success-surface)] text-[var(--success)]",
+        present:
+          "border-[var(--success-border)] bg-[var(--success-surface)] text-[var(--success)]",
+        active:
+          "border-[var(--success-border)] bg-[var(--success-surface)] text-[var(--success)]",
+        excused:
+          "border-[var(--accent-border)] bg-[var(--accent-surface)] text-[var(--accent-deep)]",
+        closed:
+          "border-[var(--line-strong)] bg-[var(--surface)] text-[var(--ink-muted)]",
+        cancelled:
+          "border-[var(--line-strong)] bg-[var(--surface)] text-[var(--ink-muted)]",
+        "not-yet":
+          "border-[var(--line-strong)] bg-[var(--surface)] text-[var(--ink-muted)]",
+        absent:
+          "border-[var(--line-strong)] bg-[var(--surface)] text-[var(--ink-muted)]",
+        voided:
+          "border-[var(--line-strong)] bg-[var(--surface)] text-[var(--ink-muted)]",
+      },
+    },
+    defaultVariants: { status: "not-yet" },
+  }
+);
+
+type AttendanceStatusVariant = NonNullable<
+  VariantProps<typeof attendanceStatusVariants>["status"]
+>;
+
+function attendanceStatusVariant(
+  state: AttendanceState
+): AttendanceStatusVariant {
+  switch (state) {
+    case "Present": {
+      return "present";
+    }
+    case "Excused": {
+      return "excused";
+    }
+    case "Cancelled": {
+      return "cancelled";
+    }
+    case "Absent": {
+      return "absent";
+    }
+    default: {
+      return "not-yet";
+    }
+  }
+}
+
 function attendanceWindowIsOpen(event: AttendanceEvent, now = Date.now()) {
   if (event.status !== "Active" || event.availability !== "Active") {
     return false;
@@ -159,9 +214,8 @@ export const AttendanceChooser = ({
   onRetry,
 }: AttendanceChooserProps) => {
   return (
-    <Card
-      className="grid print:hidden"
-      role="region"
+    <section
+      className="grid gap-4 print:hidden"
       aria-labelledby="attendance-chooser-title"
     >
       <h1
@@ -258,7 +312,7 @@ export const AttendanceChooser = ({
           ))}
         </ul>
       )}
-    </Card>
+    </section>
   );
 };
 
@@ -274,6 +328,7 @@ export interface AttendanceRosterProps {
   stale?: boolean;
   lastUpdatedAt?: number | null;
   materializationRequired?: boolean;
+  snapshot?: AttendanceSnapshot | null;
   onBack?: () => void;
   onRefresh?: () => void;
   onMaterialize?: () => void;
@@ -359,6 +414,7 @@ export const AttendanceRoster = ({
   stale = false,
   lastUpdatedAt = null,
   materializationRequired = false,
+  snapshot,
   onBack,
   onRefresh,
   onMaterialize,
@@ -452,29 +508,26 @@ export const AttendanceRoster = ({
     )
   );
   const hasExpectedProjection = expectedRows.length > 0;
+  const hasMaterializedProjection =
+    snapshot === undefined ? hasExpectedProjection : snapshot !== null;
   const additionalRows = rows.filter(
     (row) =>
       !expectedAttendanceIds.has(row.attendance_id) &&
-      (!hasExpectedProjection ||
+      (!hasMaterializedProjection ||
         row.member_user_id === null ||
         row.status === "Active")
   );
-  const guestRows = additionalRows.filter(
-    (row) => row.member_user_id === null
+  const guestRows = additionalRows.filter((row) => row.member_user_id === null);
+  const additionalPresentRows = additionalRows.filter(
+    (row) => row.member_user_id !== null && row.status === "Active"
   );
   const statusIsOpen = attendanceWindowIsOpen(event);
   const eventQrAvailable = statusIsOpen;
-  const eventEnded =
-    Number.isFinite(Date.parse(event.ends_at)) &&
-    Date.parse(event.ends_at) <= Date.now();
+  const closesAt = Date.parse(event.check_in_window_closes_at);
+  const windowClosed = Number.isFinite(closesAt) && Date.now() > closesAt;
   const hasAbsent = expectedRows.some((row) => row.state === "Absent");
   const isPostEventRoster =
-    hasExpectedProjection &&
-    !statusIsOpen &&
-    (eventEnded ||
-      expectedRows.some(
-        (row) => row.state === "Absent" || row.state === "Excused"
-      ));
+    hasMaterializedProjection && event.status !== "Cancelled" && windowClosed;
 
   useEffect(() => {
     setRosterFilter(
@@ -483,7 +536,7 @@ export const AttendanceRoster = ({
   }, [event.event_id, hasAbsent, isPostEventRoster]);
 
   const visibleExpectedRows = expectedRows.filter((row) => {
-    if (!hasExpectedProjection || rosterFilter === "all") {
+    if (!hasMaterializedProjection || rosterFilter === "all") {
       return true;
     }
     if (isPostEventRoster) {
@@ -510,13 +563,15 @@ export const AttendanceRoster = ({
     }
     return row.state !== "Present" && row.state !== "Cancelled";
   });
-  const visibleAdditionalRows = hasExpectedProjection
+  const visibleAdditionalRows = hasMaterializedProjection
     ? isPostEventRoster
-      ? rosterFilter === "all" || rosterFilter === "guest"
-        ? rosterFilter === "guest"
-          ? guestRows
-          : additionalRows
-        : []
+      ? rosterFilter === "all"
+        ? additionalRows
+        : rosterFilter === "present"
+          ? additionalPresentRows
+          : rosterFilter === "guest"
+            ? guestRows
+            : []
       : rosterFilter === "all"
         ? additionalRows
         : rosterFilter === "checked-in"
@@ -529,14 +584,16 @@ export const AttendanceRoster = ({
     ).length,
     "checked-in":
       expectedRows.filter((row) => row.state === "Present").length +
-      (hasExpectedProjection
+      (hasMaterializedProjection
         ? additionalRows.filter((row) => row.status === "Active").length
         : activeRows.length),
     all: expectedRows.length + additionalRows.length,
   } satisfies Record<LiveAttendanceRosterFilter, number>;
   const postEventRosterFilterCounts = {
     all: expectedRows.length + additionalRows.length,
-    present: expectedRows.filter((row) => row.state === "Present").length,
+    present:
+      expectedRows.filter((row) => row.state === "Present").length +
+      additionalPresentRows.length,
     excused: expectedRows.filter((row) => row.state === "Excused").length,
     absent: expectedRows.filter((row) => row.state === "Absent").length,
     guest: guestRows.length,
@@ -645,11 +702,15 @@ export const AttendanceRoster = ({
             )}
             <Badge
               variant="outline"
-              className={`px-2.5 py-0.5 text-xs font-semibold ${
-                statusIsOpen
-                  ? "border-[var(--success-border)] bg-[var(--success-surface)] text-[var(--success)]"
-                  : "border-[var(--line-strong)] bg-[var(--surface)] text-[var(--ink-muted)]"
-              }`}
+              className={cn(
+                attendanceStatusVariants({
+                  status: statusIsOpen
+                    ? "open"
+                    : event.status === "Cancelled"
+                      ? "cancelled"
+                      : "closed",
+                })
+              )}
             >
               {statusIsOpen
                 ? COPY.attendance.rosterStatusActive
@@ -775,7 +836,7 @@ export const AttendanceRoster = ({
           </output>
         ) : (
           <>
-            {hasExpectedProjection && (
+            {hasMaterializedProjection && (
               <div className="mt-4 grid min-w-0 gap-2 print:hidden">
                 <p className="m-0 text-sm text-[var(--ink-muted)]">
                   {isPostEventRoster
@@ -822,13 +883,13 @@ export const AttendanceRoster = ({
 
             <section
               id={`attendance-${rosterFilter}-panel`}
-              role={hasExpectedProjection ? "tabpanel" : undefined}
+              role={hasMaterializedProjection ? "tabpanel" : undefined}
               aria-labelledby={
-                hasExpectedProjection
+                hasMaterializedProjection
                   ? `attendance-${rosterFilter}-tab`
                   : undefined
               }
-              tabIndex={hasExpectedProjection ? 0 : undefined}
+              tabIndex={hasMaterializedProjection ? 0 : undefined}
             >
               {visibleExpectedRows.length === 0 &&
               visibleAdditionalRows.length === 0 ? (
@@ -856,12 +917,6 @@ export const AttendanceRoster = ({
                         const displayPhone = phone
                           ? COPY.attendance.maskedPhone(phone)
                           : null;
-                        const statusClass =
-                          row.state === "Present"
-                            ? "border-[var(--success-border)] bg-[var(--success-surface)] text-[var(--success)]"
-                            : row.state === "Excused"
-                              ? "border-[var(--accent-border)] bg-[var(--accent-surface)] text-[var(--accent-deep)]"
-                              : "border-[var(--line-strong)] bg-[var(--surface)] text-[var(--ink-muted)]";
                         const detailTriggerId = `attendance-expected-detail-${expectedKey}`;
                         return (
                           <li
@@ -894,7 +949,11 @@ export const AttendanceRoster = ({
                               </div>
                               <Badge
                                 variant="outline"
-                                className={`px-2 py-0.5 text-xs font-semibold rounded-full ${statusClass}`}
+                                className={cn(
+                                  attendanceStatusVariants({
+                                    status: attendanceStatusVariant(row.state),
+                                  })
+                                )}
                               >
                                 {ATTENDANCE_STATE_LABEL[row.state]}
                               </Badge>
@@ -1029,11 +1088,14 @@ export const AttendanceRoster = ({
                                 </div>
                                 <Badge
                                   variant="outline"
-                                  className={`px-2 py-0.5 text-xs font-semibold rounded-full ${
-                                    row.status === "Active"
-                                      ? "border-[var(--success-border)] bg-[var(--success-surface)] text-[var(--success)]"
-                                      : "border-[var(--line-strong)] bg-[var(--surface)] text-[var(--ink-muted)]"
-                                  }`}
+                                  className={cn(
+                                    attendanceStatusVariants({
+                                      status:
+                                        row.status === "Active"
+                                          ? "active"
+                                          : "voided",
+                                    })
+                                  )}
                                 >
                                   {COPY.attendance.status[row.status]}
                                 </Badge>
@@ -1615,6 +1677,8 @@ export const AttendanceOperatorPanel = ({
   const [expectedRows, setExpectedRows] = useState<AttendanceExpectedRow[]>([]);
   const [rosterCounts, setRosterCounts] =
     useState<AttendanceRosterCounts | null>(null);
+  const [rosterSnapshot, setRosterSnapshot] =
+    useState<AttendanceSnapshot | null>(null);
   const [status, setStatus] = useState("");
   const [tone, setTone] = useState<StatusTone>("info");
   const [busy, setBusy] = useState(false);
@@ -1721,6 +1785,7 @@ export const AttendanceOperatorPanel = ({
     setEvent(result.event);
     setRows(result.attendances ?? []);
     setExpectedRows(result.expected ?? []);
+    setRosterSnapshot(result.snapshot ?? null);
     setRosterCounts(result.counts ?? null);
     setMaterializationRequired(
       Boolean(result.materialization_required && !result.snapshot)
@@ -1882,6 +1947,7 @@ export const AttendanceOperatorPanel = ({
     setEvent(null);
     setRows([]);
     setExpectedRows([]);
+    setRosterSnapshot(null);
     setRosterCounts(null);
     setMaterializationRequired(false);
     setStale(false);
@@ -1904,6 +1970,7 @@ export const AttendanceOperatorPanel = ({
     setShowCheckInSheet(false);
     setRows([]);
     setExpectedRows([]);
+    setRosterSnapshot(null);
     setRosterCounts(null);
     setMaterializationRequired(false);
     setStale(false);
@@ -2475,6 +2542,7 @@ export const AttendanceOperatorPanel = ({
                   event={event}
                   rows={rows}
                   expectedRows={expectedRows}
+                  snapshot={rosterSnapshot}
                   counts={rosterCounts ?? undefined}
                   memberDirectory={memberDirectory}
                   busy={busy}
