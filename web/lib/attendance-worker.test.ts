@@ -880,6 +880,77 @@ describe("attendance Worker routes", () => {
     }
   });
 
+  test("concurrent reuse of one guest key commits one attendance and one proof", async () => {
+    const idempotencyKey = "guest-race-proof";
+    const payload = {
+      event_id: EVENT,
+      method: "guest_manual_code",
+      manual_code: "ATT1234",
+    } as const;
+    const attempts = [
+      { name: "競爭訪客甲", phone: "6333 3001" },
+      { name: "競爭訪客乙", phone: "6333 3002" },
+    ];
+    const responses = await Promise.all(
+      attempts.map(({ name, phone }) =>
+        worker.fetch(
+          request("/api/v1/attendance/guest", {
+            method: "POST",
+            headers: { "Idempotency-Key": idempotencyKey },
+            body: JSON.stringify({ ...payload, name, phone }),
+          }),
+          testEnv()
+        )
+      )
+    );
+    assert.deepStrictEqual(
+      responses.map((response) => response.status).sort((a, b) => a - b),
+      [201, 409]
+    );
+
+    const rows = await testDb()
+      .prepare(
+        `SELECT attendance_id, guest_name, guest_phone
+           FROM attendances
+          WHERE event_id = ?
+            AND guest_phone_normalized IN ('hk:85263333001', 'hk:85263333002')
+            AND status = 'Active'`
+      )
+      .bind(EVENT)
+      .all<{
+        attendance_id: string;
+        guest_name: string;
+        guest_phone: string;
+      }>();
+    assert.strictEqual(rows.results.length, 1);
+    const committedAttendanceId = rows.results[0]?.attendance_id;
+    assert.ok(committedAttendanceId);
+
+    const proof = await testDb()
+      .prepare(
+        `SELECT proof_hash, attendance_id, request_id
+           FROM attendance_guest_reconcile_proofs
+          WHERE event_id = ? AND attendance_id = ?`
+      )
+      .bind(EVENT, committedAttendanceId)
+      .first<{
+        proof_hash: string;
+        attendance_id: string;
+        request_id: string;
+      }>();
+    assert.ok(proof);
+    assert.strictEqual(proof.proof_hash.length, 64);
+    assert.strictEqual(proof.attendance_id, committedAttendanceId);
+    assert.notStrictEqual(proof.request_id, idempotencyKey);
+
+    await testDb()
+      .prepare(
+        "UPDATE attendances SET status = 'Voided', voided_at = ? WHERE attendance_id = ?"
+      )
+      .bind(new Date().toISOString(), committedAttendanceId)
+      .run();
+  });
+
   test("guest reconciliation uses a separate rate-limit bucket before identity lookup", async () => {
     const limit = vi.fn<() => Promise<{ success: false }>>(() =>
       Promise.resolve({ success: false })
@@ -1953,6 +2024,29 @@ describe("attendance Worker routes", () => {
     assert.strictEqual(conflict.status, 409);
     const conflictBody = await json(conflict);
     assert.strictEqual(conflictBody.code, "DUPLICATE_ATTENDANCE");
+    const conflictAudit = await testDb()
+      .prepare(
+        `SELECT action, outcome, entity_type, entity_id, reason, correlation_id
+           FROM audit_events
+          WHERE correlation_id = ?`
+      )
+      .bind(conflictBody.requestId)
+      .first<{
+        action: string;
+        outcome: string;
+        entity_type: string;
+        entity_id: string;
+        reason: string;
+        correlation_id: string;
+      }>();
+    assert.deepStrictEqual(conflictAudit, {
+      action: "attendance.guest_correct",
+      outcome: "CONFLICT",
+      entity_type: "Attendance",
+      entity_id: rowA.attendance_id,
+      reason: "ACTIVE_ATTENDANCE_EXISTS",
+      correlation_id: conflictBody.requestId,
+    });
 
     // A fresh phone corrects cleanly and the roster reflects the edit.
     const corrected = await worker.fetch(

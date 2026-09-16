@@ -101,6 +101,17 @@ const ROW: AttendanceRow = {
   void_reason: null,
 };
 
+const CANCELLED_GUEST_ROW: AttendanceRow = {
+  ...ROW,
+  attendance_id: "att-cancelled-guest",
+  event_id: CANCELLED.event_id,
+  member_user_id: null,
+  guest_name: "取消訪客",
+  guest_phone: "9123 4567",
+  guest_phone_normalized: "hk:85291234567",
+  method: "guest_manual_code",
+};
+
 const EXPECTED_NOT_YET: AttendanceExpectedRow = {
   expected_attendance_id: null,
   event_id: ACTIVE.event_id,
@@ -455,7 +466,7 @@ describe(AttendanceOperatorPanel, () => {
           data: { events: [ACTIVE, CANCELLED] },
         })
       ),
-      rosterHandler(CANCELLED, []),
+      rosterHandler(CANCELLED, [CANCELLED_GUEST_ROW]),
       rosterHandler(ACTIVE, [])
     );
     const user = userEvent.setup();
@@ -472,6 +483,12 @@ describe(AttendanceOperatorPanel, () => {
     ).not.toBeInTheDocument();
     expect(
       screen.queryByRole("button", { name: COPY.attendance.camera })
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: COPY.attendance.voidAttendance })
+    ).toBeDisabled();
+    expect(
+      screen.queryByRole("button", { name: COPY.attendance.correctGuest })
     ).not.toBeInTheDocument();
   });
 

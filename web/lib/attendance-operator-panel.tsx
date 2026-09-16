@@ -59,9 +59,6 @@ import { cn } from "@/lib/utils";
 
 import { EventCheckInSheet } from "./programs/event-check-in-sheet";
 
-const eventButtonControl =
-  "flex w-full min-h-11 flex-col items-start justify-between rounded-[var(--radius-sm)] border border-[var(--line-strong)] bg-[var(--surface-raised)] p-3 text-left text-base font-normal text-[var(--ink)] hover:bg-[var(--surface)] hover:text-[var(--ink)] sm:flex-row sm:items-center motion-reduce:transition-none";
-
 type StatusTone = "info" | "success" | "error";
 
 const ATTENDANCE_STATE_LABEL: Record<AttendanceState, string> = {
@@ -278,7 +275,8 @@ export const AttendanceChooser = ({
             <li key={event.event_id}>
               <Button
                 variant="outline"
-                className={eventButtonControl}
+                size="default"
+                className="flex w-full flex-col items-start justify-between bg-[var(--surface-raised)] text-left text-base font-normal text-[var(--ink)] hover:bg-[var(--surface)] hover:text-[var(--ink)] sm:flex-row sm:items-center motion-reduce:transition-none"
                 type="button"
                 disabled={busy}
                 onClick={() => onSelect(event.event_id)}
@@ -930,7 +928,8 @@ export const AttendanceRoster = ({
                               <div>
                                 <Button
                                   variant="link"
-                                  className="min-h-11 px-0 text-left text-base font-bold text-[var(--ink)] [overflow-wrap:anywhere]"
+                                  size="row"
+                                  className="text-left text-base font-bold text-[var(--ink)] [overflow-wrap:anywhere]"
                                   type="button"
                                   id={detailTriggerId}
                                   onClick={(event) => {
@@ -1067,7 +1066,8 @@ export const AttendanceRoster = ({
                                 <div>
                                   <Button
                                     variant="link"
-                                    className="min-h-11 px-0 text-left text-base font-bold text-[var(--ink)] [overflow-wrap:anywhere]"
+                                    size="row"
+                                    className="text-left text-base font-bold text-[var(--ink)] [overflow-wrap:anywhere]"
                                     type="button"
                                     id={detailTriggerId}
                                     onClick={(event) => {
@@ -2478,7 +2478,8 @@ export const AttendanceOperatorPanel = ({
                 <li key={member.user_id}>
                   <Button
                     variant="outline"
-                    className={eventButtonControl}
+                    size="default"
+                    className="flex w-full flex-col items-start justify-between bg-[var(--surface-raised)] text-left text-base font-normal text-[var(--ink)] hover:bg-[var(--surface)] hover:text-[var(--ink)] sm:flex-row sm:items-center motion-reduce:transition-none"
                     type="button"
                     data-search-member-kind={expected ? "expected" : "addition"}
                     disabled={busy || !online}
@@ -2546,7 +2547,12 @@ export const AttendanceOperatorPanel = ({
                   counts={rosterCounts ?? undefined}
                   memberDirectory={memberDirectory}
                   busy={busy}
-                  readOnly={!online || mutationOutcomeUnknown || stale}
+                  readOnly={
+                    !online ||
+                    mutationOutcomeUnknown ||
+                    stale ||
+                    event.status === "Cancelled"
+                  }
                   offline={!online}
                   stale={stale}
                   lastUpdatedAt={lastUpdatedAt}

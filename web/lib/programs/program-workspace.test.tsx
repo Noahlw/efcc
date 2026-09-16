@@ -2717,7 +2717,7 @@ describe("EVT-01 workspace Event deep link (#251)", () => {
       />
     );
     const open = await screen.findByRole("link", {
-      name: COPY.programs.eventDetailOpen,
+      name: /2030-08-20.*詳情/u,
     });
     expect(open).toHaveAttribute(
       "href",

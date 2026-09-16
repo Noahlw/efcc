@@ -190,7 +190,7 @@ describe("EventsTask operations-first composition", () => {
     renderTask();
 
     const eventLink = await screen.findByRole("link", {
-      name: COPY.programs.eventDetailOpen,
+      name: /週三查經.*詳情/u,
     });
     const scheduleLink = screen.getByRole("link", {
       name: new RegExp(COPY.programs.settingsScheduleEventsLink, "u"),
@@ -300,6 +300,24 @@ describe("EventsTask operations-first composition", () => {
       )
     ).toStrictEqual(["event-open", "event-today", "event-future"]);
 
+    const futureRow = list.querySelector<HTMLElement>(
+      '[data-event-id="event-future"]'
+    );
+    if (!futureRow) {
+      throw new Error("future Event row was not rendered");
+    }
+    expect(
+      within(futureRow).queryByRole("link", {
+        name: COPY.attendance.eventAttendanceOpen,
+      })
+    ).not.toBeInTheDocument();
+    expect(
+      within(futureRow).getByRole("link", { name: /詳情/u })
+    ).toHaveAttribute(
+      "href",
+      "/programs?mode=management&program=program-1&task=events&event=event-future"
+    );
+
     const openRow = list.querySelector<HTMLElement>(
       '[data-event-id="event-open"]'
     );
@@ -361,6 +379,15 @@ describe("EventsTask operations-first composition", () => {
         )
       ),
     }).toStrictEqual({ cancelled: 1, past: false, reason: true });
+    const cancelledRow = list.querySelector<HTMLElement>(
+      '[data-event-id="event-cancelled"]'
+    );
+    expect(cancelledRow).not.toBeNull();
+    expect(
+      within(cancelledRow as HTMLElement).queryByRole("button", {
+        name: COPY.programs.eventMoreActions,
+      })
+    ).not.toBeInTheDocument();
   });
 
   test("restores an Event creation draft and reports the shell dirty state", async () => {

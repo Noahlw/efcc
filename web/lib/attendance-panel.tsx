@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import type { RefObject } from "react";
+import type { MouseEvent, RefObject } from "react";
 
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -173,7 +173,26 @@ export const AttendancePanel = () => {
     setValidationError("");
   };
 
+  const blockUnknownGuestNavigation = (
+    event: MouseEvent<HTMLAnchorElement>
+  ) => {
+    if (!guestOutcomeUnknown) {
+      return false;
+    }
+    event.preventDefault();
+    const message = COPY.attendance.transportAmbiguous;
+    flow.showStatus(message, "error");
+    announce(message);
+    return true;
+  };
+
   const backToScan = () => {
+    if (guestOutcomeUnknown) {
+      const message = COPY.attendance.transportAmbiguous;
+      flow.showStatus(message, "error");
+      announce(message);
+      return;
+    }
     setAwaitingSelection(false);
     setValidationError("");
     setGuestOutcomeUnknown(false);
@@ -295,6 +314,8 @@ export const AttendancePanel = () => {
         return;
       }
       setGuestOutcomeUnknown(false);
+      guestSubmitKeyRef.current = null;
+      guestAttemptRef.current = null;
       flow.showStatus(COPY.attendance.guestReconcileNotFound, "info");
       announce(COPY.attendance.guestReconcileNotFound);
     } catch (error) {
@@ -328,6 +349,12 @@ export const AttendancePanel = () => {
   }
 
   const selectEvent = (event: AttendanceEvent) => {
+    if (guestOutcomeUnknown) {
+      const message = COPY.attendance.transportAmbiguous;
+      flow.showStatus(message, "error");
+      announce(message);
+      return;
+    }
     setGuestOutcomeUnknown(false);
     guestSubmitKeyRef.current = null;
     flow.setSelected(event);
@@ -392,7 +419,13 @@ export const AttendancePanel = () => {
           variant="link"
           className={attendanceButtonVariants({ variant: "back" })}
         >
-          <a href="/">{COPY.attendance.guestBack}</a>
+          <a
+            href="/"
+            aria-disabled={guestOutcomeUnknown}
+            onClick={blockUnknownGuestNavigation}
+          >
+            {COPY.attendance.guestBack}
+          </a>
         </Button>
         <h1
           id="attendance-title"
@@ -544,7 +577,7 @@ export const AttendancePanel = () => {
           <ScannerEventPicker
             events={flow.events}
             headingRef={chooserHeadingRef}
-            disabled={submitting}
+            disabled={submitting || guestOutcomeUnknown}
             onSelect={selectEvent}
           />
         )}
@@ -570,7 +603,11 @@ export const AttendancePanel = () => {
           >
             <a
               href="/"
-              onClick={() => {
+              aria-disabled={guestOutcomeUnknown}
+              onClick={(event) => {
+                if (blockUnknownGuestNavigation(event)) {
+                  return;
+                }
                 const entry = entryFromValue(flow.input);
                 if (entry.value) {
                   writeGuestCredential({

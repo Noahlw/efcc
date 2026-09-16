@@ -405,8 +405,13 @@ const workspaceEventsMixedPlay: Story["play"] = async ({ canvasElement }) => {
     );
   await expect(visibleEventIds()).toStrictEqual(["t07-3-manual-event"]);
   await expect(
-    canvas.getAllByRole("link", { name: COPY.programs.eventDetailOpen })
+    canvas.getAllByRole("link", { name: /門徒分享聚會.*詳情/u })
   ).toHaveLength(1);
+  await expect(
+    canvas.queryByRole("link", {
+      name: COPY.attendance.eventAttendanceOpen,
+    })
+  ).toBeNull();
   await userEvent.click(
     canvas.getByRole("button", { name: COPY.programs.eventsFilterPast })
   );

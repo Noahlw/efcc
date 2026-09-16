@@ -1657,27 +1657,51 @@ async function insertAttendance(
   const attendanceId = crypto.randomUUID();
   const checkedInAt = new Date().toISOString();
   try {
-    const insertResult = await env.DB.prepare(
+    const attendanceInsert = env.DB.prepare(
       `INSERT INTO attendances
         (attendance_id, event_id, member_user_id, guest_name, guest_phone,
          guest_phone_normalized, method, status, checked_in_at, checked_in_by)
        SELECT ?, ?, ?, ?, ?, ?, ?, 'Active', ?, ?
         FROM events
        WHERE event_id = ? AND status = 'Active' AND availability = 'Active'`
-    )
-      .bind(
-        attendanceId,
-        event.event_id,
-        input.memberUserId,
-        input.guestName ?? null,
-        input.guestPhone ?? null,
-        input.guestPhoneNormalized ?? null,
-        input.method,
-        checkedInAt,
-        input.actor?.user_id ?? null,
-        event.event_id
-      )
-      .run();
+    ).bind(
+      attendanceId,
+      event.event_id,
+      input.memberUserId,
+      input.guestName ?? null,
+      input.guestPhone ?? null,
+      input.guestPhoneNormalized ?? null,
+      input.method,
+      checkedInAt,
+      input.actor?.user_id ?? null,
+      event.event_id
+    );
+    const statements = [attendanceInsert];
+    if (input.guestProof) {
+      statements.push(
+        env.DB.prepare(
+          `INSERT INTO attendance_guest_reconcile_proofs
+             (proof_hash, request_fingerprint, program_id, event_id,
+              attendance_id, request_id, created_at)
+           SELECT ?, ?, ?, ?, ?, ?, ?
+            WHERE EXISTS (
+              SELECT 1 FROM attendances
+               WHERE attendance_id = ? AND event_id = ? AND status = 'Active'
+            )`
+        ).bind(
+          input.guestProof.proofHash,
+          input.guestProof.requestFingerprint,
+          event.program_id,
+          event.event_id,
+          attendanceId,
+          id,
+          checkedInAt,
+          attendanceId,
+          event.event_id
+        )
+      );
+    }
+    const [insertResult] = await env.DB.batch(statements);
     if ((insertResult.meta?.changes ?? 0) === 0) {
       const currentEvent = await findEvent(env.DB, event.event_id);
       if (currentEvent?.status === "Cancelled") {
@@ -1750,14 +1774,51 @@ async function insertAttendance(
             .bind(event.event_id, input.guestPhoneNormalized)
             .first<{ attendance_id: string }>()
         : null;
+    const storedProof = input.guestProof
+      ? await findGuestReconciliationProof(env.DB, input.guestProof.proofHash)
+      : null;
+    if (input.guestProof && storedProof && !existing) {
+      await audit(env.DB, {
+        actorUserId: input.actor?.user_id ?? null,
+        action: "attendance.check_in",
+        entityType: "Event",
+        entityId: event.event_id,
+        outcome: "CONFLICT",
+        reason: "IDEMPOTENCY_KEY_REUSED",
+        correlationId: id,
+      });
+      return problem(409, "CONFLICT", "此提交識別碼已用於其他簽到。", id);
+    }
     if (existing && input.guestProof) {
-      await recordGuestReconciliationProof(
-        env.DB,
-        event,
-        input.guestProof,
-        existing.attendance_id,
-        id
-      );
+      if (
+        storedProof &&
+        (!proofMatchesEvent(
+          storedProof,
+          event,
+          input.guestProof.requestFingerprint
+        ) ||
+          storedProof.attendance_id !== existing.attendance_id)
+      ) {
+        await audit(env.DB, {
+          actorUserId: input.actor?.user_id ?? null,
+          action: "attendance.check_in",
+          entityType: "Event",
+          entityId: event.event_id,
+          outcome: "CONFLICT",
+          reason: "IDEMPOTENCY_KEY_REUSED",
+          correlationId: id,
+        });
+        return problem(409, "CONFLICT", "此提交識別碼已用於其他簽到。", id);
+      }
+      if (!storedProof) {
+        await recordGuestReconciliationProof(
+          env.DB,
+          event,
+          input.guestProof,
+          existing.attendance_id,
+          id
+        );
+      }
     }
     await audit(env.DB, {
       actorUserId: input.actor?.user_id ?? null,
@@ -1781,15 +1842,6 @@ async function insertAttendance(
       409,
       "DUPLICATE_ATTENDANCE",
       input.publicDuplicateMessage,
-      id
-    );
-  }
-  if (input.guestProof) {
-    await recordGuestReconciliationProof(
-      env.DB,
-      event,
-      input.guestProof,
-      attendanceId,
       id
     );
   }
@@ -3122,6 +3174,15 @@ export async function handleCorrectGuest(
       // anything else must surface as a 500 rather than a mislabeled 409.
       throw error;
     }
+    await audit(env.DB, {
+      actorUserId: current.user_id,
+      action: "attendance.guest_correct",
+      entityType: "Attendance",
+      entityId: attendanceId,
+      outcome: "CONFLICT",
+      reason: "ACTIVE_ATTENDANCE_EXISTS",
+      correlationId: id,
+    });
     return problem(409, "DUPLICATE_ATTENDANCE", "此電話已在此聚會簽到。", id);
   }
   await audit(env.DB, {

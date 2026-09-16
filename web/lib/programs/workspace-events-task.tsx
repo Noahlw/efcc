@@ -147,6 +147,27 @@ function eventIsPast(event: ProgramEvent, now = Date.now()): boolean {
   );
 }
 
+type EventActionPhase = "future" | "open" | "past" | "cancelled";
+
+function eventActionPhase(
+  event: ProgramEvent,
+  now = Date.now()
+): EventActionPhase {
+  if (event.status === "Cancelled") {
+    return "cancelled";
+  }
+  if (eventIsOpen(event, now)) {
+    return "open";
+  }
+  const opensAt = Date.parse(event.check_in_window_opens_at ?? "");
+  const startsAt = Date.parse(event.starts_at);
+  return [opensAt, startsAt].some(
+    (timestamp) => Number.isFinite(timestamp) && timestamp > now
+  )
+    ? "future"
+    : "past";
+}
+
 function rankForEvent(event: ProgramEvent, now: number): number {
   if (eventIsOpen(event, now)) {
     return 0;
@@ -2316,6 +2337,9 @@ export const EventsTask = () => {
               (event) => {
                 const wall = eventWallParts(event.starts_at);
                 const exception = event.exception ?? null;
+                const actionPhase = eventActionPhase(event);
+                const eventTitle =
+                  event.name ?? hkWallDateTimeLabel(event.starts_at);
                 const eventHref = buildProgramsHref({
                   mode: "management",
                   departmentId,
@@ -2337,7 +2361,7 @@ export const EventsTask = () => {
                       <ScreenRowMain className="basis-full">
                         <Link
                           href={eventHref}
-                          aria-label={COPY.programs.eventDetailOpen}
+                          aria-label={`${eventTitle} · ${wall.date} · ${COPY.programs.eventDetailOpen}`}
                           className="min-w-0 wrap-anywhere text-[length:var(--screen-body-size)] leading-[21px] font-semibold hover:underline focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-[var(--screen-focus)]"
                           onClick={(clickEvent) => {
                             if (eventsOutcomeUnknown || eventsStale) {
@@ -2414,37 +2438,39 @@ export const EventsTask = () => {
                           )}
                       </ScreenRowMain>
                       <div className="flex min-w-0 basis-full flex-wrap items-center gap-[var(--screen-utility-gap)]">
-                        <Button
-                          asChild
-                          className="w-fit border-[var(--screen-line-strong)] bg-transparent text-[var(--screen-ink)] hover:bg-[var(--screen-surface-soft)]"
-                          variant="outline"
-                        >
-                          <Link
-                            href={`/events?eventId=${encodeURIComponent(event.event_id)}`}
-                            onClick={(clickEvent) => {
-                              if (
-                                !onOpenAttendance ||
-                                eventsOutcomeUnknown ||
-                                eventsStale ||
-                                clickEvent.defaultPrevented ||
-                                clickEvent.button !== 0 ||
-                                clickEvent.metaKey ||
-                                clickEvent.ctrlKey ||
-                                clickEvent.shiftKey ||
-                                clickEvent.altKey
-                              ) {
-                                return;
-                              }
-                              clickEvent.preventDefault();
-                              onOpenAttendance(event.event_id);
-                            }}
+                        {actionPhase !== "future" && (
+                          <Button
+                            asChild
+                            className="w-fit border-[var(--screen-line-strong)] bg-transparent text-[var(--screen-ink)] hover:bg-[var(--screen-surface-soft)]"
+                            variant="outline"
                           >
-                            {event.status === "Active"
-                              ? COPY.attendance.eventAttendanceOpen
-                              : COPY.programs.eventAttendanceViewRecord}
-                          </Link>
-                        </Button>
-                        {canManage && (
+                            <Link
+                              href={`/events?eventId=${encodeURIComponent(event.event_id)}`}
+                              onClick={(clickEvent) => {
+                                if (
+                                  !onOpenAttendance ||
+                                  eventsOutcomeUnknown ||
+                                  eventsStale ||
+                                  clickEvent.defaultPrevented ||
+                                  clickEvent.button !== 0 ||
+                                  clickEvent.metaKey ||
+                                  clickEvent.ctrlKey ||
+                                  clickEvent.shiftKey ||
+                                  clickEvent.altKey
+                                ) {
+                                  return;
+                                }
+                                clickEvent.preventDefault();
+                                onOpenAttendance(event.event_id);
+                              }}
+                            >
+                              {actionPhase === "open"
+                                ? COPY.attendance.eventAttendanceOpen
+                                : COPY.programs.eventAttendanceViewRecord}
+                            </Link>
+                          </Button>
+                        )}
+                        {canManage && actionPhase !== "cancelled" && (
                           <DropdownMenu>
                             <DropdownMenuTrigger asChild>
                               <Button
