@@ -397,7 +397,7 @@ function updateAttendanceEventUrl(nextEventId: string | null) {
     url.searchParams.delete("event");
     url.searchParams.delete("eventId");
   }
-  window.history.replaceState(null, "", url);
+  window.history.replaceState(window.history.state, "", url);
 }
 
 type AttendanceRosterRead = Awaited<ReturnType<typeof listAttendanceRoster>>;
@@ -1756,6 +1756,8 @@ export const AttendanceOperatorPanel = ({
   const pendingMutationRef = useRef<PendingAttendanceMutation | null>(null);
   const staleRef = useRef(false);
   const mutationOutcomeUnknownRef = useRef(false);
+  const reconciliationEpochRef = useRef(0);
+  const reconciliationInFlightRef = useRef<Promise<void> | null>(null);
 
   useEffect(() => {
     onlineRef.current = online;
@@ -1765,7 +1767,6 @@ export const AttendanceOperatorPanel = ({
 
   useEffect(() => {
     onMutationBlockChange?.(mutationOutcomeUnknown);
-    return () => onMutationBlockChange?.(false);
   }, [mutationOutcomeUnknown, onMutationBlockChange]);
 
   useEffect(() => {
@@ -1875,7 +1876,11 @@ export const AttendanceOperatorPanel = ({
   }
 
   function markUnknownMutation(mutation: PendingAttendanceMutation) {
+    reconciliationEpochRef.current += 1;
     pendingMutationRef.current = mutation;
+    staleRef.current = true;
+    mutationOutcomeUnknownRef.current = true;
+    setStale(true);
     setMutationOutcomeUnknown(true);
     showStatus(COPY.attendance.transportAmbiguous, "error");
     announce(COPY.attendance.transportAmbiguous);
@@ -2054,33 +2059,60 @@ export const AttendanceOperatorPanel = ({
   }
 
   async function reconcileUnknownAttendance(): Promise<void> {
-    const id = selectedEventIdRef.current;
-    if (!id) {
+    if (reconciliationInFlightRef.current) {
+      await reconciliationInFlightRef.current;
       return;
     }
-    const refreshed = await loadRoster(id, {
-      allowRecovery: true,
-      clearRecovery: false,
-    });
+    const id = selectedEventIdRef.current;
     const pendingMutation = pendingMutationRef.current;
-    const roster = latestRosterResultRef.current;
-    if (
-      refreshed &&
-      roster &&
-      pendingMutation &&
-      rosterSettlesMutation(roster, pendingMutation)
-    ) {
-      pendingMutationRef.current = null;
-      setStale(false);
-      setMutationOutcomeUnknown(false);
-      setRosterReadError(null);
-      showStatus(COPY.programs.workspaceReconciled, "info");
-      announce(COPY.programs.workspaceReconciled);
-    } else {
-      setStale(true);
-      setMutationOutcomeUnknown(true);
-      showStatus(COPY.attendance.transportAmbiguous, "error");
-      announce(COPY.attendance.transportAmbiguous);
+    if (!id || !pendingMutation || !mutationOutcomeUnknownRef.current) {
+      return;
+    }
+    const epoch = ++reconciliationEpochRef.current;
+    const attempt = (async () => {
+      const refreshed = await loadRoster(id, {
+        allowRecovery: true,
+        clearRecovery: false,
+      });
+      if (
+        epoch !== reconciliationEpochRef.current ||
+        selectedEventIdRef.current !== id ||
+        pendingMutationRef.current !== pendingMutation ||
+        !mutationOutcomeUnknownRef.current
+      ) {
+        return;
+      }
+      const roster = latestRosterResultRef.current;
+      if (
+        refreshed &&
+        roster &&
+        rosterSettlesMutation(roster, pendingMutation)
+      ) {
+        reconciliationEpochRef.current += 1;
+        pendingMutationRef.current = null;
+        staleRef.current = false;
+        mutationOutcomeUnknownRef.current = false;
+        setStale(false);
+        setMutationOutcomeUnknown(false);
+        setRosterReadError(null);
+        showStatus(COPY.programs.workspaceReconciled, "info");
+        announce(COPY.programs.workspaceReconciled);
+      } else {
+        staleRef.current = true;
+        mutationOutcomeUnknownRef.current = true;
+        setStale(true);
+        setMutationOutcomeUnknown(true);
+        showStatus(COPY.attendance.transportAmbiguous, "error");
+        announce(COPY.attendance.transportAmbiguous);
+      }
+    })();
+    reconciliationInFlightRef.current = attempt;
+    try {
+      await attempt;
+    } finally {
+      if (reconciliationInFlightRef.current === attempt) {
+        reconciliationInFlightRef.current = null;
+      }
     }
   }
 
@@ -2125,6 +2157,7 @@ export const AttendanceOperatorPanel = ({
       showStatus(COPY.attendance.transportAmbiguous, "error");
       return;
     }
+    reconciliationEpochRef.current += 1;
     selectedEventIdRef.current = nextEventId;
     pendingMutationRef.current = null;
     latestRosterResultRef.current = null;
@@ -2149,6 +2182,7 @@ export const AttendanceOperatorPanel = ({
       showStatus(COPY.attendance.transportAmbiguous, "error");
       return;
     }
+    reconciliationEpochRef.current += 1;
     selectedEventIdRef.current = null;
     pendingMutationRef.current = null;
     latestRosterResultRef.current = null;

@@ -125,6 +125,72 @@ interface ExceptionDraft {
 
 type EventListFilter = "current" | "past" | "cancelled";
 
+type PendingEventMutation =
+  | {
+      kind: "cancel";
+      eventId: string;
+    }
+  | {
+      kind: "create";
+      programId: string;
+      beforeEventIds: readonly string[];
+      name: string;
+      eventType: EventType;
+      startsAt: string;
+      endsAt: string;
+      location: string | null;
+      opensAt: string | null;
+      closesAt: string | null;
+    };
+
+function sameNullableValue(
+  left: string | null | undefined,
+  right: string | null
+): boolean {
+  return (left ?? null) === right;
+}
+
+function eventSettlesMutation(
+  events: readonly ProgramEvent[],
+  mutation: PendingEventMutation
+): boolean {
+  if (mutation.kind === "cancel") {
+    return events.some(
+      (event) =>
+        event.event_id === mutation.eventId && event.status === "Cancelled"
+    );
+  }
+  return events.some(
+    (event) =>
+      event.program_id === mutation.programId &&
+      !mutation.beforeEventIds.includes(event.event_id) &&
+      event.starts_at === mutation.startsAt &&
+      event.ends_at === mutation.endsAt &&
+      sameNullableValue(event.name, mutation.name) &&
+      sameNullableValue(event.event_type, mutation.eventType) &&
+      sameNullableValue(event.location, mutation.location) &&
+      sameNullableValue(event.check_in_window_opens_at, mutation.opensAt) &&
+      sameNullableValue(event.check_in_window_closes_at, mutation.closesAt)
+  );
+}
+
+function consumeEventCreateIntent(): void {
+  if (
+    typeof window === "undefined" ||
+    window.location.hash !== "#create-event"
+  ) {
+    return;
+  }
+  const nextUrl = new URL(window.location.href);
+  nextUrl.hash = "";
+  window.history.replaceState(
+    window.history.state,
+    "",
+    `${nextUrl.pathname}${nextUrl.search}`
+  );
+  window.dispatchEvent(new Event("hashchange"));
+}
+
 function eventIsOpen(event: ProgramEvent, now = Date.now()): boolean {
   if (event.status !== "Active" || event.availability === "Inactive") {
     return false;
@@ -1567,6 +1633,7 @@ export const EventsTask = () => {
     null
   );
   const confirmEventRef = useRef<HTMLDivElement>(null);
+  const pendingEventMutationRef = useRef<PendingEventMutation | null>(null);
 
   useEffect(() => {
     mounted.current = true;
@@ -1581,8 +1648,8 @@ export const EventsTask = () => {
 
   useEffect(() => {
     if (state.kind === "ready") {
-      setEventsStale(false);
-      if (!eventsOutcomeUnknown) {
+      setEventsStale(eventsOutcomeUnknown);
+      if (!eventsOutcomeUnknown && pendingEventMutationRef.current === null) {
         onMutationBlockChange?.(false);
       }
     } else if (state.kind === "error" && previousEvents.current !== null) {
@@ -1594,30 +1661,61 @@ export const EventsTask = () => {
   }, [eventsOutcomeUnknown, onMutationBlockChange, state.kind]);
 
   const reconcileEvents = async () => {
-    let workspaceReconciled = true;
-    if (onWorkspaceRefresh) {
-      try {
-        workspaceReconciled = (await onWorkspaceRefresh()) !== undefined;
-      } catch {
-        workspaceReconciled = false;
-      }
-    }
-    const request = { cancelled: false };
-    await run(request);
-    const outcome = eventLoadOutcomes.current.get(request);
-    if (!mounted.current) {
+    if (actionBusy) {
       return;
     }
-    if (workspaceReconciled && outcome?.status === "success") {
-      setEventsOutcomeUnknown(false);
-      setEventsStale(false);
-      onMutationBlockChange?.(false);
-      setActionError(COPY.programs.workspaceReconciled);
-      announce(COPY.programs.workspaceReconciled);
-    } else {
-      setEventsStale(true);
-      setActionError(COPY.programs.programTransportAmbiguous);
-      announce(COPY.programs.programTransportAmbiguous);
+    const pendingMutation = pendingEventMutationRef.current;
+    setActionBusy(true);
+    let workspaceReconciled = true;
+    try {
+      if (onWorkspaceRefresh) {
+        try {
+          workspaceReconciled = (await onWorkspaceRefresh()) !== undefined;
+        } catch {
+          workspaceReconciled = false;
+        }
+      }
+      const request = { cancelled: false };
+      const reconciledEvents = await run(request);
+      const outcome = eventLoadOutcomes.current.get(request);
+      if (!mounted.current) {
+        return;
+      }
+      const settled =
+        pendingMutation === null ||
+        (reconciledEvents !== undefined &&
+          eventSettlesMutation(reconciledEvents, pendingMutation));
+      if (workspaceReconciled && outcome?.status === "success" && settled) {
+        if (pendingMutation?.kind === "create") {
+          clearEventCreateDraft(programId);
+          setCreateOpen(false);
+          const createdEvent = reconciledEvents?.find((event) =>
+            eventSettlesMutation([event], pendingMutation)
+          );
+          if (createdEvent && onOpenEvent) {
+            onOpenEvent(createdEvent.event_id);
+          }
+        }
+        pendingEventMutationRef.current = null;
+        setEventsOutcomeUnknown(false);
+        setEventsStale(false);
+        onMutationBlockChange?.(false);
+        setActionError(COPY.programs.workspaceReconciled);
+        announce(COPY.programs.workspaceReconciled);
+      } else {
+        setEventsOutcomeUnknown(pendingMutation !== null);
+        setEventsStale(true);
+        const message =
+          pendingMutation === null
+            ? COPY.programs.workspaceEventsSavedStale
+            : COPY.programs.programTransportAmbiguous;
+        setActionError(message);
+        announce(message);
+      }
+    } finally {
+      if (mounted.current) {
+        setActionBusy(false);
+      }
     }
   };
 
@@ -1684,6 +1782,7 @@ export const EventsTask = () => {
     setCreateWindowCloses("");
   };
   const toggleCreateForm = (open: boolean) => {
+    consumeEventCreateIntent();
     if (open) {
       if (!readEventCreateDraft(programId)) {
         resetCreateForm();
@@ -1695,9 +1794,15 @@ export const EventsTask = () => {
     setCreateError(null);
   };
   useEffect(() => {
-    if (hash !== "#create-event" || !canManage || createOpen) {
+    if (
+      hash !== "#create-event" ||
+      window.location.hash !== "#create-event" ||
+      !canManage ||
+      createOpen
+    ) {
       return;
     }
+    consumeEventCreateIntent();
     if (!readEventCreateDraft(programId)) {
       resetCreateForm();
     }
@@ -1764,7 +1869,8 @@ export const EventsTask = () => {
   })();
   const runEventAction = async (
     action: () => Promise<unknown>,
-    successMessage: string
+    successMessage: string,
+    pendingMutation: PendingEventMutation
   ): Promise<boolean> => {
     if (eventsOutcomeUnknown || eventsStale) {
       return false;
@@ -1778,6 +1884,7 @@ export const EventsTask = () => {
       if (!mounted.current) {
         return false;
       }
+      pendingEventMutationRef.current = null;
       onAttentionRefresh();
       let workspaceReconciled = true;
       if (onWorkspaceRefresh) {
@@ -1808,6 +1915,7 @@ export const EventsTask = () => {
         return false;
       }
       if (isUnknownMutationOutcome(error)) {
+        pendingEventMutationRef.current = pendingMutation;
         setEventsOutcomeUnknown(true);
         onMutationBlockChange?.(true);
         setEventsStale(true);
@@ -1851,7 +1959,8 @@ export const EventsTask = () => {
       void (async () => {
         const succeeded = await runEventAction(
           () => cancelEvent(programId, eventId, reason),
-          COPY.programs.eventCancelledNotice
+          COPY.programs.eventCancelledNotice,
+          { kind: "cancel", eventId }
         );
         if (succeeded && mounted.current) {
           setConfirmingEventId(null);
@@ -1861,10 +1970,10 @@ export const EventsTask = () => {
 
   // oxlint-disable-next-line eslint/complexity -- create validation and optional check-in-window overrides are one form boundary
   const submitCreate = async (formEvent: FormEvent<HTMLFormElement>) => {
+    formEvent.preventDefault();
     if (eventsOutcomeUnknown || eventsStale) {
       return;
     }
-    formEvent.preventDefault();
     const form = new FormData(formEvent.currentTarget);
     const name = String(form.get("name") ?? "").trim();
     if (!createDate || !createStartTime || !createEndTime || !name) {
@@ -1896,6 +2005,18 @@ export const EventsTask = () => {
       announce(message);
       return;
     }
+    const pendingMutation: PendingEventMutation = {
+      kind: "create",
+      programId,
+      beforeEventIds: eventsForActions.map((event) => event.event_id),
+      name,
+      eventType: createEventType,
+      startsAt,
+      endsAt,
+      location: createLocation.trim() || null,
+      opensAt: overrideOpens,
+      closesAt: overrideCloses,
+    };
     setCreateBusy(true);
     setCreateError(null);
     try {
@@ -1908,6 +2029,7 @@ export const EventsTask = () => {
         check_in_window_opens_at: overrideOpens,
         check_in_window_closes_at: overrideCloses,
       });
+      pendingEventMutationRef.current = null;
       announce(COPY.programs.eventCreatedNotice);
       clearEventCreateDraft(programId);
       toggleCreateForm(false);
@@ -1940,6 +2062,7 @@ export const EventsTask = () => {
         return;
       }
       if (isUnknownMutationOutcome(error)) {
+        pendingEventMutationRef.current = pendingMutation;
         setEventsOutcomeUnknown(true);
         onMutationBlockChange?.(true);
         setEventsStale(true);
@@ -1963,6 +2086,8 @@ export const EventsTask = () => {
     eventsForDisplay === null
       ? null
       : eventsForFilter(eventsForDisplay, eventFilter);
+  const createControlsDisabled =
+    createBusy || eventsOutcomeUnknown || eventsStale;
 
   return (
     <ScreenSection
@@ -2015,21 +2140,8 @@ export const EventsTask = () => {
           {notice}
         </Alert>
       )}
-      {actionError !== null && (
-        <div className="flex min-w-0 flex-wrap items-center gap-[var(--screen-utility-gap)]">
-          <Alert variant="destructive">{actionError}</Alert>
-          {(eventsOutcomeUnknown || eventsStale) && (
-            <Button
-              type="button"
-              variant="outline"
-              className="w-fit border-[var(--screen-line-strong)] bg-transparent text-[var(--screen-ink)] hover:bg-[var(--screen-surface-soft)]"
-              onClick={() => void reconcileEvents()}
-              disabled={actionBusy}
-            >
-              {COPY.programs.workspaceRetryRefresh}
-            </Button>
-          )}
-        </div>
+      {actionError !== null && !eventsStale && (
+        <Alert variant="destructive">{actionError}</Alert>
       )}
       {(eventAttention?.inactive_event_count ?? 0) > 0 ||
       (eventAttention?.cancelled_event_count ?? 0) > 0 ? (
@@ -2086,7 +2198,7 @@ export const EventsTask = () => {
                 placeholder={COPY.programs.eventDate}
                 value={createDate}
                 onChange={changeCreateDate}
-                disabled={createBusy}
+                disabled={createControlsDisabled}
               />
             </ScreenField>
             <ScreenField
@@ -2101,7 +2213,7 @@ export const EventsTask = () => {
                 value={createStartTime}
                 onChange={(event) => changeCreateStartTime(event.target.value)}
                 aria-required="true"
-                disabled={createBusy}
+                disabled={createControlsDisabled}
               />
             </ScreenField>
             <ScreenField
@@ -2119,7 +2231,7 @@ export const EventsTask = () => {
                   setCreateEndAuto(false);
                 }}
                 aria-required="true"
-                disabled={createBusy}
+                disabled={createControlsDisabled}
               />
             </ScreenField>
             <ScreenField
@@ -2136,7 +2248,7 @@ export const EventsTask = () => {
                 required
                 value={createName}
                 onChange={(event) => setCreateName(event.target.value)}
-                disabled={createBusy}
+                disabled={createControlsDisabled}
               />
             </ScreenField>
             <ScreenField
@@ -2149,7 +2261,7 @@ export const EventsTask = () => {
                 onValueChange={(value) =>
                   setCreateEventType(value as EventType)
                 }
-                disabled={createBusy}
+                disabled={createControlsDisabled}
               >
                 <SelectTrigger
                   id="programs-event-type"
@@ -2179,7 +2291,7 @@ export const EventsTask = () => {
                 value={createLocation}
                 onChange={(event) => setCreateLocation(event.target.value)}
                 placeholder={COPY.programs.eventLocationPlaceholder}
-                disabled={createBusy}
+                disabled={createControlsDisabled}
               />
             </ScreenField>
             <div className="grid min-w-0 gap-2 rounded-[var(--screen-radius-card)] border border-[var(--screen-line)] bg-[var(--screen-surface-soft)] p-3">
@@ -2199,7 +2311,7 @@ export const EventsTask = () => {
                       );
                     }
                   }}
-                  disabled={createBusy}
+                  disabled={createControlsDisabled}
                 />
                 <label
                   className="min-w-0 cursor-pointer text-sm leading-6 text-[var(--screen-ink)]"
@@ -2222,7 +2334,7 @@ export const EventsTask = () => {
                       onChange={(event) =>
                         setCreateWindowOpens(event.target.value)
                       }
-                      disabled={createBusy}
+                      disabled={createControlsDisabled}
                     />
                   </ScreenField>
                   <ScreenField
@@ -2237,7 +2349,7 @@ export const EventsTask = () => {
                       onChange={(event) =>
                         setCreateWindowCloses(event.target.value)
                       }
-                      disabled={createBusy}
+                      disabled={createControlsDisabled}
                     />
                   </ScreenField>
                 </div>
@@ -2253,7 +2365,7 @@ export const EventsTask = () => {
               <Button
                 type="submit"
                 className="w-fit bg-[var(--screen-accent)] text-white hover:bg-[var(--screen-accent-deep)]"
-                disabled={createBusy || eventsOutcomeUnknown || eventsStale}
+                disabled={createControlsDisabled}
               >
                 {createBusy
                   ? COPY.programs.submitting
@@ -2263,7 +2375,7 @@ export const EventsTask = () => {
                 type="button"
                 className="w-fit border-[var(--screen-line-strong)] bg-transparent text-[var(--screen-ink)] hover:bg-[var(--screen-surface-soft)]"
                 variant="outline"
-                disabled={createBusy}
+                disabled={createControlsDisabled}
                 onClick={() => {
                   toggleCreateForm(false);
                 }}
@@ -2298,20 +2410,23 @@ export const EventsTask = () => {
       )}
       {eventsStale && (
         <div className="flex min-w-0 flex-wrap items-center gap-[var(--screen-utility-gap)]">
-          <Alert tone="warning" announcement="polite">
-            {COPY.programs.workspaceEventsSavedStale}
+          <Alert
+            tone={eventsOutcomeUnknown ? "error" : "warning"}
+            announcement={eventsOutcomeUnknown ? "assertive" : "polite"}
+          >
+            {eventsOutcomeUnknown
+              ? COPY.programs.programTransportAmbiguous
+              : COPY.programs.workspaceEventsSavedStale}
           </Alert>
-          {!eventsOutcomeUnknown && (
-            <Button
-              type="button"
-              variant="outline"
-              className="w-fit border-[var(--screen-line-strong)] bg-transparent text-[var(--screen-ink)] hover:bg-[var(--screen-surface-soft)]"
-              onClick={() => void reconcileEvents()}
-              disabled={actionBusy}
-            >
-              {COPY.programs.workspaceRetryRefresh}
-            </Button>
-          )}
+          <Button
+            type="button"
+            variant="outline"
+            className="w-fit border-[var(--screen-line-strong)] bg-transparent text-[var(--screen-ink)] hover:bg-[var(--screen-surface-soft)]"
+            onClick={() => void reconcileEvents()}
+            disabled={actionBusy}
+          >
+            {COPY.programs.workspaceRetryRefresh}
+          </Button>
         </div>
       )}
       {state.kind === "ready" && state.events.length === 0 && (

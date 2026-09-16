@@ -149,7 +149,8 @@ function renderTask(
   onOpenEvent:
     | ((eventId: string, action?: ManagementEventAction) => void)
     | null = vi.fn<(eventId: string, action?: ManagementEventAction) => void>(),
-  onOpenAttendance: ((eventId: string) => void) | null = null
+  onOpenAttendance: ((eventId: string) => void) | null = null,
+  hash: string | null = null
 ) {
   return render(
     <WorkspaceTaskProvider
@@ -158,7 +159,7 @@ function renderTask(
         modules: [],
         attention: null,
         departmentId: null,
-        hash: null,
+        hash,
         onAttentionRefresh: vi.fn<() => void>(),
         onTaskChange: vi.fn<() => void>(),
         onOpenEvent: onOpenEvent ?? undefined,
@@ -453,9 +454,34 @@ describe("EventsTask operations-first composition", () => {
     });
   });
 
+  test("consumes the one-shot create intent before opening the Event form", async () => {
+    const user = userEvent.setup();
+    const previousHref = window.location.href;
+    window.history.replaceState(
+      {},
+      "",
+      "/programs?program=program-1#create-event"
+    );
+    try {
+      renderTask(vi.fn(), null, null, "#create-event");
+      await screen.findByRole("heading", { name: COPY.programs.createMeeting });
+      expect(window.location.hash).toBe("");
+
+      await user.click(
+        screen.getByRole("button", { name: COPY.programs.eventCreateCancel })
+      );
+      expect(
+        screen.queryByRole("heading", { name: COPY.programs.createMeeting })
+      ).not.toBeInTheDocument();
+    } finally {
+      window.history.replaceState({}, "", previousHref);
+    }
+  });
+
   test("keeps the draft after a failed create and clears it after success", async () => {
     const user = userEvent.setup();
     const onWorkspaceDirtyChange = vi.fn<(dirty: boolean) => void>();
+    const onOpenEvent = vi.fn<(eventId: string) => void>();
     writeEventCreateDraft(program.program_id, {
       version: 1,
       date: "2026-09-22",
@@ -470,9 +496,23 @@ describe("EventsTask operations-first composition", () => {
       windowCloses: "",
     });
     mocks.createEvent.mockRejectedValueOnce(new Error("offline"));
-    renderTask(onWorkspaceDirtyChange);
+    renderTask(onWorkspaceDirtyChange, onOpenEvent);
 
     await screen.findByRole("heading", { name: COPY.programs.createMeeting });
+    mocks.listEvents.mockResolvedValueOnce({
+      events: [
+        event,
+        {
+          ...event,
+          event_id: "event-created",
+          starts_at: wallInstant("2026-09-22", "19:30"),
+          ends_at: wallInstant("2026-09-22", "20:30"),
+          name: "失敗後仍保留",
+          event_type: "小組",
+          location: "副堂",
+        },
+      ],
+    });
     const submit = screen
       .getAllByRole("button", { name: COPY.programs.createMeeting })
       .at(-1);
@@ -491,21 +531,12 @@ describe("EventsTask operations-first composition", () => {
       screen.getByRole("button", { name: COPY.programs.workspaceRetryRefresh })
     );
     await screen.findByText(COPY.programs.workspaceReconciled);
-
-    mocks.createEvent.mockResolvedValueOnce({
-      event: { ...event, event_id: "event-created" },
-    });
-    const retrySubmit = screen
-      .getAllByRole("button", { name: COPY.programs.createMeeting })
-      .at(-1);
-    if (!retrySubmit) {
-      throw new Error("create retry button was not rendered");
-    }
-    await user.click(retrySubmit);
     await waitFor(() => {
       expect(readEventCreateDraft(program.program_id)).toBeNull();
       expect(onWorkspaceDirtyChange).toHaveBeenCalledWith(false);
     });
+    expect(mocks.createEvent).toHaveBeenCalledTimes(1);
+    expect(onOpenEvent).toHaveBeenCalledWith("event-created");
   });
 
   test("keeps confirmed create success visible when Event readback fails", async () => {

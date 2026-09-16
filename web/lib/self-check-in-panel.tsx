@@ -233,6 +233,81 @@ export const SelfCheckInPanel = ({
     }
   }, [retryAvailable]);
 
+  useEffect(() => {
+    if (!retryNeedsReconciliation || typeof window === "undefined") {
+      return;
+    }
+    const blockedHref = window.location.href;
+    const guardToken = crypto.randomUUID();
+    const currentState =
+      typeof window.history.state === "object" && window.history.state !== null
+        ? (window.history.state as Record<string, unknown>)
+        : {};
+    const guardedState = {
+      ...currentState,
+      efccGuestMutationGuard: guardToken,
+    };
+    window.history.pushState(guardedState, "", blockedHref);
+    const announceBlocked = () => {
+      setConfirmationError(COPY.attendance.transportAmbiguous);
+      announce(COPY.attendance.transportAmbiguous);
+    };
+    const handleDocumentClick = (clickEvent: globalThis.MouseEvent) => {
+      if (
+        clickEvent.defaultPrevented ||
+        clickEvent.button !== 0 ||
+        clickEvent.metaKey ||
+        clickEvent.ctrlKey ||
+        clickEvent.shiftKey ||
+        clickEvent.altKey
+      ) {
+        return;
+      }
+      const target = clickEvent.target;
+      if (!(target instanceof Element)) {
+        return;
+      }
+      const anchor = target.closest("a[href]");
+      if (!(anchor instanceof HTMLAnchorElement)) {
+        return;
+      }
+      const rawHref = anchor.getAttribute("href");
+      if (
+        rawHref?.startsWith("#") ||
+        anchor.hasAttribute("download") ||
+        (anchor.getAttribute("target") ?? "").toLowerCase() === "_blank"
+      ) {
+        return;
+      }
+      clickEvent.preventDefault();
+      clickEvent.stopPropagation();
+      announceBlocked();
+    };
+    const handleBeforeUnload = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    const handlePopState = () => {
+      window.history.pushState(guardedState, "", blockedHref);
+      announceBlocked();
+    };
+    document.addEventListener("click", handleDocumentClick, true);
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    window.addEventListener("popstate", handlePopState);
+    return () => {
+      document.removeEventListener("click", handleDocumentClick, true);
+      window.removeEventListener("beforeunload", handleBeforeUnload);
+      window.removeEventListener("popstate", handlePopState);
+      if (
+        window.location.href === blockedHref &&
+        (window.history.state as Record<string, unknown> | null)
+          ?.efccGuestMutationGuard === guardToken
+      ) {
+        window.history.back();
+      }
+    };
+  }, [retryNeedsReconciliation]);
+
   const handleManualChange = (value: string) => {
     flow.setInput(value.replaceAll(/\D/gu, "").slice(0, 6));
   };
@@ -372,6 +447,12 @@ export const SelfCheckInPanel = ({
   }
 
   const backToScan = () => {
+    if (retryNeedsReconciliation) {
+      const message = COPY.attendance.transportAmbiguous;
+      setConfirmationError(message);
+      announce(message);
+      return;
+    }
     replaceWithPlainScanner();
     setHasDeepLink(false);
     setManualOpen(false);
@@ -421,7 +502,12 @@ export const SelfCheckInPanel = ({
   };
 
   const handleNotThisEvent = () => {
-    if (submitting) {
+    if (submitting || retryNeedsReconciliation) {
+      if (retryNeedsReconciliation) {
+        const message = COPY.attendance.transportAmbiguous;
+        setConfirmationError(message);
+        announce(message);
+      }
       return;
     }
     setCheckinResult(null);

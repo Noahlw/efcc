@@ -1433,6 +1433,11 @@ export const COPY = {
     eventCreateTitle: "聚會資料",
     eventCreateSubmit: "建立聚會",
     eventCreateCancel: "取消建立",
+    eventCreateLeaveTitle: "未儲存聚會草稿",
+    eventCreateLeaveDescription:
+      "如果離開，未儲存的聚會草稿會被捨棄。你可以繼續編輯，或確認捨棄並離開。",
+    eventCreateContinueEditing: "繼續編輯",
+    eventCreateDiscardAndLeave: "捨棄並離開",
     eventDetailOpen: "詳情",
     eventMoreActions: "更多操作",
     eventsFilterLabel: "聚會篩選",

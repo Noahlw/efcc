@@ -372,9 +372,8 @@ export const EventDetail = ({
     setUndoAvailable(false);
     setDeactivateImpact(0);
     menuFocusTargetRef.current = null;
-    onMutationBlockChange?.(false);
     void load();
-  }, [load, onMutationBlockChange]);
+  }, [load]);
 
   useEffect(() => {
     if (!canManage || !eventAction || detail?.event.event_id !== eventId) {

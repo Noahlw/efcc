@@ -1158,6 +1158,11 @@ describe(ProgramWorkspace, () => {
     expect(name).toHaveValue("未儲存聚會");
 
     await user.click(
+      screen.getByRole("button", {
+        name: COPY.programs.eventCreateContinueEditing,
+      })
+    );
+    await user.click(
       screen.getByRole("button", { name: COPY.programs.eventCreateCancel })
     );
     await waitFor(() => {
@@ -1167,6 +1172,85 @@ describe(ProgramWorkspace, () => {
       screen.getByRole("link", { name: COPY.programs.workspaceOverviewTab })
     );
     expect(onTaskChange).toHaveBeenCalledWith(null);
+  });
+
+  test("locks manager lifecycle navigation until an unknown Event mutation reconciles", async () => {
+    mockWorkspace();
+    const detail = {
+      event: {
+        ...event,
+        starts_at: "2026-09-12T10:00:00.000Z",
+        ends_at: "2026-09-12T11:30:00.000Z",
+        source: "MANUAL" as const,
+        name: "迎新聚會",
+        location: "教會禮堂",
+        has_attendance: false,
+      },
+      leaders: [],
+      participant_summary: { active_enrollments: 0, checked_in: 0 },
+    };
+    mocks.getEvent.mockResolvedValueOnce(detail).mockResolvedValueOnce({
+      ...detail,
+      event: { ...detail.event, status: "Cancelled" as const },
+    });
+    mocks.cancelEvent.mockRejectedValueOnce(new Error("request lost"));
+    const user = userEvent.setup();
+    const onEventChange = vi.fn();
+    const outsideLink = document.createElement("a");
+    outsideLink.href = "/home";
+    outsideLink.textContent = "Home";
+    document.body.append(outsideLink);
+    try {
+      render(
+        <ProgramWorkspace
+          programId="program-1"
+          task="events"
+          eventId="event-1"
+          onBack={vi.fn()}
+          onTaskChange={vi.fn()}
+          onEventChange={onEventChange}
+        />
+      );
+
+      await screen.findByRole("heading", { name: "迎新聚會" });
+      await user.click(
+        screen.getByRole("button", { name: COPY.programs.eventMoreActions })
+      );
+      await user.click(
+        screen.getByRole("menuitem", { name: COPY.programs.cancelEvent })
+      );
+      await user.click(
+        screen.getByRole("button", { name: COPY.programs.confirmCancel })
+      );
+
+      await screen.findByText(COPY.programs.programTransportAmbiguous);
+      const navigation = new MouseEvent("click", {
+        bubbles: true,
+        cancelable: true,
+        button: 0,
+      });
+      outsideLink.dispatchEvent(navigation);
+      expect(navigation.defaultPrevented).toBe(true);
+      const beforeUnload = new Event("beforeunload", { cancelable: true });
+      expect(window.dispatchEvent(beforeUnload)).toBe(false);
+      const blockedHref = window.location.href;
+      window.dispatchEvent(new PopStateEvent("popstate"));
+      expect(window.location.href).toBe(blockedHref);
+      expect(onEventChange).not.toHaveBeenCalled();
+
+      await user.click(
+        screen.getByRole("button", {
+          name: COPY.programs.workspaceRetryRefresh,
+        })
+      );
+      await screen.findByText(COPY.programs.workspaceReconciled);
+      const cleanBeforeUnload = new Event("beforeunload", {
+        cancelable: true,
+      });
+      expect(window.dispatchEvent(cleanBeforeUnload)).toBe(true);
+    } finally {
+      outsideLink.remove();
+    }
   });
 
   test("shows Save/Discard guidance when a dirty draft blocks the first tab escape", async () => {

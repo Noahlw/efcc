@@ -3,6 +3,16 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { MouseEvent, ReactNode } from "react";
 
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { RpcError } from "@/lib/api";
 import { COPY, errorCopyFor } from "@/lib/copy";
@@ -29,6 +39,7 @@ import {
 } from "@/lib/screen-foundations";
 import { rememberDeepLink } from "@/lib/session";
 
+import { clearEventCreateDraft } from "./event-create-draft";
 import { EventDetail } from "./event-detail";
 import { buildProgramsHref } from "./programs-intent";
 import type { ManagementEventAction, ProgramsTask } from "./programs-intent";
@@ -85,6 +96,11 @@ type WorkspaceState =
       failure: "forbidden" | "unavailable" | "recoverable";
       message: string;
     };
+
+type EventDraftNavigation =
+  | { kind: "back" }
+  | { kind: "task"; task: ProgramsTask | null; eventId?: string | null }
+  | { kind: "href"; href: string };
 
 function initialSummary(
   modules?: readonly DepartmentModule[]
@@ -177,10 +193,13 @@ export const ProgramWorkspace = ({
     useState(false);
   const [eventDraftDirty, setEventDraftDirty] = useState(false);
   const [eventNavigationBlocked, setEventNavigationBlocked] = useState(false);
+  const [pendingEventDraftNavigation, setPendingEventDraftNavigation] =
+    useState<EventDraftNavigation | null>(null);
   const handleEventDraftDirtyChange = useCallback((dirty: boolean) => {
     setEventDraftDirty(dirty);
     if (!dirty) {
       setEventNavigationBlocked(false);
+      setPendingEventDraftNavigation(null);
     }
   }, []);
   const createdFlash = created && !task;
@@ -192,6 +211,7 @@ export const ProgramWorkspace = ({
   >("fresh");
   const [workspaceMutationBlocked, setWorkspaceMutationBlocked] =
     useState(false);
+  const allowEventDraftLeave = useRef(false);
   const mounted = useRef(true);
   const summaryRequestId = useRef(0);
   const workspaceRefreshQueue = useRef(Promise.resolve());
@@ -214,13 +234,33 @@ export const ProgramWorkspace = ({
     }
   }, [task]);
   useEffect(() => {
-    setWorkspaceMutationBlocked(false);
-  }, [eventId, programId, task]);
-
-  useEffect(() => {
-    if (task !== "events" || !eventDraftDirty) {
+    const guardActive =
+      workspaceMutationBlocked || (task === "events" && eventDraftDirty);
+    if (!guardActive) {
       return;
     }
+    const blockedHref = window.location.href;
+    const guardToken = workspaceMutationBlocked ? crypto.randomUUID() : null;
+    const guardedState =
+      guardToken === null
+        ? null
+        : {
+            ...(typeof window.history.state === "object" &&
+            window.history.state !== null
+              ? (window.history.state as Record<string, unknown>)
+              : {}),
+            efccProgramWorkspaceMutationGuard: guardToken,
+          };
+    if (guardedState !== null) {
+      window.history.pushState(guardedState, "", blockedHref);
+    }
+    const announceBlocked = () => {
+      announce(
+        workspaceMutationBlocked
+          ? COPY.programs.programTransportAmbiguous
+          : COPY.programs.eventCreateUnsaved
+      );
+    };
     const handleDocumentClick = (event: globalThis.MouseEvent) => {
       if (
         event.defaultPrevented ||
@@ -261,20 +301,48 @@ export const ProgramWorkspace = ({
       }
       event.preventDefault();
       event.stopPropagation();
+      if (workspaceMutationBlocked) {
+        announceBlocked();
+        return;
+      }
+      setPendingEventDraftNavigation({ kind: "href", href: nextUrl.href });
       setEventNavigationBlocked(true);
-      announce(COPY.programs.eventCreateUnsaved);
+      announceBlocked();
     };
     const handleBeforeUnload = (event: BeforeUnloadEvent) => {
+      if (allowEventDraftLeave.current) {
+        return;
+      }
       event.preventDefault();
       event.returnValue = "";
     };
+    const handlePopState = () => {
+      if (guardedState === null) {
+        return;
+      }
+      window.history.pushState(guardedState, "", blockedHref);
+      announceBlocked();
+    };
     document.addEventListener("click", handleDocumentClick, true);
     window.addEventListener("beforeunload", handleBeforeUnload);
+    if (guardedState !== null) {
+      window.addEventListener("popstate", handlePopState);
+    }
     return () => {
       document.removeEventListener("click", handleDocumentClick, true);
       window.removeEventListener("beforeunload", handleBeforeUnload);
+      if (guardedState !== null) {
+        window.removeEventListener("popstate", handlePopState);
+        if (
+          window.location.href === blockedHref &&
+          (window.history.state as Record<string, unknown> | null)
+            ?.efccProgramWorkspaceMutationGuard === guardToken
+        ) {
+          window.history.back();
+        }
+      }
     };
-  }, [eventDraftDirty, task]);
+  }, [eventDraftDirty, task, workspaceMutationBlocked]);
   const focusedSettingsEditor = task === "settings" && settingsEditorFocused;
   const {
     state,
@@ -510,6 +578,40 @@ export const ProgramWorkspace = ({
       : workspaceProgram.capabilities.manage;
   const focusedSchedule = task === "schedule";
 
+  const continueEventDraftEditing = () => {
+    setPendingEventDraftNavigation(null);
+    setEventNavigationBlocked(false);
+  };
+
+  const discardEventDraftAndLeave = () => {
+    const pending = pendingEventDraftNavigation;
+    if (pending === null) {
+      return;
+    }
+    clearEventCreateDraft(programId);
+    setPendingEventDraftNavigation(null);
+    setEventNavigationBlocked(false);
+    setEventDraftDirty(false);
+    if (pending.kind === "href") {
+      allowEventDraftLeave.current = true;
+      window.location.assign(pending.href);
+      return;
+    }
+    if (pending.kind === "back") {
+      if (focusedSchedule) {
+        onTaskChange("events");
+      } else {
+        onBack();
+      }
+      return;
+    }
+    if (pending.eventId === undefined) {
+      onTaskChange(pending.task);
+    } else {
+      onTaskChange(pending.task, pending.eventId);
+    }
+  };
+
   const handleWorkspaceBack = (event: MouseEvent<HTMLAnchorElement>) => {
     if (
       event.defaultPrevented ||
@@ -533,6 +635,7 @@ export const ProgramWorkspace = ({
       return;
     }
     if (eventDraftDirty) {
+      setPendingEventDraftNavigation({ kind: "back" });
       setEventNavigationBlocked(true);
       announce(COPY.programs.eventCreateUnsaved);
       return;
@@ -557,6 +660,11 @@ export const ProgramWorkspace = ({
       return;
     }
     if (eventDraftDirty) {
+      setPendingEventDraftNavigation({
+        kind: "task",
+        task: nextTask,
+        ...(nextEventId === undefined ? {} : { eventId: nextEventId }),
+      });
       setEventNavigationBlocked(true);
       announce(COPY.programs.eventCreateUnsaved);
       return;
@@ -660,6 +768,40 @@ export const ProgramWorkspace = ({
           {COPY.programs.eventCreateUnsaved}
         </output>
       )}
+      <AlertDialog
+        open={pendingEventDraftNavigation !== null}
+        onOpenChange={(open) => {
+          if (!open) {
+            continueEventDraftEditing();
+          }
+        }}
+      >
+        <AlertDialogContent className="min-w-0 max-w-[32rem]">
+          <AlertDialogHeader className="min-w-0 gap-2">
+            <AlertDialogTitle className="min-w-0 wrap-anywhere text-lg font-extrabold text-[var(--screen-ink)]">
+              {COPY.programs.eventCreateLeaveTitle}
+            </AlertDialogTitle>
+            <AlertDialogDescription className="min-w-0 wrap-anywhere text-sm leading-[var(--screen-body-leading)] text-[var(--screen-muted)]">
+              {COPY.programs.eventCreateLeaveDescription}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="flex min-w-0 flex-wrap gap-2 max-[799px]:flex-col-reverse [&>*]:h-auto [&>*]:min-h-11 [&>*]:w-full [&>*]:whitespace-normal sm:[&>*]:w-fit">
+            <AlertDialogCancel
+              className="min-h-[var(--screen-touch-target)] border-[var(--screen-line-strong)] bg-[var(--screen-surface)] px-4 py-3 text-base font-bold text-[var(--screen-ink)] hover:bg-[var(--screen-surface-soft)] hover:text-[var(--screen-ink)]"
+              onClick={continueEventDraftEditing}
+            >
+              {COPY.programs.eventCreateContinueEditing}
+            </AlertDialogCancel>
+            <AlertDialogAction
+              variant="destructive"
+              className="min-h-[var(--screen-touch-target)] px-4 py-3"
+              onClick={discardEventDraftAndLeave}
+            >
+              {COPY.programs.eventCreateDiscardAndLeave}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
       {!focusedSchedule && (
         <WorkspaceNavigation
           programId={programId}

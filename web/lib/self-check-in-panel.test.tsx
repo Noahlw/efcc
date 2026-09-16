@@ -1096,6 +1096,105 @@ describe(SelfCheckInPanel, () => {
     }
   });
 
+  test("unknown self-check-in outcome keeps the attempt guarded until read-only reconciliation", async () => {
+    let submitAttempts = 0;
+    server.use(
+      resolveHandler({ events: [EVENT] }),
+      http.post("/api/v1/attendance/self", () => {
+        submitAttempts += 1;
+        return HttpResponse.error();
+      })
+    );
+
+    const user = userEvent.setup();
+    render(<SelfCheckInPanel />);
+    await openManualEntry();
+    const input = await screen.findByLabelText(
+      new RegExp(COPY.attendance.manualCodeLabel)
+    );
+    await user.type(input, "123456");
+    await user.click(
+      screen.getByRole("button", { name: COPY.attendance.continue })
+    );
+    await user.click(
+      await screen.findByRole("button", {
+        name: COPY.attendance.confirmSubmit,
+      })
+    );
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      COPY.attendance.transportAmbiguous
+    );
+    const outsideLink = document.createElement("a");
+    outsideLink.href = "/home";
+    outsideLink.textContent = "Home";
+    document.body.append(outsideLink);
+    const navigation = new MouseEvent("click", {
+      bubbles: true,
+      cancelable: true,
+      button: 0,
+    });
+    outsideLink.dispatchEvent(navigation);
+    expect(navigation.defaultPrevented).toBe(true);
+    const beforeUnload = new Event("beforeunload", { cancelable: true });
+    expect(window.dispatchEvent(beforeUnload)).toBe(false);
+    const blockedHref = window.location.href;
+    window.dispatchEvent(new PopStateEvent("popstate"));
+    expect(window.location.href).toBe(blockedHref);
+
+    await user.click(
+      screen.getByRole("button", { name: COPY.attendance.notThisEvent })
+    );
+    expect(
+      screen.getByRole("heading", { name: COPY.attendance.confirmTitle })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: COPY.attendance.retry })
+    ).toBeInTheDocument();
+
+    server.use(
+      http.get(`/api/v1/attendance/events/${EVENT.event_id}/me`, () =>
+        HttpResponse.error()
+      )
+    );
+    await user.click(
+      screen.getByRole("button", { name: COPY.attendance.retry })
+    );
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      COPY.attendance.transportAmbiguous
+    );
+    expect(submitAttempts).toBe(1);
+    const stillBlocked = new Event("beforeunload", { cancelable: true });
+    expect(window.dispatchEvent(stillBlocked)).toBe(false);
+
+    server.use(
+      http.get(`/api/v1/attendance/events/${EVENT.event_id}/me`, () =>
+        HttpResponse.json({
+          requestId: "rid-own-attendance-reconciled",
+          data: {
+            event: EVENT,
+            state: "Active",
+            attendance: {
+              attendance_id: "att-reconciled",
+              event_id: EVENT.event_id,
+              status: "Active",
+              checked_in_at: "2026-08-13T11:31:00.000Z",
+            },
+            disposition: null,
+          },
+        })
+      )
+    );
+    await user.click(
+      screen.getByRole("button", { name: COPY.attendance.retry })
+    );
+    await screen.findByRole("heading", { name: COPY.attendance.successTitle });
+    expect(submitAttempts).toBe(1);
+    const cleanBeforeUnload = new Event("beforeunload", { cancelable: true });
+    expect(window.dispatchEvent(cleanBeforeUnload)).toBe(true);
+    outsideLink.remove();
+  });
+
   test("forbidden self submit stays on confirmation with a focused retry", async () => {
     server.use(
       resolveHandler({ events: [EVENT] }),

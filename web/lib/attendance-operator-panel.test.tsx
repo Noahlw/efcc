@@ -2,7 +2,13 @@
 // intercepts the Worker RPCs; the announced-success + silent-reload flow
 // and the cancelled-event gating are asserted against the real DOM,
 // matching the E2E suite's observable contracts.
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { setupServer } from "msw/node";
@@ -899,6 +905,83 @@ describe(AttendanceOperatorPanel, () => {
     expect(
       screen.queryByRole("button", { name: COPY.attendance.voidAttendance })
     ).not.toBeInTheDocument();
+  });
+
+  test("concurrent roster recovery signals share one authoritative read", async () => {
+    let rosterCalls = 0;
+    const reconciliation = Promise.withResolvers<Response>();
+    const onMutationBlockChange = vi.fn<(blocked: boolean) => void>();
+    const voidedRow: AttendanceRow = {
+      ...ROW,
+      status: "Voided",
+      voided_by: "U-ADMIN",
+      voided_at: "2026-08-13T11:40:00.000Z",
+      void_reason: "並發恢復測試",
+    };
+    server.use(
+      http.get("/api/v1/attendance/scanner-events", () =>
+        HttpResponse.json({
+          requestId: "rid-list",
+          data: { events: [ACTIVE] },
+        })
+      ),
+      http.get(`/api/v1/attendance/events/${ACTIVE.event_id}/roster`, () => {
+        rosterCalls += 1;
+        if (rosterCalls === 1) {
+          return HttpResponse.json({
+            requestId: "rid-roster",
+            data: { event: ACTIVE, attendances: [ROW] },
+          });
+        }
+        return rosterCalls === 2
+          ? reconciliation.promise
+          : HttpResponse.json({
+              requestId: "rid-late",
+              data: { event: ACTIVE, attendances: [voidedRow] },
+            });
+      }),
+      http.post(`/api/v1/attendance/${ROW.attendance_id}/void`, () =>
+        HttpResponse.error()
+      )
+    );
+    const user = userEvent.setup();
+    Object.defineProperty(document, "visibilityState", {
+      configurable: true,
+      value: "visible",
+    });
+    renderWithLiveRegion({ onMutationBlockChange });
+
+    await user.click(await screen.findByRole("button", { name: /週六聚會/u }));
+    await screen.findAllByText(MEMBER.user_id);
+    await user.click(
+      screen.getByRole("button", { name: COPY.attendance.voidAttendance })
+    );
+    await user.type(
+      screen.getByLabelText(COPY.attendance.voidReason),
+      "並發恢復測試"
+    );
+    await user.click(
+      screen.getByRole("button", { name: COPY.attendance.voidConfirm })
+    );
+
+    await waitFor(() => expect(rosterCalls).toBe(2));
+    const retry = screen.getByRole("button", { name: COPY.management.retry });
+    await Promise.all([
+      Promise.resolve(window.dispatchEvent(new Event("online"))),
+      Promise.resolve(document.dispatchEvent(new Event("visibilitychange"))),
+      Promise.resolve(fireEvent.click(retry)),
+    ]);
+    expect(rosterCalls).toBe(2);
+
+    reconciliation.resolve(
+      HttpResponse.json({
+        requestId: "rid-reconciled",
+        data: { event: ACTIVE, attendances: [voidedRow] },
+      })
+    );
+    await screen.findAllByText(COPY.programs.workspaceReconciled);
+    expect(rosterCalls).toBe(2);
+    expect(onMutationBlockChange).toHaveBeenLastCalledWith(false);
   });
 
   test("operator panel calls onAuthRequired when loading scanner events returns AUTH_REQUIRED", async () => {
