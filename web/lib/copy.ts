@@ -1162,6 +1162,8 @@ export const COPY = {
     programConflict: "課程名稱與現有資料衝突，請重新整理後再試。",
     programTransportAmbiguous:
       "未能確認課程是否已儲存。請重新整理工作區後再試，避免重複提交。",
+    scheduleTransportAmbiguous:
+      "未能確認時間表變更是否已儲存。請重新整理時間表後再試，避免重複提交。",
     archiveBlocked:
       "課程仍有未完成的未來營運承諾，先處理相關聚會或報名後再存檔。",
     archiveAlreadyArchived: "此課程已被其他負責人存檔。",
@@ -1259,7 +1261,7 @@ export const COPY = {
       "每月 {day} 日在沒有該日期的月份會略過，不會改為月底。",
     previewNone: "尚未預覽。請先按「預覽聚會」產生未來聚會清單。",
     previewEmpty: "此範圍內沒有符合時間表的聚會。",
-    previewChanged: "時間表已變更，請重新預覽。",
+    previewChanged: "顯示範圍或時間表已變更，請重新預覽。",
     previewReviewAgain: "重新預覽",
     generateRequiresPreview: "請先預覽時間表再產生聚會。",
     generatedPartial:

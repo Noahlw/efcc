@@ -23,8 +23,12 @@ import { ACCESS_COOKIE_NAME } from "../auth/cookies";
 import { applyMigrations, testDb } from "../auth/test-bootstrap";
 import { completeCredentialUpgrade } from "../auth/upgrade";
 import { CAPABILITY_CATALOG } from "../identity/capability-catalog";
+import { D1CapabilityAuthorizer } from "./capability-authorizer";
 import { D1WorkspaceStore } from "./d1-workspace-store";
-import { participantSelfCheckInAvailable } from "./department-workspace";
+import {
+  DepartmentWorkspace,
+  participantSelfCheckInAvailable,
+} from "./department-workspace";
 import {
   addWallDays,
   addWallMonths,
@@ -4763,6 +4767,101 @@ describe("EVT-02: recurring preview and generation (#252)", () => {
       repeatAudit,
       "deterministic repeat emits its own EVENT_GENERATE audit with created=0, skipped>0 (ADR-0027)"
     );
+  });
+
+  test("EVT-02.2 completed runs reject a newly reviewed Plan before replay", async () => {
+    const programId = await freshProgram("EVT-02 Completed Review Guard");
+    await createRule(adminAccess, programId, {
+      recurrence: "WEEKLY",
+      day_of_week: 3,
+      start_time: "19:30",
+      end_time: "21:00",
+    });
+    const plan = await preview(adminAccess, programId, 14);
+    const first = await generateRequest(programId, plan.plan_id);
+    assert.strictEqual(first.status, 200);
+
+    const store = new D1WorkspaceStore(testDb());
+    const workspace = new DepartmentWorkspace(
+      store,
+      new D1CapabilityAuthorizer(testDb())
+    );
+    const originalLatest = store.findLatestPreviewPlan.bind(store);
+    let latestCalls = 0;
+    store.findLatestPreviewPlan = async (candidateProgramId) => {
+      latestCalls += 1;
+      if (latestCalls === 2) {
+        await preview(adminAccess, programId, 15);
+      }
+      return originalLatest(candidateProgramId);
+    };
+    await assert.rejects(
+      workspace.generateEvents(
+        { actorUserId: "U001" },
+        programId,
+        plan.plan_id,
+        null
+      ),
+      /stale/i
+    );
+    assert.ok(latestCalls >= 2, "completed replay rechecks Plan freshness");
+    const events = await testDb()
+      .prepare("SELECT COUNT(*) AS count FROM events WHERE program_id = ?")
+      .bind(programId)
+      .first<{ count: number }>();
+    assert.strictEqual(events?.count ?? 0, plan.occurrences.length);
+  });
+
+  test("EVT-02.2 mid-generation staleness settles committed results", async () => {
+    const programId = await freshProgram("EVT-02 Mid-Run Stale");
+    await createRule(adminAccess, programId, {
+      recurrence: "WEEKLY",
+      day_of_week: 3,
+      start_time: "19:30",
+      end_time: "21:00",
+    });
+    const plan = await preview(adminAccess, programId, 14);
+    const store = new D1WorkspaceStore(testDb());
+    const workspace = new DepartmentWorkspace(
+      store,
+      new D1CapabilityAuthorizer(testDb())
+    );
+    const originalRecord = store.recordGeneratedOccurrence.bind(store);
+    let injected = false;
+    store.recordGeneratedOccurrence = async (input) => {
+      if (!injected) {
+        injected = true;
+        await preview(adminAccess, programId, 15);
+      }
+      return originalRecord(input);
+    };
+
+    const generated = await workspace.generateEvents(
+      { actorUserId: "U001" },
+      programId,
+      plan.plan_id,
+      null
+    );
+    assert.strictEqual(generated.status, "partial");
+    assert.ok(generated.created > 0);
+    assert.ok(generated.failed > 0);
+    const run = await testDb()
+      .prepare(
+        "SELECT status, created, skipped, failed FROM program_generation_runs WHERE plan_id = ?"
+      )
+      .bind(plan.plan_id)
+      .first<{
+        status: string;
+        created: number;
+        skipped: number;
+        failed: number;
+      }>();
+    assert.deepStrictEqual(run, {
+      status: "partial",
+      created: generated.created,
+      skipped: generated.skipped,
+      failed: generated.failed,
+    });
   });
 
   test("EVT-02.3 a member without Program Manage is forbidden and writes nothing", async () => {

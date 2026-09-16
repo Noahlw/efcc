@@ -328,8 +328,12 @@ export const RecurringSchedulePanel = ({
       if (redirectToLoginIfRequired(error)) {
         return;
       }
-      const message =
-        error instanceof RpcError
+      const transportAmbiguous =
+        (typeof navigator !== "undefined" && !navigator.onLine) ||
+        isUnknownMutationOutcome(error);
+      const message = transportAmbiguous
+        ? COPY.programs.scheduleTransportAmbiguous
+        : error instanceof RpcError
           ? errorCopyFor(error.problem.code, error.problem.detail)
           : COPY.error.networkError;
       setGenerateError(message);
@@ -369,8 +373,8 @@ export const RecurringSchedulePanel = ({
         return;
       }
       setScheduleNeedsReconciliation(true);
-      setGenerateError(COPY.programs.programTransportAmbiguous);
-      announce(COPY.programs.programTransportAmbiguous);
+      setGenerateError(COPY.programs.scheduleTransportAmbiguous);
+      announce(COPY.programs.scheduleTransportAmbiguous);
     } finally {
       if (mounted.current) {
         setExceptionBusy(false);
@@ -476,8 +480,8 @@ export const RecurringSchedulePanel = ({
         setScheduleNeedsReconciliation(true);
         setAdjustingOccurrenceId(null);
         onMutationBlockChange?.(true);
-        setGenerateError(COPY.programs.programTransportAmbiguous);
-        announce(COPY.programs.programTransportAmbiguous);
+        setGenerateError(COPY.programs.scheduleTransportAmbiguous);
+        announce(COPY.programs.scheduleTransportAmbiguous);
         return;
       }
       const message =
@@ -529,12 +533,16 @@ export const RecurringSchedulePanel = ({
         setScheduleNeedsReconciliation(true);
         setAdjustingOccurrenceId(null);
         onMutationBlockChange?.(true);
-        setGenerateError(COPY.programs.programTransportAmbiguous);
-        announce(COPY.programs.programTransportAmbiguous);
+        setGenerateError(COPY.programs.scheduleTransportAmbiguous);
+        announce(COPY.programs.scheduleTransportAmbiguous);
         return;
       }
-      const message =
-        error instanceof RpcError
+      const transportAmbiguous =
+        (typeof navigator !== "undefined" && !navigator.onLine) ||
+        isUnknownMutationOutcome(error);
+      const message = transportAmbiguous
+        ? COPY.programs.scheduleTransportAmbiguous
+        : error instanceof RpcError
           ? errorCopyFor(error.problem.code, error.problem.detail)
           : COPY.error.networkError;
       setGenerateError(message);
@@ -607,8 +615,12 @@ export const RecurringSchedulePanel = ({
       if (redirectToLoginIfRequired(error)) {
         return;
       }
-      const message =
-        error instanceof RpcError
+      const transportAmbiguous =
+        (typeof navigator !== "undefined" && !navigator.onLine) ||
+        isUnknownMutationOutcome(error);
+      const message = transportAmbiguous
+        ? COPY.programs.scheduleTransportAmbiguous
+        : error instanceof RpcError
           ? errorCopyFor(error.problem.code, error.problem.detail)
           : COPY.error.networkError;
       if (error instanceof RpcError && error.problem.code === "STALE_PLAN") {
@@ -623,11 +635,8 @@ export const RecurringSchedulePanel = ({
         );
         setGenerationNeedsReconciliation(false);
       } else {
-        const networkFailure =
-          (typeof navigator !== "undefined" && !navigator.onLine) ||
-          isUnknownMutationOutcome(error);
-        setGenerationNeedsReconciliation(networkFailure);
-        if (networkFailure) {
+        setGenerationNeedsReconciliation(transportAmbiguous);
+        if (transportAmbiguous) {
           onMutationBlockChange?.(true);
         }
         setGenerateError(message);
@@ -661,7 +670,7 @@ export const RecurringSchedulePanel = ({
     try {
       if (!workspaceReconciled) {
         setGenerationNeedsReconciliation(true);
-        setGenerateError(COPY.programs.programTransportAmbiguous);
+        setGenerateError(COPY.programs.scheduleTransportAmbiguous);
         return;
       }
       if (generationData !== null && generationData.failed === 0) {
@@ -683,8 +692,9 @@ export const RecurringSchedulePanel = ({
       if (redirectToLoginIfRequired(error)) {
         return;
       }
-      const message =
-        error instanceof RpcError
+      const message = isUnknownMutationOutcome(error)
+        ? COPY.programs.scheduleTransportAmbiguous
+        : error instanceof RpcError
           ? errorCopyFor(error.problem.code, error.problem.detail)
           : COPY.error.networkError;
       if (error instanceof RpcError && error.problem.code === "STALE_PLAN") {

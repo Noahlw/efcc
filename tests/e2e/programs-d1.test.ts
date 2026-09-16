@@ -4728,7 +4728,7 @@ test.describe("NTF-01 management attention", () => {
 test.describe("EVT-02 recurring preview and generation", () => {
   // EVT-02 (#252): reachable Program Workspace preview/generate controls.
   const previewEvents = "預覽聚會";
-  const previewChanged = "時間表已變更，請重新預覽。";
+  const previewChanged = "顯示範圍或時間表已變更，請重新預覽。";
   const previewLead = COPY.previewLead;
 
   async function openScheduleTask(

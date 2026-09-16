@@ -2655,7 +2655,7 @@ describe("EVT-02 recurring preview and generation UI (#252)", () => {
     );
 
     await expect(
-      screen.findByText(COPY.error.networkError)
+      screen.findByText(COPY.programs.scheduleTransportAmbiguous)
     ).resolves.toBeInTheDocument();
     expect(
       screen.getByText(COPY.programs.previewPlanLabel, { exact: false })
@@ -2837,7 +2837,7 @@ describe("EVT-02 recurring preview and generation UI (#252)", () => {
     );
 
     await expect(
-      screen.findByText(COPY.programs.programTransportAmbiguous)
+      screen.findByText(COPY.programs.scheduleTransportAmbiguous)
     ).resolves.toBeInTheDocument();
     expect(
       screen.getByRole("button", {
@@ -3070,7 +3070,7 @@ describe("EVT-02 recurring preview and generation UI (#252)", () => {
     );
 
     await expect(
-      screen.findByText(COPY.error.networkError)
+      screen.findByText(COPY.programs.scheduleTransportAmbiguous)
     ).resolves.toBeVisible();
     expect(
       screen.getByRole("button", {

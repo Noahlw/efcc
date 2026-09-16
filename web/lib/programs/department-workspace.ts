@@ -3435,34 +3435,34 @@ export class DepartmentWorkspace {
     if (!plan || plan.program_id !== programId) {
       throw new PreviewPlanNotFoundError(planId);
     }
-    // Reject stale/ambiguous plans before writes: the live schedule must
-    // still match the plan's frozen inputs, and no newer preview may have
-    // superseded this plan.
-    const rules = await this.store.listScheduleRules(programId);
-    const exceptions = await this.store.listScheduleExceptions(
-      rules.map((rule) => rule.rule_id)
-    );
-    const currentHash = await this.computePlanHash(
-      rules,
-      exceptions,
-      plan.horizon_days,
-      plan.from_date
-    );
-    const currentScheduleVersion =
-      await this.store.findScheduleVersion(programId);
-    const latest = await this.store.findLatestPreviewPlan(programId);
-    const superseded =
-      latest !== null &&
-      latest.plan_id !== plan.plan_id &&
-      (latest.reviewed_at > plan.reviewed_at ||
-        (latest.reviewed_at === plan.reviewed_at &&
-          latest.plan_id > plan.plan_id));
-    if (
-      currentHash !== plan.plan_hash ||
-      plan.schedule_version === null ||
-      currentScheduleVersion !== plan.schedule_version ||
-      superseded
-    ) {
+    const isCurrentPlan = async (): Promise<boolean> => {
+      const rules = await this.store.listScheduleRules(programId);
+      const exceptions = await this.store.listScheduleExceptions(
+        rules.map((rule) => rule.rule_id)
+      );
+      const currentHash = await this.computePlanHash(
+        rules,
+        exceptions,
+        plan.horizon_days,
+        plan.from_date
+      );
+      const currentScheduleVersion =
+        await this.store.findScheduleVersion(programId);
+      const latest = await this.store.findLatestPreviewPlan(programId);
+      const superseded =
+        latest !== null &&
+        latest.plan_id !== plan.plan_id &&
+        (latest.reviewed_at > plan.reviewed_at ||
+          (latest.reviewed_at === plan.reviewed_at &&
+            latest.plan_id > plan.plan_id));
+      return (
+        currentHash === plan.plan_hash &&
+        plan.schedule_version !== null &&
+        currentScheduleVersion === plan.schedule_version &&
+        !superseded
+      );
+    };
+    const rejectStalePlan = async (): Promise<never> => {
       // Business-state conflict (schedule changed / plan superseded), not a
       // system failure: ADR-0023/0027 reserve FAILED for system-level
       // failures, so this audits CONFLICT.
@@ -3476,6 +3476,17 @@ export class DepartmentWorkspace {
         { plan_id: planId, reason: "stale_plan" },
         correlationId
       );
+      throw new StalePreviewPlanError(planId, programId);
+    };
+    // Reject stale/ambiguous plans before writes: the live schedule must
+    // still match the plan's frozen inputs, and no newer preview may have
+    // superseded this plan.
+    if (!(await isCurrentPlan())) {
+      await rejectStalePlan();
+    }
+    const scheduleVersion = plan.schedule_version;
+    if (scheduleVersion === null) {
+      await rejectStalePlan();
       throw new StalePreviewPlanError(planId, programId);
     }
     const occurrences = await this.store.listPreviewOccurrences(planId);
@@ -3503,6 +3514,9 @@ export class DepartmentWorkspace {
     });
     const resumed = !runCreated;
     if (run.status === "completed") {
+      if (!(await isCurrentPlan())) {
+        await rejectStalePlan();
+      }
       // Deterministic repeat (ADR-0027): the plan was already fully
       // generated, so this request created nothing and skipped every
       // occurrence; the repeat still emits its own EVENT_GENERATE audit row
@@ -3545,25 +3559,49 @@ export class DepartmentWorkspace {
       occurrences,
       ctx.actorUserId,
       now,
-      plan.schedule_version,
+      scheduleVersion,
       plan.reviewed_at
     );
-    if (
-      staleDuringGeneration ||
-      (await this.store.findScheduleVersion(programId)) !==
-        plan.schedule_version
-    ) {
-      await this.audit(
-        ctx,
-        "EVENT_GENERATE",
-        "event",
-        programId,
-        "CONFLICT",
-        null,
-        { plan_id: planId, reason: "stale_plan" },
-        correlationId
+    if (staleDuringGeneration || !(await isCurrentPlan())) {
+      await this.markUnprocessedGenerationOccurrences(run.run_id, occurrences);
+      // Settle from durable item rows before surfacing the conflict. A
+      // mid-run revision may already have committed Events; returning its
+      // partial result keeps the operator from mistaking committed work for
+      // a failed write and lets the existing reconciliation path retry only
+      // unresolved items.
+      await this.store.finishGenerationRun(
+        run.run_id,
+        new Date().toISOString()
       );
-      throw new StalePreviewPlanError(planId, programId);
+      const conflictSettled = await this.store.findGenerationRunByPlan(planId);
+      if (!conflictSettled) {
+        throw new WorkspaceNotFoundError("generation_run", run.run_id);
+      }
+      if (
+        conflictSettled.status !== "completed" &&
+        conflictSettled.created + conflictSettled.skipped > 0
+      ) {
+        await this.audit(
+          ctx,
+          "EVENT_GENERATE",
+          "event",
+          programId,
+          "CONFLICT",
+          null,
+          {
+            run_id: conflictSettled.run_id,
+            plan_id: planId,
+            reason: "stale_plan",
+            status: conflictSettled.status,
+            created: conflictSettled.created,
+            skipped: conflictSettled.skipped,
+            failed: conflictSettled.failed,
+          },
+          correlationId
+        );
+        return this.generationResult(conflictSettled, occurrences, resumed);
+      }
+      await rejectStalePlan();
     }
     // Atomic compare-and-set settlement: finishGenerationRun recomputes
     // counts/status from the item table in one statement and only the first
@@ -3710,6 +3748,32 @@ export class DepartmentWorkspace {
     };
     await Promise.all(Array.from({ length: concurrency }, () => worker()));
     return stale;
+  }
+
+  private async markUnprocessedGenerationOccurrences(
+    runId: string,
+    occurrences: readonly PreviewOccurrenceRow[]
+  ): Promise<void> {
+    const processed = new Set(
+      (await this.store.listGenerationRunItems(runId)).map(
+        (item) => item.occurrence_id
+      )
+    );
+    for (const occurrence of occurrences) {
+      if (processed.has(occurrence.occurrence_id)) {
+        continue;
+      }
+      // oxlint-disable-next-line no-await-in-loop
+      await this.store.recordGenerationRunItem({
+        item_id: `${runId}:${occurrence.occurrence_id}`,
+        run_id: runId,
+        occurrence_id: occurrence.occurrence_id,
+        starts_at: occurrence.starts_at,
+        outcome: "failed",
+        event_id: null,
+        detail: "STALE_PLAN",
+      });
+    }
   }
 
   private async attemptGenerationOccurrence(
@@ -3997,10 +4061,10 @@ export class DepartmentWorkspace {
       (cmd.location !== undefined && cmd.location !== event.location) ||
       (cmd.event_type !== undefined && cmd.event_type !== event.event_type);
     const attemptedIdentity = {
-      name: cmd.name !== undefined ? cmd.name : event.name,
-      location: cmd.location !== undefined ? cmd.location : event.location,
+      name: cmd.name === undefined ? event.name : cmd.name,
+      location: cmd.location === undefined ? event.location : cmd.location,
       event_type:
-        cmd.event_type !== undefined ? cmd.event_type : event.event_type,
+        cmd.event_type === undefined ? event.event_type : cmd.event_type,
     };
     const activeAttendanceCount = identityChanged
       ? await this.store.countActiveAttendance(eventId)
