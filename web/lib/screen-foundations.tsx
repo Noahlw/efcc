@@ -749,12 +749,17 @@ export const ScreenTaskGrid = ({
   />
 );
 
+export interface ScreenTabsProps extends React.ComponentPropsWithoutRef<"nav"> {
+  onValueChange?: (value: string) => void;
+}
+
 export const ScreenTabs = ({
   children,
   className,
+  onValueChange,
   role,
   ...props
-}: React.ComponentPropsWithoutRef<"nav">) => {
+}: ScreenTabsProps) => {
   const tabsClassName = cn(
     "flex min-h-[var(--screen-touch-target)] min-w-0 items-stretch overflow-x-auto border-b border-[var(--screen-line)] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden",
     className
@@ -797,7 +802,11 @@ export const ScreenTabs = ({
   }, "");
 
   return (
-    <Tabs className="contents gap-0" value={selectedValue}>
+    <Tabs
+      className="contents gap-0"
+      value={selectedValue}
+      onValueChange={onValueChange}
+    >
       <TabsList asChild variant="line">
         <nav
           {...props}

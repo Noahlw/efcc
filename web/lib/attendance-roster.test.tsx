@@ -1,4 +1,4 @@
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, test, vi } from "vitest";
 
@@ -216,6 +216,43 @@ describe(AttendanceRoster, () => {
     expect(screen.getByText("尚未簽到會員")).toBeVisible();
   });
 
+  test("Arrow keys update the live roster filter and rendered panel", async () => {
+    const user = userEvent.setup();
+    const notYetRow: AttendanceExpectedRow = {
+      ...EXPECTED_ROW,
+      member_user_id: "member-not-yet-keyboard",
+      member_name: "鍵盤未簽到會員",
+      state: "Not Yet",
+    };
+    const checkedInRow: AttendanceExpectedRow = {
+      ...EXPECTED_ROW,
+      expected_attendance_id: "expected-checked-in-keyboard",
+      enrollment_id: "enrollment-checked-in-keyboard",
+      member_user_id: "member-checked-in-keyboard",
+      member_name: "鍵盤已簽到會員",
+      state: "Present",
+      attendance: MEMBER_ROW,
+    };
+    render(
+      <AttendanceRoster
+        event={EVENT}
+        rows={[MEMBER_ROW]}
+        expectedRows={[notYetRow, checkedInRow]}
+      />
+    );
+
+    const notYetTab = screen.getByRole("tab", { name: /未簽到 \(1\)/u });
+    notYetTab.focus();
+    await user.keyboard("{ArrowRight}");
+
+    expect(screen.getByRole("tab", { name: /已簽到 \(1\)/u })).toHaveAttribute(
+      "aria-selected",
+      "true"
+    );
+    expect(screen.getByText("鍵盤已簽到會員")).toBeVisible();
+    expect(screen.queryByText("鍵盤未簽到會員")).not.toBeInTheDocument();
+  });
+
   test("keeps filters available when nobody is pending", async () => {
     const user = userEvent.setup();
     const presentRow: AttendanceExpectedRow = {
@@ -320,6 +357,83 @@ describe(AttendanceRoster, () => {
     expect(screen.getByText("缺席會員")).toBeVisible();
     expect(screen.getByText("已出席會員")).toBeVisible();
     expect(screen.getByText("請假會員")).toBeVisible();
+    expect(screen.getByText("舊訪客")).toBeVisible();
+  });
+
+  test("Arrow keys switch post-event Absent, Present, Excused, and Guest panels", async () => {
+    const user = userEvent.setup();
+    const presentRow: AttendanceExpectedRow = {
+      ...EXPECTED_ROW,
+      expected_attendance_id: "expected-keyboard-present",
+      enrollment_id: "enrollment-keyboard-present",
+      member_name: "鍵盤已出席會員",
+      state: "Present",
+      attendance: { ...MEMBER_ROW, event_id: POST_EVENT.event_id },
+    };
+    const excusedRow: AttendanceExpectedRow = {
+      ...EXPECTED_ROW,
+      expected_attendance_id: "expected-keyboard-excused",
+      enrollment_id: "enrollment-keyboard-excused",
+      member_name: "鍵盤請假會員",
+      state: "Excused",
+      disposition: {
+        disposition_id: "disp-keyboard",
+        event_id: POST_EVENT.event_id,
+        enrollment_id: "enrollment-keyboard-excused",
+        member_user_id: "member-3",
+        disposition: "Excused",
+        reason: "家庭事務",
+        recorded_by: "admin-1",
+        recorded_at: "2026-08-13T10:00:00.000Z",
+      },
+    };
+    const absentRow = {
+      ...EXPECTED_ROW,
+      event_id: POST_EVENT.event_id,
+      member_name: "鍵盤缺席會員",
+    };
+    const guestRow = { ...GUEST_ROW, event_id: POST_EVENT.event_id };
+    render(
+      <AttendanceRoster
+        event={POST_EVENT}
+        rows={[presentRow.attendance as AttendanceRow, guestRow]}
+        expectedRows={[absentRow, presentRow, excusedRow]}
+      />
+    );
+
+    const absentTab = screen.getByRole("tab", { name: /缺席 \(1\)/u });
+    expect(absentTab).toHaveAttribute("aria-selected", "true");
+    absentTab.focus();
+
+    await user.keyboard("{ArrowLeft}");
+    expect(screen.getByRole("tab", { name: /請假 \(1\)/u })).toHaveAttribute(
+      "aria-selected",
+      "true"
+    );
+    expect(screen.getByText("鍵盤請假會員")).toBeVisible();
+
+    await user.keyboard("{ArrowLeft}");
+    expect(screen.getByRole("tab", { name: /已出席 \(1\)/u })).toHaveAttribute(
+      "aria-selected",
+      "true"
+    );
+    expect(screen.getByText("鍵盤已出席會員")).toBeVisible();
+
+    await user.keyboard("{ArrowRight}");
+    expect(screen.getByRole("tab", { name: /請假 \(1\)/u })).toHaveAttribute(
+      "aria-selected",
+      "true"
+    );
+    await user.keyboard("{ArrowRight}");
+    expect(screen.getByRole("tab", { name: /缺席 \(1\)/u })).toHaveAttribute(
+      "aria-selected",
+      "true"
+    );
+    await user.keyboard("{ArrowRight}");
+    expect(screen.getByRole("tab", { name: /訪客 \(1\)/u })).toHaveAttribute(
+      "aria-selected",
+      "true"
+    );
     expect(screen.getByText("舊訪客")).toBeVisible();
   });
 
@@ -438,6 +552,128 @@ describe(AttendanceRoster, () => {
     expect(
       screen.queryByRole("button", { name: /標記請假/u })
     ).not.toBeInTheDocument();
+  });
+
+  test("restores focus to the expected member after closing detail", async () => {
+    const user = userEvent.setup();
+    render(
+      <AttendanceRoster event={EVENT} rows={[]} expectedRows={[EXPECTED_ROW]} />
+    );
+
+    const opener = screen.getByRole("button", { name: "會員三" });
+    opener.focus();
+    await user.keyboard("{Enter}");
+    await user.keyboard("{Escape}");
+
+    await waitFor(() => expect(opener).toHaveFocus());
+  });
+
+  test("restores focus to the guest after closing guest detail", async () => {
+    const user = userEvent.setup();
+    render(<AttendanceRoster event={EVENT} rows={[GUEST_ROW]} />);
+
+    const opener = screen.getByRole("button", { name: "舊訪客" });
+    opener.focus();
+    await user.keyboard("{Enter}");
+    await user.keyboard("{Escape}");
+
+    await waitFor(() => expect(opener).toHaveFocus());
+  });
+
+  test("restores expected-row focus after detail-to-void transition", async () => {
+    const user = userEvent.setup();
+    const onVoid = vi.fn().mockResolvedValue(true);
+    const presentRow: AttendanceExpectedRow = {
+      ...EXPECTED_ROW,
+      state: "Present",
+      attendance: MEMBER_ROW,
+    };
+    render(
+      <AttendanceRoster
+        event={EVENT}
+        rows={[MEMBER_ROW]}
+        expectedRows={[presentRow]}
+        onVoid={onVoid}
+      />
+    );
+
+    await user.click(screen.getByRole("tab", { name: /已簽到 \(1\)/u }));
+    const opener = screen.getByRole("button", { name: "會員三" });
+    await user.click(opener);
+    await user.click(
+      screen.getByRole("button", { name: COPY.attendance.voidAttendance })
+    );
+    await user.type(
+      screen.getByLabelText(COPY.attendance.voidReason),
+      "更正簽到"
+    );
+    await user.click(
+      screen.getByRole("button", { name: COPY.attendance.voidConfirm })
+    );
+
+    await waitFor(() =>
+      expect(onVoid).toHaveBeenCalledWith(MEMBER_ROW, "更正簽到")
+    );
+    await waitFor(() => expect(opener).toHaveFocus());
+  });
+
+  test("restores expected-row focus after detail-to-excuse transition", async () => {
+    const user = userEvent.setup();
+    const onExcuse = vi.fn().mockResolvedValue(true);
+    render(
+      <AttendanceRoster
+        event={EVENT}
+        rows={[]}
+        expectedRows={[EXPECTED_ROW]}
+        onExcuse={onExcuse}
+      />
+    );
+
+    const opener = screen.getByRole("button", { name: "會員三" });
+    await user.click(opener);
+    await user.click(screen.getByRole("button", { name: "標記請假" }));
+    await user.click(screen.getByRole("combobox", { name: "請假原因" }));
+    await user.click(screen.getByRole("option", { name: "家庭事務" }));
+    await user.click(screen.getByRole("button", { name: "確認請假" }));
+
+    await waitFor(() =>
+      expect(onExcuse).toHaveBeenCalledWith(EXPECTED_ROW, "家庭事務")
+    );
+    await waitFor(() => expect(opener).toHaveFocus());
+  });
+
+  test("restores guest focus after detail-to-correction transition", async () => {
+    const user = userEvent.setup();
+    const onCorrectGuest = vi.fn().mockResolvedValue(true);
+    render(
+      <AttendanceRoster
+        event={EVENT}
+        rows={[GUEST_ROW]}
+        onCorrectGuest={onCorrectGuest}
+      />
+    );
+
+    const opener = screen.getByRole("button", { name: "舊訪客" });
+    await user.click(opener);
+    await user.click(
+      screen.getByRole("button", { name: COPY.attendance.correctGuest })
+    );
+    await user.type(
+      screen.getByLabelText(COPY.attendance.correctionReason),
+      "更正訪客資料"
+    );
+    await user.click(
+      screen.getByRole("button", { name: COPY.attendance.saveCorrection })
+    );
+
+    await waitFor(() =>
+      expect(onCorrectGuest).toHaveBeenCalledWith(GUEST_ROW, {
+        name: GUEST_ROW.guest_name,
+        phone: GUEST_ROW.guest_phone,
+        reason: "更正訪客資料",
+      })
+    );
+    await waitFor(() => expect(opener).toHaveFocus());
   });
 
   test("opens guest additional history from a 44px name target and preserves guest actions", async () => {

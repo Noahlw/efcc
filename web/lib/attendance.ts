@@ -2349,12 +2349,13 @@ export async function handleListOwnAttendance(
           Pick<AttendanceDisposition, "disposition" | "reason" | "recorded_at">
         >()
     : null;
+  const projectedDisposition = activeAttendance ? null : disposition;
   const state: AttendanceState =
     event.status === "Cancelled"
       ? "Cancelled"
       : activeAttendance
         ? "Present"
-        : disposition
+        : projectedDisposition
           ? "Excused"
           : eventWindowHasClosed(event)
             ? "Absent"
@@ -2365,7 +2366,7 @@ export async function handleListOwnAttendance(
       event: participantEvent(event),
       state,
       attendance: activeAttendance,
-      disposition: disposition ?? null,
+      disposition: projectedDisposition,
     } satisfies AttendanceParticipantView,
     id
   );

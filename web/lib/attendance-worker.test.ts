@@ -3053,6 +3053,24 @@ describe("attendance Worker routes", () => {
     );
     assert.strictEqual(contradictoryProjection?.state, "Present");
     assert.strictEqual(contradictoryProjection?.disposition, null);
+
+    const ownWithLegacyExcuse = await worker.fetch(
+      request(`/api/v1/attendance/events/${eventId}/me`, {
+        headers: { Cookie: `${ACCESS_COOKIE_NAME}=${admin}` },
+      }),
+      testEnv()
+    );
+    assert.strictEqual(ownWithLegacyExcuse.status, 200);
+    const ownWithLegacyExcuseBody = await json(ownWithLegacyExcuse);
+    const ownWithLegacyExcuseData = ownWithLegacyExcuseBody.data as {
+      state: string;
+      attendance: { status: string } | null;
+      disposition: { reason: string } | null;
+    };
+    assert.strictEqual(ownWithLegacyExcuseData.state, "Present");
+    assert.strictEqual(ownWithLegacyExcuseData.attendance?.status, "Active");
+    assert.strictEqual(ownWithLegacyExcuseData.disposition, null);
+
     const excuseLateBody = await json(excuseLate);
     assert.strictEqual(
       (excuseLateBody as { code: string }).code,

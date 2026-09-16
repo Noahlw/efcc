@@ -1,7 +1,7 @@
 "use client";
 
 import { cva } from "class-variance-authority";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 
 import { Alert } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -320,6 +320,11 @@ function rowPhone(
 
 const EMPTY_MEMBER_DIRECTORY: MemberDirectory = {};
 
+interface SheetFocusTarget {
+  element: HTMLElement;
+  fallbackId: string;
+}
+
 function updateAttendanceEventUrl(nextEventId: string | null) {
   if (typeof window === "undefined") {
     return;
@@ -385,6 +390,8 @@ export const AttendanceRoster = ({
   const voidInputRef = useRef<HTMLInputElement>(null);
   const correctionHeadingRef = useRef<HTMLHeadingElement>(null);
   const excuseInputRef = useRef<HTMLInputElement>(null);
+  const sheetFocusTargetRef = useRef<SheetFocusTarget | null>(null);
+  const [focusRestoreToken, setFocusRestoreToken] = useState(0);
 
   useEffect(() => {
     if (voidingId) {
@@ -403,6 +410,40 @@ export const AttendanceRoster = ({
       excuseInputRef.current?.focus();
     }
   }, [excusingId]);
+
+  useLayoutEffect(() => {
+    const target = sheetFocusTargetRef.current;
+    if (focusRestoreToken === 0 || !target) {
+      return;
+    }
+    const focusTarget = target.element.isConnected
+      ? target.element
+      : document.getElementById(target.fallbackId);
+    if (
+      focusTarget instanceof HTMLElement &&
+      focusTarget.isConnected &&
+      !focusTarget.hasAttribute("disabled")
+    ) {
+      focusTarget.focus();
+    }
+    sheetFocusTargetRef.current = null;
+  }, [focusRestoreToken]);
+
+  const rememberSheetFocus = (
+    event: React.MouseEvent<HTMLElement>,
+    fallbackId: string
+  ) => {
+    sheetFocusTargetRef.current = {
+      element: event.currentTarget,
+      fallbackId,
+    };
+  };
+
+  const requestSheetFocusRestore = () => {
+    if (sheetFocusTargetRef.current) {
+      setFocusRestoreToken((token) => token + 1);
+    }
+  };
 
   const activeRows = rows.filter((row) => row.status === "Active");
   const expectedAttendanceIds = new Set(
@@ -519,6 +560,7 @@ export const AttendanceRoster = ({
     }
     const saved = await onVoid(row, reason);
     if (saved) {
+      requestSheetFocusRestore();
       setVoidingId(null);
       setVoidReason("");
     }
@@ -535,6 +577,7 @@ export const AttendanceRoster = ({
     }
     const saved = await onCorrectGuest(row, input);
     if (saved) {
+      requestSheetFocusRestore();
       setCorrectionId(null);
       setCorrectionName("");
       setCorrectionPhone("");
@@ -554,6 +597,7 @@ export const AttendanceRoster = ({
     const reason = details ? `${excuseCategory}：${details}` : excuseCategory;
     const saved = await onExcuse(row, reason);
     if (saved) {
+      requestSheetFocusRestore();
       setExcusingId(null);
       setExcuseCategory("");
       setExcuseDetails("");
@@ -571,6 +615,7 @@ export const AttendanceRoster = ({
       }
       onOpenChange={(open) => {
         if (!open) {
+          requestSheetFocusRestore();
           setDetailRow(null);
           setDetailAdditionalRow(null);
           setVoidingId(null);
@@ -734,6 +779,9 @@ export const AttendanceRoster = ({
                 </p>
                 <ScreenTabs
                   aria-label={COPY.attendance.rosterFilterLabel}
+                  onValueChange={(value) =>
+                    setRosterFilter(value as AttendanceRosterFilter)
+                  }
                   role="tablist"
                 >
                   {(isPostEventRoster
@@ -757,7 +805,7 @@ export const AttendanceRoster = ({
                       aria-controls={`attendance-${value}-panel`}
                       aria-selected={rosterFilter === value}
                       selected={rosterFilter === value}
-                      onClick={() => setRosterFilter(value)}
+                      value={value}
                     >
                       {label} ({countForRosterFilter(value)})
                     </ScreenTab>
@@ -808,6 +856,7 @@ export const AttendanceRoster = ({
                             : row.state === "Excused"
                               ? "border-[var(--accent-border)] bg-[var(--accent-surface)] text-[var(--accent-deep)]"
                               : "border-[var(--line-strong)] bg-[var(--surface)] text-[var(--ink-muted)]";
+                        const detailTriggerId = `attendance-expected-detail-${expectedKey}`;
                         return (
                           <li
                             className={expectedRowVariants({
@@ -822,7 +871,9 @@ export const AttendanceRoster = ({
                                   variant="link"
                                   className="min-h-11 px-0 text-left text-base font-bold text-[var(--ink)] [overflow-wrap:anywhere]"
                                   type="button"
-                                  onClick={() => {
+                                  id={detailTriggerId}
+                                  onClick={(event) => {
+                                    rememberSheetFocus(event, detailTriggerId);
                                     setDetailRow(row);
                                     setDetailAdditionalRow(null);
                                   }}
@@ -874,7 +925,11 @@ export const AttendanceRoster = ({
                                     variant="destructive"
                                     type="button"
                                     disabled={writeDisabled}
-                                    onClick={() => {
+                                    onClick={(event) => {
+                                      rememberSheetFocus(
+                                        event,
+                                        detailTriggerId
+                                      );
                                       setVoidingId(attendance.attendance_id);
                                       setVoidReason("");
                                       setExcusingId(null);
@@ -894,7 +949,11 @@ export const AttendanceRoster = ({
                                       variant="outline"
                                       type="button"
                                       disabled={writeDisabled}
-                                      onClick={() => {
+                                      onClick={(event) => {
+                                        rememberSheetFocus(
+                                          event,
+                                          detailTriggerId
+                                        );
                                         setExcusingId(expectedKey);
                                         setExcuseCategory("");
                                         setExcuseDetails("");
@@ -930,6 +989,7 @@ export const AttendanceRoster = ({
                             phone && row.member_user_id
                               ? COPY.attendance.maskedPhone(phone)
                               : phone;
+                          const detailTriggerId = `attendance-additional-detail-${row.attendance_id}`;
                           return (
                             <li
                               className={attendanceRowVariants({
@@ -944,7 +1004,12 @@ export const AttendanceRoster = ({
                                     variant="link"
                                     className="min-h-11 px-0 text-left text-base font-bold text-[var(--ink)] [overflow-wrap:anywhere]"
                                     type="button"
-                                    onClick={() => {
+                                    id={detailTriggerId}
+                                    onClick={(event) => {
+                                      rememberSheetFocus(
+                                        event,
+                                        detailTriggerId
+                                      );
                                       setDetailAdditionalRow(row);
                                       setDetailRow(null);
                                     }}
@@ -980,7 +1045,11 @@ export const AttendanceRoster = ({
                                     variant="destructive"
                                     type="button"
                                     disabled={writeDisabled}
-                                    onClick={() => {
+                                    onClick={(event) => {
+                                      rememberSheetFocus(
+                                        event,
+                                        detailTriggerId
+                                      );
                                       setVoidingId(row.attendance_id);
                                       setVoidReason("");
                                       setCorrectionId(null);
@@ -996,7 +1065,11 @@ export const AttendanceRoster = ({
                                       variant="outline"
                                       type="button"
                                       disabled={writeDisabled}
-                                      onClick={() => {
+                                      onClick={(event) => {
+                                        rememberSheetFocus(
+                                          event,
+                                          detailTriggerId
+                                        );
                                         setCorrectionId(row.attendance_id);
                                         setCorrectionName(row.guest_name ?? "");
                                         setCorrectionPhone(
@@ -1028,6 +1101,10 @@ export const AttendanceRoster = ({
         <SheetContent
           side="bottom"
           aria-label={COPY.attendance.participantDetailTitle}
+          onCloseAutoFocus={(event) => {
+            event.preventDefault();
+            requestSheetFocusRestore();
+          }}
         >
           {detailRow && (
             <>
