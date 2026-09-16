@@ -11,6 +11,7 @@ interface ScheduleAddonResource {
   rulesError: string | null;
   exceptions: Record<string, ScheduleException[]>;
   scheduleMutationVersion: number;
+  onScheduleRefresh: () => Promise<boolean>;
 }
 
 const ScheduleAddon = ({
@@ -22,6 +23,7 @@ const ScheduleAddon = ({
   onOpenEvent,
   onMutationBlockChange,
   onWorkspaceRefresh,
+  onScheduleRefresh,
 }: {
   programId: string;
   rules: ScheduleRule[] | null;
@@ -31,12 +33,14 @@ const ScheduleAddon = ({
   onOpenEvent?: (eventId: string) => void;
   onMutationBlockChange?: (blocked: boolean) => void;
   onWorkspaceRefresh?: () => void | Promise<unknown>;
+  onScheduleRefresh: () => Promise<boolean>;
 }) => (
   <RecurringSchedulePanel
     programId={programId}
     rules={rules}
     exceptions={exceptions}
     scheduleMutationVersion={scheduleMutationVersion}
+    onScheduleRefresh={onScheduleRefresh}
     // ProgramSettings already owns the rule-load alert. Reusing the same
     // resource must not render a second identical alert beside the preview
     // controls.
@@ -60,6 +64,7 @@ const makeScheduleAddon = (
     rules,
     exceptions,
     scheduleMutationVersion,
+    onScheduleRefresh,
   }: ScheduleAddonResource) {
     return (
       <ScheduleAddon
@@ -67,6 +72,7 @@ const makeScheduleAddon = (
         rules={rules}
         exceptions={exceptions}
         scheduleMutationVersion={scheduleMutationVersion}
+        onScheduleRefresh={onScheduleRefresh}
         onGenerated={onGenerated}
         onOpenEvent={onOpenEvent}
         onMutationBlockChange={onMutationBlockChange}

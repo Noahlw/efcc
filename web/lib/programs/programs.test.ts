@@ -421,6 +421,7 @@ describe("PRG-01: schema", () => {
       "attendances",
       "program_check_in_token_rotations",
       "program_schedule_rule_idempotency",
+      "program_schedule_versions",
       "audit_events",
     ] as const;
     const rows = await Promise.all(
@@ -4473,6 +4474,101 @@ describe("EVT-02: recurring preview and generation (#252)", () => {
     assert.strictEqual(after?.count, before?.count);
   });
 
+  test("EVT-02.2 re-reviewing A after B makes A the current durable Plan", async () => {
+    const programId = await freshProgram("EVT-02 A-B-A Review");
+    await createRule(adminAccess, programId, {
+      recurrence: "WEEKLY",
+      day_of_week: 3,
+      start_time: "19:30",
+      end_time: "21:00",
+    });
+    const fromDate = hkTodayWallDate();
+    const rangeA = {
+      from_date: fromDate,
+      until_date: addWallDays(fromDate, 13),
+    };
+    const rangeB = {
+      from_date: addWallDays(fromDate, 1),
+      until_date: addWallDays(fromDate, 14),
+    };
+    const firstA = await preview(adminAccess, programId, 14, rangeA);
+    const planB = await preview(adminAccess, programId, 14, rangeB);
+    const secondA = await preview(adminAccess, programId, 14, rangeA);
+    assert.strictEqual(secondA.plan_id, firstA.plan_id);
+    assert.notStrictEqual(planB.plan_id, firstA.plan_id);
+
+    const generated = await generateRequest(programId, secondA.plan_id);
+    assert.strictEqual(generated.status, 200);
+    const body = (await assertCorrelated(generated)) as {
+      data: { generated: { status: string; created: number } };
+    };
+    assert.strictEqual(body.data.generated.status, "completed");
+    assert.ok(body.data.generated.created > 0);
+  });
+
+  test("EVT-02.2 atomic generation guard rejects a schedule revision before Event writes", async () => {
+    const programId = await freshProgram("EVT-02 Atomic Guard");
+    const rule = await createRule(adminAccess, programId, {
+      recurrence: "WEEKLY",
+      day_of_week: 3,
+      start_time: "19:30",
+      end_time: "21:00",
+    });
+    const plan = await preview(adminAccess, programId, 14);
+    const planRow = await testDb()
+      .prepare("SELECT * FROM program_preview_plans WHERE plan_id = ?")
+      .bind(plan.plan_id)
+      .first<{
+        plan_id: string;
+        schedule_version: number;
+      }>();
+    assert.ok(planRow);
+    const oldVersion = planRow.schedule_version;
+
+    const patch = await worker.fetch(
+      programsRequest(
+        `/api/v1/programs/${programId}/schedule-rules/${rule.rule_id}`,
+        {
+          method: "PATCH",
+          headers: {
+            Origin: HOST,
+            Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
+            "Content-Type": "application/json",
+          },
+          body: { start_time: "20:00" },
+        }
+      ),
+      testEnv()
+    );
+    assert.strictEqual(patch.status, 200);
+
+    const store = new D1WorkspaceStore(testDb());
+    const occurrences = await store.listPreviewOccurrences(plan.plan_id);
+    const run = await store.createGenerationRun({
+      run_id: crypto.randomUUID(),
+      program_id: programId,
+      plan_id: plan.plan_id,
+      started_at: new Date().toISOString(),
+      created_by: "U001",
+      correlation_id: null,
+    });
+    const guarded = await store.recordGeneratedOccurrence({
+      scheduleVersion: oldVersion,
+      planId: plan.plan_id,
+      runId: run.run.run_id,
+      programId,
+      occurrence: occurrences[0],
+      actorUserId: "U001",
+      createdAt: new Date().toISOString(),
+    });
+    assert.strictEqual(guarded, "stale");
+    const events = await testDb()
+      .prepare("SELECT COUNT(*) AS count FROM events WHERE program_id = ?")
+      .bind(programId)
+      .first<{ count: number }>();
+    assert.strictEqual(events?.count ?? 0, 0);
+  });
+
   test("EVT-02.2 replacing a saved exception invalidates its reviewed plan", async () => {
     const programId = await freshProgram("EVT-02 Exception Revision");
     const rule = await createRule(adminAccess, programId, {
@@ -5301,6 +5397,7 @@ describe("EVT-02: recurring preview and generation (#252)", () => {
       `DELETE FROM program_preview_plans WHERE program_id IN ${e2eProgramIds}`,
       `DELETE FROM program_schedule_exceptions WHERE rule_id IN (SELECT rule_id FROM program_schedule_rules WHERE program_id IN ${e2eProgramIds})`,
       `DELETE FROM program_schedule_rules WHERE program_id IN ${e2eProgramIds}`,
+      `DELETE FROM program_schedule_versions WHERE program_id IN ${e2eProgramIds}`,
       `DELETE FROM attendances WHERE event_id IN (SELECT event_id FROM events WHERE program_id IN ${e2eProgramIds})`,
       `DELETE FROM events WHERE program_id IN ${e2eProgramIds}`,
       `DELETE FROM enrollments WHERE program_id IN ${e2eProgramIds}`,

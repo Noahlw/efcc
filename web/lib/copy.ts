@@ -1234,7 +1234,7 @@ export const COPY = {
     previewUntilDate: "至（香港時間）",
     previewLead:
       "先選擇實際日期範圍，再預覽目前時間表；預覽不會寫入任何聚會記錄。",
-    previewPlanLabel: "方案 {id}",
+    previewPlanLabel: "已審閱預覽",
     previewPlanMeta:
       "由 {rules} 條規則組成，範圍 {from} 至 {to}（共 {days} 日，香港時間）。",
     previewOccurrenceDate: "日期",

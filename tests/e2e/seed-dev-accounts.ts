@@ -69,7 +69,7 @@ async function buildInsert(
     "  credential_kind = excluded.credential_kind,",
     "  credential_version = excluded.credential_version,",
     "  account_status = excluded.account_status,",
-      "  phone = NULL,",
+    "  phone = NULL,",
     "  qr_code_string = excluded.qr_code_string,",
     "  legacy_pin_hash = NULL,",
     "  requires_upgrade = 0,",
@@ -191,9 +191,7 @@ function buildNormalizedIdentitySeed(now: number): string {
       `SELECT role_definition_id, capability, NULL, ${now}`,
       "  FROM role_definitions CROSS JOIN catalog",
       " WHERE role_definitions.stable_key = 'staff' AND role_definitions.is_archived = 0;",
-    ].join("\n")
-  );
-  statements.push(
+    ].join("\n"),
     [
       "INSERT OR IGNORE INTO role_assignments",
       "  (assignment_id, account_user_id, role_definition_id, granted_by,",
@@ -274,6 +272,7 @@ async function main(): Promise<void> {
         `DELETE FROM program_preview_plans WHERE program_id IN ${e2eProgramIds};`,
         `DELETE FROM program_schedule_exceptions WHERE rule_id IN (SELECT rule_id FROM program_schedule_rules WHERE program_id IN ${e2eProgramIds});`,
         `DELETE FROM program_schedule_rules WHERE program_id IN ${e2eProgramIds};`,
+        `DELETE FROM program_schedule_versions WHERE program_id IN ${e2eProgramIds};`,
         `DELETE FROM sessions WHERE user_id IN ${filterAccountIds};`,
         `DELETE FROM attendances WHERE member_user_id IN ${filterAccountIds};`,
         `DELETE FROM enrollments WHERE member_user_id IN ${filterAccountIds};`,

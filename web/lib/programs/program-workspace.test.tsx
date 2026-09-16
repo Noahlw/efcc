@@ -58,8 +58,7 @@ const mocks = vi.hoisted(() => ({
   previewEvents: vi.fn(),
   generateEvents: vi.fn(),
   isUnknownMutationOutcome: vi.fn<(error: unknown) => boolean>((error) => {
-    const problem = (error as { problem?: { code?: string; status?: number } })
-      .problem;
+    const {problem} = (error as { problem?: { code?: string; status?: number } });
     return (
       problem === undefined ||
       problem.status === 0 ||
@@ -1898,7 +1897,7 @@ describe("ENR-01 participants workspace", () => {
     await expect(
       screen.findByText(COPY.programs.workspaceReconciled)
     ).resolves.toBeInTheDocument();
-    expect(mocks.cancelEnrollment).toHaveBeenCalledTimes(1);
+    expect(mocks.cancelEnrollment).toHaveBeenCalledOnce();
   });
 
   test("keeps cancellation disabled until a failed refresh is retried", async () => {
@@ -2602,6 +2601,71 @@ describe("EVT-02 recurring preview and generation UI (#252)", () => {
     );
   });
 
+  test("invalid re-review retains the old Preview and keeps Generate stale", async () => {
+    const user = userEvent.setup();
+    renderScheduleTask();
+    await screen.findByRole("button", { name: COPY.programs.previewEvents });
+    mocks.previewEvents.mockResolvedValue(plan);
+
+    await user.click(
+      screen.getByRole("button", { name: COPY.programs.previewEvents })
+    );
+    await screen.findByText(COPY.programs.previewPlanLabel, { exact: false });
+    fireEvent.change(screen.getByLabelText(COPY.programs.previewUntilDate), {
+      target: { value: addWallDays(hkTodayWallDate(), 366) },
+    });
+    await user.click(
+      screen.getByRole("button", { name: COPY.programs.previewReviewAgain })
+    );
+
+    await expect(
+      screen.findByText(COPY.programs.previewError)
+    ).resolves.toBeInTheDocument();
+    expect(
+      screen.getByText(COPY.programs.previewPlanLabel, { exact: false })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", {
+        name: COPY.programs.generateEvents,
+        hidden: true,
+      })
+    ).toBeDisabled();
+    expect(mocks.previewEvents).toHaveBeenCalledOnce();
+  });
+
+  test("failed re-review retains the old Preview and exposes the stale recovery state", async () => {
+    const user = userEvent.setup();
+    renderScheduleTask();
+    await screen.findByRole("button", { name: COPY.programs.previewEvents });
+    mocks.previewEvents
+      .mockResolvedValueOnce(plan)
+      .mockRejectedValueOnce(new Error("offline"));
+
+    await user.click(
+      screen.getByRole("button", { name: COPY.programs.previewEvents })
+    );
+    await screen.findByText(COPY.programs.previewPlanLabel, { exact: false });
+    fireEvent.change(screen.getByLabelText(COPY.programs.previewUntilDate), {
+      target: { value: addWallDays(hkTodayWallDate(), 7) },
+    });
+    await user.click(
+      screen.getByRole("button", { name: COPY.programs.previewReviewAgain })
+    );
+
+    await expect(
+      screen.findByText(COPY.error.networkError)
+    ).resolves.toBeInTheDocument();
+    expect(
+      screen.getByText(COPY.programs.previewPlanLabel, { exact: false })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", {
+        name: COPY.programs.generateEvents,
+        hidden: true,
+      })
+    ).toBeDisabled();
+  });
+
   test("preview occurrence actions distinguish an unsaved draft from the saved exception", async () => {
     const user = userEvent.setup();
     renderScheduleTask();
@@ -2700,7 +2764,7 @@ describe("EVT-02 recurring preview and generation UI (#252)", () => {
       },
     });
     await waitFor(() =>
-      expect(mocks.createScheduleException).toHaveBeenCalledTimes(1)
+      expect(mocks.createScheduleException).toHaveBeenCalledOnce()
     );
     expect(
       screen.getByRole("button", { name: COPY.programs.generateEvents })
@@ -2738,6 +2802,56 @@ describe("EVT-02 recurring preview and generation UI (#252)", () => {
     await user.click(
       screen.getByRole("link", { name: COPY.programs.backToOverview })
     );
+    expect(
+      screen.getByRole("button", {
+        name: COPY.programs.generateEvents,
+        hidden: true,
+      })
+    ).toBeDisabled();
+  });
+
+  test("an unknown exception save blocks retry until saved Rules and exceptions reconcile", async () => {
+    const user = userEvent.setup();
+    mocks.previewEvents.mockResolvedValue(plan);
+    mocks.createScheduleException.mockRejectedValueOnce(new Error("offline"));
+    renderScheduleTask();
+    await screen.findByRole("button", { name: COPY.programs.previewEvents });
+
+    await user.click(
+      screen.getByRole("button", { name: COPY.programs.previewEvents })
+    );
+    await user.click(
+      (
+        await screen.findAllByRole("button", {
+          name: COPY.programs.previewAdjustOccurrence,
+        })
+      )[0]
+    );
+    await user.click(
+      screen.getByRole("button", { name: COPY.programs.previewSkipOccurrence })
+    );
+    await user.click(
+      screen.getByRole("button", { name: COPY.programs.previewSaveException })
+    );
+
+    await expect(
+      screen.findByText(COPY.programs.programTransportAmbiguous)
+    ).resolves.toBeInTheDocument();
+    expect(
+      screen.getByRole("button", {
+        name: COPY.programs.generateEvents,
+        hidden: true,
+      })
+    ).toBeDisabled();
+    await user.click(
+      screen.getByRole("button", { name: COPY.programs.workspaceRetryRefresh })
+    );
+    await waitFor(() =>
+      expect(mocks.listScheduleRules).toHaveBeenCalledTimes(2)
+    );
+    expect(
+      screen.queryByText(COPY.programs.programTransportAmbiguous)
+    ).not.toBeInTheDocument();
     expect(
       screen.getByRole("button", {
         name: COPY.programs.generateEvents,
@@ -2944,7 +3058,7 @@ describe("EVT-02 recurring preview and generation UI (#252)", () => {
       screen.getByRole("button", { name: COPY.programs.generateEvents })
     );
 
-    expect(await screen.findByText(COPY.error.networkError)).toBeVisible();
+    await expect(screen.findByText(COPY.error.networkError)).resolves.toBeVisible();
     expect(
       screen.getByRole("button", {
         name: COPY.programs.generatedReconcileUnknown,

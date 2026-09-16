@@ -3331,6 +3331,7 @@ export class DepartmentWorkspace {
     const exceptions = await this.store.listScheduleExceptions(
       rules.map((rule) => rule.rule_id)
     );
+    const scheduleVersion = await this.store.findScheduleVersion(programId);
     const fromDate = range?.fromDate ?? hkTodayWallDate();
     const untilDate =
       range?.untilDate ?? addWallDays(fromDate, horizonDays - 1);
@@ -3347,9 +3348,9 @@ export class DepartmentWorkspace {
     // already claimed by a live event row, or by an earlier candidate in
     // this same plan (intra-plan collision), so the operator sees skipped
     // duplicates BEFORE any write. This is purely advisory: generation's
-    // own INSERT OR IGNORE + findEventByStart check in
-    // attemptGenerationOccurrence stays the authoritative write-time guard
-    // and continues to run exactly as before regardless of this flag.
+    // own atomic revision guard + INSERT OR IGNORE check in
+    // recordGeneratedOccurrence stays the authoritative write-time guard and
+    // continues to run regardless of this advisory flag.
     await this.markPreviewDuplicates(programId, candidates);
     const planHash = await this.computePlanHash(
       rules,
@@ -3372,6 +3373,8 @@ export class DepartmentWorkspace {
       rule_count: rules.length,
       created_by: ctx.actorUserId,
       created_at: now,
+      schedule_version: scheduleVersion,
+      reviewed_at: Date.now(),
     };
     const occurrences = candidates.map((candidate) =>
       this.previewOccurrenceRow(plan.plan_id, candidate)
@@ -3445,14 +3448,21 @@ export class DepartmentWorkspace {
       plan.horizon_days,
       plan.from_date
     );
+    const currentScheduleVersion =
+      await this.store.findScheduleVersion(programId);
     const latest = await this.store.findLatestPreviewPlan(programId);
     const superseded =
       latest !== null &&
       latest.plan_id !== plan.plan_id &&
-      (latest.created_at > plan.created_at ||
-        (latest.created_at === plan.created_at &&
+      (latest.reviewed_at > plan.reviewed_at ||
+        (latest.reviewed_at === plan.reviewed_at &&
           latest.plan_id > plan.plan_id));
-    if (currentHash !== plan.plan_hash || superseded) {
+    if (
+      currentHash !== plan.plan_hash ||
+      plan.schedule_version === null ||
+      currentScheduleVersion !== plan.schedule_version ||
+      superseded
+    ) {
       // Business-state conflict (schedule changed / plan superseded), not a
       // system failure: ADR-0023/0027 reserve FAILED for system-level
       // failures, so this audits CONFLICT.
@@ -3528,13 +3538,32 @@ export class DepartmentWorkspace {
     // only supersedes previously-failed rows), so the item table is the
     // single source of truth for the final counts. Failed rows are retried;
     // created/skipped rows are terminal.
-    await this.processGenerationOccurrences(
+    const staleDuringGeneration = await this.processGenerationOccurrences(
       run.run_id,
       programId,
+      planId,
       occurrences,
       ctx.actorUserId,
-      now
+      now,
+      plan.schedule_version
     );
+    if (
+      staleDuringGeneration ||
+      (await this.store.findScheduleVersion(programId)) !==
+        plan.schedule_version
+    ) {
+      await this.audit(
+        ctx,
+        "EVENT_GENERATE",
+        "event",
+        programId,
+        "CONFLICT",
+        null,
+        { plan_id: planId, reason: "stale_plan" },
+        correlationId
+      );
+      throw new StalePreviewPlanError(planId, programId);
+    }
     // Atomic compare-and-set settlement: finishGenerationRun recomputes
     // counts/status from the item table in one statement and only the first
     // finisher writes; every caller reloads the settled row, so the run and
@@ -3633,18 +3662,24 @@ export class DepartmentWorkspace {
   private async processGenerationOccurrences(
     runId: string,
     programId: string,
+    planId: string,
     occurrences: PreviewOccurrenceRow[],
     actorUserId: string,
-    now: string
-  ): Promise<void> {
+    now: string,
+    scheduleVersion: number
+  ): Promise<boolean> {
     const runItems = await this.store.listGenerationRunItems(runId);
     const processed = new Map(
       runItems.map((item) => [item.occurrence_id, item])
     );
     const concurrency = Math.min(8, Math.max(1, occurrences.length));
     let nextIndex = 0;
+    let stale = false;
     const worker = async (): Promise<void> => {
       while (true) {
+        if (stale) {
+          return;
+        }
         const occurrence = occurrences[nextIndex];
         nextIndex += 1;
         if (!occurrence) {
@@ -3654,104 +3689,66 @@ export class DepartmentWorkspace {
         // prevents a large preview from flooding D1 while preserving retry
         // and per-occurrence provenance.
         // oxlint-disable-next-line no-await-in-loop
-        await this.attemptGenerationOccurrence(
+        const occurrenceStale = await this.attemptGenerationOccurrence(
           runId,
           programId,
+          planId,
           occurrence,
           actorUserId,
           now,
-          processed
+          processed,
+          scheduleVersion
         );
+        if (occurrenceStale) {
+          stale = true;
+          return;
+        }
       }
     };
     await Promise.all(Array.from({ length: concurrency }, () => worker()));
+    return stale;
   }
 
   private async attemptGenerationOccurrence(
     runId: string,
     programId: string,
+    planId: string,
     occurrence: PreviewOccurrenceRow,
     actorUserId: string,
     now: string,
-    processed: ReadonlyMap<string, GenerationRunItemRow>
-  ): Promise<void> {
+    processed: ReadonlyMap<string, GenerationRunItemRow>,
+    scheduleVersion: number
+  ): Promise<boolean> {
     const prior = processed.get(occurrence.occurrence_id);
     if (prior && prior.outcome !== "failed") {
-      return;
+      return false;
     }
-    if (occurrence.skip_reason === "CANCEL") {
+    try {
+      const outcome = await this.store.recordGeneratedOccurrence({
+        scheduleVersion,
+        planId,
+        runId,
+        programId,
+        occurrence,
+        actorUserId,
+        createdAt: now,
+      });
+      if (outcome === "stale") {
+        return true;
+      }
+      return false;
+    } catch (error) {
       await this.store.recordGenerationRunItem({
         item_id: `${runId}:${occurrence.occurrence_id}`,
         run_id: runId,
         occurrence_id: occurrence.occurrence_id,
         starts_at: occurrence.starts_at,
-        outcome: "skipped",
+        outcome: "failed",
         event_id: null,
-        detail: "CANCEL",
+        detail: error instanceof Error ? error.message : String(error),
       });
-      return;
+      return false;
     }
-    let outcome: "created" | "skipped" | "failed" = "failed";
-    let eventId: string | null = null;
-    let detail: string | null = null;
-    try {
-      const inserted = await this.store.insertGeneratedEvent({
-        program_id: programId,
-        starts_at: occurrence.starts_at,
-        ends_at: occurrence.ends_at,
-        status: "Active",
-        availability: "Active",
-        source: "SCHEDULE",
-        schedule_rule_id: occurrence.rule_id,
-        occurrence_date: occurrence.occurs_on,
-        name: null,
-        location: occurrence.location,
-        check_in_window_opens_at: null,
-        check_in_window_closes_at: null,
-        cancel_reason: null,
-        created_by: actorUserId,
-        created_at: now,
-        updated_by: actorUserId,
-        updated_at: now,
-      });
-      if (inserted) {
-        outcome = "created";
-        const createdEvent = await this.store.findEventByStart(
-          programId,
-          occurrence.starts_at
-        );
-        eventId = createdEvent?.event_id ?? null;
-      } else {
-        // INSERT OR IGNORE reported no change. Verify why: only the unique
-        // (program_id, starts_at) index is a benign duplicate; any other
-        // swallowed constraint would have produced no event row at all and
-        // must be surfaced as a system failure, never a false 'skipped'.
-        const existing = await this.store.findEventByStart(
-          programId,
-          occurrence.starts_at
-        );
-        if (existing) {
-          outcome = "skipped";
-          eventId = existing.event_id;
-          detail = "DUPLICATE";
-        } else {
-          outcome = "failed";
-          detail = "event insert ignored without creating an event row";
-        }
-      }
-    } catch (error) {
-      outcome = "failed";
-      detail = error instanceof Error ? error.message : String(error);
-    }
-    await this.store.recordGenerationRunItem({
-      item_id: `${runId}:${occurrence.occurrence_id}`,
-      run_id: runId,
-      occurrence_id: occurrence.occurrence_id,
-      starts_at: occurrence.starts_at,
-      outcome,
-      event_id: eventId,
-      detail,
-    });
   }
 
   /** Deterministic, ordered occurrence candidates for every rule. */

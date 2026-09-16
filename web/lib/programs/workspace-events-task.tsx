@@ -93,6 +93,8 @@ import {
   useWorkspaceTaskContext,
 } from "./workspace-context";
 
+const EMPTY_SCHEDULE_EXCEPTIONS: Record<string, ScheduleException[]> = {};
+
 type EventsState =
   | { kind: "loading" }
   | { kind: "ready"; events: ProgramEvent[] }
@@ -172,13 +174,14 @@ function scheduleInputFingerprint(
 export const RecurringSchedulePanel = ({
   programId,
   rules,
-  exceptions = {},
+  exceptions = EMPTY_SCHEDULE_EXCEPTIONS,
   scheduleMutationVersion = 0,
   rulesError,
   onGenerated,
   onOpenEvent,
   onMutationBlockChange,
   onWorkspaceRefresh,
+  onScheduleRefresh,
 }: {
   programId: string;
   rules: ScheduleRule[] | null;
@@ -191,6 +194,8 @@ export const RecurringSchedulePanel = ({
   onOpenEvent?: (eventId: string) => void;
   onMutationBlockChange?: (blocked: boolean) => void;
   onWorkspaceRefresh?: () => void | Promise<unknown>;
+  /** Re-read Rules and saved exceptions after an unknown exception write. */
+  onScheduleRefresh?: () => Promise<boolean>;
 }) => {
   const [previewFromDate, setPreviewFromDate] = useState(() =>
     hkTodayWallDate()
@@ -219,6 +224,8 @@ export const RecurringSchedulePanel = ({
   >({});
   const [localExceptions, setLocalExceptions] = useState(exceptions);
   const [exceptionBusy, setExceptionBusy] = useState(false);
+  const [scheduleNeedsReconciliation, setScheduleNeedsReconciliation] =
+    useState(false);
   const [adjustingOccurrenceId, setAdjustingOccurrenceId] = useState<
     string | null
   >(null);
@@ -235,7 +242,30 @@ export const RecurringSchedulePanel = ({
     setLocalExceptions(exceptions);
   }, [exceptions]);
 
+  const currentInputFingerprint = scheduleInputFingerprint(
+    rules,
+    localExceptions
+  );
+  const hasExceptionDrafts = Object.keys(exceptionDrafts).length > 0;
+  const previewIsStale =
+    preview.kind === "ready" &&
+    (previewInvalidated ||
+      rules === null ||
+      hasExceptionDrafts ||
+      exceptionBusy ||
+      preview.inputFingerprint !== currentInputFingerprint ||
+      preview.scheduleMutationVersion !== scheduleMutationVersion ||
+      preview.plan.plan.from_date !== previewFromDate ||
+      (preview.plan.plan.to_date ??
+        addWallDays(
+          preview.plan.plan.from_date,
+          preview.plan.plan.horizon_days - 1
+        )) !== previewUntilDate);
+  const previewNeedsReview =
+    previewIsStale || (preview.kind === "error" && preview.stale);
+
   const loadPreview = async (fromDate: string, untilDate: string) => {
+    const previousPreview = preview;
     const horizonDays =
       isValidWallDate(fromDate) && isValidWallDate(untilDate)
         ? wallDaySpan(fromDate, untilDate)
@@ -246,15 +276,19 @@ export const RecurringSchedulePanel = ({
       horizonDays < 1 ||
       horizonDays > 365
     ) {
-      setPreview({ kind: "idle" });
       setPreviewInvalidated(true);
+      if (previousPreview.kind !== "ready") {
+        setPreview({ kind: "idle" });
+      }
       setGenerateError(COPY.programs.previewError);
       announce(COPY.programs.previewError);
       return;
     }
     setPreviewBusy(true);
     setPreviewInvalidated(true);
-    setPreview({ kind: "loading" });
+    if (previousPreview.kind !== "ready") {
+      setPreview({ kind: "loading" });
+    }
     setGenerateResult(null);
     setGenerationIdentity(null);
     setGenerationData(null);
@@ -298,11 +332,48 @@ export const RecurringSchedulePanel = ({
         error instanceof RpcError
           ? errorCopyFor(error.problem.code, error.problem.detail)
           : COPY.error.networkError;
-      setPreview({ kind: "error", message, stale: false });
+      setGenerateError(message);
+      if (previousPreview.kind === "ready") {
+        setPreview(previousPreview);
+      } else {
+        setPreview({ kind: "error", message, stale: false });
+      }
       announce(message);
     } finally {
       if (mounted.current) {
         setPreviewBusy(false);
+      }
+    }
+  };
+
+  const reconcileScheduleMutation = async () => {
+    if (!onScheduleRefresh) {
+      return;
+    }
+    setExceptionBusy(true);
+    try {
+      const refreshed = await onScheduleRefresh();
+      if (!mounted.current) {
+        return;
+      }
+      if (!refreshed) {
+        throw new Error("schedule refresh did not settle");
+      }
+      setScheduleNeedsReconciliation(false);
+      setGenerateError(null);
+      setAdjustingOccurrenceId(null);
+      onMutationBlockChange?.(false);
+      announce(COPY.programs.workspaceReconciled);
+    } catch {
+      if (!mounted.current) {
+        return;
+      }
+      setScheduleNeedsReconciliation(true);
+      setGenerateError(COPY.programs.programTransportAmbiguous);
+      announce(COPY.programs.programTransportAmbiguous);
+    } finally {
+      if (mounted.current) {
+        setExceptionBusy(false);
       }
     }
   };
@@ -401,6 +472,14 @@ export const RecurringSchedulePanel = ({
       if (redirectToLoginIfRequired(error)) {
         return;
       }
+      if (isUnknownMutationOutcome(error)) {
+        setScheduleNeedsReconciliation(true);
+        setAdjustingOccurrenceId(null);
+        onMutationBlockChange?.(true);
+        setGenerateError(COPY.programs.programTransportAmbiguous);
+        announce(COPY.programs.programTransportAmbiguous);
+        return;
+      }
       const message =
         error instanceof RpcError
           ? errorCopyFor(error.problem.code, error.problem.detail)
@@ -444,6 +523,14 @@ export const RecurringSchedulePanel = ({
         return;
       }
       if (redirectToLoginIfRequired(error)) {
+        return;
+      }
+      if (isUnknownMutationOutcome(error)) {
+        setScheduleNeedsReconciliation(true);
+        setAdjustingOccurrenceId(null);
+        onMutationBlockChange?.(true);
+        setGenerateError(COPY.programs.programTransportAmbiguous);
+        announce(COPY.programs.programTransportAmbiguous);
         return;
       }
       const message =
@@ -649,28 +736,6 @@ export const RecurringSchedulePanel = ({
   const unresolvedOccurrences = generationData?.unresolved_occurrences ?? [];
   const unresolvedCount =
     generationData?.failed ?? unresolvedOccurrences.length;
-  const currentInputFingerprint = scheduleInputFingerprint(
-    rules,
-    localExceptions
-  );
-  const hasExceptionDrafts = Object.keys(exceptionDrafts).length > 0;
-  const previewIsStale =
-    preview.kind === "ready" &&
-    (previewInvalidated ||
-      rules === null ||
-      hasExceptionDrafts ||
-      exceptionBusy ||
-      preview.inputFingerprint !== currentInputFingerprint ||
-      preview.scheduleMutationVersion !== scheduleMutationVersion ||
-      preview.plan.plan.from_date !== previewFromDate ||
-      (preview.plan.plan.to_date ??
-        addWallDays(
-          preview.plan.plan.from_date,
-          preview.plan.plan.horizon_days - 1
-        )) !== previewUntilDate);
-  const previewNeedsReview =
-    previewIsStale || (preview.kind === "error" && preview.stale);
-
   return (
     <Sheet
       open={adjustingOccurrence !== null}
@@ -786,10 +851,7 @@ export const RecurringSchedulePanel = ({
                 </Alert>
               )}
               <p className="m-0 wrap-anywhere text-sm leading-6 text-[var(--screen-muted)]">
-                {COPY.programs.previewPlanLabel.replace(
-                  "{id}",
-                  preview.plan.plan.plan_id.slice(0, 8)
-                )}
+                {COPY.programs.previewPlanLabel}
                 {" · "}
                 {COPY.programs.previewPlanMeta
                   .replace("{rules}", String(preview.plan.plan.rule_count))
@@ -894,7 +956,9 @@ export const RecurringSchedulePanel = ({
                               variant="outline"
                               className="w-fit border-[var(--screen-line-strong)] bg-transparent text-[var(--screen-ink)] hover:bg-[var(--screen-surface-soft)]"
                               onClick={() => openExceptionEditor(occurrence)}
-                              disabled={exceptionBusy}
+                              disabled={
+                                exceptionBusy || scheduleNeedsReconciliation
+                              }
                             >
                               {COPY.programs.previewAdjustOccurrence}
                             </Button>
@@ -916,6 +980,7 @@ export const RecurringSchedulePanel = ({
                     previewIsStale ||
                     hasExceptionDrafts ||
                     exceptionBusy ||
+                    scheduleNeedsReconciliation ||
                     generationNeedsReconciliation
                   }
                 >
@@ -1066,6 +1131,17 @@ export const RecurringSchedulePanel = ({
                       {COPY.programs.generatedReconcileUnknown}
                     </Button>
                   )}
+                  {scheduleNeedsReconciliation && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="w-fit border-[var(--screen-line-strong)] bg-transparent text-[var(--screen-ink)] hover:bg-[var(--screen-surface-soft)]"
+                      onClick={() => void reconcileScheduleMutation()}
+                      disabled={exceptionBusy}
+                    >
+                      {COPY.programs.workspaceRetryRefresh}
+                    </Button>
+                  )}
                 </div>
               )}
             </ScreenSection>
@@ -1102,7 +1178,7 @@ export const RecurringSchedulePanel = ({
                         },
                       }))
                     }
-                    disabled={exceptionBusy}
+                    disabled={exceptionBusy || scheduleNeedsReconciliation}
                   >
                     {COPY.programs.previewSkipOccurrence}
                   </Button>
@@ -1122,7 +1198,7 @@ export const RecurringSchedulePanel = ({
                         },
                       }))
                     }
-                    disabled={exceptionBusy}
+                    disabled={exceptionBusy || scheduleNeedsReconciliation}
                   >
                     {COPY.programs.previewRescheduleOccurrence}
                   </Button>
@@ -1209,7 +1285,7 @@ export const RecurringSchedulePanel = ({
                     onClick={() =>
                       void removeSavedException(adjustingOccurrence)
                     }
-                    disabled={exceptionBusy}
+                    disabled={exceptionBusy || scheduleNeedsReconciliation}
                   >
                     {COPY.programs.previewRemoveException}
                   </Button>
@@ -1221,7 +1297,7 @@ export const RecurringSchedulePanel = ({
                     type="button"
                     className="w-fit bg-[var(--screen-accent)] text-white hover:bg-[var(--screen-accent-deep)]"
                     onClick={() => void saveExceptionDraft(adjustingOccurrence)}
-                    disabled={exceptionBusy}
+                    disabled={exceptionBusy || scheduleNeedsReconciliation}
                   >
                     {exceptionBusy
                       ? COPY.programs.submitting

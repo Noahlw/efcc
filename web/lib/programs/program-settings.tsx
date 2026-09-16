@@ -153,6 +153,7 @@ export interface ProgramSettingsProps {
     rulesError: string | null;
     exceptions: Record<string, ScheduleException[]>;
     scheduleMutationVersion: number;
+    onScheduleRefresh: () => Promise<boolean>;
   }) => React.ReactNode;
   /** Canonical focused Schedule URL used by the child editor Back affordance. */
   scheduleBackHref?: string;
@@ -2744,6 +2745,7 @@ export const ProgramSettings = ({
               rulesError: ruleError,
               exceptions,
               scheduleMutationVersion,
+              onScheduleRefresh: loadRules,
             })}
           </div>
         )}

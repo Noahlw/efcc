@@ -24,11 +24,6 @@ import type {
   ScheduleException,
   ScheduleRule,
 } from "@/lib/programs/program-api";
-import {
-  addWallDays,
-  addWallMonths,
-  hkTodayWallDate,
-} from "@/lib/programs/recurrence";
 
 import { authMeHandler } from "./management-hub-fixtures";
 import { memberAuthMeHandler } from "./public-auth-member-communications-fixtures";
@@ -41,8 +36,10 @@ const ELIGIBLE_PROGRAM_ID = "t07-3-eligible-program";
 const EXPLORATION_PROGRAM_ID = "t07-3-exploration-program";
 const FAMILY_PROGRAM_ID = "t07-3-family-program";
 const YOUTH_PROGRAM_ID = "t07-3-youth-program";
-const STORY_PREVIEW_FROM = hkTodayWallDate();
-const STORY_PREVIEW_TO = addWallDays(addWallMonths(STORY_PREVIEW_FROM, 3), -1);
+// Fixed and internally consistent so the synthetic renderer never drifts with
+// the wall clock; the range is exactly three inclusive calendar months.
+const STORY_PREVIEW_FROM = "2026-09-01";
+const STORY_PREVIEW_TO = "2026-11-30";
 
 const storyApi = (path: string) => `*${path}`;
 
@@ -625,7 +622,7 @@ const SCHEDULE_PREVIEW: PreviewResult = {
     plan_id: "t07-3-plan",
     program_id: PROGRAM_ID,
     plan_hash: "t07-3-plan-hash",
-    horizon_days: 90,
+    horizon_days: 91,
     from_date: STORY_PREVIEW_FROM,
     to_date: STORY_PREVIEW_TO,
     rule_count: 2,

@@ -269,6 +269,8 @@ export type EventType = "崇拜" | "訓練" | "小組" | "排練" | "外展" | "
 export type RecurrenceTag = "無" | "每週" | "每月";
 
 export interface EventInput {
+  /** Optional caller-owned ID for an atomic generated Event + run-item write. */
+  event_id?: string;
   program_id: string;
   starts_at: string;
   ends_at: string;
@@ -424,6 +426,10 @@ export interface PreviewPlanRow {
   from_date: string;
   /** Exact inclusive selected end date; nullable for pre-0028 plans. */
   to_date?: string | null;
+  /** Durable schedule revision captured by the reviewed Preview. */
+  schedule_version: number | null;
+  /** Monotonic durable review recency, separate from original creation time. */
+  reviewed_at: number;
   rule_count: number;
   created_by: string | null;
   created_at: string;
@@ -760,6 +766,7 @@ export interface WorkspaceStore {
 
   findPreviewPlan: (planId: string) => Promise<PreviewPlanRow | null>;
   findLatestPreviewPlan: (programId: string) => Promise<PreviewPlanRow | null>;
+  findScheduleVersion: (programId: string) => Promise<number>;
   listPreviewOccurrences: (planId: string) => Promise<PreviewOccurrenceRow[]>;
   /** Persist a preview plan and its exact occurrence rows idempotently. */
   replacePreviewPlan: (
@@ -779,6 +786,16 @@ export interface WorkspaceStore {
   listGenerationRunItems: (runId: string) => Promise<GenerationRunItemRow[]>;
   /** Record one attempt durably; false when the row already exists. */
   recordGenerationRunItem: (input: GenerationRunItemInput) => Promise<boolean>;
+  /** Atomically guard the schedule revision, Event write, and run-item outcome. */
+  recordGeneratedOccurrence: (input: {
+    scheduleVersion: number;
+    planId: string;
+    runId: string;
+    programId: string;
+    occurrence: PreviewOccurrenceRow;
+    actorUserId: string | null;
+    createdAt: string;
+  }) => Promise<"created" | "skipped" | "stale">;
   /** Atomic settle: recompute counts/status from the item rows, CAS first-finisher-wins. */
   finishGenerationRun: (
     runId: string,
