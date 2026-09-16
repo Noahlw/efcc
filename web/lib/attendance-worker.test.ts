@@ -665,7 +665,7 @@ describe("attendance Worker routes", () => {
       name: "訪客確認",
       phone: "9123 4599",
     } as const;
-    const created = await worker.fetch(
+    await worker.fetch(
       request("/api/v1/attendance/guest", {
         method: "POST",
         headers: { "Idempotency-Key": "guest-ack-loss-reconcile" },
@@ -673,10 +673,22 @@ describe("attendance Worker routes", () => {
       }),
       testEnv()
     );
-    assert.strictEqual(created.status, 201);
-    const createdBody = await json(created);
-    const attendanceId = (createdBody.data as { attendance_id: string })
-      .attendance_id;
+    let attendanceId: string | undefined;
+
+    const findCommittedAttendance = () =>
+      testDb()
+        .prepare(
+          `SELECT attendance_id
+             FROM attendances
+            WHERE event_id = ?
+              AND guest_name = ?
+              AND guest_phone = ?
+              AND status = 'Active'
+            ORDER BY checked_in_at DESC
+            LIMIT 1`
+        )
+        .bind(payload.event_id, payload.name, payload.phone)
+        .first<{ attendance_id: string }>();
 
     try {
       const reconciled = await worker.fetch(
@@ -692,6 +704,9 @@ describe("attendance Worker routes", () => {
       assert.strictEqual(reconciledData.outcome, "found");
       assert.ok(reconciledData.checked_in_at);
       assert.strictEqual("attendance_id" in reconciledData, false);
+      const committed = await findCommittedAttendance();
+      assert.ok(committed?.attendance_id);
+      attendanceId = committed.attendance_id;
 
       const wrongGuest = await worker.fetch(
         request("/api/v1/attendance/guest/reconcile", {
@@ -706,16 +721,22 @@ describe("attendance Worker routes", () => {
         outcome: "not_found",
       });
     } finally {
-      const admin = await accessCookieFor("att-admin", "att-admin-password");
-      const voided = await worker.fetch(
-        request(`/api/v1/attendance/${attendanceId}/void`, {
-          method: "POST",
-          headers: { Cookie: `${ACCESS_COOKIE_NAME}=${admin}` },
-          body: JSON.stringify({ reason: "測試清理" }),
-        }),
-        testEnv()
-      );
-      assert.strictEqual(voided.status, 200);
+      if (!attendanceId) {
+        const committed = await findCommittedAttendance();
+        attendanceId = committed?.attendance_id;
+      }
+      if (attendanceId) {
+        const admin = await accessCookieFor("att-admin", "att-admin-password");
+        const voided = await worker.fetch(
+          request(`/api/v1/attendance/${attendanceId}/void`, {
+            method: "POST",
+            headers: { Cookie: `${ACCESS_COOKIE_NAME}=${admin}` },
+            body: JSON.stringify({ reason: "測試清理" }),
+          }),
+          testEnv()
+        );
+        assert.strictEqual(voided.status, 200);
+      }
     }
   });
 
