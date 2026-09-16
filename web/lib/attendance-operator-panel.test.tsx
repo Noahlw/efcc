@@ -799,7 +799,7 @@ describe(AttendanceOperatorPanel, () => {
             data: { event: ACTIVE, attendances: [ROW] },
           });
         }
-        if (rosterCalls === 2) {
+        if (rosterCalls === 2 || rosterCalls === 4) {
           return HttpResponse.json(
             {
               type: "about:blank",
@@ -810,6 +810,12 @@ describe(AttendanceOperatorPanel, () => {
             },
             { status: 503 }
           );
+        }
+        if (rosterCalls === 3) {
+          return HttpResponse.json({
+            requestId: "rid-mismatch",
+            data: { event: ACTIVE, attendances: [ROW] },
+          });
         }
         return HttpResponse.json({
           requestId: "rid-reconciled",
@@ -830,6 +836,10 @@ describe(AttendanceOperatorPanel, () => {
       )
     );
     const user = userEvent.setup();
+    Object.defineProperty(document, "visibilityState", {
+      configurable: true,
+      value: "visible",
+    });
     renderWithLiveRegion({ onMutationBlockChange });
 
     await user.click(await screen.findByRole("button", { name: /週六聚會/u }));
@@ -847,6 +857,24 @@ describe(AttendanceOperatorPanel, () => {
 
     await screen.findAllByText(COPY.attendance.transportAmbiguous);
     expect(onMutationBlockChange).toHaveBeenCalledWith(true);
+    expect(
+      screen.getByRole("button", { name: COPY.attendance.voidAttendance })
+    ).toBeDisabled();
+
+    window.dispatchEvent(new Event("online"));
+    await waitFor(() => expect(rosterCalls).toBe(3));
+    expect(
+      screen.getByRole("button", { name: COPY.attendance.voidAttendance })
+    ).toBeDisabled();
+    expect(onMutationBlockChange).toHaveBeenLastCalledWith(true);
+
+    document.dispatchEvent(new Event("visibilitychange"));
+    await waitFor(() => expect(rosterCalls).toBe(4));
+    expect(
+      screen.getByRole("button", { name: COPY.attendance.voidAttendance })
+    ).toBeDisabled();
+    expect(onMutationBlockChange).toHaveBeenLastCalledWith(true);
+
     const outsideLink = document.createElement("a");
     outsideLink.href = "/home";
     outsideLink.textContent = "Home";

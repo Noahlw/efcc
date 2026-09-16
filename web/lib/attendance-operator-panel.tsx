@@ -1748,6 +1748,7 @@ export const AttendanceOperatorPanel = ({
   const [mutationOutcomeUnknown, setMutationOutcomeUnknown] = useState(false);
   const [lastUpdatedAt, setLastUpdatedAt] = useState<number | null>(null);
   const [materializationRequired, setMaterializationRequired] = useState(false);
+  const onlineRef = useRef(online);
   const selectedEventIdRef = useRef<string | null>(null);
   const rosterRequestRef = useRef(false);
   const rosterRequestPromiseRef = useRef<Promise<boolean> | null>(null);
@@ -1757,9 +1758,10 @@ export const AttendanceOperatorPanel = ({
   const mutationOutcomeUnknownRef = useRef(false);
 
   useEffect(() => {
+    onlineRef.current = online;
     staleRef.current = stale;
     mutationOutcomeUnknownRef.current = mutationOutcomeUnknown;
-  }, [mutationOutcomeUnknown, stale]);
+  }, [mutationOutcomeUnknown, online, stale]);
 
   useEffect(() => {
     onMutationBlockChange?.(mutationOutcomeUnknown);
@@ -2453,13 +2455,17 @@ export const AttendanceOperatorPanel = ({
 
   useEffect(() => {
     const handleOnline = () => {
+      onlineRef.current = true;
       setOnline(true);
       const id = selectedEventIdRef.current;
       if (id) {
-        void loadRoster(id);
+        void (mutationOutcomeUnknownRef.current
+          ? reconcileUnknownAttendance()
+          : loadRoster(id));
       }
     };
     const handleOffline = () => {
+      onlineRef.current = false;
       setOnline(false);
       if (selectedEventIdRef.current) {
         setStale(true);
@@ -2480,8 +2486,10 @@ export const AttendanceOperatorPanel = ({
     const handleVisibility = () => {
       const visible = document.visibilityState === "visible";
       setPageVisible(visible);
-      if (visible && online && selectedEventIdRef.current) {
-        void loadRoster(selectedEventIdRef.current);
+      if (visible && onlineRef.current && selectedEventIdRef.current) {
+        void (mutationOutcomeUnknownRef.current
+          ? reconcileUnknownAttendance()
+          : loadRoster(selectedEventIdRef.current));
       }
     };
     document.addEventListener("visibilitychange", handleVisibility);
