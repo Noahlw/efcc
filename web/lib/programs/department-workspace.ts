@@ -3545,7 +3545,8 @@ export class DepartmentWorkspace {
       occurrences,
       ctx.actorUserId,
       now,
-      plan.schedule_version
+      plan.schedule_version,
+      plan.reviewed_at
     );
     if (
       staleDuringGeneration ||
@@ -3666,7 +3667,8 @@ export class DepartmentWorkspace {
     occurrences: PreviewOccurrenceRow[],
     actorUserId: string,
     now: string,
-    scheduleVersion: number
+    scheduleVersion: number,
+    reviewedAt: number
   ): Promise<boolean> {
     const runItems = await this.store.listGenerationRunItems(runId);
     const processed = new Map(
@@ -3697,7 +3699,8 @@ export class DepartmentWorkspace {
           actorUserId,
           now,
           processed,
-          scheduleVersion
+          scheduleVersion,
+          reviewedAt
         );
         if (occurrenceStale) {
           stale = true;
@@ -3717,7 +3720,8 @@ export class DepartmentWorkspace {
     actorUserId: string,
     now: string,
     processed: ReadonlyMap<string, GenerationRunItemRow>,
-    scheduleVersion: number
+    scheduleVersion: number,
+    reviewedAt: number
   ): Promise<boolean> {
     const prior = processed.get(occurrence.occurrence_id);
     if (prior && prior.outcome !== "failed") {
@@ -3726,6 +3730,7 @@ export class DepartmentWorkspace {
     try {
       const outcome = await this.store.recordGeneratedOccurrence({
         scheduleVersion,
+        reviewedAt,
         planId,
         runId,
         programId,

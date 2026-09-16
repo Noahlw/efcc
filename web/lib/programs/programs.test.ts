@@ -4521,6 +4521,7 @@ describe("EVT-02: recurring preview and generation (#252)", () => {
       .first<{
         plan_id: string;
         schedule_version: number;
+        reviewed_at: number;
       }>();
     assert.ok(planRow);
     const oldVersion = planRow.schedule_version;
@@ -4554,7 +4555,56 @@ describe("EVT-02: recurring preview and generation (#252)", () => {
     });
     const guarded = await store.recordGeneratedOccurrence({
       scheduleVersion: oldVersion,
+      reviewedAt: planRow.reviewed_at,
       planId: plan.plan_id,
+      runId: run.run.run_id,
+      programId,
+      occurrence: occurrences[0],
+      actorUserId: "U001",
+      createdAt: new Date().toISOString(),
+    });
+    assert.strictEqual(guarded, "stale");
+    const events = await testDb()
+      .prepare("SELECT COUNT(*) AS count FROM events WHERE program_id = ?")
+      .bind(programId)
+      .first<{ count: number }>();
+    assert.strictEqual(events?.count ?? 0, 0);
+  });
+
+  test("EVT-02.2 atomic generation guard rejects a newer reviewed Plan before Event writes", async () => {
+    const programId = await freshProgram("EVT-02 Atomic Review Guard");
+    await createRule(adminAccess, programId, {
+      recurrence: "WEEKLY",
+      day_of_week: 3,
+      start_time: "19:30",
+      end_time: "21:00",
+    });
+    const planA = await preview(adminAccess, programId, 14);
+    const planB = await preview(adminAccess, programId, 15);
+    assert.notStrictEqual(planB.plan_id, planA.plan_id);
+
+    const planRow = await testDb()
+      .prepare("SELECT * FROM program_preview_plans WHERE plan_id = ?")
+      .bind(planA.plan_id)
+      .first<{
+        schedule_version: number;
+        reviewed_at: number;
+      }>();
+    assert.ok(planRow);
+    const store = new D1WorkspaceStore(testDb());
+    const occurrences = await store.listPreviewOccurrences(planA.plan_id);
+    const run = await store.createGenerationRun({
+      run_id: crypto.randomUUID(),
+      program_id: programId,
+      plan_id: planA.plan_id,
+      started_at: new Date().toISOString(),
+      created_by: "U001",
+      correlation_id: null,
+    });
+    const guarded = await store.recordGeneratedOccurrence({
+      scheduleVersion: planRow.schedule_version,
+      reviewedAt: planRow.reviewed_at,
+      planId: planA.plan_id,
       runId: run.run.run_id,
       programId,
       occurrence: occurrences[0],

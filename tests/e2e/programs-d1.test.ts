@@ -260,6 +260,9 @@ const COPY = {
   schedulePageTitle: "聚會排程",
   addRule: "新增時間表",
   generateEvents: "產生聚會",
+  previewLead:
+    "先選擇實際日期範圍，再預覽目前時間表；預覽不會寫入任何聚會記錄。",
+  previewPlanLabel: "已審閱預覽",
   previewFromDate: "由（香港時間）",
   previewUntilDate: "至（香港時間）",
   previewReviewAgain: "重新預覽",
@@ -4726,8 +4729,7 @@ test.describe("EVT-02 recurring preview and generation", () => {
   // EVT-02 (#252): reachable Program Workspace preview/generate controls.
   const previewEvents = "預覽聚會";
   const previewChanged = "時間表已變更，請重新預覽。";
-  const previewLead =
-    "預覽會依目前時間表產生未來聚會清單，不會寫入任何聚會記錄。";
+  const previewLead = COPY.previewLead;
 
   async function openScheduleTask(
     page: Page,
@@ -4879,7 +4881,7 @@ test.describe("EVT-02 recurring preview and generation", () => {
 
     // Server-owned plan identity + exact occurrence rows in the DOM.
     await expect(page.getByText(previewLead)).toBeVisible();
-    await expect(page.getByText(/^方案 /u).first()).toBeVisible();
+    await expect(page.getByText(COPY.previewPlanLabel)).toBeVisible();
     await expect(
       page.locator("[aria-label='預覽聚會'] > li").first()
     ).toBeVisible();

@@ -1272,6 +1272,7 @@ export const COPY = {
     generatedSkippedLabel: "略過項目",
     generatedUnresolvedLabel: "未完成項目",
     generatedUnresolvedTitle: "未完成項目（請先核對）",
+    generatedUnresolvedItem: "未完成，請核對後重試。",
     generatedUnresolvedFallback:
       "未能取得未完成項目的詳細資料，請先重新整理後再重試。",
     generatedReconcile: "核對後重試未完成項目",

@@ -625,9 +625,7 @@ export const RecurringSchedulePanel = ({
       } else {
         const networkFailure =
           (typeof navigator !== "undefined" && !navigator.onLine) ||
-          !(error instanceof RpcError) ||
-          error.problem.code === "NETWORK_ERROR" ||
-          error.problem.code === "UNAVAILABLE";
+          isUnknownMutationOutcome(error);
         setGenerationNeedsReconciliation(networkFailure);
         if (networkFailure) {
           onMutationBlockChange?.(true);
@@ -1066,7 +1064,7 @@ export const RecurringSchedulePanel = ({
                             >
                               {hkWallDateTimeLabel(occurrence.starts_at)}
                               {occurrence.detail
-                                ? ` · ${occurrence.detail}`
+                                ? ` · ${COPY.programs.generatedUnresolvedItem}`
                                 : ""}
                             </li>
                           ))}

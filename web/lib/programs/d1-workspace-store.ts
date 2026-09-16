@@ -1557,6 +1557,7 @@ export class D1WorkspaceStore implements WorkspaceStore {
 
   async recordGeneratedOccurrence(input: {
     scheduleVersion: number;
+    reviewedAt: number;
     planId: string;
     runId: string;
     programId: string;
@@ -1572,6 +1573,13 @@ export class D1WorkspaceStore implements WorkspaceStore {
     ) AND EXISTS (
       SELECT 1 FROM program_preview_plans
        WHERE plan_id = ? AND program_id = ? AND schedule_version = ?
+    ) AND NOT EXISTS (
+      SELECT 1 FROM program_preview_plans AS newer
+       WHERE newer.program_id = ?
+         AND (
+           newer.reviewed_at > ?
+           OR (newer.reviewed_at = ? AND newer.plan_id > ?)
+         )
     )`;
     const guardBindings = [
       input.programId,
@@ -1579,6 +1587,10 @@ export class D1WorkspaceStore implements WorkspaceStore {
       input.planId,
       input.programId,
       input.scheduleVersion,
+      input.programId,
+      input.reviewedAt,
+      input.reviewedAt,
+      input.planId,
     ] as (string | number | null)[];
     const eventStatement =
       occurrence.skip_reason === "CANCEL"
@@ -1676,10 +1688,11 @@ export class D1WorkspaceStore implements WorkspaceStore {
     if (existing?.outcome === "created" || existing?.outcome === "skipped") {
       return existing.outcome;
     }
-    if (
-      (await this.findScheduleVersion(input.programId)) !==
-      input.scheduleVersion
-    ) {
+    const current = await this.db
+      .prepare(`SELECT 1 AS current WHERE ${guard}`)
+      .bind(...guardBindings)
+      .first<{ current: number }>();
+    if (!current) {
       return "stale";
     }
     throw new Error("Atomic generation guard did not record an occurrence.");

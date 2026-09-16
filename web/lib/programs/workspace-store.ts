@@ -789,6 +789,7 @@ export interface WorkspaceStore {
   /** Atomically guard the schedule revision, Event write, and run-item outcome. */
   recordGeneratedOccurrence: (input: {
     scheduleVersion: number;
+    reviewedAt: number;
     planId: string;
     runId: string;
     programId: string;

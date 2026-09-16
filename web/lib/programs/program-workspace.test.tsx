@@ -58,7 +58,9 @@ const mocks = vi.hoisted(() => ({
   previewEvents: vi.fn(),
   generateEvents: vi.fn(),
   isUnknownMutationOutcome: vi.fn<(error: unknown) => boolean>((error) => {
-    const {problem} = (error as { problem?: { code?: string; status?: number } });
+    const { problem } = error as {
+      problem?: { code?: string; status?: number };
+    };
     return (
       problem === undefined ||
       problem.status === 0 ||
@@ -2982,6 +2984,13 @@ describe("EVT-02 recurring preview and generation UI (#252)", () => {
           skipped: 0,
           failed: 1,
           resumed: false,
+          unresolved_occurrences: [
+            {
+              occurrence_id: "occ-1",
+              starts_at: "2026-09-16T11:30:00.000Z",
+              detail: "SQLITE_BUSY: internal storage detail",
+            },
+          ],
         },
       })
       .mockResolvedValueOnce({
@@ -3014,6 +3023,8 @@ describe("EVT-02 recurring preview and generation UI (#252)", () => {
         .replace("{failed}", "1")
     );
     expect(screen.queryByText(COPY.programs.generated)).not.toBeInTheDocument();
+    expect(screen.getByText(/未完成，請核對後重試。/u)).toBeInTheDocument();
+    expect(screen.queryByText(/SQLITE_BUSY/u)).not.toBeInTheDocument();
     // The plan is kept, but a retry is gated until the operator acknowledges
     // the server's unresolved units.
     expect(
@@ -3058,7 +3069,9 @@ describe("EVT-02 recurring preview and generation UI (#252)", () => {
       screen.getByRole("button", { name: COPY.programs.generateEvents })
     );
 
-    await expect(screen.findByText(COPY.error.networkError)).resolves.toBeVisible();
+    await expect(
+      screen.findByText(COPY.error.networkError)
+    ).resolves.toBeVisible();
     expect(
       screen.getByRole("button", {
         name: COPY.programs.generatedReconcileUnknown,
