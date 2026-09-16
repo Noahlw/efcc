@@ -23,7 +23,21 @@ import type {
   AuthorizationContext,
   CapabilityAuthorizer,
 } from "./capability-authorizer";
-import { D1WorkspaceStore, WorkspaceNotFoundError } from "./d1-workspace-store";
+import { WorkspaceNotFoundError } from "./d1-workspace-store";
+import {
+  beginNextEnrollmentApprovalItem,
+  cancelEnrollmentApprovalRun,
+  createEnrollmentApprovalRun,
+  reconcileEnrollmentApprovalRun,
+  settleEnrollmentApprovalItem,
+} from "./enrollment-approval-run";
+import type {
+  ApprovalRunFailure,
+  EnrollmentApprovalRun,
+  EnrollmentApprovalRunAuthority,
+  EnrollmentApprovalRunItem,
+  EnrollmentApprovalRunRow,
+} from "./enrollment-approval-run";
 import type {
   ManagementHubGroup,
   ManagementHubRow,
@@ -48,6 +62,7 @@ import {
   EventIdentityChangeReasonRequiredError,
   EventNameRequiredError,
   EventRescheduleBlockedError,
+  EnrollmentApprovalRunValidationError,
   InvalidModuleKeyError,
   InvalidProgramLifecycleError,
   NoScheduleRulesError,
@@ -718,6 +733,11 @@ export interface EnrollmentDecisionResult {
   enrollment: EnrollmentRow | null;
 }
 
+export interface EnrollmentApprovalRunActionResult {
+  run: EnrollmentApprovalRun;
+  item: EnrollmentApprovalRunItem | null;
+}
+
 export interface AssistedEnrollCommand {
   memberUserId: string;
 }
@@ -728,6 +748,75 @@ function isPendingEnrollmentConstraint(error: unknown): boolean {
     message.includes("enrollment_requests.program_id") &&
     message.includes("enrollment_requests.member_user_id")
   );
+}
+
+function approvalRunView(row: EnrollmentApprovalRunRow): EnrollmentApprovalRun {
+  return {
+    run_id: row.run_id,
+    program_id: row.program_id,
+    status: row.status,
+    created_at: row.created_at,
+    finished_at: row.finished_at,
+    cancelled_at: row.cancelled_at,
+    items: row.items,
+  };
+}
+
+function approvalRunFailure(error: unknown): ApprovalRunFailure {
+  if (error instanceof StaleEnrollmentRequestError) {
+    return {
+      code: "STALE_REQUEST_VERSION",
+      detail: "報名申請版本已更新，請重新整理後重新選取。",
+      retryable: false,
+    };
+  }
+  if (error instanceof EnrollmentDecisionConflictError) {
+    return {
+      code: "REQUEST_ALREADY_HANDLED",
+      detail: "報名申請已由其他結果處理，未重複核准。",
+      retryable: false,
+    };
+  }
+  if (error instanceof RequestNotDecidableError) {
+    return {
+      code: "REQUEST_ALREADY_HANDLED",
+      detail: "報名申請已不在可核准狀態，未重複核准。",
+      retryable: false,
+    };
+  }
+  if (error instanceof DuplicateEnrollmentError) {
+    return {
+      code: "ENROLLMENT_DUPLICATE",
+      detail: "成員已有有效報名，未重複建立 Enrollment。",
+      retryable: false,
+    };
+  }
+  if (error instanceof EnrollmentAccountInactiveError) {
+    return {
+      code: "ENROLLMENT_ACCOUNT_INACTIVE",
+      detail: "成員帳戶目前未能建立 Enrollment。",
+      retryable: false,
+    };
+  }
+  if (error instanceof EnrollmentNotAllowedError) {
+    return {
+      code: "ENROLLMENT_NOT_ALLOWED",
+      detail: "此 Program 目前不接受這類 Enrollment。",
+      retryable: false,
+    };
+  }
+  if (error instanceof AuthorizationDeniedError) {
+    return {
+      code: "FORBIDDEN",
+      detail: "你目前沒有權限完成此 Enrollment approval。",
+      retryable: false,
+    };
+  }
+  return {
+    code: "OUTCOME_UNKNOWN",
+    detail: "核准結果未能確認，請先重新整理並由系統核對後再繼續。",
+    retryable: false,
+  };
 }
 
 export class DepartmentWorkspace {
@@ -4789,6 +4878,432 @@ export class DepartmentWorkspace {
         (enrollment) => enrollment.member_user_id === ctx.actorUserId
       ),
     };
+  }
+
+  private async requireApprovalRunProgram(
+    ctx: AuthorizationContext,
+    programId: string
+  ): Promise<ProgramRow> {
+    const program = await this.requireProgramFor(
+      ctx,
+      programId,
+      CAPABILITY.PROGRAM_MANAGE
+    );
+    await this.requireModuleEnabled(
+      program.department_id,
+      MODULE_KEY.ENROLLMENT
+    );
+    return program;
+  }
+
+  private async findOwnedApprovalRun(
+    ctx: AuthorizationContext,
+    programId: string,
+    runId: string
+  ): Promise<EnrollmentApprovalRunRow | null> {
+    const row = await this.store.findEnrollmentApprovalRun(runId);
+    if (
+      !row ||
+      row.actor_user_id !== ctx.actorUserId ||
+      row.program_id !== programId
+    ) {
+      return null;
+    }
+    return row;
+  }
+
+  private async persistApprovalRun(
+    current: EnrollmentApprovalRunRow,
+    next: EnrollmentApprovalRun
+  ): Promise<EnrollmentApprovalRunRow> {
+    const currentByRequestId = new Map(
+      current.items.map((item) => [item.request_id, item])
+    );
+    for (const item of next.items) {
+      const previous = currentByRequestId.get(item.request_id);
+      if (!previous) {
+        continue;
+      }
+      const changed =
+        previous.status !== item.status ||
+        previous.retryable !== item.retryable ||
+        previous.enrollment_id !== item.enrollment_id ||
+        previous.error_code !== item.error_code ||
+        previous.detail !== item.detail ||
+        previous.started_at !== item.started_at ||
+        previous.settled_at !== item.settled_at;
+      if (!changed) {
+        continue;
+      }
+      // oxlint-disable-next-line eslint/no-await-in-loop -- each CAS settles before the run status is updated or the next item is touched.
+      const saved = await this.store.updateEnrollmentApprovalRunItem(
+        current.run_id,
+        item.request_id,
+        item,
+        previous.status
+      );
+      if (!saved) {
+        // oxlint-disable-next-line eslint/no-await-in-loop -- reload the concurrent winner before returning the run projection.
+        const latest = await this.store.findEnrollmentApprovalRun(
+          current.run_id
+        );
+        return latest ?? current;
+      }
+    }
+    if (
+      current.status !== next.status ||
+      current.finished_at !== next.finished_at ||
+      current.cancelled_at !== next.cancelled_at
+    ) {
+      // ponytail: only an active row may become terminal; a concurrent cancel
+      // must not be overwritten by a stale in-flight approval settle.
+      const runUpdated = await this.store.updateEnrollmentApprovalRun(next);
+      if (!runUpdated) {
+        // oxlint-disable-next-line eslint/no-await-in-loop -- reload the terminal winner before returning the run projection.
+        const latest = await this.store.findEnrollmentApprovalRun(
+          current.run_id
+        );
+        return latest ?? current;
+      }
+    }
+    const latest = await this.store.findEnrollmentApprovalRun(current.run_id);
+    return latest ?? { ...current, ...next };
+  }
+
+  private async reconcileApprovalRunRow(
+    ctx: AuthorizationContext,
+    row: EnrollmentApprovalRunRow,
+    correlationId: string | null
+  ): Promise<EnrollmentApprovalRunRow> {
+    const current = approvalRunView(row);
+    const authorityEntries = await Promise.all(
+      current.items
+        .filter(
+          (item) =>
+            item.status === "in_flight" || item.status === "outcome_unknown"
+        )
+        .map(
+          async (item) =>
+            [
+              item.request_id,
+              await this.store.findEnrollmentApprovalAuthority(
+                item.program_id,
+                item.request_id,
+                item.member_user_id,
+                item.idempotency_key
+              ),
+            ] as const
+        )
+    );
+    const authorityByRequestId = new Map<
+      string,
+      EnrollmentApprovalRunAuthority
+    >(
+      authorityEntries.filter(
+        (entry): entry is readonly [string, EnrollmentApprovalRunAuthority] =>
+          entry[1] !== null
+      )
+    );
+    const next = reconcileEnrollmentApprovalRun(current, authorityByRequestId);
+    const persisted = await this.persistApprovalRun(row, next);
+    if (
+      persisted.status !== row.status ||
+      persisted.items.some(
+        (item, index) => item.status !== row.items[index]?.status
+      )
+    ) {
+      await this.audit(
+        ctx,
+        "ENROLLMENT_APPROVAL_RUN_RECONCILE",
+        "enrollment_approval_run",
+        row.run_id,
+        "SUCCESS",
+        current,
+        next,
+        correlationId ?? row.correlation_id,
+        "authoritative_reconciliation"
+      );
+    }
+    return persisted;
+  }
+
+  async startEnrollmentApprovalRun(
+    ctx: AuthorizationContext,
+    programId: string,
+    requestIds: readonly string[],
+    correlationId: string | null
+  ): Promise<EnrollmentApprovalRun> {
+    await this.requireApprovalRunProgram(ctx, programId);
+    const ids = requestIds.map((requestId) => requestId.trim());
+    if (
+      ids.length === 0 ||
+      ids.some((requestId) => requestId.length === 0) ||
+      new Set(ids).size !== ids.length
+    ) {
+      throw new EnrollmentApprovalRunValidationError(
+        "Enrollment Approval Run requires distinct request IDs."
+      );
+    }
+    const requestRows = await this.store.listEnrollmentRequests(programId);
+    const requestsById = new Map(
+      requestRows.map((request) => [request.request_id, request])
+    );
+    const requests = ids.map((requestId) => requestsById.get(requestId));
+    if (
+      requests.some(
+        (request) =>
+          !request ||
+          request.program_id !== programId ||
+          request.status !== "Pending"
+      )
+    ) {
+      throw new EnrollmentApprovalRunValidationError(
+        "Enrollment Approval Run requires current Pending requests from one Program."
+      );
+    }
+    const runs = await this.store.listEnrollmentApprovalRuns(
+      ctx.actorUserId,
+      programId
+    );
+    const existing = runs.find((run) => run.status === "active");
+    if (existing) {
+      return approvalRunView(existing);
+    }
+    let run: EnrollmentApprovalRun;
+    try {
+      run = createEnrollmentApprovalRun({
+        program_id: programId,
+        requests: requests as EnrollmentRequestRow[],
+      });
+    } catch (error) {
+      throw new EnrollmentApprovalRunValidationError(
+        error instanceof Error
+          ? error.message
+          : "Enrollment Approval Run selection is invalid."
+      );
+    }
+    const row: EnrollmentApprovalRunRow = {
+      ...run,
+      actor_user_id: ctx.actorUserId,
+      correlation_id: correlationId,
+    };
+    try {
+      await this.store.createEnrollmentApprovalRun(row, run.items);
+    } catch (error) {
+      // ponytail: the partial unique index is the single active-run race
+      // guard; return its winner instead of creating or replaying a second run.
+      const candidates = await this.store.listEnrollmentApprovalRuns(
+        ctx.actorUserId,
+        programId
+      );
+      const winner = candidates.find(
+        (candidate) => candidate.status === "active"
+      );
+      if (winner) {
+        return approvalRunView(winner);
+      }
+      throw error;
+    }
+    await this.audit(
+      ctx,
+      "ENROLLMENT_APPROVAL_RUN_CREATE",
+      "enrollment_approval_run",
+      run.run_id,
+      "SUCCESS",
+      null,
+      {
+        program_id: programId,
+        items: run.items.map(({ request_id, request_version, sequence }) => ({
+          request_id,
+          request_version,
+          sequence,
+        })),
+      },
+      correlationId,
+      "selected_pending_requests"
+    );
+    return run;
+  }
+
+  async listEnrollmentApprovalRuns(
+    ctx: AuthorizationContext,
+    programId: string
+  ): Promise<EnrollmentApprovalRun[]> {
+    await this.requireApprovalRunProgram(ctx, programId);
+    const runs = await this.store.listEnrollmentApprovalRuns(
+      ctx.actorUserId,
+      programId
+    );
+    return runs.map((run) => approvalRunView(run));
+  }
+
+  async reconcileEnrollmentApprovalRun(
+    ctx: AuthorizationContext,
+    programId: string,
+    runId: string,
+    correlationId: string | null
+  ): Promise<EnrollmentApprovalRun | null> {
+    await this.requireApprovalRunProgram(ctx, programId);
+    const row = await this.findOwnedApprovalRun(ctx, programId, runId);
+    if (!row) {
+      return null;
+    }
+    const reconciled = await this.reconcileApprovalRunRow(
+      ctx,
+      row,
+      correlationId
+    );
+    return approvalRunView(reconciled);
+  }
+
+  async continueEnrollmentApprovalRun(
+    ctx: AuthorizationContext,
+    programId: string,
+    runId: string,
+    correlationId: string | null
+  ): Promise<EnrollmentApprovalRunActionResult | null> {
+    await this.requireApprovalRunProgram(ctx, programId);
+    const initial = await this.findOwnedApprovalRun(ctx, programId, runId);
+    if (!initial) {
+      return null;
+    }
+    const reconciled = await this.reconcileApprovalRunRow(
+      ctx,
+      initial,
+      correlationId
+    );
+    const current = approvalRunView(reconciled);
+    const begun = beginNextEnrollmentApprovalItem(current);
+    if (!begun) {
+      return { run: current, item: null };
+    }
+    const claimed = await this.store.claimNextEnrollmentApprovalRunItem(
+      runId,
+      ctx.actorUserId,
+      begun.item.started_at ?? new Date().toISOString()
+    );
+    if (!claimed) {
+      const latest = await this.store.findEnrollmentApprovalRun(runId);
+      return latest ? { run: approvalRunView(latest), item: null } : null;
+    }
+    const claimedRun: EnrollmentApprovalRun = {
+      ...current,
+      items: current.items.map((item) =>
+        item.request_id === claimed.request_id ? claimed : item
+      ),
+    };
+    const claimedRow: EnrollmentApprovalRunRow = {
+      ...reconciled,
+      ...claimedRun,
+    };
+    let next: EnrollmentApprovalRun;
+    let outcome: "SUCCESS" | "FAILED" = "SUCCESS";
+    try {
+      const result = await this.decideEnrollmentRequest(
+        ctx,
+        programId,
+        claimed.request_id,
+        {
+          action: "Approved",
+          note: null,
+          expectedRequestVersion: claimed.request_version,
+        },
+        claimed.idempotency_key
+      );
+      if (result.enrollment) {
+        next = settleEnrollmentApprovalItem(claimedRun, claimed.request_id, {
+          status: "completed",
+          enrollment_id: result.enrollment.enrollment_id,
+        });
+      } else {
+        const authority = await this.store.findEnrollmentApprovalAuthority(
+          claimed.program_id,
+          claimed.request_id,
+          claimed.member_user_id,
+          claimed.idempotency_key
+        );
+        next = authority
+          ? reconcileEnrollmentApprovalRun(
+              claimedRun,
+              new Map([[claimed.request_id, authority]])
+            )
+          : claimedRun;
+        const settledItem = next.items.find(
+          (item) => item.request_id === claimed.request_id
+        );
+        if (settledItem?.status === "in_flight") {
+          next = settleEnrollmentApprovalItem(claimedRun, claimed.request_id, {
+            status: "outcome_unknown",
+            failure: {
+              code: "OUTCOME_UNKNOWN",
+              detail: "核准結果未能確認，請先重新整理並由系統核對後再繼續。",
+              retryable: false,
+            },
+          });
+        }
+        if (
+          next.items.find((item) => item.request_id === claimed.request_id)
+            ?.status !== "completed"
+        ) {
+          outcome = "FAILED";
+        }
+      }
+    } catch (error) {
+      const failure = approvalRunFailure(error);
+      outcome = "FAILED";
+      next = settleEnrollmentApprovalItem(claimedRun, claimed.request_id, {
+        status:
+          failure.code === "OUTCOME_UNKNOWN" ? "outcome_unknown" : "failed",
+        failure,
+      });
+    }
+    const persisted = await this.persistApprovalRun(claimedRow, next);
+    await this.audit(
+      ctx,
+      "ENROLLMENT_APPROVAL_RUN_CONTINUE",
+      "enrollment_approval_run",
+      runId,
+      outcome,
+      current,
+      next,
+      correlationId ?? claimed.idempotency_key,
+      "explicit_continue"
+    );
+    const item = persisted.items.find(
+      (candidate) => candidate.request_id === claimed.request_id
+    );
+    return { run: approvalRunView(persisted), item: item ?? null };
+  }
+
+  async cancelEnrollmentApprovalRun(
+    ctx: AuthorizationContext,
+    programId: string,
+    runId: string,
+    correlationId: string | null
+  ): Promise<EnrollmentApprovalRun | null> {
+    await this.requireApprovalRunProgram(ctx, programId);
+    const row = await this.findOwnedApprovalRun(ctx, programId, runId);
+    if (!row) {
+      return null;
+    }
+    const current = approvalRunView(row);
+    const next = cancelEnrollmentApprovalRun(current);
+    if (next.status === current.status) {
+      return current;
+    }
+    const persisted = await this.persistApprovalRun(row, next);
+    await this.audit(
+      ctx,
+      "ENROLLMENT_APPROVAL_RUN_CANCEL",
+      "enrollment_approval_run",
+      runId,
+      "SUCCESS",
+      current,
+      next,
+      correlationId,
+      "operator_cancelled_future_scheduling"
+    );
+    return approvalRunView(persisted);
   }
 
   async decideEnrollmentRequest(

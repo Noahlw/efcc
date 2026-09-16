@@ -4,6 +4,23 @@
 
 import { MODULE_KEYS } from "./capabilities";
 import type { ModuleKey } from "./capabilities";
+import type {
+  EnrollmentApprovalRun,
+  EnrollmentApprovalRunAuthority,
+  EnrollmentApprovalRunItem,
+  EnrollmentApprovalRunItemRow,
+  EnrollmentApprovalRunItemStatus,
+  EnrollmentApprovalRunRow,
+} from "./enrollment-approval-run";
+import {
+  claimNextEnrollmentApprovalRunItem,
+  findEnrollmentApprovalAuthority,
+  findEnrollmentApprovalRun,
+  insertEnrollmentApprovalRun,
+  listEnrollmentApprovalRuns,
+  updateEnrollmentApprovalRun,
+  updateEnrollmentApprovalRunItem,
+} from "./enrollment-approval-run-store";
 import {
   ProgramTokenRotationConflictError,
   ScheduleRuleIdempotencyConflictError,
@@ -49,6 +66,7 @@ import type {
   ScheduleRuleUpdate,
   WorkspaceStore,
   ProgramIdentityAssignmentRow,
+  EnrollmentApprovalRunItemUpdate,
 } from "./workspace-store";
 
 function chunk<T>(items: readonly T[], size = 50): T[][] {
@@ -2874,6 +2892,79 @@ export class D1WorkspaceStore implements WorkspaceStore {
       .bind(id, cancelledAt)
       .run();
     return this.findEnrollmentById(id);
+  }
+
+  async createEnrollmentApprovalRun(
+    run: EnrollmentApprovalRunRow,
+    items: readonly EnrollmentApprovalRunItem[]
+  ): Promise<EnrollmentApprovalRunRow> {
+    await insertEnrollmentApprovalRun(this.db, run, items);
+    return run;
+  }
+
+  findEnrollmentApprovalRun(
+    runId: string
+  ): Promise<EnrollmentApprovalRunRow | null> {
+    return findEnrollmentApprovalRun(this.db, runId);
+  }
+
+  listEnrollmentApprovalRuns(
+    actorUserId: string,
+    programId: string
+  ): Promise<EnrollmentApprovalRunRow[]> {
+    return listEnrollmentApprovalRuns(this.db, actorUserId, programId);
+  }
+
+  claimNextEnrollmentApprovalRunItem(
+    runId: string,
+    actorUserId: string,
+    startedAt: string
+  ): Promise<EnrollmentApprovalRunItemRow | null> {
+    return claimNextEnrollmentApprovalRunItem(
+      this.db,
+      runId,
+      actorUserId,
+      startedAt
+    );
+  }
+
+  updateEnrollmentApprovalRunItem(
+    runId: string,
+    requestId: string,
+    update: EnrollmentApprovalRunItemUpdate,
+    expectedStatus?: EnrollmentApprovalRunItemStatus
+  ): Promise<boolean> {
+    return updateEnrollmentApprovalRunItem(
+      this.db,
+      runId,
+      requestId,
+      update,
+      expectedStatus
+    );
+  }
+
+  updateEnrollmentApprovalRun(
+    run: Pick<
+      EnrollmentApprovalRun,
+      "run_id" | "status" | "finished_at" | "cancelled_at"
+    >
+  ): Promise<boolean> {
+    return updateEnrollmentApprovalRun(this.db, run);
+  }
+
+  findEnrollmentApprovalAuthority(
+    programId: string,
+    requestId: string,
+    memberUserId: string,
+    idempotencyKey: string
+  ): Promise<EnrollmentApprovalRunAuthority | null> {
+    return findEnrollmentApprovalAuthority(
+      this.db,
+      programId,
+      requestId,
+      memberUserId,
+      idempotencyKey
+    );
   }
 
   listProgramIdentityAssignments(

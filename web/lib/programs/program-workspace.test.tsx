@@ -12,6 +12,10 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { RpcError } from "@/lib/api";
 import { COPY } from "@/lib/copy";
 import type {
+  EnrollmentApprovalRun,
+  EnrollmentApprovalRunItem,
+} from "@/lib/programs/enrollment-approval-run";
+import type {
   Department,
   DepartmentModule,
   Enrollment,
@@ -41,6 +45,11 @@ const mocks = vi.hoisted(() => ({
   listEvents: vi.fn(),
   listEnrollmentRequests: vi.fn(),
   listEnrollmentSnapshot: vi.fn(),
+  listEnrollmentApprovalRuns: vi.fn(),
+  startEnrollmentApprovalRun: vi.fn(),
+  reconcileEnrollmentApprovalRun: vi.fn(),
+  continueEnrollmentApprovalRun: vi.fn(),
+  cancelEnrollmentApprovalRun: vi.fn(),
   listEnrollments: vi.fn(),
   decideEnrollmentRequest: vi.fn(),
   assistedEnroll: vi.fn(),
@@ -78,6 +87,11 @@ vi.mock(import("@/lib/programs/program-api"), () => ({
   listEvents: mocks.listEvents,
   listEnrollmentRequests: mocks.listEnrollmentRequests,
   listEnrollmentSnapshot: mocks.listEnrollmentSnapshot,
+  listEnrollmentApprovalRuns: mocks.listEnrollmentApprovalRuns,
+  startEnrollmentApprovalRun: mocks.startEnrollmentApprovalRun,
+  reconcileEnrollmentApprovalRun: mocks.reconcileEnrollmentApprovalRun,
+  continueEnrollmentApprovalRun: mocks.continueEnrollmentApprovalRun,
+  cancelEnrollmentApprovalRun: mocks.cancelEnrollmentApprovalRun,
   listEnrollments: mocks.listEnrollments,
   decideEnrollmentRequest: mocks.decideEnrollmentRequest,
   assistedEnroll: mocks.assistedEnroll,
@@ -279,6 +293,7 @@ function mockWorkspace() {
   mocks.updateProgram.mockResolvedValue({ program });
   mocks.listEvents.mockResolvedValue({ events: [event] });
   mocks.listEnrollmentRequests.mockResolvedValue({ requests: [request] });
+  mocks.listEnrollmentApprovalRuns.mockResolvedValue({ runs: [] });
   mocks.listEnrollments.mockResolvedValue({ enrollments: [enrollment] });
   mocks.listEnrollmentSnapshot.mockResolvedValue({
     requests: [request],
@@ -293,6 +308,11 @@ beforeEach(() => {
   mocks.listEnrollmentRequests.mockReset();
   mocks.listEnrollments.mockReset();
   mocks.listEnrollmentSnapshot.mockReset();
+  mocks.listEnrollmentApprovalRuns.mockReset();
+  mocks.startEnrollmentApprovalRun.mockReset();
+  mocks.reconcileEnrollmentApprovalRun.mockReset();
+  mocks.continueEnrollmentApprovalRun.mockReset();
+  mocks.cancelEnrollmentApprovalRun.mockReset();
   mocks.assistedEnroll.mockReset();
   mocks.cancelEnrollment.mockReset();
   mocks.searchMemberOptions.mockReset();
@@ -1664,23 +1684,62 @@ describe("ENR-01 participants workspace", () => {
         requests: [{ ...request, status: "Approved" }, secondRequest],
         enrollments: [approvedEnrollment],
       });
-    const decisions: unknown[][] = [];
-    mocks.decideEnrollmentRequest.mockImplementation(
-      async (...args: unknown[]) => {
-        decisions.push(args);
-        if (args[1] === secondRequest.request_id) {
-          throw new RpcError({
-            code: "STALE",
-            status: 409,
-            detail: "request changed",
-          });
-        }
-        return {
-          request: { ...request, status: "Approved" },
-          enrollment: approvedEnrollment,
-        };
-      }
-    );
+    const runId = "approval-run-1";
+    const itemFor = (
+      selected: EnrollmentRequest,
+      sequence: number,
+      status: EnrollmentApprovalRunItem["status"] = "not_started",
+      retryable = true,
+      errorCode: string | null = null
+    ): EnrollmentApprovalRunItem => ({
+      item_id: `${runId}:${selected.request_id}`,
+      run_id: runId,
+      sequence,
+      request_id: selected.request_id,
+      program_id: selected.program_id,
+      member_user_id: selected.member_user_id,
+      member_name: selected.member_name,
+      member_username: selected.member_username,
+      request_version: selected.request_version,
+      idempotency_key: `approval-key-${sequence}`,
+      status,
+      retryable,
+      enrollment_id:
+        status === "completed" ? approvedEnrollment.enrollment_id : null,
+      error_code: errorCode,
+      detail: errorCode === "STALE_REQUEST_VERSION" ? "request changed" : null,
+      started_at: status === "not_started" ? null : "2026-08-04T00:00:00.000Z",
+      settled_at: status === "not_started" ? null : "2026-08-04T00:01:00.000Z",
+    });
+    const initialRun: EnrollmentApprovalRun = {
+      run_id: runId,
+      program_id: request.program_id,
+      status: "active",
+      created_at: "2026-08-04T00:00:00.000Z",
+      finished_at: null,
+      cancelled_at: null,
+      items: [itemFor(request, 0), itemFor(secondRequest, 1)],
+    };
+    const firstRun: EnrollmentApprovalRun = {
+      ...initialRun,
+      items: [
+        itemFor(request, 0, "completed", false),
+        itemFor(secondRequest, 1),
+      ],
+    };
+    const finalRun: EnrollmentApprovalRun = {
+      ...firstRun,
+      status: "completed",
+      finished_at: "2026-08-04T00:02:00.000Z",
+      items: [
+        firstRun.items[0] as EnrollmentApprovalRunItem,
+        itemFor(secondRequest, 1, "failed", false, "STALE_REQUEST_VERSION"),
+      ],
+    };
+    mocks.startEnrollmentApprovalRun.mockResolvedValue({ run: initialRun });
+    mocks.continueEnrollmentApprovalRun
+      .mockResolvedValueOnce({ run: firstRun, item: firstRun.items[0] })
+      .mockResolvedValueOnce({ run: finalRun, item: finalRun.items[1] });
 
     render(
       <ProgramWorkspace
@@ -1709,17 +1768,124 @@ describe("ENR-01 participants workspace", () => {
     expect(review).toHaveTextContent("王小明");
     await userEvent.click(screen.getByRole("button", { name: "確認核准" }));
 
-    await waitFor(() => expect(decisions).toHaveLength(2));
-    expect(decisions[0]?.[1]).toBe(request.request_id);
-    expect(decisions[1]?.[1]).toBe(secondRequest.request_id);
-    expect(decisions[0]?.[5]).toStrictEqual(expect.any(String));
-    expect(decisions[1]?.[5]).toStrictEqual(expect.any(String));
-    expect(decisions[0]?.[5]).not.toBe(decisions[1]?.[5]);
+    await waitFor(() =>
+      expect(mocks.continueEnrollmentApprovalRun).toHaveBeenCalledTimes(2)
+    );
+    expect(mocks.startEnrollmentApprovalRun).toHaveBeenCalledWith(
+      "program-1",
+      [request.request_id, secondRequest.request_id],
+      expect.any(String)
+    );
+    expect(mocks.continueEnrollmentApprovalRun).toHaveBeenNthCalledWith(
+      1,
+      "program-1",
+      runId,
+      expect.any(String)
+    );
+    expect(mocks.continueEnrollmentApprovalRun).toHaveBeenNthCalledWith(
+      2,
+      "program-1",
+      runId,
+      expect.any(String)
+    );
+    expect(mocks.continueEnrollmentApprovalRun.mock.calls[0]?.[2]).not.toBe(
+      mocks.continueEnrollmentApprovalRun.mock.calls[1]?.[2]
+    );
     expect(screen.getByText("已核准")).toBeInTheDocument();
-    expect(
-      screen.getByText(COPY.programs.workspaceParticipantsStale)
-    ).toBeInTheDocument();
-    expect(screen.queryByText("全部完成")).not.toBeInTheDocument();
+    expect(screen.getByText("資料已更新")).toBeInTheDocument();
+    expect(screen.getAllByText("全部完成").length).toBeGreaterThanOrEqual(1);
+  });
+
+  test("stops scheduling later approvals after the task unmounts", async () => {
+    mockWorkspace();
+    mocks.listEnrollmentSnapshot.mockResolvedValue({
+      requests: [request],
+      enrollments: [],
+    });
+    const runId = "approval-run-unmount";
+    const initialItem: EnrollmentApprovalRunItem = {
+      item_id: `${runId}:${request.request_id}`,
+      run_id: runId,
+      sequence: 0,
+      request_id: request.request_id,
+      program_id: request.program_id,
+      member_user_id: request.member_user_id,
+      member_name: request.member_name,
+      member_username: request.member_username,
+      request_version: request.request_version,
+      idempotency_key: "approval-key-unmount",
+      status: "not_started",
+      retryable: true,
+      enrollment_id: null,
+      error_code: null,
+      detail: null,
+      started_at: null,
+      settled_at: null,
+    };
+    const initialRun: EnrollmentApprovalRun = {
+      run_id: runId,
+      program_id: request.program_id,
+      status: "active",
+      created_at: "2026-08-04T00:00:00.000Z",
+      finished_at: null,
+      cancelled_at: null,
+      items: [initialItem],
+    };
+    const settledRun: EnrollmentApprovalRun = {
+      ...initialRun,
+      status: "completed",
+      finished_at: "2026-08-04T00:01:00.000Z",
+      items: [
+        {
+          ...initialItem,
+          status: "completed",
+          retryable: false,
+          enrollment_id: "enrollment-unmount",
+          started_at: "2026-08-04T00:00:01.000Z",
+          settled_at: "2026-08-04T00:01:00.000Z",
+        },
+      ],
+    };
+    let resolveContinue:
+      | ((result: {
+          run: EnrollmentApprovalRun;
+          item: EnrollmentApprovalRunItem;
+        }) => void)
+      | undefined;
+    mocks.startEnrollmentApprovalRun.mockResolvedValue({ run: initialRun });
+    mocks.continueEnrollmentApprovalRun.mockImplementation(
+      () =>
+        // oxlint-disable-next-line promise/avoid-new -- hold the first approval until the task is unmounted.
+        new Promise((resolve) => {
+          resolveContinue = resolve;
+        })
+    );
+    const view = render(
+      <ProgramWorkspace
+        programId="program-1"
+        task="participants"
+        onBack={() => {}}
+        onTaskChange={() => {}}
+      />
+    );
+
+    await userEvent.click(
+      await screen.findByRole("checkbox", { name: /選取.*陳同工/u })
+    );
+    await userEvent.click(screen.getByRole("button", { name: "檢視所選" }));
+    await userEvent.click(screen.getByRole("button", { name: "確認核准" }));
+    await waitFor(() =>
+      expect(mocks.continueEnrollmentApprovalRun).toHaveBeenCalledOnce()
+    );
+
+    view.unmount();
+    resolveContinue?.({
+      run: settledRun,
+      item: settledRun.items[0] ?? initialItem,
+    });
+    await waitFor(() =>
+      expect(mocks.continueEnrollmentApprovalRun).toHaveBeenCalledOnce()
+    );
   });
 
   test("cancels an active enrollment and renders refreshed cancellation history", async () => {
@@ -2035,13 +2201,18 @@ describe("ENR-01 participants workspace", () => {
     );
 
     await expect(
-      screen.findByText(COPY.programs.tabsEmpty.pending)
-    ).resolves.toBeInTheDocument();
-    await userEvent.click(
-      screen.getByRole("tab", { name: `${COPY.programs.tabsActive} (0)` })
-    );
+      screen.findByRole("tab", {
+        name: `${COPY.programs.tabsActive} (0)`,
+      })
+    ).resolves.toHaveAttribute("aria-selected", "true");
     expect(
       screen.getByText(COPY.programs.tabsEmpty.active)
+    ).toBeInTheDocument();
+    await userEvent.click(
+      screen.getByRole("tab", { name: `${COPY.programs.tabsPending} (0)` })
+    );
+    expect(
+      screen.getByText(COPY.programs.tabsEmpty.pending)
     ).toBeInTheDocument();
     await userEvent.click(
       screen.getByRole("tab", { name: `${COPY.programs.tabsHistory} (0)` })

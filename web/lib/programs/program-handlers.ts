@@ -36,6 +36,7 @@ import {
   EnrollmentAccountInactiveError,
   EnrollmentCancellationReasonRequiredError,
   EnrollmentDecisionConflictError,
+  EnrollmentApprovalRunValidationError,
   EmptyPreviewPlanError,
   EnrollmentNotAllowedError,
   EventCancellationBlockedError,
@@ -194,6 +195,16 @@ function validation(requestId: string, detail: string): Response {
 
 function notFound(requestId: string, detail: string): Response {
   return problem(404, "NOT_FOUND", "Not found", detail, requestId);
+}
+
+function mapEnrollmentApprovalRunError(
+  error: unknown,
+  requestId: string
+): Response | null {
+  if (error instanceof EnrollmentApprovalRunValidationError) {
+    return validation(requestId, error.message);
+  }
+  return null;
 }
 
 /**
@@ -2753,6 +2764,188 @@ export async function handleListEnrollmentSnapshot(
     return notFound(requestId, "Unknown program.");
   }
   return jsonResponse(200, snapshot, requestId);
+}
+
+/** POST /api/v1/programs/:programId/enrollment-approval-runs */
+export async function handleStartEnrollmentApprovalRun(
+  request: Request,
+  env: ProgramEnv,
+  programId: string
+): Promise<Response> {
+  const requestId = crypto.randomUUID();
+  const correlationId = request.headers.get("Idempotency-Key") ?? requestId;
+  const auth = await requireActor(request, env, requestId);
+  if (auth instanceof Response) {
+    return auth;
+  }
+  const body = await parseJson<{ request_ids?: unknown }>(request);
+  if (
+    body === null ||
+    !Array.isArray(body.request_ids) ||
+    !body.request_ids.every((id): id is string => typeof id === "string")
+  ) {
+    return validation(requestId, "request_ids must be an array of strings.");
+  }
+  const { workspace } = await getModule(env);
+  if (!(await workspace.programExists(programId))) {
+    return notFound(requestId, "Unknown program.");
+  }
+  try {
+    const run = await workspace.startEnrollmentApprovalRun(
+      authorizationContextFor(auth.account),
+      programId,
+      body.request_ids,
+      correlationId
+    );
+    return jsonResponse(201, { run }, requestId);
+  } catch (error) {
+    const mapped =
+      mapEnrollmentApprovalRunError(error, requestId) ??
+      mapWorkspaceError(error, requestId);
+    if (mapped) {
+      return mapped;
+    }
+    throw error;
+  }
+}
+
+/** GET /api/v1/programs/:programId/enrollment-approval-runs */
+export async function handleListEnrollmentApprovalRuns(
+  request: Request,
+  env: ProgramEnv,
+  programId: string
+): Promise<Response> {
+  const requestId = crypto.randomUUID();
+  const auth = await requireActor(request, env, requestId);
+  if (auth instanceof Response) {
+    return auth;
+  }
+  const { workspace } = await getModule(env);
+  if (!(await workspace.programExists(programId))) {
+    return notFound(requestId, "Unknown program.");
+  }
+  try {
+    const runs = await workspace.listEnrollmentApprovalRuns(
+      authorizationContextFor(auth.account),
+      programId
+    );
+    return jsonResponse(200, { runs }, requestId);
+  } catch (error) {
+    const mapped = mapWorkspaceError(error, requestId);
+    if (mapped) {
+      return mapped;
+    }
+    throw error;
+  }
+}
+
+async function handleEnrollmentApprovalRunAction(
+  request: Request,
+  env: ProgramEnv,
+  programId: string,
+  runId: string,
+  action: "reconcile" | "continue" | "cancel"
+): Promise<Response> {
+  const requestId = crypto.randomUUID();
+  const correlationId = request.headers.get("Idempotency-Key") ?? requestId;
+  const auth = await requireActor(request, env, requestId);
+  if (auth instanceof Response) {
+    return auth;
+  }
+  const { workspace } = await getModule(env);
+  if (!(await workspace.programExists(programId))) {
+    return notFound(requestId, "Unknown program.");
+  }
+  try {
+    const ctx = authorizationContextFor(auth.account);
+    if (action === "reconcile") {
+      const run = await workspace.reconcileEnrollmentApprovalRun(
+        ctx,
+        programId,
+        runId,
+        correlationId
+      );
+      return run
+        ? jsonResponse(200, { run }, requestId)
+        : notFound(requestId, "Unknown Enrollment Approval Run.");
+    }
+    if (action === "continue") {
+      const result = await workspace.continueEnrollmentApprovalRun(
+        ctx,
+        programId,
+        runId,
+        correlationId
+      );
+      return result
+        ? jsonResponse(200, result, requestId)
+        : notFound(requestId, "Unknown Enrollment Approval Run.");
+    }
+    const run = await workspace.cancelEnrollmentApprovalRun(
+      ctx,
+      programId,
+      runId,
+      correlationId
+    );
+    return run
+      ? jsonResponse(200, { run }, requestId)
+      : notFound(requestId, "Unknown Enrollment Approval Run.");
+  } catch (error) {
+    const mapped =
+      mapEnrollmentApprovalRunError(error, requestId) ??
+      mapWorkspaceError(error, requestId);
+    if (mapped) {
+      return mapped;
+    }
+    throw error;
+  }
+}
+
+/** POST /api/v1/programs/:programId/enrollment-approval-runs/:runId/reconcile */
+export function handleReconcileEnrollmentApprovalRun(
+  request: Request,
+  env: ProgramEnv,
+  programId: string,
+  runId: string
+): Promise<Response> {
+  return handleEnrollmentApprovalRunAction(
+    request,
+    env,
+    programId,
+    runId,
+    "reconcile"
+  );
+}
+
+/** POST /api/v1/programs/:programId/enrollment-approval-runs/:runId/continue */
+export function handleContinueEnrollmentApprovalRun(
+  request: Request,
+  env: ProgramEnv,
+  programId: string,
+  runId: string
+): Promise<Response> {
+  return handleEnrollmentApprovalRunAction(
+    request,
+    env,
+    programId,
+    runId,
+    "continue"
+  );
+}
+
+/** POST /api/v1/programs/:programId/enrollment-approval-runs/:runId/cancel */
+export function handleCancelEnrollmentApprovalRun(
+  request: Request,
+  env: ProgramEnv,
+  programId: string,
+  runId: string
+): Promise<Response> {
+  return handleEnrollmentApprovalRunAction(
+    request,
+    env,
+    programId,
+    runId,
+    "cancel"
+  );
 }
 
 /** POST /api/v1/programs/:programId/enrollment-requests/:requestId/decision */

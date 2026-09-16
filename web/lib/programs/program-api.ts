@@ -17,6 +17,10 @@ import type {
   AttendanceRosterResponse as AttendanceRosterResponseType,
 } from "@/lib/attendance";
 
+import type {
+  EnrollmentApprovalRun,
+  EnrollmentApprovalRunItem,
+} from "./enrollment-approval-run";
 import type { ManagementHubView } from "./hub-types";
 import type { ProgramsManagementAccess } from "./programs-access";
 
@@ -748,6 +752,77 @@ export function listEnrollmentSnapshot(
   return programsFetch(
     `/api/v1/programs/${programId}/enrollment-snapshot`,
     "GET"
+  );
+}
+
+/** POST /api/v1/programs/:programId/enrollment-approval-runs */
+export function startEnrollmentApprovalRun(
+  programId: string,
+  requestIds: readonly string[],
+  idempotencyKey?: string
+): Promise<{ run: EnrollmentApprovalRun }> {
+  return programsFetch(
+    `/api/v1/programs/${programId}/enrollment-approval-runs`,
+    "POST",
+    { request_ids: requestIds },
+    { idempotencyKey }
+  );
+}
+
+/** GET /api/v1/programs/:programId/enrollment-approval-runs */
+export function listEnrollmentApprovalRuns(
+  programId: string
+): Promise<{ runs: EnrollmentApprovalRun[] }> {
+  return programsFetch(
+    `/api/v1/programs/${programId}/enrollment-approval-runs`,
+    "GET",
+    undefined,
+    { cache: "no-store" }
+  );
+}
+
+/** POST /api/v1/programs/:programId/enrollment-approval-runs/:runId/reconcile */
+export function reconcileEnrollmentApprovalRun(
+  programId: string,
+  runId: string,
+  idempotencyKey?: string
+): Promise<{ run: EnrollmentApprovalRun }> {
+  return programsFetch(
+    `/api/v1/programs/${programId}/enrollment-approval-runs/${runId}/reconcile`,
+    "POST",
+    {},
+    { idempotencyKey }
+  );
+}
+
+/** POST /api/v1/programs/:programId/enrollment-approval-runs/:runId/continue */
+export function continueEnrollmentApprovalRun(
+  programId: string,
+  runId: string,
+  idempotencyKey?: string
+): Promise<{
+  run: EnrollmentApprovalRun;
+  item: EnrollmentApprovalRunItem | null;
+}> {
+  return programsFetch(
+    `/api/v1/programs/${programId}/enrollment-approval-runs/${runId}/continue`,
+    "POST",
+    {},
+    { idempotencyKey }
+  );
+}
+
+/** POST /api/v1/programs/:programId/enrollment-approval-runs/:runId/cancel */
+export function cancelEnrollmentApprovalRun(
+  programId: string,
+  runId: string,
+  idempotencyKey?: string
+): Promise<{ run: EnrollmentApprovalRun }> {
+  return programsFetch(
+    `/api/v1/programs/${programId}/enrollment-approval-runs/${runId}/cancel`,
+    "POST",
+    {},
+    { idempotencyKey }
   );
 }
 

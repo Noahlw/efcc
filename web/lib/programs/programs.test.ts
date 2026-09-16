@@ -13,7 +13,7 @@
 import assert from "node:assert/strict";
 
 import { env } from "cloudflare:workers";
-import { beforeAll, describe, test } from "vitest";
+import { afterAll, beforeAll, describe, test } from "vitest";
 /* oxlint-disable vitest/require-top-level-describe -- shared workerd/D1 fixture spans the suites. */
 
 import worker from "../../worker";
@@ -410,6 +410,519 @@ beforeAll(async () => {
   await assignSystemIdentity("staff", "U005");
 });
 
+describe("R44: durable Enrollment Approval Runs", () => {
+  let adminAccess = "";
+  let memberAccess = "";
+  let departmentId = "";
+  const fixtureProgramIds = new Set<string>();
+
+  beforeAll(async () => {
+    await importLegacyUsers(testDb(), [
+      HEADER,
+      [
+        "R44-U003",
+        "R44 Member 003",
+        "r44-member-003",
+        "9033",
+        "Member",
+        "Active",
+      ],
+    ]);
+    adminAccess = await accessCookieFor("alice", "alice-secret");
+    memberAccess = await accessCookieFor("bob", "bob-secret");
+    const department = await createDepartment(adminAccess, {
+      code: `R44-${crypto.randomUUID().slice(0, 8)}`,
+      name: "Enrollment Approval Run Test Department",
+    });
+    departmentId = department.department_id;
+  });
+
+  async function newProgram(name: string): Promise<string> {
+    const program = await createProgram(adminAccess, departmentId, {
+      name: `${name}-${crypto.randomUUID().slice(0, 8)}`,
+      behavior_type: "Recurring",
+      lifecycle: "Active",
+      discoverability: "Listed",
+      enrollment_mode: "MemberRequest",
+    });
+    fixtureProgramIds.add(program.program_id);
+    return program.program_id;
+  }
+
+  afterAll(async () => {
+    const programIds = [...fixtureProgramIds];
+    if (programIds.length === 0) {
+      return;
+    }
+    await testDb()
+      .prepare(
+        `UPDATE enrollment_requests
+            SET status = 'Rejected', decided_by = 'U001',
+                decided_at = ?, decision_note = 'R44 fixture cleanup',
+                request_version = request_version + 1
+          WHERE status = 'Pending' AND program_id IN (${programIds
+            .map(() => "?")
+            .join(",")})`
+      )
+      .bind(new Date().toISOString(), ...programIds)
+      .run();
+  });
+
+  async function pendingRequests(
+    programId: string,
+    memberIds: readonly string[]
+  ): Promise<string[]> {
+    const requestIds = memberIds.map(() => crypto.randomUUID());
+    const submittedAt = new Date().toISOString();
+    await testDb().batch(
+      requestIds.map((requestId, index) =>
+        testDb()
+          .prepare(
+            `INSERT INTO enrollment_requests
+              (request_id, program_id, member_user_id, status, submitted_at,
+               request_version)
+             VALUES (?, ?, ?, 'Pending', ?, 1)`
+          )
+          .bind(requestId, programId, memberIds[index], submittedAt)
+      )
+    );
+    return requestIds;
+  }
+
+  function runRequest(
+    access: string,
+    path: string,
+    method: "GET" | "POST" = "GET",
+    body?: unknown,
+    idempotencyKey?: string
+  ): Promise<Response> {
+    return worker.fetch(
+      programsRequest(path, {
+        method,
+        headers: {
+          Origin: HOST,
+          Cookie: `${ACCESS_COOKIE_NAME}=${access}`,
+          ...(body === undefined ? {} : { "Content-Type": "application/json" }),
+          ...(idempotencyKey === undefined
+            ? {}
+            : { "Idempotency-Key": idempotencyKey }),
+        },
+        ...(body === undefined ? {} : { body }),
+      }),
+      testEnv()
+    );
+  }
+
+  test("persists the exact selection, stable item identities, and independent Continue", async () => {
+    const programId = await newProgram("R44 durable selection");
+    const requestIds = await pendingRequests(programId, ["U002", "R44-U003"]);
+    const start = await runRequest(
+      adminAccess,
+      `/api/v1/programs/${programId}/enrollment-approval-runs`,
+      "POST",
+      { request_ids: requestIds },
+      "r44-start-selection"
+    );
+    assert.strictEqual(start.status, 201);
+    const started = (await assertCorrelated(start)) as {
+      data: {
+        run: {
+          run_id: string;
+          status: string;
+          items: {
+            item_id: string;
+            request_id: string;
+            request_version: number;
+            idempotency_key: string;
+            status: string;
+          }[];
+        };
+      };
+    };
+    const run = started.data.run;
+    assert.strictEqual(run.status, "active");
+    assert.deepStrictEqual(
+      run.items.map(({ request_id }) => request_id),
+      requestIds
+    );
+    assert.deepStrictEqual(
+      run.items.map(({ request_version }) => request_version),
+      [1, 1]
+    );
+    assert.ok(run.items.every(({ status }) => status === "not_started"));
+    assert.strictEqual(
+      new Set(run.items.map(({ idempotency_key }) => idempotency_key)).size,
+      2
+    );
+
+    const stored = await testDb()
+      .prepare(
+        `SELECT item_id, request_id, request_version, idempotency_key, status
+           FROM enrollment_approval_run_items
+          WHERE run_id = ? ORDER BY sequence`
+      )
+      .bind(run.run_id)
+      .all<{
+        item_id: string;
+        request_id: string;
+        request_version: number;
+        idempotency_key: string;
+        status: string;
+      }>();
+    assert.deepStrictEqual(
+      stored.results,
+      run.items.map(
+        ({
+          item_id,
+          request_id,
+          request_version,
+          idempotency_key,
+          status,
+        }) => ({
+          item_id,
+          request_id,
+          request_version,
+          idempotency_key,
+          status,
+        })
+      )
+    );
+
+    const repeatedStart = await runRequest(
+      adminAccess,
+      `/api/v1/programs/${programId}/enrollment-approval-runs`,
+      "POST",
+      { request_ids: requestIds },
+      "r44-start-selection-repeat"
+    );
+    assert.strictEqual(repeatedStart.status, 201);
+    const repeatedBody = (await assertCorrelated(repeatedStart)) as {
+      data: { run: { run_id: string } };
+    };
+    assert.strictEqual(repeatedBody.data.run.run_id, run.run_id);
+
+    const firstContinue = await runRequest(
+      adminAccess,
+      `/api/v1/programs/${programId}/enrollment-approval-runs/${run.run_id}/continue`,
+      "POST"
+    );
+    assert.strictEqual(firstContinue.status, 200);
+    const firstBody = (await assertCorrelated(firstContinue)) as {
+      data: {
+        item: { request_id: string; status: string } | null;
+        run: { items: { request_id: string; status: string }[] };
+      };
+    };
+    assert.strictEqual(firstBody.data.item?.status, "completed");
+    assert.strictEqual(firstBody.data.run.items[0]?.status, "completed");
+    assert.strictEqual(firstBody.data.run.items[1]?.status, "not_started");
+
+    const secondContinue = await runRequest(
+      adminAccess,
+      `/api/v1/programs/${programId}/enrollment-approval-runs/${run.run_id}/continue`,
+      "POST"
+    );
+    assert.strictEqual(secondContinue.status, 200);
+    const secondBody = (await assertCorrelated(secondContinue)) as {
+      data: {
+        item: { request_id: string; status: string } | null;
+        run: { status: string; items: { status: string }[] };
+      };
+    };
+    assert.strictEqual(secondBody.data.item?.status, "completed");
+    assert.strictEqual(secondBody.data.run.status, "completed");
+    assert.ok(
+      secondBody.data.run.items.every(({ status }) => status === "completed")
+    );
+
+    const repeatedContinue = await runRequest(
+      adminAccess,
+      `/api/v1/programs/${programId}/enrollment-approval-runs/${run.run_id}/continue`,
+      "POST"
+    );
+    assert.strictEqual(repeatedContinue.status, 200);
+    const repeatedContinueBody = (await assertCorrelated(repeatedContinue)) as {
+      data: { item: null; run: { status: string } };
+    };
+    assert.strictEqual(repeatedContinueBody.data.item, null);
+    assert.strictEqual(repeatedContinueBody.data.run.status, "completed");
+    const enrollments = await testDb()
+      .prepare(
+        "SELECT COUNT(*) AS count FROM enrollments WHERE program_id = ? AND status = 'Active'"
+      )
+      .bind(programId)
+      .first<{ count: number }>();
+    assert.strictEqual(enrollments?.count, 2);
+
+    const listed = await runRequest(
+      adminAccess,
+      `/api/v1/programs/${programId}/enrollment-approval-runs`
+    );
+    assert.strictEqual(listed.status, 200);
+    const listedBody = (await assertCorrelated(listed)) as {
+      data: { runs: { run_id: string; status: string }[] };
+    };
+    assert.ok(
+      listedBody.data.runs.some(
+        ({ run_id, status }) => run_id === run.run_id && status === "completed"
+      )
+    );
+  });
+
+  test("reconciles an outcome-unknown committed approval without replaying Enrollment", async () => {
+    const programId = await newProgram("R44 acknowledgement loss");
+    const [requestId] = await pendingRequests(programId, ["U002"]);
+    const start = await runRequest(
+      adminAccess,
+      `/api/v1/programs/${programId}/enrollment-approval-runs`,
+      "POST",
+      { request_ids: [requestId] }
+    );
+    const run = (
+      (await assertCorrelated(start)) as {
+        data: {
+          run: {
+            run_id: string;
+            items: { request_id: string; idempotency_key: string }[];
+          };
+        };
+      }
+    ).data.run;
+    const item = run.items[0];
+    assert.ok(item);
+    const enrollmentId = crypto.randomUUID();
+    const decidedAt = new Date().toISOString();
+    await testDb().batch([
+      testDb()
+        .prepare(
+          `UPDATE enrollment_approval_run_items
+              SET status = 'outcome_unknown', started_at = ?
+            WHERE run_id = ? AND request_id = ?`
+        )
+        .bind(decidedAt, run.run_id, requestId),
+      testDb()
+        .prepare(
+          `INSERT INTO enrollments
+            (enrollment_id, program_id, member_user_id, request_id, status,
+             enrolled_at, created_by, created_at)
+           VALUES (?, ?, 'U002', ?, 'Active', ?, 'U001', ?)`
+        )
+        .bind(enrollmentId, programId, requestId, decidedAt, decidedAt),
+      testDb()
+        .prepare(
+          `UPDATE enrollment_requests
+              SET status = 'Approved', decided_by = 'U001', decided_at = ?,
+                  request_version = 2
+            WHERE request_id = ?`
+        )
+        .bind(decidedAt, requestId),
+      testDb()
+        .prepare(
+          `INSERT INTO audit_events
+            (audit_id, inserted_at, actor_user_id, action, entity_type,
+             entity_id, new_value_json, outcome, correlation_id)
+           VALUES (?, ?, 'U001', 'ENROLLMENT_CREATE', 'enrollment', ?, ?,
+                   'SUCCESS', ?)`
+        )
+        .bind(
+          crypto.randomUUID(),
+          decidedAt,
+          enrollmentId,
+          JSON.stringify({
+            enrollment_id: enrollmentId,
+            request_id: requestId,
+          }),
+          item.idempotency_key
+        ),
+    ]);
+
+    const reconcile = await runRequest(
+      adminAccess,
+      `/api/v1/programs/${programId}/enrollment-approval-runs/${run.run_id}/reconcile`,
+      "POST"
+    );
+    assert.strictEqual(reconcile.status, 200);
+    const reconciled = (await assertCorrelated(reconcile)) as {
+      data: {
+        run: {
+          status: string;
+          items: {
+            status: string;
+            enrollment_id: string | null;
+            retryable: boolean;
+          }[];
+        };
+      };
+    };
+    assert.strictEqual(reconciled.data.run.status, "completed");
+    assert.strictEqual(reconciled.data.run.items[0]?.status, "completed");
+    assert.strictEqual(
+      reconciled.data.run.items[0]?.enrollment_id,
+      enrollmentId
+    );
+    assert.strictEqual(reconciled.data.run.items[0]?.retryable, false);
+
+    const continueAfterReconcile = await runRequest(
+      adminAccess,
+      `/api/v1/programs/${programId}/enrollment-approval-runs/${run.run_id}/continue`,
+      "POST"
+    );
+    assert.strictEqual(continueAfterReconcile.status, 200);
+    const continued = (await assertCorrelated(continueAfterReconcile)) as {
+      data: { item: null };
+    };
+    assert.strictEqual(continued.data.item, null);
+    const count = await testDb()
+      .prepare("SELECT COUNT(*) AS count FROM enrollments WHERE request_id = ?")
+      .bind(requestId)
+      .first<{ count: number }>();
+    assert.strictEqual(count?.count, 1);
+  });
+
+  test("keeps approximately 30 outcomes independent and prevents duplicates on repeated Continue", async () => {
+    const members = Array.from({ length: 30 }, (_, index) => {
+      const number = String(index + 1).padStart(2, "0");
+      return [
+        `R44-M${number}`,
+        `R44 Mixed Member ${number}`,
+        `r44-mixed-${number}`,
+        String(1000 + index),
+        "Member",
+        "Active",
+      ];
+    });
+    await importLegacyUsers(testDb(), [HEADER, ...members]);
+    const programId = await newProgram("R44 mixed thirty");
+    const memberIds = members.map(([userId]) => userId);
+    const requestIds = await pendingRequests(programId, memberIds);
+    const start = await runRequest(
+      adminAccess,
+      `/api/v1/programs/${programId}/enrollment-approval-runs`,
+      "POST",
+      { request_ids: requestIds }
+    );
+    assert.strictEqual(start.status, 201);
+    const run = (
+      (await assertCorrelated(start)) as {
+        data: { run: { run_id: string } };
+      }
+    ).data.run;
+    await testDb()
+      .prepare(
+        "UPDATE enrollment_requests SET request_version = 2 WHERE request_id = ?"
+      )
+      .bind(requestIds[0])
+      .run();
+
+    let last: {
+      status: string;
+      items: { status: string; error_code: string | null }[];
+    } | null = null;
+    for (let index = 0; index < requestIds.length; index += 1) {
+      const response = await runRequest(
+        adminAccess,
+        `/api/v1/programs/${programId}/enrollment-approval-runs/${run.run_id}/continue`,
+        "POST"
+      );
+      assert.strictEqual(response.status, 200);
+      last = (
+        (await assertCorrelated(response)) as {
+          data: {
+            run: {
+              status: string;
+              items: { status: string; error_code: string | null }[];
+            };
+          };
+        }
+      ).data.run;
+    }
+    assert.ok(last);
+    assert.strictEqual(last.status, "completed");
+    assert.strictEqual(last.items[0]?.status, "failed");
+    assert.strictEqual(last.items[0]?.error_code, "STALE_REQUEST_VERSION");
+    assert.strictEqual(
+      last.items.filter(({ status }) => status === "completed").length,
+      29
+    );
+    const enrollmentCount = await testDb()
+      .prepare(
+        "SELECT COUNT(*) AS count FROM enrollments WHERE program_id = ? AND status = 'Active'"
+      )
+      .bind(programId)
+      .first<{ count: number }>();
+    assert.strictEqual(enrollmentCount?.count, 29);
+
+    const repeated = await runRequest(
+      adminAccess,
+      `/api/v1/programs/${programId}/enrollment-approval-runs/${run.run_id}/continue`,
+      "POST"
+    );
+    assert.strictEqual(repeated.status, 200);
+    const repeatedBody = (await assertCorrelated(repeated)) as {
+      data: { item: null };
+    };
+    assert.strictEqual(repeatedBody.data.item, null);
+    const afterRepeat = await testDb()
+      .prepare(
+        "SELECT COUNT(*) AS count FROM enrollments WHERE program_id = ? AND status = 'Active'"
+      )
+      .bind(programId)
+      .first<{ count: number }>();
+    assert.strictEqual(afterRepeat?.count, 29);
+  });
+
+  test("cancel stops future scheduling and members cannot start a run", async () => {
+    const programId = await newProgram("R44 cancellation");
+    const requestIds = await pendingRequests(programId, ["U002", "R44-U003"]);
+    const denied = await runRequest(
+      memberAccess,
+      `/api/v1/programs/${programId}/enrollment-approval-runs`,
+      "POST",
+      { request_ids: requestIds }
+    );
+    assert.strictEqual(denied.status, 403);
+    const deniedProblem = await problemOf(denied);
+    assert.strictEqual(deniedProblem.code, "FORBIDDEN");
+
+    const start = await runRequest(
+      adminAccess,
+      `/api/v1/programs/${programId}/enrollment-approval-runs`,
+      "POST",
+      { request_ids: requestIds }
+    );
+    const run = (
+      (await assertCorrelated(start)) as {
+        data: { run: { run_id: string } };
+      }
+    ).data.run;
+    const cancel = await runRequest(
+      adminAccess,
+      `/api/v1/programs/${programId}/enrollment-approval-runs/${run.run_id}/cancel`,
+      "POST",
+      {}
+    );
+    assert.strictEqual(cancel.status, 200);
+    const cancelled = (await assertCorrelated(cancel)) as {
+      data: { run: { status: string; items: { status: string }[] } };
+    };
+    assert.strictEqual(cancelled.data.run.status, "cancelled");
+    assert.ok(
+      cancelled.data.run.items.every(({ status }) => status === "not_started")
+    );
+    const continueAfterCancel = await runRequest(
+      adminAccess,
+      `/api/v1/programs/${programId}/enrollment-approval-runs/${run.run_id}/continue`,
+      "POST"
+    );
+    assert.strictEqual(continueAfterCancel.status, 200);
+    const continueBody = (await assertCorrelated(continueAfterCancel)) as {
+      data: { item: null; run: { status: string } };
+    };
+    assert.strictEqual(continueBody.data.item, null);
+    assert.strictEqual(continueBody.data.run.status, "cancelled");
+  });
+});
+
 describe("PRG-01: schema", () => {
   test("new domain tables and audit_events exist", async () => {
     const tables = [
@@ -426,6 +939,8 @@ describe("PRG-01: schema", () => {
       "program_check_in_token_rotations",
       "program_schedule_rule_idempotency",
       "program_schedule_versions",
+      "enrollment_approval_runs",
+      "enrollment_approval_run_items",
       "audit_events",
     ] as const;
     const rows = await Promise.all(

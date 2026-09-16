@@ -2,9 +2,11 @@ import type { D1Database } from "@cloudflare/workers-types";
 
 import type {
   EnrollmentApprovalRun,
+  EnrollmentApprovalRunAuthority,
   EnrollmentApprovalRunItem,
   EnrollmentApprovalRunItemRow,
   EnrollmentApprovalRunRow,
+  EnrollmentApprovalRunItemStatus,
   EnrollmentApprovalRunStatus,
 } from "./enrollment-approval-run";
 
@@ -114,7 +116,7 @@ export async function findEnrollmentApprovalRun(
   };
 }
 
-export async function listActiveEnrollmentApprovalRuns(
+export async function listEnrollmentApprovalRuns(
   db: D1Database,
   actorUserId: string,
   programId: string
@@ -122,7 +124,7 @@ export async function listActiveEnrollmentApprovalRuns(
   const result = await db
     .prepare(
       `SELECT * FROM enrollment_approval_runs
-       WHERE actor_user_id = ? AND program_id = ? AND status = 'active'
+       WHERE actor_user_id = ? AND program_id = ?
        ORDER BY created_at DESC`
     )
     .bind(actorUserId, programId)
@@ -133,6 +135,58 @@ export async function listActiveEnrollmentApprovalRuns(
     )
   );
   return runs.filter((run): run is EnrollmentApprovalRunRow => run !== null);
+}
+
+export async function claimNextEnrollmentApprovalRunItem(
+  db: D1Database,
+  runId: string,
+  actorUserId: string,
+  startedAt: string
+): Promise<EnrollmentApprovalRunItemRow | null> {
+  const update = await db
+    .prepare(
+      `UPDATE enrollment_approval_run_items
+       SET status = 'in_flight', started_at = COALESCE(started_at, ?),
+           settled_at = NULL, error_code = NULL, detail = NULL
+       WHERE item_id = (
+         SELECT candidate.item_id
+           FROM enrollment_approval_run_items candidate
+           JOIN enrollment_approval_runs run ON run.run_id = candidate.run_id
+          WHERE candidate.run_id = ?
+            AND run.actor_user_id = ?
+            AND run.status = 'active'
+            AND NOT EXISTS (
+              SELECT 1
+                FROM enrollment_approval_run_items blocked
+               WHERE blocked.run_id = candidate.run_id
+                 AND blocked.status IN ('in_flight', 'outcome_unknown')
+            )
+            AND (
+              candidate.status = 'not_started' OR
+              (candidate.status = 'failed' AND candidate.retryable = 1)
+            )
+          ORDER BY candidate.sequence ASC
+          LIMIT 1
+       )`
+    )
+    .bind(startedAt, runId, actorUserId)
+    .run();
+  if ((update.meta?.changes ?? 0) === 0) {
+    return null;
+  }
+  const result = await db
+    .prepare(
+      `SELECT items.*
+         FROM enrollment_approval_run_items items
+         JOIN enrollment_approval_runs runs ON runs.run_id = items.run_id
+        WHERE items.run_id = ? AND runs.actor_user_id = ?
+          AND items.status = 'in_flight'
+        ORDER BY items.sequence ASC`
+    )
+    .bind(runId, actorUserId)
+    .all<EnrollmentApprovalRunItemDbRow>();
+  const row = result.results?.[0];
+  return row ? itemFromDb(row) : null;
 }
 
 export async function updateEnrollmentApprovalRunItem(
@@ -148,14 +202,16 @@ export async function updateEnrollmentApprovalRunItem(
     | "detail"
     | "started_at"
     | "settled_at"
-  >
+  >,
+  expectedStatus?: EnrollmentApprovalRunItemStatus
 ): Promise<boolean> {
   const result = await db
     .prepare(
       `UPDATE enrollment_approval_run_items
        SET status = ?, retryable = ?, enrollment_id = ?, error_code = ?,
            detail = ?, started_at = ?, settled_at = ?
-       WHERE run_id = ? AND request_id = ?`
+       WHERE run_id = ? AND request_id = ?
+         AND (? IS NULL OR status = ?)`
     )
     .bind(
       item.status,
@@ -166,10 +222,74 @@ export async function updateEnrollmentApprovalRunItem(
       item.started_at,
       item.settled_at,
       runId,
-      requestId
+      requestId,
+      expectedStatus ?? null,
+      expectedStatus ?? null
     )
     .run();
   return (result.meta?.changes ?? 0) > 0;
+}
+
+export async function findEnrollmentApprovalAuthority(
+  db: D1Database,
+  programId: string,
+  requestId: string,
+  memberUserId: string,
+  idempotencyKey: string
+): Promise<EnrollmentApprovalRunAuthority | null> {
+  const [request, enrollment, audit] = await db.batch([
+    db
+      .prepare(
+        `SELECT status, request_version
+           FROM enrollment_requests
+          WHERE request_id = ? AND program_id = ? AND member_user_id = ?`
+      )
+      .bind(requestId, programId, memberUserId),
+    db
+      .prepare(
+        `SELECT enrollment_id, request_id
+           FROM enrollments
+          WHERE program_id = ? AND member_user_id = ? AND request_id = ?
+          ORDER BY created_at DESC LIMIT 1`
+      )
+      .bind(programId, memberUserId, requestId),
+    db
+      .prepare(
+        `SELECT outcome, entity_id
+           FROM audit_events
+          WHERE action = 'ENROLLMENT_CREATE'
+            AND entity_type = 'enrollment'
+            AND correlation_id = ?
+          ORDER BY inserted_at DESC LIMIT 1`
+      )
+      .bind(idempotencyKey),
+  ]);
+  const requestRow = request.results?.[0] as
+    | {
+        status: EnrollmentApprovalRunAuthority["request_status"];
+        request_version: number;
+      }
+    | undefined;
+  if (!requestRow) {
+    return null;
+  }
+  const enrollmentRow = enrollment.results?.[0] as
+    | { enrollment_id: string; request_id: string | null }
+    | undefined;
+  const auditRow = audit.results?.[0] as
+    | {
+        outcome: EnrollmentApprovalRunAuthority["enrollment_audit_outcome"];
+        entity_id: string;
+      }
+    | undefined;
+  return {
+    request_status: requestRow.status,
+    request_version: requestRow.request_version,
+    enrollment_id: enrollmentRow?.enrollment_id ?? null,
+    enrollment_request_id: enrollmentRow?.request_id ?? null,
+    enrollment_audit_outcome: auditRow?.outcome ?? null,
+    enrollment_audit_entity_id: auditRow?.entity_id ?? null,
+  };
 }
 
 export async function updateEnrollmentApprovalRun(
@@ -183,7 +303,7 @@ export async function updateEnrollmentApprovalRun(
     .prepare(
       `UPDATE enrollment_approval_runs
        SET status = ?, finished_at = ?, cancelled_at = ?
-       WHERE run_id = ?`
+       WHERE run_id = ? AND status = 'active'`
     )
     .bind(run.status, run.finished_at, run.cancelled_at, run.run_id)
     .run();

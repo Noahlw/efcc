@@ -39,6 +39,7 @@ type ParticipantFixture = {
 };
 
 let adminApi: APIRequestContext | null = null;
+let memberApi: APIRequestContext | null = null;
 let fixture: ParticipantFixture | null = null;
 
 async function loginWithPlaywright(
@@ -70,13 +71,25 @@ async function loginWithPlaywright(
 }
 
 async function loginAs(page: Page): Promise<void> {
+  await loginAsIdentity(page, MEMBER);
+}
+
+async function loginAsIdentity(
+  page: Page,
+  identity: { username: string; credential: string }
+): Promise<void> {
+  await page.context().clearCookies();
   await page.goto("/");
-  await page.locator('input[autocomplete="username"]').fill(MEMBER.username);
+  await page.locator('input[autocomplete="username"]').fill(identity.username);
   await page
     .locator('input[autocomplete="current-password"]')
-    .fill(MEMBER.credential);
+    .fill(identity.credential);
   await page.getByRole("button", { name: COPY.login }).click();
   await page.waitForURL((url) => url.pathname !== "/");
+}
+
+async function loginAsAdmin(page: Page): Promise<void> {
+  await loginAsIdentity(page, ADMIN);
 }
 
 function jsonBody(
@@ -88,6 +101,8 @@ function jsonBody(
 test.beforeAll(async ({ playwright }) => {
   const admin = await loginWithPlaywright(playwright, ADMIN);
   adminApi = admin.api;
+  const member = await loginWithPlaywright(playwright, MEMBER);
+  memberApi = member.api;
   const suffix = crypto.randomUUID().slice(0, 8);
   const departmentResponse = await adminApi.post(
     "/api/v1/programs/departments",
@@ -144,6 +159,7 @@ test.beforeAll(async ({ playwright }) => {
 
 test.afterAll(async () => {
   await adminApi?.dispose();
+  await memberApi?.dispose();
 });
 
 test.describe("T05.4 participant Browser Acceptance", () => {
@@ -222,5 +238,77 @@ test.describe("T05.4 participant Browser Acceptance", () => {
     await expect(
       enrollmentPanel.getByText(COPY.enrollmentCancelledNotice)
     ).toBeVisible();
+  });
+
+  test("manager recovers an interrupted Approval Run after reload and continues explicitly", async ({
+    page,
+  }) => {
+    expect(fixture).not.toBeNull();
+    expect(memberApi).not.toBeNull();
+    const { programId, programName } = fixture!;
+    const requestResponse = await memberApi!.post(
+      `/api/v1/programs/${programId}/enrollment-requests`,
+      { data: {} }
+    );
+    expect(requestResponse.status()).toBe(201);
+
+    await loginAsAdmin(page);
+    await page.goto(
+      `/programs?mode=management&program=${encodeURIComponent(programId)}&task=participants`
+    );
+    await expect(
+      page.getByRole("heading", { name: programName })
+    ).toBeVisible();
+    const participantPanel = page.getByRole("region", {
+      name: "參與者",
+    });
+    await expect(
+      participantPanel.getByRole("tab", { name: /待審批 \(1\)/u })
+    ).toBeVisible();
+
+    let continueRequests = 0;
+    await page.route(
+      `**/api/v1/programs/${programId}/enrollment-approval-runs/*/continue`,
+      async (route) => {
+        continueRequests += 1;
+        if (continueRequests === 1) {
+          await route.abort("failed");
+          return;
+        }
+        await route.continue();
+      }
+    );
+    await participantPanel
+      .getByRole("checkbox", { name: /選取.*E2E Member/u })
+      .click();
+    await participantPanel.getByRole("button", { name: "檢視所選" }).click();
+    await page
+      .getByRole("alertdialog", { name: "確認核准所選報名" })
+      .getByRole("button", { name: "確認核准" })
+      .click();
+    await expect(
+      participantPanel.getByRole("button", {
+        name: "繼續處理餘下項目",
+      })
+    ).toBeVisible();
+    expect(continueRequests).toBe(1);
+
+    await page.reload();
+    await expect(
+      participantPanel.getByRole("button", {
+        name: "繼續處理餘下項目",
+      })
+    ).toBeVisible();
+    expect(continueRequests).toBe(1);
+
+    await participantPanel
+      .getByRole("button", { name: "繼續處理餘下項目" })
+      .click();
+    await expect(participantPanel.getByText("已核准")).toBeVisible();
+    await expect(participantPanel.getByText("全部完成").first()).toBeVisible();
+    expect(continueRequests).toBe(2);
+    await page.unroute(
+      `**/api/v1/programs/${programId}/enrollment-approval-runs/*/continue`
+    );
   });
 });

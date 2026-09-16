@@ -371,6 +371,11 @@ export default {
         handleCreateEnrollmentRequest,
         handleListEnrollmentRequests,
         handleListEnrollmentSnapshot,
+        handleStartEnrollmentApprovalRun,
+        handleListEnrollmentApprovalRuns,
+        handleReconcileEnrollmentApprovalRun,
+        handleContinueEnrollmentApprovalRun,
+        handleCancelEnrollmentApprovalRun,
         handleDecideEnrollmentRequest,
         handleWithdrawEnrollmentRequest,
         handleAssistedEnroll,
@@ -741,6 +746,42 @@ export default {
           programEnv,
           enrollmentSnapshot.groups?.id ?? ""
         );
+      }
+      const enrollmentApprovalRuns = url.pathname.match(
+        /^\/api\/v1\/programs\/(?<id>[^/]+)\/enrollment-approval-runs$/u
+      );
+      if (enrollmentApprovalRuns && request.method === "POST") {
+        return handleStartEnrollmentApprovalRun(
+          request,
+          programEnv,
+          enrollmentApprovalRuns.groups?.id ?? ""
+        );
+      }
+      if (enrollmentApprovalRuns && request.method === "GET") {
+        return handleListEnrollmentApprovalRuns(
+          request,
+          programEnv,
+          enrollmentApprovalRuns.groups?.id ?? ""
+        );
+      }
+      const enrollmentApprovalRunAction = url.pathname.match(
+        /^\/api\/v1\/programs\/(?<id>[^/]+)\/enrollment-approval-runs\/(?<runId>[^/]+)\/(?<action>reconcile|continue|cancel)$/u
+      );
+      if (enrollmentApprovalRunAction && request.method === "POST") {
+        const action = enrollmentApprovalRunAction.groups?.action;
+        const args = [
+          request,
+          programEnv,
+          enrollmentApprovalRunAction.groups?.id ?? "",
+          enrollmentApprovalRunAction.groups?.runId ?? "",
+        ] as const;
+        if (action === "reconcile") {
+          return handleReconcileEnrollmentApprovalRun(...args);
+        }
+        if (action === "continue") {
+          return handleContinueEnrollmentApprovalRun(...args);
+        }
+        return handleCancelEnrollmentApprovalRun(...args);
       }
       const enrollmentRequest = url.pathname.match(
         /^\/api\/v1\/programs\/(?<id>[^/]+)\/enrollment-requests\/(?<requestId>[^/]+)\/(?<action>decision|withdraw)$/u

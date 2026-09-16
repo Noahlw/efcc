@@ -6,6 +6,14 @@
  */
 
 import type { ModuleKey } from "./capabilities";
+import type {
+  EnrollmentApprovalRun,
+  EnrollmentApprovalRunAuthority,
+  EnrollmentApprovalRunItem,
+  EnrollmentApprovalRunItemRow,
+  EnrollmentApprovalRunItemStatus,
+  EnrollmentApprovalRunRow,
+} from "./enrollment-approval-run";
 // Domain vocabulary lives in the pure recurrence module; rows and commands
 // reuse it so there is one definition (no drift risk).
 import type { RecurrenceKind, ScheduleExceptionAction } from "./recurrence";
@@ -547,6 +555,16 @@ export interface EnrollmentInput {
   created_at: string;
 }
 
+export interface EnrollmentApprovalRunItemUpdate {
+  status: EnrollmentApprovalRunItemStatus;
+  retryable: boolean;
+  enrollment_id: string | null;
+  error_code: string | null;
+  detail: string | null;
+  started_at: string | null;
+  settled_at: string | null;
+}
+
 /** Normalized active identity assignment projected for an Event detail. */
 export interface ProgramIdentityAssignmentRow {
   program_id: string;
@@ -879,6 +897,40 @@ export interface WorkspaceStore {
     cancelledAt: string,
     cancellationReason?: string | null
   ) => Promise<EnrollmentRow | null>;
+  createEnrollmentApprovalRun: (
+    run: EnrollmentApprovalRunRow,
+    items: readonly EnrollmentApprovalRunItem[]
+  ) => Promise<EnrollmentApprovalRunRow>;
+  findEnrollmentApprovalRun: (
+    runId: string
+  ) => Promise<EnrollmentApprovalRunRow | null>;
+  listEnrollmentApprovalRuns: (
+    actorUserId: string,
+    programId: string
+  ) => Promise<EnrollmentApprovalRunRow[]>;
+  claimNextEnrollmentApprovalRunItem: (
+    runId: string,
+    actorUserId: string,
+    startedAt: string
+  ) => Promise<EnrollmentApprovalRunItemRow | null>;
+  updateEnrollmentApprovalRunItem: (
+    runId: string,
+    requestId: string,
+    update: EnrollmentApprovalRunItemUpdate,
+    expectedStatus?: EnrollmentApprovalRunItemStatus
+  ) => Promise<boolean>;
+  updateEnrollmentApprovalRun: (
+    run: Pick<
+      EnrollmentApprovalRun,
+      "run_id" | "status" | "finished_at" | "cancelled_at"
+    >
+  ) => Promise<boolean>;
+  findEnrollmentApprovalAuthority: (
+    programId: string,
+    requestId: string,
+    memberUserId: string,
+    idempotencyKey: string
+  ) => Promise<EnrollmentApprovalRunAuthority | null>;
   listProgramIdentityAssignments: (
     programId: string
   ) => Promise<ProgramIdentityAssignmentRow[]>;

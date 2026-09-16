@@ -237,7 +237,11 @@ function maybeFinish(
   if (
     run.status === "active" &&
     run.items.length > 0 &&
-    run.items.every((item) => item.status === "completed")
+    run.items.every(
+      (item) =>
+        item.status === "completed" ||
+        (item.status === "failed" && !item.retryable)
+    )
   ) {
     return { ...run, status: "completed", finished_at: settledAt };
   }

@@ -1,7 +1,7 @@
 "use client";
 
 import { X } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { FormEvent, MouseEvent } from "react";
 
 import { Alert } from "@/components/ui/alert";
@@ -31,12 +31,21 @@ import { Textarea } from "@/components/ui/textarea";
 import { RpcError } from "@/lib/api";
 import { COPY, errorCopyFor } from "@/lib/copy";
 import { announce } from "@/lib/live-region";
+import type {
+  EnrollmentApprovalRun,
+  EnrollmentApprovalRunItem,
+} from "@/lib/programs/enrollment-approval-run";
 import {
   assistedEnroll,
   cancelEnrollment,
+  cancelEnrollmentApprovalRun,
+  continueEnrollmentApprovalRun,
   decideEnrollmentRequest,
   isUnknownMutationOutcome,
+  listEnrollmentApprovalRuns,
   listEnrollmentSnapshot,
+  reconcileEnrollmentApprovalRun,
+  startEnrollmentApprovalRun,
 } from "@/lib/programs/program-api";
 import type { Enrollment, EnrollmentRequest } from "@/lib/programs/program-api";
 import {
@@ -80,16 +89,6 @@ type ApprovalItemStatus =
   | "already_processed"
   | "error";
 
-interface ApprovalRunItem {
-  request: EnrollmentRequest;
-  status: ApprovalItemStatus;
-  message?: string;
-}
-
-interface ApprovalRun {
-  items: ApprovalRunItem[];
-}
-
 const APPROVAL_COPY = {
   searchLabel: "搜尋待審批報名",
   searchPlaceholder: "姓名、用戶名稱或成員 ID",
@@ -119,6 +118,11 @@ const APPROVAL_COPY = {
   error: "未完成",
   details: "查看詳情",
   hideDetails: "收起詳情",
+  continueRemaining: "繼續處理餘下項目",
+  reconcile: "重新核對結果",
+  cancelRun: "取消後續處理",
+  cancelled: "已取消後續處理；已完成結果會保留。",
+  reconciliationRequired: "部分核准結果未能確認，請先核對後再繼續。",
   managerCancelTitle: "取消成員報名？",
   managerCancelBody: (member: string) =>
     `你即將取消 ${member} 的課程報名。取消後會保留報名歷史，並通知成員。`,
@@ -178,7 +182,7 @@ function participantIssue(error: unknown): {
 
 function memberLabel(
   member: Pick<
-    EnrollmentRequest,
+    EnrollmentRequest | EnrollmentApprovalRunItem,
     "member_name" | "member_username" | "member_user_id"
   >
 ): string {
@@ -225,25 +229,62 @@ function approvalStatusMessage(status: ApprovalItemStatus): string {
   return APPROVAL_COPY.error;
 }
 
-function approvalError(error: unknown): {
-  status: ApprovalItemStatus;
-  message: string;
-} {
-  const issue = participantIssue(error);
-  if (issue.failure === "stale") {
-    return { status: "stale", message: issue.message };
+function approvalItemStatus(
+  item: EnrollmentApprovalRunItem
+): ApprovalItemStatus {
+  if (item.status === "not_started") {
+    return "queued";
   }
-  if (issue.failure === "forbidden") {
-    return { status: "denied", message: issue.message };
+  if (item.status === "in_flight") {
+    return "processing";
   }
-  if (issue.failure === "conflict") {
-    return { status: "already_processed", message: issue.message };
+  if (item.status === "completed") {
+    return "approved";
   }
-  return { status: "error", message: issue.message };
+  if (item.error_code === "STALE_REQUEST_VERSION") {
+    return "stale";
+  }
+  if (
+    item.error_code === "FORBIDDEN" ||
+    item.error_code === "ENROLLMENT_ACCOUNT_INACTIVE"
+  ) {
+    return "denied";
+  }
+  if (
+    item.error_code === "REQUEST_ALREADY_HANDLED" ||
+    item.error_code === "ENROLLMENT_DUPLICATE"
+  ) {
+    return "already_processed";
+  }
+  return "error";
 }
 
-function approvalRetryable(status: ApprovalItemStatus): boolean {
-  return status === "stale" || status === "denied" || status === "error";
+function approvalItemNeedsRetry(item: EnrollmentApprovalRunItem): boolean {
+  return item.status === "failed" && item.retryable;
+}
+
+function approvalItemMessage(item: EnrollmentApprovalRunItem): string | null {
+  if (item.detail) {
+    return item.detail;
+  }
+  if (item.status === "outcome_unknown") {
+    return APPROVAL_COPY.reconciliationRequired;
+  }
+  return null;
+}
+
+function approvalRunHasUnresolvedWork(run: EnrollmentApprovalRun): boolean {
+  return run.items.some(
+    (item) =>
+      item.status === "not_started" ||
+      (item.status === "failed" && item.retryable)
+  );
+}
+
+function approvalRunNeedsReconciliation(run: EnrollmentApprovalRun): boolean {
+  return run.items.some(
+    (item) => item.status === "in_flight" || item.status === "outcome_unknown"
+  );
 }
 
 function isAmbiguousCancelError(error: unknown): boolean {
@@ -324,7 +365,9 @@ export const ParticipantsTask = () => {
   const [expandedRequestIds, setExpandedRequestIds] = useState<string[]>([]);
   const [approvalReviewOpen, setApprovalReviewOpen] = useState(false);
   const [approvalBusy, setApprovalBusy] = useState(false);
-  const [approvalRun, setApprovalRun] = useState<ApprovalRun | null>(null);
+  const [approvalRun, setApprovalRun] = useState<EnrollmentApprovalRun | null>(
+    null
+  );
   const [approvalRefreshError, setApprovalRefreshError] = useState<
     string | null
   >(null);
@@ -343,6 +386,15 @@ export const ParticipantsTask = () => {
     ParticipantsState,
     { kind: "ready" }
   > | null>(null);
+  const mountedRef = useRef(true);
+  const approvalSequenceRef = useRef(0);
+
+  useEffect(
+    () => () => {
+      mountedRef.current = false;
+    },
+    []
+  );
 
   useEffect(() => {
     void run();
@@ -371,10 +423,19 @@ export const ParticipantsTask = () => {
     approvalBusy ||
     refreshingAction !== null;
   const hasUnknownMutation = Object.values(unknownMutationIds).some(Boolean);
+  const approvalRunActive = approvalRun?.status === "active";
+  const approvalRunBlocked =
+    approvalRun?.items.some(
+      (item) => item.status === "in_flight" || item.status === "outcome_unknown"
+    ) ?? false;
   const mutationBlocked =
-    state.kind !== "ready" || hasUnknownMutation || participantsStale;
+    state.kind !== "ready" ||
+    hasUnknownMutation ||
+    approvalRunActive ||
+    approvalRunBlocked ||
+    participantsStale;
 
-  const refreshSharedWorkspace = async (): Promise<boolean> => {
+  const refreshSharedWorkspace = useCallback(async (): Promise<boolean> => {
     if (!onWorkspaceRefresh) {
       return true;
     }
@@ -383,7 +444,76 @@ export const ParticipantsTask = () => {
     } catch {
       return false;
     }
-  };
+  }, [onWorkspaceRefresh]);
+
+  const reconcileApprovalRun = useCallback(
+    async (runId: string): Promise<EnrollmentApprovalRun | null> => {
+      try {
+        const result = await reconcileEnrollmentApprovalRun(programId, runId);
+        if (!mountedRef.current) {
+          return result.run;
+        }
+        setApprovalRun(result.run);
+        const blocked = result.run.items.some(
+          (item) =>
+            item.status === "in_flight" || item.status === "outcome_unknown"
+        );
+        if (blocked) {
+          setApprovalRefreshError(APPROVAL_COPY.reconciliationRequired);
+          onMutationBlockChange?.(true);
+        } else {
+          setApprovalRefreshError(null);
+          onMutationBlockChange?.(hasUnknownMutation);
+        }
+        return result.run;
+      } catch (error) {
+        if (mountedRef.current) {
+          setApprovalRefreshError(
+            error instanceof RpcError
+              ? errorCopyFor(error.problem.code, error.problem.detail)
+              : COPY.programs.programTransportAmbiguous
+          );
+          onMutationBlockChange?.(true);
+        }
+        return null;
+      }
+    },
+    [hasUnknownMutation, onMutationBlockChange, programId]
+  );
+
+  useEffect(() => {
+    if (!canManage) {
+      setApprovalRun(null);
+      return;
+    }
+    let active = true;
+    const loadApprovalRun = async () => {
+      try {
+        const { runs } = await listEnrollmentApprovalRuns(programId);
+        if (!active || !mountedRef.current) {
+          return;
+        }
+        const activeRun =
+          runs.find((candidate) => candidate.status === "active") ?? null;
+        setApprovalRun(activeRun);
+        if (activeRun) {
+          await reconcileApprovalRun(activeRun.run_id);
+        }
+      } catch (error) {
+        if (active && mountedRef.current) {
+          setApprovalRefreshError(
+            error instanceof RpcError
+              ? errorCopyFor(error.problem.code, error.problem.detail)
+              : COPY.programs.programTransportAmbiguous
+          );
+        }
+      }
+    };
+    void loadApprovalRun();
+    return () => {
+      active = false;
+    };
+  }, [canManage, programId, reconcileApprovalRun]);
 
   const reconcileUnknownParticipants = async (ids: string[]) => {
     let workspaceReconciled = true;
@@ -438,37 +568,18 @@ export const ParticipantsTask = () => {
   }, [refreshSuccess, refreshingAction, state]);
 
   useEffect(() => {
-    if (!approvalRun || approvalBusy || state.kind !== "ready") {
+    if (state.kind !== "ready") {
       return;
     }
-    const latestById = new Map(
-      state.requests.map((request) => [request.request_id, request])
+    const pendingIds = new Set(
+      state.requests
+        .filter((request) => request.status === "Pending")
+        .map((request) => request.request_id)
     );
-    let changed = false;
-    const reconciledItems = approvalRun.items.map((item) => {
-      if (!approvalRetryable(item.status)) {
-        return item;
-      }
-      const latest = latestById.get(item.request.request_id);
-      if (latest && latest.status !== "Pending") {
-        changed = true;
-        return {
-          ...item,
-          status: "already_processed" as const,
-          message: APPROVAL_COPY.alreadyProcessed,
-        };
-      }
-      return item;
-    });
-    if (changed) {
-      setApprovalRun({ items: reconciledItems });
-    }
     setSelectedRequestIds((current) =>
-      current.filter(
-        (requestId) => latestById.get(requestId)?.status === "Pending"
-      )
+      current.filter((requestId) => pendingIds.has(requestId))
     );
-  }, [approvalBusy, approvalRun, state]);
+  }, [state]);
 
   const queue = useMemo(() => {
     const snapshot =
@@ -514,6 +625,12 @@ export const ParticipantsTask = () => {
       },
     };
   }, [state]);
+
+  useEffect(() => {
+    if (queue?.counts.pending === 0) {
+      setTab((current) => (current === "pending" ? "active" : current));
+    }
+  }, [queue]);
 
   const visiblePending = useMemo(() => {
     if (!queue) {
@@ -562,121 +679,204 @@ export const ParticipantsTask = () => {
     });
   };
 
-  const updateApprovalRun = (items: ApprovalRunItem[]) => {
-    setApprovalRun({ items });
-  };
-
-  const handleApproveSelected = async () => {
-    if (selectedPendingRequests.length === 0 || mutationBlocked) {
-      return;
-    }
-    const items: ApprovalRunItem[] = selectedPendingRequests.map((request) => ({
-      request,
-      status: "queued",
-    }));
-    setApprovalRun({ items });
-    setApprovalReviewOpen(false);
-    setApprovalBusy(true);
-    setApprovalRefreshError(null);
-    setSelectedRequestIds([]);
-    setNotice(null);
-    const results = items.map((item) => ({ ...item }));
-    let unknownRequestId: string | null = null;
-    try {
-      for (let index = 0; index < results.length; index += 1) {
-        const item = results[index];
-        if (!item) {
-          continue;
-        }
-        results[index] = { ...item, status: "processing", message: undefined };
-        updateApprovalRun([...results]);
-        const idempotencyKey = crypto.randomUUID();
-        try {
-          // Each request must settle before the next one starts so progress,
-          // conflicts, and retry keys remain independently attributable.
-          // oxlint-disable-next-line eslint/no-await-in-loop -- sequential approval is an explicit product invariant.
-          await decideEnrollmentRequest(
-            programId,
-            item.request.request_id,
-            "Approved",
-            undefined,
-            item.request.request_version,
-            idempotencyKey
-          );
-          results[index] = { ...item, status: "approved", message: undefined };
-          onAttentionRefresh();
-        } catch (error) {
-          if (redirectToLoginIfRequired(error)) {
-            results[index] = {
-              ...item,
-              status: "denied",
-              message: APPROVAL_COPY.denied,
-            };
-          } else if (isUnknownMutationOutcome(error)) {
-            // Stop the batch: the next approval must not run until this
-            // request has been reconciled against the authoritative snapshot.
-            onMutationBlockChange?.(true);
-            results[index] = {
-              ...item,
-              status: "error",
-              message: COPY.programs.programTransportAmbiguous,
-            };
-            setUnknownMutationIds((current) => ({
-              ...current,
-              [item.request.request_id]: true,
-            }));
-            updateApprovalRun([...results]);
-            announce(COPY.programs.programTransportAmbiguous);
-            unknownRequestId = item.request.request_id;
-            break;
-          } else {
-            const failure = approvalError(error);
-            results[index] = { ...item, ...failure };
-          }
-        }
-        updateApprovalRun([...results]);
+  /* oxlint-disable eslint/complexity -- explicit sequential recovery owns the run state transitions. */
+  const runApprovalSequence = useCallback(
+    async (runId: string) => {
+      if (!mountedRef.current) {
+        return;
       }
-      if (unknownRequestId) {
-        await reconcileUnknownParticipants([unknownRequestId]);
-      }
-      setSelectedRequestIds(
-        results
-          .filter((item) => approvalRetryable(item.status))
-          .map((item) => item.request.request_id)
-      );
-      const unresolved = results.filter((item) =>
-        approvalRetryable(item.status)
-      );
-      if (unresolved.length === 0) {
-        setNotice(APPROVAL_COPY.complete);
-        announce(APPROVAL_COPY.complete);
-      } else {
-        const message = APPROVAL_COPY.partial(
-          results.length - unresolved.length,
-          results.length,
-          unresolved.length
-        );
-        setNotice(message);
-        announce(message);
-      }
-      if (!(await refreshSharedWorkspace())) {
-        setParticipantsStale(true);
-      }
+      const sequence = approvalSequenceRef.current + 1;
+      approvalSequenceRef.current = sequence;
+      setApprovalBusy(true);
+      setApprovalRefreshError(null);
+      setNotice(null);
+      let current: EnrollmentApprovalRun | null = approvalRun;
       try {
+        while (mountedRef.current && approvalSequenceRef.current === sequence) {
+          // oxlint-disable-next-line eslint/no-await-in-loop -- approvals are deliberately settled one at a time before the next claim.
+          const result = await continueEnrollmentApprovalRun(
+            programId,
+            runId,
+            crypto.randomUUID()
+          );
+          if (!mountedRef.current || approvalSequenceRef.current !== sequence) {
+            return;
+          }
+          current = result.run;
+          setApprovalRun(current);
+          if (result.item?.status === "completed") {
+            onAttentionRefresh();
+          }
+          if (
+            result.item === null ||
+            approvalRunNeedsReconciliation(current) ||
+            !approvalRunHasUnresolvedWork(current)
+          ) {
+            break;
+          }
+          // Each request is settled by the Worker before this explicit
+          // continuation schedules the next one.
+        }
+        if (!mountedRef.current || !current) {
+          return;
+        }
+        if (approvalRunNeedsReconciliation(current)) {
+          const message = APPROVAL_COPY.reconciliationRequired;
+          setApprovalRefreshError(message);
+          setNotice(message);
+          announce(message);
+          onMutationBlockChange?.(true);
+        } else if (current.status === "cancelled") {
+          setNotice(APPROVAL_COPY.cancelled);
+          announce(APPROVAL_COPY.cancelled);
+        } else if (approvalRunHasUnresolvedWork(current)) {
+          setNotice(
+            APPROVAL_COPY.partial(
+              current.items.filter(
+                (item) =>
+                  item.status === "completed" || item.status === "failed"
+              ).length,
+              current.items.length,
+              current.items.filter((item) => approvalItemNeedsRetry(item))
+                .length
+            )
+          );
+        } else {
+          setNotice(APPROVAL_COPY.complete);
+          announce(APPROVAL_COPY.complete);
+        }
+        if (!(await refreshSharedWorkspace())) {
+          setParticipantsStale(true);
+        }
         const snapshot = await refresh();
         if (snapshot === undefined) {
           setParticipantsStale(true);
         }
       } catch (error) {
-        setParticipantsStale(true);
-        setApprovalRefreshError(
+        if (!mountedRef.current) {
+          return;
+        }
+        if (isUnknownMutationOutcome(error)) {
+          setApprovalRefreshError(APPROVAL_COPY.reconciliationRequired);
+          setNotice(APPROVAL_COPY.reconciliationRequired);
+          announce(APPROVAL_COPY.reconciliationRequired);
+          onMutationBlockChange?.(true);
+          // The run id is known even when the acknowledgement was not. A
+          // read/reconcile may confirm a committed Enrollment without replay.
+          await reconcileApprovalRun(runId);
+        } else if (!redirectToLoginIfRequired(error)) {
+          const message =
+            error instanceof RpcError
+              ? errorCopyFor(error.problem.code, error.problem.detail)
+              : COPY.error.networkError;
+          setApprovalRefreshError(message);
+          announce(message);
+        }
+      } finally {
+        if (mountedRef.current) {
+          setApprovalBusy(false);
+        }
+      }
+    },
+    [
+      approvalRun,
+      onAttentionRefresh,
+      onMutationBlockChange,
+      programId,
+      reconcileApprovalRun,
+      refresh,
+      refreshSharedWorkspace,
+    ]
+  );
+  /* oxlint-enable eslint/complexity */
+
+  const handleApproveSelected = async () => {
+    if (
+      selectedPendingRequests.length === 0 ||
+      mutationBlocked ||
+      approvalRun?.status === "active"
+    ) {
+      return;
+    }
+    setApprovalReviewOpen(false);
+    setApprovalRefreshError(null);
+    setSelectedRequestIds([]);
+    setNotice(null);
+    try {
+      const { run: created } = await startEnrollmentApprovalRun(
+        programId,
+        selectedPendingRequests.map((request) => request.request_id),
+        crypto.randomUUID()
+      );
+      if (!mountedRef.current) {
+        return;
+      }
+      setApprovalRun(created);
+      await runApprovalSequence(created.run_id);
+    } catch (error) {
+      if (!mountedRef.current) {
+        return;
+      }
+      if (isUnknownMutationOutcome(error)) {
+        setApprovalRefreshError(APPROVAL_COPY.reconciliationRequired);
+        setNotice(APPROVAL_COPY.reconciliationRequired);
+        announce(APPROVAL_COPY.reconciliationRequired);
+        try {
+          const { runs } = await listEnrollmentApprovalRuns(programId);
+          if (!mountedRef.current) {
+            return;
+          }
+          const recovered =
+            runs.find((candidate) => candidate.status === "active") ?? null;
+          if (recovered) {
+            setApprovalRun(recovered);
+            await reconcileApprovalRun(recovered.run_id);
+          }
+        } catch {
+          // The next explicit refresh can retry the durable run lookup.
+        }
+      } else if (!redirectToLoginIfRequired(error)) {
+        const message =
           error instanceof RpcError
             ? errorCopyFor(error.problem.code, error.problem.detail)
-            : COPY.error.networkError
-        );
+            : COPY.error.networkError;
+        setApprovalRefreshError(message);
+        announce(message);
       }
-    } finally {
+    }
+  };
+
+  const handleCancelApprovalRun = async () => {
+    const activeRun = approvalRun;
+    if (!activeRun || activeRun.status !== "active") {
+      return;
+    }
+    approvalSequenceRef.current += 1;
+    setApprovalRefreshError(null);
+    try {
+      const result = await cancelEnrollmentApprovalRun(
+        programId,
+        activeRun.run_id,
+        crypto.randomUUID()
+      );
+      if (!mountedRef.current) {
+        return;
+      }
+      setApprovalRun(result.run);
       setApprovalBusy(false);
+      setNotice(APPROVAL_COPY.cancelled);
+      announce(APPROVAL_COPY.cancelled);
+      onMutationBlockChange?.(hasUnknownMutation);
+    } catch (error) {
+      if (!mountedRef.current) {
+        return;
+      }
+      const message =
+        error instanceof RpcError
+          ? errorCopyFor(error.problem.code, error.problem.detail)
+          : COPY.error.networkError;
+      setApprovalRefreshError(message);
+      announce(message);
     }
   };
 
@@ -888,6 +1088,12 @@ export const ParticipantsTask = () => {
     }
   };
   const refreshParticipants = async () => {
+    if (approvalRun && approvalRunNeedsReconciliation(approvalRun)) {
+      const reconciled = await reconcileApprovalRun(approvalRun.run_id);
+      if (!reconciled || approvalRunNeedsReconciliation(reconciled)) {
+        return;
+      }
+    }
     if (hasUnknownMutation) {
       await reconcileUnknownParticipants(Object.keys(unknownMutationIds));
       return;
@@ -934,7 +1140,7 @@ export const ParticipantsTask = () => {
                 value={pendingQuery}
                 placeholder={APPROVAL_COPY.searchPlaceholder}
                 onChange={(event) => setPendingQuery(event.target.value)}
-                disabled={approvalBusy}
+                disabled={approvalBusy || approvalRun?.status === "active"}
               />
             </ScreenField>
             <div className="flex min-w-0 flex-wrap items-center gap-3">
@@ -950,7 +1156,11 @@ export const ParticipantsTask = () => {
                 onCheckedChange={(checked) =>
                   toggleVisibleSelection(checked === true)
                 }
-                disabled={approvalBusy || visibleIds.length === 0}
+                disabled={
+                  approvalBusy ||
+                  approvalRun?.status === "active" ||
+                  visibleIds.length === 0
+                }
               />
               <span className="min-w-0 wrap-anywhere text-sm text-[var(--screen-muted)]">
                 {APPROVAL_COPY.selectVisible} ({selectedVisibleCount}/
@@ -968,7 +1178,7 @@ export const ParticipantsTask = () => {
                   type="button"
                   className="w-fit bg-[var(--screen-accent)] text-white hover:bg-[var(--screen-accent-deep)]"
                   onClick={() => setApprovalReviewOpen(true)}
-                  disabled={mutationBusy}
+                  disabled={mutationBusy || approvalRun?.status === "active"}
                 >
                   {APPROVAL_COPY.reviewSelected}
                 </Button>
@@ -977,7 +1187,7 @@ export const ParticipantsTask = () => {
                   variant="outline"
                   className="w-fit border-[var(--screen-line-strong)] bg-transparent text-[var(--screen-ink)] hover:bg-[var(--screen-surface)]"
                   onClick={() => setSelectedRequestIds([])}
-                  disabled={mutationBusy}
+                  disabled={mutationBusy || approvalRun?.status === "active"}
                 >
                   {APPROVAL_COPY.clear}
                 </Button>
@@ -1014,7 +1224,9 @@ export const ParticipantsTask = () => {
                               checked === true
                             )
                           }
-                          disabled={mutationBusy}
+                          disabled={
+                            mutationBusy || approvalRun?.status === "active"
+                          }
                         />
                       )}
                       <ScreenRowMain className="min-w-0 flex-1">
@@ -1059,6 +1271,7 @@ export const ParticipantsTask = () => {
                             }
                             disabled={
                               mutationBusy ||
+                              approvalRun?.status === "active" ||
                               mutationBlocked ||
                               unknownMutationIds[request.request_id] === true
                             }
@@ -1074,6 +1287,7 @@ export const ParticipantsTask = () => {
                             }
                             disabled={
                               mutationBusy ||
+                              approvalRun?.status === "active" ||
                               mutationBlocked ||
                               unknownMutationIds[request.request_id] === true
                             }
@@ -1284,16 +1498,28 @@ export const ParticipantsTask = () => {
       return null;
     }
     const completed = approvalRun.items.filter(
-      ({ status }) => status !== "queued" && status !== "processing"
+      ({ status }) => status === "completed" || status === "failed"
     ).length;
-    const unresolved = approvalRun.items.filter(({ status }) =>
-      approvalRetryable(status)
+    const unresolved = approvalRun.items.filter(
+      (item) =>
+        item.status === "not_started" ||
+        item.status === "in_flight" ||
+        item.status === "outcome_unknown" ||
+        approvalItemNeedsRetry(item)
     ).length;
     const progress = approvalBusy
       ? APPROVAL_COPY.processing(completed, approvalRun.items.length)
-      : unresolved > 0
-        ? APPROVAL_COPY.partial(completed, approvalRun.items.length, unresolved)
-        : APPROVAL_COPY.complete;
+      : approvalRun.status === "cancelled"
+        ? APPROVAL_COPY.cancelled
+        : approvalRunNeedsReconciliation(approvalRun)
+          ? APPROVAL_COPY.reconciliationRequired
+          : unresolved > 0
+            ? APPROVAL_COPY.partial(
+                completed,
+                approvalRun.items.length,
+                unresolved
+              )
+            : APPROVAL_COPY.complete;
     return (
       <section
         className="grid min-w-0 gap-3 rounded-[var(--screen-radius-card)] border border-[var(--screen-line)] bg-[var(--screen-surface-soft)] p-3"
@@ -1311,23 +1537,59 @@ export const ParticipantsTask = () => {
         >
           {approvalRun.items.map((item) => (
             <li
-              key={item.request.request_id}
+              key={item.item_id}
               className="flex min-w-0 flex-wrap items-start gap-2"
             >
               <span className="min-w-0 flex-1 wrap-anywhere text-sm text-[var(--screen-ink)]">
-                {memberLabel(item.request)}
+                {memberLabel(item)}
               </span>
-              <ScreenStatus tone={approvalStatusTone(item.status)}>
-                {approvalStatusMessage(item.status)}
+              <ScreenStatus tone={approvalStatusTone(approvalItemStatus(item))}>
+                {approvalStatusMessage(approvalItemStatus(item))}
               </ScreenStatus>
-              {item.message && (
+              {approvalItemMessage(item) && (
                 <span className="basis-full wrap-anywhere text-sm text-[var(--screen-muted)]">
-                  {item.message}
+                  {approvalItemMessage(item)}
                 </span>
               )}
             </li>
           ))}
         </ul>
+        <div className="flex min-w-0 flex-wrap items-center gap-[var(--screen-utility-gap)]">
+          {approvalRun.status === "active" &&
+            !approvalRunNeedsReconciliation(approvalRun) &&
+            approvalRunHasUnresolvedWork(approvalRun) && (
+              <Button
+                type="button"
+                className="w-fit bg-[var(--screen-accent)] text-white hover:bg-[var(--screen-accent-deep)]"
+                onClick={() => void runApprovalSequence(approvalRun.run_id)}
+                disabled={approvalBusy}
+              >
+                {APPROVAL_COPY.continueRemaining}
+              </Button>
+            )}
+          {approvalRun.status === "active" &&
+            approvalRunNeedsReconciliation(approvalRun) && (
+              <Button
+                type="button"
+                variant="outline"
+                className="w-fit border-[var(--screen-line-strong)] bg-transparent text-[var(--screen-ink)] hover:bg-[var(--screen-surface)]"
+                onClick={() => void reconcileApprovalRun(approvalRun.run_id)}
+                disabled={approvalBusy}
+              >
+                {APPROVAL_COPY.reconcile}
+              </Button>
+            )}
+          {approvalRun.status === "active" && (
+            <Button
+              type="button"
+              variant="outline"
+              className="w-fit border-[var(--screen-danger)] bg-transparent text-[var(--screen-danger)] hover:bg-[var(--screen-danger-surface)]"
+              onClick={() => void handleCancelApprovalRun()}
+            >
+              {APPROVAL_COPY.cancelRun}
+            </Button>
+          )}
+        </div>
         {approvalRefreshError !== null && (
           <div className="flex min-w-0 flex-wrap items-center gap-[var(--screen-utility-gap)]">
             <Alert tone="warning" announcement="polite">
@@ -1423,7 +1685,11 @@ export const ParticipantsTask = () => {
             <AlertDialogCancel>{COPY.attention.close}</AlertDialogCancel>
             <AlertDialogAction
               onClick={() => void handleApproveSelected()}
-              disabled={selectedPendingRequests.length === 0 || mutationBlocked}
+              disabled={
+                selectedPendingRequests.length === 0 ||
+                mutationBlocked ||
+                approvalRun?.status === "active"
+              }
             >
               {APPROVAL_COPY.confirmApprove}
             </AlertDialogAction>

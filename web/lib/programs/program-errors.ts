@@ -274,3 +274,11 @@ export class RequestNotDecidableError extends Error {
     this.name = "RequestNotDecidableError";
   }
 }
+
+// oxlint-disable-next-line eslint/max-classes-per-file
+export class EnrollmentApprovalRunValidationError extends Error {
+  constructor(message = "Enrollment Approval Run selection is invalid.") {
+    super(message);
+    this.name = "EnrollmentApprovalRunValidationError";
+  }
+}
