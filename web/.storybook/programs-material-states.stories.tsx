@@ -515,9 +515,11 @@ const workspaceScheduleStalePlay: Story["play"] = async ({ canvasElement }) => {
   await expect(
     canvas.findByRole("heading", { name: COPY.programs.schedulePreviewTitle })
   ).resolves.toBeVisible();
-  await expect(
-    canvas.getByRole("button", { name: COPY.programs.generateEvents })
-  ).toBeVisible();
+  await waitFor(() =>
+    expect(
+      canvas.getByRole("button", { name: COPY.programs.generateEvents })
+    ).toBeEnabled()
+  );
 
   await userEvent.click(
     canvas.getByRole("button", { name: COPY.programs.generateEvents })
