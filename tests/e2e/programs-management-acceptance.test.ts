@@ -1,4 +1,5 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test } from "@playwright/test";
+import type { Page } from "@playwright/test";
 
 const ADMIN = {
   username: process.env.PROGRAMS_ADMIN_USERNAME ?? "E2E_admin",
@@ -20,34 +21,87 @@ const COPY = {
   programDescription: "課程簡介",
   saveBasics: "儲存基本資料",
   saved: "課程設定已儲存。",
+  workspaceSavedStale:
+    "操作已完成，但最新課程資料暫時未能更新。請按「重試更新」確認目前狀態。",
+  workspaceRetryRefresh: "重試更新課程工作區",
   workspaceOverview: "概覽",
+  workspaceEvents: "聚會",
+  workspaceParticipants: "參與者",
+  enroll: "報名",
+  createMeeting: "建立聚會",
+  createMeetingValidation: "請輸入日期、時間及聚會名稱。",
+  eventDate: "日期",
+  eventTime: "時間",
+  eventName: "聚會名稱",
+  eventType: "類型",
+  eventTypeTraining: "訓練",
+  eventCreatedNotice: "聚會已建立。",
+  approve: "核准",
+  decisionMade: "已處理申請。",
+  pendingCount: "待審批",
+  activeParticipants: "活躍參與者",
   enterManagement: "進入管理模式",
   enterParticipant: "返回參與者模式",
   participantDirectory: "課程",
 };
 
-type Fixture = {
+interface Fixture {
   departmentId: string;
   programId: string;
   programName: string;
   description: string;
-};
+}
 
-async function loginAs(page: Page): Promise<void> {
+async function loginAs(
+  page: Page,
+  username = ADMIN.username,
+  credential = ADMIN.credential
+): Promise<void> {
   await page.goto("/");
-  await page.locator('input[autocomplete="username"]').fill(ADMIN.username);
-  await page
-    .locator('input[autocomplete="current-password"]')
-    .fill(ADMIN.credential);
+  await page.locator('input[autocomplete="username"]').fill(username);
+  await page.locator('input[autocomplete="current-password"]').fill(credential);
   await page.getByRole("button", { name: COPY.login }).click();
   await page.waitForURL((url) => url.pathname !== "/");
 }
 
+async function chooseSelectOption(
+  page: Page,
+  label: string,
+  option: string
+): Promise<void> {
+  await page.getByRole("combobox", { name: label }).click();
+  await page.getByRole("option", { name: option, exact: true }).click();
+}
+
+function localDateValue(date: Date): string {
+  return [date.getFullYear(), date.getMonth() + 1, date.getDate()]
+    .map((part, index) =>
+      index === 0 ? String(part) : String(part).padStart(2, "0")
+    )
+    .join("-");
+}
+
+async function chooseDate(
+  page: Page,
+  label: string,
+  date: Date
+): Promise<void> {
+  const value = localDateValue(date);
+  await page.getByRole("button", { name: label }).click();
+  const day = page.locator(`[data-day="${value}"]`);
+  const dayButton = day.getByRole("button");
+  await ((await dayButton.count()) > 0 ? dayButton : day).click();
+}
+
 async function createFixture(page: Page, suffix: string): Promise<Fixture> {
   const fixture = await page.evaluate(async (value) => {
-    async function post(path: string, data?: unknown) {
+    async function post(
+      path: string,
+      data?: unknown,
+      method: "POST" | "PATCH" = "POST"
+    ) {
       const response = await fetch(path, {
-        method: "POST",
+        method,
         headers:
           data === undefined ? {} : { "Content-Type": "application/json" },
         body: data === undefined ? undefined : JSON.stringify(data),
@@ -91,10 +145,25 @@ async function createFixture(page: Page, suffix: string): Promise<Fixture> {
     if (program.status !== 201) {
       throw new Error(`program fixture returned HTTP ${program.status}`);
     }
+    const programId = (
+      program.body as { data: { program: { program_id: string } } }
+    ).data.program.program_id;
+    const published = await post(
+      `/api/v1/programs/${programId}`,
+      {
+        lifecycle: "Active",
+        discoverability: "Listed",
+      },
+      "PATCH"
+    );
+    if (published.status !== 200) {
+      throw new Error(
+        `program fixture publish returned HTTP ${published.status}`
+      );
+    }
     return {
       departmentId,
-      programId: (program.body as { data: { program: { program_id: string } } })
-        .data.program.program_id,
+      programId,
       programName,
       description,
     };
@@ -103,11 +172,20 @@ async function createFixture(page: Page, suffix: string): Promise<Fixture> {
 }
 
 async function restoreFixture(page: Page, fixture: Fixture): Promise<void> {
+  if (page.isClosed()) {
+    return;
+  }
   await page.evaluate(async ({ programId, programName, description }) => {
     const response = await fetch(`/api/v1/programs/${programId}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name: programName, description, category: "T05" }),
+      body: JSON.stringify({
+        name: programName,
+        description,
+        category: "T05",
+        lifecycle: "Active",
+        discoverability: "Listed",
+      }),
     });
     if (!response.ok) {
       throw new Error(
@@ -131,6 +209,7 @@ test.describe("T05.5 management Browser Acceptance", () => {
     });
 
     await page.goto("/programs?mode=management");
+    // oxlint-disable-next-line vitest/prefer-importing-vitest-globals -- Playwright's expect is intentionally used in this browser suite.
     await expect(
       page.getByRole("heading", { name: COPY.directoryTitle })
     ).toBeVisible();
@@ -341,7 +420,23 @@ test.describe("T05.5 management Browser Acceptance", () => {
       await expect(nameInput).toHaveValue(updatedName);
       await expect(descriptionInput).toHaveValue(updatedDescription);
 
+      // R42/AC41: the saved authoritative Program is visible in Overview
+      // without a full-page reload or remount from the old directory props.
+      await page.getByRole("link", { name: COPY.workspaceOverview }).click();
+      await expect(page).toHaveURL(
+        new RegExp(
+          `/programs\\?mode=management&program=${fixture.programId}$`,
+          "u"
+        )
+      );
+      await expect(
+        page.getByRole("heading", { name: updatedName, exact: true })
+      ).toBeVisible();
+
       await page.reload();
+      await page.goto(
+        `/programs?mode=management&program=${fixture.programId}&task=settings`
+      );
       await page
         .getByRole("button", { name: new RegExp(COPY.settingsBasics, "u") })
         .click();
@@ -376,6 +471,223 @@ test.describe("T05.5 management Browser Acceptance", () => {
       ).toBeVisible();
     } finally {
       await restoreFixture(page, fixture);
+    }
+  });
+
+  test("keeps a successful Settings write distinct from a failed workspace readback", async ({
+    page,
+  }) => {
+    await loginAs(page);
+    const fixture = await createFixture(page, crypto.randomUUID().slice(0, 8));
+    const managementRoute = `**/api/v1/programs/${fixture.programId}/management`;
+    let managementReads = 0;
+    try {
+      await page.goto(
+        `/programs?mode=management&program=${fixture.programId}&task=settings`
+      );
+      await expect(
+        page.getByRole("heading", { name: COPY.settings })
+      ).toBeVisible();
+      await page
+        .getByRole("button", { name: new RegExp(COPY.settingsBasics, "u") })
+        .click();
+      const nameInput = page.getByRole("textbox", { name: COPY.programName });
+      await expect(nameInput).toHaveValue(fixture.programName);
+
+      await page.route(managementRoute, async (route) => {
+        if (route.request().method() !== "GET") {
+          await route.continue();
+          return;
+        }
+        managementReads += 1;
+        if (managementReads === 1) {
+          await route.fulfill({
+            status: 503,
+            contentType: "application/problem+json",
+            body: JSON.stringify({
+              status: 503,
+              code: "UNAVAILABLE",
+              title: "Unavailable",
+              detail: "測試中的 workspace readback failure",
+            }),
+          });
+          return;
+        }
+        await route.continue();
+      });
+
+      const updatedName = `${fixture.programName} Readback`;
+      await nameInput.fill(updatedName);
+      await page.getByRole("button", { name: COPY.saveBasics }).click();
+      await expect(
+        page.getByText(COPY.saved, { exact: true }).first()
+      ).toBeVisible();
+      await expect(
+        page
+          .getByTestId("program-workspace-freshness")
+          .getByText(COPY.workspaceSavedStale)
+      ).toBeVisible();
+      await expect(
+        page
+          .getByTestId("program-workspace-freshness")
+          .getByRole("button", { name: COPY.workspaceRetryRefresh })
+      ).toBeVisible();
+      expect(managementReads).toBe(1);
+
+      await page
+        .getByTestId("program-workspace-freshness")
+        .getByRole("button", { name: COPY.workspaceRetryRefresh })
+        .click();
+      await expect(page.getByTestId("program-workspace-freshness")).toHaveCount(
+        0
+      );
+      await expect(nameInput).toHaveValue(updatedName);
+      expect(managementReads).toBe(2);
+    } finally {
+      await page.unroute(managementRoute).catch(() => {});
+      await restoreFixture(page, fixture);
+    }
+  });
+
+  test("settings, Event, and Enrollment mutations converge in Overview without reload", async ({
+    page,
+  }: {
+    page: Page;
+  }) => {
+    await loginAs(page);
+    const fixture = await createFixture(page, crypto.randomUUID().slice(0, 8));
+    let eventId = "";
+    try {
+      await page.context().clearCookies();
+      await page.evaluate(() => {
+        localStorage.clear();
+        sessionStorage.clear();
+      });
+      await loginAs(page, "E2E_member", "E2E_member!dev");
+      await page.goto(`/programs?program=${fixture.programId}`);
+      await page.getByRole("button", { name: COPY.enroll }).click();
+      await expect(
+        page.getByText("報名申請已提交", { exact: true })
+      ).toBeVisible();
+
+      await page.context().clearCookies();
+      await page.evaluate(() => {
+        localStorage.clear();
+        sessionStorage.clear();
+      });
+      await loginAs(page);
+      await page.goto(`/programs?mode=management&program=${fixture.programId}`);
+      await expect(
+        page.getByRole("heading", { name: fixture.programName })
+      ).toBeVisible();
+
+      await page
+        .getByRole("link", { name: COPY.workspaceEvents, exact: true })
+        .click();
+      await expect(
+        page.getByRole("heading", { name: COPY.workspaceEvents, exact: true })
+      ).toBeVisible();
+      await page
+        .getByRole("button", { name: COPY.createMeeting })
+        .first()
+        .click();
+      const createForm = page.getByRole("form", {
+        name: COPY.createMeeting,
+      });
+      await chooseDate(
+        page,
+        COPY.eventDate,
+        new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
+      );
+      await createForm.locator("#programs-event-time").fill("10:00");
+      await createForm
+        .getByLabel(COPY.eventName)
+        .fill("E2E_622_Overview Event");
+      await chooseSelectOption(page, COPY.eventType, COPY.eventTypeTraining);
+      await createForm
+        .getByRole("button", { name: COPY.createMeeting })
+        .click();
+      await expect(
+        page.getByRole("heading", { name: "E2E_622_Overview Event" })
+      ).toBeVisible({ timeout: 15_000 });
+      eventId = new URL(page.url()).searchParams.get("event") ?? "";
+      expect(eventId).toBeTruthy();
+
+      await page.getByRole("link", { name: COPY.workspaceOverview }).click();
+      await expect(
+        page.getByRole("heading", { name: fixture.programName })
+      ).toBeVisible();
+      await expect(page.getByText("E2E_622_Overview Event")).toBeVisible();
+      await expect(page.getByText(/1 個聚會/u).first()).toBeVisible();
+
+      await page.goto(
+        `/programs?mode=management&program=${fixture.programId}&task=participants`
+      );
+      await expect(
+        page.getByRole("heading", { name: COPY.workspaceParticipants })
+      ).toBeVisible();
+      const pendingRow = page
+        .getByRole("listitem")
+        .filter({ hasText: "E2E Member" });
+      await pendingRow.getByRole("button", { name: COPY.approve }).click();
+      await expect(
+        page.getByLabel(fixture.programName).getByText(COPY.decisionMade, {
+          exact: true,
+        })
+      ).toBeVisible();
+
+      await page.getByRole("link", { name: COPY.workspaceOverview }).click();
+      await expect(
+        page.getByText(COPY.pendingCount, { exact: true }).locator("..")
+      ).toContainText("0");
+      await expect(
+        page.getByText(COPY.activeParticipants, { exact: true }).locator("..")
+      ).toContainText("1");
+    } finally {
+      if (!page.isClosed()) {
+        await page.evaluate(
+          async ({ programId, eventId }) => {
+            const enrollmentsResponse = await fetch(
+              `/api/v1/programs/${encodeURIComponent(programId)}/enrollments`
+            );
+            const enrollmentsBody = (await enrollmentsResponse.json()) as {
+              data?: {
+                enrollments?: {
+                  enrollment_id: string;
+                  member_user_id: string;
+                  status: string;
+                }[];
+              };
+            };
+            const active = enrollmentsBody.data?.enrollments?.find(
+              (item) =>
+                item.member_user_id === "U-E2E-MEMBER" &&
+                item.status === "Active"
+            );
+            if (active) {
+              await fetch(
+                `/api/v1/programs/${encodeURIComponent(programId)}/enrollments/${encodeURIComponent(active.enrollment_id)}/cancel`,
+                { method: "POST", body: "{}" }
+              );
+            }
+            if (eventId) {
+              await fetch(
+                `/api/v1/programs/${encodeURIComponent(programId)}/events/${encodeURIComponent(eventId)}`,
+                {
+                  method: "PATCH",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({
+                    status: "Cancelled",
+                    cancel_reason: "測試清理",
+                  }),
+                }
+              );
+            }
+          },
+          { programId: fixture.programId, eventId }
+        );
+        await restoreFixture(page, fixture);
+      }
     }
   });
 });

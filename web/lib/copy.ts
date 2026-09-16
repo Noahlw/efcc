@@ -82,6 +82,9 @@ export const COPY = {
     guestValidation: "請輸入聚會代碼、姓名及電話。",
     guestSubmit: "確認簽到",
     guestSubmitting: "送出中…",
+    guestReconcile: "確認簽到狀態",
+    guestReconciling: "確認中…",
+    guestReconcileNotFound: "未找到已完成的簽到，請再次確認。",
     guestResultTitle: "訪客簽到完成",
     guestResultLead: (period: string) =>
       `歡迎參加${period}聚會。你的資料已安全提交。`,

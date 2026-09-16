@@ -363,6 +363,55 @@ describe(AttendancePanel, () => {
       ).not.toBeInTheDocument();
     });
 
+    test("ambiguous guest submit reconciles before showing a committed result", async () => {
+      let guestPosts = 0;
+      server.use(
+        http.get("/api/v1/attendance/resolve", () =>
+          HttpResponse.json({
+            requestId: "rid-reconcile-resolve",
+            data: { events: [EVENT] },
+          })
+        ),
+        http.post("/api/v1/attendance/guest", () => {
+          guestPosts += 1;
+          return HttpResponse.error();
+        }),
+        http.post("/api/v1/attendance/guest/reconcile", () =>
+          HttpResponse.json({
+            requestId: "rid-reconcile",
+            data: {
+              outcome: "found",
+              checked_in_at: "2026-08-13T11:31:00.000Z",
+            },
+          })
+        )
+      );
+      const user = userEvent.setup();
+      render(<AttendancePanel />);
+      await fillGuestForm(user);
+      await user.click(
+        screen.getByRole("button", { name: COPY.attendance.guestSubmit })
+      );
+
+      await expect(
+        screen.findByText(COPY.attendance.transportAmbiguous)
+      ).resolves.toBeVisible();
+      expect(
+        screen.getByRole("button", { name: COPY.attendance.guestReconcile })
+      ).toBeEnabled();
+      expect(screen.getByLabelText(COPY.attendance.guestName)).toBeDisabled();
+      expect(guestPosts).toBe(1);
+
+      await user.click(
+        screen.getByRole("button", { name: COPY.attendance.guestReconcile })
+      );
+      await expect(
+        screen.findByRole("heading", {
+          name: COPY.attendance.guestResultTitle,
+        })
+      ).resolves.toBeVisible();
+    });
+
     test("duplicate is a neutral result without an attendance identifier", async () => {
       server.use(
         http.get("/api/v1/attendance/resolve", () =>

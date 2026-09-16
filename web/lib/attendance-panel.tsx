@@ -25,6 +25,7 @@ import { announce } from "@/lib/live-region";
 import {
   guestCheckIn,
   isUnknownMutationOutcome,
+  reconcileGuestCheckIn,
 } from "@/lib/programs/program-api";
 import { buildProgramsHref } from "@/lib/programs/programs-intent";
 import { useAttendanceFlow } from "@/lib/use-attendance-flow";
@@ -36,6 +37,14 @@ interface GuestResult {
   kind: "success" | "duplicate";
   event: AttendanceEvent;
   checkedInAt?: string;
+}
+
+interface GuestAttempt {
+  event: AttendanceEvent;
+  credentialValue: string;
+  fromQr: boolean;
+  name: string;
+  phone: string;
 }
 
 function guestSubmitErrorCopy(error: unknown): string {
@@ -125,10 +134,12 @@ export const AttendancePanel = () => {
   const [validationError, setValidationError] = useState("");
   const [result, setResult] = useState<GuestResult | null>(null);
   const [guestOutcomeUnknown, setGuestOutcomeUnknown] = useState(false);
+  const [guestReconcileBusy, setGuestReconcileBusy] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const nameRef = useRef<HTMLInputElement>(null);
   const phoneRef = useRef<HTMLInputElement>(null);
   const guestSubmitKeyRef = useRef<string | null>(null);
+  const guestAttemptRef = useRef<GuestAttempt | null>(null);
   const chooserHeadingRef = useRef<HTMLHeadingElement>(null);
   const resultHeadingRef = useRef<HTMLHeadingElement>(null);
   const outcomeHeadingRef = useRef<HTMLHeadingElement>(null);
@@ -166,7 +177,9 @@ export const AttendancePanel = () => {
     setAwaitingSelection(false);
     setValidationError("");
     setGuestOutcomeUnknown(false);
+    setGuestReconcileBusy(false);
     guestSubmitKeyRef.current = null;
+    guestAttemptRef.current = null;
     flow.resetToScan();
   };
 
@@ -199,6 +212,13 @@ export const AttendancePanel = () => {
     try {
       const credentialValue = flow.input.trim();
       guestSubmitKeyRef.current ??= crypto.randomUUID();
+      guestAttemptRef.current = {
+        event,
+        credentialValue,
+        fromQr,
+        name,
+        phone,
+      };
       const guestResult = await guestCheckIn(
         {
           event_id: event.event_id,
@@ -218,6 +238,7 @@ export const AttendancePanel = () => {
       });
       setGuestOutcomeUnknown(false);
       guestSubmitKeyRef.current = null;
+      guestAttemptRef.current = null;
       flow.showStatus("");
     } catch (error) {
       const unknown = isUnknownMutationOutcome(error);
@@ -225,6 +246,7 @@ export const AttendancePanel = () => {
       setGuestOutcomeUnknown(unknown);
       if (!unknown) {
         guestSubmitKeyRef.current = null;
+        guestAttemptRef.current = null;
       }
       flow.showStatus(message, "error");
       announce(
@@ -239,6 +261,50 @@ export const AttendancePanel = () => {
       }
     } finally {
       setSubmitting(false);
+    }
+  }
+
+  async function reconcileGuestOutcome() {
+    const attempt = guestAttemptRef.current;
+    if (!attempt || guestReconcileBusy) {
+      return;
+    }
+    setGuestReconcileBusy(true);
+    try {
+      const outcome = await reconcileGuestCheckIn({
+        event_id: attempt.event.event_id,
+        method: attempt.fromQr ? "guest_qr_scan" : "guest_manual_code",
+        name: attempt.name,
+        phone: attempt.phone,
+        ...(attempt.fromQr
+          ? { program_token: attempt.credentialValue }
+          : { entry: attempt.credentialValue }),
+      });
+      if (outcome.outcome === "found") {
+        setResult({
+          kind: "success",
+          event: attempt.event,
+          checkedInAt: outcome.checked_in_at,
+        });
+        setGuestOutcomeUnknown(false);
+        guestSubmitKeyRef.current = null;
+        guestAttemptRef.current = null;
+        flow.showStatus("");
+        return;
+      }
+      setGuestOutcomeUnknown(false);
+      flow.showStatus(COPY.attendance.guestReconcileNotFound, "info");
+      announce(COPY.attendance.guestReconcileNotFound);
+    } catch (error) {
+      const message =
+        error instanceof RpcError
+          ? guestSubmitErrorCopy(error)
+          : COPY.attendance.transportAmbiguous;
+      setGuestOutcomeUnknown(true);
+      flow.showStatus(message, "error");
+      announce(`${message} ${COPY.attendance.transportAmbiguous}`);
+    } finally {
+      setGuestReconcileBusy(false);
     }
   }
 
@@ -389,6 +455,10 @@ export const AttendancePanel = () => {
               onChange={(event) => {
                 setAwaitingSelection(false);
                 clearFormStatus();
+                if (!guestOutcomeUnknown) {
+                  guestSubmitKeyRef.current = null;
+                  guestAttemptRef.current = null;
+                }
                 flow.setInput(event.target.value);
               }}
               placeholder={COPY.attendance.guestCodePlaceholder}
@@ -396,6 +466,7 @@ export const AttendancePanel = () => {
               inputMode="numeric"
               spellCheck={false}
               required
+              disabled={guestOutcomeUnknown}
               aria-invalid={Boolean(validationError) && !flow.input.trim()}
             />
           </label>
@@ -410,12 +481,17 @@ export const AttendancePanel = () => {
               value={name}
               onChange={(event) => {
                 clearFormStatus();
+                if (!guestOutcomeUnknown) {
+                  guestSubmitKeyRef.current = null;
+                  guestAttemptRef.current = null;
+                }
                 setName(event.target.value);
               }}
               autoComplete="name"
               maxLength={80}
               spellCheck={false}
               required
+              disabled={guestOutcomeUnknown}
               aria-invalid={Boolean(validationError) && !name.trim()}
             />
           </label>
@@ -430,12 +506,17 @@ export const AttendancePanel = () => {
               value={phone}
               onChange={(event) => {
                 clearFormStatus();
+                if (!guestOutcomeUnknown) {
+                  guestSubmitKeyRef.current = null;
+                  guestAttemptRef.current = null;
+                }
                 setPhone(event.target.value);
               }}
               type="tel"
               autoComplete="tel"
               inputMode="tel"
               required
+              disabled={guestOutcomeUnknown}
               aria-describedby="guest-phone-hint"
               aria-invalid={Boolean(validationError) && !phone.trim()}
             />
@@ -470,9 +551,13 @@ export const AttendancePanel = () => {
             type="button"
             variant="outline"
             className={attendanceButtonVariants({ variant: "secondary" })}
-            onClick={backToScan}
+            onClick={() => void reconcileGuestOutcome()}
+            disabled={guestReconcileBusy}
+            aria-busy={guestReconcileBusy}
           >
-            {COPY.attendance.guestBack}
+            {guestReconcileBusy
+              ? COPY.attendance.guestReconciling
+              : COPY.attendance.guestReconcile}
           </Button>
         )}
         <div className="mt-4 grid gap-3">

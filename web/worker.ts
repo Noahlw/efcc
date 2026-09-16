@@ -823,6 +823,7 @@ export default {
         handleRecordExcused,
         handleSearchMembers,
         handleResolve,
+        handleReconcileGuestCheckIn,
         handleSelfCheckIn,
         handleVoidAttendance,
       } = await import("./lib/attendance");
@@ -858,6 +859,12 @@ export default {
         request.method === "POST"
       ) {
         return handleGuestCheckIn(request, attendanceEnv);
+      }
+      if (
+        url.pathname === "/api/v1/attendance/guest/reconcile" &&
+        request.method === "POST"
+      ) {
+        return handleReconcileGuestCheckIn(request, attendanceEnv);
       }
       const eventAttendance = url.pathname.match(
         /^\/api\/v1\/attendance\/events\/(?<eventId>[^/]+)\/(?<action>check-in|roster|members|materialize|excused|me)$/u

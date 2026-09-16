@@ -397,19 +397,18 @@ export const ParticipantsTask = () => {
     const snapshot = await run();
     const reconciled = workspaceReconciled && snapshot !== undefined;
     setUnknownMutationIds((current) => {
-      const next = { ...current };
-      if (reconciled) {
-        for (const id of ids) {
-          delete next[id];
-        }
-      } else {
+      const idsToClear = new Set(ids);
+      const next = Object.fromEntries(
+        Object.entries(current).filter(([id]) => !idsToClear.has(id))
+      );
+      if (!reconciled) {
         for (const id of ids) {
           next[id] = true;
         }
       }
       return next;
     });
-    onMutationBlockChange?.(reconciled ? false : true);
+    onMutationBlockChange?.(!reconciled);
     if (reconciled) {
       setParticipantsStale(false);
       setNotice(COPY.programs.workspaceReconciled);
@@ -582,6 +581,7 @@ export const ParticipantsTask = () => {
     setSelectedRequestIds([]);
     setNotice(null);
     const results = items.map((item) => ({ ...item }));
+    let unknownRequestId: string | null = null;
     try {
       for (let index = 0; index < results.length; index += 1) {
         const item = results[index];
@@ -627,7 +627,7 @@ export const ParticipantsTask = () => {
             }));
             updateApprovalRun([...results]);
             announce(COPY.programs.programTransportAmbiguous);
-            await reconcileUnknownParticipants([item.request.request_id]);
+            unknownRequestId = item.request.request_id;
             break;
           } else {
             const failure = approvalError(error);
@@ -635,6 +635,9 @@ export const ParticipantsTask = () => {
           }
         }
         updateApprovalRun([...results]);
+      }
+      if (unknownRequestId) {
+        await reconcileUnknownParticipants([unknownRequestId]);
       }
       setSelectedRequestIds(
         results

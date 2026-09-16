@@ -1453,6 +1453,21 @@ export function guestCheckIn(
   });
 }
 
+/** POST /api/v1/attendance/guest/reconcile — public guest outcome read. */
+export function reconcileGuestCheckIn(input: {
+  event_id: string;
+  method: "guest_qr_scan" | "guest_manual_code";
+  name: string;
+  phone: string;
+  program_token?: string;
+  manual_code?: string;
+  entry?: string;
+}): Promise<{ outcome: "found" | "not_found"; checked_in_at?: string }> {
+  return programsFetch("/api/v1/attendance/guest/reconcile", "POST", input, {
+    idempotencyKey: null,
+  });
+}
+
 /** GET /api/v1/attendance/events — legacy operator chooser */
 export function listManageableEvents(): Promise<{
   events: AttendanceEventSummaryType[];

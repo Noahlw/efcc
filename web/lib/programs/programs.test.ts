@@ -12,7 +12,6 @@
  */
 import assert from "node:assert/strict";
 
-import type { D1Database } from "@cloudflare/workers-types";
 import { env } from "cloudflare:workers";
 import { beforeAll, describe, test } from "vitest";
 /* oxlint-disable vitest/require-top-level-describe -- shared workerd/D1 fixture spans the suites. */
@@ -24,6 +23,7 @@ import { ACCESS_COOKIE_NAME } from "../auth/cookies";
 import { applyMigrations, testDb } from "../auth/test-bootstrap";
 import { completeCredentialUpgrade } from "../auth/upgrade";
 import { CAPABILITY_CATALOG } from "../identity/capability-catalog";
+import { D1WorkspaceStore } from "./d1-workspace-store";
 import { participantSelfCheckInAvailable } from "./department-workspace";
 import {
   addWallDays,
@@ -1474,6 +1474,19 @@ describe("NTF-01: management attention", () => {
     };
     return body.data;
   }
+
+  test("chunks large Event scopes under D1's bound-parameter limit", async () => {
+    const store = new D1WorkspaceStore(testDb());
+    const programIds = Array.from({ length: 101 }, () => crypto.randomUUID());
+
+    const rows = await store.listManagementEventAttention(
+      programIds,
+      new Date().toISOString(),
+      20
+    );
+
+    assert.deepStrictEqual(rows, []);
+  });
 
   test("projects current scoped queues and resolves approval, rejection, and Event state", async () => {
     const adminAccess = await accessCookieFor("alice", "alice-secret");

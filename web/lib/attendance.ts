@@ -1792,6 +1792,79 @@ export async function handleGuestCheckIn(
   );
 }
 
+/**
+ * Public guest reconciliation for an ambiguous check-in acknowledgement.
+ * The credential and matching guest identity are required; no attendance ID
+ * or guest record is returned across this boundary.
+ */
+export async function handleReconcileGuestCheckIn(
+  request: Request,
+  env: AttendanceEnv
+): Promise<Response> {
+  const id = requestId();
+  const input = await body<{
+    event_id?: unknown;
+    method?: unknown;
+    name?: unknown;
+    phone?: unknown;
+    program_token?: unknown;
+    manual_code?: unknown;
+    entry?: unknown;
+  }>(request);
+  if (
+    !input ||
+    typeof input.event_id !== "string" ||
+    typeof input.name !== "string" ||
+    typeof input.phone !== "string" ||
+    (input.method !== undefined &&
+      input.method !== "guest_qr_scan" &&
+      input.method !== "guest_manual_code") ||
+    (typeof input.entry !== "string" &&
+      typeof input.program_token !== "string" &&
+      typeof input.manual_code !== "string") ||
+    !input.name.trim()
+  ) {
+    return problem(422, "VALIDATION", "姓名和電話都是必填資料。", id);
+  }
+  const normalized = normalizeGuestPhone(input.phone);
+  if (!normalized) {
+    return problem(422, "VALIDATION", "請輸入有效電話號碼。", id);
+  }
+  const event = await findEvent(env.DB, input.event_id);
+  if (!event) {
+    return problem(404, "NOT_FOUND", "找不到聚會。", id);
+  }
+  const derived = await deriveCheckInMethod(
+    env,
+    event,
+    input,
+    "guest_manual_code",
+    "guest_qr_scan",
+    id
+  );
+  if (derived.method === null) {
+    return derived.response;
+  }
+  const row = await env.DB.prepare(
+    `SELECT checked_in_at FROM attendances
+       WHERE event_id = ?
+         AND member_user_id IS NULL
+         AND guest_name = ?
+         AND guest_phone_normalized = ?
+         AND status = 'Active'
+       LIMIT 1`
+  )
+    .bind(event.event_id, input.name.trim(), normalized)
+    .first<{ checked_in_at: string }>();
+  return json(
+    200,
+    row
+      ? { outcome: "found", checked_in_at: row.checked_in_at }
+      : { outcome: "not_found" },
+    id
+  );
+}
+
 export async function handleListRoster(
   request: Request,
   env: AttendanceEnv,

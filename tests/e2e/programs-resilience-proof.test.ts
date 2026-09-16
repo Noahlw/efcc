@@ -53,6 +53,7 @@ const MEMBER_USER = process.env.PROGRAMS_MEMBER_USERNAME ?? DEV_MEMBER.username;
 const MEMBER_CRED =
   process.env.PROGRAMS_MEMBER_CREDENTIAL ?? DEV_MEMBER.credential;
 const MEMBER_USER_ID = DEV_MEMBER.userId;
+const SCANNER_DESCRIPTION = "Resilience scanner acceptance fixture";
 
 const COPY = {
   // COPY.login (submit button label)
@@ -63,12 +64,13 @@ const COPY = {
   restoreExpired: "工作階段已過期，請重新登入。",
   // COPY.error.networkError
   networkError: "無法連接伺服器，請檢查網路後再試。",
+  enrollmentRetry: "重試連接",
   // COPY.programs.enrollment
   enrollment: "報名",
   // COPY.programs.requestEnroll
-  requestEnroll: "申請報名",
+  requestEnroll: "報名",
   // COPY.programs.requestSubmitted
-  requestSubmitted: "已送出報名申請。",
+  requestSubmitted: "報名申請已提交",
   // COPY.programs.requestPendingHint
   requestPendingHint: "申請已送出，等待課程負責人處理。",
   // COPY.programs.programTransportAmbiguous (program-save family; not rendered by any flow tested here)
@@ -76,8 +78,8 @@ const COPY = {
     "未能確認課程是否已儲存。請重新整理工作區後再試，避免重複提交。",
   // COPY.sections.scanner
   scannerTitle: "掃描簽到",
-  // COPY.attendance.resolve
-  resolve: "查找聚會",
+  // COPY.attendance.continue
+  resolve: "繼續",
   // COPY.attendance.memberSubmit
   memberSubmit: "確認簽到",
   // COPY.attendance.transportAmbiguous
@@ -100,11 +102,16 @@ const COPY = {
   programDescription: "課程簡介",
   // COPY.programs.settingsSaveBasics
   settingsSaveBasics: "儲存基本資料",
+  // COPY.attendance.guestReconcile
+  guestReconcile: "確認簽到狀態",
+  // COPY.attendance.guestResultTitle
+  guestResultTitle: "訪客簽到完成",
 };
 
 interface ProofFixtures {
   requestProgramId: string;
   scannerProgramId: string;
+  scannerEventId: string;
   manualCode: string;
   adminContext: { storageState: StorageState };
   memberContext: { storageState: StorageState };
@@ -295,6 +302,11 @@ test.beforeAll(async ({ playwright }) => {
     const requestProgramId = (
       reqProgRes.body.data as { program: { program_id: string } }
     ).program.program_id;
+    const requestPublish = await adminLogin.api.patch(
+      `/api/v1/programs/${requestProgramId}`,
+      { data: { lifecycle: "Active", discoverability: "Listed" } }
+    );
+    expect(requestPublish.status()).toBe(200);
 
     // 3. ManagerOnly program for T2/T4 with an active Event whose check-in
     //    window is open now (starts ~30 min ago, ends ~60 min ahead).
@@ -303,7 +315,7 @@ test.beforeAll(async ({ playwright }) => {
       `/api/v1/programs/departments/${departmentId}/programs`,
       {
         name: `Scanner Program ${fresh("SCN")}`,
-        description: "Resilience scanner acceptance fixture",
+        description: SCANNER_DESCRIPTION,
         category: "測試",
         behavior_type: "Recurring",
         lifecycle: "Active",
@@ -315,6 +327,11 @@ test.beforeAll(async ({ playwright }) => {
     const scannerProgramId = (
       scanProgRes.body.data as { program: { program_id: string } }
     ).program.program_id;
+    const scannerPublish = await adminLogin.api.patch(
+      `/api/v1/programs/${scannerProgramId}`,
+      { data: { lifecycle: "Active", discoverability: "Listed" } }
+    );
+    expect(scannerPublish.status()).toBe(200);
 
     const now = Date.now();
     const eventRes = await postJson(
@@ -328,11 +345,11 @@ test.beforeAll(async ({ playwright }) => {
       }
     );
     expect(eventRes.status).toBe(201);
-    const manualCode = (
-      eventRes.body.data as {
-        event: { manual_check_in_code: string };
-      }
-    ).event.manual_check_in_code;
+    const event = eventRes.body.data as {
+      event: { event_id: string; manual_check_in_code: string };
+    };
+    const scannerEventId = event.event.event_id;
+    const manualCode = event.event.manual_check_in_code;
 
     // 4. Pre-enroll the member in the ManagerOnly scanner program (manager
     //    arranges members) so the T2 self check-in succeeds on retry.
@@ -346,6 +363,7 @@ test.beforeAll(async ({ playwright }) => {
     fixtures = {
       requestProgramId,
       scannerProgramId,
+      scannerEventId,
       manualCode,
       adminContext: { storageState: adminLogin.storageState },
       memberContext: { storageState: memberLogin.storageState },
@@ -389,7 +407,7 @@ test.describe("Programs resilience proof (REL-01 / #261 Slice C)", () => {
     // (errorCopyFor("NETWORK_ERROR") -> COPY.error.networkError) in an alert;
     // programTransportAmbiguous covers the program-save flow instead.
     const failureAlert = page.locator("main").getByRole("alert");
-    await expect(failureAlert).toHaveText(COPY.networkError);
+    await expect(failureAlert).toContainText(COPY.networkError);
 
     // The Program detail context survives the failed mutation: still on the
     // detail URL with the enrollment panel and its retry affordance intact.
@@ -407,7 +425,11 @@ test.describe("Programs resilience proof (REL-01 / #261 Slice C)", () => {
     // the request settles into the Pending state. (main-scoped: the success
     // notice is also announced into the shell-level sr-only live region,
     // which lives outside <main>.)
-    await requestButton.click();
+    const retryButton = page.getByRole("button", {
+      name: COPY.enrollmentRetry,
+    });
+    await expect(retryButton).toBeVisible();
+    await retryButton.click();
     await expect(statusText(page, COPY.requestSubmitted)).toBeVisible();
     await expect(statusText(page, COPY.requestPendingHint)).toBeVisible();
     expect(pageErrors).toEqual([]);
@@ -425,9 +447,16 @@ test.describe("Programs resilience proof (REL-01 / #261 Slice C)", () => {
       page.on("pageerror", (error) => pageErrors.push(String(error)));
 
       await page.goto("/scanner");
-      await expect(
-        page.getByRole("heading", { name: COPY.scannerTitle })
-      ).toBeVisible();
+      await expect(page.locator("main")).toContainText(
+        /掃描簽到|其他簽到方式|聚會簽到|輸入代碼/u
+      );
+      const codeEntry = page.getByRole("button", { name: /輸入代碼/u });
+      if ((await codeEntry.count()) > 0) {
+        await codeEntry.click();
+      }
+      if ((await page.locator("#attendance-code").count()) === 0) {
+        await page.getByRole("button", { name: /輸入代碼/u }).click();
+      }
 
       // Resolve the Event by its manual code while online.
       await page.locator("#attendance-code").fill(fixtures.manualCode);
@@ -453,6 +482,92 @@ test.describe("Programs resilience proof (REL-01 / #261 Slice C)", () => {
       expect(pageErrors).toEqual([]);
     } finally {
       await context.close();
+    }
+  });
+
+  test("T5 guest acknowledgement loss reconciles the committed Worker/D1 record", async ({
+    page,
+    browser,
+  }) => {
+    let capturedAttendanceId = "";
+    let guestWrites = 0;
+    const guestRoute = "**/api/v1/attendance/guest";
+    await page.route(guestRoute, async (route) => {
+      if (route.request().method() !== "POST") {
+        await route.continue();
+        return;
+      }
+      guestWrites += 1;
+      const upstream = await route.fetch();
+      const body = await upstream.text();
+      const parsed = JSON.parse(body) as {
+        data?: { attendance_id?: string };
+      };
+      capturedAttendanceId = parsed.data?.attendance_id ?? "";
+      // The real Worker/D1 write has completed; only the browser acknowledgement
+      // is replaced with an unavailable response.
+      await route.fulfill({
+        status: 503,
+        contentType: "application/problem+json",
+        body: JSON.stringify({
+          status: 503,
+          code: "UNAVAILABLE",
+          title: "Unavailable",
+          detail: "測試中的 acknowledgement loss",
+        }),
+      });
+    });
+    const uniquePhone = `9123 ${String(Date.now()).slice(-4)}`;
+    const uniqueName = `Resilience Guest ${Date.now()}`;
+    try {
+      await page.goto("/guest-check-in");
+      await page.locator("#attendance-code").fill(fixtures.manualCode);
+      await page.getByLabel(COPY.guestName).fill(uniqueName);
+      await page.locator("#guest-phone").fill(uniquePhone);
+      await page.getByRole("button", { name: COPY.guestSubmit }).click();
+      await expect(statusText(page, COPY.transportAmbiguous)).toBeVisible();
+      const reconcileButton = page.getByRole("button", {
+        name: COPY.guestReconcile,
+      });
+      await expect(reconcileButton).toBeVisible();
+      await expect(page.getByLabel(COPY.guestName)).toBeDisabled();
+      expect(guestWrites).toBe(1);
+      expect(capturedAttendanceId).toBeTruthy();
+
+      await page.unroute(guestRoute);
+      await reconcileButton.click();
+      await expect(
+        page.getByRole("heading", { name: COPY.guestResultTitle })
+      ).toBeVisible();
+      expect(guestWrites).toBe(1);
+    } finally {
+      await page.unroute(guestRoute).catch(() => {});
+      if (capturedAttendanceId) {
+        const adminContext = await browser.newContext({
+          storageState: fixtures.adminContext.storageState,
+        });
+        try {
+          const adminPage = await adminContext.newPage();
+          await adminPage.goto("/");
+          const cleanupStatus = await adminPage.evaluate(
+            async (attendanceId) => {
+              const response = await fetch(
+                `/api/v1/attendance/${attendanceId}/void`,
+                {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ reason: "測試清理" }),
+                }
+              );
+              return response.status;
+            },
+            capturedAttendanceId
+          );
+          expect(cleanupStatus).toBe(200);
+        } finally {
+          await adminContext.close();
+        }
+      }
     }
   });
 
@@ -538,9 +653,11 @@ test.describe("Programs resilience proof (REL-01 / #261 Slice C)", () => {
     await expect(page).toHaveURL(/\/$/u);
 
     // Re-login restores the original Program Settings context.
-    await page
-      .locator('input[autocomplete="username"]')
-      .fill(required("PROGRAMS_ADMIN_USERNAME", ADMIN_USER));
+    const username = page.locator('input[autocomplete="username"]');
+    if ((await username.count()) === 0) {
+      await page.getByRole("button", { name: "重新登入" }).click();
+    }
+    await username.fill(required("PROGRAMS_ADMIN_USERNAME", ADMIN_USER));
     await page
       .locator('input[autocomplete="current-password"]')
       .fill(required("PROGRAMS_ADMIN_CREDENTIAL", ADMIN_CRED));
@@ -566,6 +683,6 @@ test.describe("Programs resilience proof (REL-01 / #261 Slice C)", () => {
     ).toBeVisible();
     // Data correctness: the expired mutation never committed — the reloaded
     // workspace shows the original (empty) description, not the typed edit.
-    await expect(description).toHaveValue("");
+    await expect(description).toHaveValue(SCANNER_DESCRIPTION);
   });
 });

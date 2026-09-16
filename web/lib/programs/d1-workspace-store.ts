@@ -1562,29 +1562,51 @@ export class D1WorkspaceStore implements WorkspaceStore {
     if (programIds.length === 0 || limit <= 0) {
       return [];
     }
-    const placeholders = programIds.map(() => "?").join(", ");
-    const result = await this.db
-      .prepare(
-        `SELECT event_id, program_id, starts_at, status, availability, name
-           FROM events
-          WHERE starts_at >= ?
-            AND program_id IN (${placeholders})
-            AND (
-              status = 'Cancelled'
-              OR (status = 'Active' AND availability = 'Inactive')
-            )
-          ORDER BY
-            CASE
-              WHEN status = 'Active' AND availability = 'Inactive' THEN 0
-              ELSE 1
-            END,
-            starts_at ASC,
-            event_id ASC
-          LIMIT ?`
-      )
-      .bind(startsAtOrAfter, ...programIds, limit)
-      .all<ManagementAttentionEventRow>();
-    return result.results ?? [];
+    const rows = await chunkedQuery(programIds, async (batch) => {
+      const placeholders = batch.map(() => "?").join(", ");
+      const result = await this.db
+        .prepare(
+          `SELECT event_id, program_id, starts_at, status, availability, name
+             FROM events
+            WHERE starts_at >= ?
+              AND program_id IN (${placeholders})
+              AND (
+                status = 'Cancelled'
+                OR (status = 'Active' AND availability = 'Inactive')
+              )
+            ORDER BY
+              CASE
+                WHEN status = 'Active' AND availability = 'Inactive' THEN 0
+                ELSE 1
+              END,
+              starts_at ASC,
+              event_id ASC
+            LIMIT ?`
+        )
+        .bind(startsAtOrAfter, ...batch, limit)
+        .all<ManagementAttentionEventRow>();
+      return result.results ?? [];
+    });
+    return rows
+      .sort((left, right) => {
+        const leftPriority =
+          left.status === "Active" && left.availability === "Inactive" ? 0 : 1;
+        const rightPriority =
+          right.status === "Active" && right.availability === "Inactive"
+            ? 0
+            : 1;
+        if (leftPriority !== rightPriority) {
+          return leftPriority - rightPriority;
+        }
+        if (left.starts_at !== right.starts_at) {
+          return left.starts_at < right.starts_at ? -1 : 1;
+        }
+        if (left.event_id !== right.event_id) {
+          return left.event_id < right.event_id ? -1 : 1;
+        }
+        return 0;
+      })
+      .slice(0, limit);
   }
 
   listManagementNotificationEnrollments(

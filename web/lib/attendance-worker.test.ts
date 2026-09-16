@@ -657,6 +657,69 @@ describe("attendance Worker routes", () => {
     }
   });
 
+  test("guest acknowledgement loss reconciles the authoritative record without leaking its id", async () => {
+    const payload = {
+      event_id: EVENT,
+      method: "guest_manual_code",
+      manual_code: "ATT1234",
+      name: "訪客確認",
+      phone: "9123 4599",
+    } as const;
+    const created = await worker.fetch(
+      request("/api/v1/attendance/guest", {
+        method: "POST",
+        headers: { "Idempotency-Key": "guest-ack-loss-reconcile" },
+        body: JSON.stringify(payload),
+      }),
+      testEnv()
+    );
+    assert.strictEqual(created.status, 201);
+    const createdBody = await json(created);
+    const attendanceId = (createdBody.data as { attendance_id: string })
+      .attendance_id;
+
+    try {
+      const reconciled = await worker.fetch(
+        request("/api/v1/attendance/guest/reconcile", {
+          method: "POST",
+          body: JSON.stringify(payload),
+        }),
+        testEnv()
+      );
+      assert.strictEqual(reconciled.status, 200);
+      const reconciledData = (await json(reconciled)).data as Record<
+        string,
+        unknown
+      >;
+      assert.strictEqual(reconciledData.outcome, "found");
+      assert.ok(reconciledData.checked_in_at);
+      assert.strictEqual("attendance_id" in reconciledData, false);
+
+      const wrongGuest = await worker.fetch(
+        request("/api/v1/attendance/guest/reconcile", {
+          method: "POST",
+          body: JSON.stringify({ ...payload, name: "其他訪客" }),
+        }),
+        testEnv()
+      );
+      assert.strictEqual(wrongGuest.status, 200);
+      assert.deepStrictEqual((await json(wrongGuest)).data, {
+        outcome: "not_found",
+      });
+    } finally {
+      const admin = await accessCookieFor("att-admin", "att-admin-password");
+      const voided = await worker.fetch(
+        request(`/api/v1/attendance/${attendanceId}/void`, {
+          method: "POST",
+          headers: { Cookie: `${ACCESS_COOKIE_NAME}=${admin}` },
+          body: JSON.stringify({ reason: "測試清理" }),
+        }),
+        testEnv()
+      );
+      assert.strictEqual(voided.status, 200);
+    }
+  });
+
   test("guest check-in respects rate limiting when limiter rejects", async () => {
     const customEnv: Env = {
       ...testEnv(),
