@@ -1011,6 +1011,9 @@ const createManagementProgramHandlers = ({
   http.get("/api/v1/programs/:programId/enrollment-requests", () =>
     envelope({ requests: PARTICIPANT_REQUESTS })
   ),
+  http.get("/api/v1/programs/:programId/enrollment-approval-runs", () =>
+    envelope({ runs: [] })
+  ),
   http.get("/api/v1/programs/:programId/enrollments", () =>
     envelope({ enrollments: PARTICIPANT_ENROLLMENTS })
   ),

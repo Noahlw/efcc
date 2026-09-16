@@ -379,14 +379,14 @@ const managementDirectoryMixedPlay: Story["play"] = async ({
     name: COPY.programs.departmentSettings,
   });
   await userEvent.click(trigger);
-  const picker = canvas.getByRole("dialog", {
+  const picker = within(canvasElement.ownerDocument.body).getByRole("dialog", {
     name: COPY.programs.departmentSettings,
   });
   await expect(picker).toHaveFocus();
   await userEvent.click(within(picker).getByRole("button", { name: "牧養部" }));
   await expect(
-    canvas.getByRole("heading", { name: "部門設定: 牧養部" })
-  ).toBeVisible();
+    canvas.findByRole("heading", { name: "部門設定: 牧養部" })
+  ).resolves.toBeVisible();
   await userEvent.click(
     canvas.getByRole("button", { name: COPY.programs.collapse })
   );
@@ -738,12 +738,17 @@ const workspaceSettingsConflictPlay: Story["play"] = async ({
   );
 
   await userEvent.click(
-    canvas.getByRole("button", { name: COPY.homeEditor.conflictReload })
+    canvas.getByRole("button", { name: COPY.programs.workspaceRetryRefresh })
   );
   await expect(
-    canvas.findByRole("heading", { name: COPY.programs.settingsHubTitle })
+    canvas.findByRole("heading", { name: COPY.programs.settingsBasics })
   ).resolves.toBeVisible();
-  await openBasics();
+  await expect(
+    canvas.findByText(COPY.programs.workspaceReconciled, { exact: true })
+  ).resolves.toBeVisible();
+  await expect(
+    canvas.getByRole("textbox", { name: COPY.programs.programName })
+  ).toHaveValue("伺服器最新課程");
   name = canvas.getByRole("textbox", { name: COPY.programs.programName });
   await expect(name).toHaveValue("伺服器最新課程");
 
