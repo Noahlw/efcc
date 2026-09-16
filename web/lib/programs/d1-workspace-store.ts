@@ -2189,16 +2189,19 @@ export class D1WorkspaceStore implements WorkspaceStore {
     // plan_id is deterministic (program + plan_hash), so the plan row and
     // its exact occurrence rows commit atomically: either the whole plan
     // materializes or nothing does. Identical inputs re-run the same plan
-    // statement; re-reviewing an identical input refreshes reviewed_at so an
-    // A -> B -> A review sequence makes A current again. The same statement
-    // also repairs any occurrence rows a previous crash may have left
-    // missing before the plan is returned.
+    // statement; the store allocates reviewed_at as a durable per-program
+    // review sequence so same-millisecond A -> B reviews still have a real
+    // order. Re-reviewing an identical input refreshes that sequence so an
+    // A -> B -> A review makes A current again. The same statement also
+    // repairs any occurrence rows a previous crash may have left missing
+    // before the plan is returned.
     //
     // Occurrence rows upsert skip_reason on conflict: occurrence_id is
     // stable for a given plan, but which occurrences are DUPLICATE is a
     // live fact (it depends on which events currently exist), so a
-    // re-preview of an already-persisted plan must refresh skip_reason on
-    // existing rows instead of silently keeping their original value —
+    // re-preview of an already-persisted plan must refresh skip_reason and
+    // exception metadata on existing rows instead of silently keeping their
+    // original values —
     // otherwise an already-generated plan's re-preview would report zero
     // duplicates even though every occurrence would now be skipped.
     //
@@ -2213,14 +2216,15 @@ export class D1WorkspaceStore implements WorkspaceStore {
         `INSERT INTO program_preview_plans (plan_id, program_id,
            plan_hash, horizon_days, from_date, rule_count, created_by, created_at,
            to_date, schedule_version, reviewed_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+          MAX(?, COALESCE(
+            (SELECT MAX(reviewed_at) + 1
+               FROM program_preview_plans
+              WHERE program_id = ?),
+            ?)))
         ON CONFLICT(plan_id) DO UPDATE SET
           schedule_version = excluded.schedule_version,
-          reviewed_at = CASE
-            WHEN excluded.reviewed_at > program_preview_plans.reviewed_at
-              THEN excluded.reviewed_at
-            ELSE program_preview_plans.reviewed_at + 1
-          END`
+          reviewed_at = excluded.reviewed_at`
       )
       .bind(
         plan.plan_id,
@@ -2233,6 +2237,8 @@ export class D1WorkspaceStore implements WorkspaceStore {
         plan.created_at,
         plan.to_date ?? null,
         plan.schedule_version,
+        plan.reviewed_at,
+        plan.program_id,
         plan.reviewed_at
       );
     const occurrenceStatements = (rows: PreviewOccurrenceRow[]) =>
@@ -2241,10 +2247,12 @@ export class D1WorkspaceStore implements WorkspaceStore {
           .prepare(
             `INSERT INTO program_preview_occurrences
                (occurrence_id, plan_id, rule_id, occurs_on, starts_at, ends_at,
-                location, skip_reason, exception_id)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                location, skip_reason, exception_id, replacement_date)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
              ON CONFLICT(occurrence_id) DO UPDATE SET
-               skip_reason = excluded.skip_reason`
+               skip_reason = excluded.skip_reason,
+               exception_id = excluded.exception_id,
+               replacement_date = excluded.replacement_date`
           )
           .bind(
             occurrence.occurrence_id,
@@ -2255,7 +2263,8 @@ export class D1WorkspaceStore implements WorkspaceStore {
             occurrence.ends_at,
             occurrence.location,
             occurrence.skip_reason,
-            occurrence.exception_id
+            occurrence.exception_id,
+            occurrence.replacement_date ?? null
           )
       );
     const CHUNK_SIZE = 500;

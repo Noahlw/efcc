@@ -397,6 +397,7 @@ export interface GenerateResult {
   skipped: number;
   failed: number;
   resumed: boolean;
+  requires_review?: boolean;
   created_event_ids: string[];
   skipped_occurrences: GenerateSkippedOccurrence[];
   unresolved_occurrences: GenerateUnresolvedOccurrence[];

@@ -218,6 +218,8 @@ export const RecurringSchedulePanel = ({
   );
   const [generationNeedsReconciliation, setGenerationNeedsReconciliation] =
     useState(false);
+  const [generationRequiresReview, setGenerationRequiresReview] =
+    useState(false);
   const [generateError, setGenerateError] = useState<string | null>(null);
   const [exceptionDrafts, setExceptionDrafts] = useState<
     Record<string, ExceptionDraft>
@@ -293,6 +295,7 @@ export const RecurringSchedulePanel = ({
     setGenerationIdentity(null);
     setGenerationData(null);
     setGenerationNeedsReconciliation(false);
+    setGenerationRequiresReview(false);
     setGenerateError(null);
     try {
       const plan = await previewEvents(programId, {
@@ -557,6 +560,7 @@ export const RecurringSchedulePanel = ({
   const applyGenerationResult = async (
     generated: GenerateResult
   ): Promise<void> => {
+    const requiresReview = generated.requires_review === true;
     const result =
       generated.failed === 0
         ? generated.resumed
@@ -573,6 +577,10 @@ export const RecurringSchedulePanel = ({
     setGeneratePartial(generated.failed > 0);
     setGenerationData(generated);
     setGenerationNeedsReconciliation(generated.failed > 0);
+    setGenerationRequiresReview(requiresReview);
+    if (requiresReview) {
+      setPreviewInvalidated(true);
+    }
     setGenerateResult(result);
     setGenerationIdentity({
       runId: generated.run_id,
@@ -592,7 +600,8 @@ export const RecurringSchedulePanel = ({
     if (
       preview.kind !== "ready" ||
       previewIsStale ||
-      generationNeedsReconciliation
+      generationNeedsReconciliation ||
+      generationRequiresReview
     ) {
       return;
     }
@@ -634,6 +643,7 @@ export const RecurringSchedulePanel = ({
             : { kind: "error", message, stale: true }
         );
         setGenerationNeedsReconciliation(false);
+        setGenerationRequiresReview(false);
       } else {
         setGenerationNeedsReconciliation(transportAmbiguous);
         if (transportAmbiguous) {
@@ -654,7 +664,7 @@ export const RecurringSchedulePanel = ({
     const planId =
       generationIdentity?.planId ??
       (preview.kind === "ready" ? preview.plan.plan.plan_id : null);
-    if (!planId || previewIsStale) {
+    if (!planId || previewIsStale || generationRequiresReview) {
       return;
     }
     setGenerateBusy(true);
@@ -989,7 +999,8 @@ export const RecurringSchedulePanel = ({
                     hasExceptionDrafts ||
                     exceptionBusy ||
                     scheduleNeedsReconciliation ||
-                    generationNeedsReconciliation
+                    generationNeedsReconciliation ||
+                    generationRequiresReview
                   }
                 >
                   {generateBusy
@@ -1049,17 +1060,19 @@ export const RecurringSchedulePanel = ({
                       </dd>
                     </div>
                   </dl>
-                  {generationNeedsReconciliation && unresolvedCount === 0 && (
-                    <Button
-                      type="button"
-                      variant="outline"
-                      className="w-fit border-[var(--screen-line-strong)] bg-transparent text-[var(--screen-ink)] hover:bg-[var(--screen-surface-soft)]"
-                      onClick={() => void reconcileGeneration()}
-                      disabled={generateBusy}
-                    >
-                      {COPY.programs.workspaceRetryRefresh}
-                    </Button>
-                  )}
+                  {generationNeedsReconciliation &&
+                    !generationRequiresReview &&
+                    unresolvedCount === 0 && (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="w-fit border-[var(--screen-line-strong)] bg-transparent text-[var(--screen-ink)] hover:bg-[var(--screen-surface-soft)]"
+                        onClick={() => void reconcileGeneration()}
+                        disabled={generateBusy}
+                      >
+                        {COPY.programs.workspaceRetryRefresh}
+                      </Button>
+                    )}
                   {unresolvedCount > 0 ? (
                     <details open>
                       <summary className="cursor-pointer font-bold text-[var(--screen-danger)]">
@@ -1084,14 +1097,16 @@ export const RecurringSchedulePanel = ({
                           {COPY.programs.generatedUnresolvedFallback}
                         </p>
                       )}
-                      <Button
-                        type="button"
-                        className="mt-3 w-fit bg-[var(--screen-danger)] text-white hover:bg-[var(--screen-danger)]"
-                        onClick={() => void reconcileGeneration()}
-                        disabled={generateBusy}
-                      >
-                        {COPY.programs.generatedReconcile}
-                      </Button>
+                      {!generationRequiresReview && (
+                        <Button
+                          type="button"
+                          className="mt-3 w-fit bg-[var(--screen-danger)] text-white hover:bg-[var(--screen-danger)]"
+                          onClick={() => void reconcileGeneration()}
+                          disabled={generateBusy}
+                        >
+                          {COPY.programs.generatedReconcile}
+                        </Button>
+                      )}
                     </details>
                   ) : (
                     <details>

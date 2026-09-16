@@ -3041,6 +3041,59 @@ describe("EVT-02 recurring preview and generation UI (#252)", () => {
     expect(mocks.generateEvents).toHaveBeenCalledTimes(2);
   });
 
+  test("a stale partial generation keeps counts but requires Review Again", async () => {
+    const user = userEvent.setup();
+    renderScheduleTask();
+    await screen.findByRole("button", { name: COPY.programs.previewEvents });
+    mocks.previewEvents.mockResolvedValue(plan);
+    mocks.generateEvents.mockResolvedValue({
+      generated: {
+        run_id: "run-stale-partial",
+        plan_id: "plan-abc123",
+        status: "partial",
+        created: 1,
+        skipped: 0,
+        failed: 1,
+        resumed: false,
+        requires_review: true,
+        unresolved_occurrences: [
+          {
+            occurrence_id: "occ-stale",
+            starts_at: "2026-09-16T11:30:00.000Z",
+            detail: "STALE_PLAN",
+          },
+        ],
+      },
+    });
+
+    await user.click(
+      screen.getByRole("button", { name: COPY.programs.previewEvents })
+    );
+    await screen.findByRole("button", { name: COPY.programs.generateEvents });
+    await user.click(
+      screen.getByRole("button", { name: COPY.programs.generateEvents })
+    );
+
+    await expect(
+      screen.findByText(
+        COPY.programs.generatedPartial
+          .replace("{created}", "1")
+          .replace("{skipped}", "0")
+          .replace("{failed}", "1"),
+        { exact: true }
+      )
+    ).resolves.toBeVisible();
+    expect(
+      screen.queryByRole("button", { name: COPY.programs.generatedReconcile })
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: COPY.programs.previewReviewAgain })
+    ).toBeEnabled();
+    expect(
+      screen.getByRole("button", { name: COPY.programs.generateEvents })
+    ).toBeDisabled();
+  });
+
   test("an unknown generation response is reconciled before retry is enabled", async () => {
     const user = userEvent.setup();
     renderScheduleTask();

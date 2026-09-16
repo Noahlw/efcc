@@ -3567,8 +3567,8 @@ export class DepartmentWorkspace {
       // Settle from durable item rows before surfacing the conflict. A
       // mid-run revision may already have committed Events; returning its
       // partial result keeps the operator from mistaking committed work for
-      // a failed write and lets the existing reconciliation path retry only
-      // unresolved items.
+      // a failed write. The stale Plan is never retryable: the caller must
+      // review a new Plan before attempting any remaining occurrences.
       await this.store.finishGenerationRun(
         run.run_id,
         new Date().toISOString()
@@ -3578,15 +3578,17 @@ export class DepartmentWorkspace {
         throw new WorkspaceNotFoundError("generation_run", run.run_id);
       }
       if (
-        conflictSettled.status !== "completed" &&
+        conflictSettled.status === "completed" ||
         conflictSettled.created + conflictSettled.skipped > 0
       ) {
+        const settlementOutcome =
+          conflictSettled.status === "completed" ? "SUCCESS" : "CONFLICT";
         await this.audit(
           ctx,
           "EVENT_GENERATE",
           "event",
           programId,
-          "CONFLICT",
+          settlementOutcome,
           null,
           {
             run_id: conflictSettled.run_id,
@@ -3596,10 +3598,13 @@ export class DepartmentWorkspace {
             created: conflictSettled.created,
             skipped: conflictSettled.skipped,
             failed: conflictSettled.failed,
+            requires_review: true,
           },
           correlationId
         );
-        return this.generationResult(conflictSettled, occurrences, resumed);
+        return this.generationResult(conflictSettled, occurrences, resumed, {
+          requiresReview: true,
+        });
       }
       await rejectStalePlan();
     }
@@ -3638,10 +3643,11 @@ export class DepartmentWorkspace {
     occurrences: readonly PreviewOccurrenceRow[],
     resumed: boolean,
     overrides: {
-      created: number;
-      skipped: number;
-      failed: number;
+      created?: number;
+      skipped?: number;
+      failed?: number;
       createdEventIds?: string[];
+      requiresReview?: boolean;
     } | null = null
   ): Promise<GenerateResult> {
     const items = await this.store.listGenerationRunItems(run.run_id);
@@ -3656,6 +3662,7 @@ export class DepartmentWorkspace {
       skipped: overrides?.skipped ?? run.skipped,
       failed: overrides?.failed ?? run.failed,
       resumed,
+      ...(overrides?.requiresReview ? { requires_review: true } : {}),
       created_event_ids:
         overrides?.createdEventIds ??
         items

@@ -535,6 +535,8 @@ export interface GenerateResult {
   failed: number;
   /** True when the request resumed an already-started run (retry/concurrent). */
   resumed: boolean;
+  /** The durable outcome is truthful, but a fresh Plan is required before retrying. */
+  requires_review?: boolean;
   created_event_ids?: string[];
   skipped_occurrences?: {
     occurrence_id: string;

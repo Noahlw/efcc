@@ -2643,6 +2643,7 @@ async function preview(
     location: string | null;
     skip_reason: string | null;
     exception_id: string | null;
+    replacement_date?: string | null;
   }[];
 }> {
   const res = await worker.fetch(
@@ -2675,6 +2676,7 @@ async function preview(
         location: string | null;
         skip_reason: string | null;
         exception_id: string | null;
+        replacement_date?: string | null;
       }[];
     };
   };
@@ -4510,6 +4512,93 @@ describe("EVT-02: recurring preview and generation (#252)", () => {
     assert.ok(body.data.generated.created > 0);
   });
 
+  test("EVT-02.1 allocates durable review order for same-millisecond Plans", async () => {
+    const programId = await freshProgram("EVT-02 Same-Millisecond Review");
+    await createRule(adminAccess, programId, {
+      recurrence: "WEEKLY",
+      day_of_week: 3,
+      start_time: "19:30",
+      end_time: "21:00",
+    });
+    const fromDate = hkTodayWallDate();
+    const originalNow = Date.now;
+    const fixedNow = originalNow();
+    let firstPlan: { plan_id: string } | null = null;
+    let secondPlan: { plan_id: string } | null = null;
+    try {
+      Date.now = () => fixedNow;
+      firstPlan = await preview(adminAccess, programId, 14, {
+        from_date: fromDate,
+        until_date: addWallDays(fromDate, 13),
+      });
+      secondPlan = await preview(adminAccess, programId, 15, {
+        from_date: fromDate,
+        until_date: addWallDays(fromDate, 14),
+      });
+    } finally {
+      Date.now = originalNow;
+    }
+    assert.ok(firstPlan);
+    assert.ok(secondPlan);
+    const rows = await testDb()
+      .prepare(
+        `SELECT plan_id, reviewed_at FROM program_preview_plans
+         WHERE plan_id IN (?, ?)`
+      )
+      .bind(firstPlan.plan_id, secondPlan.plan_id)
+      .all<{ plan_id: string; reviewed_at: number }>();
+    const byPlan = new Map(rows.results?.map((row) => [row.plan_id, row]));
+    assert.ok(byPlan.get(firstPlan.plan_id));
+    assert.ok(byPlan.get(secondPlan.plan_id));
+    assert.ok(
+      (byPlan.get(secondPlan.plan_id)?.reviewed_at ?? 0) >
+        (byPlan.get(firstPlan.plan_id)?.reviewed_at ?? 0),
+      "the store allocates review order rather than using plan_id as a tie-break"
+    );
+    const latest = await new D1WorkspaceStore(testDb()).findLatestPreviewPlan(
+      programId
+    );
+    assert.strictEqual(latest?.plan_id, secondPlan.plan_id);
+  });
+
+  test("EVT-02.1 reschedule replacement dates survive durable Plan reload", async () => {
+    const programId = await freshProgram("EVT-02 Durable Reschedule Preview");
+    const rule = await createRule(adminAccess, programId, {
+      recurrence: "WEEKLY",
+      day_of_week: 4,
+      start_time: "19:30",
+      end_time: "21:00",
+    });
+    const today = hkTodayWallDate();
+    let overrideDate = "";
+    for (let i = 1; i <= 14; i += 1) {
+      const date = addWallDays(today, i);
+      if (wallWeekday(date) === 4) {
+        overrideDate = date;
+        break;
+      }
+    }
+    assert.ok(overrideDate);
+    const replacementDate = addWallDays(overrideDate, 3);
+    await createException(programId, rule.rule_id, {
+      override_date: overrideDate,
+      action: "RESCHEDULE",
+      new_date: replacementDate,
+      new_start_time: "20:30",
+      new_end_time: "22:00",
+    });
+
+    const plan = await preview(adminAccess, programId, 14);
+    const previewOccurrence = plan.occurrences.find(
+      (occurrence) => occurrence.occurs_on === overrideDate
+    );
+    assert.strictEqual(previewOccurrence?.replacement_date, replacementDate);
+    const storedOccurrence = (
+      await new D1WorkspaceStore(testDb()).listPreviewOccurrences(plan.plan_id)
+    ).find((occurrence) => occurrence.occurs_on === overrideDate);
+    assert.strictEqual(storedOccurrence?.replacement_date, replacementDate);
+  });
+
   test("EVT-02.2 atomic generation guard rejects a schedule revision before Event writes", async () => {
     const programId = await freshProgram("EVT-02 Atomic Guard");
     const rule = await createRule(adminAccess, programId, {
@@ -4812,6 +4901,46 @@ describe("EVT-02: recurring preview and generation (#252)", () => {
     assert.strictEqual(events?.count ?? 0, plan.occurrences.length);
   });
 
+  test("EVT-02.2 final freshness races return committed counts for review", async () => {
+    const programId = await freshProgram("EVT-02 Final Freshness Race");
+    await createRule(adminAccess, programId, {
+      recurrence: "WEEKLY",
+      day_of_week: 3,
+      start_time: "19:30",
+      end_time: "21:00",
+    });
+    const plan = await preview(adminAccess, programId, 14);
+    const store = new D1WorkspaceStore(testDb());
+    const workspace = new DepartmentWorkspace(
+      store,
+      new D1CapabilityAuthorizer(testDb())
+    );
+    const originalLatest = store.findLatestPreviewPlan.bind(store);
+    let latestCalls = 0;
+    store.findLatestPreviewPlan = async (candidateProgramId) => {
+      latestCalls += 1;
+      if (latestCalls === 2) {
+        await preview(adminAccess, programId, 15);
+      }
+      return originalLatest(candidateProgramId);
+    };
+
+    const generated = await workspace.generateEvents(
+      { actorUserId: "U001" },
+      programId,
+      plan.plan_id,
+      null
+    );
+    assert.strictEqual(generated.status, "completed");
+    assert.strictEqual(generated.requires_review, true);
+    assert.ok(latestCalls >= 2, "final freshness is checked after all writes");
+    const events = await testDb()
+      .prepare("SELECT COUNT(*) AS count FROM events WHERE program_id = ?")
+      .bind(programId)
+      .first<{ count: number }>();
+    assert.strictEqual(events?.count, plan.occurrences.length);
+  });
+
   test("EVT-02.2 mid-generation staleness settles committed results", async () => {
     const programId = await freshProgram("EVT-02 Mid-Run Stale");
     await createRule(adminAccess, programId, {
@@ -4843,6 +4972,7 @@ describe("EVT-02: recurring preview and generation (#252)", () => {
       null
     );
     assert.strictEqual(generated.status, "partial");
+    assert.strictEqual(generated.requires_review, true);
     assert.ok(generated.created > 0);
     assert.ok(generated.failed > 0);
     const run = await testDb()
