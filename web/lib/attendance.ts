@@ -2325,7 +2325,9 @@ export async function handleListOwnAttendance(
     null;
   const enrollmentCutoff =
     eventHasStarted(event) && event.status !== "Cancelled"
-      ? new Date().toISOString()
+      ? eventWindowHasClosed(event)
+        ? event.check_in_window_closes_at
+        : new Date().toISOString()
       : null;
   const enrollment = snapshot
     ? await env.DB.prepare(

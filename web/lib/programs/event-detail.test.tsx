@@ -1,5 +1,11 @@
 /* oxlint-disable vitest/max-expects, vitest/require-mock-type-parameters, vitest/require-top-level-describe, vitest/prefer-called-with, vitest/prefer-mock-promise-shorthand, eslint/require-await */
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
@@ -1943,12 +1949,18 @@ describe("EVT-01 event detail", () => {
       attendance: { checked_in_at: string };
       disposition: null;
     }>();
-    mocks.getEvent.mockReset().mockImplementation((_programId, id) =>
-      id === "event-a" ? eventARequest.promise : eventBRequest.promise
-    );
-    mocks.getOwnAttendance.mockReset().mockImplementation((id) =>
-      id === "event-a" ? attendanceARequest.promise : attendanceBRequest.promise
-    );
+    mocks.getEvent
+      .mockReset()
+      .mockImplementation((_programId, id) =>
+        id === "event-a" ? eventARequest.promise : eventBRequest.promise
+      );
+    mocks.getOwnAttendance
+      .mockReset()
+      .mockImplementation((id) =>
+        id === "event-a"
+          ? attendanceARequest.promise
+          : attendanceBRequest.promise
+      );
     const { rerender } = render(
       <EventDetail
         programId="program-1"
@@ -1980,6 +1992,12 @@ describe("EVT-01 event detail", () => {
     await vi.waitFor(() =>
       expect(mocks.getEvent).toHaveBeenCalledWith("program-1", "event-b")
     );
+    expect(
+      screen.getByRole("heading", { name: COPY.programs.eventDetailLoading })
+    ).toBeVisible();
+    expect(
+      screen.queryByRole("heading", { name: "聚會 A" })
+    ).not.toBeInTheDocument();
     await act(async () => {
       eventBRequest.resolve(eventB);
       await eventBRequest.promise;
@@ -2031,9 +2049,11 @@ describe("EVT-01 event detail", () => {
     });
     const eventARequest = Promise.withResolvers<EventDetailData>();
     const eventBRequest = Promise.withResolvers<EventDetailData>();
-    mocks.getEvent.mockReset().mockImplementation((_programId, id) =>
-      id === "event-a" ? eventARequest.promise : eventBRequest.promise
-    );
+    mocks.getEvent
+      .mockReset()
+      .mockImplementation((_programId, id) =>
+        id === "event-a" ? eventARequest.promise : eventBRequest.promise
+      );
     mocks.updateEvent.mockResolvedValue({ event: eventB.event });
     const user = userEvent.setup();
     const { rerender } = render(
@@ -2067,7 +2087,9 @@ describe("EVT-01 event detail", () => {
       eventARequest.resolve(eventA);
       await eventARequest.promise;
     });
-    expect(screen.queryByRole("heading", { name: "聚會 A" })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("heading", { name: "聚會 A" })
+    ).not.toBeInTheDocument();
 
     await clickMoreAction(user, COPY.programs.eventEditTitle);
     const nameInput = await screen.findByLabelText(COPY.programs.eventName);
@@ -2108,9 +2130,7 @@ describe("EVT-01 event detail", () => {
     await expect(
       screen.findByRole("status", { name: COPY.attendance.eventCancelled })
     ).resolves.toBeVisible();
-    expect(
-      screen.queryByText(/^取消原因：/u)
-    ).not.toBeInTheDocument();
+    expect(screen.queryByText(/^取消原因：/u)).not.toBeInTheDocument();
     expect(
       screen.queryByRole("link", { name: COPY.programs.goToScan })
     ).not.toBeInTheDocument();

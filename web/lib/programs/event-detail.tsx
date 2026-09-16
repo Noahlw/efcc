@@ -783,9 +783,11 @@ export const EventDetail = ({
     );
   };
 
-  if (detail === null) {
+  const currentDetail = detail?.event.event_id === eventId ? detail : null;
+  const switchingEvent = detail !== null && currentDetail === null;
+  if (currentDetail === null) {
     const RecoveryHeading = canManage ? "h2" : "h1";
-    if (loadError !== null) {
+    if (!switchingEvent && loadError !== null) {
       const programHref = buildProgramsHref({
         mode: canManage ? "management" : "participant",
         programId,
@@ -871,7 +873,7 @@ export const EventDetail = ({
       </ScreenState>
     );
   }
-  const { event, leaders, participant_summary } = detail;
+  const { event, leaders, participant_summary } = currentDetail;
   const cancelled = event.status === "Cancelled";
   const phase = eventPhase(event);
   const hasAttendance =

@@ -720,6 +720,17 @@ describe("attendance Worker routes", () => {
       assert.deepStrictEqual(wrongGuestBody.data, {
         outcome: "not_found",
       });
+
+      const wrongProof = await worker.fetch(
+        request("/api/v1/attendance/guest/reconcile", {
+          method: "POST",
+          body: JSON.stringify({ ...payload, manual_code: "WRONGCODE" }),
+        }),
+        testEnv()
+      );
+      assert.strictEqual(wrongProof.status, 403);
+      const wrongProofBody = await json(wrongProof);
+      assert.strictEqual(wrongProofBody.code, "INVALID_CHECK_IN_ENTRY");
     } finally {
       if (!attendanceId) {
         const committed = await findCommittedAttendance();
@@ -771,6 +782,10 @@ describe("attendance Worker routes", () => {
       [{ key: `guest-reconcile:${EVENT}` }],
     ]);
   });
+
+  test.todo(
+    "guest reconciliation must require a durable proof mapping for closed/cancelled history"
+  );
 
   test("guest check-in respects rate limiting when limiter rejects", async () => {
     const customEnv: Env = {
@@ -3341,6 +3356,103 @@ describe("attendance Worker routes", () => {
     assert.strictEqual(afterSnapshot, null);
   });
 
+  test("no-snapshot self projection uses the close boundary for eligibility", async () => {
+    const boundary = new Date("2026-08-14T12:00:00.000Z");
+    const eventId = `ATT-CUTOFF-NO-SNAPSHOT-${crypto.randomUUID()}`;
+    const enrollmentId = `ATT-CUTOFF-NO-SNAPSHOT-ENROLLMENT-${crypto.randomUUID()}`;
+    const createdAt = boundary.toISOString();
+    vi.useFakeTimers();
+    vi.setSystemTime(boundary);
+    try {
+      const admin = await accessCookieFor("att-admin", "att-admin-password");
+      await testDb()
+        .prepare(
+          `INSERT INTO events
+            (event_id, program_id, starts_at, ends_at, status, availability,
+             source, name, manual_check_in_code, check_in_window_opens_at,
+             check_in_window_closes_at, created_at, updated_at)
+           VALUES (?, ?, ?, ?, 'Active', 'Active', 'MANUAL', ?, ?, ?, ?, ?, ?)`
+        )
+        .bind(
+          eventId,
+          EMPTY_PROGRAM,
+          new Date(boundary.getTime() - 2 * 60 * 60_000).toISOString(),
+          new Date(boundary.getTime() - 60 * 60_000).toISOString(),
+          "出席資格時間邊界",
+          `ATT-CUTOFF-NO-SNAPSHOT-CODE-${crypto.randomUUID()}`,
+          new Date(boundary.getTime() - 3 * 60 * 60_000).toISOString(),
+          boundary.toISOString(),
+          createdAt,
+          createdAt
+        )
+        .run();
+      await testDb()
+        .prepare(
+          `INSERT INTO enrollments
+            (enrollment_id, program_id, member_user_id, status, enrolled_at,
+             created_at)
+           VALUES (?, ?, 'ATT-ADMIN', 'Active', ?, ?)`
+        )
+        .bind(
+          enrollmentId,
+          EMPTY_PROGRAM,
+          new Date(boundary.getTime() - 1_000).toISOString(),
+          createdAt
+        )
+        .run();
+
+      const readOwn = async () =>
+        worker.fetch(
+          request(`/api/v1/attendance/events/${eventId}/me`, {
+            headers: { Cookie: `${ACCESS_COOKIE_NAME}=${admin}` },
+          }),
+          testEnv()
+        );
+      vi.setSystemTime(new Date(boundary.getTime() - 1_000));
+      const beforeClose = await readOwn();
+      assert.strictEqual(beforeClose.status, 200);
+      assert.strictEqual(
+        ((await json(beforeClose)).data as { state: string }).state,
+        "Not Yet"
+      );
+
+      await testDb()
+        .prepare(
+          "UPDATE enrollments SET enrolled_at = ? WHERE enrollment_id = ?"
+        )
+        .bind(boundary.toISOString(), enrollmentId)
+        .run();
+      vi.setSystemTime(boundary);
+      const exactClose = await readOwn();
+      assert.strictEqual(exactClose.status, 200);
+      assert.strictEqual(
+        ((await json(exactClose)).data as { state: string }).state,
+        "Not Yet"
+      );
+
+      vi.setSystemTime(new Date(boundary.getTime() + 1_000));
+      await testDb()
+        .prepare(
+          "UPDATE enrollments SET enrolled_at = ? WHERE enrollment_id = ?"
+        )
+        .bind(new Date(boundary.getTime() + 500).toISOString(), enrollmentId)
+        .run();
+      const afterClose = await readOwn();
+      assert.strictEqual(afterClose.status, 403);
+      assert.strictEqual((await json(afterClose)).code, "FORBIDDEN");
+    } finally {
+      await testDb()
+        .prepare("DELETE FROM enrollments WHERE enrollment_id = ?")
+        .bind(enrollmentId)
+        .run();
+      await testDb()
+        .prepare("DELETE FROM events WHERE event_id = ?")
+        .bind(eventId)
+        .run();
+      vi.useRealTimers();
+    }
+  });
+
   test("closed Event self projection keeps final states available before materialization", async () => {
     const member = await accessCookieFor("att-member", "att-member-password");
     const eventId = `ATT-CLOSED-NO-SNAPSHOT-${crypto.randomUUID()}`;
@@ -3428,7 +3540,11 @@ describe("attendance Worker routes", () => {
                   voided_at = ?, void_reason = ?
             WHERE attendance_id = ?`
         )
-        .bind(new Date(now - 90 * 60_000).toISOString(), "改以請假", attendanceId)
+        .bind(
+          new Date(now - 90 * 60_000).toISOString(),
+          "改以請假",
+          attendanceId
+        )
         .run();
       await testDb()
         .prepare(
@@ -3451,6 +3567,16 @@ describe("attendance Worker routes", () => {
         ((await json(excused)).data as { state: string }).state,
         "Excused"
       );
+
+      await testDb()
+        .prepare(
+          "UPDATE enrollments SET enrolled_at = ? WHERE enrollment_id = ?"
+        )
+        .bind(new Date(now - 30 * 60_000).toISOString(), enrollmentId)
+        .run();
+      const lateEnrollment = await readOwn();
+      assert.strictEqual(lateEnrollment.status, 403);
+      assert.strictEqual((await json(lateEnrollment)).code, "FORBIDDEN");
     } finally {
       await testDb()
         .prepare(
