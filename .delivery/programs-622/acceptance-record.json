@@ -64,8 +64,8 @@
       "level": "independent review + real Worker/D1 browser",
       "candidate": "commit:76ce0bd5bd217ed47595a702ca8812c1bbf933b2",
       "evidence": [
-        "/tmp/efcc-622-browser-13840142/run.json",
-        "/tmp/efcc-622-browser-13840142/browser-results.json",
+        ".delivery/programs-622/artifacts/browser-13840142/run.json",
+        ".delivery/programs-622/artifacts/browser-13840142/browser-results.json",
         "Independent verifier Schrodinger: final local integration CLEAN"
       ]
     }
