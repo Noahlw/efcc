@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { RpcError } from "@/lib/api";
-import type { AttendanceEvent } from "@/lib/attendance";
+import type { AttendanceEvent, AttendanceEventSummary } from "@/lib/attendance";
 import { attendanceEventLabel } from "@/lib/attendance-display";
 import { entryFromValue } from "@/lib/attendance-entry";
 import {
@@ -30,22 +30,26 @@ import {
 import { buildProgramsHref } from "@/lib/programs/programs-intent";
 import { useAttendanceFlow } from "@/lib/use-attendance-flow";
 
+import {
+  clearGuestMutationRecovery,
+  readGuestMutationRecovery,
+  writeGuestMutationRecovery,
+} from "./programs/mutation-recovery";
+import type {
+  GuestMutationAttempt,
+  GuestMutationRecovery,
+} from "./programs/mutation-recovery";
+
 const inputControl =
   "min-h-11 h-auto rounded-[var(--radius-sm)] border border-[var(--line-strong)] bg-[var(--surface-raised)] px-3 py-3 text-base text-[var(--ink)] placeholder:text-[var(--ink-muted)] focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50";
 
 interface GuestResult {
   kind: "success" | "duplicate";
-  event: AttendanceEvent;
+  event: AttendanceEventSummary;
   checkedInAt?: string;
 }
 
-interface GuestAttempt {
-  event: AttendanceEvent;
-  credentialValue: string;
-  fromQr: boolean;
-  name: string;
-  phone: string;
-}
+type GuestAttempt = GuestMutationAttempt;
 
 function guestSubmitErrorCopy(error: unknown): string {
   const isOffline = typeof navigator !== "undefined" && !navigator.onLine;
@@ -127,19 +131,28 @@ const GuestCheckinResult = ({
 
 /** Public guest check-in surface. Authenticated Self uses SelfCheckInPanel. */
 export const AttendancePanel = () => {
+  const [restoredGuestRecovery] = useState<GuestMutationRecovery | null>(() =>
+    readGuestMutationRecovery()
+  );
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [awaitingSelection, setAwaitingSelection] = useState(false);
   const [validationError, setValidationError] = useState("");
   const [result, setResult] = useState<GuestResult | null>(null);
-  const [guestOutcomeUnknown, setGuestOutcomeUnknown] = useState(false);
+  const [guestOutcomeUnknown, setGuestOutcomeUnknown] = useState(
+    restoredGuestRecovery !== null
+  );
   const [guestReconcileBusy, setGuestReconcileBusy] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const nameRef = useRef<HTMLInputElement>(null);
   const phoneRef = useRef<HTMLInputElement>(null);
-  const guestSubmitKeyRef = useRef<string | null>(null);
-  const guestAttemptRef = useRef<GuestAttempt | null>(null);
+  const guestSubmitKeyRef = useRef<string | null>(
+    restoredGuestRecovery?.key ?? null
+  );
+  const guestAttemptRef = useRef<GuestAttempt | null>(
+    restoredGuestRecovery?.attempt ?? null
+  );
   const chooserHeadingRef = useRef<HTMLHeadingElement>(null);
   const resultHeadingRef = useRef<HTMLHeadingElement>(null);
   const outcomeHeadingRef = useRef<HTMLHeadingElement>(null);
@@ -168,6 +181,93 @@ export const AttendancePanel = () => {
       outcomeHeadingRef.current?.focus();
     }
   }, [flow.outcome, flow.view]);
+
+  useEffect(() => {
+    if (!guestOutcomeUnknown || typeof window === "undefined") {
+      return;
+    }
+    const blockedHref = window.location.href;
+    const guardToken = crypto.randomUUID();
+    const currentState =
+      typeof window.history.state === "object" && window.history.state !== null
+        ? (window.history.state as Record<string, unknown>)
+        : {};
+    const guardedState = {
+      ...currentState,
+      efccGuestMutationGuard: guardToken,
+    };
+    window.history.pushState(guardedState, "", blockedHref);
+    const announceBlocked = () => {
+      const message = COPY.attendance.transportAmbiguous;
+      flow.showStatus(message, "error");
+      announce(message);
+    };
+    const handleDocumentClick = (clickEvent: globalThis.MouseEvent) => {
+      if (
+        clickEvent.defaultPrevented ||
+        clickEvent.button !== 0 ||
+        clickEvent.metaKey ||
+        clickEvent.ctrlKey ||
+        clickEvent.shiftKey ||
+        clickEvent.altKey
+      ) {
+        return;
+      }
+      const target = clickEvent.target;
+      if (!(target instanceof Element)) {
+        return;
+      }
+      const anchor = target.closest("a[href]");
+      if (!(anchor instanceof HTMLAnchorElement)) {
+        return;
+      }
+      const rawHref = anchor.getAttribute("href");
+      if (
+        rawHref?.startsWith("#") ||
+        anchor.hasAttribute("download") ||
+        (anchor.getAttribute("target") ?? "").toLowerCase() === "_blank"
+      ) {
+        return;
+      }
+      const currentUrl = new URL(window.location.href);
+      const nextUrl = new URL(anchor.href, currentUrl);
+      if (
+        (nextUrl.protocol !== "http:" && nextUrl.protocol !== "https:") ||
+        nextUrl.origin !== currentUrl.origin
+      ) {
+        return;
+      }
+      clickEvent.preventDefault();
+      clickEvent.stopPropagation();
+      announceBlocked();
+    };
+    const handleBeforeUnload = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    const handlePopState = () => {
+      window.history.pushState(guardedState, "", blockedHref);
+      announceBlocked();
+    };
+    document.addEventListener("click", handleDocumentClick, true);
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    window.addEventListener("popstate", handlePopState);
+    return () => {
+      document.removeEventListener("click", handleDocumentClick, true);
+      window.removeEventListener("beforeunload", handleBeforeUnload);
+      window.removeEventListener("popstate", handlePopState);
+      if (
+        window.location.href === blockedHref &&
+        (window.history.state as Record<string, unknown> | null)
+          ?.efccGuestMutationGuard === guardToken
+      ) {
+        window.history.back();
+      }
+    };
+    // The flow object is intentionally read through its stable status method;
+    // the guard must not restart while the recovery message changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [guestOutcomeUnknown]);
 
   const clearFormStatus = () => {
     setValidationError("");
@@ -199,6 +299,7 @@ export const AttendancePanel = () => {
     setGuestReconcileBusy(false);
     guestSubmitKeyRef.current = null;
     guestAttemptRef.current = null;
+    clearGuestMutationRecovery();
     flow.resetToScan();
   };
 
@@ -231,13 +332,17 @@ export const AttendancePanel = () => {
     try {
       const credentialValue = flow.input.trim();
       guestSubmitKeyRef.current ??= crypto.randomUUID();
-      guestAttemptRef.current = {
+      const attempt: GuestAttempt = {
         event,
         credentialValue,
         fromQr,
         name,
         phone,
       };
+      guestAttemptRef.current = attempt;
+      if (guestSubmitKeyRef.current) {
+        writeGuestMutationRecovery(guestSubmitKeyRef.current, attempt);
+      }
       const guestResult = await guestCheckIn(
         {
           event_id: event.event_id,
@@ -258,6 +363,7 @@ export const AttendancePanel = () => {
       setGuestOutcomeUnknown(false);
       guestSubmitKeyRef.current = null;
       guestAttemptRef.current = null;
+      clearGuestMutationRecovery();
       flow.showStatus("");
     } catch (error) {
       const unknown = isUnknownMutationOutcome(error);
@@ -266,6 +372,7 @@ export const AttendancePanel = () => {
       if (!unknown) {
         guestSubmitKeyRef.current = null;
         guestAttemptRef.current = null;
+        clearGuestMutationRecovery();
       }
       flow.showStatus(message, "error");
       announce(
@@ -310,12 +417,14 @@ export const AttendancePanel = () => {
         setGuestOutcomeUnknown(false);
         guestSubmitKeyRef.current = null;
         guestAttemptRef.current = null;
+        clearGuestMutationRecovery();
         flow.showStatus("");
         return;
       }
       setGuestOutcomeUnknown(false);
       guestSubmitKeyRef.current = null;
       guestAttemptRef.current = null;
+      clearGuestMutationRecovery();
       flow.showStatus(COPY.attendance.guestReconcileNotFound, "info");
       announce(COPY.attendance.guestReconcileNotFound);
     } catch (error) {

@@ -58,6 +58,12 @@ import { useQrCamera } from "@/lib/use-qr-camera";
 import { cn } from "@/lib/utils";
 
 import { EventCheckInSheet } from "./programs/event-check-in-sheet";
+import {
+  clearWorkspaceMutationRecovery,
+  readWorkspaceMutationRecovery,
+  writeWorkspaceMutationRecovery,
+} from "./programs/mutation-recovery";
+import type { AttendanceMutationRecovery } from "./programs/mutation-recovery";
 
 type StatusTone = "info" | "success" | "error";
 
@@ -81,12 +87,7 @@ const EXCUSE_OPTIONS = ["身體不適", "工作或上課", "家庭事務", "其�
 type ExcuseCategory = (typeof EXCUSE_OPTIONS)[number];
 
 type MemberDirectory = Readonly<Record<string, AttendanceMember>>;
-type PendingAttendanceMutation =
-  | { kind: "check-in"; memberUserId: string }
-  | { kind: "void"; attendanceId: string }
-  | { kind: "correction"; attendanceId: string; name: string; phone: string }
-  | { kind: "excuse"; enrollmentId: string }
-  | { kind: "materialize" };
+type PendingAttendanceMutation = AttendanceMutationRecovery;
 
 type LiveAttendanceRosterFilter = "not-yet" | "checked-in" | "all";
 type PostEventAttendanceRosterFilter =
@@ -1710,7 +1711,13 @@ export const AttendanceOperatorPanel = ({
   onAuthRequired,
   onMutationBlockChange,
 }: AttendanceOperatorPanelProps = {}) => {
-  const [eventId, setEventId] = useState<string | null>(null);
+  const [restoredAttendanceRecovery] = useState(() => {
+    const recovery = readWorkspaceMutationRecovery();
+    return recovery?.surface === "attendance" ? recovery : null;
+  });
+  const [eventId, setEventId] = useState<string | null>(
+    restoredAttendanceRecovery?.eventId ?? null
+  );
   const [chooserEvents, setChooserEvents] = useState<AttendanceEventSummary[]>(
     []
   );
@@ -1744,16 +1751,22 @@ export const AttendanceOperatorPanel = ({
     () =>
       typeof document === "undefined" || document.visibilityState === "visible"
   );
-  const [stale, setStale] = useState(false);
-  const [mutationOutcomeUnknown, setMutationOutcomeUnknown] = useState(false);
+  const [stale, setStale] = useState(restoredAttendanceRecovery !== null);
+  const [mutationOutcomeUnknown, setMutationOutcomeUnknown] = useState(
+    restoredAttendanceRecovery !== null
+  );
   const [lastUpdatedAt, setLastUpdatedAt] = useState<number | null>(null);
   const [materializationRequired, setMaterializationRequired] = useState(false);
   const onlineRef = useRef(online);
-  const selectedEventIdRef = useRef<string | null>(null);
+  const selectedEventIdRef = useRef<string | null>(
+    restoredAttendanceRecovery?.eventId ?? null
+  );
   const rosterRequestRef = useRef(false);
   const rosterRequestPromiseRef = useRef<Promise<boolean> | null>(null);
   const latestRosterResultRef = useRef<AttendanceRosterRead | null>(null);
-  const pendingMutationRef = useRef<PendingAttendanceMutation | null>(null);
+  const pendingMutationRef = useRef<PendingAttendanceMutation | null>(
+    restoredAttendanceRecovery?.mutation ?? null
+  );
   const staleRef = useRef(false);
   const mutationOutcomeUnknownRef = useRef(false);
   const reconciliationEpochRef = useRef(0);
@@ -1878,12 +1891,37 @@ export const AttendanceOperatorPanel = ({
   function markUnknownMutation(mutation: PendingAttendanceMutation) {
     reconciliationEpochRef.current += 1;
     pendingMutationRef.current = mutation;
+    const id = selectedEventIdRef.current;
+    if (id) {
+      writeWorkspaceMutationRecovery({
+        surface: "attendance",
+        eventId: id,
+        mutation,
+      });
+    }
     staleRef.current = true;
     mutationOutcomeUnknownRef.current = true;
     setStale(true);
     setMutationOutcomeUnknown(true);
     showStatus(COPY.attendance.transportAmbiguous, "error");
     announce(COPY.attendance.transportAmbiguous);
+  }
+
+  function beginAttendanceMutation(
+    id: string,
+    mutation: PendingAttendanceMutation
+  ) {
+    pendingMutationRef.current = mutation;
+    writeWorkspaceMutationRecovery({
+      surface: "attendance",
+      eventId: id,
+      mutation,
+    });
+  }
+
+  function clearAttendanceMutation(id: string) {
+    pendingMutationRef.current = null;
+    clearWorkspaceMutationRecovery("attendance", { eventId: id });
   }
 
   function showError(error: unknown) {
@@ -2089,7 +2127,7 @@ export const AttendanceOperatorPanel = ({
         rosterSettlesMutation(roster, pendingMutation)
       ) {
         reconciliationEpochRef.current += 1;
-        pendingMutationRef.current = null;
+        clearAttendanceMutation(id);
         staleRef.current = false;
         mutationOutcomeUnknownRef.current = false;
         setStale(false);
@@ -2127,12 +2165,13 @@ export const AttendanceOperatorPanel = ({
     ) {
       return;
     }
+    beginAttendanceMutation(id, { kind: "materialize" });
     rosterRequestRef.current = true;
     setBusy(true);
     try {
       const result = await materializeAttendanceSnapshot(id);
       applyRosterResult(id, result);
-      pendingMutationRef.current = null;
+      clearAttendanceMutation(id);
       const message = COPY.attendance.rosterMaterialize;
       showStatus(message, "success");
       announce(message);
@@ -2144,6 +2183,7 @@ export const AttendanceOperatorPanel = ({
         rosterRequestRef.current = false;
         await reconcileUnknownAttendance();
       } else {
+        clearAttendanceMutation(id);
         showError(error);
       }
     } finally {
@@ -2239,19 +2279,26 @@ export const AttendanceOperatorPanel = ({
     member: AttendanceMember,
     method: "leader_qr_scan" | "leader_manual_search" = "leader_manual_search"
   ) {
+    const id = eventId;
     if (
       !online ||
-      !eventId ||
+      !id ||
       rosterRequestRef.current ||
       mutationOutcomeUnknown ||
       stale
     ) {
       return;
     }
+    const pendingMutation: PendingAttendanceMutation = {
+      kind: "check-in",
+      memberUserId: member.user_id,
+    };
+    beginAttendanceMutation(id, pendingMutation);
     setPendingCheckIn(null);
     setBusy(true);
     try {
       const result = await assistedCheckIn(eventId, member.user_id, method);
+      clearAttendanceMutation(id);
       const currentEventTitle = event
         ? event.name?.trim() || event.program_name
         : COPY.attendance.assistedContext;
@@ -2274,11 +2321,11 @@ export const AttendanceOperatorPanel = ({
     } catch (error) {
       if (isUnknownMutationOutcome(error)) {
         markUnknownMutation({
-          kind: "check-in",
-          memberUserId: member.user_id,
+          ...pendingMutation,
         });
         await reconcileUnknownAttendance();
       } else {
+        clearAttendanceMutation(id);
         showError(error);
       }
     } finally {
@@ -2290,8 +2337,10 @@ export const AttendanceOperatorPanel = ({
     row: AttendanceRow,
     reason: string
   ): Promise<boolean> {
+    const id = eventId;
     if (
       !online ||
+      !id ||
       mutationOutcomeUnknown ||
       stale ||
       rosterRequestRef.current
@@ -2299,9 +2348,15 @@ export const AttendanceOperatorPanel = ({
       showStatus(COPY.attendance.rosterOffline, "error");
       return false;
     }
+    const pendingMutation: PendingAttendanceMutation = {
+      kind: "void",
+      attendanceId: row.attendance_id,
+    };
+    beginAttendanceMutation(id, pendingMutation);
     setBusy(true);
     try {
       await voidAttendance(row.attendance_id, reason);
+      clearAttendanceMutation(id);
       if (!(await refreshRosterAfterMutation())) {
         return false;
       }
@@ -2310,12 +2365,10 @@ export const AttendanceOperatorPanel = ({
       return true;
     } catch (error) {
       if (isUnknownMutationOutcome(error)) {
-        markUnknownMutation({
-          kind: "void",
-          attendanceId: row.attendance_id,
-        });
+        markUnknownMutation(pendingMutation);
         await reconcileUnknownAttendance();
       } else {
+        clearAttendanceMutation(id);
         showError(error);
       }
       return false;
@@ -2328,8 +2381,10 @@ export const AttendanceOperatorPanel = ({
     row: AttendanceRow,
     input: { name: string; phone: string; reason: string }
   ): Promise<boolean> {
+    const id = eventId;
     if (
       !online ||
+      !id ||
       mutationOutcomeUnknown ||
       stale ||
       rosterRequestRef.current
@@ -2337,9 +2392,17 @@ export const AttendanceOperatorPanel = ({
       showStatus(COPY.attendance.rosterOffline, "error");
       return false;
     }
+    const pendingMutation: PendingAttendanceMutation = {
+      kind: "correction",
+      attendanceId: row.attendance_id,
+      name: input.name,
+      phone: input.phone,
+    };
+    beginAttendanceMutation(id, pendingMutation);
     setBusy(true);
     try {
       await correctGuestAttendance(row.attendance_id, input);
+      clearAttendanceMutation(id);
       if (!(await refreshRosterAfterMutation())) {
         return false;
       }
@@ -2348,14 +2411,10 @@ export const AttendanceOperatorPanel = ({
       return true;
     } catch (error) {
       if (isUnknownMutationOutcome(error)) {
-        markUnknownMutation({
-          kind: "correction",
-          attendanceId: row.attendance_id,
-          name: input.name,
-          phone: input.phone,
-        });
+        markUnknownMutation(pendingMutation);
         await reconcileUnknownAttendance();
       } else {
+        clearAttendanceMutation(id);
         showError(error);
       }
       return false;
@@ -2368,8 +2427,10 @@ export const AttendanceOperatorPanel = ({
     row: AttendanceExpectedRow,
     reason: string
   ): Promise<boolean> {
+    const id = eventId;
     if (
       !online ||
+      !id ||
       mutationOutcomeUnknown ||
       stale ||
       rosterRequestRef.current
@@ -2377,9 +2438,15 @@ export const AttendanceOperatorPanel = ({
       showStatus(COPY.attendance.rosterOffline, "error");
       return false;
     }
+    const pendingMutation: PendingAttendanceMutation = {
+      kind: "excuse",
+      enrollmentId: row.enrollment_id,
+    };
+    beginAttendanceMutation(id, pendingMutation);
     setBusy(true);
     try {
       await recordExcusedAttendance(row.event_id, row.enrollment_id, reason);
+      clearAttendanceMutation(id);
       if (!(await refreshRosterAfterMutation())) {
         return false;
       }
@@ -2388,12 +2455,10 @@ export const AttendanceOperatorPanel = ({
       return true;
     } catch (error) {
       if (isUnknownMutationOutcome(error)) {
-        markUnknownMutation({
-          kind: "excuse",
-          enrollmentId: row.enrollment_id,
-        });
+        markUnknownMutation(pendingMutation);
         await reconcileUnknownAttendance();
       } else {
+        clearAttendanceMutation(id);
         showError(error);
       }
       return false;
@@ -2476,16 +2541,21 @@ export const AttendanceOperatorPanel = ({
   useEffect(() => {
     void loadChooser();
     const params = new URLSearchParams(window.location.search);
-    const deepLinkedEventId = params.get("event") ?? params.get("eventId");
+    const deepLinkedEventId =
+      restoredAttendanceRecovery?.eventId ??
+      params.get("event") ??
+      params.get("eventId");
     if (deepLinkedEventId) {
       selectedEventIdRef.current = deepLinkedEventId;
       setEventId(deepLinkedEventId);
-      void loadRoster(deepLinkedEventId);
+      void (restoredAttendanceRecovery
+        ? reconcileUnknownAttendance()
+        : loadRoster(deepLinkedEventId));
     }
     // The first render owns the URL-derived deep link; subsequent state changes
     // are driven by the chooser and the roster actions.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [restoredAttendanceRecovery]);
 
   useEffect(() => {
     const handleOnline = () => {

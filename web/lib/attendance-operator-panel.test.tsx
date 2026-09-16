@@ -35,6 +35,11 @@ import {
 import type { AttendanceOperatorPanelProps } from "@/lib/attendance-operator-panel";
 import { COPY } from "@/lib/copy";
 import { announce, LiveRegion } from "@/lib/live-region";
+import {
+  clearWorkspaceMutationRecovery,
+  readWorkspaceMutationRecovery,
+  writeWorkspaceMutationRecovery,
+} from "@/lib/programs/mutation-recovery";
 
 const server = setupServer();
 const ACTIVE_STARTS_AT = new Date(Date.now() - 30 * 60_000).toISOString();
@@ -161,6 +166,9 @@ describe(AttendanceOperatorPanel, () => {
     cleanup();
     announce("");
     window.history.replaceState(null, "", "/");
+    clearWorkspaceMutationRecovery("attendance", {
+      eventId: ACTIVE.event_id,
+    });
     server.resetHandlers();
   });
 
@@ -905,6 +913,44 @@ describe(AttendanceOperatorPanel, () => {
     expect(
       screen.queryByRole("button", { name: COPY.attendance.voidAttendance })
     ).not.toBeInTheDocument();
+  });
+
+  test("restores an unknown operator mutation after reload and verifies the roster target", async () => {
+    const voidedRow: AttendanceRow = {
+      ...ROW,
+      status: "Voided",
+      voided_by: "U-ADMIN",
+      voided_at: "2026-08-13T11:40:00.000Z",
+      void_reason: "重載後恢復",
+    };
+    writeWorkspaceMutationRecovery({
+      surface: "attendance",
+      eventId: ACTIVE.event_id,
+      mutation: { kind: "void", attendanceId: ROW.attendance_id },
+    });
+    server.use(
+      http.get("/api/v1/attendance/scanner-events", () =>
+        HttpResponse.json({
+          requestId: "rid-reload-list",
+          data: { events: [ACTIVE] },
+        })
+      ),
+      http.get(`/api/v1/attendance/events/${ACTIVE.event_id}/roster`, () =>
+        HttpResponse.json({
+          requestId: "rid-reload-roster",
+          data: { event: ACTIVE, attendances: [voidedRow] },
+        })
+      )
+    );
+    const onMutationBlockChange = vi.fn<(blocked: boolean) => void>();
+    renderWithLiveRegion({ onMutationBlockChange });
+
+    await expect(
+      screen.findByRole("heading", { name: COPY.attendance.rosterTitle })
+    ).resolves.toBeVisible();
+    await screen.findAllByText(COPY.programs.workspaceReconciled);
+    expect(readWorkspaceMutationRecovery()).toBeNull();
+    expect(onMutationBlockChange).toHaveBeenLastCalledWith(false);
   });
 
   test("concurrent roster recovery signals share one authoritative read", async () => {

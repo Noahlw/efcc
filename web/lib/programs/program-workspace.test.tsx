@@ -15,6 +15,7 @@ import type {
   EnrollmentApprovalRun,
   EnrollmentApprovalRunItem,
 } from "@/lib/programs/enrollment-approval-run";
+import { clearWorkspaceMutationRecovery } from "@/lib/programs/mutation-recovery";
 import type {
   Department,
   DepartmentModule,
@@ -302,6 +303,11 @@ function mockWorkspace() {
 }
 beforeEach(() => {
   clearEventCreateDraft("program-1");
+  clearWorkspaceMutationRecovery("event", {
+    programId: "program-1",
+    eventId: "event-1",
+  });
+  clearWorkspaceMutationRecovery("events", { programId: "program-1" });
   mocks.getManagementProgram.mockReset();
   mocks.updateProgram.mockReset();
   mocks.listEvents.mockReset();
@@ -329,6 +335,11 @@ beforeEach(() => {
 });
 afterEach(() => {
   clearEventCreateDraft("program-1");
+  clearWorkspaceMutationRecovery("event", {
+    programId: "program-1",
+    eventId: "event-1",
+  });
+  clearWorkspaceMutationRecovery("events", { programId: "program-1" });
   cleanup();
 });
 
@@ -1172,6 +1183,48 @@ describe(ProgramWorkspace, () => {
       screen.getByRole("link", { name: COPY.programs.workspaceOverviewTab })
     );
     expect(onTaskChange).toHaveBeenCalledWith(null);
+  });
+
+  test("opens the Event draft decision dialog on browser Back", async () => {
+    mockWorkspace();
+    const user = userEvent.setup();
+    const onBack = vi.fn();
+    render(
+      <ProgramWorkspace
+        programId="program-1"
+        task="events"
+        onBack={onBack}
+        onTaskChange={vi.fn()}
+      />
+    );
+
+    await user.click(
+      await screen.findByRole("button", { name: COPY.programs.createMeeting })
+    );
+    await user.type(
+      screen.getByRole("textbox", { name: COPY.programs.eventName }),
+      "瀏覽器返回未儲存"
+    );
+    await waitFor(() => {
+      expect(readEventCreateDraft("program-1")?.name).toBe("瀏覽器返回未儲存");
+    });
+
+    window.dispatchEvent(new PopStateEvent("popstate"));
+    await expect(
+      screen.findByRole("heading", {
+        name: COPY.programs.eventCreateLeaveTitle,
+      })
+    ).resolves.toBeInTheDocument();
+    expect(onBack).not.toHaveBeenCalled();
+
+    await user.click(
+      screen.getByRole("button", {
+        name: COPY.programs.eventCreateContinueEditing,
+      })
+    );
+    expect(
+      screen.getByRole("textbox", { name: COPY.programs.eventName })
+    ).toHaveValue("瀏覽器返回未儲存");
   });
 
   test("locks manager lifecycle navigation until an unknown Event mutation reconciles", async () => {

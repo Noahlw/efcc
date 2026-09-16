@@ -66,6 +66,12 @@ import {
 } from "@/lib/screen-foundations";
 
 import { EventCheckInSheet } from "./event-check-in-sheet";
+import {
+  clearWorkspaceMutationRecovery,
+  readWorkspaceMutationRecovery,
+  writeWorkspaceMutationRecovery,
+} from "./mutation-recovery";
+import type { EventMutationRecovery } from "./mutation-recovery";
 import { buildProgramsHref } from "./programs-intent";
 import type { ManagementEventAction, ProgramsOrigin } from "./programs-intent";
 
@@ -137,6 +143,34 @@ function eventPhase(event: ProgramEvent, now = Date.now()): EventPhase {
   )
     ? "future"
     : "past";
+}
+
+function eventMutationSettles(
+  detail: EventDetailData,
+  mutation: EventMutationRecovery
+): boolean {
+  const event = detail.event;
+  if (
+    event.program_id !== mutation.programId ||
+    event.event_id !== mutation.eventId
+  ) {
+    return false;
+  }
+  const actual = {
+    startsAt: event.starts_at,
+    endsAt: event.ends_at,
+    name: event.name ?? null,
+    eventType: event.event_type ?? null,
+    location: event.location ?? null,
+    opensAt: event.check_in_window_opens_at ?? null,
+    closesAt: event.check_in_window_closes_at ?? null,
+    availability: event.availability,
+    status: event.status,
+  };
+  return Object.entries(mutation.expected).every(
+    ([key, expected]) =>
+      actual[key as keyof typeof actual] === (expected ?? null)
+  );
 }
 
 function participantAttendanceLabel(
@@ -232,8 +266,24 @@ export const EventDetail = ({
   const recoveryRef = useRef<HTMLHeadingElement | null>(null);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
-  const [actionError, setActionError] = useState<string | null>(null);
-  const [mutationOutcomeUnknown, setMutationOutcomeUnknown] = useState(false);
+  const [restoredPendingMutation] = useState<EventMutationRecovery | null>(
+    () => {
+      const recovery = readWorkspaceMutationRecovery();
+      return recovery?.surface === "event" &&
+        recovery.programId === programId &&
+        recovery.eventId === eventId
+        ? recovery.mutation
+        : null;
+    }
+  );
+  const [actionError, setActionError] = useState<string | null>(() =>
+    restoredPendingMutation === null
+      ? null
+      : COPY.programs.programTransportAmbiguous
+  );
+  const [mutationOutcomeUnknown, setMutationOutcomeUnknown] = useState(
+    restoredPendingMutation !== null
+  );
   const [detailStale, setDetailStale] = useState(false);
   const eventActionBlocked =
     busy || detailStale || loadError !== null || mutationOutcomeUnknown;
@@ -269,6 +319,9 @@ export const EventDetail = ({
   const eventIdentityRef = useRef({ programId, eventId });
   const eventRequestSequenceRef = useRef(0);
   const ownAttendanceRequestSequenceRef = useRef(0);
+  const pendingEventMutationRef = useRef<EventMutationRecovery | null>(
+    restoredPendingMutation
+  );
   const appliedEventActionRef = useRef<string | null>(null);
   eventIdentityRef.current = { programId, eventId };
   const mounted = useRef(true);
@@ -315,7 +368,7 @@ export const EventDetail = ({
     []
   );
 
-  const load = useCallback(async (): Promise<boolean> => {
+  const load = useCallback(async (): Promise<EventDetailData | null> => {
     eventRequestSequenceRef.current += 1;
     const requestSequence = eventRequestSequenceRef.current;
     const requestProgramId = programId;
@@ -328,24 +381,24 @@ export const EventDetail = ({
         requestSequence !== eventRequestSequenceRef.current ||
         next.event.event_id !== requestEventId
       ) {
-        return false;
+        return null;
       }
       setDetail(next);
-      return true;
+      return next;
     } catch (error) {
       if (
         !isCurrentEvent(requestProgramId, requestEventId) ||
         requestSequence !== eventRequestSequenceRef.current
       ) {
-        return false;
+        return null;
       }
       if (error instanceof RpcError && error.problem.code === "AUTH_REQUIRED") {
         onAuthRequired?.();
-        return false;
+        return null;
       }
       setLoadError(errorMessage(error));
       // A failed post-write read must not erase the last confirmed Event.
-      return false;
+      return null;
     }
   }, [eventId, isCurrentEvent, onAuthRequired, programId]);
 
@@ -353,8 +406,11 @@ export const EventDetail = ({
     setDetail(null);
     setLoadError(null);
     setNotice(null);
-    setActionError(null);
-    setMutationOutcomeUnknown(false);
+    const pendingMutation = pendingEventMutationRef.current;
+    setActionError(
+      pendingMutation === null ? null : COPY.programs.programTransportAmbiguous
+    );
+    setMutationOutcomeUnknown(pendingMutation !== null);
     setDetailStale(false);
     setBusy(false);
     setEditing(false);
@@ -496,9 +552,20 @@ export const EventDetail = ({
     if (!isCurrentEvent(requestProgramId, requestEventId)) {
       return;
     }
+    const pendingMutation = pendingEventMutationRef.current;
     const refreshed = await load();
     if (isCurrentEvent(requestProgramId, requestEventId)) {
-      if (workspaceReconciled && refreshed) {
+      if (
+        workspaceReconciled &&
+        refreshed &&
+        pendingMutation !== null &&
+        eventMutationSettles(refreshed, pendingMutation)
+      ) {
+        pendingEventMutationRef.current = null;
+        clearWorkspaceMutationRecovery("event", {
+          programId: requestProgramId,
+          eventId: requestEventId,
+        });
         setMutationOutcomeUnknown(false);
         setDetailStale(false);
         onMutationBlockChange?.(false);
@@ -566,6 +633,7 @@ export const EventDetail = ({
     async (
       fn: () => Promise<unknown>,
       successCopy: string | (() => string),
+      pendingMutation: EventMutationRecovery,
       onRefused?: (error: unknown) => boolean
     ) => {
       const requestProgramId = programId;
@@ -578,8 +646,20 @@ export const EventDetail = ({
       }
       setBusy(true);
       setActionError(null);
+      pendingEventMutationRef.current = pendingMutation;
+      writeWorkspaceMutationRecovery({
+        surface: "event",
+        programId: requestProgramId,
+        eventId: requestEventId,
+        mutation: pendingMutation,
+      });
       try {
         await fn();
+        pendingEventMutationRef.current = null;
+        clearWorkspaceMutationRecovery("event", {
+          programId: requestProgramId,
+          eventId: requestEventId,
+        });
         if (!isCurrentEvent(requestProgramId, requestEventId)) {
           return;
         }
@@ -616,6 +696,11 @@ export const EventDetail = ({
           return;
         }
         if (onRefused?.(error)) {
+          pendingEventMutationRef.current = null;
+          clearWorkspaceMutationRecovery("event", {
+            programId: requestProgramId,
+            eventId: requestEventId,
+          });
           return;
         }
         if (isUnknownMutationOutcome(error)) {
@@ -625,6 +710,11 @@ export const EventDetail = ({
           announce(COPY.programs.programTransportAmbiguous);
           return;
         }
+        pendingEventMutationRef.current = null;
+        clearWorkspaceMutationRecovery("event", {
+          programId: requestProgramId,
+          eventId: requestEventId,
+        });
         const message = errorMessage(error);
         setActionError(message);
         announce(message);
@@ -692,6 +782,16 @@ export const EventDetail = ({
         return hasAttendance
           ? COPY.programs.editWithAttendanceNotice
           : COPY.programs.eventSavedNotice;
+      },
+      {
+        kind: "update",
+        programId,
+        eventId,
+        expected: {
+          name,
+          location: location || null,
+          eventType,
+        },
       }
     );
   };
@@ -723,6 +823,17 @@ export const EventDetail = ({
         setEditing(false);
         setUndoAvailable(false);
         return COPY.programs.eventRescheduledNotice;
+      },
+      {
+        kind: "update",
+        programId,
+        eventId,
+        expected: {
+          startsAt: startsAtIso,
+          endsAt: endsAtIso,
+          opensAt: hkWallInputToIso(String(form.get("opens_at") ?? "")),
+          closesAt: hkWallInputToIso(String(form.get("closes_at") ?? "")),
+        },
       }
     );
   };
@@ -735,6 +846,12 @@ export const EventDetail = ({
         setConfirmingDeactivate(false);
         setUndoAvailable(true);
         return COPY.programs.eventAvailabilityNotice;
+      },
+      {
+        kind: "availability",
+        programId,
+        eventId,
+        expected: { availability: "Inactive" },
       },
       /* oxlint-disable-next-line promise/prefer-await-to-callbacks -- runAction takes success/error callbacks by design; awaiting means reworking every call site */
       (error) => {
@@ -769,6 +886,12 @@ export const EventDetail = ({
       () => {
         setUndoAvailable(false);
         return COPY.programs.eventAvailabilityRestoredNotice;
+      },
+      {
+        kind: "availability",
+        programId,
+        eventId,
+        expected: { availability: "Active" },
       }
     );
   };
@@ -793,6 +916,12 @@ export const EventDetail = ({
         setConfirmingCancel(false);
         setUndoAvailable(false);
         return COPY.programs.eventCancelledNotice;
+      },
+      {
+        kind: "cancel",
+        programId,
+        eventId,
+        expected: { status: "Cancelled" },
       },
       /* oxlint-disable-next-line promise/prefer-await-to-callbacks -- runAction takes success/error callbacks by design; awaiting means reworking every call site */
       (error) => {

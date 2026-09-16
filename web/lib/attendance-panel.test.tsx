@@ -24,6 +24,10 @@ import type {
 import { AttendancePanel } from "@/lib/attendance-panel";
 import { COPY } from "@/lib/copy";
 import { clearGuestCredential, readGuestCredential } from "@/lib/guest-context";
+import {
+  clearGuestMutationRecovery,
+  writeGuestMutationRecovery,
+} from "@/lib/programs/mutation-recovery";
 
 const server = setupServer();
 
@@ -69,6 +73,7 @@ describe(AttendancePanel, () => {
   afterEach(() => {
     cleanup();
     server.resetHandlers();
+    clearGuestMutationRecovery();
     vi.restoreAllMocks();
   });
 
@@ -423,6 +428,59 @@ describe(AttendancePanel, () => {
         expect.any(String),
         submittedKey,
       ]);
+    });
+
+    test("restores an unknown guest attempt after reload before allowing another write", async () => {
+      let guestPosts = 0;
+      writeGuestMutationRecovery("guest-recovery-key", {
+        event: EVENT,
+        credentialValue: "ATT1234",
+        fromQr: false,
+        name: "E2E訪客",
+        phone: "91234567",
+      });
+      server.use(
+        http.post("/api/v1/attendance/guest", () => {
+          guestPosts += 1;
+          return HttpResponse.json({
+            requestId: "rid-should-not-replay",
+            data: { outcome: "success", attendance_id: "a-replay" },
+          });
+        }),
+        http.post("/api/v1/attendance/guest/reconcile", ({ request }) => {
+          expect(request.headers.get("Idempotency-Key")).toBe(
+            "guest-recovery-key"
+          );
+          return HttpResponse.json({
+            requestId: "rid-recovered",
+            data: { outcome: "found" },
+          });
+        })
+      );
+      const user = userEvent.setup();
+      render(<AttendancePanel />);
+
+      expect(screen.getByLabelText(COPY.attendance.guestName)).toBeDisabled();
+      await expect(
+        screen.findByRole("button", { name: COPY.attendance.guestReconcile })
+      ).resolves.toBeEnabled();
+      const beforeUnload = new Event("beforeunload", { cancelable: true });
+      expect(window.dispatchEvent(beforeUnload)).toBe(false);
+      const blockedHref = window.location.href;
+      window.dispatchEvent(new PopStateEvent("popstate"));
+      expect(window.location.href).toBe(blockedHref);
+
+      await user.click(
+        screen.getByRole("button", { name: COPY.attendance.guestReconcile })
+      );
+      await expect(
+        screen.findByRole("heading", { name: COPY.attendance.guestResultTitle })
+      ).resolves.toBeInTheDocument();
+      expect(guestPosts).toBe(0);
+      const cleanBeforeUnload = new Event("beforeunload", {
+        cancelable: true,
+      });
+      expect(window.dispatchEvent(cleanBeforeUnload)).toBe(true);
     });
 
     test("locks an unknown guest attempt until reconciliation makes an explicit decision", async () => {

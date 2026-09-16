@@ -86,6 +86,12 @@ import {
   writeEventCreateDraft,
 } from "./event-create-draft";
 import { hkWallInputToIso, hkWallInputValue } from "./event-detail";
+import {
+  clearWorkspaceMutationRecovery,
+  readWorkspaceMutationRecovery,
+  writeWorkspaceMutationRecovery,
+} from "./mutation-recovery";
+import type { EventListMutationRecovery } from "./mutation-recovery";
 import { ProgramDatePicker } from "./program-date-picker";
 import { buildProgramsHref } from "./programs-intent";
 import type { ManagementEventAction } from "./programs-intent";
@@ -125,23 +131,11 @@ interface ExceptionDraft {
 
 type EventListFilter = "current" | "past" | "cancelled";
 
-type PendingEventMutation =
-  | {
-      kind: "cancel";
-      eventId: string;
-    }
-  | {
-      kind: "create";
-      programId: string;
-      beforeEventIds: readonly string[];
-      name: string;
-      eventType: EventType;
-      startsAt: string;
-      endsAt: string;
-      location: string | null;
-      opensAt: string | null;
-      closesAt: string | null;
-    };
+function isEventListFilter(value: string): value is EventListFilter {
+  return value === "current" || value === "past" || value === "cancelled";
+}
+
+type PendingEventMutation = EventListMutationRecovery;
 
 function sameNullableValue(
   left: string | null | undefined,
@@ -206,10 +200,12 @@ function eventIsOpen(event: ProgramEvent, now = Date.now()): boolean {
 }
 
 function eventIsPast(event: ProgramEvent, now = Date.now()): boolean {
+  const startsAt = Date.parse(event.starts_at);
   return (
     event.status === "Active" &&
     !eventIsOpen(event, now) &&
-    eventWallParts(event.starts_at).date < hkTodayWallDate(new Date(now))
+    ((Number.isFinite(startsAt) && startsAt <= now) ||
+      eventWallParts(event.starts_at).date < hkTodayWallDate(new Date(now)))
   );
 }
 
@@ -1626,14 +1622,28 @@ export const EventsTask = () => {
   const [actionBusy, setActionBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
-  const [eventsStale, setEventsStale] = useState(false);
-  const [eventsOutcomeUnknown, setEventsOutcomeUnknown] = useState(false);
+  const [restoredPendingMutation] = useState<PendingEventMutation | null>(
+    () => {
+      const recovery = readWorkspaceMutationRecovery();
+      return recovery?.surface === "events" && recovery.programId === programId
+        ? recovery.mutation
+        : null;
+    }
+  );
+  const [eventsStale, setEventsStale] = useState(
+    restoredPendingMutation !== null
+  );
+  const [eventsOutcomeUnknown, setEventsOutcomeUnknown] = useState(
+    restoredPendingMutation !== null
+  );
   const [eventFilter, setEventFilter] = useState<EventListFilter>("current");
   const [confirmingEventId, setConfirmingEventId] = useState<string | null>(
     null
   );
   const confirmEventRef = useRef<HTMLDivElement>(null);
-  const pendingEventMutationRef = useRef<PendingEventMutation | null>(null);
+  const pendingEventMutationRef = useRef<PendingEventMutation | null>(
+    restoredPendingMutation
+  );
 
   useEffect(() => {
     mounted.current = true;
@@ -1697,6 +1707,7 @@ export const EventsTask = () => {
           }
         }
         pendingEventMutationRef.current = null;
+        clearWorkspaceMutationRecovery("events", { programId });
         setEventsOutcomeUnknown(false);
         setEventsStale(false);
         onMutationBlockChange?.(false);
@@ -1878,13 +1889,22 @@ export const EventsTask = () => {
     setActionBusy(true);
     setActionError(null);
     setNotice(null);
+    pendingEventMutationRef.current = pendingMutation;
+    writeWorkspaceMutationRecovery({
+      surface: "events",
+      programId,
+      mutation: pendingMutation,
+    });
     const request = { cancelled: false };
     try {
       await action();
+      pendingEventMutationRef.current = null;
+      clearWorkspaceMutationRecovery("events", {
+        programId,
+      });
       if (!mounted.current) {
         return false;
       }
-      pendingEventMutationRef.current = null;
       onAttentionRefresh();
       let workspaceReconciled = true;
       if (onWorkspaceRefresh) {
@@ -1923,6 +1943,10 @@ export const EventsTask = () => {
         announce(COPY.programs.programTransportAmbiguous);
         return false;
       }
+      pendingEventMutationRef.current = null;
+      clearWorkspaceMutationRecovery("events", {
+        programId,
+      });
       const message =
         error instanceof RpcError
           ? errorCopyFor(error.problem.code, error.problem.detail)
@@ -2017,6 +2041,12 @@ export const EventsTask = () => {
       opensAt: overrideOpens,
       closesAt: overrideCloses,
     };
+    pendingEventMutationRef.current = pendingMutation;
+    writeWorkspaceMutationRecovery({
+      surface: "events",
+      programId,
+      mutation: pendingMutation,
+    });
     setCreateBusy(true);
     setCreateError(null);
     try {
@@ -2030,6 +2060,7 @@ export const EventsTask = () => {
         check_in_window_closes_at: overrideCloses,
       });
       pendingEventMutationRef.current = null;
+      clearWorkspaceMutationRecovery("events", { programId });
       announce(COPY.programs.eventCreatedNotice);
       clearEventCreateDraft(programId);
       toggleCreateForm(false);
@@ -2070,6 +2101,8 @@ export const EventsTask = () => {
         announce(COPY.programs.programTransportAmbiguous);
         return;
       }
+      pendingEventMutationRef.current = null;
+      clearWorkspaceMutationRecovery("events", { programId });
       const message =
         error instanceof RpcError
           ? errorCopyFor(error.problem.code, error.problem.detail)
@@ -2114,22 +2147,28 @@ export const EventsTask = () => {
         <ScreenTabs
           aria-label={COPY.programs.eventsFilterLabel}
           data-testid="programs-events-filters"
+          role="tablist"
+          value={eventFilter}
+          onValueChange={(value) => {
+            if (isEventListFilter(value)) {
+              setEventFilter(value);
+            }
+          }}
         >
           <ScreenTab
+            role="tab"
+            value="current"
             selected={eventFilter === "current"}
-            onClick={() => setEventFilter("current")}
           >
             {COPY.programs.eventsFilterCurrent}
           </ScreenTab>
-          <ScreenTab
-            selected={eventFilter === "past"}
-            onClick={() => setEventFilter("past")}
-          >
+          <ScreenTab role="tab" value="past" selected={eventFilter === "past"}>
             {COPY.programs.eventsFilterPast}
           </ScreenTab>
           <ScreenTab
+            role="tab"
+            value="cancelled"
             selected={eventFilter === "cancelled"}
-            onClick={() => setEventFilter("cancelled")}
           >
             {COPY.programs.eventsFilterCancelled}
           </ScreenTab>

@@ -22,6 +22,11 @@ import {
   readEventCreateDraft,
   writeEventCreateDraft,
 } from "./event-create-draft";
+import {
+  clearWorkspaceMutationRecovery,
+  readWorkspaceMutationRecovery,
+  writeWorkspaceMutationRecovery,
+} from "./mutation-recovery";
 import type { ManagementEventAction } from "./programs-intent";
 import {
   addWallDays,
@@ -175,6 +180,9 @@ function renderTask(
 describe("EventsTask operations-first composition", () => {
   beforeEach(() => {
     clearEventCreateDraft(program.program_id);
+    clearWorkspaceMutationRecovery("events", {
+      programId: program.program_id,
+    });
     mocks.createEvent.mockReset();
     mocks.listEvents.mockReset().mockResolvedValue({ events: [event] });
     mocks.listScheduleRules.mockReset().mockResolvedValue({ rules: [] });
@@ -184,6 +192,9 @@ describe("EventsTask operations-first composition", () => {
 
   afterEach(() => {
     clearEventCreateDraft(program.program_id);
+    clearWorkspaceMutationRecovery("events", {
+      programId: program.program_id,
+    });
     cleanup();
   });
 
@@ -268,6 +279,11 @@ describe("EventsTask operations-first composition", () => {
       wallInstant(todayDate, "12:00"),
       wallInstant(todayDate, "13:00")
     );
+    const endedToday = makeEvent(
+      "event-ended-today",
+      new Date(now - 2 * 60 * 60_000).toISOString(),
+      new Date(now - 60 * 60_000).toISOString()
+    );
     const future = makeEvent(
       "event-future",
       wallInstant(addWallDays(todayDate, 1), "12:00"),
@@ -285,7 +301,7 @@ describe("EventsTask operations-first composition", () => {
       { status: "Cancelled", cancel_reason: "場地維修" }
     );
     mocks.listEvents.mockResolvedValue({
-      events: [future, past, cancelled, today, open],
+      events: [future, past, cancelled, endedToday, today, open],
     });
     const onOpenEvent =
       vi.fn<(eventId: string, action?: ManagementEventAction) => void>();
@@ -296,6 +312,14 @@ describe("EventsTask operations-first composition", () => {
     const list = await screen.findByRole("list", {
       name: COPY.programs.workspaceTaskEvents,
     });
+    const filters = screen.getByRole("tablist", {
+      name: COPY.programs.eventsFilterLabel,
+    });
+    expect(
+      within(filters).getByRole("tab", {
+        name: COPY.programs.eventsFilterCurrent,
+      })
+    ).toHaveAttribute("aria-selected", "true");
     expect(
       [...list.querySelectorAll<HTMLElement>("[data-event-id]")].map(
         (row) => row.dataset.eventId
@@ -359,15 +383,18 @@ describe("EventsTask operations-first composition", () => {
     });
 
     await user.click(
-      screen.getByRole("button", { name: COPY.programs.eventsFilterPast })
+      screen.getByRole("tab", { name: COPY.programs.eventsFilterPast })
     );
     expect({
       past: Boolean(list.querySelector('[data-event-id="event-past"]')),
+      endedToday: Boolean(
+        list.querySelector('[data-event-id="event-ended-today"]')
+      ),
       open: Boolean(list.querySelector('[data-event-id="event-open"]')),
-    }).toStrictEqual({ past: true, open: false });
+    }).toStrictEqual({ past: true, endedToday: true, open: false });
 
     await user.click(
-      screen.getByRole("button", {
+      screen.getByRole("tab", {
         name: COPY.programs.eventsFilterCancelled,
       })
     );
@@ -580,6 +607,73 @@ describe("EventsTask operations-first composition", () => {
         screen.getByText(COPY.programs.workspaceEventsSavedStale)
       ).toBeInTheDocument();
     });
+  });
+
+  test("restores an unknown Event create and reconciles it without replaying", async () => {
+    writeEventCreateDraft(program.program_id, {
+      version: 1,
+      date: "2026-09-22",
+      startTime: "19:30",
+      endTime: "20:30",
+      endAuto: true,
+      name: "重載後聚會",
+      location: "副堂",
+      eventType: "小組",
+      windowOverride: false,
+      windowOpens: "",
+      windowCloses: "",
+    });
+    const pending = {
+      kind: "create" as const,
+      programId: program.program_id,
+      beforeEventIds: [event.event_id],
+      name: "重載後聚會",
+      eventType: "小組",
+      startsAt: wallInstant("2026-09-22", "19:30"),
+      endsAt: wallInstant("2026-09-22", "20:30"),
+      location: "副堂",
+      opensAt: null,
+      closesAt: null,
+    };
+    writeWorkspaceMutationRecovery({
+      surface: "events",
+      programId: program.program_id,
+      mutation: pending,
+    });
+    const created: ProgramEvent = {
+      ...event,
+      event_id: "event-reloaded",
+      starts_at: pending.startsAt,
+      ends_at: pending.endsAt,
+      name: pending.name,
+      event_type: "小組",
+      location: pending.location,
+      check_in_window_opens_at: null,
+      check_in_window_closes_at: null,
+    };
+    mocks.listEvents
+      .mockReset()
+      .mockResolvedValueOnce({ events: [event] })
+      .mockResolvedValueOnce({ events: [event, created] });
+    const user = userEvent.setup();
+    renderTask();
+
+    const submit = screen
+      .getAllByRole("button", { name: COPY.programs.createMeeting })
+      .at(-1);
+    expect(submit).toBeDefined();
+    if (!submit) {
+      throw new Error("create submit button was not rendered");
+    }
+    expect(submit).toBeDisabled();
+    await user.click(
+      screen.getByRole("button", { name: COPY.programs.workspaceRetryRefresh })
+    );
+    await expect(
+      screen.findByText(COPY.programs.workspaceReconciled)
+    ).resolves.toBeInTheDocument();
+    expect(readEventCreateDraft(program.program_id)).toBeNull();
+    expect(readWorkspaceMutationRecovery()).toBeNull();
   });
 });
 

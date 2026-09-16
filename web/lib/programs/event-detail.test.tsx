@@ -13,6 +13,10 @@ import { RpcError } from "@/lib/api";
 import type { ProblemDetails } from "@/lib/api";
 import { COPY } from "@/lib/copy";
 import { EventDetail } from "@/lib/programs/event-detail";
+import {
+  clearWorkspaceMutationRecovery,
+  writeWorkspaceMutationRecovery,
+} from "@/lib/programs/mutation-recovery";
 import type { EventDetail as EventDetailData } from "@/lib/programs/program-api";
 
 const mocks = vi.hoisted(() => ({
@@ -93,6 +97,10 @@ const detailFixture = (
 
 afterEach(() => {
   cleanup();
+  clearWorkspaceMutationRecovery("event", {
+    programId: "program-1",
+    eventId: "event-1",
+  });
   vi.clearAllMocks();
 });
 
@@ -1172,6 +1180,61 @@ describe("EVT-01 event detail", () => {
     ).resolves.toBeInTheDocument();
     expect(mocks.setEventAvailability).toHaveBeenCalledOnce();
     expect(mocks.getEvent).toHaveBeenCalledTimes(3);
+  });
+
+  test("keeps an unknown Event mutation locked until its target state is read back", async () => {
+    const active = detailFixture({
+      participant_summary: { active_enrollments: 0, checked_in: 0 },
+    });
+    const inactive = detailFixture({
+      event: { ...active.event, availability: "Inactive" },
+      participant_summary: { active_enrollments: 0, checked_in: 0 },
+    });
+    writeWorkspaceMutationRecovery({
+      surface: "event",
+      programId: "program-1",
+      eventId: "event-1",
+      mutation: {
+        kind: "availability",
+        programId: "program-1",
+        eventId: "event-1",
+        expected: { availability: "Inactive" },
+      },
+    });
+    mocks.getEvent.mockResolvedValueOnce(active).mockResolvedValueOnce(active);
+    const user = userEvent.setup();
+    render(
+      <EventDetail
+        programId="program-1"
+        eventId="event-1"
+        canManage
+        onBack={() => {}}
+        backHref="/programs"
+      />
+    );
+
+    await expect(
+      screen.findByRole("heading", { name: "迎新聚會" })
+    ).resolves.toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: COPY.programs.eventMoreActions })
+    ).toBeDisabled();
+    const retry = screen.getByRole("button", {
+      name: COPY.programs.workspaceRetryRefresh,
+    });
+    await user.click(retry);
+    expect(
+      screen.getByRole("button", { name: COPY.programs.eventMoreActions })
+    ).toBeDisabled();
+
+    mocks.getEvent.mockResolvedValueOnce(inactive);
+    await user.click(retry);
+    await expect(
+      screen.findByText(COPY.programs.workspaceReconciled)
+    ).resolves.toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: COPY.programs.eventMoreActions })
+    ).toBeEnabled();
   });
 
   test("an unrelated edit retires a stale availability Undo", async () => {

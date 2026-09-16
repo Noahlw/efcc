@@ -41,6 +41,7 @@ import { rememberDeepLink } from "@/lib/session";
 
 import { clearEventCreateDraft } from "./event-create-draft";
 import { EventDetail } from "./event-detail";
+import { readWorkspaceMutationRecovery } from "./mutation-recovery";
 import { buildProgramsHref } from "./programs-intent";
 import type { ManagementEventAction, ProgramsTask } from "./programs-intent";
 import { useAsyncResource } from "./use-async-resource";
@@ -209,8 +210,18 @@ export const ProgramWorkspace = ({
   const [workspaceFreshness, setWorkspaceFreshness] = useState<
     "fresh" | "refreshing" | "stale"
   >("fresh");
-  const [workspaceMutationBlocked, setWorkspaceMutationBlocked] =
-    useState(false);
+  const [workspaceMutationBlocked, setWorkspaceMutationBlocked] = useState(
+    () => {
+      const recovery = readWorkspaceMutationRecovery();
+      return (
+        task === "events" &&
+        ((recovery?.surface === "event" &&
+          recovery.programId === programId &&
+          recovery.eventId === eventId) ||
+          (recovery?.surface === "events" && recovery.programId === programId))
+      );
+    }
+  );
   const allowEventDraftLeave = useRef(false);
   const mounted = useRef(true);
   const summaryRequestId = useRef(0);
@@ -240,20 +251,15 @@ export const ProgramWorkspace = ({
       return;
     }
     const blockedHref = window.location.href;
-    const guardToken = workspaceMutationBlocked ? crypto.randomUUID() : null;
-    const guardedState =
-      guardToken === null
-        ? null
-        : {
-            ...(typeof window.history.state === "object" &&
-            window.history.state !== null
-              ? (window.history.state as Record<string, unknown>)
-              : {}),
-            efccProgramWorkspaceMutationGuard: guardToken,
-          };
-    if (guardedState !== null) {
-      window.history.pushState(guardedState, "", blockedHref);
-    }
+    const guardToken = crypto.randomUUID();
+    const guardedState = {
+      ...(typeof window.history.state === "object" &&
+      window.history.state !== null
+        ? (window.history.state as Record<string, unknown>)
+        : {}),
+      efccProgramWorkspaceMutationGuard: guardToken,
+    };
+    window.history.pushState(guardedState, "", blockedHref);
     const announceBlocked = () => {
       announce(
         workspaceMutationBlocked
@@ -317,29 +323,26 @@ export const ProgramWorkspace = ({
       event.returnValue = "";
     };
     const handlePopState = () => {
-      if (guardedState === null) {
-        return;
-      }
       window.history.pushState(guardedState, "", blockedHref);
+      if (!workspaceMutationBlocked) {
+        setPendingEventDraftNavigation({ kind: "back" });
+        setEventNavigationBlocked(true);
+      }
       announceBlocked();
     };
     document.addEventListener("click", handleDocumentClick, true);
     window.addEventListener("beforeunload", handleBeforeUnload);
-    if (guardedState !== null) {
-      window.addEventListener("popstate", handlePopState);
-    }
+    window.addEventListener("popstate", handlePopState);
     return () => {
       document.removeEventListener("click", handleDocumentClick, true);
       window.removeEventListener("beforeunload", handleBeforeUnload);
-      if (guardedState !== null) {
-        window.removeEventListener("popstate", handlePopState);
-        if (
-          window.location.href === blockedHref &&
-          (window.history.state as Record<string, unknown> | null)
-            ?.efccProgramWorkspaceMutationGuard === guardToken
-        ) {
-          window.history.back();
-        }
+      window.removeEventListener("popstate", handlePopState);
+      if (
+        window.location.href === blockedHref &&
+        (window.history.state as Record<string, unknown> | null)
+          ?.efccProgramWorkspaceMutationGuard === guardToken
+      ) {
+        window.history.back();
       }
     };
   }, [eventDraftDirty, task, workspaceMutationBlocked]);
