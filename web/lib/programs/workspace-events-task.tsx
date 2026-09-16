@@ -76,6 +76,8 @@ import {
   ScreenSection,
   ScreenState,
   ScreenStatus,
+  ScreenTab,
+  ScreenTabs,
 } from "@/lib/screen-foundations";
 
 import {
@@ -86,6 +88,7 @@ import {
 import { hkWallInputToIso, hkWallInputValue } from "./event-detail";
 import { ProgramDatePicker } from "./program-date-picker";
 import { buildProgramsHref } from "./programs-intent";
+import type { ManagementEventAction } from "./programs-intent";
 import { useAsyncResource } from "./use-async-resource";
 import {
   eventWallParts,
@@ -118,6 +121,69 @@ interface ExceptionDraft {
   newDate: string;
   newStartTime: string;
   newEndTime: string;
+}
+
+type EventListFilter = "current" | "past" | "cancelled";
+
+function eventIsOpen(event: ProgramEvent, now = Date.now()): boolean {
+  if (event.status !== "Active" || event.availability === "Inactive") {
+    return false;
+  }
+  const opensAt = Date.parse(event.check_in_window_opens_at ?? "");
+  const closesAt = Date.parse(event.check_in_window_closes_at ?? "");
+  return (
+    Number.isFinite(opensAt) &&
+    Number.isFinite(closesAt) &&
+    opensAt <= now &&
+    now <= closesAt
+  );
+}
+
+function eventIsPast(event: ProgramEvent, now = Date.now()): boolean {
+  return (
+    event.status === "Active" &&
+    !eventIsOpen(event, now) &&
+    eventWallParts(event.starts_at).date < hkTodayWallDate(new Date(now))
+  );
+}
+
+function rankForEvent(event: ProgramEvent, now: number): number {
+  if (eventIsOpen(event, now)) {
+    return 0;
+  }
+  if (eventWallParts(event.starts_at).date === hkTodayWallDate(new Date(now))) {
+    return 1;
+  }
+  const startsAt = Date.parse(event.starts_at);
+  return Number.isFinite(startsAt) && startsAt >= now ? 2 : 3;
+}
+
+function eventsForFilter(
+  events: ProgramEvent[],
+  filter: EventListFilter,
+  now = Date.now()
+): ProgramEvent[] {
+  const filtered = events.filter((event) =>
+    filter === "cancelled"
+      ? event.status === "Cancelled"
+      : filter === "past"
+        ? eventIsPast(event, now)
+        : event.status === "Active" && !eventIsPast(event, now)
+  );
+  return filtered.sort((left, right) => {
+    if (filter === "current") {
+      const rankDifference = rankForEvent(left, now) - rankForEvent(right, now);
+      if (rankDifference !== 0) {
+        return rankDifference;
+      }
+    }
+    const leftStartsAt = Date.parse(left.starts_at);
+    const rightStartsAt = Date.parse(right.starts_at);
+    if (filter === "current" && rankForEvent(left, now) === 3) {
+      return rightStartsAt - leftStartsAt;
+    }
+    return leftStartsAt - rightStartsAt;
+  });
 }
 
 function hkWallTimeOf(iso: string): string {
@@ -1385,6 +1451,7 @@ export const EventsTask = () => {
     onMutationBlockChange,
     onTaskChange,
     onOpenEvent,
+    onOpenAttendance,
     onWorkspaceDirtyChange,
   } = useWorkspaceTaskContext();
   const programId = program.program_id;
@@ -1474,6 +1541,7 @@ export const EventsTask = () => {
   const [notice, setNotice] = useState<string | null>(null);
   const [eventsStale, setEventsStale] = useState(false);
   const [eventsOutcomeUnknown, setEventsOutcomeUnknown] = useState(false);
+  const [eventFilter, setEventFilter] = useState<EventListFilter>("current");
   const [confirmingEventId, setConfirmingEventId] = useState<string | null>(
     null
   );
@@ -1648,11 +1716,11 @@ export const EventsTask = () => {
   const eventsForActions =
     state.kind === "ready" ? state.events : (previousEvents.current ?? []);
   const dataReady = state.kind === "ready";
-  const openEvent = (eventId: string) => {
+  const openEvent = (eventId: string, eventAction?: ManagementEventAction) => {
     if (eventsOutcomeUnknown || eventsStale) {
       return;
     }
-    onOpenEvent?.(eventId);
+    onOpenEvent?.(eventId, eventAction);
   };
   const defaultWindow = (() => {
     const startsAt = hkWallInputToIso(`${createDate}T${createStartTime}`);
@@ -1870,6 +1938,10 @@ export const EventsTask = () => {
   };
   const eventsForDisplay =
     state.kind === "ready" ? state.events : previousEvents.current;
+  const visibleEvents =
+    eventsForDisplay === null
+      ? null
+      : eventsForFilter(eventsForDisplay, eventFilter);
 
   return (
     <ScreenSection
@@ -1892,6 +1964,31 @@ export const EventsTask = () => {
       <p className="m-0 wrap-anywhere text-sm leading-6 text-[var(--screen-muted)]">
         {COPY.programs.repeatInformational}
       </p>
+      {eventsForDisplay !== null && (
+        <ScreenTabs
+          aria-label={COPY.programs.eventsFilterLabel}
+          data-testid="programs-events-filters"
+        >
+          <ScreenTab
+            selected={eventFilter === "current"}
+            onClick={() => setEventFilter("current")}
+          >
+            {COPY.programs.eventsFilterCurrent}
+          </ScreenTab>
+          <ScreenTab
+            selected={eventFilter === "past"}
+            onClick={() => setEventFilter("past")}
+          >
+            {COPY.programs.eventsFilterPast}
+          </ScreenTab>
+          <ScreenTab
+            selected={eventFilter === "cancelled"}
+            onClick={() => setEventFilter("cancelled")}
+          >
+            {COPY.programs.eventsFilterCancelled}
+          </ScreenTab>
+        </ScreenTabs>
+      )}
       {notice !== null && (
         <Alert tone="success" announcement="polite">
           {notice}
@@ -2202,13 +2299,19 @@ export const EventsTask = () => {
           title={COPY.programs.workspaceTaskEventsEmpty}
         />
       )}
-      {eventsForDisplay !== null && eventsForDisplay.length > 0 && (
+      {state.kind === "ready" &&
+        state.events.length > 0 &&
+        visibleEvents !== null &&
+        visibleEvents.length === 0 && (
+          <ScreenState kind="empty" title={COPY.programs.eventsFilterEmpty} />
+        )}
+      {visibleEvents !== null && visibleEvents.length > 0 && (
         <ScreenRowList>
           <ul
             className="m-0 grid min-w-0 list-none gap-0 p-0"
             aria-label={COPY.programs.workspaceTaskEvents}
           >
-            {(eventsForDisplay ?? []).map(
+            {visibleEvents.map(
               // oxlint-disable-next-line eslint/complexity -- one row owns its operational menu and settled recovery guards.
               (event) => {
                 const wall = eventWallParts(event.starts_at);
@@ -2232,9 +2335,33 @@ export const EventsTask = () => {
                       aria-busy={actionBusy}
                     >
                       <ScreenRowMain className="basis-full">
-                        <ScreenRowTitle>
+                        <Link
+                          href={eventHref}
+                          aria-label={COPY.programs.eventDetailOpen}
+                          className="min-w-0 wrap-anywhere text-[length:var(--screen-body-size)] leading-[21px] font-semibold hover:underline focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-[var(--screen-focus)]"
+                          onClick={(clickEvent) => {
+                            if (eventsOutcomeUnknown || eventsStale) {
+                              clickEvent.preventDefault();
+                              return;
+                            }
+                            if (
+                              !onOpenEvent ||
+                              clickEvent.defaultPrevented ||
+                              clickEvent.button !== 0 ||
+                              clickEvent.metaKey ||
+                              clickEvent.ctrlKey ||
+                              clickEvent.shiftKey ||
+                              clickEvent.altKey
+                            ) {
+                              return;
+                            }
+                            clickEvent.preventDefault();
+                            openEvent(event.event_id);
+                          }}
+                          aria-disabled={eventsOutcomeUnknown || eventsStale}
+                        >
                           {event.name ?? hkWallDateTimeLabel(event.starts_at)}
-                        </ScreenRowTitle>
+                        </Link>
                         <ScreenRowMeta>
                           {wall.date} · {wall.time} ·{" "}
                           {event.event_type ??
@@ -2293,15 +2420,12 @@ export const EventsTask = () => {
                           variant="outline"
                         >
                           <Link
-                            href={eventHref}
-                            aria-label={COPY.programs.eventDetailOpen}
+                            href={`/events?eventId=${encodeURIComponent(event.event_id)}`}
                             onClick={(clickEvent) => {
-                              if (eventsOutcomeUnknown || eventsStale) {
-                                clickEvent.preventDefault();
-                                return;
-                              }
                               if (
-                                !onOpenEvent ||
+                                !onOpenAttendance ||
+                                eventsOutcomeUnknown ||
+                                eventsStale ||
                                 clickEvent.defaultPrevented ||
                                 clickEvent.button !== 0 ||
                                 clickEvent.metaKey ||
@@ -2312,11 +2436,12 @@ export const EventsTask = () => {
                                 return;
                               }
                               clickEvent.preventDefault();
-                              openEvent(event.event_id);
+                              onOpenAttendance(event.event_id);
                             }}
-                            aria-disabled={eventsOutcomeUnknown || eventsStale}
                           >
-                            {COPY.programs.eventDetailOpen}
+                            {event.status === "Active"
+                              ? COPY.attendance.eventAttendanceOpen
+                              : COPY.programs.eventAttendanceViewRecord}
                           </Link>
                         </Button>
                         {canManage && (
@@ -2344,7 +2469,9 @@ export const EventsTask = () => {
                                   eventsOutcomeUnknown ||
                                   eventsStale
                                 }
-                                onSelect={() => openEvent(event.event_id)}
+                                onSelect={() =>
+                                  openEvent(event.event_id, "edit")
+                                }
                               >
                                 {COPY.programs.eventEdit}
                               </DropdownMenuItem>
@@ -2354,7 +2481,9 @@ export const EventsTask = () => {
                                   eventsOutcomeUnknown ||
                                   eventsStale
                                 }
-                                onSelect={() => openEvent(event.event_id)}
+                                onSelect={() =>
+                                  openEvent(event.event_id, "reschedule")
+                                }
                               >
                                 {COPY.programs.eventReschedule}
                               </DropdownMenuItem>

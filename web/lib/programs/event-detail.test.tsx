@@ -867,6 +867,60 @@ describe("EVT-01 event detail", () => {
     });
   });
 
+  test("opens the requested management action from an Event deep link", async () => {
+    mocks.getEvent.mockResolvedValue(detailFixture());
+    render(
+      <EventDetail
+        programId="program-1"
+        eventId="event-1"
+        eventAction="reschedule"
+        canManage
+        onBack={() => {}}
+        backHref="/programs"
+      />
+    );
+
+    await expect(
+      screen.findByTestId("event-edit-form")
+    ).resolves.toHaveAttribute("data-edit-intent", "reschedule");
+    expect(
+      screen.queryByLabelText(COPY.programs.eventName)
+    ).not.toBeInTheDocument();
+  });
+
+  test("does not reopen a deep-link edit after the saved Event changes type", async () => {
+    const initial = detailFixture();
+    mocks.getEvent.mockResolvedValueOnce(initial).mockResolvedValueOnce(
+      detailFixture({
+        event: { ...initial.event, event_type: "小組" },
+      })
+    );
+    mocks.updateEvent.mockResolvedValue({ event: initial.event });
+    const user = userEvent.setup();
+    render(
+      <EventDetail
+        programId="program-1"
+        eventId="event-1"
+        eventAction="edit"
+        canManage
+        onBack={() => {}}
+        backHref="/programs"
+      />
+    );
+
+    await user.type(
+      await screen.findByLabelText(COPY.programs.eventIdentityChangeReason),
+      "更新聚會類型"
+    );
+    await user.click(
+      await screen.findByRole("button", { name: COPY.programs.eventEditSave })
+    );
+    await expect(
+      screen.findByText(COPY.programs.editWithAttendanceNotice)
+    ).resolves.toBeInTheDocument();
+    expect(screen.queryByTestId("event-edit-form")).not.toBeInTheDocument();
+  });
+
   test("reschedule form sends only schedule fields through its distinct intent", async () => {
     mocks.getEvent.mockResolvedValue(detailFixture());
     mocks.updateEvent.mockResolvedValue({

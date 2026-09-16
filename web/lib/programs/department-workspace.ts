@@ -563,12 +563,14 @@ export interface ParticipantEventSummary {
   program_id: string;
   starts_at: string;
   ends_at: string;
-  status: "Active";
+  status: "Active" | "Cancelled";
   source: "SCHEDULE" | "MANUAL";
   /** Projected from the real event row; null when the meeting has no title. */
   name: string | null;
   /** Projected from the real event row; null when the meeting has no venue. */
   location: string | null;
+  /** Cancellation explanation; no operator or attendance data is exposed. */
+  cancel_reason: string | null;
   /** Server-derived participant affordance; never an attendance authority. */
   self_check_in_available: boolean;
 }
@@ -2173,8 +2175,8 @@ export class DepartmentWorkspace {
   /**
    * Participant Program detail (PUI-03 / Issue #247). Revalidates the same
    * server visibility policy as `getProgram`, then projects only participant
-   * fields plus safe schedule/event context. Event rows are always active-only
-   * here, including for managers, so check-in and operator data stay private.
+   * fields plus safe schedule/event context. Enrolled participants also retain
+   * a read-only cancelled-event history; check-in and operator data stay private.
    */
   async getParticipantProgramDetail(
     ctx: AuthorizationContext,
@@ -2190,7 +2192,9 @@ export class DepartmentWorkspace {
     }
     const [rules, eventRows, enrollmentState] = await Promise.all([
       this.listScheduleRules(ctx, programId),
-      this.listEvents(ctx, programId),
+      this.listEvents(ctx, programId, {
+        includeCancelledForActiveEnrollment: true,
+      }),
       this.participantEnrollmentSnapshot(ctx, view),
     ]);
     const { hasActiveEnrollment } = enrollmentState;
@@ -2208,19 +2212,21 @@ export class DepartmentWorkspace {
       events: (eventRows ?? [])
         .filter(
           (event) =>
-            event.status === "Active" && event.availability === "Active"
+            event.availability === "Active" &&
+            (event.status === "Active" || event.status === "Cancelled")
         )
         .map((event) => ({
           event_id: event.event_id,
           program_id: event.program_id,
           starts_at: event.starts_at,
           ends_at: event.ends_at,
-          status: "Active" as const,
+          status: event.status,
           source: event.source,
           // Next-meeting card surfaces the real meeting title/venue only;
           // check-in and operator fields stay private here.
           name: event.name,
           location: event.location,
+          cancel_reason: event.cancel_reason,
           self_check_in_available: participantSelfCheckInAvailable(
             event,
             view,
@@ -4070,7 +4076,8 @@ export class DepartmentWorkspace {
 
   async listEvents(
     ctx: AuthorizationContext,
-    programId: string
+    programId: string,
+    options: { includeCancelledForActiveEnrollment?: boolean } = {}
   ): Promise<EventRow[] | null> {
     const program = await this.store.findProgramById(programId);
     if (
@@ -4097,8 +4104,14 @@ export class DepartmentWorkspace {
     if (program.discoverability === "Unlisted") {
       return null;
     }
+    const includeCancelled =
+      options.includeCancelledForActiveEnrollment === true &&
+      (await this.store.hasActiveEnrollment(programId, ctx.actorUserId));
     return decorated.filter(
-      (r) => r.status === "Active" && r.availability === "Active"
+      (r) =>
+        r.availability === "Active" &&
+        (r.status === "Active" ||
+          (includeCancelled && r.status === "Cancelled"))
     );
   }
 

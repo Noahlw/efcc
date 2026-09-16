@@ -10966,6 +10966,7 @@ describe("PUI-03: participant Program detail", () => {
           source: string;
           name: string | null;
           location: string | null;
+          cancel_reason?: string | null;
           self_check_in_available: boolean;
           manual_check_in_code?: unknown;
           check_in_window_opens_at?: unknown;
@@ -11351,6 +11352,86 @@ describe("PUI-03: participant Program detail", () => {
     assert.strictEqual(body.data.detail.events.length, 1);
     assert.strictEqual(body.data.detail.events[0]?.name, null);
     assert.strictEqual(body.data.detail.events[0]?.location, null);
+  });
+
+  test("keeps an enrolled participant's cancelled Event history read-only", async () => {
+    const adminAccess = await accessCookieFor("alice", "alice-secret");
+    const dept = await createDepartment(adminAccess, {
+      code: "PUI-03-CANCELLED",
+      name: "PUI-03 Cancelled Dept",
+    });
+    const created = await createProgram(adminAccess, dept.department_id, {
+      name: "PUI-03 Cancelled Program",
+      behavior_type: "OneOff",
+      lifecycle: "Active",
+      discoverability: "Listed",
+      enrollment_mode: "MemberRequest",
+    });
+    const event = await createEventFor(adminAccess, created.program_id, {
+      starts_at: "2099-06-03T11:30:00.000Z",
+      ends_at: "2099-06-03T13:00:00.000Z",
+      name: "已取消的聚會",
+      location: "二樓禮堂",
+    });
+    const memberAccess = await accessCookieFor("bob", "bob-secret");
+    const beforeEnrollment = await detailOf(memberAccess, created.program_id);
+    assert.strictEqual(beforeEnrollment.data.detail.events.length, 1);
+    assert.strictEqual(
+      beforeEnrollment.data.detail.events[0]?.status,
+      "Active"
+    );
+
+    const enrollment = await assistedEnrollFor(
+      adminAccess,
+      created.program_id,
+      "U002"
+    );
+    assert.strictEqual(enrollment.status, 201);
+    const cancel = await worker.fetch(
+      programsRequest(
+        `/api/v1/programs/${created.program_id}/events/${event.event_id}`,
+        {
+          method: "PATCH",
+          headers: {
+            Origin: HOST,
+            Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
+            "Content-Type": "application/json",
+          },
+          body: { reason: "場地維修" },
+        }
+      ),
+      testEnv()
+    );
+    assert.strictEqual(cancel.status, 200);
+
+    const enrolled = await detailOf(memberAccess, created.program_id);
+    assert.deepStrictEqual(enrolled.data.detail.events[0], {
+      event_id: event.event_id,
+      program_id: created.program_id,
+      starts_at: "2099-06-03T11:30:00.000Z",
+      ends_at: "2099-06-03T13:00:00.000Z",
+      status: "Cancelled",
+      source: "MANUAL",
+      name: "已取消的聚會",
+      location: "二樓禮堂",
+      cancel_reason: "場地維修",
+      self_check_in_available: false,
+    });
+    const raw = JSON.stringify(enrolled.data.detail.events[0]);
+    assert.ok(!raw.includes("manual_check_in_code"));
+    assert.ok(!raw.includes("check_in_window_opens_at"));
+
+    await testDb()
+      .prepare(
+        "UPDATE enrollments SET status = 'Cancelled', cancelled_at = ? WHERE program_id = ? AND member_user_id = ?"
+      )
+      .bind(new Date().toISOString(), created.program_id, "U002")
+      .run();
+    const afterEnrollmentCancel = await detailOf(
+      memberAccess,
+      created.program_id
+    );
+    assert.strictEqual(afterEnrollmentCancel.data.detail.events.length, 0);
   });
 
   test("keeps multiple active events for a OneOff participant detail", async () => {

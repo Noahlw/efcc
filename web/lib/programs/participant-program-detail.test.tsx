@@ -372,6 +372,52 @@ describe("PUI-03 participant Program detail", () => {
     ).resolves.toBeInTheDocument();
   });
 
+  test("shows enrolled cancelled history with reason and a read-only detail link", async () => {
+    const base = detailFixture();
+    const onOpenEvent = vi.fn<(eventId: string) => void>();
+    mocks.getParticipantProgramDetail.mockResolvedValue(
+      detailFixture({
+        events: [
+          ...base.events,
+          {
+            ...base.events[0],
+            event_id: "event-cancelled",
+            name: "場地維修聚會",
+            status: "Cancelled",
+            cancel_reason: "場地維修",
+            self_check_in_available: false,
+          },
+        ],
+        enrollment: snapshot({
+          enrollments: [
+            {
+              enrollment_id: "enrollment-1",
+              status: "Active",
+              enrolled_at: "2099-02-01T00:00:00.000Z",
+              cancelled_at: null,
+            },
+          ],
+        }),
+      })
+    );
+    renderDetail({ canManage: false, onOpenEvent });
+
+    const cancelled = await screen.findByRole("list", {
+      name: COPY.programs.scheduleCancelledEventsGroup,
+    });
+    expect(within(cancelled).getByText("場地維修聚會")).toBeInTheDocument();
+    expect(
+      within(cancelled).getByText(
+        COPY.programs.cancelledReason.replace("{reason}", "場地維修")
+      )
+    ).toBeInTheDocument();
+    const detailLink = within(cancelled).getByRole("link", {
+      name: `${COPY.programs.viewEventDetail}: 場地維修聚會`,
+    });
+    await userEvent.click(detailLink);
+    expect(onOpenEvent).toHaveBeenCalledExactlyOnceWith("event-cancelled");
+  });
+
   test("keeps a post-event meeting visible while participant check-in stays open", async () => {
     const base = detailFixture();
     const startsAt = new Date(Date.now() - 2 * 60 * 60_000).toISOString();

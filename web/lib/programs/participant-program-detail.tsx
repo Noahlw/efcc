@@ -295,6 +295,7 @@ interface ParticipantScheduleProps {
   program: ParticipantProgramDetailData["program"];
   scheduleRules: ParticipantProgramDetailData["schedule_rules"];
   events: ParticipantProgramDetailData["events"];
+  cancelledEvents?: ParticipantProgramDetailData["events"];
   totalEventCount?: number;
   onExpandAll?: () => void;
   canOpenEventDetail?: boolean;
@@ -302,10 +303,13 @@ interface ParticipantScheduleProps {
   eventHref?: (eventId: string) => string;
 }
 
+const EMPTY_CANCELLED_EVENTS: ParticipantScheduleProps["events"] = [];
+
 const ParticipantSchedule = ({
   program,
   scheduleRules,
   events,
+  cancelledEvents = EMPTY_CANCELLED_EVENTS,
   totalEventCount = 0,
   onExpandAll,
   canOpenEventDetail = false,
@@ -457,17 +461,113 @@ const ParticipantSchedule = ({
         )}
       </ScreenRowList>
     )}
-    {scheduleRules.length === 0 && events.length === 0 && (
-      <ScreenState
-        kind="empty"
-        title={<span className="sr-only">{COPY.programs.scheduleTitle}</span>}
-        description={
-          <p className="m-0 wrap-anywhere leading-[1.6]">
-            {COPY.programs.detailEventsNone}
-          </p>
-        }
-      />
+    {cancelledEvents.length > 0 && (
+      <ScreenRowList className={events.length > 0 ? "mt-3" : undefined}>
+        <h3 id="program-detail-cancelled-events" className="sr-only">
+          {COPY.programs.scheduleCancelledEventsGroup}
+        </h3>
+        <ul
+          className="m-0 grid min-w-0 list-none gap-0 p-0"
+          aria-label={COPY.programs.scheduleCancelledEventsGroup}
+        >
+          {cancelledEvents.map((event, index) => {
+            const location = eventLocation(event);
+            const eventActionLabel = `${COPY.programs.viewEventDetail}: ${eventTitle(event, index)}`;
+            const eventDetail = eventHref ? (
+              <Button
+                asChild
+                className="h-auto min-h-11 w-fit whitespace-normal border-[var(--screen-line-strong)] bg-[var(--screen-surface)] px-3 py-2 text-left text-sm font-bold text-[var(--screen-ink)] hover:bg-[var(--screen-surface-soft)] hover:text-[var(--screen-ink)]"
+                variant="outline"
+              >
+                <Link
+                  href={eventHref(event.event_id)}
+                  aria-label={eventActionLabel}
+                  onClick={(clickEvent) => {
+                    if (
+                      !onOpenEvent ||
+                      clickEvent.defaultPrevented ||
+                      clickEvent.button !== 0 ||
+                      clickEvent.metaKey ||
+                      clickEvent.ctrlKey ||
+                      clickEvent.shiftKey ||
+                      clickEvent.altKey
+                    ) {
+                      return;
+                    }
+                    clickEvent.preventDefault();
+                    onOpenEvent(event.event_id);
+                  }}
+                >
+                  {COPY.programs.viewEventDetail}
+                </Link>
+              </Button>
+            ) : (
+              <Button
+                type="button"
+                className="h-auto min-h-11 w-fit whitespace-normal border-[var(--screen-line-strong)] bg-[var(--screen-surface)] px-3 py-2 text-left text-sm font-bold text-[var(--screen-ink)] hover:bg-[var(--screen-surface-soft)] hover:text-[var(--screen-ink)]"
+                variant="outline"
+                onClick={() => onOpenEvent?.(event.event_id)}
+                aria-label={eventActionLabel}
+              >
+                {COPY.programs.viewEventDetail}
+              </Button>
+            );
+            return (
+              <li key={event.event_id} className="min-w-0">
+                <ScreenRow>
+                  <time
+                    className="flex w-[3.25rem] shrink-0 flex-col items-center justify-center rounded-[var(--screen-radius-control)] bg-[var(--screen-surface-soft)] py-1.5 text-center [font-variant-numeric:tabular-nums] leading-[1.1]"
+                    dateTime={event.starts_at}
+                  >
+                    <b className="block text-base font-extrabold text-[var(--screen-ink)]">
+                      {hkDayPadded(event.starts_at)}
+                    </b>
+                    <span className="mt-0.5 block text-[0.6875rem] text-[var(--screen-muted)]">
+                      {hkMonthWeekdayLabel(event.starts_at)}
+                    </span>
+                  </time>
+                  <ScreenRowMain>
+                    <ScreenRowTitle>{eventTitle(event, index)}</ScreenRowTitle>
+                    <ScreenRowMeta>
+                      {hkShortDateLabel(event.starts_at)}
+                      {hkShortTimeRange(event.starts_at, event.ends_at)}
+                      {location ? ` · ${location}` : ""}
+                    </ScreenRowMeta>
+                    <ScreenStatus role="status" tone="danger">
+                      {COPY.programs.eventCancelled}
+                    </ScreenStatus>
+                    {event.cancel_reason ? (
+                      <ScreenRowMeta className="text-[var(--screen-danger)]">
+                        {COPY.programs.cancelledReason.replace(
+                          "{reason}",
+                          event.cancel_reason
+                        )}
+                      </ScreenRowMeta>
+                    ) : null}
+                  </ScreenRowMain>
+                  {canOpenEventDetail && (eventHref || onOpenEvent) && (
+                    <ScreenRowTrailing>{eventDetail}</ScreenRowTrailing>
+                  )}
+                </ScreenRow>
+              </li>
+            );
+          })}
+        </ul>
+      </ScreenRowList>
     )}
+    {scheduleRules.length === 0 &&
+      events.length === 0 &&
+      cancelledEvents.length === 0 && (
+        <ScreenState
+          kind="empty"
+          title={<span className="sr-only">{COPY.programs.scheduleTitle}</span>}
+          description={
+            <p className="m-0 wrap-anywhere leading-[1.6]">
+              {COPY.programs.detailEventsNone}
+            </p>
+          }
+        />
+      )}
   </ScreenSection>
 );
 
@@ -593,6 +693,15 @@ export const ParticipantProgramDetail = ({
         .filter(eventIsOpenOrCurrent)
         .toSorted((a, b) => Date.parse(a.starts_at) - Date.parse(b.starts_at))
     );
+  }, [state]);
+
+  const cancelledEvents = useMemo(() => {
+    if (state.kind !== "ready") {
+      return [];
+    }
+    return state.detail.events
+      .filter((event) => event.status === "Cancelled")
+      .toSorted((a, b) => Date.parse(b.starts_at) - Date.parse(a.starts_at));
   }, [state]);
 
   const visibleEvents = useMemo(
@@ -846,6 +955,7 @@ export const ParticipantProgramDetail = ({
         program={program}
         scheduleRules={scheduleRules}
         events={visibleEvents}
+        cancelledEvents={cancelledEvents}
         totalEventCount={scheduledEvents.length}
         onExpandAll={() => setEventLimit(Number.MAX_SAFE_INTEGER)}
         canOpenEventDetail={canOpenEventDetail}

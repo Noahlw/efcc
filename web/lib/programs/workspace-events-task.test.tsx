@@ -1,4 +1,10 @@
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import {
+  cleanup,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
@@ -16,6 +22,7 @@ import {
   readEventCreateDraft,
   writeEventCreateDraft,
 } from "./event-create-draft";
+import type { ManagementEventAction } from "./programs-intent";
 import {
   addWallDays,
   addWallMonths,
@@ -76,8 +83,8 @@ const event: ProgramEvent = {
   event_id: "event-1",
   program_id: "program-1",
   program_name: "查經小組",
-  starts_at: "2026-09-16T11:30:00.000Z",
-  ends_at: "2026-09-16T13:00:00.000Z",
+  starts_at: "2099-09-16T11:30:00.000Z",
+  ends_at: "2099-09-16T13:00:00.000Z",
   status: "Active",
   source: "SCHEDULE",
   name: "週三查經",
@@ -89,6 +96,9 @@ const event: ProgramEvent = {
   recurrence_tag: "每週",
   exception: null,
 };
+
+const wallInstant = (date: string, time: string) =>
+  new Date(`${date}T${time}:00+08:00`).toISOString();
 
 const rule: ScheduleRule = {
   rule_id: "rule-1",
@@ -136,7 +146,10 @@ function renderTask(
   onWorkspaceDirtyChange: (dirty: boolean) => void = vi.fn<
     (dirty: boolean) => void
   >(),
-  onOpenEvent: (() => void) | null = vi.fn<() => void>()
+  onOpenEvent:
+    | ((eventId: string, action?: ManagementEventAction) => void)
+    | null = vi.fn<(eventId: string, action?: ManagementEventAction) => void>(),
+  onOpenAttendance: ((eventId: string) => void) | null = null
 ) {
   return render(
     <WorkspaceTaskProvider
@@ -149,6 +162,7 @@ function renderTask(
         onAttentionRefresh: vi.fn<() => void>(),
         onTaskChange: vi.fn<() => void>(),
         onOpenEvent: onOpenEvent ?? undefined,
+        onOpenAttendance: onOpenAttendance ?? undefined,
         onWorkspaceDirtyChange,
       }}
     >
@@ -221,6 +235,132 @@ describe("EventsTask operations-first composition", () => {
     expect(
       screen.getByRole("button", { name: COPY.programs.keepMeeting })
     ).toBeInTheDocument();
+  });
+
+  test("prioritizes open and today Events, filters history, and opens permitted Attendance", async () => {
+    const now = Date.now();
+    const todayDate = hkTodayWallDate();
+    const makeEvent = (
+      eventId: string,
+      startsAt: string,
+      endsAt: string,
+      overrides: Partial<ProgramEvent> = {}
+    ): ProgramEvent => ({
+      ...event,
+      event_id: eventId,
+      starts_at: startsAt,
+      ends_at: endsAt,
+      ...overrides,
+    });
+    const open = makeEvent(
+      "event-open",
+      new Date(now + 30 * 60_000).toISOString(),
+      new Date(now + 90 * 60_000).toISOString(),
+      {
+        check_in_window_opens_at: new Date(now - 60 * 60_000).toISOString(),
+        check_in_window_closes_at: new Date(now + 60 * 60_000).toISOString(),
+      }
+    );
+    const today = makeEvent(
+      "event-today",
+      wallInstant(todayDate, "12:00"),
+      wallInstant(todayDate, "13:00")
+    );
+    const future = makeEvent(
+      "event-future",
+      wallInstant(addWallDays(todayDate, 1), "12:00"),
+      wallInstant(addWallDays(todayDate, 1), "13:00")
+    );
+    const past = makeEvent(
+      "event-past",
+      wallInstant(addWallDays(todayDate, -1), "12:00"),
+      wallInstant(addWallDays(todayDate, -1), "13:00")
+    );
+    const cancelled = makeEvent(
+      "event-cancelled",
+      wallInstant(addWallDays(todayDate, -1), "13:00"),
+      wallInstant(addWallDays(todayDate, -1), "14:00"),
+      { status: "Cancelled", cancel_reason: "場地維修" }
+    );
+    mocks.listEvents.mockResolvedValue({
+      events: [future, past, cancelled, today, open],
+    });
+    const onOpenEvent =
+      vi.fn<(eventId: string, action?: ManagementEventAction) => void>();
+    const onOpenAttendance = vi.fn<(eventId: string) => void>();
+    const user = userEvent.setup();
+    renderTask(vi.fn(), onOpenEvent, onOpenAttendance);
+
+    const list = await screen.findByRole("list", {
+      name: COPY.programs.workspaceTaskEvents,
+    });
+    expect(
+      [...list.querySelectorAll<HTMLElement>("[data-event-id]")].map(
+        (row) => row.dataset.eventId
+      )
+    ).toStrictEqual(["event-open", "event-today", "event-future"]);
+
+    const openRow = list.querySelector<HTMLElement>(
+      '[data-event-id="event-open"]'
+    );
+    if (!openRow) {
+      throw new Error("open Event row was not rendered");
+    }
+    await user.click(
+      within(openRow).getByRole("link", {
+        name: COPY.attendance.eventAttendanceOpen,
+      })
+    );
+    await user.click(
+      within(openRow).getByRole("button", {
+        name: COPY.programs.eventMoreActions,
+      })
+    );
+    await user.click(
+      screen.getByRole("menuitem", { name: COPY.programs.eventEdit })
+    );
+    await user.click(
+      within(openRow).getByRole("button", {
+        name: COPY.programs.eventMoreActions,
+      })
+    );
+    await user.click(
+      screen.getByRole("menuitem", { name: COPY.programs.eventReschedule })
+    );
+    expect({
+      attendance: onOpenAttendance.mock.calls,
+      event: onOpenEvent.mock.calls,
+    }).toStrictEqual({
+      attendance: [["event-open"]],
+      event: [
+        ["event-open", "edit"],
+        ["event-open", "reschedule"],
+      ],
+    });
+
+    await user.click(
+      screen.getByRole("button", { name: COPY.programs.eventsFilterPast })
+    );
+    expect({
+      past: Boolean(list.querySelector('[data-event-id="event-past"]')),
+      open: Boolean(list.querySelector('[data-event-id="event-open"]')),
+    }).toStrictEqual({ past: true, open: false });
+
+    await user.click(
+      screen.getByRole("button", {
+        name: COPY.programs.eventsFilterCancelled,
+      })
+    );
+    expect({
+      cancelled: list.querySelectorAll('[data-event-id="event-cancelled"]')
+        .length,
+      past: Boolean(list.querySelector('[data-event-id="event-past"]')),
+      reason: Boolean(
+        within(list).queryByText(
+          COPY.programs.cancelledReason.replace("{reason}", "場地維修")
+        )
+      ),
+    }).toStrictEqual({ cancelled: 1, past: false, reason: true });
   });
 
   test("restores an Event creation draft and reports the shell dirty state", async () => {

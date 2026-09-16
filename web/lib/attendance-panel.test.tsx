@@ -365,6 +365,8 @@ describe(AttendancePanel, () => {
 
     test("ambiguous guest submit reconciles before showing a committed result", async () => {
       let guestPosts = 0;
+      let submittedKey: string | null = null;
+      let reconciledKey: string | null = null;
       server.use(
         http.get("/api/v1/attendance/resolve", () =>
           HttpResponse.json({
@@ -372,19 +374,18 @@ describe(AttendancePanel, () => {
             data: { events: [EVENT] },
           })
         ),
-        http.post("/api/v1/attendance/guest", () => {
+        http.post("/api/v1/attendance/guest", ({ request }) => {
           guestPosts += 1;
+          submittedKey = request.headers.get("Idempotency-Key");
           return HttpResponse.error();
         }),
-        http.post("/api/v1/attendance/guest/reconcile", () =>
-          HttpResponse.json({
+        http.post("/api/v1/attendance/guest/reconcile", ({ request }) => {
+          reconciledKey = request.headers.get("Idempotency-Key");
+          return HttpResponse.json({
             requestId: "rid-reconcile",
-            data: {
-              outcome: "found",
-              checked_in_at: "2026-08-13T11:31:00.000Z",
-            },
-          })
-        )
+            data: { outcome: "found" },
+          });
+        })
       );
       const user = userEvent.setup();
       render(<AttendancePanel />);
@@ -396,11 +397,19 @@ describe(AttendancePanel, () => {
       await expect(
         screen.findByText(COPY.attendance.transportAmbiguous)
       ).resolves.toBeVisible();
-      expect(
-        screen.getByRole("button", { name: COPY.attendance.guestReconcile })
-      ).toBeEnabled();
-      expect(screen.getByLabelText(COPY.attendance.guestName)).toBeDisabled();
-      expect(guestPosts).toBe(1);
+      expect({
+        reconcileDisabled: screen
+          .getByRole("button", { name: COPY.attendance.guestReconcile })
+          .hasAttribute("disabled"),
+        nameDisabled: screen
+          .getByLabelText(COPY.attendance.guestName)
+          .hasAttribute("disabled"),
+        guestPosts,
+      }).toStrictEqual({
+        reconcileDisabled: false,
+        nameDisabled: true,
+        guestPosts: 1,
+      });
 
       await user.click(
         screen.getByRole("button", { name: COPY.attendance.guestReconcile })
@@ -410,6 +419,10 @@ describe(AttendancePanel, () => {
           name: COPY.attendance.guestResultTitle,
         })
       ).resolves.toBeVisible();
+      expect([submittedKey, reconciledKey]).toStrictEqual([
+        expect.any(String),
+        submittedKey,
+      ]);
     });
 
     test("duplicate is a neutral result without an attendance identifier", async () => {

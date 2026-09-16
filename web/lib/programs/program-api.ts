@@ -309,12 +309,13 @@ export interface ParticipantEventSummary {
   program_id: string;
   starts_at: string;
   ends_at: string;
-  status: "Active";
+  status: "Active" | "Cancelled";
   source: "SCHEDULE" | "MANUAL";
   /** Projected from the real event row; null when the meeting has no title. */
   name: string | null;
   /** Projected from the real event row; null when the meeting has no venue. */
   location: string | null;
+  cancel_reason?: string | null;
   /** Server-derived participant affordance; never an attendance authority. */
   self_check_in_available: boolean;
 }
@@ -1530,18 +1531,21 @@ export function guestCheckIn(
   });
 }
 
-/** POST /api/v1/attendance/guest/reconcile — public guest outcome read. */
-export function reconcileGuestCheckIn(input: {
-  event_id: string;
-  method: "guest_qr_scan" | "guest_manual_code";
-  name: string;
-  phone: string;
-  program_token?: string;
-  manual_code?: string;
-  entry?: string;
-}): Promise<{ outcome: "found" | "not_found"; checked_in_at?: string }> {
+/** POST /api/v1/attendance/guest/reconcile — proof-bound public outcome read. */
+export function reconcileGuestCheckIn(
+  input: {
+    event_id: string;
+    method: "guest_qr_scan" | "guest_manual_code";
+    name: string;
+    phone: string;
+    program_token?: string;
+    manual_code?: string;
+    entry?: string;
+  },
+  idempotencyKey?: string | null
+): Promise<{ outcome: "found" | "not_found" }> {
   return programsFetch("/api/v1/attendance/guest/reconcile", "POST", input, {
-    idempotencyKey: null,
+    idempotencyKey: idempotencyKey ?? null,
   });
 }
 

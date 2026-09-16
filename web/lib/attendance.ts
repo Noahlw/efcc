@@ -234,6 +234,159 @@ export function normalizeGuestPhone(input: string): string | null {
   return null;
 }
 
+interface GuestReconciliationProof {
+  proofHash: string;
+  requestFingerprint: string;
+}
+
+interface GuestReconciliationProofRow {
+  proof_hash: string;
+  request_fingerprint: string;
+  program_id: string;
+  event_id: string;
+  attendance_id: string;
+  request_id: string;
+  created_at: string;
+}
+
+interface GuestCheckInBody {
+  event_id?: unknown;
+  method?: unknown;
+  name?: unknown;
+  phone?: unknown;
+  program_token?: unknown;
+  manual_code?: unknown;
+  entry?: unknown;
+}
+
+interface GuestCheckInInput {
+  event_id: string;
+  method?: "guest_qr_scan" | "guest_manual_code";
+  name: string;
+  phone: string;
+  program_token?: string;
+  manual_code?: string;
+  entry?: string;
+}
+
+async function sha256Hex(value: string): Promise<string> {
+  const digest = await crypto.subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode(value)
+  );
+  return Array.from(new Uint8Array(digest), (byte) =>
+    byte.toString(16).padStart(2, "0")
+  ).join("");
+}
+
+async function guestReconciliationProof(
+  event: Pick<AttendanceEvent, "program_id" | "event_id">,
+  method: "guest_manual_code" | "guest_qr_scan",
+  input: {
+    name: string;
+    phoneNormalized: string;
+    credential: string;
+  },
+  idempotencyKey: string
+): Promise<GuestReconciliationProof> {
+  const requestFingerprint = JSON.stringify([
+    event.program_id,
+    event.event_id,
+    method,
+    input.name,
+    input.phoneNormalized,
+    input.credential,
+  ]);
+  const [proofHash, fingerprintHash] = await Promise.all([
+    sha256Hex(idempotencyKey),
+    sha256Hex(requestFingerprint),
+  ]);
+  return {
+    proofHash,
+    requestFingerprint: fingerprintHash,
+  };
+}
+
+function guestCredential(
+  input: {
+    entry?: unknown;
+    program_token?: unknown;
+    manual_code?: unknown;
+  },
+  method: "guest_manual_code" | "guest_qr_scan"
+): string {
+  if (typeof input.entry === "string" && input.entry) {
+    return input.entry;
+  }
+  const credential =
+    method === "guest_qr_scan" ? input.program_token : input.manual_code;
+  return typeof credential === "string" ? credential : "";
+}
+
+async function findGuestReconciliationProof(
+  db: D1Database,
+  proofHash: string
+): Promise<GuestReconciliationProofRow | null> {
+  return (
+    (await db
+      .prepare(
+        `SELECT proof_hash, request_fingerprint, program_id, event_id,
+                attendance_id, request_id, created_at
+           FROM attendance_guest_reconcile_proofs
+          WHERE proof_hash = ?`
+      )
+      .bind(proofHash)
+      .first<GuestReconciliationProofRow>()) ?? null
+  );
+}
+
+function proofMatchesEvent(
+  proof: GuestReconciliationProofRow,
+  event: Pick<AttendanceEvent, "program_id" | "event_id">,
+  requestFingerprint: string
+): boolean {
+  return (
+    proof.program_id === event.program_id &&
+    proof.event_id === event.event_id &&
+    proof.request_fingerprint === requestFingerprint
+  );
+}
+
+async function recordGuestReconciliationProof(
+  db: D1Database,
+  event: Pick<AttendanceEvent, "program_id" | "event_id">,
+  proof: GuestReconciliationProof,
+  attendanceId: string,
+  requestCorrelationId: string
+): Promise<void> {
+  const createdAt = new Date().toISOString();
+  await db
+    .prepare(
+      `INSERT OR IGNORE INTO attendance_guest_reconcile_proofs
+         (proof_hash, request_fingerprint, program_id, event_id,
+          attendance_id, request_id, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`
+    )
+    .bind(
+      proof.proofHash,
+      proof.requestFingerprint,
+      event.program_id,
+      event.event_id,
+      attendanceId,
+      requestCorrelationId,
+      createdAt
+    )
+    .run();
+  const stored = await findGuestReconciliationProof(db, proof.proofHash);
+  if (
+    !stored ||
+    !proofMatchesEvent(stored, event, proof.requestFingerprint) ||
+    stored.attendance_id !== attendanceId
+  ) {
+    throw new Error("Guest reconciliation proof identity conflict.");
+  }
+}
+
 function requestId(): string {
   return crypto.randomUUID();
 }
@@ -296,6 +449,121 @@ async function body<T>(request: Request): Promise<T | null> {
   } catch {
     return null;
   }
+}
+
+async function readGuestCheckInInput(
+  request: Request,
+  id: string
+): Promise<{ input: GuestCheckInInput; normalized: string } | Response> {
+  const input = await body<GuestCheckInBody>(request);
+  if (
+    !input ||
+    typeof input.event_id !== "string" ||
+    typeof input.name !== "string" ||
+    typeof input.phone !== "string" ||
+    (input.method !== undefined &&
+      input.method !== "guest_qr_scan" &&
+      input.method !== "guest_manual_code") ||
+    (typeof input.entry !== "string" &&
+      typeof input.program_token !== "string" &&
+      typeof input.manual_code !== "string") ||
+    !input.name.trim()
+  ) {
+    return problem(422, "VALIDATION", "姓名和電話都是必填資料。", id);
+  }
+  if (input.name.trim().length > GUEST_NAME_MAX_LENGTH) {
+    return problem(
+      422,
+      "VALIDATION",
+      `姓名不可超過 ${GUEST_NAME_MAX_LENGTH} 個字元。`,
+      id
+    );
+  }
+  const normalized = normalizeGuestPhone(input.phone);
+  if (!normalized) {
+    return problem(422, "VALIDATION", "請輸入有效電話號碼。", id);
+  }
+  return {
+    input: {
+      event_id: input.event_id,
+      method: input.method,
+      name: input.name,
+      phone: input.phone,
+      ...(typeof input.program_token === "string"
+        ? { program_token: input.program_token }
+        : {}),
+      ...(typeof input.manual_code === "string"
+        ? { manual_code: input.manual_code }
+        : {}),
+      ...(typeof input.entry === "string" ? { entry: input.entry } : {}),
+    },
+    normalized,
+  };
+}
+
+function readGuestIdempotencyKey(
+  request: Request,
+  id: string
+): string | null | Response {
+  const key = request.headers.get("Idempotency-Key")?.trim() || null;
+  return key && key.length > 200
+    ? problem(422, "VALIDATION", "Idempotency-Key 太長。", id)
+    : key;
+}
+
+async function prepareGuestProof(
+  db: D1Database,
+  event: Pick<AttendanceEvent, "program_id" | "event_id">,
+  method: "guest_manual_code" | "guest_qr_scan",
+  input: {
+    name: string;
+    phoneNormalized: string;
+    credential: string;
+  },
+  idempotencyKey: string | null,
+  id: string
+): Promise<GuestReconciliationProof | Response | undefined> {
+  if (!idempotencyKey) {
+    return undefined;
+  }
+  const proof = await guestReconciliationProof(
+    event,
+    method,
+    input,
+    idempotencyKey
+  );
+  const existing = await findGuestReconciliationProof(db, proof.proofHash);
+  if (!existing) {
+    return proof;
+  }
+  return proofMatchesEvent(existing, event, proof.requestFingerprint)
+    ? json(200, { outcome: "duplicate" }, id)
+    : problem(409, "CONFLICT", "此提交識別碼已用於其他簽到。", id);
+}
+
+async function guestProofExists(
+  db: D1Database,
+  event: Pick<AttendanceEvent, "program_id" | "event_id">,
+  proof: GuestReconciliationProof
+): Promise<boolean> {
+  const row = await db
+    .prepare(
+      `SELECT 1 AS found
+         FROM attendance_guest_reconcile_proofs
+        WHERE proof_hash = ?
+          AND program_id = ?
+          AND event_id = ?
+          AND request_fingerprint = ?
+        LIMIT 1`
+    )
+    .bind(
+      proof.proofHash,
+      event.program_id,
+      event.event_id,
+      proof.requestFingerprint
+    )
+    .first<{ found: number }>();
+  return row !== null;
 }
 
 function cookie(request: Request): string | null {
@@ -1366,6 +1634,7 @@ async function insertAttendance(
     guestPhone?: string | null;
     guestPhoneNormalized?: string | null;
     method: AttendanceMethod;
+    guestProof?: GuestReconciliationProof;
     publicDuplicateMessage: string;
   },
   id: string,
@@ -1481,6 +1750,15 @@ async function insertAttendance(
             .bind(event.event_id, input.guestPhoneNormalized)
             .first<{ attendance_id: string }>()
         : null;
+    if (existing && input.guestProof) {
+      await recordGuestReconciliationProof(
+        env.DB,
+        event,
+        input.guestProof,
+        existing.attendance_id,
+        id
+      );
+    }
     await audit(env.DB, {
       actorUserId: input.actor?.user_id ?? null,
       action: "attendance.check_in",
@@ -1503,6 +1781,15 @@ async function insertAttendance(
       409,
       "DUPLICATE_ATTENDANCE",
       input.publicDuplicateMessage,
+      id
+    );
+  }
+  if (input.guestProof) {
+    await recordGuestReconciliationProof(
+      env.DB,
+      event,
+      input.guestProof,
+      attendanceId,
       id
     );
   }
@@ -1718,42 +2005,16 @@ export async function handleGuestCheckIn(
   env: AttendanceEnv
 ): Promise<Response> {
   const id = requestId();
-  const input = await body<{
-    event_id?: unknown;
-    method?: unknown;
-    name?: unknown;
-    phone?: unknown;
-    program_token?: unknown;
-    manual_code?: unknown;
-    entry?: unknown;
-  }>(request);
-  if (
-    !input ||
-    typeof input.event_id !== "string" ||
-    typeof input.name !== "string" ||
-    typeof input.phone !== "string" ||
-    (input.method !== undefined &&
-      input.method !== "guest_qr_scan" &&
-      input.method !== "guest_manual_code") ||
-    (typeof input.entry !== "string" &&
-      typeof input.program_token !== "string" &&
-      typeof input.manual_code !== "string") ||
-    !input.name.trim()
-  ) {
-    return problem(422, "VALIDATION", "姓名和電話都是必填資料。", id);
+  const idempotencyKeyResult = readGuestIdempotencyKey(request, id);
+  if (idempotencyKeyResult instanceof Response) {
+    return idempotencyKeyResult;
   }
-  if (input.name.trim().length > GUEST_NAME_MAX_LENGTH) {
-    return problem(
-      422,
-      "VALIDATION",
-      `姓名不可超過 ${GUEST_NAME_MAX_LENGTH} 個字元。`,
-      id
-    );
+  const idempotencyKey = idempotencyKeyResult;
+  const parsed = await readGuestCheckInInput(request, id);
+  if (parsed instanceof Response) {
+    return parsed;
   }
-  const normalized = normalizeGuestPhone(input.phone);
-  if (!normalized) {
-    return problem(422, "VALIDATION", "請輸入有效電話號碼。", id);
-  }
+  const { input, normalized } = parsed;
   const current = await actor(request, env, id, false);
   if (current instanceof Response) {
     return current;
@@ -1774,6 +2035,22 @@ export async function handleGuestCheckIn(
     return derived.response;
   }
   const { method } = derived;
+  const guestProofResult = await prepareGuestProof(
+    env.DB,
+    event,
+    method,
+    {
+      name: input.name.trim(),
+      phoneNormalized: normalized,
+      credential: guestCredential(input, method),
+    },
+    idempotencyKey,
+    id
+  );
+  if (guestProofResult instanceof Response) {
+    return guestProofResult;
+  }
+  const guestProof = guestProofResult;
   // Charge the per-Event guest limiter only after the entry validated, so an
   // attacker cannot burn the shared bucket with garbage inputs.
   // ponytail: one shared 100/60s Rate Limiting binding (wrangler.jsonc);
@@ -1792,6 +2069,7 @@ export async function handleGuestCheckIn(
       guestPhone: input.phone.trim(),
       guestPhoneNormalized: normalized,
       method,
+      guestProof,
       publicDuplicateMessage: "此電話已簽到。如需協助，請聯絡聚會負責人。",
     },
     id
@@ -1808,34 +2086,16 @@ export async function handleReconcileGuestCheckIn(
   env: AttendanceEnv
 ): Promise<Response> {
   const id = requestId();
-  const input = await body<{
-    event_id?: unknown;
-    method?: unknown;
-    name?: unknown;
-    phone?: unknown;
-    program_token?: unknown;
-    manual_code?: unknown;
-    entry?: unknown;
-  }>(request);
-  if (
-    !input ||
-    typeof input.event_id !== "string" ||
-    typeof input.name !== "string" ||
-    typeof input.phone !== "string" ||
-    (input.method !== undefined &&
-      input.method !== "guest_qr_scan" &&
-      input.method !== "guest_manual_code") ||
-    (typeof input.entry !== "string" &&
-      typeof input.program_token !== "string" &&
-      typeof input.manual_code !== "string") ||
-    !input.name.trim()
-  ) {
-    return problem(422, "VALIDATION", "姓名和電話都是必填資料。", id);
+  const idempotencyKeyResult = readGuestIdempotencyKey(request, id);
+  if (idempotencyKeyResult instanceof Response) {
+    return idempotencyKeyResult;
   }
-  const normalized = normalizeGuestPhone(input.phone);
-  if (!normalized) {
-    return problem(422, "VALIDATION", "請輸入有效電話號碼。", id);
+  const idempotencyKey = idempotencyKeyResult;
+  const parsed = await readGuestCheckInInput(request, id);
+  if (parsed instanceof Response) {
+    return parsed;
   }
+  const { input, normalized } = parsed;
   const event = await findEvent(env.DB, input.event_id);
   if (!event) {
     return problem(404, "NOT_FOUND", "找不到聚會。", id);
@@ -1860,24 +2120,21 @@ export async function handleReconcileGuestCheckIn(
   if (limited instanceof Response) {
     return limited;
   }
-  const row = await env.DB.prepare(
-    `SELECT checked_in_at FROM attendances
-       WHERE event_id = ?
-         AND member_user_id IS NULL
-         AND guest_name = ?
-         AND guest_phone_normalized = ?
-         AND status = 'Active'
-       LIMIT 1`
-  )
-    .bind(event.event_id, input.name.trim(), normalized)
-    .first<{ checked_in_at: string }>();
-  return json(
-    200,
-    row
-      ? { outcome: "found", checked_in_at: row.checked_in_at }
-      : { outcome: "not_found" },
-    id
+  if (!idempotencyKey) {
+    return json(200, { outcome: "not_found" }, id);
+  }
+  const proof = await guestReconciliationProof(
+    event,
+    derived.method,
+    {
+      name: input.name.trim(),
+      phoneNormalized: normalized,
+      credential: guestCredential(input, derived.method),
+    },
+    idempotencyKey
   );
+  const found = await guestProofExists(env.DB, event, proof);
+  return json(200, found ? { outcome: "found" } : { outcome: "not_found" }, id);
 }
 
 export async function handleListRoster(

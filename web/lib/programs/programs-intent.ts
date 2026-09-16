@@ -1,4 +1,5 @@
 export type ProgramsMode = "participant" | "management";
+export type ManagementEventAction = "edit" | "reschedule";
 
 export type ProgramsTask =
   | "events"
@@ -18,6 +19,8 @@ export interface ProgramsIntent {
   task?: ProgramsTask;
   /** Management Event deep link, valid only with task === "events" or "participants". */
   eventId?: string;
+  /** Optional initial management Event action, valid only for Event detail. */
+  eventAction?: ManagementEventAction;
   /** Creation flash carried to the new management Cockpit. */
   created?: boolean;
   malformed: boolean;
@@ -32,6 +35,7 @@ export interface ProgramsHrefIntent {
   departmentId?: string | null;
   task?: ProgramsTask | null;
   eventId?: string | null;
+  eventAction?: ManagementEventAction | null;
   hash?: string | null;
   /** Creation flash carried to the new management Cockpit. */
   created?: boolean;
@@ -172,6 +176,24 @@ function parseEvent(
       (value === undefined || (!participantEvent && !managementEvent)),
   };
 }
+
+function parseEventAction(
+  rawAction: { value: string | null; duplicate: boolean },
+  mode: ProgramsMode,
+  task: ProgramsTask | undefined,
+  eventId: string | undefined
+): { value: ManagementEventAction | undefined; malformed: boolean } {
+  const value =
+    rawAction.value === "edit" || rawAction.value === "reschedule"
+      ? rawAction.value
+      : undefined;
+  const allowed = mode === "management" && task === "events" && eventId;
+  return {
+    value,
+    malformed:
+      rawAction.duplicate || (rawAction.value !== null && (!value || !allowed)),
+  };
+}
 interface ParsedOrigin {
   value: ProgramsOrigin | undefined;
   malformed: boolean;
@@ -219,6 +241,7 @@ function hasMalformedIntent({
   task,
   rawEventId,
   event,
+  eventAction,
   createdMalformed,
   originMalformed,
 }: {
@@ -230,6 +253,7 @@ function hasMalformedIntent({
   task: { malformed: boolean };
   rawEventId: { duplicate: boolean };
   event: { malformed: boolean };
+  eventAction: { malformed: boolean };
   createdMalformed: boolean;
   originMalformed: boolean;
 }): boolean {
@@ -247,6 +271,7 @@ function hasMalformedIntent({
     task.malformed ||
     rawEventId.duplicate ||
     event.malformed ||
+    eventAction.malformed ||
     createdMalformed ||
     originMalformed
   );
@@ -264,6 +289,7 @@ export function parseProgramsIntent(search: string): ProgramsIntent {
   const rawDepartment = singleParam(params, "department");
   const rawTask = singleParam(params, "task");
   const rawEventId = singleParam(params, "event");
+  const rawEventAction = singleParam(params, "eventAction");
   const rawCreated = singleParam(params, "created");
   const rawFrom = singleParam(params, "from");
   const mode: ProgramsMode =
@@ -274,6 +300,12 @@ export function parseProgramsIntent(search: string): ProgramsIntent {
   const origin = parseOrigin(rawFrom, mode, program.id);
   const task = parseTask(rawTask.value, mode, program.id);
   const event = parseEvent(rawEventId, mode, task.value, program.id);
+  const eventAction = parseEventAction(
+    rawEventAction,
+    mode,
+    task.value,
+    event.value
+  );
   const created = parseCreated(rawCreated, mode, program.id);
   const malformed = hasMalformedIntent({
     rawMode,
@@ -284,6 +316,7 @@ export function parseProgramsIntent(search: string): ProgramsIntent {
     task,
     rawEventId,
     event,
+    eventAction,
     createdMalformed: created.malformed,
     originMalformed: origin.malformed,
   });
@@ -303,6 +336,9 @@ export function parseProgramsIntent(search: string): ProgramsIntent {
       task: task.value,
       ...departmentField,
       ...(event.value === undefined ? {} : { eventId: event.value }),
+      ...(eventAction.value === undefined
+        ? {}
+        : { eventAction: eventAction.value }),
       ...creationField,
       ...originField,
       malformed,
@@ -313,6 +349,9 @@ export function parseProgramsIntent(search: string): ProgramsIntent {
     programId: program.id,
     hash: hash.value,
     ...(event.value === undefined ? {} : { eventId: event.value }),
+    ...(eventAction.value === undefined
+      ? {}
+      : { eventAction: eventAction.value }),
     ...departmentField,
     ...creationField,
     ...originField,
@@ -403,6 +442,18 @@ function appendEvent(
   }
 }
 
+function appendEventAction(
+  params: URLSearchParams,
+  mode: ProgramsMode,
+  task: ProgramsTask | null | undefined,
+  eventId: string | null | undefined,
+  eventAction: ManagementEventAction | null | undefined
+): void {
+  if (mode === "management" && task === "events" && eventId && eventAction) {
+    params.set("eventAction", eventAction);
+  }
+}
+
 /** Build a canonical same-origin Programs URL with safe, restorable intent. */
 export function buildProgramsHref({
   mode,
@@ -413,6 +464,7 @@ export function buildProgramsHref({
   hash,
   created,
   origin,
+  eventAction,
 }: ProgramsHrefIntent): string {
   const params = new URLSearchParams();
   if (mode === "management") {
@@ -430,6 +482,7 @@ export function buildProgramsHref({
   appendOrigin(params, mode, programId, origin);
   appendTask(params, mode, programId, task);
   appendEvent(params, mode, programId, task, eventId);
+  appendEventAction(params, mode, task, eventId, eventAction);
   const query = params.toString();
   const suffix = query ? `/programs?${query}` : "/programs";
   return hash && SAFE_HASH.test(hash) ? `${suffix}${hash}` : suffix;

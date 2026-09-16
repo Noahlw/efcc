@@ -658,6 +658,7 @@ describe("attendance Worker routes", () => {
   });
 
   test("guest acknowledgement loss reconciles the authoritative record without leaking its id", async () => {
+    const idempotencyKey = "guest-ack-loss-reconcile";
     const payload = {
       event_id: EVENT,
       method: "guest_manual_code",
@@ -668,12 +669,17 @@ describe("attendance Worker routes", () => {
     await worker.fetch(
       request("/api/v1/attendance/guest", {
         method: "POST",
-        headers: { "Idempotency-Key": "guest-ack-loss-reconcile" },
+        headers: { "Idempotency-Key": idempotencyKey },
         body: JSON.stringify(payload),
       }),
       testEnv()
     );
     let attendanceId: string | undefined;
+    let originalEvent: {
+      status: string;
+      cancel_reason: string | null;
+      check_in_window_closes_at: string;
+    } | null = null;
 
     const findCommittedAttendance = () =>
       testDb()
@@ -691,9 +697,53 @@ describe("attendance Worker routes", () => {
         .first<{ attendance_id: string }>();
 
     try {
+      originalEvent = await testDb()
+        .prepare(
+          "SELECT status, cancel_reason, check_in_window_closes_at FROM events WHERE event_id = ?"
+        )
+        .bind(EVENT)
+        .first<{
+          status: string;
+          cancel_reason: string | null;
+          check_in_window_closes_at: string;
+        }>();
+      assert.ok(originalEvent);
+
+      const storedProof = await testDb()
+        .prepare(
+          "SELECT proof_hash, request_fingerprint FROM attendance_guest_reconcile_proofs WHERE event_id = ?"
+        )
+        .bind(EVENT)
+        .first<{ proof_hash: string; request_fingerprint: string }>();
+      assert.ok(storedProof);
+      assert.strictEqual(storedProof.proof_hash.length, 64);
+      assert.notStrictEqual(storedProof.proof_hash, idempotencyKey);
+      assert.notStrictEqual(storedProof.request_fingerprint, idempotencyKey);
+
+      const duplicateRetry = await worker.fetch(
+        request("/api/v1/attendance/guest", {
+          method: "POST",
+          headers: { "Idempotency-Key": idempotencyKey },
+          body: JSON.stringify(payload),
+        }),
+        testEnv()
+      );
+      assert.strictEqual(duplicateRetry.status, 200);
+      const duplicateRetryBody = await json(duplicateRetry);
+      assert.deepStrictEqual(duplicateRetryBody.data, {
+        outcome: "duplicate",
+      });
+
+      await testDb()
+        .prepare(
+          "UPDATE events SET check_in_window_closes_at = ? WHERE event_id = ?"
+        )
+        .bind(new Date(Date.now() - 1000).toISOString(), EVENT)
+        .run();
       const reconciled = await worker.fetch(
         request("/api/v1/attendance/guest/reconcile", {
           method: "POST",
+          headers: { "Idempotency-Key": idempotencyKey },
           body: JSON.stringify(payload),
         }),
         testEnv()
@@ -702,15 +752,81 @@ describe("attendance Worker routes", () => {
       const reconciledBody = await json(reconciled);
       const reconciledData = reconciledBody.data as Record<string, unknown>;
       assert.strictEqual(reconciledData.outcome, "found");
-      assert.ok(reconciledData.checked_in_at);
+      assert.strictEqual("checked_in_at" in reconciledData, false);
       assert.strictEqual("attendance_id" in reconciledData, false);
       const committed = await findCommittedAttendance();
       assert.ok(committed?.attendance_id);
       attendanceId = committed.attendance_id;
 
+      await testDb()
+        .prepare(
+          "UPDATE events SET status = 'Cancelled', cancel_reason = ? WHERE event_id = ?"
+        )
+        .bind("測試取消", EVENT)
+        .run();
+      const afterCancellation = await worker.fetch(
+        request("/api/v1/attendance/guest/reconcile", {
+          method: "POST",
+          headers: { "Idempotency-Key": idempotencyKey },
+          body: JSON.stringify(payload),
+        }),
+        testEnv()
+      );
+      assert.strictEqual(afterCancellation.status, 200);
+      const afterCancellationBody = await json(afterCancellation);
+      assert.deepStrictEqual(afterCancellationBody.data, {
+        outcome: "found",
+      });
+
+      const missingProof = await worker.fetch(
+        request("/api/v1/attendance/guest/reconcile", {
+          method: "POST",
+          body: JSON.stringify(payload),
+        }),
+        testEnv()
+      );
+      assert.strictEqual(missingProof.status, 200);
+      const missingProofBody = await json(missingProof);
+      assert.deepStrictEqual(missingProofBody.data, {
+        outcome: "not_found",
+      });
+
+      const wrongKey = await worker.fetch(
+        request("/api/v1/attendance/guest/reconcile", {
+          method: "POST",
+          headers: { "Idempotency-Key": "guest-ack-wrong-proof" },
+          body: JSON.stringify(payload),
+        }),
+        testEnv()
+      );
+      assert.strictEqual(wrongKey.status, 200);
+      const wrongKeyBody = await json(wrongKey);
+      assert.deepStrictEqual(wrongKeyBody.data, {
+        outcome: "not_found",
+      });
+
+      const crossEvent = await worker.fetch(
+        request("/api/v1/attendance/guest/reconcile", {
+          method: "POST",
+          headers: { "Idempotency-Key": idempotencyKey },
+          body: JSON.stringify({
+            ...payload,
+            event_id: CANCELLED_EVENT,
+            manual_code: "ATTCANCEL",
+          }),
+        }),
+        testEnv()
+      );
+      assert.strictEqual(crossEvent.status, 200);
+      const crossEventBody = await json(crossEvent);
+      assert.deepStrictEqual(crossEventBody.data, {
+        outcome: "not_found",
+      });
+
       const wrongGuest = await worker.fetch(
         request("/api/v1/attendance/guest/reconcile", {
           method: "POST",
+          headers: { "Idempotency-Key": idempotencyKey },
           body: JSON.stringify({ ...payload, name: "其他訪客" }),
         }),
         testEnv()
@@ -732,6 +848,19 @@ describe("attendance Worker routes", () => {
       const wrongProofBody = await json(wrongProof);
       assert.strictEqual(wrongProofBody.code, "INVALID_CHECK_IN_ENTRY");
     } finally {
+      if (originalEvent) {
+        await testDb()
+          .prepare(
+            "UPDATE events SET status = ?, cancel_reason = ?, check_in_window_closes_at = ? WHERE event_id = ?"
+          )
+          .bind(
+            originalEvent.status,
+            originalEvent.cancel_reason,
+            originalEvent.check_in_window_closes_at,
+            EVENT
+          )
+          .run();
+      }
       if (!attendanceId) {
         const committed = await findCommittedAttendance();
         attendanceId = committed?.attendance_id;
@@ -752,7 +881,9 @@ describe("attendance Worker routes", () => {
   });
 
   test("guest reconciliation uses a separate rate-limit bucket before identity lookup", async () => {
-    const limit = vi.fn(() => Promise.resolve({ success: false }));
+    const limit = vi.fn<() => Promise<{ success: false }>>(() =>
+      Promise.resolve({ success: false })
+    );
     const customEnv: Env = {
       ...testEnv(),
       RPC_RATE_LIMITER: { limit } as unknown as Env["RPC_RATE_LIMITER"],
@@ -782,10 +913,6 @@ describe("attendance Worker routes", () => {
       [{ key: `guest-reconcile:${EVENT}` }],
     ]);
   });
-
-  test.todo(
-    "guest reconciliation must require a durable proof mapping for closed/cancelled history"
-  );
 
   test("guest check-in respects rate limiting when limiter rejects", async () => {
     const customEnv: Env = {

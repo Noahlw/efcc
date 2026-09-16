@@ -35,6 +35,7 @@ import type { ProgramsManagementAccess } from "./programs-access";
 import { buildProgramsHref, parseProgramsIntent } from "./programs-intent";
 import type {
   ProgramsIntent,
+  ManagementEventAction,
   ProgramsOrigin,
   ProgramsTask,
 } from "./programs-intent";
@@ -256,7 +257,10 @@ const ManagementPanel = ({
   onRecoverParticipant: () => void;
   onOpenProgram: (programId: string, created?: boolean) => void;
   onTaskChange: (task: ProgramsTask | null, eventId?: string | null) => void;
-  onEventChange: (eventId: string | null) => void;
+  onEventChange: (
+    eventId: string | null,
+    eventAction?: ManagementEventAction
+  ) => void;
   onOpenAttendance?: (eventId: string) => void;
   onBackDirectory: () => void;
   directoryQuery: string;
@@ -407,6 +411,7 @@ const ManagementPanel = ({
             programId={intent.programId}
             task={intent.task}
             eventId={intent.eventId ?? null}
+            eventAction={intent.eventAction}
             created={intent.created}
             attention={attention}
             onAttentionRefresh={refreshAttention}
@@ -528,7 +533,10 @@ const ProgramsBoundaryBody = ({
     task: ProgramsTask | null,
     eventId?: string | null
   ) => void;
-  navigateManagementEvent: (eventId: string | null) => void;
+  navigateManagementEvent: (
+    eventId: string | null,
+    eventAction?: ManagementEventAction
+  ) => void;
   navigateManagementAttendance: (eventId: string) => void;
   navigateParticipantEvent: (eventId: string | null) => void;
   navigateParticipantBack: () => void;
@@ -808,7 +816,10 @@ export const ProgramsBoundary = () => {
   };
   // EVT-01 (#251): Event deep links live under the management events task;
   // null returns to the list.
-  const navigateManagementEvent = (eventId: string | null) => {
+  const navigateManagementEvent = (
+    eventId: string | null,
+    eventAction?: ManagementEventAction
+  ) => {
     if (!intent.programId) {
       return;
     }
@@ -818,6 +829,7 @@ export const ProgramsBoundary = () => {
       departmentId: intent.departmentId,
       task: "events",
       eventId,
+      eventAction,
       hash: intent.hash,
     });
     applyProgramsNavigation(router, setSearch, href);

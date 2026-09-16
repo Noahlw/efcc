@@ -67,7 +67,7 @@ import {
 
 import { EventCheckInSheet } from "./event-check-in-sheet";
 import { buildProgramsHref } from "./programs-intent";
-import type { ProgramsOrigin } from "./programs-intent";
+import type { ManagementEventAction, ProgramsOrigin } from "./programs-intent";
 
 export const EventFactIcon = ({
   name,
@@ -196,6 +196,7 @@ export function hkWallInputToIso(
 export const EventDetail = ({
   programId,
   eventId,
+  eventAction,
   canManage,
   origin,
   departmentId,
@@ -210,6 +211,7 @@ export const EventDetail = ({
 }: {
   programId: string;
   eventId: string;
+  eventAction?: ManagementEventAction;
   canManage: boolean;
   origin?: ProgramsOrigin;
   departmentId?: string | null;
@@ -267,6 +269,7 @@ export const EventDetail = ({
   const eventIdentityRef = useRef({ programId, eventId });
   const eventRequestSequenceRef = useRef(0);
   const ownAttendanceRequestSequenceRef = useRef(0);
+  const appliedEventActionRef = useRef<string | null>(null);
   eventIdentityRef.current = { programId, eventId };
   const mounted = useRef(true);
 
@@ -372,6 +375,32 @@ export const EventDetail = ({
     onMutationBlockChange?.(false);
     void load();
   }, [load, onMutationBlockChange]);
+
+  useEffect(() => {
+    if (!canManage || !eventAction || detail?.event.event_id !== eventId) {
+      return;
+    }
+    const actionIdentity = `${programId}:${eventId}:${eventAction}`;
+    if (appliedEventActionRef.current === actionIdentity) {
+      return;
+    }
+    appliedEventActionRef.current = actionIdentity;
+    if (eventAction === "edit") {
+      setEditingEventType(
+        detail?.event.event_type ??
+          (COPY.programs.eventTypeOptions[0] as EventType)
+      );
+    }
+    setEditingIntent(eventAction);
+    setEditing(true);
+  }, [
+    canManage,
+    detail?.event.event_id,
+    detail?.event.event_type,
+    eventAction,
+    eventId,
+    programId,
+  ]);
 
   const loadOwnAttendance = useCallback(
     async (isActive: () => boolean = () => true) => {

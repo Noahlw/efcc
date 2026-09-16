@@ -31,7 +31,7 @@ import { rememberDeepLink } from "@/lib/session";
 
 import { EventDetail } from "./event-detail";
 import { buildProgramsHref } from "./programs-intent";
-import type { ProgramsTask } from "./programs-intent";
+import type { ManagementEventAction, ProgramsTask } from "./programs-intent";
 import { useAsyncResource } from "./use-async-resource";
 import {
   hasModule,
@@ -54,6 +54,7 @@ export interface ProgramWorkspaceProps {
   created?: boolean;
   /** EVT-01 (#251): management Event deep link under the events or participants task. */
   eventId?: string | null;
+  eventAction?: ManagementEventAction;
   /** NTF-01 (#256): fresh server-shaped attention counts from the shell. */
   attention?: ManagementAttention | null;
   onAttentionRefresh?: () => void;
@@ -64,7 +65,10 @@ export interface ProgramWorkspaceProps {
   /** Opens the shared focused attendance roster for an exact Event. */
   onOpenAttendance?: (eventId: string) => void;
   /** EVT-01 (#251): navigate the Event deep link; null returns to the list. */
-  onEventChange?: (eventId: string | null) => void;
+  onEventChange?: (
+    eventId: string | null,
+    eventAction?: ManagementEventAction
+  ) => void;
 }
 
 type WorkspaceState =
@@ -153,6 +157,7 @@ export const ProgramWorkspace = ({
   programId,
   task,
   eventId,
+  eventAction,
   created = false,
   attention = null,
   onAttentionRefresh = () => {},
@@ -675,6 +680,7 @@ export const ProgramWorkspace = ({
         <EventDetail
           programId={programId}
           eventId={eventId}
+          eventAction={eventAction}
           canManage={workspaceProgram.capabilities.manage}
           departmentId={departmentId}
           hash={hash}
@@ -722,7 +728,15 @@ export const ProgramWorkspace = ({
           onMutationBlockChange={setWorkspaceMutationBlocked}
           workspaceFreshness={workspaceFreshness}
           onTaskChange={handleWorkspaceTaskChange}
-          onOpenEvent={onEventChange ? (id) => onEventChange(id) : undefined}
+          onOpenEvent={
+            onEventChange
+              ? (id, action) =>
+                  action === undefined
+                    ? onEventChange(id)
+                    : onEventChange(id, action)
+              : undefined
+          }
+          onOpenAttendance={onOpenAttendance}
           onSettingsFocusChange={setSettingsEditorFocused}
           onSettingsDirtyChange={setSettingsEditorDirty}
           onWorkspaceDirtyChange={handleEventDraftDirtyChange}

@@ -12,7 +12,7 @@ import type {
   ManagementAttention,
   Program,
 } from "./program-api";
-import type { ProgramsTask } from "./programs-intent";
+import type { ManagementEventAction, ProgramsTask } from "./programs-intent";
 
 export interface WorkspaceRouteContextValue {
   departmentId: string | null;
@@ -55,7 +55,9 @@ export interface WorkspaceTaskContextValue {
   /** Block cross-task navigation while a write outcome is being reconciled. */
   onMutationBlockChange?: (blocked: boolean) => void;
   onTaskChange: (task: ProgramsTask | null, eventId?: string | null) => void;
-  onOpenEvent?: (eventId: string) => void;
+  onOpenEvent?: (eventId: string, eventAction?: ManagementEventAction) => void;
+  /** Open the shared focused Attendance roster for an exact Event. */
+  onOpenAttendance?: (eventId: string) => void;
   /** The active task has an unsaved local draft that the shell must protect. */
   onWorkspaceDirtyChange?: (dirty: boolean) => void;
 }

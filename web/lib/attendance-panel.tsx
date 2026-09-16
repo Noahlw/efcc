@@ -271,20 +271,22 @@ export const AttendancePanel = () => {
     }
     setGuestReconcileBusy(true);
     try {
-      const outcome = await reconcileGuestCheckIn({
-        event_id: attempt.event.event_id,
-        method: attempt.fromQr ? "guest_qr_scan" : "guest_manual_code",
-        name: attempt.name,
-        phone: attempt.phone,
-        ...(attempt.fromQr
-          ? { program_token: attempt.credentialValue }
-          : { entry: attempt.credentialValue }),
-      });
+      const outcome = await reconcileGuestCheckIn(
+        {
+          event_id: attempt.event.event_id,
+          method: attempt.fromQr ? "guest_qr_scan" : "guest_manual_code",
+          name: attempt.name,
+          phone: attempt.phone,
+          ...(attempt.fromQr
+            ? { program_token: attempt.credentialValue }
+            : { entry: attempt.credentialValue }),
+        },
+        guestSubmitKeyRef.current
+      );
       if (outcome.outcome === "found") {
         setResult({
           kind: "success",
           event: attempt.event,
-          checkedInAt: outcome.checked_in_at,
         });
         setGuestOutcomeUnknown(false);
         guestSubmitKeyRef.current = null;

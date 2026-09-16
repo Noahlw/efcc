@@ -380,6 +380,40 @@ describe("Programs intent", () => {
     ).toBe(
       "/programs?mode=management&program=program-1&task=events&event=event-42"
     );
+    expect(
+      buildProgramsHref({
+        mode: "management",
+        programId: "program-1",
+        task: "events",
+        eventId: "event-42",
+        eventAction: "reschedule",
+      })
+    ).toBe(
+      "/programs?mode=management&program=program-1&task=events&event=event-42&eventAction=reschedule"
+    );
+    expect(
+      parseProgramsIntent(
+        "?mode=management&program=program-1&task=events&event=event-42&eventAction=edit"
+      )
+    ).toStrictEqual({
+      mode: "management",
+      programId: "program-1",
+      hash: null,
+      task: "events",
+      eventId: "event-42",
+      eventAction: "edit",
+      malformed: false,
+    });
+    expect(
+      parseProgramsIntent(
+        "?mode=management&program=program-1&task=events&event=event-42&eventAction=unknown"
+      ).malformed
+    ).toBeTruthy();
+    expect(
+      parseProgramsIntent(
+        "?mode=management&program=program-1&task=participants&event=event-42&eventAction=edit"
+      ).malformed
+    ).toBeTruthy();
     // Participant task also preserves the event param for roster deep linking.
     expect(
       buildProgramsHref({

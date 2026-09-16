@@ -811,6 +811,7 @@ export const WorkspaceTask = ({
   workspaceFreshness,
   onTaskChange,
   onOpenEvent,
+  onOpenAttendance,
   onSettingsFocusChange,
   onSettingsDirtyChange,
   onWorkspaceDirtyChange,
@@ -830,6 +831,7 @@ export const WorkspaceTask = ({
     workspaceFreshness,
     onTaskChange,
     onOpenEvent,
+    onOpenAttendance,
     onWorkspaceDirtyChange,
   };
 
