@@ -262,7 +262,7 @@ describe("management notification control", () => {
       })
     );
     const link = screen.getByRole("link", { name: /青年團契/u });
-    expect(fireEvent.click(link, { metaKey: true })).toBe(true);
+    expect(fireEvent.click(link, { metaKey: true })).toBeTruthy();
     await waitFor(() => expect(onMarkRead).toHaveBeenCalledOnce());
     const readAlert = screen.getByRole("alert");
     expect(readAlert).toHaveTextContent(COPY.programs.notificationsReadError);
