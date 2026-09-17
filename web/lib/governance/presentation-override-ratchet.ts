@@ -68,6 +68,7 @@ const GIT_ENV_VARS = new Set([
   "GIT_NAMESPACE",
   "GIT_SHALLOW_FILE",
 ]);
+const GIT_MAX_BUFFER = 16 * 1024 * 1024;
 
 export interface PresentationOverrideRatchetOptions {
   readonly rootDir?: string;
@@ -87,6 +88,7 @@ function git(rootDir: string, args: readonly string[]): string {
     encoding: "utf-8",
     env,
     stdio: ["ignore", "pipe", "pipe"],
+    maxBuffer: GIT_MAX_BUFFER,
   }).trim();
 }
 

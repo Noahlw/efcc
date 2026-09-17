@@ -16,7 +16,7 @@
  *   pnpm verify:governance:fast
  */
 
-import { execFileSync, execSync } from "node:child_process";
+import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 
@@ -33,6 +33,8 @@ import {
   type AuditViolation,
   type GovernanceValidationResult,
 } from "../web/lib/governance/index";
+
+const GIT_MAX_BUFFER = 16 * 1024 * 1024;
 
 export type AuditMode = "fast" | "affected" | "full" | "release";
 
@@ -146,13 +148,14 @@ export function getSanitizedGitEnv(
   return env;
 }
 
-function execGit(command: string, rootDir: string): string {
+function execGit(args: readonly string[], rootDir: string): string {
   const resolvedRoot = path.resolve(rootDir);
-  return execSync(command, {
+  return execFileSync("git", args, {
     cwd: resolvedRoot,
     encoding: "utf-8",
     stdio: ["ignore", "pipe", "pipe"],
     env: getSanitizedGitEnv(process.env, resolvedRoot),
+    maxBuffer: GIT_MAX_BUFFER,
   });
 }
 
@@ -178,7 +181,7 @@ export function getAffectedFiles(rootDir: string): string[] {
   // Verify that rootDir is inside a working tree
   try {
     const worktreeState = execGit(
-      "git rev-parse --is-inside-work-tree",
+      ["rev-parse", "--is-inside-work-tree"],
       rootDir
     ).trim();
     if (worktreeState !== "true") {
@@ -197,7 +200,7 @@ export function getAffectedFiles(rootDir: string): string[] {
   // 1. Gather local dirty changes: staged, unstaged, and untracked files
   try {
     const stagedOutput = execGit(
-      "git diff --name-only --cached --diff-filter=ACMRTUXB",
+      ["diff", "--name-only", "--cached", "--diff-filter=ACMRTUXB"],
       rootDir
     );
     for (const line of stagedOutput.split("\n")) {
@@ -211,7 +214,7 @@ export function getAffectedFiles(rootDir: string): string[] {
 
   try {
     const unstagedOutput = execGit(
-      "git diff --name-only --diff-filter=ACMRTUXB",
+      ["diff", "--name-only", "--diff-filter=ACMRTUXB"],
       rootDir
     );
     for (const line of unstagedOutput.split("\n")) {
@@ -225,7 +228,7 @@ export function getAffectedFiles(rootDir: string): string[] {
 
   try {
     const untrackedOutput = execGit(
-      "git ls-files --others --exclude-standard",
+      ["ls-files", "--others", "--exclude-standard"],
       rootDir
     );
     for (const line of untrackedOutput.split("\n")) {
@@ -238,7 +241,7 @@ export function getAffectedFiles(rootDir: string): string[] {
   }
 
   try {
-    const statusOutput = execGit("git status --porcelain", rootDir);
+    const statusOutput = execGit(["status", "--porcelain"], rootDir);
     for (const line of statusOutput.split("\n")) {
       const match = line.trim().match(/^[A-Z?]{1,2}\s+(.+)$/);
       if (match) {
@@ -270,14 +273,14 @@ export function getAffectedFiles(rootDir: string): string[] {
     const prBase = process.env.GITHUB_BASE_REF.trim();
     try {
       const mergeBase = execGit(
-        `git merge-base origin/${prBase} HEAD`,
+        ["merge-base", `origin/${prBase}`, "HEAD"],
         rootDir
       ).trim();
       if (mergeBase) baseRef = mergeBase;
     } catch {
       try {
         const directMergeBase = execGit(
-          `git merge-base ${prBase} HEAD`,
+          ["merge-base", prBase, "HEAD"],
           rootDir
         ).trim();
         if (directMergeBase) baseRef = directMergeBase;
@@ -289,7 +292,7 @@ export function getAffectedFiles(rootDir: string): string[] {
     // Local discovery: first check if an upstream tracking branch is configured
     try {
       const upstreamMergeBase = execGit(
-        "git merge-base @{u} HEAD",
+        ["merge-base", "@{u}", "HEAD"],
         rootDir
       ).trim();
       if (upstreamMergeBase) {
@@ -304,7 +307,7 @@ export function getAffectedFiles(rootDir: string): string[] {
       for (const candidate of candidates) {
         try {
           const mergeBase = execGit(
-            `git merge-base ${candidate} HEAD`,
+            ["merge-base", candidate, "HEAD"],
             rootDir
           ).trim();
           if (mergeBase) {
@@ -320,7 +323,7 @@ export function getAffectedFiles(rootDir: string): string[] {
     if (!baseRef) {
       try {
         const headPrev = execGit(
-          "git rev-parse --verify HEAD~1",
+          ["rev-parse", "--verify", "HEAD~1"],
           rootDir
         ).trim();
         if (headPrev) {
@@ -342,7 +345,7 @@ export function getAffectedFiles(rootDir: string): string[] {
   if (baseRef) {
     try {
       const branchDiff = execGit(
-        `git diff --name-only --diff-filter=ACMRTUXB ${baseRef}...HEAD`,
+        ["diff", "--name-only", "--diff-filter=ACMRTUXB", `${baseRef}...HEAD`],
         rootDir
       );
       for (const line of branchDiff.split("\n")) {
@@ -351,7 +354,7 @@ export function getAffectedFiles(rootDir: string): string[] {
     } catch {
       try {
         const directDiff = execGit(
-          `git diff --name-only --diff-filter=ACMRTUXB ${baseRef} HEAD`,
+          ["diff", "--name-only", "--diff-filter=ACMRTUXB", baseRef, "HEAD"],
           rootDir
         );
         for (const line of directDiff.split("\n")) {
@@ -395,6 +398,7 @@ function readCommittedFile(
       encoding: "utf-8",
       env: getSanitizedGitEnv(process.env, rootDir),
       stdio: ["ignore", "pipe", "pipe"],
+      maxBuffer: GIT_MAX_BUFFER,
     });
   } catch {
     return undefined;
