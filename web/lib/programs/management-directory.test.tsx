@@ -403,6 +403,35 @@ describe(ManagementDirectory, () => {
     ).not.toBeInTheDocument();
   });
 
+  test("distinguishes a valid empty Department scope from a search miss", async () => {
+    const emptyDepartment = department(
+      "dept-empty",
+      "空白事工",
+      departmentScope
+    );
+    mockDirectory([departments[0], emptyDepartment], programsByDepartment[0]);
+    render(
+      <ManagementDirectory
+        departmentId={emptyDepartment.department_id}
+        onOpenProgram={vi.fn()}
+      />
+    );
+
+    await expect(
+      screen.findByText(COPY.programs.managementDirectoryScopedEmpty)
+    ).resolves.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", {
+        name: COPY.programs.managementDirectoryClearSearch,
+      })
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("link", {
+        name: COPY.programs.managementDirectoryClearDepartment,
+      })
+    ).toHaveAttribute("href", "/programs?mode=management");
+  });
+
   test("offers top-level creation and opens the new Program workspace", async () => {
     const user = userEvent.setup();
     const onOpenProgram =

@@ -395,20 +395,25 @@ export const ManagementDirectory = ({
     void loadDirectory();
   }, [loadDirectory]);
 
+  const scopedRows = useMemo(() => {
+    if (state.kind !== "ready") {
+      return [];
+    }
+    return departmentId
+      ? state.rows.filter(
+          ({ department }) => department.department_id === departmentId
+        )
+      : state.rows;
+  }, [departmentId, state]);
   const filteredRows = useMemo(() => {
     if (state.kind !== "ready") {
       return [];
     }
     const needle = directoryQuery.trim().toLocaleLowerCase();
-    const rows = departmentId
-      ? state.rows.filter(
-          ({ department }) => department.department_id === departmentId
-        )
-      : state.rows;
     if (!needle) {
-      return rows;
+      return scopedRows;
     }
-    return rows.filter(({ program, department }) =>
+    return scopedRows.filter(({ program, department }) =>
       [
         program.name,
         program.description,
@@ -419,7 +424,7 @@ export const ManagementDirectory = ({
         .filter((value): value is string => Boolean(value))
         .some((value) => value.toLocaleLowerCase().includes(needle))
     );
-  }, [departmentId, directoryQuery, state]);
+  }, [directoryQuery, scopedRows, state.kind]);
   useEffect(() => {
     if (
       state.kind !== "ready" ||
@@ -430,7 +435,7 @@ export const ManagementDirectory = ({
     const row = [
       ...document.querySelectorAll<HTMLElement>("[data-program-id]"),
     ].find((candidate) => candidate.dataset.programId === focusProgramId);
-    if (row && restoreScrollY !== undefined) {
+    if (restoreScrollY !== undefined) {
       window.scrollTo({ top: restoreScrollY, behavior: "auto" });
     } else {
       row?.scrollIntoView({ block: "nearest", inline: "nearest" });
@@ -798,23 +803,41 @@ export const ManagementDirectory = ({
                 kind="empty"
                 title={
                   <h2 className="m-0 wrap-anywhere text-base font-bold">
-                    {COPY.programs.managementDirectoryNoMatches}
+                    {departmentId !== null && scopedRows.length === 0
+                      ? COPY.programs.managementDirectoryScopedEmpty
+                      : COPY.programs.managementDirectoryNoMatches}
                   </h2>
                 }
                 description={
                   <p className="m-0 wrap-anywhere leading-[1.6]">
-                    {COPY.programs.managementDirectoryNoMatchesHint}
+                    {departmentId !== null && scopedRows.length === 0
+                      ? COPY.programs.managementDirectoryEmptyHint
+                      : COPY.programs.managementDirectoryNoMatchesHint}
                   </p>
                 }
                 action={
-                  <Button
-                    className="h-auto min-h-11 w-fit whitespace-normal border-[var(--screen-line-strong)] bg-transparent px-4 py-2 text-[var(--screen-ink)] hover:bg-[var(--screen-surface-soft)]"
-                    type="button"
-                    variant="outline"
-                    onClick={() => updateQuery("")}
-                  >
-                    {COPY.programs.managementDirectoryClearSearch}
-                  </Button>
+                  departmentId !== null && scopedRows.length === 0 ? (
+                    <Button
+                      asChild
+                      className="h-auto w-fit whitespace-normal border-[var(--screen-line-strong)] bg-transparent text-[var(--screen-ink)] hover:bg-[var(--screen-surface-soft)]"
+                      variant="outline"
+                    >
+                      <Link
+                        href={buildProgramsHref({ mode: "management", hash })}
+                      >
+                        {COPY.programs.managementDirectoryClearDepartment}
+                      </Link>
+                    </Button>
+                  ) : directoryQuery.trim() ? (
+                    <Button
+                      className="h-auto w-fit whitespace-normal border-[var(--screen-line-strong)] bg-transparent text-[var(--screen-ink)] hover:bg-[var(--screen-surface-soft)]"
+                      type="button"
+                      variant="outline"
+                      onClick={() => updateQuery("")}
+                    >
+                      {COPY.programs.managementDirectoryClearSearch}
+                    </Button>
+                  ) : undefined
                 }
               />
             ) : (

@@ -392,7 +392,31 @@ export const ProgramWorkspace = ({
         announceBlocked();
         return;
       }
-      setPendingEventDraftNavigation({ kind: "href", href: nextUrl.href });
+      const routeIntent =
+        nextUrl.pathname === "/programs"
+          ? parseProgramsIntent(`${nextUrl.search}${nextUrl.hash}`)
+          : null;
+      if (
+        routeIntent &&
+        !routeIntent.malformed &&
+        routeIntent.mode === "management" &&
+        routeIntent.programId === programId &&
+        routeIntent.eventAction === undefined &&
+        routeIntent.departmentSettingsId === undefined
+      ) {
+        setPendingEventDraftNavigation({
+          kind: "task",
+          task: routeIntent.task ?? null,
+          ...(routeIntent.eventId === undefined
+            ? {}
+            : { eventId: routeIntent.eventId }),
+          ...(routeIntent.scheduleOrigin === undefined
+            ? {}
+            : { scheduleOrigin: routeIntent.scheduleOrigin }),
+        });
+      } else {
+        setPendingEventDraftNavigation({ kind: "href", href: nextUrl.href });
+      }
       setEventNavigationBlocked(true);
       announceBlocked();
     };
@@ -806,6 +830,29 @@ export const ProgramWorkspace = ({
     setPendingSettingsNavigation(null);
   };
 
+  const permitOneWorkspaceNavigation = () => {
+    allowSettingsNavigation.current = true;
+    queueMicrotask(() => {
+      allowSettingsNavigation.current = false;
+    });
+  };
+
+  const navigateWorkspaceTask = (
+    nextTask: ProgramsTask | null,
+    nextEventId?: string | null,
+    nextScheduleOrigin?: ProgramsScheduleOrigin
+  ) => {
+    if (nextScheduleOrigin !== undefined) {
+      onTaskChange(nextTask, nextEventId, nextScheduleOrigin);
+      return;
+    }
+    if (nextEventId === undefined) {
+      onTaskChange(nextTask);
+      return;
+    }
+    onTaskChange(nextTask, nextEventId);
+  };
+
   const discardSettingsAndLeave = () => {
     const pending = pendingSettingsNavigation;
     if (pending === null) {
@@ -814,6 +861,8 @@ export const ProgramWorkspace = ({
     clearManagementDraftsForEntity(programId);
     setPendingSettingsNavigation(null);
     setSettingsNavigationBlocked(false);
+    setSettingsEditorFocused(false);
+    setSettingsEditorDirty(false);
     if (pending.kind === "history-back") {
       allowSettingsHistoryBack.current = true;
       window.history.back();
@@ -825,6 +874,8 @@ export const ProgramWorkspace = ({
     }
     if (pending.kind === "route") {
       if (pending.task === "settings") {
+        setSettingsEditorFocused(false);
+        setSettingsEditorDirty(false);
         onSettingsSectionChange?.(pending.settingsSection ?? null);
         return;
       }
@@ -835,11 +886,14 @@ export const ProgramWorkspace = ({
         );
       }
       onSettingsSectionChange?.(null);
-      if (pending.scheduleOrigin === undefined) {
-        onTaskChange(pending.task, pending.eventId);
-      } else {
-        onTaskChange(pending.task, pending.eventId, pending.scheduleOrigin);
-      }
+      setSettingsEditorFocused(false);
+      setSettingsEditorDirty(false);
+      permitOneWorkspaceNavigation();
+      navigateWorkspaceTask(
+        pending.task,
+        pending.eventId,
+        pending.scheduleOrigin
+      );
       return;
     }
     allowSettingsNavigation.current = true;
@@ -873,14 +927,16 @@ export const ProgramWorkspace = ({
       return;
     }
     if (pending.eventId === undefined && pending.scheduleOrigin === undefined) {
-      onTaskChange(pending.task);
+      permitOneWorkspaceNavigation();
+      navigateWorkspaceTask(pending.task);
       return;
     }
-    if (pending.scheduleOrigin === undefined) {
-      onTaskChange(pending.task, pending.eventId);
-    } else {
-      onTaskChange(pending.task, pending.eventId, pending.scheduleOrigin);
-    }
+    permitOneWorkspaceNavigation();
+    navigateWorkspaceTask(
+      pending.task,
+      pending.eventId,
+      pending.scheduleOrigin
+    );
   };
 
   const handleWorkspaceBack = (event: MouseEvent<HTMLAnchorElement>) => {
@@ -928,6 +984,11 @@ export const ProgramWorkspace = ({
     nextEventId?: string | null,
     nextScheduleOrigin?: ProgramsScheduleOrigin
   ) => {
+    if (allowSettingsNavigation.current) {
+      allowSettingsNavigation.current = false;
+      navigateWorkspaceTask(nextTask, nextEventId, nextScheduleOrigin);
+      return;
+    }
     if (workspaceMutationBlocked) {
       announce(COPY.programs.programTransportAmbiguous);
       return;
@@ -954,15 +1015,7 @@ export const ProgramWorkspace = ({
       );
       return;
     }
-    if (nextScheduleOrigin !== undefined) {
-      onTaskChange(nextTask, nextEventId, nextScheduleOrigin);
-      return;
-    }
-    if (nextEventId === undefined) {
-      onTaskChange(nextTask);
-      return;
-    }
-    onTaskChange(nextTask, nextEventId);
+    navigateWorkspaceTask(nextTask, nextEventId, nextScheduleOrigin);
   };
   return (
     <section

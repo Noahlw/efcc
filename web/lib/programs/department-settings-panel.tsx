@@ -199,8 +199,10 @@ export const DepartmentSettingsPanel = ({
         return;
       }
       if (!refreshed) {
-        setMutationRecoveryRequired(true);
-        setActionError(COPY.programs.programTransportAmbiguous);
+        // The write already settled successfully. Keep the committed local
+        // result and expose the existing readback retry without relabelling
+        // the known outcome as an ambiguous mutation.
+        setActionError(null);
       }
       const noticeMessage = refreshed
         ? message

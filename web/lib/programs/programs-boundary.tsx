@@ -1307,7 +1307,7 @@ export const ProgramsBoundary = () => {
         onSettingsSectionChange={updateManagementSettingsSection}
         onScheduleEditorChange={updateManagementScheduleEditor}
         onDepartmentSettingsChange={updateManagementDepartmentSettings}
-        restoredNavigationContext={restoredNavigationContext}
+        restoredNavigationContext={navigationContext}
         onCatalogQueryChange={updateCatalogQuery}
         onCatalogFilterChange={updateCatalogFilter}
         onCatalogFiltersClear={clearCatalogFilters}

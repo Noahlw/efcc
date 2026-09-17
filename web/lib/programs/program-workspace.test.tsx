@@ -7,6 +7,7 @@ import {
   within,
 } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { useState } from "react";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
 import { RpcError } from "@/lib/api";
@@ -1335,7 +1336,7 @@ describe(ProgramWorkspace, () => {
           task="settings"
           settingsSection="basics"
           onSettingsSectionChange={onSettingsSectionChange}
-          onBack={vi.fn()}
+          onBack={() => {}}
           onTaskChange={vi.fn()}
         />
       );
@@ -1361,6 +1362,51 @@ describe(ProgramWorkspace, () => {
     } finally {
       requestedSection.remove();
     }
+  });
+
+  test("reaches the overview after discarding a dirty Settings route", async () => {
+    mockWorkspace();
+    const user = userEvent.setup();
+    const Harness = () => {
+      const [task, setTask] = useState<"settings" | null>("settings");
+      return (
+        <ProgramWorkspace
+          programId="program-1"
+          task={task ?? undefined}
+          onBack={() => {}}
+          onTaskChange={(nextTask) =>
+            setTask(nextTask === "settings" ? "settings" : null)
+          }
+        />
+      );
+    };
+    render(<Harness />);
+
+    await user.click(
+      await screen.findByRole("button", {
+        name: /基本資料名稱、描述同分類/u,
+      })
+    );
+    await user.type(
+      screen.getByRole("textbox", { name: COPY.programs.programName }),
+      "未儲存設定"
+    );
+    await user.click(
+      screen.getByRole("link", { name: COPY.programs.workspaceOverviewTab })
+    );
+    await user.click(
+      screen.getByRole("button", {
+        name: COPY.programs.settingsDiscardAndLeave,
+      })
+    );
+
+    await expect(
+      screen.findByRole("heading", { level: 1, name: program.name })
+    ).resolves.toBeInTheDocument();
+    expect(
+      screen.queryByRole("heading", { name: COPY.programs.settingsHubTitle })
+    ).not.toBeInTheDocument();
+    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
   });
 
   test("protects workspace navigation while an Event creation draft is dirty", async () => {
@@ -1411,6 +1457,49 @@ describe(ProgramWorkspace, () => {
       screen.getByRole("link", { name: COPY.programs.workspaceOverviewTab })
     );
     expect(onTaskChange).toHaveBeenCalledWith(null);
+  });
+
+  test("reaches the overview after discarding a dirty Event route", async () => {
+    mockWorkspace();
+    const user = userEvent.setup();
+    const Harness = () => {
+      const [task, setTask] = useState<"events" | null>("events");
+      return (
+        <ProgramWorkspace
+          programId="program-1"
+          task={task ?? undefined}
+          onBack={vi.fn()}
+          onTaskChange={(nextTask) =>
+            setTask(nextTask === "events" ? "events" : null)
+          }
+        />
+      );
+    };
+    render(<Harness />);
+
+    await user.click(
+      await screen.findByRole("button", { name: COPY.programs.createMeeting })
+    );
+    await user.type(
+      screen.getByRole("textbox", { name: COPY.programs.eventName }),
+      "未儲存聚會"
+    );
+    await user.click(
+      screen.getByRole("link", { name: COPY.programs.workspaceOverviewTab })
+    );
+    await user.click(
+      screen.getByRole("button", {
+        name: COPY.programs.eventCreateDiscardAndLeave,
+      })
+    );
+
+    await expect(
+      screen.findByRole("heading", { level: 1, name: program.name })
+    ).resolves.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: COPY.programs.createMeeting })
+    ).not.toBeInTheDocument();
+    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
   });
 
   test("opens the Event draft decision dialog on browser Back", async () => {

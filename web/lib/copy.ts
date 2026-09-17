@@ -755,6 +755,8 @@ export const COPY = {
     managementDirectoryEmptyHint: "獲授權的課程會在這裡顯示。",
     managementDirectoryNoMatches: "找不到符合的可管理課程",
     managementDirectoryNoMatchesHint: "請清除搜尋，或嘗試其他關鍵字。",
+    managementDirectoryScopedEmpty: "目前部門沒有可管理的課程",
+    managementDirectoryClearDepartment: "返回全部部門",
     managementScopeDepartment: "部門範圍",
     managementScopeProgram: "指定課程",
     cockpitNextMeeting: "下一聚會",

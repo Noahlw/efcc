@@ -1197,6 +1197,43 @@ describe("PUI-02 Programs directory (boundary integration)", () => {
     );
   });
 
+  test("restores the latest participant scroll position after returning", async () => {
+    const user = userEvent.setup();
+    const scrollTo = vi.spyOn(window, "scrollTo").mockImplementation(() => {});
+    Object.defineProperty(window, "scrollY", {
+      configurable: true,
+      value: 240,
+    });
+    mocks.getManagementAccess.mockResolvedValue(managementAccess(false));
+    mocks.listParticipantCatalog.mockResolvedValue({
+      catalog: catalogFixture([
+        catalogProgramSummary("program-1", "查經小組", {
+          viewerState: "active",
+        }),
+      ]),
+    });
+    const view = render(<ProgramsBoundary />);
+
+    await screen.findByRole("link", { name: /查經小組/u });
+    await user.click(
+      screen.getByRole("button", { name: COPY.programs.filterActive })
+    );
+    const programLink = screen.getByRole("link", { name: /查經小組/u });
+    const detailHref = programLink.getAttribute("href") ?? "/programs";
+    await user.click(programLink);
+    window.history.replaceState({}, "", detailHref);
+    view.rerender(<ProgramsBoundary />);
+    await screen.findByRole("heading", { name: "查經小組" });
+    await user.click(
+      screen.getByRole("link", { name: COPY.programs.detailBack })
+    );
+
+    await waitFor(() =>
+      expect(scrollTo).toHaveBeenCalledWith({ top: 240, behavior: "auto" })
+    );
+    scrollTo.mockRestore();
+  });
+
   test("participant mode loads the server catalog as one coherent collection", async () => {
     mocks.getManagementAccess.mockResolvedValue(managementAccess(false));
     mocks.listParticipantCatalog.mockResolvedValue({

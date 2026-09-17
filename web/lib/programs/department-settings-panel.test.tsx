@@ -1,4 +1,10 @@
-import { cleanup, render, screen, within } from "@testing-library/react";
+import {
+  cleanup,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
@@ -216,5 +222,47 @@ describe("DepartmentSettingsPanel identity access", () => {
     expect(
       screen.getByRole("button", { name: COPY.programs.saveDepartment })
     ).toBeEnabled();
+  });
+
+  test("keeps a committed Department write distinct from failed readback", async () => {
+    const user = userEvent.setup();
+    const updated = { ...managedDepartment, name: "更新後部門" };
+    mocks.updateDepartment.mockResolvedValueOnce({ department: updated });
+    mocks.getDepartment
+      .mockResolvedValueOnce({ department: managedDepartment, modules: [] })
+      .mockRejectedValueOnce(new Error("readback unavailable"))
+      .mockResolvedValueOnce({ department: updated, modules: [] });
+    render(
+      <DepartmentSettingsPanel
+        department={managedDepartment}
+        onClose={vi.fn()}
+      />
+    );
+
+    const name = await screen.findByRole("textbox", {
+      name: COPY.programs.deptName,
+    });
+    await user.clear(name);
+    await user.type(name, updated.name);
+    await user.click(
+      screen.getByRole("button", { name: COPY.programs.saveDepartment })
+    );
+
+    await waitFor(() =>
+      expect(
+        screen.getAllByText(COPY.programs.departmentSavedRefreshPending).length
+      ).toBeGreaterThan(0)
+    );
+    expect(
+      screen.queryByText(COPY.programs.programTransportAmbiguous)
+    ).not.toBeInTheDocument();
+    expect(mocks.updateDepartment).toHaveBeenCalledOnce();
+    await user.click(
+      screen.getByRole("button", {
+        name: COPY.programs.departmentSettingsRetry,
+      })
+    );
+    await waitFor(() => expect(name).toHaveValue(updated.name));
+    expect(mocks.updateDepartment).toHaveBeenCalledOnce();
   });
 });
