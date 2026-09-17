@@ -12205,9 +12205,19 @@ describe("#622 R41/R42: committed writes survive a failing readback", () => {
     const older = await olderReadPromise;
     assert.strictEqual(older.status, "Active");
     assert.strictEqual(fresh.status, "Cancelled");
-    // The two responses are distinguishable by the server-owned revision, so a
-    // client that receives this older payload after the newer write can order
-    // them instead of publishing stale state.
+    // Apply responses in arrival order. The newer body must remain authoritative
+    // when the held older body arrives later.
+    let authoritativeStatus: string | null = null;
+    let authoritativeRevision = "";
+    const applyRead = (row: EventListRow) => {
+      if (row.updated_at >= authoritativeRevision) {
+        authoritativeStatus = row.status;
+        authoritativeRevision = row.updated_at;
+      }
+    };
+    applyRead(fresh);
+    applyRead(older);
+    assert.strictEqual(authoritativeStatus, "Cancelled");
     assert.ok(
       fresh.updated_at >= older.updated_at,
       "the newer response must not carry an older revision"
