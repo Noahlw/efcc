@@ -131,7 +131,11 @@ const expectDetailStatus = async (
   await expect(marker).toBeVisible();
 };
 
-const clickAndCaptureHref = async (link: HTMLElement, href: string) => {
+const clickAndCaptureHref = async (
+  link: HTMLElement,
+  href: string,
+  allowHandler = false
+) => {
   let activatedHref: string | null = null;
   const document = link.ownerDocument;
   const handleClick = (event: MouseEvent) => {
@@ -139,10 +143,13 @@ const clickAndCaptureHref = async (link: HTMLElement, href: string) => {
     if (!(target instanceof Element) || target.closest("a") !== link) {
       return;
     }
+    if (!allowHandler) {
+      event.preventDefault();
+    }
     activatedHref = link.getAttribute("href");
-    document.removeEventListener("click", handleClick);
+    document.removeEventListener("click", handleClick, !allowHandler);
   };
-  document.addEventListener("click", handleClick);
+  document.addEventListener("click", handleClick, !allowHandler);
   await userEvent.click(link);
   await expect(activatedHref).toBe(href);
 };
@@ -813,7 +820,8 @@ const notificationsUnreadPlay: Story["play"] = async ({ canvasElement }) => {
   }
   await clickAndCaptureHref(
     eventNotification,
-    "/programs?mode=management&department=t07-3-department&program=t07-3-program&task=events&event=t07-3-manual-event"
+    "/programs?mode=management&department=t07-3-department&program=t07-3-program&task=events&event=t07-3-manual-event",
+    true
   );
   await expect(
     canvas.findByText("2", { exact: true, selector: "[data-screen-status]" })

@@ -413,7 +413,15 @@ test("Programs R5 material Stories execute Schedule recovery Plays", async ({
   );
   await expect(
     page.getByRole("link", { name: COPY.programs.eventDetailOpen })
-  ).toHaveCount(3);
+  ).toHaveCount(1);
+  // The material Play intentionally settles on the Cancelled filter after
+  // exercising current and past Events, so only the cancelled Event remains
+  // visible at this boundary.
+  await expect(
+    page.getByRole("link", {
+      name: /家庭同行特別聚會.*詳情/u,
+    })
+  ).toHaveCount(1);
   await expect(
     page.getByRole("link", {
       name: new RegExp(COPY.programs.settingsScheduleEventsLink, "u"),
@@ -707,15 +715,27 @@ test("Programs baselines expose dense Cantonese 2026 server-shaped fixtures", as
   const eventsFrame = page.locator(
     '[data-screen-foundation="page-frame"][data-screen-route="programs"]'
   );
-  for (const eventName of [
-    "門徒訓練週會",
-    "門徒分享聚會",
-    "家庭同行特別聚會",
-  ]) {
-    await expect(
-      eventsFrame.getByText(eventName, { exact: true })
-    ).toBeVisible();
-  }
+  // The production Events route settles on Current by default; exercise each
+  // explicit filter before asserting all three server-shaped fixtures.
+  await expect(
+    eventsFrame.getByText("門徒分享聚會", { exact: true })
+  ).toBeVisible();
+  const pastEventsTab = page.getByRole("tab", {
+    name: COPY.programs.eventsFilterPast,
+  });
+  await pastEventsTab.click();
+  await expect(pastEventsTab).toHaveAttribute("aria-selected", "true");
+  await expect(
+    eventsFrame.getByText("門徒訓練週會", { exact: true })
+  ).toBeVisible();
+  const cancelledEventsTab = page.getByRole("tab", {
+    name: COPY.programs.eventsFilterCancelled,
+  });
+  await cancelledEventsTab.click();
+  await expect(cancelledEventsTab).toHaveAttribute("aria-selected", "true");
+  await expect(
+    eventsFrame.getByText("家庭同行特別聚會", { exact: true })
+  ).toBeVisible();
 
   await page.goto(story("t07-3-programs--workspace-participants"));
   await expectShellFrame(page);
