@@ -1,6 +1,6 @@
 {
   "version": 2,
-  "candidate": "commit:d8e2eb43",
+  "candidate": "commit:62ece4ac",
   "repositoryRoot": "/Users/noah.wong/Desktop/code/efcc",
   "acceptanceProfile": "complex",
   "reviewRisk": {
@@ -20,7 +20,7 @@
   ],
   "review": {
     "mode": "independent",
-    "candidate": "commit:d8e2eb43",
+    "candidate": "commit:62ece4ac",
     "reviewer": "Verify623 (fresh-context reviewer, independent Spec + Acceptance route): verdict correct; every checkbox PASS except the empty-Plan Worker/D1 case and the real-route pair, which the delivery owner then ran"
   },
   "criteria": [
@@ -30,9 +30,9 @@
       "expected": "Preview returns a Reviewed Schedule Plan bound to the visible date range plus the authoritative Schedule Rule and saved-exception versions/fingerprint.",
       "actual": "computePlanHash hashes horizon_days, from_date, rules (version = updated_at) and exceptions (version = created_at); the plan row persists plan_id, schedule_version and reviewed_at through replacePreviewPlan (web/lib/programs/department-workspace.ts:3348-3512, web/lib/programs/d1-workspace-store.ts:2203-2317). Independently re-ran the Worker/D1 range, rule-version, and exception-version preview tests.",
       "level": "worker-d1",
-      "candidate": "commit:d8e2eb43",
+      "candidate": "commit:62ece4ac",
       "evidence": [
-        ".delivery/programs-622-626/artifacts/worker-results.json",
+        ".delivery/programs-622-626/artifacts/worker-62ece4ac-results.json",
         "web/lib/programs/department-workspace.ts:3348-3512"
       ]
     },
@@ -42,9 +42,9 @@
       "expected": "Changing the range, a Rule, a saved exception, or an unsaved exception draft makes the old Preview outdated and non-actionable.",
       "actual": "The panel compares the preview's input fingerprint, scheduleMutationVersion and visible range against current inputs, and additionally blocks on drafts, exceptionBusy and a null rule set (web/lib/programs/workspace-events-task.tsx:409-429, :601, :1168-1177). Independent component re-runs showed the Cantonese stale guidance and disabled Generate for range, unsaved-draft, pending-save and unknown-save states.",
       "level": "component",
-      "candidate": "commit:d8e2eb43",
+      "candidate": "commit:62ece4ac",
       "evidence": [
-        ".delivery/programs-622-626/artifacts/components-results.json",
+        ".delivery/programs-622-626/artifacts/components-62ece4ac-results.json",
         "web/lib/programs/workspace-events-task.tsx:409-429"
       ]
     },
@@ -54,9 +54,9 @@
       "expected": "A pending, failed, or unknown exception save keeps generation blocked until reconciliation.",
       "actual": "exceptionBusy and the unresolved-save path keep Generate disabled and the submit handler returns early; the independent verifier re-ran the pending-save and unknown-save component cases. The live saved-exception network-failure journey remains unrun (see limitations).",
       "level": "component",
-      "candidate": "commit:d8e2eb43",
+      "candidate": "commit:62ece4ac",
       "evidence": [
-        ".delivery/programs-622-626/artifacts/components-results.json",
+        ".delivery/programs-622-626/artifacts/components-62ece4ac-results.json",
         "web/lib/programs/workspace-events-task.tsx:1168-1177"
       ]
     },
@@ -64,12 +64,12 @@
       "id": "R43.4",
       "status": "unverified",
       "expected": "Server validation rejects a stale or mismatched Plan even when a client bypasses the UI guards; a fresh matching Preview restores Generate.",
-      "actual": "The Worker/D1 implementation re-derives Plan currency before any write and maps stale plans to 409 STALE_PLAN, while the component guards wait for authoritative Rules and require Review Again after a range change (web/lib/programs/department-workspace.ts:3545-3598, web/lib/programs/program-handlers.ts:277-279, web/lib/programs/workspace-events-task.tsx:1001-1010). The referenced route artifact is historical Candidate 0d9f1fd1, not commit:d8e2eb43, and no fresh candidate-bound route rerun is available; this criterion remains unverified for the candidate.",
+      "actual": "The Worker/D1 implementation re-derives Plan currency before any write and maps stale plans to 409 STALE_PLAN, while the component guards wait for authoritative Rules and require Review Again after a range change (web/lib/programs/department-workspace.ts:3545-3598, web/lib/programs/program-handlers.ts:277-279, web/lib/programs/workspace-events-task.tsx:1001-1010). The referenced route artifact is historical Candidate 0d9f1fd1, not commit:62ece4ac, and no fresh candidate-bound route rerun is available; this criterion remains unverified for the candidate.",
       "level": "worker-d1 + real-route",
-      "candidate": "commit:d8e2eb43",
+      "candidate": "commit:62ece4ac",
       "evidence": [
         ".delivery/programs-623/artifacts/local-route-0d9f1fd1.txt",
-        ".delivery/programs-622-626/artifacts/worker-results.json",
+        ".delivery/programs-622-626/artifacts/worker-62ece4ac-results.json",
         "web/lib/programs/department-workspace.ts:3545-3598"
       ]
     },
@@ -79,9 +79,9 @@
       "expected": "Preview, save, and Generate stay distinct operations; generation is date-bounded, retains occurrence provenance and reports existing/skipped/rescheduled/created/unfinished outcomes truthfully.",
       "actual": "Preview writes only plan and occurrence rows; generation reports created/skipped/failed/requires_review with created_event_ids and unresolved occurrences (web/lib/programs/department-workspace.ts:3748-3796) and records schedule-rule plus occurrence-date provenance. Independently re-ran the idempotent repeat (created=2 then created=0/skipped=2, same run_id) and the mid-generation stale partial case.",
       "level": "worker-d1",
-      "candidate": "commit:d8e2eb43",
+      "candidate": "commit:62ece4ac",
       "evidence": [
-        ".delivery/programs-622-626/artifacts/worker-results.json",
+        ".delivery/programs-622-626/artifacts/worker-62ece4ac-results.json",
         "web/lib/programs/department-workspace.ts:3748-3796"
       ]
     },
@@ -91,9 +91,9 @@
       "expected": "Retry and resume are durable, idempotent, duplicate-safe, and any stale partial requires a new Plan.",
       "actual": "The atomic occurrence guard plus finishGenerationRun make resume duplicate-safe; the independent verifier re-ran resume, conflict, retry and duplicate-protection tests, and also injected a mid-generation staleness that settles as a truthful partial with requires_review. Browser interruption/restart injection remains unrun (see limitations).",
       "level": "worker-d1",
-      "candidate": "commit:d8e2eb43",
+      "candidate": "commit:62ece4ac",
       "evidence": [
-        ".delivery/programs-622-626/artifacts/worker-results.json",
+        ".delivery/programs-622-626/artifacts/worker-62ece4ac-results.json",
         "web/lib/programs/d1-workspace-store.ts:1588-1601"
       ]
     },
@@ -103,10 +103,10 @@
       "expected": "Finite and ongoing Rules keep per-rule inclusive dates; an ongoing Preview defaults to the next three calendar months with explicit adjustable dates.",
       "actual": "isWithinRuleLifetime is inclusive at both ends and excludes retired rules (web/lib/programs/recurrence.ts:142-154); the panel defaults from/to to addWallMonths(today, 3) - 1 day. The independent verifier re-ran the inclusive-bound and month-omission cases and the three-calendar-month default. A Worker/D1 regression now persists a zero-occurrence Plan, POSTs generate, and proves the server returns 422 VALIDATION without Event or generation-run writes (web/lib/programs/programs.test.ts:5917-5950).",
       "level": "worker-d1 + component",
-      "candidate": "commit:d8e2eb43",
+      "candidate": "commit:62ece4ac",
       "evidence": [
-        ".delivery/programs-622-626/artifacts/worker-results.json",
-        ".delivery/programs-622-626/artifacts/components-results.json",
+        ".delivery/programs-622-626/artifacts/worker-62ece4ac-results.json",
+        ".delivery/programs-622-626/artifacts/components-62ece4ac-results.json",
         "web/lib/programs/recurrence.ts:142-154"
       ]
     },
@@ -114,15 +114,15 @@
       "id": "R52.1",
       "status": "unverified",
       "expected": "Package evidence is candidate-bound and receives fresh independent Spec plus Acceptance review.",
-      "actual": "Candidate d8e2eb43 has candidate-bound Worker/D1 and component manifests: the full Worker suite passed 676/676 and the full component suite passed 1199/1199, including the empty-Plan regression. The cited historical route artifact remains non-candidate-bound and no fresh independent candidate-bound review is available, so R52.1 remains unverified.",
+      "actual": "Candidate 62ece4ac has candidate-bound Worker/D1 and component manifests: the full Worker suite passed 676/676 and the full component suite passed 1202/1202, including the empty-Plan regression. The cited historical route artifact remains non-candidate-bound and no fresh independent candidate-bound review is available, so R52.1 remains unverified.",
       "level": "independent-review + real-route",
-      "candidate": "commit:d8e2eb43",
+      "candidate": "commit:62ece4ac",
       "evidence": [
         ".delivery/programs-623/artifacts/local-route-0d9f1fd1.txt (historical; not candidate-bound)",
         ".delivery/programs-622-626/artifacts/worker-results.json (revision metadata unavailable)",
         "fresh independent candidate-bound review: missing",
-        ".delivery/programs-622-626/artifacts/worker-d8e2eb43-zero-retry-run.json",
-        ".delivery/programs-622-626/artifacts/components-d8e2eb43-zero-retry-run.json"
+        ".delivery/programs-622-626/artifacts/worker-62ece4ac-zero-retry-run.json",
+        ".delivery/programs-622-626/artifacts/components-62ece4ac-zero-retry-run.json"
       ]
     }
   ],

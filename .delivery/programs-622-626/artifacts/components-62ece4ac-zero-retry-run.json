@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "runtime": "vitest",
+  "config": "web/vitest.components.config.ts",
+  "suite": "web/lib/**/*.test.tsx",
+  "revision": "62ece4ac413e735619a51c62dccb903bd54a30f4",
+  "candidate": "commit:62ece4ac",
+  "layer": "component",
+  "status": "passed",
+  "numTotalTestSuites": 199,
+  "numPassedTestSuites": 199,
+  "numFailedTestSuites": 0,
+  "numPendingTestSuites": 0,
+  "numTotalTests": 1202,
+  "numPassedTests": 1202,
+  "numFailedTests": 0,
+  "numPendingTests": 0,
+  "reportPath": ".delivery/programs-622-626/artifacts/components-62ece4ac-results.json",
+  "retries": 0
+}

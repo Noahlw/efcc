@@ -1,6 +1,6 @@
 {
   "version": 2,
-  "candidate": "commit:d8e2eb43",
+  "candidate": "commit:62ece4ac",
   "repositoryRoot": "/Users/noah.wong/Desktop/code/efcc",
   "acceptanceProfile": "complex",
   "reviewRisk": {
@@ -23,8 +23,8 @@
   ],
   "review": {
     "mode": "independent",
-    "candidate": "commit:d8e2eb43",
-    "reviewer": "Verify625 (fresh-context independent review on the prior baseline); candidate a8f9b875 residual fixes were revalidated by focused source/tests, while the physical-device gate remains unrun"
+    "candidate": "commit:62ece4ac",
+    "reviewer": "Verify625 fresh-context independent review was performed on the prior baseline; current candidate source and focused QR tests were revalidated, while the physical-device gate and fresh candidate-bound independent review remain unrun"
   },
   "criteria": [
     {
@@ -33,9 +33,9 @@
       "expected": "Participant Event Detail derives one state and action per state (not open, open and eligible and not present, already Present, ended Present/Excused/Absent, ineligible, own Attendance unavailable, cancelled) and never shows a Scan CTA beside an already-Present state or opening instructions after the Event ended.",
       "actual": "One participant state model derives the instruction copy, status badge and Scan CTA from eligibility, existing attendance, window state and cancellation (web/lib/programs/event-detail.tsx:1218-1236, :1253-1293, :1389-1399). The independent verifier re-ran the participant projection matrix in web/lib/programs/event-detail.test.tsx and confirmed the Scan CTA is gated to open-and-not-present.",
       "level": "component",
-      "candidate": "commit:d8e2eb43",
+      "candidate": "commit:62ece4ac",
       "evidence": [
-        ".delivery/programs-622-626/artifacts/components-results.json",
+        ".delivery/programs-622-626/artifacts/components-62ece4ac-results.json",
         "web/lib/programs/event-detail.tsx:1218-1236"
       ]
     },
@@ -45,9 +45,9 @@
       "expected": "Ordinary participants see only their own Attendance; manager roster and detail data stay capability-checked and Event-scoped.",
       "actual": "handleListOwnAttendance is self-only and the roster read requires the Event operator capability (web/lib/attendance.ts:2645-2739, :1997-2066). The independent verifier confirmed the self-only path and a 403 for a roster read by a plain member, and re-ran the attendance-worker scope and denial tests.",
       "level": "worker-d1",
-      "candidate": "commit:d8e2eb43",
+      "candidate": "commit:62ece4ac",
       "evidence": [
-        ".delivery/programs-622-626/artifacts/worker-results.json",
+        ".delivery/programs-622-626/artifacts/worker-62ece4ac-results.json",
         "web/lib/attendance.ts:2645-2739"
       ]
     },
@@ -57,9 +57,9 @@
       "expected": "Events prioritises open and today's Events, sorts other future Events nearest first, exposes Past and Cancelled filters, links the title to detail, offers direct permitted Attendance, and carries distinct Edit, Reschedule and Cancel intents in More.",
       "actual": "Ranking, tabs, title links, direct Attendance entry and the More intents are implemented (web/lib/programs/workspace-events-task.tsx:246-283, :2204-2242, :2595-2624, :2680-2716, :2718-2787). Independent verifier re-ran the prioritisation, filter and More-menu component cases and the real-browser Events coverage.",
       "level": "component + real-route",
-      "candidate": "commit:d8e2eb43",
+      "candidate": "commit:62ece4ac",
       "evidence": [
-        ".delivery/programs-622-626/artifacts/components-results.json",
+        ".delivery/programs-622-626/artifacts/components-62ece4ac-results.json",
         "web/lib/programs/workspace-events-task.tsx:246-283"
       ]
     },
@@ -69,7 +69,7 @@
       "expected": "Manager Event Detail shows date, time and location once with a single primary action per phase (Event QR code future, Attendance open, View Attendance Record past, none cancelled) and keeps verbose cancellation information behind disclosure.",
       "actual": "The single primary action per phase and single date/time/location presentation remain implemented (web/lib/programs/event-detail.tsx); verbose cancellation information is now behind a disclosure in both Manager Event Detail and the Events list (web/lib/programs/event-detail.tsx, web/lib/programs/workspace-events-task.tsx). Focused component coverage and the independent re-review confirm cancelled rows expose the reason only when expanded.",
       "level": "component + real-route",
-      "candidate": "commit:d8e2eb43",
+      "candidate": "commit:62ece4ac",
       "evidence": [
         "web/lib/programs/event-detail.tsx",
         "web/lib/programs/workspace-events-task.tsx",
@@ -82,9 +82,9 @@
       "expected": "During an open Event the compact roster defaults to Not Yet Checked In, puts Scan Check-In first then Search, uses an explicit per-row Check In action, offers Add and Check In for eligible additions, and uses a reason-bearing Sheet for void/excuse/correction that returns to the same working position.",
       "actual": "Open roster defaults, filter tabs, per-row actions, scan-then-search ordering, assisted-search labels and the reason-bearing Sheet with focus restore are implemented (web/lib/attendance-operator-panel.tsx:591-598, :908-943, :1037-1097, :2667-2733, :2808-2848, :732-750, :532-564). Independent verifier re-ran web/lib/attendance-roster.test.tsx and attendance-operator-panel.test.tsx including the 44px name target and the position restore.",
       "level": "component",
-      "candidate": "commit:d8e2eb43",
+      "candidate": "commit:62ece4ac",
       "evidence": [
-        ".delivery/programs-622-626/artifacts/components-results.json",
+        ".delivery/programs-622-626/artifacts/components-62ece4ac-results.json",
         "web/lib/attendance-operator-panel.tsx:591-598"
       ]
     },
@@ -94,9 +94,9 @@
       "expected": "After the Check-In Window closes an expected person without active Attendance or an Excused disposition becomes Absent, Excused and Guests stay separate, that Absent view is the post-event default, and a cancelled Event produces no Present, Excused or Absent result.",
       "actual": "State derivation switches on window close and a cancelled Event short-circuits to zeroed counts with separate Guest totals (web/lib/attendance.ts:1399-1462). Independent verifier confirmed cancelled rows render as Cancelled with present/excused/absent counts of 0 and that Not Yet is preserved through the exact close instant.",
       "level": "worker-d1 + component",
-      "candidate": "commit:d8e2eb43",
+      "candidate": "commit:62ece4ac",
       "evidence": [
-        ".delivery/programs-622-626/artifacts/worker-results.json",
+        ".delivery/programs-622-626/artifacts/worker-62ece4ac-results.json",
         "web/lib/attendance.ts:1399-1462"
       ]
     },
@@ -106,7 +106,7 @@
       "expected": "Approximately 30 representative Chinese names plus Guests stay scannable at 360, 390 and 402 px with one heading/state/primary action, flat rows, no clipped copy, and at least 44x44 controls.",
       "actual": "The responsive matrix runs a roster scale case at phone-360, phone-390 and phone-402 seeded with approximately 30 Chinese names plus Guests, asserting the single heading/state/primary action, flat rows, unclipped copy and 44x44 controls; the durable responsive pair records that unchanged matrix passing 21/21 at its actual revision c60e3317. This predecessor-run evidence is retained as unchanged-matrix applicability and is not relabelled as candidate a8f9b875; the named physical gate remains separate.",
       "level": "real-route",
-      "candidate": "commit:d8e2eb43",
+      "candidate": "commit:62ece4ac",
       "evidence": [
         ".delivery/programs-622-626/artifacts/responsive-run.json",
         ".delivery/programs-622-626/artifacts/responsive-results.json",
@@ -119,9 +119,9 @@
       "expected": "The artifact labelled Event QR code carries the permanent Program Check-In QR, the current Event Manual Check-In Code and Event details, wraps long Chinese content deliberately, and is not an Event-specific token; the permanent Program sign contains no transient Event details.",
       "actual": "The check-in artifact encodes the permanent Program token from the Program attendance artifact, never an Event token (web/lib/programs/event-check-in-sheet.tsx:35-37, :257-266), and composes title/program/time/location/manual code with deliberate long-CJK wrapping (:49-118); the Program sign card carries no Event fields by construction (web/lib/programs/program-settings.tsx:384-547). Independent verifier re-ran the QR composition tests.",
       "level": "component",
-      "candidate": "commit:d8e2eb43",
+      "candidate": "commit:62ece4ac",
       "evidence": [
-        ".delivery/programs-622-626/artifacts/components-results.json",
+        ".delivery/programs-622-626/artifacts/components-62ece4ac-results.json",
         "web/lib/programs/event-check-in-sheet.tsx:257-266"
       ]
     },
@@ -129,13 +129,13 @@
       "id": "R51.2",
       "status": "verified",
       "expected": "QR encoding, image readiness, download and blocked print each settle into explicit success, failure or Retry states.",
-      "actual": "Event QR and permanent Program QR artifacts now settle encode/image readiness, download and blocked print into explicit loading, success, error and Retry/notice states. Program settings records encode failures and blocked print feedback (web/lib/programs/program-settings.tsx); focused component tests cover both failure paths.",
+      "actual": "Event QR and permanent Program QR artifacts now settle encode/image readiness, download and blocked/native print failures into explicit loading, success, error and Retry/notice states. Program settings catches download and print exceptions (web/lib/programs/program-settings.tsx); candidate component tests cover permanent QR download success/failure, blocked popup, and native print failure.",
       "level": "component + real-route",
-      "candidate": "commit:d8e2eb43",
+      "candidate": "commit:62ece4ac",
       "evidence": [
+        ".delivery/programs-622-626/artifacts/components-62ece4ac-results.json",
         "web/lib/programs/program-settings.tsx",
-        "web/lib/programs/program-settings.test.tsx",
-        "focused Programs component run: 6 files, 203 tests passed"
+        "web/lib/programs/program-settings.test.tsx"
       ]
     },
     {
@@ -144,9 +144,9 @@
       "expected": "Worker/D1, authenticated browser, rendered-artifact, permission and audit tests cover open/closed/cancelled boundaries, corrections, duplicates, long labels and failure recovery; physical camera, rescan and native print remain a named completion gate.",
       "actual": "Focused Worker/D1 and component coverage remains available; the durable responsive pair records the unchanged machine matrix passing 21/21 at revision c60e3317. That predecessor run is applicability evidence only, not a relabelled a8f9b875 run. The named physical gate remains unrun: no iPhone Safari or Android Chrome camera, downloaded-artifact rescan, virtual-keyboard/safe-area, or native print check has been performed.",
       "level": "worker-d1 + real-route",
-      "candidate": "commit:d8e2eb43",
+      "candidate": "commit:62ece4ac",
       "evidence": [
-        ".delivery/programs-622-626/artifacts/worker-results.json",
+        ".delivery/programs-622-626/artifacts/worker-62ece4ac-results.json",
         ".delivery/programs-622-626/artifacts/responsive-run.json",
         ".delivery/programs-622-626/artifacts/responsive-results.json"
       ]
@@ -155,21 +155,20 @@
       "id": "R52.1",
       "status": "unverified",
       "expected": "Package evidence is candidate-bound and receives fresh independent Spec plus UX/Acceptance review.",
-      "actual": "Candidate d8e2eb43 has candidate-bound Worker/D1 and component manifests: the full Worker suite passed 676/676 and the full component suite passed 1199/1199. The physical camera/rescan/keyboard/native-print gate and a fresh independent candidate-bound package review remain unavailable, so R52.1 remains unverified.",
+      "actual": "Candidate 62ece4ac has candidate-bound Worker/D1 and component manifests: the full Worker suite passed 676/676 and the full component suite passed 1202/1202. The physical camera/rescan/keyboard/native-print gate and a fresh independent candidate-bound package review remain unavailable, so R52.1 remains unverified.",
       "level": "independent-review",
-      "candidate": "commit:d8e2eb43",
+      "candidate": "commit:62ece4ac",
       "evidence": [
         "agent Verify625 prior-baseline review (historical; not candidate-bound)",
         ".delivery/programs-622-626/artifacts/components-results.json (revision metadata unavailable)",
         "fresh independent candidate-bound review: missing",
-        ".delivery/programs-622-626/artifacts/worker-d8e2eb43-zero-retry-run.json",
-        ".delivery/programs-622-626/artifacts/components-d8e2eb43-zero-retry-run.json"
+        ".delivery/programs-622-626/artifacts/worker-62ece4ac-zero-retry-run.json",
+        ".delivery/programs-622-626/artifacts/components-62ece4ac-zero-retry-run.json"
       ]
     }
   ],
   "limitations": [
-    "This package previously had no candidate-bound evidence record at all; this record is the first for #625.",
-    "Machine and rendered-artifact criteria pass at candidate d8e2eb43; physical camera, downloaded-artifact rescan, virtual keyboard/safe-area, and native print remain unrun. Owner L2, merge, deployment, release, and issue closure remain outside this record.",
+    "Machine and rendered-artifact criteria pass at candidate 62ece4ac; physical camera, downloaded-artifact rescan, virtual keyboard/safe-area, and native print remain unrun. Owner L2, merge, deployment, release, and issue closure remain outside this record.",
     "The 30-name roster case now runs at 360/390/402; 320 and the wider diagnostic widths deliberately exclude it."
   ]
 }

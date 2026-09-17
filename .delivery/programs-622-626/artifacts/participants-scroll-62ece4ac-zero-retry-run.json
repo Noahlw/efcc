@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "runtime": "playwright",
+  "config": "tests/e2e/programs-participant-acceptance.config.ts",
+  "suite": "tests/e2e/programs-management-acceptance.test.ts",
+  "revision": "62ece4ac413e735619a51c62dccb903bd54a30f4",
+  "candidate": "commit:62ece4ac",
+  "layer": "focused-browser-acceptance",
+  "scenario": "restores the Participants list position after returning from Overview",
+  "projects": ["phone-360", "phone-390", "phone-402"],
+  "retries": 0,
+  "status": "failed",
+  "expected": 3,
+  "skipped": 0,
+  "unexpected": 3,
+  "reportPath": ".delivery/programs-622-626/artifacts/participants-scroll-62ece4ac-results.json",
+  "failureNote": "All three projects failed before the scenario because local Worker fixture restoration returned HTTP 500/network connection loss. No application assertion passed; do not treat this as behavioral failure evidence."
+}
