@@ -1001,7 +1001,15 @@ export const RecurringSchedulePanel = ({
                 <Button
                   type="submit"
                   className="w-fit bg-[var(--screen-accent)] text-white hover:bg-[var(--screen-accent-deep)]"
-                  disabled={previewBusy || generateBusy || exceptionBusy}
+                  // Previewing before the authoritative rules settle would bind a
+                  // plan to a fingerprint the client cannot confirm, which leaves
+                  // the fresh plan permanently stale on arrival.
+                  disabled={
+                    previewBusy ||
+                    generateBusy ||
+                    exceptionBusy ||
+                    rules === null
+                  }
                 >
                   {previewBusy
                     ? COPY.programs.previewing

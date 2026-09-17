@@ -4938,6 +4938,8 @@ test.describe("EVT-02 recurring preview and generation", () => {
     const before = await eventCount(page, id);
 
     await page.getByRole("button", { name: previewEvents }).click();
+    // The reviewed-plan label settles only after the Preview response lands.
+    await expect(page.getByText(COPY.previewPlanLabel)).toBeVisible();
     await expect(
       page.getByRole("button", { name: COPY.generateEvents })
     ).toBeEnabled();
