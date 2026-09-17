@@ -1,0 +1,142 @@
+{
+  "version": 2,
+  "candidate": "commit:0d9f1fd1",
+  "repositoryRoot": "/Users/noah.wong/Desktop/code/efcc",
+  "acceptanceProfile": "complex",
+  "reviewRisk": {
+    "level": "high",
+    "reason": "durable multi-record privileged writes, per-item idempotency, browser interruption, and ambiguous write outcomes"
+  },
+  "delegationAvailable": true,
+  "requirements": [
+    "R44.1",
+    "R44.2",
+    "R44.3",
+    "R44.4",
+    "R44.5",
+    "R44.6",
+    "R44.7",
+    "R44.8",
+    "R52.1"
+  ],
+  "review": {
+    "mode": "independent",
+    "candidate": "commit:0d9f1fd1",
+    "reviewer": "Verify624 (fresh-context reviewer, independent Spec + Acceptance route): verdict correct, confidence 0.80; independent falsification of auto-replay, sibling rollback, unmount auto-continue, duplicate Enrollment, and missing server-side capability/scope/ownership checks did not succeed"
+  },
+  "criteria": [
+    {
+      "id": "R44.1",
+      "status": "verified",
+      "expected": "Starting selected approvals creates a durable Enrollment Approval Run holding one Program, the original Pending request IDs and versions, a stable per-request idempotency identity, and independent per-item states.",
+      "actual": "Migration 0036 CHECK-constrains not_started/in_flight/completed/failed/outcome_unknown, makes identity columns immutable and enforces one active Run per actor+Program; createEnrollmentApprovalRun freezes request_version and mints one idempotency_key per request (web/migrations/0036_enrollment_approval_runs.sql, web/lib/programs/enrollment-approval-run.ts:152-192). The independent verifier re-ran the Worker/D1 persistence test: two Pending items, distinct idempotency keys, frozen versions, and a repeated Start returning created=false on the same run_id.",
+      "level": "worker-d1",
+      "candidate": "commit:0d9f1fd1",
+      "evidence": [
+        ".delivery/programs-622-626/artifacts/worker-results.json",
+        "web/migrations/0036_enrollment_approval_runs.sql"
+      ]
+    },
+    {
+      "id": "R44.2",
+      "status": "verified",
+      "expected": "The operator reviews the selected names and count before start and sees settled per-person progress; a successful approval stays committed when a sibling request is stale, conflicting, denied, already handled, or failed.",
+      "actual": "The Participants task opens a confirmation listing the selected names and count before start and renders per-item settled states; the Worker/D1 mixed-30 test leaves items 0-2 failed with STALE_REQUEST_VERSION / ENROLLMENT_DUPLICATE / REQUEST_ALREADY_HANDLED, 27 completed and 28 Active enrollments. The independent verifier re-ran both.",
+      "level": "worker-d1 + component",
+      "candidate": "commit:0d9f1fd1",
+      "evidence": [
+        ".delivery/programs-622-626/artifacts/worker-results.json",
+        "web/lib/programs/workspace-participants-task.tsx:1789-1826"
+      ]
+    },
+    {
+      "id": "R44.3",
+      "status": "verified",
+      "expected": "Leaving or reloading stops scheduling later requests; at most the already submitted request may settle; the Run stays available at the top of Pending on return.",
+      "actual": "The continue loop is guarded by a mounted flag so at most one in-flight item settles after unmount; beginNext/claimNext refuse to start while an item is in_flight or outcome_unknown (web/lib/programs/enrollment-approval-run.ts:256-292, web/lib/programs/enrollment-approval-run-store.ts:141-174). The Run block renders above the tab bar, so a zero-pending default to Active still exposes it. Independent verifier re-ran the unmount, no-auto-continue and recoverability cases, and the canonical browser journey 'manager recovers an interrupted Approval Run after reload and continues explicitly' passes.",
+      "level": "component + real-route",
+      "candidate": "commit:0d9f1fd1",
+      "evidence": [
+        ".delivery/programs-622-626/artifacts/browser-results.json",
+        ".delivery/programs-622-626/artifacts/components-results.json"
+      ]
+    },
+    {
+      "id": "R44.4",
+      "status": "verified",
+      "expected": "Before retry every outcome-unknown item is reconciled against authoritative Enrollment Request, Enrollment, and audit records; the Run is never replayed wholesale and an unconfirmed success is never reported.",
+      "actual": "Reconciliation requires an authoritative commit predicate joining enrollment_requests, enrollments and audit_events on the item's idempotency key (web/lib/programs/enrollment-approval-run-store.ts, web/lib/programs/department-workspace.ts reconcileApprovalRunRow). Independent verifier re-ran acknowledgement loss (reconciled to completed with no second Enrollment), failure before commit (retryable OUTCOME_NOT_COMMITTED, committed once after explicit Continue) and non-attribution of an alternate key.",
+      "level": "worker-d1",
+      "candidate": "commit:0d9f1fd1",
+      "evidence": [
+        ".delivery/programs-622-626/artifacts/worker-results.json",
+        "web/lib/programs/enrollment-approval-run.ts:256-292"
+      ]
+    },
+    {
+      "id": "R44.5",
+      "status": "verified",
+      "expected": "Continue Remaining requires a new explicit operator action and keeps the original stable identities; explicit cancellation stops future scheduling without rolling back completed approvals.",
+      "actual": "Continue is an explicit operator action over the same item identities. The Worker/D1 cancellation test now first completes one item, then cancels, and asserts the completed item and its Active Enrollment survive while every other item remains not_started and a later Continue is refused (web/lib/programs/programs.test.ts, '#624 record: cancel keeps completed approvals').",
+      "level": "worker-d1",
+      "candidate": "commit:0d9f1fd1",
+      "evidence": [
+        ".delivery/programs-622-626/artifacts/worker-results.json",
+        "web/lib/programs/programs.test.ts"
+      ]
+    },
+    {
+      "id": "R44.6",
+      "status": "verified",
+      "expected": "Pending count and list refresh from authoritative state; zero pending defaults the normal task to Active while an unfinished Run stays recoverable.",
+      "actual": "The Participants task derives the default tab from the route then switches Pending to Active only when the authoritative pending count is zero, and reconciles a durable Run on mount (web/lib/programs/workspace-participants-task.tsx:355-357, :693-701, :548-580). Independent verifier confirmed both defaults and the Run block ordering.",
+      "level": "component",
+      "candidate": "commit:0d9f1fd1",
+      "evidence": [
+        ".delivery/programs-622-626/artifacts/components-results.json",
+        "web/lib/programs/workspace-participants-task.tsx:693-701"
+      ]
+    },
+    {
+      "id": "R44.7",
+      "status": "verified",
+      "expected": "Capability, Program scope, request-version conflict, history, reason, and audit behaviour remain enforced server-side.",
+      "actual": "Every entry point calls requireApprovalRunProgram (PROGRAM_MANAGE plus the enrollment module) before any read or write, and findOwnedApprovalRun requires actor ownership and the matching program_id (web/lib/programs/department-workspace.ts:4901-4931, :5156, :5170, :5189). Version conflicts settle as STALE_REQUEST_VERSION with an audit trail. A new Worker/D1 test asserts a cross-Program Run id returns 404 NOT_FOUND, that another Program's Run list never exposes it, that a member receives 403 FORBIDDEN on list/continue/cancel, and that the Run stays active after all denials.",
+      "level": "worker-d1",
+      "candidate": "commit:0d9f1fd1",
+      "evidence": [
+        ".delivery/programs-622-626/artifacts/worker-results.json",
+        "web/lib/programs/department-workspace.ts:4901-4931"
+      ]
+    },
+    {
+      "id": "R44.8",
+      "status": "verified",
+      "expected": "Worker/D1 and real-browser coverage spans acknowledgement loss, failure before commit, reload, leave/unmount, mixed 30-person outcomes, repeated Continue, stale versions, denial, and duplicate protection.",
+      "actual": "The R44 Worker/D1 block passes 10/10 (mixed 30-item outcomes, repeated Continue with no duplicate Enrollment, acknowledgement loss, failure before commit, cancellation without rollback, cross-Program and capability denials) and the canonical browser suite passes the interrupted-Run reload-and-continue journey at 360/390/402.",
+      "level": "worker-d1 + real-route",
+      "candidate": "commit:0d9f1fd1",
+      "evidence": [
+        ".delivery/programs-622-626/artifacts/browser-results.json",
+        ".delivery/programs-622-626/artifacts/worker-results.json"
+      ]
+    },
+    {
+      "id": "R52.1",
+      "status": "verified",
+      "expected": "Package evidence is candidate-bound and receives fresh independent Spec plus Acceptance review.",
+      "actual": "Candidate-bound artifacts at the final revision and a fresh independent reviewer (Verify624) that re-derived R44 and re-ran the Worker/D1, contract, component and browser evidence. Device, Owner L2, merge, release, and closure remain separate gates.",
+      "level": "independent-review",
+      "candidate": "commit:0d9f1fd1",
+      "evidence": [
+        "agent Verify624 independent verdict (correct, confidence 0.80)",
+        ".delivery/programs-622-626/artifacts/worker-results.json"
+      ]
+    }
+  ],
+  "limitations": [
+    "This package previously had no candidate-bound evidence record at all; this record is the first for #624.",
+    "The independent verifier searched only the management browser spec for an interrupted-Run journey; that journey lives in tests/e2e/programs-participant-acceptance.test.ts and passes in the canonical runner.",
+    "Physical device evidence is not applicable to this package; Owner L2, merge, deployment, release, and issue closure remain outside this record."
+  ]
+}
