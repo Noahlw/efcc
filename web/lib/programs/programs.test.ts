@@ -12020,11 +12020,13 @@ describe("#622 R41/R42: committed writes survive a failing readback", () => {
 
     // 2. The readback that follows now fails at the D1 boundary. Only the
     // events projection is broken so actor authorization still resolves.
+    let injectedReadbackFailure = false;
     const brokenDb = new Proxy((env as unknown as Env).DB, {
       get(target, property, receiver) {
         if (property === "prepare") {
           return (query: string) => {
             if (/\bFROM events\b/u.test(query)) {
+              injectedReadbackFailure = true;
               throw new Error("readback-unavailable");
             }
             return target.prepare(query);
@@ -12048,6 +12050,11 @@ describe("#622 R41/R42: committed writes survive a failing readback", () => {
     assert.ok(
       failedReadStatus === null || failedReadStatus >= 500,
       `a failing readback must never answer with success, got ${String(failedReadStatus)}`
+    );
+    assert.strictEqual(
+      injectedReadbackFailure,
+      true,
+      "the failing response must come from the injected D1 readback fault"
     );
     if (failedReadError !== null) {
       assert.match(
@@ -12190,10 +12197,12 @@ describe("#622 R41/R42: committed writes survive a failing readback", () => {
       testEnv()
     );
     assert.strictEqual(cancel.status, 200);
+    // Start the newer read before releasing the older response. Otherwise this
+    // only proves two sequential reads, not out-of-order delivery.
+    const freshReadPromise = readEvents();
+    const fresh = await freshReadPromise;
     releaseHeldRead();
-
     const older = await olderReadPromise;
-    const fresh = await readEvents();
     assert.strictEqual(older.status, "Active");
     assert.strictEqual(fresh.status, "Cancelled");
     // The two responses are distinguishable by the server-owned revision, so a
