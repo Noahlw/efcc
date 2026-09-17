@@ -60,10 +60,24 @@ export default defineConfig({
   },
   projects: [
     {
+      name: "phone-360",
+      use: {
+        ...devices["Pixel 5"],
+        viewport: { width: 360, height: 800 },
+      },
+    },
+    {
       name: "phone-390",
       use: {
         ...devices["Pixel 5"],
         viewport: { width: 390, height: 844 },
+      },
+    },
+    {
+      name: "phone-402",
+      use: {
+        ...devices["Pixel 5"],
+        viewport: { width: 402, height: 874 },
       },
     },
   ],

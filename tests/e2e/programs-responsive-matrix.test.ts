@@ -30,12 +30,62 @@ const COPY = {
   workspaceOverview: "概覽",
   workspaceEvents: "聚會",
   workspaceParticipants: "參與者",
+  attendanceRosterTitle: "簽到名單",
+  attendanceStatusActive: "開放簽到",
+  attendanceOperatorTitle: "聚會簽到管理",
+  attendanceCamera: "使用相機掃描 QR",
+  attendanceCheckInMember: "替成員簽到",
+  attendanceFilterLabel: "出席名單檢視",
+  attendanceFilterAll: "全部",
+  attendanceAdditionalTitle: "訪客／額外記錄",
 };
+const ROSTER_PROJECT_SUFFIX = "-roster";
+const ROSTER_TEST_TITLE = "attendance roster remains scannable at phone widths";
+const ROSTER_MEMBER_NAMES = [
+  "陳美玲",
+  "黃志明",
+  "李淑芬",
+  "王俊傑",
+  "林雅婷",
+  "張家豪",
+  "劉怡君",
+  "蔡承恩",
+  "楊舒涵",
+  "吳冠廷",
+  "鄭惠文",
+  "周柏翰",
+  "徐婉庭",
+  "何宗翰",
+  "許雅雯",
+  "曾國維",
+  "洪婕妤",
+  "郭子謙",
+  "鄧詠晴",
+  "梁文傑",
+  "葉欣怡",
+  "蘇柏宇",
+  "謝宜蓁",
+  "馬志豪",
+  "趙心妍",
+  "方品妤",
+  "朱柏霖",
+  "高雅琪",
+  "羅世勳",
+  "江語柔",
+] as const;
+const ROSTER_GUEST_NAMES = [
+  "訪客 蔡怡安",
+  "訪客 陳昱廷",
+  "訪客 王欣怡",
+] as const;
 const REQUIRED_VIEWPORT_WIDTHS: Record<string, number> = {
   "phone-320": 320,
   "phone-360": 360,
   "phone-390": 390,
   "phone-402": 402,
+  "phone-360-roster": 360,
+  "phone-390-roster": 390,
+  "phone-402-roster": 402,
   "phone-600": 600,
   "phone-799": 799,
   "desktop-800": 800,
@@ -53,6 +103,10 @@ type Fixture = {
   programId: string;
   programName: string;
   eventId: string;
+  attendanceRoster?: {
+    memberNames: readonly string[];
+    guestNames: readonly string[];
+  };
 };
 
 type Geometry = {
@@ -143,7 +197,8 @@ async function loginAs(page: Page, identity: typeof ADMIN): Promise<void> {
 
 async function createFixture(
   api: APIRequestContext,
-  suffix: string
+  suffix: string,
+  options: { includeAttendanceRoster?: boolean } = {}
 ): Promise<Fixture> {
   const departmentResponse = await api.post("/api/v1/programs/departments", {
     data: {
@@ -157,7 +212,11 @@ async function createFixture(
     data: { department: { department_id: string } };
   };
   const departmentId = departmentBody.data.department.department_id;
-  for (const moduleKey of ["program_catalog", "events", "enrollment"]) {
+  const moduleKeys = ["program_catalog", "events", "enrollment"];
+  if (options.includeAttendanceRoster) {
+    moduleKeys.push("attendance");
+  }
+  for (const moduleKey of moduleKeys) {
     const moduleResponse = await api.post(
       `/api/v1/programs/departments/${departmentId}/modules/${moduleKey}/enable`
     );
@@ -190,118 +249,292 @@ async function createFixture(
     }
   );
   expect(promotionResponse.status()).toBe(200);
+  const eventIsOpen = options.includeAttendanceRoster === true;
+  const hourMs = 60 * 60 * 1000;
+  const now = Date.now();
   const eventResponse = await api.post(
     `/api/v1/programs/${programBody.data.program.program_id}/events`,
     {
       data: {
         name: `E2E_T05R Event ${suffix} with responsive copy`,
         location: "Responsive test venue",
-        starts_at: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
-        ends_at: new Date(Date.now() + 25 * 60 * 60 * 1000).toISOString(),
+        starts_at: new Date(
+          now + (eventIsOpen ? -1 : 24) * hourMs
+        ).toISOString(),
+        ends_at: new Date(now + (eventIsOpen ? 24 : 25) * hourMs).toISOString(),
+        ...(eventIsOpen
+          ? {
+              check_in_window_opens_at: new Date(
+                now - 2 * hourMs
+              ).toISOString(),
+              check_in_window_closes_at: new Date(
+                now + 25 * hourMs
+              ).toISOString(),
+            }
+          : {}),
       },
     }
   );
   expect(eventResponse.status()).toBe(201);
   const eventBody = (await eventResponse.json()) as {
-    data: { event: { event_id: string } };
+    data: {
+      event: {
+        event_id: string;
+        manual_check_in_code: string | null;
+      };
+    };
   };
-  return {
+  const fixture: Fixture = {
     programId: programBody.data.program.program_id,
     programName,
     eventId: eventBody.data.event.event_id,
   };
-}
+  if (!options.includeAttendanceRoster) {
+    return fixture;
+  }
 
-async function measure(page: Page, expectedWidth: number): Promise<Geometry> {
-  return page.evaluate((expectedWidth) => {
-    const visible = (element: Element): element is HTMLElement => {
-      const htmlElement = element as HTMLElement;
-      const box = htmlElement.getBoundingClientRect();
-      const style = getComputedStyle(htmlElement);
-      return (
-        box.width > 0 &&
-        box.height > 0 &&
-        style.display !== "none" &&
-        style.visibility !== "hidden" &&
-        htmlElement.getAttribute("aria-hidden") !== "true" &&
-        !htmlElement.closest("[hidden]")
-      );
-    };
-    const controls = [
-      ...document.querySelectorAll(
-        "main a, main button, main input, main select, main textarea"
-      ),
-    ].filter(visible);
-    const sizes = controls.map((element) => {
-      const box = element.getBoundingClientRect();
-      return { width: box.width, height: box.height };
+  const memberPrefix = `E2E_T05R_${suffix}_member_`;
+  const memberCredentials = ROSTER_MEMBER_NAMES.map((name, index) => ({
+    name,
+    username: `${memberPrefix}${String(index + 1).padStart(2, "0")}`,
+    password: `E2E_T05R_${suffix}!${String(index + 1).padStart(2, "0")}`,
+    phone: `9${String(7_000_000 + index).padStart(7, "0")}`,
+  }));
+  for (const member of memberCredentials) {
+    const registrationResponse = await api.post("/api/v1/auth/register", {
+      headers: {
+        "Idempotency-Key": `${member.username}-registration`,
+      },
+      data: {
+        username: member.username,
+        password: member.password,
+        name: member.name,
+        phone: member.phone,
+      },
     });
-    const dock = document.querySelector<HTMLElement>(".nav-phone");
-    const outlet = document.querySelector<HTMLElement>("#shell-content");
-    const dockStyle = dock ? getComputedStyle(dock) : null;
-    const activeNavItem = document.querySelector<HTMLElement>(
-      '#main-navigation [aria-current="page"]'
-    );
-    const activeIndicatorStyle = activeNavItem
-      ? getComputedStyle(activeNavItem, "::before")
-      : null;
-    const screenIconBoxes = [
-      ...document.querySelectorAll<HTMLElement>(
-        '[data-screen-icon-button="true"]'
-      ),
-    ]
-      .filter(visible)
-      .map((element) => element.getBoundingClientRect());
-    const activeIndicator = activeIndicatorStyle
-      ? {
-          display: activeIndicatorStyle.display,
-          width: Number.parseFloat(activeIndicatorStyle.width) || 0,
-          height: Number.parseFloat(activeIndicatorStyle.height) || 0,
-          borderRadius:
-            Number.parseFloat(activeIndicatorStyle.borderTopLeftRadius) || 0,
-        }
-      : null;
-    return {
-      expectedWidth,
-      innerWidth: window.innerWidth,
-      innerHeight: window.innerHeight,
-      bodyScrollWidth: document.body.scrollWidth,
-      documentScrollWidth: document.documentElement.scrollWidth,
-      outletPaddingBottom: outlet
-        ? Number.parseFloat(getComputedStyle(outlet).paddingBottom)
-        : 0,
-      dockPosition: dockStyle?.position ?? null,
-      dockTop: dock && visible(dock) ? dock.getBoundingClientRect().top : null,
-      dockBottom:
-        dock && visible(dock) ? dock.getBoundingClientRect().bottom : null,
-      dockHeight:
-        dock && visible(dock) ? dock.getBoundingClientRect().height : null,
-      activeIndicator,
-      screenIconCount: screenIconBoxes.length,
-      minimumScreenIconWidth:
-        screenIconBoxes.length === 0
-          ? 0
-          : Math.min(...screenIconBoxes.map(({ width }) => width)),
-      minimumScreenIconHeight:
-        screenIconBoxes.length === 0
-          ? 0
-          : Math.min(...screenIconBoxes.map(({ height }) => height)),
-      maximumScreenIconCircleDelta:
-        screenIconBoxes.length === 0
-          ? Number.MAX_SAFE_INTEGER
-          : Math.max(
-              ...screenIconBoxes.map(({ width, height }) =>
-                Math.abs(width - height)
-              )
-            ),
-      visibleControlCount: controls.length,
-      minimumControlWidth: Math.min(...sizes.map(({ width }) => width)),
-      minimumControlHeight: Math.min(...sizes.map(({ height }) => height)),
+    expect(registrationResponse.status()).toBe(200);
+  }
+
+  const pendingResponse = await api.get(
+    "/api/v1/auth/registrations?status=Pending"
+  );
+  expect(pendingResponse.status()).toBe(200);
+  const pendingBody = (await pendingResponse.json()) as {
+    data: {
+      registrations: Array<{
+        requestId: string;
+        username: string;
+      }>;
     };
-  }, expectedWidth);
+  };
+  const registrationsByUsername = new Map(
+    pendingBody.data.registrations.map((registration) => [
+      registration.username,
+      registration,
+    ])
+  );
+  const registrationIds = memberCredentials.map((member) => {
+    const registration = registrationsByUsername.get(member.username);
+    expect(
+      registration,
+      `pending registration for ${member.username}`
+    ).toBeDefined();
+    if (!registration) {
+      throw new Error(`Missing pending registration for ${member.username}`);
+    }
+    return registration.requestId;
+  });
+  const approvalResponse = await api.post(
+    "/api/v1/auth/registrations/approve-batch",
+    {
+      headers: {
+        "Idempotency-Key": `${suffix}-responsive-roster-approval`,
+      },
+      data: { requestIds: registrationIds },
+    }
+  );
+  expect(approvalResponse.status()).toBe(200);
+
+  const accountsResponse = await api.get(
+    `/api/v1/programs/accounts?q=${encodeURIComponent(
+      memberPrefix
+    )}&status=Active&limit=50`
+  );
+  expect(accountsResponse.status()).toBe(200);
+  const accountsBody = (await accountsResponse.json()) as {
+    data: {
+      accounts: {
+        userId: string;
+        username: string | null;
+        name: string;
+      }[];
+    };
+  };
+  const accountsByUsername = new Map(
+    accountsBody.data.accounts
+      .filter(
+        (account): account is typeof account & { username: string } =>
+          typeof account.username === "string"
+      )
+      .map((account) => [account.username, account])
+  );
+  expect(accountsByUsername.size).toBe(ROSTER_MEMBER_NAMES.length);
+
+  for (const member of memberCredentials) {
+    const account = accountsByUsername.get(member.username);
+    expect(account, `active account for ${member.username}`).toBeDefined();
+    if (!account) {
+      throw new Error(`Missing active account for ${member.username}`);
+    }
+    const enrollmentResponse = await api.post(
+      `/api/v1/programs/${fixture.programId}/enrollments`,
+      {
+        headers: {
+          "Idempotency-Key": `${member.username}-enrollment`,
+        },
+        data: { member_user_id: account.userId },
+      }
+    );
+    expect(enrollmentResponse.status()).toBe(201);
+  }
+
+  const manualCode = eventBody.data.event.manual_check_in_code;
+  expect(manualCode, "open fixture event manual check-in code").toBeTruthy();
+  for (const [index, name] of ROSTER_GUEST_NAMES.entries()) {
+    const guestResponse = await api.post("/api/v1/attendance/guest", {
+      headers: {
+        "Idempotency-Key": `${suffix}-responsive-roster-guest-${index + 1}`,
+      },
+      data: {
+        event_id: fixture.eventId,
+        method: "guest_manual_code",
+        name,
+        phone: `9${String(8_000_000 + index).padStart(7, "0")}`,
+        manual_code: manualCode,
+      },
+    });
+    expect(guestResponse.status()).toBe(201);
+  }
+
+  const materializeResponse = await api.post(
+    `/api/v1/attendance/events/${fixture.eventId}/materialize`,
+    {
+      headers: {
+        "Idempotency-Key": `${suffix}-responsive-roster-materialize`,
+      },
+    }
+  );
+  expect(materializeResponse.status()).toBe(200);
+  return {
+    ...fixture,
+    attendanceRoster: {
+      memberNames: ROSTER_MEMBER_NAMES,
+      guestNames: ROSTER_GUEST_NAMES,
+    },
+  };
 }
 
-function assertGeometry(geometry: Geometry, scenario: string): void {
+async function measure(
+  page: Page,
+  expectedWidth: number,
+  scopeSelector = "main"
+): Promise<Geometry> {
+  return page.evaluate(
+    ({ expectedWidth, scopeSelector }) => {
+      const visible = (element: Element): element is HTMLElement => {
+        const htmlElement = element as HTMLElement;
+        const box = htmlElement.getBoundingClientRect();
+        const style = getComputedStyle(htmlElement);
+        return (
+          box.width > 0 &&
+          box.height > 0 &&
+          style.display !== "none" &&
+          style.visibility !== "hidden" &&
+          htmlElement.getAttribute("aria-hidden") !== "true" &&
+          !htmlElement.closest("[hidden]")
+        );
+      };
+      const controlRoot = document.querySelector(scopeSelector) ?? document;
+      const controls = [
+        ...controlRoot.querySelectorAll("a, button, input, select, textarea"),
+      ].filter(visible);
+      const sizes = controls.map((element) => {
+        const box = element.getBoundingClientRect();
+        return { width: box.width, height: box.height };
+      });
+      const dock = document.querySelector<HTMLElement>(".nav-phone");
+      const outlet = document.querySelector<HTMLElement>("#shell-content");
+      const dockStyle = dock ? getComputedStyle(dock) : null;
+      const activeNavItem = document.querySelector<HTMLElement>(
+        '#main-navigation [aria-current="page"]'
+      );
+      const activeIndicatorStyle = activeNavItem
+        ? getComputedStyle(activeNavItem, "::before")
+        : null;
+      const screenIconBoxes = [
+        ...document.querySelectorAll<HTMLElement>(
+          '[data-screen-icon-button="true"]'
+        ),
+      ]
+        .filter(visible)
+        .map((element) => element.getBoundingClientRect());
+      const activeIndicator = activeIndicatorStyle
+        ? {
+            display: activeIndicatorStyle.display,
+            width: Number.parseFloat(activeIndicatorStyle.width) || 0,
+            height: Number.parseFloat(activeIndicatorStyle.height) || 0,
+            borderRadius:
+              Number.parseFloat(activeIndicatorStyle.borderTopLeftRadius) || 0,
+          }
+        : null;
+      return {
+        expectedWidth,
+        innerWidth: window.innerWidth,
+        innerHeight: window.innerHeight,
+        bodyScrollWidth: document.body.scrollWidth,
+        documentScrollWidth: document.documentElement.scrollWidth,
+        outletPaddingBottom: outlet
+          ? Number.parseFloat(getComputedStyle(outlet).paddingBottom)
+          : 0,
+        dockPosition: dockStyle?.position ?? null,
+        dockTop:
+          dock && visible(dock) ? dock.getBoundingClientRect().top : null,
+        dockBottom:
+          dock && visible(dock) ? dock.getBoundingClientRect().bottom : null,
+        dockHeight:
+          dock && visible(dock) ? dock.getBoundingClientRect().height : null,
+        activeIndicator,
+        screenIconCount: screenIconBoxes.length,
+        minimumScreenIconWidth:
+          screenIconBoxes.length === 0
+            ? 0
+            : Math.min(...screenIconBoxes.map(({ width }) => width)),
+        minimumScreenIconHeight:
+          screenIconBoxes.length === 0
+            ? 0
+            : Math.min(...screenIconBoxes.map(({ height }) => height)),
+        maximumScreenIconCircleDelta:
+          screenIconBoxes.length === 0
+            ? Number.MAX_SAFE_INTEGER
+            : Math.max(
+                ...screenIconBoxes.map(({ width, height }) =>
+                  Math.abs(width - height)
+                )
+              ),
+        visibleControlCount: controls.length,
+        minimumControlWidth: Math.min(...sizes.map(({ width }) => width)),
+        minimumControlHeight: Math.min(...sizes.map(({ height }) => height)),
+      };
+    },
+    { expectedWidth, scopeSelector }
+  );
+}
+
+function assertGeometry(
+  geometry: Geometry,
+  scenario: string,
+  options: { requireActiveIndicator?: boolean } = {}
+): void {
   const label = `${scenario} @ ${geometry.expectedWidth}px`;
   expect(geometry.innerWidth, label).toBe(geometry.expectedWidth);
   if (geometry.screenIconCount > 0) {
@@ -351,24 +584,27 @@ function assertGeometry(geometry: Geometry, scenario: string): void {
       72
     );
     expect(geometry.dockTop, `${label} phone dock`).not.toBeNull();
-    expect(
-      geometry.activeIndicator,
-      `${label} active indicator`
-    ).not.toBeNull();
-    expect(
-      geometry.activeIndicator?.display,
-      `${label} indicator display`
-    ).not.toBe("none");
-    expect(geometry.activeIndicator?.width, `${label} indicator width`).toBe(
-      18
-    );
-    expect(geometry.activeIndicator?.height, `${label} indicator height`).toBe(
-      2
-    );
-    expect(
-      geometry.activeIndicator?.borderRadius,
-      `${label} indicator radius`
-    ).toBe(2);
+    if (options.requireActiveIndicator ?? true) {
+      expect(
+        geometry.activeIndicator,
+        `${label} active indicator`
+      ).not.toBeNull();
+      expect(
+        geometry.activeIndicator?.display,
+        `${label} indicator display`
+      ).not.toBe("none");
+      expect(geometry.activeIndicator?.width, `${label} indicator width`).toBe(
+        18
+      );
+      expect(
+        geometry.activeIndicator?.height,
+        `${label} indicator height`
+      ).toBe(2);
+      expect(
+        geometry.activeIndicator?.borderRadius,
+        `${label} indicator radius`
+      ).toBe(2);
+    }
   } else {
     expect(
       geometry.outletPaddingBottom,
@@ -378,12 +614,17 @@ function assertGeometry(geometry: Geometry, scenario: string): void {
   }
 }
 
-test.beforeAll(async ({ playwright }) => {
+test.beforeAll(async ({ playwright }, workerInfo) => {
   const admin = await loginWithPlaywright(playwright, ADMIN);
   fixtureAdminApi = admin.api;
   fixture = await createFixture(
     fixtureAdminApi,
-    crypto.randomUUID().slice(0, 8)
+    crypto.randomUUID().slice(0, 8),
+    {
+      includeAttendanceRoster: workerInfo.project.name.endsWith(
+        ROSTER_PROJECT_SUFFIX
+      ),
+    }
   );
 });
 
@@ -498,6 +739,7 @@ test.describe("T05.6 responsive Programs UI matrix", () => {
       managementGeometry.screenIconCount,
       `management settings @ ${viewport.width}px shell icon count`
     ).toBeGreaterThan(0);
+
     assertGeometry(managementGeometry, "management settings");
 
     await workspaceNavigation
@@ -531,6 +773,165 @@ test.describe("T05.6 responsive Programs UI matrix", () => {
     assertGeometry(
       await measure(page, viewport.width),
       "management events task"
+    );
+  });
+  test(ROSTER_TEST_TITLE, async ({ page }, testInfo) => {
+    const viewport = configuredViewport(testInfo);
+    expect(testInfo.project.name).toMatch(/-roster$/u);
+    if (!fixture?.attendanceRoster) {
+      throw new Error(
+        "Attendance roster fixture was not created for this project"
+      );
+    }
+    const { eventId, attendanceRoster: rosterFixture } = fixture;
+
+    await loginAs(page, ADMIN);
+    await page.goto(`/events?eventId=${encodeURIComponent(eventId)}`);
+    const rosterSurface = page.locator(
+      "[data-attendance-operator-root='true']"
+    );
+    await expect(rosterSurface).toBeVisible();
+
+    const screenHeadings = rosterSurface.locator("h1:visible");
+    await expect(screenHeadings).toHaveCount(1);
+    await expect(screenHeadings).toHaveText(COPY.attendanceRosterTitle);
+    await expect(
+      rosterSurface
+        .locator("header [data-slot='badge']")
+        .filter({ hasText: COPY.attendanceStatusActive })
+    ).toHaveCount(1);
+
+    const primaryScanActions = rosterSurface
+      .locator("section[aria-labelledby='attendance-operations-title']")
+      .getByRole("button", {
+        name: COPY.attendanceCamera,
+        exact: true,
+      });
+    await expect(primaryScanActions).toHaveCount(1);
+
+    const expectedRows = rosterSurface.locator(
+      "[data-attendance-expected-row]"
+    );
+    await expect(expectedRows).toHaveCount(rosterFixture.memberNames.length, {
+      timeout: 15_000,
+    });
+    for (const name of rosterFixture.memberNames) {
+      await expect(
+        expectedRows.getByRole("button", { name, exact: true })
+      ).toHaveCount(1);
+    }
+    await expect(
+      rosterSurface.getByRole("tablist", {
+        name: COPY.attendanceFilterLabel,
+      })
+    ).toBeVisible();
+    await expect(
+      rosterSurface.getByRole("tab", { name: /^未簽到 \(/u })
+    ).toHaveAttribute("aria-selected", "true");
+
+    const assertFlatRows = async () => {
+      const rows = await rosterSurface
+        .locator(
+          "[data-attendance-expected-row], [data-attendance-additional-row]"
+        )
+        .evaluateAll((elements) =>
+          elements.map((element) => ({
+            tagName: element.tagName,
+            parentTagName: element.parentElement?.tagName ?? null,
+            nestedListItems: element.querySelectorAll("li").length,
+            nestedCards: element.querySelectorAll("[data-slot='card']").length,
+          }))
+        );
+      expect(rows.length).toBeGreaterThan(0);
+      expect(rows).toEqual(
+        rows.map((row) => ({
+          ...row,
+          tagName: "LI",
+          parentTagName: "UL",
+          nestedListItems: 0,
+          nestedCards: 0,
+        }))
+      );
+      await expect(rosterSurface.locator("[data-slot='card']")).toHaveCount(1);
+    };
+
+    const assertNoClippedCopy = async () => {
+      const copyContainers = rosterSurface.locator(
+        [
+          "h1:visible",
+          "h2:visible",
+          "header p:visible",
+          "header [data-slot='button']:visible",
+          "section[aria-labelledby='attendance-operations-title'] > p:visible",
+          "[data-attendance-expected-row] p:visible",
+          "[data-attendance-additional-row] p:visible",
+          "[data-attendance-expected-row] [data-slot='button'][data-variant='link']:visible",
+          "[data-attendance-additional-row] [data-slot='button'][data-variant='link']:visible",
+        ].join(", ")
+      );
+      const clipped = await copyContainers.evaluateAll((elements) =>
+        elements.flatMap((element) => {
+          const htmlElement = element as HTMLElement;
+          const box = htmlElement.getBoundingClientRect();
+          if (box.width <= 0 || box.height <= 0) {
+            return [];
+          }
+          return htmlElement.scrollWidth <= htmlElement.clientWidth + 1
+            ? []
+            : [
+                {
+                  text: htmlElement.textContent?.trim() ?? "",
+                  scrollWidth: htmlElement.scrollWidth,
+                  clientWidth: htmlElement.clientWidth,
+                },
+              ];
+        })
+      );
+      expect(clipped).toEqual([]);
+    };
+
+    await assertFlatRows();
+    await assertNoClippedCopy();
+    assertGeometry(
+      await measure(
+        page,
+        viewport.width,
+        "[data-attendance-operator-root='true']"
+      ),
+      "attendance roster not-yet view",
+      { requireActiveIndicator: false }
+    );
+
+    await rosterSurface
+      .getByRole("tab", {
+        name: new RegExp(`^${COPY.attendanceFilterAll} \\(`, "u"),
+      })
+      .click();
+    const additionalRows = rosterSurface.locator(
+      "[data-attendance-additional-row]"
+    );
+    await expect(
+      rosterSurface.getByRole("heading", {
+        name: COPY.attendanceAdditionalTitle,
+        exact: true,
+      })
+    ).toBeVisible();
+    await expect(additionalRows).toHaveCount(rosterFixture.guestNames.length);
+    for (const name of rosterFixture.guestNames) {
+      await expect(
+        additionalRows.getByRole("button", { name, exact: true })
+      ).toHaveCount(1);
+    }
+    await assertFlatRows();
+    await assertNoClippedCopy();
+    assertGeometry(
+      await measure(
+        page,
+        viewport.width,
+        "[data-attendance-operator-root='true']"
+      ),
+      "attendance roster all view",
+      { requireActiveIndicator: false }
     );
   });
 });

@@ -28,6 +28,9 @@ const COPY = {
   workspaceOverview: "概覽",
   workspaceEvents: "聚會",
   workspaceParticipants: "參與者",
+  eventFilterPast: "過往",
+  eventDetailBack: "返回聚會列表",
+  eventCreateCancel: "取消",
   enroll: "報名",
   createMeeting: "建立聚會",
   createMeetingValidation: "請輸入日期、時間及聚會名稱。",
@@ -44,6 +47,9 @@ const COPY = {
   enterManagement: "進入管理模式",
   enterParticipant: "返回參與者模式",
   participantDirectory: "課程",
+  notificationsTitle: "通知",
+  notificationsReadError: "通知狀態未能更新，請重試。",
+  notificationsRetry: "重試載入通知",
 };
 
 interface Fixture {
@@ -170,6 +176,50 @@ async function createFixture(page: Page, suffix: string): Promise<Fixture> {
     };
   }, suffix);
   return fixture as Fixture;
+}
+async function createEventFixture(
+  page: Page,
+  fixture: Fixture,
+  name: string,
+  startsAt: string,
+  endsAt: string
+): Promise<string> {
+  const event = await page.evaluate(
+    async ({ programId, name: eventName, startsAt: start, endsAt: end }) => {
+      const response = await fetch(
+        `/api/v1/programs/${encodeURIComponent(programId)}/events`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            starts_at: start,
+            ends_at: end,
+            name: eventName,
+            event_type: "訓練",
+          }),
+        }
+      );
+      const body = (await response.json()) as {
+        data?: { event?: { event_id?: string } };
+      };
+      return {
+        status: response.status,
+        eventId: body.data?.event?.event_id ?? "",
+      };
+    },
+    {
+      programId: fixture.programId,
+      name,
+      startsAt,
+      endsAt,
+    }
+  );
+  if (event.status !== 201 || !event.eventId) {
+    throw new Error(
+      `event fixture returned HTTP ${event.status} without an event id`
+    );
+  }
+  return event.eventId;
 }
 
 async function restoreFixture(page: Page, fixture: Fixture): Promise<void> {
@@ -562,6 +612,187 @@ test.describe("T05.5 management Browser Acceptance", () => {
       expect(managementReads).toBe(2);
     } finally {
       await page.unroute(managementRoute).catch(() => {});
+      await restoreFixture(page, fixture);
+    }
+  });
+
+  test("consumes one-shot Event create intent and keeps Cancel closed", async ({
+    page,
+  }) => {
+    await loginAs(page);
+    const fixture = await createFixture(page, crypto.randomUUID().slice(0, 8));
+    try {
+      await page.goto(
+        `/programs?mode=management&program=${encodeURIComponent(fixture.programId)}&task=events#create-event`
+      );
+      const createForm = page.getByRole("form", { name: COPY.createMeeting });
+      await expect(createForm).toBeVisible();
+      await expect.poll(() => new URL(page.url()).hash).toBe("");
+
+      await createForm
+        .getByRole("button", { name: COPY.eventCreateCancel })
+        .click();
+      await expect(createForm).toHaveCount(0);
+
+      const headerCreate = page.getByRole("button", {
+        name: COPY.createMeeting,
+        exact: true,
+      });
+      await expect(headerCreate).toHaveCount(1);
+      await expect(headerCreate).not.toHaveAttribute("aria-expanded");
+      await expect(headerCreate).not.toHaveAttribute("aria-pressed");
+      await headerCreate.click();
+      await expect(createForm).toBeVisible();
+      await createForm
+        .getByRole("button", { name: COPY.eventCreateCancel })
+        .click();
+      await expect(createForm).toHaveCount(0);
+
+      await page.reload();
+      await expect(
+        page.getByRole("form", { name: COPY.createMeeting })
+      ).toHaveCount(0);
+    } finally {
+      await restoreFixture(page, fixture);
+    }
+  });
+
+  test("restores the Events filter after browser Back from a focused Event", async ({
+    page,
+  }) => {
+    await loginAs(page);
+    const fixture = await createFixture(page, crypto.randomUUID().slice(0, 8));
+    const eventName = `E2E_626_Past Event ${fixture.programId.slice(-8)}`;
+    const startsAt = new Date(Date.now() - 2 * 24 * 60 * 60_000);
+    let eventId = "";
+    try {
+      eventId = await createEventFixture(
+        page,
+        fixture,
+        eventName,
+        startsAt.toISOString(),
+        new Date(startsAt.getTime() + 60 * 60_000).toISOString()
+      );
+      await page.goto(
+        `/programs?mode=management&program=${encodeURIComponent(fixture.programId)}&task=events`
+      );
+      await expect(
+        page.getByRole("heading", { name: COPY.workspaceEvents, exact: true })
+      ).toBeVisible();
+      const pastTab = page.getByRole("tab", { name: COPY.eventFilterPast });
+      await pastTab.click();
+      await expect
+        .poll(() => new URL(page.url()).searchParams.get("eventFilter"))
+        .toBe("past");
+      await expect(pastTab).toHaveAttribute("aria-selected", "true");
+
+      const eventRow = page.locator(`[data-event-id="${eventId}"]`);
+      await expect(eventRow).toBeVisible();
+      await eventRow.getByRole("link").first().click();
+      await expect
+        .poll(() => new URL(page.url()).searchParams.get("event"))
+        .toBe(eventId);
+      await expect(
+        page.getByRole("heading", { name: eventName })
+      ).toBeVisible();
+      await expect(
+        page.getByRole("link", { name: COPY.eventDetailBack })
+      ).toBeVisible();
+
+      await page.goBack();
+      await expect
+        .poll(() => new URL(page.url()).searchParams.get("event"))
+        .toBeNull();
+      await expect
+        .poll(() => new URL(page.url()).searchParams.get("eventFilter"))
+        .toBe("past");
+      await expect(pastTab).toHaveAttribute("aria-selected", "true");
+      await expect(eventRow).toBeVisible();
+    } finally {
+      await restoreFixture(page, fixture);
+    }
+  });
+
+  test("keeps modifier-key notification navigation independent from read failures", async ({
+    page,
+    browser,
+  }) => {
+    await loginAs(page);
+    const fixture = await createFixture(page, crypto.randomUUID().slice(0, 8));
+    let linkedPage: Page | null = null;
+    const readRoute = "**/api/v1/programs/notifications/read";
+    let readAttempts = 0;
+    try {
+      const memberContext = await browser.newContext();
+      try {
+        const memberPage = await memberContext.newPage();
+        await loginAs(memberPage, "E2E_member", "E2E_member!dev");
+        const requestStatus = await memberPage.evaluate(async (programId) => {
+          const response = await fetch(
+            `/api/v1/programs/${encodeURIComponent(programId)}/enrollment-requests`,
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: "{}",
+            }
+          );
+          return response.status;
+        }, fixture.programId);
+        expect([200, 201]).toContain(requestStatus);
+      } finally {
+        await memberContext.close();
+      }
+
+      await page.route(readRoute, async (route) => {
+        readAttempts += 1;
+        await route.fulfill({
+          status: 503,
+          contentType: "application/problem+json",
+          body: JSON.stringify({
+            status: 503,
+            code: "UNAVAILABLE",
+            title: "Unavailable",
+            detail: "測試中的通知讀取失敗",
+          }),
+        });
+      });
+      await page.goto("/programs?mode=management&task=notifications");
+      await expect(
+        page.getByRole("heading", {
+          name: COPY.notificationsTitle,
+          exact: true,
+        })
+      ).toBeVisible();
+      const notificationLink = page
+        .locator(
+          `a[href*="program=${encodeURIComponent(fixture.programId)}"][href*="task=participants"]`
+        )
+        .first();
+      await expect(notificationLink).toBeVisible();
+
+      const newTabModifier = process.platform === "darwin" ? "Meta" : "Control";
+      const linkedPagePromise = page.context().waitForEvent("page");
+      await notificationLink.click({ modifiers: [newTabModifier] });
+      linkedPage = await linkedPagePromise;
+      await expect
+        .poll(() => new URL(linkedPage!.url()).searchParams.get("program"))
+        .toBe(fixture.programId);
+      await expect
+        .poll(() => new URL(linkedPage!.url()).searchParams.get("task"))
+        .toBe("participants");
+      await expect(
+        linkedPage.getByRole("heading", { name: fixture.programName })
+      ).toBeVisible();
+      await expect.poll(() => readAttempts).toBe(1);
+      await expect(
+        page.getByText(COPY.notificationsReadError, { exact: true })
+      ).toBeVisible();
+      await expect(
+        page.getByRole("button", { name: COPY.notificationsRetry })
+      ).toBeVisible();
+    } finally {
+      await page.unroute(readRoute).catch(() => {});
+      await linkedPage?.close().catch(() => {});
       await restoreFixture(page, fixture);
     }
   });

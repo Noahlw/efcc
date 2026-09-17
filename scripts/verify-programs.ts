@@ -27,13 +27,13 @@ export const PROMOTION_STAGES: readonly PromotionStage[] = [
     name: "browser-acceptance",
     args: ["test:programs:browser"],
     report: "browser-results.json",
-    expectedTests: 7,
+    expectedTests: 30,
   },
   {
     name: "responsive-matrix",
     args: ["test:programs:responsive"],
     report: "responsive-results.json",
-    expectedTests: 18,
+    expectedTests: 21,
   },
   { name: "non-browser-precommit", args: ["verify:precommit"] },
 ];
