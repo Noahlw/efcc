@@ -937,6 +937,45 @@ describe(ProgramSettings, () => {
     ).resolves.toBeInTheDocument();
   });
 
+  test("reports permanent Program QR download success and failure", async () => {
+    const user = userEvent.setup();
+    const click = vi.spyOn(HTMLAnchorElement.prototype, "click");
+    try {
+      const props = {
+        program: recurringProgram,
+        section: "attendance" as const,
+        onTaskChange: vi.fn<(task: "events" | "schedule" | null) => void>(),
+      };
+      const view = render(<ProgramSettings {...props} />);
+      await screen.findByAltText(COPY.programs.settingsAttendanceQrLabel);
+
+      await user.click(
+        screen.getByRole("button", {
+          name: COPY.programs.settingsAttendanceQrDownload,
+        })
+      );
+      await expect(
+        screen.findByText(COPY.programs.settingsAttendanceQrDownloadSuccess)
+      ).resolves.toBeVisible();
+
+      click.mockImplementation(() => {
+        throw new Error("download blocked");
+      });
+
+      await user.click(
+        screen.getByRole("button", {
+          name: COPY.programs.settingsAttendanceQrDownload,
+        })
+      );
+      await expect(
+        screen.findByText(COPY.programs.settingsAttendanceQrDownloadError)
+      ).resolves.toBeVisible();
+      view.unmount();
+    } finally {
+      click.mockRestore();
+    }
+  });
+
   test("reports a blocked permanent Program sign print instead of staying silent", async () => {
     mocks.getProgramAttendanceArtifact.mockResolvedValue({
       artifact: {
@@ -986,6 +1025,40 @@ describe(ProgramSettings, () => {
       expect(
         screen.queryByText(COPY.programs.settingsAttendanceQrPrintError)
       ).not.toBeInTheDocument();
+    } finally {
+      open.mockRestore();
+    }
+  });
+
+  test("reports a native permanent Program print failure", async () => {
+    const printDocument = document.implementation.createHTMLDocument();
+    const print = vi.fn<() => void>(() => {
+      throw new Error("native print failed");
+    });
+    const open = vi.spyOn(window, "open").mockReturnValue({
+      document: printDocument,
+      focus: vi.fn<() => void>(),
+      print,
+    } as unknown as Window);
+    const user = userEvent.setup();
+    try {
+      render(
+        <ProgramSettings
+          program={recurringProgram}
+          section="attendance"
+          onTaskChange={vi.fn<(task: "events" | "schedule" | null) => void>()}
+        />
+      );
+      await screen.findByAltText(COPY.programs.settingsAttendanceQrLabel);
+      await user.click(
+        screen.getByRole("button", {
+          name: COPY.programs.settingsAttendanceQrPrint,
+        })
+      );
+      await expect(
+        screen.findByText(COPY.programs.settingsAttendanceQrPrintError)
+      ).resolves.toBeVisible();
+      expect(print).toHaveBeenCalledOnce();
     } finally {
       open.mockRestore();
     }

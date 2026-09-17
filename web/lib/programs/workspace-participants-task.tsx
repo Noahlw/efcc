@@ -498,8 +498,7 @@ export const ParticipantsTask = () => {
       }
       const focusId = pendingFocusRef.current;
       if (focusId !== null) {
-        /* oxlint-disable-next-line unicorn/prefer-query-selector -- persisted focus IDs identify stable controls exactly. */
-        const target = document.getElementById(focusId);
+        const target = document.querySelector<HTMLElement>(`#${focusId}`);
         if (target instanceof HTMLElement) {
           target.focus({ preventScroll: true });
           clearWorkspaceFocus(scrollScope);

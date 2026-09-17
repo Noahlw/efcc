@@ -1021,6 +1021,9 @@ export const COPY = {
       "這個 QR 代表課程；掃描後會帶到最新可簽到的聚會，不會綁定某一節日期。",
     settingsAttendanceQrLabel: "永久課程 QR 碼",
     settingsAttendanceQrDownload: "下載 QR 圖片",
+    settingsAttendanceQrDownloadError: "未能下載 QR 圖片，請重試。",
+    settingsAttendanceQrDownloadSuccess:
+      "QR 圖片下載要求已送出，請在瀏覽器下載項目確認。",
     settingsAttendanceQrPrint: "列印永久告示牌",
     settingsAttendanceQrLoading: "正在準備 QR 碼…",
     settingsAttendanceQrUnavailable: "暫時無法載入課程 QR 碼。",

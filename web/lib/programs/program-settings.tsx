@@ -394,7 +394,7 @@ const ProgramAttendanceQrCard = ({
   const [qrState, setQrState] = useState<"loading" | "ready" | "error">(
     "loading"
   );
-  const [printNotice, setPrintNotice] = useState<{
+  const [actionNotice, setActionNotice] = useState<{
     tone: "success" | "error";
     message: string;
   } | null>(null);
@@ -427,55 +427,85 @@ const ProgramAttendanceQrCard = ({
 
   function downloadQr() {
     if (!qr) {
+      setActionNotice({
+        tone: "error",
+        message: COPY.programs.settingsAttendanceQrDownloadError,
+      });
       return;
     }
+    setActionNotice(null);
     const link = document.createElement("a");
     link.href = qr;
     link.download = programArtifactFileName(artifact.program_name);
-    link.click();
+    try {
+      document.body.append(link);
+      link.click();
+      setActionNotice({
+        tone: "success",
+        message: COPY.programs.settingsAttendanceQrDownloadSuccess,
+      });
+    } catch {
+      setActionNotice({
+        tone: "error",
+        message: COPY.programs.settingsAttendanceQrDownloadError,
+      });
+    } finally {
+      link.remove();
+    }
   }
 
   function printSign() {
     if (!qr) {
-      return;
-    }
-    const printWindow = window.open("", "_blank", "popup,width=640,height=720");
-    if (!printWindow) {
-      setPrintNotice({
+      setActionNotice({
         tone: "error",
         message: COPY.programs.settingsAttendanceQrPrintError,
       });
       return;
     }
-    setPrintNotice(null);
-    const doc = printWindow.document;
-    doc.open();
-    doc.write(
-      "<!doctype html><html><head><title>EFCC Program QR</title></head><body></body></html>"
-    );
-    const style = doc.createElement("style");
-    style.textContent =
-      "body{font-family:system-ui,sans-serif;display:grid;place-items:center;min-height:100vh;margin:0;padding:32px;box-sizing:border-box;text-align:center}main{max-width:520px}img{display:block;width:min(100%,360px);height:auto;margin:24px auto}h1{font-size:32px;margin:0 0 12px}p{font-size:18px;line-height:1.5;margin:8px 0}@media print{body{padding:0}}";
-    doc.head.append(style);
-    const main = doc.createElement("main");
-    const title = doc.createElement("h1");
-    title.textContent = artifact.program_name;
-    const lead = doc.createElement("p");
-    lead.textContent = COPY.programs.settingsAttendanceQrLabel;
-    const image = doc.createElement("img");
-    image.src = qr;
-    image.alt = COPY.programs.settingsAttendanceQrLabel;
-    const instruction = doc.createElement("p");
-    instruction.textContent = COPY.programs.settingsAttendanceQrLead;
-    main.append(title, lead, image, instruction);
-    doc.body.append(main);
-    doc.close();
-    printWindow.focus();
-    printWindow.print();
-    setPrintNotice({
-      tone: "success",
-      message: COPY.programs.settingsAttendanceQrPrintSuccess,
-    });
+    const printWindow = window.open("", "_blank", "popup,width=640,height=720");
+    if (!printWindow) {
+      setActionNotice({
+        tone: "error",
+        message: COPY.programs.settingsAttendanceQrPrintError,
+      });
+      return;
+    }
+    setActionNotice(null);
+    try {
+      const doc = printWindow.document;
+      doc.open();
+      doc.write(
+        "<!doctype html><html><head><title>EFCC Program QR</title></head><body></body></html>"
+      );
+      const style = doc.createElement("style");
+      style.textContent =
+        "body{font-family:system-ui,sans-serif;display:grid;place-items:center;min-height:100vh;margin:0;padding:32px;box-sizing:border-box;text-align:center}main{max-width:520px}img{display:block;width:min(100%,360px);height:auto;margin:24px auto}h1{font-size:32px;margin:0 0 12px}p{font-size:18px;line-height:1.5;margin:8px 0}@media print{body{padding:0}}";
+      doc.head.append(style);
+      const main = doc.createElement("main");
+      const title = doc.createElement("h1");
+      title.textContent = artifact.program_name;
+      const lead = doc.createElement("p");
+      lead.textContent = COPY.programs.settingsAttendanceQrLabel;
+      const image = doc.createElement("img");
+      image.src = qr;
+      image.alt = COPY.programs.settingsAttendanceQrLabel;
+      const instruction = doc.createElement("p");
+      instruction.textContent = COPY.programs.settingsAttendanceQrLead;
+      main.append(title, lead, image, instruction);
+      doc.body.append(main);
+      doc.close();
+      printWindow.focus();
+      printWindow.print();
+      setActionNotice({
+        tone: "success",
+        message: COPY.programs.settingsAttendanceQrPrintSuccess,
+      });
+    } catch {
+      setActionNotice({
+        tone: "error",
+        message: COPY.programs.settingsAttendanceQrPrintError,
+      });
+    }
   }
 
   return (
@@ -523,12 +553,12 @@ const ProgramAttendanceQrCard = ({
       <p className="m-0 wrap-anywhere text-center text-sm font-semibold">
         {artifact.program_name}
       </p>
-      {printNotice !== null && (
+      {actionNotice !== null && (
         <Alert
-          tone={printNotice.tone}
-          announcement={printNotice.tone === "error" ? "assertive" : "polite"}
+          tone={actionNotice.tone}
+          announcement={actionNotice.tone === "error" ? "assertive" : "polite"}
         >
-          {printNotice.message}
+          {actionNotice.message}
         </Alert>
       )}
       <div className="flex min-w-0 flex-wrap gap-[var(--screen-utility-gap)]">

@@ -2301,6 +2301,7 @@ describe("ENR-01 participants workspace", () => {
     } finally {
       vi.useRealTimers();
       sessionStorage.removeItem(storageKey);
+      scroller.remove();
     }
   });
 
