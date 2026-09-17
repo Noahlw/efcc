@@ -75,6 +75,7 @@ import {
   ScreenStatus,
 } from "@/lib/screen-foundations";
 
+import { isAuthoritativeRevision } from "./authoritative-revision";
 import { EventCheckInSheet } from "./event-check-in-sheet";
 import {
   clearManagementDraft,
@@ -382,6 +383,7 @@ export const EventDetail = ({
   const eventIdentityRef = useRef({ programId, eventId });
   const eventRequestSequenceRef = useRef(0);
   const ownAttendanceRequestSequenceRef = useRef(0);
+  const detailRevisionRef = useRef<string | null>(null);
   const pendingEventMutationRef = useRef<EventMutationRecovery | null>(
     restoredPendingMutation
   );
@@ -446,6 +448,17 @@ export const EventDetail = ({
       ) {
         return null;
       }
+      if (
+        !isAuthoritativeRevision(
+          next.event,
+          detailRevisionRef.current === null
+            ? null
+            : { updated_at: detailRevisionRef.current }
+        )
+      ) {
+        return null;
+      }
+      detailRevisionRef.current = next.event.updated_at;
       setDetail(next);
       return next;
     } catch (error) {
@@ -466,6 +479,7 @@ export const EventDetail = ({
   }, [eventId, isCurrentEvent, onAuthRequired, programId]);
 
   useEffect(() => {
+    detailRevisionRef.current = null;
     setDetail(null);
     setLoadError(null);
     setNotice(null);

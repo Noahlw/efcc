@@ -66,6 +66,10 @@ import {
 
 import { MemberPicker } from "./member-picker";
 import type { ProgramsParticipantTab } from "./programs-intent";
+import {
+  consumeWorkspaceScroll,
+  restoreProgramsScrollY,
+} from "./programs-scroll";
 import { useAsyncResource } from "./use-async-resource";
 import {
   formatEventTime,
@@ -417,6 +421,9 @@ export const ParticipantsTask = () => {
   const mountedRef = useRef(true);
   const approvalSequenceRef = useRef(0);
   const attentionRefreshRef = useRef(onAttentionRefresh);
+  const scrollScope = `${programId}:participants`;
+  const pendingScrollRef = useRef<number | null>(null);
+  const scrollRestoredRef = useRef(false);
 
   useEffect(
     () => () => {
@@ -431,7 +438,6 @@ export const ParticipantsTask = () => {
   useEffect(() => {
     void run();
   }, [run]);
-
   useEffect(() => {
     if (state.kind === "ready") {
       lastReadyRef.current = state;
@@ -439,6 +445,20 @@ export const ParticipantsTask = () => {
     if (state.kind === "error" && lastReadyRef.current !== null) {
       setParticipantsStale(true);
     }
+  }, [state]);
+  useEffect(() => {
+    pendingScrollRef.current = consumeWorkspaceScroll(scrollScope);
+  }, [scrollScope]);
+  useEffect(() => {
+    if (
+      scrollRestoredRef.current ||
+      pendingScrollRef.current === null ||
+      state.kind !== "ready"
+    ) {
+      return;
+    }
+    scrollRestoredRef.current = true;
+    restoreProgramsScrollY(pendingScrollRef.current);
   }, [state]);
   useEffect(() => {
     if (addParticipantWasOpenRef.current && !addParticipantOpen) {

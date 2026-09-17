@@ -57,6 +57,7 @@ import type {
   ProgramsTask,
 } from "./programs-intent";
 import type { ManagementNotificationState } from "./programs-notifications";
+import { rememberWorkspaceScroll } from "./programs-scroll";
 import { useAsyncResource } from "./use-async-resource";
 import {
   hasModule,
@@ -842,6 +843,9 @@ export const ProgramWorkspace = ({
     nextEventId?: string | null,
     nextScheduleOrigin?: ProgramsScheduleOrigin
   ) => {
+    if (task === "participants" && nextTask !== "participants") {
+      rememberWorkspaceScroll(`${programId}:participants`);
+    }
     if (nextScheduleOrigin !== undefined) {
       onTaskChange(nextTask, nextEventId, nextScheduleOrigin);
       return;
@@ -976,6 +980,9 @@ export const ProgramWorkspace = ({
     if (focusedSchedule) {
       onTaskChange(scheduleOrigin === "settings" ? "settings" : "events");
       return;
+    }
+    if (task === "participants") {
+      rememberWorkspaceScroll(`${programId}:participants`);
     }
     onBack();
   };

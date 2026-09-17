@@ -745,6 +745,89 @@ test.describe("T05.5 management Browser Acceptance", () => {
     }
   });
 
+  test("restores the Participants list position after returning from Overview", async ({
+    page,
+  }) => {
+    await loginAs(page);
+    const fixture = await createFixture(page, crypto.randomUUID().slice(0, 8));
+    try {
+      for (let index = 0; index < 14; index += 1) {
+        const created = await page.evaluate(async (programId) => {
+          const response = await fetch(
+            `/api/v1/programs/${encodeURIComponent(programId)}/enrollments`,
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ member_user_id: "U-E2E-MEMBER" }),
+            }
+          );
+          return {
+            status: response.status,
+            body: (await response.json()) as {
+              data?: { enrollment?: { enrollment_id?: string } };
+            },
+          };
+        }, fixture.programId);
+        expect(created.status).toBe(201);
+        const enrollmentId = created.body.data?.enrollment?.enrollment_id;
+        expect(enrollmentId).toBeTruthy();
+        const cancelled = await page.evaluate(
+          async ({ programId, enrollmentId }) => {
+            const response = await fetch(
+              `/api/v1/programs/${encodeURIComponent(programId)}/enrollments/${encodeURIComponent(enrollmentId ?? "")}/cancel`,
+              {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ reason: "滾動位置測試" }),
+              }
+            );
+            return response.status;
+          },
+          { programId: fixture.programId, enrollmentId }
+        );
+        expect(cancelled).toBe(200);
+      }
+
+      await page.goto(
+        `/programs?mode=management&program=${encodeURIComponent(fixture.programId)}&task=participants&participantTab=history`
+      );
+      await expect(
+        page.getByRole("heading", { name: COPY.workspaceParticipants })
+      ).toBeVisible();
+      await expect
+        .poll(() => page.locator("#participants-history-panel li").count())
+        .toBeGreaterThan(10);
+      await page.evaluate(() => {
+        const scroller = document.getElementById("shell-content");
+        scroller?.scrollTo(0, scroller.scrollHeight);
+      });
+      const scrolledTo = await page.evaluate(
+        () => document.getElementById("shell-content")?.scrollTop ?? 0
+      );
+      expect(scrolledTo).toBeGreaterThan(0);
+
+      await page.getByRole("link", { name: COPY.workspaceOverview }).click();
+      await expect(
+        page.getByRole("heading", { name: fixture.programName })
+      ).toBeVisible();
+      await page
+        .getByRole("link", { name: COPY.workspaceParticipants })
+        .click();
+      await expect
+        .poll(() => new URL(page.url()).searchParams.get("task"))
+        .toBe("participants");
+      await expect
+        .poll(() =>
+          page.evaluate(
+            () => document.getElementById("shell-content")?.scrollTop ?? 0
+          )
+        )
+        .toBe(scrolledTo);
+    } finally {
+      await restoreFixture(page, fixture);
+    }
+  });
+
   test("keeps modifier-key notification navigation independent from read failures", async ({
     page,
     browser,

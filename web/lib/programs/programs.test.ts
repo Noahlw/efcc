@@ -23,6 +23,7 @@ import { ACCESS_COOKIE_NAME } from "../auth/cookies";
 import { applyMigrations, testDb } from "../auth/test-bootstrap";
 import { completeCredentialUpgrade } from "../auth/upgrade";
 import { CAPABILITY_CATALOG } from "../identity/capability-catalog";
+import { applyAuthoritativeRevision } from "./authoritative-revision";
 import { D1CapabilityAuthorizer } from "./capability-authorizer";
 import { D1WorkspaceStore } from "./d1-workspace-store";
 import {
@@ -5911,6 +5912,40 @@ describe("EVT-02: recurring preview and generation (#252)", () => {
       await new D1WorkspaceStore(testDb()).listPreviewOccurrences(plan.plan_id)
     ).find((occurrence) => occurrence.occurs_on === overrideDate);
     assert.strictEqual(storedOccurrence?.replacement_date, replacementDate);
+  });
+  test("EVT-02.2 rejects a persisted empty Plan before creating Events", async () => {
+    const programId = await freshProgram("EVT-02 Empty Reviewed Plan");
+    await createRule(adminAccess, programId, {
+      recurrence: "WEEKLY",
+      day_of_week: 3,
+      start_time: "19:30",
+      end_time: "21:00",
+      effective_start_date: addWallDays(hkTodayWallDate(), -30),
+      effective_end_date: addWallDays(hkTodayWallDate(), -1),
+    });
+    const plan = await preview(adminAccess, programId, 14);
+    assert.strictEqual(plan.occurrences.length, 0);
+    const generated = await generateRequest(programId, plan.plan_id);
+    assert.strictEqual(generated.status, 422);
+    assert.strictEqual((await problemOf(generated)).code, "VALIDATION");
+    const durable = await testDb()
+      .prepare(
+        `SELECT COUNT(*) AS count
+         FROM events
+         WHERE program_id = ?`
+      )
+      .bind(programId)
+      .first<{ count: number }>();
+    assert.strictEqual(durable?.count ?? 0, 0);
+    const runs = await testDb()
+      .prepare(
+        `SELECT COUNT(*) AS count
+         FROM program_generation_runs
+         WHERE program_id = ?`
+      )
+      .bind(programId)
+      .first<{ count: number }>();
+    assert.strictEqual(runs?.count ?? 0, 0);
   });
 
   test("EVT-02.2 atomic generation guard rejects a schedule revision before Event writes", async () => {
@@ -12207,17 +12242,9 @@ describe("#622 R41/R42: committed writes survive a failing readback", () => {
     assert.strictEqual(fresh.status, "Cancelled");
     // Apply responses in arrival order. The newer body must remain authoritative
     // when the held older body arrives later.
-    let authoritativeStatus: string | null = null;
-    let authoritativeRevision = "";
-    const applyRead = (row: EventListRow) => {
-      if (row.updated_at >= authoritativeRevision) {
-        authoritativeStatus = row.status;
-        authoritativeRevision = row.updated_at;
-      }
-    };
-    applyRead(fresh);
-    applyRead(older);
-    assert.strictEqual(authoritativeStatus, "Cancelled");
+    const afterFresh = applyAuthoritativeRevision(fresh, null);
+    const authoritative = applyAuthoritativeRevision(older, afterFresh);
+    assert.strictEqual(authoritative?.status, "Cancelled");
     assert.ok(
       fresh.updated_at >= older.updated_at,
       "the newer response must not carry an older revision"
@@ -12226,10 +12253,10 @@ describe("#622 R41/R42: committed writes survive a failing readback", () => {
       `${fresh.status}:${fresh.updated_at}`,
       `${older.status}:${older.updated_at}`
     );
-    const authoritative = await testDb()
+    const durable = await testDb()
       .prepare("SELECT status FROM events WHERE event_id = ?")
       .bind(event.event_id)
       .first<{ status: string }>();
-    assert.strictEqual(authoritative?.status, "Cancelled");
+    assert.strictEqual(durable?.status, "Cancelled");
   }, 120_000);
 });
