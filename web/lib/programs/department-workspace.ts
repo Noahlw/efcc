@@ -311,6 +311,8 @@ export interface ManagementCockpitNextEvent {
 
 export interface ManagementCockpitView {
   program_id: string;
+  /** Highest source-row revision represented by this projection. */
+  updated_at: string;
   next_event: ManagementCockpitNextEvent | null;
   /** Every currently open check-in Event, ordered for operator choice. */
   open_events: ManagementCockpitNextEvent[];
@@ -1499,12 +1501,37 @@ export class DepartmentWorkspace {
       MODULE_KEY.ENROLLMENT
     );
 
+    const events = isEventsEnabled
+      ? await this.store.listEvents(row.program_id)
+      : [];
+    const enrollmentRequests = isEnrollmentEnabled
+      ? await this.store.listEnrollmentRequests(row.program_id)
+      : [];
+    const enrollments = isEnrollmentEnabled
+      ? await this.store.listEnrollments(row.program_id)
+      : [];
+    const revisionValues = [
+      row.updated_at,
+      ...events.map((event) => event.updated_at),
+      ...enrollmentRequests.flatMap((request) => [
+        request.submitted_at,
+        request.decided_at,
+      ]),
+      ...enrollments.flatMap((enrollment) => [
+        enrollment.enrolled_at,
+        enrollment.cancelled_at,
+      ]),
+    ].filter((value): value is string => value !== null);
+    const updated_at = revisionValues.reduce(
+      (latest, value) => (value > latest ? value : latest),
+      row.updated_at
+    );
+
     let next_event: ManagementCockpitNextEvent | null = null;
     let open_events: ManagementCockpitNextEvent[] = [];
     let active_event_count = 0;
 
     if (isEventsEnabled) {
-      const events = await this.store.listEvents(row.program_id);
       const activeEvents = events.filter(
         (e) => e.status === "Active" && e.availability === "Active"
       );
@@ -1578,6 +1605,7 @@ export class DepartmentWorkspace {
 
     return {
       program_id: row.program_id,
+      updated_at,
       next_event,
       open_events,
       active_event_count,

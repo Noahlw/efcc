@@ -282,6 +282,7 @@ const plan: PreviewResult = {
 
 const cockpitWithNext: ManagementCockpitView = {
   program_id: "program-1",
+  updated_at: "2026-01-01T00:00:00.000Z",
   next_event: {
     event_id: "event-1",
     program_id: "program-1",
@@ -301,6 +302,7 @@ const cockpitWithNext: ManagementCockpitView = {
 
 const cockpitNoNext: ManagementCockpitView = {
   program_id: "program-1",
+  updated_at: "2026-01-01T00:00:00.000Z",
   next_event: null,
   active_event_count: 2,
   pending_enrollment_count: 0,
@@ -1130,12 +1132,20 @@ describe(ProgramWorkspace, () => {
       .mockResolvedValueOnce({ program, department, modules })
       .mockRejectedValueOnce(new Error("refresh unavailable"))
       .mockResolvedValueOnce({
-        program: { ...program, lifecycle: "Archived" },
+        program: {
+          ...program,
+          lifecycle: "Archived",
+          updated_at: "2026-01-02T00:00:00.000Z",
+        },
         department,
         modules,
       });
     mocks.updateProgram.mockResolvedValue({
-      program: { ...program, lifecycle: "Archived" },
+      program: {
+        ...program,
+        lifecycle: "Archived",
+        updated_at: "2026-01-02T00:00:00.000Z",
+      },
     });
 
     render(
@@ -1176,13 +1186,82 @@ describe(ProgramWorkspace, () => {
     expect(mocks.getManagementProgram).toHaveBeenCalledTimes(3);
   });
 
+  test("keeps a revision-rejected workspace refresh stale", async () => {
+    const user = userEvent.setup();
+    const latestProgram = {
+      ...program,
+      name: "最新課程名稱",
+      updated_at: "2026-01-02T00:00:00.000Z",
+    };
+    const olderProgram = {
+      ...program,
+      name: "舊課程名稱",
+      updated_at: "2026-01-01T00:00:00.000Z",
+    };
+    mocks.getManagementProgram.mockReset();
+    mocks.getManagementProgram
+      .mockResolvedValueOnce({
+        program: latestProgram,
+        department,
+        modules,
+        cockpit: { ...cockpitWithNext, updated_at: "2026-01-02T00:00:00.000Z" },
+      })
+      .mockResolvedValueOnce({
+        program: olderProgram,
+        department,
+        modules,
+        cockpit: { ...cockpitWithNext, updated_at: "2026-01-01T00:00:00.000Z" },
+      });
+    mocks.updateProgram.mockResolvedValue({
+      program: { ...latestProgram, lifecycle: "Archived" },
+    });
+
+    render(
+      <ProgramWorkspace
+        programId="program-1"
+        task="settings"
+        onBack={vi.fn()}
+        onTaskChange={vi.fn()}
+      />
+    );
+
+    await screen.findByRole("heading", {
+      name: COPY.programs.settingsHubTitle,
+    });
+    await user.click(
+      screen.getByRole("button", { name: /封存課程停止一般使用/u })
+    );
+    await user.click(
+      screen.getByRole("button", {
+        name: COPY.programs.settingsHubArchiveConfirm,
+      })
+    );
+
+    await waitFor(() =>
+      expect(
+        screen.getByTestId("program-workspace-freshness")
+      ).toHaveTextContent(COPY.programs.workspaceSavedStale)
+    );
+    expect(
+      screen.getByRole("heading", { name: "最新課程名稱" })
+    ).toBeInTheDocument();
+    expect(screen.queryByText("舊課程名稱")).not.toBeInTheDocument();
+    expect(
+      screen.queryByText(COPY.programs.settingsArchiveSaved)
+    ).not.toBeInTheDocument();
+  });
+
   test("reconciles a response-lost archive without replaying the write", async () => {
     const user = userEvent.setup();
     mocks.getManagementProgram.mockReset();
     mocks.getManagementProgram
       .mockResolvedValueOnce({ program, department, modules })
       .mockResolvedValueOnce({
-        program: { ...program, lifecycle: "Archived" },
+        program: {
+          ...program,
+          lifecycle: "Archived",
+          updated_at: "2026-01-02T00:00:00.000Z",
+        },
         department,
         modules,
       });
@@ -1590,7 +1669,11 @@ describe(ProgramWorkspace, () => {
     };
     mocks.getEvent.mockResolvedValueOnce(detail).mockResolvedValueOnce({
       ...detail,
-      event: { ...detail.event, status: "Cancelled" as const },
+      event: {
+        ...detail.event,
+        status: "Cancelled" as const,
+        updated_at: "2026-01-02T00:00:00.000Z",
+      },
     });
     mocks.cancelEvent.mockRejectedValueOnce(new Error("request lost"));
     const user = userEvent.setup();
@@ -1629,7 +1712,7 @@ describe(ProgramWorkspace, () => {
         button: 0,
       });
       outsideLink.dispatchEvent(navigation);
-      expect(navigation.defaultPrevented).toBe(true);
+      expect(navigation.defaultPrevented).toBeTruthy();
       const beforeUnload = new Event("beforeunload", { cancelable: true });
       expect(window.dispatchEvent(beforeUnload)).toBeFalsy();
       const blockedHref = window.location.href;
@@ -1646,7 +1729,7 @@ describe(ProgramWorkspace, () => {
       const cleanBeforeUnload = new Event("beforeunload", {
         cancelable: true,
       });
-      expect(window.dispatchEvent(cleanBeforeUnload)).toBe(true);
+      expect(window.dispatchEvent(cleanBeforeUnload)).toBeTruthy();
     } finally {
       outsideLink.remove();
     }
@@ -1881,12 +1964,20 @@ describe(ProgramWorkspace, () => {
       .mockReset()
       .mockResolvedValueOnce({ program, department, modules })
       .mockResolvedValue({
-        program: { ...program, name: "儲存後名稱" },
+        program: {
+          ...program,
+          name: "儲存後名稱",
+          updated_at: "2026-01-02T00:00:00.000Z",
+        },
         department,
         modules,
       });
     mocks.updateProgram.mockResolvedValueOnce({
-      program: { ...program, name: "儲存後名稱" },
+      program: {
+        ...program,
+        name: "儲存後名稱",
+        updated_at: "2026-01-02T00:00:00.000Z",
+      },
     });
     const user = userEvent.setup();
     const exitClick = vi.fn();

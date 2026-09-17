@@ -67,7 +67,11 @@ import {
 import { MemberPicker } from "./member-picker";
 import type { ProgramsParticipantTab } from "./programs-intent";
 import {
+  clearWorkspaceFocus,
+  clearWorkspaceScroll,
+  consumeWorkspaceFocus,
   consumeWorkspaceScroll,
+  rememberWorkspaceFocus,
   rememberWorkspaceScroll,
   restoreProgramsScrollY,
 } from "./programs-scroll";
@@ -424,6 +428,7 @@ export const ParticipantsTask = () => {
   const attentionRefreshRef = useRef(onAttentionRefresh);
   const scrollScope = `${programId}:participants`;
   const pendingScrollRef = useRef<number | null>(null);
+  const pendingFocusRef = useRef<string | null>(null);
   const scrollRestoredRef = useRef(false);
 
   useEffect(
@@ -449,7 +454,25 @@ export const ParticipantsTask = () => {
   }, [state]);
   useEffect(() => {
     pendingScrollRef.current = consumeWorkspaceScroll(scrollScope);
+    pendingFocusRef.current = consumeWorkspaceFocus(scrollScope);
   }, [scrollScope]);
+  useEffect(() => {
+    const remember = (event: FocusEvent) => {
+      const { target } = event;
+      if (!(target instanceof HTMLElement) || target.id.length === 0) {
+        return;
+      }
+      if (
+        target.id.startsWith("participants-") ||
+        target.id === "programs-add-participant-trigger"
+      ) {
+        rememberWorkspaceFocus(scrollScope, target.id);
+      }
+    };
+    document.addEventListener("focusin", remember);
+    return () => document.removeEventListener("focusin", remember);
+  }, [scrollScope]);
+
   useEffect(() => {
     const scroller = document.querySelector<HTMLElement>("#shell-content");
     if (scroller === null) {
@@ -461,18 +484,31 @@ export const ParticipantsTask = () => {
   }, [scrollScope]);
   useEffect(() => {
     if (
-      scrollRestoredRef.current ||
-      pendingScrollRef.current === null ||
+      (scrollRestoredRef.current && pendingFocusRef.current === null) ||
+      (pendingScrollRef.current === null && pendingFocusRef.current === null) ||
       state.kind !== "ready"
     ) {
       return;
     }
     scrollRestoredRef.current = true;
     const timeout = globalThis.setTimeout(() => {
-      restoreProgramsScrollY(pendingScrollRef.current ?? 0);
+      if (pendingScrollRef.current !== null) {
+        restoreProgramsScrollY(pendingScrollRef.current);
+        clearWorkspaceScroll(scrollScope);
+        pendingScrollRef.current = null;
+      }
+      const focusId = pendingFocusRef.current;
+      if (focusId !== null) {
+        const target = document.getElementById(focusId);
+        if (target instanceof HTMLElement) {
+          target.focus({ preventScroll: true });
+          clearWorkspaceFocus(scrollScope);
+          pendingFocusRef.current = null;
+        }
+      }
     }, 50);
     return () => globalThis.clearTimeout(timeout);
-  }, [state]);
+  }, [scrollScope, state]);
   useEffect(() => {
     if (addParticipantWasOpenRef.current && !addParticipantOpen) {
       document

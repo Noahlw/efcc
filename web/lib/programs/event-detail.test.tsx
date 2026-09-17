@@ -842,7 +842,11 @@ describe("EVT-01 event detail", () => {
   test("edit form saves identity changes without changing the schedule", async () => {
     mocks.getEvent.mockResolvedValue(detailFixture());
     mocks.updateEvent.mockResolvedValue({
-      event: { ...detailFixture().event, name: "改名聚會" },
+      event: {
+        ...detailFixture().event,
+        name: "改名聚會",
+        updated_at: "2026-01-02T00:00:00.000Z",
+      },
     });
     const user = userEvent.setup();
     const onAttentionRefresh = vi.fn();
@@ -1054,7 +1058,11 @@ describe("EVT-01 event detail", () => {
       })
     );
     mocks.updateEvent.mockResolvedValue({
-      event: { ...detailFixture().event, name: "改名聚會" },
+      event: {
+        ...detailFixture().event,
+        name: "改名聚會",
+        updated_at: "2026-01-02T00:00:00.000Z",
+      },
     });
     const user = userEvent.setup();
     render(
@@ -1090,9 +1098,32 @@ describe("EVT-01 event detail", () => {
   });
 
   test("deactivation requires inline confirmation and offers Undo", async () => {
-    mocks.getEvent.mockResolvedValue(detailFixture());
+    mocks.getEvent
+      .mockResolvedValueOnce(detailFixture())
+      .mockResolvedValueOnce(
+        detailFixture({
+          event: {
+            ...detailFixture().event,
+            availability: "Inactive",
+            updated_at: "2026-01-02T00:00:00.000Z",
+          },
+        })
+      )
+      .mockResolvedValue(
+        detailFixture({
+          event: {
+            ...detailFixture().event,
+            availability: "Active",
+            updated_at: "2026-01-03T00:00:00.000Z",
+          },
+        })
+      );
     mocks.setEventAvailability.mockResolvedValue({
-      event: { ...detailFixture().event, availability: "Inactive" },
+      event: {
+        ...detailFixture().event,
+        availability: "Inactive",
+        updated_at: "2026-01-02T00:00:00.000Z",
+      },
     });
     const user = userEvent.setup();
     render(
@@ -1145,13 +1176,27 @@ describe("EVT-01 event detail", () => {
     // Program-wide enrollments are NOT this event's operations: with zero
     // event check-ins the deactivation is immediate even when the Program
     // has unrelated active enrollments.
-    mocks.getEvent.mockResolvedValue(
-      detailFixture({
-        participant_summary: { active_enrollments: 3, checked_in: 0 },
-      })
-    );
+    mocks.getEvent
+      .mockResolvedValueOnce(
+        detailFixture({
+          participant_summary: { active_enrollments: 3, checked_in: 0 },
+        })
+      )
+      .mockResolvedValue(
+        detailFixture({
+          event: {
+            ...detailFixture().event,
+            availability: "Inactive",
+            updated_at: "2026-01-02T00:00:00.000Z",
+          },
+        })
+      );
     mocks.setEventAvailability.mockResolvedValue({
-      event: { ...detailFixture().event, availability: "Inactive" },
+      event: {
+        ...detailFixture().event,
+        availability: "Inactive",
+        updated_at: "2026-01-02T00:00:00.000Z",
+      },
     });
     const user = userEvent.setup();
     render(
@@ -1193,9 +1238,22 @@ describe("EVT-01 event detail", () => {
           participant_summary: { active_enrollments: 3, checked_in: 0 },
         })
       )
-      .mockRejectedValueOnce(new Error("readback unavailable"));
+      .mockRejectedValueOnce(new Error("readback unavailable"))
+      .mockResolvedValue(
+        detailFixture({
+          event: {
+            ...detailFixture().event,
+            availability: "Inactive",
+            updated_at: "2026-01-02T00:00:00.000Z",
+          },
+        })
+      );
     mocks.setEventAvailability.mockResolvedValue({
-      event: { ...detailFixture().event, availability: "Inactive" },
+      event: {
+        ...detailFixture().event,
+        availability: "Inactive",
+        updated_at: "2026-01-02T00:00:00.000Z",
+      },
     });
     const user = userEvent.setup();
     render(
@@ -1219,7 +1277,15 @@ describe("EVT-01 event detail", () => {
       name: COPY.programs.workspaceRetryRefresh,
     });
 
-    mocks.getEvent.mockResolvedValueOnce(detailFixture());
+    mocks.getEvent.mockResolvedValueOnce(
+      detailFixture({
+        event: {
+          ...detailFixture().event,
+          availability: "Inactive",
+          updated_at: "2026-01-02T00:00:00.000Z",
+        },
+      })
+    );
     await user.click(retry);
     await expect(
       screen.findByText(COPY.programs.workspaceReconciled)
@@ -1233,7 +1299,11 @@ describe("EVT-01 event detail", () => {
       participant_summary: { active_enrollments: 0, checked_in: 0 },
     });
     const inactive = detailFixture({
-      event: { ...active.event, availability: "Inactive" },
+      event: {
+        ...active.event,
+        availability: "Inactive",
+        updated_at: "2026-01-02T00:00:00.000Z",
+      },
       participant_summary: { active_enrollments: 0, checked_in: 0 },
     });
     writeWorkspaceMutationRecovery({
@@ -1247,7 +1317,19 @@ describe("EVT-01 event detail", () => {
         expected: { availability: "Inactive" },
       },
     });
-    mocks.getEvent.mockResolvedValueOnce(active).mockResolvedValueOnce(active);
+    mocks.getEvent
+      .mockResolvedValueOnce(active)
+      .mockResolvedValueOnce(active)
+      .mockResolvedValue(
+        detailFixture({
+          event: {
+            ...active.event,
+            availability: "Inactive",
+            updated_at: "2026-01-02T00:00:00.000Z",
+          },
+          participant_summary: { active_enrollments: 0, checked_in: 0 },
+        })
+      );
     const user = userEvent.setup();
     render(
       <EventDetail
@@ -1284,12 +1366,39 @@ describe("EVT-01 event detail", () => {
   });
 
   test("an unrelated edit retires a stale availability Undo", async () => {
-    mocks.getEvent.mockResolvedValue(detailFixture());
+    mocks.getEvent
+      .mockResolvedValueOnce(detailFixture())
+      .mockResolvedValueOnce(
+        detailFixture({
+          event: {
+            ...detailFixture().event,
+            availability: "Inactive",
+            updated_at: "2026-01-02T00:00:00.000Z",
+          },
+        })
+      )
+      .mockResolvedValue(
+        detailFixture({
+          event: {
+            ...detailFixture().event,
+            name: "改名聚會",
+            updated_at: "2026-01-03T00:00:00.000Z",
+          },
+        })
+      );
     mocks.setEventAvailability.mockResolvedValue({
-      event: { ...detailFixture().event, availability: "Inactive" },
+      event: {
+        ...detailFixture().event,
+        availability: "Inactive",
+        updated_at: "2026-01-02T00:00:00.000Z",
+      },
     });
     mocks.updateEvent.mockResolvedValue({
-      event: { ...detailFixture().event, name: "改名聚會" },
+      event: {
+        ...detailFixture().event,
+        name: "改名聚會",
+        updated_at: "2026-01-02T00:00:00.000Z",
+      },
     });
     const user = userEvent.setup();
     render(
@@ -1347,7 +1456,11 @@ describe("EVT-01 event detail", () => {
       })
     );
     mocks.cancelEvent.mockResolvedValue({
-      event: { ...detailFixture().event, status: "Cancelled" },
+      event: {
+        ...detailFixture().event,
+        status: "Cancelled",
+        updated_at: "2026-01-02T00:00:00.000Z",
+      },
     });
     const user = userEvent.setup();
     render(
@@ -1458,7 +1571,11 @@ describe("EVT-01 event detail", () => {
         } as ProblemDetails)
       )
       .mockResolvedValueOnce({
-        event: { ...detailFixture().event, availability: "Inactive" },
+        event: {
+          ...detailFixture().event,
+          availability: "Inactive",
+          updated_at: "2026-01-02T00:00:00.000Z",
+        },
       });
     const user = userEvent.setup();
     render(
@@ -1512,6 +1629,7 @@ describe("EVT-01 event detail", () => {
 
   test("undo is retired when the event is cancelled", async () => {
     let cancelled = false;
+    let deactivated = false;
     mocks.getEvent.mockImplementation(() =>
       Promise.resolve(
         cancelled
@@ -1520,19 +1638,42 @@ describe("EVT-01 event detail", () => {
                 ...detailFixture().event,
                 status: "Cancelled",
                 cancel_reason: "場地維修",
+                updated_at: "2026-01-04T00:00:00.000Z",
               },
             })
-          : detailFixture({
-              participant_summary: { active_enrollments: 0, checked_in: 0 },
-            })
+          : deactivated
+            ? detailFixture({
+                event: {
+                  ...detailFixture().event,
+                  availability: "Inactive",
+                  updated_at: "2026-01-02T00:00:00.000Z",
+                },
+                participant_summary: { active_enrollments: 0, checked_in: 0 },
+              })
+            : detailFixture({
+                participant_summary: { active_enrollments: 0, checked_in: 0 },
+              })
       )
     );
-    mocks.setEventAvailability.mockResolvedValue({
-      event: { ...detailFixture().event, availability: "Inactive" },
+    mocks.setEventAvailability.mockImplementation(async () => {
+      deactivated = true;
+      return {
+        event: {
+          ...detailFixture().event,
+          availability: "Inactive",
+          updated_at: "2026-01-02T00:00:00.000Z",
+        },
+      };
     });
     mocks.cancelEvent.mockImplementation(async () => {
       cancelled = true;
-      return { event: { ...detailFixture().event, status: "Cancelled" } };
+      return {
+        event: {
+          ...detailFixture().event,
+          status: "Cancelled",
+          updated_at: "2026-01-04T00:00:00.000Z",
+        },
+      };
     });
     const user = userEvent.setup();
     render(

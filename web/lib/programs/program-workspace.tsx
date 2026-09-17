@@ -317,6 +317,10 @@ export const ProgramWorkspace = ({
     programId: string;
     resource: WorkspaceResource;
   } | null>(null);
+  // `useAsyncResource` returns the wire payload after toReady runs. Keep a
+  // separate decision bit so callers cannot mistake a revision-rejected
+  // payload for a fresh workspace.
+  const workspaceReadAccepted = useRef(true);
   useEffect(() => {
     mounted.current = true;
     return () => {
@@ -617,10 +621,26 @@ export const ProgramWorkspace = ({
         const authoritativeProgram =
           applyAuthoritativeRevision(next.program, previous?.program ?? null) ??
           next.program;
-        const resource =
-          previous !== null && authoritativeProgram !== next.program
-            ? { ...previous, program: authoritativeProgram }
-            : { ...next, program: authoritativeProgram };
+        const authoritativeCockpit =
+          next.cockpit === undefined
+            ? previous?.cockpit
+            : next.cockpit === null
+              ? (previous?.cockpit ?? null)
+              : (applyAuthoritativeRevision(
+                  next.cockpit,
+                  previous?.cockpit ?? null
+                ) ?? next.cockpit);
+        workspaceReadAccepted.current =
+          previous === null ||
+          (authoritativeProgram === next.program &&
+            authoritativeCockpit === next.cockpit);
+        const resource = {
+          ...next,
+          program: authoritativeProgram,
+          ...(authoritativeCockpit === undefined
+            ? {}
+            : { cockpit: authoritativeCockpit }),
+        };
         authoritativeWorkspace.current = { programId, resource };
         return { kind: "ready", ...resource };
       },
@@ -679,11 +699,14 @@ export const ProgramWorkspace = ({
       await previousRefresh;
       setWorkspaceFreshness("refreshing");
       try {
+        workspaceReadAccepted.current = false;
         const refreshed = await refreshWorkspaceResource();
+        const accepted =
+          refreshed !== undefined && workspaceReadAccepted.current;
         if (mounted.current) {
-          setWorkspaceFreshness(refreshed === undefined ? "stale" : "fresh");
+          setWorkspaceFreshness(accepted ? "fresh" : "stale");
         }
-        return refreshed?.program;
+        return accepted ? refreshed?.program : undefined;
       } catch (error) {
         if (mounted.current) {
           setWorkspaceFreshness("stale");

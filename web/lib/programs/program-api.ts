@@ -156,6 +156,8 @@ export interface ManagementCockpitNextEvent {
 
 export interface ManagementCockpitView {
   program_id: string;
+  /** Highest source-row revision represented by this projection. */
+  updated_at: string;
   next_event: ManagementCockpitNextEvent | null;
   /** Every currently open check-in Event, ordered for operator choice. */
   open_events?: ManagementCockpitNextEvent[];

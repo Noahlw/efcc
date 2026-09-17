@@ -43,6 +43,10 @@ const mocks = vi.hoisted(() => {
     getEvent: vi.fn(),
     getOwnAttendance: vi.fn(),
     listParticipantCatalog: vi.fn(),
+    listEnrollmentSnapshot: vi.fn(),
+    listEnrollmentApprovalRuns: vi.fn(),
+    listEnrollmentRequests: vi.fn(),
+    listEnrollments: vi.fn(),
     pathname: vi.fn(() => "/programs"),
     push: router.push,
     replace: router.replace,
@@ -61,6 +65,10 @@ vi.mock(import("@/lib/programs/program-api"), () => ({
   getEvent: mocks.getEvent,
   getOwnAttendance: mocks.getOwnAttendance,
   listParticipantCatalog: mocks.listParticipantCatalog,
+  listEnrollmentSnapshot: mocks.listEnrollmentSnapshot,
+  listEnrollmentApprovalRuns: mocks.listEnrollmentApprovalRuns,
+  listEnrollmentRequests: mocks.listEnrollmentRequests,
+  listEnrollments: mocks.listEnrollments,
 }));
 
 vi.mock("next/navigation", () => ({
@@ -660,6 +668,13 @@ beforeEach(() => {
   mocks.getManagementDirectory.mockReset();
   mocks.getManagementProgram.mockReset();
   mocks.listParticipantCatalog.mockResolvedValue({ catalog: [] });
+  mocks.listEnrollmentSnapshot.mockResolvedValue({
+    requests: [],
+    enrollments: [],
+  });
+  mocks.listEnrollmentApprovalRuns.mockResolvedValue({ runs: [] });
+  mocks.listEnrollmentRequests.mockResolvedValue({ requests: [] });
+  mocks.listEnrollments.mockResolvedValue({ enrollments: [] });
   mocks.getManagementDirectory.mockResolvedValue({
     departments: [],
     programs: [],
@@ -847,6 +862,74 @@ describe("Programs boundary", () => {
     expect(
       screen.queryByRole("link", { name: COPY.programs.enterManagement })
     ).not.toBeInTheDocument();
+  });
+
+  test("preserves the participant tab and query after an Overview round-trip", async () => {
+    const user = userEvent.setup();
+    window.history.replaceState(
+      {},
+      "",
+      "/programs?mode=management&program=program-1&task=participants&participantTab=history&participantQuery=%E6%9D%8E%E5%90%8C%E5%B7%A5"
+    );
+    mocks.getManagementAccess.mockResolvedValue(managementAccess(true));
+    mocks.getManagementProgram.mockResolvedValue({
+      program: program({
+        manage: true,
+        publish: true,
+        enroll: false,
+        leader_assign: false,
+      }),
+      department: department({
+        manage: true,
+        publish: true,
+        module_configure: true,
+      }),
+      modules: [
+        {
+          department_id: "dept-1",
+          module_key: "enrollment",
+          enabled: 1,
+          enabled_at: "2026-01-01T00:00:00.000Z",
+        },
+      ],
+      cockpit: null,
+    });
+    const view = render(<ProgramsBoundary />);
+
+    await screen.findByRole("heading", {
+      name: COPY.programs.workspaceTaskParticipants,
+    });
+    const initial = new URL(window.location.href);
+    expect(initial.searchParams.get("participantTab")).toBe("history");
+    expect(initial.searchParams.get("participantQuery")).toBe("李同工");
+    const historyTab = screen.getByRole("tab", {
+      name: /歷史/u,
+    });
+    historyTab.focus();
+    expect(document.activeElement).toBe(historyTab);
+
+    await user.click(
+      within(screen.getByTestId("programs-workspace-tabs")).getByRole("link", {
+        name: COPY.programs.workspaceOverviewTab,
+      })
+    );
+    await waitFor(() =>
+      expect(new URL(window.location.href).searchParams.get("task")).toBeNull()
+    );
+
+    await user.click(
+      within(screen.getByTestId("programs-workspace-tabs")).getByRole("link", {
+        name: COPY.programs.workspaceTaskParticipants,
+      })
+    );
+    await waitFor(() => {
+      const params = new URL(window.location.href).searchParams;
+      expect(params.get("task")).toBe("participants");
+      expect(params.get("participantTab")).toBe("history");
+      expect(params.get("participantQuery")).toBe("李同工");
+      expect(document.activeElement?.id).toBe("participants-history-tab");
+    });
+    view.unmount();
   });
 
   test("keeps the compact management notification action in the shared shell", async () => {

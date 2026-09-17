@@ -809,6 +809,9 @@ test.describe("T05.5 management Browser Acceptance", () => {
       await expect
         .poll(() => page.locator("#participants-history-panel li").count())
         .toBeGreaterThan(10);
+      const historyTab = page.getByRole("tab", { name: /歷史/ });
+      await historyTab.focus();
+      await expect(historyTab).toBeFocused();
       await page.evaluate(() => {
         const scroller = document.querySelector<HTMLElement>("#shell-content");
         scroller?.scrollTo(0, scroller.scrollHeight);
@@ -847,6 +850,7 @@ test.describe("T05.5 management Browser Acceptance", () => {
           )
         )
         .toBe(scrolledTo);
+      await expect(page.locator("#participants-history-tab")).toBeFocused();
     } finally {
       await restoreFixture(page, fixture);
     }

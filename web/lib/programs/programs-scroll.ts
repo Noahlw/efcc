@@ -11,6 +11,7 @@
  */
 
 const WORKSPACE_SCROLL_PREFIX = "efcc_programs_workspace_scroll:";
+const WORKSPACE_FOCUS_PREFIX = "efcc_programs_workspace_focus:";
 
 interface SessionStorageLike {
   getItem: (key: string) => string | null;
@@ -52,7 +53,7 @@ export function restoreProgramsScrollY(scrollY: number): void {
 }
 
 /** Session-scoped list position for one Program task surface (#626 R45.1). */
-export function rememberWorkspaceScroll(scope: string): void {
+export function rememberWorkspaceScroll(scope: string, force = false): void {
   try {
     const storage = browser().sessionStorage;
     if (!storage) {
@@ -61,7 +62,7 @@ export function rememberWorkspaceScroll(scope: string): void {
     const key = `${WORKSPACE_SCROLL_PREFIX}${scope}`;
     const current = readProgramsScrollY();
     const stored = storage.getItem(key);
-    if (current === 0 && stored !== null && Number(stored) > 0) {
+    if (!force && current === 0 && stored !== null && Number(stored) > 0) {
       return;
     }
     storage.setItem(key, String(current));
@@ -80,10 +81,52 @@ export function consumeWorkspaceScroll(scope: string): number | null {
     if (stored === null) {
       return null;
     }
-    storage.removeItem(`${WORKSPACE_SCROLL_PREFIX}${scope}`);
     const value = Number(stored);
     return Number.isFinite(value) ? value : null;
   } catch {
     return null;
+  }
+}
+
+/** Clear a remembered position after the destination has restored it. */
+export function clearWorkspaceScroll(scope: string): void {
+  try {
+    browser().sessionStorage?.removeItem(`${WORKSPACE_SCROLL_PREFIX}${scope}`);
+  } catch {
+    // ponytail: scroll memory is cosmetic; a blocked storage write just skips it.
+  }
+}
+
+/** Session-scoped focus target for one Program task surface. */
+export function rememberWorkspaceFocus(scope: string, focusId: string): void {
+  if (focusId.length === 0) {
+    return;
+  }
+  try {
+    browser().sessionStorage?.setItem(
+      `${WORKSPACE_FOCUS_PREFIX}${scope}`,
+      focusId
+    );
+  } catch {
+    // ponytail: focus memory is cosmetic; a blocked storage write just skips it.
+  }
+}
+
+export function consumeWorkspaceFocus(scope: string): string | null {
+  try {
+    return (
+      browser().sessionStorage?.getItem(`${WORKSPACE_FOCUS_PREFIX}${scope}`) ??
+      null
+    );
+  } catch {
+    return null;
+  }
+}
+
+export function clearWorkspaceFocus(scope: string): void {
+  try {
+    browser().sessionStorage?.removeItem(`${WORKSPACE_FOCUS_PREFIX}${scope}`);
+  } catch {
+    // ponytail: focus memory is cosmetic; a blocked storage write just skips it.
   }
 }

@@ -109,6 +109,7 @@ import type {
   ProgramsEventFilter,
 } from "./programs-intent";
 import {
+  clearWorkspaceScroll,
   consumeWorkspaceScroll,
   rememberWorkspaceScroll,
   restoreProgramsScrollY,
@@ -1917,7 +1918,8 @@ export const EventsTask = () => {
     }
     scrollRestoredRef.current = true;
     restoreProgramsScrollY(pendingScrollRef.current);
-  }, [state]);
+    clearWorkspaceScroll(scrollScope);
+  }, [scrollScope, state]);
   const openEvent = (eventId: string, eventAction?: ManagementEventAction) => {
     if (eventsOutcomeUnknown || eventsStale) {
       return;
