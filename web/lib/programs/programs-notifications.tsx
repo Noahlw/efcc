@@ -145,25 +145,31 @@ const NotificationRows = ({
                 if (navigationBypassRef.current.delete(itemKey)) {
                   return;
                 }
-                const plainPrimaryClick =
-                  event.button === 0 &&
-                  !event.metaKey &&
-                  !event.ctrlKey &&
-                  !event.shiftKey &&
-                  !event.altKey;
-                if (!event.defaultPrevented) {
-                  // R50: the read write settles independently of the task
-                  // link, so a slow or failed mark-read never blocks it.
-                  void markRead([item]);
-                }
-                if (!plainPrimaryClick || event.defaultPrevented) {
+                if (
+                  event.button !== 0 ||
+                  event.metaKey ||
+                  event.ctrlKey ||
+                  event.shiftKey ||
+                  event.altKey
+                ) {
+                  if (!event.defaultPrevented) {
+                    void markRead([item]);
+                  }
                   return;
                 }
                 event.preventDefault();
                 const link = event.currentTarget;
-                navigationBypassRef.current.add(itemKey);
-                onNavigate?.();
-                link.click();
+                const continueNavigation = () => {
+                  navigationBypassRef.current.add(itemKey);
+                  onNavigate?.();
+                  link.click();
+                };
+                // R50: the read write settles the navigation either way, so a
+                // failed mark-read can never block the real task.
+                void (async () => {
+                  await markRead([item]);
+                  continueNavigation();
+                })();
               }}
             >
               {item.read || (

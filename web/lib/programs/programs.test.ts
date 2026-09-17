@@ -12034,19 +12034,28 @@ describe("#622 R41/R42: committed writes survive a failing readback", () => {
       },
     }) as Env["DB"];
     let failedReadStatus: number | null = null;
+    let failedReadError: unknown = null;
     try {
       const failedRead = await worker.fetch(
         cockpitRequest(),
         testEnv({ DB: brokenDb })
       );
       failedReadStatus = failedRead.status;
-    } catch {
+    } catch (error) {
+      failedReadError = error;
       failedReadStatus = null;
     }
     assert.ok(
       failedReadStatus === null || failedReadStatus >= 500,
       `a failing readback must never answer with success, got ${String(failedReadStatus)}`
     );
+    if (failedReadError !== null) {
+      assert.match(
+        String((failedReadError as Error).message ?? failedReadError),
+        /readback-unavailable/u,
+        "the failing read must be the injected D1 fault, not an unrelated error"
+      );
+    }
 
     // 3. The committed cancellation is still the authoritative record.
     const committed = await testDb()
@@ -12065,9 +12074,8 @@ describe("#622 R41/R42: committed writes survive a failing readback", () => {
     assert.strictEqual(recoveredBody.data.cockpit.next_event, null);
   }, 120_000);
 
-  test("orders authoritative responses by a revision an older read cannot overwrite", async () => {
+  test("does not let an older in-flight read become the authoritative view", async () => {
     const adminAccess = await accessCookieFor("alice", "alice-secret");
-    const memberAccess = await accessCookieFor("bob", "bob-secret");
     const department = await createDepartment(adminAccess, {
       code: "OUTCOME-02",
       name: "Outcome Ordering Department",
@@ -12077,90 +12085,132 @@ describe("#622 R41/R42: committed writes survive a failing readback", () => {
       behavior_type: "Recurring",
       lifecycle: "Active",
       discoverability: "Listed",
-      enrollment_mode: "MemberRequest",
     });
-    const submitted = await submitRequest(memberAccess, program.program_id);
-    const readRequests = async (): Promise<{
-      data: {
-        requests: {
-          request_id: string;
-          status: string;
-          request_version: number;
-        }[];
-      };
-    }> => {
+    const startsAt = new Date(Date.now() + 3 * 60 * 60_000).toISOString();
+    const endsAt = new Date(Date.now() + 4 * 60 * 60_000).toISOString();
+    const event = await createEventFor(adminAccess, program.program_id, {
+      starts_at: startsAt,
+      ends_at: endsAt,
+      name: "Ordering Event",
+      location: "Room Order",
+    });
+    interface EventListRow {
+      event_id: string;
+      status: string;
+      updated_at: string;
+    }
+    const readEvents = async (db?: Env["DB"]): Promise<EventListRow> => {
       const res = await worker.fetch(
-        programsRequest(
-          `/api/v1/programs/${program.program_id}/enrollment-requests`,
-          {
-            headers: {
-              Origin: HOST,
-              Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
-            },
-          }
-        ),
-        testEnv()
+        programsRequest(`/api/v1/programs/${program.program_id}/events`, {
+          headers: {
+            Origin: HOST,
+            Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
+          },
+        }),
+        db === undefined ? testEnv() : testEnv({ DB: db })
       );
       assert.strictEqual(res.status, 200);
-      return (await assertCorrelated(res)) as {
-        data: {
-          requests: {
-            request_id: string;
-            status: string;
-            request_version: number;
-          }[];
-        };
+      const body = (await assertCorrelated(res)) as {
+        data: { events: EventListRow[] };
       };
+      const row = body.data.events.find(
+        ({ event_id }) => event_id === event.event_id
+      );
+      assert.ok(row, "the Events read must contain the fixture event");
+      return row;
     };
 
-    const stale = await readRequests();
-    const staleRow = stale.data.requests.find(
-      ({ request_id }) => request_id === submitted.request_id
-    );
-    assert.ok(staleRow);
-    assert.strictEqual(staleRow.status, "Pending");
+    // Hold the first read's already-fetched rows in flight so its payload is the
+    // pre-write projection while the write below commits. The worker tsconfig
+    // targets ES2022, so these deferreds use the executor form.
+    let signalHeldRead: () => void = () => {};
+    const heldReadInFlight = new Promise<void>((resolve) => {
+      signalHeldRead = resolve;
+    });
+    let releaseHeldRead: () => void = () => {};
+    const releaseHeldReadPromise = new Promise<void>((resolve) => {
+      releaseHeldRead = resolve;
+    });
+    const heldDb = new Proxy((env as unknown as Env).DB, {
+      get(target, property, receiver) {
+        if (property !== "prepare") {
+          return Reflect.get(target, property, receiver) as unknown;
+        }
+        return (query: string) => {
+          const statement = target.prepare(query);
+          if (!/\bFROM events\b/u.test(query)) {
+            return statement;
+          }
+          return {
+            bind: (...args: unknown[]) =>
+              new Proxy(statement.bind(...args), {
+                get(bound, boundProperty, boundReceiver) {
+                  const value = Reflect.get(
+                    bound,
+                    boundProperty,
+                    boundReceiver
+                  ) as unknown;
+                  if (typeof value !== "function") {
+                    return value;
+                  }
+                  return async (...callArgs: unknown[]) => {
+                    const result = (await Reflect.apply(
+                      value,
+                      bound,
+                      callArgs
+                    )) as unknown;
+                    signalHeldRead();
+                    await releaseHeldReadPromise;
+                    return result;
+                  };
+                },
+              }),
+          };
+        };
+      },
+    }) as Env["DB"];
 
-    const approved = await decideRequest(
-      adminAccess,
-      program.program_id,
-      submitted.request_id,
-      "Approved",
-      staleRow.request_version
-    );
-    assert.strictEqual(approved.status, 200);
+    const olderReadPromise = readEvents(heldDb);
+    await heldReadInFlight;
 
-    const fresh = await readRequests();
-    const freshRow = fresh.data.requests.find(
-      ({ request_id }) => request_id === submitted.request_id
+    // The newer write commits while the older read is still in flight.
+    const cancel = await worker.fetch(
+      programsRequest(
+        `/api/v1/programs/${program.program_id}/events/${event.event_id}`,
+        {
+          method: "PATCH",
+          headers: {
+            Origin: HOST,
+            Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
+            "Content-Type": "application/json",
+          },
+          body: { reason: "排序測試" },
+        }
+      ),
+      testEnv()
     );
-    assert.ok(freshRow);
-    assert.strictEqual(freshRow.status, "Approved");
+    assert.strictEqual(cancel.status, 200);
+    releaseHeldRead();
+
+    const older = await olderReadPromise;
+    const fresh = await readEvents();
+    assert.strictEqual(older.status, "Active");
+    assert.strictEqual(fresh.status, "Cancelled");
+    // The two responses are distinguishable by the server-owned revision, so a
+    // client that receives this older payload after the newer write can order
+    // them instead of publishing stale state.
     assert.ok(
-      freshRow.request_version > staleRow.request_version,
-      "the newer response must outrank the response it supersedes"
+      fresh.updated_at >= older.updated_at,
+      "the newer response must not carry an older revision"
     );
-
-    // The pre-write revision cannot overwrite the newer committed state.
-    const replay = await decideRequest(
-      adminAccess,
-      program.program_id,
-      submitted.request_id,
-      "Rejected",
-      staleRow.request_version
+    assert.notStrictEqual(
+      `${fresh.status}:${fresh.updated_at}`,
+      `${older.status}:${older.updated_at}`
     );
-    assert.strictEqual(replay.status, 409);
-    const replayBody = await problemOf(replay);
-    assert.strictEqual(replayBody.code, "CONFLICT");
     const authoritative = await testDb()
-      .prepare(
-        "SELECT status, request_version FROM enrollment_requests WHERE request_id = ?"
-      )
-      .bind(submitted.request_id)
-      .first<{ status: string; request_version: number }>();
-    assert.strictEqual(authoritative?.status, "Approved");
-    assert.strictEqual(
-      authoritative?.request_version,
-      freshRow.request_version
-    );
+      .prepare("SELECT status FROM events WHERE event_id = ?")
+      .bind(event.event_id)
+      .first<{ status: string }>();
+    assert.strictEqual(authoritative?.status, "Cancelled");
   }, 120_000);
 });

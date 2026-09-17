@@ -211,7 +211,7 @@ describe("management notification control", () => {
     ).not.toBeInTheDocument();
   });
 
-  test("navigates a normal item click while the read write is still pending", async () => {
+  test("holds a normal item click until the read write settles", async () => {
     const user = userEvent.setup();
     const { promise: pendingRead, resolve: resolveRead } =
       Promise.withResolvers<void>();
@@ -235,9 +235,12 @@ describe("management notification control", () => {
     await user.click(screen.getByRole("link", { name: /青年團契/u }));
 
     expect(onMarkRead).toHaveBeenCalledOnce();
-    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
 
     resolveRead();
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument()
+    );
     await waitFor(() =>
       expect(
         screen.queryByLabelText(
@@ -303,7 +306,9 @@ describe("management notification control", () => {
     );
     await user.click(screen.getByRole("link", { name: /青年團契/u }));
     await waitFor(() => expect(onMarkRead).toHaveBeenCalledOnce());
-    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument()
+    );
 
     await user.click(
       screen.getByRole("button", {
