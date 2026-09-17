@@ -167,14 +167,14 @@
       "id": "R50.4",
       "status": "verified",
       "expected": "Component and route tests plus authenticated real-browser Back, reload, dirty, one-shot, filter-return, failure, modifier-key, and capability journeys reach settled states at 360, 390, and 402 px.",
-      "actual": "The acceptance config runs every journey at phone-360, phone-390 and phone-402 and includes normal and modifier-key notification failure journeys. The candidate-bound canonical browser run passes 33/33 with zero skipped or unexpected tests at commit 4cdd7521 (test-results/programs-browser-acceptance/20260917t155206485z/browser-results.json; run manifest records the full revision).",
+      "actual": "The acceptance config runs every journey at phone-360, phone-390 and phone-402 and includes normal and modifier-key notification failure journeys. The candidate-bound canonical browser run passes 33/33 with zero skipped or unexpected tests at commit 4cdd7521 (test-results/programs-browser-acceptance/20260917t160322458z/browser-results.json; run manifest records the full revision).",
       "level": "real-route",
       "candidate": "commit:4cdd7521",
       "evidence": [
         ".delivery/programs-622-626/artifacts/browser-results.json",
         "tests/e2e/programs-management-acceptance.test.ts",
-        "test-results/programs-browser-acceptance/20260917t155206485z/run.json",
-        "test-results/programs-browser-acceptance/20260917t155206485z/browser-results.json"
+        "test-results/programs-browser-acceptance/20260917t160322458z/run.json",
+        "test-results/programs-browser-acceptance/20260917t160322458z/browser-results.json"
       ]
     },
     {
