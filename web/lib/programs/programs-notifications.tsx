@@ -57,14 +57,10 @@ type ReadableNotification = Pick<
 >;
 
 type NotificationReadHandler = (
-  items: readonly ReadableNotification[],
-  afterSuccess?: () => void
+  items: readonly ReadableNotification[]
 ) => void | Promise<unknown>;
 
-interface ReadAttempt {
-  items: readonly ReadableNotification[];
-  afterSuccess?: () => void;
-}
+type ReadAttempt = readonly ReadableNotification[];
 
 export interface ProgramsNotificationsProps extends Pick<
   FeedPresentationProps,
@@ -149,28 +145,25 @@ const NotificationRows = ({
                 if (navigationBypassRef.current.delete(itemKey)) {
                   return;
                 }
-                if (
-                  event.button !== 0 ||
-                  event.metaKey ||
-                  event.ctrlKey ||
-                  event.shiftKey ||
-                  event.altKey
-                ) {
-                  if (!event.defaultPrevented) {
-                    void markRead([item]);
-                  }
+                const plainPrimaryClick =
+                  event.button === 0 &&
+                  !event.metaKey &&
+                  !event.ctrlKey &&
+                  !event.shiftKey &&
+                  !event.altKey;
+                if (!event.defaultPrevented) {
+                  // R50: the read write settles independently of the task
+                  // link, so a slow or failed mark-read never blocks it.
+                  void markRead([item]);
+                }
+                if (!plainPrimaryClick || event.defaultPrevented) {
                   return;
                 }
                 event.preventDefault();
                 const link = event.currentTarget;
-                const continueNavigation = () => {
-                  navigationBypassRef.current.add(itemKey);
-                  onNavigate?.();
-                  link.click();
-                };
-                void (async () => {
-                  await markRead([item], continueNavigation);
-                })();
+                navigationBypassRef.current.add(itemKey);
+                onNavigate?.();
+                link.click();
               }}
             >
               {item.read || (
@@ -415,17 +408,14 @@ export const ProgramsNotifications = ({
   const readBusyRef = useRef(false);
   const [readBusy, setReadBusy] = useState(false);
   const markRead = useCallback(
-    async (
-      items: readonly ReadableNotification[],
-      afterSuccess?: () => void
-    ): Promise<boolean> => {
+    async (items: readonly ReadableNotification[]): Promise<boolean> => {
       if (items.length === 0 || readBusyRef.current) {
         return false;
       }
       readBusyRef.current = true;
       setReadBusy(true);
       setReadError(false);
-      readAttemptRef.current = { items, afterSuccess };
+      readAttemptRef.current = items;
       try {
         try {
           await onMarkRead(items);
@@ -441,9 +431,7 @@ export const ProgramsNotifications = ({
           return next;
         });
         setReadError(false);
-        const continuation = readAttemptRef.current?.afterSuccess;
         readAttemptRef.current = null;
-        continuation?.();
         return true;
       } finally {
         readBusyRef.current = false;
@@ -457,7 +445,7 @@ export const ProgramsNotifications = ({
     if (!attempt) {
       return;
     }
-    void markRead(attempt.items, attempt.afterSuccess);
+    void markRead(attempt);
   }, [markRead]);
   const markAllRead = useCallback(() => {
     if (unreadItems.length === 0) {

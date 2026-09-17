@@ -36,6 +36,7 @@ import {
   rememberProgramsNavigationContext,
 } from "@/lib/session";
 
+import { readProgramsScrollY, restoreProgramsScrollY } from "./programs-scroll";
 import { useAsyncResource } from "./use-async-resource";
 
 /**
@@ -396,7 +397,7 @@ export const ParticipantDirectory = ({
     if (restoreScrollY === undefined) {
       target.scrollIntoView({ block: "nearest", inline: "nearest" });
     } else {
-      window.scrollTo({ top: restoreScrollY, behavior: "auto" });
+      restoreProgramsScrollY(restoreScrollY);
     }
     target.focus();
     clearParticipantProgramFocus();
@@ -574,7 +575,7 @@ export const ParticipantDirectory = ({
                                 catalogQuery: query,
                                 catalogFilter: filter,
                                 focusProgramId: program.program_id,
-                                scrollY: window.scrollY,
+                                scrollY: readProgramsScrollY(),
                               });
                               onOpenProgram?.(program.program_id);
                             }}

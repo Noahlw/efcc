@@ -391,28 +391,39 @@ const ProgramAttendanceQrCard = ({
   onRotate: () => void;
 }) => {
   const [qr, setQr] = useState<string | null>(null);
+  const [qrState, setQrState] = useState<"loading" | "ready" | "error">(
+    "loading"
+  );
+  const [printNotice, setPrintNotice] = useState<{
+    tone: "success" | "error";
+    message: string;
+  } | null>(null);
+  const [encodeAttempt, setEncodeAttempt] = useState(0);
   const [rotateOpen, setRotateOpen] = useState(false);
   const checkInUrl = programCheckInUrl(artifact.check_in_token);
 
   useEffect(() => {
     let active = true;
     setQr(null);
+    setQrState("loading");
     void (async () => {
       try {
         const dataUrl = await qrDataUrl(checkInUrl);
         if (active) {
           setQr(dataUrl);
+          setQrState("ready");
         }
       } catch {
         if (active) {
           setQr(null);
+          setQrState("error");
         }
       }
     })();
     return () => {
       active = false;
     };
-  }, [checkInUrl]);
+  }, [checkInUrl, encodeAttempt]);
 
   function downloadQr() {
     if (!qr) {
@@ -430,8 +441,13 @@ const ProgramAttendanceQrCard = ({
     }
     const printWindow = window.open("", "_blank", "popup,width=640,height=720");
     if (!printWindow) {
+      setPrintNotice({
+        tone: "error",
+        message: COPY.programs.settingsAttendanceQrPrintError,
+      });
       return;
     }
+    setPrintNotice(null);
     const doc = printWindow.document;
     doc.open();
     doc.write(
@@ -456,6 +472,10 @@ const ProgramAttendanceQrCard = ({
     doc.close();
     printWindow.focus();
     printWindow.print();
+    setPrintNotice({
+      tone: "success",
+      message: COPY.programs.settingsAttendanceQrPrintSuccess,
+    });
   }
 
   return (
@@ -471,12 +491,27 @@ const ProgramAttendanceQrCard = ({
           {COPY.programs.settingsAttendanceQrLead}
         </p>
       </div>
-      {qr ? (
+      {qrState === "ready" && qr ? (
         <img
           src={qr}
           alt={COPY.programs.settingsAttendanceQrLabel}
           className="mx-auto size-56 max-w-full rounded border border-[var(--screen-line)] bg-white p-2"
+          onError={() => setQrState("error")}
         />
+      ) : qrState === "error" ? (
+        <div className="grid min-w-0 justify-items-start gap-2">
+          <Alert tone="error" announcement="polite">
+            {COPY.programs.settingsAttendanceQrUnavailable}
+          </Alert>
+          <Button
+            type="button"
+            variant="outline"
+            className="w-fit"
+            onClick={() => setEncodeAttempt((attempt) => attempt + 1)}
+          >
+            {COPY.programs.settingsAttendanceQrRetry}
+          </Button>
+        </div>
       ) : (
         <output
           className="text-sm text-[var(--screen-muted)]"
@@ -488,6 +523,14 @@ const ProgramAttendanceQrCard = ({
       <p className="m-0 wrap-anywhere text-center text-sm font-semibold">
         {artifact.program_name}
       </p>
+      {printNotice !== null && (
+        <Alert
+          tone={printNotice.tone}
+          announcement={printNotice.tone === "error" ? "assertive" : "polite"}
+        >
+          {printNotice.message}
+        </Alert>
+      )}
       <div className="flex min-w-0 flex-wrap gap-[var(--screen-utility-gap)]">
         <Button
           type="button"

@@ -53,6 +53,7 @@ import type {
 } from "./programs-intent";
 import { ProgramsNotifications } from "./programs-notifications";
 import type { ManagementNotificationState } from "./programs-notifications";
+import { readProgramsScrollY } from "./programs-scroll";
 import { useAsyncResource } from "./use-async-resource";
 import { WorkspaceRouteProvider } from "./workspace-context";
 
@@ -800,7 +801,7 @@ export const ProgramsBoundary = () => {
     const context = {
       surface: "management" as const,
       directoryQuery: query,
-      scrollY: window.scrollY,
+      scrollY: readProgramsScrollY(),
     };
     setManagementDirectoryQuery(query);
     setDirectoryFocusProgramId(null);
@@ -1159,7 +1160,7 @@ export const ProgramsBoundary = () => {
       surface: "participant" as const,
       catalogQuery,
       catalogFilter: participantCatalogFilter,
-      scrollY: window.scrollY,
+      scrollY: readProgramsScrollY(),
     };
     setParticipantCatalogQuery(catalogQuery);
     setNavigationContext(context);
@@ -1171,7 +1172,7 @@ export const ProgramsBoundary = () => {
       surface: "participant" as const,
       catalogQuery: participantCatalogQuery,
       catalogFilter,
-      scrollY: window.scrollY,
+      scrollY: readProgramsScrollY(),
     };
     setParticipantCatalogFilter(catalogFilter);
     setNavigationContext(context);
@@ -1183,7 +1184,7 @@ export const ProgramsBoundary = () => {
       surface: "participant" as const,
       catalogQuery: "",
       catalogFilter: "all",
-      scrollY: window.scrollY,
+      scrollY: readProgramsScrollY(),
     };
     setParticipantCatalogQuery("");
     setParticipantCatalogFilter("all");

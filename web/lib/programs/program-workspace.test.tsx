@@ -496,6 +496,43 @@ describe(ProgramWorkspace, () => {
     ).not.toBeInTheDocument();
   });
 
+  test("orders Overview as identity, current or next Event, compact counts, then destinations", async () => {
+    mocks.getManagementProgram.mockResolvedValue({
+      program,
+      department,
+      modules,
+      cockpit: cockpitWithNext,
+    });
+    mocks.listEvents.mockResolvedValue({ events: [event] });
+    mocks.listEnrollmentRequests.mockResolvedValue({ requests: [request] });
+    mocks.listEnrollments.mockResolvedValue({ enrollments: [enrollment] });
+    render(
+      <ProgramWorkspace
+        programId="program-1"
+        onBack={vi.fn()}
+        onTaskChange={vi.fn<(...args: unknown[]) => void>()}
+      />
+    );
+
+    await expect(
+      screen.findByRole("heading", { name: "查經小組" })
+    ).resolves.toBeInTheDocument();
+    const order = screen
+      .getAllByRole("heading")
+      .map((heading) => heading.textContent ?? "");
+    const positionOf = (label: string) => order.indexOf(label);
+    expect(positionOf(COPY.programs.cockpitNextMeeting)).toBeGreaterThan(-1);
+    expect(positionOf(COPY.programs.cockpitNextMeeting)).toBeLessThan(
+      positionOf(COPY.programs.cockpitSummary)
+    );
+    expect(positionOf(COPY.programs.cockpitSummary)).toBeLessThan(
+      positionOf(COPY.programs.cockpitOperations)
+    );
+    expect(positionOf(COPY.programs.cockpitOperations)).toBeLessThan(
+      positionOf(COPY.programs.cockpitOthers)
+    );
+  });
+
   test("omits next-meeting block entirely when no upcoming meeting exists", async () => {
     mocks.getManagementProgram.mockResolvedValue({
       program,

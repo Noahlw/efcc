@@ -108,6 +108,11 @@ import type {
   ManagementEventAction,
   ProgramsEventFilter,
 } from "./programs-intent";
+import {
+  consumeWorkspaceScroll,
+  rememberWorkspaceScroll,
+  restoreProgramsScrollY,
+} from "./programs-scroll";
 import { useAsyncResource } from "./use-async-resource";
 import {
   eventWallParts,
@@ -1894,10 +1899,30 @@ export const EventsTask = () => {
   const eventsForActions =
     state.kind === "ready" ? state.events : (previousEvents.current ?? []);
   const dataReady = state.kind === "ready";
+  const scrollScope = `${programId}:events`;
+  const pendingScrollRef = useRef<number | null>(null);
+  const scrollRestoredRef = useRef(false);
+  useEffect(() => {
+    pendingScrollRef.current = consumeWorkspaceScroll(scrollScope);
+  }, [scrollScope]);
+  useEffect(() => {
+    // R45.1: wait for the rows to exist before restoring, otherwise the shell
+    // scroller clamps the position to the still-empty list.
+    if (
+      scrollRestoredRef.current ||
+      pendingScrollRef.current === null ||
+      state.kind !== "ready"
+    ) {
+      return;
+    }
+    scrollRestoredRef.current = true;
+    restoreProgramsScrollY(pendingScrollRef.current);
+  }, [state]);
   const openEvent = (eventId: string, eventAction?: ManagementEventAction) => {
     if (eventsOutcomeUnknown || eventsStale) {
       return;
     }
+    rememberWorkspaceScroll(scrollScope);
     onOpenEvent?.(eventId, eventAction);
   };
   const defaultWindow = (() => {
@@ -2676,12 +2701,14 @@ export const EventsTask = () => {
                             </div>
                             {event.status === "Cancelled" &&
                               event.cancel_reason !== null && (
-                                <ScreenRowMeta className="text-[var(--screen-danger)]">
-                                  {COPY.programs.cancelledReason.replace(
-                                    "{reason}",
-                                    event.cancel_reason
-                                  )}
-                                </ScreenRowMeta>
+                                <details className="min-w-0">
+                                  <summary className="cursor-pointer text-[length:var(--screen-meta-size)] leading-[var(--screen-meta-leading)] text-[var(--screen-danger)]">
+                                    {COPY.programs.cancelReason}
+                                  </summary>
+                                  <p className="m-0 mt-1 wrap-anywhere text-[var(--screen-danger)]">
+                                    {event.cancel_reason}
+                                  </p>
+                                </details>
                               )}
                           </ScreenRowMain>
                           <div className="flex min-w-0 basis-full flex-wrap items-center gap-[var(--screen-utility-gap)]">

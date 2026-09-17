@@ -432,29 +432,6 @@ export const WorkspaceOverview = ({
 
   return (
     <div className="grid min-w-0">
-      <ScreenSection title={COPY.programs.cockpitSummary}>
-        <div className="grid grid-cols-2 border-y border-[var(--screen-line)]">
-          <SummaryMetric
-            label={COPY.programs.cockpitActiveParticipants}
-            read={summary.activeParticipants}
-          />
-          <div className="min-w-0 border-l border-[var(--screen-line)] pl-4">
-            <SummaryMetric
-              label={COPY.programs.cockpitPendingRequests}
-              read={pendingCountRead}
-            />
-          </div>
-        </div>
-        {summaryNeedsRetry && !nextEventOwnsRetry && (
-          <div className="flex min-w-0 flex-wrap items-center gap-[var(--screen-utility-gap)] pt-3">
-            <span className="min-w-0 wrap-anywhere text-sm text-[var(--screen-muted)]">
-              {COPY.programs.workspaceSummaryUnavailable}
-            </span>
-            {retryAction(onSummaryRetry)}
-          </div>
-        )}
-      </ScreenSection>
-
       {program.capabilities.manage && noOpenCheckInKnown && (
         <ScreenSection title={COPY.programs.cockpitOpenMeetings}>
           <ScreenState
@@ -647,6 +624,29 @@ export const WorkspaceOverview = ({
             )}
           </ScreenSection>
         )}
+
+      <ScreenSection title={COPY.programs.cockpitSummary}>
+        <div className="grid grid-cols-2 border-y border-[var(--screen-line)]">
+          <SummaryMetric
+            label={COPY.programs.cockpitActiveParticipants}
+            read={summary.activeParticipants}
+          />
+          <div className="min-w-0 border-l border-[var(--screen-line)] pl-4">
+            <SummaryMetric
+              label={COPY.programs.cockpitPendingRequests}
+              read={pendingCountRead}
+            />
+          </div>
+        </div>
+        {summaryNeedsRetry && !nextEventOwnsRetry && (
+          <div className="flex min-w-0 flex-wrap items-center gap-[var(--screen-utility-gap)] pt-3">
+            <span className="min-w-0 wrap-anywhere text-sm text-[var(--screen-muted)]">
+              {COPY.programs.workspaceSummaryUnavailable}
+            </span>
+            {retryAction(onSummaryRetry)}
+          </div>
+        )}
+      </ScreenSection>
 
       <ScreenSection
         title={COPY.programs.cockpitOperations}

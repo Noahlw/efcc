@@ -426,20 +426,24 @@ describe("EventsTask operations-first composition", () => {
         name: COPY.programs.eventsFilterCancelled,
       })
     );
-    expect({
-      cancelled: list.querySelectorAll('[data-event-id="event-cancelled"]')
-        .length,
-      past: Boolean(list.querySelector('[data-event-id="event-past"]')),
-      reason: Boolean(
-        within(list).queryByText(
-          COPY.programs.cancelledReason.replace("{reason}", "場地維修")
-        )
-      ),
-    }).toStrictEqual({ cancelled: 1, past: false, reason: true });
     const cancelledRow = list.querySelector<HTMLElement>(
       '[data-event-id="event-cancelled"]'
     );
     expect(cancelledRow).not.toBeNull();
+    const disclosure = (cancelledRow as HTMLElement).querySelector("details");
+    expect(disclosure).not.toBeNull();
+    expect(disclosure).not.toHaveAttribute("open");
+    expect(
+      within(disclosure as HTMLElement).getByText(COPY.programs.cancelReason)
+    ).toBeInTheDocument();
+    expect(
+      within(disclosure as HTMLElement).getByText("場地維修")
+    ).toBeInTheDocument();
+    expect({
+      cancelled: list.querySelectorAll('[data-event-id="event-cancelled"]')
+        .length,
+      past: Boolean(list.querySelector('[data-event-id="event-past"]')),
+    }).toStrictEqual({ cancelled: 1, past: false });
     expect(
       within(cancelledRow as HTMLElement).queryByRole("button", {
         name: COPY.programs.eventMoreActions,

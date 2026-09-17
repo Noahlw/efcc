@@ -55,6 +55,7 @@ import { DepartmentSettingsPanel } from "./department-settings-panel";
 import { clearManagementDraft } from "./management-draft";
 import { ProgramForm } from "./program-form";
 import { buildProgramsHref } from "./programs-intent";
+import { readProgramsScrollY, restoreProgramsScrollY } from "./programs-scroll";
 import { useAsyncResource } from "./use-async-resource";
 
 export interface ManagementProgram {
@@ -440,7 +441,7 @@ export const ManagementDirectory = ({
       ...document.querySelectorAll<HTMLElement>("[data-program-id]"),
     ].find((candidate) => candidate.dataset.programId === focusProgramId);
     if (restoreScrollY !== undefined) {
-      window.scrollTo({ top: restoreScrollY, behavior: "auto" });
+      restoreProgramsScrollY(restoreScrollY);
     } else {
       row?.scrollIntoView({ block: "nearest", inline: "nearest" });
     }
@@ -880,7 +881,7 @@ export const ManagementDirectory = ({
                               surface: "management",
                               directoryQuery,
                               focusProgramId: program.program_id,
-                              scrollY: window.scrollY,
+                              scrollY: readProgramsScrollY(),
                             });
                             onOpenProgram(program.program_id);
                           }}

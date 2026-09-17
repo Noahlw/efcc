@@ -1398,11 +1398,10 @@ describe("EVT-01 event detail", () => {
         backHref="/programs"
       />
     );
-    await expect(
-      screen.findByText(
-        COPY.programs.cancelledReason.replace("{reason}", "場地維修")
-      )
-    ).resolves.toBeInTheDocument();
+    const reasonSummary = await screen.findByText(COPY.programs.cancelReason);
+    expect(reasonSummary.tagName).toBe("SUMMARY");
+    expect(reasonSummary.closest("details")).not.toHaveAttribute("open");
+    expect(screen.getByText("場地維修")).toBeInTheDocument();
     expect(
       screen.queryByRole("button", {
         name: COPY.programs.eventAvailabilityDeactivate,

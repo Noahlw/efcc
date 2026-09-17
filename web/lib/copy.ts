@@ -1025,6 +1025,8 @@ export const COPY = {
     settingsAttendanceQrLoading: "正在準備 QR 碼…",
     settingsAttendanceQrUnavailable: "暫時無法載入課程 QR 碼。",
     settingsAttendanceQrRetry: "重試載入 QR",
+    settingsAttendanceQrPrintError: "未能開啟列印視窗，請允許彈出視窗後重試。",
+    settingsAttendanceQrPrintSuccess: "列印視窗已開啟。",
     settingsAttendanceQrRotate: "更換永久 QR",
     settingsAttendanceQrRotateTitle: "更換永久課程 QR？",
     settingsAttendanceQrRotateBody:

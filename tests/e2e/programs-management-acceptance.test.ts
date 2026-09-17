@@ -657,7 +657,7 @@ test.describe("T05.5 management Browser Acceptance", () => {
     }
   });
 
-  test("restores the Events filter after browser Back from a focused Event", async ({
+  test("restores the Events filter and list position after browser Back from a focused Event", async ({
     page,
   }) => {
     await loginAs(page);
@@ -673,6 +673,20 @@ test.describe("T05.5 management Browser Acceptance", () => {
         startsAt.toISOString(),
         new Date(startsAt.getTime() + 60 * 60_000).toISOString()
       );
+      // Enough rows that the past list overflows the phone viewport, so the
+      // restored shell position is a real assertion rather than a no-op.
+      for (let index = 1; index <= 12; index += 1) {
+        const fillerStart = new Date(
+          startsAt.getTime() - index * 24 * 60 * 60_000
+        );
+        await createEventFixture(
+          page,
+          fixture,
+          `E2E_626_Filler ${index} ${fixture.programId.slice(-8)}`,
+          fillerStart.toISOString(),
+          new Date(fillerStart.getTime() + 60 * 60_000).toISOString()
+        );
+      }
       await page.goto(
         `/programs?mode=management&program=${encodeURIComponent(fixture.programId)}&task=events`
       );
@@ -688,6 +702,16 @@ test.describe("T05.5 management Browser Acceptance", () => {
 
       const eventRow = page.locator(`[data-event-id="${eventId}"]`);
       await expect(eventRow).toBeVisible();
+      await page.evaluate(() => {
+        const scroller = document.getElementById("shell-content");
+        scroller?.scrollTo(0, scroller.scrollHeight);
+      });
+      const scrolledTo = await page.evaluate(() => {
+        const scroller = document.getElementById("shell-content");
+        return scroller?.scrollTop ?? 0;
+      });
+      expect(scrolledTo).toBeGreaterThan(0);
+
       await eventRow.getByRole("link").first().click();
       await expect
         .poll(() => new URL(page.url()).searchParams.get("event"))
@@ -708,6 +732,14 @@ test.describe("T05.5 management Browser Acceptance", () => {
         .toBe("past");
       await expect(pastTab).toHaveAttribute("aria-selected", "true");
       await expect(eventRow).toBeVisible();
+      await expect
+        .poll(() =>
+          page.evaluate(() => {
+            const scroller = document.getElementById("shell-content");
+            return scroller?.scrollTop ?? 0;
+          })
+        )
+        .toBe(scrolledTo);
     } finally {
       await restoreFixture(page, fixture);
     }
@@ -793,6 +825,80 @@ test.describe("T05.5 management Browser Acceptance", () => {
     } finally {
       await page.unroute(readRoute).catch(() => {});
       await linkedPage?.close().catch(() => {});
+      await restoreFixture(page, fixture);
+    }
+  });
+
+  test("keeps a normal notification click on the real task while mark-read fails", async ({
+    page,
+    browser,
+  }) => {
+    await loginAs(page);
+    const fixture = await createFixture(page, crypto.randomUUID().slice(0, 8));
+    const readRoute = "**/api/v1/programs/notifications/read";
+    let readAttempts = 0;
+    try {
+      const memberContext = await browser.newContext();
+      try {
+        const memberPage = await memberContext.newPage();
+        await loginAs(memberPage, "E2E_member", "E2E_member!dev");
+        const requestStatus = await memberPage.evaluate(async (programId) => {
+          const response = await fetch(
+            `/api/v1/programs/${encodeURIComponent(programId)}/enrollment-requests`,
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: "{}",
+            }
+          );
+          return response.status;
+        }, fixture.programId);
+        expect([200, 201]).toContain(requestStatus);
+      } finally {
+        await memberContext.close();
+      }
+
+      await page.route(readRoute, async (route) => {
+        readAttempts += 1;
+        await route.fulfill({
+          status: 503,
+          contentType: "application/problem+json",
+          body: JSON.stringify({
+            status: 503,
+            code: "UNAVAILABLE",
+            title: "Unavailable",
+            detail: "測試中的通知讀取失敗",
+          }),
+        });
+      });
+      await page.goto("/programs?mode=management&task=notifications");
+      await expect(
+        page.getByRole("heading", {
+          name: COPY.notificationsTitle,
+          exact: true,
+        })
+      ).toBeVisible();
+      const notificationLink = page
+        .locator(
+          `a[href*="program=${encodeURIComponent(fixture.programId)}"][href*="task=participants"]`
+        )
+        .first();
+      await expect(notificationLink).toBeVisible();
+
+      await notificationLink.click();
+
+      await expect
+        .poll(() => new URL(page.url()).searchParams.get("task"))
+        .toBe("participants");
+      await expect
+        .poll(() => new URL(page.url()).searchParams.get("program"))
+        .toBe(fixture.programId);
+      await expect.poll(() => readAttempts).toBe(1);
+      await expect(
+        page.getByRole("heading", { name: fixture.programName })
+      ).toBeVisible();
+    } finally {
+      await page.unroute(readRoute).catch(() => {});
       await restoreFixture(page, fixture);
     }
   });

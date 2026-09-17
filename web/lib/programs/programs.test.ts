@@ -11960,3 +11960,207 @@ describe("NTF-01: management notification read state (#256)", () => {
     assert.ok(Number(readRows?.count) >= 2);
   }, 120_000);
 });
+
+describe("#622 R41/R42: committed writes survive a failing readback", () => {
+  test("keeps a committed Event cancellation authoritative when the cockpit read fails", async () => {
+    const adminAccess = await accessCookieFor("alice", "alice-secret");
+    const department = await createDepartment(adminAccess, {
+      code: "OUTCOME-01",
+      name: "Outcome Department",
+    });
+    const program = await createProgram(adminAccess, department.department_id, {
+      name: "Outcome Program",
+      behavior_type: "Recurring",
+      lifecycle: "Active",
+      discoverability: "Listed",
+    });
+    const startsAt = new Date(Date.now() + 60 * 60_000).toISOString();
+    const endsAt = new Date(Date.now() + 2 * 60 * 60_000).toISOString();
+    const event = await createEventFor(adminAccess, program.program_id, {
+      starts_at: startsAt,
+      ends_at: endsAt,
+      name: "Outcome Event",
+      location: "Room Outcome",
+    });
+    const cockpitRequest = (): Request =>
+      programsRequest(`/api/v1/programs/${program.program_id}/cockpit`, {
+        headers: {
+          Origin: HOST,
+          Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
+        },
+      });
+
+    const before = await worker.fetch(cockpitRequest(), testEnv());
+    assert.strictEqual(before.status, 200);
+    const beforeBody = (await assertCorrelated(before)) as {
+      data: { cockpit: { next_event: { event_id: string } | null } };
+    };
+    assert.strictEqual(
+      beforeBody.data.cockpit.next_event?.event_id,
+      event.event_id
+    );
+
+    // 1. The write commits with 2xx.
+    const cancel = await worker.fetch(
+      programsRequest(
+        `/api/v1/programs/${program.program_id}/events/${event.event_id}`,
+        {
+          method: "PATCH",
+          headers: {
+            Origin: HOST,
+            Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
+            "Content-Type": "application/json",
+          },
+          body: { reason: "測試中斷線" },
+        }
+      ),
+      testEnv()
+    );
+    assert.strictEqual(cancel.status, 200);
+
+    // 2. The readback that follows now fails at the D1 boundary. Only the
+    // events projection is broken so actor authorization still resolves.
+    const brokenDb = new Proxy((env as unknown as Env).DB, {
+      get(target, property, receiver) {
+        if (property === "prepare") {
+          return (query: string) => {
+            if (/\bFROM events\b/u.test(query)) {
+              throw new Error("readback-unavailable");
+            }
+            return target.prepare(query);
+          };
+        }
+        return Reflect.get(target, property, receiver) as unknown;
+      },
+    }) as Env["DB"];
+    let failedReadStatus: number | null = null;
+    try {
+      const failedRead = await worker.fetch(
+        cockpitRequest(),
+        testEnv({ DB: brokenDb })
+      );
+      failedReadStatus = failedRead.status;
+    } catch {
+      failedReadStatus = null;
+    }
+    assert.ok(
+      failedReadStatus === null || failedReadStatus >= 500,
+      `a failing readback must never answer with success, got ${String(failedReadStatus)}`
+    );
+
+    // 3. The committed cancellation is still the authoritative record.
+    const committed = await testDb()
+      .prepare("SELECT status, cancel_reason FROM events WHERE event_id = ?")
+      .bind(event.event_id)
+      .first<{ status: string; cancel_reason: string | null }>();
+    assert.strictEqual(committed?.status, "Cancelled");
+    assert.strictEqual(committed?.cancel_reason, "測試中斷線");
+
+    // 4. Retrying only the read converges on the committed state.
+    const recovered = await worker.fetch(cockpitRequest(), testEnv());
+    assert.strictEqual(recovered.status, 200);
+    const recoveredBody = (await assertCorrelated(recovered)) as {
+      data: { cockpit: { next_event: { event_id: string } | null } };
+    };
+    assert.strictEqual(recoveredBody.data.cockpit.next_event, null);
+  }, 120_000);
+
+  test("orders authoritative responses by a revision an older read cannot overwrite", async () => {
+    const adminAccess = await accessCookieFor("alice", "alice-secret");
+    const memberAccess = await accessCookieFor("bob", "bob-secret");
+    const department = await createDepartment(adminAccess, {
+      code: "OUTCOME-02",
+      name: "Outcome Ordering Department",
+    });
+    const program = await createProgram(adminAccess, department.department_id, {
+      name: "Outcome Ordering Program",
+      behavior_type: "Recurring",
+      lifecycle: "Active",
+      discoverability: "Listed",
+      enrollment_mode: "MemberRequest",
+    });
+    const submitted = await submitRequest(memberAccess, program.program_id);
+    const readRequests = async (): Promise<{
+      data: {
+        requests: {
+          request_id: string;
+          status: string;
+          request_version: number;
+        }[];
+      };
+    }> => {
+      const res = await worker.fetch(
+        programsRequest(
+          `/api/v1/programs/${program.program_id}/enrollment-requests`,
+          {
+            headers: {
+              Origin: HOST,
+              Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
+            },
+          }
+        ),
+        testEnv()
+      );
+      assert.strictEqual(res.status, 200);
+      return (await assertCorrelated(res)) as {
+        data: {
+          requests: {
+            request_id: string;
+            status: string;
+            request_version: number;
+          }[];
+        };
+      };
+    };
+
+    const stale = await readRequests();
+    const staleRow = stale.data.requests.find(
+      ({ request_id }) => request_id === submitted.request_id
+    );
+    assert.ok(staleRow);
+    assert.strictEqual(staleRow.status, "Pending");
+
+    const approved = await decideRequest(
+      adminAccess,
+      program.program_id,
+      submitted.request_id,
+      "Approved",
+      staleRow.request_version
+    );
+    assert.strictEqual(approved.status, 200);
+
+    const fresh = await readRequests();
+    const freshRow = fresh.data.requests.find(
+      ({ request_id }) => request_id === submitted.request_id
+    );
+    assert.ok(freshRow);
+    assert.strictEqual(freshRow.status, "Approved");
+    assert.ok(
+      freshRow.request_version > staleRow.request_version,
+      "the newer response must outrank the response it supersedes"
+    );
+
+    // The pre-write revision cannot overwrite the newer committed state.
+    const replay = await decideRequest(
+      adminAccess,
+      program.program_id,
+      submitted.request_id,
+      "Rejected",
+      staleRow.request_version
+    );
+    assert.strictEqual(replay.status, 409);
+    const replayBody = await problemOf(replay);
+    assert.strictEqual(replayBody.code, "CONFLICT");
+    const authoritative = await testDb()
+      .prepare(
+        "SELECT status, request_version FROM enrollment_requests WHERE request_id = ?"
+      )
+      .bind(submitted.request_id)
+      .first<{ status: string; request_version: number }>();
+    assert.strictEqual(authoritative?.status, "Approved");
+    assert.strictEqual(
+      authoritative?.request_version,
+      freshRow.request_version
+    );
+  }, 120_000);
+});

@@ -20,6 +20,10 @@ import {
   writeWorkspaceMutationRecovery,
 } from "./mutation-recovery";
 
+const qrMocks = vi.hoisted(() => ({ qrDataUrl: vi.fn() }));
+
+vi.mock(import("@/lib/qr"), () => ({ qrDataUrl: qrMocks.qrDataUrl }));
+
 const mocks = vi.hoisted(() => ({
   updateProgram: vi.fn(),
   getProgramAttendanceArtifact: vi.fn(),
@@ -146,6 +150,8 @@ beforeEach(() => {
     },
   });
   mocks.deleteScheduleException.mockResolvedValue({ deleted: true });
+  qrMocks.qrDataUrl.mockReset();
+  qrMocks.qrDataUrl.mockResolvedValue("data:image/svg+xml,%3Csvg/%3E");
 });
 
 afterEach(() => {
@@ -890,6 +896,99 @@ describe(ProgramSettings, () => {
       recurringProgram.program_id,
       expect.any(String)
     );
+  });
+
+  test("settles a permanent Program QR encode failure with Retry", async () => {
+    mocks.getProgramAttendanceArtifact.mockResolvedValue({
+      artifact: {
+        program_id: recurringProgram.program_id,
+        program_name: recurringProgram.name,
+        check_in_token: "stable-program-token",
+        can_rotate: false,
+      },
+    });
+    qrMocks.qrDataUrl
+      .mockRejectedValueOnce(new Error("encode failed"))
+      .mockResolvedValueOnce("data:image/svg+xml,%3Csvg/%3E");
+    const user = userEvent.setup();
+    render(
+      <ProgramSettings
+        program={recurringProgram}
+        section="attendance"
+        onTaskChange={vi.fn()}
+      />
+    );
+
+    await expect(
+      screen.findByText(COPY.programs.settingsAttendanceQrUnavailable)
+    ).resolves.toBeVisible();
+    expect(
+      screen.queryByText(COPY.programs.settingsAttendanceQrLoading)
+    ).not.toBeInTheDocument();
+
+    await user.click(
+      screen.getByRole("button", {
+        name: COPY.programs.settingsAttendanceQrRetry,
+      })
+    );
+    await waitFor(() => expect(qrMocks.qrDataUrl).toHaveBeenCalledTimes(2));
+    await expect(
+      screen.findByAltText(COPY.programs.settingsAttendanceQrLabel)
+    ).resolves.toBeInTheDocument();
+  });
+
+  test("reports a blocked permanent Program sign print instead of staying silent", async () => {
+    mocks.getProgramAttendanceArtifact.mockResolvedValue({
+      artifact: {
+        program_id: recurringProgram.program_id,
+        program_name: recurringProgram.name,
+        check_in_token: "stable-program-token",
+        can_rotate: false,
+      },
+    });
+    const printDocument = document.implementation.createHTMLDocument();
+    const open = vi
+      .spyOn(window, "open")
+      .mockReturnValueOnce(null)
+      .mockReturnValue({
+        document: printDocument,
+        focus: vi.fn(),
+        print: vi.fn(),
+      } as unknown as Window);
+    const user = userEvent.setup();
+    try {
+      render(
+        <ProgramSettings
+          program={recurringProgram}
+          section="attendance"
+          onTaskChange={vi.fn()}
+        />
+      );
+      await screen.findByAltText(COPY.programs.settingsAttendanceQrLabel);
+
+      await user.click(
+        screen.getByRole("button", {
+          name: COPY.programs.settingsAttendanceQrPrint,
+        })
+      );
+      await expect(
+        screen.findByText(COPY.programs.settingsAttendanceQrPrintError)
+      ).resolves.toBeVisible();
+
+      await user.click(
+        screen.getByRole("button", {
+          name: COPY.programs.settingsAttendanceQrPrint,
+        })
+      );
+      await expect(
+        screen.findByText(COPY.programs.settingsAttendanceQrPrintSuccess)
+      ).resolves.toBeVisible();
+      expect(
+        screen.queryByText(COPY.programs.settingsAttendanceQrPrintError)
+      ).not.toBeInTheDocument();
+    } finally {
+      open.mockRestore();
+    }
   });
 
   test("keeps focused Attendance dirty-only actions and reads back saved defaults", async () => {

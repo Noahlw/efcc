@@ -211,7 +211,7 @@ describe("management notification control", () => {
     ).not.toBeInTheDocument();
   });
 
-  test("waits for an item read to settle before closing the compact panel", async () => {
+  test("navigates a normal item click while the read write is still pending", async () => {
     const user = userEvent.setup();
     const { promise: pendingRead, resolve: resolveRead } =
       Promise.withResolvers<void>();
@@ -235,11 +235,15 @@ describe("management notification control", () => {
     await user.click(screen.getByRole("link", { name: /青年團契/u }));
 
     expect(onMarkRead).toHaveBeenCalledOnce();
-    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
 
     resolveRead();
     await waitFor(() =>
-      expect(screen.queryByRole("dialog")).not.toBeInTheDocument()
+      expect(
+        screen.queryByLabelText(
+          COPY.programs.notificationsCount.replace("{count}", "1")
+        )
+      ).not.toBeInTheDocument()
     );
   });
 
@@ -278,7 +282,7 @@ describe("management notification control", () => {
     ).not.toBeInTheDocument();
   });
 
-  test("keeps a normal-click read failure actionable before navigating", async () => {
+  test("keeps a normal-click read failure recoverable without blocking navigation", async () => {
     const user = userEvent.setup();
     const onMarkRead = vi
       .fn<ProgramsNotificationsProps["onMarkRead"]>()
@@ -299,17 +303,28 @@ describe("management notification control", () => {
     );
     await user.click(screen.getByRole("link", { name: /青年團契/u }));
     await waitFor(() => expect(onMarkRead).toHaveBeenCalledOnce());
-    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+
+    await user.click(
+      screen.getByRole("button", {
+        name: COPY.programs.notificationBellTitle,
+      })
+    );
     const readAlert = screen.getByRole("alert");
+    expect(readAlert).toHaveTextContent(COPY.programs.notificationsReadError);
+    expect(
+      screen.getByLabelText(COPY.programs.notificationsUnread)
+    ).toBeInTheDocument();
+
     await user.click(
       within(readAlert).getByRole("button", {
         name: COPY.programs.notificationsRetry,
       })
     );
     await waitFor(() => expect(onMarkRead).toHaveBeenCalledTimes(2));
-    await waitFor(() =>
-      expect(screen.queryByRole("dialog")).not.toBeInTheDocument()
-    );
+    expect(
+      screen.queryByLabelText(COPY.programs.notificationsUnread)
+    ).not.toBeInTheDocument();
   });
 
   test("renders empty and error states in the same bounded surface", () => {

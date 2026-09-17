@@ -1699,12 +1699,14 @@ export const EventDetail = ({
           )}
         </div>
         {cancelled && event.cancel_reason !== null && (
-          <ScreenRowMeta className="text-[var(--screen-danger)]">
-            {COPY.programs.cancelledReason.replace(
-              "{reason}",
-              event.cancel_reason
-            )}
-          </ScreenRowMeta>
+          <details className="min-w-0">
+            <summary className="cursor-pointer text-[length:var(--screen-meta-size)] leading-[var(--screen-meta-leading)] text-[var(--screen-danger)]">
+              {COPY.programs.cancelReason}
+            </summary>
+            <p className="m-0 mt-1 wrap-anywhere text-[var(--screen-danger)]">
+              {event.cancel_reason}
+            </p>
+          </details>
         )}
       </div>
 
