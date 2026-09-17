@@ -253,7 +253,7 @@ describe(ManagementDirectory, () => {
 
     expect(screen.getByRole("link", { name: /社區關懷/u })).toHaveAttribute(
       "href",
-      "/programs?mode=management&program=program-leader&directoryQuery=%E5%A4%96%E5%B1%95"
+      "/programs?mode=management&program=program-leader"
     );
   });
 

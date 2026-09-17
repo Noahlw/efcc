@@ -4,20 +4,23 @@ import { useCallback, useEffect, useState } from "react";
 import type { MouseEventHandler, ReactNode } from "react";
 
 import { Alert } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
 import { COPY, errorMessage } from "@/lib/copy";
 import { announce } from "@/lib/live-region";
 import { ScreenHeader } from "@/lib/screen-foundations";
 
 import { updateProgram } from "./program-api";
+import type { Program } from "./program-api";
 import { ProgramSettings, SettingsHub } from "./program-settings";
 import type { ProgramSettingsSection } from "./program-settings";
 import { buildProgramsHref, parseProgramsIntent } from "./programs-intent";
-import type { ProgramsScheduleOrigin, ProgramsTask } from "./programs-intent";
-import {
-  formatEventTime,
-  hasModule,
-  useWorkspaceTaskContext,
-} from "./workspace-context";
+import type {
+  ProgramsScheduleOrigin,
+  ProgramsScheduleEditor,
+  ProgramsSettingsSection,
+  ProgramsTask,
+} from "./programs-intent";
+import { hasModule, useWorkspaceTaskContext } from "./workspace-context";
 
 export type SettingsNavigationRequest =
   | { kind: "back" }
@@ -27,6 +30,9 @@ export type SettingsNavigationRequest =
       task: ProgramsTask | null;
       eventId?: string | null;
       scheduleOrigin?: ProgramsScheduleOrigin;
+      scheduleEditor?: ProgramsScheduleEditor | null;
+      scheduleRuleId?: string | null;
+      settingsSection?: ProgramsSettingsSection | null;
     }
   | { kind: "href"; href: string };
 
@@ -54,8 +60,6 @@ export const SettingsTask = ({
     onMutationBlockChange,
     departmentId,
     hash,
-    directoryQuery,
-    cockpit,
     notificationState,
     workspaceFreshness,
     settingsNavigationAllowedRef,
@@ -74,6 +78,8 @@ export const SettingsTask = ({
   const [archiveBusy, setArchiveBusy] = useState(false);
   const [archiveMessage, setArchiveMessage] = useState<string | null>(null);
   const [archiveError, setArchiveError] = useState<string | null>(null);
+  const [archiveRefreshPending, setArchiveRefreshPending] = useState(false);
+  const [archiveCommitted, setArchiveCommitted] = useState(false);
   useEffect(() => {
     onFocusChange?.(section !== null);
   }, [onFocusChange, section]);
@@ -82,7 +88,6 @@ export const SettingsTask = ({
     programId: program.program_id,
     departmentId,
     task: "settings",
-    directoryQuery,
     hash,
   });
 
@@ -98,14 +103,12 @@ export const SettingsTask = ({
     departmentId,
     task: "schedule",
     scheduleOrigin: "settings",
-    directoryQuery,
     hash,
   });
   const notificationsHref = buildProgramsHref({
     mode: "management",
     departmentId,
     task: "notifications",
-    directoryQuery,
     hash,
   });
 
@@ -151,6 +154,8 @@ export const SettingsTask = ({
   const archiveProgram = useCallback(async () => {
     if (
       archiveBusy ||
+      archiveCommitted ||
+      workspaceFreshness !== "fresh" ||
       !program.capabilities.manage ||
       program.lifecycle !== "Active"
     ) {
@@ -159,13 +164,24 @@ export const SettingsTask = ({
     setArchiveBusy(true);
     setArchiveMessage(null);
     setArchiveError(null);
+    setArchiveRefreshPending(false);
     try {
       await updateProgram(program.program_id, { lifecycle: "Archived" });
-      const refreshed = await onWorkspaceRefresh?.();
-      const message =
-        onWorkspaceRefresh !== undefined && refreshed === undefined
-          ? COPY.programs.workspaceSavedStale
-          : COPY.programs.settingsArchiveSaved;
+      setArchiveCommitted(true);
+      let refreshed: Program | void | undefined;
+      if (onWorkspaceRefresh) {
+        try {
+          refreshed = await onWorkspaceRefresh();
+        } catch {
+          refreshed = undefined;
+        }
+      }
+      const refreshPending =
+        onWorkspaceRefresh !== undefined && refreshed === undefined;
+      setArchiveRefreshPending(refreshPending);
+      const message = refreshPending
+        ? COPY.programs.workspaceSavedStale
+        : COPY.programs.settingsArchiveSaved;
       setArchiveMessage(message);
       announce(message);
     } catch (error) {
@@ -175,25 +191,43 @@ export const SettingsTask = ({
     } finally {
       setArchiveBusy(false);
     }
-  }, [archiveBusy, onWorkspaceRefresh, program]);
+  }, [
+    archiveBusy,
+    archiveCommitted,
+    onWorkspaceRefresh,
+    program,
+    workspaceFreshness,
+  ]);
 
-  const scheduleCurrentValue =
-    workspaceFreshness === "stale"
-      ? COPY.programs.settingsHubCurrentStale
-      : cockpit === null || cockpit === undefined
-        ? COPY.programs.settingsHubCurrentError
-        : `${cockpit.active_event_count} 個有效聚會 · ${
-            cockpit.next_event
-              ? `下一次 ${formatEventTime(cockpit.next_event.starts_at)}`
-              : COPY.programs.settingsHubNoUpcoming
-          }`;
+  const retryArchiveRefresh = useCallback(async () => {
+    if (!onWorkspaceRefresh || !archiveCommitted) {
+      return;
+    }
+    setArchiveError(null);
+    try {
+      const refreshed = await onWorkspaceRefresh();
+      if (refreshed !== undefined) {
+        setArchiveRefreshPending(false);
+        setArchiveMessage(COPY.programs.settingsArchiveSaved);
+        announce(COPY.programs.settingsArchiveSaved);
+      }
+    } catch {
+      setArchiveMessage(COPY.programs.workspaceSavedStale);
+      announce(COPY.programs.workspaceSavedStale);
+    }
+  }, [archiveCommitted, onWorkspaceRefresh]);
+
+  const scheduleCurrentValue = COPY.programs.settingsHubScheduleUnavailable;
   const notificationCurrentValue =
     notificationState?.kind === "ready"
       ? (() => {
           const items = notificationState.notifications.items.filter(
             ({ program_id }) => program_id === program.program_id
           );
-          return `未讀 ${items.filter(({ read }) => !read).length} · 共 ${items.length} 項`;
+          const unreadCount = items.filter(({ read }) => !read).length;
+          return notificationState.notifications.has_more
+            ? `未讀 ${unreadCount} · 至少 ${items.length} 項 · 還有更多`
+            : `未讀 ${unreadCount} · 共 ${items.length} 項`;
         })()
       : notificationState?.kind === "loading"
         ? COPY.programs.settingsHubCurrentLoading
@@ -274,6 +308,15 @@ export const SettingsTask = ({
           ...(routeIntent.scheduleOrigin === undefined
             ? {}
             : { scheduleOrigin: routeIntent.scheduleOrigin }),
+          ...(routeIntent.scheduleEditor === undefined
+            ? {}
+            : { scheduleEditor: routeIntent.scheduleEditor }),
+          ...(routeIntent.scheduleRuleId === undefined
+            ? {}
+            : { scheduleRuleId: routeIntent.scheduleRuleId }),
+          ...(routeIntent.settingsSection === undefined
+            ? {}
+            : { settingsSection: routeIntent.settingsSection }),
         });
       } else {
         blockNavigation({ kind: "href", href: nextUrl.href });
@@ -338,6 +381,18 @@ export const SettingsTask = ({
       {archiveError !== null && (
         <Alert variant="destructive">{archiveError}</Alert>
       )}
+      {archiveRefreshPending && (
+        <Alert tone="warning" announcement="polite">
+          <span>{COPY.programs.workspaceSavedStale}</span>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => void retryArchiveRefresh()}
+          >
+            {COPY.programs.workspaceRetryRefresh}
+          </Button>
+        </Alert>
+      )}
       <SettingsHub
         program={program}
         eventsEnabled={hasModule(modules, "events")}
@@ -350,6 +405,7 @@ export const SettingsTask = ({
         notificationCurrentValue={notificationCurrentValue}
         onArchive={archiveProgram}
         archiveBusy={archiveBusy}
+        archiveDisabled={archiveCommitted || workspaceFreshness !== "fresh"}
       />
     </>
   ) : (

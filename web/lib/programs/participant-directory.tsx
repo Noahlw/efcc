@@ -31,7 +31,10 @@ import {
   ScreenState,
   ScreenStatus,
 } from "@/lib/screen-foundations";
-import { rememberDeepLink } from "@/lib/session";
+import {
+  rememberDeepLink,
+  rememberProgramsNavigationContext,
+} from "@/lib/session";
 
 import { useAsyncResource } from "./use-async-resource";
 
@@ -67,6 +70,7 @@ export interface ParticipantDirectoryProps {
   focusProgramId?: string | null;
   /** Clear a consumed focus restoration marker. */
   onFocusProgram?: () => void;
+  restoreScrollY?: number;
   /** Safe same-origin escape when the catalog is forbidden. */
   homeHref: string;
 }
@@ -263,6 +267,7 @@ export const ParticipantDirectory = ({
   onOpenProgram,
   focusProgramId = null,
   onFocusProgram,
+  restoreScrollY,
   homeHref,
 }: ParticipantDirectoryProps) => {
   const router = useRouter();
@@ -372,7 +377,10 @@ export const ParticipantDirectory = ({
     return programs.find((program) => program.program_id === programId);
   }, [programId, programs]);
   useEffect(() => {
-    if (state.kind !== "ready" || focusTargetProgramId === null) {
+    if (
+      state.kind !== "ready" ||
+      (focusTargetProgramId === null && restoreScrollY === undefined)
+    ) {
       return;
     }
     const row = [
@@ -385,11 +393,15 @@ export const ParticipantDirectory = ({
     if (!target) {
       return;
     }
-    target.scrollIntoView({ block: "nearest", inline: "nearest" });
+    if (restoreScrollY === undefined) {
+      target.scrollIntoView({ block: "nearest", inline: "nearest" });
+    } else {
+      window.scrollTo({ top: restoreScrollY, behavior: "auto" });
+    }
     target.focus();
     clearParticipantProgramFocus();
     onFocusProgram?.();
-  }, [focusTargetProgramId, onFocusProgram, state.kind]);
+  }, [focusTargetProgramId, onFocusProgram, restoreScrollY, state.kind]);
 
   return (
     <div className="min-w-0 text-[var(--screen-ink)]">
@@ -557,6 +569,13 @@ export const ParticipantDirectory = ({
                               rememberParticipantProgramFocus(
                                 program.program_id
                               );
+                              rememberProgramsNavigationContext({
+                                surface: "participant",
+                                catalogQuery: query,
+                                catalogFilter: filter,
+                                focusProgramId: program.program_id,
+                                scrollY: window.scrollY,
+                              });
                               onOpenProgram?.(program.program_id);
                             }}
                           >

@@ -99,6 +99,8 @@ export const ScheduleTask = () => {
     scheduleEditor,
     scheduleRuleId,
     onScheduleEditorChange,
+    onFocusedTaskFocusChange,
+    onFocusedTaskDirtyChange,
   } = useWorkspaceTaskContext();
   const eventsEnabled = modules.some(
     ({ module_key, enabled }) => module_key === "events" && enabled === 1
@@ -114,6 +116,8 @@ export const ScheduleTask = () => {
         onTaskChange={onTaskChange}
         onReload={onWorkspaceRefresh}
         onMutationBlockChange={onMutationBlockChange}
+        onFocusChange={onFocusedTaskFocusChange}
+        onDirtyChange={onFocusedTaskDirtyChange}
         scheduleEditor={scheduleEditor}
         scheduleRuleId={scheduleRuleId}
         onScheduleEditorChange={onScheduleEditorChange}

@@ -118,7 +118,6 @@ export const WorkspaceNavigation = ({
   modules,
   departmentId,
   hash,
-  directoryQuery,
   eventFilter,
   participantTab,
   participantQuery,
@@ -132,7 +131,6 @@ export const WorkspaceNavigation = ({
   modules: readonly DepartmentModule[];
   departmentId?: string | null;
   hash?: string | null;
-  directoryQuery?: string | null;
   eventFilter?: ProgramsEventFilter;
   participantTab?: ProgramsParticipantTab;
   participantQuery?: string;
@@ -163,7 +161,6 @@ export const WorkspaceNavigation = ({
             mode: "management",
             programId,
             departmentId,
-            directoryQuery,
             hash,
           })}
           onClick={taskLinkClick(onTaskChange, null)}
@@ -186,7 +183,6 @@ export const WorkspaceNavigation = ({
               ...(value === "settings" && settingsSection
                 ? { settingsSection }
                 : {}),
-              directoryQuery,
               hash,
             })}
             onClick={taskLinkClick(onTaskChange, value)}
@@ -336,7 +332,6 @@ export const WorkspaceOverview = ({
   summary,
   departmentId,
   hash,
-  directoryQuery,
   onTaskChange,
   onOpenAttendance,
   onSummaryRetry,
@@ -346,7 +341,6 @@ export const WorkspaceOverview = ({
   summary: WorkspaceSummaryState;
   departmentId?: string | null;
   hash?: string | null;
-  directoryQuery?: string | null;
   onTaskChange: (
     task: ProgramsTask | null,
     eventId?: string | null,
@@ -513,7 +507,6 @@ export const WorkspaceOverview = ({
                           departmentId,
                           task: "events",
                           eventId: openEvent.event_id,
-                          directoryQuery,
                           hash,
                         })}
                         onClick={(event) => {
@@ -601,7 +594,6 @@ export const WorkspaceOverview = ({
                               departmentId,
                               task: "events",
                               eventId: nextEvent.event_id,
-                              directoryQuery,
                               hash,
                             })
                       }
@@ -674,7 +666,6 @@ export const WorkspaceOverview = ({
                     programId: program.program_id,
                     departmentId,
                     task: "events",
-                    directoryQuery,
                     hash,
                   })}
                   onClick={taskLinkClick(onTaskChange, "events")}
@@ -709,7 +700,6 @@ export const WorkspaceOverview = ({
                     programId: program.program_id,
                     departmentId,
                     task: "events",
-                    directoryQuery,
                     hash: "#create-event",
                   })}
                 >
@@ -735,7 +725,6 @@ export const WorkspaceOverview = ({
                     programId: program.program_id,
                     departmentId,
                     task: "participants",
-                    directoryQuery,
                     hash,
                   })}
                   onClick={taskLinkClick(onTaskChange, "participants")}
@@ -792,7 +781,6 @@ export const WorkspaceOverview = ({
                   programId: program.program_id,
                   departmentId,
                   task: "schedule",
-                  directoryQuery,
                   scheduleOrigin: "events",
                   hash,
                 })}
@@ -831,7 +819,6 @@ export const WorkspaceOverview = ({
                   programId: program.program_id,
                   departmentId,
                   task: "settings",
-                  directoryQuery,
                   hash,
                 })}
                 onClick={taskLinkClick(onTaskChange, "settings")}
@@ -895,7 +882,6 @@ export const WorkspaceTask = ({
   notificationState,
   departmentId,
   hash,
-  directoryQuery,
   onAttentionRefresh,
   onWorkspaceRefresh,
   onMutationBlockChange,
@@ -906,6 +892,8 @@ export const WorkspaceTask = ({
   onSettingsFocusChange,
   onSettingsDirtyChange,
   onWorkspaceDirtyChange,
+  onFocusedTaskFocusChange,
+  onFocusedTaskDirtyChange,
   eventFilter,
   onEventFilterChange,
   participantTab,
@@ -932,7 +920,6 @@ export const WorkspaceTask = ({
     notificationState,
     departmentId,
     hash,
-    directoryQuery,
     onAttentionRefresh,
     onWorkspaceRefresh,
     onMutationBlockChange,
@@ -941,6 +928,8 @@ export const WorkspaceTask = ({
     onOpenEvent,
     onOpenAttendance,
     onWorkspaceDirtyChange,
+    onFocusedTaskFocusChange,
+    onFocusedTaskDirtyChange,
     eventFilter,
     onEventFilterChange,
     participantTab,

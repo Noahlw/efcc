@@ -22,12 +22,14 @@ import type {
   Enrollment,
   EnrollmentRequest,
   ManagementCockpitView,
+  ManagementNotificationItem,
   PreviewResult,
   Program,
   ProgramEvent,
   ScheduleRule,
 } from "@/lib/programs/program-api";
 import { ProgramWorkspace } from "@/lib/programs/program-workspace";
+import type { ManagementNotificationState } from "@/lib/programs/programs-notifications";
 import {
   addWallDays,
   addWallMonths,
@@ -1022,6 +1024,102 @@ describe(ProgramWorkspace, () => {
     ).resolves.toBeInTheDocument();
   });
 
+  test("does not present a paginated notification page as a total", async () => {
+    mockWorkspace();
+    const notifications: ManagementNotificationItem[] = Array.from(
+      { length: 21 },
+      (_, index) => ({
+        kind: "enrollment" as const,
+        source_key: `enrollment-${index}`,
+        source_revision: "1",
+        read: false,
+        actionable: true as const,
+        count: 1,
+        latest_submitted_at: "2026-09-16T00:00:00.000Z",
+        program_id: program.program_id,
+        program_name: program.name,
+        department_id: department.department_id,
+        department_name: department.name,
+      })
+    );
+    const notificationState: ManagementNotificationState = {
+      kind: "ready",
+      notifications: {
+        items: notifications,
+        unread_count: notifications.length,
+        has_more: true,
+      },
+    };
+    render(
+      <ProgramWorkspace
+        programId="program-1"
+        task="settings"
+        notificationState={notificationState}
+        onBack={vi.fn()}
+        onTaskChange={vi.fn()}
+      />
+    );
+
+    await screen.findByRole("heading", {
+      name: COPY.programs.settingsHubTitle,
+    });
+    expect(screen.getByText(/至少 21 項 · 還有更多/u)).toBeInTheDocument();
+    expect(screen.queryByText("未讀 21 · 共 21 項")).not.toBeInTheDocument();
+  });
+
+  test("keeps an archived write committed when the follow-up workspace read fails", async () => {
+    const user = userEvent.setup();
+    mocks.getManagementProgram.mockReset();
+    mocks.getManagementProgram
+      .mockResolvedValueOnce({ program, department, modules })
+      .mockRejectedValueOnce(new Error("refresh unavailable"))
+      .mockResolvedValueOnce({
+        program: { ...program, lifecycle: "Archived" },
+        department,
+        modules,
+      });
+    mocks.updateProgram.mockResolvedValue({
+      program: { ...program, lifecycle: "Archived" },
+    });
+
+    render(
+      <ProgramWorkspace
+        programId="program-1"
+        task="settings"
+        onBack={vi.fn()}
+        onTaskChange={vi.fn()}
+      />
+    );
+
+    await screen.findByRole("heading", {
+      name: COPY.programs.settingsHubTitle,
+    });
+    await user.click(
+      screen.getByRole("button", { name: /封存課程停止一般使用/u })
+    );
+    await user.click(
+      screen.getByRole("button", {
+        name: COPY.programs.settingsHubArchiveConfirm,
+      })
+    );
+
+    await waitFor(() =>
+      expect(
+        screen.getByTestId("program-workspace-freshness")
+      ).toHaveTextContent(COPY.programs.workspaceSavedStale)
+    );
+    expect(mocks.updateProgram).toHaveBeenCalledTimes(1);
+    const refreshButtons = screen.getAllByRole("button", {
+      name: COPY.programs.workspaceRetryRefresh,
+    });
+    expect(refreshButtons.length).toBeGreaterThan(1);
+
+    await user.click(refreshButtons.at(-1) as HTMLButtonElement);
+    await screen.findByText(COPY.programs.settingsArchiveSaved);
+    expect(mocks.updateProgram).toHaveBeenCalledTimes(1);
+    expect(mocks.getManagementProgram).toHaveBeenCalledTimes(3);
+  });
+
   test("focused Settings uses one task header and Back without a duplicate root header", async () => {
     mockWorkspace();
     render(
@@ -1175,6 +1273,51 @@ describe(ProgramWorkspace, () => {
     await expect(
       screen.findByRole("heading", { name: COPY.programs.settingsHubTitle })
     ).resolves.toBeInTheDocument();
+  });
+
+  test("preserves a requested Settings section when discarding a dirty draft", async () => {
+    mockWorkspace();
+    const user = userEvent.setup();
+    const onSettingsSectionChange = vi.fn();
+    const requestedSection = document.createElement("a");
+    requestedSection.href =
+      "/programs?mode=management&program=program-1&task=settings&settingsSection=publishing";
+    requestedSection.textContent = "發佈設定";
+    document.body.append(requestedSection);
+
+    try {
+      render(
+        <ProgramWorkspace
+          programId="program-1"
+          task="settings"
+          settingsSection="basics"
+          onSettingsSectionChange={onSettingsSectionChange}
+          onBack={vi.fn()}
+          onTaskChange={vi.fn()}
+        />
+      );
+
+      await user.click(
+        await screen.findByRole("textbox", {
+          name: COPY.programs.programName,
+        })
+      );
+      const name = screen.getByRole("textbox", {
+        name: COPY.programs.programName,
+      });
+      await user.clear(name);
+      await user.type(name, "未儲存基本資料");
+      fireEvent.click(requestedSection);
+
+      await user.click(
+        screen.getByRole("button", {
+          name: COPY.programs.settingsDiscardAndLeave,
+        })
+      );
+      expect(onSettingsSectionChange).toHaveBeenCalledWith("publishing");
+    } finally {
+      requestedSection.remove();
+    }
   });
 
   test("protects workspace navigation while an Event creation draft is dirty", async () => {
@@ -3031,7 +3174,10 @@ describe("EVT-02 recurring preview and generation UI (#252)", () => {
     );
   }
 
-  function renderScheduleTask(onTaskChange = vi.fn()) {
+  function renderScheduleTask(
+    onTaskChange = vi.fn(),
+    onScheduleEditorChange = vi.fn()
+  ) {
     mockWorkspace();
     return render(
       <ProgramWorkspace
@@ -3039,9 +3185,73 @@ describe("EVT-02 recurring preview and generation UI (#252)", () => {
         task="schedule"
         onBack={vi.fn()}
         onTaskChange={onTaskChange}
+        onScheduleEditorChange={onScheduleEditorChange}
       />
     );
   }
+
+  test("guards dirty Schedule drafts across tabs, browser Back, and external leave", async () => {
+    const user = userEvent.setup();
+    const onScheduleEditorChange = vi.fn();
+    const externalLink = document.createElement("a");
+    externalLink.href = "/home";
+    externalLink.textContent = "首頁";
+    document.body.append(externalLink);
+
+    try {
+      renderScheduleTask(vi.fn(), onScheduleEditorChange);
+      await user.click(
+        await screen.findByRole("button", { name: COPY.programs.addRule })
+      );
+      await user.type(screen.getByLabelText(COPY.programs.startTime), "10:00");
+
+      await user.click(externalLink);
+      expect(
+        screen.getByRole("button", {
+          name: COPY.programs.settingsContinueEditing,
+        })
+      ).toBeInTheDocument();
+      const beforeUnload = new Event("beforeunload", { cancelable: true });
+      expect(window.dispatchEvent(beforeUnload)).toBe(false);
+
+      await user.click(
+        screen.getByRole("button", {
+          name: COPY.programs.settingsContinueEditing,
+        })
+      );
+      await waitFor(() =>
+        expect(
+          screen.queryByRole("button", {
+            name: COPY.programs.settingsContinueEditing,
+          })
+        ).not.toBeInTheDocument()
+      );
+      window.dispatchEvent(new PopStateEvent("popstate"));
+      await waitFor(() =>
+        expect(
+          screen.getByRole("button", {
+            name: COPY.programs.settingsContinueEditing,
+          })
+        ).toBeInTheDocument()
+      );
+      await user.click(
+        screen.getByRole("button", {
+          name: COPY.programs.settingsContinueEditing,
+        })
+      );
+      await user.click(
+        screen.getByRole("link", { name: COPY.programs.backToOverview })
+      );
+      await user.click(
+        screen.getByRole("button", {
+          name: COPY.programs.settingsDiscardAndLeave,
+        })
+      );
+      expect(onScheduleEditorChange).toHaveBeenLastCalledWith(null, null);
+    } finally {
+      externalLink.remove();
+    }
+  });
 
   test("keeps recurrence operations behind the Schedule destination", async () => {
     renderEventsTask();

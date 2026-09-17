@@ -9,12 +9,14 @@ import { clearManagementDraft, writeManagementDraft } from "./management-draft";
 
 const mocks = vi.hoisted(() => ({
   getDepartment: vi.fn(),
+  isUnknownMutationOutcome: vi.fn(),
   setDepartmentModule: vi.fn(),
   updateDepartment: vi.fn(),
 }));
 
 vi.mock("@/lib/programs/program-api", () => ({
   getDepartment: mocks.getDepartment,
+  isUnknownMutationOutcome: mocks.isUnknownMutationOutcome,
   setDepartmentModule: mocks.setDepartmentModule,
   updateDepartment: mocks.updateDepartment,
 }));
@@ -52,6 +54,7 @@ const managedDepartment = {
 };
 
 beforeEach(() => {
+  mocks.isUnknownMutationOutcome.mockReturnValue(false);
   mocks.getDepartment.mockResolvedValue({ department, modules: [] });
 });
 afterEach(() => {
@@ -173,5 +176,45 @@ describe("DepartmentSettingsPanel identity access", () => {
     expect(
       await screen.findByRole("textbox", { name: COPY.programs.deptName })
     ).toHaveValue("恢復中的部門");
+  });
+
+  test("blocks replay until an unknown Department mutation is reconciled", async () => {
+    const user = userEvent.setup();
+    mocks.updateDepartment.mockRejectedValue(new Error("transport lost"));
+    mocks.isUnknownMutationOutcome.mockReturnValue(true);
+
+    render(
+      <DepartmentSettingsPanel
+        department={managedDepartment}
+        onClose={vi.fn()}
+      />
+    );
+
+    await screen.findByRole("textbox", { name: COPY.programs.deptName });
+    await user.click(
+      screen.getByRole("button", { name: COPY.programs.saveDepartment })
+    );
+
+    await screen.findByText(COPY.programs.programTransportAmbiguous);
+    const retry = screen.getByRole("button", {
+      name: COPY.programs.departmentSettingsRetry,
+    });
+    expect(retry).toBeEnabled();
+    expect(
+      screen.getByRole("button", { name: COPY.programs.saveDepartment })
+    ).toBeDisabled();
+    expect(mocks.updateDepartment).toHaveBeenCalledTimes(1);
+
+    mocks.getDepartment.mockResolvedValue({
+      department: managedDepartment,
+      modules: [],
+    });
+    await user.click(retry);
+
+    await screen.findByText(COPY.programs.departmentMutationReconciled);
+    expect(mocks.updateDepartment).toHaveBeenCalledTimes(1);
+    expect(
+      screen.getByRole("button", { name: COPY.programs.saveDepartment })
+    ).toBeEnabled();
   });
 });

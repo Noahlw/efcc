@@ -79,6 +79,8 @@ export interface WorkspaceTaskContextValue {
   onOpenAttendance?: (eventId: string) => void;
   /** The active task has an unsaved local draft that the shell must protect. */
   onWorkspaceDirtyChange?: (dirty: boolean) => void;
+  onFocusedTaskFocusChange?: (focused: boolean) => void;
+  onFocusedTaskDirtyChange?: (dirty: boolean) => void;
   /** URL-owned Events filter and its replace-only updater. */
   eventFilter?: ProgramsEventFilter;
   onEventFilterChange?: (filter: ProgramsEventFilter) => void;

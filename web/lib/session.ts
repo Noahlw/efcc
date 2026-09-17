@@ -11,11 +11,56 @@
  */
 
 import { authMe, authRefresh, RpcError } from "@/lib/api";
-import type { Bootstrap, PublicUser } from "@/lib/api";
-import type { Section } from "@/lib/api";
+import type { Bootstrap, PublicUser, Section } from "@/lib/api";
 
 const AUTH_HINT_KEY = "efcc_auth_active";
 export const DEEP_LINK_KEY = "efcc_deep_link";
+const PROGRAMS_NAVIGATION_CONTEXT_KEY = "efcc_programs_navigation_context";
+
+export interface ProgramsNavigationContext {
+  surface: "management" | "participant";
+  directoryQuery?: string;
+  catalogQuery?: string;
+  catalogFilter?: string;
+  focusProgramId?: string;
+  scrollY?: number;
+}
+
+/** Persist non-authoritative Programs list context across route changes/reload. */
+export function rememberProgramsNavigationContext(
+  context: ProgramsNavigationContext
+): void {
+  try {
+    sessionStorage.setItem(
+      PROGRAMS_NAVIGATION_CONTEXT_KEY,
+      JSON.stringify(context)
+    );
+  } catch {
+    // Storage unavailable — the directory remains usable without restoration.
+  }
+}
+
+export function consumeProgramsNavigationContext(): ProgramsNavigationContext | null {
+  try {
+    const raw = sessionStorage.getItem(PROGRAMS_NAVIGATION_CONTEXT_KEY);
+    sessionStorage.removeItem(PROGRAMS_NAVIGATION_CONTEXT_KEY);
+    if (!raw) {
+      return null;
+    }
+    const value: unknown = JSON.parse(raw);
+    if (
+      typeof value !== "object" ||
+      value === null ||
+      ((value as ProgramsNavigationContext).surface !== "management" &&
+        (value as ProgramsNavigationContext).surface !== "participant")
+    ) {
+      return null;
+    }
+    return value as ProgramsNavigationContext;
+  } catch {
+    return null;
+  }
+}
 
 /** Persist a same-origin path/query/hash for the post-login handoff. */
 export function rememberDeepLink(value: string): void {

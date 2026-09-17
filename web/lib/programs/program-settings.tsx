@@ -261,6 +261,7 @@ export interface ProgramSettingsProps {
   onTaskChange?: (task: "events" | "schedule" | null) => void;
   /** Let the route owner protect navigation while a focused draft is dirty. */
   onDirtyChange?: (dirty: boolean) => void;
+  onFocusChange?: (focused: boolean) => void;
   /** Show the existing editor actions when navigation is blocked by a draft. */
   navigationBlocked?: boolean;
   /** Explicitly reload the route-owned workspace after a 409 conflict. */
@@ -625,6 +626,7 @@ export interface SettingsHubProps {
   notificationCurrentValue?: string;
   onArchive?: () => void | Promise<void>;
   archiveBusy?: boolean;
+  archiveDisabled?: boolean;
 }
 
 const SettingsHubRow = ({
@@ -708,6 +710,7 @@ export const SettingsHub = ({
   notificationCurrentValue,
   onArchive,
   archiveBusy = false,
+  archiveDisabled = false,
 }: SettingsHubProps) => {
   const [archiveConfirmationOpen, setArchiveConfirmationOpen] = useState(false);
   const canManage = program.capabilities.manage;
@@ -904,7 +907,9 @@ export const SettingsHub = ({
             </AlertDialogCancel>
             <AlertDialogAction
               variant="destructive"
-              disabled={archiveBusy || onArchive === undefined}
+              disabled={
+                archiveBusy || archiveDisabled || onArchive === undefined
+              }
               onClick={() => {
                 setArchiveConfirmationOpen(false);
                 void onArchive?.();
@@ -1297,6 +1302,7 @@ export const ProgramSettings = ({
   attendanceEnabled = true,
   onTaskChange,
   onDirtyChange,
+  onFocusChange,
   navigationBlocked = false,
   onReload,
   onMutationBlockChange,
@@ -1535,6 +1541,11 @@ export const ProgramSettings = ({
     rules,
   ]);
 
+  useEffect(() => {
+    onFocusChange?.(
+      focusedSection && (focusedSchedule ? scheduleEditor !== null : true)
+    );
+  }, [focusedSchedule, focusedSection, onFocusChange, scheduleEditor]);
   useEffect(() => {
     onDirtyChange?.(focusedSection && settingsDirty);
   }, [focusedSection, onDirtyChange, settingsDirty]);

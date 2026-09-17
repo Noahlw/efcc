@@ -20,7 +20,11 @@ import type {
   ManagementNotifications,
 } from "@/lib/programs/program-api";
 import { ScreenHeader, ScreenState } from "@/lib/screen-foundations";
-import { rememberDeepLink } from "@/lib/session";
+import {
+  consumeProgramsNavigationContext,
+  rememberDeepLink,
+  rememberProgramsNavigationContext,
+} from "@/lib/session";
 
 import { ManagementDirectory } from "./management-directory";
 import {
@@ -102,9 +106,7 @@ function applyProgramsNavigation(
 }
 function participantOriginHref(
   origin: ProgramsOrigin | undefined,
-  hash: string | null | undefined,
-  catalogQuery?: string,
-  catalogFilter?: ProgramsParticipantFilter
+  hash: string | null | undefined
 ): string {
   switch (origin) {
     case "home": {
@@ -119,8 +121,6 @@ function participantOriginHref(
     default: {
       const href = buildProgramsHref({
         mode: "participant",
-        catalogQuery,
-        catalogFilter,
         hash,
       });
       return href;
@@ -271,6 +271,7 @@ const ManagementPanel = ({
   onSettingsSectionChange,
   onScheduleEditorChange,
   onDepartmentSettingsChange,
+  restoredNavigationContext,
 }: {
   projection: ProgramsManagementAccess;
   intent: ProgramsIntent;
@@ -299,6 +300,9 @@ const ManagementPanel = ({
     ruleId?: string | null
   ) => void;
   onDepartmentSettingsChange: (departmentId: string | null) => void;
+  restoredNavigationContext: ReturnType<
+    typeof consumeProgramsNavigationContext
+  >;
 }) => {
   const router = useRouter();
   const [attentionRefreshKey, setAttentionRefreshKey] = useState(0);
@@ -437,7 +441,7 @@ const ManagementPanel = ({
           value={{
             departmentId: intent.departmentId ?? null,
             hash: intent.hash,
-            directoryQuery: intent.directoryQuery ?? null,
+            directoryQuery,
           }}
         >
           <ProgramWorkspace
@@ -478,6 +482,7 @@ const ManagementPanel = ({
           onOpenProgram={onOpenProgram}
           departmentSettingsId={intent.departmentSettingsId}
           onDepartmentSettingsChange={onDepartmentSettingsChange}
+          restoreScrollY={restoredNavigationContext?.scrollY}
         />
       )}
     </>
@@ -571,6 +576,9 @@ const ProgramsBoundaryBody = ({
   onSettingsSectionChange,
   onScheduleEditorChange,
   onDepartmentSettingsChange,
+  restoredNavigationContext,
+  participantCatalogQuery,
+  participantCatalogFilter,
   onCatalogQueryChange,
   onCatalogFilterChange,
   onCatalogFiltersClear,
@@ -615,6 +623,11 @@ const ProgramsBoundaryBody = ({
     ruleId?: string | null
   ) => void;
   onDepartmentSettingsChange: (departmentId: string | null) => void;
+  restoredNavigationContext: ReturnType<
+    typeof consumeProgramsNavigationContext
+  >;
+  participantCatalogQuery: string;
+  participantCatalogFilter: ProgramsParticipantFilter;
   onCatalogQueryChange: (query: string) => void;
   onCatalogFilterChange: (filter: ProgramsParticipantFilter) => void;
   onCatalogFiltersClear: () => void;
@@ -645,6 +658,7 @@ const ProgramsBoundaryBody = ({
         onSettingsSectionChange={onSettingsSectionChange}
         onScheduleEditorChange={onScheduleEditorChange}
         onDepartmentSettingsChange={onDepartmentSettingsChange}
+        restoredNavigationContext={restoredNavigationContext}
         onBackDirectory={() =>
           navigateMode(
             "management",
@@ -669,12 +683,7 @@ const ProgramsBoundaryBody = ({
       ) : intent.programId ? (
         <ParticipantProgramDetail
           programId={intent.programId}
-          backHref={participantOriginHref(
-            intent.origin,
-            intent.hash,
-            intent.catalogQuery,
-            intent.catalogFilter
-          )}
+          backHref={participantOriginHref(intent.origin, intent.hash)}
           onBack={navigateParticipantBack}
           eventHref={(eventId) =>
             buildProgramsHref({
@@ -683,8 +692,6 @@ const ProgramsBoundaryBody = ({
               eventId,
               hash: intent.hash,
               origin: intent.origin ?? "programs",
-              catalogQuery: intent.catalogQuery,
-              catalogFilter: intent.catalogFilter,
             })
           }
           managementHref={buildProgramsHref({
@@ -712,13 +719,12 @@ const ProgramsBoundaryBody = ({
               programId,
               hash: intent.hash,
               origin: "programs",
-              catalogQuery: intent.catalogQuery,
-              catalogFilter: intent.catalogFilter,
             })
           }
           onOpenProgram={onParticipantProgramOpen}
-          query={intent.catalogQuery}
-          filter={intent.catalogFilter}
+          query={participantCatalogQuery}
+          filter={participantCatalogFilter}
+          restoreScrollY={restoredNavigationContext?.scrollY}
           onQueryChange={onCatalogQueryChange}
           onFilterChange={onCatalogFilterChange}
           onClearFilters={onCatalogFiltersClear}
@@ -738,12 +744,42 @@ export const ProgramsBoundary = () => {
   const routeKey = `${pathname}?${routeQuery}${routeHash}`;
   const [search, setSearch] = useState("");
   const intent = useMemo(() => parseProgramsIntent(search), [search]);
+  const restoredNavigationContext = useMemo(
+    () => consumeProgramsNavigationContext(),
+    []
+  );
   const [locationReady, setLocationReady] = useState(false);
-  const [managementDirectoryQuery, setManagementDirectoryQuery] = useState("");
+  const [managementDirectoryQuery, setManagementDirectoryQuery] = useState(
+    () =>
+      restoredNavigationContext?.surface === "management"
+        ? (restoredNavigationContext.directoryQuery ?? "")
+        : ""
+  );
+  const [participantCatalogQuery, setParticipantCatalogQuery] = useState(() =>
+    restoredNavigationContext?.surface === "participant"
+      ? (restoredNavigationContext.catalogQuery ?? "")
+      : ""
+  );
+  const [participantCatalogFilter, setParticipantCatalogFilter] =
+    useState<ProgramsParticipantFilter>(
+      () =>
+        (restoredNavigationContext?.surface === "participant" &&
+        restoredNavigationContext.catalogFilter
+          ? restoredNavigationContext.catalogFilter
+          : "all") as ProgramsParticipantFilter
+    );
   const [directoryFocusProgramId, setDirectoryFocusProgramId] = useState<
     string | null
-  >(null);
-  const participantFocusProgramId = useRef<string | null>(null);
+  >(
+    restoredNavigationContext?.surface === "management"
+      ? (restoredNavigationContext.focusProgramId ?? null)
+      : null
+  );
+  const participantFocusProgramId = useRef<string | null>(
+    restoredNavigationContext?.surface === "participant"
+      ? (restoredNavigationContext.focusProgramId ?? null)
+      : null
+  );
   useEffect(
     () => () => {
       if (
@@ -758,26 +794,26 @@ export const ProgramsBoundary = () => {
   const updateManagementDirectoryQuery = (query: string) => {
     setManagementDirectoryQuery(query);
     setDirectoryFocusProgramId(null);
-    applyProgramsNavigation(
-      router,
-      setSearch,
-      buildProgramsHref({
-        mode: "management",
-        programId: intent.programId,
-        departmentId: intent.departmentId,
-        task: intent.task,
-        eventId: intent.eventId,
-        eventAction: intent.eventAction,
-        directoryQuery: query,
-        hash: intent.hash,
-      }),
-      true
-    );
+    rememberProgramsNavigationContext({
+      surface: "management",
+      directoryQuery: query,
+      scrollY: window.scrollY,
+    });
   };
   const retryFocusPending = useRef(false);
   useEffect(() => {
-    setManagementDirectoryQuery(intent.directoryQuery ?? "");
+    if (intent.directoryQuery !== undefined) {
+      setManagementDirectoryQuery(intent.directoryQuery);
+    }
   }, [intent.directoryQuery]);
+  useEffect(() => {
+    if (intent.catalogQuery !== undefined) {
+      setParticipantCatalogQuery(intent.catalogQuery);
+    }
+    if (intent.catalogFilter !== undefined) {
+      setParticipantCatalogFilter(intent.catalogFilter);
+    }
+  }, [intent.catalogFilter, intent.catalogQuery]);
   const accessRequestKey = `${pathname}?mode=${intent.mode}`;
   const { state: access, run: loadAccess } = useAsyncResource<
     ProgramsManagementAccess,
@@ -878,9 +914,6 @@ export const ProgramsBoundary = () => {
       mode,
       programId,
       departmentId: mode === "management" ? departmentId : undefined,
-      directoryQuery: mode === "management" ? intent.directoryQuery : undefined,
-      catalogQuery: mode === "participant" ? intent.catalogQuery : undefined,
-      catalogFilter: mode === "participant" ? intent.catalogFilter : undefined,
       hash,
     });
     applyProgramsNavigation(router, setSearch, href, replace);
@@ -897,7 +930,6 @@ export const ProgramsBoundary = () => {
       programId,
       departmentId: intent.departmentId,
       created,
-      directoryQuery: intent.directoryQuery,
       hash: intent.hash,
     });
     applyProgramsNavigation(router, setSearch, href);
@@ -918,7 +950,6 @@ export const ProgramsBoundary = () => {
       task,
       eventId,
       created: undefined,
-      directoryQuery: intent.directoryQuery,
       eventFilter: task === "events" ? intent.eventFilter : undefined,
       participantTab:
         task === "participants" ? intent.participantTab : undefined,
@@ -956,7 +987,6 @@ export const ProgramsBoundary = () => {
       eventId,
       eventAction,
       eventFilter: intent.eventFilter,
-      directoryQuery: intent.directoryQuery,
       hash: intent.hash,
     });
     applyProgramsNavigation(router, setSearch, href);
@@ -979,7 +1009,6 @@ export const ProgramsBoundary = () => {
         eventId: intent.eventId,
         eventAction: intent.eventAction,
         eventFilter,
-        directoryQuery: intent.directoryQuery,
         hash: intent.hash,
       }),
       true
@@ -1002,7 +1031,6 @@ export const ProgramsBoundary = () => {
         eventId: intent.eventId,
         participantTab,
         participantQuery: intent.participantQuery,
-        directoryQuery: intent.directoryQuery,
         hash: intent.hash,
       }),
       true
@@ -1023,7 +1051,6 @@ export const ProgramsBoundary = () => {
         eventId: intent.eventId,
         participantTab: intent.participantTab,
         participantQuery,
-        directoryQuery: intent.directoryQuery,
         hash: intent.hash,
       }),
       true
@@ -1044,7 +1071,6 @@ export const ProgramsBoundary = () => {
         departmentId: intent.departmentId,
         task: "settings",
         settingsSection,
-        directoryQuery: intent.directoryQuery,
         hash: intent.hash,
       }),
       true
@@ -1068,7 +1094,6 @@ export const ProgramsBoundary = () => {
         scheduleOrigin: intent.scheduleOrigin,
         scheduleEditor,
         scheduleRuleId,
-        directoryQuery: intent.directoryQuery,
         hash: intent.hash,
       }),
       true
@@ -1087,57 +1112,36 @@ export const ProgramsBoundary = () => {
         mode: "management",
         departmentId: intent.departmentId,
         departmentSettingsId,
-        directoryQuery: intent.directoryQuery,
         hash: intent.hash,
       }),
       departmentSettingsId === null
     );
   };
   const updateCatalogQuery = (catalogQuery: string) => {
-    applyProgramsNavigation(
-      router,
-      setSearch,
-      buildProgramsHref({
-        mode: "participant",
-        programId: intent.programId,
-        eventId: intent.eventId,
-        catalogQuery,
-        catalogFilter: intent.catalogFilter,
-        origin: intent.origin,
-        hash: intent.hash,
-      }),
-      true
-    );
+    setParticipantCatalogQuery(catalogQuery);
+    rememberProgramsNavigationContext({
+      surface: "participant",
+      catalogQuery,
+      catalogFilter: participantCatalogFilter,
+      scrollY: window.scrollY,
+    });
   };
   const updateCatalogFilter = (catalogFilter: ProgramsParticipantFilter) => {
-    applyProgramsNavigation(
-      router,
-      setSearch,
-      buildProgramsHref({
-        mode: "participant",
-        programId: intent.programId,
-        eventId: intent.eventId,
-        catalogQuery: intent.catalogQuery,
-        catalogFilter,
-        origin: intent.origin,
-        hash: intent.hash,
-      }),
-      true
-    );
+    setParticipantCatalogFilter(catalogFilter);
+    rememberProgramsNavigationContext({
+      surface: "participant",
+      catalogQuery: participantCatalogQuery,
+      catalogFilter,
+      scrollY: window.scrollY,
+    });
   };
   const clearCatalogFilters = () => {
-    applyProgramsNavigation(
-      router,
-      setSearch,
-      buildProgramsHref({
-        mode: "participant",
-        programId: intent.programId,
-        eventId: intent.eventId,
-        origin: intent.origin,
-        hash: intent.hash,
-      }),
-      true
-    );
+    setParticipantCatalogQuery("");
+    setParticipantCatalogFilter("all");
+    rememberProgramsNavigationContext({
+      surface: "participant",
+      scrollY: window.scrollY,
+    });
   };
   const navigateManagementAttendance = (eventId: string) => {
     router.push(`/events?eventId=${encodeURIComponent(eventId)}`);
@@ -1155,8 +1159,6 @@ export const ProgramsBoundary = () => {
       eventId,
       hash: intent.hash,
       origin: intent.origin ?? "programs",
-      catalogQuery: intent.catalogQuery,
-      catalogFilter: intent.catalogFilter,
     });
     applyProgramsNavigation(router, setSearch, href, false, {
       efccSection: "programs",
@@ -1169,12 +1171,7 @@ export const ProgramsBoundary = () => {
     );
   };
   const navigateParticipantBack = () => {
-    const href = participantOriginHref(
-      intent.origin,
-      intent.hash,
-      intent.catalogQuery,
-      intent.catalogFilter
-    );
+    const href = participantOriginHref(intent.origin, intent.hash);
     if (intent.origin === undefined || intent.origin === "programs") {
       if (intent.programId) {
         rememberParticipantProgramFocus(intent.programId);
@@ -1198,8 +1195,6 @@ export const ProgramsBoundary = () => {
           mode: "participant",
           programId: intent.programId,
           origin: intent.origin ?? "programs",
-          catalogQuery: intent.catalogQuery,
-          catalogFilter: intent.catalogFilter,
           hash: intent.hash,
         }),
         true,
@@ -1207,14 +1202,7 @@ export const ProgramsBoundary = () => {
       );
       return;
     }
-    router.replace(
-      participantOriginHref(
-        intent.origin,
-        intent.hash,
-        intent.catalogQuery,
-        intent.catalogFilter
-      )
-    );
+    router.replace(participantOriginHref(intent.origin, intent.hash));
   };
   if (intent.malformed) {
     return (
@@ -1257,6 +1245,8 @@ export const ProgramsBoundary = () => {
         onDirectoryQueryChange={updateManagementDirectoryQuery}
         directoryFocusProgramId={directoryFocusProgramId}
         participantFocusProgramId={participantFocusProgramId.current}
+        participantCatalogQuery={participantCatalogQuery}
+        participantCatalogFilter={participantCatalogFilter}
         onParticipantProgramOpen={(programId) => {
           participantFocusProgramId.current = programId;
         }}
@@ -1269,6 +1259,7 @@ export const ProgramsBoundary = () => {
         onSettingsSectionChange={updateManagementSettingsSection}
         onScheduleEditorChange={updateManagementScheduleEditor}
         onDepartmentSettingsChange={updateManagementDepartmentSettings}
+        restoredNavigationContext={restoredNavigationContext}
         onCatalogQueryChange={updateCatalogQuery}
         onCatalogFilterChange={updateCatalogFilter}
         onCatalogFiltersClear={clearCatalogFilters}

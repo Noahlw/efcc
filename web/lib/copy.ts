@@ -920,6 +920,7 @@ export const COPY = {
     settingsHubCurrentLoading: "正在確認目前值…",
     settingsHubCurrentError: "目前值無法載入",
     settingsHubCurrentStale: "目前值可能已過時",
+    settingsHubScheduleUnavailable: "目前規則請進入排程查看",
     settingsHubNoUpcoming: "沒有即將舉行的聚會",
     draftRecover: "恢復草稿",
     draftDiscard: "捨棄草稿",
@@ -1230,6 +1231,7 @@ export const COPY = {
     departmentSettingsRetry: "重試載入部門設定",
     departmentSavedRefreshPending:
       "變更已儲存，但未能更新部門資料；請重試載入以確認目前狀態。",
+    departmentMutationReconciled: "部門目前狀態已重新確認。",
     departmentDraftBlocking:
       "部門資料有未儲存變更；請先儲存或捨棄後再改動模組。",
     departmentDraftLeaveTitle: "未儲存部門資料變更",

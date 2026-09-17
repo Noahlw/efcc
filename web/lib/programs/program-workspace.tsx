@@ -46,7 +46,7 @@ import {
   clearManagementDraftsForEntity,
 } from "./management-draft";
 import { readWorkspaceMutationRecovery } from "./mutation-recovery";
-import { buildProgramsHref } from "./programs-intent";
+import { buildProgramsHref, parseProgramsIntent } from "./programs-intent";
 import type {
   ManagementEventAction,
   ProgramsEventFilter,
@@ -236,7 +236,7 @@ export const ProgramWorkspace = ({
   scheduleRuleId,
   onScheduleEditorChange,
 }: ProgramWorkspaceProps) => {
-  const { departmentId, hash, directoryQuery } = useWorkspaceRouteContext();
+  const { departmentId, hash } = useWorkspaceRouteContext();
   const [summary, setSummary] = useState<WorkspaceSummaryState>(() =>
     initialSummary()
   );
@@ -316,7 +316,7 @@ export const ProgramWorkspace = ({
     );
   }, [created, programId, task]);
   useEffect(() => {
-    if (task !== "settings") {
+    if (task !== "settings" && task !== "schedule") {
       setSettingsEditorFocused(false);
       setSettingsEditorDirty(false);
       setSettingsNavigationBlocked(false);
@@ -441,7 +441,11 @@ export const ProgramWorkspace = ({
   ]);
   useEffect(() => {
     if (
-      !(task === "settings" && settingsEditorFocused && settingsEditorDirty)
+      !(
+        (task === "settings" || task === "schedule") &&
+        settingsEditorFocused &&
+        settingsEditorDirty
+      )
     ) {
       return;
     }
@@ -466,7 +470,99 @@ export const ProgramWorkspace = ({
       window.removeEventListener("popstate", handlePopState);
     };
   }, [settingsEditorDirty, settingsEditorFocused, task]);
-  const focusedSettingsEditor = task === "settings" && settingsEditorFocused;
+  useEffect(() => {
+    if (task !== "schedule" || !settingsEditorFocused || !settingsEditorDirty) {
+      return;
+    }
+    const handleDocumentClick = (event: globalThis.MouseEvent) => {
+      if (
+        allowSettingsNavigation.current ||
+        event.defaultPrevented ||
+        event.button !== 0 ||
+        event.metaKey ||
+        event.ctrlKey ||
+        event.shiftKey ||
+        event.altKey
+      ) {
+        return;
+      }
+      const { target } = event;
+      if (!(target instanceof Element)) {
+        return;
+      }
+      const anchor = target.closest("a[href]");
+      if (!(anchor instanceof HTMLAnchorElement)) {
+        return;
+      }
+      const href = anchor.getAttribute("href");
+      if (
+        href?.startsWith("#") ||
+        anchor.hasAttribute("download") ||
+        (anchor.getAttribute("target") ?? "").toLowerCase() === "_blank"
+      ) {
+        return;
+      }
+      const currentUrl = new URL(window.location.href);
+      const nextUrl = new URL(anchor.href, currentUrl);
+      if (
+        (nextUrl.protocol !== "http:" && nextUrl.protocol !== "https:") ||
+        nextUrl.origin !== currentUrl.origin
+      ) {
+        return;
+      }
+      event.preventDefault();
+      event.stopPropagation();
+      const routeIntent =
+        nextUrl.pathname === "/programs"
+          ? parseProgramsIntent(`${nextUrl.search}${nextUrl.hash}`)
+          : null;
+      if (
+        routeIntent &&
+        !routeIntent.malformed &&
+        routeIntent.mode === "management" &&
+        routeIntent.programId === programId
+      ) {
+        setPendingSettingsNavigation({
+          kind: "route",
+          task: routeIntent.task ?? null,
+          ...(routeIntent.eventId === undefined
+            ? {}
+            : { eventId: routeIntent.eventId }),
+          ...(routeIntent.scheduleOrigin === undefined
+            ? {}
+            : { scheduleOrigin: routeIntent.scheduleOrigin }),
+          ...(routeIntent.scheduleEditor === undefined
+            ? {}
+            : { scheduleEditor: routeIntent.scheduleEditor }),
+          ...(routeIntent.scheduleRuleId === undefined
+            ? {}
+            : { scheduleRuleId: routeIntent.scheduleRuleId }),
+          ...(routeIntent.settingsSection === undefined
+            ? {}
+            : { settingsSection: routeIntent.settingsSection }),
+        });
+      } else {
+        setPendingSettingsNavigation({ kind: "href", href: nextUrl.href });
+      }
+      setSettingsNavigationBlocked(true);
+      announce(COPY.programs.settingsUnsaved);
+    };
+    const handleBeforeUnload = (event: BeforeUnloadEvent) => {
+      if (allowSettingsNavigation.current) {
+        return;
+      }
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    document.addEventListener("click", handleDocumentClick, true);
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => {
+      document.removeEventListener("click", handleDocumentClick, true);
+      window.removeEventListener("beforeunload", handleBeforeUnload);
+    };
+  }, [programId, settingsEditorDirty, settingsEditorFocused, task]);
+  const focusedSettingsEditor =
+    (task === "settings" || task === "schedule") && settingsEditorFocused;
   const {
     state,
     run: loadWorkspace,
@@ -728,6 +824,16 @@ export const ProgramWorkspace = ({
       return;
     }
     if (pending.kind === "route") {
+      if (pending.task === "settings") {
+        onSettingsSectionChange?.(pending.settingsSection ?? null);
+        return;
+      }
+      if (pending.task === "schedule") {
+        onScheduleEditorChange?.(
+          pending.scheduleEditor ?? null,
+          pending.scheduleRuleId ?? null
+        );
+      }
       onSettingsSectionChange?.(null);
       if (pending.scheduleOrigin === undefined) {
         onTaskChange(pending.task, pending.eventId);
@@ -901,7 +1007,6 @@ export const ProgramWorkspace = ({
               : null,
             eventFilter: focusedSchedule ? undefined : eventFilter,
             settingsSection: focusedSchedule ? undefined : settingsSection,
-            directoryQuery,
             hash,
           })}
           backLabel={COPY.programs.workspaceBack}
@@ -1035,7 +1140,6 @@ export const ProgramWorkspace = ({
           modules={state.modules}
           departmentId={departmentId}
           hash={hash}
-          directoryQuery={directoryQuery}
           eventFilter={eventFilter}
           participantTab={participantTab}
           participantQuery={participantQuery}
@@ -1063,7 +1167,6 @@ export const ProgramWorkspace = ({
             departmentId,
             task: "events",
             eventFilter,
-            directoryQuery,
             hash,
           })}
           onAttentionRefresh={onAttentionRefresh}
@@ -1104,7 +1207,6 @@ export const ProgramWorkspace = ({
           task={task}
           modules={state.modules}
           departmentId={departmentId}
-          directoryQuery={directoryQuery}
           hash={hash}
           attention={attention}
           cockpit={state.cockpit}
@@ -1138,6 +1240,8 @@ export const ProgramWorkspace = ({
           onSettingsFocusChange={setSettingsEditorFocused}
           onSettingsDirtyChange={setSettingsEditorDirty}
           onWorkspaceDirtyChange={handleEventDraftDirtyChange}
+          onFocusedTaskFocusChange={setSettingsEditorFocused}
+          onFocusedTaskDirtyChange={setSettingsEditorDirty}
           settingsNavigationBlocked={settingsNavigationBlocked}
           onSettingsNavigationBlocked={setSettingsNavigationBlocked}
           onSettingsNavigationRequest={handleSettingsNavigationRequest}
@@ -1153,7 +1257,6 @@ export const ProgramWorkspace = ({
           summary={summary}
           departmentId={departmentId}
           hash={hash}
-          directoryQuery={directoryQuery}
           onTaskChange={handleWorkspaceTaskChange}
           onOpenAttendance={onOpenAttendance}
           onSummaryRetry={retrySummary}

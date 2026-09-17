@@ -46,7 +46,10 @@ import {
   ScreenState,
   ScreenStatus,
 } from "@/lib/screen-foundations";
-import { rememberDeepLink } from "@/lib/session";
+import {
+  rememberDeepLink,
+  rememberProgramsNavigationContext,
+} from "@/lib/session";
 
 import { DepartmentSettingsPanel } from "./department-settings-panel";
 import { clearManagementDraft } from "./management-draft";
@@ -311,6 +314,7 @@ export interface ManagementDirectoryProps {
   headerAction?: ReactNode;
   departmentSettingsId?: string | null;
   onDepartmentSettingsChange?: (departmentId: string | null) => void;
+  restoreScrollY?: number;
 }
 export const ManagementDirectory = ({
   onOpenProgram,
@@ -323,6 +327,7 @@ export const ManagementDirectory = ({
   headerAction,
   departmentSettingsId,
   onDepartmentSettingsChange,
+  restoreScrollY,
 }: ManagementDirectoryProps) => {
   const [localQuery, setLocalQuery] = useState("");
   const [creatingProgram, setCreatingProgram] = useState(false);
@@ -416,15 +421,22 @@ export const ManagementDirectory = ({
     );
   }, [departmentId, directoryQuery, state]);
   useEffect(() => {
-    if (state.kind !== "ready" || !focusProgramId) {
+    if (
+      state.kind !== "ready" ||
+      (!focusProgramId && restoreScrollY === undefined)
+    ) {
       return;
     }
     const row = [
       ...document.querySelectorAll<HTMLElement>("[data-program-id]"),
     ].find((candidate) => candidate.dataset.programId === focusProgramId);
-    row?.scrollIntoView({ block: "nearest", inline: "nearest" });
+    if (row && restoreScrollY !== undefined) {
+      window.scrollTo({ top: restoreScrollY, behavior: "auto" });
+    } else {
+      row?.scrollIntoView({ block: "nearest", inline: "nearest" });
+    }
     row?.focus();
-  }, [filteredRows, focusProgramId, state.kind]);
+  }, [filteredRows, focusProgramId, restoreScrollY, state.kind]);
   const scopedDepartments =
     state.kind === "ready"
       ? state.departments.filter(
@@ -819,7 +831,6 @@ export const ManagementDirectory = ({
                             mode: "management",
                             programId: program.program_id,
                             departmentId,
-                            directoryQuery,
                             hash,
                           })}
                           data-program-id={program.program_id}
@@ -835,6 +846,12 @@ export const ManagementDirectory = ({
                               return;
                             }
                             event.preventDefault();
+                            rememberProgramsNavigationContext({
+                              surface: "management",
+                              directoryQuery,
+                              focusProgramId: program.program_id,
+                              scrollY: window.scrollY,
+                            });
                             onOpenProgram(program.program_id);
                           }}
                         >

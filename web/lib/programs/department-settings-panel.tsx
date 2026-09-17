@@ -22,6 +22,7 @@ import { COPY, errorMessage } from "@/lib/copy";
 import { announce } from "@/lib/live-region";
 import {
   getDepartment,
+  isUnknownMutationOutcome,
   setDepartmentModule,
   updateDepartment,
 } from "@/lib/programs/program-api";
@@ -102,6 +103,8 @@ export const DepartmentSettingsPanel = ({
   const [creating, setCreating] = useState(false);
   const [closeConfirmationOpen, setCloseConfirmationOpen] = useState(false);
   const [draftRecoveryOpen, setDraftRecoveryOpen] = useState(false);
+  const [mutationRecoveryRequired, setMutationRecoveryRequired] =
+    useState(false);
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const mounted = useRef(true);
@@ -182,7 +185,7 @@ export const DepartmentSettingsPanel = ({
     message: string,
     afterSuccess?: (result: T) => void
   ) => {
-    if (busy) {
+    if (busy || mutationRecoveryRequired) {
       return;
     }
     setBusy(true);
@@ -195,6 +198,10 @@ export const DepartmentSettingsPanel = ({
       if (!mounted.current) {
         return;
       }
+      if (!refreshed) {
+        setMutationRecoveryRequired(true);
+        setActionError(COPY.programs.programTransportAmbiguous);
+      }
       const noticeMessage = refreshed
         ? message
         : COPY.programs.departmentSavedRefreshPending;
@@ -202,6 +209,12 @@ export const DepartmentSettingsPanel = ({
       announce(noticeMessage);
     } catch (error) {
       if (mounted.current) {
+        if (isUnknownMutationOutcome(error)) {
+          setMutationRecoveryRequired(true);
+          setActionError(COPY.programs.programTransportAmbiguous);
+          announce(COPY.programs.programTransportAmbiguous);
+          return;
+        }
         const mappedMessage =
           error instanceof RpcError && error.problem.code === "NETWORK_ERROR"
             ? COPY.programs.offlineError
@@ -214,6 +227,24 @@ export const DepartmentSettingsPanel = ({
         setBusy(false);
       }
     }
+  };
+
+  const retryMutationRecovery = async () => {
+    if (busy) {
+      return;
+    }
+    setBusy(true);
+    const refreshed = await load(true);
+    if (refreshed) {
+      setMutationRecoveryRequired(false);
+      setActionError(null);
+      setNotice(COPY.programs.departmentMutationReconciled);
+      announce(COPY.programs.departmentMutationReconciled);
+    } else {
+      setActionError(COPY.programs.programTransportAmbiguous);
+      announce(COPY.programs.programTransportAmbiguous);
+    }
+    setBusy(false);
   };
 
   const saveDetails = (event: React.FormEvent<HTMLFormElement>) => {
@@ -335,6 +366,19 @@ export const DepartmentSettingsPanel = ({
             {actionError !== null && (
               <ScreenState kind="error" title={actionError} />
             )}
+            {mutationRecoveryRequired && (
+              <Alert tone="warning" announcement="polite">
+                <span>{COPY.programs.departmentSavedRefreshPending}</span>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => void retryMutationRecovery()}
+                  disabled={busy}
+                >
+                  {COPY.programs.departmentSettingsRetry}
+                </Button>
+              </Alert>
+            )}
             {loadError !== null && detail !== null && (
               <Alert tone="warning" announcement="polite">
                 <span>{COPY.programs.departmentSavedRefreshPending}</span>
@@ -394,7 +438,7 @@ export const DepartmentSettingsPanel = ({
                         setActionError(null);
                         setCreating(true);
                       }}
-                      disabled={busy}
+                      disabled={busy || mutationRecoveryRequired}
                     >
                       {COPY.programs.createProgram}
                     </Button>
@@ -434,7 +478,7 @@ export const DepartmentSettingsPanel = ({
                     <Button
                       className="h-auto w-fit whitespace-normal bg-[var(--screen-accent)] text-white hover:bg-[var(--screen-accent-deep)]"
                       type="submit"
-                      disabled={busy}
+                      disabled={busy || mutationRecoveryRequired}
                     >
                       {COPY.programs.saveDepartment}
                     </Button>
@@ -461,7 +505,7 @@ export const DepartmentSettingsPanel = ({
                                   className="h-auto w-fit whitespace-normal border-[var(--screen-line-strong)] bg-transparent text-[var(--screen-ink)] hover:bg-[var(--screen-surface-soft)] hover:text-[var(--screen-ink)]"
                                   type="button"
                                   aria-pressed={module.enabled === 1}
-                                  disabled={busy}
+                                  disabled={busy || mutationRecoveryRequired}
                                   onClick={() =>
                                     runModuleAction(() =>
                                       setDepartmentModule(
