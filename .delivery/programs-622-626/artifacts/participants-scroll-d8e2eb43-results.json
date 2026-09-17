@@ -1,0 +1,235 @@
+{
+  "config": {
+    "argv": [
+      "/Users/noah.wong/.local/share/fnm/node-versions/v22.18.0/installation/bin/node",
+      "/Users/noah.wong/Desktop/code/efcc/node_modules/@playwright/test/cli.js",
+      "test",
+      "--config=tests/e2e/programs-participant-acceptance.config.ts",
+      "tests/e2e/programs-management-acceptance.test.ts",
+      "-g",
+      "restores the Participants list position"
+    ],
+    "configFile": "/Users/noah.wong/Desktop/code/efcc/tests/e2e/programs-participant-acceptance.config.ts",
+    "rootDir": "/Users/noah.wong/Desktop/code/efcc/tests/e2e",
+    "failOnFlakyTests": false,
+    "forbidOnly": false,
+    "fullyParallel": false,
+    "globalSetup": null,
+    "globalTeardown": null,
+    "globalTimeout": 0,
+    "grep": {},
+    "grepInvert": null,
+    "maxFailures": 0,
+    "metadata": {
+      "actualWorkers": 1
+    },
+    "preserveOutput": "always",
+    "projects": [
+      {
+        "outputDir": "/Users/noah.wong/Desktop/code/efcc/.delivery/programs-622-626/artifacts/participants-scroll-d8e2eb43-output",
+        "repeatEach": 1,
+        "retries": 0,
+        "metadata": {
+          "actualWorkers": 1
+        },
+        "id": "phone-360",
+        "name": "phone-360",
+        "testDir": "/Users/noah.wong/Desktop/code/efcc/tests/e2e",
+        "testIgnore": [],
+        "testMatch": [
+          "**/programs-participant-acceptance.test.ts",
+          "**/programs-management-acceptance.test.ts"
+        ],
+        "timeout": 60000
+      },
+      {
+        "outputDir": "/Users/noah.wong/Desktop/code/efcc/.delivery/programs-622-626/artifacts/participants-scroll-d8e2eb43-output",
+        "repeatEach": 1,
+        "retries": 0,
+        "metadata": {
+          "actualWorkers": 1
+        },
+        "id": "phone-390",
+        "name": "phone-390",
+        "testDir": "/Users/noah.wong/Desktop/code/efcc/tests/e2e",
+        "testIgnore": [],
+        "testMatch": [
+          "**/programs-participant-acceptance.test.ts",
+          "**/programs-management-acceptance.test.ts"
+        ],
+        "timeout": 60000
+      },
+      {
+        "outputDir": "/Users/noah.wong/Desktop/code/efcc/.delivery/programs-622-626/artifacts/participants-scroll-d8e2eb43-output",
+        "repeatEach": 1,
+        "retries": 0,
+        "metadata": {
+          "actualWorkers": 1
+        },
+        "id": "phone-402",
+        "name": "phone-402",
+        "testDir": "/Users/noah.wong/Desktop/code/efcc/tests/e2e",
+        "testIgnore": [],
+        "testMatch": [
+          "**/programs-participant-acceptance.test.ts",
+          "**/programs-management-acceptance.test.ts"
+        ],
+        "timeout": 60000
+      }
+    ],
+    "quiet": false,
+    "reporter": [
+      [
+        "line",
+        null
+      ],
+      [
+        "json",
+        {
+          "outputFile": "/Users/noah.wong/Desktop/code/efcc/.delivery/programs-622-626/artifacts/participants-scroll-d8e2eb43-results.json"
+        }
+      ]
+    ],
+    "reportSlowTests": {
+      "max": 5,
+      "threshold": 300000
+    },
+    "shard": null,
+    "tags": [],
+    "updateSnapshots": "missing",
+    "updateSourceMethod": "patch",
+    "version": "1.62.1",
+    "workers": 1,
+    "webServer": null
+  },
+  "suites": [
+    {
+      "title": "programs-management-acceptance.test.ts",
+      "file": "programs-management-acceptance.test.ts",
+      "column": 0,
+      "line": 0,
+      "specs": [],
+      "suites": [
+        {
+          "title": "T05.5 management Browser Acceptance",
+          "file": "programs-management-acceptance.test.ts",
+          "line": 249,
+          "column": 6,
+          "specs": [
+            {
+              "title": "restores the Participants list position after returning from Overview",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "phone-360",
+                  "projectName": "phone-360",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 18916,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-09-17T20:42:21.904Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "520d73e4fc6c985c6169-e2f1627cc7d8b6d66dc1",
+              "file": "programs-management-acceptance.test.ts",
+              "line": 749,
+              "column": 3
+            },
+            {
+              "title": "restores the Participants list position after returning from Overview",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "phone-390",
+                  "projectName": "phone-390",
+                  "results": [
+                    {
+                      "workerIndex": 1,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 19668,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-09-17T20:42:41.558Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "520d73e4fc6c985c6169-b2693aa5028e5a003915",
+              "file": "programs-management-acceptance.test.ts",
+              "line": 749,
+              "column": 3
+            },
+            {
+              "title": "restores the Participants list position after returning from Overview",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "phone-402",
+                  "projectName": "phone-402",
+                  "results": [
+                    {
+                      "workerIndex": 2,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 19531,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-09-17T20:43:01.693Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "520d73e4fc6c985c6169-cdd5a8fc18ef4456f07d",
+              "file": "programs-management-acceptance.test.ts",
+              "line": 749,
+              "column": 3
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "errors": [],
+  "stats": {
+    "startTime": "2026-09-17T20:42:21.346Z",
+    "duration": 60038.375,
+    "expected": 3,
+    "skipped": 0,
+    "unexpected": 0,
+    "flaky": 0
+  }
+}
