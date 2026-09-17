@@ -517,6 +517,84 @@ describe("EventsTask operations-first composition", () => {
     }
   });
 
+  test("does not reopen a discarded draft from the one-shot create intent", async () => {
+    const user = userEvent.setup();
+    const previousHref = window.location.href;
+    writeEventCreateDraft(program.program_id, {
+      version: 1,
+      date: "2026-09-22",
+      startTime: "19:30",
+      endTime: "20:30",
+      endAuto: true,
+      name: "捨棄後不應重開",
+      location: "副堂",
+      eventType: "訓練",
+      windowOverride: false,
+      windowOpens: "",
+      windowCloses: "",
+    });
+    window.history.replaceState(
+      {},
+      "",
+      "/programs?program=program-1#create-event"
+    );
+    try {
+      renderTask(vi.fn(), null, null, "#create-event");
+      const dialog = await screen.findByRole("alertdialog", {
+        name: COPY.programs.eventCreateRecoveryTitle,
+      });
+      await user.click(
+        within(dialog).getByRole("button", { name: COPY.programs.draftDiscard })
+      );
+      await waitFor(() => {
+        expect(readEventCreateDraft(program.program_id)).toBeNull();
+        expect(
+          screen.queryByRole("heading", { name: COPY.programs.createMeeting })
+        ).not.toBeInTheDocument();
+      });
+      expect(window.location.hash).toBe("");
+    } finally {
+      window.history.replaceState({}, "", previousHref);
+    }
+  });
+
+  test("does not reopen a discarded recovered draft from a stale create hash", async () => {
+    const user = userEvent.setup();
+    const previousHref = window.location.href;
+    writeEventCreateDraft(program.program_id, {
+      version: 1,
+      date: "2026-09-22",
+      startTime: "19:30",
+      endTime: "20:30",
+      endAuto: true,
+      name: "重載草稿",
+      location: "副堂",
+      eventType: "訓練",
+      windowOverride: false,
+      windowOpens: "",
+      windowCloses: "",
+    });
+    window.history.replaceState(
+      {},
+      "",
+      "/programs?program=program-1#create-event"
+    );
+    try {
+      renderTask(vi.fn(), null, null, "#create-event");
+      const discard = await screen.findByRole("button", {
+        name: COPY.programs.draftDiscard,
+      });
+      await user.click(discard);
+      expect(window.location.hash).toBe("");
+      expect(
+        screen.queryByRole("heading", { name: COPY.programs.createMeeting })
+      ).not.toBeInTheDocument();
+      expect(readEventCreateDraft(program.program_id)).toBeNull();
+    } finally {
+      window.history.replaceState({}, "", previousHref);
+    }
+  });
+
   test("keeps the draft after a failed create and clears it after success", async () => {
     const user = userEvent.setup();
     const onWorkspaceDirtyChange = vi.fn<(dirty: boolean) => void>();

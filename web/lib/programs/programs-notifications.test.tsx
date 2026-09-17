@@ -278,6 +278,40 @@ describe("management notification control", () => {
     ).not.toBeInTheDocument();
   });
 
+  test("keeps a normal-click read failure actionable before navigating", async () => {
+    const user = userEvent.setup();
+    const onMarkRead = vi
+      .fn<ProgramsNotificationsProps["onMarkRead"]>()
+      .mockRejectedValueOnce(new Error("read failed"))
+      .mockResolvedValueOnce();
+    render(
+      <ProgramsNotifications
+        state={readyState()}
+        onRetry={vi.fn<ProgramsNotificationsProps["onRetry"]>()}
+        onMarkRead={onMarkRead}
+      />
+    );
+
+    await user.click(
+      screen.getByRole("button", {
+        name: COPY.programs.notificationBellTitle,
+      })
+    );
+    await user.click(screen.getByRole("link", { name: /青年團契/u }));
+    await waitFor(() => expect(onMarkRead).toHaveBeenCalledOnce());
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    const readAlert = screen.getByRole("alert");
+    await user.click(
+      within(readAlert).getByRole("button", {
+        name: COPY.programs.notificationsRetry,
+      })
+    );
+    await waitFor(() => expect(onMarkRead).toHaveBeenCalledTimes(2));
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument()
+    );
+  });
+
   test("renders empty and error states in the same bounded surface", () => {
     const onRetry = vi.fn<ProgramsNotificationsProps["onRetry"]>();
     const { rerender } = render(

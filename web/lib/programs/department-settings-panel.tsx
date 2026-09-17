@@ -50,6 +50,12 @@ import {
   readManagementDraft,
   writeManagementDraft,
 } from "./management-draft";
+import {
+  clearWorkspaceMutationRecovery,
+  readWorkspaceMutationRecovery,
+  writeWorkspaceMutationRecovery,
+} from "./mutation-recovery";
+import type { DepartmentMutationRecovery } from "./mutation-recovery";
 import { ProgramForm } from "./program-form";
 
 const DEPARTMENT_DRAFT_ACTION = "department-settings";
@@ -66,6 +72,23 @@ function isDepartmentDraft(value: unknown): value is DepartmentDraft {
     typeof (value as DepartmentDraft).name === "string" &&
     typeof (value as DepartmentDraft).description === "string"
   );
+}
+
+function departmentMutationMatches(
+  detail: DepartmentDetail,
+  recovery: DepartmentMutationRecovery
+): boolean {
+  const { mutation } = recovery;
+  if (mutation.kind === "details") {
+    return (
+      detail.department.name === mutation.expected.name &&
+      (detail.department.description ?? "") === mutation.expected.description
+    );
+  }
+  const module = detail.modules.find(
+    ({ module_key }) => module_key === mutation.expected.moduleKey
+  );
+  return module?.enabled === (mutation.expected.enabled ? 1 : 0);
 }
 
 const MODULE_KEYS: readonly DepartmentModule["module_key"][] = [
@@ -98,28 +121,59 @@ export const DepartmentSettingsPanel = ({
   const [detail, setDetail] = useState<DepartmentDetail | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
-  const [actionError, setActionError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [creating, setCreating] = useState(false);
   const [closeConfirmationOpen, setCloseConfirmationOpen] = useState(false);
   const [draftRecoveryOpen, setDraftRecoveryOpen] = useState(false);
-  const [mutationRecoveryRequired, setMutationRecoveryRequired] =
-    useState(false);
+  const restoredMutationRecovery = useRef<DepartmentMutationRecovery | null>(
+    (() => {
+      const recovery = readWorkspaceMutationRecovery();
+      return recovery?.surface === "department" &&
+        recovery.departmentId === department.department_id
+        ? recovery
+        : null;
+    })()
+  ).current;
+  const [actionError, setActionError] = useState<string | null>(
+    restoredMutationRecovery ? COPY.programs.programTransportAmbiguous : null
+  );
+  const [mutationRecoveryRequired, setMutationRecoveryRequired] = useState(
+    restoredMutationRecovery !== null
+  );
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const mounted = useRef(true);
+  const mutationRecoveryRef = useRef<DepartmentMutationRecovery | null>(
+    restoredMutationRecovery
+  );
+
+  const applyDepartmentDetail = (nextDetail: DepartmentDetail) => {
+    setDetail(nextDetail);
+    setName(nextDetail.department.name);
+    setDescription(nextDetail.department.description ?? "");
+  };
 
   const load = useCallback(
-    async (preserveDetail = false): Promise<boolean> => {
+    async (
+      preserveDetail = false,
+      apply = true
+    ): Promise<DepartmentDetail | null> => {
       if (!preserveDetail) {
         setDetail(null);
       }
       setLoadError(null);
-      setActionError(null);
+      setActionError(
+        mutationRecoveryRef.current
+          ? COPY.programs.programTransportAmbiguous
+          : null
+      );
       try {
         const nextDetail = await getDepartment(department.department_id);
         if (!mounted.current) {
-          return false;
+          return null;
+        }
+        if (!apply) {
+          return nextDetail;
         }
         setDetail(nextDetail);
         const stored = readManagementDraft<unknown>(
@@ -129,20 +183,20 @@ export const DepartmentSettingsPanel = ({
         if (isDepartmentDraft(stored)) {
           setName(stored.name);
           setDescription(stored.description);
-          if (!preserveDetail) {
+          if (!preserveDetail && restoredMutationRecovery === null) {
             setDraftRecoveryOpen(true);
           }
         } else {
           setName(nextDetail.department.name);
           setDescription(nextDetail.department.description ?? "");
         }
-        return true;
+        return nextDetail;
       } catch (error) {
         if (mounted.current) {
           const message = errorMessage(error);
           setLoadError(message);
         }
-        return false;
+        return null;
       }
     },
     [department.department_id]
@@ -181,7 +235,8 @@ export const DepartmentSettingsPanel = ({
   }, [department.department_id, description, detail, isDirty, name]);
 
   const runAction = async <T,>(
-    operation: () => Promise<T>,
+    operation: (idempotencyKey: string) => Promise<T>,
+    recovery: DepartmentMutationRecovery,
     message: string,
     afterSuccess?: (result: T) => void
   ) => {
@@ -191,22 +246,35 @@ export const DepartmentSettingsPanel = ({
     setBusy(true);
     setActionError(null);
     setNotice(null);
+    mutationRecoveryRef.current = recovery;
+    writeWorkspaceMutationRecovery(recovery);
     try {
-      const result = await operation();
+      const result = await operation(recovery.idempotencyKey);
       afterSuccess?.(result);
-      const refreshed = await load(true);
+      const refreshed = await load(true, false);
       if (!mounted.current) {
         return;
       }
       if (!refreshed) {
-        // The write already settled successfully. Keep the committed local
-        // result and expose the existing readback retry without relabelling
-        // the known outcome as an ambiguous mutation.
-        setActionError(null);
+        setMutationRecoveryRequired(true);
+        setActionError(COPY.programs.departmentSavedRefreshPending);
+        announce(COPY.programs.departmentSavedRefreshPending);
+        return;
       }
-      const noticeMessage = refreshed
-        ? message
-        : COPY.programs.departmentSavedRefreshPending;
+      if (!departmentMutationMatches(refreshed, recovery)) {
+        setMutationRecoveryRequired(true);
+        setActionError(COPY.programs.programTransportAmbiguous);
+        announce(COPY.programs.programTransportAmbiguous);
+        return;
+      }
+      applyDepartmentDetail(refreshed);
+      mutationRecoveryRef.current = null;
+      clearWorkspaceMutationRecovery("department", {
+        departmentId: department.department_id,
+      });
+      setMutationRecoveryRequired(false);
+      setActionError(null);
+      const noticeMessage = message;
       setNotice(noticeMessage);
       announce(noticeMessage);
     } catch (error) {
@@ -221,6 +289,11 @@ export const DepartmentSettingsPanel = ({
           error instanceof RpcError && error.problem.code === "NETWORK_ERROR"
             ? COPY.programs.offlineError
             : errorMessage(error);
+        mutationRecoveryRef.current = null;
+        clearWorkspaceMutationRecovery("department", {
+          departmentId: department.department_id,
+        });
+        setMutationRecoveryRequired(false);
         setActionError(mappedMessage);
         announce(mappedMessage);
       }
@@ -236,13 +309,24 @@ export const DepartmentSettingsPanel = ({
       return;
     }
     setBusy(true);
-    const refreshed = await load(true);
-    if (refreshed) {
+    const refreshed = await load(true, false);
+    const recovery = mutationRecoveryRef.current;
+    if (
+      refreshed &&
+      recovery &&
+      departmentMutationMatches(refreshed, recovery)
+    ) {
+      applyDepartmentDetail(refreshed);
+      mutationRecoveryRef.current = null;
+      clearWorkspaceMutationRecovery("department", {
+        departmentId: department.department_id,
+      });
       setMutationRecoveryRequired(false);
       setActionError(null);
       setNotice(COPY.programs.departmentMutationReconciled);
       announce(COPY.programs.departmentMutationReconciled);
     } else {
+      setMutationRecoveryRequired(true);
       setActionError(COPY.programs.programTransportAmbiguous);
       announce(COPY.programs.programTransportAmbiguous);
     }
@@ -251,12 +335,20 @@ export const DepartmentSettingsPanel = ({
 
   const saveDetails = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    const patch = {
+      name: name.trim(),
+      description: description.trim(),
+    };
+    const recovery: DepartmentMutationRecovery = {
+      surface: "department",
+      departmentId: department.department_id,
+      idempotencyKey: crypto.randomUUID(),
+      mutation: { kind: "details", patch, expected: patch },
+    };
     void runAction(
-      () =>
-        updateDepartment(department.department_id, {
-          name: name.trim(),
-          description: description.trim(),
-        }),
+      (idempotencyKey) =>
+        updateDepartment(department.department_id, patch, idempotencyKey),
+      recovery,
       COPY.programs.updated,
       (result) => {
         clearManagementDraft(department.department_id, DEPARTMENT_DRAFT_ACTION);
@@ -270,14 +362,52 @@ export const DepartmentSettingsPanel = ({
     );
   };
 
-  const runModuleAction = (operation: () => Promise<unknown>) => {
+  const runModuleAction = (module: DepartmentModule) => {
     if (isDirty) {
       const message = COPY.programs.departmentDraftBlocking;
       setActionError(message);
       announce(message);
       return;
     }
-    void runAction(operation, COPY.programs.updated);
+    const enabled = module.enabled !== 1;
+    const recovery: DepartmentMutationRecovery = {
+      surface: "department",
+      departmentId: department.department_id,
+      idempotencyKey: crypto.randomUUID(),
+      mutation: {
+        kind: "module",
+        moduleKey: module.module_key,
+        enabled,
+        expected: { moduleKey: module.module_key, enabled },
+      },
+    };
+    void runAction(
+      (idempotencyKey) =>
+        setDepartmentModule(
+          department.department_id,
+          module.module_key,
+          enabled,
+          idempotencyKey
+        ),
+      recovery,
+      COPY.programs.updated
+    );
+  };
+
+  const discardMutationRecovery = () => {
+    clearWorkspaceMutationRecovery("department", {
+      departmentId: department.department_id,
+    });
+    clearManagementDraft(department.department_id, DEPARTMENT_DRAFT_ACTION);
+    mutationRecoveryRef.current = null;
+    setMutationRecoveryRequired(false);
+    if (detail) {
+      setName(detail.department.name);
+      setDescription(detail.department.description ?? "");
+    }
+    setActionError(null);
+    setNotice(COPY.programs.mutationRecoveryDiscarded);
+    announce(COPY.programs.mutationRecoveryDiscarded);
   };
 
   const closePanel = () => {
@@ -365,12 +495,14 @@ export const DepartmentSettingsPanel = ({
                 {notice}
               </Alert>
             )}
-            {actionError !== null && (
+            {actionError !== null && !mutationRecoveryRequired && (
               <ScreenState kind="error" title={actionError} />
             )}
             {mutationRecoveryRequired && (
               <Alert tone="warning" announcement="polite">
-                <span>{COPY.programs.departmentSavedRefreshPending}</span>
+                <span>
+                  {actionError ?? COPY.programs.departmentSavedRefreshPending}
+                </span>
                 <Button
                   type="button"
                   variant="outline"
@@ -379,21 +511,31 @@ export const DepartmentSettingsPanel = ({
                 >
                   {COPY.programs.departmentSettingsRetry}
                 </Button>
-              </Alert>
-            )}
-            {loadError !== null && detail !== null && (
-              <Alert tone="warning" announcement="polite">
-                <span>{COPY.programs.departmentSavedRefreshPending}</span>
                 <Button
                   type="button"
                   variant="outline"
-                  onClick={() => void load(true)}
+                  onClick={discardMutationRecovery}
                   disabled={busy}
                 >
-                  {COPY.programs.departmentSettingsRetry}
+                  {COPY.programs.draftDiscard}
                 </Button>
               </Alert>
             )}
+            {loadError !== null &&
+              detail !== null &&
+              !mutationRecoveryRequired && (
+                <Alert tone="warning" announcement="polite">
+                  <span>{COPY.programs.departmentSavedRefreshPending}</span>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => void load(true)}
+                    disabled={busy}
+                  >
+                    {COPY.programs.departmentSettingsRetry}
+                  </Button>
+                </Alert>
+              )}
             {detail === null ? (
               <ScreenState
                 kind={loadError === null ? "loading" : "error"}
@@ -508,15 +650,7 @@ export const DepartmentSettingsPanel = ({
                                   type="button"
                                   aria-pressed={module.enabled === 1}
                                   disabled={busy || mutationRecoveryRequired}
-                                  onClick={() =>
-                                    runModuleAction(() =>
-                                      setDepartmentModule(
-                                        department.department_id,
-                                        module.module_key,
-                                        module.enabled !== 1
-                                      )
-                                    )
-                                  }
+                                  onClick={() => runModuleAction(module)}
                                 >
                                   {module.enabled === 1
                                     ? COPY.programs.disable

@@ -1840,6 +1840,14 @@ describe(ProgramWorkspace, () => {
 
   test("releases navigation guards after a successful Basics save", async () => {
     mockWorkspace();
+    mocks.getManagementProgram
+      .mockReset()
+      .mockResolvedValueOnce({ program, department, modules })
+      .mockResolvedValue({
+        program: { ...program, name: "儲存後名稱" },
+        department,
+        modules,
+      });
     mocks.updateProgram.mockResolvedValueOnce({
       program: { ...program, name: "儲存後名稱" },
     });

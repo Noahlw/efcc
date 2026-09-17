@@ -1831,6 +1831,7 @@ export const EventsTask = () => {
     setCreateError(null);
   };
   const discardRecoveredCreateDraft = () => {
+    consumeEventCreateIntent();
     clearEventCreateDraft(programId);
     resetCreateForm();
     setCreateOpen(false);

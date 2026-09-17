@@ -1209,6 +1209,8 @@ export const COPY = {
       "未能確認課程是否已儲存。請重新整理工作區後再試，避免重複提交。",
     scheduleTransportAmbiguous:
       "未能確認時間表變更是否已儲存。請重新整理時間表後再試，避免重複提交。",
+    mutationRecoveryDiscarded:
+      "未確認的變更恢復記錄已捨棄；請核對最新資料後再繼續。",
     archiveBlocked:
       "課程仍有未完成的未來營運承諾，先處理相關聚會或報名後再存檔。",
     archiveAlreadyArchived: "此課程已被其他負責人存檔。",
@@ -1496,6 +1498,11 @@ export const COPY = {
     eventsFilterEmpty: "目前沒有符合此篩選的聚會。",
     eventEdit: "編輯聚會資料",
     eventReschedule: "改期聚會",
+    eventEditRecoveryTitle: "發現未完成的聚會編輯",
+    eventEditRecoveryDescription:
+      "你可以恢復上次未完成的聚會編輯，或者捨棄草稿並載入目前資料。",
+    eventEditRecover: "恢復編輯",
+    eventEditDiscard: "捨棄草稿並重新編輯",
     eventDetailBack: "返回聚會列表",
     eventDetailTitle: "聚會詳情",
     checkInAvailable: "可簽到",

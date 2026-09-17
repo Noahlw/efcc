@@ -169,12 +169,7 @@ const NotificationRows = ({
                   link.click();
                 };
                 void (async () => {
-                  try {
-                    await markRead([item]);
-                  } catch {
-                    // Navigation remains available when marking read fails.
-                  }
-                  continueNavigation();
+                  await markRead([item], continueNavigation);
                 })();
               }}
             >

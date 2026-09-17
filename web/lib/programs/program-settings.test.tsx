@@ -9,6 +9,17 @@ import { ProgramSettings, SettingsHub } from "@/lib/programs/program-settings";
 import type { ProgramSettingsSection } from "@/lib/programs/program-settings";
 import { hkTodayWallDate } from "@/lib/programs/recurrence";
 
+import {
+  clearManagementDraftsForEntity,
+  readManagementDraft,
+  writeManagementDraft,
+} from "./management-draft";
+import {
+  clearWorkspaceMutationRecovery,
+  readWorkspaceMutationRecovery,
+  writeWorkspaceMutationRecovery,
+} from "./mutation-recovery";
+
 const mocks = vi.hoisted(() => ({
   updateProgram: vi.fn(),
   getProgramAttendanceArtifact: vi.fn(),
@@ -138,6 +149,13 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  clearManagementDraftsForEntity(recurringProgram.program_id);
+  clearWorkspaceMutationRecovery("program", {
+    programId: recurringProgram.program_id,
+  });
+  clearWorkspaceMutationRecovery("schedule", {
+    programId: recurringProgram.program_id,
+  });
   cleanup();
 });
 
@@ -227,7 +245,7 @@ describe(ProgramSettings, () => {
     const user = userEvent.setup();
     const onReload = vi
       .fn()
-      .mockResolvedValue(updatedProgram({ name: "伺服器最新名稱" }));
+      .mockResolvedValue(updatedProgram({ name: "重試後名稱" }));
     mocks.updateProgram.mockRejectedValueOnce(
       new RpcError({ code: "NETWORK_ERROR", status: 0 })
     );
@@ -260,7 +278,7 @@ describe(ProgramSettings, () => {
 
     await waitFor(() => expect(mocks.updateProgram).toHaveBeenCalledTimes(1));
     expect(onReload).toHaveBeenCalledTimes(1);
-    expect(name).toHaveValue("伺服器最新名稱");
+    expect(name).toHaveValue("重試後名稱");
     await expect(
       screen.findByText(COPY.programs.workspaceReconciled)
     ).resolves.toBeInTheDocument();
@@ -269,6 +287,44 @@ describe(ProgramSettings, () => {
         screen.queryByTestId("program-settings-dirty-actions")
       ).not.toBeInTheDocument()
     );
+  });
+
+  test("restores a response-lost settings mutation after reload without replaying", async () => {
+    const user = userEvent.setup();
+    const onReload = vi
+      .fn()
+      .mockResolvedValue(updatedProgram({ name: "重載後名稱" }));
+    mocks.updateProgram.mockRejectedValueOnce(
+      new RpcError({ code: "NETWORK_ERROR", status: 0 })
+    );
+    const props = {
+      program: recurringProgram,
+      section: "basics" as const,
+      onTaskChange: vi.fn(),
+      onReload,
+    };
+    const first = render(<ProgramSettings {...props} />);
+    const name = screen.getByRole("textbox", {
+      name: COPY.programs.programName,
+    });
+    await user.clear(name);
+    await user.type(name, "重載後名稱");
+    await user.click(
+      screen.getByRole("button", { name: COPY.programs.settingsSaveBasics })
+    );
+    await screen.findByText(COPY.programs.programTransportAmbiguous);
+    expect(readWorkspaceMutationRecovery()?.surface).toBe("program");
+
+    first.unmount();
+    render(<ProgramSettings {...props} />);
+    await screen.findByText(COPY.programs.programTransportAmbiguous);
+    expect(mocks.updateProgram).toHaveBeenCalledOnce();
+    await user.click(
+      screen.getByRole("button", { name: COPY.programs.workspaceRetryRefresh })
+    );
+    await screen.findByText(COPY.programs.workspaceReconciled);
+    expect(mocks.updateProgram).toHaveBeenCalledOnce();
+    expect(readWorkspaceMutationRecovery()).toBeNull();
   });
 
   test("renders a focused publishing editor and keeps archive atomic", async () => {
@@ -318,9 +374,13 @@ describe(ProgramSettings, () => {
       })
     );
     await waitFor(() =>
-      expect(mocks.updateProgram).toHaveBeenCalledWith("program-1", {
-        lifecycle: "Archived",
-      })
+      expect(mocks.updateProgram).toHaveBeenCalledWith(
+        "program-1",
+        {
+          lifecycle: "Archived",
+        },
+        expect.any(String)
+      )
     );
   });
 
@@ -537,12 +597,16 @@ describe(ProgramSettings, () => {
     );
 
     await waitFor(() =>
-      expect(mocks.updateProgram).toHaveBeenCalledWith("program-1", {
-        name: "更新後小組",
-        description: "週三晚上的門徒訓練查經。",
-        category: "門徒訓練",
-        display_order: 4,
-      })
+      expect(mocks.updateProgram).toHaveBeenCalledWith(
+        "program-1",
+        {
+          name: "更新後小組",
+          description: "週三晚上的門徒訓練查經。",
+          category: "門徒訓練",
+          display_order: 4,
+        },
+        expect.any(String)
+      )
     );
     await expect(
       screen.findByText(COPY.programs.settingsSaved)
@@ -552,6 +616,87 @@ describe(ProgramSettings, () => {
         screen.queryByTestId("program-settings-dirty-actions")
       ).not.toBeInTheDocument()
     );
+  });
+
+  test("keeps an unrelated action draft when Basics succeeds", async () => {
+    const user = userEvent.setup();
+    const publishingDraft = {
+      lifecycle: "Archived" as const,
+      discoverability: "Listed" as const,
+    };
+    writeManagementDraft(
+      recurringProgram.program_id,
+      "settings-publishing",
+      publishingDraft
+    );
+    mocks.updateProgram.mockResolvedValueOnce({
+      program: updatedProgram({ name: "基本資料更新" }),
+    });
+    render(
+      <ProgramSettings program={recurringProgram} onTaskChange={vi.fn()} />
+    );
+    await user.click(
+      screen.getByRole("button", { name: COPY.programs.draftRecover })
+    );
+
+    const name = screen.getByRole("textbox", {
+      name: COPY.programs.programName,
+    });
+    await user.clear(name);
+    await user.type(name, "基本資料更新");
+    await user.click(
+      screen.getByRole("button", { name: COPY.programs.settingsSaveBasics })
+    );
+
+    await screen.findByText(COPY.programs.settingsSaved);
+    expect(
+      readManagementDraft(recurringProgram.program_id, "settings-publishing")
+    ).toEqual(publishingDraft);
+  });
+
+  test("keeps a confirmed Basics write locked across a stale readback", async () => {
+    const user = userEvent.setup();
+    const saved = updatedProgram({ name: "已確認名稱" });
+    const stale = updatedProgram({ name: "舊的伺服器名稱" });
+    const onReload = vi
+      .fn()
+      .mockResolvedValueOnce(stale)
+      .mockResolvedValueOnce(stale)
+      .mockResolvedValueOnce(saved);
+    mocks.updateProgram.mockResolvedValueOnce({ program: saved });
+    render(
+      <ProgramSettings
+        program={recurringProgram}
+        onTaskChange={vi.fn()}
+        onReload={onReload}
+      />
+    );
+
+    const name = screen.getByRole("textbox", {
+      name: COPY.programs.programName,
+    });
+    await user.clear(name);
+    await user.type(name, saved.name);
+    await user.click(
+      screen.getByRole("button", { name: COPY.programs.settingsSaveBasics })
+    );
+
+    await screen.findByText(COPY.programs.programTransportAmbiguous);
+    expect(name).toHaveValue(saved.name);
+    expect(readWorkspaceMutationRecovery()?.surface).toBe("program");
+    expect(mocks.updateProgram).toHaveBeenCalledOnce();
+
+    await user.click(
+      screen.getByRole("button", { name: COPY.programs.workspaceRetryRefresh })
+    );
+    await screen.findByText(COPY.programs.programTransportAmbiguous);
+    expect(mocks.updateProgram).toHaveBeenCalledOnce();
+
+    await user.click(
+      screen.getByRole("button", { name: COPY.programs.workspaceRetryRefresh })
+    );
+    await screen.findByText(COPY.programs.workspaceReconciled);
+    expect(readWorkspaceMutationRecovery()).toBeNull();
   });
 
   test("explains and confirms consequential enrollment changes", async () => {
@@ -589,10 +734,14 @@ describe(ProgramSettings, () => {
       })
     );
     await waitFor(() =>
-      expect(mocks.updateProgram).toHaveBeenCalledWith("program-1", {
-        discoverability: "Unlisted",
-        enrollment_mode: "MemberRequest",
-      })
+      expect(mocks.updateProgram).toHaveBeenCalledWith(
+        "program-1",
+        {
+          discoverability: "Unlisted",
+          enrollment_mode: "MemberRequest",
+        },
+        expect.any(String)
+      )
     );
   });
 
@@ -635,10 +784,14 @@ describe(ProgramSettings, () => {
     );
 
     await waitFor(() =>
-      expect(mocks.updateProgram).toHaveBeenCalledWith("program-1", {
-        check_in_opens_at_minutes_before_start: 30,
-        check_in_closes_at_minutes_after_end: 10,
-      })
+      expect(mocks.updateProgram).toHaveBeenCalledWith(
+        "program-1",
+        {
+          check_in_opens_at_minutes_before_start: 30,
+          check_in_closes_at_minutes_after_end: 10,
+        },
+        expect.any(String)
+      )
     );
     expect(screen.queryByText("secret-token")).not.toBeInTheDocument();
   });
@@ -783,10 +936,14 @@ describe(ProgramSettings, () => {
     );
 
     await waitFor(() =>
-      expect(mocks.updateProgram).toHaveBeenCalledWith("program-1", {
-        check_in_opens_at_minutes_before_start: 30,
-        check_in_closes_at_minutes_after_end: 10,
-      })
+      expect(mocks.updateProgram).toHaveBeenCalledWith(
+        "program-1",
+        {
+          check_in_opens_at_minutes_before_start: 30,
+          check_in_closes_at_minutes_after_end: 10,
+        },
+        expect.any(String)
+      )
     );
     await expect(
       screen.findByText(COPY.programs.settingsSaved)
@@ -802,8 +959,8 @@ describe(ProgramSettings, () => {
     const user = userEvent.setup();
     const onReload = vi.fn().mockResolvedValue(
       updatedProgram({
-        check_in_opens_at_minutes_before_start: 20,
-        check_in_closes_at_minutes_after_end: 2,
+        check_in_opens_at_minutes_before_start: 45,
+        check_in_closes_at_minutes_after_end: 5,
       })
     );
     mocks.updateProgram.mockRejectedValueOnce(
@@ -843,8 +1000,8 @@ describe(ProgramSettings, () => {
     );
     await waitFor(() => expect(mocks.updateProgram).toHaveBeenCalledTimes(1));
     expect(onReload).toHaveBeenCalledTimes(1);
-    expect(opens).toHaveValue(20);
-    expect(closes).toHaveValue(2);
+    expect(opens).toHaveValue(45);
+    expect(closes).toHaveValue(5);
     await expect(
       screen.findByText(COPY.programs.workspaceReconciled)
     ).resolves.toBeInTheDocument();
@@ -1021,8 +1178,108 @@ describe(ProgramSettings, () => {
     ).not.toBeInTheDocument();
   });
 
+  test("restores a response-lost schedule mutation after reload with its recovery key", async () => {
+    const user = userEvent.setup();
+    const savedRule: ScheduleRule = {
+      ...rule,
+      rule_id: "rule-reloaded",
+      start_time: "20:00",
+      end_time: "21:30",
+      effective_start_date: hkTodayWallDate(),
+    };
+    mocks.createScheduleRule.mockRejectedValueOnce(new Error("response lost"));
+    mocks.listScheduleRules.mockResolvedValue({ rules: [rule] });
+    const first = render(
+      <ProgramSettings
+        program={recurringProgram}
+        section="schedule"
+        onTaskChange={vi.fn()}
+      />
+    );
+    await screen.findByText(
+      `${COPY.programs.ruleWeekly} ${COPY.programs.weekdayWednesday}`
+    );
+    await user.click(
+      screen.getByRole("button", { name: COPY.programs.addRule })
+    );
+    await user.type(screen.getByLabelText(COPY.programs.startTime), "20:00");
+    await user.type(screen.getByLabelText(COPY.programs.endTime), "21:30");
+    await user.click(
+      screen.getByRole("button", { name: COPY.programs.addRule })
+    );
+    await screen.findByText(COPY.programs.programTransportAmbiguous);
+    expect(mocks.createScheduleRule).toHaveBeenCalledOnce();
+    expect(readWorkspaceMutationRecovery()?.surface).toBe("schedule");
+
+    first.unmount();
+    mocks.listScheduleRules.mockResolvedValue({ rules: [rule, savedRule] });
+    render(
+      <ProgramSettings
+        program={recurringProgram}
+        section="schedule"
+        onTaskChange={vi.fn()}
+      />
+    );
+    await screen.findByText(COPY.programs.programTransportAmbiguous);
+    await user.click(
+      screen.getByRole("button", { name: COPY.programs.workspaceRetryRefresh })
+    );
+    await screen.findByText(COPY.programs.workspaceReconciled);
+    expect(mocks.createScheduleRule).toHaveBeenCalledOnce();
+    expect(readWorkspaceMutationRecovery()).toBeNull();
+  });
+
+  test("restores a cancelled exception recovery with omitted optional fields", async () => {
+    const user = userEvent.setup();
+    const exception = {
+      exception_id: "exception-reloaded",
+      rule_id: rule.rule_id,
+      override_date: "2026-09-22",
+      action: "CANCEL" as const,
+      new_start_time: null,
+      new_end_time: null,
+      created_at: "2026-01-01T00:00:00.000Z",
+    };
+    writeWorkspaceMutationRecovery({
+      surface: "schedule",
+      programId: recurringProgram.program_id,
+      idempotencyKey: "cancel-exception-reload-key",
+      mutation: {
+        kind: "create-exception",
+        ruleId: rule.rule_id,
+        input: { override_date: exception.override_date, action: "CANCEL" },
+        expected: { override_date: exception.override_date, action: "CANCEL" },
+      },
+    });
+    mocks.listScheduleRules.mockResolvedValue({ rules: [rule] });
+    mocks.listScheduleExceptions.mockResolvedValue({ exceptions: [exception] });
+    render(
+      <ProgramSettings
+        program={recurringProgram}
+        section="schedule"
+        onTaskChange={vi.fn()}
+      />
+    );
+
+    await screen.findByText(COPY.programs.programTransportAmbiguous);
+    await user.click(
+      screen.getByRole("button", { name: COPY.programs.workspaceRetryRefresh })
+    );
+    await screen.findByText(COPY.programs.workspaceReconciled);
+    expect(readWorkspaceMutationRecovery()).toBeNull();
+  });
+
   test("clears new-rule input only after a confirmed schedule-rule save", async () => {
     const user = userEvent.setup();
+    const savedRule: ScheduleRule = {
+      ...rule,
+      start_time: "19:00",
+      end_time: "20:30",
+      effective_start_date: hkTodayWallDate(),
+    };
+    mocks.listScheduleRules
+      .mockResolvedValueOnce({ rules: [rule] })
+      .mockResolvedValueOnce({ rules: [rule, savedRule] });
     render(
       <ProgramSettings
         program={recurringProgram}

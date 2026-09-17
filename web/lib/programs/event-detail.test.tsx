@@ -5,6 +5,7 @@ import {
   fireEvent,
   render,
   screen,
+  within,
 } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
@@ -18,6 +19,8 @@ import {
   writeWorkspaceMutationRecovery,
 } from "@/lib/programs/mutation-recovery";
 import type { EventDetail as EventDetailData } from "@/lib/programs/program-api";
+
+import { clearManagementDraft, writeManagementDraft } from "./management-draft";
 
 const mocks = vi.hoisted(() => ({
   getEvent: vi.fn(),
@@ -97,6 +100,7 @@ const detailFixture = (
 
 afterEach(() => {
   cleanup();
+  clearManagementDraft("event-1", "event-edit");
   clearWorkspaceMutationRecovery("event", {
     programId: "program-1",
     eventId: "event-1",
@@ -894,6 +898,48 @@ describe("EVT-01 event detail", () => {
     expect(
       screen.queryByLabelText(COPY.programs.eventName)
     ).not.toBeInTheDocument();
+  });
+
+  test("requires an explicit recovery choice before opening a restored deep-link edit", async () => {
+    mocks.getEvent.mockResolvedValue(detailFixture());
+    writeManagementDraft("event-1", "event-edit", {
+      version: 1,
+      intent: "edit",
+      name: "恢復中的聚會",
+      location: "恢復中的地點",
+      eventType: "小組",
+      reason: "",
+      startsAt: "2026-09-12T18:00",
+      endsAt: "2026-09-12T19:30",
+      opensAt: "2026-09-12T17:30",
+      closesAt: "2026-09-12T20:00",
+    });
+    render(
+      <EventDetail
+        programId="program-1"
+        eventId="event-1"
+        eventAction="edit"
+        canManage
+        onBack={() => {}}
+        backHref="/programs"
+      />
+    );
+
+    const dialog = await screen.findByRole("alertdialog", {
+      name: COPY.programs.eventEditRecoveryTitle,
+    });
+    expect(screen.queryByTestId("event-edit-form")).not.toBeInTheDocument();
+    await userEvent.click(
+      within(dialog).getByRole("button", {
+        name: COPY.programs.eventEditRecover,
+      })
+    );
+    await expect(
+      screen.findByTestId("event-edit-form")
+    ).resolves.toHaveAttribute("data-edit-intent", "edit");
+    expect(screen.getByLabelText(COPY.programs.eventName)).toHaveValue(
+      "恢復中的聚會"
+    );
   });
 
   test("does not reopen a deep-link edit after the saved Event changes type", async () => {
@@ -1752,7 +1798,9 @@ describe("EVT-01 event detail", () => {
     await expect(
       screen.findByRole("link", { name: COPY.programs.goToScan })
     ).resolves.toHaveAttribute("href", "/scanner?event=event-1");
-    expect(mocks.getOwnAttendance).toHaveBeenCalledWith("event-1");
+    await vi.waitFor(() =>
+      expect(mocks.getOwnAttendance).toHaveBeenCalledWith("event-1")
+    );
   });
 
   test("participant projection omits the 可簽到 badge when the window is closed", async () => {
@@ -1818,9 +1866,10 @@ describe("EVT-01 event detail", () => {
       />
     );
 
+    await screen.findByRole("heading", { name: "迎新聚會" });
     await expect(
-      screen.findByText(COPY.programs.participantAttendancePresent)
-    ).resolves.toBeInTheDocument();
+      screen.findAllByText(COPY.programs.participantAttendancePresent)
+    ).resolves.toHaveLength(2);
     expect(
       screen.queryByRole("link", { name: COPY.programs.goToScan })
     ).not.toBeInTheDocument();
@@ -1897,8 +1946,9 @@ describe("EVT-01 event detail", () => {
           programId="program-1"
           eventId="event-1"
           canManage={false}
+          origin="home"
           onBack={() => {}}
-          backHref="/programs?program=program-1"
+          backHref="/programs?program=program-1&origin=home"
         />
       );
 
@@ -1907,7 +1957,7 @@ describe("EVT-01 event detail", () => {
         screen.getByRole("link", {
           name: COPY.programs.eventDetailViewProgram,
         })
-      ).toHaveAttribute("href", "/programs?program=program-1");
+      ).toHaveAttribute("href", "/programs?program=program-1&from=home");
       expect(
         screen.queryByRole("link", { name: COPY.programs.goToScan })
       ).not.toBeInTheDocument();
@@ -2036,7 +2086,9 @@ describe("EVT-01 event detail", () => {
     expect(
       screen.queryByRole("link", { name: COPY.programs.goToScan })
     ).not.toBeInTheDocument();
-    expect(mocks.getOwnAttendance).toHaveBeenCalledWith("event-1");
+    await vi.waitFor(() =>
+      expect(mocks.getOwnAttendance).toHaveBeenCalledWith("event-1")
+    );
   });
 
   test("drops late Event A and own-attendance responses after rerendering Event B", async () => {
@@ -2140,7 +2192,7 @@ describe("EVT-01 event detail", () => {
 
     expect(screen.getByRole("heading", { name: "聚會 B" })).toBeVisible();
     expect(
-      screen.getByText(COPY.programs.participantAttendancePresent)
+      screen.getAllByText(COPY.programs.participantAttendancePresent)[0]
     ).toBeVisible();
     expect(
       screen.queryByText(COPY.programs.participantAttendanceAbsent)

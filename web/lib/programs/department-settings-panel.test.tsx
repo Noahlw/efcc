@@ -12,6 +12,11 @@ import { COPY } from "@/lib/copy";
 
 import { DepartmentSettingsPanel } from "./department-settings-panel";
 import { clearManagementDraft, writeManagementDraft } from "./management-draft";
+import {
+  clearWorkspaceMutationRecovery,
+  readWorkspaceMutationRecovery,
+  writeWorkspaceMutationRecovery,
+} from "./mutation-recovery";
 
 const mocks = vi.hoisted(() => ({
   getDepartment: vi.fn(),
@@ -65,6 +70,9 @@ beforeEach(() => {
 });
 afterEach(() => {
   clearManagementDraft(managedDepartment.department_id, "department-settings");
+  clearWorkspaceMutationRecovery("department", {
+    departmentId: managedDepartment.department_id,
+  });
   cleanup();
   vi.clearAllMocks();
 });
@@ -199,7 +207,11 @@ describe("DepartmentSettingsPanel identity access", () => {
       />
     );
 
-    await screen.findByRole("textbox", { name: COPY.programs.deptName });
+    const name = await screen.findByRole("textbox", {
+      name: COPY.programs.deptName,
+    });
+    await user.clear(name);
+    await user.type(name, "重載後部門");
     await user.click(
       screen.getByRole("button", { name: COPY.programs.saveDepartment })
     );
@@ -213,9 +225,20 @@ describe("DepartmentSettingsPanel identity access", () => {
       screen.getByRole("button", { name: COPY.programs.saveDepartment })
     ).toBeDisabled();
     expect(mocks.updateDepartment).toHaveBeenCalledOnce();
+    expect(readWorkspaceMutationRecovery()?.surface).toBe("department");
 
     mocks.getDepartment.mockResolvedValue({
       department: managedDepartment,
+      modules: [],
+    });
+    await user.click(retry);
+
+    await screen.findByText(COPY.programs.programTransportAmbiguous);
+    expect(mocks.updateDepartment).toHaveBeenCalledOnce();
+    expect(retry).toBeEnabled();
+
+    mocks.getDepartment.mockResolvedValue({
+      department: { ...managedDepartment, name: "重載後部門" },
       modules: [],
     });
     await user.click(retry);
@@ -225,6 +248,52 @@ describe("DepartmentSettingsPanel identity access", () => {
     expect(
       screen.getByRole("button", { name: COPY.programs.saveDepartment })
     ).toBeEnabled();
+  });
+
+  test("restores a response-lost Department mutation after reload without replaying", async () => {
+    const user = userEvent.setup();
+    writeWorkspaceMutationRecovery({
+      surface: "department",
+      departmentId: managedDepartment.department_id,
+      idempotencyKey: "department-reload-key",
+      mutation: {
+        kind: "details",
+        patch: { name: "重載後部門", description: "重載後描述" },
+        expected: { name: "重載後部門", description: "重載後描述" },
+      },
+    });
+    mocks.getDepartment.mockResolvedValue({
+      department: managedDepartment,
+      modules: [],
+    });
+    render(
+      <DepartmentSettingsPanel
+        department={managedDepartment}
+        onClose={vi.fn<() => void>()}
+      />
+    );
+
+    await screen.findByText(COPY.programs.programTransportAmbiguous);
+    expect(
+      screen.getByRole("button", { name: COPY.programs.saveDepartment })
+    ).toBeDisabled();
+    expect(mocks.updateDepartment).not.toHaveBeenCalled();
+    mocks.getDepartment.mockResolvedValue({
+      department: {
+        ...managedDepartment,
+        name: "重載後部門",
+        description: "重載後描述",
+      },
+      modules: [],
+    });
+    await user.click(
+      screen.getByRole("button", {
+        name: COPY.programs.departmentSettingsRetry,
+      })
+    );
+    await screen.findByText(COPY.programs.departmentMutationReconciled);
+    expect(mocks.updateDepartment).not.toHaveBeenCalled();
+    expect(readWorkspaceMutationRecovery()).toBeNull();
   });
 
   test("keeps a committed Department write distinct from failed readback", async () => {
@@ -266,6 +335,43 @@ describe("DepartmentSettingsPanel identity access", () => {
       })
     );
     await waitFor(() => expect(name).toHaveValue(updated.name));
+    expect(mocks.updateDepartment).toHaveBeenCalledOnce();
+  });
+
+  test("keeps a confirmed Department write visible across a stale readback", async () => {
+    const user = userEvent.setup();
+    const updated = { ...managedDepartment, name: "更新後部門" };
+    mocks.updateDepartment.mockResolvedValueOnce({ department: updated });
+    mocks.getDepartment
+      .mockResolvedValueOnce({ department: managedDepartment, modules: [] })
+      .mockResolvedValueOnce({ department: managedDepartment, modules: [] })
+      .mockResolvedValueOnce({ department: updated, modules: [] });
+    render(
+      <DepartmentSettingsPanel
+        department={managedDepartment}
+        onClose={vi.fn<() => void>()}
+      />
+    );
+
+    const name = await screen.findByRole("textbox", {
+      name: COPY.programs.deptName,
+    });
+    await user.clear(name);
+    await user.type(name, updated.name);
+    await user.click(
+      screen.getByRole("button", { name: COPY.programs.saveDepartment })
+    );
+
+    await screen.findByText(COPY.programs.programTransportAmbiguous);
+    expect(name).toHaveValue(updated.name);
+    expect(mocks.updateDepartment).toHaveBeenCalledOnce();
+    await user.click(
+      screen.getByRole("button", {
+        name: COPY.programs.departmentSettingsRetry,
+      })
+    );
+    await screen.findByText(COPY.programs.departmentMutationReconciled);
+    expect(name).toHaveValue(updated.name);
     expect(mocks.updateDepartment).toHaveBeenCalledOnce();
   });
 });

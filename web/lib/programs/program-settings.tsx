@@ -56,6 +56,7 @@ import {
 } from "@/lib/programs/program-api";
 import type {
   Program,
+  ProgramPatch,
   ProgramAttendanceArtifact,
   ScheduleException,
   ScheduleRule,
@@ -90,6 +91,15 @@ import {
   readManagementDraft,
   writeManagementDraft,
 } from "./management-draft";
+import {
+  clearWorkspaceMutationRecovery,
+  readWorkspaceMutationRecovery,
+  writeWorkspaceMutationRecovery,
+} from "./mutation-recovery";
+import type {
+  ProgramSettingsMutationRecovery,
+  ScheduleMutationRecovery,
+} from "./mutation-recovery";
 import type { ProgramsScheduleEditor } from "./programs-intent";
 
 interface BasicsValues {
@@ -612,10 +622,21 @@ interface ScheduleSnapshot {
   exceptions: Record<string, ScheduleException[]>;
 }
 
+const EMPTY_SCHEDULE_SNAPSHOT: ScheduleSnapshot = {
+  rules: [],
+  exceptions: {},
+};
+
 interface ScheduleMutationResolution {
   matches: (snapshot: ScheduleSnapshot) => boolean;
   onConfirmed: () => void;
 }
+
+type SettingsMutationAction =
+  | "basics"
+  | "publishing"
+  | "enrollment"
+  | "attendance";
 
 async function readScheduleSnapshot(
   programId: string
@@ -655,6 +676,98 @@ function sameExceptionInput(
     (exception.new_start_time ?? null) === (input.new_start_time ?? null) &&
     (exception.new_end_time ?? null) === (input.new_end_time ?? null)
   );
+}
+
+function programMatchesPatch(program: Program, patch: ProgramPatch): boolean {
+  return Object.entries(patch).every(([key, expected]) => {
+    const actual = program[key as keyof Program] as unknown;
+    return (actual ?? null) === (expected ?? null);
+  });
+}
+
+function settingsActionForPatch(patch: ProgramPatch): SettingsMutationAction {
+  if (
+    "name" in patch ||
+    "description" in patch ||
+    "category" in patch ||
+    "display_order" in patch
+  ) {
+    return "basics";
+  }
+  if ("lifecycle" in patch || "discoverability" in patch) {
+    return "lifecycle" in patch ? "publishing" : "enrollment";
+  }
+  return "attendance";
+}
+
+function scheduleResolutionForRecovery(
+  recovery: ScheduleMutationRecovery,
+  onConfirmed: () => void
+): ScheduleMutationResolution {
+  const { mutation } = recovery;
+  switch (mutation.kind) {
+    case "create-rule": {
+      return {
+        matches: (snapshot) =>
+          snapshot.rules.some(
+            (candidate) =>
+              (candidate.retired_at === null ||
+                candidate.retired_at === undefined) &&
+              sameRuleInput(candidate, mutation.expected)
+          ),
+        onConfirmed,
+      };
+    }
+    case "update-rule": {
+      return {
+        matches: (snapshot) => {
+          const candidate = snapshot.rules.find(
+            ({ rule_id }) => rule_id === mutation.ruleId
+          );
+          return (
+            candidate !== undefined &&
+            sameRuleInput(candidate, mutation.expected)
+          );
+        },
+        onConfirmed,
+      };
+    }
+    case "retire-rule": {
+      return {
+        matches: (snapshot) => {
+          const candidate = snapshot.rules.find(
+            ({ rule_id }) => rule_id === mutation.ruleId
+          );
+          return (
+            candidate?.retired_at !== null &&
+            candidate?.retired_at !== undefined
+          );
+        },
+        onConfirmed,
+      };
+    }
+    case "create-exception": {
+      return {
+        matches: (snapshot) =>
+          (snapshot.exceptions[mutation.ruleId] ?? []).some((candidate) =>
+            sameExceptionInput(candidate, mutation.expected)
+          ),
+        onConfirmed,
+      };
+    }
+    case "delete-exception": {
+      return {
+        matches: (snapshot) =>
+          !(snapshot.exceptions[mutation.ruleId] ?? []).some(
+            ({ exception_id }) => exception_id === mutation.exceptionId
+          ),
+        onConfirmed,
+      };
+    }
+    default: {
+      throw new Error("Unsupported schedule mutation recovery");
+    }
+  }
 }
 
 export type ProgramSettingsSection =
@@ -1365,6 +1478,25 @@ export const ProgramSettings = ({
   onScheduleEditorChange,
 }: ProgramSettingsProps) => {
   const [currentProgram, setCurrentProgram] = useState(program);
+  const restoredProgramRecovery =
+    useRef<ProgramSettingsMutationRecovery | null>(
+      (() => {
+        const recovery = readWorkspaceMutationRecovery();
+        return recovery?.surface === "program" &&
+          recovery.programId === program.program_id
+          ? recovery
+          : null;
+      })()
+    ).current;
+  const restoredScheduleRecovery = useRef<ScheduleMutationRecovery | null>(
+    (() => {
+      const recovery = readWorkspaceMutationRecovery();
+      return recovery?.surface === "schedule" &&
+        recovery.programId === program.program_id
+        ? recovery
+        : null;
+    })()
+  ).current;
   const [basics, setBasics] = useState(
     () =>
       readSettingsDraft(
@@ -1429,8 +1561,11 @@ export const ProgramSettings = ({
     Record<string, ScheduleException[]>
   >({});
   const [exceptionError, setExceptionError] = useState<string | null>(null);
-  const [draftRecoveryOpen, setDraftRecoveryOpen] = useState(() =>
-    hasSettingsDraft(program.program_id)
+  const [draftRecoveryOpen, setDraftRecoveryOpen] = useState(
+    () =>
+      hasSettingsDraft(program.program_id) &&
+      restoredProgramRecovery === null &&
+      restoredScheduleRecovery === null
   );
   const [confirmingRetireRuleId, setConfirmingRetireRuleId] = useState<
     string | null
@@ -1449,13 +1584,65 @@ export const ProgramSettings = ({
   const [attendanceArtifactReload, setAttendanceArtifactReload] = useState(0);
   const attendanceRotationKey = useRef<string | null>(null);
   const scheduleRuleCreateKey = useRef<string | null>(null);
-  const scheduleMutationKey = useRef<string | null>(null);
+  const forcedProgramReloadAction = useRef<SettingsMutationAction | null>(null);
+  const programMutationKey = useRef<string | null>(
+    restoredProgramRecovery?.idempotencyKey ?? null
+  );
+  const scheduleMutationKey = useRef<string | null>(
+    restoredScheduleRecovery?.idempotencyKey ?? null
+  );
+  const pendingProgramRecovery = useRef<ProgramSettingsMutationRecovery | null>(
+    restoredProgramRecovery
+  );
+  const pendingScheduleRecovery = useRef<ScheduleMutationRecovery | null>(
+    restoredScheduleRecovery
+  );
+  const clearScheduleRecoveryDraft = (recovery: ScheduleMutationRecovery) => {
+    const { mutation } = recovery;
+    if (mutation.kind === "create-rule") {
+      clearManagementDraft(program.program_id, SETTINGS_DRAFT_ACTION.newRule);
+      setNewRule(defaultRuleValues());
+    } else if (mutation.kind === "update-rule") {
+      clearManagementDraft(
+        program.program_id,
+        `${SETTINGS_DRAFT_ACTION.rule}:${mutation.ruleId}`
+      );
+      setRuleDrafts((previous) => {
+        const next = { ...previous };
+        delete next[mutation.ruleId];
+        return next;
+      });
+    } else if (mutation.kind === "create-exception") {
+      clearManagementDraft(
+        program.program_id,
+        `${SETTINGS_DRAFT_ACTION.exception}:${mutation.ruleId}`
+      );
+      setExceptionDrafts((previous) => {
+        const next = { ...previous };
+        delete next[mutation.ruleId];
+        return next;
+      });
+    }
+    scheduleRuleCreateKey.current = null;
+    setScheduleEditor(null);
+    onScheduleEditorChange?.(null);
+  };
   const pendingScheduleResolution = useRef<ScheduleMutationResolution | null>(
-    null
+    restoredScheduleRecovery
+      ? scheduleResolutionForRecovery(restoredScheduleRecovery, () => {
+          clearScheduleRecoveryDraft(restoredScheduleRecovery);
+        })
+      : null
   );
   const [notice, setNotice] = useState<string | null>(null);
-  const [actionError, setActionError] = useState<string | null>(null);
-  const [reloadRequired, setReloadRequired] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(() =>
+    restoredProgramRecovery !== null || restoredScheduleRecovery !== null
+      ? COPY.programs.programTransportAmbiguous
+      : null
+  );
+  const [reloadRequired, setReloadRequired] = useState(
+    restoredProgramRecovery !== null || restoredScheduleRecovery !== null
+  );
   const [scheduleMutationVersion, setScheduleMutationVersion] = useState(0);
   const mounted = useRef(true);
   const canManage = currentProgram.capabilities.manage;
@@ -1601,6 +1788,15 @@ export const ProgramSettings = ({
     );
   }, [focusedSchedule, focusedSection, onFocusChange, scheduleEditor]);
   useEffect(() => {
+    if (restoredProgramRecovery !== null || restoredScheduleRecovery !== null) {
+      onMutationBlockChange?.(true);
+    }
+  }, [
+    onMutationBlockChange,
+    restoredProgramRecovery,
+    restoredScheduleRecovery,
+  ]);
+  useEffect(() => {
     onDirtyChange?.(focusedSection && settingsDirty);
   }, [focusedSection, onDirtyChange, settingsDirty]);
   useEffect(() => () => onDirtyChange?.(false), [onDirtyChange]);
@@ -1692,13 +1888,13 @@ export const ProgramSettings = ({
     []
   );
 
-  const loadRules = useCallback(async (): Promise<boolean> => {
+  const loadRules = useCallback(async (): Promise<ScheduleSnapshot | null> => {
     if (
       currentProgram.behavior_type !== "Recurring" ||
       !canManage ||
       !eventsEnabled
     ) {
-      return true;
+      return EMPTY_SCHEDULE_SNAPSHOT;
     }
     setRules(null);
     setRuleError(null);
@@ -1707,7 +1903,7 @@ export const ProgramSettings = ({
     try {
       const result = await listScheduleRules(currentProgram.program_id);
       if (!mounted.current) {
-        return false;
+        return null;
       }
       try {
         const exceptionEntries = await Promise.all(
@@ -1720,29 +1916,33 @@ export const ProgramSettings = ({
           })
         );
         if (!mounted.current) {
-          return false;
+          return null;
         }
-        setExceptions(Object.fromEntries(exceptionEntries));
+        const snapshot = {
+          rules: result.rules,
+          exceptions: Object.fromEntries(exceptionEntries),
+        } satisfies ScheduleSnapshot;
+        setExceptions(snapshot.exceptions);
         setRules(result.rules);
-        return true;
+        return snapshot;
       } catch (error) {
         if (!mounted.current) {
-          return false;
+          return null;
         }
         setExceptionError(settingsErrorMessage(error));
         setRules(null);
-        return false;
+        return null;
       }
     } catch (error) {
       if (!mounted.current) {
-        return false;
+        return null;
       }
       setRuleError(settingsErrorMessage(error));
       // Keep the editor in an unresolved state after a failed read. An empty
       // list is reserved for an authoritative successful response with no
       // configured rules, so recovery never lies with a "no rules" state.
       setRules(null);
-      return false;
+      return null;
     }
   }, [
     canManage,
@@ -1768,7 +1968,11 @@ export const ProgramSettings = ({
         }
         resolution.onConfirmed();
         pendingScheduleResolution.current = null;
+        pendingScheduleRecovery.current = null;
         scheduleMutationKey.current = null;
+        clearWorkspaceMutationRecovery("schedule", {
+          programId: currentProgram.program_id,
+        });
         setReloadRequired(false);
         onMutationBlockChange?.(false);
         setNotice(COPY.programs.workspaceReconciled);
@@ -1832,25 +2036,38 @@ export const ProgramSettings = ({
     section,
   ]);
 
-  const applyProgram = useCallback((next: Program) => {
-    setCurrentProgram(next);
-    setBasics(basicsFrom(next));
-    setPublishing(publishingFrom(next));
-    setEnrollment(enrollmentFrom(next));
-    setAttendance(attendanceFrom(next));
-    setAttendanceErrors({});
-  }, []);
+  const applyProgram = useCallback(
+    (next: Program, updatedAction?: SettingsMutationAction) => {
+      setCurrentProgram(next);
+      if (updatedAction === "basics" || !basicsDirty) {
+        setBasics(basicsFrom(next));
+      }
+      if (updatedAction === "publishing" || !publishingDirty) {
+        setPublishing(publishingFrom(next));
+      }
+      if (updatedAction === "enrollment" || !enrollmentDirty) {
+        setEnrollment(enrollmentFrom(next));
+      }
+      if (updatedAction === "attendance" || !attendanceDirty) {
+        setAttendance(attendanceFrom(next));
+        setAttendanceErrors({});
+      }
+    },
+    [attendanceDirty, basicsDirty, enrollmentDirty, publishingDirty]
+  );
 
   const reconcileWorkspace = useCallback(
     async (forceScheduleRead = false) => {
       setBusy(true);
       setActionError(null);
       setNotice(null);
+      const pendingProgram = pendingProgramRecovery.current;
       try {
-        const rulesReady =
-          forceScheduleRead || scheduleMutationBlocked
-            ? await loadRules()
-            : true;
+        const scheduleReadRequired =
+          forceScheduleRead || scheduleMutationBlocked;
+        const scheduleSnapshot = scheduleReadRequired
+          ? await loadRules()
+          : null;
         let workspaceRead = onReload === undefined && scheduleMutationBlocked;
         let refreshed: Program | null | void = null;
         if (onReload) {
@@ -1864,15 +2081,42 @@ export const ProgramSettings = ({
         if (!mounted.current) {
           return;
         }
-        if (!rulesReady || !workspaceRead) {
+        if (
+          (scheduleReadRequired && scheduleSnapshot === null) ||
+          !workspaceRead
+        ) {
           setReloadRequired(true);
           setActionError(COPY.programs.programTransportAmbiguous);
           announce(COPY.programs.programTransportAmbiguous);
           return;
         }
-        if (refreshed) {
-          applyProgram(refreshed);
+        if (
+          pendingProgram !== null &&
+          (refreshed === null ||
+            refreshed === undefined ||
+            !programMatchesPatch(refreshed, pendingProgram.mutation.expected))
+        ) {
+          setReloadRequired(true);
+          setActionError(COPY.programs.programTransportAmbiguous);
+          onMutationBlockChange?.(true);
+          announce(COPY.programs.programTransportAmbiguous);
+          return;
         }
+        const programAction =
+          pendingProgram === null
+            ? forcedProgramReloadAction.current
+            : settingsActionForPatch(pendingProgram.mutation.patch);
+        if (refreshed) {
+          applyProgram(refreshed, programAction ?? undefined);
+        }
+        if (pendingProgram !== null) {
+          pendingProgramRecovery.current = null;
+          programMutationKey.current = null;
+          clearWorkspaceMutationRecovery("program", {
+            programId: currentProgram.program_id,
+          });
+        }
+        forcedProgramReloadAction.current = null;
         setReloadRequired(false);
         onMutationBlockChange?.(false);
         setNotice(COPY.programs.workspaceReconciled);
@@ -1907,39 +2151,56 @@ export const ProgramSettings = ({
       setBusy(true);
       setActionError(null);
       setNotice(null);
+      const action = settingsActionForPatch(patch);
+      forcedProgramReloadAction.current = null;
+      const idempotencyKey = programMutationKey.current ?? crypto.randomUUID();
+      programMutationKey.current = idempotencyKey;
+      const recovery: ProgramSettingsMutationRecovery = {
+        surface: "program",
+        programId: currentProgram.program_id,
+        idempotencyKey,
+        mutation: {
+          kind: "update",
+          patch,
+          expected: patch,
+        },
+      };
+      pendingProgramRecovery.current = recovery;
+      writeWorkspaceMutationRecovery(recovery);
       try {
-        const result = await updateProgram(currentProgram.program_id, patch);
+        const result = await updateProgram(
+          currentProgram.program_id,
+          patch,
+          idempotencyKey
+        );
         if (!mounted.current) {
           return;
         }
-        if ("name" in patch || "display_order" in patch) {
+        if (action === "basics") {
           clearManagementDraft(
             currentProgram.program_id,
             SETTINGS_DRAFT_ACTION.basics
           );
         }
-        if ("lifecycle" in patch) {
+        if (action === "publishing") {
           clearManagementDraft(
             currentProgram.program_id,
             SETTINGS_DRAFT_ACTION.publishing
           );
         }
-        if ("enrollment_mode" in patch) {
+        if (action === "enrollment") {
           clearManagementDraft(
             currentProgram.program_id,
             SETTINGS_DRAFT_ACTION.enrollment
           );
         }
-        if (
-          "check_in_opens_at_minutes_before_start" in patch ||
-          "check_in_closes_at_minutes_after_end" in patch
-        ) {
+        if (action === "attendance") {
           clearManagementDraft(
             currentProgram.program_id,
             SETTINGS_DRAFT_ACTION.attendance
           );
         }
-        applyProgram({ ...currentProgram, ...result.program });
+        applyProgram({ ...currentProgram, ...result.program }, action);
         setNotice(COPY.programs.settingsSaved);
         announce(COPY.programs.settingsSaved);
         try {
@@ -1947,14 +2208,35 @@ export const ProgramSettings = ({
           if (onReload !== undefined && refreshed === undefined) {
             setReloadRequired(true);
             setActionError(COPY.programs.workspaceSavedStale);
+            onMutationBlockChange?.(true);
             announce(COPY.programs.workspaceSavedStale);
           } else if (refreshed) {
-            applyProgram(refreshed);
+            if (!programMatchesPatch(refreshed, patch)) {
+              setReloadRequired(true);
+              setActionError(COPY.programs.programTransportAmbiguous);
+              onMutationBlockChange?.(true);
+              announce(COPY.programs.programTransportAmbiguous);
+              return;
+            }
+            applyProgram(refreshed, action);
+            pendingProgramRecovery.current = null;
+            programMutationKey.current = null;
+            clearWorkspaceMutationRecovery("program", {
+              programId: currentProgram.program_id,
+            });
+          }
+          if (onReload === undefined) {
+            pendingProgramRecovery.current = null;
+            programMutationKey.current = null;
+            clearWorkspaceMutationRecovery("program", {
+              programId: currentProgram.program_id,
+            });
           }
         } catch {
           // The PATCH is already authoritative. A failed follow-up GET must
           // remain a refresh problem, never a false failed-save state.
           setReloadRequired(onReload !== undefined);
+          onMutationBlockChange?.(onReload !== undefined);
           setActionError(COPY.programs.workspaceSavedStale);
           announce(COPY.programs.workspaceSavedStale);
         }
@@ -1968,6 +2250,15 @@ export const ProgramSettings = ({
           error instanceof RpcError && error.problem.code === "CONFLICT";
         if (retryable) {
           onMutationBlockChange?.(true);
+        } else {
+          if (conflict) {
+            forcedProgramReloadAction.current = action;
+          }
+          pendingProgramRecovery.current = null;
+          programMutationKey.current = null;
+          clearWorkspaceMutationRecovery("program", {
+            programId: currentProgram.program_id,
+          });
         }
         setReloadRequired((retryable || conflict) && onReload !== undefined);
         setActionError(
@@ -2109,7 +2400,8 @@ export const ProgramSettings = ({
       operation: () => Promise<unknown>,
       success: string,
       afterSuccess: () => void,
-      resolution: ScheduleMutationResolution
+      resolution: ScheduleMutationResolution,
+      recovery: ScheduleMutationRecovery
     ) => {
       if (reloadRequired || scheduleMutationBlocked) {
         return;
@@ -2119,10 +2411,12 @@ export const ProgramSettings = ({
       setActionError(null);
       setRuleError(null);
       setNotice(null);
+      pendingScheduleRecovery.current = recovery;
+      writeWorkspaceMutationRecovery(recovery);
       try {
         await operation();
-        const rulesReady = await loadRules();
-        let refreshFailed = !rulesReady;
+        const scheduleSnapshot = await loadRules();
+        let refreshFailed = scheduleSnapshot === null;
         try {
           const refreshed = await onReload?.();
           refreshFailed ||= onReload !== undefined && refreshed === undefined;
@@ -2132,8 +2426,20 @@ export const ProgramSettings = ({
         if (!mounted.current) {
           return;
         }
+        if (scheduleSnapshot === null) {
+          pendingScheduleResolution.current = resolution;
+          setReloadRequired(true);
+          onMutationBlockChange?.(true);
+          setActionError(COPY.programs.programTransportAmbiguous);
+          announce(COPY.programs.programTransportAmbiguous);
+          return;
+        }
         pendingScheduleResolution.current = null;
+        pendingScheduleRecovery.current = null;
         scheduleMutationKey.current = null;
+        clearWorkspaceMutationRecovery("schedule", {
+          programId: currentProgram.program_id,
+        });
         afterSuccess();
         setNotice(success);
         if (refreshFailed) {
@@ -2155,6 +2461,12 @@ export const ProgramSettings = ({
           return;
         }
         const message = settingsErrorMessage(error);
+        pendingScheduleResolution.current = null;
+        pendingScheduleRecovery.current = null;
+        scheduleMutationKey.current = null;
+        clearWorkspaceMutationRecovery("schedule", {
+          programId: currentProgram.program_id,
+        });
         setActionError(message);
         announce(message);
       } finally {
@@ -2183,6 +2495,45 @@ export const ProgramSettings = ({
       setBusy(false);
     }
   }, [busy, reconcileScheduleResolution]);
+
+  const discardMutationRecovery = () => {
+    const programRecovery = pendingProgramRecovery.current;
+    if (programRecovery !== null) {
+      const action = settingsActionForPatch(programRecovery.mutation.patch);
+      clearWorkspaceMutationRecovery("program", {
+        programId: currentProgram.program_id,
+      });
+      clearManagementDraft(
+        currentProgram.program_id,
+        action === "basics"
+          ? SETTINGS_DRAFT_ACTION.basics
+          : action === "publishing"
+            ? SETTINGS_DRAFT_ACTION.publishing
+            : action === "enrollment"
+              ? SETTINGS_DRAFT_ACTION.enrollment
+              : SETTINGS_DRAFT_ACTION.attendance
+      );
+      applyProgram(currentProgram, action);
+      pendingProgramRecovery.current = null;
+      programMutationKey.current = null;
+    }
+    const scheduleRecovery = pendingScheduleRecovery.current;
+    if (scheduleRecovery !== null) {
+      clearScheduleRecoveryDraft(scheduleRecovery);
+      clearWorkspaceMutationRecovery("schedule", {
+        programId: currentProgram.program_id,
+      });
+      pendingScheduleRecovery.current = null;
+      pendingScheduleResolution.current = null;
+      scheduleMutationKey.current = null;
+    }
+    forcedProgramReloadAction.current = null;
+    setReloadRequired(false);
+    onMutationBlockChange?.(false);
+    setActionError(null);
+    setNotice(COPY.programs.mutationRecoveryDiscarded);
+    announce(COPY.programs.mutationRecoveryDiscarded);
+  };
 
   const submitNewRule = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -2219,6 +2570,16 @@ export const ProgramSettings = ({
               sameRuleInput(candidate, input)
           ),
         onConfirmed: finish,
+      },
+      {
+        surface: "schedule",
+        programId: currentProgram.program_id,
+        idempotencyKey,
+        mutation: {
+          kind: "create-rule",
+          input,
+          expected: input,
+        },
       }
     );
   };
@@ -2275,6 +2636,17 @@ export const ProgramSettings = ({
             return candidate !== undefined && sameRuleInput(candidate, input);
           },
           onConfirmed: finish,
+        },
+        {
+          surface: "schedule",
+          programId: currentProgram.program_id,
+          idempotencyKey,
+          mutation: {
+            kind: "update-rule",
+            ruleId: rule.rule_id,
+            input,
+            expected: input,
+          },
         }
       );
     };
@@ -2344,6 +2716,17 @@ export const ProgramSettings = ({
                 candidate.rule_id === rule.rule_id
             ),
           onConfirmed: finish,
+        },
+        {
+          surface: "schedule",
+          programId: currentProgram.program_id,
+          idempotencyKey,
+          mutation: {
+            kind: "create-exception",
+            ruleId: rule.rule_id,
+            input,
+            expected: input,
+          },
         }
       );
     };
@@ -2377,6 +2760,17 @@ export const ProgramSettings = ({
             ({ exception_id }) => exception_id === exception.exception_id
           ),
         onConfirmed: finish,
+      },
+      {
+        surface: "schedule",
+        programId: currentProgram.program_id,
+        idempotencyKey,
+        mutation: {
+          kind: "delete-exception",
+          ruleId: exception.rule_id,
+          exceptionId: exception.exception_id,
+          expected: { deleted: true },
+        },
       }
     );
   };
@@ -2415,6 +2809,16 @@ export const ProgramSettings = ({
           );
         },
         onConfirmed: finish,
+      },
+      {
+        surface: "schedule",
+        programId: currentProgram.program_id,
+        idempotencyKey,
+        mutation: {
+          kind: "retire-rule",
+          ruleId: rule.rule_id,
+          expected: { retired: true },
+        },
       }
     );
   };
@@ -2621,20 +3025,36 @@ export const ProgramSettings = ({
           kind="error"
           title={actionError}
           action={
-            reloadRequired && (onReload !== undefined || focusedSchedule) ? (
-              <Button
-                className="w-fit border-[var(--screen-line-strong)] bg-transparent text-[var(--screen-ink)] hover:bg-[var(--screen-surface-soft)]"
-                variant="outline"
-                type="button"
-                onClick={() =>
-                  void (pendingScheduleResolution.current
-                    ? retryScheduleResolution()
-                    : reconcileWorkspace(focusedSchedule))
-                }
-                disabled={busy}
-              >
-                {COPY.programs.workspaceRetryRefresh}
-              </Button>
+            reloadRequired ? (
+              <div className="flex min-w-0 flex-wrap gap-2">
+                {(onReload !== undefined || focusedSchedule) && (
+                  <Button
+                    className="w-fit border-[var(--screen-line-strong)] bg-transparent text-[var(--screen-ink)] hover:bg-[var(--screen-surface-soft)]"
+                    variant="outline"
+                    type="button"
+                    onClick={() =>
+                      void (pendingScheduleResolution.current
+                        ? retryScheduleResolution()
+                        : reconcileWorkspace(focusedSchedule))
+                    }
+                    disabled={busy}
+                  >
+                    {COPY.programs.workspaceRetryRefresh}
+                  </Button>
+                )}
+                {(pendingProgramRecovery.current !== null ||
+                  pendingScheduleRecovery.current !== null) && (
+                  <Button
+                    className="w-fit border-[var(--screen-danger)] bg-transparent text-[var(--screen-danger)] hover:bg-[var(--screen-danger-surface)]"
+                    variant="outline"
+                    type="button"
+                    onClick={discardMutationRecovery}
+                    disabled={busy}
+                  >
+                    {COPY.programs.draftDiscard}
+                  </Button>
+                )}
+              </div>
             ) : undefined
           }
         />
@@ -3544,7 +3964,7 @@ export const ProgramSettings = ({
               rulesError: ruleError,
               exceptions,
               scheduleMutationVersion,
-              onScheduleRefresh: loadRules,
+              onScheduleRefresh: async () => (await loadRules()) !== null,
             })}
           </div>
         )}

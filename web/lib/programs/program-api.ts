@@ -1057,12 +1057,14 @@ export function createDepartment(
 /** PATCH /api/v1/programs/departments/:id */
 export function updateDepartment(
   departmentId: string,
-  patch: Partial<Pick<Department, "name" | "description" | "lifecycle">>
+  patch: Partial<Pick<Department, "name" | "description" | "lifecycle">>,
+  idempotencyKey?: string | null
 ): Promise<{ department: Department }> {
   return programsFetch(
     `/api/v1/programs/departments/${encodeURIComponent(departmentId)}`,
     "PATCH",
-    patch
+    patch,
+    { idempotencyKey }
   );
 }
 
@@ -1156,12 +1158,14 @@ export function createProgram(
 /** PATCH /api/v1/programs/:id */
 export function updateProgram(
   programId: string,
-  patch: ProgramPatch
+  patch: ProgramPatch,
+  idempotencyKey?: string | null
 ): Promise<{ program: Program }> {
   return programsFetch(
     `/api/v1/programs/${encodeURIComponent(programId)}`,
     "PATCH",
-    patch
+    patch,
+    { idempotencyKey }
   );
 }
 
@@ -1232,11 +1236,14 @@ export function getAccountDirectoryDetail(
 export function setDepartmentModule(
   departmentId: string,
   moduleKey: string,
-  enabled: boolean
+  enabled: boolean,
+  idempotencyKey?: string | null
 ): Promise<{ module: DepartmentModule }> {
   return programsFetch(
     `/api/v1/programs/departments/${encodeURIComponent(departmentId)}/modules/${encodeURIComponent(moduleKey)}/${enabled ? "enable" : "disable"}`,
-    "POST"
+    "POST",
+    undefined,
+    { idempotencyKey }
   );
 }
 

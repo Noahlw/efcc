@@ -5,6 +5,16 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { Alert } from "@/components/ui/alert";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -131,6 +141,11 @@ function checkInWindowIsOpen(event: ProgramEvent, now = Date.now()): boolean {
 type EventPhase = "future" | "open" | "past" | "cancelled";
 type EventEditIntent = "edit" | "reschedule";
 type OwnAttendanceUnavailableReason = "forbidden" | "not-found" | null;
+
+interface EventActionRecovery {
+  requestedIntent: EventEditIntent;
+  draft: EventDetailDraft;
+}
 
 interface EventDetailDraft {
   version: 1;
@@ -329,6 +344,8 @@ export const EventDetail = ({
     busy || detailStale || loadError !== null || mutationOutcomeUnknown;
   const [editing, setEditing] = useState(false);
   const [editingIntent, setEditingIntent] = useState<EventEditIntent>("edit");
+  const [eventActionRecovery, setEventActionRecovery] =
+    useState<EventActionRecovery | null>(null);
   const [editingEventType, setEditingEventType] = useState<EventType>(
     COPY.programs.eventTypeOptions[0] as EventType
   );
@@ -460,6 +477,7 @@ export const EventDetail = ({
     setDetailStale(false);
     setBusy(false);
     setEditing(false);
+    setEventActionRecovery(null);
     setEditingIntent("edit");
     setEditingEventType(COPY.programs.eventTypeOptions[0] as EventType);
     setEditReason("");
@@ -484,11 +502,19 @@ export const EventDetail = ({
   }, [load]);
 
   const startEditing = useCallback(
-    (intent: EventEditIntent, event: ProgramEvent) => {
+    (
+      intent: EventEditIntent,
+      event: ProgramEvent,
+      promptForRecovery = true
+    ) => {
       const stored = readManagementDraft<unknown>(
         event.event_id,
         EVENT_DETAIL_DRAFT_ACTION
       );
+      if (promptForRecovery && isEventDetailDraft(stored)) {
+        setEventActionRecovery({ requestedIntent: intent, draft: stored });
+        return;
+      }
       const draft =
         isEventDetailDraft(stored) && stored.intent === intent
           ? stored
@@ -1178,6 +1204,7 @@ export const EventDetail = ({
     const participantProgramHref = buildProgramsHref({
       mode: "participant",
       programId,
+      origin,
       hash,
     });
     const whenLabel = `${hkShortDateLabel(event.starts_at)}${hkShortTimeRange(event.starts_at, event.ends_at)}`;
@@ -1231,6 +1258,14 @@ export const EventDetail = ({
                 aria-label={COPY.attendance.eventCancelled}
               >
                 {COPY.attendance.eventCancelled}
+              </ScreenStatus>
+            ) : ownAttendance?.state === "Present" ? (
+              <ScreenStatus
+                role="status"
+                tone="success"
+                aria-label={COPY.programs.participantAttendancePresent}
+              >
+                {COPY.programs.participantAttendancePresent}
               </ScreenStatus>
             ) : phase === "open" ? (
               <ScreenStatus
@@ -1377,6 +1412,21 @@ export const EventDetail = ({
     setEditing(false);
     setEditReason("");
   };
+  const resolveEventActionRecovery = (recover: boolean) => {
+    const recovery = eventActionRecovery;
+    setEventActionRecovery(null);
+    if (!recovery) {
+      return;
+    }
+    if (!recover) {
+      clearManagementDraft(eventId, EVENT_DETAIL_DRAFT_ACTION);
+    }
+    startEditing(
+      recover ? recovery.draft.intent : recovery.requestedIntent,
+      event,
+      false
+    );
+  };
   const requestDeactivate = () => {
     if (event.availability === "Active" && participant_summary.checked_in > 0) {
       menuFocusTargetRef.current = "deactivate";
@@ -1454,6 +1504,35 @@ export const EventDetail = ({
       aria-label={COPY.programs.eventDetailTitle}
       aria-busy={busy}
     >
+      <AlertDialog
+        open={eventActionRecovery !== null}
+        onOpenChange={() => {
+          // A reload-recovered action must have an explicit Recover/Discard
+          // decision; dismissing the dialog would silently choose neither.
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {COPY.programs.eventEditRecoveryTitle}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {COPY.programs.eventEditRecoveryDescription}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => resolveEventActionRecovery(true)}>
+              {COPY.programs.eventEditRecover}
+            </AlertDialogCancel>
+            <AlertDialogAction
+              variant="destructive"
+              onClick={() => resolveEventActionRecovery(false)}
+            >
+              {COPY.programs.eventEditDiscard}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
       <ScreenHeader
         level="child"
         title={event.name ?? hkWallDateTimeLabel(event.starts_at)}
