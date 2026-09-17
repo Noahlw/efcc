@@ -298,6 +298,40 @@ describe("Programs intent", () => {
     ).toBeTruthy();
   });
 
+  test("round-trips directory, task, filter, and focused Schedule context", () => {
+    const href = buildProgramsHref({
+      mode: "management",
+      programId: "program-1",
+      task: "participants",
+      directoryQuery: "青年",
+      participantTab: "history",
+      participantQuery: "李同工",
+    });
+    expect(href).toBe(
+      "/programs?mode=management&program=program-1&task=participants&directoryQuery=%E9%9D%92%E5%B9%B4&participantTab=history&participantQuery=%E6%9D%8E%E5%90%8C%E5%B7%A5"
+    );
+    expect(parseProgramsIntent(href.slice("/programs".length))).toStrictEqual({
+      mode: "management",
+      programId: "program-1",
+      hash: null,
+      task: "participants",
+      directoryQuery: "青年",
+      participantTab: "history",
+      participantQuery: "李同工",
+      malformed: false,
+    });
+    expect(
+      buildProgramsHref({
+        mode: "management",
+        programId: "program-1",
+        task: "schedule",
+        scheduleOrigin: "settings",
+      })
+    ).toBe(
+      "/programs?mode=management&program=program-1&task=schedule&scheduleOrigin=settings"
+    );
+  });
+
   test("preserves management department context", () => {
     expect(
       parseProgramsIntent("?mode=management&department=department-1")

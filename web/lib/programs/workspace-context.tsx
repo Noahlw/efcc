@@ -12,11 +12,19 @@ import type {
   ManagementAttention,
   Program,
 } from "./program-api";
-import type { ManagementEventAction, ProgramsTask } from "./programs-intent";
+import type {
+  ManagementEventAction,
+  ProgramsEventFilter,
+  ProgramsParticipantTab,
+  ProgramsScheduleOrigin,
+  ProgramsSettingsSection,
+  ProgramsTask,
+} from "./programs-intent";
 
 export interface WorkspaceRouteContextValue {
   departmentId: string | null;
   hash: string | null;
+  directoryQuery?: string | null;
 }
 
 const WorkspaceRouteContext = createContext<WorkspaceRouteContextValue>({
@@ -47,6 +55,8 @@ export interface WorkspaceTaskContextValue {
   /** Validated management directory context for non-intercepted Links. */
   departmentId?: string | null;
   hash?: string | null;
+  /** Management directory search retained by workspace links. */
+  directoryQuery?: string | null;
   onAttentionRefresh: () => void;
   /** Reload the route-owned workspace after an explicit Settings conflict action. */
   onWorkspaceRefresh?: () => void | Promise<Program | void>;
@@ -54,12 +64,29 @@ export interface WorkspaceTaskContextValue {
   workspaceFreshness?: "fresh" | "refreshing" | "stale";
   /** Block cross-task navigation while a write outcome is being reconciled. */
   onMutationBlockChange?: (blocked: boolean) => void;
-  onTaskChange: (task: ProgramsTask | null, eventId?: string | null) => void;
+  onTaskChange: (
+    task: ProgramsTask | null,
+    eventId?: string | null,
+    scheduleOrigin?: ProgramsScheduleOrigin
+  ) => void;
   onOpenEvent?: (eventId: string, eventAction?: ManagementEventAction) => void;
   /** Open the shared focused Attendance roster for an exact Event. */
   onOpenAttendance?: (eventId: string) => void;
   /** The active task has an unsaved local draft that the shell must protect. */
   onWorkspaceDirtyChange?: (dirty: boolean) => void;
+  /** URL-owned Events filter and its replace-only updater. */
+  eventFilter?: ProgramsEventFilter;
+  onEventFilterChange?: (filter: ProgramsEventFilter) => void;
+  /** URL-owned Participants tab/search and replace-only updaters. */
+  participantTab?: ProgramsParticipantTab;
+  participantQuery?: string;
+  onParticipantTabChange?: (tab: ProgramsParticipantTab) => void;
+  onParticipantQueryChange?: (query: string) => void;
+  /** URL-owned focused Settings section. */
+  settingsSection?: ProgramsSettingsSection;
+  onSettingsSectionChange?: (section: ProgramsSettingsSection | null) => void;
+  /** Origin used to enter the focused Schedule task. */
+  scheduleOrigin?: ProgramsScheduleOrigin;
 }
 
 const WorkspaceTaskContext = createContext<WorkspaceTaskContextValue | null>(

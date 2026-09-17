@@ -9,20 +9,34 @@ import { ScreenHeader } from "@/lib/screen-foundations";
 
 import { ProgramSettings, SettingsHub } from "./program-settings";
 import type { ProgramSettingsSection } from "./program-settings";
-import { buildProgramsHref } from "./programs-intent";
+import { buildProgramsHref, parseProgramsIntent } from "./programs-intent";
+import type { ProgramsScheduleOrigin, ProgramsTask } from "./programs-intent";
 import { hasModule, useWorkspaceTaskContext } from "./workspace-context";
+
+export type SettingsNavigationRequest =
+  | { kind: "back" }
+  | { kind: "history-back" }
+  | {
+      kind: "route";
+      task: ProgramsTask | null;
+      eventId?: string | null;
+      scheduleOrigin?: ProgramsScheduleOrigin;
+    }
+  | { kind: "href"; href: string };
 
 export const SettingsTask = ({
   onFocusChange,
   onDirtyChange,
   navigationBlocked = false,
   onNavigationBlocked,
+  onNavigationRequest,
   headerAction,
 }: {
   onFocusChange?: (focused: boolean) => void;
   onDirtyChange?: (dirty: boolean) => void;
   navigationBlocked?: boolean;
   onNavigationBlocked?: (blocked: boolean) => void;
+  onNavigationRequest?: (request: SettingsNavigationRequest) => void;
   headerAction?: ReactNode;
 } = {}) => {
   const {
@@ -33,14 +47,28 @@ export const SettingsTask = ({
     onMutationBlockChange,
     departmentId,
     hash,
+    directoryQuery,
+    settingsSection: routeSection,
+    onSettingsSectionChange,
   } = useWorkspaceTaskContext();
-  const [section, setSection] = useState<ProgramSettingsSection | null>(null);
+  const [localSection, setLocalSection] =
+    useState<ProgramSettingsSection | null>(null);
+  const section = routeSection ?? localSection;
+  useEffect(() => {
+    if (onSettingsSectionChange && routeSection === undefined) {
+      setLocalSection(null);
+    }
+  }, [onSettingsSectionChange, routeSection]);
   const [focusedDirty, setFocusedDirty] = useState(false);
+  useEffect(() => {
+    onFocusChange?.(section !== null);
+  }, [onFocusChange, section]);
   const returnHref = buildProgramsHref({
     mode: "management",
     programId: program.program_id,
     departmentId,
     task: "settings",
+    directoryQuery,
     hash,
   });
 
@@ -55,12 +83,15 @@ export const SettingsTask = ({
     programId: program.program_id,
     departmentId,
     task: "schedule",
+    scheduleOrigin: "settings",
+    directoryQuery,
     hash,
   });
   const notificationsHref = buildProgramsHref({
     mode: "management",
     departmentId,
     task: "notifications",
+    directoryQuery,
     hash,
   });
 
@@ -94,16 +125,21 @@ export const SettingsTask = ({
     },
     [onDirtyChange, onNavigationBlocked]
   );
-  const blockNavigation = useCallback(() => {
-    onNavigationBlocked?.(true);
-    announce(COPY.programs.settingsUnsaved);
-  }, [onNavigationBlocked]);
+  const blockNavigation = useCallback(
+    (request: SettingsNavigationRequest) => {
+      onNavigationRequest?.(request);
+      onNavigationBlocked?.(true);
+      announce(COPY.programs.settingsUnsaved);
+    },
+    [onNavigationBlocked, onNavigationRequest]
+  );
 
   useEffect(() => {
     if (!focusedDirty) {
       return;
     }
 
+    // eslint-disable-next-line eslint/complexity -- this is the single dirty-route interception boundary.
     const handleDocumentClick = (event: globalThis.MouseEvent) => {
       if (
         event.defaultPrevented ||
@@ -115,7 +151,7 @@ export const SettingsTask = ({
       ) {
         return;
       }
-      const target = event.target;
+      const { target } = event;
       if (!(target instanceof Element)) {
         return;
       }
@@ -153,7 +189,29 @@ export const SettingsTask = ({
 
       event.preventDefault();
       event.stopPropagation();
-      blockNavigation();
+      const routeIntent =
+        nextUrl.pathname === "/programs"
+          ? parseProgramsIntent(`${nextUrl.search}${nextUrl.hash}`)
+          : null;
+      if (
+        routeIntent &&
+        !routeIntent.malformed &&
+        routeIntent.mode === "management" &&
+        routeIntent.programId === program.program_id
+      ) {
+        blockNavigation({
+          kind: "route",
+          task: routeIntent.task ?? null,
+          ...(routeIntent.eventId === undefined
+            ? {}
+            : { eventId: routeIntent.eventId }),
+          ...(routeIntent.scheduleOrigin === undefined
+            ? {}
+            : { scheduleOrigin: routeIntent.scheduleOrigin }),
+        });
+      } else {
+        blockNavigation({ kind: "href", href: nextUrl.href });
+      }
     };
     const handleBeforeUnload = (event: BeforeUnloadEvent) => {
       event.preventDefault();
@@ -166,7 +224,7 @@ export const SettingsTask = ({
       document.removeEventListener("click", handleDocumentClick, true);
       window.removeEventListener("beforeunload", handleBeforeUnload);
     };
-  }, [blockNavigation, focusedDirty]);
+  }, [blockNavigation, focusedDirty, program.program_id]);
 
   const handleFocusedBack: MouseEventHandler<HTMLAnchorElement> = (event) => {
     if (
@@ -181,19 +239,21 @@ export const SettingsTask = ({
     }
     if (focusedDirty) {
       event.preventDefault();
-      blockNavigation();
+      blockNavigation({ kind: "back" });
       return;
     }
     event.preventDefault();
     onFocusChange?.(false);
     handleDirtyChange(false);
-    setSection(null);
+    setLocalSection(null);
+    onSettingsSectionChange?.(null);
   };
 
   const handleSectionSelect = (nextSection: ProgramSettingsSection) => {
     onFocusChange?.(true);
     handleDirtyChange(false);
-    setSection(nextSection);
+    setLocalSection(nextSection);
+    onSettingsSectionChange?.(nextSection);
   };
 
   return section === null ? (

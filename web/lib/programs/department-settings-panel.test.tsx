@@ -1,5 +1,8 @@
 import { cleanup, render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+
+import { COPY } from "@/lib/copy";
 
 import { DepartmentSettingsPanel } from "./department-settings-panel";
 
@@ -35,6 +38,15 @@ const department = {
     role_read: true,
     role_assign: true,
     role_revoke: true,
+  },
+};
+
+const managedDepartment = {
+  ...department,
+  capabilities: {
+    ...department.capabilities,
+    manage: true,
+    module_configure: true,
   },
 };
 
@@ -74,5 +86,61 @@ describe("DepartmentSettingsPanel identity access", () => {
     expect(
       screen.queryByRole("link", { name: "管理帳戶身份組" })
     ).not.toBeInTheDocument();
+  });
+
+  test("keeps a settled load failure recoverable", async () => {
+    mocks.getDepartment.mockReset();
+    mocks.getDepartment
+      .mockRejectedValueOnce(new Error("temporary failure"))
+      .mockResolvedValueOnce({ department, modules: [] });
+    const user = userEvent.setup();
+
+    render(
+      <DepartmentSettingsPanel department={department} onClose={vi.fn()} />
+    );
+
+    await screen.findByText(COPY.programs.departmentSettingsLoadError);
+    await user.click(
+      screen.getByRole("button", {
+        name: COPY.programs.departmentSettingsRetry,
+      })
+    );
+    await screen.findByRole("link", { name: "管理帳戶身份組" });
+    expect(mocks.getDepartment).toHaveBeenCalledTimes(2);
+  });
+
+  test("does not discard a dirty Department draft for a module action", async () => {
+    mocks.getDepartment.mockResolvedValue({
+      department: managedDepartment,
+      modules: [
+        {
+          department_id: managedDepartment.department_id,
+          module_key: "events",
+          enabled: 1,
+          enabled_at: "2026-01-01T00:00:00.000Z",
+        },
+      ],
+    });
+    const user = userEvent.setup();
+    render(
+      <DepartmentSettingsPanel
+        department={managedDepartment}
+        onClose={vi.fn()}
+      />
+    );
+
+    const name = await screen.findByRole("textbox", {
+      name: COPY.programs.deptName,
+    });
+    await user.clear(name);
+    await user.type(name, "新部門名稱");
+    await user.click(
+      screen.getByRole("button", { name: COPY.programs.disable })
+    );
+
+    expect(mocks.setDepartmentModule).not.toHaveBeenCalled();
+    expect(
+      screen.getByText(COPY.programs.departmentDraftBlocking)
+    ).toBeInTheDocument();
   });
 });

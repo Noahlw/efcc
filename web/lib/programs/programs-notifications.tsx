@@ -149,13 +149,34 @@ const NotificationRows = ({
                 if (navigationBypassRef.current.delete(itemKey)) {
                   return;
                 }
+                if (
+                  event.defaultPrevented ||
+                  event.button !== 0 ||
+                  event.metaKey ||
+                  event.ctrlKey ||
+                  event.shiftKey ||
+                  event.altKey
+                ) {
+                  if (!event.defaultPrevented) {
+                    void onMarkRead([item]);
+                  }
+                  return;
+                }
                 event.preventDefault();
                 const link = event.currentTarget;
-                void onMarkRead([item], () => {
+                const continueNavigation = () => {
                   navigationBypassRef.current.add(itemKey);
                   onNavigate?.();
                   link.click();
-                });
+                };
+                void (async () => {
+                  try {
+                    await onMarkRead([item]);
+                  } catch {
+                    // Navigation remains available when marking read fails.
+                  }
+                  continueNavigation();
+                })();
               }}
             >
               {item.read || (

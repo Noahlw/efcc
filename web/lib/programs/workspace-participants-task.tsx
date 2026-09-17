@@ -65,6 +65,7 @@ import {
 } from "@/lib/screen-foundations";
 
 import { MemberPicker } from "./member-picker";
+import type { ProgramsParticipantTab } from "./programs-intent";
 import { useAsyncResource } from "./use-async-resource";
 import {
   formatEventTime,
@@ -72,7 +73,7 @@ import {
   useWorkspaceTaskContext,
 } from "./workspace-context";
 
-type ParticipantTab = "pending" | "active" | "history";
+type ParticipantTab = ProgramsParticipantTab;
 type ParticipantFailure = "forbidden" | "stale" | "conflict" | "server";
 interface CancelRetry {
   enrollmentId: string;
@@ -320,6 +321,10 @@ export const ParticipantsTask = () => {
     onAttentionRefresh,
     onWorkspaceRefresh,
     onMutationBlockChange,
+    participantTab: routeParticipantTab,
+    participantQuery: routeParticipantQuery,
+    onParticipantTabChange,
+    onParticipantQueryChange,
   } = useWorkspaceTaskContext();
   const programId = program.program_id;
   const canManage = program.capabilities.manage;
@@ -347,7 +352,19 @@ export const ParticipantsTask = () => {
   const [refreshSuccess, setRefreshSuccess] = useState<string>(
     COPY.programs.decisionMade
   );
-  const [tab, setTab] = useState<ParticipantTab>("pending");
+  const [localTab, setLocalTab] = useState<ParticipantTab>("pending");
+  const tab = routeParticipantTab ?? localTab;
+  const initialTabResolvedRef = useRef(false);
+  const setTab = useCallback(
+    (value: ParticipantTab) => {
+      if (onParticipantTabChange) {
+        onParticipantTabChange(value);
+      } else {
+        setLocalTab(value);
+      }
+    },
+    [onParticipantTabChange]
+  );
   const [busyRequestId, setBusyRequestId] = useState<string | null>(null);
   const [busyEnrollmentId, setBusyEnrollmentId] = useState<string | null>(null);
   const [actionErrors, setActionErrors] = useState<Record<string, string>>({});
@@ -360,7 +377,18 @@ export const ParticipantsTask = () => {
   const [cancelReasonError, setCancelReasonError] = useState<string | null>(
     null
   );
-  const [pendingQuery, setPendingQuery] = useState("");
+  const [localPendingQuery, setLocalPendingQuery] = useState("");
+  const pendingQuery = routeParticipantQuery ?? localPendingQuery;
+  const setPendingQuery = useCallback(
+    (value: string) => {
+      if (onParticipantQueryChange) {
+        onParticipantQueryChange(value);
+      } else {
+        setLocalPendingQuery(value);
+      }
+    },
+    [onParticipantQueryChange]
+  );
   const [selectedRequestIds, setSelectedRequestIds] = useState<string[]>([]);
   const [expandedRequestIds, setExpandedRequestIds] = useState<string[]>([]);
   const [approvalReviewOpen, setApprovalReviewOpen] = useState(false);
@@ -663,10 +691,14 @@ export const ParticipantsTask = () => {
   }, [state]);
 
   useEffect(() => {
-    if (queue?.counts.pending === 0) {
-      setTab((current) => (current === "pending" ? "active" : current));
+    if (queue === null || initialTabResolvedRef.current) {
+      return;
     }
-  }, [queue]);
+    initialTabResolvedRef.current = true;
+    if (queue.counts.pending === 0 && tab === "pending") {
+      setTab("active");
+    }
+  }, [queue, setTab, tab]);
 
   const visiblePending = useMemo(() => {
     if (!queue) {

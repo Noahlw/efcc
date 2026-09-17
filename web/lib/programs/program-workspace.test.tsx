@@ -703,6 +703,38 @@ describe(ProgramWorkspace, () => {
     ).not.toBeInTheDocument();
   });
 
+  test("gives managers one action when no Event is open for check-in", async () => {
+    mockWorkspace();
+    mocks.getManagementProgram.mockResolvedValue({
+      program,
+      department,
+      modules,
+      cockpit: {
+        ...cockpitNoNext,
+        open_events: [],
+      },
+    });
+    const onTaskChange = vi.fn();
+    render(
+      <ProgramWorkspace
+        programId="program-1"
+        onBack={vi.fn()}
+        onTaskChange={onTaskChange}
+      />
+    );
+
+    await screen.findByRole("heading", {
+      name: COPY.programs.cockpitOpenMeetings,
+    });
+    expect(
+      screen.getByText(COPY.programs.cockpitNoOpenCheckIn)
+    ).toBeInTheDocument();
+    await userEvent.click(
+      screen.getByRole("button", { name: COPY.programs.cockpitViewEvents })
+    );
+    expect(onTaskChange).toHaveBeenCalledWith("events");
+  });
+
   test("offers a truthful choice when more than one Event is open for check-in", async () => {
     const openA = {
       ...cockpitWithNext.next_event,
@@ -1073,6 +1105,11 @@ describe(ProgramWorkspace, () => {
     await user.click(
       screen.getByRole("link", { name: COPY.programs.settingsBackToHub })
     );
+    await user.click(
+      screen.getByRole("button", {
+        name: COPY.programs.settingsContinueEditing,
+      })
+    );
 
     expect(
       screen.getByRole("heading", { name: COPY.programs.settingsBasics })
@@ -1097,6 +1134,11 @@ describe(ProgramWorkspace, () => {
     await user.click(
       screen.getByRole("link", {
         name: COPY.programs.workspaceOverviewTab,
+      })
+    );
+    await user.click(
+      screen.getByRole("button", {
+        name: COPY.programs.settingsContinueEditing,
       })
     );
     expect(
@@ -1335,6 +1377,11 @@ describe(ProgramWorkspace, () => {
         name: COPY.programs.workspaceOverviewTab,
       })
     );
+    await user.click(
+      screen.getByRole("button", {
+        name: COPY.programs.settingsContinueEditing,
+      })
+    );
 
     expect(
       screen.getByRole("heading", { name: COPY.programs.settingsBasics })
@@ -1404,7 +1451,17 @@ describe(ProgramWorkspace, () => {
     const beforeUnload = new Event("beforeunload", { cancelable: true });
     expect(window.dispatchEvent(beforeUnload)).toBeFalsy();
     await user.click(screen.getByRole("link", { name: "模式" }));
+    await user.click(
+      screen.getByRole("button", {
+        name: COPY.programs.settingsContinueEditing,
+      })
+    );
     await user.click(screen.getByRole("link", { name: "首頁" }));
+    await user.click(
+      screen.getByRole("button", {
+        name: COPY.programs.settingsContinueEditing,
+      })
+    );
     expect(modeClick).not.toHaveBeenCalled();
     expect(globalClick).not.toHaveBeenCalled();
     expect(name).toHaveValue("外部連結未儲存名稱");

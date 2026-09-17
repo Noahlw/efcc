@@ -1,4 +1,11 @@
 import "@testing-library/jest-dom/vitest";
+import { afterEach } from "vitest";
+
+// Components persist session drafts by design; tests still need a fresh
+// authenticated session boundary for each case.
+afterEach(() => {
+  globalThis.sessionStorage?.clear();
+});
 
 // jsdom doesn't implement HTMLDialogElement.showModal()/close() -- polyfill
 // with the attribute-toggling behavior real browsers use, close enough for

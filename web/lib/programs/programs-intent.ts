@@ -8,6 +8,20 @@ export type ProgramsTask =
   | "settings"
   | "notifications";
 export type ProgramsOrigin = "home" | "notices" | "messages" | "programs";
+export type ProgramsEventFilter = "current" | "past" | "cancelled";
+export type ProgramsParticipantTab = "pending" | "active" | "history";
+export type ProgramsParticipantFilter =
+  | "all"
+  | "eligible"
+  | "active"
+  | "pending";
+export type ProgramsSettingsSection =
+  | "basics"
+  | "publishing"
+  | "enrollment"
+  | "schedule"
+  | "attendance";
+export type ProgramsScheduleOrigin = "events" | "settings";
 
 export interface ProgramsIntent {
   mode: ProgramsMode;
@@ -26,6 +40,20 @@ export interface ProgramsIntent {
   malformed: boolean;
   /** First-party Section that opened a participant detail intent. */
   origin?: ProgramsOrigin;
+  /** Directory search retained while a management workspace is open. */
+  directoryQuery?: string;
+  /** Participant catalog search/filter retained across detail navigation. */
+  catalogQuery?: string;
+  catalogFilter?: ProgramsParticipantFilter;
+  /** Events task filter retained across Event detail navigation. */
+  eventFilter?: ProgramsEventFilter;
+  /** Participants task tab/search retained across task navigation. */
+  participantTab?: ProgramsParticipantTab;
+  participantQuery?: string;
+  /** Focused Settings section carried by a direct URL. */
+  settingsSection?: ProgramsSettingsSection;
+  /** Whether a focused Schedule was entered from Events or Settings. */
+  scheduleOrigin?: ProgramsScheduleOrigin;
 }
 
 export interface ProgramsHrefIntent {
@@ -41,10 +69,20 @@ export interface ProgramsHrefIntent {
   created?: boolean;
   /** First-party Section that opened a participant detail intent. */
   origin?: ProgramsOrigin;
+  directoryQuery?: string | null;
+  catalogQuery?: string | null;
+  catalogFilter?: ProgramsParticipantFilter | null;
+  eventFilter?: ProgramsEventFilter | null;
+  participantTab?: ProgramsParticipantTab | null;
+  participantQuery?: string | null;
+  settingsSection?: ProgramsSettingsSection | null;
+  scheduleOrigin?: ProgramsScheduleOrigin | null;
 }
 const SAFE_PROGRAM_ID = /^[A-Za-z0-9][A-Za-z0-9._~-]{0,127}$/u;
 const SAFE_HASH = /^#[A-Za-z0-9._~-]{1,128}$/u;
 const SAFE_EVENT_ID = /^[A-Za-z0-9-]{1,64}$/u;
+// eslint-disable-next-line eslint/no-control-regex -- reject control characters at the URL trust boundary.
+const SAFE_QUERY = /^[^\u0000-\u001F\u007F]{1,128}$/u;
 const PROGRAM_TASKS: readonly ProgramsTask[] = [
   "events",
   "participants",
@@ -58,6 +96,33 @@ const PROGRAM_ORIGINS: readonly ProgramsOrigin[] = [
   "messages",
   "programs",
 ];
+const EVENT_FILTERS: readonly ProgramsEventFilter[] = [
+  "current",
+  "past",
+  "cancelled",
+];
+const PARTICIPANT_TABS: readonly ProgramsParticipantTab[] = [
+  "pending",
+  "active",
+  "history",
+];
+const PARTICIPANT_FILTERS: readonly ProgramsParticipantFilter[] = [
+  "all",
+  "eligible",
+  "active",
+  "pending",
+];
+const SETTINGS_SECTIONS: readonly ProgramsSettingsSection[] = [
+  "basics",
+  "publishing",
+  "enrollment",
+  "schedule",
+  "attendance",
+];
+const SCHEDULE_ORIGINS: readonly ProgramsScheduleOrigin[] = [
+  "events",
+  "settings",
+];
 
 function isProgramsTask(value: string): value is ProgramsTask {
   return PROGRAM_TASKS.includes(value as ProgramsTask);
@@ -67,12 +132,59 @@ function isProgramsOrigin(value: string): value is ProgramsOrigin {
   return PROGRAM_ORIGINS.includes(value as ProgramsOrigin);
 }
 
+function isEventFilter(value: string): value is ProgramsEventFilter {
+  return EVENT_FILTERS.includes(value as ProgramsEventFilter);
+}
+
+function isParticipantTab(value: string): value is ProgramsParticipantTab {
+  return PARTICIPANT_TABS.includes(value as ProgramsParticipantTab);
+}
+
+function isParticipantFilter(
+  value: string
+): value is ProgramsParticipantFilter {
+  return PARTICIPANT_FILTERS.includes(value as ProgramsParticipantFilter);
+}
+
+function isSettingsSection(value: string): value is ProgramsSettingsSection {
+  return SETTINGS_SECTIONS.includes(value as ProgramsSettingsSection);
+}
+
+function isScheduleOrigin(value: string): value is ProgramsScheduleOrigin {
+  return SCHEDULE_ORIGINS.includes(value as ProgramsScheduleOrigin);
+}
+
 function singleParam(
   params: URLSearchParams,
   key: string
 ): { value: string | null; duplicate: boolean } {
   const values = params.getAll(key);
   return { value: values[0] ?? null, duplicate: values.length > 1 };
+}
+
+function parseSafeQuery(raw: { value: string | null; duplicate: boolean }): {
+  value: string | undefined;
+  malformed: boolean;
+} {
+  const value = raw.value === null || raw.value === "" ? undefined : raw.value;
+  return {
+    value: value && SAFE_QUERY.test(value) ? value : undefined,
+    malformed:
+      raw.duplicate || (value !== undefined && !SAFE_QUERY.test(value)),
+  };
+}
+
+function parseEnum<T extends string>(
+  raw: { value: string | null; duplicate: boolean },
+  isValue: (value: string) => value is T,
+  allowed: boolean
+): { value: T | undefined; malformed: boolean } {
+  const value =
+    raw.value !== null && isValue(raw.value) ? raw.value : undefined;
+  return {
+    value,
+    malformed: raw.duplicate || (raw.value !== null && (!value || !allowed)),
+  };
 }
 
 function parseProgramIntent(
@@ -232,6 +344,7 @@ function parseCreated(
       (rawCreated.value !== null && (!value || rawCreated.value !== "1")),
   };
 }
+// eslint-disable-next-line eslint/complexity -- one validator owns the complete URL contract.
 function hasMalformedIntent({
   rawMode,
   program,
@@ -244,6 +357,14 @@ function hasMalformedIntent({
   eventAction,
   createdMalformed,
   originMalformed,
+  directoryQuery,
+  catalogQuery,
+  catalogFilter,
+  eventFilter,
+  participantTab,
+  participantQuery,
+  settingsSection,
+  scheduleOrigin,
 }: {
   rawMode: { value: string | null; duplicate: boolean };
   program: { malformed: boolean; duplicate: boolean };
@@ -256,6 +377,14 @@ function hasMalformedIntent({
   eventAction: { malformed: boolean };
   createdMalformed: boolean;
   originMalformed: boolean;
+  directoryQuery: { malformed: boolean };
+  catalogQuery: { malformed: boolean };
+  catalogFilter: { malformed: boolean };
+  eventFilter: { malformed: boolean };
+  participantTab: { malformed: boolean };
+  participantQuery: { malformed: boolean };
+  settingsSection: { malformed: boolean };
+  scheduleOrigin: { malformed: boolean };
 }): boolean {
   return (
     rawMode.duplicate ||
@@ -273,11 +402,20 @@ function hasMalformedIntent({
     event.malformed ||
     eventAction.malformed ||
     createdMalformed ||
-    originMalformed
+    originMalformed ||
+    directoryQuery.malformed ||
+    catalogQuery.malformed ||
+    catalogFilter.malformed ||
+    eventFilter.malformed ||
+    participantTab.malformed ||
+    participantQuery.malformed ||
+    settingsSection.malformed ||
+    scheduleOrigin.malformed
   );
 }
 
 /** Parse only the URL-owned Programs boundary state; server data stays out. */
+// eslint-disable-next-line eslint/complexity -- one parser owns the complete URL contract.
 export function parseProgramsIntent(search: string): ProgramsIntent {
   const hashIndex = search.indexOf("#");
   const query = hashIndex === -1 ? search : search.slice(0, hashIndex);
@@ -292,6 +430,14 @@ export function parseProgramsIntent(search: string): ProgramsIntent {
   const rawEventAction = singleParam(params, "eventAction");
   const rawCreated = singleParam(params, "created");
   const rawFrom = singleParam(params, "from");
+  const rawDirectoryQuery = singleParam(params, "directoryQuery");
+  const rawCatalogQuery = singleParam(params, "catalogQuery");
+  const rawCatalogFilter = singleParam(params, "catalogFilter");
+  const rawEventFilter = singleParam(params, "eventFilter");
+  const rawParticipantTab = singleParam(params, "participantTab");
+  const rawParticipantQuery = singleParam(params, "participantQuery");
+  const rawSettingsSection = singleParam(params, "settingsSection");
+  const rawScheduleOrigin = singleParam(params, "scheduleOrigin");
   const mode: ProgramsMode =
     rawMode.value === "management" ? "management" : "participant";
   const program = parseProgramIntent(rawProgram, rawProgramId);
@@ -307,6 +453,34 @@ export function parseProgramsIntent(search: string): ProgramsIntent {
     event.value
   );
   const created = parseCreated(rawCreated, mode, program.id);
+  const directoryQuery = parseSafeQuery(rawDirectoryQuery);
+  const catalogQuery = parseSafeQuery(rawCatalogQuery);
+  const catalogFilter = parseEnum(
+    rawCatalogFilter,
+    isParticipantFilter,
+    mode === "participant"
+  );
+  const eventFilter = parseEnum(
+    rawEventFilter,
+    isEventFilter,
+    mode === "management" && task.value === "events"
+  );
+  const participantTab = parseEnum(
+    rawParticipantTab,
+    isParticipantTab,
+    mode === "management" && task.value === "participants"
+  );
+  const participantQuery = parseSafeQuery(rawParticipantQuery);
+  const settingsSection = parseEnum(
+    rawSettingsSection,
+    isSettingsSection,
+    mode === "management" && task.value === "settings"
+  );
+  const scheduleOrigin = parseEnum(
+    rawScheduleOrigin,
+    isScheduleOrigin,
+    mode === "management" && task.value === "schedule"
+  );
   const malformed = hasMalformedIntent({
     rawMode,
     program,
@@ -319,10 +493,73 @@ export function parseProgramsIntent(search: string): ProgramsIntent {
     eventAction,
     createdMalformed: created.malformed,
     originMalformed: origin.malformed,
+    directoryQuery: {
+      malformed:
+        directoryQuery.malformed ||
+        (rawDirectoryQuery.value !== null && mode !== "management"),
+    },
+    catalogQuery: {
+      malformed:
+        catalogQuery.malformed ||
+        (rawCatalogQuery.value !== null && mode !== "participant"),
+    },
+    catalogFilter: {
+      malformed:
+        catalogFilter.malformed ||
+        (rawCatalogFilter.value !== null && mode !== "participant"),
+    },
+    eventFilter,
+    participantTab,
+    participantQuery: {
+      malformed:
+        participantQuery.malformed ||
+        (rawParticipantQuery.value !== null &&
+          !(mode === "management" && task.value === "participants")),
+    },
+    settingsSection,
+    scheduleOrigin,
   });
   const creationField = created.value ? { created: true as const } : {};
   const originField =
     origin.value === undefined ? {} : { origin: origin.value };
+  const routeFields = malformed
+    ? {}
+    : {
+        ...(mode === "management" && directoryQuery.value
+          ? { directoryQuery: directoryQuery.value }
+          : {}),
+        ...(mode === "participant" && catalogQuery.value
+          ? { catalogQuery: catalogQuery.value }
+          : {}),
+        ...(mode === "participant" && catalogFilter.value
+          ? { catalogFilter: catalogFilter.value }
+          : {}),
+        ...(mode === "management" &&
+        task.value === "events" &&
+        eventFilter.value
+          ? { eventFilter: eventFilter.value }
+          : {}),
+        ...(mode === "management" &&
+        task.value === "participants" &&
+        participantTab.value
+          ? { participantTab: participantTab.value }
+          : {}),
+        ...(mode === "management" &&
+        task.value === "participants" &&
+        participantQuery.value
+          ? { participantQuery: participantQuery.value }
+          : {}),
+        ...(mode === "management" &&
+        task.value === "settings" &&
+        settingsSection.value
+          ? { settingsSection: settingsSection.value }
+          : {}),
+        ...(mode === "management" &&
+        task.value === "schedule" &&
+        scheduleOrigin.value
+          ? { scheduleOrigin: scheduleOrigin.value }
+          : {}),
+      };
 
   const departmentField =
     mode === "management" && department.id !== null
@@ -341,6 +578,7 @@ export function parseProgramsIntent(search: string): ProgramsIntent {
         : { eventAction: eventAction.value }),
       ...creationField,
       ...originField,
+      ...routeFields,
       malformed,
     };
   }
@@ -355,6 +593,7 @@ export function parseProgramsIntent(search: string): ProgramsIntent {
     ...departmentField,
     ...creationField,
     ...originField,
+    ...routeFields,
     malformed,
   };
 }
@@ -454,6 +693,79 @@ function appendEventAction(
   }
 }
 
+// eslint-disable-next-line eslint/complexity -- one serializer owns the complete URL contract.
+function appendRouteState(
+  params: URLSearchParams,
+  mode: ProgramsMode,
+  task: ProgramsTask | null | undefined,
+  intent: ProgramsHrefIntent
+): void {
+  if (
+    mode === "management" &&
+    intent.directoryQuery &&
+    SAFE_QUERY.test(intent.directoryQuery)
+  ) {
+    params.set("directoryQuery", intent.directoryQuery);
+  }
+  if (
+    mode === "participant" &&
+    intent.catalogQuery &&
+    SAFE_QUERY.test(intent.catalogQuery)
+  ) {
+    params.set("catalogQuery", intent.catalogQuery);
+  }
+  if (
+    mode === "participant" &&
+    intent.catalogFilter &&
+    isParticipantFilter(intent.catalogFilter) &&
+    intent.catalogFilter !== "all"
+  ) {
+    params.set("catalogFilter", intent.catalogFilter);
+  }
+  if (
+    mode === "management" &&
+    task === "events" &&
+    intent.eventFilter &&
+    isEventFilter(intent.eventFilter) &&
+    intent.eventFilter !== "current"
+  ) {
+    params.set("eventFilter", intent.eventFilter);
+  }
+  if (
+    mode === "management" &&
+    task === "participants" &&
+    intent.participantTab &&
+    isParticipantTab(intent.participantTab) &&
+    intent.participantTab !== "pending"
+  ) {
+    params.set("participantTab", intent.participantTab);
+  }
+  if (
+    mode === "management" &&
+    task === "participants" &&
+    intent.participantQuery &&
+    SAFE_QUERY.test(intent.participantQuery)
+  ) {
+    params.set("participantQuery", intent.participantQuery);
+  }
+  if (
+    mode === "management" &&
+    task === "settings" &&
+    intent.settingsSection &&
+    isSettingsSection(intent.settingsSection)
+  ) {
+    params.set("settingsSection", intent.settingsSection);
+  }
+  if (
+    mode === "management" &&
+    task === "schedule" &&
+    intent.scheduleOrigin &&
+    isScheduleOrigin(intent.scheduleOrigin)
+  ) {
+    params.set("scheduleOrigin", intent.scheduleOrigin);
+  }
+}
+
 /** Build a canonical same-origin Programs URL with safe, restorable intent. */
 export function buildProgramsHref({
   mode,
@@ -465,6 +777,14 @@ export function buildProgramsHref({
   created,
   origin,
   eventAction,
+  directoryQuery,
+  catalogQuery,
+  catalogFilter,
+  eventFilter,
+  participantTab,
+  participantQuery,
+  settingsSection,
+  scheduleOrigin,
 }: ProgramsHrefIntent): string {
   const params = new URLSearchParams();
   if (mode === "management") {
@@ -483,6 +803,25 @@ export function buildProgramsHref({
   appendTask(params, mode, programId, task);
   appendEvent(params, mode, programId, task, eventId);
   appendEventAction(params, mode, task, eventId, eventAction);
+  appendRouteState(params, mode, task, {
+    mode,
+    programId,
+    departmentId,
+    task,
+    eventId,
+    eventAction,
+    hash,
+    created,
+    origin,
+    directoryQuery,
+    catalogQuery,
+    catalogFilter,
+    eventFilter,
+    participantTab,
+    participantQuery,
+    settingsSection,
+    scheduleOrigin,
+  });
   const query = params.toString();
   const suffix = query ? `/programs?${query}` : "/programs";
   return hash && SAFE_HASH.test(hash) ? `${suffix}${hash}` : suffix;

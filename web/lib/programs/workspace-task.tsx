@@ -37,7 +37,13 @@ import type {
   ProgramEvent,
 } from "./program-api";
 import { buildProgramsHref } from "./programs-intent";
-import type { ProgramsTask } from "./programs-intent";
+import type {
+  ProgramsEventFilter,
+  ProgramsParticipantTab,
+  ProgramsScheduleOrigin,
+  ProgramsSettingsSection,
+  ProgramsTask,
+} from "./programs-intent";
 import {
   formatEventTime,
   hasModule,
@@ -49,6 +55,7 @@ import { EventsTask } from "./workspace-events-task";
 import { ParticipantsTask } from "./workspace-participants-task";
 import { ScheduleTask } from "./workspace-schedule-task";
 import { SettingsTask } from "./workspace-settings-task";
+import type { SettingsNavigationRequest } from "./workspace-settings-task";
 
 export type WorkspaceSummaryRead<T> =
   | { status: "loading" }
@@ -68,9 +75,14 @@ function labelForWorkspaceTask(value: ProgramsTask): string {
 }
 
 function taskLinkClick(
-  onTaskChange: (task: ProgramsTask | null, eventId?: string | null) => void,
+  onTaskChange: (
+    task: ProgramsTask | null,
+    eventId?: string | null,
+    scheduleOrigin?: ProgramsScheduleOrigin
+  ) => void,
   nextTask: ProgramsTask | null,
-  eventId?: string | null
+  eventId?: string | null,
+  scheduleOrigin?: ProgramsScheduleOrigin
 ): MouseEventHandler<HTMLAnchorElement> {
   return (event) => {
     if (
@@ -85,10 +97,18 @@ function taskLinkClick(
     }
     event.preventDefault();
     if (eventId === undefined) {
-      onTaskChange(nextTask);
-    } else {
-      onTaskChange(nextTask, eventId);
+      if (scheduleOrigin === undefined) {
+        onTaskChange(nextTask);
+      } else {
+        onTaskChange(nextTask, undefined, scheduleOrigin);
+      }
+      return;
     }
+    if (scheduleOrigin !== undefined) {
+      onTaskChange(nextTask, eventId, scheduleOrigin);
+      return;
+    }
+    onTaskChange(nextTask, eventId);
   };
 }
 
@@ -98,6 +118,11 @@ export const WorkspaceNavigation = ({
   modules,
   departmentId,
   hash,
+  directoryQuery,
+  eventFilter,
+  participantTab,
+  participantQuery,
+  settingsSection,
   canManage = true,
   canAccessSettings = canManage,
   onTaskChange,
@@ -107,9 +132,18 @@ export const WorkspaceNavigation = ({
   modules: readonly DepartmentModule[];
   departmentId?: string | null;
   hash?: string | null;
+  directoryQuery?: string | null;
+  eventFilter?: ProgramsEventFilter;
+  participantTab?: ProgramsParticipantTab;
+  participantQuery?: string;
+  settingsSection?: ProgramsSettingsSection;
   canManage?: boolean;
   canAccessSettings?: boolean;
-  onTaskChange: (task: ProgramsTask | null, eventId?: string | null) => void;
+  onTaskChange: (
+    task: ProgramsTask | null,
+    eventId?: string | null,
+    scheduleOrigin?: ProgramsScheduleOrigin
+  ) => void;
 }) => {
   const tasks: ProgramsTask[] = [
     ...(canManage && hasModule(modules, "events") ? ["events" as const] : []),
@@ -129,6 +163,7 @@ export const WorkspaceNavigation = ({
             mode: "management",
             programId,
             departmentId,
+            directoryQuery,
             hash,
           })}
           onClick={taskLinkClick(onTaskChange, null)}
@@ -144,6 +179,14 @@ export const WorkspaceNavigation = ({
               programId,
               departmentId,
               task: value,
+              ...(value === "events" && eventFilter ? { eventFilter } : {}),
+              ...(value === "participants"
+                ? { participantTab, participantQuery }
+                : {}),
+              ...(value === "settings" && settingsSection
+                ? { settingsSection }
+                : {}),
+              directoryQuery,
               hash,
             })}
             onClick={taskLinkClick(onTaskChange, value)}
@@ -293,6 +336,7 @@ export const WorkspaceOverview = ({
   summary,
   departmentId,
   hash,
+  directoryQuery,
   onTaskChange,
   onOpenAttendance,
   onSummaryRetry,
@@ -302,7 +346,12 @@ export const WorkspaceOverview = ({
   summary: WorkspaceSummaryState;
   departmentId?: string | null;
   hash?: string | null;
-  onTaskChange: (task: ProgramsTask | null, eventId?: string | null) => void;
+  directoryQuery?: string | null;
+  onTaskChange: (
+    task: ProgramsTask | null,
+    eventId?: string | null,
+    scheduleOrigin?: ProgramsScheduleOrigin
+  ) => void;
   /** Open the shared focused attendance roster for the next Event. */
   onOpenAttendance?: (eventId: string) => void;
   onSummaryRetry?: () => void;
@@ -370,6 +419,10 @@ export const WorkspaceOverview = ({
     cockpit?.program_id === program.program_id
       ? (cockpit.open_events ?? [])
       : [];
+  const noOpenCheckInKnown =
+    cockpit?.program_id === program.program_id &&
+    cockpit.open_events !== undefined &&
+    cockpit.open_events.length === 0;
   const summaryNeedsRetry = [
     summary.activeParticipants,
     eventsCountRead,
@@ -408,6 +461,25 @@ export const WorkspaceOverview = ({
         )}
       </ScreenSection>
 
+      {program.capabilities.manage && noOpenCheckInKnown && (
+        <ScreenSection title={COPY.programs.cockpitOpenMeetings}>
+          <ScreenState
+            kind="empty"
+            title={COPY.programs.cockpitNoOpenCheckIn}
+            description={COPY.programs.cockpitNoOpenCheckInHint}
+            action={
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => onTaskChange("events")}
+              >
+                {COPY.programs.cockpitViewEvents}
+              </Button>
+            }
+          />
+        </ScreenSection>
+      )}
+
       {program.capabilities.manage &&
         (nextEventRead.status !== "ready" || nextEvent !== null) && (
           <ScreenSection
@@ -439,6 +511,7 @@ export const WorkspaceOverview = ({
                           departmentId,
                           task: "events",
                           eventId: openEvent.event_id,
+                          directoryQuery,
                           hash,
                         })}
                         onClick={(event) => {
@@ -526,6 +599,7 @@ export const WorkspaceOverview = ({
                               departmentId,
                               task: "events",
                               eventId: nextEvent.event_id,
+                              directoryQuery,
                               hash,
                             })
                       }
@@ -598,6 +672,7 @@ export const WorkspaceOverview = ({
                     programId: program.program_id,
                     departmentId,
                     task: "events",
+                    directoryQuery,
                     hash,
                   })}
                   onClick={taskLinkClick(onTaskChange, "events")}
@@ -632,6 +707,7 @@ export const WorkspaceOverview = ({
                     programId: program.program_id,
                     departmentId,
                     task: "events",
+                    directoryQuery,
                     hash: "#create-event",
                   })}
                 >
@@ -657,6 +733,7 @@ export const WorkspaceOverview = ({
                     programId: program.program_id,
                     departmentId,
                     task: "participants",
+                    directoryQuery,
                     hash,
                   })}
                   onClick={taskLinkClick(onTaskChange, "participants")}
@@ -713,9 +790,16 @@ export const WorkspaceOverview = ({
                   programId: program.program_id,
                   departmentId,
                   task: "schedule",
+                  directoryQuery,
+                  scheduleOrigin: "events",
                   hash,
                 })}
-                onClick={taskLinkClick(onTaskChange, "schedule")}
+                onClick={taskLinkClick(
+                  onTaskChange,
+                  "schedule",
+                  undefined,
+                  "events"
+                )}
               >
                 <CalendarDays
                   aria-hidden="true"
@@ -745,6 +829,7 @@ export const WorkspaceOverview = ({
                   programId: program.program_id,
                   departmentId,
                   task: "settings",
+                  directoryQuery,
                   hash,
                 })}
                 onClick={taskLinkClick(onTaskChange, "settings")}
@@ -785,6 +870,7 @@ export interface WorkspaceTaskProps extends WorkspaceTaskContextValue {
   /** Surface the shared Settings navigation-blocked guidance. */
   settingsNavigationBlocked?: boolean;
   onSettingsNavigationBlocked?: (blocked: boolean) => void;
+  onSettingsNavigationRequest?: (request: SettingsNavigationRequest) => void;
   /** Keep the route-owned utility action with whichever header is visible. */
   headerAction?: ReactNode;
 }
@@ -805,6 +891,7 @@ export const WorkspaceTask = ({
   attention,
   departmentId,
   hash,
+  directoryQuery,
   onAttentionRefresh,
   onWorkspaceRefresh,
   onMutationBlockChange,
@@ -815,8 +902,18 @@ export const WorkspaceTask = ({
   onSettingsFocusChange,
   onSettingsDirtyChange,
   onWorkspaceDirtyChange,
+  eventFilter,
+  onEventFilterChange,
+  participantTab,
+  participantQuery,
+  onParticipantTabChange,
+  onParticipantQueryChange,
+  settingsSection,
+  onSettingsSectionChange,
+  scheduleOrigin,
   settingsNavigationBlocked,
   onSettingsNavigationBlocked,
+  onSettingsNavigationRequest,
   headerAction,
 }: WorkspaceTaskProps) => {
   const value: WorkspaceTaskContextValue = {
@@ -825,6 +922,7 @@ export const WorkspaceTask = ({
     attention,
     departmentId,
     hash,
+    directoryQuery,
     onAttentionRefresh,
     onWorkspaceRefresh,
     onMutationBlockChange,
@@ -833,6 +931,15 @@ export const WorkspaceTask = ({
     onOpenEvent,
     onOpenAttendance,
     onWorkspaceDirtyChange,
+    eventFilter,
+    onEventFilterChange,
+    participantTab,
+    participantQuery,
+    onParticipantTabChange,
+    onParticipantQueryChange,
+    settingsSection,
+    onSettingsSectionChange,
+    scheduleOrigin,
   };
 
   return (
@@ -855,6 +962,7 @@ export const WorkspaceTask = ({
           onDirtyChange={onSettingsDirtyChange}
           navigationBlocked={settingsNavigationBlocked}
           onNavigationBlocked={onSettingsNavigationBlocked}
+          onNavigationRequest={onSettingsNavigationRequest}
           headerAction={headerAction}
         />
       ) : task === "schedule" ? (

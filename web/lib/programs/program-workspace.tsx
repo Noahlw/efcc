@@ -41,15 +41,27 @@ import { rememberDeepLink } from "@/lib/session";
 
 import { clearEventCreateDraft } from "./event-create-draft";
 import { EventDetail } from "./event-detail";
+import {
+  clearManagementDraft,
+  clearManagementDraftsForEntity,
+} from "./management-draft";
 import { readWorkspaceMutationRecovery } from "./mutation-recovery";
 import { buildProgramsHref } from "./programs-intent";
-import type { ManagementEventAction, ProgramsTask } from "./programs-intent";
+import type {
+  ManagementEventAction,
+  ProgramsEventFilter,
+  ProgramsParticipantTab,
+  ProgramsScheduleOrigin,
+  ProgramsSettingsSection,
+  ProgramsTask,
+} from "./programs-intent";
 import { useAsyncResource } from "./use-async-resource";
 import {
   hasModule,
   redirectToLoginIfRequired,
   useWorkspaceRouteContext,
 } from "./workspace-context";
+import type { SettingsNavigationRequest } from "./workspace-settings-task";
 import {
   TaskUnavailable,
   WorkspaceNavigation,
@@ -73,7 +85,11 @@ export interface ProgramWorkspaceProps {
   /** Compact route-level action rendered in the shared ScreenHeader. */
   headerAction?: ReactNode;
   onBack: () => void;
-  onTaskChange: (task: ProgramsTask | null, eventId?: string | null) => void;
+  onTaskChange: (
+    task: ProgramsTask | null,
+    eventId?: string | null,
+    scheduleOrigin?: ProgramsScheduleOrigin
+  ) => void;
   /** Opens the shared focused attendance roster for an exact Event. */
   onOpenAttendance?: (eventId: string) => void;
   /** EVT-01 (#251): navigate the Event deep link; null returns to the list. */
@@ -81,6 +97,15 @@ export interface ProgramWorkspaceProps {
     eventId: string | null,
     eventAction?: ManagementEventAction
   ) => void;
+  eventFilter?: ProgramsEventFilter;
+  onEventFilterChange?: (filter: ProgramsEventFilter) => void;
+  participantTab?: ProgramsParticipantTab;
+  participantQuery?: string;
+  onParticipantTabChange?: (tab: ProgramsParticipantTab) => void;
+  onParticipantQueryChange?: (query: string) => void;
+  settingsSection?: ProgramsSettingsSection;
+  onSettingsSectionChange?: (section: ProgramsSettingsSection | null) => void;
+  scheduleOrigin?: ProgramsScheduleOrigin;
 }
 
 type WorkspaceState =
@@ -100,7 +125,12 @@ type WorkspaceState =
 
 type EventDraftNavigation =
   | { kind: "back" }
-  | { kind: "task"; task: ProgramsTask | null; eventId?: string | null }
+  | {
+      kind: "task";
+      task: ProgramsTask | null;
+      eventId?: string | null;
+      scheduleOrigin?: ProgramsScheduleOrigin;
+    }
   | { kind: "href"; href: string };
 
 function initialSummary(
@@ -183,8 +213,17 @@ export const ProgramWorkspace = ({
   onTaskChange,
   onOpenAttendance,
   onEventChange,
+  eventFilter,
+  onEventFilterChange,
+  participantTab,
+  participantQuery,
+  onParticipantTabChange,
+  onParticipantQueryChange,
+  settingsSection,
+  onSettingsSectionChange,
+  scheduleOrigin,
 }: ProgramWorkspaceProps) => {
-  const { departmentId, hash } = useWorkspaceRouteContext();
+  const { departmentId, hash, directoryQuery } = useWorkspaceRouteContext();
   const [summary, setSummary] = useState<WorkspaceSummaryState>(() =>
     initialSummary()
   );
@@ -192,17 +231,41 @@ export const ProgramWorkspace = ({
   const [settingsEditorDirty, setSettingsEditorDirty] = useState(false);
   const [settingsNavigationBlocked, setSettingsNavigationBlocked] =
     useState(false);
+  const [pendingSettingsNavigation, setPendingSettingsNavigation] =
+    useState<SettingsNavigationRequest | null>(null);
   const [eventDraftDirty, setEventDraftDirty] = useState(false);
+  const [eventEditDirty, setEventEditDirty] = useState(false);
   const [eventNavigationBlocked, setEventNavigationBlocked] = useState(false);
   const [pendingEventDraftNavigation, setPendingEventDraftNavigation] =
     useState<EventDraftNavigation | null>(null);
-  const handleEventDraftDirtyChange = useCallback((dirty: boolean) => {
-    setEventDraftDirty(dirty);
-    if (!dirty) {
-      setEventNavigationBlocked(false);
-      setPendingEventDraftNavigation(null);
-    }
-  }, []);
+  const handleEventDraftDirtyChange = useCallback(
+    (dirty: boolean) => {
+      setEventDraftDirty(dirty);
+      if (!dirty && !eventEditDirty) {
+        setEventNavigationBlocked(false);
+        setPendingEventDraftNavigation(null);
+      }
+    },
+    [eventEditDirty]
+  );
+  const handleEventEditDirtyChange = useCallback(
+    (dirty: boolean) => {
+      setEventEditDirty(dirty);
+      if (!dirty && !eventDraftDirty) {
+        setEventNavigationBlocked(false);
+        setPendingEventDraftNavigation(null);
+      }
+    },
+    [eventDraftDirty]
+  );
+  const handleSettingsNavigationRequest = useCallback(
+    (request: SettingsNavigationRequest) => {
+      setPendingSettingsNavigation(request);
+      setSettingsNavigationBlocked(true);
+      announce(COPY.programs.settingsUnsaved);
+    },
+    []
+  );
   const createdFlash = created && !task;
   const [workspaceNotice, setWorkspaceNotice] = useState<string | null>(
     createdFlash ? COPY.programs.programCreatedNotice : null
@@ -223,6 +286,7 @@ export const ProgramWorkspace = ({
     }
   );
   const allowEventDraftLeave = useRef(false);
+  const allowSettingsHistoryBack = useRef(false);
   const mounted = useRef(true);
   const summaryRequestId = useRef(0);
   const workspaceRefreshQueue = useRef(Promise.resolve());
@@ -246,7 +310,8 @@ export const ProgramWorkspace = ({
   }, [task]);
   useEffect(() => {
     const guardActive =
-      workspaceMutationBlocked || (task === "events" && eventDraftDirty);
+      workspaceMutationBlocked ||
+      (task === "events" && (eventDraftDirty || eventEditDirty));
     if (!guardActive) {
       return;
     }
@@ -264,7 +329,9 @@ export const ProgramWorkspace = ({
       announce(
         workspaceMutationBlocked
           ? COPY.programs.programTransportAmbiguous
-          : COPY.programs.eventCreateUnsaved
+          : eventEditDirty
+            ? COPY.programs.eventEditUnsaved
+            : COPY.programs.eventCreateUnsaved
       );
     };
     const handleDocumentClick = (event: globalThis.MouseEvent) => {
@@ -325,7 +392,13 @@ export const ProgramWorkspace = ({
     const handlePopState = () => {
       window.history.pushState(guardedState, "", blockedHref);
       if (!workspaceMutationBlocked) {
-        setPendingEventDraftNavigation({ kind: "back" });
+        setPendingEventDraftNavigation(
+          eventId
+            ? { kind: "task", task: "events" }
+            : task === "schedule"
+              ? { kind: "task", task: "events" }
+              : { kind: "back" }
+        );
         setEventNavigationBlocked(true);
       }
       announceBlocked();
@@ -345,7 +418,51 @@ export const ProgramWorkspace = ({
         window.history.back();
       }
     };
-  }, [eventDraftDirty, task, workspaceMutationBlocked]);
+  }, [
+    eventDraftDirty,
+    eventEditDirty,
+    eventId,
+    task,
+    workspaceMutationBlocked,
+  ]);
+  useEffect(() => {
+    if (
+      !(task === "settings" && settingsEditorFocused && settingsEditorDirty)
+    ) {
+      return;
+    }
+    const blockedHref = window.location.href;
+    const guardToken = crypto.randomUUID();
+    const guardedState = {
+      ...(typeof window.history.state === "object" &&
+      window.history.state !== null
+        ? (window.history.state as Record<string, unknown>)
+        : {}),
+      efccProgramSettingsGuard: guardToken,
+    };
+    window.history.pushState(guardedState, "", blockedHref);
+    const handlePopState = () => {
+      if (allowSettingsHistoryBack.current) {
+        allowSettingsHistoryBack.current = false;
+        return;
+      }
+      window.history.pushState(guardedState, "", blockedHref);
+      setPendingSettingsNavigation({ kind: "history-back" });
+      setSettingsNavigationBlocked(true);
+      announce(COPY.programs.settingsUnsaved);
+    };
+    window.addEventListener("popstate", handlePopState);
+    return () => {
+      window.removeEventListener("popstate", handlePopState);
+      if (
+        window.location.href === blockedHref &&
+        (window.history.state as Record<string, unknown> | null)
+          ?.efccProgramSettingsGuard === guardToken
+      ) {
+        window.history.back();
+      }
+    };
+  }, [settingsEditorDirty, settingsEditorFocused, task]);
   const focusedSettingsEditor = task === "settings" && settingsEditorFocused;
   const {
     state,
@@ -586,15 +703,52 @@ export const ProgramWorkspace = ({
     setEventNavigationBlocked(false);
   };
 
+  const continueSettingsEditing = () => {
+    setPendingSettingsNavigation(null);
+  };
+
+  const discardSettingsAndLeave = () => {
+    const pending = pendingSettingsNavigation;
+    if (pending === null) {
+      return;
+    }
+    clearManagementDraftsForEntity(programId);
+    setPendingSettingsNavigation(null);
+    setSettingsNavigationBlocked(false);
+    if (pending.kind === "history-back") {
+      allowSettingsHistoryBack.current = true;
+      window.history.back();
+      return;
+    }
+    if (pending.kind === "back") {
+      onSettingsSectionChange?.(null);
+      return;
+    }
+    if (pending.kind === "route") {
+      onSettingsSectionChange?.(null);
+      if (pending.scheduleOrigin === undefined) {
+        onTaskChange(pending.task, pending.eventId);
+      } else {
+        onTaskChange(pending.task, pending.eventId, pending.scheduleOrigin);
+      }
+      return;
+    }
+    window.location.assign(pending.href);
+  };
+
   const discardEventDraftAndLeave = () => {
     const pending = pendingEventDraftNavigation;
     if (pending === null) {
       return;
     }
     clearEventCreateDraft(programId);
+    if (eventId) {
+      clearManagementDraft(eventId, "event-edit");
+    }
     setPendingEventDraftNavigation(null);
     setEventNavigationBlocked(false);
     setEventDraftDirty(false);
+    setEventEditDirty(false);
     if (pending.kind === "href") {
       allowEventDraftLeave.current = true;
       window.location.assign(pending.href);
@@ -608,10 +762,14 @@ export const ProgramWorkspace = ({
       }
       return;
     }
-    if (pending.eventId === undefined) {
+    if (pending.eventId === undefined && pending.scheduleOrigin === undefined) {
       onTaskChange(pending.task);
-    } else {
+      return;
+    }
+    if (pending.scheduleOrigin === undefined) {
       onTaskChange(pending.task, pending.eventId);
+    } else {
+      onTaskChange(pending.task, pending.eventId, pending.scheduleOrigin);
     }
   };
 
@@ -637,21 +795,28 @@ export const ProgramWorkspace = ({
       announce(COPY.programs.settingsUnsaved);
       return;
     }
-    if (eventDraftDirty) {
-      setPendingEventDraftNavigation({ kind: "back" });
+    if (eventDraftDirty || eventEditDirty) {
+      setPendingEventDraftNavigation(
+        eventId ? { kind: "task", task: "events" } : { kind: "back" }
+      );
       setEventNavigationBlocked(true);
-      announce(COPY.programs.eventCreateUnsaved);
+      announce(
+        eventEditDirty
+          ? COPY.programs.eventEditUnsaved
+          : COPY.programs.eventCreateUnsaved
+      );
       return;
     }
     if (focusedSchedule) {
-      onTaskChange("events");
+      onTaskChange(scheduleOrigin === "settings" ? "settings" : "events");
       return;
     }
     onBack();
   };
   const handleWorkspaceTaskChange = (
     nextTask: ProgramsTask | null,
-    nextEventId?: string | null
+    nextEventId?: string | null,
+    nextScheduleOrigin?: ProgramsScheduleOrigin
   ) => {
     if (workspaceMutationBlocked) {
       announce(COPY.programs.programTransportAmbiguous);
@@ -662,21 +827,32 @@ export const ProgramWorkspace = ({
       announce(COPY.programs.settingsUnsaved);
       return;
     }
-    if (eventDraftDirty) {
+    if (eventDraftDirty || eventEditDirty) {
       setPendingEventDraftNavigation({
         kind: "task",
         task: nextTask,
         ...(nextEventId === undefined ? {} : { eventId: nextEventId }),
+        ...(nextScheduleOrigin === undefined
+          ? {}
+          : { scheduleOrigin: nextScheduleOrigin }),
       });
       setEventNavigationBlocked(true);
-      announce(COPY.programs.eventCreateUnsaved);
+      announce(
+        eventEditDirty
+          ? COPY.programs.eventEditUnsaved
+          : COPY.programs.eventCreateUnsaved
+      );
+      return;
+    }
+    if (nextScheduleOrigin !== undefined) {
+      onTaskChange(nextTask, nextEventId, nextScheduleOrigin);
       return;
     }
     if (nextEventId === undefined) {
       onTaskChange(nextTask);
-    } else {
-      onTaskChange(nextTask, nextEventId);
+      return;
     }
+    onTaskChange(nextTask, nextEventId);
   };
   return (
     <section
@@ -714,7 +890,14 @@ export const ProgramWorkspace = ({
             mode: "management",
             programId: focusedSchedule ? programId : null,
             departmentId,
-            task: focusedSchedule ? "events" : null,
+            task: focusedSchedule
+              ? scheduleOrigin === "settings"
+                ? "settings"
+                : "events"
+              : null,
+            eventFilter: focusedSchedule ? undefined : eventFilter,
+            settingsSection: focusedSchedule ? undefined : settingsSection,
+            directoryQuery,
             hash,
           })}
           backLabel={COPY.programs.workspaceBack}
@@ -762,13 +945,15 @@ export const ProgramWorkspace = ({
           )}
         </output>
       )}
-      {eventNavigationBlocked && eventDraftDirty && (
+      {eventNavigationBlocked && (eventDraftDirty || eventEditDirty) && (
         <output
           className="block rounded-[var(--screen-radius-control)] border border-[var(--screen-pending)] bg-[var(--screen-pending-surface)] p-3 text-sm text-[var(--screen-ink)] [overflow-wrap:anywhere]"
           aria-live="polite"
           data-testid="program-event-draft-navigation-blocked"
         >
-          {COPY.programs.eventCreateUnsaved}
+          {eventEditDirty
+            ? COPY.programs.eventEditUnsaved
+            : COPY.programs.eventCreateUnsaved}
         </output>
       )}
       <AlertDialog
@@ -782,10 +967,14 @@ export const ProgramWorkspace = ({
         <AlertDialogContent className="min-w-0 max-w-[32rem]">
           <AlertDialogHeader className="min-w-0 gap-2">
             <AlertDialogTitle className="min-w-0 wrap-anywhere text-lg font-extrabold text-[var(--screen-ink)]">
-              {COPY.programs.eventCreateLeaveTitle}
+              {eventEditDirty
+                ? COPY.programs.eventEditLeaveTitle
+                : COPY.programs.eventCreateLeaveTitle}
             </AlertDialogTitle>
             <AlertDialogDescription className="min-w-0 wrap-anywhere text-sm leading-[var(--screen-body-leading)] text-[var(--screen-muted)]">
-              {COPY.programs.eventCreateLeaveDescription}
+              {eventEditDirty
+                ? COPY.programs.eventEditLeaveDescription
+                : COPY.programs.eventCreateLeaveDescription}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter className="flex min-w-0 flex-wrap gap-2 max-[799px]:flex-col-reverse [&>*]:h-auto [&>*]:min-h-11 [&>*]:w-full [&>*]:whitespace-normal sm:[&>*]:w-fit">
@@ -805,6 +994,36 @@ export const ProgramWorkspace = ({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+      <AlertDialog
+        open={pendingSettingsNavigation !== null}
+        onOpenChange={(open) => {
+          if (!open) {
+            continueSettingsEditing();
+          }
+        }}
+      >
+        <AlertDialogContent className="min-w-0 max-w-[32rem]">
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {COPY.programs.settingsLeaveTitle}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {COPY.programs.settingsLeaveDescription}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={continueSettingsEditing}>
+              {COPY.programs.settingsContinueEditing}
+            </AlertDialogCancel>
+            <AlertDialogAction
+              variant="destructive"
+              onClick={discardSettingsAndLeave}
+            >
+              {COPY.programs.settingsDiscardAndLeave}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
       {!focusedSchedule && (
         <WorkspaceNavigation
           programId={programId}
@@ -812,6 +1031,11 @@ export const ProgramWorkspace = ({
           modules={state.modules}
           departmentId={departmentId}
           hash={hash}
+          directoryQuery={directoryQuery}
+          eventFilter={eventFilter}
+          participantTab={participantTab}
+          participantQuery={participantQuery}
+          settingsSection={settingsSection}
           canManage={workspaceProgram.capabilities.manage}
           canAccessSettings={canAccessSettings}
           onTaskChange={handleWorkspaceTaskChange}
@@ -834,11 +1058,14 @@ export const ProgramWorkspace = ({
             programId,
             departmentId,
             task: "events",
+            eventFilter,
+            directoryQuery,
             hash,
           })}
           onAttentionRefresh={onAttentionRefresh}
           onWorkspaceRefresh={refreshAuthoritativeWorkspace}
           onMutationBlockChange={setWorkspaceMutationBlocked}
+          onDirtyChange={handleEventEditDirtyChange}
           onBack={(event) => {
             if (
               event.defaultPrevented ||
@@ -856,6 +1083,13 @@ export const ProgramWorkspace = ({
               announce(COPY.programs.programTransportAmbiguous);
               return;
             }
+            if (eventEditDirty) {
+              event.preventDefault();
+              setPendingEventDraftNavigation({ kind: "task", task: "events" });
+              setEventNavigationBlocked(true);
+              announce(COPY.programs.eventEditUnsaved);
+              return;
+            }
             event.preventDefault();
             onEventChange(null);
           }}
@@ -866,6 +1100,7 @@ export const ProgramWorkspace = ({
           task={task}
           modules={state.modules}
           departmentId={departmentId}
+          directoryQuery={directoryQuery}
           hash={hash}
           attention={attention}
           onAttentionRefresh={onAttentionRefresh}
@@ -882,11 +1117,21 @@ export const ProgramWorkspace = ({
               : undefined
           }
           onOpenAttendance={onOpenAttendance}
+          eventFilter={eventFilter}
+          onEventFilterChange={onEventFilterChange}
+          participantTab={participantTab}
+          participantQuery={participantQuery}
+          onParticipantTabChange={onParticipantTabChange}
+          onParticipantQueryChange={onParticipantQueryChange}
+          settingsSection={settingsSection}
+          onSettingsSectionChange={onSettingsSectionChange}
+          scheduleOrigin={scheduleOrigin}
           onSettingsFocusChange={setSettingsEditorFocused}
           onSettingsDirtyChange={setSettingsEditorDirty}
           onWorkspaceDirtyChange={handleEventDraftDirtyChange}
           settingsNavigationBlocked={settingsNavigationBlocked}
           onSettingsNavigationBlocked={setSettingsNavigationBlocked}
+          onSettingsNavigationRequest={handleSettingsNavigationRequest}
           headerAction={headerAction}
         />
       ) : task ? (
@@ -898,6 +1143,7 @@ export const ProgramWorkspace = ({
           summary={summary}
           departmentId={departmentId}
           hash={hash}
+          directoryQuery={directoryQuery}
           onTaskChange={handleWorkspaceTaskChange}
           onOpenAttendance={onOpenAttendance}
           onSummaryRetry={retrySummary}

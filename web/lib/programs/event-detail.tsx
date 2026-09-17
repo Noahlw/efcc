@@ -2,7 +2,7 @@
 
 import { CalendarDays, ChevronLeft, MapPin } from "lucide-react";
 import Link from "next/link";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -67,6 +67,11 @@ import {
 
 import { EventCheckInSheet } from "./event-check-in-sheet";
 import {
+  clearManagementDraft,
+  readManagementDraft,
+  writeManagementDraft,
+} from "./management-draft";
+import {
   clearWorkspaceMutationRecovery,
   readWorkspaceMutationRecovery,
   writeWorkspaceMutationRecovery,
@@ -127,6 +132,40 @@ type EventPhase = "future" | "open" | "past" | "cancelled";
 type EventEditIntent = "edit" | "reschedule";
 type OwnAttendanceUnavailableReason = "forbidden" | "not-found" | null;
 
+interface EventDetailDraft {
+  version: 1;
+  intent: EventEditIntent;
+  name: string;
+  location: string;
+  eventType: string;
+  reason: string;
+  startsAt: string;
+  endsAt: string;
+  opensAt: string;
+  closesAt: string;
+}
+
+function isEventDetailDraft(value: unknown): value is EventDetailDraft {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+  const draft = value as Partial<EventDetailDraft>;
+  return (
+    draft.version === 1 &&
+    (draft.intent === "edit" || draft.intent === "reschedule") &&
+    typeof draft.name === "string" &&
+    typeof draft.location === "string" &&
+    typeof draft.eventType === "string" &&
+    typeof draft.reason === "string" &&
+    typeof draft.startsAt === "string" &&
+    typeof draft.endsAt === "string" &&
+    typeof draft.opensAt === "string" &&
+    typeof draft.closesAt === "string"
+  );
+}
+
+const EVENT_DETAIL_DRAFT_ACTION = "event-edit";
+
 function eventPhase(event: ProgramEvent, now = Date.now()): EventPhase {
   if (event.status === "Cancelled") {
     return "cancelled";
@@ -149,7 +188,7 @@ function eventMutationSettles(
   detail: EventDetailData,
   mutation: EventMutationRecovery
 ): boolean {
-  const event = detail.event;
+  const { event } = detail;
   if (
     event.program_id !== mutation.programId ||
     event.event_id !== mutation.eventId
@@ -241,6 +280,7 @@ export const EventDetail = ({
   onAttentionRefresh,
   onWorkspaceRefresh,
   onMutationBlockChange,
+  onDirtyChange,
   onAuthRequired,
 }: {
   programId: string;
@@ -259,6 +299,8 @@ export const EventDetail = ({
   onWorkspaceRefresh?: () => void | Promise<Program | void>;
   /** Keep the parent from navigating away before an unknown write is read back. */
   onMutationBlockChange?: (blocked: boolean) => void;
+  /** Keep the parent from unmounting an unfinished edit/reschedule draft. */
+  onDirtyChange?: (dirty: boolean) => void;
   onAuthRequired?: () => void;
 }) => {
   const [detail, setDetail] = useState<EventDetailData | null>(null);
@@ -266,16 +308,14 @@ export const EventDetail = ({
   const recoveryRef = useRef<HTMLHeadingElement | null>(null);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
-  const [restoredPendingMutation] = useState<EventMutationRecovery | null>(
-    () => {
-      const recovery = readWorkspaceMutationRecovery();
-      return recovery?.surface === "event" &&
-        recovery.programId === programId &&
-        recovery.eventId === eventId
-        ? recovery.mutation
-        : null;
-    }
-  );
+  const restoredPendingMutation = useMemo<EventMutationRecovery | null>(() => {
+    const recovery = readWorkspaceMutationRecovery();
+    return recovery?.surface === "event" &&
+      recovery.programId === programId &&
+      recovery.eventId === eventId
+      ? recovery.mutation
+      : null;
+  }, [eventId, programId]);
   const [actionError, setActionError] = useState<string | null>(() =>
     restoredPendingMutation === null
       ? null
@@ -293,6 +333,12 @@ export const EventDetail = ({
     COPY.programs.eventTypeOptions[0] as EventType
   );
   const [editReason, setEditReason] = useState("");
+  const [editName, setEditName] = useState("");
+  const [editLocation, setEditLocation] = useState("");
+  const [editStartsAt, setEditStartsAt] = useState("");
+  const [editEndsAt, setEditEndsAt] = useState("");
+  const [editOpensAt, setEditOpensAt] = useState("");
+  const [editClosesAt, setEditClosesAt] = useState("");
   // Inline confirmations replace the control that opened them; hand focus to
   // the replacement so keyboard users land on the new affordance.
   const [confirmingDeactivate, setConfirmingDeactivate] = useState(false);
@@ -417,6 +463,12 @@ export const EventDetail = ({
     setEditingIntent("edit");
     setEditingEventType(COPY.programs.eventTypeOptions[0] as EventType);
     setEditReason("");
+    setEditName("");
+    setEditLocation("");
+    setEditStartsAt("");
+    setEditEndsAt("");
+    setEditOpensAt("");
+    setEditClosesAt("");
     setConfirmingDeactivate(false);
     setConfirmingCancel(false);
     setShowCheckInSheet(false);
@@ -431,8 +483,44 @@ export const EventDetail = ({
     void load();
   }, [load]);
 
+  const startEditing = useCallback(
+    (intent: EventEditIntent, event: ProgramEvent) => {
+      const stored = readManagementDraft<unknown>(
+        event.event_id,
+        EVENT_DETAIL_DRAFT_ACTION
+      );
+      const draft =
+        isEventDetailDraft(stored) && stored.intent === intent
+          ? stored
+          : ({
+              version: 1 as const,
+              intent,
+              name: event.name ?? "",
+              location: event.location ?? "",
+              eventType: event.event_type ?? COPY.programs.eventTypeOptions[0],
+              reason: "",
+              startsAt: hkWallInputValue(event.starts_at),
+              endsAt: hkWallInputValue(event.ends_at),
+              opensAt: hkWallInputValue(event.check_in_window_opens_at),
+              closesAt: hkWallInputValue(event.check_in_window_closes_at),
+            } satisfies EventDetailDraft);
+      setEditingIntent(intent);
+      setEditingEventType(draft.eventType as EventType);
+      setEditReason(draft.reason);
+      setEditName(draft.name);
+      setEditLocation(draft.location);
+      setEditStartsAt(draft.startsAt);
+      setEditEndsAt(draft.endsAt);
+      setEditOpensAt(draft.opensAt);
+      setEditClosesAt(draft.closesAt);
+      setEditing(true);
+    },
+    []
+  );
+
+  const detailEvent = detail?.event;
   useEffect(() => {
-    if (!canManage || !eventAction || detail?.event.event_id !== eventId) {
+    if (!canManage || !eventAction || detailEvent?.event_id !== eventId) {
       return;
     }
     const actionIdentity = `${programId}:${eventId}:${eventAction}`;
@@ -440,22 +528,61 @@ export const EventDetail = ({
       return;
     }
     appliedEventActionRef.current = actionIdentity;
-    if (eventAction === "edit") {
-      setEditingEventType(
-        detail?.event.event_type ??
-          (COPY.programs.eventTypeOptions[0] as EventType)
-      );
+    startEditing(eventAction, detailEvent);
+  }, [canManage, detailEvent, eventAction, eventId, programId, startEditing]);
+
+  const eventEditDirty = (() => {
+    if (!editing || detail?.event.event_id !== eventId) {
+      return false;
     }
-    setEditingIntent(eventAction);
-    setEditing(true);
+    const { event } = detail;
+    return editingIntent === "edit"
+      ? editName !== (event.name ?? "") ||
+          editLocation !== (event.location ?? "") ||
+          editingEventType !==
+            (event.event_type ?? COPY.programs.eventTypeOptions[0]) ||
+          editReason !== ""
+      : editStartsAt !== hkWallInputValue(event.starts_at) ||
+          editEndsAt !== hkWallInputValue(event.ends_at) ||
+          editOpensAt !== hkWallInputValue(event.check_in_window_opens_at) ||
+          editClosesAt !== hkWallInputValue(event.check_in_window_closes_at);
+  })();
+
+  useEffect(() => {
+    onDirtyChange?.(eventEditDirty);
+    if (editing && detail?.event.event_id === eventId && eventEditDirty) {
+      writeManagementDraft(eventId, EVENT_DETAIL_DRAFT_ACTION, {
+        version: 1,
+        intent: editingIntent,
+        name: editName,
+        location: editLocation,
+        eventType: editingEventType,
+        reason: editReason,
+        startsAt: editStartsAt,
+        endsAt: editEndsAt,
+        opensAt: editOpensAt,
+        closesAt: editClosesAt,
+      } satisfies EventDetailDraft);
+    } else if (editing && detail?.event.event_id === eventId) {
+      clearManagementDraft(eventId, EVENT_DETAIL_DRAFT_ACTION);
+    }
   }, [
-    canManage,
     detail?.event.event_id,
-    detail?.event.event_type,
-    eventAction,
+    editClosesAt,
+    editEndsAt,
+    editLocation,
+    editName,
+    editOpensAt,
+    editReason,
+    editStartsAt,
+    editing,
+    editingEventType,
+    editingIntent,
+    eventEditDirty,
     eventId,
-    programId,
+    onDirtyChange,
   ]);
+  useEffect(() => () => onDirtyChange?.(false), [onDirtyChange]);
 
   const loadOwnAttendance = useCallback(
     async (isActive: () => boolean = () => true) => {
@@ -751,7 +878,8 @@ export const EventDetail = ({
     const identityChanged =
       name !== (detail?.event.name ?? "") ||
       location !== (detail?.event.location ?? "") ||
-      eventType !== detail?.event.event_type;
+      eventType !==
+        (detail?.event.event_type ?? COPY.programs.eventTypeOptions[0]);
     if (!name) {
       const message = COPY.programs.eventNameRequired;
       setActionError(message);
@@ -775,6 +903,7 @@ export const EventDetail = ({
             : {}),
         }),
       () => {
+        clearManagementDraft(eventId, EVENT_DETAIL_DRAFT_ACTION);
         setEditing(false);
         // Any successful edit invalidates the prior deactivation's Undo
         // context; a stale Undo would silently re-open availability.
@@ -820,6 +949,7 @@ export const EventDetail = ({
           ),
         }),
       () => {
+        clearManagementDraft(eventId, EVENT_DETAIL_DRAFT_ACTION);
         setEditing(false);
         setUndoAvailable(false);
         return COPY.programs.eventRescheduledNotice;
@@ -1237,17 +1367,15 @@ export const EventDetail = ({
   }
 
   const beginEdit = () => {
-    setEditingEventType(
-      event.event_type ?? (COPY.programs.eventTypeOptions[0] as EventType)
-    );
-    setEditReason("");
-    setEditingIntent("edit");
-    setEditing(true);
+    startEditing("edit", event);
   };
   const beginReschedule = () => {
+    startEditing("reschedule", event);
+  };
+  const cancelEditing = () => {
+    clearManagementDraft(eventId, EVENT_DETAIL_DRAFT_ACTION);
+    setEditing(false);
     setEditReason("");
-    setEditingIntent("reschedule");
-    setEditing(true);
   };
   const requestDeactivate = () => {
     if (event.availability === "Active" && participant_summary.checked_in > 0) {
@@ -1675,7 +1803,10 @@ export const EventDetail = ({
                           className="border-[var(--screen-line-strong)] bg-[var(--screen-surface)] text-base"
                           type="text"
                           name="name"
-                          defaultValue={event.name ?? ""}
+                          value={editName}
+                          onChange={(changeEvent) =>
+                            setEditName(changeEvent.target.value)
+                          }
                           placeholder={COPY.programs.eventNamePlaceholder}
                         />
                       </ScreenField>
@@ -1735,7 +1866,10 @@ export const EventDetail = ({
                           className="border-[var(--screen-line-strong)] bg-[var(--screen-surface)] text-base"
                           type="text"
                           name="location"
-                          defaultValue={event.location ?? ""}
+                          value={editLocation}
+                          onChange={(changeEvent) =>
+                            setEditLocation(changeEvent.target.value)
+                          }
                           placeholder={COPY.programs.eventLocationPlaceholder}
                         />
                       </ScreenField>
@@ -1754,7 +1888,10 @@ export const EventDetail = ({
                           type="datetime-local"
                           name="starts_at"
                           required
-                          defaultValue={hkWallInputValue(event.starts_at)}
+                          value={editStartsAt}
+                          onChange={(changeEvent) =>
+                            setEditStartsAt(changeEvent.target.value)
+                          }
                         />
                       </ScreenField>
                       <ScreenField
@@ -1767,7 +1904,10 @@ export const EventDetail = ({
                           type="datetime-local"
                           name="ends_at"
                           required
-                          defaultValue={hkWallInputValue(event.ends_at)}
+                          value={editEndsAt}
+                          onChange={(changeEvent) =>
+                            setEditEndsAt(changeEvent.target.value)
+                          }
                         />
                       </ScreenField>
                       <ScreenField
@@ -1783,9 +1923,10 @@ export const EventDetail = ({
                             event.check_in_window_opens_at !== null &&
                             event.check_in_window_opens_at !== undefined
                           }
-                          defaultValue={hkWallInputValue(
-                            event.check_in_window_opens_at
-                          )}
+                          value={editOpensAt}
+                          onChange={(changeEvent) =>
+                            setEditOpensAt(changeEvent.target.value)
+                          }
                         />
                       </ScreenField>
                       <ScreenField
@@ -1801,9 +1942,10 @@ export const EventDetail = ({
                             event.check_in_window_closes_at !== null &&
                             event.check_in_window_closes_at !== undefined
                           }
-                          defaultValue={hkWallInputValue(
-                            event.check_in_window_closes_at
-                          )}
+                          value={editClosesAt}
+                          onChange={(changeEvent) =>
+                            setEditClosesAt(changeEvent.target.value)
+                          }
                         />
                       </ScreenField>
                     </>
@@ -1823,7 +1965,7 @@ export const EventDetail = ({
                       variant="outline"
                       className="w-fit border-[var(--screen-line-strong)] bg-transparent text-[var(--screen-ink)] hover:bg-[var(--screen-surface-soft)]"
                       disabled={eventActionBlocked}
-                      onClick={() => setEditing(false)}
+                      onClick={cancelEditing}
                     >
                       {editingIntent === "reschedule"
                         ? COPY.programs.eventRescheduleCancel

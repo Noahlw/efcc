@@ -407,6 +407,7 @@ export const ManagementDirectory = ({
     const row = [
       ...document.querySelectorAll<HTMLElement>("[data-program-id]"),
     ].find((candidate) => candidate.dataset.programId === focusProgramId);
+    row?.scrollIntoView({ block: "nearest", inline: "nearest" });
     row?.focus();
   }, [filteredRows, focusProgramId, state.kind]);
   const scopedDepartments =
@@ -686,6 +687,7 @@ export const ManagementDirectory = ({
                             mode: "management",
                             programId: program.program_id,
                             departmentId,
+                            directoryQuery,
                             hash,
                           })}
                           data-program-id={program.program_id}

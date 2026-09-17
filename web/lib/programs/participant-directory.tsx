@@ -55,6 +55,12 @@ export interface ParticipantDirectoryProps {
   managementHref: string;
   /** Canonical same-origin URL for opening a participant Program. */
   programHref: (programId: string) => string;
+  /** URL-owned catalog controls; omitted for isolated local callers. */
+  query?: string;
+  filter?: ParticipantFilter;
+  onQueryChange?: (query: string) => void;
+  onFilterChange?: (filter: ParticipantFilter) => void;
+  onClearFilters?: () => void;
   /** Record a same-app row navigation for origin focus restoration. */
   onOpenProgram?: (programId: string) => void;
   /** Program row to focus after returning from a detail route. */
@@ -245,17 +251,39 @@ function catalogSecondaryCopy(program: ParticipantCatalogProgram): string {
   }
 }
 
+// eslint-disable-next-line eslint/complexity -- controlled and local catalog state share one boundary.
 export const ParticipantDirectory = ({
   programId,
   programHref,
+  query: routeQuery,
+  filter: routeFilter,
+  onQueryChange,
+  onFilterChange,
+  onClearFilters,
   onOpenProgram,
   focusProgramId = null,
   onFocusProgram,
   homeHref,
 }: ParticipantDirectoryProps) => {
   const router = useRouter();
-  const [query, setQuery] = useState("");
-  const [filter, setFilter] = useState<ParticipantFilter>("all");
+  const [localQuery, setLocalQuery] = useState("");
+  const [localFilter, setLocalFilter] = useState<ParticipantFilter>("all");
+  const query = routeQuery ?? localQuery;
+  const filter = routeFilter ?? localFilter;
+  const setQuery = (value: string) => {
+    if (onQueryChange) {
+      onQueryChange(value);
+      return;
+    }
+    setLocalQuery(value);
+  };
+  const setFilter = (value: ParticipantFilter) => {
+    if (onFilterChange) {
+      onFilterChange(value);
+      return;
+    }
+    setLocalFilter(value);
+  };
   const storedFocusProgramId = useMemo(readParticipantProgramFocus, []);
   const focusTargetProgramId = focusProgramId ?? storedFocusProgramId;
   const onAuthRequired = useCallback(() => {
@@ -357,6 +385,7 @@ export const ParticipantDirectory = ({
     if (!target) {
       return;
     }
+    target.scrollIntoView({ block: "nearest", inline: "nearest" });
     target.focus();
     clearParticipantProgramFocus();
     onFocusProgram?.();
@@ -480,6 +509,10 @@ export const ParticipantDirectory = ({
                   type="button"
                   variant="outline"
                   onClick={() => {
+                    if (onClearFilters) {
+                      onClearFilters();
+                      return;
+                    }
                     setQuery("");
                     setFilter("all");
                   }}

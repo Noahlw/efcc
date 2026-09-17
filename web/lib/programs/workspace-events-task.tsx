@@ -2,7 +2,7 @@
 
 import { ChevronRight, MoreHorizontal } from "lucide-react";
 import Link from "next/link";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { FormEvent } from "react";
 
 import { Alert } from "@/components/ui/alert";
@@ -94,7 +94,10 @@ import {
 import type { EventListMutationRecovery } from "./mutation-recovery";
 import { ProgramDatePicker } from "./program-date-picker";
 import { buildProgramsHref } from "./programs-intent";
-import type { ManagementEventAction } from "./programs-intent";
+import type {
+  ManagementEventAction,
+  ProgramsEventFilter,
+} from "./programs-intent";
 import { useAsyncResource } from "./use-async-resource";
 import {
   eventWallParts,
@@ -129,7 +132,7 @@ interface ExceptionDraft {
   newEndTime: string;
 }
 
-type EventListFilter = "current" | "past" | "cancelled";
+type EventListFilter = ProgramsEventFilter;
 
 function isEventListFilter(value: string): value is EventListFilter {
   return value === "current" || value === "past" || value === "cancelled";
@@ -1529,6 +1532,7 @@ export const EventsTask = () => {
     attention,
     departmentId,
     hash,
+    directoryQuery,
     onAttentionRefresh,
     onWorkspaceRefresh,
     onMutationBlockChange,
@@ -1536,6 +1540,8 @@ export const EventsTask = () => {
     onOpenEvent,
     onOpenAttendance,
     onWorkspaceDirtyChange,
+    eventFilter: routeEventFilter,
+    onEventFilterChange,
   } = useWorkspaceTaskContext();
   const programId = program.program_id;
   const canManage = program.capabilities.manage;
@@ -1622,21 +1628,28 @@ export const EventsTask = () => {
   const [actionBusy, setActionBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
-  const [restoredPendingMutation] = useState<PendingEventMutation | null>(
-    () => {
-      const recovery = readWorkspaceMutationRecovery();
-      return recovery?.surface === "events" && recovery.programId === programId
-        ? recovery.mutation
-        : null;
-    }
-  );
+  const restoredPendingMutation = useMemo<PendingEventMutation | null>(() => {
+    const recovery = readWorkspaceMutationRecovery();
+    return recovery?.surface === "events" && recovery.programId === programId
+      ? recovery.mutation
+      : null;
+  }, [programId]);
   const [eventsStale, setEventsStale] = useState(
     restoredPendingMutation !== null
   );
   const [eventsOutcomeUnknown, setEventsOutcomeUnknown] = useState(
     restoredPendingMutation !== null
   );
-  const [eventFilter, setEventFilter] = useState<EventListFilter>("current");
+  const [localEventFilter, setLocalEventFilter] =
+    useState<EventListFilter>("current");
+  const eventFilter = routeEventFilter ?? localEventFilter;
+  const setEventFilter = (value: EventListFilter) => {
+    if (onEventFilterChange) {
+      onEventFilterChange(value);
+    } else {
+      setLocalEventFilter(value);
+    }
+  };
   const [confirmingEventId, setConfirmingEventId] = useState<string | null>(
     null
   );
@@ -2128,11 +2141,11 @@ export const EventsTask = () => {
       headingId="programs-workspace-events-title"
       aria-busy={createBusy || actionBusy}
       action={
-        canManage ? (
+        canManage && !createOpen ? (
           <Button
             type="button"
             className="w-fit bg-[var(--screen-accent)] text-white hover:bg-[var(--screen-accent-deep)]"
-            onClick={() => toggleCreateForm(!createOpen)}
+            onClick={() => toggleCreateForm(true)}
             disabled={eventsOutcomeUnknown || eventsStale}
           >
             {COPY.programs.createMeeting}
@@ -2520,6 +2533,8 @@ export const EventsTask = () => {
                       programId,
                       task: "events",
                       eventId: event.event_id,
+                      eventFilter,
+                      directoryQuery,
                       hash,
                     });
                     return (
@@ -2802,6 +2817,8 @@ export const EventsTask = () => {
                   programId,
                   departmentId,
                   task: "schedule",
+                  scheduleOrigin: "events",
+                  directoryQuery,
                   hash,
                 })}
                 onClick={(event) => {
@@ -2816,7 +2833,7 @@ export const EventsTask = () => {
                     return;
                   }
                   event.preventDefault();
-                  onTaskChange("schedule");
+                  onTaskChange("schedule", undefined, "events");
                 }}
               >
                 <ScreenRowMain>

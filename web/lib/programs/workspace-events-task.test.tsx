@@ -252,7 +252,8 @@ describe("EventsTask operations-first composition", () => {
 
   test("prioritizes open and today Events, filters history, and opens permitted Attendance", async () => {
     const now = Date.now();
-    const todayDate = hkTodayWallDate();
+    const todayStart = new Date(now + 30 * 60_000);
+    const todayDate = hkTodayWallDate(todayStart);
     const makeEvent = (
       eventId: string,
       startsAt: string,
@@ -276,8 +277,8 @@ describe("EventsTask operations-first composition", () => {
     );
     const today = makeEvent(
       "event-today",
-      wallInstant(todayDate, "12:00"),
-      wallInstant(todayDate, "13:00")
+      todayStart.toISOString(),
+      new Date(todayStart.getTime() + 60 * 60_000).toISOString()
     );
     const endedToday = makeEvent(
       "event-ended-today",

@@ -4,6 +4,16 @@ import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { Alert } from "@/components/ui/alert";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -34,7 +44,28 @@ import {
   ScreenState,
 } from "@/lib/screen-foundations";
 
+import {
+  clearManagementDraft,
+  readManagementDraft,
+  writeManagementDraft,
+} from "./management-draft";
 import { ProgramForm } from "./program-form";
+
+const DEPARTMENT_DRAFT_ACTION = "department-settings";
+
+interface DepartmentDraft {
+  name: string;
+  description: string;
+}
+
+function isDepartmentDraft(value: unknown): value is DepartmentDraft {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    typeof (value as DepartmentDraft).name === "string" &&
+    typeof (value as DepartmentDraft).description === "string"
+  );
+}
 
 const MODULE_KEYS: readonly DepartmentModule["module_key"][] = [
   "program_catalog",
@@ -62,27 +93,51 @@ export const DepartmentSettingsPanel = ({
   onOpenProgram?: (programId: string, created?: boolean) => void;
 }) => {
   const [detail, setDetail] = useState<DepartmentDetail | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [creating, setCreating] = useState(false);
+  const [closeConfirmationOpen, setCloseConfirmationOpen] = useState(false);
+  const [name, setName] = useState("");
+  const [description, setDescription] = useState("");
   const mounted = useRef(true);
 
-  const load = useCallback(async () => {
-    setDetail(null);
-    setActionError(null);
-    try {
-      const nextDetail = await getDepartment(department.department_id);
-      if (!mounted.current) {
-        return;
+  const load = useCallback(
+    async (preserveDetail = false): Promise<boolean> => {
+      if (!preserveDetail) {
+        setDetail(null);
       }
-      setDetail(nextDetail);
-    } catch (error) {
-      if (mounted.current) {
-        setActionError(errorMessage(error));
+      setLoadError(null);
+      setActionError(null);
+      try {
+        const nextDetail = await getDepartment(department.department_id);
+        if (!mounted.current) {
+          return false;
+        }
+        setDetail(nextDetail);
+        const stored = readManagementDraft<unknown>(
+          department.department_id,
+          DEPARTMENT_DRAFT_ACTION
+        );
+        if (isDepartmentDraft(stored)) {
+          setName(stored.name);
+          setDescription(stored.description);
+        } else {
+          setName(nextDetail.department.name);
+          setDescription(nextDetail.department.description ?? "");
+        }
+        return true;
+      } catch (error) {
+        if (mounted.current) {
+          const message = errorMessage(error);
+          setLoadError(message);
+        }
+        return false;
       }
-    }
-  }, [department.department_id]);
+    },
+    [department.department_id]
+  );
 
   useEffect(() => {
     mounted.current = true;
@@ -92,9 +147,29 @@ export const DepartmentSettingsPanel = ({
     };
   }, [load]);
 
-  const runAction = async (
-    operation: () => Promise<unknown>,
-    message: string
+  const isDirty =
+    detail !== null &&
+    (name !== detail.department.name ||
+      description !== (detail.department.description ?? ""));
+
+  useEffect(() => {
+    if (!detail) {
+      return;
+    }
+    if (isDirty) {
+      writeManagementDraft(department.department_id, DEPARTMENT_DRAFT_ACTION, {
+        name,
+        description,
+      });
+    } else {
+      clearManagementDraft(department.department_id, DEPARTMENT_DRAFT_ACTION);
+    }
+  }, [department.department_id, description, detail, isDirty, name]);
+
+  const runAction = async <T,>(
+    operation: () => Promise<T>,
+    message: string,
+    afterSuccess?: (result: T) => void
   ) => {
     if (busy) {
       return;
@@ -103,13 +178,17 @@ export const DepartmentSettingsPanel = ({
     setActionError(null);
     setNotice(null);
     try {
-      await operation();
-      await load();
+      const result = await operation();
+      afterSuccess?.(result);
+      const refreshed = await load(true);
       if (!mounted.current) {
         return;
       }
-      setNotice(message);
-      announce(message);
+      const noticeMessage = refreshed
+        ? message
+        : COPY.programs.departmentSavedRefreshPending;
+      setNotice(noticeMessage);
+      announce(noticeMessage);
     } catch (error) {
       if (mounted.current) {
         const mappedMessage =
@@ -128,15 +207,41 @@ export const DepartmentSettingsPanel = ({
 
   const saveDetails = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    const data = new FormData(event.currentTarget);
     void runAction(
       () =>
         updateDepartment(department.department_id, {
-          name: String(data.get("name") ?? "").trim(),
-          description: String(data.get("description") ?? "").trim(),
+          name: name.trim(),
+          description: description.trim(),
         }),
-      COPY.programs.updated
+      COPY.programs.updated,
+      (result) => {
+        clearManagementDraft(department.department_id, DEPARTMENT_DRAFT_ACTION);
+        const nextDepartment = result.department;
+        setDetail((previous) =>
+          previous ? { ...previous, department: nextDepartment } : previous
+        );
+        setName(nextDepartment.name);
+        setDescription(nextDepartment.description ?? "");
+      }
     );
+  };
+
+  const runModuleAction = (operation: () => Promise<unknown>) => {
+    if (isDirty) {
+      const message = COPY.programs.departmentDraftBlocking;
+      setActionError(message);
+      announce(message);
+      return;
+    }
+    void runAction(operation, COPY.programs.updated);
+  };
+
+  const closePanel = () => {
+    if (isDirty) {
+      setCloseConfirmationOpen(true);
+      return;
+    }
+    onClose();
   };
 
   const handleProgramSaved = (programId: string) => {
@@ -157,182 +262,246 @@ export const DepartmentSettingsPanel = ({
         ).filter((module): module is DepartmentModule => module !== undefined);
 
   return (
-    <ScreenCard asChild className="min-w-0">
-      <section
-        id={`${department.department_id}-settings-panel`}
-        tabIndex={-1}
-        aria-labelledby={`${department.department_id}-settings-heading`}
-        aria-busy={busy}
-      >
-        <ScreenSection
-          className="mt-0"
-          title={`${COPY.programs.departmentSettings}: ${department.name}`}
-          headingId={`${department.department_id}-settings-heading`}
-          action={
-            <Button
-              variant="outline"
-              className="h-auto w-fit whitespace-normal border-[var(--screen-line-strong)] bg-transparent text-[var(--screen-ink)] hover:bg-[var(--screen-surface-soft)] hover:text-[var(--screen-ink)]"
-              type="button"
-              onClick={onClose}
-            >
-              {COPY.programs.collapse}
-            </Button>
-          }
+    <>
+      <ScreenCard asChild className="min-w-0">
+        <section
+          id={`${department.department_id}-settings-panel`}
+          tabIndex={-1}
+          aria-labelledby={`${department.department_id}-settings-heading`}
+          aria-busy={busy}
         >
-          {notice !== null && (
-            <Alert tone="success" announcement="polite">
-              {notice}
-            </Alert>
-          )}
-          {actionError !== null && (
-            <ScreenState kind="error" title={actionError} />
-          )}
-          {detail === null ? (
-            <ScreenState
-              kind="loading"
-              title={COPY.nav.loading}
-              description={
-                <div className="grid gap-2 py-2" aria-hidden="true">
-                  <span className="h-4 w-2/3 rounded-[var(--screen-radius-control)] bg-[var(--screen-surface-soft)]" />
-                  <span className="h-12 w-full rounded-[var(--screen-radius-control)] bg-[var(--screen-surface-soft)]" />
-                </div>
-              }
-            />
-          ) : creating ? (
-            <ProgramForm
-              departments={[department]}
-              onSaved={handleProgramSaved}
-              onCancel={() => setCreating(false)}
-            />
-          ) : (
-            <>
-              {department.capabilities.manage && (
-                <div className="flex min-w-0 flex-wrap items-center gap-3">
-                  <Button
-                    className="h-auto w-fit whitespace-normal bg-[var(--screen-accent)] text-white hover:bg-[var(--screen-accent-deep)]"
-                    type="button"
-                    onClick={() => {
-                      setNotice(null);
-                      setActionError(null);
-                      setCreating(true);
-                    }}
-                    disabled={busy}
-                  >
-                    {COPY.programs.createProgram}
-                  </Button>
-                  <p className="m-0 wrap-anywhere text-sm leading-6 text-[var(--screen-muted)]">
-                    {COPY.programs.createProgramInDepartmentHint}
-                  </p>
-                </div>
-              )}
-              {department.capabilities.manage && (
-                <ScreenEditor className="min-w-0" onSubmit={saveDetails}>
-                  <ScreenField
-                    htmlFor={`${department.department_id}-name`}
-                    label={COPY.programs.deptName}
-                  >
-                    <Input
-                      id={`${department.department_id}-name`}
-                      className="min-w-0 border-[var(--screen-line-strong)] bg-[var(--screen-surface)] text-base text-[var(--screen-ink)]"
-                      name="name"
-                      defaultValue={detail.department.name}
-                      required
-                    />
-                  </ScreenField>
-                  <ScreenField
-                    htmlFor={`${department.department_id}-description`}
-                    label={COPY.programs.departmentDetails}
-                  >
-                    <Textarea
-                      id={`${department.department_id}-description`}
-                      className="min-w-0 border-[var(--screen-line-strong)] bg-[var(--screen-surface)] text-base text-[var(--screen-ink)]"
-                      name="description"
-                      defaultValue={detail.department.description ?? ""}
-                      rows={3}
-                    />
-                  </ScreenField>
-                  <Button
-                    className="h-auto w-fit whitespace-normal bg-[var(--screen-accent)] text-white hover:bg-[var(--screen-accent-deep)]"
-                    type="submit"
-                    disabled={busy}
-                  >
-                    {COPY.programs.saveDepartment}
-                  </Button>
-                </ScreenEditor>
-              )}
-              {department.capabilities.module_configure && (
-                <ScreenSection
-                  title={COPY.programs.modules}
-                  headingId={`${department.department_id}-modules-heading`}
+          <ScreenSection
+            className="mt-0"
+            title={`${COPY.programs.departmentSettings}: ${department.name}`}
+            headingId={`${department.department_id}-settings-heading`}
+            action={
+              <Button
+                variant="outline"
+                className="h-auto w-fit whitespace-normal border-[var(--screen-line-strong)] bg-transparent text-[var(--screen-ink)] hover:bg-[var(--screen-surface-soft)] hover:text-[var(--screen-ink)]"
+                type="button"
+                onClick={closePanel}
+              >
+                {COPY.programs.collapse}
+              </Button>
+            }
+          >
+            {notice !== null && (
+              <Alert tone="success" announcement="polite">
+                {notice}
+              </Alert>
+            )}
+            {actionError !== null && (
+              <ScreenState kind="error" title={actionError} />
+            )}
+            {loadError !== null && detail !== null && (
+              <Alert tone="warning" announcement="polite">
+                <span>{COPY.programs.departmentSavedRefreshPending}</span>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => void load(true)}
+                  disabled={busy}
                 >
-                  <ScreenRowList>
-                    <ul className="m-0 grid min-w-0 list-none gap-0 p-0">
-                      {moduleRows.map((module) => (
-                        <li key={module.module_key} className="min-w-0">
-                          <ScreenRow density="settings">
-                            <ScreenRowMain>
-                              <ScreenRowTitle>
-                                {MODULE_LABEL[module.module_key]}
-                              </ScreenRowTitle>
-                            </ScreenRowMain>
-                            <ScreenRowTrailing>
-                              <Button
-                                variant="outline"
-                                className="h-auto w-fit whitespace-normal border-[var(--screen-line-strong)] bg-transparent text-[var(--screen-ink)] hover:bg-[var(--screen-surface-soft)] hover:text-[var(--screen-ink)]"
-                                type="button"
-                                aria-pressed={module.enabled === 1}
-                                disabled={busy}
-                                onClick={() =>
-                                  void runAction(
-                                    () =>
+                  {COPY.programs.departmentSettingsRetry}
+                </Button>
+              </Alert>
+            )}
+            {detail === null ? (
+              <ScreenState
+                kind={loadError === null ? "loading" : "error"}
+                title={
+                  loadError === null
+                    ? COPY.nav.loading
+                    : COPY.programs.departmentSettingsLoadError
+                }
+                description={
+                  loadError ?? (
+                    <div className="grid gap-2 py-2" aria-hidden="true">
+                      <span className="h-4 w-2/3 rounded-[var(--screen-radius-control)] bg-[var(--screen-surface-soft)]" />
+                      <span className="h-12 w-full rounded-[var(--screen-radius-control)] bg-[var(--screen-surface-soft)]" />
+                    </div>
+                  )
+                }
+                action={
+                  loadError !== null ? (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => void load()}
+                    >
+                      {COPY.programs.departmentSettingsRetry}
+                    </Button>
+                  ) : undefined
+                }
+              />
+            ) : creating ? (
+              <ProgramForm
+                departments={[department]}
+                onSaved={handleProgramSaved}
+                onCancel={() => setCreating(false)}
+              />
+            ) : (
+              <>
+                {department.capabilities.manage && (
+                  <div className="flex min-w-0 flex-wrap items-center gap-3">
+                    <Button
+                      className="h-auto w-fit whitespace-normal bg-[var(--screen-accent)] text-white hover:bg-[var(--screen-accent-deep)]"
+                      type="button"
+                      onClick={() => {
+                        setNotice(null);
+                        setActionError(null);
+                        setCreating(true);
+                      }}
+                      disabled={busy}
+                    >
+                      {COPY.programs.createProgram}
+                    </Button>
+                    <p className="m-0 wrap-anywhere text-sm leading-6 text-[var(--screen-muted)]">
+                      {COPY.programs.createProgramInDepartmentHint}
+                    </p>
+                  </div>
+                )}
+                {department.capabilities.manage && (
+                  <ScreenEditor className="min-w-0" onSubmit={saveDetails}>
+                    <ScreenField
+                      htmlFor={`${department.department_id}-name`}
+                      label={COPY.programs.deptName}
+                    >
+                      <Input
+                        id={`${department.department_id}-name`}
+                        className="min-w-0 border-[var(--screen-line-strong)] bg-[var(--screen-surface)] text-base text-[var(--screen-ink)]"
+                        name="name"
+                        value={name}
+                        onChange={(event) => setName(event.target.value)}
+                        required
+                      />
+                    </ScreenField>
+                    <ScreenField
+                      htmlFor={`${department.department_id}-description`}
+                      label={COPY.programs.departmentDetails}
+                    >
+                      <Textarea
+                        id={`${department.department_id}-description`}
+                        className="min-w-0 border-[var(--screen-line-strong)] bg-[var(--screen-surface)] text-base text-[var(--screen-ink)]"
+                        name="description"
+                        value={description}
+                        onChange={(event) => setDescription(event.target.value)}
+                        rows={3}
+                      />
+                    </ScreenField>
+                    <Button
+                      className="h-auto w-fit whitespace-normal bg-[var(--screen-accent)] text-white hover:bg-[var(--screen-accent-deep)]"
+                      type="submit"
+                      disabled={busy}
+                    >
+                      {COPY.programs.saveDepartment}
+                    </Button>
+                  </ScreenEditor>
+                )}
+                {department.capabilities.module_configure && (
+                  <ScreenSection
+                    title={COPY.programs.modules}
+                    headingId={`${department.department_id}-modules-heading`}
+                  >
+                    <ScreenRowList>
+                      <ul className="m-0 grid min-w-0 list-none gap-0 p-0">
+                        {moduleRows.map((module) => (
+                          <li key={module.module_key} className="min-w-0">
+                            <ScreenRow density="settings">
+                              <ScreenRowMain>
+                                <ScreenRowTitle>
+                                  {MODULE_LABEL[module.module_key]}
+                                </ScreenRowTitle>
+                              </ScreenRowMain>
+                              <ScreenRowTrailing>
+                                <Button
+                                  variant="outline"
+                                  className="h-auto w-fit whitespace-normal border-[var(--screen-line-strong)] bg-transparent text-[var(--screen-ink)] hover:bg-[var(--screen-surface-soft)] hover:text-[var(--screen-ink)]"
+                                  type="button"
+                                  aria-pressed={module.enabled === 1}
+                                  disabled={busy}
+                                  onClick={() =>
+                                    runModuleAction(() =>
                                       setDepartmentModule(
                                         department.department_id,
                                         module.module_key,
                                         module.enabled !== 1
-                                      ),
-                                    COPY.programs.updated
-                                  )
-                                }
-                              >
-                                {module.enabled === 1
-                                  ? COPY.programs.disable
-                                  : COPY.programs.enable}
-                              </Button>
-                            </ScreenRowTrailing>
-                          </ScreenRow>
-                        </li>
-                      ))}
-                    </ul>
-                  </ScreenRowList>
-                </ScreenSection>
-              )}
-              {department.capabilities.manager_assign &&
-                department.capabilities.role_read === true &&
-                (department.capabilities.role_assign === true ||
-                  department.capabilities.role_revoke === true) && (
-                  <ScreenSection
-                    title="身份組指派"
-                    headingId={`${department.department_id}-identity-heading`}
-                  >
-                    <p className="m-0 wrap-anywhere text-sm leading-6 text-[var(--screen-muted)]">
-                      帳戶身份組指派及撤銷現由帳戶存取管理統一處理。
-                    </p>
-                    <Button
-                      asChild
-                      className="h-auto w-fit whitespace-normal bg-[var(--screen-accent)] text-white hover:bg-[var(--screen-accent-deep)]"
-                    >
-                      <Link
-                        href={`/management?module=accounts&scopeKind=Department&scopeId=${encodeURIComponent(department.department_id)}&view=access&return=${encodeURIComponent(`/programs?mode=management&department=${encodeURIComponent(department.department_id)}`)}`}
-                      >
-                        管理帳戶身份組
-                      </Link>
-                    </Button>
+                                      )
+                                    )
+                                  }
+                                >
+                                  {module.enabled === 1
+                                    ? COPY.programs.disable
+                                    : COPY.programs.enable}
+                                </Button>
+                              </ScreenRowTrailing>
+                            </ScreenRow>
+                          </li>
+                        ))}
+                      </ul>
+                    </ScreenRowList>
                   </ScreenSection>
                 )}
-            </>
-          )}
-        </ScreenSection>
-      </section>
-    </ScreenCard>
+                {department.capabilities.manager_assign &&
+                  department.capabilities.role_read === true &&
+                  (department.capabilities.role_assign === true ||
+                    department.capabilities.role_revoke === true) && (
+                    <ScreenSection
+                      title="身份組指派"
+                      headingId={`${department.department_id}-identity-heading`}
+                    >
+                      <p className="m-0 wrap-anywhere text-sm leading-6 text-[var(--screen-muted)]">
+                        帳戶身份組指派及撤銷現由帳戶存取管理統一處理。
+                      </p>
+                      <Button
+                        asChild
+                        className="h-auto w-fit whitespace-normal bg-[var(--screen-accent)] text-white hover:bg-[var(--screen-accent-deep)]"
+                      >
+                        <Link
+                          href={`/management?module=accounts&scopeKind=Department&scopeId=${encodeURIComponent(department.department_id)}&view=access&return=${encodeURIComponent(`/programs?mode=management&department=${encodeURIComponent(department.department_id)}`)}`}
+                        >
+                          管理帳戶身份組
+                        </Link>
+                      </Button>
+                    </ScreenSection>
+                  )}
+              </>
+            )}
+          </ScreenSection>
+        </section>
+      </ScreenCard>
+      <AlertDialog
+        open={closeConfirmationOpen}
+        onOpenChange={setCloseConfirmationOpen}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {COPY.programs.departmentDraftLeaveTitle}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {COPY.programs.departmentDraftLeaveDescription}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>
+              {COPY.programs.settingsContinueEditing}
+            </AlertDialogCancel>
+            <AlertDialogAction
+              variant="destructive"
+              onClick={() => {
+                clearManagementDraft(
+                  department.department_id,
+                  DEPARTMENT_DRAFT_ACTION
+                );
+                onClose();
+              }}
+            >
+              {COPY.programs.settingsDiscardAndLeave}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
   );
 };

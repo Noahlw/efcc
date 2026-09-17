@@ -84,6 +84,12 @@ import {
   ScreenStatus,
 } from "@/lib/screen-foundations";
 
+import {
+  clearManagementDraft,
+  readManagementDraft,
+  writeManagementDraft,
+} from "./management-draft";
+
 interface BasicsValues {
   name: string;
   description: string;
@@ -128,6 +134,92 @@ interface ExceptionValues {
   newDate: string;
   newStartTime: string;
   newEndTime: string;
+}
+
+const SETTINGS_DRAFT_ACTION = {
+  basics: "settings-basics",
+  publishing: "settings-publishing",
+  enrollment: "settings-enrollment",
+  attendance: "settings-attendance",
+  newRule: "settings-new-rule",
+  rule: "settings-rule",
+  exception: "settings-exception",
+} as const;
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function isBasicsValues(value: unknown): value is BasicsValues {
+  return (
+    isRecord(value) &&
+    typeof value.name === "string" &&
+    typeof value.description === "string" &&
+    typeof value.category === "string" &&
+    typeof value.displayOrder === "string"
+  );
+}
+
+function isPublishingValues(value: unknown): value is PublishingValues {
+  return (
+    isRecord(value) &&
+    (value.lifecycle === "Draft" ||
+      value.lifecycle === "Active" ||
+      value.lifecycle === "Archived") &&
+    (value.discoverability === "Listed" || value.discoverability === "Unlisted")
+  );
+}
+
+function isEnrollmentValues(value: unknown): value is EnrollmentValues {
+  return (
+    isRecord(value) &&
+    (value.discoverability === "Listed" ||
+      value.discoverability === "Unlisted") &&
+    (value.enrollmentMode === "MemberRequest" ||
+      value.enrollmentMode === "ManagerOnly")
+  );
+}
+
+function isAttendanceValues(value: unknown): value is AttendanceValues {
+  return (
+    isRecord(value) &&
+    typeof value.opensBefore === "string" &&
+    typeof value.closesAfter === "string"
+  );
+}
+
+function isRuleValues(value: unknown): value is RuleValues {
+  return (
+    isRecord(value) &&
+    (value.recurrence === "WEEKLY" || value.recurrence === "MONTHLY") &&
+    typeof value.dayOfWeek === "string" &&
+    typeof value.monthDay === "string" &&
+    typeof value.startTime === "string" &&
+    typeof value.endTime === "string" &&
+    typeof value.location === "string" &&
+    typeof value.effectiveStartDate === "string" &&
+    typeof value.effectiveEndDate === "string"
+  );
+}
+
+function isExceptionValues(value: unknown): value is ExceptionValues {
+  return (
+    isRecord(value) &&
+    typeof value.overrideDate === "string" &&
+    (value.action === "CANCEL" || value.action === "RESCHEDULE") &&
+    typeof value.newDate === "string" &&
+    typeof value.newStartTime === "string" &&
+    typeof value.newEndTime === "string"
+  );
+}
+
+function readSettingsDraft<T>(
+  programId: string,
+  action: string,
+  guard: (value: unknown) => value is T
+): T | null {
+  const value = readManagementDraft<unknown>(programId, action);
+  return guard(value) ? value : null;
 }
 
 export interface ProgramSettingsProps {
@@ -234,7 +326,7 @@ function programArtifactFileName(programName: string): string {
   const safeName = programName
     .trim()
     .replaceAll(/[^\p{L}\p{N}]+/gu, "-")
-    .replace(/^-+|-+$/gu, "")
+    .replaceAll(/^-+|-+$/gu, "")
     .slice(0, 48);
   return `${safeName || "program"}-qr.svg`;
 }
@@ -255,17 +347,18 @@ const ProgramAttendanceQrCard = ({
   useEffect(() => {
     let active = true;
     setQr(null);
-    void qrDataUrl(checkInUrl)
-      .then((dataUrl) => {
+    void (async () => {
+      try {
+        const dataUrl = await qrDataUrl(checkInUrl);
         if (active) {
           setQr(dataUrl);
         }
-      })
-      .catch(() => {
+      } catch {
         if (active) {
           setQr(null);
         }
-      });
+      }
+    })();
     return () => {
       active = false;
     };
@@ -426,6 +519,19 @@ function defaultExceptionValues(): ExceptionValues {
   };
 }
 
+function defaultRuleValues(): RuleValues {
+  return {
+    recurrence: "WEEKLY",
+    dayOfWeek: "3",
+    monthDay: "1",
+    startTime: "",
+    endTime: "",
+    location: "",
+    effectiveStartDate: hkTodayWallDate(),
+    effectiveEndDate: "",
+  };
+}
+
 function ruleInputFrom(values: RuleValues): ScheduleRuleInput {
   return {
     recurrence: values.recurrence,
@@ -482,6 +588,7 @@ const SettingsHubRow = ({
   icon,
   title,
   description,
+  currentValue,
   onClick,
   href,
   tone = "default",
@@ -489,6 +596,7 @@ const SettingsHubRow = ({
   icon: React.ReactNode;
   title: string;
   description: string;
+  currentValue?: string;
   onClick?: () => void;
   href?: string;
   tone?: "default" | "danger";
@@ -498,7 +606,14 @@ const SettingsHubRow = ({
       {icon}
       <ScreenRowMain>
         <ScreenRowTitle>{title}</ScreenRowTitle>
-        <ScreenRowMeta>{description}</ScreenRowMeta>
+        <ScreenRowMeta>
+          <span>{description}</span>
+          {currentValue && (
+            <span className="font-semibold text-[var(--screen-ink)]">
+              {` · ${currentValue}`}
+            </span>
+          )}
+        </ScreenRowMeta>
       </ScreenRowMain>
       <ScreenRowTrailing>
         <ChevronRight
@@ -547,6 +662,7 @@ export const SettingsHub = ({
   scheduleHref,
   notificationsHref,
 }: SettingsHubProps) => {
+  const [archiveConfirmationOpen, setArchiveConfirmationOpen] = useState(false);
   const canManage = program.capabilities.manage;
   const showSchedule =
     canManage &&
@@ -586,6 +702,7 @@ export const SettingsHub = ({
               }
               title={COPY.programs.settingsHubBasics}
               description={COPY.programs.settingsHubBasicsHint}
+              currentValue={`${program.name}${program.category ? ` · ${program.category}` : ""}`}
               onClick={() => onSelect("basics")}
             />
             <SettingsHubRow
@@ -598,6 +715,11 @@ export const SettingsHub = ({
               }
               title={COPY.programs.settingsHubPublishing}
               description={COPY.programs.settingsHubPublishingHint}
+              currentValue={`${LIFECYCLE_LABEL[program.lifecycle]} · ${
+                program.discoverability === "Listed"
+                  ? COPY.programs.discoverabilityListed
+                  : COPY.programs.discoverabilityUnlisted
+              }`}
               onClick={() => onSelect("publishing")}
             />
           </ScreenRowList>
@@ -617,6 +739,11 @@ export const SettingsHub = ({
                 }
                 title={COPY.programs.settingsHubEnrollment}
                 description={COPY.programs.settingsHubEnrollmentHint}
+                currentValue={
+                  program.enrollment_mode === "MemberRequest"
+                    ? COPY.programs.enrollmentModeMemberRequest
+                    : COPY.programs.enrollmentModeManagerOnly
+                }
                 onClick={() => onSelect("enrollment")}
               />
             )}
@@ -651,6 +778,11 @@ export const SettingsHub = ({
                 }
                 title={COPY.programs.settingsHubSchedule}
                 description={COPY.programs.settingsHubScheduleHint}
+                currentValue={
+                  program.behavior_type === "Recurring"
+                    ? COPY.programs.detailBehaviorRecurring
+                    : COPY.programs.detailBehaviorOneOff
+                }
                 href={scheduleHref}
               />
             )}
@@ -665,6 +797,7 @@ export const SettingsHub = ({
                 }
                 title={COPY.programs.settingsHubAttendance}
                 description={COPY.programs.settingsHubAttendanceHint}
+                currentValue={`開始前 ${program.check_in_opens_at_minutes_before_start ?? 15} 分鐘 · 結束後 ${program.check_in_closes_at_minutes_after_end ?? 0} 分鐘`}
                 onClick={() => onSelect("attendance")}
               />
             )}
@@ -703,11 +836,37 @@ export const SettingsHub = ({
               title={COPY.programs.settingsHubArchive}
               description={COPY.programs.settingsHubArchiveHint}
               tone="danger"
-              onClick={() => onSelect("publishing")}
+              onClick={() => setArchiveConfirmationOpen(true)}
             />
           </ScreenRowList>
         </ScreenSection>
       )}
+      <AlertDialog
+        open={archiveConfirmationOpen}
+        onOpenChange={setArchiveConfirmationOpen}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {COPY.programs.settingsHubArchiveConfirmTitle}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {COPY.programs.settingsHubArchiveConfirmBody}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>
+              {COPY.programs.settingsKeepCurrent}
+            </AlertDialogCancel>
+            <AlertDialogAction
+              variant="destructive"
+              onClick={() => onSelect("publishing")}
+            >
+              {COPY.programs.settingsHubArchiveConfirm}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </section>
   );
 };
@@ -1078,10 +1237,38 @@ export const ProgramSettings = ({
   scheduleBackHref,
 }: ProgramSettingsProps) => {
   const [currentProgram, setCurrentProgram] = useState(program);
-  const [basics, setBasics] = useState(() => basicsFrom(program));
-  const [publishing, setPublishing] = useState(() => publishingFrom(program));
-  const [enrollment, setEnrollment] = useState(() => enrollmentFrom(program));
-  const [attendance, setAttendance] = useState(() => attendanceFrom(program));
+  const [basics, setBasics] = useState(
+    () =>
+      readSettingsDraft(
+        program.program_id,
+        SETTINGS_DRAFT_ACTION.basics,
+        isBasicsValues
+      ) ?? basicsFrom(program)
+  );
+  const [publishing, setPublishing] = useState(
+    () =>
+      readSettingsDraft(
+        program.program_id,
+        SETTINGS_DRAFT_ACTION.publishing,
+        isPublishingValues
+      ) ?? publishingFrom(program)
+  );
+  const [enrollment, setEnrollment] = useState(
+    () =>
+      readSettingsDraft(
+        program.program_id,
+        SETTINGS_DRAFT_ACTION.enrollment,
+        isEnrollmentValues
+      ) ?? enrollmentFrom(program)
+  );
+  const [attendance, setAttendance] = useState(
+    () =>
+      readSettingsDraft(
+        program.program_id,
+        SETTINGS_DRAFT_ACTION.attendance,
+        isAttendanceValues
+      ) ?? attendanceFrom(program)
+  );
   const [attendanceErrors, setAttendanceErrors] = useState<AttendanceErrors>(
     {}
   );
@@ -1095,17 +1282,17 @@ export const ProgramSettings = ({
   const [ruleError, setRuleError] = useState<string | null>(null);
   const [scheduleEditor, setScheduleEditor] =
     useState<ScheduleEditorTarget>(null);
+  const [scheduleNavigationBlocked, setScheduleNavigationBlocked] =
+    useState(false);
   const [ruleDrafts, setRuleDrafts] = useState<Record<string, RuleValues>>({});
-  const [newRule, setNewRule] = useState<RuleValues>({
-    recurrence: "WEEKLY",
-    dayOfWeek: "3",
-    monthDay: "1",
-    startTime: "",
-    endTime: "",
-    location: "",
-    effectiveStartDate: hkTodayWallDate(),
-    effectiveEndDate: "",
-  });
+  const [newRule, setNewRule] = useState<RuleValues>(
+    () =>
+      readSettingsDraft(
+        program.program_id,
+        SETTINGS_DRAFT_ACTION.newRule,
+        isRuleValues
+      ) ?? defaultRuleValues()
+  );
   const [exceptionDrafts, setExceptionDrafts] = useState<
     Record<string, ExceptionValues>
   >({});
@@ -1173,6 +1360,29 @@ export const ProgramSettings = ({
           : section === "attendance"
             ? attendanceDirty
             : false;
+  const scheduleEditorDirty =
+    scheduleEditor?.kind === "new-rule"
+      ? JSON.stringify(newRule) !== JSON.stringify(defaultRuleValues())
+      : scheduleEditor?.kind === "edit-rule"
+        ? (() => {
+            const rule = (rules ?? []).find(
+              (candidate) => candidate.rule_id === scheduleEditor.ruleId
+            );
+            const draft = ruleDrafts[scheduleEditor.ruleId];
+            return (
+              rule !== undefined &&
+              draft !== undefined &&
+              JSON.stringify(draft) !== JSON.stringify(ruleValuesFrom(rule))
+            );
+          })()
+        : scheduleEditor?.kind === "new-exception"
+          ? JSON.stringify(
+              exceptionDrafts[scheduleEditor.ruleId] ?? defaultExceptionValues()
+            ) !== JSON.stringify(defaultExceptionValues())
+          : false;
+  const settingsDirty = focusedSchedule
+    ? scheduleEditorActive && scheduleEditorDirty
+    : focusedDirty;
   const showDirtyActions = focusedEditor && focusedDirty && canManage;
   const focusedFormId = focusedEditor
     ? `program-settings-${section}-form`
@@ -1187,9 +1397,89 @@ export const ProgramSettings = ({
           : COPY.programs.settingsSaveAttendance;
 
   useEffect(() => {
-    onDirtyChange?.(focusedEditor && focusedDirty);
-    return () => onDirtyChange?.(false);
-  }, [focusedDirty, focusedEditor, onDirtyChange]);
+    onDirtyChange?.(focusedSection && settingsDirty);
+  }, [focusedSection, onDirtyChange, settingsDirty]);
+  useEffect(() => () => onDirtyChange?.(false), [onDirtyChange]);
+
+  useEffect(() => {
+    const programId = currentProgram.program_id;
+    if (basicsDirty) {
+      writeManagementDraft(programId, SETTINGS_DRAFT_ACTION.basics, basics);
+    } else {
+      clearManagementDraft(programId, SETTINGS_DRAFT_ACTION.basics);
+    }
+    if (publishingDirty) {
+      writeManagementDraft(
+        programId,
+        SETTINGS_DRAFT_ACTION.publishing,
+        publishing
+      );
+    } else {
+      clearManagementDraft(programId, SETTINGS_DRAFT_ACTION.publishing);
+    }
+    if (enrollmentDirty) {
+      writeManagementDraft(
+        programId,
+        SETTINGS_DRAFT_ACTION.enrollment,
+        enrollment
+      );
+    } else {
+      clearManagementDraft(programId, SETTINGS_DRAFT_ACTION.enrollment);
+    }
+    if (attendanceDirty) {
+      writeManagementDraft(
+        programId,
+        SETTINGS_DRAFT_ACTION.attendance,
+        attendance
+      );
+    } else {
+      clearManagementDraft(programId, SETTINGS_DRAFT_ACTION.attendance);
+    }
+    if (scheduleEditor?.kind === "new-rule" && scheduleEditorDirty) {
+      writeManagementDraft(programId, SETTINGS_DRAFT_ACTION.newRule, newRule);
+    } else if (scheduleEditor?.kind === "new-rule") {
+      clearManagementDraft(programId, SETTINGS_DRAFT_ACTION.newRule);
+    }
+  }, [
+    attendance,
+    attendanceDirty,
+    basics,
+    basicsDirty,
+    currentProgram.program_id,
+    enrollment,
+    enrollmentDirty,
+    newRule,
+    publishing,
+    publishingDirty,
+    scheduleEditor?.kind,
+    scheduleEditorDirty,
+  ]);
+
+  useEffect(() => {
+    const programId = currentProgram.program_id;
+    for (const [ruleId, draft] of Object.entries(ruleDrafts)) {
+      const rule = (rules ?? []).find(
+        (candidate) => candidate.rule_id === ruleId
+      );
+      const action = `${SETTINGS_DRAFT_ACTION.rule}:${ruleId}`;
+      if (
+        rule &&
+        JSON.stringify(draft) !== JSON.stringify(ruleValuesFrom(rule))
+      ) {
+        writeManagementDraft(programId, action, draft);
+      } else {
+        clearManagementDraft(programId, action);
+      }
+    }
+    for (const [ruleId, draft] of Object.entries(exceptionDrafts)) {
+      const action = `${SETTINGS_DRAFT_ACTION.exception}:${ruleId}`;
+      if (JSON.stringify(draft) !== JSON.stringify(defaultExceptionValues())) {
+        writeManagementDraft(programId, action, draft);
+      } else {
+        clearManagementDraft(programId, action);
+      }
+    }
+  }, [currentProgram.program_id, exceptionDrafts, ruleDrafts, rules]);
 
   useEffect(
     () => () => {
@@ -1273,22 +1563,24 @@ export const ProgramSettings = ({
     let active = true;
     setAttendanceArtifactLoading(true);
     setAttendanceArtifactError(null);
-    void getProgramAttendanceArtifact(currentProgram.program_id)
-      .then(({ artifact }) => {
+    void (async () => {
+      try {
+        const { artifact } = await getProgramAttendanceArtifact(
+          currentProgram.program_id
+        );
         if (active) {
           setAttendanceArtifact(artifact);
         }
-      })
-      .catch((error) => {
+      } catch (error) {
         if (active) {
           setAttendanceArtifactError(errorMessage(error));
         }
-      })
-      .finally(() => {
+      } finally {
         if (active) {
           setAttendanceArtifactLoading(false);
         }
-      });
+      }
+    })();
     return () => {
       active = false;
     };
@@ -1320,7 +1612,7 @@ export const ProgramSettings = ({
             ? await loadRules()
             : true;
         let workspaceRead = onReload === undefined && scheduleMutationBlocked;
-        let refreshed: Program | void = undefined;
+        let refreshed: Program | null | void = null;
         if (onReload) {
           try {
             refreshed = await onReload();
@@ -1379,6 +1671,33 @@ export const ProgramSettings = ({
         const result = await updateProgram(currentProgram.program_id, patch);
         if (!mounted.current) {
           return;
+        }
+        if ("name" in patch || "display_order" in patch) {
+          clearManagementDraft(
+            currentProgram.program_id,
+            SETTINGS_DRAFT_ACTION.basics
+          );
+        }
+        if ("lifecycle" in patch) {
+          clearManagementDraft(
+            currentProgram.program_id,
+            SETTINGS_DRAFT_ACTION.publishing
+          );
+        }
+        if ("enrollment_mode" in patch) {
+          clearManagementDraft(
+            currentProgram.program_id,
+            SETTINGS_DRAFT_ACTION.enrollment
+          );
+        }
+        if (
+          "check_in_opens_at_minutes_before_start" in patch ||
+          "check_in_closes_at_minutes_after_end" in patch
+        ) {
+          clearManagementDraft(
+            currentProgram.program_id,
+            SETTINGS_DRAFT_ACTION.attendance
+          );
         }
         applyProgram({ ...currentProgram, ...result.program });
         setNotice(COPY.programs.settingsSaved);
@@ -1622,6 +1941,10 @@ export const ProgramSettings = ({
         }),
       COPY.programs.settingsSaved,
       () => {
+        clearManagementDraft(
+          currentProgram.program_id,
+          SETTINGS_DRAFT_ACTION.newRule
+        );
         scheduleRuleCreateKey.current = null;
         setNewRule((previous) => ({
           ...previous,
@@ -1637,7 +1960,12 @@ export const ProgramSettings = ({
     setScheduleEditor({ kind: "edit-rule", ruleId: rule.rule_id });
     setRuleDrafts((previous) => ({
       ...previous,
-      [rule.rule_id]: ruleValuesFrom(rule),
+      [rule.rule_id]:
+        readSettingsDraft(
+          currentProgram.program_id,
+          `${SETTINGS_DRAFT_ACTION.rule}:${rule.rule_id}`,
+          isRuleValues
+        ) ?? ruleValuesFrom(rule),
     }));
   };
 
@@ -1653,12 +1981,29 @@ export const ProgramSettings = ({
             ruleInputFrom(draft)
           ),
         COPY.programs.settingsSaved,
-        () => setScheduleEditor(null)
+        () => {
+          clearManagementDraft(
+            currentProgram.program_id,
+            `${SETTINGS_DRAFT_ACTION.rule}:${rule.rule_id}`
+          );
+          setRuleDrafts((previous) => {
+            const next = { ...previous };
+            delete next[rule.rule_id];
+            return next;
+          });
+          setScheduleEditor(null);
+        }
       );
     };
 
   const exceptionDraftFor = (ruleId: string): ExceptionValues =>
-    exceptionDrafts[ruleId] ?? defaultExceptionValues();
+    exceptionDrafts[ruleId] ??
+    readSettingsDraft(
+      currentProgram.program_id,
+      `${SETTINGS_DRAFT_ACTION.exception}:${ruleId}`,
+      isExceptionValues
+    ) ??
+    defaultExceptionValues();
 
   const submitException =
     (rule: ScheduleRule) => (event: FormEvent<HTMLFormElement>) => {
@@ -1690,7 +2035,18 @@ export const ProgramSettings = ({
           }
         },
         COPY.programs.settingsSaved,
-        () => setScheduleEditor(null)
+        () => {
+          clearManagementDraft(
+            currentProgram.program_id,
+            `${SETTINGS_DRAFT_ACTION.exception}:${rule.rule_id}`
+          );
+          setExceptionDrafts((previous) => {
+            const next = { ...previous };
+            delete next[rule.rule_id];
+            return next;
+          });
+          setScheduleEditor(null);
+        }
       );
     };
 
@@ -1747,8 +2103,36 @@ export const ProgramSettings = ({
   };
 
   const exitScheduleEditor = () => {
+    if (scheduleEditor?.kind === "new-rule") {
+      clearManagementDraft(
+        currentProgram.program_id,
+        SETTINGS_DRAFT_ACTION.newRule
+      );
+      setNewRule(defaultRuleValues());
+    } else if (scheduleEditor?.kind === "edit-rule") {
+      clearManagementDraft(
+        currentProgram.program_id,
+        `${SETTINGS_DRAFT_ACTION.rule}:${scheduleEditor.ruleId}`
+      );
+      setRuleDrafts((previous) => {
+        const next = { ...previous };
+        delete next[scheduleEditor.ruleId];
+        return next;
+      });
+    } else if (scheduleEditor?.kind === "new-exception") {
+      clearManagementDraft(
+        currentProgram.program_id,
+        `${SETTINGS_DRAFT_ACTION.exception}:${scheduleEditor.ruleId}`
+      );
+      setExceptionDrafts((previous) => {
+        const next = { ...previous };
+        delete next[scheduleEditor.ruleId];
+        return next;
+      });
+    }
     scheduleRuleCreateKey.current = null;
     setScheduleEditor(null);
+    setScheduleNavigationBlocked(false);
     setActionError(null);
     setNotice(null);
   };
@@ -1767,6 +2151,11 @@ export const ProgramSettings = ({
       return;
     }
     event.preventDefault();
+    if (scheduleEditorDirty) {
+      setScheduleNavigationBlocked(true);
+      announce(COPY.programs.settingsUnsaved);
+      return;
+    }
     exitScheduleEditor();
   };
 
@@ -2571,6 +2960,38 @@ export const ProgramSettings = ({
               )}
             </section>
           )}
+          <AlertDialog
+            open={scheduleNavigationBlocked}
+            onOpenChange={(open) => {
+              if (!open) {
+                setScheduleNavigationBlocked(false);
+              }
+            }}
+          >
+            <AlertDialogContent className="min-w-0 max-w-[32rem]">
+              <AlertDialogHeader>
+                <AlertDialogTitle>
+                  {COPY.programs.settingsLeaveTitle}
+                </AlertDialogTitle>
+                <AlertDialogDescription>
+                  {COPY.programs.settingsLeaveDescription}
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel
+                  onClick={() => setScheduleNavigationBlocked(false)}
+                >
+                  {COPY.programs.settingsContinueEditing}
+                </AlertDialogCancel>
+                <AlertDialogAction
+                  variant="destructive"
+                  onClick={exitScheduleEditor}
+                >
+                  {COPY.programs.settingsDiscardAndLeave}
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
           {showAttendance && (
             <ScreenSection
               className="mt-0"
