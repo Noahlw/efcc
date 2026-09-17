@@ -1,4 +1,5 @@
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -2255,6 +2256,52 @@ describe("ENR-01 participants workspace", () => {
     expect(
       screen.queryByRole("button", { name: COPY.programs.approve })
     ).not.toBeInTheDocument();
+  });
+
+  test("keeps delayed scroll restoration after the initial tab settles", async () => {
+    mockWorkspace();
+    mocks.listEnrollmentSnapshot.mockResolvedValue({
+      requests: [],
+      enrollments: [enrollment],
+    });
+    const scroller = document.createElement("div");
+    scroller.id = "shell-content";
+    document.body.append(scroller);
+    const storageKey = "efcc_programs_workspace_scroll:program-1:participants";
+    sessionStorage.setItem(storageKey, "180");
+    vi.useFakeTimers();
+
+    try {
+      render(
+        <ProgramWorkspace
+          programId="program-1"
+          task="participants"
+          onBack={vi.fn()}
+          onTaskChange={vi.fn()}
+        />
+      );
+
+      await act(async () => {
+        await Promise.resolve();
+        await Promise.resolve();
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+      expect(
+        screen.getByRole("tab", {
+          name: `${COPY.programs.tabsActive} (1)`,
+        })
+      ).toHaveAttribute("aria-selected", "true");
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(50);
+      });
+      expect(scroller.scrollTop).toBe(180);
+      expect(sessionStorage.getItem(storageKey)).toBeNull();
+    } finally {
+      vi.useRealTimers();
+      sessionStorage.removeItem(storageKey);
+    }
   });
 
   test("reviews selected requests and preserves a successful approval beside a stale item", async () => {

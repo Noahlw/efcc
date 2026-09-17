@@ -490,7 +490,6 @@ export const ParticipantsTask = () => {
     ) {
       return;
     }
-    scrollRestoredRef.current = true;
     const timeout = globalThis.setTimeout(() => {
       if (pendingScrollRef.current !== null) {
         restoreProgramsScrollY(pendingScrollRef.current);
@@ -499,12 +498,19 @@ export const ParticipantsTask = () => {
       }
       const focusId = pendingFocusRef.current;
       if (focusId !== null) {
+        /* oxlint-disable-next-line unicorn/prefer-query-selector -- persisted focus IDs identify stable controls exactly. */
         const target = document.getElementById(focusId);
         if (target instanceof HTMLElement) {
           target.focus({ preventScroll: true });
           clearWorkspaceFocus(scrollScope);
           pendingFocusRef.current = null;
         }
+      }
+      if (
+        pendingScrollRef.current === null &&
+        pendingFocusRef.current === null
+      ) {
+        scrollRestoredRef.current = true;
       }
     }, 50);
     return () => globalThis.clearTimeout(timeout);
