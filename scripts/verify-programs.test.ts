@@ -30,7 +30,7 @@ describe("T05.7 Programs promotion gate", () => {
       PROMOTION_STAGES.map(({ name, expectedTests }) => [name, expectedTests])
     ).toEqual([
       ["worker-contract", undefined],
-      ["browser-acceptance", 4],
+      ["browser-acceptance", 7],
       ["responsive-matrix", 18],
       ["non-browser-precommit", undefined],
     ]);

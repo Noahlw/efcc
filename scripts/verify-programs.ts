@@ -27,7 +27,7 @@ export const PROMOTION_STAGES: readonly PromotionStage[] = [
     name: "browser-acceptance",
     args: ["test:programs:browser"],
     report: "browser-results.json",
-    expectedTests: 4,
+    expectedTests: 7,
   },
   {
     name: "responsive-matrix",
