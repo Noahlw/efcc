@@ -10,16 +10,19 @@ import { rememberDeepLink } from "@/lib/session";
 import type {
   DepartmentModule,
   ManagementAttention,
+  ManagementCockpitView,
   Program,
 } from "./program-api";
 import type {
   ManagementEventAction,
   ProgramsEventFilter,
   ProgramsParticipantTab,
+  ProgramsScheduleEditor,
   ProgramsScheduleOrigin,
   ProgramsSettingsSection,
   ProgramsTask,
 } from "./programs-intent";
+import type { ManagementNotificationState } from "./programs-notifications";
 
 export interface WorkspaceRouteContextValue {
   departmentId: string | null;
@@ -52,6 +55,8 @@ export interface WorkspaceTaskContextValue {
   program: Program;
   modules: readonly DepartmentModule[];
   attention: ManagementAttention | null;
+  cockpit?: ManagementCockpitView | null;
+  notificationState?: ManagementNotificationState;
   /** Validated management directory context for non-intercepted Links. */
   departmentId?: string | null;
   hash?: string | null;
@@ -87,6 +92,14 @@ export interface WorkspaceTaskContextValue {
   onSettingsSectionChange?: (section: ProgramsSettingsSection | null) => void;
   /** Origin used to enter the focused Schedule task. */
   scheduleOrigin?: ProgramsScheduleOrigin;
+  scheduleEditor?: ProgramsScheduleEditor;
+  scheduleRuleId?: string;
+  onScheduleEditorChange?: (
+    editor: ProgramsScheduleEditor | null,
+    ruleId?: string | null
+  ) => void;
+  /** One-shot bypass for an already-confirmed external navigation. */
+  settingsNavigationAllowedRef?: { current: boolean };
 }
 
 const WorkspaceTaskContext = createContext<WorkspaceTaskContextValue | null>(

@@ -86,9 +86,11 @@ import {
 
 import {
   clearManagementDraft,
+  clearManagementDraftsForEntity,
   readManagementDraft,
   writeManagementDraft,
 } from "./management-draft";
+import type { ProgramsScheduleEditor } from "./programs-intent";
 
 interface BasicsValues {
   name: string;
@@ -222,6 +224,36 @@ function readSettingsDraft<T>(
   return guard(value) ? value : null;
 }
 
+function hasSettingsDraft(programId: string): boolean {
+  return (
+    readSettingsDraft(
+      programId,
+      SETTINGS_DRAFT_ACTION.basics,
+      isBasicsValues
+    ) !== null ||
+    readSettingsDraft(
+      programId,
+      SETTINGS_DRAFT_ACTION.publishing,
+      isPublishingValues
+    ) !== null ||
+    readSettingsDraft(
+      programId,
+      SETTINGS_DRAFT_ACTION.enrollment,
+      isEnrollmentValues
+    ) !== null ||
+    readSettingsDraft(
+      programId,
+      SETTINGS_DRAFT_ACTION.attendance,
+      isAttendanceValues
+    ) !== null ||
+    readSettingsDraft(
+      programId,
+      SETTINGS_DRAFT_ACTION.newRule,
+      isRuleValues
+    ) !== null
+  );
+}
+
 export interface ProgramSettingsProps {
   program: Program;
   eventsEnabled?: boolean;
@@ -249,6 +281,13 @@ export interface ProgramSettingsProps {
   }) => React.ReactNode;
   /** Canonical focused Schedule URL used by the child editor Back affordance. */
   scheduleBackHref?: string;
+  /** Route-owned focused Schedule editor identity, including reload recovery. */
+  scheduleEditor?: ProgramsScheduleEditor;
+  scheduleRuleId?: string;
+  onScheduleEditorChange?: (
+    editor: ProgramsScheduleEditor | null,
+    ruleId?: string | null
+  ) => void;
 }
 const LIFECYCLE_LABEL: Record<Program["lifecycle"], string> = {
   Draft: COPY.programs.lifecycleDraft,
@@ -582,6 +621,10 @@ export interface SettingsHubProps {
   accessHref?: string;
   scheduleHref?: string;
   notificationsHref?: string;
+  scheduleCurrentValue?: string;
+  notificationCurrentValue?: string;
+  onArchive?: () => void | Promise<void>;
+  archiveBusy?: boolean;
 }
 
 const SettingsHubRow = ({
@@ -661,6 +704,10 @@ export const SettingsHub = ({
   accessHref,
   scheduleHref,
   notificationsHref,
+  scheduleCurrentValue,
+  notificationCurrentValue,
+  onArchive,
+  archiveBusy = false,
 }: SettingsHubProps) => {
   const [archiveConfirmationOpen, setArchiveConfirmationOpen] = useState(false);
   const canManage = program.capabilities.manage;
@@ -778,11 +825,7 @@ export const SettingsHub = ({
                 }
                 title={COPY.programs.settingsHubSchedule}
                 description={COPY.programs.settingsHubScheduleHint}
-                currentValue={
-                  program.behavior_type === "Recurring"
-                    ? COPY.programs.detailBehaviorRecurring
-                    : COPY.programs.detailBehaviorOneOff
-                }
+                currentValue={scheduleCurrentValue}
                 href={scheduleHref}
               />
             )}
@@ -817,6 +860,7 @@ export const SettingsHub = ({
               }
               title={COPY.programs.settingsHubNotifications}
               description={COPY.programs.settingsHubNotificationsHint}
+              currentValue={notificationCurrentValue}
               href={notificationsHref}
             />
           </ScreenRowList>
@@ -860,9 +904,15 @@ export const SettingsHub = ({
             </AlertDialogCancel>
             <AlertDialogAction
               variant="destructive"
-              onClick={() => onSelect("publishing")}
+              disabled={archiveBusy || onArchive === undefined}
+              onClick={() => {
+                setArchiveConfirmationOpen(false);
+                void onArchive?.();
+              }}
             >
-              {COPY.programs.settingsHubArchiveConfirm}
+              {archiveBusy
+                ? COPY.programs.settingsArchiveSaving
+                : COPY.programs.settingsHubArchiveConfirm}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -876,6 +926,25 @@ type ScheduleEditorTarget =
   | { kind: "edit-rule"; ruleId: string }
   | { kind: "new-exception"; ruleId: string }
   | null;
+
+function scheduleTargetFromRoute(
+  editor: ProgramsScheduleEditor | undefined,
+  ruleId: string | undefined
+): ScheduleEditorTarget {
+  if (editor === "new-rule") {
+    return { kind: "new-rule" };
+  }
+  if (ruleId === undefined) {
+    return null;
+  }
+  if (editor === "edit-rule") {
+    return { kind: "edit-rule", ruleId };
+  }
+  if (editor === "new-exception") {
+    return { kind: "new-exception", ruleId };
+  }
+  return null;
+}
 
 const ScheduleRuleEditor = ({
   idPrefix,
@@ -1235,6 +1304,9 @@ export const ProgramSettings = ({
   showHeading = true,
   scheduleAddon,
   scheduleBackHref,
+  scheduleEditor: routeScheduleEditor,
+  scheduleRuleId: routeScheduleRuleId,
+  onScheduleEditorChange,
 }: ProgramSettingsProps) => {
   const [currentProgram, setCurrentProgram] = useState(program);
   const [basics, setBasics] = useState(
@@ -1280,8 +1352,9 @@ export const ProgramSettings = ({
       : []
   );
   const [ruleError, setRuleError] = useState<string | null>(null);
-  const [scheduleEditor, setScheduleEditor] =
-    useState<ScheduleEditorTarget>(null);
+  const [scheduleEditor, setScheduleEditor] = useState<ScheduleEditorTarget>(
+    () => scheduleTargetFromRoute(routeScheduleEditor, routeScheduleRuleId)
+  );
   const [scheduleNavigationBlocked, setScheduleNavigationBlocked] =
     useState(false);
   const [ruleDrafts, setRuleDrafts] = useState<Record<string, RuleValues>>({});
@@ -1300,6 +1373,9 @@ export const ProgramSettings = ({
     Record<string, ScheduleException[]>
   >({});
   const [exceptionError, setExceptionError] = useState<string | null>(null);
+  const [draftRecoveryOpen, setDraftRecoveryOpen] = useState(() =>
+    hasSettingsDraft(program.program_id)
+  );
   const [confirmingRetireRuleId, setConfirmingRetireRuleId] = useState<
     string | null
   >(null);
@@ -1395,6 +1471,69 @@ export const ProgramSettings = ({
         : section === "enrollment"
           ? COPY.programs.settingsSaveEnrollment
           : COPY.programs.settingsSaveAttendance;
+
+  useEffect(() => {
+    setScheduleEditor(
+      scheduleTargetFromRoute(routeScheduleEditor, routeScheduleRuleId)
+    );
+  }, [routeScheduleEditor, routeScheduleRuleId]);
+
+  useEffect(() => {
+    const target = scheduleTargetFromRoute(
+      routeScheduleEditor,
+      routeScheduleRuleId
+    );
+    if (!target || target.kind === "new-rule") {
+      return;
+    }
+    if (target.kind === "edit-rule") {
+      const rule = (rules ?? []).find(
+        (candidate) => candidate.rule_id === target.ruleId
+      );
+      if (rule) {
+        setRuleDrafts((previous) => ({
+          [target.ruleId]:
+            previous[target.ruleId] ??
+            readSettingsDraft(
+              currentProgram.program_id,
+              `${SETTINGS_DRAFT_ACTION.rule}:${target.ruleId}`,
+              isRuleValues
+            ) ??
+            ruleValuesFrom(rule),
+          ...previous,
+        }));
+      }
+    } else {
+      const draft = readSettingsDraft(
+        currentProgram.program_id,
+        `${SETTINGS_DRAFT_ACTION.exception}:${target.ruleId}`,
+        isExceptionValues
+      );
+      if (draft) {
+        setExceptionDrafts((previous) => ({
+          [target.ruleId]: previous[target.ruleId] ?? draft,
+          ...previous,
+        }));
+      }
+    }
+    if (
+      readManagementDraft(
+        currentProgram.program_id,
+        `${
+          target.kind === "edit-rule"
+            ? SETTINGS_DRAFT_ACTION.rule
+            : SETTINGS_DRAFT_ACTION.exception
+        }:${target.ruleId}`
+      ) !== null
+    ) {
+      setDraftRecoveryOpen(true);
+    }
+  }, [
+    currentProgram.program_id,
+    routeScheduleEditor,
+    routeScheduleRuleId,
+    rules,
+  ]);
 
   useEffect(() => {
     onDirtyChange?.(focusedSection && settingsDirty);
@@ -1952,12 +2091,14 @@ export const ProgramSettings = ({
           endTime: "",
         }));
         setScheduleEditor(null);
+        onScheduleEditorChange?.(null);
       }
     );
   };
 
   const beginRuleEdit = (rule: ScheduleRule) => {
     setScheduleEditor({ kind: "edit-rule", ruleId: rule.rule_id });
+    onScheduleEditorChange?.("edit-rule", rule.rule_id);
     setRuleDrafts((previous) => ({
       ...previous,
       [rule.rule_id]:
@@ -1992,6 +2133,7 @@ export const ProgramSettings = ({
             return next;
           });
           setScheduleEditor(null);
+          onScheduleEditorChange?.(null);
         }
       );
     };
@@ -2046,6 +2188,7 @@ export const ProgramSettings = ({
             return next;
           });
           setScheduleEditor(null);
+          onScheduleEditorChange?.(null);
         }
       );
     };
@@ -2088,12 +2231,14 @@ export const ProgramSettings = ({
   const beginNewRule = () => {
     scheduleRuleCreateKey.current = null;
     setScheduleEditor({ kind: "new-rule" });
+    onScheduleEditorChange?.("new-rule");
     setActionError(null);
     setNotice(null);
   };
 
   const beginException = (rule: ScheduleRule) => {
     setScheduleEditor({ kind: "new-exception", ruleId: rule.rule_id });
+    onScheduleEditorChange?.("new-exception", rule.rule_id);
     setExceptionDrafts((previous) => ({
       ...previous,
       [rule.rule_id]: exceptionDraftFor(rule.rule_id),
@@ -2132,6 +2277,7 @@ export const ProgramSettings = ({
     }
     scheduleRuleCreateKey.current = null;
     setScheduleEditor(null);
+    onScheduleEditorChange?.(null);
     setScheduleNavigationBlocked(false);
     setActionError(null);
     setNotice(null);
@@ -2183,6 +2329,22 @@ export const ProgramSettings = ({
     setNotice(null);
   };
 
+  const discardRecoveredDrafts = () => {
+    clearManagementDraftsForEntity(currentProgram.program_id);
+    setBasics(basicsFrom(currentProgram));
+    setPublishing(publishingFrom(currentProgram));
+    setEnrollment(enrollmentFrom(currentProgram));
+    setAttendance(attendanceFrom(currentProgram));
+    setNewRule(defaultRuleValues());
+    setRuleDrafts({});
+    setExceptionDrafts({});
+    setScheduleEditor(null);
+    onScheduleEditorChange?.(null);
+    setDraftRecoveryOpen(false);
+    setActionError(null);
+    setNotice(null);
+  };
+
   return (
     <section
       className="grid min-w-0 gap-4"
@@ -2194,6 +2356,27 @@ export const ProgramSettings = ({
           : undefined
       }
     >
+      <AlertDialog open={draftRecoveryOpen} onOpenChange={setDraftRecoveryOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {COPY.programs.settingsDraftRecoveryTitle}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {COPY.programs.settingsDraftRecoveryDescription}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>{COPY.programs.draftRecover}</AlertDialogCancel>
+            <AlertDialogAction
+              variant="destructive"
+              onClick={discardRecoveredDrafts}
+            >
+              {COPY.programs.draftDiscard}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
       {focusedEditor && navigationBlocked && focusedDirty && (
         <Alert tone="warning" announcement="none">
           {COPY.programs.settingsUnsaved} {focusedSaveLabel} /{" "}

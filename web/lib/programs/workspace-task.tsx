@@ -491,7 +491,9 @@ export const WorkspaceOverview = ({
             action={
               nextEventRead.status === "ready" ? (
                 <ScreenStatus tone="info">
-                  {COPY.programs.cockpitUpcomingStatus}
+                  {openEventChoices.length > 0
+                    ? COPY.programs.cockpitOpenStatus
+                    : COPY.programs.cockpitUpcomingStatus}
                 </ScreenStatus>
               ) : undefined
             }
@@ -889,6 +891,8 @@ export const WorkspaceTask = ({
   program,
   modules,
   attention,
+  cockpit,
+  notificationState,
   departmentId,
   hash,
   directoryQuery,
@@ -911,6 +915,10 @@ export const WorkspaceTask = ({
   settingsSection,
   onSettingsSectionChange,
   scheduleOrigin,
+  scheduleEditor,
+  scheduleRuleId,
+  onScheduleEditorChange,
+  settingsNavigationAllowedRef,
   settingsNavigationBlocked,
   onSettingsNavigationBlocked,
   onSettingsNavigationRequest,
@@ -920,6 +928,8 @@ export const WorkspaceTask = ({
     program,
     modules,
     attention,
+    cockpit,
+    notificationState,
     departmentId,
     hash,
     directoryQuery,
@@ -940,6 +950,10 @@ export const WorkspaceTask = ({
     settingsSection,
     onSettingsSectionChange,
     scheduleOrigin,
+    scheduleEditor,
+    scheduleRuleId,
+    onScheduleEditorChange,
+    settingsNavigationAllowedRef,
   };
 
   return (

@@ -6,6 +6,16 @@ import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -39,6 +49,7 @@ import {
 import { rememberDeepLink } from "@/lib/session";
 
 import { DepartmentSettingsPanel } from "./department-settings-panel";
+import { clearManagementDraft } from "./management-draft";
 import { ProgramForm } from "./program-form";
 import { buildProgramsHref } from "./programs-intent";
 import { useAsyncResource } from "./use-async-resource";
@@ -298,6 +309,8 @@ export interface ManagementDirectoryProps {
   focusProgramId?: string | null;
   /** Compact action rendered in the shared route header. */
   headerAction?: ReactNode;
+  departmentSettingsId?: string | null;
+  onDepartmentSettingsChange?: (departmentId: string | null) => void;
 }
 export const ManagementDirectory = ({
   onOpenProgram,
@@ -308,6 +321,8 @@ export const ManagementDirectory = ({
   onQueryChange,
   focusProgramId = null,
   headerAction,
+  departmentSettingsId,
+  onDepartmentSettingsChange,
 }: ManagementDirectoryProps) => {
   const [localQuery, setLocalQuery] = useState("");
   const [creatingProgram, setCreatingProgram] = useState(false);
@@ -425,14 +440,29 @@ export const ManagementDirectory = ({
   const canCreateProgram = !departmentOnly && creatableDepartments.length > 0;
   const [openDepartmentSettings, setOpenDepartmentSettings] =
     useState<Department | null>(null);
+  const routeDepartmentSettings =
+    state.kind === "ready" && departmentSettingsId
+      ? (state.departments.find(
+          ({ department_id }) => department_id === departmentSettingsId
+        ) ?? null)
+      : null;
+  const focusedDepartmentSettings = onDepartmentSettingsChange
+    ? routeDepartmentSettings
+    : openDepartmentSettings;
+  const [settingsDirty, setSettingsDirty] = useState(false);
+  const [settingsNavigationPending, setSettingsNavigationPending] = useState<
+    { kind: "history-back" } | { kind: "href"; href: string } | null
+  >(null);
+  const settingsNavigationAllowedRef = useRef(false);
+  const restoringSettingsHistory = useRef(false);
   const settingsTriggerRef = useRef<HTMLButtonElement | null>(null);
   const settingsReturnFocusPending = useRef(false);
 
   useEffect(() => {
-    if (openDepartmentSettings !== null) {
+    if (focusedDepartmentSettings !== null) {
       document
         .getElementById(
-          `${openDepartmentSettings.department_id}-settings-panel`
+          `${focusedDepartmentSettings.department_id}-settings-panel`
         )
         ?.focus();
       return;
@@ -441,16 +471,117 @@ export const ManagementDirectory = ({
       settingsTriggerRef.current?.focus();
       settingsReturnFocusPending.current = false;
     }
-  }, [openDepartmentSettings]);
+  }, [focusedDepartmentSettings]);
 
   const openSettings = (department: Department, trigger: HTMLButtonElement) => {
     settingsTriggerRef.current = trigger;
-    setOpenDepartmentSettings(department);
+    if (onDepartmentSettingsChange) {
+      onDepartmentSettingsChange(department.department_id);
+    } else {
+      setOpenDepartmentSettings(department);
+    }
   };
 
   const closeSettings = () => {
     settingsReturnFocusPending.current = true;
-    setOpenDepartmentSettings(null);
+    if (onDepartmentSettingsChange) {
+      onDepartmentSettingsChange(null);
+    } else {
+      setOpenDepartmentSettings(null);
+    }
+  };
+
+  useEffect(() => {
+    if (!settingsDirty || focusedDepartmentSettings === null) {
+      return;
+    }
+    const handleDocumentClick = (event: globalThis.MouseEvent) => {
+      if (
+        settingsNavigationAllowedRef.current ||
+        event.defaultPrevented ||
+        event.button !== 0 ||
+        event.metaKey ||
+        event.ctrlKey ||
+        event.shiftKey ||
+        event.altKey
+      ) {
+        return;
+      }
+      const { target } = event;
+      if (!(target instanceof Element)) {
+        return;
+      }
+      const anchor = target.closest("a[href]");
+      if (!(anchor instanceof HTMLAnchorElement)) {
+        return;
+      }
+      const anchorTarget = anchor.getAttribute("target");
+      if (
+        anchorTarget !== null &&
+        anchorTarget !== "" &&
+        anchorTarget.toLowerCase() !== "_self"
+      ) {
+        return;
+      }
+      const currentUrl = new URL(window.location.href);
+      const nextUrl = new URL(anchor.href, currentUrl);
+      if (
+        (nextUrl.protocol !== "http:" && nextUrl.protocol !== "https:") ||
+        nextUrl.origin !== currentUrl.origin
+      ) {
+        return;
+      }
+      event.preventDefault();
+      event.stopPropagation();
+      setSettingsNavigationPending({ kind: "href", href: nextUrl.href });
+    };
+    const handleBeforeUnload = (event: BeforeUnloadEvent) => {
+      if (settingsNavigationAllowedRef.current) {
+        return;
+      }
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    const handlePopState = () => {
+      if (settingsNavigationAllowedRef.current) {
+        settingsNavigationAllowedRef.current = false;
+        return;
+      }
+      if (restoringSettingsHistory.current) {
+        restoringSettingsHistory.current = false;
+        return;
+      }
+      restoringSettingsHistory.current = true;
+      window.history.forward();
+      setSettingsNavigationPending({ kind: "history-back" });
+    };
+    document.addEventListener("click", handleDocumentClick, true);
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    window.addEventListener("popstate", handlePopState);
+    return () => {
+      document.removeEventListener("click", handleDocumentClick, true);
+      window.removeEventListener("beforeunload", handleBeforeUnload);
+      window.removeEventListener("popstate", handlePopState);
+    };
+  }, [focusedDepartmentSettings, settingsDirty]);
+
+  const discardSettingsAndLeave = () => {
+    const pending = settingsNavigationPending;
+    if (!pending || !focusedDepartmentSettings) {
+      return;
+    }
+    clearManagementDraft(
+      focusedDepartmentSettings.department_id,
+      "department-settings"
+    );
+    setSettingsNavigationPending(null);
+    setSettingsDirty(false);
+    settingsNavigationAllowedRef.current = true;
+    if (pending.kind === "history-back") {
+      window.history.back();
+      return;
+    }
+    window.location.assign(pending.href);
   };
 
   const showDirectoryHeaderAction =
@@ -540,13 +671,14 @@ export const ManagementDirectory = ({
 
       {showDirectory &&
         state.kind === "ready" &&
-        openDepartmentSettings !== null &&
+        focusedDepartmentSettings !== null &&
         !departmentOnly && (
           <div className="mb-5 min-w-0">
             <DepartmentSettingsPanel
-              department={openDepartmentSettings}
+              department={focusedDepartmentSettings}
               onClose={closeSettings}
               onOpenProgram={onOpenProgram}
+              onDirtyChange={setSettingsDirty}
             />
           </div>
         )}
@@ -643,7 +775,7 @@ export const ManagementDirectory = ({
                 <DepartmentSettingsAction
                   departments={scopedDepartments}
                   onOpenDepartment={openSettings}
-                  settingsOpen={openDepartmentSettings !== null}
+                  settingsOpen={focusedDepartmentSettings !== null}
                 />
               ) : undefined
             }
@@ -749,6 +881,36 @@ export const ManagementDirectory = ({
           </ScreenSection>
         </>
       )}
+      <AlertDialog
+        open={settingsNavigationPending !== null}
+        onOpenChange={(open) => {
+          if (!open) {
+            setSettingsNavigationPending(null);
+          }
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {COPY.programs.departmentDraftLeaveTitle}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {COPY.programs.departmentDraftLeaveDescription}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>
+              {COPY.programs.settingsContinueEditing}
+            </AlertDialogCancel>
+            <AlertDialogAction
+              variant="destructive"
+              onClick={discardSettingsAndLeave}
+            >
+              {COPY.programs.settingsDiscardAndLeave}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 };

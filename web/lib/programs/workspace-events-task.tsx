@@ -6,6 +6,16 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { FormEvent } from "react";
 
 import { Alert } from "@/components/ui/alert";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -1597,6 +1607,9 @@ export const EventsTask = () => {
     [programId]
   );
   const [createOpen, setCreateOpen] = useState(() => initialDraft !== null);
+  const [createRecoveryOpen, setCreateRecoveryOpen] = useState(
+    () => initialDraft !== null
+  );
   const [createBusy, setCreateBusy] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
   const [createDate, setCreateDate] = useState(initialDraft?.date ?? "");
@@ -1816,6 +1829,12 @@ export const EventsTask = () => {
     }
     setCreateOpen(open);
     setCreateError(null);
+  };
+  const discardRecoveredCreateDraft = () => {
+    clearEventCreateDraft(programId);
+    resetCreateForm();
+    setCreateOpen(false);
+    setCreateRecoveryOpen(false);
   };
   useEffect(() => {
     if (
@@ -2153,6 +2172,30 @@ export const EventsTask = () => {
         ) : undefined
       }
     >
+      <AlertDialog
+        open={createRecoveryOpen}
+        onOpenChange={setCreateRecoveryOpen}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {COPY.programs.eventCreateRecoveryTitle}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {COPY.programs.eventCreateRecoveryDescription}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>{COPY.programs.draftRecover}</AlertDialogCancel>
+            <AlertDialogAction
+              variant="destructive"
+              onClick={discardRecoveredCreateDraft}
+            >
+              {COPY.programs.draftDiscard}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
       <p className="m-0 wrap-anywhere text-sm leading-6 text-[var(--screen-muted)]">
         {COPY.programs.repeatInformational}
       </p>

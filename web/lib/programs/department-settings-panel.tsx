@@ -87,10 +87,12 @@ export const DepartmentSettingsPanel = ({
   department,
   onClose,
   onOpenProgram,
+  onDirtyChange,
 }: {
   department: Department;
   onClose: () => void;
   onOpenProgram?: (programId: string, created?: boolean) => void;
+  onDirtyChange?: (dirty: boolean) => void;
 }) => {
   const [detail, setDetail] = useState<DepartmentDetail | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -99,6 +101,7 @@ export const DepartmentSettingsPanel = ({
   const [busy, setBusy] = useState(false);
   const [creating, setCreating] = useState(false);
   const [closeConfirmationOpen, setCloseConfirmationOpen] = useState(false);
+  const [draftRecoveryOpen, setDraftRecoveryOpen] = useState(false);
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const mounted = useRef(true);
@@ -123,6 +126,9 @@ export const DepartmentSettingsPanel = ({
         if (isDepartmentDraft(stored)) {
           setName(stored.name);
           setDescription(stored.description);
+          if (!preserveDetail) {
+            setDraftRecoveryOpen(true);
+          }
         } else {
           setName(nextDetail.department.name);
           setDescription(nextDetail.department.description ?? "");
@@ -151,6 +157,11 @@ export const DepartmentSettingsPanel = ({
     detail !== null &&
     (name !== detail.department.name ||
       description !== (detail.department.description ?? ""));
+
+  useEffect(() => {
+    onDirtyChange?.(isDirty);
+    return () => onDirtyChange?.(false);
+  }, [isDirty, onDirtyChange]);
 
   useEffect(() => {
     if (!detail) {
@@ -263,6 +274,37 @@ export const DepartmentSettingsPanel = ({
 
   return (
     <>
+      <AlertDialog open={draftRecoveryOpen} onOpenChange={setDraftRecoveryOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {COPY.programs.departmentDraftRecoveryTitle}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {COPY.programs.departmentDraftRecoveryDescription}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>{COPY.programs.draftRecover}</AlertDialogCancel>
+            <AlertDialogAction
+              variant="destructive"
+              onClick={() => {
+                clearManagementDraft(
+                  department.department_id,
+                  DEPARTMENT_DRAFT_ACTION
+                );
+                if (detail) {
+                  setName(detail.department.name);
+                  setDescription(detail.department.description ?? "");
+                }
+                setDraftRecoveryOpen(false);
+              }}
+            >
+              {COPY.programs.draftDiscard}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
       <ScreenCard asChild className="min-w-0">
         <section
           id={`${department.department_id}-settings-panel`}

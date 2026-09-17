@@ -3,15 +3,21 @@
 import { useCallback, useEffect, useState } from "react";
 import type { MouseEventHandler, ReactNode } from "react";
 
-import { COPY } from "@/lib/copy";
+import { Alert } from "@/components/ui/alert";
+import { COPY, errorMessage } from "@/lib/copy";
 import { announce } from "@/lib/live-region";
 import { ScreenHeader } from "@/lib/screen-foundations";
 
+import { updateProgram } from "./program-api";
 import { ProgramSettings, SettingsHub } from "./program-settings";
 import type { ProgramSettingsSection } from "./program-settings";
 import { buildProgramsHref, parseProgramsIntent } from "./programs-intent";
 import type { ProgramsScheduleOrigin, ProgramsTask } from "./programs-intent";
-import { hasModule, useWorkspaceTaskContext } from "./workspace-context";
+import {
+  formatEventTime,
+  hasModule,
+  useWorkspaceTaskContext,
+} from "./workspace-context";
 
 export type SettingsNavigationRequest =
   | { kind: "back" }
@@ -24,6 +30,7 @@ export type SettingsNavigationRequest =
     }
   | { kind: "href"; href: string };
 
+// oxlint-disable-next-line eslint/complexity -- this is the single Settings route boundary.
 export const SettingsTask = ({
   onFocusChange,
   onDirtyChange,
@@ -48,6 +55,10 @@ export const SettingsTask = ({
     departmentId,
     hash,
     directoryQuery,
+    cockpit,
+    notificationState,
+    workspaceFreshness,
+    settingsNavigationAllowedRef,
     settingsSection: routeSection,
     onSettingsSectionChange,
   } = useWorkspaceTaskContext();
@@ -60,6 +71,9 @@ export const SettingsTask = ({
     }
   }, [onSettingsSectionChange, routeSection]);
   const [focusedDirty, setFocusedDirty] = useState(false);
+  const [archiveBusy, setArchiveBusy] = useState(false);
+  const [archiveMessage, setArchiveMessage] = useState<string | null>(null);
+  const [archiveError, setArchiveError] = useState<string | null>(null);
   useEffect(() => {
     onFocusChange?.(section !== null);
   }, [onFocusChange, section]);
@@ -134,6 +148,57 @@ export const SettingsTask = ({
     [onNavigationBlocked, onNavigationRequest]
   );
 
+  const archiveProgram = useCallback(async () => {
+    if (
+      archiveBusy ||
+      !program.capabilities.manage ||
+      program.lifecycle !== "Active"
+    ) {
+      return;
+    }
+    setArchiveBusy(true);
+    setArchiveMessage(null);
+    setArchiveError(null);
+    try {
+      await updateProgram(program.program_id, { lifecycle: "Archived" });
+      const refreshed = await onWorkspaceRefresh?.();
+      const message =
+        onWorkspaceRefresh !== undefined && refreshed === undefined
+          ? COPY.programs.workspaceSavedStale
+          : COPY.programs.settingsArchiveSaved;
+      setArchiveMessage(message);
+      announce(message);
+    } catch (error) {
+      const message = errorMessage(error);
+      setArchiveError(message);
+      announce(message);
+    } finally {
+      setArchiveBusy(false);
+    }
+  }, [archiveBusy, onWorkspaceRefresh, program]);
+
+  const scheduleCurrentValue =
+    workspaceFreshness === "stale"
+      ? COPY.programs.settingsHubCurrentStale
+      : cockpit === null || cockpit === undefined
+        ? COPY.programs.settingsHubCurrentError
+        : `${cockpit.active_event_count} 個有效聚會 · ${
+            cockpit.next_event
+              ? `下一次 ${formatEventTime(cockpit.next_event.starts_at)}`
+              : COPY.programs.settingsHubNoUpcoming
+          }`;
+  const notificationCurrentValue =
+    notificationState?.kind === "ready"
+      ? (() => {
+          const items = notificationState.notifications.items.filter(
+            ({ program_id }) => program_id === program.program_id
+          );
+          return `未讀 ${items.filter(({ read }) => !read).length} · 共 ${items.length} 項`;
+        })()
+      : notificationState?.kind === "loading"
+        ? COPY.programs.settingsHubCurrentLoading
+        : COPY.programs.settingsHubCurrentError;
+
   useEffect(() => {
     if (!focusedDirty) {
       return;
@@ -142,6 +207,7 @@ export const SettingsTask = ({
     // eslint-disable-next-line eslint/complexity -- this is the single dirty-route interception boundary.
     const handleDocumentClick = (event: globalThis.MouseEvent) => {
       if (
+        settingsNavigationAllowedRef?.current ||
         event.defaultPrevented ||
         event.button !== 0 ||
         event.metaKey ||
@@ -214,6 +280,9 @@ export const SettingsTask = ({
       }
     };
     const handleBeforeUnload = (event: BeforeUnloadEvent) => {
+      if (settingsNavigationAllowedRef?.current) {
+        return;
+      }
       event.preventDefault();
       event.returnValue = "";
     };
@@ -224,7 +293,12 @@ export const SettingsTask = ({
       document.removeEventListener("click", handleDocumentClick, true);
       window.removeEventListener("beforeunload", handleBeforeUnload);
     };
-  }, [blockNavigation, focusedDirty, program.program_id]);
+  }, [
+    blockNavigation,
+    focusedDirty,
+    program.program_id,
+    settingsNavigationAllowedRef,
+  ]);
 
   const handleFocusedBack: MouseEventHandler<HTMLAnchorElement> = (event) => {
     if (
@@ -257,15 +331,27 @@ export const SettingsTask = ({
   };
 
   return section === null ? (
-    <SettingsHub
-      program={program}
-      eventsEnabled={hasModule(modules, "events")}
-      attendanceEnabled={hasModule(modules, "attendance")}
-      onSelect={handleSectionSelect}
-      accessHref={accessAvailable ? accessHref : undefined}
-      scheduleHref={scheduleHref}
-      notificationsHref={notificationsHref}
-    />
+    <>
+      {archiveMessage !== null && (
+        <Alert tone="success">{archiveMessage}</Alert>
+      )}
+      {archiveError !== null && (
+        <Alert variant="destructive">{archiveError}</Alert>
+      )}
+      <SettingsHub
+        program={program}
+        eventsEnabled={hasModule(modules, "events")}
+        attendanceEnabled={hasModule(modules, "attendance")}
+        onSelect={handleSectionSelect}
+        accessHref={accessAvailable ? accessHref : undefined}
+        scheduleHref={scheduleHref}
+        notificationsHref={notificationsHref}
+        scheduleCurrentValue={scheduleCurrentValue}
+        notificationCurrentValue={notificationCurrentValue}
+        onArchive={archiveProgram}
+        archiveBusy={archiveBusy}
+      />
+    </>
   ) : (
     <section
       className="grid min-w-0 gap-[var(--screen-section-gap)]"

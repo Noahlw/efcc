@@ -39,6 +39,7 @@ import type {
   ProgramsEventFilter,
   ProgramsParticipantFilter,
   ProgramsParticipantTab,
+  ProgramsScheduleEditor,
   ProgramsScheduleOrigin,
   ProgramsSettingsSection,
   ProgramsOrigin,
@@ -268,6 +269,8 @@ const ManagementPanel = ({
   onParticipantTabChange,
   onParticipantQueryChange,
   onSettingsSectionChange,
+  onScheduleEditorChange,
+  onDepartmentSettingsChange,
 }: {
   projection: ProgramsManagementAccess;
   intent: ProgramsIntent;
@@ -291,6 +294,11 @@ const ManagementPanel = ({
   onParticipantTabChange: (tab: ProgramsParticipantTab) => void;
   onParticipantQueryChange: (query: string) => void;
   onSettingsSectionChange: (section: ProgramsSettingsSection | null) => void;
+  onScheduleEditorChange: (
+    editor: ProgramsScheduleEditor | null,
+    ruleId?: string | null
+  ) => void;
+  onDepartmentSettingsChange: (departmentId: string | null) => void;
 }) => {
   const router = useRouter();
   const [attentionRefreshKey, setAttentionRefreshKey] = useState(0);
@@ -440,6 +448,7 @@ const ManagementPanel = ({
             eventAction={intent.eventAction}
             created={intent.created}
             attention={attention}
+            notificationState={notificationState}
             onAttentionRefresh={refreshAttention}
             onBack={onBackDirectory}
             onTaskChange={onTaskChange}
@@ -449,11 +458,14 @@ const ManagementPanel = ({
             participantTab={intent.participantTab}
             participantQuery={intent.participantQuery}
             settingsSection={intent.settingsSection}
+            scheduleEditor={intent.scheduleEditor}
+            scheduleRuleId={intent.scheduleRuleId}
             scheduleOrigin={intent.scheduleOrigin}
             onEventFilterChange={onEventFilterChange}
             onParticipantTabChange={onParticipantTabChange}
             onParticipantQueryChange={onParticipantQueryChange}
             onSettingsSectionChange={onSettingsSectionChange}
+            onScheduleEditorChange={onScheduleEditorChange}
           />
         </WorkspaceRouteProvider>
       ) : (
@@ -464,6 +476,8 @@ const ManagementPanel = ({
           onQueryChange={onDirectoryQueryChange}
           focusProgramId={directoryFocusProgramId}
           onOpenProgram={onOpenProgram}
+          departmentSettingsId={intent.departmentSettingsId}
+          onDepartmentSettingsChange={onDepartmentSettingsChange}
         />
       )}
     </>
@@ -555,6 +569,8 @@ const ProgramsBoundaryBody = ({
   onParticipantTabChange,
   onParticipantQueryChange,
   onSettingsSectionChange,
+  onScheduleEditorChange,
+  onDepartmentSettingsChange,
   onCatalogQueryChange,
   onCatalogFilterChange,
   onCatalogFiltersClear,
@@ -594,6 +610,11 @@ const ProgramsBoundaryBody = ({
   onParticipantTabChange: (tab: ProgramsParticipantTab) => void;
   onParticipantQueryChange: (query: string) => void;
   onSettingsSectionChange: (section: ProgramsSettingsSection | null) => void;
+  onScheduleEditorChange: (
+    editor: ProgramsScheduleEditor | null,
+    ruleId?: string | null
+  ) => void;
+  onDepartmentSettingsChange: (departmentId: string | null) => void;
   onCatalogQueryChange: (query: string) => void;
   onCatalogFilterChange: (filter: ProgramsParticipantFilter) => void;
   onCatalogFiltersClear: () => void;
@@ -622,6 +643,8 @@ const ProgramsBoundaryBody = ({
         onParticipantTabChange={onParticipantTabChange}
         onParticipantQueryChange={onParticipantQueryChange}
         onSettingsSectionChange={onSettingsSectionChange}
+        onScheduleEditorChange={onScheduleEditorChange}
+        onDepartmentSettingsChange={onDepartmentSettingsChange}
         onBackDirectory={() =>
           navigateMode(
             "management",
@@ -1027,6 +1050,49 @@ export const ProgramsBoundary = () => {
       true
     );
   };
+  const updateManagementScheduleEditor = (
+    scheduleEditor: ProgramsScheduleEditor | null,
+    scheduleRuleId?: string | null
+  ) => {
+    if (!intent.programId || intent.task !== "schedule") {
+      return;
+    }
+    applyProgramsNavigation(
+      router,
+      setSearch,
+      buildProgramsHref({
+        mode: "management",
+        programId: intent.programId,
+        departmentId: intent.departmentId,
+        task: "schedule",
+        scheduleOrigin: intent.scheduleOrigin,
+        scheduleEditor,
+        scheduleRuleId,
+        directoryQuery: intent.directoryQuery,
+        hash: intent.hash,
+      }),
+      true
+    );
+  };
+  const updateManagementDepartmentSettings = (
+    departmentSettingsId: string | null
+  ) => {
+    if (intent.mode !== "management" || intent.programId !== null) {
+      return;
+    }
+    applyProgramsNavigation(
+      router,
+      setSearch,
+      buildProgramsHref({
+        mode: "management",
+        departmentId: intent.departmentId,
+        departmentSettingsId,
+        directoryQuery: intent.directoryQuery,
+        hash: intent.hash,
+      }),
+      departmentSettingsId === null
+    );
+  };
   const updateCatalogQuery = (catalogQuery: string) => {
     applyProgramsNavigation(
       router,
@@ -1201,6 +1267,8 @@ export const ProgramsBoundary = () => {
         onParticipantTabChange={updateManagementParticipantTab}
         onParticipantQueryChange={updateManagementParticipantQuery}
         onSettingsSectionChange={updateManagementSettingsSection}
+        onScheduleEditorChange={updateManagementScheduleEditor}
+        onDepartmentSettingsChange={updateManagementDepartmentSettings}
         onCatalogQueryChange={updateCatalogQuery}
         onCatalogFilterChange={updateCatalogFilter}
         onCatalogFiltersClear={clearCatalogFilters}

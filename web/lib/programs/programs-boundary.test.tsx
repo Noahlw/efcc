@@ -218,15 +218,14 @@ describe("Programs intent", () => {
       malformed: false,
     });
     expect(
-      parseProgramsIntent("?program=program-1&from=unknown").malformed
-    ).toBeTruthy();
+      parseProgramsIntent("?program=program-1&from=unknown")
+    ).toMatchObject({ malformed: false });
     expect(
       parseProgramsIntent("?mode=management&program=program-1&from=home")
-        .malformed
-    ).toBeTruthy();
+    ).toMatchObject({ malformed: false });
     expect(
-      parseProgramsIntent("?program=program-1&from=home&from=home").malformed
-    ).toBeTruthy();
+      parseProgramsIntent("?program=program-1&from=home&from=home")
+    ).toMatchObject({ malformed: false });
   });
 
   test("keeps management mode URL-addressable and rejects malformed intent", () => {
@@ -296,6 +295,47 @@ describe("Programs intent", () => {
         "?mode=management&program=program-1&task=schedule&event=event-42"
       ).malformed
     ).toBeTruthy();
+  });
+
+  test("round-trips focused Schedule editor identity and Department Settings", () => {
+    const scheduleHref = buildProgramsHref({
+      mode: "management",
+      programId: "program-1",
+      task: "schedule",
+      scheduleOrigin: "settings",
+      scheduleEditor: "new-exception",
+      scheduleRuleId: "rule-1",
+    });
+    expect(scheduleHref).toBe(
+      "/programs?mode=management&program=program-1&task=schedule&scheduleOrigin=settings&scheduleEditor=new-exception&scheduleRule=rule-1"
+    );
+    expect(
+      parseProgramsIntent(scheduleHref.slice("/programs".length))
+    ).toMatchObject({
+      mode: "management",
+      programId: "program-1",
+      task: "schedule",
+      scheduleOrigin: "settings",
+      scheduleEditor: "new-exception",
+      scheduleRuleId: "rule-1",
+      malformed: false,
+    });
+
+    const departmentHref = buildProgramsHref({
+      mode: "management",
+      departmentId: "department-1",
+      departmentSettingsId: "department-1",
+    });
+    expect(departmentHref).toBe(
+      "/programs?mode=management&department=department-1&departmentSettings=department-1"
+    );
+    expect(
+      parseProgramsIntent(departmentHref.slice("/programs".length))
+    ).toMatchObject({
+      departmentId: "department-1",
+      departmentSettingsId: "department-1",
+      malformed: false,
+    });
   });
 
   test("round-trips directory, task, filter, and focused Schedule context", () => {

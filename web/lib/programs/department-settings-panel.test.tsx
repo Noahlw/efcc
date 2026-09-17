@@ -1,10 +1,11 @@
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
 import { COPY } from "@/lib/copy";
 
 import { DepartmentSettingsPanel } from "./department-settings-panel";
+import { clearManagementDraft, writeManagementDraft } from "./management-draft";
 
 const mocks = vi.hoisted(() => ({
   getDepartment: vi.fn(),
@@ -54,6 +55,7 @@ beforeEach(() => {
   mocks.getDepartment.mockResolvedValue({ department, modules: [] });
 });
 afterEach(() => {
+  clearManagementDraft(managedDepartment.department_id, "department-settings");
   cleanup();
   vi.clearAllMocks();
 });
@@ -142,5 +144,34 @@ describe("DepartmentSettingsPanel identity access", () => {
     expect(
       screen.getByText(COPY.programs.departmentDraftBlocking)
     ).toBeInTheDocument();
+  });
+
+  test("requires an explicit recovery choice for a restored Department draft", async () => {
+    writeManagementDraft(
+      managedDepartment.department_id,
+      "department-settings",
+      {
+        name: "恢復中的部門",
+        description: "恢復中的描述",
+      }
+    );
+    const user = userEvent.setup();
+    render(
+      <DepartmentSettingsPanel
+        department={managedDepartment}
+        onClose={vi.fn()}
+      />
+    );
+
+    const dialog = await screen.findByRole("alertdialog", {
+      name: COPY.programs.departmentDraftRecoveryTitle,
+    });
+    expect(dialog).toBeInTheDocument();
+    await user.click(
+      within(dialog).getByRole("button", { name: COPY.programs.draftRecover })
+    );
+    expect(
+      await screen.findByRole("textbox", { name: COPY.programs.deptName })
+    ).toHaveValue("恢復中的部門");
   });
 });

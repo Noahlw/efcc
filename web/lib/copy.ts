@@ -764,6 +764,7 @@ export const COPY = {
     cockpitViewEvents: "查看聚會",
     cockpitChooseMeeting: "選擇要處理的聚會",
     cockpitUpcomingStatus: "即將開始",
+    cockpitOpenStatus: "現正開放簽到",
     cockpitOperations: "營運",
     cockpitWeeklyWork: "每週工作",
     cockpitEventsTile: "聚會",
@@ -911,8 +912,17 @@ export const COPY = {
     settingsHubArchiveHint: "停止一般使用，但保留歷史紀錄",
     settingsHubArchiveConfirmTitle: "確認封存課程？",
     settingsHubArchiveConfirmBody:
-      "封存會停止一般使用並保留歷史紀錄。下一步會開啟發布設定，讓你再次確認並儲存。",
-    settingsHubArchiveConfirm: "前往封存設定",
+      "封存會停止一般使用並保留歷史紀錄。確認後會立即套用封存狀態。",
+    settingsHubArchiveConfirm: "確認封存",
+    settingsArchiveSaving: "封存中…",
+    settingsArchiveSaved: "課程已封存。",
+    settingsHubScheduleCurrentHint: "目前值未能確認。",
+    settingsHubCurrentLoading: "正在確認目前值…",
+    settingsHubCurrentError: "目前值無法載入",
+    settingsHubCurrentStale: "目前值可能已過時",
+    settingsHubNoUpcoming: "沒有即將舉行的聚會",
+    draftRecover: "恢復草稿",
+    draftDiscard: "捨棄草稿",
     settingsBackToHub: "返回設定",
     settingsBasics: "基本資料",
     settingsBasicsLead: "更新課程名稱、簡介、類別及在課程目錄中的顯示次序。",
@@ -938,6 +948,9 @@ export const COPY = {
       "你的管理範圍仍然保留，但這個課程的設定不能由目前帳戶編輯。",
     settingsSaved: "課程設定已儲存。",
     settingsUnsaved: "有未儲存變更。",
+    settingsDraftRecoveryTitle: "發現未完成的設定草稿",
+    settingsDraftRecoveryDescription:
+      "你可以恢復上次未完成的設定，或者捨棄所有草稿並載入目前資料。",
     settingsDiscard: "捨棄變更",
     settingsLeaveTitle: "未儲存設定變更",
     settingsLeaveDescription:
@@ -1222,6 +1235,9 @@ export const COPY = {
     departmentDraftLeaveTitle: "未儲存部門資料變更",
     departmentDraftLeaveDescription:
       "如果關閉，未儲存的部門資料會被捨棄。你可以繼續編輯，或確認捨棄並關閉。",
+    departmentDraftRecoveryTitle: "發現未完成的部門草稿",
+    departmentDraftRecoveryDescription:
+      "你可以恢復上次未完成的部門資料，或者捨棄草稿並載入目前資料。",
     saveDepartment: "儲存部門",
     departmentScopeHint: "此設定只適用於目前部門，不會改變其他部門範圍。",
     enable: "啟用",
@@ -1457,6 +1473,9 @@ export const COPY = {
     eventCreateLeaveTitle: "未儲存聚會草稿",
     eventCreateLeaveDescription:
       "如果離開，未儲存的聚會草稿會被捨棄。你可以繼續編輯，或確認捨棄並離開。",
+    eventCreateRecoveryTitle: "發現未完成的聚會草稿",
+    eventCreateRecoveryDescription:
+      "你可以恢復上次未完成的聚會資料，或者捨棄草稿並重新開始。",
     eventCreateContinueEditing: "繼續編輯",
     eventCreateDiscardAndLeave: "捨棄並離開",
     eventEditUnsaved: "有未儲存聚會資料變更；請先儲存或取消後再離開。",

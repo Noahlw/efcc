@@ -22,6 +22,7 @@ export type ProgramsSettingsSection =
   | "schedule"
   | "attendance";
 export type ProgramsScheduleOrigin = "events" | "settings";
+export type ProgramsScheduleEditor = "new-rule" | "edit-rule" | "new-exception";
 
 export interface ProgramsIntent {
   mode: ProgramsMode;
@@ -42,6 +43,8 @@ export interface ProgramsIntent {
   origin?: ProgramsOrigin;
   /** Directory search retained while a management workspace is open. */
   directoryQuery?: string;
+  /** Department Settings focused from the management directory. */
+  departmentSettingsId?: string;
   /** Participant catalog search/filter retained across detail navigation. */
   catalogQuery?: string;
   catalogFilter?: ProgramsParticipantFilter;
@@ -54,6 +57,8 @@ export interface ProgramsIntent {
   settingsSection?: ProgramsSettingsSection;
   /** Whether a focused Schedule was entered from Events or Settings. */
   scheduleOrigin?: ProgramsScheduleOrigin;
+  scheduleEditor?: ProgramsScheduleEditor;
+  scheduleRuleId?: string;
 }
 
 export interface ProgramsHrefIntent {
@@ -70,6 +75,7 @@ export interface ProgramsHrefIntent {
   /** First-party Section that opened a participant detail intent. */
   origin?: ProgramsOrigin;
   directoryQuery?: string | null;
+  departmentSettingsId?: string | null;
   catalogQuery?: string | null;
   catalogFilter?: ProgramsParticipantFilter | null;
   eventFilter?: ProgramsEventFilter | null;
@@ -77,6 +83,8 @@ export interface ProgramsHrefIntent {
   participantQuery?: string | null;
   settingsSection?: ProgramsSettingsSection | null;
   scheduleOrigin?: ProgramsScheduleOrigin | null;
+  scheduleEditor?: ProgramsScheduleEditor | null;
+  scheduleRuleId?: string | null;
 }
 const SAFE_PROGRAM_ID = /^[A-Za-z0-9][A-Za-z0-9._~-]{0,127}$/u;
 const SAFE_HASH = /^#[A-Za-z0-9._~-]{1,128}$/u;
@@ -123,6 +131,11 @@ const SCHEDULE_ORIGINS: readonly ProgramsScheduleOrigin[] = [
   "events",
   "settings",
 ];
+const SCHEDULE_EDITORS: readonly ProgramsScheduleEditor[] = [
+  "new-rule",
+  "edit-rule",
+  "new-exception",
+];
 
 function isProgramsTask(value: string): value is ProgramsTask {
   return PROGRAM_TASKS.includes(value as ProgramsTask);
@@ -152,6 +165,10 @@ function isSettingsSection(value: string): value is ProgramsSettingsSection {
 
 function isScheduleOrigin(value: string): value is ProgramsScheduleOrigin {
   return SCHEDULE_ORIGINS.includes(value as ProgramsScheduleOrigin);
+}
+
+function isScheduleEditor(value: string): value is ProgramsScheduleEditor {
+  return SCHEDULE_EDITORS.includes(value as ProgramsScheduleEditor);
 }
 
 function singleParam(
@@ -232,6 +249,61 @@ function parseDepartmentIntent(
     malformed:
       parsed.malformed ||
       (mode !== "management" && rawDepartment.value !== null),
+  };
+}
+
+function parseDepartmentSettingsIntent(
+  raw: { value: string | null; duplicate: boolean },
+  mode: ProgramsMode,
+  programId: string | null
+): { value: string | undefined; malformed: boolean } {
+  const value =
+    raw.value !== null && SAFE_PROGRAM_ID.test(raw.value)
+      ? raw.value
+      : undefined;
+  return {
+    value,
+    malformed:
+      raw.duplicate ||
+      (raw.value !== null &&
+        (!value || mode !== "management" || programId !== null)),
+  };
+}
+
+function parseScheduleEditorIntent(
+  rawEditor: { value: string | null; duplicate: boolean },
+  rawRuleId: { value: string | null; duplicate: boolean },
+  mode: ProgramsMode,
+  task: ProgramsTask | undefined
+): {
+  editor: ProgramsScheduleEditor | undefined;
+  ruleId: string | undefined;
+  malformed: boolean;
+} {
+  const editor =
+    rawEditor.value !== null && isScheduleEditor(rawEditor.value)
+      ? rawEditor.value
+      : undefined;
+  const ruleId =
+    rawRuleId.value !== null && SAFE_PROGRAM_ID.test(rawRuleId.value)
+      ? rawRuleId.value
+      : undefined;
+  const needsRuleId = editor === "edit-rule" || editor === "new-exception";
+  return {
+    editor,
+    ruleId,
+    malformed:
+      rawEditor.duplicate ||
+      rawRuleId.duplicate ||
+      (rawEditor.value !== null &&
+        (!editor || mode !== "management" || task !== "schedule")) ||
+      (rawRuleId.value !== null &&
+        (!ruleId ||
+          !needsRuleId ||
+          mode !== "management" ||
+          task !== "schedule")) ||
+      (needsRuleId && ruleId === undefined) ||
+      (editor === "new-rule" && ruleId !== undefined),
   };
 }
 
@@ -326,7 +398,9 @@ function parseOrigin(
       : undefined;
   return {
     value,
-    malformed: rawFrom.duplicate || (raw !== null && value === undefined),
+    // An origin is a navigation hint, not an authority-bearing identifier.
+    // Ignore invalid, missing, or duplicate hints and fall back to Programs.
+    malformed: false,
   };
 }
 
@@ -365,6 +439,8 @@ function hasMalformedIntent({
   participantQuery,
   settingsSection,
   scheduleOrigin,
+  departmentSettings,
+  scheduleEditor,
 }: {
   rawMode: { value: string | null; duplicate: boolean };
   program: { malformed: boolean; duplicate: boolean };
@@ -385,6 +461,8 @@ function hasMalformedIntent({
   participantQuery: { malformed: boolean };
   settingsSection: { malformed: boolean };
   scheduleOrigin: { malformed: boolean };
+  departmentSettings: { malformed: boolean };
+  scheduleEditor: { malformed: boolean };
 }): boolean {
   return (
     rawMode.duplicate ||
@@ -410,7 +488,9 @@ function hasMalformedIntent({
     participantTab.malformed ||
     participantQuery.malformed ||
     settingsSection.malformed ||
-    scheduleOrigin.malformed
+    scheduleOrigin.malformed ||
+    departmentSettings.malformed ||
+    scheduleEditor.malformed
   );
 }
 
@@ -431,6 +511,7 @@ export function parseProgramsIntent(search: string): ProgramsIntent {
   const rawCreated = singleParam(params, "created");
   const rawFrom = singleParam(params, "from");
   const rawDirectoryQuery = singleParam(params, "directoryQuery");
+  const rawDepartmentSettings = singleParam(params, "departmentSettings");
   const rawCatalogQuery = singleParam(params, "catalogQuery");
   const rawCatalogFilter = singleParam(params, "catalogFilter");
   const rawEventFilter = singleParam(params, "eventFilter");
@@ -438,6 +519,8 @@ export function parseProgramsIntent(search: string): ProgramsIntent {
   const rawParticipantQuery = singleParam(params, "participantQuery");
   const rawSettingsSection = singleParam(params, "settingsSection");
   const rawScheduleOrigin = singleParam(params, "scheduleOrigin");
+  const rawScheduleEditor = singleParam(params, "scheduleEditor");
+  const rawScheduleRule = singleParam(params, "scheduleRule");
   const mode: ProgramsMode =
     rawMode.value === "management" ? "management" : "participant";
   const program = parseProgramIntent(rawProgram, rawProgramId);
@@ -454,6 +537,11 @@ export function parseProgramsIntent(search: string): ProgramsIntent {
   );
   const created = parseCreated(rawCreated, mode, program.id);
   const directoryQuery = parseSafeQuery(rawDirectoryQuery);
+  const departmentSettings = parseDepartmentSettingsIntent(
+    rawDepartmentSettings,
+    mode,
+    program.id
+  );
   const catalogQuery = parseSafeQuery(rawCatalogQuery);
   const catalogFilter = parseEnum(
     rawCatalogFilter,
@@ -480,6 +568,12 @@ export function parseProgramsIntent(search: string): ProgramsIntent {
     rawScheduleOrigin,
     isScheduleOrigin,
     mode === "management" && task.value === "schedule"
+  );
+  const scheduleEditor = parseScheduleEditorIntent(
+    rawScheduleEditor,
+    rawScheduleRule,
+    mode,
+    task.value
   );
   const malformed = hasMalformedIntent({
     rawMode,
@@ -518,6 +612,8 @@ export function parseProgramsIntent(search: string): ProgramsIntent {
     },
     settingsSection,
     scheduleOrigin,
+    departmentSettings,
+    scheduleEditor,
   });
   const creationField = created.value ? { created: true as const } : {};
   const originField =
@@ -527,6 +623,9 @@ export function parseProgramsIntent(search: string): ProgramsIntent {
     : {
         ...(mode === "management" && directoryQuery.value
           ? { directoryQuery: directoryQuery.value }
+          : {}),
+        ...(mode === "management" && departmentSettings.value
+          ? { departmentSettingsId: departmentSettings.value }
           : {}),
         ...(mode === "participant" && catalogQuery.value
           ? { catalogQuery: catalogQuery.value }
@@ -558,6 +657,16 @@ export function parseProgramsIntent(search: string): ProgramsIntent {
         task.value === "schedule" &&
         scheduleOrigin.value
           ? { scheduleOrigin: scheduleOrigin.value }
+          : {}),
+        ...(mode === "management" &&
+        task.value === "schedule" &&
+        scheduleEditor.editor
+          ? {
+              scheduleEditor: scheduleEditor.editor,
+              ...(scheduleEditor.ruleId
+                ? { scheduleRuleId: scheduleEditor.ruleId }
+                : {}),
+            }
           : {}),
       };
 
@@ -708,6 +817,15 @@ function appendRouteState(
     params.set("directoryQuery", intent.directoryQuery);
   }
   if (
+    mode === "management" &&
+    task === undefined &&
+    !intent.programId &&
+    intent.departmentSettingsId &&
+    SAFE_PROGRAM_ID.test(intent.departmentSettingsId)
+  ) {
+    params.set("departmentSettings", intent.departmentSettingsId);
+  }
+  if (
     mode === "participant" &&
     intent.catalogQuery &&
     SAFE_QUERY.test(intent.catalogQuery)
@@ -764,6 +882,21 @@ function appendRouteState(
   ) {
     params.set("scheduleOrigin", intent.scheduleOrigin);
   }
+  if (
+    mode === "management" &&
+    task === "schedule" &&
+    intent.scheduleEditor &&
+    isScheduleEditor(intent.scheduleEditor)
+  ) {
+    params.set("scheduleEditor", intent.scheduleEditor);
+    if (
+      intent.scheduleRuleId &&
+      SAFE_PROGRAM_ID.test(intent.scheduleRuleId) &&
+      intent.scheduleEditor !== "new-rule"
+    ) {
+      params.set("scheduleRule", intent.scheduleRuleId);
+    }
+  }
 }
 
 /** Build a canonical same-origin Programs URL with safe, restorable intent. */
@@ -778,6 +911,7 @@ export function buildProgramsHref({
   origin,
   eventAction,
   directoryQuery,
+  departmentSettingsId,
   catalogQuery,
   catalogFilter,
   eventFilter,
@@ -785,6 +919,8 @@ export function buildProgramsHref({
   participantQuery,
   settingsSection,
   scheduleOrigin,
+  scheduleEditor,
+  scheduleRuleId,
 }: ProgramsHrefIntent): string {
   const params = new URLSearchParams();
   if (mode === "management") {
@@ -814,6 +950,7 @@ export function buildProgramsHref({
     created,
     origin,
     directoryQuery,
+    departmentSettingsId,
     catalogQuery,
     catalogFilter,
     eventFilter,
@@ -821,6 +958,8 @@ export function buildProgramsHref({
     participantQuery,
     settingsSection,
     scheduleOrigin,
+    scheduleEditor,
+    scheduleRuleId,
   });
   const query = params.toString();
   const suffix = query ? `/programs?${query}` : "/programs";

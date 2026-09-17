@@ -433,6 +433,7 @@ describe("EventsTask operations-first composition", () => {
   });
 
   test("restores an Event creation draft and reports the shell dirty state", async () => {
+    const user = userEvent.setup();
     const onWorkspaceDirtyChange = vi.fn<(dirty: boolean) => void>();
     writeEventCreateDraft(program.program_id, {
       version: 1,
@@ -449,6 +450,9 @@ describe("EventsTask operations-first composition", () => {
     });
 
     renderTask(onWorkspaceDirtyChange);
+    await user.click(
+      screen.getByRole("button", { name: COPY.programs.draftRecover })
+    );
 
     await expect(
       screen.findByRole("heading", { name: COPY.programs.createMeeting })
@@ -532,6 +536,9 @@ describe("EventsTask operations-first composition", () => {
     });
     mocks.createEvent.mockRejectedValueOnce(new Error("offline"));
     renderTask(onWorkspaceDirtyChange, onOpenEvent);
+    await user.click(
+      screen.getByRole("button", { name: COPY.programs.draftRecover })
+    );
 
     await screen.findByRole("heading", { name: COPY.programs.createMeeting });
     mocks.listEvents.mockResolvedValueOnce({
@@ -570,7 +577,7 @@ describe("EventsTask operations-first composition", () => {
       expect(readEventCreateDraft(program.program_id)).toBeNull();
       expect(onWorkspaceDirtyChange).toHaveBeenCalledWith(false);
     });
-    expect(mocks.createEvent).toHaveBeenCalledTimes(1);
+    expect(mocks.createEvent).toHaveBeenCalledOnce();
     expect(onOpenEvent).toHaveBeenCalledWith("event-created");
   });
 
@@ -598,6 +605,9 @@ describe("EventsTask operations-first composition", () => {
     });
 
     renderTask(vi.fn<(dirty: boolean) => void>(), null);
+    await user.click(
+      screen.getByRole("button", { name: COPY.programs.draftRecover })
+    );
     await screen.findByRole("heading", { name: COPY.programs.createMeeting });
     const submit = screen
       .getAllByRole("button", { name: COPY.programs.createMeeting })
@@ -663,8 +673,11 @@ describe("EventsTask operations-first composition", () => {
       .mockReset()
       .mockResolvedValueOnce({ events: [event] })
       .mockResolvedValueOnce({ events: [event, created] });
-    const user = userEvent.setup();
     renderTask();
+    const user = userEvent.setup();
+    await user.click(
+      screen.getByRole("button", { name: COPY.programs.draftRecover })
+    );
 
     const submit = screen
       .getAllByRole("button", { name: COPY.programs.createMeeting })

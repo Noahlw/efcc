@@ -1243,6 +1243,34 @@ describe(SettingsHub, () => {
     ).toBeInTheDocument();
   });
 
+  test("confirms archive through its dedicated action", async () => {
+    const user = userEvent.setup();
+    const onArchive = vi.fn();
+    const onSelect = vi.fn();
+    render(
+      <SettingsHub
+        program={recurringProgram}
+        eventsEnabled
+        attendanceEnabled
+        onSelect={onSelect}
+        onArchive={onArchive}
+        scheduleHref="/programs?mode=management&program=program-1&task=schedule"
+      />
+    );
+
+    await user.click(
+      screen.getByRole("button", { name: /封存課程停止一般使用/u })
+    );
+    await user.click(
+      screen.getByRole("button", {
+        name: COPY.programs.settingsHubArchiveConfirm,
+      })
+    );
+
+    expect(onArchive).toHaveBeenCalledOnce();
+    expect(onSelect).not.toHaveBeenCalledWith("publishing");
+  });
+
   test("gives a leader-assignment-only Program only scoped Account Access", () => {
     render(
       <SettingsHub

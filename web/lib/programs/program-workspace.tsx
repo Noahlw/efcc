@@ -51,10 +51,12 @@ import type {
   ManagementEventAction,
   ProgramsEventFilter,
   ProgramsParticipantTab,
+  ProgramsScheduleEditor,
   ProgramsScheduleOrigin,
   ProgramsSettingsSection,
   ProgramsTask,
 } from "./programs-intent";
+import type { ManagementNotificationState } from "./programs-notifications";
 import { useAsyncResource } from "./use-async-resource";
 import {
   hasModule,
@@ -81,6 +83,7 @@ export interface ProgramWorkspaceProps {
   eventAction?: ManagementEventAction;
   /** NTF-01 (#256): fresh server-shaped attention counts from the shell. */
   attention?: ManagementAttention | null;
+  notificationState?: ManagementNotificationState;
   onAttentionRefresh?: () => void;
   /** Compact route-level action rendered in the shared ScreenHeader. */
   headerAction?: ReactNode;
@@ -106,6 +109,12 @@ export interface ProgramWorkspaceProps {
   settingsSection?: ProgramsSettingsSection;
   onSettingsSectionChange?: (section: ProgramsSettingsSection | null) => void;
   scheduleOrigin?: ProgramsScheduleOrigin;
+  scheduleEditor?: ProgramsScheduleEditor;
+  scheduleRuleId?: string;
+  onScheduleEditorChange?: (
+    editor: ProgramsScheduleEditor | null,
+    ruleId?: string | null
+  ) => void;
 }
 
 type WorkspaceState =
@@ -207,6 +216,7 @@ export const ProgramWorkspace = ({
   eventAction,
   created = false,
   attention = null,
+  notificationState,
   onAttentionRefresh = () => {},
   headerAction,
   onBack,
@@ -222,6 +232,9 @@ export const ProgramWorkspace = ({
   settingsSection,
   onSettingsSectionChange,
   scheduleOrigin,
+  scheduleEditor,
+  scheduleRuleId,
+  onScheduleEditorChange,
 }: ProgramWorkspaceProps) => {
   const { departmentId, hash, directoryQuery } = useWorkspaceRouteContext();
   const [summary, setSummary] = useState<WorkspaceSummaryState>(() =>
@@ -233,6 +246,7 @@ export const ProgramWorkspace = ({
     useState(false);
   const [pendingSettingsNavigation, setPendingSettingsNavigation] =
     useState<SettingsNavigationRequest | null>(null);
+  const allowSettingsNavigation = useRef(false);
   const [eventDraftDirty, setEventDraftDirty] = useState(false);
   const [eventEditDirty, setEventEditDirty] = useState(false);
   const [eventNavigationBlocked, setEventNavigationBlocked] = useState(false);
@@ -431,22 +445,18 @@ export const ProgramWorkspace = ({
     ) {
       return;
     }
-    const blockedHref = window.location.href;
-    const guardToken = crypto.randomUUID();
-    const guardedState = {
-      ...(typeof window.history.state === "object" &&
-      window.history.state !== null
-        ? (window.history.state as Record<string, unknown>)
-        : {}),
-      efccProgramSettingsGuard: guardToken,
-    };
-    window.history.pushState(guardedState, "", blockedHref);
+    const restoringHistory = { current: false };
     const handlePopState = () => {
       if (allowSettingsHistoryBack.current) {
         allowSettingsHistoryBack.current = false;
         return;
       }
-      window.history.pushState(guardedState, "", blockedHref);
+      if (restoringHistory.current) {
+        restoringHistory.current = false;
+        return;
+      }
+      restoringHistory.current = true;
+      window.history.forward();
       setPendingSettingsNavigation({ kind: "history-back" });
       setSettingsNavigationBlocked(true);
       announce(COPY.programs.settingsUnsaved);
@@ -454,13 +464,6 @@ export const ProgramWorkspace = ({
     window.addEventListener("popstate", handlePopState);
     return () => {
       window.removeEventListener("popstate", handlePopState);
-      if (
-        window.location.href === blockedHref &&
-        (window.history.state as Record<string, unknown> | null)
-          ?.efccProgramSettingsGuard === guardToken
-      ) {
-        window.history.back();
-      }
     };
   }, [settingsEditorDirty, settingsEditorFocused, task]);
   const focusedSettingsEditor = task === "settings" && settingsEditorFocused;
@@ -733,6 +736,7 @@ export const ProgramWorkspace = ({
       }
       return;
     }
+    allowSettingsNavigation.current = true;
     window.location.assign(pending.href);
   };
 
@@ -1103,6 +1107,8 @@ export const ProgramWorkspace = ({
           directoryQuery={directoryQuery}
           hash={hash}
           attention={attention}
+          cockpit={state.cockpit}
+          notificationState={notificationState}
           onAttentionRefresh={onAttentionRefresh}
           onWorkspaceRefresh={refreshAuthoritativeWorkspace}
           onMutationBlockChange={setWorkspaceMutationBlocked}
@@ -1126,12 +1132,16 @@ export const ProgramWorkspace = ({
           settingsSection={settingsSection}
           onSettingsSectionChange={onSettingsSectionChange}
           scheduleOrigin={scheduleOrigin}
+          scheduleEditor={scheduleEditor}
+          scheduleRuleId={scheduleRuleId}
+          onScheduleEditorChange={onScheduleEditorChange}
           onSettingsFocusChange={setSettingsEditorFocused}
           onSettingsDirtyChange={setSettingsEditorDirty}
           onWorkspaceDirtyChange={handleEventDraftDirtyChange}
           settingsNavigationBlocked={settingsNavigationBlocked}
           onSettingsNavigationBlocked={setSettingsNavigationBlocked}
           onSettingsNavigationRequest={handleSettingsNavigationRequest}
+          settingsNavigationAllowedRef={allowSettingsNavigation}
           headerAction={headerAction}
         />
       ) : task ? (

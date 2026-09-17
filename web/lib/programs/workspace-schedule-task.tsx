@@ -95,6 +95,10 @@ export const ScheduleTask = () => {
     onMutationBlockChange,
     departmentId,
     hash,
+    scheduleOrigin,
+    scheduleEditor,
+    scheduleRuleId,
+    onScheduleEditorChange,
   } = useWorkspaceTaskContext();
   const eventsEnabled = modules.some(
     ({ module_key, enabled }) => module_key === "events" && enabled === 1
@@ -110,6 +114,9 @@ export const ScheduleTask = () => {
         onTaskChange={onTaskChange}
         onReload={onWorkspaceRefresh}
         onMutationBlockChange={onMutationBlockChange}
+        scheduleEditor={scheduleEditor}
+        scheduleRuleId={scheduleRuleId}
+        onScheduleEditorChange={onScheduleEditorChange}
         scheduleAddon={makeScheduleAddon(
           program.program_id,
           async () => {
@@ -131,6 +138,7 @@ export const ScheduleTask = () => {
           programId: program.program_id,
           departmentId,
           task: "schedule",
+          scheduleOrigin,
           hash,
         })}
       />
