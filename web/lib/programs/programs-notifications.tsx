@@ -107,18 +107,18 @@ type NotificationListProps = Pick<
   ProgramsNotificationsProps,
   "state" | "hash"
 > & {
-  onMarkRead: NotificationReadHandler;
+  markRead: NotificationReadHandler;
   onNavigate?: () => void;
 };
 
 const NotificationRows = ({
   items,
-  onMarkRead,
+  markRead,
   onNavigate,
   hash,
 }: {
   items: readonly ManagementNotificationItem[];
-  onMarkRead: NotificationReadHandler;
+  markRead: NotificationReadHandler;
   onNavigate?: () => void;
   hash?: string | null;
 }) => {
@@ -158,7 +158,7 @@ const NotificationRows = ({
                   event.altKey
                 ) {
                   if (!event.defaultPrevented) {
-                    void onMarkRead([item]);
+                    void markRead([item]);
                   }
                   return;
                 }
@@ -171,7 +171,7 @@ const NotificationRows = ({
                 };
                 void (async () => {
                   try {
-                    await onMarkRead([item]);
+                    await markRead([item]);
                   } catch {
                     // Navigation remains available when marking read fails.
                   }
@@ -207,7 +207,7 @@ const NotificationRows = ({
 
 const NotificationList = ({
   state,
-  onMarkRead,
+  markRead,
   onNavigate,
   hash,
 }: NotificationListProps) => {
@@ -248,7 +248,7 @@ const NotificationList = ({
         >
           <NotificationRows
             items={unread}
-            onMarkRead={onMarkRead}
+            markRead={markRead}
             onNavigate={onNavigate}
             hash={hash}
           />
@@ -258,7 +258,7 @@ const NotificationList = ({
         <ScreenSection title={COPY.programs.notificationsEarlierSection}>
           <NotificationRows
             items={earlier}
-            onMarkRead={onMarkRead}
+            markRead={markRead}
             onNavigate={onNavigate}
             hash={hash}
           />
@@ -282,7 +282,7 @@ function feedStateFor(
 
 const NotificationFeed = ({
   state,
-  onMarkRead,
+  markRead,
   onRetry,
   onNavigate,
   className,
@@ -292,7 +292,7 @@ const NotificationFeed = ({
   hash,
 }: {
   state: ManagementNotificationState;
-  onMarkRead: NotificationReadHandler;
+  markRead: NotificationReadHandler;
   onRetry: () => void;
   onNavigate?: () => void;
   className?: string;
@@ -312,7 +312,7 @@ const NotificationFeed = ({
       list={
         <NotificationList
           state={state}
-          onMarkRead={onMarkRead}
+          markRead={markRead}
           onNavigate={onNavigate}
           hash={hash}
         />
@@ -320,7 +320,7 @@ const NotificationFeed = ({
       detail={
         <NotificationList
           state={state}
-          onMarkRead={onMarkRead}
+          markRead={markRead}
           onNavigate={onNavigate}
           hash={hash}
         />
@@ -328,7 +328,7 @@ const NotificationFeed = ({
       loading={
         <NotificationList
           state={{ kind: "loading" }}
-          onMarkRead={onMarkRead}
+          markRead={markRead}
           onNavigate={onNavigate}
           hash={hash}
         />
@@ -337,7 +337,7 @@ const NotificationFeed = ({
         <div className="grid min-w-0 gap-3">
           <NotificationList
             state={state}
-            onMarkRead={onMarkRead}
+            markRead={markRead}
             onNavigate={onNavigate}
             hash={hash}
           />
@@ -349,7 +349,7 @@ const NotificationFeed = ({
       empty={
         <NotificationList
           state={state}
-          onMarkRead={onMarkRead}
+          markRead={markRead}
           onNavigate={onNavigate}
           hash={hash}
         />
@@ -540,7 +540,7 @@ export const ProgramsNotifications = ({
         </div>
         <NotificationFeed
           state={effectiveState}
-          onMarkRead={markRead}
+          markRead={markRead}
           onRetry={onRetry}
           status={notificationStatus}
           announcement={announcement}
@@ -611,7 +611,7 @@ export const ProgramsNotifications = ({
           </div>
           <NotificationFeed
             state={effectiveState}
-            onMarkRead={markRead}
+            markRead={markRead}
             onRetry={onRetry}
             onNavigate={closePopover}
             status={notificationStatus}

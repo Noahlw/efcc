@@ -1,5 +1,6 @@
 import {
   cleanup,
+  fireEvent,
   render,
   screen,
   waitFor,
@@ -240,6 +241,41 @@ describe("management notification control", () => {
     await waitFor(() =>
       expect(screen.queryByRole("dialog")).not.toBeInTheDocument()
     );
+  });
+
+  test("records modifier-click read failures and retries without blocking navigation", async () => {
+    const onMarkRead = vi
+      .fn<ProgramsNotificationsProps["onMarkRead"]>()
+      .mockRejectedValueOnce(new Error("read failed"))
+      .mockResolvedValueOnce();
+    render(
+      <ProgramsNotifications
+        state={readyState()}
+        onRetry={vi.fn<ProgramsNotificationsProps["onRetry"]>()}
+        onMarkRead={onMarkRead}
+      />
+    );
+
+    await userEvent.click(
+      screen.getByRole("button", {
+        name: COPY.programs.notificationBellTitle,
+      })
+    );
+    const link = screen.getByRole("link", { name: /青年團契/u });
+    expect(fireEvent.click(link, { metaKey: true })).toBe(true);
+    await waitFor(() => expect(onMarkRead).toHaveBeenCalledOnce());
+    const readAlert = screen.getByRole("alert");
+    expect(readAlert).toHaveTextContent(COPY.programs.notificationsReadError);
+
+    await userEvent.click(
+      within(readAlert).getByRole("button", {
+        name: COPY.programs.notificationsRetry,
+      })
+    );
+    await waitFor(() => expect(onMarkRead).toHaveBeenCalledTimes(2));
+    expect(
+      screen.queryByLabelText(COPY.programs.notificationsUnread)
+    ).not.toBeInTheDocument();
   });
 
   test("renders empty and error states in the same bounded surface", () => {
