@@ -420,7 +420,7 @@ test("Programs R5 material Stories execute Schedule recovery Plays", async ({
     })
   ).toHaveAttribute(
     "href",
-    "/programs?mode=management&program=t07-3-program&task=schedule"
+    "/programs?mode=management&program=t07-3-program&task=schedule&scheduleOrigin=events"
   );
 
   await page.goto(

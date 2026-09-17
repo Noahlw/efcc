@@ -195,6 +195,9 @@ const DepartmentSettingsLauncher = ({
   );
 };
 
+const DEPARTMENT_SETTINGS_TRIGGER_ID =
+  "programs-management-department-settings-trigger";
+
 const DepartmentSettingsAction = ({
   departments,
   onOpenDepartment,
@@ -233,6 +236,7 @@ const DepartmentSettingsAction = ({
   return (
     <div className="relative inline-block max-w-full">
       <Button
+        id={DEPARTMENT_SETTINGS_TRIGGER_ID}
         aria-controls={pickerOpen ? pickerId : undefined}
         aria-expanded={pickerOpen || settingsOpen}
         aria-haspopup={departments.length > 1 ? "dialog" : undefined}
@@ -485,7 +489,10 @@ export const ManagementDirectory = ({
       return;
     }
     if (settingsReturnFocusPending.current) {
-      settingsTriggerRef.current?.focus();
+      const trigger =
+        settingsTriggerRef.current ??
+        document.getElementById(DEPARTMENT_SETTINGS_TRIGGER_ID);
+      trigger?.focus();
       settingsReturnFocusPending.current = false;
     }
   }, [focusedDepartmentSettings]);

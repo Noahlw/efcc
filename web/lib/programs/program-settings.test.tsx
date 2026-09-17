@@ -6,6 +6,7 @@ import { RpcError } from "@/lib/api";
 import { COPY } from "@/lib/copy";
 import type { Program, ScheduleRule } from "@/lib/programs/program-api";
 import { ProgramSettings, SettingsHub } from "@/lib/programs/program-settings";
+import type { ProgramSettingsSection } from "@/lib/programs/program-settings";
 import { hkTodayWallDate } from "@/lib/programs/recurrence";
 
 const mocks = vi.hoisted(() => ({
@@ -994,7 +995,7 @@ describe(ProgramSettings, () => {
       <ProgramSettings
         program={recurringProgram}
         section="schedule"
-        onTaskChange={vi.fn()}
+        onTaskChange={vi.fn<(task: "events" | "schedule" | null) => void>()}
       />
     );
     await screen.findByText(
@@ -1290,8 +1291,8 @@ describe(SettingsHub, () => {
 
   test("confirms archive through its dedicated action", async () => {
     const user = userEvent.setup();
-    const onArchive = vi.fn();
-    const onSelect = vi.fn();
+    const onArchive = vi.fn<() => void>();
+    const onSelect = vi.fn<(section: ProgramSettingsSection) => void>();
     render(
       <SettingsHub
         program={recurringProgram}

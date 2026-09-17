@@ -69,7 +69,7 @@ const DEPARTMENT: Department = {
 const DEPARTMENTS: Department[] = [
   DEPARTMENT,
   {
-    department_id: "t07-3-department-牧養",
+    department_id: "t07-3-department-pastoral",
     code: "T074",
     name: "牧養部",
     description: "負責小組同行及牧養關顧。",
@@ -80,7 +80,7 @@ const DEPARTMENTS: Department[] = [
     capabilities: { manage: true, publish: true, module_configure: true },
   },
   {
-    department_id: "t07-3-department-福音",
+    department_id: "t07-3-department-gospel",
     code: "T075",
     name: "福音部",
     description: "負責福音探索及社區接觸。",
@@ -91,7 +91,7 @@ const DEPARTMENTS: Department[] = [
     capabilities: { manage: true, publish: true, module_configure: true },
   },
   {
-    department_id: "t07-3-department-家庭",
+    department_id: "t07-3-department-family",
     code: "T076",
     name: "家庭事工",
     description: "支援家庭在生活與信仰上的同行。",
@@ -102,7 +102,7 @@ const DEPARTMENTS: Department[] = [
     capabilities: { manage: true, publish: true, module_configure: true },
   },
   {
-    department_id: "t07-3-department-青年",
+    department_id: "t07-3-department-youth",
     code: "T077",
     name: "青年部",
     description: "負責青年領袖培訓及同行。",
@@ -155,7 +155,7 @@ const PROGRAMS: Program[] = [
   {
     ...PROGRAM,
     program_id: ELIGIBLE_PROGRAM_ID,
-    department_id: "t07-3-department-牧養",
+    department_id: "t07-3-department-pastoral",
     name: "同行成長小組",
     description: "以小組同行建立穩定的靈性操練及彼此支持。",
     category: "小組同行",
@@ -164,7 +164,7 @@ const PROGRAMS: Program[] = [
   {
     ...PROGRAM,
     program_id: EXPLORATION_PROGRAM_ID,
-    department_id: "t07-3-department-福音",
+    department_id: "t07-3-department-gospel",
     name: "信仰探索班",
     description: "讓對信仰有興趣的朋友循序認識福音。",
     category: "福音探索",
@@ -175,7 +175,7 @@ const PROGRAMS: Program[] = [
   {
     ...PROGRAM,
     program_id: FAMILY_PROGRAM_ID,
-    department_id: "t07-3-department-家庭",
+    department_id: "t07-3-department-family",
     name: "家庭同行系列",
     description: "支援家庭在生活與信仰上的同行。",
     category: "家庭事工",
@@ -186,7 +186,7 @@ const PROGRAMS: Program[] = [
   {
     ...PROGRAM,
     program_id: YOUTH_PROGRAM_ID,
-    department_id: "t07-3-department-青年",
+    department_id: "t07-3-department-youth",
     name: "青年領袖培訓",
     description: "裝備青年領袖承擔教會服事及同行工作。",
     category: "青年事工",
@@ -299,7 +299,7 @@ const ELIGIBLE_PARTICIPANT_DETAIL: ParticipantProgramDetail = {
   program: ELIGIBLE_PROGRAM_SUMMARY,
   department: departmentSummary(
     DEPARTMENTS.find(
-      (department) => department.department_id === "t07-3-department-牧養"
+      (department) => department.department_id === "t07-3-department-pastoral"
     ) ?? DEPARTMENT
   ),
   schedule_rules: [
@@ -509,7 +509,7 @@ const MANAGEMENT_NOTIFICATIONS: ManagementNotifications = {
       latest_submitted_at: "2026-09-01T02:00:00.000Z",
       program_id: ELIGIBLE_PROGRAM_ID,
       program_name: "同行成長小組",
-      department_id: "t07-3-department-牧養",
+      department_id: "t07-3-department-pastoral",
       department_name: "牧養部",
     },
   ],

@@ -139,11 +139,10 @@ const clickAndCaptureHref = async (link: HTMLElement, href: string) => {
     if (!(target instanceof Element) || target.closest("a") !== link) {
       return;
     }
-    event.preventDefault();
     activatedHref = link.getAttribute("href");
-    document.removeEventListener("click", handleClick, true);
+    document.removeEventListener("click", handleClick);
   };
-  document.addEventListener("click", handleClick, true);
+  document.addEventListener("click", handleClick);
   await userEvent.click(link);
   await expect(activatedHref).toBe(href);
 };
@@ -431,7 +430,7 @@ const workspaceEventsMixedPlay: Story["play"] = async ({ canvasElement }) => {
   });
   await clickAndCaptureHref(
     scheduleLink,
-    "/programs?mode=management&program=t07-3-program&task=schedule"
+    "/programs?mode=management&program=t07-3-program&task=schedule&scheduleOrigin=events"
   );
 };
 
@@ -624,7 +623,7 @@ const workspaceSettingsDirtyPlay: Story["play"] = async ({ canvasElement }) => {
   });
   await userEvent.click(basicsRow);
   await expect(
-    canvas.getByRole("heading", { name: COPY.programs.settingsBasics })
+    canvas.getByText(COPY.programs.settingsBasics, { selector: "h1" })
   ).toBeVisible();
   const visibleHeaders = [
     ...canvasElement.querySelectorAll<HTMLElement>(
@@ -680,12 +679,25 @@ const workspaceSettingsDirtyPlay: Story["play"] = async ({ canvasElement }) => {
   await userEvent.click(
     canvas.getByRole("link", { name: COPY.programs.settingsBackToHub })
   );
+  const leaveDialog = await within(canvasElement.ownerDocument.body).findByRole(
+    "alertdialog",
+    {
+      name: COPY.programs.settingsLeaveTitle,
+    }
+  );
+  await userEvent.click(
+    within(leaveDialog).getByRole("button", {
+      name: COPY.programs.settingsContinueEditing,
+    })
+  );
   await expect(
-    canvas.getByRole("heading", { name: COPY.programs.settingsBasics })
+    canvas.getByText(COPY.programs.settingsBasics, { selector: "h1" })
   ).toBeVisible();
-  await expect(
-    canvas.getByRole("textbox", { name: COPY.programs.programName })
-  ).toHaveValue("未儲存課程名稱");
+  await waitFor(() => {
+    expect(
+      canvas.getByRole("textbox", { name: COPY.programs.programName })
+    ).toHaveValue("未儲存課程名稱");
+  });
   await expect(
     canvas.getByText(
       `${COPY.programs.settingsUnsaved} ${COPY.programs.settingsSaveBasics} / ${COPY.programs.settingsDiscard}`,
@@ -715,7 +727,7 @@ const workspaceSettingsConflictPlay: Story["play"] = async ({
       })
     );
     await expect(
-      canvas.getByRole("heading", { name: COPY.programs.settingsBasics })
+      canvas.getByText(COPY.programs.settingsBasics, { selector: "h1" })
     ).toBeVisible();
   };
 

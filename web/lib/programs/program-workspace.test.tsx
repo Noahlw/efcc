@@ -43,6 +43,24 @@ import {
   readEventCreateDraft,
 } from "./event-create-draft";
 
+const StatefulWorkspaceHarness = ({
+  initialTask,
+}: {
+  initialTask: "settings" | "events";
+}) => {
+  const [task, setTask] = useState<"settings" | "events" | null>(initialTask);
+  return (
+    <ProgramWorkspace
+      programId="program-1"
+      task={task ?? undefined}
+      onBack={() => {}}
+      onTaskChange={(nextTask) =>
+        setTask(nextTask === initialTask ? initialTask : null)
+      }
+    />
+  );
+};
+
 const mocks = vi.hoisted(() => ({
   getManagementProgram: vi.fn(),
   updateProgram: vi.fn(),
@@ -354,7 +372,7 @@ describe(ProgramWorkspace, () => {
       modules,
       cockpit: cockpitWithNext,
     });
-    const onTaskChange = vi.fn();
+    const onTaskChange = vi.fn<(...args: unknown[]) => void>();
     const onEventChange = vi.fn();
     const onOpenAttendance = vi.fn();
     render(
@@ -488,8 +506,8 @@ describe(ProgramWorkspace, () => {
     render(
       <ProgramWorkspace
         programId="program-1"
-        onBack={vi.fn()}
-        onTaskChange={vi.fn()}
+        onBack={vi.fn<(...args: unknown[]) => void>()}
+        onTaskChange={vi.fn<(...args: unknown[]) => void>()}
       />
     );
 
@@ -536,8 +554,8 @@ describe(ProgramWorkspace, () => {
     render(
       <ProgramWorkspace
         programId="program-1"
-        onBack={vi.fn()}
-        onTaskChange={vi.fn()}
+        onBack={vi.fn<(...args: unknown[]) => void>()}
+        onTaskChange={vi.fn<(...args: unknown[]) => void>()}
       />
     );
 
@@ -581,8 +599,8 @@ describe(ProgramWorkspace, () => {
     render(
       <ProgramWorkspace
         programId="program-1"
-        onBack={vi.fn()}
-        onTaskChange={vi.fn()}
+        onBack={vi.fn<(...args: unknown[]) => void>()}
+        onTaskChange={vi.fn<(...args: unknown[]) => void>()}
       />
     );
 
@@ -642,11 +660,11 @@ describe(ProgramWorkspace, () => {
     });
     mocks.listEnrollmentRequests.mockResolvedValue({ requests: [] });
     mocks.listEnrollments.mockResolvedValue({ enrollments: [] });
-    const onTaskChange = vi.fn();
+    const onTaskChange = vi.fn<(...args: unknown[]) => void>();
     render(
       <ProgramWorkspace
         programId="program-1"
-        onBack={vi.fn()}
+        onBack={vi.fn<(...args: unknown[]) => void>()}
         onTaskChange={onTaskChange}
       />
     );
@@ -688,8 +706,8 @@ describe(ProgramWorkspace, () => {
     render(
       <ProgramWorkspace
         programId="program-1"
-        onBack={vi.fn()}
-        onTaskChange={vi.fn()}
+        onBack={vi.fn<(...args: unknown[]) => void>()}
+        onTaskChange={vi.fn<(...args: unknown[]) => void>()}
       />
     );
 
@@ -717,11 +735,11 @@ describe(ProgramWorkspace, () => {
         open_events: [],
       },
     });
-    const onTaskChange = vi.fn();
+    const onTaskChange = vi.fn<(...args: unknown[]) => void>();
     render(
       <ProgramWorkspace
         programId="program-1"
-        onBack={vi.fn()}
+        onBack={vi.fn<(...args: unknown[]) => void>()}
         onTaskChange={onTaskChange}
       />
     );
@@ -765,8 +783,8 @@ describe(ProgramWorkspace, () => {
     render(
       <ProgramWorkspace
         programId="program-1"
-        onBack={vi.fn()}
-        onTaskChange={vi.fn()}
+        onBack={vi.fn<(...args: unknown[]) => void>()}
+        onTaskChange={vi.fn<(...args: unknown[]) => void>()}
       />
     );
 
@@ -788,8 +806,8 @@ describe(ProgramWorkspace, () => {
     render(
       <ProgramWorkspace
         programId="program-1"
-        onBack={vi.fn()}
-        onTaskChange={vi.fn()}
+        onBack={vi.fn<(...args: unknown[]) => void>()}
+        onTaskChange={vi.fn<(...args: unknown[]) => void>()}
       />
     );
 
@@ -1056,8 +1074,8 @@ describe(ProgramWorkspace, () => {
         programId="program-1"
         task="settings"
         notificationState={notificationState}
-        onBack={vi.fn()}
-        onTaskChange={vi.fn()}
+        onBack={vi.fn<(...args: unknown[]) => void>()}
+        onTaskChange={vi.fn<(...args: unknown[]) => void>()}
       />
     );
 
@@ -1087,8 +1105,8 @@ describe(ProgramWorkspace, () => {
       <ProgramWorkspace
         programId="program-1"
         task="settings"
-        onBack={vi.fn()}
-        onTaskChange={vi.fn()}
+        onBack={vi.fn<(...args: unknown[]) => void>()}
+        onTaskChange={vi.fn<(...args: unknown[]) => void>()}
       />
     );
 
@@ -1109,7 +1127,7 @@ describe(ProgramWorkspace, () => {
         screen.getByTestId("program-workspace-freshness")
       ).toHaveTextContent(COPY.programs.workspaceSavedStale)
     );
-    expect(mocks.updateProgram).toHaveBeenCalledTimes(1);
+    expect(mocks.updateProgram).toHaveBeenCalledOnce();
     const refreshButtons = screen.getAllByRole("button", {
       name: COPY.programs.workspaceRetryRefresh,
     });
@@ -1117,7 +1135,7 @@ describe(ProgramWorkspace, () => {
 
     await user.click(refreshButtons.at(-1) as HTMLButtonElement);
     await screen.findByText(COPY.programs.settingsArchiveSaved);
-    expect(mocks.updateProgram).toHaveBeenCalledTimes(1);
+    expect(mocks.updateProgram).toHaveBeenCalledOnce();
     expect(mocks.getManagementProgram).toHaveBeenCalledTimes(3);
   });
 
@@ -1137,8 +1155,8 @@ describe(ProgramWorkspace, () => {
       <ProgramWorkspace
         programId="program-1"
         task="settings"
-        onBack={vi.fn()}
-        onTaskChange={vi.fn()}
+        onBack={vi.fn<(...args: unknown[]) => void>()}
+        onTaskChange={vi.fn<(...args: unknown[]) => void>()}
       />
     );
     await screen.findByRole("heading", {
@@ -1322,7 +1340,7 @@ describe(ProgramWorkspace, () => {
   test("preserves a requested Settings section when discarding a dirty draft", async () => {
     mockWorkspace();
     const user = userEvent.setup();
-    const onSettingsSectionChange = vi.fn();
+    const onSettingsSectionChange = vi.fn<(...args: unknown[]) => void>();
     const requestedSection = document.createElement("a");
     requestedSection.href =
       "/programs?mode=management&program=program-1&task=settings&settingsSection=publishing";
@@ -1337,7 +1355,7 @@ describe(ProgramWorkspace, () => {
           settingsSection="basics"
           onSettingsSectionChange={onSettingsSectionChange}
           onBack={() => {}}
-          onTaskChange={vi.fn()}
+          onTaskChange={vi.fn<(...args: unknown[]) => void>()}
         />
       );
 
@@ -1367,20 +1385,7 @@ describe(ProgramWorkspace, () => {
   test("reaches the overview after discarding a dirty Settings route", async () => {
     mockWorkspace();
     const user = userEvent.setup();
-    const Harness = () => {
-      const [task, setTask] = useState<"settings" | null>("settings");
-      return (
-        <ProgramWorkspace
-          programId="program-1"
-          task={task ?? undefined}
-          onBack={() => {}}
-          onTaskChange={(nextTask) =>
-            setTask(nextTask === "settings" ? "settings" : null)
-          }
-        />
-      );
-    };
-    render(<Harness />);
+    render(<StatefulWorkspaceHarness initialTask="settings" />);
 
     await user.click(
       await screen.findByRole("button", {
@@ -1462,20 +1467,7 @@ describe(ProgramWorkspace, () => {
   test("reaches the overview after discarding a dirty Event route", async () => {
     mockWorkspace();
     const user = userEvent.setup();
-    const Harness = () => {
-      const [task, setTask] = useState<"events" | null>("events");
-      return (
-        <ProgramWorkspace
-          programId="program-1"
-          task={task ?? undefined}
-          onBack={vi.fn()}
-          onTaskChange={(nextTask) =>
-            setTask(nextTask === "events" ? "events" : null)
-          }
-        />
-      );
-    };
-    render(<Harness />);
+    render(<StatefulWorkspaceHarness initialTask="events" />);
 
     await user.click(
       await screen.findByRole("button", { name: COPY.programs.createMeeting })
@@ -1576,8 +1568,8 @@ describe(ProgramWorkspace, () => {
           programId="program-1"
           task="events"
           eventId="event-1"
-          onBack={vi.fn()}
-          onTaskChange={vi.fn()}
+          onBack={vi.fn<(...args: unknown[]) => void>()}
+          onTaskChange={vi.fn<(...args: unknown[]) => void>()}
           onEventChange={onEventChange}
         />
       );
@@ -1602,7 +1594,7 @@ describe(ProgramWorkspace, () => {
       outsideLink.dispatchEvent(navigation);
       expect(navigation.defaultPrevented).toBe(true);
       const beforeUnload = new Event("beforeunload", { cancelable: true });
-      expect(window.dispatchEvent(beforeUnload)).toBe(false);
+      expect(window.dispatchEvent(beforeUnload)).toBeFalsy();
       const blockedHref = window.location.href;
       window.dispatchEvent(new PopStateEvent("popstate"));
       expect(window.location.href).toBe(blockedHref);
@@ -1812,7 +1804,7 @@ describe(ProgramWorkspace, () => {
         <ProgramWorkspace
           programId="program-1"
           task="settings"
-          onBack={vi.fn()}
+          onBack={vi.fn<(...args: unknown[]) => void>()}
           onTaskChange={vi.fn()}
         />
       </>
@@ -3307,15 +3299,15 @@ describe("EVT-02 recurring preview and generation UI (#252)", () => {
   }
 
   function renderScheduleTask(
-    onTaskChange = vi.fn(),
-    onScheduleEditorChange = vi.fn()
+    onTaskChange = vi.fn<(...args: unknown[]) => void>(),
+    onScheduleEditorChange = vi.fn<(...args: unknown[]) => void>()
   ) {
     mockWorkspace();
     return render(
       <ProgramWorkspace
         programId="program-1"
         task="schedule"
-        onBack={vi.fn()}
+        onBack={vi.fn<(...args: unknown[]) => void>()}
         onTaskChange={onTaskChange}
         onScheduleEditorChange={onScheduleEditorChange}
       />
@@ -3324,7 +3316,7 @@ describe("EVT-02 recurring preview and generation UI (#252)", () => {
 
   test("guards dirty Schedule drafts across tabs, browser Back, and external leave", async () => {
     const user = userEvent.setup();
-    const onScheduleEditorChange = vi.fn();
+    const onScheduleEditorChange = vi.fn<(...args: unknown[]) => void>();
     const externalLink = document.createElement("a");
     externalLink.href = "/home";
     externalLink.textContent = "首頁";
@@ -3344,7 +3336,7 @@ describe("EVT-02 recurring preview and generation UI (#252)", () => {
         })
       ).toBeInTheDocument();
       const beforeUnload = new Event("beforeunload", { cancelable: true });
-      expect(window.dispatchEvent(beforeUnload)).toBe(false);
+      expect(window.dispatchEvent(beforeUnload)).toBeFalsy();
 
       await user.click(
         screen.getByRole("button", {

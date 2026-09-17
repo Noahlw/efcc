@@ -15,7 +15,7 @@ import { clearManagementDraft, writeManagementDraft } from "./management-draft";
 
 const mocks = vi.hoisted(() => ({
   getDepartment: vi.fn(),
-  isUnknownMutationOutcome: vi.fn(),
+  isUnknownMutationOutcome: vi.fn<(error: unknown) => boolean>(),
   setDepartmentModule: vi.fn(),
   updateDepartment: vi.fn(),
 }));
@@ -107,7 +107,10 @@ describe("DepartmentSettingsPanel identity access", () => {
     const user = userEvent.setup();
 
     render(
-      <DepartmentSettingsPanel department={department} onClose={vi.fn()} />
+      <DepartmentSettingsPanel
+        department={department}
+        onClose={vi.fn<() => void>()}
+      />
     );
 
     await screen.findByText(COPY.programs.departmentSettingsLoadError);
@@ -136,7 +139,7 @@ describe("DepartmentSettingsPanel identity access", () => {
     render(
       <DepartmentSettingsPanel
         department={managedDepartment}
-        onClose={vi.fn()}
+        onClose={vi.fn<() => void>()}
       />
     );
 
@@ -168,7 +171,7 @@ describe("DepartmentSettingsPanel identity access", () => {
     render(
       <DepartmentSettingsPanel
         department={managedDepartment}
-        onClose={vi.fn()}
+        onClose={vi.fn<() => void>()}
       />
     );
 
@@ -179,9 +182,9 @@ describe("DepartmentSettingsPanel identity access", () => {
     await user.click(
       within(dialog).getByRole("button", { name: COPY.programs.draftRecover })
     );
-    expect(
-      await screen.findByRole("textbox", { name: COPY.programs.deptName })
-    ).toHaveValue("恢復中的部門");
+    await expect(
+      screen.findByRole("textbox", { name: COPY.programs.deptName })
+    ).resolves.toHaveValue("恢復中的部門");
   });
 
   test("blocks replay until an unknown Department mutation is reconciled", async () => {
@@ -192,7 +195,7 @@ describe("DepartmentSettingsPanel identity access", () => {
     render(
       <DepartmentSettingsPanel
         department={managedDepartment}
-        onClose={vi.fn()}
+        onClose={vi.fn<() => void>()}
       />
     );
 
@@ -209,7 +212,7 @@ describe("DepartmentSettingsPanel identity access", () => {
     expect(
       screen.getByRole("button", { name: COPY.programs.saveDepartment })
     ).toBeDisabled();
-    expect(mocks.updateDepartment).toHaveBeenCalledTimes(1);
+    expect(mocks.updateDepartment).toHaveBeenCalledOnce();
 
     mocks.getDepartment.mockResolvedValue({
       department: managedDepartment,
@@ -218,7 +221,7 @@ describe("DepartmentSettingsPanel identity access", () => {
     await user.click(retry);
 
     await screen.findByText(COPY.programs.departmentMutationReconciled);
-    expect(mocks.updateDepartment).toHaveBeenCalledTimes(1);
+    expect(mocks.updateDepartment).toHaveBeenCalledOnce();
     expect(
       screen.getByRole("button", { name: COPY.programs.saveDepartment })
     ).toBeEnabled();
@@ -235,7 +238,7 @@ describe("DepartmentSettingsPanel identity access", () => {
     render(
       <DepartmentSettingsPanel
         department={managedDepartment}
-        onClose={vi.fn()}
+        onClose={vi.fn<() => void>()}
       />
     );
 

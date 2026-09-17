@@ -9,6 +9,7 @@ import { useRouter } from "next/navigation";
 import { useEffect } from "react";
 
 import { AppShell } from "@/lib/app-shell";
+import { clearAllEventCreateDrafts } from "@/lib/programs/event-create-draft";
 import {
   clearAccessCache,
   clearCatalogCache,
@@ -29,11 +30,13 @@ export const withProgramsFixtureIsolation: Decorator = (Story) => {
   }
   clearAccessCache();
   clearCatalogCache();
+  clearAllEventCreateDrafts();
 
   useEffect(
     () => () => {
       clearAccessCache();
       clearCatalogCache();
+      clearAllEventCreateDrafts();
     },
     []
   );

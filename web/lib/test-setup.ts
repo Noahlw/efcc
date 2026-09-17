@@ -7,34 +7,34 @@ afterEach(() => {
   globalThis.sessionStorage?.clear();
 });
 
+function showModal(this: HTMLDialogElement): void {
+  this.setAttribute("open", "");
+}
+
+function closeDialog(this: HTMLDialogElement): void {
+  this.removeAttribute("open");
+  this.dispatchEvent(new Event("close"));
+}
+
 // jsdom doesn't implement HTMLDialogElement.showModal()/close() -- polyfill
 // with the attribute-toggling behavior real browsers use, close enough for
 // component tests that drive <dialog> via these methods.
 if (typeof HTMLDialogElement !== "undefined") {
   if (!HTMLDialogElement.prototype.showModal) {
-    HTMLDialogElement.prototype.showModal = function showModal(
-      this: HTMLDialogElement
-    ) {
-      this.setAttribute("open", "");
-    };
+    HTMLDialogElement.prototype.showModal = showModal;
   }
   if (!HTMLDialogElement.prototype.close) {
-    HTMLDialogElement.prototype.close = function close(
-      this: HTMLDialogElement
-    ) {
-      this.removeAttribute("open");
-      this.dispatchEvent(new Event("close"));
-    };
+    HTMLDialogElement.prototype.close = closeDialog;
   }
 }
 if (typeof HTMLElement !== "undefined") {
   if (!HTMLElement.prototype.hasPointerCapture) {
     HTMLElement.prototype.hasPointerCapture = () => false;
-    HTMLElement.prototype.setPointerCapture = () => undefined;
-    HTMLElement.prototype.releasePointerCapture = () => undefined;
+    HTMLElement.prototype.setPointerCapture = () => null;
+    HTMLElement.prototype.releasePointerCapture = () => null;
   }
   if (!HTMLElement.prototype.scrollIntoView) {
-    HTMLElement.prototype.scrollIntoView = () => undefined;
+    HTMLElement.prototype.scrollIntoView = () => null;
   }
 }
 
@@ -43,8 +43,14 @@ if (typeof HTMLElement !== "undefined") {
 // component tests without making production code depend on a test polyfill.
 if (typeof ResizeObserver === "undefined") {
   globalThis.ResizeObserver = class ResizeObserver {
-    observe() {}
-    unobserve() {}
-    disconnect() {}
+    observe(): void {
+      void this;
+    }
+    unobserve(): void {
+      void this;
+    }
+    disconnect(): void {
+      void this;
+    }
   };
 }

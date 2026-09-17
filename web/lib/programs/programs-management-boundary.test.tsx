@@ -8,6 +8,7 @@ import type {
   Department,
   DepartmentModule,
   Program,
+  ScheduleException,
   ScheduleRule,
 } from "@/lib/programs/program-api";
 import { ProgramsBoundary } from "@/lib/programs/programs-boundary";
@@ -32,7 +33,14 @@ const mocks = vi.hoisted(() => {
     listEnrollments: vi.fn(),
     pathname: vi.fn(() => "/programs"),
     listScheduleRules: vi.fn(),
-    listScheduleExceptions: vi.fn(),
+    listScheduleExceptions: vi.fn<
+      (
+        programId: string,
+        ruleId: string
+      ) => Promise<{
+        exceptions: ScheduleException[];
+      }>
+    >(),
     router,
   };
 });

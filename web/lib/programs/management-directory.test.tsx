@@ -413,7 +413,7 @@ describe(ManagementDirectory, () => {
     render(
       <ManagementDirectory
         departmentId={emptyDepartment.department_id}
-        onOpenProgram={vi.fn()}
+        onOpenProgram={vi.fn<(programId: string, created?: boolean) => void>()}
       />
     );
 
