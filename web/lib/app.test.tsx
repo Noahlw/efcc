@@ -45,6 +45,10 @@ import { writeGuestCredential } from "@/lib/guest-context";
 import { announce } from "@/lib/live-region";
 import { NavBar } from "@/lib/nav-bar";
 import {
+  readManagementDraft,
+  writeManagementDraft,
+} from "@/lib/programs/management-draft";
+import {
   clearAccessCache,
   type ProgramsManagementAccess,
 } from "@/lib/programs/program-api";
@@ -1180,6 +1184,12 @@ describe("Shell", () => {
     test("clicking Sign Out calls /logout, clears the hint, and replaces to /", async () => {
       pathnameMock.mockReturnValue("/profile");
       setAuthHint();
+      writeManagementDraft("program-1", "event-create", {
+        title: "未儲存草稿",
+      });
+      expect(readManagementDraft("program-1", "event-create")).toEqual({
+        title: "未儲存草稿",
+      });
       const user = userEvent.setup();
       render(<ProfilePage />);
 
@@ -1194,6 +1204,7 @@ describe("Shell", () => {
       expect(authCalls).toContain("/api/v1/auth/logout");
       expect(localStorage.getItem(AUTH_HINT_KEY)).toBeNull();
       expect(sessionStorage.getItem("efcc_logout_failed")).toBeNull();
+      expect(readManagementDraft("program-1", "event-create")).toBeNull();
     });
 
     test("logout RPC failure clears the hint, replaces to /, and surfaces failedNotice on Login", async () => {

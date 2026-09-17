@@ -221,6 +221,26 @@ describe("EventsTask operations-first composition", () => {
     expect(mocks.listScheduleRules).not.toHaveBeenCalled();
   });
 
+  test("distinguishes no generated Events from no Rules at all", async () => {
+    mocks.listEvents.mockReset().mockResolvedValue({ events: [] });
+    renderTask();
+
+    expect(
+      await screen.findByText(COPY.programs.workspaceTaskEventsEmpty)
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText(
+        `${COPY.programs.schedulePreviewTitle}：${COPY.programs.settingsScheduleNone}`
+      )
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("link", {
+        name: new RegExp(COPY.programs.settingsScheduleEventsLink, "u"),
+      })
+    ).toBeInTheDocument();
+    expect(mocks.listScheduleRules).not.toHaveBeenCalled();
+  });
+
   test("keeps edit, reschedule, and cancel behind a More menu", async () => {
     renderTask();
     const user = userEvent.setup();
@@ -783,6 +803,53 @@ describe("Schedule generation recovery", () => {
   });
 
   afterEach(cleanup);
+
+  test("states that no Rules exist instead of offering an unusable preview", () => {
+    render(
+      <RecurringSchedulePanel
+        programId="program-1"
+        rules={[]}
+        rulesError={null}
+        onGenerated={vi.fn<() => Promise<boolean>>()}
+      />
+    );
+
+    expect(
+      screen.getByText(
+        `${COPY.programs.schedulePreviewTitle}：${COPY.programs.settingsScheduleNone}`
+      )
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: COPY.programs.previewEvents })
+    ).not.toBeInTheDocument();
+  });
+
+  test("settles an empty reviewed Plan as an explicit empty state without Generate", async () => {
+    const user = userEvent.setup();
+    mocks.previewEvents.mockResolvedValueOnce({
+      plan: { ...preview.plan, rule_count: 0 },
+      occurrences: [],
+    });
+    render(
+      <RecurringSchedulePanel
+        programId="program-1"
+        rules={[rule]}
+        rulesError={null}
+        onGenerated={vi.fn<() => Promise<boolean>>()}
+      />
+    );
+
+    await user.click(
+      await screen.findByRole("button", { name: COPY.programs.previewEvents })
+    );
+
+    await expect(
+      screen.findByText(COPY.programs.previewEmpty)
+    ).resolves.toBeVisible();
+    expect(
+      screen.queryByRole("button", { name: COPY.programs.generateEvents })
+    ).not.toBeInTheDocument();
+  });
 
   test("a confirmed stale generation can retry read-only refresh without replaying", async () => {
     const user = userEvent.setup();

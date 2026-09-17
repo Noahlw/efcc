@@ -468,6 +468,20 @@ describe("R44: durable Enrollment Approval Runs", () => {
       .run();
   });
 
+  // These tests read the documented Run response contract through named
+  // aliases rather than inline member casts.
+  type RunResponse = {
+    data: {
+      item?: unknown;
+      run: { run_id: string; status: string; items: { status: string }[] };
+    };
+  };
+  type RunListItem = { run_id: string; status: string };
+  type RunListResponse = { data: { runs: RunListItem[] } };
+  const runResponse = (body: unknown): RunResponse => body as RunResponse;
+  const runListResponse = (body: unknown): RunListResponse =>
+    body as RunListResponse;
+
   async function pendingRequests(
     programId: string,
     memberIds: readonly string[]
@@ -1226,7 +1240,7 @@ describe("R44: durable Enrollment Approval Runs", () => {
     assert.strictEqual(afterRepeat?.count, 28);
   });
 
-  test("cancel stops future scheduling and members cannot start a run", async () => {
+  test("cancel stops future scheduling, keeps completed approvals, and members cannot start a run", async () => {
     const programId = await newProgram("R44 cancellation");
     const requestIds = await pendingRequests(programId, ["U002", "R44-U003"]);
     const denied = await runRequest(
@@ -1245,11 +1259,18 @@ describe("R44: durable Enrollment Approval Runs", () => {
       "POST",
       { request_ids: requestIds }
     );
-    const run = (
-      (await assertCorrelated(start)) as {
-        data: { run: { run_id: string } };
-      }
-    ).data.run;
+    const run = runResponse(await assertCorrelated(start)).data.run;
+    const approvedBeforeCancel = await runRequest(
+      adminAccess,
+      `/api/v1/programs/${programId}/enrollment-approval-runs/${run.run_id}/continue`,
+      "POST"
+    );
+    assert.strictEqual(approvedBeforeCancel.status, 200);
+    const approvedItems = runResponse(
+      await assertCorrelated(approvedBeforeCancel)
+    ).data.run.items.filter(({ status }) => status === "completed");
+    assert.strictEqual(approvedItems.length, 1);
+
     const cancel = await runRequest(
       adminAccess,
       `/api/v1/programs/${programId}/enrollment-approval-runs/${run.run_id}/cancel`,
@@ -1257,24 +1278,102 @@ describe("R44: durable Enrollment Approval Runs", () => {
       {}
     );
     assert.strictEqual(cancel.status, 200);
-    const cancelled = (await assertCorrelated(cancel)) as {
-      data: { run: { status: string; items: { status: string }[] } };
-    };
+    const cancelled = runResponse(await assertCorrelated(cancel));
     assert.strictEqual(cancelled.data.run.status, "cancelled");
-    assert.ok(
-      cancelled.data.run.items.every(({ status }) => status === "not_started")
+    assert.strictEqual(
+      cancelled.data.run.items.filter(({ status }) => status === "completed")
+        .length,
+      1
     );
+    assert.ok(
+      cancelled.data.run.items
+        .filter(({ status }) => status !== "completed")
+        .every(({ status }) => status === "not_started")
+    );
+    const survivingEnrollments = await testDb()
+      .prepare(
+        "SELECT COUNT(*) AS count FROM enrollments WHERE program_id = ? AND status = 'Active'"
+      )
+      .bind(programId)
+      .first<{ count: number }>();
+    assert.strictEqual(survivingEnrollments?.count, 1);
     const continueAfterCancel = await runRequest(
       adminAccess,
       `/api/v1/programs/${programId}/enrollment-approval-runs/${run.run_id}/continue`,
       "POST"
     );
     assert.strictEqual(continueAfterCancel.status, 200);
-    const continueBody = (await assertCorrelated(continueAfterCancel)) as {
-      data: { item: null; run: { status: string } };
-    };
+    const continueBody = runResponse(
+      await assertCorrelated(continueAfterCancel)
+    );
     assert.strictEqual(continueBody.data.item, null);
     assert.strictEqual(continueBody.data.run.status, "cancelled");
+  });
+
+  test("keeps a Run private to its Program and refuses an out-of-capability actor", async () => {
+    const programId = await newProgram("R44 run scope");
+    const otherProgramId = await newProgram("R44 run scope other");
+    const requestIds = await pendingRequests(programId, ["U002"]);
+    const start = await runRequest(
+      adminAccess,
+      `/api/v1/programs/${programId}/enrollment-approval-runs`,
+      "POST",
+      { request_ids: requestIds }
+    );
+    assert.strictEqual(start.status, 201);
+    const run = runResponse(await assertCorrelated(start)).data.run;
+
+    const crossProgram = await runRequest(
+      adminAccess,
+      `/api/v1/programs/${otherProgramId}/enrollment-approval-runs/${run.run_id}/continue`,
+      "POST"
+    );
+    assert.strictEqual(crossProgram.status, 404);
+    assert.strictEqual((await problemOf(crossProgram)).code, "NOT_FOUND");
+
+    const crossProgramList = await runRequest(
+      adminAccess,
+      `/api/v1/programs/${otherProgramId}/enrollment-approval-runs`
+    );
+    assert.strictEqual(crossProgramList.status, 200);
+    const crossProgramRuns = runListResponse(
+      await assertCorrelated(crossProgramList)
+    ).data.runs;
+    assert.ok(
+      crossProgramRuns.every(({ run_id }) => run_id !== run.run_id),
+      "another Program must not expose this Run"
+    );
+
+    for (const [method, path] of [
+      ["GET", `/api/v1/programs/${programId}/enrollment-approval-runs`],
+      [
+        "POST",
+        `/api/v1/programs/${programId}/enrollment-approval-runs/${run.run_id}/continue`,
+      ],
+      [
+        "POST",
+        `/api/v1/programs/${programId}/enrollment-approval-runs/${run.run_id}/cancel`,
+      ],
+    ] as const) {
+      const denied = await runRequest(
+        memberAccess,
+        path,
+        method,
+        method === "POST" ? {} : undefined
+      );
+      assert.strictEqual(denied.status, 403);
+      assert.strictEqual((await problemOf(denied)).code, "FORBIDDEN");
+    }
+
+    const untouched = await runRequest(
+      adminAccess,
+      `/api/v1/programs/${programId}/enrollment-approval-runs`
+    );
+    assert.strictEqual(untouched.status, 200);
+    const untouchedRun = runListResponse(
+      await assertCorrelated(untouched)
+    ).data.runs.find(({ run_id }) => run_id === run.run_id);
+    assert.strictEqual(untouchedRun?.status, "active");
   });
 
   test("does not overlap concurrent Continue calls", async () => {

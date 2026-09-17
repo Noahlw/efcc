@@ -1518,6 +1518,46 @@ describe(SettingsHub, () => {
     ).toBeInTheDocument();
   });
 
+  test("shows each destination its authoritative current value", () => {
+    render(
+      <SettingsHub
+        program={recurringProgram}
+        eventsEnabled
+        attendanceEnabled
+        onSelect={vi.fn()}
+        scheduleHref="/programs?mode=management&program=program-1&task=schedule"
+        notificationsHref="/programs?mode=management&task=notifications"
+        scheduleCurrentValue="已設定 1 條規則 · 下一次 2099-01-01 18:00"
+        notificationCurrentValue="未讀 2 · 共 5 項"
+      />
+    );
+
+    expect(
+      screen.getByRole("button", { name: /課程基本資料名稱、描述同分類/u })
+    ).toHaveTextContent(
+      `${recurringProgram.name} · ${recurringProgram.category}`
+    );
+    expect(
+      screen.getByRole("button", { name: /發布與顯示狀態同可見範圍/u })
+    ).toHaveTextContent(
+      `${COPY.programs.lifecycleActive} · ${COPY.programs.discoverabilityListed}`
+    );
+    expect(screen.getByRole("button", { name: /報名設定/u })).toHaveTextContent(
+      COPY.programs.enrollmentModeMemberRequest
+    );
+    expect(
+      screen.getByRole("button", { name: /出席與簽到/u })
+    ).toHaveTextContent(
+      `開始前 ${recurringProgram.check_in_opens_at_minutes_before_start} 分鐘 · 結束後 ${recurringProgram.check_in_closes_at_minutes_after_end} 分鐘`
+    );
+    expect(
+      screen.getByRole("link", { name: COPY.programs.settingsHubSchedule })
+    ).toHaveTextContent("已設定 1 條規則 · 下一次 2099-01-01 18:00");
+    expect(
+      screen.getByRole("link", { name: COPY.programs.settingsHubNotifications })
+    ).toHaveTextContent("未讀 2 · 共 5 項");
+  });
+
   test("does not invent schedule or attendance rows when capabilities are absent", () => {
     render(
       <SettingsHub
