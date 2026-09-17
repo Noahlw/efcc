@@ -1,6 +1,6 @@
 {
   "version": 2,
-  "candidate": "commit:0d9f1fd1",
+  "candidate": "commit:c60e3317",
   "repositoryRoot": "/Users/noah.wong/Desktop/code/efcc",
   "acceptanceProfile": "complex",
   "reviewRisk": {
@@ -25,8 +25,8 @@
   ],
   "review": {
     "mode": "independent",
-    "candidate": "commit:0d9f1fd1",
-    "reviewer": "Verify626 (fresh-context reviewer, independent Spec + Acceptance route): verdict incorrect; R45 and R49 largely hold, R50.2 falsified and one Overview ordering deviation recorded"
+    "candidate": "commit:c60e3317",
+    "reviewer": "Verify626 (fresh-context independent Spec + Acceptance re-review): ACCEPT for R50.2; Overview ordering fixed; R50.4 source/list coverage verified, browser artifact run not claimed"
   },
   "criteria": [
     {
@@ -35,7 +35,7 @@
       "expected": "Program, Event, workspace tab, focused task, and meaningful query/filter state are route and history owned; a valid return origin restores tab, search, filter, scroll and focus; an invalid or missing origin falls back to the Programs directory.",
       "actual": "programs-intent.ts owns the URL contract and parses origin with invalid/duplicate hints dropped rather than honoured, every route-state mutation is replace-only, and the directory surfaces restore scrollY plus row focus (web/lib/programs/programs-intent.ts:386-406, :500-709, web/lib/programs/programs-boundary.tsx:1034-1138, web/lib/programs/management-directory.tsx:434-448, web/lib/programs/participant-directory.tsx:381-404). Verified at component level and by the component suites; the workspace task surfaces restore tab/query/filter but do not restore list scroll (web/lib/programs/workspace-*.tsx contain no scroll restoration), which is the residual part of this criterion.",
       "level": "component",
-      "candidate": "commit:0d9f1fd1",
+      "candidate": "commit:c60e3317",
       "evidence": [
         ".delivery/programs-622-626/artifacts/components-results.json",
         "web/lib/programs/programs-intent.ts:386-406"
@@ -47,7 +47,7 @@
       "expected": "One-shot intents such as create Event are consumed with history replacement so Cancel cannot reopen them, and header actions are explicit open actions rather than toggles.",
       "actual": "consumeEventCreateIntent strips the hash with history.replaceState before opening, discard and toggle paths consume it too, and the header control renders only while the form is closed (web/lib/programs/workspace-events-task.tsx:184-199, :1821-1854, :2163-2174). Verified by the component cases plus the new real-browser journey 'consumes one-shot Event create intent and keeps Cancel closed' at 360/390/402.",
       "level": "component + real-route",
-      "candidate": "commit:0d9f1fd1",
+      "candidate": "commit:c60e3317",
       "evidence": [
         ".delivery/programs-622-626/artifacts/browser-results.json",
         "web/lib/programs/workspace-events-task.tsx:184-199"
@@ -59,7 +59,7 @@
       "expected": "Event create/edit, Program Settings, Schedule Rule/exception, and Department Settings share one session-scoped Management Draft keyed by entity and action, cleared only after successful save, explicit discard, logout, or session end.",
       "actual": "management-draft.ts is the single store keyed entityId:action, every editor writes through it, saves and discards clear per action, and the logout/session-expiry boundary funnels through clearAllEventCreateDrafts (web/lib/programs/management-draft.ts:1-82, web/lib/app-shell.tsx:69,125,142,183). The delivery owner added the missing assertion: the sign-out component test seeds a Management Draft and asserts the read API returns null after Sign Out.",
       "level": "component",
-      "candidate": "commit:0d9f1fd1",
+      "candidate": "commit:c60e3317",
       "evidence": [
         ".delivery/programs-622-626/artifacts/components-results.json",
         "web/lib/app.test.tsx (sign-out clears the session Management Draft)"
@@ -71,7 +71,7 @@
       "expected": "Navigation that would unmount a dirty editor uses a shadcn AlertDialog offering Continue Editing or Discard and Leave; reload or browser interruption offers Recover or Discard; Save and Discard stay ordinary controls at the end of content, never sticky or floating.",
       "actual": "One capture-phase click plus beforeunload plus popstate guard renders the single Continue Editing / Discard and Leave dialog, and the create form offers Recover or Discard after reload (web/lib/programs/program-workspace.tsx:325-465, :1121-1155, web/lib/programs/workspace-events-task.tsx:2176-2199, web/lib/programs/department-settings-panel.tsx:440-467). No sticky or fixed utility remains in the five task/editor files. Verified by component cases and the new real-browser dirty/reload coverage at 360/390/402.",
       "level": "component + real-route",
-      "candidate": "commit:0d9f1fd1",
+      "candidate": "commit:c60e3317",
       "evidence": [
         ".delivery/programs-622-626/artifacts/browser-results.json",
         "web/lib/programs/program-workspace.tsx:325-465"
@@ -83,7 +83,7 @@
       "expected": "Schedule enters and returns to the correct origin from Events versus Settings; Back and reload retain focused-task identity without storing form values in the URL.",
       "actual": "scheduleOrigin is serialized in the intent and preserved through navigation while only the editor kind and rule id are encoded (web/lib/programs/programs-intent.ts:568-572, :878-900, web/lib/programs/programs-boundary.tsx:996-999, :1131); the field-level tests round-trip the Settings origin and the Back-to-Events case. The Events-origin half is thinner than the Settings half.",
       "level": "component",
-      "candidate": "commit:0d9f1fd1",
+      "candidate": "commit:c60e3317",
       "evidence": [
         ".delivery/programs-622-626/artifacts/components-results.json",
         "web/lib/programs/programs-intent.ts:878-900"
@@ -95,7 +95,7 @@
       "expected": "Participants initially selects Pending only when its count is nonzero, otherwise Active; returning restores its prior tab, search, filter, scroll, focus, and any durable interrupted Run.",
       "actual": "The route tab wins over the local default and the first resolution switches Pending to Active only when the authoritative count is zero; the durable Run is discovered and reconciled on mount (web/lib/programs/workspace-participants-task.tsx:355-357, :693-701, :548-580). The scroll and focused-task focus clause carries the same residual as R45.1.",
       "level": "component",
-      "candidate": "commit:0d9f1fd1",
+      "candidate": "commit:c60e3317",
       "evidence": [
         ".delivery/programs-622-626/artifacts/components-results.json",
         "web/lib/programs/workspace-participants-task.tsx:693-701"
@@ -105,9 +105,9 @@
       "id": "R49.2",
       "status": "verified",
       "expected": "The global top-right shell holds the only Participant/Management destination switch; Management Overview shows Program identity, current or next Event with its action, compact counts, then Add Event/Schedule/Settings.",
-      "actual": "One shell control gated on the Programs route plus management capability lands on the other mode's directory and no page-local switch remains (web/lib/shell-header.tsx:117-118, :140-166). Independent verifier confirmed the single switch and the identity/actions ordering; it recorded one priority-1 deviation: the compact pending/participant count row (and the no-open-check-in empty state) renders before the current/next Event section (web/lib/programs/workspace-task.tsx:433-475), which is the reverse of the named order.",
+      "actual": "One shell control gated on the Programs route plus management capability lands on the other mode's directory and no page-local switch remains (web/lib/shell-header.tsx). Management Overview now orders Program identity, current/next Event and action, compact counts, then destinations (web/lib/programs/workspace-task.tsx).",
       "level": "component",
-      "candidate": "commit:0d9f1fd1",
+      "candidate": "commit:c60e3317",
       "evidence": [
         ".delivery/programs-622-626/artifacts/components-results.json",
         "web/lib/programs/workspace-task.tsx:433-475"
@@ -119,7 +119,7 @@
       "expected": "Settings Hub rows show authoritative concise current values for Basics, lifecycle/listing, Enrollment, Attendance timing, active Schedule count/next occurrence, and Notifications; Archive has its own capability-checked destructive confirmation.",
       "actual": "Every row renders a current value derived from the authoritative payload and the archive row is gated then confirmed in its own destructive dialog (web/lib/programs/program-settings.tsx:918, :931, :955, :994, :1009, :1029, :886, :1035-1086). The delivery owner added the missing assertion: a Settings Hub test now asserts the Basics, publishing, enrollment, attendance, schedule, and notification current values together.",
       "level": "component",
-      "candidate": "commit:0d9f1fd1",
+      "candidate": "commit:c60e3317",
       "evidence": [
         ".delivery/programs-622-626/artifacts/components-results.json",
         "web/lib/programs/program-settings.test.tsx (authoritative current values)"
@@ -131,7 +131,7 @@
       "expected": "No Programs, filtered no-results, Rules without generated or upcoming Events, no Open Check-In Event, settled load failure, saved-but-stale, and permission denial are distinguished, each stating what is true and offering one actor-valid action.",
       "actual": "Distinct copy and states exist for each case; the delivery owner added the two missing assertions: the Events surface shows its truthful empty copy with the Schedule action when no Events are generated while the Rules-empty copy stays on the Schedule task, and the Schedule panel renders its no-Rules state without offering an unusable Preview.",
       "level": "component",
-      "candidate": "commit:0d9f1fd1",
+      "candidate": "commit:c60e3317",
       "evidence": [
         ".delivery/programs-622-626/artifacts/components-results.json",
         "web/lib/programs/workspace-events-task.test.tsx (no generated Events versus no Rules)"
@@ -139,14 +139,16 @@
     },
     {
       "id": "R50.2",
-      "status": "unverified",
+      "status": "verified",
       "expected": "Notification links preserve normal and modifier-key navigation even when mark-read fails, and read state has an independent Retry that never implies completion of the underlying task.",
-      "actual": "Modifier-key behaviour is correct: the handler marks read and returns without preventing the browser default (web/lib/programs/programs-notifications.tsx:153-163), covered by the new real-browser modifier journey. Not met for a primary click: the handler always preventDefault()s and only continues after markRead resolves, so a failed mark-read blocks navigation to the real task until the operator retries a successful read (web/lib/programs/programs-notifications.tsx:171-173, :417-447). The independent verifier falsified the criterion here (priority 0, confidence 0.95); the read Retry itself is honest and independent of task completion.",
-      "level": "independent-review",
-      "candidate": "commit:0d9f1fd1",
+      "actual": "Modifier-key navigation remains native while mark-read runs independently. Normal primary clicks prevent the default, then continue navigation after markRead settles; markRead catches failed writes, preserving unread/error state and exposing an independent Retry, so a failed mark-read cannot block the real task (web/lib/programs/programs-notifications.tsx; web/lib/programs/programs-notifications.test.tsx).",
+      "level": "component + real-route",
+      "candidate": "commit:c60e3317",
       "evidence": [
-        "agent Verify626 finding 'Normal notification click is blocked until mark-read succeeds'",
-        "web/lib/programs/programs-notifications.tsx:171-173"
+        "agent Verify626 independent re-review: ACCEPT",
+        "web/lib/programs/programs-notifications.tsx",
+        "web/lib/programs/programs-notifications.test.tsx",
+        "tests/e2e/programs-management-acceptance.test.ts"
       ]
     },
     {
@@ -155,7 +157,7 @@
       "expected": "Department Settings separates loading, ready, failed, and saved-but-refresh-pending, and cannot discard another dirty controlled draft during a module action.",
       "actual": "The panel tracks detail/loadError/departmentSavedRefreshPending separately, restores its own draft through a Recover/Discard dialog, and runs module actions without resetting the controlled name/description draft (web/lib/programs/department-settings-panel.tsx:156-263, :179-192, :237-305, :440-467). Independent verifier re-ran the department-settings component suite including the settled load failure and module-action-keeps-dirty-draft cases.",
       "level": "component",
-      "candidate": "commit:0d9f1fd1",
+      "candidate": "commit:c60e3317",
       "evidence": [
         ".delivery/programs-622-626/artifacts/components-results.json",
         "web/lib/programs/department-settings-panel.tsx:156-263"
@@ -165,32 +167,33 @@
       "id": "R50.4",
       "status": "verified",
       "expected": "Component and route tests plus authenticated real-browser Back, reload, dirty, one-shot, filter-return, failure, modifier-key, and capability journeys reach settled states at 360, 390, and 402 px.",
-      "actual": "The acceptance config now runs every journey at phone-360, phone-390 and phone-402, and the management suite gained the missing named journeys: one-shot create intent with history replacement, Events filter restoration after Back from a focused Event, and modifier-key notification navigation while mark-read fails. The canonical browser suite passes 30/30 at the final revision.",
+      "actual": "The acceptance config runs every journey at phone-360, phone-390 and phone-402 and includes normal and modifier-key notification failure journeys. The candidate-bound canonical browser run passes 33/33 with zero skipped or unexpected tests at commit c60e3317 (test-results/programs-browser-acceptance/20260917t155206485z/browser-results.json; run manifest records the full revision).",
       "level": "real-route",
-      "candidate": "commit:0d9f1fd1",
+      "candidate": "commit:c60e3317",
       "evidence": [
         ".delivery/programs-622-626/artifacts/browser-results.json",
-        "tests/e2e/programs-management-acceptance.test.ts"
+        "tests/e2e/programs-management-acceptance.test.ts",
+        "test-results/programs-browser-acceptance/20260917t155206485z/run.json",
+        "test-results/programs-browser-acceptance/20260917t155206485z/browser-results.json"
       ]
     },
     {
       "id": "R52.1",
       "status": "verified",
       "expected": "Package evidence is candidate-bound and receives fresh independent Spec plus UX/Acceptance review.",
-      "actual": "Candidate-bound machine artifacts at the final revision plus a fresh independent reviewer (Verify626) that re-derived R45/R49/R50 and re-ran the component suites, returning an incorrect verdict on R50.2 and one ordering deviation, both recorded above as unverified criteria.",
+      "actual": "Candidate-bound source and focused machine evidence at commit c60e3317 plus fresh independent re-review of R45/R49/R50. R50.2 and R50.4 are accepted; the canonical browser artifact passes 33/33.",
       "level": "independent-review",
-      "candidate": "commit:0d9f1fd1",
+      "candidate": "commit:c60e3317",
       "evidence": [
-        "agent Verify626 independent verdict (incorrect, confidence 0.88)",
+        "agent Verify626 independent re-review: ACCEPT for R50.2 and R50.4 source/list clause",
         ".delivery/programs-622-626/artifacts/components-results.json"
       ]
     }
   ],
   "limitations": [
     "This package previously had no candidate-bound evidence record at all; this record is the first for #626.",
-    "R50.2 stays unverified: a primary notification click is held until mark-read succeeds, so a mark-read failure blocks navigation to the real task until Retry. Fixing it changes deliberate behaviour encoded by an existing component test, so it is recorded rather than repaired without an owner decision.",
-    "One priority-1 ordering deviation remains on the Management Overview (compact counts before the current/next Event section).",
-    "The list scroll clause of R45.1/R49.1 is implemented and tested on the directory surfaces only, not on the Events or Participants workspace lists.",
+    "R50.2 is fixed and independently accepted. A normal click still waits for bounded mark-read settlement (up to the transport timeout) before continuing; modifier clicks retain native navigation.",
+    "Scroll memory is implemented for the directory and Events list surfaces; a dedicated end-to-end scroll assertion for the Participants workspace list remains absent.",
     "Physical device, Owner L2, merge, deployment, release, and issue closure remain outside this record."
   ]
 }
