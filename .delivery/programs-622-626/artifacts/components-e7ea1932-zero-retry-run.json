@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "runtime": "vitest",
+  "config": "web/vitest.components.config.ts",
+  "suite": "web/lib/**/*.test.tsx",
+  "revision": "e7ea1932f5800ed006770dba24c0dbeb4329470e",
+  "candidate": "commit:e7ea1932",
+  "layer": "component",
+  "status": "passed",
+  "numTotalTestSuites": 199,
+  "numPassedTestSuites": 199,
+  "numFailedTestSuites": 0,
+  "numTotalTests": 1199,
+  "numPassedTests": 1199,
+  "numFailedTests": 0,
+  "numPendingTests": 0,
+  "reportPath": ".delivery/programs-622-626/artifacts/components-e7ea1932-zero-retry-results.json"
+}

@@ -226,35 +226,24 @@ async function restoreFixture(page: Page, fixture: Fixture): Promise<void> {
   if (page.isClosed()) {
     return;
   }
-  const restore = async (attempt: number): Promise<void> => {
-    try {
-      await page.evaluate(async ({ programId, programName, description }) => {
-        const response = await fetch(`/api/v1/programs/${programId}`, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            name: programName,
-            description,
-            category: "T05",
-            lifecycle: "Active",
-            discoverability: "Listed",
-          }),
-        });
-        if (!response.ok) {
-          throw new Error(
-            `management fixture restore returned HTTP ${response.status}`
-          );
-        }
-      }, fixture);
-    } catch (error) {
-      if (attempt >= 2) {
-        throw error;
-      }
-      await page.waitForTimeout(250);
-      await restore(attempt + 1);
+  await page.evaluate(async ({ programId, programName, description }) => {
+    const response = await fetch(`/api/v1/programs/${programId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: programName,
+        description,
+        category: "T05",
+        lifecycle: "Active",
+        discoverability: "Listed",
+      }),
+    });
+    if (!response.ok) {
+      throw new Error(
+        `management fixture restore returned HTTP ${response.status}`
+      );
     }
-  };
-  await restore(0);
+  }, fixture);
 }
 
 test.describe("T05.5 management Browser Acceptance", () => {

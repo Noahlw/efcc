@@ -396,6 +396,7 @@ const MANAGEMENT_DIRECTORY: ManagementDirectory = {
 
 const MANAGEMENT_COCKPIT: ManagementCockpitView = {
   program_id: PROGRAM_ID,
+  updated_at: "2026-01-01T00:00:00.000Z",
   next_event: {
     event_id: EVENT_ID,
     program_id: PROGRAM_ID,

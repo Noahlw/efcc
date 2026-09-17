@@ -23,6 +23,8 @@ export default defineProject({
       "lib/route-header.test.tsx",
       "lib/page-frame.test.tsx",
       "lib/programs/use-async-resource.test.tsx",
+      "lib/programs/authoritative-revision.test.ts",
+      "lib/programs/programs-scroll.test.ts",
       "lib/home.test.tsx",
       "lib/feed-presentation.test.tsx",
       "lib/hk-time.test.ts",
