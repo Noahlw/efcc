@@ -16,6 +16,7 @@ const COPY = {
   settingsBasicsHeading: "基本資料",
   settingsBack: "返回設定",
   settingsUnsaved: "有未儲存變更。",
+  settingsContinueEditing: "繼續編輯",
   settingsDiscard: "捨棄變更",
   programName: "課程名稱",
   programDescription: "課程簡介",
@@ -312,6 +313,12 @@ test.describe("T05.5 management Browser Acceptance", () => {
       await nameInput.fill(draftName);
       const dirtySettingsUrl = page.url();
       await page.getByRole("link", { name: COPY.enterParticipant }).click();
+      await expect(page.getByRole("alertdialog")).toBeVisible();
+      await page
+        .getByRole("alertdialog")
+        .getByRole("button", { name: COPY.settingsContinueEditing })
+        .click();
+      await expect(page.getByRole("alertdialog")).not.toBeVisible();
       await expect(page).toHaveURL(dirtySettingsUrl);
       await expect(nameInput).toHaveValue(draftName);
       await expect(
@@ -372,12 +379,22 @@ test.describe("T05.5 management Browser Acceptance", () => {
       expect(dirtyActionGeometry.overflow).toBeLessThanOrEqual(1);
 
       await page.getByRole("link", { name: COPY.settingsBack }).click();
+      await expect(page.getByRole("alertdialog")).toBeVisible();
+      await page
+        .getByRole("alertdialog")
+        .getByRole("button", { name: COPY.settingsContinueEditing })
+        .click();
       await expect(
         page.getByRole("heading", { name: COPY.settingsBasicsHeading })
       ).toBeVisible();
       await expect(nameInput).toHaveValue(draftName);
 
       await page.getByRole("link", { name: COPY.workspaceOverview }).click();
+      await expect(page.getByRole("alertdialog")).toBeVisible();
+      await page
+        .getByRole("alertdialog")
+        .getByRole("button", { name: COPY.settingsContinueEditing })
+        .click();
       await expect(nameInput).toHaveValue(draftName);
       await expect(
         page.locator('[data-screen-settings-dirty="true"]')

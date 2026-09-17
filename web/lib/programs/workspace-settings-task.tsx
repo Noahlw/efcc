@@ -9,8 +9,13 @@ import { COPY, errorMessage } from "@/lib/copy";
 import { announce } from "@/lib/live-region";
 import { ScreenHeader } from "@/lib/screen-foundations";
 
-import { updateProgram } from "./program-api";
-import type { Program } from "./program-api";
+import {
+  isUnknownMutationOutcome,
+  listScheduleExceptions,
+  listScheduleRules,
+  updateProgram,
+} from "./program-api";
+import type { Program, ScheduleException, ScheduleRule } from "./program-api";
 import { ProgramSettings, SettingsHub } from "./program-settings";
 import type { ProgramSettingsSection } from "./program-settings";
 import { buildProgramsHref, parseProgramsIntent } from "./programs-intent";
@@ -20,7 +25,21 @@ import type {
   ProgramsSettingsSection,
   ProgramsTask,
 } from "./programs-intent";
+import {
+  hkTodayWallDate,
+  hkWallDateTimeLabel,
+  previewOccurrencesForRule,
+} from "./recurrence";
 import { hasModule, useWorkspaceTaskContext } from "./workspace-context";
+
+type ScheduleHubState =
+  | { kind: "loading" }
+  | { kind: "error" }
+  | {
+      kind: "ready";
+      rules: ScheduleRule[];
+      exceptions: Record<string, ScheduleException[]>;
+    };
 
 export type SettingsNavigationRequest =
   | { kind: "back" }
@@ -80,6 +99,9 @@ export const SettingsTask = ({
   const [archiveError, setArchiveError] = useState<string | null>(null);
   const [archiveRefreshPending, setArchiveRefreshPending] = useState(false);
   const [archiveCommitted, setArchiveCommitted] = useState(false);
+  const [scheduleHubState, setScheduleHubState] = useState<ScheduleHubState>({
+    kind: "loading",
+  });
   useEffect(() => {
     onFocusChange?.(section !== null);
   }, [onFocusChange, section]);
@@ -151,6 +173,38 @@ export const SettingsTask = ({
     [onNavigationBlocked, onNavigationRequest]
   );
 
+  const applyArchiveReadback = useCallback((refreshed: Program): boolean => {
+    if (refreshed.lifecycle === "Archived") {
+      setArchiveCommitted(true);
+      setArchiveRefreshPending(false);
+      setArchiveError(null);
+      setArchiveMessage(COPY.programs.settingsArchiveSaved);
+      announce(COPY.programs.settingsArchiveSaved);
+      return true;
+    }
+    if (refreshed.lifecycle === "Active") {
+      setArchiveCommitted(false);
+      setArchiveRefreshPending(false);
+      setArchiveError(COPY.programs.settingsArchiveNotApplied);
+      setArchiveMessage(null);
+      announce(COPY.programs.settingsArchiveNotApplied);
+      return true;
+    }
+    return false;
+  }, []);
+
+  const reconcileArchiveOutcome = useCallback(async (): Promise<boolean> => {
+    if (!onWorkspaceRefresh) {
+      return false;
+    }
+    try {
+      const refreshed = await onWorkspaceRefresh();
+      return refreshed !== undefined && applyArchiveReadback(refreshed);
+    } catch {
+      return false;
+    }
+  }, [applyArchiveReadback, onWorkspaceRefresh]);
+
   const archiveProgram = useCallback(async () => {
     if (
       archiveBusy ||
@@ -177,14 +231,23 @@ export const SettingsTask = ({
         }
       }
       const refreshPending =
-        onWorkspaceRefresh !== undefined && refreshed === undefined;
+        onWorkspaceRefresh !== undefined &&
+        (refreshed === undefined || !applyArchiveReadback(refreshed));
       setArchiveRefreshPending(refreshPending);
-      const message = refreshPending
-        ? COPY.programs.workspaceSavedStale
-        : COPY.programs.settingsArchiveSaved;
-      setArchiveMessage(message);
-      announce(message);
+      if (refreshPending) {
+        const message = COPY.programs.workspaceSavedStale;
+        setArchiveMessage(message);
+        announce(message);
+      }
     } catch (error) {
+      if (isUnknownMutationOutcome(error)) {
+        setArchiveCommitted(true);
+        setArchiveRefreshPending(true);
+        setArchiveMessage(COPY.programs.programTransportAmbiguous);
+        announce(COPY.programs.programTransportAmbiguous);
+        await reconcileArchiveOutcome();
+        return;
+      }
       const message = errorMessage(error);
       setArchiveError(message);
       announce(message);
@@ -193,9 +256,11 @@ export const SettingsTask = ({
     }
   }, [
     archiveBusy,
+    applyArchiveReadback,
     archiveCommitted,
     onWorkspaceRefresh,
     program,
+    reconcileArchiveOutcome,
     workspaceFreshness,
   ]);
 
@@ -205,19 +270,93 @@ export const SettingsTask = ({
     }
     setArchiveError(null);
     try {
-      const refreshed = await onWorkspaceRefresh();
-      if (refreshed !== undefined) {
-        setArchiveRefreshPending(false);
-        setArchiveMessage(COPY.programs.settingsArchiveSaved);
-        announce(COPY.programs.settingsArchiveSaved);
+      const reconciled = await reconcileArchiveOutcome();
+      if (!reconciled) {
+        setArchiveCommitted(true);
+        setArchiveRefreshPending(true);
+        setArchiveMessage(COPY.programs.workspaceSavedStale);
+        announce(COPY.programs.workspaceSavedStale);
       }
     } catch {
+      setArchiveCommitted(true);
+      setArchiveRefreshPending(true);
       setArchiveMessage(COPY.programs.workspaceSavedStale);
       announce(COPY.programs.workspaceSavedStale);
     }
-  }, [archiveCommitted, onWorkspaceRefresh]);
+  }, [archiveCommitted, onWorkspaceRefresh, reconcileArchiveOutcome]);
 
-  const scheduleCurrentValue = COPY.programs.settingsHubScheduleUnavailable;
+  useEffect(() => {
+    const scheduleEnabled =
+      program.capabilities.manage &&
+      program.behavior_type === "Recurring" &&
+      hasModule(modules, "events");
+    if (section !== null || !scheduleEnabled) {
+      return;
+    }
+    let active = true;
+    setScheduleHubState({ kind: "loading" });
+    void (async () => {
+      try {
+        const { rules } = await listScheduleRules(program.program_id);
+        const exceptionEntries = await Promise.all(
+          rules.map(async (rule) => {
+            const { exceptions } = await listScheduleExceptions(
+              program.program_id,
+              rule.rule_id
+            );
+            return [rule.rule_id, exceptions] as const;
+          })
+        );
+        if (active) {
+          setScheduleHubState({
+            kind: "ready",
+            rules,
+            exceptions: Object.fromEntries(exceptionEntries),
+          });
+        }
+      } catch {
+        if (active) {
+          setScheduleHubState({ kind: "error" });
+        }
+      }
+    })();
+    return () => {
+      active = false;
+    };
+  }, [
+    modules,
+    program.behavior_type,
+    program.capabilities.manage,
+    program.program_id,
+    section,
+  ]);
+
+  const scheduleCurrentValue =
+    scheduleHubState.kind === "loading"
+      ? COPY.programs.settingsHubCurrentLoading
+      : scheduleHubState.kind === "error"
+        ? COPY.programs.settingsHubCurrentError
+        : (() => {
+            const activeRules = scheduleHubState.rules.filter(
+              (rule) =>
+                rule.retired_at === null || rule.retired_at === undefined
+            );
+            const nextOccurrence = activeRules
+              .flatMap((rule) =>
+                previewOccurrencesForRule(
+                  rule,
+                  hkTodayWallDate(),
+                  366,
+                  scheduleHubState.exceptions[rule.rule_id] ?? []
+                )
+              )
+              .find((occurrence) => occurrence.skip_reason === null);
+            return `規則 ${activeRules.length} 條 · ${
+              nextOccurrence
+                ? `下一次 ${hkWallDateTimeLabel(nextOccurrence.starts_at)}`
+                : COPY.programs.settingsHubNoUpcoming
+            }`;
+          })();
   const notificationCurrentValue =
     notificationState?.kind === "ready"
       ? (() => {

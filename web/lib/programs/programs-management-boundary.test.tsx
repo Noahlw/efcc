@@ -8,6 +8,7 @@ import type {
   Department,
   DepartmentModule,
   Program,
+  ScheduleRule,
 } from "@/lib/programs/program-api";
 import { ProgramsBoundary } from "@/lib/programs/programs-boundary";
 
@@ -31,6 +32,7 @@ const mocks = vi.hoisted(() => {
     listEnrollments: vi.fn(),
     pathname: vi.fn(() => "/programs"),
     listScheduleRules: vi.fn(),
+    listScheduleExceptions: vi.fn(),
     router,
   };
 });
@@ -45,6 +47,7 @@ vi.mock(import("@/lib/programs/program-api"), () => ({
   listEnrollmentRequests: mocks.listEnrollmentRequests,
   listEnrollments: mocks.listEnrollments,
   listScheduleRules: mocks.listScheduleRules,
+  listScheduleExceptions: mocks.listScheduleExceptions,
 }));
 
 vi.mock("next/navigation", () => ({
@@ -139,6 +142,7 @@ beforeEach(() => {
   mocks.listEnrollmentRequests.mockReset();
   mocks.listEnrollments.mockReset();
   mocks.listScheduleRules.mockReset();
+  mocks.listScheduleExceptions.mockReset();
   mocks.router.push.mockReset();
   mocks.router.replace.mockReset();
   mocks.getManagementAccess.mockResolvedValue({
@@ -165,6 +169,7 @@ beforeEach(() => {
   mocks.listEnrollmentRequests.mockResolvedValue({ requests: [] });
   mocks.listEnrollments.mockResolvedValue({ enrollments: [] });
   mocks.listScheduleRules.mockResolvedValue({ rules: [] });
+  mocks.listScheduleExceptions.mockResolvedValue({ exceptions: [] });
 });
 
 afterEach(() => {
@@ -242,6 +247,39 @@ describe("Programs management boundary", () => {
         name: COPY.programs.workspaceTaskEvents,
       })
     ).resolves.toBeInTheDocument();
+  });
+
+  test("shows the authoritative schedule summary in the Settings Hub", async () => {
+    const populatedRule: ScheduleRule = {
+      rule_id: "rule-1",
+      program_id: program.program_id,
+      recurrence: "WEEKLY",
+      day_of_week: 3,
+      month_day: null,
+      start_time: "19:30",
+      end_time: "21:00",
+      location: "副堂 201",
+      created_at: "2026-01-01T00:00:00.000Z",
+      updated_at: "2026-01-01T00:00:00.000Z",
+    };
+    mocks.listScheduleRules.mockResolvedValue({ rules: [populatedRule] });
+    window.history.replaceState(
+      {},
+      "",
+      "/programs?mode=management&program=program-1&task=settings"
+    );
+    render(<ProgramsBoundary />);
+
+    await screen.findByRole("heading", {
+      name: COPY.programs.settingsHubTitle,
+    });
+    const schedule = await screen.findByRole("link", {
+      name: new RegExp(COPY.programs.settingsHubSchedule, "u"),
+    });
+    await waitFor(() => {
+      expect(schedule).toHaveTextContent("規則 1 條");
+      expect(schedule).toHaveTextContent("下一次");
+    });
   });
 
   test("restores the directory search and focuses the selected row after Back", async () => {

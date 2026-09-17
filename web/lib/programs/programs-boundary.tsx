@@ -22,6 +22,8 @@ import type {
 import { ScreenHeader, ScreenState } from "@/lib/screen-foundations";
 import {
   consumeProgramsNavigationContext,
+  pushProgramsNavigationContext,
+  readProgramsNavigationContext,
   rememberDeepLink,
   rememberProgramsNavigationContext,
 } from "@/lib/session";
@@ -745,39 +747,42 @@ export const ProgramsBoundary = () => {
   const [search, setSearch] = useState("");
   const intent = useMemo(() => parseProgramsIntent(search), [search]);
   const restoredNavigationContext = useMemo(
-    () => consumeProgramsNavigationContext(),
+    () => readProgramsNavigationContext() ?? consumeProgramsNavigationContext(),
     []
+  );
+  const [navigationContext, setNavigationContext] = useState(
+    restoredNavigationContext
   );
   const [locationReady, setLocationReady] = useState(false);
   const [managementDirectoryQuery, setManagementDirectoryQuery] = useState(
     () =>
-      restoredNavigationContext?.surface === "management"
-        ? (restoredNavigationContext.directoryQuery ?? "")
+      navigationContext?.surface === "management"
+        ? (navigationContext.directoryQuery ?? "")
         : ""
   );
   const [participantCatalogQuery, setParticipantCatalogQuery] = useState(() =>
-    restoredNavigationContext?.surface === "participant"
-      ? (restoredNavigationContext.catalogQuery ?? "")
+    navigationContext?.surface === "participant"
+      ? (navigationContext.catalogQuery ?? "")
       : ""
   );
   const [participantCatalogFilter, setParticipantCatalogFilter] =
     useState<ProgramsParticipantFilter>(
       () =>
-        (restoredNavigationContext?.surface === "participant" &&
-        restoredNavigationContext.catalogFilter
-          ? restoredNavigationContext.catalogFilter
+        (navigationContext?.surface === "participant" &&
+        navigationContext.catalogFilter
+          ? navigationContext.catalogFilter
           : "all") as ProgramsParticipantFilter
     );
   const [directoryFocusProgramId, setDirectoryFocusProgramId] = useState<
     string | null
   >(
-    restoredNavigationContext?.surface === "management"
-      ? (restoredNavigationContext.focusProgramId ?? null)
+    navigationContext?.surface === "management"
+      ? (navigationContext.focusProgramId ?? null)
       : null
   );
   const participantFocusProgramId = useRef<string | null>(
-    restoredNavigationContext?.surface === "participant"
-      ? (restoredNavigationContext.focusProgramId ?? null)
+    navigationContext?.surface === "participant"
+      ? (navigationContext.focusProgramId ?? null)
       : null
   );
   useEffect(
@@ -792,13 +797,16 @@ export const ProgramsBoundary = () => {
     []
   );
   const updateManagementDirectoryQuery = (query: string) => {
-    setManagementDirectoryQuery(query);
-    setDirectoryFocusProgramId(null);
-    rememberProgramsNavigationContext({
-      surface: "management",
+    const context = {
+      surface: "management" as const,
       directoryQuery: query,
       scrollY: window.scrollY,
-    });
+    };
+    setManagementDirectoryQuery(query);
+    setDirectoryFocusProgramId(null);
+    setNavigationContext(context);
+    pushProgramsNavigationContext(context);
+    rememberProgramsNavigationContext(context);
   };
   const retryFocusPending = useRef(false);
   useEffect(() => {
@@ -860,6 +868,35 @@ export const ProgramsBoundary = () => {
     const syncSearch = () => {
       const nextSearch = routeQuery ? `?${routeQuery}` : "";
       setSearch(`${nextSearch}${window.location.hash}`);
+      const context = readProgramsNavigationContext();
+      setNavigationContext(context);
+      const nextIntent = parseProgramsIntent(
+        `${nextSearch}${window.location.hash}`
+      );
+      const isDirectory =
+        nextIntent.programId === null && nextIntent.task === undefined;
+      if (isDirectory) {
+        const restoredContext = context ?? consumeProgramsNavigationContext();
+        setNavigationContext(restoredContext);
+        if (restoredContext?.surface === "management") {
+          setManagementDirectoryQuery(restoredContext.directoryQuery ?? "");
+          setParticipantCatalogQuery("");
+          setParticipantCatalogFilter("all");
+        } else if (restoredContext?.surface === "participant") {
+          setParticipantCatalogQuery(restoredContext.catalogQuery ?? "");
+          setParticipantCatalogFilter(
+            (restoredContext.catalogFilter ??
+              "all") as ProgramsParticipantFilter
+          );
+          setManagementDirectoryQuery("");
+        } else if (nextIntent.mode === "management") {
+          setManagementDirectoryQuery("");
+          setParticipantCatalogQuery("");
+          setParticipantCatalogFilter("all");
+        } else {
+          setManagementDirectoryQuery("");
+        }
+      }
     };
     syncSearch();
     setLocationReady(true);
@@ -1118,30 +1155,41 @@ export const ProgramsBoundary = () => {
     );
   };
   const updateCatalogQuery = (catalogQuery: string) => {
-    setParticipantCatalogQuery(catalogQuery);
-    rememberProgramsNavigationContext({
-      surface: "participant",
+    const context = {
+      surface: "participant" as const,
       catalogQuery,
       catalogFilter: participantCatalogFilter,
       scrollY: window.scrollY,
-    });
+    };
+    setParticipantCatalogQuery(catalogQuery);
+    setNavigationContext(context);
+    pushProgramsNavigationContext(context);
+    rememberProgramsNavigationContext(context);
   };
   const updateCatalogFilter = (catalogFilter: ProgramsParticipantFilter) => {
-    setParticipantCatalogFilter(catalogFilter);
-    rememberProgramsNavigationContext({
-      surface: "participant",
+    const context = {
+      surface: "participant" as const,
       catalogQuery: participantCatalogQuery,
       catalogFilter,
       scrollY: window.scrollY,
-    });
+    };
+    setParticipantCatalogFilter(catalogFilter);
+    setNavigationContext(context);
+    pushProgramsNavigationContext(context);
+    rememberProgramsNavigationContext(context);
   };
   const clearCatalogFilters = () => {
+    const context = {
+      surface: "participant" as const,
+      catalogQuery: "",
+      catalogFilter: "all",
+      scrollY: window.scrollY,
+    };
     setParticipantCatalogQuery("");
     setParticipantCatalogFilter("all");
-    rememberProgramsNavigationContext({
-      surface: "participant",
-      scrollY: window.scrollY,
-    });
+    setNavigationContext(context);
+    pushProgramsNavigationContext(context);
+    rememberProgramsNavigationContext(context);
   };
   const navigateManagementAttendance = (eventId: string) => {
     router.push(`/events?eventId=${encodeURIComponent(eventId)}`);

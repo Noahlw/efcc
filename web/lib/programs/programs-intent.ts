@@ -390,6 +390,7 @@ function parseOrigin(
 ): ParsedOrigin {
   const raw = rawFrom.value;
   const value =
+    !rawFrom.duplicate &&
     raw !== null &&
     isProgramsOrigin(raw) &&
     mode === "participant" &&

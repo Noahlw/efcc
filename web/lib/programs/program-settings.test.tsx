@@ -6,6 +6,7 @@ import { RpcError } from "@/lib/api";
 import { COPY } from "@/lib/copy";
 import type { Program, ScheduleRule } from "@/lib/programs/program-api";
 import { ProgramSettings, SettingsHub } from "@/lib/programs/program-settings";
+import { hkTodayWallDate } from "@/lib/programs/recurrence";
 
 const mocks = vi.hoisted(() => ({
   updateProgram: vi.fn(),
@@ -976,6 +977,49 @@ describe(ProgramSettings, () => {
     );
   });
 
+  test("reconciles a response-lost schedule save without retrying the write", async () => {
+    const user = userEvent.setup();
+    const savedRule: ScheduleRule = {
+      ...rule,
+      rule_id: "rule-saved",
+      start_time: "20:00",
+      end_time: "21:30",
+      effective_start_date: hkTodayWallDate(),
+    };
+    mocks.createScheduleRule.mockRejectedValueOnce(new Error("response lost"));
+    mocks.listScheduleRules
+      .mockResolvedValueOnce({ rules: [rule] })
+      .mockResolvedValueOnce({ rules: [rule, savedRule] });
+    render(
+      <ProgramSettings
+        program={recurringProgram}
+        section="schedule"
+        onTaskChange={vi.fn()}
+      />
+    );
+    await screen.findByText(
+      `${COPY.programs.ruleWeekly} ${COPY.programs.weekdayWednesday}`
+    );
+    await user.click(
+      screen.getByRole("button", { name: COPY.programs.addRule })
+    );
+    await user.type(screen.getByLabelText(COPY.programs.startTime), "20:00");
+    await user.type(screen.getByLabelText(COPY.programs.endTime), "21:30");
+    await user.click(
+      screen.getByRole("button", { name: COPY.programs.addRule })
+    );
+
+    await expect(
+      screen.findByText(COPY.programs.workspaceReconciled)
+    ).resolves.toBeInTheDocument();
+    expect(mocks.createScheduleRule).toHaveBeenCalledOnce();
+    expect(
+      screen.queryByRole("button", {
+        name: COPY.programs.workspaceRetryRefresh,
+      })
+    ).not.toBeInTheDocument();
+  });
+
   test("clears new-rule input only after a confirmed schedule-rule save", async () => {
     const user = userEvent.setup();
     render(
@@ -1167,7 +1211,8 @@ describe(ProgramSettings, () => {
     expect(mocks.deleteScheduleException).toHaveBeenCalledWith(
       "program-1",
       "rule-1",
-      "exception-existing"
+      "exception-existing",
+      expect.any(String)
     );
   });
 });

@@ -607,6 +607,56 @@ function exceptionInputFrom(values: ExceptionValues): {
   };
 }
 
+interface ScheduleSnapshot {
+  rules: ScheduleRule[];
+  exceptions: Record<string, ScheduleException[]>;
+}
+
+interface ScheduleMutationResolution {
+  matches: (snapshot: ScheduleSnapshot) => boolean;
+  onConfirmed: () => void;
+}
+
+async function readScheduleSnapshot(
+  programId: string
+): Promise<ScheduleSnapshot> {
+  const { rules } = await listScheduleRules(programId);
+  const exceptionEntries = await Promise.all(
+    rules.map(async (rule) => {
+      const result = await listScheduleExceptions(programId, rule.rule_id);
+      return [rule.rule_id, result.exceptions] as const;
+    })
+  );
+  return { rules, exceptions: Object.fromEntries(exceptionEntries) };
+}
+
+function sameRuleInput(rule: ScheduleRule, input: ScheduleRuleInput): boolean {
+  return (
+    rule.recurrence === input.recurrence &&
+    (rule.day_of_week ?? null) === (input.day_of_week ?? null) &&
+    (rule.month_day ?? null) === (input.month_day ?? null) &&
+    rule.start_time === input.start_time &&
+    rule.end_time === input.end_time &&
+    (rule.location ?? null) === (input.location ?? null) &&
+    (rule.effective_start_date ?? null) ===
+      (input.effective_start_date ?? null) &&
+    (rule.effective_end_date ?? null) === (input.effective_end_date ?? null)
+  );
+}
+
+function sameExceptionInput(
+  exception: ScheduleException,
+  input: ReturnType<typeof exceptionInputFrom>
+): boolean {
+  return (
+    exception.override_date === input.override_date &&
+    exception.action === input.action &&
+    (exception.new_date ?? null) === (input.new_date ?? null) &&
+    (exception.new_start_time ?? null) === (input.new_start_time ?? null) &&
+    (exception.new_end_time ?? null) === (input.new_end_time ?? null)
+  );
+}
+
 export type ProgramSettingsSection =
   | "basics"
   | "publishing"
@@ -1399,6 +1449,10 @@ export const ProgramSettings = ({
   const [attendanceArtifactReload, setAttendanceArtifactReload] = useState(0);
   const attendanceRotationKey = useRef<string | null>(null);
   const scheduleRuleCreateKey = useRef<string | null>(null);
+  const scheduleMutationKey = useRef<string | null>(null);
+  const pendingScheduleResolution = useRef<ScheduleMutationResolution | null>(
+    null
+  );
   const [notice, setNotice] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [reloadRequired, setReloadRequired] = useState(false);
@@ -1696,6 +1750,42 @@ export const ProgramSettings = ({
     currentProgram.program_id,
     eventsEnabled,
   ]);
+
+  const reconcileScheduleResolution = useCallback(
+    async (resolution: ScheduleMutationResolution): Promise<boolean> => {
+      try {
+        const snapshot = await readScheduleSnapshot(currentProgram.program_id);
+        if (!mounted.current) {
+          return false;
+        }
+        setRules(snapshot.rules);
+        setExceptions(snapshot.exceptions);
+        if (!resolution.matches(snapshot)) {
+          setReloadRequired(true);
+          setActionError(COPY.programs.programTransportAmbiguous);
+          announce(COPY.programs.programTransportAmbiguous);
+          return false;
+        }
+        resolution.onConfirmed();
+        pendingScheduleResolution.current = null;
+        scheduleMutationKey.current = null;
+        setReloadRequired(false);
+        onMutationBlockChange?.(false);
+        setNotice(COPY.programs.workspaceReconciled);
+        setActionError(null);
+        announce(COPY.programs.workspaceReconciled);
+        return true;
+      } catch {
+        if (mounted.current) {
+          setReloadRequired(true);
+          setActionError(COPY.programs.programTransportAmbiguous);
+          announce(COPY.programs.programTransportAmbiguous);
+        }
+        return false;
+      }
+    },
+    [currentProgram.program_id, onMutationBlockChange]
+  );
 
   useEffect(() => {
     if (focusedSection && !focusedSchedule) {
@@ -2018,7 +2108,8 @@ export const ProgramSettings = ({
     async (
       operation: () => Promise<unknown>,
       success: string,
-      afterSuccess?: () => void
+      afterSuccess: () => void,
+      resolution: ScheduleMutationResolution
     ) => {
       if (reloadRequired || scheduleMutationBlocked) {
         return;
@@ -2041,7 +2132,9 @@ export const ProgramSettings = ({
         if (!mounted.current) {
           return;
         }
-        afterSuccess?.();
+        pendingScheduleResolution.current = null;
+        scheduleMutationKey.current = null;
+        afterSuccess();
         setNotice(success);
         if (refreshFailed) {
           setReloadRequired(onReload !== undefined);
@@ -2054,10 +2147,11 @@ export const ProgramSettings = ({
         }
         if (isUnknownMutationOutcome(error)) {
           onMutationBlockChange?.(true);
-          setReloadRequired(onReload !== undefined);
+          setReloadRequired(true);
           setActionError(COPY.programs.programTransportAmbiguous);
           announce(COPY.programs.programTransportAmbiguous);
-          await reconcileWorkspace(true);
+          pendingScheduleResolution.current = resolution;
+          await reconcileScheduleResolution(resolution);
           return;
         }
         const message = settingsErrorMessage(error);
@@ -2073,36 +2167,58 @@ export const ProgramSettings = ({
       loadRules,
       onMutationBlockChange,
       onReload,
-      reconcileWorkspace,
+      reconcileScheduleResolution,
       reloadRequired,
       scheduleMutationBlocked,
     ]
   );
+
+  const retryScheduleResolution = useCallback(async () => {
+    if (busy || pendingScheduleResolution.current === null) {
+      return;
+    }
+    setBusy(true);
+    await reconcileScheduleResolution(pendingScheduleResolution.current);
+    if (mounted.current) {
+      setBusy(false);
+    }
+  }, [busy, reconcileScheduleResolution]);
 
   const submitNewRule = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const idempotencyKey = scheduleRuleCreateKey.current ?? crypto.randomUUID();
     scheduleRuleCreateKey.current = idempotencyKey;
     const input = ruleInputFrom(newRule);
+    const finish = () => {
+      clearManagementDraft(
+        currentProgram.program_id,
+        SETTINGS_DRAFT_ACTION.newRule
+      );
+      scheduleRuleCreateKey.current = null;
+      setNewRule((previous) => ({
+        ...previous,
+        startTime: "",
+        endTime: "",
+      }));
+      setScheduleEditor(null);
+      onScheduleEditorChange?.(null);
+    };
     void runScheduleMutation(
       () =>
         createScheduleRule(currentProgram.program_id, input, {
           idempotencyKey,
         }),
       COPY.programs.settingsSaved,
-      () => {
-        clearManagementDraft(
-          currentProgram.program_id,
-          SETTINGS_DRAFT_ACTION.newRule
-        );
-        scheduleRuleCreateKey.current = null;
-        setNewRule((previous) => ({
-          ...previous,
-          startTime: "",
-          endTime: "",
-        }));
-        setScheduleEditor(null);
-        onScheduleEditorChange?.(null);
+      finish,
+      {
+        matches: (snapshot) =>
+          snapshot.rules.some(
+            (candidate) =>
+              (candidate.retired_at === null ||
+                candidate.retired_at === undefined) &&
+              sameRuleInput(candidate, input)
+          ),
+        onConfirmed: finish,
       }
     );
   };
@@ -2125,26 +2241,40 @@ export const ProgramSettings = ({
     (rule: ScheduleRule) => (event: FormEvent<HTMLFormElement>) => {
       event.preventDefault();
       const draft = ruleDrafts[rule.rule_id] ?? ruleValuesFrom(rule);
+      const input = ruleInputFrom(draft);
+      const idempotencyKey = scheduleMutationKey.current ?? crypto.randomUUID();
+      scheduleMutationKey.current = idempotencyKey;
+      const finish = () => {
+        clearManagementDraft(
+          currentProgram.program_id,
+          `${SETTINGS_DRAFT_ACTION.rule}:${rule.rule_id}`
+        );
+        setRuleDrafts((previous) => {
+          const next = { ...previous };
+          delete next[rule.rule_id];
+          return next;
+        });
+        setScheduleEditor(null);
+        onScheduleEditorChange?.(null);
+      };
       void runScheduleMutation(
         () =>
           updateScheduleRule(
             currentProgram.program_id,
             rule.rule_id,
-            ruleInputFrom(draft)
+            input,
+            idempotencyKey
           ),
         COPY.programs.settingsSaved,
-        () => {
-          clearManagementDraft(
-            currentProgram.program_id,
-            `${SETTINGS_DRAFT_ACTION.rule}:${rule.rule_id}`
-          );
-          setRuleDrafts((previous) => {
-            const next = { ...previous };
-            delete next[rule.rule_id];
-            return next;
-          });
-          setScheduleEditor(null);
-          onScheduleEditorChange?.(null);
+        finish,
+        {
+          matches: (snapshot) => {
+            const candidate = snapshot.rules.find(
+              ({ rule_id }) => rule_id === rule.rule_id
+            );
+            return candidate !== undefined && sameRuleInput(candidate, input);
+          },
+          onConfirmed: finish,
         }
       );
     };
@@ -2167,12 +2297,29 @@ export const ProgramSettings = ({
         announce(COPY.programs.settingsExceptionDateValidation);
         return;
       }
+      const input = exceptionInputFrom(draft);
+      const idempotencyKey = scheduleMutationKey.current ?? crypto.randomUUID();
+      scheduleMutationKey.current = idempotencyKey;
+      const finish = () => {
+        clearManagementDraft(
+          currentProgram.program_id,
+          `${SETTINGS_DRAFT_ACTION.exception}:${rule.rule_id}`
+        );
+        setExceptionDrafts((previous) => {
+          const next = { ...previous };
+          delete next[rule.rule_id];
+          return next;
+        });
+        setScheduleEditor(null);
+        onScheduleEditorChange?.(null);
+      };
       void runScheduleMutation(
         async () => {
           const result = await createScheduleException(
             currentProgram.program_id,
             rule.rule_id,
-            exceptionInputFrom(draft)
+            input,
+            { idempotencyKey }
           );
           if ("exception" in result) {
             setExceptions((previous) => ({
@@ -2188,29 +2335,23 @@ export const ProgramSettings = ({
           }
         },
         COPY.programs.settingsSaved,
-        () => {
-          clearManagementDraft(
-            currentProgram.program_id,
-            `${SETTINGS_DRAFT_ACTION.exception}:${rule.rule_id}`
-          );
-          setExceptionDrafts((previous) => {
-            const next = { ...previous };
-            delete next[rule.rule_id];
-            return next;
-          });
-          setScheduleEditor(null);
-          onScheduleEditorChange?.(null);
+        finish,
+        {
+          matches: (snapshot) =>
+            (snapshot.exceptions[rule.rule_id] ?? []).some(
+              (candidate) =>
+                sameExceptionInput(candidate, input) &&
+                candidate.rule_id === rule.rule_id
+            ),
+          onConfirmed: finish,
         }
       );
     };
 
   const removeException = (exception: ScheduleException) => {
-    void runScheduleMutation(async () => {
-      await deleteScheduleException(
-        currentProgram.program_id,
-        exception.rule_id,
-        exception.exception_id
-      );
+    const idempotencyKey = scheduleMutationKey.current ?? crypto.randomUUID();
+    scheduleMutationKey.current = idempotencyKey;
+    const finish = () => {
       setExceptions((previous) => {
         const next = { ...previous };
         next[exception.rule_id] = (next[exception.rule_id] ?? []).filter(
@@ -2218,7 +2359,26 @@ export const ProgramSettings = ({
         );
         return next;
       });
-    }, COPY.programs.settingsSaved);
+    };
+    void runScheduleMutation(
+      async () => {
+        await deleteScheduleException(
+          currentProgram.program_id,
+          exception.rule_id,
+          exception.exception_id,
+          idempotencyKey
+        );
+      },
+      COPY.programs.settingsSaved,
+      finish,
+      {
+        matches: (snapshot) =>
+          !(snapshot.exceptions[exception.rule_id] ?? []).some(
+            ({ exception_id }) => exception_id === exception.exception_id
+          ),
+        onConfirmed: finish,
+      }
+    );
   };
 
   const beginRetireRule = (rule: ScheduleRule) => {
@@ -2232,10 +2392,30 @@ export const ProgramSettings = ({
   };
 
   const confirmRetireRule = (rule: ScheduleRule) => {
+    const idempotencyKey = scheduleMutationKey.current ?? crypto.randomUUID();
+    scheduleMutationKey.current = idempotencyKey;
+    const finish = () => setConfirmingRetireRuleId(null);
     void runScheduleMutation(
-      () => retireScheduleRule(currentProgram.program_id, rule.rule_id),
+      () =>
+        retireScheduleRule(
+          currentProgram.program_id,
+          rule.rule_id,
+          idempotencyKey
+        ),
       COPY.programs.settingsRuleRetired,
-      () => setConfirmingRetireRuleId(null)
+      finish,
+      {
+        matches: (snapshot) => {
+          const candidate = snapshot.rules.find(
+            ({ rule_id }) => rule_id === rule.rule_id
+          );
+          return (
+            candidate?.retired_at !== null &&
+            candidate?.retired_at !== undefined
+          );
+        },
+        onConfirmed: finish,
+      }
     );
   };
 
@@ -2441,12 +2621,16 @@ export const ProgramSettings = ({
           kind="error"
           title={actionError}
           action={
-            reloadRequired && onReload !== undefined ? (
+            reloadRequired && (onReload !== undefined || focusedSchedule) ? (
               <Button
                 className="w-fit border-[var(--screen-line-strong)] bg-transparent text-[var(--screen-ink)] hover:bg-[var(--screen-surface-soft)]"
                 variant="outline"
                 type="button"
-                onClick={() => void reconcileWorkspace(focusedSchedule)}
+                onClick={() =>
+                  void (pendingScheduleResolution.current
+                    ? retryScheduleResolution()
+                    : reconcileWorkspace(focusedSchedule))
+                }
                 disabled={busy}
               >
                 {COPY.programs.workspaceRetryRefresh}

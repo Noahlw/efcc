@@ -225,7 +225,12 @@ describe("Programs intent", () => {
     ).toMatchObject({ malformed: false });
     expect(
       parseProgramsIntent("?program=program-1&from=home&from=home")
-    ).toMatchObject({ malformed: false });
+    ).toStrictEqual({
+      mode: "participant",
+      programId: "program-1",
+      hash: null,
+      malformed: false,
+    });
   });
 
   test("keeps management mode URL-addressable and rejects malformed intent", () => {
@@ -1150,6 +1155,48 @@ describe("Programs boundary", () => {
 });
 
 describe("PUI-02 Programs directory (boundary integration)", () => {
+  test("records filter history and restores the prior filter on Back", async () => {
+    const user = userEvent.setup();
+    mocks.getManagementAccess.mockResolvedValue(managementAccess(false));
+    mocks.listParticipantCatalog.mockResolvedValue({
+      catalog: catalogFixture([
+        catalogProgramSummary("program-1", "查經小組", {
+          viewerState: "active",
+        }),
+      ]),
+    });
+    window.history.replaceState(
+      {
+        efccSection: "programs",
+        surface: "participant",
+        catalogQuery: "",
+        catalogFilter: "all",
+      },
+      "",
+      "/programs"
+    );
+    render(<ProgramsBoundary />);
+
+    await screen.findByRole("link", { name: /查經小組/u });
+    await user.click(
+      screen.getByRole("button", { name: COPY.programs.filterActive })
+    );
+    expect(window.history.state).toMatchObject({
+      surface: "participant",
+      catalogFilter: "active",
+    });
+
+    window.history.back();
+    await waitFor(() =>
+      expect(window.history.state).toMatchObject({ catalogFilter: "all" })
+    );
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: COPY.programs.filterAll })
+      ).toHaveAttribute("aria-pressed", "true")
+    );
+  });
+
   test("participant mode loads the server catalog as one coherent collection", async () => {
     mocks.getManagementAccess.mockResolvedValue(managementAccess(false));
     mocks.listParticipantCatalog.mockResolvedValue({

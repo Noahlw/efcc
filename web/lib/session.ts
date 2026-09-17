@@ -26,10 +26,69 @@ export interface ProgramsNavigationContext {
   scrollY?: number;
 }
 
+const PARTICIPANT_FILTERS = new Set(["all", "eligible", "active", "pending"]);
+
+function isProgramsNavigationContext(
+  value: unknown
+): value is ProgramsNavigationContext {
+  if (typeof value !== "object" || value === null) {
+    return false;
+  }
+  const context = value as Partial<ProgramsNavigationContext>;
+  return (
+    (context.surface === "management" || context.surface === "participant") &&
+    (context.directoryQuery === undefined ||
+      typeof context.directoryQuery === "string") &&
+    (context.catalogQuery === undefined ||
+      typeof context.catalogQuery === "string") &&
+    (context.catalogFilter === undefined ||
+      (typeof context.catalogFilter === "string" &&
+        PARTICIPANT_FILTERS.has(context.catalogFilter))) &&
+    (context.focusProgramId === undefined ||
+      typeof context.focusProgramId === "string") &&
+    (context.scrollY === undefined ||
+      (typeof context.scrollY === "number" && Number.isFinite(context.scrollY)))
+  );
+}
+
+function writeProgramsHistoryContext(
+  context: ProgramsNavigationContext,
+  replace: boolean
+): void {
+  if (
+    typeof window === "undefined" ||
+    window.location.pathname !== "/programs"
+  ) {
+    return;
+  }
+  const state = { efccSection: "programs" as const, ...context };
+  if (replace) {
+    window.history.replaceState(state, "", window.location.href);
+  } else {
+    window.history.pushState(state, "", window.location.href);
+  }
+}
+
+export function readProgramsNavigationContext(): ProgramsNavigationContext | null {
+  try {
+    const { state } = window.history;
+    return isProgramsNavigationContext(state) ? state : null;
+  } catch {
+    return null;
+  }
+}
+
+export function pushProgramsNavigationContext(
+  context: ProgramsNavigationContext
+): void {
+  writeProgramsHistoryContext(context, false);
+}
+
 /** Persist non-authoritative Programs list context across route changes/reload. */
 export function rememberProgramsNavigationContext(
   context: ProgramsNavigationContext
 ): void {
+  writeProgramsHistoryContext(context, true);
   try {
     sessionStorage.setItem(
       PROGRAMS_NAVIGATION_CONTEXT_KEY,
@@ -48,12 +107,7 @@ export function consumeProgramsNavigationContext(): ProgramsNavigationContext | 
       return null;
     }
     const value: unknown = JSON.parse(raw);
-    if (
-      typeof value !== "object" ||
-      value === null ||
-      ((value as ProgramsNavigationContext).surface !== "management" &&
-        (value as ProgramsNavigationContext).surface !== "participant")
-    ) {
+    if (!isProgramsNavigationContext(value)) {
       return null;
     }
     return value as ProgramsNavigationContext;

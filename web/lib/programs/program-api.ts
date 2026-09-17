@@ -1279,23 +1279,28 @@ export function listScheduleExceptions(
 export function updateScheduleRule(
   programId: string,
   ruleId: string,
-  patch: Partial<ScheduleRuleInput>
+  patch: Partial<ScheduleRuleInput>,
+  idempotencyKey?: string | null
 ): Promise<{ rule: ScheduleRule }> {
   return programsFetch(
     `/api/v1/programs/${encodeURIComponent(programId)}/schedule-rules/${encodeURIComponent(ruleId)}`,
     "PATCH",
-    patch
+    patch,
+    { idempotencyKey }
   );
 }
 
 /** POST /api/v1/programs/:id/schedule-rules/:ruleId/retire */
 export function retireScheduleRule(
   programId: string,
-  ruleId: string
+  ruleId: string,
+  idempotencyKey?: string | null
 ): Promise<{ rule: ScheduleRule }> {
   return programsFetch(
     `/api/v1/programs/${encodeURIComponent(programId)}/schedule-rules/${encodeURIComponent(ruleId)}/retire`,
-    "POST"
+    "POST",
+    undefined,
+    { idempotencyKey }
   );
 }
 
@@ -1309,12 +1314,14 @@ export function createScheduleException(
     new_date?: string;
     new_start_time?: string;
     new_end_time?: string;
-  }
+  },
+  options: { idempotencyKey?: string | null } = {}
 ): Promise<{ exception: ScheduleException }> {
   return programsFetch(
     `/api/v1/programs/${encodeURIComponent(programId)}/schedule-rules/${encodeURIComponent(ruleId)}/exceptions`,
     "POST",
-    input
+    input,
+    options
   );
 }
 
@@ -1322,11 +1329,14 @@ export function createScheduleException(
 export function deleteScheduleException(
   programId: string,
   ruleId: string,
-  exceptionId: string
+  exceptionId: string,
+  idempotencyKey?: string | null
 ): Promise<{ deleted: boolean }> {
   return programsFetch(
     `/api/v1/programs/${encodeURIComponent(programId)}/schedule-rules/${encodeURIComponent(ruleId)}/exceptions/${encodeURIComponent(exceptionId)}`,
-    "DELETE"
+    "DELETE",
+    undefined,
+    { idempotencyKey }
   );
 }
 

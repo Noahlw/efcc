@@ -916,6 +916,7 @@ export const COPY = {
     settingsHubArchiveConfirm: "確認封存",
     settingsArchiveSaving: "封存中…",
     settingsArchiveSaved: "課程已封存。",
+    settingsArchiveNotApplied: "封存未套用，請核對最新狀態後再試。",
     settingsHubScheduleCurrentHint: "目前值未能確認。",
     settingsHubCurrentLoading: "正在確認目前值…",
     settingsHubCurrentError: "目前值無法載入",

@@ -1120,6 +1120,49 @@ describe(ProgramWorkspace, () => {
     expect(mocks.getManagementProgram).toHaveBeenCalledTimes(3);
   });
 
+  test("reconciles a response-lost archive without replaying the write", async () => {
+    const user = userEvent.setup();
+    mocks.getManagementProgram.mockReset();
+    mocks.getManagementProgram
+      .mockResolvedValueOnce({ program, department, modules })
+      .mockResolvedValueOnce({
+        program: { ...program, lifecycle: "Archived" },
+        department,
+        modules,
+      });
+    mocks.updateProgram.mockRejectedValueOnce(new Error("response lost"));
+
+    render(
+      <ProgramWorkspace
+        programId="program-1"
+        task="settings"
+        onBack={vi.fn()}
+        onTaskChange={vi.fn()}
+      />
+    );
+    await screen.findByRole("heading", {
+      name: COPY.programs.settingsHubTitle,
+    });
+    await user.click(
+      screen.getByRole("button", { name: /封存課程停止一般使用/u })
+    );
+    await user.click(
+      screen.getByRole("button", {
+        name: COPY.programs.settingsHubArchiveConfirm,
+      })
+    );
+
+    await expect(
+      screen.findByText(COPY.programs.settingsArchiveSaved)
+    ).resolves.toBeInTheDocument();
+    expect(mocks.updateProgram).toHaveBeenCalledOnce();
+    expect(
+      screen.queryByRole("button", {
+        name: COPY.programs.workspaceRetryRefresh,
+      })
+    ).not.toBeInTheDocument();
+  });
+
   test("focused Settings uses one task header and Back without a duplicate root header", async () => {
     mockWorkspace();
     render(
