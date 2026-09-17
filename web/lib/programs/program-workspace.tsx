@@ -39,6 +39,7 @@ import {
 } from "@/lib/screen-foundations";
 import { rememberDeepLink } from "@/lib/session";
 
+import { applyAuthoritativeRevision } from "./authoritative-revision";
 import { clearEventCreateDraft } from "./event-create-draft";
 import { EventDetail } from "./event-detail";
 import {
@@ -116,6 +117,13 @@ export interface ProgramWorkspaceProps {
     editor: ProgramsScheduleEditor | null,
     ruleId?: string | null
   ) => void;
+}
+
+interface WorkspaceResource {
+  program: Program;
+  department: Department | null;
+  modules: DepartmentModule[];
+  cockpit?: ManagementCockpitView | null;
 }
 
 type WorkspaceState =
@@ -305,6 +313,10 @@ export const ProgramWorkspace = ({
   const mounted = useRef(true);
   const summaryRequestId = useRef(0);
   const workspaceRefreshQueue = useRef(Promise.resolve());
+  const authoritativeWorkspace = useRef<{
+    programId: string;
+    resource: WorkspaceResource;
+  } | null>(null);
   useEffect(() => {
     mounted.current = true;
     return () => {
@@ -593,25 +605,25 @@ export const ProgramWorkspace = ({
     run: loadWorkspace,
     refresh: refreshWorkspaceResource,
     retry,
-  } = useAsyncResource<
-    {
-      program: Program;
-      department: Department | null;
-      modules: DepartmentModule[];
-      cockpit?: ManagementCockpitView | null;
-    },
-    WorkspaceState
-  >(
+  } = useAsyncResource<WorkspaceResource, WorkspaceState>(
     async () => getManagementProgram(programId),
     {
       toLoading: () => ({ kind: "loading" }),
-      toReady: ({ program, department, modules, cockpit }) => ({
-        kind: "ready",
-        program,
-        department,
-        modules,
-        cockpit,
-      }),
+      toReady: (next) => {
+        const previous =
+          authoritativeWorkspace.current?.programId === programId
+            ? authoritativeWorkspace.current.resource
+            : null;
+        const authoritativeProgram =
+          applyAuthoritativeRevision(next.program, previous?.program ?? null) ??
+          next.program;
+        const resource =
+          previous !== null && authoritativeProgram !== next.program
+            ? { ...previous, program: authoritativeProgram }
+            : { ...next, program: authoritativeProgram };
+        authoritativeWorkspace.current = { programId, resource };
+        return { kind: "ready", ...resource };
+      },
       onError: (error) => {
         if (
           error instanceof RpcError &&

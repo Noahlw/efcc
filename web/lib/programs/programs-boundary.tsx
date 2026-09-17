@@ -747,6 +747,40 @@ export const ProgramsBoundary = () => {
   const routeKey = `${pathname}?${routeQuery}${routeHash}`;
   const [search, setSearch] = useState("");
   const intent = useMemo(() => parseProgramsIntent(search), [search]);
+  const participantWorkspaceView = useRef<{
+    programId: string;
+    participantTab?: ProgramsParticipantTab;
+    participantQuery?: string;
+  } | null>(null);
+  useEffect(() => {
+    if (
+      intent.mode !== "management" ||
+      intent.task !== "participants" ||
+      !intent.programId
+    ) {
+      return;
+    }
+    const previous = participantWorkspaceView.current;
+    participantWorkspaceView.current = {
+      programId: intent.programId,
+      participantTab:
+        intent.participantTab ??
+        (previous?.programId === intent.programId
+          ? previous.participantTab
+          : undefined),
+      participantQuery:
+        intent.participantQuery ??
+        (previous?.programId === intent.programId
+          ? previous.participantQuery
+          : undefined),
+    };
+  }, [
+    intent.mode,
+    intent.participantQuery,
+    intent.participantTab,
+    intent.programId,
+    intent.task,
+  ]);
   const restoredNavigationContext = useMemo(
     () => readProgramsNavigationContext() ?? consumeProgramsNavigationContext(),
     []
@@ -981,6 +1015,13 @@ export const ProgramsBoundary = () => {
     if (!intent.programId && task !== "notifications") {
       return;
     }
+    if (intent.task === "participants" && intent.programId) {
+      participantWorkspaceView.current = {
+        programId: intent.programId,
+        participantTab: intent.participantTab,
+        participantQuery: intent.participantQuery,
+      };
+    }
     const href = buildProgramsHref({
       mode: "management",
       programId: task === "notifications" ? null : intent.programId,
@@ -990,9 +1031,19 @@ export const ProgramsBoundary = () => {
       created: undefined,
       eventFilter: task === "events" ? intent.eventFilter : undefined,
       participantTab:
-        task === "participants" ? intent.participantTab : undefined,
+        task === "participants"
+          ? (intent.participantTab ??
+            (participantWorkspaceView.current?.programId === intent.programId
+              ? participantWorkspaceView.current.participantTab
+              : undefined))
+          : undefined,
       participantQuery:
-        task === "participants" ? intent.participantQuery : undefined,
+        task === "participants"
+          ? (intent.participantQuery ??
+            (participantWorkspaceView.current?.programId === intent.programId
+              ? participantWorkspaceView.current.participantQuery
+              : undefined))
+          : undefined,
       settingsSection: task === "settings" ? intent.settingsSection : undefined,
       scheduleOrigin:
         task === "schedule"

@@ -54,10 +54,17 @@ export function restoreProgramsScrollY(scrollY: number): void {
 /** Session-scoped list position for one Program task surface (#626 R45.1). */
 export function rememberWorkspaceScroll(scope: string): void {
   try {
-    browser().sessionStorage?.setItem(
-      `${WORKSPACE_SCROLL_PREFIX}${scope}`,
-      String(readProgramsScrollY())
-    );
+    const storage = browser().sessionStorage;
+    if (!storage) {
+      return;
+    }
+    const key = `${WORKSPACE_SCROLL_PREFIX}${scope}`;
+    const current = readProgramsScrollY();
+    const stored = storage.getItem(key);
+    if (current === 0 && stored !== null && Number(stored) > 0) {
+      return;
+    }
+    storage.setItem(key, String(current));
   } catch {
     // ponytail: scroll memory is cosmetic; a blocked storage write just skips it.
   }

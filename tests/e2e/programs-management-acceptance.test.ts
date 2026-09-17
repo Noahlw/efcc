@@ -226,24 +226,35 @@ async function restoreFixture(page: Page, fixture: Fixture): Promise<void> {
   if (page.isClosed()) {
     return;
   }
-  await page.evaluate(async ({ programId, programName, description }) => {
-    const response = await fetch(`/api/v1/programs/${programId}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        name: programName,
-        description,
-        category: "T05",
-        lifecycle: "Active",
-        discoverability: "Listed",
-      }),
-    });
-    if (!response.ok) {
-      throw new Error(
-        `management fixture restore returned HTTP ${response.status}`
-      );
+  const restore = async (attempt: number): Promise<void> => {
+    try {
+      await page.evaluate(async ({ programId, programName, description }) => {
+        const response = await fetch(`/api/v1/programs/${programId}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            name: programName,
+            description,
+            category: "T05",
+            lifecycle: "Active",
+            discoverability: "Listed",
+          }),
+        });
+        if (!response.ok) {
+          throw new Error(
+            `management fixture restore returned HTTP ${response.status}`
+          );
+        }
+      }, fixture);
+    } catch (error) {
+      if (attempt >= 2) {
+        throw error;
+      }
+      await page.waitForTimeout(250);
+      await restore(attempt + 1);
     }
-  }, fixture);
+  };
+  await restore(0);
 }
 
 test.describe("T05.5 management Browser Acceptance", () => {
@@ -703,11 +714,11 @@ test.describe("T05.5 management Browser Acceptance", () => {
       const eventRow = page.locator(`[data-event-id="${eventId}"]`);
       await expect(eventRow).toBeVisible();
       await page.evaluate(() => {
-        const scroller = document.getElementById("shell-content");
+        const scroller = document.querySelector<HTMLElement>("#shell-content");
         scroller?.scrollTo(0, scroller.scrollHeight);
       });
       const scrolledTo = await page.evaluate(() => {
-        const scroller = document.getElementById("shell-content");
+        const scroller = document.querySelector<HTMLElement>("#shell-content");
         return scroller?.scrollTop ?? 0;
       });
       expect(scrolledTo).toBeGreaterThan(0);
@@ -735,7 +746,8 @@ test.describe("T05.5 management Browser Acceptance", () => {
       await expect
         .poll(() =>
           page.evaluate(() => {
-            const scroller = document.getElementById("shell-content");
+            const scroller =
+              document.querySelector<HTMLElement>("#shell-content");
             return scroller?.scrollTop ?? 0;
           })
         )
@@ -798,11 +810,12 @@ test.describe("T05.5 management Browser Acceptance", () => {
         .poll(() => page.locator("#participants-history-panel li").count())
         .toBeGreaterThan(10);
       await page.evaluate(() => {
-        const scroller = document.getElementById("shell-content");
+        const scroller = document.querySelector<HTMLElement>("#shell-content");
         scroller?.scrollTo(0, scroller.scrollHeight);
       });
       const scrolledTo = await page.evaluate(
-        () => document.getElementById("shell-content")?.scrollTop ?? 0
+        () =>
+          document.querySelector<HTMLElement>("#shell-content")?.scrollTop ?? 0
       );
       expect(scrolledTo).toBeGreaterThan(0);
 
@@ -811,15 +824,26 @@ test.describe("T05.5 management Browser Acceptance", () => {
         page.getByRole("heading", { name: fixture.programName })
       ).toBeVisible();
       await page
+        .getByTestId("programs-workspace-tabs")
         .getByRole("link", { name: COPY.workspaceParticipants })
         .click();
       await expect
         .poll(() => new URL(page.url()).searchParams.get("task"))
         .toBe("participants");
+      await expect(
+        page.getByRole("heading", { name: COPY.workspaceParticipants })
+      ).toBeVisible();
+      await expect
+        .poll(() => page.locator("#participants-history-panel li").count(), {
+          timeout: 15_000,
+        })
+        .toBeGreaterThan(10);
       await expect
         .poll(() =>
           page.evaluate(
-            () => document.getElementById("shell-content")?.scrollTop ?? 0
+            () =>
+              document.querySelector<HTMLElement>("#shell-content")
+                ?.scrollTop ?? 0
           )
         )
         .toBe(scrolledTo);
@@ -890,10 +914,12 @@ test.describe("T05.5 management Browser Acceptance", () => {
       await notificationLink.click({ modifiers: [newTabModifier] });
       linkedPage = await linkedPagePromise;
       await expect
-        .poll(() => new URL(linkedPage!.url()).searchParams.get("program"))
+        .poll(() =>
+          new URL(linkedPage?.url() ?? "").searchParams.get("program")
+        )
         .toBe(fixture.programId);
       await expect
-        .poll(() => new URL(linkedPage!.url()).searchParams.get("task"))
+        .poll(() => new URL(linkedPage?.url() ?? "").searchParams.get("task"))
         .toBe("participants");
       await expect(
         linkedPage.getByRole("heading", { name: fixture.programName })

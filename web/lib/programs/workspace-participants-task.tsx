@@ -68,6 +68,7 @@ import { MemberPicker } from "./member-picker";
 import type { ProgramsParticipantTab } from "./programs-intent";
 import {
   consumeWorkspaceScroll,
+  rememberWorkspaceScroll,
   restoreProgramsScrollY,
 } from "./programs-scroll";
 import { useAsyncResource } from "./use-async-resource";
@@ -450,6 +451,15 @@ export const ParticipantsTask = () => {
     pendingScrollRef.current = consumeWorkspaceScroll(scrollScope);
   }, [scrollScope]);
   useEffect(() => {
+    const scroller = document.querySelector<HTMLElement>("#shell-content");
+    if (scroller === null) {
+      return;
+    }
+    const remember = () => rememberWorkspaceScroll(scrollScope);
+    scroller.addEventListener("scroll", remember, { passive: true });
+    return () => scroller.removeEventListener("scroll", remember);
+  }, [scrollScope]);
+  useEffect(() => {
     if (
       scrollRestoredRef.current ||
       pendingScrollRef.current === null ||
@@ -458,7 +468,10 @@ export const ParticipantsTask = () => {
       return;
     }
     scrollRestoredRef.current = true;
-    restoreProgramsScrollY(pendingScrollRef.current);
+    const timeout = globalThis.setTimeout(() => {
+      restoreProgramsScrollY(pendingScrollRef.current ?? 0);
+    }, 50);
+    return () => globalThis.clearTimeout(timeout);
   }, [state]);
   useEffect(() => {
     if (addParticipantWasOpenRef.current && !addParticipantOpen) {
