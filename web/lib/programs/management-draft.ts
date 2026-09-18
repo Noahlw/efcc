@@ -136,12 +136,12 @@ export function listManagementDrafts<T>(
  return drafts;
 }
 
-export function clearManagementDraftsForEntity(entityId: string): void {
+/** Remove every session key under one prefix; best-effort, logout-safe. */
+export function clearSessionKeysByPrefix(prefix: string): void {
  const storage = getSessionStorage();
  if (!storage) {
   return;
  }
- const prefix = `${MANAGEMENT_DRAFT_PREFIX}${encodeURIComponent(entityId)}:`;
  try {
   const keys: string[] = [];
   for (let index = 0; index < storage.length; index += 1) {
@@ -154,28 +154,17 @@ export function clearManagementDraftsForEntity(entityId: string): void {
    storage.removeItem(key);
   }
  } catch {
-  // Best-effort cleanup.
+  // Best-effort cleanup; logout still clears the authenticated session.
  }
 }
 
 /** Session-bound logout cleanup; drafts must not cross authenticated users. */
 export function clearAllManagementDrafts(): void {
- const storage = getSessionStorage();
- if (!storage) {
-  return;
- }
- try {
-  const keys: string[] = [];
-  for (let index = 0; index < storage.length; index += 1) {
-   const key = storage.key(index);
-   if (key?.startsWith(MANAGEMENT_DRAFT_PREFIX)) {
-    keys.push(key);
-   }
-  }
-  for (const key of keys) {
-   storage.removeItem(key);
-  }
- } catch {
-  // Best-effort cleanup; logout still clears the authenticated session.
- }
+ clearSessionKeysByPrefix(MANAGEMENT_DRAFT_PREFIX);
+}
+
+export function clearManagementDraftsForEntity(entityId: string): void {
+ clearSessionKeysByPrefix(
+  `${MANAGEMENT_DRAFT_PREFIX}${encodeURIComponent(entityId)}:`
+ );
 }

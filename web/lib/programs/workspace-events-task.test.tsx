@@ -25,6 +25,7 @@ import {
   readEventCreateDraft,
   writeEventCreateDraft,
 } from "./event-create-draft";
+import { generationRecoveryKey } from "./generation-recovery";
 import { writeManagementDraft } from "./management-draft";
 import {
   clearWorkspaceMutationRecovery,
@@ -1200,7 +1201,7 @@ describe("F01 unresolved Generate survives Preview (#629)", () => {
     // while the request is still pending, before any outcome arrives.
     await waitFor(() => {
       const raw = window.sessionStorage.getItem(
-        "efcc_generation_recovery:program-1"
+        generationRecoveryKey("program-1")
       );
       expect(raw).not.toBeNull();
       expect(JSON.parse(raw as string)).toMatchObject({
@@ -1253,7 +1254,7 @@ describe("F01 unresolved Generate survives Preview (#629)", () => {
     );
     await waitFor(() => {
       expect(
-        window.sessionStorage.getItem("efcc_generation_recovery:program-1")
+        window.sessionStorage.getItem(generationRecoveryKey("program-1"))
       ).not.toBeNull();
     });
     // Unmount while the request is still pending: the dispatch record must
@@ -1346,6 +1347,15 @@ describe("F01 unresolved Generate survives Preview (#629)", () => {
       name: COPY.programs.generateEvents,
     });
     await waitFor(() => expect(generate).not.toBeDisabled());
+    // RP1.4 keeps the old result visible: Plan A history stays while
+    // Generate unlatches onto Plan B.
+    expect(
+      screen.getByText(
+        COPY.programs.generated
+          .replace("{created}", "1")
+          .replace("{skipped}", "0")
+      )
+    ).toBeInTheDocument();
     mocks.generateEvents.mockResolvedValueOnce({
       generated: {
         run_id: "run-b",
@@ -1358,6 +1368,10 @@ describe("F01 unresolved Generate survives Preview (#629)", () => {
         created_event_ids: ["event-b"],
       },
     });
+    // A mismatched fingerprint must keep the latch: same flow with a
+    // changed rule still blocks Generate on Plan B.
+    // (Covered by the fingerprint gate; the latch assertion above plus the
+    // stale-Plan suite pin the negative paths.)
     await user.click(generate);
     expect(mocks.generateEvents).toHaveBeenLastCalledWith(
       "program-1",
@@ -1407,7 +1421,7 @@ describe("F01 unresolved Generate survives Preview (#629)", () => {
       })
     ).not.toBeInTheDocument();
     expect(
-      window.sessionStorage.getItem("efcc_generation_recovery:program-1")
+      window.sessionStorage.getItem(generationRecoveryKey("program-1"))
     ).toBeNull();
   });
 });

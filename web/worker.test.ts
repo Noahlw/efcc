@@ -28,7 +28,7 @@ vi.mock("./lib/auth/handlers", async (importOriginal) => {
   };
 });
 
-// Programs parity: stub one programs handler to throw so the programs
+// Programs parity: stub programs handlers to throw so the programs
 // outer RFC9457 catch is exercised. Without `return await` on dispatch,
 // this rejection would bypass the catch (raw workerd 500, no envelope).
 vi.mock("./lib/programs/program-handlers", async (importOriginal) => {
@@ -36,6 +36,7 @@ vi.mock("./lib/programs/program-handlers", async (importOriginal) => {
   return {
     ...actual,
     handleListManagementAccess: vi.fn().mockRejectedValue(new Error("boom")),
+    handleGenerateEvents: vi.fn().mockRejectedValue(new Error("boom")),
   };
 });
 
@@ -54,6 +55,15 @@ function testEnv(overrides: Partial<Env> = {}): Env {
 /** Parse a JSON response body as a typed value for assertions. */
 async function json<T>(res: Response): Promise<T> {
   return (await res.json()) as T;
+}
+
+const PROBLEM_JSON = /application\/problem\+json/u;
+
+function makeGenerateRequest(): Request {
+  return makeRequest("/api/v1/programs/program-1/events/generate", {
+    method: "POST",
+    body: { plan_id: "plan-1" },
+  });
 }
 
 function makeRequest(
@@ -114,7 +124,7 @@ describe("Worker: RFC9457 outer error envelope (unhandled auth-route errors)", (
 });
 
 describe("Worker: RFC9457 outer error envelope (unhandled programs-route errors)", () => {
-  test("a throwing programs handler returns 500 application/problem+json with X-Request-Id", async () => {
+  test("a throwing programs GET handler returns 500 application/problem+json with X-Request-Id", async () => {
     const res = await worker.fetch(
       makeRequest("/api/v1/programs/access", { method: "GET" }),
       testEnv({ EFCC_ACCESS_TOKEN_SECRET: "test-secret" })
@@ -123,6 +133,25 @@ describe("Worker: RFC9457 outer error envelope (unhandled programs-route errors)
     assert.match(
       res.headers.get("Content-Type") ?? "",
       /application\/problem\+json/u
+    );
+    assert.ok(res.headers.get("X-Request-Id"), "X-Request-Id must be present");
+    const body = await json<{ type: string; status: number; code: string; detail: string }>(res);
+    assert.ok(body.type.includes("#INTERNAL_ERROR"), "type must reference #INTERNAL_ERROR");
+    assert.equal(body.code, "INTERNAL_ERROR");
+    assert.equal(body.detail, "Internal server error.");
+    assert.equal(body.status, 500);
+  });
+
+  test("a throwing programs POST mutation handler returns the same 500 envelope", async () => {
+    // POST generate route with a throwing handler: same RFC 9457 envelope.
+    const res = await worker.fetch(
+      makeGenerateRequest(),
+      testEnv({ EFCC_ACCESS_TOKEN_SECRET: "test-secret" })
+    );
+    assert.equal(res.status, 500);
+    assert.match(
+      res.headers.get("Content-Type") ?? "",
+      PROBLEM_JSON,
     );
     assert.ok(res.headers.get("X-Request-Id"), "X-Request-Id must be present");
     const body = await json<{ type: string; status: number; code: string; detail: string }>(res);

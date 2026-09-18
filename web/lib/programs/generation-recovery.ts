@@ -1,4 +1,5 @@
 import type { GenerateResult } from "./program-api";
+import { clearSessionKeysByPrefix } from "./management-draft";
 
 const GENERATION_RECOVERY_PREFIX = "efcc_generation_recovery:";
 
@@ -23,8 +24,8 @@ interface SessionStorageLike {
  getItem: (key: string) => string | null;
  setItem: (key: string, value: string) => void;
  removeItem: (key: string) => void;
-  readonly length: number;
-  key: (index: number) => string | null;
+ readonly length: number;
+ key: (index: number) => string | null;
 }
 
 function getSessionStorage(): SessionStorageLike | null {
@@ -42,6 +43,11 @@ function getSessionStorage(): SessionStorageLike | null {
 
 function recoveryKey(programId: string): string {
  return `${GENERATION_RECOVERY_PREFIX}${programId}`;
+}
+
+/** Session key for a Program's pending Generate recovery record. */
+export function generationRecoveryKey(programId: string): string {
+ return recoveryKey(programId);
 }
 
 function isGenerateResult(value: unknown): value is GenerateResult {
@@ -143,22 +149,5 @@ export function clearGenerationRecovery(programId: string): void {
 
 /** Logout/expiry boundary cleanup: recovery must not cross sessions. */
 export function clearAllGenerationRecoveries(): void {
-  const storage = getSessionStorage();
-  if (!storage) {
-    return;
-  }
-  try {
-    const keys: string[] = [];
-    for (let index = 0; index < storage.length; index += 1) {
-      const key = storage.key(index);
-      if (key?.startsWith(GENERATION_RECOVERY_PREFIX)) {
-        keys.push(key);
-      }
-    }
-    for (const key of keys) {
-      storage.removeItem(key);
-    }
-  } catch {
-    // Best-effort cleanup; logout still clears the authenticated session.
-  }
+ clearSessionKeysByPrefix(GENERATION_RECOVERY_PREFIX);
 }

@@ -54,6 +54,12 @@ function clearProgramCaches(): void {
   clearCatalogCache();
 }
 
+/** Logout/expiry boundary: drafts and recovery must not cross sessions. */
+function clearSessionDrafts(): void {
+  clearAllEventCreateDrafts();
+  clearAllGenerationRecoveries();
+}
+
 const ShellFrame = ({
   bootstrap,
   children,
@@ -67,8 +73,7 @@ const ShellFrame = ({
 
   const handleSignOut = useCallback(async () => {
     clearProgramCaches();
-    clearAllEventCreateDrafts();
-    clearAllGenerationRecoveries();
+    clearSessionDrafts();
     let rpcFailed = false;
     try {
       await authLogout();
@@ -124,8 +129,7 @@ export const AppShell = ({ children }: { children: React.ReactNode }) => {
   const pathname = usePathname();
   const handleAuthRequired = useCallback(() => {
     clearProgramCaches();
-    clearAllEventCreateDrafts();
-    clearAllGenerationRecoveries();
+    clearSessionDrafts();
     clearAuthHint();
     rememberDeepLink(
       `${pathname}${window.location.search}${window.location.hash}`
@@ -142,8 +146,7 @@ export const AppShell = ({ children }: { children: React.ReactNode }) => {
     async () => {
       const bootstrap = await restoreBootstrap();
       if (bootstrap === null) {
-        clearAllEventCreateDrafts();
-        clearAllGenerationRecoveries();
+        clearSessionDrafts();
         rememberDeepLink(
           `${pathname}${window.location.search}${window.location.hash}`
         );
@@ -184,8 +187,7 @@ export const AppShell = ({ children }: { children: React.ReactNode }) => {
     if (state.code === "FORBIDDEN") {
       const handleForbiddenSignOut = async () => {
         clearProgramCaches();
-        clearAllEventCreateDrafts();
-        clearAllGenerationRecoveries();
+        clearSessionDrafts();
         try {
           await authLogout();
         } catch {

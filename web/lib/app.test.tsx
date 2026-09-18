@@ -44,7 +44,10 @@ import { GuardedSection } from "@/lib/guarded-section";
 import { writeGuestCredential } from "@/lib/guest-context";
 import { announce } from "@/lib/live-region";
 import { NavBar } from "@/lib/nav-bar";
-import { writeGenerationRecovery } from "@/lib/programs/generation-recovery";
+import {
+  generationRecoveryKey,
+  writeGenerationRecovery,
+} from "@/lib/programs/generation-recovery";
 import {
   readManagementDraft,
   writeManagementDraft,
@@ -1201,7 +1204,7 @@ describe("Shell", () => {
         data: null,
       });
       expect(
-        sessionStorage.getItem("efcc_generation_recovery:program-1")
+        sessionStorage.getItem(generationRecoveryKey("program-1"))
       ).not.toBeNull();
       const user = userEvent.setup();
       render(<ProfilePage />);
@@ -1219,7 +1222,7 @@ describe("Shell", () => {
       expect(sessionStorage.getItem("efcc_logout_failed")).toBeNull();
       expect(readManagementDraft("program-1", "event-create")).toBeNull();
       expect(
-        sessionStorage.getItem("efcc_generation_recovery:program-1")
+        sessionStorage.getItem(generationRecoveryKey("program-1"))
       ).toBeNull();
     });
 
@@ -2568,6 +2571,66 @@ describe("Shell", () => {
       expect(localStorage.getItem(AUTH_HINT_KEY)).toBeNull();
       expect(sessionStorage.getItem("efcc_deep_link")).toBe("/profile");
       expect(sessionStorage.getItem("efcc_session_expired")).toBe("1");
+    });
+
+    test("expiry cleanup also drops a pending Generate recovery record (RP1.6)", async () => {
+      setAuthHint();
+      pathnameMock.mockReturnValue("/profile");
+      writeGenerationRecovery({
+        version: 1,
+        programId: "program-1",
+        planId: "plan-1",
+        runId: null,
+        needsReconciliation: true,
+        requiresReview: false,
+        data: null,
+      });
+      expect(
+        sessionStorage.getItem(generationRecoveryKey("program-1"))
+      ).not.toBeNull();
+      server.use(
+        http.get("/api/v1/auth/me", () =>
+          HttpResponse.json(
+            {
+              status: 401,
+              code: "AUTH_REQUIRED",
+              title: "Unauthorized",
+              detail: "Access cookie invalid or expired.",
+              requestId: "r-401",
+            },
+            {
+              status: 401,
+              headers: { "Content-Type": "application/problem+json" },
+            }
+          )
+        ),
+        http.post("/api/v1/auth/refresh", () =>
+          HttpResponse.json(
+            {
+              status: 401,
+              code: "AUTH_REQUIRED",
+              title: "Unauthorized",
+              detail: "Refresh cookie missing.",
+              requestId: "r-401",
+            },
+            {
+              status: 401,
+              headers: { "Content-Type": "application/problem+json" },
+            }
+          )
+        )
+      );
+      render(
+        <AppShell>
+          <div>children</div>
+        </AppShell>
+      );
+      await waitFor(() => {
+        expect(replaceMock).toHaveBeenCalledWith("/");
+      });
+      expect(
+        sessionStorage.getItem(generationRecoveryKey("program-1"))
+      ).toBeNull();
     });
 
     test("restore 503 keeps the hint and retry re-executes restore", async () => {

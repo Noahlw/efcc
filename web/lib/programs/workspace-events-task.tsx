@@ -763,15 +763,20 @@ export const RecurringSchedulePanel = ({
    });
       // RP1.4: after a settled requires_review was reconciled, a successful
       // Preview of the current schedule fingerprint is a new Plan. Unlatch
-      // Generate onto that new Plan id; failed/STALE/unknown keep the latch.
-      if (generationRequiresReview && !generationNeedsReconciliation) {
+      // Generate onto that new Plan id and keep the old result visible;
+      // failed/STALE/unknown or a mismatched fingerprint keep the latch.
+      if (
+        generationRequiresReview &&
+        !generationNeedsReconciliation &&
+        previousPreview.kind === "ready" &&
+        previousPreview.inputFingerprint ===
+          scheduleInputFingerprint(rules, localExceptions)
+      ) {
         setGenerationRequiresReview(false);
         setGenerationIdentity((current) => ({
           runId: current?.runId ?? null,
           planId: plan.plan.plan_id,
         }));
-        setGenerationData(null);
-        setGenerateResult(null);
         setGenerateError(null);
         onMutationBlockChange?.(false);
       }
@@ -917,7 +922,7 @@ export const RecurringSchedulePanel = ({
    if (redirectToLoginIfRequired(error)) {
     return;
    }
-   if (isUnknownMutationOutcome(error)) {
+   if (isUnknownMutationWriteOutcome(error)) {
     setScheduleNeedsReconciliation(true);
     setAdjustingTargetKey(null);
     onMutationBlockChange?.(true);
@@ -965,7 +970,7 @@ export const RecurringSchedulePanel = ({
    if (redirectToLoginIfRequired(error)) {
     return;
    }
-   if (isUnknownMutationOutcome(error)) {
+   if (isUnknownMutationWriteOutcome(error)) {
     setScheduleNeedsReconciliation(true);
     setAdjustingTargetKey(null);
     onMutationBlockChange?.(true);
@@ -975,7 +980,7 @@ export const RecurringSchedulePanel = ({
    }
    const transportAmbiguous =
     (typeof navigator !== "undefined" && !navigator.onLine) ||
-    isUnknownMutationOutcome(error);
+    isUnknownMutationWriteOutcome(error);
    const message = transportAmbiguous
     ? COPY.programs.scheduleTransportAmbiguous
     : error instanceof RpcError
@@ -1093,6 +1098,10 @@ export const RecurringSchedulePanel = ({
      // against so Preview cannot swap in an unrelated reference.
      setGenerationIdentity({ runId: null, planId });
      onMutationBlockChange?.(true);
+    } else {
+     // Settled failure: the write did not commit, so release the parent
+     // navigation block the dispatch write took.
+     onMutationBlockChange?.(false);
     }
     setGenerateError(message);
    }
