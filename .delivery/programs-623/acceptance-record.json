@@ -21,7 +21,7 @@
   "review": {
     "mode": "independent",
     "candidate": "commit:95a5bd71",
-    "reviewer": "Verify623 (fresh-context reviewer, independent Spec + Acceptance route): verdict correct; every checkbox PASS except the empty-Plan Worker/D1 case and the real-route pair, which the delivery owner then ran"
+    "reviewer": "Verify623 review was performed against a prior baseline; it is retained as historical and is not candidate-bound to commit:95a5bd71."
   },
   "criteria": [
     {
@@ -127,7 +127,7 @@
     }
   ],
   "limitations": [
-    "The superseded 6cc9a5d9 record's local run manifests were hand-authored rather than runner-emitted and its 'independent review' cited only its own trace; this record replaces that evidence with runner-emitted artifacts and a real independent reviewer verdict.",
+    "The superseded 6cc9a5d9 record's local run manifests were hand-authored rather than runner-emitted and its 'independent review' cited only its own trace; that historical review is not candidate-bound evidence for commit:95a5bd71.",
     "Empty-Plan generation is now covered by a Worker/D1 test that persists a zero-occurrence Plan, POSTs generate, asserts 422 VALIDATION, and proves no Event or generation-run rows are written (web/lib/programs/programs.test.ts:5917-5950).",
     "Browser interruption/restart injection during generation and the saved-exception live network-failure journey remain unrun; these are explicit real-route gaps, not inferred from component or Worker/D1 evidence.",
     "Physical device, QR, native print, Owner L2, merge, deployment, release, and issue closure remain outside this record."
