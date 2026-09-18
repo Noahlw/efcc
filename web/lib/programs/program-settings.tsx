@@ -411,7 +411,7 @@ const ProgramAttendanceQrCard = ({
         const dataUrl = await qrDataUrl(checkInUrl);
         if (active) {
           setQr(dataUrl);
-          setQrState("ready");
+          setQrState("loading");
         }
       } catch {
         if (active) {
@@ -426,7 +426,7 @@ const ProgramAttendanceQrCard = ({
   }, [checkInUrl, encodeAttempt]);
 
   function downloadQr() {
-    if (!qr) {
+    if (!qr || qrState !== "ready") {
       setActionNotice({
         tone: "error",
         message: COPY.programs.settingsAttendanceQrDownloadError,
@@ -454,8 +454,8 @@ const ProgramAttendanceQrCard = ({
     }
   }
 
-  function printSign() {
-    if (!qr) {
+  async function printSign() {
+    if (!qr || qrState !== "ready") {
       setActionNotice({
         tone: "error",
         message: COPY.programs.settingsAttendanceQrPrintError,
@@ -487,13 +487,53 @@ const ProgramAttendanceQrCard = ({
       const lead = doc.createElement("p");
       lead.textContent = COPY.programs.settingsAttendanceQrLabel;
       const image = doc.createElement("img");
-      image.src = qr;
       image.alt = COPY.programs.settingsAttendanceQrLabel;
       const instruction = doc.createElement("p");
       instruction.textContent = COPY.programs.settingsAttendanceQrLead;
       main.append(title, lead, image, instruction);
       doc.body.append(main);
       doc.close();
+      const imageReady =
+        /* oxlint-disable-next-line promise/avoid-new -- DOM load/error/timeout events need one settling promise. */ new Promise<void>(
+          (resolve, reject) => {
+            let settled = false;
+            const finish = (error?: Error) => {
+              if (settled) {
+                return;
+              }
+              settled = true;
+              window.clearTimeout(timeoutId);
+              image.removeEventListener("load", onLoad);
+              image.removeEventListener("error", onError);
+              if (error) {
+                reject(error);
+              } else {
+                resolve();
+              }
+            };
+            const onLoad = async () => {
+              if (typeof image.decode !== "function") {
+                finish();
+                return;
+              }
+              try {
+                await image.decode();
+                finish();
+              } catch {
+                finish(new Error("program-qr-decode-failed"));
+              }
+            };
+            const onError = () => finish(new Error("program-qr-load-failed"));
+            const timeoutId = window.setTimeout(
+              () => finish(new Error("program-qr-timeout")),
+              5000
+            );
+            image.addEventListener("load", onLoad, { once: true });
+            image.addEventListener("error", onError, { once: true });
+          }
+        );
+      image.src = qr;
+      await imageReady;
       printWindow.focus();
       printWindow.print();
       setActionNotice({
@@ -501,6 +541,7 @@ const ProgramAttendanceQrCard = ({
         message: COPY.programs.settingsAttendanceQrPrintSuccess,
       });
     } catch {
+      printWindow.close?.();
       setActionNotice({
         tone: "error",
         message: COPY.programs.settingsAttendanceQrPrintError,
@@ -521,11 +562,26 @@ const ProgramAttendanceQrCard = ({
           {COPY.programs.settingsAttendanceQrLead}
         </p>
       </div>
-      {qrState === "ready" && qr ? (
+      {qr !== null && qrState !== "error" ? (
         <img
           src={qr}
           alt={COPY.programs.settingsAttendanceQrLabel}
           className="mx-auto size-56 max-w-full rounded border border-[var(--screen-line)] bg-white p-2"
+          onLoad={(event) => {
+            const image = event.currentTarget;
+            if (typeof image.decode !== "function") {
+              setQrState("ready");
+              return;
+            }
+            void (async () => {
+              try {
+                await image.decode();
+                setQrState("ready");
+              } catch {
+                setQrState("error");
+              }
+            })();
+          }}
           onError={() => setQrState("error")}
         />
       ) : qrState === "error" ? (
@@ -566,7 +622,7 @@ const ProgramAttendanceQrCard = ({
           type="button"
           variant="outline"
           className="w-fit"
-          disabled={!qr || busy}
+          disabled={!qr || qrState !== "ready" || busy}
           onClick={downloadQr}
         >
           <Download aria-hidden="true" />
@@ -576,7 +632,7 @@ const ProgramAttendanceQrCard = ({
           type="button"
           variant="outline"
           className="w-fit"
-          disabled={!qr || busy}
+          disabled={!qr || qrState !== "ready" || busy}
           onClick={printSign}
         >
           <Printer aria-hidden="true" />

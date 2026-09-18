@@ -1,4 +1,10 @@
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
@@ -937,6 +943,48 @@ describe(ProgramSettings, () => {
     ).resolves.toBeInTheDocument();
   });
 
+  test("keeps permanent Program QR actions unavailable until image readiness and recovers after image failure", async () => {
+    const user = userEvent.setup();
+    render(
+      <ProgramSettings
+        program={recurringProgram}
+        section="attendance"
+        onTaskChange={vi.fn()}
+      />
+    );
+
+    const qrImage = await screen.findByAltText(
+      COPY.programs.settingsAttendanceQrLabel
+    );
+    expect(
+      screen.getByRole("button", {
+        name: COPY.programs.settingsAttendanceQrDownload,
+      })
+    ).toBeDisabled();
+
+    fireEvent.error(qrImage);
+    await expect(
+      screen.findByText(COPY.programs.settingsAttendanceQrUnavailable)
+    ).resolves.toBeVisible();
+
+    await user.click(
+      screen.getByRole("button", {
+        name: COPY.programs.settingsAttendanceQrRetry,
+      })
+    );
+    const retriedImage = await screen.findByAltText(
+      COPY.programs.settingsAttendanceQrLabel
+    );
+    fireEvent.load(retriedImage);
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", {
+          name: COPY.programs.settingsAttendanceQrDownload,
+        })
+      ).not.toBeDisabled()
+    );
+  });
+
   test("reports permanent Program QR download success and failure", async () => {
     const user = userEvent.setup();
     const click = vi.spyOn(HTMLAnchorElement.prototype, "click");
@@ -947,7 +995,9 @@ describe(ProgramSettings, () => {
         onTaskChange: vi.fn<(task: "events" | "schedule" | null) => void>(),
       };
       const view = render(<ProgramSettings {...props} />);
-      await screen.findByAltText(COPY.programs.settingsAttendanceQrLabel);
+      fireEvent.load(
+        await screen.findByAltText(COPY.programs.settingsAttendanceQrLabel)
+      );
 
       await user.click(
         screen.getByRole("button", {
@@ -1003,13 +1053,16 @@ describe(ProgramSettings, () => {
           onTaskChange={vi.fn()}
         />
       );
-      await screen.findByAltText(COPY.programs.settingsAttendanceQrLabel);
+      fireEvent.load(
+        await screen.findByAltText(COPY.programs.settingsAttendanceQrLabel)
+      );
 
       await user.click(
         screen.getByRole("button", {
           name: COPY.programs.settingsAttendanceQrPrint,
         })
       );
+      printDocument.querySelector("img")?.dispatchEvent(new Event("load"));
       await expect(
         screen.findByText(COPY.programs.settingsAttendanceQrPrintError)
       ).resolves.toBeVisible();
@@ -1019,6 +1072,7 @@ describe(ProgramSettings, () => {
           name: COPY.programs.settingsAttendanceQrPrint,
         })
       );
+      printDocument.querySelector("img")?.dispatchEvent(new Event("load"));
       await expect(
         screen.findByText(COPY.programs.settingsAttendanceQrPrintSuccess)
       ).resolves.toBeVisible();
@@ -1049,12 +1103,15 @@ describe(ProgramSettings, () => {
           onTaskChange={vi.fn<(task: "events" | "schedule" | null) => void>()}
         />
       );
-      await screen.findByAltText(COPY.programs.settingsAttendanceQrLabel);
+      fireEvent.load(
+        await screen.findByAltText(COPY.programs.settingsAttendanceQrLabel)
+      );
       await user.click(
         screen.getByRole("button", {
           name: COPY.programs.settingsAttendanceQrPrint,
         })
       );
+      printDocument.querySelector("img")?.dispatchEvent(new Event("load"));
       await expect(
         screen.findByText(COPY.programs.settingsAttendanceQrPrintError)
       ).resolves.toBeVisible();
