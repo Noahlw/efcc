@@ -4,9 +4,10 @@ const GENERATION_RECOVERY_PREFIX = "efcc_generation_recovery:";
 
 /**
  * Session-bound reference to a Generate write whose outcome is not yet
- * authoritative. R43/ADR-0053: a Preview reload must not erase which
- * Reviewed Schedule Plan the mutation was committed against, so the
- * workspace can reconcile instead of replaying blindly.
+ * authoritative. ADR-0047: an attempted Generate is unresolved from dispatch
+ * until an authoritative Audit Outcome exists, so a Preview reload must not
+ * erase which Reviewed Schedule Plan the mutation was attempted against; the
+ * workspace reconciles instead of replaying blindly.
  */
 export interface GenerationRecovery {
  version: 1;
@@ -22,6 +23,8 @@ interface SessionStorageLike {
  getItem: (key: string) => string | null;
  setItem: (key: string, value: string) => void;
  removeItem: (key: string) => void;
+  readonly length: number;
+  key: (index: number) => string | null;
 }
 
 function getSessionStorage(): SessionStorageLike | null {
@@ -136,4 +139,26 @@ export function clearGenerationRecovery(programId: string): void {
  } catch {
   // Best-effort cleanup.
  }
+}
+
+/** Logout/expiry boundary cleanup: recovery must not cross sessions. */
+export function clearAllGenerationRecoveries(): void {
+  const storage = getSessionStorage();
+  if (!storage) {
+    return;
+  }
+  try {
+    const keys: string[] = [];
+    for (let index = 0; index < storage.length; index += 1) {
+      const key = storage.key(index);
+      if (key?.startsWith(GENERATION_RECOVERY_PREFIX)) {
+        keys.push(key);
+      }
+    }
+    for (const key of keys) {
+      storage.removeItem(key);
+    }
+  } catch {
+    // Best-effort cleanup; logout still clears the authenticated session.
+  }
 }

@@ -44,6 +44,7 @@ import { GuardedSection } from "@/lib/guarded-section";
 import { writeGuestCredential } from "@/lib/guest-context";
 import { announce } from "@/lib/live-region";
 import { NavBar } from "@/lib/nav-bar";
+import { writeGenerationRecovery } from "@/lib/programs/generation-recovery";
 import {
   readManagementDraft,
   writeManagementDraft,
@@ -1180,7 +1181,6 @@ describe("Shell", () => {
       expect(signOutButton).toBeInTheDocument();
       expect(screen.getByText("測試用")).toBeInTheDocument();
     });
-
     test("clicking Sign Out calls /logout, clears the hint, and replaces to /", async () => {
       pathnameMock.mockReturnValue("/profile");
       setAuthHint();
@@ -1190,6 +1190,19 @@ describe("Shell", () => {
       expect(readManagementDraft("program-1", "event-create")).toEqual({
         title: "未儲存草稿",
       });
+      // ADR-0047: a pending Generate recovery record must not survive logout.
+      writeGenerationRecovery({
+        version: 1,
+        programId: "program-1",
+        planId: "plan-1",
+        runId: null,
+        needsReconciliation: true,
+        requiresReview: false,
+        data: null,
+      });
+      expect(
+        sessionStorage.getItem("efcc_generation_recovery:program-1")
+      ).not.toBeNull();
       const user = userEvent.setup();
       render(<ProfilePage />);
 
@@ -1205,6 +1218,9 @@ describe("Shell", () => {
       expect(localStorage.getItem(AUTH_HINT_KEY)).toBeNull();
       expect(sessionStorage.getItem("efcc_logout_failed")).toBeNull();
       expect(readManagementDraft("program-1", "event-create")).toBeNull();
+      expect(
+        sessionStorage.getItem("efcc_generation_recovery:program-1")
+      ).toBeNull();
     });
 
     test("logout RPC failure clears the hint, replaces to /, and surfaces failedNotice on Login", async () => {

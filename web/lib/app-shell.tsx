@@ -15,6 +15,7 @@ import { announce } from "@/lib/live-region";
 import { NavBar } from "@/lib/nav-bar";
 import { OfflineBanner } from "@/lib/offline-banner";
 import { clearAllEventCreateDrafts } from "@/lib/programs/event-create-draft";
+import { clearAllGenerationRecoveries } from "@/lib/programs/generation-recovery";
 import {
   clearAccessCache,
   clearCatalogCache,
@@ -67,6 +68,7 @@ const ShellFrame = ({
   const handleSignOut = useCallback(async () => {
     clearProgramCaches();
     clearAllEventCreateDrafts();
+    clearAllGenerationRecoveries();
     let rpcFailed = false;
     try {
       await authLogout();
@@ -123,6 +125,7 @@ export const AppShell = ({ children }: { children: React.ReactNode }) => {
   const handleAuthRequired = useCallback(() => {
     clearProgramCaches();
     clearAllEventCreateDrafts();
+    clearAllGenerationRecoveries();
     clearAuthHint();
     rememberDeepLink(
       `${pathname}${window.location.search}${window.location.hash}`
@@ -140,6 +143,7 @@ export const AppShell = ({ children }: { children: React.ReactNode }) => {
       const bootstrap = await restoreBootstrap();
       if (bootstrap === null) {
         clearAllEventCreateDrafts();
+        clearAllGenerationRecoveries();
         rememberDeepLink(
           `${pathname}${window.location.search}${window.location.hash}`
         );
@@ -181,6 +185,7 @@ export const AppShell = ({ children }: { children: React.ReactNode }) => {
       const handleForbiddenSignOut = async () => {
         clearProgramCaches();
         clearAllEventCreateDrafts();
+        clearAllGenerationRecoveries();
         try {
           await authLogout();
         } catch {

@@ -52,6 +52,7 @@ import {
  deleteScheduleException,
  generateEvents,
  isUnknownMutationOutcome,
+  isUnknownMutationWriteOutcome,
  listEvents,
  previewEvents,
 } from "@/lib/programs/program-api";
@@ -630,9 +631,8 @@ export const RecurringSchedulePanel = ({
  const adjustTargetForKey = (key: string): PreviewAdjustTarget | null => {
   const target = splitPreviewDraftKey(key);
   const rule =
-   (rules ?? []).find(
-    (candidate) => candidate.rule_id === target.ruleId
-   ) ?? null;
+      (rules ?? []).find((candidate) => candidate.rule_id === target.ruleId) ??
+      null;
   const occurrence =
    preview.kind === "ready"
     ? (preview.plan.occurrences.find(
@@ -730,14 +730,14 @@ export const RecurringSchedulePanel = ({
   if (previousPreview.kind !== "ready") {
    setPreview({ kind: "loading" });
   }
-  // R43: an unresolved Generate keeps its Plan identity and recoverable
+    // ADR-0047: an unresolved Generate keeps its Plan identity and recoverable
   // reference across Preview/Review Again; only a settled mutation clears.
+    // A reconciled requires_review latch stays until a successful Preview of
+    // the current schedule fingerprint yields a new Plan id.
   if (!generationNeedsReconciliation && !generationRequiresReview) {
    setGenerateResult(null);
    setGenerationIdentity(null);
    setGenerationData(null);
-   setGenerationNeedsReconciliation(false);
-   setGenerationRequiresReview(false);
    setGenerateError(null);
   }
   try {
@@ -761,6 +761,20 @@ export const RecurringSchedulePanel = ({
     inputFingerprint: scheduleInputFingerprint(rules, localExceptions),
     scheduleMutationVersion,
    });
+      // RP1.4: after a settled requires_review was reconciled, a successful
+      // Preview of the current schedule fingerprint is a new Plan. Unlatch
+      // Generate onto that new Plan id; failed/STALE/unknown keep the latch.
+      if (generationRequiresReview && !generationNeedsReconciliation) {
+        setGenerationRequiresReview(false);
+        setGenerationIdentity((current) => ({
+          runId: current?.runId ?? null,
+          planId: plan.plan.plan_id,
+        }));
+        setGenerationData(null);
+        setGenerateResult(null);
+        setGenerateError(null);
+        onMutationBlockChange?.(false);
+      }
    announce(
     COPY.programs.previewed.replace(
      "{count}",
@@ -1017,7 +1031,23 @@ export const RecurringSchedulePanel = ({
   setGenerateError(null);
   setGenerateResult(null);
   setGeneratePartial(false);
+    // ADR-0047: the attempt is unresolved from dispatch, not from failure.
+    // Persist the Plan reference synchronously before the request leaves so an
+    // in-flight unmount or reload restores unknown-outcome recovery.
+    setGenerationIdentity({ runId: null, planId });
   setGenerationData(null);
+    setGenerationNeedsReconciliation(true);
+    setGenerationRequiresReview(false);
+    onMutationBlockChange?.(true);
+    writeGenerationRecovery({
+      version: 1,
+      programId,
+      planId,
+      runId: null,
+      needsReconciliation: true,
+      requiresReview: false,
+      data: null,
+    });
   try {
    const { generated } = await generateEvents(programId, planId);
    if (!mounted.current) {
@@ -1033,7 +1063,7 @@ export const RecurringSchedulePanel = ({
    }
    const transportAmbiguous =
     (typeof navigator !== "undefined" && !navigator.onLine) ||
-    isUnknownMutationOutcome(error);
+        isUnknownMutationWriteOutcome(error);
    const message = transportAmbiguous
     ? COPY.programs.scheduleTransportAmbiguous
     : error instanceof RpcError
@@ -1042,7 +1072,8 @@ export const RecurringSchedulePanel = ({
    if (error instanceof RpcError && error.problem.code === "STALE_PLAN") {
     // The schedule changed under the plan; require a fresh preview
     // before generation can run again while retaining the old rows for
-    // comparison.
+        // comparison. STALE_PLAN is a settled rejection, not an unknown write:
+        // drop the dispatch record so Generate can go again after Review Again.
     setPreviewInvalidated(true);
     setPreview((current) =>
      current.kind === "ready"
@@ -1051,6 +1082,10 @@ export const RecurringSchedulePanel = ({
     );
     setGenerationNeedsReconciliation(false);
     setGenerationRequiresReview(false);
+        setGenerationIdentity(null);
+        setGenerationData(null);
+        clearGenerationRecovery(programId);
+        onMutationBlockChange?.(false);
    } else {
     setGenerationNeedsReconciliation(transportAmbiguous);
     if (transportAmbiguous) {
@@ -1128,7 +1163,7 @@ export const RecurringSchedulePanel = ({
    if (redirectToLoginIfRequired(error)) {
     return;
    }
-   const message = isUnknownMutationOutcome(error)
+      const message = isUnknownMutationWriteOutcome(error)
     ? COPY.programs.scheduleTransportAmbiguous
     : error instanceof RpcError
      ? errorCopyFor(error.problem.code, error.problem.detail)
@@ -1146,7 +1181,7 @@ export const RecurringSchedulePanel = ({
     }
    } else {
     setGenerationNeedsReconciliation(true);
-    if (isUnknownMutationOutcome(error)) {
+        if (isUnknownMutationWriteOutcome(error)) {
      onMutationBlockChange?.(true);
     }
     setGenerateError(message);
@@ -1441,7 +1476,11 @@ export const RecurringSchedulePanel = ({
                type="button"
                variant="outline"
                className="w-fit border-[var(--screen-line-strong)] bg-transparent text-[var(--screen-ink)] hover:bg-[var(--screen-surface-soft)]"
-               onClick={() => openExceptionEditor(adjustTargetForOccurrence(occurrence))}
+                              onClick={() =>
+                                openExceptionEditor(
+                                  adjustTargetForOccurrence(occurrence)
+                                )
+                              }
                disabled={
                 exceptionBusy || scheduleNeedsReconciliation
                }
@@ -1679,7 +1718,9 @@ export const RecurringSchedulePanel = ({
                 : parsed.occursOn}
               </ScreenRowTitle>
               <ScreenRowMeta>
-               {rule ? formatScheduleRuleLabel(rule) : parsed.ruleId}
+                              {rule
+                                ? formatScheduleRuleLabel(rule)
+                                : parsed.ruleId}
               </ScreenRowMeta>
              </ScreenRowMain>
              <ScreenRowTrailing>
@@ -1693,7 +1734,9 @@ export const RecurringSchedulePanel = ({
                 }
                }}
                disabled={
-                target === null || exceptionBusy || scheduleNeedsReconciliation
+                                target === null ||
+                                exceptionBusy ||
+                                scheduleNeedsReconciliation
                }
               >
                {COPY.programs.draftRecover}
@@ -1852,9 +1895,7 @@ export const RecurringSchedulePanel = ({
           type="button"
           variant="outline"
           className="w-fit border-[var(--screen-success)] bg-transparent text-[var(--screen-success)] hover:bg-[var(--screen-success-surface)]"
-          onClick={() =>
-           void removeSavedException(adjustingTarget)
-          }
+                    onClick={() => void removeSavedException(adjustingTarget)}
           disabled={exceptionBusy || scheduleNeedsReconciliation}
          >
           {COPY.programs.previewRemoveException}
@@ -1878,9 +1919,7 @@ export const RecurringSchedulePanel = ({
            type="button"
            variant="outline"
            className="w-fit border-[var(--screen-line-strong)] bg-transparent text-[var(--screen-ink)] hover:bg-[var(--screen-surface-soft)]"
-           onClick={() =>
-            clearExceptionDraft(adjustingTarget.key)
-           }
+                      onClick={() => clearExceptionDraft(adjustingTarget.key)}
           >
            {COPY.programs.previewCancelDraft}
           </Button>

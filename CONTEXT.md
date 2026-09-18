@@ -26,9 +26,9 @@ domain distinction.
 | Registration Request | 註冊申請 | A pending request to create an Account. It carries the applicant's identity and credential material until an authorized approval decision. |
 | Registration Approval | 註冊核准 | An authorized decision that creates one Active Account and its automatic `會友基礎` in one atomic outcome. It does not assign a management identity. |
 | Approval Selection | 審批選取集 | The pending requests selected for one batch decision. The selection is temporary and ends on reload, logout, module exit, or explicit clear. |
-| Reviewed Schedule Plan | 已檢視排程方案 | A bounded Preview of concrete Event candidates tied to one exact date range and the current Schedule Rules and saved exceptions. Generate is bound to that Plan. Losing the HTTP acknowledgement does not create another Plan or erase it. Avoid: Plan A as a distinct object (test-scenario nickname only). |
+| Reviewed Schedule Plan | 已檢視排程方案 | A bounded Preview of concrete Event candidates tied to one exact date range and the current Schedule Rules and saved exceptions. Generate is bound to that Plan. An attempted Generate is unresolved from dispatch until an authoritative Audit Outcome exists; losing the HTTP acknowledgement, including interruption during the request, does not create another Plan or erase the attempt. After a settled Generate that requires review is reconciled, a successful new Preview of the current schedule fingerprint is a new Plan and may be generated. Avoid: Plan A as a distinct object (test-scenario nickname only); Generation Run as a durable domain object. |
 | Preview Occurrence | 預覽場次 | A concrete Church Time date produced by a Reviewed Schedule Plan from one Schedule Rule (and saved exceptions). It is not an Event until Generate succeeds. It is not Schedule Occurrence Provenance (that is Event → Rule + original date **after** generation). Inline 調整 Management Drafts key on Program + Rule + this date. Avoid: plan-scoped `occurrence_id`, preview row, Event. |
-| Management Draft | 管理表單草稿 | Unchanged ADR-0052 contract. `entityId` is the Program. For Preview 調整, `action` must identify the Preview Occurrence (`ruleId` + `occurs_on`) and must not be the Settings action `settings-exception:${ruleId}`. Dirty starts when a field differs from the saved exception or Rule defaults. Unchanged open/close is a no-op and must not create a server exception. An orphan draft whose Preview Occurrence is no longer in the visible range must remain Recover/Discard-able and must not permanently disable Generate. |
+| Management Draft | 管理表單草稿 | Unchanged ADR-0052 contract. `entityId` is the Program. For Preview 調整, `action` must identify the Preview Occurrence (`ruleId` + `occurs_on`) and must not be the Settings action `settings-exception:${ruleId}`. Dirty starts when a field differs from the saved exception or Rule defaults. Unchanged open/close is a no-op and must not create a server exception. Inline 調整 dirty state participates in the workspace Back Continue/Discard handshake; a clean Settings editor must not overwrite an inline dirty draft. An orphan draft whose Preview Occurrence is no longer in the visible range must remain Recover/Discard-able and must not permanently disable Generate. Logout and session expiry clear these drafts. Generate recovery (`efcc_generation_recovery:`, ADR-0047) follows the same logout/expiry boundary. |
 | Program | 課程 / 事工 | An activity container under one Department. Members may discover and enroll according to its lifecycle, discoverability, and enrollment mode. |
 | Event | 聚會 | One dated occurrence owned by exactly one Program. Attendance refers to this concrete occurrence, not merely to the Program. |
 | Enrollment Request | 報名申請 | A historical request to join a Program. Its decision is separate from the resulting Program Enrollment. |
@@ -71,7 +71,10 @@ authority.
    capability-owned authority.
 8. Privileged mutations are atomic and auditable. Duplicate, conflict,
    denied, rejected, and failed outcomes remain distinguishable from success;
-   history is preserved rather than silently erased.
+   history is preserved rather than silently erased. An unacknowledged
+   privileged write is not success and not failure; it stays unresolved
+   until an authoritative Audit Outcome is established (ADR-0047). A structured
+   server error on a write is not, by itself, proof that nothing committed.
 9. A Program belongs to one Department, an Event belongs to one Program, and
    Attendance belongs to one Event. Cancellation and correction preserve
    historical records.
@@ -90,6 +93,10 @@ authority.
   permissions.
 - [ADR-0043](docs/adr/0043-owned-civic-design-system-governance.md) —
   Accepted: product-owned Civic Minimal design-system governance.
+- [ADR-0047](docs/adr/0047-generate-attempt-unresolved-until-authoritative.md) —
+  Accepted: a Generate attempt is unresolved from dispatch until an
+  authoritative Audit Outcome; persist the attempted Reviewed Schedule Plan
+  before dispatch; no auto-replay, no Generation Run, no actor key.
 - [Spec 091](docs/specs/091-stackable-identity-backend.md) — normalized
   identity and authorization contract.
 - [Spec 092](docs/specs/092-discord-identity-design-system-adoption.md) —

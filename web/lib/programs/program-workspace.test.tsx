@@ -43,6 +43,7 @@ import {
   clearEventCreateDraft,
   readEventCreateDraft,
 } from "./event-create-draft";
+import { clearGenerationRecovery } from "./generation-recovery";
 
 const StatefulWorkspaceHarness = ({
   initialTask,
@@ -132,6 +133,7 @@ vi.mock(import("@/lib/programs/program-api"), () => ({
   previewEvents: mocks.previewEvents,
   generateEvents: mocks.generateEvents,
   isUnknownMutationOutcome: mocks.isUnknownMutationOutcome,
+  isUnknownMutationWriteOutcome: mocks.isUnknownMutationOutcome,
 }));
 
 const program: Program = {
@@ -332,6 +334,7 @@ beforeEach(() => {
     eventId: "event-1",
   });
   clearWorkspaceMutationRecovery("events", { programId: "program-1" });
+  clearGenerationRecovery("program-1");
   mocks.getManagementProgram.mockReset();
   mocks.updateProgram.mockReset();
   mocks.listEvents.mockReset();
@@ -359,6 +362,7 @@ beforeEach(() => {
 });
 afterEach(() => {
   clearEventCreateDraft("program-1");
+  clearGenerationRecovery("program-1");
   clearWorkspaceMutationRecovery("event", {
     programId: "program-1",
     eventId: "event-1",
