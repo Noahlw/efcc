@@ -16,6 +16,7 @@ import { describe, test, vi } from "vitest";
 import worker from "./worker";
 import type { Env } from "./worker";
 import type * as Handlers from "./lib/auth/handlers";
+import type * as ProgramHandlers from "./lib/programs/program-handlers";
 
 // T3: stub a single auth handler to throw so the Worker's new outer RFC9457
 // catch is exercised. The rest of the module stays real.
@@ -24,6 +25,17 @@ vi.mock("./lib/auth/handlers", async (importOriginal) => {
   return {
     ...actual,
     handleMe: vi.fn().mockRejectedValue(new Error("boom")),
+  };
+});
+
+// Programs parity: stub one programs handler to throw so the programs
+// outer RFC9457 catch is exercised. Without `return await` on dispatch,
+// this rejection would bypass the catch (raw workerd 500, no envelope).
+vi.mock("./lib/programs/program-handlers", async (importOriginal) => {
+  const actual = await importOriginal<typeof ProgramHandlers>();
+  return {
+    ...actual,
+    handleListManagementAccess: vi.fn().mockRejectedValue(new Error("boom")),
   };
 });
 
@@ -91,6 +103,26 @@ describe("Worker: RFC9457 outer error envelope (unhandled auth-route errors)", (
     assert.match(
       res.headers.get("Content-Type") ?? "",
       /application\/problem\+json/
+    );
+    assert.ok(res.headers.get("X-Request-Id"), "X-Request-Id must be present");
+    const body = await json<{ type: string; status: number; code: string; detail: string }>(res);
+    assert.ok(body.type.includes("#INTERNAL_ERROR"), "type must reference #INTERNAL_ERROR");
+    assert.equal(body.code, "INTERNAL_ERROR");
+    assert.equal(body.detail, "Internal server error.");
+    assert.equal(body.status, 500);
+  });
+});
+
+describe("Worker: RFC9457 outer error envelope (unhandled programs-route errors)", () => {
+  test("a throwing programs handler returns 500 application/problem+json with X-Request-Id", async () => {
+    const res = await worker.fetch(
+      makeRequest("/api/v1/programs/access", { method: "GET" }),
+      testEnv({ EFCC_ACCESS_TOKEN_SECRET: "test-secret" })
+    );
+    assert.equal(res.status, 500);
+    assert.match(
+      res.headers.get("Content-Type") ?? "",
+      /application\/problem\+json/u
     );
     assert.ok(res.headers.get("X-Request-Id"), "X-Request-Id must be present");
     const body = await json<{ type: string; status: number; code: string; detail: string }>(res);

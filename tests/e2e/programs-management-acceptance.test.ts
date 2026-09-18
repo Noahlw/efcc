@@ -239,8 +239,9 @@ async function restoreFixture(page: Page, fixture: Fixture): Promise<void> {
       }),
     });
     if (!response.ok) {
+      const body = await response.text().catch(() => "");
       throw new Error(
-        `management fixture restore returned HTTP ${response.status}`
+        `management fixture restore returned HTTP ${response.status}: ${body.slice(0, 500)}`
       );
     }
   }, fixture);
