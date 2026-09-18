@@ -165,7 +165,8 @@ function sameNullableValue(
 
 function eventSettlesMutation(
   events: readonly ProgramEvent[],
-  mutation: PendingEventMutation
+  mutation: PendingEventMutation,
+  expectedEventId?: string
 ): boolean {
   if (mutation.kind === "cancel") {
     return events.some(
@@ -173,8 +174,11 @@ function eventSettlesMutation(
         event.event_id === mutation.eventId && event.status === "Cancelled"
     );
   }
-  return events.some(
-    (event) =>
+  return events.some((event) => {
+    if (expectedEventId !== undefined && event.event_id !== expectedEventId) {
+      return false;
+    }
+    return (
       event.program_id === mutation.programId &&
       !mutation.beforeEventIds.includes(event.event_id) &&
       event.starts_at === mutation.startsAt &&
@@ -182,9 +186,12 @@ function eventSettlesMutation(
       sameNullableValue(event.name, mutation.name) &&
       sameNullableValue(event.event_type, mutation.eventType) &&
       sameNullableValue(event.location, mutation.location) &&
-      sameNullableValue(event.check_in_window_opens_at, mutation.opensAt) &&
-      sameNullableValue(event.check_in_window_closes_at, mutation.closesAt)
-  );
+      (mutation.opensAt === null ||
+        sameNullableValue(event.check_in_window_opens_at, mutation.opensAt)) &&
+      (mutation.closesAt === null ||
+        sameNullableValue(event.check_in_window_closes_at, mutation.closesAt))
+    );
+  });
 }
 
 function consumeEventCreateIntent(): void {
@@ -2136,29 +2143,21 @@ export const EventsTask = () => {
         return;
       }
       onAttentionRefresh();
-      let workspaceReconciled = true;
       if (onWorkspaceRefresh) {
         try {
-          workspaceReconciled = (await onWorkspaceRefresh()) !== undefined;
+          await onWorkspaceRefresh();
         } catch {
-          workspaceReconciled = false;
+          // Independent Event readback below remains authoritative for navigation.
         }
       }
-      if (!workspaceReconciled) {
-        const refreshedEvents = await run();
-        if (
-          refreshedEvents === undefined ||
-          !eventSettlesMutation(refreshedEvents, pendingMutation)
-        ) {
-          setEventsStale(true);
-          setActionError(COPY.programs.workspaceEventsSavedStale);
-          setNotice(COPY.programs.eventCreatedNotice);
-          return;
-        }
+      const refreshedEvents = await run();
+      if (
+        refreshedEvents === undefined ||
+        !eventSettlesMutation(refreshedEvents, pendingMutation, event.event_id)
+      ) {
+        setEventsStale(true);
+        setActionError(COPY.programs.workspaceEventsSavedStale);
         setNotice(COPY.programs.eventCreatedNotice);
-        if (onOpenEvent) {
-          onOpenEvent(event.event_id);
-        }
         return;
       }
       setNotice(COPY.programs.eventCreatedNotice);

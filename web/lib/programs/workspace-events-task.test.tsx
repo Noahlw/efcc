@@ -749,6 +749,9 @@ describe("EventsTask operations-first composition", () => {
       starts_at: wallInstant("2026-09-22", "19:30"),
       ends_at: wallInstant("2026-09-22", "20:30"),
       location: "副堂",
+      // The Worker supplies these defaults when the create request omits overrides.
+      check_in_window_opens_at: wallInstant("2026-09-22", "19:15"),
+      check_in_window_closes_at: wallInstant("2026-09-22", "21:00"),
     };
     writeEventCreateDraft(program.program_id, {
       version: 1,
@@ -795,6 +798,58 @@ describe("EventsTask operations-first composition", () => {
     expect(
       screen.getByText(COPY.programs.eventCreatedNotice)
     ).toBeInTheDocument();
+  });
+
+  test("does not open a different Event that only matches create fields", async () => {
+    const user = userEvent.setup();
+    const onOpenEvent = vi.fn<(eventId: string) => void>();
+    const createdEvent = {
+      ...event,
+      event_id: "event-created",
+      name: "只匹配欄位的聚會",
+      starts_at: wallInstant("2026-09-22", "19:30"),
+      ends_at: wallInstant("2026-09-22", "20:30"),
+      location: "副堂",
+    };
+    const differentReadback = { ...createdEvent, event_id: "event-different" };
+    writeEventCreateDraft(program.program_id, {
+      version: 1,
+      date: "2026-09-22",
+      startTime: "19:30",
+      endTime: "20:30",
+      endAuto: true,
+      name: createdEvent.name ?? "",
+      location: "副堂",
+      eventType: "小組",
+      windowOverride: false,
+      windowOpens: "",
+      windowCloses: "",
+    });
+    mocks.listEvents
+      .mockReset()
+      .mockResolvedValueOnce({ events: [event] })
+      .mockResolvedValueOnce({ events: [event, differentReadback] });
+    mocks.createEvent.mockResolvedValueOnce({ event: createdEvent });
+
+    renderTask(vi.fn(), onOpenEvent);
+    await user.click(
+      screen.getByRole("button", { name: COPY.programs.draftRecover })
+    );
+    await screen.findByRole("heading", { name: COPY.programs.createMeeting });
+    const submit = screen
+      .getAllByRole("button", { name: COPY.programs.createMeeting })
+      .at(-1);
+    if (!submit) {
+      throw new Error("create submit button was not rendered");
+    }
+    await user.click(submit);
+
+    await waitFor(() =>
+      expect(
+        screen.getByText(COPY.programs.workspaceEventsSavedStale)
+      ).toBeInTheDocument()
+    );
+    expect(onOpenEvent).not.toHaveBeenCalled();
   });
 
   test("restores an unknown Event create and reconciles it without replaying", async () => {
