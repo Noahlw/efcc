@@ -3374,9 +3374,20 @@ describe("EVT-01 workspace Event deep link (#251)", () => {
 
   test("creates an Event with HK wall-time fields and opens its detail", async () => {
     mockWorkspace();
-    mocks.createEvent.mockResolvedValue({
-      event: { ...event, event_id: "event-created" },
-    });
+    const createdEvent = {
+      ...event,
+      event_id: "event-created",
+      starts_at: "2026-09-13T10:00:00.000Z",
+      ends_at: "2026-09-13T11:00:00.000Z",
+      name: "新聚會",
+      event_type: COPY.programs.eventTypeOptions[1],
+      location: null,
+    };
+    mocks.createEvent.mockResolvedValue({ event: createdEvent });
+    mocks.listEvents
+      .mockReset()
+      .mockResolvedValueOnce({ events: [event] })
+      .mockResolvedValueOnce({ events: [event, createdEvent] });
     const onEventChange = vi.fn();
     render(
       <ProgramWorkspace
