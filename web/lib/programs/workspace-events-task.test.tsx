@@ -155,7 +155,8 @@ function renderTask(
     | ((eventId: string, action?: ManagementEventAction) => void)
     | null = vi.fn<(eventId: string, action?: ManagementEventAction) => void>(),
   onOpenAttendance: ((eventId: string) => void) | null = null,
-  hash: string | null = null
+  hash: string | null = null,
+  onWorkspaceRefresh: (() => Promise<unknown>) | null = null
 ) {
   return render(
     <WorkspaceTaskProvider
@@ -170,6 +171,12 @@ function renderTask(
         onOpenEvent: onOpenEvent ?? undefined,
         onOpenAttendance: onOpenAttendance ?? undefined,
         onWorkspaceDirtyChange,
+        onWorkspaceRefresh:
+          onWorkspaceRefresh === null
+            ? undefined
+            : async () => {
+                await onWorkspaceRefresh();
+              },
       }}
     >
       <EventsTask />
@@ -727,6 +734,66 @@ describe("EventsTask operations-first composition", () => {
         screen.getByText(COPY.programs.workspaceEventsSavedStale)
       ).toBeInTheDocument();
     });
+  });
+
+  test("opens a committed Event when workspace readback is stale but Event readback succeeds", async () => {
+    const user = userEvent.setup();
+    const onOpenEvent = vi.fn<(eventId: string) => void>();
+    const onWorkspaceRefresh = vi
+      .fn<() => Promise<unknown>>()
+      .mockResolvedValue(undefined);
+    const createdEvent = {
+      ...event,
+      event_id: "event-created",
+      name: "工作區讀回失敗仍可開啟",
+      starts_at: wallInstant("2026-09-22", "19:30"),
+      ends_at: wallInstant("2026-09-22", "20:30"),
+    };
+    writeEventCreateDraft(program.program_id, {
+      version: 1,
+      date: "2026-09-22",
+      startTime: "19:30",
+      endTime: "20:30",
+      endAuto: true,
+      name: createdEvent.name ?? "",
+      location: "副堂",
+      eventType: "小組",
+      windowOverride: false,
+      windowOpens: "",
+      windowCloses: "",
+    });
+    mocks.listEvents
+      .mockReset()
+      .mockResolvedValueOnce({ events: [event] })
+      .mockResolvedValueOnce({ events: [event, createdEvent] });
+    mocks.createEvent.mockResolvedValueOnce({ event: createdEvent });
+
+    renderTask(
+      vi.fn<(dirty: boolean) => void>(),
+      onOpenEvent,
+      null,
+      null,
+      onWorkspaceRefresh
+    );
+    await user.click(
+      screen.getByRole("button", { name: COPY.programs.draftRecover })
+    );
+    await screen.findByRole("heading", { name: COPY.programs.createMeeting });
+    const submit = screen
+      .getAllByRole("button", { name: COPY.programs.createMeeting })
+      .at(-1);
+    if (!submit) {
+      throw new Error("create submit button was not rendered");
+    }
+    await user.click(submit);
+
+    await waitFor(() =>
+      expect(onOpenEvent).toHaveBeenCalledWith("event-created")
+    );
+    expect(onWorkspaceRefresh).toHaveBeenCalledOnce();
+    expect(
+      screen.getByText(COPY.programs.eventCreatedNotice)
+    ).toBeInTheDocument();
   });
 
   test("restores an unknown Event create and reconciles it without replaying", async () => {

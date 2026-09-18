@@ -2145,9 +2145,17 @@ export const EventsTask = () => {
         }
       }
       if (!workspaceReconciled) {
-        setEventsStale(true);
-        setActionError(COPY.programs.workspaceEventsSavedStale);
+        const refreshedEvents = await run();
+        if (refreshedEvents === undefined) {
+          setEventsStale(true);
+          setActionError(COPY.programs.workspaceEventsSavedStale);
+          setNotice(COPY.programs.eventCreatedNotice);
+          return;
+        }
         setNotice(COPY.programs.eventCreatedNotice);
+        if (onOpenEvent) {
+          onOpenEvent(event.event_id);
+        }
         return;
       }
       setNotice(COPY.programs.eventCreatedNotice);
