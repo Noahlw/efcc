@@ -148,7 +148,7 @@ interface ExceptionValues {
   newEndTime: string;
 }
 
-const SETTINGS_DRAFT_ACTION = {
+export const SETTINGS_DRAFT_ACTION = {
   basics: "settings-basics",
   publishing: "settings-publishing",
   enrollment: "settings-enrollment",
@@ -495,43 +495,43 @@ const ProgramAttendanceQrCard = ({
       doc.close();
       const imageReady =
         /* oxlint-disable-next-line promise/avoid-new -- DOM load/error/timeout events need one settling promise. */ new Promise<void>(
-          (resolve, reject) => {
-            let settled = false;
-            const finish = (error?: Error) => {
-              if (settled) {
-                return;
-              }
-              settled = true;
-              window.clearTimeout(timeoutId);
-              image.removeEventListener("load", onLoad);
-              image.removeEventListener("error", onError);
-              if (error) {
-                reject(error);
-              } else {
-                resolve();
-              }
-            };
-            const onLoad = async () => {
-              if (typeof image.decode !== "function") {
-                finish();
-                return;
-              }
-              try {
-                await image.decode();
-                finish();
-              } catch {
-                finish(new Error("program-qr-decode-failed"));
-              }
-            };
-            const onError = () => finish(new Error("program-qr-load-failed"));
-            const timeoutId = window.setTimeout(
-              () => finish(new Error("program-qr-timeout")),
-              5000
-            );
-            image.addEventListener("load", onLoad, { once: true });
-            image.addEventListener("error", onError, { once: true });
-          }
-        );
+        (resolve, reject) => {
+          let settled = false;
+          const finish = (error?: Error) => {
+            if (settled) {
+              return;
+            }
+            settled = true;
+            window.clearTimeout(timeoutId);
+            image.removeEventListener("load", onLoad);
+            image.removeEventListener("error", onError);
+            if (error) {
+              reject(error);
+            } else {
+              resolve();
+            }
+          };
+          const onLoad = async () => {
+            if (typeof image.decode !== "function") {
+              finish();
+              return;
+            }
+            try {
+              await image.decode();
+              finish();
+            } catch {
+              finish(new Error("program-qr-decode-failed"));
+            }
+          };
+          const onError = () => finish(new Error("program-qr-load-failed"));
+          const timeoutId = window.setTimeout(
+            () => finish(new Error("program-qr-timeout")),
+            5000
+          );
+          image.addEventListener("load", onLoad, { once: true });
+          image.addEventListener("error", onError, { once: true });
+        }
+      );
       image.src = qr;
       await imageReady;
       printWindow.focus();
@@ -738,10 +738,10 @@ function exceptionInputFrom(values: ExceptionValues): {
     action: values.action,
     ...(values.action === "RESCHEDULE"
       ? {
-          ...(values.newDate ? { new_date: values.newDate } : {}),
-          new_start_time: values.newStartTime,
-          new_end_time: values.newEndTime,
-        }
+        ...(values.newDate ? { new_date: values.newDate } : {}),
+        new_start_time: values.newStartTime,
+        new_end_time: values.newEndTime,
+      }
       : {}),
   };
 }
@@ -789,7 +789,7 @@ function sameRuleInput(rule: ScheduleRule, input: ScheduleRuleInput): boolean {
     rule.end_time === input.end_time &&
     (rule.location ?? null) === (input.location ?? null) &&
     (rule.effective_start_date ?? null) ===
-      (input.effective_start_date ?? null) &&
+    (input.effective_start_date ?? null) &&
     (rule.effective_end_date ?? null) === (input.effective_end_date ?? null)
   );
 }
@@ -1057,11 +1057,10 @@ export const SettingsHub = ({
               }
               title={COPY.programs.settingsHubPublishing}
               description={COPY.programs.settingsHubPublishingHint}
-              currentValue={`${LIFECYCLE_LABEL[program.lifecycle]} · ${
-                program.discoverability === "Listed"
+              currentValue={`${LIFECYCLE_LABEL[program.lifecycle]} · ${program.discoverability === "Listed"
                   ? COPY.programs.discoverabilityListed
                   : COPY.programs.discoverabilityUnlisted
-              }`}
+                }`}
               onClick={() => onSelect("publishing")}
             />
           </ScreenRowList>
@@ -1759,8 +1758,8 @@ export const ProgramSettings = ({
   const pendingScheduleResolution = useRef<ScheduleMutationResolution | null>(
     restoredScheduleRecovery
       ? scheduleResolutionForRecovery(restoredScheduleRecovery, () => {
-          clearScheduleRecoveryDraft(restoredScheduleRecovery);
-        })
+        clearScheduleRecoveryDraft(restoredScheduleRecovery);
+      })
       : null
   );
   const [notice, setNotice] = useState<string | null>(null);
@@ -1817,20 +1816,20 @@ export const ProgramSettings = ({
       ? JSON.stringify(newRule) !== JSON.stringify(defaultRuleValues())
       : scheduleEditor?.kind === "edit-rule"
         ? (() => {
-            const rule = (rules ?? []).find(
-              (candidate) => candidate.rule_id === scheduleEditor.ruleId
-            );
-            const draft = ruleDrafts[scheduleEditor.ruleId];
-            return (
-              rule !== undefined &&
-              draft !== undefined &&
-              JSON.stringify(draft) !== JSON.stringify(ruleValuesFrom(rule))
-            );
-          })()
+          const rule = (rules ?? []).find(
+            (candidate) => candidate.rule_id === scheduleEditor.ruleId
+          );
+          const draft = ruleDrafts[scheduleEditor.ruleId];
+          return (
+            rule !== undefined &&
+            draft !== undefined &&
+            JSON.stringify(draft) !== JSON.stringify(ruleValuesFrom(rule))
+          );
+        })()
         : scheduleEditor?.kind === "new-exception"
           ? JSON.stringify(
-              exceptionDrafts[scheduleEditor.ruleId] ?? defaultExceptionValues()
-            ) !== JSON.stringify(defaultExceptionValues())
+            exceptionDrafts[scheduleEditor.ruleId] ?? defaultExceptionValues()
+          ) !== JSON.stringify(defaultExceptionValues())
           : false;
   const settingsDirty = focusedSchedule
     ? scheduleEditorActive && scheduleEditorDirty
@@ -1895,10 +1894,9 @@ export const ProgramSettings = ({
     if (
       readManagementDraft(
         currentProgram.program_id,
-        `${
-          target.kind === "edit-rule"
-            ? SETTINGS_DRAFT_ACTION.rule
-            : SETTINGS_DRAFT_ACTION.exception
+        `${target.kind === "edit-rule"
+          ? SETTINGS_DRAFT_ACTION.rule
+          : SETTINGS_DRAFT_ACTION.exception
         }:${target.ruleId}`
       ) !== null
     ) {
@@ -2458,9 +2456,9 @@ export const ProgramSettings = ({
       publishing.lifecycle === "Archived"
         ? { lifecycle: "Archived" }
         : {
-            lifecycle: publishing.lifecycle,
-            discoverability: publishing.discoverability,
-          }
+          lifecycle: publishing.lifecycle,
+          discoverability: publishing.discoverability,
+        }
     );
   };
 
@@ -3032,8 +3030,8 @@ export const ProgramSettings = ({
   const scheduleEditorRule =
     scheduleEditor && scheduleEditor.kind !== "new-rule"
       ? (rules ?? []).find(
-          (candidate) => candidate.rule_id === scheduleEditor.ruleId
-        )
+        (candidate) => candidate.rule_id === scheduleEditor.ruleId
+      )
       : undefined;
 
   const discardFocusedChanges = () => {
@@ -3173,16 +3171,16 @@ export const ProgramSettings = ({
                 )}
                 {(pendingProgramRecovery.current !== null ||
                   pendingScheduleRecovery.current !== null) && (
-                  <Button
-                    className="w-fit border-[var(--screen-danger)] bg-transparent text-[var(--screen-danger)] hover:bg-[var(--screen-danger-surface)]"
-                    variant="outline"
-                    type="button"
-                    onClick={discardMutationRecovery}
-                    disabled={busy}
-                  >
-                    {COPY.programs.draftDiscard}
-                  </Button>
-                )}
+                    <Button
+                      className="w-fit border-[var(--screen-danger)] bg-transparent text-[var(--screen-danger)] hover:bg-[var(--screen-danger-surface)]"
+                      variant="outline"
+                      type="button"
+                      onClick={discardMutationRecovery}
+                      disabled={busy}
+                    >
+                      {COPY.programs.draftDiscard}
+                    </Button>
+                  )}
               </div>
             ) : undefined
           }
@@ -3687,7 +3685,7 @@ export const ProgramSettings = ({
                                       {Boolean(rule.has_generated_events) &&
                                         !rule.retired_at &&
                                         confirmingRetireRuleId !==
-                                          rule.rule_id && (
+                                        rule.rule_id && (
                                           <Button
                                             className="w-fit border-[var(--screen-danger)] bg-transparent text-[var(--screen-danger)] hover:bg-[var(--screen-danger-surface)]"
                                             type="button"
@@ -3756,9 +3754,9 @@ export const ProgramSettings = ({
                                             {exception.override_date} ·{" "}
                                             {exception.action === "CANCEL"
                                               ? COPY.programs
-                                                  .settingsExceptionCancel
+                                                .settingsExceptionCancel
                                               : COPY.programs
-                                                  .settingsExceptionReschedule}
+                                                .settingsExceptionReschedule}
                                             {exception.new_date
                                               ? ` → ${exception.new_date}`
                                               : ""}
