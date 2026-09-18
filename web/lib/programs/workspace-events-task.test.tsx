@@ -748,6 +748,7 @@ describe("EventsTask operations-first composition", () => {
       name: "工作區讀回失敗仍可開啟",
       starts_at: wallInstant("2026-09-22", "19:30"),
       ends_at: wallInstant("2026-09-22", "20:30"),
+      location: "副堂",
     };
     writeEventCreateDraft(program.program_id, {
       version: 1,

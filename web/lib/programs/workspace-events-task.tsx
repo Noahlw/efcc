@@ -2146,7 +2146,10 @@ export const EventsTask = () => {
       }
       if (!workspaceReconciled) {
         const refreshedEvents = await run();
-        if (refreshedEvents === undefined) {
+        if (
+          refreshedEvents === undefined ||
+          !eventSettlesMutation(refreshedEvents, pendingMutation)
+        ) {
           setEventsStale(true);
           setActionError(COPY.programs.workspaceEventsSavedStale);
           setNotice(COPY.programs.eventCreatedNotice);
