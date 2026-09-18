@@ -1084,6 +1084,103 @@ describe(ProgramSettings, () => {
     }
   });
 
+  test("waits for the permanent Program QR print image before reporting success", async () => {
+    const printDocument = document.implementation.createHTMLDocument();
+    const print = vi.fn();
+    const open = vi.spyOn(window, "open").mockReturnValue({
+      document: printDocument,
+      focus: vi.fn(),
+      print,
+    } as unknown as Window);
+    const user = userEvent.setup();
+
+    try {
+      render(
+        <ProgramSettings
+          program={recurringProgram}
+          section="attendance"
+          onTaskChange={vi.fn()}
+        />
+      );
+      fireEvent.load(
+        await screen.findByAltText(COPY.programs.settingsAttendanceQrLabel)
+      );
+      await user.click(
+        screen.getByRole("button", {
+          name: COPY.programs.settingsAttendanceQrPrint,
+        })
+      );
+
+      const printImage = printDocument.querySelector("img");
+      expect(printImage).not.toBeNull();
+      expect(print).not.toHaveBeenCalled();
+      expect(
+        screen.queryByText(COPY.programs.settingsAttendanceQrPrintSuccess)
+      ).not.toBeInTheDocument();
+
+      printImage?.dispatchEvent(new Event("load"));
+      await expect(
+        screen.findByText(COPY.programs.settingsAttendanceQrPrintSuccess)
+      ).resolves.toBeVisible();
+      expect(print).toHaveBeenCalledOnce();
+    } finally {
+      open.mockRestore();
+    }
+  });
+
+  test("reports permanent Program QR print-image failure and recovers on retry", async () => {
+    const failedDocument = document.implementation.createHTMLDocument();
+    const recoveredDocument = document.implementation.createHTMLDocument();
+    const print = vi.fn();
+    let openCount = 0;
+    const open = vi.spyOn(window, "open").mockImplementation(() => {
+      openCount += 1;
+      const document = openCount === 1 ? failedDocument : recoveredDocument;
+      return {
+        document,
+        focus: vi.fn(),
+        print,
+      } as unknown as Window;
+    });
+    const user = userEvent.setup();
+
+    try {
+      render(
+        <ProgramSettings
+          program={recurringProgram}
+          section="attendance"
+          onTaskChange={vi.fn()}
+        />
+      );
+      fireEvent.load(
+        await screen.findByAltText(COPY.programs.settingsAttendanceQrLabel)
+      );
+      await user.click(
+        screen.getByRole("button", {
+          name: COPY.programs.settingsAttendanceQrPrint,
+        })
+      );
+      failedDocument.querySelector("img")?.dispatchEvent(new Event("error"));
+      await expect(
+        screen.findByText(COPY.programs.settingsAttendanceQrPrintError)
+      ).resolves.toBeVisible();
+      expect(print).not.toHaveBeenCalled();
+
+      await user.click(
+        screen.getByRole("button", {
+          name: COPY.programs.settingsAttendanceQrPrint,
+        })
+      );
+      recoveredDocument.querySelector("img")?.dispatchEvent(new Event("load"));
+      await expect(
+        screen.findByText(COPY.programs.settingsAttendanceQrPrintSuccess)
+      ).resolves.toBeVisible();
+      expect(print).toHaveBeenCalledOnce();
+    } finally {
+      open.mockRestore();
+    }
+  });
+
   test("reports a native permanent Program print failure", async () => {
     const printDocument = document.implementation.createHTMLDocument();
     const print = vi.fn<() => void>(() => {
