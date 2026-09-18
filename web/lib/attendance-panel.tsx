@@ -105,8 +105,8 @@ const GuestCheckinResult = ({
     <p className="text-base text-[var(--ink-muted)] leading-relaxed min-w-0 whitespace-normal [overflow-wrap:anywhere]">
       {result.kind === "success"
         ? COPY.attendance.guestResultLead(
-            hkDayPeriodFromIso(result.event.starts_at)
-          )
+          hkDayPeriodFromIso(result.event.starts_at)
+        )
         : COPY.attendance.guestDuplicate}
     </p>
     <p className="text-sm text-[var(--ink-muted)] leading-relaxed">
@@ -694,7 +694,7 @@ export const AttendancePanel = () => {
           <Button
             type="button"
             variant="outline"
-            className={attendanceButtonVariants({ variant: "secondary" })}
+            className="border border-[var(--line-strong)] bg-[var(--surface-raised)] text-[var(--ink)] hover:bg-[var(--surface)] hover:text-[var(--ink)]"
             onClick={() => void reconcileGuestOutcome()}
             disabled={guestReconcileBusy}
             aria-busy={guestReconcileBusy}
@@ -727,10 +727,10 @@ export const AttendancePanel = () => {
                     value: entry.value,
                     ...(flow.selected?.event_id || flow.intendedEvent?.event_id
                       ? {
-                          eventId:
-                            flow.selected?.event_id ??
-                            flow.intendedEvent?.event_id,
-                        }
+                        eventId:
+                          flow.selected?.event_id ??
+                          flow.intendedEvent?.event_id,
+                      }
                       : {}),
                   });
                 }
