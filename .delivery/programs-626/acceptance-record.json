@@ -26,7 +26,7 @@
   "review": {
     "mode": "independent",
     "candidate": "commit:95a5bd71",
-    "reviewer": "Prior-baseline Verify626 review retained as historical; final candidate browser acceptance now passes 36/36 at retries:0, with fresh final independent package review pending."
+    "reviewer": "Verify95Candidate fresh candidate-bound review: BLOCKED for acceptance; no source finding, but required physical/native validation and remaining real-route gaps are unrun. See .delivery/programs-622-626/artifacts/review-95a5bd71.json."
   },
   "criteria": [
     {
@@ -188,7 +188,7 @@
       "id": "R52.1",
       "status": "unverified",
       "expected": "Package evidence is candidate-bound and receives fresh independent Spec plus UX/Acceptance review.",
-      "actual": "Candidate 95a5bd71 has candidate-bound Worker/D1, component, responsive, and browser manifests. The candidate browser suite passed 36/36, but no fresh independent candidate-bound Spec plus UX/Acceptance review is available yet, so R52.1 remains unverified.",
+      "actual": "Candidate 95a5bd71 has candidate-bound Worker/D1, component, responsive, and browser manifests. The candidate browser suite passed 36/36, but a fresh candidate-bound review is recorded, but its verdict is BLOCKED by unrun physical/native validation and remaining real-route gaps, so R52.1 remains unverified.",
       "level": "independent-review",
       "candidate": "commit:95a5bd71",
       "evidence": [
@@ -198,14 +198,15 @@
         ".delivery/programs-622-626/artifacts/responsive-95a5bd71-run.json",
         ".delivery/programs-622-626/artifacts/browser-95a5bd71-run.json",
         ".delivery/programs-622-626/artifacts/browser-95a5bd71-results.json",
-        ".delivery/programs-622-626/artifacts/participants-scroll-62ece4ac-results.json (historical candidate; not current-candidate proof)"
+        ".delivery/programs-622-626/artifacts/participants-scroll-62ece4ac-results.json (historical candidate; not current-candidate proof)",
+        ".delivery/programs-622-626/artifacts/review-95a5bd71.json"
       ]
     }
   ],
   "limitations": [
     "This package previously had no candidate-bound evidence record at all; this record is the first for #626.",
     "R50.2 is fixed and independently accepted. A normal click still waits for bounded mark-read settlement (up to the transport timeout) before continuing; modifier clicks retain native navigation.",
-    "Participants workspace scroll memory is implemented in ProgramWorkspace and ParticipantsTask, and the final candidate browser suite passes the dedicated participant return journey across phone-360/390/402. The earlier failed setup run and predecessor d8e2eb43 run remain historical applicability evidence only. Fresh final package review remains open.",
+    "Participants workspace scroll memory is implemented in ProgramWorkspace and ParticipantsTask, and the final candidate browser suite passes the dedicated participant return journey across phone-360/390/402. The earlier failed setup run and predecessor d8e2eb43 run remain historical applicability evidence only. Fresh candidate-bound review is recorded as BLOCKED; physical/native validation and remaining real-route gaps remain open.",
     "Physical device, Owner L2, merge, deployment, release, and issue closure remain outside this record."
   ]
 }

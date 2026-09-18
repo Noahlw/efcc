@@ -21,7 +21,7 @@
   "review": {
     "mode": "independent",
     "candidate": "commit:95a5bd71",
-    "reviewer": "Verify623 review was performed against a prior baseline; it is retained as historical and is not candidate-bound to commit:95a5bd71."
+    "reviewer": "Verify95Candidate fresh candidate-bound review: BLOCKED for acceptance; no source finding, but required physical/native validation and remaining real-route gaps are unrun. See .delivery/programs-622-626/artifacts/review-95a5bd71.json."
   },
   "criteria": [
     {
@@ -114,15 +114,16 @@
       "id": "R52.1",
       "status": "unverified",
       "expected": "Package evidence is candidate-bound and receives fresh independent Spec plus Acceptance review.",
-      "actual": "Candidate 95a5bd71 has candidate-bound Worker/D1 and component manifests: the full Worker suite passed 676/676 and the full component suite passed 1207/1207, including the empty-Plan regression. The cited historical route artifact remains non-candidate-bound and no fresh independent candidate-bound review is available, so R52.1 remains unverified.",
+      "actual": "Candidate 95a5bd71 has candidate-bound Worker/D1 and component manifests: the full Worker suite passed 676/676 and the full component suite passed 1207/1207, including the empty-Plan regression. The cited historical route artifact remains non-candidate-bound and a fresh candidate-bound review is recorded, but its verdict is BLOCKED because required physical/native validation and remaining real-route gaps are unrun, so R52.1 remains unverified.",
       "level": "independent-review + real-route",
       "candidate": "commit:95a5bd71",
       "evidence": [
         ".delivery/programs-623/artifacts/local-route-0d9f1fd1.txt (historical; not candidate-bound)",
         ".delivery/programs-622-626/artifacts/worker-95a5bd71-results.json",
-        "fresh independent candidate-bound review: missing",
+        ".delivery/programs-622-626/artifacts/review-95a5bd71.json (fresh review; verdict BLOCKED)",
         ".delivery/programs-622-626/artifacts/worker-95a5bd71-zero-retry-run.json",
-        ".delivery/programs-622-626/artifacts/components-95a5bd71-zero-retry-run.json"
+        ".delivery/programs-622-626/artifacts/components-95a5bd71-zero-retry-run.json",
+        ".delivery/programs-622-626/artifacts/review-95a5bd71.json"
       ]
     }
   ],
