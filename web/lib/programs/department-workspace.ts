@@ -754,8 +754,9 @@ export interface AssistedEnrollCommand {
 function isPendingEnrollmentConstraint(error: unknown): boolean {
   const message = error instanceof Error ? error.message : String(error);
   return (
-    message.includes("enrollment_requests.program_id") &&
-    message.includes("enrollment_requests.member_user_id")
+    message.includes("enrollment_requests_pending_member_program_idx") ||
+    (message.includes("enrollment_requests.program_id") &&
+      message.includes("enrollment_requests.member_user_id"))
   );
 }
 
