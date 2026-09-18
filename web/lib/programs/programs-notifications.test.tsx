@@ -211,7 +211,7 @@ describe("management notification control", () => {
     ).not.toBeInTheDocument();
   });
 
-  test("holds a normal item click until the read write settles", async () => {
+  test("navigates on a normal item click before the read write settles", async () => {
     const user = userEvent.setup();
     const { promise: pendingRead, resolve: resolveRead } =
       Promise.withResolvers<void>();
@@ -232,15 +232,17 @@ describe("management notification control", () => {
         name: COPY.programs.notificationBellTitle,
       })
     );
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
     await user.click(screen.getByRole("link", { name: /青年團契/u }));
 
     expect(onMarkRead).toHaveBeenCalledOnce();
-    expect(screen.getByRole("dialog")).toBeInTheDocument();
-
-    resolveRead();
+    // The route changes first: the popover closes while the mark-read
+    // Promise is still pending.
     await waitFor(() =>
       expect(screen.queryByRole("dialog")).not.toBeInTheDocument()
     );
+
+    resolveRead();
     await waitFor(() =>
       expect(
         screen.queryByLabelText(
@@ -249,7 +251,6 @@ describe("management notification control", () => {
       ).not.toBeInTheDocument()
     );
   });
-
   test("records modifier-click read failures and retries without blocking navigation", async () => {
     const onMarkRead = vi
       .fn<ProgramsNotificationsProps["onMarkRead"]>()
@@ -285,7 +286,7 @@ describe("management notification control", () => {
     ).not.toBeInTheDocument();
   });
 
-  test("keeps a normal-click read failure recoverable without blocking navigation", async () => {
+  test("a rejected mark-read stays honest and retryable after immediate navigation", async () => {
     const user = userEvent.setup();
     const onMarkRead = vi
       .fn<ProgramsNotificationsProps["onMarkRead"]>()
@@ -310,12 +311,13 @@ describe("management notification control", () => {
       expect(screen.queryByRole("dialog")).not.toBeInTheDocument()
     );
 
+    // Reopening the popover surfaces the honest failure with its retry.
     await user.click(
       screen.getByRole("button", {
         name: COPY.programs.notificationBellTitle,
       })
     );
-    const readAlert = screen.getByRole("alert");
+    const readAlert = await screen.findByRole("alert");
     expect(readAlert).toHaveTextContent(COPY.programs.notificationsReadError);
     expect(
       screen.getByLabelText(COPY.programs.notificationsUnread)
@@ -468,5 +470,34 @@ describe("management notification control", () => {
         '[data-feed-announcement-owner="global-live-region"]'
       )
     ).toBeInTheDocument();
+  });
+
+  test("keyboard activation starts the side-effect read without gating navigation", async () => {
+    const user = userEvent.setup();
+    const { promise: pendingRead, resolve: resolveRead } =
+      Promise.withResolvers<void>();
+    const onMarkRead = vi
+      .fn<ProgramsNotificationsProps["onMarkRead"]>()
+      .mockReturnValue(pendingRead);
+    render(
+      <ProgramsNotifications
+        state={readyState()}
+        onRetry={vi.fn<ProgramsNotificationsProps["onRetry"]>()}
+        onMarkRead={onMarkRead}
+        full
+      />
+    );
+
+    const link = screen.getByRole("link", { name: /青年團契/u });
+    link.focus();
+    await user.keyboard("{Enter}");
+
+    expect(onMarkRead).toHaveBeenCalledOnce();
+    resolveRead();
+    await waitFor(() =>
+      expect(
+        screen.queryByLabelText(COPY.programs.notificationsUnread)
+      ).not.toBeInTheDocument()
+    );
   });
 });
