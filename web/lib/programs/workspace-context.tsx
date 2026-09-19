@@ -102,6 +102,8 @@ export interface WorkspaceTaskContextValue {
   ) => void;
   /** One-shot bypass for an already-confirmed external navigation. */
   settingsNavigationAllowedRef?: { current: boolean };
+  /** Incremented when parent Back Discard must drop inline occurrence drafts. */
+  scheduleDraftDiscardSignal?: number;
 }
 
 const WorkspaceTaskContext = createContext<WorkspaceTaskContextValue | null>(

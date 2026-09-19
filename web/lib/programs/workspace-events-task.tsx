@@ -439,6 +439,9 @@ export const RecurringSchedulePanel = ({
  onMutationBlockChange,
  onWorkspaceRefresh,
  onScheduleRefresh,
+ onFocusedTaskDirtyChange,
+ onFocusedTaskFocusChange,
+ scheduleDraftDiscardSignal = 0,
 }: {
  programId: string;
  rules: ScheduleRule[] | null;
@@ -453,6 +456,12 @@ export const RecurringSchedulePanel = ({
  onWorkspaceRefresh?: () => void | Promise<unknown>;
  /** Re-read Rules and saved exceptions after an unknown exception write. */
  onScheduleRefresh?: () => Promise<boolean>;
+ /** Report inline dirty to the parent Back handshake (union with Settings). */
+ onFocusedTaskDirtyChange?: (dirty: boolean) => void;
+ /** Report Sheet focus so the parent Back handshake targets this panel. */
+ onFocusedTaskFocusChange?: (focused: boolean) => void;
+ /** Parent Back Discard signal: drop in-memory + session inline drafts. */
+ scheduleDraftDiscardSignal?: number;
 }) => {
  const [previewFromDate, setPreviewFromDate] = useState(() =>
   hkTodayWallDate()
@@ -588,6 +597,23 @@ export const RecurringSchedulePanel = ({
   }
  }, [exceptionDrafts, localExceptions, programId, rules]);
 
+ // RP2.1: parent Back Discard clears the correct occurrence drafts from both
+ // in-memory state and session storage (session alone would be rewritten).
+ const discardSignalRef = useRef(0);
+ useEffect(() => {
+  if (scheduleDraftDiscardSignal <= discardSignalRef.current) {
+   return;
+  }
+  discardSignalRef.current = scheduleDraftDiscardSignal;
+  for (const { action } of listManagementDrafts<unknown>(programId)) {
+   if (previewDraftKeyFromAction(action) !== null) {
+    clearManagementDraft(programId, action);
+   }
+  }
+  setExceptionDrafts({});
+  setAdjustingTargetKey(null);
+ }, [programId, scheduleDraftDiscardSignal]);
+
  const currentInputFingerprint = scheduleInputFingerprint(
   rules,
   localExceptions
@@ -704,6 +730,25 @@ export const RecurringSchedulePanel = ({
     )) !== previewUntilDate);
  const previewNeedsReview =
   previewIsStale || (preview.kind === "error" && preview.stale);
+
+ // RP2.1: wire inline dirty/focus into the parent Back Continue/Discard
+ // handshake. Workspace dirty is the union of Settings dirty and this
+ // panel's inline dirty; a clean Settings editor cannot drop it.
+ const inlineDirty =
+  hasExceptionDrafts || adjustingTargetKey !== null || exceptionBusy;
+ useEffect(() => {
+  onFocusedTaskDirtyChange?.(inlineDirty);
+ }, [inlineDirty, onFocusedTaskDirtyChange]);
+ useEffect(() => {
+  onFocusedTaskFocusChange?.(adjustingTargetKey !== null);
+ }, [adjustingTargetKey, onFocusedTaskFocusChange]);
+ useEffect(
+  () => () => {
+   onFocusedTaskDirtyChange?.(false);
+   onFocusedTaskFocusChange?.(false);
+  },
+  [onFocusedTaskDirtyChange, onFocusedTaskFocusChange]
+ );
 
  const loadPreview = async (fromDate: string, untilDate: string) => {
   const previousPreview = preview;

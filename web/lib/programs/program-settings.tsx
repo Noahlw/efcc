@@ -282,6 +282,8 @@ export interface ProgramSettingsProps {
   section?: "all" | ProgramSettingsSection;
   /** Let a route-owned ScreenHeader provide the page title for a focused editor. */
   showHeading?: boolean;
+  /** Inline dirty from the focused-Schedule companion (union with Settings). */
+  scheduleAddonDirty?: boolean;
   /** Optional focused-Schedule companion that consumes this editor's rule read. */
   scheduleAddon?: (resource: {
     rules: ScheduleRule[] | null;
@@ -1599,6 +1601,7 @@ export const ProgramSettings = ({
   onMutationBlockChange,
   section = "all",
   showHeading = true,
+  scheduleAddonDirty = false,
   scheduleAddon,
   scheduleBackHref,
   scheduleEditor: routeScheduleEditor,
@@ -3019,7 +3022,9 @@ export const ProgramSettings = ({
       return;
     }
     event.preventDefault();
-    if (scheduleEditorDirty) {
+    // RP2.1: Back blocks on the union of Settings editor dirty and inline
+    // companion dirty; a clean Settings editor must not drop inline work.
+    if (scheduleEditorDirty || scheduleAddonDirty) {
       setScheduleNavigationBlocked(true);
       announce(COPY.programs.settingsUnsaved);
       return;

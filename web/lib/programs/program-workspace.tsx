@@ -253,6 +253,8 @@ export const ProgramWorkspace = ({
   const [settingsEditorDirty, setSettingsEditorDirty] = useState(false);
   const [settingsNavigationBlocked, setSettingsNavigationBlocked] =
     useState(false);
+  const [scheduleDraftDiscardSignal, setScheduleDraftDiscardSignal] =
+    useState(0);
   const [pendingSettingsNavigation, setPendingSettingsNavigation] =
     useState<SettingsNavigationRequest | null>(null);
   const allowSettingsNavigation = useRef(false);
@@ -337,6 +339,7 @@ export const ProgramWorkspace = ({
       setSettingsEditorFocused(false);
       setSettingsEditorDirty(false);
       setSettingsNavigationBlocked(false);
+      setPendingSettingsNavigation(null);
     }
   }, [task]);
   useEffect(() => {
@@ -512,7 +515,9 @@ export const ProgramWorkspace = ({
     };
   }, [settingsEditorDirty, settingsEditorFocused, task]);
   useEffect(() => {
-    if (task !== "schedule" || !settingsEditorFocused || !settingsEditorDirty) {
+    // RP2.1: on the focused Schedule route the dirty union alone guards
+    // in-app navigation; focus only picks which header renders Back.
+    if (task !== "schedule" || !settingsEditorDirty) {
       return;
     }
     const handleDocumentClick = (event: globalThis.MouseEvent) => {
@@ -898,6 +903,12 @@ export const ProgramWorkspace = ({
       return;
     }
     clearManagementDraftsForEntity(programId);
+    // RP2.1: Discard on the focused Schedule route also drops the panel's
+    // in-memory inline drafts via the discard signal (session alone is not
+    // enough: the panel would rewrite them from stale state).
+    if (task === "schedule") {
+      setScheduleDraftDiscardSignal((signal) => signal + 1);
+    }
     setPendingSettingsNavigation(null);
     setSettingsNavigationBlocked(false);
     setSettingsEditorFocused(false);
@@ -995,7 +1006,15 @@ export const ProgramWorkspace = ({
       return;
     }
     event.preventDefault();
-    if (settingsEditorFocused && settingsEditorDirty) {
+    // RP2.1: workspace dirty is the union of Settings dirty and inline
+    // 調整 dirty. On the focused Schedule route the union alone blocks Back
+    // (focus only picks which header renders the link); elsewhere the
+    // focused-editor gate applies. A clean Settings editor must not drop an
+    // inline dirty draft.
+    if (
+      (focusedSchedule && settingsEditorDirty) ||
+      (settingsEditorFocused && settingsEditorDirty)
+    ) {
       setSettingsNavigationBlocked(true);
       announce(COPY.programs.settingsUnsaved);
       return;
@@ -1035,7 +1054,9 @@ export const ProgramWorkspace = ({
       announce(COPY.programs.programTransportAmbiguous);
       return;
     }
-    if (settingsEditorFocused && settingsEditorDirty) {
+    if (
+      ((task === "schedule" || settingsEditorFocused) && settingsEditorDirty)
+    ) {
       setSettingsNavigationBlocked(true);
       announce(COPY.programs.settingsUnsaved);
       return;
@@ -1337,6 +1358,7 @@ export const ProgramWorkspace = ({
           onWorkspaceDirtyChange={handleEventDraftDirtyChange}
           onFocusedTaskFocusChange={setSettingsEditorFocused}
           onFocusedTaskDirtyChange={setSettingsEditorDirty}
+          scheduleDraftDiscardSignal={scheduleDraftDiscardSignal}
           settingsNavigationBlocked={settingsNavigationBlocked}
           onSettingsNavigationBlocked={setSettingsNavigationBlocked}
           onSettingsNavigationRequest={handleSettingsNavigationRequest}

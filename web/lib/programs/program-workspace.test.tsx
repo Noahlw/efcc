@@ -961,6 +961,75 @@ describe(ProgramWorkspace, () => {
     ).resolves.toBeInTheDocument();
   });
 
+  test("RP2.1 inline dirty joins the parent Back handshake; Continue keeps it, Discard clears it", async () => {
+    mockWorkspace();
+    const user = userEvent.setup();
+    const targetLink = document.createElement("a");
+    targetLink.href = "/programs?mode=management&program=program-1&task=events";
+    targetLink.textContent = "聚會";
+    document.body.append(targetLink);
+    const onTaskChange = vi.fn();
+    try {
+      mocks.previewEvents.mockResolvedValue(plan);
+      render(
+        <ProgramWorkspace
+          programId="program-1"
+          task="schedule"
+          onBack={vi.fn()}
+          onTaskChange={onTaskChange}
+        />
+      );
+      await user.click(
+        await screen.findByRole("button", { name: COPY.programs.previewEvents })
+      );
+      const adjust = await screen.findAllByRole("button", {
+        name: COPY.programs.previewAdjustOccurrence,
+      });
+      await user.click(adjust[0]);
+      const dateInput = await screen.findByLabelText(
+        COPY.programs.settingsExceptionNewDate
+      );
+      await user.clear(dateInput);
+      await user.type(dateInput, "2026-09-17");
+      // Close the Sheet via its dismiss affordance; the dirty draft stays.
+      await user.click(screen.getByRole("button", { name: "Close" }));
+      await waitFor(() =>
+        expect(
+          screen.queryByRole("heading", {
+            name: COPY.programs.previewAdjustSheetTitle,
+          })
+        ).not.toBeInTheDocument()
+      );
+      // In-app navigation while inline-dirty opens Continue/Discard.
+      await user.click(targetLink);
+      await user.click(
+        screen.getByRole("button", {
+          name: COPY.programs.settingsContinueEditing,
+        })
+      );
+      expect(onTaskChange).not.toHaveBeenCalled();
+      // The edit survives Continue.
+      expect(
+        screen.getByText(COPY.programs.previewExceptionDraft)
+      ).toBeInTheDocument();
+      // Navigate again, then Discard: clears the occurrence draft and leaves.
+      await user.click(targetLink);
+      await user.click(
+        screen.getByRole("button", {
+          name: COPY.programs.settingsDiscardAndLeave,
+        })
+      );
+      await waitFor(() =>
+        expect(
+          screen.queryByText(COPY.programs.previewExceptionDraft)
+        ).not.toBeInTheDocument()
+      );
+      expect(onTaskChange).toHaveBeenCalledWith("events");
+    } finally {
+      targetLink.remove();
+    }
+  });
+
   test("returns focused Schedule to the Events task from the workspace Back link", async () => {
     mockWorkspace();
     const onBack = vi.fn();
