@@ -1,12 +1,14 @@
 import type { GenerateResult } from "./program-api";
+import { clearSessionKeysByPrefix } from "./management-draft";
 
 const GENERATION_RECOVERY_PREFIX = "efcc_generation_recovery:";
 
 /**
  * Session-bound reference to a Generate write whose outcome is not yet
- * authoritative. R43/ADR-0053: a Preview reload must not erase which
- * Reviewed Schedule Plan the mutation was committed against, so the
- * workspace can reconcile instead of replaying blindly.
+ * authoritative. ADR-0047: an attempted Generate is unresolved from dispatch
+ * until an authoritative Audit Outcome exists, so a Preview reload must not
+ * erase which Reviewed Schedule Plan the mutation was attempted against; the
+ * workspace reconciles instead of replaying blindly.
  */
 export interface GenerationRecovery {
  version: 1;
@@ -22,6 +24,8 @@ interface SessionStorageLike {
  getItem: (key: string) => string | null;
  setItem: (key: string, value: string) => void;
  removeItem: (key: string) => void;
+ readonly length: number;
+ key: (index: number) => string | null;
 }
 
 function getSessionStorage(): SessionStorageLike | null {
@@ -39,6 +43,11 @@ function getSessionStorage(): SessionStorageLike | null {
 
 function recoveryKey(programId: string): string {
  return `${GENERATION_RECOVERY_PREFIX}${programId}`;
+}
+
+/** Session key for a Program's pending Generate recovery record. */
+export function generationRecoveryKey(programId: string): string {
+ return recoveryKey(programId);
 }
 
 function isGenerateResult(value: unknown): value is GenerateResult {
@@ -136,4 +145,9 @@ export function clearGenerationRecovery(programId: string): void {
  } catch {
   // Best-effort cleanup.
  }
+}
+
+/** Logout/expiry boundary cleanup: recovery must not cross sessions. */
+export function clearAllGenerationRecoveries(): void {
+ clearSessionKeysByPrefix(GENERATION_RECOVERY_PREFIX);
 }

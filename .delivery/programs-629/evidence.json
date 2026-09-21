@@ -1,0 +1,117 @@
+{
+  "version": 2,
+  "candidate": "commit:50059f5efcbf8a6d295afa5082bb6b84eb2537ac",
+  "repositoryRoot": "/home/ubuntu/gh-repo/efcc-pack-post",
+  "acceptanceProfile": "complex",
+  "reviewRisk": {
+    "level": "high",
+    "reason": "important Generate recovery path plus Schedule Plan identity and data meaning; two-axis independent review done at P1 candidate, P5 still owns independent review of the final SHA"
+  },
+  "delegationAvailable": true,
+  "requirements": [
+    "RP1.1",
+    "RP1.2",
+    "RP1.3",
+    "RP1.4",
+    "RP1.5",
+    "RP1.6",
+    "RP6"
+  ],
+  "review": {
+    "mode": "independent",
+    "candidate": "commit:50059f5efcbf8a6d295afa5082bb6b84eb2537ac",
+    "reviewer": "fresh-context two-axis reviewers NursingPerch (Standards) and BiologicalRabbit (Spec), given objective authority, candidate, scope, and axis inputs only"
+  },
+  "criteria": [
+    {
+      "id": "RP1.1",
+      "status": "verified",
+      "expected": "recovery record for the Plan exists before generateEvents is issued and is not cleared in-flight",
+      "actual": "component test asserts session record (planId plan-1, runId null, needsReconciliation true, data null) while the Generate promise is still pending",
+      "level": "component",
+      "candidate": "commit:50059f5efcbf8a6d295afa5082bb6b84eb2537ac",
+      "evidence": [
+        "web/lib/programs/workspace-events-task.test.tsx: the recovery record exists before the Generate request settles (RP1.1)",
+        "web/lib/programs/workspace-events-task.tsx: submitGenerate persist-before-dispatch block"
+      ]
+    },
+    {
+      "id": "RP1.2",
+      "status": "verified",
+      "expected": "unmount during the request restores Plan identity and unknown-outcome UI without auto-replay",
+      "actual": "component test unmounts with the promise pending, remounts to the reconcile UI with Generate blocked; real-route in-flight reload remains P5",
+      "level": "component",
+      "candidate": "commit:50059f5efcbf8a6d295afa5082bb6b84eb2537ac",
+      "evidence": [
+        "web/lib/programs/workspace-events-task.test.tsx: in-flight unmount keeps the dispatch record for the next mount (RP1.2 component)"
+      ]
+    },
+    {
+      "id": "RP1.3",
+      "status": "verified",
+      "expected": "Preview while unresolved keeps Plan identity and blocks Generate",
+      "actual": "kept working-path tests: Preview while unresolved keeps Plan A and remount restore plus reconcile from Plan A",
+      "level": "component",
+      "candidate": "commit:50059f5efcbf8a6d295afa5082bb6b84eb2537ac",
+      "evidence": [
+        "web/lib/programs/workspace-events-task.test.tsx: Preview while the write is unresolved keeps Plan A and the recovery reference",
+        "web/lib/programs/workspace-events-task.test.tsx: remount restores the unresolved generation, stays blocked, and reconciles from Plan A"
+      ]
+    },
+    {
+      "id": "RP1.4",
+      "status": "verified",
+      "expected": "after reconciled requires_review, a successful Preview of the current fingerprint enables Generate on the new Plan id with old history visible",
+      "actual": "component test drives requires_review, asserts latch, runs Review Again to plan-2, asserts Generate enabled with Plan A history still visible, asserts dispatch uses plan-2; real-route R43.4 through dispatch remains P5",
+      "level": "component",
+      "candidate": "commit:50059f5efcbf8a6d295afa5082bb6b84eb2537ac",
+      "evidence": [
+        "web/lib/programs/workspace-events-task.test.tsx: a reconciled requires_review plus a matching Preview enables Generate on the new Plan id (RP1.4)"
+      ]
+    },
+    {
+      "id": "RP1.5",
+      "status": "verified",
+      "expected": "mutation INTERNAL_ERROR is unknown; GET/Preview 500 stays a settled read failure; known 4xx stay settled",
+      "actual": "component test asserts Generate and exception-save/delete mutation 500s show unknown UI with retained identity, and Preview 500 shows no recovery UI and no retained record; worker GET plus POST mutation envelope tests keep the structured 500",
+      "level": "component",
+      "candidate": "commit:50059f5efcbf8a6d295afa5082bb6b84eb2537ac",
+      "evidence": [
+        "web/lib/programs/workspace-events-task.test.tsx: mutation INTERNAL_ERROR is unknown but a Preview 500 stays settled (RP1.5)",
+        "web/worker.test.ts: programs GET plus POST mutation 500-envelope tests",
+        "web/lib/programs/program-api.ts: isUnknownMutationWriteOutcome"
+      ]
+    },
+    {
+      "id": "RP1.6",
+      "status": "verified",
+      "expected": "sign-out, expiry, and failed logout RPC clear efcc_generation_recovery with no actor key",
+      "actual": "sign-out and expiry component tests seed a recovery record and assert it is gone after the real cleanup paths; failed-RPC path shares the same clear calls; real-route logout as another account remains P5",
+      "level": "component",
+      "candidate": "commit:50059f5efcbf8a6d295afa5082bb6b84eb2537ac",
+      "evidence": [
+        "web/lib/app.test.tsx: clicking Sign Out calls /logout, clears the hint, and replaces to /",
+        "web/lib/app.test.tsx: expiry cleanup also drops a pending Generate recovery record (RP1.6)",
+        "web/lib/app-shell.tsx: clearSessionDrafts on sign-out, auth-required, null-bootstrap, and forbidden paths"
+      ]
+    },
+    {
+      "id": "RP6",
+      "status": "verified",
+      "expected": "CONTEXT Language plus DESIGN plus 0043 plus 0047 on the repair branch; QA and 0026/0028 parked",
+      "actual": "CONTEXT carries persist-from-dispatch, matching Preview, dirty union, logout, and ADR-0047 citation plus authority entry; ADR-0047 file committed; DESIGN and ADR-0043 unchanged from ds1; park branch already holds 0026/0028 and both QA files",
+      "level": "code",
+      "candidate": "commit:50059f5efcbf8a6d295afa5082bb6b84eb2537ac",
+      "evidence": [
+        "CONTEXT.md: Reviewed Schedule Plan, Management Draft, invariant 8, ADR-0047 authority",
+        "docs/adr/0047-generate-attempt-unresolved-until-authoritative.md",
+        "park branch codex/docs/park-2026-09-18 holds docs/adr/0026, docs/adr/0028, docs/qa/2026-09-11-programs-route-fidelity-correction.md, docs/superpowers/plans/programs-route-fidelity-recovery/R8-fixed-point-qualification.md"
+      ]
+    }
+  ],
+  "limitations": [
+    "Real-route RP1.2 in-flight reload, RP1.4 R43.4 through Plan B dispatch, and RP1.6 logout as another account are P5 #633 scope on the final SHA, not this package.",
+    "Full pnpm test:workerd (675 tests) was not re-run at this candidate; worker.test.ts (91 with contract) passed, and the one background full-suite failure was PUI-02 Unlisted rows which passes in isolation at this candidate.",
+    "Independent acceptance review of the final SHA is P5 #633; this record covers independent two-axis review of the P1 candidate only."
+  ]
+}

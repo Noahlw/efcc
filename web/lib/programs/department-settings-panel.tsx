@@ -22,7 +22,7 @@ import { COPY, errorMessage } from "@/lib/copy";
 import { announce } from "@/lib/live-region";
 import {
   getDepartment,
-  isUnknownMutationOutcome,
+  isUnknownMutationWriteOutcome,
   setDepartmentModule,
   updateDepartment,
 } from "@/lib/programs/program-api";
@@ -279,7 +279,7 @@ export const DepartmentSettingsPanel = ({
       announce(noticeMessage);
     } catch (error) {
       if (mounted.current) {
-        if (isUnknownMutationOutcome(error)) {
+        if (isUnknownMutationWriteOutcome(error)) {
           setMutationRecoveryRequired(true);
           setActionError(COPY.programs.programTransportAmbiguous);
           announce(COPY.programs.programTransportAmbiguous);

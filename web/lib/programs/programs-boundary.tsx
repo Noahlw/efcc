@@ -12,6 +12,7 @@ import {
   getManagementAccess,
   getManagementAttention,
   getManagementNotifications,
+  isUnknownMutationWriteOutcome,
   markManagementNotificationsRead,
 } from "@/lib/programs/program-api";
 import type {
@@ -55,7 +56,10 @@ import { ProgramsNotifications } from "./programs-notifications";
 import type { ManagementNotificationState } from "./programs-notifications";
 import { readProgramsScrollY } from "./programs-scroll";
 import { useAsyncResource } from "./use-async-resource";
-import { WorkspaceRouteProvider } from "./workspace-context";
+import {
+  clearAuthenticatedProgramsRecovery,
+  WorkspaceRouteProvider,
+} from "./workspace-context";
 
 type ManagementAttentionState =
   | { kind: "loading" }
@@ -153,12 +157,12 @@ async function markNotificationsRead(
   try {
     await markManagementNotificationsRead(items);
   } catch (error: unknown) {
-    const code = error instanceof RpcError ? error.problem.code : undefined;
-    announce(
-      error instanceof RpcError
-        ? errorCopyFor(code, error.problem.detail)
-        : COPY.error.networkError
-    );
+    const message = isUnknownMutationWriteOutcome(error)
+      ? COPY.programs.programTransportAmbiguous
+      : error instanceof RpcError
+        ? errorCopyFor(error.problem.code, error.problem.detail)
+        : COPY.error.networkError;
+    announce(message);
     throw error;
   }
 }
@@ -283,7 +287,9 @@ const ManagementPanel = ({
   onTaskChange: (
     task: ProgramsTask | null,
     eventId?: string | null,
-    scheduleOrigin?: ProgramsScheduleOrigin
+    scheduleOrigin?: ProgramsScheduleOrigin,
+    scheduleEditor?: ProgramsScheduleEditor | null,
+    scheduleRuleId?: string | null
   ) => void;
   onEventChange: (
     eventId: string | null,
@@ -323,6 +329,7 @@ const ManagementPanel = ({
           error instanceof RpcError &&
           error.problem.code === "AUTH_REQUIRED"
         ) {
+          clearAuthenticatedProgramsRecovery();
           rememberDeepLink(
             `${window.location.pathname}${window.location.search}${window.location.hash}`
           );
@@ -382,6 +389,7 @@ const ManagementPanel = ({
           error instanceof RpcError &&
           error.problem.code === "AUTH_REQUIRED"
         ) {
+          clearAuthenticatedProgramsRecovery();
           rememberDeepLink(
             `${window.location.pathname}${window.location.search}${window.location.hash}`
           );
@@ -601,7 +609,9 @@ const ProgramsBoundaryBody = ({
   navigateManagementTask: (
     task: ProgramsTask | null,
     eventId?: string | null,
-    scheduleOrigin?: ProgramsScheduleOrigin
+    scheduleOrigin?: ProgramsScheduleOrigin,
+    scheduleEditor?: ProgramsScheduleEditor | null,
+    scheduleRuleId?: string | null
   ) => void;
   navigateManagementEvent: (
     eventId: string | null,
@@ -871,6 +881,7 @@ export const ProgramsBoundary = () => {
           error instanceof RpcError &&
           error.problem.code === "AUTH_REQUIRED"
         ) {
+          clearAuthenticatedProgramsRecovery();
           rememberDeepLink(
             typeof window === "undefined"
               ? pathname
@@ -1010,7 +1021,9 @@ export const ProgramsBoundary = () => {
   const navigateManagementTask = (
     task: ProgramsTask | null,
     eventId?: string | null,
-    scheduleOrigin?: ProgramsScheduleOrigin
+    scheduleOrigin?: ProgramsScheduleOrigin,
+    scheduleEditor?: ProgramsScheduleEditor | null,
+    scheduleRuleId?: string | null
   ) => {
     if (!intent.programId && task !== "notifications") {
       return;
@@ -1049,6 +1062,8 @@ export const ProgramsBoundary = () => {
         task === "schedule"
           ? (scheduleOrigin ?? intent.scheduleOrigin)
           : undefined,
+      scheduleEditor: task === "schedule" ? scheduleEditor : undefined,
+      scheduleRuleId: task === "schedule" ? scheduleRuleId : undefined,
       hash: intent.hash,
     });
     applyProgramsNavigation(router, setSearch, href);

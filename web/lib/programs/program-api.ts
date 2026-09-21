@@ -649,6 +649,23 @@ export function isUnknownMutationOutcome(error: unknown): boolean {
   );
 }
 
+/**
+ * ADR-0047 mutation-only unknown-write rule: an unexpected mutation 500
+ * carries no no-commit guarantee, so it is an unknown write. GET/Preview
+ * callers must keep using isUnknownMutationOutcome so their 500s stay
+ * settled read failures and never show unknown-Generate UI.
+ */
+export function isUnknownMutationWriteOutcome(error: unknown): boolean {
+  if (isUnknownMutationOutcome(error)) {
+    return true;
+  }
+  return (
+    error instanceof RpcError &&
+    error.problem.status === 500 &&
+    error.problem.code === "INTERNAL_ERROR"
+  );
+}
+
 /** One fetch to the cookie-only programs surface. Never builds auth headers. */
 async function programsFetch<T>(
   path: string,
@@ -1148,12 +1165,14 @@ export function getManagementCockpit(
 /** POST /api/v1/programs/departments/:id/programs */
 export function createProgram(
   departmentId: string,
-  input: ProgramInput
+  input: ProgramInput,
+  idempotencyKey?: string | null
 ): Promise<{ program: Program }> {
   return programsFetch(
     `/api/v1/programs/departments/${encodeURIComponent(departmentId)}/programs`,
     "POST",
-    input
+    input,
+    { idempotencyKey }
   );
 }
 

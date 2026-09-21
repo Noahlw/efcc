@@ -24,7 +24,7 @@ import { hkDayPeriodFromIso, hkWallLabel } from "@/lib/hk-time";
 import { announce } from "@/lib/live-region";
 import {
   guestCheckIn,
-  isUnknownMutationOutcome,
+  isUnknownMutationWriteOutcome,
   reconcileGuestCheckIn,
 } from "@/lib/programs/program-api";
 import { buildProgramsHref } from "@/lib/programs/programs-intent";
@@ -105,8 +105,8 @@ const GuestCheckinResult = ({
     <p className="text-base text-[var(--ink-muted)] leading-relaxed min-w-0 whitespace-normal [overflow-wrap:anywhere]">
       {result.kind === "success"
         ? COPY.attendance.guestResultLead(
-          hkDayPeriodFromIso(result.event.starts_at)
-        )
+            hkDayPeriodFromIso(result.event.starts_at)
+          )
         : COPY.attendance.guestDuplicate}
     </p>
     <p className="text-sm text-[var(--ink-muted)] leading-relaxed">
@@ -366,7 +366,7 @@ export const AttendancePanel = () => {
       clearGuestMutationRecovery();
       flow.showStatus("");
     } catch (error) {
-      const unknown = isUnknownMutationOutcome(error);
+      const unknown = isUnknownMutationWriteOutcome(error);
       const message = guestSubmitErrorCopy(error);
       setGuestOutcomeUnknown(unknown);
       if (!unknown) {
@@ -727,10 +727,10 @@ export const AttendancePanel = () => {
                     value: entry.value,
                     ...(flow.selected?.event_id || flow.intendedEvent?.event_id
                       ? {
-                        eventId:
-                          flow.selected?.event_id ??
-                          flow.intendedEvent?.event_id,
-                      }
+                          eventId:
+                            flow.selected?.event_id ??
+                            flow.intendedEvent?.event_id,
+                        }
                       : {}),
                   });
                 }

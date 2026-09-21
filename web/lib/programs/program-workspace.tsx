@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { MouseEvent, ReactNode } from "react";
 
 import {
@@ -42,11 +42,13 @@ import { rememberDeepLink } from "@/lib/session";
 import { applyAuthoritativeRevision } from "./authoritative-revision";
 import { clearEventCreateDraft } from "./event-create-draft";
 import { EventDetail } from "./event-detail";
-import {
-  clearManagementDraft,
-  clearManagementDraftsForEntity,
-} from "./management-draft";
+import { clearManagementDraft, listManagementDrafts } from "./management-draft";
 import { readWorkspaceMutationRecovery } from "./mutation-recovery";
+import {
+  clearProgramSettingsDrafts,
+  isProgramSettingsDraftAction,
+  SETTINGS_DRAFT_ACTION,
+} from "./program-settings";
 import { buildProgramsHref, parseProgramsIntent } from "./programs-intent";
 import type {
   ManagementEventAction,
@@ -61,6 +63,7 @@ import type { ManagementNotificationState } from "./programs-notifications";
 import { rememberWorkspaceScroll } from "./programs-scroll";
 import { useAsyncResource } from "./use-async-resource";
 import {
+  clearAuthenticatedProgramsRecovery,
   hasModule,
   redirectToLoginIfRequired,
   useWorkspaceRouteContext,
@@ -93,7 +96,9 @@ export interface ProgramWorkspaceProps {
   onTaskChange: (
     task: ProgramsTask | null,
     eventId?: string | null,
-    scheduleOrigin?: ProgramsScheduleOrigin
+    scheduleOrigin?: ProgramsScheduleOrigin,
+    scheduleEditor?: ProgramsScheduleEditor | null,
+    scheduleRuleId?: string | null
   ) => void;
   /** Opens the shared focused attendance roster for an exact Event. */
   onOpenAttendance?: (eventId: string) => void;
@@ -150,6 +155,116 @@ type EventDraftNavigation =
       scheduleOrigin?: ProgramsScheduleOrigin;
     }
   | { kind: "href"; href: string };
+
+type ScheduleRecoveryOwner =
+  | { kind: "preview"; focusKey: string }
+  | {
+      kind: "editor";
+      editor: ProgramsScheduleEditor;
+      ruleId: string | null;
+    }
+  | { kind: "settings"; section: ProgramsSettingsSection | null };
+
+interface ScheduleDraftRecovery {
+  hasDrafts: boolean;
+  firstOwner: ScheduleRecoveryOwner | null;
+}
+
+function readScheduleDraftRecovery(programId: string): ScheduleDraftRecovery {
+  let firstOwner: ScheduleRecoveryOwner | null = null;
+  const drafts = listManagementDrafts<unknown>(programId);
+  const remember = (owner: ScheduleRecoveryOwner) => {
+    if (firstOwner === null) {
+      firstOwner = owner;
+    }
+  };
+
+  for (const { action } of drafts) {
+    if (!isProgramSettingsDraftAction(action)) {
+      continue;
+    }
+    if (action === SETTINGS_DRAFT_ACTION.basics) {
+      remember({ kind: "settings", section: "basics" });
+      continue;
+    }
+    if (action === SETTINGS_DRAFT_ACTION.publishing) {
+      remember({ kind: "settings", section: "publishing" });
+      continue;
+    }
+    if (action === SETTINGS_DRAFT_ACTION.enrollment) {
+      remember({ kind: "settings", section: "enrollment" });
+      continue;
+    }
+    if (action === SETTINGS_DRAFT_ACTION.attendance) {
+      remember({ kind: "settings", section: "attendance" });
+      continue;
+    }
+    if (action === SETTINGS_DRAFT_ACTION.newRule) {
+      remember({ kind: "editor", editor: "new-rule", ruleId: null });
+      continue;
+    }
+    const rulePrefix = `${SETTINGS_DRAFT_ACTION.rule}:`;
+    if (action.startsWith(rulePrefix)) {
+      remember({
+        kind: "editor",
+        editor: "edit-rule",
+        ruleId: action.slice(rulePrefix.length),
+      });
+      continue;
+    }
+    const exceptionPrefix = `${SETTINGS_DRAFT_ACTION.exception}:`;
+    if (action.startsWith(exceptionPrefix)) {
+      const key = action.slice(exceptionPrefix.length);
+      if (key.includes(":")) {
+        remember({ kind: "preview", focusKey: key });
+      } else {
+        remember({ kind: "editor", editor: "new-exception", ruleId: key });
+      }
+      continue;
+    }
+  }
+
+  return { hasDrafts: firstOwner !== null, firstOwner };
+}
+
+function settingsNavigationForUrl(
+  nextUrl: URL,
+  programId: string
+): SettingsNavigationRequest {
+  const routeIntent =
+    nextUrl.pathname === "/programs"
+      ? parseProgramsIntent(`${nextUrl.search}${nextUrl.hash}`)
+      : null;
+  if (
+    routeIntent &&
+    !routeIntent.malformed &&
+    routeIntent.mode === "management" &&
+    routeIntent.programId === programId &&
+    routeIntent.eventAction === undefined &&
+    routeIntent.departmentSettingsId === undefined
+  ) {
+    return {
+      kind: "route",
+      task: routeIntent.task ?? null,
+      ...(routeIntent.eventId === undefined
+        ? {}
+        : { eventId: routeIntent.eventId }),
+      ...(routeIntent.scheduleOrigin === undefined
+        ? {}
+        : { scheduleOrigin: routeIntent.scheduleOrigin }),
+      ...(routeIntent.scheduleEditor === undefined
+        ? {}
+        : { scheduleEditor: routeIntent.scheduleEditor }),
+      ...(routeIntent.scheduleRuleId === undefined
+        ? {}
+        : { scheduleRuleId: routeIntent.scheduleRuleId }),
+      ...(routeIntent.settingsSection === undefined
+        ? {}
+        : { settingsSection: routeIntent.settingsSection }),
+    };
+  }
+  return { kind: "href", href: nextUrl.href };
+}
 
 function initialSummary(
   modules?: readonly DepartmentModule[]
@@ -253,7 +368,19 @@ export const ProgramWorkspace = ({
   const [settingsEditorDirty, setSettingsEditorDirty] = useState(false);
   const [settingsNavigationBlocked, setSettingsNavigationBlocked] =
     useState(false);
+  const [scheduleDraftDiscardSignal, setScheduleDraftDiscardSignal] =
+    useState(0);
+  const [settingsDraftDiscardSignal, setSettingsDraftDiscardSignal] =
+    useState(0);
+  const [scheduleDraftFocusKey, setScheduleDraftFocusKey] = useState<
+    string | null
+  >(null);
+  const [scheduleSettingsSection, setScheduleSettingsSection] =
+    useState<ProgramsSettingsSection | null>(null);
+  const [managementDraftVersion, setManagementDraftVersion] = useState(0);
   const [pendingSettingsNavigation, setPendingSettingsNavigation] =
+    useState<SettingsNavigationRequest | null>(null);
+  const [settingsRecoveryDestination, setSettingsRecoveryDestination] =
     useState<SettingsNavigationRequest | null>(null);
   const allowSettingsNavigation = useRef(false);
   const [eventDraftDirty, setEventDraftDirty] = useState(false);
@@ -261,6 +388,12 @@ export const ProgramWorkspace = ({
   const [eventNavigationBlocked, setEventNavigationBlocked] = useState(false);
   const [pendingEventDraftNavigation, setPendingEventDraftNavigation] =
     useState<EventDraftNavigation | null>(null);
+  const scheduleDraftRecovery = useMemo(
+    () => readScheduleDraftRecovery(programId),
+    [managementDraftVersion, programId]
+  );
+  const workspaceSettingsDirty =
+    settingsEditorDirty || scheduleDraftRecovery.hasDrafts;
   const handleEventDraftDirtyChange = useCallback(
     (dirty: boolean) => {
       setEventDraftDirty(dirty);
@@ -281,6 +414,10 @@ export const ProgramWorkspace = ({
     },
     [eventDraftDirty]
   );
+  const handleSettingsDirtyStateChange = useCallback((dirty: boolean) => {
+    setSettingsEditorDirty(dirty);
+    setManagementDraftVersion((version) => version + 1);
+  }, []);
   const handleSettingsNavigationRequest = useCallback(
     (request: SettingsNavigationRequest) => {
       setPendingSettingsNavigation(request);
@@ -337,11 +474,29 @@ export const ProgramWorkspace = ({
       setSettingsEditorFocused(false);
       setSettingsEditorDirty(false);
       setSettingsNavigationBlocked(false);
+      setPendingSettingsNavigation(null);
     }
   }, [task]);
   useEffect(() => {
+    if (workspaceSettingsDirty) {
+      return;
+    }
+    allowSettingsHistoryBack.current = false;
+    setScheduleDraftFocusKey(null);
+    setSettingsRecoveryDestination(null);
+  }, [workspaceSettingsDirty]);
+  useEffect(() => {
+    if (!workspaceMutationBlocked) {
+      return;
+    }
+    allowSettingsHistoryBack.current = false;
+    allowSettingsNavigation.current = false;
+  }, [workspaceMutationBlocked]);
+  useEffect(() => {
+    const settingsDirtyOnEvents = task === "events" && workspaceSettingsDirty;
     const guardActive =
       workspaceMutationBlocked ||
+      settingsDirtyOnEvents ||
       (task === "events" && (eventDraftDirty || eventEditDirty));
     if (!guardActive) {
       return;
@@ -360,9 +515,11 @@ export const ProgramWorkspace = ({
       announce(
         workspaceMutationBlocked
           ? COPY.programs.programTransportAmbiguous
-          : eventEditDirty
-            ? COPY.programs.eventEditUnsaved
-            : COPY.programs.eventCreateUnsaved
+          : workspaceSettingsDirty
+            ? COPY.programs.settingsUnsaved
+            : eventEditDirty
+              ? COPY.programs.eventEditUnsaved
+              : COPY.programs.eventCreateUnsaved
       );
     };
     const handleDocumentClick = (event: globalThis.MouseEvent) => {
@@ -406,6 +563,15 @@ export const ProgramWorkspace = ({
       event.preventDefault();
       event.stopPropagation();
       if (workspaceMutationBlocked) {
+        event.stopImmediatePropagation();
+        announceBlocked();
+        return;
+      }
+      if (workspaceSettingsDirty) {
+        setPendingSettingsNavigation(
+          settingsNavigationForUrl(nextUrl, programId)
+        );
+        setSettingsNavigationBlocked(true);
         announceBlocked();
         return;
       }
@@ -438,23 +604,44 @@ export const ProgramWorkspace = ({
       announceBlocked();
     };
     const handleBeforeUnload = (event: BeforeUnloadEvent) => {
-      if (allowEventDraftLeave.current) {
+      if (workspaceMutationBlocked) {
+        event.preventDefault();
+        event.returnValue = "";
+        return;
+      }
+      if (allowEventDraftLeave.current || allowSettingsNavigation.current) {
         return;
       }
       event.preventDefault();
       event.returnValue = "";
     };
-    const handlePopState = () => {
+    const handlePopState = (event: PopStateEvent) => {
+      if (workspaceMutationBlocked) {
+        allowSettingsHistoryBack.current = false;
+        window.history.pushState(guardedState, "", blockedHref);
+        event.stopImmediatePropagation();
+        announceBlocked();
+        return;
+      }
+      if (allowSettingsHistoryBack.current) {
+        allowSettingsHistoryBack.current = false;
+        return;
+      }
       window.history.pushState(guardedState, "", blockedHref);
       if (!workspaceMutationBlocked) {
-        setPendingEventDraftNavigation(
-          eventId
-            ? { kind: "task", task: "events" }
-            : task === "schedule"
+        if (workspaceSettingsDirty) {
+          setPendingSettingsNavigation({ kind: "history-back" });
+          setSettingsNavigationBlocked(true);
+        } else {
+          setPendingEventDraftNavigation(
+            eventId
               ? { kind: "task", task: "events" }
-              : { kind: "back" }
-        );
-        setEventNavigationBlocked(true);
+              : task === "schedule"
+                ? { kind: "task", task: "events" }
+                : { kind: "back" }
+          );
+          setEventNavigationBlocked(true);
+        }
       }
       announceBlocked();
     };
@@ -477,17 +664,13 @@ export const ProgramWorkspace = ({
     eventDraftDirty,
     eventEditDirty,
     eventId,
+    programId,
+    workspaceSettingsDirty,
     task,
     workspaceMutationBlocked,
   ]);
   useEffect(() => {
-    if (
-      !(
-        (task === "settings" || task === "schedule") &&
-        settingsEditorFocused &&
-        settingsEditorDirty
-      )
-    ) {
+    if (!workspaceSettingsDirty || task === "events") {
       return;
     }
     const restoringHistory = { current: false };
@@ -510,9 +693,14 @@ export const ProgramWorkspace = ({
     return () => {
       window.removeEventListener("popstate", handlePopState);
     };
-  }, [settingsEditorDirty, settingsEditorFocused, task]);
+  }, [task, workspaceSettingsDirty]);
   useEffect(() => {
-    if (task !== "schedule" || !settingsEditorFocused || !settingsEditorDirty) {
+    // RP2.1: the dirty union guards every Program leave path. Focus only
+    // decides whether the child Settings route owns the interception.
+    if (
+      !workspaceSettingsDirty ||
+      (task !== "schedule" && settingsEditorFocused)
+    ) {
       return;
     }
     const handleDocumentClick = (event: globalThis.MouseEvent) => {
@@ -553,38 +741,9 @@ export const ProgramWorkspace = ({
       }
       event.preventDefault();
       event.stopPropagation();
-      const routeIntent =
-        nextUrl.pathname === "/programs"
-          ? parseProgramsIntent(`${nextUrl.search}${nextUrl.hash}`)
-          : null;
-      if (
-        routeIntent &&
-        !routeIntent.malformed &&
-        routeIntent.mode === "management" &&
-        routeIntent.programId === programId
-      ) {
-        setPendingSettingsNavigation({
-          kind: "route",
-          task: routeIntent.task ?? null,
-          ...(routeIntent.eventId === undefined
-            ? {}
-            : { eventId: routeIntent.eventId }),
-          ...(routeIntent.scheduleOrigin === undefined
-            ? {}
-            : { scheduleOrigin: routeIntent.scheduleOrigin }),
-          ...(routeIntent.scheduleEditor === undefined
-            ? {}
-            : { scheduleEditor: routeIntent.scheduleEditor }),
-          ...(routeIntent.scheduleRuleId === undefined
-            ? {}
-            : { scheduleRuleId: routeIntent.scheduleRuleId }),
-          ...(routeIntent.settingsSection === undefined
-            ? {}
-            : { settingsSection: routeIntent.settingsSection }),
-        });
-      } else {
-        setPendingSettingsNavigation({ kind: "href", href: nextUrl.href });
-      }
+      setPendingSettingsNavigation(
+        settingsNavigationForUrl(nextUrl, programId)
+      );
       setSettingsNavigationBlocked(true);
       announce(COPY.programs.settingsUnsaved);
     };
@@ -601,7 +760,7 @@ export const ProgramWorkspace = ({
       document.removeEventListener("click", handleDocumentClick, true);
       window.removeEventListener("beforeunload", handleBeforeUnload);
     };
-  }, [programId, settingsEditorDirty, settingsEditorFocused, task]);
+  }, [programId, settingsEditorFocused, task, workspaceSettingsDirty]);
   const focusedSettingsEditor =
     (task === "settings" || task === "schedule") && settingsEditorFocused;
   const {
@@ -649,6 +808,7 @@ export const ProgramWorkspace = ({
           error instanceof RpcError &&
           error.problem.code === "AUTH_REQUIRED"
         ) {
+          clearAuthenticatedProgramsRecovery();
           rememberDeepLink(
             `${window.location.pathname}${window.location.search}${window.location.hash}`
           );
@@ -863,7 +1023,45 @@ export const ProgramWorkspace = ({
   };
 
   const continueSettingsEditing = () => {
+    if (workspaceMutationBlocked) {
+      announce(COPY.programs.programTransportAmbiguous);
+      return;
+    }
+    const { firstOwner } = scheduleDraftRecovery;
+    const pending = pendingSettingsNavigation;
+    if (pending !== null) {
+      setSettingsRecoveryDestination((destination) => destination ?? pending);
+    }
+    setScheduleDraftFocusKey(
+      firstOwner?.kind === "preview" ? firstOwner.focusKey : null
+    );
     setPendingSettingsNavigation(null);
+    if (firstOwner?.kind === "settings") {
+      setScheduleSettingsSection(firstOwner.section);
+      onSettingsSectionChange?.(null);
+      onScheduleEditorChange?.(null, null);
+      if (task !== "schedule") {
+        permitOneWorkspaceNavigation();
+        navigateWorkspaceTask("schedule", undefined, "settings");
+      }
+    } else if (task !== "schedule" && firstOwner?.kind === "preview") {
+      setScheduleSettingsSection(null);
+      onSettingsSectionChange?.(null);
+      onScheduleEditorChange?.(null, null);
+      permitOneWorkspaceNavigation();
+      navigateWorkspaceTask("schedule", undefined, "settings");
+    } else if (task !== "schedule" && firstOwner?.kind === "editor") {
+      setScheduleSettingsSection(null);
+      onSettingsSectionChange?.(null);
+      permitOneWorkspaceNavigation();
+      navigateWorkspaceTask(
+        "schedule",
+        undefined,
+        "settings",
+        firstOwner.editor,
+        firstOwner.ruleId
+      );
+    }
   };
 
   const permitOneWorkspaceNavigation = () => {
@@ -876,10 +1074,22 @@ export const ProgramWorkspace = ({
   const navigateWorkspaceTask = (
     nextTask: ProgramsTask | null,
     nextEventId?: string | null,
-    nextScheduleOrigin?: ProgramsScheduleOrigin
+    nextScheduleOrigin?: ProgramsScheduleOrigin,
+    nextScheduleEditor?: ProgramsScheduleEditor | null,
+    nextScheduleRuleId?: string | null
   ) => {
     if (task === "participants" && nextTask !== "participants") {
       rememberWorkspaceScroll(`${programId}:participants`);
+    }
+    if (nextScheduleEditor !== undefined || nextScheduleRuleId !== undefined) {
+      onTaskChange(
+        nextTask,
+        nextEventId,
+        nextScheduleOrigin,
+        nextScheduleEditor,
+        nextScheduleRuleId
+      );
+      return;
     }
     if (nextScheduleOrigin !== undefined) {
       onTaskChange(nextTask, nextEventId, nextScheduleOrigin);
@@ -893,12 +1103,26 @@ export const ProgramWorkspace = ({
   };
 
   const discardSettingsAndLeave = () => {
-    const pending = pendingSettingsNavigation;
+    if (workspaceMutationBlocked) {
+      announce(COPY.programs.programTransportAmbiguous);
+      return;
+    }
+    const pending = settingsRecoveryDestination ?? pendingSettingsNavigation;
     if (pending === null) {
       return;
     }
-    clearManagementDraftsForEntity(programId);
+    clearProgramSettingsDrafts(programId);
+    setSettingsDraftDiscardSignal((signal) => signal + 1);
+    setManagementDraftVersion((version) => version + 1);
+    // RP2.1: Discard on the focused Schedule route also drops the panel's
+    // in-memory inline drafts via the discard signal (session alone is not
+    // enough: the panel would rewrite them from stale state).
+    if (task === "schedule") {
+      setScheduleDraftDiscardSignal((signal) => signal + 1);
+    }
     setPendingSettingsNavigation(null);
+    setSettingsRecoveryDestination(null);
+    setScheduleSettingsSection(null);
     setSettingsNavigationBlocked(false);
     setSettingsEditorFocused(false);
     setSettingsEditorDirty(false);
@@ -909,6 +1133,14 @@ export const ProgramWorkspace = ({
     }
     if (pending.kind === "back") {
       onSettingsSectionChange?.(null);
+      return;
+    }
+    if (pending.kind === "workspace-back") {
+      if (focusedSchedule) {
+        onTaskChange(scheduleOrigin === "settings" ? "settings" : "events");
+      } else {
+        onBack();
+      }
       return;
     }
     if (pending.kind === "route") {
@@ -931,7 +1163,9 @@ export const ProgramWorkspace = ({
       navigateWorkspaceTask(
         pending.task,
         pending.eventId,
-        pending.scheduleOrigin
+        pending.scheduleOrigin,
+        pending.scheduleEditor,
+        pending.scheduleRuleId
       );
       return;
     }
@@ -940,6 +1174,10 @@ export const ProgramWorkspace = ({
   };
 
   const discardEventDraftAndLeave = () => {
+    if (workspaceMutationBlocked) {
+      announce(COPY.programs.programTransportAmbiguous);
+      return;
+    }
     const pending = pendingEventDraftNavigation;
     if (pending === null) {
       return;
@@ -995,6 +1233,20 @@ export const ProgramWorkspace = ({
       return;
     }
     event.preventDefault();
+    // RP2.1: workspace dirty is the union of Settings dirty and inline
+    // 調整 dirty. On the focused Schedule route the union alone blocks Back
+    // (focus only picks which header renders the link); elsewhere the
+    // focused-editor gate applies. A clean Settings editor must not drop an
+    // inline dirty draft.
+    if (
+      workspaceSettingsDirty &&
+      (task !== "settings" || !settingsEditorFocused)
+    ) {
+      setPendingSettingsNavigation({ kind: "workspace-back" });
+      setSettingsNavigationBlocked(true);
+      announce(COPY.programs.settingsUnsaved);
+      return;
+    }
     if (settingsEditorFocused && settingsEditorDirty) {
       setSettingsNavigationBlocked(true);
       announce(COPY.programs.settingsUnsaved);
@@ -1024,15 +1276,45 @@ export const ProgramWorkspace = ({
   const handleWorkspaceTaskChange = (
     nextTask: ProgramsTask | null,
     nextEventId?: string | null,
-    nextScheduleOrigin?: ProgramsScheduleOrigin
+    nextScheduleOrigin?: ProgramsScheduleOrigin,
+    nextScheduleEditor?: ProgramsScheduleEditor | null,
+    nextScheduleRuleId?: string | null
   ) => {
-    if (allowSettingsNavigation.current) {
-      allowSettingsNavigation.current = false;
-      navigateWorkspaceTask(nextTask, nextEventId, nextScheduleOrigin);
-      return;
-    }
     if (workspaceMutationBlocked) {
       announce(COPY.programs.programTransportAmbiguous);
+      return;
+    }
+    if (allowSettingsNavigation.current) {
+      allowSettingsNavigation.current = false;
+      navigateWorkspaceTask(
+        nextTask,
+        nextEventId,
+        nextScheduleOrigin,
+        nextScheduleEditor,
+        nextScheduleRuleId
+      );
+      return;
+    }
+    if (
+      workspaceSettingsDirty &&
+      (task !== "settings" || !settingsEditorFocused)
+    ) {
+      setPendingSettingsNavigation({
+        kind: "route",
+        task: nextTask,
+        ...(nextEventId === undefined ? {} : { eventId: nextEventId }),
+        ...(nextScheduleOrigin === undefined
+          ? {}
+          : { scheduleOrigin: nextScheduleOrigin }),
+        ...(nextScheduleEditor === undefined
+          ? {}
+          : { scheduleEditor: nextScheduleEditor }),
+        ...(nextScheduleRuleId === undefined
+          ? {}
+          : { scheduleRuleId: nextScheduleRuleId }),
+      });
+      setSettingsNavigationBlocked(true);
+      announce(COPY.programs.settingsUnsaved);
       return;
     }
     if (settingsEditorFocused && settingsEditorDirty) {
@@ -1057,7 +1339,13 @@ export const ProgramWorkspace = ({
       );
       return;
     }
-    navigateWorkspaceTask(nextTask, nextEventId, nextScheduleOrigin);
+    navigateWorkspaceTask(
+      nextTask,
+      nextEventId,
+      nextScheduleOrigin,
+      nextScheduleEditor,
+      nextScheduleRuleId
+    );
   };
   return (
     <section
@@ -1333,10 +1621,14 @@ export const ProgramWorkspace = ({
           scheduleRuleId={scheduleRuleId}
           onScheduleEditorChange={onScheduleEditorChange}
           onSettingsFocusChange={setSettingsEditorFocused}
-          onSettingsDirtyChange={setSettingsEditorDirty}
+          onSettingsDirtyChange={handleSettingsDirtyStateChange}
           onWorkspaceDirtyChange={handleEventDraftDirtyChange}
           onFocusedTaskFocusChange={setSettingsEditorFocused}
-          onFocusedTaskDirtyChange={setSettingsEditorDirty}
+          onFocusedTaskDirtyChange={handleSettingsDirtyStateChange}
+          scheduleDraftDiscardSignal={scheduleDraftDiscardSignal}
+          scheduleDraftFocusKey={scheduleDraftFocusKey}
+          scheduleSettingsSection={scheduleSettingsSection}
+          settingsDraftDiscardSignal={settingsDraftDiscardSignal}
           settingsNavigationBlocked={settingsNavigationBlocked}
           onSettingsNavigationBlocked={setSettingsNavigationBlocked}
           onSettingsNavigationRequest={handleSettingsNavigationRequest}

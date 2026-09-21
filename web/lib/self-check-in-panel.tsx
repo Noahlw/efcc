@@ -23,7 +23,7 @@ import { hkWallLabel } from "@/lib/hk-time";
 import { announce } from "@/lib/live-region";
 import {
   getOwnAttendance,
-  isUnknownMutationOutcome,
+  isUnknownMutationWriteOutcome,
   selfCheckIn,
 } from "@/lib/programs/program-api";
 import { buildProgramsHref } from "@/lib/programs/programs-intent";
@@ -433,7 +433,7 @@ export const SelfCheckInPanel = ({
         : hasSpecificCopy && error instanceof RpcError
           ? errorCopyFor(error.problem.code, error.problem.detail)
           : COPY.attendance.submitFailure;
-      const unknown = isUnknownMutationOutcome(error);
+      const unknown = isUnknownMutationWriteOutcome(error);
       setRetryAvailable(true);
       setRetryNeedsReconciliation(unknown);
       const visibleMessage = unknown

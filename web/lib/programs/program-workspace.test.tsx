@@ -43,6 +43,12 @@ import {
   clearEventCreateDraft,
   readEventCreateDraft,
 } from "./event-create-draft";
+import { clearGenerationRecovery } from "./generation-recovery";
+import {
+  clearManagementDraftsForEntity,
+  writeManagementDraft,
+} from "./management-draft";
+import { SETTINGS_DRAFT_ACTION } from "./program-settings";
 
 const StatefulWorkspaceHarness = ({
   initialTask,
@@ -58,6 +64,38 @@ const StatefulWorkspaceHarness = ({
       onTaskChange={(nextTask) =>
         setTask(nextTask === initialTask ? initialTask : null)
       }
+    />
+  );
+};
+
+const ScheduleRecoveryHarness = () => {
+  const [task, setTask] = useState<"settings" | "schedule">("settings");
+  return (
+    <ProgramWorkspace
+      programId="program-1"
+      task={task}
+      onBack={() => {}}
+      onTaskChange={(nextTask) => {
+        if (nextTask === "schedule" || nextTask === "settings") {
+          setTask(nextTask);
+        }
+      }}
+    />
+  );
+};
+
+const EventsSettingsWorkspaceHarness = () => {
+  const [task, setTask] = useState<"events" | "settings">("events");
+  return (
+    <ProgramWorkspace
+      programId="program-1"
+      task={task}
+      onBack={() => {}}
+      onTaskChange={(nextTask) => {
+        if (nextTask === "events" || nextTask === "settings") {
+          setTask(nextTask);
+        }
+      }}
     />
   );
 };
@@ -132,6 +170,7 @@ vi.mock(import("@/lib/programs/program-api"), () => ({
   previewEvents: mocks.previewEvents,
   generateEvents: mocks.generateEvents,
   isUnknownMutationOutcome: mocks.isUnknownMutationOutcome,
+  isUnknownMutationWriteOutcome: mocks.isUnknownMutationOutcome,
 }));
 
 const program: Program = {
@@ -327,11 +366,13 @@ function mockWorkspace() {
 }
 beforeEach(() => {
   clearEventCreateDraft("program-1");
+  clearManagementDraftsForEntity("program-1");
   clearWorkspaceMutationRecovery("event", {
     programId: "program-1",
     eventId: "event-1",
   });
   clearWorkspaceMutationRecovery("events", { programId: "program-1" });
+  clearGenerationRecovery("program-1");
   mocks.getManagementProgram.mockReset();
   mocks.updateProgram.mockReset();
   mocks.listEvents.mockReset();
@@ -359,6 +400,8 @@ beforeEach(() => {
 });
 afterEach(() => {
   clearEventCreateDraft("program-1");
+  clearManagementDraftsForEntity("program-1");
+  clearGenerationRecovery("program-1");
   clearWorkspaceMutationRecovery("event", {
     programId: "program-1",
     eventId: "event-1",
@@ -957,6 +1000,75 @@ describe(ProgramWorkspace, () => {
     ).resolves.toBeInTheDocument();
   });
 
+  test("RP2.1 inline dirty joins the parent Back handshake; Continue keeps it, Discard clears it", async () => {
+    mockWorkspace();
+    const user = userEvent.setup();
+    const targetLink = document.createElement("a");
+    targetLink.href = "/programs?mode=management&program=program-1&task=events";
+    targetLink.textContent = "聚會";
+    document.body.append(targetLink);
+    const onTaskChange = vi.fn();
+    try {
+      mocks.previewEvents.mockResolvedValue(plan);
+      render(
+        <ProgramWorkspace
+          programId="program-1"
+          task="schedule"
+          onBack={vi.fn()}
+          onTaskChange={onTaskChange}
+        />
+      );
+      await user.click(
+        await screen.findByRole("button", { name: COPY.programs.previewEvents })
+      );
+      const adjust = await screen.findAllByRole("button", {
+        name: COPY.programs.previewAdjustOccurrence,
+      });
+      await user.click(adjust[0]);
+      const dateInput = await screen.findByLabelText(
+        COPY.programs.settingsExceptionNewDate
+      );
+      await user.clear(dateInput);
+      await user.type(dateInput, "2026-09-17");
+      // Close the Sheet via its dismiss affordance; the dirty draft stays.
+      await user.click(screen.getByRole("button", { name: "Close" }));
+      await waitFor(() =>
+        expect(
+          screen.queryByRole("heading", {
+            name: COPY.programs.previewAdjustSheetTitle,
+          })
+        ).not.toBeInTheDocument()
+      );
+      // In-app navigation while inline-dirty opens Continue/Discard.
+      await user.click(targetLink);
+      await user.click(
+        screen.getByRole("button", {
+          name: COPY.programs.settingsContinueEditing,
+        })
+      );
+      expect(onTaskChange).not.toHaveBeenCalled();
+      // The edit survives Continue.
+      expect(
+        screen.getByText(COPY.programs.previewExceptionDraft)
+      ).toBeInTheDocument();
+      // Navigate again, then Discard: clears the occurrence draft and leaves.
+      await user.click(targetLink);
+      await user.click(
+        screen.getByRole("button", {
+          name: COPY.programs.settingsDiscardAndLeave,
+        })
+      );
+      await waitFor(() =>
+        expect(
+          screen.queryByText(COPY.programs.previewExceptionDraft)
+        ).not.toBeInTheDocument()
+      );
+      expect(onTaskChange).toHaveBeenCalledWith("events");
+    } finally {
+      targetLink.remove();
+    }
+  });
+
   test("returns focused Schedule to the Events task from the workspace Back link", async () => {
     mockWorkspace();
     const onBack = vi.fn();
@@ -1393,7 +1505,11 @@ describe(ProgramWorkspace, () => {
     ).toBeInTheDocument();
     expect(name).toHaveValue("未儲存名稱");
     expect(onBack).not.toHaveBeenCalled();
-    expect(onTaskChange).not.toHaveBeenCalled();
+    expect(onTaskChange).toHaveBeenCalledWith(
+      "schedule",
+      undefined,
+      "settings"
+    );
     expect(
       screen.getByText(
         `${COPY.programs.settingsUnsaved} ${COPY.programs.settingsSaveBasics} / ${COPY.programs.settingsDiscard}`
@@ -1421,7 +1537,11 @@ describe(ProgramWorkspace, () => {
     expect(
       screen.getByRole("heading", { name: COPY.programs.settingsBasics })
     ).toBeInTheDocument();
-    expect(onTaskChange).not.toHaveBeenCalled();
+    expect(onTaskChange).toHaveBeenCalledWith(
+      "schedule",
+      undefined,
+      "settings"
+    );
 
     await user.click(
       screen.getByRole("button", { name: COPY.programs.settingsDiscard })
@@ -1454,6 +1574,89 @@ describe(ProgramWorkspace, () => {
     ).resolves.toBeInTheDocument();
   });
 
+  test("routes a generic Settings owner to Schedule and focuses it", async () => {
+    mockWorkspace();
+    const user = userEvent.setup();
+    render(<ScheduleRecoveryHarness />);
+
+    await user.click(
+      await screen.findByRole("button", {
+        name: /基本資料名稱、描述同分類/u,
+      })
+    );
+    const name = screen.getByRole("textbox", {
+      name: COPY.programs.programName,
+    });
+    await user.clear(name);
+    await user.type(name, "Schedule 復原名稱");
+    await user.click(
+      screen.getByRole("link", { name: COPY.programs.settingsBackToHub })
+    );
+    await user.click(
+      screen.getByRole("button", {
+        name: COPY.programs.settingsContinueEditing,
+      })
+    );
+
+    expect(
+      document.querySelector("[data-programs-schedule-task]")
+    ).toBeInTheDocument();
+    await user.click(
+      screen.getByRole("button", { name: COPY.programs.draftRecover })
+    );
+    expect(
+      screen.getByRole("textbox", { name: COPY.programs.programName })
+    ).toHaveValue("Schedule 復原名稱");
+  });
+
+  test("protects a hidden Preview draft from the Settings hub", async () => {
+    mockWorkspace();
+    const user = userEvent.setup();
+    const onTaskChange = vi.fn();
+    const draftAction = "settings-exception:rule-1:2099-01-01";
+    writeManagementDraft("program-1", draftAction, {
+      action: "RESCHEDULE",
+      newDate: "2099-01-02",
+      newStartTime: "19:30",
+      newEndTime: "21:00",
+    });
+    render(
+      <ProgramWorkspace
+        programId="program-1"
+        task="settings"
+        onBack={vi.fn()}
+        onTaskChange={onTaskChange}
+      />
+    );
+
+    await screen.findByRole("button", {
+      name: /基本資料名稱、描述同分類/u,
+    });
+    await user.click(
+      screen.getByRole("link", { name: COPY.programs.workspaceOverviewTab })
+    );
+    expect(
+      screen.getByRole("button", {
+        name: COPY.programs.settingsContinueEditing,
+      })
+    ).toBeInTheDocument();
+    await user.click(
+      screen.getByRole("button", {
+        name: COPY.programs.settingsContinueEditing,
+      })
+    );
+    expect(onTaskChange).toHaveBeenCalledWith(
+      "schedule",
+      undefined,
+      "settings"
+    );
+    expect(
+      window.sessionStorage.getItem(
+        "efcc_management_draft:program-1:settings-exception%3Arule-1%3A2099-01-01"
+      )
+    ).not.toBeNull();
+  });
+
   test("preserves a requested Settings section when discarding a dirty draft", async () => {
     mockWorkspace();
     const user = userEvent.setup();
@@ -1463,6 +1666,11 @@ describe(ProgramWorkspace, () => {
       "/programs?mode=management&program=program-1&task=settings&settingsSection=publishing";
     requestedSection.textContent = "發佈設定";
     document.body.append(requestedSection);
+    const laterSection = document.createElement("a");
+    laterSection.href =
+      "/programs?mode=management&program=program-1&task=settings&settingsSection=attendance";
+    laterSection.textContent = "出席設定";
+    document.body.append(laterSection);
 
     try {
       render(
@@ -1487,6 +1695,12 @@ describe(ProgramWorkspace, () => {
       await user.clear(name);
       await user.type(name, "未儲存基本資料");
       fireEvent.click(requestedSection);
+      await user.click(
+        screen.getByRole("button", {
+          name: COPY.programs.settingsContinueEditing,
+        })
+      );
+      fireEvent.click(laterSection);
 
       await user.click(
         screen.getByRole("button", {
@@ -1496,6 +1710,7 @@ describe(ProgramWorkspace, () => {
       expect(onSettingsSectionChange).toHaveBeenCalledWith("publishing");
     } finally {
       requestedSection.remove();
+      laterSection.remove();
     }
   });
 
@@ -1579,6 +1794,129 @@ describe(ProgramWorkspace, () => {
       screen.getByRole("link", { name: COPY.programs.workspaceOverviewTab })
     );
     expect(onTaskChange).toHaveBeenCalledWith(null);
+  });
+
+  test("prioritizes Settings recovery and preserves Event drafts", async () => {
+    mockWorkspace();
+    const user = userEvent.setup();
+    const onTaskChange = vi.fn();
+    writeManagementDraft("program-1", SETTINGS_DRAFT_ACTION.basics, {
+      name: "未儲存設定",
+    });
+    render(
+      <ProgramWorkspace
+        programId="program-1"
+        task="events"
+        onBack={vi.fn()}
+        onTaskChange={onTaskChange}
+      />
+    );
+
+    await user.click(
+      await screen.findByRole("button", { name: COPY.programs.createMeeting })
+    );
+    await user.type(
+      screen.getByRole("textbox", { name: COPY.programs.eventName }),
+      "未儲存聚會"
+    );
+    await user.click(
+      screen.getByRole("link", { name: COPY.programs.workspaceOverviewTab })
+    );
+    expect(
+      screen.getByRole("button", {
+        name: COPY.programs.settingsContinueEditing,
+      })
+    ).toBeInTheDocument();
+
+    await user.click(
+      screen.getByRole("button", {
+        name: COPY.programs.settingsDiscardAndLeave,
+      })
+    );
+    expect(readEventCreateDraft("program-1")?.name).toBe("未儲存聚會");
+    expect(onTaskChange).toHaveBeenCalledWith(null);
+  });
+
+  test("does not reopen Settings recovery after discarding browser Back on Events", async () => {
+    mockWorkspace();
+    const user = userEvent.setup();
+    writeManagementDraft("program-1", SETTINGS_DRAFT_ACTION.basics, {
+      name: "未儲存設定",
+    });
+    render(
+      <ProgramWorkspace
+        programId="program-1"
+        task="events"
+        onBack={vi.fn()}
+        onTaskChange={vi.fn()}
+      />
+    );
+
+    await screen.findByRole("button", { name: COPY.programs.createMeeting });
+    window.dispatchEvent(new PopStateEvent("popstate"));
+    await user.click(
+      await screen.findByRole("button", {
+        name: COPY.programs.settingsDiscardAndLeave,
+      })
+    );
+
+    await waitFor(() => {
+      expect(
+        screen.queryByRole("button", {
+          name: COPY.programs.settingsDiscardAndLeave,
+        })
+      ).not.toBeInTheDocument();
+    });
+    window.dispatchEvent(new PopStateEvent("popstate"));
+    expect(
+      screen.queryByRole("button", {
+        name: COPY.programs.settingsDiscardAndLeave,
+      })
+    ).not.toBeInTheDocument();
+  });
+
+  test("re-arms Settings browser Back after a discarded Events traversal", async () => {
+    mockWorkspace();
+    const user = userEvent.setup();
+    writeManagementDraft("program-1", SETTINGS_DRAFT_ACTION.basics, {
+      name: "首次未儲存設定",
+    });
+    render(<EventsSettingsWorkspaceHarness />);
+
+    await screen.findByRole("button", { name: COPY.programs.createMeeting });
+    window.dispatchEvent(new PopStateEvent("popstate"));
+    await user.click(
+      await screen.findByRole("button", {
+        name: COPY.programs.settingsDiscardAndLeave,
+      })
+    );
+    await waitFor(() => {
+      expect(
+        screen.queryByRole("button", {
+          name: COPY.programs.settingsDiscardAndLeave,
+        })
+      ).not.toBeInTheDocument();
+    });
+
+    await user.click(
+      screen.getByRole("link", { name: COPY.programs.workspaceSettingsTab })
+    );
+    await user.click(
+      await screen.findByRole("button", {
+        name: /基本資料名稱、描述同分類/u,
+      })
+    );
+    await user.type(
+      screen.getByRole("textbox", { name: COPY.programs.programName }),
+      "再次未儲存設定"
+    );
+
+    window.dispatchEvent(new PopStateEvent("popstate"));
+    await expect(
+      screen.findByRole("button", {
+        name: COPY.programs.settingsDiscardAndLeave,
+      })
+    ).resolves.toBeInTheDocument();
   });
 
   test("reaches the overview after discarding a dirty Event route", async () => {
@@ -1775,7 +2113,11 @@ describe(ProgramWorkspace, () => {
       screen.getByRole("heading", { name: COPY.programs.settingsBasics })
     ).toBeInTheDocument();
     expect(name).toHaveValue("首次 Tab 未儲存名稱");
-    expect(onTaskChange).not.toHaveBeenCalled();
+    expect(onTaskChange).toHaveBeenCalledWith(
+      "schedule",
+      undefined,
+      "settings"
+    );
     expect(
       screen.getByText(
         `${COPY.programs.settingsUnsaved} ${COPY.programs.settingsSaveBasics} / ${COPY.programs.settingsDiscard}`

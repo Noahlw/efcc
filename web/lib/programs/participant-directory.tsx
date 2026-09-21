@@ -38,6 +38,7 @@ import {
 
 import { readProgramsScrollY, restoreProgramsScrollY } from "./programs-scroll";
 import { useAsyncResource } from "./use-async-resource";
+import { clearAuthenticatedProgramsRecovery } from "./workspace-context";
 
 /**
  * PUI-02 / Issue #246 — the participant Programs directory. Renders the
@@ -296,6 +297,7 @@ export const ParticipantDirectory = ({
     if (typeof window === "undefined") {
       return;
     }
+    clearAuthenticatedProgramsRecovery();
     rememberDeepLink(
       `${window.location.pathname}${window.location.search}${window.location.hash}`
     );

@@ -46,7 +46,7 @@ import {
   createScheduleRule,
   deleteScheduleException,
   getProgramAttendanceArtifact,
-  isUnknownMutationOutcome,
+  isUnknownMutationWriteOutcome,
   listScheduleExceptions,
   listScheduleRules,
   retireScheduleRule,
@@ -87,7 +87,7 @@ import {
 
 import {
   clearManagementDraft,
-  clearManagementDraftsForEntity,
+  listManagementDrafts,
   readManagementDraft,
   writeManagementDraft,
 } from "./management-draft";
@@ -157,6 +157,26 @@ export const SETTINGS_DRAFT_ACTION = {
   rule: "settings-rule",
   exception: "settings-exception",
 } as const;
+
+export function isProgramSettingsDraftAction(action: string): boolean {
+  return (
+    action === SETTINGS_DRAFT_ACTION.basics ||
+    action === SETTINGS_DRAFT_ACTION.publishing ||
+    action === SETTINGS_DRAFT_ACTION.enrollment ||
+    action === SETTINGS_DRAFT_ACTION.attendance ||
+    action === SETTINGS_DRAFT_ACTION.newRule ||
+    action.startsWith(`${SETTINGS_DRAFT_ACTION.rule}:`) ||
+    action.startsWith(`${SETTINGS_DRAFT_ACTION.exception}:`)
+  );
+}
+
+export function clearProgramSettingsDrafts(programId: string): void {
+  for (const { action } of listManagementDrafts<unknown>(programId)) {
+    if (isProgramSettingsDraftAction(action)) {
+      clearManagementDraft(programId, action);
+    }
+  }
+}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
@@ -282,6 +302,10 @@ export interface ProgramSettingsProps {
   section?: "all" | ProgramSettingsSection;
   /** Let a route-owned ScreenHeader provide the page title for a focused editor. */
   showHeading?: boolean;
+  /** Inline dirty from the focused-Schedule companion (union with Settings). */
+  scheduleAddonDirty?: boolean;
+  /** Parent Discard signal for resetting route-owned in-memory drafts. */
+  settingsDraftDiscardSignal?: number;
   /** Optional focused-Schedule companion that consumes this editor's rule read. */
   scheduleAddon?: (resource: {
     rules: ScheduleRule[] | null;
@@ -322,7 +346,7 @@ function settingsErrorMessage(error: unknown): string {
 }
 
 function isRetryableSettingsMutation(error: unknown): boolean {
-  return isUnknownMutationOutcome(error);
+  return isUnknownMutationWriteOutcome(error);
 }
 
 function basicsFrom(program: Program): BasicsValues {
@@ -495,43 +519,43 @@ const ProgramAttendanceQrCard = ({
       doc.close();
       const imageReady =
         /* oxlint-disable-next-line promise/avoid-new -- DOM load/error/timeout events need one settling promise. */ new Promise<void>(
-        (resolve, reject) => {
-          let settled = false;
-          const finish = (error?: Error) => {
-            if (settled) {
-              return;
-            }
-            settled = true;
-            window.clearTimeout(timeoutId);
-            image.removeEventListener("load", onLoad);
-            image.removeEventListener("error", onError);
-            if (error) {
-              reject(error);
-            } else {
-              resolve();
-            }
-          };
-          const onLoad = async () => {
-            if (typeof image.decode !== "function") {
-              finish();
-              return;
-            }
-            try {
-              await image.decode();
-              finish();
-            } catch {
-              finish(new Error("program-qr-decode-failed"));
-            }
-          };
-          const onError = () => finish(new Error("program-qr-load-failed"));
-          const timeoutId = window.setTimeout(
-            () => finish(new Error("program-qr-timeout")),
-            5000
-          );
-          image.addEventListener("load", onLoad, { once: true });
-          image.addEventListener("error", onError, { once: true });
-        }
-      );
+          (resolve, reject) => {
+            let settled = false;
+            const finish = (error?: Error) => {
+              if (settled) {
+                return;
+              }
+              settled = true;
+              window.clearTimeout(timeoutId);
+              image.removeEventListener("load", onLoad);
+              image.removeEventListener("error", onError);
+              if (error) {
+                reject(error);
+              } else {
+                resolve();
+              }
+            };
+            const onLoad = async () => {
+              if (typeof image.decode !== "function") {
+                finish();
+                return;
+              }
+              try {
+                await image.decode();
+                finish();
+              } catch {
+                finish(new Error("program-qr-decode-failed"));
+              }
+            };
+            const onError = () => finish(new Error("program-qr-load-failed"));
+            const timeoutId = window.setTimeout(
+              () => finish(new Error("program-qr-timeout")),
+              5000
+            );
+            image.addEventListener("load", onLoad, { once: true });
+            image.addEventListener("error", onError, { once: true });
+          }
+        );
       image.src = qr;
       await imageReady;
       printWindow.focus();
@@ -738,10 +762,10 @@ function exceptionInputFrom(values: ExceptionValues): {
     action: values.action,
     ...(values.action === "RESCHEDULE"
       ? {
-        ...(values.newDate ? { new_date: values.newDate } : {}),
-        new_start_time: values.newStartTime,
-        new_end_time: values.newEndTime,
-      }
+          ...(values.newDate ? { new_date: values.newDate } : {}),
+          new_start_time: values.newStartTime,
+          new_end_time: values.newEndTime,
+        }
       : {}),
   };
 }
@@ -789,7 +813,7 @@ function sameRuleInput(rule: ScheduleRule, input: ScheduleRuleInput): boolean {
     rule.end_time === input.end_time &&
     (rule.location ?? null) === (input.location ?? null) &&
     (rule.effective_start_date ?? null) ===
-    (input.effective_start_date ?? null) &&
+      (input.effective_start_date ?? null) &&
     (rule.effective_end_date ?? null) === (input.effective_end_date ?? null)
   );
 }
@@ -1057,10 +1081,11 @@ export const SettingsHub = ({
               }
               title={COPY.programs.settingsHubPublishing}
               description={COPY.programs.settingsHubPublishingHint}
-              currentValue={`${LIFECYCLE_LABEL[program.lifecycle]} · ${program.discoverability === "Listed"
+              currentValue={`${LIFECYCLE_LABEL[program.lifecycle]} · ${
+                program.discoverability === "Listed"
                   ? COPY.programs.discoverabilityListed
                   : COPY.programs.discoverabilityUnlisted
-                }`}
+              }`}
               onClick={() => onSelect("publishing")}
             />
           </ScreenRowList>
@@ -1599,6 +1624,8 @@ export const ProgramSettings = ({
   onMutationBlockChange,
   section = "all",
   showHeading = true,
+  scheduleAddonDirty = false,
+  settingsDraftDiscardSignal,
   scheduleAddon,
   scheduleBackHref,
   scheduleEditor: routeScheduleEditor,
@@ -1753,13 +1780,13 @@ export const ProgramSettings = ({
     }
     scheduleRuleCreateKey.current = null;
     setScheduleEditor(null);
-    onScheduleEditorChange?.(null);
+    onScheduleEditorChange?.(null, null);
   };
   const pendingScheduleResolution = useRef<ScheduleMutationResolution | null>(
     restoredScheduleRecovery
       ? scheduleResolutionForRecovery(restoredScheduleRecovery, () => {
-        clearScheduleRecoveryDraft(restoredScheduleRecovery);
-      })
+          clearScheduleRecoveryDraft(restoredScheduleRecovery);
+        })
       : null
   );
   const [notice, setNotice] = useState<string | null>(null);
@@ -1816,20 +1843,20 @@ export const ProgramSettings = ({
       ? JSON.stringify(newRule) !== JSON.stringify(defaultRuleValues())
       : scheduleEditor?.kind === "edit-rule"
         ? (() => {
-          const rule = (rules ?? []).find(
-            (candidate) => candidate.rule_id === scheduleEditor.ruleId
-          );
-          const draft = ruleDrafts[scheduleEditor.ruleId];
-          return (
-            rule !== undefined &&
-            draft !== undefined &&
-            JSON.stringify(draft) !== JSON.stringify(ruleValuesFrom(rule))
-          );
-        })()
+            const rule = (rules ?? []).find(
+              (candidate) => candidate.rule_id === scheduleEditor.ruleId
+            );
+            const draft = ruleDrafts[scheduleEditor.ruleId];
+            return (
+              rule !== undefined &&
+              draft !== undefined &&
+              JSON.stringify(draft) !== JSON.stringify(ruleValuesFrom(rule))
+            );
+          })()
         : scheduleEditor?.kind === "new-exception"
           ? JSON.stringify(
-            exceptionDrafts[scheduleEditor.ruleId] ?? defaultExceptionValues()
-          ) !== JSON.stringify(defaultExceptionValues())
+              exceptionDrafts[scheduleEditor.ruleId] ?? defaultExceptionValues()
+            ) !== JSON.stringify(defaultExceptionValues())
           : false;
   const settingsDirty = focusedSchedule
     ? scheduleEditorActive && scheduleEditorDirty
@@ -1894,9 +1921,10 @@ export const ProgramSettings = ({
     if (
       readManagementDraft(
         currentProgram.program_id,
-        `${target.kind === "edit-rule"
-          ? SETTINGS_DRAFT_ACTION.rule
-          : SETTINGS_DRAFT_ACTION.exception
+        `${
+          target.kind === "edit-rule"
+            ? SETTINGS_DRAFT_ACTION.rule
+            : SETTINGS_DRAFT_ACTION.exception
         }:${target.ruleId}`
       ) !== null
     ) {
@@ -2456,9 +2484,9 @@ export const ProgramSettings = ({
       publishing.lifecycle === "Archived"
         ? { lifecycle: "Archived" }
         : {
-          lifecycle: publishing.lifecycle,
-          discoverability: publishing.discoverability,
-        }
+            lifecycle: publishing.lifecycle,
+            discoverability: publishing.discoverability,
+          }
     );
   };
 
@@ -2578,7 +2606,7 @@ export const ProgramSettings = ({
         if (!mounted.current) {
           return;
         }
-        if (isUnknownMutationOutcome(error)) {
+        if (isUnknownMutationWriteOutcome(error)) {
           onMutationBlockChange?.(true);
           setReloadRequired(true);
           setActionError(COPY.programs.programTransportAmbiguous);
@@ -2679,7 +2707,7 @@ export const ProgramSettings = ({
         endTime: "",
       }));
       setScheduleEditor(null);
-      onScheduleEditorChange?.(null);
+      onScheduleEditorChange?.(null, null);
     };
     void runScheduleMutation(
       () =>
@@ -2743,7 +2771,7 @@ export const ProgramSettings = ({
           return next;
         });
         setScheduleEditor(null);
-        onScheduleEditorChange?.(null);
+        onScheduleEditorChange?.(null, null);
       };
       void runScheduleMutation(
         () =>
@@ -2810,7 +2838,7 @@ export const ProgramSettings = ({
           return next;
         });
         setScheduleEditor(null);
-        onScheduleEditorChange?.(null);
+        onScheduleEditorChange?.(null, null);
       };
       void runScheduleMutation(
         async () => {
@@ -2999,7 +3027,7 @@ export const ProgramSettings = ({
     }
     scheduleRuleCreateKey.current = null;
     setScheduleEditor(null);
-    onScheduleEditorChange?.(null);
+    onScheduleEditorChange?.(null, null);
     setScheduleNavigationBlocked(false);
     setActionError(null);
     setNotice(null);
@@ -3019,7 +3047,9 @@ export const ProgramSettings = ({
       return;
     }
     event.preventDefault();
-    if (scheduleEditorDirty) {
+    // RP2.1: Back blocks on the union of Settings editor dirty and inline
+    // companion dirty; a clean Settings editor must not drop inline work.
+    if (scheduleEditorDirty || scheduleAddonDirty) {
       setScheduleNavigationBlocked(true);
       announce(COPY.programs.settingsUnsaved);
       return;
@@ -3030,8 +3060,8 @@ export const ProgramSettings = ({
   const scheduleEditorRule =
     scheduleEditor && scheduleEditor.kind !== "new-rule"
       ? (rules ?? []).find(
-        (candidate) => candidate.rule_id === scheduleEditor.ruleId
-      )
+          (candidate) => candidate.rule_id === scheduleEditor.ruleId
+        )
       : undefined;
 
   const discardFocusedChanges = () => {
@@ -3051,8 +3081,8 @@ export const ProgramSettings = ({
     setNotice(null);
   };
 
-  const discardRecoveredDrafts = () => {
-    clearManagementDraftsForEntity(currentProgram.program_id);
+  const discardRecoveredDrafts = useCallback(() => {
+    clearProgramSettingsDrafts(currentProgram.program_id);
     setBasics(basicsFrom(currentProgram));
     setPublishing(publishingFrom(currentProgram));
     setEnrollment(enrollmentFrom(currentProgram));
@@ -3061,11 +3091,22 @@ export const ProgramSettings = ({
     setRuleDrafts({});
     setExceptionDrafts({});
     setScheduleEditor(null);
-    onScheduleEditorChange?.(null);
+    onScheduleEditorChange?.(null, null);
     setDraftRecoveryOpen(false);
     setActionError(null);
     setNotice(null);
-  };
+  }, [currentProgram.program_id, onScheduleEditorChange]);
+  const settingsDiscardSignalRef = useRef(0);
+  useEffect(() => {
+    if (
+      settingsDraftDiscardSignal === undefined ||
+      settingsDraftDiscardSignal <= settingsDiscardSignalRef.current
+    ) {
+      return;
+    }
+    settingsDiscardSignalRef.current = settingsDraftDiscardSignal;
+    discardRecoveredDrafts();
+  }, [discardRecoveredDrafts, settingsDraftDiscardSignal]);
 
   return (
     <section
@@ -3171,16 +3212,16 @@ export const ProgramSettings = ({
                 )}
                 {(pendingProgramRecovery.current !== null ||
                   pendingScheduleRecovery.current !== null) && (
-                    <Button
-                      className="w-fit border-[var(--screen-danger)] bg-transparent text-[var(--screen-danger)] hover:bg-[var(--screen-danger-surface)]"
-                      variant="outline"
-                      type="button"
-                      onClick={discardMutationRecovery}
-                      disabled={busy}
-                    >
-                      {COPY.programs.draftDiscard}
-                    </Button>
-                  )}
+                  <Button
+                    className="w-fit border-[var(--screen-danger)] bg-transparent text-[var(--screen-danger)] hover:bg-[var(--screen-danger-surface)]"
+                    variant="outline"
+                    type="button"
+                    onClick={discardMutationRecovery}
+                    disabled={busy}
+                  >
+                    {COPY.programs.draftDiscard}
+                  </Button>
+                )}
               </div>
             ) : undefined
           }
@@ -3685,7 +3726,7 @@ export const ProgramSettings = ({
                                       {Boolean(rule.has_generated_events) &&
                                         !rule.retired_at &&
                                         confirmingRetireRuleId !==
-                                        rule.rule_id && (
+                                          rule.rule_id && (
                                           <Button
                                             className="w-fit border-[var(--screen-danger)] bg-transparent text-[var(--screen-danger)] hover:bg-[var(--screen-danger-surface)]"
                                             type="button"
@@ -3754,9 +3795,9 @@ export const ProgramSettings = ({
                                             {exception.override_date} ·{" "}
                                             {exception.action === "CANCEL"
                                               ? COPY.programs
-                                                .settingsExceptionCancel
+                                                  .settingsExceptionCancel
                                               : COPY.programs
-                                                .settingsExceptionReschedule}
+                                                  .settingsExceptionReschedule}
                                             {exception.new_date
                                               ? ` → ${exception.new_date}`
                                               : ""}
