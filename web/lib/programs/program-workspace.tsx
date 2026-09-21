@@ -486,6 +486,13 @@ export const ProgramWorkspace = ({
     setSettingsRecoveryDestination(null);
   }, [workspaceSettingsDirty]);
   useEffect(() => {
+    if (!workspaceMutationBlocked) {
+      return;
+    }
+    allowSettingsHistoryBack.current = false;
+    allowSettingsNavigation.current = false;
+  }, [workspaceMutationBlocked]);
+  useEffect(() => {
     const settingsDirtyOnEvents = task === "events" && workspaceSettingsDirty;
     const guardActive =
       workspaceMutationBlocked ||
@@ -556,6 +563,7 @@ export const ProgramWorkspace = ({
       event.preventDefault();
       event.stopPropagation();
       if (workspaceMutationBlocked) {
+        event.stopImmediatePropagation();
         announceBlocked();
         return;
       }
@@ -596,13 +604,25 @@ export const ProgramWorkspace = ({
       announceBlocked();
     };
     const handleBeforeUnload = (event: BeforeUnloadEvent) => {
+      if (workspaceMutationBlocked) {
+        event.preventDefault();
+        event.returnValue = "";
+        return;
+      }
       if (allowEventDraftLeave.current || allowSettingsNavigation.current) {
         return;
       }
       event.preventDefault();
       event.returnValue = "";
     };
-    const handlePopState = () => {
+    const handlePopState = (event: PopStateEvent) => {
+      if (workspaceMutationBlocked) {
+        allowSettingsHistoryBack.current = false;
+        window.history.pushState(guardedState, "", blockedHref);
+        event.stopImmediatePropagation();
+        announceBlocked();
+        return;
+      }
       if (allowSettingsHistoryBack.current) {
         allowSettingsHistoryBack.current = false;
         return;
@@ -1003,6 +1023,10 @@ export const ProgramWorkspace = ({
   };
 
   const continueSettingsEditing = () => {
+    if (workspaceMutationBlocked) {
+      announce(COPY.programs.programTransportAmbiguous);
+      return;
+    }
     const { firstOwner } = scheduleDraftRecovery;
     const pending = pendingSettingsNavigation;
     if (pending !== null) {
@@ -1079,6 +1103,10 @@ export const ProgramWorkspace = ({
   };
 
   const discardSettingsAndLeave = () => {
+    if (workspaceMutationBlocked) {
+      announce(COPY.programs.programTransportAmbiguous);
+      return;
+    }
     const pending = settingsRecoveryDestination ?? pendingSettingsNavigation;
     if (pending === null) {
       return;
@@ -1146,6 +1174,10 @@ export const ProgramWorkspace = ({
   };
 
   const discardEventDraftAndLeave = () => {
+    if (workspaceMutationBlocked) {
+      announce(COPY.programs.programTransportAmbiguous);
+      return;
+    }
     const pending = pendingEventDraftNavigation;
     if (pending === null) {
       return;
@@ -1248,6 +1280,10 @@ export const ProgramWorkspace = ({
     nextScheduleEditor?: ProgramsScheduleEditor | null,
     nextScheduleRuleId?: string | null
   ) => {
+    if (workspaceMutationBlocked) {
+      announce(COPY.programs.programTransportAmbiguous);
+      return;
+    }
     if (allowSettingsNavigation.current) {
       allowSettingsNavigation.current = false;
       navigateWorkspaceTask(
@@ -1257,10 +1293,6 @@ export const ProgramWorkspace = ({
         nextScheduleEditor,
         nextScheduleRuleId
       );
-      return;
-    }
-    if (workspaceMutationBlocked) {
-      announce(COPY.programs.programTransportAmbiguous);
       return;
     }
     if (
