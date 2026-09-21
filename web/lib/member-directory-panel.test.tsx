@@ -36,6 +36,7 @@ const mocks = vi.hoisted(() => {
     push: vi.fn<() => void>(),
     replace: vi.fn<(href: string) => void>(),
     prefetch: vi.fn<() => void>(),
+    bfcacheId: "test-bfcache-id",
   };
   return { router, rememberDeepLink: vi.fn<(path: string) => void>() };
 });

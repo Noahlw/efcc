@@ -34,6 +34,7 @@ const mocks = vi.hoisted(() => {
     refresh: vi.fn<() => void>(),
     push: vi.fn<(path: string) => void>(),
     prefetch: vi.fn<(path: string) => void>(),
+    bfcacheId: "test-bfcache-id",
   };
   const announceMock = vi.fn<(message: string) => void>();
   return { replaceMock, pathnameMock, mockRouter, announceMock };

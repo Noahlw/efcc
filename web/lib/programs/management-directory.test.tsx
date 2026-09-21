@@ -24,6 +24,7 @@ const mocks = vi.hoisted(() => {
     push: vi.fn(),
     replace: vi.fn(),
     prefetch: vi.fn(),
+    bfcacheId: "test-bfcache-id",
   };
   return {
     getManagementDirectory: vi.fn(),
