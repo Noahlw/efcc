@@ -42,13 +42,13 @@ import { rememberDeepLink } from "@/lib/session";
 import { applyAuthoritativeRevision } from "./authoritative-revision";
 import { clearEventCreateDraft } from "./event-create-draft";
 import { EventDetail } from "./event-detail";
-import {
-  clearManagementDraft,
-  clearManagementDraftsForEntity,
-  listManagementDrafts,
-} from "./management-draft";
+import { clearManagementDraft, listManagementDrafts } from "./management-draft";
 import { readWorkspaceMutationRecovery } from "./mutation-recovery";
-import { SETTINGS_DRAFT_ACTION } from "./program-settings";
+import {
+  clearProgramSettingsDrafts,
+  isProgramSettingsDraftAction,
+  SETTINGS_DRAFT_ACTION,
+} from "./program-settings";
 import { buildProgramsHref, parseProgramsIntent } from "./programs-intent";
 import type {
   ManagementEventAction,
@@ -180,6 +180,9 @@ function readScheduleDraftRecovery(programId: string): ScheduleDraftRecovery {
   };
 
   for (const { action } of drafts) {
+    if (!isProgramSettingsDraftAction(action)) {
+      continue;
+    }
     if (action === SETTINGS_DRAFT_ACTION.basics) {
       remember({ kind: "settings", section: "basics" });
       continue;
@@ -219,10 +222,9 @@ function readScheduleDraftRecovery(programId: string): ScheduleDraftRecovery {
       }
       continue;
     }
-    remember({ kind: "settings", section: null });
   }
 
-  return { hasDrafts: drafts.length > 0, firstOwner };
+  return { hasDrafts: firstOwner !== null, firstOwner };
 }
 
 function settingsNavigationForUrl(
@@ -481,8 +483,10 @@ export const ProgramWorkspace = ({
     setSettingsRecoveryDestination(null);
   }, [workspaceSettingsDirty]);
   useEffect(() => {
+    const settingsDirtyOnEvents = task === "events" && workspaceSettingsDirty;
     const guardActive =
       workspaceMutationBlocked ||
+      settingsDirtyOnEvents ||
       (task === "events" && (eventDraftDirty || eventEditDirty));
     if (!guardActive) {
       return;
@@ -501,9 +505,11 @@ export const ProgramWorkspace = ({
       announce(
         workspaceMutationBlocked
           ? COPY.programs.programTransportAmbiguous
-          : eventEditDirty
-            ? COPY.programs.eventEditUnsaved
-            : COPY.programs.eventCreateUnsaved
+          : workspaceSettingsDirty
+            ? COPY.programs.settingsUnsaved
+            : eventEditDirty
+              ? COPY.programs.eventEditUnsaved
+              : COPY.programs.eventCreateUnsaved
       );
     };
     const handleDocumentClick = (event: globalThis.MouseEvent) => {
@@ -550,6 +556,14 @@ export const ProgramWorkspace = ({
         announceBlocked();
         return;
       }
+      if (workspaceSettingsDirty) {
+        setPendingSettingsNavigation(
+          settingsNavigationForUrl(nextUrl, programId)
+        );
+        setSettingsNavigationBlocked(true);
+        announceBlocked();
+        return;
+      }
       const routeIntent =
         nextUrl.pathname === "/programs"
           ? parseProgramsIntent(`${nextUrl.search}${nextUrl.hash}`)
@@ -588,14 +602,19 @@ export const ProgramWorkspace = ({
     const handlePopState = () => {
       window.history.pushState(guardedState, "", blockedHref);
       if (!workspaceMutationBlocked) {
-        setPendingEventDraftNavigation(
-          eventId
-            ? { kind: "task", task: "events" }
-            : task === "schedule"
+        if (workspaceSettingsDirty) {
+          setPendingSettingsNavigation({ kind: "history-back" });
+          setSettingsNavigationBlocked(true);
+        } else {
+          setPendingEventDraftNavigation(
+            eventId
               ? { kind: "task", task: "events" }
-              : { kind: "back" }
-        );
-        setEventNavigationBlocked(true);
+              : task === "schedule"
+                ? { kind: "task", task: "events" }
+                : { kind: "back" }
+          );
+          setEventNavigationBlocked(true);
+        }
       }
       announceBlocked();
     };
@@ -618,15 +637,13 @@ export const ProgramWorkspace = ({
     eventDraftDirty,
     eventEditDirty,
     eventId,
+    programId,
+    workspaceSettingsDirty,
     task,
     workspaceMutationBlocked,
   ]);
   useEffect(() => {
-    if (
-      !workspaceSettingsDirty ||
-      (task === "events" &&
-        (eventDraftDirty || eventEditDirty || workspaceMutationBlocked))
-    ) {
+    if (!workspaceSettingsDirty || task === "events") {
       return;
     }
     const restoringHistory = { current: false };
@@ -649,14 +666,7 @@ export const ProgramWorkspace = ({
     return () => {
       window.removeEventListener("popstate", handlePopState);
     };
-  }, [
-    eventDraftDirty,
-    eventEditDirty,
-    settingsEditorFocused,
-    task,
-    workspaceMutationBlocked,
-    workspaceSettingsDirty,
-  ]);
+  }, [task, workspaceSettingsDirty]);
   useEffect(() => {
     // RP2.1: the dirty union guards every Program leave path. Focus only
     // decides whether the child Settings route owns the interception.
@@ -996,10 +1006,11 @@ export const ProgramWorkspace = ({
     );
     setPendingSettingsNavigation(null);
     if (firstOwner?.kind === "settings") {
-      onSettingsSectionChange?.(firstOwner.section);
-      if (task !== "settings") {
+      onSettingsSectionChange?.(null);
+      onScheduleEditorChange?.(null, null);
+      if (task !== "schedule") {
         permitOneWorkspaceNavigation();
-        navigateWorkspaceTask("settings");
+        navigateWorkspaceTask("schedule", undefined, "settings");
       }
     } else if (task !== "schedule" && firstOwner?.kind === "preview") {
       onSettingsSectionChange?.(null);
@@ -1058,11 +1069,11 @@ export const ProgramWorkspace = ({
   };
 
   const discardSettingsAndLeave = () => {
-    const pending = pendingSettingsNavigation ?? settingsRecoveryDestination;
+    const pending = settingsRecoveryDestination ?? pendingSettingsNavigation;
     if (pending === null) {
       return;
     }
-    clearManagementDraftsForEntity(programId);
+    clearProgramSettingsDrafts(programId);
     setSettingsDraftDiscardSignal((signal) => signal + 1);
     // RP2.1: Discard on the focused Schedule route also drops the panel's
     // in-memory inline drafts via the discard signal (session alone is not

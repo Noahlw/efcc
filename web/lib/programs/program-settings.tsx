@@ -87,7 +87,7 @@ import {
 
 import {
   clearManagementDraft,
-  clearManagementDraftsForEntity,
+  listManagementDrafts,
   readManagementDraft,
   writeManagementDraft,
 } from "./management-draft";
@@ -157,6 +157,26 @@ export const SETTINGS_DRAFT_ACTION = {
   rule: "settings-rule",
   exception: "settings-exception",
 } as const;
+
+export function isProgramSettingsDraftAction(action: string): boolean {
+  return (
+    action === SETTINGS_DRAFT_ACTION.basics ||
+    action === SETTINGS_DRAFT_ACTION.publishing ||
+    action === SETTINGS_DRAFT_ACTION.enrollment ||
+    action === SETTINGS_DRAFT_ACTION.attendance ||
+    action === SETTINGS_DRAFT_ACTION.newRule ||
+    action.startsWith(`${SETTINGS_DRAFT_ACTION.rule}:`) ||
+    action.startsWith(`${SETTINGS_DRAFT_ACTION.exception}:`)
+  );
+}
+
+export function clearProgramSettingsDrafts(programId: string): void {
+  for (const { action } of listManagementDrafts<unknown>(programId)) {
+    if (isProgramSettingsDraftAction(action)) {
+      clearManagementDraft(programId, action);
+    }
+  }
+}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
@@ -3062,7 +3082,7 @@ export const ProgramSettings = ({
   };
 
   const discardRecoveredDrafts = useCallback(() => {
-    clearManagementDraftsForEntity(currentProgram.program_id);
+    clearProgramSettingsDrafts(currentProgram.program_id);
     setBasics(basicsFrom(currentProgram));
     setPublishing(publishingFrom(currentProgram));
     setEnrollment(enrollmentFrom(currentProgram));

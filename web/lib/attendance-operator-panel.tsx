@@ -74,6 +74,7 @@ import {
   writeWorkspaceMutationRecovery,
 } from "./programs/mutation-recovery";
 import type { AttendanceMutationRecovery } from "./programs/mutation-recovery";
+import { clearAuthenticatedProgramsRecovery } from "./programs/workspace-context";
 
 type StatusTone = "info" | "success" | "error";
 
@@ -1885,6 +1886,7 @@ export const AttendanceOperatorPanel = ({
       onAuthRequired();
       return;
     }
+    clearAuthenticatedProgramsRecovery();
     clearAuthHint();
     if (typeof window !== "undefined") {
       rememberDeepLink(

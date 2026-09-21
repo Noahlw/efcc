@@ -48,6 +48,7 @@ import {
   clearManagementDraftsForEntity,
   writeManagementDraft,
 } from "./management-draft";
+import { SETTINGS_DRAFT_ACTION } from "./program-settings";
 
 const StatefulWorkspaceHarness = ({
   initialTask,
@@ -1472,7 +1473,11 @@ describe(ProgramWorkspace, () => {
     ).toBeInTheDocument();
     expect(name).toHaveValue("未儲存名稱");
     expect(onBack).not.toHaveBeenCalled();
-    expect(onTaskChange).not.toHaveBeenCalled();
+    expect(onTaskChange).toHaveBeenCalledWith(
+      "schedule",
+      undefined,
+      "settings"
+    );
     expect(
       screen.getByText(
         `${COPY.programs.settingsUnsaved} ${COPY.programs.settingsSaveBasics} / ${COPY.programs.settingsDiscard}`
@@ -1500,7 +1505,11 @@ describe(ProgramWorkspace, () => {
     expect(
       screen.getByRole("heading", { name: COPY.programs.settingsBasics })
     ).toBeInTheDocument();
-    expect(onTaskChange).not.toHaveBeenCalled();
+    expect(onTaskChange).toHaveBeenCalledWith(
+      "schedule",
+      undefined,
+      "settings"
+    );
 
     await user.click(
       screen.getByRole("button", { name: COPY.programs.settingsDiscard })
@@ -1708,6 +1717,47 @@ describe(ProgramWorkspace, () => {
     expect(onTaskChange).toHaveBeenCalledWith(null);
   });
 
+  test("prioritizes Settings recovery and preserves Event drafts", async () => {
+    mockWorkspace();
+    const user = userEvent.setup();
+    const onTaskChange = vi.fn();
+    writeManagementDraft("program-1", SETTINGS_DRAFT_ACTION.basics, {
+      name: "未儲存設定",
+    });
+    render(
+      <ProgramWorkspace
+        programId="program-1"
+        task="events"
+        onBack={vi.fn()}
+        onTaskChange={onTaskChange}
+      />
+    );
+
+    await user.click(
+      await screen.findByRole("button", { name: COPY.programs.createMeeting })
+    );
+    await user.type(
+      screen.getByRole("textbox", { name: COPY.programs.eventName }),
+      "未儲存聚會"
+    );
+    await user.click(
+      screen.getByRole("link", { name: COPY.programs.workspaceOverviewTab })
+    );
+    expect(
+      screen.getByRole("button", {
+        name: COPY.programs.settingsContinueEditing,
+      })
+    ).toBeInTheDocument();
+
+    await user.click(
+      screen.getByRole("button", {
+        name: COPY.programs.settingsDiscardAndLeave,
+      })
+    );
+    expect(readEventCreateDraft("program-1")?.name).toBe("未儲存聚會");
+    expect(onTaskChange).toHaveBeenCalledWith(null);
+  });
+
   test("reaches the overview after discarding a dirty Event route", async () => {
     mockWorkspace();
     const user = userEvent.setup();
@@ -1902,7 +1952,11 @@ describe(ProgramWorkspace, () => {
       screen.getByRole("heading", { name: COPY.programs.settingsBasics })
     ).toBeInTheDocument();
     expect(name).toHaveValue("首次 Tab 未儲存名稱");
-    expect(onTaskChange).not.toHaveBeenCalled();
+    expect(onTaskChange).toHaveBeenCalledWith(
+      "schedule",
+      undefined,
+      "settings"
+    );
     expect(
       screen.getByText(
         `${COPY.programs.settingsUnsaved} ${COPY.programs.settingsSaveBasics} / ${COPY.programs.settingsDiscard}`
