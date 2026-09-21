@@ -999,7 +999,7 @@ export const ProgramWorkspace = ({
     const { firstOwner } = scheduleDraftRecovery;
     const pending = pendingSettingsNavigation;
     if (pending !== null) {
-      setSettingsRecoveryDestination(pending);
+      setSettingsRecoveryDestination((destination) => destination ?? pending);
     }
     setScheduleDraftFocusKey(
       firstOwner?.kind === "preview" ? firstOwner.focusKey : null

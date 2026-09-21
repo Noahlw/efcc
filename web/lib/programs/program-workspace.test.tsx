@@ -1599,6 +1599,11 @@ describe(ProgramWorkspace, () => {
       "/programs?mode=management&program=program-1&task=settings&settingsSection=publishing";
     requestedSection.textContent = "發佈設定";
     document.body.append(requestedSection);
+    const laterSection = document.createElement("a");
+    laterSection.href =
+      "/programs?mode=management&program=program-1&task=settings&settingsSection=attendance";
+    laterSection.textContent = "出席設定";
+    document.body.append(laterSection);
 
     try {
       render(
@@ -1623,6 +1628,12 @@ describe(ProgramWorkspace, () => {
       await user.clear(name);
       await user.type(name, "未儲存基本資料");
       fireEvent.click(requestedSection);
+      await user.click(
+        screen.getByRole("button", {
+          name: COPY.programs.settingsContinueEditing,
+        })
+      );
+      fireEvent.click(laterSection);
 
       await user.click(
         screen.getByRole("button", {
@@ -1632,6 +1643,7 @@ describe(ProgramWorkspace, () => {
       expect(onSettingsSectionChange).toHaveBeenCalledWith("publishing");
     } finally {
       requestedSection.remove();
+      laterSection.remove();
     }
   });
 
