@@ -284,6 +284,8 @@ export interface ProgramSettingsProps {
   showHeading?: boolean;
   /** Inline dirty from the focused-Schedule companion (union with Settings). */
   scheduleAddonDirty?: boolean;
+  /** Parent Discard signal for resetting route-owned in-memory drafts. */
+  settingsDraftDiscardSignal?: number;
   /** Optional focused-Schedule companion that consumes this editor's rule read. */
   scheduleAddon?: (resource: {
     rules: ScheduleRule[] | null;
@@ -1603,6 +1605,7 @@ export const ProgramSettings = ({
   section = "all",
   showHeading = true,
   scheduleAddonDirty = false,
+  settingsDraftDiscardSignal,
   scheduleAddon,
   scheduleBackHref,
   scheduleEditor: routeScheduleEditor,
@@ -1757,7 +1760,7 @@ export const ProgramSettings = ({
     }
     scheduleRuleCreateKey.current = null;
     setScheduleEditor(null);
-    onScheduleEditorChange?.(null);
+    onScheduleEditorChange?.(null, null);
   };
   const pendingScheduleResolution = useRef<ScheduleMutationResolution | null>(
     restoredScheduleRecovery
@@ -2684,7 +2687,7 @@ export const ProgramSettings = ({
         endTime: "",
       }));
       setScheduleEditor(null);
-      onScheduleEditorChange?.(null);
+      onScheduleEditorChange?.(null, null);
     };
     void runScheduleMutation(
       () =>
@@ -2748,7 +2751,7 @@ export const ProgramSettings = ({
           return next;
         });
         setScheduleEditor(null);
-        onScheduleEditorChange?.(null);
+        onScheduleEditorChange?.(null, null);
       };
       void runScheduleMutation(
         () =>
@@ -2815,7 +2818,7 @@ export const ProgramSettings = ({
           return next;
         });
         setScheduleEditor(null);
-        onScheduleEditorChange?.(null);
+        onScheduleEditorChange?.(null, null);
       };
       void runScheduleMutation(
         async () => {
@@ -3004,7 +3007,7 @@ export const ProgramSettings = ({
     }
     scheduleRuleCreateKey.current = null;
     setScheduleEditor(null);
-    onScheduleEditorChange?.(null);
+    onScheduleEditorChange?.(null, null);
     setScheduleNavigationBlocked(false);
     setActionError(null);
     setNotice(null);
@@ -3058,7 +3061,7 @@ export const ProgramSettings = ({
     setNotice(null);
   };
 
-  const discardRecoveredDrafts = () => {
+  const discardRecoveredDrafts = useCallback(() => {
     clearManagementDraftsForEntity(currentProgram.program_id);
     setBasics(basicsFrom(currentProgram));
     setPublishing(publishingFrom(currentProgram));
@@ -3068,11 +3071,22 @@ export const ProgramSettings = ({
     setRuleDrafts({});
     setExceptionDrafts({});
     setScheduleEditor(null);
-    onScheduleEditorChange?.(null);
+    onScheduleEditorChange?.(null, null);
     setDraftRecoveryOpen(false);
     setActionError(null);
     setNotice(null);
-  };
+  }, [currentProgram.program_id, onScheduleEditorChange]);
+  const settingsDiscardSignalRef = useRef(0);
+  useEffect(() => {
+    if (
+      settingsDraftDiscardSignal === undefined ||
+      settingsDraftDiscardSignal <= settingsDiscardSignalRef.current
+    ) {
+      return;
+    }
+    settingsDiscardSignalRef.current = settingsDraftDiscardSignal;
+    discardRecoveredDrafts();
+  }, [discardRecoveredDrafts, settingsDraftDiscardSignal]);
 
   return (
     <section

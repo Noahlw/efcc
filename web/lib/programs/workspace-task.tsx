@@ -895,6 +895,8 @@ export const WorkspaceTask = ({
   onFocusedTaskFocusChange,
   onFocusedTaskDirtyChange,
   scheduleDraftDiscardSignal,
+  scheduleDraftFocusKey,
+  settingsDraftDiscardSignal,
   eventFilter,
   onEventFilterChange,
   participantTab,
@@ -932,6 +934,8 @@ export const WorkspaceTask = ({
     onFocusedTaskFocusChange,
     onFocusedTaskDirtyChange,
     scheduleDraftDiscardSignal,
+    scheduleDraftFocusKey,
+    settingsDraftDiscardSignal,
     eventFilter,
     onEventFilterChange,
     participantTab,
@@ -968,6 +972,7 @@ export const WorkspaceTask = ({
           navigationBlocked={settingsNavigationBlocked}
           onNavigationBlocked={onSettingsNavigationBlocked}
           onNavigationRequest={onSettingsNavigationRequest}
+          settingsDraftDiscardSignal={settingsDraftDiscardSignal}
           headerAction={headerAction}
         />
       ) : task === "schedule" ? (

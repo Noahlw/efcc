@@ -29,6 +29,7 @@ const ScheduleAddon = ({
   onFocusChange,
   onDirtyChange,
   scheduleDraftDiscardSignal,
+  scheduleDraftFocusKey,
 }: {
   programId: string;
   rules: ScheduleRule[] | null;
@@ -42,6 +43,7 @@ const ScheduleAddon = ({
   onFocusChange?: (focused: boolean) => void;
   onDirtyChange?: (dirty: boolean) => void;
   scheduleDraftDiscardSignal?: number;
+  scheduleDraftFocusKey?: string | null;
 }) => (
   <RecurringSchedulePanel
     programId={programId}
@@ -52,6 +54,7 @@ const ScheduleAddon = ({
     onFocusedTaskDirtyChange={onDirtyChange}
     onFocusedTaskFocusChange={onFocusChange}
     scheduleDraftDiscardSignal={scheduleDraftDiscardSignal}
+    scheduleDraftFocusKey={scheduleDraftFocusKey}
     // ProgramSettings already owns the rule-load alert. Reusing the same
     // resource must not render a second identical alert beside the preview
     // controls.
@@ -72,7 +75,8 @@ const makeScheduleAddon = (
   onWorkspaceRefresh?: () => void | Promise<unknown>,
   onFocusChange?: (focused: boolean) => void,
   onDirtyChange?: (dirty: boolean) => void,
-  scheduleDraftDiscardSignal?: number
+  scheduleDraftDiscardSignal?: number,
+  scheduleDraftFocusKey?: string | null
 ) =>
   function renderScheduleAddon({
     rules,
@@ -94,6 +98,7 @@ const makeScheduleAddon = (
         onFocusChange={onFocusChange}
         onDirtyChange={onDirtyChange}
         scheduleDraftDiscardSignal={scheduleDraftDiscardSignal}
+        scheduleDraftFocusKey={scheduleDraftFocusKey}
       />
     );
   };
@@ -119,6 +124,8 @@ export const ScheduleTask = () => {
     onFocusedTaskFocusChange,
     onFocusedTaskDirtyChange,
     scheduleDraftDiscardSignal,
+    scheduleDraftFocusKey,
+    settingsDraftDiscardSignal,
   } = useWorkspaceTaskContext();
   // RP2.1: workspace dirty is the union of Settings dirty and inline dirty.
   // Both children report into shared parent state; a clean Settings editor
@@ -199,6 +206,7 @@ export const ScheduleTask = () => {
         scheduleEditor={scheduleEditor}
         scheduleRuleId={scheduleRuleId}
         onScheduleEditorChange={onScheduleEditorChange}
+        settingsDraftDiscardSignal={settingsDraftDiscardSignal}
         scheduleAddon={makeScheduleAddon(
           program.program_id,
           async () => {
@@ -216,7 +224,8 @@ export const ScheduleTask = () => {
           onWorkspaceRefresh,
           handleInlineFocusChange,
           handleInlineDirtyChange,
-          scheduleDraftDiscardSignal
+          scheduleDraftDiscardSignal,
+          scheduleDraftFocusKey
         )}
         scheduleBackHref={buildProgramsHref({
           mode: "management",

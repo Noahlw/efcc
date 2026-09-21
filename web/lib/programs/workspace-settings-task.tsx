@@ -43,6 +43,7 @@ type ScheduleHubState =
 
 export type SettingsNavigationRequest =
   | { kind: "back" }
+  | { kind: "workspace-back" }
   | { kind: "history-back" }
   | {
       kind: "route";
@@ -62,6 +63,7 @@ export const SettingsTask = ({
   navigationBlocked = false,
   onNavigationBlocked,
   onNavigationRequest,
+  settingsDraftDiscardSignal,
   headerAction,
 }: {
   onFocusChange?: (focused: boolean) => void;
@@ -69,6 +71,7 @@ export const SettingsTask = ({
   navigationBlocked?: boolean;
   onNavigationBlocked?: (blocked: boolean) => void;
   onNavigationRequest?: (request: SettingsNavigationRequest) => void;
+  settingsDraftDiscardSignal?: number;
   headerAction?: ReactNode;
 } = {}) => {
   const {
@@ -573,6 +576,7 @@ export const SettingsTask = ({
         navigationBlocked={navigationBlocked}
         onReload={onWorkspaceRefresh}
         onMutationBlockChange={onMutationBlockChange}
+        settingsDraftDiscardSignal={settingsDraftDiscardSignal}
         showHeading={false}
       />
     </section>

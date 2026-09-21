@@ -33,6 +33,8 @@ import type {
 import { ScreenSection, ScreenState } from "@/lib/screen-foundations";
 import { cn } from "@/lib/utils";
 
+import { clearAuthenticatedProgramsRecovery } from "./workspace-context";
+
 export interface ParticipantEnrollmentProps {
   program: ProgramSummary;
   enrollment: ParticipantEnrollmentSnapshot | null;
@@ -368,6 +370,7 @@ export const ParticipantEnrollment = ({
             error instanceof RpcError &&
             error.problem.code === "AUTH_REQUIRED"
           ) {
+            clearAuthenticatedProgramsRecovery();
             try {
               await onRefresh();
             } catch {

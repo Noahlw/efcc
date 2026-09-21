@@ -90,6 +90,7 @@ import {
 import type { EventMutationRecovery } from "./mutation-recovery";
 import { buildProgramsHref } from "./programs-intent";
 import type { ManagementEventAction, ProgramsOrigin } from "./programs-intent";
+import { clearAuthenticatedProgramsRecovery } from "./workspace-context";
 
 export const EventFactIcon = ({
   name,
@@ -469,6 +470,7 @@ export const EventDetail = ({
         return null;
       }
       if (error instanceof RpcError && error.problem.code === "AUTH_REQUIRED") {
+        clearAuthenticatedProgramsRecovery();
         onAuthRequired?.();
         return null;
       }
@@ -667,6 +669,7 @@ export const EventDetail = ({
           error instanceof RpcError &&
           error.problem.code === "AUTH_REQUIRED"
         ) {
+          clearAuthenticatedProgramsRecovery();
           onAuthRequired?.();
         }
         setOwnAttendanceError(COPY.programs.participantAttendanceError);

@@ -42,6 +42,7 @@ import { rememberDeepLink } from "@/lib/session";
 
 import { ParticipantEnrollment } from "./participant-enrollment";
 import { useAsyncResource } from "./use-async-resource";
+import { clearAuthenticatedProgramsRecovery } from "./workspace-context";
 
 export interface ParticipantProgramDetailProps {
   programId: string;
@@ -586,6 +587,7 @@ export const ParticipantProgramDetail = ({
     if (typeof window === "undefined") {
       return;
     }
+    clearAuthenticatedProgramsRecovery();
     rememberDeepLink(
       `${window.location.pathname}${window.location.search}${window.location.hash}`
     );

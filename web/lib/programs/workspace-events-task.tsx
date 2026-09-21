@@ -442,6 +442,7 @@ export const RecurringSchedulePanel = ({
  onFocusedTaskDirtyChange,
  onFocusedTaskFocusChange,
  scheduleDraftDiscardSignal = 0,
+ scheduleDraftFocusKey = null,
 }: {
  programId: string;
  rules: ScheduleRule[] | null;
@@ -462,6 +463,8 @@ export const RecurringSchedulePanel = ({
  onFocusedTaskFocusChange?: (focused: boolean) => void;
  /** Parent Back Discard signal: drop in-memory + session inline drafts. */
  scheduleDraftDiscardSignal?: number;
+ /** Continue Editing target from the parent Schedule recovery surface. */
+ scheduleDraftFocusKey?: string | null;
 }) => {
  const [previewFromDate, setPreviewFromDate] = useState(() =>
   hkTodayWallDate()
@@ -706,8 +709,11 @@ export const RecurringSchedulePanel = ({
    )
    : []
  );
- const hasExceptionDrafts = Object.entries(exceptionDrafts).some(
-  ([key, draft]) => visibleDraftKeys.has(key) && draftIsDirty(key, draft)
+ const hasVisibleExceptionDrafts = Object.entries(exceptionDrafts).some(
+ ([key, draft]) => visibleDraftKeys.has(key) && draftIsDirty(key, draft)
+ );
+ const hasDirtyExceptionDrafts = Object.entries(exceptionDrafts).some(
+  ([key, draft]) => draftIsDirty(key, draft)
  );
  // A draft whose Preview Occurrence left the visible range stays recoverable
  // without permanently disabling Generate.
@@ -718,7 +724,7 @@ export const RecurringSchedulePanel = ({
   preview.kind === "ready" &&
   (previewInvalidated ||
    rules === null ||
-   hasExceptionDrafts ||
+   hasVisibleExceptionDrafts ||
    exceptionBusy ||
    preview.inputFingerprint !== currentInputFingerprint ||
    preview.scheduleMutationVersion !== scheduleMutationVersion ||
@@ -735,7 +741,25 @@ export const RecurringSchedulePanel = ({
  // handshake. Workspace dirty is the union of Settings dirty and this
  // panel's inline dirty; a clean Settings editor cannot drop it.
  const inlineDirty =
-  hasExceptionDrafts || adjustingTargetKey !== null || exceptionBusy;
+  hasDirtyExceptionDrafts || adjustingTargetKey !== null || exceptionBusy;
+ useEffect(() => {
+  if (scheduleDraftFocusKey === null) {
+   return;
+  }
+  const draft = exceptionDrafts[scheduleDraftFocusKey];
+  const target = adjustTargetForKey(scheduleDraftFocusKey);
+  if (draft !== undefined && draftIsDirty(scheduleDraftFocusKey, draft) && target) {
+   setAdjustingTargetKey(scheduleDraftFocusKey);
+  }
+ }, [
+  adjustTargetForKey,
+  draftIsDirty,
+  exceptionDrafts,
+  localExceptions,
+  preview,
+  rules,
+  scheduleDraftFocusKey,
+ ]);
  useEffect(() => {
   onFocusedTaskDirtyChange?.(inlineDirty);
  }, [inlineDirty, onFocusedTaskDirtyChange]);
@@ -1557,7 +1581,7 @@ export const RecurringSchedulePanel = ({
           generateBusy ||
           previewBusy ||
           previewIsStale ||
-          hasExceptionDrafts ||
+          hasVisibleExceptionDrafts ||
           exceptionBusy ||
           scheduleNeedsReconciliation ||
           generationNeedsReconciliation ||
@@ -2441,7 +2465,7 @@ export const EventsTask = () => {
    if (redirectToLoginIfRequired(error)) {
     return false;
    }
-   if (isUnknownMutationOutcome(error)) {
+   if (isUnknownMutationWriteOutcome(error)) {
     pendingEventMutationRef.current = pendingMutation;
     setEventsOutcomeUnknown(true);
     onMutationBlockChange?.(true);
@@ -2602,7 +2626,7 @@ export const EventsTask = () => {
    if (redirectToLoginIfRequired(error)) {
     return;
    }
-   if (isUnknownMutationOutcome(error)) {
+   if (isUnknownMutationWriteOutcome(error)) {
     pendingEventMutationRef.current = pendingMutation;
     setEventsOutcomeUnknown(true);
     onMutationBlockChange?.(true);

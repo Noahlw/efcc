@@ -13,6 +13,7 @@ import { ScreenCard } from "../screen-foundations";
 import { getProgramAttendanceArtifact } from "./program-api";
 import type { ProgramEvent } from "./program-api";
 import { hkWallDateTimeLabel } from "./recurrence";
+import { clearAuthenticatedProgramsRecovery } from "./workspace-context";
 
 export type EventCheckInSheetEvent = Pick<
   ProgramEvent,
@@ -273,6 +274,7 @@ export const EventCheckInSheet = ({
           error instanceof RpcError &&
           error.problem.code === "AUTH_REQUIRED"
         ) {
+          clearAuthenticatedProgramsRecovery();
           onAuthRequired?.();
         }
         setLoadError(

@@ -75,7 +75,9 @@ export interface WorkspaceTaskContextValue {
   onTaskChange: (
     task: ProgramsTask | null,
     eventId?: string | null,
-    scheduleOrigin?: ProgramsScheduleOrigin
+    scheduleOrigin?: ProgramsScheduleOrigin,
+    scheduleEditor?: ProgramsScheduleEditor | null,
+    scheduleRuleId?: string | null
   ) => void;
   onOpenEvent?: (eventId: string, eventAction?: ManagementEventAction) => void;
   /** Open the shared focused Attendance roster for an exact Event. */
@@ -107,6 +109,10 @@ export interface WorkspaceTaskContextValue {
   settingsNavigationAllowedRef?: { current: boolean };
   /** Incremented when parent Back Discard must drop inline occurrence drafts. */
   scheduleDraftDiscardSignal?: number;
+  /** Incremented when parent Discard must reset all in-memory Settings drafts. */
+  settingsDraftDiscardSignal?: number;
+  /** First dirty Schedule draft to reveal after Continue Editing. */
+  scheduleDraftFocusKey?: string | null;
 }
 
 const WorkspaceTaskContext = createContext<WorkspaceTaskContextValue | null>(

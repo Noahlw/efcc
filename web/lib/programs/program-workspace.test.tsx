@@ -44,6 +44,10 @@ import {
   readEventCreateDraft,
 } from "./event-create-draft";
 import { clearGenerationRecovery } from "./generation-recovery";
+import {
+  clearManagementDraftsForEntity,
+  writeManagementDraft,
+} from "./management-draft";
 
 const StatefulWorkspaceHarness = ({
   initialTask,
@@ -329,6 +333,7 @@ function mockWorkspace() {
 }
 beforeEach(() => {
   clearEventCreateDraft("program-1");
+  clearManagementDraftsForEntity("program-1");
   clearWorkspaceMutationRecovery("event", {
     programId: "program-1",
     eventId: "event-1",
@@ -362,6 +367,7 @@ beforeEach(() => {
 });
 afterEach(() => {
   clearEventCreateDraft("program-1");
+  clearManagementDraftsForEntity("program-1");
   clearGenerationRecovery("program-1");
   clearWorkspaceMutationRecovery("event", {
     programId: "program-1",
@@ -1525,6 +1531,54 @@ describe(ProgramWorkspace, () => {
     await expect(
       screen.findByRole("heading", { name: COPY.programs.settingsHubTitle })
     ).resolves.toBeInTheDocument();
+  });
+
+  test("protects a hidden Preview draft from the Settings hub", async () => {
+    mockWorkspace();
+    const user = userEvent.setup();
+    const onTaskChange = vi.fn();
+    const draftAction = "settings-exception:rule-1:2099-01-01";
+    writeManagementDraft("program-1", draftAction, {
+      action: "RESCHEDULE",
+      newDate: "2099-01-02",
+      newStartTime: "19:30",
+      newEndTime: "21:00",
+    });
+    render(
+      <ProgramWorkspace
+        programId="program-1"
+        task="settings"
+        onBack={vi.fn()}
+        onTaskChange={onTaskChange}
+      />
+    );
+
+    await screen.findByRole("button", {
+      name: /基本資料名稱、描述同分類/u,
+    });
+    await user.click(
+      screen.getByRole("link", { name: COPY.programs.workspaceOverviewTab })
+    );
+    expect(
+      screen.getByRole("button", {
+        name: COPY.programs.settingsContinueEditing,
+      })
+    ).toBeInTheDocument();
+    await user.click(
+      screen.getByRole("button", {
+        name: COPY.programs.settingsContinueEditing,
+      })
+    );
+    expect(onTaskChange).toHaveBeenCalledWith(
+      "schedule",
+      undefined,
+      "settings"
+    );
+    expect(
+      window.sessionStorage.getItem(
+        "efcc_management_draft:program-1:settings-exception%3Arule-1%3A2099-01-01"
+      )
+    ).not.toBeNull();
   });
 
   test("preserves a requested Settings section when discarding a dirty draft", async () => {
