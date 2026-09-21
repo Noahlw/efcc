@@ -298,6 +298,7 @@ export const ScreenSection = ({
 type ScreenSearchInputProps = Pick<
   React.ComponentPropsWithoutRef<typeof Input>,
   | "aria-describedby"
+  | "aria-busy"
   | "autoComplete"
   | "autoFocus"
   | "defaultValue"
@@ -326,6 +327,7 @@ export type ScreenSearchProps = ScreenSearchInputProps & {
 
 /** Search control with the frozen 44px field geometry and leading icon. */
 export const ScreenSearch = ({
+  "aria-busy": ariaBusy,
   "aria-describedby": ariaDescribedBy,
   "aria-label": ariaLabel,
   autoComplete,
@@ -357,6 +359,7 @@ export const ScreenSearch = ({
       className="pointer-events-none absolute top-1/2 left-3 size-5 -translate-y-1/2 text-[var(--screen-muted)]"
     />
     <Input
+      aria-busy={ariaBusy}
       aria-describedby={ariaDescribedBy}
       aria-label={ariaLabel}
       autoComplete={autoComplete}
