@@ -37,8 +37,9 @@ Audit Outcome exists:
   `requires_review` result is reconciled, a successful Preview of the
   **current schedule fingerprint** is a new Plan and Generate dispatches that
   new Plan id. Failed Preview, `STALE_PLAN`, and unknown writes keep the latch.
-- Unexpected mutation HTTP 500 `INTERNAL_ERROR` is unknown. GET/Preview 500
-  stays a settled read failure. Known 4xx stay settled.
+- Unexpected HTTP 500 `INTERNAL_ERROR` on any privileged non-GET Programs
+  mutation is unknown unless the server proves no durable write occurred.
+  GET/Preview 500 stays a settled read failure. Known 4xx stay settled.
 - Session recovery is keyed by Program, not Account, and clears at logout /
   expiry / failed-RPC cleanup. **No actor key.**
 - No Generation Run durable object. No distinct in-flight UI state. Reuse the
@@ -48,9 +49,15 @@ Audit Outcome exists:
 
 - A false unknown (request never left the browser) is the accepted
   conservative cost.
-- `isUnknownMutationOutcome` stays transport-only; a mutation-only wrapper
-  carries the `INTERNAL_ERROR` rule so GET/Preview 500s never show
-  unknown-Generate UI and attendance/enrollment behavior is unchanged.
+- `isUnknownMutationOutcome` stays transport-only; a shared mutation-only
+  classifier carries the `INTERNAL_ERROR` rule for every privileged Programs
+  write while GET/Preview 500s remain settled read failures. Each caller keeps
+  its existing operation identity and authoritative readback; none may blind
+  replay an unknown write.
+- Notification read-state marking is an explicit exception: it remains
+  fire-and-forget because navigation does not depend on a durable Programs
+  operation identity. An unexpected 500 is surfaced as an ambiguous transport
+  status, but no notification replay or recovery record is created.
 - Real-route proof (in-flight reload, Plan B dispatch, logout as another
   Account) stays with #633; component proof must use deferred promises, not
   mocked "on the wire" claims.
