@@ -41,6 +41,7 @@ const mocks = vi.hoisted(() => ({
     replace: vi.fn<(href: string) => void>(),
     push: vi.fn<(href: string) => void>(),
     prefetch: vi.fn<(href: string) => void>(),
+    bfcacheId: "test-bfcache-id",
   },
 }));
 

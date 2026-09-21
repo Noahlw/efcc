@@ -27,6 +27,7 @@ const mocks = vi.hoisted(() => {
     refresh: vi.fn<() => void>(),
     push: vi.fn<(url: string) => void>(),
     prefetch: vi.fn<(url: string) => void>(),
+    bfcacheId: "test-bfcache-id",
   };
   return {
     pathname: vi.fn<() => string>(() => "/scanner"),
