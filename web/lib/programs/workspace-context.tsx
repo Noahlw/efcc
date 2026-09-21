@@ -113,6 +113,8 @@ export interface WorkspaceTaskContextValue {
   settingsDraftDiscardSignal?: number;
   /** First dirty Schedule draft to reveal after Continue Editing. */
   scheduleDraftFocusKey?: string | null;
+  /** Settings owner to focus when Schedule is the recovery surface. */
+  scheduleSettingsSection?: ProgramsSettingsSection | null;
 }
 
 const WorkspaceTaskContext = createContext<WorkspaceTaskContextValue | null>(

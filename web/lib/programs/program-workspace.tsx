@@ -375,6 +375,8 @@ export const ProgramWorkspace = ({
   const [scheduleDraftFocusKey, setScheduleDraftFocusKey] = useState<
     string | null
   >(null);
+  const [scheduleSettingsSection, setScheduleSettingsSection] =
+    useState<ProgramsSettingsSection | null>(null);
   const [managementDraftVersion, setManagementDraftVersion] = useState(0);
   const [pendingSettingsNavigation, setPendingSettingsNavigation] =
     useState<SettingsNavigationRequest | null>(null);
@@ -593,7 +595,7 @@ export const ProgramWorkspace = ({
       announceBlocked();
     };
     const handleBeforeUnload = (event: BeforeUnloadEvent) => {
-      if (allowEventDraftLeave.current) {
+      if (allowEventDraftLeave.current || allowSettingsNavigation.current) {
         return;
       }
       event.preventDefault();
@@ -1006,6 +1008,7 @@ export const ProgramWorkspace = ({
     );
     setPendingSettingsNavigation(null);
     if (firstOwner?.kind === "settings") {
+      setScheduleSettingsSection(firstOwner.section);
       onSettingsSectionChange?.(null);
       onScheduleEditorChange?.(null, null);
       if (task !== "schedule") {
@@ -1013,11 +1016,13 @@ export const ProgramWorkspace = ({
         navigateWorkspaceTask("schedule", undefined, "settings");
       }
     } else if (task !== "schedule" && firstOwner?.kind === "preview") {
+      setScheduleSettingsSection(null);
       onSettingsSectionChange?.(null);
       onScheduleEditorChange?.(null, null);
       permitOneWorkspaceNavigation();
       navigateWorkspaceTask("schedule", undefined, "settings");
     } else if (task !== "schedule" && firstOwner?.kind === "editor") {
+      setScheduleSettingsSection(null);
       onSettingsSectionChange?.(null);
       permitOneWorkspaceNavigation();
       navigateWorkspaceTask(
@@ -1083,6 +1088,7 @@ export const ProgramWorkspace = ({
     }
     setPendingSettingsNavigation(null);
     setSettingsRecoveryDestination(null);
+    setScheduleSettingsSection(null);
     setSettingsNavigationBlocked(false);
     setSettingsEditorFocused(false);
     setSettingsEditorDirty(false);
@@ -1583,6 +1589,7 @@ export const ProgramWorkspace = ({
           onFocusedTaskDirtyChange={handleSettingsDirtyStateChange}
           scheduleDraftDiscardSignal={scheduleDraftDiscardSignal}
           scheduleDraftFocusKey={scheduleDraftFocusKey}
+          scheduleSettingsSection={scheduleSettingsSection}
           settingsDraftDiscardSignal={settingsDraftDiscardSignal}
           settingsNavigationBlocked={settingsNavigationBlocked}
           onSettingsNavigationBlocked={setSettingsNavigationBlocked}

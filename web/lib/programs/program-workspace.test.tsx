@@ -68,6 +68,22 @@ const StatefulWorkspaceHarness = ({
   );
 };
 
+const ScheduleRecoveryHarness = () => {
+  const [task, setTask] = useState<"settings" | "schedule">("settings");
+  return (
+    <ProgramWorkspace
+      programId="program-1"
+      task={task}
+      onBack={() => {}}
+      onTaskChange={(nextTask) => {
+        if (nextTask === "schedule" || nextTask === "settings") {
+          setTask(nextTask);
+        }
+      }}
+    />
+  );
+};
+
 const mocks = vi.hoisted(() => ({
   getManagementProgram: vi.fn(),
   updateProgram: vi.fn(),
@@ -1540,6 +1556,41 @@ describe(ProgramWorkspace, () => {
     await expect(
       screen.findByRole("heading", { name: COPY.programs.settingsHubTitle })
     ).resolves.toBeInTheDocument();
+  });
+
+  test("routes a generic Settings owner to Schedule and focuses it", async () => {
+    mockWorkspace();
+    const user = userEvent.setup();
+    render(<ScheduleRecoveryHarness />);
+
+    await user.click(
+      await screen.findByRole("button", {
+        name: /基本資料名稱、描述同分類/u,
+      })
+    );
+    const name = screen.getByRole("textbox", {
+      name: COPY.programs.programName,
+    });
+    await user.clear(name);
+    await user.type(name, "Schedule 復原名稱");
+    await user.click(
+      screen.getByRole("link", { name: COPY.programs.settingsBackToHub })
+    );
+    await user.click(
+      screen.getByRole("button", {
+        name: COPY.programs.settingsContinueEditing,
+      })
+    );
+
+    expect(
+      document.querySelector("[data-programs-schedule-task]")
+    ).toBeInTheDocument();
+    await user.click(
+      screen.getByRole("button", { name: COPY.programs.draftRecover })
+    );
+    expect(
+      screen.getByRole("textbox", { name: COPY.programs.programName })
+    ).toHaveValue("Schedule 復原名稱");
   });
 
   test("protects a hidden Preview draft from the Settings hub", async () => {

@@ -125,6 +125,7 @@ export const ScheduleTask = () => {
     onFocusedTaskDirtyChange,
     scheduleDraftDiscardSignal,
     scheduleDraftFocusKey,
+    scheduleSettingsSection,
     settingsDraftDiscardSignal,
   } = useWorkspaceTaskContext();
   // RP2.1: workspace dirty is the union of Settings dirty and inline dirty.
@@ -194,7 +195,7 @@ export const ScheduleTask = () => {
     <div className="grid min-w-0 gap-3" data-programs-schedule-task>
       <ProgramSettings
         program={program}
-        section="schedule"
+        section={scheduleSettingsSection ?? "schedule"}
         showHeading={false}
         scheduleAddonDirty={inlineDirty}
         eventsEnabled={eventsEnabled}

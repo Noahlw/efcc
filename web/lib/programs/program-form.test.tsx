@@ -5,6 +5,10 @@ import { afterEach, describe, expect, test, vi } from "vitest";
 
 import { RpcError } from "@/lib/api";
 import { COPY } from "@/lib/copy";
+import {
+  clearAllWorkspaceMutationRecovery,
+  readWorkspaceMutationRecovery,
+} from "@/lib/programs/mutation-recovery";
 import type {
   Department,
   Program,
@@ -18,17 +22,28 @@ const mocks = vi.hoisted(() => ({
     vi.fn<
       (
         departmentId: string,
-        input: ProgramInput
+        input: ProgramInput,
+        idempotencyKey?: string | null
       ) => Promise<{ program: Program }>
     >(),
   updateProgram:
     vi.fn<
-      (programId: string, patch: ProgramPatch) => Promise<{ program: Program }>
+      (
+        programId: string,
+        patch: ProgramPatch,
+        idempotencyKey?: string | null
+      ) => Promise<{ program: Program }>
     >(),
+  getManagementDirectory: vi.fn(),
+  getManagementProgram: vi.fn(),
+  isUnknownMutationWriteOutcome: vi.fn(() => false),
 }));
 
 vi.mock(import("@/lib/programs/program-api"), () => ({
   createProgram: mocks.createProgram,
+  getManagementDirectory: mocks.getManagementDirectory,
+  getManagementProgram: mocks.getManagementProgram,
+  isUnknownMutationWriteOutcome: mocks.isUnknownMutationWriteOutcome,
   updateProgram: mocks.updateProgram,
 }));
 
@@ -85,6 +100,7 @@ async function chooseSelectOption(
 describe(ProgramForm, () => {
   afterEach(() => {
     cleanup();
+    clearAllWorkspaceMutationRecovery();
     vi.resetAllMocks();
   });
 
@@ -131,15 +147,19 @@ describe(ProgramForm, () => {
       screen.getByRole("button", { name: COPY.programs.saveProgram })
     );
 
-    expect(mocks.createProgram).toHaveBeenCalledWith("dept-1", {
-      name: "單次培訓",
-      description: "單次培訓目的",
-      category: "領袖訓練",
-      behavior_type: "OneOff",
-      lifecycle: "Draft",
-      discoverability: "Unlisted",
-      enrollment_mode: "MemberRequest",
-    });
+    expect(mocks.createProgram).toHaveBeenCalledWith(
+      "dept-1",
+      {
+        name: "單次培訓",
+        description: "單次培訓目的",
+        category: "領袖訓練",
+        behavior_type: "OneOff",
+        lifecycle: "Draft",
+        discoverability: "Unlisted",
+        enrollment_mode: "MemberRequest",
+      },
+      expect.any(String)
+    );
     expect(onSaved).toHaveBeenCalledWith("created-1");
   });
 
@@ -228,15 +248,19 @@ describe(ProgramForm, () => {
       screen.getByRole("button", { name: COPY.programs.saveProgram })
     );
 
-    expect(mocks.createProgram).toHaveBeenCalledWith("dept-1", {
-      name: "單次培訓",
-      description: "培訓目的",
-      category: undefined,
-      behavior_type: "Recurring",
-      lifecycle: "Draft",
-      discoverability: "Unlisted",
-      enrollment_mode: "MemberRequest",
-    });
+    expect(mocks.createProgram).toHaveBeenCalledWith(
+      "dept-1",
+      {
+        name: "單次培訓",
+        description: "培訓目的",
+        category: undefined,
+        behavior_type: "Recurring",
+        lifecycle: "Draft",
+        discoverability: "Unlisted",
+        enrollment_mode: "MemberRequest",
+      },
+      expect.any(String)
+    );
     expect(onSaved).toHaveBeenCalledWith("created-no-category");
   });
 
@@ -273,15 +297,19 @@ describe(ProgramForm, () => {
       screen.getByRole("button", { name: COPY.programs.saveProgram })
     );
 
-    expect(mocks.createProgram).toHaveBeenCalledWith("dept-1", {
-      name: "草稿課程",
-      description: "草稿課程目的",
-      category: "門徒訓練",
-      behavior_type: "Recurring",
-      lifecycle: "Draft",
-      discoverability: "Unlisted",
-      enrollment_mode: "MemberRequest",
-    });
+    expect(mocks.createProgram).toHaveBeenCalledWith(
+      "dept-1",
+      {
+        name: "草稿課程",
+        description: "草稿課程目的",
+        category: "門徒訓練",
+        behavior_type: "Recurring",
+        lifecycle: "Draft",
+        discoverability: "Unlisted",
+        enrollment_mode: "MemberRequest",
+      },
+      expect.any(String)
+    );
   });
 
   test("renders a truthful unavailable state without a manageable Department", async () => {
@@ -321,14 +349,18 @@ describe(ProgramForm, () => {
       screen.getByRole("button", { name: COPY.programs.saveProgram })
     );
 
-    expect(mocks.updateProgram).toHaveBeenCalledWith("program-1", {
-      name: "現有課程",
-      description: "簡介",
-      category: "門徒訓練",
-      lifecycle: "Archived",
-      discoverability: "Listed",
-      enrollment_mode: "MemberRequest",
-    });
+    expect(mocks.updateProgram).toHaveBeenCalledWith(
+      "program-1",
+      {
+        name: "現有課程",
+        description: "簡介",
+        category: "門徒訓練",
+        lifecycle: "Archived",
+        discoverability: "Listed",
+        enrollment_mode: "MemberRequest",
+      },
+      expect.any(String)
+    );
     await expect(screen.findByRole("alert")).resolves.toHaveTextContent(
       COPY.programs.archiveBlocked
     );
@@ -364,5 +396,91 @@ describe(ProgramForm, () => {
       screen.queryByText(COPY.programs.archiveBlocked)
     ).not.toBeInTheDocument();
     expect(onSaved).not.toHaveBeenCalled();
+  });
+
+  test("retains an unknown update and resolves it by authoritative readback", async () => {
+    const user = userEvent.setup();
+    const onSaved = vi.fn<(programId: string) => void>();
+    mocks.isUnknownMutationWriteOutcome.mockReturnValue(true);
+    mocks.updateProgram.mockRejectedValueOnce(
+      new RpcError({ code: "INTERNAL_ERROR", status: 500 })
+    );
+    mocks.getManagementProgram.mockResolvedValueOnce({
+      program: { ...program, lifecycle: "Archived" },
+      department: department("dept-1", "青年事工", true),
+      modules: [],
+    });
+
+    render(<ProgramForm initial={program} onSaved={onSaved} />);
+    await chooseSelectOption(
+      user,
+      COPY.programs.programLifecycle,
+      COPY.programs.lifecycleArchived
+    );
+    await user.click(
+      screen.getByRole("button", { name: COPY.programs.saveProgram })
+    );
+
+    await expect(
+      screen.findByText(COPY.programs.programTransportAmbiguous)
+    ).resolves.toBeInTheDocument();
+    expect(readWorkspaceMutationRecovery()?.surface).toBe("program");
+    await user.click(
+      screen.getByRole("button", { name: COPY.programs.workspaceRetryRefresh })
+    );
+    expect(onSaved).toHaveBeenCalledWith("program-1");
+    expect(readWorkspaceMutationRecovery()).toBeNull();
+  });
+
+  test("retains an unknown create and resolves it by directory readback", async () => {
+    const user = userEvent.setup();
+    const onSaved = vi.fn<(programId: string) => void>();
+    mocks.isUnknownMutationWriteOutcome.mockReturnValue(true);
+    mocks.createProgram.mockRejectedValueOnce(
+      new RpcError({ code: "INTERNAL_ERROR", status: 500 })
+    );
+    mocks.getManagementDirectory.mockResolvedValueOnce({
+      departments: [],
+      programs: [
+        {
+          ...program,
+          program_id: "created-after-unknown",
+          name: "新課程",
+          description: "新課程目的",
+          category: null,
+          lifecycle: "Draft",
+          discoverability: "Unlisted",
+          display_order: 0,
+        },
+      ],
+    });
+
+    render(
+      <ProgramForm
+        departments={[department("dept-1", "青年事工", true)]}
+        onSaved={onSaved}
+      />
+    );
+    await user.type(
+      screen.getByRole("textbox", { name: COPY.programs.programName }),
+      "新課程"
+    );
+    await user.type(
+      screen.getByRole("textbox", { name: COPY.programs.programPurpose }),
+      "新課程目的"
+    );
+    await user.click(
+      screen.getByRole("button", { name: COPY.programs.saveProgram })
+    );
+
+    await expect(
+      screen.findByText(COPY.programs.programTransportAmbiguous)
+    ).resolves.toBeInTheDocument();
+    expect(readWorkspaceMutationRecovery()?.surface).toBe("program-create");
+    await user.click(
+      screen.getByRole("button", { name: COPY.programs.workspaceRetryRefresh })
+    );
+    expect(onSaved).toHaveBeenCalledWith("created-after-unknown");
+    expect(readWorkspaceMutationRecovery()).toBeNull();
   });
 });

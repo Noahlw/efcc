@@ -1165,12 +1165,14 @@ export function getManagementCockpit(
 /** POST /api/v1/programs/departments/:id/programs */
 export function createProgram(
   departmentId: string,
-  input: ProgramInput
+  input: ProgramInput,
+  idempotencyKey?: string | null
 ): Promise<{ program: Program }> {
   return programsFetch(
     `/api/v1/programs/departments/${encodeURIComponent(departmentId)}/programs`,
     "POST",
-    input
+    input,
+    { idempotencyKey }
   );
 }
 
