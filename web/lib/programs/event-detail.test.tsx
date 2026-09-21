@@ -40,6 +40,7 @@ vi.mock(import("@/lib/programs/program-api"), () => ({
   getProgramAttendanceArtifact: mocks.getProgramAttendanceArtifact,
   getOwnAttendance: mocks.getOwnAttendance,
   isUnknownMutationOutcome: mocks.isUnknownMutationOutcome,
+  isUnknownMutationWriteOutcome: mocks.isUnknownMutationOutcome,
 }));
 
 const detailFixture = (

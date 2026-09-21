@@ -34,6 +34,7 @@ import PermissionsPage from "@/app/permissions/page";
 import ProfilePage from "@/app/profile/page";
 import ProgramsPage from "@/app/programs/page";
 import ScannerPage from "@/app/scanner/page";
+import { RpcError } from "@/lib/api";
 import type { Bootstrap, PublicUser } from "@/lib/api";
 import { AppProvider } from "@/lib/app-context";
 import { AppShell } from "@/lib/app-shell";
@@ -44,6 +45,7 @@ import { GuardedSection } from "@/lib/guarded-section";
 import { writeGuestCredential } from "@/lib/guest-context";
 import { announce } from "@/lib/live-region";
 import { NavBar } from "@/lib/nav-bar";
+import { writeEventCreateDraft } from "@/lib/programs/event-create-draft";
 import {
   generationRecoveryKey,
   writeGenerationRecovery,
@@ -52,10 +54,10 @@ import {
   readManagementDraft,
   writeManagementDraft,
 } from "@/lib/programs/management-draft";
-import {
-  clearAccessCache,
-  type ProgramsManagementAccess,
-} from "@/lib/programs/program-api";
+import { writeWorkspaceMutationRecovery } from "@/lib/programs/mutation-recovery";
+import { clearAccessCache } from "@/lib/programs/program-api";
+import type { ProgramsManagementAccess } from "@/lib/programs/program-api";
+import { redirectToLoginIfRequired } from "@/lib/programs/workspace-context";
 import { RecoveryView } from "@/lib/recovery-view";
 import { REGISTRATION_COPY } from "@/lib/registration-copy";
 import {
@@ -1184,15 +1186,35 @@ describe("Shell", () => {
       expect(signOutButton).toBeInTheDocument();
       expect(screen.getByText("測試用")).toBeInTheDocument();
     });
+
     test("clicking Sign Out calls /logout, clears the hint, and replaces to /", async () => {
       pathnameMock.mockReturnValue("/profile");
       setAuthHint();
       writeManagementDraft("program-1", "event-create", {
         title: "未儲存草稿",
       });
-      expect(readManagementDraft("program-1", "event-create")).toEqual({
+      expect(readManagementDraft("program-1", "event-create")).toStrictEqual({
         title: "未儲存草稿",
       });
+      writeEventCreateDraft("program-1", {
+        version: 1,
+        date: "2026-09-21",
+        startTime: "10:00",
+        endTime: "11:00",
+        endAuto: true,
+        name: "待建立聚會",
+        location: "禮堂",
+        eventType: "其他",
+        windowOverride: false,
+        windowOpens: "",
+        windowCloses: "",
+      });
+      writeWorkspaceMutationRecovery({
+        surface: "events",
+        programId: "program-1",
+        mutation: { kind: "cancel", eventId: "event-1" },
+      });
+      sessionStorage.setItem("efcc_guest_mutation_recovery", "guest-recovery");
       // ADR-0047: a pending Generate recovery record must not survive logout.
       writeGenerationRecovery({
         version: 1,
@@ -1222,13 +1244,27 @@ describe("Shell", () => {
       expect(sessionStorage.getItem("efcc_logout_failed")).toBeNull();
       expect(readManagementDraft("program-1", "event-create")).toBeNull();
       expect(
+        sessionStorage.getItem("efcc_program_event_draft:program-1")
+      ).toBeNull();
+      expect(
         sessionStorage.getItem(generationRecoveryKey("program-1"))
       ).toBeNull();
+      expect(
+        sessionStorage.getItem("efcc_workspace_mutation_recovery")
+      ).toBeNull();
+      expect(sessionStorage.getItem("efcc_guest_mutation_recovery")).toBe(
+        "guest-recovery"
+      );
     });
 
     test("logout RPC failure clears the hint, replaces to /, and surfaces failedNotice on Login", async () => {
       pathnameMock.mockReturnValue("/profile");
       setAuthHint();
+      writeWorkspaceMutationRecovery({
+        surface: "events",
+        programId: "program-1",
+        mutation: { kind: "cancel", eventId: "event-1" },
+      });
       server.use(
         http.post("/api/v1/auth/logout", () =>
           HttpResponse.json(
@@ -1273,6 +1309,9 @@ describe("Shell", () => {
         expect(replaceMock).toHaveBeenCalledWith("/");
       });
       expect(localStorage.getItem(AUTH_HINT_KEY)).toBeNull();
+      expect(
+        sessionStorage.getItem("efcc_workspace_mutation_recovery")
+      ).toBeNull();
       expect(sessionStorage.getItem("efcc_logout_failed")).toBe("1");
 
       cleanup();
@@ -2478,6 +2517,62 @@ describe("Shell", () => {
   });
 
   describe("AppShell restore lifecycle", () => {
+    test("child AUTH_REQUIRED clears authenticated recovery but preserves guest recovery", () => {
+      window.history.replaceState({}, "", "/programs?task=events#draft");
+      writeManagementDraft("program-1", "settings", { name: "未儲存設定" });
+      writeEventCreateDraft("program-1", {
+        version: 1,
+        date: "2026-09-21",
+        startTime: "10:00",
+        endTime: "11:00",
+        endAuto: true,
+        name: "待建立聚會",
+        location: "禮堂",
+        eventType: "其他",
+        windowOverride: false,
+        windowOpens: "",
+        windowCloses: "",
+      });
+      writeGenerationRecovery({
+        version: 1,
+        programId: "program-1",
+        planId: "plan-1",
+        runId: null,
+        needsReconciliation: true,
+        requiresReview: false,
+        data: null,
+      });
+      writeWorkspaceMutationRecovery({
+        surface: "events",
+        programId: "program-1",
+        mutation: { kind: "cancel", eventId: "event-1" },
+      });
+      sessionStorage.setItem("efcc_guest_mutation_recovery", "guest-recovery");
+
+      expect(
+        redirectToLoginIfRequired(
+          new RpcError({ code: "AUTH_REQUIRED", status: 401 })
+        )
+      ).toBeTruthy();
+
+      expect(readManagementDraft("program-1", "settings")).toBeNull();
+      expect(
+        sessionStorage.getItem("efcc_program_event_draft:program-1")
+      ).toBeNull();
+      expect(
+        sessionStorage.getItem(generationRecoveryKey("program-1"))
+      ).toBeNull();
+      expect(
+        sessionStorage.getItem("efcc_workspace_mutation_recovery")
+      ).toBeNull();
+      expect(sessionStorage.getItem("efcc_guest_mutation_recovery")).toBe(
+        "guest-recovery"
+      );
+      expect(sessionStorage.getItem("efcc_deep_link")).toBe(
+        "/programs?task=events#draft"
+      );
+    });
+
     test("shows the loading state with a spinner while the session restores", async () => {
       setAuthHint();
       pathnameMock.mockReturnValue("/profile");
@@ -2514,6 +2609,11 @@ describe("Shell", () => {
 
     test("no session hint redirects to / and records the deep link", async () => {
       pathnameMock.mockReturnValue("/programs");
+      writeWorkspaceMutationRecovery({
+        surface: "events",
+        programId: "program-1",
+        mutation: { kind: "cancel", eventId: "event-1" },
+      });
       render(
         <AppShell>
           <div>children</div>
@@ -2523,6 +2623,9 @@ describe("Shell", () => {
         expect(replaceMock).toHaveBeenCalledWith("/");
       });
       expect(sessionStorage.getItem("efcc_deep_link")).toBe("/programs");
+      expect(
+        sessionStorage.getItem("efcc_workspace_mutation_recovery")
+      ).toBeNull();
     });
 
     test("expired refresh session clears the hint, records the deep link, and redirects to / with an expiry explanation", async () => {
@@ -2585,6 +2688,12 @@ describe("Shell", () => {
         requiresReview: false,
         data: null,
       });
+      writeWorkspaceMutationRecovery({
+        surface: "events",
+        programId: "program-1",
+        mutation: { kind: "cancel", eventId: "event-1" },
+      });
+      sessionStorage.setItem("efcc_guest_mutation_recovery", "guest-recovery");
       expect(
         sessionStorage.getItem(generationRecoveryKey("program-1"))
       ).not.toBeNull();
@@ -2631,6 +2740,12 @@ describe("Shell", () => {
       expect(
         sessionStorage.getItem(generationRecoveryKey("program-1"))
       ).toBeNull();
+      expect(
+        sessionStorage.getItem("efcc_workspace_mutation_recovery")
+      ).toBeNull();
+      expect(sessionStorage.getItem("efcc_guest_mutation_recovery")).toBe(
+        "guest-recovery"
+      );
     });
 
     test("restore 503 keeps the hint and retry re-executes restore", async () => {

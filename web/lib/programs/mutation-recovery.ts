@@ -575,6 +575,11 @@ export function writeWorkspaceMutationRecovery(
   writeJson(WORKSPACE_MUTATION_RECOVERY_KEY, value);
 }
 
+/** Authenticated-session boundary cleanup; guest recovery remains separate. */
+export function clearAllWorkspaceMutationRecovery(): void {
+  removeItem(WORKSPACE_MUTATION_RECOVERY_KEY);
+}
+
 export function clearWorkspaceMutationRecovery(
   surface: WorkspaceMutationRecovery["surface"],
   identity: { programId?: string; eventId?: string; departmentId?: string }

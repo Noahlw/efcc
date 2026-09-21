@@ -7,6 +7,9 @@ import { COPY } from "@/lib/copy";
 import { HK_UTC_OFFSET_MINUTES } from "@/lib/programs/recurrence";
 import { rememberDeepLink } from "@/lib/session";
 
+import { clearAllEventCreateDrafts } from "./event-create-draft";
+import { clearAllGenerationRecoveries } from "./generation-recovery";
+import { clearAllWorkspaceMutationRecovery } from "./mutation-recovery";
 import type {
   DepartmentModule,
   ManagementAttention,
@@ -155,10 +158,21 @@ export function hasModule(
   );
 }
 
+/**
+ * Clear all authenticated Programs recovery at one session boundary. Guest
+ * mutation recovery intentionally stays in its separate storage key.
+ */
+export function clearAuthenticatedProgramsRecovery(): void {
+  clearAllEventCreateDrafts();
+  clearAllGenerationRecoveries();
+  clearAllWorkspaceMutationRecovery();
+}
+
 export function redirectToLoginIfRequired(error: unknown): boolean {
   if (!(error instanceof RpcError) || error.problem.code !== "AUTH_REQUIRED") {
     return false;
   }
+  clearAuthenticatedProgramsRecovery();
   rememberDeepLink(
     `${window.location.pathname}${window.location.search}${window.location.hash}`
   );

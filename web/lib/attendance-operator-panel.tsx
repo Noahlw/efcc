@@ -44,7 +44,7 @@ import { announce } from "@/lib/live-region";
 import {
   assistedCheckIn,
   correctGuestAttendance,
-  isUnknownMutationOutcome,
+  isUnknownMutationWriteOutcome,
   listAttendanceRoster,
   listScannerEvents,
   materializeAttendanceSnapshot,
@@ -2188,7 +2188,7 @@ export const AttendanceOperatorPanel = ({
       showStatus(message, "success");
       announce(message);
     } catch (error) {
-      if (isUnknownMutationOutcome(error)) {
+      if (isUnknownMutationWriteOutcome(error)) {
         markUnknownMutation({ kind: "materialize" });
         // The mutation has settled; release the write lock before the
         // authoritative roster read, otherwise reconciliation self-blocks.
@@ -2331,7 +2331,7 @@ export const AttendanceOperatorPanel = ({
       showStatus(message, refreshed ? "success" : "error");
       announce(message);
     } catch (error) {
-      if (isUnknownMutationOutcome(error)) {
+      if (isUnknownMutationWriteOutcome(error)) {
         markUnknownMutation({
           ...pendingMutation,
         });
@@ -2376,7 +2376,7 @@ export const AttendanceOperatorPanel = ({
       announce(COPY.attendance.voidSuccess);
       return true;
     } catch (error) {
-      if (isUnknownMutationOutcome(error)) {
+      if (isUnknownMutationWriteOutcome(error)) {
         markUnknownMutation(pendingMutation);
         await reconcileUnknownAttendance();
       } else {
@@ -2422,7 +2422,7 @@ export const AttendanceOperatorPanel = ({
       announce(COPY.attendance.correctionSaved);
       return true;
     } catch (error) {
-      if (isUnknownMutationOutcome(error)) {
+      if (isUnknownMutationWriteOutcome(error)) {
         markUnknownMutation(pendingMutation);
         await reconcileUnknownAttendance();
       } else {
@@ -2466,7 +2466,7 @@ export const AttendanceOperatorPanel = ({
       announce(EXCUSE_COPY.saved);
       return true;
     } catch (error) {
-      if (isUnknownMutationOutcome(error)) {
+      if (isUnknownMutationWriteOutcome(error)) {
         markUnknownMutation(pendingMutation);
         await reconcileUnknownAttendance();
       } else {

@@ -43,7 +43,7 @@ import {
   cancelEvent,
   getEvent,
   getOwnAttendance,
-  isUnknownMutationOutcome,
+  isUnknownMutationWriteOutcome,
   setEventAvailability,
   updateEvent,
 } from "@/lib/programs/program-api";
@@ -870,7 +870,7 @@ export const EventDetail = ({
           });
           return;
         }
-        if (isUnknownMutationOutcome(error)) {
+        if (isUnknownMutationWriteOutcome(error)) {
           setMutationOutcomeUnknown(true);
           onMutationBlockChange?.(true);
           setActionError(COPY.programs.programTransportAmbiguous);

@@ -656,11 +656,13 @@ export function isUnknownMutationOutcome(error: unknown): boolean {
  * settled read failures and never show unknown-Generate UI.
  */
 export function isUnknownMutationWriteOutcome(error: unknown): boolean {
+  if (isUnknownMutationOutcome(error)) {
+    return true;
+  }
   return (
-    isUnknownMutationOutcome(error) ||
-    (error instanceof RpcError &&
-      error.problem.status === 500 &&
-      error.problem.code === "INTERNAL_ERROR")
+    error instanceof RpcError &&
+    error.problem.status === 500 &&
+    error.problem.code === "INTERNAL_ERROR"
   );
 }
 

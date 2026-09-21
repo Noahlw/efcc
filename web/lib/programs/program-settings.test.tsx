@@ -65,6 +65,7 @@ vi.mock(import("@/lib/programs/program-api"), () => ({
   createScheduleException: mocks.createScheduleException,
   deleteScheduleException: mocks.deleteScheduleException,
   isUnknownMutationOutcome: mocks.isUnknownMutationOutcome,
+  isUnknownMutationWriteOutcome: mocks.isUnknownMutationOutcome,
 }));
 
 const recurringProgram: Program = {

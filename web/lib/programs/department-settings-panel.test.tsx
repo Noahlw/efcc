@@ -28,6 +28,7 @@ const mocks = vi.hoisted(() => ({
 vi.mock("@/lib/programs/program-api", () => ({
   getDepartment: mocks.getDepartment,
   isUnknownMutationOutcome: mocks.isUnknownMutationOutcome,
+  isUnknownMutationWriteOutcome: mocks.isUnknownMutationOutcome,
   setDepartmentModule: mocks.setDepartmentModule,
   updateDepartment: mocks.updateDepartment,
 }));

@@ -10,7 +10,7 @@ import { announce } from "@/lib/live-region";
 import { ScreenHeader } from "@/lib/screen-foundations";
 
 import {
-  isUnknownMutationOutcome,
+  isUnknownMutationWriteOutcome,
   listScheduleExceptions,
   listScheduleRules,
   updateProgram,
@@ -240,7 +240,7 @@ export const SettingsTask = ({
         announce(message);
       }
     } catch (error) {
-      if (isUnknownMutationOutcome(error)) {
+      if (isUnknownMutationWriteOutcome(error)) {
         setArchiveCommitted(true);
         setArchiveRefreshPending(true);
         setArchiveMessage(COPY.programs.programTransportAmbiguous);
