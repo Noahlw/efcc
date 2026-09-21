@@ -481,6 +481,7 @@ export const ProgramWorkspace = ({
     if (workspaceSettingsDirty) {
       return;
     }
+    allowSettingsHistoryBack.current = false;
     setScheduleDraftFocusKey(null);
     setSettingsRecoveryDestination(null);
   }, [workspaceSettingsDirty]);
@@ -602,7 +603,7 @@ export const ProgramWorkspace = ({
       event.returnValue = "";
     };
     const handlePopState = () => {
-      if (workspaceSettingsDirty && allowSettingsHistoryBack.current) {
+      if (allowSettingsHistoryBack.current) {
         allowSettingsHistoryBack.current = false;
         return;
       }

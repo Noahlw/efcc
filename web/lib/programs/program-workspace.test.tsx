@@ -84,6 +84,22 @@ const ScheduleRecoveryHarness = () => {
   );
 };
 
+const EventsSettingsWorkspaceHarness = () => {
+  const [task, setTask] = useState<"events" | "settings">("events");
+  return (
+    <ProgramWorkspace
+      programId="program-1"
+      task={task}
+      onBack={() => {}}
+      onTaskChange={(nextTask) => {
+        if (nextTask === "events" || nextTask === "settings") {
+          setTask(nextTask);
+        }
+      }}
+    />
+  );
+};
+
 const mocks = vi.hoisted(() => ({
   getManagementProgram: vi.fn(),
   updateProgram: vi.fn(),
@@ -1857,6 +1873,50 @@ describe(ProgramWorkspace, () => {
         name: COPY.programs.settingsDiscardAndLeave,
       })
     ).not.toBeInTheDocument();
+  });
+
+  test("re-arms Settings browser Back after a discarded Events traversal", async () => {
+    mockWorkspace();
+    const user = userEvent.setup();
+    writeManagementDraft("program-1", SETTINGS_DRAFT_ACTION.basics, {
+      name: "首次未儲存設定",
+    });
+    render(<EventsSettingsWorkspaceHarness />);
+
+    await screen.findByRole("button", { name: COPY.programs.createMeeting });
+    window.dispatchEvent(new PopStateEvent("popstate"));
+    await user.click(
+      await screen.findByRole("button", {
+        name: COPY.programs.settingsDiscardAndLeave,
+      })
+    );
+    await waitFor(() => {
+      expect(
+        screen.queryByRole("button", {
+          name: COPY.programs.settingsDiscardAndLeave,
+        })
+      ).not.toBeInTheDocument();
+    });
+
+    await user.click(
+      screen.getByRole("link", { name: COPY.programs.workspaceSettingsTab })
+    );
+    await user.click(
+      await screen.findByRole("button", {
+        name: /基本資料名稱、描述同分類/u,
+      })
+    );
+    await user.type(
+      screen.getByRole("textbox", { name: COPY.programs.programName }),
+      "再次未儲存設定"
+    );
+
+    window.dispatchEvent(new PopStateEvent("popstate"));
+    await expect(
+      screen.findByRole("button", {
+        name: COPY.programs.settingsDiscardAndLeave,
+      })
+    ).resolves.toBeInTheDocument();
   });
 
   test("reaches the overview after discarding a dirty Event route", async () => {
