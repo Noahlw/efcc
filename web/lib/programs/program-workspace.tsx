@@ -602,6 +602,10 @@ export const ProgramWorkspace = ({
       event.returnValue = "";
     };
     const handlePopState = () => {
+      if (workspaceSettingsDirty && allowSettingsHistoryBack.current) {
+        allowSettingsHistoryBack.current = false;
+        return;
+      }
       window.history.pushState(guardedState, "", blockedHref);
       if (!workspaceMutationBlocked) {
         if (workspaceSettingsDirty) {
@@ -1080,6 +1084,7 @@ export const ProgramWorkspace = ({
     }
     clearProgramSettingsDrafts(programId);
     setSettingsDraftDiscardSignal((signal) => signal + 1);
+    setManagementDraftVersion((version) => version + 1);
     // RP2.1: Discard on the focused Schedule route also drops the panel's
     // in-memory inline drafts via the discard signal (session alone is not
     // enough: the panel would rewrite them from stale state).

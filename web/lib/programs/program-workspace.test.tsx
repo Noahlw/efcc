@@ -1821,6 +1821,44 @@ describe(ProgramWorkspace, () => {
     expect(onTaskChange).toHaveBeenCalledWith(null);
   });
 
+  test("does not reopen Settings recovery after discarding browser Back on Events", async () => {
+    mockWorkspace();
+    const user = userEvent.setup();
+    writeManagementDraft("program-1", SETTINGS_DRAFT_ACTION.basics, {
+      name: "未儲存設定",
+    });
+    render(
+      <ProgramWorkspace
+        programId="program-1"
+        task="events"
+        onBack={vi.fn()}
+        onTaskChange={vi.fn()}
+      />
+    );
+
+    await screen.findByRole("button", { name: COPY.programs.createMeeting });
+    window.dispatchEvent(new PopStateEvent("popstate"));
+    await user.click(
+      await screen.findByRole("button", {
+        name: COPY.programs.settingsDiscardAndLeave,
+      })
+    );
+
+    await waitFor(() => {
+      expect(
+        screen.queryByRole("button", {
+          name: COPY.programs.settingsDiscardAndLeave,
+        })
+      ).not.toBeInTheDocument();
+    });
+    window.dispatchEvent(new PopStateEvent("popstate"));
+    expect(
+      screen.queryByRole("button", {
+        name: COPY.programs.settingsDiscardAndLeave,
+      })
+    ).not.toBeInTheDocument();
+  });
+
   test("reaches the overview after discarding a dirty Event route", async () => {
     mockWorkspace();
     const user = userEvent.setup();
