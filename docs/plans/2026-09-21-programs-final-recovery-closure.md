@@ -52,10 +52,12 @@ new state library.
 ## Current basis
 
 - Effective worktree: `/home/ubuntu/gh-repo/efcc-pack-post`.
-- Branch/HEAD: `codex/programs-production/ds1-repair` at `b8fb0ba4`; base and
-  merge-base `codex/programs-production/ds1` at `6383bcee`. Remote `ds1-repair`
+- Branch: `codex/programs-production/ds1-repair`; final application commit
+  `1903710760a096080e7c1007ff9cf928a0433b0f`; base and merge-base
+  `codex/programs-production/ds1` at `6383bcee`. An evidence-only documentation
+  commit may move HEAD without changing this application candidate. Remote `ds1-repair`
   does not exist as of 2026-09-21.
-- Final local application candidate: `b8fb0ba4`; earlier `cdfd9897` evidence
+- Final local application candidate: `1903710760a096080e7c1007ff9cf928a0433b0f`; earlier `cdfd9897` evidence
   remains historical and is not relabeled.
 - Dirty work owned by this planning session: `CONTEXT.md`, ADR-0047, ADR-0048,
   and this plan. Untracked `.orca/` is unrelated and must remain untouched and
@@ -208,10 +210,7 @@ local commit(s) exclude `.orca/`. Passing component tests alone, the historical
 
 ## Execution handoff (2026-09-21)
 
-Application repair is implemented through `b8fb0ba4`. The focused component
-aggregate passed 346 tests, the auth/attendance set passed 146 tests, the
-Program workspace rerun passed 82 tests, the Worker contract passed, and web
-typecheck, oxfmt, and `git diff --check` passed. The final evidence record keeps
+Application repair is implemented through `1903710760a096080e7c1007ff9cf928a0433b0f`. The focused Programs component set passed 269 tests across 8 files, the auth/attendance component set passed 260 tests across 7 files, and the final Program workspace rerun passed 85 tests (including ProgramForm recovery tests, 10 tests). The Worker contract, web typecheck, oxfmt, governance, and `git diff --check` passed. ProgramForm create/update unknown outcomes retain a stable key and resolve only through authoritative readback. The final evidence record keeps
 browser, responsive, full Workerd, canary, migration, bulk, guest/QR, and
 human/device gates truthful where they were not completed or where the local
 harness remained unavailable; none is claimed green here.

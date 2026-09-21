@@ -1,1 +1,235 @@
-{"acceptanceProfile": "complex", "candidate": "commit:b8fb0ba446721e8856ff8dfb2404c83e1a549ff2", "criteria": [{"actual": "component test asserts session record (planId plan-1, runId null, needsReconciliation true, data null) while the Generate promise is still pending", "candidate": "commit:b8fb0ba446721e8856ff8dfb2404c83e1a549ff2", "evidence": ["web/lib/programs/workspace-events-task.test.tsx: the recovery record exists before the Generate request settles (RP1.1)"], "expected": "recovery record for the Plan exists before generateEvents is issued and is not cleared in-flight", "id": "RP1.1", "level": "component", "status": "verified"}, {"actual": "component test unmounts with the promise pending and remounts to the reconcile UI with Generate blocked", "candidate": "commit:b8fb0ba446721e8856ff8dfb2404c83e1a549ff2", "evidence": ["web/lib/programs/workspace-events-task.test.tsx: in-flight unmount keeps the dispatch record for the next mount (RP1.2 component)"], "expected": "unmount during the request restores Plan identity and unknown-outcome UI without auto-replay", "id": "RP1.2-component", "level": "component", "status": "verified"}, {"actual": "real-route in-flight reload: browser-acceptance and responsive gates failed at the harness layer (workerd Broken pipe, fixture restore HTTP 500 Network connection lost) before product assertions; no duplicate-or-recovery observation was reached", "candidate": "commit:b8fb0ba446721e8856ff8dfb2404c83e1a549ff2", "evidence": ["test-results/programs-promotion/20260919t021638239z/browser-acceptance/failure-summary.json (firstCausalRuntimeSignal workerd Broken pipe)", "test-results/programs-browser-acceptance/20260919t020433164z/failure-summary.json (fixture restore HTTP 500 cascade)"], "expected": "real-route generation acknowledgement loss during an in-flight request, recovery without auto-replay, no duplicate Events", "id": "RP1.2-route", "level": "real-route", "status": "unverified"}, {"actual": "kept working-path tests: Preview while unresolved keeps Plan A and remount restore plus reconcile from Plan A", "candidate": "commit:b8fb0ba446721e8856ff8dfb2404c83e1a549ff2", "evidence": ["web/lib/programs/workspace-events-task.test.tsx: Preview while the write is unresolved keeps Plan A and the recovery reference"], "expected": "Preview while unresolved keeps Plan identity and blocks Generate", "id": "RP1.3", "level": "component", "status": "verified"}, {"actual": "component test drives requires_review, asserts latch, runs Review Again to plan-2 with history visible, asserts dispatch uses plan-2", "candidate": "commit:b8fb0ba446721e8856ff8dfb2404c83e1a549ff2", "evidence": ["web/lib/programs/workspace-events-task.test.tsx: a reconciled requires_review plus a matching Preview enables Generate on the new Plan id (RP1.4)"], "expected": "after reconciled requires_review, a successful Preview of the current fingerprint enables Generate on the new Plan id with old history visible", "id": "RP1.4-component", "level": "component", "status": "verified"}, {"actual": "real-route R43.4 through Plan B dispatch: browser gate failed at harness layer before reaching the journey", "candidate": "commit:b8fb0ba446721e8856ff8dfb2404c83e1a549ff2", "evidence": ["test-results/programs-promotion/20260919t021638239z/browser-acceptance/failure-summary.json"], "expected": "R43.4 A to B to Review Again to Generate dispatches Plan B id on a real route", "id": "RP1.4-route", "level": "real-route", "status": "unverified"}, {"actual": "component test asserts Generate and exception-save/delete mutation 500s show unknown UI; Preview 500 shows no recovery UI; worker GET plus POST mutation envelope tests keep the structured 500", "candidate": "commit:b8fb0ba446721e8856ff8dfb2404c83e1a549ff2", "evidence": ["web/lib/programs/workspace-events-task.test.tsx: mutation INTERNAL_ERROR is unknown but a Preview 500 stays settled (RP1.5)", "web/worker.test.ts: programs GET plus POST mutation 500-envelope tests"], "expected": "mutation INTERNAL_ERROR is unknown; GET/Preview 500 stays settled; known 4xx stay settled", "id": "RP1.5", "level": "component", "status": "verified"}, {"actual": "sign-out and expiry component tests seed a recovery record and assert it is gone after the real cleanup paths", "candidate": "commit:b8fb0ba446721e8856ff8dfb2404c83e1a549ff2", "evidence": ["web/lib/app.test.tsx: clicking Sign Out clears recovery", "web/lib/app.test.tsx: expiry cleanup also drops a pending Generate recovery record (RP1.6)"], "expected": "sign-out, expiry, and failed logout RPC clear efcc_generation_recovery with no actor key", "id": "RP1.6-component", "level": "component", "status": "verified"}, {"actual": "real-route logout as another Account in the same tab: browser gate failed at harness layer before reaching the journey", "candidate": "commit:b8fb0ba446721e8856ff8dfb2404c83e1a549ff2", "evidence": ["test-results/programs-promotion/20260919t021638239z/browser-acceptance/failure-summary.json"], "expected": "real-route Sign Out then another Account sees no generation recovery", "id": "RP1.6-route", "level": "real-route", "status": "unverified"}, {"actual": "Component tests cover the dirty Settings/Preview union, hidden/orphan recovery, Schedule Continue focus, original-destination retention, and coexistence with an Event-create draft; the final Program workspace rerun passed 82 tests.", "candidate": "commit:b8fb0ba446721e8856ff8dfb2404c83e1a549ff2", "evidence": ["web/lib/programs/program-workspace.test.tsx: dirty union, hidden Preview, and Settings/Event precedence tests", "final local Vitest run: lib/programs/program-workspace.test.tsx (82 passed)"], "expected": "inline dirty/focus joins the parent Back Continue/Discard handshake; dirty is the union; Discard clears the correct occurrence draft", "id": "RP2.1-component", "level": "component", "status": "verified"}, {"actual": "dirty/reload plus saved-exception network failure on a real route: browser gate failed at harness layer before reaching the journey", "candidate": "commit:b8fb0ba446721e8856ff8dfb2404c83e1a549ff2", "evidence": ["test-results/programs-promotion/20260919t021638239z/browser-acceptance/failure-summary.json"], "expected": "production-composition Back handshake plus dirty/reload on a real route", "id": "RP2.1-route", "level": "real-route", "status": "unverified"}, {"actual": "Notification navigation remains independent of fire-and-forget mark-read settlement; the mutation-only classifier reports an ambiguous 500 without creating a replay record.", "candidate": "commit:b8fb0ba446721e8856ff8dfb2404c83e1a549ff2", "evidence": ["web/lib/programs/programs-boundary.tsx: markNotificationsRead", "docs/adr/0047-generate-attempt-unresolved-until-authoritative.md: notification exception"], "expected": "notification navigation independent of mark-read settlement; retry stays honest", "id": "RP3", "level": "component", "status": "verified"}, {"actual": "Governance affected-scope audit vs origin/main at the final application SHA: 0 active violations, 0 waived.", "candidate": "commit:b8fb0ba446721e8856ff8dfb2404c83e1a549ff2", "evidence": ["pnpm verify:governance:affected --control-base=origin/main (PASSED)"], "expected": "presentation-override ratchet empty vs actual main with no new waivers", "id": "RP4", "level": "code", "status": "verified"}, {"actual": "CONTEXT, ADR-0047, ADR-0048, and the final recovery plan are present on the repair branch; unrelated .orca/ remains excluded.", "candidate": "commit:b8fb0ba446721e8856ff8dfb2404c83e1a549ff2", "evidence": ["CONTEXT.md Language and authority sections", "docs/adr/0047-generate-attempt-unresolved-until-authoritative.md", "docs/adr/0048-programs-local-recovery-boundary.md", "docs/plans/2026-09-21-programs-final-recovery-closure.md"], "expected": "CONTEXT Language plus DESIGN plus 0043 plus 0047 on the repair branch; QA parked", "id": "RP6", "level": "code", "status": "verified"}, {"actual": "Worker contract, focused component suites, auth/attendance suites, web typecheck, oxfmt, and diff-check passed; the comprehensive Workerd run retained one known 30-second timeout in programs.test.ts, so the finite machine aggregate is not claimed green.", "candidate": "commit:b8fb0ba446721e8856ff8dfb2404c83e1a549ff2", "evidence": ["pnpm test:programs:contract (1 passed)", "focused component aggregate (346 passed)", "auth/attendance focused aggregate (146 passed)", "pnpm --dir web typecheck; oxfmt --check; git diff --check"], "expected": "required machine layers green at the candidate SHA", "id": "RP5-machine", "level": "worker", "status": "unverified"}, {"actual": "browser-acceptance and responsive-matrix failed at the harness layer: workerd Broken pipe / Connection reset by peer as first causal signal, fixture restore HTTP 500 Network connection lost cascades; grouped failures span phone-360/390/402 and desktop-1024 with element-not-found downstream symptoms", "candidate": "commit:b8fb0ba446721e8856ff8dfb2404c83e1a549ff2", "evidence": ["test-results/programs-promotion/20260919t021638239z/browser-acceptance/failure-summary.json", "test-results/programs-responsive/20260919t023202668z/failure-summary.json", "test-results/programs-browser-acceptance/20260919t020433164z/failure-summary.json"], "expected": "browser plus responsive real-route journeys green with zero retries and first-causal-request diagnosis", "id": "RP5-browser", "level": "real-route", "status": "unverified"}], "delegationAvailable": false, "limitations": ["Browser and responsive gates remain unverified: the local runner reused a stale long-lived wrangler process and the interrupted zero-retry run produced no fresh browser-results artifact; no product assertion is claimed.", "The comprehensive Workerd run is not green on this SHA: one programs.test.ts participant-catalog scenario timed out after 30 seconds; this is retained as a diagnostic rather than relabeled harmless.", "Human gates untouched: iPhone Safari / Android Chrome, virtual keyboard/safe area, native print, Owner L2, independent Spec plus UX/Acceptance review, pilot, merge, deployment, and release.", "Sustained-runtime canary B-003 stays OPEN residual risk per the rescue amendment; it was not run here.", "Migrations 0027-0037 upgrade behavior on disposable base-schema data was not exercised in this run.", "30-person mixed approval/roster, guest-login plus QR artifact/readback journeys were not closed on this SHA."], "repositoryRoot": "/home/ubuntu/gh-repo/efcc-pack-post", "review": {"candidate": "commit:b8fb0ba446721e8856ff8dfb2404c83e1a549ff2", "mode": "self-review", "reviewer": "delivery owner self-review (no delegation in this session); independent Spec plus UX/Acceptance review of the final SHA remains a P5 human gate"}, "reviewRisk": {"level": "high", "reason": "whole-scope requalification spanning recovery, navigation, ratchet, and real-route persistence; independent final-SHA review still required"}, "requirements": ["RP1.1", "RP1.2-component", "RP1.2-route", "RP1.3", "RP1.4-component", "RP1.4-route", "RP1.5", "RP1.6-component", "RP1.6-route", "RP2.1-component", "RP2.1-route", "RP3", "RP4", "RP6", "RP5-machine", "RP5-browser"], "version": 2}
+{
+  "acceptanceProfile": "complex",
+  "candidate": "commit:1903710760a096080e7c1007ff9cf928a0433b0f",
+  "criteria": [
+    {
+      "actual": "component test asserts session record (planId plan-1, runId null, needsReconciliation true, data null) while the Generate promise is still pending",
+      "candidate": "commit:1903710760a096080e7c1007ff9cf928a0433b0f",
+      "evidence": [
+        "web/lib/programs/workspace-events-task.test.tsx: the recovery record exists before the Generate request settles (RP1.1)"
+      ],
+      "expected": "recovery record for the Plan exists before generateEvents is issued and is not cleared in-flight",
+      "id": "RP1.1",
+      "level": "component",
+      "status": "verified"
+    },
+    {
+      "actual": "component test unmounts with the promise pending and remounts to the reconcile UI with Generate blocked",
+      "candidate": "commit:1903710760a096080e7c1007ff9cf928a0433b0f",
+      "evidence": [
+        "web/lib/programs/workspace-events-task.test.tsx: in-flight unmount keeps the dispatch record for the next mount (RP1.2 component)"
+      ],
+      "expected": "unmount during the request restores Plan identity and unknown-outcome UI without auto-replay",
+      "id": "RP1.2-component",
+      "level": "component",
+      "status": "verified"
+    },
+    {
+      "actual": "real-route in-flight reload: browser-acceptance and responsive gates failed at the harness layer (workerd Broken pipe, fixture restore HTTP 500 Network connection lost) before product assertions; no duplicate-or-recovery observation was reached",
+      "candidate": "commit:1903710760a096080e7c1007ff9cf928a0433b0f",
+      "evidence": [
+        "test-results/programs-promotion/20260919t021638239z/browser-acceptance/failure-summary.json (firstCausalRuntimeSignal workerd Broken pipe)",
+        "test-results/programs-browser-acceptance/20260919t020433164z/failure-summary.json (fixture restore HTTP 500 cascade)"
+      ],
+      "expected": "real-route generation acknowledgement loss during an in-flight request, recovery without auto-replay, no duplicate Events",
+      "id": "RP1.2-route",
+      "level": "real-route",
+      "status": "unverified"
+    },
+    {
+      "actual": "kept working-path tests: Preview while unresolved keeps Plan A and remount restore plus reconcile from Plan A",
+      "candidate": "commit:1903710760a096080e7c1007ff9cf928a0433b0f",
+      "evidence": [
+        "web/lib/programs/workspace-events-task.test.tsx: Preview while the write is unresolved keeps Plan A and the recovery reference"
+      ],
+      "expected": "Preview while unresolved keeps Plan identity and blocks Generate",
+      "id": "RP1.3",
+      "level": "component",
+      "status": "verified"
+    },
+    {
+      "actual": "component test drives requires_review, asserts latch, runs Review Again to plan-2 with history visible, asserts dispatch uses plan-2",
+      "candidate": "commit:1903710760a096080e7c1007ff9cf928a0433b0f",
+      "evidence": [
+        "web/lib/programs/workspace-events-task.test.tsx: a reconciled requires_review plus a matching Preview enables Generate on the new Plan id (RP1.4)"
+      ],
+      "expected": "after reconciled requires_review, a successful Preview of the current fingerprint enables Generate on the new Plan id with old history visible",
+      "id": "RP1.4-component",
+      "level": "component",
+      "status": "verified"
+    },
+    {
+      "actual": "real-route R43.4 through Plan B dispatch: browser gate failed at harness layer before reaching the journey",
+      "candidate": "commit:1903710760a096080e7c1007ff9cf928a0433b0f",
+      "evidence": [
+        "test-results/programs-promotion/20260919t021638239z/browser-acceptance/failure-summary.json"
+      ],
+      "expected": "R43.4 A to B to Review Again to Generate dispatches Plan B id on a real route",
+      "id": "RP1.4-route",
+      "level": "real-route",
+      "status": "unverified"
+    },
+    {
+      "actual": "component test asserts Generate and exception-save/delete mutation 500s show unknown UI; Preview 500 shows no recovery UI; worker GET plus POST mutation envelope tests keep the structured 500",
+      "candidate": "commit:1903710760a096080e7c1007ff9cf928a0433b0f",
+      "evidence": [
+        "web/lib/programs/workspace-events-task.test.tsx: mutation INTERNAL_ERROR is unknown but a Preview 500 stays settled (RP1.5)",
+        "web/worker.test.ts: programs GET plus POST mutation 500-envelope tests"
+      ],
+      "expected": "mutation INTERNAL_ERROR is unknown; GET/Preview 500 stays settled; known 4xx stay settled",
+      "id": "RP1.5",
+      "level": "component",
+      "status": "verified"
+    },
+    {
+      "actual": "sign-out and expiry component tests seed a recovery record and assert it is gone after the real cleanup paths",
+      "candidate": "commit:1903710760a096080e7c1007ff9cf928a0433b0f",
+      "evidence": [
+        "web/lib/app.test.tsx: clicking Sign Out clears recovery",
+        "web/lib/app.test.tsx: expiry cleanup also drops a pending Generate recovery record (RP1.6)"
+      ],
+      "expected": "sign-out, expiry, and failed logout RPC clear efcc_generation_recovery with no actor key",
+      "id": "RP1.6-component",
+      "level": "component",
+      "status": "verified"
+    },
+    {
+      "actual": "real-route logout as another Account in the same tab: browser gate failed at harness layer before reaching the journey",
+      "candidate": "commit:1903710760a096080e7c1007ff9cf928a0433b0f",
+      "evidence": [
+        "test-results/programs-promotion/20260919t021638239z/browser-acceptance/failure-summary.json"
+      ],
+      "expected": "real-route Sign Out then another Account sees no generation recovery",
+      "id": "RP1.6-route",
+      "level": "real-route",
+      "status": "unverified"
+    },
+    {
+      "actual": "Component tests cover the dirty Settings/Preview union, hidden/orphan recovery, Schedule Continue focus for generic Settings owners, original-destination retention, Events-task unload approval, coexistence with an Event-create draft, and the browser-back discard follow-up draft re-guard; the final Program workspace rerun passed 85 tests.",
+      "candidate": "commit:1903710760a096080e7c1007ff9cf928a0433b0f",
+      "evidence": [
+        "web/lib/programs/program-workspace.test.tsx: dirty union, hidden Preview, Settings/Event precedence, and browser-back follow-up draft tests",
+        "final local Vitest run: lib/programs/program-workspace.test.tsx (85 passed)",
+        "web/lib/programs/program-workspace.tsx: mutation recovery blocks approved navigation and secondary guard propagation"
+      ],
+      "expected": "inline dirty/focus joins the parent Back Continue/Discard handshake; dirty is the union; Discard clears the correct occurrence draft",
+      "id": "RP2.1-component",
+      "level": "component",
+      "status": "verified"
+    },
+    {
+      "actual": "dirty/reload plus saved-exception network failure on a real route: browser gate failed at harness layer before reaching the journey",
+      "candidate": "commit:1903710760a096080e7c1007ff9cf928a0433b0f",
+      "evidence": [
+        "test-results/programs-promotion/20260919t021638239z/browser-acceptance/failure-summary.json"
+      ],
+      "expected": "production-composition Back handshake plus dirty/reload on a real route",
+      "id": "RP2.1-route",
+      "level": "real-route",
+      "status": "unverified"
+    },
+    {
+      "actual": "Notification navigation remains independent of fire-and-forget mark-read settlement; the mutation-only classifier reports an ambiguous 500 without creating a replay record.",
+      "candidate": "commit:1903710760a096080e7c1007ff9cf928a0433b0f",
+      "evidence": [
+        "web/lib/programs/programs-boundary.tsx: markNotificationsRead",
+        "docs/adr/0047-generate-attempt-unresolved-until-authoritative.md: notification exception"
+      ],
+      "expected": "notification navigation independent of mark-read settlement; retry stays honest",
+      "id": "RP3",
+      "level": "component",
+      "status": "verified"
+    },
+    {
+      "actual": "Governance affected-scope audit vs origin/main at the final application SHA: 0 active violations, 0 waived.",
+      "candidate": "commit:1903710760a096080e7c1007ff9cf928a0433b0f",
+      "evidence": [
+        "pnpm verify:governance:affected --control-base=origin/main (PASSED)"
+      ],
+      "expected": "presentation-override ratchet empty vs actual main with no new waivers",
+      "id": "RP4",
+      "level": "code",
+      "status": "verified"
+    },
+    {
+      "actual": "CONTEXT, ADR-0047, ADR-0048, and the final recovery plan are present on the repair branch; unrelated .orca/ remains excluded.",
+      "candidate": "commit:1903710760a096080e7c1007ff9cf928a0433b0f",
+      "evidence": [
+        "CONTEXT.md Language and authority sections",
+        "docs/adr/0047-generate-attempt-unresolved-until-authoritative.md",
+        "docs/adr/0048-programs-local-recovery-boundary.md",
+        "docs/plans/2026-09-21-programs-final-recovery-closure.md"
+      ],
+      "expected": "CONTEXT Language plus DESIGN plus 0043 plus 0047 on the repair branch; QA parked",
+      "id": "RP6",
+      "level": "code",
+      "status": "verified"
+    },
+    {
+      "actual": "Worker contract passed; the focused Programs component set passed 269 tests across 8 files; the auth/attendance component set passed 260 tests across 7 files; the final Program workspace rerun passed 85 and ProgramForm recovery passed 10; web typecheck, oxfmt, governance, and diff-check passed. The comprehensive Workerd run retained one known 30-second timeout in programs.test.ts, so the finite machine aggregate is not claimed green.",
+      "candidate": "commit:1903710760a096080e7c1007ff9cf928a0433b0f",
+      "evidence": [
+        "pnpm test:programs:contract (1 passed)",
+        "focused Programs component aggregate: 8 files, 269 passed",
+        "auth/attendance component aggregate: 7 files, 260 passed",
+        "final local Vitest run: lib/programs/program-workspace.test.tsx (85 passed); ProgramForm recovery tests (10 passed)",
+        "pnpm --dir web typecheck; oxfmt --check; pnpm verify:governance:affected --control-base=origin/main; git diff --check"
+      ],
+      "expected": "required machine layers green at the candidate SHA",
+      "id": "RP5-machine",
+      "level": "worker",
+      "status": "unverified"
+    },
+    {
+      "actual": "browser-acceptance and responsive-matrix failed at the harness layer: workerd Broken pipe / Connection reset by peer as first causal signal, fixture restore HTTP 500 Network connection lost cascades; grouped failures span phone-360/390/402 and desktop-1024 with element-not-found downstream symptoms",
+      "candidate": "commit:1903710760a096080e7c1007ff9cf928a0433b0f",
+      "evidence": [
+        "test-results/programs-promotion/20260919t021638239z/browser-acceptance/failure-summary.json",
+        "test-results/programs-responsive/20260919t023202668z/failure-summary.json",
+        "test-results/programs-browser-acceptance/20260919t020433164z/failure-summary.json"
+      ],
+      "expected": "browser plus responsive real-route journeys green with zero retries and first-causal-request diagnosis",
+      "id": "RP5-browser",
+      "level": "real-route",
+      "status": "unverified"
+    }
+  ],
+  "delegationAvailable": false,
+  "limitations": [
+    "Browser and responsive gates remain unverified: the local runner reused a stale long-lived wrangler process and the interrupted zero-retry run produced no fresh browser-results artifact; no product assertion is claimed.",
+    "The comprehensive Workerd run is not green on this SHA: one programs.test.ts participant-catalog scenario timed out after 30 seconds; this is retained as a diagnostic rather than relabeled harmless.",
+    "Human gates untouched: iPhone Safari / Android Chrome, virtual keyboard/safe area, native print, Owner L2, independent Spec plus UX/Acceptance review, pilot, merge, deployment, and release.",
+    "Sustained-runtime canary B-003 stays OPEN residual risk per the rescue amendment; it was not run here.",
+    "Migrations 0027-0037 upgrade behavior on disposable base-schema data was not exercised in this run.",
+    "30-person mixed approval/roster, guest-login plus QR artifact/readback journeys were not closed on this SHA."
+  ],
+  "repositoryRoot": "/home/ubuntu/gh-repo/efcc-pack-post",
+  "review": {
+    "candidate": "commit:1903710760a096080e7c1007ff9cf928a0433b0f",
+    "mode": "independent",
+    "reviewer": "/root/generation_plan_truth: independent final-SHA review; no P0/P1/P2 findings"
+  },
+  "reviewRisk": {
+    "level": "high",
+    "reason": "recovery, navigation, authentication, and real-route persistence remain high-risk; independent final-SHA review completed, with real-route and human gates separate"
+  },
+  "requirements": [
+    "RP1.1",
+    "RP1.2-component",
+    "RP1.2-route",
+    "RP1.3",
+    "RP1.4-component",
+    "RP1.4-route",
+    "RP1.5",
+    "RP1.6-component",
+    "RP1.6-route",
+    "RP2.1-component",
+    "RP2.1-route",
+    "RP3",
+    "RP4",
+    "RP6",
+    "RP5-machine",
+    "RP5-browser"
+  ],
+  "version": 2
+}
