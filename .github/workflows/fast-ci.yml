@@ -15,9 +15,9 @@ name: Fast CI
 
 on:
   push:
-    branches: [main, master, "feat/**", "rescue/**"]
+    branches: ["**"]
   pull_request:
-    branches: [main, master, "feat/**", "rescue/**"]
+    branches: ["**"]
 
 permissions:
   contents: read
