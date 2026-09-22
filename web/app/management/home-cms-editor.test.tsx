@@ -1,6 +1,7 @@
 /* oxlint-disable vitest/max-expects eslint/require-unicode-regexp eslint/no-unused-vars eslint/no-inline-comments */
 import {
   cleanup,
+  act,
   fireEvent,
   render,
   screen,
@@ -25,6 +26,7 @@ import type { HomeContent } from "@/lib/home-cms-api";
 import { HomeContentEditor } from "./home-cms-editor";
 const EDITOR = COPY.homeEditor;
 const mocks = vi.hoisted(() => ({
+  announce: vi.fn<(message: string) => void>(),
   router: {
     back: vi.fn<() => void>(),
     forward: vi.fn<() => void>(),
@@ -37,6 +39,9 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock(import("next/navigation"), () => ({
   useRouter: () => mocks.router,
+}));
+vi.mock(import("@/lib/live-region"), () => ({
+  announce: mocks.announce,
 }));
 
 const CONTENT: HomeContent = {
@@ -751,8 +756,22 @@ describe(HomeContentEditor, () => {
     const retryBtn = screen.getByRole("button", { name: EDITOR.auditRetry });
     expect(retryBtn).toBeVisible();
     expect(retryBtn).toHaveAttribute("type", "button");
-  });
 
+    await user.click(retryBtn);
+    await waitFor(() => expect(auditCalls).toBe(3));
+    await waitFor(() => {
+      expect(auditSection).toHaveTextContent(EDITOR.auditUnavailable);
+      expect(auditSection).not.toHaveTextContent(EDITOR.noAudit);
+      expect(
+        document.querySelector('[data-slot="home-cms-status-badge"]')
+      ).toHaveTextContent(EDITOR.statusPublished);
+      expect(
+        document.querySelector('[data-slot="home-cms-status-badge"]')
+      ).toHaveTextContent("v4");
+    });
+    expect(retryBtn).toBeVisible();
+    expect(retryBtn).toHaveAttribute("type", "button");
+  });
   test("CS-04: unsaved draft fields are preserved across audit retry success and failure", async () => {
     const user = userEvent.setup();
     let auditCalls = 0;
@@ -814,9 +833,10 @@ describe(HomeContentEditor, () => {
     ).toHaveTextContent("v4");
   });
 
-  test("CS-05: audit retry is deduplicated while in-flight and cannot submit draft or publish", async () => {
+  test("CS-05: audit retry deduplicates in-flight GET and remains a type=button control", async () => {
     const user = userEvent.setup();
     let auditCalls = 0;
+    let draftCalls = 0;
     let publishCalls = 0;
     let resolveAudit: (() => void) | undefined;
 
@@ -834,6 +854,11 @@ describe(HomeContentEditor, () => {
         }
         return json({ items: AUDIT_ITEMS });
       }),
+      http.post("/api/v1/home/draft", async ({ request }) => {
+        draftCalls += 1;
+        const body = (await request.json()) as Record<string, unknown>;
+        return json({ ...CONTENT, ...body, status: "Draft", version: 4 });
+      }),
       http.post("/api/v1/home/publish", async ({ request }) => {
         publishCalls += 1;
         const body = (await request.json()) as Record<string, unknown>;
@@ -847,6 +872,7 @@ describe(HomeContentEditor, () => {
     await user.click(
       screen.getByRole("button", { name: EDITOR.savePublished })
     );
+    expect(draftCalls).toBe(1);
     expect(publishCalls).toBe(1);
 
     const retryBtn = await screen.findByRole("button", {
@@ -855,16 +881,21 @@ describe(HomeContentEditor, () => {
     expect(retryBtn).toHaveAttribute("type", "button");
 
     await user.click(retryBtn);
-    expect(auditCalls).toBe(3);
+    await waitFor(() => expect(auditCalls).toBe(3));
+    expect(retryBtn).toBeDisabled();
 
     await user.click(retryBtn);
-    expect(auditCalls).toBe(3);
-    expect(publishCalls).toBe(1);
-
     fireEvent.keyDown(retryBtn, { key: "Enter", code: "Enter" });
+    fireEvent.keyDown(retryBtn, { key: " ", code: "Space" });
+    await waitFor(() => expect(auditCalls).toBe(3));
+    expect(draftCalls).toBe(1);
     expect(publishCalls).toBe(1);
 
     resolveAudit?.();
+    const auditSection = screen
+      .getByRole("heading", { name: EDITOR.auditTrail })
+      .closest("section");
+    await waitFor(() => expect(auditSection).toHaveTextContent("U-EDITOR"));
   });
 
   test("CS-06: busy and disabled lifecycle is preserved continuously across save-before-publish and audit refresh", async () => {
@@ -1053,6 +1084,37 @@ describe(HomeContentEditor, () => {
     );
 
     await expect(screen.findByText(EDITOR.forbidden)).resolves.toBeVisible();
+    expect(screen.queryByText(EDITOR.publishSuccess)).toBeNull();
+  });
+  test("CS-08: publish AUTH_REQUIRED uses the safe deep-link behavior", async () => {
+    const user = userEvent.setup();
+    mocks.router.replace.mockClear();
+    installHandlers();
+    server.use(
+      http.post("/api/v1/home/publish", () =>
+        HttpResponse.json(
+          {
+            type: "about:blank",
+            title: "Unauthorized",
+            status: 401,
+            detail: "Session expired",
+            code: "AUTH_REQUIRED",
+          },
+          { status: 401 }
+        )
+      )
+    );
+
+    render(<HomeContentEditor />);
+    await waitUntilReady();
+
+    await user.click(
+      screen.getByRole("button", { name: EDITOR.savePublished })
+    );
+
+    await waitFor(() => {
+      expect(mocks.router.replace).toHaveBeenCalledWith("/");
+    });
     expect(screen.queryByText(EDITOR.publishSuccess)).toBeNull();
   });
 
@@ -1255,10 +1317,18 @@ describe(HomeContentEditor, () => {
     );
     await waitFor(() => expect(auditGetCount).toBe(5));
 
-    // While call 5 is in-flight, unmount the component
-    unmount();
+    const announceCallsBeforeUnmount = mocks.announce.mock.calls.length;
+    await act(async () => {
+      unmount();
+      unmountAuditGate.resolve(
+        HttpResponse.json(
+          { title: "Audit unavailable", status: 500, code: "HOME_UNAVAILABLE" },
+          { status: 500 }
+        )
+      );
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
 
-    // Now resolve call 5 after unmount: isMountedRef guard discards it cleanly without error
-    unmountAuditGate.resolve(json({ items: AUDIT_ITEMS }));
+    expect(mocks.announce).toHaveBeenCalledTimes(announceCallsBeforeUnmount);
   });
 });
