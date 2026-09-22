@@ -23,6 +23,7 @@ const COPY = {
   catalogClearSearch: "清除搜尋與篩選",
   managementSettings: "課程設定",
   managementNotifications: "開啟管理通知",
+  notificationsDialog: "管理通知",
   settingsBasics: "課程基本資料",
   programName: "課程名稱",
   programDescription: "課程簡介",
