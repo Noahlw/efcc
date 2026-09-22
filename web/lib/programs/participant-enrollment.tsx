@@ -29,11 +29,7 @@ import type {
   ParticipantScheduleRule,
   ProgramSummary,
 } from "@/lib/programs/program-api";
-import {
-  ScreenCard,
-  ScreenSection,
-  ScreenState,
-} from "@/lib/screen-foundations";
+import { ScreenSection, ScreenState } from "@/lib/screen-foundations";
 import { cn } from "@/lib/utils";
 
 export interface ParticipantEnrollmentProps {
@@ -80,12 +76,15 @@ const enrollmentActionVariants = cva(
         primary:
           "border-[var(--screen-accent)] bg-[var(--screen-accent)] text-white hover:bg-[var(--screen-accent-deep)] hover:text-white",
         caution:
-          "border-[var(--screen-pending)] bg-[var(--screen-pending-surface)] text-[var(--screen-pending)] hover:border-[var(--screen-pending)] hover:bg-[var(--screen-pending-surface)] hover:text-[var(--screen-pending)]",
+          "border-[var(--screen-pending)] bg-[var(--screen-pending-surface)] text-[color-mix(in_srgb,var(--screen-pending)_98%,black)] hover:border-[var(--screen-pending)] hover:bg-[var(--screen-pending-surface)] hover:text-[color-mix(in_srgb,var(--screen-pending)_98%,black)]",
       },
     },
     defaultVariants: { tone: "primary" },
   }
 );
+
+const enrollmentActionRegionClass =
+  "sticky bottom-[calc(var(--screen-bottom-nav-height)+env(safe-area-inset-bottom,0px))] z-10 mt-1 grid min-w-0 rounded-[var(--screen-radius-surface)] border border-[var(--screen-line)] bg-[var(--screen-surface)] p-2 shadow-[0_8px_24px_rgba(23,26,29,0.1)]";
 
 function errorMessage(error: unknown): string {
   if (!(error instanceof RpcError)) {
@@ -169,7 +168,10 @@ const EnrollmentAction = ({
       <>
         <p className={copyClass}>{COPY.programs.enrollmentActive}</p>
         <p className={copyClass}>{COPY.programs.enrollmentActiveHint}</p>
-        <ScreenCard className="mt-0" data-enrollment-action-surface>
+        <div
+          className={enrollmentActionRegionClass}
+          data-enrollment-action-region
+        >
           <Button
             type="button"
             variant="outline"
@@ -179,7 +181,7 @@ const EnrollmentAction = ({
           >
             {busy ? COPY.programs.withdrawing : COPY.programs.cancelEnrollment}
           </Button>
-        </ScreenCard>
+        </div>
       </>
     );
   }
@@ -188,7 +190,10 @@ const EnrollmentAction = ({
       <>
         <p className={copyClass}>{COPY.programs.requestPending}</p>
         <p className={copyClass}>{COPY.programs.requestPendingHint}</p>
-        <ScreenCard className="mt-0" data-enrollment-action-surface>
+        <div
+          className={enrollmentActionRegionClass}
+          data-enrollment-action-region
+        >
           <Button
             type="button"
             variant="outline"
@@ -198,7 +203,7 @@ const EnrollmentAction = ({
           >
             {busy ? COPY.programs.withdrawing : COPY.programs.withdrawRequest}
           </Button>
-        </ScreenCard>
+        </div>
       </>
     );
   }
@@ -213,7 +218,10 @@ const EnrollmentAction = ({
         <>
           <p className={copyClass}>{COPY.programs.requestRejected}</p>
           <p className={copyClass}>{COPY.programs.requestRejectedHint}</p>
-          <ScreenCard className="mt-0" data-enrollment-action-surface>
+          <div
+            className={enrollmentActionRegionClass}
+            data-enrollment-action-region
+          >
             <Button
               type="button"
               className={cn(enrollmentActionVariants({ tone: "primary" }))}
@@ -222,7 +230,7 @@ const EnrollmentAction = ({
             >
               {busy ? COPY.programs.submitting : COPY.programs.reEnroll}
             </Button>
-          </ScreenCard>
+          </div>
         </>
       );
     }
@@ -231,7 +239,10 @@ const EnrollmentAction = ({
         <>
           <p className={copyClass}>{COPY.programs.requestWithdrawn}</p>
           <p className={copyClass}>{COPY.programs.requestWithdrawnHint}</p>
-          <ScreenCard className="mt-0" data-enrollment-action-surface>
+          <div
+            className={enrollmentActionRegionClass}
+            data-enrollment-action-region
+          >
             <Button
               type="button"
               className={cn(enrollmentActionVariants({ tone: "primary" }))}
@@ -240,7 +251,7 @@ const EnrollmentAction = ({
             >
               {busy ? COPY.programs.submitting : COPY.programs.reEnroll}
             </Button>
-          </ScreenCard>
+          </div>
         </>
       );
     }
@@ -253,7 +264,10 @@ const EnrollmentAction = ({
       <>
         <p className={copyClass}>{COPY.programs.enrollmentCancelled}</p>
         <p className={copyClass}>{COPY.programs.enrollmentCancelledHint}</p>
-        <ScreenCard className="mt-0" data-enrollment-action-surface>
+        <div
+          className={enrollmentActionRegionClass}
+          data-enrollment-action-region
+        >
           <Button
             type="button"
             className={cn(enrollmentActionVariants({ tone: "primary" }))}
@@ -262,7 +276,7 @@ const EnrollmentAction = ({
           >
             {busy ? COPY.programs.submitting : COPY.programs.reEnroll}
           </Button>
-        </ScreenCard>
+        </div>
       </>
     );
   }
@@ -272,7 +286,7 @@ const EnrollmentAction = ({
     );
   }
   return (
-    <ScreenCard className="mt-0" data-enrollment-action-surface>
+    <div className={enrollmentActionRegionClass} data-enrollment-action-region>
       <Button
         type="button"
         className={cn(enrollmentActionVariants({ tone: "primary" }))}
@@ -281,7 +295,7 @@ const EnrollmentAction = ({
       >
         {busy ? COPY.programs.submitting : COPY.programs.enroll}
       </Button>
-    </ScreenCard>
+    </div>
   );
 };
 

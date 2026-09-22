@@ -260,6 +260,12 @@ const COPY = {
   schedulePageTitle: "聚會排程",
   addRule: "新增時間表",
   generateEvents: "產生聚會",
+  previewLead:
+    "先選擇實際日期範圍，再預覽目前時間表；預覽不會寫入任何聚會記錄。",
+  previewPlanLabel: "已審閱預覽",
+  previewFromDate: "由（香港時間）",
+  previewUntilDate: "至（香港時間）",
+  previewReviewAgain: "重新預覽",
   noManagementScope: "沒有管理範圍",
   workspaceBack: "返回管理課程目錄",
   workspaceTitle: "課程工作區",
@@ -4722,16 +4728,18 @@ test.describe("NTF-01 management attention", () => {
 test.describe("EVT-02 recurring preview and generation", () => {
   // EVT-02 (#252): reachable Program Workspace preview/generate controls.
   const previewEvents = "預覽聚會";
-  const previewChanged = "時間表已變更，請重新預覽。";
-  const previewLead =
-    "預覽會依目前時間表產生未來聚會清單，不會寫入任何聚會記錄。";
+  const previewChanged = "顯示範圍或時間表已變更，請重新預覽。";
+  const previewLead = COPY.previewLead;
 
-  async function openEventsTask(page: Page, programId: string): Promise<void> {
+  async function openScheduleTask(
+    page: Page,
+    programId: string
+  ): Promise<void> {
     await page.goto(
-      `/programs?mode=management&program=${encodeURIComponent(programId)}&task=events`
+      `/programs?mode=management&program=${encodeURIComponent(programId)}&task=schedule`
     );
     await expect(
-      page.getByRole("heading", { name: COPY.workspaceTaskEvents, exact: true })
+      page.getByRole("heading", { name: COPY.schedulePageTitle, exact: true })
     ).toBeVisible();
   }
 
@@ -4863,7 +4871,7 @@ test.describe("EVT-02 recurring preview and generation", () => {
     );
     const [programId] = await catalogProgramIds(page, "E2E_DEMO_成人查經");
     const id = required("fixture program id", programId);
-    await openEventsTask(page, id);
+    await openScheduleTask(page, id);
 
     const before = await eventCount(page, id);
     await expect(
@@ -4873,7 +4881,7 @@ test.describe("EVT-02 recurring preview and generation", () => {
 
     // Server-owned plan identity + exact occurrence rows in the DOM.
     await expect(page.getByText(previewLead)).toBeVisible();
-    await expect(page.getByText(/^方案 /u).first()).toBeVisible();
+    await expect(page.getByText(COPY.previewPlanLabel)).toBeVisible();
     await expect(
       page.locator("[aria-label='預覽聚會'] > li").first()
     ).toBeVisible();
@@ -4895,7 +4903,7 @@ test.describe("EVT-02 recurring preview and generation", () => {
       required("PROGRAMS_ADMIN_CREDENTIAL", ADMIN_CRED)
     );
     const id = await createRecurringProgram(page, "E2E_EVT02_產生");
-    await openEventsTask(page, id);
+    await openScheduleTask(page, id);
     const before = await eventCount(page, id);
     expect(before).toBe(0);
     await page.getByRole("button", { name: previewEvents }).click();
@@ -4917,6 +4925,52 @@ test.describe("EVT-02 recurring preview and generation", () => {
     expect(await eventCount(page, id)).toBeGreaterThan(before);
   });
 
+  test("changing the visible range requires Review Again before generation", async ({
+    page,
+  }) => {
+    await loginAs(
+      page,
+      required("PROGRAMS_ADMIN_USERNAME", ADMIN_USER),
+      required("PROGRAMS_ADMIN_CREDENTIAL", ADMIN_CRED)
+    );
+    const id = await createRecurringProgram(page, "E2E_EVT02_範圍");
+    await openScheduleTask(page, id);
+    const before = await eventCount(page, id);
+
+    await page.getByRole("button", { name: previewEvents }).click();
+    // The reviewed-plan label settles only after the Preview response lands.
+    await expect(page.getByText(COPY.previewPlanLabel)).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: COPY.generateEvents })
+    ).toBeEnabled();
+
+    const fromDate = page.getByLabel(COPY.previewFromDate);
+    const nextFromDate = await fromDate.evaluate((input) => {
+      const value = (input as HTMLInputElement).value;
+      const date = new Date(`${value}T00:00:00Z`);
+      date.setUTCDate(date.getUTCDate() + 1);
+      return date.toISOString().slice(0, 10);
+    });
+    await fromDate.fill(nextFromDate);
+
+    await expect(
+      page.getByRole("alert").filter({ hasText: previewChanged })
+    ).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: COPY.generateEvents })
+    ).toBeDisabled();
+
+    await page.getByRole("button", { name: COPY.previewReviewAgain }).click();
+    await expect(
+      page.getByRole("button", { name: COPY.generateEvents })
+    ).toBeEnabled();
+    await page.getByRole("button", { name: COPY.generateEvents }).click();
+    await expect(
+      page.getByText(/^已產生 \d+ 場聚會，跳過 \d+ 場重複。$/u).first()
+    ).toBeVisible();
+    await expect.poll(async () => eventCount(page, id)).toBeGreaterThan(before);
+  });
+
   test("a stale plan is rejected before writes and requires a fresh preview", async ({
     page,
   }) => {
@@ -4930,7 +4984,7 @@ test.describe("EVT-02 recurring preview and generation", () => {
     const rule = rules[0];
     expect(rule).toBeTruthy();
 
-    await openEventsTask(page, id);
+    await openScheduleTask(page, id);
     const before = await eventCount(page, id);
     await page.getByRole("button", { name: previewEvents }).click();
     await expect(
@@ -4948,11 +5002,23 @@ test.describe("EVT-02 recurring preview and generation", () => {
       hasText: previewChanged,
     });
     await expect(staleAlert).toBeVisible();
-    // The stale plan is cleared; the UI requires a new preview.
+    // The old plan remains visible for comparison but is no longer actionable.
     await expect(
       page.getByRole("button", { name: COPY.generateEvents })
-    ).toHaveCount(0);
+    ).toBeDisabled();
     expect(await eventCount(page, id)).toBe(before);
+
+    // A fresh matching Preview restores Generate, and only then may the
+    // bounded generation write Events.
+    await page.getByRole("button", { name: COPY.previewReviewAgain }).click();
+    await expect(
+      page.getByRole("button", { name: COPY.generateEvents })
+    ).toBeEnabled();
+    await page.getByRole("button", { name: COPY.generateEvents }).click();
+    await expect(
+      page.getByText(/^已產生 \d+ 場聚會，跳過 \d+ 場重複。$/u).first()
+    ).toBeVisible();
+    await expect.poll(async () => eventCount(page, id)).toBeGreaterThan(before);
   });
 
   test("preview/generate controls are unreachable without the manage capability", async ({

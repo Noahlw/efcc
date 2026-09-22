@@ -28,6 +28,7 @@ if (!isLoopback && !isReservedWorker) {
     "PROGRAMS_TARGET_URL must be a loopback HTTP URL or a reserved HTTPS efcc-auth/efcc-dev Worker URL"
   );
 }
+const ROSTER_SCENARIO = /attendance roster remains scannable at phone widths/u;
 
 export default defineConfig({
   testDir: ".",
@@ -58,23 +59,98 @@ export default defineConfig({
   projects: [
     {
       name: "phone-320",
+      grepInvert: ROSTER_SCENARIO,
       use: {
         ...devices["Pixel 5"],
         viewport: { width: 320, height: 812 },
       },
     },
     {
+      name: "phone-360",
+      grepInvert: ROSTER_SCENARIO,
+      use: {
+        ...devices["Pixel 5"],
+        viewport: { width: 360, height: 800 },
+      },
+    },
+    {
       name: "phone-390",
+      grepInvert: ROSTER_SCENARIO,
       use: {
         ...devices["Pixel 5"],
         viewport: { width: 390, height: 844 },
       },
     },
     {
-      name: "desktop-1280",
+      name: "phone-402",
+      grepInvert: ROSTER_SCENARIO,
+      use: {
+        ...devices["Pixel 5"],
+        viewport: { width: 402, height: 874 },
+      },
+    },
+    {
+      name: "phone-360-roster",
+      grep: ROSTER_SCENARIO,
+      use: {
+        ...devices["Pixel 5"],
+        viewport: { width: 360, height: 800 },
+      },
+    },
+    {
+      name: "phone-390-roster",
+      grep: ROSTER_SCENARIO,
+      use: {
+        ...devices["Pixel 5"],
+        viewport: { width: 390, height: 844 },
+      },
+    },
+    {
+      name: "phone-402-roster",
+      grep: ROSTER_SCENARIO,
+      use: {
+        ...devices["Pixel 5"],
+        viewport: { width: 402, height: 874 },
+      },
+    },
+    {
+      name: "phone-600",
+      grepInvert: ROSTER_SCENARIO,
+      use: {
+        ...devices["Pixel 5"],
+        viewport: { width: 600, height: 844 },
+      },
+    },
+    {
+      name: "phone-799",
+      grepInvert: ROSTER_SCENARIO,
+      use: {
+        ...devices["Pixel 5"],
+        viewport: { width: 799, height: 900 },
+      },
+    },
+    {
+      name: "desktop-800",
+      grepInvert: ROSTER_SCENARIO,
       use: {
         ...devices["Desktop Chrome"],
-        viewport: { width: 1280, height: 720 },
+        viewport: { width: 800, height: 900 },
+      },
+    },
+    {
+      name: "desktop-1024",
+      grepInvert: ROSTER_SCENARIO,
+      use: {
+        ...devices["Desktop Chrome"],
+        viewport: { width: 1024, height: 900 },
+      },
+    },
+    {
+      name: "desktop-1440",
+      grepInvert: ROSTER_SCENARIO,
+      use: {
+        ...devices["Desktop Chrome"],
+        viewport: { width: 1440, height: 900 },
       },
     },
   ],

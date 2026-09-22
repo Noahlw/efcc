@@ -1,10 +1,12 @@
 import assert from "node:assert/strict";
 
+import type { D1Database } from "@cloudflare/workers-types";
 import { env } from "cloudflare:workers";
 import { beforeAll, describe, test, vi } from "vitest";
 
 import worker from "../worker";
 import type { Env } from "../worker";
+import { handleMaterializeAttendance } from "./attendance";
 import { importLegacyUsers } from "./auth/accounts";
 import { ACCESS_COOKIE_NAME } from "./auth/cookies";
 import { applyMigrations, testDb } from "./auth/test-bootstrap";
@@ -655,6 +657,560 @@ describe("attendance Worker routes", () => {
     }
   });
 
+  test("guest acknowledgement loss reconciles the authoritative record without leaking its id", async () => {
+    const idempotencyKey = "guest-ack-loss-reconcile";
+    const payload = {
+      event_id: EVENT,
+      method: "guest_manual_code",
+      manual_code: "ATT1234",
+      name: "訪客確認",
+      phone: "9123 4599",
+    } as const;
+    await worker.fetch(
+      request("/api/v1/attendance/guest", {
+        method: "POST",
+        headers: { "Idempotency-Key": idempotencyKey },
+        body: JSON.stringify(payload),
+      }),
+      testEnv()
+    );
+    let attendanceId: string | undefined;
+    let originalEvent: {
+      status: string;
+      cancel_reason: string | null;
+      check_in_window_closes_at: string;
+    } | null = null;
+
+    const findCommittedAttendance = () =>
+      testDb()
+        .prepare(
+          `SELECT attendance_id
+             FROM attendances
+            WHERE event_id = ?
+              AND guest_name = ?
+              AND guest_phone = ?
+              AND status = 'Active'
+            ORDER BY checked_in_at DESC
+            LIMIT 1`
+        )
+        .bind(payload.event_id, payload.name, payload.phone)
+        .first<{ attendance_id: string }>();
+
+    try {
+      originalEvent = await testDb()
+        .prepare(
+          "SELECT status, cancel_reason, check_in_window_closes_at FROM events WHERE event_id = ?"
+        )
+        .bind(EVENT)
+        .first<{
+          status: string;
+          cancel_reason: string | null;
+          check_in_window_closes_at: string;
+        }>();
+      assert.ok(originalEvent);
+
+      const storedProof = await testDb()
+        .prepare(
+          "SELECT proof_hash, request_fingerprint, attendance_id FROM attendance_guest_reconcile_proofs WHERE event_id = ?"
+        )
+        .bind(EVENT)
+        .first<{
+          proof_hash: string;
+          request_fingerprint: string;
+          attendance_id: string;
+        }>();
+      assert.ok(storedProof);
+      assert.strictEqual(storedProof.proof_hash.length, 64);
+      assert.notStrictEqual(storedProof.proof_hash, idempotencyKey);
+      assert.notStrictEqual(storedProof.request_fingerprint, idempotencyKey);
+
+      const duplicateRetry = await worker.fetch(
+        request("/api/v1/attendance/guest", {
+          method: "POST",
+          headers: { "Idempotency-Key": idempotencyKey },
+          body: JSON.stringify(payload),
+        }),
+        testEnv()
+      );
+      assert.strictEqual(duplicateRetry.status, 200);
+      const duplicateRetryBody = await json(duplicateRetry);
+      assert.deepStrictEqual(duplicateRetryBody.data, {
+        outcome: "duplicate",
+      });
+      const replayAudit = await testDb()
+        .prepare(
+          `SELECT action, entity_type, entity_id, outcome, reason, correlation_id
+             FROM audit_events
+            WHERE correlation_id = ?`
+        )
+        .bind(duplicateRetryBody.requestId)
+        .first<{
+          action: string;
+          entity_type: string;
+          entity_id: string;
+          outcome: string;
+          reason: string;
+          correlation_id: string;
+        }>();
+      assert.deepStrictEqual(replayAudit, {
+        action: "attendance.check_in",
+        entity_type: "Attendance",
+        entity_id: storedProof.attendance_id,
+        outcome: "DUPLICATE",
+        reason: "IDEMPOTENCY_REPLAY",
+        correlation_id: duplicateRetryBody.requestId,
+      });
+
+      await testDb()
+        .prepare(
+          "UPDATE events SET check_in_window_closes_at = ? WHERE event_id = ?"
+        )
+        .bind(new Date(Date.now() - 1000).toISOString(), EVENT)
+        .run();
+      const reconciled = await worker.fetch(
+        request("/api/v1/attendance/guest/reconcile", {
+          method: "POST",
+          headers: { "Idempotency-Key": idempotencyKey },
+          body: JSON.stringify(payload),
+        }),
+        testEnv()
+      );
+      assert.strictEqual(reconciled.status, 200);
+      const reconciledBody = await json(reconciled);
+      const reconciledData = reconciledBody.data as Record<string, unknown>;
+      assert.strictEqual(reconciledData.outcome, "found");
+      assert.strictEqual("checked_in_at" in reconciledData, false);
+      assert.strictEqual("attendance_id" in reconciledData, false);
+      const committed = await findCommittedAttendance();
+      assert.ok(committed?.attendance_id);
+      attendanceId = committed.attendance_id;
+
+      await testDb()
+        .prepare(
+          "UPDATE events SET status = 'Cancelled', cancel_reason = ? WHERE event_id = ?"
+        )
+        .bind("測試取消", EVENT)
+        .run();
+      const afterCancellation = await worker.fetch(
+        request("/api/v1/attendance/guest/reconcile", {
+          method: "POST",
+          headers: { "Idempotency-Key": idempotencyKey },
+          body: JSON.stringify(payload),
+        }),
+        testEnv()
+      );
+      assert.strictEqual(afterCancellation.status, 200);
+      const afterCancellationBody = await json(afterCancellation);
+      assert.deepStrictEqual(afterCancellationBody.data, {
+        outcome: "found",
+      });
+
+      const missingProof = await worker.fetch(
+        request("/api/v1/attendance/guest/reconcile", {
+          method: "POST",
+          body: JSON.stringify(payload),
+        }),
+        testEnv()
+      );
+      assert.strictEqual(missingProof.status, 200);
+      const missingProofBody = await json(missingProof);
+      assert.deepStrictEqual(missingProofBody.data, {
+        outcome: "not_found",
+      });
+
+      const wrongKey = await worker.fetch(
+        request("/api/v1/attendance/guest/reconcile", {
+          method: "POST",
+          headers: { "Idempotency-Key": "guest-ack-wrong-proof" },
+          body: JSON.stringify(payload),
+        }),
+        testEnv()
+      );
+      assert.strictEqual(wrongKey.status, 200);
+      const wrongKeyBody = await json(wrongKey);
+      assert.deepStrictEqual(wrongKeyBody.data, {
+        outcome: "not_found",
+      });
+
+      const crossEvent = await worker.fetch(
+        request("/api/v1/attendance/guest/reconcile", {
+          method: "POST",
+          headers: { "Idempotency-Key": idempotencyKey },
+          body: JSON.stringify({
+            ...payload,
+            event_id: CANCELLED_EVENT,
+            manual_code: "ATTCANCEL",
+          }),
+        }),
+        testEnv()
+      );
+      assert.strictEqual(crossEvent.status, 200);
+      const crossEventBody = await json(crossEvent);
+      assert.deepStrictEqual(crossEventBody.data, {
+        outcome: "not_found",
+      });
+
+      const wrongGuest = await worker.fetch(
+        request("/api/v1/attendance/guest/reconcile", {
+          method: "POST",
+          headers: { "Idempotency-Key": idempotencyKey },
+          body: JSON.stringify({ ...payload, name: "其他訪客" }),
+        }),
+        testEnv()
+      );
+      assert.strictEqual(wrongGuest.status, 200);
+      const wrongGuestBody = await json(wrongGuest);
+      assert.deepStrictEqual(wrongGuestBody.data, {
+        outcome: "not_found",
+      });
+
+      const wrongProof = await worker.fetch(
+        request("/api/v1/attendance/guest/reconcile", {
+          method: "POST",
+          body: JSON.stringify({ ...payload, manual_code: "WRONGCODE" }),
+        }),
+        testEnv()
+      );
+      assert.strictEqual(wrongProof.status, 403);
+      const wrongProofBody = await json(wrongProof);
+      assert.strictEqual(wrongProofBody.code, "INVALID_CHECK_IN_ENTRY");
+    } finally {
+      if (originalEvent) {
+        await testDb()
+          .prepare(
+            "UPDATE events SET status = ?, cancel_reason = ?, check_in_window_closes_at = ? WHERE event_id = ?"
+          )
+          .bind(
+            originalEvent.status,
+            originalEvent.cancel_reason,
+            originalEvent.check_in_window_closes_at,
+            EVENT
+          )
+          .run();
+      }
+      if (!attendanceId) {
+        const committed = await findCommittedAttendance();
+        attendanceId = committed?.attendance_id;
+      }
+      if (attendanceId) {
+        const admin = await accessCookieFor("att-admin", "att-admin-password");
+        const voided = await worker.fetch(
+          request(`/api/v1/attendance/${attendanceId}/void`, {
+            method: "POST",
+            headers: { Cookie: `${ACCESS_COOKIE_NAME}=${admin}` },
+            body: JSON.stringify({ reason: "測試清理" }),
+          }),
+          testEnv()
+        );
+        assert.strictEqual(voided.status, 200);
+      }
+    }
+  });
+
+  test("guest reconciliation ignores voided proofs without breaking re-check-in", async () => {
+    const firstKey = "guest-voided-proof";
+    const retryKey = "guest-voided-proof-retry";
+    const payload = {
+      event_id: EVENT,
+      method: "guest_manual_code",
+      manual_code: "ATT1234",
+      name: "訪客作廢重試",
+      phone: "9123 4588",
+    } as const;
+    const admin = await accessCookieFor("att-admin", "att-admin-password");
+    let firstAttendanceId: string | null = null;
+    let retryAttendanceId: string | null = null;
+
+    try {
+      const first = await worker.fetch(
+        request("/api/v1/attendance/guest", {
+          method: "POST",
+          headers: { "Idempotency-Key": firstKey },
+          body: JSON.stringify(payload),
+        }),
+        testEnv()
+      );
+      assert.strictEqual(first.status, 201);
+      const firstBody = await json(first);
+      firstAttendanceId = (firstBody.data as { attendance_id: string })
+        .attendance_id;
+      assert.ok(firstAttendanceId);
+
+      const activeProof = await worker.fetch(
+        request("/api/v1/attendance/guest/reconcile", {
+          method: "POST",
+          headers: { "Idempotency-Key": firstKey },
+          body: JSON.stringify(payload),
+        }),
+        testEnv()
+      );
+      assert.strictEqual(activeProof.status, 200);
+      assert.deepStrictEqual((await json(activeProof)).data, {
+        outcome: "found",
+      });
+
+      const voided = await worker.fetch(
+        request(`/api/v1/attendance/${firstAttendanceId}/void`, {
+          method: "POST",
+          headers: { Cookie: `${ACCESS_COOKIE_NAME}=${admin}` },
+          body: JSON.stringify({ reason: "測試作廢" }),
+        }),
+        testEnv()
+      );
+      assert.strictEqual(voided.status, 200);
+
+      const afterVoid = await worker.fetch(
+        request("/api/v1/attendance/guest/reconcile", {
+          method: "POST",
+          headers: { "Idempotency-Key": firstKey },
+          body: JSON.stringify(payload),
+        }),
+        testEnv()
+      );
+      assert.strictEqual(afterVoid.status, 200);
+      const afterVoidBody = await json(afterVoid);
+      assert.deepStrictEqual(afterVoidBody.data, { outcome: "not_found" });
+      const reconciliationAudit = await testDb()
+        .prepare("SELECT 1 AS found FROM audit_events WHERE correlation_id = ?")
+        .bind(afterVoidBody.requestId)
+        .first<{ found: number }>();
+      assert.strictEqual(reconciliationAudit, null);
+
+      const sameKeyReplay = await worker.fetch(
+        request("/api/v1/attendance/guest", {
+          method: "POST",
+          headers: { "Idempotency-Key": firstKey },
+          body: JSON.stringify(payload),
+        }),
+        testEnv()
+      );
+      assert.strictEqual(sameKeyReplay.status, 200);
+      assert.deepStrictEqual((await json(sameKeyReplay)).data, {
+        outcome: "duplicate",
+      });
+
+      const retry = await worker.fetch(
+        request("/api/v1/attendance/guest", {
+          method: "POST",
+          headers: { "Idempotency-Key": retryKey },
+          body: JSON.stringify(payload),
+        }),
+        testEnv()
+      );
+      assert.strictEqual(retry.status, 201);
+      retryAttendanceId = (
+        (await json(retry)).data as { attendance_id: string }
+      ).attendance_id;
+
+      const recoveredRetry = await worker.fetch(
+        request("/api/v1/attendance/guest/reconcile", {
+          method: "POST",
+          headers: { "Idempotency-Key": retryKey },
+          body: JSON.stringify(payload),
+        }),
+        testEnv()
+      );
+      assert.strictEqual(recoveredRetry.status, 200);
+      assert.deepStrictEqual((await json(recoveredRetry)).data, {
+        outcome: "found",
+      });
+    } finally {
+      for (const attendanceId of [firstAttendanceId, retryAttendanceId]) {
+        if (!attendanceId) {
+          continue;
+        }
+        const cleanup = await worker.fetch(
+          request(`/api/v1/attendance/${attendanceId}/void`, {
+            method: "POST",
+            headers: { Cookie: `${ACCESS_COOKIE_NAME}=${admin}` },
+            body: JSON.stringify({ reason: "測試清理" }),
+          }),
+          testEnv()
+        );
+        assert.ok(cleanup.status === 200);
+      }
+    }
+  });
+
+  test("concurrent reuse of one guest key commits one attendance and one proof", async () => {
+    const idempotencyKey = "guest-race-proof";
+    const payload = {
+      event_id: EVENT,
+      method: "guest_manual_code",
+      manual_code: "ATT1234",
+    } as const;
+    const attempts = [
+      { name: "競爭訪客甲", phone: "6333 3001" },
+      { name: "競爭訪客乙", phone: "6333 3002" },
+    ];
+    const responses = await Promise.all(
+      attempts.map(({ name, phone }) =>
+        worker.fetch(
+          request("/api/v1/attendance/guest", {
+            method: "POST",
+            headers: { "Idempotency-Key": idempotencyKey },
+            body: JSON.stringify({ ...payload, name, phone }),
+          }),
+          testEnv()
+        )
+      )
+    );
+    assert.deepStrictEqual(
+      responses.map((response) => response.status).sort((a, b) => a - b),
+      [201, 409]
+    );
+
+    const rows = await testDb()
+      .prepare(
+        `SELECT attendance_id, guest_name, guest_phone
+           FROM attendances
+          WHERE event_id = ?
+            AND guest_phone_normalized IN ('hk:85263333001', 'hk:85263333002')
+            AND status = 'Active'`
+      )
+      .bind(EVENT)
+      .all<{
+        attendance_id: string;
+        guest_name: string;
+        guest_phone: string;
+      }>();
+    assert.strictEqual(rows.results.length, 1);
+    const committedAttendanceId = rows.results[0]?.attendance_id;
+    assert.ok(committedAttendanceId);
+
+    const proof = await testDb()
+      .prepare(
+        `SELECT proof_hash, attendance_id, request_id
+           FROM attendance_guest_reconcile_proofs
+          WHERE event_id = ? AND attendance_id = ?`
+      )
+      .bind(EVENT, committedAttendanceId)
+      .first<{
+        proof_hash: string;
+        attendance_id: string;
+        request_id: string;
+      }>();
+    assert.ok(proof);
+    assert.strictEqual(proof.proof_hash.length, 64);
+    assert.strictEqual(proof.attendance_id, committedAttendanceId);
+    assert.notStrictEqual(proof.request_id, idempotencyKey);
+
+    await testDb()
+      .prepare(
+        "UPDATE attendances SET status = 'Voided', voided_at = ? WHERE attendance_id = ?"
+      )
+      .bind(new Date().toISOString(), committedAttendanceId)
+      .run();
+  });
+
+  test("guest reconciliation proof trigger binds an active guest attendance", async () => {
+    const now = new Date().toISOString();
+    const guestAttendanceId = "ATT-PROOF-GUEST";
+    const memberAttendanceId = "ATT-PROOF-MEMBER";
+    await testDb()
+      .prepare(
+        `INSERT INTO attendances
+          (attendance_id, event_id, member_user_id, guest_name, guest_phone,
+           guest_phone_normalized, method, status, checked_in_at, checked_in_by)
+         VALUES (?, ?, NULL, '證明訪客', '6444 0001', 'hk:85264440001',
+                 'guest_manual_code', 'Active', ?, NULL)`
+      )
+      .bind(guestAttendanceId, EVENT, now)
+      .run();
+    await testDb()
+      .prepare(
+        `INSERT INTO attendances
+          (attendance_id, event_id, member_user_id, guest_name, guest_phone,
+           guest_phone_normalized, method, status, checked_in_at, checked_in_by)
+         VALUES (?, ?, 'ATT-MEMBER', NULL, NULL, NULL,
+                 'leader_manual_search', 'Active', ?, 'ATT-ADMIN')`
+      )
+      .bind(memberAttendanceId, QR_EVENT, now)
+      .run();
+
+    try {
+      await assert.rejects(
+        testDb()
+          .prepare(
+            `INSERT INTO attendance_guest_reconcile_proofs
+              (proof_hash, request_fingerprint, program_id, event_id,
+               attendance_id, request_id, created_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?)`
+          )
+          .bind(
+            "proof-cross-event",
+            "fingerprint-cross-event",
+            PROGRAM,
+            QR_EVENT,
+            guestAttendanceId,
+            "request-cross-event",
+            now
+          )
+          .run(),
+        /guest reconciliation proof target mismatch/u
+      );
+      await assert.rejects(
+        testDb()
+          .prepare(
+            `INSERT INTO attendance_guest_reconcile_proofs
+              (proof_hash, request_fingerprint, program_id, event_id,
+               attendance_id, request_id, created_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?)`
+          )
+          .bind(
+            "proof-member-attendance",
+            "fingerprint-member-attendance",
+            PROGRAM,
+            QR_EVENT,
+            memberAttendanceId,
+            "request-member-attendance",
+            now
+          )
+          .run(),
+        /guest reconciliation proof target mismatch/u
+      );
+    } finally {
+      await testDb()
+        .prepare("DELETE FROM attendances WHERE attendance_id IN (?, ?)")
+        .bind(guestAttendanceId, memberAttendanceId)
+        .run();
+    }
+  });
+
+  test("guest reconciliation uses a separate rate-limit bucket before identity lookup", async () => {
+    const limit = vi.fn<() => Promise<{ success: false }>>(() =>
+      Promise.resolve({ success: false })
+    );
+    const customEnv: Env = {
+      ...testEnv(),
+      RPC_RATE_LIMITER: { limit } as unknown as Env["RPC_RATE_LIMITER"],
+    };
+    const payload = {
+      event_id: EVENT,
+      method: "guest_manual_code",
+      manual_code: "ATT1234",
+      name: "訪客限流確認",
+      phone: "9111 2233",
+    };
+
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      const response = await worker.fetch(
+        request("/api/v1/attendance/guest/reconcile", {
+          method: "POST",
+          body: JSON.stringify(payload),
+        }),
+        customEnv
+      );
+      assert.strictEqual(response.status, 429);
+      const body = await json(response);
+      assert.strictEqual(body.code, "RATE_LIMITED");
+    }
+    assert.deepStrictEqual(limit.mock.calls, [
+      [{ key: `guest-reconcile:${EVENT}` }],
+      [{ key: `guest-reconcile:${EVENT}` }],
+    ]);
+  });
+
   test("guest check-in respects rate limiting when limiter rejects", async () => {
     const customEnv: Env = {
       ...testEnv(),
@@ -1011,7 +1567,7 @@ describe("attendance Worker routes", () => {
     assert.strictEqual(after?.count, before?.count);
   });
 
-  test("assisted member search stays available after the window closes (US 25 recovery)", async () => {
+  test("assisted member search closes with the Event window", async () => {
     const admin = await accessCookieFor("att-admin", "att-admin-password");
     const response = await worker.fetch(
       request(
@@ -1022,17 +1578,12 @@ describe("attendance Worker routes", () => {
       ),
       testEnv()
     );
-    // Assisted check-in is capability-gated only (Spec 081 L88), so the
-    // operator must still be able to find the member for a post-window
-    // recording.
-    assert.strictEqual(response.status, 200);
+    assert.strictEqual(response.status, 409);
     const body = await json(response);
-    const { members } = body.data as { members: { user_id: string }[] };
-    assert.strictEqual(members.length, 1);
-    assert.strictEqual(members[0].user_id, "ATT-MEMBER");
+    assert.strictEqual(body.code, "CHECK_IN_CLOSED");
   });
 
-  test("assisted check-in still records attendance after the window closes (US 25 recovery)", async () => {
+  test("assisted check-in rejects attendance after the window closes", async () => {
     const admin = await accessCookieFor("att-admin", "att-admin-password");
     const before = await testDb()
       .prepare(
@@ -1051,17 +1602,16 @@ describe("attendance Worker routes", () => {
       }),
       testEnv()
     );
-    // Assisted check-in is capability-gated only (Spec 081 L88): an operator
-    // may record attendance after the window closes (US 25 recovery). This is
-    // the regression test for that path — it must record, not reject.
-    assert.strictEqual(response.status, 201);
+    assert.strictEqual(response.status, 409);
+    const body = await json(response);
+    assert.strictEqual(body.code, "CHECK_IN_CLOSED");
     const after = await testDb()
       .prepare(
         "SELECT COUNT(*) AS count FROM attendances WHERE event_id = ? AND status = 'Active'"
       )
       .bind(CLOSED_EVENT)
       .first<{ count: number }>();
-    assert.strictEqual(after?.count, (before?.count ?? 0) + 1);
+    assert.strictEqual(after?.count, before?.count ?? 0);
   });
 
   test("assisted check-in revalidates the active Program boundary", async () => {
@@ -1354,7 +1904,7 @@ describe("attendance Worker routes", () => {
         );
         assert.strictEqual(response.status, 200);
         const body = await json(response);
-        const data = body.data;
+        const { data } = body;
         assert.ok(
           data &&
             typeof data === "object" &&
@@ -1453,6 +2003,7 @@ describe("attendance Worker routes", () => {
         .run();
     }
   });
+
   test("operator chooser filters authorization before applying result limit", async () => {
     const member = await accessCookieFor("att-member", "att-member-password");
     await assignIdentity(
@@ -1496,7 +2047,7 @@ describe("attendance Worker routes", () => {
       );
       assert.strictEqual(response.status, 200);
       const body = await json(response);
-      const data = body.data;
+      const { data } = body;
       assert.ok(
         data &&
           typeof data === "object" &&
@@ -1699,6 +2250,29 @@ describe("attendance Worker routes", () => {
     assert.strictEqual(conflict.status, 409);
     const conflictBody = await json(conflict);
     assert.strictEqual(conflictBody.code, "DUPLICATE_ATTENDANCE");
+    const conflictAudit = await testDb()
+      .prepare(
+        `SELECT action, outcome, entity_type, entity_id, reason, correlation_id
+           FROM audit_events
+          WHERE correlation_id = ?`
+      )
+      .bind(conflictBody.requestId)
+      .first<{
+        action: string;
+        outcome: string;
+        entity_type: string;
+        entity_id: string;
+        reason: string;
+        correlation_id: string;
+      }>();
+    assert.deepStrictEqual(conflictAudit, {
+      action: "attendance.guest_correct",
+      outcome: "CONFLICT",
+      entity_type: "Attendance",
+      entity_id: rowA.attendance_id,
+      reason: "ACTIVE_ATTENDANCE_EXISTS",
+      correlation_id: conflictBody.requestId,
+    });
 
     // A fresh phone corrects cleanly and the roster reflects the edit.
     const corrected = await worker.fetch(
@@ -2056,6 +2630,119 @@ describe("attendance Worker routes", () => {
       .first<{ outcome: string; reason: string }>();
     assert.strictEqual(audit?.outcome, "DUPLICATE");
     assert.strictEqual(audit?.reason, "ALREADY_VOIDED");
+  });
+
+  test("concurrent void attempts commit one state transition and audit the loser as DUPLICATE", async () => {
+    const [admin, member] = await Promise.all([
+      accessCookieFor("att-admin", "att-admin-password"),
+      accessCookieFor("att-member", "att-member-password"),
+    ]);
+    const eventId = `ATT-CONCURRENT-VOID-EVENT-${crypto.randomUUID()}`;
+    const attendanceId = `ATT-CONCURRENT-VOID-${crypto.randomUUID()}`;
+    const assignmentId = `ATT-CONCURRENT-VOID-ASSIGNMENT-${crypto.randomUUID()}`;
+    const now = new Date().toISOString();
+    await testDb()
+      .prepare(
+        `INSERT INTO events
+          (event_id, program_id, starts_at, ends_at, status, source,
+           name, created_at, updated_at)
+         VALUES (?, ?, ?, ?, 'Active', 'MANUAL', ?, ?, ?)`
+      )
+      .bind(
+        eventId,
+        PROGRAM,
+        now,
+        new Date(Date.parse(now) + 60_000).toISOString(),
+        "並行作廢測試",
+        now,
+        now
+      )
+      .run();
+    await testDb()
+      .prepare(
+        `INSERT INTO attendances
+          (attendance_id, event_id, member_user_id, method, status,
+           checked_in_at, checked_in_by)
+         VALUES (?, ?, 'ATT-MEMBER', 'leader_manual_search', 'Active', ?, 'ATT-MEMBER')`
+      )
+      .bind(attendanceId, eventId, now)
+      .run();
+    await assignIdentity(PROGRAM_IDENTITY, "ATT-MEMBER", assignmentId);
+
+    try {
+      const [adminVoid, memberVoid] = await Promise.all([
+        worker.fetch(
+          request(`/api/v1/attendance/${attendanceId}/void`, {
+            method: "POST",
+            headers: { Cookie: `${ACCESS_COOKIE_NAME}=${admin}` },
+            body: JSON.stringify({ reason: "管理員並行作廢" }),
+          }),
+          testEnv()
+        ),
+        worker.fetch(
+          request(`/api/v1/attendance/${attendanceId}/void`, {
+            method: "POST",
+            headers: { Cookie: `${ACCESS_COOKIE_NAME}=${member}` },
+            body: JSON.stringify({ reason: "操作員並行作廢" }),
+          }),
+          testEnv()
+        ),
+      ]);
+      assert.strictEqual(adminVoid.status, 200);
+      assert.strictEqual(memberVoid.status, 200);
+      const responses = await Promise.all([json(adminVoid), json(memberVoid)]);
+      const outcomes = responses.map(
+        (response) => (response.data as { outcome: string }).outcome
+      );
+      assert.deepStrictEqual([...outcomes].sort(), [
+        "already_voided",
+        "voided",
+      ]);
+
+      const row = await testDb()
+        .prepare(
+          "SELECT status, voided_by, void_reason FROM attendances WHERE attendance_id = ?"
+        )
+        .bind(attendanceId)
+        .first<{ status: string; voided_by: string; void_reason: string }>();
+      assert.strictEqual(row?.status, "Voided");
+      assert.ok(row?.voided_by);
+      assert.ok(row?.void_reason);
+
+      for (const response of responses) {
+        const audit = await testDb()
+          .prepare(
+            "SELECT action, outcome, actor_user_id FROM audit_events WHERE correlation_id = ?"
+          )
+          .bind(response.requestId)
+          .first<{
+            action: string;
+            outcome: string;
+            actor_user_id: string;
+          }>();
+        assert.strictEqual(audit?.action, "attendance.void");
+        assert.ok(
+          audit?.outcome === "SUCCESS" || audit?.outcome === "DUPLICATE"
+        );
+        assert.ok(
+          audit?.actor_user_id === "ATT-ADMIN" ||
+            audit?.actor_user_id === "ATT-MEMBER"
+        );
+      }
+    } finally {
+      await testDb()
+        .prepare("DELETE FROM role_assignments WHERE assignment_id = ?")
+        .bind(assignmentId)
+        .run();
+      await testDb()
+        .prepare("DELETE FROM attendances WHERE attendance_id = ?")
+        .bind(attendanceId)
+        .run();
+      await testDb()
+        .prepare("DELETE FROM events WHERE event_id = ?")
+        .bind(eventId)
+        .run();
+    }
   });
 
   test("cross-scope operator and ordinary member are denied on roster, void, and guest correction (403 FORBIDDEN)", async () => {
@@ -2479,6 +3166,38 @@ describe("attendance Worker routes", () => {
     assert.deepStrictEqual(unknownData.events, []);
     assert.strictEqual(unknownData.latest, null);
 
+    // An Event under an Archived Program is not a valid scanner target and
+    // must not leak its identity through the latest/outcome projection.
+    await testDb()
+      .prepare(
+        "UPDATE programs SET lifecycle = 'Archived' WHERE program_id = ?"
+      )
+      .bind(PROGRAM)
+      .run();
+    try {
+      const archivedResp = await worker.fetch(
+        request(
+          `/api/v1/attendance/resolve?event=${encodeURIComponent(EVENT)}`
+        ),
+        testEnv()
+      );
+      assert.strictEqual(archivedResp.status, 200);
+      const archivedBody = await json(archivedResp);
+      const archivedData = archivedBody.data as {
+        events: unknown[];
+        latest: unknown;
+      };
+      assert.deepStrictEqual(archivedData.events, []);
+      assert.strictEqual(archivedData.latest, null);
+    } finally {
+      await testDb()
+        .prepare(
+          "UPDATE programs SET lifecycle = 'Active' WHERE program_id = ?"
+        )
+        .bind(PROGRAM)
+        .run();
+    }
+
     // ?event with another explicit credential is rejected as ambiguous.
     const conflictResp = await worker.fetch(
       request(
@@ -2489,5 +3208,1334 @@ describe("attendance Worker routes", () => {
     assert.strictEqual(conflictResp.status, 422);
     const conflictBody = await json(conflictResp);
     assert.strictEqual(conflictBody.code, "VALIDATION");
+  });
+
+  test("materializes a durable expected roster across start, early, and late enrollment boundaries", async () => {
+    const admin = await accessCookieFor("att-admin", "att-admin-password");
+    const eventId = "ATT-SNAPSHOT-BOUNDARY";
+    const start = new Date(Date.now() - 2 * 60 * 60_000);
+    const end = new Date(Date.now() - 60 * 60_000);
+    const opens = new Date(start.getTime() - 60 * 60_000);
+    const initialClose = new Date(Date.now() + 60 * 60_000);
+    const createdAt = new Date().toISOString();
+    const startEnrollment = "ATT-SNAPSHOT-START-ENROLLMENT";
+    const earlyEnrollment = "ATT-SNAPSHOT-EARLY-ENROLLMENT";
+    const lateEnrollment = "ATT-SNAPSHOT-LATE-ENROLLMENT";
+    await testDb()
+      .prepare(
+        `INSERT INTO events
+          (event_id, program_id, starts_at, ends_at, status, availability,
+           source, manual_check_in_code, check_in_window_opens_at,
+           check_in_window_closes_at, created_at, updated_at)
+         VALUES (?, ?, ?, ?, 'Active', 'Active', 'MANUAL', ?, ?, ?, ?, ?)`
+      )
+      .bind(
+        eventId,
+        PROGRAM2,
+        start.toISOString(),
+        end.toISOString(),
+        "ATT-SNAPSHOT-CODE",
+        opens.toISOString(),
+        initialClose.toISOString(),
+        createdAt,
+        createdAt
+      )
+      .run();
+    await testDb()
+      .prepare(
+        `INSERT INTO enrollments
+          (enrollment_id, program_id, member_user_id, status, enrolled_at,
+           created_at)
+         VALUES (?, ?, 'ATT-INACTIVE', 'Active', ?, ?)`
+      )
+      .bind(
+        startEnrollment,
+        PROGRAM2,
+        new Date(start.getTime() - 30 * 60_000).toISOString(),
+        createdAt
+      )
+      .run();
+    await testDb()
+      .prepare(
+        `INSERT INTO enrollments
+          (enrollment_id, program_id, member_user_id, status, enrolled_at,
+           cancelled_at, cancelled_by, created_at)
+         VALUES (?, ?, 'ATT-MEMBER', 'Cancelled', ?, ?, 'ATT-ADMIN', ?)`
+      )
+      .bind(
+        earlyEnrollment,
+        PROGRAM2,
+        new Date(start.getTime() - 20 * 60_000).toISOString(),
+        new Date(start.getTime() - 5 * 60_000).toISOString(),
+        createdAt
+      )
+      .run();
+    await testDb()
+      .prepare(
+        `INSERT INTO attendances
+          (attendance_id, event_id, member_user_id, method, status,
+           checked_in_at, checked_in_by)
+         VALUES (?, ?, 'ATT-MEMBER', 'self_manual_code', 'Active', ?, 'ATT-ADMIN')`
+      )
+      .bind(
+        "ATT-SNAPSHOT-EARLY-ATTENDANCE",
+        eventId,
+        new Date(start.getTime() - 10 * 60_000).toISOString()
+      )
+      .run();
+
+    const first = await worker.fetch(
+      request(`/api/v1/attendance/events/${eventId}/materialize`, {
+        method: "POST",
+        headers: { Cookie: `${ACCESS_COOKIE_NAME}=${admin}` },
+      }),
+      testEnv()
+    );
+    assert.strictEqual(first.status, 200);
+    const firstBody = await json(first);
+    const firstData = firstBody.data as {
+      materialization: { materialized: boolean; added_expected: number };
+      expected: { enrollment_id: string; source: string }[];
+    };
+    assert.strictEqual(firstData.materialization.materialized, true);
+    assert.strictEqual(firstData.materialization.added_expected, 2);
+    assert.deepStrictEqual(
+      firstData.expected
+        .map(({ enrollment_id, source }) => ({ enrollment_id, source }))
+        .sort((a, b) => a.enrollment_id.localeCompare(b.enrollment_id)),
+      [
+        { enrollment_id: earlyEnrollment, source: "early_attendance" },
+        { enrollment_id: startEnrollment, source: "event_start" },
+      ]
+    );
+
+    await testDb()
+      .prepare(
+        `INSERT INTO enrollments
+          (enrollment_id, program_id, member_user_id, status, enrolled_at,
+           created_at)
+         VALUES (?, ?, 'ATT-ADMIN', 'Active', ?, ?)`
+      )
+      .bind(
+        lateEnrollment,
+        PROGRAM2,
+        new Date(start.getTime() + 20 * 60_000).toISOString(),
+        createdAt
+      )
+      .run();
+    const second = await worker.fetch(
+      request(`/api/v1/attendance/events/${eventId}/materialize`, {
+        method: "POST",
+        headers: { Cookie: `${ACCESS_COOKIE_NAME}=${admin}` },
+      }),
+      testEnv()
+    );
+    assert.strictEqual(second.status, 200);
+    const secondBody = await json(second);
+    const secondData = secondBody.data as {
+      materialization: { added_expected: number };
+    };
+    assert.strictEqual(secondData.materialization.added_expected, 1);
+
+    const repeat = await worker.fetch(
+      request(`/api/v1/attendance/events/${eventId}/materialize`, {
+        method: "POST",
+        headers: { Cookie: `${ACCESS_COOKIE_NAME}=${admin}` },
+      }),
+      testEnv()
+    );
+    assert.strictEqual(repeat.status, 200);
+    const repeatBody = await json(repeat);
+    assert.strictEqual(
+      (repeatBody.data as { materialization: { added_expected: number } })
+        .materialization.added_expected,
+      0
+    );
+
+    await testDb()
+      .prepare(
+        `UPDATE enrollments
+            SET status = 'Cancelled', cancelled_at = ?, cancelled_by = 'ATT-ADMIN'
+          WHERE enrollment_id = ?`
+      )
+      .bind(new Date().toISOString(), startEnrollment)
+      .run();
+    await testDb()
+      .prepare(
+        `UPDATE events SET check_in_window_closes_at = ? WHERE event_id = ?`
+      )
+      .bind(new Date(Date.now() - 1000).toISOString(), eventId)
+      .run();
+
+    const roster = await worker.fetch(
+      request(`/api/v1/attendance/events/${eventId}/roster`, {
+        headers: { Cookie: `${ACCESS_COOKIE_NAME}=${admin}` },
+      }),
+      testEnv()
+    );
+    assert.strictEqual(roster.status, 200);
+    const rosterBody = await json(roster);
+    const rosterData = rosterBody.data as {
+      expected: {
+        enrollment_id: string;
+        member_user_id: string;
+        state: string;
+        disposition: unknown;
+      }[];
+      counts: {
+        expected: number;
+        present: number;
+        absent: number;
+        excused: number;
+      };
+      snapshot: { snapshot_id: string } | null;
+      materialization_required: boolean;
+    };
+    assert.ok(rosterData.snapshot?.snapshot_id);
+    assert.strictEqual(rosterData.materialization_required, true);
+    assert.deepStrictEqual(
+      rosterData.expected
+        .map(({ enrollment_id, state }) => ({ enrollment_id, state }))
+        .sort((a, b) => a.enrollment_id.localeCompare(b.enrollment_id)),
+      [
+        { enrollment_id: earlyEnrollment, state: "Present" },
+        { enrollment_id: lateEnrollment, state: "Absent" },
+        { enrollment_id: startEnrollment, state: "Absent" },
+      ]
+    );
+    assert.deepStrictEqual(
+      {
+        expected: rosterData.counts.expected,
+        present: rosterData.counts.present,
+        absent: rosterData.counts.absent,
+        excused: rosterData.counts.excused,
+      },
+      { expected: 3, present: 1, absent: 2, excused: 0 }
+    );
+
+    const excuseStart = await worker.fetch(
+      request(`/api/v1/attendance/events/${eventId}/excused`, {
+        method: "POST",
+        headers: { Cookie: `${ACCESS_COOKIE_NAME}=${admin}` },
+        body: JSON.stringify({
+          enrollment_id: startEnrollment,
+          reason: "家庭事務",
+        }),
+      }),
+      testEnv()
+    );
+    assert.strictEqual(excuseStart.status, 201);
+    const excuseStartBody = await json(excuseStart);
+    const excuseStartData = excuseStartBody.data as {
+      outcome: string;
+      disposition_id: string;
+    };
+    assert.strictEqual(excuseStartData.outcome, "excused");
+    assert.ok(excuseStartData.disposition_id);
+
+    const duplicateExcuse = await worker.fetch(
+      request(`/api/v1/attendance/events/${eventId}/excused`, {
+        method: "POST",
+        headers: { Cookie: `${ACCESS_COOKIE_NAME}=${admin}` },
+        body: JSON.stringify({
+          enrollment_id: startEnrollment,
+          reason: "家庭事務",
+        }),
+      }),
+      testEnv()
+    );
+    assert.strictEqual(duplicateExcuse.status, 200);
+    const duplicateExcuseBody = await json(duplicateExcuse);
+    assert.strictEqual(
+      (duplicateExcuseBody.data as { outcome: string }).outcome,
+      "already_excused"
+    );
+
+    // The assisted success path is exercised while the Event is still open;
+    // the dedicated closed-window tests cover the later denial boundary.
+    await testDb()
+      .prepare(
+        "UPDATE events SET check_in_window_closes_at = ? WHERE event_id = ?"
+      )
+      .bind(initialClose.toISOString(), eventId)
+      .run();
+
+    const assisted = await worker.fetch(
+      request(`/api/v1/attendance/events/${eventId}/check-in`, {
+        method: "POST",
+        headers: { Cookie: `${ACCESS_COOKIE_NAME}=${admin}` },
+        body: JSON.stringify({
+          member_user_id: "ATT-ADMIN",
+          method: "leader_manual_search",
+        }),
+      }),
+      testEnv()
+    );
+    assert.strictEqual(assisted.status, 201);
+    const assistedBody = await json(assisted);
+    const lateAttendanceId = (assistedBody.data as { attendance_id: string })
+      .attendance_id;
+    await testDb()
+      .prepare(
+        "UPDATE events SET check_in_window_closes_at = ? WHERE event_id = ?"
+      )
+      .bind(new Date(Date.now() - 1000).toISOString(), eventId)
+      .run();
+    const checkInRoster = await worker.fetch(
+      request(`/api/v1/attendance/events/${eventId}/roster`, {
+        headers: { Cookie: `${ACCESS_COOKIE_NAME}=${admin}` },
+      }),
+      testEnv()
+    );
+    const checkInRosterBody = await json(checkInRoster);
+    const checkInRosterData = checkInRosterBody.data as {
+      expected: { enrollment_id: string; source: string; state: string }[];
+    };
+    const autoMaterializedLate = checkInRosterData.expected.find(
+      (row) => row.enrollment_id === lateEnrollment
+    );
+    assert.strictEqual(autoMaterializedLate?.source, "late_approval");
+    assert.strictEqual(autoMaterializedLate?.state, "Present");
+
+    // Seed a legacy contradictory row to prove the roster projection keeps
+    // Present and Excused mutually exclusive even before the write guard is
+    // exercised.
+    await testDb()
+      .prepare(
+        `INSERT INTO event_attendance_dispositions
+          (disposition_id, event_id, enrollment_id, member_user_id,
+           disposition, reason, recorded_by, recorded_at)
+         VALUES (?, ?, ?, 'ATT-ADMIN', 'Excused', ?, 'ATT-ADMIN', ?)`
+      )
+      .bind(
+        "ATT-LEGACY-DISPOSITION",
+        eventId,
+        lateEnrollment,
+        "歷史請假資料",
+        new Date(Date.now() - 60_000).toISOString()
+      )
+      .run();
+
+    const excuseLate = await worker.fetch(
+      request(`/api/v1/attendance/events/${eventId}/excused`, {
+        method: "POST",
+        headers: { Cookie: `${ACCESS_COOKIE_NAME}=${admin}` },
+        body: JSON.stringify({
+          enrollment_id: lateEnrollment,
+          reason: "其他：臨時請假",
+        }),
+      }),
+      testEnv()
+    );
+    assert.strictEqual(excuseLate.status, 409);
+    const presentWithExcuse = await worker.fetch(
+      request(`/api/v1/attendance/events/${eventId}/roster`, {
+        headers: { Cookie: `${ACCESS_COOKIE_NAME}=${admin}` },
+      }),
+      testEnv()
+    );
+    const presentWithExcuseBody = await json(presentWithExcuse);
+    const presentData = presentWithExcuseBody.data as {
+      expected: {
+        enrollment_id: string;
+        state: string;
+        disposition: { reason: string } | null;
+      }[];
+    };
+    const contradictoryProjection = presentData.expected.find(
+      (row) => row.enrollment_id === lateEnrollment
+    );
+    assert.strictEqual(contradictoryProjection?.state, "Present");
+    assert.strictEqual(contradictoryProjection?.disposition, null);
+
+    const ownWithLegacyExcuse = await worker.fetch(
+      request(`/api/v1/attendance/events/${eventId}/me`, {
+        headers: { Cookie: `${ACCESS_COOKIE_NAME}=${admin}` },
+      }),
+      testEnv()
+    );
+    assert.strictEqual(ownWithLegacyExcuse.status, 200);
+    const ownWithLegacyExcuseBody = await json(ownWithLegacyExcuse);
+    const ownWithLegacyExcuseData = ownWithLegacyExcuseBody.data as {
+      state: string;
+      attendance: { status: string } | null;
+      disposition: { reason: string } | null;
+    };
+    assert.strictEqual(ownWithLegacyExcuseData.state, "Present");
+    assert.strictEqual(ownWithLegacyExcuseData.attendance?.status, "Active");
+    assert.strictEqual(ownWithLegacyExcuseData.disposition, null);
+
+    const excuseLateBody = await json(excuseLate);
+    assert.strictEqual(
+      (excuseLateBody as { code: string }).code,
+      "ATTENDANCE_ALREADY_PRESENT"
+    );
+    const excuseConflictAudit = await testDb()
+      .prepare(
+        `SELECT outcome, reason FROM audit_events
+          WHERE action = 'attendance.excused' AND correlation_id = ?`
+      )
+      .bind(excuseLateBody.requestId)
+      .first<{ outcome: string; reason: string | null }>();
+    assert.deepStrictEqual(excuseConflictAudit, {
+      outcome: "CONFLICT",
+      reason: "ACTIVE_ATTENDANCE_EXISTS",
+    });
+
+    const voidResponse = await worker.fetch(
+      request(`/api/v1/attendance/${lateAttendanceId}/void`, {
+        method: "POST",
+        headers: { Cookie: `${ACCESS_COOKIE_NAME}=${admin}` },
+        body: JSON.stringify({ reason: "測試作廢" }),
+      }),
+      testEnv()
+    );
+    assert.strictEqual(voidResponse.status, 200);
+    const excuseAfterVoid = await worker.fetch(
+      request(`/api/v1/attendance/events/${eventId}/excused`, {
+        method: "POST",
+        headers: { Cookie: `${ACCESS_COOKIE_NAME}=${admin}` },
+        body: JSON.stringify({
+          enrollment_id: lateEnrollment,
+          reason: "其他：臨時請假",
+        }),
+      }),
+      testEnv()
+    );
+    assert.strictEqual(excuseAfterVoid.status, 200);
+    const excusedAfterVoid = await worker.fetch(
+      request(`/api/v1/attendance/events/${eventId}/roster`, {
+        headers: { Cookie: `${ACCESS_COOKIE_NAME}=${admin}` },
+      }),
+      testEnv()
+    );
+    const excusedAfterVoidBody = await json(excusedAfterVoid);
+    const excusedAfterVoidData = excusedAfterVoidBody.data as {
+      expected: {
+        enrollment_id: string;
+        state: string;
+        disposition: { reason: string } | null;
+      }[];
+      counts: { absent: number; excused: number };
+    };
+    const lateAfterVoid = excusedAfterVoidData.expected.find(
+      (row) => row.enrollment_id === lateEnrollment
+    );
+    assert.strictEqual(lateAfterVoid?.state, "Excused");
+    assert.strictEqual(lateAfterVoid?.disposition?.reason, "其他：臨時請假");
+    assert.deepStrictEqual(excusedAfterVoidData.counts, {
+      expected: 3,
+      present: 1,
+      not_yet: 0,
+      absent: 0,
+      excused: 2,
+      guests: 0,
+    });
+
+    await testDb()
+      .prepare("UPDATE events SET status = 'Cancelled' WHERE event_id = ?")
+      .bind(eventId)
+      .run();
+    const cancelledRoster = await worker.fetch(
+      request(`/api/v1/attendance/events/${eventId}/roster`, {
+        headers: { Cookie: `${ACCESS_COOKIE_NAME}=${admin}` },
+      }),
+      testEnv()
+    );
+    assert.strictEqual(cancelledRoster.status, 200);
+    const cancelledRosterBody = await json(cancelledRoster);
+    const cancelledData = cancelledRosterBody.data as {
+      expected: { enrollment_id: string; state: string }[];
+      counts: { present: number; absent: number; excused: number };
+    };
+    assert.strictEqual(cancelledData.expected.length, 3);
+    assert.ok(cancelledData.expected.every((row) => row.state === "Cancelled"));
+    assert.deepStrictEqual(cancelledData.counts, {
+      expected: 3,
+      present: 0,
+      not_yet: 0,
+      absent: 0,
+      excused: 0,
+      guests: 0,
+    });
+  });
+
+  test("participant attendance is self-only while the operator roster remains scoped", async () => {
+    const member = await accessCookieFor("att-member", "att-member-password");
+    const own = await worker.fetch(
+      request(`/api/v1/attendance/events/${EVENT}/me`, {
+        headers: { Cookie: `${ACCESS_COOKIE_NAME}=${member}` },
+      }),
+      testEnv()
+    );
+    assert.strictEqual(own.status, 200);
+    const ownBody = await json(own);
+    const ownData = ownBody.data as {
+      event: Record<string, unknown>;
+      state: string;
+      attendance: { status: string } | null;
+    };
+    assert.strictEqual(ownData.state, "Present");
+    assert.strictEqual(ownData.attendance?.status, "Active");
+    assert.strictEqual("manual_check_in_code" in ownData.event, false);
+    assert.strictEqual("attendances" in ownData, false);
+    assert.strictEqual("guests" in ownData, false);
+
+    const cancelledOwn = await worker.fetch(
+      request(`/api/v1/attendance/events/${CANCELLED_EVENT}/me`, {
+        headers: { Cookie: `${ACCESS_COOKIE_NAME}=${member}` },
+      }),
+      testEnv()
+    );
+    assert.strictEqual(cancelledOwn.status, 200);
+    const cancelledOwnBody = await json(cancelledOwn);
+    const cancelledOwnData = cancelledOwnBody.data as {
+      state: string;
+      event: { status: string };
+    };
+    assert.strictEqual(cancelledOwnData.state, "Cancelled");
+    assert.strictEqual(cancelledOwnData.event.status, "Cancelled");
+
+    const roster = await worker.fetch(
+      request(`/api/v1/attendance/events/${EVENT}/roster`, {
+        headers: { Cookie: `${ACCESS_COOKIE_NAME}=${member}` },
+      }),
+      testEnv()
+    );
+    assert.strictEqual(roster.status, 403);
+    const rosterBody = await json(roster);
+    assert.strictEqual(rosterBody.code, "FORBIDDEN");
+  });
+
+  test("open Event self projection resolves an active enrollment before materialization", async () => {
+    const member = await accessCookieFor("att-member", "att-member-password");
+    const eventId = `ATT-OPEN-NO-SNAPSHOT-${crypto.randomUUID()}`;
+    const enrollmentId = `ATT-OPEN-NO-SNAPSHOT-ENROLLMENT-${crypto.randomUUID()}`;
+    const now = Date.now();
+    const createdAt = new Date(now).toISOString();
+    await testDb()
+      .prepare(
+        `INSERT INTO events
+          (event_id, program_id, starts_at, ends_at, status, availability,
+           source, name, manual_check_in_code, check_in_window_opens_at,
+           check_in_window_closes_at, created_at, updated_at)
+         VALUES (?, ?, ?, ?, 'Active', 'Active', 'MANUAL', ?, ?, ?, ?, ?, ?)`
+      )
+      .bind(
+        eventId,
+        EMPTY_PROGRAM,
+        new Date(now - 30 * 60_000).toISOString(),
+        new Date(now + 60 * 60_000).toISOString(),
+        "未建立快照的開放聚會",
+        `ATT-OPEN-NO-SNAPSHOT-CODE-${crypto.randomUUID()}`,
+        new Date(now - 60 * 60_000).toISOString(),
+        new Date(now + 30 * 60_000).toISOString(),
+        createdAt,
+        createdAt
+      )
+      .run();
+    await testDb()
+      .prepare(
+        `INSERT INTO enrollments
+          (enrollment_id, program_id, member_user_id, status, enrolled_at,
+           created_at)
+         VALUES (?, ?, 'ATT-MEMBER', 'Active', ?, ?)`
+      )
+      .bind(
+        enrollmentId,
+        EMPTY_PROGRAM,
+        new Date(now - 2 * 60 * 60_000).toISOString(),
+        createdAt
+      )
+      .run();
+
+    const beforeSnapshot = await testDb()
+      .prepare(
+        "SELECT snapshot_id FROM event_attendance_snapshots WHERE event_id = ?"
+      )
+      .bind(eventId)
+      .first();
+    assert.strictEqual(beforeSnapshot, null);
+
+    const own = await worker.fetch(
+      request(`/api/v1/attendance/events/${eventId}/me`, {
+        headers: { Cookie: `${ACCESS_COOKIE_NAME}=${member}` },
+      }),
+      testEnv()
+    );
+    assert.strictEqual(own.status, 200);
+    const ownBody = await json(own);
+    const ownData = ownBody.data as {
+      state: string;
+      attendance: unknown;
+      disposition: unknown;
+    };
+    assert.deepStrictEqual(
+      {
+        state: ownData.state,
+        attendance: ownData.attendance,
+        disposition: ownData.disposition,
+      },
+      {
+        state: "Not Yet",
+        attendance: null,
+        disposition: null,
+      }
+    );
+
+    const outsider = await accessCookieFor("att-admin", "att-admin-password");
+    const forbidden = await worker.fetch(
+      request(`/api/v1/attendance/events/${eventId}/me`, {
+        headers: { Cookie: `${ACCESS_COOKIE_NAME}=${outsider}` },
+      }),
+      testEnv()
+    );
+    assert.strictEqual(forbidden.status, 403);
+    const forbiddenBody = await json(forbidden);
+    assert.strictEqual(forbiddenBody.code, "FORBIDDEN");
+
+    const afterSnapshot = await testDb()
+      .prepare(
+        "SELECT snapshot_id FROM event_attendance_snapshots WHERE event_id = ?"
+      )
+      .bind(eventId)
+      .first();
+    assert.strictEqual(afterSnapshot, null);
+  });
+
+  test("no-snapshot self projection uses the close boundary for eligibility", async () => {
+    const boundary = new Date("2026-08-14T12:00:00.000Z");
+    const eventId = `ATT-CUTOFF-NO-SNAPSHOT-${crypto.randomUUID()}`;
+    const enrollmentId = `ATT-CUTOFF-NO-SNAPSHOT-ENROLLMENT-${crypto.randomUUID()}`;
+    const createdAt = boundary.toISOString();
+    vi.useFakeTimers();
+    vi.setSystemTime(boundary);
+    try {
+      const admin = await accessCookieFor("att-admin", "att-admin-password");
+      await testDb()
+        .prepare(
+          `INSERT INTO events
+            (event_id, program_id, starts_at, ends_at, status, availability,
+             source, name, manual_check_in_code, check_in_window_opens_at,
+             check_in_window_closes_at, created_at, updated_at)
+           VALUES (?, ?, ?, ?, 'Active', 'Active', 'MANUAL', ?, ?, ?, ?, ?, ?)`
+        )
+        .bind(
+          eventId,
+          EMPTY_PROGRAM,
+          new Date(boundary.getTime() - 2 * 60 * 60_000).toISOString(),
+          new Date(boundary.getTime() - 60 * 60_000).toISOString(),
+          "出席資格時間邊界",
+          `ATT-CUTOFF-NO-SNAPSHOT-CODE-${crypto.randomUUID()}`,
+          new Date(boundary.getTime() - 3 * 60 * 60_000).toISOString(),
+          boundary.toISOString(),
+          createdAt,
+          createdAt
+        )
+        .run();
+      await testDb()
+        .prepare(
+          `INSERT INTO enrollments
+            (enrollment_id, program_id, member_user_id, status, enrolled_at,
+             created_at)
+           VALUES (?, ?, 'ATT-ADMIN', 'Active', ?, ?)`
+        )
+        .bind(
+          enrollmentId,
+          EMPTY_PROGRAM,
+          new Date(boundary.getTime() - 1_000).toISOString(),
+          createdAt
+        )
+        .run();
+
+      const readOwn = async () =>
+        worker.fetch(
+          request(`/api/v1/attendance/events/${eventId}/me`, {
+            headers: { Cookie: `${ACCESS_COOKIE_NAME}=${admin}` },
+          }),
+          testEnv()
+        );
+      vi.setSystemTime(new Date(boundary.getTime() - 1_000));
+      const beforeClose = await readOwn();
+      assert.strictEqual(beforeClose.status, 200);
+      assert.strictEqual(
+        ((await json(beforeClose)).data as { state: string }).state,
+        "Not Yet"
+      );
+
+      await testDb()
+        .prepare(
+          "UPDATE enrollments SET enrolled_at = ? WHERE enrollment_id = ?"
+        )
+        .bind(boundary.toISOString(), enrollmentId)
+        .run();
+      vi.setSystemTime(boundary);
+      const exactClose = await readOwn();
+      assert.strictEqual(exactClose.status, 200);
+      assert.strictEqual(
+        ((await json(exactClose)).data as { state: string }).state,
+        "Not Yet"
+      );
+
+      vi.setSystemTime(new Date(boundary.getTime() + 1_000));
+      await testDb()
+        .prepare(
+          "UPDATE enrollments SET enrolled_at = ? WHERE enrollment_id = ?"
+        )
+        .bind(new Date(boundary.getTime() + 500).toISOString(), enrollmentId)
+        .run();
+      const afterClose = await readOwn();
+      assert.strictEqual(afterClose.status, 403);
+      assert.strictEqual((await json(afterClose)).code, "FORBIDDEN");
+    } finally {
+      await testDb()
+        .prepare("DELETE FROM enrollments WHERE enrollment_id = ?")
+        .bind(enrollmentId)
+        .run();
+      await testDb()
+        .prepare("DELETE FROM events WHERE event_id = ?")
+        .bind(eventId)
+        .run();
+      vi.useRealTimers();
+    }
+  });
+
+  test("closed Event self projection keeps final states available before materialization", async () => {
+    const member = await accessCookieFor("att-member", "att-member-password");
+    const eventId = `ATT-CLOSED-NO-SNAPSHOT-${crypto.randomUUID()}`;
+    const enrollmentId = `ATT-CLOSED-NO-SNAPSHOT-ENROLLMENT-${crypto.randomUUID()}`;
+    const attendanceId = `ATT-CLOSED-NO-SNAPSHOT-ATTENDANCE-${crypto.randomUUID()}`;
+    const dispositionId = `ATT-CLOSED-NO-SNAPSHOT-DISPOSITION-${crypto.randomUUID()}`;
+    const now = Date.now();
+    const createdAt = new Date(now).toISOString();
+    await testDb()
+      .prepare(
+        `INSERT INTO events
+          (event_id, program_id, starts_at, ends_at, status, availability,
+           source, name, manual_check_in_code, check_in_window_opens_at,
+           check_in_window_closes_at, created_at, updated_at)
+         VALUES (?, ?, ?, ?, 'Active', 'Active', 'MANUAL', ?, ?, ?, ?, ?, ?)`
+      )
+      .bind(
+        eventId,
+        PROGRAM2,
+        new Date(now - 3 * 60 * 60_000).toISOString(),
+        new Date(now - 2 * 60 * 60_000).toISOString(),
+        "未建立快照的已結束聚會",
+        `ATT-CLOSED-NO-SNAPSHOT-CODE-${crypto.randomUUID()}`,
+        new Date(now - 4 * 60 * 60_000).toISOString(),
+        new Date(now - 90 * 60_000).toISOString(),
+        createdAt,
+        createdAt
+      )
+      .run();
+    await testDb()
+      .prepare(
+        `INSERT INTO enrollments
+          (enrollment_id, program_id, member_user_id, status, enrolled_at,
+           created_at)
+         VALUES (?, ?, 'ATT-MEMBER', 'Active', ?, ?)`
+      )
+      .bind(
+        enrollmentId,
+        PROGRAM2,
+        new Date(now - 5 * 60 * 60_000).toISOString(),
+        createdAt
+      )
+      .run();
+
+    const readOwn = async () =>
+      worker.fetch(
+        request(`/api/v1/attendance/events/${eventId}/me`, {
+          headers: { Cookie: `${ACCESS_COOKIE_NAME}=${member}` },
+        }),
+        testEnv()
+      );
+
+    try {
+      const beforeAttendance = await readOwn();
+      assert.strictEqual(beforeAttendance.status, 200);
+      assert.strictEqual(
+        ((await json(beforeAttendance)).data as { state: string }).state,
+        "Absent"
+      );
+
+      await testDb()
+        .prepare(
+          `INSERT INTO attendances
+            (attendance_id, event_id, member_user_id, method, status,
+             checked_in_at, checked_in_by)
+           VALUES (?, ?, 'ATT-MEMBER', 'self_manual_code', 'Active', ?, 'ATT-MEMBER')`
+        )
+        .bind(
+          attendanceId,
+          eventId,
+          new Date(now - 2 * 60 * 60_000).toISOString()
+        )
+        .run();
+      const present = await readOwn();
+      assert.strictEqual(present.status, 200);
+      assert.strictEqual(
+        ((await json(present)).data as { state: string }).state,
+        "Present"
+      );
+
+      await testDb()
+        .prepare(
+          `UPDATE attendances
+              SET status = 'Voided', voided_by = 'ATT-ADMIN',
+                  voided_at = ?, void_reason = ?
+            WHERE attendance_id = ?`
+        )
+        .bind(
+          new Date(now - 90 * 60_000).toISOString(),
+          "改以請假",
+          attendanceId
+        )
+        .run();
+      await testDb()
+        .prepare(
+          `INSERT INTO event_attendance_dispositions
+            (disposition_id, event_id, enrollment_id, member_user_id,
+             disposition, reason, recorded_by, recorded_at)
+           VALUES (?, ?, ?, 'ATT-MEMBER', 'Excused', ?, 'ATT-ADMIN', ?)`
+        )
+        .bind(
+          dispositionId,
+          eventId,
+          enrollmentId,
+          "其他：改以請假",
+          new Date(now - 80 * 60_000).toISOString()
+        )
+        .run();
+      const excused = await readOwn();
+      assert.strictEqual(excused.status, 200);
+      assert.strictEqual(
+        ((await json(excused)).data as { state: string }).state,
+        "Excused"
+      );
+
+      await testDb()
+        .prepare(
+          "UPDATE enrollments SET enrolled_at = ? WHERE enrollment_id = ?"
+        )
+        .bind(new Date(now - 30 * 60_000).toISOString(), enrollmentId)
+        .run();
+      const lateEnrollment = await readOwn();
+      assert.strictEqual(lateEnrollment.status, 403);
+      assert.strictEqual((await json(lateEnrollment)).code, "FORBIDDEN");
+    } finally {
+      await testDb()
+        .prepare(
+          "DELETE FROM event_attendance_dispositions WHERE disposition_id = ?"
+        )
+        .bind(dispositionId)
+        .run();
+      await testDb()
+        .prepare("DELETE FROM attendances WHERE attendance_id = ?")
+        .bind(attendanceId)
+        .run();
+      await testDb()
+        .prepare("DELETE FROM enrollments WHERE enrollment_id = ?")
+        .bind(enrollmentId)
+        .run();
+      await testDb()
+        .prepare("DELETE FROM events WHERE event_id = ?")
+        .bind(eventId)
+        .run();
+    }
+  });
+
+  test("materialization failure is retryable and never reports a false success", async () => {
+    const admin = await accessCookieFor("att-admin", "att-admin-password");
+    const eventId = `ATT-SNAPSHOT-FAILURE-${crypto.randomUUID()}`;
+    const enrollmentId = `ATT-SNAPSHOT-FAILURE-ENROLLMENT-${crypto.randomUUID()}`;
+    const now = Date.now();
+    const startsAt = new Date(now - 2 * 60 * 60_000).toISOString();
+    const endsAt = new Date(now - 60 * 60_000).toISOString();
+    const createdAt = new Date(now).toISOString();
+    await testDb()
+      .prepare(
+        `INSERT INTO events
+          (event_id, program_id, starts_at, ends_at, status, availability,
+           source, manual_check_in_code, check_in_window_opens_at,
+           check_in_window_closes_at, created_at, updated_at)
+         VALUES (?, ?, ?, ?, 'Active', 'Active', 'MANUAL', ?, ?, ?, ?, ?)`
+      )
+      .bind(
+        eventId,
+        EMPTY_PROGRAM,
+        startsAt,
+        endsAt,
+        `ATT-SNAPSHOT-FAILURE-CODE-${crypto.randomUUID()}`,
+        new Date(now - 3 * 60 * 60_000).toISOString(),
+        new Date(now + 60 * 60_000).toISOString(),
+        createdAt,
+        createdAt
+      )
+      .run();
+    await testDb()
+      .prepare(
+        `INSERT INTO enrollments
+          (enrollment_id, program_id, member_user_id, status, enrolled_at,
+           created_at)
+         VALUES (?, ?, 'ATT-ADMIN', 'Active', ?, ?)`
+      )
+      .bind(
+        enrollmentId,
+        EMPTY_PROGRAM,
+        new Date(now - 3 * 60 * 60_000).toISOString(),
+        createdAt
+      )
+      .run();
+
+    const failingDb = new Proxy(testDb(), {
+      get(target, property, receiver) {
+        if (property === "batch") {
+          return () => {
+            throw new Error("injected D1 snapshot failure");
+          };
+        }
+        const value = Reflect.get(target, property, receiver);
+        return typeof value === "function" ? value.bind(target) : value;
+      },
+    }) as unknown as D1Database;
+    const failed = await handleMaterializeAttendance(
+      request(`/api/v1/attendance/events/${eventId}/materialize`, {
+        method: "POST",
+        headers: { Cookie: `${ACCESS_COOKIE_NAME}=${admin}` },
+      }),
+      {
+        DB: failingDb,
+        EFCC_ACCESS_TOKEN_SECRET: SECRET,
+      },
+      eventId
+    );
+    assert.strictEqual(failed.status, 503);
+    const failedBody = await json(failed);
+    assert.strictEqual(failedBody.code, "UNAVAILABLE");
+    const failedAudit = await testDb()
+      .prepare(
+        `SELECT outcome, reason FROM audit_events WHERE correlation_id = ?`
+      )
+      .bind(failedBody.requestId)
+      .first<{ outcome: string; reason: string }>();
+    assert.deepStrictEqual(failedAudit, {
+      outcome: "FAILED",
+      reason: "SNAPSHOT_MATERIALIZATION_FAILED",
+    });
+    const expectedAfterFailure = await testDb()
+      .prepare(
+        "SELECT COUNT(*) AS count FROM event_expected_attendance WHERE event_id = ?"
+      )
+      .bind(eventId)
+      .first<{ count: number }>();
+    assert.strictEqual(expectedAfterFailure?.count, 0);
+
+    const retry = await worker.fetch(
+      request(`/api/v1/attendance/events/${eventId}/materialize`, {
+        method: "POST",
+        headers: { Cookie: `${ACCESS_COOKIE_NAME}=${admin}` },
+      }),
+      testEnv()
+    );
+    assert.strictEqual(retry.status, 200);
+    const expectedAfterRetry = await testDb()
+      .prepare(
+        "SELECT expected_attendance_id FROM event_expected_attendance WHERE event_id = ? AND enrollment_id = ?"
+      )
+      .bind(eventId, enrollmentId)
+      .first<{ expected_attendance_id: string }>();
+    assert.ok(expectedAfterRetry?.expected_attendance_id);
+  });
+
+  test("explicit materialization reports not-started without creating roster rows", async () => {
+    const admin = await accessCookieFor("att-admin", "att-admin-password");
+    const eventId = `ATT-SNAPSHOT-NOT-STARTED-${crypto.randomUUID()}`;
+    const now = Date.now();
+    const createdAt = new Date(now).toISOString();
+    await testDb()
+      .prepare(
+        `INSERT INTO events
+          (event_id, program_id, starts_at, ends_at, status, availability,
+           source, name, manual_check_in_code, check_in_window_opens_at,
+           check_in_window_closes_at, created_at, updated_at)
+         VALUES (?, ?, ?, ?, 'Active', 'Active', 'MANUAL', ?, ?, ?, ?, ?, ?)`
+      )
+      .bind(
+        eventId,
+        PROGRAM,
+        new Date(now + 2 * 60 * 60_000).toISOString(),
+        new Date(now + 3 * 60 * 60_000).toISOString(),
+        "未開始聚會",
+        `ATT-NOT-STARTED-CODE-${crypto.randomUUID()}`,
+        new Date(now + 60 * 60_000).toISOString(),
+        new Date(now + 4 * 60 * 60_000).toISOString(),
+        createdAt,
+        createdAt
+      )
+      .run();
+
+    const response = await worker.fetch(
+      request(`/api/v1/attendance/events/${eventId}/materialize`, {
+        method: "POST",
+        headers: { Cookie: `${ACCESS_COOKIE_NAME}=${admin}` },
+      }),
+      testEnv()
+    );
+    assert.strictEqual(response.status, 200);
+    const responseBody = await json(response);
+    const { materialization } = responseBody.data as {
+      materialization: {
+        status: string;
+        materialized: boolean;
+        added_expected: number;
+        snapshot: unknown;
+      };
+    };
+    assert.deepStrictEqual(materialization, {
+      status: "not_started",
+      materialized: false,
+      added_expected: 0,
+      snapshot: null,
+    });
+
+    const rows = await testDb()
+      .prepare(
+        "SELECT COUNT(*) AS count FROM event_expected_attendance WHERE event_id = ?"
+      )
+      .bind(eventId)
+      .first<{ count: number }>();
+    assert.strictEqual(rows?.count, 0);
+    const audit = await testDb()
+      .prepare(
+        `SELECT outcome, reason FROM audit_events
+          WHERE action = 'attendance.snapshot_materialize' AND entity_id = ?
+          ORDER BY inserted_at DESC LIMIT 1`
+      )
+      .bind(eventId)
+      .first<{ outcome: string; reason: string | null }>();
+    assert.deepStrictEqual(audit, {
+      outcome: "CONFLICT",
+      reason: "EVENT_NOT_STARTED",
+    });
+  });
+
+  test("cancelled materialization is rejected without a snapshot or false success audit", async () => {
+    const admin = await accessCookieFor("att-admin", "att-admin-password");
+    const eventId = `ATT-SNAPSHOT-CANCELLED-${crypto.randomUUID()}`;
+    const now = Date.now();
+    const createdAt = new Date(now).toISOString();
+    await testDb()
+      .prepare(
+        `INSERT INTO events
+          (event_id, program_id, starts_at, ends_at, status, availability,
+           source, name, manual_check_in_code, check_in_window_opens_at,
+           check_in_window_closes_at, created_at, updated_at)
+         VALUES (?, ?, ?, ?, 'Cancelled', 'Active', 'MANUAL', ?, ?, ?, ?, ?, ?)`
+      )
+      .bind(
+        eventId,
+        PROGRAM,
+        new Date(now - 2 * 60 * 60_000).toISOString(),
+        new Date(now - 60 * 60_000).toISOString(),
+        "已取消聚會",
+        `ATT-CANCELLED-MATERIALIZE-CODE-${crypto.randomUUID()}`,
+        new Date(now - 3 * 60 * 60_000).toISOString(),
+        new Date(now + 60 * 60_000).toISOString(),
+        createdAt,
+        createdAt
+      )
+      .run();
+
+    const response = await worker.fetch(
+      request(`/api/v1/attendance/events/${eventId}/materialize`, {
+        method: "POST",
+        headers: { Cookie: `${ACCESS_COOKIE_NAME}=${admin}` },
+      }),
+      testEnv()
+    );
+    assert.strictEqual(response.status, 409);
+    const responseBody = await json(response);
+    assert.strictEqual(responseBody.code, "EVENT_CANCELLED");
+    const snapshot = await testDb()
+      .prepare(
+        "SELECT snapshot_id FROM event_attendance_snapshots WHERE event_id = ?"
+      )
+      .bind(eventId)
+      .first();
+    const expected = await testDb()
+      .prepare(
+        "SELECT expected_attendance_id FROM event_expected_attendance WHERE event_id = ?"
+      )
+      .bind(eventId)
+      .first();
+    assert.strictEqual(snapshot, null);
+    assert.strictEqual(expected, null);
+    const audit = await testDb()
+      .prepare(
+        `SELECT outcome, reason FROM audit_events
+          WHERE action = 'attendance.snapshot_materialize' AND entity_id = ?
+          ORDER BY inserted_at DESC LIMIT 1`
+      )
+      .bind(eventId)
+      .first<{ outcome: string; reason: string | null }>();
+    assert.deepStrictEqual(audit, {
+      outcome: "DENIED",
+      reason: "EVENT_CANCELLED",
+    });
+  });
+
+  test("concurrent cancellation and self check-in cannot persist a cancelled Event with active attendance", async () => {
+    const admin = await accessCookieFor("att-admin", "att-admin-password");
+    const member = await accessCookieFor("att-member", "att-member-password");
+    const eventId = `ATT-CANCEL-CHECKIN-RACE-${crypto.randomUUID()}`;
+    const now = Date.now();
+    const createdAt = new Date(now).toISOString();
+    const manualCode = `ATT-RACE-CODE-${crypto.randomUUID()}`;
+    const departmentId = "018f3b8a-0000-7000-8000-000000000001";
+    const adminRole = await testDb()
+      .prepare(
+        "SELECT role_definition_id FROM role_definitions WHERE stable_key = 'admin'"
+      )
+      .first<{ role_definition_id: string }>();
+    assert.ok(adminRole, "canonical Admin identity must exist");
+    await assignIdentity(
+      adminRole.role_definition_id,
+      "ATT-ADMIN",
+      `ATT-ADMIN-PROGRAM-RACE-${crypto.randomUUID()}`
+    );
+    await testDb().batch([
+      testDb()
+        .prepare(
+          `INSERT OR IGNORE INTO departments
+            (department_id, code, name, lifecycle, display_order,
+             created_by, created_at, updated_by, updated_at)
+           VALUES (?, ?, ?, 'Active', 0, 'ATT-ADMIN', ?, 'ATT-ADMIN', ?)`
+        )
+        .bind(
+          departmentId,
+          `ATT-RACE-DEPT-${crypto.randomUUID()}`,
+          "Attendance Race Department",
+          createdAt,
+          createdAt
+        ),
+      ...(["program_catalog", "enrollment", "events"] as const).map(
+        (moduleKey) =>
+          testDb()
+            .prepare(
+              `INSERT INTO department_modules
+                (department_id, module_key, enabled, enabled_by, enabled_at)
+               VALUES (?, ?, 1, 'ATT-ADMIN', ?)
+               ON CONFLICT(department_id, module_key) DO UPDATE SET
+                 enabled = excluded.enabled,
+                 enabled_by = excluded.enabled_by,
+                 enabled_at = excluded.enabled_at`
+            )
+            .bind(departmentId, moduleKey, createdAt)
+      ),
+      testDb()
+        .prepare(
+          `INSERT OR IGNORE INTO role_definition_grants
+            (role_definition_id, capability, granted_by, granted_at)
+           VALUES (?, 'program.manage', 'ATT-ADMIN', ?)`
+        )
+        .bind(adminRole.role_definition_id, createdAt),
+    ]);
+    await testDb()
+      .prepare(
+        `INSERT INTO events
+          (event_id, program_id, starts_at, ends_at, status, availability,
+           source, name, manual_check_in_code, check_in_window_opens_at,
+           check_in_window_closes_at, created_at, updated_at)
+         VALUES (?, ?, ?, ?, 'Active', 'Active', 'MANUAL', ?, ?, ?, ?, ?, ?)`
+      )
+      .bind(
+        eventId,
+        PROGRAM,
+        new Date(now - 5 * 60_000).toISOString(),
+        new Date(now + 55 * 60_000).toISOString(),
+        "取消簽到競速",
+        manualCode,
+        new Date(now - 20 * 60_000).toISOString(),
+        new Date(now + 60 * 60_000).toISOString(),
+        createdAt,
+        createdAt
+      )
+      .run();
+
+    const [cancel, checkIn] = await Promise.all([
+      worker.fetch(
+        request(`/api/v1/programs/${PROGRAM}/events/${eventId}`, {
+          method: "PATCH",
+          headers: {
+            Cookie: `${ACCESS_COOKIE_NAME}=${admin}`,
+          },
+          body: JSON.stringify({ reason: "競速測試取消" }),
+        }),
+        testEnv()
+      ),
+      worker.fetch(
+        request("/api/v1/attendance/self", {
+          method: "POST",
+          headers: { Cookie: `${ACCESS_COOKIE_NAME}=${member}` },
+          body: JSON.stringify({
+            event_id: eventId,
+            method: "self_manual_code",
+            manual_code: manualCode,
+          }),
+        }),
+        testEnv()
+      ),
+    ]);
+    const cancelBody = await json(cancel);
+    const checkInBody = await json(checkIn);
+    assert.ok(
+      [200, 409].includes(cancel.status),
+      `unexpected cancellation status ${cancel.status} (${String(cancelBody.code)}: ${String(cancelBody.detail)}); check-in status ${checkIn.status} (${String(checkInBody.code)})`
+    );
+    assert.ok(
+      [201, 409, 410].includes(checkIn.status),
+      `unexpected check-in status ${checkIn.status} (${String(checkInBody.code)}); cancellation status ${cancel.status} (${String(cancelBody.code)})`
+    );
+    assert.ok(
+      cancel.status === 200 || checkIn.status === 201,
+      "one operation must win the serialized final boundary"
+    );
+
+    const stored = await testDb()
+      .prepare(
+        `SELECT e.status, COUNT(a.attendance_id) AS active_attendance
+           FROM events e
+           LEFT JOIN attendances a
+             ON a.event_id = e.event_id AND a.status = 'Active'
+          WHERE e.event_id = ?
+          GROUP BY e.event_id, e.status`
+      )
+      .bind(eventId)
+      .first<{ status: string; active_attendance: number }>();
+    assert.ok(stored);
+    assert.ok(
+      !(stored.status === "Cancelled" && stored.active_attendance > 0),
+      "cancelled Event must never retain newly accepted active Attendance"
+    );
+    const outcomes = await testDb()
+      .prepare(
+        `SELECT action, outcome, reason FROM audit_events
+          WHERE correlation_id IN (?, ?)
+          ORDER BY inserted_at ASC`
+      )
+      .bind(cancelBody.requestId, checkInBody.requestId)
+      .all<{ action: string; outcome: string; reason: string | null }>();
+    assert.ok(
+      (outcomes.results ?? []).some(
+        ({ action, outcome }) =>
+          action === "EVENT_CANCEL" && ["SUCCESS", "CONFLICT"].includes(outcome)
+      )
+    );
+    assert.ok(
+      (outcomes.results ?? []).some(
+        ({ action, outcome }) =>
+          action === "attendance.check_in" &&
+          ["SUCCESS", "DENIED", "CONFLICT"].includes(outcome)
+      )
+    );
+  });
+
+  test("pre-start Excused history stays audit-only without creating a snapshot row", async () => {
+    const admin = await accessCookieFor("att-admin", "att-admin-password");
+    const eventId = "ATT-SNAPSHOT-PRESTART";
+    const enrollmentId = "ATT-SNAPSHOT-PRESTART-ENROLLMENT";
+    const now = Date.now();
+    const startsAt = new Date(now + 2 * 60 * 60_000).toISOString();
+    const createdAt = new Date(now).toISOString();
+    await testDb()
+      .prepare(
+        `INSERT INTO events
+          (event_id, program_id, starts_at, ends_at, status, availability,
+           source, manual_check_in_code, check_in_window_opens_at,
+           check_in_window_closes_at, created_at, updated_at)
+         VALUES (?, ?, ?, ?, 'Active', 'Active', 'MANUAL', ?, ?, ?, ?, ?)`
+      )
+      .bind(
+        eventId,
+        PROGRAM,
+        startsAt,
+        new Date(now + 3 * 60 * 60_000).toISOString(),
+        "ATT-SNAPSHOT-PRESTART-CODE",
+        new Date(now + 60 * 60_000).toISOString(),
+        new Date(now + 4 * 60 * 60_000).toISOString(),
+        createdAt,
+        createdAt
+      )
+      .run();
+    await testDb()
+      .prepare(
+        `INSERT INTO enrollments
+          (enrollment_id, program_id, member_user_id, status, enrolled_at,
+           created_at)
+         VALUES (?, ?, 'ATT-ADMIN', 'Active', ?, ?)`
+      )
+      .bind(enrollmentId, PROGRAM, createdAt, createdAt)
+      .run();
+
+    const excused = await worker.fetch(
+      request(`/api/v1/attendance/events/${eventId}/excused`, {
+        method: "POST",
+        headers: { Cookie: `${ACCESS_COOKIE_NAME}=${admin}` },
+        body: JSON.stringify({
+          enrollment_id: enrollmentId,
+          reason: "其他：預先請假",
+        }),
+      }),
+      testEnv()
+    );
+    assert.strictEqual(excused.status, 201);
+    await testDb()
+      .prepare(
+        `UPDATE enrollments
+            SET status = 'Cancelled', cancelled_at = ?, cancelled_by = 'ATT-ADMIN'
+          WHERE enrollment_id = ?`
+      )
+      .bind(new Date(now + 90 * 60_000).toISOString(), enrollmentId)
+      .run();
+
+    const roster = await worker.fetch(
+      request(`/api/v1/attendance/events/${eventId}/roster`, {
+        headers: { Cookie: `${ACCESS_COOKIE_NAME}=${admin}` },
+      }),
+      testEnv()
+    );
+    assert.strictEqual(roster.status, 200);
+    const rosterBody = await json(roster);
+    const data = rosterBody.data as {
+      expected: unknown[];
+      snapshot: unknown;
+    };
+    assert.strictEqual(
+      data.expected.some(
+        (row) =>
+          (row as { enrollment_id?: string }).enrollment_id === enrollmentId
+      ),
+      false
+    );
+    assert.strictEqual(data.snapshot, null);
+    const disposition = await testDb()
+      .prepare(
+        `SELECT disposition, reason, recorded_by, recorded_at
+           FROM event_attendance_dispositions
+          WHERE event_id = ? AND enrollment_id = ?`
+      )
+      .bind(eventId, enrollmentId)
+      .first<{
+        disposition: string;
+        reason: string;
+        recorded_by: string;
+        recorded_at: string;
+      }>();
+    assert.strictEqual(disposition?.disposition, "Excused");
+    assert.strictEqual(disposition?.reason, "其他：預先請假");
+    assert.strictEqual(disposition?.recorded_by, "ATT-ADMIN");
+    assert.ok(disposition?.recorded_at);
   });
 });

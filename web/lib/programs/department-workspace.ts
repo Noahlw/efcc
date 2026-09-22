@@ -23,7 +23,21 @@ import type {
   AuthorizationContext,
   CapabilityAuthorizer,
 } from "./capability-authorizer";
-import { D1WorkspaceStore, WorkspaceNotFoundError } from "./d1-workspace-store";
+import { WorkspaceNotFoundError } from "./d1-workspace-store";
+import {
+  beginNextEnrollmentApprovalItem,
+  cancelEnrollmentApprovalRun,
+  createEnrollmentApprovalRun,
+  reconcileEnrollmentApprovalRun,
+  settleEnrollmentApprovalItem,
+} from "./enrollment-approval-run";
+import type {
+  ApprovalRunFailure,
+  EnrollmentApprovalRun,
+  EnrollmentApprovalRunAuthority,
+  EnrollmentApprovalRunItem,
+  EnrollmentApprovalRunRow,
+} from "./enrollment-approval-run";
 import type {
   ManagementHubGroup,
   ManagementHubRow,
@@ -38,25 +52,36 @@ import {
   DuplicateProgramNameError,
   DuplicateScheduleExceptionError,
   EnrollmentAccountInactiveError,
+  EnrollmentCancellationReasonRequiredError,
   EnrollmentDecisionConflictError,
   EmptyPreviewPlanError,
   EnrollmentNotAllowedError,
   EventCancellationBlockedError,
   EventAvailabilityConfirmationRequiredError,
+  EventCancelledReadOnlyError,
+  EventIdentityChangeReasonRequiredError,
+  EventNameRequiredError,
+  EventRescheduleBlockedError,
+  EnrollmentApprovalRunValidationError,
   InvalidModuleKeyError,
   InvalidProgramLifecycleError,
   NoScheduleRulesError,
   PreviewPlanNotFoundError,
   ProgramArchiveBlockedError,
+  ProgramTokenRotationConflictError,
   RequestNotDecidableError,
+  ScheduleRuleRetiredError,
+  ScheduleRuleIdempotencyConflictError,
   ScheduleRuleNotApplicableError,
   StaleEnrollmentRequestError,
   StalePreviewPlanError,
 } from "./program-errors";
 import {
+  addWallDays,
   exceptionForEvent,
   recurrenceTagForEvent,
   hkTodayWallDate,
+  wallDaySpan,
   previewOccurrencesForRule,
 } from "./recurrence";
 import type {
@@ -76,6 +101,7 @@ import type {
   EventRow,
   EventType,
   GenerateResult,
+  GenerationRunRow,
   GenerationRunItemRow,
   PreviewOccurrenceRow,
   PreviewPlanRow,
@@ -86,6 +112,8 @@ import type {
   DepartmentModuleRow,
   MemberOptionRow,
   ProgramRow,
+  ProgramTokenRotationInput,
+  ProgramTokenRotationResult,
   ProgramIdentityAssignmentRow,
   ManagementAttentionEventRow,
   NotificationReadStateInput,
@@ -96,6 +124,7 @@ import type {
   AccountDirectorySearchFilters,
   AccountDirectorySummary,
   ScheduleExceptionRow,
+  ScheduleRuleCreationResult,
   ScheduleRuleRow,
   WorkspaceStore,
 } from "./workspace-store";
@@ -115,6 +144,19 @@ export interface ProgramCapabilities {
   role_read?: boolean;
   role_assign?: boolean;
   role_revoke?: boolean;
+}
+
+export interface ProgramAttendanceArtifactView {
+  program_id: string;
+  program_name: string;
+  check_in_token: string;
+  can_rotate: boolean;
+}
+
+export interface ProgramTokenRotationView {
+  program_id: string;
+  check_in_token: string;
+  idempotent: boolean;
 }
 
 export type DepartmentView = DepartmentRow & {
@@ -154,12 +196,12 @@ export interface ManagementAttentionProgramView {
   actionable_count: number;
 }
 
-type ManagementAttentionItemBase = {
+interface ManagementAttentionItemBase {
   program_id: string;
   program_name: string;
   department_id: string;
   department_name: string;
-};
+}
 
 export type ManagementAttentionItem =
   | (ManagementAttentionItemBase & {
@@ -269,7 +311,11 @@ export interface ManagementCockpitNextEvent {
 
 export interface ManagementCockpitView {
   program_id: string;
+  /** Highest source-row revision represented by this projection. */
+  updated_at: string;
   next_event: ManagementCockpitNextEvent | null;
+  /** Every currently open check-in Event, ordered for operator choice. */
+  open_events: ManagementCockpitNextEvent[];
   active_event_count: number;
   pending_enrollment_count: number;
 }
@@ -324,7 +370,7 @@ export interface ManagementMemberView {
   phone: string | null;
   identities: ManagementMemberIdentity[];
   status: string;
-  departments: Array<{ id: string; name: string }>;
+  departments: { id: string; name: string }[];
 }
 
 export interface AccountDirectoryMember extends ManagementMemberView {
@@ -437,6 +483,7 @@ export interface PreviewPlanView {
   plan_hash: string;
   horizon_days: number;
   from_date: string;
+  to_date: string;
   rule_count: number;
   created_at: string;
 }
@@ -448,6 +495,7 @@ function previewPlanView(plan: PreviewPlanRow): PreviewPlanView {
     plan_hash: plan.plan_hash,
     horizon_days: plan.horizon_days,
     from_date: plan.from_date,
+    to_date: plan.to_date ?? addWallDays(plan.from_date, plan.horizon_days - 1),
     rule_count: plan.rule_count,
     created_at: plan.created_at,
   };
@@ -517,12 +565,14 @@ export interface ParticipantEventSummary {
   program_id: string;
   starts_at: string;
   ends_at: string;
-  status: "Active";
+  status: "Active" | "Cancelled";
   source: "SCHEDULE" | "MANUAL";
   /** Projected from the real event row; null when the meeting has no title. */
   name: string | null;
   /** Projected from the real event row; null when the meeting has no venue. */
   location: string | null;
+  /** Cancellation explanation; no operator or attendance data is exposed. */
+  cancel_reason: string | null;
   /** Server-derived participant affordance; never an attendance authority. */
   self_check_in_available: boolean;
 }
@@ -624,6 +674,8 @@ export interface CreateScheduleRuleCommand {
   start_time: string;
   end_time: string;
   location?: string | null;
+  effective_start_date?: string | null;
+  effective_end_date?: string | null;
 }
 
 export interface UpdateScheduleRuleCommand {
@@ -633,6 +685,8 @@ export interface UpdateScheduleRuleCommand {
   start_time?: string;
   end_time?: string;
   location?: string | null;
+  effective_start_date?: string | null;
+  effective_end_date?: string | null;
 }
 
 export interface CreateScheduleExceptionCommand {
@@ -640,6 +694,7 @@ export interface CreateScheduleExceptionCommand {
   action: ScheduleExceptionAction;
   new_start_time: string | null;
   new_end_time: string | null;
+  new_date?: string | null;
 }
 
 export interface CreateEventCommand {
@@ -660,6 +715,7 @@ export interface UpdateEventCommand {
   event_type?: EventType | null;
   check_in_window_opens_at?: string | null;
   check_in_window_closes_at?: string | null;
+  reason?: string | null;
 }
 
 export interface SetEventAvailabilityCommand {
@@ -681,6 +737,16 @@ export interface EnrollmentDecisionResult {
   enrollment: EnrollmentRow | null;
 }
 
+export interface EnrollmentApprovalRunActionResult {
+  run: EnrollmentApprovalRun;
+  item: EnrollmentApprovalRunItem | null;
+}
+
+export interface EnrollmentApprovalRunStartResult {
+  run: EnrollmentApprovalRun;
+  created: boolean;
+}
+
 export interface AssistedEnrollCommand {
   memberUserId: string;
 }
@@ -691,6 +757,75 @@ function isPendingEnrollmentConstraint(error: unknown): boolean {
     message.includes("enrollment_requests.program_id") &&
     message.includes("enrollment_requests.member_user_id")
   );
+}
+
+function approvalRunView(row: EnrollmentApprovalRunRow): EnrollmentApprovalRun {
+  return {
+    run_id: row.run_id,
+    program_id: row.program_id,
+    status: row.status,
+    created_at: row.created_at,
+    finished_at: row.finished_at,
+    cancelled_at: row.cancelled_at,
+    items: row.items,
+  };
+}
+
+function approvalRunFailure(error: unknown): ApprovalRunFailure {
+  if (error instanceof StaleEnrollmentRequestError) {
+    return {
+      code: "STALE_REQUEST_VERSION",
+      detail: "報名申請版本已更新，請重新整理後重新選取。",
+      retryable: false,
+    };
+  }
+  if (error instanceof EnrollmentDecisionConflictError) {
+    return {
+      code: "REQUEST_ALREADY_HANDLED",
+      detail: "報名申請已由其他結果處理，未重複核准。",
+      retryable: false,
+    };
+  }
+  if (error instanceof RequestNotDecidableError) {
+    return {
+      code: "REQUEST_ALREADY_HANDLED",
+      detail: "報名申請已不在可核准狀態，未重複核准。",
+      retryable: false,
+    };
+  }
+  if (error instanceof DuplicateEnrollmentError) {
+    return {
+      code: "ENROLLMENT_DUPLICATE",
+      detail: "成員已有有效報名，未重複建立 Enrollment。",
+      retryable: false,
+    };
+  }
+  if (error instanceof EnrollmentAccountInactiveError) {
+    return {
+      code: "ENROLLMENT_ACCOUNT_INACTIVE",
+      detail: "成員帳戶目前未能建立 Enrollment。",
+      retryable: false,
+    };
+  }
+  if (error instanceof EnrollmentNotAllowedError) {
+    return {
+      code: "ENROLLMENT_NOT_ALLOWED",
+      detail: "此 Program 目前不接受這類 Enrollment。",
+      retryable: false,
+    };
+  }
+  if (error instanceof AuthorizationDeniedError) {
+    return {
+      code: "FORBIDDEN",
+      detail: "你目前沒有權限完成此 Enrollment approval。",
+      retryable: false,
+    };
+  }
+  return {
+    code: "OUTCOME_UNKNOWN",
+    detail: "核准結果未能確認，請先重新整理並由系統核對後再繼續。",
+    retryable: false,
+  };
 }
 
 export class DepartmentWorkspace {
@@ -725,6 +860,34 @@ export class DepartmentWorkspace {
     }
   }
 
+  private async hasParticipantProgramHistory(
+    ctx: AuthorizationContext,
+    programId: string
+  ): Promise<boolean> {
+    const snapshot = await this.store.listParticipantEnrollmentSnapshot(
+      programId,
+      ctx.actorUserId
+    );
+    return snapshot.requests.length > 0 || snapshot.enrollments.length > 0;
+  }
+
+  private async canViewParticipantProgram(
+    ctx: AuthorizationContext,
+    row: ProgramRow,
+    capabilities: ProgramCapabilities
+  ): Promise<boolean> {
+    if (capabilities.manage) {
+      return true;
+    }
+    if (row.lifecycle === "Active" && row.discoverability === "Listed") {
+      return true;
+    }
+    // Unlisted Active Programs, and Draft/Archived Programs, are reachable
+    // only through an existing participant relationship/history. A directory
+    // row must never become an implicit direct-context authorization.
+    return this.hasParticipantProgramHistory(ctx, row.program_id);
+  }
+
   private buildAuditRow(
     ctx: AuthorizationContext,
     action: string,
@@ -733,7 +896,8 @@ export class DepartmentWorkspace {
     outcome: AuditOutcome,
     oldValue: unknown,
     newValue: unknown,
-    correlationId: string | null
+    correlationId: string | null,
+    reason: string | null = null
   ): AuditInput {
     return {
       audit_id: crypto.randomUUID(),
@@ -744,7 +908,7 @@ export class DepartmentWorkspace {
       entity_id: entityId,
       old_value_json: oldValue ? JSON.stringify(oldValue) : null,
       new_value_json: newValue ? JSON.stringify(newValue) : null,
-      reason: null,
+      reason,
       outcome,
       correlation_id: correlationId,
     };
@@ -758,7 +922,8 @@ export class DepartmentWorkspace {
     outcome: AuditOutcome,
     oldValue: unknown,
     newValue: unknown,
-    correlationId: string | null
+    correlationId: string | null,
+    reason: string | null = null
   ): Promise<void> {
     await this.store.audit(
       this.buildAuditRow(
@@ -769,7 +934,8 @@ export class DepartmentWorkspace {
         outcome,
         oldValue,
         newValue,
-        correlationId
+        correlationId,
+        reason
       )
     );
   }
@@ -1335,16 +1501,58 @@ export class DepartmentWorkspace {
       MODULE_KEY.ENROLLMENT
     );
 
+    const events = isEventsEnabled
+      ? await this.store.listEvents(row.program_id)
+      : [];
+    const enrollmentRequests = isEnrollmentEnabled
+      ? await this.store.listEnrollmentRequests(row.program_id)
+      : [];
+    const enrollments = isEnrollmentEnabled
+      ? await this.store.listEnrollments(row.program_id)
+      : [];
+    const revisionValues = [
+      row.updated_at,
+      ...events.map((event) => event.updated_at),
+      ...enrollmentRequests.flatMap((request) => [
+        request.submitted_at,
+        request.decided_at,
+      ]),
+      ...enrollments.flatMap((enrollment) => [
+        enrollment.enrolled_at,
+        enrollment.cancelled_at,
+      ]),
+    ].filter((value): value is string => value !== null);
+    const updated_at = revisionValues.reduce(
+      (latest, value) => (value > latest ? value : latest),
+      row.updated_at
+    );
+
     let next_event: ManagementCockpitNextEvent | null = null;
+    let open_events: ManagementCockpitNextEvent[] = [];
     let active_event_count = 0;
 
     if (isEventsEnabled) {
-      const events = await this.store.listEvents(row.program_id);
       const activeEvents = events.filter(
         (e) => e.status === "Active" && e.availability === "Active"
       );
       active_event_count = activeEvents.length;
       const now = Date.now();
+      const openEvents = activeEvents
+        .filter((event) => {
+          const opensAt = parseIsoInstant(event.check_in_window_opens_at);
+          const closesAt = parseIsoInstant(event.check_in_window_closes_at);
+          return (
+            opensAt !== null &&
+            closesAt !== null &&
+            now >= opensAt &&
+            now <= closesAt
+          );
+        })
+        .sort(
+          (left, right) =>
+            Date.parse(left.starts_at) - Date.parse(right.starts_at) ||
+            left.event_id.localeCompare(right.event_id)
+        );
       const futureEvents = activeEvents
         .filter(
           (e) =>
@@ -1353,28 +1561,37 @@ export class DepartmentWorkspace {
         )
         .sort((a, b) => a.starts_at.localeCompare(b.starts_at));
 
-      const firstFuture = futureEvents[0] ?? null;
-      if (firstFuture) {
-        const isRecurring =
-          row.behavior_type === "Recurring" ||
-          firstFuture.source === "SCHEDULE";
+      const projectEvent = async (
+        event: EventRow
+      ): Promise<ManagementCockpitNextEvent> => {
         const summary = await this.store.getEventParticipantSummary(
-          firstFuture.event_id,
+          event.event_id,
           row.program_id
         );
-        next_event = {
-          event_id: firstFuture.event_id,
-          program_id: firstFuture.program_id,
-          title: firstFuture.name ?? null,
-          name: firstFuture.name ?? null,
-          starts_at: firstFuture.starts_at,
-          ends_at: firstFuture.ends_at,
-          location: firstFuture.location ?? null,
-          source: firstFuture.source,
-          is_recurring: isRecurring,
+        return {
+          event_id: event.event_id,
+          program_id: event.program_id,
+          title: event.name ?? null,
+          name: event.name ?? null,
+          starts_at: event.starts_at,
+          ends_at: event.ends_at,
+          location: event.location ?? null,
+          source: event.source,
+          is_recurring:
+            row.behavior_type === "Recurring" || event.source === "SCHEDULE",
           checked_in_count: summary.checked_in,
           roster_count: summary.active_enrollments,
         };
+      };
+      const projectedOpenEvents = await Promise.all(
+        openEvents.map((event) => projectEvent(event))
+      );
+      open_events = projectedOpenEvents;
+      const [firstProjectedOpenEvent] = projectedOpenEvents;
+      if (firstProjectedOpenEvent) {
+        next_event = firstProjectedOpenEvent;
+      } else if (futureEvents[0]) {
+        next_event = await projectEvent(futureEvents[0]);
       }
     }
 
@@ -1388,7 +1605,9 @@ export class DepartmentWorkspace {
 
     return {
       program_id: row.program_id,
+      updated_at,
       next_event,
+      open_events,
       active_event_count,
       pending_enrollment_count,
     };
@@ -1723,8 +1942,8 @@ export class DepartmentWorkspace {
     const now = new Date().toISOString();
     const row = await this.store.createProgram({
       ...cmd,
-      lifecycle: cmd.lifecycle ?? "Draft",
-      discoverability: cmd.discoverability ?? "Unlisted",
+      lifecycle: "Draft",
+      discoverability: "Unlisted",
       enrollment_mode: cmd.enrollment_mode ?? "MemberRequest",
       display_order: cmd.display_order ?? 0,
       created_by: ctx.actorUserId,
@@ -1759,11 +1978,15 @@ export class DepartmentWorkspace {
         capabilities: await this.programCapabilities(ctx, row),
       }))
     );
-    return views
-      .filter(
-        ({ row, capabilities }) =>
-          row.discoverability === "Listed" || capabilities.manage
-      )
+    const visible = await Promise.all(
+      views.map(async ({ row, capabilities }) => ({
+        row,
+        capabilities,
+        visible: await this.canViewParticipantProgram(ctx, row, capabilities),
+      }))
+    );
+    return visible
+      .filter(({ visible: isVisible }) => isVisible)
       .map(({ row, capabilities }) => this.programView(row, capabilities));
   }
 
@@ -1776,20 +1999,31 @@ export class DepartmentWorkspace {
       return null;
     }
     const capabilities = await this.programCapabilities(ctx, row);
-    if (row.discoverability === "Unlisted" && !capabilities.manage) {
+    if (!(await this.canViewParticipantProgram(ctx, row, capabilities))) {
       return null;
     }
     return this.programView(row, capabilities);
   }
 
   /**
+   * Return whether a Program is addressable by a route-level existence check.
+   * Participant visibility is intentionally not part of this probe: mutation
+   * handlers need to distinguish an unknown resource (404) from a known
+   * resource on which the actor lacks the required capability (403).
+   */
+  async programExists(id: string): Promise<boolean> {
+    const row = await this.store.findProgramById(id);
+    return row !== null && (await this.isModuleEnabled(row.department_id));
+  }
+
+  /**
    * Participant Programs directory (PUI-02 / Issue #246): narrow, grouped
    * catalog projection over production D1. Visibility keeps the incumbent
-   * server policy — Listed rows are public, Unlisted rows appear only through
-   * scoped `program.manage` effective access — and module-disabled Departments
-   * are excluded. Lifecycle is surfaced as status; Draft/Archived rows are
-   * never silently filtered. Departments with zero visible Programs are
-   * omitted so the landing's empty state means a truly empty catalog.
+   * server policy — Active+Listed rows are public, while unlisted, Draft, and
+   * Archived rows appear only through an authorized relationship/history or
+   * scoped `program.manage` access. Module-disabled Departments are excluded.
+   * Departments with zero visible Programs are omitted so the landing's empty
+   * state means a truly empty catalog.
    */
   async listParticipantCatalog(
     ctx: AuthorizationContext
@@ -1805,15 +2039,20 @@ export class DepartmentWorkspace {
         );
         const visible = (
           await Promise.all(
-            rows.map(async (row) => ({
-              row,
-              capabilities: await this.programCapabilities(ctx, row),
-            }))
+            rows.map(async (row) => {
+              const capabilities = await this.programCapabilities(ctx, row);
+              return {
+                row,
+                capabilities,
+                visible: await this.canViewParticipantProgram(
+                  ctx,
+                  row,
+                  capabilities
+                ),
+              };
+            })
           )
-        ).filter(
-          ({ row, capabilities }) =>
-            row.discoverability === "Listed" || capabilities.manage
-        );
+        ).filter(({ visible }) => visible);
         if (visible.length === 0) {
           return null;
         }
@@ -1879,16 +2118,12 @@ export class DepartmentWorkspace {
         viewerState = "pending";
       } else {
         const latestRequest =
-          userRequests.length > 0
-            ? userRequests[userRequests.length - 1]
-            : null;
+          userRequests.length > 0 ? userRequests.at(-1) : null;
         const cancelledEnrollments = userEnrollments.filter(
           (e) => e.status === "Cancelled"
         );
         const latestCancelledEnrollment =
-          cancelledEnrollments.length > 0
-            ? cancelledEnrollments[cancelledEnrollments.length - 1]
-            : null;
+          cancelledEnrollments.length > 0 ? cancelledEnrollments.at(-1) : null;
 
         if (latestRequest?.status === "Rejected") {
           const reqTime = Date.parse(
@@ -1968,8 +2203,8 @@ export class DepartmentWorkspace {
   /**
    * Participant Program detail (PUI-03 / Issue #247). Revalidates the same
    * server visibility policy as `getProgram`, then projects only participant
-   * fields plus safe schedule/event context. Event rows are always active-only
-   * here, including for managers, so check-in and operator data stay private.
+   * fields plus safe schedule/event context. Enrolled participants also retain
+   * a read-only cancelled-event history; check-in and operator data stay private.
    */
   async getParticipantProgramDetail(
     ctx: AuthorizationContext,
@@ -1985,10 +2220,12 @@ export class DepartmentWorkspace {
     }
     const [rules, eventRows, enrollmentState] = await Promise.all([
       this.listScheduleRules(ctx, programId),
-      this.listEvents(ctx, programId),
+      this.listEvents(ctx, programId, {
+        includeCancelledForActiveEnrollment: true,
+      }),
       this.participantEnrollmentSnapshot(ctx, view),
     ]);
-    const hasActiveEnrollment = enrollmentState.hasActiveEnrollment;
+    const { hasActiveEnrollment } = enrollmentState;
     return {
       program: this.programSummary(view),
       department: this.departmentSummary(department),
@@ -2003,19 +2240,21 @@ export class DepartmentWorkspace {
       events: (eventRows ?? [])
         .filter(
           (event) =>
-            event.status === "Active" && event.availability === "Active"
+            event.availability === "Active" &&
+            (event.status === "Active" || event.status === "Cancelled")
         )
         .map((event) => ({
           event_id: event.event_id,
           program_id: event.program_id,
           starts_at: event.starts_at,
           ends_at: event.ends_at,
-          status: "Active" as const,
+          status: event.status,
           source: event.source,
           // Next-meeting card surfaces the real meeting title/venue only;
           // check-in and operator fields stay private here.
           name: event.name,
           location: event.location,
+          cancel_reason: event.cancel_reason,
           self_check_in_available: participantSelfCheckInAvailable(
             event,
             view,
@@ -2049,6 +2288,32 @@ export class DepartmentWorkspace {
       return {
         access: "Unavailable",
         snapshot: null,
+        hasActiveEnrollment,
+      };
+    }
+    if (view.lifecycle !== "Active") {
+      return {
+        access: "Unavailable",
+        snapshot: {
+          requests: requests
+            .filter((request) => request.member_user_id === ctx.actorUserId)
+            .map((request) => ({
+              request_id: request.request_id,
+              status: request.status,
+              submitted_at: request.submitted_at,
+              decided_at: request.decided_at,
+            })),
+          enrollments: enrollments
+            .filter(
+              (enrollment) => enrollment.member_user_id === ctx.actorUserId
+            )
+            .map((enrollment) => ({
+              enrollment_id: enrollment.enrollment_id,
+              status: enrollment.status,
+              enrolled_at: enrollment.enrolled_at,
+              cancelled_at: enrollment.cancelled_at,
+            })),
+        },
         hasActiveEnrollment,
       };
     }
@@ -2134,6 +2399,118 @@ export class DepartmentWorkspace {
     // defaults for managers, but never the check-in secret.
     return this.managementProgramSettings(row, capabilities);
   }
+
+  async getProgramAttendanceArtifact(
+    ctx: AuthorizationContext,
+    id: string
+  ): Promise<ProgramAttendanceArtifactView | null> {
+    const row = await this.store.findProgramById(id);
+    if (
+      !row ||
+      row.lifecycle === "Archived" ||
+      !(await this.isModuleEnabled(row.department_id, MODULE_KEY.ATTENDANCE))
+    ) {
+      return null;
+    }
+    const capabilities = await this.programCapabilities(ctx, row);
+    if (!capabilities.manage || !row.check_in_token) {
+      return null;
+    }
+    return {
+      program_id: row.program_id,
+      program_name: row.name,
+      check_in_token: row.check_in_token,
+      can_rotate: await this.authorizer.can(ctx, CAPABILITY.DEPARTMENT_MANAGE, {
+        departmentId: row.department_id,
+      }),
+    };
+  }
+
+  async rotateProgramCheckInToken(
+    ctx: AuthorizationContext,
+    id: string,
+    idempotencyKey: string,
+    correlationId: string | null
+  ): Promise<ProgramTokenRotationView> {
+    const row = await this.store.findProgramById(id);
+    const action = "PROGRAM_CHECK_IN_TOKEN_ROTATE";
+    const safeProgram = { program_id: id };
+    if (
+      !row ||
+      row.lifecycle === "Archived" ||
+      !(await this.isModuleEnabled(row.department_id, MODULE_KEY.ATTENDANCE))
+    ) {
+      await this.audit(
+        ctx,
+        action,
+        "program",
+        id,
+        "DENIED",
+        safeProgram,
+        safeProgram,
+        correlationId
+      );
+      throw new AuthorizationDeniedError(CAPABILITY.DEPARTMENT_MANAGE);
+    }
+    const canRotate = await this.authorizer.can(
+      ctx,
+      CAPABILITY.DEPARTMENT_MANAGE,
+      {
+        departmentId: row.department_id,
+      }
+    );
+    if (!canRotate) {
+      await this.audit(
+        ctx,
+        action,
+        "program",
+        id,
+        "DENIED",
+        safeProgram,
+        safeProgram,
+        correlationId
+      );
+      throw new AuthorizationDeniedError(CAPABILITY.DEPARTMENT_MANAGE);
+    }
+
+    const input: ProgramTokenRotationInput = {
+      program_id: id,
+      actor_user_id: ctx.actorUserId,
+      idempotency_key: idempotencyKey,
+      request_fingerprint: `program-check-in-token-rotate:${id}`,
+      now: new Date().toISOString(),
+      audit_id: crypto.randomUUID(),
+      correlation_id: correlationId,
+    };
+    let result: ProgramTokenRotationResult;
+    try {
+      result = await this.store.rotateProgramCheckInToken(input);
+    } catch (error) {
+      if (error instanceof ProgramTokenRotationConflictError) {
+        await this.audit(
+          ctx,
+          action,
+          "program",
+          id,
+          "CONFLICT",
+          safeProgram,
+          safeProgram,
+          correlationId
+        );
+      }
+      throw error;
+    }
+    const token = result.program.check_in_token;
+    if (!token) {
+      throw new Error("Program token rotation returned an empty token.");
+    }
+    return {
+      program_id: result.program.program_id,
+      check_in_token: token,
+      idempotent: result.idempotent,
+    };
+  }
+
   private managementDepartment(view: DepartmentView): ManagementDepartmentView {
     return {
       department_id: view.department_id,
@@ -2256,10 +2633,7 @@ export class DepartmentWorkspace {
         update.check_in_opens_at_minutes_before_start === undefined &&
         update.check_in_closes_at_minutes_after_end === undefined;
       if (old.lifecycle === "Archived") {
-        if (!onlyLifecycle) {
-          // Metadata edits on an archived program are still allowed; fall
-          // through to the generic update path below.
-        } else {
+        if (onlyLifecycle) {
           // Terminal repeat: same-actor is a quiet DUPLICATE (never silent),
           // a different actor observes a CONFLICT against the archived row.
           const sameActor = old.updated_by === ctx.actorUserId;
@@ -2280,10 +2654,11 @@ export class DepartmentWorkspace {
             );
           }
           throw new ProgramArchiveBlockedError(id, ["already_archived"]);
+        } else {
+          // Metadata edits on an archived program are still allowed; fall
+          // through to the generic update path below.
         }
-      } else if (old.lifecycle !== "Active") {
-        throw new InvalidProgramLifecycleError(old.lifecycle, "Archived");
-      } else {
+      } else if (old.lifecycle === "Active") {
         const row = await this.store.archiveProgramIfClear(
           id,
           updateWithAudit,
@@ -2358,6 +2733,8 @@ export class DepartmentWorkspace {
           row,
           await this.programCapabilities(ctx, row)
         );
+      } else {
+        throw new InvalidProgramLifecycleError(old.lifecycle, "Archived");
       }
     }
     if (update.lifecycle !== undefined && update.lifecycle !== old.lifecycle) {
@@ -2598,6 +2975,13 @@ export class DepartmentWorkspace {
     return this.store.listScheduleRules(programId);
   }
 
+  async assertProgramManagement(
+    ctx: AuthorizationContext,
+    programId: string
+  ): Promise<void> {
+    await this.requireProgramFor(ctx, programId, CAPABILITY.PROGRAM_MANAGE);
+  }
+
   async listScheduleExceptions(
     ctx: AuthorizationContext,
     programId: string,
@@ -2684,14 +3068,11 @@ export class DepartmentWorkspace {
         participant_summary,
       };
     }
-    // Participant projection: enrolled Active member may read any
-    // Active + Available event on their enrolled program (past, present,
-    // or future — the check-in window is irrelevant for detail browsing).
-    // Cancelled and Inactive events stay operator-only.
-    if (
-      event.status !== "Active" ||
-      (event.availability ?? "Active") !== "Active"
-    ) {
+    // Participant projection: an enrolled member may read any Available
+    // event on their enrolled program (past, present, future, or cancelled).
+    // Cancellation remains visible as history, but the participant projection
+    // never includes a credential and therefore cannot create attendance.
+    if ((event.availability ?? "Active") !== "Active") {
       return null;
     }
     const enrolled = await this.store.hasActiveEnrollment(
@@ -2731,8 +3112,9 @@ export class DepartmentWorkspace {
     ctx: AuthorizationContext,
     programId: string,
     cmd: CreateScheduleRuleCommand,
-    correlationId: string | null
-  ): Promise<ScheduleRuleRow> {
+    correlationId: string | null,
+    idempotencyKey: string | null = null
+  ): Promise<ScheduleRuleCreationResult> {
     const program = await this.requireProgramFor(
       ctx,
       programId,
@@ -2743,25 +3125,59 @@ export class DepartmentWorkspace {
       throw new ScheduleRuleNotApplicableError(programId);
     }
     const now = new Date().toISOString();
-    const row = await this.store.createScheduleRule({
+    const effectiveStartDate = cmd.effective_start_date ?? hkTodayWallDate();
+    const effectiveEndDate = cmd.effective_end_date ?? null;
+    const requestFingerprint = JSON.stringify({
       program_id: programId,
-      ...cmd,
-      created_by: ctx.actorUserId,
-      created_at: now,
-      updated_by: ctx.actorUserId,
-      updated_at: now,
+      recurrence: cmd.recurrence,
+      day_of_week: cmd.day_of_week,
+      month_day: cmd.month_day,
+      start_time: cmd.start_time,
+      end_time: cmd.end_time,
+      location: cmd.location ?? null,
+      effective_start_date: effectiveStartDate,
+      effective_end_date: effectiveEndDate,
     });
+    let result: ScheduleRuleCreationResult;
+    try {
+      result = await this.store.createScheduleRule({
+        program_id: programId,
+        ...cmd,
+        created_by: ctx.actorUserId,
+        created_at: now,
+        updated_by: ctx.actorUserId,
+        updated_at: now,
+        effective_start_date: effectiveStartDate,
+        effective_end_date: effectiveEndDate,
+        idempotency_key: idempotencyKey,
+        request_fingerprint: requestFingerprint,
+      });
+    } catch (error) {
+      if (error instanceof ScheduleRuleIdempotencyConflictError) {
+        await this.audit(
+          ctx,
+          "SCHEDULE_RULE_CREATE",
+          "schedule_rule",
+          programId,
+          "CONFLICT",
+          null,
+          { idempotency_key: idempotencyKey },
+          correlationId
+        );
+      }
+      throw error;
+    }
     await this.audit(
       ctx,
       "SCHEDULE_RULE_CREATE",
       "schedule_rule",
-      row.rule_id,
-      "SUCCESS",
+      result.rule.rule_id,
+      result.idempotent ? "DUPLICATE" : "SUCCESS",
       null,
-      row,
+      result.rule,
       correlationId
     );
-    return row;
+    return result;
   }
 
   async updateScheduleRule(
@@ -2780,6 +3196,9 @@ export class DepartmentWorkspace {
       CAPABILITY.PROGRAM_MANAGE
     );
     await this.requireModuleEnabled(program.department_id, MODULE_KEY.EVENTS);
+    if (rule.retired_at !== undefined && rule.retired_at !== null) {
+      throw new ScheduleRuleRetiredError(ruleId);
+    }
     const row = await this.store.updateScheduleRule(ruleId, {
       ...cmd,
       updated_by: ctx.actorUserId,
@@ -2798,6 +3217,52 @@ export class DepartmentWorkspace {
     return row;
   }
 
+  async retireScheduleRule(
+    ctx: AuthorizationContext,
+    ruleId: string,
+    correlationId: string | null
+  ): Promise<ScheduleRuleRow> {
+    const rule = await this.store.findScheduleRule(ruleId);
+    if (!rule) {
+      throw new AuthorizationDeniedError(CAPABILITY.PROGRAM_MANAGE);
+    }
+    const program = await this.requireProgramFor(
+      ctx,
+      rule.program_id,
+      CAPABILITY.PROGRAM_MANAGE
+    );
+    await this.requireModuleEnabled(program.department_id, MODULE_KEY.EVENTS);
+    if (rule.retired_at !== undefined && rule.retired_at !== null) {
+      await this.audit(
+        ctx,
+        "SCHEDULE_RULE_RETIRE",
+        "schedule_rule",
+        ruleId,
+        "DUPLICATE",
+        rule,
+        { ...rule, reason: "already_retired" },
+        correlationId
+      );
+      return rule;
+    }
+    const retired = await this.store.retireScheduleRule(
+      ruleId,
+      ctx.actorUserId,
+      new Date().toISOString()
+    );
+    await this.audit(
+      ctx,
+      "SCHEDULE_RULE_RETIRE",
+      "schedule_rule",
+      ruleId,
+      "SUCCESS",
+      rule,
+      retired,
+      correlationId
+    );
+    return retired;
+  }
+
   async createScheduleException(
     ctx: AuthorizationContext,
     ruleId: string,
@@ -2814,6 +3279,9 @@ export class DepartmentWorkspace {
       CAPABILITY.PROGRAM_MANAGE
     );
     await this.requireModuleEnabled(program.department_id, MODULE_KEY.EVENTS);
+    if (rule.retired_at !== undefined && rule.retired_at !== null) {
+      throw new ScheduleRuleRetiredError(ruleId);
+    }
     const existing = (await this.store.listScheduleExceptions([ruleId])).find(
       (e) => e.override_date === cmd.override_date
     );
@@ -2882,6 +3350,9 @@ export class DepartmentWorkspace {
       CAPABILITY.PROGRAM_MANAGE
     );
     await this.requireModuleEnabled(program.department_id, MODULE_KEY.EVENTS);
+    if (rule.retired_at !== undefined && rule.retired_at !== null) {
+      throw new ScheduleRuleRetiredError(rule.rule_id);
+    }
     await this.store.deleteScheduleException(exceptionId);
     await this.audit(
       ctx,
@@ -2898,8 +3369,9 @@ export class DepartmentWorkspace {
   /**
    * Deterministic SHA-256 hex over the exact plan inputs (sorted so rule and
    * exception ordering never changes the identity). The hash freezes the
-   * rules/exceptions/horizon/from-date the plan was computed from, which is
-   * what generation re-checks to reject stale plans before any write.
+   * rules/exceptions/horizon/from-date the plan was computed from, including
+   * their authoritative revisions, which is what generation re-checks to
+   * reject stale plans before any write.
    */
   private async computePlanHash(
     rules: ScheduleRuleRow[],
@@ -2920,6 +3392,10 @@ export class DepartmentWorkspace {
           start_time: rule.start_time,
           end_time: rule.end_time,
           location: rule.location ?? null,
+          effective_start_date: rule.effective_start_date ?? null,
+          effective_end_date: rule.effective_end_date ?? null,
+          retired_at: rule.retired_at ?? null,
+          version: rule.updated_at,
         })),
       exceptions: [...exceptions]
         .sort((a, b) =>
@@ -2928,11 +3404,14 @@ export class DepartmentWorkspace {
             : a.rule_id.localeCompare(b.rule_id)
         )
         .map((exception) => ({
+          exception_id: exception.exception_id,
           rule_id: exception.rule_id,
           override_date: exception.override_date,
           action: exception.action,
           new_start_time: exception.new_start_time,
           new_end_time: exception.new_end_time,
+          new_date: exception.new_date ?? null,
+          version: exception.created_at,
         })),
     });
     const digest = await crypto.subtle.digest(
@@ -2955,7 +3434,8 @@ export class DepartmentWorkspace {
     ctx: AuthorizationContext,
     programId: string,
     horizonDays: number,
-    correlationId: string | null
+    correlationId: string | null,
+    range?: { fromDate: string; untilDate: string }
   ): Promise<{
     plan: PreviewPlanView;
     occurrences: PreviewOccurrenceRow[];
@@ -2986,25 +3466,31 @@ export class DepartmentWorkspace {
     const exceptions = await this.store.listScheduleExceptions(
       rules.map((rule) => rule.rule_id)
     );
-    const fromDate = hkTodayWallDate();
+    const scheduleVersion = await this.store.findScheduleVersion(programId);
+    const fromDate = range?.fromDate ?? hkTodayWallDate();
+    const untilDate =
+      range?.untilDate ?? addWallDays(fromDate, horizonDays - 1);
+    const resolvedHorizonDays = range
+      ? wallDaySpan(fromDate, untilDate)
+      : horizonDays;
     const candidates = this.materializeOccurrences(
       rules,
       fromDate,
-      horizonDays,
+      resolvedHorizonDays,
       exceptions
     );
     // Preview-time duplicate signal: mark occurrences whose starts_at is
     // already claimed by a live event row, or by an earlier candidate in
     // this same plan (intra-plan collision), so the operator sees skipped
     // duplicates BEFORE any write. This is purely advisory: generation's
-    // own INSERT OR IGNORE + findEventByStart check in
-    // attemptGenerationOccurrence stays the authoritative write-time guard
-    // and continues to run exactly as before regardless of this flag.
+    // own atomic revision guard + INSERT OR IGNORE check in
+    // recordGeneratedOccurrence stays the authoritative write-time guard and
+    // continues to run regardless of this advisory flag.
     await this.markPreviewDuplicates(programId, candidates);
     const planHash = await this.computePlanHash(
       rules,
       exceptions,
-      horizonDays,
+      resolvedHorizonDays,
       fromDate
     );
     const now = new Date().toISOString();
@@ -3016,11 +3502,14 @@ export class DepartmentWorkspace {
       plan_id: `pln_${programId}_${planHash.slice(0, 24)}`,
       program_id: programId,
       plan_hash: planHash,
-      horizon_days: horizonDays,
+      horizon_days: resolvedHorizonDays,
       from_date: fromDate,
+      to_date: untilDate,
       rule_count: rules.length,
       created_by: ctx.actorUserId,
       created_at: now,
+      schedule_version: scheduleVersion,
+      reviewed_at: Date.now(),
     };
     const occurrences = candidates.map((candidate) =>
       this.previewOccurrenceRow(plan.plan_id, candidate)
@@ -3081,27 +3570,34 @@ export class DepartmentWorkspace {
     if (!plan || plan.program_id !== programId) {
       throw new PreviewPlanNotFoundError(planId);
     }
-    // Reject stale/ambiguous plans before writes: the live schedule must
-    // still match the plan's frozen inputs, and no newer preview may have
-    // superseded this plan.
-    const rules = await this.store.listScheduleRules(programId);
-    const exceptions = await this.store.listScheduleExceptions(
-      rules.map((rule) => rule.rule_id)
-    );
-    const currentHash = await this.computePlanHash(
-      rules,
-      exceptions,
-      plan.horizon_days,
-      plan.from_date
-    );
-    const latest = await this.store.findLatestPreviewPlan(programId);
-    const superseded =
-      latest !== null &&
-      latest.plan_id !== plan.plan_id &&
-      (latest.created_at > plan.created_at ||
-        (latest.created_at === plan.created_at &&
-          latest.plan_id > plan.plan_id));
-    if (currentHash !== plan.plan_hash || superseded) {
+    const isCurrentPlan = async (): Promise<boolean> => {
+      const rules = await this.store.listScheduleRules(programId);
+      const exceptions = await this.store.listScheduleExceptions(
+        rules.map((rule) => rule.rule_id)
+      );
+      const currentHash = await this.computePlanHash(
+        rules,
+        exceptions,
+        plan.horizon_days,
+        plan.from_date
+      );
+      const currentScheduleVersion =
+        await this.store.findScheduleVersion(programId);
+      const latest = await this.store.findLatestPreviewPlan(programId);
+      const superseded =
+        latest !== null &&
+        latest.plan_id !== plan.plan_id &&
+        (latest.reviewed_at > plan.reviewed_at ||
+          (latest.reviewed_at === plan.reviewed_at &&
+            latest.plan_id > plan.plan_id));
+      return (
+        currentHash === plan.plan_hash &&
+        plan.schedule_version !== null &&
+        currentScheduleVersion === plan.schedule_version &&
+        !superseded
+      );
+    };
+    const rejectStalePlan = async (): Promise<never> => {
       // Business-state conflict (schedule changed / plan superseded), not a
       // system failure: ADR-0023/0027 reserve FAILED for system-level
       // failures, so this audits CONFLICT.
@@ -3115,6 +3611,17 @@ export class DepartmentWorkspace {
         { plan_id: planId, reason: "stale_plan" },
         correlationId
       );
+      throw new StalePreviewPlanError(planId, programId);
+    };
+    // Reject stale/ambiguous plans before writes: the live schedule must
+    // still match the plan's frozen inputs, and no newer preview may have
+    // superseded this plan.
+    if (!(await isCurrentPlan())) {
+      await rejectStalePlan();
+    }
+    const scheduleVersion = plan.schedule_version;
+    if (scheduleVersion === null) {
+      await rejectStalePlan();
       throw new StalePreviewPlanError(planId, programId);
     }
     const occurrences = await this.store.listPreviewOccurrences(planId);
@@ -3142,6 +3649,9 @@ export class DepartmentWorkspace {
     });
     const resumed = !runCreated;
     if (run.status === "completed") {
+      if (!(await isCurrentPlan())) {
+        await rejectStalePlan();
+      }
       // Deterministic repeat (ADR-0027): the plan was already fully
       // generated, so this request created nothing and skipped every
       // occurrence; the repeat still emits its own EVENT_GENERATE audit row
@@ -3165,28 +3675,74 @@ export class DepartmentWorkspace {
         },
         correlationId
       );
-      return {
-        run_id: run.run_id,
-        plan_id: planId,
-        status: "completed",
+      return this.generationResult(run, occurrences, true, {
         created: 0,
         skipped,
         failed: 0,
-        resumed: true,
-      };
+        createdEventIds: [],
+      });
     }
     // Each occurrence gets exactly one durable attempt row; repeated and
     // concurrent requests converge on the same rows (INSERT … ON CONFLICT
     // only supersedes previously-failed rows), so the item table is the
     // single source of truth for the final counts. Failed rows are retried;
     // created/skipped rows are terminal.
-    await this.processGenerationOccurrences(
+    const staleDuringGeneration = await this.processGenerationOccurrences(
       run.run_id,
       programId,
+      planId,
       occurrences,
       ctx.actorUserId,
-      now
+      now,
+      scheduleVersion,
+      plan.reviewed_at
     );
+    if (staleDuringGeneration || !(await isCurrentPlan())) {
+      await this.markUnprocessedGenerationOccurrences(run.run_id, occurrences);
+      // Settle from durable item rows before surfacing the conflict. A
+      // mid-run revision may already have committed Events; returning its
+      // partial result keeps the operator from mistaking committed work for
+      // a failed write. The stale Plan is never retryable: the caller must
+      // review a new Plan before attempting any remaining occurrences.
+      await this.store.finishGenerationRun(
+        run.run_id,
+        new Date().toISOString()
+      );
+      const conflictSettled = await this.store.findGenerationRunByPlan(planId);
+      if (!conflictSettled) {
+        throw new WorkspaceNotFoundError("generation_run", run.run_id);
+      }
+      if (
+        conflictSettled.status === "completed" ||
+        conflictSettled.created + conflictSettled.skipped > 0
+      ) {
+        const settlementOutcome =
+          conflictSettled.status === "completed" ? "SUCCESS" : "CONFLICT";
+        await this.audit(
+          ctx,
+          "EVENT_GENERATE",
+          "event",
+          programId,
+          settlementOutcome,
+          null,
+          {
+            run_id: conflictSettled.run_id,
+            plan_id: planId,
+            reason: "stale_plan",
+            status: conflictSettled.status,
+            created: conflictSettled.created,
+            skipped: conflictSettled.skipped,
+            failed: conflictSettled.failed,
+            requires_review: true,
+          },
+          correlationId
+        );
+        return this.generationResult(conflictSettled, occurrences, resumed, {
+          requiresReview: true,
+        });
+      }
+      await rejectStalePlan();
+    }
     // Atomic compare-and-set settlement: finishGenerationRun recomputes
     // counts/status from the item table in one statement and only the first
     // finisher writes; every caller reloads the settled row, so the run and
@@ -3214,130 +3770,196 @@ export class DepartmentWorkspace {
       },
       correlationId
     );
+    return this.generationResult(settled, occurrences, resumed);
+  }
+
+  private async generationResult(
+    run: GenerationRunRow,
+    occurrences: readonly PreviewOccurrenceRow[],
+    resumed: boolean,
+    overrides: {
+      created?: number;
+      skipped?: number;
+      failed?: number;
+      createdEventIds?: string[];
+      requiresReview?: boolean;
+    } | null = null
+  ): Promise<GenerateResult> {
+    const items = await this.store.listGenerationRunItems(run.run_id);
+    const occurrenceIds = new Set(
+      occurrences.map((occurrence) => occurrence.occurrence_id)
+    );
     return {
-      run_id: settled.run_id,
-      plan_id: planId,
-      status: settled.status,
-      created: settled.created,
-      skipped: settled.skipped,
-      failed: settled.failed,
+      run_id: run.run_id,
+      plan_id: run.plan_id,
+      status: run.status,
+      created: overrides?.created ?? run.created,
+      skipped: overrides?.skipped ?? run.skipped,
+      failed: overrides?.failed ?? run.failed,
       resumed,
+      ...(overrides?.requiresReview ? { requires_review: true } : {}),
+      created_event_ids:
+        overrides?.createdEventIds ??
+        items
+          .filter(
+            (item) =>
+              item.outcome === "created" &&
+              item.event_id !== null &&
+              occurrenceIds.has(item.occurrence_id)
+          )
+          .map((item) => item.event_id as string),
+      skipped_occurrences: items
+        .filter(
+          (item) =>
+            item.outcome === "skipped" && occurrenceIds.has(item.occurrence_id)
+        )
+        .map((item) => ({
+          occurrence_id: item.occurrence_id,
+          starts_at: item.starts_at,
+          reason:
+            item.detail === "CANCEL"
+              ? ("CANCEL" as const)
+              : ("DUPLICATE" as const),
+        })),
+      unresolved_occurrences: items
+        .filter(
+          (item) =>
+            item.outcome === "failed" && occurrenceIds.has(item.occurrence_id)
+        )
+        .map((item) => ({
+          occurrence_id: item.occurrence_id,
+          starts_at: item.starts_at,
+          detail: item.detail,
+        })),
     };
   }
 
   /**
    * Durably attempt every occurrence of a run. Attempts are independent and
-   * run in parallel; each attempt row is durable, so a crash mid-run leaves
-   * a resumable partial state and retries resume from the item table.
-   * Failed units are retried; created/skipped rows are terminal.
+   * run with bounded concurrency; each attempt row is durable, so a crash
+   * mid-run leaves a resumable partial state and retries resume from the item
+   * table. Failed units are retried; created/skipped rows are terminal.
    */
   private async processGenerationOccurrences(
     runId: string,
     programId: string,
+    planId: string,
     occurrences: PreviewOccurrenceRow[],
     actorUserId: string,
-    now: string
-  ): Promise<void> {
+    now: string,
+    scheduleVersion: number,
+    reviewedAt: number
+  ): Promise<boolean> {
     const runItems = await this.store.listGenerationRunItems(runId);
     const processed = new Map(
       runItems.map((item) => [item.occurrence_id, item])
     );
-    await Promise.all(
-      occurrences.map((occurrence) =>
-        this.attemptGenerationOccurrence(
+    const concurrency = Math.min(8, Math.max(1, occurrences.length));
+    let nextIndex = 0;
+    let stale = false;
+    const worker = async (): Promise<void> => {
+      while (true) {
+        if (stale) {
+          return;
+        }
+        const occurrence = occurrences[nextIndex];
+        nextIndex += 1;
+        if (!occurrence) {
+          return;
+        }
+        // Each attempt is an independent durable unit; the concurrency cap
+        // prevents a large preview from flooding D1 while preserving retry
+        // and per-occurrence provenance.
+        // oxlint-disable-next-line no-await-in-loop
+        const occurrenceStale = await this.attemptGenerationOccurrence(
           runId,
           programId,
+          planId,
           occurrence,
           actorUserId,
           now,
-          processed
-        )
-      )
-    );
+          processed,
+          scheduleVersion,
+          reviewedAt
+        );
+        if (occurrenceStale) {
+          stale = true;
+          return;
+        }
+      }
+    };
+    await Promise.all(Array.from({ length: concurrency }, () => worker()));
+    return stale;
   }
 
-  private async attemptGenerationOccurrence(
+  private async markUnprocessedGenerationOccurrences(
     runId: string,
-    programId: string,
-    occurrence: PreviewOccurrenceRow,
-    actorUserId: string,
-    now: string,
-    processed: ReadonlyMap<string, GenerationRunItemRow>
+    occurrences: readonly PreviewOccurrenceRow[]
   ): Promise<void> {
-    const prior = processed.get(occurrence.occurrence_id);
-    if (prior && prior.outcome !== "failed") {
-      return;
-    }
-    if (occurrence.skip_reason === "CANCEL") {
+    const processed = new Set(
+      (await this.store.listGenerationRunItems(runId)).map(
+        (item) => item.occurrence_id
+      )
+    );
+    for (const occurrence of occurrences) {
+      if (processed.has(occurrence.occurrence_id)) {
+        continue;
+      }
+      // oxlint-disable-next-line no-await-in-loop
       await this.store.recordGenerationRunItem({
         item_id: `${runId}:${occurrence.occurrence_id}`,
         run_id: runId,
         occurrence_id: occurrence.occurrence_id,
         starts_at: occurrence.starts_at,
-        outcome: "skipped",
+        outcome: "failed",
         event_id: null,
-        detail: "CANCEL",
+        detail: "STALE_PLAN",
       });
-      return;
     }
-    let outcome: "created" | "skipped" | "failed" = "failed";
-    let eventId: string | null = null;
-    let detail: string | null = null;
+  }
+
+  private async attemptGenerationOccurrence(
+    runId: string,
+    programId: string,
+    planId: string,
+    occurrence: PreviewOccurrenceRow,
+    actorUserId: string,
+    now: string,
+    processed: ReadonlyMap<string, GenerationRunItemRow>,
+    scheduleVersion: number,
+    reviewedAt: number
+  ): Promise<boolean> {
+    const prior = processed.get(occurrence.occurrence_id);
+    if (prior && prior.outcome !== "failed") {
+      return false;
+    }
     try {
-      const inserted = await this.store.insertGeneratedEvent({
-        program_id: programId,
-        starts_at: occurrence.starts_at,
-        ends_at: occurrence.ends_at,
-        status: "Active",
-        availability: "Active",
-        source: "SCHEDULE",
-        name: null,
-        location: occurrence.location,
-        check_in_window_opens_at: null,
-        check_in_window_closes_at: null,
-        cancel_reason: null,
-        created_by: actorUserId,
-        created_at: now,
-        updated_by: actorUserId,
-        updated_at: now,
+      const outcome = await this.store.recordGeneratedOccurrence({
+        scheduleVersion,
+        reviewedAt,
+        planId,
+        runId,
+        programId,
+        occurrence,
+        actorUserId,
+        createdAt: now,
       });
-      if (inserted) {
-        outcome = "created";
-        const createdEvent = await this.store.findEventByStart(
-          programId,
-          occurrence.starts_at
-        );
-        eventId = createdEvent?.event_id ?? null;
-      } else {
-        // INSERT OR IGNORE reported no change. Verify why: only the unique
-        // (program_id, starts_at) index is a benign duplicate; any other
-        // swallowed constraint would have produced no event row at all and
-        // must be surfaced as a system failure, never a false 'skipped'.
-        const existing = await this.store.findEventByStart(
-          programId,
-          occurrence.starts_at
-        );
-        if (existing) {
-          outcome = "skipped";
-          eventId = existing.event_id;
-        } else {
-          outcome = "failed";
-          detail = "event insert ignored without creating an event row";
-        }
+      if (outcome === "stale") {
+        return true;
       }
+      return false;
     } catch (error) {
-      outcome = "failed";
-      detail = error instanceof Error ? error.message : String(error);
+      await this.store.recordGenerationRunItem({
+        item_id: `${runId}:${occurrence.occurrence_id}`,
+        run_id: runId,
+        occurrence_id: occurrence.occurrence_id,
+        starts_at: occurrence.starts_at,
+        outcome: "failed",
+        event_id: null,
+        detail: error instanceof Error ? error.message : String(error),
+      });
+      return false;
     }
-    await this.store.recordGenerationRunItem({
-      item_id: `${runId}:${occurrence.occurrence_id}`,
-      run_id: runId,
-      occurrence_id: occurrence.occurrence_id,
-      starts_at: occurrence.starts_at,
-      outcome,
-      event_id: eventId,
-      detail,
-    });
   }
 
   /** Deterministic, ordered occurrence candidates for every rule. */
@@ -3412,6 +4034,7 @@ export class DepartmentWorkspace {
       location: candidate.location,
       skip_reason: candidate.skip_reason,
       exception_id: candidate.exception_id,
+      replacement_date: candidate.replacement_date,
     };
   }
 
@@ -3421,6 +4044,9 @@ export class DepartmentWorkspace {
     cmd: CreateEventCommand,
     correlationId: string | null
   ): Promise<EventRow> {
+    if (!cmd.name?.trim()) {
+      throw new EventNameRequiredError();
+    }
     const program = await this.requireProgramFor(
       ctx,
       programId,
@@ -3452,7 +4078,7 @@ export class DepartmentWorkspace {
       status: "Active",
       availability: "Active",
       source: "MANUAL",
-      name: cmd.name,
+      name: cmd.name.trim(),
       event_type: cmd.event_type ?? null,
       location: cmd.location,
       check_in_window_opens_at: cmd.check_in_window_opens_at,
@@ -3478,7 +4104,8 @@ export class DepartmentWorkspace {
 
   async listEvents(
     ctx: AuthorizationContext,
-    programId: string
+    programId: string,
+    options: { includeCancelledForActiveEnrollment?: boolean } = {}
   ): Promise<EventRow[] | null> {
     const program = await this.store.findProgramById(programId);
     if (
@@ -3505,8 +4132,14 @@ export class DepartmentWorkspace {
     if (program.discoverability === "Unlisted") {
       return null;
     }
+    const includeCancelled =
+      options.includeCancelledForActiveEnrollment === true &&
+      (await this.store.hasActiveEnrollment(programId, ctx.actorUserId));
     return decorated.filter(
-      (r) => r.status === "Active" && r.availability === "Active"
+      (r) =>
+        r.availability === "Active" &&
+        (r.status === "Active" ||
+          (includeCancelled && r.status === "Cancelled"))
     );
   }
 
@@ -3558,25 +4191,121 @@ export class DepartmentWorkspace {
       CAPABILITY.PROGRAM_MANAGE
     );
     await this.requireModuleEnabled(program.department_id, MODULE_KEY.EVENTS);
-    // Spec US 12: edits when attendance already exists must succeed and be
-    // recorded (no data loss; audit trail preserved).
-    if (cmd.starts_at !== undefined && cmd.starts_at !== event.starts_at) {
-      const duplicate = await this.store.findEventByStart(
-        event.program_id,
-        cmd.starts_at
+    if (event.status === "Cancelled") {
+      await this.audit(
+        ctx,
+        "EVENT_UPDATE",
+        "event",
+        eventId,
+        "DENIED",
+        event,
+        null,
+        correlationId,
+        cmd.reason ?? null
       );
-      if (duplicate && duplicate.event_id !== event.event_id) {
+      throw new EventCancelledReadOnlyError();
+    }
+    const identityChanged =
+      (cmd.name !== undefined && cmd.name !== event.name) ||
+      (cmd.location !== undefined && cmd.location !== event.location) ||
+      (cmd.event_type !== undefined && cmd.event_type !== event.event_type);
+    const attemptedIdentity = {
+      name: cmd.name === undefined ? event.name : cmd.name,
+      location: cmd.location === undefined ? event.location : cmd.location,
+      event_type:
+        cmd.event_type === undefined ? event.event_type : cmd.event_type,
+    };
+    const activeAttendanceCount = identityChanged
+      ? await this.store.countActiveAttendance(eventId)
+      : 0;
+    if (identityChanged && activeAttendanceCount > 0) {
+      if (!cmd.reason?.trim()) {
         await this.audit(
           ctx,
           "EVENT_UPDATE",
           "event",
-          duplicate.event_id,
-          "CONFLICT",
+          eventId,
+          "DENIED",
           event,
-          { starts_at: cmd.starts_at },
+          {
+            ...attemptedIdentity,
+            active_attendance_count: activeAttendanceCount,
+          },
           correlationId
         );
-        throw new DuplicateEventError(cmd.starts_at);
+        throw new EventIdentityChangeReasonRequiredError();
+      }
+      if (!(await this.store.isGlobalStaffOrAdmin(ctx.actorUserId))) {
+        await this.audit(
+          ctx,
+          "EVENT_UPDATE",
+          "event",
+          eventId,
+          "DENIED",
+          event,
+          {
+            ...attemptedIdentity,
+            active_attendance_count: activeAttendanceCount,
+          },
+          correlationId,
+          cmd.reason.trim()
+        );
+        throw new AuthorizationDeniedError(CAPABILITY.PROGRAM_MANAGE);
+      }
+    }
+    // Identity edits remain safe after an Event starts. A schedule change is
+    // a new operational Event once the original has started, has Attendance,
+    // or has a durable expected-roster snapshot.
+    const startsChanged =
+      cmd.starts_at !== undefined && cmd.starts_at !== event.starts_at;
+    const endsChanged =
+      cmd.ends_at !== undefined && cmd.ends_at !== event.ends_at;
+    if (startsChanged || endsChanged) {
+      const started =
+        Number.isFinite(Date.parse(event.starts_at)) &&
+        Date.parse(event.starts_at) <= Date.now();
+      const hasSnapshot = await this.store.hasAttendanceSnapshot(eventId);
+      const scheduleAttendanceCount =
+        await this.store.countActiveAttendance(eventId);
+      if (started || hasSnapshot || scheduleAttendanceCount > 0) {
+        await this.audit(
+          ctx,
+          "EVENT_UPDATE",
+          "event",
+          eventId,
+          "CONFLICT",
+          event,
+          {
+            starts_at: cmd.starts_at ?? event.starts_at,
+            reason: started
+              ? "event_started"
+              : hasSnapshot
+                ? "attendance_snapshot_exists"
+                : "active_attendance_exists",
+          },
+          correlationId
+        );
+        throw new EventRescheduleBlockedError(eventId);
+      }
+      if (cmd.starts_at !== undefined && cmd.starts_at !== event.starts_at) {
+        const requestedStart = cmd.starts_at;
+        const duplicate = await this.store.findEventByStart(
+          event.program_id,
+          requestedStart
+        );
+        if (duplicate && duplicate.event_id !== event.event_id) {
+          await this.audit(
+            ctx,
+            "EVENT_UPDATE",
+            "event",
+            duplicate.event_id,
+            "CONFLICT",
+            event,
+            { starts_at: requestedStart },
+            correlationId
+          );
+          throw new DuplicateEventError(requestedStart);
+        }
       }
     }
     const updated = await this.store.updateEvent(
@@ -3586,6 +4315,21 @@ export class DepartmentWorkspace {
       new Date().toISOString()
     );
     if (!updated) {
+      const current = await this.store.findEventById(eventId);
+      if (current?.status === "Cancelled") {
+        await this.audit(
+          ctx,
+          "EVENT_UPDATE",
+          "event",
+          eventId,
+          "DENIED",
+          current,
+          null,
+          correlationId,
+          cmd.reason?.trim() ?? null
+        );
+        throw new EventCancelledReadOnlyError();
+      }
       throw new AuthorizationDeniedError(CAPABILITY.PROGRAM_MANAGE);
     }
     await this.audit(
@@ -3596,7 +4340,10 @@ export class DepartmentWorkspace {
       "SUCCESS",
       event,
       updated,
-      correlationId
+      correlationId,
+      identityChanged && activeAttendanceCount > 0
+        ? (cmd.reason?.trim() ?? null)
+        : null
     );
     return updated;
   }
@@ -3617,6 +4364,19 @@ export class DepartmentWorkspace {
       CAPABILITY.PROGRAM_MANAGE
     );
     await this.requireModuleEnabled(program.department_id, MODULE_KEY.EVENTS);
+    if (event.status === "Cancelled") {
+      await this.audit(
+        ctx,
+        "EVENT_AVAILABILITY",
+        "event",
+        eventId,
+        "DENIED",
+        event,
+        null,
+        correlationId
+      );
+      throw new EventCancelledReadOnlyError();
+    }
     if (event.availability === cmd.availability) {
       await this.audit(
         ctx,
@@ -3668,6 +4428,20 @@ export class DepartmentWorkspace {
       new Date().toISOString()
     );
     if (!updated) {
+      const current = await this.store.findEventById(eventId);
+      if (current?.status === "Cancelled") {
+        await this.audit(
+          ctx,
+          "EVENT_AVAILABILITY",
+          "event",
+          eventId,
+          "DENIED",
+          current,
+          null,
+          correlationId
+        );
+        throw new EventCancelledReadOnlyError();
+      }
       throw new AuthorizationDeniedError(CAPABILITY.PROGRAM_MANAGE);
     }
     await this.audit(
@@ -3995,6 +4769,9 @@ export class DepartmentWorkspace {
       program.department_id,
       MODULE_KEY.ENROLLMENT
     );
+    if (program.lifecycle !== "Active") {
+      throw new AuthorizationDeniedError(CAPABILITY.PROGRAM_ENROLL);
+    }
     if (program.enrollment_mode !== "MemberRequest") {
       throw new EnrollmentNotAllowedError(programId, "MemberRequest");
     }
@@ -4147,6 +4924,427 @@ export class DepartmentWorkspace {
         (enrollment) => enrollment.member_user_id === ctx.actorUserId
       ),
     };
+  }
+
+  private async requireApprovalRunProgram(
+    ctx: AuthorizationContext,
+    programId: string
+  ): Promise<ProgramRow> {
+    const program = await this.requireProgramFor(
+      ctx,
+      programId,
+      CAPABILITY.PROGRAM_MANAGE
+    );
+    await this.requireModuleEnabled(
+      program.department_id,
+      MODULE_KEY.ENROLLMENT
+    );
+    return program;
+  }
+
+  private async findOwnedApprovalRun(
+    ctx: AuthorizationContext,
+    programId: string,
+    runId: string
+  ): Promise<EnrollmentApprovalRunRow | null> {
+    const row = await this.store.findEnrollmentApprovalRun(runId);
+    if (
+      !row ||
+      row.actor_user_id !== ctx.actorUserId ||
+      row.program_id !== programId
+    ) {
+      return null;
+    }
+    return row;
+  }
+
+  private async persistApprovalRun(
+    current: EnrollmentApprovalRunRow,
+    next: EnrollmentApprovalRun
+  ): Promise<{ row: EnrollmentApprovalRunRow; committed: boolean }> {
+    const currentByRequestId = new Map(
+      current.items.map((item) => [item.request_id, item])
+    );
+    for (const item of next.items) {
+      const previous = currentByRequestId.get(item.request_id);
+      if (!previous) {
+        continue;
+      }
+      const changed =
+        previous.status !== item.status ||
+        previous.retryable !== item.retryable ||
+        previous.enrollment_id !== item.enrollment_id ||
+        previous.error_code !== item.error_code ||
+        previous.detail !== item.detail ||
+        previous.started_at !== item.started_at ||
+        previous.settled_at !== item.settled_at;
+      if (!changed) {
+        continue;
+      }
+      // oxlint-disable-next-line eslint/no-await-in-loop -- each CAS settles before the run status is updated or the next item is touched.
+      const saved = await this.store.updateEnrollmentApprovalRunItem(
+        current.run_id,
+        item.request_id,
+        item,
+        previous.status
+      );
+      if (!saved) {
+        // oxlint-disable-next-line eslint/no-await-in-loop -- reload the concurrent winner before returning the run projection.
+        const latest = await this.store.findEnrollmentApprovalRun(
+          current.run_id
+        );
+        return { row: latest ?? current, committed: false };
+      }
+    }
+    if (
+      current.status !== next.status ||
+      current.finished_at !== next.finished_at ||
+      current.cancelled_at !== next.cancelled_at
+    ) {
+      // ponytail: only an active row may become terminal; a concurrent cancel
+      // must not be overwritten by a stale in-flight approval settle.
+      const runUpdated = await this.store.updateEnrollmentApprovalRun(next);
+      if (!runUpdated) {
+        // oxlint-disable-next-line eslint/no-await-in-loop -- reload the terminal winner before returning the run projection.
+        const latest = await this.store.findEnrollmentApprovalRun(
+          current.run_id
+        );
+        return { row: latest ?? current, committed: false };
+      }
+    }
+    const latest = await this.store.findEnrollmentApprovalRun(current.run_id);
+    return {
+      row: latest ?? { ...current, ...next },
+      committed: true,
+    };
+  }
+
+  private async reconcileApprovalRunRow(
+    ctx: AuthorizationContext,
+    row: EnrollmentApprovalRunRow,
+    correlationId: string | null
+  ): Promise<EnrollmentApprovalRunRow> {
+    const current = approvalRunView(row);
+    const authorityEntries = await Promise.all(
+      current.items
+        .filter(
+          (item) =>
+            item.status === "in_flight" || item.status === "outcome_unknown"
+        )
+        .map(
+          async (item) =>
+            [
+              item.request_id,
+              await this.store.findEnrollmentApprovalAuthority(
+                item.program_id,
+                item.request_id,
+                item.member_user_id,
+                item.idempotency_key
+              ),
+            ] as const
+        )
+    );
+    const authorityByRequestId = new Map<
+      string,
+      EnrollmentApprovalRunAuthority
+    >(
+      authorityEntries.filter(
+        (entry): entry is readonly [string, EnrollmentApprovalRunAuthority] =>
+          entry[1] !== null
+      )
+    );
+    const next = reconcileEnrollmentApprovalRun(current, authorityByRequestId);
+    const persistedResult = await this.persistApprovalRun(row, next);
+    const persisted = persistedResult.row;
+    const persistedView = approvalRunView(persisted);
+    if (
+      persistedResult.committed &&
+      (persisted.status !== row.status ||
+        persisted.items.some(
+          (item, index) => item.status !== row.items[index]?.status
+        ))
+    ) {
+      await this.audit(
+        ctx,
+        "ENROLLMENT_APPROVAL_RUN_RECONCILE",
+        "enrollment_approval_run",
+        row.run_id,
+        "SUCCESS",
+        current,
+        persistedView,
+        correlationId ?? row.correlation_id,
+        "authoritative_reconciliation"
+      );
+    }
+    return persisted;
+  }
+
+  async startEnrollmentApprovalRun(
+    ctx: AuthorizationContext,
+    programId: string,
+    requestIds: readonly string[],
+    correlationId: string | null
+  ): Promise<EnrollmentApprovalRunStartResult> {
+    await this.requireApprovalRunProgram(ctx, programId);
+    const ids = requestIds.map((requestId) => requestId.trim());
+    if (
+      ids.length === 0 ||
+      ids.some((requestId) => requestId.length === 0) ||
+      new Set(ids).size !== ids.length
+    ) {
+      throw new EnrollmentApprovalRunValidationError(
+        "Enrollment Approval Run requires distinct request IDs."
+      );
+    }
+    const runs = await this.store.listEnrollmentApprovalRuns(
+      ctx.actorUserId,
+      programId
+    );
+    const existing = runs.find((run) => run.status === "active");
+    if (existing) {
+      return { run: approvalRunView(existing), created: false };
+    }
+    const requestRows = await this.store.listEnrollmentRequests(programId);
+    const requestsById = new Map(
+      requestRows.map((request) => [request.request_id, request])
+    );
+    const requests = ids.map((requestId) => requestsById.get(requestId));
+    if (
+      requests.some(
+        (request) =>
+          !request ||
+          request.program_id !== programId ||
+          request.status !== "Pending"
+      )
+    ) {
+      throw new EnrollmentApprovalRunValidationError(
+        "Enrollment Approval Run requires current Pending requests from one Program."
+      );
+    }
+    let run: EnrollmentApprovalRun;
+    try {
+      run = createEnrollmentApprovalRun({
+        program_id: programId,
+        requests: requests as EnrollmentRequestRow[],
+      });
+    } catch (error) {
+      throw new EnrollmentApprovalRunValidationError(
+        error instanceof Error
+          ? error.message
+          : "Enrollment Approval Run selection is invalid."
+      );
+    }
+    const row: EnrollmentApprovalRunRow = {
+      ...run,
+      actor_user_id: ctx.actorUserId,
+      correlation_id: correlationId,
+    };
+    try {
+      await this.store.createEnrollmentApprovalRun(row, run.items);
+    } catch (error) {
+      // ponytail: the partial unique index is the single active-run race
+      // guard; return its winner instead of creating or replaying a second run.
+      const candidates = await this.store.listEnrollmentApprovalRuns(
+        ctx.actorUserId,
+        programId
+      );
+      const winner = candidates.find(
+        (candidate) => candidate.status === "active"
+      );
+      if (winner) {
+        return { run: approvalRunView(winner), created: false };
+      }
+      throw error;
+    }
+    await this.audit(
+      ctx,
+      "ENROLLMENT_APPROVAL_RUN_CREATE",
+      "enrollment_approval_run",
+      run.run_id,
+      "SUCCESS",
+      null,
+      {
+        program_id: programId,
+        items: run.items.map(({ request_id, request_version, sequence }) => ({
+          request_id,
+          request_version,
+          sequence,
+        })),
+      },
+      correlationId,
+      "selected_pending_requests"
+    );
+    return { run, created: true };
+  }
+
+  async listEnrollmentApprovalRuns(
+    ctx: AuthorizationContext,
+    programId: string
+  ): Promise<EnrollmentApprovalRun[]> {
+    await this.requireApprovalRunProgram(ctx, programId);
+    const runs = await this.store.listEnrollmentApprovalRuns(
+      ctx.actorUserId,
+      programId
+    );
+    return runs.map((run) => approvalRunView(run));
+  }
+
+  async reconcileEnrollmentApprovalRun(
+    ctx: AuthorizationContext,
+    programId: string,
+    runId: string,
+    correlationId: string | null
+  ): Promise<EnrollmentApprovalRun | null> {
+    await this.requireApprovalRunProgram(ctx, programId);
+    const row = await this.findOwnedApprovalRun(ctx, programId, runId);
+    if (!row) {
+      return null;
+    }
+    const reconciled = await this.reconcileApprovalRunRow(
+      ctx,
+      row,
+      correlationId
+    );
+    return approvalRunView(reconciled);
+  }
+
+  async continueEnrollmentApprovalRun(
+    ctx: AuthorizationContext,
+    programId: string,
+    runId: string,
+    correlationId: string | null
+  ): Promise<EnrollmentApprovalRunActionResult | null> {
+    await this.requireApprovalRunProgram(ctx, programId);
+    const initial = await this.findOwnedApprovalRun(ctx, programId, runId);
+    if (!initial) {
+      return null;
+    }
+    const current = approvalRunView(initial);
+    const begun = beginNextEnrollmentApprovalItem(current);
+    if (!begun) {
+      return { run: current, item: null };
+    }
+    const claim = await this.store.claimNextEnrollmentApprovalRunItem(
+      runId,
+      ctx.actorUserId,
+      begun.item.started_at ?? new Date().toISOString()
+    );
+    if (!claim.claimed || !claim.item) {
+      const latest = await this.store.findEnrollmentApprovalRun(runId);
+      return latest ? { run: approvalRunView(latest), item: null } : null;
+    }
+    const claimed = claim.item;
+    const claimedRun: EnrollmentApprovalRun = {
+      ...current,
+      items: current.items.map((item) =>
+        item.request_id === claimed.request_id ? claimed : item
+      ),
+    };
+    const claimedRow: EnrollmentApprovalRunRow = {
+      ...initial,
+      ...claimedRun,
+    };
+    let next: EnrollmentApprovalRun;
+    let outcome: "SUCCESS" | "FAILED" = "SUCCESS";
+    try {
+      await this.decideEnrollmentRequest(
+        ctx,
+        programId,
+        claimed.request_id,
+        {
+          action: "Approved",
+          note: null,
+          expectedRequestVersion: claimed.request_version,
+        },
+        claimed.idempotency_key
+      );
+      const authority = await this.store.findEnrollmentApprovalAuthority(
+        claimed.program_id,
+        claimed.request_id,
+        claimed.member_user_id,
+        claimed.idempotency_key
+      );
+      next = authority
+        ? reconcileEnrollmentApprovalRun(
+            claimedRun,
+            new Map([[claimed.request_id, authority]])
+          )
+        : settleEnrollmentApprovalItem(claimedRun, claimed.request_id, {
+            status: "outcome_unknown",
+            failure: {
+              code: "OUTCOME_UNKNOWN",
+              detail: "核准結果未能確認，請先重新整理並由系統核對後再繼續。",
+              retryable: false,
+            },
+          });
+      if (
+        next.items.find((item) => item.request_id === claimed.request_id)
+          ?.status !== "completed"
+      ) {
+        outcome = "FAILED";
+      }
+    } catch (error) {
+      const failure = approvalRunFailure(error);
+      outcome = "FAILED";
+      next = settleEnrollmentApprovalItem(claimedRun, claimed.request_id, {
+        status:
+          failure.code === "OUTCOME_UNKNOWN" ? "outcome_unknown" : "failed",
+        failure,
+      });
+    }
+    const persistedResult = await this.persistApprovalRun(claimedRow, next);
+    const persisted = persistedResult.row;
+    if (persistedResult.committed) {
+      await this.audit(
+        ctx,
+        "ENROLLMENT_APPROVAL_RUN_CONTINUE",
+        "enrollment_approval_run",
+        runId,
+        outcome,
+        current,
+        approvalRunView(persisted),
+        correlationId ?? claimed.idempotency_key,
+        "explicit_continue"
+      );
+    }
+    const item = persisted.items.find(
+      (candidate) => candidate.request_id === claimed.request_id
+    );
+    return { run: approvalRunView(persisted), item: item ?? null };
+  }
+
+  async cancelEnrollmentApprovalRun(
+    ctx: AuthorizationContext,
+    programId: string,
+    runId: string,
+    correlationId: string | null
+  ): Promise<EnrollmentApprovalRun | null> {
+    await this.requireApprovalRunProgram(ctx, programId);
+    const row = await this.findOwnedApprovalRun(ctx, programId, runId);
+    if (!row) {
+      return null;
+    }
+    const current = approvalRunView(row);
+    const next = cancelEnrollmentApprovalRun(current);
+    if (next.status === current.status) {
+      return current;
+    }
+    const persistedResult = await this.persistApprovalRun(row, next);
+    const persisted = persistedResult.row;
+    if (persistedResult.committed) {
+      await this.audit(
+        ctx,
+        "ENROLLMENT_APPROVAL_RUN_CANCEL",
+        "enrollment_approval_run",
+        runId,
+        "SUCCESS",
+        current,
+        approvalRunView(persisted),
+        correlationId,
+        "operator_cancelled_future_scheduling"
+      );
+    }
+    return approvalRunView(persisted);
   }
 
   async decideEnrollmentRequest(
@@ -4594,7 +5792,8 @@ export class DepartmentWorkspace {
     ctx: AuthorizationContext,
     programId: string,
     enrollmentId: string,
-    correlationId: string | null
+    correlationId: string | null,
+    cancellationReason: string | null = null
   ): Promise<EnrollmentRow> {
     const enrollment = await this.store.findEnrollmentById(enrollmentId);
     if (!enrollment || enrollment.program_id !== programId) {
@@ -4610,10 +5809,15 @@ export class DepartmentWorkspace {
       program.department_id,
       MODULE_KEY.ENROLLMENT
     );
+    const reason = cancellationReason?.trim() || null;
+    if (!isOwner && enrollment.status === "Active" && !reason) {
+      throw new EnrollmentCancellationReasonRequiredError();
+    }
     const cancelled = await this.store.cancelEnrollment(
       enrollmentId,
       ctx.actorUserId,
-      new Date().toISOString()
+      new Date().toISOString(),
+      reason
     );
     if (!cancelled) {
       await this.audit(
@@ -4638,6 +5842,19 @@ export class DepartmentWorkspace {
       cancelled,
       correlationId
     );
+    if (!isOwner) {
+      await this.store.createParticipantNotice({
+        notice_id: crypto.randomUUID(),
+        member_user_id: enrollment.member_user_id,
+        kind: "program",
+        title: "課程報名已被取消",
+        body: `你在「${program.name}」的報名已被管理員取消。原因：${reason}`,
+        program_id: programId,
+        event_id: null,
+        read_at: null,
+        created_at: Date.now(),
+      });
+    }
     return cancelled;
   }
 }

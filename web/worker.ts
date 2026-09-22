@@ -344,6 +344,8 @@ export default {
         handleListParticipantCatalog,
         handleGetParticipantProgramDetail,
         handleGetManagementProgram,
+        handleGetProgramAttendanceArtifact,
+        handleRotateProgramAttendanceArtifact,
         handleGetManagementCockpit,
         handleGetDepartment,
         handleUpdateDepartment,
@@ -357,6 +359,7 @@ export default {
         handleListScheduleExceptions,
         handleCreateScheduleRule,
         handleUpdateScheduleRule,
+        handleRetireScheduleRule,
         handleCreateScheduleException,
         handleDeleteScheduleException,
         handlePreviewEvents,
@@ -368,6 +371,11 @@ export default {
         handleCreateEnrollmentRequest,
         handleListEnrollmentRequests,
         handleListEnrollmentSnapshot,
+        handleStartEnrollmentApprovalRun,
+        handleListEnrollmentApprovalRuns,
+        handleReconcileEnrollmentApprovalRun,
+        handleContinueEnrollmentApprovalRun,
+        handleCancelEnrollmentApprovalRun,
         handleDecideEnrollmentRequest,
         handleWithdrawEnrollmentRequest,
         handleAssistedEnroll,
@@ -464,6 +472,26 @@ export default {
           request,
           programEnv,
           managementProgram.groups?.id ?? ""
+        );
+      }
+      const attendanceArtifact = url.pathname.match(
+        /^\/api\/v1\/programs\/(?<id>[^/]+)\/attendance-artifact$/u
+      );
+      if (attendanceArtifact && request.method === "GET") {
+        return handleGetProgramAttendanceArtifact(
+          request,
+          programEnv,
+          attendanceArtifact.groups?.id ?? ""
+        );
+      }
+      const attendanceArtifactRotation = url.pathname.match(
+        /^\/api\/v1\/programs\/(?<id>[^/]+)\/attendance-artifact\/rotate$/u
+      );
+      if (attendanceArtifactRotation && request.method === "POST") {
+        return handleRotateProgramAttendanceArtifact(
+          request,
+          programEnv,
+          attendanceArtifactRotation.groups?.id ?? ""
         );
       }
       const cockpit = url.pathname.match(
@@ -582,6 +610,17 @@ export default {
           request,
           programEnv,
           scheduleRules.groups?.id ?? ""
+        );
+      }
+      const scheduleRuleRetire = url.pathname.match(
+        /^\/api\/v1\/programs\/(?<id>[^/]+)\/schedule-rules\/(?<ruleId>[^/]+)\/retire$/u
+      );
+      if (scheduleRuleRetire && request.method === "POST") {
+        return handleRetireScheduleRule(
+          request,
+          programEnv,
+          scheduleRuleRetire.groups?.id ?? "",
+          scheduleRuleRetire.groups?.ruleId ?? ""
         );
       }
       const scheduleRule = url.pathname.match(
@@ -708,6 +747,42 @@ export default {
           enrollmentSnapshot.groups?.id ?? ""
         );
       }
+      const enrollmentApprovalRuns = url.pathname.match(
+        /^\/api\/v1\/programs\/(?<id>[^/]+)\/enrollment-approval-runs$/u
+      );
+      if (enrollmentApprovalRuns && request.method === "POST") {
+        return handleStartEnrollmentApprovalRun(
+          request,
+          programEnv,
+          enrollmentApprovalRuns.groups?.id ?? ""
+        );
+      }
+      if (enrollmentApprovalRuns && request.method === "GET") {
+        return handleListEnrollmentApprovalRuns(
+          request,
+          programEnv,
+          enrollmentApprovalRuns.groups?.id ?? ""
+        );
+      }
+      const enrollmentApprovalRunAction = url.pathname.match(
+        /^\/api\/v1\/programs\/(?<id>[^/]+)\/enrollment-approval-runs\/(?<runId>[^/]+)\/(?<action>reconcile|continue|cancel)$/u
+      );
+      if (enrollmentApprovalRunAction && request.method === "POST") {
+        const action = enrollmentApprovalRunAction.groups?.action;
+        const args = [
+          request,
+          programEnv,
+          enrollmentApprovalRunAction.groups?.id ?? "",
+          enrollmentApprovalRunAction.groups?.runId ?? "",
+        ] as const;
+        if (action === "reconcile") {
+          return handleReconcileEnrollmentApprovalRun(...args);
+        }
+        if (action === "continue") {
+          return handleContinueEnrollmentApprovalRun(...args);
+        }
+        return handleCancelEnrollmentApprovalRun(...args);
+      }
       const enrollmentRequest = url.pathname.match(
         /^\/api\/v1\/programs\/(?<id>[^/]+)\/enrollment-requests\/(?<requestId>[^/]+)\/(?<action>decision|withdraw)$/u
       );
@@ -781,11 +856,15 @@ export default {
         handleAssistedCheckIn,
         handleCorrectGuest,
         handleGuestCheckIn,
+        handleListOwnAttendance,
         handleListManageableEvents,
         handleListRoster,
         handleListScannerEvents,
+        handleMaterializeAttendance,
+        handleRecordExcused,
         handleSearchMembers,
         handleResolve,
+        handleReconcileGuestCheckIn,
         handleSelfCheckIn,
         handleVoidAttendance,
       } = await import("./lib/attendance");
@@ -822,14 +901,50 @@ export default {
       ) {
         return handleGuestCheckIn(request, attendanceEnv);
       }
+      if (
+        url.pathname === "/api/v1/attendance/guest/reconcile" &&
+        request.method === "POST"
+      ) {
+        return handleReconcileGuestCheckIn(request, attendanceEnv);
+      }
       const eventAttendance = url.pathname.match(
-        /^\/api\/v1\/attendance\/events\/(?<eventId>[^/]+)\/(?<action>check-in|roster|members)$/u
+        /^\/api\/v1\/attendance\/events\/(?<eventId>[^/]+)\/(?<action>check-in|roster|members|materialize|excused|me)$/u
       );
       if (
         eventAttendance?.groups?.action === "roster" &&
         request.method === "GET"
       ) {
         return handleListRoster(
+          request,
+          attendanceEnv,
+          eventAttendance.groups.eventId ?? ""
+        );
+      }
+      if (
+        eventAttendance?.groups?.action === "materialize" &&
+        request.method === "POST"
+      ) {
+        return handleMaterializeAttendance(
+          request,
+          attendanceEnv,
+          eventAttendance.groups.eventId ?? ""
+        );
+      }
+      if (
+        eventAttendance?.groups?.action === "excused" &&
+        request.method === "POST"
+      ) {
+        return handleRecordExcused(
+          request,
+          attendanceEnv,
+          eventAttendance.groups.eventId ?? ""
+        );
+      }
+      if (
+        eventAttendance?.groups?.action === "me" &&
+        request.method === "GET"
+      ) {
+        return handleListOwnAttendance(
           request,
           attendanceEnv,
           eventAttendance.groups.eventId ?? ""

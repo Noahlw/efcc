@@ -84,7 +84,7 @@ describe(ApprovalDetail, () => {
         name: COPY.approvals.approvalDetailTitle,
       })
     ).resolves.toBeInTheDocument();
-    expect(screen.getByText("Dave Ng")).toBeInTheDocument();
+    await expect(screen.findByText("Dave Ng")).resolves.toBeInTheDocument();
     expect(screen.getByText("dave")).toBeInTheDocument();
     expect(screen.getByText("9123 4567")).toBeInTheDocument();
     expect(screen.getByText(COPY.approvals.statusPending)).toBeInTheDocument();

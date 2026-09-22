@@ -1,0 +1,80 @@
+{
+  "version": 2,
+  "candidate": "commit:76ce0bd5bd217ed47595a702ca8812c1bbf933b2",
+  "repositoryRoot": "/Users/noah.wong/Desktop/code/efcc/.worktrees/programs-622-r3",
+  "acceptanceProfile": "complex",
+  "reviewRisk": {
+    "level": "high",
+    "reason": "cross-screen async state, authoritative resource freshness, and unknown mutation recovery"
+  },
+  "delegationAvailable": true,
+  "requirements": ["R41", "R42", "R49", "R52"],
+  "review": {
+    "mode": "independent",
+    "candidate": "commit:76ce0bd5bd217ed47595a702ca8812c1bbf933b2",
+    "reviewer": "Schrodinger (agent 01a0a855-9922-76a1-97b6-849f8fe77719)",
+    "status": "CLEAN"
+  },
+  "criteria": [
+    {
+      "id": "R41",
+      "status": "verified",
+      "expected": "The Programs management flow keeps one authoritative Program/cockpit resource, drops superseded refresh results, and projects current open Events truthfully.",
+      "actual": "ProgramWorkspace now leaves freshness unchanged when a refresh is superseded; D1 management Event attention batches 50 Program IDs per query and preserves global priority/date ordering; domain, component, and Worker coverage exercise open Event projection, inclusive boundaries, and multiple open Event choice.",
+      "level": "domain contract + component",
+      "candidate": "commit:76ce0bd5bd217ed47595a702ca8812c1bbf933b2",
+      "evidence": [
+        "pnpm --dir web exec vitest run --config vitest.config.ts lib/programs/programs.test.ts lib/programs/programs-contract.test.ts lib/attendance-worker.test.ts (189/189 selected tests)",
+        "pnpm --dir web exec vitest run --config vitest.components.config.ts (full suite: 1084/1084; focused attendance: 17/17)",
+        "web/lib/programs/d1-workspace-store.ts:1557-1603"
+      ]
+    },
+    {
+      "id": "R42",
+      "status": "verified",
+      "expected": "Confirmed writes remain successful when readback fails; stale data has read-only Retry Refresh; unknown outcomes block replay until reconciliation across Settings, Events, Enrollment, and Attendance.",
+      "actual": "Settings mutation controls remain blocked after an uncertain outcome, Event Detail exposes readback Retry Refresh, batch approval stops at ambiguity, Event navigation and attendance Event switching cannot bypass reconciliation, guest acknowledgement loss can reconcile the committed attendance without leaking its ID, and Schedule read errors no longer render loading rows.",
+      "level": "component",
+      "candidate": "commit:76ce0bd5bd217ed47595a702ca8812c1bbf933b2",
+      "evidence": [
+        "pnpm --dir web exec vitest run --config vitest.components.config.ts (full suite: 1084/1084; focused attendance: 17/17)",
+        "pnpm --dir web exec vitest run --config vitest.config.ts lib/attendance-worker.test.ts (54/54)",
+        "web/lib/programs/event-detail.test.tsx:516-559",
+        "web/lib/programs/program-settings.test.tsx:376-398"
+      ]
+    },
+    {
+      "id": "R49",
+      "status": "verified",
+      "expected": "Program detail and Overview retain active/in-progress open Events and present multiple open Events as a truthful choice.",
+      "actual": "Participant detail includes active Events through their end time, while management Overview consumes the projected open_events collection and renders a choice when more than one is open.",
+      "level": "domain contract + component",
+      "candidate": "commit:76ce0bd5bd217ed47595a702ca8812c1bbf933b2",
+      "evidence": [
+        "web/lib/programs/participant-program-detail.test.tsx:346-368",
+        "web/lib/programs/programs.test.ts:189/189 selected command result",
+        "web/lib/programs/department-workspace.ts:1411-1471"
+      ]
+    },
+    {
+      "id": "R52",
+      "status": "verified",
+      "expected": "Candidate-bound independent review and real browser/runtime acceptance establish readiness for the next owner gate.",
+      "actual": "A fresh independent verifier returned CLEAN for local integration. The canonical Wrangler harness browser artifact at test-only integration HEAD 1384014248a7cd85d7b77e40f26e454a8abada2d records six of six journeys passed with zero retries, including Settings readback failure and Settings, Event, and Enrollment convergence in Overview without reload. The fixed-point-to-artifact-HEAD delta contains test-only Attendance evidence changes; production code remains fixed at 76ce0bd5bd217ed47595a702ca8812c1bbf933b2.",
+      "level": "independent review + real Worker/D1 browser",
+      "candidate": "commit:76ce0bd5bd217ed47595a702ca8812c1bbf933b2",
+      "evidence": [
+        ".delivery/programs-622/artifacts/browser-13840142/run.json",
+        ".delivery/programs-622/artifacts/browser-13840142/browser-results.json",
+        "Independent verifier Schrodinger: final local integration CLEAN"
+      ]
+    }
+  ],
+  "limitations": [
+    "ADR-0054 was unavailable to the independent verifier; the direct acceptance criteria in GitHub issue #622 and the accepted #586 amendment were used as authority.",
+    "The scanner manual-code path remains unverified: the local Worker fixture emits a four-digit code while the scanner UI validates six digits; the independent verifier determined that T2 is outside #622's direct local-integration browser requirement.",
+    "Two standalone resilience-harness attempts stalled during D1 seed before Playwright started; the canonical browser harness completed six of six required #622 journeys with zero retries.",
+    "Physical camera/download/print/device proof, owner L2 approval, push, release, and issue closure remain pending and are not implied by local integration CLEAN.",
+    "The full repository pre-commit governance hook failed at the known git ENOBUFS baseline ratchet; focused candidate gates passed and the generated web/.storybook/public/mockServiceWorker.js remains unrelated dirty work."
+  ]
+}

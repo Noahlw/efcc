@@ -1,4 +1,4 @@
-import { act, cleanup, render, screen } from "@testing-library/react";
+import { act, cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { setupServer } from "msw/node";
@@ -291,7 +291,7 @@ describe("Authenticated Shell (TK-04/TK-05/TK-06/TK-07/TK-08)", () => {
     expect(bell).toHaveFocus();
   });
 
-  test("NavBar renders the server projection verbatim without deriving from role", () => {
+  test("NavBar keeps projected slots and the canonical Programs shell label", () => {
     render(
       <AppProvider bootstrap={BOOTSTRAP} onSignOut={() => {}}>
         <NavBar />
@@ -300,5 +300,8 @@ describe("Authenticated Shell (TK-04/TK-05/TK-06/TK-07/TK-08)", () => {
     const nav = screen.getByRole("navigation", { name: COPY.nav.label });
     expect(nav.querySelectorAll("a")).toHaveLength(5);
     expect(nav.querySelector('a[href="/scanner"]')).not.toBeNull();
+    expect(
+      within(nav).getByRole("link", { name: COPY.programs.pageTitle })
+    ).toHaveAttribute("href", "/programs");
   });
 });

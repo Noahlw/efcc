@@ -3,11 +3,33 @@
  * test file. oxlint's vitest plugin unconditionally matches **\\/*.test.ts.
  */
 import { expect, test } from "@playwright/test";
-import type { Page } from "@playwright/test";
+import type { Locator, Page } from "@playwright/test";
 
 import { COPY } from "../../web/lib/copy";
 
 const story = (id: string) => `/iframe.html?id=${id}&viewMode=story`;
+
+async function clickAndAssertHref(link: Locator, href: string) {
+  await link.evaluate((element) => {
+    const anchor = element as HTMLAnchorElement;
+    const document = anchor.ownerDocument;
+    const handleClick = (event: MouseEvent) => {
+      const target = event.target;
+      if (!(target instanceof Element) || target.closest("a") !== anchor) {
+        return;
+      }
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      anchor.dataset.t11ActivatedHref = anchor.getAttribute("href") ?? "";
+      document.removeEventListener("click", handleClick, true);
+    };
+    document.addEventListener("click", handleClick, true);
+  });
+  // DOM activation keeps the route-target assertion deterministic at the
+  // narrowest W7 width, where the compact header status can overlap the icon.
+  await link.evaluate((element) => (element as HTMLAnchorElement).click());
+  await expect(link).toHaveAttribute("data-t11-activated-href", href);
+}
 
 const STORIES = {
   home: "t07-2-public-auth-member-communications--home",
@@ -19,6 +41,45 @@ const STORIES = {
   programsManagement: "t07-3-programs--management-directory",
   scannerBoundary: "t07-5-attendance-scanner-guest--scanner-boundary",
 } as const;
+
+const PROGRAMS_BASELINE_STORIES = [
+  "t07-3-programs--participant-directory",
+  "t07-3-programs--participant-program-detail",
+  "t07-3-programs--participant-event-detail",
+  "t07-3-programs--management-directory",
+  "t07-3-programs--workspace-overview",
+  "t07-3-programs--workspace-events",
+  "t07-3-programs--workspace-participants",
+  "t07-3-programs--workspace-settings",
+  "t07-3-programs--workspace-schedule",
+  "t07-3-programs--workspace-notifications",
+] as const;
+
+const PROGRAMS_R4_MATERIAL_STORIES = [
+  "t07-3-programs-material-states--participant-directory-capable",
+  "t07-3-programs-material-states--participant-program-detail-eligible",
+  "t07-3-programs-material-states--participant-program-detail-active",
+  "t07-3-programs-material-states--participant-program-detail-pending",
+  "t07-3-programs-material-states--participant-program-detail-rejected",
+  "t07-3-programs-material-states--participant-event-detail-closed",
+  "t07-3-programs-material-states--participant-event-detail-open",
+  "t07-3-programs-material-states--participant-event-detail-ineligible",
+  "t07-3-programs-material-states--management-directory-mixed",
+] as const;
+
+const PROGRAMS_R5_MATERIAL_STORIES = [
+  "t07-3-programs-material-states--workspace-events-mixed",
+  "t07-3-programs-material-states--workspace-schedule-focused",
+  "t07-3-programs-material-states--workspace-schedule-stale",
+  "t07-3-programs-material-states--workspace-schedule-partial-resume",
+] as const;
+
+const PROGRAMS_R6_MATERIAL_STORIES = [
+  "t07-3-programs-material-states--workspace-settings-dirty",
+  "t07-3-programs-material-states--workspace-settings-conflict",
+  "t07-3-programs-material-states--notifications-unread",
+  "t07-3-programs-material-states--notifications-empty-recoverable",
+] as const;
 
 async function expectShellFrame(page: Page) {
   const nav = page.locator("nav#main-navigation");
@@ -229,6 +290,495 @@ test("Programs detail uses a route-owned icon-only Back control", async ({
   await expect(back).toHaveAttribute("href", "/programs");
   await expect(back).toHaveAttribute("aria-label", COPY.programs.detailBack);
   await expect(back).toHaveText("");
+});
+
+test("Programs R4 material Stories execute route-backed behavior Plays", async ({
+  page,
+}) => {
+  for (const storyId of PROGRAMS_R4_MATERIAL_STORIES) {
+    await page.goto(story(storyId));
+    await expectShellFrame(page);
+    await expect(page.locator('[aria-busy="true"]')).toHaveCount(0);
+  }
+
+  await page.goto(
+    story("t07-3-programs-material-states--participant-directory-capable")
+  );
+  await clickAndAssertHref(
+    page.getByRole("link", { name: COPY.programs.enterManagement }),
+    "/programs?mode=management"
+  );
+
+  await page.goto(
+    story("t07-3-programs-material-states--participant-program-detail-eligible")
+  );
+  await expect(
+    page
+      .locator('[data-enrollment-notice="true"]')
+      .filter({ hasText: COPY.programs.requestSubmitted })
+  ).toBeVisible();
+  await expect(
+    page
+      .locator('[data-screen-status="true"]')
+      .filter({ hasText: COPY.programs.statusPending })
+  ).toBeVisible();
+
+  await page.goto(
+    story("t07-3-programs-material-states--participant-program-detail-active")
+  );
+  await expect(
+    page
+      .locator('[data-enrollment-notice="true"]')
+      .filter({ hasText: COPY.programs.enrollmentCancelledNotice })
+  ).toBeVisible();
+  await expect(
+    page
+      .locator('[data-screen-status="true"]')
+      .filter({ hasText: COPY.programs.statusCancelled })
+  ).toBeVisible();
+
+  await page.goto(
+    story("t07-3-programs-material-states--participant-program-detail-pending")
+  );
+  await expect(
+    page
+      .locator('[data-enrollment-notice="true"]')
+      .filter({ hasText: COPY.programs.requestWithdrawnNotice })
+  ).toBeVisible();
+  await expect(
+    page
+      .locator('[data-screen-status="true"]')
+      .filter({ hasText: COPY.programs.statusWithdrawn })
+  ).toBeVisible();
+
+  await page.goto(
+    story("t07-3-programs-material-states--participant-program-detail-rejected")
+  );
+  await clickAndAssertHref(
+    page.locator('[data-screen-foundation="header"] [data-screen-icon-button]'),
+    "/programs"
+  );
+
+  await page.goto(
+    story("t07-3-programs-material-states--participant-event-detail-closed")
+  );
+  await expect(
+    page.getByRole("link", { name: COPY.programs.goToScan })
+  ).toHaveCount(0);
+  await clickAndAssertHref(
+    page.locator('[data-screen-foundation="header"] [data-screen-icon-button]'),
+    "/programs?program=t07-3-program&from=programs"
+  );
+
+  await page.goto(
+    story("t07-3-programs-material-states--participant-event-detail-open")
+  );
+  await expect(
+    page.getByRole("link", { name: COPY.programs.goToScan })
+  ).toHaveCount(1);
+  await expect(
+    page.getByRole("link", { name: COPY.programs.goToScan })
+  ).toHaveAttribute("href", "/scanner?event=t07-3-event");
+
+  await page.goto(
+    story("t07-3-programs-material-states--participant-event-detail-ineligible")
+  );
+  await expect(
+    page.getByText(COPY.programs.eventDetailRecoveryTitle, { exact: true })
+  ).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: COPY.programs.goToScan })
+  ).toHaveCount(0);
+
+  await page.goto(
+    story("t07-3-programs-material-states--management-directory-mixed")
+  );
+  const settings = page.getByRole("button", {
+    name: COPY.programs.departmentSettings,
+  });
+  await expect(settings).toBeFocused();
+});
+
+test("Programs R5 material Stories execute Schedule recovery Plays", async ({
+  page,
+}) => {
+  for (const storyId of PROGRAMS_R5_MATERIAL_STORIES) {
+    await page.goto(story(storyId));
+    await expectShellFrame(page);
+    await expect(page.locator('[aria-busy="true"]')).toHaveCount(0);
+  }
+
+  await page.goto(
+    story("t07-3-programs-material-states--workspace-events-mixed")
+  );
+  await expect(
+    page.getByRole("link", { name: COPY.programs.eventDetailOpen })
+  ).toHaveCount(1);
+  // The material Play intentionally settles on the Cancelled filter after
+  // exercising current and past Events, so only the cancelled Event remains
+  // visible at this boundary.
+  await expect(
+    page.getByRole("link", {
+      name: /家庭同行特別聚會.*詳情/u,
+    })
+  ).toHaveCount(1);
+  await expect(
+    page.getByRole("link", {
+      name: new RegExp(COPY.programs.settingsScheduleEventsLink, "u"),
+    })
+  ).toHaveAttribute(
+    "href",
+    "/programs?mode=management&program=t07-3-program&task=schedule&scheduleOrigin=events"
+  );
+
+  await page.goto(
+    story("t07-3-programs-material-states--workspace-schedule-focused")
+  );
+  await expect(
+    page.getByRole("heading", { name: COPY.programs.scheduleRulesTitle })
+  ).toBeVisible();
+  await expect(page.getByText("2026-09-26", { exact: false })).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: COPY.programs.previewEvents })
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: COPY.programs.addRule })
+  ).toBeVisible();
+
+  await page.goto(
+    story("t07-3-programs-material-states--workspace-schedule-stale")
+  );
+  await expect(
+    page.getByText(
+      COPY.programs.generated
+        .replace("{created}", "2")
+        .replace("{skipped}", "0"),
+      { exact: true }
+    )
+  ).toBeVisible();
+
+  await page.goto(
+    story("t07-3-programs-material-states--workspace-schedule-partial-resume")
+  );
+  const partialCopy = COPY.programs.generatedPartial
+    .replace("{created}", "1")
+    .replace("{skipped}", "0")
+    .replace("{failed}", "1");
+  const resumedCopy = COPY.programs.generatedResumed
+    .replace("{created}", "0")
+    .replace("{skipped}", "1");
+  await expect(page.getByText(resumedCopy, { exact: true })).toBeVisible();
+  await expect(page.getByText(partialCopy, { exact: true })).toHaveCount(0);
+});
+
+test("Programs R6 material Stories execute Settings and Notifications Plays", async ({
+  page,
+}) => {
+  for (const storyId of PROGRAMS_R6_MATERIAL_STORIES) {
+    await page.goto(story(storyId));
+    await expectShellFrame(page);
+    await expect(page.locator('[aria-busy="true"]')).toHaveCount(0);
+  }
+
+  await page.goto(
+    story("t07-3-programs-material-states--workspace-settings-dirty")
+  );
+  await expect(
+    page.getByRole("textbox", { name: COPY.programs.programName })
+  ).toHaveValue("未儲存課程名稱");
+  await expect(
+    page.locator('[data-screen-settings-dirty="true"]')
+  ).toContainText(COPY.programs.settingsUnsaved);
+  await expect(
+    page.getByRole("button", { name: COPY.programs.settingsSaveBasics })
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: COPY.programs.settingsDiscard })
+  ).toBeVisible();
+
+  const dirtyActions = page.locator(
+    '[data-testid="program-settings-dirty-actions"]'
+  );
+  await expect(dirtyActions).toBeVisible();
+  const dirtyGeometry = await dirtyActions.evaluate((element) => {
+    const actionElement = element as HTMLElement;
+    const settingsSection = actionElement.closest<HTMLElement>(
+      'section[aria-labelledby="program-settings-focused-title"]'
+    );
+    const form = settingsSection?.querySelector<HTMLElement>(
+      "#program-settings-basics-form"
+    );
+    const fields = form
+      ? [
+          ...form.querySelectorAll<HTMLElement>(
+            "input, textarea, [role=combobox]"
+          ),
+        ].filter((field) => {
+          const box = field.getBoundingClientRect();
+          return box.width > 0 && box.height > 0;
+        })
+      : [];
+    const actionBox = actionElement.getBoundingClientRect();
+    const fieldBottom = Math.max(
+      ...fields.map((field) => field.getBoundingClientRect().bottom),
+      Number.NEGATIVE_INFINITY
+    );
+    const targets = [
+      ...actionElement.querySelectorAll<HTMLElement>("button"),
+    ].map((target) => target.getBoundingClientRect());
+    const scroller = actionElement.closest<HTMLElement>("#shell-content");
+
+    return {
+      actionBottom: actionBox.bottom,
+      actionTop: actionBox.top,
+      fieldBottom,
+      minimumTarget: Math.min(
+        ...targets.map((box) => Math.min(box.width, box.height))
+      ),
+      overflow:
+        Math.max(
+          document.documentElement.scrollWidth,
+          document.body.scrollWidth
+        ) - window.innerWidth,
+      position: getComputedStyle(actionElement).position,
+      bottom: getComputedStyle(actionElement).bottom,
+      scrollerHeight: scroller?.scrollHeight ?? 0,
+      scrollerClientHeight: scroller?.clientHeight ?? 0,
+    };
+  });
+  expect(dirtyGeometry.position).toBe("static");
+  expect(dirtyGeometry.bottom).toBe("auto");
+  expect(dirtyGeometry.actionTop).toBeGreaterThanOrEqual(
+    dirtyGeometry.fieldBottom - 1
+  );
+  expect(dirtyGeometry.minimumTarget).toBeGreaterThanOrEqual(44);
+  expect(dirtyGeometry.overflow).toBeLessThanOrEqual(1);
+  expect(dirtyGeometry.scrollerHeight).toBeGreaterThanOrEqual(
+    dirtyGeometry.scrollerClientHeight
+  );
+
+  await page.locator("#shell-content").evaluate((element) => {
+    element.scrollTo(0, element.scrollHeight);
+  });
+  const endGeometry = await page.evaluate(() => {
+    const action = document.querySelector<HTMLElement>(
+      "[data-testid=program-settings-dirty-actions]"
+    );
+    const output = document.querySelector<HTMLElement>(
+      "[data-screen-settings-dirty=true]"
+    );
+    const form = document.querySelector<HTMLElement>(
+      "#program-settings-basics-form"
+    );
+    const fields = form
+      ? [
+          ...form.querySelectorAll<HTMLElement>(
+            "input, textarea, [role=combobox]"
+          ),
+        ].filter((field) => {
+          const box = field.getBoundingClientRect();
+          return box.width > 0 && box.height > 0;
+        })
+      : [];
+    const actionBox = action?.getBoundingClientRect();
+    const navBox = document
+      .querySelector<HTMLElement>("#main-navigation")
+      ?.getBoundingClientRect();
+
+    return {
+      actionBottom: actionBox?.bottom ?? Number.POSITIVE_INFINITY,
+      actionTop: actionBox?.top ?? Number.NEGATIVE_INFINITY,
+      fieldBottom: Math.max(
+        ...fields.map((field) => field.getBoundingClientRect().bottom),
+        Number.NEGATIVE_INFINITY
+      ),
+      navTop: navBox?.top ?? Number.POSITIVE_INFINITY,
+      outputBottom:
+        output?.getBoundingClientRect().bottom ?? Number.NEGATIVE_INFINITY,
+    };
+  });
+  expect(endGeometry.fieldBottom).toBeLessThanOrEqual(
+    endGeometry.actionTop + 1
+  );
+  expect(endGeometry.outputBottom).toBeLessThanOrEqual(
+    endGeometry.actionTop + 1
+  );
+  if ((page.viewportSize()?.width ?? 0) < 800) {
+    expect(endGeometry.actionBottom).toBeLessThanOrEqual(
+      endGeometry.navTop + 1
+    );
+  }
+
+  await page
+    .getByRole("button", { name: COPY.programs.settingsDiscard })
+    .click();
+  await expect(
+    page.getByRole("textbox", { name: COPY.programs.programName })
+  ).toHaveValue("門徒訓練基礎課");
+  await expect(page.locator('[data-screen-settings-dirty="true"]')).toHaveCount(
+    0
+  );
+
+  await page.goto(
+    story("t07-3-programs-material-states--workspace-settings-conflict")
+  );
+  await expect(
+    page.getByText(COPY.programs.settingsSaved, { exact: true })
+  ).toBeVisible();
+
+  await page.goto(
+    story("t07-3-programs-material-states--notifications-unread")
+  );
+  await expect(
+    page.locator('[data-screen-status="true"]').filter({ hasText: /^2$/u })
+  ).toBeVisible();
+
+  await page.goto(
+    story("t07-3-programs-material-states--notifications-empty-recoverable")
+  );
+  await expect(
+    page.getByText(COPY.programs.notificationsEmpty, { exact: true })
+  ).toBeVisible();
+});
+
+test("all retained Programs baselines use one settled production route composition", async ({
+  page,
+}) => {
+  for (const storyId of PROGRAMS_BASELINE_STORIES) {
+    await page.goto(story(storyId));
+    await expectShellFrame(page);
+    const frame = page.locator(
+      '[data-screen-foundation="page-frame"][data-screen-route="programs"]'
+    );
+    await expect(frame).toHaveCount(1);
+    await expect(frame).toBeVisible();
+    await expect(page.locator('[aria-busy="true"]')).toHaveCount(0);
+  }
+});
+
+test("Programs baselines expose dense Cantonese 2026 server-shaped fixtures", async ({
+  page,
+}) => {
+  await page.goto(story(STORIES.programsParticipant));
+  await expectShellFrame(page);
+  const frame = page.locator(
+    '[data-screen-foundation="page-frame"][data-screen-route="programs"]'
+  );
+  await expect(frame.locator("[data-program-name]")).toHaveCount(5);
+  for (const name of [
+    "門徒訓練基礎課",
+    "同行成長小組",
+    "信仰探索班",
+    "家庭同行系列",
+    "青年領袖培訓",
+  ]) {
+    await expect(frame.getByText(name, { exact: true })).toBeVisible();
+  }
+  for (const status of ["可報名", "待審批", "已封存"]) {
+    await expect(
+      frame.locator('[data-screen-status="true"]').filter({ hasText: status })
+    ).toBeVisible();
+  }
+
+  await page.goto(story(STORIES.programsManagement));
+  await expectShellFrame(page);
+  const managementFrame = page.locator(
+    '[data-screen-foundation="page-frame"][data-screen-route="programs"]'
+  );
+  for (const department of [
+    "培育部",
+    "牧養部",
+    "福音部",
+    "家庭事工",
+    "青年部",
+  ]) {
+    await expect(managementFrame).toContainText(department);
+  }
+  await expect(managementFrame).toContainText("啟用");
+  await expect(managementFrame).toContainText("草稿");
+  await expect(managementFrame).toContainText("已存檔");
+
+  await page.goto(story("t07-3-programs--workspace-overview"));
+  await expectShellFrame(page);
+  const overviewFrame = page.locator(
+    '[data-screen-foundation="page-frame"][data-screen-route="programs"]'
+  );
+  await expect(
+    overviewFrame.getByText("12 個聚會", { exact: true })
+  ).toBeVisible();
+  await expect(
+    overviewFrame.getByText("待審批報名 ×2", { exact: true })
+  ).toBeVisible();
+
+  await page.goto(story("t07-3-programs--workspace-events"));
+  await expectShellFrame(page);
+  const eventsFrame = page.locator(
+    '[data-screen-foundation="page-frame"][data-screen-route="programs"]'
+  );
+  // The production Events route settles on Current by default; exercise each
+  // explicit filter before asserting all three server-shaped fixtures.
+  await expect(
+    eventsFrame.getByText("門徒分享聚會", { exact: true })
+  ).toBeVisible();
+  const pastEventsTab = page.getByRole("tab", {
+    name: COPY.programs.eventsFilterPast,
+  });
+  await pastEventsTab.click();
+  await expect(pastEventsTab).toHaveAttribute("aria-selected", "true");
+  await expect(
+    eventsFrame.getByText("門徒訓練週會", { exact: true })
+  ).toBeVisible();
+  const cancelledEventsTab = page.getByRole("tab", {
+    name: COPY.programs.eventsFilterCancelled,
+  });
+  await cancelledEventsTab.click();
+  await expect(cancelledEventsTab).toHaveAttribute("aria-selected", "true");
+  await expect(
+    eventsFrame.getByText("家庭同行特別聚會", { exact: true })
+  ).toBeVisible();
+
+  await page.goto(story("t07-3-programs--workspace-participants"));
+  await expectShellFrame(page);
+  const participantsFrame = page.locator(
+    '[data-screen-foundation="page-frame"][data-screen-route="programs"]'
+  );
+  await expect(
+    participantsFrame.getByText("陳小明", { exact: true })
+  ).toBeVisible();
+  await expect(
+    participantsFrame.getByText("李欣怡", { exact: true })
+  ).toBeVisible();
+  await participantsFrame.getByRole("tab", { name: /使用中/u }).click();
+  await expect(
+    participantsFrame.getByText("王恩慈", { exact: true })
+  ).toBeVisible();
+  await participantsFrame.getByRole("tab", { name: /歷史/u }).click();
+  await expect(
+    participantsFrame.getByText("黃志成", { exact: true })
+  ).toBeVisible();
+
+  await page.goto(story("t07-3-programs--workspace-notifications"));
+  await expectShellFrame(page);
+  const notificationsFrame = page.locator(
+    '[data-screen-foundation="page-frame"][data-screen-route="programs"]'
+  );
+  await expect(
+    notificationsFrame.getByText("較早通知", { exact: true })
+  ).toBeVisible();
+  await expect(notificationsFrame.locator("[data-screen-row]")).toHaveCount(4);
+  for (const notification of [
+    "門徒訓練基礎課",
+    "門徒分享聚會",
+    "家庭同行特別聚會",
+    "同行成長小組",
+  ]) {
+    await expect(
+      notificationsFrame
+        .locator("[data-screen-row]")
+        .filter({ hasText: notification })
+        .first()
+    ).toBeVisible();
+  }
 });
 
 test("Storybook Notices keeps global brand and local H1 across W7", async ({

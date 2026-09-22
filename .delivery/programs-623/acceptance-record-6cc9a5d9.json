@@ -1,0 +1,99 @@
+{
+  "version": 2,
+  "candidate": "commit:6cc9a5d9c8beb87833a6183f65834d102f3a7215",
+  "repositoryRoot": "/Users/noah.wong/.codex/worktrees/25d0/efcc",
+  "acceptanceProfile": "complex",
+  "reviewRisk": {
+    "level": "high",
+    "reason": "permission, persistence, stale async state, generation recovery, and real-route boundaries"
+  },
+  "delegationAvailable": true,
+  "requirements": ["R43.1", "R43.2", "R43.3", "R43.4", "R43.5", "R43.6", "R43.7", "R52.1"],
+  "review": {
+    "mode": "independent",
+    "candidate": "commit:6cc9a5d9c8beb87833a6183f65834d102f3a7215",
+    "reviewer": "Lovelace (focused_reviewer) Spec PASS/CLEAN; Carson (acceptance_verifier) SCOPED-ACCEPT"
+  },
+  "criteria": [
+    {
+      "id": "R43.1",
+      "status": "verified",
+      "expected": "Reviewed Plan durably binds range, inputs, schedule revision, fingerprint, and occurrence rows.",
+      "actual": "Worker/D1 report has 44 files and 648 passed tests on candidate 6cc9; contract and migration tests pass.",
+      "level": "worker-d1",
+      "candidate": "commit:6cc9a5d9c8beb87833a6183f65834d102f3a7215",
+      "evidence": [".delivery/programs-623/artifacts/worker-6cc9/run.json", ".delivery/programs-623/artifacts/worker-6cc9/worker-results.json"]
+    },
+    {
+      "id": "R43.2",
+      "status": "verified",
+      "expected": "Input mutation preserves stale Preview, shows guidance/Review Again, and disables Generate until re-review.",
+      "actual": "Components, phone-390, desktop-1280, Browser, Responsive, and targeted R5 evidence pass on candidate 6cc9.",
+      "level": "real-route",
+      "candidate": "commit:6cc9a5d9c8beb87833a6183f65834d102f3a7215",
+      "evidence": [".delivery/programs-623/artifacts/local-route-6cc9.txt", ".delivery/programs-623/artifacts/desktop-1280-6cc9/result.txt", ".delivery/programs-623/artifacts/local-browser-6cc9/browser-results.json", ".delivery/programs-623/artifacts/local-responsive-6cc9/responsive-results.json"]
+    },
+    {
+      "id": "R43.3",
+      "status": "verified",
+      "expected": "Pending, failed, and unknown exception persistence keeps Generate blocked until reconciliation.",
+      "actual": "Worker and component recovery/gating tests pass; live saved-exception network-failure browser mutation is explicitly not claimed.",
+      "level": "worker-component",
+      "candidate": "commit:6cc9a5d9c8beb87833a6183f65834d102f3a7215",
+      "evidence": [".delivery/programs-623/artifacts/worker-6cc9/worker-results.json", ".delivery/programs-623/artifacts/components-6cc9/components-results.json"]
+    },
+    {
+      "id": "R43.4",
+      "status": "verified",
+      "expected": "Stale Plan bypass is rejected before Event writes, including schedule/newer-review races.",
+      "actual": "Worker/D1 and focused Programs tests pass; phone-390 and desktop-1280 real route checks pass with stale-bypass coverage.",
+      "level": "real-route",
+      "candidate": "commit:6cc9a5d9c8beb87833a6183f65834d102f3a7215",
+      "evidence": [".delivery/programs-623/artifacts/local-route-6cc9.txt", ".delivery/programs-623/artifacts/desktop-1280-6cc9/result.txt", ".delivery/programs-623/artifacts/worker-6cc9/worker-results.json"]
+    },
+    {
+      "id": "R43.5",
+      "status": "verified",
+      "expected": "Fresh matching review generates bounded Events with provenance and truthful outcomes.",
+      "actual": "Candidate-pinned local Browser/Responsive and real-route generation paths pass; Worker/D1 provenance/count tests pass.",
+      "level": "real-route",
+      "candidate": "commit:6cc9a5d9c8beb87833a6183f65834d102f3a7215",
+      "evidence": [".delivery/programs-623/artifacts/local-browser-6cc9/run.json", ".delivery/programs-623/artifacts/local-responsive-6cc9/run.json", ".delivery/programs-623/artifacts/worker-6cc9/worker-results.json"]
+    },
+    {
+      "id": "R43.6",
+      "status": "verified",
+      "expected": "Retry/resume is durable, idempotent, duplicate-safe, and stale partials require a new Plan.",
+      "actual": "Worker, focused Programs, and component durability/recovery/settlement tests pass on candidate 6cc9.",
+      "level": "worker-component",
+      "candidate": "commit:6cc9a5d9c8beb87833a6183f65834d102f3a7215",
+      "evidence": [".delivery/programs-623/artifacts/worker-6cc9/worker-results.json", ".delivery/programs-623/artifacts/components-6cc9/components-results.json"]
+    },
+    {
+      "id": "R43.7",
+      "status": "verified",
+      "expected": "Inclusive bounds and Hong Kong ongoing three-calendar-month defaults remain correct.",
+      "actual": "Worker/component recurrence coverage and candidate-pinned local Responsive plus desktop-1280 route checks pass.",
+      "level": "real-route",
+      "candidate": "commit:6cc9a5d9c8beb87833a6183f65834d102f3a7215",
+      "evidence": [".delivery/programs-623/artifacts/worker-6cc9/worker-results.json", ".delivery/programs-623/artifacts/local-responsive-6cc9/responsive-results.json", ".delivery/programs-623/artifacts/desktop-1280-6cc9/result.txt"]
+    },
+    {
+      "id": "R52.1",
+      "status": "verified",
+      "expected": "Evidence is candidate-pinned and fresh independent Spec/Acceptance review remains separate from owner/release gates.",
+      "actual": "Lovelace returned Spec PASS/CLEAN and Carson returned Acceptance SCOPED-ACCEPT for candidate 6cc9; no owner/deploy/merge/release claim is made.",
+      "level": "independent-review",
+      "candidate": "commit:6cc9a5d9c8beb87833a6183f65834d102f3a7215",
+      "evidence": [".delivery/programs-623/acceptance-trace.md", ".delivery/programs-623/artifacts/worker-6cc9/run.json", ".delivery/programs-623/artifacts/local-browser-6cc9/run.json", ".delivery/programs-623/artifacts/local-responsive-6cc9/run.json"]
+    }
+  ],
+  "limitations": [
+    "createTestHarness Browser/Responsive wrapper fails or blocks after reporting 36 migrations; real local wrangler-dev + disposable D1 fallback is used and explicitly identified.",
+    "Saved-exception browser network-failure journey and browser interruption/restart injection are unrun.",
+    "Physical device, QR, native print, touch/assistive-technology, and Owner L2 evidence are open.",
+    "B-003 sustained canary is diagnostic and not claimed fixed.",
+    "Repository-wide check/governance and commit hook remain affected by pre-existing debt/ENOBUFS; aggregate promotion verifier has the known 6-vs-4 baseline mismatch.",
+    "Deployment, merge, release, issue closure, and downstream authorization are outside Worker B scope."
+  ]
+}

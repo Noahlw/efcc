@@ -24,6 +24,12 @@ export interface ScheduleRuleLike {
   end_time: string;
   /** Optional default venue materialized onto preview rows and generated events. */
   location?: string | null;
+  /** Inclusive HK wall start; legacy rows may omit it. */
+  effective_start_date?: string | null;
+  /** Inclusive HK wall end; null/omitted means ongoing. */
+  effective_end_date?: string | null;
+  /** Retired rules remain readable history but produce no future candidates. */
+  retired_at?: string | null;
 }
 
 export type ScheduleExceptionAction = "CANCEL" | "RESCHEDULE";
@@ -35,6 +41,8 @@ export interface ScheduleExceptionLike {
   action: ScheduleExceptionAction;
   new_start_time: string | null;
   new_end_time: string | null;
+  /** Replacement HK wall date for a single occurrence, when rescheduled. */
+  new_date?: string | null;
 }
 
 export interface Occurrence {
@@ -69,6 +77,20 @@ export function isWallDate(v: unknown): v is string {
   return typeof v === "string" && WALL_DATE_RE.test(v);
 }
 
+/** A calendar-valid HK wall date, not merely a YYYY-MM-DD-shaped string. */
+export function isValidWallDate(v: unknown): v is string {
+  if (!isWallDate(v)) {
+    return false;
+  }
+  const [year, month, day] = v.split("-").map(Number);
+  const date = new Date(Date.UTC(year, month - 1, day));
+  return (
+    date.getUTCFullYear() === year &&
+    date.getUTCMonth() === month - 1 &&
+    date.getUTCDate() === day
+  );
+}
+
 export function isWallTime(v: unknown): v is string {
   return typeof v === "string" && WALL_TIME_RE.test(v);
 }
@@ -87,6 +109,48 @@ export function addWallDays(wallDate: string, days: number): string {
     String(shifted.getUTCMonth() + 1).padStart(2, "0"),
     String(shifted.getUTCDate()).padStart(2, "0"),
   ].join("-");
+}
+
+/** Shift a HK wall date by calendar months, clamping only the arithmetic date. */
+export function addWallMonths(wallDate: string, months: number): string {
+  const [year, month, day] = wallDate.split("-").map(Number);
+  const target = new Date(Date.UTC(year, month - 1 + months, 1));
+  const lastDay = new Date(
+    Date.UTC(target.getUTCFullYear(), target.getUTCMonth() + 1, 0)
+  ).getUTCDate();
+  target.setUTCDate(Math.min(day, lastDay));
+  return [
+    target.getUTCFullYear(),
+    String(target.getUTCMonth() + 1).padStart(2, "0"),
+    String(target.getUTCDate()).padStart(2, "0"),
+  ].join("-");
+}
+
+/** Inclusive count of calendar days in a HK wall-date range. */
+export function wallDaySpan(fromDate: string, toDate: string): number {
+  const [fromYear, fromMonth, fromDay] = fromDate.split("-").map(Number);
+  const [toYear, toMonth, toDay] = toDate.split("-").map(Number);
+  return (
+    Math.round(
+      (Date.UTC(toYear, toMonth - 1, toDay) -
+        Date.UTC(fromYear, fromMonth - 1, fromDay)) /
+        86_400_000
+    ) + 1
+  );
+}
+
+function isWithinRuleLifetime(rule: ScheduleRuleLike, date: string): boolean {
+  if (rule.retired_at !== undefined && rule.retired_at !== null) {
+    return false;
+  }
+  return (
+    (rule.effective_start_date === undefined ||
+      rule.effective_start_date === null ||
+      date >= rule.effective_start_date) &&
+    (rule.effective_end_date === undefined ||
+      rule.effective_end_date === null ||
+      date <= rule.effective_end_date)
+  );
 }
 
 /** 0 = Sunday .. 6 = Saturday on the HK wall calendar. */
@@ -110,6 +174,9 @@ export function occurrencesForRule(
   );
   for (let i = 0; i < horizonDays; i += 1) {
     const date = addWallDays(fromDate, i);
+    if (!isWithinRuleLifetime(rule, date)) {
+      continue;
+    }
     const matches =
       rule.recurrence === "WEEKLY"
         ? wallWeekday(date) === rule.day_of_week
@@ -121,11 +188,12 @@ export function occurrencesForRule(
     if (exception?.action === "CANCEL") {
       continue;
     }
+    const occurrenceDate = exception?.new_date ?? date;
     const start = exception?.new_start_time ?? rule.start_time;
     const end = exception?.new_end_time ?? rule.end_time;
     result.push({
-      starts_at: hkWallToUtc(date, start),
-      ends_at: hkWallToUtc(date, end),
+      starts_at: hkWallToUtc(occurrenceDate, start),
+      ends_at: hkWallToUtc(occurrenceDate, end),
     });
   }
   return result;
@@ -146,6 +214,8 @@ export interface PreviewOccurrenceCandidate {
   location: string | null;
   skip_reason: "CANCEL" | "DUPLICATE" | null;
   exception_id: string | null;
+  /** Replacement HK wall date; occurs_on remains the original occurrence. */
+  replacement_date: string | null;
 }
 
 /**
@@ -169,6 +239,9 @@ export function previewOccurrencesForRule(
   );
   for (let i = 0; i < horizonDays; i += 1) {
     const date = addWallDays(fromDate, i);
+    if (!isWithinRuleLifetime(rule, date)) {
+      continue;
+    }
     const matches =
       rule.recurrence === "WEEKLY"
         ? wallWeekday(date) === rule.day_of_week
@@ -186,19 +259,22 @@ export function previewOccurrencesForRule(
         location: rule.location ?? null,
         skip_reason: "CANCEL",
         exception_id: exception.exception_id,
+        replacement_date: null,
       });
       continue;
     }
+    const replacementDate = exception?.new_date ?? date;
     const start = exception?.new_start_time ?? rule.start_time;
     const end = exception?.new_end_time ?? rule.end_time;
     result.push({
       rule_id: rule.rule_id,
       occurs_on: date,
-      starts_at: hkWallToUtc(date, start),
-      ends_at: hkWallToUtc(date, end),
+      starts_at: hkWallToUtc(replacementDate, start),
+      ends_at: hkWallToUtc(replacementDate, end),
       location: rule.location ?? null,
       skip_reason: null,
       exception_id: exception?.exception_id ?? null,
+      replacement_date: exception?.new_date ?? null,
     });
   }
   return result;
@@ -207,6 +283,54 @@ export function previewOccurrencesForRule(
 export interface EventLike {
   starts_at: string;
   source: string;
+  /** Persisted provenance is authoritative when present. */
+  schedule_rule_id?: string | null;
+  /** Original HK wall occurrence date, retained across Event reschedules. */
+  occurrence_date?: string | null;
+}
+
+function legacyRuleForEvent(
+  event: EventLike,
+  rules: ScheduleRuleLike[]
+): ScheduleRuleLike | null {
+  const date = hkWallDateOf(event.starts_at);
+  const time = new Date(
+    new Date(event.starts_at).getTime() + HK_UTC_OFFSET_MINUTES * 60_000
+  )
+    .toISOString()
+    .slice(11, 16);
+  const byDate = rules.filter((rule) =>
+    rule.recurrence === "WEEKLY"
+      ? rule.day_of_week === wallWeekday(date)
+      : rule.month_day === Number(date.slice(8, 10))
+  );
+  return byDate.length === 1
+    ? byDate[0]
+    : (byDate.find((rule) => rule.start_time === time) ?? null);
+}
+
+/**
+ * Resolve an Event's producing rule. New rows use immutable provenance and
+ * never consult date/time heuristics; only legacy SCHEDULE rows without a
+ * persisted rule id use the compatibility resolver.
+ */
+export function ruleForEvent(
+  event: EventLike,
+  rules: ScheduleRuleLike[]
+): ScheduleRuleLike | null {
+  if (event.source !== "SCHEDULE") {
+    return null;
+  }
+  if (event.schedule_rule_id !== undefined && event.schedule_rule_id !== null) {
+    return (
+      rules.find((rule) => rule.rule_id === event.schedule_rule_id) ?? null
+    );
+  }
+  return legacyRuleForEvent(event, rules);
+}
+
+function eventOccurrenceDate(event: EventLike): string {
+  return event.occurrence_date ?? hkWallDateOf(event.starts_at);
 }
 
 /**
@@ -225,21 +349,8 @@ export function exceptionForEvent(
   if (event.source !== "SCHEDULE") {
     return null;
   }
-  const date = hkWallDateOf(event.starts_at);
-  const time = new Date(
-    new Date(event.starts_at).getTime() + HK_UTC_OFFSET_MINUTES * 60_000
-  )
-    .toISOString()
-    .slice(11, 16);
-  const byDate = rules.filter((rule) =>
-    rule.recurrence === "WEEKLY"
-      ? rule.day_of_week === wallWeekday(date)
-      : rule.month_day === Number(date.slice(8, 10))
-  );
-  const rule =
-    byDate.length === 1
-      ? byDate[0]
-      : (byDate.find((r) => r.start_time === time) ?? null);
+  const date = eventOccurrenceDate(event);
+  const rule = ruleForEvent(event, rules);
   if (!rule) {
     return null;
   }
@@ -263,23 +374,16 @@ export function recurrenceTagForEvent(
   if (event.source !== "SCHEDULE") {
     return "無";
   }
-  const date = hkWallDateOf(event.starts_at);
-  const time = new Date(
-    new Date(event.starts_at).getTime() + HK_UTC_OFFSET_MINUTES * 60_000
-  )
-    .toISOString()
-    .slice(11, 16);
-  const byDate = rules.filter((rule) =>
-    rule.recurrence === "WEEKLY"
-      ? rule.day_of_week === wallWeekday(date)
-      : rule.month_day === Number(date.slice(8, 10))
-  );
-  const rule =
-    byDate.length === 1
-      ? byDate[0]
-      : (byDate.find((r) => r.start_time === time) ?? byDate[0] ?? null);
+  const rule = ruleForEvent(event, rules);
   if (!rule) {
-    if (rules.length === 1) {
+    // A persisted id that no longer resolves is an integrity problem, not a
+    // reason to guess from the Event's edited date/time. Singleton fallback
+    // is retained only for legacy rows that predate provenance.
+    if (
+      (event.schedule_rule_id === undefined ||
+        event.schedule_rule_id === null) &&
+      rules.length === 1
+    ) {
       return rules[0].recurrence === "WEEKLY" ? "每週" : "每月";
     }
     return "無";

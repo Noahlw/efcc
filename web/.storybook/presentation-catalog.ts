@@ -118,6 +118,10 @@ function sameStrings(
   );
 }
 
+export function isPresentationGapReference(value: string): boolean {
+  return value.startsWith("APV-") || /^ISSUE-#[1-9][0-9]*$/u.test(value);
+}
+
 // eslint-disable-next-line complexity -- one validator keeps catalog invariants atomic.
 export function validateScreenCatalog(
   catalog: readonly ScreenCatalogEntry[],
@@ -229,7 +233,7 @@ export function validateScreenCatalog(
     if (
       obligation.lifecycle === "active" &&
       obligation.gap !== null &&
-      !obligation.gap.startsWith("APV-")
+      !isPresentationGapReference(obligation.gap)
     ) {
       errors.push(
         `${obligation.screenId} gap must reference an owner approval package`

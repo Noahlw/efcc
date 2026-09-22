@@ -42,4 +42,28 @@ describe("named 800px shell breakpoint (TK-06)", () => {
       /@media \(min-width: 800px\)[\s\S]*#shell-content[\s\S]*padding-bottom: 0/u
     );
   });
+
+  test("phone active navigation uses the frozen centered top indicator", () => {
+    const phoneDock = globals.match(
+      /@media \(max-width: 799\.98px\)[\s\S]*?(?=\/\* Desktop rail)/u
+    )?.[0];
+
+    expect(phoneDock).toBeDefined();
+    expect(phoneDock).toMatch(
+      /#main-navigation \.nav-item\[aria-current="page"\]\s*\{[^}]*?color: var\(--accent\);[^}]*?background: transparent;/u
+    );
+    expect(phoneDock).not.toMatch(
+      /#main-navigation \.nav-item\[aria-current="page"\]\s*\{[^}]*?background: var\(--surface\);/u
+    );
+    expect(phoneDock).toMatch(
+      /#main-navigation \.nav-item\[aria-current="page"\]::before[\s\S]*?content:\s*["']?["'];[\s\S]*?position:\s*absolute;[\s\S]*?top:\s*3px;[\s\S]*?left:\s*50%;[\s\S]*?width:\s*18px;[\s\S]*?height:\s*2px;[\s\S]*?transform:\s*translateX\(-50%\);[\s\S]*?background:\s*var\(--accent\);/u
+    );
+    expect(phoneDock).not.toMatch(/box-shadow:\s*inset\s+0\s+-2px/u);
+    expect(phoneDock).not.toMatch(
+      /#main-navigation \.nav-item--scan\[aria-current="page"\]\s*\{[^}]*?background: var\(--surface\);/u
+    );
+    expect(phoneDock).toMatch(
+      /#main-navigation \.nav-item--scan\[aria-current="page"\]::before/u
+    );
+  });
 });

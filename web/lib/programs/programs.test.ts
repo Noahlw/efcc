@@ -12,9 +12,8 @@
  */
 import assert from "node:assert/strict";
 
-import type { D1Database } from "@cloudflare/workers-types";
 import { env } from "cloudflare:workers";
-import { beforeAll, describe, test } from "vitest";
+import { afterAll, beforeAll, describe, test } from "vitest";
 /* oxlint-disable vitest/require-top-level-describe -- shared workerd/D1 fixture spans the suites. */
 
 import worker from "../../worker";
@@ -24,8 +23,20 @@ import { ACCESS_COOKIE_NAME } from "../auth/cookies";
 import { applyMigrations, testDb } from "../auth/test-bootstrap";
 import { completeCredentialUpgrade } from "../auth/upgrade";
 import { CAPABILITY_CATALOG } from "../identity/capability-catalog";
-import { participantSelfCheckInAvailable } from "./department-workspace";
-import { addWallDays, hkTodayWallDate, wallWeekday } from "./recurrence";
+import { applyAuthoritativeRevision } from "./authoritative-revision";
+import { D1CapabilityAuthorizer } from "./capability-authorizer";
+import { D1WorkspaceStore } from "./d1-workspace-store";
+import {
+  DepartmentWorkspace,
+  participantSelfCheckInAvailable,
+} from "./department-workspace";
+import {
+  addWallDays,
+  addWallMonths,
+  hkTodayWallDate,
+  wallDaySpan,
+  wallWeekday,
+} from "./recurrence";
 
 const SECRET = "test-access-token-secret";
 const HEADER = [
@@ -210,6 +221,41 @@ async function createProgram(
       };
     };
   };
+  const requestedLifecycle = body.lifecycle ?? "Draft";
+  const requestedDiscoverability = body.discoverability ?? "Unlisted";
+  if (
+    requestedLifecycle === "Active" ||
+    requestedDiscoverability === "Listed"
+  ) {
+    const promote = await worker.fetch(
+      programsRequest(`/api/v1/programs/${result.data.program.program_id}`, {
+        method: "PATCH",
+        headers: {
+          Origin: HOST,
+          Cookie: `${ACCESS_COOKIE_NAME}=${access}`,
+          "Content-Type": "application/json",
+        },
+        body: {
+          ...(requestedLifecycle === "Active" ? { lifecycle: "Active" } : {}),
+          ...(requestedDiscoverability === "Listed"
+            ? { discoverability: "Listed" }
+            : {}),
+        },
+      }),
+      testEnv()
+    );
+    assert.strictEqual(promote.status, 200);
+    const promoted = (await assertCorrelated(promote)) as {
+      data: {
+        program: {
+          program_id: string;
+          name: string;
+          check_in_token: string | null;
+        };
+      };
+    };
+    return { ...result.data.program, ...promoted.data.program };
+  }
   return result.data.program;
 }
 async function grantProgramIdentity(
@@ -365,6 +411,1122 @@ beforeAll(async () => {
   await assignSystemIdentity("staff", "U005");
 });
 
+describe("R44: durable Enrollment Approval Runs", () => {
+  let adminAccess = "";
+  let memberAccess = "";
+  let departmentId = "";
+  const fixtureProgramIds = new Set<string>();
+
+  beforeAll(async () => {
+    await importLegacyUsers(testDb(), [
+      HEADER,
+      [
+        "R44-U003",
+        "R44 Member 003",
+        "r44-member-003",
+        "9033",
+        "Member",
+        "Active",
+      ],
+    ]);
+    adminAccess = await accessCookieFor("alice", "alice-secret");
+    memberAccess = await accessCookieFor("bob", "bob-secret");
+    const department = await createDepartment(adminAccess, {
+      code: `R44-${crypto.randomUUID().slice(0, 8)}`,
+      name: "Enrollment Approval Run Test Department",
+    });
+    departmentId = department.department_id;
+  });
+
+  async function newProgram(name: string): Promise<string> {
+    const program = await createProgram(adminAccess, departmentId, {
+      name: `${name}-${crypto.randomUUID().slice(0, 8)}`,
+      behavior_type: "Recurring",
+      lifecycle: "Active",
+      discoverability: "Listed",
+      enrollment_mode: "MemberRequest",
+    });
+    fixtureProgramIds.add(program.program_id);
+    return program.program_id;
+  }
+
+  afterAll(async () => {
+    const programIds = [...fixtureProgramIds];
+    if (programIds.length === 0) {
+      return;
+    }
+    await testDb()
+      .prepare(
+        `UPDATE enrollment_requests
+            SET status = 'Rejected', decided_by = 'U001',
+                decided_at = ?, decision_note = 'R44 fixture cleanup',
+                request_version = request_version + 1
+          WHERE status = 'Pending' AND program_id IN (${programIds
+            .map(() => "?")
+            .join(",")})`
+      )
+      .bind(new Date().toISOString(), ...programIds)
+      .run();
+  });
+
+  // These tests read the documented Run response contract through named
+  // aliases rather than inline member casts.
+  type RunResponse = {
+    data: {
+      item?: unknown;
+      run: { run_id: string; status: string; items: { status: string }[] };
+    };
+  };
+  type RunListItem = { run_id: string; status: string };
+  type RunListResponse = { data: { runs: RunListItem[] } };
+  const runResponse = (body: unknown): RunResponse => body as RunResponse;
+  const runListResponse = (body: unknown): RunListResponse =>
+    body as RunListResponse;
+
+  async function pendingRequests(
+    programId: string,
+    memberIds: readonly string[]
+  ): Promise<string[]> {
+    const requestIds = memberIds.map(() => crypto.randomUUID());
+    const submittedAt = new Date().toISOString();
+    await testDb().batch(
+      requestIds.map((requestId, index) =>
+        testDb()
+          .prepare(
+            `INSERT INTO enrollment_requests
+              (request_id, program_id, member_user_id, status, submitted_at,
+               request_version)
+             VALUES (?, ?, ?, 'Pending', ?, 1)`
+          )
+          .bind(requestId, programId, memberIds[index], submittedAt)
+      )
+    );
+    return requestIds;
+  }
+
+  function runRequest(
+    access: string,
+    path: string,
+    method: "GET" | "POST" = "GET",
+    body?: unknown,
+    idempotencyKey?: string
+  ): Promise<Response> {
+    return worker.fetch(
+      programsRequest(path, {
+        method,
+        headers: {
+          Origin: HOST,
+          Cookie: `${ACCESS_COOKIE_NAME}=${access}`,
+          ...(body === undefined ? {} : { "Content-Type": "application/json" }),
+          ...(idempotencyKey === undefined
+            ? {}
+            : { "Idempotency-Key": idempotencyKey }),
+        },
+        ...(body === undefined ? {} : { body }),
+      }),
+      testEnv()
+    );
+  }
+
+  test("persists the exact selection, stable item identities, and independent Continue", async () => {
+    const programId = await newProgram("R44 durable selection");
+    const requestIds = await pendingRequests(programId, ["U002", "R44-U003"]);
+    const start = await runRequest(
+      adminAccess,
+      `/api/v1/programs/${programId}/enrollment-approval-runs`,
+      "POST",
+      { request_ids: requestIds },
+      "r44-start-selection"
+    );
+    assert.strictEqual(start.status, 201);
+    const started = (await assertCorrelated(start)) as {
+      data: {
+        created: boolean;
+        run: {
+          run_id: string;
+          status: string;
+          items: {
+            item_id: string;
+            request_id: string;
+            request_version: number;
+            idempotency_key: string;
+            status: string;
+          }[];
+        };
+      };
+    };
+    const run = started.data.run;
+    assert.strictEqual(started.data.created, true);
+    assert.strictEqual(run.status, "active");
+    assert.deepStrictEqual(
+      run.items.map(({ request_id }) => request_id),
+      requestIds
+    );
+    assert.deepStrictEqual(
+      run.items.map(({ request_version }) => request_version),
+      [1, 1]
+    );
+    assert.ok(run.items.every(({ status }) => status === "not_started"));
+    assert.strictEqual(
+      new Set(run.items.map(({ idempotency_key }) => idempotency_key)).size,
+      2
+    );
+
+    const stored = await testDb()
+      .prepare(
+        `SELECT item_id, request_id, request_version, idempotency_key, status
+           FROM enrollment_approval_run_items
+          WHERE run_id = ? ORDER BY sequence`
+      )
+      .bind(run.run_id)
+      .all<{
+        item_id: string;
+        request_id: string;
+        request_version: number;
+        idempotency_key: string;
+        status: string;
+      }>();
+    assert.deepStrictEqual(
+      stored.results,
+      run.items.map(
+        ({
+          item_id,
+          request_id,
+          request_version,
+          idempotency_key,
+          status,
+        }) => ({
+          item_id,
+          request_id,
+          request_version,
+          idempotency_key,
+          status,
+        })
+      )
+    );
+
+    const repeatedStart = await runRequest(
+      adminAccess,
+      `/api/v1/programs/${programId}/enrollment-approval-runs`,
+      "POST",
+      { request_ids: requestIds },
+      "r44-start-selection-repeat"
+    );
+    assert.strictEqual(repeatedStart.status, 201);
+    const repeatedBody = (await assertCorrelated(repeatedStart)) as {
+      data: { created: boolean; run: { run_id: string } };
+    };
+    assert.strictEqual(repeatedBody.data.created, false);
+    assert.strictEqual(repeatedBody.data.run.run_id, run.run_id);
+
+    const firstContinue = await runRequest(
+      adminAccess,
+      `/api/v1/programs/${programId}/enrollment-approval-runs/${run.run_id}/continue`,
+      "POST"
+    );
+    assert.strictEqual(firstContinue.status, 200);
+    const firstBody = (await assertCorrelated(firstContinue)) as {
+      data: {
+        item: { request_id: string; status: string } | null;
+        run: { items: { request_id: string; status: string }[] };
+      };
+    };
+    assert.strictEqual(firstBody.data.item?.status, "completed");
+    assert.strictEqual(firstBody.data.run.items[0]?.status, "completed");
+    assert.strictEqual(firstBody.data.run.items[1]?.status, "not_started");
+
+    const staleSelectionStart = await runRequest(
+      adminAccess,
+      `/api/v1/programs/${programId}/enrollment-approval-runs`,
+      "POST",
+      { request_ids: requestIds },
+      "r44-start-after-progress"
+    );
+    assert.strictEqual(staleSelectionStart.status, 201);
+    const staleSelectionBody = (await assertCorrelated(
+      staleSelectionStart
+    )) as {
+      data: { created: boolean; run: { run_id: string } };
+    };
+    assert.strictEqual(staleSelectionBody.data.created, false);
+    assert.strictEqual(staleSelectionBody.data.run.run_id, run.run_id);
+
+    const secondContinue = await runRequest(
+      adminAccess,
+      `/api/v1/programs/${programId}/enrollment-approval-runs/${run.run_id}/continue`,
+      "POST"
+    );
+    assert.strictEqual(secondContinue.status, 200);
+    const secondBody = (await assertCorrelated(secondContinue)) as {
+      data: {
+        item: { request_id: string; status: string } | null;
+        run: { status: string; items: { status: string }[] };
+      };
+    };
+    assert.strictEqual(secondBody.data.item?.status, "completed");
+    assert.strictEqual(secondBody.data.run.status, "completed");
+    assert.ok(
+      secondBody.data.run.items.every(({ status }) => status === "completed")
+    );
+
+    const repeatedContinue = await runRequest(
+      adminAccess,
+      `/api/v1/programs/${programId}/enrollment-approval-runs/${run.run_id}/continue`,
+      "POST"
+    );
+    assert.strictEqual(repeatedContinue.status, 200);
+    const repeatedContinueBody = (await assertCorrelated(repeatedContinue)) as {
+      data: { item: null; run: { status: string } };
+    };
+    assert.strictEqual(repeatedContinueBody.data.item, null);
+    assert.strictEqual(repeatedContinueBody.data.run.status, "completed");
+    const enrollments = await testDb()
+      .prepare(
+        "SELECT COUNT(*) AS count FROM enrollments WHERE program_id = ? AND status = 'Active'"
+      )
+      .bind(programId)
+      .first<{ count: number }>();
+    assert.strictEqual(enrollments?.count, 2);
+
+    const listed = await runRequest(
+      adminAccess,
+      `/api/v1/programs/${programId}/enrollment-approval-runs`
+    );
+    assert.strictEqual(listed.status, 200);
+    const listedBody = (await assertCorrelated(listed)) as {
+      data: { runs: { run_id: string; status: string }[] };
+    };
+    assert.ok(
+      listedBody.data.runs.some(
+        ({ run_id, status }) => run_id === run.run_id && status === "completed"
+      )
+    );
+    const runAudits = await testDb()
+      .prepare(
+        `SELECT action, outcome, reason FROM audit_events
+          WHERE entity_type = 'enrollment_approval_run' AND entity_id = ?
+          ORDER BY inserted_at`
+      )
+      .bind(run.run_id)
+      .all<{ action: string; outcome: string; reason: string | null }>();
+    assert.ok(
+      runAudits.results?.some(
+        ({ action, outcome, reason }) =>
+          action === "ENROLLMENT_APPROVAL_RUN_CREATE" &&
+          outcome === "SUCCESS" &&
+          reason === "selected_pending_requests"
+      )
+    );
+    assert.strictEqual(
+      runAudits.results?.filter(
+        ({ action }) => action === "ENROLLMENT_APPROVAL_RUN_CONTINUE"
+      ).length,
+      2
+    );
+  });
+
+  test("reconciles an outcome-unknown committed approval without replaying Enrollment", async () => {
+    const programId = await newProgram("R44 acknowledgement loss");
+    const [requestId] = await pendingRequests(programId, ["U002"]);
+    const start = await runRequest(
+      adminAccess,
+      `/api/v1/programs/${programId}/enrollment-approval-runs`,
+      "POST",
+      { request_ids: [requestId] }
+    );
+    const run = (
+      (await assertCorrelated(start)) as {
+        data: {
+          run: {
+            run_id: string;
+            items: { request_id: string; idempotency_key: string }[];
+          };
+        };
+      }
+    ).data.run;
+    const item = run.items[0];
+    assert.ok(item);
+    const enrollmentId = crypto.randomUUID();
+    const decidedAt = new Date().toISOString();
+    await testDb().batch([
+      testDb()
+        .prepare(
+          `UPDATE enrollment_approval_run_items
+              SET status = 'outcome_unknown', started_at = ?
+            WHERE run_id = ? AND request_id = ?`
+        )
+        .bind(decidedAt, run.run_id, requestId),
+      testDb()
+        .prepare(
+          `INSERT INTO enrollments
+            (enrollment_id, program_id, member_user_id, request_id, status,
+             enrolled_at, created_by, created_at)
+           VALUES (?, ?, 'U002', ?, 'Active', ?, 'U001', ?)`
+        )
+        .bind(enrollmentId, programId, requestId, decidedAt, decidedAt),
+      testDb()
+        .prepare(
+          `UPDATE enrollment_requests
+              SET status = 'Approved', decided_by = 'U001', decided_at = ?,
+                  request_version = 2
+            WHERE request_id = ?`
+        )
+        .bind(decidedAt, requestId),
+      testDb()
+        .prepare(
+          `INSERT INTO audit_events
+            (audit_id, inserted_at, actor_user_id, action, entity_type,
+             entity_id, new_value_json, outcome, correlation_id)
+           VALUES (?, ?, 'U001', 'ENROLLMENT_CREATE', 'enrollment', ?, ?,
+                   'SUCCESS', ?)`
+        )
+        .bind(
+          crypto.randomUUID(),
+          decidedAt,
+          enrollmentId,
+          JSON.stringify({
+            enrollment_id: enrollmentId,
+            program_id: programId,
+            member_user_id: "U002",
+            request_id: requestId,
+          }),
+          item.idempotency_key
+        ),
+    ]);
+
+    const reconcile = await runRequest(
+      adminAccess,
+      `/api/v1/programs/${programId}/enrollment-approval-runs/${run.run_id}/reconcile`,
+      "POST"
+    );
+    assert.strictEqual(reconcile.status, 200);
+    const reconciled = (await assertCorrelated(reconcile)) as {
+      data: {
+        run: {
+          status: string;
+          items: {
+            status: string;
+            enrollment_id: string | null;
+            retryable: boolean;
+          }[];
+        };
+      };
+    };
+    assert.strictEqual(reconciled.data.run.status, "completed");
+    assert.strictEqual(reconciled.data.run.items[0]?.status, "completed");
+    assert.strictEqual(
+      reconciled.data.run.items[0]?.enrollment_id,
+      enrollmentId
+    );
+    assert.strictEqual(reconciled.data.run.items[0]?.retryable, false);
+
+    const continueAfterReconcile = await runRequest(
+      adminAccess,
+      `/api/v1/programs/${programId}/enrollment-approval-runs/${run.run_id}/continue`,
+      "POST"
+    );
+    assert.strictEqual(continueAfterReconcile.status, 200);
+    const continued = (await assertCorrelated(continueAfterReconcile)) as {
+      data: { item: null };
+    };
+    assert.strictEqual(continued.data.item, null);
+    const count = await testDb()
+      .prepare("SELECT COUNT(*) AS count FROM enrollments WHERE request_id = ?")
+      .bind(requestId)
+      .first<{ count: number }>();
+    assert.strictEqual(count?.count, 1);
+  });
+
+  test("retries an outcome-unknown approval only after Pending proves no commit", async () => {
+    const programId = await newProgram("R44 failure before commit");
+    const [requestId] = await pendingRequests(programId, ["U002"]);
+    const start = await runRequest(
+      adminAccess,
+      `/api/v1/programs/${programId}/enrollment-approval-runs`,
+      "POST",
+      { request_ids: [requestId] }
+    );
+    const run = (
+      (await assertCorrelated(start)) as {
+        data: {
+          run: {
+            run_id: string;
+            items: { idempotency_key: string }[];
+          };
+        };
+      }
+    ).data.run;
+    const store = new D1WorkspaceStore(testDb());
+    const workspace = new DepartmentWorkspace(
+      store,
+      new D1CapabilityAuthorizer(testDb())
+    );
+    store.approveEnrollmentRequest = async () => {
+      throw new Error("synthetic approval failure before commit");
+    };
+    const interrupted = await workspace.continueEnrollmentApprovalRun(
+      { actorUserId: "U001" },
+      programId,
+      run.run_id,
+      "r44-failure-before-commit"
+    );
+    assert.strictEqual(interrupted?.item?.status, "outcome_unknown");
+
+    const reconcile = await runRequest(
+      adminAccess,
+      `/api/v1/programs/${programId}/enrollment-approval-runs/${run.run_id}/reconcile`,
+      "POST"
+    );
+    const reconciled = (await assertCorrelated(reconcile)) as {
+      data: {
+        run: {
+          status: string;
+          items: { status: string; retryable: boolean; error_code: string }[];
+        };
+      };
+    };
+    assert.strictEqual(reconciled.data.run.status, "active");
+    const reconciledItem = reconciled.data.run.items[0];
+    assert.deepStrictEqual(
+      {
+        status: reconciledItem?.status,
+        retryable: reconciledItem?.retryable,
+        error_code: reconciledItem?.error_code,
+      },
+      {
+        status: "failed",
+        retryable: true,
+        error_code: "OUTCOME_NOT_COMMITTED",
+      }
+    );
+
+    const continued = await runRequest(
+      adminAccess,
+      `/api/v1/programs/${programId}/enrollment-approval-runs/${run.run_id}/continue`,
+      "POST"
+    );
+    const continuedBody = (await assertCorrelated(continued)) as {
+      data: {
+        item: { status: string } | null;
+        run: { status: string; items: { status: string }[] };
+      };
+    };
+    assert.strictEqual(continuedBody.data.item?.status, "completed");
+    assert.strictEqual(continuedBody.data.run.status, "completed");
+    assert.strictEqual(continuedBody.data.run.items[0]?.status, "completed");
+  });
+
+  test("does not attribute another idempotency attempt to the Approval Run", async () => {
+    const programId = await newProgram("R44 idempotency binding");
+    const [requestId] = await pendingRequests(programId, ["U002"]);
+    const start = await runRequest(
+      adminAccess,
+      `/api/v1/programs/${programId}/enrollment-approval-runs`,
+      "POST",
+      { request_ids: [requestId] }
+    );
+    const run = (
+      (await assertCorrelated(start)) as {
+        data: { run: { run_id: string } };
+      }
+    ).data.run;
+    await testDb()
+      .prepare(
+        `UPDATE enrollment_approval_run_items
+            SET status = 'outcome_unknown', started_at = ?
+          WHERE run_id = ? AND request_id = ?`
+      )
+      .bind(new Date().toISOString(), run.run_id, requestId)
+      .run();
+    const reconciled = await runRequest(
+      adminAccess,
+      `/api/v1/programs/${programId}/enrollment-approval-runs/${run.run_id}/reconcile`,
+      "POST",
+      {},
+      "r44-idempotency-reconcile"
+    );
+    assert.strictEqual(reconciled.status, 200);
+    const reconciledBody = (await assertCorrelated(reconciled)) as {
+      data: { run: { items: { status: string; retryable: boolean }[] } };
+    };
+    assert.deepStrictEqual(
+      {
+        status: reconciledBody.data.run.items[0]?.status,
+        retryable: reconciledBody.data.run.items[0]?.retryable,
+      },
+      { status: "failed", retryable: true }
+    );
+
+    const alternateApproval = await runRequest(
+      adminAccess,
+      `/api/v1/programs/${programId}/enrollment-requests/${requestId}/decision`,
+      "POST",
+      { action: "Approved", request_version: 1 },
+      "r44-idempotency-alternate"
+    );
+    assert.strictEqual(alternateApproval.status, 200);
+
+    const continued = await runRequest(
+      adminAccess,
+      `/api/v1/programs/${programId}/enrollment-approval-runs/${run.run_id}/continue`,
+      "POST",
+      {},
+      "r44-idempotency-original"
+    );
+    assert.strictEqual(continued.status, 200);
+    const continuedBody = (await assertCorrelated(continued)) as {
+      data: {
+        item: {
+          status: string;
+          error_code: string | null;
+          enrollment_id: string | null;
+        } | null;
+        run: { status: string };
+      };
+    };
+    assert.deepStrictEqual(
+      {
+        status: continuedBody.data.item?.status,
+        error_code: continuedBody.data.item?.error_code,
+        enrollment_id: continuedBody.data.item?.enrollment_id,
+      },
+      {
+        status: "failed",
+        error_code: "REQUEST_ALREADY_HANDLED",
+        enrollment_id: null,
+      }
+    );
+    assert.strictEqual(continuedBody.data.run.status, "completed");
+    const enrollmentCount = await testDb()
+      .prepare(
+        "SELECT COUNT(*) AS count FROM enrollments WHERE program_id = ? AND status = 'Active'"
+      )
+      .bind(programId)
+      .first<{ count: number }>();
+    assert.strictEqual(enrollmentCount?.count, 1);
+  });
+
+  test("rejects an audit collision from another Program or request", async () => {
+    const programId = await newProgram("R44 audit binding");
+    const [requestId] = await pendingRequests(programId, ["U002"]);
+    const otherProgramId = await newProgram("R44 audit collision source");
+    const [otherRequestId] = await pendingRequests(otherProgramId, ["U002"]);
+    const start = await runRequest(
+      adminAccess,
+      `/api/v1/programs/${programId}/enrollment-approval-runs`,
+      "POST",
+      { request_ids: [requestId] }
+    );
+    const run = (
+      (await assertCorrelated(start)) as {
+        data: {
+          run: {
+            run_id: string;
+            items: { idempotency_key: string }[];
+          };
+        };
+      }
+    ).data.run;
+    const item = run.items[0];
+    assert.ok(item);
+    const foreignEnrollmentId = crypto.randomUUID();
+    const now = new Date().toISOString();
+    await testDb().batch([
+      testDb()
+        .prepare(
+          `UPDATE enrollment_approval_run_items
+              SET status = 'outcome_unknown', started_at = ?
+            WHERE run_id = ? AND request_id = ?`
+        )
+        .bind(now, run.run_id, requestId),
+      testDb()
+        .prepare(
+          `UPDATE enrollment_requests
+              SET status = 'Approved', decided_by = 'U001', decided_at = ?,
+                  request_version = 2
+            WHERE request_id = ?`
+        )
+        .bind(now, requestId),
+      testDb()
+        .prepare(
+          `INSERT INTO enrollments
+            (enrollment_id, program_id, member_user_id, request_id, status,
+             enrolled_at, created_by, created_at)
+           VALUES (?, ?, 'U002', ?, 'Active', ?, 'U001', ?)`
+        )
+        .bind(foreignEnrollmentId, otherProgramId, otherRequestId, now, now),
+      testDb()
+        .prepare(
+          `INSERT INTO audit_events
+            (audit_id, inserted_at, actor_user_id, action, entity_type,
+             entity_id, new_value_json, outcome, correlation_id)
+           VALUES (?, ?, 'U001', 'ENROLLMENT_CREATE', 'enrollment', ?, ?,
+                   'SUCCESS', ?)`
+        )
+        .bind(
+          crypto.randomUUID(),
+          now,
+          foreignEnrollmentId,
+          JSON.stringify({
+            enrollment_id: foreignEnrollmentId,
+            program_id: otherProgramId,
+            member_user_id: "U002",
+            request_id: otherRequestId,
+          }),
+          item.idempotency_key
+        ),
+    ]);
+
+    const reconcile = await runRequest(
+      adminAccess,
+      `/api/v1/programs/${programId}/enrollment-approval-runs/${run.run_id}/reconcile`,
+      "POST"
+    );
+    assert.strictEqual(reconcile.status, 200);
+    const body = (await assertCorrelated(reconcile)) as {
+      data: {
+        run: {
+          status: string;
+          items: {
+            status: string;
+            error_code: string | null;
+            enrollment_id: string | null;
+          }[];
+        };
+      };
+    };
+    assert.strictEqual(body.data.run.status, "completed");
+    const resultItem = body.data.run.items[0];
+    assert.deepStrictEqual(
+      {
+        status: resultItem?.status,
+        error_code: resultItem?.error_code,
+        enrollment_id: resultItem?.enrollment_id,
+      },
+      {
+        status: "failed",
+        error_code: "REQUEST_ALREADY_HANDLED",
+        enrollment_id: null,
+      }
+    );
+    await testDb()
+      .prepare(
+        `UPDATE enrollment_requests
+            SET status = 'Rejected', decided_by = 'U001', decided_at = ?,
+                decision_note = 'R44 audit fixture cleanup', request_version = 3
+          WHERE request_id = ?`
+      )
+      .bind(new Date().toISOString(), requestId)
+      .run();
+  });
+
+  test("keeps approximately 30 outcomes independent and prevents duplicates on repeated Continue", async () => {
+    const members = Array.from({ length: 30 }, (_, index) => {
+      const number = String(index + 1).padStart(2, "0");
+      return [
+        `R44-M${number}`,
+        `R44 Mixed Member ${number}`,
+        `r44-mixed-${number}`,
+        String(1000 + index),
+        "Member",
+        "Active",
+      ];
+    });
+    await importLegacyUsers(testDb(), [HEADER, ...members]);
+    const programId = await newProgram("R44 mixed thirty");
+    const memberIds = members.map(([userId]) => userId);
+    const requestIds = await pendingRequests(programId, memberIds);
+    const start = await runRequest(
+      adminAccess,
+      `/api/v1/programs/${programId}/enrollment-approval-runs`,
+      "POST",
+      { request_ids: requestIds }
+    );
+    assert.strictEqual(start.status, 201);
+    const run = (
+      (await assertCorrelated(start)) as {
+        data: { run: { run_id: string } };
+      }
+    ).data.run;
+    const preparedAt = new Date().toISOString();
+    const existingEnrollmentId = crypto.randomUUID();
+    await testDb().batch([
+      testDb()
+        .prepare(
+          "UPDATE enrollment_requests SET request_version = 2 WHERE request_id = ?"
+        )
+        .bind(requestIds[0]),
+      testDb()
+        .prepare(
+          `INSERT INTO enrollments
+            (enrollment_id, program_id, member_user_id, request_id, status,
+             enrolled_at, created_by, created_at)
+           VALUES (?, ?, ?, NULL, 'Active', ?, 'U001', ?)`
+        )
+        .bind(
+          existingEnrollmentId,
+          programId,
+          memberIds[1],
+          preparedAt,
+          preparedAt
+        ),
+      testDb()
+        .prepare(
+          `UPDATE enrollment_requests
+              SET status = 'Rejected', decided_by = 'U001', decided_at = ?,
+                  decision_note = 'R44 denied fixture', request_version = 2
+            WHERE request_id = ?`
+        )
+        .bind(preparedAt, requestIds[2]),
+    ]);
+
+    let last: {
+      status: string;
+      items: { status: string; error_code: string | null }[];
+    } | null = null;
+    for (let index = 0; index < requestIds.length; index += 1) {
+      const response = await runRequest(
+        adminAccess,
+        `/api/v1/programs/${programId}/enrollment-approval-runs/${run.run_id}/continue`,
+        "POST"
+      );
+      assert.strictEqual(response.status, 200);
+      last = (
+        (await assertCorrelated(response)) as {
+          data: {
+            run: {
+              status: string;
+              items: { status: string; error_code: string | null }[];
+            };
+          };
+        }
+      ).data.run;
+    }
+    assert.ok(last);
+    assert.strictEqual(last.status, "completed");
+    assert.strictEqual(last.items[0]?.status, "failed");
+    assert.strictEqual(last.items[0]?.error_code, "STALE_REQUEST_VERSION");
+    assert.strictEqual(last.items[1]?.status, "failed");
+    assert.strictEqual(last.items[1]?.error_code, "ENROLLMENT_DUPLICATE");
+    assert.strictEqual(last.items[2]?.status, "failed");
+    assert.strictEqual(last.items[2]?.error_code, "REQUEST_ALREADY_HANDLED");
+    assert.strictEqual(
+      last.items.filter(({ status }) => status === "completed").length,
+      27
+    );
+    const enrollmentCount = await testDb()
+      .prepare(
+        "SELECT COUNT(*) AS count FROM enrollments WHERE program_id = ? AND status = 'Active'"
+      )
+      .bind(programId)
+      .first<{ count: number }>();
+    assert.strictEqual(enrollmentCount?.count, 28);
+
+    const repeated = await runRequest(
+      adminAccess,
+      `/api/v1/programs/${programId}/enrollment-approval-runs/${run.run_id}/continue`,
+      "POST"
+    );
+    assert.strictEqual(repeated.status, 200);
+    const repeatedBody = (await assertCorrelated(repeated)) as {
+      data: { item: null };
+    };
+    assert.strictEqual(repeatedBody.data.item, null);
+    const afterRepeat = await testDb()
+      .prepare(
+        "SELECT COUNT(*) AS count FROM enrollments WHERE program_id = ? AND status = 'Active'"
+      )
+      .bind(programId)
+      .first<{ count: number }>();
+    assert.strictEqual(afterRepeat?.count, 28);
+  });
+
+  test("cancel stops future scheduling, keeps completed approvals, and members cannot start a run", async () => {
+    const programId = await newProgram("R44 cancellation");
+    const requestIds = await pendingRequests(programId, ["U002", "R44-U003"]);
+    const denied = await runRequest(
+      memberAccess,
+      `/api/v1/programs/${programId}/enrollment-approval-runs`,
+      "POST",
+      { request_ids: requestIds }
+    );
+    assert.strictEqual(denied.status, 403);
+    const deniedProblem = await problemOf(denied);
+    assert.strictEqual(deniedProblem.code, "FORBIDDEN");
+
+    const start = await runRequest(
+      adminAccess,
+      `/api/v1/programs/${programId}/enrollment-approval-runs`,
+      "POST",
+      { request_ids: requestIds }
+    );
+    const run = runResponse(await assertCorrelated(start)).data.run;
+    const approvedBeforeCancel = await runRequest(
+      adminAccess,
+      `/api/v1/programs/${programId}/enrollment-approval-runs/${run.run_id}/continue`,
+      "POST"
+    );
+    assert.strictEqual(approvedBeforeCancel.status, 200);
+    const approvedItems = runResponse(
+      await assertCorrelated(approvedBeforeCancel)
+    ).data.run.items.filter(({ status }) => status === "completed");
+    assert.strictEqual(approvedItems.length, 1);
+
+    const cancel = await runRequest(
+      adminAccess,
+      `/api/v1/programs/${programId}/enrollment-approval-runs/${run.run_id}/cancel`,
+      "POST",
+      {}
+    );
+    assert.strictEqual(cancel.status, 200);
+    const cancelled = runResponse(await assertCorrelated(cancel));
+    assert.strictEqual(cancelled.data.run.status, "cancelled");
+    assert.strictEqual(
+      cancelled.data.run.items.filter(({ status }) => status === "completed")
+        .length,
+      1
+    );
+    assert.ok(
+      cancelled.data.run.items
+        .filter(({ status }) => status !== "completed")
+        .every(({ status }) => status === "not_started")
+    );
+    const survivingEnrollments = await testDb()
+      .prepare(
+        "SELECT COUNT(*) AS count FROM enrollments WHERE program_id = ? AND status = 'Active'"
+      )
+      .bind(programId)
+      .first<{ count: number }>();
+    assert.strictEqual(survivingEnrollments?.count, 1);
+    const continueAfterCancel = await runRequest(
+      adminAccess,
+      `/api/v1/programs/${programId}/enrollment-approval-runs/${run.run_id}/continue`,
+      "POST"
+    );
+    assert.strictEqual(continueAfterCancel.status, 200);
+    const continueBody = runResponse(
+      await assertCorrelated(continueAfterCancel)
+    );
+    assert.strictEqual(continueBody.data.item, null);
+    assert.strictEqual(continueBody.data.run.status, "cancelled");
+  });
+
+  test("keeps a Run private to its Program and refuses an out-of-capability actor", async () => {
+    const programId = await newProgram("R44 run scope");
+    const otherProgramId = await newProgram("R44 run scope other");
+    const requestIds = await pendingRequests(programId, ["U002"]);
+    const start = await runRequest(
+      adminAccess,
+      `/api/v1/programs/${programId}/enrollment-approval-runs`,
+      "POST",
+      { request_ids: requestIds }
+    );
+    assert.strictEqual(start.status, 201);
+    const run = runResponse(await assertCorrelated(start)).data.run;
+
+    const crossProgram = await runRequest(
+      adminAccess,
+      `/api/v1/programs/${otherProgramId}/enrollment-approval-runs/${run.run_id}/continue`,
+      "POST"
+    );
+    assert.strictEqual(crossProgram.status, 404);
+    assert.strictEqual((await problemOf(crossProgram)).code, "NOT_FOUND");
+
+    const crossProgramList = await runRequest(
+      adminAccess,
+      `/api/v1/programs/${otherProgramId}/enrollment-approval-runs`
+    );
+    assert.strictEqual(crossProgramList.status, 200);
+    const crossProgramRuns = runListResponse(
+      await assertCorrelated(crossProgramList)
+    ).data.runs;
+    assert.ok(
+      crossProgramRuns.every(({ run_id }) => run_id !== run.run_id),
+      "another Program must not expose this Run"
+    );
+
+    for (const [method, path] of [
+      ["GET", `/api/v1/programs/${programId}/enrollment-approval-runs`],
+      [
+        "POST",
+        `/api/v1/programs/${programId}/enrollment-approval-runs/${run.run_id}/continue`,
+      ],
+      [
+        "POST",
+        `/api/v1/programs/${programId}/enrollment-approval-runs/${run.run_id}/cancel`,
+      ],
+    ] as const) {
+      const denied = await runRequest(
+        memberAccess,
+        path,
+        method,
+        method === "POST" ? {} : undefined
+      );
+      assert.strictEqual(denied.status, 403);
+      assert.strictEqual((await problemOf(denied)).code, "FORBIDDEN");
+    }
+
+    const untouched = await runRequest(
+      adminAccess,
+      `/api/v1/programs/${programId}/enrollment-approval-runs`
+    );
+    assert.strictEqual(untouched.status, 200);
+    const untouchedRun = runListResponse(
+      await assertCorrelated(untouched)
+    ).data.runs.find(({ run_id }) => run_id === run.run_id);
+    assert.strictEqual(untouchedRun?.status, "active");
+  });
+
+  test("does not overlap concurrent Continue calls", async () => {
+    const programId = await newProgram("R44 continue race");
+    const [requestId] = await pendingRequests(programId, ["U002"]);
+    const start = await runRequest(
+      adminAccess,
+      `/api/v1/programs/${programId}/enrollment-approval-runs`,
+      "POST",
+      { request_ids: [requestId] }
+    );
+    const run = (
+      (await assertCorrelated(start)) as {
+        data: { run: { run_id: string } };
+      }
+    ).data.run;
+    const store = new D1WorkspaceStore(testDb());
+    const workspace = new DepartmentWorkspace(
+      store,
+      new D1CapabilityAuthorizer(testDb())
+    );
+    const gateState: { release?: () => void } = {};
+    let markClaimsEntered: (() => void) | null = null;
+    // oxlint-disable-next-line promise/avoid-new -- hold both real claim attempts before D1 arbitration.
+    const gate = new Promise<void>((resolve) => {
+      gateState.release = resolve;
+    });
+    // oxlint-disable-next-line promise/avoid-new -- deterministically align two pre-claim contenders.
+    const claimsEntered = new Promise<void>((resolve) => {
+      markClaimsEntered = resolve;
+    });
+    let claimCalls = 0;
+    const originalClaim = store.claimNextEnrollmentApprovalRunItem.bind(store);
+    store.claimNextEnrollmentApprovalRunItem = async (...args) => {
+      claimCalls += 1;
+      if (claimCalls === 2) {
+        markClaimsEntered?.();
+      }
+      await gate;
+      return originalClaim(...args);
+    };
+    const ctx = { actorUserId: "U001" };
+    const firstContinue = workspace.continueEnrollmentApprovalRun(
+      ctx,
+      programId,
+      run.run_id,
+      "r44-continue-first"
+    );
+    const secondContinue = workspace.continueEnrollmentApprovalRun(
+      ctx,
+      programId,
+      run.run_id,
+      "r44-continue-second"
+    );
+    await claimsEntered;
+    gateState.release?.();
+    const results = await Promise.all([firstContinue, secondContinue]);
+    const claimedResults = results.filter((result) => result?.item !== null);
+    assert.strictEqual(claimedResults.length, 1);
+    assert.strictEqual(claimedResults[0]?.item?.status, "completed");
+    assert.strictEqual(
+      results.filter((result) => result?.item === null).length,
+      1
+    );
+    const enrollmentCount = await testDb()
+      .prepare(
+        "SELECT COUNT(*) AS count FROM enrollments WHERE program_id = ? AND status = 'Active'"
+      )
+      .bind(programId)
+      .first<{ count: number }>();
+    assert.strictEqual(enrollmentCount?.count, 1);
+  });
+
+  test("does not audit a stale Continue transition after a concurrent cancel", async () => {
+    const programId = await newProgram("R44 cancel race");
+    const [requestId] = await pendingRequests(programId, ["U002"]);
+    const start = await runRequest(
+      adminAccess,
+      `/api/v1/programs/${programId}/enrollment-approval-runs`,
+      "POST",
+      { request_ids: [requestId] }
+    );
+    const run = (
+      (await assertCorrelated(start)) as {
+        data: { run: { run_id: string } };
+      }
+    ).data.run;
+    const store = new D1WorkspaceStore(testDb());
+    const workspace = new DepartmentWorkspace(
+      store,
+      new D1CapabilityAuthorizer(testDb())
+    );
+    const gateState: { release?: () => void } = {};
+    let markEntered: (() => void) | null = null;
+    // oxlint-disable-next-line promise/avoid-new -- hold the real approval mutation at the race boundary.
+    const gate = new Promise<void>((resolve) => {
+      gateState.release = resolve;
+    });
+    // oxlint-disable-next-line promise/avoid-new -- deterministically wait until the item is in flight.
+    const entered = new Promise<void>((resolve) => {
+      markEntered = resolve;
+    });
+    const originalApprove = store.approveEnrollmentRequest.bind(store);
+    store.approveEnrollmentRequest = async (input) => {
+      markEntered?.();
+      await gate;
+      return originalApprove(input);
+    };
+    const ctx = { actorUserId: "U001" };
+    const continuePromise = workspace.continueEnrollmentApprovalRun(
+      ctx,
+      programId,
+      run.run_id,
+      "r44-race-continue"
+    );
+    await entered;
+    const cancelled = await workspace.cancelEnrollmentApprovalRun(
+      ctx,
+      programId,
+      run.run_id,
+      "r44-race-cancel"
+    );
+    assert.strictEqual(cancelled?.status, "cancelled");
+    gateState.release?.();
+    const continued = await continuePromise;
+    assert.strictEqual(continued?.run.status, "cancelled");
+    assert.strictEqual(continued?.item?.status, "completed");
+    const stored = await testDb()
+      .prepare(
+        `SELECT r.status AS run_status, i.status AS item_status
+           FROM enrollment_approval_runs r
+           JOIN enrollment_approval_run_items i ON i.run_id = r.run_id
+          WHERE r.run_id = ?`
+      )
+      .bind(run.run_id)
+      .first<{ run_status: string; item_status: string }>();
+    assert.deepStrictEqual(stored, {
+      run_status: "cancelled",
+      item_status: "completed",
+    });
+    const staleAudit = await testDb()
+      .prepare(
+        `SELECT audit_id FROM audit_events
+          WHERE action = 'ENROLLMENT_APPROVAL_RUN_CONTINUE'
+            AND correlation_id = ?`
+      )
+      .bind("r44-race-continue")
+      .first();
+    assert.strictEqual(staleAudit, null);
+  });
+});
+
 describe("PRG-01: schema", () => {
   test("new domain tables and audit_events exist", async () => {
     const tables = [
@@ -378,6 +1540,11 @@ describe("PRG-01: schema", () => {
       "enrollments",
       "program_notification_reads",
       "attendances",
+      "program_check_in_token_rotations",
+      "program_schedule_rule_idempotency",
+      "program_schedule_versions",
+      "enrollment_approval_runs",
+      "enrollment_approval_run_items",
       "audit_events",
     ] as const;
     const rows = await Promise.all(
@@ -977,9 +2144,12 @@ describe("MUI-01: capability-aware management reads", () => {
     assert.strictEqual(initialBody.data.cockpit.active_event_count, 0);
     assert.strictEqual(initialBody.data.cockpit.pending_enrollment_count, 0);
 
-    // 3. Create events: past, earlier future, later future, cancelled future
+    // 3. Create events: past, open check-in, earlier future, later future,
+    // cancelled future. The open Event must outrank future Events.
     const pastStarts = "2020-01-01T10:00:00.000Z";
     const pastEnds = "2020-01-01T11:00:00.000Z";
+    const openStarts = new Date(Date.now() - 30 * 60_000).toISOString();
+    const openEnds = new Date(Date.now() + 30 * 60_000).toISOString();
     const nextStarts = "2099-06-01T10:00:00.000Z";
     const nextEnds = "2099-06-01T11:00:00.000Z";
     const laterStarts = "2099-06-15T10:00:00.000Z";
@@ -993,7 +2163,13 @@ describe("MUI-01: capability-aware management reads", () => {
       name: "Past Event",
       location: "Room A",
     });
-    const nextEventRow = await createEventFor(adminAccess, program.program_id, {
+    const openEventRow = await createEventFor(adminAccess, program.program_id, {
+      starts_at: openStarts,
+      ends_at: openEnds,
+      name: "Open Check-In Event",
+      location: "Room Open",
+    });
+    await createEventFor(adminAccess, program.program_id, {
       starts_at: nextStarts,
       ends_at: nextEnds,
       name: "Next Upcoming Event",
@@ -1042,13 +2218,13 @@ describe("MUI-01: capability-aware management reads", () => {
       .bind(program.program_id)
       .run();
 
-    // 1 active check-in for nextEvent
+    // 1 active check-in for the open Event
     await testDb()
       .prepare(
         `INSERT INTO attendances (attendance_id, event_id, member_user_id, method, status, checked_in_at)
          VALUES ('att-1', ?, 'U999', 'self_qr_scan', 'Active', datetime('now'))`
       )
-      .bind(nextEventRow.event_id)
+      .bind(openEventRow.event_id)
       .run();
 
     // 1 pending enrollment request
@@ -1088,25 +2264,31 @@ describe("MUI-01: capability-aware management reads", () => {
             checked_in_count: number;
             roster_count: number;
           } | null;
+          open_events: { event_id: string }[];
           active_event_count: number;
           pending_enrollment_count: number;
         };
       };
     };
 
-    const cockpit = cockpitData.data.cockpit;
+    const { cockpit } = cockpitData.data;
     assert.strictEqual(cockpit.program_id, program.program_id);
-    assert.strictEqual(cockpit.active_event_count, 3); // 3 active events (past, next, later)
+    // past, open, next, later
+    assert.strictEqual(cockpit.active_event_count, 4);
     assert.strictEqual(cockpit.pending_enrollment_count, 1);
     assert.ok(cockpit.next_event);
-    assert.strictEqual(cockpit.next_event.event_id, nextEventRow.event_id);
-    assert.strictEqual(cockpit.next_event.title, "Next Upcoming Event");
-    assert.strictEqual(cockpit.next_event.name, "Next Upcoming Event");
-    assert.strictEqual(cockpit.next_event.starts_at, nextStarts);
-    assert.strictEqual(cockpit.next_event.location, "Room B");
+    assert.strictEqual(cockpit.next_event.event_id, openEventRow.event_id);
+    assert.strictEqual(cockpit.next_event.title, "Open Check-In Event");
+    assert.strictEqual(cockpit.next_event.name, "Open Check-In Event");
+    assert.strictEqual(cockpit.next_event.starts_at, openStarts);
+    assert.strictEqual(cockpit.next_event.location, "Room Open");
     assert.strictEqual(cockpit.next_event.is_recurring, true);
     assert.strictEqual(cockpit.next_event.checked_in_count, 1);
     assert.strictEqual(cockpit.next_event.roster_count, 1);
+    assert.deepStrictEqual(
+      cockpit.open_events.map(({ event_id }) => event_id),
+      [openEventRow.event_id]
+    );
     assert.ok(
       !(
         "manual_check_in_code" in
@@ -1138,7 +2320,7 @@ describe("MUI-01: capability-aware management reads", () => {
       .run();
     await testDb()
       .prepare("DELETE FROM attendances WHERE event_id = ?")
-      .bind(nextEventRow.event_id)
+      .bind(openEventRow.event_id)
       .run();
     await testDb()
       .prepare("DELETE FROM enrollments WHERE program_id = ?")
@@ -1161,6 +2343,200 @@ describe("MUI-01: capability-aware management reads", () => {
       .bind(department.department_id)
       .run();
     assert.deepStrictEqual(mgmtData.data.cockpit, cockpit);
+  });
+});
+describe("#611/#621: Program QR artifact and emergency rotation", () => {
+  test("reads the scoped artifact, rotates atomically, rejects leader rotation, and invalidates the old token", async () => {
+    const adminAccess = await accessCookieFor("alice", "alice-secret");
+    const department = await createDepartment(adminAccess, {
+      code: `QR-${crypto.randomUUID().slice(0, 8)}`,
+      name: "QR Artifact Department",
+    });
+    const moduleResponse = await worker.fetch(
+      programsRequest(
+        `/api/v1/programs/departments/${department.department_id}/modules/attendance/enable`,
+        {
+          method: "POST",
+          headers: {
+            Origin: HOST,
+            Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
+          },
+        }
+      ),
+      testEnv()
+    );
+    assert.strictEqual(moduleResponse.status, 200);
+    const program = await createProgram(adminAccess, department.department_id, {
+      name: "QR Artifact Program",
+      behavior_type: "Recurring",
+      lifecycle: "Active",
+      discoverability: "Listed",
+    });
+    const oldToken = program.check_in_token;
+    assert.ok(oldToken);
+
+    const artifactResponse = await worker.fetch(
+      programsRequest(
+        `/api/v1/programs/${program.program_id}/attendance-artifact`,
+        {
+          headers: {
+            Origin: HOST,
+            Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
+          },
+        }
+      ),
+      testEnv()
+    );
+    assert.strictEqual(artifactResponse.status, 200);
+    const artifactBody = (await assertCorrelated(artifactResponse)) as {
+      data: {
+        artifact: {
+          check_in_token: string;
+          can_rotate: boolean;
+        };
+      };
+    };
+    assert.strictEqual(artifactBody.data.artifact.check_in_token, oldToken);
+    assert.strictEqual(artifactBody.data.artifact.can_rotate, true);
+
+    const rotationKey = `qr-rotation-${crypto.randomUUID()}`;
+    const rotateRequest = () =>
+      worker.fetch(
+        programsRequest(
+          `/api/v1/programs/${program.program_id}/attendance-artifact/rotate`,
+          {
+            method: "POST",
+            headers: {
+              Origin: HOST,
+              Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
+              "Idempotency-Key": rotationKey,
+            },
+            body: {},
+          }
+        ),
+        testEnv()
+      );
+    const rotated = await rotateRequest();
+    assert.strictEqual(rotated.status, 200);
+    const rotatedBody = (await assertCorrelated(rotated)) as {
+      data: {
+        rotation: {
+          check_in_token: string;
+          idempotent: boolean;
+        };
+      };
+    };
+    const newToken = rotatedBody.data.rotation.check_in_token;
+    assert.notStrictEqual(newToken, oldToken);
+    assert.strictEqual(rotatedBody.data.rotation.idempotent, false);
+
+    const replay = await rotateRequest();
+    assert.strictEqual(replay.status, 200);
+    const replayBody = (await assertCorrelated(replay)) as {
+      data: { rotation: { check_in_token: string; idempotent: boolean } };
+    };
+    assert.strictEqual(replayBody.data.rotation.check_in_token, newToken);
+    assert.strictEqual(replayBody.data.rotation.idempotent, true);
+
+    const eventStart = new Date(Date.now() - 30 * 60_000).toISOString();
+    const eventEnd = new Date(Date.now() + 30 * 60_000).toISOString();
+    const event = await createEventFor(adminAccess, program.program_id, {
+      starts_at: eventStart,
+      ends_at: eventEnd,
+      name: "QR rotation event",
+      check_in_window_opens_at: new Date(
+        Date.parse(eventStart) - 15 * 60_000
+      ).toISOString(),
+      check_in_window_closes_at: new Date(
+        Date.parse(eventEnd) + 15 * 60_000
+      ).toISOString(),
+    });
+    const oldResolution = await worker.fetch(
+      programsRequest(
+        `/api/v1/attendance/resolve?program_token=${encodeURIComponent(oldToken)}`,
+        { headers: { Origin: HOST } }
+      ),
+      testEnv()
+    );
+    assert.strictEqual(oldResolution.status, 200);
+    const oldResolutionBody = (await assertCorrelated(oldResolution)) as {
+      data: { events: unknown[]; latest: unknown };
+    };
+    assert.deepStrictEqual(oldResolutionBody.data.events, []);
+    assert.strictEqual(oldResolutionBody.data.latest, null);
+    const newResolution = await worker.fetch(
+      programsRequest(
+        `/api/v1/attendance/resolve?program_token=${encodeURIComponent(newToken)}`,
+        { headers: { Origin: HOST } }
+      ),
+      testEnv()
+    );
+    assert.strictEqual(newResolution.status, 200);
+    const newResolutionBody = (await assertCorrelated(newResolution)) as {
+      data: { events: { event_id: string }[] };
+    };
+    assert.deepStrictEqual(
+      newResolutionBody.data.events.map(({ event_id }) => event_id),
+      [event.event_id]
+    );
+
+    const leaderRole = await grantProgramIdentity(program.program_id, "U002");
+    const leaderAccess = await accessCookieFor("bob", "bob-secret");
+    const leaderArtifact = await worker.fetch(
+      programsRequest(
+        `/api/v1/programs/${program.program_id}/attendance-artifact`,
+        {
+          headers: {
+            Origin: HOST,
+            Cookie: `${ACCESS_COOKIE_NAME}=${leaderAccess}`,
+          },
+        }
+      ),
+      testEnv()
+    );
+    assert.strictEqual(leaderArtifact.status, 200);
+    const leaderArtifactBody = (await assertCorrelated(leaderArtifact)) as {
+      data: { artifact: { can_rotate: boolean } };
+    };
+    assert.strictEqual(leaderArtifactBody.data.artifact.can_rotate, false);
+    const deniedRotation = await worker.fetch(
+      programsRequest(
+        `/api/v1/programs/${program.program_id}/attendance-artifact/rotate`,
+        {
+          method: "POST",
+          headers: {
+            Origin: HOST,
+            Cookie: `${ACCESS_COOKIE_NAME}=${leaderAccess}`,
+            "Idempotency-Key": `qr-leader-${crypto.randomUUID()}`,
+          },
+          body: {},
+        }
+      ),
+      testEnv()
+    );
+    assert.strictEqual(deniedRotation.status, 403);
+    await revokeProgramIdentity(leaderRole, "U002");
+
+    const auditRows = await testDb()
+      .prepare(
+        `SELECT actor_user_id, correlation_id, old_value_json, new_value_json
+           FROM audit_events
+          WHERE action = 'PROGRAM_CHECK_IN_TOKEN_ROTATE'
+            AND entity_id = ? AND outcome = 'SUCCESS'`
+      )
+      .bind(program.program_id)
+      .all<{
+        actor_user_id: string;
+        correlation_id: string;
+        old_value_json: string;
+        new_value_json: string;
+      }>();
+    assert.strictEqual(auditRows.results?.length, 1);
+    const audit = auditRows.results?.[0];
+    assert.strictEqual(audit?.actor_user_id, "U001");
+    assert.strictEqual(audit?.correlation_id, rotationKey);
+    assert.ok(!audit?.old_value_json.includes(oldToken));
+    assert.ok(!audit?.new_value_json.includes(newToken));
   });
 });
 describe("NTF-01: management attention", () => {
@@ -1222,6 +2598,19 @@ describe("NTF-01: management attention", () => {
     };
     return body.data;
   }
+
+  test("chunks large Event scopes under D1's bound-parameter limit", async () => {
+    const store = new D1WorkspaceStore(testDb());
+    const programIds = Array.from({ length: 101 }, () => crypto.randomUUID());
+
+    const rows = await store.listManagementEventAttention(
+      programIds,
+      new Date().toISOString(),
+      20
+    );
+
+    assert.deepStrictEqual(rows, []);
+  });
 
   test("projects current scoped queues and resolves approval, rejection, and Event state", async () => {
     const adminAccess = await accessCookieFor("alice", "alice-secret");
@@ -1433,6 +2822,7 @@ describe("NTF-01: management attention", () => {
       "rejection leaves the inactive Event source"
     );
   });
+
   test("filters scoped leadership and honors enrollment and events module gates", async () => {
     const adminAccess = await accessCookieFor("alice", "alice-secret");
     const memberAccess = await accessCookieFor("bob", "bob-secret");
@@ -1559,6 +2949,7 @@ describe("NTF-01: management attention", () => {
     );
     assert.ok(pending.request_id);
   });
+
   test("revoking a Program Leader's capability drops the program from their attention aggregate", async () => {
     const adminAccess = await accessCookieFor("alice", "alice-secret");
     const leaderAccess = await accessCookieFor("bob", "bob-secret");
@@ -1653,6 +3044,7 @@ describe("PRG-01: programs", () => {
     assert.ok(program.program_id);
     assert.strictEqual(program.name, "Test Program");
   });
+
   test("requires a non-empty purpose and accepts a valid purpose without a category", async () => {
     const adminAccess = await accessCookieFor("alice", "alice-secret");
     const dept = await createDepartment(adminAccess, {
@@ -1859,7 +3251,7 @@ describe("PRG-01: programs", () => {
         };
       };
     };
-    assert.strictEqual(result.data.program.discoverability, "Listed");
+    assert.strictEqual(result.data.program.discoverability, "Unlisted");
     assert.strictEqual(result.data.program.enrollment_mode, "MemberRequest");
     assert.strictEqual(result.data.program.display_order, 0);
 
@@ -1994,6 +3386,7 @@ describe("PRG-01: programs", () => {
     await createProgram(adminAccess, dept.department_id, {
       name: "Listed Program",
       behavior_type: "OneOff",
+      lifecycle: "Active",
       discoverability: "Listed",
     });
     await createProgram(adminAccess, dept.department_id, {
@@ -2327,6 +3720,8 @@ async function createRule(
     start_time: string;
     end_time: string;
     location?: string;
+    effective_start_date?: string;
+    effective_end_date?: string | null;
   }
 ): Promise<{ rule_id: string }> {
   const res = await worker.fetch(
@@ -2351,10 +3746,13 @@ async function createRule(
 async function preview(
   access: string,
   programId: string,
-  horizonDays = 14
+  horizonDays = 14,
+  range?: { from_date: string; until_date: string }
 ): Promise<{
   plan_id: string;
   rule_count: number;
+  from_date: string;
+  to_date: string;
   occurrences: {
     occurrence_id: string;
     rule_id: string;
@@ -2364,6 +3762,7 @@ async function preview(
     location: string | null;
     skip_reason: string | null;
     exception_id: string | null;
+    replacement_date?: string | null;
   }[];
 }> {
   const res = await worker.fetch(
@@ -2374,14 +3773,19 @@ async function preview(
         Cookie: `${ACCESS_COOKIE_NAME}=${access}`,
         "Content-Type": "application/json",
       },
-      body: { horizon_days: horizonDays },
+      body: range ?? { horizon_days: horizonDays },
     }),
     testEnv()
   );
   assert.strictEqual(res.status, 200);
   const result = (await assertCorrelated(res)) as {
     data: {
-      plan: { plan_id: string; rule_count: number };
+      plan: {
+        plan_id: string;
+        rule_count: number;
+        from_date: string;
+        to_date: string;
+      };
       occurrences: {
         occurrence_id: string;
         rule_id: string;
@@ -2391,12 +3795,15 @@ async function preview(
         location: string | null;
         skip_reason: string | null;
         exception_id: string | null;
+        replacement_date?: string | null;
       }[];
     };
   };
   return {
     plan_id: result.data.plan.plan_id,
     rule_count: result.data.plan.rule_count,
+    from_date: result.data.plan.from_date,
+    to_date: result.data.plan.to_date,
     occurrences: result.data.occurrences,
   };
 }
@@ -2448,6 +3855,8 @@ async function listEventsFor(
     ends_at: string;
     status: string;
     source: string;
+    schedule_rule_id: string | null;
+    occurrence_date: string | null;
     manual_check_in_code: string | null;
     check_in_window_opens_at: string | null;
     check_in_window_closes_at: string | null;
@@ -2471,6 +3880,8 @@ async function listEventsFor(
         ends_at: string;
         status: string;
         source: string;
+        schedule_rule_id: string | null;
+        occurrence_date: string | null;
         exception: {
           exception_id: string;
           rule_id: string;
@@ -2525,6 +3936,18 @@ describe("PRG-02: schedule rules", () => {
     assert.ok(rule.rule_id);
 
     const memberAccess = await accessCookieFor("bob", "bob-secret");
+    const listed = await worker.fetch(
+      programsRequest(`/api/v1/programs/${recurringId}/schedule-rules`, {
+        headers: {
+          Origin: HOST,
+          Cookie: `${ACCESS_COOKIE_NAME}=${memberAccess}`,
+        },
+      }),
+      testEnv()
+    );
+    assert.strictEqual(listed.status, 403);
+    assert.strictEqual((await problemOf(listed)).code, "FORBIDDEN");
+
     const res = await worker.fetch(
       programsRequest(`/api/v1/programs/${recurringId}/schedule-rules`, {
         method: "POST",
@@ -2545,6 +3968,158 @@ describe("PRG-02: schedule rules", () => {
     assert.strictEqual(res.status, 403);
     const problem = await problemOf(res);
     assert.strictEqual(problem.code, "FORBIDDEN");
+  });
+
+  test("Members cannot enumerate schedule mutation targets before authorization", async () => {
+    const adminAccess = await accessCookieFor("alice", "alice-secret");
+    const rule = await createRule(adminAccess, recurringId, {
+      recurrence: "WEEKLY",
+      day_of_week: 5,
+      start_time: "19:30",
+      end_time: "21:00",
+    });
+    const createdException = await worker.fetch(
+      programsRequest(
+        `/api/v1/programs/${recurringId}/schedule-rules/${rule.rule_id}/exceptions`,
+        {
+          method: "POST",
+          headers: {
+            Origin: HOST,
+            Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
+            "Content-Type": "application/json",
+          },
+          body: { override_date: hkTodayWallDate(), action: "CANCEL" },
+        }
+      ),
+      testEnv()
+    );
+    assert.strictEqual(createdException.status, 201);
+    const {
+      data: { exception },
+    } = (await assertCorrelated(createdException)) as {
+      data: { exception: { exception_id: string } };
+    };
+
+    const memberAccess = await accessCookieFor("bob", "bob-secret");
+    const requests: Promise<Response>[] = [
+      worker.fetch(
+        programsRequest(
+          `/api/v1/programs/${recurringId}/schedule-rules/${rule.rule_id}`,
+          {
+            method: "PATCH",
+            headers: {
+              Origin: HOST,
+              Cookie: `${ACCESS_COOKIE_NAME}=${memberAccess}`,
+              "Content-Type": "application/json",
+            },
+            body: { start_time: "20:00", end_time: "21:30" },
+          }
+        ),
+        testEnv()
+      ),
+      worker.fetch(
+        programsRequest(
+          `/api/v1/programs/${recurringId}/schedule-rules/${crypto.randomUUID()}`,
+          {
+            method: "PATCH",
+            headers: {
+              Origin: HOST,
+              Cookie: `${ACCESS_COOKIE_NAME}=${memberAccess}`,
+              "Content-Type": "application/json",
+            },
+            body: { start_time: "20:00", end_time: "21:30" },
+          }
+        ),
+        testEnv()
+      ),
+      worker.fetch(
+        programsRequest(
+          `/api/v1/programs/${recurringId}/schedule-rules/${rule.rule_id}/retire`,
+          {
+            method: "POST",
+            headers: {
+              Origin: HOST,
+              Cookie: `${ACCESS_COOKIE_NAME}=${memberAccess}`,
+            },
+          }
+        ),
+        testEnv()
+      ),
+      worker.fetch(
+        programsRequest(
+          `/api/v1/programs/${recurringId}/schedule-rules/${crypto.randomUUID()}/retire`,
+          {
+            method: "POST",
+            headers: {
+              Origin: HOST,
+              Cookie: `${ACCESS_COOKIE_NAME}=${memberAccess}`,
+            },
+          }
+        ),
+        testEnv()
+      ),
+      worker.fetch(
+        programsRequest(
+          `/api/v1/programs/${recurringId}/schedule-rules/${rule.rule_id}/exceptions`,
+          {
+            method: "POST",
+            headers: {
+              Origin: HOST,
+              Cookie: `${ACCESS_COOKIE_NAME}=${memberAccess}`,
+              "Content-Type": "application/json",
+            },
+            body: { override_date: hkTodayWallDate(), action: "CANCEL" },
+          }
+        ),
+        testEnv()
+      ),
+      worker.fetch(
+        programsRequest(
+          `/api/v1/programs/${recurringId}/schedule-rules/${crypto.randomUUID()}/exceptions`,
+          {
+            method: "POST",
+            headers: {
+              Origin: HOST,
+              Cookie: `${ACCESS_COOKIE_NAME}=${memberAccess}`,
+              "Content-Type": "application/json",
+            },
+            body: { override_date: hkTodayWallDate(), action: "CANCEL" },
+          }
+        ),
+        testEnv()
+      ),
+      worker.fetch(
+        programsRequest(
+          `/api/v1/programs/${recurringId}/schedule-rules/${rule.rule_id}/exceptions/${exception.exception_id}`,
+          {
+            method: "DELETE",
+            headers: {
+              Origin: HOST,
+              Cookie: `${ACCESS_COOKIE_NAME}=${memberAccess}`,
+            },
+          }
+        ),
+        testEnv()
+      ),
+      worker.fetch(
+        programsRequest(
+          `/api/v1/programs/${recurringId}/schedule-rules/${rule.rule_id}/exceptions/${crypto.randomUUID()}`,
+          {
+            method: "DELETE",
+            headers: {
+              Origin: HOST,
+              Cookie: `${ACCESS_COOKIE_NAME}=${memberAccess}`,
+            },
+          }
+        ),
+        testEnv()
+      ),
+    ];
+
+    for (const response of await Promise.all(requests)) {
+      assert.strictEqual(response.status, 403);
+      assert.strictEqual((await problemOf(response)).code, "FORBIDDEN");
+    }
   });
 
   test("invalid rule bodies return 422", async () => {
@@ -2713,6 +4288,159 @@ describe("PRG-02: schedule rules", () => {
     }
   });
 
+  test("#620 preserves generated provenance through Event reschedule and Rule retirement", async () => {
+    const adminAccess = await accessCookieFor("alice", "alice-secret");
+    const program = await createProgram(adminAccess, deptId, {
+      name: "Provenance Retirement Program",
+      behavior_type: "Recurring",
+      discoverability: "Listed",
+    });
+    const rule = await createRule(adminAccess, program.program_id, {
+      recurrence: "WEEKLY",
+      day_of_week: 2,
+      start_time: "19:30",
+      end_time: "21:00",
+    });
+    await generate(adminAccess, program.program_id, 14);
+    const before = await listEventsFor(adminAccess, program.program_id);
+    assert.strictEqual(before.length, 2);
+    const target = before[0];
+    assert.ok(target);
+    assert.strictEqual(target.schedule_rule_id, rule.rule_id);
+    const originalOccurrence = target.occurrence_date;
+    assert.ok(originalOccurrence);
+
+    const shiftedStarts = new Date(
+      Date.parse(target.starts_at) + 60 * 60_000
+    ).toISOString();
+    const shiftedEnds = new Date(
+      Date.parse(target.ends_at) + 60 * 60_000
+    ).toISOString();
+    const rescheduled = await worker.fetch(
+      programsRequest(
+        `/api/v1/programs/${program.program_id}/events/${target.event_id}`,
+        {
+          method: "PATCH",
+          headers: {
+            Origin: HOST,
+            Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
+            "Content-Type": "application/json",
+          },
+          body: { starts_at: shiftedStarts, ends_at: shiftedEnds },
+        }
+      ),
+      testEnv()
+    );
+    assert.strictEqual(rescheduled.status, 200);
+    const rescheduledBody = (await assertCorrelated(rescheduled)) as {
+      data: {
+        event: {
+          schedule_rule_id: string | null;
+          occurrence_date: string | null;
+          starts_at: string;
+        };
+      };
+    };
+    assert.strictEqual(
+      rescheduledBody.data.event.schedule_rule_id,
+      rule.rule_id
+    );
+    assert.strictEqual(
+      rescheduledBody.data.event.occurrence_date,
+      originalOccurrence
+    );
+    assert.strictEqual(rescheduledBody.data.event.starts_at, shiftedStarts);
+
+    // The database trigger is the last line of defense: provenance cannot be
+    // rewritten even by a direct SQL caller outside the Worker service.
+    await assert.rejects(
+      () =>
+        testDb()
+          .prepare("UPDATE events SET occurrence_date = ? WHERE event_id = ?")
+          .bind("2099-12-31", target.event_id)
+          .run(),
+      /event schedule provenance is immutable/u
+    );
+
+    const retire = await worker.fetch(
+      programsRequest(
+        `/api/v1/programs/${program.program_id}/schedule-rules/${rule.rule_id}/retire`,
+        {
+          method: "POST",
+          headers: {
+            Origin: HOST,
+            Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
+            "Idempotency-Key": "provenance-retire-1",
+          },
+        }
+      ),
+      testEnv()
+    );
+    assert.strictEqual(retire.status, 200);
+    const retireBody = (await assertCorrelated(retire)) as {
+      data: { rule: { retired_at: string | null; retired_by: string | null } };
+    };
+    assert.ok(retireBody.data.rule.retired_at);
+    assert.strictEqual(retireBody.data.rule.retired_by, "U001");
+
+    // Retirement is idempotent and leaves the same historical marker.
+    const repeatRetire = await worker.fetch(
+      programsRequest(
+        `/api/v1/programs/${program.program_id}/schedule-rules/${rule.rule_id}/retire`,
+        {
+          method: "POST",
+          headers: {
+            Origin: HOST,
+            Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
+            "Idempotency-Key": "provenance-retire-1",
+          },
+        }
+      ),
+      testEnv()
+    );
+    assert.strictEqual(repeatRetire.status, 200);
+
+    const update = await worker.fetch(
+      programsRequest(
+        `/api/v1/programs/${program.program_id}/schedule-rules/${rule.rule_id}`,
+        {
+          method: "PATCH",
+          headers: {
+            Origin: HOST,
+            Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
+            "Content-Type": "application/json",
+          },
+          body: { start_time: "20:00", end_time: "21:00" },
+        }
+      ),
+      testEnv()
+    );
+    assert.strictEqual(update.status, 409);
+    assert.strictEqual((await problemOf(update)).code, "SCHEDULE_RULE_RETIRED");
+
+    const future = await preview(adminAccess, program.program_id, 14);
+    assert.strictEqual(future.rule_count, 1);
+    assert.deepStrictEqual(future.occurrences, []);
+    const after = await listEventsFor(adminAccess, program.program_id);
+    const retained = after.find(({ event_id }) => event_id === target.event_id);
+    assert.strictEqual(retained?.starts_at, shiftedStarts);
+    assert.strictEqual(retained?.schedule_rule_id, rule.rule_id);
+    assert.strictEqual(retained?.occurrence_date, originalOccurrence);
+
+    const retireAudits = await testDb()
+      .prepare(
+        `SELECT outcome FROM audit_events
+         WHERE action = 'SCHEDULE_RULE_RETIRE' AND entity_id = ?
+         ORDER BY inserted_at ASC`
+      )
+      .bind(rule.rule_id)
+      .all<{ outcome: string }>();
+    assert.deepStrictEqual(
+      (retireAudits.results ?? []).map(({ outcome }) => outcome),
+      ["SUCCESS", "DUPLICATE"]
+    );
+  });
+
   test("PATCH rule enforces recurrence cross-field invariants", async () => {
     const adminAccess = await accessCookieFor("alice", "alice-secret");
     const weekly = await createRule(adminAccess, recurringId, {
@@ -2779,14 +4507,105 @@ describe("PRG-02: schedule rules", () => {
     assert.strictEqual(rule.data.rule.recurrence, "WEEKLY");
     assert.strictEqual(rule.data.rule.day_of_week, 1);
   });
+
+  test("#596 persists inclusive rule bounds and accepts an exact date-range preview", async () => {
+    const adminAccess = await accessCookieFor("alice", "alice-secret");
+    const program = await createProgram(adminAccess, deptId, {
+      name: "Bounded Schedule Program",
+      behavior_type: "Recurring",
+      discoverability: "Listed",
+    });
+    const created = await createRule(adminAccess, program.program_id, {
+      recurrence: "WEEKLY",
+      day_of_week: 1,
+      start_time: "10:00",
+      end_time: "11:00",
+      effective_start_date: "2026-10-05",
+      effective_end_date: "2026-11-30",
+    });
+
+    const rulesResponse = await worker.fetch(
+      programsRequest(`/api/v1/programs/${program.program_id}/schedule-rules`, {
+        headers: {
+          Origin: HOST,
+          Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
+        },
+      }),
+      testEnv()
+    );
+    assert.strictEqual(rulesResponse.status, 200);
+    const rulesResult = (await assertCorrelated(rulesResponse)) as {
+      data: {
+        rules: {
+          rule_id: string;
+          effective_start_date: string | null;
+          effective_end_date: string | null;
+        }[];
+      };
+    };
+    const stored = rulesResult.data.rules.find(
+      ({ rule_id }) => rule_id === created.rule_id
+    );
+    assert.deepStrictEqual(
+      {
+        effective_start_date: stored?.effective_start_date,
+        effective_end_date: stored?.effective_end_date,
+      },
+      {
+        effective_start_date: "2026-10-05",
+        effective_end_date: "2026-11-30",
+      }
+    );
+
+    const previewResponse = await worker.fetch(
+      programsRequest(`/api/v1/programs/${program.program_id}/events/preview`, {
+        method: "POST",
+        headers: {
+          Origin: HOST,
+          Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
+          "Content-Type": "application/json",
+        },
+        body: {
+          from_date: "2026-10-01",
+          until_date: "2026-10-31",
+        },
+      }),
+      testEnv()
+    );
+    assert.strictEqual(previewResponse.status, 200);
+    const previewResult = (await assertCorrelated(previewResponse)) as {
+      data: {
+        plan: {
+          from_date: string;
+          to_date: string;
+          horizon_days: number;
+        };
+        occurrences: { occurs_on: string }[];
+      };
+    };
+    assert.deepStrictEqual(
+      {
+        from: previewResult.data.plan.from_date,
+        to: previewResult.data.plan.to_date,
+        days: previewResult.data.plan.horizon_days,
+      },
+      { from: "2026-10-01", to: "2026-10-31", days: 31 }
+    );
+    assert.deepStrictEqual(
+      previewResult.data.occurrences.map(({ occurs_on }) => occurs_on),
+      ["2026-10-05", "2026-10-12", "2026-10-19", "2026-10-26"]
+    );
+  });
 });
 
 describe("PRG-02: generation", () => {
   let adminAccess = "";
+  let memberAccess = "";
   let deptId = "";
 
   beforeAll(async () => {
     adminAccess = await accessCookieFor("alice", "alice-secret");
+    memberAccess = await accessCookieFor("bob", "bob-secret");
     const dept = await createDepartment(adminAccess, {
       code: "PRG-02-GEN",
       name: "Generation Test Department",
@@ -2836,6 +4655,16 @@ describe("PRG-02: generation", () => {
       assert.strictEqual(event.status, "Active");
       assert.strictEqual(event.source, "SCHEDULE");
       assert.strictEqual(
+        event.schedule_rule_id,
+        rule.rule_id,
+        "generated Event keeps its producing Rule identity"
+      );
+      assert.strictEqual(
+        event.occurrence_date,
+        expectedDates[index],
+        "generated Event keeps its original HK wall occurrence date"
+      );
+      assert.strictEqual(
         event.starts_at,
         `${expectedDates[index]}T11:30:00.000Z`
       );
@@ -2870,6 +4699,148 @@ describe("PRG-02: generation", () => {
     assert.strictEqual(second.skipped, 2);
     const listed = await listEventsFor(adminAccess, programId);
     assert.strictEqual(listed.length, 2);
+  });
+
+  test("Schedule Rule creation reuses a lost-response key and rejects changed payloads", async () => {
+    const programId = await freshProgram("Idempotent Schedule Rule Program");
+    const idempotencyKey = `schedule-rule-${crypto.randomUUID()}`;
+    const body = {
+      recurrence: "WEEKLY" as const,
+      day_of_week: 4,
+      start_time: "19:30",
+      end_time: "21:00",
+      location: "主堂",
+    };
+    const create = (payload: typeof body) =>
+      worker.fetch(
+        programsRequest(`/api/v1/programs/${programId}/schedule-rules`, {
+          method: "POST",
+          headers: {
+            Origin: HOST,
+            Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
+            "Content-Type": "application/json",
+            "Idempotency-Key": idempotencyKey,
+          },
+          body: payload,
+        }),
+        testEnv()
+      );
+
+    const first = await create(body);
+    assert.strictEqual(first.status, 201);
+    const firstBody = (await assertCorrelated(first)) as {
+      data: { rule: { rule_id: string }; idempotent: boolean };
+    };
+    assert.strictEqual(firstBody.data.idempotent, false);
+
+    const replay = await create(body);
+    assert.strictEqual(replay.status, 200);
+    const replayBody = (await assertCorrelated(replay)) as {
+      data: { rule: { rule_id: string }; idempotent: boolean };
+    };
+    assert.strictEqual(replayBody.data.idempotent, true);
+    assert.strictEqual(
+      replayBody.data.rule.rule_id,
+      firstBody.data.rule.rule_id,
+      "a response-lost retry returns the original Rule"
+    );
+
+    const changed = await create({ ...body, end_time: "21:30" });
+    assert.strictEqual(changed.status, 409);
+    const changedBody = await problemOf(changed);
+    assert.strictEqual(changedBody.code, "SCHEDULE_RULE_IDEMPOTENCY_CONFLICT");
+
+    const rules = await testDb()
+      .prepare(
+        "SELECT rule_id FROM program_schedule_rules WHERE program_id = ?"
+      )
+      .bind(programId)
+      .all<{ rule_id: string }>();
+    assert.deepStrictEqual(
+      rules.results?.map(({ rule_id }) => rule_id),
+      [firstBody.data.rule.rule_id],
+      "replay and changed payloads never create another Rule"
+    );
+    const audit = await testDb()
+      .prepare(
+        `SELECT outcome FROM audit_events
+          WHERE action = 'SCHEDULE_RULE_CREATE'
+            AND entity_id IN (?, ?)`
+      )
+      .bind(firstBody.data.rule.rule_id, programId)
+      .all<{ outcome: string }>();
+    assert.deepStrictEqual(
+      audit.results?.map(({ outcome }) => outcome).sort(),
+      ["CONFLICT", "DUPLICATE", "SUCCESS"]
+    );
+  });
+
+  test("Event provenance rejects source-only and cross-Program updates", async () => {
+    const programId = await freshProgram("Provenance Trigger Program");
+    const otherProgramId = await freshProgram("Provenance Other Program");
+    const rule = await createRule(adminAccess, programId, {
+      recurrence: "WEEKLY",
+      day_of_week: 4,
+      start_time: "19:30",
+      end_time: "21:00",
+    });
+    const eventId = `provenance-trigger-${crypto.randomUUID()}`;
+    const now = new Date().toISOString();
+    await testDb()
+      .prepare(
+        `INSERT INTO events
+          (event_id, program_id, starts_at, ends_at, status, availability,
+           source, schedule_rule_id, occurrence_date, manual_check_in_code,
+           check_in_window_opens_at, check_in_window_closes_at,
+           created_at, updated_at)
+         VALUES (?, ?, ?, ?, 'Active', 'Active', 'SCHEDULE', ?, ?, ?, ?, ?, ?, ?)`
+      )
+      .bind(
+        eventId,
+        programId,
+        "2099-10-01T11:30:00.000Z",
+        "2099-10-01T13:00:00.000Z",
+        rule.rule_id,
+        "2099-10-01",
+        `PROV-${crypto.randomUUID().slice(0, 8).toUpperCase()}`,
+        "2099-10-01T11:00:00.000Z",
+        "2099-10-01T14:00:00.000Z",
+        now,
+        now
+      )
+      .run();
+
+    await assert.rejects(
+      testDb()
+        .prepare("UPDATE events SET source = 'MANUAL' WHERE event_id = ?")
+        .bind(eventId)
+        .run(),
+      /event schedule provenance must match source/u
+    );
+    await assert.rejects(
+      testDb()
+        .prepare("UPDATE events SET program_id = ? WHERE event_id = ?")
+        .bind(otherProgramId, eventId)
+        .run(),
+      /event schedule provenance rule is invalid/u
+    );
+    const unchanged = await testDb()
+      .prepare(
+        "SELECT program_id, source, schedule_rule_id, occurrence_date FROM events WHERE event_id = ?"
+      )
+      .bind(eventId)
+      .first<{
+        program_id: string;
+        source: string;
+        schedule_rule_id: string;
+        occurrence_date: string;
+      }>();
+    assert.deepStrictEqual(unchanged, {
+      program_id: programId,
+      source: "SCHEDULE",
+      schedule_rule_id: rule.rule_id,
+      occurrence_date: "2099-10-01",
+    });
   });
 
   test("CANCEL exception suppresses an occurrence", async () => {
@@ -2926,6 +4897,36 @@ describe("PRG-02: generation", () => {
     };
     assert.strictEqual(listedBody.data?.exceptions?.length, 1);
 
+    const memberExistingRule = await worker.fetch(
+      programsRequest(
+        `/api/v1/programs/${programId}/schedule-rules/${rule.rule_id}/exceptions`,
+        {
+          headers: {
+            Origin: HOST,
+            Cookie: `${ACCESS_COOKIE_NAME}=${memberAccess}`,
+          },
+        }
+      ),
+      testEnv()
+    );
+    assert.strictEqual(memberExistingRule.status, 403);
+    assert.strictEqual((await problemOf(memberExistingRule)).code, "FORBIDDEN");
+
+    const memberMissingRule = await worker.fetch(
+      programsRequest(
+        `/api/v1/programs/${programId}/schedule-rules/${crypto.randomUUID()}/exceptions`,
+        {
+          headers: {
+            Origin: HOST,
+            Cookie: `${ACCESS_COOKIE_NAME}=${memberAccess}`,
+          },
+        }
+      ),
+      testEnv()
+    );
+    assert.strictEqual(memberMissingRule.status, 403);
+    assert.strictEqual((await problemOf(memberMissingRule)).code, "FORBIDDEN");
+
     const result = await generate(adminAccess, programId, 14);
     assert.strictEqual(result.created, 1, "one of two occurrences suppressed");
     const events = await listEventsFor(adminAccess, programId);
@@ -2934,7 +4935,7 @@ describe("PRG-02: generation", () => {
     assert.strictEqual(events.length, 1, "the other occurrence remains");
   });
 
-  test("RESCHEDULE exception moves an occurrence and DELETE restores it", async () => {
+  test("RESCHEDULE exception moves an occurrence to a new HK date and DELETE restores the rule occurrence", async () => {
     const programId = await freshProgram("RESCHEDULE Program");
     const rule = await createRule(adminAccess, programId, {
       recurrence: "WEEKLY",
@@ -2952,6 +4953,7 @@ describe("PRG-02: generation", () => {
       }
     }
     assert.ok(rescheduleDate);
+    const replacementDate = addWallDays(rescheduleDate, 3);
 
     const created = await worker.fetch(
       programsRequest(
@@ -2966,6 +4968,7 @@ describe("PRG-02: generation", () => {
           body: {
             override_date: rescheduleDate,
             action: "RESCHEDULE",
+            new_date: replacementDate,
             new_start_time: "20:30",
             new_end_time: "22:00",
           },
@@ -2985,8 +4988,8 @@ describe("PRG-02: generation", () => {
     const moved = await listEventsFor(adminAccess, programId);
     assert.strictEqual(moved.length, 2);
     assert.ok(
-      moved.some((e) => e.starts_at === `${rescheduleDate}T12:30:00.000Z`),
-      "rescheduled occurrence must use the new wall time"
+      moved.some((e) => e.starts_at === `${replacementDate}T12:30:00.000Z`),
+      "rescheduled occurrence must use the new wall date and time"
     );
 
     const removed = await worker.fetch(
@@ -3013,7 +5016,7 @@ describe("PRG-02: generation", () => {
     const restored = await listEventsFor(adminAccess, programId);
     assert.strictEqual(restored.length, 3);
     assert.ok(
-      restored.some((e) => e.starts_at === `${rescheduleDate}T12:30:00.000Z`),
+      restored.some((e) => e.starts_at === `${replacementDate}T12:30:00.000Z`),
       "previously generated event is untouched by exception removal"
     );
     assert.ok(
@@ -3286,6 +5289,7 @@ describe("EVT-02: recurring preview and generation (#252)", () => {
     body: {
       override_date: string;
       action: "CANCEL" | "RESCHEDULE";
+      new_date?: string;
       new_start_time?: string;
       new_end_time?: string;
     }
@@ -3489,7 +5493,7 @@ describe("EVT-02: recurring preview and generation (#252)", () => {
         body: {
           starts_at: existingStarts,
           ends_at: seeded.occurrences[0].ends_at,
-          name: null,
+          name: "已有聚會",
           location: null,
           check_in_window_opens_at: null,
           check_in_window_closes_at: null,
@@ -3720,6 +5724,390 @@ describe("EVT-02: recurring preview and generation (#252)", () => {
     assert.strictEqual(ok.status, 200);
   });
 
+  test("EVT-02.2 a Rule revision invalidates a plan even when values stay the same", async () => {
+    const programId = await freshProgram("EVT-02 Rule Revision");
+    const rule = await createRule(adminAccess, programId, {
+      recurrence: "WEEKLY",
+      day_of_week: 3,
+      start_time: "19:30",
+      end_time: "21:00",
+    });
+    const plan = await preview(adminAccess, programId, 14);
+
+    const patch = await worker.fetch(
+      programsRequest(
+        `/api/v1/programs/${programId}/schedule-rules/${rule.rule_id}`,
+        {
+          method: "PATCH",
+          headers: {
+            Origin: HOST,
+            Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
+            "Content-Type": "application/json",
+          },
+          body: { start_time: "19:30" },
+        }
+      ),
+      testEnv()
+    );
+    assert.strictEqual(patch.status, 200);
+
+    const stale = await generateRequest(programId, plan.plan_id);
+    assert.strictEqual(stale.status, 409);
+    assert.strictEqual((await problemOf(stale)).code, "STALE_PLAN");
+  });
+
+  test("EVT-02.2 changing the reviewed visible range invalidates the old plan", async () => {
+    const programId = await freshProgram("EVT-02 Range Revision");
+    await createRule(adminAccess, programId, {
+      recurrence: "WEEKLY",
+      day_of_week: 3,
+      start_time: "19:30",
+      end_time: "21:00",
+    });
+    const fromDate = hkTodayWallDate();
+    const rangeA = {
+      from_date: fromDate,
+      until_date: addWallDays(fromDate, 13),
+    };
+    const rangeB = {
+      from_date: addWallDays(fromDate, 1),
+      until_date: addWallDays(fromDate, 14),
+    };
+    const first = await preview(adminAccess, programId, 14, rangeA);
+    const before = await testDb()
+      .prepare("SELECT COUNT(*) AS count FROM events WHERE program_id = ?")
+      .bind(programId)
+      .first<{ count: number }>();
+    const second = await preview(adminAccess, programId, 14, rangeB);
+    assert.strictEqual(first.from_date, rangeA.from_date);
+    assert.strictEqual(first.to_date, rangeA.until_date);
+    assert.strictEqual(second.from_date, rangeB.from_date);
+    assert.strictEqual(second.to_date, rangeB.until_date);
+    assert.notStrictEqual(first.plan_id, second.plan_id);
+
+    const stale = await generateRequest(programId, first.plan_id);
+    assert.strictEqual(stale.status, 409);
+    assert.strictEqual((await problemOf(stale)).code, "STALE_PLAN");
+    const after = await testDb()
+      .prepare("SELECT COUNT(*) AS count FROM events WHERE program_id = ?")
+      .bind(programId)
+      .first<{ count: number }>();
+    assert.strictEqual(after?.count, before?.count);
+  });
+
+  test("EVT-02.2 re-reviewing A after B makes A the current durable Plan", async () => {
+    const programId = await freshProgram("EVT-02 A-B-A Review");
+    await createRule(adminAccess, programId, {
+      recurrence: "WEEKLY",
+      day_of_week: 3,
+      start_time: "19:30",
+      end_time: "21:00",
+    });
+    const fromDate = hkTodayWallDate();
+    const rangeA = {
+      from_date: fromDate,
+      until_date: addWallDays(fromDate, 13),
+    };
+    const rangeB = {
+      from_date: addWallDays(fromDate, 1),
+      until_date: addWallDays(fromDate, 14),
+    };
+    const firstA = await preview(adminAccess, programId, 14, rangeA);
+    const planB = await preview(adminAccess, programId, 14, rangeB);
+    const secondA = await preview(adminAccess, programId, 14, rangeA);
+    assert.strictEqual(secondA.plan_id, firstA.plan_id);
+    assert.notStrictEqual(planB.plan_id, firstA.plan_id);
+
+    const generated = await generateRequest(programId, secondA.plan_id);
+    assert.strictEqual(generated.status, 200);
+    const body = (await assertCorrelated(generated)) as {
+      data: { generated: { status: string; created: number } };
+    };
+    assert.strictEqual(body.data.generated.status, "completed");
+    assert.ok(body.data.generated.created > 0);
+  });
+
+  test("EVT-02.1 allocates durable review order for same-millisecond Plans", async () => {
+    const programId = await freshProgram("EVT-02 Same-Millisecond Review");
+    await createRule(adminAccess, programId, {
+      recurrence: "WEEKLY",
+      day_of_week: 3,
+      start_time: "19:30",
+      end_time: "21:00",
+    });
+    const fromDate = hkTodayWallDate();
+    const originalNow = Date.now;
+    const fixedNow = originalNow();
+    let firstPlan: { plan_id: string } | null = null;
+    let secondPlan: { plan_id: string } | null = null;
+    try {
+      Date.now = () => fixedNow;
+      firstPlan = await preview(adminAccess, programId, 14, {
+        from_date: fromDate,
+        until_date: addWallDays(fromDate, 13),
+      });
+      secondPlan = await preview(adminAccess, programId, 15, {
+        from_date: fromDate,
+        until_date: addWallDays(fromDate, 14),
+      });
+    } finally {
+      Date.now = originalNow;
+    }
+    assert.ok(firstPlan);
+    assert.ok(secondPlan);
+    const rows = await testDb()
+      .prepare(
+        `SELECT plan_id, reviewed_at FROM program_preview_plans
+         WHERE plan_id IN (?, ?)`
+      )
+      .bind(firstPlan.plan_id, secondPlan.plan_id)
+      .all<{ plan_id: string; reviewed_at: number }>();
+    const byPlan = new Map(rows.results?.map((row) => [row.plan_id, row]));
+    assert.ok(byPlan.get(firstPlan.plan_id));
+    assert.ok(byPlan.get(secondPlan.plan_id));
+    assert.ok(
+      (byPlan.get(secondPlan.plan_id)?.reviewed_at ?? 0) >
+        (byPlan.get(firstPlan.plan_id)?.reviewed_at ?? 0),
+      "the store allocates review order rather than using plan_id as a tie-break"
+    );
+    const latest = await new D1WorkspaceStore(testDb()).findLatestPreviewPlan(
+      programId
+    );
+    assert.strictEqual(latest?.plan_id, secondPlan.plan_id);
+  });
+
+  test("EVT-02.1 reschedule replacement dates survive durable Plan reload", async () => {
+    const programId = await freshProgram("EVT-02 Durable Reschedule Preview");
+    const rule = await createRule(adminAccess, programId, {
+      recurrence: "WEEKLY",
+      day_of_week: 4,
+      start_time: "19:30",
+      end_time: "21:00",
+    });
+    const today = hkTodayWallDate();
+    let overrideDate = "";
+    for (let i = 1; i <= 14; i += 1) {
+      const date = addWallDays(today, i);
+      if (wallWeekday(date) === 4) {
+        overrideDate = date;
+        break;
+      }
+    }
+    assert.ok(overrideDate);
+    const replacementDate = addWallDays(overrideDate, 3);
+    await createException(programId, rule.rule_id, {
+      override_date: overrideDate,
+      action: "RESCHEDULE",
+      new_date: replacementDate,
+      new_start_time: "20:30",
+      new_end_time: "22:00",
+    });
+
+    const plan = await preview(adminAccess, programId, 14);
+    const previewOccurrence = plan.occurrences.find(
+      (occurrence) => occurrence.occurs_on === overrideDate
+    );
+    assert.strictEqual(previewOccurrence?.replacement_date, replacementDate);
+    const storedOccurrence = (
+      await new D1WorkspaceStore(testDb()).listPreviewOccurrences(plan.plan_id)
+    ).find((occurrence) => occurrence.occurs_on === overrideDate);
+    assert.strictEqual(storedOccurrence?.replacement_date, replacementDate);
+  });
+  test("EVT-02.2 rejects a persisted empty Plan before creating Events", async () => {
+    const programId = await freshProgram("EVT-02 Empty Reviewed Plan");
+    await createRule(adminAccess, programId, {
+      recurrence: "WEEKLY",
+      day_of_week: 3,
+      start_time: "19:30",
+      end_time: "21:00",
+      effective_start_date: addWallDays(hkTodayWallDate(), -30),
+      effective_end_date: addWallDays(hkTodayWallDate(), -1),
+    });
+    const plan = await preview(adminAccess, programId, 14);
+    assert.strictEqual(plan.occurrences.length, 0);
+    const generated = await generateRequest(programId, plan.plan_id);
+    assert.strictEqual(generated.status, 422);
+    assert.strictEqual((await problemOf(generated)).code, "VALIDATION");
+    const durable = await testDb()
+      .prepare(
+        `SELECT COUNT(*) AS count
+         FROM events
+         WHERE program_id = ?`
+      )
+      .bind(programId)
+      .first<{ count: number }>();
+    assert.strictEqual(durable?.count ?? 0, 0);
+    const runs = await testDb()
+      .prepare(
+        `SELECT COUNT(*) AS count
+         FROM program_generation_runs
+         WHERE program_id = ?`
+      )
+      .bind(programId)
+      .first<{ count: number }>();
+    assert.strictEqual(runs?.count ?? 0, 0);
+  });
+
+  test("EVT-02.2 atomic generation guard rejects a schedule revision before Event writes", async () => {
+    const programId = await freshProgram("EVT-02 Atomic Guard");
+    const rule = await createRule(adminAccess, programId, {
+      recurrence: "WEEKLY",
+      day_of_week: 3,
+      start_time: "19:30",
+      end_time: "21:00",
+    });
+    const plan = await preview(adminAccess, programId, 14);
+    const planRow = await testDb()
+      .prepare("SELECT * FROM program_preview_plans WHERE plan_id = ?")
+      .bind(plan.plan_id)
+      .first<{
+        plan_id: string;
+        schedule_version: number;
+        reviewed_at: number;
+      }>();
+    assert.ok(planRow);
+    const oldVersion = planRow.schedule_version;
+
+    const patch = await worker.fetch(
+      programsRequest(
+        `/api/v1/programs/${programId}/schedule-rules/${rule.rule_id}`,
+        {
+          method: "PATCH",
+          headers: {
+            Origin: HOST,
+            Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
+            "Content-Type": "application/json",
+          },
+          body: { start_time: "20:00" },
+        }
+      ),
+      testEnv()
+    );
+    assert.strictEqual(patch.status, 200);
+
+    const store = new D1WorkspaceStore(testDb());
+    const occurrences = await store.listPreviewOccurrences(plan.plan_id);
+    const run = await store.createGenerationRun({
+      run_id: crypto.randomUUID(),
+      program_id: programId,
+      plan_id: plan.plan_id,
+      started_at: new Date().toISOString(),
+      created_by: "U001",
+      correlation_id: null,
+    });
+    const guarded = await store.recordGeneratedOccurrence({
+      scheduleVersion: oldVersion,
+      reviewedAt: planRow.reviewed_at,
+      planId: plan.plan_id,
+      runId: run.run.run_id,
+      programId,
+      occurrence: occurrences[0],
+      actorUserId: "U001",
+      createdAt: new Date().toISOString(),
+    });
+    assert.strictEqual(guarded, "stale");
+    const events = await testDb()
+      .prepare("SELECT COUNT(*) AS count FROM events WHERE program_id = ?")
+      .bind(programId)
+      .first<{ count: number }>();
+    assert.strictEqual(events?.count ?? 0, 0);
+  });
+
+  test("EVT-02.2 atomic generation guard rejects a newer reviewed Plan before Event writes", async () => {
+    const programId = await freshProgram("EVT-02 Atomic Review Guard");
+    await createRule(adminAccess, programId, {
+      recurrence: "WEEKLY",
+      day_of_week: 3,
+      start_time: "19:30",
+      end_time: "21:00",
+    });
+    const planA = await preview(adminAccess, programId, 14);
+    const planB = await preview(adminAccess, programId, 15);
+    assert.notStrictEqual(planB.plan_id, planA.plan_id);
+
+    const planRow = await testDb()
+      .prepare("SELECT * FROM program_preview_plans WHERE plan_id = ?")
+      .bind(planA.plan_id)
+      .first<{
+        schedule_version: number;
+        reviewed_at: number;
+      }>();
+    assert.ok(planRow);
+    const store = new D1WorkspaceStore(testDb());
+    const occurrences = await store.listPreviewOccurrences(planA.plan_id);
+    const run = await store.createGenerationRun({
+      run_id: crypto.randomUUID(),
+      program_id: programId,
+      plan_id: planA.plan_id,
+      started_at: new Date().toISOString(),
+      created_by: "U001",
+      correlation_id: null,
+    });
+    const guarded = await store.recordGeneratedOccurrence({
+      scheduleVersion: planRow.schedule_version,
+      reviewedAt: planRow.reviewed_at,
+      planId: planA.plan_id,
+      runId: run.run.run_id,
+      programId,
+      occurrence: occurrences[0],
+      actorUserId: "U001",
+      createdAt: new Date().toISOString(),
+    });
+    assert.strictEqual(guarded, "stale");
+    const events = await testDb()
+      .prepare("SELECT COUNT(*) AS count FROM events WHERE program_id = ?")
+      .bind(programId)
+      .first<{ count: number }>();
+    assert.strictEqual(events?.count ?? 0, 0);
+  });
+
+  test("EVT-02.2 replacing a saved exception invalidates its reviewed plan", async () => {
+    const programId = await freshProgram("EVT-02 Exception Revision");
+    const rule = await createRule(adminAccess, programId, {
+      recurrence: "WEEKLY",
+      day_of_week: 3,
+      start_time: "19:30",
+      end_time: "21:00",
+    });
+    const overrideDate = hkTodayWallDate();
+    await createException(programId, rule.rule_id, {
+      override_date: overrideDate,
+      action: "CANCEL",
+    });
+    const plan = await preview(adminAccess, programId, 14);
+    const saved = await testDb()
+      .prepare(
+        `SELECT exception_id FROM program_schedule_exceptions
+         WHERE rule_id = ? AND override_date = ?`
+      )
+      .bind(rule.rule_id, overrideDate)
+      .first<{ exception_id: string }>();
+    assert.ok(saved, "the reviewed exception must be durable");
+
+    const removed = await worker.fetch(
+      programsRequest(
+        `/api/v1/programs/${programId}/schedule-rules/${rule.rule_id}/exceptions/${saved?.exception_id}`,
+        {
+          method: "DELETE",
+          headers: {
+            Origin: HOST,
+            Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
+          },
+        }
+      ),
+      testEnv()
+    );
+    assert.strictEqual(removed.status, 200);
+    await createException(programId, rule.rule_id, {
+      override_date: overrideDate,
+      action: "CANCEL",
+    });
+
+    const stale = await generateRequest(programId, plan.plan_id);
+    assert.strictEqual(stale.status, 409);
+    assert.strictEqual((await problemOf(stale)).code, "STALE_PLAN");
+  });
+
   test("EVT-02.3 generation is idempotent, deterministic, and audited", async () => {
     const programId = await freshProgram("EVT-02 Idempotent");
     await createRule(adminAccess, programId, {
@@ -3817,6 +6205,142 @@ describe("EVT-02: recurring preview and generation (#252)", () => {
       repeatAudit,
       "deterministic repeat emits its own EVENT_GENERATE audit with created=0, skipped>0 (ADR-0027)"
     );
+  });
+
+  test("EVT-02.2 completed runs reject a newly reviewed Plan before replay", async () => {
+    const programId = await freshProgram("EVT-02 Completed Review Guard");
+    await createRule(adminAccess, programId, {
+      recurrence: "WEEKLY",
+      day_of_week: 3,
+      start_time: "19:30",
+      end_time: "21:00",
+    });
+    const plan = await preview(adminAccess, programId, 14);
+    const first = await generateRequest(programId, plan.plan_id);
+    assert.strictEqual(first.status, 200);
+
+    const store = new D1WorkspaceStore(testDb());
+    const workspace = new DepartmentWorkspace(
+      store,
+      new D1CapabilityAuthorizer(testDb())
+    );
+    const originalLatest = store.findLatestPreviewPlan.bind(store);
+    let latestCalls = 0;
+    store.findLatestPreviewPlan = async (candidateProgramId) => {
+      latestCalls += 1;
+      if (latestCalls === 2) {
+        await preview(adminAccess, programId, 15);
+      }
+      return originalLatest(candidateProgramId);
+    };
+    await assert.rejects(
+      workspace.generateEvents(
+        { actorUserId: "U001" },
+        programId,
+        plan.plan_id,
+        null
+      ),
+      /stale/i
+    );
+    assert.ok(latestCalls >= 2, "completed replay rechecks Plan freshness");
+    const events = await testDb()
+      .prepare("SELECT COUNT(*) AS count FROM events WHERE program_id = ?")
+      .bind(programId)
+      .first<{ count: number }>();
+    assert.strictEqual(events?.count ?? 0, plan.occurrences.length);
+  });
+
+  test("EVT-02.2 final freshness races return committed counts for review", async () => {
+    const programId = await freshProgram("EVT-02 Final Freshness Race");
+    await createRule(adminAccess, programId, {
+      recurrence: "WEEKLY",
+      day_of_week: 3,
+      start_time: "19:30",
+      end_time: "21:00",
+    });
+    const plan = await preview(adminAccess, programId, 14);
+    const store = new D1WorkspaceStore(testDb());
+    const workspace = new DepartmentWorkspace(
+      store,
+      new D1CapabilityAuthorizer(testDb())
+    );
+    const originalLatest = store.findLatestPreviewPlan.bind(store);
+    let latestCalls = 0;
+    store.findLatestPreviewPlan = async (candidateProgramId) => {
+      latestCalls += 1;
+      if (latestCalls === 2) {
+        await preview(adminAccess, programId, 15);
+      }
+      return originalLatest(candidateProgramId);
+    };
+
+    const generated = await workspace.generateEvents(
+      { actorUserId: "U001" },
+      programId,
+      plan.plan_id,
+      null
+    );
+    assert.strictEqual(generated.status, "completed");
+    assert.strictEqual(generated.requires_review, true);
+    assert.ok(latestCalls >= 2, "final freshness is checked after all writes");
+    const events = await testDb()
+      .prepare("SELECT COUNT(*) AS count FROM events WHERE program_id = ?")
+      .bind(programId)
+      .first<{ count: number }>();
+    assert.strictEqual(events?.count, plan.occurrences.length);
+  });
+
+  test("EVT-02.2 mid-generation staleness settles committed results", async () => {
+    const programId = await freshProgram("EVT-02 Mid-Run Stale");
+    await createRule(adminAccess, programId, {
+      recurrence: "WEEKLY",
+      day_of_week: 3,
+      start_time: "19:30",
+      end_time: "21:00",
+    });
+    const plan = await preview(adminAccess, programId, 14);
+    const store = new D1WorkspaceStore(testDb());
+    const workspace = new DepartmentWorkspace(
+      store,
+      new D1CapabilityAuthorizer(testDb())
+    );
+    const originalRecord = store.recordGeneratedOccurrence.bind(store);
+    let injected = false;
+    store.recordGeneratedOccurrence = async (input) => {
+      if (!injected) {
+        injected = true;
+        await preview(adminAccess, programId, 15);
+      }
+      return originalRecord(input);
+    };
+
+    const generated = await workspace.generateEvents(
+      { actorUserId: "U001" },
+      programId,
+      plan.plan_id,
+      null
+    );
+    assert.strictEqual(generated.status, "partial");
+    assert.strictEqual(generated.requires_review, true);
+    assert.ok(generated.created > 0);
+    assert.ok(generated.failed > 0);
+    const run = await testDb()
+      .prepare(
+        "SELECT status, created, skipped, failed FROM program_generation_runs WHERE plan_id = ?"
+      )
+      .bind(plan.plan_id)
+      .first<{
+        status: string;
+        created: number;
+        skipped: number;
+        failed: number;
+      }>();
+    assert.deepStrictEqual(run, {
+      status: "partial",
+      created: generated.created,
+      skipped: generated.skipped,
+      failed: generated.failed,
+    });
   });
 
   test("EVT-02.3 a member without Program Manage is forbidden and writes nothing", async () => {
@@ -4039,6 +6563,64 @@ describe("EVT-02: recurring preview and generation (#252)", () => {
     );
   });
 
+  test("EVT-02.4 settlement stays partial until every Plan occurrence is terminal", async () => {
+    const programId = await freshProgram("EVT-02 Incomplete Settlement");
+    await createRule(adminAccess, programId, {
+      recurrence: "WEEKLY",
+      day_of_week: 0,
+      start_time: "09:30",
+      end_time: "10:30",
+    });
+    const plan = await preview(adminAccess, programId, 14);
+    assert.strictEqual(plan.occurrences.length, 2);
+
+    const store = new D1WorkspaceStore(testDb());
+    const runId = "evt02-incomplete-settlement";
+    const { run } = await store.createGenerationRun({
+      run_id: runId,
+      program_id: programId,
+      plan_id: plan.plan_id,
+      started_at: new Date().toISOString(),
+      created_by: "U001",
+      correlation_id: null,
+    });
+    const [firstOccurrence, secondOccurrence] = plan.occurrences;
+    await store.recordGenerationRunItem({
+      item_id: `${runId}:${firstOccurrence.occurrence_id}`,
+      run_id: runId,
+      occurrence_id: firstOccurrence.occurrence_id,
+      starts_at: firstOccurrence.starts_at,
+      outcome: "created",
+      event_id: null,
+      detail: null,
+    });
+
+    const incomplete = await store.finishGenerationRun(
+      run.run_id,
+      new Date().toISOString()
+    );
+    assert.strictEqual(incomplete.status, "partial");
+    assert.strictEqual(incomplete.created, 1);
+
+    await store.recordGenerationRunItem({
+      item_id: `${runId}:${secondOccurrence.occurrence_id}`,
+      run_id: runId,
+      occurrence_id: secondOccurrence.occurrence_id,
+      starts_at: secondOccurrence.starts_at,
+      outcome: "skipped",
+      event_id: null,
+      detail: "DUPLICATE",
+    });
+    const complete = await store.finishGenerationRun(
+      run.run_id,
+      new Date().toISOString()
+    );
+    assert.strictEqual(complete.status, "completed");
+    assert.strictEqual(complete.created, 1);
+    assert.strictEqual(complete.skipped, 1);
+    assert.strictEqual(complete.failed, 0);
+  });
+
   test("EVT-02.4 malformed or unknown plans are rejected before writes", async () => {
     const programId = await freshProgram("EVT-02 Malformed");
     await createRule(adminAccess, programId, {
@@ -4083,7 +6665,7 @@ describe("EVT-02: recurring preview and generation (#252)", () => {
     );
   });
 
-  test("EVT-02.4 a malformed or non-object preview body is rejected before any write; an empty body defaults to 90 days", async () => {
+  test("EVT-02.4 a malformed or non-object preview body is rejected before any write; an empty body defaults to three calendar months", async () => {
     const programId = await freshProgram("EVT-02 Malformed Preview Body");
     await createRule(adminAccess, programId, {
       recurrence: "WEEKLY",
@@ -4135,7 +6717,8 @@ describe("EVT-02: recurring preview and generation (#252)", () => {
       "no EVENT_PREVIEW audit row is written"
     );
 
-    // Empty body (no Content-Length) keeps the existing 90-day default.
+    // Empty body (no Content-Length) defaults to the next three calendar
+    // months, represented as an inclusive HK wall-date range.
     const empty = await worker.fetch(
       programsRequest(previewPath, {
         method: "POST",
@@ -4149,8 +6732,11 @@ describe("EVT-02: recurring preview and generation (#252)", () => {
     };
     assert.strictEqual(
       result.data.plan.horizon_days,
-      90,
-      "empty body defaults to 90 days"
+      wallDaySpan(
+        hkTodayWallDate(),
+        addWallDays(addWallMonths(hkTodayWallDate(), 3), -1)
+      ),
+      "empty body defaults to three calendar months"
     );
     assert.ok(
       result.data.plan.rule_count >= 1,
@@ -4497,6 +7083,7 @@ describe("EVT-02: recurring preview and generation (#252)", () => {
       `DELETE FROM program_preview_plans WHERE program_id IN ${e2eProgramIds}`,
       `DELETE FROM program_schedule_exceptions WHERE rule_id IN (SELECT rule_id FROM program_schedule_rules WHERE program_id IN ${e2eProgramIds})`,
       `DELETE FROM program_schedule_rules WHERE program_id IN ${e2eProgramIds}`,
+      `DELETE FROM program_schedule_versions WHERE program_id IN ${e2eProgramIds}`,
       `DELETE FROM attendances WHERE event_id IN (SELECT event_id FROM events WHERE program_id IN ${e2eProgramIds})`,
       `DELETE FROM events WHERE program_id IN ${e2eProgramIds}`,
       `DELETE FROM enrollments WHERE program_id IN ${e2eProgramIds}`,
@@ -4550,7 +7137,7 @@ describe("EVT-02: recurring preview and generation (#252)", () => {
         body: {
           starts_at: plan.occurrences[0].starts_at,
           ends_at: plan.occurrences[0].ends_at,
-          name: null,
+          name: "已有重複聚會",
           location: null,
           check_in_window_opens_at: null,
           check_in_window_closes_at: null,
@@ -4623,6 +7210,7 @@ describe("PRG-02: events", () => {
           "Content-Type": "application/json",
         },
         body: {
+          name: "管理員建立聚會",
           starts_at: "2026-09-01T10:00:00.000Z",
           ends_at: "2026-09-01T11:00:00.000Z",
         },
@@ -4646,6 +7234,7 @@ describe("PRG-02: events", () => {
           "Content-Type": "application/json",
         },
         body: {
+          name: "會員嘗試建立聚會",
           starts_at: "2026-09-02T10:00:00.000Z",
           ends_at: "2026-09-02T11:00:00.000Z",
         },
@@ -4665,7 +7254,11 @@ describe("PRG-02: events", () => {
           Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
           "Content-Type": "application/json",
         },
-        body: { starts_at: "not-a-date", ends_at: "2026-09-01T11:00:00.000Z" },
+        body: {
+          name: "無效日期聚會",
+          starts_at: "not-a-date",
+          ends_at: "2026-09-01T11:00:00.000Z",
+        },
       }),
       testEnv()
     );
@@ -4680,6 +7273,7 @@ describe("PRG-02: events", () => {
           "Content-Type": "application/json",
         },
         body: {
+          name: "倒轉時間聚會",
           starts_at: "2026-09-03T12:00:00.000Z",
           ends_at: "2026-09-03T11:00:00.000Z",
         },
@@ -4697,6 +7291,7 @@ describe("PRG-02: events", () => {
           "Content-Type": "application/json",
         },
         body: {
+          name: "重複時間聚會",
           starts_at: "2026-09-01T10:00:00.000Z",
           ends_at: "2026-09-01T11:00:00.000Z",
         },
@@ -4719,6 +7314,7 @@ describe("PRG-02: events", () => {
           "Content-Type": "application/json",
         },
         body: {
+          name: "取消保留歷史聚會",
           starts_at: "2026-10-05T10:00:00.000Z",
           ends_at: "2026-10-05T11:00:00.000Z",
         },
@@ -4790,6 +7386,7 @@ describe("PRG-02: events", () => {
           "Content-Type": "application/json",
         },
         body: {
+          name: "無出席取消聚會",
           starts_at: "2026-10-06T10:00:00.000Z",
           ends_at: "2026-10-06T11:00:00.000Z",
         },
@@ -4887,6 +7484,7 @@ describe("PRG-02: events", () => {
           "Content-Type": "application/json",
         },
         body: {
+          name: "憑證保護聚會",
           starts_at: "2026-11-02T10:00:00.000Z",
           ends_at: "2026-11-02T11:00:00.000Z",
         },
@@ -4955,6 +7553,8 @@ async function createEventFor(
   status: string;
   availability: string;
   source: string;
+  schedule_rule_id: string | null;
+  occurrence_date: string | null;
   name: string | null;
   location: string | null;
   manual_check_in_code: string | null;
@@ -4967,7 +7567,13 @@ async function createEventFor(
         Cookie: `${ACCESS_COOKIE_NAME}=${access}`,
         "Content-Type": "application/json",
       },
-      body,
+      body: {
+        name:
+          body.name === undefined
+            ? `測試聚會-${crypto.randomUUID().slice(0, 8)}`
+            : body.name,
+        ...body,
+      },
     }),
     testEnv()
   );
@@ -4980,6 +7586,8 @@ async function createEventFor(
     status: string;
     availability: string;
     source: string;
+    schedule_rule_id: string | null;
+    occurrence_date: string | null;
     name: string | null;
     location: string | null;
     manual_check_in_code: string | null;
@@ -5001,6 +7609,7 @@ describe("EVT-01: event operations (#251)", () => {
     const program = await createProgram(adminAccess, dept.department_id, {
       name: "Event Ops Program",
       behavior_type: "OneOff",
+      lifecycle: "Active",
       discoverability: "Listed",
     });
     programId = program.program_id;
@@ -5018,6 +7627,8 @@ describe("EVT-01: event operations (#251)", () => {
     assert.strictEqual(event.status, "Active");
     assert.strictEqual(event.availability, "Active");
     assert.strictEqual(event.source, "MANUAL");
+    assert.strictEqual(event.schedule_rule_id, null);
+    assert.strictEqual(event.occurrence_date, null);
     assert.strictEqual(event.name, "迎新聚會");
     assert.strictEqual(event.location, "教會禮堂");
     assert.ok(event.manual_check_in_code, "event carries a check-in code");
@@ -5167,8 +7778,8 @@ describe("EVT-01: event operations (#251)", () => {
 
   test("PATCH edits identity/schedule/window, audits SUCCESS, and conflicts on duplicate start", async () => {
     const event = await createEventFor(adminAccess, programId, {
-      starts_at: "2026-09-12T10:00:00.000Z",
-      ends_at: "2026-09-12T11:00:00.000Z",
+      starts_at: "2030-09-12T10:00:00.000Z",
+      ends_at: "2030-09-12T11:00:00.000Z",
     });
     const res = await worker.fetch(
       programsRequest(
@@ -5183,8 +7794,8 @@ describe("EVT-01: event operations (#251)", () => {
           body: {
             name: "改名聚會",
             location: "副堂",
-            starts_at: "2026-09-12T09:00:00.000Z",
-            check_in_window_opens_at: "2026-09-12T08:30:00.000Z",
+            starts_at: "2030-09-12T09:00:00.000Z",
+            check_in_window_opens_at: "2030-09-12T08:30:00.000Z",
           },
         }
       ),
@@ -5196,10 +7807,10 @@ describe("EVT-01: event operations (#251)", () => {
     };
     assert.strictEqual(result.data.event.name, "改名聚會");
     assert.strictEqual(result.data.event.location, "副堂");
-    assert.strictEqual(result.data.event.starts_at, "2026-09-12T09:00:00.000Z");
+    assert.strictEqual(result.data.event.starts_at, "2030-09-12T09:00:00.000Z");
     assert.strictEqual(
       result.data.event.check_in_window_opens_at,
-      "2026-09-12T08:30:00.000Z"
+      "2030-09-12T08:30:00.000Z"
     );
 
     const audit = await testDb()
@@ -5213,8 +7824,8 @@ describe("EVT-01: event operations (#251)", () => {
 
     // Second event at the old start so a move onto it conflicts.
     const other = await createEventFor(adminAccess, programId, {
-      starts_at: "2026-09-13T10:00:00.000Z",
-      ends_at: "2026-09-13T11:00:00.000Z",
+      starts_at: "2030-09-13T10:00:00.000Z",
+      ends_at: "2030-09-13T11:00:00.000Z",
     });
     const conflict = await worker.fetch(
       programsRequest(
@@ -5226,7 +7837,7 @@ describe("EVT-01: event operations (#251)", () => {
             Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
             "Content-Type": "application/json",
           },
-          body: { starts_at: "2026-09-12T09:00:00.000Z" },
+          body: { starts_at: "2030-09-12T09:00:00.000Z" },
         }
       ),
       testEnv()
@@ -5236,10 +7847,284 @@ describe("EVT-01: event operations (#251)", () => {
     assert.strictEqual(conflictBody.code, "CONFLICT");
   });
 
+  test("post-attendance identity edits require a reason and global Staff/Admin authorization", async () => {
+    const event = await createEventFor(adminAccess, programId, {
+      starts_at: "2030-09-14T20:00:00.000Z",
+      ends_at: "2030-09-14T21:00:00.000Z",
+      name: "出席後原名",
+    });
+    await testDb()
+      .prepare(
+        "INSERT INTO attendances (attendance_id, event_id, member_user_id, status, checked_in_at) VALUES (?, ?, 'U002', 'Active', ?)"
+      )
+      .bind(crypto.randomUUID(), event.event_id, new Date().toISOString())
+      .run();
+
+    const missingReason = await worker.fetch(
+      programsRequest(
+        `/api/v1/programs/${programId}/events/${event.event_id}`,
+        {
+          method: "PATCH",
+          headers: {
+            Origin: HOST,
+            Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
+            "Content-Type": "application/json",
+          },
+          body: { name: "缺少理由" },
+        }
+      ),
+      testEnv()
+    );
+    assert.strictEqual(missingReason.status, 422);
+    const missingReasonBody = await problemOf(missingReason);
+    assert.strictEqual(missingReasonBody.code, "VALIDATION");
+    const missingReasonAudit = await testDb()
+      .prepare(
+        `SELECT actor_user_id, outcome, reason, old_value_json, new_value_json
+           FROM audit_events
+          WHERE action = 'EVENT_UPDATE' AND entity_id = ?
+          ORDER BY inserted_at DESC LIMIT 1`
+      )
+      .bind(event.event_id)
+      .first<{
+        actor_user_id: string;
+        outcome: string;
+        reason: string | null;
+        old_value_json: string;
+        new_value_json: string;
+      }>();
+    assert.strictEqual(missingReasonAudit?.actor_user_id, "U001");
+    assert.strictEqual(missingReasonAudit?.outcome, "DENIED");
+    assert.strictEqual(missingReasonAudit?.reason, null);
+
+    const scopedRole = await grantProgramIdentity(programId, "U002");
+    const memberReason = await worker.fetch(
+      programsRequest(
+        `/api/v1/programs/${programId}/events/${event.event_id}`,
+        {
+          method: "PATCH",
+          headers: {
+            Origin: HOST,
+            Cookie: `${ACCESS_COOKIE_NAME}=${memberAccess}`,
+            "Content-Type": "application/json",
+          },
+          body: {
+            name: "非全域身份不可改",
+            reason: "有理由但權限不足",
+          },
+        }
+      ),
+      testEnv()
+    );
+    assert.strictEqual(memberReason.status, 403);
+    const memberReasonBody = await problemOf(memberReason);
+    assert.strictEqual(memberReasonBody.code, "FORBIDDEN");
+    const memberReasonAudit = await testDb()
+      .prepare(
+        `SELECT actor_user_id, outcome, reason
+           FROM audit_events
+          WHERE action = 'EVENT_UPDATE' AND entity_id = ?
+          ORDER BY inserted_at DESC LIMIT 1`
+      )
+      .bind(event.event_id)
+      .first<{
+        actor_user_id: string;
+        outcome: string;
+        reason: string | null;
+      }>();
+    assert.deepStrictEqual(memberReasonAudit, {
+      actor_user_id: "U002",
+      outcome: "DENIED",
+      reason: "有理由但權限不足",
+    });
+
+    const staffAccess = await accessCookieFor("staff", "staff-secret");
+    const allowed = await worker.fetch(
+      programsRequest(
+        `/api/v1/programs/${programId}/events/${event.event_id}`,
+        {
+          method: "PATCH",
+          headers: {
+            Origin: HOST,
+            Cookie: `${ACCESS_COOKIE_NAME}=${staffAccess}`,
+            "Content-Type": "application/json",
+          },
+          body: {
+            name: "全域同工修正後名",
+            location: "副堂",
+            reason: "出席後更正聚會識別資料",
+          },
+        }
+      ),
+      testEnv()
+    );
+    assert.strictEqual(allowed.status, 200);
+    const allowedBody = (await assertCorrelated(allowed)) as {
+      data: { event: { name: string; location: string } };
+    };
+    assert.strictEqual(allowedBody.data.event.name, "全域同工修正後名");
+    assert.strictEqual(allowedBody.data.event.location, "副堂");
+    const allowedAudit = await testDb()
+      .prepare(
+        `SELECT actor_user_id, outcome, reason, old_value_json, new_value_json
+           FROM audit_events
+          WHERE action = 'EVENT_UPDATE' AND entity_id = ?
+          ORDER BY inserted_at DESC LIMIT 1`
+      )
+      .bind(event.event_id)
+      .first<{
+        actor_user_id: string;
+        outcome: string;
+        reason: string | null;
+        old_value_json: string;
+        new_value_json: string;
+      }>();
+    assert.strictEqual(allowedAudit?.actor_user_id, "U005");
+    assert.strictEqual(allowedAudit?.outcome, "SUCCESS");
+    assert.strictEqual(allowedAudit?.reason, "出席後更正聚會識別資料");
+    assert.strictEqual(
+      (JSON.parse(allowedAudit?.old_value_json ?? "{}") as { name?: string })
+        .name,
+      "出席後原名"
+    );
+    assert.strictEqual(
+      (JSON.parse(allowedAudit?.new_value_json ?? "{}") as { name?: string })
+        .name,
+      "全域同工修正後名"
+    );
+
+    await revokeProgramIdentity(scopedRole, "U002");
+  });
+
+  test("cancelled Events are read-only at the public mutation boundary", async () => {
+    const event = await createEventFor(adminAccess, programId, {
+      starts_at: "2030-09-16T20:00:00.000Z",
+      ends_at: "2030-09-16T21:00:00.000Z",
+      name: "取消後不可改",
+    });
+    const cancelled = await worker.fetch(
+      programsRequest(
+        `/api/v1/programs/${programId}/events/${event.event_id}`,
+        {
+          method: "PATCH",
+          headers: {
+            Origin: HOST,
+            Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
+            "Content-Type": "application/json",
+          },
+          body: { reason: "場地取消" },
+        }
+      ),
+      testEnv()
+    );
+    assert.strictEqual(cancelled.status, 200);
+
+    const identityAttempt = await worker.fetch(
+      programsRequest(
+        `/api/v1/programs/${programId}/events/${event.event_id}`,
+        {
+          method: "PATCH",
+          headers: {
+            Origin: HOST,
+            Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
+            "Content-Type": "application/json",
+          },
+          body: { name: "不應寫入", reason: "嘗試更改取消聚會" },
+        }
+      ),
+      testEnv()
+    );
+    assert.strictEqual(identityAttempt.status, 409);
+    const identityProblem = await problemOf(identityAttempt);
+    assert.strictEqual(identityProblem.code, "EVENT_CANCELLED");
+
+    const availabilityAttempt = await worker.fetch(
+      programsRequest(
+        `/api/v1/programs/${programId}/events/${event.event_id}`,
+        {
+          method: "PATCH",
+          headers: {
+            Origin: HOST,
+            Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
+            "Content-Type": "application/json",
+          },
+          body: { availability: "Inactive" },
+        }
+      ),
+      testEnv()
+    );
+    assert.strictEqual(availabilityAttempt.status, 409);
+    const availabilityProblem = await problemOf(availabilityAttempt);
+    assert.strictEqual(availabilityProblem.code, "EVENT_CANCELLED");
+
+    const stored = await testDb()
+      .prepare(
+        "SELECT status, name, availability FROM events WHERE event_id = ?"
+      )
+      .bind(event.event_id)
+      .first<{ status: string; name: string; availability: string }>();
+    assert.deepStrictEqual(stored, {
+      status: "Cancelled",
+      name: "取消後不可改",
+      availability: "Active",
+    });
+  });
+
+  test("Event create and edit reject a blank name at the public boundary", async () => {
+    const blankCreate = await worker.fetch(
+      programsRequest(`/api/v1/programs/${programId}/events`, {
+        method: "POST",
+        headers: {
+          Origin: HOST,
+          Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
+          "Content-Type": "application/json",
+        },
+        body: {
+          name: "   ",
+          starts_at: "2030-09-18T20:00:00.000Z",
+          ends_at: "2030-09-18T21:00:00.000Z",
+        },
+      }),
+      testEnv()
+    );
+    assert.strictEqual(blankCreate.status, 422);
+    const blankCreateProblem = await problemOf(blankCreate);
+    assert.strictEqual(blankCreateProblem.code, "VALIDATION");
+
+    const event = await createEventFor(adminAccess, programId, {
+      starts_at: "2030-09-19T20:00:00.000Z",
+      ends_at: "2030-09-19T21:00:00.000Z",
+      name: "編輯前具名",
+    });
+    const blankEdit = await worker.fetch(
+      programsRequest(
+        `/api/v1/programs/${programId}/events/${event.event_id}`,
+        {
+          method: "PATCH",
+          headers: {
+            Origin: HOST,
+            Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
+            "Content-Type": "application/json",
+          },
+          body: { name: "   " },
+        }
+      ),
+      testEnv()
+    );
+    assert.strictEqual(blankEdit.status, 422);
+    const blankEditProblem = await problemOf(blankEdit);
+    assert.strictEqual(blankEditProblem.code, "VALIDATION");
+    const retained = await testDb()
+      .prepare("SELECT name FROM events WHERE event_id = ?")
+      .bind(event.event_id)
+      .first<{ name: string }>();
+    assert.strictEqual(retained?.name, "編輯前具名");
+  });
+
   test("PATCH edits schedule and identity fields when attendance exists", async () => {
     const event = await createEventFor(adminAccess, programId, {
-      starts_at: "2026-09-15T20:00:00.000Z",
-      ends_at: "2026-09-15T21:00:00.000Z",
+      starts_at: "2030-09-15T20:00:00.000Z",
+      ends_at: "2030-09-15T21:00:00.000Z",
     });
     await testDb()
       .prepare(
@@ -5258,20 +8143,14 @@ describe("EVT-01: event operations (#251)", () => {
             Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
             "Content-Type": "application/json",
           },
-          body: { starts_at: "2026-09-15T20:15:00.000Z" },
+          body: { starts_at: "2030-09-15T20:15:00.000Z" },
         }
       ),
       testEnv()
     );
-    assert.strictEqual(reschedule.status, 200);
-    const rescheduleBody = (await assertCorrelated(reschedule)) as {
-      data: { event: { starts_at: string } };
-    };
-    assert.strictEqual(
-      rescheduleBody.data.event.starts_at,
-      "2026-09-15T20:15:00.000Z",
-      "attendance history must be preserved while moving the event"
-    );
+    assert.strictEqual(reschedule.status, 409);
+    const rescheduleProblem = await problemOf(reschedule);
+    assert.strictEqual(rescheduleProblem.code, "EVENT_RESCHEDULE_BLOCKED");
 
     const endsChange = await worker.fetch(
       programsRequest(
@@ -5283,16 +8162,18 @@ describe("EVT-01: event operations (#251)", () => {
             Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
             "Content-Type": "application/json",
           },
-          body: { ends_at: "2026-09-15T22:00:00.000Z" },
+          body: { ends_at: "2030-09-15T22:00:00.000Z" },
         }
       ),
       testEnv()
     );
     assert.strictEqual(
       endsChange.status,
-      200,
-      "ends_at remains editable once attendance exists"
+      409,
+      "ends_at is a schedule change and is blocked once attendance exists"
     );
+    const endsProblem = await problemOf(endsChange);
+    assert.strictEqual(endsProblem.code, "EVENT_RESCHEDULE_BLOCKED");
 
     const nameChange = await worker.fetch(
       programsRequest(
@@ -5304,7 +8185,11 @@ describe("EVT-01: event operations (#251)", () => {
             Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
             "Content-Type": "application/json",
           },
-          body: { name: "改名但不改時間", location: "副堂" },
+          body: {
+            name: "改名但不改時間",
+            location: "副堂",
+            reason: "記錄出席後修正聚會識別資料",
+          },
         }
       ),
       testEnv()
@@ -5318,6 +8203,76 @@ describe("EVT-01: event operations (#251)", () => {
       data: { event: Record<string, unknown> };
     };
     assert.strictEqual(nameChangeBody.data.event.name, "改名但不改時間");
+  });
+
+  test("PATCH blocks reschedule after a durable snapshot and preserves it on cancellation", async () => {
+    const event = await createEventFor(adminAccess, programId, {
+      starts_at: "2032-09-15T20:00:00.000Z",
+      ends_at: "2032-09-15T21:00:00.000Z",
+    });
+    const snapshotId = crypto.randomUUID();
+    const snapshotAt = new Date().toISOString();
+    await testDb()
+      .prepare(
+        `INSERT INTO event_attendance_snapshots
+          (snapshot_id, event_id, materialized_at, last_materialized_at)
+         VALUES (?, ?, ?, ?)`
+      )
+      .bind(snapshotId, event.event_id, snapshotAt, snapshotAt)
+      .run();
+
+    const reschedule = await worker.fetch(
+      programsRequest(
+        `/api/v1/programs/${programId}/events/${event.event_id}`,
+        {
+          method: "PATCH",
+          headers: {
+            Origin: HOST,
+            Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
+            "Content-Type": "application/json",
+          },
+          body: { starts_at: "2032-09-15T20:15:00.000Z" },
+        }
+      ),
+      testEnv()
+    );
+    assert.strictEqual(reschedule.status, 409);
+    const problemBody = await problemOf(reschedule);
+    assert.strictEqual(problemBody.code, "EVENT_RESCHEDULE_BLOCKED");
+
+    const cancel = await worker.fetch(
+      programsRequest(
+        `/api/v1/programs/${programId}/events/${event.event_id}`,
+        {
+          method: "PATCH",
+          headers: {
+            Origin: HOST,
+            Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
+            "Content-Type": "application/json",
+          },
+          body: { reason: "場地改動" },
+        }
+      ),
+      testEnv()
+    );
+    assert.strictEqual(cancel.status, 200);
+    const cancelled = (await assertCorrelated(cancel)) as {
+      data: { event: { status: string; cancel_reason: string | null } };
+    };
+    assert.strictEqual(cancelled.data.event.status, "Cancelled");
+    assert.strictEqual(cancelled.data.event.cancel_reason, "場地改動");
+
+    const retained = await testDb()
+      .prepare(
+        "SELECT snapshot_id FROM event_attendance_snapshots WHERE event_id = ?"
+      )
+      .bind(event.event_id)
+      .first<{ snapshot_id: string }>();
+    assert.strictEqual(
+      retained?.snapshot_id,
+      snapshotId,
+      "cancelling a no-Attendance Event must not erase snapshot history"
+    );
   });
 
   test("PATCH absent window fields preserve the window; explicit null clears it", async () => {
@@ -5908,7 +8863,8 @@ async function listEnrollmentsFor(
 function cancelEnrollmentFor(
   access: string,
   programId: string,
-  enrollmentId: string
+  enrollmentId: string,
+  reason?: string
 ): Promise<Response> {
   return worker.fetch(
     programsRequest(
@@ -5920,7 +8876,7 @@ function cancelEnrollmentFor(
           Cookie: `${ACCESS_COOKIE_NAME}=${access}`,
           "Content-Type": "application/json",
         },
-        body: {},
+        body: reason === undefined ? {} : { reason },
       }
     ),
     testEnv()
@@ -5956,6 +8912,7 @@ describe("PRG-03: enrollment requests", () => {
     const requestProgram = await createProgram(adminAccess, deptId, {
       name: "Request Enrollment Program",
       behavior_type: "Recurring",
+      lifecycle: "Active",
       discoverability: "Listed",
       enrollment_mode: "MemberRequest",
     });
@@ -5963,6 +8920,7 @@ describe("PRG-03: enrollment requests", () => {
     const managerOnly = await createProgram(adminAccess, deptId, {
       name: "Managed Enrollment Program",
       behavior_type: "Recurring",
+      lifecycle: "Active",
       discoverability: "Listed",
       enrollment_mode: "ManagerOnly",
     });
@@ -5973,6 +8931,7 @@ describe("PRG-03: enrollment requests", () => {
     const program = await createProgram(adminAccess, deptId, {
       name,
       behavior_type: "Recurring",
+      lifecycle: "Active",
       discoverability: "Listed",
       enrollment_mode: "MemberRequest",
     });
@@ -6270,6 +9229,7 @@ describe("PRG-03: enrollment requests", () => {
     assert.strictEqual(decisionNew.status, "Rejected");
     assert.strictEqual(decisionNew.request_version, 2);
   });
+
   test("REQ-5A stale request versions and opposite terminal decisions fail closed", async () => {
     const staleProgramId = await freshRequestProgram("REQ-5A Stale Program");
     const staleRequest = await submitRequest(memberAccess, staleProgramId);
@@ -6507,6 +9467,7 @@ describe("PRG-03: enrollment requests", () => {
       )
     );
   });
+
   test("REQ-8A manager enrollment snapshot returns the request and atomic enrollment result", async () => {
     const programId = await freshRequestProgram("REQ-8A Snapshot Program");
     const request = await submitRequest(memberAccess, programId);
@@ -6809,7 +9770,8 @@ describe("PRG-03: enrollments", () => {
     const managerCancel = await cancelEnrollmentFor(
       adminAccess,
       managerOnlyId,
-      carolEnrollment.enrollment_id
+      carolEnrollment.enrollment_id,
+      "課程安排調整"
     );
     assert.strictEqual(managerCancel.status, 200);
   });
@@ -6851,6 +9813,94 @@ describe("PRG-03: enrollments", () => {
       .bind(cancelledId)
       .first<{ status: string }>();
     assert.strictEqual(oldRow?.status, "Cancelled", "old record never reopens");
+  });
+
+  test("ENR-6 manager cancellation requires and preserves a reason, notice, and audit history", async () => {
+    const enrolled = await assistedEnrollFor(
+      adminAccess,
+      managerOnlyId,
+      "U003"
+    );
+    assert.strictEqual(enrolled.status, 201);
+    const enrolledBody = (await assertCorrelated(enrolled)) as {
+      data: { enrollment: { enrollment_id: string } };
+    };
+
+    const missingReason = await cancelEnrollmentFor(
+      adminAccess,
+      managerOnlyId,
+      enrolledBody.data.enrollment.enrollment_id
+    );
+    assert.strictEqual(missingReason.status, 422);
+    const missingReasonProblem = await problemOf(missingReason);
+    assert.strictEqual(missingReasonProblem.code, "VALIDATION");
+
+    const cancelled = await cancelEnrollmentFor(
+      adminAccess,
+      managerOnlyId,
+      enrolledBody.data.enrollment.enrollment_id,
+      "本季小組安排調整"
+    );
+    assert.strictEqual(cancelled.status, 200);
+    const cancelledBody = (await assertCorrelated(cancelled)) as {
+      data: {
+        enrollment: {
+          status: string;
+          cancellation_reason: string;
+        };
+      };
+    };
+    assert.strictEqual(cancelledBody.data.enrollment.status, "Cancelled");
+    assert.strictEqual(
+      cancelledBody.data.enrollment.cancellation_reason,
+      "本季小組安排調整"
+    );
+
+    const stored = await testDb()
+      .prepare(
+        "SELECT cancellation_reason FROM enrollments WHERE enrollment_id = ?"
+      )
+      .bind(enrolledBody.data.enrollment.enrollment_id)
+      .first<{ cancellation_reason: string }>();
+    assert.strictEqual(stored?.cancellation_reason, "本季小組安排調整");
+
+    const audit = await testDb()
+      .prepare(
+        `SELECT new_value_json FROM audit_events
+         WHERE action = 'ENROLLMENT_CANCEL' AND outcome = 'SUCCESS'
+           AND entity_id = ? ORDER BY inserted_at DESC LIMIT 1`
+      )
+      .bind(enrolledBody.data.enrollment.enrollment_id)
+      .first<{ new_value_json: string }>();
+    assert.ok(audit);
+    assert.strictEqual(
+      JSON.parse(audit.new_value_json).cancellation_reason,
+      "本季小組安排調整"
+    );
+
+    const carolMemberAccess = await accessCookieFor("carol", "carol-secret");
+    const notices = await worker.fetch(
+      programsRequest("/api/v1/programs/notices", {
+        headers: {
+          Origin: HOST,
+          Cookie: `${ACCESS_COOKIE_NAME}=${carolMemberAccess}`,
+        },
+      }),
+      testEnv()
+    );
+    assert.strictEqual(notices.status, 200);
+    const noticesBody = (await assertCorrelated(notices)) as {
+      data: {
+        notices: { program_id: string | null; title: string; body: string }[];
+      };
+    };
+    const cancellationNotice = noticesBody.data.notices.find(
+      (notice) =>
+        notice.program_id === managerOnlyId &&
+        notice.title === "課程報名已被取消"
+    );
+    assert.ok(cancellationNotice);
+    assert.match(cancellationNotice.body, /本季小組安排調整/u);
   });
 
   test("ENR-6 members see their own rows; managers see all; Unlisted is invisible to members", async () => {
@@ -6928,6 +9978,7 @@ describe("PRG-03: enrollments", () => {
       await createProgram(adminAccess, deptId, {
         name: "Decide Repeat Program",
         behavior_type: "Recurring",
+        lifecycle: "Active",
         discoverability: "Listed",
         enrollment_mode: "MemberRequest",
       })
@@ -6972,6 +10023,7 @@ describe("PRG-03: enrollments", () => {
       await createProgram(adminAccess, deptId, {
         name: "Same-Actor Retry Program",
         behavior_type: "Recurring",
+        lifecycle: "Active",
         discoverability: "Listed",
         enrollment_mode: "MemberRequest",
       })
@@ -7029,6 +10081,7 @@ describe("PRG-03: enrollments", () => {
       await createProgram(adminAccess, deptId, {
         name: "Cross-Actor Repeat Program",
         behavior_type: "Recurring",
+        lifecycle: "Active",
         discoverability: "Listed",
         enrollment_mode: "MemberRequest",
       })
@@ -7071,6 +10124,7 @@ describe("PRG-03: enrollments", () => {
       await createProgram(adminAccess, deptId, {
         name: "Cross-Actor Race Program",
         behavior_type: "Recurring",
+        lifecycle: "Active",
         discoverability: "Listed",
         enrollment_mode: "MemberRequest",
       })
@@ -7106,6 +10160,7 @@ describe("PRG-03: enrollments", () => {
       await createProgram(adminAccess, deptId, {
         name: "Withdraw Repeat Program",
         behavior_type: "Recurring",
+        lifecycle: "Active",
         discoverability: "Listed",
         enrollment_mode: "MemberRequest",
       })
@@ -7180,6 +10235,7 @@ describe("PRG-03: enrollments", () => {
           "Content-Type": "application/json",
         },
         body: {
+          name: "重複取消聚會",
           starts_at: "2026-12-01T10:00:00.000Z",
           ends_at: "2026-12-01T11:00:00.000Z",
         },
@@ -7265,6 +10321,7 @@ describe("PRG-03: enrollments", () => {
       await createProgram(adminAccess, deptId, {
         name: "Enrollment Cancel Repeat Program",
         behavior_type: "Recurring",
+        lifecycle: "Active",
         discoverability: "Listed",
         enrollment_mode: "MemberRequest",
       })
@@ -7311,6 +10368,131 @@ describe("PRG-03: enrollments", () => {
       .bind(enrollment.enrollment_id)
       .first<{ status: string }>();
     assert.strictEqual(stored?.status, "Cancelled", "state must not change");
+  });
+
+  test("G07 enrollment cancellation removes only pre-start Excused projections and preserves started history", async () => {
+    const programId = (
+      await createProgram(adminAccess, deptId, {
+        name: "Excuse Cancellation Reconciliation Program",
+        behavior_type: "OneOff",
+        lifecycle: "Active",
+        discoverability: "Listed",
+        enrollment_mode: "ManagerOnly",
+      })
+    ).program_id;
+    const beforeStartEvent = await createEventFor(adminAccess, programId, {
+      starts_at: "2099-11-01T10:00:00.000Z",
+      ends_at: "2099-11-01T11:00:00.000Z",
+    });
+    const beforeStartEnrollment = await assistedEnrollFor(
+      adminAccess,
+      programId,
+      "U002"
+    );
+    assert.strictEqual(beforeStartEnrollment.status, 201);
+    const beforeStartBody = (await assertCorrelated(beforeStartEnrollment)) as {
+      data: { enrollment: { enrollment_id: string } };
+    };
+    const beforeStartExcuse = await worker.fetch(
+      programsRequest(
+        `/api/v1/attendance/events/${beforeStartEvent.event_id}/excused`,
+        {
+          method: "POST",
+          headers: {
+            Origin: HOST,
+            Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
+          },
+          body: JSON.stringify({
+            enrollment_id: beforeStartBody.data.enrollment.enrollment_id,
+            reason: "其他：預先請假",
+          }),
+        }
+      ),
+      testEnv()
+    );
+    assert.strictEqual(beforeStartExcuse.status, 201);
+    const beforeStartExcuseBody = (await beforeStartExcuse.json()) as {
+      data: { disposition_id: string };
+    };
+    const beforeStartCancel = await cancelEnrollmentFor(
+      memberAccess,
+      programId,
+      beforeStartBody.data.enrollment.enrollment_id
+    );
+    assert.strictEqual(beforeStartCancel.status, 200);
+    const removed = await testDb()
+      .prepare(
+        "SELECT disposition_id FROM event_attendance_dispositions WHERE disposition_id = ?"
+      )
+      .bind(beforeStartExcuseBody.data.disposition_id)
+      .first();
+    assert.strictEqual(
+      removed,
+      null,
+      "future Event excuse is no longer current"
+    );
+    const audit = await testDb()
+      .prepare(
+        `SELECT outcome, reason FROM audit_events
+          WHERE action = 'attendance.excused' AND entity_id = ?`
+      )
+      .bind(beforeStartExcuseBody.data.disposition_id)
+      .first<{ outcome: string; reason: string }>();
+    assert.deepStrictEqual(audit, {
+      outcome: "SUCCESS",
+      reason: "其他：預先請假",
+    });
+
+    const startedEvent = await createEventFor(adminAccess, programId, {
+      starts_at: "2020-11-01T10:00:00.000Z",
+      ends_at: "2020-11-01T11:00:00.000Z",
+    });
+    const startedEnrollmentId = crypto.randomUUID();
+    const enrolledAt = "2020-10-01T10:00:00.000Z";
+    await testDb()
+      .prepare(
+        `INSERT INTO enrollments
+          (enrollment_id, program_id, member_user_id, status, enrolled_at,
+           created_by, created_at)
+         VALUES (?, ?, 'U002', 'Active', ?, 'U001', ?)`
+      )
+      .bind(startedEnrollmentId, programId, enrolledAt, enrolledAt)
+      .run();
+    const startedExcuse = await worker.fetch(
+      programsRequest(
+        `/api/v1/attendance/events/${startedEvent.event_id}/excused`,
+        {
+          method: "POST",
+          headers: {
+            Origin: HOST,
+            Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
+          },
+          body: JSON.stringify({
+            enrollment_id: startedEnrollmentId,
+            reason: "家庭事務",
+          }),
+        }
+      ),
+      testEnv()
+    );
+    assert.strictEqual(startedExcuse.status, 201);
+    const startedCancel = await cancelEnrollmentFor(
+      memberAccess,
+      programId,
+      startedEnrollmentId
+    );
+    assert.strictEqual(startedCancel.status, 200);
+    const retained = await testDb()
+      .prepare(
+        `SELECT disposition, reason FROM event_attendance_dispositions
+          WHERE event_id = ? AND enrollment_id = ?`
+      )
+      .bind(startedEvent.event_id, startedEnrollmentId)
+      .first<{ disposition: string; reason: string }>();
+    assert.deepStrictEqual(retained, {
+      disposition: "Excused",
+      reason: "家庭事務",
+    });
   });
 });
 
@@ -7361,7 +10543,7 @@ describe("PUI-02: participant catalog", () => {
     assert.strictEqual(body.code, "AUTH_REQUIRED");
   });
 
-  test("member sees Listed rows across lifecycles as status, never Unlisted; no check-in secrets or DTO breadth", async () => {
+  test("member sees Active Listed rows and related history, never hidden rows or secrets", async () => {
     const adminAccess = await accessCookieFor("alice", "alice-secret");
     const dept = await createDepartment(adminAccess, {
       code: "PUI-02-LISTED",
@@ -7381,8 +10563,15 @@ describe("PUI-02: participant catalog", () => {
     const archived = await createProgram(adminAccess, dept.department_id, {
       name: "PUI-02 Archived Listed",
       behavior_type: "Recurring",
+      lifecycle: "Active",
       discoverability: "Listed",
     });
+    const archivedEnrollment = await assistedEnrollFor(
+      adminAccess,
+      archived.program_id,
+      "U002"
+    );
+    assert.strictEqual(archivedEnrollment.status, 201);
     const promote = await worker.fetch(
       programsRequest(`/api/v1/programs/${archived.program_id}`, {
         method: "PATCH",
@@ -7409,6 +10598,29 @@ describe("PUI-02: participant catalog", () => {
       testEnv()
     );
     assert.strictEqual(archive.status, 200);
+    const hiddenArchived = await createProgram(
+      adminAccess,
+      dept.department_id,
+      {
+        name: "PUI-02 Archived Hidden",
+        behavior_type: "Recurring",
+        lifecycle: "Active",
+        discoverability: "Listed",
+      }
+    );
+    const hideArchived = await worker.fetch(
+      programsRequest(`/api/v1/programs/${hiddenArchived.program_id}`, {
+        method: "PATCH",
+        headers: {
+          Origin: HOST,
+          Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
+          "Content-Type": "application/json",
+        },
+        body: { lifecycle: "Archived" },
+      }),
+      testEnv()
+    );
+    assert.strictEqual(hideArchived.status, 200);
     await createProgram(adminAccess, dept.department_id, {
       name: "PUI-02 Unlisted Hidden",
       behavior_type: "Recurring",
@@ -7422,14 +10634,14 @@ describe("PUI-02: participant catalog", () => {
     );
     assert.ok(entry, "department with visible Programs must appear");
     const names = entry.programs.map((program) => program.name);
-    assert.ok(names.includes("PUI-02 Draft Listed"));
+    assert.ok(!names.includes("PUI-02 Draft Listed"));
     assert.ok(names.includes("PUI-02 Active Listed"));
     assert.ok(names.includes("PUI-02 Archived Listed"));
+    assert.ok(!names.includes("PUI-02 Archived Hidden"));
     assert.ok(!names.includes("PUI-02 Unlisted Hidden"));
     const byName = new Map(
       entry.programs.map((program) => [program.name, program.lifecycle])
     );
-    assert.strictEqual(byName.get("PUI-02 Draft Listed"), "Draft");
     assert.strictEqual(byName.get("PUI-02 Active Listed"), "Active");
     assert.strictEqual(byName.get("PUI-02 Archived Listed"), "Archived");
     const raw = JSON.stringify(body.data);
@@ -7534,6 +10746,7 @@ describe("PUI-02: participant catalog", () => {
       "module-disabled Department must be omitted"
     );
   });
+
   test("projects viewerState per program across all viewer states", async () => {
     const adminAccess = await accessCookieFor("alice", "alice-secret");
     const memberAccess = await accessCookieFor("bob", "bob-secret");
@@ -7567,6 +10780,12 @@ describe("PUI-02: participant catalog", () => {
       lifecycle: "Active",
       discoverability: "Listed",
     });
+    const archivedEnrollment = await assistedEnrollFor(
+      adminAccess,
+      pArchived.program_id,
+      "U002"
+    );
+    assert.strictEqual(archivedEnrollment.status, 201);
     await worker.fetch(
       programsRequest(`/api/v1/programs/${pArchived.program_id}`, {
         method: "PATCH",
@@ -7881,6 +11100,7 @@ describe("PUI-03: participant Program detail", () => {
           source: string;
           name: string | null;
           location: string | null;
+          cancel_reason?: string | null;
           self_check_in_available: boolean;
           manual_check_in_code?: unknown;
           check_in_window_opens_at?: unknown;
@@ -8245,6 +11465,7 @@ describe("PUI-03: participant Program detail", () => {
           "Content-Type": "application/json",
         },
         body: {
+          name: "Legacy title will be cleared",
           starts_at: "2099-05-06T11:30:00.000Z",
           ends_at: "2099-05-06T13:00:00.000Z",
         },
@@ -8252,12 +11473,99 @@ describe("PUI-03: participant Program detail", () => {
       testEnv()
     );
     assert.strictEqual(event.status, 201);
+    const eventBody = (await assertCorrelated(event)) as {
+      data: { event: { event_id: string } };
+    };
+    await testDb()
+      .prepare("UPDATE events SET name = NULL WHERE event_id = ?")
+      .bind(eventBody.data.event.event_id)
+      .run();
 
     const memberAccess = await accessCookieFor("bob", "bob-secret");
     const body = await detailOf(memberAccess, created.program_id);
     assert.strictEqual(body.data.detail.events.length, 1);
     assert.strictEqual(body.data.detail.events[0]?.name, null);
     assert.strictEqual(body.data.detail.events[0]?.location, null);
+  });
+
+  test("keeps an enrolled participant's cancelled Event history read-only", async () => {
+    const adminAccess = await accessCookieFor("alice", "alice-secret");
+    const dept = await createDepartment(adminAccess, {
+      code: "PUI-03-CANCELLED",
+      name: "PUI-03 Cancelled Dept",
+    });
+    const created = await createProgram(adminAccess, dept.department_id, {
+      name: "PUI-03 Cancelled Program",
+      behavior_type: "OneOff",
+      lifecycle: "Active",
+      discoverability: "Listed",
+      enrollment_mode: "MemberRequest",
+    });
+    const event = await createEventFor(adminAccess, created.program_id, {
+      starts_at: "2099-06-03T11:30:00.000Z",
+      ends_at: "2099-06-03T13:00:00.000Z",
+      name: "已取消的聚會",
+      location: "二樓禮堂",
+    });
+    const memberAccess = await accessCookieFor("bob", "bob-secret");
+    const beforeEnrollment = await detailOf(memberAccess, created.program_id);
+    assert.strictEqual(beforeEnrollment.data.detail.events.length, 1);
+    assert.strictEqual(
+      beforeEnrollment.data.detail.events[0]?.status,
+      "Active"
+    );
+
+    const enrollment = await assistedEnrollFor(
+      adminAccess,
+      created.program_id,
+      "U002"
+    );
+    assert.strictEqual(enrollment.status, 201);
+    const cancel = await worker.fetch(
+      programsRequest(
+        `/api/v1/programs/${created.program_id}/events/${event.event_id}`,
+        {
+          method: "PATCH",
+          headers: {
+            Origin: HOST,
+            Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
+            "Content-Type": "application/json",
+          },
+          body: { reason: "場地維修" },
+        }
+      ),
+      testEnv()
+    );
+    assert.strictEqual(cancel.status, 200);
+
+    const enrolled = await detailOf(memberAccess, created.program_id);
+    assert.deepStrictEqual(enrolled.data.detail.events[0], {
+      event_id: event.event_id,
+      program_id: created.program_id,
+      starts_at: "2099-06-03T11:30:00.000Z",
+      ends_at: "2099-06-03T13:00:00.000Z",
+      status: "Cancelled",
+      source: "MANUAL",
+      name: "已取消的聚會",
+      location: "二樓禮堂",
+      cancel_reason: "場地維修",
+      self_check_in_available: false,
+    });
+    const raw = JSON.stringify(enrolled.data.detail.events[0]);
+    assert.ok(!raw.includes("manual_check_in_code"));
+    assert.ok(!raw.includes("check_in_window_opens_at"));
+
+    await testDb()
+      .prepare(
+        "UPDATE enrollments SET status = 'Cancelled', cancelled_at = ? WHERE program_id = ? AND member_user_id = ?"
+      )
+      .bind(new Date().toISOString(), created.program_id, "U002")
+      .run();
+    const afterEnrollmentCancel = await detailOf(
+      memberAccess,
+      created.program_id
+    );
+    assert.strictEqual(afterEnrollmentCancel.data.detail.events.length, 0);
   });
 
   test("keeps multiple active events for a OneOff participant detail", async () => {
@@ -8285,7 +11593,11 @@ describe("PUI-03: participant Program detail", () => {
             Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
             "Content-Type": "application/json",
           },
-          body: { starts_at, ends_at },
+          body: {
+            name: `OneOff participant event ${starts_at}`,
+            starts_at,
+            ends_at,
+          },
         }),
         testEnv()
       );
@@ -8507,6 +11819,7 @@ describe("NTF-01: management notification read state (#256)", () => {
     const program = await createProgram(adminAccess, department.department_id, {
       name: `Notification Program ${crypto.randomUUID().slice(0, 8)}`,
       behavior_type: "OneOff",
+      lifecycle: "Active",
       discoverability: "Listed",
       enrollment_mode: "MemberRequest",
     });
@@ -8680,5 +11993,270 @@ describe("NTF-01: management notification read state (#256)", () => {
       )
       .first<{ count: number }>();
     assert.ok(Number(readRows?.count) >= 2);
+  }, 120_000);
+});
+
+describe("#622 R41/R42: committed writes survive a failing readback", () => {
+  test("keeps a committed Event cancellation authoritative when the cockpit read fails", async () => {
+    const adminAccess = await accessCookieFor("alice", "alice-secret");
+    const department = await createDepartment(adminAccess, {
+      code: "OUTCOME-01",
+      name: "Outcome Department",
+    });
+    const program = await createProgram(adminAccess, department.department_id, {
+      name: "Outcome Program",
+      behavior_type: "Recurring",
+      lifecycle: "Active",
+      discoverability: "Listed",
+    });
+    const startsAt = new Date(Date.now() + 60 * 60_000).toISOString();
+    const endsAt = new Date(Date.now() + 2 * 60 * 60_000).toISOString();
+    const event = await createEventFor(adminAccess, program.program_id, {
+      starts_at: startsAt,
+      ends_at: endsAt,
+      name: "Outcome Event",
+      location: "Room Outcome",
+    });
+    const cockpitRequest = (): Request =>
+      programsRequest(`/api/v1/programs/${program.program_id}/cockpit`, {
+        headers: {
+          Origin: HOST,
+          Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
+        },
+      });
+
+    const before = await worker.fetch(cockpitRequest(), testEnv());
+    assert.strictEqual(before.status, 200);
+    const beforeBody = (await assertCorrelated(before)) as {
+      data: { cockpit: { next_event: { event_id: string } | null } };
+    };
+    assert.strictEqual(
+      beforeBody.data.cockpit.next_event?.event_id,
+      event.event_id
+    );
+
+    // 1. The write commits with 2xx.
+    const cancel = await worker.fetch(
+      programsRequest(
+        `/api/v1/programs/${program.program_id}/events/${event.event_id}`,
+        {
+          method: "PATCH",
+          headers: {
+            Origin: HOST,
+            Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
+            "Content-Type": "application/json",
+          },
+          body: { reason: "測試中斷線" },
+        }
+      ),
+      testEnv()
+    );
+    assert.strictEqual(cancel.status, 200);
+
+    // 2. The readback that follows now fails at the D1 boundary. Only the
+    // events projection is broken so actor authorization still resolves.
+    let injectedReadbackFailure = false;
+    const brokenDb = new Proxy((env as unknown as Env).DB, {
+      get(target, property, receiver) {
+        if (property === "prepare") {
+          return (query: string) => {
+            if (/\bFROM events\b/u.test(query)) {
+              injectedReadbackFailure = true;
+              throw new Error("readback-unavailable");
+            }
+            return target.prepare(query);
+          };
+        }
+        return Reflect.get(target, property, receiver) as unknown;
+      },
+    }) as Env["DB"];
+    let failedReadStatus: number | null = null;
+    let failedReadError: unknown = null;
+    try {
+      const failedRead = await worker.fetch(
+        cockpitRequest(),
+        testEnv({ DB: brokenDb })
+      );
+      failedReadStatus = failedRead.status;
+    } catch (error) {
+      failedReadError = error;
+      failedReadStatus = null;
+    }
+    assert.ok(
+      failedReadStatus === null || failedReadStatus >= 500,
+      `a failing readback must never answer with success, got ${String(failedReadStatus)}`
+    );
+    assert.strictEqual(
+      injectedReadbackFailure,
+      true,
+      "the failing response must come from the injected D1 readback fault"
+    );
+    if (failedReadError !== null) {
+      assert.match(
+        String((failedReadError as Error).message ?? failedReadError),
+        /readback-unavailable/u,
+        "the failing read must be the injected D1 fault, not an unrelated error"
+      );
+    }
+
+    // 3. The committed cancellation is still the authoritative record.
+    const committed = await testDb()
+      .prepare("SELECT status, cancel_reason FROM events WHERE event_id = ?")
+      .bind(event.event_id)
+      .first<{ status: string; cancel_reason: string | null }>();
+    assert.strictEqual(committed?.status, "Cancelled");
+    assert.strictEqual(committed?.cancel_reason, "測試中斷線");
+
+    // 4. Retrying only the read converges on the committed state.
+    const recovered = await worker.fetch(cockpitRequest(), testEnv());
+    assert.strictEqual(recovered.status, 200);
+    const recoveredBody = (await assertCorrelated(recovered)) as {
+      data: { cockpit: { next_event: { event_id: string } | null } };
+    };
+    assert.strictEqual(recoveredBody.data.cockpit.next_event, null);
+  }, 120_000);
+
+  test("does not let an older in-flight read become the authoritative view", async () => {
+    const adminAccess = await accessCookieFor("alice", "alice-secret");
+    const department = await createDepartment(adminAccess, {
+      code: "OUTCOME-02",
+      name: "Outcome Ordering Department",
+    });
+    const program = await createProgram(adminAccess, department.department_id, {
+      name: "Outcome Ordering Program",
+      behavior_type: "Recurring",
+      lifecycle: "Active",
+      discoverability: "Listed",
+    });
+    const startsAt = new Date(Date.now() + 3 * 60 * 60_000).toISOString();
+    const endsAt = new Date(Date.now() + 4 * 60 * 60_000).toISOString();
+    const event = await createEventFor(adminAccess, program.program_id, {
+      starts_at: startsAt,
+      ends_at: endsAt,
+      name: "Ordering Event",
+      location: "Room Order",
+    });
+    interface EventListRow {
+      event_id: string;
+      status: string;
+      updated_at: string;
+    }
+    const readEvents = async (db?: Env["DB"]): Promise<EventListRow> => {
+      const res = await worker.fetch(
+        programsRequest(`/api/v1/programs/${program.program_id}/events`, {
+          headers: {
+            Origin: HOST,
+            Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
+          },
+        }),
+        db === undefined ? testEnv() : testEnv({ DB: db })
+      );
+      assert.strictEqual(res.status, 200);
+      const body = (await assertCorrelated(res)) as {
+        data: { events: EventListRow[] };
+      };
+      const row = body.data.events.find(
+        ({ event_id }) => event_id === event.event_id
+      );
+      assert.ok(row, "the Events read must contain the fixture event");
+      return row;
+    };
+
+    // Hold the first read's already-fetched rows in flight so its payload is the
+    // pre-write projection while the write below commits. The worker tsconfig
+    // targets ES2022, so these deferreds use the executor form.
+    let signalHeldRead: () => void = () => {};
+    const heldReadInFlight = new Promise<void>((resolve) => {
+      signalHeldRead = resolve;
+    });
+    let releaseHeldRead: () => void = () => {};
+    const releaseHeldReadPromise = new Promise<void>((resolve) => {
+      releaseHeldRead = resolve;
+    });
+    const heldDb = new Proxy((env as unknown as Env).DB, {
+      get(target, property, receiver) {
+        if (property !== "prepare") {
+          return Reflect.get(target, property, receiver) as unknown;
+        }
+        return (query: string) => {
+          const statement = target.prepare(query);
+          if (!/\bFROM events\b/u.test(query)) {
+            return statement;
+          }
+          return {
+            bind: (...args: unknown[]) =>
+              new Proxy(statement.bind(...args), {
+                get(bound, boundProperty, boundReceiver) {
+                  const value = Reflect.get(
+                    bound,
+                    boundProperty,
+                    boundReceiver
+                  ) as unknown;
+                  if (typeof value !== "function") {
+                    return value;
+                  }
+                  return async (...callArgs: unknown[]) => {
+                    const result = (await Reflect.apply(
+                      value,
+                      bound,
+                      callArgs
+                    )) as unknown;
+                    signalHeldRead();
+                    await releaseHeldReadPromise;
+                    return result;
+                  };
+                },
+              }),
+          };
+        };
+      },
+    }) as Env["DB"];
+
+    const olderReadPromise = readEvents(heldDb);
+    await heldReadInFlight;
+
+    // The newer write commits while the older read is still in flight.
+    const cancel = await worker.fetch(
+      programsRequest(
+        `/api/v1/programs/${program.program_id}/events/${event.event_id}`,
+        {
+          method: "PATCH",
+          headers: {
+            Origin: HOST,
+            Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
+            "Content-Type": "application/json",
+          },
+          body: { reason: "排序測試" },
+        }
+      ),
+      testEnv()
+    );
+    assert.strictEqual(cancel.status, 200);
+    // Start the newer read before releasing the older response. Otherwise this
+    // only proves two sequential reads, not out-of-order delivery.
+    const freshReadPromise = readEvents();
+    const fresh = await freshReadPromise;
+    releaseHeldRead();
+    const older = await olderReadPromise;
+    assert.strictEqual(older.status, "Active");
+    assert.strictEqual(fresh.status, "Cancelled");
+    // Apply responses in arrival order. The newer body must remain authoritative
+    // when the held older body arrives later.
+    const afterFresh = applyAuthoritativeRevision(fresh, null);
+    const authoritative = applyAuthoritativeRevision(older, afterFresh);
+    assert.strictEqual(authoritative?.status, "Cancelled");
+    assert.ok(
+      fresh.updated_at >= older.updated_at,
+      "the newer response must not carry an older revision"
+    );
+    assert.notStrictEqual(
+      `${fresh.status}:${fresh.updated_at}`,
+      `${older.status}:${older.updated_at}`
+    );
+    const durable = await testDb()
+      .prepare("SELECT status FROM events WHERE event_id = ?")
+      .bind(event.event_id)
+      .first<{ status: string }>();
+    assert.strictEqual(durable?.status, "Cancelled");
   }, 120_000);
 });

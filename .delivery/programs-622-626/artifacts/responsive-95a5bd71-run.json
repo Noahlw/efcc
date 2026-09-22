@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "runtime": "createTestHarness",
+  "config": "web/wrangler.jsonc",
+  "suite": "tests/e2e/programs-responsive-matrix.config.ts",
+  "revision": "95a5bd71c2b403efb53066a82156e59008915378",
+  "layer": "responsive-matrix",
+  "retries": 0,
+  "status": "passed",
+  "startedAt": "2026-09-18T02:05:48.573Z",
+  "target": "http://127.0.0.1:51279",
+  "reportPath": ".delivery/programs-622-626/artifacts/responsive-95a5bd71-results.json",
+  "promotionRunId": null,
+  "failure": null,
+  "finishedAt": "2026-09-18T02:06:49.444Z",
+  "candidate": "commit:95a5bd71",
+  "sourceRunPath": "test-results/programs-responsive/20260918t020548566z/run.json",
+  "sourceReportPath": "test-results/programs-responsive/20260918t020548566z/responsive-results.json"
+}

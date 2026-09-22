@@ -487,6 +487,18 @@ async function createFixture(target, adminCookie) {
       phase: "fixture/setup",
     });
   }
+  // Program creation is intentionally Draft + Unlisted. Publish the fixture
+  // explicitly before the member-facing catalog read below.
+  await requestJson(
+    target,
+    `/api/v1/programs/${programId}`,
+    {
+      method: "PATCH",
+      cookie: adminCookie,
+      body: { lifecycle: "Active", discoverability: "Listed" },
+    },
+    "fixture/setup"
+  );
   return { departmentId, programId };
 }
 

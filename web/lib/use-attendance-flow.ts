@@ -6,6 +6,7 @@ import type { RefObject } from "react";
 import { RpcError } from "@/lib/api";
 import type {
   AttendanceEvent,
+  AttendanceEventSummary,
   AttendanceResolveLatest,
 } from "@/lib/attendance";
 import { attendanceEventLabel } from "@/lib/attendance-display";
@@ -30,6 +31,8 @@ export interface AttendanceFlow {
   events: AttendanceEvent[];
   selected: AttendanceEvent | null;
   setSelected: (event: AttendanceEvent | null) => void;
+  intendedEvent: AttendanceEvent | null;
+  mismatchEvent: AttendanceEventSummary | null;
   busy: boolean;
   status: string;
   tone: StatusTone;
@@ -59,6 +62,7 @@ export function useAttendanceFlow(
   inputRef: RefObject<HTMLInputElement | null>,
   options: {
     cameraFirst?: boolean;
+    guestFlow?: boolean;
     phoneOnly?: boolean;
     reportCameraUnavailable?: boolean;
     cameraEnabled?: boolean;
@@ -70,6 +74,11 @@ export function useAttendanceFlow(
   const [fromQr, setFromQr] = useState(false);
   const [events, setEvents] = useState<AttendanceEvent[]>([]);
   const [selected, setSelectedState] = useState<AttendanceEvent | null>(null);
+  const [intendedEvent, setIntendedEvent] = useState<AttendanceEvent | null>(
+    null
+  );
+  const [mismatchEvent, setMismatchEvent] =
+    useState<AttendanceEventSummary | null>(null);
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState("");
   const [tone, setTone] = useState<StatusTone>("info");
@@ -98,14 +107,37 @@ export function useAttendanceFlow(
     setEvents([]);
     setSelectedState(null);
     setOutcome(null);
+    setMismatchEvent(null);
     setView("scan");
     setStatus("");
   };
 
   const setSelected = (event: AttendanceEvent | null) => {
     setSelectedState(event);
+    setMismatchEvent(null);
     setOutcome(null);
     setView("scan");
+  };
+
+  const latestAsEventSummary = (
+    latest: AttendanceResolveLatest
+  ): AttendanceEventSummary | null => {
+    if (!latest.event_id || !latest.starts_at || !latest.ends_at) {
+      return null;
+    }
+    return {
+      event_id: latest.event_id,
+      program_id: latest.program_id,
+      program_name: latest.program_name,
+      name: latest.event_name ?? null,
+      location: latest.location ?? null,
+      starts_at: latest.starts_at,
+      ends_at: latest.ends_at,
+      check_in_window_opens_at: latest.check_in_window_opens_at ?? "",
+      check_in_window_closes_at: latest.check_in_window_closes_at ?? "",
+      status: latest.status,
+      availability: latest.availability,
+    };
   };
 
   const resetToScan = () => {
@@ -114,6 +146,8 @@ export function useAttendanceFlow(
     setFromQr(false);
     setEvents([]);
     setSelectedState(null);
+    setIntendedEvent(null);
+    setMismatchEvent(null);
     setOutcome(null);
     setView("scan");
     setCameraUnavailable(false);
@@ -129,7 +163,9 @@ export function useAttendanceFlow(
     fromCamera = false
   ) {
     const entry = entryFromValue(value);
-    if (!entry.value && !requestedEventId) {
+    const contextEventId = requestedEventId ?? intendedEvent?.event_id ?? null;
+    const contextOnly = Boolean(contextEventId && !entry.value);
+    if (!entry.value && !contextEventId) {
       if (fromCamera && options.cameraFirst === true) {
         showCameraDecodeFailure();
         return [];
@@ -148,6 +184,11 @@ export function useAttendanceFlow(
     const resolvedFromQr = isFromQr || entry.fromQr;
     setInputValue(entry.value);
     setFromQr(resolvedFromQr);
+    if (requestedEventId) {
+      setIntendedEvent((current) =>
+        current?.event_id === requestedEventId ? current : null
+      );
+    }
     setBusy(true);
     setCameraUnavailable(false);
     setCameraPermissionDenied(false);
@@ -158,26 +199,116 @@ export function useAttendanceFlow(
     announce(COPY.attendance.resolving);
     setEvents([]);
     setSelectedState(null);
+    setMismatchEvent(null);
     try {
-      const result = requestedEventId
-        ? await resolveAttendance({ event: requestedEventId })
+      const result = contextOnly
+        ? await resolveAttendance({ event: contextEventId as string })
         : resolvedFromQr
           ? await resolveAttendance({ program_token: entry.value })
           : await resolveAttendance({ entry: entry.value });
       const resolvedEvents = result.events ?? [];
-      setEvents(resolvedEvents);
-      if (resolvedEvents.length === 1) {
+      const latest = result.latest;
+      if (contextOnly) {
+        setEvents([]);
+        if (resolvedEvents.length === 1) {
+          setIntendedEvent(resolvedEvents[0]);
+          setSelectedState(null);
+          const message = COPY.attendance.eventContextReady.replace(
+            "{event}",
+            attendanceEventLabel(resolvedEvents[0])
+          );
+          showStatus(message);
+          announce(message);
+        } else {
+          setIntendedEvent(null);
+        }
+      } else if (contextEventId) {
+        const matchingEvent = resolvedEvents.find(
+          (event) => event.event_id === contextEventId
+        );
+        if (matchingEvent) {
+          setEvents([matchingEvent]);
+          setIntendedEvent(matchingEvent);
+          setSelected(matchingEvent);
+          const message = attendanceEventLabel(matchingEvent);
+          showStatus(message);
+          announce(message);
+        } else if (resolvedEvents.length > 0) {
+          const otherEvent = resolvedEvents[0];
+          setEvents([]);
+          setSelectedState(null);
+          setMismatchEvent(otherEvent);
+          const message = COPY.attendance.eventCredentialMismatch.replace(
+            "{event}",
+            attendanceEventLabel(otherEvent)
+          );
+          showStatus(message, "error");
+          announce(message);
+        } else {
+          setEvents([]);
+          const otherEvent = latest ? latestAsEventSummary(latest) : null;
+          if (otherEvent && otherEvent.event_id !== contextEventId) {
+            setMismatchEvent(otherEvent);
+            const message = COPY.attendance.eventCredentialMismatch.replace(
+              "{event}",
+              attendanceEventLabel(otherEvent)
+            );
+            showStatus(message, "error");
+            announce(message);
+          }
+        }
+      } else {
+        setEvents(resolvedEvents);
+      }
+      const latestIsMismatch = Boolean(
+        contextEventId &&
+        resolvedEvents.length === 0 &&
+        latest?.event_id &&
+        latest.event_id !== contextEventId
+      );
+      if (
+        !latestIsMismatch &&
+        (contextOnly || (contextEventId && resolvedEvents.length === 0)) &&
+        latest
+      ) {
+        setSelectedState(null);
+        setView("outcome");
+        const nextOutcome: AttendanceOutcome = {
+          kind:
+            latest.status === "Cancelled"
+              ? "cancelled"
+              : options.guestFlow
+                ? "window-not-open"
+                : !result.enrolled
+                  ? "not-enrolled"
+                  : "window-not-open",
+          latest,
+        };
+        setOutcome(nextOutcome);
+        showStatus("");
+        announce(
+          nextOutcome.kind === "not-enrolled"
+            ? COPY.attendance.outcomeNotEnrolledTitle
+            : nextOutcome.kind === "cancelled"
+              ? COPY.attendance.outcomeCancelledTitle
+              : COPY.attendance.outcomeWindowTitle
+        );
+      } else if (
+        !contextOnly &&
+        !contextEventId &&
+        resolvedEvents.length === 1
+      ) {
         setSelected(resolvedEvents[0]);
         const message = attendanceEventLabel(resolvedEvents[0]);
         showStatus(message);
         announce(message);
-      } else if (resolvedEvents.length > 1) {
+      } else if (!contextOnly && !contextEventId && resolvedEvents.length > 1) {
         setSelectedState(null);
         setView("chooser");
         const message = COPY.attendance.chooseMeeting;
         showStatus(message);
         announce(message);
-      } else if (!result.latest) {
+      } else if (!contextOnly && !contextEventId && !result.latest) {
         setSelectedState(null);
         if (fromCamera && options.cameraFirst === true) {
           showCameraDecodeFailure();
@@ -191,32 +322,57 @@ export function useAttendanceFlow(
             : COPY.attendance.invalidEntry);
         showStatus(message, "error");
         announce(message);
-      } else if (!result.enrolled) {
+      } else if (
+        !contextOnly &&
+        !contextEventId &&
+        !result.enrolled &&
+        latest
+      ) {
         setSelectedState(null);
         setView("outcome");
         const nextOutcome: AttendanceOutcome = {
-          kind: "not-enrolled",
-          latest: result.latest,
+          kind:
+            latest.status === "Cancelled"
+              ? "cancelled"
+              : options.guestFlow
+                ? "window-not-open"
+                : "not-enrolled",
+          latest,
         };
         setOutcome(nextOutcome);
         showStatus("");
-        announce(COPY.attendance.outcomeNotEnrolledTitle);
-      } else if (result.latest.status === "Cancelled") {
+        announce(
+          nextOutcome.kind === "not-enrolled"
+            ? COPY.attendance.outcomeNotEnrolledTitle
+            : nextOutcome.kind === "cancelled"
+              ? COPY.attendance.outcomeCancelledTitle
+              : COPY.attendance.outcomeWindowTitle
+        );
+      } else if (
+        !contextOnly &&
+        !contextEventId &&
+        latest?.status === "Cancelled"
+      ) {
         setSelectedState(null);
         setView("outcome");
         const nextOutcome: AttendanceOutcome = {
           kind: "cancelled",
-          latest: result.latest,
+          latest,
         };
         setOutcome(nextOutcome);
         showStatus("");
         announce(COPY.attendance.outcomeCancelledTitle);
-      } else {
+      } else if (contextOnly || contextEventId) {
+        const message =
+          options.invalidEntryMessage ?? COPY.attendance.invalidEntry;
+        showStatus(message, "error");
+        announce(message);
+      } else if (!contextOnly && !contextEventId) {
         setSelectedState(null);
         setView("outcome");
         const nextOutcome: AttendanceOutcome = {
           kind: "window-not-open",
-          latest: result.latest,
+          latest: latest as AttendanceResolveLatest,
         };
         setOutcome(nextOutcome);
         showStatus("");
@@ -259,6 +415,7 @@ export function useAttendanceFlow(
       }
       setEvents([]);
       setSelectedState(null);
+      setMismatchEvent(null);
       setOutcome(null);
       setView("scan");
       showStatus(message, noEligibleEvents ? "info" : "error");
@@ -282,7 +439,12 @@ export function useAttendanceFlow(
       setInputValue(entry.value);
       setFromQr(entry.fromQr);
       stopCamera();
-      void resolve(entry.value, entry.fromQr, null, true);
+      void resolve(
+        entry.value,
+        entry.fromQr,
+        intendedEvent?.event_id ?? null,
+        true
+      );
     },
     onDenied: () => {
       setCameraUnavailable(true);
@@ -331,13 +493,18 @@ export function useAttendanceFlow(
 
   useEffect(() => {
     const intent = parseScannerIntent(window.location.search);
+    const params = new URLSearchParams(window.location.search);
+    const programToken = params.get("program_token");
+    const manualCode = params.get("manual_code");
+    if (intent.eventId && (programToken || manualCode)) {
+      const value = programToken ?? manualCode ?? "";
+      void resolve(value, Boolean(programToken), intent.eventId);
+      return;
+    }
     if (intent.eventId) {
       void resolve("", false, intent.eventId);
       return;
     }
-    const params = new URLSearchParams(window.location.search);
-    const programToken = params.get("program_token");
-    const manualCode = params.get("manual_code");
     if (!programToken && !manualCode) {
       return;
     }
@@ -355,6 +522,8 @@ export function useAttendanceFlow(
     events,
     selected,
     setSelected,
+    intendedEvent,
+    mismatchEvent,
     busy,
     status,
     tone,

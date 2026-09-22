@@ -1,0 +1,985 @@
+{
+  "config": {
+    "argv": [
+      "/Users/noah.wong/.local/share/fnm/node-versions/v22.18.0/installation/bin/node",
+      "/Users/noah.wong/Desktop/code/efcc/node_modules/@playwright/test/cli.js",
+      "test",
+      "--config=tests/e2e/programs-responsive-matrix.config.ts"
+    ],
+    "configFile": "/Users/noah.wong/Desktop/code/efcc/tests/e2e/programs-responsive-matrix.config.ts",
+    "rootDir": "/Users/noah.wong/Desktop/code/efcc/tests/e2e",
+    "failOnFlakyTests": false,
+    "forbidOnly": false,
+    "fullyParallel": false,
+    "globalSetup": null,
+    "globalTeardown": null,
+    "globalTimeout": 0,
+    "grep": {},
+    "grepInvert": null,
+    "maxFailures": 0,
+    "metadata": {
+      "actualWorkers": 1
+    },
+    "preserveOutput": "always",
+    "projects": [
+      {
+        "outputDir": "/Users/noah.wong/Desktop/code/efcc/test-results/programs-responsive/20260918t020548566z/responsive-output",
+        "repeatEach": 1,
+        "retries": 0,
+        "metadata": {
+          "actualWorkers": 1
+        },
+        "id": "phone-320",
+        "name": "phone-320",
+        "testDir": "/Users/noah.wong/Desktop/code/efcc/tests/e2e",
+        "testIgnore": [],
+        "testMatch": [
+          "**/programs-responsive-matrix.test.ts"
+        ],
+        "timeout": 60000
+      },
+      {
+        "outputDir": "/Users/noah.wong/Desktop/code/efcc/test-results/programs-responsive/20260918t020548566z/responsive-output",
+        "repeatEach": 1,
+        "retries": 0,
+        "metadata": {
+          "actualWorkers": 1
+        },
+        "id": "phone-360",
+        "name": "phone-360",
+        "testDir": "/Users/noah.wong/Desktop/code/efcc/tests/e2e",
+        "testIgnore": [],
+        "testMatch": [
+          "**/programs-responsive-matrix.test.ts"
+        ],
+        "timeout": 60000
+      },
+      {
+        "outputDir": "/Users/noah.wong/Desktop/code/efcc/test-results/programs-responsive/20260918t020548566z/responsive-output",
+        "repeatEach": 1,
+        "retries": 0,
+        "metadata": {
+          "actualWorkers": 1
+        },
+        "id": "phone-390",
+        "name": "phone-390",
+        "testDir": "/Users/noah.wong/Desktop/code/efcc/tests/e2e",
+        "testIgnore": [],
+        "testMatch": [
+          "**/programs-responsive-matrix.test.ts"
+        ],
+        "timeout": 60000
+      },
+      {
+        "outputDir": "/Users/noah.wong/Desktop/code/efcc/test-results/programs-responsive/20260918t020548566z/responsive-output",
+        "repeatEach": 1,
+        "retries": 0,
+        "metadata": {
+          "actualWorkers": 1
+        },
+        "id": "phone-402",
+        "name": "phone-402",
+        "testDir": "/Users/noah.wong/Desktop/code/efcc/tests/e2e",
+        "testIgnore": [],
+        "testMatch": [
+          "**/programs-responsive-matrix.test.ts"
+        ],
+        "timeout": 60000
+      },
+      {
+        "outputDir": "/Users/noah.wong/Desktop/code/efcc/test-results/programs-responsive/20260918t020548566z/responsive-output",
+        "repeatEach": 1,
+        "retries": 0,
+        "metadata": {
+          "actualWorkers": 1
+        },
+        "id": "phone-360-roster",
+        "name": "phone-360-roster",
+        "testDir": "/Users/noah.wong/Desktop/code/efcc/tests/e2e",
+        "testIgnore": [],
+        "testMatch": [
+          "**/programs-responsive-matrix.test.ts"
+        ],
+        "timeout": 60000
+      },
+      {
+        "outputDir": "/Users/noah.wong/Desktop/code/efcc/test-results/programs-responsive/20260918t020548566z/responsive-output",
+        "repeatEach": 1,
+        "retries": 0,
+        "metadata": {
+          "actualWorkers": 1
+        },
+        "id": "phone-390-roster",
+        "name": "phone-390-roster",
+        "testDir": "/Users/noah.wong/Desktop/code/efcc/tests/e2e",
+        "testIgnore": [],
+        "testMatch": [
+          "**/programs-responsive-matrix.test.ts"
+        ],
+        "timeout": 60000
+      },
+      {
+        "outputDir": "/Users/noah.wong/Desktop/code/efcc/test-results/programs-responsive/20260918t020548566z/responsive-output",
+        "repeatEach": 1,
+        "retries": 0,
+        "metadata": {
+          "actualWorkers": 1
+        },
+        "id": "phone-402-roster",
+        "name": "phone-402-roster",
+        "testDir": "/Users/noah.wong/Desktop/code/efcc/tests/e2e",
+        "testIgnore": [],
+        "testMatch": [
+          "**/programs-responsive-matrix.test.ts"
+        ],
+        "timeout": 60000
+      },
+      {
+        "outputDir": "/Users/noah.wong/Desktop/code/efcc/test-results/programs-responsive/20260918t020548566z/responsive-output",
+        "repeatEach": 1,
+        "retries": 0,
+        "metadata": {
+          "actualWorkers": 1
+        },
+        "id": "phone-600",
+        "name": "phone-600",
+        "testDir": "/Users/noah.wong/Desktop/code/efcc/tests/e2e",
+        "testIgnore": [],
+        "testMatch": [
+          "**/programs-responsive-matrix.test.ts"
+        ],
+        "timeout": 60000
+      },
+      {
+        "outputDir": "/Users/noah.wong/Desktop/code/efcc/test-results/programs-responsive/20260918t020548566z/responsive-output",
+        "repeatEach": 1,
+        "retries": 0,
+        "metadata": {
+          "actualWorkers": 1
+        },
+        "id": "phone-799",
+        "name": "phone-799",
+        "testDir": "/Users/noah.wong/Desktop/code/efcc/tests/e2e",
+        "testIgnore": [],
+        "testMatch": [
+          "**/programs-responsive-matrix.test.ts"
+        ],
+        "timeout": 60000
+      },
+      {
+        "outputDir": "/Users/noah.wong/Desktop/code/efcc/test-results/programs-responsive/20260918t020548566z/responsive-output",
+        "repeatEach": 1,
+        "retries": 0,
+        "metadata": {
+          "actualWorkers": 1
+        },
+        "id": "desktop-800",
+        "name": "desktop-800",
+        "testDir": "/Users/noah.wong/Desktop/code/efcc/tests/e2e",
+        "testIgnore": [],
+        "testMatch": [
+          "**/programs-responsive-matrix.test.ts"
+        ],
+        "timeout": 60000
+      },
+      {
+        "outputDir": "/Users/noah.wong/Desktop/code/efcc/test-results/programs-responsive/20260918t020548566z/responsive-output",
+        "repeatEach": 1,
+        "retries": 0,
+        "metadata": {
+          "actualWorkers": 1
+        },
+        "id": "desktop-1024",
+        "name": "desktop-1024",
+        "testDir": "/Users/noah.wong/Desktop/code/efcc/tests/e2e",
+        "testIgnore": [],
+        "testMatch": [
+          "**/programs-responsive-matrix.test.ts"
+        ],
+        "timeout": 60000
+      },
+      {
+        "outputDir": "/Users/noah.wong/Desktop/code/efcc/test-results/programs-responsive/20260918t020548566z/responsive-output",
+        "repeatEach": 1,
+        "retries": 0,
+        "metadata": {
+          "actualWorkers": 1
+        },
+        "id": "desktop-1440",
+        "name": "desktop-1440",
+        "testDir": "/Users/noah.wong/Desktop/code/efcc/tests/e2e",
+        "testIgnore": [],
+        "testMatch": [
+          "**/programs-responsive-matrix.test.ts"
+        ],
+        "timeout": 60000
+      }
+    ],
+    "quiet": false,
+    "reporter": [
+      [
+        "line",
+        null
+      ],
+      [
+        "json",
+        {
+          "outputFile": "/Users/noah.wong/Desktop/code/efcc/test-results/programs-responsive/20260918t020548566z/responsive-results.json"
+        }
+      ]
+    ],
+    "reportSlowTests": {
+      "max": 5,
+      "threshold": 300000
+    },
+    "shard": null,
+    "tags": [],
+    "updateSnapshots": "missing",
+    "updateSourceMethod": "patch",
+    "version": "1.62.1",
+    "workers": 1,
+    "webServer": null
+  },
+  "suites": [
+    {
+      "title": "programs-responsive-matrix.test.ts",
+      "file": "programs-responsive-matrix.test.ts",
+      "column": 0,
+      "line": 0,
+      "specs": [],
+      "suites": [
+        {
+          "title": "T05.6 responsive Programs UI matrix",
+          "file": "programs-responsive-matrix.test.ts",
+          "line": 635,
+          "column": 6,
+          "specs": [
+            {
+              "title": "participant catalog/detail keeps action geometry and dock clearance bounded",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "phone-320",
+                  "projectName": "phone-320",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 1612,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-09-18T02:06:10.669Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "a888355c368212f6d01f-14b2ca4e44665f5ae454",
+              "file": "programs-responsive-matrix.test.ts",
+              "line": 636,
+              "column": 3
+            },
+            {
+              "title": "management settings keeps composition and controls usable",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "phone-320",
+                  "projectName": "phone-320",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 1127,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-09-18T02:06:12.827Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "a888355c368212f6d01f-21e78c16a8dda41f48f7",
+              "file": "programs-responsive-matrix.test.ts",
+              "line": 690,
+              "column": 3
+            },
+            {
+              "title": "participant catalog/detail keeps action geometry and dock clearance bounded",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "phone-360",
+                  "projectName": "phone-360",
+                  "results": [
+                    {
+                      "workerIndex": 1,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 1775,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-09-18T02:06:14.486Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "a888355c368212f6d01f-a79d378c8c90852409f6",
+              "file": "programs-responsive-matrix.test.ts",
+              "line": 636,
+              "column": 3
+            },
+            {
+              "title": "management settings keeps composition and controls usable",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "phone-360",
+                  "projectName": "phone-360",
+                  "results": [
+                    {
+                      "workerIndex": 1,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 952,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-09-18T02:06:16.548Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "a888355c368212f6d01f-863e656c83406640669f",
+              "file": "programs-responsive-matrix.test.ts",
+              "line": 690,
+              "column": 3
+            },
+            {
+              "title": "participant catalog/detail keeps action geometry and dock clearance bounded",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "phone-390",
+                  "projectName": "phone-390",
+                  "results": [
+                    {
+                      "workerIndex": 2,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 1650,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-09-18T02:06:17.967Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "a888355c368212f6d01f-26b3e5d8053cca00064e",
+              "file": "programs-responsive-matrix.test.ts",
+              "line": 636,
+              "column": 3
+            },
+            {
+              "title": "management settings keeps composition and controls usable",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "phone-390",
+                  "projectName": "phone-390",
+                  "results": [
+                    {
+                      "workerIndex": 2,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 925,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-09-18T02:06:19.898Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "a888355c368212f6d01f-5d5a948fa73933d5ed99",
+              "file": "programs-responsive-matrix.test.ts",
+              "line": 690,
+              "column": 3
+            },
+            {
+              "title": "participant catalog/detail keeps action geometry and dock clearance bounded",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "phone-402",
+                  "projectName": "phone-402",
+                  "results": [
+                    {
+                      "workerIndex": 3,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 1653,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-09-18T02:06:21.307Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "a888355c368212f6d01f-f986cad2216d29df1d5a",
+              "file": "programs-responsive-matrix.test.ts",
+              "line": 636,
+              "column": 3
+            },
+            {
+              "title": "management settings keeps composition and controls usable",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "phone-402",
+                  "projectName": "phone-402",
+                  "results": [
+                    {
+                      "workerIndex": 3,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 877,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-09-18T02:06:23.231Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "a888355c368212f6d01f-b9384be91bb881a96eb1",
+              "file": "programs-responsive-matrix.test.ts",
+              "line": 690,
+              "column": 3
+            },
+            {
+              "title": "attendance roster remains scannable at phone widths",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "phone-360-roster",
+                  "projectName": "phone-360-roster",
+                  "results": [
+                    {
+                      "workerIndex": 4,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 997,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-09-18T02:06:24.605Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "a888355c368212f6d01f-ec2cd46c1ce0825ec4fd",
+              "file": "programs-responsive-matrix.test.ts",
+              "line": 778,
+              "column": 3
+            },
+            {
+              "title": "attendance roster remains scannable at phone widths",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "phone-390-roster",
+                  "projectName": "phone-390-roster",
+                  "results": [
+                    {
+                      "workerIndex": 5,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 1031,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-09-18T02:06:27.274Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "a888355c368212f6d01f-72febc2ee4dcd847dd6b",
+              "file": "programs-responsive-matrix.test.ts",
+              "line": 778,
+              "column": 3
+            },
+            {
+              "title": "attendance roster remains scannable at phone widths",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "phone-402-roster",
+                  "projectName": "phone-402-roster",
+                  "results": [
+                    {
+                      "workerIndex": 6,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 994,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-09-18T02:06:29.846Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "a888355c368212f6d01f-bd30a468fc1fe37fb0e3",
+              "file": "programs-responsive-matrix.test.ts",
+              "line": 778,
+              "column": 3
+            },
+            {
+              "title": "participant catalog/detail keeps action geometry and dock clearance bounded",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "phone-600",
+                  "projectName": "phone-600",
+                  "results": [
+                    {
+                      "workerIndex": 7,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 1707,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-09-18T02:06:32.329Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "a888355c368212f6d01f-656145584fbc44649737",
+              "file": "programs-responsive-matrix.test.ts",
+              "line": 636,
+              "column": 3
+            },
+            {
+              "title": "management settings keeps composition and controls usable",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "phone-600",
+                  "projectName": "phone-600",
+                  "results": [
+                    {
+                      "workerIndex": 7,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 977,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-09-18T02:06:34.262Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "a888355c368212f6d01f-66f9228dd40054236a54",
+              "file": "programs-responsive-matrix.test.ts",
+              "line": 690,
+              "column": 3
+            },
+            {
+              "title": "participant catalog/detail keeps action geometry and dock clearance bounded",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "phone-799",
+                  "projectName": "phone-799",
+                  "results": [
+                    {
+                      "workerIndex": 8,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 1887,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-09-18T02:06:35.673Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "a888355c368212f6d01f-63a69b16194ab7970c68",
+              "file": "programs-responsive-matrix.test.ts",
+              "line": 636,
+              "column": 3
+            },
+            {
+              "title": "management settings keeps composition and controls usable",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "phone-799",
+                  "projectName": "phone-799",
+                  "results": [
+                    {
+                      "workerIndex": 8,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 966,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-09-18T02:06:37.798Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "a888355c368212f6d01f-26c84bd4005754f55086",
+              "file": "programs-responsive-matrix.test.ts",
+              "line": 690,
+              "column": 3
+            },
+            {
+              "title": "participant catalog/detail keeps action geometry and dock clearance bounded",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "desktop-800",
+                  "projectName": "desktop-800",
+                  "results": [
+                    {
+                      "workerIndex": 9,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 1746,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-09-18T02:06:39.255Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "a888355c368212f6d01f-1ef90efc433ddac4adf7",
+              "file": "programs-responsive-matrix.test.ts",
+              "line": 636,
+              "column": 3
+            },
+            {
+              "title": "management settings keeps composition and controls usable",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "desktop-800",
+                  "projectName": "desktop-800",
+                  "results": [
+                    {
+                      "workerIndex": 9,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 939,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-09-18T02:06:41.299Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "a888355c368212f6d01f-3bebde710514d51d3b85",
+              "file": "programs-responsive-matrix.test.ts",
+              "line": 690,
+              "column": 3
+            },
+            {
+              "title": "participant catalog/detail keeps action geometry and dock clearance bounded",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "desktop-1024",
+                  "projectName": "desktop-1024",
+                  "results": [
+                    {
+                      "workerIndex": 10,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 1833,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-09-18T02:06:42.709Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "a888355c368212f6d01f-abef0bb829c111d8ddc6",
+              "file": "programs-responsive-matrix.test.ts",
+              "line": 636,
+              "column": 3
+            },
+            {
+              "title": "management settings keeps composition and controls usable",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "desktop-1024",
+                  "projectName": "desktop-1024",
+                  "results": [
+                    {
+                      "workerIndex": 10,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 949,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-09-18T02:06:44.808Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "a888355c368212f6d01f-533b588095b021a503ef",
+              "file": "programs-responsive-matrix.test.ts",
+              "line": 690,
+              "column": 3
+            },
+            {
+              "title": "participant catalog/detail keeps action geometry and dock clearance bounded",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "desktop-1440",
+                  "projectName": "desktop-1440",
+                  "results": [
+                    {
+                      "workerIndex": 11,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 1919,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-09-18T02:06:46.231Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "a888355c368212f6d01f-a498a570220948956719",
+              "file": "programs-responsive-matrix.test.ts",
+              "line": 636,
+              "column": 3
+            },
+            {
+              "title": "management settings keeps composition and controls usable",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "desktop-1440",
+                  "projectName": "desktop-1440",
+                  "results": [
+                    {
+                      "workerIndex": 11,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 934,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-09-18T02:06:48.410Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "a888355c368212f6d01f-270f6c606d14fd8d480f",
+              "file": "programs-responsive-matrix.test.ts",
+              "line": 690,
+              "column": 3
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "errors": [],
+  "stats": {
+    "startTime": "2026-09-18T02:06:10.318Z",
+    "duration": 39083.777,
+    "expected": 21,
+    "skipped": 0,
+    "unexpected": 0,
+    "flaky": 0
+  }
+}

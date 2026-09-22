@@ -2,6 +2,7 @@ import { cleanup, render, screen } from "@testing-library/react";
 import type { MouseEventHandler } from "react";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
+import { RpcError } from "@/lib/api";
 import { COPY } from "@/lib/copy";
 
 interface EventDetailProbeProps {
@@ -150,5 +151,40 @@ describe("PUI-05 participant Event Detail origin and Back contract", () => {
     screen.getByTestId("event-detail-back").dispatchEvent(fallbackClick);
     expect(fallbackClick.defaultPrevented).toBe(true);
     expect(mocks.historyBack).toHaveBeenCalledOnce();
+  });
+
+  test("keeps a server FORBIDDEN event load on the safe recovery surface", async () => {
+    vi.resetModules();
+    vi.doUnmock("./event-detail");
+    vi.doMock("@/lib/programs/program-api", () => ({
+      cancelEvent: vi.fn(),
+      getEvent: vi
+        .fn()
+        .mockRejectedValue(new RpcError({ code: "FORBIDDEN", status: 403 })),
+      setEventAvailability: vi.fn(),
+      updateEvent: vi.fn(),
+    }));
+
+    const { ParticipantEventDetailPage: RealParticipantEventDetailPage } =
+      await import("./participant-event-detail-page");
+    render(
+      <RealParticipantEventDetailPage
+        programId="program-1"
+        eventId="event-1"
+        origin="programs"
+      />
+    );
+
+    await expect(
+      screen.findByRole("heading", {
+        name: COPY.programs.eventDetailRecoveryTitle,
+      })
+    ).resolves.toBeInTheDocument();
+    expect(
+      screen.getByRole("link", { name: COPY.programs.backToOrigin })
+    ).toHaveAttribute("href", "/programs?program=program-1&from=programs");
+    expect(
+      screen.queryByRole("link", { name: COPY.programs.goToScan })
+    ).not.toBeInTheDocument();
   });
 });

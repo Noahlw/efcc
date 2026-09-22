@@ -21,6 +21,11 @@ const ARTIFACT_ROOT = path.join(
   "test-results",
   "programs-browser-acceptance"
 );
+export const PROGRAMS_BROWSER_VIEWPORTS = {
+  "phone-360": { width: 360, height: 800 },
+  "phone-390": { width: 390, height: 844 },
+  "phone-402": { width: 402, height: 874 },
+};
 
 function runId() {
   return new Date()
@@ -126,9 +131,7 @@ async function main() {
         );
         const failureEvidence = await readPlaywrightFailureEvidence(
           reportPath,
-          {
-            "phone-390": { width: 390, height: 844 },
-          },
+          PROGRAMS_BROWSER_VIEWPORTS,
           {
             route: "/programs (participant and management journeys)",
             state: "authenticated Program journey",
@@ -141,7 +144,8 @@ async function main() {
           logicalScenario: primaryFailure?.logicalScenario ?? null,
           route: primaryFailure?.route ?? null,
           state: primaryFailure?.state ?? null,
-          viewport: primaryFailure?.viewport ?? { width: 390, height: 844 },
+          viewport:
+            primaryFailure?.viewport ?? PROGRAMS_BROWSER_VIEWPORTS["phone-390"],
           failureEvidence,
           message: manifest.failure,
           firstCausalRuntimeSignal: firstCausalRuntimeSignal(runtimeLogs),
@@ -162,9 +166,7 @@ async function main() {
       );
       const failureEvidence = await readPlaywrightFailureEvidence(
         reportPath,
-        {
-          "phone-390": { width: 390, height: 844 },
-        },
+        PROGRAMS_BROWSER_VIEWPORTS,
         {
           route: "/programs (participant and management journeys)",
           state: "authenticated Program journey",
@@ -176,7 +178,9 @@ async function main() {
         logicalScenario: failureEvidence[0]?.logicalScenario ?? null,
         route: failureEvidence[0]?.route ?? "/programs",
         state: failureEvidence[0]?.state ?? "authenticated Program journey",
-        viewport: failureEvidence[0]?.viewport ?? { width: 390, height: 844 },
+        viewport:
+          failureEvidence[0]?.viewport ??
+          PROGRAMS_BROWSER_VIEWPORTS["phone-390"],
         failureEvidence,
         message: manifest.failure,
         firstCausalRuntimeSignal: null,

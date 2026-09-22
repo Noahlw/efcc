@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "runtime": "createTestHarness",
+  "config": "web/wrangler.jsonc",
+  "suite": "tests/e2e/programs-responsive-matrix.config.ts",
+  "revision": "c60e3317dbce53f48bb1487c48d27c21a23a82a0",
+  "layer": "responsive-matrix",
+  "retries": 0,
+  "status": "passed",
+  "startedAt": "2026-09-17T15:53:32.166Z",
+  "target": "http://127.0.0.1:57438",
+  "reportPath": "test-results/programs-responsive/20260917t155332160z/responsive-results.json",
+  "promotionRunId": null,
+  "failure": null,
+  "finishedAt": "2026-09-17T15:54:17.717Z"
+}

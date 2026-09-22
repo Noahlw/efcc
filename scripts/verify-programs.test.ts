@@ -26,6 +26,14 @@ describe("T05.7 Programs promotion gate", () => {
       "responsive-matrix",
       "non-browser-precommit",
     ]);
+    expect(
+      PROMOTION_STAGES.map(({ name, expectedTests }) => [name, expectedTests])
+    ).toEqual([
+      ["worker-contract", undefined],
+      ["browser-acceptance", 33],
+      ["responsive-matrix", 21],
+      ["non-browser-precommit", undefined],
+    ]);
   });
 
   test("keeps the sustained canary separate and discloses B-003", () => {

@@ -17,9 +17,21 @@ import {
   SCREEN_PRESENTATION_DECLARATIONS,
   SCREEN_CATALOG,
   createScreenCatalog,
+  isPresentationGapReference,
   validateScreenCatalog,
 } from "./presentation-catalog";
-import { WorkspaceNotifications } from "./programs.stories";
+import {
+  ManagementDirectory,
+  ParticipantDirectory,
+  ParticipantEventDetail,
+  ParticipantProgramDetail,
+  WorkspaceEvents,
+  WorkspaceNotifications,
+  WorkspaceOverview,
+  WorkspaceParticipants,
+  WorkspaceSchedule,
+  WorkspaceSettings,
+} from "./programs.stories";
 
 const psnsFor = (screenId: string) =>
   SCREEN_CATALOG.find((entry) => entry.screenId === screenId)?.psns ?? [];
@@ -86,7 +98,7 @@ describe("T07 Screen Catalog foundation", () => {
       intent: null,
       primaryBaselinePsn: "PSN-AUTH-SIGN-IN-DEFAULT",
     });
-    expect(SCREEN_PRESENTATION_DECLARATIONS).toHaveLength(40);
+    expect(SCREEN_PRESENTATION_DECLARATIONS).toHaveLength(41);
   });
 
   test("classifies the credential/PIN upgrade as a transient sign-in state", () => {
@@ -108,6 +120,46 @@ describe("T07 Screen Catalog foundation", () => {
   test("catalogs every T07.3 Programs composition with truthful intent", () => {
     expect(PROGRAMS_PRESENTATION_DECLARATIONS).toHaveLength(10);
     expect(
+      PROGRAMS_PRESENTATION_DECLARATIONS.map(({ screenId, intent }) => [
+        screenId,
+        intent,
+      ])
+    ).toStrictEqual([
+      ["programs-participant-directory", null],
+      ["programs-participant-program-detail", "program=t07-3-program"],
+      [
+        "programs-participant-event-detail",
+        "program=t07-3-program&event=t07-3-event",
+      ],
+      ["programs-management-directory", "mode=management"],
+      ["programs-workspace-overview", "mode=management&program=t07-3-program"],
+      [
+        "programs-workspace-events",
+        "mode=management&program=t07-3-program&task=events",
+      ],
+      [
+        "programs-workspace-participants",
+        "mode=management&program=t07-3-program&task=participants",
+      ],
+      [
+        "programs-workspace-settings",
+        "mode=management&program=t07-3-program&task=settings",
+      ],
+      [
+        "programs-workspace-schedule",
+        "mode=management&program=t07-3-program&task=schedule",
+      ],
+      [
+        "programs-workspace-notifications",
+        "mode=management&task=notifications",
+      ],
+    ]);
+    expect(
+      PROGRAMS_PRESENTATION_DECLARATIONS.every(
+        ({ gap }) => gap === "ISSUE-#601"
+      )
+    ).toBe(true);
+    expect(
       SCREEN_CATALOG.find(
         (entry) => entry.screenId === "programs-participant-event-detail"
       )
@@ -123,6 +175,36 @@ describe("T07 Screen Catalog foundation", () => {
     ).toMatchObject({
       route: "/programs",
       intent: "mode=management&task=notifications",
+    });
+  });
+
+  test("pins the exact route baseline to material scenario mapping", () => {
+    const scenarioFor = (story: unknown) =>
+      (story as { parameters?: { programsScenario?: string } }).parameters
+        ?.programsScenario;
+
+    expect({
+      ParticipantDirectory: scenarioFor(ParticipantDirectory),
+      ParticipantProgramDetail: scenarioFor(ParticipantProgramDetail),
+      ParticipantEventDetail: scenarioFor(ParticipantEventDetail),
+      ManagementDirectory: scenarioFor(ManagementDirectory),
+      WorkspaceOverview: scenarioFor(WorkspaceOverview),
+      WorkspaceEvents: scenarioFor(WorkspaceEvents),
+      WorkspaceParticipants: scenarioFor(WorkspaceParticipants),
+      WorkspaceSettings: scenarioFor(WorkspaceSettings),
+      WorkspaceSchedule: scenarioFor(WorkspaceSchedule),
+      WorkspaceNotifications: scenarioFor(WorkspaceNotifications),
+    }).toStrictEqual({
+      ParticipantDirectory: "participant-directory-member",
+      ParticipantProgramDetail: "participant-program-detail-active",
+      ParticipantEventDetail: "participant-event-detail-closed",
+      ManagementDirectory: "management-directory-mixed",
+      WorkspaceOverview: "workspace-overview-populated",
+      WorkspaceEvents: "workspace-events-mixed",
+      WorkspaceParticipants: "workspace-participants-pending",
+      WorkspaceSettings: "workspace-settings-dirty",
+      WorkspaceSchedule: "workspace-schedule-focused",
+      WorkspaceNotifications: "notifications-unread",
     });
   });
 
@@ -265,7 +347,7 @@ describe("T07 Screen Catalog foundation", () => {
   });
 
   test("catalogs every T07.5 Attendance/Scanner/Guest composition", () => {
-    expect(ATTENDANCE_SCANNER_GUEST_PRESENTATION_DECLARATIONS).toHaveLength(5);
+    expect(ATTENDANCE_SCANNER_GUEST_PRESENTATION_DECLARATIONS).toHaveLength(6);
     expect(
       SCREEN_CATALOG.find(
         (entry) => entry.screenId === "attendance-assisted-check-in"
@@ -277,7 +359,7 @@ describe("T07 Screen Catalog foundation", () => {
       primaryBaselinePsn: "PSN-ATTENDANCE-ASSISTED-CHECK-IN",
     });
     expect(SCREEN_CATALOG).toHaveLength(36);
-    expect(SCREEN_PRESENTATION_DECLARATIONS).toHaveLength(40);
+    expect(SCREEN_PRESENTATION_DECLARATIONS).toHaveLength(41);
   });
 
   test("keeps Notifications Story metadata and navigation parser-backed", () => {
@@ -311,5 +393,12 @@ describe("T07 Screen Catalog foundation", () => {
     expect(
       validateScreenCatalog(SCREEN_CATALOG, ALL_PRESENTATION_DECLARATIONS)
     ).toStrictEqual([]);
+  });
+
+  test("accepts only explicit approval-package or open-issue gap references", () => {
+    expect(isPresentationGapReference("APV-T07-OWNER-1")).toBe(true);
+    expect(isPresentationGapReference("ISSUE-#601")).toBe(true);
+    expect(isPresentationGapReference("ISSUE-0")).toBe(false);
+    expect(isPresentationGapReference("untracked")).toBe(false);
   });
 });

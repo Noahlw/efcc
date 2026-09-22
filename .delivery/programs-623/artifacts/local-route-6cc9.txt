@@ -1,0 +1,6 @@
+Candidate: 6cc9a5d9c8beb87833a6183f65834d102f3a7215
+Target: http://127.0.0.1:8787 (wrangler dev + local D1)
+Command: pnpm exec playwright test --config=tests/e2e/programs-d1.config.ts --project=phone-390 --grep "changing the visible range|a stale plan is rejected before writes" --retries=0 --workers=1
+Result: 2 passed (5.5s)
+Scenarios: Preview A -> mutate visible range -> stale state -> Review Again -> Generate; bypassed stale Plan rejected before Event writes.
+Assertions: the route test asserts the post-bypass Event count is unchanged, then asserts the fresh-review generation increases the count; source locator tests/e2e/programs-d1.test.ts:4972-5017.

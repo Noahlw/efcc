@@ -1,11 +1,19 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { FormEvent, MouseEvent } from "react";
+import type { MouseEvent, ReactNode } from "react";
 
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
 import { RpcError } from "@/lib/api";
 import { COPY, errorCopyFor } from "@/lib/copy";
 import { announce } from "@/lib/live-region";
@@ -14,7 +22,6 @@ import {
   listEnrollmentRequests,
   listEnrollments,
   listEvents,
-  updateProgram,
 } from "@/lib/programs/program-api";
 import type {
   Department,
@@ -25,26 +32,40 @@ import type {
   ProgramEvent,
 } from "@/lib/programs/program-api";
 import {
-  ScreenCard,
-  ScreenEditor,
-  ScreenField,
   ScreenHeader,
   ScreenLoadingRows,
-  ScreenSection,
   ScreenState,
   ScreenStatus,
 } from "@/lib/screen-foundations";
 import { rememberDeepLink } from "@/lib/session";
 
+import { applyAuthoritativeRevision } from "./authoritative-revision";
+import { clearEventCreateDraft } from "./event-create-draft";
 import { EventDetail } from "./event-detail";
-import { buildProgramsHref } from "./programs-intent";
-import type { ProgramsTask } from "./programs-intent";
+import {
+  clearManagementDraft,
+  clearManagementDraftsForEntity,
+} from "./management-draft";
+import { readWorkspaceMutationRecovery } from "./mutation-recovery";
+import { buildProgramsHref, parseProgramsIntent } from "./programs-intent";
+import type {
+  ManagementEventAction,
+  ProgramsEventFilter,
+  ProgramsParticipantTab,
+  ProgramsScheduleEditor,
+  ProgramsScheduleOrigin,
+  ProgramsSettingsSection,
+  ProgramsTask,
+} from "./programs-intent";
+import type { ManagementNotificationState } from "./programs-notifications";
+import { rememberWorkspaceScroll } from "./programs-scroll";
 import { useAsyncResource } from "./use-async-resource";
 import {
   hasModule,
   redirectToLoginIfRequired,
   useWorkspaceRouteContext,
 } from "./workspace-context";
+import type { SettingsNavigationRequest } from "./workspace-settings-task";
 import {
   TaskUnavailable,
   WorkspaceNavigation,
@@ -61,13 +82,48 @@ export interface ProgramWorkspaceProps {
   created?: boolean;
   /** EVT-01 (#251): management Event deep link under the events or participants task. */
   eventId?: string | null;
+  eventAction?: ManagementEventAction;
   /** NTF-01 (#256): fresh server-shaped attention counts from the shell. */
   attention?: ManagementAttention | null;
+  notificationState?: ManagementNotificationState;
   onAttentionRefresh?: () => void;
+  /** Compact route-level action rendered in the shared ScreenHeader. */
+  headerAction?: ReactNode;
   onBack: () => void;
-  onTaskChange: (task: ProgramsTask | null, eventId?: string | null) => void;
+  onTaskChange: (
+    task: ProgramsTask | null,
+    eventId?: string | null,
+    scheduleOrigin?: ProgramsScheduleOrigin
+  ) => void;
+  /** Opens the shared focused attendance roster for an exact Event. */
+  onOpenAttendance?: (eventId: string) => void;
   /** EVT-01 (#251): navigate the Event deep link; null returns to the list. */
-  onEventChange?: (eventId: string | null) => void;
+  onEventChange?: (
+    eventId: string | null,
+    eventAction?: ManagementEventAction
+  ) => void;
+  eventFilter?: ProgramsEventFilter;
+  onEventFilterChange?: (filter: ProgramsEventFilter) => void;
+  participantTab?: ProgramsParticipantTab;
+  participantQuery?: string;
+  onParticipantTabChange?: (tab: ProgramsParticipantTab) => void;
+  onParticipantQueryChange?: (query: string) => void;
+  settingsSection?: ProgramsSettingsSection;
+  onSettingsSectionChange?: (section: ProgramsSettingsSection | null) => void;
+  scheduleOrigin?: ProgramsScheduleOrigin;
+  scheduleEditor?: ProgramsScheduleEditor;
+  scheduleRuleId?: string;
+  onScheduleEditorChange?: (
+    editor: ProgramsScheduleEditor | null,
+    ruleId?: string | null
+  ) => void;
+}
+
+interface WorkspaceResource {
+  program: Program;
+  department: Department | null;
+  modules: DepartmentModule[];
+  cockpit?: ManagementCockpitView | null;
 }
 
 type WorkspaceState =
@@ -85,28 +141,36 @@ type WorkspaceState =
       message: string;
     };
 
+type EventDraftNavigation =
+  | { kind: "back" }
+  | {
+      kind: "task";
+      task: ProgramsTask | null;
+      eventId?: string | null;
+      scheduleOrigin?: ProgramsScheduleOrigin;
+    }
+  | { kind: "href"; href: string };
+
 function initialSummary(
-  modules: readonly DepartmentModule[] = []
+  modules?: readonly DepartmentModule[]
 ): WorkspaceSummaryState {
+  const modulesKnown = modules !== undefined;
+  const available = (moduleKey: DepartmentModule["module_key"]) =>
+    modulesKnown && hasModule(modules, moduleKey);
+  const unavailable = (moduleKey: DepartmentModule["module_key"]) =>
+    available(moduleKey)
+      ? { status: "loading" as const }
+      : modulesKnown
+        ? {
+            status: "unavailable" as const,
+            message: COPY.programs.workspaceTaskUnavailable,
+          }
+        : { status: "loading" as const };
+
   return {
-    events: hasModule(modules, "events")
-      ? { status: "loading" }
-      : {
-          status: "unavailable",
-          message: COPY.programs.workspaceTaskUnavailable,
-        },
-    pendingRequests: hasModule(modules, "enrollment")
-      ? { status: "loading" }
-      : {
-          status: "unavailable",
-          message: COPY.programs.workspaceTaskUnavailable,
-        },
-    activeParticipants: hasModule(modules, "enrollment")
-      ? { status: "loading" }
-      : {
-          status: "unavailable",
-          message: COPY.programs.workspaceTaskUnavailable,
-        },
+    events: unavailable("events"),
+    pendingRequests: unavailable("enrollment"),
+    activeParticipants: unavailable("enrollment"),
   };
 }
 
@@ -154,288 +218,109 @@ function behaviorLabel(value: Program["behavior_type"]): string {
     : COPY.programs.detailBehaviorOneOff;
 }
 
-function discoverabilityLabel(value: Program["discoverability"]): string {
-  return value === "Listed"
-    ? COPY.programs.discoverabilityListed
-    : COPY.programs.discoverabilityUnlisted;
-}
-
-function enrollmentLabel(value: Program["enrollment_mode"]): string {
-  return value === "MemberRequest"
-    ? COPY.programs.detailParticipationMemberRequest
-    : COPY.programs.detailParticipationManagerOnly;
-}
-
-function courseMutationError(caught: unknown): string {
-  if (!(caught instanceof RpcError)) {
-    return COPY.programs.programTransportAmbiguous;
-  }
-  if (
-    caught.problem.code === "NETWORK_ERROR" ||
-    caught.problem.code === "MALFORMED_RESPONSE" ||
-    caught.problem.code === "MALFORMED_REQUEST" ||
-    caught.problem.code === "UNAVAILABLE"
-  ) {
-    return COPY.programs.programTransportAmbiguous;
-  }
-  if (caught.problem.code === "CONFLICT") {
-    return COPY.programs.programConflict;
-  }
-  return errorCopyFor(caught.problem.code, caught.problem.detail);
-}
-
-const CourseFacts = ({
-  program,
-  department,
-  notice,
-  onBack,
-  onEdit,
-}: {
-  program: Program;
-  department: Department | null;
-  notice: string | null;
-  onBack: () => void;
-  onEdit: () => void;
-}) => {
-  const headingRef = useRef<HTMLHeadingElement>(null);
-
-  useEffect(() => {
-    headingRef.current?.focus();
-  }, []);
-
-  return (
-    <ScreenSection
-      title={COPY.programs.courseFacts}
-      headingId="programs-workspace-facts-title"
-      headingRef={headingRef}
-    >
-      <div className="flex min-w-0 flex-wrap items-center gap-2">
-        <Button
-          type="button"
-          className="w-fit border-[var(--screen-line-strong)] bg-transparent text-[var(--screen-ink)] whitespace-normal hover:bg-[var(--screen-surface-soft)]"
-          onClick={onBack}
-        >
-          {COPY.programs.backToOverview}
-        </Button>
-      </div>
-      {notice !== null && (
-        <output
-          className="block rounded-[var(--screen-radius-control)] border border-[var(--screen-success)] bg-[var(--screen-success-surface)] p-3 text-[var(--screen-ink)] [overflow-wrap:anywhere]"
-          aria-live="polite"
-        >
-          {notice}
-        </output>
-      )}
-      <ScreenCard>
-        <dl className="grid min-w-0 gap-3 [overflow-wrap:anywhere]">
-          <div>
-            <dt>{COPY.programs.factsName}</dt>
-            <dd>{program.name}</dd>
-          </div>
-          <div>
-            <dt>{COPY.programs.factsDepartment}</dt>
-            <dd>{department?.name ?? "—"}</dd>
-          </div>
-          <div>
-            <dt>{COPY.programs.factsPurpose}</dt>
-            <dd>
-              {program.description ?? COPY.programs.programDescriptionEmpty}
-            </dd>
-          </div>
-          <div>
-            <dt>{COPY.programs.factsLifecycle}</dt>
-            <dd>{lifecycleLabel(program.lifecycle)}</dd>
-          </div>
-          <div>
-            <dt>{COPY.programs.factsDiscoverability}</dt>
-            <dd>{discoverabilityLabel(program.discoverability)}</dd>
-          </div>
-          <div>
-            <dt>{COPY.programs.factsEnrollmentMode}</dt>
-            <dd>{enrollmentLabel(program.enrollment_mode)}</dd>
-          </div>
-          <div>
-            <dt>{COPY.programs.workspaceBehavior}</dt>
-            <dd>{behaviorLabel(program.behavior_type)}</dd>
-          </div>
-        </dl>
-      </ScreenCard>
-      {program.capabilities.manage && (
-        <Button
-          type="button"
-          className="w-fit border-[var(--screen-line-strong)] bg-transparent text-[var(--screen-ink)] whitespace-normal hover:bg-[var(--screen-surface-soft)]"
-          onClick={onEdit}
-        >
-          {COPY.programs.editTitle}
-        </Button>
-      )}
-    </ScreenSection>
-  );
-};
-
-const CourseEdit = ({
-  program,
-  onBack,
-  onSaved,
-}: {
-  program: Program;
-  onBack: () => void;
-  onSaved: (program: Program) => void;
-}) => {
-  const [name, setName] = useState(program.name);
-  const [purpose, setPurpose] = useState(program.description ?? "");
-  const [busy, setBusy] = useState(false);
-  const [formError, setFormError] = useState<string | null>(null);
-  const headingRef = useRef<HTMLHeadingElement>(null);
-  const mounted = useRef(true);
-
-  useEffect(() => {
-    headingRef.current?.focus();
-    return () => {
-      mounted.current = false;
-    };
-  }, []);
-
-  const submit = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    const trimmedName = name.trim();
-    const trimmedPurpose = purpose.trim();
-    if (!trimmedName || !trimmedPurpose) {
-      setFormError(COPY.programs.editRequired);
-      announce(COPY.programs.editRequired);
-      return;
-    }
-    setBusy(true);
-    setFormError(null);
-    try {
-      const result = await updateProgram(program.program_id, {
-        name: trimmedName,
-        description: trimmedPurpose,
-      });
-      if (mounted.current) {
-        onSaved(result.program);
-      }
-    } catch (error) {
-      if (redirectToLoginIfRequired(error)) {
-        return;
-      }
-      if (mounted.current) {
-        const message = courseMutationError(error);
-        setFormError(message);
-        announce(message);
-      }
-    } finally {
-      if (mounted.current) {
-        setBusy(false);
-      }
-    }
-  };
-
-  const invalidName = formError !== null && !name.trim();
-  const invalidPurpose = formError !== null && !purpose.trim();
-
-  return (
-    <ScreenSection
-      title={COPY.programs.editTitle}
-      headingId="programs-workspace-course-edit-title"
-      headingRef={headingRef}
-    >
-      <div className="flex min-w-0 flex-wrap items-center gap-2">
-        <Button
-          type="button"
-          className="w-fit border-[var(--screen-line-strong)] bg-transparent text-[var(--screen-ink)] whitespace-normal hover:bg-[var(--screen-surface-soft)]"
-          onClick={onBack}
-          aria-label={COPY.programs.backToOverview}
-        >
-          {COPY.programs.backToOverview}
-        </Button>
-      </div>
-      {formError !== null && (
-        <ScreenState
-          id="programs-workspace-course-edit-error"
-          kind="error"
-          title={formError}
-        />
-      )}
-      <ScreenEditor onSubmit={submit} noValidate>
-        <ScreenField
-          htmlFor="programs-course-name"
-          label={COPY.programs.editNameLabel}
-        >
-          <Input
-            id="programs-course-name"
-            className="min-w-0 border-[var(--screen-line-strong)] bg-[var(--screen-surface)] text-base"
-            value={name}
-            onChange={(event) => setName(event.target.value)}
-            required
-            disabled={busy}
-            aria-invalid={invalidName || undefined}
-            aria-describedby={
-              formError !== null
-                ? "programs-workspace-course-edit-error"
-                : undefined
-            }
-          />
-        </ScreenField>
-        <ScreenField
-          htmlFor="programs-course-purpose"
-          label={COPY.programs.editPurposeLabel}
-        >
-          <Textarea
-            id="programs-course-purpose"
-            className="min-w-0 border-[var(--screen-line-strong)] bg-[var(--screen-surface)] text-base"
-            value={purpose}
-            onChange={(event) => setPurpose(event.target.value)}
-            rows={4}
-            required
-            disabled={busy}
-            aria-invalid={invalidPurpose || undefined}
-            aria-describedby={
-              formError !== null
-                ? "programs-workspace-course-edit-error"
-                : undefined
-            }
-          />
-        </ScreenField>
-        <div className="flex min-w-0 flex-wrap items-center gap-3">
-          <Button
-            className="w-fit bg-[var(--screen-accent)] text-white whitespace-normal hover:bg-[var(--screen-accent-deep)]"
-            type="submit"
-            disabled={busy}
-          >
-            {busy ? COPY.programs.submitting : COPY.programs.saveCourse}
-          </Button>
-        </div>
-      </ScreenEditor>
-    </ScreenSection>
-  );
-};
 export const ProgramWorkspace = ({
   programId,
   task,
   eventId,
+  eventAction,
   created = false,
   attention = null,
+  notificationState,
   onAttentionRefresh = () => {},
+  headerAction,
   onBack,
   onTaskChange,
+  onOpenAttendance,
   onEventChange,
+  eventFilter,
+  onEventFilterChange,
+  participantTab,
+  participantQuery,
+  onParticipantTabChange,
+  onParticipantQueryChange,
+  settingsSection,
+  onSettingsSectionChange,
+  scheduleOrigin,
+  scheduleEditor,
+  scheduleRuleId,
+  onScheduleEditorChange,
 }: ProgramWorkspaceProps) => {
   const { departmentId, hash } = useWorkspaceRouteContext();
   const [summary, setSummary] = useState<WorkspaceSummaryState>(() =>
     initialSummary()
   );
-  const [courseView, setCourseView] = useState<"overview" | "facts" | "edit">(
-    "overview"
+  const [settingsEditorFocused, setSettingsEditorFocused] = useState(false);
+  const [settingsEditorDirty, setSettingsEditorDirty] = useState(false);
+  const [settingsNavigationBlocked, setSettingsNavigationBlocked] =
+    useState(false);
+  const [pendingSettingsNavigation, setPendingSettingsNavigation] =
+    useState<SettingsNavigationRequest | null>(null);
+  const allowSettingsNavigation = useRef(false);
+  const [eventDraftDirty, setEventDraftDirty] = useState(false);
+  const [eventEditDirty, setEventEditDirty] = useState(false);
+  const [eventNavigationBlocked, setEventNavigationBlocked] = useState(false);
+  const [pendingEventDraftNavigation, setPendingEventDraftNavigation] =
+    useState<EventDraftNavigation | null>(null);
+  const handleEventDraftDirtyChange = useCallback(
+    (dirty: boolean) => {
+      setEventDraftDirty(dirty);
+      if (!dirty && !eventEditDirty) {
+        setEventNavigationBlocked(false);
+        setPendingEventDraftNavigation(null);
+      }
+    },
+    [eventEditDirty]
   );
-  const [courseProgramOverride, setCourseProgramOverride] =
-    useState<Program | null>(null);
-  const [courseNotice, setCourseNotice] = useState<string | null>(null);
-  const createdFlash = created && courseView === "overview" && !task;
+  const handleEventEditDirtyChange = useCallback(
+    (dirty: boolean) => {
+      setEventEditDirty(dirty);
+      if (!dirty && !eventDraftDirty) {
+        setEventNavigationBlocked(false);
+        setPendingEventDraftNavigation(null);
+      }
+    },
+    [eventDraftDirty]
+  );
+  const handleSettingsNavigationRequest = useCallback(
+    (request: SettingsNavigationRequest) => {
+      setPendingSettingsNavigation(request);
+      setSettingsNavigationBlocked(true);
+      announce(COPY.programs.settingsUnsaved);
+    },
+    []
+  );
+  const createdFlash = created && !task;
   const [workspaceNotice, setWorkspaceNotice] = useState<string | null>(
     createdFlash ? COPY.programs.programCreatedNotice : null
   );
+  const [workspaceFreshness, setWorkspaceFreshness] = useState<
+    "fresh" | "refreshing" | "stale"
+  >("fresh");
+  const [workspaceMutationBlocked, setWorkspaceMutationBlocked] = useState(
+    () => {
+      const recovery = readWorkspaceMutationRecovery();
+      return (
+        task === "events" &&
+        ((recovery?.surface === "event" &&
+          recovery.programId === programId &&
+          recovery.eventId === eventId) ||
+          (recovery?.surface === "events" && recovery.programId === programId))
+      );
+    }
+  );
+  const allowEventDraftLeave = useRef(false);
+  const allowSettingsHistoryBack = useRef(false);
   const mounted = useRef(true);
+  const summaryRequestId = useRef(0);
+  const workspaceRefreshQueue = useRef(Promise.resolve());
+  const authoritativeWorkspace = useRef<{
+    programId: string;
+    resource: WorkspaceResource;
+  } | null>(null);
+  // `useAsyncResource` returns the wire payload after toReady runs. Keep a
+  // separate decision bit so callers cannot mistake a revision-rejected
+  // payload for a fresh workspace.
+  const workspaceReadAccepted = useRef(true);
   useEffect(() => {
     mounted.current = true;
     return () => {
@@ -443,42 +328,322 @@ export const ProgramWorkspace = ({
     };
   }, []);
   useEffect(() => {
-    setCourseView("overview");
-    setCourseProgramOverride(null);
-    setCourseNotice(null);
-    setWorkspaceNotice(created ? COPY.programs.programCreatedNotice : null);
-  }, [programId]);
+    setWorkspaceNotice(
+      created && !task ? COPY.programs.programCreatedNotice : null
+    );
+  }, [created, programId, task]);
   useEffect(() => {
-    setCourseView("overview");
-    setCourseProgramOverride(null);
-    setCourseNotice(null);
-    if (task) {
-      setWorkspaceNotice(null);
+    if (task !== "settings" && task !== "schedule") {
+      setSettingsEditorFocused(false);
+      setSettingsEditorDirty(false);
+      setSettingsNavigationBlocked(false);
     }
   }, [task]);
+  useEffect(() => {
+    const guardActive =
+      workspaceMutationBlocked ||
+      (task === "events" && (eventDraftDirty || eventEditDirty));
+    if (!guardActive) {
+      return;
+    }
+    const blockedHref = window.location.href;
+    const guardToken = crypto.randomUUID();
+    const guardedState = {
+      ...(typeof window.history.state === "object" &&
+      window.history.state !== null
+        ? (window.history.state as Record<string, unknown>)
+        : {}),
+      efccProgramWorkspaceMutationGuard: guardToken,
+    };
+    window.history.pushState(guardedState, "", blockedHref);
+    const announceBlocked = () => {
+      announce(
+        workspaceMutationBlocked
+          ? COPY.programs.programTransportAmbiguous
+          : eventEditDirty
+            ? COPY.programs.eventEditUnsaved
+            : COPY.programs.eventCreateUnsaved
+      );
+    };
+    const handleDocumentClick = (event: globalThis.MouseEvent) => {
+      if (
+        event.defaultPrevented ||
+        event.button !== 0 ||
+        event.metaKey ||
+        event.ctrlKey ||
+        event.shiftKey ||
+        event.altKey
+      ) {
+        return;
+      }
+      const { target } = event;
+      if (!(target instanceof Element)) {
+        return;
+      }
+      const anchor = target.closest("a[href]");
+      if (!(anchor instanceof HTMLAnchorElement)) {
+        return;
+      }
+      const rawHref = anchor.getAttribute("href");
+      if (
+        rawHref?.startsWith("#") ||
+        anchor.hasAttribute("download") ||
+        (anchor.getAttribute("target") ?? "").toLowerCase() === "_blank"
+      ) {
+        return;
+      }
+      const currentUrl = new URL(window.location.href);
+      const nextUrl = new URL(anchor.href, currentUrl);
+      if (
+        (nextUrl.protocol !== "http:" && nextUrl.protocol !== "https:") ||
+        nextUrl.origin !== currentUrl.origin ||
+        (nextUrl.pathname === currentUrl.pathname &&
+          nextUrl.search === currentUrl.search &&
+          nextUrl.hash !== currentUrl.hash)
+      ) {
+        return;
+      }
+      event.preventDefault();
+      event.stopPropagation();
+      if (workspaceMutationBlocked) {
+        announceBlocked();
+        return;
+      }
+      const routeIntent =
+        nextUrl.pathname === "/programs"
+          ? parseProgramsIntent(`${nextUrl.search}${nextUrl.hash}`)
+          : null;
+      if (
+        routeIntent &&
+        !routeIntent.malformed &&
+        routeIntent.mode === "management" &&
+        routeIntent.programId === programId &&
+        routeIntent.eventAction === undefined &&
+        routeIntent.departmentSettingsId === undefined
+      ) {
+        setPendingEventDraftNavigation({
+          kind: "task",
+          task: routeIntent.task ?? null,
+          ...(routeIntent.eventId === undefined
+            ? {}
+            : { eventId: routeIntent.eventId }),
+          ...(routeIntent.scheduleOrigin === undefined
+            ? {}
+            : { scheduleOrigin: routeIntent.scheduleOrigin }),
+        });
+      } else {
+        setPendingEventDraftNavigation({ kind: "href", href: nextUrl.href });
+      }
+      setEventNavigationBlocked(true);
+      announceBlocked();
+    };
+    const handleBeforeUnload = (event: BeforeUnloadEvent) => {
+      if (allowEventDraftLeave.current) {
+        return;
+      }
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    const handlePopState = () => {
+      window.history.pushState(guardedState, "", blockedHref);
+      if (!workspaceMutationBlocked) {
+        setPendingEventDraftNavigation(
+          eventId
+            ? { kind: "task", task: "events" }
+            : task === "schedule"
+              ? { kind: "task", task: "events" }
+              : { kind: "back" }
+        );
+        setEventNavigationBlocked(true);
+      }
+      announceBlocked();
+    };
+    document.addEventListener("click", handleDocumentClick, true);
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    window.addEventListener("popstate", handlePopState);
+    return () => {
+      document.removeEventListener("click", handleDocumentClick, true);
+      window.removeEventListener("beforeunload", handleBeforeUnload);
+      window.removeEventListener("popstate", handlePopState);
+      if (
+        window.location.href === blockedHref &&
+        (window.history.state as Record<string, unknown> | null)
+          ?.efccProgramWorkspaceMutationGuard === guardToken
+      ) {
+        window.history.back();
+      }
+    };
+  }, [
+    eventDraftDirty,
+    eventEditDirty,
+    eventId,
+    task,
+    workspaceMutationBlocked,
+  ]);
+  useEffect(() => {
+    if (
+      !(
+        (task === "settings" || task === "schedule") &&
+        settingsEditorFocused &&
+        settingsEditorDirty
+      )
+    ) {
+      return;
+    }
+    const restoringHistory = { current: false };
+    const handlePopState = () => {
+      if (allowSettingsHistoryBack.current) {
+        allowSettingsHistoryBack.current = false;
+        return;
+      }
+      if (restoringHistory.current) {
+        restoringHistory.current = false;
+        return;
+      }
+      restoringHistory.current = true;
+      window.history.forward();
+      setPendingSettingsNavigation({ kind: "history-back" });
+      setSettingsNavigationBlocked(true);
+      announce(COPY.programs.settingsUnsaved);
+    };
+    window.addEventListener("popstate", handlePopState);
+    return () => {
+      window.removeEventListener("popstate", handlePopState);
+    };
+  }, [settingsEditorDirty, settingsEditorFocused, task]);
+  useEffect(() => {
+    if (task !== "schedule" || !settingsEditorFocused || !settingsEditorDirty) {
+      return;
+    }
+    const handleDocumentClick = (event: globalThis.MouseEvent) => {
+      if (
+        allowSettingsNavigation.current ||
+        event.defaultPrevented ||
+        event.button !== 0 ||
+        event.metaKey ||
+        event.ctrlKey ||
+        event.shiftKey ||
+        event.altKey
+      ) {
+        return;
+      }
+      const { target } = event;
+      if (!(target instanceof Element)) {
+        return;
+      }
+      const anchor = target.closest("a[href]");
+      if (!(anchor instanceof HTMLAnchorElement)) {
+        return;
+      }
+      const href = anchor.getAttribute("href");
+      if (
+        href?.startsWith("#") ||
+        anchor.hasAttribute("download") ||
+        (anchor.getAttribute("target") ?? "").toLowerCase() === "_blank"
+      ) {
+        return;
+      }
+      const currentUrl = new URL(window.location.href);
+      const nextUrl = new URL(anchor.href, currentUrl);
+      if (
+        (nextUrl.protocol !== "http:" && nextUrl.protocol !== "https:") ||
+        nextUrl.origin !== currentUrl.origin
+      ) {
+        return;
+      }
+      event.preventDefault();
+      event.stopPropagation();
+      const routeIntent =
+        nextUrl.pathname === "/programs"
+          ? parseProgramsIntent(`${nextUrl.search}${nextUrl.hash}`)
+          : null;
+      if (
+        routeIntent &&
+        !routeIntent.malformed &&
+        routeIntent.mode === "management" &&
+        routeIntent.programId === programId
+      ) {
+        setPendingSettingsNavigation({
+          kind: "route",
+          task: routeIntent.task ?? null,
+          ...(routeIntent.eventId === undefined
+            ? {}
+            : { eventId: routeIntent.eventId }),
+          ...(routeIntent.scheduleOrigin === undefined
+            ? {}
+            : { scheduleOrigin: routeIntent.scheduleOrigin }),
+          ...(routeIntent.scheduleEditor === undefined
+            ? {}
+            : { scheduleEditor: routeIntent.scheduleEditor }),
+          ...(routeIntent.scheduleRuleId === undefined
+            ? {}
+            : { scheduleRuleId: routeIntent.scheduleRuleId }),
+          ...(routeIntent.settingsSection === undefined
+            ? {}
+            : { settingsSection: routeIntent.settingsSection }),
+        });
+      } else {
+        setPendingSettingsNavigation({ kind: "href", href: nextUrl.href });
+      }
+      setSettingsNavigationBlocked(true);
+      announce(COPY.programs.settingsUnsaved);
+    };
+    const handleBeforeUnload = (event: BeforeUnloadEvent) => {
+      if (allowSettingsNavigation.current) {
+        return;
+      }
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    document.addEventListener("click", handleDocumentClick, true);
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => {
+      document.removeEventListener("click", handleDocumentClick, true);
+      window.removeEventListener("beforeunload", handleBeforeUnload);
+    };
+  }, [programId, settingsEditorDirty, settingsEditorFocused, task]);
+  const focusedSettingsEditor =
+    (task === "settings" || task === "schedule") && settingsEditorFocused;
   const {
     state,
     run: loadWorkspace,
+    refresh: refreshWorkspaceResource,
     retry,
-  } = useAsyncResource<
-    {
-      program: Program;
-      department: Department | null;
-      modules: DepartmentModule[];
-      cockpit?: ManagementCockpitView | null;
-    },
-    WorkspaceState
-  >(
+  } = useAsyncResource<WorkspaceResource, WorkspaceState>(
     async () => getManagementProgram(programId),
     {
       toLoading: () => ({ kind: "loading" }),
-      toReady: ({ program, department, modules, cockpit }) => ({
-        kind: "ready",
-        program,
-        department,
-        modules,
-        cockpit,
-      }),
+      toReady: (next) => {
+        const previous =
+          authoritativeWorkspace.current?.programId === programId
+            ? authoritativeWorkspace.current.resource
+            : null;
+        const authoritativeProgram =
+          applyAuthoritativeRevision(next.program, previous?.program ?? null) ??
+          next.program;
+        const authoritativeCockpit =
+          next.cockpit === undefined
+            ? previous?.cockpit
+            : next.cockpit === null
+              ? (previous?.cockpit ?? null)
+              : (applyAuthoritativeRevision(
+                  next.cockpit,
+                  previous?.cockpit ?? null
+                ) ?? next.cockpit);
+        workspaceReadAccepted.current =
+          previous === null ||
+          (authoritativeProgram === next.program &&
+            authoritativeCockpit === next.cockpit);
+        const resource = {
+          ...next,
+          program: authoritativeProgram,
+          ...(authoritativeCockpit === undefined
+            ? {}
+            : { cockpit: authoritativeCockpit }),
+        };
+        authoritativeWorkspace.current = { programId, resource };
+        return { kind: "ready", ...resource };
+      },
       onError: (error) => {
         if (
           error instanceof RpcError &&
@@ -528,8 +693,49 @@ export const ProgramWorkspace = ({
     void loadWorkspace();
   }, [loadWorkspace]);
 
+  const refreshAuthoritativeWorkspace = useCallback(async () => {
+    const previousRefresh = workspaceRefreshQueue.current;
+    const currentRefresh = (async () => {
+      await previousRefresh;
+      setWorkspaceFreshness("refreshing");
+      try {
+        workspaceReadAccepted.current = false;
+        const refreshed = await refreshWorkspaceResource();
+        const accepted =
+          refreshed !== undefined && workspaceReadAccepted.current;
+        if (mounted.current) {
+          setWorkspaceFreshness(accepted ? "fresh" : "stale");
+        }
+        return accepted ? refreshed?.program : undefined;
+      } catch (error) {
+        if (mounted.current) {
+          setWorkspaceFreshness("stale");
+        }
+        throw error;
+      }
+    })();
+    workspaceRefreshQueue.current = (async () => {
+      try {
+        await currentRefresh;
+      } catch (error) {
+        void error;
+      }
+    })();
+    return currentRefresh;
+  }, [refreshWorkspaceResource]);
+
+  const retryWorkspaceRefresh = useCallback(async () => {
+    try {
+      await refreshAuthoritativeWorkspace();
+    } catch (error) {
+      // The refresh owner has already recorded the stale state and recovery copy.
+      void error;
+    }
+  }, [refreshAuthoritativeWorkspace]);
+
   const loadSummary = useCallback(
     async (modules: readonly DepartmentModule[]) => {
+      const requestId = ++summaryRequestId.current;
       const events = hasModule(modules, "events")
         ? readSummary(listEvents(programId), ({ events: value }) => value)
         : Promise.resolve(
@@ -561,7 +767,7 @@ export const ProgramWorkspace = ({
         pendingRequests,
         activeParticipants,
       ]);
-      if (!mounted.current) {
+      if (!mounted.current || summaryRequestId.current !== requestId) {
         return;
       }
       setSummary({
@@ -573,39 +779,26 @@ export const ProgramWorkspace = ({
     [programId]
   );
 
+  const retrySummary = useCallback(() => {
+    if (state.kind !== "ready") {
+      return;
+    }
+    if (
+      state.cockpit === null ||
+      (state.cockpit && state.cockpit.program_id !== programId)
+    ) {
+      retry();
+      return;
+    }
+    void loadSummary(state.modules);
+  }, [loadSummary, programId, retry, state]);
+
   useEffect(() => {
     if (state.kind !== "ready" || task !== undefined) {
       return;
     }
     void loadSummary(state.modules);
   }, [loadSummary, state, task]);
-  const openCourseFacts = () => {
-    setCourseNotice(null);
-    setCourseView("facts");
-    announce(COPY.programs.courseFacts);
-  };
-  const openCourseEdit = () => {
-    setCourseNotice(null);
-    setCourseView("edit");
-    announce(COPY.programs.editTitle);
-  };
-  const returnToCockpit = () => {
-    setCourseNotice(null);
-    setCourseView("overview");
-    announce(COPY.programs.workspaceTitle);
-  };
-  const returnToFacts = () => {
-    setCourseNotice(null);
-    setCourseView("facts");
-    announce(COPY.programs.courseFacts);
-  };
-  const handleCourseSaved = (updatedProgram: Program) => {
-    setCourseProgramOverride(updatedProgram);
-    setCourseNotice(COPY.programs.courseSaved);
-    setCourseView("facts");
-    announce(COPY.programs.courseSaved);
-  };
-
   if (state.kind === "loading") {
     return (
       <ScreenLoadingRows
@@ -654,7 +847,7 @@ export const ProgramWorkspace = ({
       />
     );
   }
-  const workspaceProgram = courseProgramOverride ?? state.program;
+  const workspaceProgram = state.program;
   const canAccessSettings =
     workspaceProgram.capabilities.manage ||
     workspaceProgram.capabilities.leader_assign;
@@ -663,6 +856,127 @@ export const ProgramWorkspace = ({
       ? canAccessSettings
       : workspaceProgram.capabilities.manage;
   const focusedSchedule = task === "schedule";
+
+  const continueEventDraftEditing = () => {
+    setPendingEventDraftNavigation(null);
+    setEventNavigationBlocked(false);
+  };
+
+  const continueSettingsEditing = () => {
+    setPendingSettingsNavigation(null);
+  };
+
+  const permitOneWorkspaceNavigation = () => {
+    allowSettingsNavigation.current = true;
+    queueMicrotask(() => {
+      allowSettingsNavigation.current = false;
+    });
+  };
+
+  const navigateWorkspaceTask = (
+    nextTask: ProgramsTask | null,
+    nextEventId?: string | null,
+    nextScheduleOrigin?: ProgramsScheduleOrigin
+  ) => {
+    if (task === "participants" && nextTask !== "participants") {
+      rememberWorkspaceScroll(`${programId}:participants`);
+    }
+    if (nextScheduleOrigin !== undefined) {
+      onTaskChange(nextTask, nextEventId, nextScheduleOrigin);
+      return;
+    }
+    if (nextEventId === undefined) {
+      onTaskChange(nextTask);
+      return;
+    }
+    onTaskChange(nextTask, nextEventId);
+  };
+
+  const discardSettingsAndLeave = () => {
+    const pending = pendingSettingsNavigation;
+    if (pending === null) {
+      return;
+    }
+    clearManagementDraftsForEntity(programId);
+    setPendingSettingsNavigation(null);
+    setSettingsNavigationBlocked(false);
+    setSettingsEditorFocused(false);
+    setSettingsEditorDirty(false);
+    if (pending.kind === "history-back") {
+      allowSettingsHistoryBack.current = true;
+      window.history.back();
+      return;
+    }
+    if (pending.kind === "back") {
+      onSettingsSectionChange?.(null);
+      return;
+    }
+    if (pending.kind === "route") {
+      if (pending.task === "settings") {
+        setSettingsEditorFocused(false);
+        setSettingsEditorDirty(false);
+        onSettingsSectionChange?.(pending.settingsSection ?? null);
+        return;
+      }
+      if (pending.task === "schedule") {
+        onScheduleEditorChange?.(
+          pending.scheduleEditor ?? null,
+          pending.scheduleRuleId ?? null
+        );
+      }
+      onSettingsSectionChange?.(null);
+      setSettingsEditorFocused(false);
+      setSettingsEditorDirty(false);
+      permitOneWorkspaceNavigation();
+      navigateWorkspaceTask(
+        pending.task,
+        pending.eventId,
+        pending.scheduleOrigin
+      );
+      return;
+    }
+    allowSettingsNavigation.current = true;
+    window.location.assign(pending.href);
+  };
+
+  const discardEventDraftAndLeave = () => {
+    const pending = pendingEventDraftNavigation;
+    if (pending === null) {
+      return;
+    }
+    clearEventCreateDraft(programId);
+    if (eventId) {
+      clearManagementDraft(eventId, "event-edit");
+    }
+    setPendingEventDraftNavigation(null);
+    setEventNavigationBlocked(false);
+    setEventDraftDirty(false);
+    setEventEditDirty(false);
+    if (pending.kind === "href") {
+      allowEventDraftLeave.current = true;
+      window.location.assign(pending.href);
+      return;
+    }
+    if (pending.kind === "back") {
+      if (focusedSchedule) {
+        onTaskChange("events");
+      } else {
+        onBack();
+      }
+      return;
+    }
+    if (pending.eventId === undefined && pending.scheduleOrigin === undefined) {
+      permitOneWorkspaceNavigation();
+      navigateWorkspaceTask(pending.task);
+      return;
+    }
+    permitOneWorkspaceNavigation();
+    navigateWorkspaceTask(
+      pending.task,
+      pending.eventId,
+      pending.scheduleOrigin
+    );
+  };
 
   const handleWorkspaceBack = (event: MouseEvent<HTMLAnchorElement>) => {
     if (
@@ -675,86 +989,133 @@ export const ProgramWorkspace = ({
     ) {
       return;
     }
-    event.preventDefault();
-    if (focusedSchedule) {
-      onTaskChange("events");
+    if (workspaceMutationBlocked) {
+      event.preventDefault();
+      announce(COPY.programs.programTransportAmbiguous);
       return;
+    }
+    event.preventDefault();
+    if (settingsEditorFocused && settingsEditorDirty) {
+      setSettingsNavigationBlocked(true);
+      announce(COPY.programs.settingsUnsaved);
+      return;
+    }
+    if (eventDraftDirty || eventEditDirty) {
+      setPendingEventDraftNavigation(
+        eventId ? { kind: "task", task: "events" } : { kind: "back" }
+      );
+      setEventNavigationBlocked(true);
+      announce(
+        eventEditDirty
+          ? COPY.programs.eventEditUnsaved
+          : COPY.programs.eventCreateUnsaved
+      );
+      return;
+    }
+    if (focusedSchedule) {
+      onTaskChange(scheduleOrigin === "settings" ? "settings" : "events");
+      return;
+    }
+    if (task === "participants") {
+      rememberWorkspaceScroll(`${programId}:participants`);
     }
     onBack();
   };
   const handleWorkspaceTaskChange = (
     nextTask: ProgramsTask | null,
-    nextEventId?: string | null
+    nextEventId?: string | null,
+    nextScheduleOrigin?: ProgramsScheduleOrigin
   ) => {
-    setCourseView("overview");
-    setCourseNotice(null);
-    if (nextEventId === undefined) {
-      onTaskChange(nextTask);
-    } else {
-      onTaskChange(nextTask, nextEventId);
+    if (allowSettingsNavigation.current) {
+      allowSettingsNavigation.current = false;
+      navigateWorkspaceTask(nextTask, nextEventId, nextScheduleOrigin);
+      return;
     }
+    if (workspaceMutationBlocked) {
+      announce(COPY.programs.programTransportAmbiguous);
+      return;
+    }
+    if (settingsEditorFocused && settingsEditorDirty) {
+      setSettingsNavigationBlocked(true);
+      announce(COPY.programs.settingsUnsaved);
+      return;
+    }
+    if (eventDraftDirty || eventEditDirty) {
+      setPendingEventDraftNavigation({
+        kind: "task",
+        task: nextTask,
+        ...(nextEventId === undefined ? {} : { eventId: nextEventId }),
+        ...(nextScheduleOrigin === undefined
+          ? {}
+          : { scheduleOrigin: nextScheduleOrigin }),
+      });
+      setEventNavigationBlocked(true);
+      announce(
+        eventEditDirty
+          ? COPY.programs.eventEditUnsaved
+          : COPY.programs.eventCreateUnsaved
+      );
+      return;
+    }
+    navigateWorkspaceTask(nextTask, nextEventId, nextScheduleOrigin);
   };
-
   return (
     <section
       className="grid min-w-0"
-      aria-labelledby="programs-workspace-title"
+      aria-labelledby={
+        focusedSettingsEditor ? undefined : "programs-workspace-title"
+      }
     >
-      <ScreenHeader
-        headingId="programs-workspace-title"
-        level="child"
-        title={
-          focusedSchedule
-            ? COPY.programs.schedulePageTitle
-            : workspaceProgram.name
-        }
-        lead={
-          <>
-            <span>
-              {focusedSchedule
-                ? `${workspaceProgram.name} · ${state.department?.name ?? COPY.programs.workspaceDepartment}`
-                : state.department
-                  ? `${state.department.name} · ${state.department.code}`
-                  : COPY.programs.workspaceDepartment}
-            </span>
-            {!focusedSchedule && (
-              <span aria-hidden="true">
-                {` · ${behaviorLabel(workspaceProgram.behavior_type)}`}
+      {!focusedSettingsEditor && (
+        <ScreenHeader
+          headingId="programs-workspace-title"
+          level="root"
+          title={
+            focusedSchedule
+              ? COPY.programs.schedulePageTitle
+              : workspaceProgram.name
+          }
+          lead={
+            <>
+              <span>
+                {focusedSchedule
+                  ? `${workspaceProgram.name} · ${state.department?.name ?? COPY.programs.workspaceDepartment}`
+                  : state.department
+                    ? `${state.department.name} · ${state.department.code}`
+                    : COPY.programs.workspaceDepartment}
               </span>
-            )}
-          </>
-        }
-        backHref={buildProgramsHref({
-          mode: "management",
-          programId: focusedSchedule ? programId : null,
-          departmentId,
-          task: focusedSchedule ? "events" : null,
-          hash,
-        })}
-        backLabel={COPY.programs.workspaceBack}
-        onBack={handleWorkspaceBack}
-        status={
-          focusedSchedule ? undefined : (
-            <ScreenStatus tone={lifecycleTone(workspaceProgram.lifecycle)}>
-              {lifecycleLabel(workspaceProgram.lifecycle)}
-            </ScreenStatus>
-          )
-        }
-        action={
-          !focusedSchedule &&
-          task === undefined &&
-          courseView === "overview" &&
-          workspaceProgram.capabilities.manage ? (
-            <Button
-              className="w-fit bg-[var(--screen-accent)] text-white whitespace-normal hover:bg-[var(--screen-accent-deep)]"
-              type="button"
-              onClick={openCourseEdit}
-            >
-              {COPY.programs.cockpitEditProgram}
-            </Button>
-          ) : undefined
-        }
-      />
+              {!focusedSchedule && (
+                <span aria-hidden="true">
+                  {` · ${behaviorLabel(workspaceProgram.behavior_type)}`}
+                </span>
+              )}
+            </>
+          }
+          backHref={buildProgramsHref({
+            mode: "management",
+            programId: focusedSchedule ? programId : null,
+            departmentId,
+            task: focusedSchedule
+              ? scheduleOrigin === "settings"
+                ? "settings"
+                : "events"
+              : null,
+            eventFilter: focusedSchedule ? undefined : eventFilter,
+            settingsSection: focusedSchedule ? undefined : settingsSection,
+            hash,
+          })}
+          backLabel={COPY.programs.workspaceBack}
+          onBack={handleWorkspaceBack}
+          status={
+            focusedSchedule ? undefined : (
+              <ScreenStatus tone={lifecycleTone(workspaceProgram.lifecycle)}>
+                {lifecycleLabel(workspaceProgram.lifecycle)}
+              </ScreenStatus>
+            )
+          }
+          action={headerAction}
+        />
+      )}
 
       {workspaceNotice !== null && (
         <output
@@ -764,6 +1125,109 @@ export const ProgramWorkspace = ({
           {workspaceNotice}
         </output>
       )}
+      {workspaceFreshness !== "fresh" && (
+        <output
+          className="flex min-w-0 flex-wrap items-center gap-3 rounded-[var(--screen-radius-control)] border border-[var(--screen-pending)] bg-[var(--screen-pending-surface)] p-3 text-sm text-[var(--screen-ink)] [overflow-wrap:anywhere]"
+          aria-live="polite"
+          aria-busy={workspaceFreshness === "refreshing"}
+          data-testid="program-workspace-freshness"
+        >
+          <span>
+            {workspaceFreshness === "refreshing"
+              ? COPY.programs.workspaceRefreshing
+              : COPY.programs.workspaceSavedStale}
+          </span>
+          {workspaceFreshness === "stale" && (
+            <Button
+              type="button"
+              variant="outline"
+              className="w-fit border-[var(--screen-line-strong)] bg-transparent text-[var(--screen-ink)] hover:bg-[var(--screen-surface-soft)]"
+              onClick={() => void retryWorkspaceRefresh()}
+            >
+              {COPY.programs.workspaceRetryRefresh}
+            </Button>
+          )}
+        </output>
+      )}
+      {eventNavigationBlocked && (eventDraftDirty || eventEditDirty) && (
+        <output
+          className="block rounded-[var(--screen-radius-control)] border border-[var(--screen-pending)] bg-[var(--screen-pending-surface)] p-3 text-sm text-[var(--screen-ink)] [overflow-wrap:anywhere]"
+          aria-live="polite"
+          data-testid="program-event-draft-navigation-blocked"
+        >
+          {eventEditDirty
+            ? COPY.programs.eventEditUnsaved
+            : COPY.programs.eventCreateUnsaved}
+        </output>
+      )}
+      <AlertDialog
+        open={pendingEventDraftNavigation !== null}
+        onOpenChange={(open) => {
+          if (!open) {
+            continueEventDraftEditing();
+          }
+        }}
+      >
+        <AlertDialogContent className="min-w-0 max-w-[32rem]">
+          <AlertDialogHeader className="min-w-0 gap-2">
+            <AlertDialogTitle className="min-w-0 wrap-anywhere text-lg font-extrabold text-[var(--screen-ink)]">
+              {eventEditDirty
+                ? COPY.programs.eventEditLeaveTitle
+                : COPY.programs.eventCreateLeaveTitle}
+            </AlertDialogTitle>
+            <AlertDialogDescription className="min-w-0 wrap-anywhere text-sm leading-[var(--screen-body-leading)] text-[var(--screen-muted)]">
+              {eventEditDirty
+                ? COPY.programs.eventEditLeaveDescription
+                : COPY.programs.eventCreateLeaveDescription}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="flex min-w-0 flex-wrap gap-2 max-[799px]:flex-col-reverse [&>*]:h-auto [&>*]:min-h-11 [&>*]:w-full [&>*]:whitespace-normal sm:[&>*]:w-fit">
+            <AlertDialogCancel
+              className="min-h-[var(--screen-touch-target)] border-[var(--screen-line-strong)] bg-[var(--screen-surface)] px-4 py-3 text-base font-bold text-[var(--screen-ink)] hover:bg-[var(--screen-surface-soft)] hover:text-[var(--screen-ink)]"
+              onClick={continueEventDraftEditing}
+            >
+              {COPY.programs.eventCreateContinueEditing}
+            </AlertDialogCancel>
+            <AlertDialogAction
+              variant="destructive"
+              className="min-h-[var(--screen-touch-target)] px-4 py-3"
+              onClick={discardEventDraftAndLeave}
+            >
+              {COPY.programs.eventCreateDiscardAndLeave}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+      <AlertDialog
+        open={pendingSettingsNavigation !== null}
+        onOpenChange={(open) => {
+          if (!open) {
+            continueSettingsEditing();
+          }
+        }}
+      >
+        <AlertDialogContent className="min-w-0 max-w-[32rem]">
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {COPY.programs.settingsLeaveTitle}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {COPY.programs.settingsLeaveDescription}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={continueSettingsEditing}>
+              {COPY.programs.settingsContinueEditing}
+            </AlertDialogCancel>
+            <AlertDialogAction
+              variant="destructive"
+              onClick={discardSettingsAndLeave}
+            >
+              {COPY.programs.settingsDiscardAndLeave}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
       {!focusedSchedule && (
         <WorkspaceNavigation
           programId={programId}
@@ -771,33 +1235,24 @@ export const ProgramWorkspace = ({
           modules={state.modules}
           departmentId={departmentId}
           hash={hash}
+          eventFilter={eventFilter}
+          participantTab={participantTab}
+          participantQuery={participantQuery}
+          settingsSection={settingsSection}
           canManage={workspaceProgram.capabilities.manage}
           canAccessSettings={canAccessSettings}
           onTaskChange={handleWorkspaceTaskChange}
         />
       )}
 
-      {courseView === "facts" ? (
-        <CourseFacts
-          program={workspaceProgram}
-          department={state.department}
-          notice={courseNotice}
-          onBack={returnToCockpit}
-          onEdit={openCourseEdit}
-        />
-      ) : courseView === "edit" ? (
-        <CourseEdit
-          program={workspaceProgram}
-          onBack={returnToFacts}
-          onSaved={handleCourseSaved}
-        />
-      ) : task &&
-        task === "events" &&
-        eventId &&
-        workspaceProgram.capabilities.manage ? (
+      {task &&
+      task === "events" &&
+      eventId &&
+      workspaceProgram.capabilities.manage ? (
         <EventDetail
           programId={programId}
           eventId={eventId}
+          eventAction={eventAction}
           canManage={workspaceProgram.capabilities.manage}
           departmentId={departmentId}
           hash={hash}
@@ -806,9 +1261,13 @@ export const ProgramWorkspace = ({
             programId,
             departmentId,
             task: "events",
+            eventFilter,
             hash,
           })}
           onAttentionRefresh={onAttentionRefresh}
+          onWorkspaceRefresh={refreshAuthoritativeWorkspace}
+          onMutationBlockChange={setWorkspaceMutationBlocked}
+          onDirtyChange={handleEventEditDirtyChange}
           onBack={(event) => {
             if (
               event.defaultPrevented ||
@@ -819,6 +1278,18 @@ export const ProgramWorkspace = ({
               event.altKey ||
               !onEventChange
             ) {
+              return;
+            }
+            if (workspaceMutationBlocked) {
+              event.preventDefault();
+              announce(COPY.programs.programTransportAmbiguous);
+              return;
+            }
+            if (eventEditDirty) {
+              event.preventDefault();
+              setPendingEventDraftNavigation({ kind: "task", task: "events" });
+              setEventNavigationBlocked(true);
+              announce(COPY.programs.eventEditUnsaved);
               return;
             }
             event.preventDefault();
@@ -833,9 +1304,44 @@ export const ProgramWorkspace = ({
           departmentId={departmentId}
           hash={hash}
           attention={attention}
+          cockpit={state.cockpit}
+          notificationState={notificationState}
           onAttentionRefresh={onAttentionRefresh}
+          onWorkspaceRefresh={refreshAuthoritativeWorkspace}
+          onMutationBlockChange={setWorkspaceMutationBlocked}
+          workspaceFreshness={workspaceFreshness}
           onTaskChange={handleWorkspaceTaskChange}
-          onOpenEvent={onEventChange ? (id) => onEventChange(id) : undefined}
+          onOpenEvent={
+            onEventChange
+              ? (id, action) =>
+                  action === undefined
+                    ? onEventChange(id)
+                    : onEventChange(id, action)
+              : undefined
+          }
+          onOpenAttendance={onOpenAttendance}
+          eventFilter={eventFilter}
+          onEventFilterChange={onEventFilterChange}
+          participantTab={participantTab}
+          participantQuery={participantQuery}
+          onParticipantTabChange={onParticipantTabChange}
+          onParticipantQueryChange={onParticipantQueryChange}
+          settingsSection={settingsSection}
+          onSettingsSectionChange={onSettingsSectionChange}
+          scheduleOrigin={scheduleOrigin}
+          scheduleEditor={scheduleEditor}
+          scheduleRuleId={scheduleRuleId}
+          onScheduleEditorChange={onScheduleEditorChange}
+          onSettingsFocusChange={setSettingsEditorFocused}
+          onSettingsDirtyChange={setSettingsEditorDirty}
+          onWorkspaceDirtyChange={handleEventDraftDirtyChange}
+          onFocusedTaskFocusChange={setSettingsEditorFocused}
+          onFocusedTaskDirtyChange={setSettingsEditorDirty}
+          settingsNavigationBlocked={settingsNavigationBlocked}
+          onSettingsNavigationBlocked={setSettingsNavigationBlocked}
+          onSettingsNavigationRequest={handleSettingsNavigationRequest}
+          settingsNavigationAllowedRef={allowSettingsNavigation}
+          headerAction={headerAction}
         />
       ) : task ? (
         <TaskUnavailable task={task} />
@@ -844,10 +1350,11 @@ export const ProgramWorkspace = ({
           program={workspaceProgram}
           cockpit={state.cockpit}
           summary={summary}
-          onOpenFacts={openCourseFacts}
           departmentId={departmentId}
           hash={hash}
           onTaskChange={handleWorkspaceTaskChange}
+          onOpenAttendance={onOpenAttendance}
+          onSummaryRetry={retrySummary}
         />
       )}
     </section>

@@ -1,5 +1,5 @@
 import type { Decorator, Meta, StoryObj } from "@storybook/nextjs-vite";
-import { expect, within } from "storybook/test";
+import { expect, userEvent, within } from "storybook/test";
 
 import EventsPage from "@/app/events/page";
 import GuestCheckInPage from "@/app/guest-check-in/page";
@@ -191,5 +191,143 @@ export const AttendanceOperatorRoster: Story = {
     await expect(
       canvas.findByRole("heading", { level: 1 })
     ).resolves.toBeVisible();
+    await expect(
+      canvas.findByRole("heading", { name: COPY.attendance.operatorTitle })
+    ).resolves.toBeVisible();
+    await expect(
+      canvas.findByRole("textbox", { name: COPY.attendance.memberSearch })
+    ).resolves.toBeVisible();
+    // Synthetic Storybook evidence: 30 Chinese expected names at the live
+    // roster boundary, with explicit expected-member and addition actions.
+    await expect(
+      canvas.findAllByRole("button", {
+        name: COPY.attendance.checkInMember,
+      })
+    ).resolves.toHaveLength(29);
+    await userEvent.type(
+      canvas.getByRole("textbox", { name: COPY.attendance.memberSearch }),
+      "Storybook"
+    );
+    await userEvent.click(
+      canvas.getByRole("button", { name: COPY.attendance.search })
+    );
+    await expect(
+      canvas.findByRole("button", {
+        name: /Storybook Member.*替成員簽到/u,
+      })
+    ).resolves.toBeVisible();
+    await expect(
+      canvas.findByRole("button", {
+        name: /Storybook Addition.*新增並簽到/u,
+      })
+    ).resolves.toBeVisible();
+    await userEvent.click(canvas.getByRole("tab", { name: /全部/u }));
+    await expect(
+      canvasElement.querySelectorAll("[data-attendance-expected-row]")
+    ).toHaveLength(30);
+    await expect(
+      canvas.findByRole("heading", {
+        name: COPY.attendance.rosterAdditionalTitle,
+      })
+    ).resolves.toBeVisible();
+    await expect(canvas.findAllByText("訪客 林寶怡")).resolves.toHaveLength(2);
+    await userEvent.click(canvas.getByRole("button", { name: "訪客 林寶怡" }));
+    const body = within(canvasElement.ownerDocument.body);
+    await expect(
+      body.findByRole("dialog", {
+        name: COPY.attendance.participantDetailTitle,
+      })
+    ).resolves.toBeVisible();
+    await userEvent.click(
+      body.getByRole("button", { name: COPY.attendance.correctGuest })
+    );
+    await userEvent.clear(
+      body.getByRole("textbox", { name: COPY.attendance.correctionReason })
+    );
+    await userEvent.type(
+      body.getByRole("textbox", { name: COPY.attendance.correctionReason }),
+      "Storybook correction"
+    );
+    await userEvent.click(
+      body.getByRole("button", { name: COPY.attendance.saveCorrection })
+    );
+    await expect(
+      body.findByText(COPY.attendance.correctionSaved)
+    ).resolves.toBeVisible();
+  },
+};
+
+export const AttendanceOperatorPostEvent: Story = {
+  decorators: [withAuthenticatedPresentation],
+  render: () => <EventsPage />,
+  parameters: {
+    presentation: {
+      screenId: "attendance-operator-roster",
+      psn: "PSN-ATTENDANCE-OPERATOR-POST-EVENT",
+      productFamily: "attendance-scanner-guest",
+      lifecycle: "active",
+      baseline: "supporting",
+      route: "/events",
+      intent: "event=t07-5-post-event",
+      state: "post-event-synthetic",
+      gap: null,
+      supersedes: [],
+    },
+    msw: attendanceScannerGuestHandlers,
+    nextjs: {
+      appDirectory: true,
+      navigation: {
+        pathname: "/events",
+        query: { event: "t07-5-post-event" },
+      },
+    },
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    // Synthetic Storybook evidence: a settled 30-person post-event roster
+    // keeps Absent, Excused, Present, and Guest as separate views.
+    await expect(
+      canvas.findByRole("heading", { level: 1 })
+    ).resolves.toBeVisible();
+    await expect(
+      canvas.findByText(COPY.attendance.rosterPostEventFilterHint)
+    ).resolves.toBeVisible();
+    const absentTab = await canvas.findByRole("tab", { name: /缺席 \(12\)/u });
+    await expect(absentTab).toHaveAttribute("aria-selected", "true");
+    await expect(
+      canvasElement.querySelectorAll("[data-attendance-expected-row]")
+    ).toHaveLength(12);
+    await expect(
+      canvas.queryByRole("button", {
+        name: COPY.attendance.eventCheckInSheetOpen,
+      })
+    ).toBeNull();
+
+    await userEvent.click(canvas.getByRole("tab", { name: /全部 \(31\)/u }));
+    await expect(
+      canvasElement.querySelectorAll("[data-attendance-expected-row]")
+    ).toHaveLength(30);
+    await expect(
+      canvas.getByRole("tab", { name: /已出席 \(10\)/u })
+    ).toBeVisible();
+    await expect(
+      canvas.getByRole("tab", { name: /請假 \(8\)/u })
+    ).toBeVisible();
+    await expect(
+      canvas.getByRole("tab", { name: /訪客 \(1\)/u })
+    ).toBeVisible();
+
+    await userEvent.click(canvas.getByRole("tab", { name: /已出席 \(10\)/u }));
+    await expect(
+      canvasElement.querySelectorAll("[data-attendance-expected-row]")
+    ).toHaveLength(10);
+    await userEvent.click(canvas.getByRole("tab", { name: /請假 \(8\)/u }));
+    await expect(
+      canvasElement.querySelectorAll("[data-attendance-expected-row]")
+    ).toHaveLength(8);
+    await userEvent.click(canvas.getByRole("tab", { name: /訪客 \(1\)/u }));
+    await expect(
+      canvasElement.querySelectorAll("[data-attendance-additional-row]")
+    ).toHaveLength(1);
   },
 };

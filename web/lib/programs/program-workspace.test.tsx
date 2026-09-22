@@ -1,4 +1,5 @@
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -7,30 +8,71 @@ import {
   within,
 } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { useState } from "react";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
 import { RpcError } from "@/lib/api";
 import { COPY } from "@/lib/copy";
+import type {
+  EnrollmentApprovalRun,
+  EnrollmentApprovalRunItem,
+} from "@/lib/programs/enrollment-approval-run";
+import { clearWorkspaceMutationRecovery } from "@/lib/programs/mutation-recovery";
 import type {
   Department,
   DepartmentModule,
   Enrollment,
   EnrollmentRequest,
   ManagementCockpitView,
+  ManagementNotificationItem,
   PreviewResult,
   Program,
   ProgramEvent,
-  ScheduleException,
   ScheduleRule,
 } from "@/lib/programs/program-api";
 import { ProgramWorkspace } from "@/lib/programs/program-workspace";
+import type { ManagementNotificationState } from "@/lib/programs/programs-notifications";
+import {
+  addWallDays,
+  addWallMonths,
+  hkTodayWallDate,
+} from "@/lib/programs/recurrence";
 import { WorkspaceRouteProvider } from "@/lib/programs/workspace-context";
+
+import {
+  clearEventCreateDraft,
+  readEventCreateDraft,
+} from "./event-create-draft";
+
+const StatefulWorkspaceHarness = ({
+  initialTask,
+}: {
+  initialTask: "settings" | "events";
+}) => {
+  const [task, setTask] = useState<"settings" | "events" | null>(initialTask);
+  return (
+    <ProgramWorkspace
+      programId="program-1"
+      task={task ?? undefined}
+      onBack={() => {}}
+      onTaskChange={(nextTask) =>
+        setTask(nextTask === initialTask ? initialTask : null)
+      }
+    />
+  );
+};
 
 const mocks = vi.hoisted(() => ({
   getManagementProgram: vi.fn(),
+  updateProgram: vi.fn(),
   listEvents: vi.fn(),
   listEnrollmentRequests: vi.fn(),
   listEnrollmentSnapshot: vi.fn(),
+  listEnrollmentApprovalRuns: vi.fn(),
+  startEnrollmentApprovalRun: vi.fn(),
+  reconcileEnrollmentApprovalRun: vi.fn(),
+  continueEnrollmentApprovalRun: vi.fn(),
+  cancelEnrollmentApprovalRun: vi.fn(),
   listEnrollments: vi.fn(),
   decideEnrollmentRequest: vi.fn(),
   assistedEnroll: vi.fn(),
@@ -47,14 +89,32 @@ const mocks = vi.hoisted(() => ({
   listScheduleRules: vi.fn(),
   previewEvents: vi.fn(),
   generateEvents: vi.fn(),
-  updateProgram: vi.fn(),
+  isUnknownMutationOutcome: vi.fn<(error: unknown) => boolean>((error) => {
+    const { problem } = error as {
+      problem?: { code?: string; status?: number };
+    };
+    return (
+      problem === undefined ||
+      problem.status === 0 ||
+      problem.code === "NETWORK_ERROR" ||
+      problem.code === "MALFORMED_RESPONSE" ||
+      problem.code === "MALFORMED_REQUEST" ||
+      problem.code === "UNAVAILABLE"
+    );
+  }),
 }));
 
 vi.mock(import("@/lib/programs/program-api"), () => ({
   getManagementProgram: mocks.getManagementProgram,
+  updateProgram: mocks.updateProgram,
   listEvents: mocks.listEvents,
   listEnrollmentRequests: mocks.listEnrollmentRequests,
   listEnrollmentSnapshot: mocks.listEnrollmentSnapshot,
+  listEnrollmentApprovalRuns: mocks.listEnrollmentApprovalRuns,
+  startEnrollmentApprovalRun: mocks.startEnrollmentApprovalRun,
+  reconcileEnrollmentApprovalRun: mocks.reconcileEnrollmentApprovalRun,
+  continueEnrollmentApprovalRun: mocks.continueEnrollmentApprovalRun,
+  cancelEnrollmentApprovalRun: mocks.cancelEnrollmentApprovalRun,
   listEnrollments: mocks.listEnrollments,
   decideEnrollmentRequest: mocks.decideEnrollmentRequest,
   assistedEnroll: mocks.assistedEnroll,
@@ -71,7 +131,7 @@ vi.mock(import("@/lib/programs/program-api"), () => ({
   listScheduleRules: mocks.listScheduleRules,
   previewEvents: mocks.previewEvents,
   generateEvents: mocks.generateEvents,
-  updateProgram: mocks.updateProgram,
+  isUnknownMutationOutcome: mocks.isUnknownMutationOutcome,
 }));
 
 const program: Program = {
@@ -190,9 +250,10 @@ const plan: PreviewResult = {
     program_id: "program-1",
     plan_hash: "hash-abc123",
     horizon_days: 14,
-    from_date: "2026-08-13",
+    from_date: hkTodayWallDate(),
+    to_date: addWallDays(addWallMonths(hkTodayWallDate(), 3), -1),
     rule_count: 1,
-    created_at: "2026-08-13T00:00:00.000Z",
+    created_at: "2026-09-16T00:00:00.000Z",
   },
   occurrences: [
     {
@@ -222,6 +283,7 @@ const plan: PreviewResult = {
 
 const cockpitWithNext: ManagementCockpitView = {
   program_id: "program-1",
+  updated_at: "2026-01-01T00:00:00.000Z",
   next_event: {
     event_id: "event-1",
     program_id: "program-1",
@@ -241,6 +303,7 @@ const cockpitWithNext: ManagementCockpitView = {
 
 const cockpitNoNext: ManagementCockpitView = {
   program_id: "program-1",
+  updated_at: "2026-01-01T00:00:00.000Z",
   next_event: null,
   active_event_count: 2,
   pending_enrollment_count: 0,
@@ -252,8 +315,10 @@ function mockWorkspace() {
     department,
     modules,
   });
+  mocks.updateProgram.mockResolvedValue({ program });
   mocks.listEvents.mockResolvedValue({ events: [event] });
   mocks.listEnrollmentRequests.mockResolvedValue({ requests: [request] });
+  mocks.listEnrollmentApprovalRuns.mockResolvedValue({ runs: [] });
   mocks.listEnrollments.mockResolvedValue({ enrollments: [enrollment] });
   mocks.listEnrollmentSnapshot.mockResolvedValue({
     requests: [request],
@@ -261,11 +326,23 @@ function mockWorkspace() {
   });
 }
 beforeEach(() => {
+  clearEventCreateDraft("program-1");
+  clearWorkspaceMutationRecovery("event", {
+    programId: "program-1",
+    eventId: "event-1",
+  });
+  clearWorkspaceMutationRecovery("events", { programId: "program-1" });
   mocks.getManagementProgram.mockReset();
+  mocks.updateProgram.mockReset();
   mocks.listEvents.mockReset();
   mocks.listEnrollmentRequests.mockReset();
   mocks.listEnrollments.mockReset();
   mocks.listEnrollmentSnapshot.mockReset();
+  mocks.listEnrollmentApprovalRuns.mockReset();
+  mocks.startEnrollmentApprovalRun.mockReset();
+  mocks.reconcileEnrollmentApprovalRun.mockReset();
+  mocks.continueEnrollmentApprovalRun.mockReset();
+  mocks.cancelEnrollmentApprovalRun.mockReset();
   mocks.assistedEnroll.mockReset();
   mocks.cancelEnrollment.mockReset();
   mocks.searchMemberOptions.mockReset();
@@ -277,11 +354,16 @@ beforeEach(() => {
   mocks.listScheduleRules.mockReset();
   mocks.previewEvents.mockReset();
   mocks.generateEvents.mockReset();
-  mocks.updateProgram.mockReset();
   mocks.listScheduleRules.mockResolvedValue({ rules: [rule] });
   mocks.listScheduleExceptions.mockResolvedValue({ exceptions: [] });
 });
 afterEach(() => {
+  clearEventCreateDraft("program-1");
+  clearWorkspaceMutationRecovery("event", {
+    programId: "program-1",
+    eventId: "event-1",
+  });
+  clearWorkspaceMutationRecovery("events", { programId: "program-1" });
   cleanup();
 });
 
@@ -293,24 +375,23 @@ describe(ProgramWorkspace, () => {
       modules,
       cockpit: cockpitWithNext,
     });
-    const onTaskChange = vi.fn();
+    const onTaskChange = vi.fn<(...args: unknown[]) => void>();
     const onEventChange = vi.fn();
+    const onOpenAttendance = vi.fn();
     render(
       <ProgramWorkspace
         programId="program-1"
         onBack={vi.fn()}
         onTaskChange={onTaskChange}
         onEventChange={onEventChange}
+        onOpenAttendance={onOpenAttendance}
       />
     );
 
-    // Header with quiet edit button and pills
+    // Header with title, department context, and lifecycle pill
     await expect(
       screen.findByRole("heading", { name: "查經小組" })
     ).resolves.toBeInTheDocument();
-    expect(
-      screen.getByRole("button", { name: COPY.programs.cockpitEditProgram })
-    ).toBeInTheDocument();
     expect(screen.getByText("青年事工 · YOUTH")).toBeInTheDocument();
     expect(screen.getByText(COPY.programs.lifecycleActive)).toBeInTheDocument();
 
@@ -334,7 +415,9 @@ describe(ProgramWorkspace, () => {
     });
     await userEvent.click(rosterLink);
     expect(onEventChange).not.toHaveBeenCalled();
-    expect(onTaskChange).toHaveBeenCalledWith("participants", "event-1");
+    expect(onTaskChange).not.toHaveBeenCalled();
+    expect(onOpenAttendance).toHaveBeenCalledExactlyOnceWith("event-1");
+    expect(rosterLink).toHaveAttribute("href", "/events?eventId=event-1");
 
     // 2-up operational tiles
     expect(
@@ -365,18 +448,24 @@ describe(ProgramWorkspace, () => {
       screen.getByText(COPY.programs.cockpitLowFrequency)
     ).toBeInTheDocument();
     expect(
-      screen.getByRole("button", {
-        name: new RegExp(
-          `${COPY.programs.cockpitCourseFacts}.*${COPY.programs.cockpitCourseFactsHint}`,
-          "u"
-        ),
-      })
-    ).toBeInTheDocument();
-    expect(
       screen.getByRole("link", {
         name: new RegExp(COPY.programs.workspaceTaskSettingsLead, "u"),
       })
     ).toBeInTheDocument();
+    const scheduleLink = screen.getByRole("link", {
+      name: new RegExp(COPY.programs.workspaceTaskSchedule, "u"),
+    });
+    expect(scheduleLink).toHaveAttribute(
+      "href",
+      expect.stringContaining("task=schedule")
+    );
+    const addEventLink = screen.getByRole("link", {
+      name: new RegExp(COPY.programs.cockpitAddEvent, "u"),
+    });
+    expect(addEventLink).toHaveAttribute(
+      "href",
+      expect.stringContaining("#create-event")
+    );
 
     // Sibling navigation stays persistent on the overview and exposes only
     // server-authorized workspace destinations.
@@ -410,6 +499,43 @@ describe(ProgramWorkspace, () => {
     ).not.toBeInTheDocument();
   });
 
+  test("orders Overview as identity, current or next Event, compact counts, then destinations", async () => {
+    mocks.getManagementProgram.mockResolvedValue({
+      program,
+      department,
+      modules,
+      cockpit: cockpitWithNext,
+    });
+    mocks.listEvents.mockResolvedValue({ events: [event] });
+    mocks.listEnrollmentRequests.mockResolvedValue({ requests: [request] });
+    mocks.listEnrollments.mockResolvedValue({ enrollments: [enrollment] });
+    render(
+      <ProgramWorkspace
+        programId="program-1"
+        onBack={vi.fn()}
+        onTaskChange={vi.fn<(...args: unknown[]) => void>()}
+      />
+    );
+
+    await expect(
+      screen.findByRole("heading", { name: "查經小組" })
+    ).resolves.toBeInTheDocument();
+    const order = screen
+      .getAllByRole("heading")
+      .map((heading) => heading.textContent ?? "");
+    const positionOf = (label: string) => order.indexOf(label);
+    expect(positionOf(COPY.programs.cockpitNextMeeting)).toBeGreaterThan(-1);
+    expect(positionOf(COPY.programs.cockpitNextMeeting)).toBeLessThan(
+      positionOf(COPY.programs.cockpitSummary)
+    );
+    expect(positionOf(COPY.programs.cockpitSummary)).toBeLessThan(
+      positionOf(COPY.programs.cockpitOperations)
+    );
+    expect(positionOf(COPY.programs.cockpitOperations)).toBeLessThan(
+      positionOf(COPY.programs.cockpitOthers)
+    );
+  });
+
   test("omits next-meeting block entirely when no upcoming meeting exists", async () => {
     mocks.getManagementProgram.mockResolvedValue({
       program,
@@ -420,8 +546,8 @@ describe(ProgramWorkspace, () => {
     render(
       <ProgramWorkspace
         programId="program-1"
-        onBack={vi.fn()}
-        onTaskChange={vi.fn()}
+        onBack={vi.fn<(...args: unknown[]) => void>()}
+        onTaskChange={vi.fn<(...args: unknown[]) => void>()}
       />
     );
 
@@ -438,11 +564,11 @@ describe(ProgramWorkspace, () => {
     ).not.toBeInTheDocument();
 
     // Operational tiles still render with live counts
-    expect(
-      screen.getByRole("link", {
+    await expect(
+      screen.findByRole("link", {
         name: new RegExp(`${COPY.programs.cockpitEventsTile}.*2 個聚會`, "u"),
       })
-    ).toBeInTheDocument();
+    ).resolves.toBeInTheDocument();
     expect(
       screen.getByRole("link", {
         name: new RegExp(
@@ -453,18 +579,132 @@ describe(ProgramWorkspace, () => {
     ).toBeInTheDocument();
   });
 
-  test("navigates to tasks and renders Course Facts view with all 6 read-only fields and back navigation to Cockpit", async () => {
+  test("keeps unavailable summary counts explicit and retries the failed read", async () => {
     mocks.getManagementProgram.mockResolvedValue({
       program,
       department,
       modules,
       cockpit: cockpitWithNext,
     });
-    const onTaskChange = vi.fn();
+    mocks.listEvents.mockResolvedValue({ events: [event] });
+    mocks.listEnrollmentRequests.mockResolvedValue({ requests: [] });
+    mocks.listEnrollments
+      .mockRejectedValueOnce(new RpcError({ code: "FORBIDDEN", status: 403 }))
+      .mockResolvedValue({ enrollments: [enrollment] });
     render(
       <ProgramWorkspace
         programId="program-1"
-        onBack={vi.fn()}
+        onBack={vi.fn<(...args: unknown[]) => void>()}
+        onTaskChange={vi.fn<(...args: unknown[]) => void>()}
+      />
+    );
+
+    await expect(
+      screen.findByRole("heading", { name: "查經小組" })
+    ).resolves.toBeInTheDocument();
+    const activeMetric = screen.getByText(
+      COPY.programs.cockpitActiveParticipants
+    ).parentElement as HTMLElement;
+    expect(within(activeMetric).getByText("—")).toBeInTheDocument();
+    await expect(
+      screen.findByText(COPY.error.forbidden)
+    ).resolves.toBeInTheDocument();
+
+    await userEvent.click(
+      screen.getByRole("button", { name: COPY.programs.workspaceRetry })
+    );
+    await waitFor(() => {
+      expect(mocks.listEnrollments).toHaveBeenCalledTimes(2);
+      expect(within(activeMetric).getByText("1")).toBeInTheDocument();
+    });
+  });
+
+  test("retries an unavailable cockpit through the workspace loader", async () => {
+    mocks.getManagementProgram
+      .mockResolvedValueOnce({
+        program,
+        department,
+        modules,
+        cockpit: null,
+      })
+      .mockResolvedValue({
+        program,
+        department,
+        modules,
+        cockpit: cockpitWithNext,
+      });
+    mocks.listEvents.mockResolvedValue({ events: [event] });
+    mocks.listEnrollmentRequests.mockResolvedValue({ requests: [] });
+    mocks.listEnrollments.mockResolvedValue({ enrollments: [enrollment] });
+    render(
+      <ProgramWorkspace
+        programId="program-1"
+        onBack={vi.fn<(...args: unknown[]) => void>()}
+        onTaskChange={vi.fn<(...args: unknown[]) => void>()}
+      />
+    );
+
+    await expect(
+      screen.findByRole("heading", { name: "查經小組" })
+    ).resolves.toBeInTheDocument();
+    await screen.findAllByText(COPY.programs.workspaceSummaryUnavailable);
+    expect(
+      screen.getAllByRole("button", { name: COPY.programs.workspaceRetry })
+    ).toHaveLength(1);
+
+    await userEvent.click(
+      screen.getByRole("button", { name: COPY.programs.workspaceRetry })
+    );
+    await waitFor(() => {
+      expect(mocks.getManagementProgram).toHaveBeenCalledTimes(2);
+      expect(
+        screen.getByRole("link", {
+          name: COPY.programs.cockpitManageRoster,
+        })
+      ).toBeInTheDocument();
+    });
+  });
+
+  test("filters unavailable Events and carries exact Program plus Event context", async () => {
+    const earliestEvent: ProgramEvent = {
+      ...event,
+      event_id: "event-earliest",
+      name: "最早聚會",
+      starts_at: "2099-08-20T11:00:00.000Z",
+      ends_at: "2099-08-20T13:00:00.000Z",
+      location: "小組室",
+      availability: "Active",
+    };
+    const laterEvent: ProgramEvent = {
+      ...earliestEvent,
+      event_id: "event-later",
+      name: "較後聚會",
+      starts_at: "2099-08-27T11:00:00.000Z",
+      ends_at: "2099-08-27T13:00:00.000Z",
+    };
+    const unavailableEvent: ProgramEvent = {
+      ...earliestEvent,
+      event_id: "event-unavailable",
+      name: "不可用聚會",
+      starts_at: "2099-08-13T11:00:00.000Z",
+      ends_at: "2099-08-13T13:00:00.000Z",
+      availability: "Inactive",
+    };
+    mocks.getManagementProgram.mockResolvedValue({
+      program,
+      department,
+      modules,
+    });
+    mocks.listEvents.mockResolvedValue({
+      events: [laterEvent, unavailableEvent, earliestEvent],
+    });
+    mocks.listEnrollmentRequests.mockResolvedValue({ requests: [] });
+    mocks.listEnrollments.mockResolvedValue({ enrollments: [] });
+    const onTaskChange = vi.fn<(...args: unknown[]) => void>();
+    render(
+      <ProgramWorkspace
+        programId="program-1"
+        onBack={vi.fn<(...args: unknown[]) => void>()}
         onTaskChange={onTaskChange}
       />
     );
@@ -472,286 +712,180 @@ describe(ProgramWorkspace, () => {
     await expect(
       screen.findByRole("heading", { name: "查經小組" })
     ).resolves.toBeInTheDocument();
-
-    // Click events tile
-    await userEvent.click(
-      screen.getByRole("link", {
-        name: new RegExp(
-          `${COPY.programs.cockpitEventsTile}.*${COPY.programs.cockpitEventsCount.replace(
-            "{count}",
-            String(cockpitWithNext.active_event_count)
-          )}`,
-          "u"
-        ),
+    await waitFor(() =>
+      expect(mocks.listEvents).toHaveBeenCalledWith("program-1")
+    );
+    expect(screen.queryByText("不可用聚會")).not.toBeInTheDocument();
+    await expect(
+      screen.findByRole("link", {
+        name: new RegExp(`${COPY.programs.cockpitEventsTile}.*2 個聚會`, "u"),
       })
+    ).resolves.toBeInTheDocument();
+
+    const rosterLink = screen.getByRole("link", {
+      name: COPY.programs.cockpitManageRoster,
+    });
+    expect(rosterLink).toHaveAttribute(
+      "href",
+      "/programs?mode=management&program=program-1&task=events&event=event-earliest"
+    );
+    await userEvent.click(rosterLink);
+    expect(onTaskChange).toHaveBeenCalledWith("events", "event-earliest");
+  });
+
+  test("renders an authoritative zero Event count without inventing a next Event", async () => {
+    mocks.getManagementProgram.mockResolvedValue({
+      program,
+      department,
+      modules,
+      cockpit: {
+        ...cockpitNoNext,
+        active_event_count: 0,
+      },
+    });
+    render(
+      <ProgramWorkspace
+        programId="program-1"
+        onBack={vi.fn<(...args: unknown[]) => void>()}
+        onTaskChange={vi.fn<(...args: unknown[]) => void>()}
+      />
+    );
+
+    await expect(
+      screen.findByRole("heading", { name: "查經小組" })
+    ).resolves.toBeInTheDocument();
+    expect(
+      screen.getByRole("link", {
+        name: new RegExp(`${COPY.programs.cockpitEventsTile}.*0 個聚會`, "u"),
+      })
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText(COPY.programs.cockpitNextMeeting)
+    ).not.toBeInTheDocument();
+  });
+
+  test("gives managers one action when no Event is open for check-in", async () => {
+    mockWorkspace();
+    mocks.getManagementProgram.mockResolvedValue({
+      program,
+      department,
+      modules,
+      cockpit: {
+        ...cockpitNoNext,
+        open_events: [],
+      },
+    });
+    const onTaskChange = vi.fn<(...args: unknown[]) => void>();
+    render(
+      <ProgramWorkspace
+        programId="program-1"
+        onBack={vi.fn<(...args: unknown[]) => void>()}
+        onTaskChange={onTaskChange}
+      />
+    );
+
+    await screen.findByRole("heading", {
+      name: COPY.programs.cockpitOpenMeetings,
+    });
+    expect(
+      screen.getByText(COPY.programs.cockpitNoOpenCheckIn)
+    ).toBeInTheDocument();
+    await userEvent.click(
+      screen.getByRole("button", { name: COPY.programs.cockpitViewEvents })
     );
     expect(onTaskChange).toHaveBeenCalledWith("events");
-
-    // Click course facts quiet row
-    await userEvent.click(
-      screen.getByRole("button", {
-        name: new RegExp(COPY.programs.cockpitCourseFacts, "u"),
-      })
-    );
-    await expect(
-      screen.findByRole("heading", {
-        name: COPY.programs.cockpitCourseFacts,
-      })
-    ).resolves.toBeInTheDocument();
-
-    // Verify all 6 read-only fields
-    expect(
-      screen.getByRole("heading", { name: "查經小組" })
-    ).toBeInTheDocument();
-    expect(screen.getByText("週三晚上的門徒訓練查經。")).toBeInTheDocument();
-    expect(screen.getByText("青年事工")).toBeInTheDocument();
-    expect(
-      screen.getAllByText(COPY.programs.lifecycleActive).length
-    ).toBeGreaterThanOrEqual(1);
-    expect(
-      screen.getByText(COPY.programs.discoverabilityListed)
-    ).toBeInTheDocument();
-    expect(
-      screen.getByText(COPY.programs.detailParticipationMemberRequest)
-    ).toBeInTheDocument();
-    // Verify Facts screen has NO editable inputs
-    expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
-
-    // Verify 編輯課程 button is present on Facts
-    expect(
-      screen.getByRole("button", { name: COPY.programs.cockpitEditProgram })
-    ).toBeInTheDocument();
-
-    // Return to Cockpit
-    await userEvent.click(
-      screen.getByRole("button", { name: COPY.programs.backToOverview })
-    );
-    await expect(
-      screen.findByRole("heading", {
-        name: COPY.programs.cockpitOperations,
-      })
-    ).resolves.toBeInTheDocument();
   });
 
-  test("renders Course Edit from Facts, validates non-empty fields, saves changes, and returns to Facts with updated values", async () => {
-    const updatedProgram: Program = {
-      ...program,
-      name: "門徒進階查經",
-      description: "進階查經課程簡介。",
+  test("offers a truthful choice when more than one Event is open for check-in", async () => {
+    const openA = {
+      ...cockpitWithNext.next_event,
+      event_id: "event-open-a",
+      title: "開放聚會 A",
+      name: "開放聚會 A",
+    };
+    const openB = {
+      ...cockpitWithNext.next_event,
+      event_id: "event-open-b",
+      title: "開放聚會 B",
+      name: "開放聚會 B",
     };
     mocks.getManagementProgram.mockResolvedValue({
       program,
       department,
       modules,
-      cockpit: cockpitWithNext,
-    });
-    mocks.updateProgram.mockResolvedValue({ program: updatedProgram });
-
-    render(
-      <ProgramWorkspace
-        programId="program-1"
-        onBack={vi.fn()}
-        onTaskChange={vi.fn()}
-      />
-    );
-
-    await expect(
-      screen.findByRole("heading", { name: "查經小組" })
-    ).resolves.toBeInTheDocument();
-
-    // Open Course Facts
-    await userEvent.click(
-      screen.getByRole("button", {
-        name: new RegExp(COPY.programs.cockpitCourseFacts, "u"),
-      })
-    );
-    await expect(
-      screen.findByRole("heading", {
-        name: COPY.programs.cockpitCourseFacts,
-      })
-    ).resolves.toBeInTheDocument();
-
-    // Open Course Edit
-    await userEvent.click(
-      screen.getByRole("button", { name: COPY.programs.cockpitEditProgram })
-    );
-    await expect(
-      screen.findByRole("heading", {
-        name: COPY.programs.cockpitEditProgram,
-      })
-    ).resolves.toBeInTheDocument();
-
-    // Pre-filled values
-    const nameInput = screen.getByRole("textbox", {
-      name: COPY.programs.editNameLabel,
-    });
-    const purposeInput = screen.getByRole("textbox", {
-      name: COPY.programs.editPurposeLabel,
-    });
-    expect(nameInput).toHaveValue("查經小組");
-    expect(purposeInput).toHaveValue("週三晚上的門徒訓練查經。");
-
-    // Validation 1: empty name blocks save
-    await userEvent.clear(nameInput);
-    await userEvent.click(
-      screen.getByRole("button", { name: COPY.programs.saveCourse })
-    );
-    expect(screen.getByText(COPY.programs.editRequired)).toBeInTheDocument();
-    expect(mocks.updateProgram).not.toHaveBeenCalled();
-
-    // Validation 2: empty purpose blocks save
-    await userEvent.type(nameInput, "門徒進階查經");
-    await userEvent.clear(purposeInput);
-    await userEvent.click(
-      screen.getByRole("button", { name: COPY.programs.saveCourse })
-    );
-    expect(screen.getByText(COPY.programs.editRequired)).toBeInTheDocument();
-    expect(mocks.updateProgram).not.toHaveBeenCalled();
-
-    // Fill valid purpose and save
-    await userEvent.type(purposeInput, "進階查經課程簡介。");
-    await userEvent.click(
-      screen.getByRole("button", { name: COPY.programs.saveCourse })
-    );
-
-    expect(mocks.updateProgram).toHaveBeenCalledWith("program-1", {
-      name: "門徒進階查經",
-      description: "進階查經課程簡介。",
-    });
-
-    // Success returns to Facts with updated values
-    await expect(
-      screen.findByRole("heading", {
-        name: COPY.programs.cockpitCourseFacts,
-      })
-    ).resolves.toBeInTheDocument();
-    expect(
-      screen.getByRole("heading", { name: "門徒進階查經" })
-    ).toBeInTheDocument();
-    expect(screen.getByText("進階查經課程簡介。")).toBeInTheDocument();
-  });
-
-  test("renders Course Edit from Cockpit edit button and allows back navigation to Facts", async () => {
-    mocks.getManagementProgram.mockResolvedValue({
-      program,
-      department,
-      modules,
-      cockpit: cockpitWithNext,
+      cockpit: {
+        ...cockpitWithNext,
+        next_event: openA,
+        open_events: [openA, openB],
+      },
     });
 
     render(
       <ProgramWorkspace
         programId="program-1"
-        onBack={vi.fn()}
-        onTaskChange={vi.fn()}
+        onBack={vi.fn<(...args: unknown[]) => void>()}
+        onTaskChange={vi.fn<(...args: unknown[]) => void>()}
       />
     );
 
-    await expect(
-      screen.findByRole("heading", { name: "查經小組" })
-    ).resolves.toBeInTheDocument();
-
-    // Click 編輯課程 in Cockpit header
-    await userEvent.click(
-      screen.getByRole("button", { name: COPY.programs.cockpitEditProgram })
+    await screen.findByRole("heading", {
+      name: COPY.programs.cockpitOpenMeetings,
+    });
+    expect(screen.getByRole("link", { name: /開放聚會 A/u })).toHaveAttribute(
+      "href",
+      "/programs?mode=management&program=program-1&task=events&event=event-open-a"
     );
-    await expect(
-      screen.findByRole("heading", {
-        name: COPY.programs.cockpitEditProgram,
-      })
-    ).resolves.toBeInTheDocument();
-
-    // Click back button returns to Facts view
-    await userEvent.click(
-      screen.getByRole("button", {
-        name: new RegExp(
-          `${COPY.programs.courseFacts}|${COPY.programs.backToOverview}`,
-          "u"
-        ),
-      })
+    expect(screen.getByRole("link", { name: /開放聚會 B/u })).toHaveAttribute(
+      "href",
+      "/programs?mode=management&program=program-1&task=events&event=event-open-b"
     );
-    await expect(
-      screen.findByRole("heading", {
-        name: COPY.programs.cockpitCourseFacts,
-      })
-    ).resolves.toBeInTheDocument();
   });
 
-  test("handles Course Edit save API error gracefully", async () => {
-    mocks.getManagementProgram.mockResolvedValue({
-      program,
-      department,
-      modules,
-      cockpit: cockpitWithNext,
-    });
-    mocks.updateProgram.mockRejectedValue(
-      new RpcError({ code: "INTERNAL_ERROR", detail: "未能儲存課程資料" })
-    );
-
-    render(
-      <ProgramWorkspace
-        programId="program-1"
-        onBack={vi.fn()}
-        onTaskChange={vi.fn()}
-      />
-    );
-
-    await expect(
-      screen.findByRole("heading", { name: "查經小組" })
-    ).resolves.toBeInTheDocument();
-
-    // Open Edit directly
-    await userEvent.click(
-      screen.getByRole("button", { name: COPY.programs.cockpitEditProgram })
-    );
-    const nameInput = screen.getByRole("textbox", {
-      name: COPY.programs.editNameLabel,
-    });
-    await userEvent.clear(nameInput);
-    await userEvent.type(nameInput, "新名稱");
-
-    await userEvent.click(
-      screen.getByRole("button", { name: COPY.programs.saveCourse })
-    );
-
-    // Error is displayed and form remains with input intact
-    await expect(
-      screen.findByText(COPY.error.serverError)
-    ).resolves.toBeInTheDocument();
-    expect(
-      screen.getByRole("textbox", { name: COPY.programs.editNameLabel })
-    ).toHaveValue("新名稱");
-  });
-
-  test("resets the course subview when the task route changes in place", async () => {
+  test("keeps Overview read-only and places course editing under Settings", async () => {
     mockWorkspace();
-    const props = {
-      programId: "program-1",
-      onBack: vi.fn(),
-      onTaskChange: vi.fn(),
-    };
-    const { rerender } = render(<ProgramWorkspace {...props} />);
+    render(
+      <ProgramWorkspace
+        programId="program-1"
+        onBack={vi.fn<(...args: unknown[]) => void>()}
+        onTaskChange={vi.fn<(...args: unknown[]) => void>()}
+      />
+    );
 
     await expect(
       screen.findByRole("heading", { name: "查經小組" })
     ).resolves.toBeInTheDocument();
-    await userEvent.click(
-      screen.getByRole("button", { name: COPY.programs.cockpitEditProgram })
-    );
     expect(
-      screen.getByRole("textbox", { name: COPY.programs.editNameLabel })
-    ).toBeInTheDocument();
-
-    rerender(<ProgramWorkspace {...props} task="events" />);
-
-    await expect(
-      screen.findByRole("heading", {
-        name: COPY.programs.workspaceTaskEvents,
+      screen.queryByRole("button", {
+        name: COPY.programs.cockpitEditProgram,
       })
-    ).resolves.toBeInTheDocument();
-    expect(
-      screen.queryByRole("textbox", { name: COPY.programs.editNameLabel })
     ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", {
+        name: new RegExp(COPY.programs.cockpitCourseFacts, "u"),
+      })
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("link", { name: COPY.programs.workspaceSettingsTab })
+    ).toBeInTheDocument();
+  });
+
+  test("renders the contextual notification action in the shared header", async () => {
+    mockWorkspace();
+    render(
+      <ProgramWorkspace
+        programId="program-1"
+        onBack={vi.fn()}
+        onTaskChange={vi.fn()}
+        headerAction={<button type="button">通知</button>}
+      />
+    );
+
+    await screen.findByRole("heading", { name: "查經小組" });
+    const actions = document.querySelector("[data-route-header-actions]");
+    expect(actions).not.toBeNull();
+    expect(
+      within(actions as HTMLElement).getByRole("button", { name: "通知" })
+    ).toBeInTheDocument();
   });
 
   test("renders Events with the management create entry point", async () => {
@@ -945,9 +1079,962 @@ describe(ProgramWorkspace, () => {
     await expect(
       screen.findByRole("heading", {
         name: COPY.programs.settingsBasics,
-        level: 2,
       })
     ).resolves.toBeInTheDocument();
+  });
+
+  test("does not present a paginated notification page as a total", async () => {
+    mockWorkspace();
+    const notifications: ManagementNotificationItem[] = Array.from(
+      { length: 21 },
+      (_, index) => ({
+        kind: "enrollment" as const,
+        source_key: `enrollment-${index}`,
+        source_revision: "1",
+        read: false,
+        actionable: true as const,
+        count: 1,
+        latest_submitted_at: "2026-09-16T00:00:00.000Z",
+        program_id: program.program_id,
+        program_name: program.name,
+        department_id: department.department_id,
+        department_name: department.name,
+      })
+    );
+    const notificationState: ManagementNotificationState = {
+      kind: "ready",
+      notifications: {
+        items: notifications,
+        unread_count: notifications.length,
+        has_more: true,
+      },
+    };
+    render(
+      <ProgramWorkspace
+        programId="program-1"
+        task="settings"
+        notificationState={notificationState}
+        onBack={vi.fn<(...args: unknown[]) => void>()}
+        onTaskChange={vi.fn<(...args: unknown[]) => void>()}
+      />
+    );
+
+    await screen.findByRole("heading", {
+      name: COPY.programs.settingsHubTitle,
+    });
+    expect(screen.getByText(/至少 21 項 · 還有更多/u)).toBeInTheDocument();
+    expect(screen.queryByText("未讀 21 · 共 21 項")).not.toBeInTheDocument();
+  });
+
+  test("keeps an archived write committed when the follow-up workspace read fails", async () => {
+    const user = userEvent.setup();
+    mocks.getManagementProgram.mockReset();
+    mocks.getManagementProgram
+      .mockResolvedValueOnce({ program, department, modules })
+      .mockRejectedValueOnce(new Error("refresh unavailable"))
+      .mockResolvedValueOnce({
+        program: {
+          ...program,
+          lifecycle: "Archived",
+          updated_at: "2026-01-02T00:00:00.000Z",
+        },
+        department,
+        modules,
+      });
+    mocks.updateProgram.mockResolvedValue({
+      program: {
+        ...program,
+        lifecycle: "Archived",
+        updated_at: "2026-01-02T00:00:00.000Z",
+      },
+    });
+
+    render(
+      <ProgramWorkspace
+        programId="program-1"
+        task="settings"
+        onBack={vi.fn<(...args: unknown[]) => void>()}
+        onTaskChange={vi.fn<(...args: unknown[]) => void>()}
+      />
+    );
+
+    await screen.findByRole("heading", {
+      name: COPY.programs.settingsHubTitle,
+    });
+    await user.click(
+      screen.getByRole("button", { name: /封存課程停止一般使用/u })
+    );
+    await user.click(
+      screen.getByRole("button", {
+        name: COPY.programs.settingsHubArchiveConfirm,
+      })
+    );
+
+    await waitFor(() =>
+      expect(
+        screen.getByTestId("program-workspace-freshness")
+      ).toHaveTextContent(COPY.programs.workspaceSavedStale)
+    );
+    expect(mocks.updateProgram).toHaveBeenCalledOnce();
+    const refreshButtons = screen.getAllByRole("button", {
+      name: COPY.programs.workspaceRetryRefresh,
+    });
+    expect(refreshButtons.length).toBeGreaterThan(1);
+
+    await user.click(refreshButtons.at(-1) as HTMLButtonElement);
+    await screen.findByText(COPY.programs.settingsArchiveSaved);
+    expect(mocks.updateProgram).toHaveBeenCalledOnce();
+    expect(mocks.getManagementProgram).toHaveBeenCalledTimes(3);
+  });
+
+  test("keeps a revision-rejected workspace refresh stale", async () => {
+    const user = userEvent.setup();
+    const latestProgram = {
+      ...program,
+      name: "最新課程名稱",
+      updated_at: "2026-01-02T00:00:00.000Z",
+    };
+    const olderProgram = {
+      ...program,
+      name: "舊課程名稱",
+      updated_at: "2026-01-01T00:00:00.000Z",
+    };
+    mocks.getManagementProgram.mockReset();
+    mocks.getManagementProgram
+      .mockResolvedValueOnce({
+        program: latestProgram,
+        department,
+        modules,
+        cockpit: { ...cockpitWithNext, updated_at: "2026-01-02T00:00:00.000Z" },
+      })
+      .mockResolvedValueOnce({
+        program: olderProgram,
+        department,
+        modules,
+        cockpit: { ...cockpitWithNext, updated_at: "2026-01-01T00:00:00.000Z" },
+      });
+    mocks.updateProgram.mockResolvedValue({
+      program: { ...latestProgram, lifecycle: "Archived" },
+    });
+
+    render(
+      <ProgramWorkspace
+        programId="program-1"
+        task="settings"
+        onBack={vi.fn()}
+        onTaskChange={vi.fn()}
+      />
+    );
+
+    await screen.findByRole("heading", {
+      name: COPY.programs.settingsHubTitle,
+    });
+    await user.click(
+      screen.getByRole("button", { name: /封存課程停止一般使用/u })
+    );
+    await user.click(
+      screen.getByRole("button", {
+        name: COPY.programs.settingsHubArchiveConfirm,
+      })
+    );
+
+    await waitFor(() =>
+      expect(
+        screen.getByTestId("program-workspace-freshness")
+      ).toHaveTextContent(COPY.programs.workspaceSavedStale)
+    );
+    expect(
+      screen.getByRole("heading", { name: "最新課程名稱" })
+    ).toBeInTheDocument();
+    expect(screen.queryByText("舊課程名稱")).not.toBeInTheDocument();
+    expect(
+      screen.queryByText(COPY.programs.settingsArchiveSaved)
+    ).not.toBeInTheDocument();
+  });
+
+  test("reconciles a response-lost archive without replaying the write", async () => {
+    const user = userEvent.setup();
+    mocks.getManagementProgram.mockReset();
+    mocks.getManagementProgram
+      .mockResolvedValueOnce({ program, department, modules })
+      .mockResolvedValueOnce({
+        program: {
+          ...program,
+          lifecycle: "Archived",
+          updated_at: "2026-01-02T00:00:00.000Z",
+        },
+        department,
+        modules,
+      });
+    mocks.updateProgram.mockRejectedValueOnce(new Error("response lost"));
+
+    render(
+      <ProgramWorkspace
+        programId="program-1"
+        task="settings"
+        onBack={vi.fn<(...args: unknown[]) => void>()}
+        onTaskChange={vi.fn<(...args: unknown[]) => void>()}
+      />
+    );
+    await screen.findByRole("heading", {
+      name: COPY.programs.settingsHubTitle,
+    });
+    await user.click(
+      screen.getByRole("button", { name: /封存課程停止一般使用/u })
+    );
+    await user.click(
+      screen.getByRole("button", {
+        name: COPY.programs.settingsHubArchiveConfirm,
+      })
+    );
+
+    await expect(
+      screen.findByText(COPY.programs.settingsArchiveSaved)
+    ).resolves.toBeInTheDocument();
+    expect(mocks.updateProgram).toHaveBeenCalledOnce();
+    expect(
+      screen.queryByRole("button", {
+        name: COPY.programs.workspaceRetryRefresh,
+      })
+    ).not.toBeInTheDocument();
+  });
+
+  test("focused Settings uses one task header and Back without a duplicate root header", async () => {
+    mockWorkspace();
+    render(
+      <ProgramWorkspace
+        programId="program-1"
+        task="settings"
+        onBack={vi.fn()}
+        onTaskChange={vi.fn()}
+        headerAction={<button type="button">通知</button>}
+      />
+    );
+
+    await userEvent.click(
+      await screen.findByRole("button", {
+        name: /基本資料名稱、描述同分類/u,
+      })
+    );
+
+    const headers = document.querySelectorAll(
+      '[data-screen-foundation="header"]'
+    );
+    expect(headers).toHaveLength(1);
+    expect(
+      document.querySelector(
+        '[data-screen-foundation="header"][data-screen-level="root"]'
+      )
+    ).toBeNull();
+    expect(
+      document.querySelector(
+        '[data-screen-foundation="header"][data-screen-level="child"]'
+      )
+    ).not.toBeNull();
+    expect(
+      document.querySelector(
+        'section[aria-labelledby="program-settings-focused-title"]'
+      )
+    ).not.toBeNull();
+    expect(
+      document.querySelector(
+        'section[aria-labelledby="programs-workspace-title"]'
+      )
+    ).toBeNull();
+    expect(
+      screen.getByRole("link", { name: COPY.programs.settingsBackToHub })
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: COPY.programs.settingsBackToHub })
+    ).not.toBeInTheDocument();
+    const actions = document.querySelector("[data-route-header-actions]");
+    expect(actions).not.toBeNull();
+    expect(
+      within(actions as HTMLElement).getByRole("button", { name: "通知" })
+    ).toBeInTheDocument();
+  });
+
+  test("protects dirty Settings navigation until the draft is discarded", async () => {
+    mockWorkspace();
+    const user = userEvent.setup();
+    const onBack = vi.fn();
+    const onTaskChange = vi.fn();
+    render(
+      <ProgramWorkspace
+        programId="program-1"
+        task="settings"
+        onBack={onBack}
+        onTaskChange={onTaskChange}
+      />
+    );
+
+    await user.click(
+      await screen.findByRole("button", {
+        name: /基本資料名稱、描述同分類/u,
+      })
+    );
+    const name = screen.getByRole("textbox", {
+      name: COPY.programs.programName,
+    });
+    await user.clear(name);
+    await user.type(name, "未儲存名稱");
+
+    await user.click(
+      screen.getByRole("link", { name: COPY.programs.settingsBackToHub })
+    );
+    await user.click(
+      screen.getByRole("button", {
+        name: COPY.programs.settingsContinueEditing,
+      })
+    );
+
+    expect(
+      screen.getByRole("heading", { name: COPY.programs.settingsBasics })
+    ).toBeInTheDocument();
+    expect(name).toHaveValue("未儲存名稱");
+    expect(onBack).not.toHaveBeenCalled();
+    expect(onTaskChange).not.toHaveBeenCalled();
+    expect(
+      screen.getByText(
+        `${COPY.programs.settingsUnsaved} ${COPY.programs.settingsSaveBasics} / ${COPY.programs.settingsDiscard}`
+      )
+    ).toBeInTheDocument();
+    expect(
+      screen.getByTestId("program-settings-dirty-actions")
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: COPY.programs.settingsSaveBasics })
+    ).toBeEnabled();
+    expect(
+      screen.getByRole("button", { name: COPY.programs.settingsDiscard })
+    ).toBeEnabled();
+    await user.click(
+      screen.getByRole("link", {
+        name: COPY.programs.workspaceOverviewTab,
+      })
+    );
+    await user.click(
+      screen.getByRole("button", {
+        name: COPY.programs.settingsContinueEditing,
+      })
+    );
+    expect(
+      screen.getByRole("heading", { name: COPY.programs.settingsBasics })
+    ).toBeInTheDocument();
+    expect(onTaskChange).not.toHaveBeenCalled();
+
+    await user.click(
+      screen.getByRole("button", { name: COPY.programs.settingsDiscard })
+    );
+    await waitFor(() => expect(name).toHaveValue(program.name));
+    expect(
+      document.querySelector('[data-screen-settings-dirty="true"]')
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByTestId("program-settings-dirty-actions")
+    ).not.toBeInTheDocument();
+
+    await user.click(
+      screen.getByRole("link", { name: COPY.programs.settingsBackToHub })
+    );
+    await expect(
+      screen.findByRole("heading", { name: COPY.programs.settingsHubTitle })
+    ).resolves.toBeInTheDocument();
+
+    await user.click(
+      screen.getByRole("button", {
+        name: /基本資料名稱、描述同分類/u,
+      })
+    );
+    await user.click(
+      screen.getByRole("link", { name: COPY.programs.settingsBackToHub })
+    );
+    await expect(
+      screen.findByRole("heading", { name: COPY.programs.settingsHubTitle })
+    ).resolves.toBeInTheDocument();
+  });
+
+  test("preserves a requested Settings section when discarding a dirty draft", async () => {
+    mockWorkspace();
+    const user = userEvent.setup();
+    const onSettingsSectionChange = vi.fn<(...args: unknown[]) => void>();
+    const requestedSection = document.createElement("a");
+    requestedSection.href =
+      "/programs?mode=management&program=program-1&task=settings&settingsSection=publishing";
+    requestedSection.textContent = "發佈設定";
+    document.body.append(requestedSection);
+
+    try {
+      render(
+        <ProgramWorkspace
+          programId="program-1"
+          task="settings"
+          settingsSection="basics"
+          onSettingsSectionChange={onSettingsSectionChange}
+          onBack={() => {}}
+          onTaskChange={vi.fn<(...args: unknown[]) => void>()}
+        />
+      );
+
+      await user.click(
+        await screen.findByRole("textbox", {
+          name: COPY.programs.programName,
+        })
+      );
+      const name = screen.getByRole("textbox", {
+        name: COPY.programs.programName,
+      });
+      await user.clear(name);
+      await user.type(name, "未儲存基本資料");
+      fireEvent.click(requestedSection);
+
+      await user.click(
+        screen.getByRole("button", {
+          name: COPY.programs.settingsDiscardAndLeave,
+        })
+      );
+      expect(onSettingsSectionChange).toHaveBeenCalledWith("publishing");
+    } finally {
+      requestedSection.remove();
+    }
+  });
+
+  test("reaches the overview after discarding a dirty Settings route", async () => {
+    mockWorkspace();
+    const user = userEvent.setup();
+    render(<StatefulWorkspaceHarness initialTask="settings" />);
+
+    await user.click(
+      await screen.findByRole("button", {
+        name: /基本資料名稱、描述同分類/u,
+      })
+    );
+    await user.type(
+      screen.getByRole("textbox", { name: COPY.programs.programName }),
+      "未儲存設定"
+    );
+    await user.click(
+      screen.getByRole("link", { name: COPY.programs.workspaceOverviewTab })
+    );
+    await user.click(
+      screen.getByRole("button", {
+        name: COPY.programs.settingsDiscardAndLeave,
+      })
+    );
+
+    await expect(
+      screen.findByRole("heading", { level: 1, name: program.name })
+    ).resolves.toBeInTheDocument();
+    expect(
+      screen.queryByRole("heading", { name: COPY.programs.settingsHubTitle })
+    ).not.toBeInTheDocument();
+    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+  });
+
+  test("protects workspace navigation while an Event creation draft is dirty", async () => {
+    mockWorkspace();
+    const user = userEvent.setup();
+    const onTaskChange = vi.fn();
+    render(
+      <ProgramWorkspace
+        programId="program-1"
+        task="events"
+        onBack={vi.fn()}
+        onTaskChange={onTaskChange}
+      />
+    );
+
+    await user.click(
+      await screen.findByRole("button", { name: COPY.programs.createMeeting })
+    );
+    const name = screen.getByRole("textbox", {
+      name: COPY.programs.eventName,
+    });
+    await user.type(name, "未儲存聚會");
+    await waitFor(() => {
+      expect(readEventCreateDraft("program-1")?.name).toBe("未儲存聚會");
+    });
+
+    await user.click(
+      screen.getByRole("link", { name: COPY.programs.workspaceOverviewTab })
+    );
+    expect(onTaskChange).not.toHaveBeenCalled();
+    expect(
+      screen.getByTestId("program-event-draft-navigation-blocked")
+    ).toHaveTextContent(COPY.programs.eventCreateUnsaved);
+    expect(name).toHaveValue("未儲存聚會");
+
+    await user.click(
+      screen.getByRole("button", {
+        name: COPY.programs.eventCreateContinueEditing,
+      })
+    );
+    await user.click(
+      screen.getByRole("button", { name: COPY.programs.eventCreateCancel })
+    );
+    await waitFor(() => {
+      expect(readEventCreateDraft("program-1")).toBeNull();
+    });
+    await user.click(
+      screen.getByRole("link", { name: COPY.programs.workspaceOverviewTab })
+    );
+    expect(onTaskChange).toHaveBeenCalledWith(null);
+  });
+
+  test("reaches the overview after discarding a dirty Event route", async () => {
+    mockWorkspace();
+    const user = userEvent.setup();
+    render(<StatefulWorkspaceHarness initialTask="events" />);
+
+    await user.click(
+      await screen.findByRole("button", { name: COPY.programs.createMeeting })
+    );
+    await user.type(
+      screen.getByRole("textbox", { name: COPY.programs.eventName }),
+      "未儲存聚會"
+    );
+    await user.click(
+      screen.getByRole("link", { name: COPY.programs.workspaceOverviewTab })
+    );
+    await user.click(
+      screen.getByRole("button", {
+        name: COPY.programs.eventCreateDiscardAndLeave,
+      })
+    );
+
+    await expect(
+      screen.findByRole("heading", { level: 1, name: program.name })
+    ).resolves.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: COPY.programs.createMeeting })
+    ).not.toBeInTheDocument();
+    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+  });
+
+  test("opens the Event draft decision dialog on browser Back", async () => {
+    mockWorkspace();
+    const user = userEvent.setup();
+    const onBack = vi.fn();
+    render(
+      <ProgramWorkspace
+        programId="program-1"
+        task="events"
+        onBack={onBack}
+        onTaskChange={vi.fn()}
+      />
+    );
+
+    await user.click(
+      await screen.findByRole("button", { name: COPY.programs.createMeeting })
+    );
+    await user.type(
+      screen.getByRole("textbox", { name: COPY.programs.eventName }),
+      "瀏覽器返回未儲存"
+    );
+    await waitFor(() => {
+      expect(readEventCreateDraft("program-1")?.name).toBe("瀏覽器返回未儲存");
+    });
+
+    window.dispatchEvent(new PopStateEvent("popstate"));
+    await expect(
+      screen.findByRole("heading", {
+        name: COPY.programs.eventCreateLeaveTitle,
+      })
+    ).resolves.toBeInTheDocument();
+    expect(onBack).not.toHaveBeenCalled();
+
+    await user.click(
+      screen.getByRole("button", {
+        name: COPY.programs.eventCreateContinueEditing,
+      })
+    );
+    expect(
+      screen.getByRole("textbox", { name: COPY.programs.eventName })
+    ).toHaveValue("瀏覽器返回未儲存");
+  });
+
+  test("locks manager lifecycle navigation until an unknown Event mutation reconciles", async () => {
+    mockWorkspace();
+    const detail = {
+      event: {
+        ...event,
+        starts_at: "2026-09-12T10:00:00.000Z",
+        ends_at: "2026-09-12T11:30:00.000Z",
+        source: "MANUAL" as const,
+        name: "迎新聚會",
+        location: "教會禮堂",
+        has_attendance: false,
+      },
+      leaders: [],
+      participant_summary: { active_enrollments: 0, checked_in: 0 },
+    };
+    mocks.getEvent.mockResolvedValueOnce(detail).mockResolvedValueOnce({
+      ...detail,
+      event: {
+        ...detail.event,
+        status: "Cancelled" as const,
+        updated_at: "2026-01-02T00:00:00.000Z",
+      },
+    });
+    mocks.cancelEvent.mockRejectedValueOnce(new Error("request lost"));
+    const user = userEvent.setup();
+    const onEventChange = vi.fn();
+    const outsideLink = document.createElement("a");
+    outsideLink.href = "/home";
+    outsideLink.textContent = "Home";
+    document.body.append(outsideLink);
+    try {
+      render(
+        <ProgramWorkspace
+          programId="program-1"
+          task="events"
+          eventId="event-1"
+          onBack={vi.fn<(...args: unknown[]) => void>()}
+          onTaskChange={vi.fn<(...args: unknown[]) => void>()}
+          onEventChange={onEventChange}
+        />
+      );
+
+      await screen.findByRole("heading", { name: "迎新聚會" });
+      await user.click(
+        screen.getByRole("button", { name: COPY.programs.eventMoreActions })
+      );
+      await user.click(
+        screen.getByRole("menuitem", { name: COPY.programs.cancelEvent })
+      );
+      await user.click(
+        screen.getByRole("button", { name: COPY.programs.confirmCancel })
+      );
+
+      await screen.findByText(COPY.programs.programTransportAmbiguous);
+      const navigation = new MouseEvent("click", {
+        bubbles: true,
+        cancelable: true,
+        button: 0,
+      });
+      outsideLink.dispatchEvent(navigation);
+      expect(navigation.defaultPrevented).toBeTruthy();
+      const beforeUnload = new Event("beforeunload", { cancelable: true });
+      expect(window.dispatchEvent(beforeUnload)).toBeFalsy();
+      const blockedHref = window.location.href;
+      window.dispatchEvent(new PopStateEvent("popstate"));
+      expect(window.location.href).toBe(blockedHref);
+      expect(onEventChange).not.toHaveBeenCalled();
+
+      await user.click(
+        screen.getByRole("button", {
+          name: COPY.programs.workspaceRetryRefresh,
+        })
+      );
+      await screen.findByText(COPY.programs.workspaceReconciled);
+      const cleanBeforeUnload = new Event("beforeunload", {
+        cancelable: true,
+      });
+      expect(window.dispatchEvent(cleanBeforeUnload)).toBeTruthy();
+    } finally {
+      outsideLink.remove();
+    }
+  });
+
+  test("shows Save/Discard guidance when a dirty draft blocks the first tab escape", async () => {
+    mockWorkspace();
+    const user = userEvent.setup();
+    const onTaskChange = vi.fn();
+    render(
+      <ProgramWorkspace
+        programId="program-1"
+        task="settings"
+        onBack={vi.fn()}
+        onTaskChange={onTaskChange}
+      />
+    );
+
+    await user.click(
+      await screen.findByRole("button", {
+        name: /基本資料名稱、描述同分類/u,
+      })
+    );
+    const name = screen.getByRole("textbox", {
+      name: COPY.programs.programName,
+    });
+    await user.clear(name);
+    await user.type(name, "首次 Tab 未儲存名稱");
+
+    await user.click(
+      screen.getByRole("link", {
+        name: COPY.programs.workspaceOverviewTab,
+      })
+    );
+    await user.click(
+      screen.getByRole("button", {
+        name: COPY.programs.settingsContinueEditing,
+      })
+    );
+
+    expect(
+      screen.getByRole("heading", { name: COPY.programs.settingsBasics })
+    ).toBeInTheDocument();
+    expect(name).toHaveValue("首次 Tab 未儲存名稱");
+    expect(onTaskChange).not.toHaveBeenCalled();
+    expect(
+      screen.getByText(
+        `${COPY.programs.settingsUnsaved} ${COPY.programs.settingsSaveBasics} / ${COPY.programs.settingsDiscard}`
+      )
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: COPY.programs.settingsSaveBasics })
+    ).toBeEnabled();
+    expect(
+      screen.getByRole("button", { name: COPY.programs.settingsDiscard })
+    ).toBeEnabled();
+  });
+
+  test("protects external mode and global links while dirty and cleans up", async () => {
+    mockWorkspace();
+    const user = userEvent.setup();
+    const modeClick = vi.fn();
+    const globalClick = vi.fn();
+    render(
+      <>
+        <a
+          href="/programs?mode=participant"
+          onClick={(event) => {
+            modeClick();
+            event.preventDefault();
+          }}
+        >
+          模式
+        </a>
+        <a
+          href="/home"
+          onClick={(event) => {
+            globalClick();
+            event.preventDefault();
+          }}
+        >
+          首頁
+        </a>
+      </>
+    );
+    const { unmount } = render(
+      <ProgramWorkspace
+        programId="program-1"
+        task="settings"
+        onBack={vi.fn()}
+        onTaskChange={vi.fn()}
+      />
+    );
+
+    await user.click(
+      await screen.findByRole("button", {
+        name: /基本資料名稱、描述同分類/u,
+      })
+    );
+    const name = screen.getByRole("textbox", {
+      name: COPY.programs.programName,
+    });
+    await user.clear(name);
+    await user.type(name, "外部連結未儲存名稱");
+
+    const beforeUnload = new Event("beforeunload", { cancelable: true });
+    expect(window.dispatchEvent(beforeUnload)).toBeFalsy();
+    await user.click(screen.getByRole("link", { name: "模式" }));
+    await user.click(
+      screen.getByRole("button", {
+        name: COPY.programs.settingsContinueEditing,
+      })
+    );
+    await user.click(screen.getByRole("link", { name: "首頁" }));
+    await user.click(
+      screen.getByRole("button", {
+        name: COPY.programs.settingsContinueEditing,
+      })
+    );
+    expect(modeClick).not.toHaveBeenCalled();
+    expect(globalClick).not.toHaveBeenCalled();
+    expect(name).toHaveValue("外部連結未儲存名稱");
+    expect(
+      screen.getByText(
+        `${COPY.programs.settingsUnsaved} ${COPY.programs.settingsSaveBasics} / ${COPY.programs.settingsDiscard}`
+      )
+    ).toBeInTheDocument();
+
+    await user.click(
+      screen.getByRole("button", { name: COPY.programs.settingsDiscard })
+    );
+    await waitFor(() =>
+      expect(
+        document.querySelector('[data-screen-settings-dirty="true"]')
+      ).not.toBeInTheDocument()
+    );
+    await user.click(screen.getByRole("link", { name: "模式" }));
+    await user.click(screen.getByRole("link", { name: "首頁" }));
+    expect(modeClick).toHaveBeenCalledOnce();
+    expect(globalClick).toHaveBeenCalledOnce();
+    const cleanBeforeUnload = new Event("beforeunload", {
+      cancelable: true,
+    });
+    expect(window.dispatchEvent(cleanBeforeUnload)).toBeTruthy();
+
+    await user.clear(name);
+    await user.type(name, "卸載前未儲存名稱");
+    unmount();
+    await user.click(screen.getByRole("link", { name: "模式" }));
+    expect(modeClick).toHaveBeenCalledTimes(2);
+    const unmountedBeforeUnload = new Event("beforeunload", {
+      cancelable: true,
+    });
+    expect(window.dispatchEvent(unmountedBeforeUnload)).toBeTruthy();
+  });
+
+  test("passes through modified, new-tab, download, and hash links while dirty", async () => {
+    mockWorkspace();
+    const user = userEvent.setup();
+    const modifiedClick = vi.fn();
+    const newTabClick = vi.fn();
+    const downloadClick = vi.fn();
+    const hashClick = vi.fn();
+    const preventNavigation =
+      (callback: () => void) =>
+      (event: React.MouseEvent<HTMLAnchorElement>) => {
+        callback();
+        event.preventDefault();
+      };
+    render(
+      <>
+        <a href="/home" onClick={preventNavigation(modifiedClick)}>
+          修改鍵
+        </a>
+        <a
+          href="/home"
+          target="_blank"
+          onClick={preventNavigation(newTabClick)}
+        >
+          新分頁
+        </a>
+        <a
+          href="/program.csv"
+          download="program.csv"
+          onClick={preventNavigation(downloadClick)}
+        >
+          下載
+        </a>
+        <a href="#details" onClick={preventNavigation(hashClick)}>
+          錨點
+        </a>
+        <ProgramWorkspace
+          programId="program-1"
+          task="settings"
+          onBack={vi.fn<(...args: unknown[]) => void>()}
+          onTaskChange={vi.fn()}
+        />
+      </>
+    );
+
+    await user.click(
+      await screen.findByRole("button", {
+        name: /基本資料名稱、描述同分類/u,
+      })
+    );
+    const name = screen.getByRole("textbox", {
+      name: COPY.programs.programName,
+    });
+    await user.clear(name);
+    await user.type(name, "保留連結語意的未儲存名稱");
+
+    fireEvent.click(screen.getByRole("link", { name: "修改鍵" }), {
+      ctrlKey: true,
+    });
+    await user.click(screen.getByRole("link", { name: "新分頁" }));
+    await user.click(screen.getByRole("link", { name: "下載" }));
+    await user.click(screen.getByRole("link", { name: "錨點" }));
+
+    expect(modifiedClick).toHaveBeenCalledOnce();
+    expect(newTabClick).toHaveBeenCalledOnce();
+    expect(downloadClick).toHaveBeenCalledOnce();
+    expect(hashClick).toHaveBeenCalledOnce();
+    expect(name).toHaveValue("保留連結語意的未儲存名稱");
+    expect(
+      document.querySelector('[data-screen-settings-dirty="true"]')
+    ).toBeInTheDocument();
+  });
+
+  test("releases navigation guards after a successful Basics save", async () => {
+    mockWorkspace();
+    mocks.getManagementProgram
+      .mockReset()
+      .mockResolvedValueOnce({ program, department, modules })
+      .mockResolvedValue({
+        program: {
+          ...program,
+          name: "儲存後名稱",
+          updated_at: "2026-01-02T00:00:00.000Z",
+        },
+        department,
+        modules,
+      });
+    mocks.updateProgram.mockResolvedValueOnce({
+      program: {
+        ...program,
+        name: "儲存後名稱",
+        updated_at: "2026-01-02T00:00:00.000Z",
+      },
+    });
+    const user = userEvent.setup();
+    const exitClick = vi.fn();
+    render(
+      <>
+        <a
+          href="/home"
+          onClick={(event) => {
+            exitClick();
+            event.preventDefault();
+          }}
+        >
+          離開
+        </a>
+        <ProgramWorkspace
+          programId="program-1"
+          task="settings"
+          onBack={vi.fn()}
+          onTaskChange={vi.fn()}
+        />
+      </>
+    );
+
+    await user.click(
+      await screen.findByRole("button", {
+        name: /基本資料名稱、描述同分類/u,
+      })
+    );
+    const name = screen.getByRole("textbox", {
+      name: COPY.programs.programName,
+    });
+    await user.clear(name);
+    await user.type(name, "儲存後名稱");
+    expect(
+      document.querySelector('[data-screen-settings-dirty="true"]')
+    ).toBeInTheDocument();
+
+    await user.click(
+      screen.getByRole("button", { name: COPY.programs.settingsSaveBasics })
+    );
+    await waitFor(() => expect(mocks.updateProgram).toHaveBeenCalledOnce());
+    await expect(
+      screen.findByText(COPY.programs.settingsSaved)
+    ).resolves.toBeInTheDocument();
+    await waitFor(() =>
+      expect(
+        document.querySelector('[data-screen-settings-dirty="true"]')
+      ).not.toBeInTheDocument()
+    );
+
+    await user.click(screen.getByRole("link", { name: "離開" }));
+    expect(exitClick).toHaveBeenCalledOnce();
+    const cleanBeforeUnload = new Event("beforeunload", {
+      cancelable: true,
+    });
+    expect(window.dispatchEvent(cleanBeforeUnload)).toBeTruthy();
   });
 
   test("hides identity access without an authorized Account Directory destination", async () => {
@@ -1123,6 +2210,11 @@ describe("ENR-01 participants workspace", () => {
     ).resolves.toBeInTheDocument();
     expect(
       screen.getByRole("tab", {
+        name: `${COPY.programs.tabsPending} (1)`,
+      })
+    ).toHaveAttribute("aria-selected", "true");
+    expect(
+      screen.getByRole("tab", {
         name: `${COPY.programs.tabsActive} (1)`,
       })
     ).toBeInTheDocument();
@@ -1166,6 +2258,495 @@ describe("ENR-01 participants workspace", () => {
     ).not.toBeInTheDocument();
   });
 
+  test("keeps delayed scroll restoration after the initial tab settles", async () => {
+    mockWorkspace();
+    mocks.listEnrollmentSnapshot.mockResolvedValue({
+      requests: [],
+      enrollments: [enrollment],
+    });
+    const scroller = document.createElement("div");
+    scroller.id = "shell-content";
+    document.body.append(scroller);
+    const storageKey = "efcc_programs_workspace_scroll:program-1:participants";
+    sessionStorage.setItem(storageKey, "180");
+    vi.useFakeTimers();
+
+    try {
+      render(
+        <ProgramWorkspace
+          programId="program-1"
+          task="participants"
+          onBack={vi.fn()}
+          onTaskChange={vi.fn()}
+        />
+      );
+
+      await act(async () => {
+        await Promise.resolve();
+        await Promise.resolve();
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+      expect(
+        screen.getByRole("tab", {
+          name: `${COPY.programs.tabsActive} (1)`,
+        })
+      ).toHaveAttribute("aria-selected", "true");
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(50);
+      });
+      expect(scroller.scrollTop).toBe(180);
+      expect(sessionStorage.getItem(storageKey)).toBeNull();
+    } finally {
+      vi.useRealTimers();
+      sessionStorage.removeItem(storageKey);
+      scroller.remove();
+    }
+  });
+
+  test("reviews selected requests and preserves a successful approval beside a stale item", async () => {
+    mockWorkspace();
+    const secondRequest: EnrollmentRequest = {
+      ...request,
+      request_id: "request-2",
+      member_user_id: "member-3",
+      member_name: "王小明",
+    };
+    const approvedEnrollment: Enrollment = {
+      ...enrollment,
+      enrollment_id: "enrollment-approved",
+      member_user_id: request.member_user_id,
+      request_id: request.request_id,
+      member_name: request.member_name,
+    };
+    mocks.listEnrollmentSnapshot
+      .mockResolvedValueOnce({
+        requests: [request, secondRequest],
+        enrollments: [],
+      })
+      .mockResolvedValueOnce({
+        requests: [{ ...request, status: "Approved" }, secondRequest],
+        enrollments: [approvedEnrollment],
+      });
+    const runId = "approval-run-1";
+    const itemFor = (
+      selected: EnrollmentRequest,
+      sequence: number,
+      status: EnrollmentApprovalRunItem["status"] = "not_started",
+      retryable = true,
+      errorCode: string | null = null
+    ): EnrollmentApprovalRunItem => ({
+      item_id: `${runId}:${selected.request_id}`,
+      run_id: runId,
+      sequence,
+      request_id: selected.request_id,
+      program_id: selected.program_id,
+      member_user_id: selected.member_user_id,
+      member_name: selected.member_name,
+      member_username: selected.member_username,
+      request_version: selected.request_version,
+      idempotency_key: `approval-key-${sequence}`,
+      status,
+      retryable,
+      enrollment_id:
+        status === "completed" ? approvedEnrollment.enrollment_id : null,
+      error_code: errorCode,
+      detail: errorCode === "STALE_REQUEST_VERSION" ? "request changed" : null,
+      started_at: status === "not_started" ? null : "2026-08-04T00:00:00.000Z",
+      settled_at: status === "not_started" ? null : "2026-08-04T00:01:00.000Z",
+    });
+    const initialRun: EnrollmentApprovalRun = {
+      run_id: runId,
+      program_id: request.program_id,
+      status: "active",
+      created_at: "2026-08-04T00:00:00.000Z",
+      finished_at: null,
+      cancelled_at: null,
+      items: [itemFor(request, 0), itemFor(secondRequest, 1)],
+    };
+    const firstRun: EnrollmentApprovalRun = {
+      ...initialRun,
+      items: [
+        itemFor(request, 0, "completed", false),
+        itemFor(secondRequest, 1),
+      ],
+    };
+    const finalRun: EnrollmentApprovalRun = {
+      ...firstRun,
+      status: "completed",
+      finished_at: "2026-08-04T00:02:00.000Z",
+      items: [
+        firstRun.items[0] as EnrollmentApprovalRunItem,
+        itemFor(secondRequest, 1, "failed", false, "STALE_REQUEST_VERSION"),
+      ],
+    };
+    mocks.startEnrollmentApprovalRun.mockResolvedValue({
+      run: initialRun,
+      created: true,
+    });
+    mocks.continueEnrollmentApprovalRun
+      .mockResolvedValueOnce({ run: firstRun, item: firstRun.items[0] })
+      .mockResolvedValueOnce({ run: finalRun, item: finalRun.items[1] });
+
+    render(
+      <ProgramWorkspace
+        programId="program-1"
+        task="participants"
+        onBack={vi.fn()}
+        onTaskChange={vi.fn()}
+      />
+    );
+
+    const firstSelection = await screen.findByRole("checkbox", {
+      name: /選取.*陳同工/u,
+    });
+    const secondSelection = screen.getByRole("checkbox", {
+      name: /選取.*王小明/u,
+    });
+    await userEvent.click(firstSelection);
+    await userEvent.click(secondSelection);
+    expect(screen.getByText("已選 2 位")).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "檢視所選" }));
+    const review = screen.getByRole("alertdialog", {
+      name: "確認核准所選報名",
+    });
+    expect(review).toHaveTextContent("陳同工");
+    expect(review).toHaveTextContent("王小明");
+    await userEvent.click(screen.getByRole("button", { name: "確認核准" }));
+
+    await waitFor(() =>
+      expect(mocks.continueEnrollmentApprovalRun).toHaveBeenCalledTimes(2)
+    );
+    expect(mocks.startEnrollmentApprovalRun).toHaveBeenCalledWith(
+      "program-1",
+      [request.request_id, secondRequest.request_id],
+      expect.any(String)
+    );
+    expect(mocks.continueEnrollmentApprovalRun).toHaveBeenNthCalledWith(
+      1,
+      "program-1",
+      runId,
+      expect.any(String)
+    );
+    expect(mocks.continueEnrollmentApprovalRun).toHaveBeenNthCalledWith(
+      2,
+      "program-1",
+      runId,
+      expect.any(String)
+    );
+    expect(mocks.continueEnrollmentApprovalRun.mock.calls[0]?.[2]).not.toBe(
+      mocks.continueEnrollmentApprovalRun.mock.calls[1]?.[2]
+    );
+    expect(screen.getByText("已核准")).toBeInTheDocument();
+    expect(screen.getByText("資料已更新")).toBeInTheDocument();
+    expect(screen.getAllByText("全部完成").length).toBeGreaterThanOrEqual(1);
+  });
+
+  test("stops scheduling later approvals after the task unmounts", async () => {
+    mockWorkspace();
+    mocks.listEnrollmentSnapshot.mockResolvedValue({
+      requests: [request],
+      enrollments: [],
+    });
+    const runId = "approval-run-unmount";
+    const initialItem: EnrollmentApprovalRunItem = {
+      item_id: `${runId}:${request.request_id}`,
+      run_id: runId,
+      sequence: 0,
+      request_id: request.request_id,
+      program_id: request.program_id,
+      member_user_id: request.member_user_id,
+      member_name: request.member_name,
+      member_username: request.member_username,
+      request_version: request.request_version,
+      idempotency_key: "approval-key-unmount",
+      status: "not_started",
+      retryable: true,
+      enrollment_id: null,
+      error_code: null,
+      detail: null,
+      started_at: null,
+      settled_at: null,
+    };
+    const initialRun: EnrollmentApprovalRun = {
+      run_id: runId,
+      program_id: request.program_id,
+      status: "active",
+      created_at: "2026-08-04T00:00:00.000Z",
+      finished_at: null,
+      cancelled_at: null,
+      items: [initialItem],
+    };
+    const settledRun: EnrollmentApprovalRun = {
+      ...initialRun,
+      status: "completed",
+      finished_at: "2026-08-04T00:01:00.000Z",
+      items: [
+        {
+          ...initialItem,
+          status: "completed",
+          retryable: false,
+          enrollment_id: "enrollment-unmount",
+          started_at: "2026-08-04T00:00:01.000Z",
+          settled_at: "2026-08-04T00:01:00.000Z",
+        },
+      ],
+    };
+    let resolveContinue:
+      | ((result: {
+          run: EnrollmentApprovalRun;
+          item: EnrollmentApprovalRunItem;
+        }) => void)
+      | undefined;
+    mocks.startEnrollmentApprovalRun.mockResolvedValue({
+      run: initialRun,
+      created: true,
+    });
+    mocks.continueEnrollmentApprovalRun.mockImplementation(
+      () =>
+        // oxlint-disable-next-line promise/avoid-new -- hold the first approval until the task is unmounted.
+        new Promise((resolve) => {
+          resolveContinue = resolve;
+        })
+    );
+    const view = render(
+      <ProgramWorkspace
+        programId="program-1"
+        task="participants"
+        onBack={() => {}}
+        onTaskChange={() => {}}
+      />
+    );
+
+    await userEvent.click(
+      await screen.findByRole("checkbox", { name: /選取.*陳同工/u })
+    );
+    await userEvent.click(screen.getByRole("button", { name: "檢視所選" }));
+    await userEvent.click(screen.getByRole("button", { name: "確認核准" }));
+    await waitFor(() =>
+      expect(mocks.continueEnrollmentApprovalRun).toHaveBeenCalledOnce()
+    );
+
+    view.unmount();
+    resolveContinue?.({
+      run: settledRun,
+      item: settledRun.items[0] ?? initialItem,
+    });
+    await waitFor(() =>
+      expect(mocks.continueEnrollmentApprovalRun).toHaveBeenCalledOnce()
+    );
+  });
+
+  test("does not auto-continue an existing active Run returned by Start", async () => {
+    mockWorkspace();
+    mocks.listEnrollmentSnapshot.mockResolvedValue({
+      requests: [request],
+      enrollments: [],
+    });
+    const runId = "approval-run-existing";
+    const existingRun: EnrollmentApprovalRun = {
+      run_id: runId,
+      program_id: request.program_id,
+      status: "active",
+      created_at: "2026-08-04T00:00:00.000Z",
+      finished_at: null,
+      cancelled_at: null,
+      items: [
+        {
+          item_id: `${runId}:${request.request_id}`,
+          run_id: runId,
+          sequence: 0,
+          request_id: request.request_id,
+          program_id: request.program_id,
+          member_user_id: request.member_user_id,
+          member_name: request.member_name,
+          member_username: request.member_username,
+          request_version: request.request_version,
+          idempotency_key: "approval-key-existing",
+          status: "not_started",
+          retryable: true,
+          enrollment_id: null,
+          error_code: null,
+          detail: null,
+          started_at: null,
+          settled_at: null,
+        },
+      ],
+    };
+    mocks.startEnrollmentApprovalRun.mockResolvedValue({
+      run: existingRun,
+      created: false,
+    });
+    render(
+      <ProgramWorkspace
+        programId="program-1"
+        task="participants"
+        onBack={() => {}}
+        onTaskChange={() => {}}
+      />
+    );
+
+    await userEvent.click(
+      await screen.findByRole("checkbox", { name: /選取.*陳同工/u })
+    );
+    await userEvent.click(screen.getByRole("button", { name: "檢視所選" }));
+    await userEvent.click(screen.getByRole("button", { name: "確認核准" }));
+    await expect(
+      screen.findByRole("button", { name: "繼續處理餘下項目" })
+    ).resolves.toBeInTheDocument();
+    expect(mocks.continueEnrollmentApprovalRun).not.toHaveBeenCalled();
+  });
+
+  test("keeps Reconcile available when cancellation leaves an in-flight item", async () => {
+    mockWorkspace();
+    const runId = "approval-run-cancelled-in-flight";
+    const inFlightItem: EnrollmentApprovalRunItem = {
+      item_id: `${runId}:${request.request_id}`,
+      run_id: runId,
+      sequence: 0,
+      request_id: request.request_id,
+      program_id: request.program_id,
+      member_user_id: request.member_user_id,
+      member_name: request.member_name,
+      member_username: request.member_username,
+      request_version: request.request_version,
+      idempotency_key: "approval-key-cancelled-in-flight",
+      status: "in_flight",
+      retryable: false,
+      enrollment_id: null,
+      error_code: null,
+      detail: null,
+      started_at: "2026-08-04T00:00:00.000Z",
+      settled_at: null,
+    };
+    const activeRun: EnrollmentApprovalRun = {
+      run_id: runId,
+      program_id: request.program_id,
+      status: "active",
+      created_at: "2026-08-04T00:00:00.000Z",
+      finished_at: null,
+      cancelled_at: null,
+      items: [inFlightItem],
+    };
+    const cancelledRun: EnrollmentApprovalRun = {
+      ...activeRun,
+      status: "cancelled",
+      cancelled_at: "2026-08-04T00:02:00.000Z",
+    };
+    const reconciledRun: EnrollmentApprovalRun = {
+      ...cancelledRun,
+      items: [
+        {
+          ...inFlightItem,
+          status: "outcome_unknown",
+          error_code: "OUTCOME_UNKNOWN",
+          detail: "仍未能確認",
+          settled_at: "2026-08-04T00:03:00.000Z",
+        },
+      ],
+    };
+    mocks.listEnrollmentApprovalRuns.mockResolvedValue({ runs: [activeRun] });
+    mocks.reconcileEnrollmentApprovalRun
+      .mockResolvedValueOnce({ run: activeRun })
+      .mockResolvedValueOnce({ run: reconciledRun });
+    mocks.cancelEnrollmentApprovalRun.mockResolvedValue({
+      run: cancelledRun,
+    });
+    render(
+      <ProgramWorkspace
+        programId="program-1"
+        task="participants"
+        onBack={() => {}}
+        onTaskChange={() => {}}
+      />
+    );
+
+    await expect(
+      screen.findByRole("button", { name: "取消後續處理" })
+    ).resolves.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "取消後續處理" }));
+    await expect(
+      screen.findByRole("button", { name: "重新核對結果" })
+    ).resolves.toBeInTheDocument();
+    expect(mocks.reconcileEnrollmentApprovalRun).toHaveBeenCalledTimes(2);
+    expect(mocks.listEnrollmentSnapshot).toHaveBeenCalledTimes(3);
+  });
+
+  test("reloads cancelled unresolved Runs and refreshes after explicit Reconcile", async () => {
+    mockWorkspace();
+    const runId = "approval-run-reload-cancelled";
+    const unresolvedRun: EnrollmentApprovalRun = {
+      run_id: runId,
+      program_id: request.program_id,
+      status: "cancelled",
+      created_at: "2026-08-04T00:00:00.000Z",
+      finished_at: null,
+      cancelled_at: "2026-08-04T00:02:00.000Z",
+      items: [
+        {
+          item_id: `${runId}:${request.request_id}`,
+          run_id: runId,
+          sequence: 0,
+          request_id: request.request_id,
+          program_id: request.program_id,
+          member_user_id: request.member_user_id,
+          member_name: request.member_name,
+          member_username: request.member_username,
+          request_version: request.request_version,
+          idempotency_key: "approval-key-reload-cancelled",
+          status: "outcome_unknown",
+          retryable: false,
+          enrollment_id: null,
+          error_code: "OUTCOME_UNKNOWN",
+          detail: "仍未能確認",
+          started_at: "2026-08-04T00:00:00.000Z",
+          settled_at: "2026-08-04T00:03:00.000Z",
+        },
+      ],
+    };
+    const settledRun: EnrollmentApprovalRun = {
+      ...unresolvedRun,
+      items: [
+        {
+          ...unresolvedRun.items[0],
+          status: "completed",
+          retryable: false,
+          enrollment_id: "enrollment-reload-cancelled",
+          error_code: null,
+          detail: null,
+        },
+      ],
+    };
+    mocks.listEnrollmentApprovalRuns.mockResolvedValue({
+      runs: [unresolvedRun],
+    });
+    mocks.reconcileEnrollmentApprovalRun
+      .mockResolvedValueOnce({ run: unresolvedRun })
+      .mockResolvedValueOnce({ run: settledRun });
+    render(
+      <ProgramWorkspace
+        programId="program-1"
+        task="participants"
+        onBack={() => {}}
+        onTaskChange={() => {}}
+      />
+    );
+
+    await waitFor(() =>
+      expect(mocks.reconcileEnrollmentApprovalRun).toHaveBeenCalledOnce()
+    );
+    await userEvent.click(
+      await screen.findByRole("button", { name: "重新核對結果" })
+    );
+    await waitFor(() =>
+      expect(mocks.reconcileEnrollmentApprovalRun).toHaveBeenCalledTimes(2)
+    );
+    expect(mocks.continueEnrollmentApprovalRun).not.toHaveBeenCalled();
+    expect(mocks.listEnrollmentSnapshot).toHaveBeenCalledTimes(3);
+  });
+
   test("cancels an active enrollment and renders refreshed cancellation history", async () => {
     mockWorkspace();
     const cancelledEnrollment: Enrollment = {
@@ -1203,12 +2784,23 @@ describe("ENR-01 participants workspace", () => {
     await userEvent.click(
       screen.getByRole("button", { name: COPY.programs.cancelEnrollment })
     );
+    const dialog = await screen.findByRole("alertdialog", {
+      name: "取消成員報名？",
+    });
+    await userEvent.type(
+      within(dialog).getByRole("textbox", { name: "取消原因" }),
+      "課程安排調整"
+    );
+    await userEvent.click(
+      within(dialog).getByRole("button", { name: "確認取消" })
+    );
 
     await waitFor(() =>
       expect(mocks.cancelEnrollment).toHaveBeenCalledWith(
         "program-1",
         "enrollment-1",
-        expect.any(String)
+        expect.any(String),
+        "課程安排調整"
       )
     );
     await expect(
@@ -1261,6 +2853,16 @@ describe("ENR-01 participants workspace", () => {
     await userEvent.click(
       screen.getByRole("button", { name: COPY.programs.cancelEnrollment })
     );
+    const dialog = await screen.findByRole("alertdialog", {
+      name: "取消成員報名？",
+    });
+    await userEvent.type(
+      within(dialog).getByRole("textbox", { name: "取消原因" }),
+      "名單修訂"
+    );
+    await userEvent.click(
+      within(dialog).getByRole("button", { name: "確認取消" })
+    );
 
     await expect(
       screen.findByText(COPY.programs.workspaceParticipantsConflict)
@@ -1272,7 +2874,7 @@ describe("ENR-01 participants workspace", () => {
     ).toBeInTheDocument();
   });
 
-  test("retries an ambiguous cancellation with the original idempotency key", async () => {
+  test("reconciles an ambiguous cancellation before any retry", async () => {
     mockWorkspace();
     const cancelledEnrollment: Enrollment = {
       ...enrollment,
@@ -1309,17 +2911,20 @@ describe("ENR-01 participants workspace", () => {
     await userEvent.click(
       screen.getByRole("button", { name: COPY.programs.cancelEnrollment })
     );
-    const error = await screen.findByRole("alert");
+    const dialog = await screen.findByRole("alertdialog", {
+      name: "取消成員報名？",
+    });
+    await userEvent.type(
+      within(dialog).getByRole("textbox", { name: "取消原因" }),
+      "回應逾時重試"
+    );
     await userEvent.click(
-      within(error).getByRole("button", { name: COPY.error.retry })
+      within(dialog).getByRole("button", { name: "確認取消" })
     );
     await expect(
-      screen.findByText(COPY.programs.enrollmentCancelledNotice)
+      screen.findByText(COPY.programs.workspaceReconciled)
     ).resolves.toBeInTheDocument();
-    expect(mocks.cancelEnrollment).toHaveBeenCalledTimes(2);
-    expect(mocks.cancelEnrollment.mock.calls[1]?.[2]).toBe(
-      mocks.cancelEnrollment.mock.calls[0]?.[2]
-    );
+    expect(mocks.cancelEnrollment).toHaveBeenCalledOnce();
   });
 
   test("keeps cancellation disabled until a failed refresh is retried", async () => {
@@ -1359,6 +2964,16 @@ describe("ENR-01 participants workspace", () => {
     );
     await userEvent.click(
       screen.getByRole("button", { name: COPY.programs.cancelEnrollment })
+    );
+    const dialog = await screen.findByRole("alertdialog", {
+      name: "取消成員報名？",
+    });
+    await userEvent.type(
+      within(dialog).getByRole("textbox", { name: "取消原因" }),
+      "名單修訂"
+    );
+    await userEvent.click(
+      within(dialog).getByRole("button", { name: "確認取消" })
     );
     await expect(
       screen.findByText(COPY.programs.workspaceParticipantsRefreshFailed)
@@ -1445,13 +3060,18 @@ describe("ENR-01 participants workspace", () => {
     );
 
     await expect(
-      screen.findByText(COPY.programs.tabsEmpty.pending)
-    ).resolves.toBeInTheDocument();
-    await userEvent.click(
-      screen.getByRole("tab", { name: `${COPY.programs.tabsActive} (0)` })
-    );
+      screen.findByRole("tab", {
+        name: `${COPY.programs.tabsActive} (0)`,
+      })
+    ).resolves.toHaveAttribute("aria-selected", "true");
     expect(
       screen.getByText(COPY.programs.tabsEmpty.active)
+    ).toBeInTheDocument();
+    await userEvent.click(
+      screen.getByRole("tab", { name: `${COPY.programs.tabsPending} (0)` })
+    );
+    expect(
+      screen.getByText(COPY.programs.tabsEmpty.pending)
     ).toBeInTheDocument();
     await userEvent.click(
       screen.getByRole("tab", { name: `${COPY.programs.tabsHistory} (0)` })
@@ -1742,7 +3362,7 @@ describe("EVT-01 workspace Event deep link (#251)", () => {
       />
     );
     const open = await screen.findByRole("link", {
-      name: COPY.programs.eventDetailOpen,
+      name: /2030-08-20.*詳情/u,
     });
     expect(open).toHaveAttribute(
       "href",
@@ -1754,9 +3374,20 @@ describe("EVT-01 workspace Event deep link (#251)", () => {
 
   test("creates an Event with HK wall-time fields and opens its detail", async () => {
     mockWorkspace();
-    mocks.createEvent.mockResolvedValue({
-      event: { ...event, event_id: "event-created" },
-    });
+    const createdEvent = {
+      ...event,
+      event_id: "event-created",
+      starts_at: "2026-09-13T10:00:00.000Z",
+      ends_at: "2026-09-13T11:00:00.000Z",
+      name: "新聚會",
+      event_type: COPY.programs.eventTypeOptions[1],
+      location: null,
+    };
+    mocks.createEvent.mockResolvedValue({ event: createdEvent });
+    mocks.listEvents
+      .mockReset()
+      .mockResolvedValueOnce({ events: [event] })
+      .mockResolvedValueOnce({ events: [event, createdEvent] });
     const onEventChange = vi.fn();
     render(
       <ProgramWorkspace
@@ -1771,9 +3402,15 @@ describe("EVT-01 workspace Event deep link (#251)", () => {
     await userEvent.click(
       await screen.findByRole("button", { name: COPY.programs.createMeeting })
     );
-    fireEvent.change(screen.getByLabelText(COPY.programs.eventDate), {
-      target: { value: "2026-09-13" },
-    });
+    await userEvent.click(
+      screen.getByRole("button", { name: COPY.programs.eventDate })
+    );
+    const calendar = await screen.findByRole("grid");
+    const dayButton = calendar.querySelector<HTMLButtonElement>(
+      '[data-day="2026-09-13"] button'
+    );
+    expect(dayButton).not.toBeNull();
+    await userEvent.click(dayButton!);
     fireEvent.change(screen.getByLabelText(COPY.programs.eventTime), {
       target: { value: "18:00" },
     });
@@ -1790,12 +3427,6 @@ describe("EVT-01 workspace Event deep link (#251)", () => {
       })
     );
     await userEvent.click(
-      screen.getByRole("combobox", { name: COPY.programs.recurrenceTag })
-    );
-    await userEvent.click(
-      screen.getByRole("option", { name: COPY.programs.recurrenceNone })
-    );
-    await userEvent.click(
       screen
         .getAllByRole("button", { name: COPY.programs.createMeeting })
         .at(-1)!
@@ -1807,6 +3438,9 @@ describe("EVT-01 workspace Event deep link (#251)", () => {
         event_type: COPY.programs.eventTypeOptions[1],
         starts_at: "2026-09-13T10:00:00.000Z",
         ends_at: "2026-09-13T11:00:00.000Z",
+        location: null,
+        check_in_window_opens_at: null,
+        check_in_window_closes_at: null,
       })
     );
     expect(onEventChange).toHaveBeenCalledWith("event-created");
@@ -1859,225 +3493,91 @@ describe("EVT-02 recurring preview and generation UI (#252)", () => {
     );
   }
 
-  function renderScheduleTask() {
+  function renderScheduleTask(
+    onTaskChange = vi.fn<(...args: unknown[]) => void>(),
+    onScheduleEditorChange = vi.fn<(...args: unknown[]) => void>()
+  ) {
     mockWorkspace();
     return render(
       <ProgramWorkspace
         programId="program-1"
         task="schedule"
-        onBack={vi.fn()}
-        onTaskChange={vi.fn()}
+        onBack={vi.fn<(...args: unknown[]) => void>()}
+        onTaskChange={onTaskChange}
+        onScheduleEditorChange={onScheduleEditorChange}
       />
     );
   }
 
-  test("reschedules an occurrence and renders the server exception after refetch", async () => {
+  test("guards dirty Schedule drafts across tabs, browser Back, and external leave", async () => {
     const user = userEvent.setup();
-    const scheduledEvent: ProgramEvent = {
-      ...event,
-      starts_at: "2030-08-21T11:30:00.000Z",
-      ends_at: "2030-08-21T13:00:00.000Z",
-    };
-    const exception: ScheduleException = {
-      exception_id: "exception-1",
-      rule_id: "rule-1",
-      override_date: "2030-08-21",
-      action: "RESCHEDULE",
-      new_start_time: "20:30",
-      new_end_time: "22:00",
-      created_at: "2030-08-01T00:00:00.000Z",
-    };
-    mockWorkspace();
-    mocks.listEvents
-      .mockReset()
-      .mockResolvedValueOnce({ events: [scheduledEvent] })
-      .mockResolvedValueOnce({
-        events: [{ ...scheduledEvent, exception }],
-      });
-    mocks.createScheduleException.mockResolvedValue({ exception });
-    render(
-      <ProgramWorkspace
-        programId="program-1"
-        task="events"
-        onBack={vi.fn()}
-        onTaskChange={vi.fn()}
-      />
-    );
+    const onScheduleEditorChange = vi.fn<(...args: unknown[]) => void>();
+    const externalLink = document.createElement("a");
+    externalLink.href = "/home";
+    externalLink.textContent = "首頁";
+    document.body.append(externalLink);
 
-    await user.click(
-      await screen.findByRole("button", {
-        name: COPY.programs.rescheduleEvent,
-      })
-    );
-    await user.type(
-      screen.getByLabelText(COPY.programs.rescheduleStart),
-      "20:30"
-    );
-    await user.type(
-      screen.getByLabelText(COPY.programs.rescheduleEnd),
-      "22:00"
-    );
-    await user.click(
-      screen.getByRole("button", { name: COPY.programs.confirmReschedule })
-    );
+    try {
+      renderScheduleTask(vi.fn(), onScheduleEditorChange);
+      await user.click(
+        await screen.findByRole("button", { name: COPY.programs.addRule })
+      );
+      await user.type(screen.getByLabelText(COPY.programs.startTime), "10:00");
 
-    await expect(
-      screen.findByText(COPY.programs.exceptionUpdatedNotice)
-    ).resolves.toBeInTheDocument();
-    expect(mocks.createScheduleException).toHaveBeenCalledWith(
-      "program-1",
-      "rule-1",
-      {
-        override_date: "2030-08-21",
-        action: "RESCHEDULE",
-        new_start_time: "20:30",
-        new_end_time: "22:00",
-      }
-    );
-    expect(mocks.listEvents).toHaveBeenCalledTimes(2);
-    expect(
-      screen.getByText(
-        COPY.programs.eventRescheduledBadge.replace("{time}", "20:30")
-      )
-    ).toBeInTheDocument();
-    expect(
-      screen.getByRole("button", { name: COPY.programs.restoreOccurrence })
-    ).toBeInTheDocument();
-  });
+      await user.click(externalLink);
+      expect(
+        screen.getByRole("button", {
+          name: COPY.programs.settingsContinueEditing,
+        })
+      ).toBeInTheDocument();
+      const beforeUnload = new Event("beforeunload", { cancelable: true });
+      expect(window.dispatchEvent(beforeUnload)).toBeFalsy();
 
-  test("cancels and restores an occurrence through the canonical EventsTask", async () => {
-    const user = userEvent.setup();
-    const scheduledEvent: ProgramEvent = {
-      ...event,
-      starts_at: "2030-08-21T11:30:00.000Z",
-      ends_at: "2030-08-21T13:00:00.000Z",
-    };
-    const exception: ScheduleException = {
-      exception_id: "exception-cancel-1",
-      rule_id: "rule-1",
-      override_date: "2030-08-21",
-      action: "CANCEL",
-      new_start_time: null,
-      new_end_time: null,
-      created_at: "2030-08-01T00:00:00.000Z",
-    };
-    mockWorkspace();
-    mocks.listEvents
-      .mockReset()
-      .mockResolvedValueOnce({ events: [scheduledEvent] })
-      .mockResolvedValueOnce({
-        events: [{ ...scheduledEvent, exception }],
-      })
-      .mockResolvedValueOnce({ events: [scheduledEvent] });
-    mocks.createScheduleException.mockResolvedValue({ exception });
-    mocks.deleteScheduleException.mockResolvedValue({});
-    const onAttentionRefresh = vi.fn();
-    render(
-      <ProgramWorkspace
-        programId="program-1"
-        task="events"
-        onBack={vi.fn()}
-        onTaskChange={vi.fn()}
-        onAttentionRefresh={onAttentionRefresh}
-      />
-    );
-
-    await user.click(
-      await screen.findByRole("button", {
-        name: COPY.programs.cancelOccurrence,
-      })
-    );
-    await user.click(
-      screen.getByRole("button", {
-        name: COPY.programs.confirmCancelOccurrence,
-      })
-    );
-
-    await expect(
-      screen.findByText(COPY.programs.exceptionUpdatedNotice)
-    ).resolves.toBeInTheDocument();
-    expect(mocks.createScheduleException).toHaveBeenCalledWith(
-      "program-1",
-      "rule-1",
-      {
-        override_date: "2030-08-21",
-        action: "CANCEL",
-      }
-    );
-    expect(mocks.listEvents).toHaveBeenCalledTimes(2);
-    expect(
-      screen.getByText(COPY.programs.eventCancelledBadge)
-    ).toBeInTheDocument();
-    expect(onAttentionRefresh).toHaveBeenCalledOnce();
-
-    await user.click(
-      screen.getByRole("button", { name: COPY.programs.restoreOccurrence })
-    );
-    await expect(
-      screen.findByText(COPY.programs.exceptionRemovedNotice)
-    ).resolves.toBeInTheDocument();
-    expect(mocks.deleteScheduleException).toHaveBeenCalledWith(
-      "program-1",
-      "rule-1",
-      "exception-cancel-1"
-    );
-    expect(mocks.listEvents).toHaveBeenCalledTimes(3);
-    expect(
-      screen.queryByText(COPY.programs.eventCancelledBadge)
-    ).not.toBeInTheDocument();
-    expect(onAttentionRefresh).toHaveBeenCalledTimes(2);
-  });
-
-  test("makes stale event rows read-only while the list refresh is unavailable", async () => {
-    const user = userEvent.setup();
-    const scheduledEvent: ProgramEvent = {
-      ...event,
-      starts_at: "2030-08-21T11:30:00.000Z",
-      ends_at: "2030-08-21T13:00:00.000Z",
-    };
-    const exception: ScheduleException = {
-      exception_id: "exception-refresh-1",
-      rule_id: "rule-1",
-      override_date: "2030-08-21",
-      action: "RESCHEDULE",
-      new_start_time: "20:30",
-      new_end_time: "22:00",
-      created_at: "2030-08-01T00:00:00.000Z",
-    };
-    mockWorkspace();
-    mocks.listEvents
-      .mockReset()
-      .mockResolvedValueOnce({ events: [scheduledEvent] })
-      .mockRejectedValueOnce(
-        new RpcError({
-          code: "NETWORK_ERROR",
-          status: 0,
-          detail: "refresh failed",
+      await user.click(
+        screen.getByRole("button", {
+          name: COPY.programs.settingsContinueEditing,
         })
       );
-    mocks.createScheduleException.mockResolvedValue({ exception });
+      await waitFor(() =>
+        expect(
+          screen.queryByRole("button", {
+            name: COPY.programs.settingsContinueEditing,
+          })
+        ).not.toBeInTheDocument()
+      );
+      window.dispatchEvent(new PopStateEvent("popstate"));
+      await waitFor(() =>
+        expect(
+          screen.getByRole("button", {
+            name: COPY.programs.settingsContinueEditing,
+          })
+        ).toBeInTheDocument()
+      );
+      await user.click(
+        screen.getByRole("button", {
+          name: COPY.programs.settingsContinueEditing,
+        })
+      );
+      await user.click(
+        screen.getByRole("link", { name: COPY.programs.backToOverview })
+      );
+      await user.click(
+        screen.getByRole("button", {
+          name: COPY.programs.settingsDiscardAndLeave,
+        })
+      );
+      expect(onScheduleEditorChange).toHaveBeenLastCalledWith(null, null);
+    } finally {
+      externalLink.remove();
+    }
+  });
+
+  test("keeps recurrence operations behind the Schedule destination", async () => {
     renderEventsTask();
 
-    await user.click(
-      await screen.findByRole("button", {
-        name: COPY.programs.rescheduleEvent,
-      })
-    );
-    await user.type(
-      screen.getByLabelText(COPY.programs.rescheduleStart),
-      "20:30"
-    );
-    await user.type(
-      screen.getByLabelText(COPY.programs.rescheduleEnd),
-      "22:00"
-    );
-    await user.click(
-      screen.getByRole("button", { name: COPY.programs.confirmReschedule })
-    );
-
-    await expect(screen.findByRole("alert")).resolves.toHaveTextContent(
-      COPY.error.networkError
-    );
+    await screen.findByRole("link", {
+      name: new RegExp(COPY.programs.settingsScheduleEventsLink, "u"),
+    });
     expect(
       screen.queryByRole("button", { name: COPY.programs.rescheduleEvent })
     ).not.toBeInTheDocument();
@@ -2085,10 +3585,50 @@ describe("EVT-02 recurring preview and generation UI (#252)", () => {
       screen.queryByRole("button", { name: COPY.programs.cancelOccurrence })
     ).not.toBeInTheDocument();
     expect(
-      screen.queryByRole("button", { name: COPY.programs.cancelEvent })
+      screen.queryByRole("button", { name: COPY.programs.restoreOccurrence })
     ).not.toBeInTheDocument();
     expect(
-      screen.getByRole("link", { name: COPY.programs.eventDetailOpen })
+      screen.queryByRole("button", { name: COPY.programs.previewEvents })
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: COPY.programs.generateEvents })
+    ).not.toBeInTheDocument();
+    expect(mocks.listScheduleRules).not.toHaveBeenCalled();
+    expect(mocks.createScheduleException).not.toHaveBeenCalled();
+    expect(mocks.deleteScheduleException).not.toHaveBeenCalled();
+  });
+
+  test("keeps Schedule overview compact and opens a child rule editor", async () => {
+    const user = userEvent.setup();
+    renderScheduleTask();
+
+    await screen.findByText(
+      `${COPY.programs.ruleWeekly} ${COPY.programs.weekdayWednesday}`
+    );
+    expect(
+      screen.queryByLabelText(COPY.programs.startTime) === null &&
+        Boolean(
+          screen.getByRole("button", { name: COPY.programs.previewEvents })
+        )
+    ).toBeTruthy();
+
+    await user.click(
+      screen.getByRole("button", { name: COPY.programs.addRule })
+    );
+    const back = screen.getByRole("link", {
+      name: COPY.programs.backToOverview,
+    });
+    expect(
+      back.getAttribute("href") ===
+        "/programs?mode=management&program=program-1&task=schedule" &&
+        Boolean(screen.getByRole("heading", { name: COPY.programs.addRule })) &&
+        screen.queryByRole("button", { name: COPY.programs.previewEvents }) ===
+          null
+    ).toBeTruthy();
+
+    await user.click(back);
+    expect(
+      screen.getByRole("button", { name: COPY.programs.previewEvents })
     ).toBeInTheDocument();
   });
 
@@ -2101,7 +3641,10 @@ describe("EVT-02 recurring preview and generation UI (#252)", () => {
     await user.click(
       screen.getByRole("button", { name: COPY.programs.previewEvents })
     );
-    expect(mocks.previewEvents).toHaveBeenCalledWith("program-1", 90);
+    expect(mocks.previewEvents).toHaveBeenCalledWith("program-1", {
+      from_date: hkTodayWallDate(),
+      until_date: addWallDays(addWallMonths(hkTodayWallDate(), 3), -1),
+    });
 
     await expect(
       screen.findByText(
@@ -2118,7 +3661,316 @@ describe("EVT-02 recurring preview and generation UI (#252)", () => {
     ).toBeInTheDocument();
   });
 
-  test("a stale plan error surfaces, clears the plan, and requires a new preview", async () => {
+  test("changing the visible range keeps the old Preview but requires Review Again", async () => {
+    const user = userEvent.setup();
+    renderScheduleTask();
+    await screen.findByRole("button", { name: COPY.programs.previewEvents });
+    mocks.previewEvents.mockImplementation(
+      async (
+        _programId: string,
+        range: { from_date: string; until_date: string }
+      ) => ({
+        ...plan,
+        plan: {
+          ...plan.plan,
+          from_date: range.from_date,
+          to_date: range.until_date,
+        },
+      })
+    );
+
+    await user.click(
+      screen.getByRole("button", { name: COPY.programs.previewEvents })
+    );
+    await screen.findByText(
+      COPY.programs.previewPlanLabel.replace("{id}", "plan-abc"),
+      { exact: false }
+    );
+
+    fireEvent.change(screen.getByLabelText(COPY.programs.previewUntilDate), {
+      target: { value: addWallDays(hkTodayWallDate(), 7) },
+    });
+    await expect(screen.findByRole("alert")).resolves.toHaveTextContent(
+      COPY.programs.previewChanged
+    );
+    expect(
+      screen.getByRole("button", {
+        name: COPY.programs.generateEvents,
+        hidden: true,
+      })
+    ).toBeDisabled();
+
+    await user.click(
+      screen.getByRole("button", { name: COPY.programs.previewReviewAgain })
+    );
+    await waitFor(() => expect(mocks.previewEvents).toHaveBeenCalledTimes(2));
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: COPY.programs.generateEvents })
+      ).toBeEnabled()
+    );
+  });
+
+  test("invalid re-review retains the old Preview and keeps Generate stale", async () => {
+    const user = userEvent.setup();
+    renderScheduleTask();
+    await screen.findByRole("button", { name: COPY.programs.previewEvents });
+    mocks.previewEvents.mockResolvedValue(plan);
+
+    await user.click(
+      screen.getByRole("button", { name: COPY.programs.previewEvents })
+    );
+    await screen.findByText(COPY.programs.previewPlanLabel, { exact: false });
+    fireEvent.change(screen.getByLabelText(COPY.programs.previewUntilDate), {
+      target: { value: addWallDays(hkTodayWallDate(), 366) },
+    });
+    await user.click(
+      screen.getByRole("button", { name: COPY.programs.previewReviewAgain })
+    );
+
+    await expect(
+      screen.findByText(COPY.programs.previewError)
+    ).resolves.toBeInTheDocument();
+    expect(
+      screen.getByText(COPY.programs.previewPlanLabel, { exact: false })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", {
+        name: COPY.programs.generateEvents,
+        hidden: true,
+      })
+    ).toBeDisabled();
+    expect(mocks.previewEvents).toHaveBeenCalledOnce();
+  });
+
+  test("failed re-review retains the old Preview and exposes the stale recovery state", async () => {
+    const user = userEvent.setup();
+    renderScheduleTask();
+    await screen.findByRole("button", { name: COPY.programs.previewEvents });
+    mocks.previewEvents
+      .mockResolvedValueOnce(plan)
+      .mockRejectedValueOnce(new Error("offline"));
+
+    await user.click(
+      screen.getByRole("button", { name: COPY.programs.previewEvents })
+    );
+    await screen.findByText(COPY.programs.previewPlanLabel, { exact: false });
+    fireEvent.change(screen.getByLabelText(COPY.programs.previewUntilDate), {
+      target: { value: addWallDays(hkTodayWallDate(), 7) },
+    });
+    await user.click(
+      screen.getByRole("button", { name: COPY.programs.previewReviewAgain })
+    );
+
+    await expect(
+      screen.findByText(COPY.programs.scheduleTransportAmbiguous)
+    ).resolves.toBeInTheDocument();
+    expect(
+      screen.getByText(COPY.programs.previewPlanLabel, { exact: false })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", {
+        name: COPY.programs.generateEvents,
+        hidden: true,
+      })
+    ).toBeDisabled();
+  });
+
+  test("preview occurrence actions distinguish an unsaved draft from the saved exception", async () => {
+    const user = userEvent.setup();
+    renderScheduleTask();
+    await screen.findByRole("button", { name: COPY.programs.previewEvents });
+    mocks.previewEvents.mockResolvedValue(plan);
+
+    await user.click(
+      screen.getByRole("button", { name: COPY.programs.previewEvents })
+    );
+    await waitFor(() =>
+      expect(
+        screen.getAllByRole("button", {
+          name: COPY.programs.previewAdjustOccurrence,
+        }).length
+      ).toBeGreaterThan(0)
+    );
+    await user.click(
+      screen.getAllByRole("button", {
+        name: COPY.programs.previewAdjustOccurrence,
+      })[0]
+    );
+    await user.click(
+      screen.getByRole("button", { name: COPY.programs.previewSkipOccurrence })
+    );
+    expect(
+      screen.getByText(COPY.programs.previewExceptionDraft)
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", {
+        name: COPY.programs.generateEvents,
+        hidden: true,
+      })
+    ).toBeDisabled();
+
+    await user.click(
+      screen.getByRole("button", { name: COPY.programs.previewSaveException })
+    );
+    await waitFor(() =>
+      expect(mocks.createScheduleException).toHaveBeenCalledWith(
+        "program-1",
+        "rule-1",
+        { override_date: "2026-08-19", action: "CANCEL" }
+      )
+    );
+    expect(
+      screen.getByRole("button", {
+        name: COPY.programs.generateEvents,
+        hidden: true,
+      })
+    ).toBeDisabled();
+  });
+
+  test("a pending exception save keeps Generate disabled until it settles", async () => {
+    const user = userEvent.setup();
+    const pending = Promise.withResolvers<unknown>();
+    renderScheduleTask();
+    await screen.findByRole("button", { name: COPY.programs.previewEvents });
+    mocks.previewEvents.mockResolvedValue(plan);
+    mocks.createScheduleException.mockReturnValueOnce(pending.promise);
+
+    await user.click(
+      screen.getByRole("button", { name: COPY.programs.previewEvents })
+    );
+    await user.click(
+      (
+        await screen.findAllByRole("button", {
+          name: COPY.programs.previewAdjustOccurrence,
+        })
+      )[0]
+    );
+    await user.click(
+      screen.getByRole("button", { name: COPY.programs.previewSkipOccurrence })
+    );
+    await user.click(
+      screen.getByRole("button", { name: COPY.programs.previewSaveException })
+    );
+
+    expect(
+      screen.getByRole("button", {
+        name: COPY.programs.generateEvents,
+        hidden: true,
+      })
+    ).toBeDisabled();
+    expect(
+      screen.getByRole("button", { name: COPY.programs.submitting })
+    ).toBeDisabled();
+    pending.resolve({
+      exception: {
+        exception_id: "exception-1",
+        rule_id: "rule-1",
+        override_date: "2026-08-19",
+        action: "CANCEL",
+        new_start_time: null,
+        new_end_time: null,
+        created_at: "2026-09-16T00:00:00.000Z",
+      },
+    });
+    await waitFor(() =>
+      expect(mocks.createScheduleException).toHaveBeenCalledOnce()
+    );
+    expect(
+      screen.getByRole("button", { name: COPY.programs.generateEvents })
+    ).toBeDisabled();
+  });
+
+  test("a failed settings exception save keeps the reviewed Plan stale", async () => {
+    const user = userEvent.setup();
+    mocks.previewEvents.mockResolvedValue(plan);
+    mocks.createScheduleException.mockRejectedValueOnce(
+      new RpcError({ code: "CONFLICT", status: 409 })
+    );
+    renderScheduleTask();
+    await screen.findByRole("button", { name: COPY.programs.previewEvents });
+
+    await user.click(
+      screen.getByRole("button", { name: COPY.programs.previewEvents })
+    );
+    await screen.findByRole("button", { name: COPY.programs.generateEvents });
+    await user.click(
+      screen.getByRole("button", {
+        name: COPY.programs.settingsRuleAddException,
+      })
+    );
+    await user.type(
+      screen.getByLabelText(COPY.programs.settingsExceptionDate),
+      "2026-08-13"
+    );
+    await user.click(
+      screen.getByRole("button", { name: COPY.programs.settingsExceptionSave })
+    );
+    await expect(screen.findByRole("alert")).resolves.toHaveTextContent(
+      COPY.programs.programConflict
+    );
+    await user.click(
+      screen.getByRole("link", { name: COPY.programs.backToOverview })
+    );
+    expect(
+      screen.getByRole("button", {
+        name: COPY.programs.generateEvents,
+        hidden: true,
+      })
+    ).toBeDisabled();
+  });
+
+  test("an unknown exception save blocks retry until saved Rules and exceptions reconcile", async () => {
+    const user = userEvent.setup();
+    mocks.previewEvents.mockResolvedValue(plan);
+    mocks.createScheduleException.mockRejectedValueOnce(new Error("offline"));
+    renderScheduleTask();
+    await screen.findByRole("button", { name: COPY.programs.previewEvents });
+
+    await user.click(
+      screen.getByRole("button", { name: COPY.programs.previewEvents })
+    );
+    await user.click(
+      (
+        await screen.findAllByRole("button", {
+          name: COPY.programs.previewAdjustOccurrence,
+        })
+      )[0]
+    );
+    await user.click(
+      screen.getByRole("button", { name: COPY.programs.previewSkipOccurrence })
+    );
+    await user.click(
+      screen.getByRole("button", { name: COPY.programs.previewSaveException })
+    );
+
+    await expect(
+      screen.findByText(COPY.programs.scheduleTransportAmbiguous)
+    ).resolves.toBeInTheDocument();
+    expect(
+      screen.getByRole("button", {
+        name: COPY.programs.generateEvents,
+        hidden: true,
+      })
+    ).toBeDisabled();
+    await user.click(
+      screen.getByRole("button", { name: COPY.programs.workspaceRetryRefresh })
+    );
+    await waitFor(() =>
+      expect(mocks.listScheduleRules).toHaveBeenCalledTimes(2)
+    );
+    expect(
+      screen.queryByText(COPY.programs.programTransportAmbiguous)
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("button", {
+        name: COPY.programs.generateEvents,
+        hidden: true,
+      })
+    ).toBeDisabled();
+  });
+
+  test("a stale plan stays visible, disables Generate, and requires a new preview", async () => {
     const user = userEvent.setup();
     renderScheduleTask();
     await screen.findByRole("button", { name: COPY.programs.previewEvents });
@@ -2139,16 +3991,25 @@ describe("EVT-02 recurring preview and generation UI (#252)", () => {
       COPY.programs.previewChanged
     );
     expect(
-      screen.queryByRole("button", { name: COPY.programs.generateEvents })
-    ).not.toBeInTheDocument();
+      screen.getByRole("button", { name: COPY.programs.generateEvents })
+    ).toBeDisabled();
+    await user.click(
+      screen.getByRole("button", { name: COPY.programs.previewReviewAgain })
+    );
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: COPY.programs.generateEvents })
+      ).toBeEnabled()
+    );
   });
 
   test("generation reports deterministic counts and refreshes the event list", async () => {
     const user = userEvent.setup();
-    renderScheduleTask();
+    const onTaskChange = vi.fn();
+    renderScheduleTask(onTaskChange);
     await screen.findByRole("button", { name: COPY.programs.previewEvents });
     mocks.previewEvents.mockResolvedValue(plan);
-    mocks.generateEvents.mockResolvedValue({
+    mocks.generateEvents.mockResolvedValueOnce({
       generated: {
         run_id: "run-1",
         plan_id: "plan-abc123",
@@ -2157,6 +4018,7 @@ describe("EVT-02 recurring preview and generation UI (#252)", () => {
         skipped: 1,
         failed: 0,
         resumed: false,
+        created_event_ids: ["event-created"],
       },
     });
 
@@ -2177,6 +4039,10 @@ describe("EVT-02 recurring preview and generation UI (#252)", () => {
         "plan-abc123"
       )
     );
+    await user.click(
+      screen.getByRole("button", { name: COPY.programs.generatedCreatedEvent })
+    );
+    expect(onTaskChange).toHaveBeenCalledWith("events", "event-created");
   });
 
   test("a schedule-rules load failure keeps the Preview form reachable next to the error alert", async () => {
@@ -2204,7 +4070,7 @@ describe("EVT-02 recurring preview and generation UI (#252)", () => {
       screen.getByRole("button", { name: COPY.programs.previewEvents })
     ).toBeInTheDocument();
     expect(
-      screen.getByLabelText(COPY.programs.previewHorizon)
+      screen.getByLabelText(COPY.programs.previewFromDate)
     ).toBeInTheDocument();
     expect(
       screen.queryByText(COPY.programs.settingsScheduleNone)
@@ -2216,17 +4082,37 @@ describe("EVT-02 recurring preview and generation UI (#252)", () => {
     renderScheduleTask();
     await screen.findByRole("button", { name: COPY.programs.previewEvents });
     mocks.previewEvents.mockResolvedValue(plan);
-    mocks.generateEvents.mockResolvedValue({
-      generated: {
-        run_id: "run-1",
-        plan_id: "plan-abc123",
-        status: "partial",
-        created: 1,
-        skipped: 0,
-        failed: 1,
-        resumed: false,
-      },
-    });
+    mocks.generateEvents
+      .mockResolvedValueOnce({
+        generated: {
+          run_id: "run-1",
+          plan_id: "plan-abc123",
+          status: "partial",
+          created: 1,
+          skipped: 0,
+          failed: 1,
+          resumed: false,
+          unresolved_occurrences: [
+            {
+              occurrence_id: "occ-1",
+              starts_at: "2026-09-16T11:30:00.000Z",
+              detail: "SQLITE_BUSY: internal storage detail",
+            },
+          ],
+        },
+      })
+      .mockResolvedValueOnce({
+        generated: {
+          run_id: "run-1",
+          plan_id: "plan-abc123",
+          status: "completed",
+          created: 1,
+          skipped: 0,
+          failed: 0,
+          resumed: true,
+          created_event_ids: ["event-1"],
+        },
+      });
 
     await user.click(
       screen.getByRole("button", { name: COPY.programs.previewEvents })
@@ -2245,11 +4131,126 @@ describe("EVT-02 recurring preview and generation UI (#252)", () => {
         .replace("{failed}", "1")
     );
     expect(screen.queryByText(COPY.programs.generated)).not.toBeInTheDocument();
-    // The plan is kept and Generate stays enabled so the operator can
-    // immediately retry the failed units on the same plan.
+    expect(screen.getByText(/未完成，請核對後重試。/u)).toBeInTheDocument();
+    expect(screen.queryByText(/SQLITE_BUSY/u)).not.toBeInTheDocument();
+    // The plan is kept, but a retry is gated until the operator acknowledges
+    // the server's unresolved units.
     expect(
       screen.getByRole("button", { name: COPY.programs.generateEvents })
+    ).toBeDisabled();
+    await user.click(
+      screen.getByRole("button", { name: COPY.programs.generatedReconcile })
+    );
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: COPY.programs.generateEvents })
+      ).toBeEnabled()
+    );
+    expect(mocks.generateEvents).toHaveBeenCalledTimes(2);
+  });
+
+  test("a stale partial generation keeps counts but requires Review Again", async () => {
+    const user = userEvent.setup();
+    renderScheduleTask();
+    await screen.findByRole("button", { name: COPY.programs.previewEvents });
+    mocks.previewEvents.mockResolvedValue(plan);
+    mocks.generateEvents.mockResolvedValue({
+      generated: {
+        run_id: "run-stale-partial",
+        plan_id: "plan-abc123",
+        status: "partial",
+        created: 1,
+        skipped: 0,
+        failed: 1,
+        resumed: false,
+        requires_review: true,
+        unresolved_occurrences: [
+          {
+            occurrence_id: "occ-stale",
+            starts_at: "2026-09-16T11:30:00.000Z",
+            detail: "STALE_PLAN",
+          },
+        ],
+      },
+    });
+
+    await user.click(
+      screen.getByRole("button", { name: COPY.programs.previewEvents })
+    );
+    await screen.findByRole("button", { name: COPY.programs.generateEvents });
+    await user.click(
+      screen.getByRole("button", { name: COPY.programs.generateEvents })
+    );
+
+    await expect(
+      screen.findByText(
+        COPY.programs.generatedPartial
+          .replace("{created}", "1")
+          .replace("{skipped}", "0")
+          .replace("{failed}", "1"),
+        { exact: true }
+      )
+    ).resolves.toBeVisible();
+    expect(
+      screen.queryByRole("button", { name: COPY.programs.generatedReconcile })
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: COPY.programs.previewReviewAgain })
     ).toBeEnabled();
+    expect(
+      screen.getByRole("button", { name: COPY.programs.generateEvents })
+    ).toBeDisabled();
+  });
+
+  test("an unknown generation response is reconciled before retry is enabled", async () => {
+    const user = userEvent.setup();
+    renderScheduleTask();
+    await screen.findByRole("button", { name: COPY.programs.previewEvents });
+    mocks.previewEvents.mockResolvedValue(plan);
+    mocks.generateEvents
+      .mockRejectedValueOnce(new TypeError("request lost"))
+      .mockResolvedValueOnce({
+        generated: {
+          run_id: "run-unknown",
+          plan_id: "plan-abc123",
+          status: "completed",
+          created: 1,
+          skipped: 1,
+          failed: 0,
+          resumed: true,
+          created_event_ids: ["event-reconciled"],
+        },
+      });
+
+    await user.click(
+      screen.getByRole("button", { name: COPY.programs.previewEvents })
+    );
+    await screen.findByRole("button", { name: COPY.programs.generateEvents });
+    await user.click(
+      screen.getByRole("button", { name: COPY.programs.generateEvents })
+    );
+
+    await expect(
+      screen.findByText(COPY.programs.scheduleTransportAmbiguous)
+    ).resolves.toBeVisible();
+    expect(
+      screen.getByRole("button", {
+        name: COPY.programs.generatedReconcileUnknown,
+      })
+    ).toBeVisible();
+    expect(
+      screen.getByRole("button", { name: COPY.programs.generateEvents })
+    ).toBeDisabled();
+
+    await user.click(
+      screen.getByRole("button", {
+        name: COPY.programs.generatedReconcileUnknown,
+      })
+    );
+    await expect(
+      screen.findByText("已接續上次產生，新增 1 場，跳過 1 場。")
+    ).resolves.toBeVisible();
+    expect(mocks.generateEvents).toHaveBeenCalledTimes(2);
   });
 
   test("an empty schedule hides preview controls behind an explicit empty state", async () => {

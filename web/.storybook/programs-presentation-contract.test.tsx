@@ -53,12 +53,12 @@ test("real ParticipantDirectory loading output cannot satisfy settled readiness"
     </main>
   );
 
-  await expect(assertProgramsScreen(view.container, readiness)).rejects.toThrow(
-    "Programs presentation is still loading"
-  );
+  await expect(
+    assertProgramsScreen(view.container, { ...readiness, timeout: 50 })
+  ).rejects.toThrow("Programs presentation is still loading");
 
   pending.resolve({ catalog: [] });
-  await expect(assertProgramsScreen(view.container, readiness)).rejects.toThrow(
-    "Expected settled Programs marker"
-  );
+  await expect(
+    assertProgramsScreen(view.container, { ...readiness, timeout: 50 })
+  ).rejects.toThrow("Programs route frame is missing");
 });

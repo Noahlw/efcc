@@ -17,6 +17,7 @@ import type {
   DepartmentSummary,
   ParticipantProgramDetail as ParticipantProgramDetailData,
   ParticipantEnrollmentSnapshot,
+  Enrollment,
   ProgramSummary,
 } from "@/lib/programs/program-api";
 
@@ -30,6 +31,14 @@ const mocks = vi.hoisted(() => {
     prefetch: vi.fn<(href: string, options?: unknown) => void>(),
   };
   return {
+    cancelEnrollment:
+      vi.fn<
+        (
+          programId: string,
+          enrollmentId: string,
+          idempotencyKey?: string
+        ) => Promise<{ enrollment: Enrollment }>
+      >(),
     getParticipantProgramDetail:
       vi.fn<(programId: string) => Promise<ParticipantProgramDetailData>>(),
     replace: router.replace,
@@ -38,6 +47,7 @@ const mocks = vi.hoisted(() => {
 });
 
 vi.mock(import("@/lib/programs/program-api"), () => ({
+  cancelEnrollment: mocks.cancelEnrollment,
   getParticipantProgramDetail: mocks.getParticipantProgramDetail,
 }));
 
@@ -132,7 +142,9 @@ function renderDetail(
   const onOpenEvent = vi.fn<(eventId: string) => void>();
   const eventHref =
     props.eventHref ??
-    vi.fn((eventId: string) => `/programs?program=program-1&event=${eventId}`);
+    vi.fn<(eventId: string) => string>(
+      (eventId: string) => `/programs?program=program-1&event=${eventId}`
+    );
   const managementHref =
     props.managementHref ?? "/programs?mode=management&program=program-1";
   const view = render(
@@ -150,6 +162,9 @@ function renderDetail(
 }
 
 beforeEach(() => {
+  mocks.cancelEnrollment
+    .mockReset()
+    .mockResolvedValue({ enrollment: {} as Enrollment });
   mocks.getParticipantProgramDetail.mockReset();
   mocks.replace.mockReset();
 });
@@ -208,6 +223,11 @@ describe("PUI-03 participant Program detail", () => {
     });
     expect(within(schedule).getByText("第三課聚會")).toBeInTheDocument();
     expect(within(schedule).getByText("第四課聚會")).toBeInTheDocument();
+    const secondEventLink = within(schedule).getByRole("link", {
+      name: `${COPY.programs.viewEventDetail}: 第四課聚會`,
+    });
+    await userEvent.click(secondEventLink);
+    expect(onOpenEvent).toHaveBeenLastCalledWith("event-2");
 
     const backLink = screen.getByRole("link", {
       name: COPY.programs.detailBack,
@@ -327,6 +347,99 @@ describe("PUI-03 participant Program detail", () => {
         value: originalMatchMedia,
       });
     }
+  });
+
+  test("keeps an active meeting visible while it is already in progress", async () => {
+    const base = detailFixture();
+    const startsAt = new Date(Date.now() - 30 * 60_000).toISOString();
+    const endsAt = new Date(Date.now() + 30 * 60_000).toISOString();
+    mocks.getParticipantProgramDetail.mockResolvedValue(
+      detailFixture({
+        events: [
+          {
+            ...base.events[0],
+            starts_at: startsAt,
+            ends_at: endsAt,
+          },
+        ],
+      })
+    );
+
+    renderDetail();
+
+    await expect(
+      screen.findByRole("heading", { name: "第三課聚會" })
+    ).resolves.toBeInTheDocument();
+  });
+
+  test("shows enrolled cancelled history with reason and a read-only detail link", async () => {
+    const base = detailFixture();
+    const onOpenEvent = vi.fn<(eventId: string) => void>();
+    mocks.getParticipantProgramDetail.mockResolvedValue(
+      detailFixture({
+        events: [
+          ...base.events,
+          {
+            ...base.events[0],
+            event_id: "event-cancelled",
+            name: "場地維修聚會",
+            status: "Cancelled",
+            cancel_reason: "場地維修",
+            self_check_in_available: false,
+          },
+        ],
+        enrollment: snapshot({
+          enrollments: [
+            {
+              enrollment_id: "enrollment-1",
+              status: "Active",
+              enrolled_at: "2099-02-01T00:00:00.000Z",
+              cancelled_at: null,
+            },
+          ],
+        }),
+      })
+    );
+    renderDetail({ canManage: false, onOpenEvent });
+
+    const cancelled = await screen.findByRole("list", {
+      name: COPY.programs.scheduleCancelledEventsGroup,
+    });
+    expect(within(cancelled).getByText("場地維修聚會")).toBeInTheDocument();
+    expect(
+      within(cancelled).getByText(
+        COPY.programs.cancelledReason.replace("{reason}", "場地維修")
+      )
+    ).toBeInTheDocument();
+    const detailLink = within(cancelled).getByRole("link", {
+      name: `${COPY.programs.viewEventDetail}: 場地維修聚會`,
+    });
+    await userEvent.click(detailLink);
+    expect(onOpenEvent).toHaveBeenCalledExactlyOnceWith("event-cancelled");
+  });
+
+  test("keeps a post-event meeting visible while participant check-in stays open", async () => {
+    const base = detailFixture();
+    const startsAt = new Date(Date.now() - 2 * 60 * 60_000).toISOString();
+    const endsAt = new Date(Date.now() - 30 * 60_000).toISOString();
+    mocks.getParticipantProgramDetail.mockResolvedValue(
+      detailFixture({
+        events: [
+          {
+            ...base.events[0],
+            starts_at: startsAt,
+            ends_at: endsAt,
+            self_check_in_available: true,
+          },
+        ],
+      })
+    );
+
+    renderDetail();
+
+    await expect(
+      screen.findByRole("heading", { name: "第三課聚會" })
+    ).resolves.toBeInTheDocument();
   });
 
   test("hides empty schedule groups and keeps the empty state truthful", async () => {
@@ -565,7 +678,7 @@ describe("PUI-03 participant Program detail", () => {
     ).not.toBeInTheDocument();
   });
 
-  test("does not render a member enrollment history timeline", async () => {
+  test("renders the member's own enrollment history", async () => {
     mocks.getParticipantProgramDetail.mockResolvedValue(
       detailFixture({
         enrollment: snapshot({
@@ -591,12 +704,17 @@ describe("PUI-03 participant Program detail", () => {
     renderDetail();
 
     await screen.findByRole("heading", { name: "青年門徒小組" });
+    const history = screen.getByRole("list", {
+      name: COPY.programs.enrollmentHistory,
+    });
     expect(
-      screen.queryByRole("heading", { name: COPY.programs.enrollmentHistory })
-    ).not.toBeInTheDocument();
+      within(history).getByText(COPY.programs.requestPending)
+    ).toBeInTheDocument();
     expect(
-      screen.queryByRole("list", { name: COPY.programs.enrollmentHistory })
-    ).not.toBeInTheDocument();
+      within(history).getByText(COPY.programs.enrollmentCancelled)
+    ).toBeInTheDocument();
+    expect(within(history).getByText("3月1日")).toBeInTheDocument();
+    expect(within(history).getByText("3月3日")).toBeInTheDocument();
   });
 
   const enrollmentFor = (state: string): ParticipantEnrollmentSnapshot => {
@@ -714,6 +832,126 @@ describe("PUI-03 participant Program detail", () => {
     ).not.toBeInTheDocument();
     const actions = screen.getAllByRole("button");
     expect(actions.at(-1)).toHaveAccessibleName(COPY.programs.cancelEnrollment);
+  });
+
+  test("confirms member self-exit without a reason and shows authoritative history after refresh", async () => {
+    mocks.getParticipantProgramDetail
+      .mockResolvedValueOnce(
+        detailFixture({ enrollment: enrollmentFor("active") })
+      )
+      .mockResolvedValueOnce(
+        detailFixture({ enrollment: enrollmentFor("cancelled") })
+      );
+    renderDetail();
+
+    await screen.findByRole("heading", { name: "青年門徒小組" });
+    const nextCard = screen.getByRole("article", { name: "第三課聚會" });
+    expect(
+      within(nextCard).getByRole("link", {
+        name: COPY.programs.viewEventDetail,
+      })
+    ).toBeInTheDocument();
+
+    await userEvent.click(
+      screen.getByRole("button", { name: COPY.programs.cancelEnrollment })
+    );
+    const dialog = screen.getByRole("alertdialog", {
+      name: COPY.programs.cancelConfirmTitle,
+    });
+    expect(
+      within(dialog).getByText(COPY.programs.cancelConfirmBody)
+    ).toBeInTheDocument();
+    expect(within(dialog).queryByRole("textbox")).not.toBeInTheDocument();
+
+    await userEvent.click(
+      within(dialog).getByRole("button", {
+        name: COPY.programs.cancelConfirmAccept,
+      })
+    );
+
+    await waitFor(() => {
+      expect(mocks.cancelEnrollment).toHaveBeenCalledWith(
+        "program-1",
+        "enrollment-1",
+        expect.any(String)
+      );
+      expect(mocks.getParticipantProgramDetail).toHaveBeenCalledTimes(2);
+      expect(
+        screen.getByText(COPY.programs.enrollmentCancelledNotice)
+      ).toBeInTheDocument();
+      expect(
+        screen.getByRole("button", { name: COPY.programs.reEnroll })
+      ).toBeInTheDocument();
+    });
+
+    const history = screen.getByRole("list", {
+      name: COPY.programs.enrollmentHistory,
+    });
+    expect(
+      within(history).getByText(COPY.programs.enrollmentCancelled)
+    ).toBeInTheDocument();
+    expect(
+      within(
+        screen.getByRole("list", { name: COPY.programs.scheduleEventsGroup })
+      ).getByText("第三課聚會")
+    ).toBeInTheDocument();
+  });
+
+  test("keeps an Active and Unlisted direct-context member detail actionable", async () => {
+    mocks.getParticipantProgramDetail.mockResolvedValue(
+      detailFixture({
+        program: program("program-1", "不公開課程", {
+          discoverability: "Unlisted",
+        }),
+        enrollment: enrollmentFor("active"),
+      })
+    );
+    renderDetail();
+
+    await screen.findByRole("heading", { name: "不公開課程" });
+    expect(screen.getByText(COPY.programs.statusActive)).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: COPY.programs.cancelEnrollment })
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("link", { name: COPY.programs.enterManagement })
+    ).not.toBeInTheDocument();
+  });
+
+  test("keeps direct-context Draft detail read-only and truthful", async () => {
+    mocks.getParticipantProgramDetail.mockResolvedValue(
+      detailFixture({
+        program: program("program-1", "草稿課程", {
+          lifecycle: "Draft",
+          discoverability: "Unlisted",
+        }),
+        enrollment: snapshot({
+          enrollments: [
+            {
+              enrollment_id: "enrollment-1",
+              status: "Cancelled",
+              enrolled_at: "2099-03-02T00:00:00.000Z",
+              cancelled_at: "2099-03-03T00:00:00.000Z",
+            },
+          ],
+        }),
+      })
+    );
+    renderDetail();
+
+    await screen.findByRole("heading", { name: "草稿課程" });
+    expect(screen.getByText(COPY.programs.lifecycleDraft)).toBeInTheDocument();
+    expect(
+      screen.getByText(COPY.programs.enrollmentDraftNote)
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: COPY.programs.reEnroll })
+    ).not.toBeInTheDocument();
+    expect(
+      within(
+        screen.getByRole("list", { name: COPY.programs.enrollmentHistory })
+      ).getByText(COPY.programs.enrollmentCancelled)
+    ).toBeInTheDocument();
   });
 
   test("does not duplicate management navigation inside participant detail", async () => {

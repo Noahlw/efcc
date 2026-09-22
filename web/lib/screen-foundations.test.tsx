@@ -1,5 +1,7 @@
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import type NextLink from "next/link";
+import type { ComponentProps } from "react";
 import { afterEach, describe, expect, test, vi } from "vitest";
 
 import {
@@ -25,6 +27,30 @@ import {
   ScreenTaskGrid,
   ScreenTaskSurface,
 } from "@/lib/screen-foundations";
+
+vi.mock(import("next/link"), () => ({
+  default: (({
+    children,
+    onClick,
+    onClickCapture,
+    replace,
+    ...props
+  }: ComponentProps<"a"> & {
+    replace?: boolean;
+  }) => (
+    <a
+      data-link-replace={replace ? "true" : "false"}
+      onClickCapture={onClickCapture}
+      onClick={(event) => {
+        event.preventDefault();
+        onClick?.(event);
+      }}
+      {...props}
+    >
+      {children}
+    </a>
+  )) as unknown as typeof NextLink,
+}));
 
 describe("Screen Foundations public contracts", () => {
   afterEach(() => cleanup());
@@ -85,6 +111,31 @@ describe("Screen Foundations public contracts", () => {
         hitTarget: true,
       },
     });
+  });
+
+  test("runs caller Back interception before delegated Link navigation", async () => {
+    const user = userEvent.setup();
+    const onBack = vi.fn<(event: React.MouseEvent<HTMLAnchorElement>) => void>(
+      (event) => event.preventDefault()
+    );
+    render(
+      <ScreenHeader
+        backHref="/programs?mode=management&task=settings"
+        backLabel="返回設定"
+        backReplace
+        onBack={onBack}
+        title="基本資料"
+      />
+    );
+
+    const back = screen.getByRole("link", { name: "返回設定" });
+    await user.click(back);
+
+    expect(onBack).toHaveBeenCalledOnce();
+    expect(back).toHaveAttribute(
+      "href",
+      "/programs?mode=management&task=settings"
+    );
   });
 
   test("keeps collection and settings rows content-responsive with semantic state", () => {
@@ -184,9 +235,7 @@ describe("Screen Foundations public contracts", () => {
     });
   });
 
-  test("exposes selected tabs and filters as keyboard-operable controls", async () => {
-    const user = userEvent.setup();
-    const onFilterChange = vi.fn<(filter: "all" | "joined") => void>();
+  test("separates route navigation from explicit local tabs", () => {
     render(
       <div>
         <ScreenTabs aria-label="課程工作區">
@@ -197,6 +246,41 @@ describe("Screen Foundations public contracts", () => {
             <a href="/programs/one/events">聚會</a>
           </ScreenTab>
         </ScreenTabs>
+        <ScreenTabs aria-label="課程分頁" role="tablist" value="pending">
+          <ScreenTab role="tab" selected value="pending">
+            待審批
+          </ScreenTab>
+          <ScreenTab role="tab" value="joined">已參加</ScreenTab>
+        </ScreenTabs>
+      </div>
+    );
+
+    const navigation = screen.getByRole("navigation", { name: "課程工作區" });
+    const overview = within(navigation).getByRole("link", { name: "概覽" });
+    expect(overview).toHaveAttribute("aria-current", "page");
+    expect(overview).not.toHaveAttribute("aria-selected");
+    expect(
+      within(navigation).queryByRole("tab", { name: "概覽" })
+    ).not.toBeInTheDocument();
+
+    const localTabs = screen.getByRole("tablist", { name: "課程分頁" });
+    expect(localTabs).toHaveAttribute("data-slot", "tabs-list");
+    expect(
+      within(localTabs).getByRole("tab", { name: "待審批" })
+    ).toHaveAttribute("aria-selected", "true");
+    expect(
+      within(localTabs).getByRole("tab", { name: "待審批" })
+    ).toHaveAttribute("data-slot", "tabs-trigger");
+    expect(
+      within(localTabs).getByRole("tab", { name: "待審批" })
+    ).not.toHaveAttribute("aria-current");
+  });
+
+  test("keeps filters as keyboard-operable controls", async () => {
+    const user = userEvent.setup();
+    const onFilterChange = vi.fn<(filter: "all" | "joined") => void>();
+    render(
+      <div>
         <ScreenFilters aria-label="課程篩選">
           <ScreenFilterChip onClick={() => onFilterChange("all")} selected>
             全部
@@ -208,14 +292,6 @@ describe("Screen Foundations public contracts", () => {
       </div>
     );
 
-    expect(screen.getByRole("link", { name: "概覽" })).toHaveAttribute(
-      "data-selected",
-      "true"
-    );
-    expect(screen.getByRole("link", { name: "概覽" })).toHaveAttribute(
-      "aria-current",
-      "page"
-    );
     expect(screen.getByRole("button", { name: "全部" })).toHaveAttribute(
       "aria-pressed",
       "true"
@@ -247,6 +323,7 @@ describe("Screen Foundations public contracts", () => {
       "data-screen-card-tone",
       "emphasis"
     );
+    expect(screen.getByText("下一個聚會")).toHaveAttribute("data-slot", "card");
   });
 
   test("renders natural-locus loading and recoverable error states", () => {
@@ -271,6 +348,11 @@ describe("Screen Foundations public contracts", () => {
       "aria-busy",
       "true"
     );
+    expect(
+      document.querySelectorAll(
+        '[data-screen-loading-row] [data-slot="skeleton"]'
+      )
+    ).toHaveLength(6);
     expect(screen.getByRole("alert")).toHaveTextContent("載入失敗");
     expect(screen.getByRole("button", { name: "重試" })).toBeEnabled();
     expect(screen.getByText("暫時未有資料")).toBeInTheDocument();
@@ -280,6 +362,7 @@ describe("Screen Foundations public contracts", () => {
     render(
       <ScreenEditor aria-label="課程編輯">
         <ScreenField
+          error="請輸入課程名稱。"
           help="使用清晰嘅課程名稱。"
           htmlFor="program-name"
           label="課程名稱"
@@ -303,6 +386,14 @@ describe("Screen Foundations public contracts", () => {
     expect(screen.getByLabelText("課程名稱")).toHaveAttribute(
       "id",
       "program-name"
+    );
+    expect(screen.getByText("使用清晰嘅課程名稱。")).toHaveAttribute(
+      "data-slot",
+      "field-description"
+    );
+    expect(screen.getByText("請輸入課程名稱。")).toHaveAttribute(
+      "data-slot",
+      "field-error"
     );
     expect(screen.getByTestId("screen-sticky-actions")).toHaveAttribute(
       "data-screen-foundation",

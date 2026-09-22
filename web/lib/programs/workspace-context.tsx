@@ -10,13 +10,24 @@ import { rememberDeepLink } from "@/lib/session";
 import type {
   DepartmentModule,
   ManagementAttention,
+  ManagementCockpitView,
   Program,
 } from "./program-api";
-import type { ProgramsTask } from "./programs-intent";
+import type {
+  ManagementEventAction,
+  ProgramsEventFilter,
+  ProgramsParticipantTab,
+  ProgramsScheduleEditor,
+  ProgramsScheduleOrigin,
+  ProgramsSettingsSection,
+  ProgramsTask,
+} from "./programs-intent";
+import type { ManagementNotificationState } from "./programs-notifications";
 
 export interface WorkspaceRouteContextValue {
   departmentId: string | null;
   hash: string | null;
+  directoryQuery?: string | null;
 }
 
 const WorkspaceRouteContext = createContext<WorkspaceRouteContextValue>({
@@ -44,12 +55,53 @@ export interface WorkspaceTaskContextValue {
   program: Program;
   modules: readonly DepartmentModule[];
   attention: ManagementAttention | null;
+  cockpit?: ManagementCockpitView | null;
+  notificationState?: ManagementNotificationState;
   /** Validated management directory context for non-intercepted Links. */
   departmentId?: string | null;
   hash?: string | null;
+  /** Management directory search retained by workspace links. */
+  directoryQuery?: string | null;
   onAttentionRefresh: () => void;
-  onTaskChange: (task: ProgramsTask | null, eventId?: string | null) => void;
-  onOpenEvent?: (eventId: string) => void;
+  /** Reload the route-owned workspace after an explicit Settings conflict action. */
+  onWorkspaceRefresh?: () => void | Promise<Program | void>;
+  /** Freshness of the single route-owned Program/cockpit resource. */
+  workspaceFreshness?: "fresh" | "refreshing" | "stale";
+  /** Block cross-task navigation while a write outcome is being reconciled. */
+  onMutationBlockChange?: (blocked: boolean) => void;
+  onTaskChange: (
+    task: ProgramsTask | null,
+    eventId?: string | null,
+    scheduleOrigin?: ProgramsScheduleOrigin
+  ) => void;
+  onOpenEvent?: (eventId: string, eventAction?: ManagementEventAction) => void;
+  /** Open the shared focused Attendance roster for an exact Event. */
+  onOpenAttendance?: (eventId: string) => void;
+  /** The active task has an unsaved local draft that the shell must protect. */
+  onWorkspaceDirtyChange?: (dirty: boolean) => void;
+  onFocusedTaskFocusChange?: (focused: boolean) => void;
+  onFocusedTaskDirtyChange?: (dirty: boolean) => void;
+  /** URL-owned Events filter and its replace-only updater. */
+  eventFilter?: ProgramsEventFilter;
+  onEventFilterChange?: (filter: ProgramsEventFilter) => void;
+  /** URL-owned Participants tab/search and replace-only updaters. */
+  participantTab?: ProgramsParticipantTab;
+  participantQuery?: string;
+  onParticipantTabChange?: (tab: ProgramsParticipantTab) => void;
+  onParticipantQueryChange?: (query: string) => void;
+  /** URL-owned focused Settings section. */
+  settingsSection?: ProgramsSettingsSection;
+  onSettingsSectionChange?: (section: ProgramsSettingsSection | null) => void;
+  /** Origin used to enter the focused Schedule task. */
+  scheduleOrigin?: ProgramsScheduleOrigin;
+  scheduleEditor?: ProgramsScheduleEditor;
+  scheduleRuleId?: string;
+  onScheduleEditorChange?: (
+    editor: ProgramsScheduleEditor | null,
+    ruleId?: string | null
+  ) => void;
+  /** One-shot bypass for an already-confirmed external navigation. */
+  settingsNavigationAllowedRef?: { current: boolean };
 }
 
 const WorkspaceTaskContext = createContext<WorkspaceTaskContextValue | null>(
@@ -74,6 +126,22 @@ export function useWorkspaceTaskContext(): WorkspaceTaskContextValue {
     throw new Error("Workspace task must render inside WorkspaceTaskProvider");
   }
   return value;
+}
+
+/**
+ * A confirmed mutation must not become a false failure when its follow-up
+ * workspace read is unavailable. ProgramWorkspace owns the stale indicator;
+ * task-level callers only need a safe, non-rejecting invalidation boundary.
+ */
+export async function refreshWorkspaceAfterMutation(
+  refresh?: () => void | Promise<Program | void>
+): Promise<Program | void> {
+  try {
+    return await refresh?.();
+  } catch (error) {
+    void error;
+    return undefined;
+  }
 }
 
 export function hasModule(

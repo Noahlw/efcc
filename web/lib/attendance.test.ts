@@ -33,6 +33,16 @@ describe("check-in credential handoff routing", () => {
     );
   });
 
+  test("preserves the selected Event during a login handoff", () => {
+    expect(
+      scannerEntryPath({
+        eventId: "event/1",
+        kind: "manual_code",
+        value: "A7B9C2",
+      })
+    ).toBe("/scanner?event=event%2F1&manual_code=A7B9C2");
+  });
+
   test("encodes values that are not URL-safe", () => {
     expect(scannerEntryPath({ kind: "manual_code", value: "a b&c=" })).toBe(
       "/scanner?manual_code=a%20b%26c%3D"

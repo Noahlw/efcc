@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { RpcError } from "@/lib/api";
-import type { AttendanceEvent } from "@/lib/attendance";
+import type { AttendanceEvent, AttendanceEventSummary } from "@/lib/attendance";
 import { attendanceEventLabel } from "@/lib/attendance-display";
 import {
   attendanceButtonVariants,
@@ -19,8 +19,13 @@ import {
   ScannerStatusOutput,
 } from "@/lib/attendance-scanner-ui";
 import { COPY, errorCopyFor } from "@/lib/copy";
+import { hkWallLabel } from "@/lib/hk-time";
 import { announce } from "@/lib/live-region";
-import { selfCheckIn } from "@/lib/programs/program-api";
+import {
+  getOwnAttendance,
+  isUnknownMutationOutcome,
+  selfCheckIn,
+} from "@/lib/programs/program-api";
 import { buildProgramsHref } from "@/lib/programs/programs-intent";
 import { useAttendanceFlow } from "@/lib/use-attendance-flow";
 
@@ -31,6 +36,7 @@ const methodControl =
 interface CheckinResult {
   kind: "success" | "duplicate";
   event: AttendanceEvent;
+  checkedInAt?: string;
 }
 
 const KNOWN_SUBMIT_ERROR_CODES = [
@@ -52,6 +58,29 @@ function replaceWithPlainScanner() {
   window.dispatchEvent(new PopStateEvent("popstate"));
 }
 
+const EventContextCard = ({ event }: { event: AttendanceEvent }) => (
+  <Card className="grid gap-1" aria-label={COPY.attendance.eventContextTitle}>
+    <strong className="text-sm text-[var(--accent-deep)]">
+      {COPY.attendance.eventContextTitle}
+    </strong>
+    <span className="text-base font-bold text-[var(--ink)]">
+      {event.program_name} · {attendanceEventLabel(event)}
+    </span>
+    <span className="text-sm text-[var(--ink-muted)]">
+      {hkWallLabel(event.starts_at)} – {hkWallLabel(event.ends_at)}
+    </span>
+  </Card>
+);
+
+const EventMismatchAlert = ({ event }: { event: AttendanceEventSummary }) => (
+  <Alert variant="destructive">
+    {COPY.attendance.eventCredentialMismatch.replace(
+      "{event}",
+      attendanceEventLabel(event)
+    )}
+  </Alert>
+);
+
 export const SelfCheckInPanel = ({
   title = COPY.attendance.scanTitle,
 }: {
@@ -67,6 +96,7 @@ export const SelfCheckInPanel = ({
   const retryRef = useRef<HTMLButtonElement>(null);
   const cameraAnnouncementRef = useRef<"opening" | "live" | null>(null);
   const autoStartRef = useRef(false);
+  const submitKeyRef = useRef<string | null>(null);
   const [isPhone, setIsPhone] = useState(false);
   const [hasDeepLink, setHasDeepLink] = useState(false);
   const [deepLinkChecked, setDeepLinkChecked] = useState(false);
@@ -79,6 +109,8 @@ export const SelfCheckInPanel = ({
   );
   const [showChooser, setShowChooser] = useState(false);
   const [retryAvailable, setRetryAvailable] = useState(false);
+  const [retryNeedsReconciliation, setRetryNeedsReconciliation] =
+    useState(false);
   const flow = useAttendanceFlow(inputRef, {
     cameraFirst: true,
     phoneOnly: true,
@@ -99,12 +131,10 @@ export const SelfCheckInPanel = ({
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
+    // An Event-only link is context, not a credential. It still uses the
+    // phone camera-first entry and collects a QR/code before confirmation.
     setHasDeepLink(
-      Boolean(
-        params.get("event") ||
-        params.get("program_token") ||
-        params.get("manual_code")
-      )
+      Boolean(params.get("program_token") || params.get("manual_code"))
     );
     setDeepLinkChecked(true);
   }, []);
@@ -116,6 +146,7 @@ export const SelfCheckInPanel = ({
       scanStopped ||
       flow.cameraUnavailable ||
       flow.cameraAvailable !== true ||
+      flow.busy ||
       autoStartRef.current
     ) {
       return;
@@ -130,6 +161,7 @@ export const SelfCheckInPanel = ({
   }, [
     flow.cameraAvailable,
     flow.cameraUnavailable,
+    flow.busy,
     deepLinkChecked,
     hasDeepLink,
     isPhone,
@@ -201,6 +233,81 @@ export const SelfCheckInPanel = ({
     }
   }, [retryAvailable]);
 
+  useEffect(() => {
+    if (!retryNeedsReconciliation || typeof window === "undefined") {
+      return;
+    }
+    const blockedHref = window.location.href;
+    const guardToken = crypto.randomUUID();
+    const currentState =
+      typeof window.history.state === "object" && window.history.state !== null
+        ? (window.history.state as Record<string, unknown>)
+        : {};
+    const guardedState = {
+      ...currentState,
+      efccGuestMutationGuard: guardToken,
+    };
+    window.history.pushState(guardedState, "", blockedHref);
+    const announceBlocked = () => {
+      setConfirmationError(COPY.attendance.transportAmbiguous);
+      announce(COPY.attendance.transportAmbiguous);
+    };
+    const handleDocumentClick = (clickEvent: globalThis.MouseEvent) => {
+      if (
+        clickEvent.defaultPrevented ||
+        clickEvent.button !== 0 ||
+        clickEvent.metaKey ||
+        clickEvent.ctrlKey ||
+        clickEvent.shiftKey ||
+        clickEvent.altKey
+      ) {
+        return;
+      }
+      const target = clickEvent.target;
+      if (!(target instanceof Element)) {
+        return;
+      }
+      const anchor = target.closest("a[href]");
+      if (!(anchor instanceof HTMLAnchorElement)) {
+        return;
+      }
+      const rawHref = anchor.getAttribute("href");
+      if (
+        rawHref?.startsWith("#") ||
+        anchor.hasAttribute("download") ||
+        (anchor.getAttribute("target") ?? "").toLowerCase() === "_blank"
+      ) {
+        return;
+      }
+      clickEvent.preventDefault();
+      clickEvent.stopPropagation();
+      announceBlocked();
+    };
+    const handleBeforeUnload = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    const handlePopState = () => {
+      window.history.pushState(guardedState, "", blockedHref);
+      announceBlocked();
+    };
+    document.addEventListener("click", handleDocumentClick, true);
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    window.addEventListener("popstate", handlePopState);
+    return () => {
+      document.removeEventListener("click", handleDocumentClick, true);
+      window.removeEventListener("beforeunload", handleBeforeUnload);
+      window.removeEventListener("popstate", handlePopState);
+      if (
+        window.location.href === blockedHref &&
+        (window.history.state as Record<string, unknown> | null)
+          ?.efccGuestMutationGuard === guardToken
+      ) {
+        window.history.back();
+      }
+    };
+  }, [retryNeedsReconciliation]);
+
   const handleManualChange = (value: string) => {
     flow.setInput(value.replaceAll(/\D/gu, "").slice(0, 6));
   };
@@ -209,6 +316,8 @@ export const SelfCheckInPanel = ({
     setCheckinResult(null);
     setConfirmationError("");
     setRetryAvailable(false);
+    setRetryNeedsReconciliation(false);
+    submitKeyRef.current = null;
     setShowChooser(false);
     if (!flow.fromQr && !/^\d{6}$/u.test(flow.input)) {
       const message = COPY.attendance.invalidManualCode;
@@ -224,6 +333,8 @@ export const SelfCheckInPanel = ({
     setCheckinResult(null);
     setConfirmationError("");
     setRetryAvailable(false);
+    setRetryNeedsReconciliation(false);
+    submitKeyRef.current = null;
     setShowChooser(false);
     const shellContent = document.getElementById("shell-content");
     if (shellContent) {
@@ -245,6 +356,8 @@ export const SelfCheckInPanel = ({
     }
     if (!isRetry) {
       setRetryAvailable(false);
+      setRetryNeedsReconciliation(false);
+      submitKeyRef.current = crypto.randomUUID();
     }
     setConfirmationError("");
     // No offline pre-check here (F-03/F-11): an offline submit flows into
@@ -253,16 +366,53 @@ export const SelfCheckInPanel = ({
     setSubmitting(true);
     flow.stopCamera();
     try {
+      if (isRetry && retryNeedsReconciliation) {
+        try {
+          const current = await getOwnAttendance(selected.event_id);
+          if (current.attendance?.status === "Active") {
+            setCheckinResult({
+              kind: "success",
+              event: selected,
+              checkedInAt: current.attendance.checked_in_at,
+            });
+            setRetryAvailable(false);
+            setRetryNeedsReconciliation(false);
+            submitKeyRef.current = null;
+            announce(
+              `${COPY.attendance.successTitle} ${selected.program_name} · ${attendanceEventLabel(selected)}`
+            );
+            return;
+          }
+          setRetryNeedsReconciliation(false);
+        } catch {
+          const message = COPY.attendance.transportAmbiguous;
+          setRetryAvailable(true);
+          setConfirmationError(message);
+          announce(message);
+          return;
+        }
+      }
       const credential = flow.fromQr
         ? { program_token: flow.input }
         : { entry: flow.input };
-      const result = await selfCheckIn({
-        event_id: selected.event_id,
-        method: flow.fromQr ? "self_qr_scan" : "self_manual_code",
-        ...credential,
-      });
+      submitKeyRef.current ??= crypto.randomUUID();
+      const result = await selfCheckIn(
+        {
+          event_id: selected.event_id,
+          method: flow.fromQr ? "self_qr_scan" : "self_manual_code",
+          ...credential,
+        },
+        submitKeyRef.current
+      );
       const kind = result.outcome === "duplicate" ? "duplicate" : "success";
-      setCheckinResult({ kind, event: selected });
+      setCheckinResult({
+        kind,
+        event: selected,
+        checkedInAt: result.checked_in_at,
+      });
+      setRetryAvailable(false);
+      setRetryNeedsReconciliation(false);
+      submitKeyRef.current = null;
       announce(
         kind === "duplicate"
           ? `${COPY.attendance.duplicateTitle} ${COPY.attendance.duplicateBody}`
@@ -283,15 +433,26 @@ export const SelfCheckInPanel = ({
         : hasSpecificCopy && error instanceof RpcError
           ? errorCopyFor(error.problem.code, error.problem.detail)
           : COPY.attendance.submitFailure;
+      const unknown = isUnknownMutationOutcome(error);
       setRetryAvailable(true);
-      setConfirmationError(message);
-      announce(message);
+      setRetryNeedsReconciliation(unknown);
+      const visibleMessage = unknown
+        ? `${message} ${COPY.attendance.transportAmbiguous}`
+        : message;
+      setConfirmationError(visibleMessage);
+      announce(visibleMessage);
     } finally {
       setSubmitting(false);
     }
   }
 
   const backToScan = () => {
+    if (retryNeedsReconciliation) {
+      const message = COPY.attendance.transportAmbiguous;
+      setConfirmationError(message);
+      announce(message);
+      return;
+    }
     replaceWithPlainScanner();
     setHasDeepLink(false);
     setManualOpen(false);
@@ -302,6 +463,8 @@ export const SelfCheckInPanel = ({
     setCheckinResult(null);
     setConfirmationError("");
     setRetryAvailable(false);
+    setRetryNeedsReconciliation(false);
+    submitKeyRef.current = null;
     flow.resetToScan();
   };
 
@@ -339,12 +502,19 @@ export const SelfCheckInPanel = ({
   };
 
   const handleNotThisEvent = () => {
-    if (submitting) {
+    if (submitting || retryNeedsReconciliation) {
+      if (retryNeedsReconciliation) {
+        const message = COPY.attendance.transportAmbiguous;
+        setConfirmationError(message);
+        announce(message);
+      }
       return;
     }
     setCheckinResult(null);
     setConfirmationError("");
     setRetryAvailable(false);
+    setRetryNeedsReconciliation(false);
+    submitKeyRef.current = null;
     if (flow.events.length > 1) {
       flow.setSelected(null);
       setShowChooser(true);
@@ -370,6 +540,8 @@ export const SelfCheckInPanel = ({
         handleResolve();
       }}
     >
+      {flow.intendedEvent && <EventContextCard event={flow.intendedEvent} />}
+      {flow.mismatchEvent && <EventMismatchAlert event={flow.mismatchEvent} />}
       {withHeading && (
         <>
           <h1
@@ -458,6 +630,13 @@ export const SelfCheckInPanel = ({
         <ScannerCheckinResult
           event={checkinResult.event}
           kind={checkinResult.kind}
+          checkedInAt={checkinResult.checkedInAt}
+          eventHref={buildProgramsHref({
+            mode: "participant",
+            programId: checkinResult.event.program_id,
+            eventId: checkinResult.event.event_id,
+            origin: "programs",
+          })}
           headingRef={resultHeadingRef}
           onScanAgain={backToScan}
         />
@@ -530,7 +709,12 @@ export const SelfCheckInPanel = ({
     );
   }
 
-  if (scanStopped || flow.cameraUnavailable || flow.cameraAvailable === false) {
+  if (
+    flow.mismatchEvent ||
+    scanStopped ||
+    flow.cameraUnavailable ||
+    flow.cameraAvailable === false
+  ) {
     return (
       <div
         className="mx-auto w-[min(100%,760px)] px-4 py-8 [@media(max-height:640px)]:py-4 pb-[calc(3rem+env(safe-area-inset-bottom,0px))] [@media(max-height:640px)]:pb-[calc(1.5rem+env(safe-area-inset-bottom,0px))]"
@@ -540,6 +724,12 @@ export const SelfCheckInPanel = ({
           className="grid [@media(max-height:640px)]:gap-3"
           aria-labelledby="fallback-methods-title"
         >
+          {flow.intendedEvent && (
+            <EventContextCard event={flow.intendedEvent} />
+          )}
+          {flow.mismatchEvent && (
+            <EventMismatchAlert event={flow.mismatchEvent} />
+          )}
           <h1
             ref={fallbackHeadingRef}
             id="fallback-methods-title"
@@ -607,11 +797,14 @@ export const SelfCheckInPanel = ({
   }
 
   return (
-    <CameraFirstScanner
-      cameraOpen={flow.cameraOpen}
-      opening={flow.cameraAvailable !== true || !flow.cameraReady}
-      videoRef={flow.videoRef}
-      onStop={stopScanning}
-    />
+    <div className="grid gap-3">
+      {flow.intendedEvent && <EventContextCard event={flow.intendedEvent} />}
+      <CameraFirstScanner
+        cameraOpen={flow.cameraOpen}
+        opening={flow.cameraAvailable !== true || !flow.cameraReady}
+        videoRef={flow.videoRef}
+        onStop={stopScanning}
+      />
+    </div>
   );
 };

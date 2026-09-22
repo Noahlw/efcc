@@ -31,8 +31,12 @@ import {
   ScreenState,
   ScreenStatus,
 } from "@/lib/screen-foundations";
-import { rememberDeepLink } from "@/lib/session";
+import {
+  rememberDeepLink,
+  rememberProgramsNavigationContext,
+} from "@/lib/session";
 
+import { readProgramsScrollY, restoreProgramsScrollY } from "./programs-scroll";
 import { useAsyncResource } from "./use-async-resource";
 
 /**
@@ -55,12 +59,19 @@ export interface ParticipantDirectoryProps {
   managementHref: string;
   /** Canonical same-origin URL for opening a participant Program. */
   programHref: (programId: string) => string;
+  /** URL-owned catalog controls; omitted for isolated local callers. */
+  query?: string;
+  filter?: ParticipantFilter;
+  onQueryChange?: (query: string) => void;
+  onFilterChange?: (filter: ParticipantFilter) => void;
+  onClearFilters?: () => void;
   /** Record a same-app row navigation for origin focus restoration. */
   onOpenProgram?: (programId: string) => void;
   /** Program row to focus after returning from a detail route. */
   focusProgramId?: string | null;
   /** Clear a consumed focus restoration marker. */
   onFocusProgram?: () => void;
+  restoreScrollY?: number;
   /** Safe same-origin escape when the catalog is forbidden. */
   homeHref: string;
 }
@@ -245,17 +256,40 @@ function catalogSecondaryCopy(program: ParticipantCatalogProgram): string {
   }
 }
 
+// eslint-disable-next-line eslint/complexity -- controlled and local catalog state share one boundary.
 export const ParticipantDirectory = ({
   programId,
   programHref,
+  query: routeQuery,
+  filter: routeFilter,
+  onQueryChange,
+  onFilterChange,
+  onClearFilters,
   onOpenProgram,
   focusProgramId = null,
   onFocusProgram,
+  restoreScrollY,
   homeHref,
 }: ParticipantDirectoryProps) => {
   const router = useRouter();
-  const [query, setQuery] = useState("");
-  const [filter, setFilter] = useState<ParticipantFilter>("all");
+  const [localQuery, setLocalQuery] = useState("");
+  const [localFilter, setLocalFilter] = useState<ParticipantFilter>("all");
+  const query = routeQuery ?? localQuery;
+  const filter = routeFilter ?? localFilter;
+  const setQuery = (value: string) => {
+    if (onQueryChange) {
+      onQueryChange(value);
+      return;
+    }
+    setLocalQuery(value);
+  };
+  const setFilter = (value: ParticipantFilter) => {
+    if (onFilterChange) {
+      onFilterChange(value);
+      return;
+    }
+    setLocalFilter(value);
+  };
   const storedFocusProgramId = useMemo(readParticipantProgramFocus, []);
   const focusTargetProgramId = focusProgramId ?? storedFocusProgramId;
   const onAuthRequired = useCallback(() => {
@@ -344,7 +378,10 @@ export const ParticipantDirectory = ({
     return programs.find((program) => program.program_id === programId);
   }, [programId, programs]);
   useEffect(() => {
-    if (state.kind !== "ready" || focusTargetProgramId === null) {
+    if (
+      state.kind !== "ready" ||
+      (focusTargetProgramId === null && restoreScrollY === undefined)
+    ) {
       return;
     }
     const row = [
@@ -357,10 +394,15 @@ export const ParticipantDirectory = ({
     if (!target) {
       return;
     }
+    if (restoreScrollY === undefined) {
+      target.scrollIntoView({ block: "nearest", inline: "nearest" });
+    } else {
+      restoreProgramsScrollY(restoreScrollY);
+    }
     target.focus();
     clearParticipantProgramFocus();
     onFocusProgram?.();
-  }, [focusTargetProgramId, onFocusProgram, state.kind]);
+  }, [focusTargetProgramId, onFocusProgram, restoreScrollY, state.kind]);
 
   return (
     <div className="min-w-0 text-[var(--screen-ink)]">
@@ -480,6 +522,10 @@ export const ParticipantDirectory = ({
                   type="button"
                   variant="outline"
                   onClick={() => {
+                    if (onClearFilters) {
+                      onClearFilters();
+                      return;
+                    }
                     setQuery("");
                     setFilter("all");
                   }}
@@ -524,6 +570,13 @@ export const ParticipantDirectory = ({
                               rememberParticipantProgramFocus(
                                 program.program_id
                               );
+                              rememberProgramsNavigationContext({
+                                surface: "participant",
+                                catalogQuery: query,
+                                catalogFilter: filter,
+                                focusProgramId: program.program_id,
+                                scrollY: readProgramsScrollY(),
+                              });
                               onOpenProgram?.(program.program_id);
                             }}
                           >

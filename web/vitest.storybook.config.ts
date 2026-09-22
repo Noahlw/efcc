@@ -32,6 +32,8 @@ export default defineConfig({
         ],
         test: {
           name: "storybook",
+          maxConcurrency: 1,
+          sequence: { concurrent: false },
           browser: {
             enabled: true,
             headless: true,

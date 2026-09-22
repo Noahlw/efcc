@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 1,
+  "runtime": "independent-review",
+  "reviewer": "Verify95Candidate",
+  "candidate": "commit:95a5bd71",
+  "revision": "95a5bd71c2b403efb53066a82156e59008915378",
+  "verdict": "blocked",
+  "sourceFindings": [],
+  "evidenceChecks": {
+    "candidateManifests": "passed",
+    "component": "1207/1207",
+    "workerD1": "676/676",
+    "responsive": "21/21",
+    "browser": "36/36",
+    "retries": 0
+  },
+  "findings": [
+    "Event creation awaits independent listEvents readback and requires the exact returned Event ID before opening it.",
+    "Worker-owned default check-in windows are accepted when no client override was requested.",
+    "Permanent QR actions remain gated on image load/decode; tests cover DOM/native-print mocks only.",
+    "The package remains blocked because physical camera/QR rescan, virtual keyboard/safe area, and native print checks were not run.",
+    "R43.4 has no fresh candidate-bound real-route evidence; its cited route artifact is historical."
+  ],
+  "unverified": [
+    "R43.4",
+    "R51.3",
+    "R52/R52.1 package acceptance criteria"
+  ]
+}

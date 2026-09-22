@@ -25,6 +25,26 @@ export class DuplicateProgramNameError extends Error {
 }
 
 // oxlint-disable-next-line eslint/max-classes-per-file
+export class ProgramTokenRotationConflictError extends Error {
+  constructor() {
+    super(
+      "The idempotency key was already used for a different Program QR rotation request."
+    );
+    this.name = "ProgramTokenRotationConflictError";
+  }
+}
+
+// oxlint-disable-next-line eslint/max-classes-per-file
+export class ScheduleRuleIdempotencyConflictError extends Error {
+  constructor() {
+    super(
+      "The idempotency key was already used for a different Schedule Rule request."
+    );
+    this.name = "ScheduleRuleIdempotencyConflictError";
+  }
+}
+
+// oxlint-disable-next-line eslint/max-classes-per-file
 export class InvalidProgramLifecycleError extends Error {
   constructor(
     from: ProgramLifecycle,
@@ -59,6 +79,16 @@ export class ScheduleRuleNotApplicableError extends Error {
   constructor(programId: string) {
     super(`Schedule rules apply only to Recurring programs: ${programId}`);
     this.name = "ScheduleRuleNotApplicableError";
+  }
+}
+
+// oxlint-disable-next-line eslint/max-classes-per-file
+export class ScheduleRuleRetiredError extends Error {
+  constructor(ruleId: string) {
+    super(
+      `Schedule rule ${ruleId} is retired and cannot be changed; create a new rule for future occurrences.`
+    );
+    this.name = "ScheduleRuleRetiredError";
   }
 }
 
@@ -113,11 +143,38 @@ export class DuplicateEventError extends Error {
     this.name = "DuplicateEventError";
   }
 }
+
+// oxlint-disable-next-line eslint/max-classes-per-file
+export class EventNameRequiredError extends Error {
+  constructor() {
+    super("Event name is required.");
+    this.name = "EventNameRequiredError";
+  }
+}
+
+// oxlint-disable-next-line eslint/max-classes-per-file
+export class EventIdentityChangeReasonRequiredError extends Error {
+  constructor() {
+    super("A reason is required when changing an Event after attendance.");
+    this.name = "EventIdentityChangeReasonRequiredError";
+  }
+}
+
+// oxlint-disable-next-line eslint/max-classes-per-file
+export class EventCancelledReadOnlyError extends Error {
+  constructor() {
+    super("Cancelled Events are read-only.");
+    this.name = "EventCancelledReadOnlyError";
+  }
+}
+
 // oxlint-disable-next-line eslint/max-classes-per-file
 export class EventRescheduleBlockedError extends Error {
   readonly eventId: string;
   constructor(eventId: string) {
-    super(`Event ${eventId} cannot be rescheduled: Attendance already exists.`);
+    super(
+      `Event ${eventId} cannot be rescheduled after it has started or its attendance snapshot exists.`
+    );
     this.name = "EventRescheduleBlockedError";
     this.eventId = eventId;
   }
@@ -173,6 +230,16 @@ export class EnrollmentAccountInactiveError extends Error {
 }
 
 // oxlint-disable-next-line eslint/max-classes-per-file
+export class EnrollmentCancellationReasonRequiredError extends Error {
+  constructor() {
+    super(
+      "A reason is required when a manager cancels another member's enrollment."
+    );
+    this.name = "EnrollmentCancellationReasonRequiredError";
+  }
+}
+
+// oxlint-disable-next-line eslint/max-classes-per-file
 export class StaleEnrollmentRequestError extends Error {
   constructor(requestId: string) {
     super(`Enrollment request ${requestId} is stale; reload before deciding.`);
@@ -205,5 +272,13 @@ export class RequestNotDecidableError extends Error {
   constructor(requestId: string) {
     super(`Enrollment request ${requestId} is not in a decidable state.`);
     this.name = "RequestNotDecidableError";
+  }
+}
+
+// oxlint-disable-next-line eslint/max-classes-per-file
+export class EnrollmentApprovalRunValidationError extends Error {
+  constructor(message = "Enrollment Approval Run selection is invalid.") {
+    super(message);
+    this.name = "EnrollmentApprovalRunValidationError";
   }
 }

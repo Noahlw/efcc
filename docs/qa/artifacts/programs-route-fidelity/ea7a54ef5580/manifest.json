@@ -1,0 +1,216 @@
+{
+  "schemaVersion": 1,
+  "package": "Programs #589 Salvage Convergence",
+  "candidateSha": "ea7a54ef5580f399d0db2c2c67795ce4689f71b0",
+  "productionFixedPoint": {
+    "commitSubject": "fix(programs): salvage shared shell acceptance seams",
+    "branch": "codex/programs-screen-foundations/wave-3",
+    "pullRequest": 607,
+    "baseBranch": "codex/programs-screen-foundations/wave-2"
+  },
+  "qualificationHarness": {
+    "commit": "d4165463c663f7b11d8e12eebc69b6d9df933b19",
+    "commitSubject": "test(programs): scope material detail back assertion",
+    "scope": "Storybook material Play locator only; production candidate unchanged"
+  },
+  "generatedAt": "2026-09-14T06:07:49Z",
+  "authority": {
+    "visual": "docs/design/programs-screen-foundations-v1/",
+    "comparison": "shell-only",
+    "ownerApprovalSurface": "the two committed shell contact sheets"
+  },
+  "independentReview": {
+    "status": "BLOCKED_EXTERNAL_REVIEW",
+    "candidateSha": "ea7a54ef5580f399d0db2c2c67795ce4689f71b0",
+    "completed": false,
+    "ownerApprovalBlocked": true,
+    "note": "Three delegated read-only review attempts did not complete the exact source/diff/evidence audit; no CLEAN verdict was obtained."
+  },
+  "visualEvidence": {
+    "approvalViewports": [
+      { "width": 402, "height": 874 },
+      { "width": 360, "height": 800 }
+    ],
+    "requiredStates": [
+      {
+        "caseKey": "participant-directory",
+        "label": "Participant Directory",
+        "actualStoryId": "t07-3-programs-material-states--participant-directory-capable",
+        "frozenPrototypePath": "docs/design/programs-screen-foundations-v1/01-participant-directory-capable.html",
+        "frozenPrototypeSha256": "1c4ad6e3a2453eb9a21b9c851dc39ef7f4e916e8729c49dd27861a901ef559fb",
+        "comparedFragments": ["shellHeader", "routeHeader", "mainNavigation"]
+      },
+      {
+        "caseKey": "management-directory",
+        "label": "Management Directory",
+        "actualStoryId": "t07-3-programs--management-directory",
+        "frozenPrototypePath": "docs/design/programs-screen-foundations-v1/04-management-directory.html",
+        "frozenPrototypeSha256": "4ea56d6af1ce5a083ff8cc82fe8b60bf502844632231399390951f95b917b2294",
+        "comparedFragments": ["shellHeader", "routeHeader", "mainNavigation"]
+      },
+      {
+        "caseKey": "workspace-settings-overview",
+        "label": "Workspace Settings overview",
+        "actualStoryId": "t07-3-programs--workspace-settings",
+        "frozenPrototypePath": "docs/design/programs-screen-foundations-v1/09-management-settings.html",
+        "frozenPrototypeSha256": "d42b5a22aee88c000c9aa59c7e6ca49b4751b36262cf39588fb5207142da7770",
+        "comparedFragments": ["shellHeader", "routeHeader", "mainNavigation"]
+      },
+      {
+        "caseKey": "workspace-settings-dirty",
+        "label": "Workspace Settings dirty / focused editor",
+        "actualStoryId": "t07-3-programs-material-states--workspace-settings-dirty",
+        "frozenPrototypePath": "docs/design/programs-screen-foundations-v1/09-management-settings.html",
+        "frozenPrototypeSha256": "d42b5a22aee88c000c9aa59c7e6ca49b4751b36262cf39588fb5207142da7770",
+        "comparedFragments": ["shellHeader", "routeHeader", "mainNavigation"]
+      }
+    ],
+    "contactSheets": [
+      {
+        "path": "shell-402x874.png",
+        "viewport": "402x874",
+        "sha256": "c6a4254cf5e08fc72afa6d492bb73d5cf70f067798ec7585b6c923b12d459669",
+        "cards": 4,
+        "columns": ["Frozen", "Actual"]
+      },
+      {
+        "path": "shell-360x800.png",
+        "viewport": "360x800",
+        "sha256": "8fe1a50045ae0a8f3fa1194ab20f3cb735abd898825fb4bbd45a1f218949f5b5",
+        "cards": 4,
+        "columns": ["Frozen", "Actual"]
+      }
+    ],
+    "harnessManifest": {
+      "path": "/private/tmp/efcc-589-visual-s2-ea7a54ef/manifest.json",
+      "sha256": "599203a372a31ebd83a15e1759a159891cc8ec5d64733f503d217f045b66872a",
+      "candidateSha": "ea7a54ef5580f399d0db2c2c67795ce4689f71b0",
+      "shellRowCount": 8,
+      "fullPageDisposition": "local-only"
+    },
+    "fullPageMatrix": {
+      "disposition": "local-only",
+      "directory": "/private/tmp/efcc-589-visual-s2-ea7a54ef",
+      "notApprovalSurface": true
+    }
+  },
+  "machineEvidence": [
+    {
+      "gate": "focused-component-checks",
+      "status": "PASS",
+      "summary": "4 focused files, 151 tests passed",
+      "command": "fnm exec --using 22.18.0 pnpm --dir web exec vitest run --config vitest.components.config.ts lib/programs/programs-boundary.test.tsx lib/programs/programs-management-boundary.test.tsx lib/app.test.tsx lib/shell/authenticated-shell.test.tsx"
+    },
+    {
+      "gate": "root-typecheck",
+      "status": "PASS",
+      "summary": "root and tests/e2e TypeScript projects passed",
+      "command": "fnm exec --using 22.18.0 pnpm typecheck"
+    },
+    {
+      "gate": "web-typecheck",
+      "status": "PASS",
+      "summary": "web TypeScript and Worker TypeScript projects passed",
+      "command": "fnm exec --using 22.18.0 pnpm --dir web typecheck"
+    },
+    {
+      "gate": "programs-browser",
+      "status": "PASS",
+      "summary": "3 tests passed, retries 0; cold management load observed exactly 1 access request",
+      "target": "http://127.0.0.1:50856",
+      "requestCount": {
+        "method": "GET",
+        "path": "/api/v1/programs/access",
+        "observed": 1,
+        "expected": 1
+      },
+      "localEvidence": "/private/tmp/efcc-589-browser-s2-ea7a54ef"
+    },
+    {
+      "gate": "programs-responsive",
+      "status": "PASS",
+      "summary": "18 expected checks passed; skipped 0, unexpected 0, flaky 0",
+      "viewports": [
+        "320x812",
+        "360x800",
+        "390x844",
+        "402x874",
+        "600x844",
+        "799x900",
+        "800x900",
+        "1024x900",
+        "1440x900"
+      ],
+      "target": "http://127.0.0.1:52440",
+      "localEvidence": "/private/tmp/efcc-589-responsive-s2-ea7a54ef-r3"
+    },
+    {
+      "gate": "w7-storybook",
+      "status": "PASS",
+      "summary": "126 tests passed; skipped 0, unexpected 0, flaky 0; sequential single-worker run",
+      "qualificationHarnessCommit": "d4165463c663f7b11d8e12eebc69b6d9df933b19",
+      "viewports": [
+        "320x844",
+        "360x800",
+        "375x844",
+        "390x844",
+        "402x874",
+        "414x844",
+        "799x844",
+        "800x900",
+        "1440x900"
+      ],
+      "localEvidence": "tests/e2e/test-results/t11-storybook/storybook.json"
+    },
+    {
+      "gate": "shell-visual",
+      "status": "PASS",
+      "summary": "2/2 visual projects passed; 8 shell rows across 4 required states and 2 approval viewports",
+      "localEvidence": "/private/tmp/efcc-589-visual-s2-ea7a54ef/manifest.json"
+    }
+  ],
+  "failureClassification": {
+    "blockingFailures": [],
+    "advisoryFailures": [],
+    "preQualificationFailures": [
+      {
+        "classification": "blocking-storybook-assertion-resolved",
+        "scope": "discarded direct probe before the accepted W7 run",
+        "cause": "The participant detail Play used an unscoped accessible-name lookup after the shared Programs nav label became 課程, so the nav link and route-owned Back link matched.",
+        "resolution": "The Play now selects the route-owned Back link by its semantic icon-button marker and exact /programs destination, then asserts its accessible name; fixed in d4165463c663f7b11d8e12eebc69b6d9df933b19.",
+        "impact": "The failure was resolved before the accepted fresh-server W7 run; the refreshed run passed 126/126."
+      },
+      {
+        "classification": "blocking-storybook-assertion-resolved",
+        "scope": "discarded direct probe after the first locator scope attempt",
+        "cause": "The first scope attempt selected the outer Programs route header, which has no Back link, while the detail header is a second route header.",
+        "resolution": "The locator was narrowed to the route-owned semantic Back link itself and retained the accessible-name assertion; the same harness commit d4165463c663f7b11d8e12eebc69b6d9df933b19 contains the final correction.",
+        "impact": "The failure was resolved before the accepted fresh-server W7 run; the refreshed run passed 126/126."
+      }
+    ],
+    "nonGateDiagnostics": [
+      {
+        "classification": "stale-storybook-server",
+        "scope": "discarded pre-qualification W7 attempt",
+        "cause": "The reused server had the pre-edit material Story assertion for a notification button; a fresh restart and targeted R4/R6 runs both passed.",
+        "impact": "No candidate-gate impact; the complete fresh-server W7 run is the accepted result."
+      },
+      {
+        "classification": "test-invocation",
+        "scope": "discarded focused-check attempt",
+        "cause": "Vitest was first invoked from the repository root, so the web @/ alias was unavailable; the repository-native web component runner then passed 151/151.",
+        "impact": "No candidate-gate impact."
+      }
+    ]
+  },
+  "committedArtifacts": [
+    "manifest.json",
+    "acceptance-record.json",
+    "checksums.sha256",
+    "shell-402x874.png",
+    "shell-360x800.png"
+  ],
+  "checksumsFile": "checksums.sha256",
+  "acceptanceLedger": "docs/qa/2026-09-14-programs-589-salvage.md",
+  "ownerDecisionRecord": "acceptance-record.json"
+}

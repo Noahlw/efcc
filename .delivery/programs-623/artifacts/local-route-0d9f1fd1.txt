@@ -1,0 +1,11 @@
+Candidate: 0d9f1fd1
+Target: http://127.0.0.1:8787 (wrangler dev + local D1, migrations + db:seed:local + db:seed:demo)
+Command: pnpm exec playwright test --config=tests/e2e/programs-d1.config.ts --project=phone-390 --grep "changing the visible range requires Review Again before generation|a stale plan is rejected before writes and requires a fresh preview" --retries=0 --workers=1
+
+(node:22793) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+
+[1/2] [phone-390] › tests/e2e/programs-d1.test.ts:4928:3 › EVT-02 recurring preview and generation › changing the visible range requires Review Again before generation
+[2/2] [phone-390] › tests/e2e/programs-d1.test.ts:4974:3 › EVT-02 recurring preview and generation › a stale plan is rejected before writes and requires a fresh preview
+  2 passed (19.8s)

@@ -17,10 +17,17 @@ import {
   vi,
 } from "vitest";
 
-import type { AttendanceEvent } from "@/lib/attendance";
+import type {
+  AttendanceEvent,
+  AttendanceResolveLatest,
+} from "@/lib/attendance";
 import { AttendancePanel } from "@/lib/attendance-panel";
 import { COPY } from "@/lib/copy";
 import { clearGuestCredential, readGuestCredential } from "@/lib/guest-context";
+import {
+  clearGuestMutationRecovery,
+  writeGuestMutationRecovery,
+} from "@/lib/programs/mutation-recovery";
 
 const server = setupServer();
 
@@ -66,6 +73,7 @@ describe(AttendancePanel, () => {
   afterEach(() => {
     cleanup();
     server.resetHandlers();
+    clearGuestMutationRecovery();
     vi.restoreAllMocks();
   });
 
@@ -221,6 +229,78 @@ describe(AttendancePanel, () => {
       ).toHaveAttribute("href", "/");
     });
 
+    test("guest closed-event resolve shows an explicit window outcome", async () => {
+      const latest: AttendanceResolveLatest = {
+        status: "Active",
+        availability: "Active",
+        starts_at: "2026-08-13T11:30:00.000Z",
+        check_in_window_opens_at: "2026-08-13T10:30:00.000Z",
+        program_id: "prog-1",
+        program_name: "週六團契",
+      };
+      server.use(
+        http.get("/api/v1/attendance/resolve", () =>
+          HttpResponse.json({
+            requestId: "rid-closed-guest",
+            data: { events: [], latest, enrolled: false },
+          })
+        )
+      );
+      const user = userEvent.setup();
+      render(<AttendancePanel />);
+      await fillGuestForm(user, "ATTCLOSED");
+      await user.click(
+        screen.getByRole("button", { name: COPY.attendance.guestSubmit })
+      );
+
+      const outcomeHeading = await screen.findByRole("heading", {
+        name: COPY.attendance.outcomeWindowTitle,
+      });
+      expect(outcomeHeading).toBeVisible();
+      expect(outcomeHeading).toHaveFocus();
+      expect(screen.getByText(COPY.attendance.outcomeHeader)).toBeVisible();
+      expect(
+        screen.queryByLabelText(COPY.attendance.guestCode)
+      ).not.toBeInTheDocument();
+    });
+
+    test("guest cancelled-event resolve shows the cancellation outcome", async () => {
+      const latest: AttendanceResolveLatest = {
+        status: "Cancelled",
+        availability: "Active",
+        starts_at: "2026-08-13T11:30:00.000Z",
+        check_in_window_opens_at: "2026-08-13T10:30:00.000Z",
+        program_id: "prog-1",
+        program_name: "週六團契",
+      };
+      server.use(
+        http.get("/api/v1/attendance/resolve", () =>
+          HttpResponse.json({
+            requestId: "rid-cancelled-guest",
+            data: { events: [], latest, enrolled: false },
+          })
+        )
+      );
+      const user = userEvent.setup();
+      render(<AttendancePanel />);
+      await fillGuestForm(user, "ATTCANCEL");
+      await user.click(
+        screen.getByRole("button", { name: COPY.attendance.guestSubmit })
+      );
+
+      const cancelledHeading = await screen.findByRole("heading", {
+        name: COPY.attendance.outcomeCancelledTitle,
+      });
+      expect(cancelledHeading).toBeVisible();
+      expect(cancelledHeading).toHaveFocus();
+      expect(
+        screen.getByText(COPY.attendance.outcomeCancelledBody)
+      ).toBeVisible();
+      expect(
+        screen.queryByLabelText(COPY.attendance.guestCode)
+      ).not.toBeInTheDocument();
+    });
+
     test("invalid phone stays inline, focuses the phone field, and does not complete", async () => {
       server.use(
         http.get("/api/v1/attendance/resolve", () =>
@@ -286,6 +366,204 @@ describe(AttendancePanel, () => {
           name: COPY.attendance.guestResultTitle,
         })
       ).not.toBeInTheDocument();
+    });
+
+    test("ambiguous guest submit reconciles before showing a committed result", async () => {
+      let guestPosts = 0;
+      let submittedKey: string | null = null;
+      let reconciledKey: string | null = null;
+      server.use(
+        http.get("/api/v1/attendance/resolve", () =>
+          HttpResponse.json({
+            requestId: "rid-reconcile-resolve",
+            data: { events: [EVENT] },
+          })
+        ),
+        http.post("/api/v1/attendance/guest", ({ request }) => {
+          guestPosts += 1;
+          submittedKey = request.headers.get("Idempotency-Key");
+          return HttpResponse.error();
+        }),
+        http.post("/api/v1/attendance/guest/reconcile", ({ request }) => {
+          reconciledKey = request.headers.get("Idempotency-Key");
+          return HttpResponse.json({
+            requestId: "rid-reconcile",
+            data: { outcome: "found" },
+          });
+        })
+      );
+      const user = userEvent.setup();
+      render(<AttendancePanel />);
+      await fillGuestForm(user);
+      await user.click(
+        screen.getByRole("button", { name: COPY.attendance.guestSubmit })
+      );
+
+      await expect(
+        screen.findByText(COPY.attendance.transportAmbiguous)
+      ).resolves.toBeVisible();
+      expect({
+        reconcileDisabled: screen
+          .getByRole("button", { name: COPY.attendance.guestReconcile })
+          .hasAttribute("disabled"),
+        nameDisabled: screen
+          .getByLabelText(COPY.attendance.guestName)
+          .hasAttribute("disabled"),
+        guestPosts,
+      }).toStrictEqual({
+        reconcileDisabled: false,
+        nameDisabled: true,
+        guestPosts: 1,
+      });
+
+      await user.click(
+        screen.getByRole("button", { name: COPY.attendance.guestReconcile })
+      );
+      await expect(
+        screen.findByRole("heading", {
+          name: COPY.attendance.guestResultTitle,
+        })
+      ).resolves.toBeVisible();
+      expect([submittedKey, reconciledKey]).toStrictEqual([
+        expect.any(String),
+        submittedKey,
+      ]);
+    });
+
+    test("restores an unknown guest attempt after reload before allowing another write", async () => {
+      let guestPosts = 0;
+      writeGuestMutationRecovery("guest-recovery-key", {
+        event: EVENT,
+        credentialValue: "ATT1234",
+        fromQr: false,
+        name: "E2E訪客",
+        phone: "91234567",
+      });
+      server.use(
+        http.post("/api/v1/attendance/guest", () => {
+          guestPosts += 1;
+          return HttpResponse.json({
+            requestId: "rid-should-not-replay",
+            data: { outcome: "success", attendance_id: "a-replay" },
+          });
+        }),
+        http.post("/api/v1/attendance/guest/reconcile", ({ request }) => {
+          expect(request.headers.get("Idempotency-Key")).toBe(
+            "guest-recovery-key"
+          );
+          return HttpResponse.json({
+            requestId: "rid-recovered",
+            data: { outcome: "found" },
+          });
+        })
+      );
+      const user = userEvent.setup();
+      render(<AttendancePanel />);
+
+      expect(screen.getByLabelText(COPY.attendance.guestName)).toBeDisabled();
+      await expect(
+        screen.findByRole("button", { name: COPY.attendance.guestReconcile })
+      ).resolves.toBeEnabled();
+      const beforeUnload = new Event("beforeunload", { cancelable: true });
+      expect(window.dispatchEvent(beforeUnload)).toBe(false);
+      const blockedHref = window.location.href;
+      window.dispatchEvent(new PopStateEvent("popstate"));
+      expect(window.location.href).toBe(blockedHref);
+
+      await user.click(
+        screen.getByRole("button", { name: COPY.attendance.guestReconcile })
+      );
+      await expect(
+        screen.findByRole("heading", { name: COPY.attendance.guestResultTitle })
+      ).resolves.toBeInTheDocument();
+      expect(guestPosts).toBe(0);
+      const cleanBeforeUnload = new Event("beforeunload", {
+        cancelable: true,
+      });
+      expect(window.dispatchEvent(cleanBeforeUnload)).toBe(true);
+    });
+
+    test("locks an unknown guest attempt until reconciliation makes an explicit decision", async () => {
+      const event2: AttendanceEvent = {
+        ...EVENT,
+        event_id: "evt-unknown-2",
+        name: "主日聚會",
+        manual_check_in_code: "ATT5678",
+      };
+      let guestPosts = 0;
+      const submittedKeys: string[] = [];
+      server.use(
+        http.get("/api/v1/attendance/resolve", () =>
+          HttpResponse.json({
+            requestId: "rid-unknown-resolve",
+            data: { events: [EVENT, event2] },
+          })
+        ),
+        http.post("/api/v1/attendance/guest", ({ request }) => {
+          guestPosts += 1;
+          submittedKeys.push(request.headers.get("Idempotency-Key") ?? "");
+          return guestPosts === 1
+            ? HttpResponse.error()
+            : HttpResponse.json({
+                requestId: "rid-unknown-retry",
+                data: { outcome: "success", attendance_id: "a-retry" },
+              });
+        }),
+        http.post("/api/v1/attendance/guest/reconcile", () =>
+          HttpResponse.json({
+            requestId: "rid-unknown-not-found",
+            data: { outcome: "not_found" },
+          })
+        )
+      );
+      clearGuestCredential();
+      const user = userEvent.setup();
+      render(<AttendancePanel />);
+      await fillGuestForm(user, "PROG-TOKEN");
+      await user.click(
+        screen.getByRole("button", { name: COPY.attendance.guestSubmit })
+      );
+      await user.click(await screen.findByRole("radio", { name: /主日聚會/u }));
+      await user.click(
+        screen.getByRole("button", { name: COPY.attendance.continue })
+      );
+
+      await expect(
+        screen.findByText(COPY.attendance.transportAmbiguous)
+      ).resolves.toBeVisible();
+      expect(screen.getByRole("radio", { name: /主日聚會/u })).toBeDisabled();
+      expect(
+        screen.getByRole("button", { name: COPY.attendance.continue })
+      ).toBeDisabled();
+
+      await user.click(
+        screen.getByRole("link", { name: COPY.attendance.guestBack })
+      );
+      await user.click(
+        screen.getByRole("link", { name: COPY.attendance.loginForMember })
+      );
+      expect(
+        screen.getByRole("button", { name: COPY.attendance.guestReconcile })
+      ).toBeVisible();
+      expect(readGuestCredential()).toBeNull();
+
+      await user.click(
+        screen.getByRole("button", { name: COPY.attendance.guestReconcile })
+      );
+      await expect(
+        screen.findByText(COPY.attendance.guestReconcileNotFound)
+      ).resolves.toBeVisible();
+      expect(screen.getByRole("radio", { name: /主日聚會/u })).toBeEnabled();
+
+      await user.click(
+        screen.getByRole("button", { name: COPY.attendance.continue })
+      );
+      await expect(
+        screen.findByRole("heading", { name: COPY.attendance.guestResultTitle })
+      ).resolves.toBeVisible();
+      expect(guestPosts).toBe(2);
+      expect(submittedKeys[0]).not.toBe(submittedKeys[1]);
+      clearGuestCredential();
     });
 
     test("duplicate is a neutral result without an attendance identifier", async () => {

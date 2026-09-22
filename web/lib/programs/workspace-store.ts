@@ -6,6 +6,15 @@
  */
 
 import type { ModuleKey } from "./capabilities";
+import type {
+  EnrollmentApprovalRun,
+  EnrollmentApprovalRunAuthority,
+  EnrollmentApprovalRunClaim,
+  EnrollmentApprovalRunItem,
+  EnrollmentApprovalRunItemRow,
+  EnrollmentApprovalRunItemStatus,
+  EnrollmentApprovalRunRow,
+} from "./enrollment-approval-run";
 // Domain vocabulary lives in the pure recurrence module; rows and commands
 // reuse it so there is one definition (no drift risk).
 import type { RecurrenceKind, ScheduleExceptionAction } from "./recurrence";
@@ -79,6 +88,21 @@ export interface ProgramUpdate {
   check_in_closes_at_minutes_after_end?: number;
   updated_by: string;
   updated_at: string;
+}
+
+export interface ProgramTokenRotationInput {
+  program_id: string;
+  actor_user_id: string;
+  idempotency_key: string;
+  request_fingerprint: string;
+  now: string;
+  audit_id: string;
+  correlation_id: string | null;
+}
+
+export interface ProgramTokenRotationResult {
+  program: ProgramRow;
+  idempotent: boolean;
 }
 
 export type ProgramBehaviorType = "Recurring" | "OneOff";
@@ -174,10 +198,22 @@ export interface ScheduleRuleInput {
   start_time: string;
   end_time: string;
   location?: string | null;
+  /** Inclusive HK wall start; omitted only for legacy callers. */
+  effective_start_date?: string | null;
+  /** Inclusive HK wall end; null means the rule is ongoing. */
+  effective_end_date?: string | null;
   created_by: string | null;
   created_at: string;
   updated_by: string | null;
   updated_at: string;
+  /** Present for retry-safe HTTP creates; omitted by legacy callers. */
+  idempotency_key?: string | null;
+  request_fingerprint?: string | null;
+}
+
+export interface ScheduleRuleCreationResult {
+  rule: ScheduleRuleRow;
+  idempotent: boolean;
 }
 
 export interface ScheduleRuleUpdate {
@@ -187,6 +223,8 @@ export interface ScheduleRuleUpdate {
   start_time?: string;
   end_time?: string;
   location?: string | null;
+  effective_start_date?: string | null;
+  effective_end_date?: string | null;
   updated_by: string;
   updated_at: string;
 }
@@ -200,6 +238,13 @@ export interface ScheduleRuleRow {
   start_time: string;
   end_time: string;
   location: string | null;
+  effective_start_date?: string | null;
+  effective_end_date?: string | null;
+  /** A retired rule remains historical and cannot generate future events. */
+  retired_at?: string | null;
+  retired_by?: string | null;
+  /** Server-derived history marker used by the management Schedule surface. */
+  has_generated_events?: number | boolean;
   created_by: string | null;
   created_at: string;
   updated_by: string | null;
@@ -212,6 +257,8 @@ export interface ScheduleExceptionInput {
   action: ScheduleExceptionAction;
   new_start_time: string | null;
   new_end_time: string | null;
+  /** Replacement HK wall date; null keeps the original occurrence date. */
+  new_date?: string | null;
   created_by: string | null;
   created_at: string;
 }
@@ -223,6 +270,7 @@ export interface ScheduleExceptionRow {
   action: ScheduleExceptionAction;
   new_start_time: string | null;
   new_end_time: string | null;
+  new_date?: string | null;
   created_by: string | null;
   created_at: string;
 }
@@ -230,12 +278,18 @@ export type EventType = "崇拜" | "訓練" | "小組" | "排練" | "外展" | "
 export type RecurrenceTag = "無" | "每週" | "每月";
 
 export interface EventInput {
+  /** Optional caller-owned ID for an atomic generated Event + run-item write. */
+  event_id?: string;
   program_id: string;
   starts_at: string;
   ends_at: string;
   status: EventStatus;
   availability: EventAvailability;
   source: EventSource;
+  /** Immutable provenance for generated schedule Events; null for manual Events. */
+  schedule_rule_id?: string | null;
+  /** Original HK wall occurrence date; never changes on Event reschedule. */
+  occurrence_date?: string | null;
   name: string | null;
   event_type?: EventType | null;
   location: string | null;
@@ -256,6 +310,10 @@ export interface EventRow {
   status: EventStatus;
   availability: EventAvailability;
   source: EventSource;
+  /** Immutable Schedule Rule provenance for generated Events. */
+  schedule_rule_id?: string | null;
+  /** Original HK wall occurrence date in Church Time. */
+  occurrence_date?: string | null;
   name: string | null;
   event_type: EventType | null;
   location: string | null;
@@ -348,6 +406,22 @@ export interface GenerateResult {
   skipped: number;
   failed: number;
   resumed: boolean;
+  requires_review?: boolean;
+  created_event_ids: string[];
+  skipped_occurrences: GenerateSkippedOccurrence[];
+  unresolved_occurrences: GenerateUnresolvedOccurrence[];
+}
+
+export interface GenerateSkippedOccurrence {
+  occurrence_id: string;
+  starts_at: string;
+  reason: "CANCEL" | "DUPLICATE";
+}
+
+export interface GenerateUnresolvedOccurrence {
+  occurrence_id: string;
+  starts_at: string;
+  detail: string | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -360,6 +434,12 @@ export interface PreviewPlanRow {
   plan_hash: string;
   horizon_days: number;
   from_date: string;
+  /** Exact inclusive selected end date; nullable for pre-0028 plans. */
+  to_date?: string | null;
+  /** Durable schedule revision captured by the reviewed Preview. */
+  schedule_version: number | null;
+  /** Monotonic durable review recency, separate from original creation time. */
+  reviewed_at: number;
   rule_count: number;
   created_by: string | null;
   created_at: string;
@@ -377,6 +457,8 @@ export interface PreviewOccurrenceRow {
   location: string | null;
   skip_reason: PreviewSkipReason | null;
   exception_id: string | null;
+  /** Replacement HK wall date; occurs_on remains the original occurrence. */
+  replacement_date?: string | null;
 }
 
 export type GenerationRunStatus = "completed" | "partial" | "failed";
@@ -446,6 +528,8 @@ export interface EnrollmentRow {
   enrolled_at: string;
   cancelled_at: string | null;
   cancelled_by: string | null;
+  /** Required for manager cancellation; null for self-exit or uncancelled rows. */
+  cancellation_reason?: string | null;
   created_by: string | null;
   created_at: string;
   member_name?: string;
@@ -470,6 +554,16 @@ export interface EnrollmentInput {
   enrolled_at: string;
   created_by: string | null;
   created_at: string;
+}
+
+export interface EnrollmentApprovalRunItemUpdate {
+  status: EnrollmentApprovalRunItemStatus;
+  retryable: boolean;
+  enrollment_id: string | null;
+  error_code: string | null;
+  detail: string | null;
+  started_at: string | null;
+  settled_at: string | null;
 }
 
 /** Normalized active identity assignment projected for an Event detail. */
@@ -521,6 +615,9 @@ export interface WorkspaceStore {
   findProgramById: (id: string) => Promise<ProgramRow | null>;
   listProgramAccessRows: (departmentId: string) => Promise<ProgramAccessRow[]>;
   updateProgram: (id: string, update: ProgramUpdate) => Promise<ProgramRow>;
+  rotateProgramCheckInToken: (
+    input: ProgramTokenRotationInput
+  ) => Promise<ProgramTokenRotationResult>;
   archiveProgramIfClear: (
     id: string,
     update: ProgramUpdate,
@@ -533,6 +630,8 @@ export interface WorkspaceStore {
   ) => Promise<MemberOptionRow[]>;
   /** Department ids the user actively manages (revoked_at IS NULL). */
   listManagedDepartmentIds: (userId: string) => Promise<string[]>;
+  /** True only for an active Global Staff/Admin identity assignment. */
+  isGlobalStaffOrAdmin: (userId: string) => Promise<boolean>;
   /**
    * Active accounts matching identity/contact fields, optionally constrained
    * to Active enrollments under the supplied departments. Rows are flattened
@@ -569,10 +668,17 @@ export interface WorkspaceStore {
     departmentId: string
   ) => Promise<DepartmentModuleRow[]>;
 
-  createScheduleRule: (input: ScheduleRuleInput) => Promise<ScheduleRuleRow>;
+  createScheduleRule: (
+    input: ScheduleRuleInput
+  ) => Promise<ScheduleRuleCreationResult>;
   updateScheduleRule: (
     ruleId: string,
     update: ScheduleRuleUpdate
+  ) => Promise<ScheduleRuleRow>;
+  retireScheduleRule: (
+    ruleId: string,
+    retiredBy: string,
+    retiredAt: string
   ) => Promise<ScheduleRuleRow>;
   listScheduleRules: (programId: string) => Promise<ScheduleRuleRow[]>;
   findScheduleRule: (ruleId: string) => Promise<ScheduleRuleRow | null>;
@@ -598,16 +704,16 @@ export interface WorkspaceStore {
   listEvents: (programId: string) => Promise<EventRow[]>;
   countPendingEnrollmentRequests: (
     programIds: readonly string[]
-  ) => Promise<Array<{ program_id: string; count: number }>>;
+  ) => Promise<{ program_id: string; count: number }[]>;
   countManagementEventAttention: (
     programIds: readonly string[],
     startsAtOrAfter: string
   ) => Promise<
-    Array<{
+    {
       program_id: string;
       inactive_event_count: number;
       cancelled_event_count: number;
-    }>
+    }[]
   >;
   listManagementEventAttention: (
     programIds: readonly string[],
@@ -671,6 +777,7 @@ export interface WorkspaceStore {
     checked_in: number;
   }>;
   countActiveAttendance: (eventId: string) => Promise<number>;
+  hasAttendanceSnapshot: (eventId: string) => Promise<boolean>;
   listActiveAttendanceEventIds: (
     eventIds: readonly string[]
   ) => Promise<Set<string>>;
@@ -679,6 +786,7 @@ export interface WorkspaceStore {
 
   findPreviewPlan: (planId: string) => Promise<PreviewPlanRow | null>;
   findLatestPreviewPlan: (programId: string) => Promise<PreviewPlanRow | null>;
+  findScheduleVersion: (programId: string) => Promise<number>;
   listPreviewOccurrences: (planId: string) => Promise<PreviewOccurrenceRow[]>;
   /** Persist a preview plan and its exact occurrence rows idempotently. */
   replacePreviewPlan: (
@@ -698,6 +806,17 @@ export interface WorkspaceStore {
   listGenerationRunItems: (runId: string) => Promise<GenerationRunItemRow[]>;
   /** Record one attempt durably; false when the row already exists. */
   recordGenerationRunItem: (input: GenerationRunItemInput) => Promise<boolean>;
+  /** Atomically guard the schedule revision, Event write, and run-item outcome. */
+  recordGeneratedOccurrence: (input: {
+    scheduleVersion: number;
+    reviewedAt: number;
+    planId: string;
+    runId: string;
+    programId: string;
+    occurrence: PreviewOccurrenceRow;
+    actorUserId: string | null;
+    createdAt: string;
+  }) => Promise<"created" | "skipped" | "stale">;
   /** Atomic settle: recompute counts/status from the item rows, CAS first-finisher-wins. */
   finishGenerationRun: (
     runId: string,
@@ -776,8 +895,43 @@ export interface WorkspaceStore {
   cancelEnrollment: (
     id: string,
     cancelledBy: string,
-    cancelledAt: string
+    cancelledAt: string,
+    cancellationReason?: string | null
   ) => Promise<EnrollmentRow | null>;
+  createEnrollmentApprovalRun: (
+    run: EnrollmentApprovalRunRow,
+    items: readonly EnrollmentApprovalRunItem[]
+  ) => Promise<EnrollmentApprovalRunRow>;
+  findEnrollmentApprovalRun: (
+    runId: string
+  ) => Promise<EnrollmentApprovalRunRow | null>;
+  listEnrollmentApprovalRuns: (
+    actorUserId: string,
+    programId: string
+  ) => Promise<EnrollmentApprovalRunRow[]>;
+  claimNextEnrollmentApprovalRunItem: (
+    runId: string,
+    actorUserId: string,
+    startedAt: string
+  ) => Promise<EnrollmentApprovalRunClaim>;
+  updateEnrollmentApprovalRunItem: (
+    runId: string,
+    requestId: string,
+    update: EnrollmentApprovalRunItemUpdate,
+    expectedStatus?: EnrollmentApprovalRunItemStatus
+  ) => Promise<boolean>;
+  updateEnrollmentApprovalRun: (
+    run: Pick<
+      EnrollmentApprovalRun,
+      "run_id" | "status" | "finished_at" | "cancelled_at"
+    >
+  ) => Promise<boolean>;
+  findEnrollmentApprovalAuthority: (
+    programId: string,
+    requestId: string,
+    memberUserId: string,
+    idempotencyKey: string
+  ) => Promise<EnrollmentApprovalRunAuthority | null>;
   listProgramIdentityAssignments: (
     programId: string
   ) => Promise<ProgramIdentityAssignmentRow[]>;

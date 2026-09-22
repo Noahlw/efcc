@@ -41,7 +41,12 @@ const mocks = vi.hoisted(() => {
     getManagementProgram: vi.fn(),
     getParticipantProgramDetail: vi.fn(),
     getEvent: vi.fn(),
+    getOwnAttendance: vi.fn(),
     listParticipantCatalog: vi.fn(),
+    listEnrollmentSnapshot: vi.fn(),
+    listEnrollmentApprovalRuns: vi.fn(),
+    listEnrollmentRequests: vi.fn(),
+    listEnrollments: vi.fn(),
     pathname: vi.fn(() => "/programs"),
     push: router.push,
     replace: router.replace,
@@ -58,7 +63,12 @@ vi.mock(import("@/lib/programs/program-api"), () => ({
   getManagementProgram: mocks.getManagementProgram,
   getParticipantProgramDetail: mocks.getParticipantProgramDetail,
   getEvent: mocks.getEvent,
+  getOwnAttendance: mocks.getOwnAttendance,
   listParticipantCatalog: mocks.listParticipantCatalog,
+  listEnrollmentSnapshot: mocks.listEnrollmentSnapshot,
+  listEnrollmentApprovalRuns: mocks.listEnrollmentApprovalRuns,
+  listEnrollmentRequests: mocks.listEnrollmentRequests,
+  listEnrollments: mocks.listEnrollments,
 }));
 
 vi.mock("next/navigation", () => ({
@@ -216,15 +226,19 @@ describe("Programs intent", () => {
       malformed: false,
     });
     expect(
-      parseProgramsIntent("?program=program-1&from=unknown").malformed
-    ).toBeTruthy();
+      parseProgramsIntent("?program=program-1&from=unknown")
+    ).toMatchObject({ malformed: false });
     expect(
       parseProgramsIntent("?mode=management&program=program-1&from=home")
-        .malformed
-    ).toBeTruthy();
+    ).toMatchObject({ malformed: false });
     expect(
-      parseProgramsIntent("?program=program-1&from=home&from=home").malformed
-    ).toBeTruthy();
+      parseProgramsIntent("?program=program-1&from=home&from=home")
+    ).toStrictEqual({
+      mode: "participant",
+      programId: "program-1",
+      hash: null,
+      malformed: false,
+    });
   });
 
   test("keeps management mode URL-addressable and rejects malformed intent", () => {
@@ -294,6 +308,81 @@ describe("Programs intent", () => {
         "?mode=management&program=program-1&task=schedule&event=event-42"
       ).malformed
     ).toBeTruthy();
+  });
+
+  test("round-trips focused Schedule editor identity and Department Settings", () => {
+    const scheduleHref = buildProgramsHref({
+      mode: "management",
+      programId: "program-1",
+      task: "schedule",
+      scheduleOrigin: "settings",
+      scheduleEditor: "new-exception",
+      scheduleRuleId: "rule-1",
+    });
+    expect(scheduleHref).toBe(
+      "/programs?mode=management&program=program-1&task=schedule&scheduleOrigin=settings&scheduleEditor=new-exception&scheduleRule=rule-1"
+    );
+    expect(
+      parseProgramsIntent(scheduleHref.slice("/programs".length))
+    ).toMatchObject({
+      mode: "management",
+      programId: "program-1",
+      task: "schedule",
+      scheduleOrigin: "settings",
+      scheduleEditor: "new-exception",
+      scheduleRuleId: "rule-1",
+      malformed: false,
+    });
+
+    const departmentHref = buildProgramsHref({
+      mode: "management",
+      departmentId: "department-1",
+      departmentSettingsId: "department-1",
+    });
+    expect(departmentHref).toBe(
+      "/programs?mode=management&department=department-1&departmentSettings=department-1"
+    );
+    expect(
+      parseProgramsIntent(departmentHref.slice("/programs".length))
+    ).toMatchObject({
+      departmentId: "department-1",
+      departmentSettingsId: "department-1",
+      malformed: false,
+    });
+  });
+
+  test("round-trips directory, task, filter, and focused Schedule context", () => {
+    const href = buildProgramsHref({
+      mode: "management",
+      programId: "program-1",
+      task: "participants",
+      directoryQuery: "青年",
+      participantTab: "history",
+      participantQuery: "李同工",
+    });
+    expect(href).toBe(
+      "/programs?mode=management&program=program-1&task=participants&directoryQuery=%E9%9D%92%E5%B9%B4&participantTab=history&participantQuery=%E6%9D%8E%E5%90%8C%E5%B7%A5"
+    );
+    expect(parseProgramsIntent(href.slice("/programs".length))).toStrictEqual({
+      mode: "management",
+      programId: "program-1",
+      hash: null,
+      task: "participants",
+      directoryQuery: "青年",
+      participantTab: "history",
+      participantQuery: "李同工",
+      malformed: false,
+    });
+    expect(
+      buildProgramsHref({
+        mode: "management",
+        programId: "program-1",
+        task: "schedule",
+        scheduleOrigin: "settings",
+      })
+    ).toBe(
+      "/programs?mode=management&program=program-1&task=schedule&scheduleOrigin=settings"
+    );
   });
 
   test("preserves management department context", () => {
@@ -378,6 +467,40 @@ describe("Programs intent", () => {
     ).toBe(
       "/programs?mode=management&program=program-1&task=events&event=event-42"
     );
+    expect(
+      buildProgramsHref({
+        mode: "management",
+        programId: "program-1",
+        task: "events",
+        eventId: "event-42",
+        eventAction: "reschedule",
+      })
+    ).toBe(
+      "/programs?mode=management&program=program-1&task=events&event=event-42&eventAction=reschedule"
+    );
+    expect(
+      parseProgramsIntent(
+        "?mode=management&program=program-1&task=events&event=event-42&eventAction=edit"
+      )
+    ).toStrictEqual({
+      mode: "management",
+      programId: "program-1",
+      hash: null,
+      task: "events",
+      eventId: "event-42",
+      eventAction: "edit",
+      malformed: false,
+    });
+    expect(
+      parseProgramsIntent(
+        "?mode=management&program=program-1&task=events&event=event-42&eventAction=unknown"
+      ).malformed
+    ).toBeTruthy();
+    expect(
+      parseProgramsIntent(
+        "?mode=management&program=program-1&task=participants&event=event-42&eventAction=edit"
+      ).malformed
+    ).toBeTruthy();
     // Participant task also preserves the event param for roster deep linking.
     expect(
       buildProgramsHref({
@@ -545,11 +668,23 @@ beforeEach(() => {
   mocks.getManagementDirectory.mockReset();
   mocks.getManagementProgram.mockReset();
   mocks.listParticipantCatalog.mockResolvedValue({ catalog: [] });
+  mocks.listEnrollmentSnapshot.mockResolvedValue({
+    requests: [],
+    enrollments: [],
+  });
+  mocks.listEnrollmentApprovalRuns.mockResolvedValue({ runs: [] });
+  mocks.listEnrollmentRequests.mockResolvedValue({ requests: [] });
+  mocks.listEnrollments.mockResolvedValue({ enrollments: [] });
   mocks.getManagementDirectory.mockResolvedValue({
     departments: [],
     programs: [],
   });
   mocks.getParticipantProgramDetail.mockResolvedValue(detailFixture());
+  mocks.getOwnAttendance.mockResolvedValue({
+    state: "Not Yet",
+    attendance: null,
+    disposition: null,
+  });
   mocks.push.mockReset();
   mocks.replace.mockReset();
 });
@@ -581,10 +716,9 @@ test.each([
       screen.queryByRole("heading", { name: COPY.programs.participantMode })
     ).not.toBeInTheDocument();
     expect(screen.getByText(COPY.programs.entryLead)).toBeInTheDocument();
-    expect(document.querySelector("#programs-mode-panel")).toHaveAttribute(
-      "role",
-      "region"
-    );
+    const panel = document.querySelector("section#programs-mode-panel");
+    expect(panel).toBeInTheDocument();
+    expect(panel).toHaveAccessibleName(COPY.programs.pageTitle);
     expect(
       screen.queryByRole("link", { name: COPY.programs.enterManagement })
     ).not.toBeInTheDocument();
@@ -628,12 +762,16 @@ describe("Programs boundary", () => {
   test("renders direct Program detail and returns to the directory safely", async () => {
     window.history.replaceState({}, "", "/programs?program=program-1#overview");
     mocks.getManagementAccess.mockResolvedValue(managementAccess(false));
+    // Keep this deep-link test self-contained: another boundary test may leave
+    // a queued detail rejection while its stale request is settling.
+    mocks.getParticipantProgramDetail.mockResolvedValueOnce(detailFixture());
 
     render(<ProgramsBoundary />);
 
     await expect(
       screen.findByRole("heading", { name: "查經小組" })
     ).resolves.toBeInTheDocument();
+    expect(mocks.getParticipantProgramDetail).toHaveBeenCalledWith("program-1");
     expect(
       screen.queryByRole("heading", { name: COPY.programs.detailPurpose })
     ).not.toBeInTheDocument();
@@ -667,6 +805,7 @@ describe("Programs boundary", () => {
   });
 
   test("PUI-05: renders the participant Event Detail from a program+event intent", async () => {
+    const now = Date.now();
     window.history.replaceState(
       {},
       "",
@@ -686,8 +825,8 @@ describe("Programs boundary", () => {
         name: "迎新聚會",
         location: "教會禮堂",
         manual_check_in_code: "ABCD1234",
-        check_in_window_opens_at: "2026-09-12T09:30:00.000Z",
-        check_in_window_closes_at: "2026-09-12T12:00:00.000Z",
+        check_in_window_opens_at: new Date(now - 30 * 60_000).toISOString(),
+        check_in_window_closes_at: new Date(now + 90 * 60_000).toISOString(),
         cancel_reason: null,
         created_at: "2026-01-01T00:00:00.000Z",
         updated_at: "2026-01-01T00:00:00.000Z",
@@ -703,9 +842,9 @@ describe("Programs boundary", () => {
       screen.findByRole("heading", { name: "迎新聚會" })
     ).resolves.toBeInTheDocument();
     expect(mocks.getEvent).toHaveBeenCalledWith("program-1", "event-42");
-    expect(
-      screen.getByRole("link", { name: COPY.programs.goToScan })
-    ).toHaveAttribute("href", "/scanner?event=event-42");
+    await expect(
+      screen.findByRole("link", { name: COPY.programs.goToScan })
+    ).resolves.toHaveAttribute("href", "/scanner?event=event-42");
     const back = screen.getByRole("link", { name: COPY.programs.backToOrigin });
     expect(back).toHaveAttribute(
       "href",
@@ -725,7 +864,75 @@ describe("Programs boundary", () => {
     ).not.toBeInTheDocument();
   });
 
-  test("routes notification overflow to the dedicated management task", async () => {
+  test("preserves the participant tab and query after an Overview round-trip", async () => {
+    const user = userEvent.setup();
+    window.history.replaceState(
+      {},
+      "",
+      "/programs?mode=management&program=program-1&task=participants&participantTab=history&participantQuery=%E6%9D%8E%E5%90%8C%E5%B7%A5"
+    );
+    mocks.getManagementAccess.mockResolvedValue(managementAccess(true));
+    mocks.getManagementProgram.mockResolvedValue({
+      program: program({
+        manage: true,
+        publish: true,
+        enroll: false,
+        leader_assign: false,
+      }),
+      department: department({
+        manage: true,
+        publish: true,
+        module_configure: true,
+      }),
+      modules: [
+        {
+          department_id: "dept-1",
+          module_key: "enrollment",
+          enabled: 1,
+          enabled_at: "2026-01-01T00:00:00.000Z",
+        },
+      ],
+      cockpit: null,
+    });
+    const view = render(<ProgramsBoundary />);
+
+    await screen.findByRole("heading", {
+      name: COPY.programs.workspaceTaskParticipants,
+    });
+    const initial = new URL(window.location.href);
+    expect(initial.searchParams.get("participantTab")).toBe("history");
+    expect(initial.searchParams.get("participantQuery")).toBe("李同工");
+    const historyTab = screen.getByRole("tab", {
+      name: /歷史/u,
+    });
+    historyTab.focus();
+    expect(document.activeElement).toBe(historyTab);
+
+    await user.click(
+      within(screen.getByTestId("programs-workspace-tabs")).getByRole("link", {
+        name: COPY.programs.workspaceOverviewTab,
+      })
+    );
+    await waitFor(() =>
+      expect(new URL(window.location.href).searchParams.get("task")).toBeNull()
+    );
+
+    await user.click(
+      within(screen.getByTestId("programs-workspace-tabs")).getByRole("link", {
+        name: COPY.programs.workspaceTaskParticipants,
+      })
+    );
+    await waitFor(() => {
+      const params = new URL(window.location.href).searchParams;
+      expect(params.get("task")).toBe("participants");
+      expect(params.get("participantTab")).toBe("history");
+      expect(params.get("participantQuery")).toBe("李同工");
+      expect(document.activeElement?.id).toBe("participants-history-tab");
+    });
+    view.unmount();
+  });
+
+  test("keeps the compact management notification action in the shared shell", async () => {
     window.history.replaceState({}, "", "/programs?mode=management");
     mocks.getManagementAccess.mockResolvedValue(managementAccess(true));
     mocks.getManagementNotifications.mockResolvedValue({
@@ -754,18 +961,11 @@ describe("Programs boundary", () => {
       expect(mocks.getManagementNotifications).toHaveBeenCalledWith();
     });
     expect(mocks.getManagementAttention).not.toHaveBeenCalled();
-    await userEvent.click(
-      await screen.findByRole("button", {
+    expect(
+      screen.queryByRole("button", {
         name: COPY.programs.notificationBellTitle,
       })
-    );
-    const viewAll = await screen.findByRole("link", {
-      name: COPY.programs.notificationsViewAll,
-    });
-    expect(viewAll).toHaveAttribute(
-      "href",
-      "/programs?mode=management&task=notifications"
-    );
+    ).not.toBeInTheDocument();
     expect(window.location.search).toBe("?mode=management");
     expect(mocks.push).not.toHaveBeenCalled();
   });
@@ -990,12 +1190,13 @@ describe("Programs boundary", () => {
     ).resolves.toBeInTheDocument();
     expect(mocks.getManagementAccess).not.toHaveBeenCalled();
 
-    const malformedPanel = screen
-      .getAllByRole("region", { name: COPY.programs.pageTitle })
-      .find((element) => element.id === "programs-mode-panel");
+    const malformedPanel = document.querySelector(
+      "section#programs-mode-panel"
+    );
     if (!malformedPanel) {
-      throw new Error("malformed Programs panel is not exposed as a region");
+      throw new Error("malformed Programs panel is not a semantic section");
     }
+    expect(malformedPanel).toHaveAccessibleName(COPY.programs.pageTitle);
     expect(malformedPanel).toHaveAttribute("aria-labelledby", "programs-title");
     expect(screen.queryByRole("tabpanel")).not.toBeInTheDocument();
 
@@ -1037,6 +1238,85 @@ describe("Programs boundary", () => {
 });
 
 describe("PUI-02 Programs directory (boundary integration)", () => {
+  test("records filter history and restores the prior filter on Back", async () => {
+    const user = userEvent.setup();
+    mocks.getManagementAccess.mockResolvedValue(managementAccess(false));
+    mocks.listParticipantCatalog.mockResolvedValue({
+      catalog: catalogFixture([
+        catalogProgramSummary("program-1", "查經小組", {
+          viewerState: "active",
+        }),
+      ]),
+    });
+    window.history.replaceState(
+      {
+        efccSection: "programs",
+        surface: "participant",
+        catalogQuery: "",
+        catalogFilter: "all",
+      },
+      "",
+      "/programs"
+    );
+    render(<ProgramsBoundary />);
+
+    await screen.findByRole("link", { name: /查經小組/u });
+    await user.click(
+      screen.getByRole("button", { name: COPY.programs.filterActive })
+    );
+    expect(window.history.state).toMatchObject({
+      surface: "participant",
+      catalogFilter: "active",
+    });
+
+    window.history.back();
+    await waitFor(() =>
+      expect(window.history.state).toMatchObject({ catalogFilter: "all" })
+    );
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: COPY.programs.filterAll })
+      ).toHaveAttribute("aria-pressed", "true")
+    );
+  });
+
+  test("restores the latest participant scroll position after returning", async () => {
+    const user = userEvent.setup();
+    const scrollTo = vi.spyOn(window, "scrollTo").mockImplementation(() => {});
+    Object.defineProperty(window, "scrollY", {
+      configurable: true,
+      value: 240,
+    });
+    mocks.getManagementAccess.mockResolvedValue(managementAccess(false));
+    mocks.listParticipantCatalog.mockResolvedValue({
+      catalog: catalogFixture([
+        catalogProgramSummary("program-1", "查經小組", {
+          viewerState: "active",
+        }),
+      ]),
+    });
+    const view = render(<ProgramsBoundary />);
+
+    await screen.findByRole("link", { name: /查經小組/u });
+    await user.click(
+      screen.getByRole("button", { name: COPY.programs.filterActive })
+    );
+    const programLink = screen.getByRole("link", { name: /查經小組/u });
+    const detailHref = programLink.getAttribute("href") ?? "/programs";
+    await user.click(programLink);
+    window.history.replaceState({}, "", detailHref);
+    view.rerender(<ProgramsBoundary />);
+    await screen.findByRole("heading", { name: "查經小組" });
+    await user.click(
+      screen.getByRole("link", { name: COPY.programs.detailBack })
+    );
+
+    await waitFor(() =>
+      expect(scrollTo).toHaveBeenCalledWith({ top: 240, behavior: "auto" })
+    );
+    scrollTo.mockRestore();
+  });
+
   test("participant mode loads the server catalog as one coherent collection", async () => {
     mocks.getManagementAccess.mockResolvedValue(managementAccess(false));
     mocks.listParticipantCatalog.mockResolvedValue({

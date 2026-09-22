@@ -12,12 +12,15 @@ import { RpcError } from "@/lib/api";
 import { COPY, errorCopyFor } from "@/lib/copy";
 import {
   hkDayPadded,
+  hkMonthDayLabel,
   hkMonthWeekdayLabel,
   hkShortDateLabel,
   hkShortTimeRange,
 } from "@/lib/hk-time";
 import { getParticipantProgramDetail } from "@/lib/programs/program-api";
 import type {
+  ParticipantEnrollmentRequest,
+  ParticipantEnrollmentSnapshot,
   ParticipantEventSummary,
   ParticipantProgramDetail as ParticipantProgramDetailData,
 } from "@/lib/programs/program-api";
@@ -79,9 +82,15 @@ type DetailConflictView = ParticipantProgramDetailData & {
   has_schedule_conflict?: boolean;
 };
 
-function eventIsUpcoming(startsAt: string): boolean {
-  const timestamp = Date.parse(startsAt);
+function eventIsCurrentOrUpcoming(endsAt: string): boolean {
+  const timestamp = Date.parse(endsAt);
   return Number.isFinite(timestamp) && timestamp >= Date.now();
+}
+
+function eventIsOpenOrCurrent(event: ParticipantEventSummary): boolean {
+  return (
+    event.self_check_in_available || eventIsCurrentOrUpcoming(event.ends_at)
+  );
 }
 
 const MOBILE_EVENT_CAP = 4;
@@ -95,6 +104,9 @@ function statusForDetail(detail: ParticipantProgramDetailData): {
   const { enrollment, program } = detail;
   if (program.lifecycle === "Archived") {
     return { label: COPY.programs.statusArchived, kind: "neutral" };
+  }
+  if (program.lifecycle === "Draft") {
+    return { label: COPY.programs.lifecycleDraft, kind: "neutral" };
   }
   const active = enrollment?.enrollments.find(
     (item) => item.status === "Active"
@@ -174,20 +186,135 @@ function conflictNote(
     : null;
 }
 
+interface EnrollmentHistoryItem {
+  id: string;
+  label: string;
+  at: string;
+}
+
+function requestHistoryLabel(
+  status: ParticipantEnrollmentRequest["status"]
+): string | null {
+  switch (status) {
+    case "Pending": {
+      return COPY.programs.requestPending;
+    }
+    case "Rejected": {
+      return COPY.programs.requestRejected;
+    }
+    case "Withdrawn": {
+      return COPY.programs.requestWithdrawn;
+    }
+    case "Approved": {
+      // The corresponding enrollment record is the authoritative visible
+      // record for an approved request, so do not show it twice.
+      return null;
+    }
+    default: {
+      return null;
+    }
+  }
+}
+
+function buildEnrollmentHistory(
+  enrollment: ParticipantEnrollmentSnapshot | null
+): EnrollmentHistoryItem[] {
+  if (!enrollment) {
+    return [];
+  }
+
+  return [
+    ...enrollment.requests.flatMap((request) => {
+      const label = requestHistoryLabel(request.status);
+      return label === null
+        ? []
+        : [
+            {
+              id: `request-${request.request_id}`,
+              label,
+              at: request.decided_at ?? request.submitted_at,
+            },
+          ];
+    }),
+    ...enrollment.enrollments.map((item) => ({
+      id: `enrollment-${item.enrollment_id}`,
+      label:
+        item.status === "Active"
+          ? COPY.programs.enrollmentActive
+          : COPY.programs.enrollmentCancelled,
+      at: item.cancelled_at ?? item.enrolled_at,
+    })),
+  ].toSorted((a, b) => b.at.localeCompare(a.at));
+}
+
+interface ParticipantEnrollmentHistoryProps {
+  enrollment: ParticipantEnrollmentSnapshot | null;
+}
+
+const ParticipantEnrollmentHistory = ({
+  enrollment,
+}: ParticipantEnrollmentHistoryProps) => {
+  const history = buildEnrollmentHistory(enrollment);
+  if (history.length === 0) {
+    return null;
+  }
+
+  return (
+    <ScreenSection
+      title={COPY.programs.enrollmentHistory}
+      headingId="program-enrollment-history-title"
+    >
+      <ScreenRowList data-enrollment-history>
+        <ul
+          className="m-0 grid min-w-0 list-none gap-0 p-0"
+          aria-label={COPY.programs.enrollmentHistory}
+        >
+          {history.map((item) => (
+            <li key={item.id} className="min-w-0">
+              <ScreenRow>
+                <span
+                  className="size-2 shrink-0 rounded-full bg-[var(--screen-muted)]"
+                  aria-hidden="true"
+                />
+                <ScreenRowMain>
+                  <ScreenRowTitle>{item.label}</ScreenRowTitle>
+                  <ScreenRowMeta>
+                    <time dateTime={item.at}>{hkMonthDayLabel(item.at)}</time>
+                  </ScreenRowMeta>
+                </ScreenRowMain>
+              </ScreenRow>
+            </li>
+          ))}
+        </ul>
+      </ScreenRowList>
+    </ScreenSection>
+  );
+};
+
 interface ParticipantScheduleProps {
   program: ParticipantProgramDetailData["program"];
   scheduleRules: ParticipantProgramDetailData["schedule_rules"];
   events: ParticipantProgramDetailData["events"];
+  cancelledEvents?: ParticipantProgramDetailData["events"];
   totalEventCount?: number;
   onExpandAll?: () => void;
+  canOpenEventDetail?: boolean;
+  onOpenEvent?: (eventId: string) => void;
+  eventHref?: (eventId: string) => string;
 }
+
+const EMPTY_CANCELLED_EVENTS: ParticipantScheduleProps["events"] = [];
 
 const ParticipantSchedule = ({
   program,
   scheduleRules,
   events,
+  cancelledEvents = EMPTY_CANCELLED_EVENTS,
   totalEventCount = 0,
   onExpandAll,
+  canOpenEventDetail = false,
+  onOpenEvent,
+  eventHref,
 }: ParticipantScheduleProps) => (
   <ScreenSection title={COPY.programs.scheduleTitle}>
     {scheduleRules.length > 0 && (
@@ -228,6 +355,11 @@ const ParticipantSchedule = ({
               event.self_check_in_available === true &&
               program.lifecycle !== "Archived" &&
               program.enrollment_mode !== "ManagerOnly";
+            const canOpenThisEvent =
+              canOpenEventDetail &&
+              index > 0 &&
+              (eventHref !== undefined || onOpenEvent !== undefined);
+            const eventActionLabel = `${COPY.programs.viewEventDetail}: ${eventTitle(event, index)}`;
             return (
               <li key={event.event_id} className="min-w-0">
                 <ScreenRow>
@@ -256,17 +388,59 @@ const ParticipantSchedule = ({
                       {COPY.programs.eventActive}
                     </span>
                   </ScreenRowMain>
-                  {selfCheckInAvailable ? (
+                  {(selfCheckInAvailable || canOpenThisEvent) && (
                     <ScreenRowTrailing>
-                      <ScreenStatus
-                        role="status"
-                        tone="neutral"
-                        aria-label={COPY.programs.checkInAvailable}
-                      >
-                        {COPY.programs.checkInAvailable}
-                      </ScreenStatus>
+                      {canOpenThisEvent &&
+                        (eventHref ? (
+                          <Button
+                            asChild
+                            className="h-auto min-h-11 w-fit whitespace-normal border-[var(--screen-line-strong)] bg-[var(--screen-surface)] px-3 py-2 text-left text-sm font-bold text-[var(--screen-ink)] hover:bg-[var(--screen-surface-soft)] hover:text-[var(--screen-ink)]"
+                            variant="outline"
+                          >
+                            <Link
+                              href={eventHref(event.event_id)}
+                              aria-label={eventActionLabel}
+                              onClick={(clickEvent) => {
+                                if (
+                                  !onOpenEvent ||
+                                  clickEvent.defaultPrevented ||
+                                  clickEvent.button !== 0 ||
+                                  clickEvent.metaKey ||
+                                  clickEvent.ctrlKey ||
+                                  clickEvent.shiftKey ||
+                                  clickEvent.altKey
+                                ) {
+                                  return;
+                                }
+                                clickEvent.preventDefault();
+                                onOpenEvent(event.event_id);
+                              }}
+                            >
+                              {COPY.programs.viewEventDetail}
+                            </Link>
+                          </Button>
+                        ) : (
+                          <Button
+                            type="button"
+                            className="h-auto min-h-11 w-fit whitespace-normal border-[var(--screen-line-strong)] bg-[var(--screen-surface)] px-3 py-2 text-left text-sm font-bold text-[var(--screen-ink)] hover:bg-[var(--screen-surface-soft)] hover:text-[var(--screen-ink)]"
+                            variant="outline"
+                            onClick={() => onOpenEvent?.(event.event_id)}
+                            aria-label={eventActionLabel}
+                          >
+                            {COPY.programs.viewEventDetail}
+                          </Button>
+                        ))}
+                      {selfCheckInAvailable && (
+                        <ScreenStatus
+                          role="status"
+                          tone="neutral"
+                          aria-label={COPY.programs.checkInAvailable}
+                        >
+                          {COPY.programs.checkInAvailable}
+                        </ScreenStatus>
+                      )}
                     </ScreenRowTrailing>
-                  ) : null}
+                  )}
                 </ScreenRow>
               </li>
             );
@@ -287,17 +461,113 @@ const ParticipantSchedule = ({
         )}
       </ScreenRowList>
     )}
-    {scheduleRules.length === 0 && events.length === 0 && (
-      <ScreenState
-        kind="empty"
-        title={<span className="sr-only">{COPY.programs.scheduleTitle}</span>}
-        description={
-          <p className="m-0 wrap-anywhere leading-[1.6]">
-            {COPY.programs.detailEventsNone}
-          </p>
-        }
-      />
+    {cancelledEvents.length > 0 && (
+      <ScreenRowList className={events.length > 0 ? "mt-3" : undefined}>
+        <h3 id="program-detail-cancelled-events" className="sr-only">
+          {COPY.programs.scheduleCancelledEventsGroup}
+        </h3>
+        <ul
+          className="m-0 grid min-w-0 list-none gap-0 p-0"
+          aria-label={COPY.programs.scheduleCancelledEventsGroup}
+        >
+          {cancelledEvents.map((event, index) => {
+            const location = eventLocation(event);
+            const eventActionLabel = `${COPY.programs.viewEventDetail}: ${eventTitle(event, index)}`;
+            const eventDetail = eventHref ? (
+              <Button
+                asChild
+                className="h-auto min-h-11 w-fit whitespace-normal border-[var(--screen-line-strong)] bg-[var(--screen-surface)] px-3 py-2 text-left text-sm font-bold text-[var(--screen-ink)] hover:bg-[var(--screen-surface-soft)] hover:text-[var(--screen-ink)]"
+                variant="outline"
+              >
+                <Link
+                  href={eventHref(event.event_id)}
+                  aria-label={eventActionLabel}
+                  onClick={(clickEvent) => {
+                    if (
+                      !onOpenEvent ||
+                      clickEvent.defaultPrevented ||
+                      clickEvent.button !== 0 ||
+                      clickEvent.metaKey ||
+                      clickEvent.ctrlKey ||
+                      clickEvent.shiftKey ||
+                      clickEvent.altKey
+                    ) {
+                      return;
+                    }
+                    clickEvent.preventDefault();
+                    onOpenEvent(event.event_id);
+                  }}
+                >
+                  {COPY.programs.viewEventDetail}
+                </Link>
+              </Button>
+            ) : (
+              <Button
+                type="button"
+                className="h-auto min-h-11 w-fit whitespace-normal border-[var(--screen-line-strong)] bg-[var(--screen-surface)] px-3 py-2 text-left text-sm font-bold text-[var(--screen-ink)] hover:bg-[var(--screen-surface-soft)] hover:text-[var(--screen-ink)]"
+                variant="outline"
+                onClick={() => onOpenEvent?.(event.event_id)}
+                aria-label={eventActionLabel}
+              >
+                {COPY.programs.viewEventDetail}
+              </Button>
+            );
+            return (
+              <li key={event.event_id} className="min-w-0">
+                <ScreenRow>
+                  <time
+                    className="flex w-[3.25rem] shrink-0 flex-col items-center justify-center rounded-[var(--screen-radius-control)] bg-[var(--screen-surface-soft)] py-1.5 text-center [font-variant-numeric:tabular-nums] leading-[1.1]"
+                    dateTime={event.starts_at}
+                  >
+                    <b className="block text-base font-extrabold text-[var(--screen-ink)]">
+                      {hkDayPadded(event.starts_at)}
+                    </b>
+                    <span className="mt-0.5 block text-[0.6875rem] text-[var(--screen-muted)]">
+                      {hkMonthWeekdayLabel(event.starts_at)}
+                    </span>
+                  </time>
+                  <ScreenRowMain>
+                    <ScreenRowTitle>{eventTitle(event, index)}</ScreenRowTitle>
+                    <ScreenRowMeta>
+                      {hkShortDateLabel(event.starts_at)}
+                      {hkShortTimeRange(event.starts_at, event.ends_at)}
+                      {location ? ` · ${location}` : ""}
+                    </ScreenRowMeta>
+                    <ScreenStatus role="status" tone="danger">
+                      {COPY.programs.eventCancelled}
+                    </ScreenStatus>
+                    {event.cancel_reason ? (
+                      <ScreenRowMeta className="text-[var(--screen-danger)]">
+                        {COPY.programs.cancelledReason.replace(
+                          "{reason}",
+                          event.cancel_reason
+                        )}
+                      </ScreenRowMeta>
+                    ) : null}
+                  </ScreenRowMain>
+                  {canOpenEventDetail && (eventHref || onOpenEvent) && (
+                    <ScreenRowTrailing>{eventDetail}</ScreenRowTrailing>
+                  )}
+                </ScreenRow>
+              </li>
+            );
+          })}
+        </ul>
+      </ScreenRowList>
     )}
+    {scheduleRules.length === 0 &&
+      events.length === 0 &&
+      cancelledEvents.length === 0 && (
+        <ScreenState
+          kind="empty"
+          title={<span className="sr-only">{COPY.programs.scheduleTitle}</span>}
+          description={
+            <p className="m-0 wrap-anywhere leading-[1.6]">
+              {COPY.programs.detailEventsNone}
+            </p>
+          }
+        />
+      )}
   </ScreenSection>
 );
 
@@ -415,10 +685,23 @@ export const ParticipantProgramDetail = ({
     if (state.kind !== "ready") {
       return [];
     }
+    return (
+      state.detail.events
+        .filter((event) => event.status === "Active")
+        // Keep a meeting visible while it runs, and while the server says its
+        // participant check-in window is still open after the meeting ends.
+        .filter(eventIsOpenOrCurrent)
+        .toSorted((a, b) => Date.parse(a.starts_at) - Date.parse(b.starts_at))
+    );
+  }, [state]);
+
+  const cancelledEvents = useMemo(() => {
+    if (state.kind !== "ready") {
+      return [];
+    }
     return state.detail.events
-      .filter((event) => event.status === "Active")
-      .filter((event) => eventIsUpcoming(event.starts_at))
-      .toSorted((a, b) => Date.parse(a.starts_at) - Date.parse(b.starts_at));
+      .filter((event) => event.status === "Cancelled")
+      .toSorted((a, b) => Date.parse(b.starts_at) - Date.parse(a.starts_at));
   }, [state]);
 
   const visibleEvents = useMemo(
@@ -525,6 +808,12 @@ export const ParticipantProgramDetail = ({
   const status = statusForDetail(state.detail);
   const nextEvent = scheduledEvents[0] ?? null;
   const nextLocation = nextEvent ? eventLocation(nextEvent) : null;
+  const programContext = [state.detail.department.name, program.category]
+    .map((value) => (typeof value === "string" ? value.trim() : ""))
+    .filter(Boolean)
+    .join(" · ");
+  const programDescription =
+    program.description ?? COPY.programs.programDescriptionEmpty;
   const hasActiveEnrollment =
     enrollment?.enrollments.some((item) => item.status === "Active") ?? false;
   const canOpenEventDetail = canManage || hasActiveEnrollment;
@@ -549,7 +838,18 @@ export const ParticipantProgramDetail = ({
         backReplace
         onBack={handleBack}
         title={program.name}
-        lead={program.description ?? COPY.programs.programDescriptionEmpty}
+        lead={
+          <>
+            {programContext ? (
+              <span className="block min-w-0 wrap-anywhere">
+                {programContext}
+              </span>
+            ) : null}
+            <span className="mt-1 block min-w-0 wrap-anywhere">
+              {programDescription}
+            </span>
+          </>
+        }
         headingId="program-detail-title"
         status={
           <ScreenStatus tone={status.kind} role="status">
@@ -655,9 +955,15 @@ export const ParticipantProgramDetail = ({
         program={program}
         scheduleRules={scheduleRules}
         events={visibleEvents}
+        cancelledEvents={cancelledEvents}
         totalEventCount={scheduledEvents.length}
         onExpandAll={() => setEventLimit(Number.MAX_SAFE_INTEGER)}
+        canOpenEventDetail={canOpenEventDetail}
+        onOpenEvent={onOpenEvent}
+        eventHref={eventHref}
       />
+
+      <ParticipantEnrollmentHistory enrollment={enrollment} />
 
       <ParticipantEnrollment
         program={program}
@@ -666,7 +972,9 @@ export const ParticipantProgramDetail = ({
         scheduleRules={scheduleRules}
         events={state.detail.events}
         showEventDetailAdvisory={showEventDetailAdvisory}
-        onRefresh={refreshDetail}
+        onRefresh={async () => {
+          await refreshDetail();
+        }}
       />
     </article>
   );

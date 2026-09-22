@@ -5,6 +5,27 @@
 import { MODULE_KEYS } from "./capabilities";
 import type { ModuleKey } from "./capabilities";
 import type {
+  EnrollmentApprovalRun,
+  EnrollmentApprovalRunAuthority,
+  EnrollmentApprovalRunClaim,
+  EnrollmentApprovalRunItem,
+  EnrollmentApprovalRunItemStatus,
+  EnrollmentApprovalRunRow,
+} from "./enrollment-approval-run";
+import {
+  claimNextEnrollmentApprovalRunItem,
+  findEnrollmentApprovalAuthority,
+  findEnrollmentApprovalRun,
+  insertEnrollmentApprovalRun,
+  listEnrollmentApprovalRuns,
+  updateEnrollmentApprovalRun,
+  updateEnrollmentApprovalRunItem,
+} from "./enrollment-approval-run-store";
+import {
+  ProgramTokenRotationConflictError,
+  ScheduleRuleIdempotencyConflictError,
+} from "./program-errors";
+import type {
   AuditInput,
   GenerationRunItemInput,
   GenerationRunItemRow,
@@ -31,6 +52,8 @@ import type {
   PreviewPlanRow,
   ProgramInput,
   ProgramRow,
+  ProgramTokenRotationInput,
+  ProgramTokenRotationResult,
   ProgramUpdate,
   AccountDirectorySearchFilters,
   AccountDirectorySummary,
@@ -43,6 +66,7 @@ import type {
   ScheduleRuleUpdate,
   WorkspaceStore,
   ProgramIdentityAssignmentRow,
+  EnrollmentApprovalRunItemUpdate,
 } from "./workspace-store";
 
 function chunk<T>(items: readonly T[], size = 50): T[][] {
@@ -51,6 +75,24 @@ function chunk<T>(items: readonly T[], size = 50): T[][] {
     chunks.push(items.slice(i, i + size) as T[]);
   }
   return chunks;
+}
+
+interface ProgramTokenRotationRow {
+  idempotency_key: string;
+  request_fingerprint: string;
+  actor_user_id: string;
+  program_id: string;
+  resulting_token: string;
+  created_at: string;
+}
+
+interface ScheduleRuleIdempotencyRow {
+  idempotency_key: string;
+  request_fingerprint: string;
+  actor_user_id: string;
+  program_id: string;
+  rule_id: string;
+  created_at: string;
 }
 
 /**
@@ -238,8 +280,11 @@ export class D1WorkspaceStore implements WorkspaceStore {
         input.description ?? null,
         input.category ?? null,
         input.behavior_type,
-        input.lifecycle,
-        input.discoverability,
+        // Program creation is deliberately non-publishable/non-discoverable.
+        // Promotion and listing are separate governed mutations, so alternate
+        // create payloads cannot bypass that boundary.
+        "Draft",
+        "Unlisted",
         input.enrollment_mode,
         input.display_order ?? 0,
         input.created_by,
@@ -339,6 +384,30 @@ export class D1WorkspaceStore implements WorkspaceStore {
       .bind(userId)
       .all<{ department_id: string }>()
       .then((result) => (result.results ?? []).map((row) => row.department_id));
+  }
+
+  async isGlobalStaffOrAdmin(userId: string): Promise<boolean> {
+    if (!userId) {
+      return false;
+    }
+    const row = await this.db
+      .prepare(
+        `SELECT 1 AS present
+           FROM role_assignments ra
+           JOIN role_definitions rd
+             ON rd.role_definition_id = ra.role_definition_id
+          WHERE ra.account_user_id = ?
+            AND ra.revoked_at IS NULL
+            AND ra.scope_kind = 'Global'
+            AND ra.scope_id IS NULL
+            AND rd.category_key = 'Global'
+            AND rd.stable_key IN ('admin', 'staff')
+            AND rd.is_archived = 0
+          LIMIT 1`
+      )
+      .bind(userId)
+      .first<{ present: number }>();
+    return row !== null;
   }
 
   /**
@@ -797,6 +866,128 @@ export class D1WorkspaceStore implements WorkspaceStore {
     return this.requireProgram(id);
   }
 
+  async rotateProgramCheckInToken(
+    input: ProgramTokenRotationInput
+  ): Promise<ProgramTokenRotationResult> {
+    const existing = await this.db
+      .prepare(
+        `SELECT idempotency_key, request_fingerprint, actor_user_id,
+                program_id, resulting_token, created_at
+           FROM program_check_in_token_rotations
+          WHERE idempotency_key = ?`
+      )
+      .bind(input.idempotency_key)
+      .first<ProgramTokenRotationRow>();
+    if (existing) {
+      if (
+        existing.request_fingerprint !== input.request_fingerprint ||
+        existing.actor_user_id !== input.actor_user_id ||
+        existing.program_id !== input.program_id
+      ) {
+        throw new ProgramTokenRotationConflictError();
+      }
+      const current = await this.requireProgram(input.program_id);
+      return {
+        program: { ...current, check_in_token: existing.resulting_token },
+        idempotent: true,
+      };
+    }
+
+    const nextToken = crypto.randomUUID().replaceAll("-", "");
+    const auditValues = [
+      input.audit_id,
+      input.now,
+      input.actor_user_id,
+      "PROGRAM_CHECK_IN_TOKEN_ROTATE",
+      "program",
+      input.program_id,
+      JSON.stringify({ credential: "permanent_program_qr" }),
+      JSON.stringify({ credential: "permanent_program_qr" }),
+      "emergency_rotation",
+      "SUCCESS",
+      input.correlation_id,
+    ] as const;
+    const results = await this.db.batch([
+      this.db
+        .prepare(
+          `INSERT OR IGNORE INTO program_check_in_token_rotations
+             (idempotency_key, request_fingerprint, actor_user_id,
+              program_id, resulting_token, created_at)
+           VALUES (?, ?, ?, ?, ?, ?)`
+        )
+        .bind(
+          input.idempotency_key,
+          input.request_fingerprint,
+          input.actor_user_id,
+          input.program_id,
+          nextToken,
+          input.now
+        ),
+      this.db
+        .prepare(
+          `UPDATE programs
+              SET check_in_token = ?, updated_by = ?, updated_at = ?
+            WHERE program_id = ?
+              AND EXISTS (
+                SELECT 1
+                  FROM program_check_in_token_rotations
+                 WHERE idempotency_key = ?
+                   AND request_fingerprint = ?
+                   AND actor_user_id = ?
+                   AND program_id = ?
+                   AND resulting_token = ?
+              )`
+        )
+        .bind(
+          nextToken,
+          input.actor_user_id,
+          input.now,
+          input.program_id,
+          input.idempotency_key,
+          input.request_fingerprint,
+          input.actor_user_id,
+          input.program_id,
+          nextToken
+        ),
+      this.db
+        .prepare(
+          `INSERT INTO audit_events
+             (audit_id, inserted_at, actor_user_id, action, entity_type,
+              entity_id, old_value_json, new_value_json, reason, outcome,
+              correlation_id)
+           SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+            WHERE changes() > 0`
+        )
+        .bind(...auditValues),
+    ]);
+    const record = await this.db
+      .prepare(
+        `SELECT idempotency_key, request_fingerprint, actor_user_id,
+                program_id, resulting_token, created_at
+           FROM program_check_in_token_rotations
+          WHERE idempotency_key = ?`
+      )
+      .bind(input.idempotency_key)
+      .first<ProgramTokenRotationRow>();
+    if (!record) {
+      throw new Error(
+        "Program token rotation did not reserve an idempotency record."
+      );
+    }
+    if (
+      record.request_fingerprint !== input.request_fingerprint ||
+      record.actor_user_id !== input.actor_user_id ||
+      record.program_id !== input.program_id
+    ) {
+      throw new ProgramTokenRotationConflictError();
+    }
+    const current = await this.requireProgram(input.program_id);
+    return {
+      program: { ...current, check_in_token: record.resulting_token },
+      idempotent: (results[1]?.meta?.changes ?? 0) === 0,
+    };
+  }
+
   async archiveProgramIfClear(
     id: string,
     update: ProgramUpdate,
@@ -871,35 +1062,162 @@ export class D1WorkspaceStore implements WorkspaceStore {
     return result.results ?? [];
   }
 
-  async createScheduleRule(input: ScheduleRuleInput): Promise<ScheduleRuleRow> {
+  async createScheduleRule(
+    input: ScheduleRuleInput
+  ): Promise<{ rule: ScheduleRuleRow; idempotent: boolean }> {
+    const idempotencyKey = input.idempotency_key?.trim() || null;
+    const fingerprint = input.request_fingerprint ?? "";
+    if (idempotencyKey) {
+      const existing = await this.db
+        .prepare(
+          `SELECT idempotency_key, request_fingerprint, actor_user_id,
+                  program_id, rule_id, created_at
+             FROM program_schedule_rule_idempotency
+            WHERE idempotency_key = ?`
+        )
+        .bind(idempotencyKey)
+        .first<ScheduleRuleIdempotencyRow>();
+      if (existing) {
+        if (
+          existing.request_fingerprint !== fingerprint ||
+          existing.actor_user_id !== input.created_by ||
+          existing.program_id !== input.program_id
+        ) {
+          throw new ScheduleRuleIdempotencyConflictError();
+        }
+        const row = await this.findScheduleRule(existing.rule_id);
+        if (!row) {
+          throw new Error("Schedule Rule idempotency record has no rule row.");
+        }
+        return { rule: row, idempotent: true };
+      }
+    }
+
     const ruleId = crypto.randomUUID();
-    await this.db
-      .prepare(
-        `INSERT INTO program_schedule_rules (rule_id, program_id, recurrence,
-           day_of_week, month_day, start_time, end_time, location, created_by,
-           created_at, updated_by, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-      )
-      .bind(
-        ruleId,
-        input.program_id,
-        input.recurrence,
-        input.day_of_week,
-        input.month_day,
-        input.start_time,
-        input.end_time,
-        input.location ?? null,
-        input.created_by,
-        input.created_at,
-        input.updated_by,
-        input.updated_at
-      )
-      .run();
+    const ruleValues = [
+      ruleId,
+      input.program_id,
+      input.recurrence,
+      input.day_of_week,
+      input.month_day,
+      input.start_time,
+      input.end_time,
+      input.location ?? null,
+      input.effective_start_date ?? null,
+      input.effective_end_date ?? null,
+      input.created_by,
+      input.created_at,
+      input.updated_by,
+      input.updated_at,
+    ] as const;
+    if (idempotencyKey) {
+      await this.db.batch([
+        this.db
+          .prepare(
+            `INSERT OR IGNORE INTO program_schedule_rule_idempotency
+               (idempotency_key, request_fingerprint, actor_user_id,
+                program_id, rule_id, created_at)
+             VALUES (?, ?, ?, ?, ?, ?)`
+          )
+          .bind(
+            idempotencyKey,
+            fingerprint,
+            input.created_by,
+            input.program_id,
+            ruleId,
+            input.created_at
+          ),
+        this.db
+          .prepare(
+            `INSERT INTO program_schedule_rules
+              (rule_id, program_id, recurrence, day_of_week, month_day,
+               start_time, end_time, location, effective_start_date,
+               effective_end_date, created_by, created_at, updated_by, updated_at)
+             SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+              WHERE EXISTS (
+                SELECT 1 FROM program_schedule_rule_idempotency
+                 WHERE idempotency_key = ?
+                   AND request_fingerprint = ?
+                   AND actor_user_id = ?
+                   AND program_id = ?
+                   AND rule_id = ?
+              )`
+          )
+          .bind(
+            ...ruleValues,
+            idempotencyKey,
+            fingerprint,
+            input.created_by,
+            input.program_id,
+            ruleId
+          ),
+        this.db
+          .prepare(
+            `INSERT INTO program_schedule_versions
+               (program_id, version, updated_at)
+             SELECT program_id, 1, ?
+               FROM program_schedule_rules
+              WHERE rule_id = ? AND changes() > 0
+             ON CONFLICT(program_id) DO UPDATE SET
+               version = program_schedule_versions.version + 1,
+               updated_at = excluded.updated_at`
+          )
+          .bind(input.created_at, ruleId),
+      ]);
+      const reservation = await this.db
+        .prepare(
+          `SELECT idempotency_key, request_fingerprint, actor_user_id,
+                  program_id, rule_id, created_at
+             FROM program_schedule_rule_idempotency
+            WHERE idempotency_key = ?`
+        )
+        .bind(idempotencyKey)
+        .first<ScheduleRuleIdempotencyRow>();
+      if (!reservation) {
+        throw new Error("Schedule Rule idempotency record was not reserved.");
+      }
+      if (
+        reservation.request_fingerprint !== fingerprint ||
+        reservation.actor_user_id !== input.created_by ||
+        reservation.program_id !== input.program_id
+      ) {
+        throw new ScheduleRuleIdempotencyConflictError();
+      }
+      const row = await this.findScheduleRule(reservation.rule_id);
+      if (!row) {
+        throw new Error("Schedule Rule idempotency record has no rule row.");
+      }
+      return { rule: row, idempotent: reservation.rule_id !== ruleId };
+    }
+
+    await this.db.batch([
+      this.db
+        .prepare(
+          `INSERT INTO program_schedule_rules (rule_id, program_id, recurrence,
+             day_of_week, month_day, start_time, end_time, location,
+             effective_start_date, effective_end_date, created_by, created_at,
+             updated_by, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        )
+        .bind(...ruleValues),
+      this.db
+        .prepare(
+          `INSERT INTO program_schedule_versions
+             (program_id, version, updated_at)
+           SELECT program_id, 1, ?
+             FROM program_schedule_rules
+            WHERE rule_id = ? AND changes() > 0
+           ON CONFLICT(program_id) DO UPDATE SET
+             version = program_schedule_versions.version + 1,
+             updated_at = excluded.updated_at`
+        )
+        .bind(input.created_at, ruleId),
+    ]);
     const row = await this.findScheduleRule(ruleId);
     if (!row) {
       throw new WorkspaceNotFoundError("schedule_rule", ruleId);
     }
-    return row;
+    return { rule: row, idempotent: false };
   }
 
   async updateScheduleRule(
@@ -910,32 +1228,86 @@ export class D1WorkspaceStore implements WorkspaceStore {
     // distinguishable from an absent field (keep). A sentinel flag drives a
     // CASE; COALESCE would silently ignore the clear.
     const locationProvided = update.location !== undefined;
-    await this.db
-      .prepare(
-        `UPDATE program_schedule_rules SET
-           recurrence = COALESCE(?, recurrence),
-           day_of_week = COALESCE(?, day_of_week),
-           month_day = COALESCE(?, month_day),
-           start_time = COALESCE(?, start_time),
-           end_time = COALESCE(?, end_time),
-           location = CASE WHEN ? = 1 THEN ? ELSE location END,
-           updated_by = ?,
-           updated_at = ?
-         WHERE rule_id = ?`
-      )
-      .bind(
-        update.recurrence ?? null,
-        update.day_of_week ?? null,
-        update.month_day ?? null,
-        update.start_time ?? null,
-        update.end_time ?? null,
-        locationProvided ? 1 : 0,
-        update.location ?? null,
-        update.updated_by,
-        update.updated_at,
-        ruleId
-      )
-      .run();
+    const effectiveStartProvided = update.effective_start_date !== undefined;
+    const effectiveEndProvided = update.effective_end_date !== undefined;
+    await this.db.batch([
+      this.db
+        .prepare(
+          `UPDATE program_schedule_rules SET
+             recurrence = COALESCE(?, recurrence),
+             day_of_week = COALESCE(?, day_of_week),
+             month_day = COALESCE(?, month_day),
+             start_time = COALESCE(?, start_time),
+             end_time = COALESCE(?, end_time),
+             location = CASE WHEN ? = 1 THEN ? ELSE location END,
+             effective_start_date = CASE WHEN ? = 1 THEN ? ELSE effective_start_date END,
+             effective_end_date = CASE WHEN ? = 1 THEN ? ELSE effective_end_date END,
+             updated_by = ?,
+             updated_at = ?
+           WHERE rule_id = ?`
+        )
+        .bind(
+          update.recurrence ?? null,
+          update.day_of_week ?? null,
+          update.month_day ?? null,
+          update.start_time ?? null,
+          update.end_time ?? null,
+          locationProvided ? 1 : 0,
+          update.location ?? null,
+          effectiveStartProvided ? 1 : 0,
+          update.effective_start_date ?? null,
+          effectiveEndProvided ? 1 : 0,
+          update.effective_end_date ?? null,
+          update.updated_by,
+          update.updated_at,
+          ruleId
+        ),
+      this.db
+        .prepare(
+          `INSERT INTO program_schedule_versions
+             (program_id, version, updated_at)
+           SELECT program_id, 1, ?
+             FROM program_schedule_rules
+            WHERE rule_id = ? AND changes() > 0
+           ON CONFLICT(program_id) DO UPDATE SET
+             version = program_schedule_versions.version + 1,
+             updated_at = excluded.updated_at`
+        )
+        .bind(update.updated_at, ruleId),
+    ]);
+    const row = await this.findScheduleRule(ruleId);
+    if (!row) {
+      throw new WorkspaceNotFoundError("schedule_rule", ruleId);
+    }
+    return row;
+  }
+
+  async retireScheduleRule(
+    ruleId: string,
+    retiredBy: string,
+    retiredAt: string
+  ): Promise<ScheduleRuleRow> {
+    await this.db.batch([
+      this.db
+        .prepare(
+          `UPDATE program_schedule_rules
+              SET retired_at = ?, retired_by = ?
+            WHERE rule_id = ? AND retired_at IS NULL`
+        )
+        .bind(retiredAt, retiredBy, ruleId),
+      this.db
+        .prepare(
+          `INSERT INTO program_schedule_versions
+             (program_id, version, updated_at)
+           SELECT program_id, 1, ?
+             FROM program_schedule_rules
+            WHERE rule_id = ? AND changes() > 0
+           ON CONFLICT(program_id) DO UPDATE SET
+             version = program_schedule_versions.version + 1,
+             updated_at = excluded.updated_at`
+        )
+        .bind(retiredAt, ruleId),
+    ]);
     const row = await this.findScheduleRule(ruleId);
     if (!row) {
       throw new WorkspaceNotFoundError("schedule_rule", ruleId);
@@ -946,7 +1318,15 @@ export class D1WorkspaceStore implements WorkspaceStore {
   async listScheduleRules(programId: string): Promise<ScheduleRuleRow[]> {
     const result = await this.db
       .prepare(
-        "SELECT * FROM program_schedule_rules WHERE program_id = ? ORDER BY created_at ASC"
+        `SELECT rules.*,
+                EXISTS (
+                  SELECT 1
+                    FROM events
+                   WHERE events.schedule_rule_id = rules.rule_id
+                ) AS has_generated_events
+           FROM program_schedule_rules rules
+          WHERE rules.program_id = ?
+          ORDER BY rules.created_at ASC`
       )
       .bind(programId)
       .all<ScheduleRuleRow>();
@@ -955,34 +1335,67 @@ export class D1WorkspaceStore implements WorkspaceStore {
 
   async findScheduleRule(ruleId: string): Promise<ScheduleRuleRow | null> {
     const row = await this.db
-      .prepare("SELECT * FROM program_schedule_rules WHERE rule_id = ?")
+      .prepare(
+        `SELECT rules.*,
+                EXISTS (
+                  SELECT 1
+                    FROM events
+                   WHERE events.schedule_rule_id = rules.rule_id
+                ) AS has_generated_events
+           FROM program_schedule_rules rules
+          WHERE rules.rule_id = ?`
+      )
       .bind(ruleId)
       .first<ScheduleRuleRow>();
     return row ?? null;
+  }
+
+  async findScheduleVersion(programId: string): Promise<number> {
+    const row = await this.db
+      .prepare(
+        "SELECT version FROM program_schedule_versions WHERE program_id = ?"
+      )
+      .bind(programId)
+      .first<{ version: number }>();
+    return Number(row?.version ?? 0);
   }
 
   async createScheduleException(
     input: ScheduleExceptionInput
   ): Promise<ScheduleExceptionRow> {
     const exceptionId = crypto.randomUUID();
-    await this.db
-      .prepare(
-        `INSERT INTO program_schedule_exceptions (exception_id, rule_id,
-           override_date, action, new_start_time, new_end_time, created_by,
-           created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
-      )
-      .bind(
-        exceptionId,
-        input.rule_id,
-        input.override_date,
-        input.action,
-        input.new_start_time,
-        input.new_end_time,
-        input.created_by,
-        input.created_at
-      )
-      .run();
+    await this.db.batch([
+      this.db
+        .prepare(
+          `INSERT INTO program_schedule_exceptions (exception_id, rule_id,
+             override_date, action, new_start_time, new_end_time, new_date,
+             created_by, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        )
+        .bind(
+          exceptionId,
+          input.rule_id,
+          input.override_date,
+          input.action,
+          input.new_start_time,
+          input.new_end_time,
+          input.new_date ?? null,
+          input.created_by,
+          input.created_at
+        ),
+      this.db
+        .prepare(
+          `INSERT INTO program_schedule_versions
+             (program_id, version, updated_at)
+           SELECT program_id, 1, ?
+             FROM program_schedule_rules
+            WHERE rule_id = ? AND changes() > 0
+           ON CONFLICT(program_id) DO UPDATE SET
+             version = program_schedule_versions.version + 1,
+             updated_at = excluded.updated_at`
+        )
+        .bind(input.created_at, input.rule_id),
+    ]);
     const row = await this.db
       .prepare(
         "SELECT * FROM program_schedule_exceptions WHERE exception_id = ?"
@@ -996,11 +1409,28 @@ export class D1WorkspaceStore implements WorkspaceStore {
   }
 
   async deleteScheduleException(exceptionId: string): Promise<boolean> {
-    const result = await this.db
-      .prepare("DELETE FROM program_schedule_exceptions WHERE exception_id = ?")
-      .bind(exceptionId)
-      .run();
-    return (result.meta?.changes ?? 0) > 0;
+    const results = await this.db.batch([
+      this.db
+        .prepare(
+          `INSERT INTO program_schedule_versions
+             (program_id, version, updated_at)
+           SELECT rules.program_id, 1, ?
+             FROM program_schedule_rules rules
+             JOIN program_schedule_exceptions exceptions
+               ON exceptions.rule_id = rules.rule_id
+            WHERE exceptions.exception_id = ?
+           ON CONFLICT(program_id) DO UPDATE SET
+             version = program_schedule_versions.version + 1,
+             updated_at = excluded.updated_at`
+        )
+        .bind(new Date().toISOString(), exceptionId),
+      this.db
+        .prepare(
+          "DELETE FROM program_schedule_exceptions WHERE exception_id = ?"
+        )
+        .bind(exceptionId),
+    ]);
+    return (results[1]?.meta?.changes ?? 0) > 0;
   }
 
   async listScheduleExceptions(
@@ -1041,10 +1471,11 @@ export class D1WorkspaceStore implements WorkspaceStore {
         // Program's minutes-before/after config, exactly like the migration
         // backfill so fresh rows are check-in capable on day one.
         `INSERT INTO events (event_id, program_id, starts_at, ends_at, status,
-           availability, source, name, event_type, location, cancel_reason, manual_check_in_code,
+           availability, source, schedule_rule_id, occurrence_date, name,
+           event_type, location, cancel_reason, manual_check_in_code,
            check_in_window_opens_at, check_in_window_closes_at,
            created_by, created_at, updated_by, updated_at)
-        SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+        SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
            upper(substr(hex(randomblob(4)), 1, 8)),
            COALESCE(?, strftime('%Y-%m-%dT%H:%M:%SZ', ?,
              printf('-%d minutes', (SELECT check_in_opens_at_minutes_before_start
@@ -1062,14 +1493,16 @@ export class D1WorkspaceStore implements WorkspaceStore {
         input.status,
         input.availability,
         input.source,
+        input.schedule_rule_id ?? null,
+        input.occurrence_date ?? null,
         input.name,
         input.event_type ?? null,
         input.location,
         input.cancel_reason,
-        input.check_in_window_opens_at,
+        input.check_in_window_opens_at ?? null,
         input.starts_at,
         input.program_id,
-        input.check_in_window_closes_at,
+        input.check_in_window_closes_at ?? null,
         input.ends_at,
         input.program_id,
         input.created_by,
@@ -1085,14 +1518,19 @@ export class D1WorkspaceStore implements WorkspaceStore {
     return row;
   }
 
-  async insertGeneratedEvent(input: EventInput): Promise<boolean> {
-    const result = await this.db
+  private generatedEventStatement(
+    input: EventInput,
+    guard?: { sql: string; bindings: (string | number | null)[] }
+  ): D1PreparedStatement {
+    const guardSql = guard ? ` WHERE ${guard.sql}` : "";
+    return this.db
       .prepare(
         `INSERT OR IGNORE INTO events (event_id, program_id, starts_at, ends_at,
-         status, availability, source, name, event_type, location, cancel_reason, manual_check_in_code,
+         status, availability, source, schedule_rule_id, occurrence_date, name,
+         event_type, location, cancel_reason, manual_check_in_code,
          check_in_window_opens_at, check_in_window_closes_at,
          created_by, created_at, updated_by, updated_at)
-      SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+      SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
          upper(substr(hex(randomblob(4)), 1, 8)),
          COALESCE(?, strftime('%Y-%m-%dT%H:%M:%SZ', ?,
            printf('-%d minutes', (SELECT check_in_opens_at_minutes_before_start
@@ -1100,33 +1538,182 @@ export class D1WorkspaceStore implements WorkspaceStore {
          COALESCE(?, strftime('%Y-%m-%dT%H:%M:%SZ', ?,
            printf('+%d minutes', (SELECT check_in_closes_at_minutes_after_end
              FROM programs WHERE programs.program_id = ?)))),
-         ?, ?, ?, ?`
+         ?, ?, ?, ?${guardSql}`
       )
       .bind(
-        crypto.randomUUID(),
+        input.event_id ?? crypto.randomUUID(),
         input.program_id,
         input.starts_at,
         input.ends_at,
         input.status,
         input.availability,
         input.source,
+        input.schedule_rule_id ?? null,
+        input.occurrence_date ?? null,
         input.name,
         input.event_type ?? null,
         input.location,
         input.cancel_reason,
-        input.check_in_window_opens_at,
+        input.check_in_window_opens_at ?? null,
         input.starts_at,
         input.program_id,
-        input.check_in_window_closes_at,
+        input.check_in_window_closes_at ?? null,
         input.ends_at,
         input.program_id,
         input.created_by,
         input.created_at,
         input.updated_by,
-        input.updated_at
-      )
-      .run();
+        input.updated_at,
+        ...(guard?.bindings ?? [])
+      );
+  }
+
+  async insertGeneratedEvent(input: EventInput): Promise<boolean> {
+    const result = await this.generatedEventStatement(input).run();
     return (result.meta?.changes ?? 0) > 0;
+  }
+
+  async recordGeneratedOccurrence(input: {
+    scheduleVersion: number;
+    reviewedAt: number;
+    planId: string;
+    runId: string;
+    programId: string;
+    occurrence: PreviewOccurrenceRow;
+    actorUserId: string | null;
+    createdAt: string;
+  }): Promise<"created" | "skipped" | "stale"> {
+    const { occurrence } = input;
+    const eventId = crypto.randomUUID();
+    const guard = `EXISTS (
+      SELECT 1 FROM program_schedule_versions
+       WHERE program_id = ? AND version = ?
+    ) AND EXISTS (
+      SELECT 1 FROM program_preview_plans
+       WHERE plan_id = ? AND program_id = ? AND schedule_version = ?
+    ) AND NOT EXISTS (
+      SELECT 1 FROM program_preview_plans AS newer
+       WHERE newer.program_id = ?
+         AND (
+           newer.reviewed_at > ?
+           OR (newer.reviewed_at = ? AND newer.plan_id > ?)
+         )
+    )`;
+    const guardBindings = [
+      input.programId,
+      input.scheduleVersion,
+      input.planId,
+      input.programId,
+      input.scheduleVersion,
+      input.programId,
+      input.reviewedAt,
+      input.reviewedAt,
+      input.planId,
+    ] as (string | number | null)[];
+    const eventStatement =
+      occurrence.skip_reason === "CANCEL"
+        ? this.db.prepare(`SELECT 1 WHERE ${guard}`).bind(...guardBindings)
+        : this.generatedEventStatement(
+            {
+              event_id: eventId,
+              program_id: input.programId,
+              starts_at: occurrence.starts_at,
+              ends_at: occurrence.ends_at,
+              status: "Active",
+              availability: "Active",
+              source: "SCHEDULE",
+              schedule_rule_id: occurrence.rule_id,
+              occurrence_date: occurrence.occurs_on,
+              name: null,
+              location: occurrence.location,
+              check_in_window_opens_at: null,
+              check_in_window_closes_at: null,
+              cancel_reason: null,
+              created_by: input.actorUserId,
+              created_at: input.createdAt,
+              updated_by: input.actorUserId,
+              updated_at: input.createdAt,
+            },
+            { sql: guard, bindings: guardBindings }
+          );
+    const itemStatement =
+      occurrence.skip_reason === "CANCEL"
+        ? this.db
+            .prepare(
+              `INSERT INTO program_generation_run_items
+                 (item_id, run_id, occurrence_id, starts_at, outcome, event_id, detail)
+               SELECT ?, ?, ?, ?, 'skipped', NULL, 'CANCEL'
+                WHERE ${guard}
+               ON CONFLICT(run_id, occurrence_id) DO UPDATE SET
+                 outcome = excluded.outcome,
+                 event_id = excluded.event_id,
+                 detail = excluded.detail
+                WHERE outcome = 'failed'`
+            )
+            .bind(
+              `${input.runId}:${occurrence.occurrence_id}`,
+              input.runId,
+              occurrence.occurrence_id,
+              occurrence.starts_at,
+              ...guardBindings
+            )
+        : this.db
+            .prepare(
+              `INSERT INTO program_generation_run_items
+                 (item_id, run_id, occurrence_id, starts_at, outcome, event_id, detail)
+               SELECT ?, ?, ?, ?,
+                      CASE WHEN changes() > 0 THEN 'created' ELSE 'skipped' END,
+                      CASE WHEN changes() > 0 THEN ? ELSE
+                        (SELECT event_id FROM events
+                          WHERE program_id = ? AND starts_at = ?)
+                      END,
+                      CASE WHEN changes() > 0 THEN NULL ELSE 'DUPLICATE' END
+                WHERE ${guard}
+               ON CONFLICT(run_id, occurrence_id) DO UPDATE SET
+                 outcome = excluded.outcome,
+                 event_id = excluded.event_id,
+                 detail = excluded.detail
+                WHERE outcome = 'failed'`
+            )
+            .bind(
+              `${input.runId}:${occurrence.occurrence_id}`,
+              input.runId,
+              occurrence.occurrence_id,
+              occurrence.starts_at,
+              eventId,
+              input.programId,
+              occurrence.starts_at,
+              ...guardBindings
+            );
+    const results = await this.db.batch([eventStatement, itemStatement]);
+    if ((results[1]?.meta?.changes ?? 0) > 0) {
+      if (
+        occurrence.skip_reason !== "CANCEL" &&
+        (results[0]?.meta?.changes ?? 0) > 0
+      ) {
+        return "created";
+      }
+      return "skipped";
+    }
+
+    const existing = await this.db
+      .prepare(
+        `SELECT outcome FROM program_generation_run_items
+          WHERE run_id = ? AND occurrence_id = ?`
+      )
+      .bind(input.runId, occurrence.occurrence_id)
+      .first<{ outcome: "created" | "skipped" | "failed" }>();
+    if (existing?.outcome === "created" || existing?.outcome === "skipped") {
+      return existing.outcome;
+    }
+    const current = await this.db
+      .prepare(`SELECT 1 AS current WHERE ${guard}`)
+      .bind(...guardBindings)
+      .first<{ current: number }>();
+    if (!current) {
+      return "stale";
+    }
+    throw new Error("Atomic generation guard did not record an occurrence.");
   }
 
   async findEventByStart(
@@ -1235,29 +1822,51 @@ export class D1WorkspaceStore implements WorkspaceStore {
     if (programIds.length === 0 || limit <= 0) {
       return [];
     }
-    const placeholders = programIds.map(() => "?").join(", ");
-    const result = await this.db
-      .prepare(
-        `SELECT event_id, program_id, starts_at, status, availability, name
-           FROM events
-          WHERE starts_at >= ?
-            AND program_id IN (${placeholders})
-            AND (
-              status = 'Cancelled'
-              OR (status = 'Active' AND availability = 'Inactive')
-            )
-          ORDER BY
-            CASE
-              WHEN status = 'Active' AND availability = 'Inactive' THEN 0
-              ELSE 1
-            END,
-            starts_at ASC,
-            event_id ASC
-          LIMIT ?`
-      )
-      .bind(startsAtOrAfter, ...programIds, limit)
-      .all<ManagementAttentionEventRow>();
-    return result.results ?? [];
+    const rows = await chunkedQuery(programIds, async (batch) => {
+      const placeholders = batch.map(() => "?").join(", ");
+      const result = await this.db
+        .prepare(
+          `SELECT event_id, program_id, starts_at, status, availability, name
+             FROM events
+            WHERE starts_at >= ?
+              AND program_id IN (${placeholders})
+              AND (
+                status = 'Cancelled'
+                OR (status = 'Active' AND availability = 'Inactive')
+              )
+            ORDER BY
+              CASE
+                WHEN status = 'Active' AND availability = 'Inactive' THEN 0
+                ELSE 1
+              END,
+              starts_at ASC,
+              event_id ASC
+            LIMIT ?`
+        )
+        .bind(startsAtOrAfter, ...batch, limit)
+        .all<ManagementAttentionEventRow>();
+      return result.results ?? [];
+    });
+    return rows
+      .sort((left, right) => {
+        const leftPriority =
+          left.status === "Active" && left.availability === "Inactive" ? 0 : 1;
+        const rightPriority =
+          right.status === "Active" && right.availability === "Inactive"
+            ? 0
+            : 1;
+        if (leftPriority !== rightPriority) {
+          return leftPriority - rightPriority;
+        }
+        if (left.starts_at !== right.starts_at) {
+          return left.starts_at < right.starts_at ? -1 : 1;
+        }
+        if (left.event_id !== right.event_id) {
+          return left.event_id < right.event_id ? -1 : 1;
+        }
+        return 0;
+      })
+      .slice(0, limit);
   }
 
   listManagementNotificationEnrollments(
@@ -1481,10 +2090,16 @@ export class D1WorkspaceStore implements WorkspaceStore {
     }
     fields.push("updated_by = ?", "updated_at = ?");
     values.push(updatedBy, updatedAt, id);
-    await this.db
-      .prepare(`UPDATE events SET ${fields.join(", ")} WHERE event_id = ?`)
+    const result = await this.db
+      .prepare(
+        `UPDATE events SET ${fields.join(", ")}
+          WHERE event_id = ? AND status = 'Active'`
+      )
       .bind(...values)
       .run();
+    if ((result.meta?.changes ?? 0) === 0) {
+      return null;
+    }
     return this.findEventById(id);
   }
 
@@ -1539,6 +2154,16 @@ export class D1WorkspaceStore implements WorkspaceStore {
     return Number(row?.count ?? 0);
   }
 
+  async hasAttendanceSnapshot(eventId: string): Promise<boolean> {
+    const row = await this.db
+      .prepare(
+        "SELECT 1 AS present FROM event_attendance_snapshots WHERE event_id = ?"
+      )
+      .bind(eventId)
+      .first<{ present: number }>();
+    return row !== null;
+  }
+
   // --- EVT-02 (#252): preview plans and generation runs ---
 
   async findPreviewPlan(planId: string): Promise<PreviewPlanRow | null> {
@@ -1555,7 +2180,7 @@ export class D1WorkspaceStore implements WorkspaceStore {
     const row = await this.db
       .prepare(
         `SELECT * FROM program_preview_plans
-         WHERE program_id = ? ORDER BY created_at DESC, plan_id DESC LIMIT 1`
+         WHERE program_id = ? ORDER BY reviewed_at DESC, plan_id DESC LIMIT 1`
       )
       .bind(programId)
       .first<PreviewPlanRow>();
@@ -1582,15 +2207,19 @@ export class D1WorkspaceStore implements WorkspaceStore {
     // plan_id is deterministic (program + plan_hash), so the plan row and
     // its exact occurrence rows commit atomically: either the whole plan
     // materializes or nothing does. Identical inputs re-run the same plan
-    // statement (still INSERT OR IGNORE: the plan row itself never changes
-    // once written), which also repairs any occurrence rows a previous
-    // crash may have left missing before the plan is returned.
+    // statement; the store allocates reviewed_at as a durable per-program
+    // review sequence so same-millisecond A -> B reviews still have a real
+    // order. Re-reviewing an identical input refreshes that sequence so an
+    // A -> B -> A review makes A current again. The same statement also
+    // repairs any occurrence rows a previous crash may have left missing
+    // before the plan is returned.
     //
     // Occurrence rows upsert skip_reason on conflict: occurrence_id is
     // stable for a given plan, but which occurrences are DUPLICATE is a
     // live fact (it depends on which events currently exist), so a
-    // re-preview of an already-persisted plan must refresh skip_reason on
-    // existing rows instead of silently keeping their original value —
+    // re-preview of an already-persisted plan must refresh skip_reason and
+    // exception metadata on existing rows instead of silently keeping their
+    // original values —
     // otherwise an already-generated plan's re-preview would report zero
     // duplicates even though every occurrence would now be skipped.
     //
@@ -1602,9 +2231,18 @@ export class D1WorkspaceStore implements WorkspaceStore {
     // upsert both repairs missing rows and refreshes skip_reason.
     const planStatement = this.db
       .prepare(
-        `INSERT OR IGNORE INTO program_preview_plans (plan_id, program_id,
-           plan_hash, horizon_days, from_date, rule_count, created_by, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+        `INSERT INTO program_preview_plans (plan_id, program_id,
+           plan_hash, horizon_days, from_date, rule_count, created_by, created_at,
+           to_date, schedule_version, reviewed_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+          MAX(?, COALESCE(
+            (SELECT MAX(reviewed_at) + 1
+               FROM program_preview_plans
+              WHERE program_id = ?),
+            ?)))
+        ON CONFLICT(plan_id) DO UPDATE SET
+          schedule_version = excluded.schedule_version,
+          reviewed_at = excluded.reviewed_at`
       )
       .bind(
         plan.plan_id,
@@ -1614,7 +2252,12 @@ export class D1WorkspaceStore implements WorkspaceStore {
         plan.from_date,
         plan.rule_count,
         plan.created_by,
-        plan.created_at
+        plan.created_at,
+        plan.to_date ?? null,
+        plan.schedule_version,
+        plan.reviewed_at,
+        plan.program_id,
+        plan.reviewed_at
       );
     const occurrenceStatements = (rows: PreviewOccurrenceRow[]) =>
       rows.map((occurrence) =>
@@ -1622,10 +2265,12 @@ export class D1WorkspaceStore implements WorkspaceStore {
           .prepare(
             `INSERT INTO program_preview_occurrences
                (occurrence_id, plan_id, rule_id, occurs_on, starts_at, ends_at,
-                location, skip_reason, exception_id)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                location, skip_reason, exception_id, replacement_date)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
              ON CONFLICT(occurrence_id) DO UPDATE SET
-               skip_reason = excluded.skip_reason`
+               skip_reason = excluded.skip_reason,
+               exception_id = excluded.exception_id,
+               replacement_date = excluded.replacement_date`
           )
           .bind(
             occurrence.occurrence_id,
@@ -1636,7 +2281,8 @@ export class D1WorkspaceStore implements WorkspaceStore {
             occurrence.ends_at,
             occurrence.location,
             occurrence.skip_reason,
-            occurrence.exception_id
+            occurrence.exception_id,
+            occurrence.replacement_date ?? null
           )
       );
     const CHUNK_SIZE = 500;
@@ -1764,8 +2410,9 @@ export class D1WorkspaceStore implements WorkspaceStore {
    * partial/failed — a retry that fixes previously-failed items must be
    * able to update the run's counts/status even though `finished_at` was
    * already written by the first settlement — and locks the row only once
-   * every occurrence genuinely reached a terminal created/skipped outcome
-   * (matching `generateEvents`'s `status === "completed"` short-circuit).
+   * every occurrence in the durable Preview Plan genuinely reached a
+   * terminal created/skipped outcome (matching `generateEvents`'s
+   * `status === "completed"` short-circuit).
    * The UPDATE recomputes every column idempotently from the item table,
    * so repeat/concurrent finishers always converge on the same counts.
    */
@@ -1785,11 +2432,21 @@ export class D1WorkspaceStore implements WorkspaceStore {
           status = CASE
             WHEN (SELECT COUNT(*) FROM program_generation_run_items
                   WHERE run_id = ?1 AND outcome = 'failed') = 0
+             AND (SELECT COUNT(DISTINCT occurrence_id)
+                  FROM program_generation_run_items
+                  WHERE run_id = ?1 AND outcome IN ('created','skipped')) =
+                 (SELECT COUNT(*) FROM program_preview_occurrences
+                  WHERE plan_id = (SELECT plan_id
+                                   FROM program_generation_runs
+                                   WHERE run_id = ?1))
               THEN 'completed'
             WHEN (SELECT COUNT(*) FROM program_generation_run_items
-                  WHERE run_id = ?1 AND outcome IN ('created','skipped')) > 0
-              THEN 'partial'
-            ELSE 'failed'
+                  WHERE run_id = ?1 AND outcome = 'failed') > 0
+             AND (SELECT COUNT(DISTINCT occurrence_id)
+                  FROM program_generation_run_items
+                  WHERE run_id = ?1 AND outcome IN ('created','skipped')) = 0
+              THEN 'failed'
+            ELSE 'partial'
           END,
           finished_at = ?2
         WHERE run_id = ?1 AND status != 'completed'`
@@ -2201,20 +2858,113 @@ export class D1WorkspaceStore implements WorkspaceStore {
   async cancelEnrollment(
     id: string,
     cancelledBy: string,
-    cancelledAt: string
+    cancelledAt: string,
+    cancellationReason: string | null = null
   ): Promise<EnrollmentRow | null> {
     const result = await this.db
       .prepare(
         `UPDATE enrollments
-         SET status = 'Cancelled', cancelled_by = ?, cancelled_at = ?
+         SET status = 'Cancelled', cancelled_by = ?, cancelled_at = ?,
+             cancellation_reason = ?
          WHERE enrollment_id = ? AND status = 'Active'`
       )
-      .bind(cancelledBy, cancelledAt, id)
+      .bind(cancelledBy, cancelledAt, cancellationReason, id)
       .run();
     if ((result.meta?.changes ?? 0) === 0) {
       return null;
     }
+    // A pre-start Excused row is a current projection only while the member
+    // is still enrolled. The original attendance.excused audit row remains
+    // immutable history; remove only dispositions for Events that had not
+    // started at the moment this enrollment was cancelled. Started Events
+    // keep their durable attendance meaning.
+    await this.db
+      .prepare(
+        `DELETE FROM event_attendance_dispositions
+          WHERE enrollment_id = ?
+            AND EXISTS (
+              SELECT 1
+                FROM events
+               WHERE events.event_id = event_attendance_dispositions.event_id
+                 AND julianday(events.starts_at) > julianday(?)
+            )`
+      )
+      .bind(id, cancelledAt)
+      .run();
     return this.findEnrollmentById(id);
+  }
+
+  async createEnrollmentApprovalRun(
+    run: EnrollmentApprovalRunRow,
+    items: readonly EnrollmentApprovalRunItem[]
+  ): Promise<EnrollmentApprovalRunRow> {
+    await insertEnrollmentApprovalRun(this.db, run, items);
+    return run;
+  }
+
+  findEnrollmentApprovalRun(
+    runId: string
+  ): Promise<EnrollmentApprovalRunRow | null> {
+    return findEnrollmentApprovalRun(this.db, runId);
+  }
+
+  listEnrollmentApprovalRuns(
+    actorUserId: string,
+    programId: string
+  ): Promise<EnrollmentApprovalRunRow[]> {
+    return listEnrollmentApprovalRuns(this.db, actorUserId, programId);
+  }
+
+  claimNextEnrollmentApprovalRunItem(
+    runId: string,
+    actorUserId: string,
+    startedAt: string
+  ): Promise<EnrollmentApprovalRunClaim> {
+    return claimNextEnrollmentApprovalRunItem(
+      this.db,
+      runId,
+      actorUserId,
+      startedAt
+    );
+  }
+
+  updateEnrollmentApprovalRunItem(
+    runId: string,
+    requestId: string,
+    update: EnrollmentApprovalRunItemUpdate,
+    expectedStatus?: EnrollmentApprovalRunItemStatus
+  ): Promise<boolean> {
+    return updateEnrollmentApprovalRunItem(
+      this.db,
+      runId,
+      requestId,
+      update,
+      expectedStatus
+    );
+  }
+
+  updateEnrollmentApprovalRun(
+    run: Pick<
+      EnrollmentApprovalRun,
+      "run_id" | "status" | "finished_at" | "cancelled_at"
+    >
+  ): Promise<boolean> {
+    return updateEnrollmentApprovalRun(this.db, run);
+  }
+
+  findEnrollmentApprovalAuthority(
+    programId: string,
+    requestId: string,
+    memberUserId: string,
+    idempotencyKey: string
+  ): Promise<EnrollmentApprovalRunAuthority | null> {
+    return findEnrollmentApprovalAuthority(
+      this.db,
+      programId,
+      requestId,
+      memberUserId,
+      idempotencyKey
+    );
   }
 
   listProgramIdentityAssignments(

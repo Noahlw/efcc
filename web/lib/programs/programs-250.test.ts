@@ -119,6 +119,15 @@ async function createProgram(
   const body = (await response.json()) as {
     data: { program: { program_id: string } };
   };
+  const promote = await worker.fetch(
+    request(`/api/v1/programs/${body.data.program.program_id}`, {
+      method: "PATCH",
+      cookie,
+      body: { lifecycle: "Active", discoverability: "Listed" },
+    }),
+    testEnv()
+  );
+  assert.equal(promote.status, 200);
   return body.data.program.program_id;
 }
 
@@ -196,7 +205,11 @@ describe("MUI-02: Program lifecycle and behavior", () => {
         request(`/api/v1/programs/${programId}/events`, {
           method: "POST",
           cookie: admin,
-          body: { starts_at, ends_at },
+          body: {
+            name: `OneOff event ${starts_at}`,
+            starts_at,
+            ends_at,
+          },
         }),
         testEnv()
       );
@@ -247,16 +260,14 @@ describe("MUI-02: Program lifecycle and behavior", () => {
       admin,
       `MUI250-A-${Date.now()}`
     );
-    const programId = await createProgram(
-      admin,
-      departmentId,
-      `Archive-${Date.now()}`
-    );
+    const programName = `Archive-${Date.now()}`;
+    const programId = await createProgram(admin, departmentId, programName);
     const event = await worker.fetch(
       request(`/api/v1/programs/${programId}/events`, {
         method: "POST",
         cookie: admin,
         body: {
+          name: "Future archive event",
           starts_at: "2099-12-01T10:00:00.000Z",
           ends_at: "2099-12-01T11:00:00.000Z",
         },
@@ -268,7 +279,10 @@ describe("MUI-02: Program lifecycle and behavior", () => {
       request(`/api/v1/programs/${programId}`, {
         method: "PATCH",
         cookie: admin,
-        body: { lifecycle: "Archived" },
+        body: {
+          lifecycle: "Archived",
+          name: "不得與存檔轉換一併寫入",
+        },
       }),
       testEnv()
     );
@@ -278,6 +292,14 @@ describe("MUI-02: Program lifecycle and behavior", () => {
     // The commitment reason is machine-carried in detail so the client can
     // distinguish it from the cross-actor 'already_archived' block.
     assert.equal(body.detail, "future_active_event");
+    const unchanged = await testDb()
+      .prepare("SELECT lifecycle, name FROM programs WHERE program_id = ?")
+      .bind(programId)
+      .first<{ lifecycle: string; name: string }>();
+    assert.deepEqual(unchanged, {
+      lifecycle: "Active",
+      name: programName,
+    });
     const audit = await testDb()
       .prepare(
         "SELECT outcome FROM audit_events WHERE action = 'PROGRAM_ARCHIVE' AND entity_id = ? ORDER BY inserted_at DESC LIMIT 1"
@@ -354,6 +376,49 @@ describe("MUI-02: Program lifecycle and behavior", () => {
     );
   });
 
+  test("create ignores alternate lifecycle and discoverability values", async () => {
+    const admin = await access("alice", "alice-secret");
+    const departmentId = await createDepartment(
+      admin,
+      `MUI250-CREATE-GUARD-${Date.now()}`
+    );
+    const response = await worker.fetch(
+      request(`/api/v1/programs/departments/${departmentId}/programs`, {
+        method: "POST",
+        cookie: admin,
+        body: {
+          name: `Guarded-${Date.now()}`,
+          description: "Creation must not publish or list",
+          category: "E2E Category",
+          behavior_type: "OneOff",
+          lifecycle: "Active",
+          discoverability: "Listed",
+          enrollment_mode: "MemberRequest",
+        },
+      }),
+      testEnv()
+    );
+    assert.equal(response.status, 201);
+    const body = (await response.json()) as {
+      data: {
+        program: {
+          program_id: string;
+          lifecycle: string;
+          discoverability: string;
+        };
+      };
+    };
+    assert.equal(body.data.program.lifecycle, "Draft");
+    assert.equal(body.data.program.discoverability, "Unlisted");
+    const row = await testDb()
+      .prepare(
+        "SELECT lifecycle, discoverability FROM programs WHERE program_id = ?"
+      )
+      .bind(body.data.program.program_id)
+      .first<{ lifecycle: string; discoverability: string }>();
+    assert.deepEqual(row, { lifecycle: "Draft", discoverability: "Unlisted" });
+  });
+
   test("cross-scope mutation is denied and leaves the Program unchanged", async () => {
     const admin = await access("alice", "alice-secret");
     const member = await access("bob", "bob-secret");
@@ -392,6 +457,7 @@ describe("MUI-02: Program lifecycle and behavior", () => {
         method: "POST",
         cookie: admin,
         body: {
+          name: "Historical attendance event",
           starts_at: "2020-12-01T10:00:00.000Z",
           ends_at: "2020-12-01T11:00:00.000Z",
         },
@@ -618,10 +684,7 @@ describe("MUI-02: Program lifecycle and behavior", () => {
 describe("CFG-01: scope-owned Program Settings", () => {
   test("management read exposes attendance defaults and update is audited", async () => {
     const admin = await access("alice", "alice-secret");
-    const departmentId = await createDepartment(
-      admin,
-      `CFG254-${Date.now()}`
-    );
+    const departmentId = await createDepartment(admin, `CFG254-${Date.now()}`);
     const programId = await createProgram(
       admin,
       departmentId,

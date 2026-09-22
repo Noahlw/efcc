@@ -14,7 +14,11 @@ import {
   ManagementDirectory,
   projectManagementPrograms,
 } from "@/lib/programs/management-directory";
-import type { Department, Program } from "@/lib/programs/program-api";
+import type {
+  Department,
+  Program,
+  ProgramInput,
+} from "@/lib/programs/program-api";
 
 const mocks = vi.hoisted(() => {
   const router = {
@@ -26,14 +30,28 @@ const mocks = vi.hoisted(() => {
     prefetch: vi.fn(),
   };
   return {
+    createProgram:
+      vi.fn<
+        (
+          departmentId: string,
+          input: ProgramInput
+        ) => Promise<{ program: Program }>
+      >(),
     getManagementDirectory: vi.fn(),
+    getDepartment: vi.fn(),
+    setDepartmentModule: vi.fn(),
+    updateDepartment: vi.fn(),
     replace: router.replace,
     router,
   };
 });
 
 vi.mock(import("@/lib/programs/program-api"), () => ({
+  createProgram: mocks.createProgram,
   getManagementDirectory: mocks.getManagementDirectory,
+  getDepartment: mocks.getDepartment,
+  setDepartmentModule: mocks.setDepartmentModule,
+  updateDepartment: mocks.updateDepartment,
 }));
 
 vi.mock(import("next/navigation"), () => ({
@@ -173,6 +191,10 @@ describe(ManagementDirectory, () => {
     department("dept-youth", "青年事工", departmentScope),
     department("dept-outreach", "外展事工", noDepartmentScope),
   ];
+  const multipleScopeDepartments = [
+    departments[0],
+    { ...departments[1], capabilities: departmentScope },
+  ];
   const programsByDepartment = [
     [program("program-youth", "dept-youth", "查經小組", noProgramScope)],
     [
@@ -184,12 +206,22 @@ describe(ManagementDirectory, () => {
     ],
   ];
 
-  function mockDirectory() {
+  function mockDirectory(
+    directoryDepartments = departments,
+    directoryPrograms = programsByDepartment.flat()
+  ) {
     mocks.getManagementDirectory.mockResolvedValue({
-      departments,
-      programs: programsByDepartment.flat(),
+      departments: directoryDepartments,
+      programs: directoryPrograms,
     });
   }
+
+  beforeEach(() => {
+    mocks.getDepartment.mockResolvedValue({
+      department: departments[0],
+      modules: [],
+    });
+  });
 
   test("loads only scoped Programs with Department context and search", async () => {
     mockDirectory();
@@ -225,6 +257,119 @@ describe(ManagementDirectory, () => {
     );
   });
 
+  test("keeps the management directory focused on aggregated Programs", async () => {
+    mockDirectory();
+    render(<ManagementDirectory onOpenProgram={vi.fn()} />);
+
+    await screen.findByRole("list", {
+      name: COPY.programs.managementDirectoryListLabel,
+    });
+    expect(
+      screen.queryByRole("heading", {
+        name: COPY.programs.managementScopeDepartment,
+      })
+    ).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /查經小組/u })).toHaveTextContent(
+      "青年事工"
+    );
+    expect(screen.getByRole("link", { name: /社區關懷/u })).toHaveTextContent(
+      "外展事工"
+    );
+  });
+
+  test("renders one compact Department Settings action for the aggregate catalog", async () => {
+    mockDirectory();
+    render(<ManagementDirectory onOpenProgram={vi.fn()} />);
+
+    await screen.findByRole("list", {
+      name: COPY.programs.managementDirectoryListLabel,
+    });
+    expect(
+      screen.getByRole("button", { name: COPY.programs.departmentSettings })
+    ).toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: /部門設定/u })).toHaveLength(
+      1
+    );
+    expect(
+      screen.queryByRole("heading", {
+        name: COPY.programs.managementScopeDepartment,
+      })
+    ).not.toBeInTheDocument();
+  });
+
+  test("opens one authorized Department Settings panel and restores trigger focus", async () => {
+    const user = userEvent.setup();
+    mockDirectory();
+    render(<ManagementDirectory onOpenProgram={vi.fn()} />);
+
+    await screen.findByRole("list", {
+      name: COPY.programs.managementDirectoryListLabel,
+    });
+    const trigger = screen.getByRole("button", {
+      name: COPY.programs.departmentSettings,
+    });
+    await user.click(trigger);
+
+    await expect(
+      screen.findByRole("heading", { name: "部門設定: 青年事工" })
+    ).resolves.toBeInTheDocument();
+    expect(mocks.getDepartment).toHaveBeenCalledWith("dept-youth");
+
+    await user.click(
+      screen.getByRole("button", { name: COPY.programs.collapse })
+    );
+    expect(trigger).toHaveFocus();
+  });
+
+  test("opens a keyboard-operable Department picker for multiple scopes", async () => {
+    const user = userEvent.setup();
+    mockDirectory(multipleScopeDepartments);
+    render(<ManagementDirectory onOpenProgram={vi.fn()} />);
+
+    await screen.findByRole("list", {
+      name: COPY.programs.managementDirectoryListLabel,
+    });
+    const trigger = screen.getByRole("button", {
+      name: COPY.programs.departmentSettings,
+    });
+    await user.click(trigger);
+
+    const picker = screen.getByRole("dialog", {
+      name: COPY.programs.departmentSettings,
+    });
+    expect(picker).toHaveFocus();
+    await user.click(within(picker).getByRole("button", { name: "外展事工" }));
+
+    await expect(
+      screen.findByRole("heading", { name: "部門設定: 外展事工" })
+    ).resolves.toBeInTheDocument();
+    expect(mocks.getDepartment).toHaveBeenCalledWith("dept-outreach");
+
+    await user.click(
+      screen.getByRole("button", { name: COPY.programs.collapse })
+    );
+    expect(trigger).toHaveFocus();
+  });
+
+  test("renders a contextual action in the shared ScreenHeader", async () => {
+    mockDirectory();
+    render(
+      <ManagementDirectory
+        onOpenProgram={vi.fn()}
+        headerAction={<button type="button">通知</button>}
+      />
+    );
+
+    await screen.findByRole("list", {
+      name: COPY.programs.managementDirectoryListLabel,
+    });
+    const actions = document.querySelector("[data-route-header-actions]");
+    expect(actions).not.toBeNull();
+    expect(
+      within(actions as HTMLElement).getByRole("button", { name: "通知" })
+    ).toBeInTheDocument();
+  });
+
   test("keeps the current Department query in a semantic Program link", async () => {
     mockDirectory();
     render(
@@ -239,13 +384,118 @@ describe(ManagementDirectory, () => {
       "/programs?mode=management&department=dept-youth&program=program-youth"
     );
   });
-  test("does not offer free-floating creation outside a Department detail", async () => {
-    mockDirectory();
-    render(<ManagementDirectory onOpenProgram={vi.fn()} />);
 
-    await screen.findByRole("list", {
+  test("narrows an explicit Department intent without creating client scope", async () => {
+    mockDirectory();
+    render(
+      <ManagementDirectory departmentId="dept-youth" onOpenProgram={vi.fn()} />
+    );
+
+    const list = await screen.findByRole("list", {
       name: COPY.programs.managementDirectoryListLabel,
     });
+    expect(within(list).getAllByRole("link")).toHaveLength(1);
+    expect(
+      within(list).getByRole("link", { name: /查經小組/u })
+    ).toHaveTextContent("青年事工 · DEPT-YOUTH");
+    expect(
+      within(list).queryByRole("link", { name: /社區關懷/u })
+    ).not.toBeInTheDocument();
+  });
+
+  test("distinguishes a valid empty Department scope from a search miss", async () => {
+    const emptyDepartment = department(
+      "dept-empty",
+      "空白事工",
+      departmentScope
+    );
+    mockDirectory([departments[0], emptyDepartment], programsByDepartment[0]);
+    render(
+      <ManagementDirectory
+        departmentId={emptyDepartment.department_id}
+        onOpenProgram={vi.fn<(programId: string, created?: boolean) => void>()}
+      />
+    );
+
+    await expect(
+      screen.findByText(COPY.programs.managementDirectoryScopedEmpty)
+    ).resolves.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", {
+        name: COPY.programs.managementDirectoryClearSearch,
+      })
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("link", {
+        name: COPY.programs.managementDirectoryClearDepartment,
+      })
+    ).toHaveAttribute("href", "/programs?mode=management");
+  });
+
+  test("offers top-level creation and opens the new Program workspace", async () => {
+    const user = userEvent.setup();
+    const onOpenProgram =
+      vi.fn<(programId: string, created?: boolean) => void>();
+    mockDirectory();
+    mocks.createProgram.mockResolvedValueOnce({
+      program: program(
+        "program-created",
+        "dept-youth",
+        "新課程",
+        programScope,
+        { lifecycle: "Draft", discoverability: "Unlisted" }
+      ),
+    });
+    render(<ManagementDirectory onOpenProgram={onOpenProgram} />);
+
+    await user.click(
+      await screen.findByRole("button", { name: COPY.programs.createProgram })
+    );
+    expect(
+      screen.getByRole("heading", { name: COPY.programs.programCreateTitle })
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("list", {
+        name: COPY.programs.managementDirectoryListLabel,
+      })
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("combobox", { name: COPY.programs.programLifecycle })
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("combobox", {
+        name: COPY.programs.discoverabilityListed,
+      })
+    ).not.toBeInTheDocument();
+
+    await user.type(
+      screen.getByRole("textbox", { name: COPY.programs.programName }),
+      "新課程"
+    );
+    await user.type(
+      screen.getByRole("textbox", { name: COPY.programs.programPurpose }),
+      "新課程目的"
+    );
+    await user.click(
+      screen.getByRole("button", { name: COPY.programs.saveProgram })
+    );
+
+    await waitFor(() =>
+      expect(onOpenProgram).toHaveBeenCalledWith("program-created", true)
+    );
+  });
+
+  test("keeps top-level creation unavailable for a Program-only scope", async () => {
+    mockDirectory([departments[1]], [programsByDepartment[1][0]]);
+    render(
+      <ManagementDirectory
+        onOpenProgram={vi.fn<(programId: string) => void>()}
+      />
+    );
+
+    await expect(
+      screen.findByRole("link", { name: /社區關懷/u })
+    ).resolves.toBeInTheDocument();
     expect(
       screen.queryByRole("button", { name: COPY.programs.createProgram })
     ).not.toBeInTheDocument();
@@ -308,6 +558,33 @@ describe(ManagementDirectory, () => {
       screen.getByText(COPY.programs.cockpitEmptyScopeHint)
     ).toBeInTheDocument();
     expect(screen.queryByRole("list")).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: COPY.programs.departmentSettings })
+    ).not.toBeInTheDocument();
+  });
+
+  test("omits Department Settings when only a Program scope is authorized", async () => {
+    mockDirectory([departments[1]], [programsByDepartment[1][0]]);
+    render(<ManagementDirectory onOpenProgram={vi.fn()} />);
+
+    await expect(
+      screen.findByRole("link", { name: /社區關懷/u })
+    ).resolves.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: COPY.programs.departmentSettings })
+    ).not.toBeInTheDocument();
+  });
+
+  test("keeps Department-only settings compatibility surface", async () => {
+    mockDirectory();
+    render(<ManagementDirectory departmentOnly onOpenProgram={vi.fn()} />);
+
+    await expect(
+      screen.findByRole("heading", { name: COPY.programs.departments })
+    ).resolves.toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /青年事工/u })
+    ).toBeInTheDocument();
   });
 
   test("reflects revoked scope upon reload without showing stale records", async () => {

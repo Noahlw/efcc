@@ -9,14 +9,18 @@
 import { RpcError } from "@/lib/api";
 import type { ProblemDetails } from "@/lib/api";
 import type {
-  AttendanceEvent as AttendanceEventType,
   AttendanceEventSummary as AttendanceEventSummaryType,
   AttendanceMember as AttendanceMemberType,
-  AttendanceResolveLatest as AttendanceResolveLatestType,
+  AttendanceMaterializeResponse as AttendanceMaterializeResponseType,
+  AttendanceParticipantView as AttendanceParticipantViewType,
   AttendanceResolveResult as AttendanceResolveResultType,
-  AttendanceRow as AttendanceRowType,
+  AttendanceRosterResponse as AttendanceRosterResponseType,
 } from "@/lib/attendance";
 
+import type {
+  EnrollmentApprovalRun,
+  EnrollmentApprovalRunItem,
+} from "./enrollment-approval-run";
 import type { ManagementHubView } from "./hub-types";
 import type { ProgramsManagementAccess } from "./programs-access";
 
@@ -32,12 +36,23 @@ export type {
 // Attendance contracts are owned by the Worker handler module (`@/lib/attendance.ts`).
 // Re-export under the original names so the browser surface has one shared shape.
 export type {
+  AttendanceDisposition,
   AttendanceEvent,
   AttendanceEventSummary,
+  AttendanceExpectedRow,
   AttendanceMember,
+  AttendanceMaterializationResult,
+  AttendanceMaterializeResponse,
+  AttendanceParticipantEvent,
+  AttendanceParticipantView,
   AttendanceResolveLatest,
   AttendanceResolveResult,
+  AttendanceRosterCounts,
+  AttendanceRosterResponse,
   AttendanceRow,
+  AttendanceSelfRow,
+  AttendanceSnapshot,
+  AttendanceState,
 } from "@/lib/attendance";
 
 export interface Department {
@@ -100,6 +115,13 @@ export interface Program {
     role_revoke?: boolean;
   };
 }
+
+export interface ProgramAttendanceArtifact {
+  program_id: string;
+  program_name: string;
+  check_in_token: string;
+  can_rotate: boolean;
+}
 export type ManagementProgram = Omit<
   Program,
   | "check_in_token"
@@ -134,7 +156,11 @@ export interface ManagementCockpitNextEvent {
 
 export interface ManagementCockpitView {
   program_id: string;
+  /** Highest source-row revision represented by this projection. */
+  updated_at: string;
   next_event: ManagementCockpitNextEvent | null;
+  /** Every currently open check-in Event, ordered for operator choice. */
+  open_events?: ManagementCockpitNextEvent[];
   active_event_count: number;
   pending_enrollment_count: number;
 }
@@ -285,12 +311,13 @@ export interface ParticipantEventSummary {
   program_id: string;
   starts_at: string;
   ends_at: string;
-  status: "Active";
+  status: "Active" | "Cancelled";
   source: "SCHEDULE" | "MANUAL";
   /** Projected from the real event row; null when the meeting has no title. */
   name: string | null;
   /** Projected from the real event row; null when the meeting has no venue. */
   location: string | null;
+  cancel_reason?: string | null;
   /** Server-derived participant affordance; never an attendance authority. */
   self_check_in_available: boolean;
 }
@@ -346,6 +373,11 @@ export interface ScheduleRule {
   start_time: string;
   end_time: string;
   location: string | null;
+  effective_start_date?: string | null;
+  effective_end_date?: string | null;
+  retired_at?: string | null;
+  retired_by?: string | null;
+  has_generated_events?: number | boolean;
   created_at: string;
   updated_at: string;
 }
@@ -360,6 +392,7 @@ export interface ScheduleException {
   action: "CANCEL" | "RESCHEDULE";
   new_start_time: string | null;
   new_end_time: string | null;
+  new_date?: string | null;
   created_at: string;
 }
 
@@ -373,6 +406,8 @@ export interface ProgramEvent {
   /** Independent operational availability; absent only in legacy test fixtures. */
   availability?: "Active" | "Inactive";
   source: "SCHEDULE" | "MANUAL";
+  schedule_rule_id?: string | null;
+  occurrence_date?: string | null;
   name?: string | null;
   event_type?: EventType | null;
   location?: string | null;
@@ -421,6 +456,7 @@ export interface Enrollment {
   enrolled_at: string;
   cancelled_at: string | null;
   cancelled_by: string | null;
+  cancellation_reason?: string | null;
   created_by: string | null;
   created_at: string;
   member_name?: string;
@@ -506,6 +542,19 @@ export interface GenerateResult {
   failed: number;
   /** True when the request resumed an already-started run (retry/concurrent). */
   resumed: boolean;
+  /** The durable outcome is truthful, but a fresh Plan is required before retrying. */
+  requires_review?: boolean;
+  created_event_ids?: string[];
+  skipped_occurrences?: {
+    occurrence_id: string;
+    starts_at: string;
+    reason: "CANCEL" | "DUPLICATE";
+  }[];
+  unresolved_occurrences?: {
+    occurrence_id: string;
+    starts_at: string;
+    detail: string | null;
+  }[];
 }
 
 /** One materialized occurrence row of a server-owned preview plan. */
@@ -519,6 +568,8 @@ export interface PreviewOccurrence {
   location: string | null;
   skip_reason: "CANCEL" | "DUPLICATE" | null;
   exception_id: string | null;
+  /** Replacement HK wall date; the original occurrence remains occurs_on. */
+  replacement_date?: string | null;
 }
 
 export interface PreviewPlan {
@@ -527,6 +578,7 @@ export interface PreviewPlan {
   plan_hash: string;
   horizon_days: number;
   from_date: string;
+  to_date?: string | null;
   rule_count: number;
   created_at: string;
 }
@@ -543,6 +595,8 @@ export interface ScheduleRuleInput {
   start_time: string;
   end_time: string;
   location?: string | null;
+  effective_start_date?: string | null;
+  effective_end_date?: string | null;
 }
 
 export interface ProgramInput {
@@ -579,6 +633,20 @@ function idempotencyHeaders(
     return {};
   }
   return { "Idempotency-Key": key ?? crypto.randomUUID() };
+}
+
+/** A transport failure cannot prove whether a non-GET mutation committed. */
+export function isUnknownMutationOutcome(error: unknown): boolean {
+  if (!(error instanceof RpcError)) {
+    return true;
+  }
+  return (
+    error.problem.status === 0 ||
+    error.problem.code === "NETWORK_ERROR" ||
+    error.problem.code === "MALFORMED_RESPONSE" ||
+    error.problem.code === "MALFORMED_REQUEST" ||
+    error.problem.code === "UNAVAILABLE"
+  );
 }
 
 /** One fetch to the cookie-only programs surface. Never builds auth headers. */
@@ -690,13 +758,85 @@ export function listEnrollmentSnapshot(
   );
 }
 
+/** POST /api/v1/programs/:programId/enrollment-approval-runs */
+export function startEnrollmentApprovalRun(
+  programId: string,
+  requestIds: readonly string[],
+  idempotencyKey?: string
+): Promise<{ run: EnrollmentApprovalRun; created: boolean }> {
+  return programsFetch(
+    `/api/v1/programs/${programId}/enrollment-approval-runs`,
+    "POST",
+    { request_ids: requestIds },
+    { idempotencyKey }
+  );
+}
+
+/** GET /api/v1/programs/:programId/enrollment-approval-runs */
+export function listEnrollmentApprovalRuns(
+  programId: string
+): Promise<{ runs: EnrollmentApprovalRun[] }> {
+  return programsFetch(
+    `/api/v1/programs/${programId}/enrollment-approval-runs`,
+    "GET",
+    undefined,
+    { cache: "no-store" }
+  );
+}
+
+/** POST /api/v1/programs/:programId/enrollment-approval-runs/:runId/reconcile */
+export function reconcileEnrollmentApprovalRun(
+  programId: string,
+  runId: string,
+  idempotencyKey?: string
+): Promise<{ run: EnrollmentApprovalRun }> {
+  return programsFetch(
+    `/api/v1/programs/${programId}/enrollment-approval-runs/${runId}/reconcile`,
+    "POST",
+    {},
+    { idempotencyKey }
+  );
+}
+
+/** POST /api/v1/programs/:programId/enrollment-approval-runs/:runId/continue */
+export function continueEnrollmentApprovalRun(
+  programId: string,
+  runId: string,
+  idempotencyKey?: string
+): Promise<{
+  run: EnrollmentApprovalRun;
+  item: EnrollmentApprovalRunItem | null;
+}> {
+  return programsFetch(
+    `/api/v1/programs/${programId}/enrollment-approval-runs/${runId}/continue`,
+    "POST",
+    {},
+    { idempotencyKey }
+  );
+}
+
+/** POST /api/v1/programs/:programId/enrollment-approval-runs/:runId/cancel */
+export function cancelEnrollmentApprovalRun(
+  programId: string,
+  runId: string,
+  idempotencyKey?: string
+): Promise<{ run: EnrollmentApprovalRun }> {
+  return programsFetch(
+    `/api/v1/programs/${programId}/enrollment-approval-runs/${runId}/cancel`,
+    "POST",
+    {},
+    { idempotencyKey }
+  );
+}
+
 /** POST /api/v1/programs/:programId/enrollment-requests/:requestId/decision */
 export function decideEnrollmentRequest(
   programId: string,
   requestId: string,
   action: EnrollmentDecision,
   note?: string,
-  requestVersion?: number
+  requestVersion?: number,
+  idempotencyKey?: string
 ): Promise<{
   request: EnrollmentRequest;
   enrollment: Enrollment | null;
@@ -708,7 +848,8 @@ export function decideEnrollmentRequest(
       action,
       note: note?.trim() ? note.trim() : null,
       request_version: requestVersion ?? null,
-    }
+    },
+    { idempotencyKey }
   );
 }
 
@@ -746,12 +887,13 @@ export function listEnrollments(
 export function cancelEnrollment(
   programId: string,
   enrollmentId: string,
-  idempotencyKey?: string
+  idempotencyKey?: string,
+  cancellationReason?: string | null
 ): Promise<{ enrollment: Enrollment }> {
   return programsFetch(
     `/api/v1/programs/${programId}/enrollments/${enrollmentId}/cancel`,
     "POST",
-    {},
+    { reason: cancellationReason?.trim() || null },
     { idempotencyKey }
   );
 }
@@ -801,24 +943,49 @@ export function markManagementNotificationsRead(
 }
 
 let accessCache: { data: ProgramsManagementAccess; at: number } | null = null;
+let accessRequest: {
+  marker: symbol;
+  promise: Promise<ProgramsManagementAccess>;
+} | null = null;
 const ACCESS_TTL_MS = 30_000;
+
+function isCurrentAccessRequest(marker: symbol): boolean {
+  return accessRequest?.marker === marker;
+}
 
 /** GET /api/v1/programs/access — capability-only entry projection. */
 export function getManagementAccess(): Promise<ProgramsManagementAccess> {
   if (accessCache && Date.now() - accessCache.at < ACCESS_TTL_MS) {
     return Promise.resolve(accessCache.data);
   }
-  return programsFetch<ProgramsManagementAccess>(
-    "/api/v1/programs/access",
-    "GET"
-  ).then((data) => {
-    accessCache = { data, at: Date.now() };
-    return data;
-  });
+  if (accessRequest) {
+    return accessRequest.promise;
+  }
+  const marker = Symbol("programs-access-request");
+  const request = (async () => {
+    try {
+      const data = await programsFetch<ProgramsManagementAccess>(
+        "/api/v1/programs/access",
+        "GET"
+      );
+      if (isCurrentAccessRequest(marker)) {
+        accessCache = { data, at: Date.now() };
+        accessRequest = null;
+      }
+      return data;
+    } finally {
+      if (isCurrentAccessRequest(marker)) {
+        accessRequest = null;
+      }
+    }
+  })();
+  accessRequest = { marker, promise: request };
+  return request;
 }
 
 export function clearAccessCache(): void {
   accessCache = null;
+  accessRequest = null;
 }
 
 /**
@@ -842,7 +1009,9 @@ export function primeCatalogCache(catalog: ParticipantCatalogEntry[]): void {
 }
 
 export function getCachedCatalog(): ParticipantCatalogEntry[] | null {
-  if (!catalogCache) return null;
+  if (!catalogCache) {
+    return null;
+  }
   if (Date.now() - catalogCache.at > CATALOG_TTL_MS) {
     catalogCache = null;
     return null;
@@ -890,12 +1059,14 @@ export function createDepartment(
 /** PATCH /api/v1/programs/departments/:id */
 export function updateDepartment(
   departmentId: string,
-  patch: Partial<Pick<Department, "name" | "description" | "lifecycle">>
+  patch: Partial<Pick<Department, "name" | "description" | "lifecycle">>,
+  idempotencyKey?: string | null
 ): Promise<{ department: Department }> {
   return programsFetch(
     `/api/v1/programs/departments/${encodeURIComponent(departmentId)}`,
     "PATCH",
-    patch
+    patch,
+    { idempotencyKey }
   );
 }
 
@@ -932,6 +1103,37 @@ export function getManagementProgram(programId: string): Promise<{
   );
 }
 
+/** GET /api/v1/programs/:id/attendance-artifact — scoped Program QR read. */
+export function getProgramAttendanceArtifact(programId: string): Promise<{
+  artifact: ProgramAttendanceArtifact;
+}> {
+  return programsFetch(
+    `/api/v1/programs/${encodeURIComponent(programId)}/attendance-artifact`,
+    "GET",
+    undefined,
+    { cache: "no-store" }
+  );
+}
+
+/** POST /api/v1/programs/:id/attendance-artifact/rotate. */
+export function rotateProgramAttendanceArtifact(
+  programId: string,
+  idempotencyKey?: string
+): Promise<{
+  rotation: {
+    program_id: string;
+    check_in_token: string;
+    idempotent: boolean;
+  };
+}> {
+  return programsFetch(
+    `/api/v1/programs/${encodeURIComponent(programId)}/attendance-artifact/rotate`,
+    "POST",
+    {},
+    { idempotencyKey }
+  );
+}
+
 /** GET /api/v1/programs/:id/cockpit — scoped management cockpit projection. */
 export function getManagementCockpit(
   programId: string
@@ -958,12 +1160,14 @@ export function createProgram(
 /** PATCH /api/v1/programs/:id */
 export function updateProgram(
   programId: string,
-  patch: ProgramPatch
+  patch: ProgramPatch,
+  idempotencyKey?: string | null
 ): Promise<{ program: Program }> {
   return programsFetch(
     `/api/v1/programs/${encodeURIComponent(programId)}`,
     "PATCH",
-    patch
+    patch,
+    { idempotencyKey }
   );
 }
 
@@ -1034,11 +1238,14 @@ export function getAccountDirectoryDetail(
 export function setDepartmentModule(
   departmentId: string,
   moduleKey: string,
-  enabled: boolean
+  enabled: boolean,
+  idempotencyKey?: string | null
 ): Promise<{ module: DepartmentModule }> {
   return programsFetch(
     `/api/v1/programs/departments/${encodeURIComponent(departmentId)}/modules/${encodeURIComponent(moduleKey)}/${enabled ? "enable" : "disable"}`,
-    "POST"
+    "POST",
+    undefined,
+    { idempotencyKey }
   );
 }
 
@@ -1055,12 +1262,14 @@ export function listScheduleRules(
 /** POST /api/v1/programs/:id/schedule-rules */
 export function createScheduleRule(
   programId: string,
-  input: ScheduleRuleInput
-): Promise<{ rule: ScheduleRule }> {
+  input: ScheduleRuleInput,
+  options: { idempotencyKey?: string | null } = {}
+): Promise<{ rule: ScheduleRule; idempotent?: boolean }> {
   return programsFetch(
     `/api/v1/programs/${encodeURIComponent(programId)}/schedule-rules`,
     "POST",
-    input
+    input,
+    options
   );
 }
 
@@ -1079,12 +1288,28 @@ export function listScheduleExceptions(
 export function updateScheduleRule(
   programId: string,
   ruleId: string,
-  patch: Partial<ScheduleRuleInput>
+  patch: Partial<ScheduleRuleInput>,
+  idempotencyKey?: string | null
 ): Promise<{ rule: ScheduleRule }> {
   return programsFetch(
     `/api/v1/programs/${encodeURIComponent(programId)}/schedule-rules/${encodeURIComponent(ruleId)}`,
     "PATCH",
-    patch
+    patch,
+    { idempotencyKey }
+  );
+}
+
+/** POST /api/v1/programs/:id/schedule-rules/:ruleId/retire */
+export function retireScheduleRule(
+  programId: string,
+  ruleId: string,
+  idempotencyKey?: string | null
+): Promise<{ rule: ScheduleRule }> {
+  return programsFetch(
+    `/api/v1/programs/${encodeURIComponent(programId)}/schedule-rules/${encodeURIComponent(ruleId)}/retire`,
+    "POST",
+    undefined,
+    { idempotencyKey }
   );
 }
 
@@ -1095,14 +1320,17 @@ export function createScheduleException(
   input: {
     override_date: string;
     action: "CANCEL" | "RESCHEDULE";
+    new_date?: string;
     new_start_time?: string;
     new_end_time?: string;
-  }
+  },
+  options: { idempotencyKey?: string | null } = {}
 ): Promise<{ exception: ScheduleException }> {
   return programsFetch(
     `/api/v1/programs/${encodeURIComponent(programId)}/schedule-rules/${encodeURIComponent(ruleId)}/exceptions`,
     "POST",
-    input
+    input,
+    options
   );
 }
 
@@ -1110,11 +1338,14 @@ export function createScheduleException(
 export function deleteScheduleException(
   programId: string,
   ruleId: string,
-  exceptionId: string
+  exceptionId: string,
+  idempotencyKey?: string | null
 ): Promise<{ deleted: boolean }> {
   return programsFetch(
     `/api/v1/programs/${encodeURIComponent(programId)}/schedule-rules/${encodeURIComponent(ruleId)}/exceptions/${encodeURIComponent(exceptionId)}`,
-    "DELETE"
+    "DELETE",
+    undefined,
+    { idempotencyKey }
   );
 }
 
@@ -1124,12 +1355,19 @@ export function deleteScheduleException(
  */
 export function previewEvents(
   programId: string,
-  horizonDays: number
+  range:
+    | number
+    | {
+        from_date: string;
+        until_date: string;
+      }
 ): Promise<PreviewResult> {
   return programsFetch(
     `/api/v1/programs/${encodeURIComponent(programId)}/events/preview`,
     "POST",
-    { horizon_days: horizonDays }
+    typeof range === "number"
+      ? { horizon_days: range }
+      : { from_date: range.from_date, until_date: range.until_date }
   );
 }
 
@@ -1198,6 +1436,7 @@ export function updateEvent(
     location?: string | null;
     check_in_window_opens_at?: string | null;
     check_in_window_closes_at?: string | null;
+    reason?: string | null;
   }
 ): Promise<{ event: ProgramEvent }> {
   return programsFetch(
@@ -1237,11 +1476,20 @@ export function cancelEvent(
 // --- Attendance client (Spec 081) ---
 
 export interface AttendanceResult {
-  outcome: "success" | "duplicate" | "already_voided" | "voided" | "corrected";
+  outcome:
+    | "success"
+    | "duplicate"
+    | "already_voided"
+    | "voided"
+    | "corrected"
+    | "excused"
+    | "already_excused";
   /** Present on success/void/correction; deliberately ABSENT on duplicate
    *  (Spec #244 dec 14: duplicate responses must not echo the existing
    *  record's id — it would be an identity oracle for public guests). */
   attendance_id?: string;
+  checked_in_at?: string;
+  disposition_id?: string;
 }
 
 /** GET /api/v1/attendance/resolve */
@@ -1269,27 +1517,55 @@ export function resolveAttendance(input: {
 }
 
 /** POST /api/v1/attendance/self */
-export function selfCheckIn(input: {
-  event_id: string;
-  method: "self_qr_scan" | "self_manual_code";
-  program_token?: string;
-  manual_code?: string;
-  entry?: string;
-}): Promise<AttendanceResult> {
-  return programsFetch("/api/v1/attendance/self", "POST", input);
+export function selfCheckIn(
+  input: {
+    event_id: string;
+    method: "self_qr_scan" | "self_manual_code";
+    program_token?: string;
+    manual_code?: string;
+    entry?: string;
+  },
+  idempotencyKey?: string
+): Promise<AttendanceResult> {
+  return programsFetch("/api/v1/attendance/self", "POST", input, {
+    idempotencyKey,
+  });
 }
 
 /** POST /api/v1/attendance/guest */
-export function guestCheckIn(input: {
-  event_id: string;
-  method: "guest_qr_scan" | "guest_manual_code";
-  name: string;
-  phone: string;
-  program_token?: string;
-  manual_code?: string;
-  entry?: string;
-}): Promise<AttendanceResult> {
-  return programsFetch("/api/v1/attendance/guest", "POST", input);
+export function guestCheckIn(
+  input: {
+    event_id: string;
+    method: "guest_qr_scan" | "guest_manual_code";
+    name: string;
+    phone: string;
+    program_token?: string;
+    manual_code?: string;
+    entry?: string;
+  },
+  idempotencyKey?: string
+): Promise<AttendanceResult> {
+  return programsFetch("/api/v1/attendance/guest", "POST", input, {
+    idempotencyKey,
+  });
+}
+
+/** POST /api/v1/attendance/guest/reconcile — proof-bound public outcome read. */
+export function reconcileGuestCheckIn(
+  input: {
+    event_id: string;
+    method: "guest_qr_scan" | "guest_manual_code";
+    name: string;
+    phone: string;
+    program_token?: string;
+    manual_code?: string;
+    entry?: string;
+  },
+  idempotencyKey?: string | null
+): Promise<{ outcome: "found" | "not_found" }> {
+  return programsFetch("/api/v1/attendance/guest/reconcile", "POST", input, {
+    idempotencyKey: idempotencyKey ?? null,
+  });
 }
 
 /** GET /api/v1/attendance/events — legacy operator chooser */
@@ -1333,9 +1609,42 @@ export function assistedCheckIn(
 /** GET /api/v1/attendance/events/:eventId/roster */
 export function listAttendanceRoster(
   eventId: string
-): Promise<{ event: AttendanceEventType; attendances: AttendanceRowType[] }> {
+): Promise<AttendanceRosterResponseType> {
   return programsFetch(
     `/api/v1/attendance/events/${encodeURIComponent(eventId)}/roster`,
+    "GET"
+  );
+}
+
+/** POST /api/v1/attendance/events/:eventId/materialize */
+export function materializeAttendanceSnapshot(
+  eventId: string
+): Promise<AttendanceMaterializeResponseType> {
+  return programsFetch(
+    `/api/v1/attendance/events/${encodeURIComponent(eventId)}/materialize`,
+    "POST"
+  );
+}
+
+/** POST /api/v1/attendance/events/:eventId/excused */
+export function recordExcusedAttendance(
+  eventId: string,
+  enrollmentId: string,
+  reason: string
+): Promise<AttendanceResult> {
+  return programsFetch(
+    `/api/v1/attendance/events/${encodeURIComponent(eventId)}/excused`,
+    "POST",
+    { enrollment_id: enrollmentId, reason }
+  );
+}
+
+/** GET /api/v1/attendance/events/:eventId/me — participant self projection. */
+export function getOwnAttendance(
+  eventId: string
+): Promise<AttendanceParticipantViewType> {
+  return programsFetch(
+    `/api/v1/attendance/events/${encodeURIComponent(eventId)}/me`,
     "GET"
   );
 }

@@ -34,23 +34,38 @@ import {
   DuplicateProgramNameError,
   DuplicateScheduleExceptionError,
   EnrollmentAccountInactiveError,
+  EnrollmentCancellationReasonRequiredError,
   EnrollmentDecisionConflictError,
+  EnrollmentApprovalRunValidationError,
   EmptyPreviewPlanError,
   EnrollmentNotAllowedError,
   EventCancellationBlockedError,
   EventAvailabilityConfirmationRequiredError,
+  EventCancelledReadOnlyError,
+  EventIdentityChangeReasonRequiredError,
+  EventNameRequiredError,
   EventRescheduleBlockedError,
   InvalidModuleKeyError,
   InvalidProgramLifecycleError,
   NoScheduleRulesError,
   PreviewPlanNotFoundError,
   ProgramArchiveBlockedError,
+  ProgramTokenRotationConflictError,
   RequestNotDecidableError,
+  ScheduleRuleRetiredError,
+  ScheduleRuleIdempotencyConflictError,
   ScheduleRuleNotApplicableError,
   StaleEnrollmentRequestError,
   StalePreviewPlanError,
 } from "./program-errors";
-import { isWallDate, isWallTime } from "./recurrence";
+import {
+  addWallDays,
+  addWallMonths,
+  hkTodayWallDate,
+  isValidWallDate,
+  isWallTime,
+  wallDaySpan,
+} from "./recurrence";
 import type {
   DepartmentUpdate,
   ProgramUpdate,
@@ -182,6 +197,16 @@ function notFound(requestId: string, detail: string): Response {
   return problem(404, "NOT_FOUND", "Not found", detail, requestId);
 }
 
+function mapEnrollmentApprovalRunError(
+  error: unknown,
+  requestId: string
+): Response | null {
+  if (error instanceof EnrollmentApprovalRunValidationError) {
+    return validation(requestId, error.message);
+  }
+  return null;
+}
+
 /**
  * Central 1:1 mapping from DepartmentWorkspace domain errors to Problem
  * Details responses. Returns null for errors this mapping does not know
@@ -209,6 +234,7 @@ function mapWorkspaceError(error: unknown, requestId: string): Response | null {
     error instanceof InvalidProgramLifecycleError ||
     error instanceof InvalidModuleKeyError ||
     error instanceof EnrollmentNotAllowedError ||
+    error instanceof EnrollmentCancellationReasonRequiredError ||
     error instanceof ScheduleRuleNotApplicableError ||
     error instanceof NoScheduleRulesError ||
     error instanceof EmptyPreviewPlanError
@@ -217,6 +243,24 @@ function mapWorkspaceError(error: unknown, requestId: string): Response | null {
       422,
       "VALIDATION",
       "Validation failed",
+      error.message,
+      requestId
+    );
+  }
+  if (error instanceof ScheduleRuleRetiredError) {
+    return problem(
+      409,
+      "SCHEDULE_RULE_RETIRED",
+      "Conflict",
+      error.message,
+      requestId
+    );
+  }
+  if (error instanceof ScheduleRuleIdempotencyConflictError) {
+    return problem(
+      409,
+      "SCHEDULE_RULE_IDEMPOTENCY_CONFLICT",
+      "Conflict",
       error.message,
       requestId
     );
@@ -241,6 +285,9 @@ function mapWorkspaceError(error: unknown, requestId: string): Response | null {
     error instanceof RequestNotDecidableError ||
     error instanceof EnrollmentDecisionConflictError
   ) {
+    return problem(409, "CONFLICT", "Conflict", error.message, requestId);
+  }
+  if (error instanceof ProgramTokenRotationConflictError) {
     return problem(409, "CONFLICT", "Conflict", error.message, requestId);
   }
   if (error instanceof DuplicateEnrollmentError) {
@@ -289,6 +336,21 @@ function mapWorkspaceError(error: unknown, requestId: string): Response | null {
       "EVENT_CANCEL_BLOCKED",
       "Conflict",
       COPY.programs.cancelBlockedWithAttendance,
+      requestId
+    );
+  }
+  if (error instanceof EventNameRequiredError) {
+    return validation(requestId, error.message);
+  }
+  if (error instanceof EventIdentityChangeReasonRequiredError) {
+    return validation(requestId, error.message);
+  }
+  if (error instanceof EventCancelledReadOnlyError) {
+    return problem(
+      409,
+      "EVENT_CANCELLED",
+      "Conflict",
+      error.message,
       requestId
     );
   }
@@ -838,6 +900,65 @@ export async function handleGetManagementProgram(
     return notFound(requestId, "Unknown program.");
   }
   return jsonResponse(200, result, requestId);
+}
+
+/** GET /api/v1/programs/:id/attendance-artifact — scoped Program QR read. */
+export async function handleGetProgramAttendanceArtifact(
+  request: Request,
+  env: ProgramEnv,
+  programId: string
+): Promise<Response> {
+  const requestId = crypto.randomUUID();
+  const auth = await requireActor(request, env, requestId);
+  if (auth instanceof Response) {
+    return auth;
+  }
+  const { workspace } = await getModule(env);
+  const artifact = await workspace.getProgramAttendanceArtifact(
+    authorizationContextFor(auth.account),
+    programId
+  );
+  if (!artifact) {
+    return notFound(requestId, "Unknown program.");
+  }
+  return jsonResponse(200, { artifact }, requestId);
+}
+
+/** POST /api/v1/programs/:id/attendance-artifact/rotate — emergency rotation. */
+export async function handleRotateProgramAttendanceArtifact(
+  request: Request,
+  env: ProgramEnv,
+  programId: string
+): Promise<Response> {
+  const requestId = crypto.randomUUID();
+  const idempotencyKey = request.headers.get("Idempotency-Key")?.trim();
+  if (idempotencyKey !== undefined && idempotencyKey.length > 200) {
+    return validation(requestId, "Idempotency-Key is too long.");
+  }
+  const correlationId = idempotencyKey || requestId;
+  const auth = await requireActor(request, env, requestId);
+  if (auth instanceof Response) {
+    return auth;
+  }
+  const { workspace } = await getModule(env);
+  try {
+    const rotation = await workspace.rotateProgramCheckInToken(
+      authorizationContextFor(auth.account),
+      programId,
+      idempotencyKey || requestId,
+      correlationId
+    );
+    return jsonResponse(200, { rotation }, requestId);
+  } catch (error) {
+    if (error instanceof WorkspaceNotFoundError) {
+      return notFound(requestId, "Unknown program.");
+    }
+    const mapped = mapWorkspaceError(error, requestId);
+    if (mapped) {
+      return mapped;
+    }
+    throw error;
+  }
 }
 
 /** GET /api/v1/programs/:id/cockpit — scoped management cockpit projection. */
@@ -1463,6 +1584,8 @@ function parseRuleBody(body: {
   start_time?: unknown;
   end_time?: unknown;
   location?: unknown;
+  effective_start_date?: unknown;
+  effective_end_date?: unknown;
 }): RuleBodyResult {
   if (!isOneOf(body.recurrence, ["WEEKLY", "MONTHLY"] as const)) {
     return { ok: false, detail: "recurrence must be WEEKLY or MONTHLY." };
@@ -1488,6 +1611,38 @@ function parseRuleBody(body: {
   ) {
     return { ok: false, detail: "location must be text or null." };
   }
+  if (
+    body.effective_start_date !== undefined &&
+    !isValidWallDate(body.effective_start_date)
+  ) {
+    return { ok: false, detail: "effective_start_date must be YYYY-MM-DD." };
+  }
+  if (
+    body.effective_end_date !== undefined &&
+    body.effective_end_date !== null &&
+    !isValidWallDate(body.effective_end_date)
+  ) {
+    return {
+      ok: false,
+      detail: "effective_end_date must be YYYY-MM-DD or null.",
+    };
+  }
+  const effectiveStart =
+    body.effective_start_date === undefined
+      ? undefined
+      : body.effective_start_date;
+  const effectiveEnd =
+    body.effective_end_date === undefined ? undefined : body.effective_end_date;
+  if (
+    typeof effectiveStart === "string" &&
+    typeof effectiveEnd === "string" &&
+    effectiveEnd < effectiveStart
+  ) {
+    return {
+      ok: false,
+      detail: "effective_end_date must be on or after effective_start_date.",
+    };
+  }
   return {
     ok: true,
     value: {
@@ -1504,6 +1659,12 @@ function parseRuleBody(body: {
                 ? body.location.trim() || null
                 : null,
           }),
+      ...(effectiveStart === undefined
+        ? {}
+        : { effective_start_date: effectiveStart }),
+      ...(effectiveEnd === undefined
+        ? {}
+        : { effective_end_date: effectiveEnd }),
     },
   };
 }
@@ -1520,18 +1681,21 @@ export async function handleListScheduleRules(
     return auth;
   }
   const { workspace } = await getModule(env);
-  const program = await workspace.getProgram(
-    authorizationContextFor(auth.account),
-    programId
-  );
-  if (!program) {
+  if (!(await workspace.programExists(programId))) {
     return notFound(requestId, "Unknown program.");
   }
-  const rules = await workspace.listScheduleRules(
-    authorizationContextFor(auth.account),
-    programId
-  );
-  return jsonResponse(200, { rules }, requestId);
+  try {
+    const ctx = authorizationContextFor(auth.account);
+    await workspace.assertProgramManagement(ctx, programId);
+    const rules = await workspace.listScheduleRules(ctx, programId);
+    return jsonResponse(200, { rules }, requestId);
+  } catch (error) {
+    const mapped = mapWorkspaceError(error, requestId);
+    if (mapped) {
+      return mapped;
+    }
+    throw error;
+  }
 }
 
 /** GET /api/v1/programs/:programId/schedule-rules/:ruleId/exceptions */
@@ -1547,16 +1711,18 @@ export async function handleListScheduleExceptions(
     return auth;
   }
   const { workspace } = await getModule(env);
-  const rule = await workspace.getScheduleRule(
-    authorizationContextFor(auth.account),
-    ruleId
-  );
-  if (!rule || rule.program_id !== programId) {
+  if (!(await workspace.programExists(programId))) {
     return notFound(requestId, "Unknown schedule rule.");
   }
   try {
+    const ctx = authorizationContextFor(auth.account);
+    await workspace.assertProgramManagement(ctx, programId);
+    const rule = await workspace.getScheduleRule(ctx, ruleId);
+    if (!rule || rule.program_id !== programId) {
+      return notFound(requestId, "Unknown schedule rule.");
+    }
     const exceptions = await workspace.listScheduleExceptions(
-      authorizationContextFor(auth.account),
+      ctx,
       programId,
       ruleId
     );
@@ -1577,7 +1743,8 @@ export async function handleCreateScheduleRule(
   programId: string
 ): Promise<Response> {
   const requestId = crypto.randomUUID();
-  const correlationId = request.headers.get("Idempotency-Key") ?? requestId;
+  const idempotencyKey = request.headers.get("Idempotency-Key")?.trim() || null;
+  const correlationId = idempotencyKey ?? requestId;
   const auth = await requireActor(request, env, requestId);
   if (auth instanceof Response) {
     return auth;
@@ -1589,6 +1756,8 @@ export async function handleCreateScheduleRule(
     start_time?: unknown;
     end_time?: unknown;
     location?: unknown;
+    effective_start_date?: unknown;
+    effective_end_date?: unknown;
   }>(request);
   if (body === null) {
     return validation(requestId, "Body must be JSON.");
@@ -1600,21 +1769,22 @@ export async function handleCreateScheduleRule(
   const { value } = parsed;
 
   const { workspace } = await getModule(env);
-  const program = await workspace.getProgram(
-    authorizationContextFor(auth.account),
-    programId
-  );
-  if (!program) {
+  if (!(await workspace.programExists(programId))) {
     return notFound(requestId, "Unknown program.");
   }
   try {
-    const row = await workspace.createScheduleRule(
+    const result = await workspace.createScheduleRule(
       authorizationContextFor(auth.account),
       programId,
       value,
-      correlationId
+      correlationId,
+      idempotencyKey
     );
-    return jsonResponse(201, { rule: row }, requestId);
+    return jsonResponse(
+      result.idempotent ? 200 : 201,
+      { rule: result.rule, idempotent: result.idempotent },
+      requestId
+    );
   } catch (error) {
     const mapped = mapWorkspaceError(error, requestId);
     if (mapped) {
@@ -1636,6 +1806,8 @@ function parseRulePatch(
     start_time?: unknown;
     end_time?: unknown;
     location?: unknown;
+    effective_start_date?: unknown;
+    effective_end_date?: unknown;
   },
   existing: ScheduleRuleRow
 ): RulePatchResult {
@@ -1677,6 +1849,30 @@ function parseRulePatch(
     update.location =
       typeof body.location === "string" ? body.location.trim() || null : null;
   }
+  if (body.effective_start_date !== undefined) {
+    if (
+      body.effective_start_date !== null &&
+      !isValidWallDate(body.effective_start_date)
+    ) {
+      return {
+        ok: false,
+        detail: "effective_start_date must be YYYY-MM-DD or null.",
+      };
+    }
+    update.effective_start_date = body.effective_start_date as string | null;
+  }
+  if (body.effective_end_date !== undefined) {
+    if (
+      body.effective_end_date !== null &&
+      !isValidWallDate(body.effective_end_date)
+    ) {
+      return {
+        ok: false,
+        detail: "effective_end_date must be YYYY-MM-DD or null.",
+      };
+    }
+    update.effective_end_date = body.effective_end_date as string | null;
+  }
   const resolvedStart = update.start_time ?? existing.start_time;
   const resolvedEnd = update.end_time ?? existing.end_time;
   if (resolvedEnd <= resolvedStart) {
@@ -1685,6 +1881,24 @@ function parseRulePatch(
   const invariantError = resolvedRuleInvariantError(update, existing);
   if (invariantError !== null) {
     return { ok: false, detail: invariantError };
+  }
+  const resolvedEffectiveStart =
+    update.effective_start_date === undefined
+      ? (existing.effective_start_date ?? null)
+      : update.effective_start_date;
+  const resolvedEffectiveEnd =
+    update.effective_end_date === undefined
+      ? (existing.effective_end_date ?? null)
+      : update.effective_end_date;
+  if (
+    typeof resolvedEffectiveStart === "string" &&
+    typeof resolvedEffectiveEnd === "string" &&
+    resolvedEffectiveEnd < resolvedEffectiveStart
+  ) {
+    return {
+      ok: false,
+      detail: "effective_end_date must be on or after effective_start_date.",
+    };
   }
   return { ok: true, update };
 }
@@ -1709,35 +1923,65 @@ export async function handleUpdateScheduleRule(
     start_time?: unknown;
     end_time?: unknown;
     location?: unknown;
+    effective_start_date?: unknown;
+    effective_end_date?: unknown;
   }>(request);
   if (body === null) {
     return validation(requestId, "Body must be JSON.");
   }
 
   const { workspace } = await getModule(env);
-  const existing = await workspace.getScheduleRule(
-    authorizationContextFor(auth.account),
-    ruleId
-  );
-  if (!existing) {
-    return notFound(requestId, "Unknown schedule rule.");
-  }
-  if (existing.program_id !== programId) {
-    return notFound(requestId, "Unknown schedule rule.");
-  }
-  const parsed = parseRulePatch(body, existing);
-  if (!parsed.ok) {
-    return validation(requestId, parsed.detail);
-  }
-  const { update } = parsed;
+  const ctx = authorizationContextFor(auth.account);
 
   try {
+    await workspace.assertProgramManagement(ctx, programId);
+    const existing = await workspace.getScheduleRule(ctx, ruleId);
+    if (!existing || existing.program_id !== programId) {
+      return notFound(requestId, "Unknown schedule rule.");
+    }
+    const parsed = parseRulePatch(body, existing);
+    if (!parsed.ok) {
+      return validation(requestId, parsed.detail);
+    }
+    const { update } = parsed;
     const row = await workspace.updateScheduleRule(
-      authorizationContextFor(auth.account),
+      ctx,
       ruleId,
       update,
       correlationId
     );
+    return jsonResponse(200, { rule: row }, requestId);
+  } catch (error) {
+    const mapped = mapWorkspaceError(error, requestId);
+    if (mapped) {
+      return mapped;
+    }
+    throw error;
+  }
+}
+
+/** POST /api/v1/programs/:programId/schedule-rules/:ruleId/retire */
+export async function handleRetireScheduleRule(
+  request: Request,
+  env: ProgramEnv,
+  programId: string,
+  ruleId: string
+): Promise<Response> {
+  const requestId = crypto.randomUUID();
+  const correlationId = request.headers.get("Idempotency-Key") ?? requestId;
+  const auth = await requireActor(request, env, requestId);
+  if (auth instanceof Response) {
+    return auth;
+  }
+  const { workspace } = await getModule(env);
+  const ctx = authorizationContextFor(auth.account);
+  try {
+    await workspace.assertProgramManagement(ctx, programId);
+    const existing = await workspace.getScheduleRule(ctx, ruleId);
+    if (!existing || existing.program_id !== programId) {
+      return notFound(requestId, "Unknown schedule rule.");
+    }
+    const row = await workspace.retireScheduleRule(ctx, ruleId, correlationId);
     return jsonResponse(200, { rule: row }, requestId);
   } catch (error) {
     const mapped = mapWorkspaceError(error, requestId);
@@ -1765,13 +2009,14 @@ export async function handleCreateScheduleException(
   const body = await parseJson<{
     override_date?: unknown;
     action?: unknown;
+    new_date?: unknown;
     new_start_time?: unknown;
     new_end_time?: unknown;
   }>(request);
   if (body === null) {
     return validation(requestId, "Body must be JSON.");
   }
-  if (!isWallDate(body.override_date)) {
+  if (!isValidWallDate(body.override_date)) {
     return validation(requestId, "override_date must be YYYY-MM-DD.");
   }
   if (!isOneOf(body.action, ["CANCEL", "RESCHEDULE"] as const)) {
@@ -1781,6 +2026,13 @@ export async function handleCreateScheduleException(
     typeof body.new_start_time === "string" ? body.new_start_time : null;
   const newEnd =
     typeof body.new_end_time === "string" ? body.new_end_time : null;
+  const newDate =
+    body.new_date === undefined || body.new_date === null
+      ? null
+      : body.new_date;
+  if (newDate !== null && !isValidWallDate(newDate)) {
+    return validation(requestId, "new_date must be YYYY-MM-DD or null.");
+  }
   if (newStart !== null && !isWallTime(newStart)) {
     return validation(requestId, "new_start_time must be HH:MM.");
   }
@@ -1796,6 +2048,9 @@ export async function handleCreateScheduleException(
   if (body.action === "CANCEL" && (newStart !== null || newEnd !== null)) {
     return validation(requestId, "CANCEL must not include new times.");
   }
+  if (body.action === "CANCEL" && newDate !== null) {
+    return validation(requestId, "CANCEL must not include new_date.");
+  }
   if (
     body.action === "RESCHEDULE" &&
     newStart !== null &&
@@ -1806,23 +2061,20 @@ export async function handleCreateScheduleException(
   }
 
   const { workspace } = await getModule(env);
-  const rule = await workspace.getScheduleRule(
-    authorizationContextFor(auth.account),
-    ruleId
-  );
-  if (!rule) {
-    return notFound(requestId, "Unknown schedule rule.");
-  }
-  if (rule.program_id !== programId) {
-    return notFound(requestId, "Unknown schedule rule.");
-  }
+  const ctx = authorizationContextFor(auth.account);
   try {
+    await workspace.assertProgramManagement(ctx, programId);
+    const rule = await workspace.getScheduleRule(ctx, ruleId);
+    if (!rule || rule.program_id !== programId) {
+      return notFound(requestId, "Unknown schedule rule.");
+    }
     const row = await workspace.createScheduleException(
-      authorizationContextFor(auth.account),
+      ctx,
       ruleId,
       {
         override_date: body.override_date,
         action: body.action,
+        new_date: newDate,
         new_start_time: newStart,
         new_end_time: newEnd,
       },
@@ -1852,26 +2104,18 @@ export async function handleDeleteScheduleException(
     return auth;
   }
   const { workspace } = await getModule(env);
-  const exists = await workspace.getScheduleException(
-    authorizationContextFor(auth.account),
-    exceptionId
-  );
-  if (!exists) {
-    return notFound(requestId, "Unknown schedule exception.");
-  }
-  const rule = await workspace.getScheduleRule(
-    authorizationContextFor(auth.account),
-    exists.rule_id
-  );
-  if (!rule || rule.program_id !== programId) {
-    return notFound(requestId, "Unknown schedule exception.");
-  }
+  const ctx = authorizationContextFor(auth.account);
   try {
-    await workspace.deleteScheduleException(
-      authorizationContextFor(auth.account),
-      exceptionId,
-      correlationId
-    );
+    await workspace.assertProgramManagement(ctx, programId);
+    const exists = await workspace.getScheduleException(ctx, exceptionId);
+    if (!exists) {
+      return notFound(requestId, "Unknown schedule exception.");
+    }
+    const rule = await workspace.getScheduleRule(ctx, exists.rule_id);
+    if (!rule || rule.program_id !== programId) {
+      return notFound(requestId, "Unknown schedule exception.");
+    }
+    await workspace.deleteScheduleException(ctx, exceptionId, correlationId);
     return jsonResponse(200, { deleted: true }, requestId);
   } catch (error) {
     const mapped = mapWorkspaceError(error, requestId);
@@ -1901,7 +2145,11 @@ export async function handlePreviewEvents(
   // any non-empty body must parse as a non-null, non-array JSON object or
   // the request is rejected before any write (EVT-02.4 acceptance).
   const rawBody = await request.text();
-  let body: { horizon_days?: unknown } | null = null;
+  let body: {
+    horizon_days?: unknown;
+    from_date?: unknown;
+    until_date?: unknown;
+  } | null = null;
   if (rawBody.trim().length > 0) {
     let parsed: unknown;
     try {
@@ -1916,9 +2164,16 @@ export async function handlePreviewEvents(
     ) {
       return validation(requestId, "請求內容必須是有效的 JSON 物件。");
     }
-    body = parsed as { horizon_days?: unknown };
+    body = parsed as {
+      horizon_days?: unknown;
+      from_date?: unknown;
+      until_date?: unknown;
+    };
   }
-  let horizonDays = 90;
+  const defaultFromDate = hkTodayWallDate();
+  let fromDate = defaultFromDate;
+  let untilDate = addWallDays(addWallMonths(fromDate, 3), -1);
+  let horizonDays: number | null = null;
   if (body !== null) {
     const raw = body.horizon_days;
     if (
@@ -1934,13 +2189,39 @@ export async function handlePreviewEvents(
         "產生範圍的天數必須是 1 至 365 之間的整數。"
       );
     }
+    if (body.from_date !== undefined && !isValidWallDate(body.from_date)) {
+      return validation(requestId, "from_date must be YYYY-MM-DD.");
+    }
+    if (body.until_date !== undefined && !isValidWallDate(body.until_date)) {
+      return validation(requestId, "until_date must be YYYY-MM-DD.");
+    }
+    if (body.from_date !== undefined) {
+      fromDate = body.from_date;
+      if (horizonDays === null && body.until_date === undefined) {
+        untilDate = addWallDays(addWallMonths(fromDate, 3), -1);
+      }
+    }
+    if (horizonDays !== null && body.until_date !== undefined) {
+      return validation(
+        requestId,
+        "請使用 horizon_days 或 from_date/until_date 其中一種範圍格式。"
+      );
+    }
+    if (horizonDays !== null) {
+      untilDate = addWallDays(fromDate, horizonDays - 1);
+    } else if (body.until_date !== undefined) {
+      untilDate = body.until_date;
+    }
+  }
+  if (untilDate < fromDate) {
+    return validation(requestId, "until_date must be on or after from_date.");
+  }
+  horizonDays = wallDaySpan(fromDate, untilDate);
+  if (horizonDays < 1 || horizonDays > 365) {
+    return validation(requestId, "預覽範圍必須在 1 至 365 個香港時間日內。");
   }
   const { workspace } = await getModule(env);
-  const program = await workspace.getProgram(
-    authorizationContextFor(auth.account),
-    programId
-  );
-  if (!program) {
+  if (!(await workspace.programExists(programId))) {
     return notFound(requestId, "Unknown program.");
   }
   try {
@@ -1948,7 +2229,8 @@ export async function handlePreviewEvents(
       authorizationContextFor(auth.account),
       programId,
       horizonDays,
-      correlationId
+      correlationId,
+      { fromDate, untilDate }
     );
     return jsonResponse(
       200,
@@ -1985,11 +2267,7 @@ export async function handleGenerateEvents(
     return validation(requestId, "plan_id is required.");
   }
   const { workspace } = await getModule(env);
-  const program = await workspace.getProgram(
-    authorizationContextFor(auth.account),
-    programId
-  );
-  if (!program) {
+  if (!(await workspace.programExists(programId))) {
     return notFound(requestId, "Unknown program.");
   }
   try {
@@ -2043,10 +2321,14 @@ export async function handleCreateEvent(
     value: unknown,
     field: string
   ): string | null | undefined => {
-    if (value === undefined) return undefined;
-    if (value === null) return null;
+    if (value === undefined) {
+      return undefined;
+    }
+    if (value === null) {
+      return null;
+    }
     if (typeof value !== "string") {
-      throw new Error(`${field} must be text.`);
+      throw new TypeError(`${field} must be text.`);
     }
     return value.trim() || null;
   };
@@ -2056,6 +2338,9 @@ export async function handleCreateEvent(
   let closes: string | null | undefined;
   try {
     name = textField(body.name, "name");
+    if (name === undefined || name === null) {
+      return validation(requestId, "name is required.");
+    }
     location = textField(body.location, "location");
     if (
       body.event_type !== undefined &&
@@ -2106,11 +2391,7 @@ export async function handleCreateEvent(
     );
   }
   const { workspace } = await getModule(env);
-  const program = await workspace.getProgram(
-    authorizationContextFor(auth.account),
-    programId
-  );
-  if (!program) {
+  if (!(await workspace.programExists(programId))) {
     return notFound(requestId, "Unknown program.");
   }
   try {
@@ -2213,15 +2494,27 @@ export async function handleEventUpdate(
       return validation(requestId, "availability must be Active or Inactive.");
     }
   }
-  if ("reason" in body) {
-    if (
-      body.reason !== null &&
-      body.reason !== undefined &&
-      (typeof body.reason !== "string" || !body.reason.trim())
-    ) {
-      return validation(requestId, "reason must be text when provided.");
-    }
+  if (
+    "reason" in body &&
+    body.reason !== null &&
+    body.reason !== undefined &&
+    (typeof body.reason !== "string" || !body.reason.trim())
+  ) {
+    return validation(requestId, "reason must be text when provided.");
   }
+  const ALLOWED_EVENT_UPDATE_FIELDS: Record<string, true> = {
+    starts_at: true,
+    ends_at: true,
+    name: true,
+    location: true,
+    event_type: true,
+    check_in_window_opens_at: true,
+    check_in_window_closes_at: true,
+    reason: true,
+  };
+  const isCancellationPayload =
+    "reason" in body &&
+    Object.keys(body).every((key) => key === "reason" || key === "confirm");
   const { workspace } = await getModule(env);
   const existing = await workspace.getEvent(
     authorizationContextFor(auth.account),
@@ -2249,7 +2542,7 @@ export async function handleEventUpdate(
       throw error;
     }
   }
-  if ("reason" in body) {
+  if (isCancellationPayload) {
     const reason =
       typeof body.reason === "string" ? body.reason.trim() || null : null;
     try {
@@ -2268,23 +2561,21 @@ export async function handleEventUpdate(
       throw error;
     }
   }
-  const ALLOWED_EVENT_UPDATE_FIELDS: Record<string, true> = {
-    starts_at: true,
-    ends_at: true,
-    name: true,
-    location: true,
-    event_type: true,
-    check_in_window_opens_at: true,
-    check_in_window_closes_at: true,
-  };
   if (Object.keys(body).some((key) => !ALLOWED_EVENT_UPDATE_FIELDS[key])) {
     return validation(requestId, "Unknown event field.");
   }
+  if ("name" in body && (typeof body.name !== "string" || !body.name.trim())) {
+    return validation(requestId, "name is required.");
+  }
   const parseOptionalText = (value: unknown, field: string) => {
-    if (value === undefined) return undefined;
-    if (value === null) return null;
+    if (value === undefined) {
+      return;
+    }
+    if (value === null) {
+      return null;
+    }
     if (typeof value !== "string") {
-      throw new Error(`${field} must be text.`);
+      throw new TypeError(`${field} must be text.`);
     }
     return value.trim() || null;
   };
@@ -2353,7 +2644,9 @@ export async function handleEventUpdate(
       ...(ends === undefined ? {} : { ends_at: ends }),
       ...(body.name === undefined
         ? {}
-        : { name: parseOptionalText(body.name, "name") }),
+        : {
+            name: parseOptionalText(body.name, "name"),
+          }),
       ...(body.event_type === undefined
         ? {}
         : { event_type: (body.event_type as EventType | null) ?? null }),
@@ -2366,6 +2659,14 @@ export async function handleEventUpdate(
       ...(body.check_in_window_closes_at === undefined
         ? {}
         : { check_in_window_closes_at: closes }),
+      ...(body.reason === undefined
+        ? {}
+        : {
+            reason:
+              typeof body.reason === "string"
+                ? body.reason.trim() || null
+                : null,
+          }),
     };
   } catch (error) {
     return validation(
@@ -2403,11 +2704,7 @@ export async function handleCreateEnrollmentRequest(
     return auth;
   }
   const { workspace } = await getModule(env);
-  const program = await workspace.getProgram(
-    authorizationContextFor(auth.account),
-    programId
-  );
-  if (!program) {
+  if (!(await workspace.programExists(programId))) {
     return notFound(requestId, "Unknown program.");
   }
   try {
@@ -2467,6 +2764,188 @@ export async function handleListEnrollmentSnapshot(
     return notFound(requestId, "Unknown program.");
   }
   return jsonResponse(200, snapshot, requestId);
+}
+
+/** POST /api/v1/programs/:programId/enrollment-approval-runs */
+export async function handleStartEnrollmentApprovalRun(
+  request: Request,
+  env: ProgramEnv,
+  programId: string
+): Promise<Response> {
+  const requestId = crypto.randomUUID();
+  const correlationId = request.headers.get("Idempotency-Key") ?? requestId;
+  const auth = await requireActor(request, env, requestId);
+  if (auth instanceof Response) {
+    return auth;
+  }
+  const body = await parseJson<{ request_ids?: unknown }>(request);
+  if (
+    body === null ||
+    !Array.isArray(body.request_ids) ||
+    !body.request_ids.every((id): id is string => typeof id === "string")
+  ) {
+    return validation(requestId, "request_ids must be an array of strings.");
+  }
+  const { workspace } = await getModule(env);
+  if (!(await workspace.programExists(programId))) {
+    return notFound(requestId, "Unknown program.");
+  }
+  try {
+    const result = await workspace.startEnrollmentApprovalRun(
+      authorizationContextFor(auth.account),
+      programId,
+      body.request_ids,
+      correlationId
+    );
+    return jsonResponse(201, result, requestId);
+  } catch (error) {
+    const mapped =
+      mapEnrollmentApprovalRunError(error, requestId) ??
+      mapWorkspaceError(error, requestId);
+    if (mapped) {
+      return mapped;
+    }
+    throw error;
+  }
+}
+
+/** GET /api/v1/programs/:programId/enrollment-approval-runs */
+export async function handleListEnrollmentApprovalRuns(
+  request: Request,
+  env: ProgramEnv,
+  programId: string
+): Promise<Response> {
+  const requestId = crypto.randomUUID();
+  const auth = await requireActor(request, env, requestId);
+  if (auth instanceof Response) {
+    return auth;
+  }
+  const { workspace } = await getModule(env);
+  if (!(await workspace.programExists(programId))) {
+    return notFound(requestId, "Unknown program.");
+  }
+  try {
+    const runs = await workspace.listEnrollmentApprovalRuns(
+      authorizationContextFor(auth.account),
+      programId
+    );
+    return jsonResponse(200, { runs }, requestId);
+  } catch (error) {
+    const mapped = mapWorkspaceError(error, requestId);
+    if (mapped) {
+      return mapped;
+    }
+    throw error;
+  }
+}
+
+async function handleEnrollmentApprovalRunAction(
+  request: Request,
+  env: ProgramEnv,
+  programId: string,
+  runId: string,
+  action: "reconcile" | "continue" | "cancel"
+): Promise<Response> {
+  const requestId = crypto.randomUUID();
+  const correlationId = request.headers.get("Idempotency-Key") ?? requestId;
+  const auth = await requireActor(request, env, requestId);
+  if (auth instanceof Response) {
+    return auth;
+  }
+  const { workspace } = await getModule(env);
+  if (!(await workspace.programExists(programId))) {
+    return notFound(requestId, "Unknown program.");
+  }
+  try {
+    const ctx = authorizationContextFor(auth.account);
+    if (action === "reconcile") {
+      const run = await workspace.reconcileEnrollmentApprovalRun(
+        ctx,
+        programId,
+        runId,
+        correlationId
+      );
+      return run
+        ? jsonResponse(200, { run }, requestId)
+        : notFound(requestId, "Unknown Enrollment Approval Run.");
+    }
+    if (action === "continue") {
+      const result = await workspace.continueEnrollmentApprovalRun(
+        ctx,
+        programId,
+        runId,
+        correlationId
+      );
+      return result
+        ? jsonResponse(200, result, requestId)
+        : notFound(requestId, "Unknown Enrollment Approval Run.");
+    }
+    const run = await workspace.cancelEnrollmentApprovalRun(
+      ctx,
+      programId,
+      runId,
+      correlationId
+    );
+    return run
+      ? jsonResponse(200, { run }, requestId)
+      : notFound(requestId, "Unknown Enrollment Approval Run.");
+  } catch (error) {
+    const mapped =
+      mapEnrollmentApprovalRunError(error, requestId) ??
+      mapWorkspaceError(error, requestId);
+    if (mapped) {
+      return mapped;
+    }
+    throw error;
+  }
+}
+
+/** POST /api/v1/programs/:programId/enrollment-approval-runs/:runId/reconcile */
+export function handleReconcileEnrollmentApprovalRun(
+  request: Request,
+  env: ProgramEnv,
+  programId: string,
+  runId: string
+): Promise<Response> {
+  return handleEnrollmentApprovalRunAction(
+    request,
+    env,
+    programId,
+    runId,
+    "reconcile"
+  );
+}
+
+/** POST /api/v1/programs/:programId/enrollment-approval-runs/:runId/continue */
+export function handleContinueEnrollmentApprovalRun(
+  request: Request,
+  env: ProgramEnv,
+  programId: string,
+  runId: string
+): Promise<Response> {
+  return handleEnrollmentApprovalRunAction(
+    request,
+    env,
+    programId,
+    runId,
+    "continue"
+  );
+}
+
+/** POST /api/v1/programs/:programId/enrollment-approval-runs/:runId/cancel */
+export function handleCancelEnrollmentApprovalRun(
+  request: Request,
+  env: ProgramEnv,
+  programId: string,
+  runId: string
+): Promise<Response> {
+  return handleEnrollmentApprovalRunAction(
+    request,
+    env,
+    programId,
+    runId,
+    "cancel"
+  );
 }
 
 /** POST /api/v1/programs/:programId/enrollment-requests/:requestId/decision */
@@ -2602,11 +3081,7 @@ export async function handleAssistedEnroll(
     return validation(requestId, "member_user_id is required.");
   }
   const { workspace } = await getModule(env);
-  const program = await workspace.getProgram(
-    authorizationContextFor(auth.account),
-    programId
-  );
-  if (!program) {
+  if (!(await workspace.programExists(programId))) {
     return notFound(requestId, "Unknown program.");
   }
   try {
@@ -2661,6 +3136,14 @@ export async function handleCancelEnrollment(
   if (auth instanceof Response) {
     return auth;
   }
+  const body = await parseJson<{ reason?: unknown }>(request);
+  if (body === null) {
+    return validation(requestId, "Body must be JSON.");
+  }
+  const reason = typeof body.reason === "string" ? body.reason.trim() : null;
+  if (reason !== null && reason.length > 500) {
+    return validation(requestId, "reason must be 500 characters or fewer.");
+  }
   const { workspace } = await getModule(env);
   const existing = await workspace.getEnrollment(
     authorizationContextFor(auth.account),
@@ -2677,7 +3160,8 @@ export async function handleCancelEnrollment(
       authorizationContextFor(auth.account),
       programId,
       enrollmentId,
-      correlationId
+      correlationId,
+      reason
     );
     return jsonResponse(200, { enrollment: row }, requestId);
   } catch (error) {

@@ -1,0 +1,1371 @@
+{
+  "config": {
+    "argv": [
+      "/Users/noah.wong/.local/share/fnm/node-versions/v22.18.0/installation/bin/node",
+      "/Users/noah.wong/Desktop/code/efcc/node_modules/@playwright/test/cli.js",
+      "test",
+      "--config=tests/e2e/programs-participant-acceptance.config.ts"
+    ],
+    "configFile": "/Users/noah.wong/Desktop/code/efcc/tests/e2e/programs-participant-acceptance.config.ts",
+    "rootDir": "/Users/noah.wong/Desktop/code/efcc/tests/e2e",
+    "failOnFlakyTests": false,
+    "forbidOnly": false,
+    "fullyParallel": false,
+    "globalSetup": null,
+    "globalTeardown": null,
+    "globalTimeout": 0,
+    "grep": {},
+    "grepInvert": null,
+    "maxFailures": 0,
+    "metadata": {
+      "actualWorkers": 1
+    },
+    "preserveOutput": "always",
+    "projects": [
+      {
+        "outputDir": "/Users/noah.wong/Desktop/code/efcc/test-results/programs-browser-acceptance/20260918t020659970z/browser-output",
+        "repeatEach": 1,
+        "retries": 0,
+        "metadata": {
+          "actualWorkers": 1
+        },
+        "id": "phone-360",
+        "name": "phone-360",
+        "testDir": "/Users/noah.wong/Desktop/code/efcc/tests/e2e",
+        "testIgnore": [],
+        "testMatch": [
+          "**/programs-participant-acceptance.test.ts",
+          "**/programs-management-acceptance.test.ts"
+        ],
+        "timeout": 60000
+      },
+      {
+        "outputDir": "/Users/noah.wong/Desktop/code/efcc/test-results/programs-browser-acceptance/20260918t020659970z/browser-output",
+        "repeatEach": 1,
+        "retries": 0,
+        "metadata": {
+          "actualWorkers": 1
+        },
+        "id": "phone-390",
+        "name": "phone-390",
+        "testDir": "/Users/noah.wong/Desktop/code/efcc/tests/e2e",
+        "testIgnore": [],
+        "testMatch": [
+          "**/programs-participant-acceptance.test.ts",
+          "**/programs-management-acceptance.test.ts"
+        ],
+        "timeout": 60000
+      },
+      {
+        "outputDir": "/Users/noah.wong/Desktop/code/efcc/test-results/programs-browser-acceptance/20260918t020659970z/browser-output",
+        "repeatEach": 1,
+        "retries": 0,
+        "metadata": {
+          "actualWorkers": 1
+        },
+        "id": "phone-402",
+        "name": "phone-402",
+        "testDir": "/Users/noah.wong/Desktop/code/efcc/tests/e2e",
+        "testIgnore": [],
+        "testMatch": [
+          "**/programs-participant-acceptance.test.ts",
+          "**/programs-management-acceptance.test.ts"
+        ],
+        "timeout": 60000
+      }
+    ],
+    "quiet": false,
+    "reporter": [
+      [
+        "line",
+        null
+      ],
+      [
+        "json",
+        {
+          "outputFile": "/Users/noah.wong/Desktop/code/efcc/test-results/programs-browser-acceptance/20260918t020659970z/browser-results.json"
+        }
+      ]
+    ],
+    "reportSlowTests": {
+      "max": 5,
+      "threshold": 300000
+    },
+    "shard": null,
+    "tags": [],
+    "updateSnapshots": "missing",
+    "updateSourceMethod": "patch",
+    "version": "1.62.1",
+    "workers": 1,
+    "webServer": null
+  },
+  "suites": [
+    {
+      "title": "programs-management-acceptance.test.ts",
+      "file": "programs-management-acceptance.test.ts",
+      "column": 0,
+      "line": 0,
+      "specs": [],
+      "suites": [
+        {
+          "title": "T05.5 management Browser Acceptance",
+          "file": "programs-management-acceptance.test.ts",
+          "line": 249,
+          "column": 6,
+          "specs": [
+            {
+              "title": "cold management load makes one access request",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "phone-360",
+                  "projectName": "phone-360",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 848,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-09-18T02:07:18.140Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "520d73e4fc6c985c6169-4d97362f1346b892f380",
+              "file": "programs-management-acceptance.test.ts",
+              "line": 250,
+              "column": 3
+            },
+            {
+              "title": "shares a pending Home access prefetch with the Programs route",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "phone-360",
+                  "projectName": "phone-360",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 642,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-09-18T02:07:19.323Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "520d73e4fc6c985c6169-be637955c028a7e66364",
+              "file": "programs-management-acceptance.test.ts",
+              "line": 275,
+              "column": 3
+            },
+            {
+              "title": "admin opens a scoped Program, saves management data, and reads it back",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "phone-360",
+                  "projectName": "phone-360",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 3399,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-09-18T02:07:19.970Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "520d73e4fc6c985c6169-6bb712c5e1ff4c481226",
+              "file": "programs-management-acceptance.test.ts",
+              "line": 317,
+              "column": 3
+            },
+            {
+              "title": "keeps a successful Settings write distinct from a failed workspace readback",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "phone-360",
+                  "projectName": "phone-360",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 943,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-09-18T02:07:23.374Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "520d73e4fc6c985c6169-7d5dab4bbbb4b9455e4d",
+              "file": "programs-management-acceptance.test.ts",
+              "line": 544,
+              "column": 3
+            },
+            {
+              "title": "consumes one-shot Event create intent and keeps Cancel closed",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "phone-360",
+                  "projectName": "phone-360",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 1078,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-09-18T02:07:24.322Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "520d73e4fc6c985c6169-d1dfc195bafddfddb211",
+              "file": "programs-management-acceptance.test.ts",
+              "line": 619,
+              "column": 3
+            },
+            {
+              "title": "restores the Events filter and list position after browser Back from a focused Event",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "phone-360",
+                  "projectName": "phone-360",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 1806,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-09-18T02:07:25.405Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "520d73e4fc6c985c6169-83abc2cacea460ce5a15",
+              "file": "programs-management-acceptance.test.ts",
+              "line": 660,
+              "column": 3
+            },
+            {
+              "title": "restores the Participants list position after returning from Overview",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "phone-360",
+                  "projectName": "phone-360",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 1972,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-09-18T02:07:27.217Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "520d73e4fc6c985c6169-e2f1627cc7d8b6d66dc1",
+              "file": "programs-management-acceptance.test.ts",
+              "line": 749,
+              "column": 3
+            },
+            {
+              "title": "keeps modifier-key notification navigation independent from read failures",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "phone-360",
+                  "projectName": "phone-360",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 1827,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-09-18T02:07:29.194Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "520d73e4fc6c985c6169-c3973a6fe9157e7085aa",
+              "file": "programs-management-acceptance.test.ts",
+              "line": 848,
+              "column": 3
+            },
+            {
+              "title": "keeps a normal notification click on the real task while mark-read fails",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "phone-360",
+                  "projectName": "phone-360",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 1815,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-09-18T02:07:31.027Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "520d73e4fc6c985c6169-9d34c181e0324e288793",
+              "file": "programs-management-acceptance.test.ts",
+              "line": 934,
+              "column": 3
+            },
+            {
+              "title": "settings, Event, and Enrollment mutations converge in Overview without reload",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "phone-360",
+                  "projectName": "phone-360",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 4320,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-09-18T02:07:32.847Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "520d73e4fc6c985c6169-92d697ae5f0026fce87f",
+              "file": "programs-management-acceptance.test.ts",
+              "line": 1008,
+              "column": 3
+            },
+            {
+              "title": "cold management load makes one access request",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "phone-390",
+                  "projectName": "phone-390",
+                  "results": [
+                    {
+                      "workerIndex": 1,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 788,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-09-18T02:07:43.067Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "520d73e4fc6c985c6169-f264f4d0a8b035bd1751",
+              "file": "programs-management-acceptance.test.ts",
+              "line": 250,
+              "column": 3
+            },
+            {
+              "title": "shares a pending Home access prefetch with the Programs route",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "phone-390",
+                  "projectName": "phone-390",
+                  "results": [
+                    {
+                      "workerIndex": 1,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 995,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-09-18T02:07:44.008Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "520d73e4fc6c985c6169-d2d32d80a98a24c37c57",
+              "file": "programs-management-acceptance.test.ts",
+              "line": 275,
+              "column": 3
+            },
+            {
+              "title": "admin opens a scoped Program, saves management data, and reads it back",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "phone-390",
+                  "projectName": "phone-390",
+                  "results": [
+                    {
+                      "workerIndex": 1,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 6374,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-09-18T02:07:45.009Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "520d73e4fc6c985c6169-3e346d5dc5b5dc95ddbb",
+              "file": "programs-management-acceptance.test.ts",
+              "line": 317,
+              "column": 3
+            },
+            {
+              "title": "keeps a successful Settings write distinct from a failed workspace readback",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "phone-390",
+                  "projectName": "phone-390",
+                  "results": [
+                    {
+                      "workerIndex": 1,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 1945,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-09-18T02:07:51.390Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "520d73e4fc6c985c6169-ef67f9228445b8c2a921",
+              "file": "programs-management-acceptance.test.ts",
+              "line": 544,
+              "column": 3
+            },
+            {
+              "title": "consumes one-shot Event create intent and keeps Cancel closed",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "phone-390",
+                  "projectName": "phone-390",
+                  "results": [
+                    {
+                      "workerIndex": 1,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 1398,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-09-18T02:07:53.340Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "520d73e4fc6c985c6169-ca4e409fbcaf8a384a3a",
+              "file": "programs-management-acceptance.test.ts",
+              "line": 619,
+              "column": 3
+            },
+            {
+              "title": "restores the Events filter and list position after browser Back from a focused Event",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "phone-390",
+                  "projectName": "phone-390",
+                  "results": [
+                    {
+                      "workerIndex": 1,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 3593,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-09-18T02:07:54.743Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "520d73e4fc6c985c6169-dc9c1638928d88ee4939",
+              "file": "programs-management-acceptance.test.ts",
+              "line": 660,
+              "column": 3
+            },
+            {
+              "title": "restores the Participants list position after returning from Overview",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "phone-390",
+                  "projectName": "phone-390",
+                  "results": [
+                    {
+                      "workerIndex": 1,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 4059,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-09-18T02:07:58.342Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "520d73e4fc6c985c6169-b2693aa5028e5a003915",
+              "file": "programs-management-acceptance.test.ts",
+              "line": 749,
+              "column": 3
+            },
+            {
+              "title": "keeps modifier-key notification navigation independent from read failures",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "phone-390",
+                  "projectName": "phone-390",
+                  "results": [
+                    {
+                      "workerIndex": 1,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 2129,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-09-18T02:08:02.407Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "520d73e4fc6c985c6169-a8981fcaec28a13a8c0f",
+              "file": "programs-management-acceptance.test.ts",
+              "line": 848,
+              "column": 3
+            },
+            {
+              "title": "keeps a normal notification click on the real task while mark-read fails",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "phone-390",
+                  "projectName": "phone-390",
+                  "results": [
+                    {
+                      "workerIndex": 1,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 2680,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-09-18T02:08:04.542Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "520d73e4fc6c985c6169-bd7b38890784fe143933",
+              "file": "programs-management-acceptance.test.ts",
+              "line": 934,
+              "column": 3
+            },
+            {
+              "title": "settings, Event, and Enrollment mutations converge in Overview without reload",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "phone-390",
+                  "projectName": "phone-390",
+                  "results": [
+                    {
+                      "workerIndex": 1,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 7506,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-09-18T02:08:07.230Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "520d73e4fc6c985c6169-3de2630e107a4b80647d",
+              "file": "programs-management-acceptance.test.ts",
+              "line": 1008,
+              "column": 3
+            },
+            {
+              "title": "cold management load makes one access request",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "phone-402",
+                  "projectName": "phone-402",
+                  "results": [
+                    {
+                      "workerIndex": 2,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 853,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-09-18T02:08:21.490Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "520d73e4fc6c985c6169-e74112ce4c74b2ffef24",
+              "file": "programs-management-acceptance.test.ts",
+              "line": 250,
+              "column": 3
+            },
+            {
+              "title": "shares a pending Home access prefetch with the Programs route",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "phone-402",
+                  "projectName": "phone-402",
+                  "results": [
+                    {
+                      "workerIndex": 2,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 1240,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-09-18T02:08:22.495Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "520d73e4fc6c985c6169-cd54f6d2b9f7366e2e5f",
+              "file": "programs-management-acceptance.test.ts",
+              "line": 275,
+              "column": 3
+            },
+            {
+              "title": "admin opens a scoped Program, saves management data, and reads it back",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "phone-402",
+                  "projectName": "phone-402",
+                  "results": [
+                    {
+                      "workerIndex": 2,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 8168,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-09-18T02:08:23.742Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "520d73e4fc6c985c6169-2fcfa6547e1ef3f8954c",
+              "file": "programs-management-acceptance.test.ts",
+              "line": 317,
+              "column": 3
+            },
+            {
+              "title": "keeps a successful Settings write distinct from a failed workspace readback",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "phone-402",
+                  "projectName": "phone-402",
+                  "results": [
+                    {
+                      "workerIndex": 2,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 1877,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-09-18T02:08:31.917Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "520d73e4fc6c985c6169-ef5b828d2ece17d78745",
+              "file": "programs-management-acceptance.test.ts",
+              "line": 544,
+              "column": 3
+            },
+            {
+              "title": "consumes one-shot Event create intent and keeps Cancel closed",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "phone-402",
+                  "projectName": "phone-402",
+                  "results": [
+                    {
+                      "workerIndex": 2,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 1667,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-09-18T02:08:33.799Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "520d73e4fc6c985c6169-0a91aa28b27b766c3f67",
+              "file": "programs-management-acceptance.test.ts",
+              "line": 619,
+              "column": 3
+            },
+            {
+              "title": "restores the Events filter and list position after browser Back from a focused Event",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "phone-402",
+                  "projectName": "phone-402",
+                  "results": [
+                    {
+                      "workerIndex": 2,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 3701,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-09-18T02:08:35.472Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "520d73e4fc6c985c6169-9f1efab2e70ad667273b",
+              "file": "programs-management-acceptance.test.ts",
+              "line": 660,
+              "column": 3
+            },
+            {
+              "title": "restores the Participants list position after returning from Overview",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "phone-402",
+                  "projectName": "phone-402",
+                  "results": [
+                    {
+                      "workerIndex": 2,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 4844,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-09-18T02:08:39.178Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "520d73e4fc6c985c6169-cdd5a8fc18ef4456f07d",
+              "file": "programs-management-acceptance.test.ts",
+              "line": 749,
+              "column": 3
+            },
+            {
+              "title": "keeps modifier-key notification navigation independent from read failures",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "phone-402",
+                  "projectName": "phone-402",
+                  "results": [
+                    {
+                      "workerIndex": 2,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 2924,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-09-18T02:08:44.026Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "520d73e4fc6c985c6169-500adbf348a2e8bdc3e8",
+              "file": "programs-management-acceptance.test.ts",
+              "line": 848,
+              "column": 3
+            },
+            {
+              "title": "keeps a normal notification click on the real task while mark-read fails",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "phone-402",
+                  "projectName": "phone-402",
+                  "results": [
+                    {
+                      "workerIndex": 2,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 2864,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-09-18T02:08:46.954Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "520d73e4fc6c985c6169-9852e62affaf6f347721",
+              "file": "programs-management-acceptance.test.ts",
+              "line": 934,
+              "column": 3
+            },
+            {
+              "title": "settings, Event, and Enrollment mutations converge in Overview without reload",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "phone-402",
+                  "projectName": "phone-402",
+                  "results": [
+                    {
+                      "workerIndex": 2,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 9552,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-09-18T02:08:49.824Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "520d73e4fc6c985c6169-306c569031031965329f",
+              "file": "programs-management-acceptance.test.ts",
+              "line": 1008,
+              "column": 3
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "programs-participant-acceptance.test.ts",
+      "file": "programs-participant-acceptance.test.ts",
+      "column": 0,
+      "line": 0,
+      "specs": [],
+      "suites": [
+        {
+          "title": "T05.4 participant Browser Acceptance",
+          "file": "programs-participant-acceptance.test.ts",
+          "line": 172,
+          "column": 6,
+          "specs": [
+            {
+              "title": "member submits, gets approved, reads back, and exits a Program",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "phone-360",
+                  "projectName": "phone-360",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 2129,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-09-18T02:07:37.181Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "cbbc179103ede4263b16-380235f4aa073710e214",
+              "file": "programs-participant-acceptance.test.ts",
+              "line": 173,
+              "column": 3
+            },
+            {
+              "title": "manager recovers an interrupted Approval Run after reload and continues explicitly",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "phone-360",
+                  "projectName": "phone-360",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 2913,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-09-18T02:07:39.524Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "cbbc179103ede4263b16-54b40b84d9662d643352",
+              "file": "programs-participant-acceptance.test.ts",
+              "line": 250,
+              "column": 3
+            },
+            {
+              "title": "member submits, gets approved, reads back, and exits a Program",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "phone-390",
+                  "projectName": "phone-390",
+                  "results": [
+                    {
+                      "workerIndex": 1,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 2207,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-09-18T02:08:14.750Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "cbbc179103ede4263b16-1c30359a2c257646c60c",
+              "file": "programs-participant-acceptance.test.ts",
+              "line": 173,
+              "column": 3
+            },
+            {
+              "title": "manager recovers an interrupted Approval Run after reload and continues explicitly",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "phone-390",
+                  "projectName": "phone-390",
+                  "results": [
+                    {
+                      "workerIndex": 1,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 3843,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-09-18T02:08:17.103Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "cbbc179103ede4263b16-934057e908f386aab0b5",
+              "file": "programs-participant-acceptance.test.ts",
+              "line": 250,
+              "column": 3
+            },
+            {
+              "title": "member submits, gets approved, reads back, and exits a Program",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "phone-402",
+                  "projectName": "phone-402",
+                  "results": [
+                    {
+                      "workerIndex": 2,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 3122,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-09-18T02:08:59.391Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "cbbc179103ede4263b16-a93306330e47d368c576",
+              "file": "programs-participant-acceptance.test.ts",
+              "line": 173,
+              "column": 3
+            },
+            {
+              "title": "manager recovers an interrupted Approval Run after reload and continues explicitly",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "phone-402",
+                  "projectName": "phone-402",
+                  "results": [
+                    {
+                      "workerIndex": 2,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 4431,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-09-18T02:09:02.641Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "cbbc179103ede4263b16-f797ba86a47a326a11eb",
+              "file": "programs-participant-acceptance.test.ts",
+              "line": 250,
+              "column": 3
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "errors": [],
+  "stats": {
+    "startTime": "2026-09-18T02:07:17.786Z",
+    "duration": 109473.03899999999,
+    "expected": 36,
+    "skipped": 0,
+    "unexpected": 0,
+    "flaky": 0
+  }
+}

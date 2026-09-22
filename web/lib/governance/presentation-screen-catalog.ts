@@ -113,7 +113,7 @@ export const PRESENTATION_SCREEN_CATALOG = [
     primaryBaselinePsn: "PSN-PROGRAMS-MANAGEMENT-DIRECTORY",
     route: "/programs",
     intent: "mode=management",
-    gap: null,
+    gap: "ISSUE-#601",
     supersedes: [],
   },
   {
@@ -123,7 +123,7 @@ export const PRESENTATION_SCREEN_CATALOG = [
     primaryBaselinePsn: "PSN-PROGRAMS-PARTICIPANT-DIRECTORY",
     route: "/programs",
     intent: null,
-    gap: null,
+    gap: "ISSUE-#601",
     supersedes: [],
   },
   {
@@ -133,7 +133,7 @@ export const PRESENTATION_SCREEN_CATALOG = [
     primaryBaselinePsn: "PSN-PROGRAMS-PARTICIPANT-EVENT-DETAIL",
     route: "/programs",
     intent: "program=t07-3-program&event=t07-3-event",
-    gap: null,
+    gap: "ISSUE-#601",
     supersedes: [],
   },
   {
@@ -143,7 +143,7 @@ export const PRESENTATION_SCREEN_CATALOG = [
     primaryBaselinePsn: "PSN-PROGRAMS-PARTICIPANT-PROGRAM-DETAIL",
     route: "/programs",
     intent: "program=t07-3-program",
-    gap: null,
+    gap: "ISSUE-#601",
     supersedes: [],
   },
   {
@@ -153,7 +153,7 @@ export const PRESENTATION_SCREEN_CATALOG = [
     primaryBaselinePsn: "PSN-PROGRAMS-WORKSPACE-EVENTS",
     route: "/programs",
     intent: "mode=management&program=t07-3-program&task=events",
-    gap: null,
+    gap: "ISSUE-#601",
     supersedes: [],
   },
   {
@@ -163,7 +163,7 @@ export const PRESENTATION_SCREEN_CATALOG = [
     primaryBaselinePsn: "PSN-PROGRAMS-WORKSPACE-NOTIFICATIONS",
     route: "/programs",
     intent: "mode=management&task=notifications",
-    gap: null,
+    gap: "ISSUE-#601",
     supersedes: [],
   },
   {
@@ -173,7 +173,7 @@ export const PRESENTATION_SCREEN_CATALOG = [
     primaryBaselinePsn: "PSN-PROGRAMS-WORKSPACE-OVERVIEW",
     route: "/programs",
     intent: "mode=management&program=t07-3-program",
-    gap: null,
+    gap: "ISSUE-#601",
     supersedes: [],
   },
   {
@@ -183,7 +183,7 @@ export const PRESENTATION_SCREEN_CATALOG = [
     primaryBaselinePsn: "PSN-PROGRAMS-WORKSPACE-PARTICIPANTS",
     route: "/programs",
     intent: "mode=management&program=t07-3-program&task=participants",
-    gap: null,
+    gap: "ISSUE-#601",
     supersedes: [],
   },
   {
@@ -193,7 +193,7 @@ export const PRESENTATION_SCREEN_CATALOG = [
     primaryBaselinePsn: "PSN-PROGRAMS-WORKSPACE-SETTINGS",
     route: "/programs",
     intent: "mode=management&program=t07-3-program&task=settings",
-    gap: null,
+    gap: "ISSUE-#601",
     supersedes: [],
   },
   {
@@ -203,7 +203,7 @@ export const PRESENTATION_SCREEN_CATALOG = [
     primaryBaselinePsn: "PSN-PROGRAMS-WORKSPACE-SCHEDULE",
     route: "/programs",
     intent: "mode=management&program=t07-3-program&task=schedule",
-    gap: null,
+    gap: "ISSUE-#601",
     supersedes: [],
   },
   {

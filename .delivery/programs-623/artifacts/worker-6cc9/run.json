@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "runtime": "vitest-local-worker-d1",
+  "suite": "web/vitest.config.ts",
+  "revision": "6cc9a5d9c8beb87833a6183f65834d102f3a7215",
+  "layer": "worker-d1",
+  "status": "passed",
+  "testFiles": 44,
+  "tests": 648,
+  "target": "local Worker/D1 test runtime",
+  "reportPath": ".delivery/programs-623/artifacts/worker-6cc9/worker-results.json",
+  "command": "pnpm --dir web exec vitest run --config vitest.config.ts --reporter=json --outputFile=.delivery/programs-623/artifacts/worker-6cc9/worker-results.json"
+}

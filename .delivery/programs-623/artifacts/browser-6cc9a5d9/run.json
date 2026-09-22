@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "runtime": "createTestHarness",
+  "config": "web/wrangler.jsonc",
+  "suite": "tests/e2e/programs-participant-acceptance.config.ts",
+  "revision": "6cc9a5d9c8beb87833a6183f65834d102f3a7215",
+  "layer": "browser-acceptance",
+  "retries": 0,
+  "status": "failed",
+  "startedAt": "2026-09-16T10:54:38.117Z",
+  "target": null,
+  "reportPath": ".delivery/programs-623/artifacts/browser-6cc9a5d9/browser-results.json",
+  "promotionRunId": null,
+  "failure": "Harness D1 migration or fixture setup failed",
+  "finishedAt": "2026-09-16T10:55:08.260Z"
+}

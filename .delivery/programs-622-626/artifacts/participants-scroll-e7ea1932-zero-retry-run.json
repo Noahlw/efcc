@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "runtime": "playwright",
+  "config": "tests/e2e/programs-participant-acceptance.config.ts",
+  "suite": "tests/e2e/programs-management-acceptance.test.ts",
+  "revision": "e7ea1932f5800ed006770dba24c0dbeb4329470e",
+  "candidate": "commit:e7ea1932",
+  "layer": "focused-browser-acceptance",
+  "scenario": "restores the Participants list position after returning from Overview",
+  "projects": ["phone-360", "phone-390", "phone-402"],
+  "retries": 0,
+  "status": "passed",
+  "startedAt": "2026-09-17T20:21:21.513Z",
+  "durationMs": 49038.074,
+  "expected": 3,
+  "skipped": 0,
+  "unexpected": 0,
+  "reportPath": ".delivery/programs-622-626/artifacts/participants-scroll-e7ea1932-zero-retry-results.json",
+  "sourceNote": "Production source is bound to commit:e7ea1932; this run also validates the zero-retry fixture-restore helper in the current acceptance test worktree."
+}

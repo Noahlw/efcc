@@ -50,7 +50,10 @@ export default defineProject(async () => {
       // module scope (it only applies unapplied migrations, so it is safe
       // to call per file).
       include: ["worker.test.ts", "worker.auth.test.ts", "lib/**/*.test.ts"],
-      exclude: ["lib/governance/**"],
+      exclude: [
+        "lib/governance/**",
+        "lib/programs/programs-scroll.test.ts",
+      ],
       // No secrets in output - the ticket's verification requirement.
       // Reporter stays the default (consolidated pass/fail counts).
     },

@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "runtime": "vitest",
+  "config": "web/vitest.config.ts",
+  "suite": "web/lib/**/*.test.ts",
+  "revision": "e7ea1932f5800ed006770dba24c0dbeb4329470e",
+  "candidate": "commit:e7ea1932",
+  "layer": "worker-d1",
+  "status": "passed",
+  "numTotalTestSuites": 142,
+  "numPassedTestSuites": 142,
+  "numFailedTestSuites": 0,
+  "numTotalTests": 676,
+  "numPassedTests": 676,
+  "numFailedTests": 0,
+  "numPendingTests": 0,
+  "reportPath": ".delivery/programs-622-626/artifacts/worker-e7ea1932-zero-retry-results.json"
+}

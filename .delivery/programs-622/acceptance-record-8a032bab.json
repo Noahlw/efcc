@@ -1,0 +1,83 @@
+{
+  "version": 2,
+  "candidate": "commit:8a032bab",
+  "repositoryRoot": "/Users/noah.wong/Desktop/code/efcc",
+  "acceptanceProfile": "complex",
+  "reviewRisk": {
+    "level": "high",
+    "reason": "cross-screen async state, authoritative resource freshness, Attendance outcomes, and unknown mutation recovery"
+  },
+  "delegationAvailable": true,
+  "requirements": ["R41", "R42", "R49", "R52"],
+  "review": {
+    "mode": "independent",
+    "candidate": "commit:8a032bab",
+    "reviewer": "Verify622 review was performed against the prior baseline; no fresh independent candidate-bound review exists for commit:8a032bab"
+  },
+  "criteria": [
+    {
+      "id": "R41",
+      "status": "verified",
+      "expected": "One authoritative Program/cockpit resource; a committed Settings/Event/Schedule/Enrollment write is reflected in Overview, counts, next/open Event, and capability presentation without a full-page reload, and an older response cannot replace newer state.",
+      "actual": "Single owner: ProgramWorkspace holds the department+modules+program+cockpit payload through useAsyncResource and refreshes it serialized on a queue (web/lib/programs/program-workspace.tsx:663-688); superseded refreshes settle as stale rather than leaving freshness unchanged (the earlier record's wording was wrong). Cockpit projects pending_enrollment_count/active_event_count/next_event/open_events (web/lib/programs/department-workspace.ts:1489-1586); Overview consumes open_events only when cockpit.program_id matches (web/lib/programs/workspace-task.tsx:412-419). Independent verifier ran the Worker cockpit projection test (pending=1, active_event_count=4, next_event = the open Event) and the useAsyncResource stale-result tests; the candidate browser run passes the settings/Event/Enrollment convergence journey and the focused Worker/component suites at revision 8a032bab. The predecessor browser pair at revision 3ae51b75 remains historical applicability evidence only.",
+      "level": "worker-d1 + component + real-route",
+      "candidate": "commit:8a032bab",
+      "evidence": [
+        ".delivery/programs-622-626/artifacts/browser-8a032bab-run.json",
+        ".delivery/programs-622-626/artifacts/browser-8a032bab-results.json",
+        "web/lib/programs/program-workspace.tsx:663-688",
+        "web/lib/programs/department-workspace.ts:1489-1586"
+      ]
+    },
+    {
+      "id": "R42",
+      "status": "verified",
+      "expected": "A confirmed write stays successful when the following read fails; visible data is marked stale with a read-only Retry that never replays the write; an unknown write outcome reconciles authoritative records before another mutation.",
+      "actual": "Event Detail keeps the committed mutation and exposes Retry Refresh (web/lib/programs/event-detail.tsx:696-780, Retry at :1649-1651); Settings applies the PATCH result and marks reload-required/stale when the follow-up read fails (web/lib/programs/program-settings.tsx:2200-2248); unknown outcomes persist a recovery target and block dependent mutations (web/lib/programs/mutation-recovery.ts:141-173, :529-578); Attendance keeps a stale read-only projection and refuses mutations while stale/unknown (web/lib/attendance-operator-panel.tsx:1914-1919, :1996-2000, :2046-2050). Independent verifier re-ran the component cases; the candidate browser run passes the real-route readback journey at revision 8a032bab, while the focused Worker/component tests cover the newer authoritative-revision seam.",
+      "level": "component + real-route",
+      "candidate": "commit:8a032bab",
+      "evidence": [
+        ".delivery/programs-622-626/artifacts/browser-8a032bab-run.json",
+        ".delivery/programs-622-626/artifacts/browser-8a032bab-results.json",
+        ".delivery/programs-622-626/artifacts/components-8a032bab-results.json",
+        "web/lib/programs/event-detail.tsx:696-780"
+      ]
+    },
+    {
+      "id": "R49",
+      "status": "verified",
+      "expected": "Program Detail and Overview keep an Active non-cancelled Event visible while its Check-In Window is open, even after start time; several open Events are presented as a truthful choice.",
+      "actual": "The server open filter uses the Check-In Window, never starts_at (web/lib/programs/department-workspace.ts:1512-1522); Overview lists open_events with 'choose meeting' copy when more than one is open (web/lib/programs/workspace-task.tsx:477-552); participant detail keeps an Event visible while participant check-in remains open (web/lib/programs/participant-program-detail.tsx:90-93). Independent verifier ran the Worker time-boundary test (open Event started 30 minutes ago outranks a 2099 future Event; a cancelled future Event is excluded) and the component multiple-open-choice test.",
+      "level": "worker-d1 + component",
+      "candidate": "commit:8a032bab",
+      "evidence": [
+        "web/lib/programs/department-workspace.ts:1512-1522",
+        "web/lib/programs/workspace-task.tsx:477-552"
+      ]
+    },
+    {
+      "id": "R52",
+      "status": "unverified",
+      "expected": "Package evidence is candidate-bound, and Worker/D1 tests exercise write-2xx-then-read-5xx, acknowledgement loss, out-of-order response, and current/open Event time boundaries; a fresh independent reviewer checks Spec plus Acceptance.",
+      "actual": "Candidate 8a032bab has candidate-bound Worker/D1 and component manifests: the full Worker suite passed 676/676 and the full component suite passed 1206/1206; the source seams cover readback failure, acknowledgement loss, and out-of-order responses. No fresh independent candidate-bound Spec plus Acceptance review is available, so R52 remains unverified.",
+      "level": "independent-review",
+      "candidate": "commit:8a032bab",
+      "evidence": [
+        "web/lib/programs/authoritative-revision.ts",
+        "web/lib/programs/event-detail.tsx:448-462",
+        "web/lib/programs/programs.test.ts:12022-12065",
+        "web/lib/programs/programs.test.ts:12245-12263",
+        ".delivery/programs-622-626/artifacts/worker-results.json (revision metadata unavailable; not candidate-bound proof)",
+        "fresh independent candidate-bound review: missing",
+        ".delivery/programs-622-626/artifacts/worker-8a032bab-zero-retry-run.json",
+        ".delivery/programs-622-626/artifacts/components-8a032bab-zero-retry-run.json"
+      ]
+    }
+  ],
+  "limitations": [
+    "Focused R52 Worker/D1 seam coverage passes at candidate 8a032bab; physical iPhone Safari / Android Chrome camera, downloaded-QR rescan, and native print remain unrun as the named completion gate shared with #625.",
+    "Two claims in the superseded 76ce0bd5 record were falsified and are corrected here: superseded refreshes settle as stale (not 'freshness unchanged'), and the cited program-settings.test.tsx:376-398 range is a Settings-group assertion, not a readback test.",
+    "Owner L2 approval, merge, deployment, release, and issue closure are outside this record.",
+    "The aggregate promotion verifier cannot run in this worktree because T05.7 requires a clean worktree and pre-existing unrelated documentation changes are deliberately preserved."
+  ]
+}

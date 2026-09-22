@@ -1,28 +1,468 @@
 /** @vitest-environment jsdom */
 
-import { expect, test } from "vitest";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 
+import { setupServer } from "msw/node";
+import { afterAll, afterEach, beforeAll, expect, test } from "vitest";
+
+import type { ParticipantProgramDetail } from "@/lib/programs/program-api";
+
+import {
+  PROGRAMS_MATERIAL_SCENARIO_NAMES,
+  getProgramsStoryScenario,
+} from "./programs-fixtures";
 import { assertProgramsScreen } from "./programs-presentation-contract";
+
+const storyServer = setupServer();
+
+beforeAll(() => {
+  storyServer.listen({ onUnhandledRequest: "error" });
+});
+
+afterEach(() => {
+  storyServer.resetHandlers();
+});
+
+afterAll(() => {
+  storyServer.close();
+});
 
 const readiness = {
   selector: "[data-program-name]",
-  text: "Storybook Programs Workshop",
+  text: "門徒訓練基礎課",
 };
+
+const EXPECTED_PROGRAMS_MATERIAL_SCENARIO_NAMES = [
+  "participant-directory-member",
+  "participant-directory-capable",
+  "participant-program-detail-active",
+  "participant-program-detail-eligible",
+  "participant-program-detail-pending",
+  "participant-program-detail-rejected",
+  "participant-event-detail-closed",
+  "participant-event-detail-open",
+  "participant-event-detail-ineligible",
+  "management-directory-mixed",
+  "workspace-overview-populated",
+  "workspace-overview-zero",
+  "workspace-events-mixed",
+  "workspace-participants-pending",
+  "workspace-settings-dirty",
+  "workspace-settings-conflict",
+  "workspace-schedule-focused",
+  "workspace-schedule-stale",
+  "workspace-schedule-partial-resume",
+  "notifications-unread",
+  "notifications-empty-recoverable",
+] as const;
+
+const REQUIRED_BEHAVIOR_PLAY_EXPORTS = [
+  "ParticipantDirectoryCapable",
+  "ParticipantProgramDetailEligible",
+  "ParticipantProgramDetailActive",
+  "ParticipantProgramDetailPending",
+  "ParticipantProgramDetailRejected",
+  "ParticipantEventDetailClosed",
+  "ParticipantEventDetailOpen",
+  "ParticipantEventDetailIneligible",
+  "ManagementDirectoryMixed",
+  "WorkspaceEventsMixed",
+  "WorkspaceScheduleFocused",
+  "WorkspaceScheduleStale",
+  "WorkspaceSchedulePartialResume",
+  "WorkspaceSettingsDirty",
+  "WorkspaceSettingsConflict",
+  "NotificationsUnread",
+  "NotificationsEmptyRecoverable",
+] as const;
+
+const PARTICIPANT_MUTATION_SCENARIOS = [
+  {
+    scenario: "participant-program-detail-eligible",
+    programId: "t07-3-eligible-program",
+    mutationPath: "enrollment-requests",
+    responseKey: "request",
+    initialStatus: null,
+    nextStatus: "Pending",
+  },
+  {
+    scenario: "participant-program-detail-active",
+    programId: "t07-3-program",
+    mutationPath: "enrollments/t07-3-enrollment/cancel",
+    responseKey: "enrollment",
+    initialStatus: "Active",
+    nextStatus: "Cancelled",
+  },
+  {
+    scenario: "participant-program-detail-pending",
+    programId: "t07-3-program",
+    mutationPath: "enrollment-requests/t07-3-pending-request/withdraw",
+    responseKey: "request",
+    initialStatus: "Pending",
+    nextStatus: "Withdrawn",
+  },
+  {
+    scenario: "participant-program-detail-rejected",
+    programId: "t07-3-program",
+    mutationPath: "enrollment-requests",
+    responseKey: "request",
+    initialStatus: "Rejected",
+    nextStatus: "Pending",
+  },
+] as const;
+
+const SCHEDULE_STATEFUL_SCENARIOS = [
+  "workspace-schedule-stale",
+  "workspace-schedule-partial-resume",
+] as const;
+
+const SETTINGS_NOTIFICATION_STATEFUL_SCENARIOS = [
+  "workspace-settings-conflict",
+  "notifications-empty-recoverable",
+  "notifications-unread",
+] as const;
+
+const participantDetail = async (
+  programId: string
+): Promise<ParticipantProgramDetail> => {
+  const response = await fetch(
+    `http://localhost/api/v1/programs/${programId}/participant-detail`
+  );
+  expect(response.status).toBe(200);
+  const body = (await response.json()) as {
+    data: { detail: ParticipantProgramDetail };
+  };
+  return body.data.detail;
+};
+
+const participantStatuses = (detail: ParticipantProgramDetail) => [
+  ...(detail.enrollment?.requests.map((request) => request.status) ?? []),
+  ...(detail.enrollment?.enrollments.map((enrollment) => enrollment.status) ??
+    []),
+];
+
+const postSchedule = (path: string) =>
+  fetch(`http://localhost/api/v1/programs/${path}`, {
+    method: "POST",
+    body: JSON.stringify({ horizon_days: 90 }),
+  });
+
+const patchProgram = () =>
+  fetch("http://localhost/api/v1/programs/t07-3-program", {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name: "衝突後草稿" }),
+  });
+
+const getNotifications = () =>
+  fetch("http://localhost/api/v1/programs/notifications");
+
+const postNotificationsRead = (
+  items: readonly { source_key: string; source_revision: string }[]
+) =>
+  fetch("http://localhost/api/v1/programs/notifications/read", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ items }),
+  });
 
 test("does not accept the shared AppShell main landmark as a settled Programs screen", async () => {
   document.body.innerHTML =
     '<main><section id="programs-catalog-state" aria-busy="true"></section></main>';
 
-  await expect(assertProgramsScreen(document.body, readiness)).rejects.toThrow(
-    "Programs presentation is still loading"
-  );
+  await expect(
+    assertProgramsScreen(document.body, { ...readiness, timeout: 50 })
+  ).rejects.toThrow("Programs presentation is still loading");
 });
 
 test("accepts the settled marker after the representative fixture resolves", async () => {
   document.body.innerHTML =
-    "<main><a data-program-name>Storybook Programs Workshop</a></main>";
+    '<main><div data-screen-foundation="page-frame" data-screen-route="programs"><a data-program-name>門徒訓練基礎課</a></div></main>';
 
   await expect(
     assertProgramsScreen(document.body, readiness)
   ).resolves.toBeUndefined();
+});
+
+test("pins the exhaustive named Programs material-state inventory", () => {
+  expect(PROGRAMS_MATERIAL_SCENARIO_NAMES).toStrictEqual(
+    EXPECTED_PROGRAMS_MATERIAL_SCENARIO_NAMES
+  );
+  expect(new Set(PROGRAMS_MATERIAL_SCENARIO_NAMES).size).toBe(
+    PROGRAMS_MATERIAL_SCENARIO_NAMES.length
+  );
+  for (const scenarioName of EXPECTED_PROGRAMS_MATERIAL_SCENARIO_NAMES) {
+    const scenario = getProgramsStoryScenario(
+      scenarioName as (typeof PROGRAMS_MATERIAL_SCENARIO_NAMES)[number]
+    );
+    expect(scenario.pathname).toBe("/programs");
+    expect(scenario.query).toStrictEqual(expect.any(Object));
+    expect(scenario.handlers.length).toBeGreaterThan(0);
+  }
+});
+
+test("requires route-backed material states to define named behavior Plays", () => {
+  const storySource = readFileSync(
+    join(process.cwd(), ".storybook/programs-material-states.stories.tsx"),
+    "utf8"
+  );
+
+  for (const exportName of REQUIRED_BEHAVIOR_PLAY_EXPORTS) {
+    const exportStart = `export const ${exportName}: Story = materialStory(`;
+    const start = storySource.indexOf(exportStart);
+    expect(start, `${exportName} export is missing`).toBeGreaterThanOrEqual(0);
+
+    const nextExport = storySource.indexOf("\nexport const ", start + 1);
+    const declaration = storySource.slice(
+      start,
+      nextExport === -1 ? storySource.length : nextExport
+    );
+
+    expect(
+      declaration,
+      `${exportName} must pass a named behavior Play`
+    ).toMatch(/,\s*[A-Za-z_$][\w$]*Play\s*\)\s*;?\s*$/u);
+  }
+});
+
+test("installs mutable Programs handlers per Story invocation", () => {
+  const storySource = readFileSync(
+    join(process.cwd(), ".storybook/programs-material-states.stories.tsx"),
+    "utf8"
+  );
+
+  expect(storySource).toMatch(/loaders:\s*\[/u);
+  expect(storySource).toContain("worker.resetHandlers()");
+  expect(storySource).toContain(
+    "worker.use(...getProgramsStoryScenario(name).handlers)"
+  );
+  expect(storySource).not.toContain("msw: scenario.handlers");
+});
+
+test.each(PARTICIPANT_MUTATION_SCENARIOS)(
+  "$scenario owns a resettable server-backed mutation projection",
+  async ({
+    scenario: scenarioName,
+    programId,
+    mutationPath,
+    responseKey,
+    initialStatus,
+    nextStatus,
+  }) => {
+    const scenario = getProgramsStoryScenario(
+      scenarioName as (typeof PROGRAMS_MATERIAL_SCENARIO_NAMES)[number]
+    );
+    storyServer.use(...scenario.handlers);
+
+    const initial = await participantDetail(programId);
+    expect(
+      initialStatus === null ? initial.enrollment : participantStatuses(initial)
+    ).toEqual(
+      initialStatus === null ? null : expect.arrayContaining([initialStatus])
+    );
+
+    const mutation = await fetch(
+      `http://localhost/api/v1/programs/${programId}/${mutationPath}`,
+      { method: "POST" }
+    );
+    expect(mutation.status).toBe(200);
+    const mutationBody = (await mutation.json()) as {
+      data: Record<string, { status: string }>;
+    };
+    expect(mutationBody.data[responseKey]?.status).toBe(nextStatus);
+
+    const projected = await participantDetail(programId);
+    expect(participantStatuses(projected)).toContain(nextStatus);
+
+    const freshScenario = getProgramsStoryScenario(
+      scenarioName as (typeof PROGRAMS_MATERIAL_SCENARIO_NAMES)[number]
+    );
+    storyServer.resetHandlers(...freshScenario.handlers);
+    const reset = await participantDetail(programId);
+    expect(
+      initialStatus === null ? reset.enrollment : participantStatuses(reset)
+    ).toEqual(
+      initialStatus === null ? null : expect.arrayContaining([initialStatus])
+    );
+    expect(participantStatuses(reset)).not.toContain(nextStatus);
+  }
+);
+
+test("resets stale Schedule preview/generate state per factory invocation", async () => {
+  const scenarioName = SCHEDULE_STATEFUL_SCENARIOS[0];
+  const scenario = getProgramsStoryScenario(scenarioName);
+  storyServer.use(...scenario.handlers);
+
+  const firstPreview = await postSchedule("t07-3-program/events/preview");
+  expect(firstPreview.status).toBe(200);
+  const firstPreviewBody = (await firstPreview.json()) as {
+    data: { plan: { plan_id: string } };
+  };
+  expect(firstPreviewBody.data.plan.plan_id).toBe("t07-3-stale-plan");
+
+  const staleGenerate = await postSchedule("t07-3-program/events/generate");
+  expect(staleGenerate.status).toBe(409);
+  expect((await staleGenerate.json()) as { code: string }).toMatchObject({
+    code: "STALE_PLAN",
+  });
+
+  const freshPreview = await postSchedule("t07-3-program/events/preview");
+  const freshPreviewBody = (await freshPreview.json()) as {
+    data: { plan: { plan_id: string } };
+  };
+  expect(freshPreviewBody.data.plan.plan_id).toBe("t07-3-fresh-plan");
+  const completedGenerate = await postSchedule("t07-3-program/events/generate");
+  expect(completedGenerate.status).toBe(200);
+  expect(
+    (await completedGenerate.json()) as {
+      data: { generated: { status: string } };
+    }
+  ).toMatchObject({ data: { generated: { status: "completed" } } });
+
+  const freshScenario = getProgramsStoryScenario(scenarioName);
+  storyServer.resetHandlers(...freshScenario.handlers);
+  const resetPreview = await postSchedule("t07-3-program/events/preview");
+  expect(
+    ((await resetPreview.json()) as { data: { plan: { plan_id: string } } })
+      .data.plan.plan_id
+  ).toBe("t07-3-stale-plan");
+  expect((await postSchedule("t07-3-program/events/generate")).status).toBe(
+    409
+  );
+});
+
+test("resets partial Schedule resume state per factory invocation", async () => {
+  const scenarioName = SCHEDULE_STATEFUL_SCENARIOS[1];
+  const scenario = getProgramsStoryScenario(scenarioName);
+  storyServer.use(...scenario.handlers);
+
+  await expect(
+    postSchedule("t07-3-program/events/preview")
+  ).resolves.toHaveProperty("status", 200);
+  const partialGenerate = await postSchedule("t07-3-program/events/generate");
+  expect(partialGenerate.status).toBe(200);
+  expect(await partialGenerate.json()).toMatchObject({
+    data: { generated: { status: "partial", resumed: false } },
+  });
+  const resumedGenerate = await postSchedule("t07-3-program/events/generate");
+  expect(resumedGenerate.status).toBe(200);
+  expect(await resumedGenerate.json()).toMatchObject({
+    data: { generated: { status: "completed", resumed: true } },
+  });
+
+  const freshScenario = getProgramsStoryScenario(scenarioName);
+  storyServer.resetHandlers(...freshScenario.handlers);
+  await postSchedule("t07-3-program/events/preview");
+  const resetPartialGenerate = await postSchedule(
+    "t07-3-program/events/generate"
+  );
+  expect(await resetPartialGenerate.json()).toMatchObject({
+    data: { generated: { status: "partial", resumed: false } },
+  });
+});
+
+test("resets Settings conflict state per factory invocation", async () => {
+  const scenarioName = SETTINGS_NOTIFICATION_STATEFUL_SCENARIOS[0];
+  const scenario = getProgramsStoryScenario(scenarioName);
+  storyServer.use(...scenario.handlers);
+
+  expect((await patchProgram()).status).toBe(409);
+  expect(await patchProgram()).toHaveProperty("status", 200);
+
+  const freshScenario = getProgramsStoryScenario(scenarioName);
+  storyServer.resetHandlers(...freshScenario.handlers);
+  expect((await patchProgram()).status).toBe(409);
+});
+
+test("resets recoverable Notifications retry state per factory invocation", async () => {
+  const scenarioName = SETTINGS_NOTIFICATION_STATEFUL_SCENARIOS[1];
+  const scenario = getProgramsStoryScenario(scenarioName);
+  storyServer.use(...scenario.handlers);
+
+  expect((await getNotifications()).status).toBe(503);
+  const emptyResponse = await getNotifications();
+  expect(emptyResponse.status).toBe(200);
+  expect(await emptyResponse.json()).toMatchObject({
+    data: { items: [], unread_count: 0 },
+  });
+
+  const freshScenario = getProgramsStoryScenario(scenarioName);
+  storyServer.resetHandlers(...freshScenario.handlers);
+  expect((await getNotifications()).status).toBe(503);
+});
+
+test("projects Notifications read mutations and resets their state per factory invocation", async () => {
+  const scenarioName = SETTINGS_NOTIFICATION_STATEFUL_SCENARIOS[2];
+  const scenario = getProgramsStoryScenario(scenarioName);
+  storyServer.use(...scenario.handlers);
+
+  const initialResponse = await getNotifications();
+  const initialBody = (await initialResponse.json()) as {
+    data: {
+      items: readonly {
+        source_key: string;
+        source_revision: string;
+        read: boolean;
+      }[];
+      unread_count: number;
+    };
+  };
+  expect(initialBody.data.unread_count).toBe(3);
+  const firstUnread = initialBody.data.items.find((item) => !item.read);
+  expect(firstUnread).toBeDefined();
+  if (!firstUnread) {
+    throw new Error("Unread fixture item is missing");
+  }
+
+  await expect(
+    postNotificationsRead([
+      {
+        source_key: firstUnread.source_key,
+        source_revision: firstUnread.source_revision,
+      },
+    ])
+  ).resolves.toHaveProperty("status", 200);
+  const projectedResponse = await getNotifications();
+  expect(await projectedResponse.json()).toMatchObject({
+    data: { unread_count: 2 },
+  });
+
+  const freshScenario = getProgramsStoryScenario(scenarioName);
+  storyServer.resetHandlers(...freshScenario.handlers);
+  const resetResponse = await getNotifications();
+  expect(await resetResponse.json()).toMatchObject({
+    data: { unread_count: 3 },
+  });
+});
+
+test("keeps the scenario factory free of complexity suppression", () => {
+  const source = readFileSync(
+    join(process.cwd(), ".storybook/programs-fixtures.ts"),
+    "utf8"
+  );
+
+  expect(source).not.toContain("oxlint-disable-next-line complexity");
+});
+
+test("keeps Programs route fixtures free of demo labels and future dates", () => {
+  const fixtureSource = readFileSync(
+    join(process.cwd(), ".storybook/programs-fixtures.ts"),
+    "utf8"
+  );
+  const storySource = readFileSync(
+    join(process.cwd(), ".storybook/programs.stories.tsx"),
+    "utf8"
+  );
+
+  expect(`${fixtureSource}\n${storySource}`).not.toMatch(/Storybook|2099/u);
+});
+
+test("rejects a settled direct leaf without the production route frame", async () => {
+  document.body.innerHTML =
+    "<main><a data-program-name>門徒訓練基礎課</a></main>";
+
+  await expect(
+    assertProgramsScreen(document.body, { ...readiness, timeout: 50 })
+  ).rejects.toThrow("Programs route frame is missing");
 });

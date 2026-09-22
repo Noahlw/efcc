@@ -183,6 +183,15 @@ async function createProgram(
   const body = await correlated<{
     data: { program: { program_id: string } };
   }>(response);
+  const promote = await worker.fetch(
+    request(`/api/v1/programs/${body.data.program.program_id}`, {
+      method: "PATCH",
+      cookie: adminCookie,
+      body: { lifecycle: "Active", discoverability: "Listed" },
+    }),
+    testEnv()
+  );
+  assert.equal(promote.status, 200);
   return { programId: body.data.program.program_id, idempotencyKey };
 }
 

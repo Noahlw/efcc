@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "runtime": "vitest",
+  "config": "web/vitest.config.ts",
+  "suite": "web/lib/**/*.test.ts",
+  "revision": "95a5bd71c2b403efb53066a82156e59008915378",
+  "candidate": "commit:95a5bd71",
+  "layer": "worker-d1",
+  "status": "passed",
+  "numTotalTestSuites": 142,
+  "numPassedTestSuites": 142,
+  "numFailedTestSuites": 0,
+  "numPendingTestSuites": 0,
+  "numTotalTests": 676,
+  "numPassedTests": 676,
+  "numFailedTests": 0,
+  "numPendingTests": 0,
+  "reportPath": ".delivery/programs-622-626/artifacts/worker-95a5bd71-results.json",
+  "retries": 0
+}

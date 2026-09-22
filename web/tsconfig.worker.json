@@ -35,6 +35,7 @@
   ],
   "exclude": [
     "lib/programs/program-api.ts",
+    "lib/programs/programs-scroll.test.ts",
     "lib/home-api.ts",
     "lib/home-api.test.ts"
   ]

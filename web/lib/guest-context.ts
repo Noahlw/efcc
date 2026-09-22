@@ -12,6 +12,8 @@ export type CheckInCredentialKind = "program_token" | "manual_code";
 export interface CheckInCredential {
   kind: CheckInCredentialKind;
   value: string;
+  /** The Event selected before a login detour; never trusted for authority. */
+  eventId?: string;
 }
 
 export function clearGuestCredential(): void {
@@ -27,13 +29,20 @@ export function readGuestCredential(): CheckInCredential | null {
     const parsed = JSON.parse(raw) as {
       kind?: unknown;
       value?: unknown;
+      eventId?: unknown;
     };
     if (
       (parsed.kind === "program_token" || parsed.kind === "manual_code") &&
       typeof parsed.value === "string" &&
       parsed.value.length > 0
     ) {
-      return { kind: parsed.kind, value: parsed.value };
+      return {
+        kind: parsed.kind,
+        value: parsed.value,
+        ...(typeof parsed.eventId === "string" && parsed.eventId.length > 0
+          ? { eventId: parsed.eventId }
+          : {}),
+      };
     }
   } catch {
     // Malformed payload is treated as absent.
@@ -48,5 +57,8 @@ export function writeGuestCredential(credential: CheckInCredential): void {
 
 /** Scanner page deep link that resumes the pending Check-In Credential. */
 export function scannerEntryPath(credential: CheckInCredential): string {
-  return `/scanner?${credential.kind}=${encodeURIComponent(credential.value)}`;
+  const eventQuery = credential.eventId
+    ? `event=${encodeURIComponent(credential.eventId)}&`
+    : "";
+  return `/scanner?${eventQuery}${credential.kind}=${encodeURIComponent(credential.value)}`;
 }

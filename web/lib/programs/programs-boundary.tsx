@@ -20,7 +20,13 @@ import type {
   ManagementNotifications,
 } from "@/lib/programs/program-api";
 import { ScreenHeader, ScreenState } from "@/lib/screen-foundations";
-import { rememberDeepLink } from "@/lib/session";
+import {
+  consumeProgramsNavigationContext,
+  pushProgramsNavigationContext,
+  readProgramsNavigationContext,
+  rememberDeepLink,
+  rememberProgramsNavigationContext,
+} from "@/lib/session";
 
 import { ManagementDirectory } from "./management-directory";
 import {
@@ -35,11 +41,19 @@ import type { ProgramsManagementAccess } from "./programs-access";
 import { buildProgramsHref, parseProgramsIntent } from "./programs-intent";
 import type {
   ProgramsIntent,
+  ManagementEventAction,
+  ProgramsEventFilter,
+  ProgramsParticipantFilter,
+  ProgramsParticipantTab,
+  ProgramsScheduleEditor,
+  ProgramsScheduleOrigin,
+  ProgramsSettingsSection,
   ProgramsOrigin,
   ProgramsTask,
 } from "./programs-intent";
 import { ProgramsNotifications } from "./programs-notifications";
 import type { ManagementNotificationState } from "./programs-notifications";
+import { readProgramsScrollY } from "./programs-scroll";
 import { useAsyncResource } from "./use-async-resource";
 import { WorkspaceRouteProvider } from "./workspace-context";
 
@@ -108,7 +122,11 @@ function participantOriginHref(
       return "/messages";
     }
     default: {
-      return `/programs${hash ?? ""}`;
+      const href = buildProgramsHref({
+        mode: "participant",
+        hash,
+      });
+      return href;
     }
   }
 }
@@ -221,11 +239,9 @@ const BoundaryFrame = ({
   children: React.ReactNode;
   showFallbackHeader: boolean;
 }) => (
-  <div
+  <section
     id="programs-mode-panel"
     className="min-h-0 w-full min-w-0"
-    // eslint-disable-next-line jsx-a11y/prefer-tag-over-role -- preserve the Programs region contract
-    role="region"
     aria-label={showFallbackHeader ? undefined : COPY.programs.pageTitle}
     aria-labelledby={showFallbackHeader ? "programs-title" : undefined}
   >
@@ -237,7 +253,7 @@ const BoundaryFrame = ({
       />
     </div>
     {children}
-  </div>
+  </section>
 );
 
 const ManagementPanel = ({
@@ -247,21 +263,49 @@ const ManagementPanel = ({
   onOpenProgram,
   onTaskChange,
   onEventChange,
+  onOpenAttendance,
   onBackDirectory,
   directoryQuery,
   onDirectoryQueryChange,
   directoryFocusProgramId,
+  onEventFilterChange,
+  onParticipantTabChange,
+  onParticipantQueryChange,
+  onSettingsSectionChange,
+  onScheduleEditorChange,
+  onDepartmentSettingsChange,
+  restoredNavigationContext,
 }: {
   projection: ProgramsManagementAccess;
   intent: ProgramsIntent;
   onRecoverParticipant: () => void;
   onOpenProgram: (programId: string, created?: boolean) => void;
-  onTaskChange: (task: ProgramsTask | null, eventId?: string | null) => void;
-  onEventChange: (eventId: string | null) => void;
+  onTaskChange: (
+    task: ProgramsTask | null,
+    eventId?: string | null,
+    scheduleOrigin?: ProgramsScheduleOrigin
+  ) => void;
+  onEventChange: (
+    eventId: string | null,
+    eventAction?: ManagementEventAction
+  ) => void;
+  onOpenAttendance?: (eventId: string) => void;
   onBackDirectory: () => void;
   directoryQuery: string;
   onDirectoryQueryChange: (query: string) => void;
   directoryFocusProgramId: string | null;
+  onEventFilterChange: (filter: ProgramsEventFilter) => void;
+  onParticipantTabChange: (tab: ProgramsParticipantTab) => void;
+  onParticipantQueryChange: (query: string) => void;
+  onSettingsSectionChange: (section: ProgramsSettingsSection | null) => void;
+  onScheduleEditorChange: (
+    editor: ProgramsScheduleEditor | null,
+    ruleId?: string | null
+  ) => void;
+  onDepartmentSettingsChange: (departmentId: string | null) => void;
+  restoredNavigationContext: ReturnType<
+    typeof consumeProgramsNavigationContext
+  >;
 }) => {
   const router = useRouter();
   const [attentionRefreshKey, setAttentionRefreshKey] = useState(0);
@@ -394,17 +438,13 @@ const ManagementPanel = ({
 
   return (
     <>
-      {intent.task === "notifications" ? null : (
-        <div className="mb-5 flex min-w-0 justify-end">
-          {notificationSurface}
-        </div>
-      )}
       {intent.task === "notifications" ? notificationSurface : null}
       {intent.task === "notifications" ? null : intent.programId ? (
         <WorkspaceRouteProvider
           value={{
             departmentId: intent.departmentId ?? null,
             hash: intent.hash,
+            directoryQuery,
           }}
         >
           <ProgramWorkspace
@@ -412,12 +452,27 @@ const ManagementPanel = ({
             programId={intent.programId}
             task={intent.task}
             eventId={intent.eventId ?? null}
+            eventAction={intent.eventAction}
             created={intent.created}
             attention={attention}
+            notificationState={notificationState}
             onAttentionRefresh={refreshAttention}
             onBack={onBackDirectory}
             onTaskChange={onTaskChange}
             onEventChange={onEventChange}
+            onOpenAttendance={onOpenAttendance}
+            eventFilter={intent.eventFilter}
+            participantTab={intent.participantTab}
+            participantQuery={intent.participantQuery}
+            settingsSection={intent.settingsSection}
+            scheduleEditor={intent.scheduleEditor}
+            scheduleRuleId={intent.scheduleRuleId}
+            scheduleOrigin={intent.scheduleOrigin}
+            onEventFilterChange={onEventFilterChange}
+            onParticipantTabChange={onParticipantTabChange}
+            onParticipantQueryChange={onParticipantQueryChange}
+            onSettingsSectionChange={onSettingsSectionChange}
+            onScheduleEditorChange={onScheduleEditorChange}
           />
         </WorkspaceRouteProvider>
       ) : (
@@ -428,61 +483,27 @@ const ManagementPanel = ({
           onQueryChange={onDirectoryQueryChange}
           focusProgramId={directoryFocusProgramId}
           onOpenProgram={onOpenProgram}
+          departmentSettingsId={intent.departmentSettingsId}
+          onDepartmentSettingsChange={onDepartmentSettingsChange}
+          restoreScrollY={restoredNavigationContext?.scrollY}
         />
       )}
     </>
   );
 };
 
-/** The BoundaryFrame body once access has resolved (or is loading/erroring)
- * -- extracted out of ProgramsBoundary purely to keep that function's own
- * branch count under the complexity budget; no logic changed. */
-/* oxlint-disable-next-line eslint/complexity -- the boundary is the single route-intent state machine for all participant and management branches. */
-const ProgramsBoundaryBody = ({
+const AccessStatePanels = ({
   access,
   intent,
   retryAccess,
   onHome,
-  navigateMode,
-  openManagementProgram,
-  navigateManagementTask,
-  navigateManagementEvent,
-  navigateParticipantEvent,
-  navigateParticipantBack,
-  navigateParticipantEventBack,
-  directoryQuery,
-  onDirectoryQueryChange,
-  directoryFocusProgramId,
-  participantFocusProgramId,
-  onParticipantProgramOpen,
-  onParticipantProgramFocus,
+  onRecoverParticipant,
 }: {
   access: AccessState;
   intent: ProgramsIntent;
   retryAccess: () => void;
   onHome: () => void;
-  navigateMode: (
-    mode: "participant" | "management",
-    replace?: boolean,
-    programId?: string | null,
-    hash?: string | null,
-    departmentId?: string | null
-  ) => void;
-  openManagementProgram: (programId: string, created?: boolean) => void;
-  navigateManagementTask: (
-    task: ProgramsTask | null,
-    eventId?: string | null
-  ) => void;
-  navigateManagementEvent: (eventId: string | null) => void;
-  navigateParticipantEvent: (eventId: string | null) => void;
-  navigateParticipantBack: () => void;
-  navigateParticipantEventBack: () => void;
-  directoryQuery: string;
-  onDirectoryQueryChange: (query: string) => void;
-  directoryFocusProgramId: string | null;
-  participantFocusProgramId: string | null;
-  onParticipantProgramOpen: (programId: string) => void;
-  onParticipantProgramFocus: () => void;
+  onRecoverParticipant: () => void;
 }) => (
   <>
     {access.kind === "loading" && (
@@ -525,12 +546,103 @@ const ProgramsBoundaryBody = ({
               : COPY.programs.retryAccess
           }
           onAction={
-            access.failure === "forbidden"
-              ? () => navigateMode("participant", true)
-              : retryAccess
+            access.failure === "forbidden" ? onRecoverParticipant : retryAccess
           }
         />
       )}
+  </>
+);
+
+/** The BoundaryFrame body once access has resolved (or is loading/erroring). */
+const ProgramsBoundaryBody = ({
+  access,
+  intent,
+  retryAccess,
+  onHome,
+  navigateMode,
+  openManagementProgram,
+  navigateManagementTask,
+  navigateManagementEvent,
+  navigateManagementAttendance,
+  navigateParticipantEvent,
+  navigateParticipantBack,
+  navigateParticipantEventBack,
+  directoryQuery,
+  onDirectoryQueryChange,
+  directoryFocusProgramId,
+  participantFocusProgramId,
+  onParticipantProgramOpen,
+  onParticipantProgramFocus,
+  onEventFilterChange,
+  onParticipantTabChange,
+  onParticipantQueryChange,
+  onSettingsSectionChange,
+  onScheduleEditorChange,
+  onDepartmentSettingsChange,
+  restoredNavigationContext,
+  participantCatalogQuery,
+  participantCatalogFilter,
+  onCatalogQueryChange,
+  onCatalogFilterChange,
+  onCatalogFiltersClear,
+}: {
+  access: AccessState;
+  intent: ProgramsIntent;
+  retryAccess: () => void;
+  onHome: () => void;
+  navigateMode: (
+    mode: "participant" | "management",
+    replace?: boolean,
+    programId?: string | null,
+    hash?: string | null,
+    departmentId?: string | null
+  ) => void;
+  openManagementProgram: (programId: string, created?: boolean) => void;
+  navigateManagementTask: (
+    task: ProgramsTask | null,
+    eventId?: string | null,
+    scheduleOrigin?: ProgramsScheduleOrigin
+  ) => void;
+  navigateManagementEvent: (
+    eventId: string | null,
+    eventAction?: ManagementEventAction
+  ) => void;
+  navigateManagementAttendance: (eventId: string) => void;
+  navigateParticipantEvent: (eventId: string | null) => void;
+  navigateParticipantBack: () => void;
+  navigateParticipantEventBack: () => void;
+  directoryQuery: string;
+  onDirectoryQueryChange: (query: string) => void;
+  directoryFocusProgramId: string | null;
+  participantFocusProgramId: string | null;
+  onParticipantProgramOpen: (programId: string) => void;
+  onParticipantProgramFocus: () => void;
+  onEventFilterChange: (filter: ProgramsEventFilter) => void;
+  onParticipantTabChange: (tab: ProgramsParticipantTab) => void;
+  onParticipantQueryChange: (query: string) => void;
+  onSettingsSectionChange: (section: ProgramsSettingsSection | null) => void;
+  onScheduleEditorChange: (
+    editor: ProgramsScheduleEditor | null,
+    ruleId?: string | null
+  ) => void;
+  onDepartmentSettingsChange: (departmentId: string | null) => void;
+  restoredNavigationContext: ReturnType<
+    typeof consumeProgramsNavigationContext
+  >;
+  participantCatalogQuery: string;
+  participantCatalogFilter: ProgramsParticipantFilter;
+  onCatalogQueryChange: (query: string) => void;
+  onCatalogFilterChange: (filter: ProgramsParticipantFilter) => void;
+  onCatalogFiltersClear: () => void;
+}) => (
+  <>
+    <AccessStatePanels
+      access={access}
+      intent={intent}
+      retryAccess={retryAccess}
+      onHome={onHome}
+      onRecoverParticipant={() => navigateMode("participant", true)}
+    />
     {access.kind === "ready" && intent.mode === "management" && (
       <ManagementPanel
         projection={access.projection}
@@ -542,6 +654,14 @@ const ProgramsBoundaryBody = ({
         onOpenProgram={openManagementProgram}
         onTaskChange={navigateManagementTask}
         onEventChange={navigateManagementEvent}
+        onOpenAttendance={navigateManagementAttendance}
+        onEventFilterChange={onEventFilterChange}
+        onParticipantTabChange={onParticipantTabChange}
+        onParticipantQueryChange={onParticipantQueryChange}
+        onSettingsSectionChange={onSettingsSectionChange}
+        onScheduleEditorChange={onScheduleEditorChange}
+        onDepartmentSettingsChange={onDepartmentSettingsChange}
+        restoredNavigationContext={restoredNavigationContext}
         onBackDirectory={() =>
           navigateMode(
             "management",
@@ -605,6 +725,12 @@ const ProgramsBoundaryBody = ({
             })
           }
           onOpenProgram={onParticipantProgramOpen}
+          query={participantCatalogQuery}
+          filter={participantCatalogFilter}
+          restoreScrollY={restoredNavigationContext?.scrollY}
+          onQueryChange={onCatalogQueryChange}
+          onFilterChange={onCatalogFilterChange}
+          onClearFilters={onCatalogFiltersClear}
           focusProgramId={participantFocusProgramId}
           onFocusProgram={onParticipantProgramFocus}
           homeHref="/home"
@@ -620,12 +746,80 @@ export const ProgramsBoundary = () => {
   const routeHash = typeof window === "undefined" ? "" : window.location.hash;
   const routeKey = `${pathname}?${routeQuery}${routeHash}`;
   const [search, setSearch] = useState("");
+  const intent = useMemo(() => parseProgramsIntent(search), [search]);
+  const participantWorkspaceView = useRef<{
+    programId: string;
+    participantTab?: ProgramsParticipantTab;
+    participantQuery?: string;
+  } | null>(null);
+  useEffect(() => {
+    if (
+      intent.mode !== "management" ||
+      intent.task !== "participants" ||
+      !intent.programId
+    ) {
+      return;
+    }
+    const previous = participantWorkspaceView.current;
+    participantWorkspaceView.current = {
+      programId: intent.programId,
+      participantTab:
+        intent.participantTab ??
+        (previous?.programId === intent.programId
+          ? previous.participantTab
+          : undefined),
+      participantQuery:
+        intent.participantQuery ??
+        (previous?.programId === intent.programId
+          ? previous.participantQuery
+          : undefined),
+    };
+  }, [
+    intent.mode,
+    intent.participantQuery,
+    intent.participantTab,
+    intent.programId,
+    intent.task,
+  ]);
+  const restoredNavigationContext = useMemo(
+    () => readProgramsNavigationContext() ?? consumeProgramsNavigationContext(),
+    []
+  );
+  const [navigationContext, setNavigationContext] = useState(
+    restoredNavigationContext
+  );
   const [locationReady, setLocationReady] = useState(false);
-  const [managementDirectoryQuery, setManagementDirectoryQuery] = useState("");
+  const [managementDirectoryQuery, setManagementDirectoryQuery] = useState(
+    () =>
+      navigationContext?.surface === "management"
+        ? (navigationContext.directoryQuery ?? "")
+        : ""
+  );
+  const [participantCatalogQuery, setParticipantCatalogQuery] = useState(() =>
+    navigationContext?.surface === "participant"
+      ? (navigationContext.catalogQuery ?? "")
+      : ""
+  );
+  const [participantCatalogFilter, setParticipantCatalogFilter] =
+    useState<ProgramsParticipantFilter>(
+      () =>
+        (navigationContext?.surface === "participant" &&
+        navigationContext.catalogFilter
+          ? navigationContext.catalogFilter
+          : "all") as ProgramsParticipantFilter
+    );
   const [directoryFocusProgramId, setDirectoryFocusProgramId] = useState<
     string | null
-  >(null);
-  const participantFocusProgramId = useRef<string | null>(null);
+  >(
+    navigationContext?.surface === "management"
+      ? (navigationContext.focusProgramId ?? null)
+      : null
+  );
+  const participantFocusProgramId = useRef<string | null>(
+    navigationContext?.surface === "participant"
+      ? (navigationContext.focusProgramId ?? null)
+      : null
+  );
   useEffect(
     () => () => {
       if (
@@ -638,11 +832,32 @@ export const ProgramsBoundary = () => {
     []
   );
   const updateManagementDirectoryQuery = (query: string) => {
+    const context = {
+      surface: "management" as const,
+      directoryQuery: query,
+      scrollY: readProgramsScrollY(),
+    };
     setManagementDirectoryQuery(query);
     setDirectoryFocusProgramId(null);
+    setNavigationContext(context);
+    pushProgramsNavigationContext(context);
+    rememberProgramsNavigationContext(context);
   };
   const retryFocusPending = useRef(false);
-  const intent = useMemo(() => parseProgramsIntent(search), [search]);
+  useEffect(() => {
+    if (intent.directoryQuery !== undefined) {
+      setManagementDirectoryQuery(intent.directoryQuery);
+    }
+  }, [intent.directoryQuery]);
+  useEffect(() => {
+    if (intent.catalogQuery !== undefined) {
+      setParticipantCatalogQuery(intent.catalogQuery);
+    }
+    if (intent.catalogFilter !== undefined) {
+      setParticipantCatalogFilter(intent.catalogFilter);
+    }
+  }, [intent.catalogFilter, intent.catalogQuery]);
+  const accessRequestKey = `${pathname}?mode=${intent.mode}`;
   const { state: access, run: loadAccess } = useAsyncResource<
     ProgramsManagementAccess,
     AccessState
@@ -682,11 +897,42 @@ export const ProgramsBoundary = () => {
           ? COPY.programs.managementScopeReady
           : undefined,
     },
-    [pathname]
+    [accessRequestKey]
   );
   useEffect(() => {
-    const syncSearch = () =>
-      setSearch(`${window.location.search}${window.location.hash}`);
+    const syncSearch = () => {
+      const nextSearch = routeQuery ? `?${routeQuery}` : "";
+      setSearch(`${nextSearch}${window.location.hash}`);
+      const context = readProgramsNavigationContext();
+      setNavigationContext(context);
+      const nextIntent = parseProgramsIntent(
+        `${nextSearch}${window.location.hash}`
+      );
+      const isDirectory =
+        nextIntent.programId === null && nextIntent.task === undefined;
+      if (isDirectory) {
+        const restoredContext = context ?? consumeProgramsNavigationContext();
+        setNavigationContext(restoredContext);
+        if (restoredContext?.surface === "management") {
+          setManagementDirectoryQuery(restoredContext.directoryQuery ?? "");
+          setParticipantCatalogQuery("");
+          setParticipantCatalogFilter("all");
+        } else if (restoredContext?.surface === "participant") {
+          setParticipantCatalogQuery(restoredContext.catalogQuery ?? "");
+          setParticipantCatalogFilter(
+            (restoredContext.catalogFilter ??
+              "all") as ProgramsParticipantFilter
+          );
+          setManagementDirectoryQuery("");
+        } else if (nextIntent.mode === "management") {
+          setManagementDirectoryQuery("");
+          setParticipantCatalogQuery("");
+          setParticipantCatalogFilter("all");
+        } else {
+          setManagementDirectoryQuery("");
+        }
+      }
+    };
     syncSearch();
     setLocationReady(true);
     window.addEventListener("popstate", syncSearch);
@@ -695,7 +941,7 @@ export const ProgramsBoundary = () => {
       window.removeEventListener("popstate", syncSearch);
       window.removeEventListener("hashchange", syncSearch);
     };
-  }, [routeKey]);
+  }, [routeKey, routeQuery]);
 
   useEffect(() => {
     if (!locationReady || intent.malformed) {
@@ -763,10 +1009,18 @@ export const ProgramsBoundary = () => {
   };
   const navigateManagementTask = (
     task: ProgramsTask | null,
-    eventId?: string | null
+    eventId?: string | null,
+    scheduleOrigin?: ProgramsScheduleOrigin
   ) => {
     if (!intent.programId && task !== "notifications") {
       return;
+    }
+    if (intent.task === "participants" && intent.programId) {
+      participantWorkspaceView.current = {
+        programId: intent.programId,
+        participantTab: intent.participantTab,
+        participantQuery: intent.participantQuery,
+      };
     }
     const href = buildProgramsHref({
       mode: "management",
@@ -775,6 +1029,26 @@ export const ProgramsBoundary = () => {
       task,
       eventId,
       created: undefined,
+      eventFilter: task === "events" ? intent.eventFilter : undefined,
+      participantTab:
+        task === "participants"
+          ? (intent.participantTab ??
+            (participantWorkspaceView.current?.programId === intent.programId
+              ? participantWorkspaceView.current.participantTab
+              : undefined))
+          : undefined,
+      participantQuery:
+        task === "participants"
+          ? (intent.participantQuery ??
+            (participantWorkspaceView.current?.programId === intent.programId
+              ? participantWorkspaceView.current.participantQuery
+              : undefined))
+          : undefined,
+      settingsSection: task === "settings" ? intent.settingsSection : undefined,
+      scheduleOrigin:
+        task === "schedule"
+          ? (scheduleOrigin ?? intent.scheduleOrigin)
+          : undefined,
       hash: intent.hash,
     });
     applyProgramsNavigation(router, setSearch, href);
@@ -787,7 +1061,10 @@ export const ProgramsBoundary = () => {
   };
   // EVT-01 (#251): Event deep links live under the management events task;
   // null returns to the list.
-  const navigateManagementEvent = (eventId: string | null) => {
+  const navigateManagementEvent = (
+    eventId: string | null,
+    eventAction?: ManagementEventAction
+  ) => {
     if (!intent.programId) {
       return;
     }
@@ -797,12 +1074,178 @@ export const ProgramsBoundary = () => {
       departmentId: intent.departmentId,
       task: "events",
       eventId,
+      eventAction,
+      eventFilter: intent.eventFilter,
       hash: intent.hash,
     });
     applyProgramsNavigation(router, setSearch, href);
     announce(
       eventId === null ? COPY.programs.events : COPY.programs.eventDetailTitle
     );
+  };
+  const updateManagementEventFilter = (eventFilter: ProgramsEventFilter) => {
+    if (!intent.programId || intent.task !== "events") {
+      return;
+    }
+    applyProgramsNavigation(
+      router,
+      setSearch,
+      buildProgramsHref({
+        mode: "management",
+        programId: intent.programId,
+        departmentId: intent.departmentId,
+        task: "events",
+        eventId: intent.eventId,
+        eventAction: intent.eventAction,
+        eventFilter,
+        hash: intent.hash,
+      }),
+      true
+    );
+  };
+  const updateManagementParticipantTab = (
+    participantTab: ProgramsParticipantTab
+  ) => {
+    if (!intent.programId || intent.task !== "participants") {
+      return;
+    }
+    applyProgramsNavigation(
+      router,
+      setSearch,
+      buildProgramsHref({
+        mode: "management",
+        programId: intent.programId,
+        departmentId: intent.departmentId,
+        task: "participants",
+        eventId: intent.eventId,
+        participantTab,
+        participantQuery: intent.participantQuery,
+        hash: intent.hash,
+      }),
+      true
+    );
+  };
+  const updateManagementParticipantQuery = (participantQuery: string) => {
+    if (!intent.programId || intent.task !== "participants") {
+      return;
+    }
+    applyProgramsNavigation(
+      router,
+      setSearch,
+      buildProgramsHref({
+        mode: "management",
+        programId: intent.programId,
+        departmentId: intent.departmentId,
+        task: "participants",
+        eventId: intent.eventId,
+        participantTab: intent.participantTab,
+        participantQuery,
+        hash: intent.hash,
+      }),
+      true
+    );
+  };
+  const updateManagementSettingsSection = (
+    settingsSection: ProgramsSettingsSection | null
+  ) => {
+    if (!intent.programId || intent.task !== "settings") {
+      return;
+    }
+    applyProgramsNavigation(
+      router,
+      setSearch,
+      buildProgramsHref({
+        mode: "management",
+        programId: intent.programId,
+        departmentId: intent.departmentId,
+        task: "settings",
+        settingsSection,
+        hash: intent.hash,
+      }),
+      true
+    );
+  };
+  const updateManagementScheduleEditor = (
+    scheduleEditor: ProgramsScheduleEditor | null,
+    scheduleRuleId?: string | null
+  ) => {
+    if (!intent.programId || intent.task !== "schedule") {
+      return;
+    }
+    applyProgramsNavigation(
+      router,
+      setSearch,
+      buildProgramsHref({
+        mode: "management",
+        programId: intent.programId,
+        departmentId: intent.departmentId,
+        task: "schedule",
+        scheduleOrigin: intent.scheduleOrigin,
+        scheduleEditor,
+        scheduleRuleId,
+        hash: intent.hash,
+      }),
+      true
+    );
+  };
+  const updateManagementDepartmentSettings = (
+    departmentSettingsId: string | null
+  ) => {
+    if (intent.mode !== "management" || intent.programId !== null) {
+      return;
+    }
+    applyProgramsNavigation(
+      router,
+      setSearch,
+      buildProgramsHref({
+        mode: "management",
+        departmentId: intent.departmentId,
+        departmentSettingsId,
+        hash: intent.hash,
+      }),
+      departmentSettingsId === null
+    );
+  };
+  const updateCatalogQuery = (catalogQuery: string) => {
+    const context = {
+      surface: "participant" as const,
+      catalogQuery,
+      catalogFilter: participantCatalogFilter,
+      scrollY: readProgramsScrollY(),
+    };
+    setParticipantCatalogQuery(catalogQuery);
+    setNavigationContext(context);
+    pushProgramsNavigationContext(context);
+    rememberProgramsNavigationContext(context);
+  };
+  const updateCatalogFilter = (catalogFilter: ProgramsParticipantFilter) => {
+    const context = {
+      surface: "participant" as const,
+      catalogQuery: participantCatalogQuery,
+      catalogFilter,
+      scrollY: readProgramsScrollY(),
+    };
+    setParticipantCatalogFilter(catalogFilter);
+    setNavigationContext(context);
+    pushProgramsNavigationContext(context);
+    rememberProgramsNavigationContext(context);
+  };
+  const clearCatalogFilters = () => {
+    const context = {
+      surface: "participant" as const,
+      catalogQuery: "",
+      catalogFilter: "all",
+      scrollY: readProgramsScrollY(),
+    };
+    setParticipantCatalogQuery("");
+    setParticipantCatalogFilter("all");
+    setNavigationContext(context);
+    pushProgramsNavigationContext(context);
+    rememberProgramsNavigationContext(context);
+  };
+  const navigateManagementAttendance = (eventId: string) => {
+    router.push(`/events?eventId=${encodeURIComponent(eventId)}`);
+    announce(COPY.attendance.rosterTitle);
   };
   // PUI-05 (#323): participant Event Detail deep links carry program + event
   // on the participant boundary; null returns to the Program detail.
@@ -894,6 +1337,7 @@ export const ProgramsBoundary = () => {
         openManagementProgram={openManagementProgram}
         navigateManagementTask={navigateManagementTask}
         navigateManagementEvent={navigateManagementEvent}
+        navigateManagementAttendance={navigateManagementAttendance}
         navigateParticipantEvent={navigateParticipantEvent}
         navigateParticipantBack={navigateParticipantBack}
         navigateParticipantEventBack={navigateParticipantEventBack}
@@ -901,12 +1345,24 @@ export const ProgramsBoundary = () => {
         onDirectoryQueryChange={updateManagementDirectoryQuery}
         directoryFocusProgramId={directoryFocusProgramId}
         participantFocusProgramId={participantFocusProgramId.current}
+        participantCatalogQuery={participantCatalogQuery}
+        participantCatalogFilter={participantCatalogFilter}
         onParticipantProgramOpen={(programId) => {
           participantFocusProgramId.current = programId;
         }}
         onParticipantProgramFocus={() => {
           participantFocusProgramId.current = null;
         }}
+        onEventFilterChange={updateManagementEventFilter}
+        onParticipantTabChange={updateManagementParticipantTab}
+        onParticipantQueryChange={updateManagementParticipantQuery}
+        onSettingsSectionChange={updateManagementSettingsSection}
+        onScheduleEditorChange={updateManagementScheduleEditor}
+        onDepartmentSettingsChange={updateManagementDepartmentSettings}
+        restoredNavigationContext={navigationContext}
+        onCatalogQueryChange={updateCatalogQuery}
+        onCatalogFilterChange={updateCatalogFilter}
+        onCatalogFiltersClear={clearCatalogFilters}
       />
     </BoundaryFrame>
   );

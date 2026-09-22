@@ -553,11 +553,15 @@ export const ScannerConfirmation = ({
 export const ScannerCheckinResult = ({
   event,
   kind,
+  checkedInAt,
+  eventHref,
   headingRef,
   onScanAgain,
 }: {
   event: AttendanceEvent;
   kind: "success" | "duplicate";
+  checkedInAt?: string;
+  eventHref?: string;
   headingRef: RefObject<HTMLHeadingElement | null>;
   onScanAgain: () => void;
 }) => (
@@ -581,11 +585,18 @@ export const ScannerCheckinResult = ({
         : COPY.attendance.duplicateTitle}
     </h1>
     {kind === "success" ? (
-      <p className="text-base text-[var(--ink-muted)] leading-relaxed min-w-0 whitespace-normal [overflow-wrap:anywhere]">
-        <span>{event.program_name}</span>
-        <span aria-hidden="true"> · </span>
-        <span>{attendanceEventName(event)}</span>
-      </p>
+      <div className="grid gap-1 text-base text-[var(--ink-muted)] leading-relaxed min-w-0 whitespace-normal [overflow-wrap:anywhere]">
+        <p className="m-0">
+          <span>{event.program_name}</span>
+          <span aria-hidden="true"> · </span>
+          <span>{attendanceEventName(event)}</span>
+        </p>
+        {checkedInAt && (
+          <p className="m-0 text-sm">
+            {COPY.attendance.checkedInAt}：{hkWallLabel(checkedInAt)}
+          </p>
+        )}
+      </div>
     ) : (
       <p className="text-base text-[var(--ink-muted)] leading-relaxed">
         {COPY.attendance.duplicateBody}
@@ -596,7 +607,9 @@ export const ScannerCheckinResult = ({
         asChild
         className={attendanceButtonVariants({ variant: "primary" })}
       >
-        <a href="/">{COPY.attendance.backHome}</a>
+        <a href={eventHref ?? "/"}>
+          {eventHref ? COPY.attendance.returnToEvent : COPY.attendance.backHome}
+        </a>
       </Button>
       <Button
         variant="outline"
