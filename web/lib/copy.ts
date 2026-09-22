@@ -642,6 +642,12 @@ export const COPY = {
   forbidden: "您沒有權限編輯首頁內容。",
   retry: "重試連接",
   noAudit: "尚未有發佈紀錄。",
+  auditStale: "發佈紀錄暫時未能更新，以下係上次載入嘅紀錄。",
+  auditUnavailable: "暫時未能載入發佈紀錄。",
+  auditDenied: "未能讀取發佈紀錄，權限可能已變更。",
+  auditRetry: "重新載入發佈紀錄",
+  auditPending: "正在更新發佈紀錄…",
+  auditUpdated: "發佈紀錄已更新。",
  },
  // System Settings hub (Spec 084 US 24-26 / ticket 084-04). Exactly three
  // rows in the locked order; the 簽到設定 and 時區 destinations are pure
