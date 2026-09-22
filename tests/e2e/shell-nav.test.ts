@@ -216,7 +216,7 @@ test.describe("084-02: 5-slot navigation and shell contract", () => {
 });
 
 test.describe("089-S1: Reconciled shared shell, top bar, and Attention panel contract", () => {
-  test("Management top bar displays identity and bell; clicking bell opens Attention panel", async ({
+  test("Management top bar displays the brand and bell; clicking bell opens Attention panel", async ({
     page,
   }) => {
     await page.addInitScript(
@@ -231,8 +231,8 @@ test.describe("089-S1: Reconciled shared shell, top bar, and Attention panel con
     const header = page.locator("header");
     await expect(header).toBeVisible();
     await expect(header.getByText(COPY.shell.shortMark)).toBeVisible();
-    await expect(header.getByText(STAFF_USER.name)).toBeVisible();
-    await expect(header.getByText("同工")).toBeVisible();
+    await expect(header.getByText(STAFF_USER.name)).toHaveCount(0);
+    await expect(header.getByText("同工")).toHaveCount(0);
 
     const bell = header.getByRole("button", {
       name: new RegExp(COPY.attention.title),

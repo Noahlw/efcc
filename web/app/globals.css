@@ -289,6 +289,53 @@
    (#main-navigation, "主要導航") whose presentation switches here; both
    surfaces are the same DOM list, so screen readers never hear two
    landmarks (TK-04/TK-05/TK-06). */
+.shell-top {
+  height: calc(var(--screen-shell-height) + env(safe-area-inset-top, 0px));
+  min-height: var(--screen-shell-height);
+  padding: env(safe-area-inset-top, 0px) var(--screen-gutter) 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--screen-utility-gap);
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  background: color-mix(in srgb, var(--screen-canvas) 94%, transparent);
+  backdrop-filter: saturate(150%) blur(12px);
+  -webkit-backdrop-filter: saturate(150%) blur(12px);
+  border-bottom: 1px solid var(--screen-line);
+}
+
+.brand {
+  min-width: 0;
+  color: var(--screen-accent);
+  font-size: 1.125rem;
+  line-height: 1.5rem;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  white-space: nowrap;
+}
+
+.shell-actions {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
+}
+
+.screen-search-input {
+  border-color: var(--screen-line-strong);
+  background: var(--screen-surface);
+  padding-left: 2.5rem;
+  color: var(--screen-ink);
+}
+
+.screen-search-input:focus-visible {
+  border-color: var(--screen-focus);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--screen-focus) 20%, transparent);
+}
+
 .shell-body {
   flex: 1;
   min-height: 0;
@@ -299,19 +346,22 @@
   display: flex;
   align-items: center;
   gap: 0.25rem;
-  /* Phone: fixed floating dock clearing the safe-area reserve. */
+  /* Phone: fixed bottom dock with safe-area clearance. */
   position: fixed;
-  right: 0.875rem;
-  bottom: calc(0.625rem + env(safe-area-inset-bottom, 0px));
-  left: 0.875rem;
-  height: 62px;
-  padding: 0.375rem 0.25rem;
-  background: color-mix(in srgb, var(--surface-raised) 92%, transparent);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border: 1px solid color-mix(in srgb, var(--ink) 6%, transparent);
-  border-radius: 1.5rem;
-  box-shadow: var(--shadow-dock);
+  right: 0;
+  bottom: 0;
+  left: 0;
+  height: calc(
+    var(--screen-bottom-nav-height) + env(safe-area-inset-bottom, 0px)
+  );
+  padding: 5px 8px env(safe-area-inset-bottom, 0px);
+  background: color-mix(in srgb, var(--screen-surface) 97%, transparent);
+  backdrop-filter: saturate(150%) blur(16px);
+  -webkit-backdrop-filter: saturate(150%) blur(16px);
+  border: 0;
+  border-top: 1px solid var(--screen-line);
+  border-radius: 0;
+  box-shadow: var(--screen-shadow-dock);
   z-index: var(--layer-dock);
 }
 
@@ -369,7 +419,7 @@
     justify-content: center;
     gap: 0.125rem;
     min-width: 0;
-    min-height: 48px;
+    min-height: 62px;
     padding: 0.375rem 0.125rem;
     border-radius: 1rem;
     color: var(--ink-muted);
@@ -428,7 +478,7 @@
 @media (min-width: 800px) {
   #main-navigation {
     position: sticky;
-    top: 64px;
+    top: calc(var(--screen-shell-height) + env(safe-area-inset-top, 0px));
     right: auto;
     bottom: auto;
     left: 0;
@@ -436,7 +486,9 @@
     flex-direction: column;
     flex: 0 0 var(--width-rail);
     width: var(--width-rail);
-    height: calc(100dvh - 64px);
+    height: calc(
+      100dvh - var(--screen-shell-height) - env(safe-area-inset-top, 0px)
+    );
     padding: var(--space-4) var(--space-3);
     overflow-y: auto;
     background: var(--surface-raised);
@@ -491,7 +543,9 @@
   min-width: 0;
   min-height: 0;
   overflow-y: auto;
-  padding-bottom: calc(84px + env(safe-area-inset-bottom, 0px));
+  padding-bottom: calc(
+    var(--screen-bottom-nav-height) + env(safe-area-inset-bottom, 0px)
+  );
 }
 
 @media (min-width: 800px) {

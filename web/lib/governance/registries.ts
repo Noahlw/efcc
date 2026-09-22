@@ -390,16 +390,18 @@ export const UI_CONTRACT_REGISTRY: readonly UIContract[] = [
         id: "probe-safe-area-dock",
         selector: "#main-navigation",
         property: "bottom",
-        expected: "calc(0.625rem + env(safe-area-inset-bottom, 0px))",
-        description: "Main navigation floating dock clears iOS safe area inset",
+        expected: "0px",
+        description:
+          "Main navigation fixed dock sits at the viewport edge and owns the safe-area padding",
       },
       {
         id: "probe-safe-area-shell-content",
         selector: "#shell-content",
         property: "paddingBottom",
-        expected: "calc(84px + env(safe-area-inset-bottom, 0px))",
+        expected:
+          "calc(var(--screen-bottom-nav-height) + env(safe-area-inset-bottom, 0px))",
         description:
-          "Shell content scroll container clears safe area and dock height",
+          "Shell content scroll container clears the shared dock height and safe area",
       },
     ],
     coverageDisposition: "covered",

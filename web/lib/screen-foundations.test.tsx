@@ -16,6 +16,7 @@ import {
   ScreenRowMain,
   ScreenRowMeta,
   ScreenRowTitle,
+  ScreenSearch,
   ScreenState,
   ScreenStatus,
   ScreenStickyActions,
@@ -143,6 +144,43 @@ describe("Screen Foundations public contracts", () => {
         flat: true,
       },
       settings: { density: "settings", tone: "danger", minHeight: true },
+    });
+  });
+
+  test("keeps the search field accessible while the wrapper owns layout classes", () => {
+    render(
+      <ScreenSearch
+        aria-label="搜尋課程"
+        className="w-full"
+        defaultValue="培育"
+        name="query"
+        placeholder="搜尋課程"
+      />
+    );
+
+    const input = screen.getByRole("searchbox", { name: "搜尋課程" });
+    const wrapper = input.closest<HTMLElement>(
+      '[data-screen-foundation="search"]'
+    );
+
+    expect({
+      input: {
+        defaultValue: (input as HTMLInputElement).defaultValue,
+        name: input.getAttribute("name"),
+        marker: input.getAttribute("data-screen-search-input"),
+        tokenClass: input.className.includes("screen-search-input"),
+      },
+      wrapper: {
+        fullWidth: wrapper?.className.includes("w-full") ?? false,
+      },
+    }).toStrictEqual({
+      input: {
+        defaultValue: "培育",
+        name: "query",
+        marker: "true",
+        tokenClass: true,
+      },
+      wrapper: { fullWidth: true },
     });
   });
 

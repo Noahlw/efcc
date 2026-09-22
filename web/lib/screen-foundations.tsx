@@ -192,6 +192,7 @@ export const ScreenHeader = ({
   return (
     <header
       className={cn(screenHeaderVariants({ level }), className)}
+      data-route-header
       data-screen-foundation="header"
       data-screen-level={level}
     >
@@ -202,6 +203,7 @@ export const ScreenHeader = ({
             ? "grid-cols-[var(--screen-touch-target)_minmax(0,1fr)_auto]"
             : "grid-cols-[minmax(0,1fr)_auto]"
         )}
+        data-route-header-main
         data-screen-header-main
       >
         {backHref ? (
@@ -235,6 +237,7 @@ export const ScreenHeader = ({
         {hasActions ? (
           <div
             className="flex min-w-0 max-w-[46%] flex-wrap items-center justify-end gap-[var(--screen-utility-gap)]"
+            data-route-header-actions
             data-screen-header-actions
           >
             {status}
