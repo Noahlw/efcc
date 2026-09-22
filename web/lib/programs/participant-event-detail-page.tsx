@@ -8,6 +8,7 @@ import { rememberDeepLink } from "@/lib/session";
 import { EventDetail } from "./event-detail";
 import { buildProgramsHref } from "./programs-intent";
 import type { ProgramsOrigin } from "./programs-intent";
+import { clearAuthenticatedProgramsRecovery } from "./workspace-context";
 
 function participantEventBackHref(
   programId: string,
@@ -79,6 +80,7 @@ export const ParticipantEventDetailPage = ({
   );
 
   const handleAuthRequired = useCallback(() => {
+    clearAuthenticatedProgramsRecovery();
     rememberDeepLink(
       `${pathname}${window.location.search}${window.location.hash}`
     );

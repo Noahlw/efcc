@@ -7,6 +7,9 @@ import { COPY } from "@/lib/copy";
 import { HK_UTC_OFFSET_MINUTES } from "@/lib/programs/recurrence";
 import { rememberDeepLink } from "@/lib/session";
 
+import { clearAllEventCreateDrafts } from "./event-create-draft";
+import { clearAllGenerationRecoveries } from "./generation-recovery";
+import { clearAllWorkspaceMutationRecovery } from "./mutation-recovery";
 import type {
   DepartmentModule,
   ManagementAttention,
@@ -72,7 +75,9 @@ export interface WorkspaceTaskContextValue {
   onTaskChange: (
     task: ProgramsTask | null,
     eventId?: string | null,
-    scheduleOrigin?: ProgramsScheduleOrigin
+    scheduleOrigin?: ProgramsScheduleOrigin,
+    scheduleEditor?: ProgramsScheduleEditor | null,
+    scheduleRuleId?: string | null
   ) => void;
   onOpenEvent?: (eventId: string, eventAction?: ManagementEventAction) => void;
   /** Open the shared focused Attendance roster for an exact Event. */
@@ -102,6 +107,14 @@ export interface WorkspaceTaskContextValue {
   ) => void;
   /** One-shot bypass for an already-confirmed external navigation. */
   settingsNavigationAllowedRef?: { current: boolean };
+  /** Incremented when parent Back Discard must drop inline occurrence drafts. */
+  scheduleDraftDiscardSignal?: number;
+  /** Incremented when parent Discard must reset all in-memory Settings drafts. */
+  settingsDraftDiscardSignal?: number;
+  /** First dirty Schedule draft to reveal after Continue Editing. */
+  scheduleDraftFocusKey?: string | null;
+  /** Settings owner to focus when Schedule is the recovery surface. */
+  scheduleSettingsSection?: ProgramsSettingsSection | null;
 }
 
 const WorkspaceTaskContext = createContext<WorkspaceTaskContextValue | null>(
@@ -153,10 +166,21 @@ export function hasModule(
   );
 }
 
+/**
+ * Clear all authenticated Programs recovery at one session boundary. Guest
+ * mutation recovery intentionally stays in its separate storage key.
+ */
+export function clearAuthenticatedProgramsRecovery(): void {
+  clearAllEventCreateDrafts();
+  clearAllGenerationRecoveries();
+  clearAllWorkspaceMutationRecovery();
+}
+
 export function redirectToLoginIfRequired(error: unknown): boolean {
   if (!(error instanceof RpcError) || error.problem.code !== "AUTH_REQUIRED") {
     return false;
   }
+  clearAuthenticatedProgramsRecovery();
   rememberDeepLink(
     `${window.location.pathname}${window.location.search}${window.location.hash}`
   );

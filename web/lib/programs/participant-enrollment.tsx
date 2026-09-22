@@ -19,6 +19,7 @@ import { RpcError } from "@/lib/api";
 import { COPY, errorCopyFor } from "@/lib/copy";
 import {
   cancelEnrollment,
+  isUnknownMutationWriteOutcome,
   submitEnrollmentRequest,
   withdrawEnrollmentRequest,
 } from "@/lib/programs/program-api";
@@ -31,6 +32,8 @@ import type {
 } from "@/lib/programs/program-api";
 import { ScreenSection, ScreenState } from "@/lib/screen-foundations";
 import { cn } from "@/lib/utils";
+
+import { clearAuthenticatedProgramsRecovery } from "./workspace-context";
 
 export interface ParticipantEnrollmentProps {
   program: ProgramSummary;
@@ -100,16 +103,7 @@ function errorMessage(error: unknown): string {
 }
 
 function isAmbiguousMutationError(error: unknown): boolean {
-  if (!(error instanceof RpcError)) {
-    return true;
-  }
-  return (
-    error.problem.status === 0 ||
-    error.problem.code === "NETWORK_ERROR" ||
-    error.problem.code === "MALFORMED_RESPONSE" ||
-    error.problem.code === "MALFORMED_REQUEST" ||
-    error.problem.code === "UNAVAILABLE"
-  );
+  return isUnknownMutationWriteOutcome(error);
 }
 function isDuplicateMutationError(error: unknown): boolean {
   if (!(error instanceof RpcError)) {
@@ -376,6 +370,7 @@ export const ParticipantEnrollment = ({
             error instanceof RpcError &&
             error.problem.code === "AUTH_REQUIRED"
           ) {
+            clearAuthenticatedProgramsRecovery();
             try {
               await onRefresh();
             } catch {

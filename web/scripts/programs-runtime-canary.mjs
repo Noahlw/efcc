@@ -150,7 +150,7 @@ async function generatedFixtureSql() {
   try {
     const result = await execFileAsync(
       "pnpm",
-      ["exec", "tsx", "tests/e2e/seed-dev-accounts.ts"],
+      ["--silent", "exec", "tsx", "tests/e2e/seed-dev-accounts.ts"],
       { cwd: REPO_ROOT, maxBuffer: 4 * 1024 * 1024 }
     );
     return result.stdout;

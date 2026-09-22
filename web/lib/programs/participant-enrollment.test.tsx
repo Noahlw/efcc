@@ -20,12 +20,26 @@ import type {
 
 const mocks = vi.hoisted(() => ({
   cancelEnrollment: vi.fn(),
+  isUnknownMutationWriteOutcome: vi.fn<(error: unknown) => boolean>((error) => {
+    const problem = (error as { problem?: { code?: string; status?: number } })
+      .problem;
+    return (
+      problem === undefined ||
+      problem.status === 0 ||
+      problem.code === "NETWORK_ERROR" ||
+      problem.code === "MALFORMED_RESPONSE" ||
+      problem.code === "MALFORMED_REQUEST" ||
+      problem.code === "UNAVAILABLE" ||
+      (problem.status === 500 && problem.code === "INTERNAL_ERROR")
+    );
+  }),
   submitEnrollmentRequest: vi.fn(),
   withdrawEnrollmentRequest: vi.fn(),
 }));
 
 vi.mock(import("@/lib/programs/program-api"), () => ({
   cancelEnrollment: mocks.cancelEnrollment,
+  isUnknownMutationWriteOutcome: mocks.isUnknownMutationWriteOutcome,
   submitEnrollmentRequest: mocks.submitEnrollmentRequest,
   withdrawEnrollmentRequest: mocks.withdrawEnrollmentRequest,
 }));

@@ -57,6 +57,7 @@ import { ProgramForm } from "./program-form";
 import { buildProgramsHref } from "./programs-intent";
 import { readProgramsScrollY, restoreProgramsScrollY } from "./programs-scroll";
 import { useAsyncResource } from "./use-async-resource";
+import { clearAuthenticatedProgramsRecovery } from "./workspace-context";
 
 export interface ManagementProgram {
  program: ManagementProgramRecord;
@@ -378,6 +379,7 @@ export const ManagementDirectory = ({
      error instanceof RpcError &&
      error.problem.code === "AUTH_REQUIRED"
     ) {
+     clearAuthenticatedProgramsRecovery();
      rememberDeepLink(
       `${window.location.pathname}${window.location.search}${window.location.hash}`
      );

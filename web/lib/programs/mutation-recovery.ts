@@ -1,6 +1,10 @@
 import type { AttendanceEventSummary } from "@/lib/attendance";
 
-import type { ProgramPatch, ScheduleRuleInput } from "./program-api";
+import type {
+  ProgramInput,
+  ProgramPatch,
+  ScheduleRuleInput,
+} from "./program-api";
 
 const WORKSPACE_MUTATION_RECOVERY_KEY = "efcc_workspace_mutation_recovery";
 const GUEST_MUTATION_RECOVERY_KEY = "efcc_guest_mutation_recovery";
@@ -73,6 +77,13 @@ export interface ProgramSettingsMutationRecovery {
   };
 }
 
+export interface ProgramCreateMutationRecovery {
+  surface: "program-create";
+  departmentId: string;
+  idempotencyKey: string;
+  input: ProgramInput;
+}
+
 interface ScheduleExceptionMutationInput {
   override_date: string;
   action: "CANCEL" | "RESCHEDULE";
@@ -140,6 +151,7 @@ export interface DepartmentMutationRecovery {
 
 export type WorkspaceMutationRecovery =
   | ProgramSettingsMutationRecovery
+  | ProgramCreateMutationRecovery
   | ScheduleMutationRecovery
   | DepartmentMutationRecovery
   | {
@@ -349,6 +361,41 @@ function isProgramSettingsMutationRecovery(
   );
 }
 
+function isProgramCreateMutationRecovery(
+  value: unknown
+): value is ProgramCreateMutationRecovery {
+  if (
+    !isRecord(value) ||
+    value.surface !== "program-create" ||
+    typeof value.departmentId !== "string" ||
+    typeof value.idempotencyKey !== "string" ||
+    value.idempotencyKey.length === 0 ||
+    !isRecord(value.input)
+  ) {
+    return false;
+  }
+  return (
+    typeof value.input.name === "string" &&
+    (value.input.description === undefined ||
+      typeof value.input.description === "string") &&
+    (value.input.behavior_type === "Recurring" ||
+      value.input.behavior_type === "OneOff") &&
+    (value.input.lifecycle === "Draft" ||
+      value.input.lifecycle === "Active" ||
+      value.input.lifecycle === "Archived") &&
+    (value.input.discoverability === undefined ||
+      value.input.discoverability === "Listed" ||
+      value.input.discoverability === "Unlisted") &&
+    (value.input.enrollment_mode === "MemberRequest" ||
+      value.input.enrollment_mode === "ManagerOnly") &&
+    (value.input.category === undefined ||
+      typeof value.input.category === "string") &&
+    (value.input.display_order === undefined ||
+      (typeof value.input.display_order === "number" &&
+        Number.isFinite(value.input.display_order)))
+  );
+}
+
 function isScheduleMutation(value: Record<string, unknown>): boolean {
   switch (value.kind) {
     case "create-rule": {
@@ -537,6 +584,12 @@ export function readWorkspaceMutationRecovery(): WorkspaceMutationRecovery | nul
   if (value.surface === "program" && isProgramSettingsMutationRecovery(value)) {
     return value;
   }
+  if (
+    value.surface === "program-create" &&
+    isProgramCreateMutationRecovery(value)
+  ) {
+    return value;
+  }
   if (value.surface === "schedule" && isScheduleMutationRecovery(value)) {
     return value;
   }
@@ -573,6 +626,11 @@ export function writeWorkspaceMutationRecovery(
   value: WorkspaceMutationRecovery
 ): void {
   writeJson(WORKSPACE_MUTATION_RECOVERY_KEY, value);
+}
+
+/** Authenticated-session boundary cleanup; guest recovery remains separate. */
+export function clearAllWorkspaceMutationRecovery(): void {
+  removeItem(WORKSPACE_MUTATION_RECOVERY_KEY);
 }
 
 export function clearWorkspaceMutationRecovery(

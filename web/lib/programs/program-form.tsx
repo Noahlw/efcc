@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import type { FormEvent } from "react";
 
 import { Alert } from "@/components/ui/alert";
@@ -17,7 +17,13 @@ import { Textarea } from "@/components/ui/textarea";
 import { RpcError } from "@/lib/api";
 import { COPY, errorCopyFor } from "@/lib/copy";
 import { announce } from "@/lib/live-region";
-import { createProgram, updateProgram } from "@/lib/programs/program-api";
+import {
+  createProgram,
+  getManagementDirectory,
+  getManagementProgram,
+  isUnknownMutationWriteOutcome,
+  updateProgram,
+} from "@/lib/programs/program-api";
 import type {
   Department,
   Program,
@@ -31,6 +37,16 @@ import {
   ScreenState,
 } from "@/lib/screen-foundations";
 
+import {
+  clearWorkspaceMutationRecovery,
+  readWorkspaceMutationRecovery,
+  writeWorkspaceMutationRecovery,
+} from "./mutation-recovery";
+import type {
+  ProgramCreateMutationRecovery,
+  ProgramSettingsMutationRecovery,
+} from "./mutation-recovery";
+
 interface FormValues {
   departmentId: string;
   name: string;
@@ -41,6 +57,10 @@ interface FormValues {
   discoverability: Program["discoverability"];
   enrollmentMode: Program["enrollment_mode"];
 }
+
+type PendingProgramMutation =
+  | ProgramSettingsMutationRecovery
+  | ProgramCreateMutationRecovery;
 
 export interface ProgramFormProps {
   departments?: readonly Department[];
@@ -134,6 +154,52 @@ function patchFrom(values: FormValues): ProgramPatch {
   };
 }
 
+function pendingMutationFor(initial?: Program): PendingProgramMutation | null {
+  const recovery = readWorkspaceMutationRecovery();
+  if (
+    recovery?.surface === "program" &&
+    initial &&
+    recovery.programId === initial.program_id
+  ) {
+    return recovery;
+  }
+  return recovery?.surface === "program-create" && !initial ? recovery : null;
+}
+
+function programMatchesPatch(program: Program, patch: ProgramPatch): boolean {
+  return (
+    (patch.name === undefined || program.name === patch.name) &&
+    (patch.description === undefined ||
+      program.description === patch.description) &&
+    (patch.category === undefined || program.category === patch.category) &&
+    (patch.lifecycle === undefined || program.lifecycle === patch.lifecycle) &&
+    (patch.discoverability === undefined ||
+      program.discoverability === patch.discoverability) &&
+    (patch.enrollment_mode === undefined ||
+      program.enrollment_mode === patch.enrollment_mode) &&
+    (patch.display_order === undefined ||
+      program.display_order === patch.display_order)
+  );
+}
+
+function programMatchesInput(
+  program: Program,
+  departmentId: string,
+  input: ProgramInput
+): boolean {
+  return (
+    program.department_id === departmentId &&
+    program.name === input.name &&
+    program.description === (input.description ?? null) &&
+    program.category === (input.category ?? null) &&
+    program.behavior_type === input.behavior_type &&
+    program.lifecycle === input.lifecycle &&
+    program.discoverability === (input.discoverability ?? "Unlisted") &&
+    program.enrollment_mode === input.enrollment_mode &&
+    program.display_order === (input.display_order ?? 0)
+  );
+}
+
 // oxlint-disable-next-line eslint/complexity
 export const ProgramForm = ({
   departments = EMPTY_DEPARTMENTS,
@@ -148,6 +214,10 @@ export const ProgramForm = ({
   const [busy, setBusy] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [pendingMutation, setPendingMutation] =
+    useState<PendingProgramMutation | null>(() => pendingMutationFor(initial));
+  const idempotencyKeyRef = useRef(pendingMutation?.idempotencyKey ?? null);
+  const formDisabled = busy || pendingMutation !== null;
   const canCreate = departments.some(
     ({ department_id, capabilities }) =>
       department_id === values.departmentId && capabilities.manage
@@ -170,18 +240,103 @@ export const ProgramForm = ({
     setBusy(true);
     setFormError(null);
     setNotice(null);
+    const idempotencyKey = idempotencyKeyRef.current ?? crypto.randomUUID();
+    idempotencyKeyRef.current = idempotencyKey;
+    const patch = patchFrom(values);
+    const input = inputFrom(values);
     try {
       const result = initial
-        ? await updateProgram(initial.program_id, patchFrom(values))
-        : await createProgram(values.departmentId, inputFrom(values));
+        ? await updateProgram(initial.program_id, patch, idempotencyKey)
+        : await createProgram(values.departmentId, input, idempotencyKey);
       const successMessage = initial
         ? COPY.programs.programSaved
         : COPY.programs.programCreatedNotice;
       setNotice(successMessage);
       announce(successMessage);
+      clearWorkspaceMutationRecovery(
+        initial ? "program" : "program-create",
+        initial
+          ? { programId: initial.program_id }
+          : { departmentId: values.departmentId }
+      );
+      idempotencyKeyRef.current = null;
       onSaved(result.program.program_id);
     } catch (error) {
-      setFormError(mutationError(error));
+      if (isUnknownMutationWriteOutcome(error)) {
+        const recovery: PendingProgramMutation = initial
+          ? {
+              surface: "program",
+              programId: initial.program_id,
+              idempotencyKey,
+              mutation: {
+                kind: "update",
+                patch,
+                expected: patch,
+              },
+            }
+          : {
+              surface: "program-create",
+              departmentId: values.departmentId,
+              idempotencyKey,
+              input,
+            };
+        writeWorkspaceMutationRecovery(recovery);
+        setPendingMutation(recovery);
+        setFormError(COPY.programs.programTransportAmbiguous);
+      } else {
+        idempotencyKeyRef.current = null;
+        setFormError(mutationError(error));
+      }
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const reconcilePendingMutation = async () => {
+    if (pendingMutation === null) {
+      return;
+    }
+    setBusy(true);
+    setFormError(null);
+    try {
+      if (pendingMutation.surface === "program") {
+        const { program } = await getManagementProgram(
+          pendingMutation.programId
+        );
+        if (!programMatchesPatch(program, pendingMutation.mutation.patch)) {
+          setFormError(COPY.programs.programTransportAmbiguous);
+          return;
+        }
+        clearWorkspaceMutationRecovery("program", {
+          programId: pendingMutation.programId,
+        });
+        setPendingMutation(null);
+        idempotencyKeyRef.current = null;
+        setNotice(COPY.programs.programSaved);
+        onSaved(program.program_id);
+        return;
+      }
+      const { programs } = await getManagementDirectory();
+      const program = programs.find((candidate) =>
+        programMatchesInput(
+          candidate,
+          pendingMutation.departmentId,
+          pendingMutation.input
+        )
+      );
+      if (!program) {
+        setFormError(COPY.programs.programTransportAmbiguous);
+        return;
+      }
+      clearWorkspaceMutationRecovery("program-create", {
+        departmentId: pendingMutation.departmentId,
+      });
+      setPendingMutation(null);
+      idempotencyKeyRef.current = null;
+      setNotice(COPY.programs.programCreatedNotice);
+      onSaved(program.program_id);
+    } catch {
+      setFormError(COPY.programs.programTransportAmbiguous);
     } finally {
       setBusy(false);
     }
@@ -230,7 +385,24 @@ export const ProgramForm = ({
           ? COPY.programs.programEditLead
           : COPY.programs.programCreateLead}
       </p>
-      {formError && <ScreenState kind="error" title={formError} />}
+      {formError && (
+        <ScreenState
+          kind="error"
+          title={formError}
+          action={
+            pendingMutation ? (
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => void reconcilePendingMutation()}
+                disabled={busy}
+              >
+                {COPY.programs.workspaceRetryRefresh}
+              </Button>
+            ) : undefined
+          }
+        />
+      )}
       {notice && (
         <Alert tone="success" announcement="polite">
           {notice}
@@ -245,7 +417,7 @@ export const ProgramForm = ({
             <Select
               value={values.departmentId}
               onValueChange={(value) => update("departmentId", value)}
-              disabled={busy}
+              disabled={formDisabled}
             >
               <SelectTrigger
                 id="program-form-department"
@@ -280,7 +452,7 @@ export const ProgramForm = ({
             onChange={(event) => update("name", event.target.value)}
             required
             autoComplete="off"
-            disabled={busy}
+            disabled={formDisabled}
           />
         </ScreenField>
         <ScreenField
@@ -297,7 +469,7 @@ export const ProgramForm = ({
             value={values.description}
             onChange={(event) => update("description", event.target.value)}
             rows={3}
-            disabled={busy}
+            disabled={formDisabled}
             required={!initial}
           />
         </ScreenField>
@@ -311,7 +483,7 @@ export const ProgramForm = ({
             value={values.category}
             onChange={(event) => update("category", event.target.value)}
             autoComplete="off"
-            disabled={busy}
+            disabled={formDisabled}
           />
         </ScreenField>
         <ScreenField
@@ -323,7 +495,7 @@ export const ProgramForm = ({
             onValueChange={(value) =>
               update("behaviorType", value as Program["behavior_type"])
             }
-            disabled={busy || initial !== undefined}
+            disabled={formDisabled || initial !== undefined}
           >
             <SelectTrigger
               id="program-form-behavior"
@@ -352,7 +524,7 @@ export const ProgramForm = ({
               onValueChange={(value) =>
                 update("lifecycle", value as Program["lifecycle"])
               }
-              disabled={busy || initial.lifecycle === "Archived"}
+              disabled={formDisabled || initial.lifecycle === "Archived"}
             >
               <SelectTrigger
                 id="program-form-lifecycle"
@@ -372,7 +544,8 @@ export const ProgramForm = ({
                   <SelectItem
                     value="Active"
                     disabled={
-                      busy || (initial.lifecycle !== "Active" && !canActivate)
+                      formDisabled ||
+                      (initial.lifecycle !== "Active" && !canActivate)
                     }
                   >
                     {COPY.programs.lifecycleActive}
@@ -398,7 +571,7 @@ export const ProgramForm = ({
               onValueChange={(value) =>
                 update("discoverability", value as Program["discoverability"])
               }
-              disabled={busy}
+              disabled={formDisabled}
             >
               <SelectTrigger
                 id="program-form-discoverability"
@@ -427,7 +600,7 @@ export const ProgramForm = ({
             onValueChange={(value) =>
               update("enrollmentMode", value as Program["enrollment_mode"])
             }
-            disabled={busy}
+            disabled={formDisabled}
           >
             <SelectTrigger
               id="program-form-enrollment-mode"
@@ -450,7 +623,7 @@ export const ProgramForm = ({
           <Button
             className="h-auto w-fit whitespace-normal bg-[var(--screen-accent)] text-white hover:bg-[var(--screen-accent-deep)]"
             type="submit"
-            disabled={busy}
+            disabled={formDisabled}
           >
             {busy ? COPY.programs.submitting : COPY.programs.saveProgram}
           </Button>

@@ -10,7 +10,7 @@ import { announce } from "@/lib/live-region";
 import { ScreenHeader } from "@/lib/screen-foundations";
 
 import {
-  isUnknownMutationOutcome,
+  isUnknownMutationWriteOutcome,
   listScheduleExceptions,
   listScheduleRules,
   updateProgram,
@@ -43,6 +43,7 @@ type ScheduleHubState =
 
 export type SettingsNavigationRequest =
   | { kind: "back" }
+  | { kind: "workspace-back" }
   | { kind: "history-back" }
   | {
       kind: "route";
@@ -62,6 +63,7 @@ export const SettingsTask = ({
   navigationBlocked = false,
   onNavigationBlocked,
   onNavigationRequest,
+  settingsDraftDiscardSignal,
   headerAction,
 }: {
   onFocusChange?: (focused: boolean) => void;
@@ -69,6 +71,7 @@ export const SettingsTask = ({
   navigationBlocked?: boolean;
   onNavigationBlocked?: (blocked: boolean) => void;
   onNavigationRequest?: (request: SettingsNavigationRequest) => void;
+  settingsDraftDiscardSignal?: number;
   headerAction?: ReactNode;
 } = {}) => {
   const {
@@ -240,7 +243,7 @@ export const SettingsTask = ({
         announce(message);
       }
     } catch (error) {
-      if (isUnknownMutationOutcome(error)) {
+      if (isUnknownMutationWriteOutcome(error)) {
         setArchiveCommitted(true);
         setArchiveRefreshPending(true);
         setArchiveMessage(COPY.programs.programTransportAmbiguous);
@@ -573,6 +576,7 @@ export const SettingsTask = ({
         navigationBlocked={navigationBlocked}
         onReload={onWorkspaceRefresh}
         onMutationBlockChange={onMutationBlockChange}
+        settingsDraftDiscardSignal={settingsDraftDiscardSignal}
         showHeading={false}
       />
     </section>

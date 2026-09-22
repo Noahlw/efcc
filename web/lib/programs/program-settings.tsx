@@ -46,7 +46,7 @@ import {
   createScheduleRule,
   deleteScheduleException,
   getProgramAttendanceArtifact,
-  isUnknownMutationOutcome,
+  isUnknownMutationWriteOutcome,
   listScheduleExceptions,
   listScheduleRules,
   retireScheduleRule,
@@ -87,7 +87,7 @@ import {
 
 import {
   clearManagementDraft,
-  clearManagementDraftsForEntity,
+  listManagementDrafts,
   readManagementDraft,
   writeManagementDraft,
 } from "./management-draft";
@@ -148,7 +148,7 @@ interface ExceptionValues {
   newEndTime: string;
 }
 
-const SETTINGS_DRAFT_ACTION = {
+export const SETTINGS_DRAFT_ACTION = {
   basics: "settings-basics",
   publishing: "settings-publishing",
   enrollment: "settings-enrollment",
@@ -157,6 +157,26 @@ const SETTINGS_DRAFT_ACTION = {
   rule: "settings-rule",
   exception: "settings-exception",
 } as const;
+
+export function isProgramSettingsDraftAction(action: string): boolean {
+  return (
+    action === SETTINGS_DRAFT_ACTION.basics ||
+    action === SETTINGS_DRAFT_ACTION.publishing ||
+    action === SETTINGS_DRAFT_ACTION.enrollment ||
+    action === SETTINGS_DRAFT_ACTION.attendance ||
+    action === SETTINGS_DRAFT_ACTION.newRule ||
+    action.startsWith(`${SETTINGS_DRAFT_ACTION.rule}:`) ||
+    action.startsWith(`${SETTINGS_DRAFT_ACTION.exception}:`)
+  );
+}
+
+export function clearProgramSettingsDrafts(programId: string): void {
+  for (const { action } of listManagementDrafts<unknown>(programId)) {
+    if (isProgramSettingsDraftAction(action)) {
+      clearManagementDraft(programId, action);
+    }
+  }
+}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
@@ -282,6 +302,10 @@ export interface ProgramSettingsProps {
   section?: "all" | ProgramSettingsSection;
   /** Let a route-owned ScreenHeader provide the page title for a focused editor. */
   showHeading?: boolean;
+  /** Inline dirty from the focused-Schedule companion (union with Settings). */
+  scheduleAddonDirty?: boolean;
+  /** Parent Discard signal for resetting route-owned in-memory drafts. */
+  settingsDraftDiscardSignal?: number;
   /** Optional focused-Schedule companion that consumes this editor's rule read. */
   scheduleAddon?: (resource: {
     rules: ScheduleRule[] | null;
@@ -322,7 +346,7 @@ function settingsErrorMessage(error: unknown): string {
 }
 
 function isRetryableSettingsMutation(error: unknown): boolean {
-  return isUnknownMutationOutcome(error);
+  return isUnknownMutationWriteOutcome(error);
 }
 
 function basicsFrom(program: Program): BasicsValues {
@@ -1600,6 +1624,8 @@ export const ProgramSettings = ({
   onMutationBlockChange,
   section = "all",
   showHeading = true,
+  scheduleAddonDirty = false,
+  settingsDraftDiscardSignal,
   scheduleAddon,
   scheduleBackHref,
   scheduleEditor: routeScheduleEditor,
@@ -1754,7 +1780,7 @@ export const ProgramSettings = ({
     }
     scheduleRuleCreateKey.current = null;
     setScheduleEditor(null);
-    onScheduleEditorChange?.(null);
+    onScheduleEditorChange?.(null, null);
   };
   const pendingScheduleResolution = useRef<ScheduleMutationResolution | null>(
     restoredScheduleRecovery
@@ -2580,7 +2606,7 @@ export const ProgramSettings = ({
         if (!mounted.current) {
           return;
         }
-        if (isUnknownMutationOutcome(error)) {
+        if (isUnknownMutationWriteOutcome(error)) {
           onMutationBlockChange?.(true);
           setReloadRequired(true);
           setActionError(COPY.programs.programTransportAmbiguous);
@@ -2681,7 +2707,7 @@ export const ProgramSettings = ({
         endTime: "",
       }));
       setScheduleEditor(null);
-      onScheduleEditorChange?.(null);
+      onScheduleEditorChange?.(null, null);
     };
     void runScheduleMutation(
       () =>
@@ -2745,7 +2771,7 @@ export const ProgramSettings = ({
           return next;
         });
         setScheduleEditor(null);
-        onScheduleEditorChange?.(null);
+        onScheduleEditorChange?.(null, null);
       };
       void runScheduleMutation(
         () =>
@@ -2812,7 +2838,7 @@ export const ProgramSettings = ({
           return next;
         });
         setScheduleEditor(null);
-        onScheduleEditorChange?.(null);
+        onScheduleEditorChange?.(null, null);
       };
       void runScheduleMutation(
         async () => {
@@ -3001,7 +3027,7 @@ export const ProgramSettings = ({
     }
     scheduleRuleCreateKey.current = null;
     setScheduleEditor(null);
-    onScheduleEditorChange?.(null);
+    onScheduleEditorChange?.(null, null);
     setScheduleNavigationBlocked(false);
     setActionError(null);
     setNotice(null);
@@ -3021,7 +3047,9 @@ export const ProgramSettings = ({
       return;
     }
     event.preventDefault();
-    if (scheduleEditorDirty) {
+    // RP2.1: Back blocks on the union of Settings editor dirty and inline
+    // companion dirty; a clean Settings editor must not drop inline work.
+    if (scheduleEditorDirty || scheduleAddonDirty) {
       setScheduleNavigationBlocked(true);
       announce(COPY.programs.settingsUnsaved);
       return;
@@ -3053,8 +3081,8 @@ export const ProgramSettings = ({
     setNotice(null);
   };
 
-  const discardRecoveredDrafts = () => {
-    clearManagementDraftsForEntity(currentProgram.program_id);
+  const discardRecoveredDrafts = useCallback(() => {
+    clearProgramSettingsDrafts(currentProgram.program_id);
     setBasics(basicsFrom(currentProgram));
     setPublishing(publishingFrom(currentProgram));
     setEnrollment(enrollmentFrom(currentProgram));
@@ -3063,11 +3091,22 @@ export const ProgramSettings = ({
     setRuleDrafts({});
     setExceptionDrafts({});
     setScheduleEditor(null);
-    onScheduleEditorChange?.(null);
+    onScheduleEditorChange?.(null, null);
     setDraftRecoveryOpen(false);
     setActionError(null);
     setNotice(null);
-  };
+  }, [currentProgram.program_id, onScheduleEditorChange]);
+  const settingsDiscardSignalRef = useRef(0);
+  useEffect(() => {
+    if (
+      settingsDraftDiscardSignal === undefined ||
+      settingsDraftDiscardSignal <= settingsDiscardSignalRef.current
+    ) {
+      return;
+    }
+    settingsDiscardSignalRef.current = settingsDraftDiscardSignal;
+    discardRecoveredDrafts();
+  }, [discardRecoveredDrafts, settingsDraftDiscardSignal]);
 
   return (
     <section

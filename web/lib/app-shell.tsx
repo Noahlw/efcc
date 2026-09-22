@@ -14,12 +14,12 @@ import { ForbiddenView } from "@/lib/forbidden-view";
 import { announce } from "@/lib/live-region";
 import { NavBar } from "@/lib/nav-bar";
 import { OfflineBanner } from "@/lib/offline-banner";
-import { clearAllEventCreateDrafts } from "@/lib/programs/event-create-draft";
 import {
   clearAccessCache,
   clearCatalogCache,
 } from "@/lib/programs/program-api";
 import { useAsyncResource } from "@/lib/programs/use-async-resource";
+import { clearAuthenticatedProgramsRecovery } from "@/lib/programs/workspace-context";
 import { RecoveryView } from "@/lib/recovery-view";
 import {
   clearAuthHint,
@@ -66,7 +66,7 @@ const ShellFrame = ({
 
   const handleSignOut = useCallback(async () => {
     clearProgramCaches();
-    clearAllEventCreateDrafts();
+    clearAuthenticatedProgramsRecovery();
     let rpcFailed = false;
     try {
       await authLogout();
@@ -122,7 +122,7 @@ export const AppShell = ({ children }: { children: React.ReactNode }) => {
   const pathname = usePathname();
   const handleAuthRequired = useCallback(() => {
     clearProgramCaches();
-    clearAllEventCreateDrafts();
+    clearAuthenticatedProgramsRecovery();
     clearAuthHint();
     rememberDeepLink(
       `${pathname}${window.location.search}${window.location.hash}`
@@ -139,7 +139,7 @@ export const AppShell = ({ children }: { children: React.ReactNode }) => {
     async () => {
       const bootstrap = await restoreBootstrap();
       if (bootstrap === null) {
-        clearAllEventCreateDrafts();
+        clearAuthenticatedProgramsRecovery();
         rememberDeepLink(
           `${pathname}${window.location.search}${window.location.hash}`
         );
@@ -180,7 +180,7 @@ export const AppShell = ({ children }: { children: React.ReactNode }) => {
     if (state.code === "FORBIDDEN") {
       const handleForbiddenSignOut = async () => {
         clearProgramCaches();
-        clearAllEventCreateDrafts();
+        clearAuthenticatedProgramsRecovery();
         try {
           await authLogout();
         } catch {

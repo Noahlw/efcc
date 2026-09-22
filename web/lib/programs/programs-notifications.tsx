@@ -82,20 +82,20 @@ function notificationHref(
   return buildProgramsHref(
     item.kind === "event"
       ? {
-          mode: "management",
-          programId: item.program_id,
-          departmentId: item.department_id,
-          task: "events",
-          eventId: item.event_id,
-          hash,
-        }
+        mode: "management",
+        programId: item.program_id,
+        departmentId: item.department_id,
+        task: "events",
+        eventId: item.event_id,
+        hash,
+      }
       : {
-          mode: "management",
-          programId: item.program_id,
-          departmentId: item.department_id,
-          task: "participants",
-          hash,
-        }
+        mode: "management",
+        programId: item.program_id,
+        departmentId: item.department_id,
+        task: "participants",
+        hash,
+      }
   );
 }
 
@@ -117,86 +117,71 @@ const NotificationRows = ({
   markRead: NotificationReadHandler;
   onNavigate?: () => void;
   hash?: string | null;
-}) => {
-  const navigationBypassRef = useRef<Set<string>>(new Set());
-
-  return (
-    <ScreenRowList aria-label={COPY.programs.notificationsListLabel}>
-      {items.map((item) => {
-        const itemKey = `${item.source_key}:${item.source_revision}`;
-        const title =
-          item.kind === "enrollment"
-            ? COPY.programs.notificationsEnrollmentLabel
-            : item.actionable
-              ? COPY.programs.notificationsEventLabel
-              : COPY.programs.notificationsEventInformationalLabel;
-        const detail =
-          item.kind === "enrollment"
-            ? COPY.programs.notificationsEnrollmentCount.replace(
-                "{count}",
-                String(item.count)
-              )
-            : `${item.name ? `${item.name} · ` : ""}${hkWallDateTimeLabel(item.starts_at)}`;
-        return (
-          <ScreenRow key={itemKey} asChild>
-            <Link
-              href={notificationHref(item, hash)}
-              onClick={(event) => {
-                if (navigationBypassRef.current.delete(itemKey)) {
-                  return;
+}) => (
+  <ScreenRowList aria-label={COPY.programs.notificationsListLabel}>
+    {items.map((item) => {
+      const itemKey = `${item.source_key}:${item.source_revision}`;
+      const title =
+        item.kind === "enrollment"
+          ? COPY.programs.notificationsEnrollmentLabel
+          : item.actionable
+            ? COPY.programs.notificationsEventLabel
+            : COPY.programs.notificationsEventInformationalLabel;
+      const detail =
+        item.kind === "enrollment"
+          ? COPY.programs.notificationsEnrollmentCount.replace(
+            "{count}",
+            String(item.count)
+          )
+          : `${item.name ? `${item.name} · ` : ""}${hkWallDateTimeLabel(item.starts_at)}`;
+      return (
+        <ScreenRow key={itemKey} asChild>
+          <Link
+            href={notificationHref(item, hash)}
+            onClick={(event) => {
+              if (
+                event.button !== 0 ||
+                event.metaKey ||
+                event.ctrlKey ||
+                event.shiftKey ||
+                event.altKey
+              ) {
+                if (!event.defaultPrevented) {
+                  void markRead([item]);
                 }
-                if (
-                  event.button !== 0 ||
-                  event.metaKey ||
-                  event.ctrlKey ||
-                  event.shiftKey ||
-                  event.altKey
-                ) {
-                  if (!event.defaultPrevented) {
-                    void markRead([item]);
-                  }
-                  return;
-                }
-                event.preventDefault();
-                const link = event.currentTarget;
-                const continueNavigation = () => {
-                  navigationBypassRef.current.add(itemKey);
-                  onNavigate?.();
-                  link.click();
-                };
-                // R50: the read write settles the navigation either way, so a
-                // failed mark-read can never block the real task.
-                void (async () => {
-                  await markRead([item]);
-                  continueNavigation();
-                })();
-              }}
-            >
-              {item.read || (
-                <span
-                  aria-label={COPY.programs.notificationsUnread}
-                  className="size-2 shrink-0 rounded-full bg-[var(--screen-accent)]"
-                />
-              )}
-              <ScreenRowMain>
-                <ScreenRowTitle>{title}</ScreenRowTitle>
-                <ScreenRowMeta>
-                  {item.program_name} · {item.department_name} · {detail}
-                </ScreenRowMeta>
-              </ScreenRowMain>
-              <ScreenRowTrailing>
-                <ChevronRight
-                  aria-hidden="true"
-                  className="size-5 text-[var(--screen-muted)]"
-                />
-              </ScreenRowTrailing>
-            </Link>
-          </ScreenRow>
-        );
-      })}
-    </ScreenRowList>
-  );
-};
+                return;
+              }
+              // R50.2: the read write is a side effect, never a navigation
+              // gate. It starts before the route changes and settles after,
+              // so a pending or failed mark-read can never block the task.
+              onNavigate?.();
+              void markRead([item]);
+            }}
+          >
+            {item.read || (
+              <span
+                aria-label={COPY.programs.notificationsUnread}
+                className="size-2 shrink-0 rounded-full bg-[var(--screen-accent)]"
+              />
+            )}
+            <ScreenRowMain>
+              <ScreenRowTitle>{title}</ScreenRowTitle>
+              <ScreenRowMeta>
+                {item.program_name} · {item.department_name} · {detail}
+              </ScreenRowMeta>
+            </ScreenRowMain>
+            <ScreenRowTrailing>
+              <ChevronRight
+                aria-hidden="true"
+                className="size-5 text-[var(--screen-muted)]"
+              />
+            </ScreenRowTrailing>
+          </Link>
+        </ScreenRow>
+      );
+    })}
+  </ScreenRowList>
+);
 
 const NotificationList = ({
   state,

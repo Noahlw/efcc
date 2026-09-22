@@ -317,6 +317,7 @@ export default {
 
     // ---- Programs domain: cookie-only transport, no CORS ----------------
     if (url.pathname.startsWith("/api/v1/programs/")) {
+      try {
       if (!env.EFCC_ACCESS_TOKEN_SECRET) {
         return authProblemResponse(
           503,
@@ -390,16 +391,16 @@ export default {
         url.pathname === "/api/v1/programs/access" &&
         request.method === "GET"
       ) {
-        return handleListManagementAccess(request, programEnv);
+        return await handleListManagementAccess(request, programEnv);
       }
       if (url.pathname === "/api/v1/programs/hub" && request.method === "GET") {
-        return handleGetManagementHub(request, programEnv);
+        return await handleGetManagementHub(request, programEnv);
       }
       if (
         url.pathname === "/api/v1/programs/management-directory" &&
         request.method === "GET"
       ) {
-        return handleListManagementDirectory(request, programEnv);
+        return await handleListManagementDirectory(request, programEnv);
       }
       if (
         url.pathname.startsWith("/api/v1/programs/accounts/") &&
@@ -408,67 +409,67 @@ export default {
         const accountId = url.pathname.slice(
           "/api/v1/programs/accounts/".length
         );
-        return handleGetAccountDirectoryDetail(request, programEnv, accountId);
+        return await handleGetAccountDirectoryDetail(request, programEnv, accountId);
       }
       if (
         url.pathname === "/api/v1/programs/accounts" &&
         request.method === "GET"
       ) {
-        return handleSearchAccountDirectory(request, programEnv);
+        return await handleSearchAccountDirectory(request, programEnv);
       }
       if (
         url.pathname === "/api/v1/programs/members" &&
         request.method === "GET"
       ) {
-        return handleSearchManagementMembers(request, programEnv);
+        return await handleSearchManagementMembers(request, programEnv);
       }
       if (
         url.pathname === "/api/v1/programs/attention" &&
         request.method === "GET"
       ) {
-        return handleGetManagementAttention(request, programEnv);
+        return await handleGetManagementAttention(request, programEnv);
       }
       if (
         url.pathname === "/api/v1/programs/notifications" &&
         request.method === "GET"
       ) {
-        return handleGetManagementNotifications(request, programEnv);
+        return await handleGetManagementNotifications(request, programEnv);
       }
       if (
         url.pathname === "/api/v1/programs/notifications/read" &&
         request.method === "POST"
       ) {
-        return handleMarkManagementNotificationsRead(request, programEnv);
+        return await handleMarkManagementNotificationsRead(request, programEnv);
       }
       if (
         url.pathname === "/api/v1/programs/notices" &&
         request.method === "GET"
       ) {
-        return handleListParticipantNotices(request, programEnv);
+        return await handleListParticipantNotices(request, programEnv);
       }
       if (
         url.pathname === "/api/v1/programs/notices/read-all" &&
         request.method === "POST"
       ) {
-        return handleMarkParticipantNoticesRead(request, programEnv);
+        return await handleMarkParticipantNoticesRead(request, programEnv);
       }
       if (
         url.pathname === "/api/v1/programs/notices" &&
         request.method === "POST"
       ) {
-        return handleCreateParticipantNotice(request, programEnv);
+        return await handleCreateParticipantNotice(request, programEnv);
       }
       if (
         url.pathname === "/api/v1/programs/catalog" &&
         request.method === "GET"
       ) {
-        return handleListParticipantCatalog(request, programEnv);
+        return await handleListParticipantCatalog(request, programEnv);
       }
       const managementProgram = url.pathname.match(
         /^\/api\/v1\/programs\/(?<id>[^/]+)\/management$/u
       );
       if (managementProgram && request.method === "GET") {
-        return handleGetManagementProgram(
+        return await handleGetManagementProgram(
           request,
           programEnv,
           managementProgram.groups?.id ?? ""
@@ -478,7 +479,7 @@ export default {
         /^\/api\/v1\/programs\/(?<id>[^/]+)\/attendance-artifact$/u
       );
       if (attendanceArtifact && request.method === "GET") {
-        return handleGetProgramAttendanceArtifact(
+        return await handleGetProgramAttendanceArtifact(
           request,
           programEnv,
           attendanceArtifact.groups?.id ?? ""
@@ -488,7 +489,7 @@ export default {
         /^\/api\/v1\/programs\/(?<id>[^/]+)\/attendance-artifact\/rotate$/u
       );
       if (attendanceArtifactRotation && request.method === "POST") {
-        return handleRotateProgramAttendanceArtifact(
+        return await handleRotateProgramAttendanceArtifact(
           request,
           programEnv,
           attendanceArtifactRotation.groups?.id ?? ""
@@ -498,7 +499,7 @@ export default {
         /^\/api\/v1\/programs\/(?<id>[^/]+)\/cockpit$/u
       );
       if (cockpit && request.method === "GET") {
-        return handleGetManagementCockpit(
+        return await handleGetManagementCockpit(
           request,
           programEnv,
           cockpit.groups?.id ?? ""
@@ -508,7 +509,7 @@ export default {
         /^\/api\/v1\/programs\/(?<id>[^/]+)\/participant-detail$/u
       );
       if (participantDetail && request.method === "GET") {
-        return handleGetParticipantProgramDetail(
+        return await handleGetParticipantProgramDetail(
           request,
           programEnv,
           participantDetail.groups?.id ?? ""
@@ -518,26 +519,26 @@ export default {
         url.pathname === "/api/v1/programs/departments" &&
         request.method === "POST"
       ) {
-        return handleCreateDepartment(request, programEnv);
+        return await handleCreateDepartment(request, programEnv);
       }
       if (
         url.pathname === "/api/v1/programs/departments" &&
         request.method === "GET"
       ) {
-        return handleListDepartments(request, programEnv);
+        return await handleListDepartments(request, programEnv);
       }
       const department = url.pathname.match(
         /^\/api\/v1\/programs\/departments\/(?<id>[^/]+)$/u
       );
       if (department && request.method === "GET") {
-        return handleGetDepartment(
+        return await handleGetDepartment(
           request,
           programEnv,
           department.groups?.id ?? ""
         );
       }
       if (department && request.method === "PATCH") {
-        return handleUpdateDepartment(
+        return await handleUpdateDepartment(
           request,
           programEnv,
           department.groups?.id ?? ""
@@ -547,14 +548,14 @@ export default {
         /^\/api\/v1\/programs\/departments\/(?<id>[^/]+)\/programs$/u
       );
       if (departmentPrograms && request.method === "POST") {
-        return handleCreateProgram(
+        return await handleCreateProgram(
           request,
           programEnv,
           departmentPrograms.groups?.id ?? ""
         );
       }
       if (departmentPrograms && request.method === "GET") {
-        return handleListPrograms(
+        return await handleListPrograms(
           request,
           programEnv,
           departmentPrograms.groups?.id ?? ""
@@ -564,7 +565,7 @@ export default {
         /^\/api\/v1\/programs\/departments\/(?<id>[^/]+)\/modules\/(?<key>[^/]+)\/(?<action>enable|disable)$/u
       );
       if (moduleMatch && request.method === "POST") {
-        return handleSetModule(
+        return await handleSetModule(
           request,
           programEnv,
           moduleMatch.groups?.id ?? "",
@@ -576,10 +577,10 @@ export default {
         /^\/api\/v1\/programs\/(?<id>[^/]+)$/u
       );
       if (program && request.method === "GET") {
-        return handleGetProgram(request, programEnv, program.groups?.id ?? "");
+        return await handleGetProgram(request, programEnv, program.groups?.id ?? "");
       }
       if (program && request.method === "PATCH") {
-        return handleUpdateProgram(
+        return await handleUpdateProgram(
           request,
           programEnv,
           program.groups?.id ?? ""
@@ -589,7 +590,7 @@ export default {
         /^\/api\/v1\/programs\/(?<id>[^/]+)\/member-options$/u
       );
       if (memberOptions && request.method === "GET") {
-        return handleSearchMemberOptions(
+        return await handleSearchMemberOptions(
           request,
           programEnv,
           memberOptions.groups?.id ?? ""
@@ -599,14 +600,14 @@ export default {
         /^\/api\/v1\/programs\/(?<id>[^/]+)\/schedule-rules$/u
       );
       if (scheduleRules && request.method === "POST") {
-        return handleCreateScheduleRule(
+        return await handleCreateScheduleRule(
           request,
           programEnv,
           scheduleRules.groups?.id ?? ""
         );
       }
       if (scheduleRules && request.method === "GET") {
-        return handleListScheduleRules(
+        return await handleListScheduleRules(
           request,
           programEnv,
           scheduleRules.groups?.id ?? ""
@@ -616,7 +617,7 @@ export default {
         /^\/api\/v1\/programs\/(?<id>[^/]+)\/schedule-rules\/(?<ruleId>[^/]+)\/retire$/u
       );
       if (scheduleRuleRetire && request.method === "POST") {
-        return handleRetireScheduleRule(
+        return await handleRetireScheduleRule(
           request,
           programEnv,
           scheduleRuleRetire.groups?.id ?? "",
@@ -627,7 +628,7 @@ export default {
         /^\/api\/v1\/programs\/(?<id>[^/]+)\/schedule-rules\/(?<ruleId>[^/]+)$/u
       );
       if (scheduleRule && request.method === "PATCH") {
-        return handleUpdateScheduleRule(
+        return await handleUpdateScheduleRule(
           request,
           programEnv,
           scheduleRule.groups?.id ?? "",
@@ -638,7 +639,7 @@ export default {
         /^\/api\/v1\/programs\/(?<id>[^/]+)\/schedule-rules\/(?<ruleId>[^/]+)\/exceptions$/u
       );
       if (scheduleExceptions && request.method === "POST") {
-        return handleCreateScheduleException(
+        return await handleCreateScheduleException(
           request,
           programEnv,
           scheduleExceptions.groups?.id ?? "",
@@ -646,7 +647,7 @@ export default {
         );
       }
       if (scheduleExceptions && request.method === "GET") {
-        return handleListScheduleExceptions(
+        return await handleListScheduleExceptions(
           request,
           programEnv,
           scheduleExceptions.groups?.id ?? "",
@@ -657,7 +658,7 @@ export default {
         /^\/api\/v1\/programs\/(?<id>[^/]+)\/schedule-rules\/(?<ruleId>[^/]+)\/exceptions\/(?<exceptionId>[^/]+)$/u
       );
       if (scheduleException && request.method === "DELETE") {
-        return handleDeleteScheduleException(
+        return await handleDeleteScheduleException(
           request,
           programEnv,
           scheduleException.groups?.id ?? "",
@@ -668,7 +669,7 @@ export default {
         /^\/api\/v1\/programs\/(?<id>[^/]+)\/events\/preview$/u
       );
       if (programPreview && request.method === "POST") {
-        return handlePreviewEvents(
+        return await handlePreviewEvents(
           request,
           programEnv,
           programPreview.groups?.id ?? ""
@@ -678,7 +679,7 @@ export default {
         /^\/api\/v1\/programs\/(?<id>[^/]+)\/events\/generate$/u
       );
       if (programGenerate && request.method === "POST") {
-        return handleGenerateEvents(
+        return await handleGenerateEvents(
           request,
           programEnv,
           programGenerate.groups?.id ?? ""
@@ -688,14 +689,14 @@ export default {
         /^\/api\/v1\/programs\/(?<id>[^/]+)\/events$/u
       );
       if (programEvents && request.method === "POST") {
-        return handleCreateEvent(
+        return await handleCreateEvent(
           request,
           programEnv,
           programEvents.groups?.id ?? ""
         );
       }
       if (programEvents && request.method === "GET") {
-        return handleListEvents(
+        return await handleListEvents(
           request,
           programEnv,
           programEvents.groups?.id ?? ""
@@ -705,7 +706,7 @@ export default {
         /^\/api\/v1\/programs\/(?<id>[^/]+)\/events\/(?<eventId>[^/]+)$/u
       );
       if (event && request.method === "GET") {
-        return handleGetEvent(
+        return await handleGetEvent(
           request,
           programEnv,
           event.groups?.id ?? "",
@@ -713,7 +714,7 @@ export default {
         );
       }
       if (event && request.method === "PATCH") {
-        return handleEventUpdate(
+        return await handleEventUpdate(
           request,
           programEnv,
           event.groups?.id ?? "",
@@ -724,14 +725,14 @@ export default {
         /^\/api\/v1\/programs\/(?<id>[^/]+)\/enrollment-requests$/u
       );
       if (enrollmentRequests && request.method === "POST") {
-        return handleCreateEnrollmentRequest(
+        return await handleCreateEnrollmentRequest(
           request,
           programEnv,
           enrollmentRequests.groups?.id ?? ""
         );
       }
       if (enrollmentRequests && request.method === "GET") {
-        return handleListEnrollmentRequests(
+        return await handleListEnrollmentRequests(
           request,
           programEnv,
           enrollmentRequests.groups?.id ?? ""
@@ -741,7 +742,7 @@ export default {
         /^\/api\/v1\/programs\/(?<id>[^/]+)\/enrollment-snapshot$/u
       );
       if (enrollmentSnapshot && request.method === "GET") {
-        return handleListEnrollmentSnapshot(
+        return await handleListEnrollmentSnapshot(
           request,
           programEnv,
           enrollmentSnapshot.groups?.id ?? ""
@@ -751,14 +752,14 @@ export default {
         /^\/api\/v1\/programs\/(?<id>[^/]+)\/enrollment-approval-runs$/u
       );
       if (enrollmentApprovalRuns && request.method === "POST") {
-        return handleStartEnrollmentApprovalRun(
+        return await handleStartEnrollmentApprovalRun(
           request,
           programEnv,
           enrollmentApprovalRuns.groups?.id ?? ""
         );
       }
       if (enrollmentApprovalRuns && request.method === "GET") {
-        return handleListEnrollmentApprovalRuns(
+        return await handleListEnrollmentApprovalRuns(
           request,
           programEnv,
           enrollmentApprovalRuns.groups?.id ?? ""
@@ -776,26 +777,26 @@ export default {
           enrollmentApprovalRunAction.groups?.runId ?? "",
         ] as const;
         if (action === "reconcile") {
-          return handleReconcileEnrollmentApprovalRun(...args);
+          return await handleReconcileEnrollmentApprovalRun(...args);
         }
         if (action === "continue") {
-          return handleContinueEnrollmentApprovalRun(...args);
+          return await handleContinueEnrollmentApprovalRun(...args);
         }
-        return handleCancelEnrollmentApprovalRun(...args);
+        return await handleCancelEnrollmentApprovalRun(...args);
       }
       const enrollmentRequest = url.pathname.match(
         /^\/api\/v1\/programs\/(?<id>[^/]+)\/enrollment-requests\/(?<requestId>[^/]+)\/(?<action>decision|withdraw)$/u
       );
       if (enrollmentRequest && request.method === "POST") {
         if (enrollmentRequest.groups?.action === "decision") {
-          return handleDecideEnrollmentRequest(
+          return await handleDecideEnrollmentRequest(
             request,
             programEnv,
             enrollmentRequest.groups?.id ?? "",
             enrollmentRequest.groups?.requestId ?? ""
           );
         }
-        return handleWithdrawEnrollmentRequest(
+        return await handleWithdrawEnrollmentRequest(
           request,
           programEnv,
           enrollmentRequest.groups?.id ?? "",
@@ -806,14 +807,14 @@ export default {
         /^\/api\/v1\/programs\/(?<id>[^/]+)\/enrollments$/u
       );
       if (enrollments && request.method === "POST") {
-        return handleAssistedEnroll(
+        return await handleAssistedEnroll(
           request,
           programEnv,
           enrollments.groups?.id ?? ""
         );
       }
       if (enrollments && request.method === "GET") {
-        return handleListEnrollments(
+        return await handleListEnrollments(
           request,
           programEnv,
           enrollments.groups?.id ?? ""
@@ -823,7 +824,7 @@ export default {
         /^\/api\/v1\/programs\/(?<id>[^/]+)\/enrollments\/(?<enrollmentId>[^/]+)\/cancel$/u
       );
       if (enrollment && request.method === "POST") {
-        return handleCancelEnrollment(
+        return await handleCancelEnrollment(
           request,
           programEnv,
           enrollment.groups?.id ?? "",
@@ -836,6 +837,23 @@ export default {
         "Not found",
         "Unknown programs route."
       );
+      } catch (error) {
+        // Parity with the auth envelope (worker.ts try/catch): unmapped
+        // throws become RFC 9457 500s with requestId + server log line,
+        // never raw workerd 500s without a body.
+        const requestId = crypto.randomUUID();
+        console.error(
+          `[programs] unhandled route error requestId=${requestId}:`,
+          error
+        );
+        return authProblemResponse(
+          500,
+          "INTERNAL_ERROR",
+          "Internal error",
+          "Internal server error.",
+          requestId
+        );
+      }
     }
 
     if (url.pathname.startsWith("/api/v1/attendance")) {

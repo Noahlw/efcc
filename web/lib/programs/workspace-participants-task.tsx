@@ -41,7 +41,7 @@ import {
   cancelEnrollmentApprovalRun,
   continueEnrollmentApprovalRun,
   decideEnrollmentRequest,
-  isUnknownMutationOutcome,
+  isUnknownMutationWriteOutcome,
   listEnrollmentApprovalRuns,
   listEnrollmentSnapshot,
   reconcileEnrollmentApprovalRun,
@@ -298,16 +298,7 @@ function approvalRunNeedsReconciliation(run: EnrollmentApprovalRun): boolean {
 }
 
 function isAmbiguousCancelError(error: unknown): boolean {
-  if (!(error instanceof RpcError)) {
-    return true;
-  }
-  return (
-    error.problem.status === 0 ||
-    error.problem.code === "NETWORK_ERROR" ||
-    error.problem.code === "MALFORMED_RESPONSE" ||
-    error.problem.code === "MALFORMED_REQUEST" ||
-    error.problem.code === "UNAVAILABLE"
-  );
+  return isUnknownMutationWriteOutcome(error);
 }
 
 function requestStatusLabel(status: EnrollmentRequest["status"]): string {
@@ -898,7 +889,7 @@ export const ParticipantsTask = () => {
         if (!mountedRef.current) {
           return;
         }
-        if (isUnknownMutationOutcome(error)) {
+        if (isUnknownMutationWriteOutcome(error)) {
           setApprovalRefreshError(APPROVAL_COPY.reconciliationRequired);
           setNotice(APPROVAL_COPY.reconciliationRequired);
           announce(APPROVAL_COPY.reconciliationRequired);
@@ -961,7 +952,7 @@ export const ParticipantsTask = () => {
       if (!mountedRef.current) {
         return;
       }
-      if (isUnknownMutationOutcome(error)) {
+      if (isUnknownMutationWriteOutcome(error)) {
         setApprovalRefreshError(APPROVAL_COPY.reconciliationRequired);
         setNotice(APPROVAL_COPY.reconciliationRequired);
         announce(APPROVAL_COPY.reconciliationRequired);
@@ -1045,7 +1036,7 @@ export const ParticipantsTask = () => {
       if (!mountedRef.current) {
         return;
       }
-      if (isUnknownMutationOutcome(error)) {
+      if (isUnknownMutationWriteOutcome(error)) {
         setApprovalRefreshError(APPROVAL_COPY.reconciliationRequired);
         setNotice(APPROVAL_COPY.reconciliationRequired);
         announce(APPROVAL_COPY.reconciliationRequired);
@@ -1114,7 +1105,7 @@ export const ParticipantsTask = () => {
       if (redirectToLoginIfRequired(error)) {
         return;
       }
-      if (isUnknownMutationOutcome(error)) {
+      if (isUnknownMutationWriteOutcome(error)) {
         onMutationBlockChange?.(true);
         setUnknownMutationIds((current) => ({
           ...current,
@@ -1183,7 +1174,7 @@ export const ParticipantsTask = () => {
         setCancelRetry(null);
         return;
       }
-      if (isUnknownMutationOutcome(error)) {
+      if (isUnknownMutationWriteOutcome(error)) {
         onMutationBlockChange?.(true);
         setCancelRetry(null);
         setUnknownMutationIds((current) => ({
@@ -1269,7 +1260,7 @@ export const ParticipantsTask = () => {
       if (redirectToLoginIfRequired(error)) {
         return;
       }
-      if (isUnknownMutationOutcome(error)) {
+      if (isUnknownMutationWriteOutcome(error)) {
         onMutationBlockChange?.(true);
         setUnknownMutationIds((current) => ({ ...current, assisted: true }));
         setAssistedError(COPY.programs.programTransportAmbiguous);

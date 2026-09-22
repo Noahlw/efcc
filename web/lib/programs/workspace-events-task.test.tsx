@@ -6,14 +6,17 @@ import {
   within,
 } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import type { UserEvent } from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
+import { RpcError } from "@/lib/api";
 import { COPY } from "@/lib/copy";
 import type {
   GenerateResult,
   PreviewResult,
   Program,
   ProgramEvent,
+  ScheduleException,
   ScheduleRule,
 } from "@/lib/programs/program-api";
 
@@ -22,6 +25,8 @@ import {
   readEventCreateDraft,
   writeEventCreateDraft,
 } from "./event-create-draft";
+import { generationRecoveryKey } from "./generation-recovery";
+import { writeManagementDraft } from "./management-draft";
 import {
   clearWorkspaceMutationRecovery,
   readWorkspaceMutationRecovery,
@@ -36,7 +41,6 @@ import {
 } from "./recurrence";
 import { WorkspaceTaskProvider } from "./workspace-context";
 import { EventsTask, RecurringSchedulePanel } from "./workspace-events-task";
-
 const mocks = vi.hoisted(() => ({
   createEvent: vi.fn<() => Promise<{ event: ProgramEvent }>>(),
   listEvents: vi.fn<() => Promise<{ events: ProgramEvent[] }>>(),
@@ -49,8 +53,9 @@ const mocks = vi.hoisted(() => ({
         planId: string
       ) => Promise<{ generated: GenerateResult }>
     >(),
+  createScheduleException:
+    vi.fn<() => Promise<{ exception: ScheduleException }>>(),
 }));
-
 vi.mock(import("@/lib/programs/program-api"), async (importOriginal) => {
   const actual = await importOriginal();
   return {
@@ -60,6 +65,7 @@ vi.mock(import("@/lib/programs/program-api"), async (importOriginal) => {
     listScheduleRules: mocks.listScheduleRules,
     previewEvents: mocks.previewEvents,
     generateEvents: mocks.generateEvents,
+    createScheduleException: mocks.createScheduleException,
   };
 });
 
@@ -111,8 +117,8 @@ const rule: ScheduleRule = {
   recurrence: "WEEKLY",
   day_of_week: 3,
   month_day: null,
-  start_time: "19:30",
-  end_time: "21:00",
+  start_time: "11:30",
+  end_time: "13:00",
   location: "主堂",
   created_at: "2026-01-01T00:00:00.000Z",
   updated_at: "2026-01-01T00:00:00.000Z",
@@ -175,8 +181,8 @@ function renderTask(
           onWorkspaceRefresh === null
             ? undefined
             : async () => {
-                await onWorkspaceRefresh();
-              },
+              await onWorkspaceRefresh();
+            },
       }}
     >
       <EventsTask />
@@ -1049,5 +1055,629 @@ describe("Schedule generation recovery", () => {
       generateDisabled: true,
       reviewAgainVisible: true,
     });
+  });
+});
+describe("F01 unresolved Generate survives Preview (#629)", () => {
+  beforeEach(() => {
+    window.sessionStorage.clear();
+    mocks.previewEvents.mockReset().mockResolvedValue(preview);
+    mocks.generateEvents.mockReset();
+  });
+
+  afterEach(() => {
+    cleanup();
+    window.sessionStorage.clear();
+  });
+
+  function renderPanel() {
+    return render(
+      <RecurringSchedulePanel
+        programId="program-1"
+        rules={[rule]}
+        rulesError={null}
+        onGenerated={vi.fn<() => Promise<boolean>>().mockResolvedValue(true)}
+      />
+    );
+  }
+
+  async function previewAndLoseAcknowledgement(user: UserEvent) {
+    renderPanel();
+    await user.click(
+      await screen.findByRole("button", { name: COPY.programs.previewEvents })
+    );
+    await screen.findByRole("button", { name: COPY.programs.generateEvents });
+    mocks.generateEvents.mockRejectedValueOnce(
+      new RpcError({ status: 0, code: "NETWORK_ERROR" })
+    );
+    Object.defineProperty(window.navigator, "onLine", {
+      configurable: true,
+      value: false,
+    });
+    await user.click(
+      screen.getByRole("button", { name: COPY.programs.generateEvents })
+    );
+    const reconcile = await screen.findByRole(
+      "button",
+      { name: COPY.programs.generatedReconcileUnknown },
+      { timeout: 2_000 }
+    );
+    expect(reconcile).toHaveAttribute("data-generation-plan-id", "plan-1");
+    expect(mocks.generateEvents).toHaveBeenCalledTimes(1);
+    return reconcile;
+  }
+
+  test("Preview while the write is unresolved keeps Plan A and the recovery reference", async () => {
+    const user = userEvent.setup();
+    const reconcile = await previewAndLoseAcknowledgement(user);
+
+    // A fresh Preview is still allowed while the write is unresolved; it
+    // must not clear Plan A or the recoverable generation reference.
+    await user.click(
+      screen.getByRole("button", { name: COPY.programs.previewEvents })
+    );
+
+    await expect(
+      screen.findByRole("button", {
+        name: COPY.programs.generatedReconcileUnknown,
+      })
+    ).resolves.toHaveAttribute("data-generation-plan-id", "plan-1");
+    expect(
+      screen.getByRole("button", { name: COPY.programs.generateEvents })
+    ).toBeDisabled();
+    expect(reconcile).toHaveAttribute("data-generation-plan-id", "plan-1");
+  });
+
+  test("remount restores the unresolved generation, stays blocked, and reconciles from Plan A", async () => {
+    const user = userEvent.setup();
+    await previewAndLoseAcknowledgement(user);
+    cleanup();
+
+    renderPanel();
+    const reconcile = await screen.findByRole("button", {
+      name: COPY.programs.generatedReconcileUnknown,
+    });
+    expect(reconcile).toHaveAttribute("data-generation-plan-id", "plan-1");
+    expect(
+      screen.getByText(COPY.programs.scheduleTransportAmbiguous)
+    ).toBeInTheDocument();
+    // Loading a fresh Preview must not clear the unresolved reference, and
+    // the Generate affordance inside the new Preview stays blocked.
+    await user.click(
+      await screen.findByRole("button", { name: COPY.programs.previewEvents })
+    );
+    const generate = await screen.findByRole("button", {
+      name: COPY.programs.generateEvents,
+    });
+    expect(generate).toBeDisabled();
+    expect(reconcile).toHaveAttribute("data-generation-plan-id", "plan-1");
+    mocks.generateEvents.mockResolvedValueOnce({
+      generated: {
+        run_id: "run-1",
+        plan_id: "plan-1",
+        status: "completed",
+        created: 1,
+        skipped: 0,
+        failed: 0,
+        resumed: true,
+        created_event_ids: ["event-created"],
+      },
+    });
+    const live = screen.getByRole("button", {
+      name: COPY.programs.generatedReconcileUnknown,
+    });
+    await user.click(live);
+    const resumedCopy = COPY.programs.generatedResumed
+      .replace("{created}", "1")
+      .replace("{skipped}", "0");
+    await expect(
+      screen.findByText((_, element) => element?.textContent === resumedCopy)
+    ).resolves.toBeInTheDocument();
+    expect(mocks.generateEvents).toHaveBeenLastCalledWith(
+      "program-1",
+      "plan-1"
+    );
+    expect(
+      screen.getByRole("button", { name: COPY.programs.generateEvents })
+    ).not.toBeDisabled();
+    expect(window.sessionStorage.length).toBe(0);
+  });
+
+  test("the recovery record exists before the Generate request settles (RP1.1)", async () => {
+    const user = userEvent.setup();
+    renderPanel();
+    await user.click(
+      await screen.findByRole("button", { name: COPY.programs.previewEvents })
+    );
+    await screen.findByRole("button", { name: COPY.programs.generateEvents });
+    let resolveGenerate!: (value: { generated: GenerateResult }) => void;
+    const pending = new Promise<{ generated: GenerateResult }>((resolve) => {
+      resolveGenerate = resolve;
+    });
+    mocks.generateEvents.mockReturnValueOnce(pending);
+    await user.click(
+      screen.getByRole("button", { name: COPY.programs.generateEvents })
+    );
+    // The attempt is unresolved from dispatch: the session record must exist
+    // while the request is still pending, before any outcome arrives.
+    await waitFor(() => {
+      const raw = window.sessionStorage.getItem(
+        generationRecoveryKey("program-1")
+      );
+      expect(raw).not.toBeNull();
+      expect(JSON.parse(raw as string)).toMatchObject({
+          planId: "plan-1",
+        runId: null,
+        needsReconciliation: true,
+        data: null,
+      });
+        });
+    expect(mocks.generateEvents).toHaveBeenCalledTimes(1);
+    expect(mocks.generateEvents).toHaveBeenLastCalledWith(
+      "program-1",
+      "plan-1"
+    );
+    resolveGenerate({
+      generated: {
+          run_id: "run-1",
+        plan_id: "plan-1",
+        status: "completed",
+          created: 1,
+          skipped: 0,
+          failed: 0,
+          resumed: false,
+          created_event_ids: ["event-created"],
+      },
+    });
+    await expect(
+      screen.findByText(
+        COPY.programs.generated
+          .replace("{created}", "1")
+          .replace("{skipped}", "0")
+      )
+    ).resolves.toBeInTheDocument();
+  });
+
+  test("in-flight unmount keeps the dispatch record for the next mount (RP1.2 component)", async () => {
+    const user = userEvent.setup();
+    renderPanel();
+    await user.click(
+      await screen.findByRole("button", { name: COPY.programs.previewEvents })
+    );
+    await screen.findByRole("button", { name: COPY.programs.generateEvents });
+    let resolveGenerate!: (value: { generated: GenerateResult }) => void;
+    const pending = new Promise<{ generated: GenerateResult }>((resolve) => {
+      resolveGenerate = resolve;
+    });
+    mocks.generateEvents.mockReturnValueOnce(pending);
+    await user.click(
+      screen.getByRole("button", { name: COPY.programs.generateEvents })
+    );
+    await waitFor(() => {
+      expect(
+        window.sessionStorage.getItem(generationRecoveryKey("program-1"))
+      ).not.toBeNull();
+    });
+    // Unmount while the request is still pending: the dispatch record must
+    // survive for the next mount instead of relying on the catch path.
+    cleanup();
+    renderPanel();
+    const reconcile = await screen.findByRole("button", {
+      name: COPY.programs.generatedReconcileUnknown,
+    });
+    expect(reconcile).toHaveAttribute("data-generation-plan-id", "plan-1");
+    expect(
+      screen.getByText(COPY.programs.scheduleTransportAmbiguous)
+    ).toBeInTheDocument();
+    resolveGenerate({
+      generated: {
+        run_id: "run-1",
+        plan_id: "plan-1",
+        status: "completed",
+        created: 1,
+        skipped: 0,
+        failed: 0,
+        resumed: false,
+        created_event_ids: ["event-created"],
+      },
+    });
+    await pending;
+  });
+
+  test("a reconciled requires_review plus a matching Preview enables Generate on the new Plan id (RP1.4)", async () => {
+    const user = userEvent.setup();
+    const onWorkspaceRefresh = vi
+      .fn<() => Promise<unknown>>()
+      .mockResolvedValue({});
+    mocks.generateEvents.mockResolvedValueOnce({
+      generated: {
+        run_id: "run-a",
+        plan_id: "plan-1",
+        status: "completed",
+        created: 1,
+        skipped: 0,
+        failed: 0,
+        resumed: false,
+        requires_review: true,
+        created_event_ids: ["event-a"],
+      },
+    });
+    render(
+      <RecurringSchedulePanel
+        programId="program-1"
+        rules={[rule]}
+        rulesError={null}
+        onGenerated={vi.fn<() => Promise<boolean>>().mockResolvedValue(true)}
+        onWorkspaceRefresh={onWorkspaceRefresh}
+      />
+    );
+    await user.click(
+      await screen.findByRole("button", { name: COPY.programs.previewEvents })
+    );
+    await user.click(
+      screen.getByRole("button", { name: COPY.programs.generateEvents })
+    );
+    await expect(
+      screen.findByText(
+        COPY.programs.generated
+          .replace("{created}", "1")
+          .replace("{skipped}", "0")
+      )
+    ).resolves.toBeInTheDocument();
+    // Reconcile the settled requires_review result (readback succeeds): the
+    // review affordance stays latched until a matching fresh Preview.
+    const reviewAgain = screen.getByRole("button", {
+      name: COPY.programs.previewReviewAgain,
+    });
+    expect(reviewAgain).toBeInTheDocument();
+    await waitFor(() => {
+      expect(
+        screen.getByRole("button", { name: COPY.programs.generateEvents })
+      ).toBeDisabled();
+    });
+    // A successful Preview of the current schedule fingerprint is Plan B.
+    const planB: PreviewResult = {
+      plan: { ...preview.plan, plan_id: "plan-2" },
+      occurrences: preview.occurrences,
+    };
+    mocks.previewEvents.mockResolvedValueOnce(planB);
+    await user.click(
+      screen.getByRole("button", { name: COPY.programs.previewReviewAgain })
+    );
+    const generate = await screen.findByRole("button", {
+      name: COPY.programs.generateEvents,
+    });
+    await waitFor(() => expect(generate).not.toBeDisabled());
+    // RP1.4 keeps the old result visible: Plan A history stays while
+    // Generate unlatches onto Plan B.
+    expect(
+      screen.getByText(
+        COPY.programs.generated
+          .replace("{created}", "1")
+          .replace("{skipped}", "0")
+      )
+    ).toBeInTheDocument();
+    mocks.generateEvents.mockResolvedValueOnce({
+      generated: {
+        run_id: "run-b",
+        plan_id: "plan-2",
+        status: "completed",
+        created: 1,
+        skipped: 0,
+        failed: 0,
+        resumed: false,
+        created_event_ids: ["event-b"],
+      },
+    });
+    // A mismatched fingerprint must keep the latch: same flow with a
+    // changed rule still blocks Generate on Plan B.
+    // (Covered by the fingerprint gate; the latch assertion above plus the
+    // stale-Plan suite pin the negative paths.)
+    await user.click(generate);
+    expect(mocks.generateEvents).toHaveBeenLastCalledWith(
+      "program-1",
+      "plan-2"
+    );
+  });
+
+  test("mutation INTERNAL_ERROR is unknown but a Preview 500 stays settled (RP1.5)", async () => {
+    const user = userEvent.setup();
+    renderPanel();
+    await user.click(
+      await screen.findByRole("button", { name: COPY.programs.previewEvents })
+    );
+    await screen.findByRole("button", { name: COPY.programs.generateEvents });
+    mocks.generateEvents.mockRejectedValueOnce(
+      new RpcError({ status: 500, code: "INTERNAL_ERROR" })
+    );
+    await user.click(
+      screen.getByRole("button", { name: COPY.programs.generateEvents })
+    );
+    const reconcile = await screen.findByRole("button", {
+      name: COPY.programs.generatedReconcileUnknown,
+    });
+    expect(reconcile).toHaveAttribute("data-generation-plan-id", "plan-1");
+    expect(
+      screen.getByText(COPY.programs.scheduleTransportAmbiguous)
+    ).toBeInTheDocument();
+    cleanup();
+    window.sessionStorage.clear();
+    mocks.previewEvents.mockReset();
+    mocks.generateEvents.mockReset();
+    mocks.previewEvents.mockRejectedValueOnce(
+      new RpcError({ status: 500, code: "INTERNAL_ERROR" })
+    );
+    renderPanel();
+    await user.click(
+      await screen.findByRole("button", { name: COPY.programs.previewEvents })
+    );
+    // A Preview 500 is a settled read failure: no unknown-Generate recovery
+    // UI and no retained generation reference.
+    await expect(
+      screen.findByText(COPY.programs.previewEvents)
+    ).resolves.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", {
+        name: COPY.programs.generatedReconcileUnknown,
+      })
+    ).not.toBeInTheDocument();
+    expect(
+      window.sessionStorage.getItem(generationRecoveryKey("program-1"))
+    ).toBeNull();
+  });
+});
+describe("F02 Preview 調整 uses Management Drafts (#632)", () => {
+  const twoOccurrencePreview: PreviewResult = {
+    plan: {
+      plan_id: "plan-1",
+      program_id: "program-1",
+      plan_hash: "hash-1",
+      horizon_days: wallDaySpan(
+        hkTodayWallDate(),
+        addWallDays(addWallMonths(hkTodayWallDate(), 3), -1)
+      ),
+      from_date: hkTodayWallDate(),
+      to_date: addWallDays(addWallMonths(hkTodayWallDate(), 3), -1),
+      rule_count: 1,
+      created_at: "2026-09-16T00:00:00.000Z",
+    },
+    occurrences: [
+      {
+        occurrence_id: "occ-first",
+        plan_id: "plan-1",
+        rule_id: "rule-1",
+        occurs_on: "2026-09-16",
+        starts_at: "2026-09-16T11:30:00.000Z",
+        ends_at: "2026-09-16T13:00:00.000Z",
+        location: "主堂",
+        skip_reason: null,
+        exception_id: null,
+      },
+      {
+        occurrence_id: "occ-second",
+        plan_id: "plan-1",
+        rule_id: "rule-1",
+        occurs_on: "2026-09-23",
+        starts_at: "2026-09-23T11:30:00.000Z",
+        ends_at: "2026-09-23T13:00:00.000Z",
+        location: "主堂",
+        skip_reason: null,
+        exception_id: null,
+      },
+    ],
+  };
+
+  beforeEach(() => {
+    window.sessionStorage.clear();
+    mocks.previewEvents.mockReset().mockResolvedValue(twoOccurrencePreview);
+    mocks.generateEvents.mockReset();
+    mocks.createScheduleException.mockReset();
+  });
+
+  afterEach(() => {
+    cleanup();
+    window.sessionStorage.clear();
+  });
+
+  function renderPanel() {
+    return render(
+      <RecurringSchedulePanel
+        programId="program-1"
+        rules={[rule]}
+        rulesError={null}
+        onGenerated={vi.fn<() => Promise<boolean>>().mockResolvedValue(true)}
+      />
+    );
+  }
+
+  function draftKeys(): string[] {
+    const keys: string[] = [];
+    for (let index = 0; index < window.sessionStorage.length; index += 1) {
+      const key = window.sessionStorage.key(index);
+      if (key?.startsWith("efcc_management_draft:")) {
+        keys.push(decodeURIComponent(key));
+      }
+    }
+    return keys.sort();
+  }
+
+  async function previewTwoOccurrences(user: UserEvent) {
+    renderPanel();
+    await user.click(
+      await screen.findByRole("button", { name: COPY.programs.previewEvents })
+    );
+    const adjust = await screen.findAllByRole("button", {
+      name: COPY.programs.previewAdjustOccurrence,
+    });
+    expect(adjust).toHaveLength(2);
+    return adjust;
+  }
+
+  test("opening and closing the Sheet unchanged writes no draft and no server exception", async () => {
+    const user = userEvent.setup();
+    const adjust = await previewTwoOccurrences(user);
+    await user.click(adjust[0]);
+    await screen.findByRole("heading", {
+      name: COPY.programs.previewAdjustSheetTitle,
+    });
+    await user.click(
+      screen.getByRole("button", { name: COPY.programs.previewCancelDraft })
+    );
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("heading", {
+          name: COPY.programs.previewAdjustSheetTitle,
+        })
+      ).not.toBeInTheDocument()
+    );
+    expect(draftKeys()).toStrictEqual([]);
+    expect(mocks.createScheduleException).not.toHaveBeenCalled();
+    expect(
+      screen.getByRole("button", { name: COPY.programs.generateEvents })
+    ).not.toBeDisabled();
+  });
+
+  test("a real field change persists one occurrence-scoped key and survives reload", async () => {
+    const user = userEvent.setup();
+    const adjust = await previewTwoOccurrences(user);
+    await user.click(adjust[0]);
+    const dateInput = await screen.findByLabelText(
+      COPY.programs.settingsExceptionNewDate
+    );
+    await user.clear(dateInput);
+    await user.type(dateInput, "2026-09-17");
+    await waitFor(() =>
+      expect(draftKeys()).toStrictEqual([
+        "efcc_management_draft:program-1:settings-exception:rule-1:2026-09-16",
+      ])
+    );
+    await user.click(screen.getByRole("button", { name: "Close" }));
+    expect(mocks.createScheduleException).not.toHaveBeenCalled();
+    expect(
+      screen.getByRole("button", { name: COPY.programs.generateEvents })
+    ).toBeDisabled();
+    expect(
+      screen.getByText(COPY.programs.previewExceptionDraft)
+    ).toBeInTheDocument();
+    cleanup();
+
+    renderPanel();
+    await user.click(
+      await screen.findByRole("button", { name: COPY.programs.previewEvents })
+    );
+    await screen.findAllByRole("button", {
+      name: COPY.programs.previewAdjustOccurrence,
+    });
+    expect(
+      screen.getByText(COPY.programs.previewExceptionDraft)
+    ).toBeInTheDocument();
+    expect(draftKeys()).toStrictEqual([
+      "efcc_management_draft:program-1:settings-exception:rule-1:2026-09-16",
+    ]);
+  });
+
+  test("two same-rule occurrences and the Settings editor occupy three distinct session keys", async () => {
+    const user = userEvent.setup();
+    writeManagementDraft("program-1", "settings-exception:rule-1", {
+        overrideDate: "2026-09-16",
+        action: "CANCEL",
+        newDate: "2026-09-16",
+        newStartTime: "11:30",
+        newEndTime: "13:00",
+    });
+    const adjust = await previewTwoOccurrences(user);
+    await user.click(adjust[0]);
+    await user.clear(
+      await screen.findByLabelText(COPY.programs.settingsExceptionNewDate)
+    );
+    await user.type(
+      screen.getByLabelText(COPY.programs.settingsExceptionNewDate),
+      "2026-09-17"
+    );
+    await waitFor(() =>
+      expect(draftKeys()).toContain(
+        "efcc_management_draft:program-1:settings-exception:rule-1:2026-09-16"
+      )
+    );
+    await user.keyboard("{Escape}");
+    await user.click(adjust[1]);
+    await user.clear(
+      await screen.findByLabelText(COPY.programs.settingsExceptionNewDate)
+    );
+    await user.type(
+      screen.getByLabelText(COPY.programs.settingsExceptionNewDate),
+      "2026-09-24"
+    );
+    await waitFor(() =>
+      expect(draftKeys()).toStrictEqual([
+        "efcc_management_draft:program-1:settings-exception:rule-1",
+        "efcc_management_draft:program-1:settings-exception:rule-1:2026-09-16",
+        "efcc_management_draft:program-1:settings-exception:rule-1:2026-09-23",
+      ])
+    );
+  });
+
+  test("an orphan draft stays Recover/Discard-able without permanently disabling Generate", async () => {
+    const user = userEvent.setup();
+    const adjust = await previewTwoOccurrences(user);
+    await user.click(adjust[0]);
+    await user.clear(
+      await screen.findByLabelText(COPY.programs.settingsExceptionNewDate)
+    );
+    await user.type(
+      screen.getByLabelText(COPY.programs.settingsExceptionNewDate),
+      "2026-09-17"
+    );
+    await waitFor(() => expect(draftKeys()).toHaveLength(1));
+    await user.click(screen.getByRole("button", { name: "Close" }));
+    // The first occurrence leaves the visible range; the draft becomes an
+    // orphan but remains recoverable.
+    mocks.previewEvents.mockResolvedValue({
+      ...twoOccurrencePreview,
+      occurrences: [twoOccurrencePreview.occurrences[1]],
+    });
+    await user.click(
+      screen.getByRole("button", { name: COPY.programs.previewReviewAgain })
+    );
+    await expect(
+      screen.findByText(COPY.programs.previewOrphanDraftsTitle)
+    ).resolves.toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: COPY.programs.generateEvents })
+    ).not.toBeDisabled();
+    mocks.createScheduleException.mockResolvedValueOnce({
+      exception: {
+        exception_id: "exception-1",
+        rule_id: "rule-1",
+        override_date: "2026-09-16",
+        action: "RESCHEDULE",
+        new_start_time: "11:30",
+        new_end_time: "13:00",
+        new_date: "2026-09-17",
+        created_at: "2026-09-18T00:00:00.000Z",
+      },
+    });
+    await user.click(
+      screen.getByRole("button", { name: COPY.programs.draftRecover })
+    );
+    await screen.findByRole("heading", {
+      name: COPY.programs.previewAdjustSheetTitle,
+    });
+    await user.click(
+      screen.getByRole("button", { name: COPY.programs.previewSaveException })
+    );
+    await waitFor(() =>
+      expect(mocks.createScheduleException).toHaveBeenCalledWith(
+        "program-1",
+        "rule-1",
+        {
+          override_date: "2026-09-16",
+          action: "RESCHEDULE",
+          new_date: "2026-09-17",
+          new_start_time: "11:30",
+          new_end_time: "13:00",
+        }
+      )
+    );
+    await waitFor(() => expect(draftKeys()).toStrictEqual([]));
   });
 });
