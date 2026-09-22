@@ -122,4 +122,27 @@ describe("member picker keyboard navigation", () => {
     expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
     expect(hiddenField()).toHaveValue("");
   });
+
+  test("uses the shared screen field and row foundations", async () => {
+    server.use(
+      http.get("/api/v1/programs/prog-1/member-options", () =>
+        HttpResponse.json({ requestId: "rid-1", data: { members: MEMBERS } })
+      )
+    );
+    const user = userEvent.setup();
+    renderPicker();
+    const input = screen.getByRole("combobox");
+
+    expect(input).toHaveAttribute("id", "leader_user_id-input");
+    expect(input.closest("[data-screen-field]")).toBeInTheDocument();
+
+    await user.type(input, "chan");
+    const listbox = await screen.findByRole("listbox");
+    expect(
+      listbox.closest('[data-screen-foundation="row-list"]')
+    ).toBeInTheDocument();
+    expect(
+      screen.getAllByRole("option")[0].querySelector('[data-screen-row="true"]')
+    ).toBeInTheDocument();
+  });
 });

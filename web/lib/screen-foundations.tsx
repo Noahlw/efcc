@@ -256,6 +256,7 @@ export interface ScreenSectionProps extends Omit<
   title?: React.ReactNode;
   action?: React.ReactNode;
   headingId?: string;
+  headingRef?: React.Ref<HTMLHeadingElement>;
 }
 
 /** Repeated section rhythm and heading/action alignment for screen families. */
@@ -264,6 +265,7 @@ export const ScreenSection = ({
   children,
   className,
   headingId,
+  headingRef,
   title,
   ...props
 }: ScreenSectionProps) => (
@@ -281,6 +283,7 @@ export const ScreenSection = ({
         <h2
           className="m-0 min-w-0 wrap-anywhere text-[length:var(--screen-section-title-size)] font-bold leading-[var(--screen-section-title-leading)] tracking-[-0.015em]"
           id={headingId}
+          ref={headingRef}
         >
           {title}
         </h2>
@@ -646,20 +649,29 @@ export type ScreenCardTone = NonNullable<
 export interface ScreenCardProps
   extends
     React.ComponentPropsWithoutRef<"div">,
-    VariantProps<typeof screenCardVariants> {}
+    VariantProps<typeof screenCardVariants> {
+  asChild?: boolean;
+}
 
 /** Semantic containment for one meaningful unit; not a default page wrapper. */
-export const ScreenCard = ({
-  className,
-  tone = "default",
-  ...props
-}: ScreenCardProps) => (
-  <div
-    {...props}
-    className={cn(screenCardVariants({ tone }), className)}
-    data-screen-card-tone={tone}
-    data-screen-foundation="card"
-  />
+export const ScreenCard = React.forwardRef<HTMLDivElement, ScreenCardProps>(
+  (
+    { asChild = false, children, className, tone = "default", ...props },
+    ref
+  ) => {
+    const Comp = asChild ? Slot.Root : "div";
+    return (
+      <Comp
+        {...props}
+        className={cn(screenCardVariants({ tone }), className)}
+        data-screen-card-tone={tone}
+        data-screen-foundation="card"
+        ref={ref}
+      >
+        {children}
+      </Comp>
+    );
+  }
 );
 
 const screenTaskSurfaceVariants = cva(
@@ -854,18 +866,20 @@ export interface ScreenLoadingRowsProps
     React.ComponentPropsWithoutRef<"output">,
     VariantProps<typeof screenLoadingRowsVariants> {
   count?: number;
+  label?: string;
 }
 
 export const ScreenLoadingRows = ({
   className,
   count = 3,
   density = "collection",
+  label = "載入中",
   ...props
 }: ScreenLoadingRowsProps) => (
   <output
     {...props}
     aria-busy="true"
-    aria-label="載入中"
+    aria-label={label}
     className={cn(
       screenLoadingRowsVariants({ density }),
       "border-t border-[var(--screen-line)]",
@@ -893,16 +907,19 @@ export const ScreenLoadingRows = ({
   </output>
 );
 
-export const ScreenEditor = ({
-  className,
-  ...props
-}: React.ComponentPropsWithoutRef<"form">) => (
-  <form
-    {...props}
-    className={cn("grid gap-4", className)}
-    data-screen-foundation="editor"
-  />
-);
+export const ScreenEditor = React.forwardRef<
+  HTMLFormElement,
+  React.ComponentPropsWithoutRef<"form">
+>(({ className, ...props }, ref) => {
+  return (
+    <form
+      {...props}
+      className={cn("grid gap-4", className)}
+      data-screen-foundation="editor"
+      ref={ref}
+    />
+  );
+});
 
 export interface ScreenFieldProps extends React.ComponentPropsWithoutRef<"fieldset"> {
   label: React.ReactNode;

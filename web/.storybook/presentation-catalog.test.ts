@@ -86,7 +86,7 @@ describe("T07 Screen Catalog foundation", () => {
       intent: null,
       primaryBaselinePsn: "PSN-AUTH-SIGN-IN-DEFAULT",
     });
-    expect(SCREEN_PRESENTATION_DECLARATIONS).toHaveLength(39);
+    expect(SCREEN_PRESENTATION_DECLARATIONS).toHaveLength(40);
   });
 
   test("classifies the credential/PIN upgrade as a transient sign-in state", () => {
@@ -106,7 +106,7 @@ describe("T07 Screen Catalog foundation", () => {
   });
 
   test("catalogs every T07.3 Programs composition with truthful intent", () => {
-    expect(PROGRAMS_PRESENTATION_DECLARATIONS).toHaveLength(9);
+    expect(PROGRAMS_PRESENTATION_DECLARATIONS).toHaveLength(10);
     expect(
       SCREEN_CATALOG.find(
         (entry) => entry.screenId === "programs-participant-event-detail"
@@ -133,7 +133,7 @@ describe("T07 Screen Catalog foundation", () => {
   });
 
   test("keeps the independent obligation list separate from Story discovery", () => {
-    expect(PRESENTATION_SCREEN_CATALOG).toHaveLength(35);
+    expect(PRESENTATION_SCREEN_CATALOG).toHaveLength(36);
     expect(SCREEN_CATALOG.map(({ screenId }) => screenId)).toStrictEqual(
       PRESENTATION_SCREEN_CATALOG.map(({ screenId }) => screenId)
     );
@@ -276,8 +276,8 @@ describe("T07 Screen Catalog foundation", () => {
       intent: "mode=assisted&event=t07-5-event",
       primaryBaselinePsn: "PSN-ATTENDANCE-ASSISTED-CHECK-IN",
     });
-    expect(SCREEN_CATALOG).toHaveLength(35);
-    expect(SCREEN_PRESENTATION_DECLARATIONS).toHaveLength(39);
+    expect(SCREEN_CATALOG).toHaveLength(36);
+    expect(SCREEN_PRESENTATION_DECLARATIONS).toHaveLength(40);
   });
 
   test("keeps Notifications Story metadata and navigation parser-backed", () => {

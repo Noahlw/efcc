@@ -1,5 +1,4 @@
 import type { Decorator, Meta, StoryObj } from "@storybook/nextjs-vite";
-import { expect } from "storybook/test";
 
 import { AppShell } from "@/lib/app-shell";
 import { ManagementDirectory as ManagementDirectoryComponent } from "@/lib/programs/management-directory";
@@ -16,7 +15,7 @@ import {
 } from "./programs-fixtures";
 import { assertProgramsScreen } from "./programs-presentation-contract";
 
-const noop = () => {};
+const noop = () => undefined;
 
 const withMemberIdentity: Decorator = (Story) => {
   if (typeof window !== "undefined") {
@@ -215,7 +214,7 @@ export const ManagementDirectory: Story = {
   play: ({ canvasElement }) =>
     assertProgramsScreen(canvasElement, {
       selector: "#programs-management-directory-title",
-      text: "管理課程目錄",
+      text: "管理課程",
     }),
 };
 
@@ -390,6 +389,51 @@ export const WorkspaceSettings: Story = {
     }),
 };
 
+export const WorkspaceSchedule: Story = {
+  decorators: [withManagerIdentity],
+  render: () =>
+    workspace(
+      <ProgramWorkspaceComponent
+        programId="t07-3-program"
+        task="schedule"
+        onBack={noop}
+        onTaskChange={noop}
+        onEventChange={noop}
+      />
+    ),
+  parameters: {
+    presentation: {
+      screenId: "programs-workspace-schedule",
+      psn: "PSN-PROGRAMS-WORKSPACE-SCHEDULE",
+      productFamily: "programs",
+      lifecycle: "active",
+      baseline: "primary",
+      route: "/programs",
+      intent: "mode=management&program=t07-3-program&task=schedule",
+      state: "default",
+      gap: null,
+      supersedes: [],
+    },
+    msw: programsManagementHandlers,
+    nextjs: {
+      appDirectory: true,
+      navigation: {
+        pathname: "/programs",
+        query: {
+          mode: "management",
+          program: "t07-3-program",
+          task: "schedule",
+        },
+      },
+    },
+  },
+  play: ({ canvasElement }) =>
+    assertProgramsScreen(canvasElement, {
+      selector: "#programs-workspace-title",
+      text: "聚會排程",
+    }),
+};
+
 export const WorkspaceNotifications: Story = {
   decorators: [withManagerIdentity],
   render: () => (
@@ -431,6 +475,6 @@ export const WorkspaceNotifications: Story = {
   play: ({ canvasElement }) =>
     assertProgramsScreen(canvasElement, {
       selector: "#programs-notifications-title",
-      text: "管理通知",
+      text: "通知",
     }),
 };

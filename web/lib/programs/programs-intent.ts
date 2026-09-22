@@ -3,6 +3,7 @@ export type ProgramsMode = "participant" | "management";
 export type ProgramsTask =
   | "events"
   | "participants"
+  | "schedule"
   | "settings"
   | "notifications";
 export type ProgramsOrigin = "home" | "notices" | "messages" | "programs";
@@ -43,6 +44,7 @@ const SAFE_EVENT_ID = /^[A-Za-z0-9-]{1,64}$/u;
 const PROGRAM_TASKS: readonly ProgramsTask[] = [
   "events",
   "participants",
+  "schedule",
   "settings",
   "notifications",
 ];

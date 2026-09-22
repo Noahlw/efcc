@@ -180,10 +180,18 @@ describe("Programs management boundary", () => {
       screen.findByRole("heading", { name: "查經小組" })
     ).resolves.toBeInTheDocument();
     expect(
-      screen.queryByRole("link", { name: COPY.programs.workspaceTaskEvents })
-    ).not.toBeInTheDocument();
+      screen.getByRole("link", { name: COPY.programs.workspaceTaskEvents })
+    ).toBeInTheDocument();
     expect(
-      screen.getByText(COPY.programs.cockpitParticipantsTile)
+      screen.getByRole("link", {
+        name: new RegExp(
+          `${COPY.programs.cockpitParticipantsTile}.*${COPY.programs.cockpitPendingLabel.replace(
+            "{count}",
+            String(cockpit.pending_enrollment_count)
+          )}`,
+          "u"
+        ),
+      })
     ).toBeInTheDocument();
     await userEvent.click(screen.getByRole("link", { name: /聚會.*個聚會/u }));
     expect(window.location.search).toBe(
@@ -195,6 +203,7 @@ describe("Programs management boundary", () => {
       })
     ).resolves.toBeInTheDocument();
   });
+
   test("restores the directory search and focuses the selected row after Back", async () => {
     const view = render(<ProgramsBoundary />);
     const search = await screen.findByRole("searchbox", {
@@ -206,11 +215,11 @@ describe("Programs management boundary", () => {
     await screen.findByRole("heading", { name: "查經小組" });
 
     await userEvent.click(
-      screen.getByRole("button", { name: COPY.programs.workspaceBack })
+      screen.getByRole("link", { name: COPY.programs.workspaceBack })
     );
     await expect(
       screen.findByRole("heading", {
-        name: COPY.programs.managementDirectoryTitle,
+        name: COPY.programs.managementPageTitle,
       })
     ).resolves.toBeInTheDocument();
     expect(
@@ -223,6 +232,7 @@ describe("Programs management boundary", () => {
     );
     view.unmount();
   });
+
   test("restores the selected Department context from a management return URL", async () => {
     const otherDepartment = {
       ...department,
@@ -256,6 +266,7 @@ describe("Programs management boundary", () => {
       screen.queryByRole("button", { name: /敬拜事工.*部門設定/u })
     ).not.toBeInTheDocument();
   });
+
   test("carries the next meeting event into the participants roster task", async () => {
     window.history.replaceState(
       {},

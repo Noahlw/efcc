@@ -1,17 +1,12 @@
 "use client";
 /* oxlint-disable jsx-a11y/prefer-tag-over-role -- preserve the Programs status role contract */
 
-import { cva, type VariantProps } from "class-variance-authority";
+import { ChevronRight } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
-import { Alert } from "@/components/ui/alert";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Skeleton } from "@/components/ui/skeleton";
 import { RpcError } from "@/lib/api";
 import { COPY } from "@/lib/copy";
 import { listParticipantCatalog } from "@/lib/programs/program-api";
@@ -20,8 +15,23 @@ import type {
   ParticipantCatalogProgram,
   ParticipantCatalogViewerState,
 } from "@/lib/programs/program-api";
+import {
+  ScreenFilterChip,
+  ScreenFilters,
+  ScreenHeader,
+  ScreenLoadingRows,
+  ScreenRow,
+  ScreenRowList,
+  ScreenRowMain,
+  ScreenRowMeta,
+  ScreenRowTitle,
+  ScreenRowTrailing,
+  ScreenSearch,
+  ScreenSection,
+  ScreenState,
+  ScreenStatus,
+} from "@/lib/screen-foundations";
 import { rememberDeepLink } from "@/lib/session";
-import { cn } from "@/lib/utils";
 
 import { useAsyncResource } from "./use-async-resource";
 
@@ -111,30 +121,6 @@ const STATUS_TAG: Record<
   archived: { label: COPY.programs.statusArchived, kind: "neutral" },
 };
 
-const SKELETON_ROWS = [0, 1, 2] as const;
-const catalogStatusVariants = cva(
-  "inline-flex min-h-6 items-center rounded-[var(--radius-pill)] border px-2 py-0.5 text-xs font-bold leading-tight",
-  {
-    variants: {
-      tone: {
-        success:
-          "border-[var(--success-border)] bg-[var(--success-surface)] text-[var(--success)]",
-        pending:
-          "border-[var(--pending-border)] bg-[var(--pending-surface)] text-[var(--pending)]",
-        neutral:
-          "border-[var(--line)] bg-[var(--surface)] text-[var(--ink-muted)]",
-        danger:
-          "border-[var(--error-border)] bg-[var(--error-surface)] text-[var(--error)]",
-      },
-    },
-    defaultVariants: { tone: "neutral" },
-  }
-);
-
-type CatalogStatusTone = NonNullable<
-  VariantProps<typeof catalogStatusVariants>["tone"]
->;
-
 interface CatalogSearchControlsProps {
   query: string;
   busy?: boolean;
@@ -148,57 +134,28 @@ const CatalogSearchControls = ({
   onQueryChange,
   onClear,
 }: CatalogSearchControlsProps) => (
-  <div className="mb-5 min-w-0">
-    <div className="flex min-w-0 gap-2 max-[799px]:flex-col">
-      <div className="relative flex min-w-0 flex-1">
-        <svg
-          aria-hidden="true"
-          className="pointer-events-none absolute top-1/2 left-3 size-5 -translate-y-1/2 text-[var(--ink-muted)]"
-          focusable="false"
-          viewBox="0 0 24 24"
-        >
-          <circle
-            cx="11"
-            cy="11"
-            fill="none"
-            r="7"
-            stroke="currentColor"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            strokeWidth="1.8"
-          />
-          <path
-            d="m20 20-4-4"
-            fill="none"
-            stroke="currentColor"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            strokeWidth="1.8"
-          />
-        </svg>
-        <Input
-          id="programs-catalog-search"
-          aria-label={COPY.programs.catalogSearchLabel}
-          placeholder={COPY.programs.catalogSearchLabel}
-          className="h-auto min-h-11 border-[var(--line-strong)] bg-[var(--surface-raised)] py-3 pr-3 pl-10 text-base text-[var(--ink)] placeholder:text-[var(--ink-muted)] focus-visible:border-[var(--focus)] focus-visible:ring-3 focus-visible:ring-[var(--focus)]"
-          type="search"
-          value={query}
-          onChange={(event) => onQueryChange(event.target.value)}
-          autoComplete="off"
-          aria-busy={busy}
-        />
-      </div>
-      {query.trim() !== "" && (
-        <Button
-          className="h-auto min-h-11 whitespace-normal border-[var(--line-strong)] bg-[var(--surface-raised)] px-3.5 py-2 text-[var(--ink)] hover:border-[var(--accent)] hover:bg-[var(--surface)] hover:text-[var(--accent-deep)] max-[799px]:w-full"
-          type="button"
-          variant="outline"
-          onClick={onClear}
-        >
-          {COPY.programs.catalogClearSearch}
-        </Button>
-      )}
-    </div>
+  <div className="mb-5 flex min-w-0 gap-2 max-[799px]:flex-col">
+    <ScreenSearch
+      id="programs-catalog-search"
+      aria-label={COPY.programs.catalogSearchLabel}
+      placeholder={COPY.programs.catalogSearchLabel}
+      className="min-w-0 flex-1"
+      value={query}
+      onChange={(event) => onQueryChange(event.target.value)}
+      autoComplete="off"
+      aria-describedby={undefined}
+      aria-busy={busy}
+    />
+    {query.trim() !== "" && (
+      <Button
+        className="h-auto min-h-[var(--screen-touch-target)] whitespace-normal border-[var(--screen-line-strong)] bg-[var(--screen-surface)] px-[var(--screen-control-padding-inline)] py-2 text-[var(--screen-ink)] hover:border-[var(--screen-accent)] hover:bg-[var(--screen-surface-soft)] hover:text-[var(--screen-accent-deep)] max-[799px]:w-full"
+        type="button"
+        variant="outline"
+        onClick={onClear}
+      >
+        {COPY.programs.catalogClearSearch}
+      </Button>
+    )}
   </div>
 );
 
@@ -211,26 +168,21 @@ const CatalogFilterChips = ({
   filter,
   onFilterChange,
 }: CatalogFilterChipsProps) => (
-  <div
-    className="mb-4 min-w-0"
+  <ScreenFilters
+    className="mb-5"
     role="group"
     aria-label={COPY.programs.filterGroupLabel}
   >
-    <div className="flex min-w-0 flex-wrap gap-2">
-      {FILTERS.map(({ value, label }) => (
-        <Button
-          key={value}
-          className="h-auto min-h-11 min-w-11 whitespace-normal px-3.5 py-2 text-sm font-bold"
-          variant={filter === value ? "default" : "outline"}
-          type="button"
-          aria-pressed={filter === value}
-          onClick={() => onFilterChange(value)}
-        >
-          {label}
-        </Button>
-      ))}
-    </div>
-  </div>
+    {FILTERS.map(({ value, label }) => (
+      <ScreenFilterChip
+        key={value}
+        selected={filter === value}
+        onClick={() => onFilterChange(value)}
+      >
+        {label}
+      </ScreenFilterChip>
+    ))}
+  </ScreenFilters>
 );
 
 function nextEventDateLabel(value: string | null): string {
@@ -295,8 +247,6 @@ function catalogSecondaryCopy(program: ParticipantCatalogProgram): string {
 
 export const ParticipantDirectory = ({
   programId,
-  canManage,
-  managementHref,
   programHref,
   onOpenProgram,
   focusProgramId = null,
@@ -306,7 +256,7 @@ export const ParticipantDirectory = ({
   const router = useRouter();
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<ParticipantFilter>("all");
-  const [storedFocusProgramId] = useState(readParticipantProgramFocus);
+  const storedFocusProgramId = useMemo(readParticipantProgramFocus, []);
   const focusTargetProgramId = focusProgramId ?? storedFocusProgramId;
   const onAuthRequired = useCallback(() => {
     if (typeof window === "undefined") {
@@ -413,10 +363,16 @@ export const ParticipantDirectory = ({
   }, [focusTargetProgramId, onFocusProgram, state.kind]);
 
   return (
-    <div className="min-w-0 text-[var(--ink)]">
+    <div className="min-w-0 text-[var(--screen-ink)]">
+      <ScreenHeader
+        headingId="programs-catalog-title"
+        lead={COPY.programs.entryLead}
+        title={COPY.programs.pageTitle}
+      />
+
       {state.kind === "ready" && programId !== null && (
         <div
-          className="my-6 grid min-w-0 gap-1 rounded-[var(--radius-md)] border border-[var(--line)] bg-[var(--surface-raised)] p-4 text-sm leading-6"
+          className="my-5 grid min-w-0 gap-1 border-l-2 border-[var(--screen-accent)] bg-[var(--screen-surface-soft)] px-3 py-2 text-sm leading-6"
           role="status"
         >
           <strong className="min-w-0 wrap-anywhere">
@@ -424,7 +380,7 @@ export const ParticipantDirectory = ({
               ? COPY.programs.directProgramIntent
               : COPY.programs.programUnavailable}
           </strong>
-          <span className="min-w-0 wrap-anywhere text-[var(--ink-muted)]">
+          <span className="min-w-0 wrap-anywhere text-[var(--screen-muted)]">
             {selectedProgram
               ? `${selectedProgram.name}${
                   selectedProgram.category
@@ -445,232 +401,163 @@ export const ParticipantDirectory = ({
       <CatalogFilterChips filter={filter} onFilterChange={setFilter} />
 
       {state.kind === "loading" && (
-        <section
+        <ScreenLoadingRows
           id="programs-catalog-state"
           tabIndex={-1}
-          className="grid min-w-0 max-w-[60ch] gap-4 rounded-[var(--radius-md)] border border-[var(--line)] bg-[var(--surface)] p-4 text-[var(--ink)]"
-          role="status"
-          aria-busy="true"
-          aria-label={COPY.programs.catalogLoading}
+          count={3}
+          label={COPY.programs.catalogLoading}
         >
-          <span className="sr-only">{COPY.programs.catalogLoading}</span>
-          <div
-            className="min-w-0 overflow-hidden rounded-[var(--radius-sm)] border border-[var(--line)] bg-[var(--surface-raised)]"
-            aria-hidden="true"
-          >
-            {SKELETON_ROWS.map((row) => (
-              <div
-                key={row}
-                className="min-h-[88px] border-b border-[var(--line)] p-4 last:border-b-0"
-              >
-                <Skeleton className="h-3 w-full" />
-                <Skeleton className="mt-3 h-3 w-[62%]" />
-              </div>
-            ))}
-          </div>
-        </section>
+          {COPY.programs.catalogLoading}
+        </ScreenLoadingRows>
       )}
 
       {state.kind === "error" && (
-        <Alert
+        <ScreenState
           id="programs-catalog-state"
           tabIndex={-1}
-          className="grid min-w-0 max-w-[60ch] gap-1.5 border-[var(--error-border)] bg-[var(--error-surface)] p-4 text-[var(--ink)]"
-          variant="destructive"
-        >
-          <h2 className="m-0 wrap-anywhere text-[1.35rem] font-extrabold leading-tight">
-            {state.failure === "forbidden"
-              ? COPY.programs.catalogForbidden
-              : COPY.programs.catalogLoadError}
-          </h2>
-          <p className="m-0 mb-3 wrap-anywhere leading-[1.6]">
-            {state.failure === "forbidden"
-              ? COPY.programs.catalogForbiddenHint
-              : COPY.programs.catalogLoadErrorHint}
-          </p>
-          {state.failure === "forbidden" ? (
-            <Button
-              asChild
-              className="h-auto min-h-11 w-full whitespace-normal px-4 py-3 text-base font-bold sm:w-fit"
-              variant="outline"
-            >
-              <Link href={homeHref} replace>
-                {COPY.nav.backToHome}
-              </Link>
-            </Button>
-          ) : (
-            <Button
-              className="h-auto min-h-11 w-full whitespace-normal px-4 py-3 text-base font-bold sm:w-fit"
-              type="button"
-              onClick={retryCatalog}
-            >
-              {COPY.programs.catalogRetry}
-            </Button>
-          )}
-        </Alert>
+          kind={state.failure === "forbidden" ? "forbidden" : "error"}
+          title={
+            <h2 className="m-0 wrap-anywhere text-base font-bold">
+              {state.failure === "forbidden"
+                ? COPY.programs.catalogForbidden
+                : COPY.programs.catalogLoadError}
+            </h2>
+          }
+          description={
+            <p className="m-0 wrap-anywhere leading-[1.6]">
+              {state.failure === "forbidden"
+                ? COPY.programs.catalogForbiddenHint
+                : COPY.programs.catalogLoadErrorHint}
+            </p>
+          }
+          action={
+            state.failure === "forbidden" ? (
+              <Button
+                asChild
+                className="h-auto min-h-11 w-full whitespace-normal px-4 py-3 text-base font-bold sm:w-fit"
+                variant="outline"
+              >
+                <Link href={homeHref} replace>
+                  {COPY.nav.backToHome}
+                </Link>
+              </Button>
+            ) : (
+              <Button
+                className="h-auto min-h-11 w-full whitespace-normal px-4 py-3 text-base font-bold sm:w-fit"
+                type="button"
+                onClick={retryCatalog}
+              >
+                {COPY.programs.catalogRetry}
+              </Button>
+            )
+          }
+        />
       )}
 
       {programs && (
         <>
           {filtered.length === 0 && (
-            <Card
+            <ScreenState
               id="programs-catalog-state"
-              className="grid min-w-0 max-w-[60ch] gap-1.5 text-[var(--ink)]"
-            >
-              <h2 className="m-0 wrap-anywhere text-[1.35rem] font-extrabold leading-tight">
-                {programs.length === 0
-                  ? COPY.programs.catalogNoPrograms
-                  : COPY.programs.catalogEmpty}
-              </h2>
-              <p className="m-0 mb-3 wrap-anywhere leading-[1.6] text-[var(--ink-muted)]">
-                {programs.length === 0
-                  ? COPY.programs.catalogNoProgramsHint
-                  : COPY.programs.catalogEmptyHint}
-              </p>
-              <Button
-                className="h-auto min-h-11 w-full whitespace-normal px-4 py-3 text-base font-bold sm:w-fit"
-                type="button"
-                variant="outline"
-                onClick={() => {
-                  setQuery("");
-                  setFilter("all");
-                }}
-              >
-                {COPY.programs.catalogClearFilters}
-              </Button>
-            </Card>
+              kind="empty"
+              title={
+                <h2 className="m-0 wrap-anywhere text-base font-bold">
+                  {programs.length === 0
+                    ? COPY.programs.catalogNoPrograms
+                    : COPY.programs.catalogEmpty}
+                </h2>
+              }
+              description={
+                <p className="m-0 wrap-anywhere leading-[1.6]">
+                  {programs.length === 0
+                    ? COPY.programs.catalogNoProgramsHint
+                    : COPY.programs.catalogEmptyHint}
+                </p>
+              }
+              action={
+                <Button
+                  className="h-auto min-h-11 w-full whitespace-normal px-4 py-3 text-base font-bold sm:w-fit"
+                  type="button"
+                  variant="outline"
+                  onClick={() => {
+                    setQuery("");
+                    setFilter("all");
+                  }}
+                >
+                  {COPY.programs.catalogClearFilters}
+                </Button>
+              }
+            />
           )}
 
           {filtered.length > 0 && (
-            <ul
-              className="mt-3 grid min-w-0 list-none gap-0 p-0"
-              aria-label={COPY.programs.catalogListLabel}
-            >
-              {filtered.map((program) => {
-                const tag = STATUS_TAG[program.viewerState];
-                const secondaryCopy = catalogSecondaryCopy(program);
-                const nextDate = nextEventDateLabel(program.nextEventStartsAt);
-                return (
-                  <li
-                    key={program.program_id}
-                    className="min-w-0 border-t border-[var(--line)] first:border-t-0"
-                  >
-                    <Button
-                      asChild
-                      className="grid h-auto min-h-16 w-full min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-3 rounded-none border-0 bg-transparent px-3 py-3 text-left text-[var(--ink)] whitespace-normal hover:bg-[var(--surface)] hover:text-[var(--ink)] focus-visible:ring-3 focus-visible:ring-[var(--focus)]"
-                    >
-                      <Link
-                        href={programHref(program.program_id)}
-                        data-program-row
-                        data-program-id={program.program_id}
-                        aria-label={`${tag.label} · ${program.name}${
-                          secondaryCopy ? ` · ${secondaryCopy}` : ""
-                        }`}
-                        onClick={(event) => {
-                          if (
-                            event.defaultPrevented ||
-                            event.button !== 0 ||
-                            event.metaKey ||
-                            event.ctrlKey ||
-                            event.shiftKey ||
-                            event.altKey
-                          ) {
-                            return;
-                          }
-                          rememberParticipantProgramFocus(program.program_id);
-                          onOpenProgram?.(program.program_id);
-                        }}
-                      >
-                        <span className="block min-w-0">
-                          <span className="flex min-w-0 flex-wrap items-center gap-2">
-                            <Badge
-                              className={cn(
-                                catalogStatusVariants({
-                                  tone: tag.kind as CatalogStatusTone,
-                                })
-                              )}
-                              variant="outline"
-                              role="status"
-                            >
-                              {tag.label}
-                            </Badge>
-                            {program.category && (
-                              <span className="min-w-0 wrap-anywhere text-xs font-bold text-[var(--ink-muted)]">
-                                {program.category}
-                              </span>
-                            )}
-                          </span>
-                          <span
-                            className="mt-1 block min-w-0 wrap-anywhere text-base font-extrabold leading-[1.35]"
-                            data-program-name
+            <ScreenSection title={COPY.programs.catalogSectionTitle}>
+              <ScreenRowList>
+                <ul
+                  className="m-0 grid min-w-0 list-none gap-0 p-0"
+                  aria-label={COPY.programs.catalogListLabel}
+                >
+                  {filtered.map((program) => {
+                    const tag = STATUS_TAG[program.viewerState];
+                    const secondaryCopy = catalogSecondaryCopy(program);
+                    return (
+                      <li key={program.program_id} className="min-w-0">
+                        <ScreenRow asChild>
+                          <Link
+                            href={programHref(program.program_id)}
+                            data-program-row
+                            data-program-id={program.program_id}
+                            aria-label={`${tag.label} · ${program.name}${
+                              secondaryCopy ? ` · ${secondaryCopy}` : ""
+                            }`}
+                            onClick={(event) => {
+                              if (
+                                event.defaultPrevented ||
+                                event.button !== 0 ||
+                                event.metaKey ||
+                                event.ctrlKey ||
+                                event.shiftKey ||
+                                event.altKey
+                              ) {
+                                return;
+                              }
+                              rememberParticipantProgramFocus(
+                                program.program_id
+                              );
+                              onOpenProgram?.(program.program_id);
+                            }}
                           >
-                            {program.name}
-                          </span>
-                          <span className="mt-1 block min-w-0 wrap-anywhere text-sm leading-[1.5] text-[var(--ink-muted)]">
-                            {program.viewerState === "active" ||
-                            program.viewerState === "eligible" ? (
-                              nextDate ? (
-                                <>
-                                  {COPY.programs.catalogActivePrefix}
-                                  {nextDate}
-                                  {" · "}
-                                  <span className="wrap-anywhere">
-                                    {COPY.programs.catalogEventCountSuffix.replace(
-                                      "{count}",
-                                      String(program.upcomingEventCount)
-                                    )}
-                                  </span>
-                                </>
-                              ) : (
-                                (program.description ?? "")
-                              )
-                            ) : (
-                              secondaryCopy
-                            )}
-                          </span>
-                        </span>
-                        <svg
-                          className="size-5 shrink-0 text-[var(--ink-muted)]"
-                          viewBox="0 0 24 24"
-                          aria-hidden="true"
-                          focusable="false"
-                        >
-                          <path
-                            d="m9 6 6 6-6 6"
-                            fill="none"
-                            stroke="currentColor"
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth="1.8"
-                          />
-                        </svg>
-                      </Link>
-                    </Button>
-                  </li>
-                );
-              })}
-            </ul>
+                            <ScreenRowMain>
+                              <ScreenRowTitle data-program-name>
+                                {program.name}
+                              </ScreenRowTitle>
+                              <ScreenRowMeta>
+                                {program.category
+                                  ? `${program.category}${secondaryCopy ? " · " : ""}`
+                                  : ""}
+                                {secondaryCopy}
+                              </ScreenRowMeta>
+                            </ScreenRowMain>
+                            <ScreenRowTrailing>
+                              <ScreenStatus role="status" tone={tag.kind}>
+                                {tag.label}
+                              </ScreenStatus>
+                              <ChevronRight
+                                aria-hidden="true"
+                                className="size-[var(--screen-icon-size)] shrink-0 text-[var(--screen-muted)]"
+                                strokeWidth={1.8}
+                              />
+                            </ScreenRowTrailing>
+                          </Link>
+                        </ScreenRow>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </ScreenRowList>
+            </ScreenSection>
           )}
         </>
-      )}
-
-      {canManage && (
-        <div className="mt-5 flex min-w-0 items-center justify-between gap-4 rounded-[var(--radius-md)] border border-[var(--line)] bg-[var(--surface-raised)] p-4 max-[799px]:flex-col max-[799px]:items-stretch">
-          <div className="min-w-0">
-            <h3 className="m-0 wrap-anywhere text-base font-extrabold">
-              {COPY.programs.managementMode}
-            </h3>
-            <p className="m-0 mt-1 wrap-anywhere leading-[1.5] text-[var(--ink-muted)]">
-              {COPY.programs.managementLead}
-            </p>
-          </div>
-          <Button
-            asChild
-            className="h-auto min-h-11 whitespace-normal px-4 py-3 text-base font-extrabold max-[799px]:w-full"
-          >
-            <Link href={managementHref}>{COPY.programs.enterManagement}</Link>
-          </Button>
-        </div>
       )}
     </div>
   );

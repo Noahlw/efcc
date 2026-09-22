@@ -1,18 +1,13 @@
 "use client";
 /* oxlint-disable jsx-a11y/prefer-tag-over-role -- preserve the Programs status role contract */
 
-import { cva } from "class-variance-authority";
-import type { VariantProps } from "class-variance-authority";
+import { CalendarDays, MapPin } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { MouseEventHandler } from "react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
-import { Alert } from "@/components/ui/alert";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
-import { Skeleton } from "@/components/ui/skeleton";
 import { RpcError } from "@/lib/api";
 import { COPY, errorCopyFor } from "@/lib/copy";
 import {
@@ -27,11 +22,21 @@ import type {
   ParticipantProgramDetail as ParticipantProgramDetailData,
 } from "@/lib/programs/program-api";
 import { formatScheduleRuleLabel } from "@/lib/programs/recurrence";
-import { RouteHeader } from "@/lib/route-header";
+import {
+  ScreenCard,
+  ScreenHeader,
+  ScreenRow,
+  ScreenRowList,
+  ScreenRowMain,
+  ScreenRowMeta,
+  ScreenRowTitle,
+  ScreenRowTrailing,
+  ScreenSection,
+  ScreenState,
+  ScreenStatus,
+} from "@/lib/screen-foundations";
 import { rememberDeepLink } from "@/lib/session";
-import { cn } from "@/lib/utils";
 
-import { EventFactIcon } from "./event-detail";
 import { ParticipantEnrollment } from "./participant-enrollment";
 import { useAsyncResource } from "./use-async-resource";
 
@@ -169,29 +174,6 @@ function conflictNote(
     : null;
 }
 
-const detailStatusVariants = cva(
-  "inline-flex min-h-6 w-fit items-center rounded-[var(--radius-pill)] border px-3 py-1 text-xs font-bold tracking-[0.02em]",
-  {
-    variants: {
-      tone: {
-        success:
-          "border-[var(--success-border)] bg-[var(--success-surface)] text-[var(--success)]",
-        pending:
-          "border-[var(--pending-border)] bg-[var(--pending-surface)] text-[var(--pending)]",
-        neutral:
-          "border-[var(--line)] bg-[var(--surface)] text-[var(--ink-muted)]",
-        danger:
-          "border-[var(--error-border)] bg-[var(--error-surface)] text-[var(--error)]",
-      },
-    },
-    defaultVariants: { tone: "neutral" },
-  }
-);
-
-type DetailStatusTone = NonNullable<
-  VariantProps<typeof detailStatusVariants>["tone"]
->;
-
 interface ParticipantScheduleProps {
   program: ParticipantProgramDetailData["program"];
   scheduleRules: ParticipantProgramDetailData["schedule_rules"];
@@ -207,45 +189,37 @@ const ParticipantSchedule = ({
   totalEventCount = 0,
   onExpandAll,
 }: ParticipantScheduleProps) => (
-  <section
-    className="grid min-w-0 gap-2 px-1 pt-2"
-    aria-labelledby="program-detail-schedule"
-  >
-    <h3
-      id="program-detail-schedule"
-      className="m-0 px-2 text-[0.8125rem] font-extrabold tracking-[0.1em] text-[var(--ink-muted)]"
-    >
-      {COPY.programs.scheduleTitle}
-    </h3>
+  <ScreenSection title={COPY.programs.scheduleTitle}>
     {scheduleRules.length > 0 && (
-      <div className="grid min-w-0 overflow-hidden rounded-[1.125rem] bg-[var(--surface-raised)] shadow-[0_1px_3px_color-mix(in_srgb,var(--ink)_6%,transparent)]">
-        <h4 id="program-detail-schedule-rules" className="sr-only">
+      <ScreenRowList>
+        <h3 id="program-detail-schedule-rules" className="sr-only">
           {COPY.programs.scheduleRulesGroup}
-        </h4>
+        </h3>
         <ul
-          className="m-0 grid min-w-0 list-none gap-2 p-0 leading-[1.6]"
+          className="m-0 grid min-w-0 list-none gap-0 p-0"
           aria-label={COPY.programs.scheduleRulesGroup}
         >
           {scheduleRules.map((rule) => (
-            <li
-              key={rule.rule_id}
-              className="flex min-w-0 items-center gap-3 border-b border-[var(--line)] px-4 py-3.5 last:border-b-0"
-            >
-              <span className="min-w-0 wrap-anywhere">
-                {formatScheduleRuleLabel(rule)}
-              </span>
+            <li key={rule.rule_id} className="min-w-0">
+              <ScreenRow>
+                <ScreenRowMain>
+                  <ScreenRowTitle>
+                    {formatScheduleRuleLabel(rule)}
+                  </ScreenRowTitle>
+                </ScreenRowMain>
+              </ScreenRow>
             </li>
           ))}
         </ul>
-      </div>
+      </ScreenRowList>
     )}
     {events.length > 0 && (
-      <div className="grid min-w-0 overflow-hidden rounded-[1.125rem] bg-[var(--surface-raised)] shadow-[0_1px_3px_color-mix(in_srgb,var(--ink)_6%,transparent)]">
-        <h4 id="program-detail-schedule-events" className="sr-only">
+      <ScreenRowList>
+        <h3 id="program-detail-schedule-events" className="sr-only">
           {COPY.programs.scheduleEventsGroup}
-        </h4>
+        </h3>
         <ul
-          className="m-0 grid min-w-0 list-none gap-0 p-0 leading-[1.6]"
+          className="m-0 grid min-w-0 list-none gap-0 p-0"
           aria-label={COPY.programs.scheduleEventsGroup}
         >
           {events.map((event, index) => {
@@ -255,50 +229,45 @@ const ParticipantSchedule = ({
               program.lifecycle !== "Archived" &&
               program.enrollment_mode !== "ManagerOnly";
             return (
-              <li
-                key={event.event_id}
-                className="flex min-w-0 items-center gap-3 border-b border-[var(--line)] px-4 py-3.5 last:border-b-0"
-              >
-                <time
-                  className="flex w-[3.25rem] shrink-0 flex-col items-center justify-center rounded-[0.75rem] bg-[var(--surface)] py-1.5 text-center [font-variant-numeric:tabular-nums] leading-[1.1]"
-                  dateTime={event.starts_at}
-                >
-                  <b className="block text-[1.0625rem] font-extrabold text-[var(--ink)]">
-                    {hkDayPadded(event.starts_at)}
-                  </b>
-                  <span className="mt-0.5 block text-[0.6875rem] text-[var(--ink-muted)]">
-                    {hkMonthWeekdayLabel(event.starts_at)}
-                  </span>
-                </time>
-                <div className="grid min-w-0 flex-1 gap-0.5">
-                  <strong className="min-w-0 wrap-anywhere text-[0.9375rem] font-bold">
-                    {eventTitle(event, index)}
-                  </strong>
-                  <span className="min-w-0 wrap-anywhere text-[0.8125rem] text-[var(--ink-muted)]">
-                    {eventWhen(event)}
-                    {location ? ` · ${location}` : ""}
-                  </span>
-                  <span className="inline-flex w-fit min-w-0 items-center gap-1.5 wrap-anywhere text-xs font-bold text-[var(--ink-muted)]">
-                    <span
-                      className="size-2 shrink-0 rounded-full bg-[var(--ink-muted)]"
-                      aria-hidden="true"
-                    />
-                    {COPY.programs.eventActive}
-                  </span>
-                  {selfCheckInAvailable && (
-                    <Badge
-                      className={cn(
-                        detailStatusVariants({ tone: "neutral" }),
-                        "w-fit"
-                      )}
-                      variant="outline"
-                      role="status"
-                      aria-label={COPY.programs.checkInAvailable}
-                    >
-                      {COPY.programs.checkInAvailable}
-                    </Badge>
-                  )}
-                </div>
+              <li key={event.event_id} className="min-w-0">
+                <ScreenRow>
+                  <time
+                    className="flex w-[3.25rem] shrink-0 flex-col items-center justify-center rounded-[var(--screen-radius-control)] bg-[var(--screen-surface-soft)] py-1.5 text-center [font-variant-numeric:tabular-nums] leading-[1.1]"
+                    dateTime={event.starts_at}
+                  >
+                    <b className="block text-base font-extrabold text-[var(--screen-ink)]">
+                      {hkDayPadded(event.starts_at)}
+                    </b>
+                    <span className="mt-0.5 block text-[0.6875rem] text-[var(--screen-muted)]">
+                      {hkMonthWeekdayLabel(event.starts_at)}
+                    </span>
+                  </time>
+                  <ScreenRowMain>
+                    <ScreenRowTitle>{eventTitle(event, index)}</ScreenRowTitle>
+                    <ScreenRowMeta>
+                      {eventWhen(event)}
+                      {location ? ` · ${location}` : ""}
+                    </ScreenRowMeta>
+                    <span className="inline-flex w-fit min-w-0 items-center gap-1.5 wrap-anywhere text-xs font-bold text-[var(--screen-muted)]">
+                      <span
+                        className="size-2 shrink-0 rounded-full bg-[var(--screen-muted)]"
+                        aria-hidden="true"
+                      />
+                      {COPY.programs.eventActive}
+                    </span>
+                  </ScreenRowMain>
+                  {selfCheckInAvailable ? (
+                    <ScreenRowTrailing>
+                      <ScreenStatus
+                        role="status"
+                        tone="neutral"
+                        aria-label={COPY.programs.checkInAvailable}
+                      >
+                        {COPY.programs.checkInAvailable}
+                      </ScreenStatus>
+                    </ScreenRowTrailing>
+                  ) : null}
+                </ScreenRow>
               </li>
             );
           })}
@@ -306,7 +275,7 @@ const ParticipantSchedule = ({
         {totalEventCount > events.length && onExpandAll && (
           <Button
             type="button"
-            className="h-auto min-h-11 w-full whitespace-normal rounded-none border-0 px-4 py-3 text-sm font-bold text-[var(--accent)] hover:bg-[var(--surface)] hover:text-[var(--accent-deep)] focus-visible:ring-3 focus-visible:ring-[var(--focus)]"
+            className="h-auto min-h-11 w-full rounded-none border-0 px-4 py-3 text-sm font-bold text-[var(--screen-accent)] hover:bg-[var(--screen-surface-soft)] hover:text-[var(--screen-accent-deep)] focus-visible:ring-3 focus-visible:ring-[var(--screen-focus)]"
             variant="ghost"
             onClick={onExpandAll}
           >
@@ -316,14 +285,20 @@ const ParticipantSchedule = ({
             )}
           </Button>
         )}
-      </div>
+      </ScreenRowList>
     )}
     {scheduleRules.length === 0 && events.length === 0 && (
-      <p className="m-0 min-w-0 wrap-anywhere leading-[1.6] text-[var(--ink-muted)]">
-        {COPY.programs.detailEventsNone}
-      </p>
+      <ScreenState
+        kind="empty"
+        title={<span className="sr-only">{COPY.programs.scheduleTitle}</span>}
+        description={
+          <p className="m-0 wrap-anywhere leading-[1.6]">
+            {COPY.programs.detailEventsNone}
+          </p>
+        }
+      />
     )}
-  </section>
+  </ScreenSection>
 );
 
 export const ParticipantProgramDetail = ({
@@ -333,7 +308,6 @@ export const ParticipantProgramDetail = ({
   canManage,
   onOpenEvent,
   eventHref,
-  managementHref,
   conflictProgramName = null,
 }: ParticipantProgramDetailProps) => {
   const router = useRouter();
@@ -454,79 +428,91 @@ export const ParticipantProgramDetail = ({
 
   if (state.kind === "loading") {
     return (
-      <section
+      <ScreenState
         id="program-detail-state"
-        className="grid min-w-0 max-w-[60ch] gap-3 rounded-[var(--radius-md)] border border-[var(--line)] bg-[var(--surface)] p-4 text-[var(--ink)]"
         tabIndex={-1}
-        role="status"
-        aria-busy="true"
-      >
-        <h1 className="m-0 wrap-anywhere text-[1.35rem] font-extrabold leading-tight">
-          {COPY.programs.detailLoading}
-        </h1>
-        <Skeleton className="h-16 w-full" aria-hidden="true" />
-      </section>
+        kind="loading"
+        title={
+          <h1 className="m-0 wrap-anywhere text-[length:var(--screen-child-title-size)] font-extrabold leading-[var(--screen-child-title-leading)]">
+            {COPY.programs.detailLoading}
+          </h1>
+        }
+        description={
+          <div className="grid gap-2 py-2" aria-hidden="true">
+            <span className="h-4 w-2/3 rounded-[var(--screen-radius-control)] bg-[var(--screen-surface-soft)]" />
+            <span className="h-16 w-full rounded-[var(--screen-radius-control)] bg-[var(--screen-surface-soft)]" />
+          </div>
+        }
+      />
     );
   }
 
   if (state.kind === "unavailable") {
     return (
-      <section
+      <ScreenState
         id="program-detail-state"
-        className="grid min-w-0 max-w-[60ch] gap-3 rounded-[var(--radius-md)] border border-[var(--line)] bg-[var(--surface)] p-4 text-[var(--ink)]"
         tabIndex={-1}
-        role="status"
-      >
-        <h1 className="m-0 wrap-anywhere text-[1.35rem] font-extrabold leading-tight">
-          {COPY.programs.detailUnavailable}
-        </h1>
-        <p className="m-0 wrap-anywhere leading-[1.6] text-[var(--ink-muted)]">
-          {COPY.programs.detailUnavailableHint}
-        </p>
-        <Button
-          asChild
-          className="h-auto min-h-11 w-full whitespace-normal px-4 py-3 text-base font-bold sm:w-fit"
-          variant="outline"
-        >
-          <Link href={backHref} replace onClick={handleBack}>
-            {COPY.programs.detailBack}
-          </Link>
-        </Button>
-      </section>
-    );
-  }
-
-  if (state.kind === "error") {
-    return (
-      <Alert
-        id="program-detail-state"
-        className="grid min-w-0 max-w-[60ch] gap-1.5 border-[var(--error-border)] bg-[var(--error-surface)] p-4 text-[var(--ink)]"
-        tabIndex={-1}
-        variant="destructive"
-      >
-        <h1 className="m-0 wrap-anywhere text-[1.35rem] font-extrabold leading-tight">
-          {COPY.programs.detailLoadError}
-        </h1>
-        <p className="m-0 wrap-anywhere leading-[1.6]">{state.message}</p>
-        <div className="mt-2 flex min-w-0 flex-wrap gap-3 max-[799px]:flex-col">
-          <Button
-            className="h-auto min-h-11 w-full whitespace-normal px-4 py-3 text-base font-bold sm:w-fit"
-            type="button"
-            onClick={retryDetail}
-          >
-            {COPY.programs.detailRetry}
-          </Button>
+        kind="not-found"
+        title={
+          <h1 className="m-0 wrap-anywhere text-[length:var(--screen-child-title-size)] font-extrabold leading-[var(--screen-child-title-leading)]">
+            {COPY.programs.detailUnavailable}
+          </h1>
+        }
+        description={
+          <p className="m-0 wrap-anywhere leading-[1.6]">
+            {COPY.programs.detailUnavailableHint}
+          </p>
+        }
+        action={
           <Button
             asChild
-            className="h-auto min-h-11 w-full whitespace-normal border-[var(--line-strong)] bg-[var(--surface-raised)] px-4 py-3 text-base font-bold text-[var(--ink)] hover:bg-[var(--surface)] hover:text-[var(--ink)] sm:w-fit"
+            className="h-auto min-h-11 w-full whitespace-normal px-4 py-3 text-base font-bold sm:w-fit"
             variant="outline"
           >
             <Link href={backHref} replace onClick={handleBack}>
               {COPY.programs.detailBack}
             </Link>
           </Button>
-        </div>
-      </Alert>
+        }
+      />
+    );
+  }
+
+  if (state.kind === "error") {
+    return (
+      <ScreenState
+        id="program-detail-state"
+        tabIndex={-1}
+        kind="error"
+        title={
+          <h1 className="m-0 wrap-anywhere text-[length:var(--screen-child-title-size)] font-extrabold leading-[var(--screen-child-title-leading)]">
+            {COPY.programs.detailLoadError}
+          </h1>
+        }
+        description={
+          <p className="m-0 wrap-anywhere leading-[1.6]">{state.message}</p>
+        }
+        action={
+          <div className="flex min-w-0 flex-wrap gap-3 max-[799px]:flex-col">
+            <Button
+              className="h-auto min-h-11 w-full whitespace-normal px-4 py-3 text-base font-bold sm:w-fit"
+              type="button"
+              onClick={retryDetail}
+            >
+              {COPY.programs.detailRetry}
+            </Button>
+            <Button
+              asChild
+              className="h-auto min-h-11 w-full whitespace-normal border-[var(--screen-line-strong)] bg-[var(--screen-surface)] px-4 py-3 text-base font-bold text-[var(--screen-ink)] hover:bg-[var(--screen-surface-soft)] hover:text-[var(--screen-ink)] sm:w-fit"
+              variant="outline"
+            >
+              <Link href={backHref} replace onClick={handleBack}>
+                {COPY.programs.detailBack}
+              </Link>
+            </Button>
+          </div>
+        }
+      />
     );
   }
 
@@ -553,10 +539,11 @@ export const ParticipantProgramDetail = ({
 
   return (
     <article
-      className="grid min-w-0 gap-3 pb-[calc(6rem+env(safe-area-inset-bottom,0px))] text-[var(--ink)]"
+      className="grid min-w-0 gap-3 pb-[calc(6rem+env(safe-area-inset-bottom,0px))] text-[var(--screen-ink)]"
       aria-labelledby="program-detail-title"
     >
-      <RouteHeader
+      <ScreenHeader
+        level="child"
         backHref={backHref}
         backLabel={COPY.programs.detailBack}
         backReplace
@@ -565,100 +552,103 @@ export const ParticipantProgramDetail = ({
         lead={program.description ?? COPY.programs.programDescriptionEmpty}
         headingId="program-detail-title"
         status={
-          <Badge
-            className={cn(
-              detailStatusVariants({
-                tone: status.kind as DetailStatusTone,
-              })
-            )}
-            variant="outline"
-            role="status"
-          >
+          <ScreenStatus tone={status.kind} role="status">
             {status.label}
-          </Badge>
+          </ScreenStatus>
         }
-        className="min-w-0 [&_h1]:min-w-0 [&_h1]:wrap-anywhere [&_p]:min-w-0 [&_p]:wrap-anywhere"
+        className="min-w-0"
       />
 
       {nextEvent && (
-        <article
-          className="grid min-w-0 gap-3 rounded-[1.125rem] bg-[var(--surface-raised)] px-4 py-4 shadow-[0_1px_3px_color-mix(in_srgb,var(--ink)_6%,transparent)]"
-          aria-labelledby="program-detail-next-event"
-        >
-          <span className="min-w-0 wrap-anywhere text-xs font-semibold tracking-[0.05em] text-[var(--ink-muted)]">
-            {COPY.programs.nextMeeting}
-          </span>
-          <h2
-            id="program-detail-next-event"
-            className="m-0 min-w-0 wrap-anywhere text-[1.0625rem] font-bold leading-[1.35]"
-          >
-            {eventTitle(nextEvent, 0)}
-          </h2>
-          <Card className="m-0 grid min-w-0 gap-2 border-0 bg-transparent p-0 shadow-none">
-            <p className="m-0 flex min-w-0 items-center gap-2 wrap-anywhere text-[0.9375rem] leading-[1.5]">
-              <EventFactIcon name="calendar" />
-              <span className="min-w-0 wrap-anywhere">
-                {hkShortDateLabel(nextEvent.starts_at)}
-                {hkShortTimeRange(nextEvent.starts_at, nextEvent.ends_at)}
-              </span>
-            </p>
-            {nextLocation ? (
-              <p className="m-0 flex min-w-0 items-center gap-2 wrap-anywhere text-[0.9375rem] leading-[1.5]">
-                <EventFactIcon name="pin" />
-                <span className="min-w-0 wrap-anywhere">{nextLocation}</span>
-              </p>
-            ) : null}
-          </Card>
-          {nextConflict && (
-            <p
-              className="m-0 min-w-0 wrap-anywhere rounded-[var(--radius-sm)] border border-[var(--pending-border)] bg-[var(--pending-surface)] px-3 py-2.5 text-sm leading-[1.5] text-[var(--pending)]"
-              role="note"
-            >
-              {nextConflict}
-            </p>
-          )}
-          {canOpenEventDetail &&
-            (eventHref || onOpenEvent) &&
-            (eventHref ? (
-              <Button
-                asChild
-                className="h-auto min-h-11 w-full whitespace-normal border-[var(--line-strong)] bg-[var(--surface-raised)] px-4 py-3 text-left text-base font-bold text-[var(--ink)] hover:bg-[var(--surface)] hover:text-[var(--ink)]"
-                variant="outline"
-              >
-                <Link
-                  href={eventHref(nextEvent.event_id)}
-                  aria-label={COPY.programs.viewEventDetail}
-                  onClick={(event) => {
-                    if (
-                      !onOpenEvent ||
-                      event.defaultPrevented ||
-                      event.button !== 0 ||
-                      event.metaKey ||
-                      event.ctrlKey ||
-                      event.shiftKey ||
-                      event.altKey
-                    ) {
-                      return;
-                    }
-                    event.preventDefault();
-                    onOpenEvent(nextEvent.event_id);
-                  }}
+        <ScreenSection title={COPY.programs.nextMeeting}>
+          <ScreenCard asChild tone="emphasis">
+            <article aria-labelledby="program-detail-next-event">
+              <span className="sr-only">{COPY.programs.nextMeeting}</span>
+              <ScreenRowMain>
+                <h3
+                  id="program-detail-next-event"
+                  className="m-0 min-w-0 wrap-anywhere text-base font-bold leading-[1.35]"
                 >
-                  {COPY.programs.viewEventDetail}
-                </Link>
-              </Button>
-            ) : (
-              <Button
-                type="button"
-                className="h-auto min-h-11 w-full whitespace-normal border-[var(--line-strong)] bg-[var(--surface-raised)] px-4 py-3 text-left text-base font-bold text-[var(--ink)] hover:bg-[var(--surface)] hover:text-[var(--ink)]"
-                variant="outline"
-                onClick={() => onOpenEvent?.(nextEvent.event_id)}
-                aria-label={COPY.programs.viewEventDetail}
-              >
-                {COPY.programs.viewEventDetail}
-              </Button>
-            ))}
-        </article>
+                  {eventTitle(nextEvent, 0)}
+                </h3>
+                <ScreenRowMeta>
+                  <span className="flex min-w-0 items-center gap-2 wrap-anywhere">
+                    <CalendarDays
+                      aria-hidden="true"
+                      className="size-[var(--screen-icon-size)] shrink-0 text-[var(--screen-muted)]"
+                      strokeWidth={1.8}
+                    />
+                    <span className="min-w-0 wrap-anywhere">
+                      {hkShortDateLabel(nextEvent.starts_at)}
+                      {hkShortTimeRange(nextEvent.starts_at, nextEvent.ends_at)}
+                    </span>
+                  </span>
+                  {nextLocation ? (
+                    <span className="mt-1 flex min-w-0 items-center gap-2 wrap-anywhere">
+                      <MapPin
+                        aria-hidden="true"
+                        className="size-[var(--screen-icon-size)] shrink-0 text-[var(--screen-muted)]"
+                        strokeWidth={1.8}
+                      />
+                      <span className="min-w-0 wrap-anywhere">
+                        {nextLocation}
+                      </span>
+                    </span>
+                  ) : null}
+                </ScreenRowMeta>
+              </ScreenRowMain>
+              {nextConflict && (
+                <p
+                  className="m-0 min-w-0 wrap-anywhere border border-[var(--screen-pending)] bg-[var(--screen-pending-surface)] px-3 py-2.5 text-sm leading-[1.5] text-[var(--screen-pending)]"
+                  role="note"
+                >
+                  {nextConflict}
+                </p>
+              )}
+              {canOpenEventDetail &&
+                (eventHref || onOpenEvent) &&
+                (eventHref ? (
+                  <Button
+                    asChild
+                    className="h-auto min-h-11 w-full whitespace-normal border-[var(--screen-line-strong)] bg-[var(--screen-surface)] px-4 py-3 text-left text-base font-bold text-[var(--screen-ink)] hover:bg-[var(--screen-surface-soft)] hover:text-[var(--screen-ink)]"
+                    variant="outline"
+                  >
+                    <Link
+                      href={eventHref(nextEvent.event_id)}
+                      aria-label={COPY.programs.viewEventDetail}
+                      onClick={(event) => {
+                        if (
+                          !onOpenEvent ||
+                          event.defaultPrevented ||
+                          event.button !== 0 ||
+                          event.metaKey ||
+                          event.ctrlKey ||
+                          event.shiftKey ||
+                          event.altKey
+                        ) {
+                          return;
+                        }
+                        event.preventDefault();
+                        onOpenEvent(nextEvent.event_id);
+                      }}
+                    >
+                      {COPY.programs.viewEventDetail}
+                    </Link>
+                  </Button>
+                ) : (
+                  <Button
+                    type="button"
+                    className="h-auto min-h-11 w-full whitespace-normal border-[var(--screen-line-strong)] bg-[var(--screen-surface)] px-4 py-3 text-left text-base font-bold text-[var(--screen-ink)] hover:bg-[var(--screen-surface-soft)] hover:text-[var(--screen-ink)]"
+                    variant="outline"
+                    onClick={() => onOpenEvent?.(nextEvent.event_id)}
+                    aria-label={COPY.programs.viewEventDetail}
+                  >
+                    {COPY.programs.viewEventDetail}
+                  </Button>
+                ))}
+            </article>
+          </ScreenCard>
+        </ScreenSection>
       )}
 
       <ParticipantSchedule
@@ -669,24 +659,6 @@ export const ParticipantProgramDetail = ({
         onExpandAll={() => setEventLimit(Number.MAX_SAFE_INTEGER)}
       />
 
-      {canManage && (
-        <div className="mt-1 flex min-w-0 items-center justify-between gap-4 rounded-[var(--radius-md)] border border-[var(--line)] bg-[var(--surface-raised)] p-4 max-[799px]:flex-col max-[799px]:items-stretch">
-          <div className="min-w-0">
-            <h3 className="m-0 wrap-anywhere text-base font-extrabold">
-              {COPY.programs.managementMode}
-            </h3>
-            <p className="m-0 mt-1 wrap-anywhere leading-[1.5] text-[var(--ink-muted)]">
-              {COPY.programs.managementLead}
-            </p>
-          </div>
-          <Button
-            asChild
-            className="h-auto min-h-11 whitespace-normal px-4 py-3 text-base font-extrabold max-[799px]:w-full"
-          >
-            <a href={managementHref}>{COPY.programs.enterManagement}</a>
-          </Button>
-        </div>
-      )}
       <ParticipantEnrollment
         program={program}
         enrollment={enrollment}

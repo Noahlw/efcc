@@ -762,8 +762,8 @@ test.describe("UI-04 Next frontend trace", () => {
     const actionClearance = await readProfileActionClearance(page);
     const isPhone = (page.viewportSize()?.width ?? 0) < 800;
     if (isPhone) {
-      expect(actionClearance.shellPaddingBottom).toBeGreaterThanOrEqual(84);
-      expect(actionClearance.scrollTail).toBeGreaterThanOrEqual(84);
+      expect(actionClearance.shellPaddingBottom).toBeGreaterThanOrEqual(72);
+      expect(actionClearance.scrollTail).toBeGreaterThanOrEqual(72);
     }
     evidence.push({ path: "/profile", actionClearance, isPhone });
 

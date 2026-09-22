@@ -566,6 +566,37 @@ function attributes(
   return result;
 }
 
+function callerPropSpreadOffset(source: string): number {
+  let braceDepth = 0;
+  let quote: "'" | '"' | "`" | null = null;
+
+  for (let index = 0; index < source.length; index += 1) {
+    const char = source[index];
+    if (quote !== null) {
+      if (char === "\\") {
+        index += 1;
+      } else if (char === quote) {
+        quote = null;
+      }
+      continue;
+    }
+    if (char === "'" || char === '"' || char === "`") {
+      quote = char;
+      continue;
+    }
+    if (char === "{") {
+      if (braceDepth === 0 && /^\{\s*\.\.\./u.test(source.slice(index))) {
+        return index;
+      }
+      braceDepth += 1;
+    } else if (char === "}" && braceDepth > 0) {
+      braceDepth -= 1;
+    }
+  }
+
+  return -1;
+}
+
 function quotedLiterals(value: string): string[] {
   const result: string[] = [];
   let index = 0;
@@ -608,22 +639,57 @@ function isIdentifierExpression(value: string): boolean {
   return /^!?[A-Za-z_$][\w$]*(?:\??\.[A-Za-z_$][\w$]*)*$/u.test(value.trim());
 }
 
+function conditionalBranches(
+  expression: string
+): { whenTrue: string; whenFalse: string } | undefined {
+  let quote: "'" | '"' | null = null;
+  let question = -1;
+
+  for (let index = 0; index < expression.length; index += 1) {
+    const char = expression[index];
+    if (quote !== null) {
+      if (char === "\\") {
+        index += 1;
+      } else if (char === quote) {
+        quote = null;
+      }
+      continue;
+    }
+    if (char === "'" || char === '"') {
+      quote = char;
+      continue;
+    }
+    if (
+      question === -1 &&
+      char === "?" &&
+      expression[index - 1] !== "?" &&
+      expression[index + 1] !== "?" &&
+      expression[index + 1] !== "."
+    ) {
+      question = index;
+      continue;
+    }
+    if (question !== -1 && char === ":") {
+      return {
+        whenTrue: expression.slice(question + 1, index).trim(),
+        whenFalse: expression.slice(index + 1).trim(),
+      };
+    }
+  }
+
+  return undefined;
+}
+
 function isStaticallyClassifiableExpression(value: string): boolean {
   const expression = value.trim();
   if (isQuotedString(expression)) {
     return true;
   }
 
-  const question = expression.indexOf("?");
-  const colon = expression.indexOf(":", question + 1);
-  if (
-    question > 0 &&
-    colon > question &&
-    !expression.includes("?", question + 1)
-  ) {
+  const branches = conditionalBranches(expression);
+  if (branches) {
     return (
-      isQuotedString(expression.slice(question + 1, colon)) &&
-      isQuotedString(expression.slice(colon + 1))
+      isQuotedString(branches.whenTrue) && isQuotedString(branches.whenFalse)
     );
   }
 
@@ -775,7 +841,7 @@ function inspectElement(
   const violations: AuditViolation[] = [];
   const line = lineNumberAt(source, element.start);
 
-  const spreadOffset = element.source.search(/\{\s*\.\.\./u);
+  const spreadOffset = callerPropSpreadOffset(element.source);
   if (
     spreadOffset !== -1 &&
     hasAddedLineInRange(
