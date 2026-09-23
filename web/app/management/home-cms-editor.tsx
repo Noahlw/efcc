@@ -497,14 +497,13 @@ export function HomeContentEditor() {
     try {
       // Save draft before publish while keeping operation = "publishing"
       const saved = await saveHomeDraft(draftInputFromForm(form));
-      if (!isMountedRef.current) {
-        return;
+      const savedForm = editorFormFromContent(saved);
+      if (isMountedRef.current) {
+        setForm(savedForm);
+        setConflictLatest(null);
       }
-      setForm(editorFormFromContent(saved));
-      setConflictLatest(null);
 
       // Publish content
-      const savedForm = editorFormFromContent(saved);
       const published = await publishHomeContent({
         content_id: savedForm.contentId ?? saved.contentId,
         version: savedForm.version ?? saved.version,
@@ -555,7 +554,9 @@ export function HomeContentEditor() {
         const nextState: AuditState =
           auditRef.current.length > 0 ? "stale" : "unavailable";
         setAuditState(nextState);
-        announce(nextState === "stale" ? copy.auditStale : copy.auditUnavailable);
+        announce(
+          nextState === "stale" ? copy.auditStale : copy.auditUnavailable
+        );
       }
     } catch (error: unknown) {
       if (isMountedRef.current) {
@@ -1189,7 +1190,7 @@ export function HomeContentEditor() {
                   type="button"
                   variant="secondary"
                   size="sm"
-                  disabled={auditRetryPending}
+                  disabled={auditRetryPending || operation !== "idle"}
                   onClick={() => void handleRetryAudit()}
                 >
                   {auditRetryPending ? copy.auditPending : copy.auditRetry}
