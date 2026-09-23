@@ -27,6 +27,7 @@ import type {
   HomePublishMode,
   HomeTemplateType,
 } from "@/lib/home-cms-api";
+import { HomeCmsAuditStatusMessage } from "@/lib/home-cms-audit-status";
 import { announce } from "@/lib/live-region";
 import { RouteHeader } from "@/lib/route-header";
 import { rememberDeepLink } from "@/lib/session";
@@ -1198,19 +1199,19 @@ export function HomeContentEditor() {
               )}
             </div>
             {auditState === "denied" && (
-              <p className="m-0 text-sm font-medium text-[var(--error)]">
+              <HomeCmsAuditStatusMessage state="denied">
                 {copy.auditDenied}
-              </p>
+              </HomeCmsAuditStatusMessage>
             )}
             {auditState === "stale" && (
-              <p className="m-0 text-sm font-medium text-[var(--ink-muted)]">
+              <HomeCmsAuditStatusMessage state="stale">
                 {copy.auditStale}
-              </p>
+              </HomeCmsAuditStatusMessage>
             )}
             {auditState === "unavailable" && (
-              <p className="m-0 text-sm font-medium text-[var(--ink-muted)]">
+              <HomeCmsAuditStatusMessage state="unavailable">
                 {copy.auditUnavailable}
-              </p>
+              </HomeCmsAuditStatusMessage>
             )}
             {auditState === "fresh" && audit.length === 0 && (
               <p className="m-0 text-sm text-[var(--ink-muted)]">
