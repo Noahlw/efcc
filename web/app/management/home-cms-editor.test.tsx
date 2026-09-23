@@ -1013,6 +1013,90 @@ describe(HomeContentEditor, () => {
     expect(publishPostCount).toBe(1);
   });
 
+  test("continues publishing when the editor unmounts during the draft save", async () => {
+    const user = userEvent.setup();
+    let draftPostCount = 0;
+    let publishPostCount = 0;
+    const draftGate = Promise.withResolvers<Response>();
+
+    installHandlers();
+    server.use(
+      http.post("/api/v1/home/draft", async () => {
+        draftPostCount += 1;
+        return draftGate.promise;
+      }),
+      http.post("/api/v1/home/publish", async () => {
+        publishPostCount += 1;
+        return json({ ...CONTENT, status: "Published", version: 4 });
+      })
+    );
+
+    const editor = render(<HomeContentEditor />);
+    await waitUntilReady();
+    await user.click(
+      screen.getByRole("button", { name: EDITOR.savePublished })
+    );
+    expect(draftPostCount).toBe(1);
+
+    editor.unmount();
+    draftGate.resolve(json({ ...CONTENT, status: "Draft", version: 4 }));
+
+    await waitFor(() => expect(publishPostCount).toBe(1));
+  });
+
+  test("disables audit retry while another publish is in progress", async () => {
+    const user = userEvent.setup();
+    let auditGetCount = 0;
+    let draftPostCount = 0;
+    let publishPostCount = 0;
+    const secondDraftGate = Promise.withResolvers<Response>();
+
+    installHandlers();
+    server.use(
+      http.get("/api/v1/home/audit", () => {
+        auditGetCount += 1;
+        return auditGetCount === 2
+          ? HttpResponse.json({ title: "Audit unavailable" }, { status: 503 })
+          : json({ items: AUDIT_ITEMS });
+      }),
+      http.post("/api/v1/home/draft", async () => {
+        draftPostCount += 1;
+        if (draftPostCount === 2) {
+          return secondDraftGate.promise;
+        }
+        return json({ ...CONTENT, status: "Draft", version: 4 });
+      }),
+      http.post("/api/v1/home/publish", async () => {
+        publishPostCount += 1;
+        return json({ ...CONTENT, status: "Published", version: 4 });
+      })
+    );
+
+    render(<HomeContentEditor />);
+    await waitUntilReady();
+    await user.click(
+      screen.getByRole("button", { name: EDITOR.savePublished })
+    );
+
+    await waitFor(() => expect(auditGetCount).toBe(2));
+    const retryButton = await screen.findByRole("button", {
+      name: EDITOR.auditRetry,
+    });
+    expect(retryButton).toBeEnabled();
+
+    await user.click(
+      screen.getByRole("button", { name: EDITOR.savePublished })
+    );
+    await waitFor(() => expect(draftPostCount).toBe(2));
+    expect(retryButton).toBeDisabled();
+    await user.click(retryButton);
+    expect(auditGetCount).toBe(2);
+
+    secondDraftGate.resolve(json({ ...CONTENT, status: "Draft", version: 5 }));
+    await waitFor(() => expect(publishPostCount).toBe(2));
+    await waitFor(() => expect(auditGetCount).toBe(3));
+  });
+
   test("CS-07: publish conflict presents reload-latest option without false publish success", async () => {
     const user = userEvent.setup();
     installHandlers();
