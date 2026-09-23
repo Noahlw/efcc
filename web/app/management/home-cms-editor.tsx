@@ -27,6 +27,7 @@ import type {
   HomePublishMode,
   HomeTemplateType,
 } from "@/lib/home-cms-api";
+import { HomeCmsAuditStatusMessage } from "@/lib/home-cms-audit-status";
 import { announce } from "@/lib/live-region";
 import { RouteHeader } from "@/lib/route-header";
 import { rememberDeepLink } from "@/lib/session";
@@ -61,6 +62,7 @@ interface EditorForm {
 type LoadState = "loading" | "ready" | "error";
 type Operation = "idle" | "saving" | "publishing";
 type PreviewViewport = "phone" | "desktop";
+type AuditState = "fresh" | "stale" | "unavailable" | "denied";
 
 interface ConflictProblem {
   latest?: HomeContent;
@@ -297,6 +299,12 @@ export function HomeContentEditor() {
   const [operation, setOperation] = useState<Operation>("idle");
   const [form, setForm] = useState<EditorForm>(emptyForm);
   const [audit, setAudit] = useState<HomeAuditItem[]>([]);
+  const [auditState, setAuditState] = useState<AuditState>("fresh");
+  const [auditRetryPending, setAuditRetryPending] = useState(false);
+  const auditRef = useRef(audit);
+  auditRef.current = audit;
+  const isMountedRef = useRef(true);
+  const auditGenerationRef = useRef(0);
   const [notice, setNotice] = useState("");
   const [loadError, setLoadError] = useState("");
   const [conflictLatest, setConflictLatest] = useState<HomeContent | null>(
@@ -314,16 +322,30 @@ export function HomeContentEditor() {
     setLoadState("loading");
     setLoadError("");
     announce(copy.loading);
+    const currentGeneration = ++auditGenerationRef.current;
     try {
       const [content, auditResult] = await Promise.all([
         getHomeContent(),
         listHomeAudit(),
       ]);
+      if (
+        !isMountedRef.current ||
+        currentGeneration !== auditGenerationRef.current
+      ) {
+        return;
+      }
       setForm(editorFormFromContent(content));
       setAudit(auditResult.items);
+      setAuditState("fresh");
       setConflictLatest(null);
       setLoadState("ready");
     } catch (error: unknown) {
+      if (
+        !isMountedRef.current ||
+        currentGeneration !== auditGenerationRef.current
+      ) {
+        return;
+      }
       if (isAuthRequired(error)) {
         rememberDeepLink(
           `${window.location.pathname}${window.location.search}${window.location.hash}`
@@ -339,6 +361,12 @@ export function HomeContentEditor() {
       announce(message);
     }
   }, [router]);
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
 
   useEffect(() => {
     void loadEditor();
@@ -465,14 +493,18 @@ export function HomeContentEditor() {
     if (operation !== "idle") {
       return;
     }
-    setNotice("");
-    const saved = await persistDraft(false);
-    if (!saved) {
-      return;
-    }
-    const savedForm = editorFormFromContent(saved);
     setOperation("publishing");
+    setNotice("");
     try {
+      // Save draft before publish while keeping operation = "publishing"
+      const saved = await saveHomeDraft(draftInputFromForm(form));
+      const savedForm = editorFormFromContent(saved);
+      if (isMountedRef.current) {
+        setForm(savedForm);
+        setConflictLatest(null);
+      }
+
+      // Publish content
       const published = await publishHomeContent({
         content_id: savedForm.contentId ?? saved.contentId,
         version: savedForm.version ?? saved.version,
@@ -480,16 +512,110 @@ export function HomeContentEditor() {
         start_at: hkIsoValue(savedForm.startAt),
         end_at: hkIsoValue(savedForm.endAt),
       });
+      if (!isMountedRef.current) {
+        return;
+      }
       setForm(editorFormFromContent(published));
       setConflictLatest(null);
       setNotice(copy.publishSuccess);
       announce(copy.publishSuccess);
-      const auditResult = await listHomeAudit();
-      setAudit(auditResult.items);
+
+      // Refresh audit trail under generation guard
+      const currentGeneration = ++auditGenerationRef.current;
+      try {
+        const auditResult = await listHomeAudit();
+        if (
+          !isMountedRef.current ||
+          currentGeneration !== auditGenerationRef.current
+        ) {
+          return;
+        }
+        setAudit(auditResult.items);
+        setAuditState("fresh");
+      } catch (auditError: unknown) {
+        if (
+          !isMountedRef.current ||
+          currentGeneration !== auditGenerationRef.current
+        ) {
+          return;
+        }
+        if (isAuthRequired(auditError)) {
+          rememberDeepLink(
+            `${window.location.pathname}${window.location.search}${window.location.hash}`
+          );
+          router.replace("/");
+          return;
+        }
+        if (isForbidden(auditError)) {
+          setAudit([]);
+          setAuditState("denied");
+          announce(copy.auditDenied);
+          return;
+        }
+        const nextState: AuditState =
+          auditRef.current.length > 0 ? "stale" : "unavailable";
+        setAuditState(nextState);
+        announce(
+          nextState === "stale" ? copy.auditStale : copy.auditUnavailable
+        );
+      }
     } catch (error: unknown) {
-      handleSaveFailure(error);
+      if (isMountedRef.current) {
+        handleSaveFailure(error);
+      }
     } finally {
-      setOperation("idle");
+      if (isMountedRef.current) {
+        setOperation("idle");
+      }
+    }
+  };
+
+  const handleRetryAudit = async () => {
+    if (auditRetryPending || operation !== "idle") {
+      return;
+    }
+    setAuditRetryPending(true);
+    announce(copy.auditPending);
+    const currentGeneration = ++auditGenerationRef.current;
+    try {
+      const auditResult = await listHomeAudit();
+      if (
+        !isMountedRef.current ||
+        currentGeneration !== auditGenerationRef.current
+      ) {
+        return;
+      }
+      setAudit(auditResult.items);
+      setAuditState("fresh");
+      announce(copy.auditUpdated);
+    } catch (error: unknown) {
+      if (
+        !isMountedRef.current ||
+        currentGeneration !== auditGenerationRef.current
+      ) {
+        return;
+      }
+      if (isAuthRequired(error)) {
+        rememberDeepLink(
+          `${window.location.pathname}${window.location.search}${window.location.hash}`
+        );
+        router.replace("/");
+        return;
+      }
+      if (isForbidden(error)) {
+        setAudit([]);
+        setAuditState("denied");
+        announce(copy.auditDenied);
+        return;
+      }
+      const nextState: AuditState =
+        auditRef.current.length > 0 ? "stale" : "unavailable";
+      setAuditState(nextState);
+      announce(nextState === "stale" ? copy.auditStale : copy.auditUnavailable);
+    } finally {
+      if (isMountedRef.current) {
+        setAuditRetryPending(false);
+      }
     }
   };
 
@@ -1052,19 +1178,47 @@ export function HomeContentEditor() {
             className="grid gap-4 rounded-xl border border-[var(--line)] bg-[var(--surface-raised)] p-4 sm:p-6 shadow-xs"
             aria-labelledby="home-cms-audit-title"
           >
-            <div className="flex items-center justify-between">
+            <div className="flex flex-wrap items-center justify-between gap-2">
               <h2
                 id="home-cms-audit-title"
                 className="text-base font-bold text-[var(--ink)]"
               >
                 {copy.auditTrail}
               </h2>
+              {(auditState === "stale" || auditState === "unavailable") && (
+                <Button
+                  id="home-cms-audit-retry"
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  disabled={auditRetryPending || operation !== "idle"}
+                  onClick={() => void handleRetryAudit()}
+                >
+                  {auditRetryPending ? copy.auditPending : copy.auditRetry}
+                </Button>
+              )}
             </div>
-            {audit.length === 0 ? (
+            {auditState === "denied" && (
+              <HomeCmsAuditStatusMessage state="denied">
+                {copy.auditDenied}
+              </HomeCmsAuditStatusMessage>
+            )}
+            {auditState === "stale" && (
+              <HomeCmsAuditStatusMessage state="stale">
+                {copy.auditStale}
+              </HomeCmsAuditStatusMessage>
+            )}
+            {auditState === "unavailable" && (
+              <HomeCmsAuditStatusMessage state="unavailable">
+                {copy.auditUnavailable}
+              </HomeCmsAuditStatusMessage>
+            )}
+            {auditState === "fresh" && audit.length === 0 && (
               <p className="m-0 text-sm text-[var(--ink-muted)]">
                 {copy.noAudit}
               </p>
-            ) : (
+            )}
+            {auditState !== "denied" && audit.length > 0 && (
               <ol className="m-0 grid list-none gap-2 p-0">
                 {audit.map((item) => (
                   <li

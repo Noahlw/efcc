@@ -204,6 +204,12 @@ test.describe("087-05 Home Content CMS", () => {
         page.getByRole("heading", { name: EDITOR.editorTitle })
       ).toBeVisible();
 
+      const templateAButton = page.getByRole("button", {
+        name: EDITOR.templateA,
+      });
+      await templateAButton.click();
+      await expect(templateAButton).toHaveAttribute("aria-pressed", "true");
+
       // Template A exposes the linked event and automatic fallback controls.
       await expect(page.locator("#home-cms-featured-event")).toBeVisible();
       await expect(page.locator("#home-cms-fallback")).toBeVisible();
@@ -265,12 +271,18 @@ test.describe("087-05 Home Content CMS", () => {
       expect(publishedHome.status).toBe(200);
       expect(JSON.stringify(publishedHome.body)).toContain(title);
 
+      const publishedContent = await api(page, "/api/v1/home/content");
+      expect(publishedContent.status).toBe(200);
+      const publishedVersion = (
+        publishedContent.body.data as { version: number }
+      ).version;
+
       await expect(
         page.getByRole("heading", { name: EDITOR.auditTrail })
       ).toBeVisible();
       await expect(
-        page.locator('[aria-labelledby="home-cms-audit-title"]')
-      ).toContainText(title);
+        page.locator('[aria-labelledby="home-cms-audit-title"] ol > li').first()
+      ).toContainText(`v${publishedVersion}`);
 
       // A concurrent save from another client surfaces explicit conflict UI.
       const afterPublish = await api(page, "/api/v1/home/content");
@@ -291,7 +303,9 @@ test.describe("087-05 Home Content CMS", () => {
       await page.getByRole("button", { name: EDITOR.saveDraft }).click();
       await expect(page.getByText(EDITOR.conflictTitle)).toBeVisible();
       await page.locator("#home-cms-conflict-reload").click();
-      await expect(page.getByText(EDITOR.conflictReload)).toBeVisible();
+      await expect(
+        page.locator("#shell-content").getByText(EDITOR.conflictReload)
+      ).toBeVisible();
       await expect(page.locator("#home-cms-title")).toHaveValue(
         `${title} newer`
       );

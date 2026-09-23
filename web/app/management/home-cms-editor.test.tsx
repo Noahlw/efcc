@@ -1,6 +1,7 @@
 /* oxlint-disable vitest/max-expects eslint/require-unicode-regexp eslint/no-unused-vars eslint/no-inline-comments */
 import {
   cleanup,
+  act,
   fireEvent,
   render,
   screen,
@@ -25,6 +26,7 @@ import type { HomeContent } from "@/lib/home-cms-api";
 import { HomeContentEditor } from "./home-cms-editor";
 const EDITOR = COPY.homeEditor;
 const mocks = vi.hoisted(() => ({
+  announce: vi.fn<(message: string) => void>(),
   router: {
     back: vi.fn<() => void>(),
     forward: vi.fn<() => void>(),
@@ -37,6 +39,9 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock(import("next/navigation"), () => ({
   useRouter: () => mocks.router,
+}));
+vi.mock(import("@/lib/live-region"), () => ({
+  announce: mocks.announce,
 }));
 
 const CONTENT: HomeContent = {
@@ -535,5 +540,879 @@ describe(HomeContentEditor, () => {
     expect(
       document.querySelector('[data-slot="action-surface"]')
     ).not.toBeNull();
+  });
+
+  test("CS-01: confirmed publish remains visible when post-publish audit GET fails with transient error", async () => {
+    const user = userEvent.setup();
+    let auditGetCount = 0;
+    installHandlers();
+    server.use(
+      http.get("/api/v1/home/audit", () => {
+        auditGetCount += 1;
+        if (auditGetCount > 1) {
+          return HttpResponse.json(
+            {
+              type: "about:blank",
+              title: "Audit unavailable",
+              status: 500,
+              detail: "Audit read failed",
+              code: "HOME_UNAVAILABLE",
+            },
+            { status: 500 }
+          );
+        }
+        return json({ items: AUDIT_ITEMS });
+      }),
+      http.post("/api/v1/home/publish", async ({ request }) => {
+        const body = (await request.json()) as Record<string, unknown>;
+        return json({
+          ...CONTENT,
+          ...body,
+          status: "Published",
+          version: 4,
+          publishedBy: "U-EDITOR",
+          publishedAt: "2026-08-17T02:10:00.000Z",
+        });
+      })
+    );
+
+    render(<HomeContentEditor />);
+    await waitUntilReady();
+
+    expect(screen.getByText(/U-EDITOR/)).toBeVisible();
+
+    await user.click(
+      screen.getByRole("button", { name: EDITOR.savePublished })
+    );
+
+    const statusBadge = document.querySelector(
+      '[data-slot="home-cms-status-badge"]'
+    );
+    await waitFor(() => {
+      expect(statusBadge).toHaveTextContent(EDITOR.statusPublished);
+      expect(statusBadge).toHaveTextContent("v4");
+    });
+
+    expect(screen.getByRole("status")).toHaveTextContent(EDITOR.publishSuccess);
+    expect(screen.queryByText(EDITOR.loadError)).toBeNull();
+
+    const auditSection = screen
+      .getByRole("heading", {
+        name: EDITOR.auditTrail,
+      })
+      .closest("section");
+    expect(auditSection).toHaveTextContent(EDITOR.auditStale);
+    expect(auditSection).toHaveTextContent("U-EDITOR");
+    expect(auditSection).toHaveTextContent("v3");
+
+    const auditRetryBtn = screen.getByRole("button", {
+      name: EDITOR.auditRetry,
+    });
+    expect(auditRetryBtn).toBeVisible();
+    expect(auditRetryBtn).toHaveAttribute("type", "button");
+  });
+
+  test("CS-02: audit retry only issues GET for audit and preserves draft/publish counts and form state", async () => {
+    const user = userEvent.setup();
+    let auditGetCount = 0;
+    let draftPostCount = 0;
+    let publishPostCount = 0;
+    installHandlers();
+    server.use(
+      http.get("/api/v1/home/audit", () => {
+        auditGetCount += 1;
+        if (auditGetCount === 2) {
+          return HttpResponse.json(
+            { title: "Audit timeout", status: 500, code: "NETWORK_ERROR" },
+            { status: 500 }
+          );
+        }
+        if (auditGetCount >= 3) {
+          return json({
+            items: [
+              {
+                auditId: "audit-2",
+                insertedAt: "2026-08-17T02:10:00.000Z",
+                actorUserId: "U-EDITOR",
+                actorName: "編輯管理員",
+                action: "HOME_PUBLISH",
+                entityId: "home-cms-1",
+                version: 4,
+                templateType: "A",
+              },
+              ...AUDIT_ITEMS,
+            ],
+          });
+        }
+        return json({ items: AUDIT_ITEMS });
+      }),
+      http.post("/api/v1/home/draft", async () => {
+        draftPostCount += 1;
+        return json({ ...CONTENT, status: "Draft", version: 4 });
+      }),
+      http.post("/api/v1/home/publish", async ({ request }) => {
+        publishPostCount += 1;
+        const body = (await request.json()) as Record<string, unknown>;
+        return json({
+          ...CONTENT,
+          ...body,
+          status: "Published",
+          version: 4,
+          publishedBy: "U-EDITOR",
+          publishedAt: "2026-08-17T02:10:00.000Z",
+        });
+      })
+    );
+
+    render(<HomeContentEditor />);
+    await waitUntilReady();
+
+    await user.click(
+      screen.getByRole("button", { name: EDITOR.savePublished })
+    );
+
+    await waitFor(() => expect(auditGetCount).toBe(2));
+    const initialDraftCount = draftPostCount;
+    const initialPublishCount = publishPostCount;
+    expect(initialPublishCount).toBe(1);
+
+    const auditRetryBtn = await screen.findByRole("button", {
+      name: EDITOR.auditRetry,
+    });
+    expect(auditRetryBtn).toBeVisible();
+
+    await user.click(auditRetryBtn);
+
+    await waitFor(() => expect(auditGetCount).toBe(3));
+    expect(draftPostCount).toBe(initialDraftCount);
+    expect(publishPostCount).toBe(initialPublishCount);
+
+    const auditSection = screen
+      .getByRole("heading", {
+        name: EDITOR.auditTrail,
+      })
+      .closest("section");
+    expect(auditSection).not.toHaveTextContent(EDITOR.auditStale);
+    expect(auditSection).toHaveTextContent("編輯管理員");
+    expect(auditSection).toHaveTextContent("v4");
+
+    const statusBadge = document.querySelector(
+      '[data-slot="home-cms-status-badge"]'
+    );
+    expect(statusBadge).toHaveTextContent(EDITOR.statusPublished);
+    expect(statusBadge).toHaveTextContent("v4");
+    expect(screen.getByRole("status")).toHaveTextContent(EDITOR.publishSuccess);
+  });
+
+  test("CS-03: unread audit displays unavailable instead of empty on failure and preserves publish status", async () => {
+    const user = userEvent.setup();
+    let auditCalls = 0;
+    installHandlers();
+    server.use(
+      http.get("/api/v1/home/audit", () => {
+        auditCalls += 1;
+        if (auditCalls === 1) {
+          return json({ items: [] });
+        }
+        return HttpResponse.json(
+          { title: "Audit down", status: 503, code: "HOME_UNAVAILABLE" },
+          { status: 503 }
+        );
+      }),
+      http.post("/api/v1/home/publish", async ({ request }) => {
+        const body = (await request.json()) as Record<string, unknown>;
+        return json({
+          ...CONTENT,
+          ...body,
+          status: "Published",
+          version: 4,
+        });
+      })
+    );
+
+    render(<HomeContentEditor />);
+    await waitUntilReady();
+
+    const auditSection = screen
+      .getByRole("heading", {
+        name: EDITOR.auditTrail,
+      })
+      .closest("section");
+    expect(auditSection).toHaveTextContent(EDITOR.noAudit);
+
+    await user.click(
+      screen.getByRole("button", { name: EDITOR.savePublished })
+    );
+
+    await waitFor(() => {
+      expect(
+        document.querySelector('[data-slot="home-cms-status-badge"]')
+      ).toHaveTextContent(EDITOR.statusPublished);
+    });
+
+    expect(auditSection).toHaveTextContent(EDITOR.auditUnavailable);
+    expect(auditSection).not.toHaveTextContent(EDITOR.noAudit);
+
+    const retryBtn = screen.getByRole("button", { name: EDITOR.auditRetry });
+    expect(retryBtn).toBeVisible();
+    expect(retryBtn).toHaveAttribute("type", "button");
+
+    await user.click(retryBtn);
+    await waitFor(() => expect(auditCalls).toBe(3));
+    await waitFor(() => {
+      expect(auditSection).toHaveTextContent(EDITOR.auditUnavailable);
+      expect(auditSection).not.toHaveTextContent(EDITOR.noAudit);
+      expect(
+        document.querySelector('[data-slot="home-cms-status-badge"]')
+      ).toHaveTextContent(EDITOR.statusPublished);
+      expect(
+        document.querySelector('[data-slot="home-cms-status-badge"]')
+      ).toHaveTextContent("v4");
+    });
+    expect(retryBtn).toBeVisible();
+    expect(retryBtn).toHaveAttribute("type", "button");
+  });
+  test("CS-04: unsaved draft fields are preserved across audit retry success and failure", async () => {
+    const user = userEvent.setup();
+    let auditCalls = 0;
+    installHandlers();
+    server.use(
+      http.get("/api/v1/home/audit", () => {
+        auditCalls += 1;
+        if (auditCalls === 2 || auditCalls === 3) {
+          // Call 2 (post-publish) and Call 3 (first retry) fail
+          return HttpResponse.json({ title: "Fail" }, { status: 500 });
+        }
+        return json({ items: AUDIT_ITEMS });
+      }),
+      http.post("/api/v1/home/publish", async ({ request }) => {
+        const body = (await request.json()) as Record<string, unknown>;
+        return json({ ...CONTENT, ...body, status: "Published", version: 4 });
+      })
+    );
+
+    render(<HomeContentEditor />);
+    await waitUntilReady();
+
+    await user.click(
+      screen.getByRole("button", { name: EDITOR.savePublished })
+    );
+
+    const retryBtn = await screen.findByRole("button", {
+      name: EDITOR.auditRetry,
+    });
+    expect(retryBtn).toBeVisible();
+
+    await user.click(
+      screen.getByRole("button", { name: new RegExp(EDITOR.templateB) })
+    );
+    await user.clear(element("home-cms-title") as HTMLInputElement);
+    await user.type(
+      element("home-cms-title") as HTMLInputElement,
+      "新編輯的草稿標題"
+    );
+
+    // First retry fails (call 3)
+    await user.click(retryBtn);
+    expect(auditCalls).toBe(3);
+    expect((element("home-cms-title") as HTMLInputElement).value).toBe(
+      "新編輯的草稿標題"
+    );
+    expect(
+      document.querySelector('[data-slot="home-cms-status-badge"]')
+    ).toHaveTextContent("v4");
+
+    // Second retry succeeds (call 4)
+    await user.click(retryBtn);
+    await waitFor(() => expect(auditCalls).toBe(4));
+    expect((element("home-cms-title") as HTMLInputElement).value).toBe(
+      "新編輯的草稿標題"
+    );
+    expect(
+      document.querySelector('[data-slot="home-cms-status-badge"]')
+    ).toHaveTextContent("v4");
+  });
+
+  test("CS-05: audit retry deduplicates in-flight GET and remains a type=button control", async () => {
+    const user = userEvent.setup();
+    let auditCalls = 0;
+    let draftCalls = 0;
+    let publishCalls = 0;
+    let resolveAudit: (() => void) | undefined;
+
+    installHandlers();
+    server.use(
+      http.get("/api/v1/home/audit", () => {
+        auditCalls += 1;
+        if (auditCalls === 2) {
+          return HttpResponse.json({ title: "Fail" }, { status: 500 });
+        }
+        if (auditCalls > 2) {
+          const { promise, resolve } = Promise.withResolvers<Response>();
+          resolveAudit = () => resolve(json({ items: AUDIT_ITEMS }));
+          return promise;
+        }
+        return json({ items: AUDIT_ITEMS });
+      }),
+      http.post("/api/v1/home/draft", async ({ request }) => {
+        draftCalls += 1;
+        const body = (await request.json()) as Record<string, unknown>;
+        return json({ ...CONTENT, ...body, status: "Draft", version: 4 });
+      }),
+      http.post("/api/v1/home/publish", async ({ request }) => {
+        publishCalls += 1;
+        const body = (await request.json()) as Record<string, unknown>;
+        return json({ ...CONTENT, ...body, status: "Published", version: 4 });
+      })
+    );
+
+    render(<HomeContentEditor />);
+    await waitUntilReady();
+
+    await user.click(
+      screen.getByRole("button", { name: EDITOR.savePublished })
+    );
+    expect(draftCalls).toBe(1);
+    expect(publishCalls).toBe(1);
+
+    const retryBtn = await screen.findByRole("button", {
+      name: EDITOR.auditRetry,
+    });
+    expect(retryBtn).toHaveAttribute("type", "button");
+
+    await user.click(retryBtn);
+    await waitFor(() => expect(auditCalls).toBe(3));
+    expect(retryBtn).toBeDisabled();
+
+    await user.click(retryBtn);
+    fireEvent.keyDown(retryBtn, { key: "Enter", code: "Enter" });
+    fireEvent.keyDown(retryBtn, { key: " ", code: "Space" });
+    await waitFor(() => expect(auditCalls).toBe(3));
+    expect(draftCalls).toBe(1);
+    expect(publishCalls).toBe(1);
+
+    resolveAudit?.();
+    const auditSection = screen
+      .getByRole("heading", { name: EDITOR.auditTrail })
+      .closest("section");
+    await waitFor(() => expect(auditSection).toHaveTextContent("U-EDITOR"));
+  });
+
+  test("CS-06: busy and disabled lifecycle is preserved continuously across save-before-publish and audit refresh", async () => {
+    const user = userEvent.setup();
+    let draftPostCount = 0;
+    let publishPostCount = 0;
+    let auditGetCount = 0;
+
+    const draftGate = Promise.withResolvers<Response>();
+    const publishGate = Promise.withResolvers<Response>();
+    const auditGate = Promise.withResolvers<Response>();
+
+    installHandlers();
+    server.use(
+      http.post("/api/v1/home/draft", async () => {
+        draftPostCount += 1;
+        return draftGate.promise;
+      }),
+      http.post("/api/v1/home/publish", async () => {
+        publishPostCount += 1;
+        return publishGate.promise;
+      }),
+      http.get("/api/v1/home/audit", () => {
+        auditGetCount += 1;
+        if (auditGetCount > 1) {
+          return auditGate.promise;
+        }
+        return json({ items: AUDIT_ITEMS });
+      })
+    );
+
+    render(<HomeContentEditor />);
+    await waitUntilReady();
+
+    const publishBtn = screen.getByRole("button", {
+      name: EDITOR.savePublished,
+    });
+    const saveDraftBtn = screen.getByRole("button", {
+      name: EDITOR.saveDraft,
+    });
+
+    // 1. Click publish
+    await user.click(publishBtn);
+
+    // 2. Draft is in-flight: operation is publishing, controls are disabled
+    expect(draftPostCount).toBe(1);
+    expect(publishBtn).toBeDisabled();
+    expect(publishBtn).toHaveTextContent(EDITOR.loading);
+    expect(saveDraftBtn).toBeDisabled();
+
+    // Repeated clicks while save-draft in-flight are rejected
+    await user.click(publishBtn);
+    await user.click(saveDraftBtn);
+    expect(draftPostCount).toBe(1);
+    expect(publishPostCount).toBe(0);
+
+    // 3. Resolve draft save -> publish POST starts immediately without returning to idle
+    draftGate.resolve(json({ ...CONTENT, status: "Draft", version: 4 }));
+    await waitFor(() => expect(publishPostCount).toBe(1));
+
+    // Controls remain continuously disabled during publish phase
+    expect(publishBtn).toBeDisabled();
+    expect(publishBtn).toHaveTextContent(EDITOR.loading);
+    expect(saveDraftBtn).toBeDisabled();
+
+    // Repeated clicks while publish in-flight are rejected
+    await user.click(publishBtn);
+    expect(publishPostCount).toBe(1);
+
+    // 4. Resolve publish -> audit GET starts immediately, busy lifecycle remains unbroken
+    publishGate.resolve(
+      json({
+        ...CONTENT,
+        status: "Published",
+        version: 4,
+        publishedBy: "U-EDITOR",
+        publishedAt: "2026-08-17T02:10:00.000Z",
+      })
+    );
+    await waitFor(() => expect(auditGetCount).toBe(2));
+
+    // Controls remain disabled during post-publish audit refresh
+    expect(publishBtn).toBeDisabled();
+    expect(saveDraftBtn).toBeDisabled();
+
+    // Repeated clicks during audit refresh are rejected
+    await user.click(publishBtn);
+    expect(publishPostCount).toBe(1);
+
+    // 5. Resolve audit GET -> operation returns to idle and controls re-enable
+    auditGate.resolve(
+      json({
+        items: [
+          {
+            auditId: "audit-2",
+            insertedAt: "2026-08-17T02:10:00.000Z",
+            actorUserId: "U-EDITOR",
+            actorName: "管理員",
+            action: "HOME_PUBLISH",
+            entityId: "home-cms-1",
+            version: 4,
+            templateType: "A",
+          },
+          ...AUDIT_ITEMS,
+        ],
+      })
+    );
+
+    await waitFor(() => expect(publishBtn).not.toBeDisabled());
+    expect(publishBtn).toHaveTextContent(EDITOR.savePublished);
+    expect(saveDraftBtn).not.toBeDisabled();
+
+    // Exactly one save draft and exactly one publish execution took place
+    expect(draftPostCount).toBe(1);
+    expect(publishPostCount).toBe(1);
+  });
+
+  test("continues publishing when the editor unmounts during the draft save", async () => {
+    const user = userEvent.setup();
+    let draftPostCount = 0;
+    let publishPostCount = 0;
+    const draftGate = Promise.withResolvers<Response>();
+
+    installHandlers();
+    server.use(
+      http.post("/api/v1/home/draft", async () => {
+        draftPostCount += 1;
+        return draftGate.promise;
+      }),
+      http.post("/api/v1/home/publish", async () => {
+        publishPostCount += 1;
+        return json({ ...CONTENT, status: "Published", version: 4 });
+      })
+    );
+
+    const editor = render(<HomeContentEditor />);
+    await waitUntilReady();
+    await user.click(
+      screen.getByRole("button", { name: EDITOR.savePublished })
+    );
+    expect(draftPostCount).toBe(1);
+
+    editor.unmount();
+    draftGate.resolve(json({ ...CONTENT, status: "Draft", version: 4 }));
+
+    await waitFor(() => expect(publishPostCount).toBe(1));
+  });
+
+  test("disables audit retry while another publish is in progress", async () => {
+    const user = userEvent.setup();
+    let auditGetCount = 0;
+    let draftPostCount = 0;
+    let publishPostCount = 0;
+    const secondDraftGate = Promise.withResolvers<Response>();
+
+    installHandlers();
+    server.use(
+      http.get("/api/v1/home/audit", () => {
+        auditGetCount += 1;
+        return auditGetCount === 2
+          ? HttpResponse.json({ title: "Audit unavailable" }, { status: 503 })
+          : json({ items: AUDIT_ITEMS });
+      }),
+      http.post("/api/v1/home/draft", async () => {
+        draftPostCount += 1;
+        if (draftPostCount === 2) {
+          return secondDraftGate.promise;
+        }
+        return json({ ...CONTENT, status: "Draft", version: 4 });
+      }),
+      http.post("/api/v1/home/publish", async () => {
+        publishPostCount += 1;
+        return json({ ...CONTENT, status: "Published", version: 4 });
+      })
+    );
+
+    render(<HomeContentEditor />);
+    await waitUntilReady();
+    await user.click(
+      screen.getByRole("button", { name: EDITOR.savePublished })
+    );
+
+    await waitFor(() => expect(auditGetCount).toBe(2));
+    const retryButton = await screen.findByRole("button", {
+      name: EDITOR.auditRetry,
+    });
+    expect(retryButton).toBeEnabled();
+
+    await user.click(
+      screen.getByRole("button", { name: EDITOR.savePublished })
+    );
+    await waitFor(() => expect(draftPostCount).toBe(2));
+    expect(retryButton).toBeDisabled();
+    await user.click(retryButton);
+    expect(auditGetCount).toBe(2);
+
+    secondDraftGate.resolve(json({ ...CONTENT, status: "Draft", version: 5 }));
+    await waitFor(() => expect(publishPostCount).toBe(2));
+    await waitFor(() => expect(auditGetCount).toBe(3));
+  });
+
+  test("CS-07: publish conflict presents reload-latest option without false publish success", async () => {
+    const user = userEvent.setup();
+    installHandlers();
+    server.use(
+      http.post("/api/v1/home/publish", () =>
+        HttpResponse.json(
+          {
+            type: "about:blank",
+            title: EDITOR.conflictTitle,
+            status: 409,
+            detail: "最新內容已變更",
+            code: "CONFLICT",
+            latest: {
+              ...CONTENT,
+              version: 5,
+              templateType: "B",
+              title: "其他人發佈的最新版本",
+            },
+          },
+          { status: 409 }
+        )
+      )
+    );
+
+    render(<HomeContentEditor />);
+    await waitUntilReady();
+
+    await user.click(
+      screen.getByRole("button", { name: EDITOR.savePublished })
+    );
+
+    await expect(
+      screen.findByText(EDITOR.conflictTitle)
+    ).resolves.toBeVisible();
+    expect(screen.queryByText(EDITOR.publishSuccess)).toBeNull();
+    expect(screen.queryByText(EDITOR.auditStale)).toBeNull();
+
+    const reload = screen.getByRole("button", { name: EDITOR.conflictReload });
+    expect(reload).toBeVisible();
+    await user.click(reload);
+    expect((element("home-cms-title") as HTMLInputElement).value).toBe(
+      "其他人發佈的最新版本"
+    );
+  });
+
+  test("CS-08: publish 403 displays purpose-specific forbidden copy", async () => {
+    const user = userEvent.setup();
+    installHandlers();
+    server.use(
+      http.post("/api/v1/home/publish", () =>
+        HttpResponse.json(
+          {
+            type: "about:blank",
+            title: "Forbidden",
+            status: 403,
+            detail: "Forbidden",
+            code: "FORBIDDEN",
+          },
+          { status: 403 }
+        )
+      )
+    );
+
+    render(<HomeContentEditor />);
+    await waitUntilReady();
+
+    await user.click(
+      screen.getByRole("button", { name: EDITOR.savePublished })
+    );
+
+    await expect(screen.findByText(EDITOR.forbidden)).resolves.toBeVisible();
+    expect(screen.queryByText(EDITOR.publishSuccess)).toBeNull();
+  });
+  test("CS-08: publish AUTH_REQUIRED uses the safe deep-link behavior", async () => {
+    const user = userEvent.setup();
+    mocks.router.replace.mockClear();
+    installHandlers();
+    server.use(
+      http.post("/api/v1/home/publish", () =>
+        HttpResponse.json(
+          {
+            type: "about:blank",
+            title: "Unauthorized",
+            status: 401,
+            detail: "Session expired",
+            code: "AUTH_REQUIRED",
+          },
+          { status: 401 }
+        )
+      )
+    );
+
+    render(<HomeContentEditor />);
+    await waitUntilReady();
+
+    await user.click(
+      screen.getByRole("button", { name: EDITOR.savePublished })
+    );
+
+    await waitFor(() => {
+      expect(mocks.router.replace).toHaveBeenCalledWith("/");
+    });
+    expect(screen.queryByText(EDITOR.publishSuccess)).toBeNull();
+  });
+
+  test("CS-09: audit read AUTH_REQUIRED triggers safe deep-link redirect instead of retry banner", async () => {
+    const user = userEvent.setup();
+    let auditCalls = 0;
+    installHandlers();
+    server.use(
+      http.get("/api/v1/home/audit", () => {
+        auditCalls += 1;
+        if (auditCalls > 1) {
+          return HttpResponse.json(
+            {
+              type: "about:blank",
+              title: "Unauthorized",
+              status: 401,
+              detail: "Session expired",
+              code: "AUTH_REQUIRED",
+            },
+            { status: 401 }
+          );
+        }
+        return json({ items: AUDIT_ITEMS });
+      }),
+      http.post("/api/v1/home/publish", async ({ request }) => {
+        const body = (await request.json()) as Record<string, unknown>;
+        return json({ ...CONTENT, ...body, status: "Published", version: 4 });
+      })
+    );
+
+    render(<HomeContentEditor />);
+    await waitUntilReady();
+
+    await user.click(
+      screen.getByRole("button", { name: EDITOR.savePublished })
+    );
+
+    await waitFor(() => {
+      expect(mocks.router.replace).toHaveBeenCalledWith("/");
+    });
+    expect(screen.queryByText(EDITOR.auditStale)).toBeNull();
+  });
+
+  test("CS-09: audit read FORBIDDEN stops exposing history and does not offer transient retry", async () => {
+    const user = userEvent.setup();
+    let auditCalls = 0;
+    installHandlers();
+    server.use(
+      http.get("/api/v1/home/audit", () => {
+        auditCalls += 1;
+        if (auditCalls > 1) {
+          return HttpResponse.json(
+            {
+              type: "about:blank",
+              title: "Forbidden",
+              status: 403,
+              detail: "Permission denied",
+              code: "FORBIDDEN",
+            },
+            { status: 403 }
+          );
+        }
+        return json({ items: AUDIT_ITEMS });
+      }),
+      http.post("/api/v1/home/publish", async ({ request }) => {
+        const body = (await request.json()) as Record<string, unknown>;
+        return json({ ...CONTENT, ...body, status: "Published", version: 4 });
+      })
+    );
+
+    render(<HomeContentEditor />);
+    await waitUntilReady();
+
+    await user.click(
+      screen.getByRole("button", { name: EDITOR.savePublished })
+    );
+
+    const auditSection = screen
+      .getByRole("heading", {
+        name: EDITOR.auditTrail,
+      })
+      .closest("section");
+    await waitFor(() => {
+      expect(auditSection).toHaveTextContent(EDITOR.auditDenied);
+    });
+    // Stops exposing previous audit history
+    expect(auditSection).not.toHaveTextContent("U-EDITOR");
+    // Does not present stale message or retry button
+    expect(auditSection).not.toHaveTextContent(EDITOR.auditStale);
+    expect(
+      screen.queryByRole("button", { name: EDITOR.auditRetry })
+    ).toBeNull();
+  });
+
+  test("CS-10: obsolete audit response arriving after newer request or unmount is discarded without overwriting rows", async () => {
+    const user = userEvent.setup();
+    let auditGetCount = 0;
+
+    const olderAuditGate = Promise.withResolvers<Response>();
+    const unmountAuditGate = Promise.withResolvers<Response>();
+
+    installHandlers();
+    server.use(
+      http.get("/api/v1/home/audit", () => {
+        auditGetCount += 1;
+        if (auditGetCount === 1) {
+          return json({ items: AUDIT_ITEMS });
+        }
+        if (auditGetCount === 2) {
+          return HttpResponse.json({ title: "Fail" }, { status: 500 });
+        }
+        if (auditGetCount === 3) {
+          return olderAuditGate.promise;
+        }
+        if (auditGetCount === 4) {
+          return json({
+            items: [
+              {
+                auditId: "audit-v4",
+                insertedAt: "2026-08-17T02:10:00.000Z",
+                actorUserId: "U-EDITOR",
+                actorName: "最新發佈者",
+                action: "HOME_PUBLISH",
+                entityId: "home-cms-1",
+                version: 4,
+                templateType: "A",
+              },
+            ],
+          });
+        }
+        if (auditGetCount === 5) {
+          return unmountAuditGate.promise;
+        }
+        return json({ items: AUDIT_ITEMS });
+      }),
+      http.post("/api/v1/home/publish", async ({ request }) => {
+        const body = (await request.json()) as Record<string, unknown>;
+        return json({ ...CONTENT, ...body, status: "Published", version: 4 });
+      })
+    );
+
+    const { unmount } = render(<HomeContentEditor />);
+    await waitUntilReady();
+
+    // 1. Initial publish with audit failure to reveal retry button
+    await user.click(
+      screen.getByRole("button", { name: EDITOR.savePublished })
+    );
+    const retryBtn = await screen.findByRole("button", {
+      name: EDITOR.auditRetry,
+    });
+    expect(retryBtn).toBeVisible();
+
+    // 2. Start older retry (call 3), which stays pending on olderAuditGate
+    await user.click(retryBtn);
+    expect(auditGetCount).toBe(3);
+
+    // 3. User publishes again (call 4), which finishes with newer audit version 4
+    await user.click(
+      screen.getByRole("button", { name: EDITOR.savePublished })
+    );
+    const auditSection = screen
+      .getByRole("heading", {
+        name: EDITOR.auditTrail,
+      })
+      .closest("section");
+    await waitFor(() => {
+      expect(auditSection).toHaveTextContent("最新發佈者");
+      expect(auditSection).toHaveTextContent("v4");
+    });
+
+    // 4. Now the older retry (call 3) resolves late with obsolete version 3
+    olderAuditGate.resolve(
+      json({
+        items: [
+          {
+            auditId: "audit-v3",
+            insertedAt: "2026-08-17T01:00:00.000Z",
+            actorUserId: "U-OLD",
+            actorName: "過期發佈者",
+            action: "HOME_PUBLISH",
+            entityId: "home-cms-1",
+            version: 3,
+            templateType: "A",
+          },
+        ],
+      })
+    );
+
+    // Generation guard ensures newer v4 is kept, obsolete v3 is discarded
+    await waitFor(() => {
+      expect(auditSection).toHaveTextContent("最新發佈者");
+      expect(auditSection).toHaveTextContent("v4");
+      expect(auditSection).not.toHaveTextContent("過期發佈者");
+    });
+
+    // 5. Unmount guard: trigger another publish whose audit GET (call 5) is in-flight
+    await user.click(
+      screen.getByRole("button", { name: EDITOR.savePublished })
+    );
+    await waitFor(() => expect(auditGetCount).toBe(5));
+
+    const announceCallsBeforeUnmount = mocks.announce.mock.calls.length;
+    await act(async () => {
+      unmount();
+      unmountAuditGate.resolve(
+        HttpResponse.json(
+          { title: "Audit unavailable", status: 500, code: "HOME_UNAVAILABLE" },
+          { status: 500 }
+        )
+      );
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+
+    expect(mocks.announce).toHaveBeenCalledTimes(announceCallsBeforeUnmount);
   });
 });
