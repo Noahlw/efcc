@@ -41,3 +41,17 @@
 - Do not mix visual rescue with unrelated backend, schema, feature, lint, or data work. Do not treat screenshots or headless geometry as human or device approval.
 - Storybook fixtures are deterministic and synthetic; production must not import Storybook code. Real-app Playwright, Worker/D1 tests, and platform/human checks retain their separate truthful seams.
 - Every UI ticket receives an owner Storybook spot-check. Escalate L2 for change-risk design review and L3 for real platform/device/assistive-technology truth. Preserve and report unrelated pre-existing failures.
+
+## Agent skills
+
+### Issue tracker
+
+EFCC issues and Wayfinder maps live in GitHub Issues for Noahlw/efcc. Check gh auth status before writes. See [issue-tracker.md](docs/agents/issue-tracker.md).
+
+### Triage labels
+
+Use needs-triage, needs-info, ready-for-agent, ready-for-human, and wontfix for the five canonical triage roles. See [triage-labels.md](docs/agents/triage-labels.md).
+
+### Domain docs
+
+EFCC is a single-context repository. Read root CONTEXT.md and relevant docs/adr/ decisions. See [domain.md](docs/agents/domain.md).

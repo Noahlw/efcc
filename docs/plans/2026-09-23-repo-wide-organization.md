@@ -1,0 +1,255 @@
+# EFCC repo-wide organization — implementation plan and agent handoff
+
+**Status:** Approved; documentation/setup slice complete; repo-wide implementation pending<br>
+**Plan branch:** refactor/repo-wide-organization<br>
+**Audited base:** main at b18828d42b6e152f2d29ed1f63df9c1681e59046, 2026-09-23<br>
+**Goal:** reduce maintained code, coding-agent context, and rework while preserving church user journeys, permission results, audit outcomes, and explicit security requirements.
+
+## Outcome, authority, and boundaries
+
+This plan consolidates the owner decisions reached during the 2026-09-23 grilling and resolves the actionable CEO-review findings. It is the local implementation authority for a future repo-cleanup task; writing it does not authorize runtime implementation, Actions changes, database resets, deployment, merge, or release.
+
+Accepted decisions:
+
+- Production architecture remains a Next.js static export served by Cloudflare Workers Static Assets, with Worker API routes and D1. D1 remains the only product database for this plan.
+- Consolidate root and web into one pnpm workspace while keeping the web application under web/. Do not add Turbo without a measured task-graph or cache need.
+- Remove GitHub Actions and use a lean local pnpm verify aggregate. Keep fast formatting/static checks at pre-commit and affected checks during iteration. Preserve separate human, device, independent-review, and deployment evidence.
+- Development/test D1 targets may be rebuilt, including shared/manual targets, after the target inventory and clean schema baseline are verified. There is no production D1 data. Do not reset any database as part of writing this plan.
+- The external Apps Script scanner flow and Google Sheets Users/PIN import and forced-upgrade path are retired; there are no legacy accounts to migrate. Keep the current Worker scanner and ZXing fallback.
+- Keep /prototype available only through internal design-preview material; exclude it from the production static export.
+- Retire redundant tests only after behavior parity. The old Programs browser suite stays until its still-valid cases have executable replacement evidence.
+- Trial Drizzle only for the published-announcement read, and adopt it only if measured net maintenance cost falls and type safety improves. Keep Wrangler as the D1 migration ledger.
+- Auth provider/library migration is deferred to the open [#639 Auth Backend and Session Authority map](https://github.com/Noahlw/efcc/issues/639). Keep authentication/session separate from the editable scoped Role Definition/Grant product model; Q16 remains deferred and the current editable role model stays.
+- Optimize first for maintained code and coding-agent context. Do not claim a performance or token reduction without a comparable measurement.
+
+### Security outcome that remains open
+
+The accepted security requirement is that emergency credential or all-session revocation denies the next protected API request; ordinary account or role/grant changes may take about 15 minutes. The current code does not meet the emergency requirement: access-token verification is stateless, and a revoked session's outstanding access token can remain valid until expiry. The current session test explicitly demonstrates that behavior.
+
+Auth implementation remains outside this repository-cleanup plan. Therefore:
+
+- Do not claim this plan makes the emergency-revocation requirement pass.
+- Track it as a pre-production blocker in the deferred Auth work. The #639 map and #642 decision child do not themselves implement it.
+- Before production, a separate implementation slice must prove that a token issued before emergency revocation is denied on the next protected Worker request. Keep the ordinary-change delay contract distinct.
+- The repository cleanup may proceed without Auth-library changes, but it cannot be described as production-ready while this blocker remains.
+
+Current source evidence: web/lib/auth/sessions.ts:121-162, 349-360; web/lib/auth/handlers.ts:257-277; web/lib/auth/sessions.test.ts:395-420.
+
+## Current branch delivery boundary
+
+This branch remains documentation/setup only. The agreed branch deliverables are:
+1. This canonical plan at docs/plans/2026-09-23-repo-wide-organization.md.
+2. Matt Pocock repository guidance under docs/agents/: issue-tracker.md for GitHub Issues/Wayfinder, triage-labels.md for the five canonical labels, and domain.md for the single root CONTEXT.md plus docs/adr/. Add one Agent skills section to root AGENTS.md. Do not create CLAUDE.md or CONTEXT-MAP.md.
+3. ADR-0056 for removing GitHub Actions and using local-only verification. Recheck the highest ADR number before writing.
+4. Add only needs-triage, needs-info, and ready-for-human; preserve ready-for-agent and wontfix. Created and read back through GitHub on 2026-09-23 (28 labels before setup, 31 after).
+5. Keep inventory.csv, knowledge-map.html, cleanup-plan.md, uncertain-items.md, parity ledgers, and related audit evidence as dated task artifacts outside Git.
+
+No runtime, test, package, dependency, Actions, Worker, or D1 change is part of this branch delivery. Phase 1 begins as a separate implementation task after plan review.
+
+## Repository basis recorded at plan review
+
+The checkout is on refactor/repo-wide-organization at HEAD b18828d42b6e152f2d29ed1f63df9c1681e59046; no tracked or staged changes were present at review. Git config sets status.showUntrackedFiles=no, so default status hides untracked paths. A full status scan shows numerous untracked artifacts, including generated files and this plan; their ownership has not been reviewed. Preserve them and recheck before cleanup. Local origin/main points to the same commit. Firecrawl's [public main commit feed](https://github.com/Noahlw/efcc/commits/main.atom) reported b18828d42b6e152f2d29ed1f63df9c1681e59046 at 2026-09-23 04:29:31 UTC. Recheck the remote before implementation because refs can change.
+
+The app's web/next.config.ts selects output: export, which creates web/out/ and has no Next.js production server. web/wrangler.jsonc serves that directory through the Worker ASSETS binding and routes /api/* to web/worker.ts. This is a static-export-plus-Worker architecture, not Next.js SSR on Workers.
+
+The repository currently has two pnpm install roots and lockfiles. Root postinstall installs Playwright Chromium; root bootstrap performs two installs; web/package.json still has next start despite static export. Three GitHub Actions workflows exist. Root AGENTS.md currently limits D1 reset commands to E2E_ and E2E_DEMO_ fixtures, documents the existing local verification gates, and says never to deploy the stale efcc-prototype-129 Worker name.
+
+The Codebase Memory project efcc-current-main is moderate and was generated on 2026-09-14. Its graph excludes docs, scripts, tests/e2e, web/migrations, and Storybook test files; web/worker.ts and the async-resource file have changed metadata. Use graph results only for covered source paths and directly inspect excluded or stale paths. The audit bundle contains the full tracked-file inventory, relationship map, test ledger, cleanup candidates, and uncertainty register.
+
+## Plan to execute
+
+### 0. Revalidate the candidate and record the acceptance trace
+
+Before edits, read root AGENTS.md, TESTING.md, CONTEXT.md, and the relevant accepted ADRs. Confirm branch, base SHA, worktree state, package manager, and the current GitHub ruleset. Record the acceptance trace before web-app changes as required by AGENTS.md.
+
+Create an implementation target inventory before touching Cloudflare config or D1. It must identify each Worker name, route, D1 database name and ID, rate-limit namespace, environment, and whether the D1 target is development/test or production. Do not infer identity from a placeholder comment or a familiar-looking ID.
+
+The checked-in web/wrangler.jsonc currently names efcc-prototype-129, has compatibility date 2026-08-02, and contains comments that call configured-looking D1 and rate-limit values placeholders. Root AGENTS.md forbids using that stale Worker host and allows only confirmed efcc-auth-* or efcc-dev-* targets. After account inventory confirms the intended target, update the config name, date, bindings, and comments so source and operator truth agree. If account evidence is unavailable or ambiguous, leave those values unchanged, mark deployment configuration unverified, and stop before any deployment. Never use a guessed ID.
+
+Inventory all local, shared, and manual development/test D1 targets and classify them by environment before reset. User authorization to rebuild applies only after a target is verified as development/test. Production or unknown targets are out of scope.
+
+### 1. Consolidate pnpm installation without adding Turbo
+
+Make the root pnpm-workspace.yaml the sole workspace manifest with packages: [web] as its package list and web/ as its application package. Keep one root pnpm-lock.yaml; remove web/pnpm-workspace.yaml and web/pnpm-lock.yaml only after reconciling package versions and policies.
+
+Merge the current allowBuilds, ignoredBuiltDependencies, minimumReleaseAge, and exception entries. Rehome web scripts behind root workspace commands; preserve an easy command for Next development, local Worker/D1 development, typechecking, tests, and Storybook. Remove the unsupported web next start script. Replace the Playwright postinstall download with one explicit local browser-install command.
+
+Do not add Turbo. The repository has one deployable application, no internal shared packages or Dockerfile, and no measured repeated-task cache bottleneck. Official Turbo docs say turbo prune creates a partial monorepo for a target package; Docker is a common use, not the only use. That does not establish a current need here.
+
+Acceptance:
+- In a clean checkout, pnpm install --frozen-lockfile works from the root with no nested install or lockfile.
+- Root commands reach the web build, typecheck, Worker/D1 suites, and Storybook.
+- The production build emits the expected static export; local Wrangler serves assets and /api routes.
+- Native/build dependencies work from a clean install without silent postinstall browser downloads.
+
+### 2. Establish a safe D1 baseline before pruning fixtures
+
+Keep Wrangler SQL migrations as the only migration ledger. Build a new development baseline from the current schema end state; preserve required tables, indexes, triggers, constraints, role seeds, audit immutability, and application behavior. Do not regenerate a Drizzle migration ledger.
+
+First apply the proposed baseline to an empty disposable local D1 using Wrangler's local mode and the verified database name. Compare its schema to the audited end state and run representative auth, editable-role, Programs, attendance, and audit checks. Keep the historical migrations in Git until this passes. Once the baseline and seed process pass, rebuild only the exact development/test D1 targets in the verified inventory; do not run a remote migration against a production or unknown target.
+
+Update AGENTS.md and TESTING.md to replace the current E2E_-only reset instructions with an explicit verified allowlist of disposable development/test targets. Keep the rule that production and unknown targets are never reset. Preserve the no-Google-Sheets-mutation rule only where it still represents a real external boundary; remove obsolete GAS importer instructions when the importer is retired.
+
+Acceptance:
+- An empty local D1 reaches the declared schema and seeds using the new baseline.
+- Representative D1 behavior and audit immutability match the intended product outcome.
+- Every reset command names an inventory-approved dev/test database; no generic command can select an unknown or production database.
+- All shared/manual dev/test targets are reset only after the local baseline passes and the target identity is confirmed.
+
+### 3. Replace Actions with one truthful local readiness gate
+
+Before deleting workflow files, remove workflow-YAML coupling from scripts/verify-programs.test.ts, scripts/testing-authority.test.ts, scripts/audit-governance.ts, and any current policy/docs that parse them.
+
+Define one canonical pnpm verify aggregate. It must run the curated local readiness suite, including:
+- Typecheck and fast static checks.
+- Worker/D1 contract tests.
+- Real local Wrangler + D1 browser journeys.
+- The existing Programs acceptance and responsive coverage.
+- The five-case Home acceptance slice from step 5.
+- The necessary non-browser regression and current component acceptance.
+- Shell geometry as a separate presentation check, not a substitute for Worker/D1 behavior.
+
+Pre-commit stays limited to formatting and fast static checks. During iteration, run affected checks. Keep the five-minute runtime canary separately labeled as diagnostic; an open canary is not evidence of a passing functional gate and does not become release approval.
+
+Only after the local aggregate is reproducible on a clean candidate, remove .github/workflows/fast-ci.yml, ui-governance.yml, and e2e.yml. In the same implementation window, reread the live main ruleset and remove the Fast CI required status. Preserve review, conversation-resolution, owner, independent-review, device, and deployment gates. Do not alter unrelated protections.
+
+Acceptance:
+- pnpm verify from a clean candidate reaches every required local stage, reports exact stage results, and has zero retries for the required browser stage.
+- A deliberate failure in each critical stage makes the aggregate fail.
+- A fresh ruleset read shows no required check supplied by a deleted workflow; other protections remain.
+- Documentation names local evidence accurately and never calls it Cloudflare deployment qualification.
+
+### 4. Retire obsolete entry points after replacement evidence
+
+External scanner:
+- Retire prototype/scanner's Apps Script opener, standalone hosted camera flow, vendor copies, tests, scripts, aliases, and formatter exceptions as one slice.
+- Keep web/app/scanner, web/lib/use-qr-camera.ts, barcode-detector, and the current ZXing WASM fallback.
+- Trace external URLs and error-tag consumers before changing public identifiers.
+
+Prototype route:
+- Remove web/app/prototype/page.tsx and its CSS from the production export.
+- Keep design review internal through existing Storybook/design material. Do not create another preview framework or ship mock login, account-upgrade forms, or prototype routes with production assets.
+- Verify the built web/out has no /prototype route or mock login asset; separately confirm the existing Storybook material remains usable internally.
+
+Google Sheets account import:
+- Remove the one-time Users/PIN import and forced-upgrade branches plus their fixtures; there are no legacy accounts to migrate.
+- Preserve ordinary username/password registration, account approval, lockout, role results, and audit outcomes for new accounts.
+- Search and update routes, tests, seed helpers, package scripts, README, AGENTS, and historical links. Preserve historical rationale where it explains past behavior; mark it retired instead of deleting decision history.
+- Review web/worker.ts's old Apps Script error tag only after checking consumers; do not rename a public error identifier by assumption.
+
+Acceptance:
+- The current scanner completes its supported local Worker/D1 journey and the ZXing fallback still loads.
+- Production static output has no /prototype route; internal Storybook/design review remains available.
+- New-account signup, Pending-account denial, normal credential handling, lockout, editable role behavior, and relevant audit outcomes pass without old Sheets fixtures.
+- No test or script contacts or mutates Google Sheets.
+
+### 5. Prove parity, then simplify the test slice
+
+Remove the duplicated pre-commit invocation of the Programs contract suite only after its canonical owner remains in pnpm verify. For the seven pure suites (49 tests) currently selected by both jsdom and Worker/Node projects, retain the environment owner that proves the required behavior and remove only duplicate selection. Confirm test discovery counts after the change.
+
+Keep the 68 old browser cases until every still-required behavior has executable replacement evidence: 63 programs-d1 cases plus five PUI-05 Home-origin cases. The 68-case CSV is a static mapping aid, not runtime acceptance. A non-empty ledger row or a Storybook story cannot prove parity.
+
+Add the five Home cases described in the audit packet:
+1. Home announcement and detail long-copy geometry.
+2. Native browser Back closes only the announcement overlay and restores correct history.
+3. Notices/Messages long-copy geometry.
+4. Home to the selected Event detail, check-in, and back to Home.
+5. Home Explore to the selected Program detail and back to Home.
+
+Use 320, 390, 799, and 800 CSS pixels for both long-copy cases. Keep existing shell geometry separate. For Notices/Messages, seed through local Worker/D1 when proving transport or persistence; if a case uses synthetic route fulfillment, label it presentation-only and do not count it as Worker/D1 evidence.
+
+Create tests/e2e/programs-home-acceptance.test.ts and tests/e2e/programs-home-acceptance.config.ts. Add a test:programs:home runner that emits a candidate-pinned JSON report with zero retries. Give the five behavior tests stable names corresponding to the old PUI-05 IDs. Use an isolated disposable createTestHarness and seeded member-visible content. Wire a home-browser-acceptance stage with expectedTests: 5 into scripts/verify-programs.ts and the canonical pnpm verify aggregate. Require zero retries and an exact old-ID to replacement-test mapping in the promotion manifest and verifier; reject missing, duplicated, or unrecognized mappings. Keep the existing 36-test Programs browser stage unchanged unless separate evidence justifies changing it.
+
+Replace legacy account-import fixtures before removing that importer. After every old case is either covered by a named executable check or explicitly proven obsolete against current product authority, run the complete local aggregate against a clean candidate. Only then remove the programs-d1 suite/config and obsolete duplicate test inputs.
+
+Acceptance:
+- Each old valid case maps one-to-one to a named current test or a documented removed product requirement.
+- The aggregate cannot pass if the five Home tests or a mapping is absent.
+- The five named Home scenarios pass against local Worker/D1 and browser routes at zero retries; presentation-only evidence stays separately labeled.
+- The historical suite is deleted only after candidate-bound parity evidence is recorded.
+
+### 6. Remove dead dependency weight and correct module ownership
+
+- Investigate the seven direct @vitest/* packages with pnpm why and clean frozen-install/peer checks. Remove only packages not required by Vitest, Storybook, or direct imports.
+- Rehome web/lib/programs/use-async-resource.tsx only after checking all current callers. The current audit found seven direct non-Programs callers; verify against the implementation candidate before moving it.
+- Remove default Next starter SVGs only after URL, manifest, CSS, and static-export checks.
+- Remove dead scripts and aliases only after call-site and documentation search.
+- Prefer domain modules under web/lib/<domain> and route composition under web/app. Do not add a factory, interface, package, or dependency for one owner/consumer.
+
+Acceptance:
+- Frozen install, typechecks, relevant Worker/browser checks, and exact import/URL searches pass.
+- No command, consumer, or current route depends on a removed script, asset, or module.
+
+### 7. Update current docs and prune history with provenance
+
+Update README.md, CONTRIBUTING.md, TESTING.md, and AGENTS.md in the same implementation window as workspace and Actions changes. Keep current-state text truthful until the corresponding change lands. Document the static Next export plus Worker/D1 architecture, one workspace, pnpm verify, local setup, database reset allowlist, and the distinction between local, human/device, independent review, and deployment evidence. Keep CONTEXT.md as the single domain glossary and docs/adr/ as durable decisions. Add the Matt Pocock repository skill references under docs/agents/ and root AGENTS.md as separately approved documentation setup.
+
+Add ADR-0056 for the accepted decision to remove GitHub Actions and use local-only verification. Verify the highest ADR number immediately before creating it. Keep ADR-0029's local Worker/D1 boundary; do not rewrite old ADRs or applied migration SQL.
+
+Before deleting QA, delivery, design, or scratch artifacts, use the SHA/reference index. The audit packet covers 828 tracked artifacts: 340 with detected local references and 488 without a detected local text reference. The latter are candidates only; check current baselines, GitHub PRs/approvals, and external consumers first. Do not bulk-delete .scratch, docs/qa, .delivery, or .impeccable.
+
+Acceptance:
+- Current README/CONTRIBUTING/TESTING/AGENTS commands and status statements match the checked-in scripts and workflows.
+- ADR numbers and links are valid.
+- Every deleted generated artifact has a recorded SHA and reference disposition; externally referenced or current-baseline artifacts remain.
+
+### 8. Run a bounded Drizzle-on-D1 trial only after Phase 1
+
+Trial only the published-announcement read and DTO mapping in web/lib/home-handlers.ts:331-370. This is a read-only experiment; do not migrate writes, D1 batches, CAS, audit, or Wrangler migrations.
+
+Preserve:
+- Template B and Published rows only.
+- Immediate publish or start_at at/before request time; end_at absent or later than request time.
+- version descending then published_at descending.
+- Home projection limit 1; announcements endpoint limit 20.
+- Current null defaults and published_at-to-updated_at fallback.
+- Existing route, auth, response, and error contracts.
+
+Current tests do not establish ordering or the limit-20 boundary. Add focused Worker/D1 assertions with multiple eligible, scheduled, and expired rows before replacing the query. Use the D1 binding in the Worker and a typed schema for the query; keep Wrangler SQL migrations as the single ledger.
+
+Adopt only if the complete first-party maintenance surface falls after counting schema, adapter, dependency, setup, test, and documentation costs; compile-time column/field safety improves; and behavior parity passes. Compare the authoritative files an agent must read for a field/filter change. Revert if setup and schema costs exceed the query/mapping saved. Do not claim performance improvement without a comparable Worker/D1 benchmark.
+
+## Acceptance and review
+
+For every candidate, record base and candidate SHA, exact command, result, runtime, and reviewer mode. New commits invalidate evidence tied to the prior candidate.
+
+- During development, run affected checks.
+- Before marking the implementation ready, run the one full local pnpm verify aggregate from a clean candidate.
+- For UI changes, retain current Storybook owner spot-check and approved visual/interaction contracts. A Story or geometry check proves only presentation.
+- Keep owner approval, independent review, real-device checks, Cloudflare configuration evidence, and deployment evidence distinct.
+- Because this change crosses database reset rules, security behavior, test deletion, and deployment configuration, implementation slices require high-risk review at their named boundaries. If independent review is unavailable, record that limitation; do not lower acceptance.
+- Compare four fixed coding-agent tasks before and after: one Programs behavior change, one UI change, one deployment/config change, and one query/field change. Keep prompt, model, and task outcome comparable. Record actual context/token telemetry when available, unique authoritative files opened, repeated instruction content, source/test/docs maintained, and rework turns. File/line counts are proxies only; report token savings only when measured.
+
+## Manual prerequisites and blockers
+
+- Live Cloudflare identity and resource inventory for Worker name, route, D1 IDs, rate-limit namespace, and compatibility date. Without it, do not edit deployment identity or deploy.
+- Exact development/test D1 target list. Do not reset a target until verified as non-production and the empty-database baseline passes locally.
+- Fresh GitHub ruleset read before removing the Fast CI required status. Current audit observed ruleset 20586715; its live state must be rechecked.
+- Public URL/error-tag consumer search before removing external entry points or changing error identifiers.
+- Auth emergency-revocation remains a pre-production blocker and is not closed by the #639 research/decision map.
+- GitHub CLI authentication is invalid in this local shell. The three missing triage labels were created and read back through the authenticated GitHub web UI on 2026-09-23; reauthenticate before future CLI writes.
+- The external audit packet is stored outside Git at /Users/noah.wong/.codex/.chatgpt-projects/g-p-6a6864559f34819191b9adf15a4279da/efcc-main-audit-2026-09-23/. Key files: inventory.csv, knowledge-map.html, cleanup-plan.md, uncertain-items.md, artifact-reference-index.csv, programs-d1-test-level-parity.csv, programs-home-parity.md, ponytail-audit-2026-09-23.md, auth-options.md, and wayfinder-auth/map.md. Recheck the audited SHA before reuse.
+
+## Official documentation checked 2026-09-23
+
+Context7:
+- /pnpm/pnpm.io — workspace package globs, shared root lockfile, and workspace-wide installs.
+- /cloudflare/cloudflare-docs — D1 migrations, d1_migrations history, and explicit local versus remote apply.
+- /drizzle-team/drizzle-orm-docs — drizzle(env.DB) and schema-backed typed D1 queries.
+- /vercel/turborepo — target-package pruning creates a partial monorepo; Docker is a common use rather than the only use.
+
+Firecrawl, official docs:
+- [pnpm Workspaces](https://pnpm.io/workspaces)
+- [Next.js static export](https://nextjs.org/docs/app/guides/static-exports)
+- [Cloudflare Workers Static Assets](https://developers.cloudflare.com/workers/static-assets/)
+- [Cloudflare D1 migrations](https://developers.cloudflare.com/d1/reference/migrations/)
+- [Playwright best practices](https://playwright.dev/docs/best-practices)
+- [GitHub ruleset rules](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-rulesets/available-rules-for-rulesets)
+
+## Agent handoff
+
+The documentation/setup slice on refactor/repo-wide-organization is complete: the Matt Pocock repo guidance, ADR-0056, and the three approved GitHub triage labels are present. No runtime, test, package, dependency, Actions, Worker, D1, ruleset, or deployment changes were made. The repo-wide implementation remains pending and must start as a separate implementation task from a freshly verified base.
+
+For that follow-on task, this plan and the dated audit packet above are the requirements source. Recheck main, branch/worktree, Cloudflare inventory, D1 target list, and live GitHub rules; record the acceptance trace; then take one ordered slice at a time. Trace all consumers before deletion, verify at the real boundary, review and repair, and keep evidence candidate-bound. Keep the Auth-library migration deferred; emergency revocation remains a pre-production blocker.
+
+Plan readiness: implementation is executable with explicit stops at unknown Cloudflare identity, unverified D1 targets, live ruleset state, and the separate Auth security blocker. This documentation/setup slice is not implementation acceptance or production readiness.
