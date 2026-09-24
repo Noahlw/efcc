@@ -233,6 +233,12 @@ On candidate `ec57e35c5822dd1a8cae09db95ec1b46681d7067`, the Worker Contract and
 
 Context7 was queried on 2026-09-24: `/websites/playwright_dev` documents `FullConfig.rootDir` as the base for reporter-relative paths; `/microsoft/playwright` documents that the JSON reporter computes `file` with `path.relative(rootDir, absolutePath)`. The validator now checks the expected `tests/e2e` root, resolves reported paths against it, and keeps exact repository-file mapping and root-escape rejection. A fixture using the actual JSON shape failed before the fix and passed after; `pnpm test:programs:promotion` passes 15/15. Rerun the full aggregate on the committed fix.
 
+### Recovery focus test synchronization (2026-09-24)
+
+The full aggregate on `b4d80ec98b975945f1e948740a50dd67e3998054` stopped in the component suite: 62 files / 1,183 tests passed, and the single failure was `authenticated-shell.test.tsx` asserting `document.activeElement` immediately after the Retry button appeared. `RecoveryView` moves focus in a React `useEffect`; the same test passes when isolated, and the 2026-09-14 salvage record also notes this recovery-focus failure passed in isolation. Existing async focus tests use Testing Library `waitFor`.
+
+The assertion now waits for the same `<main>` element to become active, retaining the focus requirement while allowing the effect to settle. The focused test passes; rerun the full aggregate on the committed candidate.
+
 ## Manual prerequisites and blockers
 
 - Cloudflare API GET on 2026-09-24 returned zero D1 databases and zero Worker scripts in its connected account; Wrangler `whoami` reported that the local token had expired. This does not establish that EFCC has no resources under another account. Worker, route, D1, and rate-limit identities remain unverified; no deployment identity was changed and no remote D1 was touched.
