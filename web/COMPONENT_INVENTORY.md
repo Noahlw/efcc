@@ -93,11 +93,11 @@ Active usage in shipped surfaces is a strict subset (see per-surface). `Select`/
 
 ### Landing / Login (`app/page.tsx`)
 
-- **shadcn used:** `Button` (submit, guest-check-in link via `asChild`, register link), `Input` (username/password, legacy upgrade fields), `Card` (form card, session-expired card), `Alert` (notice, error), `Skeleton` (restoring state)
+- **shadcn used:** `Button` (submit, guest-check-in link via `asChild`, register link), `Input` (username/password), `Card` (form card, session-expired card), `Alert` (notice, error), `Skeleton` (restoring state)
 
 ### Profile — QR / Account (`app/profile/page.tsx`, `app/profile/account-settings.tsx`, `app/profile/settings/page.tsx`, `lib/recovery-view.tsx`)
 
-- **shadcn used:** `Button` (sign-out, upgrade, recovery actions), `Badge` (status), `Card` (qrCard, detailsCard, settings cards), `Input` (account settings forms), `Alert` (error/notice)
+- **shadcn used:** `Button` (sign-out, account settings, recovery actions), `Badge` (status), `Card` (qrCard, detailsCard, settings cards), `Input` (account settings forms), `Alert` (error/notice)
 
 ---
 

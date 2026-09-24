@@ -39,7 +39,7 @@ fnm exec --using 22.18.0 pnpm --dir web storybook:build
 fnm exec --using 22.18.0 pnpm --dir web storybook:verify-index
 ```
 
-`storybook:verify-index` must run after `storybook:build`; it checks the actual generated `storybook-static/index.json`, all discovered Story IDs, all primary baseline PSNs, and the independent Screen Catalog obligations. The current catalog is **35 screen obligations / 39 Stories**. The credential upgrade Story is supporting coverage for `auth-sign-in`; the registrations fallback is a directly reviewable Management/Identity redirect boundary.
+`storybook:verify-index` must run after `storybook:build`; it checks the actual generated `storybook-static/index.json`, all discovered Story IDs, all primary baseline PSNs, and the independent Screen Catalog obligations. The current catalog is **35 screen obligations / 39 Stories**. The `auth-sign-in` Story covers current username/password sign-in; the retired credential-upgrade flow is not in the catalog. The registrations fallback is a directly reviewable Management/Identity redirect boundary.
 
 Use the printed URL and direct Story URL rather than assuming port `6006`. The stable reference is the PSN, for example `PSN-MGMT-HUB-DEFAULT`; the Storybook slug is only a runtime locator. HMR is available while the same-worktree launcher remains attached. Review named Stories at `390`, `799`, `800`, and `1440`; a Controls state is not approval evidence.
 
