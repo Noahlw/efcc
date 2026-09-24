@@ -289,17 +289,19 @@ test.describe("T05.4 participant Browser Acceptance", () => {
       await page.goto(
         `/programs?mode=management&program=${encodeURIComponent(programId)}&task=participants`
       );
-      const requestRow = page
+      const participantPanel = page.getByRole("region", {
+        name: COPY.workspaceTaskParticipants,
+      });
+      const requestRow = participantPanel
         .getByRole("listitem")
-        .filter({ hasText: memberName });
+        .filter({ hasText: memberName })
+        .first();
       await expect(
         requestRow.getByRole("button", { name: COPY.approve })
       ).toBeVisible();
       await requestRow.getByRole("button", { name: COPY.approve }).click();
       await expect(
-        page
-          .getByRole("region", { name: COPY.workspaceTaskParticipants })
-          .getByText(COPY.decisionMade, { exact: true })
+        participantPanel.getByText(COPY.decisionMade, { exact: true })
       ).toBeVisible();
 
       await memberPage.reload();

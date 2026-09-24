@@ -2824,7 +2824,13 @@ test.describe("Programs parity replacements 39-63", () => {
     browser,
   }) => {
     await loginAs(page);
+    const notificationResponse = page.waitForResponse(
+      (response) =>
+        response.request().method() === "GET" &&
+        response.url().includes("/api/v1/programs/notifications")
+    );
     await page.goto("/programs?mode=management");
+    expect((await notificationResponse).status()).toBe(200);
     const notificationsLink = page
       .locator("[data-shell-header]")
       .getByRole("link", { name: COPY.notificationBell });
@@ -2832,7 +2838,14 @@ test.describe("Programs parity replacements 39-63", () => {
       "href",
       "/programs?mode=management&task=notifications"
     );
+    const openedFeedResponse = page.waitForResponse(
+      (response) =>
+        response.request().method() === "GET" &&
+        response.url().includes("/api/v1/programs/notifications")
+    );
     await notificationsLink.click();
+    const feedResponse = await openedFeedResponse;
+    expect(feedResponse.status()).toBe(200);
     await expect(page).toHaveURL(
       /\/programs\?mode=management&task=notifications$/u
     );
@@ -2842,12 +2855,24 @@ test.describe("Programs parity replacements 39-63", () => {
         exact: true,
       })
     ).toBeVisible();
-    await expect(
-      page
-        .getByRole("region", { name: COPY.notificationsTitle })
-        .getByRole("status")
-        .filter({ hasText: APP_COPY.programs.notificationsEmpty })
-    ).toBeVisible();
+    const feed = page.getByRole("region", { name: COPY.notificationsTitle });
+    const feedBody = (await feedResponse.json()) as {
+      data?: { items?: unknown[] };
+    };
+    expect(Array.isArray(feedBody.data?.items)).toBe(true);
+    if ((feedBody.data?.items?.length ?? 0) === 0) {
+      await expect(
+        feed
+          .getByRole("status")
+          .filter({ hasText: APP_COPY.programs.notificationsEmpty })
+      ).toBeVisible();
+    } else {
+      await expect(
+        feed.getByRole("list", {
+          name: APP_COPY.programs.notificationsListLabel,
+        })
+      ).toBeVisible();
+    }
 
     const memberContext = await browser.newContext();
     try {
