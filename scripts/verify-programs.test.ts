@@ -116,10 +116,11 @@ describe("T05.7 Programs promotion gate", () => {
 
   test("matches every Home report case to its named Playwright spec", () => {
     const report = {
+      config: { rootDir: path.join(repoRoot, "tests/e2e") },
       stats: { expected: 5, skipped: 0, unexpected: 0, flaky: 0 },
       suites: [
         {
-          file: "tests/e2e/programs-home-acceptance.test.ts",
+          file: "programs-home-acceptance.test.ts",
           specs: PUI05_HOME_ACCEPTANCE_MAPPINGS.map(({ replacementTest }) => ({
             title: replacementTest,
             tests: [{ results: [{ status: "passed", retry: 0 }] }],
@@ -153,7 +154,7 @@ describe("T05.7 Programs promotion gate", () => {
         suites: [
           {
             ...report.suites[0],
-            file: "tests/e2e/home.test.ts",
+            file: "home.test.ts",
           },
         ],
       })

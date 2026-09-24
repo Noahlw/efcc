@@ -497,6 +497,19 @@ export function assertHomeAcceptanceReportMatchesMappings(
       `PUI-05 Home report test count mismatch: got=${specs.length}, expected=${PUI05_HOME_ACCEPTANCE_MAPPINGS.length}`
     );
   }
+  const reportConfig = asRecord(asRecord(report)?.config);
+  const rootDir = reportConfig?.rootDir;
+  if (typeof rootDir !== "string") {
+    throw new Error("PUI-05 Home report is missing Playwright rootDir");
+  }
+  const reportRootDir = path.resolve(rootDir);
+  const repositoryRelativeRoot = path
+    .relative(REPO_ROOT, reportRootDir)
+    .split(path.sep)
+    .join("/");
+  if (repositoryRelativeRoot !== "tests/e2e") {
+    throw new Error(`PUI-05 Home report has unexpected rootDir ${rootDir}`);
+  }
   const expectedTests = new Map<string, string>(
     PUI05_HOME_ACCEPTANCE_MAPPINGS.map((mapping) => [
       mapping.replacementTest,
@@ -515,11 +528,25 @@ export function assertHomeAcceptanceReportMatchesMappings(
       throw new Error(`PUI-05 Home report duplicates test ${spec.title}`);
     }
     seen.add(spec.title);
-    const normalizedFile = spec.file.replaceAll("\\", "/");
+    const reportedFile = path.resolve(
+      reportRootDir,
+      spec.file.replaceAll("\\", "/")
+    );
+    const pathFromRoot = path.relative(reportRootDir, reportedFile);
     if (
-      normalizedFile !== expectedFile &&
-      !normalizedFile.endsWith(`/${expectedFile}`)
+      pathFromRoot === ".." ||
+      pathFromRoot.startsWith(`..${path.sep}`) ||
+      path.isAbsolute(pathFromRoot)
     ) {
+      throw new Error(
+        `PUI-05 Home report test ${spec.title} escapes Playwright rootDir`
+      );
+    }
+    const normalizedFile = path
+      .relative(REPO_ROOT, reportedFile)
+      .split(path.sep)
+      .join("/");
+    if (normalizedFile !== expectedFile) {
       throw new Error(
         `PUI-05 Home report test ${spec.title} came from ${spec.file}`
       );

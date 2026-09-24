@@ -227,6 +227,12 @@ The first clean-candidate `pnpm verify` on `432b36c6f7aa2a88d08cbcb468de69afded3
 
 Official Context7 documentation was queried on 2026-09-24: `/vitest-dev/vitest/v4.1.6` for `maxWorkers` and file parallelism defaults; `/cloudflare/workers-sdk` for the Vitest Workers pool startup behavior and supported pool options. The documented generic Vitest worker limit is the available control; no undocumented Cloudflare `singleWorker` or `isolatedStorage` option was added. The complete `pnpm verify` must be rerun on the committed candidate.
 
+### PUI-05 Home report path diagnosis (2026-09-24)
+
+On candidate `ec57e35c5822dd1a8cae09db95ec1b46681d7067`, the Worker Contract and 48-item Programs Browser stages passed. The Home Browser runner itself also passed all 5 mapped tests with zero retries, but promotion validation rejected case 64 because it compared Playwright's `programs-home-acceptance.test.ts` against a repository-relative `tests/e2e/programs-home-acceptance.test.ts`. The report records `config.rootDir` as the checkout's `tests/e2e` directory.
+
+Context7 was queried on 2026-09-24: `/websites/playwright_dev` documents `FullConfig.rootDir` as the base for reporter-relative paths; `/microsoft/playwright` documents that the JSON reporter computes `file` with `path.relative(rootDir, absolutePath)`. The validator now checks the expected `tests/e2e` root, resolves reported paths against it, and keeps exact repository-file mapping and root-escape rejection. A fixture using the actual JSON shape failed before the fix and passed after; `pnpm test:programs:promotion` passes 15/15. Rerun the full aggregate on the committed fix.
+
 ## Manual prerequisites and blockers
 
 - Cloudflare API GET on 2026-09-24 returned zero D1 databases and zero Worker scripts in its connected account; Wrangler `whoami` reported that the local token had expired. This does not establish that EFCC has no resources under another account. Worker, route, D1, and rate-limit identities remain unverified; no deployment identity was changed and no remote D1 was touched.
