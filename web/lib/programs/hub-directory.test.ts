@@ -475,7 +475,7 @@ describe("HUB-01: Management Hub directory projection", () => {
     });
   });
 
-  test("Staff without home.publish sees 5 rows; 內容與系統 omitted entirely", async () => {
+  test("Staff without home.publish sees 6 rows; 內容與系統 omitted entirely", async () => {
     const admin = await login("alice", "alice-secret");
     const staff = await login("staff", "staff-secret");
     const suffix = crypto.randomUUID().slice(0, 8);

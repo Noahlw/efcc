@@ -20,13 +20,16 @@ interface PromotionStageResult {
   failure?: string;
 }
 
+export const PROGRAMS_BROWSER_EXPECTED_TESTS = 70;
+export const PROGRAMS_RESPONSIVE_EXPECTED_TESTS = 21;
+
 export const PROMOTION_STAGES: readonly PromotionStage[] = [
   { name: "worker-contract", args: ["test:programs:contract"] },
   {
     name: "browser-acceptance",
     args: ["test:programs:browser"],
     report: "browser-results.json",
-    expectedTests: 63,
+    expectedTests: PROGRAMS_BROWSER_EXPECTED_TESTS,
   },
   {
     name: "home-browser-acceptance",
@@ -38,7 +41,7 @@ export const PROMOTION_STAGES: readonly PromotionStage[] = [
     name: "responsive-matrix",
     args: ["test:programs:responsive"],
     report: "responsive-results.json",
-    expectedTests: 21,
+    expectedTests: PROGRAMS_RESPONSIVE_EXPECTED_TESTS,
   },
   {
     name: "feed-browser-acceptance",
@@ -46,6 +49,7 @@ export const PROMOTION_STAGES: readonly PromotionStage[] = [
     report: "feed-results.json",
     expectedTests: 7,
   },
+  { name: "non-browser-precommit", args: ["verify:precommit"] },
 ];
 
 // Case numbers 64–68 are the five PUI-05 Home rows in the 2026-09-23 parity CSV.
@@ -141,6 +145,36 @@ export const PROGRAMS_FEED_ACCEPTANCE_MAPPINGS = [
   },
 ] as const;
 
+export const PROGRAMS_PARTICIPANT_PARITY_MAPPINGS = [
+  {
+    oldId: "programs-d1:14",
+    oldTitle:
+      "row selection hands off through the canonical Program intent URL",
+    replacementTest:
+      "programs-d1 #14: catalog selection uses the canonical from=programs URL and Back returns to the row",
+    replacementFile: "tests/e2e/programs-participant-acceptance.test.ts",
+    evidenceLevel: "worker-d1",
+  },
+  {
+    oldId: "programs-d1:25",
+    oldTitle:
+      "member submits a request, sees Pending, and withdraws through the confirm dialog",
+    replacementTest:
+      "programs-d1 #25: schedule advisory and Pending history remain visible through confirmation",
+    replacementFile: "tests/e2e/programs-participant-acceptance.test.ts",
+    evidenceLevel: "worker-d1",
+  },
+  {
+    oldId: "programs-d1:26",
+    oldTitle:
+      "member exits an approved enrollment through the confirm dialog and re-enrolls",
+    replacementTest:
+      "programs-d1 #26: member exits an approved enrollment and re-enrolls",
+    replacementFile: "tests/e2e/programs-participant-acceptance.test.ts",
+    evidenceLevel: "worker-d1",
+  },
+] as const;
+
 export const PROGRAMS_NAVIGATION_PARITY_MAPPINGS = [
   {
     oldId: "programs-d1:1",
@@ -171,9 +205,10 @@ export const PROGRAMS_NAVIGATION_PARITY_MAPPINGS = [
     oldTitle:
       "mode switching preserves a valid Program intent and exposes tabpanel semantics",
     replacementTest:
-      "programs-d1 #4: Mode switching preserves the Program intent and hash",
+      "programs-d1 #4: Mode switching preserves the Program intent and labelled region",
     replacementFile: "tests/e2e/programs-navigation-parity.test.ts",
-    evidenceLevel: "worker-d1",
+    // The current navigation-link UI uses a labelled region, not tab semantics.
+    evidenceLevel: "presentation-only",
   },
   {
     oldId: "programs-d1:5",
@@ -267,6 +302,258 @@ export const PROGRAMS_NAVIGATION_PARITY_MAPPINGS = [
       "programs-d1 #17: Active Event detail preselects the scanner and restores state",
     replacementFile: "tests/e2e/programs-navigation-parity.test.ts",
     evidenceLevel: "worker-d1",
+  },
+  {
+    oldId: "programs-d1:27",
+    oldTitle:
+      "ManagerOnly detail explains that participants cannot self-enroll",
+    replacementTest:
+      "programs-d1 #27: ManagerOnly detail explains participants cannot self-enroll",
+    replacementFile: "tests/e2e/programs-navigation-parity.test.ts",
+    evidenceLevel: "worker-d1",
+  },
+  {
+    oldId: "programs-d1:28",
+    oldTitle:
+      "admin opens the status-first Cockpit and carries meeting/program context",
+    replacementTest:
+      "programs-d1 #28: Admin returns from the Attendance roster to the same Program",
+    replacementFile: "tests/e2e/programs-navigation-parity.test.ts",
+    // The current Attendance route carries the Event ID; browser history returns to this Program's Cockpit.
+    evidenceLevel: "worker-d1",
+  },
+  {
+    oldId: "programs-d1:31",
+    oldTitle: "keeps Directory and Workspace entry points keyboard-operable",
+    replacementTest:
+      "programs-d1 #31: Directory and Workspace entry points work with Enter",
+    replacementFile: "tests/e2e/programs-navigation-parity.test.ts",
+    evidenceLevel: "worker-d1",
+  },
+  {
+    oldId: "programs-d1:32",
+    oldTitle: "member direct management links stay out of scope",
+    replacementTest:
+      "programs-d1 #32: Member direct Management links stay out of scope",
+    replacementFile: "tests/e2e/programs-navigation-parity.test.ts",
+    evidenceLevel: "worker-d1",
+  },
+  {
+    oldId: "programs-d1:33",
+    oldTitle:
+      "staff uses the same capability-shaped Directory information architecture",
+    replacementTest:
+      "programs-d1 #33: Staff sees the capability-shaped Management Directory",
+    replacementFile: "tests/e2e/programs-navigation-parity.test.ts",
+    evidenceLevel: "worker-d1",
+  },
+  {
+    oldId: "programs-d1:34",
+    oldTitle: "a revoked or unknown direct management link stays generic",
+    replacementTest:
+      "programs-d1 #34: Unknown direct Management links stay generic",
+    replacementFile: "tests/e2e/programs-navigation-parity.test.ts",
+    evidenceLevel: "worker-d1",
+  },
+  {
+    oldId: "programs-d1:36",
+    oldTitle:
+      "routes scope-owned settings through focused editors and canonical Schedule",
+    replacementTest:
+      "programs-d1 #36: Settings route through focused editors and canonical Schedule",
+    replacementFile: "tests/e2e/programs-navigation-parity.test.ts",
+    evidenceLevel: "worker-d1",
+  },
+  {
+    oldId: "programs-d1:37",
+    oldTitle:
+      "omits Schedule and Attendance settings rows when their modules are disabled",
+    replacementTest:
+      "programs-d1 #37: Disabled modules hide Schedule and Attendance settings",
+    replacementFile: "tests/e2e/programs-navigation-parity.test.ts",
+    evidenceLevel: "worker-d1",
+  },
+] as const;
+
+function managementMapping(
+  caseNumber: number,
+  oldTitle: string,
+  replacementTest: string,
+  replacementFile = "tests/e2e/programs-management-acceptance.test.ts"
+) {
+  return {
+    oldId: `programs-d1:${caseNumber}`,
+    oldTitle,
+    replacementTest,
+    replacementFile,
+    evidenceLevel: "worker-d1" as const,
+  };
+}
+
+export const PROGRAMS_MANAGEMENT_PARITY_MAPPINGS = [
+  managementMapping(
+    29,
+    "admin opens Course Facts, edits course name and purpose, and verifies server persistence",
+    "admin opens a scoped Program, saves management data, and reads it back"
+  ),
+  managementMapping(
+    30,
+    "manager Participants queue shows scoped counts and approves a pending request",
+    "programs-d1 #30: Participants approval updates scoped Pending and Active counts"
+  ),
+  managementMapping(
+    38,
+    "consequential discoverability change requires confirmation before it saves",
+    "programs-d1 #38: discoverability changes wait for confirmation before saving"
+  ),
+  managementMapping(
+    39,
+    "directory displays only the actor's authorized department projection",
+    "programs-d1 #39: directory displays only the actor's authorized department projection"
+  ),
+  managementMapping(
+    40,
+    "department detail exposes five independently toggleable modules",
+    "programs-d1 #40: department detail exposes five independently toggleable modules"
+  ),
+  managementMapping(
+    41,
+    "offline department save stays inline and reports the save error",
+    "programs-d1 #41: offline department save stays inline and reports the save error"
+  ),
+  managementMapping(
+    42,
+    "creates a program from department detail and lands in its cockpit",
+    "programs-d1 #42: creates a program from department detail and lands in its cockpit"
+  ),
+  managementMapping(
+    43,
+    "creates a OneOff, operates multiple Events, edits, and blocks archive",
+    "programs-d1 #43: creates a OneOff, operates multiple Events, edits, and blocks archive"
+  ),
+  managementMapping(
+    44,
+    "member direct Program mutation is denied server-side",
+    "program update rejects invalid fields and archives permanently",
+    "web/lib/programs/programs.test.ts"
+  ),
+  managementMapping(
+    45,
+    "MemberRequest managers can open Participants and use assisted enrollment",
+    "programs-d1 #45: MemberRequest managers can open Participants and use assisted enrollment"
+  ),
+  managementMapping(
+    46,
+    "canonical ParticipantsTask cancels an active enrollment into history",
+    "programs-d1 #46: canonical ParticipantsTask cancels an active enrollment into history"
+  ),
+  managementMapping(
+    47,
+    "EventsTask refetches schedule exceptions after reschedule and restore",
+    "programs-d1 #47: EventsTask refetches schedule exceptions after reschedule and restore"
+  ),
+  managementMapping(
+    48,
+    "admin creates, deep-links, and edits an event with HK wall display",
+    "programs-d1 #48: admin creates, deep-links, and edits an event with HK wall display"
+  ),
+  managementMapping(
+    49,
+    "safe deactivation is immediate with Undo; cancellation retires controls",
+    "programs-d1 #49: safe deactivation is immediate with Undo; cancellation retires controls"
+  ),
+  managementMapping(
+    50,
+    "an active Program enrollment alone does not gate this event's deactivation",
+    "availability: program-wide enrollments alone do not gate this event's deactivation",
+    "web/lib/programs/programs.test.ts"
+  ),
+  managementMapping(
+    51,
+    "a currently open check-in window with zero check-ins still requires confirmation to deactivate",
+    "programs-d1 #51: a currently open check-in window with zero check-ins still requires confirmation to deactivate"
+  ),
+  managementMapping(
+    52,
+    "zero state is explicit and management attention stays scoped",
+    "programs-d1 #52: managers can open notifications and no-scope users cannot"
+  ),
+  managementMapping(
+    53,
+    "lists bounded real sources, exact task links, workspace counts, and refreshes after decisions",
+    "programs-d1 #53: lists bounded real sources, exact task links, workspace counts, and refreshes after decisions"
+  ),
+  managementMapping(
+    54,
+    "preview materializes exact rows without writing events",
+    "EVT-02.1 preview materializes exact weekly/monthly occurrences with locations and exceptions, without writing events",
+    "web/lib/programs/programs.test.ts"
+  ),
+  managementMapping(
+    55,
+    "generation reports deterministic created/skipped counts and refreshes the directory",
+    "programs-d1 #55: generation refreshes the visible Events directory"
+  ),
+  managementMapping(
+    56,
+    "changing the visible range requires Review Again before generation",
+    "programs-d1 #56: changing the visible range requires Review Again before generation"
+  ),
+  managementMapping(
+    57,
+    "a stale plan is rejected before writes and requires a fresh preview",
+    "programs-d1 #57: a stale plan is rejected before writes and requires a fresh preview"
+  ),
+  managementMapping(
+    58,
+    "preview/generate controls are unreachable without the manage capability",
+    "programs-d1 #58: preview/generate controls are unreachable without the manage capability"
+  ),
+  managementMapping(
+    59,
+    "admin sees the three groups, all six rows, and the course-management card",
+    "programs-d1 #59: admin sees the three groups, all seven rows, and the course-management card"
+  ),
+  managementMapping(
+    60,
+    "staff without home.publish sees granted rows only — 內容與系統 omitted entirely",
+    "programs-d1 #60: staff without home.publish sees six granted rows and omits 內容與系統"
+  ),
+  managementMapping(
+    61,
+    "attendance hub lists open meetings and opens the selected roster",
+    "programs-d1 #61: attendance hub lists open meetings and opens the selected roster"
+  ),
+  managementMapping(
+    62,
+    "approvals list opens a routable detail; approve/reject stay atomic and read-only",
+    "programs-d1 #62: approvals list opens a routable detail; approve/reject stay atomic and read-only"
+  ),
+  managementMapping(
+    63,
+    "approvals list preserves scroll position after detail back-nav",
+    "programs-d1 #63: approvals list preserves scroll position after detail back-nav"
+  ),
+] as const;
+
+export const PROGRAMS_RESPONSIVE_PARITY_MAPPINGS = [
+  {
+    oldId: "programs-d1:9",
+    oldTitle:
+      "long catalog copy wraps without moving controls or causing overflow",
+    replacementTest:
+      "programs-d1 #9: participant catalog/detail keeps action geometry and dock clearance bounded",
+    replacementFile: "tests/e2e/programs-responsive-matrix.test.ts",
+    evidenceLevel: "presentation-only",
+  },
+  {
+    oldId: "programs-d1:35",
+    oldTitle:
+      "workspace overview and focused tasks satisfy numeric W7 geometry",
+    replacementTest:
+      "programs-d1 #35: management settings keeps composition and controls usable",
+    replacementFile: "tests/e2e/programs-responsive-matrix.test.ts",
+    evidenceLevel: "presentation-only",
   },
 ] as const;
 
@@ -403,13 +690,13 @@ export function assertMigrationLedgersComplete(
   };
 }
 
-type AcceptanceParityMapping = {
+interface AcceptanceParityMapping {
   oldId: string;
   oldTitle: string;
   replacementTest: string;
   replacementFile: string;
   evidenceLevel?: "worker-d1" | "presentation-only";
-};
+}
 
 function assertExactParityMappings(
   value: unknown,
@@ -508,6 +795,30 @@ export function assertProgramsNavigationParityMappings(value: unknown): void {
   );
 }
 
+export function assertProgramsManagementParityMappings(value: unknown): void {
+  assertExactParityMappings(
+    value,
+    PROGRAMS_MANAGEMENT_PARITY_MAPPINGS,
+    "Programs management"
+  );
+}
+
+export function assertProgramsParticipantParityMappings(value: unknown): void {
+  assertExactParityMappings(
+    value,
+    PROGRAMS_PARTICIPANT_PARITY_MAPPINGS,
+    "Programs participant"
+  );
+}
+
+export function assertProgramsResponsiveParityMappings(value: unknown): void {
+  assertExactParityMappings(
+    value,
+    PROGRAMS_RESPONSIVE_PARITY_MAPPINGS,
+    "Programs responsive"
+  );
+}
+
 function playwrightSpecs(
   report: unknown
 ): { title: string; file: string; projectName: string | null }[] {
@@ -571,6 +882,33 @@ function hasExactFeedParityMappings(value: unknown): boolean {
 function hasExactProgramsNavigationParityMappings(value: unknown): boolean {
   try {
     assertProgramsNavigationParityMappings(value);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function hasExactProgramsManagementParityMappings(value: unknown): boolean {
+  try {
+    assertProgramsManagementParityMappings(value);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function hasExactProgramsParticipantParityMappings(value: unknown): boolean {
+  try {
+    assertProgramsParticipantParityMappings(value);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function hasExactProgramsResponsiveParityMappings(value: unknown): boolean {
+  try {
+    assertProgramsResponsiveParityMappings(value);
     return true;
   } catch {
     return false;
@@ -642,6 +980,15 @@ export function isFunctionalPromotionManifest(value: unknown): boolean {
     hasExactFeedParityMappings(manifest?.feedParityMappings) &&
     hasExactProgramsNavigationParityMappings(
       manifest?.programsNavigationParityMappings
+    ) &&
+    hasExactProgramsManagementParityMappings(
+      manifest?.programsManagementParityMappings
+    ) &&
+    hasExactProgramsParticipantParityMappings(
+      manifest?.programsParticipantParityMappings
+    ) &&
+    hasExactProgramsResponsiveParityMappings(
+      manifest?.programsResponsiveParityMappings
     ) &&
     hasB003Disclosure(manifest) &&
     hasCompleteMigrationLedger(manifest) &&
@@ -744,7 +1091,7 @@ function assertAcceptanceReportMatchesMappings(
   const reportConfig = asRecord(asRecord(report)?.config);
   const rootDir = reportConfig?.rootDir;
   if (typeof rootDir !== "string") {
-    throw new Error(`${label} report is missing Playwright rootDir`);
+    throw new TypeError(`${label} report is missing Playwright rootDir`);
   }
   const reportRootDir = path.resolve(rootDir);
   const repositoryRelativeRoot = path
@@ -826,20 +1173,124 @@ export function assertFeedAcceptanceReportMatchesMappings(
   );
 }
 
+function assertMappedTestsInProjects(
+  report: unknown,
+  mappings: readonly AcceptanceParityMapping[],
+  projectsForMapping: (mapping: AcceptanceParityMapping) => readonly string[],
+  label: string
+): void {
+  const reportConfig = asRecord(asRecord(report)?.config);
+  const rootDir = reportConfig?.rootDir;
+  if (typeof rootDir !== "string") {
+    throw new TypeError(`${label} report is missing Playwright rootDir`);
+  }
+  const reportRootDir = path.resolve(rootDir);
+  const repositoryRelativeRoot = path
+    .relative(REPO_ROOT, reportRootDir)
+    .split(path.sep)
+    .join("/");
+  if (repositoryRelativeRoot !== "tests/e2e") {
+    throw new Error(`${label} report has unexpected rootDir ${rootDir}`);
+  }
+
+  const specs = playwrightSpecs(report);
+  for (const mapping of mappings) {
+    for (const projectName of projectsForMapping(mapping)) {
+      const matches = specs.filter(
+        (spec) =>
+          spec.title === mapping.replacementTest &&
+          spec.projectName === projectName
+      );
+      if (matches.length !== 1) {
+        throw new Error(
+          `${label} report must contain ${mapping.replacementTest} once in ${projectName}; got=${matches.length}`
+        );
+      }
+      const [spec] = matches;
+      if (!spec) {
+        throw new Error(
+          `${label} report is missing ${mapping.replacementTest}`
+        );
+      }
+      const reportedFile = path.resolve(
+        reportRootDir,
+        spec.file.replaceAll("\\", "/")
+      );
+      const pathFromRoot = path.relative(reportRootDir, reportedFile);
+      if (
+        pathFromRoot === ".." ||
+        pathFromRoot.startsWith(`..${path.sep}`) ||
+        path.isAbsolute(pathFromRoot)
+      ) {
+        throw new Error(
+          `${label} report test ${mapping.replacementTest} escapes Playwright rootDir`
+        );
+      }
+      const normalizedFile = path
+        .relative(REPO_ROOT, reportedFile)
+        .split(path.sep)
+        .join("/");
+      if (normalizedFile !== mapping.replacementFile) {
+        throw new Error(
+          `${label} report test ${mapping.replacementTest} came from ${spec.file}`
+        );
+      }
+    }
+  }
+}
+
+export function assertProgramsParticipantBrowserReportMatchesMappings(
+  report: unknown
+): void {
+  assertPlaywrightReportGreen(report, PROGRAMS_BROWSER_EXPECTED_TESTS);
+  assertMappedTestsInProjects(
+    report,
+    PROGRAMS_PARTICIPANT_PARITY_MAPPINGS,
+    () => ["phone-360", "phone-390", "phone-402"],
+    "Programs participant"
+  );
+}
+
+export function assertProgramsResponsiveReportMatchesMappings(
+  report: unknown
+): void {
+  assertPlaywrightReportGreen(report, PROGRAMS_RESPONSIVE_EXPECTED_TESTS);
+  const responsiveProjects = [
+    "phone-320",
+    "phone-360",
+    "phone-390",
+    "phone-402",
+    "phone-600",
+    "phone-799",
+    "desktop-800",
+    "desktop-1024",
+    "desktop-1440",
+  ];
+  assertMappedTestsInProjects(
+    report,
+    PROGRAMS_RESPONSIVE_PARITY_MAPPINGS,
+    ({ oldId }) =>
+      oldId === "programs-d1:9" ? ["phone-320"] : responsiveProjects,
+    "Programs responsive"
+  );
+}
+
 export function assertProgramsNavigationBrowserReportMatchesMappings(
   report: unknown
 ): void {
-  assertPlaywrightReportGreen(report, 63);
+  assertPlaywrightReportGreen(report, PROGRAMS_BROWSER_EXPECTED_TESTS);
   const specs = playwrightSpecs(report);
-  if (specs.length !== 63) {
+  if (specs.length !== PROGRAMS_BROWSER_EXPECTED_TESTS) {
     throw new Error(
-      `Programs navigation report test count mismatch: got=${specs.length}, expected=63`
+      `Programs navigation report test count mismatch: got=${specs.length}, expected=${PROGRAMS_BROWSER_EXPECTED_TESTS}`
     );
   }
   const reportConfig = asRecord(asRecord(report)?.config);
   const rootDir = reportConfig?.rootDir;
   if (typeof rootDir !== "string") {
-    throw new Error("Programs navigation report is missing Playwright rootDir");
+    throw new TypeError(
+      "Programs navigation report is missing Playwright rootDir"
+    );
   }
   const reportRootDir = path.resolve(rootDir);
   const repositoryRelativeRoot = path
@@ -903,6 +1354,97 @@ export function assertProgramsNavigationBrowserReportMatchesMappings(
   }
 }
 
+export function assertProgramsManagementBrowserReportMatchesMappings(
+  report: unknown
+): void {
+  assertPlaywrightReportGreen(report, PROGRAMS_BROWSER_EXPECTED_TESTS);
+  const specs = playwrightSpecs(report);
+  if (specs.length !== PROGRAMS_BROWSER_EXPECTED_TESTS) {
+    throw new Error(
+      `Programs management report test count mismatch: got=${specs.length}, expected=${PROGRAMS_BROWSER_EXPECTED_TESTS}`
+    );
+  }
+  const reportConfig = asRecord(asRecord(report)?.config);
+  const rootDir = reportConfig?.rootDir;
+  if (typeof rootDir !== "string") {
+    throw new TypeError(
+      "Programs management report is missing Playwright rootDir"
+    );
+  }
+  const reportRootDir = path.resolve(rootDir);
+  const repositoryRelativeRoot = path
+    .relative(REPO_ROOT, reportRootDir)
+    .split(path.sep)
+    .join("/");
+  if (repositoryRelativeRoot !== "tests/e2e") {
+    throw new Error(
+      `Programs management report has unexpected rootDir ${rootDir}`
+    );
+  }
+  const browserMappings = PROGRAMS_MANAGEMENT_PARITY_MAPPINGS.filter(
+    ({ replacementFile }) =>
+      replacementFile === "tests/e2e/programs-management-acceptance.test.ts"
+  );
+  const expectedTests = new Map<string, string>(
+    browserMappings.map((mapping) => [
+      mapping.replacementTest,
+      mapping.replacementFile,
+    ])
+  );
+  const projects = ["phone-390"];
+  const seen = new Set<string>();
+  for (const spec of specs) {
+    const expectedFile = expectedTests.get(spec.title);
+    if (expectedFile === undefined) {
+      continue;
+    }
+    if (!projects.includes(spec.projectName ?? "")) {
+      throw new Error(
+        `Programs management report test ${spec.title} ran in unexpected Browser project ${String(spec.projectName)}`
+      );
+    }
+    const reportedFile = path.resolve(
+      reportRootDir,
+      spec.file.replaceAll("\\", "/")
+    );
+    const pathFromRoot = path.relative(reportRootDir, reportedFile);
+    if (
+      pathFromRoot === ".." ||
+      pathFromRoot.startsWith(`..${path.sep}`) ||
+      path.isAbsolute(pathFromRoot)
+    ) {
+      throw new Error(
+        `Programs management report test ${spec.title} escapes Playwright rootDir`
+      );
+    }
+    const normalizedFile = path
+      .relative(REPO_ROOT, reportedFile)
+      .split(path.sep)
+      .join("/");
+    if (normalizedFile !== expectedFile) {
+      throw new Error(
+        `Programs management report test ${spec.title} came from ${spec.file}`
+      );
+    }
+    const key = `${spec.title}\u0000${spec.projectName}`;
+    if (seen.has(key)) {
+      throw new Error(
+        `Programs management report duplicates ${spec.title} in ${spec.projectName}`
+      );
+    }
+    seen.add(key);
+  }
+  for (const { replacementTest } of browserMappings) {
+    for (const project of projects) {
+      if (!seen.has(`${replacementTest}\u0000${project}`)) {
+        throw new Error(
+          `Programs management report must contain ${replacementTest} once in ${project}`
+        );
+      }
+    }
+  }
+}
+
 export function isCleanWorktreeStatus(status: string): boolean {
   return status.trim() === "";
 }
@@ -929,20 +1471,22 @@ export function assertLocalPromotionTarget(raw: string): URL {
   return target;
 }
 
-export function isHomeAcceptanceRunGreen(
+function isLocalAcceptanceRunGreen(
   value: unknown,
   expectedRevision: string,
   expectedReportPath: string,
-  expectedPromotionRunId: string
+  expectedPromotionRunId: string,
+  expectedSuite: string,
+  expectedLayer: string
 ): boolean {
   const manifest = asRecord(value);
   if (
     manifest?.status !== "passed" ||
-    manifest.runtime !== "createTestHarness" ||
+    manifest.runtime !== "wrangler-dev-local" ||
     manifest.config !== "web/wrangler.jsonc" ||
-    manifest.suite !== "tests/e2e/programs-home-acceptance.config.ts" ||
+    manifest.suite !== expectedSuite ||
     manifest.revision !== expectedRevision ||
-    manifest.layer !== "home-browser-acceptance" ||
+    manifest.layer !== expectedLayer ||
     manifest.retries !== 0 ||
     manifest.reportPath !== expectedReportPath ||
     manifest.promotionRunId !== expectedPromotionRunId ||
@@ -958,33 +1502,68 @@ export function isHomeAcceptanceRunGreen(
   return true;
 }
 
+export function isBrowserAcceptanceRunGreen(
+  value: unknown,
+  expectedRevision: string,
+  expectedReportPath: string,
+  expectedPromotionRunId: string
+): boolean {
+  return isLocalAcceptanceRunGreen(
+    value,
+    expectedRevision,
+    expectedReportPath,
+    expectedPromotionRunId,
+    "tests/e2e/programs-participant-acceptance.config.ts",
+    "browser-acceptance"
+  );
+}
+
+export function isResponsiveAcceptanceRunGreen(
+  value: unknown,
+  expectedRevision: string,
+  expectedReportPath: string,
+  expectedPromotionRunId: string
+): boolean {
+  return isLocalAcceptanceRunGreen(
+    value,
+    expectedRevision,
+    expectedReportPath,
+    expectedPromotionRunId,
+    "tests/e2e/programs-responsive-matrix.config.ts",
+    "responsive-matrix"
+  );
+}
+
+export function isHomeAcceptanceRunGreen(
+  value: unknown,
+  expectedRevision: string,
+  expectedReportPath: string,
+  expectedPromotionRunId: string
+): boolean {
+  return isLocalAcceptanceRunGreen(
+    value,
+    expectedRevision,
+    expectedReportPath,
+    expectedPromotionRunId,
+    "tests/e2e/programs-home-acceptance.config.ts",
+    "home-browser-acceptance"
+  );
+}
+
 export function isFeedAcceptanceRunGreen(
   value: unknown,
   expectedRevision: string,
   expectedReportPath: string,
   expectedPromotionRunId: string
 ): boolean {
-  const manifest = asRecord(value);
-  if (
-    manifest?.status !== "passed" ||
-    manifest.runtime !== "createTestHarness" ||
-    manifest.config !== "web/wrangler.jsonc" ||
-    manifest.suite !== "tests/e2e/programs-feed-acceptance.config.ts" ||
-    manifest.revision !== expectedRevision ||
-    manifest.layer !== "feed-browser-acceptance" ||
-    manifest.retries !== 0 ||
-    manifest.reportPath !== expectedReportPath ||
-    manifest.promotionRunId !== expectedPromotionRunId ||
-    typeof manifest.target !== "string"
-  ) {
-    return false;
-  }
-  try {
-    assertLocalPromotionTarget(manifest.target);
-  } catch {
-    return false;
-  }
-  return true;
+  return isLocalAcceptanceRunGreen(
+    value,
+    expectedRevision,
+    expectedReportPath,
+    expectedPromotionRunId,
+    "tests/e2e/programs-feed-acceptance.config.ts",
+    "feed-browser-acceptance"
+  );
 }
 
 function runId(): string {
@@ -1037,7 +1616,7 @@ function hasCanaryIdentity(
   return (
     manifest?.status === "passed" &&
     manifest.revision === expectedRevision &&
-    manifest.runtime === "createTestHarness" &&
+    manifest.runtime === "wrangler-dev-local" &&
     manifest.config === "web/wrangler.jsonc" &&
     manifest.windowMs === EXPECTED_CANARY_WINDOW_MS &&
     manifest.retries === EXPECTED_CANARY_RETRIES
@@ -1206,7 +1785,42 @@ async function runStage(
       const report = await readReport(reportPath);
       assertPlaywrightReportGreen(report, stage.expectedTests);
       if (stage.name === "browser-acceptance") {
+        assertProgramsParticipantBrowserReportMatchesMappings(report);
         assertProgramsNavigationBrowserReportMatchesMappings(report);
+        assertProgramsManagementBrowserReportMatchesMappings(report);
+      }
+      if (stage.name === "responsive-matrix") {
+        assertProgramsResponsiveReportMatchesMappings(report);
+      }
+      if (
+        stage.name === "browser-acceptance" ||
+        stage.name === "responsive-matrix"
+      ) {
+        const isResponsive = stage.name === "responsive-matrix";
+        const runManifestPath = path.join(
+          artifactDirectory,
+          isResponsive ? "responsive-matrix" : "browser-acceptance",
+          "run.json"
+        );
+        const runManifest = await readReport(runManifestPath);
+        const runManifestGreen = isResponsive
+          ? isResponsiveAcceptanceRunGreen(
+              runManifest,
+              await currentRevision(),
+              path.relative(REPO_ROOT, reportPath),
+              path.basename(artifactDirectory)
+            )
+          : isBrowserAcceptanceRunGreen(
+              runManifest,
+              await currentRevision(),
+              path.relative(REPO_ROOT, reportPath),
+              path.basename(artifactDirectory)
+            );
+        if (!runManifestGreen) {
+          throw new Error(
+            `${isResponsive ? "Responsive" : "Browser"} acceptance run manifest is missing or not pinned to ${path.basename(artifactDirectory)}`
+          );
+        }
       }
       if (
         stage.name === "home-browser-acceptance" ||
@@ -1284,6 +1898,12 @@ async function runStage(
                 "run.json"
               ),
             ]
+          : []),
+        ...(stage.name === "browser-acceptance"
+          ? [path.join(artifactDirectory, "browser-acceptance", "run.json")]
+          : []),
+        ...(stage.name === "responsive-matrix"
+          ? [path.join(artifactDirectory, "responsive-matrix", "run.json")]
           : []),
       ].map((filename) => path.relative(REPO_ROOT, filename))
     ),
@@ -1383,6 +2003,9 @@ async function main(): Promise<void> {
     homeParityMappings: typeof PUI05_HOME_ACCEPTANCE_MAPPINGS;
     feedParityMappings: typeof PROGRAMS_FEED_ACCEPTANCE_MAPPINGS;
     programsNavigationParityMappings: typeof PROGRAMS_NAVIGATION_PARITY_MAPPINGS;
+    programsManagementParityMappings: typeof PROGRAMS_MANAGEMENT_PARITY_MAPPINGS;
+    programsParticipantParityMappings: typeof PROGRAMS_PARTICIPANT_PARITY_MAPPINGS;
+    programsResponsiveParityMappings: typeof PROGRAMS_RESPONSIVE_PARITY_MAPPINGS;
     failure?: string;
     artifacts: string;
   } = {
@@ -1412,6 +2035,9 @@ async function main(): Promise<void> {
     homeParityMappings: PUI05_HOME_ACCEPTANCE_MAPPINGS,
     feedParityMappings: PROGRAMS_FEED_ACCEPTANCE_MAPPINGS,
     programsNavigationParityMappings: PROGRAMS_NAVIGATION_PARITY_MAPPINGS,
+    programsManagementParityMappings: PROGRAMS_MANAGEMENT_PARITY_MAPPINGS,
+    programsParticipantParityMappings: PROGRAMS_PARTICIPANT_PARITY_MAPPINGS,
+    programsResponsiveParityMappings: PROGRAMS_RESPONSIVE_PARITY_MAPPINGS,
     artifacts: path.relative(REPO_ROOT, artifactDirectory),
   };
   await writeJson(path.join(artifactDirectory, "promotion.json"), manifest);

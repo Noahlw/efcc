@@ -8595,6 +8595,17 @@ describe("EVT-01: event operations (#251)", () => {
         data: { event: { availability: string } };
       };
       assert.strictEqual(result.data.event.availability, "Inactive");
+      const enrollment = await testDb()
+        .prepare(
+          "SELECT status FROM enrollments WHERE program_id = ? AND member_user_id = 'U002' ORDER BY created_at DESC LIMIT 1"
+        )
+        .bind(programId)
+        .first<{ status: string }>();
+      assert.strictEqual(
+        enrollment?.status,
+        "Active",
+        "event deactivation must leave the unrelated Program enrollment Active"
+      );
       const audit = await testDb()
         .prepare(
           "SELECT outcome FROM audit_events WHERE entity_id = ? AND action = 'EVENT_AVAILABILITY' ORDER BY inserted_at DESC LIMIT 1"

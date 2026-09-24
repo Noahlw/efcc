@@ -12,6 +12,18 @@ import { resetParticipantEnrollment } from "./participant-enrollment-cleanup";
 
 const TARGET_URL = process.env.PROGRAMS_TARGET_URL ?? "http://127.0.0.1:8787";
 const TARGET_ORIGIN = new URL(TARGET_URL).origin;
+const ADMIN = {
+  username: process.env.PROGRAMS_ADMIN_USERNAME ?? DEV_ADMIN.username,
+  credential: process.env.PROGRAMS_ADMIN_CREDENTIAL ?? DEV_ADMIN.credential,
+};
+const STAFF = {
+  username: process.env.PROGRAMS_STAFF_USERNAME ?? DEV_STAFF.username,
+  credential: process.env.PROGRAMS_STAFF_CREDENTIAL ?? DEV_STAFF.credential,
+};
+const MEMBER = {
+  username: process.env.PROGRAMS_MEMBER_USERNAME ?? DEV_MEMBER.username,
+  credential: process.env.PROGRAMS_MEMBER_CREDENTIAL ?? DEV_MEMBER.credential,
+};
 const COPY = {
   login: "登入",
   pageTitle: "課程",
@@ -57,6 +69,38 @@ const COPY = {
   scan: "前往掃描",
   backToOrigin: "返回",
   enrollmentAdvisory: "加入後可查看聚會詳情",
+  managerOnlyNote: "此課程由同工安排參加",
+  managementDirectoryTitle: "管理課程",
+  managementDirectoryList: "可管理課程",
+  managementDirectorySearchLabel: "搜尋可管理課程",
+  noManagementScope: "沒有管理範圍",
+  workspaceUnavailable: "課程管理範圍已失效",
+  workspaceBack: "返回管理課程目錄",
+  cockpitOperations: "營運",
+  cockpitWeeklyWork: "每週工作",
+  cockpitEventsTile: "聚會",
+  cockpitParticipantsTile: "參與者",
+  cockpitManageRoster: "前往管理名單",
+  cockpitOthers: "其他",
+  rosterTitle: "簽到名單",
+  workspaceTaskSettings: "課程設定",
+  settingsBackToHub: "返回設定",
+  settingsBasics: "基本資料",
+  settingsHubBasics: "課程基本資料",
+  settingsHubEnrollment: "報名設定",
+  settingsHubSchedule: "聚會排程",
+  settingsHubAttendance: "出席與簽到",
+  settingsEnrollment: "報名與可見性",
+  settingsAttendance: "出席",
+  settingsAttendanceOpens: "開始前可簽到分鐘",
+  schedulePageTitle: "聚會排程",
+  settingsScheduleOneOff:
+    "單次課程不使用固定時間表。請到聚會工作流程建立或管理具體聚會。",
+  addRule: "新增時間表",
+  settingsScheduleUnavailable:
+    "所屬部門目前未啟用聚會模組；不能在這裡編輯時間表規則。",
+  settingsAttendanceUnavailable:
+    "所屬部門目前未啟用出席模組；不能在這裡編輯簽到預設。",
 };
 
 interface Identity {
@@ -67,6 +111,9 @@ interface Identity {
 interface NavigationFixture {
   programId: string;
   programName: string;
+  nextMeetingEventId: string;
+  nextMeetingEventName: string;
+  managerOnlyProgramId: string;
   managerOnlyProgramName: string;
   unlistedProgramId: string;
   unlistedProgramName: string;
@@ -74,6 +121,8 @@ interface NavigationFixture {
   eventProgramName: string;
   eventId: string;
   eventName: string;
+  oneOffProgramId: string;
+  moduleDisabledProgramId: string;
   freshMember: Identity;
 }
 
@@ -155,7 +204,8 @@ async function createProgram(
   departmentId: string,
   name: string,
   enrollmentMode: "MemberRequest" | "ManagerOnly",
-  discoverability: "Listed" | "Unlisted"
+  discoverability: "Listed" | "Unlisted",
+  behaviorType: "Recurring" | "OneOff" = "Recurring"
 ): Promise<{ programId: string; name: string }> {
   const program = await responseData<{
     program: { program_id: string };
@@ -168,7 +218,7 @@ async function createProgram(
           name,
           description: `Disposable navigation parity fixture ${name}.`,
           category: "T05",
-          behavior_type: "Recurring",
+          behavior_type: behaviorType,
           lifecycle: "Active",
           discoverability,
           enrollment_mode: enrollmentMode,
@@ -237,7 +287,7 @@ function detailBackLink(page: Page) {
 }
 
 test.beforeAll(async ({ playwright }) => {
-  adminApi = await loginApi(playwright, DEV_ADMIN);
+  adminApi = await loginApi(playwright, ADMIN);
   const suffix = crypto.randomUUID().slice(0, 8);
   const department = await responseData<{
     department: { department_id: string };
@@ -253,7 +303,12 @@ test.beforeAll(async ({ playwright }) => {
     201
   );
   const departmentId = department.department.department_id;
-  for (const moduleKey of ["program_catalog", "events", "enrollment"]) {
+  for (const moduleKey of [
+    "program_catalog",
+    "events",
+    "enrollment",
+    "attendance",
+  ]) {
     await responseData(
       await adminApi.post(
         `/api/v1/programs/departments/${departmentId}/modules/${moduleKey}/enable`,
@@ -287,6 +342,13 @@ test.beforeAll(async ({ playwright }) => {
     "MemberRequest",
     "Listed"
   );
+  const oneOffProgram = await createProgram(
+    departmentId,
+    `E2E_NAV_OneOff_${suffix}`,
+    "MemberRequest",
+    "Listed",
+    "OneOff"
+  );
 
   await responseData(
     await adminApi.post(
@@ -308,7 +370,13 @@ test.beforeAll(async ({ playwright }) => {
     201
   );
   const now = Date.now();
-  for (let index = 0; index < 8; index += 1) {
+  const nextMeetingEventName = `E2E_NAV_MEETING_1_${suffix}`;
+  const nextMeetingEventId = await createEvent(
+    program.programId,
+    nextMeetingEventName,
+    new Date(now + 60 * 60_000).toISOString()
+  );
+  for (let index = 1; index < 8; index += 1) {
     await createEvent(
       program.programId,
       `E2E_NAV_MEETING_${index + 1}_${suffix}`,
@@ -320,6 +388,34 @@ test.beforeAll(async ({ playwright }) => {
     eventProgram.programId,
     eventName,
     new Date(now + 45 * 60_000).toISOString()
+  );
+
+  const disabledDepartment = await responseData<{
+    department: { department_id: string };
+  }>(
+    await adminApi.post("/api/v1/programs/departments", {
+      headers: { "Idempotency-Key": idempotencyKey("disabled-department") },
+      data: {
+        code: `E2E_NAV_D_${suffix}`,
+        name: `E2E Navigation Disabled ${suffix}`,
+        lifecycle: "Active",
+      },
+    }),
+    201
+  );
+  const disabledDepartmentId = disabledDepartment.department.department_id;
+  await responseData(
+    await adminApi.post(
+      `/api/v1/programs/departments/${disabledDepartmentId}/modules/program_catalog/enable`,
+      { headers: { "Idempotency-Key": idempotencyKey("disabled-catalog") } }
+    ),
+    200
+  );
+  const moduleDisabledProgram = await createProgram(
+    disabledDepartmentId,
+    `E2E_NAV_ModulesDisabled_${suffix}`,
+    "MemberRequest",
+    "Listed"
   );
 
   const freshMember = {
@@ -370,6 +466,9 @@ test.beforeAll(async ({ playwright }) => {
   fixture = {
     programId: program.programId,
     programName: program.name,
+    nextMeetingEventId,
+    nextMeetingEventName,
+    managerOnlyProgramId: managerOnly.programId,
     managerOnlyProgramName: managerOnly.name,
     unlistedProgramId: unlisted.programId,
     unlistedProgramName: unlisted.name,
@@ -377,6 +476,8 @@ test.beforeAll(async ({ playwright }) => {
     eventProgramName: eventProgram.name,
     eventId,
     eventName,
+    oneOffProgramId: oneOffProgram.programId,
+    moduleDisabledProgramId: moduleDisabledProgram.programId,
     freshMember,
   };
 });
@@ -389,7 +490,7 @@ test.describe("Programs navigation parity", () => {
   test("programs-d1 #1: Admin enters Participant mode with its Management gateway", async ({
     page,
   }) => {
-    await loginAs(page, DEV_ADMIN);
+    await loginAs(page, ADMIN);
     await page.goto("/programs");
     await expect(
       page.getByRole("heading", { name: COPY.pageTitle })
@@ -405,7 +506,7 @@ test.describe("Programs navigation parity", () => {
   test("programs-d1 #2: Staff enters Participant mode before management", async ({
     page,
   }) => {
-    await loginAs(page, DEV_STAFF);
+    await loginAs(page, STAFF);
     await page.goto("/programs");
     await expect(
       page.getByRole("heading", { name: COPY.pageTitle })
@@ -414,7 +515,7 @@ test.describe("Programs navigation parity", () => {
   });
 
   test("programs-d1 #3: Member has no Management gateway", async ({ page }) => {
-    await loginAs(page, DEV_MEMBER);
+    await loginAs(page, MEMBER);
     await page.goto("/programs");
     await expect(
       page.getByRole("heading", { name: COPY.pageTitle })
@@ -425,11 +526,11 @@ test.describe("Programs navigation parity", () => {
     ).toHaveCount(0);
   });
 
-  test("programs-d1 #4: Mode switching preserves the Program intent and hash", async ({
+  test("programs-d1 #4: Mode switching preserves the Program intent and labelled region", async ({
     page,
   }) => {
     const current = navigationFixture();
-    await loginAs(page, DEV_ADMIN);
+    await loginAs(page, ADMIN);
     await page.goto(`/programs?program=${current.programId}#overview`);
     await expect(page.locator("#program-detail-title")).toHaveText(
       current.programName
@@ -486,7 +587,7 @@ test.describe("Programs navigation parity", () => {
   test("programs-d1 #5: Malformed Programs intent stays recoverable", async ({
     page,
   }) => {
-    await loginAs(page, DEV_ADMIN);
+    await loginAs(page, ADMIN);
     await page.goto("/programs?mode=sideways#overview");
     await expect(
       page.getByRole("heading", { name: COPY.malformedIntent })
@@ -501,7 +602,7 @@ test.describe("Programs navigation parity", () => {
     page,
   }) => {
     const current = navigationFixture();
-    await loginAs(page, DEV_ADMIN);
+    await loginAs(page, ADMIN);
     const target = `/programs?mode=management&program=${current.programId}#overview`;
     await page.goto(target);
     await page.context().clearCookies();
@@ -512,12 +613,10 @@ test.describe("Programs navigation parity", () => {
     });
     await expect(relogin).toBeVisible();
     await relogin.click();
-    await page
-      .locator('input[autocomplete="username"]')
-      .fill(DEV_ADMIN.username);
+    await page.locator('input[autocomplete="username"]').fill(ADMIN.username);
     await page
       .locator('input[autocomplete="current-password"]')
-      .fill(DEV_ADMIN.credential);
+      .fill(ADMIN.credential);
     await page.getByRole("button", { name: COPY.login }).click();
     await expect(page).toHaveURL(new URL(target, TARGET_URL).toString());
     await expect(
@@ -529,7 +628,7 @@ test.describe("Programs navigation parity", () => {
     page,
   }) => {
     const current = navigationFixture();
-    await loginAs(page, DEV_MEMBER);
+    await loginAs(page, MEMBER);
     await page.goto("/programs");
     const catalog = page.getByRole("list", { name: COPY.catalogList });
     await expect(
@@ -550,7 +649,7 @@ test.describe("Programs navigation parity", () => {
   test("programs-d1 #8 (presentation-only): Forbidden catalog offers only the Home escape", async ({
     page,
   }) => {
-    await loginAs(page, DEV_MEMBER);
+    await loginAs(page, MEMBER);
     await page.route("**/api/v1/programs/catalog", async (route) => {
       await route.fulfill({
         status: 403,
@@ -580,7 +679,7 @@ test.describe("Programs navigation parity", () => {
     page,
   }) => {
     const current = navigationFixture();
-    await loginAs(page, DEV_ADMIN);
+    await loginAs(page, ADMIN);
     await page.goto("/programs");
     expect(await hasManagementCapability(page)).toBe(true);
     await expect(
@@ -674,7 +773,7 @@ test.describe("Programs navigation parity", () => {
     page,
   }) => {
     const current = navigationFixture();
-    await loginAs(page, DEV_MEMBER);
+    await loginAs(page, MEMBER);
     await page.goto("/programs");
     const listedRow = page.getByRole("link", {
       name: new RegExp(current.programName, "u"),
@@ -698,7 +797,7 @@ test.describe("Programs navigation parity", () => {
     page,
   }) => {
     const current = navigationFixture();
-    await loginAs(page, DEV_MEMBER);
+    await loginAs(page, MEMBER);
     await page.goto("/programs");
     await page
       .getByRole("searchbox", { name: COPY.catalogSearch })
@@ -714,7 +813,7 @@ test.describe("Programs navigation parity", () => {
     page,
   }) => {
     const current = navigationFixture();
-    await loginAs(page, DEV_MEMBER);
+    await loginAs(page, MEMBER);
     await page.goto("/programs");
     const row = page.getByRole("link", {
       name: new RegExp(current.programName, "u"),
@@ -781,8 +880,26 @@ test.describe("Programs navigation parity", () => {
     page,
   }) => {
     const current = navigationFixture();
-    await loginAs(page, DEV_MEMBER);
+    await loginAs(page, MEMBER);
+    const detailResponsePromise = page.waitForResponse((response) => {
+      const url = new URL(response.url());
+      return (
+        response.request().method() === "GET" &&
+        url.pathname ===
+          `/api/v1/programs/${encodeURIComponent(current.unlistedProgramId)}/participant-detail`
+      );
+    });
     await page.goto(`/programs?program=${current.unlistedProgramId}#overview`);
+    const detailResponse = await detailResponsePromise;
+    expect(detailResponse.status()).toBe(404);
+    const problem = (await detailResponse.json()) as {
+      code?: string;
+      detail?: string;
+    };
+    expect(problem.code).toBe("NOT_FOUND");
+    const problemText = JSON.stringify(problem);
+    expect(problemText).not.toContain(current.unlistedProgramId);
+    expect(problemText).not.toContain(current.unlistedProgramName);
     await expect(
       page.getByRole("heading", { name: COPY.detailUnavailable })
     ).toBeVisible();
@@ -799,11 +916,25 @@ test.describe("Programs navigation parity", () => {
     page,
   }) => {
     const current = navigationFixture();
-    let eventWindowOpened = false;
+    const api = adminApi;
+    if (api === null) {
+      throw new Error("Programs navigation Admin API was not initialized");
+    }
+    let eventWindowMayHaveChanged = false;
+    const originalEvent = await responseData<{
+      event: {
+        check_in_window_opens_at: string | null;
+        check_in_window_closes_at: string | null;
+      };
+    }>(
+      await api.get(
+        `/api/v1/programs/${current.eventProgramId}/events/${current.eventId}`
+      ),
+      200
+    );
     const originalWindow = {
-      eventId: current.eventId,
-      opensAt: null,
-      closesAt: null,
+      check_in_window_opens_at: originalEvent.event.check_in_window_opens_at,
+      check_in_window_closes_at: originalEvent.event.check_in_window_closes_at,
     };
     await loginAs(page, current.freshMember);
     const programUrl = `/programs?program=${current.eventProgramId}#overview`;
@@ -835,7 +966,7 @@ test.describe("Programs navigation parity", () => {
       const requestBody = (await requestResponse.json()) as {
         data: { request: { request_id: string } };
       };
-      const decision = await adminApi!.post(
+      const decision = await api.post(
         `/api/v1/programs/${current.eventProgramId}/enrollment-requests/${requestBody.data.request.request_id}/decision`,
         {
           headers: {
@@ -847,7 +978,8 @@ test.describe("Programs navigation parity", () => {
       await responseData<{ enrollment: { status: string } }>(decision, 200);
 
       const now = Date.now();
-      const openWindow = await adminApi!.patch(
+      eventWindowMayHaveChanged = true;
+      const openWindow = await api.patch(
         `/api/v1/programs/${current.eventProgramId}/events/${current.eventId}`,
         {
           headers: { "Idempotency-Key": idempotencyKey("open-event-window") },
@@ -860,7 +992,6 @@ test.describe("Programs navigation parity", () => {
         }
       );
       await responseData(openWindow, 200);
-      eventWindowOpened = true;
 
       await page.reload();
       await expect(page.locator("#program-detail-title")).toHaveText(
@@ -918,22 +1049,36 @@ test.describe("Programs navigation parity", () => {
         .toBe(current.eventProgramId);
     } finally {
       try {
-        if (eventWindowOpened) {
+        if (eventWindowMayHaveChanged) {
           await responseData(
-            await adminApi!.patch(
+            await api.patch(
               `/api/v1/programs/${current.eventProgramId}/events/${current.eventId}`,
               {
                 headers: {
                   "Idempotency-Key": idempotencyKey("restore-event-window"),
                 },
                 data: {
-                  check_in_window_opens_at: originalWindow.opensAt,
-                  check_in_window_closes_at: originalWindow.closesAt,
+                  check_in_window_opens_at:
+                    originalWindow.check_in_window_opens_at,
+                  check_in_window_closes_at:
+                    originalWindow.check_in_window_closes_at,
                 },
               }
             ),
             200
           );
+          const restoredEvent = await responseData<{
+            event: {
+              check_in_window_opens_at: string | null;
+              check_in_window_closes_at: string | null;
+            };
+          }>(
+            await api.get(
+              `/api/v1/programs/${current.eventProgramId}/events/${current.eventId}`
+            ),
+            200
+          );
+          expect(restoredEvent.event).toMatchObject(originalWindow);
         }
       } finally {
         await page.goto(programUrl);
@@ -949,5 +1094,344 @@ test.describe("Programs navigation parity", () => {
         });
       }
     }
+  });
+
+  test("programs-d1 #27: ManagerOnly detail explains participants cannot self-enroll", async ({
+    page,
+  }) => {
+    const current = navigationFixture();
+    await loginAs(page, MEMBER);
+    await page.goto(
+      `/programs?program=${current.managerOnlyProgramId}#overview`
+    );
+    await expect(page.locator("#program-detail-title")).toHaveText(
+      current.managerOnlyProgramName
+    );
+    await expect(page.getByText(COPY.managerOnlyNote)).toBeVisible();
+    await expect(page.getByRole("button", { name: COPY.enroll })).toHaveCount(
+      0
+    );
+    await expect(
+      page.getByRole("button", { name: COPY.withdrawRequest })
+    ).toHaveCount(0);
+    await expect(
+      page.getByRole("button", { name: COPY.cancelEnrollment })
+    ).toHaveCount(0);
+  });
+
+  test("programs-d1 #28: Admin returns from the Attendance roster to the same Program", async ({
+    page,
+  }) => {
+    const current = navigationFixture();
+    await loginAs(page, ADMIN);
+    await page.goto("/programs");
+    await page.getByRole("link", { name: COPY.enterManagement }).click();
+    await expect(page).toHaveURL(/\/programs\?mode=management$/u);
+    await expect(
+      page.getByRole("heading", { name: COPY.managementDirectoryTitle })
+    ).toBeVisible();
+
+    const directory = page.getByRole("list", {
+      name: COPY.managementDirectoryList,
+    });
+    await page
+      .getByRole("searchbox", { name: COPY.managementDirectorySearchLabel })
+      .fill(current.programName);
+    const programLink = directory
+      .getByRole("link")
+      .filter({ hasText: current.programName });
+    await expect(programLink).toHaveCount(1);
+    await programLink.click();
+    await expect(page).toHaveURL(
+      new RegExp(
+        `/programs\\?mode=management&program=${current.programId}$`,
+        "u"
+      )
+    );
+    await expect(
+      page.getByRole("heading", { name: current.programName, exact: true })
+    ).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: COPY.cockpitOperations })
+    ).toBeVisible();
+    await expect(page.getByText(COPY.cockpitWeeklyWork)).toBeVisible();
+    await expect(
+      page.getByRole("link", {
+        name: new RegExp(`${COPY.cockpitEventsTile}.*個聚會`, "u"),
+      })
+    ).toBeVisible();
+    await expect(
+      page.getByRole("link", {
+        name: new RegExp(`^${COPY.cockpitParticipantsTile}\\s`, "u"),
+      })
+    ).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: COPY.cockpitOthers })
+    ).toBeVisible();
+
+    const rosterResponsePromise = page.waitForResponse((response) => {
+      const url = new URL(response.url());
+      return (
+        response.request().method() === "GET" &&
+        url.pathname ===
+          `/api/v1/attendance/events/${current.nextMeetingEventId}/roster`
+      );
+    });
+    await page.getByRole("link", { name: COPY.cockpitManageRoster }).click();
+    const rosterResponse = await rosterResponsePromise;
+    expect(rosterResponse.status()).toBe(200);
+    await expect(page).toHaveURL(
+      new RegExp(`/events\\?event=${current.nextMeetingEventId}$`, "u")
+    );
+    await expect(
+      page.getByRole("heading", { name: COPY.rosterTitle })
+    ).toBeVisible();
+    await expect(
+      page.getByRole("region", {
+        name: new RegExp(current.nextMeetingEventName, "u"),
+      })
+    ).toBeVisible();
+    await page.goBack();
+    await expect(page).toHaveURL(
+      new RegExp(
+        `/programs\\?mode=management&program=${current.programId}$`,
+        "u"
+      )
+    );
+    await page.getByRole("link", { name: COPY.enterParticipant }).click();
+    await expect(page).toHaveURL(
+      new RegExp(`/programs\\?program=${current.programId}$`, "u")
+    );
+    await expect(page.locator("#program-detail-title")).toHaveText(
+      current.programName
+    );
+    await page.getByRole("link", { name: COPY.enterManagement }).click();
+    await expect(page).toHaveURL(
+      new RegExp(
+        `/programs\\?mode=management&program=${current.programId}$`,
+        "u"
+      )
+    );
+    await expect(
+      page.getByRole("heading", { name: current.programName, exact: true })
+    ).toBeVisible();
+  });
+
+  test("programs-d1 #31: Directory and Workspace entry points work with Enter", async ({
+    page,
+  }) => {
+    const current = navigationFixture();
+    await loginAs(page, ADMIN);
+    await page.goto("/programs");
+    const enterManagement = page.getByRole("link", {
+      name: COPY.enterManagement,
+    });
+    await enterManagement.focus();
+    const directoryResponsePromise = page.waitForResponse((response) => {
+      const url = new URL(response.url());
+      return (
+        response.request().method() === "GET" &&
+        url.pathname === "/api/v1/programs/management-directory"
+      );
+    });
+    await enterManagement.press("Enter");
+    const directoryResponse = await directoryResponsePromise;
+    expect(directoryResponse.status()).toBe(200);
+    expect(JSON.stringify(await directoryResponse.json())).toContain(
+      current.programId
+    );
+    await expect(
+      page.getByRole("heading", { name: COPY.managementDirectoryTitle })
+    ).toBeVisible();
+    await page
+      .getByRole("searchbox", { name: COPY.managementDirectorySearchLabel })
+      .fill(current.programName);
+    const programLink = page
+      .getByRole("list", { name: COPY.managementDirectoryList })
+      .getByRole("link")
+      .filter({ hasText: current.programName });
+    await expect(programLink).toHaveCount(1);
+    await programLink.focus();
+    await programLink.press("Enter");
+    await expect(
+      page.getByRole("heading", { name: current.programName, exact: true })
+    ).toBeVisible();
+    await expect(
+      page.getByRole("link", {
+        name: new RegExp(`^${COPY.cockpitEventsTile}\\s`, "u"),
+      })
+    ).toBeVisible();
+  });
+
+  test("programs-d1 #32: Member direct Management links stay out of scope", async ({
+    page,
+  }) => {
+    const current = navigationFixture();
+    await loginAs(page, MEMBER);
+    const directManagement = await page.evaluate(async (programId) => {
+      const response = await fetch(`/api/v1/programs/${programId}/management`);
+      return { status: response.status, body: await response.json() };
+    }, current.programId);
+    expect(directManagement.status).toBe(404);
+    expect((directManagement.body as { code?: string }).code).toBe("NOT_FOUND");
+    expect(JSON.stringify(directManagement.body)).not.toContain(
+      current.programId
+    );
+    for (const task of ["settings", "participants"] as const) {
+      await page.goto(
+        `/programs?mode=management&program=${current.programId}&task=${task}`
+      );
+      await expect(
+        page.getByRole("heading", { name: COPY.noManagementScope })
+      ).toBeVisible();
+      await expect(page.getByText(current.programId)).toHaveCount(0);
+    }
+  });
+
+  test("programs-d1 #33: Staff sees the capability-shaped Management Directory", async ({
+    page,
+  }) => {
+    const current = navigationFixture();
+    await loginAs(page, STAFF);
+    await page.goto("/programs");
+    await page.getByRole("link", { name: COPY.enterManagement }).click();
+    await expect(
+      page.getByRole("heading", { name: COPY.managementDirectoryTitle })
+    ).toBeVisible();
+    await expect(
+      page.getByRole("list", { name: COPY.managementDirectoryList })
+    ).toBeVisible();
+    await page
+      .getByRole("searchbox", { name: COPY.managementDirectorySearchLabel })
+      .fill(current.programName);
+    await expect(
+      page
+        .getByRole("list", { name: COPY.managementDirectoryList })
+        .getByRole("link")
+        .filter({ hasText: current.programName })
+    ).toBeVisible();
+  });
+
+  test("programs-d1 #34: Unknown direct Management links stay generic", async ({
+    page,
+  }) => {
+    await loginAs(page, ADMIN);
+    await page.goto(
+      "/programs?mode=management&program=E2E_REVOKED_PROGRAM&task=events"
+    );
+    await expect(
+      page.getByRole("heading", { name: COPY.workspaceUnavailable })
+    ).toBeVisible();
+    await expect(page.getByText("E2E_REVOKED_PROGRAM")).toHaveCount(0);
+    await expect(
+      page.getByRole("button", { name: COPY.workspaceBack })
+    ).toBeVisible();
+  });
+
+  test("programs-d1 #36: Settings route through focused editors and canonical Schedule", async ({
+    page,
+  }) => {
+    const current = navigationFixture();
+    await loginAs(page, ADMIN);
+    const settingsUrl = `/programs?mode=management&program=${current.programId}&task=settings`;
+    await page.goto(settingsUrl);
+    await expect(
+      page.getByRole("heading", { name: COPY.workspaceTaskSettings })
+    ).toBeVisible();
+    await page
+      .getByRole("button", { name: new RegExp(COPY.settingsHubBasics, "u") })
+      .click();
+    await expect(
+      page.getByRole("heading", { name: COPY.settingsBasics })
+    ).toBeVisible();
+    await page
+      .getByRole("link", { name: COPY.settingsBackToHub, exact: true })
+      .click();
+    await page
+      .getByRole("button", {
+        name: new RegExp(COPY.settingsHubEnrollment, "u"),
+      })
+      .click();
+    await expect(
+      page.getByRole("heading", { name: COPY.settingsEnrollment })
+    ).toBeVisible();
+    await page
+      .getByRole("link", { name: COPY.settingsBackToHub, exact: true })
+      .click();
+    const scheduleLink = page.getByRole("link", {
+      name: new RegExp(COPY.settingsHubSchedule, "u"),
+    });
+    await expect(scheduleLink).toBeVisible();
+    await scheduleLink.click();
+    await expect(
+      page.getByRole("heading", { name: COPY.schedulePageTitle })
+    ).toBeVisible();
+
+    await page.goto(settingsUrl);
+    await page
+      .getByRole("button", {
+        name: new RegExp(COPY.settingsHubAttendance, "u"),
+      })
+      .click();
+    await expect(
+      page.getByRole("heading", { name: COPY.settingsAttendance })
+    ).toBeVisible();
+    await expect(
+      page.getByRole("spinbutton", { name: COPY.settingsAttendanceOpens })
+    ).toBeVisible();
+
+    await page.goto(
+      `/programs?mode=management&program=${current.oneOffProgramId}&task=settings`
+    );
+    await expect(
+      page.getByRole("link", {
+        name: new RegExp(COPY.settingsHubSchedule, "u"),
+      })
+    ).toHaveCount(0);
+    await page.goto(
+      `/programs?mode=management&program=${current.oneOffProgramId}&task=schedule`
+    );
+    await expect(
+      page.getByRole("heading", { name: COPY.schedulePageTitle })
+    ).toBeVisible();
+    await expect(page.getByText(COPY.settingsScheduleOneOff)).toBeVisible();
+    await expect(page.getByRole("button", { name: COPY.addRule })).toHaveCount(
+      0
+    );
+  });
+
+  test("programs-d1 #37: Disabled modules hide Schedule and Attendance settings", async ({
+    page,
+  }) => {
+    const current = navigationFixture();
+    await loginAs(page, ADMIN);
+    await page.goto(
+      `/programs?mode=management&program=${current.moduleDisabledProgramId}&task=settings`
+    );
+    await expect(
+      page.getByRole("link", {
+        name: new RegExp(COPY.settingsHubSchedule, "u"),
+      })
+    ).toHaveCount(0);
+    await expect(
+      page.getByRole("button", {
+        name: new RegExp(COPY.settingsHubAttendance, "u"),
+      })
+    ).toHaveCount(0);
+    await page.goto(
+      `/programs?mode=management&program=${current.moduleDisabledProgramId}&task=schedule`
+    );
+    await expect(
+      page.getByText(COPY.settingsScheduleUnavailable)
+    ).toBeVisible();
+    await expect(page.getByRole("button", { name: COPY.addRule })).toHaveCount(
+      0
+    );
+    await expect(
+      page.getByText(COPY.settingsAttendanceUnavailable)
+    ).toHaveCount(0);
+    await expect(
+      page.getByRole("spinbutton", { name: COPY.settingsAttendanceOpens })
+    ).toHaveCount(0);
   });
 });

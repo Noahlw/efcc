@@ -803,6 +803,7 @@ export const ManagementDirectory = ({
           </div>
 
           <ScreenSection
+            headingId="programs-management-directory-catalog"
             title={COPY.programs.catalogSectionTitle}
             action={
               !departmentOnly && scopedDepartments.length > 0 ? (

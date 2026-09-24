@@ -10,7 +10,7 @@
 pnpm verify:programs
 ```
 
-Run it from a clean worktree after creating the ignored local `web/.dev.vars`. Browser Acceptance and Responsive Matrix each own an official `createTestHarness()` process, disposable D1, and deterministic fixture setup. Direct Responsive config invocation may use `PROGRAMS_TARGET_URL` for diagnostics, but the canonical runner provisions its own loopback Harness. The Runtime Reliability Canary owns a separate official Harness process and disposable D1.
+Run it from a clean worktree after creating the ignored local `web/.dev.vars`. Browser Acceptance and Responsive Matrix each own a `wrangler dev --local` process using `web/wrangler.jsonc`, an isolated per-run D1 persistence directory, and deterministic fixture setup. Migrations and fixture SQL use explicit `--local --persist-to` arguments against the same directory. Direct Responsive config invocation may use `PROGRAMS_TARGET_URL` for diagnostics, but the canonical runner provisions its own loopback Worker. The Runtime Reliability Canary owns a separate local Worker process and disposable D1.
 
 The finite aggregate runs these required stages once and in order:
 

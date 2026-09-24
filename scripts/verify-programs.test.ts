@@ -7,17 +7,30 @@ import {
   B003_RESIDUAL_RISK,
   PUI05_HOME_ACCEPTANCE_MAPPINGS,
   PROGRAMS_FEED_ACCEPTANCE_MAPPINGS,
+  PROGRAMS_BROWSER_EXPECTED_TESTS,
+  PROGRAMS_MANAGEMENT_PARITY_MAPPINGS,
   PROGRAMS_NAVIGATION_PARITY_MAPPINGS,
+  PROGRAMS_PARTICIPANT_PARITY_MAPPINGS,
+  PROGRAMS_RESPONSIVE_EXPECTED_TESTS,
+  PROGRAMS_RESPONSIVE_PARITY_MAPPINGS,
   PROMOTION_STAGES,
   RUNTIME_CANARY_STAGE,
   assertFeedAcceptanceReportMatchesMappings,
   assertFeedParityMappings,
   assertHomeAcceptanceReportMatchesMappings,
   assertHomeParityMappings,
+  assertProgramsManagementBrowserReportMatchesMappings,
+  assertProgramsManagementParityMappings,
   assertProgramsNavigationBrowserReportMatchesMappings,
   assertProgramsNavigationParityMappings,
+  assertProgramsParticipantBrowserReportMatchesMappings,
+  assertProgramsParticipantParityMappings,
+  assertProgramsResponsiveParityMappings,
+  assertProgramsResponsiveReportMatchesMappings,
   assertMigrationLedgersComplete,
   assertLocalPromotionTarget,
+  isBrowserAcceptanceRunGreen,
+  isResponsiveAcceptanceRunGreen,
   isCanaryArtifactGreen,
   isFunctionalPromotionManifest,
   isFeedAcceptanceRunGreen,
@@ -29,6 +42,35 @@ import {
 
 const repoRoot = path.resolve(import.meta.dirname, "..");
 
+function syntheticPlaywrightReport(
+  specs: { title: string; file: string; projectName: string }[],
+  expectedTests: number
+) {
+  const fillers = Array.from(
+    { length: Math.max(0, expectedTests - specs.length) },
+    (_, index) => ({
+      title: `unmapped passing fixture ${index + 1}`,
+      file: "programs-participant-acceptance.test.ts",
+      projectName: "phone-390",
+    })
+  );
+  const tests = [...specs, ...fillers].map(({ title, file, projectName }) => ({
+    title,
+    file,
+    tests: [
+      {
+        projectName,
+        results: [{ status: "passed", retry: 0 }],
+      },
+    ],
+  }));
+  return {
+    config: { rootDir: path.join(repoRoot, "tests/e2e") },
+    stats: { expected: expectedTests, skipped: 0, unexpected: 0, flaky: 0 },
+    suites: [{ specs: tests }],
+  };
+}
+
 describe("T05.7 Programs promotion gate", () => {
   test("aggregates the independent layers in dependency order", () => {
     expect(PROMOTION_STAGES.map(({ name }) => name)).toStrictEqual([
@@ -37,15 +79,17 @@ describe("T05.7 Programs promotion gate", () => {
       "home-browser-acceptance",
       "responsive-matrix",
       "feed-browser-acceptance",
+      "non-browser-precommit",
     ]);
     expect(
       PROMOTION_STAGES.map(({ name, expectedTests }) => [name, expectedTests])
     ).toStrictEqual([
       ["worker-contract", undefined],
-      ["browser-acceptance", 63],
+      ["browser-acceptance", 70],
       ["home-browser-acceptance", 5],
       ["responsive-matrix", 21],
       ["feed-browser-acceptance", 7],
+      ["non-browser-precommit", undefined],
     ]);
   });
 
@@ -84,22 +128,30 @@ describe("T05.7 Programs promotion gate", () => {
     ).toThrow(/duplicates replacement test/u);
   });
 
-  test("requires exact mappings for navigation cases and labels #8 presentation-only", () => {
+  test("requires exact mappings and labels superseded tab semantics as presentation-only", () => {
     expect(() =>
       assertProgramsNavigationParityMappings(
         PROGRAMS_NAVIGATION_PARITY_MAPPINGS
       )
     ).not.toThrow();
-    expect(PROGRAMS_NAVIGATION_PARITY_MAPPINGS).toHaveLength(15);
+    expect(PROGRAMS_NAVIGATION_PARITY_MAPPINGS).toHaveLength(23);
+    expect(
+      PROGRAMS_NAVIGATION_PARITY_MAPPINGS.find(
+        ({ oldId }) => oldId === "programs-d1:4"
+      )?.evidenceLevel
+    ).toBe("presentation-only");
     expect(PROGRAMS_NAVIGATION_PARITY_MAPPINGS[7]?.evidenceLevel).toBe(
       "presentation-only"
     );
     expect(() => assertProgramsNavigationParityMappings(null)).toThrow(
       /missing/u
     );
+  });
+
+  test("rejects incomplete or unapproved navigation mappings", () => {
     expect(() =>
       assertProgramsNavigationParityMappings(
-        PROGRAMS_NAVIGATION_PARITY_MAPPINGS.slice(0, 14)
+        PROGRAMS_NAVIGATION_PARITY_MAPPINGS.slice(0, 22)
       )
     ).toThrow(/count mismatch/u);
     expect(() =>
@@ -109,6 +161,78 @@ describe("T05.7 Programs promotion gate", () => {
         )
       )
     ).toThrow(/approved replacement/u);
+    expect(() =>
+      assertProgramsNavigationParityMappings(
+        PROGRAMS_NAVIGATION_PARITY_MAPPINGS.map((mapping) =>
+          mapping.oldId === "programs-d1:4"
+            ? { ...mapping, evidenceLevel: "worker-d1" }
+            : mapping
+        )
+      )
+    ).toThrow(/approved replacement/u);
+  });
+
+  test("requires exact mappings for uncovered Programs management cases", () => {
+    expect(() =>
+      assertProgramsManagementParityMappings(
+        PROGRAMS_MANAGEMENT_PARITY_MAPPINGS
+      )
+    ).not.toThrow();
+    expect(PROGRAMS_MANAGEMENT_PARITY_MAPPINGS).toHaveLength(28);
+    expect(
+      PROGRAMS_MANAGEMENT_PARITY_MAPPINGS.filter(
+        ({ replacementFile }) =>
+          replacementFile === "tests/e2e/programs-management-acceptance.test.ts"
+      )
+    ).toHaveLength(25);
+    expect(() => assertProgramsManagementParityMappings(null)).toThrow(
+      /missing/u
+    );
+  });
+
+  test("rejects incomplete or altered management mappings", () => {
+    expect(() =>
+      assertProgramsManagementParityMappings(
+        PROGRAMS_MANAGEMENT_PARITY_MAPPINGS.slice(0, 27)
+      )
+    ).toThrow(/count mismatch/u);
+    expect(() =>
+      assertProgramsManagementParityMappings(
+        PROGRAMS_MANAGEMENT_PARITY_MAPPINGS.map((mapping) =>
+          mapping.oldId === "programs-d1:50"
+            ? { ...mapping, replacementFile: "tests/e2e/other.test.ts" }
+            : mapping
+        )
+      )
+    ).toThrow(/approved replacement/u);
+  });
+
+  test("requires exact participant parity mappings for cases 14, 25, and 26", () => {
+    expect(() =>
+      assertProgramsParticipantParityMappings(
+        PROGRAMS_PARTICIPANT_PARITY_MAPPINGS
+      )
+    ).not.toThrow();
+    expect(PROGRAMS_PARTICIPANT_PARITY_MAPPINGS).toHaveLength(3);
+    expect(() =>
+      assertProgramsParticipantParityMappings(
+        PROGRAMS_PARTICIPANT_PARITY_MAPPINGS.slice(0, 2)
+      )
+    ).toThrow(/count mismatch/u);
+  });
+
+  test("requires exact responsive parity mappings for cases 9 and 35", () => {
+    expect(() =>
+      assertProgramsResponsiveParityMappings(
+        PROGRAMS_RESPONSIVE_PARITY_MAPPINGS
+      )
+    ).not.toThrow();
+    expect(PROGRAMS_RESPONSIVE_PARITY_MAPPINGS).toHaveLength(2);
+    expect(() =>
+      assertProgramsResponsiveParityMappings(
+        PROGRAMS_RESPONSIVE_PARITY_MAPPINGS.slice(0, 1)
+      )
+    ).toThrow(/count mismatch/u);
   });
 
   test("requires each navigation replacement once in phone-390", () => {
@@ -124,7 +248,7 @@ describe("T05.7 Programs promotion gate", () => {
         ],
       })
     );
-    const existingSpecs = Array.from({ length: 48 }, (_, index) => ({
+    const existingSpecs = Array.from({ length: 47 }, (_, index) => ({
       title: `existing Browser test ${index + 1}`,
       file: "programs-participant-acceptance.test.ts",
       tests: [
@@ -136,7 +260,12 @@ describe("T05.7 Programs promotion gate", () => {
     }));
     const report = {
       config: { rootDir: path.join(repoRoot, "tests/e2e") },
-      stats: { expected: 63, skipped: 0, unexpected: 0, flaky: 0 },
+      stats: {
+        expected: PROGRAMS_BROWSER_EXPECTED_TESTS,
+        skipped: 0,
+        unexpected: 0,
+        flaky: 0,
+      },
       suites: [
         { file: "programs-navigation-parity.test.ts", specs: mappedSpecs },
         {
@@ -225,6 +354,191 @@ describe("T05.7 Programs promotion gate", () => {
     expect(() =>
       assertProgramsNavigationBrowserReportMatchesMappings(wrongFile)
     ).toThrow(/came from/u);
+  });
+
+  test("requires every management replacement once in phone-390", () => {
+    const browserMappings = PROGRAMS_MANAGEMENT_PARITY_MAPPINGS.filter(
+      ({ replacementFile }) =>
+        replacementFile === "tests/e2e/programs-management-acceptance.test.ts"
+    );
+    const projects = ["phone-390"];
+    const managementSpecs = browserMappings.flatMap(({ replacementTest }) =>
+      projects.map((projectName) => ({
+        title: replacementTest,
+        file: "programs-management-acceptance.test.ts",
+        tests: [{ projectName, results: [{ status: "passed", retry: 0 }] }],
+      }))
+    );
+    const navigationSpecs = PROGRAMS_NAVIGATION_PARITY_MAPPINGS.map(
+      ({ replacementTest }) => ({
+        title: replacementTest,
+        file: "programs-navigation-parity.test.ts",
+        tests: [
+          {
+            projectName: "phone-390",
+            results: [{ status: "passed", retry: 0 }],
+          },
+        ],
+      })
+    );
+    const existingSpecs = Array.from({ length: 22 }, (_, index) => ({
+      title: `existing Browser test ${index + 1}`,
+      file: "programs-participant-acceptance.test.ts",
+      tests: [
+        {
+          projectName: "phone-390",
+          results: [{ status: "passed", retry: 0 }],
+        },
+      ],
+    }));
+    const report = {
+      config: { rootDir: path.join(repoRoot, "tests/e2e") },
+      stats: {
+        expected: PROGRAMS_BROWSER_EXPECTED_TESTS,
+        skipped: 0,
+        unexpected: 0,
+        flaky: 0,
+      },
+      suites: [
+        {
+          file: "programs-management-acceptance.test.ts",
+          specs: managementSpecs,
+        },
+        { file: "programs-navigation-parity.test.ts", specs: navigationSpecs },
+        {
+          file: "programs-participant-acceptance.test.ts",
+          specs: existingSpecs,
+        },
+      ],
+    };
+    expect(() =>
+      assertProgramsManagementBrowserReportMatchesMappings(report)
+    ).not.toThrow();
+
+    const missingOneViewport = {
+      ...report,
+      suites: [
+        {
+          file: "programs-management-acceptance.test.ts",
+          specs: managementSpecs.slice(1),
+        },
+        { file: "programs-navigation-parity.test.ts", specs: navigationSpecs },
+        {
+          file: "programs-participant-acceptance.test.ts",
+          specs: [
+            ...existingSpecs,
+            {
+              title: "existing Browser count filler",
+              file: "programs-participant-acceptance.test.ts",
+              tests: [
+                {
+                  projectName: "phone-390",
+                  results: [{ status: "passed", retry: 0 }],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    };
+    expect(() =>
+      assertProgramsManagementBrowserReportMatchesMappings(missingOneViewport)
+    ).toThrow(/once in phone-360|once in phone-390|once in phone-402/u);
+
+    const wrongFile = {
+      ...report,
+      suites: [
+        {
+          file: "programs-management-acceptance.test.ts",
+          specs: managementSpecs.map((spec, index) =>
+            index === 0 ? { ...spec, file: "other.test.ts" } : spec
+          ),
+        },
+        { file: "programs-navigation-parity.test.ts", specs: navigationSpecs },
+        {
+          file: "programs-participant-acceptance.test.ts",
+          specs: existingSpecs,
+        },
+      ],
+    };
+    expect(() =>
+      assertProgramsManagementBrowserReportMatchesMappings(wrongFile)
+    ).toThrow(/came from/u);
+  });
+
+  test("requires participant parity journeys in all three phone projects", () => {
+    const projects = ["phone-360", "phone-390", "phone-402"];
+    const mappedSpecs = PROGRAMS_PARTICIPANT_PARITY_MAPPINGS.flatMap(
+      ({ replacementTest, replacementFile }) =>
+        projects.map((projectName) => ({
+          title: replacementTest,
+          file: path.basename(replacementFile),
+          projectName,
+        }))
+    );
+    expect(() =>
+      assertProgramsParticipantBrowserReportMatchesMappings(
+        syntheticPlaywrightReport(mappedSpecs, PROGRAMS_BROWSER_EXPECTED_TESTS)
+      )
+    ).not.toThrow();
+
+    const missingPhone = mappedSpecs.map((spec) =>
+      spec.title === PROGRAMS_PARTICIPANT_PARITY_MAPPINGS[0]?.replacementTest &&
+      spec.projectName === "phone-360"
+        ? { ...spec, projectName: "phone-402" }
+        : spec
+    );
+    expect(() =>
+      assertProgramsParticipantBrowserReportMatchesMappings(
+        syntheticPlaywrightReport(missingPhone, PROGRAMS_BROWSER_EXPECTED_TESTS)
+      )
+    ).toThrow(/once in phone-360/u);
+  });
+
+  test("requires the responsive parity journeys at their reviewed widths", () => {
+    const responsiveProjects = [
+      "phone-320",
+      "phone-360",
+      "phone-390",
+      "phone-402",
+      "phone-600",
+      "phone-799",
+      "desktop-800",
+      "desktop-1024",
+      "desktop-1440",
+    ];
+    const mappedSpecs = PROGRAMS_RESPONSIVE_PARITY_MAPPINGS.flatMap(
+      ({ oldId, replacementTest, replacementFile }) =>
+        (oldId === "programs-d1:9" ? ["phone-320"] : responsiveProjects).map(
+          (projectName) => ({
+            title: replacementTest,
+            file: path.basename(replacementFile),
+            projectName,
+          })
+        )
+    );
+    expect(() =>
+      assertProgramsResponsiveReportMatchesMappings(
+        syntheticPlaywrightReport(
+          mappedSpecs,
+          PROGRAMS_RESPONSIVE_EXPECTED_TESTS
+        )
+      )
+    ).not.toThrow();
+
+    const wrongWidth = mappedSpecs.map((spec) =>
+      spec.title === PROGRAMS_RESPONSIVE_PARITY_MAPPINGS[0]?.replacementTest
+        ? { ...spec, projectName: "phone-390" }
+        : spec
+    );
+    expect(() =>
+      assertProgramsResponsiveReportMatchesMappings(
+        syntheticPlaywrightReport(
+          wrongWidth,
+          PROGRAMS_RESPONSIVE_EXPECTED_TESTS
+        )
+      )
+    ).toThrow(/once in phone-320/u);
   });
 
   test("matches all seven feed reports to their named Playwright specs", () => {
@@ -419,6 +733,9 @@ describe("T05.7 Programs promotion gate", () => {
         homeParityMappings: PUI05_HOME_ACCEPTANCE_MAPPINGS,
         feedParityMappings: PROGRAMS_FEED_ACCEPTANCE_MAPPINGS,
         programsNavigationParityMappings: PROGRAMS_NAVIGATION_PARITY_MAPPINGS,
+        programsManagementParityMappings: PROGRAMS_MANAGEMENT_PARITY_MAPPINGS,
+        programsParticipantParityMappings: PROGRAMS_PARTICIPANT_PARITY_MAPPINGS,
+        programsResponsiveParityMappings: PROGRAMS_RESPONSIVE_PARITY_MAPPINGS,
         stageResults: [
           ...finiteResults,
           { name: "runtime-canary", status: "failed" },
@@ -568,6 +885,10 @@ describe("T05.7 Programs promotion gate", () => {
     expect(stageArtifactPath(PROMOTION_STAGES[4], artifactDirectory)).toBe(
       "/tmp/t05-promotion/run-1/feed-results.json"
     );
+  });
+
+  test("pins the runtime canary artifact path", () => {
+    const artifactDirectory = "/tmp/t05-promotion/run-1";
     expect(stageArtifactPath(RUNTIME_CANARY_STAGE, artifactDirectory)).toBe(
       "/tmp/t05-promotion/run-1/runtime-canary"
     );
@@ -577,7 +898,7 @@ describe("T05.7 Programs promotion gate", () => {
     const artifact = {
       status: "passed",
       revision: "rev-1",
-      runtime: "createTestHarness",
+      runtime: "wrangler-dev-local",
       config: "web/wrangler.jsonc",
       windowMs: 5 * 60 * 1000,
       retries: 0,
@@ -597,12 +918,18 @@ describe("T05.7 Programs promotion gate", () => {
         "rev-1"
       )
     ).toBeFalsy();
+    expect(
+      isCanaryArtifactGreen(
+        { ...artifact, runtime: "createTestHarness" },
+        "rev-1"
+      )
+    ).toBeFalsy();
   });
 
   test("accepts only a current-run Home manifest with zero retries", () => {
     const manifest = {
       status: "passed",
-      runtime: "createTestHarness",
+      runtime: "wrangler-dev-local",
       config: "web/wrangler.jsonc",
       suite: "tests/e2e/programs-home-acceptance.config.ts",
       revision: "rev-1",
@@ -631,12 +958,83 @@ describe("T05.7 Programs promotion gate", () => {
         "run-1"
       )
     ).toBeFalsy();
+    expect(
+      isHomeAcceptanceRunGreen(
+        { ...manifest, runtime: "createTestHarness" },
+        "rev-1",
+        manifest.reportPath,
+        "run-1"
+      )
+    ).toBeFalsy();
+  });
+
+  test("accepts only current-run local Browser and Responsive manifests", () => {
+    const browserManifest = {
+      status: "passed",
+      runtime: "wrangler-dev-local",
+      config: "web/wrangler.jsonc",
+      suite: "tests/e2e/programs-participant-acceptance.config.ts",
+      revision: "rev-1",
+      layer: "browser-acceptance",
+      retries: 0,
+      target: "http://127.0.0.1:8787",
+      reportPath: "test-results/programs-promotion/run-1/browser-results.json",
+      promotionRunId: "run-1",
+    };
+    expect(
+      isBrowserAcceptanceRunGreen(
+        browserManifest,
+        "rev-1",
+        browserManifest.reportPath,
+        "run-1"
+      )
+    ).toBeTruthy();
+    expect(
+      isBrowserAcceptanceRunGreen(
+        { ...browserManifest, target: "https://example.com" },
+        "rev-1",
+        browserManifest.reportPath,
+        "run-1"
+      )
+    ).toBeFalsy();
+    expect(
+      isBrowserAcceptanceRunGreen(
+        { ...browserManifest, promotionRunId: "old-run" },
+        "rev-1",
+        browserManifest.reportPath,
+        "run-1"
+      )
+    ).toBeFalsy();
+
+    const responsiveManifest = {
+      ...browserManifest,
+      suite: "tests/e2e/programs-responsive-matrix.config.ts",
+      layer: "responsive-matrix",
+      reportPath:
+        "test-results/programs-promotion/run-1/responsive-results.json",
+    };
+    expect(
+      isResponsiveAcceptanceRunGreen(
+        responsiveManifest,
+        "rev-1",
+        responsiveManifest.reportPath,
+        "run-1"
+      )
+    ).toBeTruthy();
+    expect(
+      isResponsiveAcceptanceRunGreen(
+        { ...responsiveManifest, retries: 1 },
+        "rev-1",
+        responsiveManifest.reportPath,
+        "run-1"
+      )
+    ).toBeFalsy();
   });
 
   test("accepts only a current-run Feed manifest with zero retries", () => {
     const manifest = {
       status: "passed",
-      runtime: "createTestHarness",
+      runtime: "wrangler-dev-local",
       config: "web/wrangler.jsonc",
       suite: "tests/e2e/programs-feed-acceptance.config.ts",
       revision: "rev-1",

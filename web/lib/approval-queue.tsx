@@ -85,6 +85,8 @@ const APPROVAL_UI_COPY = {
   deselectedAnnouncement: (name: string) => `已取消選取 ${name}。`,
 } as const;
 
+const APPROVAL_QUEUE_SCROLL_KEY = "efcc_approval_queue_scroll_top";
+
 /**
  * Selection is deliberately process-local. It survives the queue/detail
  * route transition, but cannot survive a reload or leak into another browser
@@ -99,12 +101,28 @@ let approvalFocusRequestId: string | null = null;
 export function preserveApprovalSelectionForDetail(requestId?: string) {
   preserveSelectionForDetail = true;
   approvalFocusRequestId = requestId ?? null;
+  try {
+    const scrollTop = document.getElementById("shell-content")?.scrollTop;
+    if (scrollTop !== undefined) {
+      window.sessionStorage.setItem(
+        APPROVAL_QUEUE_SCROLL_KEY,
+        String(scrollTop)
+      );
+    }
+  } catch {
+    // Scroll restoration is cosmetic when browser storage is unavailable.
+  }
 }
 
 export function clearApprovalSelection() {
   approvalSelection.clear();
   preserveSelectionForDetail = false;
   approvalFocusRequestId = null;
+  try {
+    window.sessionStorage.removeItem(APPROVAL_QUEUE_SCROLL_KEY);
+  } catch {
+    // Scroll restoration is cosmetic when browser storage is unavailable.
+  }
 }
 
 function approvalStatusLabel(item: PendingRegistration): string {
@@ -271,12 +289,39 @@ export const ApprovalQueue = () => {
       const rowLink = focusRequestId
         ? rowLinkRefs.current.get(focusRequestId)
         : undefined;
-      if (rowLink) {
-        rowLink.focus();
-        approvalFocusRequestId = null;
-      } else {
-        resultHeadingRef.current?.focus();
+      const restoreFocus = () => {
+        if (rowLink) {
+          rowLink.focus({ preventScroll: true });
+          approvalFocusRequestId = null;
+        } else {
+          resultHeadingRef.current?.focus();
+        }
+      };
+      let scrollTop: number | null = null;
+      try {
+        const stored = window.sessionStorage.getItem(APPROVAL_QUEUE_SCROLL_KEY);
+        if (stored !== null) {
+          const parsed = Number(stored);
+          if (Number.isFinite(parsed)) scrollTop = parsed;
+        }
+      } catch {
+        // Scroll restoration is cosmetic when browser storage is unavailable.
       }
+      if (scrollTop === null) {
+        restoreFocus();
+        return;
+      }
+      const timeout = window.setTimeout(() => {
+        const scroller = document.getElementById("shell-content");
+        if (scroller) scroller.scrollTop = scrollTop;
+        try {
+          window.sessionStorage.removeItem(APPROVAL_QUEUE_SCROLL_KEY);
+        } catch {
+          // Scroll restoration is cosmetic when browser storage is unavailable.
+        }
+        restoreFocus();
+      }, 50);
+      return () => window.clearTimeout(timeout);
     } else if (state.kind === "error") {
       stateRef.current?.focus();
     } else if (state.kind === "forbidden") {
@@ -732,6 +777,7 @@ export const ApprovalQueue = () => {
                             }
                           }}
                           href={`/management?module=approvals&request=${encodeURIComponent(item.requestId)}`}
+                          scroll={false}
                           className="inline-flex min-h-11 min-w-0 items-center whitespace-normal wrap-anywhere text-base font-extrabold text-[var(--ink)] hover:text-[var(--accent)] hover:underline"
                           aria-label={`${COPY.approvals.openDetail} ${item.name}`}
                           onClick={(event) => {

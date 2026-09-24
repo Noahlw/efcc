@@ -189,7 +189,7 @@ async function main() {
 
   const manifest = {
     schemaVersion: 1,
-    runtime: "createTestHarness",
+    runtime: "wrangler-dev-local",
     config: "web/wrangler.jsonc",
     suite: `tests/e2e/programs-${suite}-acceptance.config.ts`,
     revision: await currentRevision(),

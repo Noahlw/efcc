@@ -54,7 +54,7 @@ async function main() {
   await mkdir(path.dirname(reportPath), { recursive: true });
   const manifest = {
     schemaVersion: 1,
-    runtime: "createTestHarness",
+    runtime: "wrangler-dev-local",
     config: "web/wrangler.jsonc",
     suite: "tests/e2e/programs-responsive-matrix.config.ts",
     revision: await currentRevision(),
