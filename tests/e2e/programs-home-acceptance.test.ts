@@ -412,7 +412,7 @@ test.beforeAll(async () => {
   const announcementId = `E2E_PUI05_HOME_${suffix}`;
   const eventNoticeTitle = `E2E PUI-05 Event ${suffix}`;
   const programNoticeTitle = `E2E PUI-05 Program ${suffix}`;
-  const accountNoticeTitle = LONG_TITLE;
+  const accountNoticeTitle = `${LONG_TITLE} ${suffix}`;
   const draftData = await responseData<{ version: number }>(
     await adminApi.post("/api/v1/home/draft", {
       headers: { "Idempotency-Key": `pui05-home-draft-${suffix}` },
@@ -440,6 +440,10 @@ test.beforeAll(async () => {
         end_at: null,
       },
     }),
+    200
+  );
+  await responseData<{ marked_count: number }>(
+    await memberApi.post("/api/v1/programs/notices/read-all"),
     200
   );
   await responseData(
@@ -708,22 +712,18 @@ test.describe("Home and member-feed Browser Acceptance", () => {
     await page.goto("/notices");
     const list = page.getByRole("list", { name: COPY.noticesListLabel });
     await expect(list).toBeVisible();
-    await expect(
-      list.getByRole("link", {
-        name: new RegExp(current.eventNoticeTitle, "u"),
-      })
-    ).toBeVisible();
-    await expect(
-      list.getByRole("link", {
-        name: new RegExp(current.programNoticeTitle, "u"),
-      })
-    ).toBeVisible();
-    await expect(
-      list.getByRole("link", {
-        name: new RegExp(current.accountNoticeTitle, "u"),
-      })
-    ).toBeVisible();
-    await expect(list.locator("time")).toHaveCount(3);
+    for (const title of [
+      current.eventNoticeTitle,
+      current.programNoticeTitle,
+      current.accountNoticeTitle,
+    ]) {
+      const row = list.locator("li").filter({ hasText: title });
+      await expect(row).toHaveCount(1);
+      await expect(row.locator("time")).toHaveCount(1);
+      await expect(
+        row.getByText(COPY.noticesUnread, { exact: true })
+      ).toBeVisible();
+    }
     await expect(page.getByText(`3 ${COPY.noticesUnread}`)).toBeVisible();
     await expect(
       list.getByText(COPY.noticesUnread, { exact: true })
