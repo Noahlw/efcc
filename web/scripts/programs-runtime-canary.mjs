@@ -146,11 +146,17 @@ function splitSqlStatements(sql) {
   return statements;
 }
 
-async function generatedFixtureSql() {
+async function generatedFixtureSql(reset = false) {
   try {
     const result = await execFileAsync(
       "pnpm",
-      ["--silent", "exec", "tsx", "tests/e2e/seed-dev-accounts.ts"],
+      [
+        "--silent",
+        "exec",
+        "tsx",
+        "tests/e2e/seed-dev-accounts.ts",
+        ...(reset ? ["--reset"] : []),
+      ],
       { cwd: REPO_ROOT, maxBuffer: 4 * 1024 * 1024 }
     );
     return result.stdout;
@@ -196,6 +202,12 @@ async function seedWorkerDatabase(worker, artifactDirectory) {
     if (!workerEnv?.DB) {
       throw new Error("Harness Worker did not expose the DB binding");
     }
+    // The local harness can persist D1 between runs; clear only E2E_ fixtures
+    // before seeding so an interrupted run cannot change the next Home result.
+    const resetSql = (await generatedFixtureSql(true))
+      .replace(/^\s*--.*$/gim, "")
+      .trim();
+    await workerEnv.DB.exec(resetSql);
     const statements = splitSqlStatements(
       (await generatedFixtureSql()).replace(/^\s*--.*$/gim, "")
     );
@@ -208,6 +220,7 @@ async function seedWorkerDatabase(worker, artifactDirectory) {
     await writeJson(path.join(artifactDirectory, "fixture-seed.json"), {
       statements: progress.length,
       progress,
+      reset: "E2E-scoped fixtures in local createTestHarness D1",
       storage: "createTestHarness Worker DB binding",
     });
     return workerEnv.DB;
@@ -791,6 +804,7 @@ export async function prepareProgramsHarness(
         category: error?.category ?? "fixture/setup",
         phase: error?.phase ?? "fixture/setup",
         message: error instanceof Error ? error.message : String(error),
+        cause: error?.cause instanceof Error ? error.cause.message : undefined,
         revision: await currentRevision(),
         layer: "harness-setup",
         logicalScenario: null,
@@ -811,6 +825,7 @@ export async function prepareProgramsHarness(
         category: error?.category ?? "fixture/setup",
         phase: error?.phase ?? "fixture/setup",
         message: error instanceof Error ? error.message : String(error),
+        cause: error?.cause instanceof Error ? error.cause.message : undefined,
         revision: await currentRevision(),
         layer: "harness-setup",
         logicalScenario: null,

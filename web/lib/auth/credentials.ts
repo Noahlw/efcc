@@ -1,21 +1,4 @@
-/**
- * EFCC D1 identity — credential hashing and PIN normalization (ADR-0020).
- *
- * All credential material is hashed with PBKDF2-SHA256 (per-account random
- * salt, fixed iteration count) and stored as `pbkdf2:salt:hash` in D1. No
- * cleartext PIN, password, access token, or raw session value is ever
- * persisted, logged, or returned across an RPC boundary.
- *
- * The legacy PIN is a 4-digit numeric credential (ADR-0002). The one-time
- * legacy import stores only a salted hash of the normalized legacy PIN; the
- * hash is verified once during the forced credential upgrade and then cleared
- * (ADR-0020 §4 — the user-selected one-time legacy-PIN-hash path).
- *
- * Constants are exported for tests; the TTLs below are the session boundary
- * (ADR-0020 §2):
- *   ACCESS_TOKEN_TTL_MS  — short-lived signed access token (~15 min).
- *   REFRESH_IDLE_TTL_MS  — 90-day idle expiry for the D1 refresh session.
- */
+/** EFCC D1 identity — credential hashing and session TTL constants. */
 
 // Cloudflare Workers' SubtleCrypto rejects PBKDF2 iteration counts above
 // 100,000 with NotSupportedError. Node/Bun impose no cap, so this constant
@@ -30,19 +13,6 @@ export const ACCESS_TOKEN_TTL_MS = 15 * 60 * 1000; // 15 minutes
 export const REFRESH_IDLE_TTL_MS = 90 * 24 * 60 * 60 * 1000; // 90 days
 
 const textEncoder = new TextEncoder();
-
-/**
- * Normalize a 4-digit numeric PIN per ADR-0002: strip non-digits, take the
- * rightmost 4 digits, zero-pad left to 4. Returns "" for input with no
- * digits. Mirrors the legacy Apps Script `sessionNormalizePin_`.
- */
-export function normalizePin(raw: unknown): string {
-  if (raw === null || raw === undefined) return "";
-  const digits = String(raw).replace(/\D/g, "");
-  if (digits.length === 0) return "";
-  if (digits.length <= 4) return digits.padStart(4, "0");
-  return digits.slice(-4);
-}
 
 /**
  * Normalize a username for uniqueness: trim + lowercase. The normalized form
@@ -111,11 +81,9 @@ async function pbkdf2(secret: string, salt: Uint8Array): Promise<Uint8Array> {
 export async function hashCredential(secret: string): Promise<string> {
   const salt = crypto.getRandomValues(new Uint8Array(SALT_BYTES));
   const key = await pbkdf2(secret, salt);
-  return [
-    CREDENTIAL_PREFIX,
-    toBase64Url(salt),
-    toBase64Url(key),
-  ].join(CREDENTIAL_DELIMITER);
+  return [CREDENTIAL_PREFIX, toBase64Url(salt), toBase64Url(key)].join(
+    CREDENTIAL_DELIMITER
+  );
 }
 
 /**

@@ -5,11 +5,9 @@ import worker from "../../worker";
 import type { Env } from "../../worker";
 import { preflightDisposableSchema, seedDisposableIdentity } from "../identity";
 import { resolveActorCapabilities } from "../identity/role-hierarchy";
-import { importLegacyUsers } from "./accounts";
 import { ACCESS_COOKIE_NAME } from "./cookies";
 import { signAccessToken } from "./sessions";
-import { applyMigrations, testDb } from "./test-bootstrap";
-import { completeCredentialUpgrade } from "./upgrade";
+import { applyMigrations, seedTestAccount, testDb } from "./test-bootstrap";
 
 const HOST = "https://efcc.example";
 const SECRET = "test-access-token-secret";
@@ -30,15 +28,6 @@ const PROGRAM_LEADER_ROLE = "018f3b8a-0000-7000-8000-100000000002";
 const TARGET_REQUEST_PL = "C487-REQUEST-PL";
 const TARGET_REQUEST_MEMBER = "C487-REQUEST-MEMBER";
 const TARGET_REQUEST_CUSTOM = "C487-REQUEST-CUSTOM";
-
-const HEADER = [
-  "User_ID",
-  "Name",
-  "Username",
-  "PIN_Code",
-  "System_Role",
-  "Status",
-];
 
 function testEnv(): Env {
   return {
@@ -175,59 +164,40 @@ async function withCookie(
 }
 
 async function addFixtureAccounts(): Promise<void> {
-  await importLegacyUsers(testDb(), [
-    HEADER,
+  for (const account of [
     [
       CUSTOM_USER,
       "C487 Custom Operator",
       "c487-custom",
-      "0000",
-      "Member",
-      "Active",
+      "c487-custom-password",
     ],
-    [
-      TARGET_USER,
-      "C487 Target Member",
-      "c487-target",
-      "0001",
-      "Member",
-      "Active",
-    ],
+    [TARGET_USER, "C487 Target Member", "c487-target", "c487-target-password"],
     [
       TARGET_REQUEST_PL_USER,
       "C487 Pending PL Target",
       "c487-target-pl",
-      "0002",
-      "Member",
-      "Active",
+      "c487-target-pl-password",
     ],
     [
       TARGET_REQUEST_MEMBER_USER,
       "C487 Pending Member Target",
       "c487-target-member",
-      "0003",
-      "Member",
-      "Active",
+      "c487-target-member-password",
     ],
     [
       TARGET_REQUEST_CUSTOM_USER,
       "C487 Pending Custom Target",
       "c487-target-custom",
-      "0004",
-      "Member",
-      "Active",
+      "c487-target-custom-password",
     ],
-  ]);
-  await completeCredentialUpgrade(testDb(), {
-    userId: CUSTOM_USER,
-    legacyPin: "0000",
-    newCredential: "c487-custom-password",
-  });
-  await completeCredentialUpgrade(testDb(), {
-    userId: TARGET_USER,
-    legacyPin: "0001",
-    newCredential: "c487-target-password",
-  });
+  ] as const) {
+    await seedTestAccount({
+      userId: account[0],
+      name: account[1],
+      username: account[2],
+      password: account[3],
+    });
+  }
 }
 
 async function addNormalizedFixtures(): Promise<void> {
@@ -499,7 +469,6 @@ describe("#487 normalized authority Worker seams", () => {
     ]) {
       const serialized = JSON.stringify(projection);
       expect(serialized).not.toContain("credential_hash");
-      expect(serialized).not.toContain("legacy_pin_hash");
       expect(serialized).not.toContain("refreshToken");
       expect(serialized).not.toContain("session_id");
       expect(projection.user).not.toHaveProperty("role");
@@ -1066,7 +1035,8 @@ describe("#487 normalized authority Worker seams", () => {
         throw new Error("expected stale-schema preflight result");
       }
       expect(legacy.legacyTables).toContain("permission_policy_state");
-      expect(legacy.resetCommand).toContain("DROP TABLE IF EXISTS");
+      expect(legacy.message).toContain("pnpm db:reset:local");
+      expect(legacy.message).not.toContain("DROP TABLE");
       const stillThere = await db
         .prepare(
           "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'permission_policy_state'"

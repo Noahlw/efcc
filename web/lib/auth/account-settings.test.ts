@@ -25,32 +25,23 @@ import assert from "node:assert/strict";
 import { env } from "cloudflare:workers";
 import { beforeAll, describe, test, expect, vi } from "vitest";
 
-import { importLegacyUsers } from "./accounts";
-import * as accounts from "./accounts";
+import worker from "../../worker";
+import type { Env } from "../../worker";
 import {
   AccountConflictError,
   AccountStatusError,
   changePassword,
   changeUsername,
 } from "./account-settings";
+import * as accounts from "./accounts";
+import { ACCESS_COOKIE_NAME, REFRESH_COOKIE_NAME } from "./cookies";
 import * as credentials from "./credentials";
 import { hashCredential, verifyCredential } from "./credentials";
-import { ACCESS_COOKIE_NAME, REFRESH_COOKIE_NAME } from "./cookies";
 import * as registrations from "./registrations";
 import { signAccessToken, issueSession } from "./sessions";
-import { applyMigrations, testDb } from "./test-bootstrap";
-import { completeCredentialUpgrade } from "./upgrade";
-import worker from "../../worker";
-import type { Env } from "../../worker";
+import { applyMigrations, seedTestAccount, testDb } from "./test-bootstrap";
 
 const SECRET = "test-access-token-secret";
-const HEADER = [
-  "User_ID",
-  "Name",
-  "Username",
-  "PIN_Code",
-  "Status",
-];
 const HOST = "https://efcc.example";
 
 function testEnv(overrides: Partial<Env> = {}): Env {
@@ -165,7 +156,9 @@ function assertBodyHasNoSecretKeys(body: unknown): void {
   );
 }
 
-async function assertCorrelated(res: Response): Promise<Record<string, unknown>> {
+async function assertCorrelated(
+  res: Response
+): Promise<Record<string, unknown>> {
   const header = res.headers.get("X-Request-Id");
   assert.ok(header, "X-Request-Id header must be present");
   const body = (await res.json()) as { requestId?: unknown };
@@ -181,48 +174,31 @@ async function problemOf(res: Response): Promise<{
   detail?: string;
 }> {
   expect(res.headers.get("Content-Type")).toBe("application/problem+json");
-  return (await res.json()) as { code: string; status: number; detail?: string };
+  return (await res.json()) as {
+    code: string;
+    status: number;
+    detail?: string;
+  };
 }
 
 beforeAll(async () => {
   await applyMigrations();
-  await importLegacyUsers(testDb(), [
-    HEADER,
-    ["U001", "Alice Chan", "alice", "1234", "Active"],
-    ["U002", "Bob Lee", "bob", "5678", "Active"],
-    ["U003", "Carol Wong", "carol", "0000", "Active"],
-    // U004 stays Suspended: the self-service surface must refuse it (403).
-    ["U004", "Dana Fox", "dana", "1111", "Suspended"],
-    // Dedicated replay fixtures: the retry tests below mutate these users
-    // and must not depend on (or disturb) any test that reuses them.
-    ["U-REPLAY", "Rita Replay", "rita", "2222", "Active"],
-    ["U-PWREP", "Paul Replay", "paul", "3333", "Active"],
-  ]);
-  await completeCredentialUpgrade(testDb(), {
-    userId: "U001",
-    legacyPin: "1234",
-    newCredential: "alice-secret",
-  });
-  await completeCredentialUpgrade(testDb(), {
-    userId: "U002",
-    legacyPin: "5678",
-    newCredential: "bob-secret",
-  });
-  await completeCredentialUpgrade(testDb(), {
-    userId: "U003",
-    legacyPin: "0000",
-    newCredential: "carol-secret",
-  });
-  await completeCredentialUpgrade(testDb(), {
-    userId: "U-REPLAY",
-    legacyPin: "2222",
-    newCredential: "rita-secret",
-  });
-  await completeCredentialUpgrade(testDb(), {
-    userId: "U-PWREP",
-    legacyPin: "3333",
-    newCredential: "paul-secret",
-  });
+  for (const account of [
+    ["U001", "Alice Chan", "alice", "alice-secret", "Active"],
+    ["U002", "Bob Lee", "bob", "bob-secret", "Active"],
+    ["U003", "Carol Wong", "carol", "carol-secret", "Active"],
+    ["U004", "Dana Fox", "dana", "dana-secret", "Suspended"],
+    ["U-REPLAY", "Rita Replay", "rita", "rita-secret", "Active"],
+    ["U-PWREP", "Paul Replay", "paul", "paul-secret", "Active"],
+  ] as const) {
+    await seedTestAccount({
+      userId: account[0],
+      name: account[1],
+      username: account[2],
+      password: account[3],
+      accountStatus: account[4],
+    });
+  }
 });
 
 describe("UI-04: POST /api/v1/auth/username", () => {
@@ -271,9 +247,7 @@ describe("UI-04: POST /api/v1/auth/username", () => {
     expect(events[0].action).toBe("username_changed");
     expect(events[0].old_username_normalized).toBe("alice");
     expect(events[0].new_username_normalized).toBe("alicenew");
-    expect(events[0].correlation_id).toBe(
-      res.headers.get("X-Request-Id")
-    );
+    expect(events[0].correlation_id).toBe(res.headers.get("X-Request-Id"));
     // No credential material in the audit row.
     const rowText = JSON.stringify(events[0]);
     expect(rowText).not.toMatch(/password|hash|token|session|secret/iu);
@@ -297,11 +271,15 @@ describe("UI-04: POST /api/v1/auth/username", () => {
     expect(res.status).toBe(409);
     const problem = await problemOf(res);
     expect(problem.code).toBe("CONFLICT");
-    expect(problem.detail).toBe("An account with that username already exists.");
+    expect(problem.detail).toBe(
+      "An account with that username already exists."
+    );
 
     // No mutation: no audit row, sessions still live, username unchanged.
     const account = await testDb()
-      .prepare("SELECT username, username_normalized FROM accounts WHERE user_id = ?")
+      .prepare(
+        "SELECT username, username_normalized FROM accounts WHERE user_id = ?"
+      )
       .bind("U002")
       .first<{ username: string; username_normalized: string }>();
     expect(account?.username_normalized).toBe("bob");
@@ -315,8 +293,8 @@ describe("UI-04: POST /api/v1/auth/username", () => {
       .prepare(
         `INSERT INTO registration_requests (
            request_id, user_id, username, username_normalized, name,
-           credential_hash, credential_kind, account_status,  submitted_at
-         ) VALUES (?, ?, ?, ?, ?, ?, 'password', 'Pending',  ?)`
+           credential_hash, account_status, submitted_at
+         ) VALUES (?, ?, ?, ?, ?, ?, 'Pending',  ?)`
       )
       .bind(
         "req-reserved",
@@ -350,8 +328,8 @@ describe("UI-04: POST /api/v1/auth/username", () => {
       .prepare(
         `INSERT INTO registration_requests (
            request_id, user_id, username, username_normalized, name,
-           credential_hash, credential_kind, account_status,  submitted_at
-         ) VALUES (?, ?, ?, ?, ?, ?, 'password', 'Pending',  ?)`
+           credential_hash, account_status, submitted_at
+         ) VALUES (?, ?, ?, ?, ?, ?, 'Pending',  ?)`
       )
       .bind(
         "req-race",
@@ -421,9 +399,7 @@ describe("UI-04: POST /api/v1/auth/username", () => {
 
     // Exactly one account owns the normalized username; exactly one audit row.
     const owners = await testDb()
-      .prepare(
-        "SELECT user_id FROM accounts WHERE username_normalized = ?"
-      )
+      .prepare("SELECT user_id FROM accounts WHERE username_normalized = ?")
       .bind("raceuser")
       .all<{ user_id: string }>();
     expect(owners.results ?? []).toHaveLength(1);
@@ -500,9 +476,9 @@ describe("UI-04: POST /api/v1/auth/username", () => {
 
     // Still exactly one username_changed audit row — the replay wrote nothing.
     const events = await eventsFor("U-REPLAY");
-    expect(
-      events.filter((e) => e.action === "username_changed")
-    ).toHaveLength(1);
+    expect(events.filter((e) => e.action === "username_changed")).toHaveLength(
+      1
+    );
     await expect(activeSessionCount("U-REPLAY")).resolves.toBe(0);
   });
 
@@ -557,126 +533,119 @@ describe("UI-04: POST /api/v1/auth/username", () => {
     expect((await problemOf(suspended)).code).toBe("FORBIDDEN");
   });
 
+  test("suspension race: account suspended between pre-flight and batch -> 409, zero side effects", async () => {
+    // Dedicated fixture so the race can't skew later suites' event counts.
+    await testDb()
+      .prepare(
+        "INSERT INTO accounts (" +
+          " user_id, name, username, username_normalized, " +
+          " account_status," +
+          " created_at, updated_at" +
+          " ) VALUES (" +
+          " 'U-RACE-SUS', 'Susp Race', 'susp-orig', 'susp-orig', " +
+          " 'Active', ?, ?" +
+          " )"
+      )
+      .bind(Date.now(), Date.now())
+      .run();
+    await issueSession(testDb(), {
+      userId: "U-RACE-SUS",
+      accessTokenSecret: SECRET,
+      deviceFingerprint: "susp-device",
+    });
+    const beforeEvents = await eventsFor("U-RACE-SUS");
+    const beforeSessions = await activeSessionCount("U-RACE-SUS");
 
-  test(
-    "suspension race: account suspended between pre-flight and batch -> 409, zero side effects",
-    async () => {
-      // Dedicated fixture so the race can't skew later suites' event counts.
-      await testDb()
-        .prepare(
-          'INSERT INTO accounts (' +
-            ' user_id, name, username, username_normalized, ' +
-            ' account_status, credential_kind, requires_upgrade,' +
-            ' created_at, updated_at' +
-            ' ) VALUES (' +
-            " 'U-RACE-SUS', 'Susp Race', 'susp-orig', 'susp-orig', " +
-            " 'Active', 'password', 0, ?, ?" +
-            ' )'
-        )
-        .bind(Date.now(), Date.now())
-        .run();
-      await issueSession(testDb(), {
-        userId: "U-RACE-SUS",
-        accessTokenSecret: SECRET,
-        deviceFingerprint: "susp-device",
+    // Race the pre-flight: the uniqueness helper passes the username
+    // through while suspending the account underneath, so the batch is
+    // the only gate left standing.
+    const spy = vi
+      .spyOn(accounts, "findAccountByUsername")
+      .mockImplementation(async (db: D1Database, _username: string) => {
+        await db
+          .prepare(
+            "UPDATE accounts SET account_status = 'Suspended' WHERE user_id = ?"
+          )
+          .bind("U-RACE-SUS")
+          .run();
+        return null;
       });
-      const beforeEvents = await eventsFor("U-RACE-SUS");
-      const beforeSessions = await activeSessionCount("U-RACE-SUS");
-
-      // Race the pre-flight: the uniqueness helper passes the username
-      // through while suspending the account underneath, so the batch is
-      // the only gate left standing.
-      const spy = vi
-        .spyOn(accounts, "findAccountByUsername")
-        .mockImplementation(async (db: D1Database, _username: string) => {
-          await db
-            .prepare(
-              "UPDATE accounts SET account_status = 'Suspended' WHERE user_id = ?"
-            )
-            .bind("U-RACE-SUS")
-            .run();
-          return null;
-        });
-      try {
-        await expect(
-          changeUsername(testDb(), {
-            userId: "U-RACE-SUS",
-            username: "susp-dest",
-            requestId: "susp-race",
-          })
-        ).rejects.toThrow(AccountConflictError);
-        // The spy must have been exercised, else the batch was never raced.
-        expect(spy).toHaveBeenCalled();
-      } finally {
-        spy.mockRestore();
-      }
-
-      // Lost race => zero side effects: no audit row, no revocation, and
-      // the stored username is unchanged (the account stays suspended).
-      expect(await eventsFor("U-RACE-SUS")).toEqual(beforeEvents);
-      expect(await activeSessionCount("U-RACE-SUS")).toBe(beforeSessions);
-      const account = await testDb()
-        .prepare(
-          "SELECT username_normalized, account_status FROM accounts WHERE user_id = ?"
-        )
-        .bind("U-RACE-SUS")
-        .first<{ username_normalized: string; account_status: string }>();
-      expect(account?.username_normalized).toBe("susp-orig");
-      expect(account?.account_status).toBe("Suspended");
-    }
-  );
-
-  test(
-    "concurrent name race: same account to two free names -> one winner, loser 409, winner audit keeps original username",
-    async () => {
-      // Dedicated fixture: the race's audit row must not skew later suites.
-      await testDb()
-        .prepare(
-          'INSERT INTO accounts (' +
-            ' user_id, name, username, username_normalized, ' +
-            ' account_status, credential_kind, requires_upgrade,' +
-            ' created_at, updated_at' +
-            ' ) VALUES (' +
-            " 'U-RACE-NAME', 'Race Name', 'race-orig', 'race-orig', " +
-            " 'Active', 'password', 0, ?, ?" +
-            ' )'
-        )
-        .bind(Date.now(), Date.now())
-        .run();
-
-      const settled = await Promise.allSettled([
+    try {
+      await expect(
         changeUsername(testDb(), {
-          userId: "U-RACE-NAME",
-          username: "race-dest-a",
-          requestId: "name-race-1",
-        }),
-        changeUsername(testDb(), {
-          userId: "U-RACE-NAME",
-          username: "race-dest-b",
-          requestId: "name-race-2",
-        }),
-      ]);
-      const fulfilled = settled.filter((r) => r.status === "fulfilled");
-      const conflictRejected = settled.filter(
-        (r): r is PromiseRejectedResult =>
-          r.status === "rejected" && r.reason instanceof AccountConflictError
-      );
-      expect(fulfilled.length).toBe(1);
-      expect(conflictRejected.length).toBe(1);
-
-      // Exactly one winner audit row, carrying the account's ORIGINAL
-      // username (both calls read it before the race resolved).
-      const events = (await eventsFor("U-RACE-NAME")).filter(
-        (e) =>
-          e.action === "username_changed" &&
-          e.new_username_normalized !== null &&
-          (e.new_username_normalized === "race-dest-a" ||
-            e.new_username_normalized === "race-dest-b")
-      );
-      expect(events).toHaveLength(1);
-      expect(events[0].old_username_normalized).toBe("race-orig");
+          userId: "U-RACE-SUS",
+          username: "susp-dest",
+          requestId: "susp-race",
+        })
+      ).rejects.toThrow(AccountConflictError);
+      // The spy must have been exercised, else the batch was never raced.
+      expect(spy).toHaveBeenCalled();
+    } finally {
+      spy.mockRestore();
     }
-  );
+
+    // Lost race => zero side effects: no audit row, no revocation, and
+    // the stored username is unchanged (the account stays suspended).
+    expect(await eventsFor("U-RACE-SUS")).toEqual(beforeEvents);
+    expect(await activeSessionCount("U-RACE-SUS")).toBe(beforeSessions);
+    const account = await testDb()
+      .prepare(
+        "SELECT username_normalized, account_status FROM accounts WHERE user_id = ?"
+      )
+      .bind("U-RACE-SUS")
+      .first<{ username_normalized: string; account_status: string }>();
+    expect(account?.username_normalized).toBe("susp-orig");
+    expect(account?.account_status).toBe("Suspended");
+  });
+
+  test("concurrent name race: same account to two free names -> one winner, loser 409, winner audit keeps original username", async () => {
+    // Dedicated fixture: the race's audit row must not skew later suites.
+    await testDb()
+      .prepare(
+        "INSERT INTO accounts (" +
+          " user_id, name, username, username_normalized, " +
+          " account_status," +
+          " created_at, updated_at" +
+          " ) VALUES (" +
+          " 'U-RACE-NAME', 'Race Name', 'race-orig', 'race-orig', " +
+          " 'Active', ?, ?" +
+          " )"
+      )
+      .bind(Date.now(), Date.now())
+      .run();
+
+    const settled = await Promise.allSettled([
+      changeUsername(testDb(), {
+        userId: "U-RACE-NAME",
+        username: "race-dest-a",
+        requestId: "name-race-1",
+      }),
+      changeUsername(testDb(), {
+        userId: "U-RACE-NAME",
+        username: "race-dest-b",
+        requestId: "name-race-2",
+      }),
+    ]);
+    const fulfilled = settled.filter((r) => r.status === "fulfilled");
+    const conflictRejected = settled.filter(
+      (r): r is PromiseRejectedResult =>
+        r.status === "rejected" && r.reason instanceof AccountConflictError
+    );
+    expect(fulfilled.length).toBe(1);
+    expect(conflictRejected.length).toBe(1);
+
+    // Exactly one winner audit row, carrying the account's ORIGINAL
+    // username (both calls read it before the race resolved).
+    const events = (await eventsFor("U-RACE-NAME")).filter(
+      (e) =>
+        e.action === "username_changed" &&
+        e.new_username_normalized !== null &&
+        (e.new_username_normalized === "race-dest-a" ||
+          e.new_username_normalized === "race-dest-b")
+    );
+    expect(events).toHaveLength(1);
+    expect(events[0].old_username_normalized).toBe("race-orig");
+  });
 });
 
 describe("UI-04: POST /api/v1/auth/password", () => {
@@ -715,11 +684,10 @@ describe("UI-04: POST /api/v1/auth/password", () => {
 
     // The new credential verifies; the old one no longer does.
     const account = await testDb()
-      .prepare("SELECT credential_hash, credential_kind FROM accounts WHERE user_id = ?")
+      .prepare("SELECT credential_hash FROM accounts WHERE user_id = ?")
       .bind("U002")
-      .first<{ credential_hash: string; credential_kind: string }>();
+      .first<{ credential_hash: string }>();
     assert.ok(account);
-    expect(account.credential_kind).toBe("password");
     await expect(
       verifyCredential("bob-new-secret", account.credential_hash)
     ).resolves.toBe(true);
@@ -764,9 +732,9 @@ describe("UI-04: POST /api/v1/auth/password", () => {
 
     // One password_changed row from the FIRST request; the retry added none.
     const events = await eventsFor("U-PWREP");
-    expect(
-      events.filter((e) => e.action === "password_changed")
-    ).toHaveLength(1);
+    expect(events.filter((e) => e.action === "password_changed")).toHaveLength(
+      1
+    );
     await expect(activeSessionCount("U-PWREP")).resolves.toBe(0);
   });
 
@@ -777,7 +745,10 @@ describe("UI-04: POST /api/v1/auth/password", () => {
     const res = await worker.fetch(
       authRequest("/api/v1/auth/password", {
         headers: cookieHeader(access, refresh),
-        body: { currentPassword: "wrong-current", newPassword: "carol-new-secret" },
+        body: {
+          currentPassword: "wrong-current",
+          newPassword: "carol-new-secret",
+        },
       }),
       testEnv()
     );
@@ -858,75 +829,72 @@ describe("UI-04: POST /api/v1/auth/password", () => {
     ).rejects.toThrow(/current password is incorrect/iu);
   });
 
-  test(
-    "password race: suspend between current-password check and batch -> 403 AccountStatusError, no audit, no revocation",
-    async () => {
-      // Dedicated fixture with a real credential so the current-password
-      // check runs before the suspension lands.
-      const seeded = await hashCredential("fixture-secret");
-      await testDb()
-        .prepare(
-          'INSERT INTO accounts (' +
-            ' user_id, name, username, username_normalized, ' +
-            ' account_status, credential_kind, credential_hash,' +
-            ' requires_upgrade, created_at, updated_at' +
-            ' ) VALUES (' +
-            " 'U-RACE-PWD', 'Pass Race', 'pass-orig', 'pass-orig', " +
-            " 'Active', 'password', ?, 0, ?, ?" +
-            ' )'
-        )
-        .bind(seeded, Date.now(), Date.now())
-        .run();
-      await issueSession(testDb(), {
-        userId: "U-RACE-PWD",
-        accessTokenSecret: SECRET,
-        deviceFingerprint: "pwd-device",
+  test("password race: suspend between current-password check and batch -> 403 AccountStatusError, no audit, no revocation", async () => {
+    // Dedicated fixture with a real credential so the current-password
+    // check runs before the suspension lands.
+    const seeded = await hashCredential("fixture-secret");
+    await testDb()
+      .prepare(
+        "INSERT INTO accounts (" +
+          " user_id, name, username, username_normalized, " +
+          " account_status, credential_hash," +
+          " created_at, updated_at" +
+          " ) VALUES (" +
+          " 'U-RACE-PWD', 'Pass Race', 'pass-orig', 'pass-orig', " +
+          " 'Active', ?, ?, ?" +
+          " )"
+      )
+      .bind(seeded, Date.now(), Date.now())
+      .run();
+    await issueSession(testDb(), {
+      userId: "U-RACE-PWD",
+      accessTokenSecret: SECRET,
+      deviceFingerprint: "pwd-device",
+    });
+    const beforeEvents = await eventsFor("U-RACE-PWD");
+    const beforeSessions = await activeSessionCount("U-RACE-PWD");
+
+    // Race the credential check: it passes the current password while
+    // suspending the account underneath, so only the in-batch status
+    // guard can stop the commit.
+    const spy = vi
+      .spyOn(credentials, "verifyCredential")
+      .mockImplementationOnce(async () => {
+        await testDb()
+          .prepare(
+            "UPDATE accounts SET account_status = 'Suspended' WHERE user_id = ?"
+          )
+          .bind("U-RACE-PWD")
+          .run();
+        return true;
       });
-      const beforeEvents = await eventsFor("U-RACE-PWD");
-      const beforeSessions = await activeSessionCount("U-RACE-PWD");
-
-      // Race the credential check: it passes the current password while
-      // suspending the account underneath, so only the in-batch status
-      // guard can stop the commit.
-      const spy = vi
-        .spyOn(credentials, "verifyCredential")
-        .mockImplementationOnce(async () => {
-          await testDb()
-            .prepare(
-              "UPDATE accounts SET account_status = 'Suspended' WHERE user_id = ?"
-            )
-            .bind("U-RACE-PWD")
-            .run();
-          return true;
-        });
-      try {
-        await expect(
-          changePassword(testDb(), {
-            userId: "U-RACE-PWD",
-            currentPassword: "fixture-secret",
-            newPassword: "brand-new-secret",
-            requestId: "pwd-race",
-          })
-        ).rejects.toThrow(AccountStatusError);
-        expect(spy).toHaveBeenCalled();
-      } finally {
-        spy.mockRestore();
-      }
-
-      // Lost race => zero side effects: no audit row, no revocation, and
-      // the stored credential is unchanged.
-      expect(await eventsFor("U-RACE-PWD")).toEqual(beforeEvents);
-      expect(await activeSessionCount("U-RACE-PWD")).toBe(beforeSessions);
-      const account = await testDb()
-        .prepare(
-          "SELECT credential_hash, account_status FROM accounts WHERE user_id = ?"
-        )
-        .bind("U-RACE-PWD")
-        .first<{ credential_hash: string; account_status: string }>();
-      expect(account?.credential_hash).toBe(seeded);
-      expect(account?.account_status).toBe("Suspended");
+    try {
+      await expect(
+        changePassword(testDb(), {
+          userId: "U-RACE-PWD",
+          currentPassword: "fixture-secret",
+          newPassword: "brand-new-secret",
+          requestId: "pwd-race",
+        })
+      ).rejects.toThrow(AccountStatusError);
+      expect(spy).toHaveBeenCalled();
+    } finally {
+      spy.mockRestore();
     }
-  );
+
+    // Lost race => zero side effects: no audit row, no revocation, and
+    // the stored credential is unchanged.
+    expect(await eventsFor("U-RACE-PWD")).toEqual(beforeEvents);
+    expect(await activeSessionCount("U-RACE-PWD")).toBe(beforeSessions);
+    const account = await testDb()
+      .prepare(
+        "SELECT credential_hash, account_status FROM accounts WHERE user_id = ?"
+      )
+      .bind("U-RACE-PWD")
+      .first<{ credential_hash: string; account_status: string }>();
+    expect(account?.credential_hash).toBe(seeded);
+    expect(account?.account_status).toBe("Suspended");
+  });
 });
 
 describe("UI-04: migration 0001 account_events", () => {

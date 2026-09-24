@@ -18,7 +18,6 @@ import {
   clearAccessCache,
   clearCatalogCache,
 } from "@/lib/programs/program-api";
-import { useAsyncResource } from "@/lib/programs/use-async-resource";
 import { clearAuthenticatedProgramsRecovery } from "@/lib/programs/workspace-context";
 import { RecoveryView } from "@/lib/recovery-view";
 import {
@@ -28,6 +27,7 @@ import {
   restoreBootstrap,
 } from "@/lib/session";
 import { ShellHeader } from "@/lib/shell-header";
+import { useAsyncResource } from "@/lib/use-async-resource";
 
 const shellBodyVariants = cva("shell-body", {
   variants: {

@@ -798,7 +798,7 @@ export async function applyRoleMutation(
       // bookkeeping columns) are written; role_definition_id, position,
       // scope, grants, and assignments are untouched, so the stable ID,
       // order, scope, and grant/assignment rows survive by construction.
-      // The protected-row guard in migration 0019 rejects Admin/會友基礎 at
+      // The protected-row guard in the D1 baseline rejects Admin/會友基礎 at
       // the schema layer as the last line of defense.
       statements.push(
         db

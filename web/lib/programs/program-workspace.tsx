@@ -39,6 +39,7 @@ import {
 } from "@/lib/screen-foundations";
 import { rememberDeepLink } from "@/lib/session";
 
+import { useAsyncResource } from "../use-async-resource";
 import { applyAuthoritativeRevision } from "./authoritative-revision";
 import { clearEventCreateDraft } from "./event-create-draft";
 import { EventDetail } from "./event-detail";
@@ -61,7 +62,6 @@ import type {
 } from "./programs-intent";
 import type { ManagementNotificationState } from "./programs-notifications";
 import { rememberWorkspaceScroll } from "./programs-scroll";
-import { useAsyncResource } from "./use-async-resource";
 import {
   clearAuthenticatedProgramsRecovery,
   hasModule,
@@ -789,10 +789,19 @@ export const ProgramWorkspace = ({
                   next.cockpit,
                   previous?.cockpit ?? null
                 ) ?? next.cockpit);
-        workspaceReadAccepted.current =
+        const programRevisionAccepted =
           previous === null ||
-          (authoritativeProgram === next.program &&
-            authoritativeCockpit === next.cockpit);
+          next.program.updated_at >= previous.program.updated_at;
+        const cockpitRevisionAccepted =
+          previous === null ||
+          (next.cockpit === undefined
+            ? previous.cockpit === undefined
+            : next.cockpit === null
+              ? previous.cockpit == null
+              : previous.cockpit == null ||
+                next.cockpit.updated_at >= previous.cockpit.updated_at);
+        workspaceReadAccepted.current =
+          programRevisionAccepted && cockpitRevisionAccepted;
         const resource = {
           ...next,
           program: authoritativeProgram,

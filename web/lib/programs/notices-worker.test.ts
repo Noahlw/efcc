@@ -16,22 +16,15 @@ import { beforeAll, describe, test } from "vitest";
 
 import worker from "../../worker";
 import type { Env } from "../../worker";
-import { importLegacyUsers } from "../auth/accounts";
 import { ACCESS_COOKIE_NAME } from "../auth/cookies";
-import { applyMigrations, testDb } from "../auth/test-bootstrap";
-import { completeCredentialUpgrade } from "../auth/upgrade";
+import {
+  applyMigrations,
+  seedTestAccount,
+  testDb,
+} from "../auth/test-bootstrap";
 
 const SECRET = "test-access-token-secret";
 const HOST = "https://efcc.example";
-const HEADER = [
-  "User_ID",
-  "Name",
-  "Username",
-  "PIN_Code",
-  "System_Role",
-  "Status",
-];
-
 function testEnv(overrides: Partial<Env> = {}): Env {
   return {
     ...(env as unknown as Env),
@@ -89,9 +82,10 @@ interface NoticeDto {
   created_at: number;
 }
 
-async function fetchNotices(
-  access: string
-): Promise<{ status: number; data: { notices: NoticeDto[]; unread_count: number } }> {
+async function fetchNotices(access: string): Promise<{
+  status: number;
+  data: { notices: NoticeDto[]; unread_count: number };
+}> {
   const response = await worker.fetch(
     request("/api/v1/programs/notices", access),
     testEnv()
@@ -177,31 +171,18 @@ describe("085-07: Participant Notices", () => {
 
   beforeAll(async () => {
     await applyMigrations();
-    await importLegacyUsers(testDb(), [
-      HEADER,
-      ["A001", "Admin One", "notices-admin", "1011", "Admin", "Active"],
-      ["A002", "Member A", "notices-member-a", "1012", "Member", "Active"],
-      ["A003", "Member D", "notices-member-d", "1013", "Member", "Active"],
-      ["A004", "Member E", "notices-member-e", "1014", "Member", "Active"],
-      ["A005", "Member F", "notices-member-f", "1015", "Member", "Active"],
-      ["A006", "Member G", "notices-member-g", "1016", "Member", "Active"],
-    ]);
     await Promise.all(
       (
         [
-          ["A001", "1011", "admin-secret"],
-          ["A002", "1012", "member-a-secret"],
-          ["A003", "1013", "member-d-secret"],
-          ["A004", "1014", "member-e-secret"],
-          ["A005", "1015", "member-f-secret"],
-          ["A006", "1016", "member-g-secret"],
+          ["A001", "Admin One", "notices-admin", "admin-secret"],
+          ["A002", "Member A", "notices-member-a", "member-a-secret"],
+          ["A003", "Member D", "notices-member-d", "member-d-secret"],
+          ["A004", "Member E", "notices-member-e", "member-e-secret"],
+          ["A005", "Member F", "notices-member-f", "member-f-secret"],
+          ["A006", "Member G", "notices-member-g", "member-g-secret"],
         ] as const
-      ).map(([userId, legacyPin, newCredential]) =>
-        completeCredentialUpgrade(testDb(), {
-          userId,
-          legacyPin,
-          newCredential,
-        })
+      ).map(([userId, name, username, password]) =>
+        seedTestAccount({ userId, name, username, password })
       )
     );
     const createdAt = "2026-08-31T00:00:00.000Z";

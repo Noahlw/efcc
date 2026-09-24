@@ -41,7 +41,7 @@ describe("T09 additive foundation presentation identity", () => {
         ({ baseline }) => baseline === "supporting"
       )
     ).toHaveLength(8);
-    expect(SCREEN_PRESENTATION_DECLARATIONS).toHaveLength(41);
+    expect(SCREEN_PRESENTATION_DECLARATIONS).toHaveLength(40);
     expect(SCREEN_CATALOG).toHaveLength(36);
     expect(
       FOUNDATION_PRESENTATION_DECLARATIONS.every(

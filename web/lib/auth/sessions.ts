@@ -53,9 +53,7 @@ export type AuthErrorCode =
   /** No/expired/revoked session, unknown account. */
   | "AUTH_REQUIRED"
   /** Account not Active (suspended/deactivated/pending). */
-  | "FORBIDDEN"
-  /** Legacy account must complete forced credential upgrade. */
-  | "UPGRADE_REQUIRED";
+  | "FORBIDDEN";
 
 export class AuthError extends Error {
   readonly code: AuthErrorCode;
@@ -161,13 +159,10 @@ export async function verifyAccessToken(
   return claims;
 }
 
-/** Assert an account may hold a session: Active and not awaiting upgrade. */
+/** Assert an account may hold a session: Active. */
 function assertActiveForSession(account: AccountRow | null): AccountRow {
   if (!account) {
     throw new AuthError("AUTH_REQUIRED", "Unknown account.");
-  }
-  if (account.requires_upgrade === 1) {
-    throw new AuthError("UPGRADE_REQUIRED", "Credential upgrade required.");
   }
   if (account.account_status !== "Active") {
     throw new AuthError("FORBIDDEN", "Account is not active.");
@@ -177,7 +172,7 @@ function assertActiveForSession(account: AccountRow | null): AccountRow {
 
 /**
  * Issue exactly one new refresh-session row plus one access token for an
- * Active, non-upgrade-pending account. Multi-device safe: each call creates an
+ * Active account. Multi-device safe: each call creates an
  * independent session row; revoking one does not affect others.
  */
 export async function issueSession(
@@ -267,7 +262,7 @@ export async function refreshSession(
   }
 
   // Live account re-check: deactivation / suspension ends the session on the
-  // next refresh, matching the legacy status-self-invalidation behavior.
+  // next refresh.
   const account = assertActiveForSession(
     await findAccountByUserId(db, session.user_id)
   );

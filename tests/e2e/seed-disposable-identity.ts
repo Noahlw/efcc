@@ -18,7 +18,7 @@ function readTableNames(): Set<string> {
   const output = execFileSync(
     "pnpm",
     [
-      "--dir",
+      "--filter",
       "web",
       "exec",
       "wrangler",
@@ -45,9 +45,8 @@ function main(): void {
     const tables = readTableNames();
     const staleTables = LEGACY_TABLES.filter((table) => tables.has(table));
     if (staleTables.length > 0) {
-      const resetCommand = `pnpm --dir web exec wrangler d1 execute ${DATABASE} --local --command "${staleTables.map((table) => `DROP TABLE IF EXISTS ${table};`).join(" ")}"`;
       throw new Error(
-        `Disposable seed refused: retired authority tables remain (${staleTables.join(", ")}). Manually confirm this is the disposable local DB, run ${resetCommand}, then rerun pnpm db:seed:disposable.`
+        `Disposable seed refused: retired authority tables remain (${staleTables.join(", ")}). Stop the local Worker and run pnpm db:reset:local to rebuild only this worktree's local D1.`
       );
     }
     const seedFile = fileURLToPath(
@@ -56,7 +55,7 @@ function main(): void {
     execFileSync(
       "pnpm",
       [
-        "--dir",
+        "--filter",
         "web",
         "exec",
         "wrangler",

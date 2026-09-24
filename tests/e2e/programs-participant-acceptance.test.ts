@@ -25,6 +25,14 @@ const COPY = {
   cancelEnrollment: "退出課程",
   cancelConfirmTitle: "退出課程？",
   cancelConfirmAccept: "退出課程",
+  withdrawRequest: "取消申請",
+  withdrawConfirmTitle: "取消報名申請？",
+  withdrawConfirmBody: "你仍可在課程接受報名期間重新提交。",
+  withdrawConfirmAccept: "取消申請",
+  requestWithdrawnNotice: "已取消申請",
+  cancelRevoke: "取消",
+  reEnroll: "重新報名",
+  requestWithdrawPath: "enrollment-requests/",
   enrollmentCancelledNotice: "已退出課程",
 };
 
@@ -170,7 +178,7 @@ test.afterAll(async () => {
 });
 
 test.describe("T05.4 participant Browser Acceptance", () => {
-  test("member submits, gets approved, reads back, and exits a Program", async ({
+  test("programs-d1 #26: member exits an approved enrollment and re-enrolls", async ({
     page,
   }) => {
     expect(fixture).not.toBeNull();
@@ -245,6 +253,105 @@ test.describe("T05.4 participant Browser Acceptance", () => {
     await expect(
       enrollmentPanel.getByText(COPY.enrollmentCancelledNotice)
     ).toBeVisible();
+
+    const reenrollResponsePromise = page.waitForResponse(
+      (response) =>
+        response.request().method() === "POST" &&
+        response
+          .url()
+          .includes(`/api/v1/programs/${programId}/enrollment-requests`)
+    );
+    await enrollmentPanel.getByRole("button", { name: COPY.reEnroll }).click();
+    expect((await reenrollResponsePromise).status()).toBe(201);
+    await expect(
+      enrollmentPanel.getByText(COPY.requestPendingHint)
+    ).toBeVisible();
+
+    await enrollmentPanel
+      .getByRole("button", { name: COPY.withdrawRequest })
+      .click();
+    const reenrollDialog = page.getByRole("alertdialog", {
+      name: COPY.withdrawConfirmTitle,
+    });
+    await expect(reenrollDialog).toBeVisible();
+    const withdrawResponsePromise = page.waitForResponse(
+      (response) =>
+        response.request().method() === "POST" &&
+        response.url().includes(COPY.requestWithdrawPath)
+    );
+    await reenrollDialog
+      .getByRole("button", {
+        name: new RegExp(`^${COPY.withdrawConfirmAccept}$`, "u"),
+      })
+      .click();
+    expect((await withdrawResponsePromise).status()).toBe(200);
+  });
+
+  test("member withdraws a Pending request only after confirmation", async ({
+    page,
+  }) => {
+    expect(fixture).not.toBeNull();
+    const { programId, programName } = fixture!;
+    await loginAs(page);
+    await page.goto(`/programs?program=${programId}`);
+    await expect(page.locator("#program-detail-title")).toHaveText(programName);
+
+    const enrollmentPanel = page.getByRole("region", {
+      name: new RegExp(`^${COPY.enrollment}$`, "u"),
+    });
+    const requestResponsePromise = page.waitForResponse(
+      (response) =>
+        response.request().method() === "POST" &&
+        response
+          .url()
+          .includes(`/api/v1/programs/${programId}/enrollment-requests`)
+    );
+    await enrollmentPanel
+      .getByRole("button", { name: COPY.requestEnroll })
+      .click();
+    expect((await requestResponsePromise).status()).toBe(201);
+    await expect(
+      enrollmentPanel.getByText(COPY.requestPendingHint)
+    ).toBeVisible();
+
+    const withdrawButton = enrollmentPanel.getByRole("button", {
+      name: COPY.withdrawRequest,
+    });
+    await withdrawButton.click();
+    const dialog = page.getByRole("alertdialog", {
+      name: COPY.withdrawConfirmTitle,
+    });
+    await expect(dialog).toBeVisible();
+    await expect(dialog.getByText(COPY.withdrawConfirmBody)).toBeVisible();
+    await dialog
+      .getByRole("button", { name: new RegExp(`^${COPY.cancelRevoke}$`, "u") })
+      .click();
+    await expect(dialog).toHaveCount(0);
+    await expect(
+      enrollmentPanel.getByText(COPY.requestPendingHint)
+    ).toBeVisible();
+
+    await withdrawButton.click();
+    const confirmDialog = page.getByRole("alertdialog", {
+      name: COPY.withdrawConfirmTitle,
+    });
+    const withdrawResponsePromise = page.waitForResponse(
+      (response) =>
+        response.request().method() === "POST" &&
+        response.url().includes(COPY.requestWithdrawPath)
+    );
+    await confirmDialog
+      .getByRole("button", {
+        name: new RegExp(`^${COPY.withdrawConfirmAccept}$`, "u"),
+      })
+      .click();
+    expect((await withdrawResponsePromise).status()).toBe(200);
+    await expect(
+      enrollmentPanel.getByText(COPY.requestWithdrawnNotice)
+    ).toBeVisible();
+    await expect(
+      enrollmentPanel.getByRole("button", { name: COPY.reEnroll })
+    ).toBeVisible();
   });
 
   test("manager recovers an interrupted Approval Run after reload and continues explicitly", async ({
@@ -310,24 +417,38 @@ test.describe("T05.4 participant Browser Acceptance", () => {
       .getByRole("checkbox", { name: "選取目前顯示的待審批報名" })
       .click();
     await participantPanel.getByRole("button", { name: "檢視所選" }).click();
+    const firstReconcileResponse = page.waitForResponse(
+      (response) =>
+        response.request().method() === "POST" &&
+        response.url().includes("/enrollment-approval-runs/") &&
+        response.url().endsWith("/reconcile")
+    );
     await page
       .getByRole("alertdialog", { name: "確認核准所選報名" })
       .getByRole("button", { name: "確認核准" })
       .click();
-    await expect(
-      participantPanel.getByRole("button", {
-        name: "繼續處理餘下項目",
-      })
-    ).toBeVisible();
+    const continueButton = participantPanel.getByRole("button", {
+      name: "繼續處理餘下項目",
+    });
+    await expect(continueButton).toBeEnabled();
+    expect((await firstReconcileResponse).status()).toBe(200);
     expect(continueRequests).toBe(1);
     expect(reconcileRequests).toBeGreaterThanOrEqual(1);
 
+    const reloadReconcileResponse = page.waitForResponse(
+      (response) =>
+        response.request().method() === "POST" &&
+        response.url().includes("/enrollment-approval-runs/") &&
+        response.url().endsWith("/reconcile")
+    );
     await page.reload();
     await expect(
       participantPanel.getByRole("button", {
         name: "繼續處理餘下項目",
       })
     ).toBeVisible();
+    expect((await reloadReconcileResponse).status()).toBe(200);
+    await expect(continueButton).toBeEnabled();
     expect(continueRequests).toBe(1);
     expect(reconcileRequests).toBeGreaterThanOrEqual(2);
 

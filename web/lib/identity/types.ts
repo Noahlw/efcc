@@ -3,7 +3,7 @@
  *
  * Roles, categories, grants, assignments, revisions, idempotency, and audit
  * are the building blocks the read projection (#478) and downstream command
- * handlers rely on. The D1 schema lives in migration 0019_disposable_role_identity.sql;
+ * handlers rely on. The D1 schema lives in web/migrations/0000_baseline.sql;
  * this module is the type-only surface other modules import.
  */
 

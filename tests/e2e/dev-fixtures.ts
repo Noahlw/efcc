@@ -1,10 +1,9 @@
 /**
  * Dev-testing worker fixtures (PRG-05 #224 / ADR-0031).
  *
- * Single source of truth for the E2E_ dev accounts: seeded into the
- * dev-testing D1 by seed-dev-accounts.ts, defaulted into the suite by
- * programs-d1.test.ts, and documented in .github/CI-SECRETS.md. Fixed
- * dev-only credentials — NOT GitHub secrets.
+ * Single source of truth for the E2E_ development accounts. The supported
+ * seed command writes them to the disposable local D1. Credentials are
+ * fixed development values, not GitHub secrets.
  */
 export interface DevFixtureAccount {
   userId: string;
@@ -33,21 +32,5 @@ export const DEV_ACCOUNTS: DevFixtureAccount[] = [
     role: "Member",
   },
 ];
-
-export interface DevLegacyFixture {
-  userId: string;
-  username: string;
-  legacyPin: string;
-  newCredential: string;
-  role: "Member";
-}
-
-export const DEV_LEGACY: DevLegacyFixture = {
-  userId: "U-E2E-LEGACY",
-  username: "E2E_legacy",
-  legacyPin: "1234",
-  newCredential: "E2E_legacy!upgrade",
-  role: "Member",
-};
 
 export const [DEV_ADMIN, DEV_STAFF, DEV_MEMBER] = DEV_ACCOUNTS;

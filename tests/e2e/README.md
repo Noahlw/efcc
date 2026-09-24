@@ -1,121 +1,63 @@
-# Playwright end-to-end tests
+# Local end-to-end tests
 
-The browser suites under `tests/e2e/` exercise the rebuilt Worker/D1 application, and none of them uploads code or mutates the production Sheet.
+The Playwright suites under `tests/e2e/` exercise the rebuilt Worker/D1 application or the static export. They run locally against loopback services and disposable data. No suite is a production-data, Google Sheets, or Apps Script boundary.
 
 ## Test ownership
 
-Each Playwright config has a positive `testMatch`; suites must not cross loaders.
+Each config declares a positive `testMatch`; invoke the named runner from the repository root.
 
-| Config | Command | Coverage |
+| Config or runner | Command | Coverage |
 | --- | --- | --- |
-| `auth-d1.config.ts` | `pnpm exec playwright test -c tests/e2e/auth-d1.config.ts` | Cookie-only password login/logout and disposable legacy-PIN upgrade. |
-| `programs-d1.config.ts` | `pnpm exec playwright test -c tests/e2e/programs-d1.config.ts` | Historical diagnostic only; not T05 promotion authority. PUI-01 Programs boundary, capability-shaped management entry, URL intent, and recovery at phone/desktop sizes. |
-| `attendance-d1.config.ts` | `pnpm exec playwright test -c tests/e2e/attendance-d1.config.ts` | ATT-04 attendance flows against the real Worker API and browser UI. |
-| `live-ui.config.ts` | `pnpm exec playwright test -c tests/e2e/live-ui.config.ts` | Rebuilt Next UI shell, Profile, Account Settings, approval flow, and responsive browser states. |
-| `responsive.config.ts` | `pnpm test:shell-responsive` | Deterministic static-shell responsive/accessibility checks with an in-browser RPC stub. |
-| `shell-geometry.config.ts` | `pnpm test:shell-geometry` | Pinned Chromium shell geometry at 320/390/600/799/800/1024/1440 CSS px (TK-09): critical anchors, no overflow/obstruction, numeric CSS-pixel evidence only (TK-12). |
-| `role-hierarchy-geometry.config.ts` | `pnpm test:role-hierarchy-geometry` | #478 H-20 pinned hierarchy/list/detail/rename geometry at 320/390/600/799/800/1024/1440 CSS px; numeric CSS-pixel evidence only (no screenshots). |
-| `programs-participant-acceptance.config.ts` | `pnpm test:programs:browser` | T05.4/T05.5 critical participant and management Browser Acceptance at one representative `phone-390` viewport, zero retries, and unique disposable fixtures. |
-| `programs-responsive-matrix.config.ts` | `pnpm test:programs:responsive` | T05.6 deterministic participant/management responsive proof at exactly 320, 390, and 1280 widths; the canonical runner owns an official Harness, no broad domain replay, and zero retries. |
+| `auth-d1.config.ts` | `pnpm exec playwright test --config=tests/e2e/auth-d1.config.ts` | Cookie-only username/password auth and session behavior against a local Worker/D1 target. |
+| `programs-participant-acceptance.config.ts` | `pnpm test:programs:browser` | Critical Programs participant and management journeys at the representative phone viewport. |
+| `programs-home-acceptance.config.ts` | `pnpm test:programs:home` | Five Home-origin parity journeys, including overlay history, long copy, Event, and Program navigation. |
+| `programs-responsive-matrix.config.ts` | `pnpm test:programs:responsive` | Focused Programs responsive behavior at the configured representative widths. |
+| `attendance-d1.config.ts` | `pnpm exec playwright test --config=tests/e2e/attendance-d1.config.ts` | Attendance and check-in flows through the Worker API and UI. |
+| `live-ui.config.ts` | `pnpm exec playwright test --config=tests/e2e/live-ui.config.ts` | Rebuilt shell, profile, account settings, approval, and responsive states. |
+| `responsive.config.ts` | `pnpm test:shell-responsive` | Static-export shell responsive behavior. |
+| `shell-geometry.config.ts` | `pnpm test:shell-geometry` | Numeric static-shell geometry at the pinned widths in the config. |
+| `role-hierarchy-geometry.config.ts` | `pnpm test:role-hierarchy-geometry` | Numeric role hierarchy geometry and target clearance. |
+| `s4-management-hardening.config.ts` | `PROGRAMS_TARGET_URL=http://127.0.0.1:8787 pnpm exec playwright test --config=tests/e2e/s4-management-hardening.config.ts` | Authenticated management and identity geometry when the local Worker is running. |
+| Storybook configs | `pnpm test:t08:controls`, `pnpm test:t09:foundations`, `pnpm test:t10:composition`, `pnpm test:t11:storybook` | Focused presentation contracts; these do not prove Worker/D1 behavior. |
 
-`pnpm test:programs:browser` and `pnpm test:programs:responsive` start the official Wrangler `createTestHarness()` with `web/wrangler.jsonc`, seed disposable accounts through its D1 binding, run their focused slices, and close the Harness. Direct config invocation remains available for a manually supplied diagnostic target.
-
-The identity 900px seam is covered by the `desktop-900` project in `s4-management-hardening.config.ts`; the focused static identity report is W7-only by design.
-
-`pnpm test:shell-responsive` builds the Next static export and serves it through `tests/e2e/serve-static.ts` on port `4173`. It runs the mobile and desktop projects without a Worker, D1, Google session, or network target.
-
-`pnpm test:shell-geometry` is the pinned-width companion (TK-09): the same static-shell harness at 320, 390, 600, 799, 800, 1024, and 1440 CSS px. Both 799 and 800 are exercised so the 800px shell breakpoint is verified on each side. Evidence is numeric CSS pixels only — no screenshots, image snapshots, or pixel diffs (TK-12). Both suites run locally via `pnpm verify`; they are not part of the automatic CI gate (Fast CI is typecheck-only).
-
-`pnpm test:role-hierarchy-geometry` builds the static export and runs the real category expand, detail, and rename controls at each pinned width. It asserts non-vacuous hierarchy anchors, 44px controls, no horizontal overflow, and phone dock clearance; the command is included in `pnpm verify` and is a local browser check, not part of the automatic CI gate.
-
-The retired Apps Script `/exec` Playwright suite, Google storage-state capture helper, clasp deployment helper, `src/gas/`, and `tests/gas/` VM-harness were removed with the GAS retirement.
+The root `pnpm verify` aggregate owns the required local stages. Use `pnpm verify:programs` for the Programs promotion composition. The old broad `programs-d1` suite remains historical/diagnostic until the parity ledger proves every still-valid case has a named replacement. Do not use its existence as evidence that a replacement is unnecessary.
 
 ## Local-first run
 
-The required acceptance target is local `wrangler dev` with local D1 at `http://127.0.0.1:8787`. On a fresh checkout, prepare the ignored local variables once:
+Prepare local variables once:
 
 ```sh
 cp web/.dev.vars.example web/.dev.vars
-openssl rand -hex 32 # paste the value into EFCC_ACCESS_TOKEN_SECRET
+openssl rand -hex 32 # place the value in EFCC_ACCESS_TOKEN_SECRET
 ```
 
-Use two terminals:
+Use separate terminals:
 
 ```sh
 # terminal 1
 pnpm dev:local
 
 # terminal 2
-pnpm db:seed:local       # E2E_ accounts + disposable identity foundation
-pnpm db:seed:disposable  # role-only rerun; --local and E2E_ rows only
-pnpm db:seed:demo        # E2E_DEMO_ department, programs, and generated events
-pnpm exec playwright test -c tests/e2e/programs-d1.config.ts
+pnpm db:seed:local
+pnpm db:seed:disposable
+pnpm db:seed:demo
+pnpm test:programs:browser
 ```
 
-`pnpm dev:local` builds the Next static export and applies local migrations. `pnpm db:seed:local` is safe to rerun; it first resets only disposable `E2E_`/`E2E_DEMO_` domain rows, seeds the account fixtures, and then invokes the local-only `pnpm db:seed:disposable` identity seed. The identity seed is additive (`INSERT OR IGNORE`), contains only `E2E_DISPOSABLE_` rows, and never targets a remote or non-disposable database.
+`pnpm dev:local` builds the static export, applies local Wrangler migrations, and serves the Worker at `http://127.0.0.1:8787` by default. A suite that accepts an already-running target may use `PROGRAMS_TARGET_URL=http://127.0.0.1:8787`. Keep all D1 resets local or inventory-approved disposable development/test operations; never use a production or unknown target.
 
-| Username | Credential | Seeded identity context |
-| --- | --- | --- |
-| `E2E_admin` | `E2E_admin!dev` | Protected Admin identity |
-| `E2E_staff` | `E2E_staff!dev` | Assignable Staff identity |
-| `E2E_member` | `E2E_member!dev` | Automatic `會友基礎` baseline |
-| `E2E_legacy` | PIN `1234` (upgrade test) | Automatic `會友基礎` after upgrade |
+Playwright acceptance runners use one worker and zero retries for the required functional slices. A retry, skip, synthetic route fulfillment, or reduced fallback run is reported separately and cannot be relabelled as full Worker/D1 acceptance. Static geometry configurations may have their own focused settings; report their boundary exactly.
 
-The local auth suite defaults to those fixtures. The account seed resets `E2E_legacy` to its legacy-PIN state so the upgrade test can be rerun. The other D1 suites use the active three accounts by default; `attendance-d1` creates its own disposable domain rows for each run. `db:seed:demo` is local-only and refuses non-loopback targets; it creates one `E2E_DEMO_` department, four programs, and generated events for the recurring program.
+## Reports and cleanup
 
-The local stack reads `web/.dev.vars`. Start from `web/.dev.vars.example`; the local access-token secret is required for protected routes. Never put production credentials, cookies, or tokens in that file.
+Preserve the first causal failure, revision, route/state/viewport, and resulting artifacts. Stop only processes started by your worktree. Do not commit `web/.dev.vars`, cookies, storage state, tokens, or generated test results unless a plan explicitly names a review artifact.
 
-## Optional deployed smoke
+`tests/e2e/plan-doc-appender.ts` is a manual utility. Use it only when an approved plan explicitly requires a recorded evidence append, and pass every argument explicitly. It does not run automatically after a test.
 
-Cloudflare deployment is optional operational evidence, not the repository `READY` gate. When an operator chooses to run it, override the relevant target with a fresh disposable Worker URL:
+## Evidence boundaries
 
-- `AUTH_TARGET_URL` for `auth-d1.config.ts` (`efcc-auth-*` or `efcc-dev-*` reserved host).
-- `PROGRAMS_TARGET_URL` for `programs-d1.config.ts` and `attendance-d1.config.ts` (`efcc-auth-*` or `efcc-dev-*` reserved host).
-- `AUTH_UI_TARGET_URL` for `live-ui.config.ts` (`efcc-auth-*` reserved host).
+Playwright proves the boundary exercised by its config. Static shell and geometry suites do not prove Worker authorization, D1 persistence, production auth/session, camera hardware, native print, real-device behavior, assistive technology, or deployment. Storybook and component tests are presentation seams. Human/device review, independent review, owner approval, and Cloudflare deployment evidence remain separate.
 
-Remote overrides must be HTTPS, contain no credentials, and use only the allowlisted reserved namespaces enforced by each config. Remote runs require explicit disposable `E2E_` fixture variables; local defaults never spill into a remote target. The `deployed-auth` GitHub Actions job is `workflow_dispatch` only and remains fail-closed.
+## Historical Phase F evidence
 
-## Acceptance evidence
-
-`tests/e2e/plan-doc-appender.ts` is a manual utility. Pass `--plan`, `--results`, `--heading`, and `--target-url` explicitly when recording a run; there is no automatic post-test hook. It sanitizes credentials from the recorded URL and replaces only the requested Markdown section.
-
-Example:
-
-```sh
-pnpm exec tsx tests/e2e/plan-doc-appender.ts \
-  --plan=docs/omp-plans/2026-08-11-pui-01-ticket-245.md \
-  --results=tests/e2e/test-results/programs-d1-results.json \
-  --heading="## Executed results — local Programs D1" \
-  --target-url=http://127.0.0.1:8787
-```
-
-## Phase F release evidence
-
-Phase F (#494/#495) keeps the release evidence numeric and local. Geometry suites attach UTF-8 JSON through Playwright `testInfo.attach`; their configs record `metadata.phaseFTargetUrl`, and the renderer rejects image attachments, missing target metadata, and non-loopback target URLs:
-
-```sh
-pnpm verify:contraction
-pnpm exec tsx tests/e2e/render-phase-f-evidence.ts \
-  --input=tests/e2e/test-results/phase-f \
-  --json=docs/qa/2026-09-01-s4-phase-f-release-evidence.json \
-  --html=docs/qa/2026-09-01-s4-phase-f-release-evidence.html
-pnpm exec tsx tests/e2e/plan-doc-appender.ts \
-  --plan=docs/specs/s4-phase-f-acceptance-trace.md \
-  --results=tests/e2e/test-results/phase-f/phase-d-programs-geometry/results.json \
-  --heading="## Executed results" \
-  --target-url=http://127.0.0.1:8787
-```
-
-The explicit post-migration schema smoke is: `pnpm exec tsx tests/e2e/inspect-local-identity-schema.ts` It queries local `sqlite_master` and `PRAGMA` table-valued functions, asserts the seven normalized identity tables plus role-free `accounts` and `registration_requests`, and rejects pre-019 tables and retired role-guard triggers.
-
-Geometry reports live under `tests/e2e/test-results/phase-f/<suite>/results.json`. Route-only reports remain at their suite-specific paths such as `tests/e2e/test-results/auth-d1-results.json`, `live-ui-results.json`, and `attendance-d1-results.json` when those suites pass. The required single-process `programs-d1` journey is represented by its Playwright line reporter and failure-log directory; a missing or failed report is not evidence. The rendered JSON/HTML, the acceptance trace, `docs/qa/2026-09-01-s4-phase-f-release-gate.md`, and `docs/qa/2026-09-01-s4-phase-f-audit-dispositions.md` are the reviewable outputs. Numeric evidence proves DOM/API geometry and state only; it does not claim human keyboard/AT, real-device camera/touch, native print-preview, forced-colors, zoom/reflow, or text-spacing outcomes.
-
-Worker-backed Phase F runs use `http://127.0.0.1:8787`, local D1, pinned Chromium, and disposable `E2E_`, `E2E_DEMO_`, or `E2E_DISPOSABLE_` fixtures. The static-shell suite intentionally runs against its local `4173` server without Worker/D1. No suite mutates Apps Script, Google Sheets, Cloudflare production, remote D1, or a non-disposable account. A complete matrix failure remains a release blocker; unavailable human rows stay `UNCLAIMED`.
-
-## Static-shell suite
-
-`pnpm test:shell-responsive` builds the Next static export and serves it through `tests/e2e/serve-static.ts` on port `4173`. It runs the mobile and desktop projects without a Worker, D1, Google session, or network target.
-
-## Implemented-scope rule
-
-Only implemented behavior may be asserted as acceptance coverage. The D1 suites exercise the Worker routes that exist in this branch; unfinished domain capabilities remain planned in the linked specification/ticket.
+Phase F reports under `docs/qa/` and `docs/specs/s4-phase-f-acceptance-trace.md` are retained as historical evidence. They describe the older contraction and release investigation; their commands, counts, and deleted `verify:contraction` helper are not current contributor entrypoints. Use the current root scripts and [TESTING.md](../../TESTING.md) for present work. Preserve historical records and provenance instead of rewriting them to match current commands.

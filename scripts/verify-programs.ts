@@ -1,25 +1,24 @@
 import { execFile } from "node:child_process";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 
 const execFileAsync = promisify(execFile);
 const REPO_ROOT = path.resolve(import.meta.dirname, "..");
 
-type PromotionStage = {
+interface PromotionStage {
   name: string;
   args: readonly string[];
   report?: string;
   expectedTests?: number;
-};
+}
 
-type PromotionStageResult = {
+interface PromotionStageResult {
   name: string;
   status: "running" | "passed" | "failed" | "not_run";
   artifacts: string[];
   failure?: string;
-};
+}
 
 export const PROMOTION_STAGES: readonly PromotionStage[] = [
   { name: "worker-contract", args: ["test:programs:contract"] },
@@ -27,7 +26,13 @@ export const PROMOTION_STAGES: readonly PromotionStage[] = [
     name: "browser-acceptance",
     args: ["test:programs:browser"],
     report: "browser-results.json",
-    expectedTests: 36,
+    expectedTests: 48,
+  },
+  {
+    name: "home-browser-acceptance",
+    args: ["test:programs:home"],
+    report: "home-results.json",
+    expectedTests: 5,
   },
   {
     name: "responsive-matrix",
@@ -35,8 +40,48 @@ export const PROMOTION_STAGES: readonly PromotionStage[] = [
     report: "responsive-results.json",
     expectedTests: 21,
   },
-  { name: "non-browser-precommit", args: ["verify:precommit"] },
 ];
+
+// Case numbers 64–68 are the five PUI-05 Home rows in the 2026-09-23 parity CSV.
+export const PUI05_HOME_ACCEPTANCE_MAPPINGS = [
+  {
+    oldId: "PUI-05:64",
+    oldTitle: "Home long Explore copy wraps without horizontal overflow",
+    replacementTest:
+      "PUI-05 case 64: Home cards and announcement detail keep long copy inside the viewport",
+    replacementFile: "tests/e2e/programs-home-acceptance.test.ts",
+  },
+  {
+    oldId: "PUI-05:65",
+    oldTitle: "Home announcement Back consumes only the overlay history entry",
+    replacementTest:
+      "PUI-05 case 65: native Back closes only the announcement overlay and restores the previous route",
+    replacementFile: "tests/e2e/programs-home-acceptance.test.ts",
+  },
+  {
+    oldId: "PUI-05:66",
+    oldTitle:
+      "Notices and Messages keep long feed copy inside the W7 viewport seams",
+    replacementTest:
+      "PUI-05 case 66: Notices and Messages keep seeded long copy inside the viewport",
+    replacementFile: "tests/e2e/programs-home-acceptance.test.ts",
+  },
+  {
+    oldId: "PUI-05:67",
+    oldTitle:
+      "Home next-event card opens event detail with 可簽到 and back-nav",
+    replacementTest:
+      "PUI-05 case 67: Home next-event opens the selected Event Detail with 可簽到 and returns Home",
+    replacementFile: "tests/e2e/programs-home-acceptance.test.ts",
+  },
+  {
+    oldId: "PUI-05:68",
+    oldTitle: "Home Explore opens Program Detail and returns Home",
+    replacementTest:
+      "PUI-05 case 68: Home Explore opens the selected Program Detail and returns Home",
+    replacementFile: "tests/e2e/programs-home-acceptance.test.ts",
+  },
+] as const;
 
 export const RUNTIME_CANARY_STAGE: PromotionStage = {
   name: "runtime-canary",
@@ -75,11 +120,11 @@ function numberField(record: JsonRecord | null, key: string): number | null {
   return typeof value === "number" ? value : null;
 }
 
-type MigrationLedgerSummary = {
+interface MigrationLedgerSummary {
   participantRows: number;
   managementRows: number;
   executableMappings: string[];
-};
+}
 
 function ledgerRows(source: string, label: string): string[][] {
   const scenarioStart = source.indexOf("## Scenario inventory");
@@ -111,7 +156,7 @@ function ledgerRows(source: string, label: string): string[][] {
     if (
       row.length < 4 ||
       row.slice(0, 4).some((cell) => cell.length === 0) ||
-      !/(Worker Contract|Browser Acceptance|Responsive UI Matrix)/u.test(
+      !/(?<stage>Worker Contract|Browser Acceptance|Responsive UI Matrix)/u.test(
         row[2] ?? ""
       )
     ) {
@@ -171,24 +216,133 @@ export function assertMigrationLedgersComplete(
   };
 }
 
-export function isFunctionalPromotionManifest(value: unknown): boolean {
-  const manifest = asRecord(value);
+export function assertHomeParityMappings(value: unknown): void {
+  if (!Array.isArray(value)) {
+    throw new TypeError(
+      "Promotion manifest is missing the PUI-05 Home mappings"
+    );
+  }
+  if (value.length !== PUI05_HOME_ACCEPTANCE_MAPPINGS.length) {
+    throw new Error(
+      `PUI-05 Home mapping count mismatch: got=${value.length}, expected=${PUI05_HOME_ACCEPTANCE_MAPPINGS.length}`
+    );
+  }
+
+  const expectedById = new Map<
+    string,
+    (typeof PUI05_HOME_ACCEPTANCE_MAPPINGS)[number]
+  >(PUI05_HOME_ACCEPTANCE_MAPPINGS.map((mapping) => [mapping.oldId, mapping]));
+  const seenIds = new Set<string>();
+  const seenTests = new Set<string>();
+  for (const item of value) {
+    const mapping = asRecord(item);
+    if (mapping === null) {
+      throw new TypeError("PUI-05 Home mappings must be objects");
+    }
+    const { oldId, oldTitle, replacementTest, replacementFile } = mapping;
+    if (
+      typeof oldId !== "string" ||
+      typeof oldTitle !== "string" ||
+      typeof replacementTest !== "string" ||
+      typeof replacementFile !== "string"
+    ) {
+      throw new TypeError(
+        "PUI-05 Home mappings must name an old ID, test, and file"
+      );
+    }
+    if (
+      Object.keys(mapping).sort().join(",") !==
+      "oldId,oldTitle,replacementFile,replacementTest"
+    ) {
+      throw new Error(`PUI-05 Home mapping ${oldId} has unrecognized fields`);
+    }
+    if (!expectedById.has(oldId)) {
+      throw new Error(
+        `PUI-05 Home mapping contains unrecognized old ID ${oldId}`
+      );
+    }
+    if (seenIds.has(oldId)) {
+      throw new Error(`PUI-05 Home mapping duplicates old ID ${oldId}`);
+    }
+    if (seenTests.has(replacementTest)) {
+      throw new Error(
+        `PUI-05 Home mapping duplicates replacement test ${replacementTest}`
+      );
+    }
+    seenIds.add(oldId);
+    seenTests.add(replacementTest);
+    const expected = expectedById.get(oldId);
+    if (!expected) {
+      throw new Error(
+        `PUI-05 Home mapping contains unrecognized old ID ${oldId}`
+      );
+    }
+    if (
+      replacementTest !== expected.replacementTest ||
+      oldTitle !== expected.oldTitle ||
+      replacementFile !== expected.replacementFile
+    ) {
+      throw new Error(
+        `PUI-05 Home mapping ${oldId} does not match its approved replacement`
+      );
+    }
+  }
+
+  const missing = PUI05_HOME_ACCEPTANCE_MAPPINGS.find(
+    ({ oldId }) => !seenIds.has(oldId)
+  );
+  if (missing) {
+    throw new Error(`PUI-05 Home mapping is missing old ID ${missing.oldId}`);
+  }
+}
+
+function playwrightSpecs(report: unknown): { title: string; file: string }[] {
+  const root = asRecord(report);
+  const found: { title: string; file: string }[] = [];
+  const visit = (suiteValue: unknown, inheritedFile = ""): void => {
+    const suite = asRecord(suiteValue);
+    if (!suite) {
+      return;
+    }
+    const file = typeof suite.file === "string" ? suite.file : inheritedFile;
+    if (Array.isArray(suite.specs)) {
+      for (const specValue of suite.specs) {
+        const spec = asRecord(specValue);
+        if (typeof spec?.title === "string") {
+          found.push({
+            title: spec.title,
+            file: typeof spec.file === "string" ? spec.file : file,
+          });
+        }
+      }
+    }
+    if (Array.isArray(suite.suites)) {
+      for (const child of suite.suites) {
+        visit(child, file);
+      }
+    }
+  };
+  if (Array.isArray(root?.suites)) {
+    for (const suite of root.suites) {
+      visit(suite);
+    }
+  }
+  return found;
+}
+
+function hasExactHomeParityMappings(value: unknown): boolean {
+  try {
+    assertHomeParityMappings(value);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function hasB003Disclosure(manifest: JsonRecord | null): boolean {
   const riskDisclosure = asRecord(manifest?.riskDisclosure);
   const diagnostic = asRecord(asRecord(manifest?.diagnostic)?.runtimeCanary);
-  const migrationLedger = asRecord(manifest?.migrationLedger);
-  const executableMappings = Array.isArray(migrationLedger?.executableMappings)
-    ? migrationLedger.executableMappings.filter(
-        (mapping): mapping is string => typeof mapping === "string"
-      )
-    : [];
-  const stageResults = Array.isArray(manifest?.stageResults)
-    ? manifest.stageResults
-        .map(asRecord)
-        .filter((result): result is JsonRecord => result !== null)
-    : [];
-
   return (
-    manifest?.status === "functional-passed" &&
     riskDisclosure?.id === B003_RESIDUAL_RISK.id &&
     riskDisclosure.status === B003_RESIDUAL_RISK.status &&
     riskDisclosure.disposition === B003_RESIDUAL_RISK.disposition &&
@@ -199,9 +353,20 @@ export function isFunctionalPromotionManifest(value: unknown): boolean {
     diagnostic?.command === B003_RESIDUAL_RISK.diagnosticCommand &&
     ["passed", "failed", "not_run"].includes(String(diagnostic?.status)) &&
     typeof diagnostic?.revision === "string" &&
-    (diagnostic?.status === "not_run"
+    (diagnostic.status === "not_run"
       ? diagnostic.artifact === null
-      : typeof diagnostic.artifact === "string") &&
+      : typeof diagnostic.artifact === "string")
+  );
+}
+
+function hasCompleteMigrationLedger(manifest: JsonRecord | null): boolean {
+  const migrationLedger = asRecord(manifest?.migrationLedger);
+  const executableMappings = Array.isArray(migrationLedger?.executableMappings)
+    ? migrationLedger.executableMappings.filter(
+        (mapping): mapping is string => typeof mapping === "string"
+      )
+    : [];
+  return (
     typeof migrationLedger?.participantRows === "number" &&
     Number.isInteger(migrationLedger.participantRows) &&
     migrationLedger.participantRows > 0 &&
@@ -214,12 +379,31 @@ export function isFunctionalPromotionManifest(value: unknown): boolean {
       "tests/e2e/programs-participant-acceptance.test.ts",
       "tests/e2e/programs-management-acceptance.test.ts",
       "tests/e2e/programs-responsive-matrix.test.ts",
-    ].every((mapping) => executableMappings.includes(mapping)) &&
-    PROMOTION_STAGES.every(({ name }) =>
-      stageResults.some(
-        (result) => result.name === name && result.status === "passed"
-      )
+    ].every((mapping) => executableMappings.includes(mapping))
+  );
+}
+
+function hasPassedStages(manifest: JsonRecord | null): boolean {
+  const stageResults = Array.isArray(manifest?.stageResults)
+    ? manifest.stageResults
+        .map(asRecord)
+        .filter((result): result is JsonRecord => result !== null)
+    : [];
+  return PROMOTION_STAGES.every(({ name }) =>
+    stageResults.some(
+      (result) => result.name === name && result.status === "passed"
     )
+  );
+}
+
+export function isFunctionalPromotionManifest(value: unknown): boolean {
+  const manifest = asRecord(value);
+  return (
+    manifest?.status === "functional-passed" &&
+    hasExactHomeParityMappings(manifest?.homeParityMappings) &&
+    hasB003Disclosure(manifest) &&
+    hasCompleteMigrationLedger(manifest) &&
+    hasPassedStages(manifest)
   );
 }
 
@@ -303,6 +487,54 @@ export function assertPlaywrightReportGreen(
   }
 }
 
+export function assertHomeAcceptanceReportMatchesMappings(
+  report: unknown
+): void {
+  assertPlaywrightReportGreen(report, PUI05_HOME_ACCEPTANCE_MAPPINGS.length);
+  const specs = playwrightSpecs(report);
+  if (specs.length !== PUI05_HOME_ACCEPTANCE_MAPPINGS.length) {
+    throw new Error(
+      `PUI-05 Home report test count mismatch: got=${specs.length}, expected=${PUI05_HOME_ACCEPTANCE_MAPPINGS.length}`
+    );
+  }
+  const expectedTests = new Map<string, string>(
+    PUI05_HOME_ACCEPTANCE_MAPPINGS.map((mapping) => [
+      mapping.replacementTest,
+      mapping.replacementFile,
+    ])
+  );
+  const seen = new Set<string>();
+  for (const spec of specs) {
+    const expectedFile = expectedTests.get(spec.title);
+    if (expectedFile === undefined) {
+      throw new Error(
+        `PUI-05 Home report contains unrecognized test ${spec.title}`
+      );
+    }
+    if (seen.has(spec.title)) {
+      throw new Error(`PUI-05 Home report duplicates test ${spec.title}`);
+    }
+    seen.add(spec.title);
+    const normalizedFile = spec.file.replaceAll("\\", "/");
+    if (
+      normalizedFile !== expectedFile &&
+      !normalizedFile.endsWith(`/${expectedFile}`)
+    ) {
+      throw new Error(
+        `PUI-05 Home report test ${spec.title} came from ${spec.file}`
+      );
+    }
+  }
+  const missing = PUI05_HOME_ACCEPTANCE_MAPPINGS.find(
+    ({ replacementTest }) => !seen.has(replacementTest)
+  );
+  if (missing) {
+    throw new Error(
+      `PUI-05 Home report is missing replacement test ${missing.replacementTest}`
+    );
+  }
+}
+
 export function isCleanWorktreeStatus(status: string): boolean {
   return status.trim() === "";
 }
@@ -329,6 +561,35 @@ export function assertLocalPromotionTarget(raw: string): URL {
   return target;
 }
 
+export function isHomeAcceptanceRunGreen(
+  value: unknown,
+  expectedRevision: string,
+  expectedReportPath: string,
+  expectedPromotionRunId: string
+): boolean {
+  const manifest = asRecord(value);
+  if (
+    manifest?.status !== "passed" ||
+    manifest.runtime !== "createTestHarness" ||
+    manifest.config !== "web/wrangler.jsonc" ||
+    manifest.suite !== "tests/e2e/programs-home-acceptance.config.ts" ||
+    manifest.revision !== expectedRevision ||
+    manifest.layer !== "home-browser-acceptance" ||
+    manifest.retries !== 0 ||
+    manifest.reportPath !== expectedReportPath ||
+    manifest.promotionRunId !== expectedPromotionRunId ||
+    typeof manifest.target !== "string"
+  ) {
+    return false;
+  }
+  try {
+    assertLocalPromotionTarget(manifest.target);
+  } catch {
+    return false;
+  }
+  return true;
+}
+
 function runId(): string {
   return new Date()
     .toISOString()
@@ -337,7 +598,7 @@ function runId(): string {
 }
 
 async function writeJson(filename: string, value: unknown): Promise<void> {
-  await writeFile(filename, `${JSON.stringify(value, null, 2)}\n`, "utf8");
+  await writeFile(filename, `${JSON.stringify(value, null, 2)}\n`, "utf-8");
 }
 
 async function currentRevision(): Promise<string> {
@@ -348,7 +609,7 @@ async function currentRevision(): Promise<string> {
 }
 
 async function readReport(filename: string): Promise<unknown> {
-  return JSON.parse(await readFile(filename, "utf8"));
+  return JSON.parse(await readFile(filename, "utf-8"));
 }
 
 export function stageArtifactPath(
@@ -372,37 +633,61 @@ function timestamp(value: unknown): number | null {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
-export function isCanaryArtifactGreen(
+function hasCanaryIdentity(
   manifest: JsonRecord | null,
   expectedRevision: string
 ): boolean {
-  const setupStartedAt = timestamp(manifest?.setupStartedAt);
-  const startedAt = timestamp(manifest?.startedAt);
-  const finishedAt = timestamp(manifest?.finishedAt);
-  const scenariosCompleted = manifest?.scenariosCompleted;
   return (
     manifest?.status === "passed" &&
     manifest.revision === expectedRevision &&
     manifest.runtime === "createTestHarness" &&
     manifest.config === "web/wrangler.jsonc" &&
     manifest.windowMs === EXPECTED_CANARY_WINDOW_MS &&
-    manifest.retries === EXPECTED_CANARY_RETRIES &&
+    manifest.retries === EXPECTED_CANARY_RETRIES
+  );
+}
+
+function hasCanaryWindow(manifest: JsonRecord | null): boolean {
+  const setupStartedAt = timestamp(manifest?.setupStartedAt);
+  const startedAt = timestamp(manifest?.startedAt);
+  const finishedAt = timestamp(manifest?.finishedAt);
+  return (
     setupStartedAt !== null &&
     startedAt !== null &&
     finishedAt !== null &&
     setupStartedAt <= startedAt &&
-    finishedAt - startedAt >= EXPECTED_CANARY_WINDOW_MS &&
-    Array.isArray(manifest.failures) &&
-    manifest.failures.length === 0 &&
+    finishedAt - startedAt >= EXPECTED_CANARY_WINDOW_MS
+  );
+}
+
+function hasNoCanaryFailures(manifest: JsonRecord | null): boolean {
+  return Array.isArray(manifest?.failures) && manifest.failures.length === 0;
+}
+
+function hasCompletedCanaryScenario(manifest: JsonRecord | null): boolean {
+  const scenariosCompleted = manifest?.scenariosCompleted;
+  return (
     typeof scenariosCompleted === "number" &&
     Number.isInteger(scenariosCompleted) &&
     scenariosCompleted > 0
   );
 }
 
+export function isCanaryArtifactGreen(
+  manifest: JsonRecord | null,
+  expectedRevision: string
+): boolean {
+  return (
+    hasCanaryIdentity(manifest, expectedRevision) &&
+    hasCanaryWindow(manifest) &&
+    hasNoCanaryFailures(manifest) &&
+    hasCompletedCanaryScenario(manifest)
+  );
+}
+
 async function readCanaryRun(filename: string): Promise<JsonRecord | null> {
   try {
-    return asRecord(JSON.parse(await readFile(filename, "utf8")));
+    return asRecord(JSON.parse(await readFile(filename, "utf-8")));
   } catch {
     return null;
   }
@@ -480,6 +765,16 @@ async function runStage(
       "responsive-matrix"
     );
   }
+  if (stage.name === "home-browser-acceptance") {
+    environment.PROGRAMS_HOME_RESULTS_FILE = path.join(
+      artifactDirectory,
+      stage.report ?? "home-results.json"
+    );
+    environment.PROGRAMS_HOME_ARTIFACT_DIRECTORY = path.join(
+      artifactDirectory,
+      "home-browser-acceptance"
+    );
+  }
   if (stage.name === "runtime-canary") {
     environment.PROGRAMS_CANARY_ARTIFACT_DIRECTORY = stageArtifact;
   }
@@ -490,9 +785,9 @@ async function runStage(
       env: environment,
       maxBuffer: 16 * 1024 * 1024,
     });
-    await writeFile(stageLog, `${result.stdout}${result.stderr}`, "utf8");
+    await writeFile(stageLog, `${result.stdout}${result.stderr}`, "utf-8");
   } catch (error) {
-    await writeFile(stageLog, commandOutput(error), "utf8");
+    await writeFile(stageLog, commandOutput(error), "utf-8");
     throw new Error(
       `T05.7 ${stage.name} failed; see ${path.relative(REPO_ROOT, path.join(artifactDirectory, `${stage.name}.log`))}`,
       { cause: error }
@@ -501,13 +796,32 @@ async function runStage(
   if (stage.report && stage.expectedTests !== undefined) {
     const reportPath = path.join(artifactDirectory, stage.report);
     try {
-      assertPlaywrightReportGreen(
-        await readReport(reportPath),
-        stage.expectedTests
-      );
+      const report = await readReport(reportPath);
+      assertPlaywrightReportGreen(report, stage.expectedTests);
+      if (stage.name === "home-browser-acceptance") {
+        assertHomeAcceptanceReportMatchesMappings(report);
+        const runManifestPath = path.join(
+          artifactDirectory,
+          "home-browser-acceptance",
+          "run.json"
+        );
+        if (
+          !isHomeAcceptanceRunGreen(
+            await readReport(runManifestPath),
+            await currentRevision(),
+            path.relative(REPO_ROOT, reportPath),
+            path.basename(artifactDirectory)
+          )
+        ) {
+          throw new Error(
+            `Home acceptance run manifest is missing or not pinned to ${path.basename(artifactDirectory)}`
+          );
+        }
+      }
     } catch (error) {
       throw new Error(
-        `T05.7 ${stage.name} report failed Green validation: ${error instanceof Error ? error.message : String(error)}`
+        `T05.7 ${stage.name} report failed Green validation: ${error instanceof Error ? error.message : String(error)}`,
+        { cause: error }
       );
     }
   }
@@ -526,11 +840,82 @@ async function runStage(
   console.log(`T05.7 ${stage.name} passed`);
   return [
     ...new Set(
-      [stageArtifact, stageLog].map((filename) =>
-        path.relative(REPO_ROOT, filename)
-      )
+      [
+        stageArtifact,
+        stageLog,
+        ...(stage.name === "home-browser-acceptance"
+          ? [
+              path.join(
+                artifactDirectory,
+                "home-browser-acceptance",
+                "run.json"
+              ),
+            ]
+          : []),
+      ].map((filename) => path.relative(REPO_ROOT, filename))
     ),
   ];
+}
+
+interface PromotionManifest {
+  stageResults: PromotionStageResult[];
+  stages: string[];
+}
+
+async function runPromotionStage(
+  stage: PromotionStage,
+  artifactDirectory: string,
+  promotionTarget: URL,
+  manifest: Pick<PromotionManifest, "stageResults" | "stages">
+): Promise<void> {
+  const stageResult: PromotionStageResult = {
+    name: stage.name,
+    status: "running",
+    artifacts: [
+      path.relative(REPO_ROOT, stageArtifactPath(stage, artifactDirectory)),
+      path.relative(
+        REPO_ROOT,
+        path.join(artifactDirectory, `${stage.name}.log`)
+      ),
+    ].filter((value, index, values) => values.indexOf(value) === index),
+  };
+  manifest.stageResults.push(stageResult);
+  await writeJson(path.join(artifactDirectory, "promotion.json"), manifest);
+  try {
+    process.env.PROGRAMS_TARGET_URL = promotionTarget.origin;
+    stageResult.artifacts = await runStage(stage, artifactDirectory);
+    stageResult.status = "passed";
+    manifest.stages.push(stage.name);
+  } catch (error) {
+    stageResult.status = "failed";
+    stageResult.failure =
+      error instanceof Error ? error.message : String(error);
+    throw error;
+  } finally {
+    await writeJson(path.join(artifactDirectory, "promotion.json"), manifest);
+  }
+}
+
+async function runPromotionStages(
+  artifactDirectory: string,
+  promotionTarget: URL,
+  manifest: Pick<PromotionManifest, "stageResults" | "stages">
+): Promise<void> {
+  async function runAt(index: number): Promise<void> {
+    const stage = PROMOTION_STAGES[index];
+    if (stage === undefined) {
+      return;
+    }
+    await runPromotionStage(
+      stage,
+      artifactDirectory,
+      promotionTarget,
+      manifest
+    );
+    await runAt(index + 1);
+  }
+
+  await runAt(0);
 }
 
 async function main(): Promise<void> {
@@ -542,7 +927,7 @@ async function main(): Promise<void> {
   );
   await mkdir(artifactDirectory, { recursive: true });
   const revision = await currentRevision();
-  const manifest: {
+  const manifest: PromotionManifest & {
     schemaVersion: number;
     authority: string;
     runId: string;
@@ -562,6 +947,7 @@ async function main(): Promise<void> {
       };
     };
     migrationLedger: MigrationLedgerSummary;
+    homeParityMappings: typeof PUI05_HOME_ACCEPTANCE_MAPPINGS;
     failure?: string;
     artifacts: string;
   } = {
@@ -588,6 +974,7 @@ async function main(): Promise<void> {
       managementRows: 0,
       executableMappings: [],
     },
+    homeParityMappings: PUI05_HOME_ACCEPTANCE_MAPPINGS,
     artifacts: path.relative(REPO_ROOT, artifactDirectory),
   };
   await writeJson(path.join(artifactDirectory, "promotion.json"), manifest);
@@ -610,49 +997,19 @@ async function main(): Promise<void> {
           REPO_ROOT,
           "docs/implementation/t05-participant-migration-ledger.md"
         ),
-        "utf8"
+        "utf-8"
       ),
       await readFile(
         path.join(
           REPO_ROOT,
           "docs/implementation/t05-management-migration-ledger.md"
         ),
-        "utf8"
+        "utf-8"
       )
     );
     manifest.diagnostic.runtimeCanary = await readCanaryDiagnostic(revision);
     await writeJson(path.join(artifactDirectory, "promotion.json"), manifest);
-    for (const stage of PROMOTION_STAGES) {
-      const stageResult: PromotionStageResult = {
-        name: stage.name,
-        status: "running",
-        artifacts: [
-          path.relative(REPO_ROOT, stageArtifactPath(stage, artifactDirectory)),
-          path.relative(
-            REPO_ROOT,
-            path.join(artifactDirectory, `${stage.name}.log`)
-          ),
-        ].filter((value, index, values) => values.indexOf(value) === index),
-      };
-      manifest.stageResults.push(stageResult);
-      await writeJson(path.join(artifactDirectory, "promotion.json"), manifest);
-      try {
-        process.env.PROGRAMS_TARGET_URL = promotionTarget.origin;
-        stageResult.artifacts = await runStage(stage, artifactDirectory);
-        stageResult.status = "passed";
-        manifest.stages.push(stage.name);
-      } catch (error) {
-        stageResult.status = "failed";
-        stageResult.failure =
-          error instanceof Error ? error.message : String(error);
-        throw error;
-      } finally {
-        await writeJson(
-          path.join(artifactDirectory, "promotion.json"),
-          manifest
-        );
-      }
-    }
+    await runPromotionStages(artifactDirectory, promotionTarget, manifest);
     manifest.status = "functional-passed";
     if (!isFunctionalPromotionManifest(manifest)) {
       throw new Error(
@@ -699,7 +1056,7 @@ async function main(): Promise<void> {
 
 if (
   process.argv[1] !== undefined &&
-  path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)
+  path.resolve(process.argv[1]) === import.meta.filename
 ) {
   await main();
 }

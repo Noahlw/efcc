@@ -1,5 +1,8 @@
 # ADR-0015 - QR Scanner Camera Capture (External Origin)
 
+> Historical record: The external-origin camera bridge was specific to the retired Apps Script iframe. EFCC now uses the in-app Worker-era scanner in web/app/scanner/ with the current camera helper and ZXing fallback. Keep this file as historical rationale, not current implementation guidance.
+
+
 - **Status**: Proposed - **reverted to Option A (external HTTPS origin + `getUserMedia` + `html5-qrcode` + `postMessage` bridge)** as the primary method (2026-08-01). Option B (in-App-Document `<input type=file capture>` + jsQR) was tried in production and failed: iOS Safari does not honor `capture` to force the camera (caniuse), producing a slow multi-step chooser UX, and single-photo jsQR decode was too slow/unreliable. Option A's external camera page was validated on a real phone (continuous auto-scan works, `html5-qrcode` is fast). Stays Proposed until a full-flow phone test passes: App Document (`/exec`) -> `window.open` -> scanner page -> `postMessage` scan -> `api_qrCheckIn` -> result back, proving the popup escapes the Apps Script sandbox (`allow-popups-to-escape-sandbox`) end-to-end (AGENTS.md evidence gate).
 - **Deciders**: Noah Wong (F5 QR Scanner, #83/#100); reverted per the 2026-08-01 best-method research + Option B production failure.
 - **Date**: 2026-07-31 (revised 2026-08-01 Option B; reverted 2026-08-01 Option A)

@@ -318,43 +318,6 @@ test("recoverable auth restore exposes retry and safe-home anchors", async ({
   await assertFocusedControlVisible(page, 'main[tabindex="-1"]', testInfo);
   await assertContained(page, false, testInfo);
 });
-test("legacy upgrade gate preserves focused validation and bounded controls", async ({
-  page,
-}, testInfo: TestInfo) => {
-  await page.route("**/api/v1/auth/login", (route: Route) =>
-    route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify({
-        requestId: "geometry-upgrade-login",
-        data: {
-          userId: "E2E_geometry_legacy",
-          name: "幾何測試舊帳戶",
-          status: "Active",
-          mustSetNewCredential: true,
-        },
-      }),
-    })
-  );
-  await page.goto(appPath("/"));
-  await page.getByLabel("用戶名稱").fill("E2E_geometry_legacy");
-  await page.getByLabel("密碼").fill("1234");
-  await page.getByRole("button", { name: "登入" }).click();
-  await expect(page.getByRole("heading", { name: "設定新密碼" })).toBeVisible();
-  const upgradeSubmit = page.getByRole("button", {
-    name: "設定新密碼並登入",
-  });
-  await page.locator("#legacy-pin").fill("");
-  await upgradeSubmit.click();
-  await expect(page.locator("#legacy-pin")).toBeFocused();
-  await assertFocusedControlVisible(page, "#legacy-pin", testInfo);
-  await assertContained(page, false, testInfo);
-  await page.locator("#legacy-pin").fill("1234");
-  await page.locator("#new-credential").fill("short");
-  await expect(page.locator("#new-credential")).toBeFocused();
-  await assertContained(page, false, testInfo);
-});
-
 test("session expiry keeps the re-login recovery surface contained", async ({
   page,
 }, testInfo: TestInfo) => {

@@ -357,8 +357,9 @@ const EVENT_DETAIL: EventDetail = {
 const MANUAL_MANAGEMENT_EVENT: ProgramEvent = {
   ...MANAGEMENT_EVENT,
   event_id: "t07-3-manual-event",
-  starts_at: "2026-09-19T10:00:00.000Z",
-  ends_at: "2026-09-19T11:30:00.000Z",
+  // Keep this current-filter story fixture in the future as wall-clock dates advance.
+  starts_at: "2099-09-19T10:00:00.000Z",
+  ends_at: "2099-09-19T11:30:00.000Z",
   source: "MANUAL",
   name: "門徒分享聚會",
   event_type: "小組",
@@ -1006,9 +1007,12 @@ const createManagementProgramHandlers = ({
     })
   ),
   http.get("/api/v1/programs/:programId/events", () => envelope({ events })),
-  http.get("/api/v1/programs/:programId/events/:eventId", () =>
-    envelope(EVENT_DETAIL)
-  ),
+  http.get("/api/v1/programs/:programId/events/:eventId", ({ params }) => {
+    const event =
+      events.find((candidate) => candidate.event_id === params.eventId) ??
+      MANAGEMENT_EVENT;
+    return envelope({ ...EVENT_DETAIL, event });
+  }),
   http.get("/api/v1/programs/:programId/enrollment-requests", () =>
     envelope({ requests: PARTICIPANT_REQUESTS })
   ),

@@ -2,24 +2,22 @@ import { randomUUID } from "node:crypto";
 /**
  * EFCC dev-testing D1 seeder (PRG-05 #224).
  *
- * Prints idempotent SQL for the four E2E_ dev accounts used by the local
- * Worker/D1 Playwright suites. `pnpm db:seed:local` applies the output to the
- * local efcc-identity D1; an operator may also apply it to an explicitly
- * isolated remote D1 when running an optional deployed smoke.
+ * Prints idempotent SQL for the E2E_ dev accounts used by the local
+ * Worker/D1 Playwright suites. `pnpm db:seed:local` applies the output to this
+ * worktree's local efcc-identity D1. This generator does not authorize a
+ * remote target.
  *
  * No hashes are embedded in this file: each run derives fresh PBKDF2-SHA256
  * hashes from the fixed dev-only plaintext credentials below using the
  * repo's real credential hasher (`hashCredential` in
  * web/lib/auth/credentials.ts) — the same function the worker uses at
- * registration/upgrade time — so the seeded rows are byte-compatible with
+ * registration time — so the seeded rows are byte-compatible with
  * what `verifyCredential` checks at login.
  *
  * Re-runs are safe: the active fixture accounts use a user_id upsert so a
  * completed password-rotation test cannot poison the next local run.
- * `--reset-legacy` restores the legacy-PIN fixture after an auth upgrade test.
  *
- * Credentials are dev-only fixtures, documented plainly in
- * .github/CI-SECRETS.md — they are NOT GitHub secrets.
+ * Credentials are disposable local fixtures, not deployment secrets.
  */
 import { parseArgs } from "node:util";
 
@@ -27,14 +25,13 @@ import {
   hashCredential,
   normalizeUsername,
 } from "../../web/lib/auth/credentials";
-import { DEV_ACCOUNTS, DEV_LEGACY } from "./dev-fixtures";
+import { DEV_ACCOUNTS } from "./dev-fixtures";
 import type { DevFixtureAccount } from "./dev-fixtures";
 
 const FIXTURE_NAMES: Record<string, string> = {
   "U-E2E-ADMIN": "E2E Admin",
   "U-E2E-STAFF": "E2E Staff",
   "U-E2E-MEMBER": "E2E Member",
-  "U-E2E-LEGACY": "E2E Legacy",
 };
 
 /** Single-quote a string for embedding in SQL (doubles embedded quotes). */
@@ -53,65 +50,23 @@ async function buildInsert(
   return [
     "INSERT INTO accounts (",
     "  user_id, name, username, username_normalized,",
-    "  credential_hash, credential_kind, credential_version,",
-    "  account_status, qr_code_string, requires_upgrade, created_at, updated_at",
+    "  credential_hash,",
+    "  account_status, qr_code_string, created_at, updated_at",
     ") VALUES (",
     `  ${sqlLiteral(account.userId)}, ${sqlLiteral(FIXTURE_NAMES[account.userId])},`,
     `  ${sqlLiteral(account.username)}, ${sqlLiteral(normalizeUsername(account.username))},`,
-    `  ${sqlLiteral(credentialHash)}, 'password', 1,`,
-    `  'Active', ${sqlLiteral(qrCodeString)}, 0, ${now}, ${now}`,
+    `  ${sqlLiteral(credentialHash)},`,
+    `  'Active', ${sqlLiteral(qrCodeString)}, ${now}, ${now}`,
     ")",
     "ON CONFLICT(user_id) DO UPDATE SET",
     "  name = excluded.name,",
     "  username = excluded.username,",
     "  username_normalized = excluded.username_normalized,",
     "  credential_hash = excluded.credential_hash,",
-    "  credential_kind = excluded.credential_kind,",
-    "  credential_version = excluded.credential_version,",
     "  account_status = excluded.account_status,",
     "  phone = NULL,",
     "  qr_code_string = excluded.qr_code_string,",
-    "  legacy_pin_hash = NULL,",
-    "  requires_upgrade = 0,",
-    "  lock_level = 0,",
-    "  failed_attempts = 0,",
-    "  locked_until = NULL,",
-    "  lock_since = NULL,",
     "  updated_at = excluded.updated_at;",
-  ].join("\n");
-}
-
-async function buildLegacyInsert(now: number): Promise<string> {
-  const legacyPinHash = await hashCredential(DEV_LEGACY.legacyPin);
-  const qrCodeString = `E2E-${DEV_LEGACY.role.toUpperCase()}-${DEV_LEGACY.userId}`;
-  return [
-    "INSERT OR IGNORE INTO accounts (",
-    "  user_id, name, username, username_normalized,",
-    "  credential_hash, credential_kind, credential_version,",
-    "  account_status, qr_code_string, legacy_pin_hash,",
-    "  requires_upgrade, created_at, updated_at",
-    ") VALUES (",
-    `  ${sqlLiteral(DEV_LEGACY.userId)}, ${sqlLiteral(FIXTURE_NAMES[DEV_LEGACY.userId])},`,
-    `  ${sqlLiteral(DEV_LEGACY.username)}, ${sqlLiteral(normalizeUsername(DEV_LEGACY.username))},`,
-    `  NULL, 'legacy_pin', 1, 'Active',`,
-    `  ${sqlLiteral(qrCodeString)}, ${sqlLiteral(legacyPinHash)}, 1, ${now}, ${now}`,
-    ");",
-  ].join("\n");
-}
-
-async function buildLegacyReset(now: number): Promise<string> {
-  const legacyPinHash = await hashCredential(DEV_LEGACY.legacyPin);
-  const qrCodeString = `E2E-${DEV_LEGACY.role.toUpperCase()}-${DEV_LEGACY.userId}`;
-  return [
-    `UPDATE accounts SET name = ${sqlLiteral(FIXTURE_NAMES[DEV_LEGACY.userId])},`,
-    `  username = ${sqlLiteral(DEV_LEGACY.username)},`,
-    `  username_normalized = ${sqlLiteral(normalizeUsername(DEV_LEGACY.username))},`,
-    "  credential_hash = NULL, credential_kind = 'legacy_pin',",
-    `  credential_version = 1, account_status = 'Active',`,
-    `  qr_code_string = ${sqlLiteral(qrCodeString)},`,
-    `  legacy_pin_hash = ${sqlLiteral(legacyPinHash)}, requires_upgrade = 1,`,
-    "  lock_level = 0, failed_attempts = 0, locked_until = NULL, lock_since = NULL,",
-    `  updated_at = ${now} WHERE user_id = ${sqlLiteral(DEV_LEGACY.userId)};`,
   ].join("\n");
 }
 function buildNormalizedIdentitySeed(now: number): string {
@@ -228,18 +183,15 @@ function buildNormalizedIdentitySeed(now: number): string {
 
 async function main(): Promise<void> {
   let reset = false;
-  let resetLegacy = false;
   try {
     const parsed = parseArgs({
       options: {
         reset: { type: "boolean", default: false },
-        "reset-legacy": { type: "boolean", default: false },
       },
       strict: true,
       allowPositionals: false,
     });
     reset = parsed.values.reset === true;
-    resetLegacy = parsed.values["reset-legacy"] === true;
   } catch (error) {
     process.stderr.write(
       `error: ${error instanceof Error ? error.message : String(error)}\n`
@@ -265,7 +217,7 @@ async function main(): Promise<void> {
         "-- EFCC dev-testing D1 reset (PRG-05 #224). Deletes all E2E_ rows.",
         "-- Includes registration requests (no FK, deleted last).",
         "-- Run before each suite run so consecutive runs stay green:",
-        "--   pnpm exec wrangler d1 execute efcc-dev-testing --remote --file=<this output>",
+        "-- Apply only to a verified disposable development/test target; never use a remote target without its identity inventory and approved reset procedure.",
         "-- Run history is immutable to the application; this dev-only reset temporarily drops and recreates its delete triggers while removing disposable E2E fixtures.",
         "DROP TRIGGER IF EXISTS enrollment_approval_runs_no_delete;",
         "DROP TRIGGER IF EXISTS enrollment_approval_run_items_no_delete;",
@@ -301,7 +253,7 @@ async function main(): Promise<void> {
         "CREATE TRIGGER enrollment_approval_runs_no_delete BEFORE DELETE ON enrollment_approval_runs BEGIN SELECT RAISE(ABORT, 'enrollment approval runs are immutable history'); END;",
         "CREATE TRIGGER enrollment_approval_run_items_no_delete BEFORE DELETE ON enrollment_approval_run_items BEGIN SELECT RAISE(ABORT, 'enrollment approval run items are immutable history'); END;",
         "-- Home CMS reset only removes E2E-marked disposable content versions.",
-        "DELETE FROM home_content WHERE content_id = 'home' AND (title GLOB 'E2E_*' OR title GLOB 'E2E *');",
+        "DELETE FROM home_content WHERE content_id GLOB 'E2E_*' OR (content_id = 'home' AND (title GLOB 'E2E_*' OR title GLOB 'E2E *'));",
         "DELETE FROM registration_requests WHERE username GLOB 'e2e-s4-*';",
         "DELETE FROM registration_requests WHERE username GLOB 'E2E_*';",
         "",
@@ -313,18 +265,13 @@ async function main(): Promise<void> {
   const now = Date.now();
   const statements = await Promise.all([
     ...DEV_ACCOUNTS.map((account) => buildInsert(account, now)),
-    buildLegacyInsert(now),
     buildNormalizedIdentitySeed(now),
   ]);
-  if (resetLegacy) {
-    statements.unshift(await buildLegacyReset(now));
-  }
 
   process.stdout.write(
     [
       "-- EFCC dev-testing D1 seed (PRG-05 #224). Idempotent: re-runs are safe.",
-      "-- Includes one E2E_ legacy-PIN account for the local auth-d1 upgrade smoke.",
-      "-- `--reset-legacy` restores that account after an upgrade test.",
+      "-- Includes only password accounts; auth testing starts from the current model.",
       "",
       ...statements,
       "",

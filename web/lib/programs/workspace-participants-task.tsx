@@ -64,6 +64,7 @@ import {
   ScreenTabs,
 } from "@/lib/screen-foundations";
 
+import { useAsyncResource } from "../use-async-resource";
 import { MemberPicker } from "./member-picker";
 import type { ProgramsParticipantTab } from "./programs-intent";
 import {
@@ -75,7 +76,6 @@ import {
   rememberWorkspaceScroll,
   restoreProgramsScrollY,
 } from "./programs-scroll";
-import { useAsyncResource } from "./use-async-resource";
 import {
   formatEventTime,
   redirectToLoginIfRequired,

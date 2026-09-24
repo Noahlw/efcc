@@ -20,7 +20,6 @@
 /* oxlint-disable vitest/require-top-level-describe -- one shared D1 fixture spans the suites. */
 import { describe, test, expect, beforeAll } from "vitest";
 
-import { importLegacyUsers } from "./accounts";
 import { ACCESS_TOKEN_TTL_MS, REFRESH_IDLE_TTL_MS } from "./credentials";
 import {
   issueSession,
@@ -29,28 +28,9 @@ import {
   revokeAllUserSessions,
   verifyAccessToken,
 } from "./sessions";
-import { applyMigrations, testDb } from "./test-bootstrap";
-import { completeCredentialUpgrade } from "./upgrade";
+import { applyMigrations, seedTestAccount, testDb } from "./test-bootstrap";
 
 const SECRET = "test-access-token-secret";
-const HEADER = [
-  "User_ID",
-  "Name",
-  "Username",
-  "PIN_Code",
-  "System_Role",
-  "Status",
-];
-
-/** Upgrade a legacy account so sessions can be issued. */
-async function upgrade(userId: string, pin: string, newCred: string) {
-  await completeCredentialUpgrade(testDb(), {
-    userId,
-    legacyPin: pin,
-    newCredential: newCred,
-  });
-}
-
 /** Count active (non-revoked) sessions for a user. */
 async function activeSessionCount(userId: string): Promise<number> {
   const row = await testDb()
@@ -79,15 +59,24 @@ async function sessionRevoked(sessionId: string): Promise<boolean> {
 
 beforeAll(async () => {
   await applyMigrations();
-  await importLegacyUsers(testDb(), [
-    HEADER,
-    ["U001", "Alice Chan", "alice", "1234", "Admin", "Active"],
-    ["U002", "Bob Lee", "bob", "5678", "Member", "Active"],
-    ["U003", "Carol Wong", "carol", "0000", "Member", "Active"],
-  ]);
-  await upgrade("U001", "1234", "alice-secret");
-  await upgrade("U002", "5678", "bob-secret");
-  await upgrade("U003", "0000", "carol-secret");
+  await seedTestAccount({
+    userId: "U001",
+    name: "Alice Chan",
+    username: "alice",
+    password: "alice-secret",
+  });
+  await seedTestAccount({
+    userId: "U002",
+    name: "Bob Lee",
+    username: "bob",
+    password: "bob-secret",
+  });
+  await seedTestAccount({
+    userId: "U003",
+    name: "Carol Wong",
+    username: "carol",
+    password: "carol-secret",
+  });
 });
 
 describe("AUTH-02: issue", () => {

@@ -5,14 +5,15 @@ import { beforeAll, describe, test } from "vitest";
 
 import worker from "../../worker";
 import type { Env } from "../../worker";
-import { importLegacyUsers } from "../auth/accounts";
 import { ACCESS_COOKIE_NAME } from "../auth/cookies";
-import { applyMigrations, testDb } from "../auth/test-bootstrap";
-import { completeCredentialUpgrade } from "../auth/upgrade";
+import {
+  applyMigrations,
+  seedTestAccount,
+  testDb,
+} from "../auth/test-bootstrap";
 
 const SECRET = "test-access-token-secret";
 const HOST = "https://efcc.example";
-const HEADER = ["User_ID", "Name", "Username", "PIN_Code", "Status"];
 
 function testEnv(overrides: Partial<Env> = {}): Env {
   return {
@@ -132,30 +133,37 @@ describe("S4-02: Account Directory contract", () => {
 
   beforeAll(async () => {
     await applyMigrations();
-    await importLegacyUsers(testDb(), [
-      HEADER,
-      ["AD001", "Directory Admin", "ad-admin", "1111", "Active"],
-      ["AD002", "Directory Staff", "ad-staff", "2222", "Active"],
-      ["AD003", "Directory Member", "ad-member", "3333", "Active"],
-      ["AD004", "Directory Pending", "ad-pending", "4444", "Pending"],
-    ]);
+    await Promise.all(
+      [
+        {
+          userId: "AD001",
+          name: "Directory Admin",
+          username: "ad-admin",
+          password: "ad-admin-secret",
+        },
+        {
+          userId: "AD002",
+          name: "Directory Staff",
+          username: "ad-staff",
+          password: "ad-staff-secret",
+        },
+        {
+          userId: "AD003",
+          name: "Directory Member",
+          username: "ad-member",
+          password: "ad-member-secret",
+        },
+        {
+          userId: "AD004",
+          name: "Directory Pending",
+          username: "ad-pending",
+          password: "ad-pending-secret",
+          accountStatus: "Pending" as const,
+        },
+      ].map((account) => seedTestAccount(account))
+    );
     await ensureIdentity("admin", "AD001");
     await ensureIdentity("staff", "AD002");
-    await Promise.all(
-      (
-        [
-          ["AD001", "1111", "ad-admin-secret"],
-          ["AD002", "2222", "ad-staff-secret"],
-          ["AD003", "3333", "ad-member-secret"],
-        ] as const
-      ).map(([userId, legacyPin, newCredential]) =>
-        completeCredentialUpgrade(testDb(), {
-          userId,
-          legacyPin,
-          newCredential,
-        })
-      )
-    );
     await testDb()
       .prepare("UPDATE accounts SET phone = ? WHERE user_id = ?")
       .bind("9123 4567", "AD001")

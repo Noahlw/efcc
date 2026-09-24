@@ -10,10 +10,7 @@ import ProfilePage from "@/app/profile/page";
 import SettingsPage from "@/app/profile/settings/page";
 import RegisterPage from "@/app/register/page";
 
-import {
-  credentialUpgradeHandlers,
-  publicAuthMemberCommunicationsHandlers,
-} from "./public-auth-member-communications-fixtures";
+import { publicAuthMemberCommunicationsHandlers } from "./public-auth-member-communications-fixtures";
 
 const clearAuthHint = () => {
   if (typeof window === "undefined") {
@@ -81,45 +78,6 @@ export const SignIn: Story = {
     await expect(
       canvas.findByRole("textbox", { name: /用戶名稱|username|user/iu })
     ).resolves.toBeVisible();
-  },
-};
-
-export const CredentialUpgrade: Story = {
-  decorators: [withPublicPresentation],
-  render: () => <LoginPage />,
-  parameters: {
-    presentation: {
-      screenId: "auth-sign-in",
-      psn: "PSN-AUTH-SIGN-IN-CREDENTIAL-UPGRADE",
-      productFamily: "public-auth-member-communications",
-      lifecycle: "active",
-      baseline: "supporting",
-      route: "/",
-      intent: null,
-      state: "credential-upgrade",
-      gap: null,
-      supersedes: [],
-    },
-    msw: credentialUpgradeHandlers,
-    nextjs: {
-      appDirectory: true,
-      navigation: { pathname: "/", query: {} },
-    },
-  },
-  play: async ({ canvasElement }) => {
-    const canvas = within(canvasElement);
-    await userEvent.type(
-      await canvas.findByRole("textbox", { name: /用戶名稱/iu }),
-      "t07-2-upgrade-member"
-    );
-    await userEvent.type(await canvas.findByLabelText("密碼"), "1234");
-    await userEvent.click(await canvas.findByRole("button", { name: "登入" }));
-    await expect(
-      canvas.findByRole("heading", { name: "設定新密碼" })
-    ).resolves.toBeVisible();
-    await expect(canvas.findByLabelText("舊 PIN 碼")).resolves.toBeVisible();
-    await expect(canvas.findByLabelText("新密碼")).resolves.toBeVisible();
-    await expect(canvas.findByLabelText("確認新密碼")).resolves.toBeVisible();
   },
 };
 

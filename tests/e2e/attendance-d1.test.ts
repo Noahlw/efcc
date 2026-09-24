@@ -109,7 +109,7 @@ const COPY = {
   successTitle: "簽到完成",
   duplicateTitle: "已完成簽到",
   duplicateBody: "你已在此聚會簽到，無需重複。",
-  backHome: "返回首頁",
+  returnToEvent: "返回聚會詳情",
   scanAgain: "再次簽到",
   submitFailure: "未能完成簽到，請重試一次。",
   offlineSubmit: "未能提交簽到。請重新連線後再次確認；系統不會自動重試。",
@@ -501,6 +501,12 @@ test.beforeAll(async ({ playwright }) => {
     expect(program.status).toBe(201);
     const programId = (program.body.data as { program: { program_id: string } })
       .program.program_id;
+    const publishedProgram = await patchJson(
+      admin.api,
+      `/api/v1/programs/${programId}`,
+      { lifecycle: "Active", discoverability: "Listed" }
+    );
+    expect(publishedProgram.status).toBe(200);
     const checkInToken = required(
       "program check-in token",
       (program.body.data as { program: { check_in_token: string | null } })
@@ -646,7 +652,7 @@ test.beforeAll(async ({ playwright }) => {
       `/api/v1/programs/${programId}/enrollment-requests`,
       {}
     );
-    expect(requestResult.status).toBe(201);
+    expect(requestResult.status, JSON.stringify(requestResult.body)).toBe(201);
     const requestId = (
       requestResult.body.data as { request: { request_id: string } }
     ).request.request_id;
@@ -945,9 +951,17 @@ test.describe("ATT-04 QR attendance proof", () => {
       await expect(
         page.getByText(COPY.resultTitle, { exact: true })
       ).toBeVisible();
-      await expect(
-        page.getByRole("link", { name: COPY.backHome })
-      ).toHaveAttribute("href", "/");
+      const returnToEvent = page.getByRole("link", {
+        name: COPY.returnToEvent,
+      });
+      const returnHref = await returnToEvent.getAttribute("href");
+      expect(returnHref).not.toBeNull();
+      const returnUrl = new URL(returnHref ?? "/", TARGET_URL);
+      expect(returnUrl.pathname).toBe("/programs");
+      expect(returnUrl.searchParams.get("program")).toBe(fixtures.programId);
+      expect([fixtures.eventA.event_id, fixtures.eventB.event_id]).toContain(
+        returnUrl.searchParams.get("event")
+      );
       const scanAgain = page.getByRole("button", { name: COPY.scanAgain });
       await expect(scanAgain).toBeVisible();
 

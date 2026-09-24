@@ -4,6 +4,8 @@
 **Date:** 2026-07-28
 **Scope:** Architecture and acceptance criteria only. This spec does not implement the feature.
 
+> Historical specification: the Apps Script HtmlService shell described here is retired. Current UI/runtime authority is the Next.js static export served by the Cloudflare Worker and D1; see [ADR-0017](../adr/0017-frontend-repo-rendering-and-cloudflare-deployment-boundary.md), [ADR-0020](../adr/0020-cloudflare-d1-identity-session-and-auth-boundary.md), and [PRODUCT.md](../../PRODUCT.md). Keep this record for historical rationale, not current implementation guidance.
+
 ## Decision evidence standard
 
 Starting 2026-07-28, an architecture decision affecting the Apps Script web app

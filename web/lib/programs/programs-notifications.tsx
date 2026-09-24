@@ -73,6 +73,8 @@ export interface ProgramsNotificationsProps extends Pick<
   /** Current management directory context for canonical View All recovery. */
   departmentId?: string | null;
   hash?: string | null;
+  /** Route item clicks through the owning Programs boundary. */
+  onNavigateItem?: (href: string) => void;
   full?: boolean;
 }
 function notificationHref(
@@ -82,26 +84,26 @@ function notificationHref(
   return buildProgramsHref(
     item.kind === "event"
       ? {
-        mode: "management",
-        programId: item.program_id,
-        departmentId: item.department_id,
-        task: "events",
-        eventId: item.event_id,
-        hash,
-      }
+          mode: "management",
+          programId: item.program_id,
+          departmentId: item.department_id,
+          task: "events",
+          eventId: item.event_id,
+          hash,
+        }
       : {
-        mode: "management",
-        programId: item.program_id,
-        departmentId: item.department_id,
-        task: "participants",
-        hash,
-      }
+          mode: "management",
+          programId: item.program_id,
+          departmentId: item.department_id,
+          task: "participants",
+          hash,
+        }
   );
 }
 
 type NotificationListProps = Pick<
   ProgramsNotificationsProps,
-  "state" | "hash"
+  "state" | "hash" | "onNavigateItem"
 > & {
   markRead: NotificationReadHandler;
   onNavigate?: () => void;
@@ -111,11 +113,13 @@ const NotificationRows = ({
   items,
   markRead,
   onNavigate,
+  onNavigateItem,
   hash,
 }: {
   items: readonly ManagementNotificationItem[];
   markRead: NotificationReadHandler;
   onNavigate?: () => void;
+  onNavigateItem?: (href: string) => void;
   hash?: string | null;
 }) => (
   <ScreenRowList aria-label={COPY.programs.notificationsListLabel}>
@@ -130,9 +134,9 @@ const NotificationRows = ({
       const detail =
         item.kind === "enrollment"
           ? COPY.programs.notificationsEnrollmentCount.replace(
-            "{count}",
-            String(item.count)
-          )
+              "{count}",
+              String(item.count)
+            )
           : `${item.name ? `${item.name} · ` : ""}${hkWallDateTimeLabel(item.starts_at)}`;
       return (
         <ScreenRow key={itemKey} asChild>
@@ -156,6 +160,10 @@ const NotificationRows = ({
               // so a pending or failed mark-read can never block the task.
               onNavigate?.();
               void markRead([item]);
+              if (onNavigateItem) {
+                event.preventDefault();
+                onNavigateItem(notificationHref(item, hash));
+              }
             }}
           >
             {item.read || (
@@ -187,6 +195,7 @@ const NotificationList = ({
   state,
   markRead,
   onNavigate,
+  onNavigateItem,
   hash,
 }: NotificationListProps) => {
   if (state.kind === "loading") {
@@ -228,6 +237,7 @@ const NotificationList = ({
             items={unread}
             markRead={markRead}
             onNavigate={onNavigate}
+            onNavigateItem={onNavigateItem}
             hash={hash}
           />
         </ScreenSection>
@@ -238,6 +248,7 @@ const NotificationList = ({
             items={earlier}
             markRead={markRead}
             onNavigate={onNavigate}
+            onNavigateItem={onNavigateItem}
             hash={hash}
           />
         </ScreenSection>
@@ -263,6 +274,7 @@ const NotificationFeed = ({
   markRead,
   onRetry,
   onNavigate,
+  onNavigateItem,
   className,
   status,
   announcement,
@@ -273,6 +285,7 @@ const NotificationFeed = ({
   markRead: NotificationReadHandler;
   onRetry: () => void;
   onNavigate?: () => void;
+  onNavigateItem?: (href: string) => void;
   className?: string;
   status?: FeedPresentationProps["status"];
   announcement?: FeedPresentationProps["announcement"];
@@ -292,6 +305,7 @@ const NotificationFeed = ({
           state={state}
           markRead={markRead}
           onNavigate={onNavigate}
+          onNavigateItem={onNavigateItem}
           hash={hash}
         />
       }
@@ -300,6 +314,7 @@ const NotificationFeed = ({
           state={state}
           markRead={markRead}
           onNavigate={onNavigate}
+          onNavigateItem={onNavigateItem}
           hash={hash}
         />
       }
@@ -308,6 +323,7 @@ const NotificationFeed = ({
           state={{ kind: "loading" }}
           markRead={markRead}
           onNavigate={onNavigate}
+          onNavigateItem={onNavigateItem}
           hash={hash}
         />
       }
@@ -317,6 +333,7 @@ const NotificationFeed = ({
             state={state}
             markRead={markRead}
             onNavigate={onNavigate}
+            onNavigateItem={onNavigateItem}
             hash={hash}
           />
           <Button className={styles.retry} type="button" onClick={onRetry}>
@@ -329,6 +346,7 @@ const NotificationFeed = ({
           state={state}
           markRead={markRead}
           onNavigate={onNavigate}
+          onNavigateItem={onNavigateItem}
           hash={hash}
         />
       }
@@ -341,6 +359,7 @@ export const ProgramsNotifications = ({
   onRetry,
   onOpen,
   onMarkRead,
+  onNavigateItem,
   full = false,
   status,
   announcement,
@@ -515,6 +534,7 @@ export const ProgramsNotifications = ({
           state={effectiveState}
           markRead={markRead}
           onRetry={onRetry}
+          onNavigateItem={onNavigateItem}
           status={notificationStatus}
           announcement={announcement}
           focusTargetRef={focusTargetRef}
@@ -587,6 +607,7 @@ export const ProgramsNotifications = ({
             markRead={markRead}
             onRetry={onRetry}
             onNavigate={closePopover}
+            onNavigateItem={onNavigateItem}
             status={notificationStatus}
             announcement={announcement}
             focusTargetRef={focusTargetRef}

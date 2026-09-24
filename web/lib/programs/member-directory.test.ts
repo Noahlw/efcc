@@ -24,20 +24,15 @@ import { beforeAll, describe, test } from "vitest";
 
 import worker from "../../worker";
 import type { Env } from "../../worker";
-import { importLegacyUsers } from "../auth/accounts";
 import { ACCESS_COOKIE_NAME } from "../auth/cookies";
-import { applyMigrations, testDb } from "../auth/test-bootstrap";
-import { completeCredentialUpgrade } from "../auth/upgrade";
+import {
+  applyMigrations,
+  seedTestAccount,
+  testDb,
+} from "../auth/test-bootstrap";
 
 const SECRET = "test-access-token-secret";
 const HOST = "https://efcc.example";
-const HEADER = [
-  "User_ID",
-  "Name",
-  "Username",
-  "PIN_Code",
-  "Status",
-];
 
 function testEnv(overrides: Partial<Env> = {}): Env {
   return {
@@ -343,32 +338,58 @@ describe("087-04: Member Directory search scope boundary", () => {
 
   beforeAll(async () => {
     await applyMigrations();
-    await importLegacyUsers(testDb(), [
-      HEADER,
-      ["A001", "Admin One", "root-admin", "1111", "Active"],
-      ["A002", "Staff One", "root-staff", "2222", "Active"],
-      ["A003", "Member Manager", "md-member-dm", "3333", "Active"],
-      ["A004", "Plain Member", "md-plain", "4444", "Active"],
-      ["A005", "Dana X", "md-dana-x", "5555", "Active"],
-      ["A006", "Evan Y", "md-evan-y", "6666", "Active"],
-      ["A007", "Fay None", "md-fay-none", "7777", "Active"],
-      ["A008", "Grace Pending", "md-grace-p", "8888", "Pending"],
-    ]);
     await Promise.all(
-      (
-        [
-          ["A001", "1111", "admin-secret"],
-          ["A002", "2222", "staff-secret"],
-          ["A003", "3333", "dm-secret"],
-          ["A004", "4444", "plain-secret"],
-        ] as const
-      ).map(([userId, legacyPin, newCredential]) =>
-        completeCredentialUpgrade(testDb(), {
-          userId,
-          legacyPin,
-          newCredential,
-        })
-      )
+      [
+        {
+          userId: "A001",
+          name: "Admin One",
+          username: "root-admin",
+          password: "admin-secret",
+        },
+        {
+          userId: "A002",
+          name: "Staff One",
+          username: "root-staff",
+          password: "staff-secret",
+        },
+        {
+          userId: "A003",
+          name: "Member Manager",
+          username: "md-member-dm",
+          password: "dm-secret",
+        },
+        {
+          userId: "A004",
+          name: "Plain Member",
+          username: "md-plain",
+          password: "plain-secret",
+        },
+        {
+          userId: "A005",
+          name: "Dana X",
+          username: "md-dana-x",
+          password: "dana-x-secret",
+        },
+        {
+          userId: "A006",
+          name: "Evan Y",
+          username: "md-evan-y",
+          password: "evan-y-secret",
+        },
+        {
+          userId: "A007",
+          name: "Fay None",
+          username: "md-fay-none",
+          password: "fay-none-secret",
+        },
+        {
+          userId: "A008",
+          name: "Grace Pending",
+          username: "md-grace-p",
+          password: "grace-p-secret",
+          accountStatus: "Pending" as const,
+        },
+      ].map((account) => seedTestAccount(account))
     );
     adminAccess = await login("root-admin", "admin-secret");
     staffAccess = await login("root-staff", "staff-secret");

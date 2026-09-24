@@ -6,7 +6,7 @@ import { afterEach, describe, expect, test, vi } from "vitest";
 import {
   useAsyncResource,
   type AsyncResourceOptions,
-} from "@/lib/programs/use-async-resource";
+} from "@/lib/use-async-resource";
 
 const announceMock = vi.hoisted(() => vi.fn<(message: string) => void>());
 

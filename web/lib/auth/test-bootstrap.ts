@@ -2,10 +2,9 @@
  * Shared D1 test bootstrap for the auth/session tests (AUTH-01 #159 /
  * AUTH-02 #160).
  *
- * Runs inside the real `workerd` runtime via @cloudflare/vitest-pool-workers
- * (declared with `// @vitest-environment workers` at the top of each test
- * file). `applyD1Migrations` only applies migrations not yet applied, so
- * calling it per file is safe and idempotent.
+ * Runs inside the real `workerd` runtime via @cloudflare/vitest-pool-workers.
+ * `applyD1Migrations` only applies migrations not yet applied, so calling it
+ * per file is safe and idempotent.
  *
  * `env.DB` is the auto-provided local D1 binding declared in wrangler.jsonc;
  * `env.TEST_MIGRATIONS` is the parsed-migrations binding injected in
@@ -13,6 +12,8 @@
  */
 import { applyD1Migrations } from "cloudflare:test";
 import { env } from "cloudflare:workers";
+
+import { hashCredential, normalizeUsername } from "./credentials";
 
 /** The test bindings injected by the pool + vitest.config.ts. */
 interface TestEnv {
@@ -32,4 +33,46 @@ export async function applyMigrations(): Promise<void> {
 /** The test DB binding. */
 export function testDb(): D1Database {
   return testEnv.DB;
+}
+
+/** Seed one active/pending password account for a focused D1 test fixture. */
+export async function seedTestAccount(options: {
+  userId: string;
+  name: string;
+  username: string;
+  password: string;
+  accountStatus?: "Pending" | "Active" | "Suspended" | "Deactivated";
+  phone?: string | null;
+  now?: number;
+}): Promise<void> {
+  const now = options.now ?? Date.now();
+  const credentialHash = await hashCredential(options.password);
+  await testDb()
+    .prepare(
+      `INSERT INTO accounts (
+         user_id, name, username, username_normalized,
+         credential_hash, account_status, phone, qr_code_string,
+         created_at, updated_at
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, NULL, ?, ?)
+       ON CONFLICT(user_id) DO UPDATE SET
+         name = excluded.name,
+         username = excluded.username,
+         username_normalized = excluded.username_normalized,
+         credential_hash = excluded.credential_hash,
+         account_status = excluded.account_status,
+         phone = excluded.phone,
+         updated_at = excluded.updated_at`
+    )
+    .bind(
+      options.userId,
+      options.name,
+      options.username,
+      normalizeUsername(options.username),
+      credentialHash,
+      options.accountStatus ?? "Active",
+      options.phone ?? null,
+      now,
+      now
+    )
+    .run();
 }

@@ -70,6 +70,7 @@ beforeEach(() => {
   mocks.getDepartment.mockResolvedValue({ department, modules: [] });
 });
 afterEach(() => {
+  vi.unstubAllGlobals();
   clearManagementDraft(managedDepartment.department_id, "department-settings");
   clearWorkspaceMutationRecovery("department", {
     departmentId: managedDepartment.department_id,
@@ -79,6 +80,32 @@ afterEach(() => {
 });
 
 describe("DepartmentSettingsPanel identity access", () => {
+  test("reports an explicit offline state without dispatching a write", async () => {
+    const user = userEvent.setup();
+    const offlineNavigator = Object.create(navigator) as Navigator;
+    Object.defineProperty(offlineNavigator, "onLine", { value: false });
+    vi.stubGlobal("navigator", offlineNavigator);
+    render(
+      <DepartmentSettingsPanel
+        department={managedDepartment}
+        onClose={vi.fn()}
+      />
+    );
+
+    const name = await screen.findByRole("textbox", {
+      name: COPY.programs.deptName,
+    });
+    await user.clear(name);
+    await user.type(name, "離線更新");
+    await user.click(
+      screen.getByRole("button", { name: COPY.programs.saveDepartment })
+    );
+
+    await screen.findByText(COPY.programs.offlineError);
+    expect(mocks.updateDepartment).not.toHaveBeenCalled();
+    expect(readWorkspaceMutationRecovery()).toBeNull();
+  });
+
   test("routes authorized Department identity access into scoped Account Access", async () => {
     render(
       <DepartmentSettingsPanel department={department} onClose={vi.fn()} />

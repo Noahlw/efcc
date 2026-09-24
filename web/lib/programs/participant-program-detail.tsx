@@ -40,8 +40,8 @@ import {
 } from "@/lib/screen-foundations";
 import { rememberDeepLink } from "@/lib/session";
 
+import { useAsyncResource } from "../use-async-resource";
 import { ParticipantEnrollment } from "./participant-enrollment";
-import { useAsyncResource } from "./use-async-resource";
 import { clearAuthenticatedProgramsRecovery } from "./workspace-context";
 
 export interface ParticipantProgramDetailProps {

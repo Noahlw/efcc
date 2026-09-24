@@ -1,57 +1,60 @@
-# EFCC Project Guidance
+# EFCC agent guide
 
-## Docs-Backed (Apps Script)
+## Start with the source of truth
 
-- Surface missing official docs as blocking question. Status stays `Proposed` until official docs, the smallest local VM/API check, and any explicitly scoped operator `/exec` smoke are complete; `/exec` is not the default `READY` gate.
+- Read [CONTEXT.md](CONTEXT.md) for domain language and invariants.
+- Read the relevant accepted or superseded decision in [docs/adr/](docs/adr/).
+- Read the active handoff or implementation plan in [docs/plans/](docs/plans/).
+- Read [TESTING.md](TESTING.md) before changing test ownership or claiming readiness.
+- Use [docs/agents/](docs/agents/) for issue, triage, and domain routing.
+- Read [skill references and setup status](docs/agents/skills.md) before following the checked-in workflow references.
 
-## Headless-Gate (Verification)
+EFCC is one domain context with one root `CONTEXT.md`. Keep domain terms there, durable decisions in `docs/adr/`, and execution detail in `docs/plans/`. Preserve historical records; mark them historical or superseded when current behavior changes.
 
-- Web app changes require an acceptance trace written BEFORE implementation (mechanical edits exempt).
-- Authenticated E2E = Playwright versus `wrangler dev` on `127.0.0.1:8787` by default (zero Cloudflare account touched). `pnpm dev:local` builds, migrates, and starts it; `pnpm db:seed:local` seeds the disposable `E2E_` account fixtures and `pnpm db:seed:demo` seeds the `E2E_DEMO_` domain walkthrough. Unauthenticated/CSS checks use Orca `browser` (`Stateless-Wall` blocks Orca on authenticated RPCs).
-- The local run is the required `READY` gate (ADR-0029): relevant Playwright suites must pass 100% against local `wrangler dev` + local D1, with every criterion asserted through observable DOM or response state. Cloudflare deployment is optional/manual production-promotion evidence only; if run, use a fresh reserved `efcc-auth-*` or `efcc-dev-*` host, never the stale `efcc-prototype-129` host. Pipeline results append to the ticket plan when an appender command is explicitly run.
+## Build the smallest maintainable change
 
-## Layered testing authority
+- Inspect callers, routes, scripts, and current tests before editing a shared module.
+- Reuse the standard library, platform behavior, or an existing repository helper before adding a dependency or abstraction.
+- Keep domain logic under `web/lib/<domain>`, route composition under `web/app`, and Worker/API routing in `web/worker.ts`.
+- Keep authentication/session authority separate from the editable scoped Role Definition, Grant, hierarchy, and audit model.
+- Keep the root workspace and root command entrypoints as the default navigation path. Read `package.json` when a command is needed instead of copying a command list into a new document.
+- When an unfamiliar library, framework, or Cloudflare API is needed, read its current official documentation through Context7 or Firecrawl before choosing an implementation.
 
-- **Current rescue qualification amendment (2026-09-05):** `pnpm verify:programs` is the finite functional aggregate only. It must pass the Worker Contract, real local Worker/D1 Browser Acceptance, Responsive Matrix, and comprehensive local non-browser regression stages with current, complete, zero-retry evidence. The unchanged five-minute `pnpm test:programs:canary` remains an independently reported sustained-runtime diagnostic; B-003 stays `OPEN` residual risk and is not claimed fixed, harmless, or production-safe. A failed finite functional scenario still blocks T05. The machine result `functional-passed` is not `STACK_GREEN`; that state also requires ledger reconciliation, current `/code-review Standards` and `/code-review Spec`, one replacement PR, and the scoped risk record.
+Web behavior changes require an acceptance trace before implementation; mechanical documentation changes do not.
 
-- EFCC testing is layered. Read [`TESTING.md`](TESTING.md) before changing test architecture or claiming a T05 gate.
-- Worker/D1 correctness belongs to the Workers Vitest Contract Gate; repeated real-HTTP runtime reliability belongs to the `createTestHarness()` Runtime Reliability Canary; critical browser workflows belong to Playwright Browser Acceptance; viewport behavior belongs to the focused Responsive UI Matrix; promotion belongs to the aggregate gate.
-- T05 Browser Acceptance uses one representative viewport with zero retries. Responsive proof uses deterministic `320`, `390`, and `1280` scenarios. Heavy qualification is local-first; automatic GitHub CI remains fast-only.
-- T05 follows the published `#505` amendment and `#510` routing: `#551 → (#552/#553) → (#554/#555) → #556 → #557`, one owning commit per child on `rescue/t05-layered-testing`, one replacement PR. Historical `201 expected` and five-suite-run evidence remains diagnostic history.
+## Verify at the real boundary
 
-## UI Components and Variants
+- Run the smallest affected command during iteration.
+- Run `pnpm verify` on the clean candidate before a ready handoff.
+- Treat local Worker/D1 tests, Storybook, component tests, geometry tests, human/device review, independent review, and deployment evidence as separate seams. A lower-level pass proves only that seam.
+- Use explicit `pnpm install:browsers`; dependency installation must not silently install browser binaries.
+- Keep pre-commit fast: formatting, `ultracite doctor`, lint-staged, and `pnpm verify:precommit`.
 
-- All new or changed web UI MUST use the repository's local shadcn-style components and Radix primitives from `web/components/ui` where an equivalent exists. Extend an existing primitive or variant before creating a new control.
-- Component state, size, intent, and other stable semantic variants MUST use `class-variance-authority` (`cva`) with the repository's `cn` class-composition helper. Layout and composition belong to approved EFCC patterns/routes and ordinary Tailwind utilities; they are not blanket CVA variants. Keep variant definitions beside the component and preserve the existing shadcn API shape.
-- When a library, framework, or component API is unfamiliar, use the Context7 CLI before coding: `npx ctx7@latest library <name> "<specific question>"`, select the authoritative result, then run `npx ctx7@latest docs <library-id> "<single concept>"`. Keep queries free of secrets and use the fetched guidance in the implementation.
+## Protect data and external boundaries
 
-## Database Safety
+- Use only local or inventory-approved disposable development/test D1 targets for reset and seed operations.
+- Verify Worker account, route, D1 ID, environment, rate-limit namespace, and compatibility date before any remote Wrangler action. A placeholder in `web/wrangler.jsonc` is not identity evidence.
+- Never reset production or an unknown target. Never commit credentials, cookies, access tokens, storage state, or `.dev.vars` values.
+- Keep Apps Script, Google Sheets, the old RPC bridge, the external scanner opener, and public `/prototype` route retired. Keep the current Worker scanner and ZXing fallback.
+- Auth provider/library replacement is deferred to [#639](https://github.com/Noahlw/efcc/issues/639); do not fold it into unrelated cleanup.
 
-- Local/CI E2E may reset only explicitly disposable `E2E_`/`E2E_DEMO_` D1 fixtures through the checked-in seed scripts. Apps Script and Google Sheets are never mutated by automated tests; the `Users` tab remains immutable.
+## UI rules
 
-## UI Control Recovery
+- Use the existing local shadcn-style components, Radix primitives, `cn()` helper, and CVA for stable semantic variants where an equivalent exists.
+- Use Storybook for local presentation work and owner spot-checks. It does not replace Worker/D1, device, assistive-technology, or production evidence.
+- Treat tokens, promoted Storybook/real-app contracts, durable baselines, required coverage, waivers, and approval requirements as contract changes. Record owner approval before changing them.
+- Preserve unrelated pre-existing failures and report them with their actual boundary.
 
-- Canonical UI operating authority: [`docs/implementation/ui-control-recovery-governance.md`](docs/implementation/ui-control-recovery-governance.md). Read it before app-facing UI work.
-- Use Tailwind for ordinary layout/visual rules, CVA for stable semantic axes, local shadcn/Radix primitives plus `cn()`, tokens, and narrow layered global CSS. Patterns own repeated composition; routes own domain content/state/arrangement.
-- The UI Playground is the architectural role for focused presentation work; Storybook is the current renderer. Every shipped screen keeps a Screen Catalog entry and representative baseline Story that passes W7.
-- Add only material additional presentation states. Preserve existing T07–T09 PSNs; promote new PSNs or CTRs only for durable references or shared/high-risk machine rules. SCN is for durable real-app integration.
-- Ordinary implementation agents MUST NOT lower expectations, widen tolerances, change baselines, add skips/allowlists/suppressions, remove coverage, extend waivers, or use `!important` as routine containment.
-- A token, primitive/pattern contract, promoted SCN/CTR, durable baseline, required coverage, native exception, waiver, or approval requirement is a human-approved **CONTRACT CHANGE**. Exploratory Playground Stories and synthetic fixtures may evolve normally; preserve existing or promoted PSNs/SCNs/CTRs/baselines and never weaken a promoted or required contract to make a check pass.
-- Use dependency-aware blocking and one branch/PR per ordinary ticket; T07 remains the scoped shared-PR exception. A dependent ticket may start from a `STACK_GREEN` parent without waiting for merge.
-- Do not mix visual rescue with unrelated backend, schema, feature, lint, or data work. Do not treat screenshots or headless geometry as human or device approval.
-- Storybook fixtures are deterministic and synthetic; production must not import Storybook code. Real-app Playwright, Worker/D1 tests, and platform/human checks retain their separate truthful seams.
-- Every UI ticket receives an owner Storybook spot-check. Escalate L2 for change-risk design review and L3 for real platform/device/assistive-technology truth. Preserve and report unrelated pre-existing failures.
-
-## Agent skills
+## Repository routing
 
 ### Issue tracker
 
-EFCC issues and Wayfinder maps live in GitHub Issues for Noahlw/efcc. Check gh auth status before writes. See [issue-tracker.md](docs/agents/issue-tracker.md).
+GitHub Issues and Wayfinder maps live in Noahlw/efcc. Read [issue-tracker.md](docs/agents/issue-tracker.md) before any GitHub write. Check authentication and read back every write.
 
-### Triage labels
+### Triage
 
-Use needs-triage, needs-info, ready-for-agent, ready-for-human, and wontfix for the five canonical triage roles. See [triage-labels.md](docs/agents/triage-labels.md).
+Use the five canonical labels described in [triage-labels.md](docs/agents/triage-labels.md). Label readiness never authorizes scope changes, merge, deployment, or release.
 
-### Domain docs
+### Documentation
 
-EFCC is a single-context repository. Read root CONTEXT.md and relevant docs/adr/ decisions. See [domain.md](docs/agents/domain.md).
+Update current docs when commands or boundaries change. Do not rewrite old ADRs, applied migration SQL, or historical acceptance records to make them look current.

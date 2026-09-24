@@ -4,8 +4,8 @@
  */
 // CF0-06 acceptance suite — local production shell at 375×812 and 1280×800.
 // Runs against the static export served by tests/e2e/serve-static.ts; the
-// /api/v1/auth/* cookie boundary is stubbed in-browser so the suite has no
-// Google / Apps Script dependency (criterion 7).
+// /api/v1/auth/* cookie boundary is stubbed in-browser, so the suite needs no
+// external authentication service.
 
 import { expect, test } from "@playwright/test";
 import type { Page, Route, TestInfo } from "@playwright/test";
@@ -50,8 +50,7 @@ const AUTH_HINT_KEY = "efcc_auth_active";
 
 // Stub the cookie-only AUTH boundary. The shell resolves the user via
 // GET /api/v1/auth/me (access cookie) and refreshes via POST
-// /api/v1/auth/refresh; logout is POST /api/v1/auth/logout (204). The
-// legacy /api/v1/rpc proxy is no longer called by the shell.
+// /api/v1/auth/refresh; logout is POST /api/v1/auth/logout (204).
 async function stubAuth(route: Route) {
   const url = new URL(route.request().url());
   const path = url.pathname;
@@ -113,7 +112,6 @@ test.beforeEach(async ({ page }: { page: Page }) => {
   await page.route("**/api/v1/auth/me", stubAuth);
   await page.route("**/api/v1/auth/refresh", stubAuth);
   await page.route("**/api/v1/auth/logout", stubAuth);
-  await page.route("**/api/v1/rpc", stubAuth);
 });
 
 const isMobile = (projectName: string) => projectName.startsWith("mobile");

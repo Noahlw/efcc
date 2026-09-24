@@ -1,5 +1,8 @@
 # EFCC UI Control Recovery — Full Post-Main S4 Preservation Ledger
 
+> Historical evidence snapshot: Prepared 2026-09-02 for the S4 rescue work. Branch heads, PR states, commands, and gate references below are frozen to that effort and date; use the current repository instructions and active implementation plan for present-day workflow. Preserve this ledger as provenance.
+
+
 **Ticket:** T01 / [#506](https://github.com/Noahlw/efcc/issues/506)  
 **Ledger status:** Active T01 course-correction input; initial ledger merged, full lineage correction pending
 **Frozen source:** `feat/s4-f-contraction-release-gate` at `6edf28c0f8f7058cf992416e7b517824c3178c8c`  

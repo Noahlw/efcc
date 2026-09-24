@@ -148,7 +148,7 @@ following. Each is cited so an implementer cannot mistake it for a delta to "fix
 
 | # | Frozen contract | Production evidence | Prototype equivalent |
 | --- | --- | --- | --- |
-| F-01 | Server natural-key attendance dedup | `web/migrations/0004_attendance_guest_checkin.sql:117-125` — `attendances_active_event_member_idx`, `attendances_active_event_guest_phone_idx` | `checkedInEvents[key] = true` in browser memory |
+| F-01 | Server natural-key attendance dedup | `web/migrations/0000_baseline.sql` — `attendances_active_event_member_idx` and `attendances_active_event_guest_phone_idx` in the current rebuildable D1 baseline | `checkedInEvents[key] = true` in browser memory |
 | F-02 | Audit row on every terminal outcome | `web/lib/attendance.ts:478-513, 627-679, 749-781` — `attendance.check_in` with `SUCCESS` / `DUPLICATE` / `DENIED` + reason | none |
 | F-03 | Server enrollment + window + status gates | `web/lib/attendance.ts:266-279` (`hasActiveEnrollment`), `616-683` (`checkInGate`) | hardcoded `'discipleship'` |
 | F-04 | Distinct member / guest / operator authorization paths, never collapsed to a client flag | `attendance.ts:785-857` (member, `requireActor`), `983-1066` (guest, `actor(..., false)`), `1087-1148` (operator, `requireAssistedEventOperator`) | none |

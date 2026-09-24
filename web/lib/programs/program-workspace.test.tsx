@@ -74,6 +74,7 @@ const ScheduleRecoveryHarness = () => {
     <ProgramWorkspace
       programId="program-1"
       task={task}
+      scheduleOrigin={task === "schedule" ? "settings" : undefined}
       onBack={() => {}}
       onTaskChange={(nextTask) => {
         if (nextTask === "schedule" || nextTask === "settings") {
@@ -1364,6 +1365,74 @@ describe(ProgramWorkspace, () => {
     ).not.toBeInTheDocument();
   });
 
+  test("accepts a newer Program when the unchanged Cockpit has the same revision", async () => {
+    const user = userEvent.setup();
+    const initialCockpit = {
+      ...cockpitWithNext,
+      updated_at: "2026-01-01T00:00:00.000Z",
+    };
+    mocks.getManagementProgram.mockReset();
+    mocks.getManagementProgram
+      .mockResolvedValueOnce({
+        program,
+        department,
+        modules,
+        cockpit: initialCockpit,
+      })
+      .mockResolvedValueOnce({
+        program: {
+          ...program,
+          name: "伺服器最新課程",
+          updated_at: "2026-01-02T00:00:00.000Z",
+        },
+        department,
+        modules,
+        cockpit: { ...initialCockpit },
+      });
+    mocks.updateProgram.mockRejectedValueOnce(
+      new RpcError({ code: "CONFLICT", status: 409 })
+    );
+
+    render(
+      <ProgramWorkspace
+        programId="program-1"
+        task="settings"
+        onBack={vi.fn()}
+        onTaskChange={vi.fn()}
+      />
+    );
+
+    await screen.findByRole("heading", {
+      name: COPY.programs.settingsHubTitle,
+    });
+    await user.click(
+      screen.getByText(COPY.programs.settingsHubBasics, { exact: true })
+    );
+    const name = screen.getByRole("textbox", {
+      name: COPY.programs.programName,
+    });
+    await user.clear(name);
+    await user.type(name, "本地草稿");
+    await user.click(
+      screen.getByRole("button", {
+        name: COPY.programs.settingsSaveBasics,
+      })
+    );
+    await screen.findByText(COPY.programs.programConflict);
+    await user.click(
+      screen.getByRole("button", {
+        name: COPY.programs.workspaceRetryRefresh,
+      })
+    );
+
+    await expect(
+      screen.findByText(COPY.programs.workspaceReconciled)
+    ).resolves.toBeInTheDocument();
+    expect(
+      screen.getByRole("textbox", { name: COPY.programs.programName })
+    ).toHaveValue("伺服器最新課程");
+  });
+
   test("reconciles a response-lost archive without replaying the write", async () => {
     const user = userEvent.setup();
     mocks.getManagementProgram.mockReset();
@@ -1604,9 +1673,34 @@ describe(ProgramWorkspace, () => {
     await user.click(
       screen.getByRole("button", { name: COPY.programs.draftRecover })
     );
+    const recoveredName = screen.getByRole("textbox", {
+      name: COPY.programs.programName,
+    });
+    expect(recoveredName).toHaveValue("Schedule 復原名稱");
+    await user.click(
+      screen.getByRole("link", { name: COPY.programs.settingsBackToHub })
+    );
     expect(
-      screen.getByRole("textbox", { name: COPY.programs.programName })
-    ).toHaveValue("Schedule 復原名稱");
+      screen.getByRole("button", {
+        name: COPY.programs.settingsContinueEditing,
+      })
+    ).toBeInTheDocument();
+    await user.click(
+      screen.getByRole("button", {
+        name: COPY.programs.settingsContinueEditing,
+      })
+    );
+    expect(recoveredName).toHaveValue("Schedule 復原名稱");
+    await user.click(
+      screen.getByRole("button", { name: COPY.programs.settingsDiscard })
+    );
+    await waitFor(() => expect(recoveredName).toHaveValue(program.name));
+    await user.click(
+      screen.getByRole("link", { name: COPY.programs.settingsBackToHub })
+    );
+    await expect(
+      screen.findByRole("heading", { name: COPY.programs.settingsHubTitle })
+    ).resolves.toBeInTheDocument();
   });
 
   test("protects a hidden Preview draft from the Settings hub", async () => {

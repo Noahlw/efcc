@@ -6,21 +6,17 @@
 -- It never drops or updates non-disposable data.
 
 
--- Accounts used as foreign-key owners and disposable role actors. The
--- workerd seed (`web/lib/identity/seeds.ts`) upgrades these rows with the
--- same throwaway credential marker when it runs in focused tests.
+-- Accounts used as foreign-key owners and disposable role actors.
 INSERT OR IGNORE INTO accounts (
   user_id, name, username, username_normalized,
-  credential_hash, credential_kind, credential_version,
-  account_status, phone, qr_code_string,
-  legacy_pin_hash, requires_upgrade, lock_level, failed_attempts,
-  locked_until, lock_since, created_at, updated_at
+  credential_hash, account_status, phone, qr_code_string,
+  created_at, updated_at
 ) VALUES
-  ('E2E_DISPOSABLE_ADMIN', 'Disposable Admin', 'E2E_disposable_admin', 'e2e_disposable_admin', NULL, 'password', 2, 'Active', NULL, NULL, NULL, 0, 0, 0, NULL, NULL, CAST(strftime('%s', 'now') AS INTEGER) * 1000, CAST(strftime('%s', 'now') AS INTEGER) * 1000),
-  ('E2E_DISPOSABLE_STAFF', 'Disposable Staff', 'E2E_disposable_staff', 'e2e_disposable_staff', NULL, 'password', 2, 'Active', NULL, NULL, NULL, 0, 0, 0, NULL, NULL, CAST(strftime('%s', 'now') AS INTEGER) * 1000, CAST(strftime('%s', 'now') AS INTEGER) * 1000),
-  ('E2E_DISPOSABLE_DM', 'Disposable Department Manager', 'E2E_disposable_dm', 'e2e_disposable_dm', NULL, 'password', 2, 'Active', NULL, NULL, NULL, 0, 0, 0, NULL, NULL, CAST(strftime('%s', 'now') AS INTEGER) * 1000, CAST(strftime('%s', 'now') AS INTEGER) * 1000),
-  ('E2E_DISPOSABLE_PL', 'Disposable Program Leader', 'E2E_disposable_pl', 'e2e_disposable_pl', NULL, 'password', 2, 'Active', NULL, NULL, NULL, 0, 0, 0, NULL, NULL, CAST(strftime('%s', 'now') AS INTEGER) * 1000, CAST(strftime('%s', 'now') AS INTEGER) * 1000),
-  ('E2E_DISPOSABLE_MEMBER', 'Disposable Member', 'E2E_disposable_member', 'e2e_disposable_member', NULL, 'password', 2, 'Active', NULL, NULL, NULL, 0, 0, 0, NULL, NULL, CAST(strftime('%s', 'now') AS INTEGER) * 1000, CAST(strftime('%s', 'now') AS INTEGER) * 1000);
+  ('E2E_DISPOSABLE_ADMIN', 'Disposable Admin', 'E2E_disposable_admin', 'e2e_disposable_admin', NULL, 'Active', NULL, NULL, CAST(strftime('%s', 'now') AS INTEGER) * 1000, CAST(strftime('%s', 'now') AS INTEGER) * 1000),
+  ('E2E_DISPOSABLE_STAFF', 'Disposable Staff', 'E2E_disposable_staff', 'e2e_disposable_staff', NULL, 'Active', NULL, NULL, CAST(strftime('%s', 'now') AS INTEGER) * 1000, CAST(strftime('%s', 'now') AS INTEGER) * 1000),
+  ('E2E_DISPOSABLE_DM', 'Disposable Department Manager', 'E2E_disposable_dm', 'e2e_disposable_dm', NULL, 'Active', NULL, NULL, CAST(strftime('%s', 'now') AS INTEGER) * 1000, CAST(strftime('%s', 'now') AS INTEGER) * 1000),
+  ('E2E_DISPOSABLE_PL', 'Disposable Program Leader', 'E2E_disposable_pl', 'e2e_disposable_pl', NULL, 'Active', NULL, NULL, CAST(strftime('%s', 'now') AS INTEGER) * 1000, CAST(strftime('%s', 'now') AS INTEGER) * 1000),
+  ('E2E_DISPOSABLE_MEMBER', 'Disposable Member', 'E2E_disposable_member', 'e2e_disposable_member', NULL, 'Active', NULL, NULL, CAST(strftime('%s', 'now') AS INTEGER) * 1000, CAST(strftime('%s', 'now') AS INTEGER) * 1000);
 
 -- The migration seeds these two fixed departments. INSERT OR IGNORE keeps
 -- standalone reruns safe while making the dependency explicit for a clean

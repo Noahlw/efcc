@@ -1197,7 +1197,6 @@ function productionPath(file: string): boolean {
     file.startsWith("web/") &&
     !file.startsWith("web/components/ui/") &&
     !file.includes("/.storybook/") &&
-    !file.includes("/prototype/") &&
     !file.includes(".test.")
   );
 }

@@ -1,34 +1,33 @@
-# EFCC Web Frontend
+# EFCC Web application
 
 Next.js static export hosted on Cloudflare Workers with D1-native `/api/v1/*` routes (ADR-0017 / ADR-0018 / ADR-0020).
 
-## Local Development & Testing
+## Development
 
-The Worker serves the Next static export and the D1 API surfaces (`/api/v1/auth/*`, `/api/v1/programs/*`, `/api/v1/attendance*`). Run the local Worker preview server for full interactive testing:
+The Worker serves the Next static export and the D1 API surfaces (`/api/v1/auth/*`, `/api/v1/programs/*`, `/api/v1/attendance*`). Run commands from the repository root:
 
 ### 1. Configure Local Secret (`.dev.vars`)
 
 Create `web/.dev.vars` (gitignored) from `web/.dev.vars.example` and set a local-only `EFCC_ACCESS_TOKEN_SECRET` (see the template):
 
 ```sh
-cp .dev.vars.example .dev.vars
+cp web/.dev.vars.example web/.dev.vars
 openssl rand -hex 32   # paste into EFCC_ACCESS_TOKEN_SECRET
 ```
 
-### 2. Build Static Export & Run Wrangler Local Dev
+### Local Worker and D1
 
-```bash
-cd web
-pnpm build
-npx wrangler dev
+```sh
+pnpm dev:local
+pnpm db:seed:local
+pnpm db:seed:demo
 ```
 
-Open `http://127.0.0.1:8787` in your browser.
+`pnpm dev:local` builds the static export, applies the current migrations to local D1, and starts the Worker on `http://127.0.0.1:8787`.
 
 ## Component Tests
 
-```bash
-cd web
+```sh
 pnpm test:components
 ```
 
@@ -41,7 +40,7 @@ Storybook is local-only development/test tooling. It renders the production pres
 From the repository root, use the pinned Node and pnpm versions:
 
 ```sh
-fnm exec --using 22.18.0 pnpm --dir web storybook
+pnpm storybook
 ```
 
 The worktree-safe launcher reuses only a live Storybook process owned by this worktree. Otherwise it chooses a free port and prints the actual URL plus the direct Management Hub Story URL. Keep that process running for HMR. `PSN-*` identities are stable presentation references; Storybook slugs and iframe URLs are locators only.
@@ -49,10 +48,10 @@ The worktree-safe launcher reuses only a live Storybook process owned by this wo
 Focused qualification commands are:
 
 ```sh
-fnm exec --using 22.18.0 pnpm --dir web test:t07:foundation
-fnm exec --using 22.18.0 pnpm --dir web test:storybook
-fnm exec --using 22.18.0 pnpm --dir web storybook:build
-fnm exec --using 22.18.0 pnpm --dir web storybook:verify-index
+pnpm --filter web test:t07:foundation
+pnpm storybook:test
+pnpm storybook:build
+pnpm storybook:verify-index
 ```
 
 The index reconciliation command is run after a successful build and verifies the actual generated Storybook `index.json` against discovered CSF Stories and the independent Screen Catalog obligations. Review the named Stories at `390`, `799`, `800`, and `1440` CSS px; Controls are exploratory, while approval-sensitive evidence must name the Story/PSN. Human workshop fidelity, design approval, and backend acceptance remain separate gates.

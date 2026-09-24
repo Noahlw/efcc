@@ -12,11 +12,17 @@ const COPY = {
   directorySearch: "搜尋可管理課程",
   directoryList: "可管理課程",
   settings: "課程設定",
+  departmentSettings: "部門設定",
+  departmentName: "部門名稱",
+  saveDepartment: "儲存部門",
+  offlineError: "未能儲存。請重新連線後再試。",
   settingsBasics: "課程基本資料",
   settingsBasicsHeading: "基本資料",
   settingsBack: "返回設定",
+  home: "首頁",
   settingsUnsaved: "有未儲存變更。",
   settingsContinueEditing: "繼續編輯",
+  draftRecover: "恢復草稿",
   settingsDiscard: "捨棄變更",
   programName: "課程名稱",
   programDescription: "課程簡介",
@@ -28,6 +34,9 @@ const COPY = {
   workspaceOverview: "概覽",
   workspaceEvents: "聚會",
   workspaceParticipants: "參與者",
+  schedulePageTitle: "聚會排程",
+  previewEvents: "預覽聚會",
+  generateEvents: "產生聚會",
   eventFilterPast: "過往",
   eventDetailBack: "返回聚會列表",
   eventCreateCancel: "取消",
@@ -50,10 +59,19 @@ const COPY = {
   notificationsTitle: "通知",
   notificationsReadError: "通知狀態未能更新，請重試。",
   notificationsRetry: "重試載入通知",
+  returnManagementDirectory: "返回管理課程目錄",
+  settingsPublishing: "發布與顯示",
+  savePublishing: "儲存發布與顯示",
+  confirmPublishing:
+    "確認後會更新課程狀態或課程目錄顯示；封存仍會按現有營運承諾規則檢查。",
+  confirmChange: "確認變更",
+  discoverabilityListed: "公開",
+  discoverabilityUnlisted: "不公開",
 };
 
 interface Fixture {
   departmentId: string;
+  departmentName: string;
   programId: string;
   programName: string;
   description: string;
@@ -116,9 +134,10 @@ async function createFixture(page: Page, suffix: string): Promise<Fixture> {
       return { status: response.status, body: await response.json() };
     }
 
+    const departmentName = `E2E_T05M Management ${value}`;
     const department = await post("/api/v1/programs/departments", {
       code: `E2E_T05M_${value}`,
-      name: `E2E_T05M Management ${value}`,
+      name: departmentName,
       lifecycle: "Active",
     });
     if (department.status !== 201) {
@@ -170,6 +189,7 @@ async function createFixture(page: Page, suffix: string): Promise<Fixture> {
     }
     return {
       departmentId,
+      departmentName,
       programId,
       programName,
       description,
@@ -362,15 +382,23 @@ test.describe("T05.5 management Browser Acceptance", () => {
 
       const draftName = `${fixture.programName} Draft`;
       await nameInput.fill(draftName);
-      const dirtySettingsUrl = page.url();
       await page.getByRole("link", { name: COPY.enterParticipant }).click();
-      await expect(page.getByRole("alertdialog")).toBeVisible();
-      await page
-        .getByRole("alertdialog")
+      const leaveDialog = page.getByRole("alertdialog");
+      await expect(leaveDialog).toBeVisible();
+      await leaveDialog
         .getByRole("button", { name: COPY.settingsContinueEditing })
         .click();
-      await expect(page.getByRole("alertdialog")).not.toBeVisible();
-      await expect(page).toHaveURL(dirtySettingsUrl);
+      await expect(page).toHaveURL(
+        new RegExp(
+          `/programs\\?mode=management&program=${fixture.programId}&task=schedule&scheduleOrigin=settings$`,
+          "u"
+        )
+      );
+      const draftRecovery = page.getByRole("alertdialog");
+      await draftRecovery
+        .getByRole("button", { name: COPY.draftRecover })
+        .click();
+      await expect(draftRecovery).toHaveCount(0);
       await expect(nameInput).toHaveValue(draftName);
       await expect(
         page.locator('[data-screen-settings-dirty="true"]')
@@ -440,7 +468,7 @@ test.describe("T05.5 management Browser Acceptance", () => {
       ).toBeVisible();
       await expect(nameInput).toHaveValue(draftName);
 
-      await page.getByRole("link", { name: COPY.workspaceOverview }).click();
+      await page.getByRole("link", { name: COPY.home }).click();
       await expect(page.getByRole("alertdialog")).toBeVisible();
       await page
         .getByRole("alertdialog")
@@ -453,6 +481,13 @@ test.describe("T05.5 management Browser Acceptance", () => {
       await expect(
         page.getByRole("button", { name: COPY.settingsDiscard })
       ).toBeVisible();
+
+      await page.getByRole("link", { name: COPY.settingsBack }).click();
+      await expect(page.getByRole("alertdialog")).toBeVisible();
+      await page
+        .getByRole("alertdialog")
+        .getByRole("button", { name: COPY.settingsContinueEditing })
+        .click();
 
       await page.getByRole("button", { name: COPY.settingsDiscard }).click();
       await expect(nameInput).toHaveValue(fixture.programName);
@@ -490,6 +525,10 @@ test.describe("T05.5 management Browser Acceptance", () => {
 
       // R42/AC41: the saved authoritative Program is visible in Overview
       // without a full-page reload or remount from the old directory props.
+      await page.getByRole("link", { name: COPY.settingsBack }).click();
+      await expect(
+        page.getByRole("heading", { name: COPY.settings })
+      ).toBeVisible();
       await page.getByRole("link", { name: COPY.workspaceOverview }).click();
       await expect(page).toHaveURL(
         new RegExp(
@@ -537,6 +576,218 @@ test.describe("T05.5 management Browser Acceptance", () => {
       await expect(
         page.getByRole("heading", { name: COPY.directoryTitle, exact: true })
       ).toBeVisible();
+    } finally {
+      await restoreFixture(page, fixture);
+    }
+  });
+
+  test("programs-d1 #55: generation refreshes the visible Events directory", async ({
+    page,
+  }) => {
+    await loginAs(page);
+    const fixture = await createFixture(page, crypto.randomUUID().slice(0, 8));
+    try {
+      const ruleStatus = await page.evaluate(async (programId) => {
+        const response = await fetch(
+          "/api/v1/programs/" +
+            encodeURIComponent(programId) +
+            "/schedule-rules",
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              recurrence: "WEEKLY",
+              day_of_week: 3,
+              start_time: "19:30",
+              end_time: "20:45",
+            }),
+          }
+        );
+        return response.status;
+      }, fixture.programId);
+      expect(ruleStatus).toBe(201);
+
+      await page.goto(
+        "/programs?mode=management&program=" +
+          encodeURIComponent(fixture.programId) +
+          "&task=schedule"
+      );
+      await expect(
+        page.getByRole("heading", { name: COPY.schedulePageTitle })
+      ).toBeVisible();
+      const generate = page.getByRole("button", {
+        name: COPY.generateEvents,
+      });
+      await page.getByRole("button", { name: COPY.previewEvents }).click();
+      await expect(generate).toBeEnabled();
+      await generate.click();
+      await expect(
+        page.getByText(/^已產生 \d+ 場聚會，跳過 \d+ 場重複。$/u).first()
+      ).toBeVisible();
+
+      const upcomingEventId = await page.evaluate(async (programId) => {
+        const response = await fetch(
+          "/api/v1/programs/" + encodeURIComponent(programId) + "/events"
+        );
+        const body = (await response.json()) as {
+          data?: {
+            events?: {
+              event_id: string;
+              starts_at: string;
+              status: string;
+            }[];
+          };
+        };
+        return (
+          (body.data?.events ?? []).find(
+            (event) =>
+              event.status === "Active" &&
+              Date.parse(event.starts_at) > Date.now()
+          )?.event_id ?? null
+        );
+      }, fixture.programId);
+      expect(upcomingEventId).toBeTruthy();
+
+      await page
+        .getByRole("link", {
+          name: COPY.returnManagementDirectory,
+          exact: true,
+        })
+        .click();
+      await expect(page).toHaveURL(/task=events/u);
+      await expect(
+        page.locator('[data-event-id="' + upcomingEventId + '"]')
+      ).toBeVisible();
+    } finally {
+      await restoreFixture(page, fixture);
+    }
+  });
+
+  test("programs-d1 #38: discoverability changes wait for confirmation before saving", async ({
+    page,
+  }) => {
+    await loginAs(page);
+    const fixture = await createFixture(page, crypto.randomUUID().slice(0, 8));
+    const programRoute = `**/api/v1/programs/${fixture.programId}`;
+    let updates = 0;
+    await page.route(programRoute, async (route) => {
+      if (route.request().method() === "PATCH") {
+        updates += 1;
+      }
+      await route.continue();
+    });
+
+    try {
+      await page.goto(
+        `/programs?mode=management&program=${fixture.programId}&task=settings`
+      );
+      await page
+        .getByRole("button", { name: new RegExp(COPY.settingsPublishing, "u") })
+        .click();
+      const discoverability = page.getByRole("combobox", {
+        name: COPY.discoverabilityListed,
+      });
+      await expect(discoverability).toHaveText(COPY.discoverabilityListed);
+      await chooseSelectOption(
+        page,
+        COPY.discoverabilityListed,
+        COPY.discoverabilityUnlisted
+      );
+      await page
+        .getByRole("button", { name: COPY.savePublishing, exact: true })
+        .click();
+
+      const confirmation = page.getByRole("alert", {
+        name: COPY.confirmPublishing,
+      });
+      await expect(confirmation).toBeVisible();
+      expect(updates).toBe(0);
+
+      const unlistResponse = page.waitForResponse(
+        (response) =>
+          response.request().method() === "PATCH" &&
+          response.url().includes(`/api/v1/programs/${fixture.programId}`)
+      );
+      await confirmation
+        .getByRole("button", { name: COPY.confirmChange })
+        .click();
+      expect((await unlistResponse).status()).toBe(200);
+      await expect(discoverability).toHaveText(COPY.discoverabilityUnlisted);
+      expect(updates).toBe(1);
+
+      await chooseSelectOption(
+        page,
+        COPY.discoverabilityListed,
+        COPY.discoverabilityListed
+      );
+      await page
+        .getByRole("button", { name: COPY.savePublishing, exact: true })
+        .click();
+      const relistConfirmation = page.getByRole("alert", {
+        name: COPY.confirmPublishing,
+      });
+      await expect(relistConfirmation).toBeVisible();
+      expect(updates).toBe(1);
+
+      const relistResponse = page.waitForResponse(
+        (response) =>
+          response.request().method() === "PATCH" &&
+          response.url().includes(`/api/v1/programs/${fixture.programId}`)
+      );
+      await relistConfirmation
+        .getByRole("button", { name: COPY.confirmChange })
+        .click();
+      expect((await relistResponse).status()).toBe(200);
+      await expect(discoverability).toHaveText(COPY.discoverabilityListed);
+      expect(updates).toBe(2);
+    } finally {
+      await page.unroute(programRoute).catch(() => {});
+      await restoreFixture(page, fixture);
+    }
+  });
+
+  test("offline department save stays inline and reports the save error", async ({
+    page,
+  }) => {
+    await loginAs(page);
+    const fixture = await createFixture(page, crypto.randomUUID().slice(0, 8));
+    try {
+      await page.goto("/programs?mode=management");
+      await page
+        .locator("#programs-management-department-settings-trigger")
+        .click();
+      const picker = page.getByRole("dialog", {
+        name: COPY.departmentSettings,
+      });
+      if ((await picker.count()) > 0) {
+        await picker
+          .getByRole("button", { name: fixture.departmentName, exact: true })
+          .click();
+      }
+
+      const departmentPanel = page.locator(
+        `[id="${fixture.departmentId}-settings-panel"]`
+      );
+      await expect(departmentPanel).toHaveRole("region");
+      await expect(departmentPanel).toBeVisible();
+      const name = departmentPanel.getByRole("textbox", {
+        name: COPY.departmentName,
+      });
+      await name.fill("離線不應儲存");
+      const originalUrl = page.url();
+      await page.context().setOffline(true);
+      try {
+        await departmentPanel
+          .getByRole("button", { name: COPY.saveDepartment })
+          .click();
+        await expect(departmentPanel.getByRole("alert")).toHaveText(
+          COPY.offlineError
+        );
+        await expect(page).toHaveURL(originalUrl);
+        await expect(name).toHaveValue("離線不應儲存");
+      } finally {
+        await page.context().setOffline(false);
+      }
     } finally {
       await restoreFixture(page, fixture);
     }

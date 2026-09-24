@@ -5,12 +5,16 @@ import { describe, expect, test } from "vitest";
 
 import {
   B003_RESIDUAL_RISK,
+  PUI05_HOME_ACCEPTANCE_MAPPINGS,
   PROMOTION_STAGES,
   RUNTIME_CANARY_STAGE,
+  assertHomeAcceptanceReportMatchesMappings,
+  assertHomeParityMappings,
   assertMigrationLedgersComplete,
   assertLocalPromotionTarget,
   isCanaryArtifactGreen,
   isFunctionalPromotionManifest,
+  isHomeAcceptanceRunGreen,
   assertPlaywrightReportGreen,
   isCleanWorktreeStatus,
   stageArtifactPath,
@@ -20,20 +24,140 @@ const repoRoot = path.resolve(import.meta.dirname, "..");
 
 describe("T05.7 Programs promotion gate", () => {
   test("aggregates the independent layers in dependency order", () => {
-    expect(PROMOTION_STAGES.map(({ name }) => name)).toEqual([
+    expect(PROMOTION_STAGES.map(({ name }) => name)).toStrictEqual([
       "worker-contract",
       "browser-acceptance",
+      "home-browser-acceptance",
       "responsive-matrix",
-      "non-browser-precommit",
     ]);
     expect(
       PROMOTION_STAGES.map(({ name, expectedTests }) => [name, expectedTests])
-    ).toEqual([
+    ).toStrictEqual([
       ["worker-contract", undefined],
-      ["browser-acceptance", 36],
+      ["browser-acceptance", 48],
+      ["home-browser-acceptance", 5],
       ["responsive-matrix", 21],
-      ["non-browser-precommit", undefined],
     ]);
+  });
+
+  test("requires all five exact PUI-05 Home mapping rows", () => {
+    expect(() =>
+      assertHomeParityMappings(PUI05_HOME_ACCEPTANCE_MAPPINGS)
+    ).not.toThrow();
+    expect(() => assertHomeParityMappings(null)).toThrow(/missing/u);
+    expect(() =>
+      assertHomeParityMappings(PUI05_HOME_ACCEPTANCE_MAPPINGS.slice(0, 4))
+    ).toThrow(/count mismatch/u);
+  });
+
+  test("rejects missing or unrecognized PUI-05 Home case IDs", () => {
+    expect(() =>
+      assertHomeParityMappings([
+        ...PUI05_HOME_ACCEPTANCE_MAPPINGS.slice(0, 4),
+        PUI05_HOME_ACCEPTANCE_MAPPINGS[0],
+      ])
+    ).toThrow(/duplicates old ID/u);
+    expect(() =>
+      assertHomeParityMappings([
+        ...PUI05_HOME_ACCEPTANCE_MAPPINGS.slice(0, 4),
+        {
+          ...PUI05_HOME_ACCEPTANCE_MAPPINGS[4],
+          oldId: "PUI-05:999",
+        },
+      ])
+    ).toThrow(/unrecognized old ID/u);
+  });
+
+  test("binds each historical PUI-05 row to its exact replacement", () => {
+    expect(() =>
+      assertHomeParityMappings([
+        ...PUI05_HOME_ACCEPTANCE_MAPPINGS.slice(0, 3),
+        {
+          ...PUI05_HOME_ACCEPTANCE_MAPPINGS[3],
+          oldTitle: "a different historical case",
+        },
+        PUI05_HOME_ACCEPTANCE_MAPPINGS[4],
+      ])
+    ).toThrow(/approved replacement/u);
+    expect(() =>
+      assertHomeParityMappings([
+        ...PUI05_HOME_ACCEPTANCE_MAPPINGS.slice(0, 3),
+        {
+          ...PUI05_HOME_ACCEPTANCE_MAPPINGS[3],
+          replacementTest: "different replacement test",
+        },
+        PUI05_HOME_ACCEPTANCE_MAPPINGS[4],
+      ])
+    ).toThrow(/approved replacement/u);
+    expect(() =>
+      assertHomeParityMappings([
+        ...PUI05_HOME_ACCEPTANCE_MAPPINGS.slice(0, 3),
+        {
+          ...PUI05_HOME_ACCEPTANCE_MAPPINGS[3],
+          replacementFile: "tests/e2e/other.test.ts",
+        },
+        PUI05_HOME_ACCEPTANCE_MAPPINGS[4],
+      ])
+    ).toThrow(/approved replacement/u);
+  });
+
+  test("rejects duplicate replacement tests", () => {
+    expect(() =>
+      assertHomeParityMappings([
+        PUI05_HOME_ACCEPTANCE_MAPPINGS[0],
+        {
+          ...PUI05_HOME_ACCEPTANCE_MAPPINGS[1],
+          replacementTest: PUI05_HOME_ACCEPTANCE_MAPPINGS[0].replacementTest,
+        },
+        ...PUI05_HOME_ACCEPTANCE_MAPPINGS.slice(2),
+      ])
+    ).toThrow(/duplicates replacement test/u);
+  });
+
+  test("matches every Home report case to its named Playwright spec", () => {
+    const report = {
+      stats: { expected: 5, skipped: 0, unexpected: 0, flaky: 0 },
+      suites: [
+        {
+          file: "tests/e2e/programs-home-acceptance.test.ts",
+          specs: PUI05_HOME_ACCEPTANCE_MAPPINGS.map(({ replacementTest }) => ({
+            title: replacementTest,
+            tests: [{ results: [{ status: "passed", retry: 0 }] }],
+          })),
+        },
+      ],
+    };
+    expect(() =>
+      assertHomeAcceptanceReportMatchesMappings(report)
+    ).not.toThrow();
+    expect(() =>
+      assertHomeAcceptanceReportMatchesMappings({
+        ...report,
+        suites: [
+          {
+            ...report.suites[0],
+            specs: [
+              ...report.suites[0].specs.slice(0, 4),
+              {
+                ...report.suites[0].specs[4],
+                title: "unrecognized Home test",
+              },
+            ],
+          },
+        ],
+      })
+    ).toThrow(/unrecognized test/u);
+    expect(() =>
+      assertHomeAcceptanceReportMatchesMappings({
+        ...report,
+        suites: [
+          {
+            ...report.suites[0],
+            file: "tests/e2e/home.test.ts",
+          },
+        ],
+      })
+    ).toThrow(/came from/u);
   });
 
   test("keeps the sustained canary separate and discloses B-003", () => {
@@ -79,18 +203,20 @@ describe("T05.7 Programs promotion gate", () => {
             "tests/e2e/programs-responsive-matrix.test.ts",
           ],
         },
+        homeParityMappings: PUI05_HOME_ACCEPTANCE_MAPPINGS,
         stageResults: [
           ...finiteResults,
           { name: "runtime-canary", status: "failed" },
         ],
       })
-    ).toBe(true);
+    ).toBeTruthy();
     expect(
       isFunctionalPromotionManifest({
         status: "functional-passed",
+        homeParityMappings: PUI05_HOME_ACCEPTANCE_MAPPINGS,
         stageResults: finiteResults,
       })
-    ).toBe(false);
+    ).toBeFalsy();
   });
 
   test("requires complete migration ledgers and executable mappings", () => {
@@ -99,14 +225,14 @@ describe("T05.7 Programs promotion gate", () => {
         repoRoot,
         "docs/implementation/t05-participant-migration-ledger.md"
       ),
-      "utf8"
+      "utf-8"
     );
     const managementLedger = readFileSync(
       path.join(
         repoRoot,
         "docs/implementation/t05-management-migration-ledger.md"
       ),
-      "utf8"
+      "utf-8"
     );
 
     expect(
@@ -219,6 +345,9 @@ describe("T05.7 Programs promotion gate", () => {
       "/tmp/t05-promotion/run-1/browser-results.json"
     );
     expect(stageArtifactPath(PROMOTION_STAGES[2], artifactDirectory)).toBe(
+      "/tmp/t05-promotion/run-1/home-results.json"
+    );
+    expect(stageArtifactPath(PROMOTION_STAGES[3], artifactDirectory)).toBe(
       "/tmp/t05-promotion/run-1/responsive-results.json"
     );
     expect(stageArtifactPath(RUNTIME_CANARY_STAGE, artifactDirectory)).toBe(
@@ -240,23 +369,57 @@ describe("T05.7 Programs promotion gate", () => {
       scenariosCompleted: 1,
       failures: [],
     };
-    expect(isCanaryArtifactGreen(artifact, "rev-1")).toBe(true);
-    expect(isCanaryArtifactGreen({ ...artifact, windowMs: 1 }, "rev-1")).toBe(
-      false
-    );
+    expect(isCanaryArtifactGreen(artifact, "rev-1")).toBeTruthy();
+    expect(
+      isCanaryArtifactGreen({ ...artifact, windowMs: 1 }, "rev-1")
+    ).toBeFalsy();
     expect(
       isCanaryArtifactGreen(
         { ...artifact, failures: [{ message: "boom" }] },
         "rev-1"
       )
-    ).toBe(false);
+    ).toBeFalsy();
+  });
+
+  test("accepts only a current-run Home manifest with zero retries", () => {
+    const manifest = {
+      status: "passed",
+      runtime: "createTestHarness",
+      config: "web/wrangler.jsonc",
+      suite: "tests/e2e/programs-home-acceptance.config.ts",
+      revision: "rev-1",
+      layer: "home-browser-acceptance",
+      retries: 0,
+      target: "http://127.0.0.1:8787",
+      reportPath: "test-results/programs-promotion/run-1/home-results.json",
+      promotionRunId: "run-1",
+    };
+    expect(
+      isHomeAcceptanceRunGreen(manifest, "rev-1", manifest.reportPath, "run-1")
+    ).toBeTruthy();
+    expect(
+      isHomeAcceptanceRunGreen(
+        { ...manifest, retries: 1 },
+        "rev-1",
+        manifest.reportPath,
+        "run-1"
+      )
+    ).toBeFalsy();
+    expect(
+      isHomeAcceptanceRunGreen(
+        { ...manifest, revision: "old-revision" },
+        "rev-1",
+        manifest.reportPath,
+        "run-1"
+      )
+    ).toBeFalsy();
   });
 
   test("treats the worktree and every historical Programs group as gate inputs", () => {
-    expect(isCleanWorktreeStatus("")).toBe(true);
-    expect(isCleanWorktreeStatus(" M tests/e2e/programs-d1.test.ts")).toBe(
-      false
-    );
+    expect(isCleanWorktreeStatus("")).toBeTruthy();
+    expect(
+      isCleanWorktreeStatus(" M tests/e2e/programs-d1.test.ts")
+    ).toBeFalsy();
 
     const ledgers = [
       readFileSync(
@@ -264,23 +427,19 @@ describe("T05.7 Programs promotion gate", () => {
           repoRoot,
           "docs/implementation/t05-participant-migration-ledger.md"
         ),
-        "utf8"
+        "utf-8"
       ),
       readFileSync(
         path.join(
           repoRoot,
           "docs/implementation/t05-management-migration-ledger.md"
         ),
-        "utf8"
+        "utf-8"
       ),
     ].join("\n");
     const historicalConfig = readFileSync(
       path.join(repoRoot, "tests/e2e/programs-d1.config.ts"),
-      "utf8"
-    );
-    const governanceWorkflow = readFileSync(
-      path.join(repoRoot, ".github/workflows/ui-governance.yml"),
-      "utf8"
+      "utf-8"
     );
     for (const group of [
       "PUI-01",
@@ -305,10 +464,6 @@ describe("T05.7 Programs promotion gate", () => {
     }
     expect(historicalConfig).toMatch(
       /diagnostic[\s\S]*not promotion authority/iu
-    );
-    expect(governanceWorkflow).toContain("workflow_dispatch:");
-    expect(governanceWorkflow).not.toMatch(
-      /^\s+(push|pull_request|schedule):/mu
     );
   });
 });

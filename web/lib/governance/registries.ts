@@ -257,8 +257,7 @@ export const SCENARIO_REGISTRY: readonly RouteScenario[] = [
     contractIds: ["CTR-TK-01", "CTR-TK-07", "CTR-CSS-01", "CTR-STY-01"],
     coverageDisposition: "covered",
     layer: "route",
-    description:
-      "Account profile settings, PIN reset, and credential management",
+    description: "Account profile and credential settings",
   },
   {
     id: "SCN-ATTENTION-DIALOG",
@@ -801,7 +800,6 @@ export const APPROVAL_PACKAGE_REGISTRY: readonly ApprovalPackage[] = [
       "PSN-MGMT-HUB-EMPTY",
       "PSN-MGMT-HUB-RECOVERABLE-ERROR",
       "PSN-AUTH-SIGN-IN-DEFAULT",
-      "PSN-AUTH-SIGN-IN-CREDENTIAL-UPGRADE",
       "PSN-MEMBER-HOME-DEFAULT",
       "PSN-COMMS-NOTICES-DEFAULT",
       "PSN-PUBLIC-NOT-FOUND",
@@ -855,80 +853,6 @@ export const APPROVAL_PACKAGE_REGISTRY: readonly ApprovalPackage[] = [
  * Exact-scope, ledger-backed temporary exceptions carrying owner, rationale, and removal condition.
  */
 export const WAIVER_REGISTRY: readonly Waiver[] = [
-  {
-    id: "WVR-HISTORICAL-PROTOTYPE-MODULE-CSS",
-    ruleId: "RULE-NO-CSS-MODULES",
-    route: "/prototype",
-    scenario: "default",
-    viewports: [320, 390, 600, 799, 800, 1024, 1440],
-    browsers: ["chromium", "firefox", "webkit"],
-    affectedFiles: [
-      "web/app/prototype/page.tsx",
-      "web/app/prototype/prototype.module.css",
-    ],
-    owner: "Phase F Contraction Ledger / #494",
-    createdAt: "2026-08-31",
-    expiresAt: "2026-12-31",
-    rationale:
-      "Retired prototype sandbox retained for historical comparison; excluded from shipped bundles",
-    removalCondition:
-      "Retire or isolate prototype route when UI rescue reaches final release",
-    ledgerRef: "docs/implementation/ui-control-recovery-preservation-ledger.md",
-    status: "active",
-  },
-  {
-    id: "WVR-HISTORICAL-PROTOTYPE-INLINE-STYLES",
-    ruleId: "RULE-NO-INLINE-STYLES",
-    route: "/prototype",
-    scenario: "default",
-    viewports: [320, 390, 600, 799, 800, 1024, 1440],
-    browsers: ["chromium", "firefox", "webkit"],
-    affectedFiles: ["web/app/prototype/page.tsx"],
-    owner: "Phase F Contraction Ledger / #494",
-    createdAt: "2026-08-31",
-    expiresAt: "2026-12-31",
-    rationale:
-      "Prototype swatch cards declare dynamic token preview inline styles",
-    removalCondition:
-      "Retire or isolate prototype route when UI rescue reaches final release",
-    ledgerRef: "docs/implementation/ui-control-recovery-preservation-ledger.md",
-    status: "active",
-  },
-  {
-    id: "WVR-HISTORICAL-PROTOTYPE-NATIVE-CONTROLS",
-    ruleId: "RULE-UNDOCUMENTED-NATIVE-EXCEPTION",
-    route: "/prototype",
-    scenario: "default",
-    viewports: [320, 390, 600, 799, 800, 1024, 1440],
-    browsers: ["chromium", "firefox", "webkit"],
-    affectedFiles: ["web/app/prototype/page.tsx"],
-    owner: "Phase F Contraction Ledger / #494",
-    createdAt: "2026-08-31",
-    expiresAt: "2026-12-31",
-    rationale:
-      "Prototype sandbox uses native buttons and form controls for interactive preview",
-    removalCondition:
-      "Retire or isolate prototype route when UI rescue reaches final release",
-    ledgerRef: "docs/implementation/ui-control-recovery-preservation-ledger.md",
-    status: "active",
-  },
-  {
-    id: "WVR-HISTORICAL-PROTOTYPE-CSS-HOOKS",
-    ruleId: "RULE-NO-FORBIDDEN-STYLING-HOOKS",
-    route: "/prototype",
-    scenario: "default",
-    viewports: [320, 390, 600, 799, 800, 1024, 1440],
-    browsers: ["chromium", "firefox", "webkit"],
-    affectedFiles: ["web/app/prototype/prototype.module.css"],
-    owner: "Phase F Contraction Ledger / #494",
-    createdAt: "2026-08-31",
-    expiresAt: "2026-12-31",
-    rationale: "Prototype CSS contains legacy color override containment hook",
-    removalCondition:
-      "Retire or isolate prototype route when UI rescue reaches final release",
-    ledgerRef: "docs/implementation/ui-control-recovery-preservation-ledger.md",
-    status: "active",
-  },
   {
     id: "WVR-HISTORICAL-NOT-FOUND-INLINE-STYLES",
     ruleId: "RULE-NO-INLINE-STYLES",

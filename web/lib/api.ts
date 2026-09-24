@@ -9,16 +9,12 @@
 /**
  * AUTH-04 login response data (POST /api/v1/auth/login). Identity is
  * carried server-side in the httpOnly access+refresh cookies; this payload
- * carries only the public profile fields and the forced-upgrade gate.
- * `mustSetNewCredential: true` means a legacy account proved its one-time
- * legacy credential but NO session is issued — the forced-upgrade flow must
- * run before login can succeed (ADR-0020 §4 / AUTH-01 #159).
+ * carries only the public profile fields needed after a successful login.
  */
 export interface LoginResult {
   userId: string;
   name: string;
   status: string;
-  mustSetNewCredential: boolean;
 }
 
 /**
@@ -261,24 +257,6 @@ export function authLogin(
     {
       username,
       password,
-    },
-    { mutating: true }
-  );
-}
-
-/** POST /api/v1/auth/upgrade — replaces a verified legacy credential. */
-export function authUpgrade(
-  username: string,
-  legacyPin: string,
-  newCredential: string
-): Promise<{ user: PublicUser }> {
-  return authFetch<{ user: PublicUser }>(
-    "/api/v1/auth/upgrade",
-    "POST",
-    {
-      username,
-      legacyPin,
-      newCredential,
     },
     { mutating: true }
   );

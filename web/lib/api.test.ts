@@ -32,14 +32,6 @@ const LOGIN_RESULT: LoginResult = {
   userId: "U-test",
   name: "測試",
   status: "Active",
-  mustSetNewCredential: false,
-};
-
-const LOGIN_UPGRADE: LoginResult = {
-  userId: "U-test",
-  name: "測試",
-  status: "Active",
-  mustSetNewCredential: true,
 };
 
 const PUBLIC_USER: PublicUser = {
@@ -164,19 +156,6 @@ describe("api.ts: AUTH-04 cookie surface", () => {
       const result = await authLogin("test", "s3cret");
       assert.deepEqual(result, LOGIN_RESULT);
       assert.equal(fetchMock.calls.length, 1);
-    } finally {
-      fetchMock.restore();
-    }
-  });
-
-  test("authLogin surfaces mustSetNewCredential for a legacy account", async () => {
-    const fetchMock = installFetch(() =>
-      makeResponse(200, { requestId: "r-1", data: LOGIN_UPGRADE })
-    );
-    try {
-      const result = await authLogin("legacy", "pin");
-      assert.equal(result.mustSetNewCredential, true);
-      assert.equal(result.userId, "U-test");
     } finally {
       fetchMock.restore();
     }

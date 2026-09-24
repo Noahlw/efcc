@@ -14,10 +14,12 @@ import { beforeAll, describe, test } from "vitest";
 
 import worker from "../../worker";
 import type { Env } from "../../worker";
-import { importLegacyUsers } from "../auth/accounts";
 import { ACCESS_COOKIE_NAME } from "../auth/cookies";
-import { applyMigrations, testDb } from "../auth/test-bootstrap";
-import { completeCredentialUpgrade } from "../auth/upgrade";
+import {
+  applyMigrations,
+  seedTestAccount,
+  testDb,
+} from "../auth/test-bootstrap";
 import type {
   ManagementHubGroup,
   ManagementHubRow,
@@ -26,14 +28,6 @@ import type {
 
 const SECRET = "test-access-token-secret";
 const HOST = "https://efcc.example";
-const HEADER = [
-  "User_ID",
-  "Name",
-  "Username",
-  "PIN_Code",
-  "System_Role",
-  "Status",
-];
 
 function testEnv(overrides: Partial<Env> = {}): Env {
   return {
@@ -353,32 +347,41 @@ const EXPECTED_GROUP_ORDER = [
 describe("HUB-01: Management Hub directory projection", () => {
   beforeAll(async () => {
     await applyMigrations();
-    await importLegacyUsers(testDb(), [
-      HEADER,
-      ["U001", "Alice Chan", "alice", "1234", "Admin", "Active"],
-      ["U002", "Bob Lee", "bob", "5678", "Member", "Active"],
-      ["U003", "Carol Wong", "carol", "9012", "Member", "Active"],
-      ["U005", "Staff User", "staff", "2468", "Staff", "Active"],
-      // U007 stays grant-free until the module-gate test grants it exactly
-      // one department (shared-DB isolation for the attendance gate).
-      ["U007", "Dora Grant", "dora", "1357", "Member", "Active"],
-    ]);
     await Promise.all(
-      (
-        [
-          ["U001", "1234", "alice-secret"],
-          ["U002", "5678", "bob-secret"],
-          ["U003", "9012", "carol-secret"],
-          ["U005", "2468", "staff-secret"],
-          ["U007", "1357", "dora-secret"],
-        ] as const
-      ).map(([userId, legacyPin, newCredential]) =>
-        completeCredentialUpgrade(testDb(), {
-          userId,
-          legacyPin,
-          newCredential,
-        })
-      )
+      [
+        {
+          userId: "U001",
+          name: "Alice Chan",
+          username: "alice",
+          password: "alice-secret",
+        },
+        {
+          userId: "U002",
+          name: "Bob Lee",
+          username: "bob",
+          password: "bob-secret",
+        },
+        {
+          userId: "U003",
+          name: "Carol Wong",
+          username: "carol",
+          password: "carol-secret",
+        },
+        {
+          userId: "U005",
+          name: "Staff User",
+          username: "staff",
+          password: "staff-secret",
+        },
+        // U007 stays grant-free until the module-gate test grants it exactly
+        // one department (shared-DB isolation for the attendance gate).
+        {
+          userId: "U007",
+          name: "Dora Grant",
+          username: "dora",
+          password: "dora-secret",
+        },
+      ].map((account) => seedTestAccount(account))
     );
     await assignSystemIdentity("admin", "U001", 1);
     await assignSystemIdentity("staff", "U005", 0);

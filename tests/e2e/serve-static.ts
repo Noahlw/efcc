@@ -1,7 +1,6 @@
 // Zero-dep static server for web/out. Run via tsx; no framework deps.
 // Used by tests/e2e/responsive.config.ts webServer to serve the Next.js
-// static export on 127.0.0.1:4173. The e2e suite stubs the /api/v1/rpc
-// endpoint in-browser; this server only serves static assets.
+// static export on 127.0.0.1:4173. The server only serves static assets.
 
 import fs from "node:fs";
 import { createServer } from "node:http";

@@ -13,21 +13,15 @@ import { beforeAll, describe, test } from "vitest";
 
 import worker from "../../worker";
 import type { Env } from "../../worker";
-import { importLegacyUsers } from "../auth/accounts";
 import { ACCESS_COOKIE_NAME } from "../auth/cookies";
-import { applyMigrations, testDb } from "../auth/test-bootstrap";
-import { completeCredentialUpgrade } from "../auth/upgrade";
+import {
+  applyMigrations,
+  seedTestAccount,
+  testDb,
+} from "../auth/test-bootstrap";
 
 const HOST = "https://efcc.example";
 const SECRET = "t05-contract-test-secret";
-const HEADER = [
-  "User_ID",
-  "Name",
-  "Username",
-  "PIN_Code",
-  "System_Role",
-  "Status",
-];
 
 function testEnv(overrides: Partial<Env> = {}): Env {
   return {
@@ -197,20 +191,17 @@ async function createProgram(
 
 beforeAll(async () => {
   await applyMigrations();
-  await importLegacyUsers(testDb(), [
-    HEADER,
-    ["U001", "T05 Contract Admin", "t05-admin", "1234", "Admin", "Active"],
-    ["U002", "T05 Contract Member", "t05-member", "5678", "Member", "Active"],
-  ]);
-  await completeCredentialUpgrade(testDb(), {
+  await seedTestAccount({
     userId: "U001",
-    legacyPin: "1234",
-    newCredential: "t05-admin-secret",
+    name: "T05 Contract Admin",
+    username: "t05-admin",
+    password: "t05-admin-secret",
   });
-  await completeCredentialUpgrade(testDb(), {
+  await seedTestAccount({
     userId: "U002",
-    legacyPin: "5678",
-    newCredential: "t05-member-secret",
+    name: "T05 Contract Member",
+    username: "t05-member",
+    password: "t05-member-secret",
   });
   await installSystemIdentity("admin", "U001");
   await installSystemIdentity("member", "U002");

@@ -13,8 +13,8 @@ import type { AttentionData } from "@/lib/attention-panel";
 import { COPY } from "@/lib/copy";
 import { getManagementAccess } from "@/lib/programs/program-api";
 import type { ProgramsManagementAccess } from "@/lib/programs/program-api";
-import { useAsyncResource } from "@/lib/programs/use-async-resource";
 import { ScreenIconButton } from "@/lib/screen-foundations";
+import { useAsyncResource } from "@/lib/use-async-resource";
 
 type ProgramsAccessState =
   | { kind: "loading" }

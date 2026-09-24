@@ -3,7 +3,7 @@
  *
  * The seeds are the single source of the disposable identity foundation:
  * the fixed Admin and 會友基礎 identities plus assignable Staff, the
- * fixed Department / Program categories (already created by migration 0019),
+ * fixed Department / Program categories (already created by the baseline),
  * a representative scoped Department manager Role Definition, a
  * representative scoped Program leader Role Definition, and a small set of
  * Active accounts that receive automatic baseline 會友基礎 access.
@@ -11,12 +11,11 @@
  * Seeds are idempotent (every INSERT is OR IGNORE on a stable key) and run
  * through the disposable preflight before any write. A non-disposable or
  * stale-schema database refuses the seed run with the same error the
- * preflight surfaces; the operator must follow the manual reset command
- * before re-running.
+ * preflight surfaces. Rebuild only through the owning local test or
+ * development runner.
  */
 /* oxlint-disable eslint/no-await-in-loop, eslint/no-inline-comments, eslint/require-unicode-regexp, typescript/array-type -- seeds are sequenced to honor the FK dependencies between role_definitions, role_definition_grants, role_assignments, and accounts. */
-import { importLegacyUsers } from "../auth/accounts";
-import { hashCredential } from "../auth/credentials";
+import { hashCredential, normalizeUsername } from "../auth/credentials";
 import { preflightDisposableSchema } from "./preflight";
 import type { DisposableDatabaseInfo } from "./preflight";
 import { isCapability, PROTECTED_STABLE_KEYS } from "./types";
@@ -144,14 +143,6 @@ const DISPOSABLE_ACCOUNTS = {
   },
 } as const;
 
-const USERS_HEADER = [
-  "User_ID",
-  "Name",
-  "Username",
-  "PIN_Code",
-  "Status",
-];
-
 const YOUTH_BIBLE_STUDY_PROGRAM = {
   program_id: "018f3b8a-0000-7000-8000-300000000001",
   department_id: "018f3b8a-0000-7000-8000-000000000001", // 青區
@@ -159,52 +150,7 @@ const YOUTH_BIBLE_STUDY_PROGRAM = {
 };
 
 const CREATED_AT = "2026-08-27T00:00:00.000Z";
-
-function disposableRows() {
-  return [
-    USERS_HEADER,
-    [
-      DISPOSABLE_ACCOUNTS.ADMIN.user_id,
-      DISPOSABLE_ACCOUNTS.ADMIN.name,
-      DISPOSABLE_ACCOUNTS.ADMIN.username,
-      "0000",
-
-      "Active",
-    ],
-    [
-      DISPOSABLE_ACCOUNTS.STAFF.user_id,
-      DISPOSABLE_ACCOUNTS.STAFF.name,
-      DISPOSABLE_ACCOUNTS.STAFF.username,
-      "0000",
-
-      "Active",
-    ],
-    [
-      DISPOSABLE_ACCOUNTS.DEPARTMENT_MANAGER.user_id,
-      DISPOSABLE_ACCOUNTS.DEPARTMENT_MANAGER.name,
-      DISPOSABLE_ACCOUNTS.DEPARTMENT_MANAGER.username,
-      "0000",
-
-      "Active",
-    ],
-    [
-      DISPOSABLE_ACCOUNTS.PROGRAM_LEADER.user_id,
-      DISPOSABLE_ACCOUNTS.PROGRAM_LEADER.name,
-      DISPOSABLE_ACCOUNTS.PROGRAM_LEADER.username,
-      "0000",
-
-      "Active",
-    ],
-    [
-      DISPOSABLE_ACCOUNTS.MEMBER.user_id,
-      DISPOSABLE_ACCOUNTS.MEMBER.name,
-      DISPOSABLE_ACCOUNTS.MEMBER.username,
-      "0000",
-
-      "Active",
-    ],
-  ];
-}
+const CREATED_AT_EPOCH_MS = Date.parse(CREATED_AT);
 
 function assertCapability(capability: string): Capability {
   if (!isCapability(capability)) {
@@ -446,20 +392,32 @@ export async function seedDisposableIdentity(
     YOUTH_BIBLE_STUDY_IDENTITY.capabilities
   );
 
-  await importLegacyUsers(db, disposableRows());
   const disposableCredentialHash = await hashCredential("0000");
   for (const account of Object.values(DISPOSABLE_ACCOUNTS)) {
     await db
       .prepare(
-        `UPDATE accounts
-            SET requires_upgrade = 0,
-                legacy_pin_hash = NULL,
-                credential_hash = ?,
-                credential_kind = 'password',
-                credential_version = 2
-          WHERE user_id = ?`
+        `INSERT INTO accounts (
+            user_id, name, username, username_normalized,
+            credential_hash, account_status, phone, qr_code_string,
+            created_at, updated_at
+          ) VALUES (?, ?, ?, ?, ?, 'Active', NULL, NULL, ?, ?)
+          ON CONFLICT(user_id) DO UPDATE SET
+            name = excluded.name,
+            username = excluded.username,
+            username_normalized = excluded.username_normalized,
+            credential_hash = excluded.credential_hash,
+            account_status = 'Active',
+            updated_at = excluded.updated_at`
       )
-      .bind(disposableCredentialHash, account.user_id)
+      .bind(
+        account.user_id,
+        account.name,
+        account.username,
+        normalizeUsername(account.username),
+        disposableCredentialHash,
+        CREATED_AT_EPOCH_MS,
+        CREATED_AT_EPOCH_MS
+      )
       .run();
   }
 

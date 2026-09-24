@@ -14,8 +14,8 @@ import {
   type ManagementHubRow,
   type ManagementHubView,
 } from "@/lib/programs/program-api";
-import { useAsyncResource } from "@/lib/programs/use-async-resource";
 import { rememberDeepLink } from "@/lib/session";
+import { useAsyncResource } from "@/lib/use-async-resource";
 
 type HubState =
   | { kind: "loading" }

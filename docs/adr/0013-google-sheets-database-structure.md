@@ -1,5 +1,8 @@
 # DB-001: Google Sheets Database Structure
 
+> Historical record: This schema describes the retired Google Sheets generation and is not a source for current application data. Current D1 schema authority is [ADR-0030](0030-d1-domain-schema-and-development-database.md) and web/migrations/. Keep this file as historical rationale.
+
+
 **Status:** Active
 **Date:** 2026-07-30
 **Source:** Production spreadsheet "Copy of Church Attendance System.xlsx" (990-row Users sheet, exported for structural reference)

@@ -1,5 +1,7 @@
 # Landing-Page UI Acceptance Plan
 
+> Historical note (2026-09-24): this plan predates the Worker/D1 username/password login. Its Apps Script/PIN login criteria are not current implementation guidance. The forced credential-upgrade flow in Spec 077 was retired because there are no legacy accounts to migrate; keep this file as design history.
+
 **Feature:** Landing-page UI rework (impeccable Persuade surface; deferred from 075-auth-d1-foundation-acceptance-plan.md "Out of scope")
 **Spec authority:** Spec 074 (shell responsive/accessibility baseline), Spec 000 (product truth), Spec 071 (accessibility criteria), ADR-0017 (static export, no server runtime)
 **Date:** 2026-08-05
@@ -7,7 +9,7 @@
 
 ## Scope
 
-Re-skin the signed-out landing route (`web/app/page.tsx` + `web/app/page.module.css` + landing copy in `web/lib/copy.ts`) into an intentional Persuade surface. Auth/backend behavior is untouched by this landing-page slice: `web/lib/auth`, D1 migrations, Worker auth routes, Apps Script mirror code, and unrelated domain screens are not modified. The default signed-out login, session restore, and error handling contract remain stable. The separately tracked forced-credential-upgrade flow is specified by `077-legacy-credential-upgrade-acceptance-plan.md` and may extend `COPY.login.*` with upgrade-specific copy.
+Re-skin the signed-out landing route (`web/app/page.tsx` + `web/app/page.module.css` + landing copy in `web/lib/copy.ts`) into an intentional Persuade surface. Auth/backend behavior was untouched by this landing-page slice. The default signed-out login, session restore, and error handling contract remain stable. The separately tracked forced-credential-upgrade flow in Spec 077 is retired; do not add upgrade-specific copy to the current login page.
 
 ## Direction (dealt before code)
 
@@ -40,7 +42,7 @@ Unauthenticated flow, verified via Orca `browser` (desktop and mobile viewports)
 | L10 | Responsive (375px) no horizontal overflow | `document.documentElement.scrollWidth <= innerWidth` at 375px and at desktop |
 | L11 | Touch targets ≥ 44×44 CSS px | primary controls have ≥ 44px height (computed) |
 | L12 | Error/notice surface preserved | default login error path renders `role="alert"` text; component test asserts `COPY.restore.expired` on bad login |
-| L13 | Default auth contract preserved | `web/lib/app.test.tsx` Login block passes (valid login → `replace("/profile")`, session persisted, invalid login keeps form, valid stored session restores); forced upgrade is verified separately by Spec 077 |
+| L13 | Default auth contract preserved | `web/lib/app.test.tsx` Login block passes (valid login → `replace("/profile")`, session persisted, invalid login keeps form, valid stored session restores); the retired forced-upgrade flow is not a current acceptance requirement |
 
 ## Forbidden paths
 

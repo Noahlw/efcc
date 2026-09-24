@@ -615,8 +615,6 @@ describe("#486 Account Access handlers", () => {
     for (const account of body.data.accounts) {
       expect(account).not.toHaveProperty("credentialHash");
       expect(account).not.toHaveProperty("credential_hash");
-      expect(account).not.toHaveProperty("legacyPinHash");
-      expect(account).not.toHaveProperty("legacy_pin_hash");
       expect(account).not.toHaveProperty("phone");
     }
   });

@@ -52,8 +52,8 @@ import type {
   RoleHierarchyView,
 } from "@/lib/identity/role-hierarchy";
 import { getRoleHierarchy } from "@/lib/identity/role-hierarchy-api";
-import { useAsyncResource } from "@/lib/programs/use-async-resource";
 import { rememberDeepLink } from "@/lib/session";
+import { useAsyncResource } from "@/lib/use-async-resource";
 import { cn } from "@/lib/utils";
 
 import { DirectoryFrame } from "./directory-frame";

@@ -1,5 +1,8 @@
 # ADR-0003: Client-Server RPC via google.script.run
 
+> Historical record: The Apps Script RPC transport is retired. Current browser/API traffic goes through the Worker HTTP boundary in [ADR-0017](0017-frontend-repo-rendering-and-cloudflare-deployment-boundary.md) and [ADR-0018](0018-frontend-http-boundary-auth-and-api-contract.md). Keep this file as historical rationale.
+
+
 **Status**: Accepted  
 **Date**: 2026-07-27  
 **Context**: 顯恩堂系統 / EFCC Church Management System

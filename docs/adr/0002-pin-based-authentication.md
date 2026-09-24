@@ -1,5 +1,7 @@
 # ADR-0002: PIN-Based Authentication
 
+> Historical record: Four-digit PIN authentication and the Google Sheets credential path are retired. Current username/password authentication is implemented by the Worker and D1 under [ADR-0020](0020-cloudflare-d1-identity-session-and-auth-boundary.md); no legacy account import remains. Keep this file as historical rationale.
+
 **Status**: Accepted  
 **Date**: 2026-07-27  
 **Context**: 顯恩堂系統 / EFCC Church Management System

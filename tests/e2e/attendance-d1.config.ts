@@ -9,10 +9,9 @@
 
 import { defineConfig } from "@playwright/test";
 
-// Local-first default (see AGENTS.md): `wrangler dev` serves the Worker +
-// local D1 on this origin. Override PROGRAMS_TARGET_URL for the shared
-// dev-testing worker (see .github/CI-SECRETS.md) or another
-// efcc-auth-*/efcc-dev-*.efcc-ggc.workers.dev acceptance host.
+// Local-first diagnostic (see AGENTS.md): `wrangler dev` serves the Worker +
+// local D1 on this origin. Use a remote override only after the exact Worker
+// and D1 are confirmed disposable in the target inventory.
 const DEFAULT_TARGET_URL = "http://127.0.0.1:8787";
 
 const targetUrl = process.env.PROGRAMS_TARGET_URL ?? DEFAULT_TARGET_URL;

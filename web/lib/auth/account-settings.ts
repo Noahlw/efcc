@@ -17,11 +17,10 @@
  *     session revocation, no cookie clearing).
  *   * A password change requires the current password; a wrong current value
  *     is a 422 VALIDATION (deliberately NOT 401, so the client cannot conflate
- *     it with session expiry). It does NOT feed the legacy-PIN escalation
- *     ladder (lockout.ts is scoped to the 10,000-key legacy space).
+ *     it with session expiry).
  *   * Both changes revoke ALL refresh sessions for the account inside the
- *     batch (the `completeCredentialUpgrade` precedent), because the login
- *     identifier / credential changed. Outstanding short-lived access tokens
+ *     batch because the login identifier / credential changed. Outstanding
+ *     short-lived access tokens
  *     follow the existing bounded-revocation contract (≤ ~15 min).
  *   * Every change is audited in `account_events` with NO credential material:
  *     username_changed rows carry old/new normalized usernames; password_changed
@@ -152,7 +151,10 @@ export async function changeUsername(
       "An account with that username already exists."
     );
   }
-  const existingRequest = await findRegistrationByUsername(db, options.username);
+  const existingRequest = await findRegistrationByUsername(
+    db,
+    options.username
+  );
   if (existingRequest) {
     throw new AccountConflictError(
       "An account with that username already exists."
@@ -339,8 +341,7 @@ export async function changePassword(
     db
       .prepare(
         `UPDATE accounts
-            SET credential_hash = ?, credential_kind = 'password',
-                credential_version = 2, updated_at = ?
+            SET credential_hash = ?, updated_at = ?
           WHERE user_id = ?
             AND account_status = 'Active'
             AND credential_hash = ?`

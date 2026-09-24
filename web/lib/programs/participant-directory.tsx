@@ -36,8 +36,8 @@ import {
   rememberProgramsNavigationContext,
 } from "@/lib/session";
 
+import { useAsyncResource } from "../use-async-resource";
 import { readProgramsScrollY, restoreProgramsScrollY } from "./programs-scroll";
-import { useAsyncResource } from "./use-async-resource";
 import { clearAuthenticatedProgramsRecovery } from "./workspace-context";
 
 /**

@@ -9,13 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
-import {
-  authLogin,
-  authLogout,
-  authMe,
-  authUpgrade,
-  RpcError,
-} from "@/lib/api";
+import { authLogin, authMe, RpcError } from "@/lib/api";
 import type { Bootstrap } from "@/lib/api";
 import { COPY, LANDING, errorCopyFor } from "@/lib/copy";
 import {
@@ -40,35 +34,22 @@ type View =
   | { kind: "SIGNED_OUT" }
   | { kind: "RESTORING" }
   | { kind: "AUTHENTICATING" }
-  | { kind: "UPGRADE" }
-  | { kind: "UPGRADING" }
   | { kind: "SESSION_EXPIRED" }
   | { kind: "ERROR"; error: string }
   | { kind: "RECOVERABLE_ERROR"; error: string; retry: () => void };
 
-type LoginField =
-  | "username"
-  | "password"
-  | "legacyPin"
-  | "newCredential"
-  | "confirmCredential";
+type LoginField = "username" | "password";
 const LOGOUT_FAILED_KEY = "efcc_logout_failed";
 const ACCOUNT_UPDATED_KEY = "efcc_account_updated";
-function matchesUsername(actual: string, expected: string): boolean {
-  return actual.trim().toLowerCase() === expected.trim().toLowerCase();
-}
 
 const LoginPage = () => {
   const router = useRouter();
   const [view, setView] = useState<View>({ kind: "SIGNED_OUT" });
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
-  const [legacyPin, setLegacyPin] = useState("");
-  const [newCredential, setNewCredential] = useState("");
-  const [confirmCredential, setConfirmCredential] = useState("");
   const [notice, setNotice] = useState<string | null>(null);
   // Flash notices carry different tones: errors (failed logout) vs success
-  // (account updated) vs neutral instructions (legacy-PIN upgrade gate).
+  // (account updated).
   // Session expiry is its own dedicated screen (SESSION_EXPIRED), not a
   // flash notice on this form. Visual tone and announcement urgency are
   // independent; the visible Alert owns each notice announcement.
@@ -79,9 +60,6 @@ const LoginPage = () => {
   const mountRef = useRef(true);
   const usernameRef = useRef<HTMLInputElement>(null);
   const passwordRef = useRef<HTMLInputElement>(null);
-  const legacyPinRef = useRef<HTMLInputElement>(null);
-  const newCredentialRef = useRef<HTMLInputElement>(null);
-  const confirmCredentialRef = useRef<HTMLInputElement>(null);
   const errorRef = useRef<HTMLDivElement>(null);
   const noticeRef = useRef<HTMLDivElement>(null);
   const sessionExpiredHeadingRef = useRef<HTMLHeadingElement>(null);
@@ -96,16 +74,6 @@ const LoginPage = () => {
       errorRef.current?.focus();
     }
   }, [view, invalidFields.length]);
-  useEffect(() => {
-    if (
-      view.kind === "UPGRADE" &&
-      noticeKind === "error" &&
-      notice &&
-      invalidFields.length === 0
-    ) {
-      noticeRef.current?.focus();
-    }
-  }, [view, notice, noticeKind, invalidFields.length]);
   useEffect(() => {
     if (view.kind === "SESSION_EXPIRED") {
       sessionExpiredHeadingRef.current?.focus();
@@ -221,20 +189,7 @@ const LoginPage = () => {
     announce(COPY.login.submitting);
     setNotice(null);
     try {
-      const result = await authLogin(username, password);
-      if (result.mustSetNewCredential) {
-        // Legacy forced-upgrade gate (AUTH-01 #159 / ADR-0020 §4): identity
-        // proven but NO session is issued until a new credential is set.
-        // Preserve the verified legacy credential in a dedicated upgrade form;
-        // the upgrade endpoint is the only path that can issue the session.
-        setLegacyPin(password);
-        setPassword("");
-        setNewCredential("");
-        setView({ kind: "UPGRADE" });
-        setNotice(COPY.login.upgradeRequired);
-        setNoticeKind("info");
-        return;
-      }
+      await authLogin(username, password);
       setAuthHint();
       // Login sets the cookies; /me resolves the full profile from the
       // access cookie to assemble the shell bootstrap.
@@ -257,156 +212,6 @@ const LoginPage = () => {
       clearAuthHint();
     }
   }, [username, password, navigateAfterLogin]);
-  const finishUpgrade = useCallback(async () => {
-    try {
-      const me = await authMe();
-      if (!matchesUsername(me.user.username, username)) {
-        try {
-          await authLogout();
-        } catch {
-          // A stale session is not evidence that the upgrade committed.
-        }
-        clearAuthHint();
-        const msg = COPY.login.upgradeNetworkError;
-        setInvalidFields([]);
-        setNoticeKind("error");
-        setNotice(msg);
-        setView({ kind: "SIGNED_OUT" });
-        return;
-      }
-      const bootstrap = buildBootstrap(me.user, me.sections, me.navigation);
-      announce(COPY.login.success);
-      navigateAfterLogin(bootstrap);
-    } catch (error) {
-      const msg =
-        error instanceof RpcError
-          ? errorCopyFor(error.problem.code, error.problem.detail)
-          : COPY.error.networkError;
-      if (error instanceof RpcError && error.problem.code === "AUTH_REQUIRED") {
-        clearAuthHint();
-        setInvalidFields([]);
-        setNoticeKind("error");
-        setNotice(msg);
-        setView({ kind: "SIGNED_OUT" });
-        return;
-      }
-      setView({ kind: "RECOVERABLE_ERROR", error: msg, retry: finishUpgrade });
-    }
-  }, [navigateAfterLogin, username]);
-
-  const handleUpgrade = useCallback(async () => {
-    // The auth boundary applies the canonical legacy normalization (strip
-    // non-digits, then zero-pad/truncate to four digits), so reject only an
-    // input that has no usable PIN digits.
-    if (!/\d/u.test(legacyPin)) {
-      setInvalidFields(["legacyPin"]);
-      setNotice(COPY.login.upgradeLegacyPinInvalid);
-      setNoticeKind("error");
-      legacyPinRef.current?.focus();
-      return;
-    }
-    if (newCredential.length < 8) {
-      setInvalidFields(["newCredential"]);
-      setNotice(COPY.login.upgradePasswordTooShort);
-      setNoticeKind("error");
-      newCredentialRef.current?.focus();
-      return;
-    }
-    if (newCredential !== confirmCredential) {
-      setInvalidFields(["confirmCredential"]);
-      setNotice(COPY.login.upgradePasswordMismatch);
-      setNoticeKind("error");
-      confirmCredentialRef.current?.focus();
-      return;
-    }
-    setInvalidFields([]);
-    setView({ kind: "UPGRADING" });
-    announce(COPY.login.upgrading);
-    setNotice(null);
-    try {
-      await authUpgrade(username, legacyPin, newCredential);
-    } catch (error) {
-      const msg =
-        error instanceof RpcError
-          ? errorCopyFor(error.problem.code, error.problem.detail)
-          : COPY.login.upgradeNetworkError;
-      const ambiguous =
-        error instanceof RpcError &&
-        (error.problem.code === "NETWORK_ERROR" ||
-          error.problem.code === "MALFORMED_RESPONSE" ||
-          error.problem.code === "UNAVAILABLE" ||
-          error.problem.status === 0);
-      if (!ambiguous) {
-        // Definitive server problem: the upgrade did not commit. The gate
-        // stays mounted so a retry may re-submit the same PIN.
-        setInvalidFields([]);
-        setView({ kind: "UPGRADE" });
-        setNoticeKind("error");
-        setNotice(msg);
-        clearAuthHint();
-        return;
-      }
-      // Ambiguous network failure: the request may have committed server-side
-      // (legacy hash consumed, session cookies set) before the response was
-      // lost. Probe the issued session before re-mounting the gate — a retry
-      // of a consumed PIN would 409 and strand the user despite a valid
-      // session (Spec 077 U5).
-      try {
-        const me = await authMe();
-        if (!matchesUsername(me.user.username, username)) {
-          try {
-            await authLogout();
-          } catch {
-            // A stale session is not evidence that the upgrade committed.
-          }
-          clearAuthHint();
-          setInvalidFields([]);
-          setNoticeKind("error");
-          setNotice(COPY.login.upgradeNetworkError);
-          setView({ kind: "SIGNED_OUT" });
-          return;
-        }
-        const bootstrap = buildBootstrap(me.user, me.sections, me.navigation);
-        setAuthHint();
-        announce(COPY.login.success);
-        navigateAfterLogin(bootstrap);
-        return;
-      } catch (probeError) {
-        const noSession =
-          probeError instanceof RpcError &&
-          probeError.problem.code === "AUTH_REQUIRED";
-        if (noSession) {
-          // Definitive: the upgrade did not commit. Re-mount the gate.
-          setInvalidFields([]);
-          setView({ kind: "UPGRADE" });
-          setNoticeKind("error");
-          setNotice(msg);
-          clearAuthHint();
-          return;
-        }
-        // The probe itself failed transiently; the upgrade may still have
-        // committed (consumed PIN, issued session). Keep a recoverable profile
-        // retry — never re-mount the gate for a possibly-issued session (a
-        // retry of a consumed PIN would 409).
-        setAuthHint();
-        await finishUpgrade();
-        return;
-      }
-    }
-    // The session is issued; only the profile fetch may still fail. The retry
-    // must resolve the profile from the issued session — never re-submit the
-    // upgrade, because the legacy credential is already consumed (a retry
-    // would 409 against the consumed hash).
-    setAuthHint();
-    await finishUpgrade();
-  }, [
-    legacyPin,
-    newCredential,
-    confirmCredential,
-    username,
-    finishUpgrade,
-    navigateAfterLogin,
-  ]);
 
   if (view.kind === "RESTORING") {
     return (
@@ -471,8 +276,7 @@ const LoginPage = () => {
     );
   }
 
-  const upgradeMode = view.kind === "UPGRADE" || view.kind === "UPGRADING";
-  const busy = view.kind === "AUTHENTICATING" || view.kind === "UPGRADING";
+  const busy = view.kind === "AUTHENTICATING";
 
   return (
     <div className="flex min-h-screen flex-col bg-[var(--surface)] text-[var(--ink)] antialiased">
@@ -507,7 +311,7 @@ const LoginPage = () => {
                   id="login-title"
                   className="min-w-0 wrap-anywhere text-[1.35rem] font-extrabold leading-tight tracking-[-0.01em]"
                 >
-                  {upgradeMode ? COPY.login.upgradeTitle : COPY.login.title}
+                  {COPY.login.title}
                 </h2>
               </div>
               <p className="mb-5 wrap-anywhere text-[0.9rem] text-[var(--ink-muted)] max-[799px]:hidden">
@@ -539,11 +343,7 @@ const LoginPage = () => {
                 onSubmit={(e) => {
                   e.preventDefault();
                   if (!busy) {
-                    if (upgradeMode) {
-                      handleUpgrade();
-                    } else {
-                      handleLogin();
-                    }
+                    handleLogin();
                   }
                 }}
               >
@@ -566,7 +366,7 @@ const LoginPage = () => {
                         setView({ kind: "SIGNED_OUT" });
                       }
                     }}
-                    disabled={busy || upgradeMode}
+                    disabled={busy}
                     autoComplete="username"
                     aria-invalid={
                       invalidFields.includes("username") || undefined
@@ -579,163 +379,46 @@ const LoginPage = () => {
                     required
                   />
                 </div>
-                {upgradeMode ? (
-                  <>
-                    <div className="flex min-w-0 flex-col gap-1.5">
-                      <label
-                        className="text-[0.88rem] font-bold text-[var(--ink-muted)]"
-                        htmlFor="legacy-pin"
-                      >
-                        {COPY.login.legacyPasswordLabel}
-                      </label>
-                      <Input
-                        ref={legacyPinRef}
-                        id="legacy-pin"
-                        className="border-[var(--line-strong)] bg-[var(--surface-raised)] text-base text-[var(--ink)]"
-                        type="password"
-                        value={legacyPin}
-                        onChange={(e) => {
-                          setLegacyPin(e.target.value);
-                          setInvalidFields([]);
-                          if (noticeKind === "error") {
-                            setNotice(null);
-                          }
-                        }}
-                        disabled={busy}
-                        autoComplete="current-password"
-                        inputMode="numeric"
-                        maxLength={4}
-                        minLength={4}
-                        pattern="[0-9]{4}"
-                        aria-invalid={
-                          invalidFields.includes("legacyPin") || undefined
-                        }
-                        aria-describedby={
-                          invalidFields.includes("legacyPin")
-                            ? "login-notice"
-                            : undefined
-                        }
-                        required
-                      />
-                    </div>
-                    <div className="flex min-w-0 flex-col gap-1.5">
-                      <label
-                        className="text-[0.88rem] font-bold text-[var(--ink-muted)]"
-                        htmlFor="new-credential"
-                      >
-                        {COPY.login.newPasswordLabel}
-                      </label>
-                      <Input
-                        ref={newCredentialRef}
-                        id="new-credential"
-                        className="border-[var(--line-strong)] bg-[var(--surface-raised)] text-base text-[var(--ink)]"
-                        type="password"
-                        value={newCredential}
-                        onChange={(e) => {
-                          setNewCredential(e.target.value);
-                          setInvalidFields([]);
-                          if (noticeKind === "error") {
-                            setNotice(null);
-                          }
-                        }}
-                        disabled={busy}
-                        autoComplete="new-password"
-                        aria-invalid={
-                          invalidFields.includes("newCredential") || undefined
-                        }
-                        aria-describedby={
-                          invalidFields.includes("newCredential")
-                            ? "login-notice"
-                            : undefined
-                        }
-                        minLength={8}
-                        required
-                      />
-                    </div>
-                    <div className="flex min-w-0 flex-col gap-1.5">
-                      <label
-                        className="text-[0.88rem] font-bold text-[var(--ink-muted)]"
-                        htmlFor="confirm-credential"
-                      >
-                        {COPY.login.confirmPasswordLabel}
-                      </label>
-                      <Input
-                        ref={confirmCredentialRef}
-                        id="confirm-credential"
-                        className="border-[var(--line-strong)] bg-[var(--surface-raised)] text-base text-[var(--ink)]"
-                        type="password"
-                        value={confirmCredential}
-                        onChange={(e) => {
-                          setConfirmCredential(e.target.value);
-                          setInvalidFields([]);
-                          if (noticeKind === "error") {
-                            setNotice(null);
-                          }
-                        }}
-                        disabled={busy}
-                        autoComplete="new-password"
-                        aria-invalid={
-                          invalidFields.includes("confirmCredential") ||
-                          undefined
-                        }
-                        aria-describedby={
-                          invalidFields.includes("confirmCredential")
-                            ? "login-notice"
-                            : undefined
-                        }
-                        minLength={8}
-                        required
-                      />
-                    </div>
-                  </>
-                ) : (
-                  <div className="flex min-w-0 flex-col gap-1.5">
-                    <label
-                      className="text-[0.88rem] font-bold text-[var(--ink-muted)]"
-                      htmlFor="login-password"
-                    >
-                      {COPY.login.passwordLabel}
-                    </label>
-                    <Input
-                      ref={passwordRef}
-                      id="login-password"
-                      className="border-[var(--line-strong)] bg-[var(--surface-raised)] text-base text-[var(--ink)]"
-                      type="password"
-                      value={password}
-                      onChange={(e) => {
-                        setPassword(e.target.value);
-                        setInvalidFields([]);
-                        if (view.kind === "ERROR") {
-                          setView({ kind: "SIGNED_OUT" });
-                        }
-                      }}
-                      disabled={busy}
-                      autoComplete="current-password"
-                      aria-invalid={
-                        invalidFields.includes("password") || undefined
+                <div className="flex min-w-0 flex-col gap-1.5">
+                  <label
+                    className="text-[0.88rem] font-bold text-[var(--ink-muted)]"
+                    htmlFor="login-password"
+                  >
+                    {COPY.login.passwordLabel}
+                  </label>
+                  <Input
+                    ref={passwordRef}
+                    id="login-password"
+                    className="border-[var(--line-strong)] bg-[var(--surface-raised)] text-base text-[var(--ink)]"
+                    type="password"
+                    value={password}
+                    onChange={(e) => {
+                      setPassword(e.target.value);
+                      setInvalidFields([]);
+                      if (view.kind === "ERROR") {
+                        setView({ kind: "SIGNED_OUT" });
                       }
-                      aria-describedby={
-                        invalidFields.includes("password")
-                          ? "login-error"
-                          : undefined
-                      }
-                      required
-                    />
-                  </div>
-                )}
+                    }}
+                    disabled={busy}
+                    autoComplete="current-password"
+                    aria-invalid={
+                      invalidFields.includes("password") || undefined
+                    }
+                    aria-describedby={
+                      invalidFields.includes("password")
+                        ? "login-error"
+                        : undefined
+                    }
+                    required
+                  />
+                </div>
                 <Button
                   className="w-full bg-[var(--accent)] text-base font-extrabold text-white hover:bg-[var(--accent-deep)]"
                   type="submit"
                   disabled={busy}
                   aria-busy={busy}
                 >
-                  {busy
-                    ? upgradeMode
-                      ? COPY.login.upgrading
-                      : COPY.login.submitting
-                    : upgradeMode
-                      ? COPY.login.upgradeSubmit
-                      : COPY.login.submit}
+                  {busy ? COPY.login.submitting : COPY.login.submit}
                 </Button>
                 <p className="m-0 text-center text-[0.8rem] leading-[1.6] text-[var(--ink-muted)] max-[799px]:hidden">
                   {LANDING.loginAfterNote}

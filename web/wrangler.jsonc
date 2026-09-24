@@ -19,7 +19,7 @@
   // database_id is a placeholder - replace with the real D1 database id
   // before `wrangler deploy`. In dev/test the binding is auto-provided by
   // @cloudflare/vitest-pool-workers and migrations are applied by the test
-  // setup file (web/test/apply-migrations.ts).
+  // test setup in web/vitest.config.ts.
   "d1_databases": [
     {
       "binding": "DB",
