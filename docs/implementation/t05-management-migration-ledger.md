@@ -1,10 +1,10 @@
 # T05.5 Management Programs Migration Ledger
 
 **Owner:** T05.5 / [#555](https://github.com/Noahlw/efcc/issues/555)
-**Historical source:** `tests/e2e/programs-d1.test.ts`
+**Historical source:** retired `tests/e2e/programs-d1.test.ts` (removed after parity qualification on 2026-09-25; Git history preserves the source)
 **Current Browser Acceptance:** `tests/e2e/programs-management-acceptance.test.ts` at `phone-390`, `retries: 0`
 
-This ledger assigns management-facing logical behavior to the narrowest useful seam. The historical three-project Programs suite remains available during migration; its repeated viewport execution is not the authority for domain coverage.
+This ledger assigns management-facing logical behavior to the narrowest useful seam. The historical three-project Programs suite has been retired after parity qualification; its repeated viewport execution was not the authority for domain coverage.
 
 ## Executable mapping
 

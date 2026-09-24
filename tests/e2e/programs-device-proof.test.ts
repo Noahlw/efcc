@@ -514,8 +514,7 @@ test("reduced motion is honored for the Event availability Undo control", async 
     // This event has an open check-in window (per beforeAll's
     // starts_at/ends_at), so a single click triggers a 409
     // CONFIRMATION_REQUIRED and an inline confirm step (impactCount 1
-    // for the open window itself), mirroring programs-d1.test.ts's
-    // "a currently open check-in window ... requires confirmation".
+    // for the open window itself), matching Programs acceptance case #51.
     const confirmBody = COPY.eventAvailabilityConfirmBody.replace(
       "{count}",
       "1"

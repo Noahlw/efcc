@@ -1,7 +1,7 @@
 // ATT-04 (#216) — local/deployed D1 QR-attendance end-to-end proof.
 //
-// Mirrors programs-d1.config.ts: local Worker/D1 by default, with an
-// explicit PROGRAMS_TARGET_URL override for an isolated remote smoke and
+// Mirrors the Programs acceptance target validation: local Worker/D1 by
+// default, with an explicit PROGRAMS_TARGET_URL override for an isolated smoke and
 // the same six PROGRAMS_* role fixtures and fail-closed host validation.
 // The test list is attendance-only; runs use phone-375x667 and
 // desktop-1280x720 viewport projects like live-ui.

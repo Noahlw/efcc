@@ -1068,7 +1068,9 @@ describe("T05.7 Programs promotion gate", () => {
   test("treats the worktree and every historical Programs group as gate inputs", () => {
     expect(isCleanWorktreeStatus("")).toBeTruthy();
     expect(
-      isCleanWorktreeStatus(" M tests/e2e/programs-d1.test.ts")
+      isCleanWorktreeStatus(
+        " M tests/e2e/programs-management-acceptance.test.ts"
+      )
     ).toBeFalsy();
 
     const ledgers = [
@@ -1087,10 +1089,9 @@ describe("T05.7 Programs promotion gate", () => {
         "utf-8"
       ),
     ].join("\n");
-    const historicalConfig = readFileSync(
-      path.join(repoRoot, "tests/e2e/programs-d1.config.ts"),
-      "utf-8"
-    );
+    const packageJson = JSON.parse(
+      readFileSync(path.join(repoRoot, "package.json"), "utf-8")
+    ) as { scripts: Record<string, string> };
     for (const group of [
       "PUI-01",
       "PUI-02",
@@ -1112,8 +1113,8 @@ describe("T05.7 Programs promotion gate", () => {
         group
       );
     }
-    expect(historicalConfig).toMatch(
-      /diagnostic[\s\S]*not promotion authority/iu
+    expect(packageJson.scripts["verify:programs"]).toContain(
+      "scripts/verify-programs.ts"
     );
   });
 });

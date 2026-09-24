@@ -20,7 +20,7 @@ Each config declares a positive `testMatch`; invoke the named runner from the re
 | `s4-management-hardening.config.ts` | `PROGRAMS_TARGET_URL=http://127.0.0.1:8787 pnpm exec playwright test --config=tests/e2e/s4-management-hardening.config.ts` | Authenticated management and identity geometry when the local Worker is running. |
 | Storybook configs | `pnpm test:t08:controls`, `pnpm test:t09:foundations`, `pnpm test:t10:composition`, `pnpm test:t11:storybook` | Focused presentation contracts; these do not prove Worker/D1 behavior. |
 
-The root `pnpm verify` aggregate owns the required local stages. Use `pnpm verify:programs` for the Programs promotion composition. The old broad `programs-d1` suite remains historical/diagnostic until the parity ledger proves every still-valid case has a named replacement. Do not use its existence as evidence that a replacement is unnecessary.
+The root `pnpm verify` aggregate owns the required local stages. Use `pnpm verify:programs` for the Programs promotion composition. The former `programs-d1` and PUI-05 Home-origin suites were retired after all 63 Programs and five Home scenarios had executable replacement mappings and passed the clean local promotion gate. The migration ledgers preserve their scenario IDs and replacement evidence.
 
 ## Local-first run
 
