@@ -2,7 +2,7 @@
 
 **Owner:** T05.4 / [#554](https://github.com/Noahlw/efcc/issues/554)
 **Historical source:** `tests/e2e/programs-d1.test.ts`
-**Current Browser Acceptance:** `tests/e2e/programs-participant-acceptance.test.ts` at `phone-390`, `retries: 0`
+**Current Browser Acceptance:** `tests/e2e/programs-participant-acceptance.test.ts` at `phone-360`, `phone-390`, and `phone-402`, `retries: 0`
 
 This ledger counts logical participant behavior, not the historical three viewport executions. The historical suite remains available during migration and is diagnostic until T05.7 contracts its authority. No row is removed without a replacement owner or an explicit retirement reason.
 
@@ -29,7 +29,7 @@ This ledger counts logical participant behavior, not the historical three viewpo
 | PUI-01 admin participant entry exposes capability-shaped management affordance | `programs-d1` × 3 projects | Worker Contract + Browser Acceptance | API capability remains a Worker contract; one browser boundary is retained for real entry behavior |
 | PUI-01 staff participant entry precedes management action | `programs-d1` × 3 projects | Worker Contract + Browser Acceptance | Server capability stays at Worker seam; browser mode boundary remains covered |
 | PUI-01 member entry has no management gateway | `programs-d1` × 3 projects | Worker Contract + Browser Acceptance | Authorization remains server-owned; browser affordance remains a critical boundary |
-| PUI-01 mode switching preserves Program intent and tab semantics | `programs-d1` × 3 projects | Browser Acceptance | Navigation/history behavior needs a browser |
+| PUI-01 mode switching preserves Program intent and current access landmarks | `programs-d1` × 3 projects | Browser Acceptance | Current gateway links and named page regions replace the historical mode tabs; URL/history intent remains browser-owned |
 | PUI-01 malformed direct intent is recoverable | `programs-d1` × 3 projects | Browser Acceptance | URL recovery remains browser-owned |
 | PUI-01 session expiry restores direct intent after login | `programs-d1` × 3 projects | Browser Acceptance | Cookie expiry and redirect restoration remain browser-owned |
 | PUI-02 listed catalog visibility and viewer status | `programs-d1` × 3 projects | Worker Contract + Browser Acceptance | Projection visibility stays server-owned; one real catalog arrival remains |
@@ -57,6 +57,6 @@ This ledger counts logical participant behavior, not the historical three viewpo
 
 The new focused suite creates a unique `E2E_T05P_` department/program through the real Worker API, signs the member in through the browser, submits the request through the browser, approves it through the admin API, reloads the member detail, and exits through the browser confirmation dialog. Independent state is scenario-isolated by the unique fixture; later runs do not rely on the shared demo enrollment state.
 
-The participant rows requiring 320/390/1280 layout, overflow, target, or composition proof are explicitly retained above for T05.6. Pure Worker/D1 variants remain in the existing `web/lib/programs/*.test.ts` contract suites and the focused T05.2 tracer; Browser Acceptance does not delete them.
+Responsive requirements remain in the separate 21-case matrix. Its configured projects cover 320, 360, 390, 402, 600, 799, 800, 1024, and 1440 CSS pixels; only the matching cases run at each width. The five Home-origin long-copy cases separately cover 320, 390, 799, and 800 pixels. The matrices do not repeat enrollment or approval workflows.
 
-The independent T05.6 matrix uses a deterministic `E2E_T05R_` fixture to measure participant catalog search/empty/clear, Program detail, and Event detail presentation at exactly 320, 390, and 1280 CSS pixels. It does not repeat the enrollment or approval workflow.
+The historical Programs UI's `管理模式`/`參與者模式` tab labels and tablist are retired. The current participant entry is a named `課程` region with a capability-shaped `進入管理模式` link; management returns through `返回參與者模式`. Browser Acceptance verifies these current semantics and URL/history behavior rather than asserting a tab widget the product no longer renders.

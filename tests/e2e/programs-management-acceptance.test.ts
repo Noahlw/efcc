@@ -2216,6 +2216,9 @@ test.describe("Programs parity replacements 39-63", () => {
         );
         await button.click();
         await changed;
+        await expect(
+          panel.getByText(APP_COPY.programs.updated, { exact: true })
+        ).toBeVisible();
         await expect(button).toHaveAttribute(
           "aria-pressed",
           initialPressed === "true" ? "false" : "true"
@@ -2271,6 +2274,9 @@ test.describe("Programs parity replacements 39-63", () => {
         .fill("Department detail parity purpose");
       await panel.getByRole("button", { name: COPY.saveProgram }).click();
       await expect(page.getByRole("heading", { name })).toBeVisible();
+      await expect(
+        page.getByText(COPY.programCreatedNotice, { exact: true })
+      ).toBeVisible();
       createdProgramId = new URL(page.url()).searchParams.get("program") ?? "";
       expect(createdProgramId).toBeTruthy();
       await expect(page).toHaveURL(/program=[^&]+/u);
@@ -2435,7 +2441,12 @@ test.describe("Programs parity replacements 39-63", () => {
           .filter({ visible: true })
           .first()
       ).toBeVisible();
-      await page.getByRole("tab", { name: /歷史 \(\d+\)/u }).click();
+      const historyTab = page.getByRole("tab", {
+        name: /歷史 \(\d+\)/u,
+      });
+      await expect(historyTab).toBeVisible();
+      await historyTab.click();
+      await expect(historyTab).toHaveAttribute("aria-selected", "true");
       await expect(
         page.getByRole("list", { name: COPY.enrollmentHistory })
       ).toContainText("E2E Member");
@@ -2721,6 +2732,13 @@ test.describe("Programs parity replacements 39-63", () => {
       await expect(
         page.getByText(COPY.eventCancelled, { exact: true })
       ).toBeVisible();
+      const cancellationReason = detail
+        .locator("details")
+        .filter({ hasText: COPY.cancelReason });
+      await cancellationReason.locator("summary").click();
+      await expect(
+        cancellationReason.getByText("場地維修", { exact: true })
+      ).toBeVisible();
       for (const label of [
         COPY.eventAvailabilityDeactivate,
         COPY.eventAvailabilityActivate,
@@ -2823,6 +2841,12 @@ test.describe("Programs parity replacements 39-63", () => {
         name: COPY.notificationsTitle,
         exact: true,
       })
+    ).toBeVisible();
+    await expect(
+      page
+        .getByRole("region", { name: COPY.notificationsTitle })
+        .getByRole("status")
+        .filter({ hasText: APP_COPY.programs.notificationsEmpty })
     ).toBeVisible();
 
     const memberContext = await browser.newContext();
@@ -3329,6 +3353,18 @@ test.describe("Programs parity replacements 39-63", () => {
       await expect(
         page.getByRole("button", { name: COPY.generateEvents })
       ).toBeEnabled();
+      const generated = page.waitForResponse(
+        (response) =>
+          response.request().method() === "POST" &&
+          response
+            .url()
+            .includes(`/api/v1/programs/${fixture.programId}/events/generate`)
+      );
+      await page.getByRole("button", { name: COPY.generateEvents }).click();
+      expect((await generated).status()).toBe(200);
+      await expect
+        .poll(async () => (await eventRows(page, fixture.programId)).length)
+        .toBeGreaterThan(0);
     } finally {
       await restoreFixture(page, fixture);
     }
@@ -3385,6 +3421,18 @@ test.describe("Programs parity replacements 39-63", () => {
       await expect(
         page.getByRole("button", { name: COPY.generateEvents })
       ).toBeEnabled();
+      const generated = page.waitForResponse(
+        (response) =>
+          response.request().method() === "POST" &&
+          response
+            .url()
+            .includes(`/api/v1/programs/${fixture.programId}/events/generate`)
+      );
+      await page.getByRole("button", { name: COPY.generateEvents }).click();
+      expect((await generated).status()).toBe(200);
+      await expect
+        .poll(async () => (await eventRows(page, fixture.programId)).length)
+        .toBeGreaterThan(0);
     } finally {
       await restoreFixture(page, fixture);
     }
@@ -3651,10 +3699,17 @@ test.describe("Programs parity replacements 39-63", () => {
     await expect(
       page.getByText(COPY.approvalPending, { exact: true })
     ).toBeVisible();
+    await expect(
+      page.getByText(approveUsername, { exact: true })
+    ).toBeVisible();
+    await expect(page.getByText("555-0162", { exact: true })).toBeVisible();
     await page.getByRole("button", { name: COPY.approvalApprove }).click();
     await page.getByRole("button", { name: COPY.approvalConfirm }).click();
     await expect(
       page.getByText(COPY.approvalApproved, { exact: true })
+    ).toBeVisible();
+    await expect(
+      page.getByText(COPY.decisionMade, { exact: true }).first()
     ).toBeVisible();
     await expect(
       page.getByRole("button", { name: COPY.approvalApprove })
@@ -3710,6 +3765,9 @@ test.describe("Programs parity replacements 39-63", () => {
     await expect(
       page.getByText(COPY.approvalRejected, { exact: true })
     ).toBeVisible();
+    await expect(
+      page.getByText(COPY.decisionMade, { exact: true }).first()
+    ).toBeVisible();
     await expect(page.getByText(note, { exact: true })).toBeVisible();
     await expect(
       page.getByRole("button", { name: COPY.approvalApprove })
@@ -3721,6 +3779,9 @@ test.describe("Programs parity replacements 39-63", () => {
     await page.reload();
     await expect(
       page.getByText(COPY.approvalRejected, { exact: true })
+    ).toBeVisible();
+    await expect(
+      page.getByText(COPY.decisionMade, { exact: true }).first()
     ).toBeVisible();
     await expect(page.getByText(note, { exact: true })).toBeVisible();
     await expect(page.getByLabel(COPY.approvalDecisionNote)).toHaveCount(0);
@@ -3760,6 +3821,9 @@ test.describe("Programs parity replacements 39-63", () => {
       name: new RegExp(`${COPY.approvalsOpenDetail} ${last}`, "u"),
     });
     await expect(detailLink).toBeVisible();
+    const detailHref = await detailLink.getAttribute("href");
+    expect(detailHref).toBeTruthy();
+    const detailUrl = new URL(detailHref ?? "", page.url()).toString();
     await detailLink.scrollIntoViewIfNeeded();
     const before = await page.evaluate(() => {
       const scroller = document.querySelector<HTMLElement>("#shell-content");
@@ -3768,9 +3832,10 @@ test.describe("Programs parity replacements 39-63", () => {
     });
     expect(before).toBeGreaterThan(0);
     await detailLink.click();
+    await expect(page).toHaveURL(detailUrl, { timeout: 15_000 });
     await expect(
       page.getByRole("heading", { name: COPY.approvalDetailTitle })
-    ).toBeVisible();
+    ).toBeVisible({ timeout: 15_000 });
     await page.goBack();
     await expect(page).toHaveURL(/\/management\?module=approvals$/u);
     await expect(page.getByText(names[0] ?? "", { exact: true })).toBeVisible();

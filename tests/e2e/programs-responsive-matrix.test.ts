@@ -730,6 +730,8 @@ test.describe("T05.6 responsive Programs UI matrix", () => {
           const right = (element: Element) =>
             element.getBoundingClientRect().right;
           return {
+            documentScrollWidth: document.documentElement.scrollWidth,
+            viewportWidth: window.innerWidth,
             outletClientWidth: outlet.clientWidth,
             outletScrollWidth: outlet.scrollWidth,
             titleClientWidth: title.clientWidth,
@@ -743,6 +745,9 @@ test.describe("T05.6 responsive Programs UI matrix", () => {
             filtersRight: right(filters),
           };
         });
+        expect(geometry.documentScrollWidth).toBeLessThanOrEqual(
+          geometry.viewportWidth
+        );
         expect(geometry.outletScrollWidth).toBeLessThanOrEqual(
           geometry.outletClientWidth
         );

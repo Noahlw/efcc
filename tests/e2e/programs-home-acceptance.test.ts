@@ -603,12 +603,14 @@ test.describe("Home and member-feed Browser Acceptance", () => {
       const feed = page.locator(
         '[data-feed-announcement-owner="global-live-region"]'
       );
+      const list =
+        route === "/notices"
+          ? feed.getByRole("list", { name: COPY.noticesListLabel })
+          : feed.locator("[data-feed-list]");
       await expect(feed).toBeVisible();
-      await expect(
-        feed.locator("[data-feed-list-item], [data-feed-list]")
-      ).toBeVisible();
-      await expect(feed).toContainText(LONG_TITLE);
-      await expect(feed).toContainText(copy);
+      await expect(list).toBeVisible();
+      await expect(list).toContainText(LONG_TITLE);
+      await expect(list).toContainText(copy);
       for (const width of HOME_LONG_COPY_WIDTHS) {
         await page.setViewportSize({ width, height: 900 });
         await assertFeedFits(page, width);

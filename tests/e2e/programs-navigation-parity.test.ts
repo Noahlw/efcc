@@ -495,7 +495,9 @@ test.describe("Programs navigation parity", () => {
     await expect(
       page.getByRole("heading", { name: COPY.pageTitle })
     ).toBeVisible();
-    await expect(page.locator("#programs-mode-panel")).toBeVisible();
+    await expect(
+      page.getByRole("region", { name: COPY.pageTitle, exact: true })
+    ).toBeVisible();
     await expect(page.getByText(COPY.pageLead)).toBeVisible();
     expect(await hasManagementCapability(page)).toBe(true);
     await expect(
@@ -622,6 +624,14 @@ test.describe("Programs navigation parity", () => {
     await expect(
       page.getByRole("heading", { name: current.programName, exact: true })
     ).toBeVisible();
+    const participantMode = page
+      .getByRole("banner")
+      .getByRole("link", { name: COPY.enterParticipant });
+    await expect(participantMode).toBeVisible();
+    await expect(participantMode).toHaveAttribute(
+      "href",
+      `/programs?program=${current.programId}`
+    );
   });
 
   test("programs-d1 #7: Member sees Listed and ManagerOnly rows but no Unlisted row", async ({
