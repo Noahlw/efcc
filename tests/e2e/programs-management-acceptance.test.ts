@@ -1966,26 +1966,29 @@ test.describe("Programs parity replacements 29-30", () => {
       await page
         .getByRole("button", { name: COPY.workspaceParticipantsRefresh })
         .click();
-      await expect(
-        page.getByRole("tab", {
-          name: new RegExp(`${COPY.tabsPending} \\(1\\)`, "u"),
-        })
-      ).toBeVisible();
+      const pendingAfterRefresh = page.getByRole("tab", {
+        name: new RegExp(`${COPY.tabsPending} \\(1\\)`, "u"),
+      });
+      await expect(pendingAfterRefresh).toBeVisible();
+      await pendingAfterRefresh.click();
+      await expect(pendingAfterRefresh).toHaveAttribute(
+        "aria-selected",
+        "true"
+      );
       await expect(
         page.getByRole("tab", {
           name: new RegExp(`${COPY.tabsActive} \\(0\\)`, "u"),
         })
       ).toBeVisible();
-      await page
-        .getByRole("tab", {
-          name: new RegExp(`${COPY.tabsPending} \\(1\\)`, "u"),
-        })
-        .click();
       const rejectedRow = page
         .getByRole("listitem")
         .filter({ hasText: "E2E Reject Member" });
-      await expect(rejectedRow).toBeVisible();
-      await rejectedRow.getByRole("button", { name: /詳情/u }).click();
+      const rejectionDetailsButton = rejectedRow.getByRole("button", {
+        name: /詳情/u,
+      });
+      await expect(rejectionDetailsButton).toBeVisible();
+      await rejectionDetailsButton.scrollIntoViewIfNeeded();
+      await rejectionDetailsButton.click();
       await rejectedRow.getByLabel(COPY.decisionNote).fill("時間不合");
       await rejectedRow.getByRole("button", { name: COPY.reject }).click();
       await expect(
