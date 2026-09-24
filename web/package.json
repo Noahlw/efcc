@@ -9,7 +9,7 @@
     "db:migrate:local": "wrangler d1 migrations apply efcc-identity --local",
     "build": "next build",
     "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.worker.json",
-    "test": "vitest run",
+    "test": "vitest run --maxWorkers=2",
     "test:components": "vitest run --config vitest.components.config.ts",
     "storybook": "node scripts/storybook-worktree.mjs",
     "storybook:build": "storybook build",

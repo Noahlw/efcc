@@ -221,6 +221,12 @@ For every candidate, record base and candidate SHA, exact command, result, runti
 - Because this change crosses database reset rules, security behavior, test deletion, and deployment configuration, implementation slices require high-risk review at their named boundaries. If independent review is unavailable, record that limitation; do not lower acceptance.
 - Compare four fixed coding-agent tasks before and after: one Programs behavior change, one UI change, one deployment/config change, and one query/field change. Keep prompt, model, and task outcome comparable. Record actual context/token telemetry when available, unique authoritative files opened, repeated instruction content, source/test/docs maintained, and rework turns. File/line counts are proxies only; report token savings only when measured.
 
+### Local Worker test concurrency diagnosis (2026-09-24)
+
+The first clean-candidate `pnpm verify` on `432b36c6f7aa2a88d08cbcb468de69afded30960` reached `pnpm test:workerd` after earlier stages passed, then reported 36 files / 507 tests and nine unhandled `Timeout starting cloudflare-pool runner` errors. Systematic diagnosis found host `availableParallelism() = 10`, making Vitest's default nine file workers the leading cause. The same complete Worker/D1 suite passed with `--maxWorkers=2` (45 files / 656 tests); after setting only `web/package.json`'s Worker `test` script to `vitest run --maxWorkers=2`, `pnpm test:workerd` again passed 45 / 656. This caps pool concurrency without skipping tests or changing component/Storybook concurrency.
+
+Official Context7 documentation was queried on 2026-09-24: `/vitest-dev/vitest/v4.1.6` for `maxWorkers` and file parallelism defaults; `/cloudflare/workers-sdk` for the Vitest Workers pool startup behavior and supported pool options. The documented generic Vitest worker limit is the available control; no undocumented Cloudflare `singleWorker` or `isolatedStorage` option was added. The complete `pnpm verify` must be rerun on the committed candidate.
+
 ## Manual prerequisites and blockers
 
 - Cloudflare API GET on 2026-09-24 returned zero D1 databases and zero Worker scripts in its connected account; Wrangler `whoami` reported that the local token had expired. This does not establish that EFCC has no resources under another account. Worker, route, D1, and rate-limit identities remain unverified; no deployment identity was changed and no remote D1 was touched.
