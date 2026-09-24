@@ -2,6 +2,7 @@ import { describe, expect, test } from "vitest";
 
 import {
   HOME_ACCEPTANCE_VIEWPORTS,
+  resolveFeedReportPath,
   resolveHomeReportPath,
 } from "./run-programs-home-acceptance.mjs";
 
@@ -19,6 +20,12 @@ describe("Home Browser Acceptance runner", () => {
     expect(
       resolveHomeReportPath(undefined, "/tmp/home-default-artifacts")
     ).toBe("/tmp/home-default-artifacts/home-results.json");
+  });
+
+  test("defaults feed evidence to the separate feed stage report", () => {
+    expect(
+      resolveFeedReportPath(undefined, "/tmp/feed-default-artifacts")
+    ).toBe("/tmp/feed-default-artifacts/feed-results.json");
   });
 
   test("aligns failure evidence with its one acceptance viewport", () => {

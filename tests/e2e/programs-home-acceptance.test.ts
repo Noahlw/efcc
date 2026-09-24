@@ -26,7 +26,15 @@ const COPY = {
   login: "登入",
   homeViewEvent: "查看聚會",
   homeBack: "首頁",
+  viewAllMessages: "查看全部",
+  churchNews: "教會消息",
+  noticesListLabel: "通知清單",
+  noticesUnread: "未讀",
+  noticesMarkAllRead: "全部標示已讀",
+  noticesMarkedAllRead: "已將全部通知標示為已讀",
+  profileHeading: "我的帳戶",
   eventInstructions: "請於簽到時間內前往掃描，確認聚會後完成簽到。",
+  eventDetailTitle: "聚會詳情",
   checkInAvailable: "可簽到",
   backToOrigin: "返回",
   programDetailBack: "課程",
@@ -48,6 +56,15 @@ interface Envelope<T> {
 
 interface HomeFixture {
   announcementId: string;
+  announcementTitle: string;
+  eventNoticeTitle: string;
+  eventNoticeName: string;
+  eventNoticeProgramId: string;
+  eventNoticeId: string;
+  programNoticeTitle: string;
+  programNoticeProgramName: string;
+  programNoticeProgramId: string;
+  accountNoticeTitle: string;
   exploreProgramId: string;
   exploreProgramName: string;
   eventProgramId: string;
@@ -392,6 +409,9 @@ test.beforeAll(async () => {
   expect(decisionData.enrollment.status).toBe("Active");
 
   const announcementId = `E2E_PUI05_HOME_${suffix}`;
+  const eventNoticeTitle = `E2E PUI-05 Event ${suffix}`;
+  const programNoticeTitle = `E2E PUI-05 Program ${suffix}`;
+  const accountNoticeTitle = `E2E PUI-05 Account ${suffix}`;
   const draftData = await responseData<{ version: number }>(
     await adminApi.post("/api/v1/home/draft", {
       headers: { "Idempotency-Key": `pui05-home-draft-${suffix}` },
@@ -427,12 +447,38 @@ test.beforeAll(async () => {
       data: {
         member_user_id: memberData.user.userId,
         kind: "account",
-        title: LONG_TITLE,
+        title: accountNoticeTitle,
         body: LONG_FEED_COPY,
       },
     }),
     201
   );
+  for (const notice of [
+    {
+      kind: "event",
+      title: eventNoticeTitle,
+      program_id: programId,
+      event_id: eventId,
+    },
+    { kind: "program", title: programNoticeTitle, program_id: programId },
+  ]) {
+    await responseData(
+      await adminApi.post("/api/v1/programs/notices", {
+        headers: {
+          "Idempotency-Key": `pui05-home-notice-${notice.kind}-${suffix}`,
+        },
+        data: {
+          member_user_id: memberData.user.userId,
+          kind: notice.kind,
+          title: notice.title,
+          body: LONG_FEED_COPY,
+          program_id: notice.program_id,
+          ...(notice.kind === "event" ? { event_id: notice.event_id } : {}),
+        },
+      }),
+      201
+    );
+  }
 
   const homeData = await responseData<{
     featuredEvent: { eventId: string; programId: string; title: string } | null;
@@ -450,6 +496,15 @@ test.beforeAll(async () => {
   expect(homeData.announcement?.contentId).toBe(announcementId);
   fixture = {
     announcementId,
+    announcementTitle: LONG_TITLE,
+    eventNoticeTitle,
+    eventNoticeName: LONG_TITLE,
+    eventNoticeProgramId: programId,
+    eventNoticeId: eventId,
+    programNoticeTitle,
+    programNoticeProgramName: programName,
+    programNoticeProgramId: programId,
+    accountNoticeTitle,
     exploreProgramId: homeData.exploreProgram.programId,
     exploreProgramName: homeData.exploreProgram.title,
     eventProgramId: homeData.featuredEvent.programId,
@@ -463,7 +518,7 @@ test.afterAll(async () => {
   await memberApi?.dispose();
 });
 
-test.describe("PUI-05 Home-origin Browser Acceptance", () => {
+test.describe("Home and member-feed Browser Acceptance", () => {
   test("PUI-05 case 64: Home cards and announcement detail keep long copy inside the viewport", async ({
     page,
   }) => {
@@ -606,5 +661,165 @@ test.describe("PUI-05 Home-origin Browser Acceptance", () => {
     await back.click();
     await expect(page).toHaveURL(/\/home$/u);
     await expect(page.getByTestId("home-page")).toBeVisible();
+  });
+  test("programs-d1 #18: Home 查看全部 opens the Messages list", async ({
+    page,
+  }) => {
+    await loginAs(page, MEMBER);
+    await page.goto("/home");
+    await page.getByRole("link", { name: COPY.viewAllMessages }).click();
+    await expect(page).toHaveURL(/\/messages\/?$/u);
+    await expect(
+      page.getByRole("heading", { name: COPY.churchNews, exact: true })
+    ).toBeVisible();
+    await expect(
+      page.getByRole("link", { name: new RegExp(LONG_TITLE, "u") })
+    ).toBeVisible();
+  });
+
+  test("programs-d1 #19: Messages detail Back returns to the same row", async ({
+    page,
+  }) => {
+    const current = homeFixture();
+    await loginAs(page, MEMBER);
+    await page.goto("/messages");
+    const row = page.getByRole("link", {
+      name: new RegExp(current.announcementTitle, "u"),
+    });
+    await expect(row).toBeVisible();
+    await row.click();
+    await expect(page).toHaveURL(/\/messages\?content=[^&]+&from=messages$/u);
+    await expect(page.getByTestId("announcement-detail")).toBeVisible();
+    await page.getByRole("button", { name: COPY.churchNews }).click();
+    await expect(page).toHaveURL(/\/messages\/?$/u);
+    await expect(row).toBeVisible();
+  });
+
+  test("programs-d1 #20: Notices show unread timestamps and persist mark-all-read", async ({
+    page,
+  }) => {
+    const current = homeFixture();
+    await loginAs(page, MEMBER);
+    await page.goto("/notices");
+    const list = page.getByRole("list", { name: COPY.noticesListLabel });
+    await expect(list).toBeVisible();
+    await expect(
+      list.getByRole("link", {
+        name: new RegExp(current.eventNoticeTitle, "u"),
+      })
+    ).toBeVisible();
+    await expect(
+      list.getByRole("link", {
+        name: new RegExp(current.programNoticeTitle, "u"),
+      })
+    ).toBeVisible();
+    await expect(
+      list.getByRole("link", {
+        name: new RegExp(current.accountNoticeTitle, "u"),
+      })
+    ).toBeVisible();
+    await expect(list.locator("time")).toHaveCount(3);
+    await expect(page.getByText(`3 ${COPY.noticesUnread}`)).toBeVisible();
+    await expect(
+      list.getByText(COPY.noticesUnread, { exact: true })
+    ).toHaveCount(3);
+
+    await page.getByRole("button", { name: COPY.noticesMarkAllRead }).click();
+    await expect(
+      page.getByRole("status").filter({ hasText: COPY.noticesMarkedAllRead })
+    ).toBeVisible();
+    await expect(page.getByText(`3 ${COPY.noticesUnread}`)).toHaveCount(0);
+    await page.reload();
+    await expect(
+      page.getByRole("button", { name: COPY.noticesMarkAllRead })
+    ).toBeDisabled();
+    await expect(
+      list.getByText(COPY.noticesUnread, { exact: true })
+    ).toHaveCount(0);
+  });
+
+  test("programs-d1 #21: Event notice opens its selected Event Detail", async ({
+    page,
+  }) => {
+    const current = homeFixture();
+    await loginAs(page, MEMBER);
+    await page.goto("/notices");
+    await page
+      .getByRole("link", { name: new RegExp(current.eventNoticeTitle, "u") })
+      .click();
+    await expect(page).toHaveURL(
+      new RegExp(
+        `/programs\\?program=${current.eventNoticeProgramId}&from=notices&event=${current.eventNoticeId}$`,
+        "u"
+      )
+    );
+    await expect(
+      page.getByRole("region", { name: current.eventNoticeName, exact: true })
+    ).toBeVisible();
+  });
+
+  test("programs-d1 #22: Event notice detail Back returns to Notices", async ({
+    page,
+  }) => {
+    const current = homeFixture();
+    await loginAs(page, MEMBER);
+    await page.goto("/notices");
+    await page
+      .getByRole("link", { name: new RegExp(current.eventNoticeTitle, "u") })
+      .click();
+    await expect(page).toHaveURL(
+      new RegExp(
+        `/programs\\?program=${current.eventNoticeProgramId}&from=notices&event=${current.eventNoticeId}$`,
+        "u"
+      )
+    );
+    await expect(
+      page.getByRole("region", { name: current.eventNoticeName, exact: true })
+    ).toBeVisible();
+    await page.getByRole("link", { name: COPY.backToOrigin }).click();
+    await expect(page).toHaveURL(/\/notices$/u);
+    await expect(
+      page.getByRole("list", { name: COPY.noticesListLabel })
+    ).toBeVisible();
+    await expect(
+      page.getByRole("link", {
+        name: new RegExp(current.eventNoticeTitle, "u"),
+      })
+    ).toBeVisible();
+  });
+
+  test("programs-d1 #23: Program notice opens its selected Program Detail", async ({
+    page,
+  }) => {
+    const current = homeFixture();
+    await loginAs(page, MEMBER);
+    await page.goto("/notices");
+    await page
+      .getByRole("link", { name: new RegExp(current.programNoticeTitle, "u") })
+      .click();
+    await expect(page).toHaveURL(
+      new RegExp(
+        `/programs\\?program=${current.programNoticeProgramId}&from=notices$`,
+        "u"
+      )
+    );
+    await expect(page.locator("#program-detail-title")).toHaveText(
+      current.programNoticeProgramName
+    );
+  });
+
+  test("programs-d1 #24: Account notice opens the profile page", async ({
+    page,
+  }) => {
+    const current = homeFixture();
+    await loginAs(page, MEMBER);
+    await page.goto("/notices");
+    await page
+      .getByRole("link", { name: new RegExp(current.accountNoticeTitle, "u") })
+      .click();
+    await expect(page).toHaveURL(/\/profile$/u);
+    await expect(
+      page.getByRole("heading", { name: COPY.profileHeading, exact: true })
+    ).toBeVisible();
   });
 });

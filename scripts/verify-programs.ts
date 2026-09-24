@@ -40,6 +40,12 @@ export const PROMOTION_STAGES: readonly PromotionStage[] = [
     report: "responsive-results.json",
     expectedTests: 21,
   },
+  {
+    name: "feed-browser-acceptance",
+    args: ["test:programs:feed"],
+    report: "feed-results.json",
+    expectedTests: 7,
+  },
 ];
 
 // Case numbers 64–68 are the five PUI-05 Home rows in the 2026-09-23 parity CSV.
@@ -79,6 +85,58 @@ export const PUI05_HOME_ACCEPTANCE_MAPPINGS = [
     oldTitle: "Home Explore opens Program Detail and returns Home",
     replacementTest:
       "PUI-05 case 68: Home Explore opens the selected Program Detail and returns Home",
+    replacementFile: "tests/e2e/programs-home-acceptance.test.ts",
+  },
+] as const;
+
+export const PROGRAMS_FEED_ACCEPTANCE_MAPPINGS = [
+  {
+    oldId: "programs-d1:18",
+    oldTitle: "Home 查看全部 opens the Messages list",
+    replacementTest: "programs-d1 #18: Home 查看全部 opens the Messages list",
+    replacementFile: "tests/e2e/programs-home-acceptance.test.ts",
+  },
+  {
+    oldId: "programs-d1:19",
+    oldTitle: "list opens detail and back returns to the same row",
+    replacementTest:
+      "programs-d1 #19: Messages detail Back returns to the same row",
+    replacementFile: "tests/e2e/programs-home-acceptance.test.ts",
+  },
+  {
+    oldId: "programs-d1:20",
+    oldTitle:
+      "lists notices with unread indicators and timestamps, and marks all read",
+    replacementTest:
+      "programs-d1 #20: Notices show unread timestamps and persist mark-all-read",
+    replacementFile: "tests/e2e/programs-home-acceptance.test.ts",
+  },
+  {
+    oldId: "programs-d1:21",
+    oldTitle: "opens an event notice to the Event Detail",
+    replacementTest:
+      "programs-d1 #21: Event notice opens its selected Event Detail",
+    replacementFile: "tests/e2e/programs-home-acceptance.test.ts",
+  },
+  {
+    oldId: "programs-d1:22",
+    oldTitle:
+      "returns to Notices after back from event detail opened via notice",
+    replacementTest:
+      "programs-d1 #22: Event notice detail Back returns to Notices",
+    replacementFile: "tests/e2e/programs-home-acceptance.test.ts",
+  },
+  {
+    oldId: "programs-d1:23",
+    oldTitle: "opens a program notice to the Program detail",
+    replacementTest:
+      "programs-d1 #23: Program notice opens its selected Program Detail",
+    replacementFile: "tests/e2e/programs-home-acceptance.test.ts",
+  },
+  {
+    oldId: "programs-d1:24",
+    oldTitle: "opens an account notice to the account page",
+    replacementTest: "programs-d1 #24: Account notice opens the profile page",
     replacementFile: "tests/e2e/programs-home-acceptance.test.ts",
   },
 ] as const;
@@ -216,28 +274,36 @@ export function assertMigrationLedgersComplete(
   };
 }
 
-export function assertHomeParityMappings(value: unknown): void {
+type AcceptanceParityMapping = {
+  oldId: string;
+  oldTitle: string;
+  replacementTest: string;
+  replacementFile: string;
+};
+
+function assertExactParityMappings(
+  value: unknown,
+  expectedMappings: readonly AcceptanceParityMapping[],
+  label: string
+): void {
   if (!Array.isArray(value)) {
-    throw new TypeError(
-      "Promotion manifest is missing the PUI-05 Home mappings"
-    );
+    throw new TypeError(`Promotion manifest is missing the ${label} mappings`);
   }
-  if (value.length !== PUI05_HOME_ACCEPTANCE_MAPPINGS.length) {
+  if (value.length !== expectedMappings.length) {
     throw new Error(
-      `PUI-05 Home mapping count mismatch: got=${value.length}, expected=${PUI05_HOME_ACCEPTANCE_MAPPINGS.length}`
+      `${label} mapping count mismatch: got=${value.length}, expected=${expectedMappings.length}`
     );
   }
 
-  const expectedById = new Map<
-    string,
-    (typeof PUI05_HOME_ACCEPTANCE_MAPPINGS)[number]
-  >(PUI05_HOME_ACCEPTANCE_MAPPINGS.map((mapping) => [mapping.oldId, mapping]));
+  const expectedById = new Map(
+    expectedMappings.map((mapping) => [mapping.oldId, mapping])
+  );
   const seenIds = new Set<string>();
   const seenTests = new Set<string>();
   for (const item of value) {
     const mapping = asRecord(item);
     if (mapping === null) {
-      throw new TypeError("PUI-05 Home mappings must be objects");
+      throw new TypeError(`${label} mappings must be objects`);
     }
     const { oldId, oldTitle, replacementTest, replacementFile } = mapping;
     if (
@@ -247,53 +313,60 @@ export function assertHomeParityMappings(value: unknown): void {
       typeof replacementFile !== "string"
     ) {
       throw new TypeError(
-        "PUI-05 Home mappings must name an old ID, test, and file"
+        `${label} mappings must name an old ID, test, and file`
       );
     }
     if (
       Object.keys(mapping).sort().join(",") !==
       "oldId,oldTitle,replacementFile,replacementTest"
     ) {
-      throw new Error(`PUI-05 Home mapping ${oldId} has unrecognized fields`);
+      throw new Error(`${label} mapping ${oldId} has unrecognized fields`);
     }
-    if (!expectedById.has(oldId)) {
-      throw new Error(
-        `PUI-05 Home mapping contains unrecognized old ID ${oldId}`
-      );
+    const expected = expectedById.get(oldId);
+    if (!expected) {
+      throw new Error(`${label} mapping contains unrecognized old ID ${oldId}`);
     }
     if (seenIds.has(oldId)) {
-      throw new Error(`PUI-05 Home mapping duplicates old ID ${oldId}`);
+      throw new Error(`${label} mapping duplicates old ID ${oldId}`);
     }
     if (seenTests.has(replacementTest)) {
       throw new Error(
-        `PUI-05 Home mapping duplicates replacement test ${replacementTest}`
+        `${label} mapping duplicates replacement test ${replacementTest}`
       );
     }
     seenIds.add(oldId);
     seenTests.add(replacementTest);
-    const expected = expectedById.get(oldId);
-    if (!expected) {
-      throw new Error(
-        `PUI-05 Home mapping contains unrecognized old ID ${oldId}`
-      );
-    }
     if (
       replacementTest !== expected.replacementTest ||
       oldTitle !== expected.oldTitle ||
       replacementFile !== expected.replacementFile
     ) {
       throw new Error(
-        `PUI-05 Home mapping ${oldId} does not match its approved replacement`
+        `${label} mapping ${oldId} does not match its approved replacement`
       );
     }
   }
 
-  const missing = PUI05_HOME_ACCEPTANCE_MAPPINGS.find(
-    ({ oldId }) => !seenIds.has(oldId)
-  );
+  const missing = expectedMappings.find(({ oldId }) => !seenIds.has(oldId));
   if (missing) {
-    throw new Error(`PUI-05 Home mapping is missing old ID ${missing.oldId}`);
+    throw new Error(`${label} mapping is missing old ID ${missing.oldId}`);
   }
+}
+
+export function assertHomeParityMappings(value: unknown): void {
+  assertExactParityMappings(
+    value,
+    PUI05_HOME_ACCEPTANCE_MAPPINGS,
+    "PUI-05 Home"
+  );
+}
+
+export function assertFeedParityMappings(value: unknown): void {
+  assertExactParityMappings(
+    value,
+    PROGRAMS_FEED_ACCEPTANCE_MAPPINGS,
+    "Programs feed"
+  );
 }
 
 function playwrightSpecs(report: unknown): { title: string; file: string }[] {
@@ -333,6 +406,15 @@ function playwrightSpecs(report: unknown): { title: string; file: string }[] {
 function hasExactHomeParityMappings(value: unknown): boolean {
   try {
     assertHomeParityMappings(value);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function hasExactFeedParityMappings(value: unknown): boolean {
+  try {
+    assertFeedParityMappings(value);
     return true;
   } catch {
     return false;
@@ -401,6 +483,7 @@ export function isFunctionalPromotionManifest(value: unknown): boolean {
   return (
     manifest?.status === "functional-passed" &&
     hasExactHomeParityMappings(manifest?.homeParityMappings) &&
+    hasExactFeedParityMappings(manifest?.feedParityMappings) &&
     hasB003Disclosure(manifest) &&
     hasCompleteMigrationLedger(manifest) &&
     hasPassedStages(manifest)
@@ -487,20 +570,22 @@ export function assertPlaywrightReportGreen(
   }
 }
 
-export function assertHomeAcceptanceReportMatchesMappings(
-  report: unknown
+function assertAcceptanceReportMatchesMappings(
+  report: unknown,
+  mappings: readonly AcceptanceParityMapping[],
+  label: string
 ): void {
-  assertPlaywrightReportGreen(report, PUI05_HOME_ACCEPTANCE_MAPPINGS.length);
+  assertPlaywrightReportGreen(report, mappings.length);
   const specs = playwrightSpecs(report);
-  if (specs.length !== PUI05_HOME_ACCEPTANCE_MAPPINGS.length) {
+  if (specs.length !== mappings.length) {
     throw new Error(
-      `PUI-05 Home report test count mismatch: got=${specs.length}, expected=${PUI05_HOME_ACCEPTANCE_MAPPINGS.length}`
+      `${label} report test count mismatch: got=${specs.length}, expected=${mappings.length}`
     );
   }
   const reportConfig = asRecord(asRecord(report)?.config);
   const rootDir = reportConfig?.rootDir;
   if (typeof rootDir !== "string") {
-    throw new Error("PUI-05 Home report is missing Playwright rootDir");
+    throw new Error(`${label} report is missing Playwright rootDir`);
   }
   const reportRootDir = path.resolve(rootDir);
   const repositoryRelativeRoot = path
@@ -508,10 +593,10 @@ export function assertHomeAcceptanceReportMatchesMappings(
     .split(path.sep)
     .join("/");
   if (repositoryRelativeRoot !== "tests/e2e") {
-    throw new Error(`PUI-05 Home report has unexpected rootDir ${rootDir}`);
+    throw new Error(`${label} report has unexpected rootDir ${rootDir}`);
   }
   const expectedTests = new Map<string, string>(
-    PUI05_HOME_ACCEPTANCE_MAPPINGS.map((mapping) => [
+    mappings.map((mapping) => [
       mapping.replacementTest,
       mapping.replacementFile,
     ])
@@ -521,11 +606,11 @@ export function assertHomeAcceptanceReportMatchesMappings(
     const expectedFile = expectedTests.get(spec.title);
     if (expectedFile === undefined) {
       throw new Error(
-        `PUI-05 Home report contains unrecognized test ${spec.title}`
+        `${label} report contains unrecognized test ${spec.title}`
       );
     }
     if (seen.has(spec.title)) {
-      throw new Error(`PUI-05 Home report duplicates test ${spec.title}`);
+      throw new Error(`${label} report duplicates test ${spec.title}`);
     }
     seen.add(spec.title);
     const reportedFile = path.resolve(
@@ -539,7 +624,7 @@ export function assertHomeAcceptanceReportMatchesMappings(
       path.isAbsolute(pathFromRoot)
     ) {
       throw new Error(
-        `PUI-05 Home report test ${spec.title} escapes Playwright rootDir`
+        `${label} report test ${spec.title} escapes Playwright rootDir`
       );
     }
     const normalizedFile = path
@@ -548,18 +633,38 @@ export function assertHomeAcceptanceReportMatchesMappings(
       .join("/");
     if (normalizedFile !== expectedFile) {
       throw new Error(
-        `PUI-05 Home report test ${spec.title} came from ${spec.file}`
+        `${label} report test ${spec.title} came from ${spec.file}`
       );
     }
   }
-  const missing = PUI05_HOME_ACCEPTANCE_MAPPINGS.find(
+  const missing = mappings.find(
     ({ replacementTest }) => !seen.has(replacementTest)
   );
   if (missing) {
     throw new Error(
-      `PUI-05 Home report is missing replacement test ${missing.replacementTest}`
+      `${label} report is missing replacement test ${missing.replacementTest}`
     );
   }
+}
+
+export function assertHomeAcceptanceReportMatchesMappings(
+  report: unknown
+): void {
+  assertAcceptanceReportMatchesMappings(
+    report,
+    PUI05_HOME_ACCEPTANCE_MAPPINGS,
+    "PUI-05 Home"
+  );
+}
+
+export function assertFeedAcceptanceReportMatchesMappings(
+  report: unknown
+): void {
+  assertAcceptanceReportMatchesMappings(
+    report,
+    PROGRAMS_FEED_ACCEPTANCE_MAPPINGS,
+    "Programs feed"
+  );
 }
 
 export function isCleanWorktreeStatus(status: string): boolean {
@@ -602,6 +707,35 @@ export function isHomeAcceptanceRunGreen(
     manifest.suite !== "tests/e2e/programs-home-acceptance.config.ts" ||
     manifest.revision !== expectedRevision ||
     manifest.layer !== "home-browser-acceptance" ||
+    manifest.retries !== 0 ||
+    manifest.reportPath !== expectedReportPath ||
+    manifest.promotionRunId !== expectedPromotionRunId ||
+    typeof manifest.target !== "string"
+  ) {
+    return false;
+  }
+  try {
+    assertLocalPromotionTarget(manifest.target);
+  } catch {
+    return false;
+  }
+  return true;
+}
+
+export function isFeedAcceptanceRunGreen(
+  value: unknown,
+  expectedRevision: string,
+  expectedReportPath: string,
+  expectedPromotionRunId: string
+): boolean {
+  const manifest = asRecord(value);
+  if (
+    manifest?.status !== "passed" ||
+    manifest.runtime !== "createTestHarness" ||
+    manifest.config !== "web/wrangler.jsonc" ||
+    manifest.suite !== "tests/e2e/programs-feed-acceptance.config.ts" ||
+    manifest.revision !== expectedRevision ||
+    manifest.layer !== "feed-browser-acceptance" ||
     manifest.retries !== 0 ||
     manifest.reportPath !== expectedReportPath ||
     manifest.promotionRunId !== expectedPromotionRunId ||
@@ -802,6 +936,16 @@ async function runStage(
       "home-browser-acceptance"
     );
   }
+  if (stage.name === "feed-browser-acceptance") {
+    environment.PROGRAMS_FEED_RESULTS_FILE = path.join(
+      artifactDirectory,
+      stage.report ?? "feed-results.json"
+    );
+    environment.PROGRAMS_FEED_ARTIFACT_DIRECTORY = path.join(
+      artifactDirectory,
+      "feed-browser-acceptance"
+    );
+  }
   if (stage.name === "runtime-canary") {
     environment.PROGRAMS_CANARY_ARTIFACT_DIRECTORY = stageArtifact;
   }
@@ -825,23 +969,37 @@ async function runStage(
     try {
       const report = await readReport(reportPath);
       assertPlaywrightReportGreen(report, stage.expectedTests);
-      if (stage.name === "home-browser-acceptance") {
-        assertHomeAcceptanceReportMatchesMappings(report);
+      if (
+        stage.name === "home-browser-acceptance" ||
+        stage.name === "feed-browser-acceptance"
+      ) {
+        const isFeed = stage.name === "feed-browser-acceptance";
+        if (isFeed) {
+          assertFeedAcceptanceReportMatchesMappings(report);
+        } else {
+          assertHomeAcceptanceReportMatchesMappings(report);
+        }
         const runManifestPath = path.join(
           artifactDirectory,
-          "home-browser-acceptance",
+          isFeed ? "feed-browser-acceptance" : "home-browser-acceptance",
           "run.json"
         );
-        if (
-          !isHomeAcceptanceRunGreen(
-            await readReport(runManifestPath),
-            await currentRevision(),
-            path.relative(REPO_ROOT, reportPath),
-            path.basename(artifactDirectory)
-          )
-        ) {
+        const runManifestGreen = isFeed
+          ? isFeedAcceptanceRunGreen(
+              await readReport(runManifestPath),
+              await currentRevision(),
+              path.relative(REPO_ROOT, reportPath),
+              path.basename(artifactDirectory)
+            )
+          : isHomeAcceptanceRunGreen(
+              await readReport(runManifestPath),
+              await currentRevision(),
+              path.relative(REPO_ROOT, reportPath),
+              path.basename(artifactDirectory)
+            );
+        if (!runManifestGreen) {
           throw new Error(
-            `Home acceptance run manifest is missing or not pinned to ${path.basename(artifactDirectory)}`
+            `${isFeed ? "Feed" : "Home"} acceptance run manifest is missing or not pinned to ${path.basename(artifactDirectory)}`
           );
         }
       }
@@ -875,6 +1033,15 @@ async function runStage(
               path.join(
                 artifactDirectory,
                 "home-browser-acceptance",
+                "run.json"
+              ),
+            ]
+          : []),
+        ...(stage.name === "feed-browser-acceptance"
+          ? [
+              path.join(
+                artifactDirectory,
+                "feed-browser-acceptance",
                 "run.json"
               ),
             ]
@@ -975,6 +1142,7 @@ async function main(): Promise<void> {
     };
     migrationLedger: MigrationLedgerSummary;
     homeParityMappings: typeof PUI05_HOME_ACCEPTANCE_MAPPINGS;
+    feedParityMappings: typeof PROGRAMS_FEED_ACCEPTANCE_MAPPINGS;
     failure?: string;
     artifacts: string;
   } = {
@@ -1002,6 +1170,7 @@ async function main(): Promise<void> {
       executableMappings: [],
     },
     homeParityMappings: PUI05_HOME_ACCEPTANCE_MAPPINGS,
+    feedParityMappings: PROGRAMS_FEED_ACCEPTANCE_MAPPINGS,
     artifacts: path.relative(REPO_ROOT, artifactDirectory),
   };
   await writeJson(path.join(artifactDirectory, "promotion.json"), manifest);

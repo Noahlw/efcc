@@ -20,6 +20,7 @@ if (
 export default defineConfig({
   testDir: ".",
   testMatch: ["**/programs-home-acceptance.test.ts"],
+  grep: /PUI-05 case \d{2}:/u,
   timeout: 60_000,
   retries: 0,
   fullyParallel: false,

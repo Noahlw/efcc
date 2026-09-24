@@ -6,14 +6,18 @@ import { describe, expect, test } from "vitest";
 import {
   B003_RESIDUAL_RISK,
   PUI05_HOME_ACCEPTANCE_MAPPINGS,
+  PROGRAMS_FEED_ACCEPTANCE_MAPPINGS,
   PROMOTION_STAGES,
   RUNTIME_CANARY_STAGE,
+  assertFeedAcceptanceReportMatchesMappings,
+  assertFeedParityMappings,
   assertHomeAcceptanceReportMatchesMappings,
   assertHomeParityMappings,
   assertMigrationLedgersComplete,
   assertLocalPromotionTarget,
   isCanaryArtifactGreen,
   isFunctionalPromotionManifest,
+  isFeedAcceptanceRunGreen,
   isHomeAcceptanceRunGreen,
   assertPlaywrightReportGreen,
   isCleanWorktreeStatus,
@@ -29,6 +33,7 @@ describe("T05.7 Programs promotion gate", () => {
       "browser-acceptance",
       "home-browser-acceptance",
       "responsive-matrix",
+      "feed-browser-acceptance",
     ]);
     expect(
       PROMOTION_STAGES.map(({ name, expectedTests }) => [name, expectedTests])
@@ -37,6 +42,7 @@ describe("T05.7 Programs promotion gate", () => {
       ["browser-acceptance", 48],
       ["home-browser-acceptance", 5],
       ["responsive-matrix", 21],
+      ["feed-browser-acceptance", 7],
     ]);
   });
 
@@ -48,6 +54,66 @@ describe("T05.7 Programs promotion gate", () => {
     expect(() =>
       assertHomeParityMappings(PUI05_HOME_ACCEPTANCE_MAPPINGS.slice(0, 4))
     ).toThrow(/count mismatch/u);
+  });
+
+  test("requires exact Programs feed mappings for old cases 18–24", () => {
+    expect(() =>
+      assertFeedParityMappings(PROGRAMS_FEED_ACCEPTANCE_MAPPINGS)
+    ).not.toThrow();
+    expect(() => assertFeedParityMappings(null)).toThrow(/missing/u);
+    expect(() =>
+      assertFeedParityMappings(PROGRAMS_FEED_ACCEPTANCE_MAPPINGS.slice(0, 6))
+    ).toThrow(/count mismatch/u);
+    expect(() =>
+      assertFeedParityMappings([
+        ...PROGRAMS_FEED_ACCEPTANCE_MAPPINGS.slice(0, 6),
+        { ...PROGRAMS_FEED_ACCEPTANCE_MAPPINGS[6], oldId: "programs-d1:99" },
+      ])
+    ).toThrow(/unrecognized old ID/u);
+    expect(() =>
+      assertFeedParityMappings([
+        ...PROGRAMS_FEED_ACCEPTANCE_MAPPINGS.slice(0, 6),
+        {
+          ...PROGRAMS_FEED_ACCEPTANCE_MAPPINGS[6],
+          replacementTest: PROGRAMS_FEED_ACCEPTANCE_MAPPINGS[0].replacementTest,
+        },
+      ])
+    ).toThrow(/duplicates replacement test/u);
+  });
+
+  test("matches all seven feed reports to their named Playwright specs", () => {
+    const report = {
+      config: { rootDir: path.join(repoRoot, "tests/e2e") },
+      stats: { expected: 7, skipped: 0, unexpected: 0, flaky: 0 },
+      suites: [
+        {
+          file: "programs-home-acceptance.test.ts",
+          specs: PROGRAMS_FEED_ACCEPTANCE_MAPPINGS.map(
+            ({ replacementTest }) => ({
+              title: replacementTest,
+              tests: [{ results: [{ status: "passed", retry: 0 }] }],
+            })
+          ),
+        },
+      ],
+    };
+    expect(() =>
+      assertFeedAcceptanceReportMatchesMappings(report)
+    ).not.toThrow();
+    expect(() =>
+      assertFeedAcceptanceReportMatchesMappings({
+        ...report,
+        suites: [
+          {
+            ...report.suites[0],
+            specs: [
+              ...report.suites[0].specs.slice(0, 6),
+              { ...report.suites[0].specs[6], title: "unrecognized feed test" },
+            ],
+          },
+        ],
+      })
+    ).toThrow(/unrecognized test/u);
   });
 
   test("rejects missing or unrecognized PUI-05 Home case IDs", () => {
@@ -205,6 +271,7 @@ describe("T05.7 Programs promotion gate", () => {
           ],
         },
         homeParityMappings: PUI05_HOME_ACCEPTANCE_MAPPINGS,
+        feedParityMappings: PROGRAMS_FEED_ACCEPTANCE_MAPPINGS,
         stageResults: [
           ...finiteResults,
           { name: "runtime-canary", status: "failed" },
@@ -351,6 +418,9 @@ describe("T05.7 Programs promotion gate", () => {
     expect(stageArtifactPath(PROMOTION_STAGES[3], artifactDirectory)).toBe(
       "/tmp/t05-promotion/run-1/responsive-results.json"
     );
+    expect(stageArtifactPath(PROMOTION_STAGES[4], artifactDirectory)).toBe(
+      "/tmp/t05-promotion/run-1/feed-results.json"
+    );
     expect(stageArtifactPath(RUNTIME_CANARY_STAGE, artifactDirectory)).toBe(
       "/tmp/t05-promotion/run-1/runtime-canary"
     );
@@ -408,6 +478,40 @@ describe("T05.7 Programs promotion gate", () => {
     ).toBeFalsy();
     expect(
       isHomeAcceptanceRunGreen(
+        { ...manifest, revision: "old-revision" },
+        "rev-1",
+        manifest.reportPath,
+        "run-1"
+      )
+    ).toBeFalsy();
+  });
+
+  test("accepts only a current-run Feed manifest with zero retries", () => {
+    const manifest = {
+      status: "passed",
+      runtime: "createTestHarness",
+      config: "web/wrangler.jsonc",
+      suite: "tests/e2e/programs-feed-acceptance.config.ts",
+      revision: "rev-1",
+      layer: "feed-browser-acceptance",
+      retries: 0,
+      target: "http://127.0.0.1:8787",
+      reportPath: "test-results/programs-promotion/run-1/feed-results.json",
+      promotionRunId: "run-1",
+    };
+    expect(
+      isFeedAcceptanceRunGreen(manifest, "rev-1", manifest.reportPath, "run-1")
+    ).toBeTruthy();
+    expect(
+      isFeedAcceptanceRunGreen(
+        { ...manifest, retries: 1 },
+        "rev-1",
+        manifest.reportPath,
+        "run-1"
+      )
+    ).toBeFalsy();
+    expect(
+      isFeedAcceptanceRunGreen(
         { ...manifest, revision: "old-revision" },
         "rev-1",
         manifest.reportPath,

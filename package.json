@@ -31,6 +31,7 @@
     "test:programs:canary": "node web/scripts/programs-runtime-canary.mjs",
     "test:programs:browser": "node web/scripts/run-programs-browser-acceptance.mjs",
     "test:programs:home": "node web/scripts/run-programs-home-acceptance.mjs",
+    "test:programs:feed": "node web/scripts/run-programs-home-acceptance.mjs --feed",
     "test:programs:responsive": "node web/scripts/run-programs-responsive-matrix.mjs",
     "test:programs:visual": "playwright test --config=tests/e2e/programs-visual-fidelity.config.ts",
     "test:programs:runners:unit": "vitest run web/scripts/run-programs-browser-acceptance.test.mjs web/scripts/run-programs-responsive-matrix.test.mjs",
