@@ -26,7 +26,7 @@ export const PROMOTION_STAGES: readonly PromotionStage[] = [
     name: "browser-acceptance",
     args: ["test:programs:browser"],
     report: "browser-results.json",
-    expectedTests: 48,
+    expectedTests: 63,
   },
   {
     name: "home-browser-acceptance",
@@ -138,6 +138,135 @@ export const PROGRAMS_FEED_ACCEPTANCE_MAPPINGS = [
     oldTitle: "opens an account notice to the account page",
     replacementTest: "programs-d1 #24: Account notice opens the profile page",
     replacementFile: "tests/e2e/programs-home-acceptance.test.ts",
+  },
+] as const;
+
+export const PROGRAMS_NAVIGATION_PARITY_MAPPINGS = [
+  {
+    oldId: "programs-d1:1",
+    oldTitle:
+      "admin enters Participant mode with capability-shaped Management entry",
+    replacementTest:
+      "programs-d1 #1: Admin enters Participant mode with its Management gateway",
+    replacementFile: "tests/e2e/programs-navigation-parity.test.ts",
+    evidenceLevel: "worker-d1",
+  },
+  {
+    oldId: "programs-d1:2",
+    oldTitle: "staff also enters Participant mode before any management action",
+    replacementTest:
+      "programs-d1 #2: Staff enters Participant mode before management",
+    replacementFile: "tests/e2e/programs-navigation-parity.test.ts",
+    evidenceLevel: "worker-d1",
+  },
+  {
+    oldId: "programs-d1:3",
+    oldTitle: "member enters Participant mode without a management gateway",
+    replacementTest: "programs-d1 #3: Member has no Management gateway",
+    replacementFile: "tests/e2e/programs-navigation-parity.test.ts",
+    evidenceLevel: "worker-d1",
+  },
+  {
+    oldId: "programs-d1:4",
+    oldTitle:
+      "mode switching preserves a valid Program intent and exposes tabpanel semantics",
+    replacementTest:
+      "programs-d1 #4: Mode switching preserves the Program intent and hash",
+    replacementFile: "tests/e2e/programs-navigation-parity.test.ts",
+    evidenceLevel: "worker-d1",
+  },
+  {
+    oldId: "programs-d1:5",
+    oldTitle: "malformed direct intent stays recoverable inside Programs",
+    replacementTest:
+      "programs-d1 #5: Malformed Programs intent stays recoverable",
+    replacementFile: "tests/e2e/programs-navigation-parity.test.ts",
+    evidenceLevel: "worker-d1",
+  },
+  {
+    oldId: "programs-d1:6",
+    oldTitle:
+      "restores a direct Programs intent after session expiry and login",
+    replacementTest:
+      "programs-d1 #6: Session expiry restores the direct Programs intent",
+    replacementFile: "tests/e2e/programs-navigation-parity.test.ts",
+    evidenceLevel: "worker-d1",
+  },
+  {
+    oldId: "programs-d1:7",
+    oldTitle:
+      "member sees Listed catalog rows with status tags and never the Unlisted fixture",
+    replacementTest:
+      "programs-d1 #7: Member sees Listed and ManagerOnly rows but no Unlisted row",
+    replacementFile: "tests/e2e/programs-navigation-parity.test.ts",
+    evidenceLevel: "worker-d1",
+  },
+  {
+    oldId: "programs-d1:8",
+    oldTitle: "forbidden catalog exposes only the authenticated Home escape",
+    replacementTest:
+      "programs-d1 #8 (presentation-only): Forbidden catalog offers only the Home escape",
+    replacementFile: "tests/e2e/programs-navigation-parity.test.ts",
+    evidenceLevel: "presentation-only",
+  },
+  {
+    oldId: "programs-d1:10",
+    oldTitle:
+      "admin sees the Unlisted fixture through scoped management access",
+    replacementTest:
+      "programs-d1 #10: Admin sees the Unlisted fixture through scoped access",
+    replacementFile: "tests/e2e/programs-navigation-parity.test.ts",
+    evidenceLevel: "worker-d1",
+  },
+  {
+    oldId: "programs-d1:11",
+    oldTitle: "filter pills allow filtering by viewer relationship",
+    replacementTest:
+      "programs-d1 #11: Relationship filters reflect D1 Eligible, Pending, Active, and All states",
+    replacementFile: "tests/e2e/programs-navigation-parity.test.ts",
+    evidenceLevel: "worker-d1",
+  },
+  {
+    oldId: "programs-d1:12",
+    oldTitle: "search narrows the catalog and clearing restores the same rows",
+    replacementTest:
+      "programs-d1 #12: Clearing catalog search restores the same rows",
+    replacementFile: "tests/e2e/programs-navigation-parity.test.ts",
+    evidenceLevel: "worker-d1",
+  },
+  {
+    oldId: "programs-d1:13",
+    oldTitle: "empty search result is recoverable by clearing",
+    replacementTest:
+      "programs-d1 #13: Empty catalog search recovers when cleared",
+    replacementFile: "tests/e2e/programs-navigation-parity.test.ts",
+    evidenceLevel: "worker-d1",
+  },
+  {
+    oldId: "programs-d1:15",
+    oldTitle: "direct detail survives refresh and returns to the directory",
+    replacementTest:
+      "programs-d1 #15: Program detail refresh, focus, schedule, and seven widths remain stable",
+    replacementFile: "tests/e2e/programs-navigation-parity.test.ts",
+    evidenceLevel: "worker-d1",
+  },
+  {
+    oldId: "programs-d1:16",
+    oldTitle:
+      "member receives privacy-preserving unavailable state for Unlisted detail",
+    replacementTest:
+      "programs-d1 #16: Unlisted detail stays private and returns to the catalog",
+    replacementFile: "tests/e2e/programs-navigation-parity.test.ts",
+    evidenceLevel: "worker-d1",
+  },
+  {
+    oldId: "programs-d1:17",
+    oldTitle:
+      "opens from Program detail, shows availability, and 前往掃描 pre-selects the event",
+    replacementTest:
+      "programs-d1 #17: Active Event detail preselects the scanner and restores state",
+    replacementFile: "tests/e2e/programs-navigation-parity.test.ts",
+    evidenceLevel: "worker-d1",
   },
 ] as const;
 
@@ -279,6 +408,7 @@ type AcceptanceParityMapping = {
   oldTitle: string;
   replacementTest: string;
   replacementFile: string;
+  evidenceLevel?: "worker-d1" | "presentation-only";
 };
 
 function assertExactParityMappings(
@@ -316,15 +446,15 @@ function assertExactParityMappings(
         `${label} mappings must name an old ID, test, and file`
       );
     }
-    if (
-      Object.keys(mapping).sort().join(",") !==
-      "oldId,oldTitle,replacementFile,replacementTest"
-    ) {
-      throw new Error(`${label} mapping ${oldId} has unrecognized fields`);
-    }
     const expected = expectedById.get(oldId);
     if (!expected) {
       throw new Error(`${label} mapping contains unrecognized old ID ${oldId}`);
+    }
+    if (
+      Object.keys(mapping).sort().join(",") !==
+      Object.keys(expected).sort().join(",")
+    ) {
+      throw new Error(`${label} mapping ${oldId} has unrecognized fields`);
     }
     if (seenIds.has(oldId)) {
       throw new Error(`${label} mapping duplicates old ID ${oldId}`);
@@ -339,7 +469,8 @@ function assertExactParityMappings(
     if (
       replacementTest !== expected.replacementTest ||
       oldTitle !== expected.oldTitle ||
-      replacementFile !== expected.replacementFile
+      replacementFile !== expected.replacementFile ||
+      mapping.evidenceLevel !== expected.evidenceLevel
     ) {
       throw new Error(
         `${label} mapping ${oldId} does not match its approved replacement`
@@ -369,9 +500,20 @@ export function assertFeedParityMappings(value: unknown): void {
   );
 }
 
-function playwrightSpecs(report: unknown): { title: string; file: string }[] {
+export function assertProgramsNavigationParityMappings(value: unknown): void {
+  assertExactParityMappings(
+    value,
+    PROGRAMS_NAVIGATION_PARITY_MAPPINGS,
+    "Programs navigation"
+  );
+}
+
+function playwrightSpecs(
+  report: unknown
+): { title: string; file: string; projectName: string | null }[] {
   const root = asRecord(report);
-  const found: { title: string; file: string }[] = [];
+  const found: { title: string; file: string; projectName: string | null }[] =
+    [];
   const visit = (suiteValue: unknown, inheritedFile = ""): void => {
     const suite = asRecord(suiteValue);
     if (!suite) {
@@ -382,9 +524,14 @@ function playwrightSpecs(report: unknown): { title: string; file: string }[] {
       for (const specValue of suite.specs) {
         const spec = asRecord(specValue);
         if (typeof spec?.title === "string") {
+          const test = Array.isArray(spec.tests)
+            ? asRecord(spec.tests[0])
+            : null;
           found.push({
             title: spec.title,
             file: typeof spec.file === "string" ? spec.file : file,
+            projectName:
+              typeof test?.projectName === "string" ? test.projectName : null,
           });
         }
       }
@@ -415,6 +562,15 @@ function hasExactHomeParityMappings(value: unknown): boolean {
 function hasExactFeedParityMappings(value: unknown): boolean {
   try {
     assertFeedParityMappings(value);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function hasExactProgramsNavigationParityMappings(value: unknown): boolean {
+  try {
+    assertProgramsNavigationParityMappings(value);
     return true;
   } catch {
     return false;
@@ -484,6 +640,9 @@ export function isFunctionalPromotionManifest(value: unknown): boolean {
     manifest?.status === "functional-passed" &&
     hasExactHomeParityMappings(manifest?.homeParityMappings) &&
     hasExactFeedParityMappings(manifest?.feedParityMappings) &&
+    hasExactProgramsNavigationParityMappings(
+      manifest?.programsNavigationParityMappings
+    ) &&
     hasB003Disclosure(manifest) &&
     hasCompleteMigrationLedger(manifest) &&
     hasPassedStages(manifest)
@@ -665,6 +824,83 @@ export function assertFeedAcceptanceReportMatchesMappings(
     PROGRAMS_FEED_ACCEPTANCE_MAPPINGS,
     "Programs feed"
   );
+}
+
+export function assertProgramsNavigationBrowserReportMatchesMappings(
+  report: unknown
+): void {
+  assertPlaywrightReportGreen(report, 63);
+  const specs = playwrightSpecs(report);
+  if (specs.length !== 63) {
+    throw new Error(
+      `Programs navigation report test count mismatch: got=${specs.length}, expected=63`
+    );
+  }
+  const reportConfig = asRecord(asRecord(report)?.config);
+  const rootDir = reportConfig?.rootDir;
+  if (typeof rootDir !== "string") {
+    throw new Error("Programs navigation report is missing Playwright rootDir");
+  }
+  const reportRootDir = path.resolve(rootDir);
+  const repositoryRelativeRoot = path
+    .relative(REPO_ROOT, reportRootDir)
+    .split(path.sep)
+    .join("/");
+  if (repositoryRelativeRoot !== "tests/e2e") {
+    throw new Error(
+      `Programs navigation report has unexpected rootDir ${rootDir}`
+    );
+  }
+  const expectedTests = new Map<string, string>(
+    PROGRAMS_NAVIGATION_PARITY_MAPPINGS.map((mapping) => [
+      mapping.replacementTest,
+      mapping.replacementFile,
+    ])
+  );
+  const seen = new Map<string, number>();
+  for (const spec of specs) {
+    const expectedFile = expectedTests.get(spec.title);
+    if (expectedFile === undefined) {
+      continue;
+    }
+    if (spec.projectName !== "phone-390") {
+      throw new Error(
+        `Programs navigation report test ${spec.title} ran in unexpected Browser project ${String(spec.projectName)}`
+      );
+    }
+    const reportedFile = path.resolve(
+      reportRootDir,
+      spec.file.replaceAll("\\", "/")
+    );
+    const pathFromRoot = path.relative(reportRootDir, reportedFile);
+    if (
+      pathFromRoot === ".." ||
+      pathFromRoot.startsWith(`..${path.sep}`) ||
+      path.isAbsolute(pathFromRoot)
+    ) {
+      throw new Error(
+        `Programs navigation report test ${spec.title} escapes Playwright rootDir`
+      );
+    }
+    const normalizedFile = path
+      .relative(REPO_ROOT, reportedFile)
+      .split(path.sep)
+      .join("/");
+    if (normalizedFile !== expectedFile) {
+      throw new Error(
+        `Programs navigation report test ${spec.title} came from ${spec.file}`
+      );
+    }
+    seen.set(spec.title, (seen.get(spec.title) ?? 0) + 1);
+  }
+  for (const { replacementTest } of PROGRAMS_NAVIGATION_PARITY_MAPPINGS) {
+    const count = seen.get(replacementTest) ?? 0;
+    if (count !== 1) {
+      throw new Error(
+        `Programs navigation report must contain ${replacementTest} once in phone-390; got=${count}`
+      );
+    }
+  }
 }
 
 export function isCleanWorktreeStatus(status: string): boolean {
@@ -969,6 +1205,9 @@ async function runStage(
     try {
       const report = await readReport(reportPath);
       assertPlaywrightReportGreen(report, stage.expectedTests);
+      if (stage.name === "browser-acceptance") {
+        assertProgramsNavigationBrowserReportMatchesMappings(report);
+      }
       if (
         stage.name === "home-browser-acceptance" ||
         stage.name === "feed-browser-acceptance"
@@ -1143,6 +1382,7 @@ async function main(): Promise<void> {
     migrationLedger: MigrationLedgerSummary;
     homeParityMappings: typeof PUI05_HOME_ACCEPTANCE_MAPPINGS;
     feedParityMappings: typeof PROGRAMS_FEED_ACCEPTANCE_MAPPINGS;
+    programsNavigationParityMappings: typeof PROGRAMS_NAVIGATION_PARITY_MAPPINGS;
     failure?: string;
     artifacts: string;
   } = {
@@ -1171,6 +1411,7 @@ async function main(): Promise<void> {
     },
     homeParityMappings: PUI05_HOME_ACCEPTANCE_MAPPINGS,
     feedParityMappings: PROGRAMS_FEED_ACCEPTANCE_MAPPINGS,
+    programsNavigationParityMappings: PROGRAMS_NAVIGATION_PARITY_MAPPINGS,
     artifacts: path.relative(REPO_ROOT, artifactDirectory),
   };
   await writeJson(path.join(artifactDirectory, "promotion.json"), manifest);

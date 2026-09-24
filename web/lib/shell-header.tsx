@@ -13,6 +13,7 @@ import type { AttentionData } from "@/lib/attention-panel";
 import { COPY } from "@/lib/copy";
 import { getManagementAccess } from "@/lib/programs/program-api";
 import type { ProgramsManagementAccess } from "@/lib/programs/program-api";
+import { buildProgramsHref } from "@/lib/programs/programs-intent";
 import { ScreenIconButton } from "@/lib/screen-foundations";
 import { useAsyncResource } from "@/lib/use-async-resource";
 
@@ -40,7 +41,11 @@ function navigateProgramsMode(
   }
 
   event.preventDefault();
-  window.history.pushState({ efccSection: "programs" }, "", href);
+  window.history.pushState(
+    { efccSection: "programs" },
+    "",
+    `${href}${window.location.hash}`
+  );
 }
 
 export const ShellHeader = ({
@@ -68,8 +73,14 @@ export const ShellHeader = ({
     pathname === "/programs" || pathname.startsWith("/programs/");
   const currentMode =
     searchParams.get("mode") === "management" ? "management" : "participant";
-  const modeHref =
-    currentMode === "management" ? "/programs" : "/programs?mode=management";
+  const modeHref = buildProgramsHref({
+    mode: currentMode === "management" ? "participant" : "management",
+    programId:
+      currentMode === "management" && searchParams.has("task")
+        ? null
+        : (searchParams.get("program") ?? searchParams.get("programId")),
+    departmentId: searchParams.get("department"),
+  });
   const programsRouteKey = `${pathname}?${searchParams.toString()}`;
   const { state: programsAccess, run: loadProgramsAccess } = useAsyncResource<
     ProgramsManagementAccess,

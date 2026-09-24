@@ -34,6 +34,7 @@ export default defineConfig({
   testMatch: [
     "**/programs-participant-acceptance.test.ts",
     "**/programs-management-acceptance.test.ts",
+    "**/programs-navigation-parity.test.ts",
   ],
   timeout: 60_000,
   retries: 0,
@@ -61,6 +62,7 @@ export default defineConfig({
   projects: [
     {
       name: "phone-360",
+      testIgnore: "**/programs-navigation-parity.test.ts",
       use: {
         ...devices["Pixel 5"],
         viewport: { width: 360, height: 800 },
@@ -75,6 +77,7 @@ export default defineConfig({
     },
     {
       name: "phone-402",
+      testIgnore: "**/programs-navigation-parity.test.ts",
       use: {
         ...devices["Pixel 5"],
         viewport: { width: 402, height: 874 },

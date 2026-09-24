@@ -7,12 +7,15 @@ import {
   B003_RESIDUAL_RISK,
   PUI05_HOME_ACCEPTANCE_MAPPINGS,
   PROGRAMS_FEED_ACCEPTANCE_MAPPINGS,
+  PROGRAMS_NAVIGATION_PARITY_MAPPINGS,
   PROMOTION_STAGES,
   RUNTIME_CANARY_STAGE,
   assertFeedAcceptanceReportMatchesMappings,
   assertFeedParityMappings,
   assertHomeAcceptanceReportMatchesMappings,
   assertHomeParityMappings,
+  assertProgramsNavigationBrowserReportMatchesMappings,
+  assertProgramsNavigationParityMappings,
   assertMigrationLedgersComplete,
   assertLocalPromotionTarget,
   isCanaryArtifactGreen,
@@ -39,7 +42,7 @@ describe("T05.7 Programs promotion gate", () => {
       PROMOTION_STAGES.map(({ name, expectedTests }) => [name, expectedTests])
     ).toStrictEqual([
       ["worker-contract", undefined],
-      ["browser-acceptance", 48],
+      ["browser-acceptance", 63],
       ["home-browser-acceptance", 5],
       ["responsive-matrix", 21],
       ["feed-browser-acceptance", 7],
@@ -79,6 +82,149 @@ describe("T05.7 Programs promotion gate", () => {
         },
       ])
     ).toThrow(/duplicates replacement test/u);
+  });
+
+  test("requires exact mappings for navigation cases and labels #8 presentation-only", () => {
+    expect(() =>
+      assertProgramsNavigationParityMappings(
+        PROGRAMS_NAVIGATION_PARITY_MAPPINGS
+      )
+    ).not.toThrow();
+    expect(PROGRAMS_NAVIGATION_PARITY_MAPPINGS).toHaveLength(15);
+    expect(PROGRAMS_NAVIGATION_PARITY_MAPPINGS[7]?.evidenceLevel).toBe(
+      "presentation-only"
+    );
+    expect(() => assertProgramsNavigationParityMappings(null)).toThrow(
+      /missing/u
+    );
+    expect(() =>
+      assertProgramsNavigationParityMappings(
+        PROGRAMS_NAVIGATION_PARITY_MAPPINGS.slice(0, 14)
+      )
+    ).toThrow(/count mismatch/u);
+    expect(() =>
+      assertProgramsNavigationParityMappings(
+        PROGRAMS_NAVIGATION_PARITY_MAPPINGS.map((mapping, index) =>
+          index === 7 ? { ...mapping, evidenceLevel: "worker-d1" } : mapping
+        )
+      )
+    ).toThrow(/approved replacement/u);
+  });
+
+  test("requires each navigation replacement once in phone-390", () => {
+    const mappedSpecs = PROGRAMS_NAVIGATION_PARITY_MAPPINGS.map(
+      ({ replacementTest, replacementFile }) => ({
+        title: replacementTest,
+        file: path.basename(replacementFile),
+        tests: [
+          {
+            projectName: "phone-390",
+            results: [{ status: "passed", retry: 0 }],
+          },
+        ],
+      })
+    );
+    const existingSpecs = Array.from({ length: 48 }, (_, index) => ({
+      title: `existing Browser test ${index + 1}`,
+      file: "programs-participant-acceptance.test.ts",
+      tests: [
+        {
+          projectName: "phone-390",
+          results: [{ status: "passed", retry: 0 }],
+        },
+      ],
+    }));
+    const report = {
+      config: { rootDir: path.join(repoRoot, "tests/e2e") },
+      stats: { expected: 63, skipped: 0, unexpected: 0, flaky: 0 },
+      suites: [
+        { file: "programs-navigation-parity.test.ts", specs: mappedSpecs },
+        {
+          file: "programs-participant-acceptance.test.ts",
+          specs: existingSpecs,
+        },
+      ],
+    };
+    expect(() =>
+      assertProgramsNavigationBrowserReportMatchesMappings(report)
+    ).not.toThrow();
+
+    const missingOneProject = {
+      ...report,
+      suites: [
+        {
+          file: "programs-navigation-parity.test.ts",
+          specs: [
+            ...mappedSpecs.slice(1),
+            {
+              title: "existing replacement count filler",
+              file: "programs-participant-acceptance.test.ts",
+              tests: [
+                {
+                  projectName: "phone-390",
+                  results: [{ status: "passed", retry: 0 }],
+                },
+              ],
+            },
+          ],
+        },
+        {
+          file: "programs-participant-acceptance.test.ts",
+          specs: existingSpecs,
+        },
+      ],
+    };
+    expect(() =>
+      assertProgramsNavigationBrowserReportMatchesMappings(missingOneProject)
+    ).toThrow(/once in phone-390/u);
+
+    const wrongProject = {
+      ...report,
+      suites: [
+        {
+          file: "programs-navigation-parity.test.ts",
+          specs: mappedSpecs.map((spec, index) =>
+            index === 0
+              ? {
+                  ...spec,
+                  tests: [
+                    {
+                      projectName: "phone-360",
+                      results: [{ status: "passed", retry: 0 }],
+                    },
+                  ],
+                }
+              : spec
+          ),
+        },
+        {
+          file: "programs-participant-acceptance.test.ts",
+          specs: existingSpecs,
+        },
+      ],
+    };
+    expect(() =>
+      assertProgramsNavigationBrowserReportMatchesMappings(wrongProject)
+    ).toThrow(/unexpected Browser project phone-360/u);
+
+    const wrongFile = {
+      ...report,
+      suites: [
+        {
+          file: "programs-navigation-parity.test.ts",
+          specs: mappedSpecs.map((spec, index) =>
+            index === 0 ? { ...spec, file: "other.test.ts" } : spec
+          ),
+        },
+        {
+          file: "programs-participant-acceptance.test.ts",
+          specs: existingSpecs,
+        },
+      ],
+    };
+    expect(() =>
+      assertProgramsNavigationBrowserReportMatchesMappings(wrongFile)
+    ).toThrow(/came from/u);
   });
 
   test("matches all seven feed reports to their named Playwright specs", () => {
@@ -272,6 +418,7 @@ describe("T05.7 Programs promotion gate", () => {
         },
         homeParityMappings: PUI05_HOME_ACCEPTANCE_MAPPINGS,
         feedParityMappings: PROGRAMS_FEED_ACCEPTANCE_MAPPINGS,
+        programsNavigationParityMappings: PROGRAMS_NAVIGATION_PARITY_MAPPINGS,
         stageResults: [
           ...finiteResults,
           { name: "runtime-canary", status: "failed" },
